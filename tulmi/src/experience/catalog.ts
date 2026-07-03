@@ -10,7 +10,9 @@
 import type {
   ActionRef,
   BootstrapResponse,
+  KeyboardActionSpec,
   KeyboardConfigResponse,
+  KeyboardNode,
   NavigationShell,
   Node,
   ScreenResponse,
@@ -1307,47 +1309,217 @@ function deleteAccountScreen(): ScreenResponse {
 
 // --- Keyboard config (server-driven keyboard; cached by the native shell) ----
 
+// ---------------------------------------------------------------------------
+// SDUI keyboard — the whole thing as a Node tree the native renderer walks.
+// ---------------------------------------------------------------------------
+//
+// Design goals (in order):
+//   1. Look and feel indistinguishable from Apple's stock dark keyboard until
+//      the user notices the top bar + refine key.
+//   2. Real iOS translucency via UIVisualEffectView(systemChromeMaterialDark) —
+//      the ONE thing the previous hand-built path could never do because the
+//      color parser was hex-only and there was no backing blur view.
+//   3. Brand touch WITHOUT screaming: the Return key wears the brand accent,
+//      the mic key wears the brand mark. Everything else stays system-neutral.
+//   4. Every visible behavior is a data change here — new layouts, new colors,
+//      new key shapes, new feature keys all ship as backend JSON.
+
+/** Letter-key builder. `char` is the visible character; taps insert it. */
+const kLetter = (char: string): KeyboardNode => ({
+  type: "LetterKey",
+  props: { char },
+  style: { flex: 1 },
+});
+
+/** Half-width invisible spacer used to indent short rows (Apple pattern). */
+const kHalfSpacer = (): KeyboardNode => ({ type: "Spacer", style: { flex: 0.5 } });
+
+/**
+ * Apple's stock keyboard uses subtly different fills for letter keys vs
+ * function keys (shift/backspace/return). We match that so the eye reads
+ * "iOS keyboard" before anything else registers.
+ */
+const KEY_FILL_LETTER = "#68686870"; // gray, ~44% alpha — blur shows through
+const KEY_FILL_FUNCTION = "#4A4A4A80"; // darker fn key, ~50% alpha
+const KEY_FILL_ACCENT = "#FF6B1F";    // brand orange — Return key only
+const KEY_TEXT = "#FFFFFF";
+const KEY_TEXT_ON_ACCENT = "#FFFFFF";
+const KEY_PRESSED = "#8E8E93B0";      // brighter tap feedback
+
 export function buildKeyboardConfig(): KeyboardConfigResponse {
+  // English QWERTY. The physical layout arrays are also emitted (below) so
+  // older keyboard binaries — the ones without the SDUI renderer — can still
+  // render the legacy hand-built keyboard. `features.sdui: true` is the switch
+  // the SDUI-capable binary flips to walk `root` instead.
+  const letterRow1 = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"];
+  const letterRow2 = ["a", "s", "d", "f", "g", "h", "j", "k", "l"];
+  const letterRow3 = ["z", "x", "c", "v", "b", "n", "m"];
+
+  // The whole keyboard as a tree. Column of rows; suggestion bar + waveform
+  // are conditionally visible via visibleIf against KBState the renderer maintains.
+  const root: KeyboardNode = {
+    type: "Container",
+    // The blur backdrop is the whole reason we shipped the SDUI renderer —
+    // Apple's own frosted-glass keyboard chrome, drawn under everything. On
+    // older iOS this falls back to the solid theme.background.
+    effect: { kind: "blur", style: "chromeMaterialDark" },
+    style: { padding: 6, gap: 8 },
+    children: [
+      // Suggestion bar — populated by state.suggestions when we start emitting
+      // predictions. Empty right now; visibleIf hides the strip so it doesn't
+      // eat vertical space.
+      {
+        type: "SuggestionBar",
+        style: { height: 42 },
+        visibleIf: { truthy: "hasSuggestions" },
+      },
+
+      // Dictation status label — only during voice sessions. Bound to
+      // state.status which the native side updates as
+      // "" → "Listening…" → "Transcribing…" → "Refining…" → "".
+      {
+        type: "StatusLabel",
+        bind: { text: "status" },
+        style: { height: 22, fontSize: 12, fg: "#B0B0B4" },
+        visibleIf: { truthy: "status" },
+      },
+
+      // Live waveform — visible only while dictating. Provides visible feedback
+      // that we're actually listening (vs the "no visible cue" problem the
+      // native path had before).
+      {
+        type: "Waveform",
+        bind: { level: "micLevel" },
+        props: { bars: 24, color: KEY_FILL_ACCENT },
+        style: { height: 44 },
+        visibleIf: { truthy: "dictating" },
+      },
+
+      // Row 1: q..p (10 letters, edge to edge)
+      { type: "Row", style: { gap: 6 }, children: letterRow1.map(kLetter) },
+
+      // Row 2: a..l (9 letters, indented half-key on each side)
+      {
+        type: "Row",
+        style: { gap: 6 },
+        children: [kHalfSpacer(), ...letterRow2.map(kLetter), kHalfSpacer()],
+      },
+
+      // Row 3: shift, z..m (7 letters), backspace
+      {
+        type: "Row",
+        style: { gap: 6 },
+        children: [
+          { type: "ShiftKey", style: { flex: 1.5, bg: KEY_FILL_FUNCTION } },
+          ...letterRow3.map(kLetter),
+          { type: "BackspaceKey", style: { flex: 1.5, bg: KEY_FILL_FUNCTION } },
+        ],
+      },
+
+      // Row 4: 123 (page switcher, deferred), globe, mic, refine, space, return
+      {
+        type: "Row",
+        style: { gap: 6 },
+        children: [
+          // Page switcher — deferred until we add symbol/number pages. For now
+          // this key is a placeholder that fires the globe (advance input mode).
+          {
+            type: "IconKey",
+            props: { icon: "number", label: "123" },
+            on: { onPress: "cycleLayout" },
+            style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fontSize: 15, fontWeight: "500" },
+          },
+          {
+            type: "GlobeKey",
+            style: { flex: 1, bg: KEY_FILL_FUNCTION },
+          },
+          {
+            type: "MicKey",
+            style: { flex: 1, bg: KEY_FILL_FUNCTION },
+          },
+          {
+            type: "RefineKey",
+            style: { flex: 1, bg: KEY_FILL_FUNCTION },
+          },
+          {
+            type: "SpaceKey",
+            style: { flex: 4, bg: KEY_FILL_LETTER, fontSize: 15, fontWeight: "400" },
+          },
+          {
+            // The brand touch: Return wears the accent color. It's the one key
+            // that visually belongs to Tulmi in an otherwise-system look.
+            type: "ReturnKey",
+            style: { flex: 2, bg: KEY_FILL_ACCENT, fg: KEY_TEXT_ON_ACCENT, fontWeight: "600" },
+          },
+        ],
+      },
+    ],
+  };
+
+  // Named actions — referenced by node `on` handlers by string name. Lets us
+  // change the bound behavior of a key (e.g. what the 123 key does) without
+  // editing the tree, and keeps the tree readable.
+  const actions: Record<string, KeyboardActionSpec> = {
+    cycleLayout: { kind: "switchLayout" },      // no language = cycle
+    showLangs: { kind: "showLanguageMenu" },
+    dictateStart: { kind: "startDictation" },
+    dictateStop: { kind: "stopDictation" },
+    refine: { kind: "runRefine" },
+  };
+
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
+    // Bump so warm keyboard sessions re-fetch on next open when we push a new
+    // tree; the native cache respects this the same way SduiApp does.
+    cacheVersion: currentCacheVersion(),
     theme: {
-      // Match Apple's iOS 17 dark-mode system keyboard as closely as the
-      // extension can render — same silhouette, same contrast, same tap
-      // feedback — so the Tulmi keyboard reads as "a normal iOS keyboard"
-      // before we layer any brand accents on top. Brand-orange call-to-action
-      // is intentionally NOT set on accent right now; the return / refine
-      // buttons render neutral. Add the accent back in a follow-up commit
-      // once the base UX is proven identical to system.
-      //
-      // Colors are HEX ONLY — the native Swift + Kotlin extensions parse
-      // "#RRGGBB" and fall through to a dim default on rgba() / hsl().
+      // Legacy fields — read by the pre-SDUI binary as opaque hex. New builds
+      // ignore these once features.sdui takes over.
       background: "#000000",
-      key: "#48484a",           // Apple letter-key grey, dark mode
-      keyText: "#FFFFFF",       // solid hex — no rgba, no fallback
-      accent: "#48484a",        // neutral (matches keys) — brand touch added later
-      keyPressed: "#6c6c70",    // Apple-like brighter tap-highlight
+      key: "#48484a",
+      keyText: KEY_TEXT,
+      accent: KEY_FILL_ACCENT,
+      keyPressed: KEY_PRESSED,
+      // v2 fields — used only by the SDUI renderer:
+      backgroundEffect: { kind: "blur", style: "chromeMaterialDark" },
+      keyRadius: 6,     // Apple's exact letter-key corner radius on dark mode
+      keyShadow: true,  // subtle drop so pressed vs unpressed reads at a glance
     },
+    // Layouts array stays populated for the legacy path. Adding a new language
+    // here + shipping a matching { type: "LetterKey" } tree gets the new SDUI
+    // keyboard when we generate per-language roots.
     layouts: [
       {
         language: "en",
+        displayName: "English",
         rows: [
-          ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
-          ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
-          ["{shift}", "z", "x", "c", "v", "b", "n", "m", "{backspace}"],
+          letterRow1,
+          letterRow2,
+          ["{shift}", ...letterRow3, "{backspace}"],
           ["{globe}", "{mic}", "{refine}", "{space}", "{return}"],
         ],
       },
     ],
-    features: { voice: true, refine: true, streaming: false },
+    features: {
+      voice: true,
+      refine: true,
+      streaming: false,
+      // The switch: capable binaries walk root+actions; older ones fall through
+      // to the hand-built layout.
+      sdui: true,
+    },
     labels: {
       refine: "✨ Refine",
-      listening: "Listening… tap to stop",
+      listening: "Listening…",
       transcribing: "Transcribing…",
       refining: "Refining…",
       space: "space",
       return: "return",
       needFullAccess: "Enable Full Access to use voice + Refine.",
+      language: "Language",
     },
+    root,
+    actions,
     // Was 600 (10 min). A live theme fix couldn't reach users mid-session.
     // 60 s keeps cost negligible and lets themed rollouts hit within a minute.
     cacheTtlSeconds: 60,

@@ -503,8 +503,9 @@ app.post("/v1/push/register", { config: AUTHED_RL }, async (req, reply) => {
     // updated_at) with PK (user_id, platform) so re-registration overwrites
     // the same row. If the table doesn't exist yet, we log and no-op; the
     // schema migration is a follow-up SQL step. Never surfaces to the user.
-    if (supabase) {
-      const { error } = await supabase.from("push_tokens").upsert(
+    const sb = supabase();
+    if (sb) {
+      const { error } = await sb.from("push_tokens").upsert(
         {
           user_id: user.id,
           platform,
