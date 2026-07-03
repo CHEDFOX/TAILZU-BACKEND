@@ -481,6 +481,49 @@ app.put("/v1/personality", { config: AUTHED_RL }, async (req, reply) => {
   }
 });
 
+// Register (or refresh) an Expo push token for the current user. The client
+// sends this on every launch — we upsert on (user, platform) so old tokens
+// naturally roll over when the device gets a new one. The whole flow is
+// best-effort from the client's perspective; the app never blocks on it.
+const pushRegisterSchema = z.object({
+  token: z.string().min(4).max(256),
+  platform: z.enum(["ios", "android"]),
+  appVersion: z.string().max(40).optional(),
+});
+app.post("/v1/push/register", { config: AUTHED_RL }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+  const parsed = pushRegisterSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return reply.code(400).send({ code: "bad_request", message: parsed.error.issues[0]?.message ?? "invalid body" });
+  }
+  const { token, platform, appVersion } = parsed.data;
+  try {
+    // Best-effort upsert. Table shape: (user_id, platform, token, app_version,
+    // updated_at) with PK (user_id, platform) so re-registration overwrites
+    // the same row. If the table doesn't exist yet, we log and no-op; the
+    // schema migration is a follow-up SQL step. Never surfaces to the user.
+    if (supabase) {
+      const { error } = await supabase.from("push_tokens").upsert(
+        {
+          user_id: user.id,
+          platform,
+          token,
+          app_version: appVersion ?? null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,platform" },
+      );
+      if (error) req.log.warn({ err: error }, "push_tokens upsert failed");
+    }
+    return reply.send({ ok: true });
+  } catch (err) {
+    req.log.warn({ err }, "push_tokens exception");
+    // Silent success — client retries on next launch.
+    return reply.send({ ok: true });
+  }
+});
+
 // Learn a style profile from a sample of the user's own writing, merge it into
 // their saved personality, and return the result.
 app.post("/v1/personality/learn", { config: AUTHED_RL }, async (req, reply) => {
