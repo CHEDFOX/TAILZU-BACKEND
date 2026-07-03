@@ -213,44 +213,129 @@ export interface Node {
 export type NodeEvent =
   | "onPress"
   | "onLongPress"
+  | "onDoubleTap"
   | "onChange"
   | "onSubmit"
+  | "onFocus"
+  | "onBlur"
   | "onAppear"
   | "onDisappear"
   | "onRefresh"
   | "onEndReached"
+  | "onSwipeLeft"
+  | "onSwipeRight"
+  | "onScroll"
+  | "onScrollEnd"
+  | "onSelect"
+  | "onDismiss"
+  | "onComplete"
   | "onResult" // async component produced a value (e.g. VoiceButton transcript)
   | "onError"; // async component failed
 
 /**
- * The component registry the v1 renderer ships. The server discovers the real
- * set from capabilities.components, but this is the baseline contract.
+ * The component registry the renderer ships. The server discovers the real
+ * set from capabilities.components. Grouped by role so future additions land
+ * in the right bucket. Every entry here has an implementation in the RN
+ * renderer; no aspirational names.
  */
 export const CORE_COMPONENTS = [
-  "Screen", // scroll/safe-area root
-  "Stack", // flex container (props.direction: "row" | "column")
-  "Spacer", // flexible/empty space
-  "Text", // props.content, props.variant ("h1"|"body"|"caption"…)
-  "Image", // props.source (url), props.aspectRatio
-  "Icon", // props.name
-  "Button", // props.label, props.variant; on.onPress
-  "TextField", // props.placeholder, bind.value; on.onChange
-  "Chip", // selectable pill; props.label, props.selected
-  "Card", // elevated container
-  "List", // props.items (data path) + props.itemTemplate (Node)
+  // v1 primitives — always present.
+  "Screen",       // scroll/safe-area root
+  "Stack",        // flex container (props.direction: "row" | "column")
+  "Spacer",       // flexible/empty space
+  "Text",         // props.content, props.variant
+  "Image",        // props.source (url), props.aspectRatio
+  "Icon",         // props.name
+  "Button",       // props.label, props.variant
+  "TextField",    // props.placeholder, bind.value
+  "Chip",         // selectable pill
+  "Card",         // elevated container
+  "List",         // props.items + props.itemTemplate
   "Divider",
   "ProgressBar",
-  "VoiceButton", // records mic → /v1/transcribe-clean → bind.value
-  // SDUI v2 content blocks:
-  "Heading", // props.content
-  "Paragraph", // props.content
-  "Badge", // props.label, props.tone ("accent")
-  "KeyValue", // props.label, props.value
-  "Hero", // props.title, props.subtitle, props.image
+  "VoiceButton",  // records mic → /v1/transcribe-clean → bind.value
+
+  // v2 content blocks (editorial).
+  "Overline", "Heading", "Paragraph", "Quote", "Badge", "KeyValue", "Hero",
+
+  // v2 morphing playground controls (Home).
+  "VoiceToggle", "RefineButton", "DraftButton", "Pager",
+
+  // v2 settings.
+  "Row",
+
+  // v2 dictionary / word chips.
+  "DictionaryEditor", "WordChips",
+
+  // v3 layout / navigation additions.
+  "Grid",             // props.columns, gap; wraps children
+  "MasonryGrid",      // like Grid but variable-height columns
+  "Modal",            // props.open (bind), props.dismissable
+  "BottomSheet",      // props.open (bind), props.snapPoints
+  "ActionSheet",      // props.actions (list of {label, action, destructive})
+  "Popover",          // anchored floating panel
+  "Tooltip",          // props.content, wraps a child anchor
+  "Collapsible",      // props.title, props.defaultOpen
+  "StickyHeader",     // pins its first child while children scroll
+  "SwipeableRow",     // props.leftActions, props.rightActions
+  "PullToRefresh",    // wraps a scrollable; fires onRefresh
+  "SafeArea",         // insets-only wrapper for edge-to-edge screens
+  "Tabs",             // in-screen tabs, props.tabs
+
+  // v3 inputs.
+  "Switch",           // bind.value
+  "Slider",           // bind.value; props.min/max/step
+  "Stepper",          // bind.value; props.min/max/step
+  "SegmentedControl", // props.options, bind.value
+  "SearchField",      // props.placeholder, bind.value, on.onSubmit
+  "Picker",           // props.options, bind.value
+  "DatePicker",       // bind.value, props.mode ("date"|"time"|"datetime")
+
+  // v3 data viz.
+  "LineChart",        // props.series (array of {x, y}), props.color
+  "BarChart",         // props.series (array of {label, value})
+  "Sparkline",        // props.data (array of numbers)
+  "ProgressRing",     // props.progress (0..1), props.label
+  "Gauge",            // props.value, props.min, props.max
+  "StatCard",         // props.label, props.value, props.delta
+  "Waveform",         // amplitude visualizer; bind.level
+
+  // v3 media.
+  "Video",            // props.source, props.autoplay, props.loop
+  "Audio",            // props.source, props.autoplay
+  "Camera",           // props.mode ("photo"|"scan"), on.onResult
+  "QRScanner",        // on.onResult
+  "ImagePickerButton",// on.onResult → {uri}
+  "Avatar",           // props.source, props.name (initials fallback)
+  "AvatarStack",      // props.avatars
+
+  // v3 feedback.
+  "Toast",            // props.tone, props.message (fires from action, not usually authored)
+  "Snackbar",         // like Toast but with an action button
+  "LoadingSkeleton",  // shimmering placeholder
+  "Confetti",         // triggered by action `confetti.fire`
+  "Rating",           // props.value, on.onChange; props.max=5
+  "EmptyState",       // props.icon, props.title, props.action
+  "Countdown",        // props.until (ISO date), on.onComplete
+  "LottieAnimation",  // props.preset (server-named), props.loop
+
+  // v3 meta.
+  "WebView",          // bounded HTML (terms, help pages)
+  "SVG",              // inline SVG (props.d, props.viewBox)
+  "Gradient",         // props.colors, props.direction
+  "BlurBackground",   // wraps children under an iOS-blur backdrop
+  "QRCode",           // props.value
+
+  // v3 conditional / structural helpers.
+  "IfElse",           // props.if (Condition), children=[thenNode, elseNode]
+  "ForEach",          // props.items (state path), children=[template]
+  "Portal",           // renders to a named layer (e.g. above toast)
 ] as const;
 
 /** Named layouts for `template` + `blocks` screens. */
-export const CORE_TEMPLATES = ["scroll", "feature", "list", "centered"] as const;
+export const CORE_TEMPLATES = [
+  "scroll", "feature", "list", "centered", "detail", "grid", "hero",
+] as const;
 
 // ===========================================================================
 // 4. Actions — declarative behavior
@@ -270,38 +355,95 @@ export type ActionSpec =
   | { kind: "switchTab"; tabId: string }
   | { kind: "openUrl"; url: string; external?: boolean }
   | { kind: "openSettings"; target?: "app" | "keyboard" }
+  | { kind: "openInAppBrowser"; url: string }
   | { kind: "dismiss" }
   // --- data & network ---
   | {
       kind: "callEndpoint";
       method: "GET" | "POST" | "PUT" | "DELETE";
-      /** Path on the backend, e.g. "/v1/personality". */
       path: string;
-      /**
-       * Request body. Either an object whose values may be placeholders
-       * ("$state.x"), or a single placeholder string that resolves to a whole
-       * subtree (e.g. "$state.form" → send the form object as the body).
-       */
       body?: Record<string, unknown> | string;
-      /** Store the JSON response at this state path. */
       assignTo?: string;
       onSuccess?: ActionRef;
       onError?: ActionRef;
     }
-  | { kind: "refresh" } // re-fetch the current screen
+  | { kind: "refresh" }
   // --- local state ---
   | { kind: "setState"; path: string; value: unknown }
   | { kind: "toggleState"; path: string }
+  | { kind: "incrementState"; path: string; by?: number }
+  | { kind: "clearState"; path: string }
   // --- feedback & sensory ---
   | { kind: "haptic"; style: HapticStyle }
   | { kind: "toast"; message: string; tone?: "info" | "success" | "error" }
+  | { kind: "snackbar"; message: string; actionLabel?: string; onAction?: ActionRef }
   | { kind: "playMedia"; url: string }
-  | { kind: "speak"; text: string } // uses /v1/speak under the hood
-  | { kind: "signOut" } // clears the Supabase session; app returns to the auth gate
-  | { kind: "clearCache" } // drop any locally cached SDUI screens / bootstrap
+  | { kind: "stopMedia" }
+  | { kind: "speak"; text: string; voice?: string }
+  | { kind: "confetti" }
+  // --- system / sharing / clipboard ---
+  | { kind: "share"; text?: string; url?: string; title?: string }
+  | { kind: "shareFile"; path: string; mimeType?: string }
+  | { kind: "copyToClipboard"; text: string; toastMessage?: string }
+  | { kind: "readClipboard"; assignTo: string }
+  | { kind: "sms"; number?: string; body?: string }
+  | { kind: "email"; to?: string; subject?: string; body?: string }
+  | { kind: "phone"; number: string }
+  | { kind: "download"; url: string; filename?: string; onSuccess?: ActionRef; onError?: ActionRef }
+  | { kind: "saveToPhotos"; path: string }
+  // --- media pickers ---
+  | { kind: "pickImage"; assignTo: string; source?: "library" | "camera"; onSuccess?: ActionRef; onError?: ActionRef }
+  | { kind: "pickDocument"; assignTo: string; types?: string[]; onSuccess?: ActionRef; onError?: ActionRef }
+  | { kind: "scanQR"; assignTo: string; onSuccess?: ActionRef; onError?: ActionRef }
+  // --- permissions ---
+  | {
+      kind: "requestPermission";
+      permission:
+        | "microphone" | "camera" | "notifications" | "photoLibrary"
+        | "contacts" | "calendar" | "location" | "tracking";
+      onGranted?: ActionRef;
+      onDenied?: ActionRef;
+    }
+  // --- auth ---
+  | { kind: "biometricPrompt"; reason?: string; onSuccess?: ActionRef; onError?: ActionRef }
+  | { kind: "signOut" }
+  // --- IAP / RevenueCat ---
+  | { kind: "iap.showPaywall"; offeringId?: string; onSuccess?: ActionRef; onError?: ActionRef }
+  | { kind: "iap.subscribe"; productId: string; onSuccess?: ActionRef; onError?: ActionRef }
+  | { kind: "iap.restore"; onSuccess?: ActionRef; onError?: ActionRef }
+  | { kind: "iap.checkEntitlement"; entitlement: string; assignTo: string }
+  // --- notifications ---
+  | {
+      kind: "scheduleNotification";
+      title: string;
+      body?: string;
+      afterSeconds?: number;
+      atIso?: string;
+      identifier?: string;
+      payload?: Record<string, unknown>;
+    }
+  | { kind: "cancelNotification"; identifier: string }
+  | { kind: "requestPushPermission"; onGranted?: ActionRef; onDenied?: ActionRef }
+  // --- analytics ---
+  | { kind: "analytics.track"; event: string; props?: Record<string, unknown> }
+  | { kind: "analytics.identify"; userId: string; traits?: Record<string, unknown> }
+  | { kind: "analytics.reset" }
+  // --- calendar / contacts ---
+  | { kind: "calendar.addEvent"; title: string; startsAtIso: string; endsAtIso?: string; notes?: string; location?: string }
+  // --- app-store review prompt ---
+  | { kind: "requestReview" }
+  // --- keyboard bridge (extension) ---
+  | { kind: "keyboard.reload" }
+  | { kind: "keyboard.setLayout"; language: string }
+  // --- cache / dev ---
+  | { kind: "clearCache" }
+  | { kind: "reloadApp" }
   // --- composition ---
   | { kind: "sequence"; actions: ActionRef[] }
-  | { kind: "condition"; if: Condition; then: ActionRef; else?: ActionRef };
+  | { kind: "parallel"; actions: ActionRef[] }
+  | { kind: "condition"; if: Condition; then: ActionRef; else?: ActionRef }
+  | { kind: "delay"; ms: number }
+  | { kind: "log"; message: string; level?: "info" | "warn" | "error" };
 
 export type HapticStyle =
   | "light"
@@ -314,9 +456,19 @@ export type HapticStyle =
 
 /** A small expression evaluated against state + flags for visibleIf/condition. */
 export type Condition =
-  | { eq: [string, unknown] } // state path == value
-  | { neq: [string, unknown] }
-  | { truthy: string } // state/flag path is truthy
+  | { eq: [string, unknown] }              // state path == value
+  | { neq: [string, unknown] }             // state path != value
+  | { gt: [string, number] }               // state path > value
+  | { gte: [string, number] }              // state path >= value
+  | { lt: [string, number] }               // state path < value
+  | { lte: [string, number] }              // state path <= value
+  | { in: [string, unknown[]] }            // state value ∈ list
+  | { contains: [string, string] }         // state string includes substring
+  | { truthy: string }                     // state/flag path is truthy
+  | { falsy: string }                      // state/flag path is falsy
+  | { entitled: string }                   // IAP entitlement id is active
+  | { flag: string }                       // bootstrap flags[path] is truthy
+  | { platform: "ios" | "android" }
   | { not: Condition }
   | { all: Condition[] }
   | { any: Condition[] };
@@ -406,6 +558,15 @@ export interface KeyboardConfigResponse {
     keyText: string;
     accent: string; // the ✨ Refine / active color
     keyPressed: string;
+    /**
+     * v2 additions honored by the SDUI-capable keyboard build. When present
+     * they win over `background`. Older Swift/Kotlin binaries ignore them and
+     * continue to read `background` as an opaque hex.
+     */
+    backgroundEffect?: KeyboardEffect;
+    keyEffect?: KeyboardEffect;
+    keyRadius?: number;
+    keyShadow?: boolean;
   };
   /** Enabled key layouts, one per language; first is default. */
   layouts: KeyboardLayout[];
@@ -413,18 +574,101 @@ export interface KeyboardConfigResponse {
   features: {
     voice: boolean;
     refine: boolean;
-    /** Show a live-streaming dictation UI vs. one-shot. */
     streaming: boolean;
+    /**
+     * v2: turn on the SDUI-driven renderer. When true, the extension walks
+     * `root` instead of laying out from `layouts`+`theme`.
+     */
+    sdui?: boolean;
   };
   /** All user-facing strings, so copy is server-controlled. */
-  labels: Record<string, string>; // e.g. { refine: "✨ Refine", listening: "Listening…" }
+  labels: Record<string, string>;
   /** Seconds before the shell refetches config. */
   cacheTtlSeconds: number;
+  /**
+   * v2 (SDUI keyboard): the whole keyboard as a Node tree the native
+   * renderer walks. Uses KEYBOARD_COMPONENTS + KEYBOARD_ACTIONS below.
+   * When absent, the extension falls back to `layouts`+`theme`+`features`.
+   */
+  root?: KeyboardNode;
+  /** v2: named keyboard actions referenced by node `on` handlers. */
+  actions?: Record<string, KeyboardActionSpec>;
+  /** v2: an opaque cache token — bump to force clients to drop cached configs. */
+  cacheVersion?: string;
 }
 
 export interface KeyboardLayout {
   /** ISO code or name, e.g. "en", "hi", "hinglish". */
   language: string;
+  /** Human-readable name for the language switcher (endonym). */
+  displayName?: string;
   /** Rows of key captions; specials use tokens like "{shift}" "{space}". */
   rows: string[][];
 }
+
+/** Backdrop / surface effect the native renderer maps to platform APIs. */
+export type KeyboardEffect =
+  | { kind: "solid"; color: string }
+  | { kind: "blur"; style: "regular" | "chromeMaterialDark" | "chromeMaterialLight" | "systemThinMaterial" | "systemUltraThinMaterial" }
+  | { kind: "gradient"; colors: string[]; direction?: "vertical" | "horizontal" };
+
+/**
+ * A subset of the app SDUI Node tree — only what the keyboard extension can
+ * render safely under the 60MB memory ceiling. Extras (bind, visibleIf) are
+ * evaluated against the keyboard's small state store (shift, layoutId,
+ * dictating, refining, hasFullAccess).
+ */
+export interface KeyboardNode {
+  type: string;
+  id?: string;
+  props?: Record<string, unknown>;
+  style?: Record<string, unknown>;
+  children?: KeyboardNode[];
+  bind?: Record<string, string>;
+  on?: Partial<Record<"onPress" | "onLongPress" | "onDoubleTap", KeyboardActionRef>>;
+  effect?: KeyboardEffect;
+  visibleIf?: Condition;
+}
+
+/** Component types the native keyboard renderer understands. */
+export const KEYBOARD_COMPONENTS = [
+  "Container",     // vertical column, main root
+  "Row",           // horizontal row (a layout row of keys)
+  "Column",        // vertical group
+  "Spacer",        // fills flex space
+  "LetterKey",     // props.char
+  "IconKey",       // props.icon (system name), props.action
+  "SpaceKey",
+  "ShiftKey",
+  "ReturnKey",
+  "BackspaceKey",
+  "GlobeKey",      // language switcher
+  "MicKey",        // triggers dictation
+  "RefineKey",     // triggers /v1/refine on current text
+  "SuggestionBar", // predictions row
+  "Waveform",      // live mic amplitude
+  "StatusLabel",   // text status (Listening…, Refining…)
+  "Divider",
+  "BlurBackdrop",  // wraps children under a UIVisualEffectView
+] as const;
+
+/** Actions the keyboard extension can execute. Small on purpose. */
+export type KeyboardActionRef = string | KeyboardActionSpec;
+export type KeyboardActionSpec =
+  | { kind: "insertText"; text: string }
+  | { kind: "insertKey"; char: string }
+  | { kind: "deleteBackward" }
+  | { kind: "deleteWord" }
+  | { kind: "shift" }              // toggle shift
+  | { kind: "capsLock" }
+  | { kind: "return" }
+  | { kind: "switchLayout"; language?: string }   // cycle if not provided
+  | { kind: "showLanguageMenu" }
+  | { kind: "startDictation" }
+  | { kind: "stopDictation" }
+  | { kind: "runRefine" }
+  | { kind: "openApp"; screenId?: string }
+  | { kind: "openSettings" }
+  | { kind: "haptic"; style: HapticStyle }
+  | { kind: "sequence"; actions: KeyboardActionRef[] }
+  | { kind: "condition"; if: Condition; then: KeyboardActionRef; else?: KeyboardActionRef };
