@@ -1335,16 +1335,30 @@ const kLetter = (char: string): KeyboardNode => ({
 const kHalfSpacer = (): KeyboardNode => ({ type: "Spacer", style: { flex: 0.5 } });
 
 /**
- * Apple's stock keyboard uses subtly different fills for letter keys vs
- * function keys (shift/backspace/return). We match that so the eye reads
- * "iOS keyboard" before anything else registers.
+ * Colors picked to match Apple's iOS 17 dark-mode system keyboard exactly.
+ *
+ * Native iOS uses TWO layers of hierarchy:
+ *   - Letter keys sit LIGHTER + more transparent so the blur backdrop reads
+ *     through them — this is where the "frosted glass" premium feel comes
+ *     from. Fully opaque flat gray is what makes third-party keyboards look
+ *     cheap.
+ *   - Function keys (shift, backspace, 123, globe, return, etc.) sit DARKER
+ *     + more opaque, creating a subtle "recessed" band that visually anchors
+ *     the outer edges of the layout.
+ *
+ * The palette is deliberately restrained — Apple doesn't tint their return
+ * key at all in typing fields, and the brand orange we tried before read
+ * as "kids-app CTA button" against the muted gray hierarchy. Any brand
+ * touch we add later should be far subtler (a colored glyph, not a filled
+ * key).
  */
-const KEY_FILL_LETTER = "#68686870"; // gray, ~44% alpha — blur shows through
-const KEY_FILL_FUNCTION = "#4A4A4A80"; // darker fn key, ~50% alpha
-const KEY_FILL_ACCENT = "#FF6B1F";    // brand orange — Return key only
+const KEY_FILL_LETTER = "#48484B99";     // ~60% alpha — blur bleeds through
+const KEY_FILL_FUNCTION = "#2C2C2ECC";   // darker, ~80% alpha — recessed
+const KEY_FILL_SPACE = "#48484B99";      // Apple's space matches letter keys
+const KEY_FILL_RETURN = "#2C2C2ECC";     // Return is just a function key
 const KEY_TEXT = "#FFFFFF";
-const KEY_TEXT_ON_ACCENT = "#FFFFFF";
-const KEY_PRESSED = "#8E8E93B0";      // brighter tap feedback
+const KEY_TEXT_FUNCTION = "#EAEAEB";     // slightly dimmer for function keys
+const KEY_PRESSED = "#8E8E93B0";
 
 export function buildKeyboardConfig(): KeyboardConfigResponse {
   // English QWERTY. The physical layout arrays are also emitted (below) so
@@ -1410,48 +1424,48 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
         type: "Row",
         style: { gap: 6 },
         children: [
-          { type: "ShiftKey", style: { flex: 1.5, bg: KEY_FILL_FUNCTION } },
+          { type: "ShiftKey", style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
           ...letterRow3.map(kLetter),
-          { type: "BackspaceKey", style: { flex: 1.5, bg: KEY_FILL_FUNCTION } },
+          { type: "BackspaceKey", style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
         ],
       },
 
-      // Row 4: 123 (page switcher, deferred), globe, mic, refine, space, return
+      // Row 4: 123 · globe · mic · refine · space · return.
+      // All function keys share the darker, more opaque fill so the row reads
+      // as a recessed band — same visual treatment Apple uses for the outer
+      // controls in their own layout.
       {
         type: "Row",
         style: { gap: 6 },
         children: [
-          // Page switcher — deferred until we add symbol/number pages. LetterKey
-          // renders the "123" as text; the on.onPress override fires cycleLayout
-          // instead of insertKey. (Was IconKey before but that mapped "number"
-          // to SF Symbol "#" which is what you saw as a hash on the keyboard.)
           {
             type: "LetterKey",
             props: { char: "123" },
             on: { onPress: "cycleLayout" },
-            style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fontSize: 15, fontWeight: "500" },
+            style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 15, fontWeight: "500" },
           },
           {
             type: "GlobeKey",
-            style: { flex: 1, bg: KEY_FILL_FUNCTION },
+            style: { flex: 1, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
           },
           {
             type: "MicKey",
-            style: { flex: 1, bg: KEY_FILL_FUNCTION },
+            style: { flex: 1, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
           },
           {
             type: "RefineKey",
-            style: { flex: 1, bg: KEY_FILL_FUNCTION },
+            style: { flex: 1, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
           },
           {
             type: "SpaceKey",
-            style: { flex: 4, bg: KEY_FILL_LETTER, fontSize: 15, fontWeight: "400" },
+            style: { flex: 4, bg: KEY_FILL_SPACE, fontSize: 15, fontWeight: "400" },
           },
           {
-            // The brand touch: Return wears the accent color. It's the one key
-            // that visually belongs to Tulmi in an otherwise-system look.
+            // Return matches the function key treatment — no colored fill.
+            // Brand touches (if we add them back later) go on glyphs, not
+            // whole-key backgrounds — which is what read as "kids app" before.
             type: "ReturnKey",
-            style: { flex: 2, bg: KEY_FILL_ACCENT, fg: KEY_TEXT_ON_ACCENT, fontWeight: "600" },
+            style: { flex: 2, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontWeight: "500" },
           },
         ],
       },
@@ -1476,16 +1490,19 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
     cacheVersion: currentCacheVersion(),
     theme: {
       // Legacy fields — read by the pre-SDUI binary as opaque hex. New builds
-      // ignore these once features.sdui takes over.
+      // walk `root` and ignore these once features.sdui takes over.
       background: "#000000",
       key: "#48484a",
       keyText: KEY_TEXT,
-      accent: KEY_FILL_ACCENT,
+      // Accent used ONLY by legacy path for the shift-active indicator dot.
+      // The SDUI tree above doesn't reference this — return + refine keys
+      // are plain function-key styled now.
+      accent: "#8E8E93",
       keyPressed: KEY_PRESSED,
       // v2 fields — used only by the SDUI renderer:
       backgroundEffect: { kind: "blur", style: "chromeMaterialDark" },
-      keyRadius: 6,     // Apple's exact letter-key corner radius on dark mode
-      keyShadow: true,  // subtle drop so pressed vs unpressed reads at a glance
+      keyRadius: 5,     // Apple's letter-key radius on dark mode is 5, not 6
+      keyShadow: true,  // hard 1pt drop shadow — matches Apple's key depth
     },
     // Layouts array stays populated for the legacy path. Adding a new language
     // here + shipping a matching { type: "LetterKey" } tree gets the new SDUI
