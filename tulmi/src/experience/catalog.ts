@@ -1375,13 +1375,19 @@ const kHalfSpacer = (): KeyboardNode => ({ type: "Spacer", style: { flex: 0.5 } 
 //   Letter key:   rgba(255,255,255,0.30)  → #FFFFFF4D
 //   Function key: rgba(128,128,128,0.30)  → #8080804D
 //   Pressed:      the two swap (letter → function color, and vice-versa)
-const KEY_FILL_LETTER = "#FFFFFF40";      // ~25% alpha — slightly darker than the 30% Apple lists; against real blur this reads closer to native's contrast
-const KEY_FILL_FUNCTION = "#00000059";    // 35% black — Apple's function keys are actually darker/gray-black, not gray
-const KEY_FILL_SPACE = "#FFFFFF40";       // matches letter fill
-const KEY_FILL_RETURN = "#00000059";      // matches function fill
+// Comparing to freshly-captured screenshots of the native iOS dark keyboard:
+// letter keys are luminous chips (~55% white over the chrome blur); function
+// keys sit recessed (~20% white — darker/dimmer, not brighter). Pressed state
+// on both flips brighter for visible touch feedback. Our previous #FFFFFF40
+// (25%) letter fill was too thin — the blur swallowed it and everything read
+// dimmer than native.
+const KEY_FILL_LETTER = "#FFFFFF8C";      // 55% white — luminous "floating chip" like native letter keys
+const KEY_FILL_FUNCTION = "#FFFFFF33";    // 20% white — recessed/dimmer than letter keys (matches native hierarchy)
+const KEY_FILL_SPACE = "#FFFFFF8C";       // matches letter fill
+const KEY_FILL_RETURN = "#FFFFFF33";      // matches function fill
 const KEY_TEXT = "#FFFFFF";
 const KEY_TEXT_FUNCTION = "#FFFFFF";
-const KEY_PRESSED = "#FFFFFF66";          // brighter than base so press feedback is actually visible (was invisible before — same alpha as base)
+const KEY_PRESSED = "#FFFFFFBF";          // 75% white — pressed state brightens for visible touch feedback
 // Brand orange kept only for functional signals — right now that's the
 // waveform bars during dictation. Colored feedback when the user is
 // speaking; invisible the rest of the time. Not a decorative accent.
@@ -1441,10 +1447,12 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
     type: "Container",
     // Padding measurements from archagon Dimensions.md (pixel-measured against
     // iPhone 6-class screenshots — canonical iOS keyboard geometry): 3pt L/R,
-    // 10pt top, 8pt bottom (the 34pt home-indicator area sits below this on
-    // Face ID phones automatically). Row gap 6pt matches Apple's inclusive
-    // 43pt row height (a letter key is ~37pt visible + 6pt of gap = 43).
-    style: { paddingLeft: 3, paddingRight: 3, paddingTop: 10, paddingBottom: 8, gap: 6 },
+    // 5pt top, 4pt bottom (the 34pt home-indicator area sits below this on
+    // Face ID phones automatically — that's why native bottom padding is small,
+    // not 8pt). Row gap 6pt matches Apple's inclusive 43pt row height (a letter
+    // key is ~37pt visible + 6pt of gap = 43). Previous values (top:10, bot:8)
+    // were making our keyboard feel taller and more "boxed in" than native.
+    style: { paddingLeft: 3, paddingRight: 3, paddingTop: 5, paddingBottom: 4, gap: 6 },
     children: [
       // Suggestion bar — populated by state.suggestions when we start emitting
       // predictions. Empty right now; visibleIf hides the strip so it doesn't
