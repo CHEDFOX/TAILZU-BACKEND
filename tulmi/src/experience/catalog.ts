@@ -1674,8 +1674,11 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
         })),
       })),
 
-      // Row 4 (LETTER page) — switcher says "123" and jumps to numbers.
-      // Emoji key next to it — matches Apple's row 4 silhouette.
+      // Row 4 (LETTER page) — 123 · 😀 · space · return.
+      // No globe on the keyboard itself — iOS shows its own next-keyboard button
+      // in the system extension bar below Tulmi, so an on-keyboard globe would
+      // just be duplicating what the OS already provides. Space bar grows to
+      // fill the freed width.
       {
         type: "Row",
         style: { gap: 6 },
@@ -1688,22 +1691,20 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
             style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
           {
-            // Emoji switcher — jumps to our emoji layer. Uses a LetterKey with
-            // the smiling glyph so it renders as-is (26pt so it reads at eye
-            // scale). Third-party keyboards can't show Apple's system emoji
-            // picker (private API), so this switches to our own grid layer.
+            // Emoji switcher — jumps to our emoji layer. Third-party keyboards
+            // can't show Apple's system emoji picker (private API); we ship our
+            // own grid layer instead.
             type: "LetterKey",
             props: { char: "😀" },
             on: { onPress: { kind: "switchLayout", language: "emoji" } },
             style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fontSize: 22 },
           },
-          { type: "GlobeKey", style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
-          { type: "SpaceKey", style: { flex: 4.5, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
+          { type: "SpaceKey", style: { flex: 5.79, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
           { type: "ReturnKey", style: { flex: 2.78, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
         ],
       },
-      // Row 4 for the NUMBER or SYMBOL page — switcher says "ABC" and jumps
-      // back to letters.
+      // Row 4 for the NUMBER or SYMBOL page — ABC returns to letters. Same
+      // "no globe" pattern; iOS's system bar still handles keyboard switching.
       {
         type: "Row",
         style: { gap: 6 },
@@ -1718,8 +1719,7 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
             on: { onPress: { kind: "switchLayout", language: "en" } },
             style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
-          { type: "GlobeKey", style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
-          { type: "SpaceKey", style: { flex: 5.79, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
+          { type: "SpaceKey", style: { flex: 7.08, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
           { type: "ReturnKey", style: { flex: 2.78, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
         ],
       },
