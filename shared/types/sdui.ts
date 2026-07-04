@@ -626,8 +626,23 @@ export type KeyboardEffect =
 /**
  * A subset of the app SDUI Node tree — only what the keyboard extension can
  * render safely under the 60MB memory ceiling. Extras (bind, visibleIf) are
- * evaluated against the keyboard's small state store (shift, layoutId,
- * dictating, refining, hasFullAccess).
+ * evaluated against the keyboard's state store, which now exposes:
+ *
+ *   state.shift / capsLock / dictating / refining / hasFullAccess
+ *   state.layoutId / tone / trackpadActive / status / micLevel
+ *   state.primaryLanguage      → "EN" / "FR" / "DE" (follows input mode)
+ *   state.hasMultipleKeyboards → true when needsInputModeSwitchKey is on
+ *   state.appearance           → "dark" | "light" (trait collection)
+ *
+ * Backend can use any of these in bind or visibleIf without a native rebuild.
+ *
+ * Icon shapes accepted by IconKey.props.icon (also without a rebuild):
+ *
+ *   { sf: "mic.fill" }                    // SF Symbol
+ *   { asset: "TailzuMark" }               // bundled UIImage
+ *   { url: "https://cdn/mark@3x.png" }    // remote — auto-cached to disk
+ *   { emoji: "🎙️" }                      // rendered as title text
+ *   "sf:mic.fill" | "asset:TailzuMark" | "https://…"   // string shorthand
  */
 export interface KeyboardNode {
   type: string;
@@ -648,7 +663,7 @@ export const KEYBOARD_COMPONENTS = [
   "Column",        // vertical group
   "Spacer",        // fills flex space
   "LetterKey",     // props.char
-  "IconKey",       // props.icon (system name), props.action
+  "IconKey",       // props.icon (sf/asset/url/emoji spec — see IconKey docs above)
   "SpaceKey",
   "ShiftKey",
   "ReturnKey",
