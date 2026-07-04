@@ -1359,6 +1359,10 @@ const KEY_FILL_RETURN = "#2C2C2ECC";     // Return is just a function key
 const KEY_TEXT = "#FFFFFF";
 const KEY_TEXT_FUNCTION = "#EAEAEB";     // slightly dimmer for function keys
 const KEY_PRESSED = "#8E8E93B0";
+// Brand orange kept only for functional signals — right now that's the
+// waveform bars during dictation. Colored feedback when the user is
+// speaking; invisible the rest of the time. Not a decorative accent.
+const BRAND_ACCENT = "#FF6B1F";
 
 export function buildKeyboardConfig(): KeyboardConfigResponse {
   // English QWERTY. The physical layout arrays are also emitted (below) so
@@ -1404,7 +1408,7 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       {
         type: "Waveform",
         bind: { level: "micLevel" },
-        props: { bars: 24, color: KEY_FILL_ACCENT },
+        props: { bars: 24, color: BRAND_ACCENT },
         style: { height: 44 },
         visibleIf: { truthy: "dictating" },
       },
@@ -1491,8 +1495,13 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
     theme: {
       // Legacy fields — read by the pre-SDUI binary as opaque hex. New builds
       // walk `root` and ignore these once features.sdui takes over.
+      //
+      // theme.key IS what SDUI LetterKey nodes use when they don't set an
+      // explicit `bg` in their style — so wiring the new palette here is what
+      // makes the letter keys actually pick up the lighter, more translucent
+      // fill instead of the legacy #48484a opaque gray.
       background: "#000000",
-      key: "#48484a",
+      key: KEY_FILL_LETTER,
       keyText: KEY_TEXT,
       // Accent used ONLY by legacy path for the shift-active indicator dot.
       // The SDUI tree above doesn't reference this — return + refine keys
