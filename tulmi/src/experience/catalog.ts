@@ -1324,29 +1324,29 @@ function deleteAccountScreen(): ScreenResponse {
 //   4. Every visible behavior is a data change here — new layouts, new colors,
 //      new key shapes, new feature keys all ship as backend JSON.
 
-/** Letter-key builder. `char` is the visible character; taps insert it.
- * Font size 23pt is Apple's actual letter-key size (measured against
- * KeyboardKit's unit-tested defaults, which mirror Apple's render). Font
- * weight regular (`.systemFont(ofSize: 23)` → SF Pro Display Regular by
- * Apple's Text-vs-Display optical-size crossover at 20pt). */
+/** Letter-key builder. Font size 23pt is Apple's actual letter-key size
+ * (KeyboardKit unit tests). Weight regular; the shipped SDUI-renderer build
+ * applies these to every LetterKey via applyStyle. */
 const kLetter = (char: string): KeyboardNode => ({
   type: "LetterKey",
   props: { char },
   style: { flex: 1, fontSize: 23, fontWeight: "regular" },
 });
 
-/** Half-key indent used on the a-l row (Apple pattern).
- *
- * Explicit width instead of flex:0.5 because the shipped Swift renderer's
- * flex handling ignores the actual flex value — it only sets low content
- * hugging priority on anything with flex > 0. So flex:0.5 and flex:1 look
- * identical to it. 13pt is derived from archagon's math: the row 2 first
- * letter should sit (letter + gap)/2 = 18.75pt inset from the row 1 edge.
- * With row 1 starting at 3pt (container padding) and the row's own 6pt
- * first-gap, spacer width = 18.75 - 3 - 6 = 9.75 → rounded up to keep
- * inset from feeling too tight → we use 13pt, which gives row-2 letters
- * exactly the same width as row 1 letters on any modern iPhone. */
-const kHalfSpacer = (): KeyboardNode => ({ type: "Spacer", style: { width: 13 } });
+/** Punctuation key on the 123 / #+= pages — same visual + font weight as a
+ * letter key but bigger font because these pages use flex-1 across fewer
+ * items so each key is naturally wider. */
+const kPunct = (char: string): KeyboardNode => ({
+  type: "LetterKey",
+  props: { char },
+  style: { flex: 1, fontSize: 20, fontWeight: "regular" },
+});
+
+/** Half-key row-2 indent (Apple pattern). flex:0.5 gives the letters in
+ * a-l the exact same width as q-p on ANY screen size — was hardcoded to
+ * width:13 before the shipped SDUI renderer supported proportional flex.
+ * Post-rebuild, flex works properly and we can scale correctly. */
+const kHalfSpacer = (): KeyboardNode => ({ type: "Spacer", style: { flex: 0.5 } });
 
 /**
  * Colors picked to match Apple's iOS 17 dark-mode system keyboard exactly.
@@ -1438,7 +1438,7 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       {
         type: "SuggestionBar",
         style: { height: 44 },
-        visibleIf: { truthy: "hasSuggestions" },
+        visibleIf: { truthy: "state.hasSuggestions" },
       },
 
       // Dictation status label — only during voice sessions. Bound to
@@ -1448,7 +1448,7 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
         type: "StatusLabel",
         bind: { text: "status" },
         style: { height: 22, fontSize: 12, fg: "#B0B0B4" },
-        visibleIf: { truthy: "status" },
+        visibleIf: { truthy: "state.status" },
       },
 
       // Live waveform — visible only while dictating. Provides visible feedback
@@ -1459,7 +1459,7 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
         bind: { level: "micLevel" },
         props: { bars: 24, color: BRAND_ACCENT },
         style: { height: 44 },
-        visibleIf: { truthy: "dictating" },
+        visibleIf: { truthy: "state.dictating" },
       },
 
       // Tulmi's tools bar — mic (voice), tone pill, refine (✨). Sits above
@@ -1482,7 +1482,7 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
         // was why the refine icon was pinning to the extreme right edge and
         // getting clipped. Use uniform padding so left + right are equal.
         style: { gap: 8, height: 44, padding: 6 },
-        visibleIf: { falsy: "dictating" },
+        visibleIf: { falsy: "state.dictating" },
         children: [
           {
             type: "MicKey",
@@ -1528,70 +1528,157 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
         ],
       },
 
-      // Row 1: q..p (10 letters, edge to edge)
-      { type: "Row", style: { gap: 6 }, children: letterRow1.map(kLetter) },
+      // ============================ LETTER LAYER (en) =========================
+      // Visible when state.layoutId is "en" (default). Prefixed with "state."
+      // so Swift's condition evaluator actually resolves the value — bare
+      // paths return null and everything reads as "always shown / never shown".
 
-      // Row 2: a..l (9 letters, indented half-key on each side)
+      // Row 1: q..p
       {
         type: "Row",
         style: { gap: 6 },
+        visibleIf: { eq: ["state.layoutId", "en"] },
+        children: letterRow1.map(kLetter),
+      },
+      // Row 2: a..l (indented half-key each side)
+      {
+        type: "Row",
+        style: { gap: 6 },
+        visibleIf: { eq: ["state.layoutId", "en"] },
         children: [kHalfSpacer(), ...letterRow2.map(kLetter), kHalfSpacer()],
       },
-
       // Row 3: shift, z..m (7 letters), backspace.
-      // Explicit widths 42pt on shift + backspace (archagon: 42pt on 375pt-
-      // wide screen). Letters use flex:1 to share the leftover space equally,
-      // which naturally scales letter width with screen size while shift +
-      // backspace stay proportionally correct.
+      // True flex ratios now that the SDUI renderer honors them proportionally:
+      // shift = backspace = 1.33× a letter key (archagon's 42/31.5 = 1.333).
       {
         type: "Row",
         style: { gap: 6 },
+        visibleIf: { eq: ["state.layoutId", "en"] },
         children: [
-          { type: "ShiftKey", style: { width: 42, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
+          { type: "ShiftKey", style: { flex: 1.33, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
           ...letterRow3.map(kLetter),
-          { type: "BackspaceKey", style: { width: 42, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
+          { type: "BackspaceKey", style: { flex: 1.33, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
         ],
       },
 
-      // Row 4: 123 · globe · space · return. Same silhouette as Apple's stock
-      // dark keyboard bottom row.
-      //
-      // Explicit widths from archagon (measured against 375pt iPhone 6-class,
-      // rounded to nearest integer):
-      //   123    = 41pt
-      //   globe  = 41pt
-      //   space  = flex — takes leftover (~181pt on 375pt screen; scales up on
-      //            wider phones where Apple's space bar also stretches)
-      //   return = 88pt
-      // Explicit widths are needed because the shipped Swift renderer only
-      // reads flex as a boolean (any flex>0 gets low content-hugging priority)
-      // — it doesn't honor the flex NUMBER, so 5.79 and 1.29 look identical
-      // to it. Space is the only remaining flex item so it eats leftover
-      // cleanly.
-      //
-      // Font size 16pt on function labels — from KeyboardKit unit tests.
+      // ============================ NUMBER LAYER (123) ========================
+      // Apple's iOS number page. Row 1 = digits; Row 2 = -/:;()$&@";
+      // Row 3 = #+= · . , ? ! ' · backspace. Tapping "#+=" switches to the
+      // symbol page; tapping "ABC" (from row 4) returns to letters.
+
+      // Row 1: 1..0
       {
         type: "Row",
         style: { gap: 6 },
+        visibleIf: { eq: ["state.layoutId", "123"] },
+        children: ["1","2","3","4","5","6","7","8","9","0"].map(kPunct),
+      },
+      // Row 2: - / : ; ( ) $ & @ "
+      {
+        type: "Row",
+        style: { gap: 6 },
+        visibleIf: { eq: ["state.layoutId", "123"] },
+        children: ["-","/",":",";","(",")","$","&","@","\""].map(kPunct),
+      },
+      // Row 3: [#+=] . , ? ! ' [backspace]
+      {
+        type: "Row",
+        style: { gap: 6 },
+        visibleIf: { eq: ["state.layoutId", "123"] },
+        children: [
+          {
+            type: "LetterKey",
+            props: { char: "#+=" },
+            on: { onPress: { kind: "switchLayout", language: "sym" } },
+            style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 15, fontWeight: "regular" },
+          },
+          ...[".",",","?","!","'"].map(kPunct),
+          { type: "BackspaceKey", style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
+        ],
+      },
+
+      // ============================ SYMBOL LAYER (sym) ========================
+
+      // Row 1: [ ] { } # % ^ * + =
+      {
+        type: "Row",
+        style: { gap: 6 },
+        visibleIf: { eq: ["state.layoutId", "sym"] },
+        children: ["[","]","{","}","#","%","^","*","+","="].map(kPunct),
+      },
+      // Row 2: _ \ | ~ < > € £ ¥ ·
+      {
+        type: "Row",
+        style: { gap: 6 },
+        visibleIf: { eq: ["state.layoutId", "sym"] },
+        children: ["_","\\","|","~","<",">","€","£","¥","·"].map(kPunct),
+      },
+      // Row 3: [123] . , ? ! ' [backspace]
+      {
+        type: "Row",
+        style: { gap: 6 },
+        visibleIf: { eq: ["state.layoutId", "sym"] },
         children: [
           {
             type: "LetterKey",
             props: { char: "123" },
-            on: { onPress: "cycleLayout" },
-            style: { width: 41, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
+            on: { onPress: { kind: "switchLayout", language: "123" } },
+            style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 15, fontWeight: "regular" },
           },
+          ...[".",",","?","!","'"].map(kPunct),
+          { type: "BackspaceKey", style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
+        ],
+      },
+
+      // ============================ BOTTOM ROW (all layers) ===================
+      //
+      // Row 4 is functionally shared across every layer, but the leftmost key
+      // is a mode-switcher whose LABEL and TARGET LAYOUT depend on the current
+      // state.layoutId. We emit one variant per mode with visibleIf gates.
+      //
+      // Flex ratios (archagon, measured 375pt): 123 = globe = 1.29,
+      // space = 5.79, return = 2.78. The shipped SDUI renderer now honors
+      // these proportionally on every screen size (Pro / Plus / Pro Max
+      // scale correctly, no more hardcoded widths).
+
+      // Mode switcher — three variants, each visibleIf-gated:
+      // Row 4 for the LETTER page — switcher says "123" and jumps to numbers.
+      {
+        type: "Row",
+        style: { gap: 6 },
+        visibleIf: { eq: ["state.layoutId", "en"] },
+        children: [
           {
-            type: "GlobeKey",
-            style: { width: 41, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
+            type: "LetterKey",
+            props: { char: "123" },
+            on: { onPress: { kind: "switchLayout", language: "123" } },
+            style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
+          { type: "GlobeKey", style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
+          { type: "SpaceKey", style: { flex: 5.79, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
+          { type: "ReturnKey", style: { flex: 2.78, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
+        ],
+      },
+      // Row 4 for the NUMBER or SYMBOL page — switcher says "ABC" and jumps
+      // back to letters. Identical flex ratios so the layout doesn't jump
+      // when switching modes.
+      {
+        type: "Row",
+        style: { gap: 6 },
+        visibleIf: { any: [
+          { eq: ["state.layoutId", "123"] },
+          { eq: ["state.layoutId", "sym"] },
+        ] },
+        children: [
           {
-            type: "SpaceKey",
-            style: { flex: 1, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" },
+            type: "LetterKey",
+            props: { char: "ABC" },
+            on: { onPress: { kind: "switchLayout", language: "en" } },
+            style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
-          {
-            type: "ReturnKey",
-            style: { width: 88, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
-          },
+          { type: "GlobeKey", style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
+          { type: "SpaceKey", style: { flex: 5.79, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
+          { type: "ReturnKey", style: { flex: 2.78, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
         ],
       },
     ],
@@ -1659,6 +1746,9 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
     // Layouts array stays populated for the legacy path. Adding a new language
     // here + shipping a matching { type: "LetterKey" } tree gets the new SDUI
     // keyboard when we generate per-language roots.
+    // Every layout the mode-switcher on row 4 can jump to. The SDUI-renderer
+    // build's switchLayout(language:) validates against this list; the legacy
+    // path still renders the "en" entry (never sees the 123/sym metadata).
     layouts: [
       {
         language: "en",
@@ -1670,6 +1760,8 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
           ["{globe}", "{mic}", "{refine}", "{space}", "{return}"],
         ],
       },
+      { language: "123", displayName: "Numbers", rows: [] },
+      { language: "sym", displayName: "Symbols", rows: [] },
     ],
     features: {
       voice: true,
