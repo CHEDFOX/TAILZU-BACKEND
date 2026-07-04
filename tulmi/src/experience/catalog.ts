@@ -1421,11 +1421,13 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
         type: "Row",
         style: { gap: 6 },
         children: [
-          // Page switcher — deferred until we add symbol/number pages. For now
-          // this key is a placeholder that fires the globe (advance input mode).
+          // Page switcher — deferred until we add symbol/number pages. LetterKey
+          // renders the "123" as text; the on.onPress override fires cycleLayout
+          // instead of insertKey. (Was IconKey before but that mapped "number"
+          // to SF Symbol "#" which is what you saw as a hash on the keyboard.)
           {
-            type: "IconKey",
-            props: { icon: "number", label: "123" },
+            type: "LetterKey",
+            props: { char: "123" },
             on: { onPress: "cycleLayout" },
             style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fontSize: 15, fontWeight: "500" },
           },
