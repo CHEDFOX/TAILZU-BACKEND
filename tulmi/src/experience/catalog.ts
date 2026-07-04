@@ -1324,11 +1324,15 @@ function deleteAccountScreen(): ScreenResponse {
 //   4. Every visible behavior is a data change here — new layouts, new colors,
 //      new key shapes, new feature keys all ship as backend JSON.
 
-/** Letter-key builder. `char` is the visible character; taps insert it. */
+/** Letter-key builder. `char` is the visible character; taps insert it.
+ * Font size 23pt is Apple's actual letter-key size (measured against
+ * KeyboardKit's unit-tested defaults, which mirror Apple's render). Font
+ * weight regular (`.systemFont(ofSize: 23)` → SF Pro Display Regular by
+ * Apple's Text-vs-Display optical-size crossover at 20pt). */
 const kLetter = (char: string): KeyboardNode => ({
   type: "LetterKey",
   props: { char },
-  style: { flex: 1 },
+  style: { flex: 1, fontSize: 23, fontWeight: "regular" },
 });
 
 /** Half-width invisible spacer used to indent short rows (Apple pattern). */
@@ -1352,13 +1356,22 @@ const kHalfSpacer = (): KeyboardNode => ({ type: "Spacer", style: { flex: 0.5 } 
  * touch we add later should be far subtler (a colored glyph, not a filled
  * key).
  */
-const KEY_FILL_LETTER = "#48484B99";     // ~60% alpha — blur bleeds through
-const KEY_FILL_FUNCTION = "#2C2C2ECC";   // darker, ~80% alpha — recessed
-const KEY_FILL_SPACE = "#48484B99";      // Apple's space matches letter keys
-const KEY_FILL_RETURN = "#2C2C2ECC";     // Return is just a function key
+// Palette derived from cross-verified pixel-measurement research (archagon
+// tasty-imitation-keyboard, KeyboardKit, sotto-voce). Apple's dark-mode
+// keys are NOT semi-transparent dark gray — they're semi-transparent WHITE
+// and GRAY over the blur backdrop. That inversion is what makes the keys
+// look luminous against the frosted glass instead of dark blocks.
+//
+//   Letter key:   rgba(255,255,255,0.30)  → #FFFFFF4D
+//   Function key: rgba(128,128,128,0.30)  → #8080804D
+//   Pressed:      the two swap (letter → function color, and vice-versa)
+const KEY_FILL_LETTER = "#FFFFFF4D";      // translucent white — Apple's luminous look
+const KEY_FILL_FUNCTION = "#8080804D";    // translucent gray — subtle recessed hierarchy
+const KEY_FILL_SPACE = "#FFFFFF4D";       // space matches letter keys (Apple)
+const KEY_FILL_RETURN = "#8080804D";      // return matches function keys in typing fields
 const KEY_TEXT = "#FFFFFF";
-const KEY_TEXT_FUNCTION = "#EAEAEB";     // slightly dimmer for function keys
-const KEY_PRESSED = "#8E8E93B0";
+const KEY_TEXT_FUNCTION = "#FFFFFF";      // pure white on all keys — Apple doesn't dim function labels
+const KEY_PRESSED = "#8080804D";          // pressed letter → function color (Apple's swap behavior)
 // Brand orange kept only for functional signals — right now that's the
 // waveform bars during dictation. Colored feedback when the user is
 // speaking; invisible the rest of the time. Not a decorative accent.
@@ -1384,14 +1397,20 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
   // border; more inner padding is what was making our keyboard look boxed.
   const root: KeyboardNode = {
     type: "Container",
-    style: { paddingLeft: 3, paddingRight: 3, paddingTop: 6, paddingBottom: 3, gap: 8 },
+    // Padding measurements from archagon Dimensions.md (pixel-measured against
+    // iPhone 6-class screenshots — canonical iOS keyboard geometry): 3pt L/R,
+    // 10pt top, 8pt bottom (the 34pt home-indicator area sits below this on
+    // Face ID phones automatically). Row gap 6pt matches Apple's inclusive
+    // 43pt row height (a letter key is ~37pt visible + 6pt of gap = 43).
+    style: { paddingLeft: 3, paddingRight: 3, paddingTop: 10, paddingBottom: 8, gap: 6 },
     children: [
       // Suggestion bar — populated by state.suggestions when we start emitting
       // predictions. Empty right now; visibleIf hides the strip so it doesn't
-      // eat vertical space.
+      // eat vertical space. Height 44pt matches Apple's QuickType bar exactly
+      // (measured against multiple developer sources).
       {
         type: "SuggestionBar",
-        style: { height: 42 },
+        style: { height: 44 },
         visibleIf: { truthy: "hasSuggestions" },
       },
 
@@ -1421,23 +1440,27 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       // dictating (waveform takes its slot then) via visibleIf on the negation
       // of `dictating`.
       //
+      // Sized to match Apple's suggestion-bar height (44pt) so the tools row
+      // reads as sitting at the same vertical rhythm the OS uses when its own
+      // predictive text bar would be there.
+      //
       // Tone pill is currently DECORATIVE — the "cycleTone" behavior lives in
       // a KeyboardActionSpec we haven't added to the native binary yet. Taps
       // give haptic feedback so it doesn't feel broken, but the label stays
       // "Neutral" until the next build wires the real cycling in.
       {
         type: "Row",
-        style: { gap: 8, height: 36, paddingLeft: 6, paddingRight: 6 },
+        style: { gap: 8, height: 44, paddingLeft: 6, paddingRight: 6 },
         visibleIf: { falsy: "dictating" },
         children: [
           {
             type: "MicKey",
             style: {
               flex: 0,
-              width: 42,
+              width: 44,
               bg: KEY_FILL_FUNCTION,
               fg: KEY_TEXT_FUNCTION,
-              radius: 18,
+              radius: 22, // circular
             },
           },
           { type: "Spacer", style: { flex: 1 } },
@@ -1451,12 +1474,12 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
             on: { onPress: { kind: "haptic", style: "selection" } },
             style: {
               flex: 0,
-              width: 110,
+              width: 120,
               bg: KEY_FILL_LETTER,
               fg: KEY_TEXT,
-              radius: 18,
-              fontSize: 14,
-              fontWeight: "500",
+              radius: 22, // pill
+              fontSize: 15,
+              fontWeight: "regular",
             },
           },
           { type: "Spacer", style: { flex: 1 } },
@@ -1464,10 +1487,10 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
             type: "RefineKey",
             style: {
               flex: 0,
-              width: 42,
+              width: 44,
               bg: KEY_FILL_FUNCTION,
               fg: KEY_TEXT_FUNCTION,
-              radius: 18,
+              radius: 22, // circular
             },
           },
         ],
@@ -1483,20 +1506,32 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
         children: [kHalfSpacer(), ...letterRow2.map(kLetter), kHalfSpacer()],
       },
 
-      // Row 3: shift, z..m (7 letters), backspace
+      // Row 3: shift, z..m (7 letters), backspace.
+      // Shift + backspace are 1.33× a letter-key width (archagon: exactly 42pt
+      // on a 375pt-wide screen where letters are 31.5pt → 42/31.5 = 1.333…).
+      // This was 1.5 before; correcting to Apple's actual proportion.
       {
         type: "Row",
         style: { gap: 6 },
         children: [
-          { type: "ShiftKey", style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
+          { type: "ShiftKey", style: { flex: 1.33, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
           ...letterRow3.map(kLetter),
-          { type: "BackspaceKey", style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
+          { type: "BackspaceKey", style: { flex: 1.33, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
         ],
       },
 
       // Row 4: 123 · globe · space · return. Same silhouette as Apple's stock
-      // dark keyboard bottom row — the Tulmi tools (mic / tone / refine) live
-      // in the tools bar above, not down here mixed with page-switch keys.
+      // dark keyboard bottom row.
+      //
+      // Flex ratios from archagon (measured against 375pt iPhone 6-class):
+      //   123    = 40.5pt / 31.5pt letter = 1.29
+      //   globe  = 40.5pt / 31.5pt letter = 1.29 (SAME as 123, not 1.0 like before)
+      //   space  = 182.5pt / 31.5pt letter = 5.79
+      //   return = 87.5pt / 31.5pt letter = 2.78
+      // Total = 11.15 flex units + 3 gaps × 6pt spread across the row.
+      //
+      // Font size 16pt on function labels (return / space / 123) — measured from
+      // KeyboardKit unit tests. Weight regular; Apple doesn't bold these.
       {
         type: "Row",
         style: { gap: 6 },
@@ -1505,19 +1540,19 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
             type: "LetterKey",
             props: { char: "123" },
             on: { onPress: "cycleLayout" },
-            style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 15, fontWeight: "500" },
+            style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
           {
             type: "GlobeKey",
-            style: { flex: 1, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
+            style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
           },
           {
             type: "SpaceKey",
-            style: { flex: 5, bg: KEY_FILL_SPACE, fontSize: 15, fontWeight: "400" },
+            style: { flex: 5.79, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" },
           },
           {
             type: "ReturnKey",
-            style: { flex: 2, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontWeight: "500" },
+            style: { flex: 2.78, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
         ],
       },
