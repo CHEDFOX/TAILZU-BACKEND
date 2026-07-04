@@ -595,6 +595,17 @@ export interface KeyboardConfigResponse {
   actions?: Record<string, KeyboardActionSpec>;
   /** v2: an opaque cache token — bump to force clients to drop cached configs. */
   cacheVersion?: string;
+  /**
+   * v3 (dark/light adaptive): explicit per-appearance palettes. When the next
+   * SDUI-renderer build lands, it will read `themeDark` / `themeLight` based
+   * on the extension's current `UITraitCollection.userInterfaceStyle` and
+   * re-render on `traitCollectionDidChange`. Until then, the shipped renderer
+   * ignores these fields entirely and reads the top-level `theme` — which we
+   * keep populated as a backward-compatible dark-mode default. Same for the
+   * SDUI `root`: we may emit `rootDark` / `rootLight` later; today just `root`.
+   */
+  themeDark?: KeyboardConfigResponse["theme"];
+  themeLight?: KeyboardConfigResponse["theme"];
 }
 
 export interface KeyboardLayout {
@@ -667,6 +678,7 @@ export type KeyboardActionSpec =
   | { kind: "startDictation" }
   | { kind: "stopDictation" }
   | { kind: "runRefine" }
+  | { kind: "cycleTone" }
   | { kind: "openApp"; screenId?: string }
   | { kind: "openSettings" }
   | { kind: "haptic"; style: HapticStyle }

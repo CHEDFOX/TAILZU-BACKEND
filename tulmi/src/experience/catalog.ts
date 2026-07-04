@@ -1387,6 +1387,23 @@ const KEY_PRESSED = "#8080804D";          // pressed letter → function color (
 // speaking; invisible the rest of the time. Not a decorative accent.
 const BRAND_ACCENT = "#FF6B1F";
 
+// -------- Light-mode counterparts (used by the next SDUI build) -----------
+//
+// Apple's light-mode dark-keyboard-equivalent palette:
+//   Letter key:   rgba(0,0,0,0.05)   → #0000000D  (near-transparent dark)
+//   Function key: rgba(0,0,0,0.10)   → #0000001A  (slightly darker recess)
+//   Key text:     #000000            (pure black)
+//   Blur:         systemChromeMaterialLight
+//
+// The shipped keyboard renderer doesn't read these yet — until the next build
+// adds trait-collection detection, the top-level `theme` (dark) is what's
+// applied on every device regardless of mode. But by emitting the light
+// palette NOW, the day the build lands the keyboard automatically flips
+// with zero backend edit.
+const LIGHT_KEY_FILL_LETTER = "#0000000D";     // ~5% black
+const LIGHT_KEY_FILL_FUNCTION = "#0000001A";   // ~10% black
+const LIGHT_KEY_TEXT = "#000000";
+
 export function buildKeyboardConfig(): KeyboardConfigResponse {
   // English QWERTY. The physical layout arrays are also emitted (below) so
   // older keyboard binaries — the ones without the SDUI renderer — can still
@@ -1479,19 +1496,20 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
           },
           { type: "Spacer", style: { flex: 1 } },
           {
-            // Tone pill — LetterKey renders `char` as text, and the onPress
-            // override fires a haptic so the tap registers even before we can
-            // cycle the value. Bind to state.tone for when the future native
-            // build adds cycleTone + state.tone.
+            // Tone pill — reads state.tone at render time via bind.content so
+            // the visible label always reflects the current selection. Tap
+            // fires cycleTone which rotates through Neutral / Casual / Formal /
+            // Excited (or whatever config.flags["kb.tones"] overrides to).
             type: "LetterKey",
             props: { char: "Neutral" },
-            on: { onPress: { kind: "haptic", style: "selection" } },
+            bind: { content: "tone" },
+            on: { onPress: { kind: "cycleTone" } },
             style: {
               flex: 0,
               width: 120,
               bg: KEY_FILL_LETTER,
               fg: KEY_TEXT,
-              radius: 22, // pill
+              radius: 22,
               fontSize: 15,
               fontWeight: "regular",
             },
@@ -1615,6 +1633,28 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       backgroundEffect: { kind: "blur", style: "chromeMaterialDark" },
       keyRadius: 5,     // Apple's letter-key radius on dark mode is 5, not 6
       keyShadow: true,  // hard 1pt drop shadow — matches Apple's key depth
+    },
+    // v3 adaptive palettes — the SDUI-renderer build picks between these
+    // based on the current userInterfaceStyle and re-renders on trait change.
+    themeDark: {
+      background: "#000000",
+      key: KEY_FILL_LETTER,
+      keyText: KEY_TEXT,
+      accent: "#8E8E93",
+      keyPressed: KEY_PRESSED,
+      backgroundEffect: { kind: "blur", style: "chromeMaterialDark" },
+      keyRadius: 5,
+      keyShadow: true,
+    },
+    themeLight: {
+      background: "#F2F2F7",
+      key: LIGHT_KEY_FILL_LETTER,
+      keyText: LIGHT_KEY_TEXT,
+      accent: "#8E8E93",
+      keyPressed: LIGHT_KEY_FILL_FUNCTION,
+      backgroundEffect: { kind: "blur", style: "chromeMaterialLight" },
+      keyRadius: 5,
+      keyShadow: true,
     },
     // Layouts array stays populated for the legacy path. Adding a new language
     // here + shipping a matching { type: "LetterKey" } tree gets the new SDUI
