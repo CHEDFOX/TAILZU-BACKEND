@@ -464,6 +464,8 @@ export type Condition =
   | { lte: [string, number] }              // state path <= value
   | { in: [string, unknown[]] }            // state value ∈ list
   | { contains: [string, string] }         // state string includes substring
+  | { startsWith: [string, string] }       // state string starts with prefix
+  | { endsWith: [string, string] }         // state string ends with suffix
   | { truthy: string }                     // state/flag path is truthy
   | { falsy: string }                      // state/flag path is falsy
   | { entitled: string }                   // IAP entitlement id is active
@@ -626,23 +628,37 @@ export type KeyboardEffect =
 /**
  * A subset of the app SDUI Node tree — only what the keyboard extension can
  * render safely under the 60MB memory ceiling. Extras (bind, visibleIf) are
- * evaluated against the keyboard's state store, which now exposes:
+ * evaluated against the keyboard's state store, which exposes:
  *
  *   state.shift / capsLock / dictating / refining / hasFullAccess
  *   state.layoutId / tone / trackpadActive / status / micLevel
  *   state.primaryLanguage      → "EN" / "FR" / "DE" (follows input mode)
  *   state.hasMultipleKeyboards → true when needsInputModeSwitchKey is on
  *   state.appearance           → "dark" | "light" (trait collection)
+ *   state.deviceModel          → "iPhone" / "iPad"
+ *   state.systemVersion        → "18.5" etc.
+ *   state.isNetworkReachable   → boolean, updated on major state changes
+ *   state.keyboardHeight       → CGFloat, current input view height
+ *   state.user.<any>           → backend scratch dict — setState / toggleState /
+ *                                 incrementState / clearState / readClipboard /
+ *                                 callEndpoint.assignTo all write here. Reads
+ *                                 via bind: { text: "user.myFlag" } or
+ *                                 visibleIf: { truthy: "state.user.myFlag" }.
  *
  * Backend can use any of these in bind or visibleIf without a native rebuild.
  *
- * Icon shapes accepted by IconKey.props.icon (also without a rebuild):
+ * Icon shapes accepted by IconKey.props.icon AND Image.props.source (no rebuild):
  *
  *   { sf: "mic.fill" }                    // SF Symbol
  *   { asset: "TailzuMark" }               // bundled UIImage
  *   { url: "https://cdn/mark@3x.png" }    // remote — auto-cached to disk
  *   { emoji: "🎙️" }                      // rendered as title text
  *   "sf:mic.fill" | "asset:TailzuMark" | "https://…"   // string shorthand
+ *
+ * Style bag additions honored by all nodes:
+ *   opacity: number             // 0..1
+ *   borderColor / borderWidth   // hex + pt
+ *   shadow: { color, opacity, radius, offset: [x, y] }
  */
 export interface KeyboardNode {
   type: string;
@@ -658,10 +674,13 @@ export interface KeyboardNode {
 
 /** Component types the native keyboard renderer understands. */
 export const KEYBOARD_COMPONENTS = [
+  // ----- layout / structure -----
   "Container",     // vertical column, main root
   "Row",           // horizontal row (a layout row of keys)
   "Column",        // vertical group
   "Spacer",        // fills flex space
+  "ScrollView",    // horizontal or vertical scrollable region (props.horizontal)
+  // ----- keys (specialized behaviors) -----
   "LetterKey",     // props.char
   "IconKey",       // props.icon (sf/asset/url/emoji spec — see IconKey docs above)
   "SpaceKey",
@@ -671,16 +690,32 @@ export const KEYBOARD_COMPONENTS = [
   "GlobeKey",      // language switcher
   "MicKey",        // triggers dictation
   "RefineKey",     // triggers /v1/refine on current text
+  // ----- data + status -----
   "SuggestionBar", // predictions row
   "Waveform",      // live mic amplitude
   "StatusLabel",   // text status (Listening…, Refining…)
   "Divider",
   "BlurBackdrop",  // wraps children under a UIVisualEffectView
+  // ----- generic display + input (backend can render arbitrary UI) -----
+  "TextLabel",     // props.text + style.fg/fontSize/fontWeight/align; bind.text supported
+  "Image",         // props.source (icon spec: sf/asset/url/emoji) — same shape as IconKey.icon
+  "ProgressBar",   // bind.value → 0..1; style trackBg/fg/radius
+  "Toggle",        // UISwitch bound to state.user.* via bind.value; on.onChange action ref
 ] as const;
 
-/** Actions the keyboard extension can execute. Small on purpose. */
+/**
+ * Actions the keyboard extension can execute. This union is intentionally
+ * broad — the goal is to let backend compose almost any keyboard behavior
+ * without a native rebuild.
+ *
+ * Extension slot: `{ kind: "extension", name, params? }` invokes a native
+ * handler registered via SDUIRenderer.registerExtension(). Unknown names
+ * silently no-op, so backend can push forward-looking action names to older
+ * builds without crashing them.
+ */
 export type KeyboardActionRef = string | KeyboardActionSpec;
 export type KeyboardActionSpec =
+  // ----- text + editing -----
   | { kind: "insertText"; text: string }
   | { kind: "insertKey"; char: string }
   | { kind: "deleteBackward" }
@@ -688,14 +723,52 @@ export type KeyboardActionSpec =
   | { kind: "shift" }              // toggle shift
   | { kind: "capsLock" }
   | { kind: "return" }
+  // ----- layouts + dictation + refine -----
   | { kind: "switchLayout"; language?: string }   // cycle if not provided
   | { kind: "showLanguageMenu" }
   | { kind: "startDictation" }
   | { kind: "stopDictation" }
   | { kind: "runRefine" }
   | { kind: "cycleTone" }
+  // ----- app / system -----
   | { kind: "openApp"; screenId?: string }
   | { kind: "openSettings" }
+  | { kind: "openUrl"; url: string; external?: boolean }
+  // ----- feedback -----
   | { kind: "haptic"; style: HapticStyle }
+  | { kind: "toast"; message: string; tone?: "info" | "success" | "error" }
+  | { kind: "confetti" }
+  | { kind: "speak"; text: string; voice?: string }
+  | { kind: "playMedia"; url: string }
+  | { kind: "stopMedia" }
+  // ----- clipboard + share -----
+  | { kind: "copyToClipboard"; text: string; toastMessage?: string }
+  | { kind: "readClipboard"; assignTo: string }
+  | { kind: "share"; text?: string; url?: string; title?: string }
+  // ----- state store (backend scratch dict) -----
+  | { kind: "setState"; path: string; value: unknown }
+  | { kind: "toggleState"; path: string }
+  | { kind: "incrementState"; path: string; by?: number }
+  | { kind: "clearState"; path: string }
+  // ----- network + analytics + logging -----
+  | {
+      kind: "callEndpoint";
+      method: "GET" | "POST" | "PUT" | "DELETE";
+      path: string;
+      body?: Record<string, unknown> | string;
+      assignTo?: string;
+      onSuccess?: KeyboardActionRef;
+      onError?: KeyboardActionRef;
+    }
+  | { kind: "analytics.track"; event: string; props?: Record<string, unknown> }
+  | { kind: "log"; message: string; level?: "info" | "warn" | "error" }
+  // ----- cache / reload -----
+  | { kind: "clearCache" }
+  | { kind: "reloadApp" }
+  // ----- flow control -----
   | { kind: "sequence"; actions: KeyboardActionRef[] }
-  | { kind: "condition"; if: Condition; then: KeyboardActionRef; else?: KeyboardActionRef };
+  | { kind: "parallel"; actions: KeyboardActionRef[] }
+  | { kind: "condition"; if: Condition; then: KeyboardActionRef; else?: KeyboardActionRef }
+  | { kind: "delay"; ms: number }
+  // ----- extensibility (forward-compat slot) -----
+  | { kind: "extension"; name: string; params?: Record<string, unknown> };
