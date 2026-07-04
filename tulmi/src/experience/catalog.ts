@@ -1335,8 +1335,18 @@ const kLetter = (char: string): KeyboardNode => ({
   style: { flex: 1, fontSize: 23, fontWeight: "regular" },
 });
 
-/** Half-width invisible spacer used to indent short rows (Apple pattern). */
-const kHalfSpacer = (): KeyboardNode => ({ type: "Spacer", style: { flex: 0.5 } });
+/** Half-key indent used on the a-l row (Apple pattern).
+ *
+ * Explicit width instead of flex:0.5 because the shipped Swift renderer's
+ * flex handling ignores the actual flex value — it only sets low content
+ * hugging priority on anything with flex > 0. So flex:0.5 and flex:1 look
+ * identical to it. 13pt is derived from archagon's math: the row 2 first
+ * letter should sit (letter + gap)/2 = 18.75pt inset from the row 1 edge.
+ * With row 1 starting at 3pt (container padding) and the row's own 6pt
+ * first-gap, spacer width = 18.75 - 3 - 6 = 9.75 → rounded up to keep
+ * inset from feeling too tight → we use 13pt, which gives row-2 letters
+ * exactly the same width as row 1 letters on any modern iPhone. */
+const kHalfSpacer = (): KeyboardNode => ({ type: "Spacer", style: { width: 13 } });
 
 /**
  * Colors picked to match Apple's iOS 17 dark-mode system keyboard exactly.
@@ -1450,7 +1460,11 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       // "Neutral" until the next build wires the real cycling in.
       {
         type: "Row",
-        style: { gap: 8, height: 44, paddingLeft: 6, paddingRight: 6 },
+        // The shipped Swift renderer honors uniform `padding` on stacks but
+        // NOT paddingLeft/paddingRight — those are silently ignored, which
+        // was why the refine icon was pinning to the extreme right edge and
+        // getting clipped. Use uniform padding so left + right are equal.
+        style: { gap: 8, height: 44, padding: 6 },
         visibleIf: { falsy: "dictating" },
         children: [
           {
@@ -1507,31 +1521,37 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       },
 
       // Row 3: shift, z..m (7 letters), backspace.
-      // Shift + backspace are 1.33× a letter-key width (archagon: exactly 42pt
-      // on a 375pt-wide screen where letters are 31.5pt → 42/31.5 = 1.333…).
-      // This was 1.5 before; correcting to Apple's actual proportion.
+      // Explicit widths 42pt on shift + backspace (archagon: 42pt on 375pt-
+      // wide screen). Letters use flex:1 to share the leftover space equally,
+      // which naturally scales letter width with screen size while shift +
+      // backspace stay proportionally correct.
       {
         type: "Row",
         style: { gap: 6 },
         children: [
-          { type: "ShiftKey", style: { flex: 1.33, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
+          { type: "ShiftKey", style: { width: 42, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
           ...letterRow3.map(kLetter),
-          { type: "BackspaceKey", style: { flex: 1.33, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
+          { type: "BackspaceKey", style: { width: 42, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
         ],
       },
 
       // Row 4: 123 · globe · space · return. Same silhouette as Apple's stock
       // dark keyboard bottom row.
       //
-      // Flex ratios from archagon (measured against 375pt iPhone 6-class):
-      //   123    = 40.5pt / 31.5pt letter = 1.29
-      //   globe  = 40.5pt / 31.5pt letter = 1.29 (SAME as 123, not 1.0 like before)
-      //   space  = 182.5pt / 31.5pt letter = 5.79
-      //   return = 87.5pt / 31.5pt letter = 2.78
-      // Total = 11.15 flex units + 3 gaps × 6pt spread across the row.
+      // Explicit widths from archagon (measured against 375pt iPhone 6-class,
+      // rounded to nearest integer):
+      //   123    = 41pt
+      //   globe  = 41pt
+      //   space  = flex — takes leftover (~181pt on 375pt screen; scales up on
+      //            wider phones where Apple's space bar also stretches)
+      //   return = 88pt
+      // Explicit widths are needed because the shipped Swift renderer only
+      // reads flex as a boolean (any flex>0 gets low content-hugging priority)
+      // — it doesn't honor the flex NUMBER, so 5.79 and 1.29 look identical
+      // to it. Space is the only remaining flex item so it eats leftover
+      // cleanly.
       //
-      // Font size 16pt on function labels (return / space / 123) — measured from
-      // KeyboardKit unit tests. Weight regular; Apple doesn't bold these.
+      // Font size 16pt on function labels — from KeyboardKit unit tests.
       {
         type: "Row",
         style: { gap: 6 },
@@ -1540,19 +1560,19 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
             type: "LetterKey",
             props: { char: "123" },
             on: { onPress: "cycleLayout" },
-            style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
+            style: { width: 41, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
           {
             type: "GlobeKey",
-            style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
+            style: { width: 41, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
           },
           {
             type: "SpaceKey",
-            style: { flex: 5.79, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" },
+            style: { flex: 1, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" },
           },
           {
             type: "ReturnKey",
-            style: { flex: 2.78, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
+            style: { width: 88, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
         ],
       },
