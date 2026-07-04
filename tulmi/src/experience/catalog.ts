@@ -1375,13 +1375,16 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
 
   // The whole keyboard as a tree. Column of rows; suggestion bar + waveform
   // are conditionally visible via visibleIf against KBState the renderer maintains.
+  //
+  // IMPORTANT: the blur backdrop is set on theme.backgroundEffect (which the
+  // renderer applies to the ENTIRE inputView — Apple's exact behavior). We do
+  // NOT put a `blur` effect on this Container too, or we double up and the
+  // whole thing reads slightly dimmer than native. Padding is also minimal
+  // (3px each side) — Apple's own keyboard edges the keys almost to the screen
+  // border; more inner padding is what was making our keyboard look boxed.
   const root: KeyboardNode = {
     type: "Container",
-    // The blur backdrop is the whole reason we shipped the SDUI renderer —
-    // Apple's own frosted-glass keyboard chrome, drawn under everything. On
-    // older iOS this falls back to the solid theme.background.
-    effect: { kind: "blur", style: "chromeMaterialDark" },
-    style: { padding: 6, gap: 8 },
+    style: { paddingLeft: 3, paddingRight: 3, paddingTop: 6, paddingBottom: 3, gap: 8 },
     children: [
       // Suggestion bar — populated by state.suggestions when we start emitting
       // predictions. Empty right now; visibleIf hides the strip so it doesn't
@@ -1413,6 +1416,63 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
         visibleIf: { truthy: "dictating" },
       },
 
+      // Tulmi's tools bar — mic (voice), tone pill, refine (✨). Sits above
+      // the QWERTY keys the way it did in the pre-SDUI build. Hidden while
+      // dictating (waveform takes its slot then) via visibleIf on the negation
+      // of `dictating`.
+      //
+      // Tone pill is currently DECORATIVE — the "cycleTone" behavior lives in
+      // a KeyboardActionSpec we haven't added to the native binary yet. Taps
+      // give haptic feedback so it doesn't feel broken, but the label stays
+      // "Neutral" until the next build wires the real cycling in.
+      {
+        type: "Row",
+        style: { gap: 8, height: 36, paddingLeft: 6, paddingRight: 6 },
+        visibleIf: { falsy: "dictating" },
+        children: [
+          {
+            type: "MicKey",
+            style: {
+              flex: 0,
+              width: 42,
+              bg: KEY_FILL_FUNCTION,
+              fg: KEY_TEXT_FUNCTION,
+              radius: 18,
+            },
+          },
+          { type: "Spacer", style: { flex: 1 } },
+          {
+            // Tone pill — LetterKey renders `char` as text, and the onPress
+            // override fires a haptic so the tap registers even before we can
+            // cycle the value. Bind to state.tone for when the future native
+            // build adds cycleTone + state.tone.
+            type: "LetterKey",
+            props: { char: "Neutral" },
+            on: { onPress: { kind: "haptic", style: "selection" } },
+            style: {
+              flex: 0,
+              width: 110,
+              bg: KEY_FILL_LETTER,
+              fg: KEY_TEXT,
+              radius: 18,
+              fontSize: 14,
+              fontWeight: "500",
+            },
+          },
+          { type: "Spacer", style: { flex: 1 } },
+          {
+            type: "RefineKey",
+            style: {
+              flex: 0,
+              width: 42,
+              bg: KEY_FILL_FUNCTION,
+              fg: KEY_TEXT_FUNCTION,
+              radius: 18,
+            },
+          },
+        ],
+      },
+
       // Row 1: q..p (10 letters, edge to edge)
       { type: "Row", style: { gap: 6 }, children: letterRow1.map(kLetter) },
 
@@ -1434,10 +1494,9 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
         ],
       },
 
-      // Row 4: 123 · globe · mic · refine · space · return.
-      // All function keys share the darker, more opaque fill so the row reads
-      // as a recessed band — same visual treatment Apple uses for the outer
-      // controls in their own layout.
+      // Row 4: 123 · globe · space · return. Same silhouette as Apple's stock
+      // dark keyboard bottom row — the Tulmi tools (mic / tone / refine) live
+      // in the tools bar above, not down here mixed with page-switch keys.
       {
         type: "Row",
         style: { gap: 6 },
@@ -1453,21 +1512,10 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
             style: { flex: 1, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
           },
           {
-            type: "MicKey",
-            style: { flex: 1, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
-          },
-          {
-            type: "RefineKey",
-            style: { flex: 1, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
-          },
-          {
             type: "SpaceKey",
-            style: { flex: 4, bg: KEY_FILL_SPACE, fontSize: 15, fontWeight: "400" },
+            style: { flex: 5, bg: KEY_FILL_SPACE, fontSize: 15, fontWeight: "400" },
           },
           {
-            // Return matches the function key treatment — no colored fill.
-            // Brand touches (if we add them back later) go on glyphs, not
-            // whole-key backgrounds — which is what read as "kids app" before.
             type: "ReturnKey",
             style: { flex: 2, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontWeight: "500" },
           },
