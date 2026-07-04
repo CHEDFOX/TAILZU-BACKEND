@@ -1375,13 +1375,13 @@ const kHalfSpacer = (): KeyboardNode => ({ type: "Spacer", style: { flex: 0.5 } 
 //   Letter key:   rgba(255,255,255,0.30)  → #FFFFFF4D
 //   Function key: rgba(128,128,128,0.30)  → #8080804D
 //   Pressed:      the two swap (letter → function color, and vice-versa)
-const KEY_FILL_LETTER = "#FFFFFF4D";      // translucent white — Apple's luminous look
-const KEY_FILL_FUNCTION = "#8080804D";    // translucent gray — subtle recessed hierarchy
-const KEY_FILL_SPACE = "#FFFFFF4D";       // space matches letter keys (Apple)
-const KEY_FILL_RETURN = "#8080804D";      // return matches function keys in typing fields
+const KEY_FILL_LETTER = "#FFFFFF40";      // ~25% alpha — slightly darker than the 30% Apple lists; against real blur this reads closer to native's contrast
+const KEY_FILL_FUNCTION = "#00000059";    // 35% black — Apple's function keys are actually darker/gray-black, not gray
+const KEY_FILL_SPACE = "#FFFFFF40";       // matches letter fill
+const KEY_FILL_RETURN = "#00000059";      // matches function fill
 const KEY_TEXT = "#FFFFFF";
-const KEY_TEXT_FUNCTION = "#FFFFFF";      // pure white on all keys — Apple doesn't dim function labels
-const KEY_PRESSED = "#8080804D";          // pressed letter → function color (Apple's swap behavior)
+const KEY_TEXT_FUNCTION = "#FFFFFF";
+const KEY_PRESSED = "#FFFFFF66";          // brighter than base so press feedback is actually visible (was invisible before — same alpha as base)
 // Brand orange kept only for functional signals — right now that's the
 // waveform bars during dictation. Colored feedback when the user is
 // speaking; invisible the rest of the time. Not a decorative accent.
@@ -1412,6 +1412,21 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
   const letterRow1 = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"];
   const letterRow2 = ["a", "s", "d", "f", "g", "h", "j", "k", "l"];
   const letterRow3 = ["z", "x", "c", "v", "b", "n", "m"];
+
+  // Popular emoji grid (Unicode CLDR 2024 usage rankings) — 6 rows × 10 cols.
+  // Third-party keyboards can't show Apple's system emoji picker (private API),
+  // so we ship our own inline grid. Each emoji is inserted as its Unicode
+  // character via LetterKey's insertKey path — Swift's Character.count == 1
+  // treats a single emoji as one grapheme, so uppercase/lowercase transforms
+  // are no-ops for these entries.
+  const emojiRows: string[][] = [
+    ["😂", "❤️", "😍", "🤣", "😊", "🙏", "💕", "😭", "😘", "👍"],
+    ["😅", "👏", "😁", "🥰", "🤩", "🙂", "😉", "💯", "😄", "😃"],
+    ["😆", "😎", "✨", "😢", "🎉", "🔥", "💖", "😀", "💪", "👌"],
+    ["🙄", "🤔", "😳", "🥺", "🤗", "😜", "🌟", "🌈", "😌", "🤪"],
+    ["😴", "🙃", "😇", "😋", "🤤", "😱", "🤯", "🥳", "🎈", "🎁"],
+    ["👀", "💀", "🤡", "🥱", "🥲", "🫠", "🥹", "🫶", "🤝", "🙌"],
+  ];
 
   // The whole keyboard as a tree. Column of rows; suggestion bar + waveform
   // are conditionally visible via visibleIf against KBState the renderer maintains.
@@ -1642,7 +1657,25 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       // scale correctly, no more hardcoded widths).
 
       // Mode switcher — three variants, each visibleIf-gated:
-      // Row 4 for the LETTER page — switcher says "123" and jumps to numbers.
+      // ============================ EMOJI LAYER (emoji) =======================
+      // Third-party keyboards can't show Apple's system emoji picker, so we
+      // build our own inline. Grid of ~60 popular emojis ranked by usage.
+      // Each LetterKey has char = the emoji glyph; tapping inserts it.
+      // "ABC" on row 7 returns to letters.
+
+      ...emojiRows.map((row): KeyboardNode => ({
+        type: "Row",
+        style: { gap: 4 },
+        visibleIf: { eq: ["state.layoutId", "emoji"] },
+        children: row.map((glyph) => ({
+          type: "LetterKey",
+          props: { char: glyph },
+          style: { flex: 1, fontSize: 26, bg: "#00000000", fg: KEY_TEXT },
+        })),
+      })),
+
+      // Row 4 (LETTER page) — switcher says "123" and jumps to numbers.
+      // Emoji key next to it — matches Apple's row 4 silhouette.
       {
         type: "Row",
         style: { gap: 6 },
@@ -1654,14 +1687,23 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
             on: { onPress: { kind: "switchLayout", language: "123" } },
             style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
+          {
+            // Emoji switcher — jumps to our emoji layer. Uses a LetterKey with
+            // the smiling glyph so it renders as-is (26pt so it reads at eye
+            // scale). Third-party keyboards can't show Apple's system emoji
+            // picker (private API), so this switches to our own grid layer.
+            type: "LetterKey",
+            props: { char: "😀" },
+            on: { onPress: { kind: "switchLayout", language: "emoji" } },
+            style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fontSize: 22 },
+          },
           { type: "GlobeKey", style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
-          { type: "SpaceKey", style: { flex: 5.79, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
+          { type: "SpaceKey", style: { flex: 4.5, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
           { type: "ReturnKey", style: { flex: 2.78, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
         ],
       },
       // Row 4 for the NUMBER or SYMBOL page — switcher says "ABC" and jumps
-      // back to letters. Identical flex ratios so the layout doesn't jump
-      // when switching modes.
+      // back to letters.
       {
         type: "Row",
         style: { gap: 6 },
@@ -1679,6 +1721,23 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
           { type: "GlobeKey", style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
           { type: "SpaceKey", style: { flex: 5.79, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
           { type: "ReturnKey", style: { flex: 2.78, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
+        ],
+      },
+      // Row 4 for the EMOJI page — "ABC" back to letters, no globe, no 123.
+      // Big space bar with a backspace on the right.
+      {
+        type: "Row",
+        style: { gap: 6 },
+        visibleIf: { eq: ["state.layoutId", "emoji"] },
+        children: [
+          {
+            type: "LetterKey",
+            props: { char: "ABC" },
+            on: { onPress: { kind: "switchLayout", language: "en" } },
+            style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
+          },
+          { type: "SpaceKey", style: { flex: 6, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
+          { type: "BackspaceKey", style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
         ],
       },
     ],
@@ -1762,6 +1821,7 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       },
       { language: "123", displayName: "Numbers", rows: [] },
       { language: "sym", displayName: "Symbols", rows: [] },
+      { language: "emoji", displayName: "Emoji", rows: [] },
     ],
     features: {
       voice: true,
