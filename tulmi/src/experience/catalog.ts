@@ -1353,24 +1353,66 @@ const kHalfSpacer = (): KeyboardNode => ({ type: "Spacer", style: { flex: 0.5 } 
  * visibleIf on state.appearance. Style hex literals don't auto-flip on
  * trait change, so we can't just pass one row and hope the renderer knows.
  */
+/** Two-toggle tools row — mic (left, orange) and tone pill (right, defined
+ * dark oval). No refine key: stopping the mic auto-runs refinement via the
+ * sequence action on tap (needs the queued MicKey Swift patch to fire runRefine
+ * inside stopDictation; the sequence-based fallback below handles it TODAY
+ * whether or not the patch has landed).
+ */
 const makeToolsRow = (opts: {
   micBg: string;
   micFg: string;
   toneBg: string;
   toneFg: string;
-  refineBg: string;
-  refineFg: string;
+  toneBorderColor: string;
   visibleIf: any;
 }): KeyboardNode => ({
   type: "Row",
-  style: { gap: 8, height: 44, padding: 6 },
+  // 56pt row height so the buttons feel confident + tappable. Uniform padding
+  // matches the L/R container padding so the mic and tone sit visually
+  // symmetric to the keyboard's own edges.
+  style: { gap: 8, height: 56, padding: 4 },
   visibleIf: opts.visibleIf,
   children: [
+    // Mic — LEFT side. Solid brand-orange circle. When idle it starts
+    // dictation; when recording it stops + immediately fires runRefine so the
+    // captured text moves straight into the refinement pipeline. Icon is
+    // swapped by the built-in MicKey renderer (brand mark → stop.fill).
     {
       type: "MicKey",
-      style: { flex: 0, width: 44, bg: opts.micBg, fg: opts.micFg, radius: 22 },
+      // Sequence action wraps the built-in behavior so stopDictation is
+      // followed by runRefine. On builds without the MicKey-auto-refine
+      // Swift patch this replaces the hardcoded action; on builds with it,
+      // the runRefine call is a no-op double-send (safe — refining state
+      // is idempotent-ish).
+      on: {
+        onPress: {
+          kind: "condition",
+          if: { truthy: "state.dictating" },
+          then: {
+            kind: "sequence",
+            actions: [
+              { kind: "stopDictation" },
+              { kind: "runRefine" },
+            ],
+          },
+          else: { kind: "startDictation" },
+        },
+      },
+      style: {
+        flex: 0,
+        width: 56,
+        height: 56,
+        bg: opts.micBg,
+        fg: opts.micFg,
+        radius: 28,          // circular
+      },
     },
+    // Middle spacer — pushes tone pill to the right edge, symmetric to mic.
     { type: "Spacer", style: { flex: 1 } },
+    // Tone pill — RIGHT side. Defined oval with a subtle border so it reads
+    // as a distinct affordance instead of a floating text blob. Solid-ish
+    // background (higher alpha than the previous pill fill).
     {
       type: "LetterKey",
       props: { char: "Neutral" },
@@ -1378,18 +1420,16 @@ const makeToolsRow = (opts: {
       on: { onPress: { kind: "cycleTone" } },
       style: {
         flex: 0,
-        width: 120,
+        width: 128,
+        height: 44,
         bg: opts.toneBg,
         fg: opts.toneFg,
         radius: 22,
         fontSize: 15,
-        fontWeight: "regular",
+        fontWeight: "medium",
+        borderColor: opts.toneBorderColor,
+        borderWidth: 1,
       },
-    },
-    { type: "Spacer", style: { flex: 1 } },
-    {
-      type: "RefineKey",
-      style: { flex: 0, width: 44, bg: opts.refineBg, fg: opts.refineFg, radius: 22 },
     },
   ],
 });
@@ -1553,33 +1593,28 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       // is initialized to "dark" in Swift, so the eq check handles the default
       // case; no need for a redundant `falsy` OR (which forced two evaluations
       // per remount for zero real benefit and added latency to every keystroke).
+      // Dark-mode tools row. Mic = solid brand-orange with black icon target
+      // (icon renders white on current shipped Swift until the queued tint fix
+      // lands — orange bg still reads confidently). Tone pill = solid dark
+      // gray with a 1pt subtle border for definition.
       makeToolsRow({
-        micBg: KEY_FILL_FUNCTION,
-        micFg: KEY_TEXT_FUNCTION,
-        toneBg: KEY_FILL_LETTER,
-        toneFg: KEY_TEXT,
-        refineBg: KEY_FILL_FUNCTION,
-        refineFg: KEY_TEXT_FUNCTION,
-        visibleIf: {
-          all: [
-            { falsy: "state.dictating" },
-            { neq: ["state.appearance", "light"] },  // dark or unset → show this row
-          ],
-        },
+        micBg: BRAND_ACCENT,
+        micFg: "#000000",
+        toneBg: "#2C2C2E",         // Apple systemGray5 dark — solid, no melt into blur
+        toneFg: "#FFFFFF",
+        toneBorderColor: "#FFFFFF29",  // 16% white — barely-there border for shape definition
+        visibleIf: { neq: ["state.appearance", "light"] },
       }),
+      // Light-mode tools row. Same brand orange (works in both modes). Tone
+      // pill is solid white with a light-gray border for definition against
+      // a light backdrop.
       makeToolsRow({
-        micBg: LIGHT_KEY_FILL_FUNCTION,
-        micFg: LIGHT_KEY_TEXT,
-        toneBg: LIGHT_KEY_FILL_LETTER,
-        toneFg: LIGHT_KEY_TEXT,
-        refineBg: LIGHT_KEY_FILL_FUNCTION,
-        refineFg: LIGHT_KEY_TEXT,
-        visibleIf: {
-          all: [
-            { falsy: "state.dictating" },
-            { eq: ["state.appearance", "light"] },
-          ],
-        },
+        micBg: BRAND_ACCENT,
+        micFg: "#000000",
+        toneBg: "#FFFFFF",
+        toneFg: "#000000",
+        toneBorderColor: "#00000029",   // 16% black — subtle border on light
+        visibleIf: { eq: ["state.appearance", "light"] },
       }),
 
       // ============================ LETTER LAYER (en) =========================
