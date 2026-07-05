@@ -1348,6 +1348,52 @@ const kPunct = (char: string): KeyboardNode => ({
  * Post-rebuild, flex works properly and we can scale correctly. */
 const kHalfSpacer = (): KeyboardNode => ({ type: "Spacer", style: { flex: 0.5 } });
 
+/** Emits one variant of the tools row (mic / tone pill / refine). Called
+ * twice — once with dark palette, once with light — each gated by a
+ * visibleIf on state.appearance. Style hex literals don't auto-flip on
+ * trait change, so we can't just pass one row and hope the renderer knows.
+ */
+const makeToolsRow = (opts: {
+  micBg: string;
+  micFg: string;
+  toneBg: string;
+  toneFg: string;
+  refineBg: string;
+  refineFg: string;
+  visibleIf: any;
+}): KeyboardNode => ({
+  type: "Row",
+  style: { gap: 8, height: 44, padding: 6 },
+  visibleIf: opts.visibleIf,
+  children: [
+    {
+      type: "MicKey",
+      style: { flex: 0, width: 44, bg: opts.micBg, fg: opts.micFg, radius: 22 },
+    },
+    { type: "Spacer", style: { flex: 1 } },
+    {
+      type: "LetterKey",
+      props: { char: "Neutral" },
+      bind: { content: "tone" },
+      on: { onPress: { kind: "cycleTone" } },
+      style: {
+        flex: 0,
+        width: 120,
+        bg: opts.toneBg,
+        fg: opts.toneFg,
+        radius: 22,
+        fontSize: 15,
+        fontWeight: "regular",
+      },
+    },
+    { type: "Spacer", style: { flex: 1 } },
+    {
+      type: "RefineKey",
+      style: { flex: 0, width: 44, bg: opts.refineBg, fg: opts.refineFg, radius: 22 },
+    },
+  ],
+});
+
 /**
  * Colors picked to match Apple's iOS 17 dark-mode system keyboard exactly.
  *
@@ -1406,8 +1452,13 @@ const BRAND_ACCENT = "#FF6B1F";
 // applied on every device regardless of mode. But by emitting the light
 // palette NOW, the day the build lands the keyboard automatically flips
 // with zero backend edit.
-const LIGHT_KEY_FILL_LETTER = "#0000000D";     // ~5% black
-const LIGHT_KEY_FILL_FUNCTION = "#0000001A";   // ~10% black
+// Light-mode letter keys are near-solid WHITE (Apple's actual value has almost
+// no transparency — very light chips on a light-gray keyboard region). Our
+// previous 5% black was so translucent it dissolved into the app content.
+// #FFFFFFE6 (90% white) is what native reads as against the light keyboard
+// backdrop and holds up over any light-app content behind it.
+const LIGHT_KEY_FILL_LETTER = "#FFFFFFE6";     // 90% white — solid-white chips
+const LIGHT_KEY_FILL_FUNCTION = "#C7CDD3E6";   // ~90% opaque light gray — the darker "function key" recess
 const LIGHT_KEY_TEXT = "#000000";
 
 export function buildKeyboardConfig(): KeyboardConfigResponse {
@@ -1485,71 +1536,46 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
         visibleIf: { truthy: "state.dictating" },
       },
 
-      // Tulmi's tools bar — mic (voice), tone pill, refine (✨). Sits above
-      // the QWERTY keys the way it did in the pre-SDUI build. Hidden while
-      // dictating (waveform takes its slot then) via visibleIf on the negation
-      // of `dictating`.
+      // Tulmi's tools bar — emitted twice: one dark palette variant and one
+      // light palette variant, gated by state.appearance. The Swift renderer's
+      // theme.key / theme.keyText auto-flip for letter keys, but style.bg hex
+      // literals like KEY_FILL_FUNCTION don't — so a single tree using dark
+      // hex reads as dark ovals on a light backdrop. Two variants means the
+      // right palette shows up regardless of the OS trait.
       //
-      // Sized to match Apple's suggestion-bar height (44pt) so the tools row
-      // reads as sitting at the same vertical rhythm the OS uses when its own
-      // predictive text bar would be there.
-      //
-      // Tone pill is currently DECORATIVE — the "cycleTone" behavior lives in
-      // a KeyboardActionSpec we haven't added to the native binary yet. Taps
-      // give haptic feedback so it doesn't feel broken, but the label stays
-      // "Neutral" until the next build wires the real cycling in.
-      {
-        type: "Row",
-        // The shipped Swift renderer honors uniform `padding` on stacks but
-        // NOT paddingLeft/paddingRight — those are silently ignored, which
-        // was why the refine icon was pinning to the extreme right edge and
-        // getting clipped. Use uniform padding so left + right are equal.
-        style: { gap: 8, height: 44, padding: 6 },
-        visibleIf: { falsy: "state.dictating" },
-        children: [
-          {
-            type: "MicKey",
-            style: {
-              flex: 0,
-              width: 44,
-              bg: KEY_FILL_FUNCTION,
-              fg: KEY_TEXT_FUNCTION,
-              radius: 22, // circular
-            },
-          },
-          { type: "Spacer", style: { flex: 1 } },
-          {
-            // Tone pill — reads state.tone at render time via bind.content so
-            // the visible label always reflects the current selection. Tap
-            // fires cycleTone which rotates through Neutral / Casual / Formal /
-            // Excited (or whatever config.flags["kb.tones"] overrides to).
-            type: "LetterKey",
-            props: { char: "Neutral" },
-            bind: { content: "tone" },
-            on: { onPress: { kind: "cycleTone" } },
-            style: {
-              flex: 0,
-              width: 120,
-              bg: KEY_FILL_LETTER,
-              fg: KEY_TEXT,
-              radius: 22,
-              fontSize: 15,
-              fontWeight: "regular",
-            },
-          },
-          { type: "Spacer", style: { flex: 1 } },
-          {
-            type: "RefineKey",
-            style: {
-              flex: 0,
-              width: 44,
-              bg: KEY_FILL_FUNCTION,
-              fg: KEY_TEXT_FUNCTION,
-              radius: 22, // circular
-            },
-          },
-        ],
-      },
+      // 44pt matches Apple's suggestion-bar height so tools reads as sitting
+      // at the vertical rhythm the OS uses when its own predictive bar would be.
+      makeToolsRow({
+        micBg: KEY_FILL_FUNCTION,
+        micFg: KEY_TEXT_FUNCTION,
+        toneBg: KEY_FILL_LETTER,
+        toneFg: KEY_TEXT,
+        refineBg: KEY_FILL_FUNCTION,
+        refineFg: KEY_TEXT_FUNCTION,
+        visibleIf: {
+          all: [
+            { falsy: "state.dictating" },
+            { any: [
+              { eq: ["state.appearance", "dark"] },
+              { falsy: "state.appearance" },  // default when no trait detected → dark
+            ] },
+          ],
+        },
+      }),
+      makeToolsRow({
+        micBg: LIGHT_KEY_FILL_FUNCTION,
+        micFg: LIGHT_KEY_TEXT,
+        toneBg: LIGHT_KEY_FILL_LETTER,
+        toneFg: LIGHT_KEY_TEXT,
+        refineBg: LIGHT_KEY_FILL_FUNCTION,
+        refineFg: LIGHT_KEY_TEXT,
+        visibleIf: {
+          all: [
+            { falsy: "state.dictating" },
+            { eq: ["state.appearance", "light"] },
+          ],
+        },
+      }),
 
       // ============================ LETTER LAYER (en) =========================
       // Visible when state.layoutId is "en" (default). Prefixed with "state."
