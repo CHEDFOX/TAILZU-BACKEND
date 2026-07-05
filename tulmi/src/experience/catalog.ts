@@ -1368,10 +1368,10 @@ const makeToolsRow = (opts: {
   visibleIf: any;
 }): KeyboardNode => ({
   type: "Row",
-  // 56pt row height so the buttons feel confident + tappable. Uniform padding
-  // matches the L/R container padding so the mic and tone sit visually
-  // symmetric to the keyboard's own edges.
-  style: { gap: 8, height: 56, padding: 4 },
+  // Compact 44pt row — the two toggles read as accents, not "here's the tools
+  // bar you must respect". Uniform padding matches container L/R so the mic
+  // sits flush with the keyboard's own left edge and the tone pill flush right.
+  style: { gap: 8, height: 44, padding: 4 },
   visibleIf: opts.visibleIf,
   children: [
     // Mic — LEFT side. Solid brand-orange circle. When idle it starts
@@ -1401,18 +1401,17 @@ const makeToolsRow = (opts: {
       },
       style: {
         flex: 0,
-        width: 56,
-        height: 56,
+        width: 36,
+        height: 36,
         bg: opts.micBg,
         fg: opts.micFg,
-        radius: 28,          // circular
+        radius: 18,          // circular
       },
     },
     // Middle spacer — pushes tone pill to the right edge, symmetric to mic.
     { type: "Spacer", style: { flex: 1 } },
-    // Tone pill — RIGHT side. Defined oval with a subtle border so it reads
-    // as a distinct affordance instead of a floating text blob. Solid-ish
-    // background (higher alpha than the previous pill fill).
+    // Tone pill — RIGHT side. Compact oval with a subtle border for shape
+    // definition against the transparent keyboard region.
     {
       type: "LetterKey",
       props: { char: "Neutral" },
@@ -1420,12 +1419,12 @@ const makeToolsRow = (opts: {
       on: { onPress: { kind: "cycleTone" } },
       style: {
         flex: 0,
-        width: 128,
-        height: 44,
+        width: 96,
+        height: 32,
         bg: opts.toneBg,
         fg: opts.toneFg,
-        radius: 22,
-        fontSize: 15,
+        radius: 16,
+        fontSize: 13,
         fontWeight: "medium",
         borderColor: opts.toneBorderColor,
         borderWidth: 1,
