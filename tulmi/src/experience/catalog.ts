@@ -1834,12 +1834,16 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       keyShadow: true,
     },
     themeLight: {
-      background: "#F2F2F7",
+      // Fully transparent — no our-backdrop. Keys sit directly on whatever
+      // iOS composits behind the keyboard region (usually a subtle light-gray
+      // system chrome). This is the "no sheet, keys on the base surface"
+      // pattern — same as themeDark. Removed backgroundEffect so we don't
+      // paint our own blur that would double-tint the light system chrome.
+      background: "#00000000",
       key: LIGHT_KEY_FILL_LETTER,
       keyText: LIGHT_KEY_TEXT,
       accent: "#8E8E93",
       keyPressed: LIGHT_KEY_FILL_FUNCTION,
-      backgroundEffect: { kind: "blur", style: "chromeMaterialLight" },
       keyRadius: 5,
       keyShadow: true,
     },
