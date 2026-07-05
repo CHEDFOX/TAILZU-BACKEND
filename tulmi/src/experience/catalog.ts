@@ -1503,7 +1503,11 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
     // not 8pt). Row gap 6pt matches Apple's inclusive 43pt row height (a letter
     // key is ~37pt visible + 6pt of gap = 43). Previous values (top:10, bot:8)
     // were making our keyboard feel taller and more "boxed in" than native.
-    style: { paddingLeft: 3, paddingRight: 3, paddingTop: 5, paddingBottom: 4, gap: 6 },
+    // Container padding stays snug L/R (native measurements) but gap between
+    // rows widens 6 → 10 for a roomier feel, and top/bottom picks up a couple
+    // extra points so the whole keyboard reads as taller. Row height inside
+    // each Row is also explicitly 50pt (up from ~40pt natural) — see below.
+    style: { paddingLeft: 3, paddingRight: 3, paddingTop: 8, paddingBottom: 6, gap: 10 },
     children: [
       // Suggestion bar — populated by state.suggestions when we start emitting
       // predictions. Empty right now; visibleIf hides the strip so it doesn't
@@ -1585,14 +1589,14 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       // Row 1: q..p
       {
         type: "Row",
-        style: { gap: 6 },
+        style: { gap: 6, height: 50 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: letterRow1.map(kLetter),
       },
       // Row 2: a..l (indented half-key each side)
       {
         type: "Row",
-        style: { gap: 6 },
+        style: { gap: 6, height: 50 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: [kHalfSpacer(), ...letterRow2.map(kLetter), kHalfSpacer()],
       },
@@ -1601,7 +1605,7 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       // shift = backspace = 1.33× a letter key (archagon's 42/31.5 = 1.333).
       {
         type: "Row",
-        style: { gap: 6 },
+        style: { gap: 6, height: 50 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: [
           { type: "ShiftKey", style: { flex: 1.33, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
@@ -1618,21 +1622,21 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       // Row 1: 1..0
       {
         type: "Row",
-        style: { gap: 6 },
+        style: { gap: 6, height: 50 },
         visibleIf: { eq: ["state.layoutId", "123"] },
         children: ["1","2","3","4","5","6","7","8","9","0"].map(kPunct),
       },
       // Row 2: - / : ; ( ) $ & @ "
       {
         type: "Row",
-        style: { gap: 6 },
+        style: { gap: 6, height: 50 },
         visibleIf: { eq: ["state.layoutId", "123"] },
         children: ["-","/",":",";","(",")","$","&","@","\""].map(kPunct),
       },
       // Row 3: [#+=] . , ? ! ' [backspace]
       {
         type: "Row",
-        style: { gap: 6 },
+        style: { gap: 6, height: 50 },
         visibleIf: { eq: ["state.layoutId", "123"] },
         children: [
           {
@@ -1651,21 +1655,21 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       // Row 1: [ ] { } # % ^ * + =
       {
         type: "Row",
-        style: { gap: 6 },
+        style: { gap: 6, height: 50 },
         visibleIf: { eq: ["state.layoutId", "sym"] },
         children: ["[","]","{","}","#","%","^","*","+","="].map(kPunct),
       },
       // Row 2: _ \ | ~ < > € £ ¥ ·
       {
         type: "Row",
-        style: { gap: 6 },
+        style: { gap: 6, height: 50 },
         visibleIf: { eq: ["state.layoutId", "sym"] },
         children: ["_","\\","|","~","<",">","€","£","¥","·"].map(kPunct),
       },
       // Row 3: [123] . , ? ! ' [backspace]
       {
         type: "Row",
-        style: { gap: 6 },
+        style: { gap: 6, height: 50 },
         visibleIf: { eq: ["state.layoutId", "sym"] },
         children: [
           {
@@ -1715,7 +1719,7 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       // fill the freed width.
       {
         type: "Row",
-        style: { gap: 6 },
+        style: { gap: 6, height: 50 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: [
           {
@@ -1741,7 +1745,7 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       // "no globe" pattern; iOS's system bar still handles keyboard switching.
       {
         type: "Row",
-        style: { gap: 6 },
+        style: { gap: 6, height: 50 },
         visibleIf: { any: [
           { eq: ["state.layoutId", "123"] },
           { eq: ["state.layoutId", "sym"] },
@@ -1761,7 +1765,7 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       // Big space bar with a backspace on the right.
       {
         type: "Row",
-        style: { gap: 6 },
+        style: { gap: 6, height: 50 },
         visibleIf: { eq: ["state.layoutId", "emoji"] },
         children: [
           {
