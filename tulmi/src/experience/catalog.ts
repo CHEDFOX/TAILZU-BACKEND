@@ -1775,10 +1775,12 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       // explicit `bg` in their style — so wiring the new palette here is what
       // makes the letter keys actually pick up the lighter, more translucent
       // fill instead of the legacy #48484a opaque gray.
-      // Slightly translucent black rather than opaque — the blur backdrop
-      // sitting on top of an opaque #000 was reading as a dark slab because
-      // it had nothing to frost. Dropping to ~40% alpha lets the blur breathe.
-      background: "#00000066",
+      // Fully transparent — no our-blur, no our-fill. This lets iOS's own
+      // keyboard-region backdrop show through (the "OS chrome"), which every
+      // third-party keyboard sits over. Whatever the OS paints there IS what
+      // the user sees behind the keys. If this reads cleaner than our applied
+      // blur was, we ditch the blur entirely.
+      background: "#00000000",
       key: KEY_FILL_LETTER,
       keyText: KEY_TEXT,
       // Accent used ONLY by legacy path for the shift-active indicator dot.
@@ -1787,22 +1789,21 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       accent: "#8E8E93",
       keyPressed: KEY_PRESSED,
       // v2 fields — used only by the SDUI renderer:
-      // systemUltraThinMaterialDark reads lighter and less "chunky slab" than
-      // chromeMaterialDark, closer to what a third-party keyboard can get
-      // toward the native system keyboard's frosted look.
-      backgroundEffect: { kind: "blur", style: "systemUltraThinMaterial" },
+      // No backgroundEffect. When set to null, the Swift renderer skips
+      // installing the UIVisualEffectView backdrop entirely — the extension
+      // is truly transparent and iOS's own region backdrop is the only
+      // thing behind the keys.
       keyRadius: 5,     // Apple's letter-key radius on dark mode is 5, not 6
       keyShadow: true,  // hard 1pt drop shadow — matches Apple's key depth
     },
     // v3 adaptive palettes — the SDUI-renderer build picks between these
     // based on the current userInterfaceStyle and re-renders on trait change.
     themeDark: {
-      background: "#00000066",
+      background: "#00000000",
       key: KEY_FILL_LETTER,
       keyText: KEY_TEXT,
       accent: "#8E8E93",
       keyPressed: KEY_PRESSED,
-      backgroundEffect: { kind: "blur", style: "systemUltraThinMaterial" },
       keyRadius: 5,
       keyShadow: true,
     },
