@@ -1549,6 +1549,10 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       //
       // 44pt matches Apple's suggestion-bar height so tools reads as sitting
       // at the vertical rhythm the OS uses when its own predictive bar would be.
+      // Dark-mode tools row — visible when appearance is dark. state.appearance
+      // is initialized to "dark" in Swift, so the eq check handles the default
+      // case; no need for a redundant `falsy` OR (which forced two evaluations
+      // per remount for zero real benefit and added latency to every keystroke).
       makeToolsRow({
         micBg: KEY_FILL_FUNCTION,
         micFg: KEY_TEXT_FUNCTION,
@@ -1559,10 +1563,7 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
         visibleIf: {
           all: [
             { falsy: "state.dictating" },
-            { any: [
-              { eq: ["state.appearance", "dark"] },
-              { falsy: "state.appearance" },  // default when no trait detected → dark
-            ] },
+            { neq: ["state.appearance", "light"] },  // dark or unset → show this row
           ],
         },
       }),
