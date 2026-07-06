@@ -585,6 +585,68 @@ export interface KeyboardConfigResponse {
   };
   /** All user-facing strings, so copy is server-controlled. */
   labels: Record<string, string>;
+  /**
+   * Backend-tunable knobs for keyboard visuals + behavior. Every value here
+   * has a native default; pushing an override lets you change the look/feel
+   * without a rebuild. Full reference (dot-notation keys under "kb.*"):
+   *
+   *   Press feedback
+   *     kb.press.fadeMs        (default 120)  release-fade duration; 0 = instant snap
+   *
+   *   Backspace-on-hold
+   *     kb.delete.initialDelayMs      (default 500)  hold time before repeat starts
+   *     kb.delete.repeatIntervalMs    (default 90)   per-char delete cadence
+   *     kb.delete.wordAfterChars      (default 20)   how many chars before word-jump mode
+   *
+   *   Auto-cap
+   *     kb.autoCap.enabled            (default true) global auto-cap kill switch
+   *
+   *   Shift key
+   *     kb.shift.iconLowerOutlined    (default "arrowtriangle.down")
+   *     kb.shift.iconUpperOutlined    (default "arrowtriangle.up")
+   *     kb.shift.iconLowerLocked      (default "arrowtriangle.down.fill")
+   *     kb.shift.iconUpperLocked      (default "arrowtriangle.up.fill")
+   *     kb.shift.iconSize             (default 16)
+   *     kb.shift.iconWeight           (default "semibold")
+   *     kb.shift.lockedColor          (default "#FF6B1F")
+   *     kb.shift.longPressMs          (default 350)  hold-to-lock threshold
+   *
+   *   Mic key
+   *     kb.mic.idleIcon               icon-spec (default = bundled TailzuMark)
+   *     kb.mic.idleIconInset          (default 12)
+   *     kb.mic.recordingIcon          icon-spec (default = SF "minus" thick bar)
+   *     kb.mic.recordingIconSize      (default 14)
+   *     kb.mic.recordingIconWeight    (default "heavy")
+   *
+   *   Dictation visuals — key dim + dot stream
+   *     kb.dictation.dim.enabled      (default true)
+   *     kb.dictation.dim.color        (default "#000000")
+   *     kb.dictation.dim.alpha        (default 0.45)
+   *     kb.dictation.dim.fadeMs       (default 250)
+   *     kb.dictation.dots.enabled     (default true)
+   *     kb.dictation.dots.color       (default "#FF6B1F")
+   *     kb.dictation.dots.size        (default 14)
+   *     kb.dictation.dots.birthRate   (default 7)     dots per second
+   *     kb.dictation.dots.lifetimeMs  (default 1800)
+   *     kb.dictation.dots.decayMs     (default 2500)  post-stop trailing dots
+   *     kb.dictation.dots.spread      (default 0.08)
+   *     kb.dictation.dots.velocityJitter (default 0.05)
+   *     kb.dictation.dots.scale       (default 0.35)
+   *     kb.dictation.dots.scaleRange  (default 0.10)
+   *     kb.dictation.dots.alphaSpeed  (default -0.55)
+   *
+   *   Smart typography
+   *     kb.smartPunctuation           (default true)  curly quotes / em-dash / ellipsis
+   *     kb.smartPeriod                (default true)  double-space → ". "
+   *
+   *   Tones
+   *     kb.tones                      comma-separated list; default "Neutral,Casual,Formal,Excited"
+   *
+   * Icon-spec fields accept any of:
+   *   { sf: "mic.fill" } / { asset: "TailzuMark" } / { url: "https://…" } / { emoji: "🎙️" }
+   *   Or shorthand strings: "sf:mic.fill" | "asset:TailzuMark" | "https://…"
+   */
+  flags?: Record<string, unknown>;
   /** Seconds before the shell refetches config. */
   cacheTtlSeconds: number;
   /**

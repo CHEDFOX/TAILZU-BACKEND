@@ -1934,6 +1934,32 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
     },
     root,
     actions,
+    // Backend-tunable knobs. Every value here has a Swift-side default so
+    // this can stay empty and everything still works; overriding any key
+    // changes that specific behavior without a rebuild.
+    //
+    // Uncomment / add entries as needed. See shared/types/sdui.ts for the
+    // full authoritative list of keys and their defaults.
+    flags: {
+      // Example overrides (all commented out — enable to try):
+      //
+      // "kb.press.fadeMs": 120,
+      // "kb.dictation.dots.color": "#FF6B1F",
+      // "kb.dictation.dots.birthRate": 7,
+      // "kb.dictation.dots.decayMs": 2500,
+      // "kb.dictation.dim.alpha": 0.45,
+      // "kb.mic.recordingIcon": { sf: "pause.fill" },   // swap thick bar → pause
+      // "kb.mic.recordingIcon": { sf: "waveform" },     // or a waveform icon
+      // "kb.mic.recordingIcon": { emoji: "⏹" },         // or an emoji
+      // "kb.mic.recordingIcon": { url: "https://cdn.tailzu.space/kb/stop.png" },
+      // "kb.mic.idleIcon": { asset: "TailzuMark" },
+      // "kb.shift.lockedColor": "#FF6B1F",
+      // "kb.shift.longPressMs": 350,
+      // "kb.shift.iconLowerOutlined": "arrowtriangle.down",
+      // "kb.delete.repeatIntervalMs": 90,
+      // "kb.autoCap.enabled": true,
+      // "kb.smartPunctuation": true,
+    },
     // Was 600 (10 min). A live theme fix couldn't reach users mid-session.
     // 60 s keeps cost negligible and lets themed rollouts hit within a minute.
     cacheTtlSeconds: 60,
