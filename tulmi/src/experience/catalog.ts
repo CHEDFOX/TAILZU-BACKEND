@@ -1472,7 +1472,12 @@ const KEY_FILL_SPACE = "#FFFFFF8C";       // matches letter fill
 const KEY_FILL_RETURN = "#FFFFFF33";      // matches function fill
 const KEY_TEXT = "#FFFFFF";
 const KEY_TEXT_FUNCTION = "#FFFFFF";
-const KEY_PRESSED = "#FFFFFFBF";          // 75% white — pressed state brightens for visible touch feedback
+// Brand-orange press color — every key (letter, function, shift, backspace,
+// return) flashes brand accent for ~120ms on tap. Fires on touch-down inside
+// the Swift renderer's keyTouchDown handler (theme.keyPressed → this hex),
+// then keyTouchUp animates back to the resting bg via UIView.animate. This is
+// the "typing has our color" identity moment — not a permanent tint.
+const KEY_PRESSED = "#FF6B1F";            // BRAND_ACCENT — orange press feedback on every key
 // Brand orange kept only for functional signals — right now that's the
 // waveform bars during dictation. Colored feedback when the user is
 // speaking; invisible the rest of the time. Not a decorative accent.
@@ -1882,7 +1887,9 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       key: LIGHT_KEY_FILL_LETTER,
       keyText: LIGHT_KEY_TEXT,
       accent: "#8E8E93",
-      keyPressed: LIGHT_KEY_FILL_FUNCTION,
+      // Same brand-orange press flash as dark mode — the moment of tap
+      // reads as the Tulmi accent regardless of appearance.
+      keyPressed: KEY_PRESSED,
       keyRadius: 5,
       keyShadow: true,
     },
