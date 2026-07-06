@@ -457,6 +457,12 @@ export type ActionSpec =
   // --- auth ---
   | { kind: "biometricPrompt"; reason?: string; onSuccess?: ActionRef; onError?: ActionRef }
   | { kind: "signOut" }
+  // --- app-level chrome ---
+  // Switch the home-screen app icon to one of the alternates declared in the
+  // build's Info.plist (via expo-alternate-app-icons plugin). name = null or
+  // "" resets to the default icon. Devices without alternate-icon support
+  // silently no-op.
+  | { kind: "setAppIcon"; name: string | null; onSuccess?: ActionRef; onError?: ActionRef }
   // --- IAP / RevenueCat ---
   | { kind: "iap.showPaywall"; offeringId?: string; packageId?: string; onSuccess?: ActionRef; onError?: ActionRef }
   | { kind: "iap.subscribe"; productId: string; onSuccess?: ActionRef; onError?: ActionRef }
