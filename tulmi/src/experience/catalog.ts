@@ -1502,7 +1502,7 @@ const BRAND_ACCENT = "#FF6B1F";
 // #FFFFFFE6 (90% white) is what native reads as against the light keyboard
 // backdrop and holds up over any light-app content behind it.
 const LIGHT_KEY_FILL_LETTER = "#FFFFFFE6";     // 90% white — solid-white chips
-const LIGHT_KEY_FILL_FUNCTION = "#C7CDD3E6";   // ~90% opaque light gray — the darker "function key" recess
+export const LIGHT_KEY_FILL_FUNCTION = "#C7CDD3E6";   // ~90% opaque light gray — kept exported for the next light-mode row expansion
 const LIGHT_KEY_TEXT = "#000000";
 
 export function buildKeyboardConfig(): KeyboardConfigResponse {

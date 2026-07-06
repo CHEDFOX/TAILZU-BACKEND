@@ -21,6 +21,7 @@
     "@deepgram/sdk": "^4.11.3",
     "@fastify/multipart": "^8.3.0",
     "@fastify/rate-limit": "^9.1.0",
+    "@fastify/static": "^7.0.4",
     "@fastify/websocket": "^10.0.1",
     "@sentry/node": "^8.55.0",
     "@supabase/supabase-js": "^2.45.4",

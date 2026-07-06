@@ -56,6 +56,42 @@ export interface ClientCapabilities {
 // back the global theme, the navigation shell (e.g. tab bar), and the id of the
 // first screen to load. Everything after that is screen fetches + actions.
 
+/**
+ * MediaSpec — canonical way to reference an asset from a node's props.
+ *
+ * All image / video / audio / SVG source fields across the app + keyboard
+ * accept this shape (with sensible fallbacks for unset entries):
+ *
+ *   { key: "brand.mark" }              → resolve via bootstrap.media[key]
+ *   { url: "https://cdn/foo.png" }     → direct URL, disk-cached client-side
+ *   { asset: "TailzuMark" }            → bundled iOS/Android/RN asset
+ *   { emoji: "🎙️" }                    → render as text glyph
+ *   { data: "data:image/png;base64…" } → inline data URI
+ *
+ * String shorthand ALSO supported for compact backend trees:
+ *   "media:brand.mark"    → { key: "brand.mark" }
+ *   "asset:TailzuMark"    → { asset: "TailzuMark" }
+ *   "https://…"           → { url: "…" }
+ *
+ * A missing/broken key falls back to bundled defaults so a bad registry
+ * entry never blanks out UI — clients render whatever they can.
+ */
+export type MediaSpec =
+  | string
+  | { key: string }
+  | { url: string; contentType?: string }
+  | { asset: string }
+  | { emoji: string }
+  | { data: string; contentType?: string };
+
+export interface MediaEntry {
+  url: string;
+  contentType: string;
+  size: number;
+  uploadedAt: number;
+  key?: string;
+}
+
 export interface BootstrapRequest {
   capabilities: ClientCapabilities;
   /** Opaque session/auth token if the user is signed in. */
@@ -78,6 +114,20 @@ export interface BootstrapResponse {
    * controlled from the backend and reusable across screens.
    */
   labels?: Record<string, string>;
+  /**
+   * Central media registry: every image / video / audio / SVG asset the app
+   * can render, keyed by a semantic name (e.g. "brand.mark", "onboarding.hero").
+   *
+   * Nodes reference an entry via MediaSpec { key: "brand.mark" } or the shorthand
+   * "media:brand.mark". The runtime resolves the key → entry.url → fetches (with
+   * disk cache). Missing key → clients fall back to bundled default or emoji.
+   *
+   * Populated from admin uploads via POST /v1/media/upload; the registry file
+   * lives on the server so uploads persist across restarts. Deleting an entry
+   * only removes it from the registry — the underlying file stays on disk
+   * (safe: cache-hits from clients still work).
+   */
+  media?: Record<string, MediaEntry>;
   /** Version gating — force or suggest an app update from the server. */
   update?: UpdateGate;
   /** Languages for the native post-auth picker (code/name/greeting). */

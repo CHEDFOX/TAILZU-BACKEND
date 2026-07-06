@@ -17,8 +17,10 @@ import { createHash } from "node:crypto";
 import Fastify, { type FastifyInstance } from "fastify";
 import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
+import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import transcribeStream from "./routes/transcribe-stream.js";
+import { registerMediaRoutes, loadMediaRegistry, getMediaRegistry } from "./routes/media.js";
 import { getConfig, VERSION } from "./config.js";
 import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
 import { enforceQuota, recordUsage, usageSummary, usageWindows } from "./usage/metering.js";
@@ -108,6 +110,30 @@ await app.register(multipart, {
   limits: { fileSize: 50 * 1024 * 1024, files: 1 },
 });
 await app.register(websocket);
+
+// --- Media store -----------------------------------------------------------
+// Serves /media/* as static files from MEDIA_DIR (mounted volume so uploads
+// survive container recreation). Admin routes (/v1/media/*) handle upload +
+// list + delete; they read/write registry.json which is also mounted. The
+// bootstrap response surfaces the registry as `bootstrap.media` so clients
+// can resolve keys → URLs without a separate request.
+const MEDIA_DIR = process.env.MEDIA_DIR || "/data/media";
+const MEDIA_PUBLIC_URL = process.env.MEDIA_PUBLIC_URL
+  || `${process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"}/media`;
+await loadMediaRegistry(MEDIA_DIR);
+await app.register(fastifyStatic, {
+  root: MEDIA_DIR,
+  prefix: "/media/",
+  decorateReply: false,
+  cacheControl: true,
+  maxAge: "365d",   // media files are content-addressed by SHA256; safe to cache aggressively
+  immutable: true,
+});
+registerMediaRoutes(app, {
+  mediaDir: MEDIA_DIR,
+  publicUrlPrefix: MEDIA_PUBLIC_URL,
+  adminSecret: cfg.ADMIN_SECRET ?? "",
+});
 
 // Rate-limit /v1/* routes. The key is the SHA-256 of the bearer token (so an
 // attacker rotating fake tokens can't sidestep their per-user budget), or the
@@ -694,6 +720,11 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
   const profile = user ? await getProfile(user) : null;
   const bootstrap = buildBootstrap({ onboarded: profile?.onboarded ?? false });
+  // Attach the current media registry so clients can resolve keys → URLs
+  // without a separate roundtrip. Keys are semantic ("brand.mark",
+  // "onboarding.hero.png"); each entry has { url, contentType, size,
+  // uploadedAt }. Missing key → clients fall back to bundled default.
+  (bootstrap as unknown as { media?: Record<string, unknown> }).media = getMediaRegistry();
   return reply.send(await localize(bootstrap, profile?.language ?? "en"));
 });
 
