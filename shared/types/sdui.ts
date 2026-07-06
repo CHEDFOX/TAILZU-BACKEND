@@ -408,7 +408,7 @@ export type ActionSpec =
   | { kind: "biometricPrompt"; reason?: string; onSuccess?: ActionRef; onError?: ActionRef }
   | { kind: "signOut" }
   // --- IAP / RevenueCat ---
-  | { kind: "iap.showPaywall"; offeringId?: string; onSuccess?: ActionRef; onError?: ActionRef }
+  | { kind: "iap.showPaywall"; offeringId?: string; packageId?: string; onSuccess?: ActionRef; onError?: ActionRef }
   | { kind: "iap.subscribe"; productId: string; onSuccess?: ActionRef; onError?: ActionRef }
   | { kind: "iap.restore"; onSuccess?: ActionRef; onError?: ActionRef }
   | { kind: "iap.checkEntitlement"; entitlement: string; assignTo: string }
@@ -641,6 +641,88 @@ export interface KeyboardConfigResponse {
    *
    *   Tones
    *     kb.tones                      comma-separated list; default "Neutral,Casual,Formal,Excited"
+   *
+   *   Toast
+   *     kb.toast.durationMs   (default 2000)  visible time before fade begins
+   *     kb.toast.fadeInMs     (default 180)
+   *     kb.toast.fadeOutMs    (default 250)
+   *     kb.toast.height       (default 32)
+   *     kb.toast.offsetY      (default -18)   negative = above bottom anchor
+   *     kb.toast.fontSize     (default 13)
+   *     kb.toast.color.error   (default "#FF3B30E6")
+   *     kb.toast.color.success (default "#34C759E6")
+   *     kb.toast.color.info    (default "#000000D9")
+   *
+   *   Confetti
+   *     kb.confetti.colors            array of hex strings (default 6 system colors)
+   *     kb.confetti.birthRate         (default 6)     particles/sec per color
+   *     kb.confetti.lifetimeMs        (default 3000)
+   *     kb.confetti.velocity          (default 200)
+   *     kb.confetti.spin              (default 3)     rad/sec
+   *     kb.confetti.scale             (default 0.06)
+   *     kb.confetti.burstMs           (default 400)   birth cutoff
+   *     kb.confetti.teardownMs        (default 3500)
+   *
+   *   Waveform
+   *     kb.waveform.barCount          (default 24)
+   *     kb.waveform.color             (default "#999999")
+   *     kb.waveform.radius            (default 1.5)
+   *     kb.waveform.spacing           (default 3)
+   *     kb.waveform.height            (default 24)
+   *     kb.waveform.levelMultiplier   (default 0.6)
+   *     kb.waveform.baselineMin       (default 0.2)
+   *     kb.waveform.baselineMax       (default 0.6)
+   *     kb.waveform.fps               (default 30)
+   *
+   *   Accent tray (long-press on a letter with accents)
+   *     kb.accentTray.longPressMs     (default 500)
+   *     kb.accentTray.chipWidth       (default 40)
+   *     kb.accentTray.chipFontSize    (default 22)
+   *     kb.accentTray.chipRadius      (default 6)
+   *     kb.accentTray.chipActiveBg    (default "#007AFF")
+   *     kb.accentTray.height          (default 48)
+   *     kb.accentTray.offsetY         (default -52)   negative = above the key
+   *     kb.accentTray.radius          (default 8)
+   *     kb.accentTray.padding         (default 4)
+   *     kb.accentTray.gap             (default 4)
+   *
+   *   Return key
+   *     kb.returnKey.actionBg   (default "#007AFF")   accent for Go/Send/Search/Done
+   *     kb.returnKey.actionFg   (default "#FFFFFF")
+   *
+   *   Trackpad (space-bar long-press → cursor mode)
+   *     kb.trackpad.enabled           (default true)
+   *     kb.trackpad.longPressMs       (default 300)
+   *     kb.trackpad.ptPerChar         (default 7)     pt of drag per char step
+   *
+   *   Smart-period window (double-space → ". " gap)
+   *     kb.smartPeriod.windowMs       (default 500)
+   *
+   *   Network
+   *     kb.network.timeoutMs          (default 15000) callEndpoint request timeout
+   *
+   *   Suggestion bar
+   *     kb.suggestion.gap             (default 8)
+   *     kb.suggestion.edgeInset       (default 8)
+   *     kb.suggestion.chipRadius      (default 12)
+   *     kb.suggestion.chipPadV        (default 4)
+   *     kb.suggestion.chipPadH        (default 12)
+   *     kb.suggestion.height          (default 36)
+   *
+   *   Key shadow
+   *     kb.key.shadow.color           (default "#000000")
+   *     kb.key.shadow.offsetY         (default 1)
+   *     kb.key.shadow.radius          (default 0)
+   *     kb.key.shadow.opacity         (default 0.4)
+   *
+   *   Audio recorder (dictation input)
+   *     kb.audio.sampleRate           (default 16000)
+   *     kb.audio.channels             (default 1)
+   *     kb.audio.quality              (default "high")  min/low/medium/high/max
+   *
+   *   Dictation params (sent to backend endpoints)
+   *     kb.dictation.targetApp        (default "Generic")
+   *     kb.dictation.language         (default "auto")
    *
    * Icon-spec fields accept any of:
    *   { sf: "mic.fill" } / { asset: "TailzuMark" } / { url: "https://…" } / { emoji: "🎙️" }
