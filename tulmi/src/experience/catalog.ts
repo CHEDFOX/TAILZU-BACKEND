@@ -215,6 +215,9 @@ export interface ScreenContext {
   name?: string;
   dictionary?: Array<{ word: string; replacement: string }>;
   frequentWords?: string[];
+  /** Deep-link / navigation params — e.g. keyboard_record receives
+   * { session, host } from the keyboard extension's tulmi://s/... URL. */
+  params?: Record<string, string | number | boolean | undefined>;
 }
 
 export function buildScreen(screenId: string, ctx: ScreenContext): ScreenResponse | null {
@@ -243,6 +246,10 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       return onboardingLanguage(ctx.language);
     case "onboarding_keyboard":
       return onboardingKeyboard();
+    case "keyboard_record":
+      return keyboardRecordScreen(ctx);
+    case "keyboard_primer":
+      return keyboardPrimerScreen(ctx);
     default:
       return null;
   }
@@ -1254,6 +1261,199 @@ function onboardingKeyboard(): ScreenResponse {
       { type: "Button", visibleIf: { not: { truthy: "keyboardReady" } },
         props: { label: "Skip for now", variant: "secondary" }, on: { onPress: "skip" } },
     ],
+    cacheTtlSeconds: 0,
+  };
+}
+
+/**
+ * The main app's landing screen when the keyboard extension hands off a
+ * mic tap. `params.session` (from the deep link) is threaded into
+ * state.handoffSessionId so the completeKeyboardHandoff action knows which
+ * session to write back to the App Group.
+ *
+ * The user sees the recording UI, speaks, and taps Send — the SDUI
+ * VoiceToggle already records + uploads to /v1/transcribe-clean and puts
+ * the cleaned text in state.dictationSample. Send fires
+ * completeKeyboardHandoff, which writes the text to the App Group +
+ * fires a Darwin notification the keyboard observes to insert.
+ *
+ * Fully backend-designed: swap the media, copy, layout, any which way,
+ * without a rebuild. Add hero art, a Lottie, whatever — it's just SDUI.
+ */
+function keyboardRecordScreen(ctx: ScreenContext): ScreenResponse {
+  const sessionId = String(ctx.params?.session ?? "");
+  const hostApp = String(ctx.params?.host ?? "");
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "keyboard_record",
+    title: "",
+    state: {
+      handoffSessionId: sessionId,
+      hostApp,
+      dictationSample: "",
+      sending: false,
+    },
+    actions: {
+      // Fired by VoiceToggle when transcription fails.
+      err: { kind: "toast", tone: "error", message: "Voice failed. Check your connection." },
+      // Called by the Send button — writes the text back through the native
+      // module and shows a "swipe back" hint. Backend can localize the toast
+      // or swap it for a full-screen "Sent" card by editing this action.
+      send: {
+        kind: "sequence",
+        actions: [
+          { kind: "setState", path: "sending", value: true },
+          { kind: "completeKeyboardHandoff" },
+          { kind: "haptic", style: "success" },
+          { kind: "toast", tone: "success", message: "Sent to Tailzu keyboard — swipe back to your app." },
+        ],
+      },
+      // User bailed — cancel the pending handoff so the keyboard doesn't
+      // sit in "listening" forever.
+      cancel: {
+        kind: "sequence",
+        actions: [
+          { kind: "cancelKeyboardHandoff" },
+          { kind: "navigateBack" },
+        ],
+      },
+    },
+    root: {
+      type: "Screen",
+      style: { paddingHorizontal: 20, paddingTop: 40, paddingBottom: 24 },
+      children: [
+        { type: "Overline", props: { content: "Voice keyboard" } },
+        { type: "Heading", props: { content: "Speak, then swipe back" }, style: { fontSize: 26, fontWeight: "800", color: "$color.text", marginTop: 6, marginBottom: 6 } },
+        { type: "Paragraph", props: { content: "We'll clean it up and drop the text into your keyboard. Nothing gets sent from here — the keyboard inserts it into whatever app you were in." }, style: { marginBottom: 28 } },
+        // Big centered mic. VoiceToggle handles record → upload →
+        // dictationSample. Backend can swap for Lottie / custom art any time.
+        { type: "Stack", style: { alignItems: "center", justifyContent: "center", marginBottom: 20 }, children: [
+          {
+            type: "VoiceToggle",
+            bind: { value: "dictationSample" },
+            props: { targetApp: hostApp || "Generic", language: "auto", size: 96, autoStart: true },
+            on: { onError: "err" },
+            fallback: {
+              type: "VoiceButton",
+              bind: { value: "dictationSample" },
+              props: { targetApp: hostApp || "Generic", language: "auto" },
+              on: { onError: "err" },
+            },
+          },
+        ] },
+        // Live transcription preview so the user can trust what's being sent.
+        { type: "Card", style: { marginBottom: 20 }, children: [
+          { type: "Paragraph", visibleIf: { falsy: "dictationSample" }, props: { content: "Tap the mic to start. Tap again to stop." }, style: { color: "$color.muted" } },
+          { type: "TextField", visibleIf: { truthy: "dictationSample" }, bind: { value: "dictationSample" }, props: { multiline: true } },
+        ] },
+        // Send + Cancel row.
+        { type: "Button", visibleIf: { truthy: "dictationSample" }, props: { label: "Send to keyboard", variant: "primary" }, on: { onPress: "send" } },
+        { type: "Spacer", style: { height: 10 } },
+        { type: "Button", props: { label: "Cancel", variant: "secondary" }, on: { onPress: "cancel" } },
+      ],
+    },
+    cacheTtlSeconds: 0,
+  };
+}
+
+/**
+ * Cold-start primer — shown the FIRST time the keyboard hands off before
+ * the main app has been foregrounded (or after a long absence). We can't
+ * record right away because iOS hasn't granted mic yet; instead we prompt
+ * the user, then tell them to swipe back and re-tap the keyboard mic.
+ *
+ * On subsequent handoffs the main app will be warm and go straight to
+ * keyboard_record. Same backend-owned design freedom as everything else.
+ */
+function keyboardPrimerScreen(ctx: ScreenContext): ScreenResponse {
+  const sessionId = String(ctx.params?.session ?? "");
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "keyboard_primer",
+    title: "",
+    state: { handoffSessionId: sessionId, micGranted: false },
+    actions: {
+      grantMic: {
+        kind: "requestPermission",
+        permission: "microphone",
+        onGranted: "granted",
+        onDenied: "denied",
+      },
+      granted: {
+        kind: "sequence",
+        actions: [
+          { kind: "setState", path: "micGranted", value: true },
+          { kind: "haptic", style: "success" },
+        ],
+      },
+      denied: {
+        kind: "toast",
+        tone: "error",
+        message: "Allow the microphone in Settings → Tailzu, then swipe back and tap the keyboard mic again.",
+      },
+      openMainSettings: {
+        kind: "openSettings",
+      },
+      dismiss: {
+        kind: "sequence",
+        actions: [
+          { kind: "cancelKeyboardHandoff" },
+          { kind: "navigateBack" },
+        ],
+      },
+    },
+    root: {
+      type: "Screen",
+      style: { paddingHorizontal: 24, paddingTop: 48, paddingBottom: 24 },
+      children: [
+        { type: "Overline", props: { content: "One-time setup" } },
+        { type: "Heading", props: { content: "Turn on voice for the keyboard" }, style: { fontSize: 28, fontWeight: "800", color: "$color.text", marginTop: 6, marginBottom: 12 } },
+        { type: "Paragraph", props: { content: "iOS requires this app to grant microphone access before the keyboard can use it. Tap Allow, then swipe back to your app — the keyboard mic will work from then on." }, style: { marginBottom: 28 } },
+        { type: "Card", style: { marginBottom: 22, padding: 16 }, children: [
+          { type: "Stack", style: { flexDirection: "row", alignItems: "center", marginBottom: 10 }, children: [
+            { type: "Text", props: { content: "1." }, style: { fontSize: 15, fontWeight: "800", color: "$color.primary", width: 24 } },
+            { type: "Text", props: { content: "Tap the Allow mic button below" }, style: { fontSize: 15, color: "$color.text", flex: 1 } },
+          ] },
+          { type: "Stack", style: { flexDirection: "row", alignItems: "center", marginBottom: 10 }, children: [
+            { type: "Text", props: { content: "2." }, style: { fontSize: 15, fontWeight: "800", color: "$color.primary", width: 24 } },
+            { type: "Text", props: { content: "Approve the iOS microphone prompt" }, style: { fontSize: 15, color: "$color.text", flex: 1 } },
+          ] },
+          { type: "Stack", style: { flexDirection: "row", alignItems: "center" }, children: [
+            { type: "Text", props: { content: "3." }, style: { fontSize: 15, fontWeight: "800", color: "$color.primary", width: 24 } },
+            { type: "Text", props: { content: "Swipe back to your app and tap the keyboard mic again" }, style: { fontSize: 15, color: "$color.text", flex: 1 } },
+          ] },
+        ] },
+        {
+          type: "Button",
+          visibleIf: { not: { truthy: "micGranted" } },
+          props: { label: "Allow microphone", variant: "primary" },
+          on: { onPress: "grantMic" },
+        },
+        {
+          type: "Card",
+          visibleIf: { truthy: "micGranted" },
+          motion: { appear: "fadeInUp" },
+          style: { padding: 16, marginBottom: 12 },
+          children: [
+            { type: "Heading", props: { content: "You're set" }, style: { fontSize: 18, fontWeight: "800", color: "$color.text", marginBottom: 6 } },
+            { type: "Paragraph", props: { content: "Swipe back to your app now and tap the keyboard mic. It'll work from here on out." } },
+          ],
+        },
+        { type: "Spacer", style: { height: 10 } },
+        {
+          type: "Button",
+          visibleIf: { not: { truthy: "micGranted" } },
+          props: { label: "Open Tailzu Settings", variant: "secondary" },
+          on: { onPress: "openMainSettings" },
+        },
+        { type: "Spacer", style: { height: 8 } },
+        {
+          type: "Button",
+          props: { label: "Cancel", variant: "secondary" },
+          on: { onPress: "dismiss" },
+        },
+      ],
+    },
     cacheTtlSeconds: 0,
   };
 }

@@ -826,7 +826,10 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
 
 app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   noStoreSdui(reply);
-  const body = (req.body ?? {}) as { screenId?: string };
+  const body = (req.body ?? {}) as {
+    screenId?: string;
+    params?: Record<string, string | number | boolean | undefined>;
+  };
   const screenId = body.screenId;
   if (!screenId) {
     return reply.code(400).send({ code: "bad_request", message: "Missing 'screenId'" });
@@ -854,6 +857,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     usage,
     stats,
     history,
+    params: body.params,
   });
   if (!screen) {
     return reply.code(404).send({ code: "bad_request", message: `Unknown screen '${screenId}'` });

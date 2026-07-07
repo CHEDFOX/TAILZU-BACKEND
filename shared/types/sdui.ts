@@ -491,6 +491,19 @@ export type ActionSpec =
   // --- keyboard bridge (extension) ---
   | { kind: "keyboard.reload" }
   | { kind: "keyboard.setLayout"; language: string }
+  // --- mic handoff ---
+  // The keyboard extension can't hold the microphone (iOS blocks it in
+  // extension processes). So mic taps in the keyboard hand off to the main
+  // app, which records + refines and calls back with the cleaned text.
+  // See targets/keyboard/TulmiHandoff.swift for the full flow.
+  | {
+      kind: "completeKeyboardHandoff";
+      sessionId?: string;
+      text?: string;
+      textPath?: string;
+      onSuccess?: ActionRef;
+    }
+  | { kind: "cancelKeyboardHandoff"; sessionId?: string; onSuccess?: ActionRef }
   // --- cache / dev ---
   | { kind: "clearCache" }
   | { kind: "reloadApp" }
