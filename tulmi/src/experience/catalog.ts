@@ -111,10 +111,19 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
     // The server owns onboarding: first-run users land on the flow; everyone
     // else goes straight to the app.
     initialScreenId: opts.onboarded ? "home" : "onboarding",
-    flags: {},
+    flags: {
+      // Policy URLs — Settings screen links open these in-browser.
+      // Server-hosted so a mistake in the copy is a single-file redeploy.
+      "policy.privacy.url": "https://api.tailzu.space/privacy",
+      "policy.terms.url": "https://api.tailzu.space/terms",
+      "support.url": "mailto:support@tailzu.space",
+    },
     // Central copy — every screen can reference these with "@key".
     labels: {
       "app.name": "Tailzu",
+      "settings.privacyPolicy": "Privacy Policy",
+      "settings.termsOfService": "Terms of Service",
+      "settings.support": "Contact Support",
       "onboarding.title": "Welcome To Tailzu",
       "onboarding.subtitle": "Speak Or Type Rough — Tailzu Makes It Sound Like You.",
       "onboarding.cta": "Get Started",

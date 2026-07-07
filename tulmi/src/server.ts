@@ -21,6 +21,8 @@ import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import transcribeStream from "./routes/transcribe-stream.js";
 import { registerMediaRoutes, loadMediaRegistry, getMediaRegistry } from "./routes/media.js";
+import { PRIVACY_POLICY_HTML, PRIVACY_POLICY_EFFECTIVE } from "./routes/policies/privacy.js";
+import { TERMS_HTML, TERMS_EFFECTIVE } from "./routes/policies/terms.js";
 import { getConfig, VERSION } from "./config.js";
 import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
 import { enforceQuota, recordUsage, usageSummary, usageWindows } from "./usage/metering.js";
@@ -178,6 +180,39 @@ function tooLong(text: string | undefined): string | null {
 // /healthz — liveness only. Cheap, no upstream calls. Used by Docker HEALTHCHECK.
 app.get("/healthz", async (): Promise<HealthResponse> => {
   return { status: "ok", service: "tulmi-backend", version: VERSION };
+});
+
+// --- Public policies (linked from App Store Connect + in-app Settings) -----
+// Served as HTML directly from the backend so the URL never breaks even if
+// the marketing site is down. Cache-controlled for 1h; edits go live within
+// that window after a redeploy. If a shorter turnaround is ever needed, bump
+// the cache-version and clients will refetch.
+
+app.get("/privacy", async (_req, reply) => {
+  reply.type("text/html; charset=utf-8");
+  reply.header("Cache-Control", "public, max-age=3600");
+  return PRIVACY_POLICY_HTML;
+});
+
+app.get("/terms", async (_req, reply) => {
+  reply.type("text/html; charset=utf-8");
+  reply.header("Cache-Control", "public, max-age=3600");
+  return TERMS_HTML;
+});
+
+// Machine-readable policy metadata — Apple's App Privacy questionnaire + any
+// automated review tooling can pull effective dates from here.
+app.get("/policies.json", async () => {
+  return {
+    privacy: {
+      url: "https://api.tailzu.space/privacy",
+      effective: PRIVACY_POLICY_EFFECTIVE,
+    },
+    terms: {
+      url: "https://api.tailzu.space/terms",
+      effective: TERMS_EFFECTIVE,
+    },
+  };
 });
 
 // /readyz — readiness. Pings the upstreams the pipeline depends on so an
