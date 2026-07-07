@@ -221,7 +221,7 @@ export const PRIVACY_POLICY_HTML = `<!DOCTYPE html>
 <h2>11. Contact</h2>
 <p>Questions or requests: <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a></p>
 
-<p style="color:#6b6b6b; font-size:13px; margin-top:40px;">This policy is available in machine-readable form at <code>https://api.tailzu.space/privacy</code>. The version served by the app matches the version linked in App Store Connect.</p>
+<p style="color:#6b6b6b; font-size:13px; margin-top:40px;">This policy is available at <code>https://tailzu.space/privacy</code>. The version served by the app matches the version linked in App Store Connect.</p>
 
 </body>
 </html>`;

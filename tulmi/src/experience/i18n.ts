@@ -103,12 +103,59 @@ function transformActionSpec(a: ActionSpec, fn: StrFn): ActionSpec {
   }
 }
 
+// Prop keys on a Node whose value is user-facing display text — the whole set
+// the SDUI catalog uses today. Add here whenever a new copy-bearing prop lands
+// in shared/types/sdui.ts; the transformer walks the same set both passes so a
+// new prop is silently untranslated until it's on this list.
+const NODE_TEXT_PROPS = [
+  "content",
+  "label",
+  "placeholder",
+  "title",
+  "subtitle",
+  "heading",
+  "text",
+  "message",
+  "hint",
+  "caption",
+  "value",
+  "emptyLabel",
+  "helper",
+  "helperText",
+  "footer",
+  "header",
+] as const;
+
+// Some props hold an array of strings (chips, quick replies) — treat every
+// element the same as a scalar copy prop.
+const NODE_TEXT_ARRAY_PROPS = ["chips", "options", "choices", "items"] as const;
+
 function transformNode(node: Node, fn: StrFn): Node {
   const out: Node = { ...node };
   if (node.props) {
     const p: Record<string, unknown> = { ...node.props };
-    for (const key of ["content", "label", "placeholder"]) {
+    for (const key of NODE_TEXT_PROPS) {
       if (typeof p[key] === "string") p[key] = fn(p[key] as string);
+    }
+    for (const key of NODE_TEXT_ARRAY_PROPS) {
+      const v = p[key];
+      if (Array.isArray(v)) {
+        p[key] = v.map((item) =>
+          typeof item === "string"
+            ? fn(item)
+            : item && typeof item === "object"
+              ? {
+                  ...(item as Record<string, unknown>),
+                  ...(typeof (item as { label?: unknown }).label === "string"
+                    ? { label: fn((item as { label: string }).label) }
+                    : {}),
+                  ...(typeof (item as { title?: unknown }).title === "string"
+                    ? { title: fn((item as { title: string }).title) }
+                    : {}),
+                }
+              : item,
+        );
+      }
     }
     out.props = p;
   }

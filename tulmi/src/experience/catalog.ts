@@ -113,9 +113,12 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
     initialScreenId: opts.onboarded ? "home" : "onboarding",
     flags: {
       // Policy URLs — Settings screen links open these in-browser.
-      // Server-hosted so a mistake in the copy is a single-file redeploy.
-      "policy.privacy.url": "https://api.tailzu.space/privacy",
-      "policy.terms.url": "https://api.tailzu.space/terms",
+      // Served from tailzu.space (proxied to the backend by Caddy — see
+      // deploy/Caddyfile) so the URL a user copies from the address bar looks
+      // like a real domain rather than an internal api. host. Same content
+      // either way.
+      "policy.privacy.url": "https://tailzu.space/privacy",
+      "policy.terms.url": "https://tailzu.space/terms",
       "support.url": "mailto:support@tailzu.space",
     },
     // Central copy — every screen can reference these with "@key".
