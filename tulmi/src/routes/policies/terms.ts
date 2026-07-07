@@ -5,7 +5,7 @@
  * Bump the effective date if you meaningfully change subscription terms,
  * refund policy, or governing law.
  */
-export const TERMS_EFFECTIVE = "January 8, 2026";
+export const TERMS_EFFECTIVE = "July 7, 2026";
 
 export const TERMS_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -55,12 +55,18 @@ export const TERMS_HTML = `<!DOCTYPE html>
 <h3>3.1 Purchase</h3>
 <p>Certain Tailzu features are available only through a paid subscription. Subscriptions are billed through the Apple App Store or Google Play; you agree to the terms of those stores in addition to these Terms.</p>
 
-<h3>3.2 Auto-renewal</h3>
+<h3>3.2 Auto-renewal (App Store / Google Play required disclosures)</h3>
 <ul>
-  <li>Subscriptions automatically renew at the end of each billing period unless canceled at least 24 hours before the renewal date.</li>
-  <li>Your payment method will be charged for the renewal fee at the current price.</li>
+  <li>Payment will be charged to your iTunes Account (iOS) or Google Play account (Android) at confirmation of purchase.</li>
+  <li>Subscription automatically renews unless auto-renew is turned off at least 24 hours before the end of the current period.</li>
+  <li>Your account will be charged for renewal within 24 hours prior to the end of the current period at the same price of the selected subscription plan.</li>
+  <li>Subscriptions may be managed by you and auto-renewal may be turned off by going to your account settings after purchase.</li>
+  <li>Any unused portion of a free trial period, if offered, will be forfeited when you purchase a subscription, where applicable.</li>
   <li>You can manage or cancel subscriptions in your device's App Store or Google Play settings.</li>
 </ul>
+
+<h3>3.2.1 Current subscription plans</h3>
+<p>The current subscription plans, prices, and durations are shown inside the app on the paywall screen and in your device's App Store or Google Play. Plans and prices may change over time; the price you see at purchase is the price you pay.</p>
 
 <h3>3.3 Free trials</h3>
 <p>If we offer a free trial, you will not be charged during the trial period. If you do not cancel before the trial ends, you will be automatically billed for the subscription.</p>
@@ -138,18 +144,40 @@ export const TERMS_HTML = `<!DOCTYPE html>
 <hr>
 
 <h2>13. Governing law and disputes</h2>
-<p>These Terms are governed by the laws of the jurisdiction in which Tailzu's operator is registered, without regard to conflict-of-law rules. Any dispute shall be resolved in the courts of that jurisdiction, unless the App Store's or Google Play's own terms require otherwise.</p>
+<p><em>NOTE FOR OPERATOR: replace the placeholder below with your registered legal jurisdiction before submitting to the App Store.</em></p>
+<p>These Terms are governed by the laws of <strong>India</strong>, without regard to its conflict-of-law rules. Any dispute arising from or relating to these Terms or the Service shall be resolved exclusively in the courts of <strong>Bangalore, India</strong>, unless the App Store's or Google Play's own terms require otherwise for consumer disputes.</p>
+<p>If you are a consumer resident in the European Union, United Kingdom, or another jurisdiction whose mandatory consumer-protection laws grant you the right to bring proceedings in the courts of your place of residence, that right is preserved.</p>
 
 <hr>
 
 <h2>14. Apple App Store additional terms</h2>
-<p>If you download Tailzu from the Apple App Store, the following additional terms apply:</p>
-<ul>
-  <li>These Terms are between you and Tailzu, not Apple. Apple has no obligation to provide maintenance or support.</li>
-  <li>In the event of a failure to conform to any applicable warranty, you may notify Apple, and Apple will refund the purchase price. Otherwise, Apple has no warranty obligation.</li>
-  <li>You represent that you are not in a country subject to U.S. embargo or on a U.S. government prohibited list.</li>
-  <li>Apple is a third-party beneficiary of these Terms and may enforce them against you.</li>
-</ul>
+<p>If you download Tailzu from the Apple App Store, the following additional terms apply. These terms are between you and Tailzu; Apple is not a party to these Terms but is an intended third-party beneficiary and has the right to enforce them against you.</p>
+
+<h3>14.1 Scope of License</h3>
+<p>Tailzu grants you a non-transferable license to use the app on any Apple-branded products that you own or control, and as permitted by the App Store Terms of Service. You may not distribute, network, share, or make the app available for use over a network where it could be used by multiple devices at the same time (except as expressly permitted by Apple).</p>
+
+<h3>14.2 Maintenance and support</h3>
+<p>Tailzu is solely responsible for providing any maintenance and support services with respect to the app, as specified in these Terms or as required under applicable law. Apple has no obligation whatsoever to furnish any maintenance and support services with respect to the app.</p>
+
+<h3>14.3 Warranty</h3>
+<p>Tailzu is solely responsible for any product warranties, whether express or implied by law, to the extent not effectively disclaimed. In the event of any failure of the app to conform to any applicable warranty, you may notify Apple, and Apple will refund the purchase price of the app to you. To the maximum extent permitted by applicable law, Apple will have no other warranty obligation whatsoever with respect to the app, and any other claims, losses, liabilities, damages, costs, or expenses attributable to any failure to conform to any warranty will be the sole responsibility of Tailzu.</p>
+
+<h3>14.4 Product claims</h3>
+<p>Tailzu, not Apple, is responsible for addressing any claims by you or any third party relating to the app or your possession or use of the app, including but not limited to: (i) product liability claims; (ii) any claim that the app fails to conform to any applicable legal or regulatory requirement; and (iii) claims arising under consumer protection or similar legislation.</p>
+
+<h3>14.5 Intellectual property rights</h3>
+<p>In the event of any third-party claim that the app or your possession and use of the app infringes that third party's intellectual property rights, Tailzu, not Apple, will be solely responsible for the investigation, defense, settlement, and discharge of any such intellectual property infringement claim.</p>
+
+<h3>14.6 Legal compliance</h3>
+<p>You represent and warrant that (i) you are not located in a country that is subject to a U.S. Government embargo, or that has been designated by the U.S. Government as a "terrorist supporting" country; and (ii) you are not listed on any U.S. Government list of prohibited or restricted parties.</p>
+
+<h3>14.7 Third-party beneficiary</h3>
+<p>You acknowledge and agree that Apple, and Apple's subsidiaries, are third-party beneficiaries of these Terms, and that, upon your acceptance of these Terms, Apple will have the right (and will be deemed to have accepted the right) to enforce these Terms against you as a third-party beneficiary thereof.</p>
+
+<h3>14.8 Developer contact</h3>
+<p>For questions, complaints, or claims regarding the app, contact:<br>
+Tailzu · <a href="mailto:support@tailzu.space">support@tailzu.space</a><br>
+Business address: <em>[Add your registered business address before submission.]</em></p>
 
 <hr>
 

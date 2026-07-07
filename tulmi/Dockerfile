@@ -42,8 +42,12 @@ COPY --from=build /app/tulmi/dist ./dist
 COPY --from=build /app/shared /app/shared
 
 # Drop root: node:20-slim ships a non-root `node` user (uid 1000). Make sure it
-# owns everything the process touches.
-RUN chown -R node:node /app
+# owns everything the process touches — INCLUDING the /data volume mount used
+# by the media store (docker-compose mounts tulmi_media at /data/media). Docker
+# creates named volumes as root:root by default, which would EACCES on first
+# upload; pre-creating /data with node ownership means the writable-under-mount
+# strategy works even though the mount point overlays this later.
+RUN mkdir -p /data/media && chown -R node:node /app /data
 USER node
 
 EXPOSE 8080

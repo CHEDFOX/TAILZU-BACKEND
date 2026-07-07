@@ -28,7 +28,24 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const REGISTRY_FILENAME = "registry.json";
+/** Refuse keys that would pollute Object.prototype or produce a poisoned entry. */
+const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+/**
+ * Timing-safe string compare. `provided === expected` leaks length via
+ * response time on repeated probes; this uses Node's timingSafeEqual which
+ * runs in constant time relative to length.
+ */
+function safeEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  if (ab.length !== bb.length) return false;
+  return crypto.timingSafeEqual(ab, bb);
+}
+
+// Registry file lives OUTSIDE MEDIA_DIR so @fastify/static doesn't serve it
+// publicly at /media/registry.json (which would leak every named mapping).
+const REGISTRY_FILENAME = "_registry_v1.json";
 
 export type MediaEntry = {
   url: string;
@@ -62,8 +79,17 @@ function extForContentType(ct: string): string {
   return map[ct.toLowerCase()] ?? ct.split("/")[1] ?? "bin";
 }
 
-async function readRegistry(dir: string): Promise<MediaRegistry> {
-  const file = path.join(dir, REGISTRY_FILENAME);
+/**
+ * Registry file lives in the PARENT of MEDIA_DIR (e.g. /data/_registry_v1.json
+ * when MEDIA_DIR is /data/media) so the public static server rooted at
+ * MEDIA_DIR can never expose it.
+ */
+function registryPath(mediaDir: string): string {
+  return path.join(path.dirname(mediaDir), REGISTRY_FILENAME);
+}
+
+async function readRegistry(mediaDir: string): Promise<MediaRegistry> {
+  const file = registryPath(mediaDir);
   try {
     const text = await fs.readFile(file, "utf8");
     const parsed = JSON.parse(text);
@@ -74,9 +100,17 @@ async function readRegistry(dir: string): Promise<MediaRegistry> {
   return {};
 }
 
-async function writeRegistry(dir: string, r: MediaRegistry): Promise<void> {
-  const file = path.join(dir, REGISTRY_FILENAME);
-  await fs.writeFile(file, JSON.stringify(r, null, 2) + "\n", "utf8");
+/**
+ * Atomic write: serialise to a temp sibling then rename over the target.
+ * Prevents corrupt registries when the process is killed mid-write or two
+ * uploads race. On EACCES / EPERM (volume-owner mismatch) we surface a clear
+ * error instead of silently losing data.
+ */
+async function writeRegistry(mediaDir: string, r: MediaRegistry): Promise<void> {
+  const file = registryPath(mediaDir);
+  const tmp = file + `.tmp.${process.pid}.${Date.now()}`;
+  await fs.writeFile(tmp, JSON.stringify(r, null, 2) + "\n", "utf8");
+  await fs.rename(tmp, file);
 }
 
 let cachedRegistry: MediaRegistry = {};
@@ -93,11 +127,14 @@ export async function loadMediaRegistry(mediaDir: string): Promise<void> {
   cachedRegistry = await readRegistry(mediaDir);
 }
 
-/** Guard: admin-secret header must match the ADMIN_SECRET env var. */
+/** Guard: admin-secret header must match the ADMIN_SECRET env var (timing-safe). */
 function checkAdmin(req: any, expected: string): { ok: boolean; reason?: string } {
   if (!expected) return { ok: false, reason: "not_configured" };
   const provided = req.headers["x-admin-secret"];
-  if (typeof provided !== "string" || provided.length === 0 || provided !== expected) {
+  if (typeof provided !== "string" || provided.length === 0) {
+    return { ok: false, reason: "unauthorized" };
+  }
+  if (!safeEqual(provided, expected)) {
     return { ok: false, reason: "unauthorized" };
   }
   return { ok: true };
@@ -156,6 +193,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const query = (req as any).query as Record<string, string> | undefined;
     const key = (query?.key ?? extraKey ?? sha).trim();
+    if (RESERVED_KEYS.has(key)) return reply.code(400).send({ code: "reserved_key" });
     entry.key = key;
     cachedRegistry[key] = entry;
     await writeRegistry(mediaDir, cachedRegistry);
@@ -178,7 +216,10 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
       .send({ code: guard.reason });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const key = ((req as any).params?.key ?? "") as string;
-    if (!(key in cachedRegistry)) return reply.code(404).send({ code: "not_found" });
+    if (RESERVED_KEYS.has(key)) return reply.code(400).send({ code: "reserved_key" });
+    if (!Object.prototype.hasOwnProperty.call(cachedRegistry, key)) {
+      return reply.code(404).send({ code: "not_found" });
+    }
     delete cachedRegistry[key];
     await writeRegistry(mediaDir, cachedRegistry);
     return reply.send({ ok: true });
@@ -191,8 +232,11 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const key = String(((req as any).query?.key ?? "")).trim();
     if (!key) return reply.code(400).send({ code: "missing_key" });
+    if (RESERVED_KEYS.has(key)) return reply.code(400).send({ code: "reserved_key" });
+    if (!Object.prototype.hasOwnProperty.call(cachedRegistry, key)) {
+      return reply.code(404).send({ code: "not_found" });
+    }
     const entry = cachedRegistry[key];
-    if (!entry) return reply.code(404).send({ code: "not_found" });
     return reply.send(entry);
   });
 }

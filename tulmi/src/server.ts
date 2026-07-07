@@ -113,12 +113,32 @@ await app.register(multipart, {
 });
 await app.register(websocket);
 
+// --- Rate limiter (must register BEFORE any route that needs throttling) ---
+// Fastify applies plugin hooks in registration order, so /v1/media/* + admin
+// routes below need this plugin already in place to be throttleable.
+await app.register(rateLimit, {
+  global: false,
+  max: cfg.RATE_LIMIT_MAX,
+  timeWindow: cfg.RATE_LIMIT_WINDOW_MS,
+  keyGenerator: (req) => {
+    const auth = req.headers["authorization"];
+    if (typeof auth === "string" && auth.length > 7) {
+      // Hash the bearer so log lines / error reports never carry raw JWTs, and
+      // so an attacker rotating a fake token can't "look" like a fresh user
+      // per request. Truncated to 24 hex = 96 bits, plenty for a rate-limit key.
+      const tok = auth.replace(/^Bearer\s+/i, "").trim();
+      return "u:" + createHash("sha256").update(tok).digest("hex").slice(0, 24);
+    }
+    return "ip:" + req.ip;
+  },
+});
+
 // --- Media store -----------------------------------------------------------
 // Serves /media/* as static files from MEDIA_DIR (mounted volume so uploads
 // survive container recreation). Admin routes (/v1/media/*) handle upload +
-// list + delete; they read/write registry.json which is also mounted. The
-// bootstrap response surfaces the registry as `bootstrap.media` so clients
-// can resolve keys → URLs without a separate request.
+// list + delete. The bootstrap response surfaces the registry as
+// `bootstrap.media` so clients can resolve keys → URLs without a separate
+// request. Registered AFTER rate-limit so admin endpoints can be throttled.
 const MEDIA_DIR = process.env.MEDIA_DIR || "/data/media";
 const MEDIA_PUBLIC_URL = process.env.MEDIA_PUBLIC_URL
   || `${process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"}/media`;
@@ -135,27 +155,6 @@ registerMediaRoutes(app, {
   mediaDir: MEDIA_DIR,
   publicUrlPrefix: MEDIA_PUBLIC_URL,
   adminSecret: cfg.ADMIN_SECRET ?? "",
-});
-
-// Rate-limit /v1/* routes. The key is the SHA-256 of the bearer token (so an
-// attacker rotating fake tokens can't sidestep their per-user budget), or the
-// client IP for anonymous callers. Health/readiness are excluded so
-// load-balancer probes are never throttled.
-await app.register(rateLimit, {
-  global: false,
-  max: cfg.RATE_LIMIT_MAX,
-  timeWindow: cfg.RATE_LIMIT_WINDOW_MS,
-  keyGenerator: (req) => {
-    const auth = req.headers["authorization"];
-    if (typeof auth === "string" && auth.length > 7) {
-      // Hash the bearer so log lines / error reports never carry raw JWTs, and
-      // so an attacker rotating a fake token can't "look" like a fresh user
-      // per request. Truncated to 24 hex = 96 bits, plenty for a rate-limit key.
-      const tok = auth.replace(/^Bearer\s+/i, "").trim();
-      return "u:" + createHash("sha256").update(tok).digest("hex").slice(0, 24);
-    }
-    return "ip:" + req.ip;
-  },
 });
 
 await app.register(transcribeStream);

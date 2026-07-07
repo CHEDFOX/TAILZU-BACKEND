@@ -8,7 +8,7 @@
  * lives → bump the effective date AND remember to update the App Privacy
  * questionnaire in App Store Connect.
  */
-export const PRIVACY_POLICY_EFFECTIVE = "January 8, 2026";
+export const PRIVACY_POLICY_EFFECTIVE = "July 7, 2026";
 
 export const PRIVACY_POLICY_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -64,16 +64,38 @@ export const PRIVACY_POLICY_HTML = `<!DOCTYPE html>
 <h3>1.4 Device and diagnostic information</h3>
 <ul>
   <li><strong>Device model, OS version, app version, language, timezone</strong></li>
+  <li><strong>Push notification tokens</strong> (via Apple Push Notification service / Firebase Cloud Messaging) — used to deliver notifications you have opted into</li>
+  <li><strong>Advertising identifier (IDFA on iOS)</strong> — accessed only if you tap "Allow" on the App Tracking Transparency prompt. Never collected without your explicit opt-in.</li>
   <li><strong>Crash reports and error logs</strong> (via Sentry, only if enabled) — used to diagnose and fix bugs</li>
   <li><strong>Usage events</strong> (via PostHog, only if enabled) — anonymous aggregate metrics about which features are used, to guide product improvements</li>
 </ul>
 
-<h3>1.5 Information we do not collect</h3>
+<h3>1.5 Data you may choose to share via device permissions</h3>
+
+<p>The app requests OS-level permissions only when you activate a specific feature. If you deny a permission, the related feature is unavailable but the rest of the app functions normally.</p>
+
+<ul>
+  <li><strong>Microphone</strong> — required for voice input. Audio is transient and never stored (see 1.2 above).</li>
+  <li><strong>Photos / Photo Library</strong> — accessed only when you attach an image to a message or import media. We never scan your library in the background.</li>
+  <li><strong>Camera</strong> — accessed only when you actively invoke camera capture or QR scan.</li>
+  <li><strong>Contacts</strong> — accessed only when you tag or mention a contact. We do not upload your contact book to our servers.</li>
+  <li><strong>Calendar</strong> — accessed only when you dictate an event to add to your calendar.</li>
+  <li><strong>Location (precise or approximate)</strong> — accessed only if you dictate a location-tagged note or check-in. Not collected in the background.</li>
+  <li><strong>Face ID / Touch ID / biometric authentication</strong> — used locally on your device to unlock private drafts. Biometric data never leaves your device.</li>
+  <li><strong>Clipboard</strong> — read only when you paste into the app. We never read the clipboard in the background.</li>
+  <li><strong>Bluetooth</strong> — used to connect to headsets you pair for voice input.</li>
+  <li><strong>Local network</strong> — used only if you enable device-to-device sync.</li>
+  <li><strong>Speech recognition</strong> — on-device recognition; audio processed locally by iOS.</li>
+</ul>
+
+<h3>1.6 Non-collection notice</h3>
 <ul>
   <li>We do NOT collect your typing outside of when you actively invoke the mic or refine actions.</li>
   <li>The keyboard extension respects Apple's and Google's sandboxing — we do not read passwords, PINs, or content from secure text fields.</li>
   <li>We do not sell personal information to third parties.</li>
+  <li>We do not share your content with third parties for their independent marketing.</li>
   <li>We do not use your data to train third-party AI models.</li>
+  <li><strong>CCPA notice:</strong> in the preceding 12 months we have NOT sold or shared any category of personal information for value.</li>
 </ul>
 
 <hr>
@@ -141,17 +163,22 @@ export const PRIVACY_POLICY_HTML = `<!DOCTYPE html>
 
 <h2>5. Your rights</h2>
 
-<p>Depending on your region (GDPR, CCPA, and similar), you have the right to:</p>
+<p>Depending on your region (GDPR, CCPA, and similar laws), you have the right to:</p>
 <ul>
-  <li>Access the personal information we hold about you</li>
-  <li>Correct inaccurate information</li>
-  <li>Delete your account and associated data</li>
-  <li>Export your data</li>
-  <li>Withdraw consent for optional processing (crash reporting, analytics)</li>
-  <li>Object to processing</li>
+  <li><strong>Access</strong> — request a copy of the personal information we hold about you</li>
+  <li><strong>Correct</strong> inaccurate or incomplete information</li>
+  <li><strong>Delete</strong> your account and associated data ("right to erasure")</li>
+  <li><strong>Portability</strong> — export your data in a machine-readable format</li>
+  <li><strong>Restrict processing</strong> in specific circumstances</li>
+  <li><strong>Object</strong> to processing based on legitimate interests</li>
+  <li><strong>Withdraw consent</strong> for optional processing (crash reporting, analytics, tracking) at any time</li>
+  <li><strong>Non-discrimination</strong> — we will not deny service, charge different prices, or provide a different level of service because you exercised any right (CCPA)</li>
+  <li><strong>Automated decision-making</strong> — request human review of significant decisions made about you by automated systems. We do not currently make such decisions.</li>
+  <li><strong>Authorized agent</strong> — you may designate an authorized agent to make requests on your behalf (CCPA)</li>
+  <li><strong>Complaint</strong> — lodge a complaint with your local data protection supervisory authority if you believe we have not complied with applicable law (GDPR)</li>
 </ul>
 
-<p>To exercise any of these rights, contact us at <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a>. We respond within 30 days.</p>
+<p>To exercise any of these rights, contact us at <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a>. We respond within 30 days (45 for CCPA requests, with a possible 45-day extension where permitted). We may request information to verify your identity before processing.</p>
 
 <hr>
 
