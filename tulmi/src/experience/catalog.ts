@@ -1326,12 +1326,33 @@ function keyboardRecordScreen(ctx: ScreenContext): ScreenResponse {
         { type: "Heading", props: { content: "Speak, then swipe back" }, style: { fontSize: 26, fontWeight: "800", color: "$color.text", marginTop: 6, marginBottom: 6 } },
         { type: "Paragraph", props: { content: "We'll clean it up and drop the text into your keyboard. Nothing gets sent from here — the keyboard inserts it into whatever app you were in." }, style: { marginBottom: 28 } },
         // Big centered mic. VoiceToggle handles record → upload →
-        // dictationSample. Backend can swap for Lottie / custom art any time.
+        // dictationSample.
+        //
+        // Media on the mic:
+        //   iconIdle       — static image shown while not recording. Upload
+        //                    it via /v1/media/upload and reference by key.
+        //   iconRecording  — image played (or animated GIF/APNG) while
+        //                    recording. RN plays animated images natively,
+        //                    so a single animated file covers the "keep
+        //                    playing until recording ends" case.
+        // Missing keys fall back to the built-in Tailzu-mark → line morph,
+        // so a fresh deploy without uploaded assets still works.
         { type: "Stack", style: { alignItems: "center", justifyContent: "center", marginBottom: 20 }, children: [
           {
             type: "VoiceToggle",
             bind: { value: "dictationSample" },
-            props: { targetApp: hostApp || "Generic", language: "auto", size: 96, autoStart: true },
+            props: {
+              targetApp: hostApp || "Generic",
+              language: "auto",
+              size: 128,
+              autoStart: true,
+              // Backend-owned mic art. Swap the keys any time you upload
+              // new versions to the media store — no rebuild required.
+              iconIdle: { key: "mic.idle" },
+              iconRecording: { key: "mic.recording" },
+              background: "#ffffff",
+              contentScale: 0.72,
+            },
             on: { onError: "err" },
             fallback: {
               type: "VoiceButton",
