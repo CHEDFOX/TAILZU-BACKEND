@@ -161,16 +161,31 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
     const anyReq = req as any;
     const parts = anyReq.parts?.();
     if (!parts) return reply.code(400).send({ code: "no_multipart" });
-    let uploadedFile: any = null;
+    // IMPORTANT: the iterator can only advance to the next part once the
+    // current part's stream has been consumed. So we MUST call toBuffer()
+    // on the file part *inside* the loop — the old "capture the reference,
+    // read the buffer after the loop" pattern hangs forever on a
+    // single-part request because the loop can't tell there's no next
+    // part until the file's stream ends, which never happens without a
+    // consumer. Every upload timed out silently as a result.
+    let contentType = "application/octet-stream";
+    let buf: Buffer | null = null;
     let extraKey = "";
     for await (const p of parts) {
-      if (p.type === "file" && !uploadedFile) uploadedFile = p;
-      else if (p.type === "field" && p.fieldname === "key") extraKey = String(p.value);
+      if (p.type === "file") {
+        if (buf == null) {
+          buf = await p.toBuffer();
+          contentType = p.mimetype || contentType;
+        } else {
+          // Extra files — drain them so the iterator can advance to any
+          // trailing fields without hanging.
+          await p.toBuffer();
+        }
+      } else if (p.type === "field" && p.fieldname === "key") {
+        extraKey = String(p.value);
+      }
     }
-    if (!uploadedFile) return reply.code(400).send({ code: "no_file" });
-
-    const buf: Buffer = await uploadedFile.toBuffer();
-    const contentType: string = uploadedFile.mimetype || "application/octet-stream";
+    if (!buf) return reply.code(400).send({ code: "no_file" });
     const size = buf.length;
     const sha = crypto.createHash("sha256").update(buf).digest("hex");
     const ext = extForContentType(contentType);
