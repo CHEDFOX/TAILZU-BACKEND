@@ -1329,12 +1329,37 @@ function keyboardRecordScreen(ctx: ScreenContext): ScreenResponse {
         // dictationSample.
         //
         // Media on the mic:
-        //   iconIdle       — static image shown while not recording. Upload
-        //                    it via /v1/media/upload and reference by key.
-        //   iconRecording  — image played (or animated GIF/APNG) while
-        //                    recording. RN plays animated images natively,
-        //                    so a single animated file covers the "keep
-        //                    playing until recording ends" case.
+        //   iconIdle       — media for the idle (not-recording) state
+        //   iconRecording  — media for the recording state
+        //
+        // Each accepts EITHER the simple shape:
+        //     { key: "mic.idle" }                             ← MediaSpec
+        // OR the rich playback shape:
+        //     {
+        //       source: { key: "mic.recording" },             ← required
+        //       autoplay: true,                                ← play on show
+        //       loop: true,                                    ← loop forever
+        //       speed: 1.0,                                    ← Lottie / video
+        //       muted: true,                                   ← video (default)
+        //       maxDurationMs: 4000,                           ← hard cap
+        //       tint: "#FFCC00",                               ← PNG tint
+        //       playing: true,                                 ← controlled play
+        //       fireOnEnd: true,                               ← ⇢ node.onComplete
+        //     }
+        //
+        // When fireOnEnd is true, the VoiceToggle's onComplete NodeEvent
+        // fires when the media's playback ends (natural end OR after
+        // maxDurationMs). Wire an SDUI action in `on.onComplete` on the
+        // VoiceToggle node to react — the payload is
+        // { state: "idle" | "recording" } so one action can handle both.
+        //
+        // Supported source formats (auto-detected):
+        //   PNG · JPG · WebP · SVG · GIF · APNG · Lottie JSON · MP4 / MOV / WebM
+        //
+        // Uploading:
+        //   POST /v1/media/upload?key=mic.idle       (any of the above)
+        //   POST /v1/media/upload?key=mic.recording  (any of the above)
+        //
         // Missing keys fall back to the built-in Tailzu-mark → line morph,
         // so a fresh deploy without uploaded assets still works.
         { type: "Stack", style: { alignItems: "center", justifyContent: "center", marginBottom: 20 }, children: [
@@ -1346,10 +1371,20 @@ function keyboardRecordScreen(ctx: ScreenContext): ScreenResponse {
               language: "auto",
               size: 128,
               autoStart: true,
-              // Backend-owned mic art. Swap the keys any time you upload
-              // new versions to the media store — no rebuild required.
-              iconIdle: { key: "mic.idle" },
-              iconRecording: { key: "mic.recording" },
+              // Backend-owned mic art with full playback control.
+              iconIdle: {
+                source: { key: "mic.idle" },
+                autoplay: true,
+                loop: true,
+                speed: 1,
+              },
+              iconRecording: {
+                source: { key: "mic.recording" },
+                autoplay: true,
+                loop: true,
+                speed: 1,
+                muted: true,
+              },
               background: "#ffffff",
               contentScale: 0.72,
             },
