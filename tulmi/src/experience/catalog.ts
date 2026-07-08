@@ -1382,11 +1382,28 @@ function keyboardRecordScreen(ctx: ScreenContext): ScreenResponse {
               //
               // Two-media mode: also supply iconRecording → the two swap on
               // state change (see the commented block below to re-enable).
+              //
+              // Voice-reactive playback:
+              //   voiceReactive:true → media speed is driven by mic level
+              //                         while recording (loud → fast, quiet
+              //                         → slow). Amplitude-based, not
+              //                         fundamental-pitch, but visually
+              //                         reads the same.
+              //   speedRange:[a,b]   → min/max playback multiplier
+              //   levelRange:[a,b]   → dB window mapped into speedRange
+              //   speedSmoothing:0..1 → higher = laggier attack/release
+              //
+              //   NOTE: only Lottie + MP4 can be retimed at runtime. GIF/APNG
+              //   ignore live speed changes and keep their baked-in rate.
               iconIdle: {
                 source: { key: "mic.animation" },
                 loop: true,
                 speed: 1,
                 muted: true,
+                voiceReactive: true,
+                speedRange: [0.5, 2.5],
+                levelRange: [-45, -5],
+                speedSmoothing: 0.7,
               },
               // iconRecording: { source: { key: "mic.recording" }, loop: true },
               background: "#ffffff",
