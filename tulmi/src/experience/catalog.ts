@@ -1372,19 +1372,23 @@ function keyboardRecordScreen(ctx: ScreenContext): ScreenResponse {
               size: 128,
               autoStart: true,
               // Backend-owned mic art with full playback control.
+              //
+              // Single-media mode: supply ONLY iconIdle → the mic uses the
+              // same asset in both states and the client auto-binds `playing`
+              // to the recording state. tap → play, tap → pause (holds the
+              // current frame), tap → resume from that frame. Works for
+              // Lottie + video; GIF/APNG can't pause so the visual just
+              // keeps looping while recording state does its own thing.
+              //
+              // Two-media mode: also supply iconRecording → the two swap on
+              // state change (see the commented block below to re-enable).
               iconIdle: {
-                source: { key: "mic.idle" },
-                autoplay: true,
-                loop: true,
-                speed: 1,
-              },
-              iconRecording: {
-                source: { key: "mic.recording" },
-                autoplay: true,
+                source: { key: "mic.animation" },
                 loop: true,
                 speed: 1,
                 muted: true,
               },
+              // iconRecording: { source: { key: "mic.recording" }, loop: true },
               background: "#ffffff",
               contentScale: 0.72,
             },
