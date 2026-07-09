@@ -20,6 +20,12 @@ import type {
 } from "../../../shared/types/sdui.js";
 import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
 import type { HistoryEntry, Personality, StatsResponse, UsageSummary } from "../../../shared/types/api.js";
+import {
+  PERSONALITY_PRESETS,
+  findPreset,
+  TONE_LABELS,
+  MAX_PINNED_PRESETS,
+} from "./personalityPresets.js";
 
 /**
  * Optional accessor into the media registry — set at boot by server.ts so the
@@ -245,6 +251,8 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       return replyScreen();
     case "personality":
       return personalityScreen(ctx.personality);
+    case "personality_customize":
+      return personalityCustomizeScreen(ctx.personality);
     case "settings":
       return settingsScreen(ctx);
     case "stats":
@@ -553,26 +561,158 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
 
 /** The personality form — server seeds it with the user's saved profile. */
 function personalityScreen(p: Personality): ScreenResponse {
-  const SECTION = 30; // consistent gap between sections
+  const gap = (h: number): Node => ({ type: "Spacer", style: { height: h } });
   const chip = (label: string, group: string, value: string): Node => ({
     type: "Chip",
     props: { label, group, value },
     on: { onPress: { kind: "haptic", style: "selection" } },
   });
-  const label = (content: string): Node => ({ type: "Text", props: { content, variant: "label" }, style: { marginBottom: 8 } });
-  const gap = (h: number): Node => ({ type: "Spacer", style: { height: h } });
+
+  const activeId = p.activePresetId ?? "signature";
+  const activeTone = p.activeTone ?? findPreset(activeId).defaultTone;
+  const pinned = Array.isArray(p.pinnedPresetIds) ? p.pinnedPresetIds : [];
+  const active = findPreset(activeId);
+
+  // Preset cards — a 2-column grid rendered as a list of Row nodes so it
+  // works on the widest set of client builds. Each card highlights when it
+  // matches state.activePresetId and shows a "pinned" indicator when in the
+  // user's keyboard shortlist.
+  const presetCards = PERSONALITY_PRESETS.map((preset): Node => ({
+    type: "Card",
+    // Card visually reflects selection through a bind on activePresetId.
+    style: { padding: 12, marginBottom: 8 },
+    on: {
+      onPress: {
+        kind: "sequence",
+        actions: [
+          { kind: "setState", path: "activePresetId", value: preset.id },
+          { kind: "setState", path: "activeTone", value: preset.defaultTone },
+          { kind: "haptic", style: "selection" },
+          { kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: {
+            activePresetId: preset.id,
+            activeTone: preset.defaultTone,
+          }, onSuccess: "saved", onError: "saveErr" },
+        ],
+      },
+    },
+    children: [
+      { type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 12 }, children: [
+        { type: "Text", props: { content: preset.emoji }, style: { fontSize: 26 } },
+        { type: "Stack", style: { flex: 1 }, children: [
+          { type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 8 }, children: [
+            { type: "Text", props: { content: preset.name }, style: { fontSize: 16, fontWeight: "700", color: "$color.text" } },
+            { type: "Text", props: { content: "· selected" },
+              visibleIf: { eq: ["activePresetId", preset.id] },
+              style: { fontSize: 12, color: "$color.primary", fontWeight: "600" } },
+          ] },
+          { type: "Text", props: { content: preset.tagline }, style: { fontSize: 13, color: "$color.muted", marginTop: 2 } },
+        ] },
+        // Pin toggle — a star icon that flips on tap. Backend saves the
+        // whole pinnedPresetIds array on either add or remove.
+        { type: "Button",
+          on: { onPress: { kind: "sequence", actions: [
+            { kind: "haptic", style: "selection" },
+            { kind: "callEndpoint", method: "POST", path: "/v1/personality/pin", body: { presetId: preset.id }, onSuccess: "refreshPins", onError: "saveErr" },
+          ] } },
+          props: { label: pinned.includes(preset.id) ? "★" : "☆", variant: "ghost" },
+          style: { fontSize: 22, color: pinned.includes(preset.id) ? "$color.primary" : "$color.muted", padding: 6 },
+        },
+      ] },
+    ],
+  }));
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "personality",
     title: "",
     state: {
+      activePresetId: activeId,
+      activeTone,
+      pinnedCount: pinned.length,
+      pinnedIds: pinned,
+      status: "",
+    },
+    actions: {
+      saved: { kind: "haptic", style: "success" },
+      saveErr: { kind: "toast", tone: "error", message: "Couldn't save. Check your connection." },
+      refreshPins: { kind: "sequence", actions: [
+        { kind: "haptic", style: "success" },
+        { kind: "refresh" },
+      ] },
+      setTone: { kind: "sequence", actions: [
+        { kind: "haptic", style: "selection" },
+        { kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: {
+          activeTone: "$state.activeTone",
+        }, onSuccess: "saved", onError: "saveErr" },
+      ] },
+      openCustomize: { kind: "navigate", screenId: "personality_customize" },
+    },
+    root: {
+      type: "Screen",
+      style: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 24 },
+      children: [
+        { type: "Heading", props: { content: "Voice" }, style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 4 } },
+        { type: "Paragraph", props: { content: "Pick a voice. Adjust the tone. Star up to 6 to keep on your keyboard for quick switches." }, style: { marginBottom: 18 } },
+
+        // Active preset — hero card at the top with the tone toggle.
+        { type: "Card", style: { padding: 16, marginBottom: 14 }, children: [
+          { type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 }, children: [
+            { type: "Text", props: { content: active.emoji }, style: { fontSize: 34 } },
+            { type: "Stack", style: { flex: 1 }, children: [
+              { type: "Text", props: { content: "Currently" }, style: { fontSize: 11, color: "$color.muted", textTransform: "uppercase", letterSpacing: 0.5 } },
+              { type: "Text", props: { content: active.name }, style: { fontSize: 22, fontWeight: "800", color: "$color.text", marginTop: 2 } },
+              { type: "Text", props: { content: active.description }, style: { fontSize: 13, color: "$color.muted", marginTop: 4 } },
+            ] },
+          ] },
+          { type: "Text", props: { content: "Tone" }, style: { fontSize: 11, color: "$color.muted", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 } },
+          { type: "Stack", style: { flexDirection: "row", flexWrap: "wrap", gap: 6 }, children: [
+            chip(TONE_LABELS.formal, "activeTone", "formal"),
+            chip(TONE_LABELS.casual, "activeTone", "casual"),
+            chip(TONE_LABELS["very-casual"], "activeTone", "very-casual"),
+            chip(TONE_LABELS.excited, "activeTone", "excited"),
+          ] },
+          gap(10),
+          { type: "Button", props: { label: "Apply tone", variant: "primary" }, on: { onPress: "setTone" } },
+        ] },
+
+        // Pinned counter — compact status hint above the picker.
+        { type: "Stack", style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }, children: [
+          { type: "Text", props: { content: "Choose a voice" }, style: { fontSize: 12, color: "$color.muted", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: "600" } },
+          { type: "Text", props: { content: `${pinned.length} / ${MAX_PINNED_PRESETS} pinned to keyboard` }, style: { fontSize: 12, color: pinned.length >= MAX_PINNED_PRESETS ? "$color.primary" : "$color.muted" } },
+        ] },
+
+        // The preset cards.
+        ...presetCards,
+
+        gap(20),
+        { type: "Button", props: { label: "Customize this voice — dictionary, snippets, sign-off", variant: "secondary" }, on: { onPress: "openCustomize" } },
+      ],
+    },
+    cacheTtlSeconds: 0,
+  };
+}
+
+/**
+ * The "advanced" customize screen — the OLD personality form. Only reached
+ * from the new personality picker when the user wants to add a dictionary
+ * word, a snippet, or a sign-off on top of a selected preset. Kept
+ * intentionally out of the main flow so first-time users don't stall on it.
+ */
+function personalityCustomizeScreen(p: Personality): ScreenResponse {
+  const SECTION = 24;
+  const label = (content: string): Node => ({ type: "Text", props: { content, variant: "label" }, style: { marginBottom: 8 } });
+  const gap = (h: number): Node => ({ type: "Spacer", style: { height: h } });
+
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "personality_customize",
+    title: "Customize",
+    state: {
       form: {
         tone: p.tone ?? "",
         formality: p.formality ?? "neutral",
         emoji: p.emoji ?? "minimal",
         vocabulary: p.vocabulary ?? "",
-        // preserved across saves even though they're not shown here:
         customInstructions: p.customInstructions ?? "",
         signature: p.signature ?? "",
         snippets: p.snippets ?? "",
@@ -586,56 +726,53 @@ function personalityScreen(p: Personality): ScreenResponse {
         { kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: "$state.form", onSuccess: "saved", onError: "saveErr" },
       ] },
       saved: { kind: "sequence", actions: [
-        { kind: "setState", path: "status", value: "Saved. Tailzu writes in this voice." },
+        { kind: "setState", path: "status", value: "Saved." },
         { kind: "haptic", style: "success" },
       ] },
-      saveErr: { kind: "toast", message: "Couldn't save. Check your connection.", tone: "error" },
+      saveErr: { kind: "toast", message: "Couldn't save.", tone: "error" },
       learn: { kind: "sequence", actions: [
         { kind: "setState", path: "status", value: "Learning your voice…" },
         { kind: "callEndpoint", method: "POST", path: "/v1/personality/learn", body: { sample: "$state.sample" }, onSuccess: "learned", onError: "saveErr" },
       ] },
       learned: { kind: "sequence", actions: [
         { kind: "haptic", style: "success" },
-        { kind: "toast", message: "Learned your voice — updating…", tone: "success" },
+        { kind: "toast", message: "Learned.", tone: "success" },
         { kind: "refresh" },
       ] },
     },
     root: {
       type: "Screen",
+      style: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 24 },
       children: [
-        { type: "Heading", props: { content: "Your personality" }, style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 10 } },
-        { type: "Paragraph", props: { content: "Set once — it shapes everything Tailzu writes for you." }, style: { marginBottom: SECTION } },
+        { type: "Heading", props: { content: "Customize" }, style: { fontSize: 26, fontWeight: "800", color: "$color.text", marginBottom: 6 } },
+        { type: "Paragraph", props: { content: "Fine-tune the selected voice with your own dictionary, sign-off, and instructions." }, style: { marginBottom: SECTION } },
 
-        label("Tone"),
-        { type: "TextField", bind: { value: "form.tone" }, props: { placeholder: "warm and concise, a little witty" } },
-        gap(SECTION),
-
-        label("Formality"),
-        { type: "Stack", style: { direction: "row", gap: 8 }, children: [
-          chip("casual", "form.formality", "casual"), chip("neutral", "form.formality", "neutral"), chip("formal", "form.formality", "formal"),
-        ] },
-        gap(SECTION),
-
-        label("Emoji"),
-        { type: "Stack", style: { direction: "row", gap: 8 }, children: [
-          chip("none", "form.emoji", "none"), chip("minimal", "form.emoji", "minimal"), chip("expressive", "form.emoji", "expressive"),
-        ] },
+        label("Sign-off (optional)"),
+        { type: "TextField", bind: { value: "form.signature" }, props: { placeholder: "— A" } },
         gap(SECTION),
 
         label("Words it should know"),
         { type: "TextField", bind: { value: "form.vocabulary" }, props: { placeholder: "Aarav\nNykaa\nKubernetes", multiline: true } },
-        gap(SECTION + 2),
+        gap(SECTION),
+
+        label("Custom instructions"),
+        { type: "TextField", bind: { value: "form.customInstructions" }, props: { placeholder: "avoid exclamation marks, use British spelling", multiline: true } },
+        gap(SECTION),
+
+        label("Snippets — trigger = expansion, one per line"),
+        { type: "TextField", bind: { value: "form.snippets" }, props: { placeholder: "brb = be right back\naddr = 42 Baker St", multiline: true } },
+        gap(SECTION),
 
         { type: "Button", props: { label: "Save", variant: "primary" }, on: { onPress: "save" } },
         { type: "Text", bind: { content: "status" }, props: { variant: "muted" }, style: { marginTop: 10, textAlign: "center" } },
 
-        gap(40),
-        { type: "Divider" },
         gap(28),
+        { type: "Divider" },
+        gap(20),
 
-        label("Or learn it from a sample"),
+        label("Or learn my voice from a sample"),
         { type: "TextField", bind: { value: "sample" }, props: { placeholder: "Paste a few messages you've written…", multiline: true } },
-        gap(14),
+        gap(10),
         { type: "Button", props: { label: "Learn my voice", variant: "secondary" }, on: { onPress: "learn" } },
       ],
     },
@@ -1805,7 +1942,7 @@ const LIGHT_KEY_FILL_LETTER = "#FFFFFFE6";     // 90% white — solid-white chip
 export const LIGHT_KEY_FILL_FUNCTION = "#C7CDD3E6";   // ~90% opaque light gray — kept exported for the next light-mode row expansion
 const LIGHT_KEY_TEXT = "#000000";
 
-export function buildKeyboardConfig(): KeyboardConfigResponse {
+export function buildKeyboardConfig(personality?: Personality): KeyboardConfigResponse {
   // English QWERTY. The physical layout arrays are also emitted (below) so
   // older keyboard binaries — the ones without the SDUI renderer — can still
   // render the legacy hand-built keyboard. `features.sdui: true` is the switch
@@ -2282,6 +2419,31 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
       if (micRecording?.url) {
         flags["kb.mic.recordingIcon"] = { url: micRecording.url };
         flags["kb.mic.recordingIcon.url"] = micRecording.url;
+      }
+
+      // Personality quick-swap: the user's pinned presets (max 6) render as
+      // a chip row above the keyboard rows. Each chip carries the preset id
+      // + a display emoji + a short name; tapping it sets the active
+      // preset for subsequent refine calls. The active preset id is passed
+      // through too so the current chip can highlight without an extra
+      // fetch. When the user hasn't picked anything, the built-in tone
+      // cycle stays as the fallback (that's the client-side default).
+      const pinnedIds = Array.isArray(personality?.pinnedPresetIds)
+        ? personality!.pinnedPresetIds!
+        : [];
+      if (pinnedIds.length > 0) {
+        const chips = pinnedIds
+          .map((id) => PERSONALITY_PRESETS.find((p) => p.id === id))
+          .filter((p): p is (typeof PERSONALITY_PRESETS)[number] => !!p)
+          .slice(0, MAX_PINNED_PRESETS)
+          .map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, tone: p.defaultTone }));
+        flags["kb.personality.pinned"] = chips;
+      }
+      if (personality?.activePresetId) {
+        flags["kb.personality.activeId"] = personality.activePresetId;
+      }
+      if (personality?.activeTone) {
+        flags["kb.personality.activeTone"] = personality.activeTone;
       }
       return flags;
     })(),

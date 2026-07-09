@@ -6,6 +6,7 @@
  * in-memory map so the feature still works end-to-end without a database.
  */
 import { dataClientFor, type AuthedUser } from "../auth/supabase.js";
+import { PERSONALITY_PRESETS } from "../experience/personalityPresets.js";
 import type {
   Personality,
   VocabularyCorrection,
@@ -58,13 +59,46 @@ export async function savePersonality(
 /**
  * Resolve the personality to use for a request: an inline override from the app
  * wins; otherwise fall back to the user's saved profile.
+ *
+ * When the profile has a selected preset (activePresetId), we layer the
+ * preset's promptStyle onto customInstructions here — every downstream
+ * prompt composer already reads customInstructions, so this makes the
+ * "you're now writing as Signature / Executive / Playful" behavior work
+ * uniformly across refine, clean, draft, and speak paths without any
+ * pipeline-side change.
  */
 export async function resolvePersonality(
   user: AuthedUser,
   override: Personality | undefined,
 ): Promise<Personality> {
-  if (override && Object.keys(override).length > 0) return override;
-  return getPersonality(user);
+  const base = (override && Object.keys(override).length > 0)
+    ? override
+    : await getPersonality(user);
+  return applyPresetOverlay(base);
+}
+
+/** Overlay the selected preset's promptStyle + tone hint into the profile. */
+function applyPresetOverlay(p: Personality): Personality {
+  if (!p.activePresetId) return p;
+  const preset = PERSONALITY_PRESETS.find((x) => x.id === p.activePresetId);
+  if (!preset) return p;
+  const toneHint = p.activeTone
+    ? `Preferred tone: ${p.activeTone}.`
+    : `Preferred tone: ${preset.defaultTone}.`;
+  const overlay = `[Voice: ${preset.name}] ${preset.promptStyle} ${toneHint}`.trim();
+  const existing = (p.customInstructions ?? "").trim();
+  const merged = existing
+    ? `${overlay}\n\n${existing}`
+    : overlay;
+  return {
+    ...p,
+    customInstructions: merged,
+    // Also normalize formality + emojiUse to the preset defaults so
+    // downstream dial-based composers pick sane values when the user
+    // hasn't set their own.
+    formality: p.formality ?? preset.formality,
+    emoji: p.emoji ?? preset.emojiUse,
+  };
 }
 
 /**

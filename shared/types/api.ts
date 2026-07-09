@@ -169,6 +169,32 @@ export interface Personality {
    * enough to enable history storage.
    */
   retainHistory?: boolean;
+
+  // --- Preset selection + keyboard-pinning (v3 additions) --------------------
+  // The main app now surfaces 12 hand-tuned starter voices ("presets"). The
+  // user picks one, tunes its tone with a segmented toggle, and can pin up
+  // to 6 to the keyboard for quick-swap without opening the app.
+
+  /**
+   * Currently selected preset id (see experience/personalityPresets.ts).
+   * When set, the LLM system prompt gets the preset's promptStyle appended
+   * on top of the user's other fields. Unset → treated as "signature".
+   */
+  activePresetId?: string;
+
+  /**
+   * Tone override for the active preset — one of "formal" / "casual" /
+   * "very-casual" / "excited". Overrides the preset's defaultTone; layered
+   * on top of `formality` and `dial.formality` when set.
+   */
+  activeTone?: string;
+
+  /**
+   * Ordered list of preset ids the user has pinned to the keyboard for
+   * quick-swap. Max 6. Order matters: index 0 shows leftmost on the
+   * keyboard's personality chip row.
+   */
+  pinnedPresetIds?: string[];
 }
 
 /**

@@ -599,12 +599,54 @@ app.put("/v1/personality", { config: AUTHED_RL }, async (req, reply) => {
     tooLong(personality.snippets);
   if (over) return reply.code(413).send({ code: "bad_request", message: over });
   try {
-    await savePersonality(user, personality);
-    const res: PersonalityResponse = { personality };
+    // Merge the partial update into the existing profile so a PUT with just
+    // { activePresetId } doesn't blow away the user's vocabulary, sign-off,
+    // and pinned list. Full replace was the wrong contract now that the new
+    // personality screen makes small, frequent updates.
+    const existing = await getPersonality(user);
+    await savePersonality(user, { ...existing, ...personality });
+    const res: PersonalityResponse = { personality: { ...existing, ...personality } };
     return reply.send(res);
   } catch (err) {
     req.log.error(err);
     return reply.code(500).send({ code: "internal", message: "Failed to save personality" });
+  }
+});
+
+// Toggle a preset on/off in the user's keyboard pin list. Idempotent per
+// action (POST body decides), enforces the 6-item ceiling. Kept separate
+// from PUT /v1/personality so the client doesn't have to round-trip the
+// whole profile just to star an item.
+const MAX_PINNED = 6;
+app.post("/v1/personality/pin", { config: AUTHED_RL }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) {
+    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+  }
+  const body = (req.body ?? {}) as { presetId?: string; pinned?: boolean };
+  const presetId = String(body.presetId ?? "").trim();
+  if (!presetId) return reply.code(400).send({ code: "bad_request", message: "Missing presetId" });
+  try {
+    const existing = await getPersonality(user);
+    const current = Array.isArray(existing.pinnedPresetIds) ? [...existing.pinnedPresetIds] : [];
+    // Toggle when `pinned` is omitted (star icon UX). Otherwise honor the
+    // explicit flag — lets a settings screen force-add or force-remove.
+    const explicit = typeof body.pinned === "boolean" ? body.pinned : !current.includes(presetId);
+    let next: string[];
+    if (explicit) {
+      // Add — cap at MAX_PINNED, evicting the oldest to make room. Matches
+      // the "star already has 6 → drop the first" UX shipping apps use.
+      if (current.includes(presetId)) next = current;
+      else next = [...current, presetId].slice(-MAX_PINNED);
+    } else {
+      next = current.filter((id) => id !== presetId);
+    }
+    const merged: Personality = { ...existing, pinnedPresetIds: next };
+    await savePersonality(user, merged);
+    return reply.send({ personality: merged, pinnedPresetIds: next });
+  } catch (err) {
+    req.log.error(err);
+    return reply.code(500).send({ code: "internal", message: "Failed to update pin" });
   }
 });
 
@@ -1009,8 +1051,17 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
 
 // --- Keyboard config (server-driven keyboard; cached by the native shell) ----
 
-app.get("/v1/keyboard/config", { config: UNAUTH_RL }, async (_req, reply) => {
-  return reply.send(buildKeyboardConfig());
+app.get("/v1/keyboard/config", { config: UNAUTH_RL }, async (req, reply) => {
+  // Personality is per-user — the keyboard uses it to render the quick-swap
+  // chip row (pinned presets) + honor the active preset's default tone.
+  // Missing/failed auth just returns the config without pins; the keyboard
+  // still works, it just shows the built-in tone cycle instead.
+  let personality: Personality | undefined;
+  try {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (user) personality = await getPersonality(user);
+  } catch { /* keyboard should never fail on personality lookup */ }
+  return reply.send(buildKeyboardConfig(personality));
 });
 
 // --- Admin: cache control ----------------------------------------------------
