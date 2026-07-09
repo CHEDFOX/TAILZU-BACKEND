@@ -44,6 +44,7 @@ import {
   buildKeyboardConfig,
   bumpCacheVersion,
   currentCacheVersion,
+  setMediaRegistryAccessor,
 } from "./experience/catalog.js";
 import { localize } from "./experience/i18n.js";
 import {
@@ -143,6 +144,10 @@ const MEDIA_DIR = process.env.MEDIA_DIR || "/data/media";
 const MEDIA_PUBLIC_URL = process.env.MEDIA_PUBLIC_URL
   || `${process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"}/media`;
 await loadMediaRegistry(MEDIA_DIR);
+// Let the SDUI catalog reach into the media registry (for e.g. surfacing
+// the "mic.animation" media URL into the keyboard config's flags). Avoids a
+// circular import between routes/media.ts and experience/catalog.ts.
+setMediaRegistryAccessor(getMediaRegistry);
 await app.register(fastifyStatic, {
   root: MEDIA_DIR,
   prefix: "/media/",

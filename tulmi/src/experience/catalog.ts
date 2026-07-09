@@ -21,6 +21,17 @@ import type {
 import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
 import type { HistoryEntry, Personality, StatsResponse, UsageSummary } from "../../../shared/types/api.js";
 
+/**
+ * Optional accessor into the media registry — set at boot by server.ts so the
+ * catalog can surface uploaded media URLs into the keyboard config without a
+ * circular import. Signature matches routes/media.ts getMediaRegistry().
+ */
+type MediaEntry = { url: string; contentType: string; size: number; uploadedAt: number };
+let getMediaRegistryFn: (() => Record<string, MediaEntry>) | null = null;
+export function setMediaRegistryAccessor(fn: () => Record<string, MediaEntry>): void {
+  getMediaRegistryFn = fn;
+}
+
 // --- Global theme -----------------------------------------------------------
 
 export const THEME: ThemeTokens = {
@@ -2229,26 +2240,51 @@ export function buildKeyboardConfig(): KeyboardConfigResponse {
     //
     // Uncomment / add entries as needed. See shared/types/sdui.ts for the
     // full authoritative list of keys and their defaults.
-    flags: {
-      // Example overrides (all commented out — enable to try):
-      //
-      // "kb.press.fadeMs": 120,
-      // "kb.dictation.dots.color": "#FF6B1F",
-      // "kb.dictation.dots.birthRate": 7,
-      // "kb.dictation.dots.decayMs": 2500,
-      // "kb.dictation.dim.alpha": 0.45,
-      // "kb.mic.recordingIcon": { sf: "pause.fill" },   // swap thick bar → pause
-      // "kb.mic.recordingIcon": { sf: "waveform" },     // or a waveform icon
-      // "kb.mic.recordingIcon": { emoji: "⏹" },         // or an emoji
-      // "kb.mic.recordingIcon": { url: "https://cdn.tailzu.space/kb/stop.png" },
-      // "kb.mic.idleIcon": { asset: "TailzuMark" },
-      // "kb.shift.lockedColor": "#FF6B1F",
-      // "kb.shift.longPressMs": 350,
-      // "kb.shift.iconLowerOutlined": "arrowtriangle.down",
-      // "kb.delete.repeatIntervalMs": 90,
-      // "kb.autoCap.enabled": true,
-      // "kb.smartPunctuation": true,
-    },
+    flags: (() => {
+      // Assemble the flag bag. Static entries first; then splice in the mic
+      // media if there's one in the media registry so the keyboard's mic
+      // matches the main app's without a rebuild.
+      const flags: Record<string, unknown> = {
+        // Example overrides (uncomment to try):
+        //
+        // "kb.press.fadeMs": 120,
+        // "kb.dictation.dots.color": "#FF6B1F",
+        // "kb.dictation.dots.birthRate": 7,
+        // "kb.dictation.dots.decayMs": 2500,
+        // "kb.dictation.dim.alpha": 0.45,
+        // "kb.mic.recordingIcon": { sf: "pause.fill" },
+        // "kb.mic.recordingIcon": { sf: "waveform" },
+        // "kb.mic.recordingIcon": { emoji: "⏹" },
+        // "kb.mic.recordingIcon": { url: "https://cdn.tailzu.space/kb/stop.png" },
+        // "kb.mic.idleIcon": { asset: "TailzuMark" },
+        // "kb.shift.lockedColor": "#FF6B1F",
+        // "kb.shift.longPressMs": 350,
+        // "kb.shift.iconLowerOutlined": "arrowtriangle.down",
+        // "kb.delete.repeatIntervalMs": 90,
+        // "kb.autoCap.enabled": true,
+        // "kb.smartPunctuation": true,
+      };
+
+      // Mic media: whatever the media registry has under `mic.animation`
+      // becomes the keyboard's idle mic art. The SDUI-rendered keyboard
+      // reads kb.mic.idleIcon (icon spec shape) and the hand-built keyboard
+      // reads kb.mic.idleIcon.url (raw string) — surface both so a single
+      // upload lights up both codepaths without either needing a rebuild.
+      // Files are content-addressed by SHA, so a new upload with the same
+      // key auto-invalidates the on-disk cache once the URL changes.
+      const reg = getMediaRegistryFn?.() ?? {};
+      const micIdle = reg["mic.animation"];
+      const micRecording = reg["mic.animation.recording"];
+      if (micIdle?.url) {
+        flags["kb.mic.idleIcon"] = { url: micIdle.url };
+        flags["kb.mic.idleIcon.url"] = micIdle.url;
+      }
+      if (micRecording?.url) {
+        flags["kb.mic.recordingIcon"] = { url: micRecording.url };
+        flags["kb.mic.recordingIcon.url"] = micRecording.url;
+      }
+      return flags;
+    })(),
     // Was 600 (10 min). A live theme fix couldn't reach users mid-session.
     // 60 s keeps cost negligible and lets themed rollouts hit within a minute.
     cacheTtlSeconds: 60,
