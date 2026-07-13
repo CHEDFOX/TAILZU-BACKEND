@@ -26,6 +26,7 @@ import {
   findPreset,
   TONE_LABELS,
   MAX_PINNED_PRESETS,
+  applyPresetOverrides,
 } from "./personalityPresets.js";
 
 /**
@@ -751,6 +752,11 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       return personalityScreen(ctx.personality);
     case "personality_customize":
       return personalityCustomizeScreen(ctx.personality);
+    case "personality_edit":
+      return personalityEditScreen(
+        ctx.personality,
+        typeof ctx.params?.presetId === "string" ? ctx.params.presetId : undefined,
+      );
     case "settings":
       return settingsScreen(ctx);
     case "stats":
@@ -1070,16 +1076,22 @@ function personalityScreen(p: Personality): ScreenResponse {
     on: { onPress: { kind: "haptic", style: "selection" } },
   });
 
+  // Effective preset list — built-ins with the user's overrides applied.
+  // Every consumer of a preset for THIS render (card + hero + tone chips)
+  // reads from `effective` so a rename/emoji change flows everywhere.
+  const effective = applyPresetOverrides(p.presetOverrides);
+  const findEffective = (id: string) => effective.find((e) => e.id === id) ?? effective[0]!;
+
   const activeId = p.activePresetId ?? "signature";
-  const activeTone = p.activeTone ?? findPreset(activeId).defaultTone;
+  const activeTone = p.activeTone ?? findEffective(activeId).defaultTone;
   const pinned = Array.isArray(p.pinnedPresetIds) ? p.pinnedPresetIds : [];
-  const active = findPreset(activeId);
+  const active = findEffective(activeId);
 
   // Preset cards — a 2-column grid rendered as a list of Row nodes so it
   // works on the widest set of client builds. Each card highlights when it
   // matches state.activePresetId and shows a "pinned" indicator when in the
   // user's keyboard shortlist.
-  const presetCards = PERSONALITY_PRESETS.map((preset): Node => ({
+  const presetCards = effective.map((preset): Node => ({
     type: "Card",
     // Card visually reflects selection through a bind on activePresetId.
     style: { padding: 12, marginBottom: 8 },
@@ -1109,6 +1121,22 @@ function personalityScreen(p: Personality): ScreenResponse {
           ] },
           { type: "Text", props: { content: preset.tagline }, style: { fontSize: 13, color: "$color.muted", marginTop: 2 } },
         ] },
+        // Edit affordance — pencil-style ghost button. Opens the per-preset
+        // edit screen with the current values (built-in + user's overrides)
+        // pre-populated. Sits before the pin toggle so it's less likely to
+        // hit-collide.
+        { type: "Button",
+          on: { onPress: {
+            kind: "sequence",
+            actions: [
+              { kind: "haptic", style: "selection" },
+              { kind: "setState", path: "editPresetId", value: preset.id },
+              { kind: "navigate", screenId: "personality_edit", params: { presetId: preset.id } },
+            ],
+          } },
+          props: { label: "✎", variant: "ghost" },
+          style: { fontSize: 18, color: "$color.muted", padding: 6 },
+        },
         // Pin toggle — a star icon that flips on tap. Backend saves the
         // whole pinnedPresetIds array on either add or remove.
         { type: "Button",
@@ -1190,6 +1218,164 @@ function personalityScreen(p: Personality): ScreenResponse {
 
         gap(20),
         { type: "Button", props: { label: "Customize this voice — dictionary, snippets, sign-off", variant: "secondary" }, on: { onPress: "openCustomize" } },
+      ],
+    },
+    cacheTtlSeconds: 0,
+  };
+}
+
+/**
+ * Per-preset editor. Reached from a preset card's ✎ button. Lets the user
+ * override any of the built-in preset's cosmetic + prompt fields (name,
+ * emoji, tagline, description, defaultTone, promptStyle) without changing
+ * the preset itself — the override lives on their profile as
+ * `presetOverrides[<id>]` and is merged in on every read.
+ */
+function personalityEditScreen(p: Personality, presetId: string | undefined): ScreenResponse | null {
+  const id = presetId ?? p.activePresetId ?? "signature";
+  const base = findPreset(id);
+  const override = p.presetOverrides?.[id] ?? {};
+  const eff = {
+    name: (override.name ?? base.name),
+    emoji: (override.emoji ?? base.emoji),
+    tagline: (override.tagline ?? base.tagline),
+    description: (override.description ?? base.description),
+    defaultTone: (override.defaultTone ?? base.defaultTone),
+    promptStyle: (override.promptStyle ?? base.promptStyle),
+  };
+
+  const gap = (h: number): Node => ({ type: "Spacer", style: { height: h } });
+  const label = (content: string): Node => ({
+    type: "Text", props: { content, variant: "label" },
+    style: { fontSize: 11, color: "$color.muted", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 },
+  });
+  const chip = (title: string, value: string): Node => ({
+    type: "Chip",
+    props: { label: title, group: "editTone", value },
+    on: { onPress: { kind: "haptic", style: "selection" } },
+  });
+
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "personality_edit",
+    title: `Edit ${eff.name}`,
+    state: {
+      editPresetId: id,
+      editName: eff.name,
+      editEmoji: eff.emoji,
+      editTagline: eff.tagline,
+      editDescription: eff.description,
+      editTone: eff.defaultTone,
+      editPromptStyle: eff.promptStyle,
+      status: "",
+    },
+    actions: {
+      save: {
+        kind: "sequence",
+        actions: [
+          { kind: "haptic", style: "medium" },
+          {
+            kind: "callEndpoint",
+            method: "PUT",
+            path: "/v1/personality",
+            body: {
+              presetOverrides: {
+                [id]: {
+                  name: "$state.editName",
+                  emoji: "$state.editEmoji",
+                  tagline: "$state.editTagline",
+                  description: "$state.editDescription",
+                  defaultTone: "$state.editTone",
+                  promptStyle: "$state.editPromptStyle",
+                },
+              },
+            },
+            onSuccess: "saved",
+            onError: "saveErr",
+          },
+        ],
+      },
+      reset: {
+        kind: "sequence",
+        actions: [
+          { kind: "haptic", style: "medium" },
+          {
+            kind: "callEndpoint",
+            method: "PUT",
+            path: "/v1/personality",
+            body: {
+              presetOverrides: { [id]: null },
+            },
+            onSuccess: "resetDone",
+            onError: "saveErr",
+          },
+        ],
+      },
+      saved: {
+        kind: "sequence",
+        actions: [
+          { kind: "haptic", style: "success" },
+          { kind: "toast", tone: "success", message: "Saved." },
+          { kind: "navigateBack" },
+        ],
+      },
+      resetDone: {
+        kind: "sequence",
+        actions: [
+          { kind: "haptic", style: "success" },
+          { kind: "toast", tone: "info", message: "Reset to default." },
+          { kind: "navigateBack" },
+        ],
+      },
+      saveErr: { kind: "toast", tone: "error", message: "Couldn't save. Check your connection." },
+    },
+    root: {
+      type: "Screen",
+      style: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 24 },
+      children: [
+        { type: "Heading", props: { content: "Edit voice" },
+          style: { fontSize: 26, fontWeight: "800", color: "$color.text", marginBottom: 4 } },
+        { type: "Paragraph",
+          props: { content: "Rename it, change the emoji, or reshape how it writes. Reset any time to bring the original back." },
+          style: { fontSize: 13, color: "$color.muted", marginBottom: 20 } },
+
+        label("Name"),
+        { type: "TextField", bind: { value: "editName" }, props: { placeholder: "Voice name" } },
+        gap(16),
+
+        label("Emoji"),
+        { type: "TextField", bind: { value: "editEmoji" }, props: { placeholder: "✨" } },
+        gap(16),
+
+        label("Tagline"),
+        { type: "TextField", bind: { value: "editTagline" }, props: { placeholder: "Short one-liner" } },
+        gap(16),
+
+        label("Description"),
+        { type: "TextField", bind: { value: "editDescription" }, props: { placeholder: "How this voice sounds", multiline: true, rows: 3 } },
+        gap(16),
+
+        label("Default tone"),
+        { type: "Stack", style: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 }, children: [
+          chip(TONE_LABELS.none, "none"),
+          chip(TONE_LABELS.formal, "formal"),
+          chip(TONE_LABELS.casual, "casual"),
+          chip(TONE_LABELS["very-casual"], "very-casual"),
+          chip(TONE_LABELS.excited, "excited"),
+        ] },
+        gap(16),
+
+        label("Prompt style"),
+        { type: "Paragraph",
+          props: { content: "The instruction the refine step reads. Advanced — change only if you know the phrasing you want." },
+          style: { fontSize: 12, color: "$color.muted", marginBottom: 8 } },
+        { type: "TextField", bind: { value: "editPromptStyle" },
+          props: { placeholder: "e.g. Write with a poetic ear…", multiline: true, rows: 5 } },
+        gap(24),
+
+        { type: "Button", props: { label: "Save changes", variant: "primary" }, on: { onPress: "save" } },
+        gap(10),
+        { type: "Button", props: { label: "Reset to default", variant: "secondary" }, on: { onPress: "reset" } },
       ],
     },
     cacheTtlSeconds: 0,

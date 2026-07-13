@@ -6,7 +6,7 @@
  * in-memory map so the feature still works end-to-end without a database.
  */
 import { dataClientFor, type AuthedUser } from "../auth/supabase.js";
-import { PERSONALITY_PRESETS } from "../experience/personalityPresets.js";
+import { applyPresetOverrides } from "../experience/personalityPresets.js";
 import type {
   Personality,
   VocabularyCorrection,
@@ -87,7 +87,11 @@ export async function resolvePersonality(
  */
 function applyPresetOverlay(p: Personality): Personality {
   if (!p.activePresetId) return p;
-  const preset = PERSONALITY_PRESETS.find((x) => x.id === p.activePresetId);
+  // Effective preset = built-in with any per-user override merged on top.
+  // This is the same list the personality UI renders — so a user's rename /
+  // promptStyle edit flows into the refine step without a rebuild.
+  const effective = applyPresetOverrides(p.presetOverrides);
+  const preset = effective.find((x) => x.id === p.activePresetId);
   if (!preset) return p;
 
   const effectiveTone = p.activeTone ?? preset.defaultTone;

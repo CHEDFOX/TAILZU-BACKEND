@@ -212,6 +212,48 @@ export function findPreset(id?: string | null): PersonalityPreset {
   return PERSONALITY_PRESETS.find((p) => p.id === id) ?? PERSONALITY_PRESETS[0]!;
 }
 
+/**
+ * Layer per-user overrides on top of the built-in presets. Every consumer of
+ * a preset (personality screen, keyboard chip row, tone prompt builder) goes
+ * through this so a user rename / emoji change flows everywhere at once.
+ *
+ * A preset's `defaultTone` is validated against PresetTone before it's
+ * accepted — a corrupt override can never smuggle an unknown tone into the
+ * refine pipeline (it'd just fall back to the built-in default).
+ */
+export interface PresetOverride {
+  name?: string;
+  emoji?: string;
+  tagline?: string;
+  description?: string;
+  defaultTone?: string;
+  promptStyle?: string;
+}
+
+export function applyPresetOverrides(
+  overrides?: Record<string, PresetOverride>,
+): PersonalityPreset[] {
+  if (!overrides || Object.keys(overrides).length === 0) return PERSONALITY_PRESETS;
+  const validTones: PresetTone[] = ["none", "formal", "casual", "very-casual", "excited"];
+  return PERSONALITY_PRESETS.map((p) => {
+    const o = overrides[p.id];
+    if (!o) return p;
+    const tone: PresetTone =
+      typeof o.defaultTone === "string" && validTones.includes(o.defaultTone as PresetTone)
+        ? (o.defaultTone as PresetTone)
+        : p.defaultTone;
+    return {
+      ...p,
+      name: (o.name ?? p.name).trim() || p.name,
+      emoji: (o.emoji ?? p.emoji).trim() || p.emoji,
+      tagline: (o.tagline ?? p.tagline).trim() || p.tagline,
+      description: (o.description ?? p.description).trim() || p.description,
+      defaultTone: tone,
+      promptStyle: (o.promptStyle ?? p.promptStyle).trim() || p.promptStyle,
+    };
+  });
+}
+
 /** Every preset with `pin: true` when the id appears in `pinnedIds`. */
 export function decoratePresets(
   activeId: string | undefined,

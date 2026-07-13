@@ -197,6 +197,25 @@ export interface Personality {
   pinnedPresetIds?: string[];
 
   /**
+   * Per-user overrides for the built-in personality presets. Keyed by
+   * preset id (e.g. "signature", "wispr", "kai") → partial preset shape.
+   * Only the fields the user changes are stored; the built-in preset
+   * supplies the rest via a merge on read. Lets a user rename a preset,
+   * swap its emoji, adjust its tagline / description / promptStyle
+   * without changing the shipped preset list.
+   *
+   * Undefined / missing key → the built-in preset shows through as-is.
+   */
+  presetOverrides?: Record<string, {
+    name?: string;
+    emoji?: string;
+    tagline?: string;
+    description?: string;
+    defaultTone?: string;
+    promptStyle?: string;
+  }>;
+
+  /**
    * Transient flag set by resolvePersonality when the effective tone is
    * "none" — signals downstream cleanup/refine composers to skip the LLM
    * step and pass the raw transcript through unchanged. Never persisted;
