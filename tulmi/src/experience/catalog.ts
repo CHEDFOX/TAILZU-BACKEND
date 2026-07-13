@@ -125,9 +125,11 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
     cacheVersion: CACHE_VERSION,
     theme: THEME,
     navigation: NAV,
-    // The server owns onboarding: first-run users land on the flow; everyone
-    // else goes straight to the app.
-    initialScreenId: opts.onboarded ? "home" : "onboarding",
+    // The server owns onboarding AND the intro. Intro plays whenever all 4
+    // frames are uploaded to the media store; falls through to onboarding /
+    // home when they're not, so we never render an intro screen with
+    // missing images.
+    initialScreenId: pickInitialScreenId(!!opts.onboarded),
     flags: ((): BootstrapResponse["flags"] => {
       const flags: BootstrapResponse["flags"] = {
         // Policy URLs — Settings screen links open these in-browser.
@@ -233,6 +235,88 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
 
 // --- Screens ----------------------------------------------------------------
 
+/**
+ * Which screen the app opens on. Runs at bootstrap time so its output is
+ * baked into the response the client uses.
+ *
+ * Order of precedence:
+ *   1. Intro plays whenever all 4 intro frames (intro.1 … intro.4) live
+ *      in the media store. If any are missing we skip the intro and
+ *      route straight to onboarding / home so a partial upload can't
+ *      leave the user staring at a blank screen.
+ *   2. Not-onboarded → onboarding.
+ *   3. Otherwise → home.
+ */
+function pickInitialScreenId(onboarded: boolean): string {
+  const reg = getMediaRegistryFn?.() ?? {};
+  const introReady =
+    !!reg["intro.1"]?.url &&
+    !!reg["intro.2"]?.url &&
+    !!reg["intro.3"]?.url &&
+    !!reg["intro.4"]?.url;
+  if (introReady) return "intro";
+  return onboarded ? "home" : "onboarding";
+}
+
+/**
+ * Post-splash intro — a pure SDUI screen. Renders a Slideshow of 4 media
+ * frames from the media store (uploaded under intro.1 … intro.4). When the
+ * slideshow finishes its single loop, its onComplete fires the `done`
+ * action which navigates to the real initial screen.
+ *
+ * Everything about it — the frame count, frame durations, background,
+ * transitions, what comes next — is authored here. Zero client code
+ * touches the intro path.
+ *
+ * To customize:
+ *   - Swap the 4 frames: POST /v1/media/upload?key=intro.1 (etc.)
+ *   - Change speed: edit `frameMs` below
+ *   - Change how many loops: edit `loops`
+ *   - Change what happens after: edit `done` action's screenId
+ *   - Add text overlay / brand mark on top: add sibling nodes to the
+ *     Screen's children (Slideshow is styled `position: absolute; inset: 0`
+ *     so overlays sit above it naturally).
+ */
+function introScreen(): ScreenResponse {
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "intro",
+    title: "",
+    state: {},
+    actions: {
+      done: { kind: "navigate", screenId: "home" },
+    },
+    root: {
+      type: "Screen",
+      style: {
+        backgroundColor: "#0e0e12",
+        padding: 0,
+        alignItems: "stretch",
+        justifyContent: "center",
+      },
+      children: [
+        {
+          type: "Slideshow",
+          style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
+          props: {
+            frames: [
+              { key: "intro.1" },
+              { key: "intro.2" },
+              { key: "intro.3" },
+              { key: "intro.4" },
+            ],
+            frameMs: 120,      // high-speed montage feel
+            loops: 1,          // one cycle then done
+            contentFit: "cover",
+          },
+          on: { onComplete: "done" },
+        },
+      ],
+    },
+    cacheTtlSeconds: 60,
+  };
+}
+
 export interface ScreenContext {
   personality: Personality;
   language: string;
@@ -287,6 +371,8 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       return keyboardRecordScreen(ctx);
     case "keyboard_primer":
       return keyboardPrimerScreen(ctx);
+    case "intro":
+      return introScreen();
     default:
       return null;
   }
