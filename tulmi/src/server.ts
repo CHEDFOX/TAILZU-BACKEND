@@ -29,7 +29,7 @@ import { enforceQuota, recordUsage, usageSummary, usageWindows } from "./usage/m
 import { captureException, fastifyLoggerOptions, initSentry } from "./observability.js";
 import { getProfile, updateProfile } from "./profile/store.js";
 import { runPipeline, runPipelineStream } from "./pipeline/index.js";
-import { clean, draftReply, inferStyle } from "./pipeline/cleanup.js";
+import { clean, draftReply, inferStyle, refineWithTone, LLM_TONES, expandSnippets } from "./pipeline/cleanup.js";
 import { detectCommand } from "./pipeline/commands.js";
 import { synthesize } from "./pipeline/tts.js";
 import {
@@ -477,6 +477,94 @@ app.post("/v1/refine", { config: AUTHED_RL }, async (req, reply) => {
     return reply.code(500).send({ code: "cleanup_failed", message: "Refine failed" });
   }
 });
+
+// --- Per-tone refine (REST): one endpoint per tone --------------------------
+//
+// One dedicated endpoint per tone so the LLM only ever sees a single,
+// hand-tuned prompt with no dynamic composition — the fewer moving pieces
+// in the system message, the less chance of drift or hallucination on
+// borderline inputs. The client picks the endpoint based on the user's
+// active tone; the /v1/refine catch-all above still works for legacy
+// callers.
+//
+// Shape:
+//   POST /v1/refine/<tone>
+//   body:  { text: string; language?: string }
+//   200:   { refinedText: string; usage: {...} }
+//
+// The "none" tone doesn't touch the LLM — it returns the input after
+// snippet expansion so "brb" still becomes "be right back" without a
+// server round-trip on the refine layer.
+
+app.post("/v1/refine/none", { config: AUTHED_RL }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+  const body = (req.body ?? {}) as { text?: string; language?: string };
+  if (!body.text || !body.text.trim()) return reply.code(400).send({ code: "bad_request", message: "Missing 'text'" });
+  const over = tooLong(body.text);
+  if (over) return reply.code(413).send({ code: "bad_request", message: over });
+  try {
+    const personality = await getPersonality(user);
+    // Snippet expansion only — no LLM.
+    const refinedText = expandSnippets(body.text.trim(), personality.snippets, { targetApp: "Generic" });
+    const usage = { audioSeconds: 0, words: countWords(refinedText), model: "none" };
+    return reply.send({ refinedText, usage });
+  } catch (err) {
+    req.log.error(err);
+    return reply.code(500).send({ code: "cleanup_failed", message: "Refine failed" });
+  }
+});
+
+for (const toneId of LLM_TONES) {
+  app.post(`/v1/refine/${toneId}`, { config: AUTHED_RL }, async (req, reply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+    const body = (req.body ?? {}) as { text?: string; language?: string };
+    if (!body.text || !body.text.trim()) return reply.code(400).send({ code: "bad_request", message: "Missing 'text'" });
+    const over = tooLong(body.text);
+    if (over) return reply.code(413).send({ code: "bad_request", message: over });
+    const quota = await enforceQuota(user);
+    if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+    const t0 = Date.now();
+    try {
+      const personality = await getPersonality(user);
+      // Command mode still applies — a user can tack "…MAKE IT SHORTER"
+      // on the end and the detected command overrides the tone prompt for
+      // that run. Applied outside the tone module so tonePrompts stays
+      // single-purpose.
+      const { transcript, command } = detectCommand(body.text);
+      const refinedText = await refineWithTone(transcript, toneId, {
+        language: body.language,
+        personality,
+      });
+      // If the user issued a command, apply it as a second-pass tweak.
+      // Keeps the tone prompt uncontaminated by command wording.
+      const finalText = command
+        ? await clean(refinedText, { language: body.language, personality, command, variables: { email: user.email } })
+        : refinedText;
+      const usage = {
+        audioSeconds: 0,
+        words: countWords(finalText),
+        model: cfg.CLEANUP_MODEL,
+      };
+      await recordUsage({ user, source: "rest", ...usage });
+      await appendHistoryEntry(user, personality, {
+        kind: "typing",
+        targetApp: "Generic",
+        language: body.language,
+        input: body.text,
+        output: finalText,
+        durationMs: Date.now() - t0,
+        wordsIn: countWords(body.text),
+        wordsOut: usage.words,
+      });
+      return reply.send({ refinedText: finalText, usage });
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ code: "cleanup_failed", message: "Refine failed" });
+    }
+  });
+}
 
 // --- Screen (REST): draft a personalized reply ------------------------------
 

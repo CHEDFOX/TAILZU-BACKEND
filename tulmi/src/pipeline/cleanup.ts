@@ -10,6 +10,8 @@ import OpenAI from "openai";
 import { getConfig } from "../config.js";
 import { buildCleanupSystem, buildReplySystem } from "../prompts.js";
 import type { CleanupOptions, Personality } from "../../../shared/types/api.js";
+import { buildTonePrompt, LLM_TONES } from "./tonePrompts.js";
+import type { PresetTone } from "../experience/personalityPresets.js";
 
 let client: OpenAI | null = null;
 function openrouter(): OpenAI {
@@ -183,6 +185,49 @@ export async function clean(
     ctxFromOpts(opts),
   );
 }
+
+/**
+ * Per-tone refine: uses the hand-tuned prompt for the given tone with NO
+ * dynamic mixing. Called by the tone-specific endpoints so each tone is
+ * fully isolated — the LLM only ever sees one voice at a time.
+ *
+ * "none" is not accepted here — the /v1/refine/none route returns the
+ * input directly (with snippet expansion) without ever calling this
+ * function.
+ */
+export async function refineWithTone(
+  input: string,
+  tone: Exclude<PresetTone, "none">,
+  opts: {
+    language?: string;
+    personality?: Personality;
+  } = {},
+): Promise<string> {
+  if (!input.trim()) return "";
+  const system = buildTonePrompt(tone, {
+    language: opts.language,
+    vocabulary: opts.personality?.vocabulary,
+  });
+  const res = await openrouter().chat.completions.create({
+    model: getConfig().CLEANUP_MODEL,
+    temperature: TEMPERATURE,
+    max_tokens: MAX_TOKENS_CLEANUP,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: input },
+    ],
+  });
+  const raw = (res.choices[0]?.message?.content ?? "").trim();
+  // Snippet expansion still runs on the refined text so "brb" → "be right
+  // back" works regardless of tone.
+  return expandSnippets(
+    raw,
+    opts.personality?.snippets,
+    { targetApp: "Generic" },
+  );
+}
+
+export { LLM_TONES };
 
 /** Streaming cleanup — yields cleaned text deltas as they arrive. */
 export async function* cleanStream(
