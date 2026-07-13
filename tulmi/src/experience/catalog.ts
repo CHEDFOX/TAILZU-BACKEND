@@ -665,7 +665,9 @@ function personalityScreen(p: Personality): ScreenResponse {
             ] },
           ] },
           { type: "Text", props: { content: "Tone" }, style: { fontSize: 11, color: "$color.muted", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 } },
+          { type: "Paragraph", props: { content: "None keeps your words exactly as spoken. Any other tone runs a light refine to polish the output." }, style: { fontSize: 12, color: "$color.muted", marginBottom: 8 } },
           { type: "Stack", style: { flexDirection: "row", flexWrap: "wrap", gap: 6 }, children: [
+            chip(TONE_LABELS.none, "activeTone", "none"),
             chip(TONE_LABELS.formal, "activeTone", "formal"),
             chip(TONE_LABELS.casual, "activeTone", "casual"),
             chip(TONE_LABELS["very-casual"], "activeTone", "very-casual"),

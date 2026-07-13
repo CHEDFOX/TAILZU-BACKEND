@@ -23,7 +23,17 @@
  *                  this preset is active. Keep it directional, not verbose.
  */
 
-export type PresetTone = "formal" | "casual" | "very-casual" | "excited";
+/**
+ * The tones the user can pick per preset.
+ *
+ * "none" is the default: the transcript arrives EXACTLY as Whisper heard
+ * it — no LLM cleanup, no rewriting, no filler removal. Fastest, most
+ * faithful to what the user said, best for people who trust their own
+ * dictation. The other four tones layer an LLM refine on top of the
+ * transcript and the refined text is what the user sees at the cursor —
+ * the raw is never inserted.
+ */
+export type PresetTone = "none" | "formal" | "casual" | "very-casual" | "excited";
 
 export interface PersonalityPreset {
   id: string;
@@ -47,7 +57,7 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
       "The default — clear, warm, and even-keeled. Works for most messages, from Slack to a note to your landlord.",
     formality: "neutral",
     emojiUse: "minimal",
-    defaultTone: "casual",
+    defaultTone: "none",
     promptStyle:
       "Write in a clean, natural voice — warm without being cutesy, clear without being clinical.",
   },
@@ -60,7 +70,7 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
       "Direct, polite, structured. When you're writing to a client, a hiring manager, or someone whose time matters.",
     formality: "formal",
     emojiUse: "none",
-    defaultTone: "formal",
+    defaultTone: "none",
     promptStyle:
       "Write with professional restraint: concise, respectful, no filler, no exclamation marks unless truly warranted.",
   },
@@ -73,7 +83,7 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
       "Casual, kind, a little chatty. When you'd rather sound like a person than a manager.",
     formality: "casual",
     emojiUse: "minimal",
-    defaultTone: "casual",
+    defaultTone: "none",
     promptStyle:
       "Write with warmth — like you're talking to someone you like. Contractions are fine. Keep it light.",
   },
@@ -86,7 +96,7 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
       "Playful without being silly. Reaches for the clever line before the earnest one.",
     formality: "casual",
     emojiUse: "none",
-    defaultTone: "casual",
+    defaultTone: "none",
     promptStyle:
       "Write with dry wit — reach for the smart aside, prefer a clever verb to a flat one, don't over-explain the joke.",
   },
@@ -99,7 +109,7 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
       "Short sentences. No hedging. When you want the message to hit and stop.",
     formality: "neutral",
     emojiUse: "none",
-    defaultTone: "casual",
+    defaultTone: "none",
     promptStyle:
       "Write with maximum brevity — one thought per sentence, no throat-clearing, no 'just wanted to', no 'I hope this finds you well'.",
   },
@@ -112,7 +122,7 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
       "For hard conversations — care, condolences, apologies, boundaries. Slows down and picks its words.",
     formality: "neutral",
     emojiUse: "none",
-    defaultTone: "formal",
+    defaultTone: "none",
     promptStyle:
       "Write with gentleness — acknowledge before you propose, prefer 'I' statements, don't rush the reader, don't over-apologise.",
   },
@@ -125,7 +135,7 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
       "Loose, expressive, lots of personality. When the recipients are your favourite people.",
     formality: "casual",
     emojiUse: "expressive",
-    defaultTone: "very-casual",
+    defaultTone: "none",
     promptStyle:
       "Write like the group chat — punchy, expressive, emojis welcome, contractions and casual phrasing throughout.",
   },
@@ -138,7 +148,7 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
       "For the person who matters. Feels lived-in, not scripted; specific, not saccharine.",
     formality: "casual",
     emojiUse: "minimal",
-    defaultTone: "casual",
+    defaultTone: "none",
     promptStyle:
       "Write with tenderness and specificity — sensory, present-tense, small details over grand claims, never generic.",
   },
@@ -151,7 +161,7 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
       "Lead with the ask or the answer, follow with why. When your reader needs to act fast.",
     formality: "formal",
     emojiUse: "none",
-    defaultTone: "formal",
+    defaultTone: "none",
     promptStyle:
       "Write like a decisive executive — lead with the ask or the conclusion in the first sentence, follow with a two-line rationale, close with the next step.",
   },
@@ -164,7 +174,7 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
       "Breaks a thing down step-by-step. For handoffs, teaching moments, or telling a group how something works.",
     formality: "neutral",
     emojiUse: "minimal",
-    defaultTone: "casual",
+    defaultTone: "none",
     promptStyle:
       "Explain patiently — one idea per sentence, use ordered structure when there are steps, define jargon on first use.",
   },
@@ -177,7 +187,7 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
       "Genuine enthusiasm. For launches, wins, celebrations — reads as excited without reading as fake.",
     formality: "casual",
     emojiUse: "expressive",
-    defaultTone: "excited",
+    defaultTone: "none",
     promptStyle:
       "Write with real enthusiasm — active verbs, superlatives used sparingly but confidently, no forced hype, exclamation marks welcome where earned.",
   },
@@ -190,7 +200,7 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
       "Slower, more image-driven, a little indirect. When the message is the mood, not just the point.",
     formality: "casual",
     emojiUse: "none",
-    defaultTone: "casual",
+    defaultTone: "none",
     promptStyle:
       "Write with a poetic ear — favour concrete images over abstract claims, listen for rhythm, permit one restrained metaphor per note.",
   },
@@ -217,11 +227,15 @@ export function decoratePresets(
 
 /** Tone → segmented-toggle label mapping shown on the personality screen. */
 export const TONE_LABELS: Record<PresetTone, string> = {
+  none: "None",
   formal: "Formal",
   casual: "Casual",
   "very-casual": "Very Casual",
   excited: "Excited",
 };
+
+/** Default tone new users start with — the raw, pass-through path. */
+export const DEFAULT_TONE: PresetTone = "none";
 
 /** Max number of presets a user can pin to the keyboard for quick-swap. */
 export const MAX_PINNED_PRESETS = 6;

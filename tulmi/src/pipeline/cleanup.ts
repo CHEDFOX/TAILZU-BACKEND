@@ -161,6 +161,13 @@ export async function clean(
   opts: CleanupOptions = {},
 ): Promise<string> {
   if (!input.trim()) return "";
+  // "None" tone → pass the transcript through unchanged. resolvePersonality
+  // sets passThrough when the user's active tone resolves to "none"; this
+  // saves a round-trip to the LLM AND makes dictation feel instant. Snippet
+  // expansion still runs so typed shortcuts like "brb" still expand.
+  if (opts.personality?.passThrough) {
+    return expandSnippets(input.trim(), opts.personality?.snippets, ctxFromOpts(opts));
+  }
   const res = await openrouter().chat.completions.create({
     model: getConfig().CLEANUP_MODEL,
     temperature: TEMPERATURE,
@@ -183,6 +190,12 @@ export async function* cleanStream(
   opts: CleanupOptions = {},
 ): AsyncGenerator<string, void, unknown> {
   if (!input.trim()) return;
+  // "None" tone → yield the transcript once as a single "chunk" and stop.
+  // Preserves the streaming caller's contract without the LLM round-trip.
+  if (opts.personality?.passThrough) {
+    yield expandSnippets(input.trim(), opts.personality?.snippets, ctxFromOpts(opts));
+    return;
+  }
   const stream = await openrouter().chat.completions.create({
     model: getConfig().CLEANUP_MODEL,
     temperature: TEMPERATURE,

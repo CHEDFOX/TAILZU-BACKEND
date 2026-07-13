@@ -195,6 +195,14 @@ export interface Personality {
    * keyboard's personality chip row.
    */
   pinnedPresetIds?: string[];
+
+  /**
+   * Transient flag set by resolvePersonality when the effective tone is
+   * "none" — signals downstream cleanup/refine composers to skip the LLM
+   * step and pass the raw transcript through unchanged. Never persisted;
+   * lives only on the in-request resolved copy of the profile.
+   */
+  passThrough?: boolean;
 }
 
 /**

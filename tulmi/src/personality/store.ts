@@ -77,21 +77,34 @@ export async function resolvePersonality(
   return applyPresetOverlay(base);
 }
 
-/** Overlay the selected preset's promptStyle + tone hint into the profile. */
+/**
+ * Overlay the selected preset's promptStyle + tone hint into the profile.
+ *
+ * "none" tone bypasses the overlay entirely — the LLM refine step in
+ * downstream pipelines then no-ops, and the caller gets the raw
+ * transcript back exactly as Whisper produced it. This is the default
+ * for new users: they see what they said, not a rewrite.
+ */
 function applyPresetOverlay(p: Personality): Personality {
   if (!p.activePresetId) return p;
   const preset = PERSONALITY_PRESETS.find((x) => x.id === p.activePresetId);
   if (!preset) return p;
-  const toneHint = p.activeTone
-    ? `Preferred tone: ${p.activeTone}.`
-    : `Preferred tone: ${preset.defaultTone}.`;
-  const overlay = `[Voice: ${preset.name}] ${preset.promptStyle} ${toneHint}`.trim();
+
+  const effectiveTone = p.activeTone ?? preset.defaultTone;
+  // Raw pass-through: no overlay, no LLM instructions injected. The
+  // pipeline layer inspects `passThrough` and short-circuits the refine.
+  if (effectiveTone === "none") {
+    return { ...p, passThrough: true };
+  }
+
+  const overlay = `[Voice: ${preset.name}] ${preset.promptStyle} Preferred tone: ${effectiveTone}.`.trim();
   const existing = (p.customInstructions ?? "").trim();
   const merged = existing
     ? `${overlay}\n\n${existing}`
     : overlay;
   return {
     ...p,
+    passThrough: false,
     customInstructions: merged,
     // Also normalize formality + emojiUse to the preset defaults so
     // downstream dial-based composers pick sane values when the user
