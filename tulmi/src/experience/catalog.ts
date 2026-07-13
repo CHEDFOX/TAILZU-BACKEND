@@ -302,11 +302,11 @@ function introScreen(): ScreenResponse {
           style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
           props: {
             frames: [
-              { key: "intro.0" },
               { key: "intro.1" },
               { key: "intro.2" },
               { key: "intro.3" },
               { key: "intro.4" },
+              { key: "intro.0" },
             ],
             frameMs: 120,      // high-speed montage feel
             loops: 1,          // one cycle then done
