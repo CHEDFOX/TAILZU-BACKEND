@@ -106,8 +106,13 @@ export interface BootstrapResponse {
   navigation: NavigationShell;
   /** Screen to render first. */
   initialScreenId: string;
-  /** Optional remote feature flags the renderer can read in conditions. */
-  flags?: Record<string, boolean | number | string>;
+  /**
+   * Optional remote feature flags the renderer can read in conditions.
+   * Values are opaque to the framework — most flags are primitives, but a
+   * few carry small JSON objects (e.g. media specs, deep-link shapes) so
+   * the type is intentionally permissive.
+   */
+  flags?: Record<string, boolean | number | string | Record<string, unknown> | unknown[]>;
   /**
    * Central copy: every user-facing string the app can show. Nodes reference
    * a label with "@key" (e.g. props.content = "@home.title"), so ALL wording is

@@ -128,16 +128,34 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
     // The server owns onboarding: first-run users land on the flow; everyone
     // else goes straight to the app.
     initialScreenId: opts.onboarded ? "home" : "onboarding",
-    flags: {
-      // Policy URLs — Settings screen links open these in-browser.
-      // Served from tailzu.space (proxied to the backend by Caddy — see
-      // deploy/Caddyfile) so the URL a user copies from the address bar looks
-      // like a real domain rather than an internal api. host. Same content
-      // either way.
-      "policy.privacy.url": "https://tailzu.space/privacy",
-      "policy.terms.url": "https://tailzu.space/terms",
-      "support.url": "mailto:support@tailzu.space",
-    },
+    flags: ((): BootstrapResponse["flags"] => {
+      const flags: BootstrapResponse["flags"] = {
+        // Policy URLs — Settings screen links open these in-browser.
+        // Served from tailzu.space (proxied to the backend by Caddy — see
+        // deploy/Caddyfile) so the URL a user copies from the address bar looks
+        // like a real domain rather than an internal api. host. Same content
+        // either way.
+        "policy.privacy.url": "https://tailzu.space/privacy",
+        "policy.terms.url": "https://tailzu.space/terms",
+        "support.url": "mailto:support@tailzu.space",
+
+        // Post-splash intro — max duration + background. `intro.media` is
+        // spliced in below from whatever's under the "intro" key in the media
+        // registry, so uploading is the entire "swap the intro animation"
+        // operation. Absent → client skips the intro entirely.
+        "intro.maxDurationMs": 4500,
+        "intro.background": THEME.color.bg,
+        "intro.showEveryLaunch": false,
+      };
+
+      const reg = getMediaRegistryFn?.() ?? {};
+      const intro = reg["intro"];
+      if (intro?.url && flags) {
+        flags["intro.media"] = { url: intro.url };
+      }
+
+      return flags;
+    })(),
     // Central copy — every screen can reference these with "@key".
     labels: {
       "app.name": "Tailzu",
