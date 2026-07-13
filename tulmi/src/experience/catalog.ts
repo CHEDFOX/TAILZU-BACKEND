@@ -9,6 +9,7 @@
  */
 import type {
   ActionRef,
+  ActionSpec,
   BootstrapResponse,
   KeyboardActionSpec,
   KeyboardConfigResponse,
@@ -19,7 +20,7 @@ import type {
   ThemeTokens,
 } from "../../../shared/types/sdui.js";
 import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
-import type { HistoryEntry, Personality, StatsResponse, UsageSummary } from "../../../shared/types/api.js";
+import type { HistoryEntry, PaywallConfig, PaywallPlan, Personality, StatsResponse, UsageSummary } from "../../../shared/types/api.js";
 import {
   PERSONALITY_PRESETS,
   findPreset,
@@ -148,6 +149,17 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
         "intro.maxDurationMs": 4500,
         "intro.background": THEME.color.bg,
         "intro.showEveryLaunch": false,
+
+        // Paywall gating. When `paywall.entitlement` is set, the client checks
+        // RevenueCat for that entitlement on boot; when the user does NOT
+        // have it and `paywall.blockUntilEntitled` is true, the client
+        // navigates to the "paywall" screen after onboarding. `paywall.config`
+        // is the whole PaywallConfig so clients can pre-warm plan copy without
+        // a separate fetch.
+        "paywall.entitlement": PAYWALL_CONFIG.entitlement ?? "pro",
+        "paywall.blockUntilEntitled": false,
+        "paywall.showAfterOnboarding": true,
+        "paywall.config": PAYWALL_CONFIG as unknown as Record<string, unknown>,
       };
 
       const reg = getMediaRegistryFn?.() ?? {};
@@ -320,6 +332,387 @@ function introScreen(): ScreenResponse {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Paywall — a backend-authored subscription screen.
+// ---------------------------------------------------------------------------
+//
+// The whole thing is data: media, copy, plan cards, CTA all come from
+// PAYWALL_CONFIG below. Swap that constant → the paywall changes, no client
+// rebuild. RevenueCat is the store engine; iap.showPaywall drives purchase.
+//
+// A plan card:
+//   - Renders label + price + optional badge + optional footnote.
+//   - Tap sets `state.selectedPlanId` (haptic on tap).
+//   - Selected card gets a themed border + fill.
+// Primary CTA reads `state.selectedPlanId`, looks the plan up, and fires
+// iap.showPaywall with the plan's offeringId/packageId, or iap.subscribe if
+// only productId is set.
+//
+// Everything below the plans is optional — the CTA is the only required
+// element. Set `dismissible: false` for a hard paywall (no "×"/close).
+
+export const PAYWALL_CONFIG: PaywallConfig = {
+  heroFrames: [
+    { key: "paywall.1" },
+    { key: "paywall.2" },
+    { key: "paywall.3" },
+  ],
+  heroFrameMs: 2200,
+  heroLoops: 0,
+  title: "Type once. Sound like you always.",
+  subtitle: "Unlock unlimited voice cleanups, every tone, every language.",
+  features: [
+    "Unlimited voice-to-text refinement",
+    "All 12 personality presets + tones",
+    "Priority speech recognition",
+    "Cancel anytime",
+  ],
+  plans: [
+    {
+      id: "annual",
+      productId: "tailzu_annual",
+      offeringId: "default",
+      packageId: "$rc_annual",
+      label: "Annual",
+      price: "$59.99",
+      period: "per year",
+      perUnit: "$4.99/mo, billed annually",
+      badge: "Save 40%",
+      default: true,
+    },
+    {
+      id: "monthly",
+      productId: "tailzu_monthly",
+      offeringId: "default",
+      packageId: "$rc_monthly",
+      label: "Monthly",
+      price: "$9.99",
+      period: "per month",
+    },
+    {
+      id: "lifetime",
+      productId: "tailzu_lifetime",
+      offeringId: "default",
+      packageId: "$rc_lifetime",
+      label: "Lifetime",
+      price: "$149.99",
+      period: "one-time",
+      badge: "Pay once",
+    },
+  ],
+  cta: "Start free trial",
+  restoreLabel: "Restore purchases",
+  footnote:
+    "Auto-renews unless canceled 24h before period end. Manage in Settings.",
+  terms: "https://tailzu.space/terms",
+  privacy: "https://tailzu.space/privacy",
+  dismissible: true,
+  dismissLabel: "Not now",
+  entitlement: "pro",
+};
+
+/**
+ * "paywall" SDUI screen. Renders a scrollable page:
+ *   [close] [hero media Slideshow]
+ *   [title / subtitle]
+ *   [feature bullets]
+ *   [plan cards row]
+ *   [primary CTA sticky-ish at the bottom]
+ *   [restore + terms + privacy]
+ *
+ * Selection state lives in `state.selectedPlanId`. CTA action tree branches
+ * on that value to fire the right iap.showPaywall (offering+package) or
+ * iap.subscribe (product).
+ */
+function paywallScreen(): ScreenResponse {
+  const cfg = PAYWALL_CONFIG;
+  const defaultPlan = cfg.plans.find((p) => p.default) ?? cfg.plans[0];
+
+  // One action per plan — the CTA references the currently-selected one
+  // via a `condition` chain.
+  const planActions: Record<string, ActionRef> = {};
+  cfg.plans.forEach((plan) => {
+    planActions[`buy.${plan.id}`] = {
+      kind: "sequence",
+      actions: [
+        { kind: "haptic", style: "medium" },
+        plan.offeringId
+          ? {
+              kind: "iap.showPaywall",
+              offeringId: plan.offeringId,
+              packageId: plan.packageId,
+              onSuccess: "unlocked",
+              onError: "purchaseFailed",
+            }
+          : {
+              kind: "iap.subscribe",
+              productId: plan.productId ?? plan.id,
+              onSuccess: "unlocked",
+              onError: "purchaseFailed",
+            },
+      ],
+    };
+  });
+
+  // CTA chain: check selectedPlanId, dispatch to matching buy.* action.
+  const ctaCondition: ActionRef = cfg.plans.reduceRight<ActionRef>(
+    (acc, plan) => ({
+      kind: "condition",
+      if: { eq: ["state.selectedPlanId", plan.id] },
+      then: `buy.${plan.id}`,
+      else: acc,
+    }),
+    `buy.${defaultPlan.id}`,
+  );
+
+  const actions: Record<string, ActionSpec> = {
+    ...(planActions as Record<string, ActionSpec>),
+    cta: ctaCondition as ActionSpec,
+    unlocked: {
+      kind: "sequence",
+      actions: [
+        { kind: "haptic", style: "success" },
+        { kind: "toast", message: "You're in.", tone: "success" },
+        { kind: "navigate", screenId: "home" },
+      ],
+    },
+    purchaseFailed: {
+      kind: "toast",
+      message: "Couldn't complete purchase.",
+      tone: "error",
+    },
+    restore: {
+      kind: "sequence",
+      actions: [
+        { kind: "iap.restore", onSuccess: "restoreDone" },
+      ],
+    },
+    restoreDone: {
+      kind: "toast",
+      message: "Purchases restored.",
+      tone: "success",
+    },
+    dismiss: { kind: "navigateBack" },
+    openTerms: { kind: "openUrl", url: cfg.terms ?? "https://tailzu.space/terms", external: true },
+    openPrivacy: { kind: "openUrl", url: cfg.privacy ?? "https://tailzu.space/privacy", external: true },
+  };
+
+  const heroValid = (cfg.heroFrames ?? []).filter(
+    (f) => f.key || f.url || f.asset,
+  );
+
+  const planCard = (plan: PaywallPlan): Node => ({
+    type: "Card",
+    style: {
+      flex: 1,
+      padding: 14,
+      borderRadius: 16,
+      borderWidth: 1.5,
+      borderColor: {
+        eq: ["state.selectedPlanId", plan.id],
+        then: plan.accent ?? THEME.color.primary,
+        else: THEME.color.border,
+      } as unknown as string,
+      backgroundColor: {
+        eq: ["state.selectedPlanId", plan.id],
+        then: "rgba(255,255,255,0.06)",
+        else: "transparent",
+      } as unknown as string,
+      minHeight: 118,
+    },
+    on: {
+      onPress: {
+        kind: "sequence",
+        actions: [
+          { kind: "haptic", style: "selection" },
+          { kind: "setState", path: "selectedPlanId", value: plan.id },
+        ],
+      },
+    },
+    children: [
+      ...(plan.badge
+        ? [
+            {
+              type: "Badge",
+              props: { text: plan.badge, tone: "brand" },
+              style: {
+                alignSelf: "flex-start",
+                backgroundColor: plan.accent ?? THEME.color.primary,
+                color: "#000",
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+                borderRadius: 999,
+                fontSize: 11,
+                fontWeight: "700",
+                marginBottom: 8,
+              },
+            } satisfies Node,
+          ]
+        : []),
+      text(plan.label, "label", { style: { color: THEME.color.muted, fontSize: 12, letterSpacing: 0.6, textTransform: "uppercase" } }),
+      spacer(6),
+      text(plan.price, "h1", { style: { color: THEME.color.text, fontSize: 22, fontWeight: "800" } }),
+      ...(plan.period
+        ? [text(plan.period, "caption", { style: { color: THEME.color.body, fontSize: 12, marginTop: 2 } })]
+        : []),
+      ...(plan.perUnit
+        ? [text(plan.perUnit, "caption", { style: { color: THEME.color.muted, fontSize: 11, marginTop: 6 } })]
+        : []),
+    ],
+  });
+
+  const featureRow = (line: string): Node => ({
+    type: "Stack",
+    style: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginBottom: 8 },
+    children: [
+      text("✓", "body", { style: { color: THEME.color.primary, fontWeight: "700", fontSize: 16, lineHeight: 22 } }),
+      text(line, "body", { style: { color: THEME.color.body, fontSize: 14, flex: 1, lineHeight: 22 } }),
+    ],
+  });
+
+  const children: Node[] = [];
+
+  // Hero — Slideshow when 2+ frames, single MediaPlayer when 1.
+  if (heroValid.length >= 2) {
+    children.push({
+      type: "Slideshow",
+      style: { width: "100%", aspectRatio: 1.3, borderRadius: 20, overflow: "hidden", marginBottom: 20 },
+      props: {
+        frames: heroValid,
+        frameMs: cfg.heroFrameMs ?? 2200,
+        loops: cfg.heroLoops ?? 0,
+        contentFit: "cover",
+      },
+    });
+  } else if (heroValid.length === 1) {
+    children.push({
+      type: "Image",
+      style: { width: "100%", aspectRatio: 1.3, borderRadius: 20, marginBottom: 20 },
+      props: { source: heroValid[0].url, spec: heroValid[0] },
+    });
+  }
+
+  children.push(
+    text(cfg.title, "h1", {
+      style: { fontSize: 28, fontWeight: "800", color: THEME.color.text, textAlign: "center", lineHeight: 34 },
+    }),
+  );
+
+  if (cfg.subtitle) {
+    children.push(
+      spacer(10),
+      text(cfg.subtitle, "body", {
+        style: { fontSize: 15, color: THEME.color.body, textAlign: "center", lineHeight: 22 },
+      }),
+    );
+  }
+
+  if (cfg.features?.length) {
+    children.push(spacer(22));
+    children.push({
+      type: "Stack",
+      style: { paddingHorizontal: 8 },
+      children: cfg.features.map(featureRow),
+    });
+  }
+
+  children.push(spacer(20));
+  children.push({
+    type: "Stack",
+    style: { flexDirection: "row", gap: 10 },
+    children: cfg.plans.map(planCard),
+  });
+
+  children.push(spacer(22));
+  children.push({
+    type: "Button",
+    props: { label: cfg.cta, variant: "primary" },
+    style: { paddingVertical: 18 },
+    on: { onPress: "cta" },
+  });
+
+  if (cfg.footnote) {
+    children.push(
+      spacer(10),
+      text(cfg.footnote, "caption", {
+        style: { fontSize: 11, color: THEME.color.muted, textAlign: "center", lineHeight: 16 },
+      }),
+    );
+  }
+
+  children.push(spacer(14));
+  children.push({
+    type: "Stack",
+    style: { flexDirection: "row", justifyContent: "center", flexWrap: "wrap", gap: 16 },
+    children: [
+      cfg.restoreLabel
+        ? {
+            type: "Button",
+            props: { label: cfg.restoreLabel, variant: "ghost" },
+            style: { paddingVertical: 8, paddingHorizontal: 4 },
+            on: { onPress: "restore" },
+          }
+        : null,
+      cfg.terms
+        ? {
+            type: "Button",
+            props: { label: "Terms", variant: "ghost" },
+            style: { paddingVertical: 8, paddingHorizontal: 4 },
+            on: { onPress: "openTerms" },
+          }
+        : null,
+      cfg.privacy
+        ? {
+            type: "Button",
+            props: { label: "Privacy", variant: "ghost" },
+            style: { paddingVertical: 8, paddingHorizontal: 4 },
+            on: { onPress: "openPrivacy" },
+          }
+        : null,
+    ].filter(Boolean) as Node[],
+  });
+
+  const root: Node = {
+    type: "Screen",
+    style: {
+      backgroundColor: THEME.color.bg,
+      padding: 20,
+      paddingTop: 12,
+      paddingBottom: 32,
+    },
+    children: [
+      // Close row — visible only when dismissible.
+      ...(cfg.dismissible !== false
+        ? [
+            {
+              type: "Stack",
+              style: { flexDirection: "row", justifyContent: "flex-end", marginBottom: 6 },
+              children: [
+                {
+                  type: "Button",
+                  props: { label: cfg.dismissLabel ?? "Not now", variant: "ghost" },
+                  style: { paddingVertical: 8, paddingHorizontal: 12 },
+                  on: { onPress: "dismiss" },
+                } satisfies Node,
+              ],
+            } satisfies Node,
+          ]
+        : []),
+      ...children,
+    ],
+  };
+
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "paywall",
+    title: "",
+    state: { selectedPlanId: defaultPlan.id },
+    actions,
+    root,
+    cacheTtlSeconds: 60,
+  };
+}
+
 export interface ScreenContext {
   personality: Personality;
   language: string;
@@ -376,6 +769,8 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       return keyboardPrimerScreen(ctx);
     case "intro":
       return introScreen();
+    case "paywall":
+      return paywallScreen();
     default:
       return null;
   }

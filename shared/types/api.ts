@@ -410,6 +410,77 @@ export interface PersonalityResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Paywall config — served with bootstrap flags["paywall"]. Every value comes
+// from the backend so plans / copy / media / gating swap without a rebuild.
+// ---------------------------------------------------------------------------
+
+/**
+ * A single selectable plan card. Prices come from the store (RevenueCat
+ * resolves them) — the label / period / badge are backend authored.
+ *
+ *   productId    Apple/Google product id. Passed to iap.subscribe when
+ *                the user taps the CTA with this plan selected.
+ *   offeringId   Optional RevenueCat offering to look inside; used with
+ *                iap.showPaywall when the backend prefers offering-based
+ *                selection over raw productId.
+ *   packageId    Optional RevenueCat package identifier (annual/monthly/…)
+ *                inside the offering. When present, iap.showPaywall targets
+ *                that specific package.
+ *   badge        Small pill (e.g. "Save 40%", "Best value") rendered on top
+ *                of the card. Empty/absent = no pill.
+ *   accent       Overrides the card's active-state accent (defaults to
+ *                theme.color.primary). Handy for a "gold" annual plan.
+ */
+export interface PaywallPlan {
+  id: string;                       // client-side selection state key
+  productId?: string;               // for iap.subscribe
+  offeringId?: string;              // for iap.showPaywall
+  packageId?: string;               // for iap.showPaywall (inside offering)
+  label: string;                    // "Annual", "Monthly", "Lifetime"
+  price: string;                    // "$59.99/yr", "$9.99/mo" — the shown copy
+  period?: string;                  // "per year", "per month" — secondary line
+  perUnit?: string;                 // "$4.99/mo billed annually" — footnote
+  badge?: string;                   // "Save 40%", "Best value", "3-day trial"
+  accent?: string;                  // hex — overrides theme primary on select
+  default?: boolean;                // pre-selected when the screen opens
+}
+
+/**
+ * Backend-authored paywall. Rendered via the "paywall" SDUI screen.
+ *   heroFrames    Cycling media at the top (uses Slideshow).
+ *   title         Big headline under the hero.
+ *   subtitle      Smaller supporting line.
+ *   features      Bulleted list of value props.
+ *   plans         Selectable pricing cards. First card default when none
+ *                 explicitly marked `default: true`.
+ *   cta           Primary button label (e.g. "Start free trial").
+ *   restoreLabel  Text for the restore-purchases link.
+ *   footnote      Small print under the CTA (auto-renewal disclosure, etc.).
+ *   terms         Optional Terms of Service URL for the footer link.
+ *   privacy       Optional Privacy Policy URL for the footer link.
+ *   dismissible   When true, a subtle "×" / "Not now" appears — hard paywall
+ *                 when false. Defaults to true.
+ *   dismissLabel  Copy for the dismiss button when dismissible is true.
+ */
+export interface PaywallConfig {
+  heroFrames?: Array<{ key?: string; url?: string; asset?: string }>;
+  heroFrameMs?: number;
+  heroLoops?: number;
+  title: string;
+  subtitle?: string;
+  features?: string[];
+  plans: PaywallPlan[];
+  cta: string;
+  restoreLabel?: string;
+  footnote?: string;
+  terms?: string;
+  privacy?: string;
+  dismissible?: boolean;
+  dismissLabel?: string;
+  entitlement?: string;             // RevenueCat entitlement to check on load
+}
+
+// ---------------------------------------------------------------------------
 // REST: auto-learn vocabulary  (POST /v1/personality/vocabulary/learn)
 // ---------------------------------------------------------------------------
 //
