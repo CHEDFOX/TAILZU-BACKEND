@@ -185,17 +185,127 @@ async function transcribeGroq(input: SttInput): Promise<SttResult> {
   const cfg = getConfig();
   const file = await toGroqFile(input.audio, `audio.${input.format}`);
 
-  // verbose_json gives us the audio duration for metering.
+  // verbose_json gives us the audio duration for metering AND the
+  // per-segment confidence signals (no_speech_prob, avg_logprob) we use to
+  // drop hallucinated segments before they land at the cursor.
   const res = (await groq().audio.transcriptions.create({
     file,
     model: cfg.GROQ_STT_MODEL,
     language: sttLanguage(input.language),
     response_format: "verbose_json",
     prompt: sttPrompt(input.vocabulary),
-  })) as { text: string; duration?: number };
+    // Temperature 0 makes Whisper deterministic and much less likely to
+    // "hallucinate" on silent / low-signal chunks. The provider only accepts
+    // the field on some SDK versions; ignore the cast if TS complains.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    temperature: 0 as any,
+  })) as GroqVerboseResponse;
 
+  const cleaned = sanitizeWhisperText(res);
   return {
-    text: (res.text ?? "").trim(),
+    text: cleaned,
     durationSeconds: typeof res.duration === "number" ? res.duration : 0,
   };
+}
+
+interface GroqSegment {
+  text: string;
+  no_speech_prob?: number;
+  avg_logprob?: number;
+}
+interface GroqVerboseResponse {
+  text: string;
+  duration?: number;
+  segments?: GroqSegment[];
+}
+
+/**
+ * Post-process Whisper's transcript to strip:
+ *   1. Segments with no_speech_prob > threshold (silent / non-speech audio
+ *      that Whisper invented words for)
+ *   2. Segments with very low avg_logprob (Whisper wasn't confident enough)
+ *   3. Known hallucination phrases — Whisper has a well-documented failure
+ *      mode where near-silent audio produces boilerplate like "Thanks for
+ *      watching!" from its YouTube training data.
+ *   4. Repetition loops — e.g. "you you you you" from mic drop-outs.
+ *
+ * If segments come back, we rebuild the text from the survivors. Otherwise
+ * we run the phrase + repetition filters on the flat text.
+ */
+export function sanitizeWhisperText(res: GroqVerboseResponse): string {
+  const NO_SPEECH_CEIL = 0.6;
+  const AVG_LOGPROB_FLOOR = -1.0; // ln(p) — anything below this = coin flip
+
+  let text = "";
+  if (Array.isArray(res.segments) && res.segments.length > 0) {
+    const kept = res.segments.filter((s) => {
+      if (typeof s.no_speech_prob === "number" && s.no_speech_prob > NO_SPEECH_CEIL) return false;
+      if (typeof s.avg_logprob === "number" && s.avg_logprob < AVG_LOGPROB_FLOOR) return false;
+      return true;
+    });
+    text = kept.map((s) => (s.text ?? "").trim()).filter(Boolean).join(" ");
+  } else {
+    text = (res.text ?? "").trim();
+  }
+
+  text = stripHallucinationPhrases(text);
+  text = collapseRepetitions(text);
+  return text.trim();
+}
+
+/**
+ * Whisper's known "silent audio → YouTube boilerplate" hallucinations.
+ * When the whole transcript IS one of these, we return an empty string;
+ * when they appear as a leading/trailing tail, we trim just that tail.
+ * Not exhaustive — add here as new patterns surface in the wild.
+ */
+const HALLUCINATION_PATTERNS: RegExp[] = [
+  /^\s*thanks?\s+for\s+watching[!.\s]*$/i,
+  /^\s*thank\s+you\s+for\s+watching[!.\s]*$/i,
+  /^\s*please\s+subscribe[!.\s]*$/i,
+  /^\s*subscribe\s+to\s+my\s+channel[!.\s]*$/i,
+  /^\s*don'?t\s+forget\s+to\s+(like\s+and\s+)?subscribe[!.\s]*$/i,
+  /^\s*see\s+you\s+(next\s+time|in\s+the\s+next\s+video)[!.\s]*$/i,
+  /^\s*bye[!.\s]*$/i,
+  /^\s*outro[!.\s]*$/i,
+  /^\s*\[music\][!.\s]*$/i,
+  /^\s*(um|uh|hmm|mm|ah)[!.\s]*$/i,
+];
+
+function stripHallucinationPhrases(text: string): string {
+  const t = text.trim();
+  if (!t) return "";
+  for (const pat of HALLUCINATION_PATTERNS) {
+    if (pat.test(t)) return "";
+  }
+  // Trim a hallucinated tail off an otherwise-real transcript.
+  return t
+    .replace(/\s*(thanks? for watching|thank you for watching|please subscribe|don'?t forget to (like and )?subscribe|see you next time)[!.\s]*$/i, "")
+    .trim();
+}
+
+/**
+ * Collapse degenerate repetition ("you you you you you", "the the the")
+ * down to a single occurrence. Whisper does this when it loses signal
+ * mid-utterance and starts generating filler; the fix is to notice a token
+ * repeating 4+ times in a row and keep just one.
+ */
+function collapseRepetitions(text: string): string {
+  if (!text) return "";
+  const words = text.split(/\s+/);
+  const out: string[] = [];
+  let last = "";
+  let repeat = 0;
+  for (const w of words) {
+    const norm = w.toLowerCase();
+    if (norm === last) {
+      repeat += 1;
+      if (repeat < 3) out.push(w); // allow up to "the the the" for emphasis
+    } else {
+      last = norm;
+      repeat = 1;
+      out.push(w);
+    }
+  }
+  return out.join(" ");
 }
