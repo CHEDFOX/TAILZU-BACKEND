@@ -2493,26 +2493,12 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         visibleIf: { truthy: "state.hasSuggestions" },
       },
 
-      // Dictation status label — only during voice sessions. Bound to
-      // state.status which the native side updates as
-      // "" → "Listening…" → "Transcribing…" → "Refining…" → "".
-      {
-        type: "StatusLabel",
-        bind: { text: "status" },
-        style: { height: 22, fontSize: 12, fg: "#B0B0B4" },
-        visibleIf: { truthy: "state.status" },
-      },
-
-      // Live waveform — visible only while dictating. Provides visible feedback
-      // that we're actually listening (vs the "no visible cue" problem the
-      // native path had before).
-      {
-        type: "Waveform",
-        bind: { level: "micLevel" },
-        props: { bars: 24, color: BRAND_ACCENT },
-        style: { height: 44 },
-        visibleIf: { truthy: "state.dictating" },
-      },
+      // Status label + waveform intentionally removed — the mic button's own
+      // orange press state + the flash-across-keys animation on refined-text
+      // arrival provide all the "is something happening?" feedback we need.
+      // A separate status band above the tone chips just adds vertical noise
+      // and makes error strings ("Error: 401 …") loud when we want the
+      // keyboard to feel calm.
 
       // Tulmi's tools bar — emitted twice: one dark palette variant and one
       // light palette variant, gated by state.appearance. The Swift renderer's
