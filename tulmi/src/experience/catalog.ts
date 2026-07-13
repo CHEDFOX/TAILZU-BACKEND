@@ -240,7 +240,7 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
  * baked into the response the client uses.
  *
  * Order of precedence:
- *   1. Intro plays whenever all 4 intro frames (intro.1 … intro.4) live
+ *   1. Intro plays whenever the intro frames (intro.0 … intro.4) live
  *      in the media store. If any are missing we skip the intro and
  *      route straight to onboarding / home so a partial upload can't
  *      leave the user staring at a blank screen.
@@ -250,6 +250,7 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
 function pickInitialScreenId(onboarded: boolean): string {
   const reg = getMediaRegistryFn?.() ?? {};
   const introReady =
+    !!reg["intro.0"]?.url &&
     !!reg["intro.1"]?.url &&
     !!reg["intro.2"]?.url &&
     !!reg["intro.3"]?.url &&
@@ -259,8 +260,9 @@ function pickInitialScreenId(onboarded: boolean): string {
 }
 
 /**
- * Post-splash intro — a pure SDUI screen. Renders a Slideshow of 4 media
- * frames from the media store (uploaded under intro.1 … intro.4). When the
+ * Post-splash intro — a pure SDUI screen. Renders a Slideshow of 5 media
+ * frames from the media store (uploaded under intro.0 … intro.4). Frame 0
+ * is the "black" hold; frames 1..4 are the wave-move animation. When the
  * slideshow finishes its single loop, its onComplete fires the `done`
  * action which navigates to the real initial screen.
  *
@@ -269,7 +271,7 @@ function pickInitialScreenId(onboarded: boolean): string {
  * touches the intro path.
  *
  * To customize:
- *   - Swap the 4 frames: POST /v1/media/upload?key=intro.1 (etc.)
+ *   - Swap the 5 frames: POST /v1/media/upload?key=intro.0 (etc.)
  *   - Change speed: edit `frameMs` below
  *   - Change how many loops: edit `loops`
  *   - Change what happens after: edit `done` action's screenId
@@ -300,6 +302,7 @@ function introScreen(): ScreenResponse {
           style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
           props: {
             frames: [
+              { key: "intro.0" },
               { key: "intro.1" },
               { key: "intro.2" },
               { key: "intro.3" },
