@@ -1953,20 +1953,9 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
   const letterRow2 = ["a", "s", "d", "f", "g", "h", "j", "k", "l"];
   const letterRow3 = ["z", "x", "c", "v", "b", "n", "m"];
 
-  // Popular emoji grid (Unicode CLDR 2024 usage rankings) — 6 rows × 10 cols.
-  // Third-party keyboards can't show Apple's system emoji picker (private API),
-  // so we ship our own inline grid. Each emoji is inserted as its Unicode
-  // character via LetterKey's insertKey path — Swift's Character.count == 1
-  // treats a single emoji as one grapheme, so uppercase/lowercase transforms
-  // are no-ops for these entries.
-  const emojiRows: string[][] = [
-    ["😂", "❤️", "😍", "🤣", "😊", "🙏", "💕", "😭", "😘", "👍"],
-    ["😅", "👏", "😁", "🥰", "🤩", "🙂", "😉", "💯", "😄", "😃"],
-    ["😆", "😎", "✨", "😢", "🎉", "🔥", "💖", "😀", "💪", "👌"],
-    ["🙄", "🤔", "😳", "🥺", "🤗", "😜", "🌟", "🌈", "😌", "🤪"],
-    ["😴", "🙃", "😇", "😋", "🤤", "😱", "🤯", "🥳", "🎈", "🎁"],
-    ["👀", "💀", "🤡", "🥱", "🥲", "🫠", "🥹", "🫶", "🤝", "🙌"],
-  ];
+  // Emoji layer removed. Users can access the system emoji keyboard via the
+  // globe key in the iOS extension bar below Tulmi, so shipping our own
+  // grid was duplicating that at the cost of a keyboard slot.
 
   // The whole keyboard as a tree. Column of rows; suggestion bar + waveform
   // are conditionally visible via visibleIf against KBState the renderer maintains.
@@ -2173,29 +2162,13 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       // these proportionally on every screen size (Pro / Plus / Pro Max
       // scale correctly, no more hardcoded widths).
 
-      // Mode switcher — three variants, each visibleIf-gated:
-      // ============================ EMOJI LAYER (emoji) =======================
-      // Third-party keyboards can't show Apple's system emoji picker, so we
-      // build our own inline. Grid of ~60 popular emojis ranked by usage.
-      // Each LetterKey has char = the emoji glyph; tapping inserts it.
-      // "ABC" on row 7 returns to letters.
+      // Mode switcher — two variants, each visibleIf-gated:
 
-      ...emojiRows.map((row): KeyboardNode => ({
-        type: "Row",
-        style: { gap: 4 },
-        visibleIf: { eq: ["state.layoutId", "emoji"] },
-        children: row.map((glyph) => ({
-          type: "LetterKey",
-          props: { char: glyph },
-          style: { flex: 1, fontSize: 26, bg: "#00000000", fg: KEY_TEXT },
-        })),
-      })),
-
-      // Row 4 (LETTER page) — 123 · 😀 · space · return.
-      // No globe on the keyboard itself — iOS shows its own next-keyboard button
-      // in the system extension bar below Tulmi, so an on-keyboard globe would
-      // just be duplicating what the OS already provides. Space bar grows to
-      // fill the freed width.
+      // Row 4 (LETTER page) — 123 · space · return.
+      // Emoji switcher removed: iOS's own next-keyboard button in the system
+      // extension bar covers keyboard switching, and the emoji picker on the
+      // system keyboard is a native shortcut users already know. Space bar
+      // grows to fill the freed width.
       {
         type: "Row",
         style: { gap: 6, height: 50 },
@@ -2207,16 +2180,7 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
             on: { onPress: { kind: "switchLayout", language: "123" } },
             style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
-          {
-            // Emoji switcher — jumps to our emoji layer. Third-party keyboards
-            // can't show Apple's system emoji picker (private API); we ship our
-            // own grid layer instead.
-            type: "LetterKey",
-            props: { char: "😀" },
-            on: { onPress: { kind: "switchLayout", language: "emoji" } },
-            style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fontSize: 22 },
-          },
-          { type: "SpaceKey", style: { flex: 5.79, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
+          { type: "SpaceKey", style: { flex: 7.08, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
           { type: "ReturnKey", style: { flex: 2.78, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
         ],
       },
@@ -2238,23 +2202,6 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
           },
           { type: "SpaceKey", style: { flex: 7.08, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
           { type: "ReturnKey", style: { flex: 2.78, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
-        ],
-      },
-      // Row 4 for the EMOJI page — "ABC" back to letters, no globe, no 123.
-      // Big space bar with a backspace on the right.
-      {
-        type: "Row",
-        style: { gap: 6, height: 50 },
-        visibleIf: { eq: ["state.layoutId", "emoji"] },
-        children: [
-          {
-            type: "LetterKey",
-            props: { char: "ABC" },
-            on: { onPress: { kind: "switchLayout", language: "en" } },
-            style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
-          },
-          { type: "SpaceKey", style: { flex: 6, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
-          { type: "BackspaceKey", style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
         ],
       },
     ],
