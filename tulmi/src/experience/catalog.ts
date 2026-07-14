@@ -836,16 +836,10 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
             targetApp: "WhatsApp",
             language: "auto",
             size: 38,
-            // Same mic.animation the keyboard uses. Single-media mode:
-            // when only iconIdle is set (no iconRecording), VoiceToggle
-            // renders the same source in both states and auto-binds
-            // `playing = recording` — tap → animation plays (recording),
-            // tap → freezes on current frame (recording stops).
-            // voiceReactive:true drives playback speed by mic amplitude
-            // while recording, so the animation "listens" with the user.
+            background: "#E8A23C",
             iconIdle: {
               source: { key: "mic.animation" },
-              autoplay: false,   // paused/still until first tap
+              autoplay: false,
               loop: true,
               voiceReactive: true,
             },
