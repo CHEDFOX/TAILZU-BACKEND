@@ -844,7 +844,10 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
               voiceReactive: true,
             },
           },
-          on: { onError: "err" },
+          // micError echoes the real failure ($event) — a permission denial or
+          // an audio-session error must NOT look like a generic "check your
+          // connection" toast, or it's undebuggable in the field.
+          on: { onError: "micError" },
           // Older bundles don't have VoiceToggle in their registry. VoiceButton
           // has shipped since the initial SDUI release, drives the same bind,
           // and reads state → mic → transcript → writes back. Same product
@@ -853,7 +856,7 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
             type: "VoiceButton",
             bind: { value: bindKey },
             props: { targetApp: "WhatsApp", language: "auto" },
-            on: { onError: "err" },
+            on: { onError: "micError" },
           },
         },
       ] },
@@ -871,6 +874,11 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
     },
     actions: {
       err: { kind: "toast", message: "Something went wrong. Check your connection.", tone: "error" },
+      // Echoes the real reason ($event) the mic control failed. The client's
+      // toast action resolves $event to the message VoiceToggle fired, so
+      // permission / audio-session / transcribe failures each show their own
+      // cause instead of a single misleading generic string.
+      micError: { kind: "toast", message: "$event", tone: "error" },
       openDictionary: { kind: "navigate", screenId: "dictionary" },
     },
     root: {
