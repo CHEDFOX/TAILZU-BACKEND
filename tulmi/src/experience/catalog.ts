@@ -3028,6 +3028,12 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       return: "return",
       needFullAccess: "Enable Full Access to use voice + Refine.",
       language: "Language",
+      // Branded, non-technical status text (both keyboards fall back to these
+      // exact strings if the backend omits them — editing here re-words them
+      // over-the-air, no rebuild). 444 = mic/capture failed ("not listening");
+      // 222 = backend/processing failed ("we'll be back").
+      voice_not_listening: "444 : Not Listening",
+      voice_unavailable: "222 : will let you know when we are back",
     },
     root,
     actions,
