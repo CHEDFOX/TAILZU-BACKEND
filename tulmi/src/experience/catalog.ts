@@ -297,22 +297,36 @@ function introScreen(): ScreenResponse {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "intro",
     title: "",
+    // hideChrome removes header + tab bar so the Slideshow fills the whole
+    // window — critical for the intro to feel like a splash-adjacent
+    // cinematic instead of "media inside the app's content area."
+    hideChrome: true,
     state: {},
     actions: {
       done: { kind: "navigate", screenId: "home" },
     },
+    // Root is a flex View (Stack, not the ScrollView-based Screen). The
+    // Slideshow gets width:100% + height:100% + flex:1 so it stretches to
+    // fill the parent — which is now the whole window because chrome is
+    // hidden.
     root: {
-      type: "Screen",
+      type: "Stack",
       style: {
-        backgroundColor: "#0e0e12",
-        padding: 0,
+        flex: 1,
+        width: "100%",
+        height: "100%",
+        backgroundColor: "#000000",
         alignItems: "stretch",
         justifyContent: "center",
       },
       children: [
         {
           type: "Slideshow",
-          style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
+          style: {
+            flex: 1,
+            width: "100%",
+            height: "100%",
+          },
           props: {
             frames: [
               { key: "intro.1" },

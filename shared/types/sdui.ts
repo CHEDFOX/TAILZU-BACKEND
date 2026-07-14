@@ -228,6 +228,13 @@ export interface ScreenResponse {
   actions?: Record<string, ActionSpec>;
   /** Seconds the client may cache this screen. 0 = always refetch. */
   cacheTtlSeconds?: number;
+  /**
+   * When true, the client hides its app-level chrome (top bar with brand /
+   * back / gear, bottom tab bar) for this screen so the root renders truly
+   * full-bleed. Use for splash-adjacent screens like the intro slideshow,
+   * paywalls that need immersion, onboarding videos, etc.
+   */
+  hideChrome?: boolean;
 }
 
 // ===========================================================================
