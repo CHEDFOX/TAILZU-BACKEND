@@ -345,12 +345,9 @@ function formatFromFilename(name: string | undefined): AudioFormat | null {
 const AUTHED_RL = {
   rateLimit: { max: cfg.RATE_LIMIT_MAX, timeWindow: cfg.RATE_LIMIT_WINDOW_MS },
 };
-const UNAUTH_RL = {
-  rateLimit: {
-    max: cfg.RATE_LIMIT_UNAUTH_MAX,
-    timeWindow: cfg.RATE_LIMIT_WINDOW_MS,
-  },
-};
+// UNAUTH_RL removed — every previously-unauth route was gated on
+// per-user hashed tokens anyway, so AUTHED_RL is the right cap and
+// avoids the 429-storm we saw on /v1/keyboard/config launch traffic.
 
 app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
@@ -1139,7 +1136,7 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
 
 // --- Keyboard config (server-driven keyboard; cached by the native shell) ----
 
-app.get("/v1/keyboard/config", { config: UNAUTH_RL }, async (req, reply) => {
+app.get("/v1/keyboard/config", { config: AUTHED_RL }, async (req, reply) => {
   // Personality is per-user — the keyboard uses it to render the quick-swap
   // chip row (pinned presets) + honor the active preset's default tone.
   // Missing/failed auth just returns the config without pins; the keyboard
@@ -1149,6 +1146,11 @@ app.get("/v1/keyboard/config", { config: UNAUTH_RL }, async (req, reply) => {
     const user = await resolveUser(req.headers["authorization"]);
     if (user) personality = await getPersonality(user);
   } catch { /* keyboard should never fail on personality lookup */ }
+  // Cache-Control: no-store — keyboard config carries per-user
+  // `kb.personality.pinned` / activeId / activeTone. Any caching layer
+  // (nginx, CDN) that indexed the response by URL alone could leak these
+  // across users. Same policy as /v1/app/bootstrap and /v1/app/screen.
+  noStoreSdui(reply);
   return reply.send(buildKeyboardConfig(personality));
 });
 
