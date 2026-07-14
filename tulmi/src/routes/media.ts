@@ -80,18 +80,43 @@ function extForContentType(ct: string): string {
 }
 
 /**
- * Registry file lives in the PARENT of MEDIA_DIR (e.g. /data/_registry_v1.json
- * when MEDIA_DIR is /data/media) so the public static server rooted at
- * MEDIA_DIR can never expose it.
+ * Registry file lives INSIDE MEDIA_DIR so it sits on the same Docker volume
+ * as the media files it maps to. Previously it lived in the parent
+ * directory — but only MEDIA_DIR is volume-mounted in docker-compose.yml,
+ * so on `docker compose down/build --no-cache/up`, the parent got wiped
+ * and the mapping was lost while the SHA-named files kept surviving.
+ *
+ * Filename is prefixed with `_` so it sorts to the top of any listing
+ * and can't clash with a SHA-named media file.
  */
 function registryPath(mediaDir: string): string {
+  return path.join(mediaDir, REGISTRY_FILENAME);
+}
+
+/**
+ * Legacy registry path (parent of MEDIA_DIR). Kept as a read-only fallback
+ * so a running container that has an old registry in its ephemeral parent
+ * still picks it up on boot — even though we now write to the new location.
+ */
+function legacyRegistryPath(mediaDir: string): string {
   return path.join(path.dirname(mediaDir), REGISTRY_FILENAME);
 }
 
 async function readRegistry(mediaDir: string): Promise<MediaRegistry> {
+  // Try the new (inside-volume) path first.
   const file = registryPath(mediaDir);
   try {
     const text = await fs.readFile(file, "utf8");
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === "object") return parsed as MediaRegistry;
+  } catch {
+    // fall through to legacy path
+  }
+  // Fallback: legacy parent-dir location. If we find one, subsequent writes
+  // will land in the new (persistent) location automatically.
+  try {
+    const legacy = legacyRegistryPath(mediaDir);
+    const text = await fs.readFile(legacy, "utf8");
     const parsed = JSON.parse(text);
     if (parsed && typeof parsed === "object") return parsed as MediaRegistry;
   } catch {
