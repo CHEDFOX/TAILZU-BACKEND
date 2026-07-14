@@ -839,6 +839,19 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
   // voice" renders on one line and overflows past the right edge.
   const pageStyle = { paddingHorizontal: 24, paddingTop: 16, width: "100%" as const };
 
+  // In-app mic media. Prefer an MP4 upload (mic.animation.mp4) when present —
+  // MediaPlayer's video branch freezes it on-frame while paused AND reacts its
+  // speed to the mic level (voiceReactive), so the in-app mic feels alive and
+  // pauses cleanly. Fall back to the GIF (mic.animation) otherwise; a GIF can't
+  // pause on a frame, so freezeOnPause stays false and VoiceToggle swaps to the
+  // static mark between takes. The keyboard keeps reading mic.animation (the
+  // GIF) — an MP4 can't render in its image-based key button.
+  const micReg = getMediaRegistryFn?.() ?? {};
+  const micHasMp4 = !!micReg["mic.animation.mp4"]?.url;
+  const micIdle = micHasMp4
+    ? { source: { key: "mic.animation.mp4" }, autoplay: false, loop: true, muted: true, voiceReactive: true, freezeOnPause: true }
+    : { source: { key: "mic.animation" }, autoplay: false, loop: true, voiceReactive: true };
+
   const boxWithVoice = (bindKey: string): Node => ({
     type: "Stack", style: { position: "relative" }, children: [
       { type: "TextField", bind: { value: bindKey }, props: { placeholder: "Type here…", multiline: true }, style: { paddingRight: 56, minHeight: 96 } },
@@ -851,12 +864,7 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
             language: "auto",
             size: 38,
             background: "#E8A23C",
-            iconIdle: {
-              source: { key: "mic.animation" },
-              autoplay: false,
-              loop: true,
-              voiceReactive: true,
-            },
+            iconIdle: micIdle,
           },
           // micError echoes the real failure ($event) — a permission denial or
           // an audio-session error must NOT look like a generic "check your
