@@ -49,12 +49,11 @@ export const THEME: ThemeTokens = {
     card: "#0b0b0f",
     inputBg: "#0e0e12",
     border: "rgba(255,255,255,0.10)",
-    // WHITE — matches the original Plutto-style design (black surface with
-    // white primary CTAs). Client-side readableOn() auto-contrast is expected
-    // to render text as #000 on the pill. If pills render invisible on a
-    // particular build (older readableOn), swap to "#ff6b1f" (brand orange)
-    // as a fallback that lands high-contrast regardless of the client's
-    // auto-contrast implementation.
+    // WHITE primary — matches the original Plutto-style design (black
+    // surface with white primary CTAs). The brand accent (used for key
+    // press flashes, refined-text word highlight, mic recording state)
+    // is the warm amber sampled from mic.animation — not a punchy
+    // pure orange. See ACCENT_AMBER below.
     primary: "#FFFFFF",
     text: "rgba(255,255,255,0.96)",
     body: "rgba(255,255,255,0.74)",
@@ -2618,16 +2617,19 @@ const KEY_FILL_SPACE = "#FFFFFF8C";       // matches letter fill
 const KEY_FILL_RETURN = "#FFFFFF33";      // matches function fill
 const KEY_TEXT = "#FFFFFF";
 const KEY_TEXT_FUNCTION = "#FFFFFF";
-// Brand-orange press color — every key (letter, function, shift, backspace,
+// Brand amber press color — every key (letter, function, shift, backspace,
 // return) flashes brand accent for ~120ms on tap. Fires on touch-down inside
 // the Swift renderer's keyTouchDown handler (theme.keyPressed → this hex),
 // then keyTouchUp animates back to the resting bg via UIView.animate. This is
 // the "typing has our color" identity moment — not a permanent tint.
-const KEY_PRESSED = "#FF6B1F";            // BRAND_ACCENT — orange press feedback on every key
-// Brand orange kept only for functional signals — right now that's the
+// Sampled from the mic.animation media so the whole app reads as one palette
+// family (previously #FF6B1F pure orange — too punchy against the amber
+// media, felt like two different brands sharing the screen).
+const KEY_PRESSED = "#E8A23C";            // BRAND_ACCENT — warm amber press feedback on every key
+// Brand amber kept only for functional signals — right now that's the
 // waveform bars during dictation. Colored feedback when the user is
 // speaking; invisible the rest of the time. Not a decorative accent.
-const BRAND_ACCENT = "#FF6B1F";
+const BRAND_ACCENT = "#E8A23C";
 
 // -------- Light-mode counterparts (used by the next SDUI build) -----------
 //
@@ -3027,7 +3029,7 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // Example overrides (uncomment to try):
         //
         // "kb.press.fadeMs": 120,
-        // "kb.dictation.dots.color": "#FF6B1F",
+        // "kb.dictation.dots.color": "#E8A23C",
         // "kb.dictation.dots.birthRate": 7,
         // "kb.dictation.dots.decayMs": 2500,
         // "kb.dictation.dim.alpha": 0.45,
@@ -3036,7 +3038,7 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // "kb.mic.recordingIcon": { emoji: "⏹" },
         // "kb.mic.recordingIcon": { url: "https://cdn.tailzu.space/kb/stop.png" },
         // "kb.mic.idleIcon": { asset: "TailzuMark" },
-        // "kb.shift.lockedColor": "#FF6B1F",
+        // "kb.shift.lockedColor": "#E8A23C",
         // "kb.shift.longPressMs": 350,
         // "kb.shift.iconLowerOutlined": "arrowtriangle.down",
         // "kb.delete.repeatIntervalMs": 90,
