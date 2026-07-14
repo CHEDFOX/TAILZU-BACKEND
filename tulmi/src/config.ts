@@ -168,11 +168,15 @@ export function getConfig(): AppConfig {
     );
   }
 
-  // Hard refuse to boot in a production-shaped environment with auth disabled —
-  // a forgotten DEV_SKIP_AUTH=true is the single largest cost-amplification
-  // footgun (unauthenticated requests spend OpenAI/OpenRouter budget).
-  const isProd = env.NODE_ENV === "production";
-  if (env.DEV_SKIP_AUTH && isProd && !env.DEV_SKIP_AUTH_ALLOW_PROD) {
+  // Hard refuse to boot with auth disabled UNLESS this is explicitly a dev/test
+  // environment. A forgotten DEV_SKIP_AUTH=true is the single largest
+  // cost-amplification footgun (unauthenticated requests spend OpenAI/OpenRouter
+  // budget). We treat anything that isn't an affirmative "development"/"test" as
+  // production — so a typo'd or unset NODE_ENV ("prod", "PRODUCTION", "") fails
+  // safe rather than booting wide open.
+  const nodeEnv = (env.NODE_ENV ?? "").toLowerCase();
+  const isDevOrTest = nodeEnv === "development" || nodeEnv === "test";
+  if (env.DEV_SKIP_AUTH && !isDevOrTest && !env.DEV_SKIP_AUTH_ALLOW_PROD) {
     throw new Error(
       "DEV_SKIP_AUTH=true is not allowed when NODE_ENV=production. " +
         "Configure Supabase (SUPABASE_URL + SUPABASE_ANON_KEY) and remove " +

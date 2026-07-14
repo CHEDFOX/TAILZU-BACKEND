@@ -105,12 +105,22 @@ function legacyRegistryPath(mediaDir: string): string {
 async function readRegistry(mediaDir: string): Promise<MediaRegistry> {
   // Try the new (inside-volume) path first.
   const file = registryPath(mediaDir);
+  let newFileExists = false;
   try {
     const text = await fs.readFile(file, "utf8");
+    newFileExists = true;
     const parsed = JSON.parse(text);
     if (parsed && typeof parsed === "object") return parsed as MediaRegistry;
-  } catch {
-    // fall through to legacy path
+    throw new Error("registry is not an object");
+  } catch (err) {
+    // If the NEW file EXISTS but is unreadable/corrupt, do NOT silently fall
+    // through to {} — the next upload would overwrite it and permanently lose
+    // every mapping. Preserve the bad file under a .corrupt name so it's
+    // recoverable, and only then continue to the legacy fallback.
+    if (newFileExists) {
+      console.error("[media] registry at new path is corrupt; backing it up", err);
+      try { await fs.rename(file, `${file}.corrupt.${crypto.randomUUID()}`); } catch { /* best effort */ }
+    }
   }
   // Fallback: legacy parent-dir location. If we find one, subsequent writes
   // will land in the new (persistent) location automatically.
@@ -131,11 +141,24 @@ async function readRegistry(mediaDir: string): Promise<MediaRegistry> {
  * uploads race. On EACCES / EPERM (volume-owner mismatch) we surface a clear
  * error instead of silently losing data.
  */
+// Serialize registry writes so two concurrent uploads/deletes can't interleave
+// (last-rename-wins would drop a concurrently-added key, and same-ms temp names
+// could collide). Each write chains onto the previous one.
+let writeChain: Promise<void> = Promise.resolve();
+
 async function writeRegistry(mediaDir: string, r: MediaRegistry): Promise<void> {
-  const file = registryPath(mediaDir);
-  const tmp = file + `.tmp.${process.pid}.${Date.now()}`;
-  await fs.writeFile(tmp, JSON.stringify(r, null, 2) + "\n", "utf8");
-  await fs.rename(tmp, file);
+  const run = writeChain.then(async () => {
+    const file = registryPath(mediaDir);
+    // Unique temp name (randomUUID, not pid+Date.now) so two writes in the same
+    // millisecond can't target the same temp file and interleave bytes.
+    const tmp = `${file}.tmp.${crypto.randomUUID()}`;
+    await fs.writeFile(tmp, JSON.stringify(r, null, 2) + "\n", "utf8");
+    await fs.rename(tmp, file);
+  });
+  // Keep the chain alive even if this write throws, so a failure doesn't wedge
+  // all future writes.
+  writeChain = run.catch(() => {});
+  return run;
 }
 
 let cachedRegistry: MediaRegistry = {};

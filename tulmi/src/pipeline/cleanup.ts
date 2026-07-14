@@ -20,6 +20,11 @@ function openrouter(): OpenAI {
     client = new OpenAI({
       apiKey: cfg.OPENROUTER_API_KEY,
       baseURL: "https://openrouter.ai/api/v1",
+      // Bound each call so a hung upstream can't pin a request/socket for the
+      // SDK default (~10 min). 30s covers refine/draft; the SDK retries twice
+      // on transient network/5xx.
+      timeout: 30_000,
+      maxRetries: 2,
       defaultHeaders: {
         "HTTP-Referer": cfg.OPENROUTER_APP_URL,
         "X-Title": cfg.OPENROUTER_APP_NAME,

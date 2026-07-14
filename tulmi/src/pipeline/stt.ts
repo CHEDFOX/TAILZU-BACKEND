@@ -14,7 +14,10 @@ import type { AudioFormat, LanguageHint } from "../../../shared/types/api.js";
 
 let openaiClient: OpenAI | null = null;
 function openai(): OpenAI {
-  if (!openaiClient) openaiClient = new OpenAI({ apiKey: getConfig().OPENAI_API_KEY });
+  // 60s timeout (transcription of a short clip is fast, but leave headroom),
+  // one retry — so a stuck Whisper call can't hold the request open for the
+  // SDK default ~10 min.
+  if (!openaiClient) openaiClient = new OpenAI({ apiKey: getConfig().OPENAI_API_KEY, timeout: 60_000, maxRetries: 1 });
   return openaiClient;
 }
 

@@ -13,7 +13,16 @@
  * Every output is shaped by the user's personality + the target-app context,
  * resolved here on the backend (the app just sends the inputs).
  */
-import { createHash } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
+
+/** Constant-time string comparison — avoids leaking a secret via response
+ * timing. Returns false on any length mismatch (lengths aren't secret). */
+function safeStrEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a, "utf8");
+  const bb = Buffer.from(b, "utf8");
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
 import Fastify, { type FastifyInstance } from "fastify";
 import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
@@ -95,11 +104,19 @@ const app = Fastify({
   // request serializer so large multipart bodies never enter the log. See
   // observability.fastifyLoggerOptions() for the redaction list.
   logger: fastifyLoggerOptions(),
-  bodyLimit: 50 * 1024 * 1024, // 50 MB — generous ceiling for an audio clip
-  // Trust the reverse proxy (Nginx / Caddy) so `req.ip` reports the real
-  // client IP from X-Forwarded-For rather than 127.0.0.1. Without this every
-  // caller shares the same rate-limit bucket — a single burst 429s everyone.
-  trustProxy: true,
+  // 1 MB ceiling for JSON/urlencoded bodies. Text endpoints cap at
+  // MAX_TEXT_LENGTH (10k chars ≈ 40 KB), so 1 MB is very generous while
+  // preventing a 50 MB JSON body from being parsed into memory. Audio uploads
+  // do NOT use this limit — @fastify/multipart streams them under its own
+  // `limits.fileSize` (50 MB) below.
+  bodyLimit: 1 * 1024 * 1024,
+  // Trust EXACTLY the reverse proxy in front of us (Caddy) — one hop. With
+  // `true`, Fastify trusted the whole X-Forwarded-For chain and took the
+  // left-most, client-supplied entry as req.ip, so an attacker could spoof
+  // `X-Forwarded-For: <anything>` and mint unlimited fresh rate-limit buckets.
+  // A hop count makes Fastify use the proxy-inserted (real) client IP. If you
+  // add another proxy/LB in front of Caddy, bump this to the total hop count.
+  trustProxy: 1,
 });
 
 // Route unhandled errors through the observability layer (Sentry when
@@ -122,14 +139,12 @@ await app.register(rateLimit, {
   max: cfg.RATE_LIMIT_MAX,
   timeWindow: cfg.RATE_LIMIT_WINDOW_MS,
   keyGenerator: (req) => {
-    const auth = req.headers["authorization"];
-    if (typeof auth === "string" && auth.length > 7) {
-      // Hash the bearer so log lines / error reports never carry raw JWTs, and
-      // so an attacker rotating a fake token can't "look" like a fresh user
-      // per request. Truncated to 24 hex = 96 bits, plenty for a rate-limit key.
-      const tok = auth.replace(/^Bearer\s+/i, "").trim();
-      return "u:" + createHash("sha256").update(tok).digest("hex").slice(0, 24);
-    }
+    // Key by client IP only. req.ip is now trustworthy (trustProxy is the exact
+    // proxy hop count, so X-Forwarded-For can't be spoofed). Keying by the raw
+    // Authorization header was a bypass: rotating a fake bearer token minted a
+    // fresh bucket AND triggered a Supabase auth round-trip on every request — a
+    // cost/DoS amplifier against the auth quota. Per-USER fairness is enforced
+    // downstream by enforceQuota/metering, not by this coarse abuse limiter.
     return "ip:" + req.ip;
   },
 });
@@ -1169,7 +1184,7 @@ app.post("/v1/admin/cache/bump", async (req, reply) => {
       .code(503)
       .send({ code: "not_configured", message: "ADMIN_SECRET is not set on the server" });
   }
-  if (typeof provided !== "string" || provided.length === 0 || provided !== expected) {
+  if (typeof provided !== "string" || provided.length === 0 || !safeStrEqual(provided, expected)) {
     return reply.code(401).send({ code: "unauthorized", message: "Bad or missing admin secret" });
   }
   const next = bumpCacheVersion();
@@ -1304,6 +1319,12 @@ app.register(async (instance) => {
       if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
       try { socket.close(); } catch { /* ignore */ }
     };
+
+    // Handshake/idle guard: arm the idle timer immediately on open so a socket
+    // that connects (even with a valid token) but never sends `start`/audio is
+    // torn down instead of lingering forever holding a socket + user ref.
+    // Subsequent `start`/chunks re-arm it.
+    armIdle();
 
     // Verify auth on connect (header carried through the upgrade request).
     // We DO NOT accept any binary frame until authReady = true — silent-drop

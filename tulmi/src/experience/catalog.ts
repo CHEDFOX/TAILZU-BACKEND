@@ -339,6 +339,20 @@ function introScreen(): ScreenResponse {
             contentFit: "cover",
           },
           on: { onComplete: "done" },
+          // A bundle that predates Slideshow would otherwise render nothing here
+          // AND (with hideChrome) have no header/tabs — a blank, navigationally
+          // stuck screen, because forward navigation depends entirely on the
+          // Slideshow's onComplete. The fallback shows the first frame with a
+          // tappable "Get started" that routes to `done` (→ home) so the user
+          // is never trapped.
+          fallback: {
+            type: "Stack",
+            style: { flex: 1, width: "100%", height: "100%", backgroundColor: "#000000", alignItems: "center", justifyContent: "center" },
+            children: [
+              { type: "Image", props: { source: { key: "intro.1" }, contentFit: "cover" }, style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" } },
+              { type: "Button", props: { label: "Get started", variant: "primary" }, on: { onPress: "done" }, style: { position: "absolute", bottom: 56 } },
+            ],
+          },
         },
       ],
     },

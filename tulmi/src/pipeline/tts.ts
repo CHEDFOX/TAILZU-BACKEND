@@ -11,7 +11,7 @@ import { getConfig } from "../config.js";
 
 let client: OpenAI | null = null;
 function openai(): OpenAI {
-  if (!client) client = new OpenAI({ apiKey: getConfig().OPENAI_API_KEY });
+  if (!client) client = new OpenAI({ apiKey: getConfig().OPENAI_API_KEY, timeout: 30_000, maxRetries: 1 });
   return client;
 }
 
