@@ -150,6 +150,22 @@ export function getMediaRegistry(): MediaRegistry {
 export async function loadMediaRegistry(mediaDir: string): Promise<void> {
   await fs.mkdir(mediaDir, { recursive: true });
   cachedRegistry = await readRegistry(mediaDir);
+  // Migrate-at-boot: if the new in-volume registry file is absent but we loaded
+  // entries (they came from the legacy parent-dir path), persist them into the
+  // new persistent location NOW. Without this, a container restart before the
+  // next upload/delete — the very restart that wipes the ephemeral parent dir —
+  // would silently lose every key→URL mapping (mic art, intro frames, etc.).
+  try {
+    await fs.access(registryPath(mediaDir));
+  } catch {
+    if (Object.keys(cachedRegistry).length > 0) {
+      try {
+        await writeRegistry(mediaDir, cachedRegistry);
+      } catch (err) {
+        console.error("[media] failed to migrate legacy registry to new path", err);
+      }
+    }
+  }
 }
 
 /** Guard: admin-secret header must match the ADMIN_SECRET env var (timing-safe). */

@@ -1322,6 +1322,13 @@ app.register(async (instance) => {
       }
       authedUser = user;
       authReady = true;
+    }).catch((err) => {
+      // A transient Supabase/quota failure here is a DETACHED rejection — with
+      // no catch it becomes an unhandledRejection and (Node ≥20 default) kills
+      // the whole process, dropping every connected user. Fail this socket only.
+      app.log.error({ err }, "stream auth failed");
+      try { send({ type: "error", code: "unauthorized", message: "Could not verify session" }); } catch { /* socket already gone */ }
+      safeClose();
     });
 
     socket.on("message", async (data: Buffer, isBinary: boolean) => {
@@ -1434,6 +1441,20 @@ app.register(async (instance) => {
 // buildApp() directly and drive the server in-process via app.inject().
 if (process.env.NODE_ENV !== "test") {
   const cfg = getConfig();
+
+  // Last-resort guards. Detached rejections/exceptions (e.g. a floating auth
+  // promise on a WebSocket, a background timer) would otherwise terminate the
+  // process on Node ≥20's default `--unhandled-rejections=throw`, dropping every
+  // connected user. Log + report instead of crashing on a single stray error.
+  process.on("unhandledRejection", (reason) => {
+    console.error("[unhandledRejection]", reason);
+    try { captureException(reason); } catch { /* observability optional */ }
+  });
+  process.on("uncaughtException", (err) => {
+    console.error("[uncaughtException]", err);
+    try { captureException(err); } catch { /* observability optional */ }
+  });
+
   try {
     const app = await buildApp();
     await app.listen({ port: cfg.PORT, host: cfg.HOST });
