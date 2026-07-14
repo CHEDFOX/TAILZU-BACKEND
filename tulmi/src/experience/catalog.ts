@@ -2503,29 +2503,17 @@ const makeToolsRow = (opts: {
   children: [
     // Mic — LEFT side. Solid brand-orange circle. When idle it starts
     // dictation; when recording it stops + immediately fires runRefine so the
-    // captured text moves straight into the refinement pipeline. Icon is
-    // swapped by the built-in MicKey renderer (brand mark → stop.fill).
+    // captured text moves straight into the refinement pipeline.
+    //
+    // NO explicit `on.onPress` here. The Swift MicKey renderer has a
+    // built-in fallback that handles the exact same "tap-to-toggle-and-
+    // refine" behavior when no backend action is supplied. This shape works
+    // on every client version — new AND old — because it doesn't depend on
+    // the client understanding a `condition` action node. Older TestFlight
+    // builds without the `condition` action handler were silently no-op-ing
+    // on tap; this restores start/stop for them.
     {
       type: "MicKey",
-      // Sequence action wraps the built-in behavior so stopDictation is
-      // followed by runRefine. On builds without the MicKey-auto-refine
-      // Swift patch this replaces the hardcoded action; on builds with it,
-      // the runRefine call is a no-op double-send (safe — refining state
-      // is idempotent-ish).
-      on: {
-        onPress: {
-          kind: "condition",
-          if: { truthy: "state.dictating" },
-          then: {
-            kind: "sequence",
-            actions: [
-              { kind: "stopDictation" },
-              { kind: "runRefine" },
-            ],
-          },
-          else: { kind: "startDictation" },
-        },
-      },
       style: {
         flex: 0,
         width: 36,
