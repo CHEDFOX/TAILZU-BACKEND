@@ -21,7 +21,8 @@ describe("buildBootstrap", () => {
     expect(b.theme.color.bg).toBe("#000000");
     expect(b.navigation.kind).toBe("tabs");
     const nav = b.navigation as { kind: "tabs"; tabs: Array<{ id: string }> };
-    expect(nav.tabs.map((t) => t.id)).toEqual(["home", "personality", "settings"]);
+    // Settings is no longer a bottom tab — it's opened from the header gear.
+    expect(nav.tabs.map((t) => t.id)).toEqual(["home", "personality"]);
     expect(b.initialScreenId).toBe("home");
     // Common labels the app relies on.
     expect(b.labels?.["app.name"]).toBe("Tailzu");
@@ -84,16 +85,21 @@ describe("buildScreen", () => {
     expect(buildScreen("does-not-exist", { personality: {}, language: "en" })).toBeNull();
   });
 
-  it("wires the user's saved personality into the personality screen state", () => {
+  it("wires saved tone + dictionary + words into the personality (You) screen", () => {
     const screen = buildScreen("personality", {
-      personality: { tone: "MY TONE", formality: "casual" },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      personality: { activeTone: "casual" } as any,
       language: "en",
+      dictionary: [{ word: "omw", replacement: "on my way" }],
+      frequentWords: ["hey", "thanks"],
     });
     expect(screen).not.toBeNull();
-    // The screen's `state.form` seeds the editable form.
-    const form = (screen!.state as { form: Record<string, string> }).form;
-    expect(form.tone).toBe("MY TONE");
-    expect(form.formality).toBe("casual");
+    // The You page now seeds the active tone AND the dictionary + frequent
+    // words that moved here from Home.
+    const state = screen!.state as Record<string, unknown>;
+    expect(state.activeTone).toBe("casual");
+    expect(state.dictionary).toEqual([{ word: "omw", replacement: "on my way" }]);
+    expect(state.frequentWords).toEqual(["hey", "thanks"]);
   });
 });
 

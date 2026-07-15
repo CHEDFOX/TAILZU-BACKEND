@@ -778,7 +778,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
     case "reply":
       return replyScreen();
     case "personality":
-      return personalityScreen(ctx.personality);
+      return personalityScreen(ctx);
     case "personality_customize":
       return personalityCustomizeScreen(ctx.personality);
     case "personality_edit":
@@ -1049,74 +1049,8 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
           },
         },
 
-        // Everything below the Pager sits inside a padded Stack so it keeps
-        // the standard 24px side margin (the Screen wrapper's padding is off
-        // to let the Pager span edge-to-edge).
-        {
-          type: "Stack",
-          style: { paddingHorizontal: 24 },
-          children: [
-            { type: "Spacer", style: { height: 56 } }, // HIGH gap between sections
-
-            // 2) Dictionary (tappable header → full page)
-            {
-              type: "Row",
-              props: { label: "Dictionary" },
-              on: { onPress: "openDictionary" },
-              style: { borderBottomWidth: 0, paddingVertical: 4, marginBottom: 10 },
-              // Fallback: a Button labelled Dictionary (visible + tappable on old
-              // bundles). Same navigate action fires.
-              fallback: {
-                type: "Button",
-                props: { label: "Dictionary", variant: "secondary" },
-                on: { onPress: "openDictionary" },
-                style: { marginBottom: 10 },
-              },
-            },
-            {
-              type: "DictionaryEditor",
-              bind: { value: "dictionary" },
-              props: { rows: 2 },
-              on: { onError: "err" },
-              // Old-bundle fallback: point them to the full-page editor via the
-              // Dictionary row above. Cannot inline-edit without the component.
-              fallback: {
-                type: "Text",
-                props: { content: "Tap Dictionary above to edit your saved words.", variant: "muted" },
-              },
-            },
-
-            { type: "Spacer", style: { height: 56 } }, // HIGH gap
-
-            // 3) The user's frequent words (computed by the backend)
-            { type: "Heading", props: { content: ctx.name ? `${ctx.name}'s words` : "Your words" }, style: { fontSize: 22, fontWeight: "800", color: "$color.text", marginBottom: 4 } },
-            { type: "Text", props: { content: "Words you use often", variant: "muted" }, style: { marginBottom: 16 } },
-            {
-              type: "WordChips",
-              bind: { value: "frequentWords" },
-              // Old-bundle fallback: pre-join the words server-side into a plain
-              // Text — same info, no chip layout. Empty list falls through to
-              // "You haven't dictated much yet." for a friendlier empty state.
-              fallback: (ctx.frequentWords ?? []).length > 0
-                ? {
-                    type: "Text",
-                    props: {
-                      content: (ctx.frequentWords ?? []).join(" · "),
-                      variant: "muted",
-                    },
-                    style: { paddingHorizontal: 4 },
-                  }
-                : {
-                    type: "Text",
-                    props: {
-                      content: "You haven't dictated much yet.",
-                      variant: "muted",
-                    },
-                    style: { paddingHorizontal: 4 },
-                  },
-            },
-          ],
-        },
+        // Dictionary + "Your words" moved to the You (Voice) page — Home is now
+        // just the Refine ⇄ Reply pager above.
       ],
     },
     cacheTtlSeconds: 0,
@@ -1124,7 +1058,8 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
 }
 
 /** The personality form — server seeds it with the user's saved profile. */
-function personalityScreen(p: Personality): ScreenResponse {
+function personalityScreen(ctx: ScreenContext): ScreenResponse {
+  const p = ctx.personality;
   const gap = (h: number): Node => ({ type: "Spacer", style: { height: h } });
   const chip = (label: string, group: string, value: string): Node => ({
     type: "Chip",
@@ -1217,6 +1152,9 @@ function personalityScreen(p: Personality): ScreenResponse {
       pinnedCount: pinned.length,
       pinnedIds: pinned,
       status: "",
+      // Dictionary + frequent words now live on this page too (moved off Home).
+      dictionary: ctx.dictionary ?? [],
+      frequentWords: ctx.frequentWords ?? [],
     },
     actions: {
       saved: { kind: "haptic", style: "success" },
@@ -1273,7 +1211,38 @@ function personalityScreen(p: Personality): ScreenResponse {
         ...presetCards,
 
         gap(20),
-        { type: "Button", props: { label: "Customize this voice — dictionary, snippets, sign-off", variant: "secondary" }, on: { onPress: "openCustomize" } },
+        { type: "Button", props: { label: "Customize this voice — snippets, sign-off", variant: "secondary" }, on: { onPress: "openCustomize" } },
+
+        // ── Dictionary section ──────────────────────────────────────────────
+        // Moved here from Home. Full editor: add word → replacement pairs that
+        // auto-correct anywhere the Tailzu keyboard is used.
+        gap(44),
+        { type: "Heading", props: { content: "Dictionary" }, style: { fontSize: 22, fontWeight: "800", color: "$color.text", marginBottom: 4 } },
+        { type: "Paragraph", props: { content: "Type the word, get the replacement — anywhere you use the Tailzu keyboard." }, style: { marginBottom: 14 } },
+        {
+          type: "DictionaryEditor",
+          bind: { value: "dictionary" },
+          props: { full: true },
+          on: { onError: "saveErr" },
+          fallback: {
+            type: "Text",
+            props: { content: "Add word → replacement pairs to auto-correct as you type.", variant: "muted" },
+          },
+        },
+
+        // ── Words section ───────────────────────────────────────────────────
+        // The user's frequent words (computed by the backend). Moved here from
+        // Home too.
+        gap(44),
+        { type: "Heading", props: { content: ctx.name ? `${ctx.name}'s words` : "Your words" }, style: { fontSize: 22, fontWeight: "800", color: "$color.text", marginBottom: 4 } },
+        { type: "Text", props: { content: "Words you use often", variant: "muted" }, style: { marginBottom: 14 } },
+        {
+          type: "WordChips",
+          bind: { value: "frequentWords" },
+          fallback: (ctx.frequentWords ?? []).length > 0
+            ? { type: "Text", props: { content: (ctx.frequentWords ?? []).join(" · "), variant: "muted" }, style: { paddingHorizontal: 4 } }
+            : { type: "Text", props: { content: "You haven't dictated much yet.", variant: "muted" }, style: { paddingHorizontal: 4 } },
+        },
       ],
     },
     cacheTtlSeconds: 0,
