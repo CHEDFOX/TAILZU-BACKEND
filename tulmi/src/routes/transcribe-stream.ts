@@ -108,7 +108,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         const language = !start.language || start.language === "auto" ? "multi" : start.language;
 
         dg = deepgram.listen.live({
-          model: "nova-2",
+          model: cfg.DEEPGRAM_STT_MODEL || "nova-2",
           language,
           encoding: "linear16",
           sample_rate: sampleRate,
@@ -116,6 +116,21 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           interim_results: true,
           smart_format: true,
           punctuate: true,
+          numerals: true,
+          // Robustness in noisy/real-world capture (Layer D): let Deepgram's
+          // own VAD do endpointing so we cut on natural pauses, emit
+          // UtteranceEnd events, and don't hold a final open waiting for
+          // silence that a noisy room never delivers.
+          //   endpointing      — ms of trailing silence that finalizes a
+          //                      segment (300ms = snappy but not choppy).
+          //   utterance_end_ms — fire UtteranceEnd after ~1s of no speech so
+          //                      the client can commit even if the socket
+          //                      stays open (requires interim_results, on).
+          //   vad_events       — surface SpeechStarted so we could gate UI on
+          //                      real speech rather than energy.
+          endpointing: 300,
+          utterance_end_ms: 1000,
+          vad_events: true,
         });
 
         dg.on(LiveTranscriptionEvents.Open, () => {

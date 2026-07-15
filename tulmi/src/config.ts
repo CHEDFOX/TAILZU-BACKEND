@@ -45,6 +45,10 @@ const EnvSchema = z.object({
   // Optional: without it the live route returns a "not configured" error and
   // the app's fallback REST transcribe still works.
   DEEPGRAM_API_KEY: z.string().optional(),
+  // Live-STT model. Default nova-2 (general). Swap to a noise-tuned variant
+  // (e.g. nova-2-meeting for far-field/multi-speaker rooms) via env without a
+  // code change if real-world capture proves noisy.
+  DEEPGRAM_STT_MODEL: z.string().default("nova-2"),
 
   // OpenRouter (cleanup) — required to run the pipeline.
   // Model slug follows OpenRouter's naming: "<vendor>/<model>". Swap this via
