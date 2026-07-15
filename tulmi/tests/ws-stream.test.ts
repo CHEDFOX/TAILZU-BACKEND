@@ -19,6 +19,8 @@ vi.mock("../src/pipeline/cleanup.js", () => ({
   },
   draftReply: vi.fn(async () => "drafted"),
   inferStyle: vi.fn(async () => ({})),
+  refineWithTone: vi.fn(async (input: string) => `refined:${input}`),
+  LLM_TONES: ["formal", "casual", "very-casual", "excited"],
   expandSnippets: (s: string) => s,
 }));
 

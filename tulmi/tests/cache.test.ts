@@ -21,6 +21,8 @@ vi.mock("../src/pipeline/cleanup.js", () => ({
   cleanStream: async function* () {},
   draftReply: vi.fn(async () => "drafted"),
   inferStyle: vi.fn(async () => ({})),
+  refineWithTone: vi.fn(async (s: string) => `refined:${s}`),
+  LLM_TONES: ["formal", "casual", "very-casual", "excited"],
   expandSnippets: (s: string) => s,
 }));
 vi.mock("../src/pipeline/stt.js", () => ({

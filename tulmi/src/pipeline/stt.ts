@@ -66,12 +66,20 @@ export async function transcribe(input: SttInput): Promise<SttResult> {
     ? transcribeGroq(input)
     : transcribeOpenAI(input));
 
+  // Belt-and-braces silence-hallucination scrub on EVERY provider path.
+  // gpt-4o-transcribe (the default) shares Whisper's "silent audio →
+  // 'Thank you.'" failure mode but returns no per-segment confidence, so this
+  // flat-text pass is the only defense on that path — without it a keyboard
+  // mic that captures no real audio inserts the same "Thank you." every tap.
+  // Idempotent for Groq (sanitizeWhisperText already ran it).
+  const text = sanitizePlainTranscript(raw.text);
+
   // Provider didn't report a duration (OpenAI gpt-4o-transcribe never does)
   // — fall back to a header/CBR probe of the buffer so metering isn't zeroed
   // out for every voice request.
-  if (raw.durationSeconds > 0) return raw;
+  if (raw.durationSeconds > 0) return { ...raw, text };
   const estimated = estimateDurationSeconds(input.audio, input.format);
-  return { ...raw, durationSeconds: estimated };
+  return { text, durationSeconds: estimated };
 }
 
 /**
@@ -251,18 +259,43 @@ export function sanitizeWhisperText(res: GroqVerboseResponse): string {
     text = (res.text ?? "").trim();
   }
 
-  text = stripHallucinationPhrases(text);
-  text = collapseRepetitions(text);
-  return text.trim();
+  return sanitizePlainTranscript(text);
 }
 
 /**
- * Whisper's known "silent audio → YouTube boilerplate" hallucinations.
- * When the whole transcript IS one of these, we return an empty string;
- * when they appear as a leading/trailing tail, we trim just that tail.
+ * Flat-text sanitizer for a transcript we have no per-segment confidence for
+ * (the OpenAI gpt-4o-transcribe path — and any other provider that returns
+ * only text). Strips known silence-hallucination phrases and collapses
+ * degenerate repetition. Idempotent, so the Groq path re-running it after its
+ * segment-level filtering is a no-op on already-clean text.
+ */
+export function sanitizePlainTranscript(text: string): string {
+  return collapseRepetitions(stripHallucinationPhrases(text)).trim();
+}
+
+/**
+ * Whisper / gpt-4o-transcribe's known "silent audio → boilerplate"
+ * hallucinations. On a near-silent or empty clip both models emit filler
+ * lifted from their video training data — most infamously a bare
+ * "Thank you." (the sign-off at the end of countless YouTube clips). This is
+ * the exact symptom users hit when the keyboard mic captures no real audio:
+ * every tap returns the same "Thank you." text.
+ *
+ * When the WHOLE transcript IS one of these, we return an empty string (the
+ * anchored ^…$ scoping guarantees we only nuke standalone filler, never a
+ * "thank you" buried inside a real sentence). A separate tail-trimmer below
+ * strips the YouTube-outro tails off an otherwise-real transcript.
+ *
  * Not exhaustive — add here as new patterns surface in the wild.
  */
 const HALLUCINATION_PATTERNS: RegExp[] = [
+  // Bare thanks — the #1 silence hallucination. Only fires as the whole
+  // transcript, so a real "thank you" inside a sentence survives.
+  /^\s*thank\s*you(\s+(so|very)\s+much)?(\s+(guys|all|everyone))?[!.\s]*$/i,
+  /^\s*thanks(\s+(a\s+lot|so\s+much))?(\s+(guys|all|everyone))?[!.\s]*$/i,
+  // Whisper's classic single-token drop-out on silence.
+  /^\s*you[!.\s]*$/i,
+  // YouTube-outro boilerplate.
   /^\s*thanks?\s+for\s+watching[!.\s]*$/i,
   /^\s*thank\s+you\s+for\s+watching[!.\s]*$/i,
   /^\s*please\s+subscribe[!.\s]*$/i,
