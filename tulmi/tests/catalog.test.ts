@@ -61,6 +61,7 @@ describe("buildScreen", () => {
   const SCREEN_IDS = [
     "home",
     "personality",
+    "personality_detail",
     "settings",
     "reply",
     "stats",
@@ -100,6 +101,42 @@ describe("buildScreen", () => {
     expect(state.activeTone).toBe("casual");
     expect(state.dictionary).toEqual([{ word: "omw", replacement: "on my way" }]);
     expect(state.frequentWords).toEqual(["hey", "thanks"]);
+  });
+
+  it("tone detail shows the tone's name + prompt and toggles the keyboard pin", () => {
+    const screen = buildScreen("personality_detail", {
+      personality: {},
+      language: "en",
+      params: { presetId: "professional" },
+    });
+    expect(screen).not.toBeNull();
+    expect(screen!.screenId).toBe("personality_detail");
+    // The title + heading are the tone name; the body is its prompt — no
+    // taglines/emoji/supporting copy.
+    expect(screen!.title).toBe("Professional");
+    const json = JSON.stringify(screen);
+    expect(json).toContain("professional restraint"); // from the preset promptStyle
+    // Not pinned yet → the action offers to add it to the keyboard toggle.
+    expect(json).toContain("Add to keyboard");
+
+    // When already pinned, the same screen offers to remove it.
+    const pinnedScreen = buildScreen("personality_detail", {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      personality: { pinnedPresetIds: ["professional"] } as any,
+      language: "en",
+      params: { presetId: "professional" },
+    });
+    expect(JSON.stringify(pinnedScreen)).toContain("Remove from keyboard");
+  });
+
+  it("unknown tone id falls back to the first preset instead of erroring", () => {
+    const screen = buildScreen("personality_detail", {
+      personality: {},
+      language: "en",
+      params: { presetId: "does-not-exist" },
+    });
+    expect(screen).not.toBeNull();
+    expect(screen!.title).toBe("Signature");
   });
 });
 

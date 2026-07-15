@@ -786,6 +786,11 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
         ctx.personality,
         typeof ctx.params?.presetId === "string" ? ctx.params.presetId : undefined,
       );
+    case "personality_detail":
+      return personalityDetailScreen(
+        ctx.personality,
+        typeof ctx.params?.presetId === "string" ? ctx.params.presetId : undefined,
+      );
     case "settings":
       return settingsScreen(ctx);
     case "stats":
@@ -1061,86 +1066,39 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
 function personalityScreen(ctx: ScreenContext): ScreenResponse {
   const p = ctx.personality;
   const gap = (h: number): Node => ({ type: "Spacer", style: { height: h } });
-  const chip = (label: string, group: string, value: string): Node => ({
-    type: "Chip",
-    props: { label, group, value },
-    on: { onPress: { kind: "haptic", style: "selection" } },
-  });
 
-  // Effective preset list — built-ins with the user's overrides applied.
-  // Every consumer of a preset for THIS render (card + hero + tone chips)
-  // reads from `effective` so a rename/emoji change flows everywhere.
+  // Effective preset list — built-ins with the user's overrides applied, so a
+  // rename flows everywhere at once.
   const effective = applyPresetOverrides(p.presetOverrides);
   const findEffective = (id: string) => effective.find((e) => e.id === id) ?? effective[0]!;
 
   const activeId = p.activePresetId ?? "signature";
   const activeTone = p.activeTone ?? findEffective(activeId).defaultTone;
   const pinned = Array.isArray(p.pinnedPresetIds) ? p.pinnedPresetIds : [];
-  const active = findEffective(activeId);
 
-  // Preset cards — a 2-column grid rendered as a list of Row nodes so it
-  // works on the widest set of client builds. Each card highlights when it
-  // matches state.activePresetId and shows a "pinned" indicator when in the
-  // user's keyboard shortlist.
-  const presetCards = effective.map((preset): Node => ({
+  // One tone = one thin, title-only card. Tapping it opens that tone's detail
+  // (name + prompt). The active tone's title is tinted; everything else stays
+  // plain — no taglines, no emoji, no supporting copy (sleek + minimal).
+  const toneCard = (preset: (typeof effective)[number]): Node => ({
     type: "Card",
-    // Card visually reflects selection through a bind on activePresetId.
-    style: { padding: 12, marginBottom: 8 },
-    on: {
-      onPress: {
-        kind: "sequence",
-        actions: [
-          { kind: "setState", path: "activePresetId", value: preset.id },
-          { kind: "setState", path: "activeTone", value: preset.defaultTone },
-          { kind: "haptic", style: "selection" },
-          { kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: {
-            activePresetId: preset.id,
-            activeTone: preset.defaultTone,
-          }, onSuccess: "saved", onError: "saveErr" },
-        ],
-      },
-    },
+    style: { paddingVertical: 14, paddingHorizontal: 16, marginBottom: 6 },
+    on: { onPress: { kind: "sequence", actions: [
+      { kind: "haptic", style: "selection" },
+      { kind: "navigate", screenId: "personality_detail", params: { presetId: preset.id } },
+    ] } },
     children: [
-      { type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 12 }, children: [
-        { type: "Text", props: { content: preset.emoji }, style: { fontSize: 26 } },
-        { type: "Stack", style: { flex: 1 }, children: [
-          { type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 8 }, children: [
-            { type: "Text", props: { content: preset.name }, style: { fontSize: 16, fontWeight: "700", color: "$color.text" } },
-            { type: "Text", props: { content: "· selected" },
-              visibleIf: { eq: ["activePresetId", preset.id] },
-              style: { fontSize: 12, color: "$color.primary", fontWeight: "600" } },
-          ] },
-          { type: "Text", props: { content: preset.tagline }, style: { fontSize: 13, color: "$color.muted", marginTop: 2 } },
-        ] },
-        // Edit affordance — pencil-style ghost button. Opens the per-preset
-        // edit screen with the current values (built-in + user's overrides)
-        // pre-populated. Sits before the pin toggle so it's less likely to
-        // hit-collide.
-        { type: "Button",
-          on: { onPress: {
-            kind: "sequence",
-            actions: [
-              { kind: "haptic", style: "selection" },
-              { kind: "setState", path: "editPresetId", value: preset.id },
-              { kind: "navigate", screenId: "personality_edit", params: { presetId: preset.id } },
-            ],
-          } },
-          props: { label: "✎", variant: "ghost" },
-          style: { fontSize: 18, color: "$color.muted", padding: 6 },
-        },
-        // Pin toggle — a star icon that flips on tap. Backend saves the
-        // whole pinnedPresetIds array on either add or remove.
-        { type: "Button",
-          on: { onPress: { kind: "sequence", actions: [
-            { kind: "haptic", style: "selection" },
-            { kind: "callEndpoint", method: "POST", path: "/v1/personality/pin", body: { presetId: preset.id }, onSuccess: "refreshPins", onError: "saveErr" },
-          ] } },
-          props: { label: pinned.includes(preset.id) ? "★" : "☆", variant: "ghost" },
-          style: { fontSize: 22, color: pinned.includes(preset.id) ? "$color.primary" : "$color.muted", padding: 6 },
-        },
-      ] },
+      { type: "Text", props: { content: preset.name }, style: {
+        fontSize: 16,
+        fontWeight: preset.id === activeId ? "800" : "600",
+        color: preset.id === activeId ? "$color.primary" : "$color.text",
+      } },
     ],
-  }));
+  });
+
+  // "Go" tones = the ones pinned to the keyboard toggle; the rest fill the
+  // full list beneath. Together they cover every tone with no duplication.
+  const goCards = effective.filter((e) => pinned.includes(e.id)).map(toneCard);
+  const restCards = effective.filter((e) => !pinned.includes(e.id)).map(toneCard);
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
@@ -1157,61 +1115,25 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
       frequentWords: ctx.frequentWords ?? [],
     },
     actions: {
-      saved: { kind: "haptic", style: "success" },
       saveErr: { kind: "toast", tone: "error", message: "Couldn't save. Check your connection." },
-      refreshPins: { kind: "sequence", actions: [
-        { kind: "haptic", style: "success" },
-        { kind: "refresh" },
-      ] },
-      setTone: { kind: "sequence", actions: [
-        { kind: "haptic", style: "selection" },
-        { kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: {
-          activeTone: "$state.activeTone",
-        }, onSuccess: "saved", onError: "saveErr" },
-      ] },
       openCustomize: { kind: "navigate", screenId: "personality_customize" },
     },
     root: {
       type: "Screen",
       style: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 24 },
       children: [
-        { type: "Heading", props: { content: "Voice" }, style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 4 } },
-        { type: "Paragraph", props: { content: "Pick a voice. Adjust the tone. Star up to 6 to keep on your keyboard for quick switches." }, style: { marginBottom: 18 } },
+        // Just the title on the card. The tones do the talking.
+        { type: "Heading", props: { content: "Voice" }, style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 16 } },
 
-        // Active preset — hero card at the top with the tone toggle.
-        { type: "Card", style: { padding: 16, marginBottom: 14 }, children: [
-          { type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 }, children: [
-            { type: "Text", props: { content: active.emoji }, style: { fontSize: 34 } },
-            { type: "Stack", style: { flex: 1 }, children: [
-              { type: "Text", props: { content: "Currently" }, style: { fontSize: 11, color: "$color.muted", textTransform: "uppercase", letterSpacing: 0.5 } },
-              { type: "Text", props: { content: active.name }, style: { fontSize: 22, fontWeight: "800", color: "$color.text", marginTop: 2 } },
-              { type: "Text", props: { content: active.description }, style: { fontSize: 13, color: "$color.muted", marginTop: 4 } },
-            ] },
-          ] },
-          { type: "Text", props: { content: "Tone" }, style: { fontSize: 11, color: "$color.muted", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 } },
-          { type: "Paragraph", props: { content: "None keeps your words exactly as spoken. Any other tone runs a light refine to polish the output." }, style: { fontSize: 12, color: "$color.muted", marginBottom: 8 } },
-          { type: "Stack", style: { flexDirection: "row", flexWrap: "wrap", gap: 6 }, children: [
-            chip(TONE_LABELS.none, "activeTone", "none"),
-            chip(TONE_LABELS.formal, "activeTone", "formal"),
-            chip(TONE_LABELS.casual, "activeTone", "casual"),
-            chip(TONE_LABELS["very-casual"], "activeTone", "very-casual"),
-            chip(TONE_LABELS.excited, "activeTone", "excited"),
-          ] },
-          gap(10),
-          { type: "Button", props: { label: "Apply tone", variant: "primary" }, on: { onPress: "setTone" } },
-        ] },
-
-        // Pinned counter — compact status hint above the picker.
-        { type: "Stack", style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }, children: [
-          { type: "Text", props: { content: "Choose a voice" }, style: { fontSize: 12, color: "$color.muted", textTransform: "uppercase", letterSpacing: 0.5, fontWeight: "600" } },
-          { type: "Text", props: { content: `${pinned.length} / ${MAX_PINNED_PRESETS} pinned to keyboard` }, style: { fontSize: 12, color: pinned.length >= MAX_PINNED_PRESETS ? "$color.primary" : "$color.muted" } },
-        ] },
-
-        // The preset cards.
-        ...presetCards,
+        // Go tones — the ones pinned to the keyboard toggle — sit on top; the
+        // rest of the tones fill the list beneath. Both are thin, title-only
+        // cards that open the tone's detail (name + prompt) on tap.
+        ...goCards,
+        ...(goCards.length ? [gap(16)] : []),
+        ...restCards,
 
         gap(20),
-        { type: "Button", props: { label: "Customize this voice — snippets, sign-off", variant: "secondary" }, on: { onPress: "openCustomize" } },
+        { type: "Button", props: { label: "Customize", variant: "secondary" }, on: { onPress: "openCustomize" } },
 
         // ── Dictionary section ──────────────────────────────────────────────
         // Moved here from Home. Full editor: add word → replacement pairs that
@@ -1243,6 +1165,59 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
             ? { type: "Text", props: { content: (ctx.frequentWords ?? []).join(" · "), variant: "muted" }, style: { paddingHorizontal: 4 } }
             : { type: "Text", props: { content: "You haven't dictated much yet.", variant: "muted" }, style: { paddingHorizontal: 4 } },
         },
+      ],
+    },
+    cacheTtlSeconds: 0,
+  };
+}
+
+/**
+ * Tone detail — reached by tapping a tone card on the Voice (You) page.
+ * Deliberately spare: the tone name and its prompt, then two actions —
+ * "Use this voice" (make it active) and add/remove it from the keyboard
+ * toggle set. No taglines, no emoji, no supporting copy.
+ */
+function personalityDetailScreen(p: Personality, presetId: string | undefined): ScreenResponse {
+  const effective = applyPresetOverrides(p.presetOverrides);
+  const preset = effective.find((e) => e.id === presetId) ?? effective[0]!;
+  const pinned = Array.isArray(p.pinnedPresetIds) ? p.pinnedPresetIds : [];
+  const isPinned = pinned.includes(preset.id);
+  const gap = (h: number): Node => ({ type: "Spacer", style: { height: h } });
+
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "personality_detail",
+    title: preset.name,
+    state: { presetId: preset.id, status: "" },
+    actions: {
+      saveErr: { kind: "toast", tone: "error", message: "Couldn't save. Check your connection." },
+      used: { kind: "sequence", actions: [
+        { kind: "haptic", style: "success" },
+        { kind: "navigateBack" },
+      ] },
+      use: { kind: "sequence", actions: [
+        { kind: "haptic", style: "medium" },
+        { kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: {
+          activePresetId: preset.id,
+          activeTone: preset.defaultTone,
+        }, onSuccess: "used", onError: "saveErr" },
+      ] },
+      togglePin: { kind: "sequence", actions: [
+        { kind: "haptic", style: "selection" },
+        { kind: "callEndpoint", method: "POST", path: "/v1/personality/pin", body: { presetId: preset.id }, onSuccess: "refresh", onError: "saveErr" },
+      ] },
+      refresh: { kind: "refresh" },
+    },
+    root: {
+      type: "Screen",
+      style: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 24 },
+      children: [
+        { type: "Heading", props: { content: preset.name }, style: { fontSize: 28, fontWeight: "800", color: "$color.text", marginBottom: 16 } },
+        { type: "Text", props: { content: preset.promptStyle }, style: { fontSize: 16, color: "$color.text", lineHeight: 24 } },
+        gap(28),
+        { type: "Button", props: { label: "Use this voice", variant: "primary" }, on: { onPress: "use" } },
+        gap(10),
+        { type: "Button", props: { label: isPinned ? "Remove from keyboard" : "Add to keyboard", variant: "secondary" }, on: { onPress: "togglePin" } },
       ],
     },
     cacheTtlSeconds: 0,
