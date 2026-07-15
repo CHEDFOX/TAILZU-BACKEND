@@ -74,10 +74,12 @@ export const THEME: ThemeTokens = {
 
 const NAV: NavigationShell = {
   kind: "tabs",
+  // Settings is no longer a bottom tab — it's reached via the ⚙ gear in the
+  // top-right of the header (client renders it on the tab roots). The settings
+  // screen itself still exists at screenId "settings" and is pushed on tap.
   tabs: [
     { id: "home", title: "Home", screenId: "home" },
     { id: "personality", title: "You", screenId: "personality" },
-    { id: "settings", title: "Settings", screenId: "settings" },
   ],
 };
 
