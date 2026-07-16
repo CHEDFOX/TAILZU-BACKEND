@@ -663,6 +663,13 @@ export interface KeyboardConfigResponse {
     refine: boolean;
     streaming: boolean;
     /**
+     * Android only: live-stream the mic straight from the keyboard (an Android
+     * IME can hold the mic in-process). true → the Android keyboard opens a
+     * WebSocket and shows words as you speak; false → batch record→upload. iOS
+     * ignores this (it uses kb.mic.mode, since iOS extensions can't record).
+     */
+    liveVoice?: boolean;
+    /**
      * v2: turn on the SDUI-driven renderer. When true, the extension walks
      * `root` instead of laying out from `layouts`+`theme`.
      */

@@ -3041,6 +3041,12 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       voice: true,
       refine: true,
       streaming: false,
+      // Android ONLY: record + live-stream the mic directly IN the keyboard
+      // (an Android IME can hold the mic in-process, unlike an iOS extension).
+      // So Android needs no Flow Session and no arming screen — tap the mic and
+      // dictate, words appear live. iOS ignores this and uses kb.mic.mode="flow"
+      // (the background-audio path) since iOS forbids extension recording.
+      liveVoice: true,
       // The switch: capable binaries walk root+actions; older ones fall through
       // to the hand-built layout.
       sdui: true,
