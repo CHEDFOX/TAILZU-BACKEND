@@ -516,6 +516,10 @@ export type ActionSpec =
       onSuccess?: ActionRef;
     }
   | { kind: "cancelKeyboardHandoff"; sessionId?: string; onSuccess?: ActionRef }
+  // Arm the background-audio "Flow Session" (iOS): the app holds the mic alive
+  // in the background so the keyboard can drive dictation after swipe-back.
+  // Dispatched by the flow_arm screen. iOS-only; a no-op on Android.
+  | { kind: "armFlowSession"; idleTimeoutMs?: number; onSuccess?: ActionRef }
   // --- cache / dev ---
   | { kind: "clearCache" }
   | { kind: "reloadApp" }

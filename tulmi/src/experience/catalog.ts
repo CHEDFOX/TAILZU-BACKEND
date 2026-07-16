@@ -807,6 +807,8 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       return keyboardRecordScreen(ctx);
     case "keyboard_primer":
       return keyboardPrimerScreen(ctx);
+    case "flow_arm":
+      return flowArmScreen(ctx);
     case "intro":
       return introScreen();
     case "paywall":
@@ -2272,6 +2274,72 @@ function keyboardRecordScreen(ctx: ScreenContext): ScreenResponse {
 }
 
 /**
+ * Flow arming screen — the ONE-TIME hop the keyboard mic makes to turn on the
+ * background-audio "Flow Session" (kb.mic.mode="flow", the Wispr model). On
+ * appear it requests mic permission (required for the background session) and
+ * arms the session; after that it's just a "swipe back and dictate" prompt.
+ * Once the user swipes back, dictations run from the keyboard without returning
+ * here until the session idles out (kb.flow.idleTimeoutMs). Fully
+ * backend-authored — restyle/recopy freely, it's pure SDUI.
+ */
+function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "flow_arm",
+    title: "",
+    state: { armed: false },
+    actions: {
+      // Fired on appear: get mic permission, then arm the background session.
+      arm: {
+        kind: "requestPermission",
+        permission: "microphone",
+        onGranted: "doArm",
+        onDenied: "micDenied",
+      },
+      doArm: {
+        kind: "sequence",
+        actions: [
+          { kind: "armFlowSession", idleTimeoutMs: 300000 },
+          { kind: "setState", path: "armed", value: true },
+          { kind: "haptic", style: "success" },
+        ],
+      },
+      micDenied: {
+        kind: "toast",
+        tone: "error",
+        message:
+          "Allow the microphone in Settings → Tailzu, then swipe back and tap the keyboard mic again.",
+      },
+    },
+    root: {
+      type: "Screen",
+      on: { onAppear: "arm" },
+      style: { paddingHorizontal: 28, alignItems: "center", justify: "center", flex: 1 },
+      children: [
+        {
+          type: "Heading",
+          props: { content: "🎙️  Flow is on" },
+          style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 14, textAlign: "center" },
+        },
+        {
+          type: "Paragraph",
+          props: {
+            content:
+              "Swipe back to your app, then tap the keyboard mic and just talk — your words appear as you speak. No need to come back here until you’ve been idle a while.",
+          },
+          style: { textAlign: "center", marginBottom: 30, color: "$color.muted" },
+        },
+        {
+          type: "Text",
+          props: { content: "⟵  swipe back to continue" },
+          style: { fontSize: 15, fontWeight: "700", color: "$color.primary", textAlign: "center" },
+        },
+      ],
+    },
+  };
+}
+
+/**
  * Cold-start primer — shown the FIRST time the keyboard hands off before
  * the main app has been foregrounded (or after a long absence). We can't
  * record right away because iOS hasn't granted mic yet; instead we prompt
@@ -3039,15 +3107,20 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         "kb.mic.idleIconInset": 0,
         // Mic mode (iOS only — Android reads `liveVoice` and records in-process,
         // which iOS extensions CANNOT do). iOS blocks microphone recording
-        // inside a keyboard extension at the OS level: even with Full Access,
-        // AVAudioRecorder.record() returns false and no samples arrive
-        // ("doesn't have entitlements to record audio"). So the ONLY working iOS
-        // mic path is "handoff": the mic tap opens the main app, which records +
-        // cleans + inserts the text back at the cursor (Darwin notification).
-        // Requires the native handoff code in the build (shipped) + a working
-        // app recorder (fixed). OTA-flippable back to "local"/"stream" if a
-        // future iOS ever allows in-extension capture.
-        "kb.mic.mode": "handoff",
+        // inside a keyboard extension: even with Full Access,
+        // AVAudioRecorder.record() returns false ("doesn't have entitlements to
+        // record audio"). So the working iOS path is a background-audio "Flow
+        // Session" (the Wispr Flow model): the first mic tap opens the app,
+        // which holds the mic alive in the BACKGROUND; the user swipes back and
+        // then dictations run from the keyboard without leaving it, until the
+        // session idles out. See FlowSessionManager / TulmiFlow. Requires the
+        // native flow code in the build. OTA-flippable to "handoff" (open app
+        // per dictation) / "local" / "stream".
+        "kb.mic.mode": "flow",
+        // How long a Flow Session stays live (mic held in the background) with
+        // no dictation before it must be re-armed by re-opening the app.
+        // Wispr's default is 5 min; raise for fewer app hops.
+        "kb.flow.idleTimeoutMs": 300000,
       };
 
       // Mic media: whatever the media registry has under `mic.animation`
