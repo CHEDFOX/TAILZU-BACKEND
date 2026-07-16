@@ -3028,6 +3028,11 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // Caveat (v1): accent long-press trays are not routed through the plane
         // yet, so held-key accent menus are unavailable while it's on.
         "kb.keyPlane.enabled": true,
+        // Idle mic mark inset (points). The TailzuMark spans its full canvas
+        // width, so 0 makes the "structure" touch the button's side walls
+        // instead of sitting small in the middle. OTA-tunable — takes effect on
+        // the current build without a rebuild.
+        "kb.mic.idleIconInset": 0,
       };
 
       // Mic media: whatever the media registry has under `mic.animation`
