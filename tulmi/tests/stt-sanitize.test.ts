@@ -69,6 +69,43 @@ describe("sanitizePlainTranscript", () => {
   });
 });
 
+describe("sanitizePlainTranscript with trustSpeech (real short dictation)", () => {
+  // The reported bug: a legitimate one-word "thank you"/"you" dictation got
+  // nuked as a silence hallucination. When the caller has a positive speech
+  // signal (confident segments, or a long-enough clip), trustSpeech=true keeps
+  // these short utterances.
+  it("keeps ambiguous short phrases when the clip is trusted speech", () => {
+    for (const phrase of ["Thank you.", "thank you", "you", "You.", "Bye.", "Thanks."]) {
+      expect(
+        sanitizePlainTranscript(phrase, { trustSpeech: true }),
+        `expected "${phrase}" kept when trusted`,
+      ).not.toBe("");
+    }
+  });
+
+  it("still nukes multi-word video boilerplate even when trusted", () => {
+    for (const phrase of [
+      "Thanks for watching!",
+      "Please subscribe.",
+      "Subscribe to my channel",
+      "[music]",
+    ]) {
+      expect(
+        sanitizePlainTranscript(phrase, { trustSpeech: true }),
+        `expected "${phrase}" stripped even when trusted`,
+      ).toBe("");
+    }
+  });
+
+  it("still trims a trusted transcript's YouTube-outro tail", () => {
+    expect(
+      sanitizePlainTranscript("Let's ship it this week. Thanks for watching!", {
+        trustSpeech: true,
+      }),
+    ).toBe("Let's ship it this week.");
+  });
+});
+
 describe("sanitizeWhisperText (Groq verbose path)", () => {
   it("drops low-confidence segments then strips leftover boilerplate", () => {
     const out = sanitizeWhisperText({

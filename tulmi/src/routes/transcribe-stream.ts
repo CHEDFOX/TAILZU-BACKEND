@@ -68,6 +68,10 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         safeClose();
       }, HANDSHAKE_TIMEOUT_MS);
       let idleTimer: NodeJS.Timeout | null = null;
+      // Guards the single terminal "done" — set once, whether it fires from the
+      // engine's Close (the flush-complete path) or the stop fallback timer.
+      let doneSent = false;
+      let doneFallback: NodeJS.Timeout | null = null;
 
       const send = (obj: unknown) => {
         if (!closed && socket.readyState === 1) socket.send(JSON.stringify(obj));
@@ -86,8 +90,33 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         closed = true;
         if (handshakeTimer) { clearTimeout(handshakeTimer); handshakeTimer = null; }
         if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+        if (doneFallback) { clearTimeout(doneFallback); doneFallback = null; }
         closeEngine();
         try { socket.close(); } catch { /* ignore */ }
+      };
+
+      // Terminal step for a stream: meter the audio processed, tell the client
+      // we're done, and close. Idempotent — the engine's Close event and the
+      // stop fallback timer both call it, but only the first wins. Metering
+      // lives HERE (not in the stop handler) so it runs exactly once on every
+      // teardown path, including an engine-initiated close.
+      const finishDone = () => {
+        if (doneSent) return;
+        doneSent = true;
+        if (doneFallback) { clearTimeout(doneFallback); doneFallback = null; }
+        if (user) {
+          // linear16 mono → 2 bytes/sample. Rough seconds of audio processed.
+          const seconds = bytes / (sampleRate * 2);
+          recordUsage({
+            user,
+            source: "stream",
+            audioSeconds: Number(seconds.toFixed(2)),
+            words: 0, // deepgram doesn't return final word count here
+            model: `deepgram:${cfg.DEEPGRAM_STT_MODEL || "nova-2"}`,
+          }).catch(() => { /* metering must never break the close path */ });
+        }
+        send({ type: "done" });
+        safeClose();
       };
 
       const armIdle = () => {
@@ -146,9 +175,12 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           send({ type: "error", code: "stt_failed", message: String(e?.message ?? e) });
         });
         dg.on(LiveTranscriptionEvents.Close, () => {
-          // Engine went away first — surface as clean close, not silent hang.
-          send({ type: "done" });
-          safeClose();
+          // Deepgram closed — this fires AFTER it has emitted its final tail
+          // segment(s) in response to requestClose(), so routing "done"
+          // through here (rather than a fixed timer) guarantees the last words
+          // reach the client before we close. Also covers an engine-initiated
+          // close (error/timeout) as a clean close, not a silent hang.
+          finishDone();
         });
       };
 
@@ -198,23 +230,17 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         }
 
         if (msg.type === "stop") {
+          // Ask Deepgram to flush + finalize the tail. Its Close event fires
+          // AFTER it emits the final tail segment(s), and THAT drives
+          // finishDone() — so the last words always reach the client before we
+          // close. Cutting the socket on a fixed 300 ms timer (the old code)
+          // dropped whatever Deepgram hadn't flushed yet → every dictation's
+          // tail got truncated. The fallback timer only fires if the engine's
+          // Close never arrives (wedged/dropped), so we don't hang.
           closeEngine();
-          // Give Deepgram a beat to flush its final segments, then close.
-          setTimeout(async () => {
-            if (user) {
-              // linear16 mono → 2 bytes/sample. Rough seconds of audio processed.
-              const seconds = bytes / (sampleRate * 2);
-              await recordUsage({
-                user,
-                source: "stream",
-                audioSeconds: Number(seconds.toFixed(2)),
-                words: 0, // deepgram doesn't return final word count here
-                model: `deepgram:nova-2`,
-              });
-            }
-            send({ type: "done" });
-            safeClose();
-          }, 300);
+          if (!doneFallback && !doneSent) {
+            doneFallback = setTimeout(finishDone, 1500);
+          }
         }
       });
 

@@ -6,7 +6,31 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import { estimateDurationSeconds } from "../src/pipeline/stt.js";
+import { estimateDurationSeconds, probeMp4Duration } from "../src/pipeline/stt.js";
+
+/** Wrap `body` in an MP4 box: size(4) + type(4) + body. */
+function box(type: string, body: Buffer): Buffer {
+  const b = Buffer.alloc(8 + body.length);
+  b.writeUInt32BE(8 + body.length, 0);
+  b.write(type, 4, "ascii");
+  body.copy(b, 8);
+  return b;
+}
+
+/**
+ * Build a minimal m4a/MP4: an `ftyp` sibling (to exercise the box walker
+ * skipping past it) followed by `moov > mvhd` (version 0) carrying the
+ * timescale + duration the probe reads. seconds = duration / timescale.
+ */
+function makeM4a(timescale: number, duration: number): Buffer {
+  const mvhdBody = Buffer.alloc(20); // version+flags, creation, mod, timescale, duration
+  mvhdBody.writeUInt8(0, 0); // version 0
+  mvhdBody.writeUInt32BE(timescale, 12);
+  mvhdBody.writeUInt32BE(duration, 16);
+  const moov = box("moov", box("mvhd", mvhdBody));
+  const ftyp = box("ftyp", Buffer.from("M4A isom", "ascii"));
+  return Buffer.concat([ftyp, moov]);
+}
 
 /**
  * Build a canonical PCM WAV header + `dataSize` bytes of fake sample data.
@@ -77,10 +101,24 @@ describe("estimateDurationSeconds", () => {
     expect(out).toBeLessThan(2.02);
   });
 
-  it("returns 0 for unsupported containers we don't parse (m4a/ogg/webm/flac)", () => {
+  it("reads the exact duration from an m4a/MP4 mvhd box", () => {
+    // 8000 / 16000 = 0.5 s.
+    expect(estimateDurationSeconds(makeM4a(16000, 8000), "m4a")).toBeCloseTo(0.5, 5);
+    // 44100 timescale, 132300 units → 3 s.
+    expect(estimateDurationSeconds(makeM4a(44100, 132300), "m4a")).toBeCloseTo(3, 5);
+    // probeMp4Duration is exported and works standalone too.
+    expect(probeMp4Duration(makeM4a(1000, 2500))).toBeCloseTo(2.5, 5);
+  });
+
+  it("returns 0 (not a throw) for an m4a buffer with no moov box", () => {
+    const data = Buffer.alloc(10_000); // zero-filled — no boxes
+    expect(() => estimateDurationSeconds(data, "m4a")).not.toThrow();
+    expect(estimateDurationSeconds(data, "m4a")).toBe(0);
+  });
+
+  it("returns 0 for containers we don't parse yet (ogg/webm/flac)", () => {
     const data = Buffer.alloc(10_000);
     // These paths hit warnUnsupportedFormatOnce; the return value is what we care about.
-    expect(estimateDurationSeconds(data, "m4a")).toBe(0);
     expect(estimateDurationSeconds(data, "ogg")).toBe(0);
     expect(estimateDurationSeconds(data, "webm")).toBe(0);
     expect(estimateDurationSeconds(data, "flac")).toBe(0);

@@ -44,6 +44,27 @@ export interface SttResult {
   durationSeconds: number;
 }
 
+/**
+ * Internal provider result — carries a `speechConfidence` signal alongside the
+ * public fields so `transcribe()` can decide whether to trust short filler
+ * ("thank you"/"you") as a real one-word dictation or strip it as a silence
+ * hallucination. Not exposed on the public SttResult.
+ *   "high"    — provider confidence says this is real speech (keep it).
+ *   "low"     — provider flagged it as non-speech/silence (safe to strip).
+ *   "unknown" — no per-segment confidence (OpenAI path); fall back to duration.
+ */
+interface RawSttResult extends SttResult {
+  speechConfidence?: "high" | "low" | "unknown";
+}
+
+/**
+ * A clip at least this long is assumed to contain a real word, so we DON'T
+ * strip a standalone "thank you"/"you" from it (that would be nuking a
+ * legitimate one-word dictation). Only shorter/near-empty captures — the
+ * actual silence-hallucination case — fall through to the short-phrase nuke.
+ */
+const SPEECH_MIN_DURATION_S = 0.45;
+
 export interface SttInput {
   audio: Buffer;
   format: AudioFormat;
@@ -62,32 +83,44 @@ function sttPrompt(vocabulary?: string): string {
 
 export async function transcribe(input: SttInput): Promise<SttResult> {
   const cfg = getConfig();
-  const raw = await (cfg.STT_PROVIDER === "groq"
+  const raw: RawSttResult = await (cfg.STT_PROVIDER === "groq"
     ? transcribeGroq(input)
     : transcribeOpenAI(input));
 
-  // Belt-and-braces silence-hallucination scrub on EVERY provider path.
-  // gpt-4o-transcribe (the default) shares Whisper's "silent audio →
-  // 'Thank you.'" failure mode but returns no per-segment confidence, so this
-  // flat-text pass is the only defense on that path — without it a keyboard
-  // mic that captures no real audio inserts the same "Thank you." every tap.
-  // Idempotent for Groq (sanitizeWhisperText already ran it).
-  const text = sanitizePlainTranscript(raw.text);
+  // Resolve duration first: the provider's own number, else a header probe of
+  // the buffer (WAV/MP3/m4a) so metering isn't zeroed out for every voice
+  // request — AND so the transcript scrub below has a real length to reason
+  // about.
+  const duration =
+    raw.durationSeconds > 0
+      ? raw.durationSeconds
+      : estimateDurationSeconds(input.audio, input.format);
 
-  // Provider didn't report a duration (OpenAI gpt-4o-transcribe never does)
-  // — fall back to a header/CBR probe of the buffer so metering isn't zeroed
-  // out for every voice request.
-  if (raw.durationSeconds > 0) return { ...raw, text };
-  const estimated = estimateDurationSeconds(input.audio, input.format);
-  return { text, durationSeconds: estimated };
+  // Silence-hallucination scrub on EVERY provider path. gpt-4o-transcribe (the
+  // default) shares Whisper's "silent audio → 'Thank you.'" failure mode, so
+  // this flat-text pass is the only defense there.
+  //
+  // BUT: a bare "thank you"/"you" is ALSO a legitimate one-word dictation.
+  // Nuking it unconditionally swallowed real short utterances (the reported
+  // bug). So we only apply the aggressive short-phrase nuke when the clip is
+  // actually silence — either the provider flagged it low-confidence, or it's
+  // too short to hold a real word. A confident or long-enough clip is trusted
+  // and its "thank you" survives. Multi-word YouTube boilerplate ("thanks for
+  // watching") is stripped regardless — nobody dictates that into a keyboard.
+  const trustSpeech =
+    raw.speechConfidence === "high" ||
+    (raw.speechConfidence !== "low" && duration >= SPEECH_MIN_DURATION_S);
+  const text = sanitizePlainTranscript(raw.text, { trustSpeech });
+
+  return { text, durationSeconds: duration };
 }
 
 /**
  * Probe an audio buffer for its length in seconds when the STT provider
- * didn't hand us one. Accurate for well-formed WAV; a rough CBR-128kbps
- * estimate for MP3; zero (with a once-per-boot warning) for containers we
- * don't parse yet (m4a/ogg/webm/flac). Never throws — a bad header just
- * returns 0 and lets metering under-count instead of failing the request.
+ * didn't hand us one. Accurate for well-formed WAV and m4a/MP4 (mvhd box); a
+ * rough CBR-128kbps estimate for MP3; zero (with a once-per-boot warning) for
+ * containers we don't parse yet (ogg/webm/flac). Never throws — a bad header
+ * just returns 0 and lets metering under-count instead of failing the request.
  */
 export function estimateDurationSeconds(
   audio: Buffer,
@@ -103,7 +136,15 @@ export function estimateDurationSeconds(
         // other bitrates) — the goal is "non-zero and vaguely honest", not
         // sample-accurate. Truth-in-metering: this can be off by ±25%.
         return audio.length / 16_000;
-      case "m4a":
+      case "m4a": {
+        // m4a is an MP4 container — read the exact duration out of the movie
+        // header (moov/mvhd). This is what the keyboard's batch-record path
+        // sends, so without it every batch dictation metered audioSeconds=0.
+        const d = probeMp4Duration(audio);
+        if (d > 0) return d;
+        warnUnsupportedFormatOnce(format);
+        return 0;
+      }
       case "ogg":
       case "webm":
       case "flac":
@@ -116,6 +157,74 @@ export function estimateDurationSeconds(
   return 0;
 }
 
+/**
+ * Read the audio length out of an MP4/m4a container's movie header. MP4 is a
+ * tree of length-prefixed boxes [size(4) type(4) …]; we walk down to
+ * `moov > mvhd` and read `duration / timescale`. Handles the 32-bit (v0) and
+ * 64-bit (v1) mvhd layouts and 64-bit box sizes. Returns 0 on any mismatch so
+ * a truncated/streamed file just under-meters instead of throwing.
+ */
+export function probeMp4Duration(buf: Buffer): number {
+  const moov = findMp4Box(buf, 0, buf.length, "moov");
+  if (!moov) return 0;
+  const mvhd = findMp4Box(buf, moov.start, moov.end, "mvhd");
+  if (!mvhd) return 0;
+
+  let p = mvhd.start;
+  if (p + 4 > buf.length) return 0;
+  const version = buf.readUInt8(p);
+  p += 4; // version (1) + flags (3)
+
+  let timescale = 0;
+  let duration = 0;
+  if (version === 1) {
+    if (p + 28 > buf.length) return 0;
+    p += 16; // creation (8) + modification (8)
+    timescale = buf.readUInt32BE(p);
+    p += 4;
+    duration = Number(buf.readBigUInt64BE(p));
+  } else {
+    if (p + 16 > buf.length) return 0;
+    p += 8; // creation (4) + modification (4)
+    timescale = buf.readUInt32BE(p);
+    p += 4;
+    duration = buf.readUInt32BE(p);
+  }
+  if (timescale <= 0 || duration <= 0) return 0;
+  return duration / timescale;
+}
+
+/** Find a direct child box named `type` within [start, end). Returns the
+ *  box's CONTENT range (header stripped), or null. */
+function findMp4Box(
+  buf: Buffer,
+  start: number,
+  end: number,
+  type: string,
+): { start: number; end: number } | null {
+  let offset = start;
+  while (offset + 8 <= end) {
+    let size = buf.readUInt32BE(offset);
+    const boxType = buf.toString("ascii", offset + 4, offset + 8);
+    let headerSize = 8;
+    if (size === 1) {
+      // 64-bit largesize follows the type.
+      if (offset + 16 > end) break;
+      size = Number(buf.readBigUInt64BE(offset + 8));
+      headerSize = 16;
+    } else if (size === 0) {
+      // Box extends to the end of the buffer.
+      size = end - offset;
+    }
+    if (size < headerSize || offset + size > end) break;
+    if (boxType === type) {
+      return { start: offset + headerSize, end: offset + size };
+    }
+    offset += size;
+  }
+  return null;
+}
+
 // One-per-boot warning per format we can't yet probe, so ops sees a clear
 // signal (rather than silence + zeroed metering) when a client starts sending
 // a container we haven't wired up.
@@ -124,8 +233,8 @@ function warnUnsupportedFormatOnce(format: AudioFormat): void {
   if (warnedFormats.has(format)) return;
   warnedFormats.add(format);
   console.warn(
-    `[stt] provider returned no duration for ${format}; no header probe wired up ` +
-      `→ audioSeconds will be 0 for ${format} until parser is added.`,
+    `[stt] no usable duration for ${format} (provider reported none and the ` +
+      `buffer couldn't be probed) → audioSeconds will be 0 for this clip.`,
   );
 }
 
@@ -172,7 +281,7 @@ function probeWavDuration(buf: Buffer): number {
   return byteRate > 0 ? dataSize / byteRate : 0;
 }
 
-async function transcribeOpenAI(input: SttInput): Promise<SttResult> {
+async function transcribeOpenAI(input: SttInput): Promise<RawSttResult> {
   const cfg = getConfig();
   const file = await toOpenAIFile(input.audio, `audio.${input.format}`);
 
@@ -189,10 +298,13 @@ async function transcribeOpenAI(input: SttInput): Promise<SttResult> {
   return {
     text: (res.text ?? "").trim(),
     durationSeconds: 0,
+    // No per-segment confidence on this model — let transcribe() fall back to
+    // clip duration to decide whether a bare "thank you" is real speech.
+    speechConfidence: "unknown",
   };
 }
 
-async function transcribeGroq(input: SttInput): Promise<SttResult> {
+async function transcribeGroq(input: SttInput): Promise<RawSttResult> {
   const cfg = getConfig();
   const file = await toGroqFile(input.audio, `audio.${input.format}`);
 
@@ -212,10 +324,14 @@ async function transcribeGroq(input: SttInput): Promise<SttResult> {
     temperature: 0 as any,
   })) as GroqVerboseResponse;
 
-  const cleaned = sanitizeWhisperText(res);
+  // Only the CONFIDENCE FILTER runs here — the phrase-level scrub is deferred to
+  // transcribe() so it can be gated on the clip's real duration (a confident
+  // "thank you" must survive; a silent-clip hallucination must not).
+  const filtered = filterConfidentSegments(res);
   return {
-    text: cleaned,
+    text: filtered.text,
     durationSeconds: typeof res.duration === "number" ? res.duration : 0,
+    speechConfidence: filtered.speechConfidence,
   };
 }
 
@@ -244,77 +360,107 @@ interface GroqVerboseResponse {
  * we run the phrase + repetition filters on the flat text.
  */
 export function sanitizeWhisperText(res: GroqVerboseResponse): string {
+  // Strict path (exported utility): confidence-filter, then the full phrase
+  // scrub with no speech-trust. The production Groq path (transcribeGroq) does
+  // NOT use this — it defers the phrase scrub to transcribe() so it can be
+  // duration-gated — but callers wanting the aggressive one-shot keep it.
+  return sanitizePlainTranscript(filterConfidentSegments(res).text);
+}
+
+/**
+ * Drop Whisper segments that read as silence/non-speech and report how
+ * confident we are that what's left is real speech:
+ *   1. no_speech_prob > ceiling  → silence/non-speech Whisper invented.
+ *   2. avg_logprob   < floor     → model wasn't confident enough.
+ * `speechConfidence` is "high" when confident segments survived, "low" when
+ * segments existed but all were dropped (a silence signal), "unknown" when the
+ * response carried no segments to judge.
+ */
+function filterConfidentSegments(res: GroqVerboseResponse): {
+  text: string;
+  speechConfidence: "high" | "low" | "unknown";
+} {
   const NO_SPEECH_CEIL = 0.6;
   const AVG_LOGPROB_FLOOR = -1.0; // ln(p) — anything below this = coin flip
 
-  let text = "";
   if (Array.isArray(res.segments) && res.segments.length > 0) {
     const kept = res.segments.filter((s) => {
       if (typeof s.no_speech_prob === "number" && s.no_speech_prob > NO_SPEECH_CEIL) return false;
       if (typeof s.avg_logprob === "number" && s.avg_logprob < AVG_LOGPROB_FLOOR) return false;
       return true;
     });
-    text = kept.map((s) => (s.text ?? "").trim()).filter(Boolean).join(" ");
-  } else {
-    text = (res.text ?? "").trim();
+    const text = kept.map((s) => (s.text ?? "").trim()).filter(Boolean).join(" ");
+    return { text, speechConfidence: kept.length > 0 ? "high" : "low" };
   }
-
-  return sanitizePlainTranscript(text);
+  return { text: (res.text ?? "").trim(), speechConfidence: "unknown" };
 }
 
 /**
- * Flat-text sanitizer for a transcript we have no per-segment confidence for
- * (the OpenAI gpt-4o-transcribe path — and any other provider that returns
- * only text). Strips known silence-hallucination phrases and collapses
- * degenerate repetition. Idempotent, so the Groq path re-running it after its
- * segment-level filtering is a no-op on already-clean text.
+ * Flat-text sanitizer for a transcript. Strips known silence-hallucination
+ * phrases and collapses degenerate repetition. Idempotent.
+ *
+ * `trustSpeech` (default false): when the caller has a positive signal that the
+ * clip is real speech (confident segments, or long enough to hold a word), the
+ * aggressive short-phrase nuke is skipped so a legitimate one-word "thank
+ * you"/"you" dictation survives. Multi-word YouTube boilerplate is stripped
+ * either way.
  */
-export function sanitizePlainTranscript(text: string): string {
-  return collapseRepetitions(stripHallucinationPhrases(text)).trim();
+export function sanitizePlainTranscript(
+  text: string,
+  opts: { trustSpeech?: boolean } = {},
+): string {
+  return collapseRepetitions(
+    stripHallucinationPhrases(text, opts.trustSpeech ?? false),
+  ).trim();
 }
 
 /**
- * Whisper / gpt-4o-transcribe's known "silent audio → boilerplate"
- * hallucinations. On a near-silent or empty clip both models emit filler
- * lifted from their video training data — most infamously a bare
- * "Thank you." (the sign-off at the end of countless YouTube clips). This is
- * the exact symptom users hit when the keyboard mic captures no real audio:
- * every tap returns the same "Thank you." text.
- *
- * When the WHOLE transcript IS one of these, we return an empty string (the
- * anchored ^…$ scoping guarantees we only nuke standalone filler, never a
- * "thank you" buried inside a real sentence). A separate tail-trimmer below
- * strips the YouTube-outro tails off an otherwise-real transcript.
- *
- * Not exhaustive — add here as new patterns surface in the wild.
+ * Multi-word boilerplate Whisper / gpt-4o-transcribe lift from their video
+ * training data on near-silent clips ("thanks for watching", "please
+ * subscribe", "[music]"). Nobody dictates these standalone into a keyboard, so
+ * we strip them on ANY path regardless of confidence. Anchored ^…$ so we only
+ * nuke a standalone occurrence, never one buried in a real sentence.
  */
-const HALLUCINATION_PATTERNS: RegExp[] = [
-  // Bare thanks — the #1 silence hallucination. Only fires as the whole
-  // transcript, so a real "thank you" inside a sentence survives.
-  /^\s*thank\s*you(\s+(so|very)\s+much)?(\s+(guys|all|everyone))?[!.\s]*$/i,
-  /^\s*thanks(\s+(a\s+lot|so\s+much))?(\s+(guys|all|everyone))?[!.\s]*$/i,
-  // Whisper's classic single-token drop-out on silence.
-  /^\s*you[!.\s]*$/i,
-  // YouTube-outro boilerplate.
+const BOILERPLATE_PATTERNS: RegExp[] = [
   /^\s*thanks?\s+for\s+watching[!.\s]*$/i,
   /^\s*thank\s+you\s+for\s+watching[!.\s]*$/i,
   /^\s*please\s+subscribe[!.\s]*$/i,
   /^\s*subscribe\s+to\s+my\s+channel[!.\s]*$/i,
   /^\s*don'?t\s+forget\s+to\s+(like\s+and\s+)?subscribe[!.\s]*$/i,
   /^\s*see\s+you\s+(next\s+time|in\s+the\s+next\s+video)[!.\s]*$/i,
-  /^\s*bye[!.\s]*$/i,
   /^\s*outro[!.\s]*$/i,
   /^\s*\[music\][!.\s]*$/i,
+];
+
+/**
+ * Short phrases that are BOTH a common silence hallucination AND a legitimate
+ * one-word dictation ("thank you", "you", "bye"). These are only stripped when
+ * `trustSpeech` is false — i.e. we have a positive silence signal. With trust,
+ * they're kept, so a real short utterance isn't swallowed (the reported bug).
+ */
+const AMBIGUOUS_SILENCE_PATTERNS: RegExp[] = [
+  /^\s*thank\s*you(\s+(so|very)\s+much)?(\s+(guys|all|everyone))?[!.\s]*$/i,
+  /^\s*thanks(\s+(a\s+lot|so\s+much))?(\s+(guys|all|everyone))?[!.\s]*$/i,
+  /^\s*you[!.\s]*$/i,
+  /^\s*bye[!.\s]*$/i,
   /^\s*(um|uh|hmm|mm|ah)[!.\s]*$/i,
 ];
 
-function stripHallucinationPhrases(text: string): string {
+function stripHallucinationPhrases(text: string, trustSpeech: boolean): string {
   const t = text.trim();
   if (!t) return "";
-  for (const pat of HALLUCINATION_PATTERNS) {
+  // Always kill unambiguous video boilerplate.
+  for (const pat of BOILERPLATE_PATTERNS) {
     if (pat.test(t)) return "";
   }
-  // Trim a hallucinated tail off an otherwise-real transcript.
+  // Only kill ambiguous short filler when we DON'T trust the clip as speech.
+  if (!trustSpeech) {
+    for (const pat of AMBIGUOUS_SILENCE_PATTERNS) {
+      if (pat.test(t)) return "";
+    }
+  }
+  // Trim a hallucinated outro tail off an otherwise-real transcript (safe:
+  // only strips a known outro appended to real text, never the whole thing).
   return t
     .replace(/\s*(thanks? for watching|thank you for watching|please subscribe|don'?t forget to (like and )?subscribe|see you next time)[!.\s]*$/i, "")
     .trim();
