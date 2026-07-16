@@ -150,6 +150,28 @@ describe("WebSocket /v1/stream", () => {
     expect(iC).toBeLessThan(iD);
   });
 
+  it("a duplicate 'end' does NOT re-run the pipeline (one done, one meter)", async () => {
+    const ws = await openStream();
+    const events: Array<Record<string, unknown>> = [];
+    ws.on("message", (data) => {
+      try { events.push(JSON.parse(String(data))); } catch { /* ignore */ }
+    });
+
+    ws.send(JSON.stringify({ type: "start", format: "webm", sampleRate: 16000 }));
+    await new Promise((r) => setTimeout(r, 60));
+    ws.send(Buffer.from([0x00, 0x01, 0x02, 0x03]));
+    await new Promise((r) => setTimeout(r, 20));
+    // Fire two 'end' frames back-to-back — the second must be ignored by the
+    // one-shot guard, or STT + cleanup + metering would run twice.
+    ws.send(JSON.stringify({ type: "end" }));
+    ws.send(JSON.stringify({ type: "end" }));
+
+    await new Promise<void>((resolve) => ws.once("close", () => resolve()));
+
+    const doneCount = events.filter((e) => e.type === "done").length;
+    expect(doneCount).toBe(1);
+  });
+
   it("DEV_SKIP_AUTH accepts the connection with no Authorization header", async () => {
     // Same as the 'ready' test, but this documents the auth-off behavior as
     // an explicit contract the test suite relies on.

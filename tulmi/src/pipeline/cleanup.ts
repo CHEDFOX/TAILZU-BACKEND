@@ -237,11 +237,13 @@ export async function assist(
       { role: "user", content: userContent },
     ],
   });
-  return expandSnippets(
+  const out = expandSnippets(
     (res.choices[0]?.message?.content ?? "").trim(),
     opts.personality?.snippets,
     ctxFromOpts(opts),
   );
+  // See clean(): never wipe the field on an empty completion.
+  return out || message.trim();
 }
 
 /** Non-streaming cleanup of a transcript or typed text. */
@@ -266,11 +268,15 @@ export async function clean(
       { role: "user", content: input },
     ],
   });
-  return expandSnippets(
+  const out = expandSnippets(
     (res.choices[0]?.message?.content ?? "").trim(),
     opts.personality?.snippets,
     ctxFromOpts(opts),
   );
+  // Never return empty for real input — the refine clients replace the field
+  // with this, so an empty completion would delete the user's text. Fall back
+  // to the original so a failed cleanup is a no-op, not data loss.
+  return out || input.trim();
 }
 
 /**
@@ -307,11 +313,13 @@ export async function refineWithTone(
   const raw = (res.choices[0]?.message?.content ?? "").trim();
   // Snippet expansion still runs on the refined text so "brb" → "be right
   // back" works regardless of tone.
-  return expandSnippets(
+  const out = expandSnippets(
     raw,
     opts.personality?.snippets,
     { targetApp: "Generic" },
   );
+  // Never wipe the field on an empty completion — fall back to the input.
+  return out || input.trim();
 }
 
 export { LLM_TONES };

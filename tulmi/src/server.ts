@@ -1298,6 +1298,7 @@ app.register(async (instance) => {
     let authedUser: AuthedUser | null = null;
     let authReady = false;
     let closed = false;
+    let ended = false; // one-shot guard: a second `end` frame must not re-run the pipeline
     let idleTimer: NodeJS.Timeout | null = null;
 
     const armIdle = () => {
@@ -1385,6 +1386,12 @@ app.register(async (instance) => {
       }
 
       if (msg.type === "end") {
+        // One-shot: a second "end" (double-tap, client retry) would otherwise
+        // run STT + cleanup again → double metering, duplicate history, and
+        // duplicate client events. Flip the guard synchronously, BEFORE the
+        // first await, so the re-entrant call can't slip through.
+        if (ended) return;
+        ended = true;
         if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
         const user = authedUser;
         if (!user) {

@@ -467,10 +467,11 @@ function stripHallucinationPhrases(text: string, trustSpeech: boolean): string {
 }
 
 /**
- * Collapse degenerate repetition ("you you you you you", "the the the")
- * down to a single occurrence. Whisper does this when it loses signal
- * mid-utterance and starts generating filler; the fix is to notice a token
- * repeating 4+ times in a row and keep just one.
+ * Collapse a degenerate repetition loop ("you you you you you") that Whisper
+ * emits when it loses signal mid-utterance. We keep at most TWO in a row and
+ * drop the rest — two survives natural emphasis ("no no", "very very") while a
+ * runaway loop of 3+ identical tokens collapses to "no no". (Not down to a
+ * single token: that would flatten legitimate doubled words.)
  */
 function collapseRepetitions(text: string): string {
   if (!text) return "";
@@ -482,7 +483,7 @@ function collapseRepetitions(text: string): string {
     const norm = w.toLowerCase();
     if (norm === last) {
       repeat += 1;
-      if (repeat < 3) out.push(w); // allow up to "the the the" for emphasis
+      if (repeat < 3) out.push(w); // keep the 1st + 2nd, drop the 3rd onward
     } else {
       last = norm;
       repeat = 1;

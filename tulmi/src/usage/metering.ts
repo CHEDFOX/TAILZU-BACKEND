@@ -6,7 +6,7 @@
  * Supabase is disabled (DEV_SKIP_AUTH local testing) we log instead of writing,
  * so the pipeline still runs end-to-end without a database.
  */
-import { dataClientFor, supabase, type AuthedUser } from "../auth/supabase.js";
+import { dataClientFor, type AuthedUser } from "../auth/supabase.js";
 import { getConfig } from "../config.js";
 import type { UsageRecord, UsageSummary } from "../../../shared/types/api.js";
 
@@ -133,8 +133,16 @@ export async function enforceQuota(user: AuthedUser): Promise<string | null> {
   const monthStart = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
   ).toISOString();
-  const used = await usageSince(user.id, monthStart);
-  if (!used) return null; // Supabase unavailable → fail open, don't lock users out
+  const used = await usageSince(user, monthStart);
+  if (!used) {
+    // We couldn't read usage. With auth DISABLED (dev / DEV_SKIP_AUTH) there's
+    // no billing to protect → allow. But when auth is CONFIGURED, a null means
+    // the read failed or the wrong Supabase key is deployed — failing OPEN here
+    // would hand out unlimited paid STT (the reported bypass), so fail CLOSED
+    // with a soft retry rather than a permanent lock.
+    if (!getConfig().authEnabled) return null;
+    return "Couldn't verify your usage right now — please try again in a moment.";
+  }
 
   if (capAudio > 0 && used.audioSeconds >= capAudio) {
     return `Monthly voice cap reached (${Math.round(capAudio / 60)} min). Resets ${monthResetDate()}.`;
@@ -154,18 +162,22 @@ function monthResetDate(): string {
 /**
  * Sum a user's audio-seconds usage since a given ISO timestamp. This is the
  * read side free-tier enforcement uses (see enforceQuota).
+ *
+ * Reads via `dataClientFor(user)` — the service client when configured, else
+ * the JWT-scoped (RLS) client — so quota reads work on anon-key-only
+ * deployments too (a service-only read there returned null → quota fail-open).
  */
 export async function usageSince(
-  userId: string,
+  user: AuthedUser,
   sinceIso: string,
 ): Promise<{ audioSeconds: number; words: number } | null> {
-  const sb = supabase();
+  const sb = dataClientFor(user);
   if (!sb) return null;
 
   const { data, error } = await sb
     .from("usage_events")
     .select("audio_seconds, word_count")
-    .eq("user_id", userId)
+    .eq("user_id", user.id)
     .gte("created_at", sinceIso);
 
   if (error || !data) return null;

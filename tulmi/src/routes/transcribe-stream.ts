@@ -35,6 +35,12 @@ interface StartMessage {
   channels?: number;
 }
 
+/** Count whitespace-delimited words in a transcript segment. */
+function countWords(text: string): number {
+  const t = text.trim();
+  return t ? t.split(/\s+/).length : 0;
+}
+
 /** Cap the total bytes a single stream may push before we hard-close it.
  *  30 MB of 16 kHz mono PCM is ~15 minutes of dictation — far beyond a real
  *  session; anything past that is either buggy or hostile. */
@@ -72,6 +78,16 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
       // engine's Close (the flush-complete path) or the stop fallback timer.
       let doneSent = false;
       let doneFallback: NodeJS.Timeout | null = null;
+      // Metering guard — bytes/words processed are billed EXACTLY once, on
+      // whatever teardown path fires first (stop, cancel, app-switch, drop,
+      // idle, engine close). Without this, only a graceful "stop" billed and a
+      // user who always exits by switching apps streamed paid STT for free.
+      let metered = false;
+      // Real word count for word-based quotas (was hardcoded 0 → never tripped).
+      let totalWords = 0;
+      // Set when the stream ended in an error/abnormal close, so we don't mask
+      // a failure as a successful "done".
+      let errored = false;
 
       const send = (obj: unknown) => {
         if (!closed && socket.readyState === 1) socket.send(JSON.stringify(obj));
@@ -86,36 +102,42 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         }
       };
 
+      // Bill the audio + words processed so far — EXACTLY once, guarded, and
+      // called from every teardown path (via safeClose) so a cancel /
+      // app-switch / network drop bills just like a graceful stop. Without
+      // this, only "stop" metered and every other exit streamed for free.
+      const meterOnce = () => {
+        if (metered) return;
+        metered = true;
+        if (!user || bytes <= 0) return;
+        // linear16 mono → 2 bytes/sample. Rough seconds of audio processed.
+        const seconds = bytes / (sampleRate * 2);
+        recordUsage({
+          user,
+          source: "stream",
+          audioSeconds: Number(seconds.toFixed(2)),
+          words: totalWords,
+          model: `deepgram:${cfg.DEEPGRAM_STT_MODEL || "nova-2"}`,
+        }).catch(() => { /* metering must never break the close path */ });
+      };
+
       const safeClose = () => {
         closed = true;
         if (handshakeTimer) { clearTimeout(handshakeTimer); handshakeTimer = null; }
         if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
         if (doneFallback) { clearTimeout(doneFallback); doneFallback = null; }
+        meterOnce(); // bill on EVERY teardown, not just graceful stop
         closeEngine();
         try { socket.close(); } catch { /* ignore */ }
       };
 
-      // Terminal step for a stream: meter the audio processed, tell the client
-      // we're done, and close. Idempotent — the engine's Close event and the
-      // stop fallback timer both call it, but only the first wins. Metering
-      // lives HERE (not in the stop handler) so it runs exactly once on every
-      // teardown path, including an engine-initiated close.
+      // Terminal "done" for a graceful/engine close: tell the client we're done
+      // (unless we already errored) and close. safeClose does the metering.
       const finishDone = () => {
         if (doneSent) return;
         doneSent = true;
         if (doneFallback) { clearTimeout(doneFallback); doneFallback = null; }
-        if (user) {
-          // linear16 mono → 2 bytes/sample. Rough seconds of audio processed.
-          const seconds = bytes / (sampleRate * 2);
-          recordUsage({
-            user,
-            source: "stream",
-            audioSeconds: Number(seconds.toFixed(2)),
-            words: 0, // deepgram doesn't return final word count here
-            model: `deepgram:${cfg.DEEPGRAM_STT_MODEL || "nova-2"}`,
-          }).catch(() => { /* metering must never break the close path */ });
-        }
-        send({ type: "done" });
+        if (!errored) send({ type: "done" });
         safeClose();
       };
 
@@ -169,17 +191,27 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         dg.on(LiveTranscriptionEvents.Transcript, (data: any) => {
           const text = data?.channel?.alternatives?.[0]?.transcript ?? "";
           if (!text) return;
+          // Sum words from finalized segments only (partials are supersets that
+          // get replaced) so word-based quotas meter the real transcript.
+          if (data.is_final) totalWords += countWords(text);
           send({ type: data.is_final ? "final" : "partial", text });
         });
         dg.on(LiveTranscriptionEvents.Error, (e: any) => {
+          errored = true;
           send({ type: "error", code: "stt_failed", message: String(e?.message ?? e) });
         });
-        dg.on(LiveTranscriptionEvents.Close, () => {
-          // Deepgram closed — this fires AFTER it has emitted its final tail
-          // segment(s) in response to requestClose(), so routing "done"
-          // through here (rather than a fixed timer) guarantees the last words
-          // reach the client before we close. Also covers an engine-initiated
-          // close (error/timeout) as a clean close, not a silent hang.
+        dg.on(LiveTranscriptionEvents.Close, (event: any) => {
+          // Deepgram closed. Normally this fires AFTER it flushes its final tail
+          // segment(s) in response to requestClose(), so routing "done" through
+          // here (not a fixed timer) guarantees the last words reach the client.
+          // BUT an abnormal close (e.g. 1011 server error) must NOT be masked as
+          // a successful "done" — surface it as an error first.
+          const code = typeof event?.code === "number" ? event.code
+            : typeof event?.target?.code === "number" ? event.target.code : undefined;
+          if (code !== undefined && code !== 1000 && code !== 1005 && !errored) {
+            errored = true;
+            send({ type: "error", code: "stt_failed", message: `stream closed abnormally (${code})` });
+          }
           finishDone();
         });
       };
