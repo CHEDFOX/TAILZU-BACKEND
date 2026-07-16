@@ -3020,6 +3020,11 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // "kb.delete.repeatIntervalMs": 90,
         // "kb.autoCap.enabled": true,
         // "kb.smartPunctuation": true,
+        // Experimental multi-touch / rolling key plane (iOS). OFF by default;
+        // flip to true to route the character keys through the custom
+        // KeyPlaneView (true rolling + two-thumb typing). Verify on a device
+        // first — falls back to the per-button grid when unset/false.
+        // "kb.keyPlane.enabled": true,
       };
 
       // Mic media: whatever the media registry has under `mic.animation`
