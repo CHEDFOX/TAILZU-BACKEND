@@ -3020,11 +3020,14 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // "kb.delete.repeatIntervalMs": 90,
         // "kb.autoCap.enabled": true,
         // "kb.smartPunctuation": true,
-        // Experimental multi-touch / rolling key plane (iOS). OFF by default;
-        // flip to true to route the character keys through the custom
-        // KeyPlaneView (true rolling + two-thumb typing). Verify on a device
-        // first — falls back to the per-button grid when unset/false.
-        // "kb.keyPlane.enabled": true,
+        // Multi-touch / rolling key plane (iOS). Routes the character keys
+        // through the custom KeyPlaneView for true rolling + two-thumb typing
+        // (the main fast-typing gap vs the system keyboard). iOS-only — Android
+        // ignores this flag. OTA-reversible: set false to fall straight back to
+        // the per-button grid if anything misbehaves on device.
+        // Caveat (v1): accent long-press trays are not routed through the plane
+        // yet, so held-key accent menus are unavailable while it's on.
+        "kb.keyPlane.enabled": true,
       };
 
       // Mic media: whatever the media registry has under `mic.animation`
