@@ -6,7 +6,7 @@
  *  - runPipelineStream()  : streaming (WebSocket) — emits events as they happen
  */
 import { transcribe } from "./stt.js";
-import { clean, cleanStream } from "./cleanup.js";
+import { assist, cleanStream } from "./cleanup.js";
 import { detectCommand } from "./commands.js";
 import type {
   AudioFormat,
@@ -31,21 +31,21 @@ function countWords(text: string): number {
   return t ? t.split(/\s+/).length : 0;
 }
 
-/** One-shot: transcribe then clean. */
+/** One-shot: transcribe, then run the writing assistant. */
 export async function runPipeline(
   input: PipelineInput,
 ): Promise<PipelineResult> {
   const { audio, format, ...opts } = input;
 
   const stt = await transcribe({ audio, format, language: opts.language, vocabulary: opts.personality?.vocabulary });
-  // Detect trailing "…make it shorter"-style command; strip it from the raw
-  // transcript so the LLM never sees the command as content, and pass the
-  // detected command through as a per-run cleanup override.
-  const { transcript, command } = detectCommand(stt.text);
-  const cleanedText = await clean(transcript, { ...opts, command: command ?? opts.command });
+  // The assist step separates any embedded instruction ("…make it shorter, in
+  // bullet points") from the message itself and applies the active tone, so we
+  // no longer strip commands here — the model handles it. `transcript` stays
+  // the raw STT output for QA/history.
+  const cleanedText = await assist(stt.text, opts);
 
   return {
-    transcript,
+    transcript: stt.text,
     cleanedText,
     usage: {
       audioSeconds: stt.durationSeconds,

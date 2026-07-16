@@ -10,8 +10,9 @@ process.env.NODE_ENV = "test";
 // vi.mock() is hoisted to the top of the file — bindings referenced from
 // inside its factory must ALSO be hoisted, or they'll be TDZ'd at eval time.
 // vi.hoisted() gives us safely-hoisted state to share with the factories.
-const { cleanMock, sttState } = vi.hoisted(() => ({
+const { cleanMock, assistMock, sttState } = vi.hoisted(() => ({
   cleanMock: vi.fn(async (input: string, _opts?: unknown) => input),
+  assistMock: vi.fn(async (input: string, _opts?: unknown) => input),
   sttState: {
     text: "hey um make it shorter",
     durationSeconds: 5,
@@ -20,6 +21,7 @@ const { cleanMock, sttState } = vi.hoisted(() => ({
 
 vi.mock("../src/pipeline/cleanup.js", () => ({
   clean: cleanMock,
+  assist: assistMock,
   cleanStream: async function* (
     input: string,
     _opts?: unknown,
@@ -49,6 +51,7 @@ import { runPipeline, runPipelineStream } from "../src/pipeline/index.js";
 describe("runPipeline", () => {
   beforeEach(() => {
     cleanMock.mockClear();
+    assistMock.mockClear();
     sttState.text ="hey um make it shorter";
     sttState.durationSeconds =5;
   });
@@ -66,22 +69,20 @@ describe("runPipeline", () => {
     expect(typeof res.usage.model).toBe("string");
   });
 
-  it("strips the trailing command phrase before calling clean", async () => {
+  it("hands the whole message to assist (instruction NOT pre-stripped)", async () => {
+    // The assistant separates message from instruction itself, so runPipeline
+    // no longer strips a trailing command — it passes the full utterance and
+    // keeps the raw transcript intact.
     sttState.text ="the meeting is tomorrow, make it shorter";
     const res = await runPipeline({
       audio: Buffer.from([0x00]),
       format: "wav",
     });
-    // Cleaner should have been called with the transcript minus the command.
-    expect(cleanMock).toHaveBeenCalledTimes(1);
-    const [passedInput, passedOpts] = cleanMock.mock.calls[0]!;
-    expect(passedInput).toBe("the meeting is tomorrow");
-    // The detected command is forwarded so the LLM prompt can apply it.
-    expect((passedOpts as { command?: { kind: string } })?.command).toEqual({
-      kind: "shorter",
-    });
-    // The pipeline result's transcript is ALSO the stripped one.
-    expect(res.transcript).toBe("the meeting is tomorrow");
+    expect(assistMock).toHaveBeenCalledTimes(1);
+    const [passedInput] = assistMock.mock.calls[0]!;
+    expect(passedInput).toBe("the meeting is tomorrow, make it shorter");
+    // The raw transcript is preserved (not command-stripped).
+    expect(res.transcript).toBe("the meeting is tomorrow, make it shorter");
   });
 });
 

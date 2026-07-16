@@ -268,6 +268,19 @@ export interface CleanupOptions {
     name?: string;
     email?: string;
   };
+  /**
+   * What's already in the text field when this request fires — the existing
+   * draft or the conversation so far. The assist step treats it as CONTEXT to
+   * continue / revise / reply to, not as text to rewrite. Optional; omitted
+   * when the field is empty.
+   */
+  context?: string;
+  /**
+   * The active tone id for this request ("none" | "formal" | "casual" |
+   * "very-casual" | "excited" | a preset's tone). Drives the assist prompt's
+   * voice. When omitted the backend falls back to the saved active tone.
+   */
+  tone?: string;
 }
 
 // ---------------------------------------------------------------------------

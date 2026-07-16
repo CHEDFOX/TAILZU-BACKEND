@@ -23,7 +23,7 @@ function safeStrEqual(a: string, b: string): boolean {
   if (ab.length !== bb.length) return false;
   return timingSafeEqual(ab, bb);
 }
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from "fastify";
 import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
@@ -38,8 +38,7 @@ import { enforceQuota, recordUsage, usageSummary, usageWindows } from "./usage/m
 import { captureException, fastifyLoggerOptions, initSentry } from "./observability.js";
 import { getProfile, updateProfile } from "./profile/store.js";
 import { runPipeline, runPipelineStream } from "./pipeline/index.js";
-import { clean, cleanBasic, draftReply, inferStyle, refineWithTone, LLM_TONES, expandSnippets } from "./pipeline/cleanup.js";
-import { detectCommand } from "./pipeline/commands.js";
+import { assist, draftReply, inferStyle, LLM_TONES } from "./pipeline/cleanup.js";
 import { synthesize } from "./pipeline/tts.js";
 import {
   getPersonality,
@@ -375,6 +374,8 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
   let targetApp: TargetAppHint | undefined;
   let language: LanguageHint | undefined;
   let personalityOverride: Personality | undefined;
+  let context: string | undefined; // whatever's already in the field, if any
+  let tone: string | undefined; // active tone override from the client
 
   // Iterate multipart parts: one file ("audio") + optional text fields.
   for await (const part of req.parts()) {
@@ -385,6 +386,10 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       targetApp = String(part.value);
     } else if (part.fieldname === "language") {
       language = String(part.value) as LanguageHint;
+    } else if (part.fieldname === "context") {
+      context = String(part.value);
+    } else if (part.fieldname === "tone") {
+      tone = String(part.value);
     } else if (part.fieldname === "personality") {
       try {
         personalityOverride = JSON.parse(String(part.value)) as Personality;
@@ -403,13 +408,15 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
 
   const t0 = Date.now();
   try {
-    const personality = await resolvePersonality(user, personalityOverride);
+    const personality = personalityOverride ?? await getPersonality(user);
     const result = await runPipeline({
       audio,
       format,
       targetApp,
       language,
       personality,
+      tone: tone ?? personality.activeTone,
+      context,
       variables: { email: user.email },
     });
     await recordUsage({ user, source: "rest", ...result.usage });
@@ -455,15 +462,17 @@ app.post("/v1/refine", { config: AUTHED_RL }, async (req, reply) => {
 
   const t0 = Date.now();
   try {
-    const personality = await resolvePersonality(user, body.personality);
-    // Typed input supports command mode too — a user can end their text with
-    // "…MAKE IT SHORTER" and get the same per-run override as a voice caller.
-    const { transcript, command } = detectCommand(body.text);
-    const refinedText = await clean(transcript, {
+    const personality = body.personality ?? await getPersonality(user);
+    // The writing assistant separates any embedded instruction ("…make it
+    // shorter, in bullet points") from the message, applies the active tone,
+    // and uses body.context (whatever's already in the field) as the draft /
+    // conversation to continue or reply to.
+    const refinedText = await assist(body.text, {
+      tone: body.tone ?? personality.activeTone,
+      context: body.context,
       targetApp: body.targetApp,
       language: body.language,
       personality,
-      command: command ?? undefined,
       variables: { email: user.email },
     });
     const usage = {
@@ -508,48 +517,14 @@ app.post("/v1/refine", { config: AUTHED_RL }, async (req, reply) => {
 // snippet expansion so "brb" still becomes "be right back" without a
 // server round-trip on the refine layer.
 
-app.post("/v1/refine/none", { config: AUTHED_RL }, async (req, reply) => {
-  const user = await resolveUser(req.headers["authorization"]);
-  if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  const body = (req.body ?? {}) as { text?: string; language?: string };
-  if (!body.text || !body.text.trim()) return reply.code(400).send({ code: "bad_request", message: "Missing 'text'" });
-  const over = tooLong(body.text);
-  if (over) return reply.code(413).send({ code: "bad_request", message: over });
-  const quota = await enforceQuota(user);
-  if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
-  const t0 = Date.now();
-  try {
-    const personality = await getPersonality(user);
-    // "None" = basic cleanup (filler removal + structure), NOT a personality
-    // rewrite. A trailing "…command" is stripped from the text before cleaning
-    // (kept faithful — none doesn't apply command rewrites). Snippets still run.
-    const { transcript } = detectCommand(body.text);
-    const cleaned = await cleanBasic(transcript);
-    const refinedText = expandSnippets(cleaned, personality.snippets, { targetApp: "Generic" });
-    const usage = { audioSeconds: 0, words: countWords(refinedText), model: cfg.CLEANUP_MODEL };
-    await recordUsage({ user, source: "rest", ...usage });
-    await appendHistoryEntry(user, personality, {
-      kind: "typing",
-      targetApp: "Generic",
-      language: body.language,
-      input: body.text,
-      output: refinedText,
-      durationMs: Date.now() - t0,
-      wordsIn: countWords(body.text),
-      wordsOut: usage.words,
-    });
-    return reply.send({ refinedText, usage });
-  } catch (err) {
-    req.log.error(err);
-    return reply.code(500).send({ code: "cleanup_failed", message: "Refine failed" });
-  }
-});
-
-for (const toneId of LLM_TONES) {
-  app.post(`/v1/refine/${toneId}`, { config: AUTHED_RL }, async (req, reply) => {
+// All tone routes now share one brain: assist(). The route path only carries
+// which tone to write in; the assistant separates message from instruction,
+// applies that tone, and uses body.context (the existing draft) when present.
+const runToneRefine = (toneId: string) =>
+  async (req: FastifyRequest, reply: FastifyReply) => {
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-    const body = (req.body ?? {}) as { text?: string; language?: string };
+    const body = (req.body ?? {}) as { text?: string; language?: string; context?: string };
     if (!body.text || !body.text.trim()) return reply.code(400).send({ code: "bad_request", message: "Missing 'text'" });
     const over = tooLong(body.text);
     if (over) return reply.code(413).send({ code: "bad_request", message: over });
@@ -558,42 +533,35 @@ for (const toneId of LLM_TONES) {
     const t0 = Date.now();
     try {
       const personality = await getPersonality(user);
-      // Command mode still applies — a user can tack "…MAKE IT SHORTER"
-      // on the end and the detected command overrides the tone prompt for
-      // that run. Applied outside the tone module so tonePrompts stays
-      // single-purpose.
-      const { transcript, command } = detectCommand(body.text);
-      const refinedText = await refineWithTone(transcript, toneId, {
+      const refinedText = await assist(body.text, {
+        tone: toneId,
+        context: body.context,
         language: body.language,
         personality,
+        variables: { email: user.email },
       });
-      // If the user issued a command, apply it as a second-pass tweak.
-      // Keeps the tone prompt uncontaminated by command wording.
-      const finalText = command
-        ? await clean(refinedText, { language: body.language, personality, command, variables: { email: user.email } })
-        : refinedText;
-      const usage = {
-        audioSeconds: 0,
-        words: countWords(finalText),
-        model: cfg.CLEANUP_MODEL,
-      };
+      const usage = { audioSeconds: 0, words: countWords(refinedText), model: cfg.CLEANUP_MODEL };
       await recordUsage({ user, source: "rest", ...usage });
       await appendHistoryEntry(user, personality, {
         kind: "typing",
         targetApp: "Generic",
         language: body.language,
         input: body.text,
-        output: finalText,
+        output: refinedText,
         durationMs: Date.now() - t0,
         wordsIn: countWords(body.text),
         wordsOut: usage.words,
       });
-      return reply.send({ refinedText: finalText, usage });
+      return reply.send({ refinedText, usage });
     } catch (err) {
       req.log.error(err);
       return reply.code(500).send({ code: "cleanup_failed", message: "Refine failed" });
     }
-  });
+  };
+
+app.post("/v1/refine/none", { config: AUTHED_RL }, runToneRefine("none"));
+for (const toneId of LLM_TONES) {
+  app.post(`/v1/refine/${toneId}`, { config: AUTHED_RL }, runToneRefine(toneId));
 }
 
 // --- Screen (REST): draft a personalized reply ------------------------------

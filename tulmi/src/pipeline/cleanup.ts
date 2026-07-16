@@ -11,6 +11,7 @@ import { getConfig } from "../config.js";
 import { buildCleanupSystem, buildReplySystem } from "../prompts.js";
 import type { CleanupOptions, Personality } from "../../../shared/types/api.js";
 import { buildTonePrompt, LLM_TONES } from "./tonePrompts.js";
+import { buildAssistSystem } from "./assistPrompt.js";
 import type { PresetTone } from "../experience/personalityPresets.js";
 
 let client: OpenAI | null = null;
@@ -200,6 +201,46 @@ export async function cleanBasic(input: string): Promise<string> {
     ],
   });
   return (res.choices[0]?.message?.content ?? "").trim();
+}
+
+/**
+ * The unified writing-assistant call — Tailzu's single brain for voice + typing.
+ * Takes the user's MESSAGE (spoken or typed, possibly with an embedded
+ * instruction like "…make it short and in bullet points"), optional CONTEXT
+ * (what's already in the field), and the active tone, and returns the finished
+ * text. The model separates message from instruction, applies the tone, and
+ * continues/answers the context when present.
+ */
+export async function assist(
+  message: string,
+  opts: CleanupOptions = {},
+): Promise<string> {
+  if (!message.trim()) return "";
+  const context = opts.context?.trim();
+  const system = buildAssistSystem({
+    tone: opts.tone,
+    personality: opts.personality,
+    language: opts.language,
+    targetApp: opts.targetApp,
+    hasContext: !!context,
+  });
+  const userContent = context
+    ? `CONTEXT (already in the field):\n${context}\n\nMESSAGE (what I just said or typed):\n${message.trim()}`
+    : message.trim();
+  const res = await openrouter().chat.completions.create({
+    model: getConfig().CLEANUP_MODEL,
+    temperature: TEMPERATURE,
+    max_tokens: MAX_TOKENS_CLEANUP,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: userContent },
+    ],
+  });
+  return expandSnippets(
+    (res.choices[0]?.message?.content ?? "").trim(),
+    opts.personality?.snippets,
+    ctxFromOpts(opts),
+  );
 }
 
 /** Non-streaming cleanup of a transcript or typed text. */

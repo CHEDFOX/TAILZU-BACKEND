@@ -10,11 +10,16 @@ process.env.NODE_ENV = "test";
 
 // Track calls so tests can assert command-stripping etc.
 const cleanCalls: Array<{ input: string; opts: unknown }> = [];
+const assistCalls: Array<{ input: string; opts: Record<string, unknown> }> = [];
 
 vi.mock("../src/pipeline/cleanup.js", () => ({
   clean: vi.fn(async (input: string, opts: unknown) => {
     cleanCalls.push({ input, opts });
     return `cleaned:${input}`;
+  }),
+  assist: vi.fn(async (input: string, opts: Record<string, unknown>) => {
+    assistCalls.push({ input, opts });
+    return `assisted:${input}`;
   }),
   cleanBasic: vi.fn(async (input: string) => `basic:${input}`),
   cleanStream: async function* () {
@@ -71,8 +76,8 @@ describe("DEV_SKIP_AUTH", () => {
 });
 
 describe("POST /v1/refine", () => {
-  it("returns 200 with a cleaned refinedText for a valid body", async () => {
-    cleanCalls.length = 0;
+  it("returns 200 with assisted refinedText for a valid body", async () => {
+    assistCalls.length = 0;
     const res = await app.inject({
       method: "POST",
       url: "/v1/refine",
@@ -80,11 +85,11 @@ describe("POST /v1/refine", () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.refinedText).toBe("cleaned:hello");
+    expect(body.refinedText).toBe("assisted:hello");
     expect(body.usage.audioSeconds).toBe(0);
-    // clean() should have been called once with the raw text (no command tail).
-    expect(cleanCalls).toHaveLength(1);
-    expect(cleanCalls[0]?.input).toBe("hello");
+    // assist() should have been called once with the raw text.
+    expect(assistCalls).toHaveLength(1);
+    expect(assistCalls[0]?.input).toBe("hello");
   });
 
   it("returns 400 for an empty body", async () => {
@@ -107,24 +112,36 @@ describe("POST /v1/refine", () => {
     expect(res.statusCode).toBe(413);
   });
 
-  it("detects and strips a trailing 'make it shorter' before calling clean", async () => {
-    cleanCalls.length = 0;
+  it("hands the full message (instruction included) to assist — no pre-stripping", async () => {
+    assistCalls.length = 0;
     const res = await app.inject({
       method: "POST",
       url: "/v1/refine",
       payload: { text: "the meeting is at three, make it shorter" },
     });
     expect(res.statusCode).toBe(200);
-    expect(cleanCalls).toHaveLength(1);
-    // Command stripped from the input handed to the LLM.
-    expect(cleanCalls[0]?.input).toBe("the meeting is at three");
-    const opts = cleanCalls[0]?.opts as { command?: { kind: string } };
-    expect(opts?.command).toEqual({ kind: "shorter" });
+    expect(assistCalls).toHaveLength(1);
+    // The assistant separates message from instruction itself — the backend
+    // passes the whole utterance through untouched.
+    expect(assistCalls[0]?.input).toBe("the meeting is at three, make it shorter");
+  });
+
+  it("passes body.context and body.tone through to assist", async () => {
+    assistCalls.length = 0;
+    await app.inject({
+      method: "POST",
+      url: "/v1/refine",
+      payload: { text: "sounds good", context: "Are we still on for 5pm?", tone: "casual" },
+    });
+    expect(assistCalls).toHaveLength(1);
+    expect(assistCalls[0]?.opts?.context).toBe("Are we still on for 5pm?");
+    expect(assistCalls[0]?.opts?.tone).toBe("casual");
   });
 });
 
 describe("POST /v1/refine/none", () => {
-  it("runs a basic cleanup (not a raw pass-through) and meters it", async () => {
+  it("routes through assist with tone 'none' and meters it", async () => {
+    assistCalls.length = 0;
     const res = await app.inject({
       method: "POST",
       url: "/v1/refine/none",
@@ -132,9 +149,8 @@ describe("POST /v1/refine/none", () => {
     });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    // "None" now runs cleanBasic (mocked → basic:*), so it's no longer the
-    // literal input, and it reports the cleanup model rather than "none".
-    expect(body.refinedText).toBe("basic:um so hello");
+    expect(body.refinedText).toBe("assisted:um so hello");
+    expect(assistCalls[0]?.opts?.tone).toBe("none");
     expect(body.usage.model).not.toBe("none");
     expect(body.usage.audioSeconds).toBe(0);
   });
@@ -342,6 +358,6 @@ describe("Stats + History", () => {
     expect(body.entries.length).toBeGreaterThanOrEqual(1);
     const latest = body.entries[0];
     expect(latest.kind).toBe("typing");
-    expect(latest.output).toBe("cleaned:quick note about the shipment");
+    expect(latest.output).toBe("assisted:quick note about the shipment");
   });
 });
