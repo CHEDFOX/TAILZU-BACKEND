@@ -3037,6 +3037,17 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // instead of sitting small in the middle. OTA-tunable — takes effect on
         // the current build without a rebuild.
         "kb.mic.idleIconInset": 0,
+        // Mic mode (iOS only — Android reads `liveVoice` and records in-process,
+        // which iOS extensions CANNOT do). iOS blocks microphone recording
+        // inside a keyboard extension at the OS level: even with Full Access,
+        // AVAudioRecorder.record() returns false and no samples arrive
+        // ("doesn't have entitlements to record audio"). So the ONLY working iOS
+        // mic path is "handoff": the mic tap opens the main app, which records +
+        // cleans + inserts the text back at the cursor (Darwin notification).
+        // Requires the native handoff code in the build (shipped) + a working
+        // app recorder (fixed). OTA-flippable back to "local"/"stream" if a
+        // future iOS ever allows in-extension capture.
+        "kb.mic.mode": "handoff",
       };
 
       // Mic media: whatever the media registry has under `mic.animation`
