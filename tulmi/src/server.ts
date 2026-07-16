@@ -38,7 +38,7 @@ import { enforceQuota, recordUsage, usageSummary, usageWindows } from "./usage/m
 import { captureException, fastifyLoggerOptions, initSentry } from "./observability.js";
 import { getProfile, updateProfile } from "./profile/store.js";
 import { runPipeline, runPipelineStream } from "./pipeline/index.js";
-import { clean, draftReply, inferStyle, refineWithTone, LLM_TONES, expandSnippets } from "./pipeline/cleanup.js";
+import { clean, cleanBasic, draftReply, inferStyle, refineWithTone, LLM_TONES, expandSnippets } from "./pipeline/cleanup.js";
 import { detectCommand } from "./pipeline/commands.js";
 import { synthesize } from "./pipeline/tts.js";
 import {
@@ -515,11 +515,29 @@ app.post("/v1/refine/none", { config: AUTHED_RL }, async (req, reply) => {
   if (!body.text || !body.text.trim()) return reply.code(400).send({ code: "bad_request", message: "Missing 'text'" });
   const over = tooLong(body.text);
   if (over) return reply.code(413).send({ code: "bad_request", message: over });
+  const quota = await enforceQuota(user);
+  if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+  const t0 = Date.now();
   try {
     const personality = await getPersonality(user);
-    // Snippet expansion only — no LLM.
-    const refinedText = expandSnippets(body.text.trim(), personality.snippets, { targetApp: "Generic" });
-    const usage = { audioSeconds: 0, words: countWords(refinedText), model: "none" };
+    // "None" = basic cleanup (filler removal + structure), NOT a personality
+    // rewrite. A trailing "…command" is stripped from the text before cleaning
+    // (kept faithful — none doesn't apply command rewrites). Snippets still run.
+    const { transcript } = detectCommand(body.text);
+    const cleaned = await cleanBasic(transcript);
+    const refinedText = expandSnippets(cleaned, personality.snippets, { targetApp: "Generic" });
+    const usage = { audioSeconds: 0, words: countWords(refinedText), model: cfg.CLEANUP_MODEL };
+    await recordUsage({ user, source: "rest", ...usage });
+    await appendHistoryEntry(user, personality, {
+      kind: "typing",
+      targetApp: "Generic",
+      language: body.language,
+      input: body.text,
+      output: refinedText,
+      durationMs: Date.now() - t0,
+      wordsIn: countWords(body.text),
+      wordsOut: usage.words,
+    });
     return reply.send({ refinedText, usage });
   } catch (err) {
     req.log.error(err);

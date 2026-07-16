@@ -16,6 +16,7 @@ vi.mock("../src/pipeline/cleanup.js", () => ({
     cleanCalls.push({ input, opts });
     return `cleaned:${input}`;
   }),
+  cleanBasic: vi.fn(async (input: string) => `basic:${input}`),
   cleanStream: async function* () {
     /* not used from these routes */
   },
@@ -119,6 +120,23 @@ describe("POST /v1/refine", () => {
     expect(cleanCalls[0]?.input).toBe("the meeting is at three");
     const opts = cleanCalls[0]?.opts as { command?: { kind: string } };
     expect(opts?.command).toEqual({ kind: "shorter" });
+  });
+});
+
+describe("POST /v1/refine/none", () => {
+  it("runs a basic cleanup (not a raw pass-through) and meters it", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/refine/none",
+      payload: { text: "um so hello" },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    // "None" now runs cleanBasic (mocked → basic:*), so it's no longer the
+    // literal input, and it reports the cleanup model rather than "none".
+    expect(body.refinedText).toBe("basic:um so hello");
+    expect(body.usage.model).not.toBe("none");
+    expect(body.usage.audioSeconds).toBe(0);
   });
 });
 

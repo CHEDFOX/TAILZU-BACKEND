@@ -80,10 +80,10 @@ export async function resolvePersonality(
 /**
  * Overlay the selected preset's promptStyle + tone hint into the profile.
  *
- * "none" tone bypasses the overlay entirely — the LLM refine step in
- * downstream pipelines then no-ops, and the caller gets the raw
- * transcript back exactly as Whisper produced it. This is the default
- * for new users: they see what they said, not a rewrite.
+ * "none" tone skips the personality overlay — downstream, `passThrough`
+ * routes the text through a BASIC cleanup only (filler removal + sentence
+ * structure), NOT a voice rewrite. This is the default for new users: their
+ * own words, just cleaned up and readable — not restyled.
  */
 function applyPresetOverlay(p: Personality): Personality {
   if (!p.activePresetId) return p;
@@ -95,8 +95,9 @@ function applyPresetOverlay(p: Personality): Personality {
   if (!preset) return p;
 
   const effectiveTone = p.activeTone ?? preset.defaultTone;
-  // Raw pass-through: no overlay, no LLM instructions injected. The
-  // pipeline layer inspects `passThrough` and short-circuits the refine.
+  // Basic-clean mode: no personality overlay. The pipeline inspects
+  // `passThrough` and runs cleanBasic() (filler + structure) instead of the
+  // full personality rewrite.
   if (effectiveTone === "none") {
     return { ...p, passThrough: true };
   }

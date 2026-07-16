@@ -162,18 +162,58 @@ function ctxFromOpts(opts: CleanupOptions, recipient?: string): SnippetContext {
 
 // --- Cleanup / refine (voice + typing) -------------------------------------
 
+/**
+ * Basic cleanup — this is what the "None" tone now does. Removes filler and
+ * false starts and gives the text sentence structure (capitalization,
+ * punctuation, sentence/paragraph breaks) WITHOUT changing the user's words,
+ * tone, meaning, or language. It's the floor every other tone builds on:
+ * "None" is exactly this and nothing more — faithful, not a rewrite.
+ */
+const BASIC_CLEAN_PROMPT = [
+  "You lightly clean up dictated or typed text so it reads well, WITHOUT changing the person's voice, wording, or meaning.",
+  "Output ONLY the cleaned text — no preamble, no quotes, no explanation.",
+  "",
+  "DO:",
+  "- Remove filler and false starts: 'um', 'uh', 'er', 'like', 'you know', repeated words, and self-corrections (keep the corrected version).",
+  "- Fix capitalization and punctuation; add sentence and paragraph breaks where the meaning calls for them.",
+  "- Keep every other word the user said, including slang and casual phrasing.",
+  "",
+  "DON'T:",
+  "- Don't rephrase, formalize, shorten, or expand. Don't add greetings, sign-offs, or facts.",
+  "- Don't change the tone or the language. Preserve mixed-language / code-switched text exactly.",
+].join("\n");
+
+/**
+ * The "None" tone: a light, faithful cleanup (filler + structure) with no
+ * personality rewrite. Exported so both the voice pipeline and the typing
+ * /v1/refine/none route share the exact same behavior.
+ */
+export async function cleanBasic(input: string): Promise<string> {
+  if (!input.trim()) return "";
+  const res = await openrouter().chat.completions.create({
+    model: getConfig().CLEANUP_MODEL,
+    temperature: 0.1, // very low — faithful, not creative
+    max_tokens: MAX_TOKENS_CLEANUP,
+    messages: [
+      { role: "system", content: BASIC_CLEAN_PROMPT },
+      { role: "user", content: input },
+    ],
+  });
+  return (res.choices[0]?.message?.content ?? "").trim();
+}
+
 /** Non-streaming cleanup of a transcript or typed text. */
 export async function clean(
   input: string,
   opts: CleanupOptions = {},
 ): Promise<string> {
   if (!input.trim()) return "";
-  // "None" tone → pass the transcript through unchanged. resolvePersonality
-  // sets passThrough when the user's active tone resolves to "none"; this
-  // saves a round-trip to the LLM AND makes dictation feel instant. Snippet
-  // expansion still runs so typed shortcuts like "brb" still expand.
+  // "None" tone → basic cleanup only (filler removal + structure), NOT a
+  // personality rewrite. resolvePersonality sets passThrough when the user's
+  // active tone resolves to "none". Snippet expansion still runs after.
   if (opts.personality?.passThrough) {
-    return expandSnippets(input.trim(), opts.personality?.snippets, ctxFromOpts(opts));
+    const cleaned = await cleanBasic(input);
+    return expandSnippets(cleaned, opts.personality?.snippets, ctxFromOpts(opts));
   }
   const res = await openrouter().chat.completions.create({
     model: getConfig().CLEANUP_MODEL,
@@ -240,10 +280,11 @@ export async function* cleanStream(
   opts: CleanupOptions = {},
 ): AsyncGenerator<string, void, unknown> {
   if (!input.trim()) return;
-  // "None" tone → yield the transcript once as a single "chunk" and stop.
-  // Preserves the streaming caller's contract without the LLM round-trip.
+  // "None" tone → basic cleanup, emitted as one chunk. (Short + fast enough
+  // that a separate streaming variant of the basic pass isn't worth it.)
   if (opts.personality?.passThrough) {
-    yield expandSnippets(input.trim(), opts.personality?.snippets, ctxFromOpts(opts));
+    const cleaned = await cleanBasic(input);
+    yield expandSnippets(cleaned, opts.personality?.snippets, ctxFromOpts(opts));
     return;
   }
   const stream = await openrouter().chat.completions.create({

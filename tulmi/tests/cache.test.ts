@@ -18,6 +18,7 @@ process.env.ADMIN_SECRET = "test-admin-secret-xyz";
 
 vi.mock("../src/pipeline/cleanup.js", () => ({
   clean: vi.fn(async (s: string) => `cleaned:${s}`),
+  cleanBasic: vi.fn(async (s: string) => `basic:${s}`),
   cleanStream: async function* () {},
   draftReply: vi.fn(async () => "drafted"),
   inferStyle: vi.fn(async () => ({})),

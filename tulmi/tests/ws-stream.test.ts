@@ -14,6 +14,7 @@ process.env.NODE_ENV = "test";
 // stream returns a transcript event + cleaned deltas + done.
 vi.mock("../src/pipeline/cleanup.js", () => ({
   clean: vi.fn(async (input: string) => `cleaned:${input}`),
+  cleanBasic: vi.fn(async (input: string) => `basic:${input}`),
   cleanStream: async function* (input: string) {
     yield input;
   },
