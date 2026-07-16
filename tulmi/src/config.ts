@@ -27,9 +27,12 @@ const bool = (def: boolean) =>
 
 const EnvSchema = z.object({
   // --- Speech-to-text provider ---
-  // "openai" (default) covers ~100 languages — best for a global product.
-  // "groq" is a fast/cheap Whisper alternative.
-  STT_PROVIDER: z.enum(["openai", "groq"]).default("openai"),
+  // "groq" (default) runs whisper-large-v3-turbo — fast, cheap, and returns
+  // per-segment confidence (no_speech_prob / avg_logprob) that we use to drop
+  // hallucinated segments, which is why it's the deployed default. "openai"
+  // (gpt-4o-transcribe) is an alternative with strong ~100-language coverage
+  // but no per-segment confidence signal.
+  STT_PROVIDER: z.enum(["openai", "groq"]).default("groq"),
 
   // OpenAI STT (used when STT_PROVIDER=openai). gpt-4o-transcribe is the
   // current best; gpt-4o-mini-transcribe is cheaper; whisper-1 is the legacy.

@@ -13,8 +13,8 @@ them**: Flow runs in its own Docker container, binds to **localhost only** on an
 **uncommon port (8770)** by default, and never touches ports 80/443 unless you
 explicitly choose to.
 
-You only need your two API keys: OpenAI (Whisper STT + voice) and OpenRouter
-(text cleanup/refine). Supabase is optional for
+You need three API keys: Groq (Whisper STT), OpenAI (TTS / voice previews),
+and OpenRouter (text cleanup/refine). Supabase is optional for
 the first run (`DEV_SKIP_AUTH=true`).
 
 > Replace `YOUR_VPS_IP` with your VPS IP, and `flow.yourdomain.com` with your
@@ -66,7 +66,7 @@ cd tulmi
 
 ```bash
 cp .env.example tulmi/.env
-nano tulmi/.env       # fill OPENAI_API_KEY + OPENROUTER_API_KEY; keep STT_PROVIDER=openai + DEV_SKIP_AUTH=true
+nano tulmi/.env       # fill GROQ_API_KEY (STT) + OPENAI_API_KEY (TTS) + OPENROUTER_API_KEY; keep STT_PROVIDER=groq + DEV_SKIP_AUTH=true
 ```
 
 Save: `Ctrl+O`, `Enter`, `Ctrl+X`.
