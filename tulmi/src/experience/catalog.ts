@@ -2734,16 +2734,20 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         children: [kHalfSpacer(), ...letterRow2.map(kLetter), kHalfSpacer()],
       },
       // Row 3: shift, z..m (7 letters), backspace.
-      // True flex ratios now that the SDUI renderer honors them proportionally:
-      // shift = backspace = 1.33× a letter key (archagon's 42/31.5 = 1.333).
+      // Shift + backspace are a touch SMALLER (flex 1.1) than a full function
+      // key and carry an extra inner spacer, so there's a clear gap between them
+      // and the outer letter keys — the letter touch-plane's reach no longer
+      // overlaps the shift/backspace hit area, so edge taps don't cross over.
       {
         type: "Row",
         style: { gap: 6, height: 50 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: [
-          { type: "ShiftKey", style: { flex: 1.33, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
+          { type: "ShiftKey", style: { flex: 1.1, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
+          { type: "Spacer", style: { flex: 0.22 } },
           ...letterRow3.map(kLetter),
-          { type: "BackspaceKey", style: { flex: 1.33, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
+          { type: "Spacer", style: { flex: 0.22 } },
+          { type: "BackspaceKey", style: { flex: 1.1, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
         ],
       },
 
