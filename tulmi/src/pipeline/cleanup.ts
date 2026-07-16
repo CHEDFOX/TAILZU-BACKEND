@@ -219,6 +219,7 @@ export async function assist(
   const context = opts.context?.trim();
   const system = buildAssistSystem({
     tone: opts.tone,
+    tonePrompt: opts.tonePrompt,
     personality: opts.personality,
     language: opts.language,
     targetApp: opts.targetApp,

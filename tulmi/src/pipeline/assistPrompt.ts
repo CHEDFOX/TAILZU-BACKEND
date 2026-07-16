@@ -25,19 +25,47 @@ const TONE_GUIDANCE: Record<string, string> = {
 };
 
 /**
- * Resolve the tone guidance for a request: the named tone's guidance, plus the
- * active voice/preset's own prompt (`promptStyle`), the user's custom
- * instructions, and their sign-off. This is what lets an edited or custom tone
- * actually change the output.
+ * Cap for an inline (client-supplied) tone prompt. Bounds the token blast
+ * radius and keeps a runaway custom prompt from drifting the output. It only
+ * shapes the user's OWN output, so this is a safety valve, not a security
+ * boundary.
  */
-export function toneGuidance(tone: string | undefined, personality?: Personality): string {
-  const parts: string[] = [TONE_GUIDANCE[tone ?? "none"] ?? TONE_GUIDANCE.none];
-  if (personality?.activePresetId) {
-    const preset = applyPresetOverrides(personality.presetOverrides).find(
-      (p) => p.id === personality.activePresetId,
-    );
-    if (preset?.promptStyle) parts.push(preset.promptStyle);
+export const MAX_TONE_PROMPT = 600;
+
+/**
+ * Resolve the tone guidance for a request.
+ *
+ * A tone is just "a voice described in a prompt". The client may send that
+ * prompt INLINE (`inlinePrompt`) — for a built-in tone the user edited, or a
+ * tone they created seconds ago — and it's used verbatim as the voice. This is
+ * what makes "any tone, anytime" work with no server-side registry: the backend
+ * never has to KNOW a tone, only receive its prompt.
+ *
+ * When no inline prompt is sent, we fall back to the named built-in tone's
+ * guidance plus the active preset's own `promptStyle` (central, tunable
+ * defaults so thin/old clients keep working). Either way the user's global
+ * customInstructions + sign-off layer on top.
+ */
+export function toneGuidance(
+  tone: string | undefined,
+  personality?: Personality,
+  inlinePrompt?: string,
+): string {
+  const parts: string[] = [];
+  const inline = inlinePrompt?.trim();
+  if (inline) {
+    // Inline wins — the client owns the voice (built-in override OR custom tone).
+    parts.push(inline.slice(0, MAX_TONE_PROMPT));
+  } else {
+    parts.push(TONE_GUIDANCE[tone ?? "none"] ?? TONE_GUIDANCE.none);
+    if (personality?.activePresetId) {
+      const preset = applyPresetOverrides(personality.presetOverrides).find(
+        (p) => p.id === personality.activePresetId,
+      );
+      if (preset?.promptStyle) parts.push(preset.promptStyle);
+    }
   }
+  // Global user prefs apply regardless of where the voice came from.
   if (personality?.customInstructions?.trim()) parts.push(personality.customInstructions.trim());
   if (personality?.signature?.trim()) {
     parts.push(`If a sign-off fits the message, you may use: ${personality.signature.trim()}`);
@@ -48,12 +76,13 @@ export function toneGuidance(tone: string | undefined, personality?: Personality
 /** Build the assist system prompt for one request. */
 export function buildAssistSystem(opts: {
   tone?: string;
+  tonePrompt?: string;
   personality?: Personality;
   language?: string;
   targetApp?: string;
   hasContext: boolean;
 }): string {
-  const guidance = toneGuidance(opts.tone, opts.personality);
+  const guidance = toneGuidance(opts.tone, opts.personality, opts.tonePrompt);
   const lang = opts.language && opts.language !== "auto" ? opts.language : "";
   const app = opts.targetApp?.trim() || "Generic";
   return [

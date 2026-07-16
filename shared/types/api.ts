@@ -281,6 +281,15 @@ export interface CleanupOptions {
    * voice. When omitted the backend falls back to the saved active tone.
    */
   tone?: string;
+  /**
+   * The active tone's own instruction text, sent INLINE by the client. When
+   * present it defines the voice directly and overrides the built-in guidance
+   * for `tone` — so a tone the user created seconds ago works with no
+   * server-side registry (the backend never has to KNOW the tone, only receive
+   * its prompt). Built-in tones can omit this and let the server fill the
+   * default guidance. Capped server-side (see MAX_TONE_PROMPT).
+   */
+  tonePrompt?: string;
 }
 
 // ---------------------------------------------------------------------------

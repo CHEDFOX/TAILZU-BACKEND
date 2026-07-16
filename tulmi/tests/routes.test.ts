@@ -137,6 +137,24 @@ describe("POST /v1/refine", () => {
     expect(assistCalls[0]?.opts?.context).toBe("Are we still on for 5pm?");
     expect(assistCalls[0]?.opts?.tone).toBe("casual");
   });
+
+  it("passes an inline body.tonePrompt (a user-created tone) through to assist", async () => {
+    assistCalls.length = 0;
+    await app.inject({
+      method: "POST",
+      url: "/v1/refine",
+      payload: {
+        text: "sounds good",
+        tone: "my-pirate-voice",
+        tonePrompt: "Write like a cheerful pirate. Say 'arr' where it fits.",
+      },
+    });
+    expect(assistCalls).toHaveLength(1);
+    expect(assistCalls[0]?.opts?.tone).toBe("my-pirate-voice");
+    expect(assistCalls[0]?.opts?.tonePrompt).toBe(
+      "Write like a cheerful pirate. Say 'arr' where it fits.",
+    );
+  });
 });
 
 describe("POST /v1/refine/none", () => {

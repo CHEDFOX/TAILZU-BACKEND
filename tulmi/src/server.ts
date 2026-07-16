@@ -376,6 +376,7 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
   let personalityOverride: Personality | undefined;
   let context: string | undefined; // whatever's already in the field, if any
   let tone: string | undefined; // active tone override from the client
+  let tonePrompt: string | undefined; // the active tone's inline prompt text
 
   // Iterate multipart parts: one file ("audio") + optional text fields.
   for await (const part of req.parts()) {
@@ -390,6 +391,8 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       context = String(part.value);
     } else if (part.fieldname === "tone") {
       tone = String(part.value);
+    } else if (part.fieldname === "tonePrompt") {
+      tonePrompt = String(part.value);
     } else if (part.fieldname === "personality") {
       try {
         personalityOverride = JSON.parse(String(part.value)) as Personality;
@@ -416,6 +419,7 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       language,
       personality,
       tone: tone ?? personality.activeTone,
+      tonePrompt,
       context,
       variables: { email: user.email },
     });
@@ -469,6 +473,7 @@ app.post("/v1/refine", { config: AUTHED_RL }, async (req, reply) => {
     // conversation to continue or reply to.
     const refinedText = await assist(body.text, {
       tone: body.tone ?? personality.activeTone,
+      tonePrompt: body.tonePrompt,
       context: body.context,
       targetApp: body.targetApp,
       language: body.language,
@@ -524,7 +529,7 @@ const runToneRefine = (toneId: string) =>
   async (req: FastifyRequest, reply: FastifyReply) => {
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-    const body = (req.body ?? {}) as { text?: string; language?: string; context?: string };
+    const body = (req.body ?? {}) as { text?: string; language?: string; context?: string; tonePrompt?: string };
     if (!body.text || !body.text.trim()) return reply.code(400).send({ code: "bad_request", message: "Missing 'text'" });
     const over = tooLong(body.text);
     if (over) return reply.code(413).send({ code: "bad_request", message: over });
@@ -535,6 +540,9 @@ const runToneRefine = (toneId: string) =>
       const personality = await getPersonality(user);
       const refinedText = await assist(body.text, {
         tone: toneId,
+        // Inline prompt still wins even on the per-tone route, so a custom tone
+        // can reuse this path and the route's toneId is just the label/default.
+        tonePrompt: body.tonePrompt,
         context: body.context,
         language: body.language,
         personality,
