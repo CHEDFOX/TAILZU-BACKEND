@@ -3071,6 +3071,9 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       // the hint entirely. `flow_arming` shows after the first tap opens the app.
       flow_start_hint: "Tap to start Flow",
       flow_arming: "Turning on Flow — swipe back into your app.",
+      // Shown when the keyboard couldn't auto-open the app (iOS refused it) —
+      // the user opens Tailzu by hand and the pending arm still fires.
+      flow_arm_manual: "Open Tailzu once to turn on Flow, then come back.",
     },
     root,
     actions,
