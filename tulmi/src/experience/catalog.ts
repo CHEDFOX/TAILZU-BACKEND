@@ -3066,6 +3066,11 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       // 222 = backend/processing failed ("we'll be back").
       voice_not_listening: "444 : Not Listening",
       voice_unavailable: "222 : will let you know when we are back",
+      // Flow Session (kb.mic.mode="flow", iOS). Wispr-style copy. `flow_start_hint`
+      // shows under the "Start Flow" state (no live session); blank it ("") to hide
+      // the hint entirely. `flow_arming` shows after the first tap opens the app.
+      flow_start_hint: "Tap to start Flow",
+      flow_arming: "Turning on Flow — swipe back into your app.",
     },
     root,
     actions,
@@ -3127,6 +3132,13 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // no dictation before it must be re-armed by re-opening the app.
         // Wispr's default is 5 min; raise for fewer app hops.
         "kb.flow.idleTimeoutMs": 300000,
+        // Flow mic button glyphs (SF Symbol names). Wispr's exact model:
+        //   startGlyph → shown when NO session is live (the "Start Flow" state;
+        //                first tap opens the app to arm).
+        //   stopGlyph  → shown WHILE recording (tap it to finish — Wispr's ✓).
+        // The armed-idle state uses the normal mic/brand mark. OTA-tunable.
+        "kb.flow.startGlyph": "bolt.fill",
+        "kb.flow.stopGlyph": "checkmark",
       };
 
       // Mic media: whatever the media registry has under `mic.animation`
