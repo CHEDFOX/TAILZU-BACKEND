@@ -3097,6 +3097,14 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // "kb.mic.recordingIcon": { emoji: "⏹" },
         // "kb.mic.recordingIcon": { url: "https://cdn.tailzu.space/kb/stop.png" },
         // "kb.mic.idleIcon": { asset: "TailzuMark" },
+        // Recording particle swarm (iOS). Defaults tuned in Swift for a dense
+        // cloud of tiny dots that constantly collide with the wall + each other;
+        // override here to retune OTA. count = number of dots, radius = dot size
+        // (pt), inset = gap from the button edge (pt).
+        // "kb.mic.particles": true,
+        // "kb.mic.particles.count": 60,
+        // "kb.mic.particles.radius": 0.9,
+        // "kb.mic.particles.inset": 6,
         // "kb.shift.lockedColor": "#E8A23C",
         // "kb.shift.longPressMs": 350,
         // "kb.shift.iconLowerOutlined": "arrowtriangle.down",
