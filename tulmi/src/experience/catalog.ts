@@ -3107,6 +3107,10 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // Kill the flowing dot-stream that rises off the mic while recording —
         // birthRate 0 emits nothing. Only the in-button swarm remains.
         "kb.dictation.dots.birthRate": 0,
+        // No black dim overlay over the keys while recording — keep the keyboard
+        // looking normal during dictation. (Set true / raise dim.alpha to bring
+        // the focus-dim back.)
+        "kb.dictation.dim.enabled": false,
         // "kb.shift.lockedColor": "#E8A23C",
         // "kb.shift.longPressMs": 350,
         // "kb.shift.iconLowerOutlined": "arrowtriangle.down",
