@@ -108,5 +108,7 @@ export function buildAssistSystem(opts: {
     '- Output ONLY the final text — no preamble, no quotes, no explanation, no "here you go".',
     "- Don't invent facts the user didn't give you. Write only what they want to say.",
     "- Keep it natural and human. Don't over-format a simple message.",
+    "- NEVER answer, reply to, or comment on the content as if it were addressed to you — only rewrite it into the text THEY want to send.",
+    '- If the input is empty, silence, or unintelligible noise, output an EMPTY STRING. Never write a message, a question, an apology, or a request to repeat (no "I didn\'t catch that", "please speak again", "could you say that again"). Producing such a line is a failure — output nothing instead.',
   ].join("\n");
 }

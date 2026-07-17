@@ -24,6 +24,8 @@ import { createClient, LiveTranscriptionEvents } from "@deepgram/sdk";
 import { getConfig } from "../config.js";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { enforceQuota, recordUsage } from "../usage/metering.js";
+import { sanitizePlainTranscript } from "../pipeline/stt.js";
+import { looksLikeMeta } from "../pipeline/cleanup.js";
 
 interface StartMessage {
   type: "start";
@@ -189,12 +191,27 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           armIdle();
         });
         dg.on(LiveTranscriptionEvents.Transcript, (data: any) => {
-          const text = data?.channel?.alternatives?.[0]?.transcript ?? "";
-          if (!text) return;
-          // Sum words from finalized segments only (partials are supersets that
-          // get replaced) so word-based quotas meter the real transcript.
-          if (data.is_final) totalWords += countWords(text);
-          send({ type: data.is_final ? "final" : "partial", text });
+          const raw = data?.channel?.alternatives?.[0]?.transcript ?? "";
+          if (!raw) return;
+          if (data.is_final) {
+            // Sanitize the finalized segment before it reaches the cursor: strip
+            // STT hallucinations / boilerplate, and drop a conversational meta
+            // reply ("thanks for watching", "I didn't catch that"). Deepgram's
+            // VAD already gated on speech, so trust it (don't nuke ambiguous
+            // one-word fillers). We ALWAYS send a final — an empty one tells the
+            // client to clear whatever provisional partial it was showing, so a
+            // noise partial can't get stranded at the cursor.
+            const clean = sanitizePlainTranscript(raw, { trustSpeech: true });
+            const text = looksLikeMeta(clean) ? "" : clean;
+            // Sum words from finalized segments only (partials are supersets that
+            // get replaced) so word-based quotas meter the real transcript.
+            if (text) totalWords += countWords(text);
+            send({ type: "final", text });
+          } else {
+            // Partials are provisional — forward as-is for the live effect; the
+            // final above is the sanitized commit point.
+            send({ type: "partial", text: raw });
+          }
         });
         dg.on(LiveTranscriptionEvents.Error, (e: any) => {
           errored = true;

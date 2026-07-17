@@ -50,6 +50,64 @@ const MAX_TOKENS_CLEANUP = 1024;   // ≈ 750 words of cleaned text
 const MAX_TOKENS_REPLY = 2048;     // ≈ 1500 words — email-length drafts
 const MAX_TOKENS_STYLE = 512;      // small JSON blob
 
+// --- Meta / refusal / clarification guard ----------------------------------
+//
+// The refine model is supposed to output ONLY the rewritten text. On empty /
+// noisy / unintelligible input it sometimes disobeys and answers
+// conversationally instead — "I don't get anything, speak again",
+// "Sorry, I couldn't hear you", "Could you say that again?". That string is
+// non-empty, so the `out || input` fallbacks let it straight through to the
+// user's cursor. On the typepad we NEVER show that: a refine that produces a
+// meta/refusal/clarification response is a failure, and a failed refine must be
+// a no-op (insert nothing / keep the original), never a chat reply.
+//
+// This catches short outputs that are wholly a refusal-to-transcribe or a
+// request to repeat. It is deliberately conservative (anchored, length-bounded)
+// so it can't eat a legitimately short rewrite that happens to contain one of
+// these words mid-sentence.
+// Precise, high-confidence phrases only. Recall is intentionally traded for
+// precision: flagging a legitimately short dictation would DROP the user's real
+// words (worse than the bug). The prompt hardening + empty-completion handling
+// cover the rarer meta forms these miss.
+const META_PATTERNS: RegExp[] = [
+  /\bi (?:didn'?t|did not|couldn'?t|could not|can'?t|cannot) (?:catch|hear|understand|make out) (?:that|it|you|anything|what you said)\b/i,
+  /\bi (?:don'?t|do not|didn'?t|did not) get anything\b/i,
+  /\b(?:could|can) you (?:say (?:that|it) again|repeat that)\b/i,
+  /\bsay (?:that|it) again\b/i,
+  /\b(?:please )?repeat that\b/i,
+  /\bplease (?:say that again|speak (?:again|up)|try (?:again|speaking))\b/i,
+  /\bno (?:speech|audio|input|sound) (?:was )?(?:detected|found|received|captured)\b/i,
+  /\bnothing (?:was said|to transcribe|to clean|was detected|was captured)\b/i,
+  /\b(?:i'?m sorry|sorry),?\s+i (?:couldn'?t|could not|can'?t|didn'?t|did not) (?:hear|catch|understand|get)\b/i,
+];
+
+/**
+ * True when `text` is a wholly conversational meta/refusal/clarification reply
+ * rather than a rewrite of the user's words — the kind of thing the model emits
+ * on silence/noise and that must never reach the cursor. Bounded to short
+ * outputs so a long, legitimate rewrite is never misclassified.
+ */
+export function looksLikeMeta(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  // Only short outputs can be a bare refusal; real rewrites of dictation are
+  // rarely this short AND meta. ~140 chars ≈ a sentence or two.
+  if (t.length > 140) return false;
+  return META_PATTERNS.some((re) => re.test(t));
+}
+
+/**
+ * Finalize an LLM completion for insertion. `out` is the (trimmed, snippet-
+ * expanded) model output; `fallback` is what to keep if the model returned
+ * nothing (the original text — so a genuinely empty completion never WIPES an
+ * existing field). A meta/refusal reply is discarded to "" — inserting it, or
+ * falling back to raw noise, would both put junk on the typepad.
+ */
+function finalizeCompletion(out: string, fallback: string): string {
+  if (looksLikeMeta(out)) return "";
+  return out || fallback;
+}
+
 // --- Snippets (text expansion) ---------------------------------------------
 
 function escapeRegExp(s: string): string {
@@ -242,8 +300,9 @@ export async function assist(
     opts.personality?.snippets,
     ctxFromOpts(opts),
   );
-  // See clean(): never wipe the field on an empty completion.
-  return out || message.trim();
+  // Discard a meta/refusal reply ("speak again"…); else keep the completion,
+  // falling back to the input on an empty one so we never wipe the field.
+  return finalizeCompletion(out, message.trim());
 }
 
 /** Non-streaming cleanup of a transcript or typed text. */
@@ -275,8 +334,9 @@ export async function clean(
   );
   // Never return empty for real input — the refine clients replace the field
   // with this, so an empty completion would delete the user's text. Fall back
-  // to the original so a failed cleanup is a no-op, not data loss.
-  return out || input.trim();
+  // to the original so a failed cleanup is a no-op, not data loss. A meta/
+  // refusal reply is discarded (→ "") so it never lands on the typepad.
+  return finalizeCompletion(out, input.trim());
 }
 
 /**
@@ -319,7 +379,8 @@ export async function refineWithTone(
     { targetApp: "Generic" },
   );
   // Never wipe the field on an empty completion — fall back to the input.
-  return out || input.trim();
+  // A meta/refusal reply is discarded so it never lands on the typepad.
+  return finalizeCompletion(out, input.trim());
 }
 
 export { LLM_TONES };
