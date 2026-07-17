@@ -3097,14 +3097,16 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // "kb.mic.recordingIcon": { emoji: "⏹" },
         // "kb.mic.recordingIcon": { url: "https://cdn.tailzu.space/kb/stop.png" },
         // "kb.mic.idleIcon": { asset: "TailzuMark" },
-        // Recording particle swarm (iOS). Defaults tuned in Swift for a dense
-        // cloud of tiny dots that constantly collide with the wall + each other;
-        // override here to retune OTA. count = number of dots, radius = dot size
-        // (pt), inset = gap from the button edge (pt).
-        // "kb.mic.particles": true,
-        // "kb.mic.particles.count": 60,
-        // "kb.mic.particles.radius": 0.9,
-        // "kb.mic.particles.inset": 6,
+        // Recording particle swarm (iOS), OTA-tuned — takes effect on the
+        // CURRENT installed build (these keys are read live). Tiny dots (radius
+        // in pt), fewer + a larger play area (smaller inset) so they read as
+        // very tiny wandering specks, not a compact blob.
+        "kb.mic.particles.radius": 0.55,
+        "kb.mic.particles.count": 42,
+        "kb.mic.particles.inset": 4,
+        // Kill the flowing dot-stream that rises off the mic while recording —
+        // birthRate 0 emits nothing. Only the in-button swarm remains.
+        "kb.dictation.dots.birthRate": 0,
         // "kb.shift.lockedColor": "#E8A23C",
         // "kb.shift.longPressMs": 350,
         // "kb.shift.iconLowerOutlined": "arrowtriangle.down",
