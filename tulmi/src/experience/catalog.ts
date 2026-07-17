@@ -3100,9 +3100,22 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // "kb.shift.lockedColor": "#E8A23C",
         // "kb.shift.longPressMs": 350,
         // "kb.shift.iconLowerOutlined": "arrowtriangle.down",
+        // Double-tap shift → caps lock (system-keyboard behavior). Window in ms
+        // for the second tap; hold-to-lock still works too. Default 300.
+        // "kb.shift.doubleTapMs": 300,
         // "kb.delete.repeatIntervalMs": 90,
         // "kb.autoCap.enabled": true,
         // "kb.smartPunctuation": true,
+        // Key-pop callout — the native magnified bubble above a pressed letter.
+        // On by default; every value below has a native default in Swift, so
+        // these only need setting to OVERRIDE. iOS-only.
+        //   kb.callout.enabled  (bool, default true) — set false to disable the pop
+        //   kb.callout.bg       (hex) — balloon fill; default white (light theme)
+        //                         / lighter-than-key gray (dark theme)
+        //   kb.callout.text     (hex) — glyph color; default near-black / white
+        // "kb.callout.enabled": true,
+        // "kb.callout.bg": "#FFFFFF",
+        // "kb.callout.text": "#111111",
         // Multi-touch / rolling key plane (iOS). Routes the character keys
         // through the custom KeyPlaneView for true rolling + two-thumb typing
         // (the main fast-typing gap vs the system keyboard). iOS-only — Android
