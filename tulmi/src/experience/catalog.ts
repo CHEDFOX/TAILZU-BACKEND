@@ -317,16 +317,18 @@ function introScreen(): ScreenResponse {
         width: "100%",
         height: "100%",
         backgroundColor: "#000000",
-        alignItems: "stretch",
+        // Center the small media in the middle of the black window.
+        alignItems: "center",
         justifyContent: "center",
       },
       children: [
         {
           type: "Slideshow",
+          // Small, centered media on the black backdrop — NOT full-bleed. The
+          // black Stack shows around it. Size is backend-tunable here (OTA).
           style: {
-            flex: 1,
-            width: "100%",
-            height: "100%",
+            width: 200,
+            height: 200,
           },
           props: {
             frames: [
@@ -338,7 +340,8 @@ function introScreen(): ScreenResponse {
             ],
             frameMs: 120,      // high-speed montage feel
             loops: 1,          // one cycle then done
-            contentFit: "cover",
+            // contain (not cover) so the small box never crops the media.
+            contentFit: "contain",
           },
           on: { onComplete: "done" },
           // A bundle that predates Slideshow would otherwise render nothing here
@@ -351,7 +354,7 @@ function introScreen(): ScreenResponse {
             type: "Stack",
             style: { flex: 1, width: "100%", height: "100%", backgroundColor: "#000000", alignItems: "center", justifyContent: "center" },
             children: [
-              { type: "Image", props: { source: { key: "intro.1" }, contentFit: "cover" }, style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" } },
+              { type: "Image", props: { source: { key: "intro.1" }, contentFit: "contain" }, style: { width: 200, height: 200 } },
               { type: "Button", props: { label: "Get started", variant: "primary" }, on: { onPress: "done" }, style: { position: "absolute", bottom: 56 } },
             ],
           },
