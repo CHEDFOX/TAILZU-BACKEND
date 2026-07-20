@@ -271,7 +271,10 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
     // Key precedence: query param `key`, then multipart field `key`.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const query = (req as any).query as Record<string, string> | undefined;
-    const key = (query?.key ?? extraKey ?? sha).trim();
+    // `??` keeps an empty string (e.g. "?key="), which registered the upload
+    // under "" and clobbered the previous unkeyed upload. Trim first, then fall
+    // through on empty with `||` so a keyless upload is SHA-addressed as intended.
+    const key = (query?.key?.trim() || extraKey?.trim() || sha).trim();
     if (RESERVED_KEYS.has(key)) return reply.code(400).send({ code: "reserved_key" });
     entry.key = key;
     cachedRegistry[key] = entry;

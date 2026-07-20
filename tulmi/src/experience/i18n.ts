@@ -85,7 +85,16 @@ function transformActionSpec(a: ActionSpec, fn: StrFn): ActionSpec {
         ? { ...a, value: fn(a.value) }
         : a;
     case "sequence":
+    case "parallel":
       return { ...a, actions: a.actions.map((r) => transformActionRef(r, fn)) };
+    case "requestPermission":
+      return {
+        ...a,
+        onGranted: a.onGranted ? transformActionRef(a.onGranted, fn) : a.onGranted,
+        onDenied: a.onDenied ? transformActionRef(a.onDenied, fn) : a.onDenied,
+      };
+    case "armFlowSession":
+      return { ...a, onSuccess: a.onSuccess ? transformActionRef(a.onSuccess, fn) : a.onSuccess };
     case "condition":
       return {
         ...a,
@@ -118,7 +127,12 @@ const NODE_TEXT_PROPS = [
   "message",
   "hint",
   "caption",
-  "value",
+  // NOTE: "value" is deliberately NOT translated. Selection controls (tone /
+  // language chips, radio rows) carry their IDENTIFIER in `value` ("formal",
+  // "casual", "en") and their display copy in `label`/`content` — translating
+  // `value` would rewrite the identifier ("formal"→"formell") and break the
+  // selection for every non-English user. The rare display-only `value` (e.g. a
+  // settings KeyValue "You") simply stays untranslated, which is acceptable.
   "emptyLabel",
   "helper",
   "helperText",

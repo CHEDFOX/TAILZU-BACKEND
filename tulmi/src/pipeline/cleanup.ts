@@ -98,14 +98,22 @@ export function looksLikeMeta(text: string): boolean {
 
 /**
  * Finalize an LLM completion for insertion. `out` is the (trimmed, snippet-
- * expanded) model output; `fallback` is what to keep if the model returned
- * nothing (the original text — so a genuinely empty completion never WIPES an
- * existing field). A meta/refusal reply is discarded to "" — inserting it, or
- * falling back to raw noise, would both put junk on the typepad.
+ * expanded) model output; `input` is what the user actually said/typed.
+ *
+ * Discards ONLY a refusal/clarification the MODEL introduced — i.e. `out` looks
+ * meta but the user's own `input` did not. In that case we fall back to `input`,
+ * so a refine is a clean no-op (keeps the user's text) and a dictation inserts
+ * the real transcript, never the filler; an empty input naturally yields "".
+ *
+ * Critically it does NOT discard when the user genuinely SAID a meta-shaped
+ * phrase ("Can you say that again?") — there `input` is meta too, so we keep the
+ * faithful rewrite. (This is the fix for the guard wiping legitimate messages.)
+ * An empty completion also falls back to `input` so we never wipe the field.
  */
-function finalizeCompletion(out: string, fallback: string): string {
-  if (looksLikeMeta(out)) return "";
-  return out || fallback;
+function finalizeCompletion(out: string, input: string): string {
+  const inp = (input ?? "").trim();
+  if (out && looksLikeMeta(out) && !looksLikeMeta(inp)) return inp;
+  return out || inp;
 }
 
 // --- Snippets (text expansion) ---------------------------------------------
@@ -408,10 +416,22 @@ export async function* cleanStream(
       { role: "user", content: input },
     ],
   });
+  // Accumulate the whole completion, THEN apply the same guards the non-stream
+  // clean() applies: snippet expansion + the meta/refusal filter. We can't
+  // un-yield a delta once it's on the cursor, so streaming raw deltas would let
+  // "Sorry, say that again" reach the typepad and would skip snippet expansion.
+  // Buffering trades per-word streaming on THIS path for correctness (the
+  // in-app streaming mic; the keyboard's live path is Deepgram, not this).
+  let buf = "";
   for await (const chunk of stream) {
     const delta = chunk.choices[0]?.delta?.content;
-    if (delta) yield delta;
+    if (delta) buf += delta;
   }
+  const cleaned = finalizeCompletion(
+    expandSnippets(buf.trim(), opts.personality?.snippets, ctxFromOpts(opts)),
+    input,
+  );
+  if (cleaned) yield cleaned;
 }
 
 // --- Screen-reply drafting --------------------------------------------------

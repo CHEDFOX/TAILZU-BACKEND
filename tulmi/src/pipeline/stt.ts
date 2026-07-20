@@ -107,9 +107,16 @@ export async function transcribe(input: SttInput): Promise<SttResult> {
   // too short to hold a real word. A confident or long-enough clip is trusted
   // and its "thank you" survives. Multi-word YouTube boilerplate ("thanks for
   // watching") is stripped regardless — nobody dictates that into a keyboard.
+  // Only strip the ambiguous short-phrase set when we have a POSITIVE silence
+  // signal: low provider confidence, OR a KNOWN-and-too-short duration. When the
+  // duration is UNKNOWN (0 — e.g. webm/ogg we can't probe) we must NOT treat it
+  // as "short/silence", or a genuine one-word dictation from Android gets nuked.
+  // (Multi-word YouTube boilerplate is still stripped regardless.)
+  const durationKnown = duration > 0;
   const trustSpeech =
     raw.speechConfidence === "high" ||
-    (raw.speechConfidence !== "low" && duration >= SPEECH_MIN_DURATION_S);
+    (raw.speechConfidence !== "low" &&
+      (!durationKnown || duration >= SPEECH_MIN_DURATION_S));
   const text = sanitizePlainTranscript(raw.text, { trustSpeech });
 
   return { text, durationSeconds: duration };

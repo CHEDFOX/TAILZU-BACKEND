@@ -994,6 +994,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   const screen = buildScreen(screenId, {
     personality,
     language: profile?.language ?? "auto",
+    onboarded: profile?.onboarded ?? false,
     email: user?.email,
     usage,
     stats,

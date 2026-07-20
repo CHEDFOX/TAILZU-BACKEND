@@ -293,7 +293,12 @@ function pickInitialScreenId(onboarded: boolean): string {
  *     Screen's children (Slideshow is styled `position: absolute; inset: 0`
  *     so overlays sit above it naturally).
  */
-function introScreen(): ScreenResponse {
+function introScreen(ctx: ScreenContext): ScreenResponse {
+  // Route the post-intro destination the SAME way pickInitialScreenId would when
+  // the intro is NOT playing — so a brand-new (not-onboarded) user goes through
+  // onboarding instead of being dropped straight on home (which skipped language
+  // pick + keyboard-enable and never set onboarded=true → intro replayed forever).
+  const next = ctx.onboarded ? "home" : "onboarding";
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "intro",
@@ -304,7 +309,7 @@ function introScreen(): ScreenResponse {
     hideChrome: true,
     state: {},
     actions: {
-      done: { kind: "navigate", screenId: "home" },
+      done: { kind: "navigate", screenId: next },
     },
     // Root is a flex View (Stack, not the ScrollView-based Screen). The
     // Slideshow gets width:100% + height:100% + flex:1 so it stretches to
@@ -761,6 +766,9 @@ export interface ScreenContext {
    * refetches via callEndpoint on mount for freshness). */
   history?: HistoryEntry[];
   name?: string;
+  /** Whether the user has completed onboarding — routes the intro's `done`
+   * action to onboarding (new user) vs home, so the intro never skips it. */
+  onboarded?: boolean;
   dictionary?: Array<{ word: string; replacement: string }>;
   frequentWords?: string[];
   /** Deep-link / navigation params — e.g. keyboard_record receives
@@ -813,7 +821,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
     case "flow_arm":
       return flowArmScreen(ctx);
     case "intro":
-      return introScreen();
+      return introScreen(ctx);
     case "paywall":
       return paywallScreen();
     default:

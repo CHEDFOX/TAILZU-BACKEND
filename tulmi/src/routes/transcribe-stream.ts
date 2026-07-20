@@ -25,7 +25,6 @@ import { getConfig } from "../config.js";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { enforceQuota, recordUsage } from "../usage/metering.js";
 import { sanitizePlainTranscript } from "../pipeline/stt.js";
-import { looksLikeMeta } from "../pipeline/cleanup.js";
 
 interface StartMessage {
   type: "start";
@@ -201,8 +200,11 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
             // one-word fillers). We ALWAYS send a final — an empty one tells the
             // client to clear whatever provisional partial it was showing, so a
             // noise partial can't get stranded at the cursor.
-            const clean = sanitizePlainTranscript(raw, { trustSpeech: true });
-            const text = looksLikeMeta(clean) ? "" : clean;
+            // Deepgram returns the user's ACTUAL words (it doesn't hallucinate
+            // conversational filler), so we only strip STT hallucinations here —
+            // NOT via the meta guard, which would drop a legit "say that again".
+            // The meta guard belongs on LLM refine output, not raw STT.
+            const text = sanitizePlainTranscript(raw, { trustSpeech: true });
             // Sum words from finalized segments only (partials are supersets that
             // get replaced) so word-based quotas meter the real transcript.
             if (text) totalWords += countWords(text);
