@@ -630,6 +630,13 @@ export interface HistoryListResponse {
    * request to fetch older entries. Absent when there are no more rows.
    */
   nextBefore?: string;
+  /**
+   * Row-id tie-breaker paired with `nextBefore`. Rows are ordered by
+   * (created_at desc, id desc); pass this back as `?beforeId=` alongside
+   * `?before=` so entries that share the boundary timestamp aren't skipped.
+   * Absent when there are no more rows.
+   */
+  nextBeforeId?: string;
 }
 
 /** GET /v1/stats response. */

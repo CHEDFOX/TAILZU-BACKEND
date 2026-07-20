@@ -174,6 +174,10 @@ registerMediaRoutes(app, {
   mediaDir: MEDIA_DIR,
   publicUrlPrefix: MEDIA_PUBLIC_URL,
   adminSecret: cfg.ADMIN_SECRET ?? "",
+  // The rate-limit plugin is registered global:false, so the media admin
+  // routes only get throttled if they opt in per-route. Hand the same
+  // per-IP cap the app routes use (AUTHED_RL) down so they actually apply it.
+  rateLimit: { max: cfg.RATE_LIMIT_MAX, timeWindow: cfg.RATE_LIMIT_WINDOW_MS },
 });
 
 await app.register(transcribeStream);
@@ -1171,7 +1175,7 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL }, async (req, reply) => {
 // screens they have cached. Guarded by ADMIN_SECRET (set in .env). When the
 // secret isn't set the endpoint refuses every request — no accidental exposure.
 
-app.post("/v1/admin/cache/bump", async (req, reply) => {
+app.post("/v1/admin/cache/bump", { config: AUTHED_RL }, async (req, reply) => {
   const provided = req.headers["x-admin-secret"];
   const expected = cfg.ADMIN_SECRET;
   if (!expected) {
@@ -1201,6 +1205,8 @@ app.get("/v1/admin/cache/version", async (_req, reply) => {
 const historyListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(HISTORY_MAX_LIMIT).optional(),
   before: z.string().datetime().optional(),
+  // Row-id tie-breaker echoed back alongside `before` (see nextBeforeId).
+  beforeId: z.string().uuid().optional(),
   kind: z.enum(["voice", "typing", "draft"]).optional(),
 });
 
@@ -1224,8 +1230,10 @@ app.get("/v1/history", { config: AUTHED_RL }, async (req, reply) => {
   }
 
   try {
-    const { entries, nextBefore } = await listHistory(user, parsed.data);
-    const res: HistoryListResponse = nextBefore ? { entries, nextBefore } : { entries };
+    const { entries, nextBefore, nextBeforeId } = await listHistory(user, parsed.data);
+    const res: HistoryListResponse = { entries };
+    if (nextBefore) res.nextBefore = nextBefore;
+    if (nextBeforeId) res.nextBeforeId = nextBeforeId;
     return reply.send(res);
   } catch (err) {
     req.log.error(err);

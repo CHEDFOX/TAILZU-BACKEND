@@ -208,14 +208,22 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
   mediaDir: string;
   publicUrlPrefix: string;   // e.g. "https://api.tailzu.space/media"
   adminSecret: string;
+  /** Per-IP rate-limit cap for the admin routes (the app's AUTHED_RL tier). */
+  rateLimit?: { max: number; timeWindow: number };
 }): void {
-  const { mediaDir, publicUrlPrefix, adminSecret } = opts;
+  const { mediaDir, publicUrlPrefix, adminSecret, rateLimit } = opts;
+
+  // @fastify/rate-limit is registered global:false, so a route is only
+  // throttled when it carries a `config.rateLimit`. Build it once and attach
+  // it to the admin routes below (the public /v1/media/resolve read is left
+  // unthrottled by design).
+  const rl = rateLimit ? { config: { rateLimit } } : {};
 
   // --- Upload -----------------------------------------------------------------
   // Multipart body with a single "file" field (image, svg, audio, etc.).
   // Optional query "key" registers the upload under a named lookup, e.g.
   // ?key=brand.mark makes it reachable via bootstrap.media["brand.mark"].
-  app.post("/v1/media/upload", async (req, reply) => {
+  app.post("/v1/media/upload", rl, async (req, reply) => {
     const guard = checkAdmin(req, adminSecret);
     if (!guard.ok) return reply.code(guard.reason === "not_configured" ? 503 : 401)
       .send({ code: guard.reason });
@@ -284,7 +292,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
   });
 
   // --- List (admin) -----------------------------------------------------------
-  app.get("/v1/media/list", async (req, reply) => {
+  app.get("/v1/media/list", rl, async (req, reply) => {
     const guard = checkAdmin(req, adminSecret);
     if (!guard.ok) return reply.code(guard.reason === "not_configured" ? 503 : 401)
       .send({ code: guard.reason });
@@ -292,7 +300,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
   });
 
   // --- Delete (admin) — removes registry entry; file stays on disk ----------
-  app.delete("/v1/media/:key", async (req, reply) => {
+  app.delete("/v1/media/:key", rl, async (req, reply) => {
     const guard = checkAdmin(req, adminSecret);
     if (!guard.ok) return reply.code(guard.reason === "not_configured" ? 503 : 401)
       .send({ code: guard.reason });

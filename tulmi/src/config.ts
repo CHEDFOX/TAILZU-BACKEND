@@ -97,10 +97,11 @@ const EnvSchema = z.object({
   SENTRY_ENVIRONMENT: z.string().default("production"),
   SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().default(0.05),
 
-  // Rate limiting (per IP / per Authorization header).
+  // Rate limiting — abuse buckets are keyed per client IP (see the
+  // keyGenerator in server.ts). Per-user fairness is enforced downstream by
+  // metering/quota, not by this coarse limiter.
   RATE_LIMIT_MAX: z.coerce.number().default(120),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
-  RATE_LIMIT_UNAUTH_MAX: z.coerce.number().default(20),
 
   // Admin secret used to authorize server-side operations reachable over HTTP
   // (currently just the cache-bump endpoint). Optional — when unset, the

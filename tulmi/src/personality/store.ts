@@ -17,6 +17,26 @@ export const VOCAB_MAX_LINES = 200;
 
 const memory = new Map<string, Personality>();
 
+// Serialize per-user vocabulary writes. learnVocabularyCorrections is a
+// read-modify-write of the whole personality doc, so two concurrent calls — or
+// one racing a PUT /v1/personality — could each read the old doc and clobber
+// the other's appended lines. Chain the work per userId (same lock pattern as
+// i18n.ts) so those writes run one-at-a-time instead of interleaving.
+const userLocks = new Map<string, Promise<unknown>>();
+
+async function withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = userLocks.get(userId) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  userLocks.set(userId, prev.then(() => gate));
+  await prev.catch(() => {});
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
+
 export async function getPersonality(user: AuthedUser): Promise<Personality> {
   const sb = dataClientFor(user);
   if (!sb) return memory.get(user.id) ?? {};
@@ -133,34 +153,38 @@ export async function learnVocabularyCorrections(
   user: AuthedUser,
   corrections: VocabularyCorrection[],
 ): Promise<Personality> {
-  const current = await getPersonality(user);
+  // Serialize the read-modify-write so concurrent corrections (or a racing PUT)
+  // can't lose each other's appends.
+  return withUserLock(user.id, async () => {
+    const current = await getPersonality(user);
 
-  const existing = (current.vocabulary ?? "")
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+    const existing = (current.vocabulary ?? "")
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter(Boolean);
 
-  // Case-insensitive dedupe set primed with what the user already has, so
-  // repeated corrections of the same term don't stack duplicates.
-  const seen = new Set(existing.map((s) => s.toLowerCase()));
-  const additions: string[] = [];
-  for (const { to } of corrections) {
-    const term = (to ?? "").trim();
-    if (!term) continue;
-    const key = term.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    additions.push(term);
-  }
+    // Case-insensitive dedupe set primed with what the user already has, so
+    // repeated corrections of the same term don't stack duplicates.
+    const seen = new Set(existing.map((s) => s.toLowerCase()));
+    const additions: string[] = [];
+    for (const { to } of corrections) {
+      const term = (to ?? "").trim();
+      if (!term) continue;
+      const key = term.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      additions.push(term);
+    }
 
-  // FIFO cap: keep the tail (newest entries), drop the oldest.
-  const combined = [...existing, ...additions];
-  const capped =
-    combined.length > VOCAB_MAX_LINES
-      ? combined.slice(combined.length - VOCAB_MAX_LINES)
-      : combined;
+    // FIFO cap: keep the tail (newest entries), drop the oldest.
+    const combined = [...existing, ...additions];
+    const capped =
+      combined.length > VOCAB_MAX_LINES
+        ? combined.slice(combined.length - VOCAB_MAX_LINES)
+        : combined;
 
-  const next: Personality = { ...current, vocabulary: capped.join("\n") };
-  await savePersonality(user, next);
-  return next;
+    const next: Personality = { ...current, vocabulary: capped.join("\n") };
+    await savePersonality(user, next);
+    return next;
+  });
 }

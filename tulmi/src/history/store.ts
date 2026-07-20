@@ -54,6 +54,13 @@ export interface ListOptions {
   limit?: number;
   /** ISO-8601 cursor — return rows strictly older than this timestamp. */
   before?: string;
+  /**
+   * Row-id tie-breaker paired with `before`. When set, paging uses the
+   * compound (created_at, id) < (before, beforeId) comparison so rows that
+   * share the boundary timestamp aren't dropped. A caller that sends only
+   * `before` keeps the older timestamp-only behavior.
+   */
+  beforeId?: string;
   /** Only return rows whose kind matches. */
   kind?: HistoryEntry["kind"];
 }
@@ -152,14 +159,16 @@ export async function appendHistoryEntry(
 }
 
 /**
- * List a user's most recent history entries, newest-first. Uses ISO
- * timestamps as an opaque cursor because `created_at desc` is the only order
- * we ever paginate and it's already indexed.
+ * List a user's most recent history entries, newest-first. Rows are ordered by
+ * (created_at desc, id desc) and paged with a compound (created_at, id) cursor
+ * so entries that share a boundary timestamp aren't silently skipped between
+ * pages. The cursor is returned as `nextBefore` (created_at) + `nextBeforeId`
+ * (id); callers echo both back as `?before=` + `?beforeId=`.
  */
 export async function listHistory(
   user: AuthedUser,
   opts: ListOptions = {},
-): Promise<{ entries: HistoryEntry[]; nextBefore?: string }> {
+): Promise<{ entries: HistoryEntry[]; nextBefore?: string; nextBeforeId?: string }> {
   const limit = clampLimit(opts.limit);
 
   const sb = dataClientFor(user);
@@ -168,10 +177,25 @@ export async function listHistory(
       (r) =>
         !r.deletedAt &&
         (!opts.kind || r.kind === opts.kind) &&
-        (!opts.before || r.createdAt < opts.before),
+        beforeCursorOk(r.createdAt, r.id, opts.before, opts.beforeId),
     );
+    // Stable (createdAt desc, id desc) total order so the compound cursor pages
+    // deterministically even when two rows share a timestamp.
+    all.sort((a, b) =>
+      a.createdAt === b.createdAt
+        ? b.id.localeCompare(a.id)
+        : a.createdAt < b.createdAt
+          ? 1
+          : -1,
+    );
+    const hasMore = all.length > limit;
     const page = all.slice(0, limit);
-    return { entries: page.map(stripAudio), nextBefore: nextCursor(page, all.length, limit) };
+    const last = page[page.length - 1];
+    return {
+      entries: page.map(stripAudio),
+      nextBefore: hasMore ? last?.createdAt : undefined,
+      nextBeforeId: hasMore ? last?.id : undefined,
+    };
   }
 
   let q = sb
@@ -180,10 +204,24 @@ export async function listHistory(
     .eq("user_id", user.id)
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
+    .order("id", { ascending: false }) // tie-breaker: same-timestamp rows page deterministically
     .limit(limit + 1); // ask for one extra so we know whether there's a next page
 
   if (opts.kind) q = q.eq("kind", opts.kind);
-  if (opts.before) q = q.lt("created_at", opts.before);
+  if (opts.before) {
+    if (opts.beforeId) {
+      // Compound (created_at, id) < (before, beforeId): rows strictly older by
+      // timestamp, OR equal-timestamp rows with a smaller id. Stops the silent
+      // drop of rows that share the boundary created_at.
+      q = q.or(
+        `created_at.lt.${opts.before},and(created_at.eq.${opts.before},id.lt.${opts.beforeId})`,
+      );
+    } else {
+      // Legacy callers that only echo the created_at cursor keep the prior
+      // timestamp-only paging.
+      q = q.lt("created_at", opts.before);
+    }
+  }
 
   const { data, error } = await q;
   if (error) {
@@ -194,9 +232,11 @@ export async function listHistory(
   const rows = (data ?? []).map(rowToEntry);
   const hasMore = rows.length > limit;
   const page = hasMore ? rows.slice(0, limit) : rows;
+  const last = page[page.length - 1];
   return {
     entries: page,
-    nextBefore: hasMore ? page[page.length - 1]?.createdAt : undefined,
+    nextBefore: hasMore ? last?.createdAt : undefined,
+    nextBeforeId: hasMore ? last?.id : undefined,
   };
 }
 
@@ -304,9 +344,22 @@ function clampLimit(limit: number | undefined): number {
   return Math.max(1, Math.min(MAX_LIMIT, Math.floor(limit)));
 }
 
-function nextCursor(page: HistoryEntry[], total: number, limit: number): string | undefined {
-  if (page.length < limit || total <= limit) return undefined;
-  return page[page.length - 1]?.createdAt;
+/**
+ * Compound (created_at, id) < (before, beforeId) cursor comparison used by the
+ * in-memory path. A row is "older than" the cursor when its timestamp is
+ * smaller, or it shares the timestamp but has a smaller id. With no cursor,
+ * every row qualifies. `beforeId` may be absent (legacy timestamp-only cursor).
+ */
+function beforeCursorOk(
+  createdAt: string,
+  id: string,
+  before: string | undefined,
+  beforeId: string | undefined,
+): boolean {
+  if (!before) return true;
+  if (createdAt < before) return true;
+  if (beforeId != null && createdAt === before && id < beforeId) return true;
+  return false;
 }
 
 function stripAudio(r: StoredRow): HistoryEntry {

@@ -76,6 +76,15 @@ function transformActionSpec(a: ActionSpec, fn: StrFn): ActionSpec {
   switch (a.kind) {
     case "toast":
       return { ...a, message: fn(a.message) };
+    case "snackbar":
+      // Its own copy (message + actionLabel) plus an optional inline action
+      // (onAction) whose nested toast/speak copy must be translated too.
+      return {
+        ...a,
+        message: fn(a.message),
+        actionLabel: a.actionLabel ? fn(a.actionLabel) : a.actionLabel,
+        onAction: a.onAction ? transformActionRef(a.onAction, fn) : a.onAction,
+      };
     case "speak":
       return { ...a, text: fn(a.text) };
     case "setState":
@@ -88,12 +97,16 @@ function transformActionSpec(a: ActionSpec, fn: StrFn): ActionSpec {
     case "parallel":
       return { ...a, actions: a.actions.map((r) => transformActionRef(r, fn)) };
     case "requestPermission":
+    case "requestPushPermission":
       return {
         ...a,
         onGranted: a.onGranted ? transformActionRef(a.onGranted, fn) : a.onGranted,
         onDenied: a.onDenied ? transformActionRef(a.onDenied, fn) : a.onDenied,
       };
     case "armFlowSession":
+    case "completeKeyboardHandoff":
+    case "cancelKeyboardHandoff":
+      // Carry only an onSuccess callback ref.
       return { ...a, onSuccess: a.onSuccess ? transformActionRef(a.onSuccess, fn) : a.onSuccess };
     case "condition":
       return {
@@ -102,6 +115,17 @@ function transformActionSpec(a: ActionSpec, fn: StrFn): ActionSpec {
         else: a.else ? transformActionRef(a.else, fn) : a.else,
       };
     case "callEndpoint":
+    case "download":
+    case "pickImage":
+    case "pickDocument":
+    case "scanQR":
+    case "biometricPrompt":
+    case "setAppIcon":
+    case "iap.showPaywall":
+    case "iap.subscribe":
+    case "iap.restore":
+      // Each carries optional onSuccess/onError refs that may be inline specs
+      // with nested copy (a toast on failure, a speak on success).
       return {
         ...a,
         onSuccess: a.onSuccess ? transformActionRef(a.onSuccess, fn) : a.onSuccess,

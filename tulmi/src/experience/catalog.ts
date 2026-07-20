@@ -1696,8 +1696,9 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
         {
           type: "Hero",
           props: {
+            // Title stays dynamic (word count + suffix); subtitle is central copy.
             title: wordsMonth.toLocaleString() + " words",
-            subtitle: "This month, in your voice",
+            subtitle: "@stats.hero.subtitle",
           },
         },
         spacer(20),
@@ -1705,9 +1706,9 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
           type: "Stack",
           style: { direction: "row", gap: 8 },
           children: [
-            kv("Words this week", wordsWeek.toLocaleString()),
-            kv("Audio dictated", `${mins(audioSecondsMonth)} min`),
-            kv("Minutes saved", `${minutesSaved.toLocaleString()}`),
+            kv("@stats.kv.weekWords", wordsWeek.toLocaleString()),
+            kv("@stats.kv.audio", `${mins(audioSecondsMonth)} min`),
+            kv("@stats.kv.saved", `${minutesSaved.toLocaleString()}`),
           ],
         },
         spacer(20),
@@ -1721,7 +1722,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
         },
         spacer(24),
         // Sparkline block — Text-only until the renderer ships a chart node.
-        text("Requests, last 30 days", "label"),
+        text("@stats.sparkline.label", "label"),
         spacer(6),
         {
           type: "Card",
@@ -1732,7 +1733,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
         spacer(24),
         {
           type: "Button",
-          props: { label: "See history", variant: "secondary" },
+          props: { label: "@stats.cta.history", variant: "secondary" },
           on: { onPress: "openHistory" },
         },
       ],
@@ -1792,7 +1793,7 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
       refreshDone: { kind: "setState", path: "loading", value: false },
       // Tap on a card — detail view is intentionally deferred until we know
       // what belongs there beyond input/output/timestamp.
-      openDetail: { kind: "toast", message: "Detail view coming soon", tone: "info" },
+      openDetail: { kind: "toast", message: "@history.detail.toast", tone: "info" },
       // Long-press on a card — the row template resolves the entry id via a
       // "$item.id" placeholder that the renderer expands per row.
       deleteEntry: {
@@ -1808,22 +1809,19 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
           { kind: "haptic", style: "success" },
         ],
       },
-      err: { kind: "toast", message: "Couldn't reach history. Try again.", tone: "error" },
+      err: { kind: "toast", message: "@history.delete.error", tone: "error" },
     },
     root: {
       type: "Screen",
       children: [
         {
           type: "Heading",
-          props: { content: "History" },
+          props: { content: "@history.title" },
           style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 6 },
         },
         {
           type: "Paragraph",
-          props: {
-            content:
-              "Every cleanup you've kept, newest first. Tap for details, long-press to remove.",
-          },
+          props: { content: "@history.subtitle" },
           style: { marginBottom: 20 },
         },
         { type: "ProgressBar", visibleIf: { truthy: "loading" } },
@@ -1835,8 +1833,7 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
             onRefresh: "refresh",
           },
           props: {
-            emptyLabel:
-              "No history yet. Turn on 'Keep history' in your personality to start collecting your cleanups.",
+            emptyLabel: "@history.empty",
             itemTemplate: {
               type: "Card",
               style: { marginBottom: 10 },
@@ -3240,6 +3237,11 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       if (personality?.activeTone) {
         flags["kb.personality.activeTone"] = personality.activeTone;
       }
+      // Tone popover data (Android reads `kb.personality.tones`). The built-in
+      // tone labels as a JSON array of strings — serialized the same way as
+      // `kb.personality.pinned` above. Static (not per-user) so the Android
+      // tone popover has data to render even before the user pins anything.
+      flags["kb.personality.tones"] = Object.values(TONE_LABELS);
       return flags;
     })(),
     // Was 600 (10 min). A live theme fix couldn't reach users mid-session.

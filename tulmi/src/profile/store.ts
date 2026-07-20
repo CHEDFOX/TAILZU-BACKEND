@@ -25,12 +25,20 @@ export async function getProfile(user: AuthedUser): Promise<Profile> {
     .maybeSingle();
 
   if (error) {
+    // A real query error (transient DB/network hiccup) must NOT fail open to
+    // DEFAULT_PROFILE: onboarded=false would re-trigger onboarding and reset an
+    // onboarded user's saved language. Propagate so the caller surfaces a
+    // retryable 5xx (Fastify's default for a thrown handler error) and can
+    // serve last-known / retry instead of silently defaulting.
     console.error(`[profile] load failed for ${user.id}:`, error.message);
-    return { ...DEFAULT_PROFILE };
+    throw new Error(`Failed to load profile: ${error.message}`);
   }
+  // No error + no row = a genuinely new user (maybeSingle returns null data).
+  // That — and only that — is the real DEFAULT_PROFILE case.
+  if (!data) return { ...DEFAULT_PROFILE };
   return {
-    language: data?.language ?? DEFAULT_PROFILE.language,
-    onboarded: data?.onboarded ?? DEFAULT_PROFILE.onboarded,
+    language: data.language ?? DEFAULT_PROFILE.language,
+    onboarded: data.onboarded ?? DEFAULT_PROFILE.onboarded,
   };
 }
 
