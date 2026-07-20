@@ -3077,14 +3077,17 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       // 222 = backend/processing failed ("we'll be back").
       voice_not_listening: "444 : Not Listening",
       voice_unavailable: "222 : will let you know when we are back",
-      // Flow Session (kb.mic.mode="flow", iOS). Wispr-style copy. `flow_start_hint`
-      // shows under the "Start Flow" state (no live session); blank it ("") to hide
-      // the hint entirely. `flow_arming` shows after the first tap opens the app.
-      flow_start_hint: "Tap to start Flow",
-      flow_arming: "Turning on Flow — swipe back into your app.",
-      // Shown when the keyboard couldn't auto-open the app (iOS refused it) —
-      // the user opens Tailzu by hand and the pending arm still fires.
-      flow_arm_manual: "Open Tailzu once to turn on Flow, then come back.",
+      // Flow Session (kb.mic.mode="flow", iOS). Wispr-style copy — but the mic
+      // button should read as a clean, native, ICON-ONLY control (bolt → mic →
+      // ✓), so ALL three flow status strings are blanked. Blank ("") means the
+      // keyboard shows no hint text at all in that state — the glyph is the only
+      // cue. Put any string back here (OTA, no rebuild) to reintroduce guidance:
+      //   flow_start_hint → shown under the "Start Flow" (no-session) state
+      //   flow_arming     → shown after the first tap opens the app to arm
+      //   flow_arm_manual → shown when iOS refused the auto-open (open by hand)
+      flow_start_hint: "",
+      flow_arming: "",
+      flow_arm_manual: "",
     },
     root,
     actions,
@@ -3180,6 +3183,18 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // The armed-idle state uses the normal mic/brand mark. OTA-tunable.
         "kb.flow.startGlyph": "bolt.fill",
         "kb.flow.stopGlyph": "checkmark",
+        // Dictation "button logic" — WHEN the words hit the field. This is the
+        // one knob that flips live-vs-after-stop without a rebuild (once the
+        // reader is in the build; build 39+):
+        //   true  → words paint the field LIVE as you speak (streaming feel)
+        //   false → nothing shows until you STOP; then the whole utterance lands
+        //           in one block (cleaner, no half-formed words on the typepad)
+        // Governs iOS Flow, the iOS in-keyboard stream, and Android liveVoice
+        // alike. Note a batch provider (Groq) has no interim partials to begin
+        // with, so it already behaves as after-stop; this flag is what lets a
+        // STREAMING provider (Deepgram) ALSO defer to after-stop. Default here is
+        // false to match "don't show text while recording — wait for stop".
+        "kb.mic.liveText": false,
       };
 
       // Mic media: whatever the media registry has under `mic.animation`

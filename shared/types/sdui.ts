@@ -709,6 +709,13 @@ export interface KeyboardConfigResponse {
    *     kb.mic.recordingIcon          icon-spec (default = SF "minus" thick bar)
    *     kb.mic.recordingIconSize      (default 14)
    *     kb.mic.recordingIconWeight    (default "heavy")
+   *     kb.mic.liveText               (default true)  dictation "button logic":
+   *                                     true  = words paint the field live as you speak
+   *                                     false = nothing shows until STOP, then the whole
+   *                                             utterance lands in one block (after-stop).
+   *                                     Governs iOS Flow, iOS stream, and Android liveVoice.
+   *                                     Batch STT (Groq) is always after-stop regardless;
+   *                                     this flag makes a streaming STT (Deepgram) defer too.
    *
    *   Dictation visuals — key dim + dot stream
    *     kb.dictation.dim.enabled      (default true)
