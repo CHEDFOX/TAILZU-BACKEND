@@ -791,6 +791,8 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       return personalityScreen();
     case "voices":
       return voicesScreen(ctx);
+    case "tone_edit":
+      return toneEditScreen(ctx);
     case "personality_customize":
       return personalityCustomizeScreen(ctx.personality);
     case "personality_edit":
@@ -1147,26 +1149,25 @@ function personalityScreen(): ScreenResponse {
 }
 
 /**
- * The Voice list — every tone/preset, opened from the Voice card on the You tab.
- * (Moved off the main You view so that view is just the two media cards.) The
- * active tone is tinted; tapping a tone opens its detail (name + prompt).
+ * The Voice list — every tone (built-in + the user's custom ones), opened from
+ * the Voice card on the You tab. The active tone is tinted; tapping a tone opens
+ * the two-field editor (name + prompt). The "＋ Add a tone" button opens the
+ * same editor with empty fields to create a new one.
  */
 function voicesScreen(ctx: ScreenContext): ScreenResponse {
   const p = ctx.personality;
   const gap = (h: number): Node => ({ type: "Spacer", style: { height: h } });
 
   const effective = applyPresetOverrides(p.presetOverrides);
-  const findEffective = (id: string) => effective.find((e) => e.id === id) ?? effective[0]!;
   const activeId = p.activePresetId ?? "signature";
-  const activeTone = p.activeTone ?? findEffective(activeId).defaultTone;
-  const pinned = Array.isArray(p.pinnedPresetIds) ? p.pinnedPresetIds : [];
 
   const toneCard = (preset: (typeof effective)[number]): Node => ({
     type: "Card",
     style: { paddingVertical: 14, paddingHorizontal: 16, marginBottom: 6 },
     on: { onPress: { kind: "sequence", actions: [
       { kind: "haptic", style: "selection" },
-      { kind: "navigate", screenId: "personality_detail", params: { presetId: preset.id } },
+      // Tap a tone → edit its name + prompt.
+      { kind: "navigate", screenId: "tone_edit", params: { presetId: preset.id } },
     ] } },
     children: [
       { type: "Text", props: { content: preset.name }, style: {
@@ -1177,6 +1178,7 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     ],
   });
 
+  const pinned = Array.isArray(p.pinnedPresetIds) ? p.pinnedPresetIds : [];
   const goCards = effective.filter((e) => pinned.includes(e.id)).map(toneCard);
   const restCards = effective.filter((e) => !pinned.includes(e.id)).map(toneCard);
 
@@ -1184,9 +1186,13 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "voices",
     title: "Voice",
-    state: { activePresetId: activeId, activeTone, pinnedIds: pinned },
+    state: {},
     actions: {
-      openCustomize: { kind: "navigate", screenId: "personality_customize" },
+      // Open the editor with NO presetId → the "new tone" path.
+      addTone: { kind: "sequence", actions: [
+        { kind: "haptic", style: "selection" },
+        { kind: "navigate", screenId: "tone_edit" },
+      ] },
     },
     root: {
       type: "Screen",
@@ -1197,7 +1203,70 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
         ...(goCards.length ? [gap(16)] : []),
         ...restCards,
         gap(20),
-        { type: "Button", props: { label: "Customize", variant: "secondary" }, on: { onPress: "openCustomize" } },
+        { type: "Button", props: { label: "＋  Add a tone", variant: "secondary" }, on: { onPress: "addTone" } },
+      ],
+    },
+    cacheTtlSeconds: 0,
+  };
+}
+
+/**
+ * The two-field tone editor. Opened from a tone card (edit — fields pre-filled)
+ * or the "Add a tone" button (create — empty fields). Just a NAME and a PROMPT.
+ * Save upserts the tone (POST /v1/personality/tone) and makes it the active
+ * voice. A built-in can be Reset; a custom tone can be Deleted.
+ */
+function toneEditScreen(ctx: ScreenContext): ScreenResponse {
+  const presetId = typeof ctx.params?.presetId === "string" ? ctx.params.presetId : undefined;
+  const effective = applyPresetOverrides(ctx.personality.presetOverrides);
+  const preset = presetId ? effective.find((e) => e.id === presetId) : undefined;
+  const isBuiltin = !!presetId && PERSONALITY_PRESETS.some((b) => b.id === presetId);
+  const gap = (h: number): Node => ({ type: "Spacer", style: { height: h } });
+
+  // Save body: bake the id when editing; omit it when creating (backend mints a
+  // custom id). $state.name / $state.prompt are the two fields.
+  const saveBody: Record<string, unknown> = { name: "$state.name", promptStyle: "$state.prompt" };
+  if (presetId) saveBody.id = presetId;
+
+  const label = (t: string): Node => ({ type: "Overline", props: { content: t }, style: { marginBottom: 8 } });
+
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "tone_edit",
+    title: preset ? `Edit ${preset.name}` : "New tone",
+    state: {
+      name: preset?.name ?? "",
+      prompt: preset?.promptStyle ?? "",
+    },
+    actions: {
+      saveErr: { kind: "toast", tone: "error", message: "Couldn't save. Check your connection." },
+      saved: { kind: "sequence", actions: [
+        { kind: "haptic", style: "success" },
+        { kind: "navigateBack" },
+      ] },
+      save: { kind: "callEndpoint", method: "POST", path: "/v1/personality/tone", body: saveBody, onSuccess: "saved", onError: "saveErr" },
+      // Reset a built-in / delete a custom — both clear the override.
+      remove: { kind: "callEndpoint", method: "POST", path: "/v1/personality/tone", body: { id: presetId, remove: true }, onSuccess: "saved", onError: "saveErr" },
+    },
+    root: {
+      type: "Screen",
+      style: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 24 },
+      children: [
+        label("Tone name"),
+        { type: "TextField", bind: { value: "name" }, props: { placeholder: "e.g. Professional" } },
+        gap(18),
+        label("Tone prompt"),
+        { type: "TextField", bind: { value: "prompt" }, props: { placeholder: "How this voice should write — e.g. Clear, warm, and direct. No filler.", multiline: true }, style: { minHeight: 120 } },
+        gap(24),
+        { type: "Button", props: { label: "Save", variant: "primary" }, on: { onPress: "save" } },
+        ...(presetId ? [
+          gap(10),
+          {
+            type: "Button",
+            props: { label: isBuiltin ? "Reset to default" : "Delete tone", variant: isBuiltin ? "secondary" : "danger" },
+            on: { onPress: "remove" },
+          } as Node,
+        ] : []),
       ],
     },
     cacheTtlSeconds: 0,

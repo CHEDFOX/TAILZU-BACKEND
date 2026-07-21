@@ -235,23 +235,47 @@ export function applyPresetOverrides(
 ): PersonalityPreset[] {
   if (!overrides || Object.keys(overrides).length === 0) return PERSONALITY_PRESETS;
   const validTones: PresetTone[] = ["none", "formal", "casual", "very-casual", "excited"];
-  return PERSONALITY_PRESETS.map((p) => {
+  const coerceTone = (t: unknown, fallback: PresetTone): PresetTone =>
+    typeof t === "string" && validTones.includes(t as PresetTone) ? (t as PresetTone) : fallback;
+
+  const builtins = PERSONALITY_PRESETS.map((p) => {
     const o = overrides[p.id];
     if (!o) return p;
-    const tone: PresetTone =
-      typeof o.defaultTone === "string" && validTones.includes(o.defaultTone as PresetTone)
-        ? (o.defaultTone as PresetTone)
-        : p.defaultTone;
     return {
       ...p,
       name: (o.name ?? p.name).trim() || p.name,
       emoji: (o.emoji ?? p.emoji).trim() || p.emoji,
       tagline: (o.tagline ?? p.tagline).trim() || p.tagline,
       description: (o.description ?? p.description).trim() || p.description,
-      defaultTone: tone,
+      defaultTone: coerceTone(o.defaultTone, p.defaultTone),
       promptStyle: (o.promptStyle ?? p.promptStyle).trim() || p.promptStyle,
     };
   });
+
+  // User-created tones: any override id that is NOT a built-in preset is a
+  // custom voice the user added in the tone editor (just a name + prompt).
+  // Append it so it shows in the Voice list, can be made active, and feeds the
+  // refine pipeline exactly like a built-in.
+  const builtinIds = new Set(PERSONALITY_PRESETS.map((p) => p.id));
+  const customs: PersonalityPreset[] = [];
+  for (const [id, o] of Object.entries(overrides)) {
+    if (builtinIds.has(id)) continue;
+    const name = (o.name ?? "").trim();
+    const promptStyle = (o.promptStyle ?? "").trim();
+    if (!name && !promptStyle) continue; // ignore empty stubs
+    customs.push({
+      id,
+      name: name || "Custom voice",
+      emoji: (o.emoji ?? "✨").trim() || "✨",
+      tagline: (o.tagline ?? "").trim(),
+      description: (o.description ?? "").trim(),
+      formality: "neutral",
+      emojiUse: "minimal",
+      defaultTone: coerceTone(o.defaultTone, "none"),
+      promptStyle: promptStyle || name,
+    });
+  }
+  return customs.length ? [...builtins, ...customs] : builtins;
 }
 
 /** Every preset with `pin: true` when the id appears in `pinnedIds`. */

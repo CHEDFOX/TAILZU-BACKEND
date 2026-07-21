@@ -14,12 +14,61 @@ import {
   savePersonality,
   resolvePersonality,
   learnVocabularyCorrections,
+  upsertPresetTone,
   VOCAB_MAX_LINES,
 } from "../src/personality/store.js";
+// eslint-disable-next-line import/first
+import { applyPresetOverrides, PERSONALITY_PRESETS } from "../src/experience/personalityPresets.js";
 
 function makeUser(id: string): AuthedUser {
   return { id, email: `${id}@test.local` };
 }
+
+describe("tone editor — custom + edited tones", () => {
+  it("applyPresetOverrides appends a custom (non-builtin) tone", () => {
+    const list = applyPresetOverrides({ custom_abc: { name: "Snarky", promptStyle: "Be dry and witty." } });
+    expect(list.length).toBe(PERSONALITY_PRESETS.length + 1);
+    const custom = list.find((p) => p.id === "custom_abc");
+    expect(custom?.name).toBe("Snarky");
+    expect(custom?.promptStyle).toBe("Be dry and witty.");
+  });
+
+  it("applyPresetOverrides edits a built-in tone's name + prompt", () => {
+    const list = applyPresetOverrides({ professional: { name: "Boardroom", promptStyle: "Crisp and formal." } });
+    expect(list.length).toBe(PERSONALITY_PRESETS.length); // no new entry
+    const edited = list.find((p) => p.id === "professional");
+    expect(edited?.name).toBe("Boardroom");
+    expect(edited?.promptStyle).toBe("Crisp and formal.");
+  });
+
+  it("upsertPresetTone creates, edits, and removes a tone (and activates on save)", async () => {
+    const user = makeUser("tone-editor");
+    // Create — no id → mints a custom id, becomes active.
+    const created = await upsertPresetTone(user, { name: "Poet", promptStyle: "Image-first." });
+    expect(created.toneId).toMatch(/^custom_/);
+    let p = await getPersonality(user);
+    expect(p.activePresetId).toBe(created.toneId);
+    expect(p.presetOverrides?.[created.toneId]?.name).toBe("Poet");
+
+    // Editing a built-in doesn't wipe the custom one.
+    await upsertPresetTone(user, { id: "friendly", name: "Buddy", promptStyle: "Warm." });
+    p = await getPersonality(user);
+    expect(p.presetOverrides?.[created.toneId]?.name).toBe("Poet");
+    expect(p.presetOverrides?.friendly?.name).toBe("Buddy");
+
+    // Edit the custom tone → it becomes active again.
+    await upsertPresetTone(user, { id: created.toneId, name: "Poet v2", promptStyle: "Image-first, terse." });
+    p = await getPersonality(user);
+    expect(p.presetOverrides?.[created.toneId]?.name).toBe("Poet v2");
+    expect(p.activePresetId).toBe(created.toneId);
+
+    // Remove the (active) custom tone → gone, active resets to signature.
+    await upsertPresetTone(user, { id: created.toneId, remove: true });
+    p = await getPersonality(user);
+    expect(p.presetOverrides?.[created.toneId]).toBeUndefined();
+    expect(p.activePresetId).toBe("signature");
+  });
+});
 
 describe("personality store — save/get", () => {
   it("round-trips savePersonality → getPersonality", async () => {

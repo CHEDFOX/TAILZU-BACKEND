@@ -62,6 +62,7 @@ describe("buildScreen", () => {
     "home",
     "personality",
     "voices",
+    "tone_edit",
     "personality_detail",
     "settings",
     "reply",
@@ -98,14 +99,14 @@ describe("buildScreen", () => {
     expect(json).toContain("card.voice");
     expect(json).toContain("card.dictionary");
 
-    // The tone list itself (opened from the Voice card) seeds the saved tone.
-    const voices = buildScreen("voices", {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      personality: { activeTone: "casual" } as any,
-      language: "en",
-    });
+    // The tone list (opened from the Voice card) lists the tones and each opens
+    // the two-field editor; the "Add a tone" button opens it empty.
+    const voices = buildScreen("voices", { personality: {}, language: "en" });
     expect(voices).not.toBeNull();
-    expect((voices!.state as Record<string, unknown>).activeTone).toBe("casual");
+    const vjson = JSON.stringify(voices);
+    expect(vjson).toContain("Signature");
+    expect(vjson).toContain('"screenId":"tone_edit"');
+    expect(vjson).toContain("Add a tone");
   });
 
   it("tone detail shows the tone's name + prompt and toggles the keyboard pin", () => {

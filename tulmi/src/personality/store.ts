@@ -5,6 +5,7 @@
  * When neither is available (DEV_SKIP_AUTH local testing) we fall back to an
  * in-memory map so the feature still works end-to-end without a database.
  */
+import { randomUUID } from "node:crypto";
 import { dataClientFor, type AuthedUser } from "../auth/supabase.js";
 import { applyPresetOverrides } from "../experience/personalityPresets.js";
 import type {
@@ -52,6 +53,46 @@ export async function getPersonality(user: AuthedUser): Promise<Personality> {
     return {};
   }
   return (data?.data as Personality) ?? {};
+}
+
+/**
+ * Create or edit a single "tone" (personality preset) — the two-field tone
+ * editor. Read-modify-writes ONE entry in presetOverrides under the per-user
+ * lock so it can't clobber the user's other tones (the REST PUT shallow-merges
+ * the whole map, which would). Passing an `id` edits that preset (a built-in
+ * override or an existing custom); omitting it mints a fresh `custom_…` id.
+ * `remove` deletes the override (reset a built-in / delete a custom). On save
+ * the tone becomes the active voice so the change takes effect immediately.
+ */
+export async function upsertPresetTone(
+  user: AuthedUser,
+  opts: { id?: string; name?: string; promptStyle?: string; remove?: boolean },
+): Promise<{ personality: Personality; toneId: string }> {
+  return withUserLock(user.id, async () => {
+    const current = await getPersonality(user);
+    const overrides: Record<string, NonNullable<Personality["presetOverrides"]>[string]> = {
+      ...(current.presetOverrides ?? {}),
+    };
+    let activePresetId = current.activePresetId;
+
+    if (opts.remove && opts.id) {
+      delete overrides[opts.id];
+      if (activePresetId === opts.id) activePresetId = "signature";
+      const next: Personality = { ...current, presetOverrides: overrides, activePresetId };
+      await savePersonality(user, next);
+      return { personality: next, toneId: opts.id };
+    }
+
+    const toneId = opts.id?.trim() || `custom_${randomUUID()}`;
+    overrides[toneId] = {
+      ...(overrides[toneId] ?? {}),
+      name: (opts.name ?? "").trim(),
+      promptStyle: (opts.promptStyle ?? "").trim(),
+    };
+    const next: Personality = { ...current, presetOverrides: overrides, activePresetId: toneId };
+    await savePersonality(user, next);
+    return { personality: next, toneId };
+  });
 }
 
 export async function savePersonality(

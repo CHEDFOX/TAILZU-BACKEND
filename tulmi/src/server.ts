@@ -46,6 +46,7 @@ import {
   savePersonality,
   resolvePersonality,
   learnVocabularyCorrections,
+  upsertPresetTone,
 } from "./personality/store.js";
 import {
   buildBootstrap,
@@ -717,6 +718,40 @@ app.put("/v1/personality", { config: AUTHED_RL }, async (req, reply) => {
   } catch (err) {
     req.log.error(err);
     return reply.code(500).send({ code: "internal", message: "Failed to save personality" });
+  }
+});
+
+// Create / edit / delete a single tone (personality preset) — the two-field
+// tone editor on the Voice screen. Read-modify-writes ONE presetOverrides entry
+// under the per-user lock so it can't clobber the user's other tones (the PUT
+// above shallow-merges the whole map). id present = edit; absent = new custom
+// tone; remove=true = delete/reset. On save the tone becomes the active voice.
+const toneUpsertSchema = z.object({
+  id: z.string().max(120).optional(),
+  name: z.string().max(80).optional(),
+  promptStyle: z.string().max(2000).optional(),
+  remove: z.boolean().optional(),
+});
+app.post("/v1/personality/tone", { config: AUTHED_RL }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) {
+    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+  }
+  const parsed = toneUpsertSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return reply.code(400).send({ code: "bad_request", message: "Invalid tone payload" });
+  }
+  const { id, name, promptStyle, remove } = parsed.data;
+  if (!remove && !(name?.trim() || promptStyle?.trim())) {
+    return reply.code(400).send({ code: "bad_request", message: "A tone needs a name or a prompt" });
+  }
+  try {
+    const { personality, toneId } = await upsertPresetTone(user, { id, name, promptStyle, remove });
+    const res: PersonalityResponse = { personality };
+    return reply.send({ ...res, toneId });
+  } catch (err) {
+    req.log.error(err);
+    return reply.code(500).send({ code: "internal", message: "Failed to save tone" });
   }
 });
 
