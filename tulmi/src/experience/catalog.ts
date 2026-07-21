@@ -1819,15 +1819,37 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
   const minutesSaved = stats?.minutesSaved ?? Math.max(0, Math.round(usage.total.words / 40));
   const typingMinutes = Math.max(1, Math.round(usage.total.words / 40));
 
-  // NOTE: we render the sparkline as a small Unicode bar chart in a plain
-  // Text node because the client renderer doesn't ship a Chart component yet.
-  // Replace this with a real ChartLine node once the app registry gains one.
+  // Last-7-day activity, now a real BarChart (was a Unicode sparkline). The
+  // Text fallback still ships in old bundles that lack the chart node.
+  const perDay = (stats?.sparklinePerDay ?? []).slice(-7);
+  const barSeries = perDay.map((v) => ({ label: "", value: Math.max(0, Number(v) || 0) }));
   const sparklineText = renderSparkline(stats?.sparklinePerDay);
 
-  const kv = (label: string, value: string): Node => ({
-    type: "KeyValue",
-    props: { label, value },
+  // Donut breakdown: how much of this month's words landed in the last 7 days.
+  const earlier = Math.max(0, wordsMonth - wordsWeek);
+  const donutData = [
+    { label: "This week", value: wordsWeek, color: "#E8A23C" },
+    { label: "Earlier", value: earlier, color: "#3A3A44" },
+  ];
+
+  // A small metric tile (StatCard v3 node, plain KeyValue fallback for old
+  // bundles). delta is optional week-over-week movement when the projection
+  // carries it.
+  const stat = (label: string, value: string, delta?: number): Node => ({
+    type: "StatCard",
+    props: { label, value, ...(delta != null ? { delta } : {}) },
     style: { flex: 1 },
+    fallback: { type: "KeyValue", props: { label, value }, style: { flex: 1 } },
+  });
+
+  // A chart wrapped in a titled Card — the reusable "stat block" template.
+  const chartCard = (title: string, chart: Node, fallback?: Node): Node => ({
+    type: "Card",
+    children: [
+      text(title, "label"),
+      spacer(10),
+      fallback ? { ...chart, fallback } : chart,
+    ],
   });
 
   return {
@@ -1844,7 +1866,6 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
         {
           type: "Hero",
           props: {
-            // Title stays dynamic (word count + suffix); subtitle is central copy.
             title: wordsMonth.toLocaleString() + " words",
             subtitle: "@stats.hero.subtitle",
           },
@@ -1854,11 +1875,35 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
           type: "Stack",
           style: { direction: "row", gap: 8 },
           children: [
-            kv("@stats.kv.weekWords", wordsWeek.toLocaleString()),
-            kv("@stats.kv.audio", `${mins(audioSecondsMonth)} min`),
-            kv("@stats.kv.saved", `${minutesSaved.toLocaleString()}`),
+            stat("@stats.kv.weekWords", wordsWeek.toLocaleString()),
+            stat("@stats.kv.audio", `${mins(audioSecondsMonth)} min`),
+            stat("@stats.kv.saved", `${minutesSaved.toLocaleString()}`),
           ],
         },
+        spacer(20),
+        // Donut: this-week vs earlier words. Center shows the month total.
+        chartCard("This month", {
+          type: "PieChart",
+          props: {
+            data: donutData,
+            donut: true,
+            size: 150,
+            legend: "right",
+            centerValue: wordsMonth.toLocaleString(),
+            centerLabel: "words",
+          },
+        }),
+        spacer(16),
+        // Bar chart of the last 7 days; Text sparkline fallback for old bundles.
+        chartCard(
+          "@stats.sparkline.label",
+          {
+            type: "BarChart",
+            props: { series: barSeries, color: "#E8A23C" },
+            style: { height: 110 },
+          },
+          text(sparklineText, "body", { style: { fontSize: 22, letterSpacing: 2 } }),
+        ),
         spacer(20),
         {
           type: "Paragraph",
@@ -1867,16 +1912,6 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
               `Your effort: you'd have spent ${typingMinutes.toLocaleString()} minutes typing ` +
               `what Tulmi cleaned up in seconds.`,
           },
-        },
-        spacer(24),
-        // Sparkline block — Text-only until the renderer ships a chart node.
-        text("@stats.sparkline.label", "label"),
-        spacer(6),
-        {
-          type: "Card",
-          children: [
-            text(sparklineText, "body", { style: { fontSize: 22, letterSpacing: 2 } }),
-          ],
         },
         spacer(24),
         {
