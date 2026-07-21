@@ -404,12 +404,11 @@ export const PAYWALL_CONFIG: PaywallConfig = {
     "Priority speech recognition",
     "Cancel anytime",
   ],
-  // Three auto-renewing tiers: monthly / quarterly / annual. productId must
-  // match the store product; packageId is RevenueCat's built-in duration slot
-  // ($rc_monthly / $rc_three_month / $rc_annual). Prices below are DISPLAY COPY
-  // — set the real prices in App Store Connect / Play, keep these in sync (or
-  // ask to switch the paywall to live RevenueCat prices). Listed best-value
-  // first; `default: true` pre-selects the annual plan.
+  // Two auto-renewing tiers: monthly / annual. productId must match the store
+  // product; packageId is RevenueCat's built-in duration slot ($rc_monthly /
+  // $rc_annual). Prices below are DISPLAY COPY — set the real prices in App
+  // Store Connect / Play and keep these in sync (or ask to switch the paywall
+  // to live RevenueCat prices). Annual first; `default: true` pre-selects it.
   plans: [
     {
       id: "annual",
@@ -422,17 +421,6 @@ export const PAYWALL_CONFIG: PaywallConfig = {
       perUnit: "$5.00/mo, billed annually",
       badge: "Save 50%",
       default: true,
-    },
-    {
-      id: "quarterly",
-      productId: "tailzu_quarterly",
-      offeringId: "default",
-      packageId: "$rc_three_month",
-      label: "Quarterly",
-      price: "$24.99",
-      period: "per 3 months",
-      perUnit: "$8.33/mo, billed quarterly",
-      badge: "Save 17%",
     },
     {
       id: "monthly",
