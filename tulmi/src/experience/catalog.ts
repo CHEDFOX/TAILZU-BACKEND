@@ -404,18 +404,22 @@ export const PAYWALL_CONFIG: PaywallConfig = {
     "Priority speech recognition",
     "Cancel anytime",
   ],
-  // Two auto-renewing tiers: monthly / annual. productId must match the store
-  // product; packageId is RevenueCat's built-in duration slot ($rc_monthly /
-  // $rc_annual). Prices below are DISPLAY COPY — set the real prices in App
-  // Store Connect / Play and keep these in sync (or ask to switch the paywall
-  // to live RevenueCat prices). Annual first; `default: true` pre-selects it.
+  // Two auto-renewing tiers, branded Lite (monthly) / Elite (annual). Both
+  // grant the same `pro` entitlement — they differ only by billing period.
+  // productId MUST match the App Store product exactly (see below); packageId is
+  // RevenueCat's built-in duration slot ($rc_monthly / $rc_annual). Prices are
+  // DISPLAY COPY — set the real prices in App Store Connect and keep in sync (or
+  // ask to switch the paywall to live RevenueCat prices). Elite first;
+  // `default: true` pre-selects it.
   plans: [
     {
       id: "annual",
-      productId: "tailzu_annual",
+      // ⚠️ Verify against RevenueCat/App Store Connect — this column looked
+      // truncated ("tailzu_annu"). Must be the EXACT full product identifier.
+      productId: "tailzu_annu",
       offeringId: "default",
       packageId: "$rc_annual",
-      label: "Annual",
+      label: "Elite",
       price: "$59.99",
       period: "per year",
       perUnit: "$5.00/mo, billed annually",
@@ -424,10 +428,11 @@ export const PAYWALL_CONFIG: PaywallConfig = {
     },
     {
       id: "monthly",
-      productId: "tailzu_monthly",
+      // ⚠️ Verify — looked truncated ("TAILZU_MONT"). Exact full product id.
+      productId: "TAILZU_MONT",
       offeringId: "default",
       packageId: "$rc_monthly",
-      label: "Monthly",
+      label: "Lite",
       price: "$9.99",
       period: "per month",
     },
