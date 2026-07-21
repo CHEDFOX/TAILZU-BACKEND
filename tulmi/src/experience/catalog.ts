@@ -162,6 +162,13 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
         "paywall.blockUntilEntitled": false,
         "paywall.showAfterOnboarding": true,
         "paywall.config": PAYWALL_CONFIG as unknown as Record<string, unknown>,
+
+        // The "Hello, name + gender" profile card shows as an overlay on these
+        // screen ids. It's placed on the "personality" (You) tab — so right
+        // after the activation screen lands the user on You, the card is the
+        // first thing they complete there. (Client default is ["home"]; this
+        // moves it to You.)
+        "profileGate.screenIds": ["personality"],
       };
 
       const reg = getMediaRegistryFn?.() ?? {};
@@ -1939,15 +1946,32 @@ function onboardingWelcome(): ScreenResponse {
       },
       // The Activate button. Re-requesting mic here (idempotent — returns the
       // cached status if already decided) guarantees the Settings page exists
-      // even if onAppear never fired, THEN marks onboarded, THEN opens Settings.
+      // even if onAppear never fired. Then persist onboarded and — on success —
+      // land the user on the "You" tab, so returning from Settings drops them
+      // there with the "Hello, name" card (profileGate) as the next step rather
+      // than back on this activation screen. Finally open Settings.
       activate: {
         kind: "sequence",
         actions: [
           { kind: "requestPermission", permission: "microphone" },
-          { kind: "callEndpoint", method: "PUT", path: "/v1/profile", body: { onboarded: true } },
+          {
+            kind: "callEndpoint",
+            method: "PUT",
+            path: "/v1/profile",
+            body: { onboarded: true },
+            onSuccess: "goYou",
+            onError: "onboardErr",
+          },
           { kind: "openUrl", url: "app-settings:", external: true },
           { kind: "toast", tone: "info", message: "Settings → Tailzu → Keyboards → turn on Allow Full Access." },
         ],
+      },
+      // Land on the You tab; its profileGate overlay collects name + gender.
+      goYou: { kind: "switchTab", tabId: "personality" },
+      onboardErr: {
+        kind: "toast",
+        tone: "error",
+        message: "Couldn't save your setup — check your connection and tap Activate again.",
       },
     },
     root: {
