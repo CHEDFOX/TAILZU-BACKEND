@@ -61,6 +61,7 @@ describe("buildScreen", () => {
   const SCREEN_IDS = [
     "home",
     "personality",
+    "voices",
     "personality_detail",
     "settings",
     "reply",
@@ -86,21 +87,25 @@ describe("buildScreen", () => {
     expect(buildScreen("does-not-exist", { personality: {}, language: "en" })).toBeNull();
   });
 
-  it("wires saved tone + dictionary + words into the personality (You) screen", () => {
-    const screen = buildScreen("personality", {
+  it("You tab shows Voice + Dictionary media cards; the voice list carries the saved tone", () => {
+    // The You tab is now just two media-background cards that navigate to the
+    // voice list and the dictionary editor.
+    const you = buildScreen("personality", { personality: {}, language: "en" });
+    expect(you).not.toBeNull();
+    const json = JSON.stringify(you);
+    expect(json).toContain('"screenId":"voices"');
+    expect(json).toContain('"screenId":"dictionary"');
+    expect(json).toContain("card.voice");
+    expect(json).toContain("card.dictionary");
+
+    // The tone list itself (opened from the Voice card) seeds the saved tone.
+    const voices = buildScreen("voices", {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       personality: { activeTone: "casual" } as any,
       language: "en",
-      dictionary: [{ word: "omw", replacement: "on my way" }],
-      frequentWords: ["hey", "thanks"],
     });
-    expect(screen).not.toBeNull();
-    // The You page now seeds the active tone AND the dictionary + frequent
-    // words that moved here from Home.
-    const state = screen!.state as Record<string, unknown>;
-    expect(state.activeTone).toBe("casual");
-    expect(state.dictionary).toEqual([{ word: "omw", replacement: "on my way" }]);
-    expect(state.frequentWords).toEqual(["hey", "thanks"]);
+    expect(voices).not.toBeNull();
+    expect((voices!.state as Record<string, unknown>).activeTone).toBe("casual");
   });
 
   it("tone detail shows the tone's name + prompt and toggles the keyboard pin", () => {

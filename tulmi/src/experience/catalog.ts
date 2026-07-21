@@ -788,7 +788,9 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
     case "reply":
       return replyScreen();
     case "personality":
-      return personalityScreen(ctx);
+      return personalityScreen();
+    case "voices":
+      return voicesScreen(ctx);
     case "personality_customize":
       return personalityCustomizeScreen(ctx.personality);
     case "personality_edit":
@@ -1074,23 +1076,91 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
   };
 }
 
-/** The personality form — server seeds it with the user's saved profile. */
-function personalityScreen(ctx: ScreenContext): ScreenResponse {
+/**
+ * The "You" tab — two large media-background cards with a gap between them.
+ * Tapping "Voice" opens the tone list; tapping "Dictionary" opens the word
+ * editor. Each card's art is uploaded under the `card.voice` / `card.dictionary`
+ * media keys (swap OTA). The "Hello, name + gender" profile card overlays this
+ * screen on first visit (profileGate.screenIds = ["personality"]).
+ */
+function personalityScreen(): ScreenResponse {
+  const mediaCard = (title: string, subtitle: string, key: string, screen: string): Node => ({
+    type: "Card",
+    // Card now honors onPress (client fix); padding/border stripped so the media
+    // fills edge-to-edge, overflow:hidden clips it to the rounded corners.
+    style: {
+      position: "relative",
+      height: 178,
+      borderRadius: 20,
+      overflow: "hidden",
+      padding: 0,
+      borderWidth: 0,
+      backgroundColor: "#0b0b0f",
+      marginBottom: 0,
+    },
+    on: {
+      onPress: {
+        kind: "sequence",
+        actions: [
+          { kind: "haptic", style: "selection" },
+          { kind: "navigate", screenId: screen },
+        ],
+      },
+    },
+    children: [
+      // Background media (uploaded under `key`). contentFit cover fills the card;
+      // a GIF animates. Absolute inset so it fills regardless of the card height.
+      {
+        type: "Image",
+        props: { source: { key }, contentFit: "cover" },
+        style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%", borderRadius: 0 },
+      },
+      // Scrim so the title stays legible over any art.
+      { type: "Stack", style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.34)" } },
+      {
+        type: "Stack",
+        style: { position: "absolute", left: 20, right: 20, bottom: 18, direction: "column", gap: 3 },
+        children: [
+          { type: "Text", props: { content: title }, style: { fontSize: 24, fontWeight: "800", color: "#FFFFFF" } },
+          { type: "Text", props: { content: subtitle }, style: { fontSize: 13, fontWeight: "500", color: "rgba(255,255,255,0.82)" } },
+        ],
+      },
+    ],
+  });
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "personality",
+    title: "",
+    state: {},
+    actions: {},
+    root: {
+      type: "Screen",
+      style: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 24 },
+      children: [
+        mediaCard("Voice", "Your tones & presets", "card.voice", "voices"),
+        { type: "Spacer", style: { height: 18 } },
+        mediaCard("Dictionary", "Words & shortcuts you add", "card.dictionary", "dictionary"),
+      ],
+    },
+    cacheTtlSeconds: 0,
+  };
+}
+
+/**
+ * The Voice list — every tone/preset, opened from the Voice card on the You tab.
+ * (Moved off the main You view so that view is just the two media cards.) The
+ * active tone is tinted; tapping a tone opens its detail (name + prompt).
+ */
+function voicesScreen(ctx: ScreenContext): ScreenResponse {
   const p = ctx.personality;
   const gap = (h: number): Node => ({ type: "Spacer", style: { height: h } });
 
-  // Effective preset list — built-ins with the user's overrides applied, so a
-  // rename flows everywhere at once.
   const effective = applyPresetOverrides(p.presetOverrides);
   const findEffective = (id: string) => effective.find((e) => e.id === id) ?? effective[0]!;
-
   const activeId = p.activePresetId ?? "signature";
   const activeTone = p.activeTone ?? findEffective(activeId).defaultTone;
   const pinned = Array.isArray(p.pinnedPresetIds) ? p.pinnedPresetIds : [];
 
-  // One tone = one thin, title-only card. Tapping it opens that tone's detail
-  // (name + prompt). The active tone's title is tinted; everything else stays
-  // plain — no taglines, no emoji, no supporting copy (sleek + minimal).
   const toneCard = (preset: (typeof effective)[number]): Node => ({
     type: "Card",
     style: { paddingVertical: 14, paddingHorizontal: 16, marginBottom: 6 },
@@ -1107,76 +1177,27 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
     ],
   });
 
-  // "Go" tones = the ones pinned to the keyboard toggle; the rest fill the
-  // full list beneath. Together they cover every tone with no duplication.
   const goCards = effective.filter((e) => pinned.includes(e.id)).map(toneCard);
   const restCards = effective.filter((e) => !pinned.includes(e.id)).map(toneCard);
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
-    screenId: "personality",
-    title: "",
-    state: {
-      activePresetId: activeId,
-      activeTone,
-      pinnedCount: pinned.length,
-      pinnedIds: pinned,
-      status: "",
-      // Dictionary + frequent words now live on this page too (moved off Home).
-      dictionary: ctx.dictionary ?? [],
-      frequentWords: ctx.frequentWords ?? [],
-    },
+    screenId: "voices",
+    title: "Voice",
+    state: { activePresetId: activeId, activeTone, pinnedIds: pinned },
     actions: {
-      saveErr: { kind: "toast", tone: "error", message: "Couldn't save. Check your connection." },
       openCustomize: { kind: "navigate", screenId: "personality_customize" },
     },
     root: {
       type: "Screen",
       style: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 24 },
       children: [
-        // Just the title on the card. The tones do the talking.
         { type: "Heading", props: { content: "Voice" }, style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 16 } },
-
-        // Go tones — the ones pinned to the keyboard toggle — sit on top; the
-        // rest of the tones fill the list beneath. Both are thin, title-only
-        // cards that open the tone's detail (name + prompt) on tap.
         ...goCards,
         ...(goCards.length ? [gap(16)] : []),
         ...restCards,
-
         gap(20),
         { type: "Button", props: { label: "Customize", variant: "secondary" }, on: { onPress: "openCustomize" } },
-
-        // ── Dictionary section ──────────────────────────────────────────────
-        // Moved here from Home. Full editor: add word → replacement pairs that
-        // auto-correct anywhere the Tailzu keyboard is used.
-        gap(44),
-        { type: "Heading", props: { content: "Dictionary" }, style: { fontSize: 22, fontWeight: "800", color: "$color.text", marginBottom: 4 } },
-        { type: "Paragraph", props: { content: "Type the word, get the replacement — anywhere you use the Tailzu keyboard." }, style: { marginBottom: 14 } },
-        {
-          type: "DictionaryEditor",
-          bind: { value: "dictionary" },
-          props: { full: true },
-          on: { onError: "saveErr" },
-          fallback: {
-            type: "Text",
-            props: { content: "Add word → replacement pairs to auto-correct as you type.", variant: "muted" },
-          },
-        },
-
-        // ── Words section ───────────────────────────────────────────────────
-        // The user's frequent words (computed by the backend). Moved here from
-        // Home too.
-        gap(44),
-        { type: "Heading", props: { content: ctx.name ? `${ctx.name}'s words` : "Your words" }, style: { fontSize: 22, fontWeight: "800", color: "$color.text", marginBottom: 4 } },
-        { type: "Text", props: { content: "Words you use often", variant: "muted" }, style: { marginBottom: 14 } },
-        {
-          type: "WordChips",
-          bind: { value: "frequentWords" },
-          fallback: (ctx.frequentWords ?? []).length > 0
-            ? { type: "Text", props: { content: (ctx.frequentWords ?? []).join(" · "), variant: "muted" }, style: { paddingHorizontal: 4 } }
-            : { type: "Text", props: { content: "You haven't dictated much yet.", variant: "muted" }, style: { paddingHorizontal: 4 } },
-        },
       ],
     },
     cacheTtlSeconds: 0,
