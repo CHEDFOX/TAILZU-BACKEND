@@ -2835,18 +2835,17 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
   // border; more inner padding is what was making our keyboard look boxed.
   const root: KeyboardNode = {
     type: "Container",
-    // Padding measurements from archagon Dimensions.md (pixel-measured against
-    // iPhone 6-class screenshots — canonical iOS keyboard geometry): 3pt L/R,
-    // 5pt top, 4pt bottom (the 34pt home-indicator area sits below this on
-    // Face ID phones automatically — that's why native bottom padding is small,
-    // not 8pt). Row gap 6pt matches Apple's inclusive 43pt row height (a letter
-    // key is ~37pt visible + 6pt of gap = 43). Previous values (top:10, bot:8)
-    // were making our keyboard feel taller and more "boxed in" than native.
-    // Container padding stays snug L/R (native measurements) but gap between
-    // rows widens 6 → 10 for a roomier feel, and top/bottom picks up a couple
-    // extra points so the whole keyboard reads as taller. Row height inside
-    // each Row is also explicitly 50pt (up from ~40pt natural) — see below.
-    style: { paddingLeft: 3, paddingRight: 3, paddingTop: 8, paddingBottom: 6, gap: 10 },
+    // Geometry aligned to NATIVE iOS to minimise user discomfort (values from
+    // measured Apple teardowns; Apple publishes none officially):
+    //   • L/R margin 3pt, top 8pt, bottom 4pt — matches native padding; the 34pt
+    //     home-indicator area sits below this on Face ID phones automatically,
+    //     which is why native bottom padding is small.
+    //   • Horizontal gap between keys 6pt (native constant) — set per-row below.
+    //   • Vertical gap between rows 10pt — inside Apple's measured ~10–12pt.
+    //   • Row/key height 44pt (set per-row below) — matches a modern iPhone's
+    //     ~43–46pt key. (Was 50pt "for a roomier feel"; that read taller than
+    //     native, especially on smaller phones.)
+    style: { paddingLeft: 3, paddingRight: 3, paddingTop: 8, paddingBottom: 4, gap: 10 },
     children: [
       // Suggestion bar — populated by state.suggestions when we start emitting
       // predictions. Empty right now; visibleIf hides the strip so it doesn't
@@ -2910,14 +2909,14 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       // Row 1: q..p
       {
         type: "Row",
-        style: { gap: 6, height: 50 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: letterRow1.map(kLetter),
       },
       // Row 2: a..l (indented half-key each side)
       {
         type: "Row",
-        style: { gap: 6, height: 50 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: [kHalfSpacer(), ...letterRow2.map(kLetter), kHalfSpacer()],
       },
@@ -2928,14 +2927,14 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       // overlaps the shift/backspace hit area, so edge taps don't cross over.
       {
         type: "Row",
-        style: { gap: 6, height: 50 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: [
-          { type: "ShiftKey", style: { flex: 1.1, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
+          { type: "ShiftKey", style: { flex: 1.35, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
           { type: "Spacer", style: { flex: 0.22 } },
           ...letterRow3.map(kLetter),
           { type: "Spacer", style: { flex: 0.22 } },
-          { type: "BackspaceKey", style: { flex: 1.1, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
+          { type: "BackspaceKey", style: { flex: 1.35, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
         ],
       },
 
@@ -2947,21 +2946,21 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       // Row 1: 1..0
       {
         type: "Row",
-        style: { gap: 6, height: 50 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "123"] },
         children: ["1","2","3","4","5","6","7","8","9","0"].map(kPunct),
       },
       // Row 2: - / : ; ( ) $ & @ "
       {
         type: "Row",
-        style: { gap: 6, height: 50 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "123"] },
         children: ["-","/",":",";","(",")","$","&","@","\""].map(kPunct),
       },
       // Row 3: [#+=] . , ? ! ' [backspace]
       {
         type: "Row",
-        style: { gap: 6, height: 50 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "123"] },
         children: [
           {
@@ -2980,21 +2979,21 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       // Row 1: [ ] { } # % ^ * + =
       {
         type: "Row",
-        style: { gap: 6, height: 50 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "sym"] },
         children: ["[","]","{","}","#","%","^","*","+","="].map(kPunct),
       },
       // Row 2: _ \ | ~ < > € £ ¥ ·
       {
         type: "Row",
-        style: { gap: 6, height: 50 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "sym"] },
         children: ["_","\\","|","~","<",">","€","£","¥","·"].map(kPunct),
       },
       // Row 3: [123] . , ? ! ' [backspace]
       {
         type: "Row",
-        style: { gap: 6, height: 50 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "sym"] },
         children: [
           {
@@ -3028,24 +3027,24 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       // grows to fill the freed width.
       {
         type: "Row",
-        style: { gap: 6, height: 50 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: [
           {
             type: "LetterKey",
             props: { char: "123" },
             on: { onPress: { kind: "switchLayout", language: "123" } },
-            style: { flex: 2.04, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
+            style: { flex: 1.35, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
           { type: "SpaceKey", style: { flex: 7.08, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
-          { type: "ReturnKey", style: { flex: 2.04, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
+          { type: "ReturnKey", style: { flex: 2.75, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
         ],
       },
       // Row 4 for the NUMBER or SYMBOL page — ABC returns to letters. Same
       // "no globe" pattern; iOS's system bar still handles keyboard switching.
       {
         type: "Row",
-        style: { gap: 6, height: 50 },
+        style: { gap: 6, height: 44 },
         visibleIf: { any: [
           { eq: ["state.layoutId", "123"] },
           { eq: ["state.layoutId", "sym"] },
@@ -3055,10 +3054,10 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
             type: "LetterKey",
             props: { char: "ABC" },
             on: { onPress: { kind: "switchLayout", language: "en" } },
-            style: { flex: 2.04, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
+            style: { flex: 1.35, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
           { type: "SpaceKey", style: { flex: 7.08, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
-          { type: "ReturnKey", style: { flex: 2.04, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
+          { type: "ReturnKey", style: { flex: 2.75, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
         ],
       },
     ],
