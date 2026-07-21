@@ -253,23 +253,15 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
  * Which screen the app opens on. Runs at bootstrap time so its output is
  * baked into the response the client uses.
  *
- * Order of precedence:
- *   1. Intro plays whenever the intro frames (intro.0 … intro.4) live
- *      in the media store. If any are missing we skip the intro and
- *      route straight to onboarding / home so a partial upload can't
- *      leave the user staring at a blank screen.
- *   2. Not-onboarded → onboarding.
- *   3. Otherwise → home.
+ * Onboarding is now a SINGLE activation screen (see onboardingWelcome) — the
+ * old intro montage + welcome + language + keyboard-enable sequence collapsed
+ * into one. So the routing is simply:
+ *   - Not-onboarded → onboarding (the activation screen).
+ *   - Otherwise → home.
+ * (The separate client-side language greeting still runs before this when the
+ * needsLanguagePick flag is set — that's independent of this decision.)
  */
 function pickInitialScreenId(onboarded: boolean): string {
-  const reg = getMediaRegistryFn?.() ?? {};
-  const introReady =
-    !!reg["intro.0"]?.url &&
-    !!reg["intro.1"]?.url &&
-    !!reg["intro.2"]?.url &&
-    !!reg["intro.3"]?.url &&
-    !!reg["intro.4"]?.url;
-  if (introReady) return "intro";
   return onboarded ? "home" : "onboarding";
 }
 
@@ -1897,41 +1889,116 @@ function stepHeader(step: number, total: number, overline: string): Node[] {
   ];
 }
 
-/** Step 1 — welcome + what Tulmi does. */
+/**
+ * The single activation screen — replaces the old intro + welcome + language +
+ * keyboard-enable sequence with one screen.
+ *
+ * Flow:
+ *   1. On appear it requests MICROPHONE permission. This is deliberate: iOS only
+ *      gives an app a per-app Settings page AFTER a permission has been asked,
+ *      and that page is where the keyboard + "Allow Full Access" toggles live.
+ *      So requesting mic first is what makes the "Activate" button below able to
+ *      land the user on the right Settings page.
+ *   2. A centered media (uploaded under the `onboarding.hero` key — swap it OTA:
+ *      POST /v1/media/upload?key=onboarding.hero). An animated GIF animates; a
+ *      still image shows; contentFit is "contain" so it never crops.
+ *   3. Tiny instructions between the media and the button.
+ *   4. "Activate" → re-ensures mic is requested (so the button works even on a
+ *      bundle where onAppear doesn't fire), marks the user onboarded so this
+ *      screen never reappears, then opens Settings (Settings → Tailzu →
+ *      Keyboards → allow Full Access).
+ *
+ * Fully backend-authored — copy, media, instructions, and the whole flow change
+ * OTA with no rebuild.
+ */
 function onboardingWelcome(): ScreenResponse {
-  const feature = (title: string, body: string): Node => ({
-    type: "Stack",
-    style: { direction: "column", gap: 4 },
-    motion: { appear: "fadeInUp" },
-    children: [
-      { type: "Text", props: { content: title }, style: { color: "$color.text", fontSize: 16, fontWeight: "500", letterSpacing: 0.3 } },
-      { type: "Paragraph", props: { content: body }, style: { marginBottom: 0 } },
-    ],
+  const stepLine = (n: string, s: string): Node => ({
+    type: "Text",
+    props: { content: `${n}   ${s}` },
+    style: { textAlign: "center", fontSize: 11.5, color: "$color.label", letterSpacing: 0.2, marginBottom: 0 },
   });
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "onboarding",
-    title: "Welcome",
-    template: "scroll",
+    title: "",
+    // Full-bleed: no header/back/tabs — this is the gate.
+    hideChrome: true,
     state: {},
-    actions: { next: { kind: "navigate", screenId: "onboarding_language" } },
-    blocks: [
-      ...stepHeader(1, 3, "Welcome"),
-      { type: "Heading", props: { content: "@onboarding.title" }, style: { textAlign: "center", fontSize: 30, lineHeight: 38, marginBottom: 12 } },
-      { type: "Paragraph", props: { content: "@onboarding.subtitle" }, style: { textAlign: "center", marginBottom: 36 } },
-      {
-        type: "Stack",
-        style: { direction: "column", gap: 22 },
-        children: [
-          feature("🎙️  Talk, don't type", "Tap the mic on the Tulmi keyboard and just speak."),
-          feature("✨  One-tap polish", "Refine turns messy text into clean, clear writing."),
-          feature("💬  Replies in your voice", "Paste a message, say your intent, get a perfect reply."),
-          feature("🎚️  Always you", "Set your tone once — every word matches your style."),
+    actions: {
+      // Fired on appear — get mic permission up front so the Settings deep link
+      // has a page to land on.
+      reqMic: {
+        kind: "requestPermission",
+        permission: "microphone",
+        onDenied: "micDenied",
+      },
+      micDenied: {
+        kind: "toast",
+        tone: "info",
+        message: "You can allow the microphone later in Settings → Tailzu.",
+      },
+      // The Activate button. Re-requesting mic here (idempotent — returns the
+      // cached status if already decided) guarantees the Settings page exists
+      // even if onAppear never fired, THEN marks onboarded, THEN opens Settings.
+      activate: {
+        kind: "sequence",
+        actions: [
+          { kind: "requestPermission", permission: "microphone" },
+          { kind: "callEndpoint", method: "PUT", path: "/v1/profile", body: { onboarded: true } },
+          { kind: "openUrl", url: "app-settings:", external: true },
+          { kind: "toast", tone: "info", message: "Settings → Tailzu → Keyboards → turn on Allow Full Access." },
         ],
       },
-      { type: "Spacer", style: { height: 40 } },
-      { type: "Button", props: { label: "Continue", variant: "primary" }, on: { onPress: "next" } },
-    ],
+    },
+    root: {
+      type: "Stack",
+      on: { onAppear: "reqMic" },
+      style: {
+        flex: 1,
+        direction: "column",
+        alignItems: "center",
+        backgroundColor: "#000000",
+        paddingHorizontal: 28,
+        paddingTop: 40,
+        paddingBottom: 28,
+      },
+      children: [
+        {
+          type: "Heading",
+          props: { content: "Tailzu — your writing assistant" },
+          style: { textAlign: "center", fontSize: 26, lineHeight: 32, fontWeight: "800", color: "$color.text" },
+        },
+        // Centered media — flex:1 pushes it to the vertical middle.
+        {
+          type: "Stack",
+          style: { flex: 1, width: "100%", alignItems: "center", justifyContent: "center" },
+          children: [
+            {
+              type: "Image",
+              props: { source: { key: "onboarding.hero" }, contentFit: "contain" },
+              style: { width: 260, height: 260 },
+            },
+          ],
+        },
+        // Tiny instructions between the media and the button.
+        {
+          type: "Stack",
+          style: { direction: "column", gap: 6, alignItems: "center", marginBottom: 18 },
+          children: [
+            stepLine("1", "Open Settings"),
+            stepLine("2", "Keyboards → Add Tailzu"),
+            stepLine("3", "Allow Full Access"),
+            stepLine("4", "You’re all set"),
+          ],
+        },
+        {
+          type: "Button",
+          props: { label: "Activate", variant: "primary" },
+          on: { onPress: "activate" },
+          style: { width: "100%" },
+        },
+      ],
+    },
     cacheTtlSeconds: 0,
   };
 }
