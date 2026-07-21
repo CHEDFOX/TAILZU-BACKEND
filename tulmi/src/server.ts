@@ -34,6 +34,7 @@ import { PRIVACY_POLICY_HTML, PRIVACY_POLICY_EFFECTIVE } from "./routes/policies
 import { TERMS_HTML, TERMS_EFFECTIVE } from "./routes/policies/terms.js";
 import { getConfig, VERSION } from "./config.js";
 import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
+import { localUserId } from "./auth/jwt.js";
 import { enforceQuota, recordUsage, usageSummary, usageWindows } from "./usage/metering.js";
 import { captureException, fastifyLoggerOptions, initSentry } from "./observability.js";
 import { getProfile, updateProfile } from "./profile/store.js";
@@ -137,14 +138,22 @@ await app.register(rateLimit, {
   global: false,
   max: cfg.RATE_LIMIT_MAX,
   timeWindow: cfg.RATE_LIMIT_WINDOW_MS,
-  keyGenerator: (req) => {
-    // Key by client IP only. req.ip is now trustworthy (trustProxy is the exact
-    // proxy hop count, so X-Forwarded-For can't be spoofed). Keying by the raw
-    // Authorization header was a bypass: rotating a fake bearer token minted a
-    // fresh bucket AND triggered a Supabase auth round-trip on every request — a
-    // cost/DoS amplifier against the auth quota. Per-USER fairness is enforced
-    // downstream by enforceQuota/metering, not by this coarse abuse limiter.
-    return "ip:" + req.ip;
+  keyGenerator: async (req) => {
+    // Key by the VERIFIED user id when we can prove it, else by client IP.
+    //
+    // The user id is read from a LOCALLY signature-verified JWT (localUserId —
+    // no network), so this reacts to the authenticated user without the two
+    // hazards that keying on the raw Authorization header had: (1) a forged /
+    // rotated token can't mint a fresh bucket — it fails verification and falls
+    // through to the IP bucket; (2) there's no per-request Supabase round-trip
+    // to amplify. Real users behind one NAT/CGNAT egress IP now get their own
+    // buckets instead of sharing (and 429-storming) a single per-IP one.
+    //
+    // req.ip is trustworthy (trustProxy is the exact proxy hop count, so
+    // X-Forwarded-For can't be spoofed). When no JWT secret / JWKS is configured
+    // localUserId returns null and this degrades to the prior per-IP behavior.
+    const uid = await localUserId(req.headers["authorization"]);
+    return uid ? "u:" + uid : "ip:" + req.ip;
   },
 });
 
@@ -950,10 +959,10 @@ function noStoreSdui(reply: import("fastify").FastifyReply): void {
 
 // SDUI endpoints intentionally use the AUTHED_RL tier even though the routes
 // themselves are auth-optional. Reason: a normal launch fires bootstrap +
-// several screens back-to-back (4–6 requests), which trips the 20/min unauth
-// cap almost immediately. The keyGenerator differentiates keys per-user via
-// the token hash, so a real authed user gets their own bucket; anonymous
-// callers still share by IP (real IP now, thanks to trustProxy).
+// several screens back-to-back (4–6 requests). The keyGenerator keys by the
+// LOCALLY-verified user id when a valid JWT is present, so a real authed user
+// gets their own bucket (even sharing a NAT egress IP with many others);
+// anonymous callers fall back to per-IP (real IP now, thanks to trustProxy).
 app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   noStoreSdui(reply);
   // Auth is optional here so the shell can boot; when present, the user's

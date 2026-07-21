@@ -73,6 +73,13 @@ const EnvSchema = z.object({
   SUPABASE_URL: z.string().optional(),
   SUPABASE_SERVICE_KEY: z.string().optional(),
   SUPABASE_ANON_KEY: z.string().optional(),
+  // The project's JWT signing secret (Supabase dashboard → Settings → API → JWT
+  // Secret), for HS256-signed tokens. Used ONLY to verify a user JWT LOCALLY
+  // (no network) so the rate limiter can key its buckets on the verified user
+  // id instead of the coarse client IP. Optional: when unset (and the project
+  // isn't using asymmetric keys the JWKS path can fetch), the limiter falls
+  // back to per-IP keying — no behavior regression, just less granular.
+  SUPABASE_JWT_SECRET: z.string().optional(),
 
   // Server
   PORT: z.coerce.number().default(8080),
