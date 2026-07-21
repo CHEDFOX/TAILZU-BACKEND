@@ -875,6 +875,31 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
     ? { source: { key: "mic.animation.mp4" }, autoplay: false, loop: true, muted: true, voiceReactive: true, freezeOnPause: true }
     : { source: { key: "mic.animation" }, autoplay: false, loop: true, voiceReactive: true };
 
+  // Home tone picker. Each row selects the tone the Refine button runs in — the
+  // id maps 1:1 to the per-tone refine endpoints the client routes to
+  // (/v1/refine/<id>; "none" → skip-refine). Authored here so the tone set can
+  // be reordered/renamed/extended from the backend with no app update.
+  const TONE_OPTIONS: Array<{ id: string; label: string; hint: string }> = [
+    { id: "none", label: "Tone", hint: "Clean-up only — keep my words" },
+    { id: "formal", label: "Formal", hint: "Polished and professional" },
+    { id: "casual", label: "Casual", hint: "Relaxed and friendly" },
+    { id: "very-casual", label: "Very casual", hint: "Loose, texting-with-friends" },
+    { id: "excited", label: "Excited", hint: "Upbeat and energetic" },
+  ];
+  // A tappable tone row inside the blurred sheet: pick it → store the tone id +
+  // its button label, then close the sheet. All state, so the Refine button
+  // (bind.tone) picks it up on its next press.
+  const toneRow = (opt: { id: string; label: string; hint: string }): Node => ({
+    type: "Row",
+    props: { label: opt.label, value: opt.hint, chevron: false, divider: opt.id !== "excited" },
+    on: { onPress: { kind: "sequence", actions: [
+      { kind: "haptic", style: "selection" },
+      { kind: "setState", path: "tone", value: opt.id },
+      { kind: "setState", path: "toneLabel", value: opt.label },
+      { kind: "setState", path: "toneSheetOpen", value: false },
+    ] } },
+  });
+
   const boxWithVoice = (bindKey: string): Node => ({
     type: "Stack", style: { position: "relative" }, children: [
       { type: "TextField", bind: { value: bindKey }, props: { placeholder: "Type here…", multiline: true }, style: { paddingRight: 56, minHeight: 96 } },
@@ -914,6 +939,10 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
     title: "",
     state: {
       input: "", screenContent: "", intent: "", result: "", recording: false,
+      // Refine tone: which per-tone endpoint the Refine button targets. "none"
+      // = clean-up only. `toneLabel` is the Tone button's caption; `toneSheetOpen`
+      // drives the blurred tone-picker sheet.
+      tone: "none", toneLabel: "Tone", toneSheetOpen: false,
       dictionary: ctx.dictionary ?? [],
       frequentWords: ctx.frequentWords ?? [],
     },
@@ -945,10 +974,16 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
               { type: "Heading", props: { content: "Make it sound like you", numberOfLines: 2 }, style: titleStyle },
               boxWithVoice("input"),
               { type: "Spacer", style: { height: 22 } },
-              { type: "Stack", style: { align: "center" }, children: [
+              // Refine + Tone. The whole action row hides while the mic is
+              // recording (visibleIf falsy recording) and springs back when it
+              // stops — so the button is out of the way during voice capture.
+              { type: "Stack", visibleIf: { falsy: "recording" }, style: { align: "center", direction: "column", gap: 12 }, children: [
                 {
                   type: "RefineButton",
-                  bind: { value: "input" },
+                  // bind.value = the text to refine; bind.tone = the selected
+                  // tone id → RefineButton routes to /v1/refine/<tone>. Press
+                  // again to iterate on the box text in the same tone.
+                  bind: { value: "input", tone: "tone" },
                   props: { targetApp: "WhatsApp", language: "auto", width: 160 },
                   on: { onError: "err" },
                   // Old-bundle fallback: plain Button that fires /v1/refine
@@ -973,7 +1008,31 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
                     } },
                   },
                 },
+                // Tone button — opens the blurred tone sheet. Its caption is the
+                // active tone (bind label ← toneLabel); tap to change which tone
+                // Refine runs in.
+                {
+                  type: "Button",
+                  bind: { label: "toneLabel" },
+                  props: { variant: "secondary" },
+                  style: { paddingVertical: 10, paddingHorizontal: 22, borderRadius: 22 },
+                  on: { onPress: { kind: "sequence", actions: [
+                    { kind: "haptic", style: "light" },
+                    { kind: "setState", path: "toneSheetOpen", value: true },
+                  ] } },
+                },
               ] },
+              // Blurred tone-picker sheet. Everything behind the card frosts
+              // (props.blur) while the user picks the tone Refine speaks in.
+              {
+                type: "Modal",
+                bind: { open: "toneSheetOpen" },
+                props: { blur: true, blurIntensity: 55, dismissable: true },
+                children: [
+                  { type: "Text", props: { content: "Refine in…" }, style: { fontSize: 18, fontWeight: "700", color: "#FFFFFF", textAlign: "center", marginBottom: 12 } },
+                  ...TONE_OPTIONS.map(toneRow),
+                ],
+              },
             ] },
             { type: "Stack", style: pageStyle, children: [
               { type: "Heading", props: { content: "Reply in your voice", numberOfLines: 2 }, style: titleStyle },

@@ -88,6 +88,25 @@ describe("buildScreen", () => {
     expect(buildScreen("does-not-exist", { personality: {}, language: "en" })).toBeNull();
   });
 
+  it("Home Refine button binds the tone and the blurred tone sheet sets it", () => {
+    const home = buildScreen("home", { personality: {}, language: "en" });
+    expect(home).not.toBeNull();
+    // Tone state seeded on the screen.
+    expect((home!.state as Record<string, unknown>).tone).toBe("none");
+    expect((home!.state as Record<string, unknown>).toneLabel).toBe("Tone");
+    expect((home!.state as Record<string, unknown>).toneSheetOpen).toBe(false);
+    const json = JSON.stringify(home);
+    // Refine button carries the tone bind so it routes to /v1/refine/<tone>.
+    expect(json).toContain('"tone":"tone"');
+    // The action row hides while recording.
+    expect(json).toContain('"falsy":"recording"');
+    // Blurred tone sheet with the tone options.
+    expect(json).toContain('"blur":true');
+    expect(json).toContain('"open":"toneSheetOpen"');
+    expect(json).toContain("Very casual");
+    expect(json).toContain("Excited");
+  });
+
   it("You tab shows Voice + Dictionary media cards; the voice list carries the saved tone", () => {
     // The You tab is now just two media-background cards that navigate to the
     // voice list and the dictionary editor.
