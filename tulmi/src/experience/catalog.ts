@@ -3476,11 +3476,13 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       if (personality?.activeTone) {
         flags["kb.personality.activeTone"] = personality.activeTone;
       }
-      // Tone popover data (Android reads `kb.personality.tones`). The built-in
-      // tone labels as a JSON array of strings — serialized the same way as
-      // `kb.personality.pinned` above. Static (not per-user) so the Android
-      // tone popover has data to render even before the user pins anything.
-      flags["kb.personality.tones"] = Object.values(TONE_LABELS);
+      // Fast-tone list for the long-press tone sheet (iOS + Android read
+      // `kb.personality.tones`). Rich `{ id, label }` shape so the clients apply
+      // the exact tone id (→ per-tone refine) and the labels/order/set are fully
+      // backend-controlled — rename, reorder, or add a tone with no app update.
+      flags["kb.personality.tones"] = (
+        Object.keys(TONE_LABELS) as Array<keyof typeof TONE_LABELS>
+      ).map((id) => ({ id, label: TONE_LABELS[id] }));
       return flags;
     })(),
     // Was 600 (10 min). A live theme fix couldn't reach users mid-session.
