@@ -29,13 +29,36 @@ async function withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T>
   const prev = userLocks.get(userId) ?? Promise.resolve();
   let release!: () => void;
   const gate = new Promise<void>((r) => (release = r));
-  userLocks.set(userId, prev.then(() => gate));
+  const tail = prev.then(() => gate);
+  userLocks.set(userId, tail);
   await prev.catch(() => {});
   try {
     return await fn();
   } finally {
     release();
+    // Drop the entry once this is the last waiter, so the map doesn't grow one
+    // permanent entry per distinct user for the process lifetime.
+    if (userLocks.get(userId) === tail) userLocks.delete(userId);
   }
+}
+
+/**
+ * Locked read-modify-write of the whole personality doc. `mutate` gets the
+ * current doc and returns the next one; the get→save cycle runs under the
+ * per-user lock so a PUT / pin update can't clobber a concurrent tone or
+ * vocabulary write (which take the same lock). Routes that used to do an
+ * un-serialized getPersonality()→savePersonality() must go through this.
+ */
+export async function updatePersonality(
+  user: AuthedUser,
+  mutate: (current: Personality) => Personality,
+): Promise<Personality> {
+  return withUserLock(user.id, async () => {
+    const current = await getPersonality(user);
+    const next = mutate(current);
+    await savePersonality(user, next);
+    return next;
+  });
 }
 
 export async function getPersonality(user: AuthedUser): Promise<Personality> {

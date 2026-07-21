@@ -43,10 +43,10 @@ import { assist, draftReply, inferStyle, LLM_TONES } from "./pipeline/cleanup.js
 import { synthesize } from "./pipeline/tts.js";
 import {
   getPersonality,
-  savePersonality,
   resolvePersonality,
   learnVocabularyCorrections,
   upsertPresetTone,
+  updatePersonality,
 } from "./personality/store.js";
 import {
   buildBootstrap,
@@ -709,11 +709,10 @@ app.put("/v1/personality", { config: AUTHED_RL }, async (req, reply) => {
   try {
     // Merge the partial update into the existing profile so a PUT with just
     // { activePresetId } doesn't blow away the user's vocabulary, sign-off,
-    // and pinned list. Full replace was the wrong contract now that the new
-    // personality screen makes small, frequent updates.
-    const existing = await getPersonality(user);
-    await savePersonality(user, { ...existing, ...personality });
-    const res: PersonalityResponse = { personality: { ...existing, ...personality } };
+    // and pinned list. Under the per-user lock (updatePersonality) so this
+    // shallow-merge can't clobber a concurrent tone / vocab / pin write.
+    const merged = await updatePersonality(user, (existing) => ({ ...existing, ...personality }));
+    const res: PersonalityResponse = { personality: merged };
     return reply.send(res);
   } catch (err) {
     req.log.error(err);
@@ -769,22 +768,24 @@ app.post("/v1/personality/pin", { config: AUTHED_RL }, async (req, reply) => {
   const presetId = String(body.presetId ?? "").trim();
   if (!presetId) return reply.code(400).send({ code: "bad_request", message: "Missing presetId" });
   try {
-    const existing = await getPersonality(user);
-    const current = Array.isArray(existing.pinnedPresetIds) ? [...existing.pinnedPresetIds] : [];
-    // Toggle when `pinned` is omitted (star icon UX). Otherwise honor the
-    // explicit flag — lets a settings screen force-add or force-remove.
-    const explicit = typeof body.pinned === "boolean" ? body.pinned : !current.includes(presetId);
-    let next: string[];
-    if (explicit) {
-      // Add — cap at MAX_PINNED, evicting the oldest to make room. Matches
-      // the "star already has 6 → drop the first" UX shipping apps use.
-      if (current.includes(presetId)) next = current;
-      else next = [...current, presetId].slice(-MAX_PINNED);
-    } else {
-      next = current.filter((id) => id !== presetId);
-    }
-    const merged: Personality = { ...existing, pinnedPresetIds: next };
-    await savePersonality(user, merged);
+    // Read-modify-write under the per-user lock so a concurrent PUT / tone /
+    // vocab write can't clobber the pin change (and vice-versa).
+    let next: string[] = [];
+    const merged = await updatePersonality(user, (existing) => {
+      const current = Array.isArray(existing.pinnedPresetIds) ? [...existing.pinnedPresetIds] : [];
+      // Toggle when `pinned` is omitted (star icon UX). Otherwise honor the
+      // explicit flag — lets a settings screen force-add or force-remove.
+      const explicit = typeof body.pinned === "boolean" ? body.pinned : !current.includes(presetId);
+      if (explicit) {
+        // Add — cap at MAX_PINNED, evicting the oldest to make room. Matches
+        // the "star already has 6 → drop the first" UX shipping apps use.
+        if (current.includes(presetId)) next = current;
+        else next = [...current, presetId].slice(-MAX_PINNED);
+      } else {
+        next = current.filter((id) => id !== presetId);
+      }
+      return { ...existing, pinnedPresetIds: next };
+    });
     return reply.send({ personality: merged, pinnedPresetIds: next });
   } catch (err) {
     req.log.error(err);
@@ -855,8 +856,9 @@ app.post("/v1/personality/learn", { config: AUTHED_RL }, async (req, reply) => {
 
   try {
     const inferred = await inferStyle(body.sample);
-    const merged = { ...(await getPersonality(user)), ...inferred };
-    await savePersonality(user, merged);
+    // Merge under the per-user lock so the inferred style can't clobber a
+    // concurrent tone / pin / vocab write.
+    const merged = await updatePersonality(user, (existing) => ({ ...existing, ...inferred }));
     const res: PersonalityResponse = { personality: merged };
     return reply.send(res);
   } catch (err) {
@@ -1150,7 +1152,10 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
   }
 
   const admin = supabase();
-  const summary = { personality: false, profile: false, usageEvents: 0, authAccount: false };
+  const summary = {
+    personality: false, profile: false, usageEvents: 0,
+    history: false, pushTokens: false, authAccount: false,
+  };
 
   if (admin) {
     // Delete usage rows and application-level tables. Errors are logged but
@@ -1172,6 +1177,20 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
       const { error } = await admin.from("profiles").delete().eq("user_id", user.id);
       summary.profile = !error;
     } catch (err) { req.log.error({ err }, "delete profiles"); }
+
+    // Verbatim dictated input + output — the most sensitive per-user data. The
+    // endpoint claims "all associated data" is deleted, so this MUST be cleared
+    // (it was silently left behind before).
+    try {
+      const { error } = await admin.from("cleanup_history").delete().eq("user_id", user.id);
+      summary.history = !error;
+    } catch (err) { req.log.error({ err }, "delete cleanup_history"); }
+
+    // Push tokens (device targeting) — also user-identifying; clear them too.
+    try {
+      const { error } = await admin.from("push_tokens").delete().eq("user_id", user.id);
+      summary.pushTokens = !error;
+    } catch (err) { req.log.error({ err }, "delete push_tokens"); }
 
     // Auth deletion requires the service-role key. When it fails we return a
     // partial-success message rather than pretending the account is gone.
