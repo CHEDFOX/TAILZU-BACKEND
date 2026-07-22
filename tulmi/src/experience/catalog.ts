@@ -3187,10 +3187,11 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       // is a mode-switcher whose LABEL and TARGET LAYOUT depend on the current
       // state.layoutId. We emit one variant per mode with visibleIf gates.
       //
-      // Flex ratios (archagon, measured 375pt): 123 = globe = 1.29,
-      // space = 5.79, return = 2.78. The shipped SDUI renderer now honors
-      // these proportionally on every screen size (Pro / Plus / Pro Max
-      // scale correctly, no more hardcoded widths).
+      // Flex ratios: the mode-switch key (123 / ABC) is set EQUAL to the return
+      // key (2.75) so the space bar sits dead-center of the row — equal flex on
+      // both flanks is what centers it — and the numbers key matches the size of
+      // the return/search key. The SDUI renderer honors these proportionally on
+      // every screen size (Pro / Plus / Pro Max scale correctly, no hardcoded widths).
 
       // Mode switcher — two variants, each visibleIf-gated:
 
@@ -3208,7 +3209,7 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
             type: "LetterKey",
             props: { char: "123" },
             on: { onPress: { kind: "switchLayout", language: "123" } },
-            style: { flex: 1.35, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
+            style: { flex: 2.75, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
           { type: "SpaceKey", style: { flex: 7.08, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
           { type: "ReturnKey", style: { flex: 2.75, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
@@ -3228,7 +3229,7 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
             type: "LetterKey",
             props: { char: "ABC" },
             on: { onPress: { kind: "switchLayout", language: "en" } },
-            style: { flex: 1.35, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
+            style: { flex: 2.75, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
           { type: "SpaceKey", style: { flex: 7.08, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
           { type: "ReturnKey", style: { flex: 2.75, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
@@ -3369,12 +3370,10 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       //   flow_arm_manual → shown when iOS refused the auto-open (open by hand)
       flow_start_hint: "",
       flow_arming: "",
-      // Shown ONLY when the keyboard tried to open the app and iOS refused it
-      // (extensions can't reliably launch their host app). Blank here would
-      // OVERRIDE the Swift fallback and leave a failed mic tap totally silent —
-      // which reads as a dead/grey mic. Keep it actionable so the user knows the
-      // one-time step: open Tailzu once, which arms the background mic.
-      flow_arm_manual: "Open Tailzu once to turn on voice — then come back.",
+      // Kept blank — the keyboard stays icon-only, no hint text over the keys
+      // (user preference). A refused open is silent; the mic glyph is the only
+      // cue. Put a string back here (OTA, no rebuild) to reintroduce guidance.
+      flow_arm_manual: "",
     },
     root,
     actions,
