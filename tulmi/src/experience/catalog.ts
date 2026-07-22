@@ -172,12 +172,13 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
 
         // Flow Session warm-keeping (iOS). When true, the app re-arms the
         // background mic on every foreground so the keyboard dictates WITHOUT
-        // reopening the app (the Wispr Flow feel). Costs background mic time
-        // (recording indicator + battery), so it's opt-in here — flip to false
-        // to fall back to arm-on-explicit-start. idleTimeoutMs is how long the
-        // armed session survives idle before it auto-disarms (10 min here vs the
-        // 5 min default, so the warm window is long).
-        "kb.flow.armOnForeground": true,
+        // reopening the app (the Wispr Flow feel). DISABLED for now: on a build
+        // without the "don't publish a live session when the engine failed to
+        // start" fix, a failed arm-on-foreground leaves a false-active session
+        // that makes every mic tap animate into a dead mic. Re-enable once a
+        // build with that arm() hardening ships. Costs background mic time
+        // (indicator + battery) either way.
+        "kb.flow.armOnForeground": false,
         "kb.flow.idleTimeoutMs": 600000,
       };
 
