@@ -3369,7 +3369,12 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       //   flow_arm_manual → shown when iOS refused the auto-open (open by hand)
       flow_start_hint: "",
       flow_arming: "",
-      flow_arm_manual: "",
+      // Shown ONLY when the keyboard tried to open the app and iOS refused it
+      // (extensions can't reliably launch their host app). Blank here would
+      // OVERRIDE the Swift fallback and leave a failed mic tap totally silent —
+      // which reads as a dead/grey mic. Keep it actionable so the user knows the
+      // one-time step: open Tailzu once, which arms the background mic.
+      flow_arm_manual: "Open Tailzu once to turn on voice — then come back.",
     },
     root,
     actions,
