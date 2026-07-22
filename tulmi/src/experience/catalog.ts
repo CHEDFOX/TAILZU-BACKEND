@@ -463,12 +463,12 @@ export const PAYWALL_CONFIG: PaywallConfig = {
   privacy: "https://tailzu.space/privacy",
   dismissible: true,
   dismissLabel: "Not now",
-  // Must match the RevenueCat ENTITLEMENT IDENTIFIER exactly (case- and
-  // space-sensitive). The app calls hasEntitlement(this) — a mismatch means a
-  // paid user is never recognized as subscribed. Set to the identifier you
-  // created in RevenueCat ("on air"). ⚠️ Confirm the exact string in RevenueCat →
-  // Entitlements: if it's actually "on_air" / "onair" / "On Air", use that.
-  entitlement: "on air",
+  // The RevenueCat entitlement IDENTIFIER (case/space-sensitive). The app calls
+  // hasEntitlement(this). Per the RevenueCat dashboard the Identifier is
+  // "TAILZU AIR" — "ON AIR" is only the Display Name, which the SDK does NOT
+  // match on. Products tailzu_annu (Elite) + TAILZU_MONT (Lite) are attached to
+  // this entitlement, so once a purchase completes the app unlocks.
+  entitlement: "TAILZU AIR",
 };
 
 /**
