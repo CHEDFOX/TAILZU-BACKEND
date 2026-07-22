@@ -463,7 +463,12 @@ export const PAYWALL_CONFIG: PaywallConfig = {
   privacy: "https://tailzu.space/privacy",
   dismissible: true,
   dismissLabel: "Not now",
-  entitlement: "pro",
+  // Must match the RevenueCat ENTITLEMENT IDENTIFIER exactly (case- and
+  // space-sensitive). The app calls hasEntitlement(this) — a mismatch means a
+  // paid user is never recognized as subscribed. Set to the identifier you
+  // created in RevenueCat ("on air"). ⚠️ Confirm the exact string in RevenueCat →
+  // Entitlements: if it's actually "on_air" / "onair" / "On Air", use that.
+  entitlement: "on air",
 };
 
 /**
