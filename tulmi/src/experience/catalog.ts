@@ -169,6 +169,16 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
         // first thing they complete there. (Client default is ["home"]; this
         // moves it to You.)
         "profileGate.screenIds": ["personality"],
+
+        // Flow Session warm-keeping (iOS). When true, the app re-arms the
+        // background mic on every foreground so the keyboard dictates WITHOUT
+        // reopening the app (the Wispr Flow feel). Costs background mic time
+        // (recording indicator + battery), so it's opt-in here — flip to false
+        // to fall back to arm-on-explicit-start. idleTimeoutMs is how long the
+        // armed session survives idle before it auto-disarms (10 min here vs the
+        // 5 min default, so the warm window is long).
+        "kb.flow.armOnForeground": true,
+        "kb.flow.idleTimeoutMs": 600000,
       };
 
       const reg = getMediaRegistryFn?.() ?? {};
