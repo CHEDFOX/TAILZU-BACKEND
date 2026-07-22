@@ -556,12 +556,12 @@ function paywallScreen(): ScreenResponse {
       borderRadius: 16,
       borderWidth: 1.5,
       borderColor: {
-        eq: ["state.selectedPlanId", plan.id],
+        eq: ["selectedPlanId", plan.id],
         then: plan.accent ?? THEME.color.primary,
         else: THEME.color.border,
       } as unknown as string,
       backgroundColor: {
-        eq: ["state.selectedPlanId", plan.id],
+        eq: ["selectedPlanId", plan.id],
         then: "rgba(255,255,255,0.06)",
         else: "transparent",
       } as unknown as string,
