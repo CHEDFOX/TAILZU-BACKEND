@@ -3436,11 +3436,15 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // Multi-touch / rolling key plane (iOS). Routes the character keys
         // through the custom KeyPlaneView for true rolling + two-thumb typing
         // (the main fast-typing gap vs the system keyboard). iOS-only — Android
-        // ignores this flag. OTA-reversible: set false to fall straight back to
-        // the per-button grid if anything misbehaves on device.
-        // Caveat (v1): accent long-press trays are not routed through the plane
-        // yet, so held-key accent menus are unavailable while it's on.
-        "kb.keyPlane.enabled": true,
+        // ignores this flag.
+        // DISABLED: the v1 plane was intercepting touch (buttons go
+        // userInteraction-off while it's on) and dropping near-key / drifted
+        // taps — the "only a firm, dead-center tap types" report. Falling back to
+        // the per-button grid, which (a) is the tested path, (b) restores accent
+        // long-press trays, and (c) picks up the new hit-slop touch target so
+        // gaps + finger drift still register. Re-enable once the plane's frame
+        // geometry is verified on-device (v2). OTA-reversible either way.
+        "kb.keyPlane.enabled": false,
         // Idle mic mark inset (points). The TailzuMark spans its full canvas
         // width, so 0 makes the "structure" touch the button's side walls
         // instead of sitting small in the middle. OTA-tunable — takes effect on
