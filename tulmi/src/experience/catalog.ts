@@ -3434,17 +3434,18 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // "kb.callout.bg": "#FFFFFF",
         // "kb.callout.text": "#111111",
         // Multi-touch / rolling key plane (iOS). Routes the character keys
-        // through the custom KeyPlaneView for true rolling + two-thumb typing
-        // (the main fast-typing gap vs the system keyboard). iOS-only — Android
-        // ignores this flag.
-        // DISABLED: the v1 plane was intercepting touch (buttons go
-        // userInteraction-off while it's on) and dropping near-key / drifted
-        // taps — the "only a firm, dead-center tap types" report. Falling back to
-        // the per-button grid, which (a) is the tested path, (b) restores accent
-        // long-press trays, and (c) picks up the new hit-slop touch target so
-        // gaps + finger drift still register. Re-enable once the plane's frame
-        // geometry is verified on-device (v2). OTA-reversible either way.
-        "kb.keyPlane.enabled": false,
+        // through the custom KeyPlaneView for true rolling + two-thumb typing +
+        // gap routing (the fast-typing gap vs the system keyboard). iOS-only —
+        // Android ignores this flag.
+        // Re-enabled after hardening the plane's key detection: it now re-derives
+        // the key rects at the start of every touch (touchesBegan → refreshFrames)
+        // instead of trusting a layout-time cache that could go stale and
+        // mis-detect keys — the earlier "only a dead-center tap types" cause.
+        // The same build also carries the hit-slop per-button grid, so this flag
+        // is a clean OTA A/B switch: false falls straight back to that grid
+        // (which also restores accent long-press trays) if a device ever shows
+        // trouble — no rebuild needed.
+        "kb.keyPlane.enabled": true,
         // Idle mic mark inset (points). The TailzuMark spans its full canvas
         // width, so 0 makes the "structure" touch the button's side walls
         // instead of sitting small in the middle. OTA-tunable — takes effect on
