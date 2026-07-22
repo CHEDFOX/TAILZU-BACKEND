@@ -160,7 +160,14 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
         // a separate fetch.
         "paywall.entitlement": PAYWALL_CONFIG.entitlement ?? "pro",
         "paywall.blockUntilEntitled": false,
-        "paywall.showAfterOnboarding": true,
+        // DISABLED for now: the paywall was auto-showing on every open (user
+        // lacks `pro`) and its purchase fails with "could not complete purchase"
+        // because the App Store IAP products aren't purchasable yet (not
+        // "Ready to Submit" / Paid Apps Agreement / sandbox tester). That blocked
+        // the mic-flow testing. Re-enable (true) once the IAP products are live in
+        // App Store Connect + RevenueCat so a purchase actually completes. The
+        // paywall screen itself still exists and can be opened manually.
+        "paywall.showAfterOnboarding": false,
         "paywall.config": PAYWALL_CONFIG as unknown as Record<string, unknown>,
 
         // The "Hello, name + gender" profile card shows as an overlay on these
