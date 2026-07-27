@@ -6,6 +6,7 @@
  * JWT, and sends it to us; we verify it here to resolve the user id.
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { getConfig } from "../config.js";
 
 let client: SupabaseClient | null = null;
@@ -89,14 +90,49 @@ export async function resolveUser(
     return { id: "dev-user", email: "dev@flow.local" };
   }
 
-  const sb = verifyClient();
-  if (!sb) return null;
-
   const token = authorization?.replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
+
+  // Static bearer tokens (desktop app). Checked BEFORE the Supabase round-trip:
+  // these are long random secrets from STATIC_BEARER_TOKENS, not JWTs, so they
+  // never expire on the client. Each token maps to a stable synthetic user id
+  // derived from its hash — per-token identity for metering/personality without
+  // a Supabase account. Compare timing-safe so the list can't be probed.
+  const staticUser = matchStaticToken(token, cfg.STATIC_BEARER_TOKENS);
+  if (staticUser) return staticUser;
+
+  const sb = verifyClient();
+  if (!sb) return null;
 
   const { data, error } = await sb.auth.getUser(token);
   if (error || !data.user) return null;
 
   return { id: data.user.id, email: data.user.email ?? undefined, token };
+}
+
+/**
+ * Match a presented bearer against the STATIC_BEARER_TOKENS list (comma-
+ * separated secrets). Comparison is over SHA-256 digests via timingSafeEqual —
+ * constant-time and length-independent. Tokens shorter than 16 chars are
+ * ignored so a lazy "test" entry can't become an auth bypass. Returns the
+ * synthetic user or null. AuthedUser.token is left unset on purpose: it's not a
+ * Supabase JWT, so RLS-scoped clients can't use it — data helpers fall back to
+ * the service-role client or memory.
+ */
+function matchStaticToken(
+  presented: string,
+  configured: string | undefined,
+): AuthedUser | null {
+  if (!configured) return null;
+  const presentedHash = createHash("sha256").update(presented).digest();
+  for (const raw of configured.split(",")) {
+    const secret = raw.trim();
+    if (secret.length < 16) continue;
+    const secretHash = createHash("sha256").update(secret).digest();
+    if (timingSafeEqual(presentedHash, secretHash)) {
+      const idTag = secretHash.toString("hex").slice(0, 12);
+      return { id: `static-${idTag}`, email: undefined };
+    }
+  }
+  return null;
 }

@@ -115,6 +115,14 @@ const EnvSchema = z.object({
   // admin endpoints refuse every request. Set to a long random string.
   ADMIN_SECRET: z.string().optional(),
 
+  // Static bearer tokens for non-Supabase clients (the desktop app). A
+  // comma-separated list of LONG random secrets; a request whose Authorization
+  // bearer matches one (timing-safe) is authenticated as a stable synthetic
+  // user derived from the token — no Supabase round-trip, no JWT expiry (a
+  // Supabase access token dies in ~1h, which would break a config-file client
+  // hourly). Mint with `openssl rand -hex 32`. Unset → feature off.
+  STATIC_BEARER_TOKENS: z.string().optional(),
+
   // Input length caps — refuse any request whose text field exceeds this many
   // characters, so a runaway client can't burn LLM budget on huge inputs. 10k
   // chars ≈ 2500 tokens ≈ a healthy 2-minute dictation.
