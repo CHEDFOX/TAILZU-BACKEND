@@ -38,6 +38,10 @@ services:
     # named docker volume; contents survive `docker compose down/up`.
     volumes:
       - tulmi_media:/data/media
+      # Desktop-app installers, served at /downloads/* (see the /download page).
+      # Host-side bind mount so publishing a release is just:
+      #   scp "Tailzu-Setup.exe" server:~/tulmi/downloads/
+      - ./downloads:/data/downloads
     restart: unless-stopped
     # Docker uses the image's HEALTHCHECK directive by default; restate it here
     # so a misconfigured base image can't silently disable liveness probing.

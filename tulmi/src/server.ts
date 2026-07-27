@@ -14,6 +14,7 @@
  * resolved here on the backend (the app just sends the inputs).
  */
 import { timingSafeEqual } from "node:crypto";
+import fs from "node:fs";
 
 /** Constant-time string comparison — avoids leaking a secret via response
  * timing. Returns false on any length mismatch (lengths aren't secret). */
@@ -32,6 +33,7 @@ import transcribeStream from "./routes/transcribe-stream.js";
 import { registerMediaRoutes, loadMediaRegistry, getMediaRegistry } from "./routes/media.js";
 import { PRIVACY_POLICY_HTML, PRIVACY_POLICY_EFFECTIVE } from "./routes/policies/privacy.js";
 import { TERMS_HTML, TERMS_EFFECTIVE } from "./routes/policies/terms.js";
+import { DOWNLOAD_PAGE_HTML } from "./routes/download.js";
 import { getConfig, VERSION } from "./config.js";
 import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
 import { localUserId } from "./auth/jwt.js";
@@ -190,6 +192,22 @@ registerMediaRoutes(app, {
   rateLimit: { max: cfg.RATE_LIMIT_MAX, timeWindow: cfg.RATE_LIMIT_WINDOW_MS },
 });
 
+// --- Desktop-app downloads ---------------------------------------------------
+// Installer binaries under DOWNLOADS_DIR are served at /downloads/* with
+// STABLE filenames (Tailzu-Setup.exe / Tailzu.dmg / Tailzu.AppImage), so the
+// /download landing page's links never change — publishing a release is just
+// replacing a file on the server. Short cache (files are replaced in place,
+// unlike the sha-addressed /media files).
+const DOWNLOADS_DIR = process.env.DOWNLOADS_DIR || "/data/downloads";
+fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+await app.register(fastifyStatic, {
+  root: DOWNLOADS_DIR,
+  prefix: "/downloads/",
+  decorateReply: false,
+  cacheControl: true,
+  maxAge: "1h",
+});
+
 await app.register(transcribeStream);
 
 function countWords(text: string): number {
@@ -230,6 +248,15 @@ app.get("/terms", async (_req, reply) => {
   reply.type("text/html; charset=utf-8");
   reply.header("Cache-Control", "public, max-age=3600");
   return TERMS_HTML;
+});
+
+// OS-aware desktop-app download page (tailzu.space/download). The page itself
+// HEAD-checks /downloads/* so platforms without a published installer show as
+// "coming soon" instead of a dead link.
+app.get("/download", async (_req, reply) => {
+  reply.type("text/html; charset=utf-8");
+  reply.header("Cache-Control", "public, max-age=3600");
+  return DOWNLOAD_PAGE_HTML;
 });
 
 // --- Universal Links / App Links (AASA + assetlinks) -----------------------
