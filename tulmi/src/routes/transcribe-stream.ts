@@ -63,7 +63,12 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
 
   fastify.get(
     "/v1/transcribe-stream",
-    { websocket: true },
+    {
+      websocket: true,
+      // Throttle the HTTP upgrade like every authed route — otherwise an
+      // anonymous connect flood amplifies per-connection auth lookups.
+      config: { rateLimit: { max: cfg.RATE_LIMIT_MAX, timeWindow: cfg.RATE_LIMIT_WINDOW_MS } },
+    },
     (socket: any, req: FastifyRequest) => {
       let dg: any = null;
       let closed = false;

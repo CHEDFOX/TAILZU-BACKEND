@@ -72,6 +72,15 @@ export const THEME: ThemeTokens = {
   },
 };
 
+/**
+ * Flow Session idle window (ms) — how long the app keeps the background mic
+ * warm after the last dictation. ONE constant serves every surface (bootstrap
+ * flags, keyboard config, flow_arm screen's armFlowSession action): the same
+ * key used to ship 10 min in bootstrap but 5 min in the keyboard config, so
+ * app and keyboard disagreed on session lifetime.
+ */
+const FLOW_IDLE_TIMEOUT_MS = 600_000;
+
 const NAV: NavigationShell = {
   kind: "tabs",
   // Settings is no longer a bottom tab — it's reached via the ⚙ gear in the
@@ -186,7 +195,7 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
         // build with that arm() hardening ships. Costs background mic time
         // (indicator + battery) either way.
         "kb.flow.armOnForeground": false,
-        "kb.flow.idleTimeoutMs": 600000,
+        "kb.flow.idleTimeoutMs": FLOW_IDLE_TIMEOUT_MS,
       };
 
       const reg = getMediaRegistryFn?.() ?? {};
@@ -432,8 +441,8 @@ export const PAYWALL_CONFIG: PaywallConfig = {
   plans: [
     {
       id: "annual",
-      // ⚠️ Verify against RevenueCat/App Store Connect — this column looked
-      // truncated ("tailzu_annu"). Must be the EXACT full product identifier.
+      // VERIFIED against the RevenueCat dashboard (entitlement "TAILZU AIR",
+      // Associated products): "tailzu_annu" is the exact full identifier.
       productId: "tailzu_annu",
       offeringId: "default",
       packageId: "$rc_annual",
@@ -446,7 +455,7 @@ export const PAYWALL_CONFIG: PaywallConfig = {
     },
     {
       id: "monthly",
-      // ⚠️ Verify — looked truncated ("TAILZU_MONT"). Exact full product id.
+      // VERIFIED against the RevenueCat dashboard: "TAILZU_MONT" is exact.
       productId: "TAILZU_MONT",
       offeringId: "default",
       packageId: "$rc_monthly",
@@ -2605,7 +2614,7 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
       doArm: {
         kind: "sequence",
         actions: [
-          { kind: "armFlowSession", idleTimeoutMs: 300000 },
+          { kind: "armFlowSession", idleTimeoutMs: FLOW_IDLE_TIMEOUT_MS },
           { kind: "setState", path: "armed", value: true },
           { kind: "haptic", style: "success" },
         ],
@@ -3458,6 +3467,11 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // (which also restores accent long-press trays) if a device ever shows
         // trouble — no rebuild needed.
         "kb.keyPlane.enabled": true,
+        // Debug build stamp (orange "K1" in the keyboard's corner). The Swift
+        // default is FALSE so store builds never show it. To verify a fresh
+        // binary + live OTA delivery in one shot: flip this to true + cache
+        // bump — the stamp appearing proves both — then flip back off.
+        "kb.buildStamp.enabled": false,
         // Idle mic mark inset (points). The TailzuMark spans its full canvas
         // width, so 0 makes the "structure" touch the button's side walls
         // instead of sitting small in the middle. OTA-tunable — takes effect on
@@ -3478,7 +3492,7 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // How long a Flow Session stays live (mic held in the background) with
         // no dictation before it must be re-armed by re-opening the app.
         // Wispr's default is 5 min; raise for fewer app hops.
-        "kb.flow.idleTimeoutMs": 300000,
+        "kb.flow.idleTimeoutMs": FLOW_IDLE_TIMEOUT_MS,
         // Flow mic button glyphs (SF Symbol names). Wispr's exact model:
         //   startGlyph → shown when NO session is live (the "Start Flow" state;
         //                first tap opens the app to arm).

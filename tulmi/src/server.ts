@@ -199,7 +199,13 @@ registerMediaRoutes(app, {
 // replacing a file on the server. Short cache (files are replaced in place,
 // unlike the sha-addressed /media files).
 const DOWNLOADS_DIR = process.env.DOWNLOADS_DIR || "/data/downloads";
-fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+try {
+  fs.mkdirSync(DOWNLOADS_DIR, { recursive: true });
+} catch (err) {
+  // Non-Docker boots (local dev, CI) may not be able to create /data — that
+  // must not kill the server; /downloads just 404s until the dir exists.
+  console.warn(`[downloads] could not create ${DOWNLOADS_DIR}:`, (err as Error).message);
+}
 await app.register(fastifyStatic, {
   root: DOWNLOADS_DIR,
   prefix: "/downloads/",
@@ -447,6 +453,12 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
     return reply.code(400).send({ code: "bad_request", message: "Missing 'audio' file" });
   }
 
+  // The multipart text fields feed the LLM prompt exactly like /v1/refine's
+  // JSON body does — cap them the same way (multipart's own fieldSize limit is
+  // ~1 MiB, far above MAX_TEXT_LENGTH).
+  const fieldOver = tooLong(context) ?? tooLong(tonePrompt);
+  if (fieldOver) return reply.code(413).send({ code: "bad_request", message: fieldOver });
+
   const quota = await enforceQuota(user);
   if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
 
@@ -499,7 +511,10 @@ app.post("/v1/refine", { config: AUTHED_RL }, async (req, reply) => {
   if (!body.text || !body.text.trim()) {
     return reply.code(400).send({ code: "bad_request", message: "Missing 'text'" });
   }
-  const over = tooLong(body.text);
+  // Cap EVERY prompt-bound text field, not just body.text — context/tonePrompt
+  // flow into the LLM prompt too, and uncapped they let one request smuggle up
+  // to the 1 MB bodyLimit of unmetered input tokens past MAX_TEXT_LENGTH.
+  const over = tooLong(body.text) ?? tooLong(body.context) ?? tooLong(body.tonePrompt);
   if (over) return reply.code(413).send({ code: "bad_request", message: over });
 
   const quota = await enforceQuota(user);
@@ -572,7 +587,8 @@ const runToneRefine = (toneId: string) =>
     if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
     const body = (req.body ?? {}) as { text?: string; language?: string; context?: string; tonePrompt?: string };
     if (!body.text || !body.text.trim()) return reply.code(400).send({ code: "bad_request", message: "Missing 'text'" });
-    const over = tooLong(body.text);
+    // Same cap discipline as /v1/refine: every prompt-bound field counts.
+    const over = tooLong(body.text) ?? tooLong(body.context) ?? tooLong(body.tonePrompt);
     if (over) return reply.code(413).send({ code: "bad_request", message: over });
     const quota = await enforceQuota(user);
     if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
@@ -1382,7 +1398,10 @@ app.register(async (instance) => {
   const MAX_STREAM_BYTES = 30 * 1024 * 1024;
   const IDLE_TIMEOUT_MS = 60_000;
 
-  instance.get(WS_PATH, { websocket: true }, (socket, req) => {
+  // Rate-limited like every other authed route: the limit applies to the HTTP
+  // upgrade request, so an anonymous connect flood can't amplify per-connection
+  // resolveUser calls into the Supabase auth API.
+  instance.get(WS_PATH, { websocket: true, config: AUTHED_RL }, (socket, req) => {
     const send = (msg: ServerMessage) => {
       if (socket.readyState === 1) socket.send(JSON.stringify(msg));
     };

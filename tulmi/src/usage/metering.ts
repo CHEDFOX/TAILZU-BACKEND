@@ -16,7 +16,46 @@ export interface MeterInput extends UsageRecord {
   source: "rest" | "stream";
 }
 
+// ---------------------------------------------------------------------------
+// Static-token (desktop) users: their synthetic ids ("static-<hex>") are not
+// UUIDs and don't exist in auth.users, so every usage_events write violates the
+// FK and every read errors — which left desktop usage unmetered AND, once the
+// FREE_MONTHLY_* caps are enabled, made enforceQuota's fail-closed branch 429
+// every desktop request forever. Meter them in-process instead: correct within
+// a single-container deployment (the only deployment shape), resets on restart
+// (acceptable for a hand-minted token set), bounded by monthly pruning.
+// ---------------------------------------------------------------------------
+interface MemEvent { at: number; audioSeconds: number; words: number }
+const memUsage = new Map<string, MemEvent[]>();
+const MEM_RETENTION_MS = 35 * 24 * 60 * 60 * 1000; // > 1 month, quota window
+
+function isStaticUser(user: AuthedUser): boolean {
+  return user.id.startsWith("static-");
+}
+
+function memRecord(user: AuthedUser, audioSeconds: number, words: number): void {
+  const now = Date.now();
+  const list = (memUsage.get(user.id) ?? []).filter((e) => now - e.at < MEM_RETENTION_MS);
+  list.push({ at: now, audioSeconds, words });
+  memUsage.set(user.id, list);
+}
+
+function memSince(user: AuthedUser, sinceMs: number): { audioSeconds: number; words: number } {
+  const out = { audioSeconds: 0, words: 0 };
+  for (const e of memUsage.get(user.id) ?? []) {
+    if (e.at >= sinceMs) {
+      out.audioSeconds += e.audioSeconds;
+      out.words += e.words;
+    }
+  }
+  return out;
+}
+
 export async function recordUsage(input: MeterInput): Promise<void> {
+  if (isStaticUser(input.user)) {
+    memRecord(input.user, input.audioSeconds, input.words);
+    return;
+  }
   const sb = dataClientFor(input.user);
 
   if (!sb) {
@@ -47,6 +86,17 @@ export async function recordUsage(input: MeterInput): Promise<void> {
 export async function usageSummary(user: AuthedUser): Promise<UsageSummary> {
   const empty = () => ({ words: 0, audioSeconds: 0, requests: 0 });
   const out: UsageSummary = { month: empty(), total: empty() };
+  if (isStaticUser(user)) {
+    const now = new Date();
+    const monthStartMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+    for (const e of memUsage.get(user.id) ?? []) {
+      out.total.words += e.words; out.total.audioSeconds += e.audioSeconds; out.total.requests += 1;
+      if (e.at >= monthStartMs) {
+        out.month.words += e.words; out.month.audioSeconds += e.audioSeconds; out.month.requests += 1;
+      }
+    }
+    return out;
+  }
   const sb = dataClientFor(user);
   if (!sb) return out;
 
@@ -171,6 +221,7 @@ export async function usageSince(
   user: AuthedUser,
   sinceIso: string,
 ): Promise<{ audioSeconds: number; words: number } | null> {
+  if (isStaticUser(user)) return memSince(user, Date.parse(sinceIso) || 0);
   const sb = dataClientFor(user);
   if (!sb) return null;
 

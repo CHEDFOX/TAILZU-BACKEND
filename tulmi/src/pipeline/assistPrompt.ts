@@ -65,8 +65,13 @@ export function toneGuidance(
       if (preset?.promptStyle) parts.push(preset.promptStyle);
     }
   }
-  // Global user prefs apply regardless of where the voice came from.
-  if (personality?.customInstructions?.trim()) parts.push(personality.customInstructions.trim());
+  // Global user prefs apply regardless of where the voice came from. Sliced
+  // like the inline tone prompt — an unbounded personality field (client-
+  // suppliable via the refine body's `personality` override) must not smuggle
+  // arbitrary prompt length past the request caps.
+  if (personality?.customInstructions?.trim()) {
+    parts.push(personality.customInstructions.trim().slice(0, 2_000));
+  }
   if (personality?.signature?.trim()) {
     parts.push(`If a sign-off fits the message, you may use: ${personality.signature.trim()}`);
   }
