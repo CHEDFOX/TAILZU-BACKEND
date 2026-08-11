@@ -3471,7 +3471,7 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // default is FALSE so store builds never show it. To verify a fresh
         // binary + live OTA delivery in one shot: flip this to true + cache
         // bump — the stamp appearing proves both — then flip back off.
-        "kb.buildStamp.enabled": false,
+        "kb.buildStamp.enabled": true,
         // Idle mic mark inset (points). The TailzuMark spans its full canvas
         // width, so 0 makes the "structure" touch the button's side walls
         // instead of sitting small in the middle. OTA-tunable — takes effect on
