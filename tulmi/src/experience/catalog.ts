@@ -194,7 +194,7 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
         // that makes every mic tap animate into a dead mic. Re-enable once a
         // build with that arm() hardening ships. Costs background mic time
         // (indicator + battery) either way.
-        "kb.flow.armOnForeground": false,
+        "kb.flow.armOnForeground": true,
         "kb.flow.idleTimeoutMs": FLOW_IDLE_TIMEOUT_MS,
       };
 
