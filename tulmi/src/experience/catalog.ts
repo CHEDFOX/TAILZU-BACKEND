@@ -3472,6 +3472,13 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // binary + live OTA delivery in one shot: flip this to true + cache
         // bump — the stamp appearing proves both — then flip back off.
         "kb.buildStamp.enabled": true,
+        // Cold-open field diagnostics (K3+ binaries). With this on, tapping the
+        // keyboard mic shows "<stamp> · <path>" in the status bar — e.g.
+        // "K3 · app✓@2 open=NO" (found UIApplication, iOS refused the open) or
+        // "K3 · app✗ legacy=YES" (no UIApplication in the chain, legacy path
+        // claimed a hit). A console-log substitute readable on the phone.
+        // Flip OFF (with the deploy's automatic cache bump) once diagnosed.
+        "kb.coldOpen.debugStatus": true,
         // Idle mic mark inset (points). The TailzuMark spans its full canvas
         // width, so 0 makes the "structure" touch the button's side walls
         // instead of sitting small in the middle. OTA-tunable — takes effect on
