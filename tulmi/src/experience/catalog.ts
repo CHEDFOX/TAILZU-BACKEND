@@ -2906,8 +2906,14 @@ const makeToolsRow = (opts: {
         radius: 18,          // circular
       },
     },
-    // Middle spacer — pushes tone pill to the right edge, symmetric to mic.
-    { type: "Spacer", style: { flex: 1 } },
+    // Middle slot — the suggestion strip (autocorrect revert chip + word
+    // completions, K4+ binaries). Replaces the plain spacer: when empty it
+    // renders as clear space exactly like the spacer did (and pre-K4 builds
+    // never populate it), so the row reads identical until chips appear
+    // between the mic and the tone pill. Height 36 matches the row's inner
+    // height (44 minus 4pt padding) so no constraint fight with .fill
+    // alignment. kb.suggestion.height must agree (it defaults to 36).
+    { type: "SuggestionBar", style: { flex: 1, height: 36 } },
     // Tone pill — RIGHT side. Compact oval with a subtle border for shape
     // definition against the transparent keyboard region.
     {
@@ -3042,15 +3048,12 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
     //     native, especially on smaller phones.)
     style: { paddingLeft: 3, paddingRight: 3, paddingTop: 8, paddingBottom: 4, gap: 10 },
     children: [
-      // Suggestion bar — populated by state.suggestions when we start emitting
-      // predictions. Empty right now; visibleIf hides the strip so it doesn't
-      // eat vertical space. Height 44pt matches Apple's QuickType bar exactly
-      // (measured against multiple developer sources).
-      {
-        type: "SuggestionBar",
-        style: { height: 44 },
-        visibleIf: { truthy: "state.hasSuggestions" },
-      },
+      // NOTE: no standalone suggestion bar row. The suggestion strip lives in
+      // the middle of the tools row (see makeToolsRow) so predictions appear
+      // without adding a whole 44pt band — the keyboard keeps its 272pt
+      // height. (The old standalone node was gated on state.hasSuggestions,
+      // which pre-K5 clients never exposed, so it never rendered anyway;
+      // K5+ exposes it should a future tree want a dedicated row.)
 
       // Status label + waveform intentionally removed — the mic button's own
       // orange press state + the flash-across-keys animation on refined-text
@@ -3585,6 +3588,34 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
           "y": "oestia",
           "z": "eaioyz",
         },
+        // ------- Touch spaces (K5+ binaries) — native-style key reach -------
+        //
+        // Every key owns the space AROUND it, not just its painted rect, and
+        // real controls (shift/delete/space/return/mic/tone/chips) veto that
+        // reach so nothing is ever stolen from them.
+        //
+        // Vertical reach beyond each key's rect. The 10pt row gaps are fully
+        // covered from both sides; the nearest row wins (dx+dy scoring).
+        "kb.touch.vSlop": 8,
+        // The TOP letter row (q..p) reaches further UP toward the tools row —
+        // overshooting the top row still types.
+        "kb.touch.topRowUpSlop": 12,
+        // The BOTTOM letter row (z..m) reaches further DOWN toward the space
+        // row; the space/return/123 keys themselves are veto-protected.
+        "kb.touch.bottomRowDownSlop": 10,
+        // Each row's outermost key owns its side margin to the keyboard edge —
+        // the dead corners beside "a" and "l" on the indented middle row now
+        // type "a" / "l", exactly like native.
+        "kb.touch.edgeToMargin": true,
+        // Space-bar trackpad (native hold-for-cursor). These are the Swift
+        // defaults, pinned here so the behavior is explicit + OTA-tunable.
+        // K5 fixed the bug where entering trackpad mode remounted the tree and
+        // cancelled its own gesture — hold-space now scrubs the cursor like
+        // the system keyboard, with keys dimming while active.
+        "kb.trackpad.enabled": true,
+        "kb.trackpad.longPressMs": 300,
+        "kb.trackpad.ptPerChar": 7,
+
         // How often the keyboard re-reads host-field traits (return-key label,
         // language, multi-keyboard) from textDidChange. They only change on
         // focus switches, yet the reads are host-process round-trips that were

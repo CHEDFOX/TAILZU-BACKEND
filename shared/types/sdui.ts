@@ -720,6 +720,25 @@ export interface KeyboardConfigResponse {
    *     kb.host.traitRefreshMs        (default 500)   min interval between host
    *                                     trait reads from textDidChange; 0 = every
    *                                     keystroke (pre-K4 behavior)
+   *
+   *   Touch spaces (K5+ binaries) — native-style key reach; real controls
+   *   (shift/delete/space/return/mic/tone/chips) always veto the reach
+   *     kb.touch.vSlop                (default 8)     vertical reach beyond each
+   *                                     key's rect; row gaps resolve to the
+   *                                     nearest row via dx+dy scoring
+   *     kb.touch.topRowUpSlop         (default 12)    extra upward reach for the
+   *                                     top letter row
+   *     kb.touch.bottomRowDownSlop    (default 10)    extra downward reach for
+   *                                     the bottom letter row
+   *     kb.touch.edgeToMargin         (default true)  a row's outermost key owns
+   *                                     its side margin to the keyboard edge
+   *                                     (dead corners beside a/l type a/l)
+   *
+   *   Space-bar trackpad (hold space → cursor scrubbing; K5 fixed the gesture
+   *   being cancelled by its own remount — state change is now in-place)
+   *     kb.trackpad.enabled           (default true)
+   *     kb.trackpad.longPressMs       (default 300)   hold-to-activate
+   *     kb.trackpad.ptPerChar         (default 7)     drag pt per cursor step
    *     kb.height.pt                  (default 0 = system height) explicit
    *                                     keyboard height constraint
    *
