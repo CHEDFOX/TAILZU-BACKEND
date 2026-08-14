@@ -2862,10 +2862,14 @@ const makeToolsRow = (opts: {
       style: {
         flex: 0,
         width: 96,
-        height: 32,
+        // 36, NOT 32: the row's inner content box is 44 − 2×4 padding = 36pt,
+        // and the renderer's .fill alignment + required-priority height
+        // constraints make any other value an unsatisfiable-constraints break
+        // on every mount (mic and suggestion bar are 36 for the same reason).
+        height: 36,
         bg: opts.toneBg,
         fg: opts.toneFg,
-        radius: 16,
+        radius: 18,
         fontSize: 13,
         fontWeight: "medium",
         borderColor: opts.toneBorderColor,
@@ -3157,11 +3161,15 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
 
       // Mode switcher — two variants, each visibleIf-gated:
 
-      // Row 4 (LETTER page) — 123 · space · return.
-      // Emoji switcher removed: iOS's own next-keyboard button in the system
-      // extension bar covers keyboard switching, and the emoji picker on the
-      // system keyboard is a native shortcut users already know. Space bar
-      // grows to fill the freed width.
+      // Row 4 (LETTER page) — 123 · 🌐 · space · return.
+      //
+      // The globe key is REQUIRED, not optional: a keyboard extension has no
+      // "system bar" — when needsInputModeSwitchKey is true (any device with
+      // more than one keyboard, i.e. virtually all of them) the extension must
+      // draw its own switcher, and App Review checks for it. Without it there
+      // was no way to reach emoji or another keyboard without leaving the app.
+      // visibleIf-gated on the OS signal so the rare single-keyboard setup
+      // gets the wider space bar instead.
       {
         type: "Row",
         style: { gap: 6, height: 44 },
@@ -3173,12 +3181,17 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
             on: { onPress: { kind: "switchLayout", language: "123" } },
             style: { flex: 2.75, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
+          {
+            type: "GlobeKey",
+            visibleIf: { truthy: "state.hasMultipleKeyboards" },
+            style: { flex: 1.4, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
+          },
           { type: "SpaceKey", style: { flex: 7.08, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
           { type: "ReturnKey", style: { flex: 2.75, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
         ],
       },
-      // Row 4 for the NUMBER or SYMBOL page — ABC returns to letters. Same
-      // "no globe" pattern; iOS's system bar still handles keyboard switching.
+      // Row 4 for the NUMBER or SYMBOL page — ABC returns to letters; same
+      // globe placement as the letter page.
       {
         type: "Row",
         style: { gap: 6, height: 44 },
@@ -3192,6 +3205,11 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
             props: { char: "ABC" },
             on: { onPress: { kind: "switchLayout", language: "en" } },
             style: { flex: 2.75, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
+          },
+          {
+            type: "GlobeKey",
+            visibleIf: { truthy: "state.hasMultipleKeyboards" },
+            style: { flex: 1.4, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
           },
           { type: "SpaceKey", style: { flex: 7.08, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
           { type: "ReturnKey", style: { flex: 2.75, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
@@ -3291,7 +3309,10 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       },
       { language: "123", displayName: "Numbers", rows: [] },
       { language: "sym", displayName: "Symbols", rows: [] },
-      { language: "emoji", displayName: "Emoji", rows: [] },
+      // "emoji" removed: no tree rows are gated on it, so switching to it
+      // rendered a keyboard with no keys and no way back — a live trap now
+      // that the globe key exists (its long-press language menu lists every
+      // layout here). System emoji is reached via the globe instead.
     ],
     features: {
       voice: true,
@@ -3553,6 +3574,9 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         "kb.trackpad.enabled": true,
         "kb.trackpad.longPressMs": 300,
         "kb.trackpad.ptPerChar": 7,
+        // Space/return on the 123/#+= layer flips back to letters (native
+        // behavior; K6+). false = stay on the symbol layer.
+        "kb.layer.returnAfterSpace": true,
 
         // How often the keyboard re-reads host-field traits (return-key label,
         // language, multi-keyboard) from textDidChange. They only change on

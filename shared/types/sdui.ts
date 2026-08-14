@@ -739,6 +739,10 @@ export interface KeyboardConfigResponse {
    *     kb.trackpad.enabled           (default true)
    *     kb.trackpad.longPressMs       (default 300)   hold-to-activate
    *     kb.trackpad.ptPerChar         (default 7)     drag pt per cursor step
+   *
+   *   Layer ergonomics (K6+)
+   *     kb.layer.returnAfterSpace     (default true)  space/return on 123/#+=
+   *                                     flips back to the letter layer (native)
    *     kb.height.pt                  (default 0 = system height) explicit
    *                                     keyboard height constraint
    *
