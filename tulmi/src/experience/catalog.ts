@@ -3519,6 +3519,82 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // STREAMING provider (Deepgram) ALSO defer to after-stop. Default here is
         // false to match "don't show text while recording — wait for stop".
         "kb.mic.liveText": false,
+
+        // ------- Typing engine (K4+ binaries; older builds ignore all of it) --
+        //
+        // These are the "close the native-keyboard gap" knobs. Every one has a
+        // conservative Swift default (autocorrect/suggestions/bias default OFF
+        // in the binary), so THIS block is the rollout switch — flip any of
+        // them off here to kill the feature OTA, no rebuild.
+        //
+        // Press-order rollover: a second finger down commits the still-held
+        // key immediately, so overlapped two-thumb presses land in press order
+        // ("the", not "teh"). Matches the system keyboard's rollover.
+        "kb.keyPlane.rolloverCommit": true,
+        // Accent long-press trays routed through the multi-touch plane (the
+        // v1 plane dropped them; K4 restores them plane-side).
+        "kb.keyPlane.accentTrays": true,
+        // On-device autocorrect at word boundaries (space/return/punctuation):
+        // UITextChecker guesses re-ranked by PHYSICAL key adjacency from the
+        // live layout — a candidate that differs only by neighbor-key
+        // substitutions is a fat-finger, not a different word. The typed
+        // original shows as a suggestion chip for one-tap revert.
+        "kb.autocorrect.enabled": true,
+        "kb.autocorrect.minLen": 3,
+        "kb.autocorrect.maxDistance": 2,
+        // Completion chips for the in-progress word (UITextChecker
+        // completions), rendered into the existing SuggestionBar node.
+        "kb.suggestions.enabled": true,
+        "kb.suggestions.max": 3,
+        // Language-model hit-target bias — the cheap version of Apple's
+        // dynamic key resizing. After typing a character, the letters likely
+        // to FOLLOW it (table below) claim lmBias.pt extra points of the
+        // ambiguous gap/slop zone around them. Direct hits inside a key's
+        // real bounds are never stolen.
+        "kb.touch.lmBias.enabled": true,
+        "kb.touch.lmBias.pt": 3,
+        // prev-char → likely next letters, most likely first (top-6, English
+        // corpus bigram frequencies). The " " row is word-START letter
+        // frequency, so the bias works on the first letter of every word too.
+        "kb.touch.bigrams": {
+          " ": "taoswcbp",
+          "a": "ntsrlc",
+          "b": "elouar",
+          "c": "oheatk",
+          "d": "eioasu",
+          "e": "rnsdal",
+          "f": "oierau",
+          "g": "ehoari",
+          "h": "eaiotu",
+          "i": "nstocl",
+          "j": "uoaei",
+          "k": "einsal",
+          "l": "eiloay",
+          "m": "eaoiup",
+          "n": "gdetos",
+          "o": "nurfmt",
+          "p": "eroali",
+          "q": "u",
+          "r": "eoiast",
+          "s": "teosai",
+          "t": "heioar",
+          "u": "rnstlp",
+          "v": "eiaoyu",
+          "w": "aiheon",
+          "x": "ptcaie",
+          "y": "oestia",
+          "z": "eaioyz",
+        },
+        // How often the keyboard re-reads host-field traits (return-key label,
+        // language, multi-keyboard) from textDidChange. They only change on
+        // focus switches, yet the reads are host-process round-trips that were
+        // firing per keystroke. 0 restores per-keystroke reads.
+        "kb.host.traitRefreshMs": 500,
+        // Explicit keyboard height (pt). Locks the height the current tree
+        // already renders at (spec: docs/keyboard-spec.md) instead of
+        // inheriting whatever the system picks. Remove to fall back to the
+        // system default sizing.
+        "kb.height.pt": 272,
       };
 
       // Mic media: whatever the media registry has under `mic.animation`

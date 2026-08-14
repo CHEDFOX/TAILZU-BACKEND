@@ -693,6 +693,36 @@ export interface KeyboardConfigResponse {
    *   Auto-cap
    *     kb.autoCap.enabled            (default true) global auto-cap kill switch
    *
+   *   Typing engine (K4+ binaries)
+   *     kb.keyPlane.rolloverCommit    (default true)  press-order rollover: a new
+   *                                     finger down commits the still-held key so
+   *                                     overlapped presses land in press order
+   *     kb.keyPlane.accentTrays       (default true)  accent long-press trays
+   *                                     routed through the multi-touch plane
+   *     kb.autocorrect.enabled        (default false) word-boundary autocorrect —
+   *                                     UITextChecker guesses re-ranked by physical
+   *                                     key adjacency; typed original becomes a
+   *                                     one-tap revert chip in the suggestion bar
+   *     kb.autocorrect.minLen         (default 3)     shortest word considered
+   *     kb.autocorrect.maxDistance    (default 2)     weighted edit-distance cap
+   *                                     (neighbor-key substitution costs 0.5,
+   *                                      apostrophe/space insertion costs 0.5)
+   *     kb.autocorrect.lang           (default ""     = follow primaryLanguage)
+   *     kb.suggestions.enabled        (default false) completion chips for the
+   *                                     in-progress word in the SuggestionBar
+   *     kb.suggestions.max            (default 3)
+   *     kb.touch.lmBias.enabled       (default false) next-letter hit-target bias
+   *     kb.touch.lmBias.pt            (default 3)     extra gap points a likely
+   *                                     letter claims; in-bounds hits never stolen
+   *     kb.touch.bigrams              object: prev char → string of likely next
+   *                                     letters, most likely first; " " row =
+   *                                     word-start letter frequency
+   *     kb.host.traitRefreshMs        (default 500)   min interval between host
+   *                                     trait reads from textDidChange; 0 = every
+   *                                     keystroke (pre-K4 behavior)
+   *     kb.height.pt                  (default 0 = system height) explicit
+   *                                     keyboard height constraint
+   *
    *   Shift key
    *     kb.shift.iconLowerOutlined    (default "arrowtriangle.down")
    *     kb.shift.iconUpperOutlined    (default "arrowtriangle.up")
