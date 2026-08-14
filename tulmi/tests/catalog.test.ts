@@ -72,7 +72,6 @@ describe("buildScreen", () => {
     "language_select",
     "delete_account",
     "onboarding",
-    "onboarding_language",
     "onboarding_keyboard",
   ];
 

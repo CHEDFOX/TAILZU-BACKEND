@@ -179,6 +179,15 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
         "paywall.showAfterOnboarding": false,
         "paywall.config": PAYWALL_CONFIG as unknown as Record<string, unknown>,
 
+        // Show the native language picker (client-side gliding-greeting screen)
+        // right after auth for users who haven't picked a language yet. The
+        // flow is: auth → language → "onboarding" (voice permission) →
+        // "onboarding_keyboard" (enable keyboard → Settings) → home.
+        // postLanguageScreenId is intentionally unset: after the pick the
+        // client falls through to initialScreenId, which is "onboarding" for
+        // new users and "home" for returning ones.
+        "needsLanguagePick": true,
+
         // The "Hello, name + gender" profile card shows as an overlay on these
         // screen ids. It's placed on the "personality" (You) tab — so right
         // after the activation screen lands the user on You, the card is the
@@ -844,9 +853,10 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
     case "history":
       return historyScreen(ctx);
     case "onboarding":
-      return onboardingWelcome();
-    case "onboarding_language":
-      return onboardingLanguage(ctx.language);
+      return onboardingVoice();
+    // "onboarding_language" removed — the language pick is the client's native
+    // post-auth screen now (needsLanguagePick bootstrap flag). Unknown ids fall
+    // through to null → 404, which the client surfaces gracefully.
     case "onboarding_keyboard":
       return onboardingKeyboard();
     case "keyboard_record":
@@ -1252,20 +1262,50 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
   const effective = applyPresetOverrides(p.presetOverrides);
   const activeId = p.activePresetId ?? "signature";
 
+  // Tap a voice → make it the ACTIVE one (this is what the keyboard uses for
+  // refine — the "go-to voice for the keyboard"). Editing moved to the
+  // explicit "Edit" affordance on the right; the old tap-to-edit meant there
+  // was NO way to just pick a preset without walking through the editor.
   const toneCard = (preset: (typeof effective)[number]): Node => ({
     type: "Card",
     style: { paddingVertical: 14, paddingHorizontal: 16, marginBottom: 6 },
     on: { onPress: { kind: "sequence", actions: [
       { kind: "haptic", style: "selection" },
-      // Tap a tone → edit its name + prompt.
-      { kind: "navigate", screenId: "tone_edit", params: { presetId: preset.id } },
+      {
+        kind: "callEndpoint",
+        method: "PUT",
+        path: "/v1/personality",
+        body: { activePresetId: preset.id },
+        onSuccess: "activated",
+        onError: "activateErr",
+      },
     ] } },
     children: [
-      { type: "Text", props: { content: preset.name }, style: {
-        fontSize: 16,
-        fontWeight: preset.id === activeId ? "800" : "600",
-        color: preset.id === activeId ? "$color.primary" : "$color.text",
-      } },
+      {
+        type: "Stack",
+        style: { direction: "row", alignItems: "center", gap: 10 },
+        children: [
+          { type: "Text", props: { content: preset.name }, style: {
+            flex: 1,
+            fontSize: 16,
+            fontWeight: preset.id === activeId ? "800" : "600",
+            color: preset.id === activeId ? "$color.primary" : "$color.text",
+          } },
+          ...(preset.id === activeId
+            ? [{ type: "Text", props: { content: "On keyboard" }, style: {
+                fontSize: 11, fontWeight: "700", color: "$color.primary",
+              } } as Node]
+            : []),
+          // Inner pressable wins over the card press (standard RN nesting),
+          // so "Edit" opens the editor without also activating.
+          {
+            type: "Button",
+            props: { label: "Edit", variant: "secondary" },
+            on: { onPress: { kind: "navigate", screenId: "tone_edit", params: { presetId: preset.id } } },
+            style: { paddingVertical: 6, paddingHorizontal: 12 },
+          },
+        ],
+      },
     ],
   });
 
@@ -1284,12 +1324,25 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
         { kind: "haptic", style: "selection" },
         { kind: "navigate", screenId: "tone_edit" },
       ] },
+      // A voice was made active: confirm + re-render so the "On keyboard"
+      // badge moves to the new card. The keyboard picks it up on its next
+      // config fetch.
+      activated: { kind: "sequence", actions: [
+        { kind: "haptic", style: "success" },
+        { kind: "refresh" },
+      ] },
+      activateErr: {
+        kind: "toast",
+        tone: "error",
+        message: "Couldn't switch voices — check your connection and try again.",
+      },
     },
     root: {
       type: "Screen",
       style: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 24 },
       children: [
-        { type: "Heading", props: { content: "Voice" }, style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 16 } },
+        { type: "Heading", props: { content: "Voice" }, style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 6 } },
+        { type: "Paragraph", props: { content: "Tap a voice to use it on your keyboard. Edit to change how it writes." }, style: { fontSize: 13, marginBottom: 16 } },
         ...goCards,
         ...(goCards.length ? [gap(16)] : []),
         ...restCards,
@@ -2098,48 +2151,30 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
 }
 
 /**
- * Onboarding is a server-driven, multi-step flow:
- *   onboarding (welcome) → onboarding_language → onboarding_keyboard → home
- * Each step is its own screen; the server saves choices to the user's profile,
- * so completion is remembered server-side (not just on the device).
+ * Onboarding is a server-driven, two-step flow (the language pick happens
+ * BEFORE it, on the client's native post-auth language screen — see the
+ * `needsLanguagePick` bootstrap flag):
+ *   onboarding (voice permission) → onboarding_keyboard (enable keyboard) → home
+ * The keyboard step saves `onboarded` to the profile, so completion is
+ * remembered server-side (not just on the device).
  */
-
-/** A small step header used across the onboarding flow. */
-function stepHeader(step: number, total: number, overline: string): Node[] {
-  return [
-    { type: "Spacer", style: { height: 20 } },
-    { type: "Overline", props: { content: `${overline} · Step ${step} of ${total}` }, style: { textAlign: "center" } },
-  ];
-}
 
 /**
- * The single activation screen — replaces the old intro + welcome + language +
- * keyboard-enable sequence with one screen.
+ * Onboarding step 1 — the VOICE PERMISSION screen (screenId stays "onboarding"
+ * so routing — pickInitialScreenId, the intro's `done`, cached clients — is
+ * untouched).
  *
- * Flow:
- *   1. On appear it requests MICROPHONE permission. This is deliberate: iOS only
- *      gives an app a per-app Settings page AFTER a permission has been asked,
- *      and that page is where the keyboard + "Allow Full Access" toggles live.
- *      So requesting mic first is what makes the "Activate" button below able to
- *      land the user on the right Settings page.
- *   2. A centered media (uploaded under the `onboarding.hero` key — swap it OTA:
- *      POST /v1/media/upload?key=onboarding.hero). An animated GIF animates; a
- *      still image shows; contentFit is "contain" so it never crops.
- *   3. Tiny instructions between the media and the button.
- *   4. "Activate" → re-ensures mic is requested (so the button works even on a
- *      bundle where onAppear doesn't fire), marks the user onboarded so this
- *      screen never reappears, then opens Settings (Settings → Tailzu →
- *      Keyboards → allow Full Access).
+ * Why mic comes before the keyboard step: iOS only gives an app a per-app
+ * Settings page AFTER at least one permission has been requested. The keyboard
+ * step's "Open Settings" (app-settings:) needs that page to exist — granting
+ * (or even just answering) the mic prompt here is what makes the next screen
+ * able to open Settings DIRECTLY.
  *
- * Fully backend-authored — copy, media, instructions, and the whole flow change
- * OTA with no rebuild.
+ * Both outcomes advance to the keyboard step: denial isn't a dead end (the
+ * user can still type with the keyboard; voice can be enabled later in
+ * Settings → Tailzu). Fully backend-authored — copy/media/flow change OTA.
  */
-function onboardingWelcome(): ScreenResponse {
-  const stepLine = (n: string, s: string): Node => ({
-    type: "Text",
-    props: { content: `${n}   ${s}` },
-    style: { textAlign: "center", fontSize: 11.5, color: "$color.label", letterSpacing: 0.2, marginBottom: 0 },
-  });
+function onboardingVoice(): ScreenResponse {
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "onboarding",
@@ -2148,51 +2183,26 @@ function onboardingWelcome(): ScreenResponse {
     hideChrome: true,
     state: {},
     actions: {
-      // Fired on appear — get mic permission up front so the Settings deep link
-      // has a page to land on.
-      reqMic: {
+      // CTA — fire the system mic prompt. Either answer moves forward; the
+      // permission REQUEST itself (not the grant) is what creates the per-app
+      // Settings page the next screen deep-links to.
+      allowMic: {
         kind: "requestPermission",
         permission: "microphone",
-        onDenied: "micDenied",
+        onGranted: "goKeyboard",
+        onDenied: "deniedNext",
       },
-      micDenied: {
-        kind: "toast",
-        tone: "info",
-        message: "You can allow the microphone later in Settings → Tailzu.",
-      },
-      // The Activate button. Re-requesting mic here (idempotent — returns the
-      // cached status if already decided) guarantees the Settings page exists
-      // even if onAppear never fired. Then persist onboarded and — on success —
-      // land the user on the "You" tab, so returning from Settings drops them
-      // there with the "Hello, name" card (profileGate) as the next step rather
-      // than back on this activation screen. Finally open Settings.
-      activate: {
+      goKeyboard: { kind: "navigate", screenId: "onboarding_keyboard" },
+      deniedNext: {
         kind: "sequence",
         actions: [
-          { kind: "requestPermission", permission: "microphone" },
-          {
-            kind: "callEndpoint",
-            method: "PUT",
-            path: "/v1/profile",
-            body: { onboarded: true },
-            onSuccess: "goYou",
-            onError: "onboardErr",
-          },
-          { kind: "openUrl", url: "app-settings:", external: true },
-          { kind: "toast", tone: "info", message: "Settings → Tailzu → Keyboards → turn on Allow Full Access." },
+          { kind: "toast", tone: "info", message: "You can allow the microphone anytime in Settings → Tailzu." },
+          { kind: "navigate", screenId: "onboarding_keyboard" },
         ],
-      },
-      // Land on the You tab; its profileGate overlay collects name + gender.
-      goYou: { kind: "switchTab", tabId: "personality" },
-      onboardErr: {
-        kind: "toast",
-        tone: "error",
-        message: "Couldn't save your setup — check your connection and tap Activate again.",
       },
     },
     root: {
       type: "Stack",
-      on: { onAppear: "reqMic" },
       style: {
         flex: 1,
         direction: "column",
@@ -2205,7 +2215,7 @@ function onboardingWelcome(): ScreenResponse {
       children: [
         {
           type: "Heading",
-          props: { content: "Tailzu — your writing assistant" },
+          props: { content: "Speak. Tailzu writes." },
           style: { textAlign: "center", fontSize: 26, lineHeight: 32, fontWeight: "800", color: "$color.text" },
         },
         // Centered media — flex:1 pushes it to the vertical middle.
@@ -2220,21 +2230,22 @@ function onboardingWelcome(): ScreenResponse {
             },
           ],
         },
-        // Tiny instructions between the media and the button.
         {
-          type: "Stack",
-          style: { direction: "column", gap: 6, alignItems: "center", marginBottom: 18 },
-          children: [
-            stepLine("1", "Open Settings"),
-            stepLine("2", "Keyboards → Add Tailzu"),
-            stepLine("3", "Allow Full Access"),
-            stepLine("4", "You’re all set"),
-          ],
+          type: "Paragraph",
+          props: { content: "Tailzu turns rough speech into clean writing, in your voice. Allow the microphone so dictation works everywhere you type." },
+          style: { textAlign: "center", fontSize: 13.5, marginBottom: 18 },
         },
         {
           type: "Button",
-          props: { label: "Activate", variant: "primary" },
-          on: { onPress: "activate" },
+          props: { label: "Allow Microphone", variant: "primary" },
+          on: { onPress: "allowMic" },
+          style: { width: "100%" },
+        },
+        { type: "Spacer", style: { height: 10 } },
+        {
+          type: "Button",
+          props: { label: "Not now", variant: "secondary" },
+          on: { onPress: "goKeyboard" },
           style: { width: "100%" },
         },
       ],
@@ -2243,45 +2254,7 @@ function onboardingWelcome(): ScreenResponse {
   };
 }
 
-/** Step 2 — pick the main language; saved to the profile on Continue. */
-function onboardingLanguage(current: string): ScreenResponse {
-  const chip = (l: { value: string; label: string }): Node => ({
-    type: "Chip",
-    props: { label: l.label, group: "language", value: l.value },
-    on: { onPress: { kind: "haptic", style: "selection" } },
-  });
-  return {
-    schemaVersion: SDUI_SCHEMA_VERSION,
-    screenId: "onboarding_language",
-    title: "Language",
-    template: "scroll",
-    state: { language: current || "auto" },
-    actions: {
-      next: {
-        kind: "sequence",
-        actions: [
-          { kind: "callEndpoint", method: "PUT", path: "/v1/profile", body: { language: "$state.language" } },
-          { kind: "navigate", screenId: "onboarding_keyboard" },
-        ],
-      },
-    },
-    blocks: [
-      ...stepHeader(2, 3, "Your language"),
-      { type: "Heading", props: { content: "What do you mostly speak?" }, style: { textAlign: "center", fontSize: 26, lineHeight: 32, marginBottom: 10 } },
-      { type: "Paragraph", props: { content: "Tulmi works in many languages. Pick your main one — you can change it anytime in Settings." }, style: { textAlign: "center", marginBottom: 28 } },
-      {
-        type: "Stack",
-        style: { direction: "row", gap: 8, wrap: "wrap", justify: "center" },
-        children: LANGUAGES.map(chip),
-      },
-      { type: "Spacer", style: { height: 40 } },
-      { type: "Button", props: { label: "Continue", variant: "primary" }, on: { onPress: "next" } },
-    ],
-    cacheTtlSeconds: 0,
-  };
-}
-
-/** Step 3 — enable the Tulmi keyboard, then finish (marks onboarded). */
+/** Step 2 — enable the Tailzu keyboard, then finish (marks onboarded). */
 function onboardingKeyboard(): ScreenResponse {
   const step = (n: string, body: string): Node => ({
     type: "Stack", style: { direction: "row", gap: 12 }, children: [
@@ -2294,24 +2267,21 @@ function onboardingKeyboard(): ScreenResponse {
     screenId: "onboarding_keyboard",
     title: "",
     template: "scroll",
-    state: { keyboardReady: false, dictationSample: "" }, // the app overwrites keyboardReady live
+    state: { keyboardReady: false }, // the app overwrites keyboardReady live
     actions: {
-      err: {
-        kind: "toast",
-        tone: "error",
-        message: "Voice failed. Check your connection.",
-      },
       // Prefer openUrl("app-settings:") over openSettings — same underlying
       // iOS mechanism but a different Linking code path. Critically, this
       // action only reliably opens iOS Settings AFTER at least one permission
-      // has been requested (mic/notif/etc.) — before that, iOS has no
-      // per-app Settings surface and the URL resolves silently. The
-      // "Try dictating" step above intentionally fires the mic permission
-      // prompt, so by the time the user reaches this button Tulmi has a
-      // Settings page to route to.
+      // has been requested — before that, iOS has no per-app Settings surface
+      // and the URL resolves silently. The VOICE PERMISSION screen right
+      // before this one fires that prompt, so Settings opens DIRECTLY here.
+      // The leading requestPermission is an idempotent belt-and-suspenders for
+      // the "Not now" path (already-decided permissions return instantly with
+      // no prompt).
       openSettings: {
         kind: "sequence",
         actions: [
+          { kind: "requestPermission", permission: "microphone" },
           { kind: "openUrl", url: "app-settings:", external: true },
           { kind: "toast", tone: "info", message: "In Settings: General → Keyboard → Keyboards → Add New → Tailzu" },
         ],
@@ -2354,43 +2324,11 @@ function onboardingKeyboard(): ScreenResponse {
       },
     },
     blocks: [
-      // STEP 1: Try dictating — this is genuinely a nice preview of the
-      // product AND has a critical side-effect: tapping the mic triggers
-      // iOS's mic-permission prompt. That prompt is what gives Tulmi a
-      // per-app Settings page. Without it, tapping "Open Settings" below
-      // resolves silently on iOS (nothing to route to). So the two-step
-      // "Try voice → then Settings" ordering isn't just onboarding UX —
-      // it's what makes the Settings button actually work.
-      { type: "Card", children: [
-        { type: "Heading", props: { content: "Try Tulmi's voice first" }, style: { fontSize: 20, fontWeight: "800", color: "$color.text", marginBottom: 6 } },
-        { type: "Paragraph", props: { content: "Tap the mic and say anything. We'll clean it up in your voice." }, style: { marginBottom: 14 } },
-        {
-          type: "Stack", style: { position: "relative" }, children: [
-            { type: "TextField", bind: { value: "dictationSample" }, props: { placeholder: "Your dictation appears here…", multiline: true }, style: { paddingRight: 56, minHeight: 84 } },
-            { type: "Stack", style: { position: "absolute", right: 12, top: 0, bottom: 0, justify: "center" }, children: [
-              {
-                type: "VoiceToggle",
-                bind: { value: "dictationSample" },
-                props: { targetApp: "Notes", language: "auto", size: 34 },
-                on: { onError: "err" },
-                fallback: {
-                  type: "VoiceButton",
-                  bind: { value: "dictationSample" },
-                  props: { targetApp: "Notes", language: "auto" },
-                  on: { onError: "err" },
-                },
-              },
-            ] },
-          ],
-        },
-      ] },
-
-      { type: "Spacer", style: { height: 20 } },
-
-      // STEP 2: The keyboard-enable card. Apple does NOT allow deep-linking
-      // into Settings > Keyboards, so the button below only lands on Tulmi's
-      // own Settings page (which now exists because mic was requested
-      // above). Show every navigation step so the user knows the path.
+      // The keyboard-enable card. Apple does NOT allow deep-linking into
+      // Settings > Keyboards, so the button below lands on Tailzu's own
+      // Settings page (which exists because the voice-permission screen just
+      // fired the mic prompt). Show every navigation step so the user knows
+      // the path.
       { type: "Card", children: [
         { type: "Heading", props: { content: "Now enable the Tulmi keyboard" }, style: { fontSize: 20, fontWeight: "800", color: "$color.text", marginBottom: 10 } },
         step("1", "Open Settings, then tap General."),
