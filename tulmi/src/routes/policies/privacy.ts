@@ -75,7 +75,7 @@ export const PRIVACY_POLICY_HTML = `<!DOCTYPE html>
 <p>The app requests OS-level permissions only when you activate a specific feature. If you deny a permission, the related feature is unavailable but the rest of the app functions normally.</p>
 
 <ul>
-  <li><strong>Microphone</strong> — required for voice input. Audio is transient and never stored (see 1.2 above).</li>
+  <li><strong>Microphone</strong> — required for voice input. Audio is transient and never stored (see 1.2 above). <strong>Flow Sessions:</strong> when you start a Flow session, the microphone stays active in the background — iOS shows the recording indicator the entire time — so you can dictate directly from the Tailzu keyboard without reopening the app. The session ends automatically after a period of inactivity (about 10 minutes by default) and you can end it at any time from Settings → End Flow session. Outside of an active Flow session or an explicit dictation, the microphone is off.</li>
   <li><strong>Photos / Photo Library</strong> — accessed only when you attach an image to a message or import media. We never scan your library in the background.</li>
   <li><strong>Camera</strong> — accessed only when you actively invoke camera capture or QR scan.</li>
   <li><strong>Contacts</strong> — accessed only when you tag or mention a contact. We do not upload your contact book to our servers.</li>

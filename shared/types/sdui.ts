@@ -520,6 +520,9 @@ export type ActionSpec =
   // in the background so the keyboard can drive dictation after swipe-back.
   // Dispatched by the flow_arm screen. iOS-only; a no-op on Android.
   | { kind: "armFlowSession"; idleTimeoutMs?: number; onSuccess?: ActionRef }
+  // End the background-audio Flow Session now — the user-visible off switch
+  // for the background mic (wired from Settings; no-op when not armed).
+  | { kind: "endFlowSession"; onSuccess?: ActionRef }
   // --- cache / dev ---
   | { kind: "clearCache" }
   | { kind: "reloadApp" }

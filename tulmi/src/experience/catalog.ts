@@ -1869,6 +1869,16 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         // Legal + account
         row("Privacy Policy", "privacy", { props: { label: "Privacy Policy" } }),
         row("Terms of Use", "terms", { props: { label: "Terms of Use" } }),
+        // The user-visible OFF SWITCH for the background Flow mic (App Review
+        // 2.5.4: a background capture must be stoppable without force-quit).
+        // Safe no-op when no session is armed.
+        row("End Flow session", {
+          kind: "sequence",
+          actions: [
+            { kind: "endFlowSession" },
+            { kind: "toast", message: "Background microphone turned off.", tone: "success" },
+          ],
+        }, { props: { label: "End Flow session (turn off background mic)", chevron: false } }),
         row("Sign out", "signOut", { props: { label: "Sign out", chevron: false } }),
         row("Delete account", { kind: "navigate", screenId: "delete_account" }, { props: { label: "Delete account", danger: true, chevron: false } }),
       ],
@@ -2266,6 +2276,11 @@ function onboardingKeyboard(): ScreenResponse {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "onboarding_keyboard",
     title: "",
+    // Full-bleed like the voice step: without this the tab bar + back chevron
+    // render, and a user who taps Home escapes onboarding WITHOUT the
+    // finish/skip PUT — profile.onboarded stays false and every next launch
+    // routes back into onboarding (the "voice screen forever" loop).
+    hideChrome: true,
     template: "scroll",
     state: { keyboardReady: false }, // the app overwrites keyboardReady live
     actions: {
@@ -2302,7 +2317,10 @@ function onboardingKeyboard(): ScreenResponse {
         kind: "sequence",
         actions: [
           { kind: "haptic", style: "success" },
-          { kind: "switchTab", tabId: "home" },
+          // Land on You: profileGate.screenIds = ["personality"], so the
+          // name/gender card is the immediate next step. Landing on Home
+          // silently deferred it until the user happened to open You.
+          { kind: "switchTab", tabId: "personality" },
         ],
       },
       finishErr: {
@@ -2330,7 +2348,7 @@ function onboardingKeyboard(): ScreenResponse {
       // fired the mic prompt). Show every navigation step so the user knows
       // the path.
       { type: "Card", children: [
-        { type: "Heading", props: { content: "Now enable the Tulmi keyboard" }, style: { fontSize: 20, fontWeight: "800", color: "$color.text", marginBottom: 10 } },
+        { type: "Heading", props: { content: "Now enable the Tailzu keyboard" }, style: { fontSize: 20, fontWeight: "800", color: "$color.text", marginBottom: 10 } },
         step("1", "Open Settings, then tap General."),
         { type: "Spacer", style: { height: 12 } },
         step("2", "Tap Keyboard → Keyboards → Add New Keyboard."),
@@ -2738,8 +2756,19 @@ function deleteAccountScreen(): ScreenResponse {
     title: "",
     state: {},
     actions: {
-      confirm: { kind: "sequence", actions: [
-        { kind: "callEndpoint", method: "DELETE", path: "/v1/account", onError: "err" },
+      // signOut lives in onSuccess, NOT after the call in a sequence: a failed
+      // DELETE used to fall through to signOut anyway, so the user saw an
+      // error toast, got signed out, and reasonably concluded the deletion
+      // worked — a live 5.1.1(v) hazard.
+      confirm: {
+        kind: "callEndpoint",
+        method: "DELETE",
+        path: "/v1/account",
+        onSuccess: "deleted",
+        onError: "err",
+      },
+      deleted: { kind: "sequence", actions: [
+        { kind: "toast", message: "Your account has been deleted.", tone: "success" },
         { kind: "signOut" },
       ] },
       err: { kind: "toast", message: "Couldn't delete the account. Try again.", tone: "error" },
@@ -3184,7 +3213,12 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
           {
             type: "GlobeKey",
             visibleIf: { truthy: "state.hasMultipleKeyboards" },
-            style: { flex: 1.4, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
+            // Explicit width, NOT flex: a visibleIf-hidden child with flex
+            // still gets a required proportional-width constraint from the
+            // stack builder while UIStackView collapses it to zero — an
+            // unsatisfiable-constraints break on single-keyboard devices.
+            // Width children are excluded from the flex pass (like MicKey).
+            style: { width: 44, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
           },
           { type: "SpaceKey", style: { flex: 7.08, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
           { type: "ReturnKey", style: { flex: 2.75, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
@@ -3209,7 +3243,12 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
           {
             type: "GlobeKey",
             visibleIf: { truthy: "state.hasMultipleKeyboards" },
-            style: { flex: 1.4, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
+            // Explicit width, NOT flex: a visibleIf-hidden child with flex
+            // still gets a required proportional-width constraint from the
+            // stack builder while UIStackView collapses it to zero — an
+            // unsatisfiable-constraints break on single-keyboard devices.
+            // Width children are excluded from the flex pass (like MicKey).
+            style: { width: 44, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
           },
           { type: "SpaceKey", style: { flex: 7.08, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
           { type: "ReturnKey", style: { flex: 2.75, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
@@ -3351,12 +3390,13 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       //   flow_start_hint → shown under the "Start Flow" (no-session) state
       //   flow_arming     → shown after the first tap opens the app to arm
       //   flow_arm_manual → shown when iOS refused the auto-open (open by hand)
-      flow_start_hint: "",
-      flow_arming: "",
-      // Kept blank — the keyboard stays icon-only, no hint text over the keys
-      // (user preference). A refused open is silent; the mic glyph is the only
-      // cue. Put a string back here (OTA, no rebuild) to reintroduce guidance.
-      flow_arm_manual: "",
+      // RESTORED for App Review (was blank "icon-only" — a silent hand-off
+      // into a background-mic state is indefensible in a review call). These
+      // are OTA strings: re-blank after approval if the icon-only look is
+      // preferred.
+      flow_start_hint: "Tap ⚡ to turn on Flow — dictate from the keyboard, hands-free.",
+      flow_arming: "Turning on Flow — the mic stays on in the background. Swipe back when you land in Tailzu.",
+      flow_arm_manual: "Open the Tailzu app once to turn on Flow, then come back.",
     },
     root,
     actions,

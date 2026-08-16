@@ -50,6 +50,7 @@ import {
   upsertPresetTone,
   updatePersonality,
 } from "./personality/store.js";
+import { PERSONALITY_PRESETS } from "./experience/personalityPresets.js";
 import {
   buildBootstrap,
   buildScreen,
@@ -749,6 +750,19 @@ app.put("/v1/personality", { config: AUTHED_RL }, async (req, reply) => {
     tooLong(personality.vocabulary) ??
     tooLong(personality.snippets);
   if (over) return reply.code(413).send({ code: "bad_request", message: over });
+  // activePresetId must reference a real preset — built-in or one of the
+  // user's custom tones — or it silently poisons the keyboard config
+  // (kb.personality.activeId) and the voices screen's active highlight.
+  if (personality.activePresetId !== undefined && personality.activePresetId !== null) {
+    const id = String(personality.activePresetId);
+    const existing = await getPersonality(user);
+    const known =
+      PERSONALITY_PRESETS.some((p) => p.id === id) ||
+      Object.keys(existing?.presetOverrides ?? {}).includes(id);
+    if (!known) {
+      return reply.code(400).send({ code: "bad_request", message: `unknown presetId: ${id}` });
+    }
+  }
   try {
     // Merge the partial update into the existing profile so a PUT with just
     // { activePresetId } doesn't blow away the user's vocabulary, sign-off,
