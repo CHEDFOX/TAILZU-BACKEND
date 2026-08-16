@@ -3578,6 +3578,56 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // behavior; K6+). false = stay on the symbol layer.
         "kb.layer.returnAfterSpace": true,
 
+        // ------- K7: swipe typing + role keys + smarter corrections --------
+        //
+        // QuickPath-style glide typing. The binary defaults OFF; this is the
+        // rollout switch. Trail is the fading ink line behind the finger.
+        "kb.swipe.enabled": true,
+        "kb.swipe.minKeys": 3,
+        "kb.swipe.maxAlternates": 3,
+        "kb.swipe.trail.color": "#E8A23CD9",   // brand amber, mostly opaque
+        "kb.swipe.trail.width": 7,
+        "kb.swipe.trail.fadeMs": 260,
+        // OTA lexicon extension — appended to the embedded frequency list.
+        // Push product / domain vocabulary here without a rebuild.
+        "kb.swipe.extraWords": ["tailzu", "tulmi"],
+        // Shift + layer keys ride the touch plane (K7): shift arms on touch-
+        // down and supports slide-to-letter one-shot capitals; 123/#+=/ABC
+        // switch instantly on touch-down and support press-slide-release
+        // layer-peek. Both individually OTA-reversible.
+        "kb.keyPlane.shift": true,
+        "kb.layerPeek.enabled": true,
+        // Backspace immediately after an autocorrect restores the original.
+        "kb.autocorrect.backspaceRevert": true,
+        // Real-word confusion pairs — the word is spelled correctly, so the
+        // alternatives are OFFERED as chips (tap swaps in place), never
+        // auto-applied. Both directions listed explicitly.
+        "kb.autocorrect.confusables": {
+          "their": ["there", "they're"],
+          "there": ["their", "they're"],
+          "theyre": ["they're"],
+          "your": ["you're"],
+          "youre": ["you're"],
+          "its": ["it's"],
+          "whose": ["who's"],
+          "were": ["we're", "where"],
+          "where": ["were", "wear"],
+          "then": ["than"],
+          "than": ["then"],
+          "to": ["too", "two"],
+          "too": ["to", "two"],
+          "affect": ["effect"],
+          "effect": ["affect"],
+          "lose": ["loose"],
+          "loose": ["lose"],
+          "weather": ["whether"],
+          "whether": ["weather"],
+          "accept": ["except"],
+          "except": ["accept"],
+          "advice": ["advise"],
+          "advise": ["advice"],
+        },
+
         // How often the keyboard re-reads host-field traits (return-key label,
         // language, multi-keyboard) from textDidChange. They only change on
         // focus switches, yet the reads are host-process round-trips that were

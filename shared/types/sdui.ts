@@ -743,6 +743,30 @@ export interface KeyboardConfigResponse {
    *   Layer ergonomics (K6+)
    *     kb.layer.returnAfterSpace     (default true)  space/return on 123/#+=
    *                                     flips back to the letter layer (native)
+   *
+   *   Swipe typing + role keys (K7+)
+   *     kb.swipe.enabled              (default false) QuickPath glide typing —
+   *                                     embedded frequency lexicon, first/last-key
+   *                                     anchoring, neighbor-tolerant path match
+   *     kb.swipe.minKeys              (default 3)     distinct keys before a drag
+   *                                     promotes from roll to swipe
+   *     kb.swipe.maxAlternates        (default 3)     runner-up chips in the bar
+   *     kb.swipe.trail.color/.width/.fadeMs — the fading ink trail
+   *     kb.swipe.extraWords           array — OTA lexicon extension
+   *     kb.keyPlane.shift             (default true)  shift rides the plane:
+   *                                     arms on touch-down, slide-to-letter
+   *                                     one-shot capitals, hold locks caps
+   *     kb.layerPeek.enabled          (default true)  123/#+=/ABC switch on
+   *                                     touch-down; press-slide-release types a
+   *                                     key and bounces back (native layer-peek)
+   *     kb.autocorrect.backspaceRevert (default true) backspace right after an
+   *                                     autocorrect restores the typed original
+   *     kb.autocorrect.confusables    object: word → alternatives OFFERED as
+   *                                     chips when the word is spelled fine
+   *                                     (their/there, your/you're…)
+   *     kb.flow.glyphSize             (default 16)    Start Flow bolt size; the
+   *                                     SDUI mic shows kb.flow.startGlyph when
+   *                                     no flow session is armed (K7+)
    *     kb.height.pt                  (default 0 = system height) explicit
    *                                     keyboard height constraint
    *
