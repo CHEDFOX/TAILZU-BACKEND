@@ -27,9 +27,12 @@ const bool = (def: boolean) =>
 
 const EnvSchema = z.object({
   // --- Speech-to-text provider ---
-  // "openai" (default) covers ~100 languages — best for a global product.
-  // "groq" is a fast/cheap Whisper alternative.
-  STT_PROVIDER: z.enum(["openai", "groq"]).default("openai"),
+  // "groq" (default) runs whisper-large-v3-turbo — fast, cheap, and returns
+  // per-segment confidence (no_speech_prob / avg_logprob) that we use to drop
+  // hallucinated segments, which is why it's the deployed default. "openai"
+  // (gpt-4o-transcribe) is an alternative with strong ~100-language coverage
+  // but no per-segment confidence signal.
+  STT_PROVIDER: z.enum(["openai", "groq"]).default("groq"),
 
   // OpenAI STT (used when STT_PROVIDER=openai). gpt-4o-transcribe is the
   // current best; gpt-4o-mini-transcribe is cheaper; whisper-1 is the legacy.
@@ -40,9 +43,22 @@ const EnvSchema = z.object({
   GROQ_API_KEY: z.string().optional(),
   GROQ_STT_MODEL: z.string().default("whisper-large-v3-turbo"),
 
+  // Deepgram (used by the WS /v1/transcribe-stream route for live dictation —
+  // not the one-shot /v1/transcribe-clean path, which uses STT_PROVIDER above).
+  // Optional: without it the live route returns a "not configured" error and
+  // the app's fallback REST transcribe still works.
+  DEEPGRAM_API_KEY: z.string().optional(),
+  // Live-STT model. Default nova-2 (general). Swap to a noise-tuned variant
+  // (e.g. nova-2-meeting for far-field/multi-speaker rooms) via env without a
+  // code change if real-world capture proves noisy.
+  DEEPGRAM_STT_MODEL: z.string().default("nova-2"),
+
   // OpenRouter (cleanup) — required to run the pipeline.
+  // Model slug follows OpenRouter's naming: "<vendor>/<model>". Swap this via
+  // env (CLEANUP_MODEL=...) without a code change. Current default is picked
+  // for a good speed × quality × price balance for short cleanup / drafting.
   OPENROUTER_API_KEY: z.string().min(1, "OPENROUTER_API_KEY is required"),
-  CLEANUP_MODEL: z.string().default("anthropic/claude-haiku-4.5"),
+  CLEANUP_MODEL: z.string().default("openai/gpt-5.4-mini"),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 
@@ -57,17 +73,66 @@ const EnvSchema = z.object({
   SUPABASE_URL: z.string().optional(),
   SUPABASE_SERVICE_KEY: z.string().optional(),
   SUPABASE_ANON_KEY: z.string().optional(),
+  // The project's JWT signing secret (Supabase dashboard → Settings → API → JWT
+  // Secret), for HS256-signed tokens. Used ONLY to verify a user JWT LOCALLY
+  // (no network) so the rate limiter can key its buckets on the verified user
+  // id instead of the coarse client IP. Optional: when unset (and the project
+  // isn't using asymmetric keys the JWKS path can fetch), the limiter falls
+  // back to per-IP keying — no behavior regression, just less granular.
+  SUPABASE_JWT_SECRET: z.string().optional(),
 
   // Server
   PORT: z.coerce.number().default(8080),
   HOST: z.string().default("0.0.0.0"),
+  NODE_ENV: z.string().optional(),
 
   // When true, auth + metering are skipped (local pipeline testing).
   DEV_SKIP_AUTH: bool(false),
+  // Explicit escape hatch for running with auth off in production-shaped envs
+  // (load tests, smoke checks). Off by default — see the boot-time refusal.
+  DEV_SKIP_AUTH_ALLOW_PROD: bool(false),
 
-  // Prompt versions to load from shared/prompts/.
-  CLEANUP_PROMPT_VERSION: z.string().default("v2"),
-  REPLY_PROMPT_VERSION: z.string().default("v1"),
+  // Prompt versions to load from shared/prompts/. v3 (cleanup) / v2 (reply)
+  // add the tone dial + per-app overrides + watermark. Roll back by exporting
+  // CLEANUP_PROMPT_VERSION=v2 / REPLY_PROMPT_VERSION=v1 without a code change.
+  CLEANUP_PROMPT_VERSION: z.string().default("v3"),
+  REPLY_PROMPT_VERSION: z.string().default("v2"),
+
+  // Sentry (backend). Optional — the observability layer no-ops when unset,
+  // so the value can safely stay empty in dev.
+  SENTRY_DSN: z.string().optional(),
+  SENTRY_ENVIRONMENT: z.string().default("production"),
+  SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().default(0.05),
+
+  // Rate limiting — abuse buckets are keyed per client IP (see the
+  // keyGenerator in server.ts). Per-user fairness is enforced downstream by
+  // metering/quota, not by this coarse limiter.
+  RATE_LIMIT_MAX: z.coerce.number().default(120),
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
+
+  // Admin secret used to authorize server-side operations reachable over HTTP
+  // (currently just the cache-bump endpoint). Optional — when unset, the
+  // admin endpoints refuse every request. Set to a long random string.
+  ADMIN_SECRET: z.string().optional(),
+
+  // Static bearer tokens for non-Supabase clients (the desktop app). A
+  // comma-separated list of LONG random secrets; a request whose Authorization
+  // bearer matches one (timing-safe) is authenticated as a stable synthetic
+  // user derived from the token — no Supabase round-trip, no JWT expiry (a
+  // Supabase access token dies in ~1h, which would break a config-file client
+  // hourly). Mint with `openssl rand -hex 32`. Unset → feature off.
+  STATIC_BEARER_TOKENS: z.string().optional(),
+
+  // Input length caps — refuse any request whose text field exceeds this many
+  // characters, so a runaway client can't burn LLM budget on huge inputs. 10k
+  // chars ≈ 2500 tokens ≈ a healthy 2-minute dictation.
+  MAX_TEXT_LENGTH: z.coerce.number().default(10_000),
+
+  // Free-tier ceiling per calendar month. When set (positive number), any
+  // signed-in user who exceeds it is refused with `quota_exceeded` BEFORE the
+  // paid upstream call is made. Unset / 0 = no ceiling.
+  FREE_MONTHLY_AUDIO_SECONDS: z.coerce.number().default(0),
+  FREE_MONTHLY_WORDS: z.coerce.number().default(0),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema> & {
@@ -123,6 +188,23 @@ export function getConfig(): AppConfig {
       "Supabase auth is not configured but DEV_SKIP_AUTH is false. " +
         "Set SUPABASE_URL + SUPABASE_ANON_KEY (or SUPABASE_SERVICE_KEY), " +
         "or set DEV_SKIP_AUTH=true for local testing.",
+    );
+  }
+
+  // Hard refuse to boot with auth disabled UNLESS this is explicitly a dev/test
+  // environment. A forgotten DEV_SKIP_AUTH=true is the single largest
+  // cost-amplification footgun (unauthenticated requests spend OpenAI/OpenRouter
+  // budget). We treat anything that isn't an affirmative "development"/"test" as
+  // production — so a typo'd or unset NODE_ENV ("prod", "PRODUCTION", "") fails
+  // safe rather than booting wide open.
+  const nodeEnv = (env.NODE_ENV ?? "").toLowerCase();
+  const isDevOrTest = nodeEnv === "development" || nodeEnv === "test";
+  if (env.DEV_SKIP_AUTH && !isDevOrTest && !env.DEV_SKIP_AUTH_ALLOW_PROD) {
+    throw new Error(
+      "DEV_SKIP_AUTH=true is not allowed when NODE_ENV=production. " +
+        "Configure Supabase (SUPABASE_URL + SUPABASE_ANON_KEY) and remove " +
+        "DEV_SKIP_AUTH before deploying. To override for a controlled load " +
+        "test, set DEV_SKIP_AUTH_ALLOW_PROD=true (NOT recommended).",
     );
   }
 

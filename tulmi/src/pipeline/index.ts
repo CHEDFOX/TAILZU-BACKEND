@@ -6,7 +6,8 @@
  *  - runPipelineStream()  : streaming (WebSocket) — emits events as they happen
  */
 import { transcribe } from "./stt.js";
-import { clean, cleanStream } from "./cleanup.js";
+import { assist, cleanStream } from "./cleanup.js";
+import { detectCommand } from "./commands.js";
 import type {
   AudioFormat,
   CleanupOptions,
@@ -30,14 +31,18 @@ function countWords(text: string): number {
   return t ? t.split(/\s+/).length : 0;
 }
 
-/** One-shot: transcribe then clean. */
+/** One-shot: transcribe, then run the writing assistant. */
 export async function runPipeline(
   input: PipelineInput,
 ): Promise<PipelineResult> {
   const { audio, format, ...opts } = input;
 
   const stt = await transcribe({ audio, format, language: opts.language, vocabulary: opts.personality?.vocabulary });
-  const cleanedText = await clean(stt.text, opts);
+  // The assist step separates any embedded instruction ("…make it shorter, in
+  // bullet points") from the message itself and applies the active tone, so we
+  // no longer strip commands here — the model handles it. `transcript` stays
+  // the raw STT output for QA/history.
+  const cleanedText = await assist(stt.text, opts);
 
   return {
     transcript: stt.text,
@@ -68,10 +73,11 @@ export async function* runPipelineStream(
   const { audio, format, ...opts } = input;
 
   const stt = await transcribe({ audio, format, language: opts.language, vocabulary: opts.personality?.vocabulary });
-  yield { type: "transcript", text: stt.text };
+  const { transcript, command } = detectCommand(stt.text);
+  yield { type: "transcript", text: transcript };
 
   let cleanedText = "";
-  for await (const delta of cleanStream(stt.text, opts)) {
+  for await (const delta of cleanStream(transcript, { ...opts, command: command ?? opts.command })) {
     cleanedText += delta;
     yield { type: "cleaned_delta", text: delta };
   }
