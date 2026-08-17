@@ -3681,20 +3681,14 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         "kb.height.pt": 272,
       };
 
-      // Mic media: whatever the media registry has under `mic.animation`
-      // becomes the keyboard's idle mic art. The SDUI-rendered keyboard
-      // reads kb.mic.idleIcon (icon spec shape) and the hand-built keyboard
-      // reads kb.mic.idleIcon.url (raw string) — surface both so a single
-      // upload lights up both codepaths without either needing a rebuild.
-      // Files are content-addressed by SHA, so a new upload with the same
-      // key auto-invalidates the on-disk cache once the URL changes.
+      // Mic media: OWNER DECISION — the keyboard's IDLE mic is always the
+      // static brand mark baked into the binary. The media-registry
+      // mic.animation upload is for the in-app mic only and is deliberately
+      // NOT exported as kb.mic.idleIcon / kb.mic.idleIcon.url (doing so made
+      // the keyboard mic play the GIF at idle). Only the recording art is
+      // still pushed; it shows exclusively while audio is being captured.
       const reg = getMediaRegistryFn?.() ?? {};
-      const micIdle = reg["mic.animation"];
       const micRecording = reg["mic.animation.recording"];
-      if (micIdle?.url) {
-        flags["kb.mic.idleIcon"] = { url: micIdle.url };
-        flags["kb.mic.idleIcon.url"] = micIdle.url;
-      }
       if (micRecording?.url) {
         flags["kb.mic.recordingIcon"] = { url: micRecording.url };
         flags["kb.mic.recordingIcon.url"] = micRecording.url;
