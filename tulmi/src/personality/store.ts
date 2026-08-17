@@ -7,7 +7,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { dataClientFor, type AuthedUser } from "../auth/supabase.js";
-import { applyPresetOverrides } from "../experience/personalityPresets.js";
+import { applyPresetOverrides, MAX_PINNED_PRESETS } from "../experience/personalityPresets.js";
 import type {
   Personality,
   VocabularyCorrection,
@@ -89,7 +89,7 @@ export async function getPersonality(user: AuthedUser): Promise<Personality> {
  */
 export async function upsertPresetTone(
   user: AuthedUser,
-  opts: { id?: string; name?: string; promptStyle?: string; remove?: boolean },
+  opts: { id?: string; name?: string; promptStyle?: string; remove?: boolean; pin?: boolean },
 ): Promise<{ personality: Personality; toneId: string }> {
   return withUserLock(user.id, async () => {
     const current = await getPersonality(user);
@@ -97,11 +97,20 @@ export async function upsertPresetTone(
       ...(current.presetOverrides ?? {}),
     };
     let activePresetId = current.activePresetId;
+    let pinnedIds = Array.isArray(current.pinnedPresetIds) ? [...current.pinnedPresetIds] : [];
 
     if (opts.remove && opts.id) {
       delete overrides[opts.id];
       if (activePresetId === opts.id) activePresetId = "signature";
-      const next: Personality = { ...current, presetOverrides: overrides, activePresetId };
+      // A deleted voice must leave the keyboard set too — a dead id would
+      // silently eat one of the pin slots forever.
+      pinnedIds = pinnedIds.filter((x) => x !== opts.id);
+      const next: Personality = {
+        ...current,
+        presetOverrides: overrides,
+        activePresetId,
+        pinnedPresetIds: pinnedIds,
+      };
       await savePersonality(user, next);
       return { personality: next, toneId: opts.id };
     }
@@ -112,7 +121,18 @@ export async function upsertPresetTone(
       name: (opts.name ?? "").trim(),
       promptStyle: (opts.promptStyle ?? "").trim(),
     };
-    const next: Personality = { ...current, presetOverrides: overrides, activePresetId: toneId };
+    // `pin` — the "new voice for the keyboard" path: the tone lands in the
+    // library (presetOverrides) AND on the keyboard set in one atomic write,
+    // same oldest-eviction cap as POST /v1/personality/pin.
+    if (opts.pin && !pinnedIds.includes(toneId)) {
+      pinnedIds = [...pinnedIds, toneId].slice(-MAX_PINNED_PRESETS);
+    }
+    const next: Personality = {
+      ...current,
+      presetOverrides: overrides,
+      activePresetId: toneId,
+      pinnedPresetIds: pinnedIds,
+    };
     await savePersonality(user, next);
     return { personality: next, toneId };
   });
