@@ -8,6 +8,9 @@ process.env.OPENAI_API_KEY = "test-openai-key";
 process.env.GROQ_API_KEY = "test-groq-key";
 process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
+// CI runners can't mkdir the Docker-volume default ("/data/media") — booting
+// the app in tests must land somewhere always-writable.
+process.env.MEDIA_DIR = "/tmp/tailzu-test-media";
 process.env.NODE_ENV = "test";
 
 // Mock the pipeline so we don't touch OpenAI / OpenRouter over the wire. The
