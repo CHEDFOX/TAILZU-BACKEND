@@ -2290,37 +2290,48 @@ function onboardingVoice(): ScreenResponse {
     },
     root: {
       type: "Stack",
+      // hideChrome = truly full-bleed, so the top/bottom padding IS the safe
+      // area: 76 clears the status bar on notch phones, 48 clears the home
+      // indicator (28/28 put the title under the clock and clipped "Not now").
       style: {
         flex: 1,
         direction: "column",
         alignItems: "center",
         backgroundColor: "#000000",
         paddingHorizontal: 28,
-        paddingTop: 40,
-        paddingBottom: 28,
+        paddingTop: 76,
+        paddingBottom: 48,
       },
       children: [
+        { type: "Overline", props: { content: "Step 1 of 2" }, style: { textAlign: "center", marginBottom: 14 } },
         {
           type: "Heading",
           props: { content: "Speak. Tailzu writes." },
-          style: { textAlign: "center", fontSize: 26, lineHeight: 32, fontWeight: "800", color: "$color.text" },
+          style: { textAlign: "center", fontSize: 30, lineHeight: 38, color: "$color.text", marginBottom: 0 },
         },
-        // Centered media — flex:1 pushes it to the vertical middle.
+        // The vertical middle: the hero media when one is actually uploaded —
+        // otherwise the pitch line itself, large and centered. (The old screen
+        // hard-referenced onboarding.hero; with no upload the whole middle
+        // rendered as a giant empty void.)
         {
           type: "Stack",
           style: { flex: 1, width: "100%", alignItems: "center", justifyContent: "center" },
-          children: [
-            {
-              type: "Image",
-              props: { source: { key: "onboarding.hero" }, contentFit: "contain" },
-              style: { width: 260, height: 260 },
-            },
-          ],
+          children: getMediaRegistryFn?.()?.["onboarding.hero"]?.url
+            ? [{
+                type: "Image",
+                props: { source: { key: "onboarding.hero" }, contentFit: "contain" },
+                style: { width: 240, height: 240 },
+              }]
+            : [{
+                type: "Paragraph",
+                props: { content: "Tailzu turns rough speech into clean writing — in your voice." },
+                style: { textAlign: "center", fontSize: 19, lineHeight: 30, fontWeight: "400", color: "$color.text", marginBottom: 0, maxWidth: 300 },
+              }],
         },
         {
           type: "Paragraph",
-          props: { content: "Tailzu turns rough speech into clean writing, in your voice. Allow the microphone so dictation works everywhere you type." },
-          style: { textAlign: "center", fontSize: 13.5, marginBottom: 18 },
+          props: { content: "Allow the microphone so dictation works everywhere you type." },
+          style: { textAlign: "center", fontSize: 13.5, lineHeight: 20, marginBottom: 22 },
         },
         {
           type: "Button",
@@ -2328,7 +2339,7 @@ function onboardingVoice(): ScreenResponse {
           on: { onPress: "allowMic" },
           style: { width: "100%" },
         },
-        { type: "Spacer", style: { height: 10 } },
+        { type: "Spacer", style: { height: 12 } },
         {
           type: "Button",
           props: { label: "Not now", variant: "secondary" },
@@ -2344,9 +2355,10 @@ function onboardingVoice(): ScreenResponse {
 /** Step 2 — enable the Tailzu keyboard, then finish (marks onboarded). */
 function onboardingKeyboard(): ScreenResponse {
   const step = (n: string, body: string): Node => ({
-    type: "Stack", style: { direction: "row", gap: 12 }, children: [
-      { type: "Text", props: { content: n }, style: { color: "$color.text", fontSize: 16, fontWeight: "700" } },
-      { type: "Paragraph", props: { content: body }, style: { marginBottom: 0, flex: 1 } },
+    type: "Stack", style: { direction: "row", gap: 12, alignItems: "flex-start" }, children: [
+      // Fixed-width number column so all five step bodies left-align.
+      { type: "Text", props: { content: n }, style: { color: "$color.text", fontSize: 15, fontWeight: "700", width: 18, lineHeight: 22 } },
+      { type: "Paragraph", props: { content: body }, style: { marginBottom: 0, flex: 1, fontSize: 14.5, lineHeight: 22 } },
     ],
   });
   return {
@@ -2419,35 +2431,43 @@ function onboardingKeyboard(): ScreenResponse {
       },
     },
     blocks: [
-      // The keyboard-enable card. Apple does NOT allow deep-linking into
+      // hideChrome = full-bleed: this spacer IS the top safe area (the card
+      // used to start under the status-bar clock).
+      { type: "Spacer", style: { height: 66 } },
+      { type: "Overline", props: { content: "Step 2 of 2" }, style: { marginBottom: 12 } },
+      { type: "Heading", props: { content: "Enable the Tailzu keyboard" },
+        style: { fontSize: 26, lineHeight: 33, color: "$color.text", marginBottom: 8 } },
+      { type: "Paragraph", props: { content: "A one-time trip to Settings — after this, Tailzu works in every app you type in." },
+        style: { fontSize: 13.5, lineHeight: 20, marginBottom: 20 } },
+      // The steps card. Apple does NOT allow deep-linking into
       // Settings > Keyboards, so the button below lands on Tailzu's own
       // Settings page (which exists because the voice-permission screen just
       // fired the mic prompt). Show every navigation step so the user knows
       // the path.
-      { type: "Card", children: [
-        { type: "Heading", props: { content: "Now enable the Tailzu keyboard" }, style: { fontSize: 20, fontWeight: "800", color: "$color.text", marginBottom: 10 } },
+      { type: "Card", style: { paddingVertical: 18, paddingHorizontal: 16 }, children: [
         step("1", "Open Settings, then tap General."),
-        { type: "Spacer", style: { height: 12 } },
+        { type: "Spacer", style: { height: 14 } },
         step("2", "Tap Keyboard → Keyboards → Add New Keyboard."),
-        { type: "Spacer", style: { height: 12 } },
+        { type: "Spacer", style: { height: 14 } },
         step("3", "Choose Tailzu from the list."),
-        { type: "Spacer", style: { height: 12 } },
+        { type: "Spacer", style: { height: 14 } },
         step("4", "Tap Tailzu again and turn on “Allow Full Access”."),
-        { type: "Spacer", style: { height: 12 } },
+        { type: "Spacer", style: { height: 14 } },
         step("5", "Return to Tailzu — the 🌐 globe key switches between keyboards."),
       ] },
-      { type: "Spacer", style: { height: 22 } },
+      { type: "Spacer", style: { height: 28 } },
       // "Open Settings" (not "Open Keyboard Settings") — iOS can't deliver
       // what the old label promised; be honest about where the button lands.
       { type: "Button", visibleIf: { not: { truthy: "keyboardReady" } },
         props: { label: "Open Settings", variant: "primary" }, on: { onPress: "openSettings" } },
       { type: "Button", visibleIf: { truthy: "keyboardReady" },
         props: { label: "Start Using Tailzu", variant: "primary" }, on: { onPress: "finish" } },
-      { type: "Spacer", style: { height: 14 } },
+      { type: "Spacer", style: { height: 12 } },
       // Ghost / text-only "Skip" so users aren't trapped if they can't or
       // won't add the keyboard right now.
       { type: "Button", visibleIf: { not: { truthy: "keyboardReady" } },
         props: { label: "Skip for now", variant: "secondary" }, on: { onPress: "skip" } },
+      { type: "Spacer", style: { height: 44 } },
     ],
     cacheTtlSeconds: 0,
   };
