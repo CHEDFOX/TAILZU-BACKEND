@@ -88,6 +88,7 @@ const NAV: NavigationShell = {
   // screen itself still exists at screenId "settings" and is pushed on tap.
   tabs: [
     { id: "home", title: "Home", screenId: "home" },
+    { id: "stats", title: "Stats", screenId: "stats" },
     { id: "personality", title: "You", screenId: "personality" },
   ],
 };
@@ -1977,36 +1978,16 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
     total: { words: 0, audioSeconds: 0, requests: 0 },
   };
   const stats = ctx.stats;
-  const mins = (s: number) => Math.round(s / 60);
 
-  // Weekly words: prefer the explicit stats projection; else derive from the
-  // monthly aggregate as a rough seven-day proxy. Not perfect, but the number
-  // still reads as "your recent activity" rather than a phantom placeholder.
-  const wordsWeek = stats?.window === "week"
-    ? stats.wordsOut
-    : Math.round(usage.month.words / 4);
-  const wordsMonth = usage.month.words;
-  const audioSecondsMonth = usage.month.audioSeconds;
+  const wordsMonth = stats?.wordsOut ?? usage.month.words;
+  const sessions = stats?.requests ?? usage.month.requests;
   // Same 40 wpm baseline the /v1/stats endpoint uses (see history/store.ts).
   const minutesSaved = stats?.minutesSaved ?? Math.max(0, Math.round(usage.total.words / 40));
-  const typingMinutes = Math.max(1, Math.round(usage.total.words / 40));
-
-  // Last-7-day activity, now a real BarChart (was a Unicode sparkline). The
-  // Text fallback still ships in old bundles that lack the chart node.
-  const perDay = (stats?.sparklinePerDay ?? []).slice(-7);
-  const barSeries = perDay.map((v) => ({ label: "", value: Math.max(0, Number(v) || 0) }));
-  const sparklineText = renderSparkline(stats?.sparklinePerDay);
-
-  // Donut breakdown: how much of this month's words landed in the last 7 days.
-  const earlier = Math.max(0, wordsMonth - wordsWeek);
-  const donutData = [
-    { label: "This week", value: wordsWeek, color: "#E8A23C" },
-    { label: "Earlier", value: earlier, color: "#3A3A44" },
-  ];
+  const typingMinutes = Math.max(1, Math.round((stats?.wordsOut ?? usage.total.words) / 40));
+  const hasData = sessions > 0;
 
   // A small metric tile (StatCard v3 node, plain KeyValue fallback for old
-  // bundles). delta is optional week-over-week movement when the projection
-  // carries it.
+  // bundles).
   const stat = (label: string, value: string, delta?: number): Node => ({
     type: "StatCard",
     props: { label, value, ...(delta != null ? { delta } : {}) },
@@ -2023,11 +2004,47 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
       fallback ? { ...chart, fallback } : chart,
     ],
   });
+  const kv = (label: string, value: string): Node => ({ type: "KeyValue", props: { label, value } });
+
+  // 14-day words bar chart; Text sparkline fallback for old bundles.
+  const wordsBars = (stats?.wordsPerDay ?? stats?.sparklinePerDay ?? []).slice(-14)
+    .map((v) => ({ label: "", value: Math.max(0, Number(v) || 0) }));
+  const sparklineText = renderSparkline(stats?.wordsPerDay ?? stats?.sparklinePerDay);
+
+  // "How you write" — words by capture kind.
+  const kindData = [
+    { label: "Voice", value: stats?.kindWords?.voice ?? 0, color: "#E8A23C" },
+    { label: "Typed", value: stats?.kindWords?.typing ?? 0, color: "#6EA8FE" },
+    { label: "Drafts", value: stats?.kindWords?.draft ?? 0, color: "#48D39A" },
+  ];
+  const kindTotal = kindData.reduce((s, d) => s + d.value, 0);
+
+  // "When you write" — sessions by local time of day.
+  const dp = stats?.daypartSessions;
+  const daypartData = [
+    { label: "Morning", value: dp?.morning ?? 0, color: "#F2C078" },
+    { label: "Afternoon", value: dp?.afternoon ?? 0, color: "#E8A23C" },
+    { label: "Evening", value: dp?.evening ?? 0, color: "#B98CFF" },
+    { label: "Night", value: dp?.night ?? 0, color: "#6EA8FE" },
+  ];
+  const daypartTotal = daypartData.reduce((s, d) => s + d.value, 0);
+
+  // "Where you write" — top apps by words.
+  const appData = (stats?.topApps ?? []).map((a, i) => ({
+    label: a.app,
+    value: a.words,
+    // Amber leads; the rest of the categorical set follows in rank order.
+    color: ["#E8A23C", "#6EA8FE", "#48D39A", "#F0736A", "#B98CFF", "#7DD3FC"][i % 6],
+  }));
+  const appTotal = appData.reduce((s, d) => s + d.value, 0);
+
+  const streak = stats?.currentStreak ?? 0;
+  const bestStreak = Math.max(streak, stats?.bestStreak ?? 0);
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "stats",
-    title: "Your usage",
+    title: "Stats",
     state: {},
     actions: {
       openHistory: { kind: "navigate", screenId: "history" },
@@ -2042,50 +2059,85 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
             subtitle: "@stats.hero.subtitle",
           },
         },
-        spacer(20),
+        spacer(13),
+        // Headline tiles — golden ladder spacing (8·13·21·34).
         {
           type: "Stack",
           style: { direction: "row", gap: 8 },
           children: [
-            stat("@stats.kv.weekWords", wordsWeek.toLocaleString()),
-            stat("@stats.kv.audio", `${mins(audioSecondsMonth)} min`),
-            stat("@stats.kv.saved", `${minutesSaved.toLocaleString()}`),
+            stat("Minutes saved", minutesSaved.toLocaleString()),
+            stat("Sessions", sessions.toLocaleString()),
           ],
         },
-        spacer(20),
-        // Donut: this-week vs earlier words. Center shows the month total.
-        chartCard("This month", {
-          type: "PieChart",
-          props: {
-            data: donutData,
-            donut: true,
-            size: 150,
-            legend: "right",
-            centerValue: wordsMonth.toLocaleString(),
-            centerLabel: "words",
-          },
-        }),
-        spacer(16),
-        // Bar chart of the last 7 days; Text sparkline fallback for old bundles.
-        chartCard(
-          "@stats.sparkline.label",
+        spacer(8),
+        {
+          type: "Stack",
+          style: { direction: "row", gap: 8 },
+          children: [
+            stat("Day streak", streak > 0 ? `${streak} 🔥` : "0"),
+            stat("Active days", String(stats?.daysActive ?? 0)),
+          ],
+        },
+        spacer(21),
+        ...(hasData ? [] : [{
+          type: "Card",
+          children: [
+            { type: "Paragraph", props: { content: "Your stats build as you write. Dictate or refine a few messages and this page fills with charts — words per day, streaks, where and when you write." }, style: { marginBottom: 0 } },
+          ],
+        } as Node, spacer(21)]),
+        // Words per day — the last 14 days.
+        ...(wordsBars.some((b) => b.value > 0) ? [chartCard(
+          "Words per day — last 14 days",
           {
             type: "BarChart",
-            props: { series: barSeries, color: "#E8A23C" },
+            props: { series: wordsBars, color: "#E8A23C" },
             style: { height: 110 },
           },
           text(sparklineText, "body", { style: { fontSize: 22, letterSpacing: 2 } }),
-        ),
-        spacer(20),
+        ), spacer(13)] : []),
+        // How you write — voice vs typed vs drafts.
+        ...(kindTotal > 0 ? [chartCard("How you write", {
+          type: "PieChart",
+          props: {
+            data: kindData,
+            donut: true,
+            size: 150,
+            legend: "right",
+            centerValue: kindTotal.toLocaleString(),
+            centerLabel: "words",
+          },
+        }), spacer(13)] : []),
+        // Where you write — top apps.
+        ...(appTotal > 0 ? [chartCard("Where you write", {
+          type: "PieChart",
+          props: { data: appData, donut: true, size: 150, legend: "right" },
+        }), spacer(13)] : []),
+        // When you write — sessions by time of day.
+        ...(daypartTotal > 0 ? [chartCard("When you write", {
+          type: "PieChart",
+          props: { data: daypartData, donut: false, size: 150, legend: "right" },
+        }), spacer(13)] : []),
+        // Records + averages.
+        ...(hasData ? [{
+          type: "Card",
+          children: [
+            text("Records", "label"),
+            spacer(8),
+            ...(stats?.bestDay ? [kv("Best day", `${stats.bestDay.words.toLocaleString()} words · ${stats.bestDay.date}`)] : []),
+            kv("Average per session", `${(stats?.avgWordsPerSession ?? 0).toLocaleString()} words`),
+            ...(stats?.speakingMinutes ? [kv("Speaking time", `${stats.speakingMinutes.toLocaleString()} min`)] : []),
+            kv("Best streak", bestStreak > 0 ? `${bestStreak} days` : "—"),
+          ],
+        } as Node, spacer(21)] : []),
         {
           type: "Paragraph",
           props: {
             content:
               `Your effort: you'd have spent ${typingMinutes.toLocaleString()} minutes typing ` +
-              `what Tulmi cleaned up in seconds.`,
+              `what Tailzu cleaned up in seconds.`,
           },
         },
-        spacer(24),
+        spacer(21),
         {
           type: "Button",
           props: { label: "@stats.cta.history", variant: "secondary" },

@@ -198,6 +198,9 @@ export interface ScreenRequest {
   authToken?: string;
   /** Params passed by a `navigate` action (e.g. an item id). */
   params?: Record<string, unknown>;
+  /** Caller's UTC offset in minutes (JS -getTimezoneOffset() convention) so
+   * server-baked per-day stats bucket in the user's local day. */
+  tzOffsetMinutes?: number;
 }
 
 export interface ScreenResponse {

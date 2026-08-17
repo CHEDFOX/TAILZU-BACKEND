@@ -65,7 +65,10 @@ export interface ListOptions {
   kind?: HistoryEntry["kind"];
 }
 
-/** Sum-of-cleanups over a rolling window, plus a per-UTC-day sparkline. */
+/** Sum-of-cleanups over a rolling window, plus a per-day sparkline and the
+ * deep projections the Stats tab charts (all optional — old clients ignore
+ * them, old servers omit them). Day bucketing honors the caller's UTC offset
+ * when provided so "today" and "evening" mean the user's day, not Greenwich's. */
 export interface StatsForUser {
   window: "week" | "month" | "all";
   requests: number;
@@ -73,6 +76,27 @@ export interface StatsForUser {
   audioSeconds: number;
   minutesSaved: number;
   sparklinePerDay: number[];
+  /** Words written per day, same buckets/order as sparklinePerDay. */
+  wordsPerDay?: number[];
+  /** Days in the window with at least one session. */
+  daysActive?: number;
+  /** Consecutive active days ending today (or yesterday, so an unfinished
+   * today doesn't read as a broken streak). */
+  currentStreak?: number;
+  /** Longest run of consecutive active days inside the window. */
+  bestStreak?: number;
+  /** Words by capture kind — the "how you write" split. */
+  kindWords?: { voice: number; typing: number; draft: number };
+  /** Sessions by local time-of-day band — the "when you write" split. */
+  daypartSessions?: { morning: number; afternoon: number; evening: number; night: number };
+  /** Top target apps by words (max 5, remainder as "Other"). */
+  topApps?: Array<{ app: string; words: number }>;
+  /** The single biggest day in the window. */
+  bestDay?: { date: string; words: number };
+  /** wordsOut / sessions, rounded. */
+  avgWordsPerSession?: number;
+  /** Minutes of speech processed (voice rows), rounded to one decimal. */
+  speakingMinutes?: number;
 }
 
 /** True when the caller has opted-in to history retention. */
@@ -281,6 +305,7 @@ export async function deleteHistoryEntry(
 export async function statsForUser(
   user: AuthedUser,
   window: "week" | "month" | "all",
+  tzOffsetMinutes = 0,
 ): Promise<StatsForUser> {
   const sinceMs = windowSinceMs(window);
   const sinceIso = sinceMs != null ? new Date(Date.now() - sinceMs).toISOString() : undefined;
@@ -291,24 +316,82 @@ export async function statsForUser(
     ? await fetchStatRowsSupabase(sb, user.id, sinceIso)
     : fetchStatRowsMemory(user.id, sinceIso);
 
+  // All day/hour bucketing runs in the CALLER'S local time: shift every
+  // timestamp by their UTC offset, then bucket on UTC fields of the shifted
+  // value. Clamp the offset to the real-world range so a bogus client value
+  // can't fling buckets days away.
+  const tz = Math.max(-14 * 60, Math.min(14 * 60, Math.round(tzOffsetMinutes || 0))) * 60_000;
+  const localMidnight = (ms: number) => utcMidnightMs(ms + tz);
+
   let requests = 0;
   let wordsOut = 0;
   let audioSeconds = 0;
   const spark = new Array<number>(days).fill(0);
-  const todayUtcMidnight = utcMidnightMs(Date.now());
+  const wordsPerDay = new Array<number>(days).fill(0);
+  const kindWords = { voice: 0, typing: 0, draft: 0 };
+  const daypartSessions = { morning: 0, afternoon: 0, evening: 0, night: 0 };
+  const appWords = new Map<string, number>();
+  const todayMidnight = localMidnight(Date.now());
 
   for (const r of rows) {
     requests += 1;
-    wordsOut += r.wordsOut ?? 0;
+    const words = r.wordsOut ?? 0;
+    wordsOut += words;
     audioSeconds += r.audioSeconds ?? 0;
+    if (r.kind === "voice") kindWords.voice += words;
+    else if (r.kind === "draft") kindWords.draft += words;
+    else kindWords.typing += words;
+    if (r.targetApp) appWords.set(r.targetApp, (appWords.get(r.targetApp) ?? 0) + words);
 
     const created = Date.parse(r.createdAt);
     if (!Number.isFinite(created)) continue;
-    const dayOffset = Math.floor((todayUtcMidnight - utcMidnightMs(created)) / MS_PER_DAY);
+    const dayOffset = Math.floor((todayMidnight - localMidnight(created)) / MS_PER_DAY);
     // Newest bucket is the last element in the array.
     const idx = days - 1 - dayOffset;
-    if (idx >= 0 && idx < days) spark[idx]! += 1;
+    if (idx >= 0 && idx < days) {
+      spark[idx]! += 1;
+      wordsPerDay[idx]! += words;
+    }
+    const hour = new Date(created + tz).getUTCHours();
+    if (hour >= 5 && hour < 12) daypartSessions.morning += 1;
+    else if (hour >= 12 && hour < 17) daypartSessions.afternoon += 1;
+    else if (hour >= 17 && hour < 22) daypartSessions.evening += 1;
+    else daypartSessions.night += 1;
   }
+
+  // Streaks over the day buckets. The current streak may start at today OR
+  // yesterday — a day that isn't over yet must not read as a broken streak.
+  let daysActive = 0;
+  let bestStreak = 0;
+  let run = 0;
+  for (let i = 0; i < days; i++) {
+    if (spark[i]! > 0) { daysActive += 1; run += 1; bestStreak = Math.max(bestStreak, run); }
+    else run = 0;
+  }
+  let currentStreak = 0;
+  for (let i = days - 1 - (spark[days - 1]! > 0 ? 0 : 1); i >= 0 && spark[i]! > 0; i--) {
+    currentStreak += 1;
+  }
+
+  // Best single day, dated in the caller's local calendar.
+  let bestDay: StatsForUser["bestDay"];
+  let bestIdx = -1;
+  for (let i = 0; i < days; i++) {
+    if (wordsPerDay[i]! > (bestIdx >= 0 ? wordsPerDay[bestIdx]! : 0)) bestIdx = i;
+  }
+  if (bestIdx >= 0 && wordsPerDay[bestIdx]! > 0) {
+    const d = new Date(todayMidnight - (days - 1 - bestIdx) * MS_PER_DAY);
+    bestDay = {
+      date: d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }),
+      words: wordsPerDay[bestIdx]!,
+    };
+  }
+
+  // Top apps by words — five named slices; the tail folds into "Other".
+  const ranked = [...appWords.entries()].sort((a, b) => b[1] - a[1]);
+  const topApps = ranked.slice(0, 5).map(([app, words]) => ({ app, words }));
+  const tail = ranked.slice(5).reduce((s, [, w]) => s + w, 0);
+  if (tail > 0) topApps.push({ app: "Other", words: tail });
 
   return {
     window,
@@ -317,6 +400,16 @@ export async function statsForUser(
     audioSeconds,
     minutesSaved: minutesSavedFor(wordsOut),
     sparklinePerDay: spark,
+    wordsPerDay,
+    daysActive,
+    currentStreak,
+    bestStreak,
+    kindWords,
+    daypartSessions,
+    topApps: topApps.length ? topApps : undefined,
+    bestDay,
+    avgWordsPerSession: requests > 0 ? Math.round(wordsOut / requests) : 0,
+    speakingMinutes: Math.round((audioSeconds / 60) * 10) / 10,
   };
 }
 
@@ -385,6 +478,8 @@ interface StatRow {
   createdAt: string;
   wordsOut?: number;
   audioSeconds?: number;
+  kind?: string;
+  targetApp?: string;
 }
 
 async function fetchStatRowsSupabase(
@@ -394,7 +489,7 @@ async function fetchStatRowsSupabase(
 ): Promise<StatRow[]> {
   let q = sb
     .from("cleanup_history")
-    .select("created_at, words_out, duration_ms, kind")
+    .select("created_at, words_out, duration_ms, kind, target_app")
     .eq("user_id", userId)
     .is("deleted_at", null);
   if (sinceIso) q = q.gte("created_at", sinceIso);
@@ -409,12 +504,15 @@ async function fetchStatRowsSupabase(
     words_out?: number | null;
     duration_ms?: number | null;
     kind?: string;
+    target_app?: string | null;
   }>).map((r) => ({
     createdAt: r.created_at ?? new Date(0).toISOString(),
     wordsOut: r.words_out ?? 0,
     // We don't have per-row audio seconds in the DB; approximate voice rows
     // by their duration_ms (best-effort — this feeds a UI number, not billing).
     audioSeconds: r.kind === "voice" && r.duration_ms ? r.duration_ms / 1000 : 0,
+    kind: r.kind,
+    targetApp: r.target_app ?? undefined,
   }));
 }
 
@@ -426,6 +524,8 @@ function fetchStatRowsMemory(userId: string, sinceIso: string | undefined): Stat
       createdAt: r.createdAt,
       wordsOut: r.wordsOut ?? 0,
       audioSeconds: r.audioSeconds ?? 0,
+      kind: r.kind,
+      targetApp: r.targetApp,
     }));
 }
 
