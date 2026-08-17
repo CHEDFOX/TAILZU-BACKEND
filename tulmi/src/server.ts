@@ -787,6 +787,9 @@ const toneUpsertSchema = z.object({
   name: z.string().max(80).optional(),
   promptStyle: z.string().max(2000).optional(),
   remove: z.boolean().optional(),
+  // "New voice for keyboard" path: also pin the saved tone to the keyboard
+  // set (same 6-cap as /v1/personality/pin), atomically with the upsert.
+  pin: z.boolean().optional(),
 });
 app.post("/v1/personality/tone", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
@@ -797,12 +800,12 @@ app.post("/v1/personality/tone", { config: AUTHED_RL }, async (req, reply) => {
   if (!parsed.success) {
     return reply.code(400).send({ code: "bad_request", message: "Invalid tone payload" });
   }
-  const { id, name, promptStyle, remove } = parsed.data;
+  const { id, name, promptStyle, remove, pin } = parsed.data;
   if (!remove && !(name?.trim() || promptStyle?.trim())) {
     return reply.code(400).send({ code: "bad_request", message: "A tone needs a name or a prompt" });
   }
   try {
-    const { personality, toneId } = await upsertPresetTone(user, { id, name, promptStyle, remove });
+    const { personality, toneId } = await upsertPresetTone(user, { id, name, promptStyle, remove, pin });
     const res: PersonalityResponse = { personality };
     return reply.send({ ...res, toneId });
   } catch (err) {

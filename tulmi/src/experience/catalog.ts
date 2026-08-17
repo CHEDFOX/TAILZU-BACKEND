@@ -1261,57 +1261,119 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
 
   const effective = applyPresetOverrides(p.presetOverrides);
   const activeId = p.activePresetId ?? "signature";
+  const pinned = Array.isArray(p.pinnedPresetIds) ? p.pinnedPresetIds : [];
+  // The keyboard set, in pin order; ids whose preset was deleted are dropped.
+  const kbVoices = pinned
+    .map((id) => effective.find((e) => e.id === id))
+    .filter((e): e is (typeof effective)[number] => !!e);
 
-  // Tap a voice → make it the ACTIVE one (this is what the keyboard uses for
-  // refine — the "go-to voice for the keyboard"). Editing moved to the
-  // explicit "Edit" affordance on the right; the old tap-to-edit meant there
-  // was NO way to just pick a preset without walking through the editor.
-  const toneCard = (preset: (typeof effective)[number]): Node => ({
-    type: "Card",
-    style: { paddingVertical: 14, paddingHorizontal: 16, marginBottom: 6 },
-    on: { onPress: { kind: "sequence", actions: [
+  // Small trailing button on a row. Nested pressables win over the row press
+  // (standard RN nesting), so these never also activate the voice.
+  const rowBtn = (label: string, onPress: ActionRef): Node => ({
+    type: "Button",
+    props: { label, variant: "secondary" },
+    style: { paddingVertical: 6, paddingHorizontal: 12 },
+    on: { onPress },
+  });
+  const pinAction = (presetId: string, pinnedFlag: boolean): ActionRef => ({
+    kind: "sequence",
+    actions: [
       { kind: "haptic", style: "selection" },
       {
         kind: "callEndpoint",
-        method: "PUT",
-        path: "/v1/personality",
-        body: { activePresetId: preset.id },
-        onSuccess: "activated",
-        onError: "activateErr",
-      },
-    ] } },
-    children: [
-      {
-        type: "Stack",
-        style: { direction: "row", alignItems: "center", gap: 10 },
-        children: [
-          { type: "Text", props: { content: preset.name }, style: {
-            flex: 1,
-            fontSize: 16,
-            fontWeight: preset.id === activeId ? "800" : "600",
-            color: preset.id === activeId ? "$color.primary" : "$color.text",
-          } },
-          ...(preset.id === activeId
-            ? [{ type: "Text", props: { content: "On keyboard" }, style: {
-                fontSize: 11, fontWeight: "700", color: "$color.primary",
-              } } as Node]
-            : []),
-          // Inner pressable wins over the card press (standard RN nesting),
-          // so "Edit" opens the editor without also activating.
-          {
-            type: "Button",
-            props: { label: "Edit", variant: "secondary" },
-            on: { onPress: { kind: "navigate", screenId: "tone_edit", params: { presetId: preset.id } } },
-            style: { paddingVertical: 6, paddingHorizontal: 12 },
-          },
-        ],
+        method: "POST",
+        path: "/v1/personality/pin",
+        body: { presetId, pinned: pinnedFlag },
+        onSuccess: "pinChanged",
+        onError: "pinErr",
       },
     ],
   });
 
-  const pinned = Array.isArray(p.pinnedPresetIds) ? p.pinnedPresetIds : [];
-  const goCards = effective.filter((e) => pinned.includes(e.id)).map(toneCard);
-  const restCards = effective.filter((e) => !pinned.includes(e.id)).map(toneCard);
+  // One voice row. Tap = make it the ACTIVE voice (what refine writes with);
+  // the trailing buttons manage the keyboard set / open the editor.
+  const voiceRow = (preset: (typeof effective)[number], where: "kb" | "all"): Node => {
+    const isActive = preset.id === activeId;
+    const isPinned = pinned.includes(preset.id);
+    return {
+      type: "Card",
+      style: { paddingVertical: 12, paddingHorizontal: 14, marginBottom: 6 },
+      on: { onPress: { kind: "sequence", actions: [
+        { kind: "haptic", style: "selection" },
+        {
+          kind: "callEndpoint",
+          method: "PUT",
+          path: "/v1/personality",
+          // Carry the voice's tone along so the keyboard's tone pill follows
+          // the voice instead of keeping a stale tone.
+          body: {
+            activePresetId: preset.id,
+            ...(preset.defaultTone ? { activeTone: preset.defaultTone } : {}),
+          },
+          onSuccess: "activated",
+          onError: "activateErr",
+        },
+      ] } },
+      children: [
+        {
+          type: "Stack",
+          style: { direction: "row", alignItems: "center", gap: 10 },
+          children: [
+            { type: "Text", props: { content: preset.name }, style: {
+              flex: 1,
+              fontSize: 16,
+              fontWeight: isActive ? "800" : "600",
+              color: isActive ? "$color.primary" : "$color.text",
+            } },
+            ...(isActive
+              ? [{ type: "Text", props: { content: "Active" }, style: {
+                  fontSize: 11, fontWeight: "700", color: "$color.primary",
+                } } as Node]
+              : []),
+            ...(where === "kb"
+              ? [rowBtn("Remove", pinAction(preset.id, false))]
+              : [
+                  // Already-pinned voices are managed from the keyboard card,
+                  // so the library row only offers Add when it's not there yet.
+                  ...(!isPinned ? [rowBtn("Add", pinAction(preset.id, true))] : []),
+                  rowBtn("Edit", { kind: "navigate", screenId: "tone_edit", params: { presetId: preset.id } }),
+                ]),
+          ],
+        },
+      ],
+    };
+  };
+
+  // Card 1 — the voices that show on the keyboard (the pinned set, max 6).
+  const keyboardCard: Node = {
+    type: "Card",
+    style: { padding: 14, marginBottom: 16 },
+    children: [
+      { type: "Overline", props: { content: "Keyboard voices" }, style: { marginBottom: 4 } },
+      { type: "Paragraph", props: { content: kbVoices.length
+          ? "These are on your keyboard — up to 6. Tap one to write with it now; Remove takes it off the keyboard (it stays in All voices)."
+          : "Nothing on the keyboard yet — Add a voice from All voices below, or create a new one." },
+        style: { fontSize: 12, marginBottom: 10 } },
+      ...kbVoices.map((e) => voiceRow(e, "kb")),
+      gap(4),
+      // Creates a tone AND pins it in one save — it lands in All voices too.
+      { type: "Button", props: { label: "＋  New voice for keyboard", variant: "secondary" }, on: { onPress: "addKbTone" } },
+    ],
+  };
+
+  // Card 2 — the whole library.
+  const allCard: Node = {
+    type: "Card",
+    style: { padding: 14 },
+    children: [
+      { type: "Overline", props: { content: "All voices" }, style: { marginBottom: 4 } },
+      { type: "Paragraph", props: { content: "Your whole library. Add puts a voice on the keyboard; Edit changes how it writes." },
+        style: { fontSize: 12, marginBottom: 10 } },
+      ...effective.map((e) => voiceRow(e, "all")),
+      gap(4),
+      { type: "Button", props: { label: "＋  Add a tone", variant: "secondary" }, on: { onPress: "addTone" } },
+    ],
+  };
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
@@ -1324,9 +1386,13 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
         { kind: "haptic", style: "selection" },
         { kind: "navigate", screenId: "tone_edit" },
       ] },
-      // A voice was made active: confirm + re-render so the "On keyboard"
-      // badge moves to the new card. The keyboard picks it up on its next
-      // config fetch.
+      // Same, but the save also pins the new tone to the keyboard set.
+      addKbTone: { kind: "sequence", actions: [
+        { kind: "haptic", style: "selection" },
+        { kind: "navigate", screenId: "tone_edit", params: { pin: true } },
+      ] },
+      // A voice was made active: confirm + re-render so the "Active" badge
+      // moves. The keyboard picks it up on its next config fetch.
       activated: { kind: "sequence", actions: [
         { kind: "haptic", style: "success" },
         { kind: "refresh" },
@@ -1336,18 +1402,25 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
         tone: "error",
         message: "Couldn't switch voices — check your connection and try again.",
       },
+      // Keyboard set changed (Add/Remove): re-render both cards.
+      pinChanged: { kind: "sequence", actions: [
+        { kind: "haptic", style: "success" },
+        { kind: "refresh" },
+      ] },
+      pinErr: {
+        kind: "toast",
+        tone: "error",
+        message: "Couldn't update the keyboard voices — check your connection and try again.",
+      },
     },
     root: {
       type: "Screen",
       style: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 24 },
       children: [
         { type: "Heading", props: { content: "Voice" }, style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 6 } },
-        { type: "Paragraph", props: { content: "Tap a voice to use it on your keyboard. Edit to change how it writes." }, style: { fontSize: 13, marginBottom: 16 } },
-        ...goCards,
-        ...(goCards.length ? [gap(16)] : []),
-        ...restCards,
-        gap(20),
-        { type: "Button", props: { label: "＋  Add a tone", variant: "secondary" }, on: { onPress: "addTone" } },
+        { type: "Paragraph", props: { content: "Tap a voice to write with it. Keyboard voices are the ones you can switch between right on the keyboard." }, style: { fontSize: 13, marginBottom: 16 } },
+        keyboardCard,
+        allCard,
       ],
     },
     cacheTtlSeconds: 0,
@@ -1362,6 +1435,9 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
  */
 function toneEditScreen(ctx: ScreenContext): ScreenResponse {
   const presetId = typeof ctx.params?.presetId === "string" ? ctx.params.presetId : undefined;
+  // Opened from the "New voice for keyboard" button — the save also pins the
+  // tone to the keyboard set (it lands in All voices either way).
+  const pinOnSave = ctx.params?.pin === true || ctx.params?.pin === "true" || ctx.params?.pin === "1";
   const effective = applyPresetOverrides(ctx.personality.presetOverrides);
   const preset = presetId ? effective.find((e) => e.id === presetId) : undefined;
   const isBuiltin = !!presetId && PERSONALITY_PRESETS.some((b) => b.id === presetId);
@@ -1371,13 +1447,14 @@ function toneEditScreen(ctx: ScreenContext): ScreenResponse {
   // custom id). $state.name / $state.prompt are the two fields.
   const saveBody: Record<string, unknown> = { name: "$state.name", promptStyle: "$state.prompt" };
   if (presetId) saveBody.id = presetId;
+  if (pinOnSave) saveBody.pin = true;
 
   const label = (t: string): Node => ({ type: "Overline", props: { content: t }, style: { marginBottom: 8 } });
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "tone_edit",
-    title: preset ? `Edit ${preset.name}` : "New tone",
+    title: preset ? `Edit ${preset.name}` : pinOnSave ? "New keyboard voice" : "New tone",
     state: {
       name: preset?.name ?? "",
       prompt: preset?.promptStyle ?? "",
