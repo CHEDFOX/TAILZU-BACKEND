@@ -22,7 +22,8 @@ describe("buildBootstrap", () => {
     expect(b.navigation.kind).toBe("tabs");
     const nav = b.navigation as { kind: "tabs"; tabs: Array<{ id: string }> };
     // Settings is no longer a bottom tab — it's opened from the header gear.
-    expect(nav.tabs.map((t) => t.id)).toEqual(["home", "personality"]);
+    // Stats sits between Home and You (the deep-stats tab).
+    expect(nav.tabs.map((t) => t.id)).toEqual(["home", "stats", "personality"]);
     expect(b.initialScreenId).toBe("home");
     // Common labels the app relies on.
     expect(b.labels?.["app.name"]).toBe("Tailzu");

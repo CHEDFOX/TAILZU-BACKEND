@@ -1080,6 +1080,9 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   const body = (req.body ?? {}) as {
     screenId?: string;
     params?: Record<string, string | number | boolean | undefined>;
+    /** Caller's UTC offset (minutes, JS -getTimezoneOffset() convention) so
+     * per-day stats bucket in the USER'S day, not Greenwich's. */
+    tzOffsetMinutes?: number;
   };
   const screenId = body.screenId;
   if (!screenId) {
@@ -1095,8 +1098,13 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   // usageSummary covers legacy stats numbers; statsForUser adds the
   // history-derived "minutes saved" + sparkline for the SDUI stats screen.
   const usage = user && screenId === "stats" ? await usageSummary(user) : undefined;
+  // "month" window: the Stats tab charts 14-day bars + 30-day streaks, which
+  // a 7-day projection can't feed. tzOffsetMinutes keeps "today"/"evening"
+  // meaning the user's clock.
   const stats =
-    user && screenId === "stats" ? await statsForUser(user, "week") : undefined;
+    user && screenId === "stats"
+      ? await statsForUser(user, "month", Number(body.tzOffsetMinutes) || 0)
+      : undefined;
   const history =
     user && screenId === "history"
       ? (await listHistory(user, { limit: 50 })).entries

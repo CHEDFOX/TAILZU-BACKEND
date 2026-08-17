@@ -661,4 +661,25 @@ export interface StatsResponse {
    * is bucketed by UTC calendar day.
    */
   sparklinePerDay: number[];
+  // --- Deep projections for the Stats tab (optional — old servers omit). ---
+  /** Words written per day, same buckets/order as sparklinePerDay. */
+  wordsPerDay?: number[];
+  /** Days in the window with at least one session. */
+  daysActive?: number;
+  /** Consecutive active days ending today (or yesterday). */
+  currentStreak?: number;
+  /** Longest run of consecutive active days inside the window. */
+  bestStreak?: number;
+  /** Words by capture kind — the "how you write" split. */
+  kindWords?: { voice: number; typing: number; draft: number };
+  /** Sessions by local time-of-day band — the "when you write" split. */
+  daypartSessions?: { morning: number; afternoon: number; evening: number; night: number };
+  /** Top target apps by words (max 5, remainder folded into "Other"). */
+  topApps?: Array<{ app: string; words: number }>;
+  /** The single biggest day in the window. */
+  bestDay?: { date: string; words: number };
+  /** wordsOut / sessions, rounded. */
+  avgWordsPerSession?: number;
+  /** Minutes of speech processed, rounded to one decimal. */
+  speakingMinutes?: number;
 }
