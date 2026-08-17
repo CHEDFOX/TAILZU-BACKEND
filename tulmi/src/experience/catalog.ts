@@ -3390,13 +3390,14 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       //   flow_start_hint → shown under the "Start Flow" (no-session) state
       //   flow_arming     → shown after the first tap opens the app to arm
       //   flow_arm_manual → shown when iOS refused the auto-open (open by hand)
-      // RESTORED for App Review (was blank "icon-only" — a silent hand-off
-      // into a background-mic state is indefensible in a review call). These
-      // are OTA strings: re-blank after approval if the icon-only look is
-      // preferred.
-      flow_start_hint: "Tap ⚡ to turn on Flow — dictate from the keyboard, hands-free.",
-      flow_arming: "Turning on Flow — the mic stays on in the background. Swipe back when you land in Tailzu.",
-      flow_arm_manual: "Open the Tailzu app once to turn on Flow, then come back.",
+      // Blank by owner decision: the keyboard stays icon-only — no Flow hint
+      // text over the keys, no "Start Flow" state. The background-mic story
+      // is carried by the App Review notes, the mic purpose string, the
+      // privacy policy's Flow Session section, and the Settings off switch.
+      // Any string here re-introduces on-keyboard guidance OTA if ever wanted.
+      flow_start_hint: "",
+      flow_arming: "",
+      flow_arm_manual: "",
     },
     root,
     actions,
