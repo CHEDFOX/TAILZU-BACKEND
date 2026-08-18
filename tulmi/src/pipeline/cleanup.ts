@@ -531,7 +531,16 @@ export async function refineVariants(
  */
 export async function updateStylePortrait(
   current: Personality["stylePortrait"],
-  example: { input: string; chosen: string; rejected: string[]; tone?: string },
+  example: {
+    input: string;
+    chosen: string;
+    rejected: string[];
+    /** Human-readable name of the voice/tone being trained (never a raw id). */
+    tone?: string;
+    /** The existing note for that voice/tone — the caller resolves it by KEY
+     * (voice id), which may differ from the display name above. */
+    currentToneNote?: string;
+  },
 ): Promise<{ core: string; toneNote?: string }> {
   const trainingTone = example.tone && example.tone !== "none" ? example.tone : undefined;
   const system =
@@ -542,12 +551,12 @@ export async function updateStylePortrait(
     "evidence contradicts, add what it reveals. Concrete, observable rules only (length, punctuation, " +
     "warmth, directness, emoji, phrasing habits) — never mention the training process. " +
     "Return ONLY JSON: {\"core\": \"≤120 words, tone-independent\"" +
-    (trainingTone ? `, \"toneNote\": \"≤40 words, specific to the '${trainingTone}' tone\"` : "") +
+    (trainingTone ? `, \"toneNote\": \"≤40 words, specific to their '${trainingTone}' voice\"` : "") +
     "}.";
   const user = [
     `CURRENT PORTRAIT:\n${current?.core?.trim() || "(none yet)"}`,
-    trainingTone && current?.tones?.[trainingTone]
-      ? `CURRENT '${trainingTone}' NOTE:\n${current.tones[trainingTone]}`
+    trainingTone && example.currentToneNote
+      ? `CURRENT '${trainingTone}' NOTE:\n${example.currentToneNote}`
       : "",
     `THEY SAID:\n${example.input.slice(0, 1200)}`,
     `THEY PICKED:\n${example.chosen.slice(0, 1200)}`,

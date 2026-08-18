@@ -95,6 +95,18 @@ export function portraitBlock(personality: Personality | undefined, tone?: strin
   if (p.core?.trim()) parts.push(p.core.trim().slice(0, 900));
   const toneNote = tone && p.tones?.[tone]?.trim();
   if (toneNote) parts.push(`For the "${tone}" tone specifically: ${toneNote.slice(0, 300)}`);
+  // Notes are also keyed by VOICE id (the Train sheet lists the voice
+  // library) — the ACTIVE voice's note applies to every refine made while
+  // that voice is selected. Skip when it's the same key as `tone` above.
+  const voiceId = personality?.activePresetId;
+  if (voiceId && voiceId !== tone) {
+    const voiceNote = p.tones?.[voiceId]?.trim();
+    if (voiceNote) {
+      const voiceName =
+        applyPresetOverrides(personality?.presetOverrides).find((x) => x.id === voiceId)?.name ?? voiceId;
+      parts.push(`For their "${voiceName}" voice specifically: ${voiceNote.slice(0, 300)}`);
+    }
+  }
   if (!parts.length) return "";
   return (
     "THIS USER'S STYLE PORTRAIT (learned from the versions they picked as " +
