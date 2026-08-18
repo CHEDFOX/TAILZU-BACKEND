@@ -91,9 +91,9 @@ describe("buildScreen", () => {
   it("Home is the Training surface: variants + pick endpoints, tone sheet trains a tone", () => {
     const home = buildScreen("home", { personality: {}, language: "en" });
     expect(home).not.toBeNull();
-    // Tone state seeded on the screen.
-    expect((home!.state as Record<string, unknown>).tone).toBe("none");
-    expect((home!.state as Record<string, unknown>).toneLabel).toBe("Tone");
+    // Training target seeded to the user's active voice (default: Signature).
+    expect((home!.state as Record<string, unknown>).tone).toBe("signature");
+    expect((home!.state as Record<string, unknown>).toneLabel).toBe("Signature");
     expect((home!.state as Record<string, unknown>).toneSheetOpen).toBe(false);
     const json = JSON.stringify(home);
     // The training loop: variants in, a pick out — with the rejected pair so
@@ -107,11 +107,14 @@ describe("buildScreen", () => {
     expect(json).toContain('"truthy":"variantC"');
     // The action row hides while recording.
     expect(json).toContain('"falsy":"recording"');
-    // Blurred tone sheet with the tone options.
+    // Blurred voice sheet: Core style + the whole voice library.
     expect(json).toContain('"blur":true');
     expect(json).toContain('"open":"toneSheetOpen"');
-    expect(json).toContain("Very casual");
-    expect(json).toContain("Excited");
+    expect(json).toContain("Core style");
+    expect(json).toContain("Professional");
+    expect(json).toContain("Witty");
+    // The refine trigger is the brand media, playing while variants generate.
+    expect(json).toContain('"playing":"refining"');
   });
 
   it("You tab shows Voice + Dictionary media cards; the voice list carries the saved tone", () => {

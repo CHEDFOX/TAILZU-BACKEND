@@ -50,7 +50,7 @@ import {
   upsertPresetTone,
   updatePersonality,
 } from "./personality/store.js";
-import { PERSONALITY_PRESETS } from "./experience/personalityPresets.js";
+import { PERSONALITY_PRESETS, applyPresetOverrides } from "./experience/personalityPresets.js";
 import {
   buildBootstrap,
   buildScreen,
@@ -583,9 +583,17 @@ app.post("/v1/train/variants", { config: AUTHED_RL }, async (req, reply) => {
   if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
   try {
     const personality = await getPersonality(user);
-    const tone = body.tone && body.tone !== "none" ? String(body.tone).slice(0, 40) : undefined;
+    const tone = body.tone && body.tone !== "none" ? String(body.tone).slice(0, 120) : undefined;
+    // The Train sheet sends a VOICE id (built-in or custom preset). When it
+    // matches one, the variants speak in that voice's promptStyle — and the
+    // voice id doubles as the portrait key, so its learned note flows into
+    // generation too. A plain LLM tone id still works for legacy callers.
+    const voice = tone
+      ? applyPresetOverrides(personality.presetOverrides).find((p) => p.id === tone)
+      : undefined;
     const variants = await refineVariants(textIn, {
       tone,
+      tonePrompt: voice?.promptStyle,
       personality,
       language: body.language,
       targetApp: "Generic",
@@ -627,12 +635,25 @@ app.post("/v1/train/pick", { config: AUTHED_RL }, async (req, reply) => {
   const over = tooLong(input) ?? tooLong(chosen) ?? tooLong(body.rejectedA) ?? tooLong(body.rejectedB);
   if (over) return reply.code(413).send({ code: "bad_request", message: over });
   try {
-    const current = (await getPersonality(user)).stylePortrait;
-    const tone = body.tone && body.tone !== "none" ? String(body.tone).slice(0, 40) : undefined;
+    const personalityNow = await getPersonality(user);
+    const current = personalityNow.stylePortrait;
+    // `tone` may be a VOICE id (the Train sheet lists the voice library) or a
+    // plain LLM tone id. The portrait note is KEYED by the raw id; the LLM
+    // prompt sees the human name so "custom_<uuid>" never leaks into it.
+    const toneKey = body.tone && body.tone !== "none" ? String(body.tone).slice(0, 120) : undefined;
+    const toneLabel = toneKey
+      ? applyPresetOverrides(personalityNow.presetOverrides).find((p) => p.id === toneKey)?.name ?? toneKey
+      : undefined;
     const rejected = [body.rejectedA, body.rejectedB]
       .map((r) => (r ?? "").trim())
       .filter((r) => r && r !== chosen);
-    const next = await updateStylePortrait(current, { input, chosen, rejected, tone });
+    const next = await updateStylePortrait(current, {
+      input,
+      chosen,
+      rejected,
+      tone: toneLabel,
+      currentToneNote: toneKey ? current?.tones?.[toneKey] : undefined,
+    });
     // Merge under the per-user lock; the tones map merges per-key so training
     // one tone never wipes the notes learned for the others.
     const merged = await updatePersonality(user, (existing) => ({
@@ -641,7 +662,7 @@ app.post("/v1/train/pick", { config: AUTHED_RL }, async (req, reply) => {
         core: next.core,
         tones: {
           ...(existing.stylePortrait?.tones ?? {}),
-          ...(tone && next.toneNote ? { [tone]: next.toneNote } : {}),
+          ...(toneKey && next.toneNote ? { [toneKey]: next.toneNote } : {}),
         },
         examples: (existing.stylePortrait?.examples ?? 0) + 1,
         updatedAt: new Date().toISOString(),

@@ -62,12 +62,15 @@ export const THEME: ThemeTokens = {
     danger: "#e0556b",
     success: "#4caf50",
   },
-  // Plutto-style scale: airy, editorial.
-  space: { xs: 4, sm: 8, md: 12, lg: 18, xl: 26, content: 24, contentTop: 34 },
-  radius: { sm: 8, md: 14, card: 18, pill: 999 },
+  // GOLDEN SCALE (φ via the Fibonacci ladder 5·8·13·21·34·55): every spacing
+  // step and type size in the app comes off this ladder, so screens compose
+  // on one ratio instead of ad-hoc values.
+  space: { xs: 5, sm: 8, md: 13, lg: 21, xl: 34, content: 21, contentTop: 34 },
+  radius: { sm: 8, md: 13, card: 18, pill: 999 },
   font: {
     // Headings render in a serif (set per-platform in the renderer); body is sans.
-    sizes: { overline: 11, caption: 12, label: 13, body: 15, lg: 18, h1: 24, brand: 30 },
+    // Ladder pairs: 13/21 captions, 15 body, 21 lg, 26/34 h1, 34 brand display.
+    sizes: { overline: 11, caption: 13, label: 13, body: 15, lg: 21, h1: 26, brand: 34 },
     weights: { light: "300", regular: "400", medium: "500", bold: "700", heavy: "800" },
   },
 };
@@ -890,7 +893,7 @@ const LANGUAGES: Array<{ value: string; label: string }> = [
 ];
 
 /** The refine playground — proves the full SDUI loop incl. a brain call. */
-function homeScreen(_ctx: ScreenContext): ScreenResponse {
+function homeScreen(ctx: ScreenContext): ScreenResponse {
   // In-app mic media. Prefer an MP4 upload (mic.animation.mp4) when present —
   // MediaPlayer's video branch freezes it on-frame while paused AND reacts its
   // speed to the mic level (voiceReactive), so the in-app mic feels alive and
@@ -904,23 +907,30 @@ function homeScreen(_ctx: ScreenContext): ScreenResponse {
     ? { source: { key: "mic.animation.mp4" }, autoplay: false, loop: true, muted: true, voiceReactive: true, freezeOnPause: true }
     : { source: { key: "mic.animation" }, autoplay: false, loop: true, voiceReactive: true };
 
-  // Home tone picker. Each row selects the tone the Refine button runs in — the
-  // id maps 1:1 to the per-tone refine endpoints the client routes to
-  // (/v1/refine/<id>; "none" → skip-refine). Authored here so the tone set can
-  // be reordered/renamed/extended from the backend with no app update.
+  // Train picker: the user's WHOLE voice library (built-ins + their custom
+  // tones), not a hardcoded tone list — tap any voice to train it. "Core
+  // style" trains the tone-independent base portrait. Server-authored, so a
+  // new custom voice appears here on the next screen fetch with no app update.
+  const effective = applyPresetOverrides(ctx.personality.presetOverrides);
   const TONE_OPTIONS: Array<{ id: string; label: string; hint: string }> = [
-    { id: "none", label: "Tone", hint: "Clean-up only — keep my words" },
-    { id: "formal", label: "Formal", hint: "Polished and professional" },
-    { id: "casual", label: "Casual", hint: "Relaxed and friendly" },
-    { id: "very-casual", label: "Very casual", hint: "Loose, texting-with-friends" },
-    { id: "excited", label: "Excited", hint: "Upbeat and energetic" },
+    { id: "none", label: "Core style", hint: "Your base voice — every tone builds on it" },
+    ...effective.map((p) => ({
+      id: p.id,
+      label: p.name,
+      hint: (p as { tagline?: string }).tagline ?? "Custom voice",
+    })),
   ];
-  // A tappable tone row inside the blurred sheet: pick it → store the tone id +
-  // its button label, then close the sheet. All state, so the Refine button
-  // (bind.tone) picks it up on its next press.
-  const toneRow = (opt: { id: string; label: string; hint: string }): Node => ({
+  // Seed the pill with the voice the user actually writes with, so "just tap
+  // Refine" trains what they use daily.
+  const activeVoice = effective.find(
+    (e) => e.id === (ctx.personality.activePresetId ?? "signature"),
+  );
+  // A tappable voice row inside the blurred sheet: pick it → store the id +
+  // its pill label, then close the sheet. All state, so the next Refine
+  // trains in that voice.
+  const toneRow = (opt: { id: string; label: string; hint: string }, i: number): Node => ({
     type: "Row",
-    props: { label: opt.label, value: opt.hint, chevron: false, divider: opt.id !== "excited" },
+    props: { label: opt.label, value: opt.hint, chevron: false, divider: i < TONE_OPTIONS.length - 1 },
     on: { onPress: { kind: "sequence", actions: [
       { kind: "haptic", style: "selection" },
       { kind: "setState", path: "tone", value: opt.id },
@@ -1017,9 +1027,12 @@ function homeScreen(_ctx: ScreenContext): ScreenResponse {
     title: "",
     state: {
       input: "", recording: false, refining: false,
-      // Training tone: which tone this session trains (and which the variants
-      // speak in). "none" trains the core style.
-      tone: "none", toneLabel: "Tone", toneSheetOpen: false,
+      // Training target: which VOICE this session trains (and which the
+      // variants speak in). "none" trains the core style. Seeded to the
+      // user's active voice so Refine trains what they actually use.
+      tone: activeVoice?.id ?? "none",
+      toneLabel: activeVoice?.name ?? "Core style",
+      toneSheetOpen: false,
       variantA: "", variantB: "", variantC: "",
       angleA: "", angleB: "", angleC: "",
       _train: null, _input: "", _chosen: "", _rejA: "", _rejB: "",
@@ -1066,21 +1079,49 @@ function homeScreen(_ctx: ScreenContext): ScreenResponse {
       style: { paddingHorizontal: 24, paddingTop: 16 },
       children: [
         { type: "Heading", props: { content: "Train your voice" },
-          style: { fontSize: 26, lineHeight: 34, color: "$color.text", marginBottom: 8 } },
-        { type: "Paragraph", props: { content: "Type or speak, then tap the version that sounds most like you. Every pick teaches Tailzu your style \u2014 overall and per tone." },
-          style: { fontSize: 13, lineHeight: 21, marginBottom: 21 } },
+          style: { fontSize: 26, lineHeight: 34, color: "$color.text", marginBottom: 13 } },
         boxWithVoice("input"),
         { type: "Spacer", style: { height: 21 } },
-        // Refine + Tone. Hidden while the mic records; the Refining\u2026 twin
-        // takes the button\u2019s place while variants generate.
-        { type: "Stack", visibleIf: { falsy: "recording" }, style: { align: "center", direction: "column", gap: 13 }, children: [
-          { type: "Button", visibleIf: { falsy: "refining" },
-            props: { label: "Refine", variant: "primary" },
-            style: { width: 180 },
-            on: { onPress: "refine" } },
-          { type: "Button", visibleIf: { truthy: "refining" },
-            props: { label: "Refining\u2026", variant: "primary", disabled: true },
-            style: { width: 180 } },
+        // Refine trigger \u2014 the brand MEDIA itself, not a text button: tap \u2192
+        // it PLAYS while the variants generate \u2192 pauses when they land. An
+        // mp4 upload freezes on its frame when paused; the GIF unmounts when
+        // paused, revealing the static three-bar wave mark beneath. Same
+        // living-mark language as the mic in the input box.
+        { type: "Stack", visibleIf: { falsy: "recording" }, style: { align: "center", direction: "column", gap: 21 }, children: [
+          { type: "Stack", style: { align: "center", direction: "column", gap: 8 }, children: [
+            {
+              type: "Card",
+              on: { onPress: "refine" },
+              style: {
+                width: 68, height: 68, borderRadius: 34, padding: 0, borderWidth: 0,
+                backgroundColor: "#E8A23C", overflow: "hidden",
+                alignItems: "center", justifyContent: "center", position: "relative",
+              },
+              children: [
+                // Static under-layer: the three-bar wave mark.
+                { type: "Stack", style: { direction: "row", gap: 4, alignItems: "center" }, children: [
+                  { type: "Stack", style: { width: 4, height: 11, borderRadius: 2, backgroundColor: "#FFFFFF" } },
+                  { type: "Stack", style: { width: 4, height: 21, borderRadius: 2, backgroundColor: "#FFFFFF" } },
+                  { type: "Stack", style: { width: 4, height: 11, borderRadius: 2, backgroundColor: "#FFFFFF" } },
+                ] },
+                {
+                  type: "Video",
+                  bind: { playing: "refining" },
+                  props: { source: micIdle, loop: true, muted: true, contentFit: "cover" },
+                  style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" },
+                  // Old bundles rendered Video as a text stub \u2014 hide it there;
+                  // the wave-mark circle alone stays a perfectly good button.
+                  fallback: { type: "Spacer", style: { height: 0 } },
+                },
+              ],
+            },
+            { type: "Text", visibleIf: { falsy: "refining" }, props: { content: "Refine" },
+              style: { fontSize: 11, fontWeight: "600", color: "$color.muted", letterSpacing: 0.5 } },
+            { type: "Text", visibleIf: { truthy: "refining" }, props: { content: "Refining\u2026" },
+              style: { fontSize: 11, fontWeight: "600", color: "$color.muted", letterSpacing: 0.5 } },
+          ] },
+          // Voice pill \u2014 which voice this session trains. A full golden step
+          // (21) away from the trigger so the two reads never crowd.
           {
             type: "Button",
             bind: { label: "toneLabel" },
@@ -1105,7 +1146,7 @@ function homeScreen(_ctx: ScreenContext): ScreenResponse {
           bind: { open: "toneSheetOpen" },
           props: { blur: true, blurIntensity: 55, dismissable: true },
           children: [
-            { type: "Text", props: { content: "Train in\u2026" }, style: { fontSize: 18, fontWeight: "700", color: "#FFFFFF", textAlign: "center", marginBottom: 12 } },
+            { type: "Text", props: { content: "Pick a voice to train" }, style: { fontSize: 18, fontWeight: "700", color: "#FFFFFF", textAlign: "center", marginBottom: 12 } },
             ...TONE_OPTIONS.map(toneRow),
           ],
         },
