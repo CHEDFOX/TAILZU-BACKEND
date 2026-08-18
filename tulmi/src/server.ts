@@ -41,7 +41,7 @@ import { enforceQuota, recordUsage, usageSummary, usageWindows } from "./usage/m
 import { captureException, fastifyLoggerOptions, initSentry } from "./observability.js";
 import { getProfile, updateProfile } from "./profile/store.js";
 import { runPipeline, runPipelineStream } from "./pipeline/index.js";
-import { assist, draftReply, inferStyle, LLM_TONES } from "./pipeline/cleanup.js";
+import { assist, draftReply, inferStyle, refineVariants, updateStylePortrait, LLM_TONES } from "./pipeline/cleanup.js";
 import { synthesize } from "./pipeline/tts.js";
 import {
   getPersonality,
@@ -558,6 +558,99 @@ app.post("/v1/refine", { config: AUTHED_RL }, async (req, reply) => {
   } catch (err) {
     req.log.error(err);
     return reply.code(500).send({ code: "cleanup_failed", message: "Refine failed" });
+  }
+});
+
+// --- Training (REST): variant generation + style-portrait learning ----------
+//
+// The Train tab's loop: /variants turns one input into three differently-
+// styled refinements; the user taps the one that sounds most like them and
+// /pick absorbs that choice into the evolving style portrait
+// (personality.stylePortrait), which every refine path then injects into its
+// prompt. Tone-scoped picks also train that tone's note.
+
+app.post("/v1/train/variants", { config: AUTHED_RL }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) {
+    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+  }
+  const body = (req.body ?? {}) as { text?: string; tone?: string; language?: string };
+  const textIn = (body.text ?? "").trim();
+  if (!textIn) return reply.code(400).send({ code: "bad_request", message: "Missing 'text'" });
+  const over = tooLong(textIn);
+  if (over) return reply.code(413).send({ code: "bad_request", message: over });
+  const quota = await enforceQuota(user);
+  if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+  try {
+    const personality = await getPersonality(user);
+    const tone = body.tone && body.tone !== "none" ? String(body.tone).slice(0, 40) : undefined;
+    const variants = await refineVariants(textIn, {
+      tone,
+      personality,
+      language: body.language,
+      targetApp: "Generic",
+    });
+    if (!variants.length) {
+      return reply.code(500).send({ code: "cleanup_failed", message: "Couldn't generate variants" });
+    }
+    await recordUsage({
+      user,
+      source: "rest",
+      audioSeconds: 0,
+      words: variants.reduce((s, v) => s + countWords(v.text), 0),
+      model: getConfig().CLEANUP_MODEL,
+    });
+    return reply.send({ variants });
+  } catch (err) {
+    req.log.error(err);
+    return reply.code(500).send({ code: "cleanup_failed", message: "Couldn't generate variants" });
+  }
+});
+
+app.post("/v1/train/pick", { config: AUTHED_RL }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) {
+    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+  }
+  const body = (req.body ?? {}) as {
+    input?: string;
+    chosen?: string;
+    rejectedA?: string;
+    rejectedB?: string;
+    tone?: string;
+  };
+  const input = (body.input ?? "").trim();
+  const chosen = (body.chosen ?? "").trim();
+  if (!input || !chosen) {
+    return reply.code(400).send({ code: "bad_request", message: "Missing 'input' or 'chosen'" });
+  }
+  const over = tooLong(input) ?? tooLong(chosen) ?? tooLong(body.rejectedA) ?? tooLong(body.rejectedB);
+  if (over) return reply.code(413).send({ code: "bad_request", message: over });
+  try {
+    const current = (await getPersonality(user)).stylePortrait;
+    const tone = body.tone && body.tone !== "none" ? String(body.tone).slice(0, 40) : undefined;
+    const rejected = [body.rejectedA, body.rejectedB]
+      .map((r) => (r ?? "").trim())
+      .filter((r) => r && r !== chosen);
+    const next = await updateStylePortrait(current, { input, chosen, rejected, tone });
+    // Merge under the per-user lock; the tones map merges per-key so training
+    // one tone never wipes the notes learned for the others.
+    const merged = await updatePersonality(user, (existing) => ({
+      ...existing,
+      stylePortrait: {
+        core: next.core,
+        tones: {
+          ...(existing.stylePortrait?.tones ?? {}),
+          ...(tone && next.toneNote ? { [tone]: next.toneNote } : {}),
+        },
+        examples: (existing.stylePortrait?.examples ?? 0) + 1,
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+    return reply.send({ ok: true, examples: merged.stylePortrait?.examples ?? 1 });
+  } catch (err) {
+    req.log.error(err);
+    return reply.code(500).send({ code: "internal", message: "Couldn't save your pick" });
   }
 });
 
