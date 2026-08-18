@@ -75,7 +75,31 @@ export function toneGuidance(
   if (personality?.signature?.trim()) {
     parts.push(`If a sign-off fits the message, you may use: ${personality.signature.trim()}`);
   }
+  // The learned portrait rides every request, scoped to the active tone.
+  const portrait = portraitBlock(personality, tone);
+  if (portrait) parts.push(portrait);
   return parts.join(" ");
+}
+
+/**
+ * Render the user's learned style portrait as a prompt block, or "" when they
+ * haven't trained yet. Built from the Training tab's variant picks and
+ * injected into every refine path (toneGuidance here + buildTonePrompt for
+ * the per-tone endpoints). Hard-capped so a runaway portrait can never crowd
+ * out the actual task.
+ */
+export function portraitBlock(personality: Personality | undefined, tone?: string): string {
+  const p = personality?.stylePortrait;
+  if (!p) return "";
+  const parts: string[] = [];
+  if (p.core?.trim()) parts.push(p.core.trim().slice(0, 900));
+  const toneNote = tone && p.tones?.[tone]?.trim();
+  if (toneNote) parts.push(`For the "${tone}" tone specifically: ${toneNote.slice(0, 300)}`);
+  if (!parts.length) return "";
+  return (
+    "THIS USER'S STYLE PORTRAIT (learned from the versions they picked as " +
+    "sounding most like them — follow it over generic style):\n" + parts.join("\n")
+  );
 }
 
 /** Build the assist system prompt for one request. */

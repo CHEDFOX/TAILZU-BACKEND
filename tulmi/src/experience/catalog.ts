@@ -87,7 +87,9 @@ const NAV: NavigationShell = {
   // top-right of the header (client renders it on the tab roots). The settings
   // screen itself still exists at screenId "settings" and is pushed on tap.
   tabs: [
-    { id: "home", title: "Home", screenId: "home" },
+    // Home IS the training surface — refine, pick the version that sounds
+    // like you, and the style portrait learns from every pick.
+    { id: "home", title: "Train", screenId: "home" },
     { id: "stats", title: "Stats", screenId: "stats" },
     { id: "personality", title: "You", screenId: "personality" },
   ],
@@ -888,23 +890,7 @@ const LANGUAGES: Array<{ value: string; label: string }> = [
 ];
 
 /** The refine playground — proves the full SDUI loop incl. a brain call. */
-function homeScreen(ctx: ScreenContext): ScreenResponse {
-  // fontSize 30 overflowed the Pager page width (peek:44 leaves ~screen-88 usable),
-  // so long titles ("Reply in your voice") got clipped mid-word. 24 lets both
-  // titles wrap to at most two lines; flexShrink lets them break cleanly.
-  const titleStyle = {
-    fontSize: 24,
-    fontWeight: "800" as const,
-    color: "$color.text",
-    marginBottom: 20,
-    flexShrink: 1,
-    flexWrap: "wrap" as const,
-  };
-  // Pinning each page Stack to width:100% keeps titles measuring against the
-  // page viewport, not the scroll content width — otherwise "Reply in your
-  // voice" renders on one line and overflows past the right edge.
-  const pageStyle = { paddingHorizontal: 24, paddingTop: 16, width: "100%" as const };
-
+function homeScreen(_ctx: ScreenContext): ScreenResponse {
   // In-app mic media. Prefer an MP4 upload (mic.animation.mp4) when present —
   // MediaPlayer's video branch freezes it on-frame while paused AND reacts its
   // speed to the mic level (voiceReactive), so the in-app mic feels alive and
@@ -976,204 +962,153 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
     ],
   });
 
+  // One pick action per variant slot. Order matters: snapshot the pick into
+  // private keys FIRST (the endpoint body resolves at call time), then apply
+  // the optimistic UI (chosen text replaces the input, variants clear), and
+  // only then fire the learn call — the tap must feel instant even though the
+  // portrait update is an LLM round-trip.
+  const pickAction = (chosen: "variantA" | "variantB" | "variantC"): ActionRef => {
+    const others = (["variantA", "variantB", "variantC"] as const).filter((v) => v !== chosen);
+    return { kind: "sequence", actions: [
+      { kind: "haptic", style: "success" },
+      { kind: "setState", path: "_input", value: "$state.input" },
+      { kind: "setState", path: "_chosen", value: `$state.${chosen}` },
+      { kind: "setState", path: "_rejA", value: `$state.${others[0]}` },
+      { kind: "setState", path: "_rejB", value: `$state.${others[1]}` },
+      { kind: "setState", path: "input", value: `$state.${chosen}` },
+      { kind: "setState", path: "variantA", value: "" },
+      { kind: "setState", path: "variantB", value: "" },
+      { kind: "setState", path: "variantC", value: "" },
+      {
+        kind: "callEndpoint",
+        method: "POST",
+        path: "/v1/train/pick",
+        body: {
+          input: "$state._input",
+          chosen: "$state._chosen",
+          rejectedA: "$state._rejA",
+          rejectedB: "$state._rejB",
+          tone: "$state.tone",
+        },
+        onSuccess: "learned",
+        onError: "err",
+      },
+    ] };
+  };
+
+  // One tappable variant card. The angle rides as a small kicker so the three
+  // options read as directions ("closest" / "tighter" / "warmer"), not clones.
+  const variantCard = (slot: "variantA" | "variantB" | "variantC", angleKey: string): Node => ({
+    type: "Card",
+    visibleIf: { truthy: slot },
+    style: { paddingVertical: 13, paddingHorizontal: 14, marginBottom: 8 },
+    on: { onPress: pickAction(slot) },
+    children: [
+      { type: "Text", bind: { content: angleKey }, props: { content: "" },
+        style: { fontSize: 11, fontWeight: "700", color: "$color.label", marginBottom: 5 } },
+      { type: "Text", bind: { content: slot }, props: { content: "" },
+        style: { fontSize: 14, lineHeight: 23, color: "$color.text" } },
+    ],
+  });
+
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "home",
     title: "",
     state: {
-      input: "", screenContent: "", intent: "", result: "", recording: false,
-      // Refine tone: which per-tone endpoint the Refine button targets. "none"
-      // = clean-up only. `toneLabel` is the Tone button's caption; `toneSheetOpen`
-      // drives the blurred tone-picker sheet.
+      input: "", recording: false, refining: false,
+      // Training tone: which tone this session trains (and which the variants
+      // speak in). "none" trains the core style.
       tone: "none", toneLabel: "Tone", toneSheetOpen: false,
-      dictionary: ctx.dictionary ?? [],
-      frequentWords: ctx.frequentWords ?? [],
+      variantA: "", variantB: "", variantC: "",
+      angleA: "", angleB: "", angleC: "",
+      _train: null, _input: "", _chosen: "", _rejA: "", _rejB: "",
     },
     actions: {
       err: { kind: "toast", message: "Something went wrong. Check your connection.", tone: "error" },
-      // Echoes the real reason ($event) the mic control failed. The client's
-      // toast action resolves $event to the message VoiceToggle fired, so
-      // permission / audio-session / transcribe failures each show their own
-      // cause instead of a single misleading generic string.
+      // Echoes the real reason ($event) the mic control failed — permission /
+      // audio-session / transcribe failures each show their own cause.
       micError: { kind: "toast", message: "$event", tone: "error" },
-      openDictionary: { kind: "navigate", screenId: "dictionary" },
+      refine: { kind: "sequence", actions: [
+        { kind: "haptic", style: "light" },
+        { kind: "setState", path: "variantA", value: "" },
+        { kind: "setState", path: "variantB", value: "" },
+        { kind: "setState", path: "variantC", value: "" },
+        { kind: "setState", path: "refining", value: true },
+        {
+          kind: "callEndpoint",
+          method: "POST",
+          path: "/v1/train/variants",
+          body: { text: "$state.input", tone: "$state.tone", language: "auto" },
+          assignTo: "_train",
+          onSuccess: "gotVariants",
+          onError: "variantsErr",
+        },
+      ] },
+      gotVariants: { kind: "sequence", actions: [
+        { kind: "setState", path: "refining", value: false },
+        { kind: "setState", path: "variantA", value: "$state._train.variants.0.text" },
+        { kind: "setState", path: "angleA", value: "$state._train.variants.0.angle" },
+        { kind: "setState", path: "variantB", value: "$state._train.variants.1.text" },
+        { kind: "setState", path: "angleB", value: "$state._train.variants.1.angle" },
+        { kind: "setState", path: "variantC", value: "$state._train.variants.2.text" },
+        { kind: "setState", path: "angleC", value: "$state._train.variants.2.angle" },
+        { kind: "haptic", style: "light" },
+      ] },
+      variantsErr: { kind: "sequence", actions: [
+        { kind: "setState", path: "refining", value: false },
+        { kind: "toast", message: "Couldn\u2019t refine that. Check your connection and try again.", tone: "error" },
+      ] },
+      learned: { kind: "toast", message: "Learned \u2014 that\u2019s more you.", tone: "success" },
     },
     root: {
       type: "Screen",
-      // Zero the Screen's default horizontal padding so the Pager renders
-      // edge-to-edge (no black side strips). Non-pager sections wrap in a
-      // padded inner Stack below.
-      style: { paddingHorizontal: 0 },
+      style: { paddingHorizontal: 24, paddingTop: 16 },
       children: [
-        // 1) Refine ⇄ Reply swipe (fixed-height pager inside the vertical scroll)
-        // Pager is a modern (post-v1) component. Old bundles get the same two
-        // panes stacked vertically via fallback — no swipe, but every screen
-        // element remains reachable.
-        {
-          type: "Pager",
-          props: { hint: true, peek: 44, height: 360 },
-          children: [
-            { type: "Stack", style: pageStyle, children: [
-              { type: "Heading", props: { content: "Make it sound like you", numberOfLines: 2 }, style: titleStyle },
-              boxWithVoice("input"),
-              { type: "Spacer", style: { height: 22 } },
-              // Refine + Tone. The whole action row hides while the mic is
-              // recording (visibleIf falsy recording) and springs back when it
-              // stops — so the button is out of the way during voice capture.
-              { type: "Stack", visibleIf: { falsy: "recording" }, style: { align: "center", direction: "column", gap: 12 }, children: [
-                {
-                  type: "RefineButton",
-                  // bind.value = the text to refine; bind.tone = the selected
-                  // tone id → RefineButton routes to /v1/refine/<tone>. Press
-                  // again to iterate on the box text in the same tone.
-                  bind: { value: "input", tone: "tone" },
-                  props: { targetApp: "WhatsApp", language: "auto", width: 160 },
-                  on: { onError: "err" },
-                  // Old-bundle fallback: plain Button that fires /v1/refine
-                  // via the callEndpoint action (present since v1 CORE_ACTIONS).
-                  // Result is written back into `input` so the user still sees
-                  // the cleaned text where they typed.
-                  fallback: {
-                    type: "Button",
-                    props: { label: "Refine", variant: "primary" },
-                    // /v1/refine responds with { refinedText, usage } — assignTo
-                    // would drop the whole object into state.input. Two-step:
-                    // land the response in a private key, then setState pulls
-                    // out refinedText via dot-path resolution.
-                    on: { onPress: {
-                      kind: "callEndpoint",
-                      method: "POST",
-                      path: "/v1/refine",
-                      body: { text: "$state.input", targetApp: "WhatsApp", language: "auto" },
-                      assignTo: "_refined",
-                      onSuccess: { kind: "setState", path: "input", value: "$state._refined.refinedText" },
-                      onError: "err",
-                    } },
-                  },
-                },
-                // Tone button — opens the blurred tone sheet. Its caption is the
-                // active tone (bind label ← toneLabel); tap to change which tone
-                // Refine runs in.
-                {
-                  type: "Button",
-                  bind: { label: "toneLabel" },
-                  props: { variant: "secondary" },
-                  style: { paddingVertical: 10, paddingHorizontal: 22, borderRadius: 22 },
-                  on: { onPress: { kind: "sequence", actions: [
-                    { kind: "haptic", style: "light" },
-                    { kind: "setState", path: "toneSheetOpen", value: true },
-                  ] } },
-                },
-              ] },
-              // Blurred tone-picker sheet. Everything behind the card frosts
-              // (props.blur) while the user picks the tone Refine speaks in.
-              {
-                type: "Modal",
-                bind: { open: "toneSheetOpen" },
-                props: { blur: true, blurIntensity: 55, dismissable: true },
-                children: [
-                  { type: "Text", props: { content: "Refine in…" }, style: { fontSize: 18, fontWeight: "700", color: "#FFFFFF", textAlign: "center", marginBottom: 12 } },
-                  ...TONE_OPTIONS.map(toneRow),
-                ],
-              },
-            ] },
-            { type: "Stack", style: pageStyle, children: [
-              { type: "Heading", props: { content: "Reply in your voice", numberOfLines: 2 }, style: titleStyle },
-              { type: "TextField", bind: { value: "screenContent" }, props: { placeholder: "Paste their message…", multiline: true }, style: { minHeight: 70 } },
-              { type: "Spacer", style: { height: 14 } },
-              boxWithVoice("intent"),
-              { type: "Spacer", style: { height: 18 } },
-              { type: "Stack", style: { align: "center" }, children: [
-                {
-                  type: "DraftButton",
-                  bind: { value: "intent" },
-                  props: { messageKey: "screenContent", resultKey: "result", width: 160 },
-                  on: { onError: "err" },
-                  // Old-bundle fallback: plain Button that fires /v1/draft.
-                  fallback: {
-                    type: "Button",
-                    props: { label: "Draft reply", variant: "primary" },
-                    // /v1/draft responds with { draftText, usage } — same
-                    // pattern as Refine: land, then setState pulls draftText.
-                    on: { onPress: {
-                      kind: "callEndpoint",
-                      method: "POST",
-                      path: "/v1/draft",
-                      body: {
-                        intent: "$state.intent",
-                        screenContent: "$state.screenContent",
-                        targetApp: "WhatsApp",
-                        language: "auto",
-                      },
-                      assignTo: "_drafted",
-                      onSuccess: { kind: "setState", path: "result", value: "$state._drafted.draftText" },
-                      onError: "err",
-                    } },
-                  },
-                },
-              ] },
-            ] },
-          ],
-          // Pager fallback: same two children in a vertical Stack. Old bundles
-          // scroll through them instead of swiping. Product usable.
-          fallback: {
-            type: "Stack",
-            style: { direction: "column" },
-            children: [
-              { type: "Stack", style: pageStyle, children: [
-                { type: "Heading", props: { content: "Make it sound like you", numberOfLines: 2 }, style: titleStyle },
-                boxWithVoice("input"),
-                { type: "Spacer", style: { height: 22 } },
-                { type: "Stack", style: { align: "center" }, children: [
-                  {
-                    type: "Button",
-                    props: { label: "Refine", variant: "primary" },
-                    on: { onPress: {
-                      kind: "callEndpoint",
-                      method: "POST",
-                      path: "/v1/refine",
-                      body: { text: "$state.input", targetApp: "WhatsApp", language: "auto" },
-                      assignTo: "_refined",
-                      onSuccess: { kind: "setState", path: "input", value: "$state._refined.refinedText" },
-                      onError: "err",
-                    } },
-                  },
-                ] },
-              ] },
-              { type: "Spacer", style: { height: 32 } },
-              { type: "Stack", style: { paddingHorizontal: 24 }, children: [
-                { type: "Heading", props: { content: "Reply in your voice", numberOfLines: 2 }, style: titleStyle },
-                { type: "TextField", bind: { value: "screenContent" }, props: { placeholder: "Paste their message…", multiline: true }, style: { minHeight: 70 } },
-                { type: "Spacer", style: { height: 14 } },
-                boxWithVoice("intent"),
-                { type: "Spacer", style: { height: 18 } },
-                { type: "Stack", style: { align: "center" }, children: [
-                  {
-                    type: "Button",
-                    props: { label: "Draft reply", variant: "primary" },
-                    on: { onPress: {
-                      kind: "callEndpoint",
-                      method: "POST",
-                      path: "/v1/draft",
-                      body: {
-                        intent: "$state.intent",
-                        screenContent: "$state.screenContent",
-                        targetApp: "WhatsApp",
-                        language: "auto",
-                      },
-                      assignTo: "_drafted",
-                      onSuccess: { kind: "setState", path: "result", value: "$state._drafted.draftText" },
-                      onError: "err",
-                    } },
-                  },
-                ] },
-              ] },
-            ],
+        { type: "Heading", props: { content: "Train your voice" },
+          style: { fontSize: 26, lineHeight: 34, color: "$color.text", marginBottom: 8 } },
+        { type: "Paragraph", props: { content: "Type or speak, then tap the version that sounds most like you. Every pick teaches Tailzu your style \u2014 overall and per tone." },
+          style: { fontSize: 13, lineHeight: 21, marginBottom: 21 } },
+        boxWithVoice("input"),
+        { type: "Spacer", style: { height: 21 } },
+        // Refine + Tone. Hidden while the mic records; the Refining\u2026 twin
+        // takes the button\u2019s place while variants generate.
+        { type: "Stack", visibleIf: { falsy: "recording" }, style: { align: "center", direction: "column", gap: 13 }, children: [
+          { type: "Button", visibleIf: { falsy: "refining" },
+            props: { label: "Refine", variant: "primary" },
+            style: { width: 180 },
+            on: { onPress: "refine" } },
+          { type: "Button", visibleIf: { truthy: "refining" },
+            props: { label: "Refining\u2026", variant: "primary", disabled: true },
+            style: { width: 180 } },
+          {
+            type: "Button",
+            bind: { label: "toneLabel" },
+            props: { variant: "secondary" },
+            style: { paddingVertical: 10, paddingHorizontal: 22, borderRadius: 22 },
+            on: { onPress: { kind: "sequence", actions: [
+              { kind: "haptic", style: "light" },
+              { kind: "setState", path: "toneSheetOpen", value: true },
+            ] } },
           },
+        ] },
+        { type: "Spacer", style: { height: 21 } },
+        { type: "Text", visibleIf: { truthy: "variantA" },
+          props: { content: "Which sounds most like you?" },
+          style: { fontSize: 13, fontWeight: "700", color: "$color.label", marginBottom: 10 } },
+        variantCard("variantA", "angleA"),
+        variantCard("variantB", "angleB"),
+        variantCard("variantC", "angleC"),
+        // Blurred tone-picker sheet \u2014 pick which tone to train.
+        {
+          type: "Modal",
+          bind: { open: "toneSheetOpen" },
+          props: { blur: true, blurIntensity: 55, dismissable: true },
+          children: [
+            { type: "Text", props: { content: "Train in\u2026" }, style: { fontSize: 18, fontWeight: "700", color: "#FFFFFF", textAlign: "center", marginBottom: 12 } },
+            ...TONE_OPTIONS.map(toneRow),
+          ],
         },
-
-        // Dictionary + "Your words" moved to the You (Voice) page — Home is now
-        // just the Refine ⇄ Reply pager above.
       ],
     },
     cacheTtlSeconds: 0,

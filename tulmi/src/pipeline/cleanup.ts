@@ -11,7 +11,8 @@ import { getConfig } from "../config.js";
 import { buildCleanupSystem, buildReplySystem } from "../prompts.js";
 import type { CleanupOptions, Personality } from "../../../shared/types/api.js";
 import { buildTonePrompt, LLM_TONES } from "./tonePrompts.js";
-import { buildAssistSystem } from "./assistPrompt.js";
+import { buildAssistSystem, portraitBlock } from "./assistPrompt.js";
+export { portraitBlock };
 import type { PresetTone } from "../experience/personalityPresets.js";
 
 let client: OpenAI | null = null;
@@ -368,6 +369,7 @@ export async function refineWithTone(
   const system = buildTonePrompt(tone, {
     language: opts.language,
     vocabulary: opts.personality?.vocabulary,
+    portrait: portraitBlock(opts.personality, tone),
   });
   const res = await openrouter().chat.completions.create({
     model: getConfig().CLEANUP_MODEL,
@@ -462,6 +464,117 @@ export async function draftReply(
     opts.personality?.snippets,
     ctxFromOpts(opts, recipient),
   );
+}
+
+// --- Style portrait (Training tab) -----------------------------------------
+
+/**
+ * Training: produce three distinct refined variants of the same input so the
+ * user can pick the one that sounds most like them. One JSON call — the
+ * variants probe different directions (their learned style, tighter, warmer)
+ * while all staying faithful to the message. Falls back to a single assist()
+ * result if the JSON reply is unusable, so the Training screen never dead-ends.
+ */
+export async function refineVariants(
+  message: string,
+  opts: CleanupOptions = {},
+): Promise<Array<{ text: string; angle: string }>> {
+  if (!message.trim()) return [];
+  const base = buildAssistSystem({
+    tone: opts.tone,
+    tonePrompt: opts.tonePrompt,
+    personality: opts.personality,
+    language: opts.language,
+    targetApp: opts.targetApp,
+    hasContext: false,
+  });
+  const system =
+    base +
+    "\n\nTRAINING MODE: return THREE alternative refinements of the user's message as JSON: " +
+    '{"variants":[{"angle":"closest","text":"…"},{"angle":"tighter","text":"…"},{"angle":"warmer","text":"…"}]}. ' +
+    "All three must say the same thing; they differ ONLY in style. " +
+    '"closest" follows the style portrait (or a neutral clean-up when there is none); ' +
+    '"tighter" is noticeably more compact and direct; "warmer" is noticeably more natural and personal. ' +
+    "Keep each variant a realistic message the user could send. No markdown, no commentary — only the JSON object.";
+  const res = await openrouter().chat.completions.create({
+    model: getConfig().CLEANUP_MODEL,
+    temperature: 0.6, // higher than cleanup: the variants must actually differ
+    max_tokens: MAX_TOKENS_CLEANUP * 2,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: message.trim() },
+    ],
+  });
+  try {
+    const parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}") as {
+      variants?: Array<{ angle?: unknown; text?: unknown }>;
+    };
+    const out = (parsed.variants ?? [])
+      .map((v) => ({
+        angle: typeof v.angle === "string" ? v.angle.slice(0, 24) : "variant",
+        text: typeof v.text === "string" ? v.text.trim() : "",
+      }))
+      .filter((v) => v.text && !looksLikeMeta(v.text))
+      .slice(0, 3);
+    if (out.length >= 2) return out;
+  } catch { /* fall through to the single-variant fallback */ }
+  const single = await assist(message, opts);
+  return single.trim() ? [{ angle: "closest", text: single.trim() }] : [];
+}
+
+/**
+ * Training: absorb one pick (chosen vs rejected variants) into the evolving
+ * portrait. The LLM REWRITES the portrait rather than appending — that keeps
+ * it a living, bounded description instead of an ever-growing log. Tone-scoped
+ * picks also refresh that tone's note.
+ */
+export async function updateStylePortrait(
+  current: Personality["stylePortrait"],
+  example: { input: string; chosen: string; rejected: string[]; tone?: string },
+): Promise<{ core: string; toneNote?: string }> {
+  const trainingTone = example.tone && example.tone !== "none" ? example.tone : undefined;
+  const system =
+    "You maintain a compact STYLE PORTRAIT of one user: how they like their refined text to sound. " +
+    "You are given the current portrait and one new piece of evidence — what they said, the version " +
+    "they PICKED as sounding most like them, and the versions they rejected. " +
+    "Rewrite the portrait to absorb the new evidence: keep what still holds, sharpen or drop what the " +
+    "evidence contradicts, add what it reveals. Concrete, observable rules only (length, punctuation, " +
+    "warmth, directness, emoji, phrasing habits) — never mention the training process. " +
+    "Return ONLY JSON: {\"core\": \"≤120 words, tone-independent\"" +
+    (trainingTone ? `, \"toneNote\": \"≤40 words, specific to the '${trainingTone}' tone\"` : "") +
+    "}.";
+  const user = [
+    `CURRENT PORTRAIT:\n${current?.core?.trim() || "(none yet)"}`,
+    trainingTone && current?.tones?.[trainingTone]
+      ? `CURRENT '${trainingTone}' NOTE:\n${current.tones[trainingTone]}`
+      : "",
+    `THEY SAID:\n${example.input.slice(0, 1200)}`,
+    `THEY PICKED:\n${example.chosen.slice(0, 1200)}`,
+    example.rejected.length
+      ? `THEY REJECTED:\n${example.rejected.map((r, i) => `${i + 1}. ${r.slice(0, 800)}`).join("\n")}`
+      : "",
+  ].filter(Boolean).join("\n\n");
+  const res = await openrouter().chat.completions.create({
+    model: getConfig().CLEANUP_MODEL,
+    temperature: LEARN_TEMPERATURE,
+    max_tokens: MAX_TOKENS_STYLE,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  });
+  let core = "";
+  let toneNote: string | undefined;
+  try {
+    const parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}") as Record<string, unknown>;
+    if (typeof parsed.core === "string") core = parsed.core.trim().slice(0, 900);
+    if (typeof parsed.toneNote === "string" && parsed.toneNote.trim()) {
+      toneNote = parsed.toneNote.trim().slice(0, 300);
+    }
+  } catch { /* keep the current portrait on a bad reply */ }
+  return { core: core || current?.core || "", toneNote };
 }
 
 // --- Learn style from a writing sample -------------------------------------

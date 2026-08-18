@@ -85,9 +85,15 @@ const PROMPTS: Record<Exclude<PresetTone, "none">, string> = {
  */
 export function buildTonePrompt(
   tone: Exclude<PresetTone, "none">,
-  opts: { language?: string; vocabulary?: string } = {},
+  opts: { language?: string; vocabulary?: string; portrait?: string } = {},
 ): string {
   const parts: string[] = [PROMPTS[tone]];
+
+  // The learned style portrait (Training tab picks) — layered under the tone
+  // so the tone's voice stays primary but bends toward how THIS user writes.
+  if (opts.portrait && opts.portrait.trim()) {
+    parts.push("", opts.portrait.trim());
+  }
 
   if (opts.vocabulary && opts.vocabulary.trim()) {
     parts.push("", `Preserve these spellings exactly (comma-separated): ${opts.vocabulary.replace(/\r?\n/g, ", ").trim()}.`);

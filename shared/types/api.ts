@@ -128,6 +128,20 @@ export interface Personality {
    * cleanup step expands each trigger into its full text. */
   snippets?: string;
 
+  /**
+   * The evolving style portrait — a compact, LLM-maintained description of how
+   * this user likes their refined text, learned from the Training tab's
+   * variant picks (and bounded so it can never blow up the refine prompt).
+   * `core` is tone-independent; `tones` carries per-tone notes keyed by tone
+   * id; `examples` counts absorbed picks.
+   */
+  stylePortrait?: {
+    core?: string;
+    tones?: Record<string, string>;
+    examples?: number;
+    updatedAt?: string;
+  };
+
   // --- Style dials + per-context overrides (v2 additions) --------------------
 
   /** Continuous style dials — see ToneDial. Overrides `formality` when set. */

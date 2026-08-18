@@ -88,7 +88,7 @@ describe("buildScreen", () => {
     expect(buildScreen("does-not-exist", { personality: {}, language: "en" })).toBeNull();
   });
 
-  it("Home Refine button binds the tone and the blurred tone sheet sets it", () => {
+  it("Home is the Training surface: variants + pick endpoints, tone sheet trains a tone", () => {
     const home = buildScreen("home", { personality: {}, language: "en" });
     expect(home).not.toBeNull();
     // Tone state seeded on the screen.
@@ -96,8 +96,15 @@ describe("buildScreen", () => {
     expect((home!.state as Record<string, unknown>).toneLabel).toBe("Tone");
     expect((home!.state as Record<string, unknown>).toneSheetOpen).toBe(false);
     const json = JSON.stringify(home);
-    // Refine button carries the tone bind so it routes to /v1/refine/<tone>.
-    expect(json).toContain('"tone":"tone"');
+    // The training loop: variants in, a pick out — with the rejected pair so
+    // the portrait learns from contrast, and the tone riding both calls.
+    expect(json).toContain("/v1/train/variants");
+    expect(json).toContain("/v1/train/pick");
+    expect(json).toContain('"tone":"$state.tone"');
+    expect(json).toContain('"rejectedA":"$state._rejA"');
+    // Three variant slots render as tappable cards.
+    expect(json).toContain('"truthy":"variantA"');
+    expect(json).toContain('"truthy":"variantC"');
     // The action row hides while recording.
     expect(json).toContain('"falsy":"recording"');
     // Blurred tone sheet with the tone options.
