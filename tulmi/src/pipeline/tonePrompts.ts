@@ -29,6 +29,23 @@ const BASE_INSTRUCTIONS = [
   "Preserve the language of the input unless told otherwise below.",
 ].join(" ");
 
+/**
+ * Instruction separation for the per-tone endpoints.
+ *
+ * The assist path (/v1/refine, keyboard + dictation) has always separated an
+ * embedded command from the message. The hand-tuned per-tone prompts did NOT
+ * — so "…and write it in Marathi" spoken into a tone endpoint got politely
+ * REWRITTEN as if it were part of the message instead of executed. Same
+ * contract, stated compactly so each tone's own voice still leads.
+ */
+const INSTRUCTION_LAYER = [
+  "BEFORE rewriting, separate MESSAGE from INSTRUCTION:",
+  "- The input may carry a direction addressed to you about FORMAT, LENGTH, LANGUAGE, or AUDIENCE — e.g. \"make it shorter\", \"in bullet points\", \"write this in Marathi\", \"tell them politely that…\". The direction may itself be spoken in any language.",
+  "- Follow the direction, rewrite only the content, and NEVER echo the direction back in your output.",
+  "- Words like \"write\"/\"tell\"/\"send\" inside what the user is saying to someone else are content, not directions. When in doubt, treat it as content.",
+  "- SCRIPT: keep the user's script. Romanized/Latin-script Hindi, Marathi, Urdu, Tamil etc. stay in Latin script — never convert to Devanagari or another native script, never translate to English, unless the user asks.",
+].join("\n");
+
 const PROMPTS: Record<Exclude<PresetTone, "none">, string> = {
   formal: [
     BASE_INSTRUCTIONS,
@@ -87,7 +104,10 @@ export function buildTonePrompt(
   tone: Exclude<PresetTone, "none">,
   opts: { language?: string; vocabulary?: string; portrait?: string } = {},
 ): string {
-  const parts: string[] = [PROMPTS[tone]];
+  // Order matters: the tone's own voice leads, then the separation contract
+  // (so a spoken command is executed, not rewritten), then what we've learned
+  // about this user, then the mechanical vocabulary/language lines.
+  const parts: string[] = [PROMPTS[tone], "", INSTRUCTION_LAYER];
 
   // The learned style portrait (Training tab picks) — layered under the tone
   // so the tone's voice stays primary but bends toward how THIS user writes.
