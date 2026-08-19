@@ -263,6 +263,12 @@ export interface CleanupOptions {
   /** Language hint. Default "auto". */
   language?: LanguageHint;
   /**
+   * Script the input was actually captured in, OBSERVED by the STT layer (not
+   * declared by the user). Stated to the model as fact so romanized speech
+   * can't be silently converted to a native script and vice-versa.
+   */
+  script?: string;
+  /**
    * Personality override for this request. If omitted, the backend uses the
    * user's saved personality (resolved from their account).
    */

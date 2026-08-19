@@ -42,7 +42,12 @@ export async function runPipeline(
   // bullet points") from the message itself and applies the active tone, so we
   // no longer strip commands here — the model handles it. `transcript` stays
   // the raw STT output for QA/history.
-  const cleanedText = await assist(stt.text, opts);
+  //
+  // `script` is what the recognizer ACTUALLY produced (measured, not declared),
+  // so the writing step is told the user's script as a fact instead of being
+  // left to infer it — which is what let romanized Hinglish drift into
+  // Devanagari.
+  const cleanedText = await assist(stt.text, { ...opts, script: stt.script });
 
   return {
     transcript: stt.text,
@@ -77,7 +82,11 @@ export async function* runPipelineStream(
   yield { type: "transcript", text: transcript };
 
   let cleanedText = "";
-  for await (const delta of cleanStream(transcript, { ...opts, command: command ?? opts.command })) {
+  for await (const delta of cleanStream(transcript, {
+    ...opts,
+    command: command ?? opts.command,
+    script: stt.script, // observed script — same fidelity guarantee as the one-shot path
+  })) {
     cleanedText += delta;
     yield { type: "cleaned_delta", text: delta };
   }

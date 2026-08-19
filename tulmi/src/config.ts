@@ -32,7 +32,17 @@ const EnvSchema = z.object({
   // hallucinated segments, which is why it's the deployed default. "openai"
   // (gpt-4o-transcribe) is an alternative with strong ~100-language coverage
   // but no per-segment confidence signal.
-  STT_PROVIDER: z.enum(["openai", "groq"]).default("groq"),
+  // "sarvam" (Saarika) is purpose-built for Indian languages AND code-mixed
+  // speech, and auto-detects the language itself (language_code=unknown) —
+  // which is our contract: the backend identifies the speech, we never ask the
+  // user. A failed Sarvam call falls back to the Whisper path automatically,
+  // so switching to it can't take dictation down.
+  STT_PROVIDER: z.enum(["openai", "groq", "sarvam"]).default("groq"),
+
+  // Sarvam (used when STT_PROVIDER=sarvam).
+  SARVAM_API_KEY: z.string().optional(),
+  SARVAM_API_URL: z.string().default("https://api.sarvam.ai"),
+  SARVAM_STT_MODEL: z.string().default("saarika:v2.5"),
 
   // OpenAI STT (used when STT_PROVIDER=openai). gpt-4o-transcribe is the
   // current best; gpt-4o-mini-transcribe is cheaper; whisper-1 is the legacy.
