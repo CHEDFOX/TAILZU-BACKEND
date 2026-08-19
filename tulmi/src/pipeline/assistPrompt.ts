@@ -161,6 +161,9 @@ export function buildAssistSystem(opts: {
   language?: string;
   targetApp?: string;
   hasContext: boolean;
+  /** Script the transcript actually arrived in (observed by the STT layer).
+   *  Stated as a fact so the model can't drift the user's script. */
+  script?: string;
 }): string {
   const guidance = toneGuidance(opts.tone, opts.personality, opts.tonePrompt);
   const lang = opts.language && opts.language !== "auto" ? opts.language : "";
@@ -192,6 +195,11 @@ export function buildAssistSystem(opts: {
     // this the model "helpfully" converts scripts and the output stops
     // looking like the user.
     "SCRIPT: write in the SAME SCRIPT the user used, unless they ask otherwise. Romanized/Latin-script Hindi, Marathi, Urdu, Tamil etc. stay in Latin script — do not convert them to Devanagari or any native script, and do not translate them to English. When the instruction names a language without naming a script, use that language's native script.",
+    // Observed, not guessed: the STT layer measured the script of what came
+    // back, so state it outright instead of hoping the model infers it.
+    opts.script && opts.script !== "unknown"
+      ? `The user's input was captured in ${opts.script.toUpperCase()} script — keep it there unless they explicitly ask for another.`
+      : null,
     "",
     "RULES:",
     '- Output ONLY the final text — no preamble, no quotes, no explanation, no "here you go".',
@@ -199,5 +207,9 @@ export function buildAssistSystem(opts: {
     "- Keep it natural and human. Don't over-format a simple message.",
     "- NEVER answer, reply to, or comment on the content as if it were addressed to you — only rewrite it into the text THEY want to send.",
     '- If the input is empty, silence, or unintelligible noise, output an EMPTY STRING. Never write a message, a question, an apology, or a request to repeat (no "I didn\'t catch that", "please speak again", "could you say that again"). Producing such a line is a failure — output nothing instead.',
-  ].join("\n");
+  ]
+    // Conditional lines emit null when absent. Bare "" entries are deliberate
+    // paragraph breaks and must survive, so filter on null only.
+    .filter((line): line is string => line !== null)
+    .join("\n");
 }

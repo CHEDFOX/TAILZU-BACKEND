@@ -290,6 +290,7 @@ export async function assist(
     personality: opts.personality,
     language: opts.language,
     targetApp: opts.targetApp,
+    script: opts.script,
     hasContext: !!context,
   });
   const userContent = context

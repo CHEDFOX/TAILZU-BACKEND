@@ -188,7 +188,7 @@ export function buildCleanupSystem(opts: CleanupOptions): string {
   const version = getConfig().CLEANUP_PROMPT_VERSION;
   const targetApp = opts.targetApp?.trim() || "Generic";
   const appStyle = resolveAppStyle(opts.personality?.appStyles, targetApp);
-  return loadPromptFile(`cleanup.${version}.md`)
+  const base = loadPromptFile(`cleanup.${version}.md`)
     .replaceAll("{{TARGET_APP}}", targetApp)
     .replaceAll("{{LANGUAGE}}", opts.language ?? "auto")
     .replaceAll("{{PERSONALITY}}", renderPersonality(opts.personality))
@@ -197,6 +197,16 @@ export function buildCleanupSystem(opts: CleanupOptions): string {
     .replaceAll("{{RECIPIENT_HINT}}", "") // cleanup path has no recipient
     .replaceAll("{{COMMAND_OVERRIDE}}", renderCommandOverride(opts.command))
     .replaceAll("{{WATERMARK}}", opts.personality?.watermark ? "on" : "off");
+  // Appended rather than templated: the script is OBSERVED per request (the
+  // STT layer measures it), so it doesn't belong in the versioned prompt file.
+  // Stating it as fact is what stops romanized speech drifting into Devanagari.
+  return renderScriptFidelity(opts.script, base);
+}
+
+/** Append the observed-script rule to a rendered system prompt. */
+function renderScriptFidelity(script: string | undefined, base: string): string {
+  if (!script || script === "unknown") return base;
+  return `${base}\n\nSCRIPT: the user's input was captured in ${script.toUpperCase()} script. Write your output in that same script — never transliterate it into another script, and never translate it, unless the user explicitly asks.`;
 }
 
 /** Build the system prompt for the screen-reply drafting task. */

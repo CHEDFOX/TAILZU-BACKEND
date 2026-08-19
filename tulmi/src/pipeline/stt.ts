@@ -28,20 +28,44 @@ function groq(): Groq {
 }
 
 /**
- * Map our language hint to an ISO-639-1 code, or undefined for auto-detect.
- * "auto" and "hinglish" → undefined (let the model detect; it handles
- * code-switching better than being pinned to one language). Anything else is
- * assumed to be a valid language code and passed through.
+ * ALWAYS undefined — we never pin the recognizer to a language.
+ *
+ * This used to pass any non-"auto" hint straight into the provider's
+ * `language` parameter, which PINS recognition to that one language. The hint
+ * comes from a UI preference the user set once (the onboarding language
+ * screen), so a user who tapped "Hindi" months ago had their English and
+ * Marathi force-decoded as Hindi — and Hinglish, the flagship case, broke
+ * outright, because a pinned decoder cannot switch languages mid-sentence.
+ *
+ * The product rule is that the BACKEND identifies the speech; we never rely on
+ * the user having declared it. So the hint is now a soft bias in the prompt
+ * (see sttPrompt) — it nudges spelling and script without ever constraining
+ * what the model is allowed to hear.
  */
-function sttLanguage(hint: LanguageHint | undefined): string | undefined {
-  if (!hint || hint === "auto" || hint === "hinglish") return undefined;
-  return hint;
+function sttLanguage(_hint: LanguageHint | undefined): string | undefined {
+  return undefined;
 }
+
+/** Human-readable name for the languages we bias toward. Unknown codes pass
+ *  through as-is — the bias line is prose, so an unrecognized code is
+ *  harmless. */
+const LANGUAGE_NAMES: Record<string, string> = {
+  hi: "Hindi", mr: "Marathi", ta: "Tamil", te: "Telugu", bn: "Bengali",
+  gu: "Gujarati", pa: "Punjabi", kn: "Kannada", ml: "Malayalam", ur: "Urdu",
+  en: "English", es: "Spanish", fr: "French", de: "German", pt: "Portuguese",
+  ar: "Arabic", ja: "Japanese", ko: "Korean", zh: "Chinese", ru: "Russian",
+};
 
 export interface SttResult {
   text: string;
   /** Audio length in seconds (0 when the provider doesn't report it). */
   durationSeconds: number;
+  /** Script the transcript actually came back in — observed, never declared.
+   *  Passed to cleanup so script fidelity is a fact rather than a hope. */
+  script?: DetectedScript;
+  /** Language the PROVIDER detected, when it reports one (Sarvam does).
+   *  Recorded as a passive signal; never used to constrain a later request. */
+  detectedLanguage?: string;
 }
 
 /**
@@ -55,6 +79,24 @@ export interface SttResult {
  */
 interface RawSttResult extends SttResult {
   speechConfidence?: "high" | "low" | "unknown";
+}
+
+/** Provider dispatch. Sarvam leads for Indic + code-mixed speech; the
+ *  Whisper-family providers stay available as the global fallback and are
+ *  what a failed Sarvam call falls back to. */
+async function transcribeWithProvider(input: SttInput): Promise<RawSttResult> {
+  const cfg = getConfig();
+  if (cfg.STT_PROVIDER === "sarvam") {
+    try {
+      return await transcribeSarvam(input);
+    } catch (err) {
+      // Never fail a dictation because one provider blipped — fall back to the
+      // Whisper path rather than handing the user an error toast.
+      console.error("[stt] sarvam failed, falling back:", (err as Error).message);
+      return cfg.GROQ_API_KEY ? transcribeGroq(input) : transcribeOpenAI(input);
+    }
+  }
+  return cfg.STT_PROVIDER === "groq" ? transcribeGroq(input) : transcribeOpenAI(input);
 }
 
 /**
@@ -87,17 +129,77 @@ const CODE_SWITCH_HINT = [
   "Latin script, and keep native-script speech in its own script. Do not translate.",
 ].join(" ");
 
-/** Whisper's prompt biases spelling/vocabulary — fold the user's dictionary in. */
-function sttPrompt(vocabulary?: string): string {
+/**
+ * Whisper's prompt biases spelling/vocabulary — fold in the user's dictionary
+ * and (softly) whatever language they tend to speak.
+ *
+ * The language hint lands HERE rather than in the provider's `language`
+ * parameter: as prose it nudges the decoder toward the right vocabulary and
+ * script while leaving it free to hear whatever was actually said, including a
+ * different language or a mid-sentence switch. Pinning the parameter does the
+ * opposite — it forecloses detection entirely (see sttLanguage).
+ */
+function sttPrompt(vocabulary?: string, hint?: LanguageHint): string {
+  const parts = [CODE_SWITCH_HINT];
+  const code = hint && hint !== "auto" && hint !== "hinglish" ? String(hint) : undefined;
+  if (code) {
+    const name = LANGUAGE_NAMES[code] ?? code;
+    parts.push(`This speaker often speaks ${name}, but may speak any language — transcribe what you actually hear.`);
+  } else if (hint === "hinglish") {
+    parts.push("This speaker often mixes Hindi and English in one sentence.");
+  }
   const terms = vocabulary?.replace(/\s*\n\s*/g, ", ").trim();
-  return terms ? `${CODE_SWITCH_HINT} Likely names/terms: ${terms}.` : CODE_SWITCH_HINT;
+  if (terms) parts.push(`Likely names/terms: ${terms}.`);
+  return parts.join(" ");
+}
+
+/**
+ * Which script the transcript actually came back in — deterministic, free, and
+ * far more reliable than hoping the writing model notices on its own.
+ *
+ * Feeds the cleanup prompt a FACT ("the user spoke in Latin script") so
+ * romanized Hinglish can't be silently converted to Devanagari, and gets
+ * recorded on history rows as a passive signal about what this user really
+ * speaks — learned by observation, never by asking.
+ */
+export type DetectedScript =
+  | "latin" | "devanagari" | "tamil" | "telugu" | "bengali" | "gujarati"
+  | "gurmukhi" | "kannada" | "malayalam" | "arabic" | "cjk" | "cyrillic" | "unknown";
+
+const SCRIPT_RANGES: Array<{ script: DetectedScript; re: RegExp }> = [
+  { script: "devanagari", re: /[ऀ-ॿ]/g },
+  { script: "bengali", re: /[ঀ-৿]/g },
+  { script: "gurmukhi", re: /[਀-੿]/g },
+  { script: "gujarati", re: /[઀-૿]/g },
+  { script: "tamil", re: /[஀-௿]/g },
+  { script: "telugu", re: /[ఀ-౿]/g },
+  { script: "kannada", re: /[ಀ-೿]/g },
+  { script: "malayalam", re: /[ഀ-ൿ]/g },
+  { script: "arabic", re: /[؀-ۿݐ-ݿ]/g },
+  { script: "cyrillic", re: /[Ѐ-ӿ]/g },
+  { script: "cjk", re: /[぀-ヿ一-鿿가-힯]/g },
+  { script: "latin", re: /[A-Za-z]/g },
+];
+
+export function detectScript(text: string): DetectedScript {
+  if (!text.trim()) return "unknown";
+  let best: DetectedScript = "unknown";
+  let bestCount = 0;
+  for (const { script, re } of SCRIPT_RANGES) {
+    const count = (text.match(re) ?? []).length;
+    // Non-Latin scripts win ties: a Devanagari sentence with an English brand
+    // name in it is Devanagari, not Latin.
+    if (count > bestCount || (count > 0 && count === bestCount && script !== "latin")) {
+      best = script;
+      bestCount = count;
+    }
+  }
+  return bestCount > 0 ? best : "unknown";
 }
 
 export async function transcribe(input: SttInput): Promise<SttResult> {
-  const cfg = getConfig();
-  const raw: RawSttResult = await (cfg.STT_PROVIDER === "groq"
-    ? transcribeGroq(input)
-    : transcribeOpenAI(input));
+  // Provider selection (and its fallback) lives in transcribeWithProvider.
+  const raw: RawSttResult = await transcribeWithProvider(input);
 
   // Resolve duration first: the provider's own number, else a header probe of
   // the buffer (WAV/MP3/m4a) so metering isn't zeroed out for every voice
@@ -131,7 +233,12 @@ export async function transcribe(input: SttInput): Promise<SttResult> {
       (!durationKnown || duration >= SPEECH_MIN_DURATION_S));
   const text = sanitizePlainTranscript(raw.text, { trustSpeech });
 
-  return { text, durationSeconds: duration };
+  return {
+    text,
+    durationSeconds: duration,
+    script: detectScript(text),
+    detectedLanguage: raw.detectedLanguage,
+  };
 }
 
 /**
@@ -310,7 +417,7 @@ async function transcribeOpenAI(input: SttInput): Promise<RawSttResult> {
     file,
     model: cfg.OPENAI_STT_MODEL,
     language: sttLanguage(input.language),
-    prompt: sttPrompt(input.vocabulary),
+    prompt: sttPrompt(input.vocabulary, input.language),
     response_format: "json",
   });
 
@@ -320,6 +427,51 @@ async function transcribeOpenAI(input: SttInput): Promise<RawSttResult> {
     // No per-segment confidence on this model — let transcribe() fall back to
     // clip duration to decide whether a bare "thank you" is real speech.
     speechConfidence: "unknown",
+  };
+}
+
+/**
+ * Sarvam (Saarika) — purpose-built for Indian languages and, critically, for
+ * code-mixed speech. Called over plain multipart HTTP (no SDK dependency).
+ *
+ * `language_code: "unknown"` is Sarvam's AUTO-DETECT mode: it identifies the
+ * language itself and reports it back, which is exactly the contract we want —
+ * the backend identifies the speech, the user is never asked. We record what it
+ * detected but never feed it back as a constraint on a later request.
+ *
+ * No per-segment confidence is returned, so transcribe() falls back to clip
+ * duration for the silence-hallucination decision (same as the OpenAI path).
+ */
+async function transcribeSarvam(input: SttInput): Promise<RawSttResult> {
+  const cfg = getConfig();
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([new Uint8Array(input.audio)], { type: `audio/${input.format}` }),
+    `audio.${input.format}`,
+  );
+  form.append("model", cfg.SARVAM_STT_MODEL);
+  // "unknown" = detect the language. Never pin (see sttLanguage).
+  form.append("language_code", "unknown");
+
+  const res = await fetch(`${cfg.SARVAM_API_URL}/speech-to-text`, {
+    method: "POST",
+    headers: { "api-subscription-key": cfg.SARVAM_API_KEY ?? "" },
+    body: form,
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!res.ok) {
+    throw new Error(`sarvam stt failed: ${res.status} ${(await res.text()).slice(0, 300)}`);
+  }
+  const json = (await res.json()) as {
+    transcript?: string;
+    language_code?: string;
+  };
+  return {
+    text: (json.transcript ?? "").trim(),
+    durationSeconds: 0,
+    speechConfidence: "unknown",
+    detectedLanguage: json.language_code,
   };
 }
 
@@ -335,7 +487,7 @@ async function transcribeGroq(input: SttInput): Promise<RawSttResult> {
     model: cfg.GROQ_STT_MODEL,
     language: sttLanguage(input.language),
     response_format: "verbose_json",
-    prompt: sttPrompt(input.vocabulary),
+    prompt: sttPrompt(input.vocabulary, input.language),
     // Temperature 0 makes Whisper deterministic and much less likely to
     // "hallucinate" on silent / low-signal chunks. The provider only accepts
     // the field on some SDK versions; ignore the cast if TS complains.
