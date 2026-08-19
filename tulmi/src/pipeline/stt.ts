@@ -73,7 +73,19 @@ export interface SttInput {
   vocabulary?: string;
 }
 
-const CODE_SWITCH_HINT = "The speaker may mix multiple languages in one sentence.";
+// The prompt is a STYLE EXEMPLAR, not an instruction — Whisper-family models
+// continue its register, script, and punctuation habits. So it does three
+// jobs: warn about code-switching, and (critically for Indian users) pin the
+// SCRIPT. Left alone, these models transliterate Latin-script Hinglish into
+// Devanagari on a whim, which then propagates through cleanup and lands as
+// text the user didn't write. Naming the languages we serve most also lifts
+// recognition on them.
+const CODE_SWITCH_HINT = [
+  "The speaker may mix multiple languages in one sentence — for example Hindi, Marathi,",
+  "Tamil, Telugu, Bengali, Gujarati, Punjabi, Kannada, Malayalam or Urdu mixed with English.",
+  "Transcribe each word in the script the speaker actually used: keep romanized speech in",
+  "Latin script, and keep native-script speech in its own script. Do not translate.",
+].join(" ");
 
 /** Whisper's prompt biases spelling/vocabulary — fold the user's dictionary in. */
 function sttPrompt(vocabulary?: string): string {

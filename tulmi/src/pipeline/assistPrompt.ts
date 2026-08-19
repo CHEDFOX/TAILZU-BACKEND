@@ -33,6 +33,45 @@ const TONE_GUIDANCE: Record<string, string> = {
 export const MAX_TONE_PROMPT = 600;
 
 /**
+ * Worked examples of message-vs-instruction separation.
+ *
+ * The rules alone were stated but never DEMONSTRATED, and only in English —
+ * while real instructions arrive in the user's own language ("marathi madhe
+ * lihi", "isko thoda formal bana do"). These few-shots teach the four hard
+ * cases: (1) an instruction naming a language + audience, with the content
+ * quoted mid-sentence in another language, (2) an instruction arriving in a
+ * non-English language, (3) a message that merely MENTIONS writing and must
+ * NOT be treated as an instruction, and (4) script fidelity — Latin-script
+ * Hindi comes back in Latin script, not Devanagari, unless asked.
+ *
+ * Kept as compact input→output pairs: enough to pin the behavior, short
+ * enough to leave room for the real request.
+ */
+export const SEPARATION_EXAMPLES = [
+  "EXAMPLES (input → what you output):",
+  "",
+  '1. "write a message for me to my dear friend asking tum kaise ho and write in marathi"',
+  "   → INSTRUCTION: write a message, audience = a close friend, output language = Marathi.",
+  '     CONTENT: asking how they are. You output a warm Marathi message asking how they are —',
+  "     e.g. \"अरे, कसा आहेस? खूप दिवस झाले बोलणं नाही झालं. सगळं ठीक ना?\"",
+  '     You do NOT output the words "write a message" or "in marathi", and you do NOT',
+  '     merely transliterate "tum kaise ho".',
+  "",
+  '2. "boss ko bolo ki main aaj thoda late aaunga — isko formal bana do"',
+  "   → INSTRUCTION (itself in Hindi): make it formal, audience = boss.",
+  "     CONTENT: I'll be a little late today. You output one polite, formal message saying so,",
+  "     in the same language the content was spoken in.",
+  "",
+  '3. "I told her I would write the report tonight"',
+  "   → NO instruction. \"write\" is part of what they're saying, not a command to you.",
+  "     You output the sentence cleanly as their message.",
+  "",
+  '4. "yaar kal ka plan cancel karna padega, sorry"',
+  "   → NO instruction. Spoken in Latin-script Hinglish, so it comes back in LATIN script —",
+  "     cleaned, not converted to Devanagari and not translated to English.",
+].join("\n");
+
+/**
  * Resolve the tone guidance for a request.
  *
  * A tone is just "a voice described in a prompt". The client may send that
@@ -132,7 +171,11 @@ export function buildAssistSystem(opts: {
     "SEPARATE message from instruction:",
     '- The input may contain directions about FORMAT, LENGTH, TONE, LANGUAGE, or AUDIENCE — e.g. "…and make it short and in bullet points", "write this in English", "tell them politely that…", "reply saying…".',
     "- Work out which part is the CONTENT to write and which part is the INSTRUCTION about how to write it. Follow the instruction; write the content. NEVER echo the instruction back as part of the output.",
+    "- The instruction may itself be spoken in ANY language (Hindi, Marathi, Hinglish, Tamil…) and may name a DIFFERENT language for the output. Recognize it in whatever language it arrives, then write the content in the language it asks for.",
+    "- An instruction is a direction addressed to YOU. Words like \"write\", \"tell\", \"send\" INSIDE what the user is saying to someone else are content, not commands — when in doubt, treat it as content and write it faithfully.",
     "- If there is no instruction, just write the message faithfully — remove filler and false starts, fix capitalization/punctuation, give it structure — without changing the meaning or wording choices, and without adding anything.",
+    "",
+    SEPARATION_EXAMPLES,
     "",
     opts.hasContext
       ? "CONTEXT: the text already in the field is provided as CONTEXT — an existing draft or the conversation so far. Continue it, revise it, or reply to it as the message implies. Don't repeat context that's already there unless asked."
@@ -144,6 +187,11 @@ export function buildAssistSystem(opts: {
     lang
       ? `Default output language: ${lang}. But honor an explicit language instruction in the message, and otherwise match the message's own language (including mixed / code-switched text).`
       : "Match the message's own language (including mixed / code-switched text), unless the message asks for a specific language.",
+    // Script fidelity: a Hinglish speaker typing/dictating in Latin script
+    // wants Latin script back; a Marathi speaker wants Devanagari. Without
+    // this the model "helpfully" converts scripts and the output stops
+    // looking like the user.
+    "SCRIPT: write in the SAME SCRIPT the user used, unless they ask otherwise. Romanized/Latin-script Hindi, Marathi, Urdu, Tamil etc. stay in Latin script — do not convert them to Devanagari or any native script, and do not translate them to English. When the instruction names a language without naming a script, use that language's native script.",
     "",
     "RULES:",
     '- Output ONLY the final text — no preamble, no quotes, no explanation, no "here you go".',
