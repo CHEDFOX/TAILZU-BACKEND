@@ -515,7 +515,11 @@ app.post("/v1/refine", { config: AUTHED_RL }, async (req, reply) => {
   // Cap EVERY prompt-bound text field, not just body.text — context/tonePrompt
   // flow into the LLM prompt too, and uncapped they let one request smuggle up
   // to the 1 MB bodyLimit of unmetered input tokens past MAX_TEXT_LENGTH.
-  const over = tooLong(body.text) ?? tooLong(body.context) ?? tooLong(body.tonePrompt);
+  // Cap EVERY prompt-bound field — `alternative` (a second recognizer's
+  // reading, forwarded by the live path) reaches the prompt exactly like
+  // context does, so it gets the same ceiling.
+  const over =
+    tooLong(body.text) ?? tooLong(body.context) ?? tooLong(body.tonePrompt) ?? tooLong(body.alternative);
   if (over) return reply.code(413).send({ code: "bad_request", message: over });
 
   const quota = await enforceQuota(user);
@@ -534,6 +538,9 @@ app.post("/v1/refine", { config: AUTHED_RL }, async (req, reply) => {
       context: body.context,
       targetApp: body.targetApp,
       language: body.language,
+      // A second engine's reading of the same speech, when the live path saw
+      // the two disagree — reconciled before the writing task.
+      alternative: body.alternative,
       personality,
       variables: { email: user.email },
     });

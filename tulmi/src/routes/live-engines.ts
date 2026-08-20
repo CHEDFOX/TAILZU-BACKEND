@@ -61,6 +61,35 @@ export function openLiveEngine(opts: EngineOptions, h: EngineHandlers): LiveEngi
   return liveProvider() === "sarvam" ? openSarvam(opts, h) : openDeepgram(opts, h);
 }
 
+/**
+ * The OTHER engine — opened alongside the primary as a silent second listener.
+ *
+ * Live audio can't be fused the way a finished file can: partials stream in
+ * continuously from both engines with different segment boundaries, so
+ * reconciling them mid-flight would either add lag (wait for both) or make the
+ * text flicker (swap between them). Instead the primary streams to the user
+ * exactly as before, the shadow's transcript accumulates silently, and the two
+ * are reconciled ONCE at stop — which is also where the refine step already
+ * runs. Same fusion the one-shot path uses, just applied at the end of the
+ * stream instead of to a file.
+ *
+ * Returns null when dual mode is off or the second engine has no credentials.
+ */
+export function openShadowEngine(opts: EngineOptions, h: EngineHandlers): LiveEngine | null {
+  const cfg = getConfig();
+  if (!cfg.STT_LIVE_DUAL) return null;
+  const other = liveProvider() === "sarvam" ? "deepgram" : "sarvam";
+  if (other === "sarvam" && !cfg.SARVAM_API_KEY) return null;
+  if (other === "deepgram" && !cfg.DEEPGRAM_API_KEY) return null;
+  try {
+    return other === "sarvam" ? openSarvam(opts, h) : openDeepgram(opts, h);
+  } catch {
+    // A shadow that won't open must never take the session down — the user
+    // still gets the primary engine's live dictation.
+    return null;
+  }
+}
+
 // --- Deepgram ---------------------------------------------------------------
 
 function openDeepgram(opts: EngineOptions, h: EngineHandlers): LiveEngine {

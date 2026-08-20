@@ -60,6 +60,14 @@ const EnvSchema = z.object({
   // anything else falls back to Deepgram.
   STT_LIVE_PROVIDER: z.enum(["deepgram", "sarvam"]).default("deepgram"),
 
+  // Run BOTH live engines: the one named above streams to the user, the other
+  // listens silently, and the two transcripts are reconciled at stop (the same
+  // fusion the one-shot path does, applied at the end of the stream). Each
+  // engine has areas the other is weak in — Deepgram on English/European,
+  // Sarvam on Indic and code-mixed — so the committed text can be better than
+  // either alone. Costs two live STT streams for the same audio.
+  STT_LIVE_DUAL: z.coerce.boolean().default(false),
+
   // Add Deepgram's pre-recorded API as a THIRD candidate in STT_PROVIDER=auto.
   // Opt-in: a third opinion costs a third call (no extra latency — the legs run
   // in parallel) but its gain is smaller than Sarvam + Whisper together, and it
