@@ -194,6 +194,18 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
         // new users and "home" for returning ones.
         "needsLanguagePick": true,
 
+        // IN-APP mic capture mode — the app's counterpart to the keyboard's
+        // kb.mic.mode, so both surfaces are switchable from here with no app
+        // update:
+        //   "oneshot" — tap, speak, tap stop; the whole clip is transcribed at
+        //               once. Slower to first word, but it's the path that
+        //               runs multi-engine fusion, so it's the most ACCURATE.
+        //   "live"    — words appear while speaking (WebSocket). Feels faster;
+        //               single engine, no fusion.
+        // Which engine backs "live" is a separate SERVER-side choice
+        // (STT_LIVE_PROVIDER) and needs no client flag at all.
+        "voice.mode": "oneshot",
+
         // The "Hello, name + gender" profile card shows as an overlay on these
         // screen ids. It's placed on the "personality" (You) tab — so right
         // after the activation screen lands the user on You, the card is the

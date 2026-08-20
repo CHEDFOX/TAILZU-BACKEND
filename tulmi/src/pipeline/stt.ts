@@ -175,36 +175,51 @@ async function transcribeWithProvider(input: SttInput): Promise<RawSttResult> {
   const cfg = getConfig();
 
   if (cfg.STT_PROVIDER === "auto" && cfg.SARVAM_API_KEY) {
-    const [indic, general] = await Promise.allSettled([
+    // Every configured file-based engine hears the same clip CONCURRENTLY.
+    // Deepgram joins when STT_AUTO_INCLUDE_DEEPGRAM is on and a key exists —
+    // a third opinion costs a third call and no extra latency (they run in
+    // parallel), but it's opt-in because the gain is smaller than the first
+    // two and it widens the failure surface.
+    const legs: Array<Promise<RawSttResult>> = [
       transcribeSarvam(input),
       transcribeGeneralist(input),
-    ]);
-    const indicOk = indic.status === "fulfilled" && indic.value.text.trim() ? indic.value : null;
-    const generalOk = general.status === "fulfilled" && general.value.text.trim() ? general.value : null;
+    ];
+    if (cfg.STT_AUTO_INCLUDE_DEEPGRAM && cfg.DEEPGRAM_API_KEY) {
+      legs.push(transcribeDeepgram(input));
+    }
+    const settled = await Promise.allSettled(legs);
+    const ok = settled
+      .filter((s): s is PromiseFulfilledResult<RawSttResult> => s.status === "fulfilled")
+      .map((s) => s.value)
+      .filter((r) => r.text.trim());
 
-    if (indicOk && generalOk) {
-      // The specialist leads on Indic/code-mixed speech, the generalist
-      // elsewhere — but the loser is kept as a SECOND OPINION rather than
-      // thrown away. Two engines fail in different places, so where they
-      // disagree the writing model can reconcile them (see SttResult
-      // .alternative). Identical readings carry no information, so we only
-      // attach a real disagreement.
-      const primary = isIndicResult(indicOk) ? indicOk : generalOk;
-      const other = primary === indicOk ? generalOk : indicOk;
-      const disagrees =
-        !transcriptsAgree(primary.text, other.text) &&
-        isUsableAlternative(primary.text, other.text);
-      return disagrees ? { ...primary, alternative: other.text } : primary;
+    if (!ok.length) {
+      const firstFailure = settled.find((s) => s.status === "rejected") as PromiseRejectedResult | undefined;
+      if (firstFailure) {
+        console.error("[stt] every provider failed:", (firstFailure.reason as Error)?.message);
+        throw firstFailure.reason;
+      }
+      // All succeeded but every transcript was empty — a genuinely silent
+      // clip. Return one so the existing silence handling applies.
+      const anyResult = settled.find((s) => s.status === "fulfilled") as
+        | PromiseFulfilledResult<RawSttResult>
+        | undefined;
+      return anyResult?.value ?? { text: "", durationSeconds: 0, speechConfidence: "low" };
     }
-    if (indicOk) return indicOk;
-    if (generalOk) return generalOk;
-    // Both empty or failed: surface the generalist's outcome so the existing
-    // silence-hallucination handling still applies to a genuinely empty clip.
-    if (general.status === "rejected" && indic.status === "rejected") {
-      console.error("[stt] both providers failed:", (general.reason as Error)?.message);
-      throw general.reason;
-    }
-    return general.status === "fulfilled" ? general.value : (indic as PromiseFulfilledResult<RawSttResult>).value;
+
+    // The Indic specialist leads when the speech IS Indic; otherwise the
+    // generalist does. Losers aren't discarded — the closest one rides along
+    // as a second opinion so the writing model can reconcile a disagreement
+    // (see SttResult.alternative). Engines fail in different places, so each
+    // usually holds part of the truth.
+    const primary = ok.find((r) => isIndicResult(r)) ?? ok[0]!;
+    const other = ok.find(
+      (r) =>
+        r !== primary &&
+        !transcriptsAgree(primary.text, r.text) &&
+        isUsableAlternative(primary.text, r.text),
+    );
+    return other ? { ...primary, alternative: other.text } : primary;
   }
 
   if (cfg.STT_PROVIDER === "sarvam") {
@@ -597,6 +612,60 @@ async function transcribeSarvam(input: SttInput): Promise<RawSttResult> {
     durationSeconds: 0,
     speechConfidence: "unknown",
     detectedLanguage: json.language_code,
+  };
+}
+
+/**
+ * Deepgram's PRE-RECORDED (batch) API — the file-based sibling of the live
+ * engine, so Deepgram can also stand as a one-shot candidate.
+ *
+ * `detect_language` is on and no language is pinned: the backend identifies
+ * the speech. Deepgram reports what it detected, which feeds the same
+ * Indic-vs-generalist routing the other providers use.
+ */
+async function transcribeDeepgram(input: SttInput): Promise<RawSttResult> {
+  const cfg = getConfig();
+  const params = new URLSearchParams({
+    model: cfg.DEEPGRAM_STT_MODEL || "nova-2",
+    smart_format: "true",
+    punctuate: "true",
+    numerals: "true",
+    detect_language: "true",
+  });
+  const res = await fetch(`https://api.deepgram.com/v1/listen?${params}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${cfg.DEEPGRAM_API_KEY ?? ""}`,
+      "Content-Type": `audio/${input.format}`,
+    },
+    body: new Uint8Array(input.audio),
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!res.ok) {
+    throw new Error(`deepgram stt failed: ${res.status} ${(await res.text()).slice(0, 300)}`);
+  }
+  const json = (await res.json()) as {
+    results?: {
+      channels?: Array<{
+        detected_language?: string;
+        alternatives?: Array<{ transcript?: string; confidence?: number }>;
+      }>;
+    };
+    metadata?: { duration?: number };
+  };
+  const channel = json.results?.channels?.[0];
+  const alt = channel?.alternatives?.[0];
+  return {
+    text: (alt?.transcript ?? "").trim(),
+    durationSeconds: json.metadata?.duration ?? 0,
+    // Deepgram gives a whole-utterance confidence rather than the per-segment
+    // signals the Groq path filters on — map it to the coarse signal
+    // transcribe() understands.
+    speechConfidence:
+      typeof alt?.confidence === "number"
+        ? alt.confidence >= 0.6 ? "high" : "low"
+        : "unknown",
+    detectedLanguage: channel?.detected_language,
   };
 }
 
