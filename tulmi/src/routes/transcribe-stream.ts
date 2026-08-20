@@ -10,6 +10,13 @@
  * Sarvam. The wire protocol to the phone never changes, so switching engines
  * is a config change on the VPS, never an app update.
  *
+ * DUAL MODE (STT_LIVE_DUAL): both engines hear the audio. The primary streams
+ * partials/finals to the user as usual; the second listens silently. At stop,
+ * when their transcripts disagree, `done` carries the second reading as
+ * `{ type:"done", alternative }` — the client forwards it to /v1/refine, which
+ * reconciles the two before writing (the same fusion the one-shot path runs).
+ * The field is additive: older clients ignore it.
+ *
  * SECURITY: this endpoint verifies the caller's Supabase JWT before opening a
  * Deepgram session so an unauthenticated client can never burn Deepgram credit.
  * The JWT is accepted from EITHER the WS upgrade `Authorization` header OR the
@@ -22,10 +29,15 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
 import websocket from "@fastify/websocket";
 import { getConfig } from "../config.js";
-import { openLiveEngine, liveEngineConfigured, type LiveEngine } from "./live-engines.js";
+import {
+  openLiveEngine,
+  openShadowEngine,
+  liveEngineConfigured,
+  type LiveEngine,
+} from "./live-engines.js";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { enforceQuota, recordUsage } from "../usage/metering.js";
-import { sanitizePlainTranscript } from "../pipeline/stt.js";
+import { sanitizePlainTranscript, transcriptsAgree, isUsableAlternative } from "../pipeline/stt.js";
 
 interface StartMessage {
   type: "start";
@@ -76,6 +88,14 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
     },
     (socket: any, req: FastifyRequest) => {
       let engine: LiveEngine | null = null;
+      // The SECOND live engine, when dual mode is on. It hears the same audio
+      // but never reaches the user mid-stream — its transcript accumulates and
+      // is handed over at "done" so the client's refine step can reconcile the
+      // two readings (see live-engines.openShadowEngine).
+      let shadow: LiveEngine | null = null;
+      // Committed segments from each engine, joined at stop.
+      const primaryFinals: string[] = [];
+      const shadowFinals: string[] = [];
       let closed = false;
       let user: AuthedUser | null = null;
       let bytes = 0;
@@ -106,6 +126,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
 
       const closeEngine = () => {
         try { engine?.close(); } catch { /* ignore */ }
+        try { shadow?.close(); } catch { /* ignore */ }
       };
 
       // Bill the audio + words processed so far — EXACTLY once, guarded, and
@@ -143,7 +164,22 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         if (doneSent) return;
         doneSent = true;
         if (doneFallback) { clearTimeout(doneFallback); doneFallback = null; }
-        if (!errored) send({ type: "done" });
+        if (!errored) {
+          // Hand the client BOTH readings. The engines segment differently, so
+          // they can't be merged blind — the refine step reconciles them the
+          // same way the one-shot path does (see pipeline/stt.ts fusion). Only
+          // send the alternative when it's a real disagreement; identical
+          // readings carry no information. Older clients ignore the extra
+          // field, so this stays wire-compatible.
+          const primaryText = primaryFinals.join(" ").trim();
+          const shadowText = shadowFinals.join(" ").trim();
+          const useAlternative =
+            !!shadowText &&
+            !!primaryText &&
+            !transcriptsAgree(primaryText, shadowText) &&
+            isUsableAlternative(primaryText, shadowText);
+          send(useAlternative ? { type: "done", alternative: shadowText } : { type: "done" });
+        }
         safeClose();
       };
 
@@ -193,7 +229,10 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
               const text = sanitizePlainTranscript(raw, { trustSpeech: true });
               // Sum words from finalized segments only (partials are supersets
               // that get replaced) so word-based quotas meter the real transcript.
-              if (text) totalWords += countWords(text);
+              if (text) {
+                totalWords += countWords(text);
+                primaryFinals.push(text);
+              }
               send({ type: "final", text });
             },
             onError: (message) => {
@@ -214,6 +253,24 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
             },
           },
         );
+
+        // Second listener (dual mode). Its partials are ignored entirely — only
+        // committed segments matter for the end-of-stream reconciliation — and
+        // every one of its callbacks is inert toward the user's session, so a
+        // shadow that dies mid-stream costs nothing.
+        shadow = openShadowEngine(
+          { sampleRate, channels: start.channels ?? 1 },
+          {
+            onReady: () => { /* the user's session is already live */ },
+            onPartial: () => { /* provisional; never displayed */ },
+            onFinal: (raw) => {
+              const text = sanitizePlainTranscript(raw, { trustSpeech: true });
+              if (text) shadowFinals.push(text);
+            },
+            onError: () => { /* best-effort second opinion */ },
+            onClose: () => { /* the primary owns session teardown */ },
+          },
+        );
       };
 
       socket.on("message", async (raw: Buffer, isBinary: boolean) => {
@@ -230,6 +287,9 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
             return;
           }
           engine.send(raw);
+          // The shadow hears the same audio; a failure there must never
+          // disturb the stream the user is actually watching.
+          try { shadow?.send(raw); } catch { /* shadow is best-effort */ }
           armIdle();
           return;
         }
