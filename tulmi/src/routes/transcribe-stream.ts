@@ -30,7 +30,9 @@ interface StartMessage {
   type: "start";
   token?: string;
   targetApp?: string;
-  language?: string; // "auto" | "hi" | "en" | "multi" | ...
+  /** Accepted for wire compatibility with older clients, but DELIBERATELY
+   *  IGNORED: the backend detects the language (see openEngine). */
+  language?: string;
   sampleRate?: number;
   encoding?: string;
   channels?: number;
@@ -162,7 +164,16 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           return;
         }
         sampleRate = start.sampleRate ?? 16000;
-        const language = !start.language || start.language === "auto" ? "multi" : start.language;
+        // NEVER pin the recognizer to the client's language — same rule as the
+        // one-shot path (see pipeline/stt.ts sttLanguage). The client sends the
+        // code the user picked once on the onboarding screen, and passing it
+        // through locked Deepgram to that single language, so a user who tapped
+        // "Hindi" could no longer dictate English — and code-switching, which
+        // "multi" exists to handle, broke outright.
+        //
+        // DEEPGRAM_LANGUAGE is a server-side escape hatch for debugging/A-B
+        // only; it is never fed from user input.
+        const language = cfg.DEEPGRAM_LANGUAGE || "multi";
 
         dg = deepgram.listen.live({
           model: cfg.DEEPGRAM_STT_MODEL || "nova-2",
