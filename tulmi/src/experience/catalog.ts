@@ -20,6 +20,7 @@ import type {
   ThemeTokens,
 } from "../../../shared/types/sdui.js";
 import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
+import { applyRollouts, activeRollouts } from "./rollout.js";
 import type { HistoryEntry, PaywallConfig, PaywallPlan, Personality, StatsResponse, UsageSummary } from "../../../shared/types/api.js";
 import {
   PERSONALITY_PRESETS,
@@ -3127,7 +3128,12 @@ const LIGHT_KEY_FILL_LETTER = "#FFFFFFE6";     // 90% white — solid-white chip
 export const LIGHT_KEY_FILL_FUNCTION = "#C7CDD3E6";   // ~90% opaque light gray — kept exported for the next light-mode row expansion
 const LIGHT_KEY_TEXT = "#000000";
 
-export function buildKeyboardConfig(personality?: Personality): KeyboardConfigResponse {
+export function buildKeyboardConfig(
+  personality?: Personality,
+  /** Stable id used to place this user in a rollout slice. Omit for anonymous
+   *  callers — they get the baseline rather than a per-request coin flip. */
+  userId?: string,
+): KeyboardConfigResponse {
   // English QWERTY. The physical layout arrays are also emitted (below) so
   // older keyboard binaries — the ones without the SDUI renderer — can still
   // render the legacy hand-built keyboard. `features.sdui: true` is the switch
@@ -3614,6 +3620,39 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
         // (which also restores accent long-press trays) if a device ever shows
         // trouble — no rebuild needed.
         "kb.keyPlane.enabled": true,
+        // --- K12 knobs: everything below was hardcoded in the binary until
+        // now, and each is a value real-world use is likely to argue with.
+        //
+        // Key haptics — the most polarizing keyboard setting there is.
+        // enabled=false silences them entirely; style is "selection"
+        // (default, the crisp native tick) | light | medium | heavy | rigid |
+        // soft. iOS still requires Full Access for any of it.
+        // "kb.haptics.enabled": true,
+        // "kb.haptics.style": "selection",
+        //
+        // Touch feel (K11). holdMultiplier is how far a finger may drift off
+        // the pressed key before the press cancels, as a multiple of the key's
+        // own size — native keeps a key held through a lot of drift, so 1.0
+        // means "one key-width of slack". Lower = twitchier, higher =
+        // stickier, 0 = the old behavior where any drift onto dead space
+        // dropped the keystroke.
+        // "kb.touch.holdMultiplier": 1.0,
+        // cancelCommit rescues taps iOS CANCELS rather than ends — the
+        // home-indicator band overlaps the bottom row and steals quick light
+        // taps there. A cancelled touch shorter than maxMs that moved less
+        // than maxDriftPt is treated as a real tap. maxMs 0 disables the
+        // rescue.
+        // "kb.touch.cancelCommit.maxMs": 300,
+        // "kb.touch.cancelCommit.maxDriftPt": 12,
+        //
+        // Autocorrect aggressiveness. Together with maxDistance these ARE the
+        // dial: a neighbor-key substitution ("gome"→"home") costs
+        // neighborCost, a missing apostrophe/space ("dont"→"don't") costs
+        // punctCost, everything else costs 1. LOWER = more words get
+        // "fixed". A wrong correction costs far more trust than a missed one,
+        // so raise these to make it more conservative.
+        // "kb.autocorrect.neighborCost": 0.5,
+        // "kb.autocorrect.punctCost": 0.5,
         // Debug build stamp (orange "K1" in the keyboard's corner). The Swift
         // default is FALSE so store builds never show it. To verify a fresh
         // binary + live OTA delivery in one shot: flip this to true + cache
@@ -3869,7 +3908,10 @@ export function buildKeyboardConfig(personality?: Personality): KeyboardConfigRe
       flags["kb.personality.tones"] = (
         Object.keys(TONE_LABELS) as Array<keyof typeof TONE_LABELS>
       ).map((id) => ({ id, label: TONE_LABELS[id] }));
-      return flags;
+      // Staged rollout LAST, so an experiment can override anything above.
+      // Keyed on the user id, so a user's slice is stable across requests —
+      // settings must never flip under their fingers mid-sentence.
+      return applyRollouts(flags, userId, activeRollouts());
     })(),
     // Was 600 (10 min). A live theme fix couldn't reach users mid-session.
     // 60 s keeps cost negligible and lets themed rollouts hit within a minute.

@@ -1408,16 +1408,22 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL }, async (req, reply) => {
   // Missing/failed auth just returns the config without pins; the keyboard
   // still works, it just shows the built-in tone cycle instead.
   let personality: Personality | undefined;
+  // Also the rollout key: a user's experiment slice is derived from their id,
+  // so it stays put across requests instead of re-rolling mid-session.
+  let userId: string | undefined;
   try {
     const user = await resolveUser(req.headers["authorization"]);
-    if (user) personality = await getPersonality(user);
+    if (user) {
+      userId = user.id;
+      personality = await getPersonality(user);
+    }
   } catch { /* keyboard should never fail on personality lookup */ }
   // Cache-Control: no-store — keyboard config carries per-user
   // `kb.personality.pinned` / activeId / activeTone. Any caching layer
   // (nginx, CDN) that indexed the response by URL alone could leak these
   // across users. Same policy as /v1/app/bootstrap and /v1/app/screen.
   noStoreSdui(reply);
-  return reply.send(buildKeyboardConfig(personality));
+  return reply.send(buildKeyboardConfig(personality, userId));
 });
 
 // --- Admin: cache control ----------------------------------------------------
