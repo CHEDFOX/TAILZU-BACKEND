@@ -269,6 +269,13 @@ export interface CleanupOptions {
    */
   script?: string;
   /**
+   * A second speech recognizer's reading of the same audio, present only when
+   * it disagreed with the primary transcript. The writing step reconciles the
+   * two before writing — two engines fail in different places, so each usually
+   * holds part of the truth.
+   */
+  alternative?: string;
+  /**
    * Personality override for this request. If omitted, the backend uses the
    * user's saved personality (resolved from their account).
    */

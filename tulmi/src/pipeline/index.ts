@@ -47,7 +47,13 @@ export async function runPipeline(
   // so the writing step is told the user's script as a fact instead of being
   // left to infer it — which is what let romanized Hinglish drift into
   // Devanagari.
-  const cleanedText = await assist(stt.text, { ...opts, script: stt.script });
+  // `alternative` is the second recognizer's reading, present only when the
+  // two disagreed — the writing step reconciles them before writing.
+  const cleanedText = await assist(stt.text, {
+    ...opts,
+    script: stt.script,
+    alternative: stt.alternative,
+  });
 
   return {
     transcript: stt.text,

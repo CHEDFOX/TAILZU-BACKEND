@@ -164,6 +164,9 @@ export function buildAssistSystem(opts: {
   /** Script the transcript actually arrived in (observed by the STT layer).
    *  Stated as a fact so the model can't drift the user's script. */
   script?: string;
+  /** True when the user message carries TWO candidate transcripts that need
+   *  reconciling before the writing task begins. */
+  hasAlternative?: boolean;
 }): string {
   const guidance = toneGuidance(opts.tone, opts.personality, opts.tonePrompt);
   const lang = opts.language && opts.language !== "auto" ? opts.language : "";
@@ -171,6 +174,24 @@ export function buildAssistSystem(opts: {
   return [
     "You are a writing assistant built into a phone keyboard. The user dictates or types a MESSAGE — sometimes with an INSTRUCTION about how to write it mixed in. Turn their input into the finished text they want to send.",
     "",
+    // Reconciliation runs BEFORE the writing task: settle what was said, then
+    // write it. Two speech recognizers heard the same audio and disagreed —
+    // they fail in different places, so each usually holds part of the truth
+    // (one gets the Hindi right, the other the English brand name). The
+    // no-invention rule is the load-bearing line: given two readings a model
+    // will otherwise happily average them into a fluent third sentence NOBODY
+    // said, which is worse than simply picking one.
+    opts.hasAlternative
+      ? [
+          "FIRST, SETTLE WHAT WAS SAID. The message below is given as TWO candidate transcripts of the same audio, from two different speech recognizers.",
+          "- Where they agree, that text is almost certainly correct.",
+          "- Where they differ, choose the reading that is coherent and plausible in context — the right word for the sentence, the right spelling of a name or brand. You may take part of one candidate and part of the other.",
+          "- CANDIDATE 1 is the more reliable recognizer for this speaker; prefer it when you cannot tell which is right.",
+          "- NEVER introduce a word that appears in NEITHER candidate. Do not smooth them into a new sentence — reconstruct only what was actually said.",
+          "- Then do the writing task below on the settled text. Never mention the candidates or that there were two.",
+          "",
+        ].join("\n")
+      : null,
     "SEPARATE message from instruction:",
     '- The input may contain directions about FORMAT, LENGTH, TONE, LANGUAGE, or AUDIENCE — e.g. "…and make it short and in bullet points", "write this in English", "tell them politely that…", "reply saying…".',
     "- Work out which part is the CONTENT to write and which part is the INSTRUCTION about how to write it. Follow the instruction; write the content. NEVER echo the instruction back as part of the output.",
