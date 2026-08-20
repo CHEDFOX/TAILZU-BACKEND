@@ -66,6 +66,17 @@ export interface SttResult {
   /** Language the PROVIDER detected, when it reports one (Sarvam does).
    *  Recorded as a passive signal; never used to constrain a later request. */
   detectedLanguage?: string;
+  /**
+   * A SECOND recognizer's reading of the same audio, present only when it
+   * MEANINGFULLY disagrees with `text`.
+   *
+   * Two engines fail in different places — on "kal ka plan WhatsApp pe bhej
+   * dena" the Indic model tends to win the Hindi and the generalist tends to
+   * win the brand name. Picking one transcript can never have both; handing
+   * the writing model both candidates lets it reconcile them. Absent when the
+   * two agree (the common case), so the prompt stays untouched.
+   */
+  alternative?: string;
 }
 
 /**
@@ -92,6 +103,36 @@ const INDIC_SCRIPTS = new Set<DetectedScript>([
   "devanagari", "tamil", "telugu", "bengali", "gujarati",
   "gurmukhi", "kannada", "malayalam",
 ]);
+
+/**
+ * Do two transcripts say the same thing? Compared on content alone —
+ * lowercased, punctuation stripped, whitespace collapsed — because the
+ * providers differ constantly in casing and comma placement, and those
+ * differences are not worth a second opinion.
+ */
+export function transcriptsAgree(a: string, b: string): boolean {
+  const norm = (s: string) =>
+    s.toLowerCase()
+      .replace(/[.,!?;:'"“”‘’()\-—…]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  return norm(a) === norm(b);
+}
+
+/**
+ * Is `other` a genuine second reading, or a failed/truncated call wearing the
+ * costume of one? A provider that returns a fragment (or a wall of repeated
+ * hallucination) is noise, and feeding it to the writing model as an equal
+ * candidate would invite exactly the "average two readings into a third thing
+ * nobody said" failure. Require it to be in the same ballpark by length.
+ */
+export function isUsableAlternative(primary: string, other: string): boolean {
+  const p = primary.trim().length;
+  const o = other.trim().length;
+  if (!o || !p) return false;
+  const ratio = Math.min(p, o) / Math.max(p, o);
+  return ratio >= 0.4;
+}
 
 function isIndicResult(r: RawSttResult): boolean {
   const base = (r.detectedLanguage ?? "").toLowerCase().split(/[-_]/)[0];
@@ -141,7 +182,20 @@ async function transcribeWithProvider(input: SttInput): Promise<RawSttResult> {
     const indicOk = indic.status === "fulfilled" && indic.value.text.trim() ? indic.value : null;
     const generalOk = general.status === "fulfilled" && general.value.text.trim() ? general.value : null;
 
-    if (indicOk && generalOk) return isIndicResult(indicOk) ? indicOk : generalOk;
+    if (indicOk && generalOk) {
+      // The specialist leads on Indic/code-mixed speech, the generalist
+      // elsewhere — but the loser is kept as a SECOND OPINION rather than
+      // thrown away. Two engines fail in different places, so where they
+      // disagree the writing model can reconcile them (see SttResult
+      // .alternative). Identical readings carry no information, so we only
+      // attach a real disagreement.
+      const primary = isIndicResult(indicOk) ? indicOk : generalOk;
+      const other = primary === indicOk ? generalOk : indicOk;
+      const disagrees =
+        !transcriptsAgree(primary.text, other.text) &&
+        isUsableAlternative(primary.text, other.text);
+      return disagrees ? { ...primary, alternative: other.text } : primary;
+    }
     if (indicOk) return indicOk;
     if (generalOk) return generalOk;
     // Both empty or failed: surface the generalist's outcome so the existing
@@ -305,6 +359,10 @@ export async function transcribe(input: SttInput): Promise<SttResult> {
     durationSeconds: duration,
     script: detectScript(text),
     detectedLanguage: raw.detectedLanguage,
+    // Only forward a second opinion when the chosen transcript survived the
+    // silence scrub — offering an alternative to an empty result would
+    // resurrect text we just decided was a hallucination.
+    alternative: text ? raw.alternative : undefined,
   };
 }
 

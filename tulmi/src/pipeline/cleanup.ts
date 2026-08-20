@@ -284,6 +284,11 @@ export async function assist(
 ): Promise<string> {
   if (!message.trim()) return "";
   const context = opts.context?.trim();
+  // A second recognizer's reading, when it disagreed with the first. Kept as
+  // USER content (never spliced into the system prompt) so recognizer output
+  // can't act as instructions.
+  const alternative = opts.alternative?.trim();
+  const hasAlternative = !!alternative && alternative !== message.trim();
   const system = buildAssistSystem({
     tone: opts.tone,
     tonePrompt: opts.tonePrompt,
@@ -292,10 +297,14 @@ export async function assist(
     targetApp: opts.targetApp,
     script: opts.script,
     hasContext: !!context,
+    hasAlternative,
   });
-  const userContent = context
-    ? `CONTEXT (already in the field):\n${context}\n\nMESSAGE (what I just said or typed):\n${message.trim()}`
+  const messageBlock = hasAlternative
+    ? `CANDIDATE 1 (more reliable):\n${message.trim()}\n\nCANDIDATE 2:\n${alternative}`
     : message.trim();
+  const userContent = context
+    ? `CONTEXT (already in the field):\n${context}\n\nMESSAGE (what I just said or typed):\n${messageBlock}`
+    : messageBlock;
   const res = await openrouter().chat.completions.create({
     model: getConfig().CLEANUP_MODEL,
     temperature: TEMPERATURE,
