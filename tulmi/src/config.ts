@@ -68,6 +68,11 @@ const EnvSchema = z.object({
   // (e.g. nova-2-meeting for far-field/multi-speaker rooms) via env without a
   // code change if real-world capture proves noisy.
   DEEPGRAM_STT_MODEL: z.string().default("nova-2"),
+  // Live-STT language. Empty (the default) = "multi", Deepgram's multilingual
+  // + code-switching mode, which is what we always want: the backend detects
+  // the language, we never pin it from user input. Set a code here ONLY to
+  // force one language for debugging or an A/B.
+  DEEPGRAM_LANGUAGE: z.string().default(""),
 
   // OpenRouter (cleanup) — required to run the pipeline.
   // Model slug follows OpenRouter's naming: "<vendor>/<model>". Swap this via
