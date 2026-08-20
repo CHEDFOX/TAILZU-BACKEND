@@ -81,11 +81,78 @@ interface RawSttResult extends SttResult {
   speechConfidence?: "high" | "low" | "unknown";
 }
 
-/** Provider dispatch. Sarvam leads for Indic + code-mixed speech; the
- *  Whisper-family providers stay available as the global fallback and are
- *  what a failed Sarvam call falls back to. */
+/** Languages Sarvam is purpose-built for. A detection landing anywhere in this
+ *  set means the Indic specialist is the better transcript. Sarvam reports
+ *  region-tagged codes ("hi-IN"), so compare on the base code. */
+const INDIC_LANGUAGES = new Set([
+  "hi", "mr", "ta", "te", "bn", "gu", "pa", "kn", "ml", "ur",
+  "or", "as", "sa", "ne", "sd", "kok", "mai", "doi", "brx", "mni", "sat", "ks",
+]);
+const INDIC_SCRIPTS = new Set<DetectedScript>([
+  "devanagari", "tamil", "telugu", "bengali", "gujarati",
+  "gurmukhi", "kannada", "malayalam",
+]);
+
+function isIndicResult(r: RawSttResult): boolean {
+  const base = (r.detectedLanguage ?? "").toLowerCase().split(/[-_]/)[0];
+  if (base && INDIC_LANGUAGES.has(base)) return true;
+  // Native-script output is decisive even when no language code came back.
+  return INDIC_SCRIPTS.has(detectScript(r.text));
+}
+
+/** The generalist (Whisper family) — strong across ~100 languages. */
+function transcribeGeneralist(input: SttInput): Promise<RawSttResult> {
+  const cfg = getConfig();
+  return cfg.STT_PROVIDER === "openai" || !cfg.GROQ_API_KEY
+    ? transcribeOpenAI(input)
+    : transcribeGroq(input);
+}
+
+/**
+ * Provider dispatch.
+ *
+ * "auto" (recommended) is NOT single-provider: it runs the Indic specialist
+ * and the global generalist CONCURRENTLY and keeps the better transcript.
+ * That's the only way to serve a worldwide audience without asking the user
+ * what they're about to speak — you cannot route by language before you know
+ * the language, and asking is exactly what we refuse to do.
+ *
+ *   • Sarvam wins when the result is Indic (detected language or native
+ *     script) — including romanized Hinglish, which it is specifically built
+ *     for and the generalist handles worst.
+ *   • The generalist wins otherwise, so French/Japanese/Spanish keep
+ *     ~100-language quality instead of being forced through an India-tuned
+ *     model.
+ *   • Either failing alone is survivable — the other's result is used.
+ *
+ * Cost is two STT calls per dictation (STT is cents-per-hour and far cheaper
+ * than the LLM call that follows); latency is the SLOWER of the two, not the
+ * sum, because they run in parallel. Pin STT_PROVIDER to a single provider if
+ * you'd rather trade quality for that cost.
+ */
 async function transcribeWithProvider(input: SttInput): Promise<RawSttResult> {
   const cfg = getConfig();
+
+  if (cfg.STT_PROVIDER === "auto" && cfg.SARVAM_API_KEY) {
+    const [indic, general] = await Promise.allSettled([
+      transcribeSarvam(input),
+      transcribeGeneralist(input),
+    ]);
+    const indicOk = indic.status === "fulfilled" && indic.value.text.trim() ? indic.value : null;
+    const generalOk = general.status === "fulfilled" && general.value.text.trim() ? general.value : null;
+
+    if (indicOk && generalOk) return isIndicResult(indicOk) ? indicOk : generalOk;
+    if (indicOk) return indicOk;
+    if (generalOk) return generalOk;
+    // Both empty or failed: surface the generalist's outcome so the existing
+    // silence-hallucination handling still applies to a genuinely empty clip.
+    if (general.status === "rejected" && indic.status === "rejected") {
+      console.error("[stt] both providers failed:", (general.reason as Error)?.message);
+      throw general.reason;
+    }
+    return general.status === "fulfilled" ? general.value : (indic as PromiseFulfilledResult<RawSttResult>).value;
+  }
+
   if (cfg.STT_PROVIDER === "sarvam") {
     try {
       return await transcribeSarvam(input);
@@ -93,7 +160,7 @@ async function transcribeWithProvider(input: SttInput): Promise<RawSttResult> {
       // Never fail a dictation because one provider blipped — fall back to the
       // Whisper path rather than handing the user an error toast.
       console.error("[stt] sarvam failed, falling back:", (err as Error).message);
-      return cfg.GROQ_API_KEY ? transcribeGroq(input) : transcribeOpenAI(input);
+      return transcribeGeneralist(input);
     }
   }
   return cfg.STT_PROVIDER === "groq" ? transcribeGroq(input) : transcribeOpenAI(input);
