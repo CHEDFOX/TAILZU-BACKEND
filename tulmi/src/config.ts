@@ -49,6 +49,22 @@ const EnvSchema = z.object({
   SARVAM_API_KEY: z.string().optional(),
   SARVAM_API_URL: z.string().default("https://api.sarvam.ai"),
   SARVAM_STT_MODEL: z.string().default("saarika:v2.5"),
+  // Sarvam's STREAMING endpoint (live dictation). Separate from the REST URL
+  // above; override if their WS path changes.
+  SARVAM_WS_URL: z.string().default("wss://api.sarvam.ai/speech-to-text/ws"),
+
+  // Which engine backs LIVE dictation (/v1/transcribe-stream). Server-side, so
+  // switching is a VPS config change and never an app update: the phone's wire
+  // protocol is identical either way. "sarvam" needs SARVAM_API_KEY and is the
+  // choice for Indian-language live dictation, where Deepgram is weakest;
+  // anything else falls back to Deepgram.
+  STT_LIVE_PROVIDER: z.enum(["deepgram", "sarvam"]).default("deepgram"),
+
+  // Add Deepgram's pre-recorded API as a THIRD candidate in STT_PROVIDER=auto.
+  // Opt-in: a third opinion costs a third call (no extra latency — the legs run
+  // in parallel) but its gain is smaller than Sarvam + Whisper together, and it
+  // widens the failure surface. Turn on to A/B it.
+  STT_AUTO_INCLUDE_DEEPGRAM: z.coerce.boolean().default(false),
 
   // OpenAI STT (used when STT_PROVIDER=openai). gpt-4o-transcribe is the
   // current best; gpt-4o-mini-transcribe is cheaper; whisper-1 is the legacy.

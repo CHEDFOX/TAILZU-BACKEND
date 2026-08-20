@@ -6,8 +6,9 @@
  *            then { type:"stop" }
  *   server → { type:"ready" | "partial" | "final" | "done" | "error" }
  *
- * Speech engine: Deepgram (streaming). Swappable — the wire protocol to the
- * phone stays the same.
+ * Speech engine: chosen SERVER-SIDE (see live-engines.ts) — Deepgram or
+ * Sarvam. The wire protocol to the phone never changes, so switching engines
+ * is a config change on the VPS, never an app update.
  *
  * SECURITY: this endpoint verifies the caller's Supabase JWT before opening a
  * Deepgram session so an unauthenticated client can never burn Deepgram credit.
@@ -20,8 +21,8 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import fp from "fastify-plugin";
 import websocket from "@fastify/websocket";
-import { createClient, LiveTranscriptionEvents } from "@deepgram/sdk";
 import { getConfig } from "../config.js";
+import { openLiveEngine, liveEngineConfigured, type LiveEngine } from "./live-engines.js";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { enforceQuota, recordUsage } from "../usage/metering.js";
 import { sanitizePlainTranscript } from "../pipeline/stt.js";
@@ -61,7 +62,9 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
   }
 
   const cfg = getConfig();
-  const deepgram = cfg.DEEPGRAM_API_KEY ? createClient(cfg.DEEPGRAM_API_KEY) : null;
+  // Engine credentials are resolved per-connection (see openEngine) so a key
+  // added to the environment takes effect on the next dictation, not the next
+  // process restart.
 
   fastify.get(
     "/v1/transcribe-stream",
@@ -72,7 +75,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
       config: { rateLimit: { max: cfg.RATE_LIMIT_MAX, timeWindow: cfg.RATE_LIMIT_WINDOW_MS } },
     },
     (socket: any, req: FastifyRequest) => {
-      let dg: any = null;
+      let engine: LiveEngine | null = null;
       let closed = false;
       let user: AuthedUser | null = null;
       let bytes = 0;
@@ -102,12 +105,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
       };
 
       const closeEngine = () => {
-        try {
-          if (typeof dg?.requestClose === "function") dg.requestClose();
-          else if (typeof dg?.finish === "function") dg.finish();
-        } catch {
-          /* ignore */
-        }
+        try { engine?.close(); } catch { /* ignore */ }
       };
 
       // Bill the audio + words processed so far — EXACTLY once, guarded, and
@@ -125,7 +123,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           source: "stream",
           audioSeconds: Number(seconds.toFixed(2)),
           words: totalWords,
-          model: `deepgram:${cfg.DEEPGRAM_STT_MODEL || "nova-2"}`,
+          model: engine?.label ?? "live:unknown",
         }).catch(() => { /* metering must never break the close path */ });
       };
 
@@ -158,97 +156,64 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
       };
 
       const openEngine = (start: StartMessage) => {
-        if (!deepgram) {
+        if (!liveEngineConfigured()) {
           send({ type: "error", code: "internal", message: "streaming STT not configured on server" });
           safeClose();
           return;
         }
         sampleRate = start.sampleRate ?? 16000;
-        // NEVER pin the recognizer to the client's language — same rule as the
-        // one-shot path (see pipeline/stt.ts sttLanguage). The client sends the
-        // code the user picked once on the onboarding screen, and passing it
-        // through locked Deepgram to that single language, so a user who tapped
-        // "Hindi" could no longer dictate English — and code-switching, which
-        // "multi" exists to handle, broke outright.
-        //
-        // DEEPGRAM_LANGUAGE is a server-side escape hatch for debugging/A-B
-        // only; it is never fed from user input.
-        const language = cfg.DEEPGRAM_LANGUAGE || "multi";
 
-        dg = deepgram.listen.live({
-          model: cfg.DEEPGRAM_STT_MODEL || "nova-2",
-          language,
-          encoding: "linear16",
-          sample_rate: sampleRate,
-          channels: start.channels ?? 1,
-          interim_results: true,
-          smart_format: true,
-          punctuate: true,
-          numerals: true,
-          // Robustness in noisy/real-world capture (Layer D): let Deepgram's
-          // own VAD do endpointing so we cut on natural pauses, emit
-          // UtteranceEnd events, and don't hold a final open waiting for
-          // silence that a noisy room never delivers.
-          //   endpointing      — ms of trailing silence that finalizes a
-          //                      segment (300ms = snappy but not choppy).
-          //   utterance_end_ms — fire UtteranceEnd after ~1s of no speech so
-          //                      the client can commit even if the socket
-          //                      stays open (requires interim_results, on).
-          //   vad_events       — surface SpeechStarted so we could gate UI on
-          //                      real speech rather than energy.
-          endpointing: 300,
-          utterance_end_ms: 1000,
-          vad_events: true,
-        });
-
-        dg.on(LiveTranscriptionEvents.Open, () => {
-          send({ type: "ready" });
-          armIdle();
-        });
-        dg.on(LiveTranscriptionEvents.Transcript, (data: any) => {
-          const raw = data?.channel?.alternatives?.[0]?.transcript ?? "";
-          if (!raw) return;
-          if (data.is_final) {
-            // Sanitize the finalized segment before it reaches the cursor: strip
-            // STT hallucinations / boilerplate, and drop a conversational meta
-            // reply ("thanks for watching", "I didn't catch that"). Deepgram's
-            // VAD already gated on speech, so trust it (don't nuke ambiguous
-            // one-word fillers). We ALWAYS send a final — an empty one tells the
-            // client to clear whatever provisional partial it was showing, so a
-            // noise partial can't get stranded at the cursor.
-            // Deepgram returns the user's ACTUAL words (it doesn't hallucinate
-            // conversational filler), so we only strip STT hallucinations here —
-            // NOT via the meta guard, which would drop a legit "say that again".
-            // The meta guard belongs on LLM refine output, not raw STT.
-            const text = sanitizePlainTranscript(raw, { trustSpeech: true });
-            // Sum words from finalized segments only (partials are supersets that
-            // get replaced) so word-based quotas meter the real transcript.
-            if (text) totalWords += countWords(text);
-            send({ type: "final", text });
-          } else {
-            // Partials are provisional — forward as-is for the live effect; the
-            // final above is the sanitized commit point.
-            send({ type: "partial", text: raw });
-          }
-        });
-        dg.on(LiveTranscriptionEvents.Error, (e: any) => {
-          errored = true;
-          send({ type: "error", code: "stt_failed", message: String(e?.message ?? e) });
-        });
-        dg.on(LiveTranscriptionEvents.Close, (event: any) => {
-          // Deepgram closed. Normally this fires AFTER it flushes its final tail
-          // segment(s) in response to requestClose(), so routing "done" through
-          // here (not a fixed timer) guarantees the last words reach the client.
-          // BUT an abnormal close (e.g. 1011 server error) must NOT be masked as
-          // a successful "done" — surface it as an error first.
-          const code = typeof event?.code === "number" ? event.code
-            : typeof event?.target?.code === "number" ? event.target.code : undefined;
-          if (code !== undefined && code !== 1000 && code !== 1005 && !errored) {
-            errored = true;
-            send({ type: "error", code: "stt_failed", message: `stream closed abnormally (${code})` });
-          }
-          finishDone();
-        });
+        // WHICH engine (Deepgram / Sarvam) is decided server-side in
+        // live-engines.ts. Neither is pinned to a language — the backend
+        // identifies the speech, so both open in multilingual/auto-detect
+        // mode. The client's `language` field is ignored on purpose: it
+        // carries a preference the user set once on the onboarding screen,
+        // and honoring it locked the recognizer to that single language,
+        // breaking code-switching.
+        engine = openLiveEngine(
+          { sampleRate, channels: start.channels ?? 1 },
+          {
+            onReady: () => {
+              send({ type: "ready" });
+              armIdle();
+            },
+            onPartial: (text) => {
+              // Provisional — forward as-is for the live effect; the final
+              // below is the sanitized commit point.
+              send({ type: "partial", text });
+            },
+            onFinal: (raw) => {
+              // Sanitize the finalized segment before it reaches the cursor:
+              // strip STT hallucinations / boilerplate. The engine's VAD
+              // already gated on speech, so trust it (don't nuke ambiguous
+              // one-word fillers). We ALWAYS send a final — an empty one tells
+              // the client to clear whatever provisional partial it was
+              // showing, so a noise partial can't get stranded at the cursor.
+              // The meta guard belongs on LLM refine output, not raw STT.
+              const text = sanitizePlainTranscript(raw, { trustSpeech: true });
+              // Sum words from finalized segments only (partials are supersets
+              // that get replaced) so word-based quotas meter the real transcript.
+              if (text) totalWords += countWords(text);
+              send({ type: "final", text });
+            },
+            onError: (message) => {
+              errored = true;
+              send({ type: "error", code: "stt_failed", message });
+            },
+            onClose: (abnormalCode) => {
+              // The engine closed. Normally this fires AFTER it flushes its
+              // final tail segment(s) in response to close(), so routing
+              // "done" through here (not a fixed timer) guarantees the last
+              // words reach the client. An abnormal close must NOT be masked
+              // as a successful "done".
+              if (abnormalCode !== undefined && !errored) {
+                errored = true;
+                send({ type: "error", code: "stt_failed", message: `stream closed abnormally (${abnormalCode})` });
+              }
+              finishDone();
+            },
+          },
+        );
       };
 
       socket.on("message", async (raw: Buffer, isBinary: boolean) => {
@@ -257,14 +222,14 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         if (isBinary) {
           // Never accept audio before auth + start. Silent drop is safer than
           // opening a Deepgram session behind the caller's back.
-          if (!user || !dg) return;
+          if (!user || !engine) return;
           bytes += raw.length;
           if (bytes > MAX_STREAM_BYTES) {
             send({ type: "error", code: "audio_too_long", message: "stream size cap reached" });
             safeClose();
             return;
           }
-          try { dg.send(raw); } catch { /* engine window closed */ }
+          engine.send(raw);
           armIdle();
           return;
         }
