@@ -38,6 +38,8 @@ import { getConfig, VERSION } from "./config.js";
 import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
 import { localUserId } from "./auth/jwt.js";
 import { enforceQuota, recordUsage, usageSummary, usageWindows } from "./usage/metering.js";
+import { recordKeyboardTelemetry } from "./usage/telemetry.js";
+import { activeRollouts, bucketFor } from "./experience/rollout.js";
 import { captureException, fastifyLoggerOptions, initSentry } from "./observability.js";
 import { getProfile, updateProfile } from "./profile/store.js";
 import { runPipeline, runPipelineStream } from "./pipeline/index.js";
@@ -1424,6 +1426,94 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL }, async (req, reply) => {
   // across users. Same policy as /v1/app/bootstrap and /v1/app/screen.
   noStoreSdui(reply);
   return reply.send(buildKeyboardConfig(personality, userId));
+});
+
+// --- Keyboard telemetry ------------------------------------------------------
+//
+// Diagnostic COUNTERS from the keyboard. This is the missing half of remote
+// control: 130+ behaviors are tunable and rollout-scoped, but without counters
+// every experiment is judged by feel.
+//
+// PRIVACY: a keyboard extension sees everything the user types, so this
+// endpoint is built to make leaking content impossible rather than unlikely.
+// Counter NAMES are allowlisted and values must be finite numbers — a string
+// is rejected outright, so there is no shape in which text could arrive, even
+// if a future client tried to send it.
+const TELEMETRY_COUNTERS = new Set([
+  "keystrokes",
+  "autocorrectApplied",
+  "autocorrectReverted",
+  "suggestionAccepted",
+  "confusableOffered",
+  "confusableAccepted",
+  "swipeCommitted",
+  "swipeAbandoned",
+  "touchesCancelledRescued",
+  "accentTrayOpened",
+  "trackpadUsed",
+  "micTaps",
+  "dictationCommitted",
+  "refineRequested",
+  "refineFailed",
+  "toneChanged",
+  "voiceChanged",
+  "memoryWarnings",
+  "coldStarts",
+]);
+/** Cap a single counter so a buggy or hostile client can't skew aggregates. */
+const TELEMETRY_MAX = 1_000_000;
+
+app.post("/v1/keyboard/telemetry", { config: AUTHED_RL }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) {
+    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+  }
+  const body = (req.body ?? {}) as {
+    build?: unknown;
+    appVersion?: unknown;
+    platform?: unknown;
+    counters?: unknown;
+    windowMs?: unknown;
+  };
+
+  // Keep only known counters with finite numeric values.
+  const counters: Record<string, number> = {};
+  const raw = (body.counters ?? {}) as Record<string, unknown>;
+  for (const [k, v] of Object.entries(raw)) {
+    if (!TELEMETRY_COUNTERS.has(k)) continue;
+    const n = typeof v === "number" ? v : Number(v);
+    if (!Number.isFinite(n) || n < 0) continue;
+    counters[k] = Math.min(Math.floor(n), TELEMETRY_MAX);
+  }
+  // Nothing recognizable — accept quietly so a client on a newer/older counter
+  // set never sees an error it would have to handle.
+  if (!Object.keys(counters).length) return reply.send({ ok: true, recorded: 0 });
+
+  // Which rollout slices this user is in, so a cohort can be compared against
+  // the baseline. Derived server-side from the same salted hash the flags use
+  // — the client never asserts its own bucket.
+  const rules = activeRollouts();
+  const buckets: Record<string, number> = {};
+  for (const r of rules) buckets[r.flag] = bucketFor(user.id, r.flag);
+
+  const short = (v: unknown, max: number) =>
+    typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined;
+
+  try {
+    await recordKeyboardTelemetry(user, {
+      build: short(body.build, 16),
+      appVersion: short(body.appVersion, 32),
+      platform: body.platform === "android" ? "android" : "ios",
+      buckets,
+      counters,
+      windowMs: Math.max(0, Math.min(Number(body.windowMs) || 0, 7 * 24 * 60 * 60 * 1000)),
+    });
+  } catch (err) {
+    // Telemetry must never surface as a user-visible failure — the keyboard
+    // fires this in the background while someone is typing.
+    req.log.error(err);
+  }
+  return reply.send({ ok: true, recorded: Object.keys(counters).length });
 });
 
 // --- Admin: cache control ----------------------------------------------------
