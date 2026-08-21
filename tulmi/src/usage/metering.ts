@@ -125,6 +125,56 @@ export async function usageSummary(user: AuthedUser): Promise<UsageSummary> {
  * all-time. When Supabase is disabled all counts come back as zero (the caller
  * still gets a valid PrivacyAuditResponse shape).
  */
+/**
+ * Raw metered events for the Stats tab.
+ *
+ * Stats used to read ONLY cleanup_history — which is gated behind explicit
+ * consent (personality.learnFromSent / retainHistory). A user who never opted
+ * in has an empty history table, so every number on the Stats tab read zero
+ * forever, which looked like the feature was broken rather than gated.
+ *
+ * usage_events is written for EVERY request and holds no content — just
+ * timestamps, audio seconds and word counts — so it can back the whole tab
+ * without needing consent for anything. Only the content-derived breakdowns
+ * (which app you wrote in) still require history.
+ *
+ * `audioSeconds > 0` is the voice/typing discriminator: a metered event with
+ * audio behind it was dictation.
+ */
+export async function usageEventsSince(
+  user: AuthedUser,
+  sinceIso: string | undefined,
+): Promise<Array<{ createdAt: string; audioSeconds: number; words: number }>> {
+  if (isStaticUser(user)) {
+    const sinceMs = sinceIso ? Date.parse(sinceIso) : 0;
+    return (memUsage.get(user.id) ?? [])
+      .filter((e) => e.at >= sinceMs)
+      .map((e) => ({
+        createdAt: new Date(e.at).toISOString(),
+        audioSeconds: e.audioSeconds,
+        words: e.words,
+      }));
+  }
+  const sb = dataClientFor(user);
+  if (!sb) return [];
+  let q = sb
+    .from("usage_events")
+    .select("audio_seconds, word_count, created_at")
+    .eq("user_id", user.id);
+  if (sinceIso) q = q.gte("created_at", sinceIso);
+  const { data, error } = await q;
+  if (error || !data) {
+    if (error) console.error(`[usage] stats read failed for ${user.id}:`, error.message);
+    return [];
+  }
+  return (data as Array<{ created_at?: string; audio_seconds?: number | null; word_count?: number | null }>)
+    .map((r) => ({
+      createdAt: r.created_at ?? new Date(0).toISOString(),
+      audioSeconds: r.audio_seconds ?? 0,
+      words: r.word_count ?? 0,
+    }));
+}
+
 export async function usageWindows(
   user: AuthedUser,
 ): Promise<Array<{ window: string; requests: number; audioSeconds: number; words: number }>> {

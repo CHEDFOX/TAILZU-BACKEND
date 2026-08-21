@@ -485,6 +485,30 @@ export async function draftReply(
  * while all staying faithful to the message. Falls back to a single assist()
  * result if the JSON reply is unusable, so the Training screen never dead-ends.
  */
+/** The three directions the Training tab probes. Authored as separate calls
+ *  rather than one JSON blob — see refineVariants. */
+const VARIANT_ANGLES: Array<{ angle: string; brief: string }> = [
+  { angle: "closest", brief: "Follow their style portrait exactly (or do a neutral clean-up if there is none)." },
+  { angle: "tighter", brief: "Noticeably more compact and direct than you would normally write it. Cut every word that isn't pulling weight." },
+  { angle: "warmer", brief: "Noticeably more natural and personal than you would normally write it — how they'd talk to someone they like." },
+];
+
+/**
+ * Training: produce three refinements of the same input, differing only in
+ * style, so the user can pick the one that sounds most like them.
+ *
+ * Three PARALLEL calls, not one call returning JSON. The single-call version
+ * had to generate ~3× the output tokens before anything could render, and the
+ * user sat watching "Refining…" for all of it — the Training tab felt broken.
+ * Run concurrently, the wait is one short completion instead of one long one,
+ * and dropping JSON mode removes both the formatting overhead and a whole
+ * class of parse failures.
+ *
+ * Each call carries the FULL assist prompt, so instruction separation, script
+ * fidelity and the style portrait all apply — a command like "write this in
+ * Marathi" is executed once per variant rather than being rewritten as if it
+ * were part of the message.
+ */
 export async function refineVariants(
   message: string,
   opts: CleanupOptions = {},
@@ -496,41 +520,56 @@ export async function refineVariants(
     personality: opts.personality,
     language: opts.language,
     targetApp: opts.targetApp,
+    script: opts.script,
     hasContext: false,
   });
-  const system =
-    base +
-    "\n\nTRAINING MODE: return THREE alternative refinements of the user's message as JSON: " +
-    '{"variants":[{"angle":"closest","text":"…"},{"angle":"tighter","text":"…"},{"angle":"warmer","text":"…"}]}. ' +
-    "All three must say the same thing; they differ ONLY in style. " +
-    '"closest" follows the style portrait (or a neutral clean-up when there is none); ' +
-    '"tighter" is noticeably more compact and direct; "warmer" is noticeably more natural and personal. ' +
-    "Keep each variant a realistic message the user could send. No markdown, no commentary — only the JSON object.";
-  const res = await openrouter().chat.completions.create({
-    model: getConfig().CLEANUP_MODEL,
-    temperature: 0.6, // higher than cleanup: the variants must actually differ
-    max_tokens: MAX_TOKENS_CLEANUP * 2,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: message.trim() },
-    ],
+
+  const settled = await Promise.allSettled(
+    VARIANT_ANGLES.map(async ({ angle, brief }) => {
+      // The separation contract in `base` decides WHAT to write; this only
+      // shapes HOW. Stated in that order so a spoken instruction is still
+      // executed rather than treated as content to restyle.
+      const system =
+        base +
+        "\n\nTRAINING VARIANT: after applying the rules above to work out what the user wants written, " +
+        "write that message in this specific direction:\n" + brief +
+        "\nSay the same thing the other versions would say — only the style differs. " +
+        "Output ONLY the message, exactly as the rules above require.";
+      const res = await openrouter().chat.completions.create({
+        model: getConfig().CLEANUP_MODEL,
+        temperature: 0.6, // higher than cleanup: the variants must actually differ
+        max_tokens: MAX_TOKENS_CLEANUP,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: message.trim() },
+        ],
+      });
+      const text = (res.choices[0]?.message?.content ?? "").trim();
+      return { angle, text };
+    }),
+  );
+
+  const out = settled
+    .filter((r): r is PromiseFulfilledResult<{ angle: string; text: string }> => r.status === "fulfilled")
+    .map((r) => r.value)
+    .filter((v) => v.text && !looksLikeMeta(v.text));
+
+  // Identical variants are worse than fewer variants — a user asked to choose
+  // between three copies of the same sentence learns nothing and teaches us
+  // nothing. Keep the first of any duplicate.
+  const seen = new Set<string>();
+  const unique = out.filter((v) => {
+    const key = v.text.toLowerCase().replace(/\s+/g, " ").trim();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
-  try {
-    const parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}") as {
-      variants?: Array<{ angle?: unknown; text?: unknown }>;
-    };
-    const out = (parsed.variants ?? [])
-      .map((v) => ({
-        angle: typeof v.angle === "string" ? v.angle.slice(0, 24) : "variant",
-        text: typeof v.text === "string" ? v.text.trim() : "",
-      }))
-      .filter((v) => v.text && !looksLikeMeta(v.text))
-      .slice(0, 3);
-    if (out.length >= 2) return out;
-  } catch { /* fall through to the single-variant fallback */ }
+  if (unique.length >= 2) return unique.slice(0, 3);
+
+  // Every leg failed (or they all collapsed to one reading) — fall back to a
+  // single ordinary refine so the Training tab never dead-ends.
   const single = await assist(message, opts);
-  return single.trim() ? [{ angle: "closest", text: single.trim() }] : [];
+  return single.trim() ? [{ angle: "closest", text: single.trim() }] : unique;
 }
 
 /**
