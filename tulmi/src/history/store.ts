@@ -17,6 +17,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { dataClientFor, type AuthedUser } from "../auth/supabase.js";
+import { usageEventsSince } from "../usage/metering.js";
 import type {
   HistoryEntry,
   LanguageHint,
@@ -312,9 +313,27 @@ export async function statsForUser(
   const days = windowDayCount(window);
 
   const sb = dataClientFor(user);
-  const rows = sb
+  let rows = sb
     ? await fetchStatRowsSupabase(sb, user.id, sinceIso)
     : fetchStatRowsMemory(user.id, sinceIso);
+
+  // FALLBACK: cleanup_history only holds rows for users who explicitly opted
+  // into retention (personality.learnFromSent / retainHistory), so for
+  // everyone else it is empty BY DESIGN — and the Stats tab read zeros
+  // forever, which looks broken rather than gated. usage_events is written
+  // for every request and holds no content, so it can back the whole tab.
+  // `audioSeconds > 0` is the voice/typing discriminator; targetApp is the
+  // one thing it can't provide, so the "where you write" breakdown stays
+  // history-only.
+  if (!rows.length) {
+    const events = await usageEventsSince(user, sinceIso);
+    rows = events.map((e) => ({
+      createdAt: e.createdAt,
+      wordsOut: e.words,
+      audioSeconds: e.audioSeconds,
+      kind: e.audioSeconds > 0 ? "voice" : "typing",
+    }));
+  }
 
   // All day/hour bucketing runs in the CALLER'S local time: shift every
   // timestamp by their UTC offset, then bucket on UTC fields of the shifted
