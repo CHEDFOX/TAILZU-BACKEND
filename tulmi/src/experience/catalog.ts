@@ -3901,6 +3901,13 @@ export function buildKeyboardConfig(
       if (personality?.activeTone) {
         flags["kb.personality.activeTone"] = personality.activeTone;
       }
+      // The user's own dictionary — names, brands, jargon. The keyboard biases
+      // swipe decoding and autocorrect toward these; a generic lexicon will
+      // never contain a colleague's name, and "fixing" it is exactly the kind
+      // of wrong correction that costs trust.
+      if (personality?.vocabulary?.trim()) {
+        flags["kb.personality.vocabulary"] = personality.vocabulary.trim().slice(0, 4000);
+      }
       // Fast-tone list for the long-press tone sheet (iOS + Android read
       // `kb.personality.tones`). Rich `{ id, label }` shape so the clients apply
       // the exact tone id (→ per-tone refine) and the labels/order/set are fully
