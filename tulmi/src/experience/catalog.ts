@@ -3862,6 +3862,23 @@ export function buildKeyboardConfig(
         // inheriting whatever the system picks. Remove to fall back to the
         // system default sizing.
         "kb.height.pt": 272,
+        // Native scales the keyboard with the phone; one constant cannot. This
+        // table is what K17+ binaries actually use — first bucket whose
+        // maxWidth >= the screen width wins, kb.height.pt above is the
+        // fallback for older builds.
+        //
+        // Derived from the row arithmetic in the tree below:
+        //   height = padTop + toolsRow + 4×(rowGap + rowHeight) + padBottom
+        // so if you change kb.geometry.* you must re-derive these, or the
+        // rows and the frame stop agreeing and the bottom row gets clipped.
+        //   ≤375  (SE, mini)      8 + 44 + 4×(9+40)  + 4 = 252
+        //   ≤413  (13/14/15, Pro) 8 + 44 + 4×(10+42) + 4 = 264
+        //   >413  (Plus, Max)     8 + 44 + 4×(11+44) + 4 = 276
+        "kb.height.byWidth": [
+          { maxWidth: 375, height: 252 },
+          { maxWidth: 413, height: 264 },
+          { maxWidth: 9999, height: 276 },
+        ],
       };
 
       // Mic media: OWNER DECISION — the keyboard's IDLE mic is always the
