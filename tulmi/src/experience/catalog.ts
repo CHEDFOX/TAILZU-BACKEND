@@ -3620,6 +3620,22 @@ export function buildKeyboardConfig(
         // (which also restores accent long-press trays) if a device ever shows
         // trouble — no rebuild needed.
         "kb.keyPlane.enabled": true,
+        // --- K18: the last compiled-in choices, now data ------------------
+        // Functional-key glyphs. Full icon-spec vocabulary, so a symbol can
+        // become an emoji or a hosted image without a rebuild:
+        //   { "sf": "delete.left" } | { "emoji": "⌫" } | { "url": "https://…" }
+        // A per-key override can also ride in the tree as props.icon.
+        // "kb.icon.backspace": { "sf": "delete.left" },
+        // "kb.icon.globe": { "sf": "globe" },
+        // "kb.icon.refine": { "sf": "sparkles" },
+        //
+        // Suggestion bar SHAPE (not just its colours):
+        //   "chips" (default) — rounded pills, brand amber on the lead
+        //   "flat"            — the native three-slot strip: no surfaces, thin
+        //                       dividers, lead distinguished by weight/colour
+        // "kb.suggestion.style": "chips",
+        // "kb.suggestion.dividerColor": "#FFFFFF24",
+        // "kb.suggestion.dividerHeight": 18,
         // --- K12 knobs: everything below was hardcoded in the binary until
         // now, and each is a value real-world use is likely to argue with.
         //
