@@ -17,7 +17,11 @@ import { applyPresetOverrides } from "../experience/personalityPresets.js";
 /** Short, natural-language guidance per built-in tone. "none" keeps the user's
  *  own voice — a faithful clean-up, not a restyle. */
 const TONE_GUIDANCE: Record<string, string> = {
-  none: "Neutral and faithful — keep the user's own words and voice. Don't restyle it; just make it clean, correct, and readable (remove filler and false starts, fix capitalization/punctuation, give it structure).",
+  // ZU 8.8 — the product's default and its actual position: not "no voice",
+  // but the USER'S voice. No borrowed tone is applied; the only style that
+  // shapes the output is what we've learned about how this person writes
+  // (their style portrait, injected separately by portraitBlock).
+  none: "Write in the user's OWN voice — this is the default mode, not a style. Apply NO tone, persona, or vibe of your own: don't make it friendlier, more formal, more upbeat, or more polished than they are. Keep their words, their phrasing, their level of formality, their punctuation habits. Only do what they cannot do while speaking or thumb-typing: drop filler and false starts, repair obvious slips, fix capitalization and punctuation, and give it structure. If you have learned how this person writes, follow that; otherwise stay as close to their input as possible. The reader should believe they typed it carefully themselves.",
   formal: "Formal and professional: full words (no contractions), precise punctuation, no slang, no emoji, one idea per sentence.",
   casual: "Warm and conversational, like talking to a friend. Contractions are welcome. Natural, never stiff.",
   "very-casual": "Group-chat energy: punchy, lowercase is fine, contractions and casual phrasing throughout, fragments are fine. Keep the user's slang.",

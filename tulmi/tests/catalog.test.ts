@@ -110,7 +110,9 @@ describe("buildScreen", () => {
     // Blurred voice sheet: Core style + the whole voice library.
     expect(json).toContain('"blur":true');
     expect(json).toContain('"open":"toneSheetOpen"');
-    expect(json).toContain("Core style");
+    // ZU 8.8 is the branded default voice — the user's own way of talking,
+    // auto-detected and cleaned with no borrowed tone laid over it.
+    expect(json).toContain("ZU 8.8");
     expect(json).toContain("Professional");
     expect(json).toContain("Witty");
     // The refine trigger is the brand media, playing while variants generate.
