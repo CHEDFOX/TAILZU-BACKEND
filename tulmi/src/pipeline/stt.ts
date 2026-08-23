@@ -609,19 +609,27 @@ async function transcribeSarvam(input: SttInput): Promise<RawSttResult> {
     new Blob([new Uint8Array(input.audio)], { type: `audio/${input.format}` }),
     `audio.${input.format}`,
   );
-  form.append("model", cfg.SARVAM_STT_MODEL);
+  const model = cfg.SARVAM_STT_MODEL;
+  form.append("model", model);
   // "unknown" = detect the language. Never pin (see sttLanguage). Supported
   // from saarika:v2 onward; v1 required an explicit code and is deprecated.
   form.append("language_code", "unknown");
-  // MODE IS NOT OPTIONAL FOR US. saaras:v3 can transcribe, translate,
-  // transliterate or code-mix, and /speech-to-text now defaults to saaras:v3
-  // when no model is named — so leaving mode unset risks Marathi speech coming
+  // `mode` belongs to the saaras family ONLY. Sending it to a pinned legacy
+  // saarika model would make every request invalid — and because a failed leg
+  // just falls back to Whisper, that would degrade Indic dictation silently.
+  // A config that pins an old model must not be able to produce a broken
+  // request, so the parameter follows the model rather than the operator.
+  //
+  // On saaras:v3 it is NOT optional: that model can transcribe, translate,
+  // transliterate or code-mix, so leaving it unset risks Marathi speech coming
   // back as ENGLISH, which reads exactly like "dictation isn't catching my
-  // language". We always state it.
-  //   transcribe (default) — same language the user spoke
-  //   codemix              — built for Hindi/English mixed speech
-  //   translit             — native speech returned in Latin script
-  form.append("mode", cfg.SARVAM_STT_MODE);
+  // language".
+  //   transcribe — same language the user spoke
+  //   codemix    — built for Hindi/English mixed speech
+  //   translit   — native speech returned in Latin script
+  if (model.toLowerCase().startsWith("saaras")) {
+    form.append("mode", cfg.SARVAM_STT_MODE);
+  }
 
   const res = await fetch(`${cfg.SARVAM_API_URL}/speech-to-text`, {
     method: "POST",
