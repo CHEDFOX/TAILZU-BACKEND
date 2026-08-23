@@ -1840,6 +1840,28 @@ if (process.env.NODE_ENV !== "test") {
   try {
     const app = await buildApp();
     await app.listen({ port: cfg.PORT, host: cfg.HOST });
+    // Announce the EFFECTIVE speech config on every boot.
+    //
+    // "no [stt] error lines" is ambiguous on its own: it means the Sarvam leg
+    // never rejected, but it equally means the leg never RAN — with
+    // STT_PROVIDER left at groq, nothing Sarvam-related executes and nothing
+    // is logged, so a misconfiguration is indistinguishable from success.
+    // Printing the resolved values once at startup makes "which engine is
+    // actually serving dictation?" answerable from the first page of logs.
+    console.log(
+      `[stt] config: provider=${cfg.STT_PROVIDER}` +
+      ` sarvamKey=${cfg.SARVAM_API_KEY ? "set" : "MISSING"}` +
+      ` sarvamModel=${cfg.SARVAM_STT_MODEL} mode=${cfg.SARVAM_STT_MODE}` +
+      ` groqKey=${cfg.GROQ_API_KEY ? "set" : "missing"}` +
+      ` live=${cfg.STT_LIVE_PROVIDER} liveDual=${cfg.STT_LIVE_DUAL}`,
+    );
+    if (cfg.STT_PROVIDER !== "auto" && cfg.SARVAM_API_KEY) {
+      console.warn(
+        `[stt] WARNING: SARVAM_API_KEY is set but STT_PROVIDER=${cfg.STT_PROVIDER}` +
+        " — Sarvam is NOT being used for one-shot dictation. Set STT_PROVIDER=auto" +
+        " to run it alongside Whisper and keep the better transcript.",
+      );
+    }
   } catch (err) {
     console.error(err);
     process.exit(1);
