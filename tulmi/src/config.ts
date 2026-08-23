@@ -48,7 +48,14 @@ const EnvSchema = z.object({
   // Sarvam (used when STT_PROVIDER=sarvam).
   SARVAM_API_KEY: z.string().optional(),
   SARVAM_API_URL: z.string().default("https://api.sarvam.ai"),
-  SARVAM_STT_MODEL: z.string().default("saarika:v2.5"),
+  // saaras:v3 is Sarvam's current model and what /speech-to-text defaults to;
+  // saarika:v1/v2/flash are deprecated and saarika:v2.5 is legacy and on its
+  // way out. v3 also carries the mode parameter below.
+  SARVAM_STT_MODEL: z.string().default("saaras:v3"),
+  // What v3 should DO with the audio. "transcribe" keeps the user's own
+  // language — never leave this unset, or a translating default turns Marathi
+  // into English. "codemix" is worth A/B-ing for Hinglish.
+  SARVAM_STT_MODE: z.enum(["transcribe", "codemix", "translit", "verbatim"]).default("transcribe"),
   // Sarvam's STREAMING endpoint (live dictation). Separate from the REST URL
   // above; override if their WS path changes.
   SARVAM_WS_URL: z.string().default("wss://api.sarvam.ai/speech-to-text/ws"),
