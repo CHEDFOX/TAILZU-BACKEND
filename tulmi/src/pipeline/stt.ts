@@ -66,6 +66,9 @@ export interface SttResult {
   /** Language the PROVIDER detected, when it reports one (Sarvam does).
    *  Recorded as a passive signal; never used to constrain a later request. */
   detectedLanguage?: string;
+  /** Which engine produced this transcript. Surfaced to the client so a
+   *  silently-failing provider is visible without reading server logs. */
+  engine?: string;
   /**
    * A SECOND recognizer's reading of the same audio, present only when it
    * MEANINGFULLY disagrees with `text`.
@@ -180,14 +183,29 @@ async function transcribeWithProvider(input: SttInput): Promise<RawSttResult> {
     // a third opinion costs a third call and no extra latency (they run in
     // parallel), but it's opt-in because the gain is smaller than the first
     // two and it widens the failure surface.
+    // Mirrors transcribeGeneralist's choice so the label names the engine that
+    // actually ran. (In "auto" the configured provider is "auto", so the
+    // generalist is Groq whenever its key exists.)
+    const legNames: string[] = ["sarvam", cfg.GROQ_API_KEY ? "groq" : "openai"];
     const legs: Array<Promise<RawSttResult>> = [
       transcribeSarvam(input),
       transcribeGeneralist(input),
     ];
     if (cfg.STT_AUTO_INCLUDE_DEEPGRAM && cfg.DEEPGRAM_API_KEY) {
+      legNames.push("deepgram");
       legs.push(transcribeDeepgram(input));
     }
     const settled = await Promise.allSettled(legs);
+    // A leg that keeps failing is INVISIBLE otherwise: its result is filtered
+    // out, the other engine's transcript is used, and everything looks fine
+    // while the specialist never actually runs. That is exactly how a
+    // misconfigured Sarvam silently degrades Indic dictation to Whisper. Log
+    // every rejection with the provider that produced it.
+    settled.forEach((r, i) => {
+      if (r.status === "rejected") {
+        console.error(`[stt] ${legNames[i]} leg failed:`, (r.reason as Error)?.message);
+      }
+    });
     const ok = settled
       .filter((s): s is PromiseFulfilledResult<RawSttResult> => s.status === "fulfilled")
       .map((s) => s.value)
@@ -374,6 +392,7 @@ export async function transcribe(input: SttInput): Promise<SttResult> {
     durationSeconds: duration,
     script: detectScript(text),
     detectedLanguage: raw.detectedLanguage,
+    engine: raw.engine ?? getConfig().STT_PROVIDER,
     // Only forward a second opinion when the chosen transcript survived the
     // silence scrub — offering an alternative to an empty result would
     // resurrect text we just decided was a hallucination.

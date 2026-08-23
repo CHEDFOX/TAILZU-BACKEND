@@ -21,6 +21,13 @@ export interface PipelineInput extends CleanupOptions {
 }
 
 export interface PipelineResult {
+  /** STT engine that produced the transcript ("sarvam" | "groq" | "openai" |
+   *  "deepgram"). Diagnostic: a provider that keeps failing falls back
+   *  silently, so without this the only symptom is quality quietly reverting
+   *  to the generalist. */
+  sttEngine?: string;
+  /** Language the engine reported detecting, when it reports one. */
+  detectedLanguage?: string;
   transcript: string;
   cleanedText: string;
   usage: UsageRecord;
@@ -57,6 +64,12 @@ export async function runPipeline(
 
   return {
     transcript: stt.text,
+    // Which STT engine actually produced the transcript, and what language it
+    // reported. Surfaced so "is Sarvam really running?" is answerable from the
+    // response instead of requiring server logs — a silently-failing provider
+    // is otherwise invisible, because the fallback makes everything look fine.
+    sttEngine: stt.engine,
+    detectedLanguage: stt.detectedLanguage,
     cleanedText,
     usage: {
       audioSeconds: stt.durationSeconds,
