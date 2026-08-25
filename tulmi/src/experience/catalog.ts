@@ -358,25 +358,40 @@ function pickInitialScreenId(onboarded: boolean): string {
 }
 
 /**
- * Post-splash intro — a pure SDUI screen. Renders a Slideshow of 5 media
- * frames from the media store (uploaded under intro.0 … intro.4). Frame 0
- * is the "black" hold; frames 1..4 are the wave-move animation. When the
- * slideshow finishes its single loop, its onComplete fires the `done`
- * action which navigates to the real initial screen.
+ * Post-splash intro — a pure SDUI screen. ONE piece of media (the `intro`
+ * key), played inside the same circular white plate the in-app mic wears, on
+ * black. Same shape, same size: the first thing a user sees is the thing
+ * they will be tapping every day.
  *
- * Everything about it — the frame count, frame durations, background,
- * transitions, what comes next — is authored here. Zero client code
- * touches the intro path.
+ * The same `intro` key already gates whether the intro plays at all
+ * (flags["intro.media"] in the bootstrap), so uploading one file both turns
+ * the intro on and supplies it.
+ *
+ * Slideshow with a single frame is the player: its timer is what fires
+ * onComplete, since neither a GIF nor a video reports its own length back to
+ * the screen tree. That makes INTRO_PLAY_MS the intro's duration — set it to
+ * roughly the length of the file you upload.
  *
  * To customize:
- *   - Swap the 5 frames: POST /v1/media/upload?key=intro.0 (etc.)
- *   - Change speed: edit `frameMs` below
- *   - Change how many loops: edit `loops`
- *   - Change what happens after: edit `done` action's screenId
- *   - Add text overlay / brand mark on top: add sibling nodes to the
- *     Screen's children (Slideshow is styled `position: absolute; inset: 0`
- *     so overlays sit above it naturally).
+ *   - Swap the media:  POST /v1/media/upload?key=intro
+ *   - Change duration: INTRO_PLAY_MS
+ *   - Change size:     INTRO_PLATE (the plate) / INTRO_INSET (the media)
+ *   - Change what comes after: the `done` action's screenId
  */
+/** Diameter of the intro plate — the in-app mic's own size, deliberately. */
+const INTRO_PLATE = 128;
+/** How long the intro holds before moving on. Match your file's length. */
+const INTRO_PLAY_MS = 2600;
+/** Round window on black. Shared by the player and its still fallback so the
+ *  two can never drift apart. */
+const PLATE_STYLE = {
+  width: INTRO_PLATE,
+  height: INTRO_PLATE,
+  borderRadius: INTRO_PLATE / 2,
+  backgroundColor: "#FFFFFF",
+  overflow: "hidden" as const,
+};
+
 function introScreen(ctx: ScreenContext): ScreenResponse {
   // Route the post-intro destination the SAME way pickInitialScreenId would when
   // the intro is NOT playing — so a brand-new (not-onboarded) user goes through
@@ -413,38 +428,44 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
       children: [
         {
           type: "Slideshow",
-          // Small, centered media on the black backdrop — NOT full-bleed. The
-          // black Stack shows around it. Size is backend-tunable here (OTA).
-          style: {
-            width: 200,
-            height: 200,
-          },
+          // The plate: a white circle the size of the in-app mic, clipping the
+          // media to a round window. Same shape and size the user will be
+          // tapping every day.
+          style: PLATE_STYLE,
           props: {
-            frames: [
-              { key: "intro.1" },
-              { key: "intro.2" },
-              { key: "intro.3" },
-              { key: "intro.4" },
-              { key: "intro.0" },
-            ],
-            frameMs: 120,      // high-speed montage feel
-            loops: 1,          // one cycle then done
-            // contain (not cover) so the small box never crops the media.
-            contentFit: "contain",
+            // ONE frame. Slideshow is here for its timer and its onComplete,
+            // not to cycle anything.
+            frames: [{ key: "intro" }],
+            frameMs: INTRO_PLAY_MS,
+            loops: 1,
+            // cover, so the media fills the circle edge to edge rather than
+            // leaving white corners inside it.
+            contentFit: "cover",
           },
           on: { onComplete: "done" },
-          // A bundle that predates Slideshow would otherwise render nothing here
-          // AND (with hideChrome) have no header/tabs — a blank, navigationally
-          // stuck screen, because forward navigation depends entirely on the
-          // Slideshow's onComplete. The fallback shows the first frame with a
-          // tappable "Get started" that routes to `done` (→ home) so the user
-          // is never trapped.
+          // A bundle predating Slideshow would render nothing here AND —
+          // chrome being hidden — have no header or tabs to leave by, since
+          // moving forward depends entirely on onComplete. The fallback shows
+          // the still in the same plate and gives the user a way out.
           fallback: {
             type: "Stack",
-            style: { flex: 1, width: "100%", height: "100%", backgroundColor: "#000000", alignItems: "center", justifyContent: "center" },
+            style: {
+              flex: 1, width: "100%", height: "100%",
+              backgroundColor: "#000000",
+              alignItems: "center", justifyContent: "center",
+            },
             children: [
-              { type: "Image", props: { source: { key: "intro.1" }, contentFit: "contain" }, style: { width: 200, height: 200 } },
-              { type: "Button", props: { label: "Get started", variant: "primary" }, on: { onPress: "done" }, style: { position: "absolute", bottom: 56 } },
+              {
+                type: "Image",
+                props: { source: { key: "intro" }, contentFit: "cover" },
+                style: PLATE_STYLE,
+              },
+              {
+                type: "Button",
+                props: { label: "Get started", variant: "primary" },
+                on: { onPress: "done" },
+                style: { position: "absolute", bottom: 56 },
+              },
             ],
           },
         },
