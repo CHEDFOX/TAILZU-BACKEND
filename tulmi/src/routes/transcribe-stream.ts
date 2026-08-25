@@ -164,6 +164,20 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         if (doneSent) return;
         doneSent = true;
         if (doneFallback) { clearTimeout(doneFallback); doneFallback = null; }
+
+        // RESCUE: the primary engine produced nothing — it errored, dropped, or
+        // heard silence — but the shadow heard the user perfectly. Discarding
+        // its transcript would lose a dictation we actually have, so promote it
+        // to a real final and send it to the cursor. Runs even when `errored`
+        // is set: real words beat an error message.
+        const primaryDry = primaryFinals.join(" ").trim();
+        const shadowDry = shadowFinals.join(" ").trim();
+        if (!primaryDry && shadowDry) {
+          totalWords += countWords(shadowDry);
+          send({ type: "final", text: shadowDry });
+          errored = false;   // we recovered; don't report a failure to the user
+        }
+
         if (!errored) {
           // Hand the client BOTH readings. The engines segment differently, so
           // they can't be merged blind — the refine step reconciles them the
@@ -171,8 +185,8 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           // send the alternative when it's a real disagreement; identical
           // readings carry no information. Older clients ignore the extra
           // field, so this stays wire-compatible.
-          const primaryText = primaryFinals.join(" ").trim();
-          const shadowText = shadowFinals.join(" ").trim();
+          const primaryText = primaryDry;
+          const shadowText = shadowDry;
           const useAlternative =
             !!shadowText &&
             !!primaryText &&
