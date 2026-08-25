@@ -499,11 +499,10 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
 // element. Set `dismissible: false` for a hard paywall (no "×"/close).
 
 export const PAYWALL_CONFIG: PaywallConfig = {
-  heroFrames: [
-    { key: "paywall.1" },
-    { key: "paywall.2" },
-    { key: "paywall.3" },
-  ],
+  // Empty on purpose: with no frames the paywall renders BinaryReveal — the
+  // wordmark decoding out of 0s and 1s on a loop. Add keys back here and the
+  // uploaded art takes over instead.
+  heroFrames: [],
   heroFrameMs: 2200,
   heroLoops: 0,
   title: "Type once. Sound like you always.",
@@ -725,7 +724,39 @@ function paywallScreen(): ScreenResponse {
   const children: Node[] = [];
 
   // Hero — Slideshow when 2+ frames, single MediaPlayer when 1.
-  if (heroValid.length >= 2) {
+  if (heroValid.length === 0) {
+    // No uploaded hero: the wordmark decoding itself out of binary, forever.
+    // The product's whole claim is that it turns raw noise into finished
+    // words — this is that claim made literal while the user reads the price.
+    children.push({
+      type: "BinaryReveal",
+      style: {
+        width: "100%", aspectRatio: 1.3, borderRadius: 20,
+        overflow: "hidden", marginBottom: 20,
+      },
+      props: {
+        text: "Tailzu",
+        color: THEME.color.primary,
+        background: "#000000",
+        flipMs: 55,        // binary churn
+        lockMs: 90,        // per-character resolve, left to right
+        scrambleMs: 900,   // pure noise before the word starts pulling through
+        holdMs: 2400,      // the word, held
+        fontSize: 46,
+      },
+      // Older bundles have no BinaryReveal and would render an empty box where
+      // the hero belongs.
+      fallback: {
+        type: "Heading",
+        props: { content: "Tailzu" },
+        style: {
+          width: "100%", aspectRatio: 1.3, borderRadius: 20, marginBottom: 20,
+          backgroundColor: "#000000", color: THEME.color.primary,
+          textAlign: "center", fontSize: 46, lineHeight: 200,
+        },
+      },
+    });
+  } else if (heroValid.length >= 2) {
     children.push({
       type: "Slideshow",
       style: { width: "100%", aspectRatio: 1.3, borderRadius: 20, overflow: "hidden", marginBottom: 20 },
