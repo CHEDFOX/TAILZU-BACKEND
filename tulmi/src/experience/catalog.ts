@@ -150,7 +150,9 @@ export function bumpCacheVersion(): string {
 
 // --- Bootstrap --------------------------------------------------------------
 
-export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapResponse {
+export function buildBootstrap(
+  opts: { onboarded?: boolean; profileComplete?: boolean } = {},
+): BootstrapResponse {
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     // Opaque cache token — clients invalidate any cached screens when this
@@ -236,6 +238,11 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
         // that makes every mic tap animate into a dead mic. Re-enable once a
         // build with that arm() hardening ships. Costs background mic time
         // (indicator + battery) either way.
+        // Whether the name + gender card has been filled in, ANSWERED BY THE
+        // SERVER. It used to be a flag in the phone's own storage, which meant
+        // a reinstall or a second device asked the same user again. Their
+        // answers live on the profile now, so this follows the account.
+        "profile.complete": opts.profileComplete === true,
         // SMS sign-in. The auth gate runs BEFORE there is a session, so it
         // reads this from the (auth-optional) bootstrap. Off until an SMS
         // provider is actually live in Supabase — turning it on without one
