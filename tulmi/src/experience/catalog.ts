@@ -738,10 +738,12 @@ function paywallScreen(): ScreenResponse {
         text: "Tailzu",
         color: THEME.color.primary,
         background: "#000000",
-        flipMs: 55,        // binary churn
-        lockMs: 90,        // per-character resolve, left to right
-        scrambleMs: 900,   // pure noise before the word starts pulling through
-        holdMs: 2400,      // the word, held
+        // Fast enough to read as a transition in progress, slow enough that
+        // each digit registers as a digit. Below ~30ms it greys into a blur.
+        flipMs: 36,
+        lockMs: 70,        // per-character resolve, left to right
+        scrambleMs: 620,   // noise before the word starts pulling through
+        holdMs: 2200,      // the word, held
         fontSize: 46,
       },
       // Older bundles have no BinaryReveal and would render an empty box where
@@ -2450,11 +2452,19 @@ function onboardingVoice(): ScreenResponse {
             type: "ParticleMark",
             props: {
               size: HERO_PARTICLE,
-              count: 90,
-              dotRadius: 1.8,
+              // The keyboard's own numbers (kb.mic.particles.*), scaled to
+              // this larger circle so the swarm reads at the same density
+              // rather than as a handful of big blobs.
+              count: 160,
+              dotRadius: 1.5,
               color: THEME.color.primary,
-              speed: 1.35,
+              // 1.0 — the keyboard's real speed. Anything faster stops being
+              // the same animation.
+              speed: 1,
               circular: true,
+              // Hold the crisp mark between cycles, exactly as the keyboard
+              // does when the dots finish reassembling.
+              holdMark: true,
             },
             // Older bundles have no ParticleMark. They still get the line that
             // used to live here, rather than an empty middle.
