@@ -1689,7 +1689,7 @@ function personalityEditScreen(p: Personality, presetId: string | undefined): Sc
         gap(16),
 
         label("Emoji"),
-        { type: "TextField", bind: { value: "editEmoji" }, props: { placeholder: "✨" } },
+        { type: "TextField", bind: { value: "editEmoji" }, props: { placeholder: "Optional" } },
         gap(16),
 
         label("Tagline"),
@@ -1854,7 +1854,7 @@ function replyScreen(): ScreenResponse {
         kind: "sequence",
         actions: [
           { kind: "setState", path: "busy", value: false },
-          { kind: "toast", message: "Couldn't draft. Check ⚙ Connection + your key.", tone: "error" },
+          { kind: "toast", message: "Couldn't draft. Check Connection + your key.", tone: "error" },
         ],
       },
     },
@@ -2095,7 +2095,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
           type: "Stack",
           style: { direction: "row", gap: 8 },
           children: [
-            stat("Day streak", streak > 0 ? `${streak} 🔥` : "0"),
+            stat("Day streak", String(streak)),
             stat("Active days", String(stats?.daysActive ?? 0)),
           ],
         },
@@ -2533,7 +2533,7 @@ function onboardingKeyboard(): ScreenResponse {
         { type: "Spacer", style: { height: 13 } },
         step("4", "Tap Tailzu again and turn on “Allow Full Access”."),
         { type: "Spacer", style: { height: 13 } },
-        step("5", "Return to Tailzu — the 🌐 globe key switches keyboards."),
+        step("5", "Return to Tailzu — the globe key switches keyboards."),
       ] },
       { type: "Spacer", style: { height: 34 } },
       // "Open Settings" (not "Open Keyboard Settings") — iOS can't deliver
@@ -2766,7 +2766,7 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
       children: [
         {
           type: "Heading",
-          props: { content: "🎙️  Flow is on" },
+          props: { content: "Flow is on" },
           style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 14, textAlign: "center" },
         },
         {
@@ -3550,7 +3550,7 @@ export function buildKeyboardConfig(
       sdui: true,
     },
     labels: {
-      refine: "✨ Refine",
+      refine: "Refine",
       listening: "Listening…",
       transcribing: "Transcribing…",
       refining: "Refining…",

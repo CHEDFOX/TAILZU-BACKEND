@@ -84,6 +84,45 @@ describe("buildScreen", () => {
     }
   });
 
+  // Product rule, stated by the owner: no emoji anywhere in the app's chrome.
+  // Screens are backend-authored, so this is the only place it can be enforced —
+  // and it has to be enforced on the RENDERED tree, not on the source, because
+  // copy also arrives from presets, labels and toasts.
+  //
+  // Typographic marks are not emoji and stay allowed: they render as TEXT, in
+  // the current colour, at the current weight — "✓" as a selected-row
+  // affordance, "✎" as an edit pencil, "→" in instructions, "·" as a separator.
+  // What the rule is about is colour pictographs, which arrive at a fixed size
+  // in someone else's palette. So: strip the allowed marks, then match anything
+  // left in the pictograph blocks.
+  const TYPOGRAPHIC = /[✓✗✎→←↑↓·—–]/gu;
+  const EMOJI = /[\u{1F000}-\u{1FAFF}\u{1F1E6}-\u{1F1FF}\u{FE0F}\u{2600}-\u{27BF}]/u;
+
+  function emojiIn(node: unknown, path = "root"): string[] {
+    if (typeof node === "string") {
+      return EMOJI.test(node.replace(TYPOGRAPHIC, "")) ? [`${path}: ${node}`] : [];
+    }
+    if (Array.isArray(node)) return node.flatMap((n, i) => emojiIn(n, `${path}[${i}]`));
+    if (node && typeof node === "object") {
+      return Object.entries(node as Record<string, unknown>)
+        .flatMap(([k, v]) => emojiIn(v, `${path}.${k}`));
+    }
+    return [];
+  }
+
+  it("ships no emoji in any screen", () => {
+    const found = SCREEN_IDS.flatMap((id) =>
+      emojiIn(buildScreen(id, { personality: {}, language: "en" }), id),
+    );
+    expect(found, `emoji in shipped copy:\n${found.join("\n")}`).toEqual([]);
+  });
+
+  it("ships no emoji in the keyboard's labels", () => {
+    const kb = buildKeyboardConfig();
+    const found = emojiIn(kb.labels, "labels").concat(emojiIn(kb.layouts, "layouts"));
+    expect(found, `emoji in keyboard copy:\n${found.join("\n")}`).toEqual([]);
+  });
+
   it("returns null for an unknown screen id", () => {
     expect(buildScreen("does-not-exist", { personality: {}, language: "en" })).toBeNull();
   });
