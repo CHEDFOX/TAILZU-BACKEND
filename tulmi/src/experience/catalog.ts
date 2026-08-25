@@ -378,6 +378,10 @@ function pickInitialScreenId(onboarded: boolean): string {
  *   - Change size:     INTRO_PLATE (the plate) / INTRO_INSET (the media)
  *   - Change what comes after: the `done` action's screenId
  */
+/** The onboarding hero's particle field. Larger than the mic — it is the
+ *  screen's centrepiece, not a control. */
+const HERO_PARTICLE = 208;
+
 /** Diameter of the intro plate — the in-app mic's own size, deliberately. */
 const INTRO_PLATE = 128;
 /** How long the intro holds before moving on. Match your file's length. */
@@ -2404,24 +2408,31 @@ function onboardingVoice(): ScreenResponse {
           props: { content: "Speak. Tailzu writes." },
           style: { textAlign: "center", fontSize: 34, lineHeight: 42, color: "$color.text", marginBottom: 0 },
         },
-        // The vertical middle: the hero media when one is actually uploaded —
-        // otherwise the pitch line itself, large and centered. (Upload a
-        // media-registry file under `onboarding.hero` and it slots in here
-        // with no other change.)
+        // The vertical middle: the keyboard's own recording visual — the brand
+        // mark bursting into particles and re-forming, looping fast. This
+        // screen is asking for the microphone, so the most honest illustration
+        // is the exact motion the microphone makes. Ships with no asset.
         {
           type: "Stack",
           style: { flex: 1, width: "100%", alignItems: "center", justifyContent: "center" },
-          children: getMediaRegistryFn?.()?.["onboarding.hero"]?.url
-            ? [{
-                type: "Image",
-                props: { source: { key: "onboarding.hero" }, contentFit: "contain" },
-                style: { width: 240, height: 240 },
-              }]
-            : [{
-                type: "Paragraph",
-                props: { content: "Talk the way you talk. Tailzu turns it into clean, finished writing — in your voice." },
-                style: { textAlign: "center", fontSize: 21, lineHeight: 34, fontWeight: "300", color: "$color.text", marginBottom: 0, maxWidth: 300 },
-              }],
+          children: [{
+            type: "ParticleMark",
+            props: {
+              size: HERO_PARTICLE,
+              count: 90,
+              dotRadius: 1.8,
+              color: THEME.color.primary,
+              speed: 1.35,
+              circular: true,
+            },
+            // Older bundles have no ParticleMark. They still get the line that
+            // used to live here, rather than an empty middle.
+            fallback: {
+              type: "Paragraph",
+              props: { content: "Talk the way you talk. Tailzu turns it into clean, finished writing — in your voice." },
+              style: { textAlign: "center", fontSize: 21, lineHeight: 34, fontWeight: "300", color: "$color.text", maxWidth: 300 },
+            },
+          }],
         },
         {
           type: "Paragraph",
