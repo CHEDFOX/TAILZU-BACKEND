@@ -92,6 +92,13 @@ const FLOW_IDLE_TIMEOUT_MS = 600_000;
  */
 const FLOW_TRANSPORT = process.env.FLOW_TRANSPORT === "oneshot" ? "oneshot" : "stream";
 
+/**
+ * Whether the sign-in gate offers SMS. Env-gated so it can be turned on the
+ * moment Twilio is verified in Supabase, without a deploy — and turned off just
+ * as fast if SMS delivery goes bad in a region.
+ */
+const AUTH_ENABLE_PHONE = process.env.AUTH_ENABLE_PHONE === "true";
+
 const NAV: NavigationShell = {
   kind: "tabs",
   // Settings is no longer a bottom tab — it's reached via the ⚙ gear in the
@@ -229,6 +236,11 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
         // that makes every mic tap animate into a dead mic. Re-enable once a
         // build with that arm() hardening ships. Costs background mic time
         // (indicator + battery) either way.
+        // SMS sign-in. The auth gate runs BEFORE there is a session, so it
+        // reads this from the (auth-optional) bootstrap. Off until an SMS
+        // provider is actually live in Supabase — turning it on without one
+        // gives every user who picks the phone pill a dead end.
+        "auth.enablePhone": AUTH_ENABLE_PHONE,
         "kb.flow.armOnForeground": true,
         "kb.flow.idleTimeoutMs": FLOW_IDLE_TIMEOUT_MS,
         // How each utterance travels to the server. The APP reads this when it
@@ -825,6 +837,8 @@ export interface ScreenContext {
   personality: Personality;
   language: string;
   email?: string;
+  /** Set instead of `email` for an SMS-only account. */
+  phone?: string;
   usage?: UsageSummary;
   /**
    * Optional per-user stats projection for the "stats" screen. Populated by

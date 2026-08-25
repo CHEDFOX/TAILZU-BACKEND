@@ -477,7 +477,7 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       tone: tone ?? personality.activeTone,
       tonePrompt,
       context,
-      variables: { email: user.email },
+      variables: { email: user.email, phone: user.phone },
     });
     await recordUsage({ user, source: "rest", ...result.usage });
     await appendHistoryEntry(
@@ -544,7 +544,7 @@ app.post("/v1/refine", { config: AUTHED_RL }, async (req, reply) => {
       // the two disagree — reconciled before the writing task.
       alternative: body.alternative,
       personality,
-      variables: { email: user.email },
+      variables: { email: user.email, phone: user.phone },
     });
     const usage = {
       audioSeconds: 0,
@@ -727,7 +727,7 @@ const runToneRefine = (toneId: string) =>
         context: body.context,
         language: body.language,
         personality,
-        variables: { email: user.email },
+        variables: { email: user.email, phone: user.phone },
       });
       const usage = { audioSeconds: 0, words: countWords(refinedText), model: cfg.CLEANUP_MODEL };
       await recordUsage({ user, source: "rest", ...usage });
@@ -781,7 +781,7 @@ app.post("/v1/draft", { config: AUTHED_RL }, async (req, reply) => {
         targetApp: body.targetApp,
         language: body.language,
         personality,
-        variables: { email: user.email },
+        variables: { email: user.email, phone: user.phone },
       },
       body.recipient,
     );
@@ -1237,6 +1237,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     language: profile?.language ?? "auto",
     onboarded: profile?.onboarded ?? false,
     email: user?.email,
+    phone: user?.phone,
     usage,
     stats,
     history,
@@ -1777,7 +1778,7 @@ app.register(async (instance) => {
             targetApp,
             language,
             personality,
-            variables: { email: user.email },
+            variables: { email: user.email, phone: user.phone },
           })) {
             send(ev);
             if (ev.type === "transcript") capturedTranscript = ev.text;

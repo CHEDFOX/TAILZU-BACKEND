@@ -62,4 +62,14 @@ describe("expandSnippets", () => {
     // No ctx → name is empty; result is just "hi " (with trailing space).
     expect(expandSnippets("hello", snippets)).toBe("hi ");
   });
+
+  // An SMS-only account has no email, so a snippet built around {email} would
+  // silently expand to nothing for those users. {phone} is the symmetric slot.
+  it("interpolates {phone} for an account that signed in with SMS", () => {
+    const out = expandSnippets("sig", "sig = — {name} ({phone})", {
+      name: "Alex",
+      phone: "+919876543210",
+    });
+    expect(out).toBe("— Alex (+919876543210)");
+  });
 });

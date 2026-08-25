@@ -194,6 +194,13 @@ describe("buildKeyboardConfig", () => {
     expect(kb.labels?.refine).toMatch(/refine/i);
   });
 
+  it("keeps SMS sign-in off unless the env turns it on", () => {
+    // The gate reads this BEFORE there is a session, and a phone pill with no
+    // SMS provider behind it is a dead end. Default-off is the safe state.
+    const boot = buildBootstrap({ platform: "ios" });
+    expect(boot.flags?.["auth.enablePhone"]).toBe(process.env.AUTH_ENABLE_PHONE === "true");
+  });
+
   it("ships a Flow transport the app and the keyboard both read", () => {
     const kb = buildKeyboardConfig();
     const boot = buildBootstrap({ platform: "ios" });

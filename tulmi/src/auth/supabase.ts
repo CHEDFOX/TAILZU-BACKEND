@@ -44,6 +44,12 @@ function verifyClient(): SupabaseClient | null {
 export interface AuthedUser {
   id: string;
   email?: string;
+  /**
+   * E.164 phone, for accounts created through SMS sign-in. Exactly one of
+   * `email` / `phone` is set for a single-method account, so neither can be
+   * treated as the identity — that is always `id`. This is only ever a label.
+   */
+  phone?: string;
   /** The raw Supabase JWT, used to build a RLS-scoped data client. */
   token?: string;
 }
@@ -107,7 +113,12 @@ export async function resolveUser(
   const { data, error } = await sb.auth.getUser(token);
   if (error || !data.user) return null;
 
-  return { id: data.user.id, email: data.user.email ?? undefined, token };
+  return {
+    id: data.user.id,
+    email: data.user.email ?? undefined,
+    phone: data.user.phone ?? undefined,
+    token,
+  };
 }
 
 /**
