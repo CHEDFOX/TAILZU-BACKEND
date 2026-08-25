@@ -85,6 +85,13 @@ export const THEME: ThemeTokens = {
  */
 const FLOW_IDLE_TIMEOUT_MS = 600_000;
 
+/**
+ * Transport for a Flow dictation: "stream" (socket, live) or "oneshot"
+ * (buffer + one POST at stop). Env-overridable so the switch can be thrown
+ * without a deploy; see kb.flow.transport for the trade-off.
+ */
+const FLOW_TRANSPORT = process.env.FLOW_TRANSPORT === "oneshot" ? "oneshot" : "stream";
+
 const NAV: NavigationShell = {
   kind: "tabs",
   // Settings is no longer a bottom tab — it's reached via the ⚙ gear in the
@@ -224,6 +231,10 @@ export function buildBootstrap(opts: { onboarded?: boolean } = {}): BootstrapRes
         // (indicator + battery) either way.
         "kb.flow.armOnForeground": true,
         "kb.flow.idleTimeoutMs": FLOW_IDLE_TIMEOUT_MS,
+        // How each utterance travels to the server. The APP reads this when it
+        // arms the session, so it must be in the boot flags as well as the
+        // keyboard config — and both must say the same thing.
+        "kb.flow.transport": FLOW_TRANSPORT,
       };
 
       const reg = getMediaRegistryFn?.() ?? {};
@@ -3717,6 +3728,32 @@ export function buildKeyboardConfig(
         // The armed-idle state uses the normal mic/brand mark. OTA-tunable.
         "kb.flow.startGlyph": "bolt.fill",
         "kb.flow.stopGlyph": "checkmark",
+        // TRANSPORT — how a dictated utterance reaches the server. Flippable
+        // per cohort, no rebuild (build 53+).
+        //   "stream"  → PCM goes up a socket as the user speaks. Transcription
+        //               finishes as they stop, so the written sentence lands
+        //               fastest. Cost: a dropped socket loses the words
+        //               outright — they existed nowhere but in flight.
+        //   "oneshot" → the app buffers the utterance and POSTs it once to
+        //               /v1/transcribe-clean, the same endpoint (and the same
+        //               Sarvam+Whisper fusion) the in-app mic uses. The audio
+        //               still exists on the phone afterwards, so a failed
+        //               request retries instead of losing the dictation, and
+        //               the two surfaces stop diverging. Cost: transcription
+        //               starts at stop, so the wait is longer on long
+        //               utterances.
+        // Streaming stays the default: it is faster, and it is the path with
+        // real usage behind it.
+        // Set this globally (FLOW_TRANSPORT), NOT as a cohort rollout: the app
+        // reads it from /v1/app/bootstrap and the keyboard from
+        // /v1/keyboard/config, and only the latter runs rollouts — so a
+        // targeted rule would put the two halves of one dictation into
+        // different modes.
+        "kb.flow.transport": FLOW_TRANSPORT,
+        // How long to wait after the mic stops before writing what was said —
+        // the tail of an utterance is usually still in flight. Also the poll
+        // interval while waiting for a one-shot upload to come back.
+        "kb.flow.settleMs": 450,
         // Dictation "button logic" — WHEN the words hit the field. This is the
         // one knob that flips live-vs-after-stop without a rebuild (once the
         // reader is in the build; build 39+):
