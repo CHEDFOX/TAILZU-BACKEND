@@ -215,14 +215,13 @@ export interface Personality {
    * preset id (e.g. "signature", "wispr", "kai") → partial preset shape.
    * Only the fields the user changes are stored; the built-in preset
    * supplies the rest via a merge on read. Lets a user rename a preset,
-   * swap its emoji, adjust its tagline / description / promptStyle
+   * adjust its tagline / description / promptStyle
    * without changing the shipped preset list.
    *
    * Undefined / missing key → the built-in preset shows through as-is.
    */
   presetOverrides?: Record<string, {
     name?: string;
-    emoji?: string;
     tagline?: string;
     description?: string;
     defaultTone?: string;

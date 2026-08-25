@@ -1582,7 +1582,6 @@ function personalityEditScreen(p: Personality, presetId: string | undefined): Sc
   const override = p.presetOverrides?.[id] ?? {};
   const eff = {
     name: (override.name ?? base.name),
-    emoji: (override.emoji ?? base.emoji),
     tagline: (override.tagline ?? base.tagline),
     description: (override.description ?? base.description),
     defaultTone: (override.defaultTone ?? base.defaultTone),
@@ -1607,7 +1606,6 @@ function personalityEditScreen(p: Personality, presetId: string | undefined): Sc
     state: {
       editPresetId: id,
       editName: eff.name,
-      editEmoji: eff.emoji,
       editTagline: eff.tagline,
       editDescription: eff.description,
       editTone: eff.defaultTone,
@@ -1627,7 +1625,6 @@ function personalityEditScreen(p: Personality, presetId: string | undefined): Sc
               presetOverrides: {
                 [id]: {
                   name: "$state.editName",
-                  emoji: "$state.editEmoji",
                   tagline: "$state.editTagline",
                   description: "$state.editDescription",
                   defaultTone: "$state.editTone",
@@ -1681,7 +1678,7 @@ function personalityEditScreen(p: Personality, presetId: string | undefined): Sc
         { type: "Heading", props: { content: "Edit voice" },
           style: { fontSize: 26, fontWeight: "800", color: "$color.text", marginBottom: 4 } },
         { type: "Paragraph",
-          props: { content: "Rename it, change the emoji, or reshape how it writes. Reset any time to bring the original back." },
+          props: { content: "Rename it or reshape how it writes. Reset any time to bring the original back." },
           style: { fontSize: 13, color: "$color.muted", marginBottom: 20 } },
 
         label("Name"),
@@ -1689,8 +1686,7 @@ function personalityEditScreen(p: Personality, presetId: string | undefined): Sc
         gap(16),
 
         label("Emoji"),
-        { type: "TextField", bind: { value: "editEmoji" }, props: { placeholder: "Optional" } },
-        gap(16),
+                gap(16),
 
         label("Tagline"),
         { type: "TextField", bind: { value: "editTagline" }, props: { placeholder: "Short one-liner" } },
@@ -3991,7 +3987,7 @@ export function buildKeyboardConfig(
           .map((id) => PERSONALITY_PRESETS.find((p) => p.id === id))
           .filter((p): p is (typeof PERSONALITY_PRESETS)[number] => !!p)
           .slice(0, MAX_PINNED_PRESETS)
-          .map((p) => ({ id: p.id, name: p.name, emoji: p.emoji, tone: p.defaultTone }));
+          .map((p) => ({ id: p.id, name: p.name, tone: p.defaultTone }));
         flags["kb.personality.pinned"] = chips;
       }
       if (personality?.activePresetId) {

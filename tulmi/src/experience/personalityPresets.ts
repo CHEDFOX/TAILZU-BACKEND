@@ -14,7 +14,6 @@
  * Field notes
  *   id           — stable across releases; used as the active/pinned key.
  *   name         — 1–2 words the user sees on the card.
- *   emoji        — one glyph the user sees on the card (no more).
  *   tagline      — one line under the name (max ~50 chars).
  *   description  — 1–2 sentences on the detail card.
  *   formality    — the default point on the dial (users can override).
@@ -38,7 +37,6 @@ export type PresetTone = "none" | "formal" | "casual" | "very-casual" | "excited
 export interface PersonalityPreset {
   id: string;
   name: string;
-  emoji: string;
   tagline: string;
   description: string;
   formality: "casual" | "neutral" | "formal";
@@ -51,7 +49,6 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
   {
     id: "signature",
     name: "Signature",
-    emoji: "✍️",
     tagline: "Your everyday voice",
     description:
       "The default — clear, warm, and even-keeled. Works for most messages, from Slack to a note to your landlord.",
@@ -64,7 +61,6 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
   {
     id: "professional",
     name: "Professional",
-    emoji: "💼",
     tagline: "Boardroom-ready",
     description:
       "Direct, polite, structured. When you're writing to a client, a hiring manager, or someone whose time matters.",
@@ -77,7 +73,6 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
   {
     id: "friendly",
     name: "Friendly",
-    emoji: "🤝",
     tagline: "Warm and easy",
     description:
       "Casual, kind, a little chatty. When you'd rather sound like a person than a manager.",
@@ -90,7 +85,6 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
   {
     id: "witty",
     name: "Witty",
-    emoji: "🎭",
     tagline: "Dry humour, sharp corners",
     description:
       "Playful without being silly. Reaches for the clever line before the earnest one.",
@@ -103,7 +97,6 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
   {
     id: "concise",
     name: "Concise",
-    emoji: "⚡",
     tagline: "Every word earns its space",
     description:
       "Short sentences. No hedging. When you want the message to hit and stop.",
@@ -116,7 +109,6 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
   {
     id: "gentle",
     name: "Gentle",
-    emoji: "🌿",
     tagline: "Soft, careful, considered",
     description:
       "For hard conversations — care, condolences, apologies, boundaries. Slows down and picks its words.",
@@ -129,7 +121,6 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
   {
     id: "playful",
     name: "Playful",
-    emoji: "🎉",
     tagline: "Group-chat energy",
     description:
       "Loose, expressive, lots of personality. When the recipients are your favourite people.",
@@ -142,7 +133,6 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
   {
     id: "romantic",
     name: "Romantic",
-    emoji: "💌",
     tagline: "Present, tender, unguarded",
     description:
       "For the person who matters. Feels lived-in, not scripted; specific, not saccharine.",
@@ -155,7 +145,6 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
   {
     id: "concise-boss",
     name: "Executive",
-    emoji: "🎯",
     tagline: "Decision-first, no fluff",
     description:
       "Lead with the ask or the answer, follow with why. When your reader needs to act fast.",
@@ -168,7 +157,6 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
   {
     id: "explainer",
     name: "Explainer",
-    emoji: "📘",
     tagline: "Clear, structured, patient",
     description:
       "Breaks a thing down step-by-step. For handoffs, teaching moments, or telling a group how something works.",
@@ -181,7 +169,6 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
   {
     id: "excited",
     name: "Hype",
-    emoji: "🔥",
     tagline: "Big feelings, on purpose",
     description:
       "Genuine enthusiasm. For launches, wins, celebrations — reads as excited without reading as fake.",
@@ -194,7 +181,6 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
   {
     id: "poetic",
     name: "Poetic",
-    emoji: "🌙",
     tagline: "Image-first, cadence-second",
     description:
       "Slower, more image-driven, a little indirect. When the message is the mood, not just the point.",
@@ -244,7 +230,6 @@ export function applyPresetOverrides(
     return {
       ...p,
       name: (o.name ?? p.name).trim() || p.name,
-      emoji: (o.emoji ?? p.emoji).trim() || p.emoji,
       tagline: (o.tagline ?? p.tagline).trim() || p.tagline,
       description: (o.description ?? p.description).trim() || p.description,
       defaultTone: coerceTone(o.defaultTone, p.defaultTone),
@@ -266,7 +251,6 @@ export function applyPresetOverrides(
     customs.push({
       id,
       name: name || "Custom voice",
-      emoji: (o.emoji ?? "✨").trim() || "✨",
       tagline: (o.tagline ?? "").trim(),
       description: (o.description ?? "").trim(),
       formality: "neutral",
