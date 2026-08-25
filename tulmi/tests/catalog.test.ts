@@ -193,4 +193,14 @@ describe("buildKeyboardConfig", () => {
     // Labels the client renders for the special keys.
     expect(kb.labels?.refine).toMatch(/refine/i);
   });
+
+  it("ships a Flow transport the app and the keyboard both read", () => {
+    const kb = buildKeyboardConfig();
+    const boot = buildBootstrap({ platform: "ios" });
+    // The APP arms the session and the KEYBOARD decides how long to wait for
+    // the words, so both surfaces read this flag — and they must agree, or the
+    // keyboard waits on a stream that was never opened.
+    expect(["stream", "oneshot"]).toContain(kb.flags?.["kb.flow.transport"]);
+    expect(boot.flags?.["kb.flow.transport"]).toBe(kb.flags?.["kb.flow.transport"]);
+  });
 });
