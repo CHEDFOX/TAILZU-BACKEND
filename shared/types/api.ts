@@ -294,6 +294,8 @@ export interface CleanupOptions {
   variables?: {
     name?: string;
     email?: string;
+    /** E.164 phone, for accounts that signed in with SMS and have no email. */
+    phone?: string;
   };
   /**
    * What's already in the text field when this request fires — the existing

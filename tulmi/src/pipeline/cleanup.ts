@@ -139,6 +139,7 @@ function parseSnippets(text: string): Array<{ trigger: string; expansion: string
 export interface SnippetContext {
   name?: string;
   email?: string;
+  phone?: string;
   targetApp?: string;
   recipient?: string;
   /** Injected in tests so time-based variables are deterministic. */
@@ -179,6 +180,8 @@ function resolveVariable(name: string, ctx: SnippetContext): string | null {
       return ctx.name ?? "";
     case "email":
       return ctx.email ?? "";
+    case "phone":
+      return ctx.phone ?? "";
     case "targetApp":
       return ctx.targetApp ?? "";
     case "recipient":
@@ -199,6 +202,7 @@ function interpolate(expansion: string, ctx: SnippetContext): string {
 /**
  * Expand the user's snippet triggers (whole-word, case-insensitive).
  * When `ctx` is provided, `{date}`, `{time}`, `{day}`, `{name}`, `{email}`,
+ * `{phone}`,
  * `{targetApp}` and `{recipient}` inside an expansion are interpolated from
  * the caller's context — everything else is left literal (a stray `{foo}` is
  * more likely a real brace than a variable typo).
@@ -223,6 +227,7 @@ function ctxFromOpts(opts: CleanupOptions, recipient?: string): SnippetContext {
   return {
     name: opts.variables?.name,
     email: opts.variables?.email,
+    phone: opts.variables?.phone,
     targetApp: opts.targetApp,
     recipient,
   };
