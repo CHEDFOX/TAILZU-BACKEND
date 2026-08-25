@@ -3698,6 +3698,14 @@ export function buildKeyboardConfig(
         // native flow code in the build. OTA-flippable to "handoff" (open app
         // per dictation) / "local" / "stream".
         "kb.mic.mode": "flow",
+        // Show ONLY the finished sentence. Both engines still stream while the
+        // user speaks — transcription is done by the time they stop, so this
+        // costs no real time — but nothing reaches the cursor until the text is
+        // written properly. Watching "whats up" appear and turn into "WhatsApp"
+        // makes the product look like it is correcting its own mistakes;
+        // landing one finished sentence makes it look like it understood.
+        // Set false to paint the raw transcript live and rewrite it on stop.
+        "kb.mic.deferUntilStop": true,
         // How long a Flow Session stays live (mic held in the background) with
         // no dictation before it must be re-armed by re-opening the app.
         // Wispr's default is 5 min; raise for fewer app hops.
