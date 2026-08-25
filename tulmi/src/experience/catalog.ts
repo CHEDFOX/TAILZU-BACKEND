@@ -3744,6 +3744,11 @@ export function buildKeyboardConfig(
         //               utterances.
         // Streaming stays the default: it is faster, and it is the path with
         // real usage behind it.
+        // Set this globally (FLOW_TRANSPORT), NOT as a cohort rollout: the app
+        // reads it from /v1/app/bootstrap and the keyboard from
+        // /v1/keyboard/config, and only the latter runs rollouts — so a
+        // targeted rule would put the two halves of one dictation into
+        // different modes.
         "kb.flow.transport": FLOW_TRANSPORT,
         // How long to wait after the mic stops before writing what was said —
         // the tail of an utterance is usually still in flight. Also the poll
