@@ -41,7 +41,7 @@ import { enforceQuota, recordUsage, usageSummary, usageWindows } from "./usage/m
 import { recordKeyboardTelemetry } from "./usage/telemetry.js";
 import { activeRollouts, bucketFor } from "./experience/rollout.js";
 import { captureException, fastifyLoggerOptions, initSentry } from "./observability.js";
-import { getProfile, updateProfile } from "./profile/store.js";
+import { getProfile, updateProfile, type Profile } from "./profile/store.js";
 import { runPipeline, runPipelineStream } from "./pipeline/index.js";
 import { assist, draftReply, inferStyle, refineVariants, updateStylePortrait, LLM_TONES } from "./pipeline/cleanup.js";
 import { synthesize } from "./pipeline/tts.js";
@@ -1189,7 +1189,11 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   // profile decides whether onboarding still needs to run.
   const user = await resolveUser(req.headers["authorization"]);
   const profile = user ? await getProfile(user) : null;
-  const bootstrap = buildBootstrap({ onboarded: profile?.onboarded ?? false });
+  const bootstrap = buildBootstrap({
+    onboarded: profile?.onboarded ?? false,
+    // Both answers are required by the card, so either one proves it ran.
+    profileComplete: !!(profile?.fullName || profile?.gender),
+  });
   // Attach the current media registry so clients can resolve keys → URLs
   // without a separate roundtrip. Keys are semantic ("brand.mark",
   // "onboarding.hero.png"); each entry has { url, contentType, size,
@@ -1264,10 +1268,25 @@ app.put("/v1/profile", { config: AUTHED_RL }, async (req, reply) => {
   if (!user) {
     return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
   }
-  const body = (req.body ?? {}) as { language?: string; onboarded?: boolean };
-  const patch: { language?: string; onboarded?: boolean } = {};
+  const body = (req.body ?? {}) as {
+    language?: string;
+    onboarded?: boolean;
+    full_name?: string;
+    gender?: string;
+  };
+  const patch: Partial<Profile> = {};
   if (typeof body.language === "string") patch.language = body.language;
   if (typeof body.onboarded === "boolean") patch.onboarded = body.onboarded;
+  // The name + gender card has been sending these since it shipped; until now
+  // they were parsed off the body and dropped, so the card's answers lived only
+  // in the phone's own storage and a reinstall asked again.
+  if (typeof body.full_name === "string") {
+    const name = body.full_name.trim().slice(0, 120);
+    if (name) patch.fullName = name;
+  }
+  if (body.gender === "female" || body.gender === "male" || body.gender === "other") {
+    patch.gender = body.gender;
+  }
   try {
     return reply.send(await updateProfile(user, patch));
   } catch (err) {

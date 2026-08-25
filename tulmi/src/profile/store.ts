@@ -6,9 +6,14 @@
  */
 import { dataClientFor, type AuthedUser } from "../auth/supabase.js";
 
+export type Gender = "female" | "male" | "other";
+
 export interface Profile {
   language: string; // 'auto' | 'en' | 'hi' | 'hinglish' | ...
   onboarded: boolean;
+  /** From the name + gender card. Absent until the user fills it in. */
+  fullName?: string;
+  gender?: Gender;
 }
 
 const DEFAULT_PROFILE: Profile = { language: "auto", onboarded: false };
@@ -20,7 +25,7 @@ export async function getProfile(user: AuthedUser): Promise<Profile> {
 
   const { data, error } = await sb
     .from("profiles")
-    .select("language, onboarded")
+    .select("language, onboarded, full_name, gender")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -39,10 +44,12 @@ export async function getProfile(user: AuthedUser): Promise<Profile> {
   return {
     language: data.language ?? DEFAULT_PROFILE.language,
     onboarded: data.onboarded ?? DEFAULT_PROFILE.onboarded,
+    fullName: data.full_name ?? undefined,
+    gender: (data.gender as Gender | null) ?? undefined,
   };
 }
 
-/** Patch a profile (language and/or onboarding). Returns the merged result. */
+/** Patch a profile (language, onboarding, name, gender). Returns the merged result. */
 export async function updateProfile(
   user: AuthedUser,
   patch: Partial<Profile>,
@@ -63,16 +70,20 @@ export async function updateProfile(
     row.onboarded = patch.onboarded;
     if (patch.onboarded) row.onboarded_at = new Date().toISOString();
   }
+  if (patch.fullName !== undefined) row.full_name = patch.fullName;
+  if (patch.gender !== undefined) row.gender = patch.gender;
 
   const { data, error } = await sb
     .from("profiles")
     .upsert(row, { onConflict: "user_id" })
-    .select("language, onboarded")
+    .select("language, onboarded, full_name, gender")
     .maybeSingle();
 
   if (error) throw new Error(`Failed to save profile: ${error.message}`);
   return {
     language: data?.language ?? DEFAULT_PROFILE.language,
     onboarded: data?.onboarded ?? DEFAULT_PROFILE.onboarded,
+    fullName: data?.full_name ?? undefined,
+    gender: (data?.gender as Gender | null) ?? undefined,
   };
 }

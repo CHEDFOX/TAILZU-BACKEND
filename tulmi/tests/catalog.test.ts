@@ -194,16 +194,23 @@ describe("buildKeyboardConfig", () => {
     expect(kb.labels?.refine).toMatch(/refine/i);
   });
 
+  it("answers whether the name + gender card has been filled in", () => {
+    // This used to be a flag in the phone's own storage, so a reinstall or a
+    // second device asked the same user again. The server answers now.
+    expect(buildBootstrap().flags?.["profile.complete"]).toBe(false);
+    expect(buildBootstrap({ profileComplete: true }).flags?.["profile.complete"]).toBe(true);
+  });
+
   it("keeps SMS sign-in off unless the env turns it on", () => {
     // The gate reads this BEFORE there is a session, and a phone pill with no
     // SMS provider behind it is a dead end. Default-off is the safe state.
-    const boot = buildBootstrap({ platform: "ios" });
+    const boot = buildBootstrap();
     expect(boot.flags?.["auth.enablePhone"]).toBe(process.env.AUTH_ENABLE_PHONE === "true");
   });
 
   it("ships a Flow transport the app and the keyboard both read", () => {
     const kb = buildKeyboardConfig();
-    const boot = buildBootstrap({ platform: "ios" });
+    const boot = buildBootstrap();
     // The APP arms the session and the KEYBOARD decides how long to wait for
     // the words, so both surfaces read this flag — and they must agree, or the
     // keyboard waits on a stream that was never opened.
