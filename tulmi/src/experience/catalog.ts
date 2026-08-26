@@ -4006,9 +4006,20 @@ export function buildKeyboardConfig(
 
         // ------- K7: swipe typing + role keys + smarter corrections --------
         //
-        // QuickPath-style glide typing. The binary defaults OFF; this is the
-        // rollout switch. Trail is the fading ink line behind the finger.
-        "kb.swipe.enabled": true,
+        // QuickPath-style glide typing. Both binaries default OFF; this is the
+        // rollout switch, and it drives BOTH platforms. Trail is the fading ink
+        // line behind the finger.
+        //
+        // OFF until it is measured. It was reported wrong on iOS, and the fix —
+        // decode by path geometry against a real dictionary — has never run on
+        // a device. Shipping it on while the same feature is held back on
+        // Android for being unproven was not a judgement, it was an oversight:
+        // the unproven one was the one users had.
+        //
+        // A swipe that guesses wrong costs far more trust than no swipe. Turn it
+        // on for a cohort once a build has been used and swipeCommitted /
+        // autocorrectReverted say it earns its place.
+        "kb.swipe.enabled": false,
         "kb.swipe.minKeys": 3,
         "kb.swipe.maxAlternates": 3,
         "kb.swipe.trail.color": "#E8A23CD9",   // brand amber, mostly opaque
