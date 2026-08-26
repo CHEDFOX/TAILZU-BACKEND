@@ -233,6 +233,14 @@ describe("buildKeyboardConfig", () => {
     expect(kb.labels?.refine).toMatch(/refine/i);
   });
 
+  it("does not open on the intro when no intro media is uploaded", () => {
+    // The intro was unreachable for a different reason (nothing routed to it).
+    // The opposite failure is just as bad: routing to it with nothing to play
+    // would open the app on a black screen. No file, no intro.
+    expect(buildBootstrap().initialScreenId).not.toBe("intro");
+    expect(buildBootstrap({ onboarded: true }).initialScreenId).toBe("home");
+  });
+
   it("gives every hero a built-in, so no screen ships an empty middle", () => {
     // Heroes resolve override → uploaded media → built-in. With nothing
     // uploaded and no override set, the built-in animation must be what

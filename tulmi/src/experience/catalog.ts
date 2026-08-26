@@ -100,6 +100,18 @@ const FLOW_TRANSPORT = process.env.FLOW_TRANSPORT === "oneshot" ? "oneshot" : "s
 const AUTH_ENABLE_PHONE = process.env.AUTH_ENABLE_PHONE === "true";
 
 /**
+ * When the intro plays: "firstRun" (default), "everyLaunch", or "never".
+ *
+ * firstRun means "until they finish onboarding" — the cinematic belongs to
+ * meeting the product, and a returning user opening the app to write something
+ * does not want to sit through it.
+ */
+const INTRO_PLAY_WHEN =
+  process.env.INTRO_PLAY_WHEN === "everyLaunch" ? "everyLaunch"
+  : process.env.INTRO_PLAY_WHEN === "never" ? "never"
+  : "firstRun";
+
+/**
  * Free words per month, mirrored from the same env the server enforces
  * (FREE_MONTHLY_WORDS). Read here so the number the app SHOWS and the number
  * the server ENFORCES can never drift — one source, two readers.
@@ -171,7 +183,10 @@ export function buildBootstrap(
     // frames are uploaded to the media store; falls through to onboarding /
     // home when they're not, so we never render an intro screen with
     // missing images.
-    initialScreenId: pickInitialScreenId(!!opts.onboarded),
+    initialScreenId: pickInitialScreenId(
+      !!opts.onboarded,
+      !!getMediaRegistryFn?.()?.["intro"]?.url,
+    ),
     flags: ((): BootstrapResponse["flags"] => {
       const flags: BootstrapResponse["flags"] = {
         // Policy URLs — Settings screen links open these in-browser.
@@ -366,7 +381,23 @@ export function buildBootstrap(
  * (The separate client-side language greeting still runs before this when the
  * needsLanguagePick flag is set — that's independent of this decision.)
  */
-function pickInitialScreenId(onboarded: boolean): string {
+/**
+ * Where the app opens.
+ *
+ * The intro was unreachable until now: this returned only home/onboarding, and
+ * no client code routed to "intro" either — so the screen existed, the media
+ * key existed, and nothing could ever play it. Uploading a file would not have
+ * helped, which is the confusing part of that kind of bug.
+ *
+ * It plays only when a file is actually there. An intro slot with nothing in it
+ * must not cost the user a black screen on the way in.
+ */
+function pickInitialScreenId(onboarded: boolean, introReady: boolean): string {
+  const play = introReady && (
+    INTRO_PLAY_WHEN === "everyLaunch" ||
+    (INTRO_PLAY_WHEN === "firstRun" && !onboarded)
+  );
+  if (play) return "intro";
   return onboarded ? "home" : "onboarding";
 }
 
