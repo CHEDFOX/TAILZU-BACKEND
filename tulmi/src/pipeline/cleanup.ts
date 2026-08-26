@@ -36,6 +36,31 @@ function openrouter(): OpenAI {
   return client;
 }
 
+/**
+ * Reasoning effort for every LLM call.
+ *
+ * CLEANUP_MODEL defaults to a GPT-5-class model, and those REASON before they
+ * answer. Nothing here passed a reasoning parameter, so every refine ran at the
+ * provider's default effort — spending tokens deliberating before emitting a
+ * single word of output. That is the latency, and it buys nothing: rewriting a
+ * sentence someone just said is not a problem that needs thinking through.
+ *
+ * "none" for that reason. Raise it (minimal / low / medium / high) from the env
+ * if a harder task ever justifies the wait; the eval harness is the place to
+ * settle whether it does.
+ */
+const REASONING_EFFORT = process.env.LLM_REASONING_EFFORT?.trim() || "none";
+
+/**
+ * Params every completion shares. Centralised because there are seven call
+ * sites and a latency fix applied to six of them is not a latency fix.
+ */
+function common(): Record<string, unknown> {
+  return REASONING_EFFORT === "default"
+    ? {}
+    : { reasoning: { effort: REASONING_EFFORT } };
+}
+
 const TEMPERATURE = 0.2; // low: faithful cleanup, not creativity
 const REPLY_TEMPERATURE = 0.4; // a touch more latitude for natural drafting
 
@@ -264,6 +289,7 @@ const BASIC_CLEAN_PROMPT = [
 export async function cleanBasic(input: string): Promise<string> {
   if (!input.trim()) return "";
   const res = await openrouter().chat.completions.create({
+    ...common(),
     model: getConfig().CLEANUP_MODEL,
     temperature: 0.1, // very low — faithful, not creative
     max_tokens: MAX_TOKENS_CLEANUP,
@@ -311,6 +337,7 @@ export async function assist(
     ? `CONTEXT (already in the field):\n${context}\n\nMESSAGE (what I just said or typed):\n${messageBlock}`
     : messageBlock;
   const res = await openrouter().chat.completions.create({
+    ...common(),
     model: getConfig().CLEANUP_MODEL,
     temperature: TEMPERATURE,
     max_tokens: MAX_TOKENS_CLEANUP,
@@ -343,6 +370,7 @@ export async function clean(
     return expandSnippets(cleaned, opts.personality?.snippets, ctxFromOpts(opts));
   }
   const res = await openrouter().chat.completions.create({
+    ...common(),
     model: getConfig().CLEANUP_MODEL,
     temperature: TEMPERATURE,
     max_tokens: MAX_TOKENS_CLEANUP,
@@ -387,6 +415,7 @@ export async function refineWithTone(
     portrait: portraitBlock(opts.personality, tone),
   });
   const res = await openrouter().chat.completions.create({
+    ...common(),
     model: getConfig().CLEANUP_MODEL,
     temperature: TEMPERATURE,
     max_tokens: MAX_TOKENS_CLEANUP,
@@ -424,6 +453,7 @@ export async function* cleanStream(
     return;
   }
   const stream = await openrouter().chat.completions.create({
+    ...common(),
     model: getConfig().CLEANUP_MODEL,
     temperature: TEMPERATURE,
     max_tokens: MAX_TOKENS_CLEANUP,
@@ -466,6 +496,7 @@ export async function draftReply(
     `MY INTENT (what I want to say back):\n${intent.trim()}`;
 
   const res = await openrouter().chat.completions.create({
+    ...common(),
     model: getConfig().CLEANUP_MODEL,
     temperature: REPLY_TEMPERATURE,
     max_tokens: MAX_TOKENS_REPLY,
@@ -541,6 +572,7 @@ export async function refineVariants(
         "\nSay the same thing the other versions would say — only the style differs. " +
         "Output ONLY the message, exactly as the rules above require.";
       const res = await openrouter().chat.completions.create({
+    ...common(),
         model: getConfig().CLEANUP_MODEL,
         temperature: 0.6, // higher than cleanup: the variants must actually differ
         max_tokens: MAX_TOKENS_CLEANUP,
@@ -619,6 +651,7 @@ export async function updateStylePortrait(
       : "",
   ].filter(Boolean).join("\n\n");
   const res = await openrouter().chat.completions.create({
+    ...common(),
     model: getConfig().CLEANUP_MODEL,
     temperature: LEARN_TEMPERATURE,
     max_tokens: MAX_TOKENS_STYLE,
@@ -658,6 +691,7 @@ export async function inferStyle(sample: string): Promise<Partial<Personality>> 
     "dial (an object { formality: 0-100, length: 0-100, warmth: 0-100 } — omit any dial you can't confidently read from the sample). " +
     "No prose, no markdown, no extra keys.";
   const res = await openrouter().chat.completions.create({
+    ...common(),
     model: getConfig().CLEANUP_MODEL,
     temperature: LEARN_TEMPERATURE,
     max_tokens: MAX_TOKENS_STYLE,
