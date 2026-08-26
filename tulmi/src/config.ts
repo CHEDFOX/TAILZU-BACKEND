@@ -183,8 +183,18 @@ const EnvSchema = z.object({
   // Free-tier ceiling per calendar month. When set (positive number), any
   // signed-in user who exceeds it is refused with `quota_exceeded` BEFORE the
   // paid upstream call is made. Unset / 0 = no ceiling.
+  /**
+   * The free tier is measured in WORDS REFINED — the words Tailzu writes for
+   * you, which is the thing the product actually does and the thing that costs
+   * money to produce. Not minutes spoken: a user who dictates slowly is not
+   * costing more than one who dictates fast, and metering them differently
+   * would be arbitrary from their side.
+   *
+   * 0 disables a cap. Audio is left at 0 on purpose — one meter is legible,
+   * two is a thing users have to reason about.
+   */
   FREE_MONTHLY_AUDIO_SECONDS: z.coerce.number().default(0),
-  FREE_MONTHLY_WORDS: z.coerce.number().default(0),
+  FREE_MONTHLY_WORDS: z.coerce.number().default(2500),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema> & {
