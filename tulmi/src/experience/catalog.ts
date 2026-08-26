@@ -382,6 +382,80 @@ function pickInitialScreenId(onboarded: boolean): string {
  *  screen's centrepiece, not a control. */
 const HERO_PARTICLE = 208;
 
+/**
+ * Explicit hero overrides, as raw SDUI nodes, keyed by slot id.
+ *
+ * The last word on what a hero is. Set an entry here — or via the HERO_<SLOT>
+ * env vars below — and that node renders instead of anything else: a video, a
+ * Lottie, a stack of text, a chart, whatever the renderer knows how to draw.
+ * Nothing about the surrounding screen has to change.
+ *
+ * Empty by default, because the built-ins are the intended look.
+ */
+const HERO_OVERRIDES: Record<string, Node | undefined> = {
+  onboarding: parseNodeEnv("HERO_ONBOARDING"),
+  paywall: parseNodeEnv("HERO_PAYWALL"),
+};
+
+/** A hero node handed in as JSON on an env var, so a hero can be swapped
+ *  without a code change. Malformed JSON is ignored rather than crashing boot —
+ *  a bad paste must not take the app's first screen down with it. */
+function parseNodeEnv(name: string): Node | undefined {
+  const raw = process.env[name];
+  if (!raw?.trim()) return undefined;
+  try {
+    const node = JSON.parse(raw) as Node;
+    if (node && typeof node === "object" && typeof node.type === "string") return node;
+    console.warn(`[hero] ${name} is not an SDUI node ({ type: ... }) — ignoring.`);
+  } catch (err) {
+    console.warn(`[hero] ${name} is not valid JSON — ignoring.`, (err as Error).message);
+  }
+  return undefined;
+}
+
+/**
+ * Resolve one hero slot. Three sources, highest first:
+ *
+ *   1. an explicit override node   (HERO_OVERRIDES / HERO_<SLOT> env)
+ *   2. uploaded media              (POST /v1/media/upload?key=<mediaKeys[n]>)
+ *   3. the built-in animation
+ *
+ * The point is that every hero on every screen answers to the same three
+ * questions in the same order, so replacing one is an upload or an env var
+ * rather than an edit somewhere inside a screen tree.
+ */
+function heroSlot(opts: {
+  id: string;
+  mediaKeys: string[];
+  style: Record<string, unknown>;
+  builtIn: Node;
+  frameMs?: number;
+}): Node {
+  const override = HERO_OVERRIDES[opts.id];
+  if (override) return { ...override, style: { ...opts.style, ...(override.style ?? {}) } };
+
+  const reg = getMediaRegistryFn?.() ?? {};
+  const frames = opts.mediaKeys
+    .filter((k) => reg[k]?.url)
+    .map((k) => ({ key: k }));
+
+  if (frames.length >= 2) {
+    return {
+      type: "Slideshow",
+      style: { ...opts.style, overflow: "hidden" },
+      props: { frames, frameMs: opts.frameMs ?? 2200, loops: 0, contentFit: "cover" },
+    };
+  }
+  if (frames.length === 1) {
+    return {
+      type: "Image",
+      style: opts.style,
+      props: { source: frames[0], contentFit: "cover" },
+    };
+  }
+  return { ...opts.builtIn, style: { ...opts.style, ...(opts.builtIn.style ?? {}) } };
+}
+
 /** Diameter of the intro plate — the in-app mic's own size, deliberately. */
 const INTRO_PLATE = 128;
 /** How long the intro holds before moving on. Match your file's length. */
@@ -723,59 +797,38 @@ function paywallScreen(): ScreenResponse {
 
   const children: Node[] = [];
 
-  // Hero — Slideshow when 2+ frames, single MediaPlayer when 1.
-  if (heroValid.length === 0) {
-    // No uploaded hero: the wordmark decoding itself out of binary, forever.
-    // The product's whole claim is that it turns raw noise into finished
-    // words — this is that claim made literal while the user reads the price.
-    children.push({
+  // Swappable: put keys back in PAYWALL_CONFIG.heroFrames, or set HERO_PAYWALL
+  // to an SDUI node, and this becomes that instead.
+  children.push(heroSlot({
+    id: "paywall",
+    mediaKeys: heroValid.map((f) => f.key).filter((k): k is string => !!k),
+    frameMs: cfg.heroFrameMs ?? 2200,
+    style: { width: "100%", aspectRatio: 1.3, borderRadius: 20, marginBottom: 20 },
+    builtIn: {
+      // The wordmark decoding itself out of binary. The product's claim is that
+      // it turns raw noise into finished words; this is that claim made literal
+      // at the moment the user is deciding whether to believe it.
       type: "BinaryReveal",
-      style: {
-        width: "100%", aspectRatio: 1.3, borderRadius: 20,
-        overflow: "hidden", marginBottom: 20,
-      },
       props: {
         text: "Tailzu",
         color: THEME.color.primary,
         background: "#000000",
-        // Fast enough to read as a transition in progress, slow enough that
-        // each digit registers as a digit. Below ~30ms it greys into a blur.
         flipMs: 36,
-        lockMs: 70,        // per-character resolve, left to right
-        scrambleMs: 620,   // noise before the word starts pulling through
-        holdMs: 2200,      // the word, held
+        lockMs: 70,
+        scrambleMs: 620,
+        holdMs: 2200,
         fontSize: 46,
       },
-      // Older bundles have no BinaryReveal and would render an empty box where
-      // the hero belongs.
       fallback: {
         type: "Heading",
         props: { content: "Tailzu" },
         style: {
-          width: "100%", aspectRatio: 1.3, borderRadius: 20, marginBottom: 20,
           backgroundColor: "#000000", color: THEME.color.primary,
           textAlign: "center", fontSize: 46, lineHeight: 200,
         },
       },
-    });
-  } else if (heroValid.length >= 2) {
-    children.push({
-      type: "Slideshow",
-      style: { width: "100%", aspectRatio: 1.3, borderRadius: 20, overflow: "hidden", marginBottom: 20 },
-      props: {
-        frames: heroValid,
-        frameMs: cfg.heroFrameMs ?? 2200,
-        loops: cfg.heroLoops ?? 0,
-        contentFit: "cover",
-      },
-    });
-  } else if (heroValid.length === 1) {
-    children.push({
-      type: "Image",
-      style: { width: "100%", aspectRatio: 1.3, borderRadius: 20, marginBottom: 20 },
-      props: { source: heroValid[0].url, spec: heroValid[0] },
-    });
-  }
+    },
+  }));
 
   children.push(
     text(cfg.title, "h1", {
@@ -2441,39 +2494,37 @@ function onboardingVoice(): ScreenResponse {
           props: { content: "Speak. Tailzu writes." },
           style: { textAlign: "center", fontSize: 34, lineHeight: 42, color: "$color.text", marginBottom: 0 },
         },
-        // The vertical middle: the keyboard's own recording visual — the brand
-        // mark bursting into particles and re-forming, looping fast. This
-        // screen is asking for the microphone, so the most honest illustration
-        // is the exact motion the microphone makes. Ships with no asset.
+        // The vertical middle. Swappable: upload onboarding.hero, or set
+        // HERO_ONBOARDING to an SDUI node, and this becomes that instead.
         {
           type: "Stack",
           style: { flex: 1, width: "100%", alignItems: "center", justifyContent: "center" },
-          children: [{
-            type: "ParticleMark",
-            props: {
-              size: HERO_PARTICLE,
-              // The keyboard's own numbers (kb.mic.particles.*), scaled to
-              // this larger circle so the swarm reads at the same density
-              // rather than as a handful of big blobs.
-              count: 160,
-              dotRadius: 1.5,
-              color: THEME.color.primary,
-              // 1.0 — the keyboard's real speed. Anything faster stops being
-              // the same animation.
-              speed: 1,
-              circular: true,
-              // Hold the crisp mark between cycles, exactly as the keyboard
-              // does when the dots finish reassembling.
-              holdMark: true,
+          children: [heroSlot({
+            id: "onboarding",
+            mediaKeys: ["onboarding.hero"],
+            style: { width: HERO_PARTICLE, height: HERO_PARTICLE, borderRadius: HERO_PARTICLE / 2 },
+            builtIn: {
+              // The mark comes apart in vacuum, holds, and springs back
+              // together. This screen is asking for the microphone, so the
+              // most honest illustration is the motion the microphone makes.
+              type: "ParticleMark",
+              props: {
+                count: 160,
+                dotRadius: 1.5,
+                color: THEME.color.primary,
+                speed: 1,
+                circular: true,
+                holdMark: true,
+              },
+              // Older bundles have no ParticleMark and would leave the middle
+              // of the screen empty.
+              fallback: {
+                type: "Paragraph",
+                props: { content: "Talk the way you talk. Tailzu turns it into clean, finished writing — in your voice." },
+                style: { textAlign: "center", fontSize: 21, lineHeight: 34, fontWeight: "300", color: "$color.text", maxWidth: 300 },
+              },
             },
-            // Older bundles have no ParticleMark. They still get the line that
-            // used to live here, rather than an empty middle.
-            fallback: {
-              type: "Paragraph",
-              props: { content: "Talk the way you talk. Tailzu turns it into clean, finished writing — in your voice." },
-              style: { textAlign: "center", fontSize: 21, lineHeight: 34, fontWeight: "300", color: "$color.text", maxWidth: 300 },
-            },
-          }],
+          })],
         },
         {
           type: "Paragraph",

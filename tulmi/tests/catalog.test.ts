@@ -233,6 +233,16 @@ describe("buildKeyboardConfig", () => {
     expect(kb.labels?.refine).toMatch(/refine/i);
   });
 
+  it("gives every hero a built-in, so no screen ships an empty middle", () => {
+    // Heroes resolve override → uploaded media → built-in. With nothing
+    // uploaded and no override set, the built-in animation must be what
+    // renders — an empty hero is the one outcome that is never acceptable.
+    const onboarding = buildScreen("onboarding", { personality: {}, language: "en" });
+    const paywall = buildScreen("paywall", { personality: {}, language: "en" });
+    expect(JSON.stringify(onboarding)).toContain("ParticleMark");
+    expect(JSON.stringify(paywall)).toContain("BinaryReveal");
+  });
+
   it("answers whether the name + gender card has been filled in", () => {
     // This used to be a flag in the phone's own storage, so a reinstall or a
     // second device asked the same user again. The server answers now.
