@@ -1412,7 +1412,15 @@ function personalityScreen(): ScreenResponse {
     screenId: "personality",
     title: "",
     state: {},
-    actions: {},
+    actions: {
+      endFlow: {
+        kind: "sequence",
+        actions: [
+          { kind: "endFlowSession" },
+          { kind: "toast", message: "Background microphone turned off.", tone: "success" },
+        ],
+      },
+    },
     root: {
       type: "Screen",
       style: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 24 },
@@ -1420,6 +1428,26 @@ function personalityScreen(): ScreenResponse {
         mediaCard("Voice", "Your tones & presets", "card.voice", "voices"),
         { type: "Spacer", style: { height: 18 } },
         mediaCard("Dictionary", "Words & shortcuts you add", "card.dictionary", "dictionary"),
+        { type: "Spacer", style: { height: 34 } },
+        // MOVED here from Settings, not removed. App Review 2.5.4 requires a
+        // background capture to be stoppable without force-quitting the app,
+        // and this is the only control that does it. It sits on the tab that
+        // owns the user's voice, which is a more findable home than a legal
+        // list anyway.
+        {
+          type: "Button",
+          props: { label: "Turn off background microphone", variant: "secondary" },
+          on: { onPress: "endFlow" },
+          style: { width: "100%" },
+        },
+        { type: "Spacer", style: { height: 8 } },
+        {
+          type: "Paragraph",
+          props: {
+            content: "Tailzu holds the microphone in the background so the keyboard can dictate without reopening the app. This ends that session.",
+          },
+          style: { fontSize: 13, lineHeight: 21, color: "$color.muted" },
+        },
       ],
     },
     cacheTtlSeconds: 0,
@@ -2094,10 +2122,13 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
       signOut: { kind: "signOut" },
       privacy: { kind: "openUrl", url: "https://tailzu.space/privacy", external: true },
       terms: { kind: "openUrl", url: "https://tailzu.space/terms", external: true },
-      openPersonality: { kind: "switchTab", tabId: "personality" },
-      openDictionary: { kind: "navigate", screenId: "dictionary" },
       openHistory: { kind: "navigate", screenId: "history" },
-      openStats: { kind: "navigate", screenId: "stats" },
+      historyOn: {
+        kind: "toast",
+        message: "History on. New dictations are kept so you can see them here.",
+        tone: "success",
+      },
+      err: { kind: "toast", message: "Couldn't save that. Try again.", tone: "error" },
     },
     root: {
       type: "Screen",
@@ -2107,11 +2138,28 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         // just below the fold.
         { type: "Heading", props: { content: "Settings" }, style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 20 } },
 
-        // Personalisation
-        row("Personality", "openPersonality", { props: { label: "Personality", value: "You" } }),
-        row("Dictionary", "openDictionary", { props: { label: "Dictionary" } }),
+        // Personality and Stats are BOTTOM TABS — listing them here too was
+        // two doors to one room. Dictionary is reached from the You tab.
         row("History", "openHistory", { props: { label: "History" } }),
-        row("Stats", "openStats", { props: { label: "Stats" } }),
+
+        // The switch that makes History have anything in it. Off by default and
+        // staying that way: keeping what someone wrote on a server is their
+        // decision to make, not a default to inherit. Without this row the
+        // consent flag was unreachable, so cleanup_history was never written
+        // and History was permanently empty.
+        row("Keep my history", {
+          kind: "sequence",
+          actions: [
+            {
+              kind: "callEndpoint",
+              method: "PUT",
+              path: "/v1/personality",
+              body: { retainHistory: true },
+              onSuccess: "historyOn",
+              onError: "err",
+            },
+          ],
+        }, { props: { label: "Keep my history", value: ctx.personality?.retainHistory ? "On" : "Off", chevron: false } }),
 
         // Preferences
         row("Language", { kind: "navigate", screenId: "language_select" }, { props: { label: "Language", value: current } }),
@@ -2119,16 +2167,6 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         // Legal + account
         row("Privacy Policy", "privacy", { props: { label: "Privacy Policy" } }),
         row("Terms of Use", "terms", { props: { label: "Terms of Use" } }),
-        // The user-visible OFF SWITCH for the background Flow mic (App Review
-        // 2.5.4: a background capture must be stoppable without force-quit).
-        // Safe no-op when no session is armed.
-        row("End Flow session", {
-          kind: "sequence",
-          actions: [
-            { kind: "endFlowSession" },
-            { kind: "toast", message: "Background microphone turned off.", tone: "success" },
-          ],
-        }, { props: { label: "End Flow session (turn off background mic)", chevron: false } }),
         row("Sign out", "signOut", { props: { label: "Sign out", chevron: false } }),
         row("Delete account", { kind: "navigate", screenId: "delete_account" }, { props: { label: "Delete account", danger: true, chevron: false } }),
       ],
@@ -2343,6 +2381,25 @@ function renderSparkline(series: number[] | undefined): string {
  * and renders each row as a Card. Rows tap into a placeholder toast until we
  * ship a full-fat detail screen; long-press soft-deletes via /v1/history/:id.
  */
+/**
+ * Words spoken vs words written, across the history rows on screen.
+ *
+ * wordsIn is what the user said; wordsOut is what Tailzu produced. Showing both
+ * is the honest version of "look what we saved you" — the user can see the
+ * whole trade rather than a number we chose.
+ */
+function historyBreakdown(entries: HistoryEntry[] | undefined): Array<{ label: string; value: number }> {
+  const rows = entries ?? [];
+  if (rows.length === 0) return [];
+  const spoken = rows.reduce((n, e) => n + (e.wordsIn ?? 0), 0);
+  const written = rows.reduce((n, e) => n + (e.wordsOut ?? 0), 0);
+  if (spoken === 0 && written === 0) return [];
+  return [
+    { label: "Written", value: written },
+    { label: "Spoken", value: spoken },
+  ];
+}
+
 function historyScreen(ctx: ScreenContext): ScreenResponse {
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
@@ -2351,6 +2408,9 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
     state: {
       entries: ctx.history ?? [],
       loading: false,
+      // Summed server-side from the same rows the list shows, so the ring and
+      // the entries can never disagree.
+      historyBreakdown: historyBreakdown(ctx.history),
     },
     actions: {
       // Called on mount + after a delete succeeds — a single source of truth
@@ -2404,6 +2464,29 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
           style: { marginBottom: 20 },
         },
         { type: "ProgressBar", visibleIf: { truthy: "loading" } },
+        // The ease, at the top. Words SPOKEN against words WRITTEN across the
+        // entries below — the gap between the two is the work Tailzu did, which
+        // is the only number on this screen the user did not produce themselves.
+        // Hidden when there is nothing to summarise rather than drawing an
+        // empty ring.
+        {
+          type: "Card",
+          visibleIf: { truthy: "entries" },
+          style: { marginBottom: 18 },
+          children: [
+            text("The ease", "label", { style: { marginBottom: 12 } }),
+            {
+              type: "DonutChart",
+              bind: { data: "historyBreakdown" },
+              props: {
+                donut: true,
+                size: 150,
+                legend: "right",
+                centerLabel: "words written",
+              },
+            },
+          ],
+        },
         {
           type: "List",
           bind: { items: "entries" },
@@ -2438,18 +2521,24 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
                     },
                   ],
                 },
-                { type: "Spacer", style: { height: 6 } },
+                { type: "Spacer", style: { height: 10 } },
+                // What was heard, then what was written. Labelled and in that
+                // order, because the whole point of the pair is the difference
+                // between them — unlabelled, the raw transcript reads as a
+                // mistake rather than as the input.
+                text("You said", "label", { style: { fontSize: 11, opacity: 0.6 } }),
                 {
                   type: "Text",
                   bind: { content: "$item.input" },
-                  props: { variant: "muted", numberOfLines: 2 },
+                  props: { variant: "muted", numberOfLines: 3 },
                 },
-                { type: "Spacer", style: { height: 6 } },
+                { type: "Spacer", style: { height: 10 } },
+                text("Tailzu wrote", "label", { style: { fontSize: 11, opacity: 0.6, color: "$color.primary" } }),
                 {
                   type: "Text",
                   bind: { content: "$item.output" },
-                  props: { variant: "body", numberOfLines: 3 },
-                  style: { fontWeight: "700", color: "$color.text" },
+                  props: { variant: "body", numberOfLines: 6 },
+                  style: { fontWeight: "600", color: "$color.text" },
                 },
               ],
             },
