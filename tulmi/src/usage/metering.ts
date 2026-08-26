@@ -248,7 +248,10 @@ export async function enforceQuota(user: AuthedUser): Promise<string | null> {
     return `Monthly voice cap reached (${Math.round(capAudio / 60)} min). Resets ${monthResetDate()}.`;
   }
   if (capWords > 0 && used.words >= capWords) {
-    return `Monthly word cap reached (${capWords}). Resets ${monthResetDate()}.`;
+    // Name the number, the reset date, and the way out. A cap message that
+    // only says "no" reads as a fault; this one is the upgrade prompt.
+    return `You've used your ${capWords.toLocaleString()} free words this month. ` +
+      `Upgrade for unlimited, or wait until ${monthResetDate()}.`;
   }
   return null;
 }

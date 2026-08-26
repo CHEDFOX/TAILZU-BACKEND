@@ -250,6 +250,16 @@ describe("buildKeyboardConfig", () => {
     expect(buildBootstrap({ profileComplete: true }).flags?.["profile.complete"]).toBe(true);
   });
 
+  it("tells the app the same free-word cap the server enforces", () => {
+    // The app shows progress against this and decides when to put the paywall
+    // up. If it disagreed with what the server enforces, a user would hit a
+    // wall the UI never warned them about.
+    const boot = buildBootstrap();
+    const served = boot.flags?.["quota.freeMonthlyWords"];
+    expect(typeof served).toBe("number");
+    expect(served).toBe(Number(process.env.FREE_MONTHLY_WORDS ?? 2500) || 0);
+  });
+
   it("keeps SMS sign-in off unless the env turns it on", () => {
     // The gate reads this BEFORE there is a session, and a phone pill with no
     // SMS provider behind it is a dead end. Default-off is the safe state.

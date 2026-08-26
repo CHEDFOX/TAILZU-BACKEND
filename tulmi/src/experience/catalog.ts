@@ -99,6 +99,13 @@ const FLOW_TRANSPORT = process.env.FLOW_TRANSPORT === "oneshot" ? "oneshot" : "s
  */
 const AUTH_ENABLE_PHONE = process.env.AUTH_ENABLE_PHONE === "true";
 
+/**
+ * Free words per month, mirrored from the same env the server enforces
+ * (FREE_MONTHLY_WORDS). Read here so the number the app SHOWS and the number
+ * the server ENFORCES can never drift — one source, two readers.
+ */
+const FREE_MONTHLY_WORDS = Number(process.env.FREE_MONTHLY_WORDS ?? 2500) || 0;
+
 const NAV: NavigationShell = {
   kind: "tabs",
   // Settings is no longer a bottom tab — it's reached via the ⚙ gear in the
@@ -199,6 +206,12 @@ export function buildBootstrap(
         // the mic-flow testing. Re-enable (true) once the IAP products are live in
         // App Store Connect + RevenueCat so a purchase actually completes. The
         // paywall screen itself still exists and can be opened manually.
+        // The free tier, in WORDS REFINED per month. The app reads this to show
+        // progress and to know when to put the paywall in front of someone —
+        // without it the client has to guess the number, and a guess that
+        // disagrees with the server means a user hitting a wall the UI never
+        // warned them about. 0 = unlimited.
+        "quota.freeMonthlyWords": FREE_MONTHLY_WORDS,
         "paywall.showAfterOnboarding": false,
         "paywall.config": PAYWALL_CONFIG as unknown as Record<string, unknown>,
 
