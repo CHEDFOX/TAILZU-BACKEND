@@ -4072,8 +4072,20 @@ export function buildKeyboardConfig(
         // to FOLLOW it (table below) claim lmBias.pt extra points of the
         // ambiguous gap/slop zone around them. Direct hits inside a key's
         // real bounds are never stolen.
-        "kb.touch.lmBias.enabled": true,
-        "kb.touch.lmBias.pt": 3,
+        //
+        // OFF. The table below is ENGLISH bigram frequency, and it is the only
+        // table there is — so for anyone typing Hinglish, Hindi, Tamil or any
+        // of the other languages this product exists to serve, it biases
+        // ambiguous taps toward letters that are not likely at all. It is also
+        // unproven: nothing in the telemetry says it ever helped, and it can
+        // only ever change which letter an uncertain tap produces. That is the
+        // exact shape of "the keyboard typed something I didn't press".
+        //
+        // Both flags stay live, so this is one backend edit to re-enable — and
+        // the honest way to turn it back on is per-language tables plus the
+        // revert counter showing it wins, not an assumption that it does.
+        "kb.touch.lmBias.enabled": false,
+        "kb.touch.lmBias.pt": 0,
         // prev-char → likely next letters, most likely first (top-6, English
         // corpus bigram frequencies). The " " row is word-START letter
         // frequency, so the bias works on the first letter of every word too.
