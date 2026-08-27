@@ -2122,12 +2122,9 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
       signOut: { kind: "signOut" },
       privacy: { kind: "openUrl", url: "https://tailzu.space/privacy", external: true },
       terms: { kind: "openUrl", url: "https://tailzu.space/terms", external: true },
-      openHistory: { kind: "navigate", screenId: "history" },
-      historyOn: {
-        kind: "toast",
-        message: "History on. New dictations are kept so you can see them here.",
-        tone: "success",
-      },
+      // openHistory / historyOn removed with the rows that fired them —
+      // Settings no longer has a History entry or a retention toggle. History
+      // stays reachable from Stats, which keeps its own openHistory alias.
       err: { kind: "toast", message: "Couldn't save that. Try again.", tone: "error" },
     },
     root: {
@@ -2140,26 +2137,14 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
 
         // Personality and Stats are BOTTOM TABS — listing them here too was
         // two doors to one room. Dictionary is reached from the You tab.
-        row("History", "openHistory", { props: { label: "History" } }),
-
-        // The switch that makes History have anything in it. Off by default and
-        // staying that way: keeping what someone wrote on a server is their
-        // decision to make, not a default to inherit. Without this row the
-        // consent flag was unreachable, so cleanup_history was never written
-        // and History was permanently empty.
-        row("Keep my history", {
-          kind: "sequence",
-          actions: [
-            {
-              kind: "callEndpoint",
-              method: "PUT",
-              path: "/v1/personality",
-              body: { retainHistory: true },
-              onSuccess: "historyOn",
-              onError: "err",
-            },
-          ],
-        }, { props: { label: "Keep my history", value: ctx.personality?.retainHistory ? "On" : "Off", chevron: false } }),
+        //
+        // History and "Keep my history" are gone from Settings by owner
+        // decision. NOTE the consequence, because it is not cosmetic: the
+        // retainHistory consent flag now has NO switch anywhere in the app, so
+        // it stays at its default of OFF, nothing is ever written to
+        // cleanup_history, and the History screen — still reachable from Stats
+        // — will always be empty. The screen and its endpoint are left intact
+        // so restoring the toggle is a backend edit if that is wanted later.
 
         // Preferences
         row("Language", { kind: "navigate", screenId: "language_select" }, { props: { label: "Language", value: current } }),
