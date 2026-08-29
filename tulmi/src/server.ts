@@ -900,6 +900,52 @@ app.put("/v1/personality", { config: AUTHED_RL }, async (req, reply) => {
   }
 });
 
+// Toggle keyboard haptics — one key, or the master switch.
+//
+// A dedicated route rather than the PUT above because this is a SET membership
+// change: the PUT shallow-merges, so a client would have to send the whole
+// array back, and two quick taps would race with each other and drop one. This
+// read-modify-writes under the same per-user lock, so every tap lands.
+const hapticsToggleSchema = z.object({
+  key: z.string().min(1).max(24).optional(),
+  all: z.boolean().optional(),
+});
+
+app.post("/v1/personality/haptics", { config: AUTHED_RL }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) {
+    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+  }
+  const parsed = hapticsToggleSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return reply.code(400).send({ code: "bad_request", message: "key or all required" });
+  }
+  const { key, all } = parsed.data;
+  if (key === undefined && all === undefined) {
+    return reply.code(400).send({ code: "bad_request", message: "key or all required" });
+  }
+  try {
+    const merged = await updatePersonality(user, (existing) => {
+      const next = { ...existing };
+      if (all !== undefined) next.hapticsAll = all;
+      if (key !== undefined) {
+        const id = key.toLowerCase();
+        const cur = new Set(existing?.hapticKeys ?? []);
+        if (cur.has(id)) cur.delete(id); else cur.add(id);
+        // Bounded: the picker only ever shows the keys on three layouts, so a
+        // list longer than this is a client bug, not a user preference.
+        next.hapticKeys = Array.from(cur).slice(0, 128);
+      }
+      return next;
+    });
+    const res: PersonalityResponse = { personality: merged };
+    return reply.send(res);
+  } catch (err) {
+    req.log.error(err);
+    return reply.code(500).send({ code: "internal", message: "Failed to save haptics" });
+  }
+});
+
 // Create / edit / delete a single tone (personality preset) — the two-field
 // tone editor on the Voice screen. Read-modify-writes ONE presetOverrides entry
 // under the per-user lock so it can't clobber the user's other tones (the PUT

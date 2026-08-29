@@ -184,6 +184,25 @@ export interface Personality {
    */
   retainHistory?: boolean;
 
+  // --- Keyboard haptics ------------------------------------------------------
+  /**
+   * Every key buzzes. The master switch on the Haptics card.
+   *
+   * Independent of `hapticKeys`, not a superset of it: turning this off must
+   * not silently discard the individual keys someone chose.
+   */
+  hapticsAll?: boolean;
+  /**
+   * The individual keys the user picked, by what they type (" ", ".", "a") or
+   * by role ("shift", "backspace", "return", "space", "mic", "refine").
+   * Lowercased, so a shifted key and the picker agree.
+   *
+   * A key listed here buzzes even when `hapticsAll` is off. Both default to
+   * off: a keyboard that buzzes on every letter out of the box is a setting
+   * people go hunting for how to turn OFF.
+   */
+  hapticKeys?: string[];
+
   // --- Preset selection + keyboard-pinning (v3 additions) --------------------
   // The main app now surfaces 12 hand-tuned starter voices ("presets"). The
   // user picks one, tunes its tone with a segmented toggle, and can pin up
