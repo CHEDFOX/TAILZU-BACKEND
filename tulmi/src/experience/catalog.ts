@@ -4111,8 +4111,24 @@ export function buildKeyboardConfig(
         "kb.dictation.dim.enabled": true,
         "kb.dictation.dim.blur": true,          // iOS UIVisualEffectView
         "kb.dictation.dim.blurRadius": 14,      // Android RenderEffect, API 31+
-        "kb.dictation.dim.alpha": 0.35,         // tint under the blur
-        "kb.dictation.dim.keyAlpha": 0.45,      // Android: how far the keys fade
+        // The TINT is now nearly nothing, and that is the fix for "the whole
+        // keyboard sits on a grey sheet".
+        //
+        // Our background is deliberately transparent so iOS's own keyboard
+        // region shows through. In LIGHT appearance that region is pale, so
+        // black at 45% over it did not read as "dimmed" — it read as a grey
+        // slab dropped behind the entire keyboard, which is a different and
+        // much worse thing.
+        //
+        // The blur carries the "not now" signal on its own. The tint only has
+        // to nudge it, so it is a whisper; raise it only for builds with no
+        // blur to fall back on.
+        "kb.dictation.dim.alpha": 0.08,
+        "kb.dictation.dim.keyAlpha": 0.5,       // Android: how far the keys fade
+        // Builds with no blur to fall back on still need a real veil — that
+        // one is served separately so lowering the blur tint cannot silently
+        // leave an older binary showing nothing at all during recording.
+        "kb.dictation.dim.fallbackAlpha": 0.5,
         "kb.dictation.dim.blocksTouches": true,
         // "kb.shift.lockedColor": "#E8A23C",
         // "kb.shift.longPressMs": 350,
