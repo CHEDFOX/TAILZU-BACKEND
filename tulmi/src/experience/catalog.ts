@@ -3448,6 +3448,16 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
       {
         type: "KeyboardPreview",
         props: { rows, selected: chosen, all, keyHeight: 42 },
+        // A client without this component renders node.fallback — and without
+        // one, renders NOTHING, which is how this screen came back as four
+        // empty cards. Any node the backend adds ahead of the app that draws
+        // it needs this; the master switch above still works meanwhile, so the
+        // screen degrades to "less precise" rather than "broken".
+        fallback: {
+          type: "Paragraph",
+          props: { content: "Update Tailzu to choose keys one by one. \u201cEvery key\u201d above works either way." },
+          style: { fontSize: 13, color: "$color.muted" },
+        },
         // $event is the key's id — the component fires it, so one handler
         // serves every key instead of one action per key baked into the tree.
         on: { onPress: { kind: "sequence", actions: [
