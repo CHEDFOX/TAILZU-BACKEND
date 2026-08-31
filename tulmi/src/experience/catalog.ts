@@ -3414,71 +3414,49 @@ function keyboardPrimerScreen(ctx: ScreenContext): ScreenResponse {
  * as on whenever either is true, because in both cases keys are buzzing.
  */
 function hapticsScreen(ctx: ScreenContext): ScreenResponse {
-  const chosen = new Set((ctx.personality?.hapticKeys ?? []).map((k) => String(k).toLowerCase()));
+  const chosen = (ctx.personality?.hapticKeys ?? []).map((k) => String(k).toLowerCase());
   const all = ctx.personality?.hapticsAll === true;
 
-  // A REAL keyboard, not a list of keys.
+  // The picker IS the keyboard. It is drawn by KeyboardPreview, one component
+  // whose job is keyboards — the first attempt composed it from Button nodes
+  // and came out as a field of pills with the labels clipped, because a
+  // keyboard is a grid with its own sizing rules and not a row of small
+  // buttons.
   //
-  // The first version was three tidy boards of chips, and it was wrong: you
-  // pick which keys buzz by pointing at where your thumbs actually go, and a
-  // reflowed list destroys exactly the spatial information you are using. So
-  // this renders the same rows, the same flex weights and the same key shapes
-  // the keyboard ships — from KB_ROW_*, which the keyboard itself is built
-  // from, so the two cannot drift apart.
-  const KEY_H = 42;
-  const on = (id: string) => all || chosen.has(id.toLowerCase());
+  // Rows come from KB_ROW_*, which the KEYBOARD is also built from, so adding
+  // a key there makes it appear here with nothing else to change.
+  type PK = { label: string; id: string; flex?: number; w?: number; fn?: boolean; spacer?: boolean };
+  const k = (label: string, id?: string, extra: Partial<PK> = {}): PK =>
+    ({ label, id: id ?? label, ...extra });
+  const chars = (list: string[]): PK[] => list.map((c) => k(c, c));
+  const spacer = (flex: number): PK => ({ label: "", id: "", flex, spacer: true });
 
-  const key = (label: string, id: string, opts: {
-    flex?: number; fn?: boolean; size?: number;
-  } = {}): Node => ({
-    type: "Button",
-    props: { label },
-    style: {
-      flex: opts.flex ?? 1,
-      height: KEY_H,
-      borderRadius: 5,
-      paddingHorizontal: 0,
-      // Live keys read as keys: the same two fills the keyboard uses for
-      // letters and for function keys, so a glance maps onto the real thing.
-      backgroundColor: on(id) ? "#E8A23C" : (opts.fn ? "#FFFFFF26" : "#FFFFFF8C"),
-      color: on(id) ? "#000000" : (opts.fn ? "#FFFFFF" : "#111114"),
-      fontSize: opts.size ?? (label.length > 1 ? 13 : 17),
-      fontWeight: "500",
-    },
-    on: { onPress: { kind: "sequence", actions: [
-      { kind: "haptic", style: "selection" },
-      { kind: "callEndpoint", method: "POST", path: "/v1/personality/haptics",
-        body: { key: id }, onError: "err" },
-      { kind: "refresh" },
-    ] } },
-  });
+  // Identical on every layer bar its leftmost key — as on the real keyboard.
+  const bottom = (leftLabel: string, leftId: string): PK[] => [
+    k(leftLabel, leftId, { flex: 2.4, fn: true }),
+    k(".", ".", { flex: 1.29, fn: true }),
+    k("space", "space", { flex: 5.2 }),
+    k("@", "@", { flex: 1.29, fn: true }),
+    k("return", "return", { flex: 2.4, fn: true }),
+  ];
 
-  const row = (children: Node[]): Node => ({
-    type: "Stack",
-    props: { direction: "horizontal" },
-    style: { direction: "row", gap: 6, marginBottom: 6 },
-    children,
-  });
-  const gap = (flex: number): Node => ({ type: "Spacer", style: { flex } });
-  const chars = (list: string[], size?: number) => list.map((c) => key(c, c, { size }));
-
-  // The bottom row is identical on every layer bar its leftmost key, so it is
-  // built once — the same way the keyboard does it.
-  const bottomRow = (leftLabel: string, leftId: string) => row([
-    key(leftLabel, leftId, { flex: 2.4, fn: true }),
-    key(".", ".", { flex: 1.29, fn: true, size: 17 }),
-    key("space", "space", { flex: 5.2, size: 13 }),
-    key("@", "@", { flex: 1.29, fn: true, size: 17 }),
-    key("return", "return", { flex: 2.4, fn: true, size: 13 }),
-  ]);
-
-  const board = (title: string, rows: Node[]): Node => ({
+  const board = (title: string, rows: PK[][]): Node => ({
     type: "Card",
     style: { padding: 10, borderRadius: 14, marginBottom: 16, backgroundColor: "#17171B" },
     children: [
-      { type: "Overline", props: { content: title },
-        style: { color: "$color.muted", marginBottom: 10 } },
-      ...rows,
+      { type: "Overline", props: { content: title }, style: { color: "$color.muted", marginBottom: 10 } },
+      {
+        type: "KeyboardPreview",
+        props: { rows, selected: chosen, all, keyHeight: 42 },
+        // $event is the key's id — the component fires it, so one handler
+        // serves every key instead of one action per key baked into the tree.
+        on: { onPress: { kind: "sequence", actions: [
+          { kind: "haptic", style: "selection" },
+          { kind: "callEndpoint", method: "POST", path: "/v1/personality/haptics",
+            body: { key: "$event" }, onError: "err" },
+          { kind: "refresh" },
+        ] } },
+      },
     ],
   });
 
@@ -3491,14 +3469,12 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
       type: "Screen",
       style: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 32 },
       children: [
-        { type: "Heading", props: { content: "Haptics" },
-          style: { fontSize: 28, fontWeight: "800", color: "$color.text", marginBottom: 8 } },
         { type: "Paragraph", props: { content: "Tap any key to give it a buzz. Tap again to take it away." },
-          style: { marginBottom: 20 } },
+          style: { marginBottom: 18 } },
         {
           type: "Row",
           props: { label: "Every key", value: all ? "On" : "Off" },
-          style: { marginBottom: 22 },
+          style: { marginBottom: 20 },
           on: { onPress: { kind: "sequence", actions: [
             { kind: "haptic", style: "selection" },
             { kind: "callEndpoint", method: "POST", path: "/v1/personality/haptics",
@@ -3508,47 +3484,45 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
         },
 
         board("Letters", [
-          row(chars(KB_ROW_LETTERS_1)),
-          row([gap(0.5), ...chars(KB_ROW_LETTERS_2), gap(0.5)]),
-          row([
-            key("\u21e7", "shift", { flex: 1.35, fn: true, size: 17 }),
-            gap(0.22),
+          chars(KB_ROW_LETTERS_1),
+          [spacer(0.5), ...chars(KB_ROW_LETTERS_2), spacer(0.5)],
+          [
+            k("\u21e7", "shift", { flex: 1.35, fn: true }),
+            spacer(0.22),
             ...chars(KB_ROW_LETTERS_3),
-            gap(0.22),
-            key("\u232b", "backspace", { flex: 1.35, fn: true, size: 17 }),
-          ]),
-          bottomRow("123", "123"),
+            spacer(0.22),
+            k("\u232b", "backspace", { flex: 1.35, fn: true }),
+          ],
+          bottom("123", "123"),
         ]),
 
         board("Numbers", [
-          row(chars(KB_ROW_NUM_1)),
-          row(chars(KB_ROW_NUM_2, 15)),
-          row([
-            key("#+=", "#+=", { flex: 1.5, fn: true }),
+          chars(KB_ROW_NUM_1),
+          chars(KB_ROW_NUM_2),
+          [
+            k("#+=", "#+=", { flex: 1.5, fn: true }),
             ...chars(KB_ROW_PUNCT_3),
-            key("\u232b", "backspace", { flex: 1.5, fn: true, size: 17 }),
-          ]),
-          bottomRow("ABC", "abc"),
+            k("\u232b", "backspace", { flex: 1.5, fn: true }),
+          ],
+          bottom("ABC", "abc"),
         ]),
 
         board("Symbols", [
-          row(chars(KB_ROW_SYM_1)),
-          row(chars(KB_ROW_SYM_2, 15)),
-          row([
-            key("123", "123", { flex: 1.5, fn: true }),
+          chars(KB_ROW_SYM_1),
+          chars(KB_ROW_SYM_2),
+          [
+            k("123", "123", { flex: 1.5, fn: true }),
             ...chars(KB_ROW_PUNCT_3),
-            key("\u232b", "backspace", { flex: 1.5, fn: true, size: 17 }),
-          ]),
-          bottomRow("ABC", "abc"),
+            k("\u232b", "backspace", { flex: 1.5, fn: true }),
+          ],
+          bottom("ABC", "abc"),
         ]),
 
-        board("Tools", [
-          row([
-            key("mic", "mic", { fn: true, size: 13 }),
-            key("Refine", "refine", { fn: true, size: 13 }),
-            key("globe", "globe", { fn: true, size: 13 }),
-          ]),
-        ]),
+        board("Tools", [[
+          k("mic", "mic", { fn: true }),
+          k("Refine", "refine", { fn: true }),
+          k("globe", "globe", { fn: true }),
+        ]]),
       ],
     },
     cacheTtlSeconds: 0,
