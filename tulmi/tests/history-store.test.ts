@@ -24,9 +24,14 @@ function makeUser(id: string): AuthedUser {
 const CONSENT_HISTORY: Personality = { retainHistory: true };
 
 describe("hasConsentedToHistory", () => {
-  it("returns false for undefined / empty personality", () => {
-    expect(hasConsentedToHistory(undefined)).toBe(false);
-    expect(hasConsentedToHistory({})).toBe(false);
+  it("keeps history by default, and still obeys an explicit opt-out", () => {
+    // The toggle that used to set this was removed from Settings, which left
+    // the flag unreachable and History permanently empty with no way for
+    // anyone to turn it on. Default is now ON — but a user who explicitly
+    // said no must STAY no, which is the half worth a test.
+    expect(hasConsentedToHistory(undefined)).toBe(true);
+    expect(hasConsentedToHistory({})).toBe(true);
+    expect(hasConsentedToHistory({ retainHistory: false })).toBe(false);
   });
 
   it("returns true when learnFromSent is set", () => {
@@ -39,11 +44,11 @@ describe("hasConsentedToHistory", () => {
 });
 
 describe("appendHistoryEntry", () => {
-  it("no-ops when the personality lacks consent", async () => {
+  it("no-ops when the user has explicitly opted out", async () => {
     const user = makeUser("hs-noconsent");
     await appendHistoryEntry(
       user,
-      {}, // no consent
+      { retainHistory: false }, // explicit no
       { kind: "typing", input: "hi", output: "hi." },
     );
     const { entries } = await listHistory(user);

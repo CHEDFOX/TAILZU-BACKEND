@@ -100,10 +100,28 @@ export interface StatsForUser {
   speakingMinutes?: number;
 }
 
-/** True when the caller has opted-in to history retention. */
+/**
+ * Whether this user's cleanups are kept.
+ *
+ * The per-user switches still win when SET — someone who explicitly turned
+ * retention off stays off. What changed is the DEFAULT for everyone who has
+ * never expressed a preference: the toggle that used to set it was removed
+ * from Settings by owner decision, which left the flag unreachable, permanently
+ * false, and History permanently empty with no way for anyone to change that.
+ *
+ * A History screen that can never fill is worse than one that is on: it looks
+ * broken, and the user cannot tell it is a setting.
+ *
+ * NOTE this stores the user's transcripts and cleaned text server-side by
+ * default. HISTORY_DEFAULT_ON=false restores opt-in, with no code change.
+ */
+const HISTORY_DEFAULT_ON =
+  (process.env.HISTORY_DEFAULT_ON ?? "true").toLowerCase() !== "false";
+
 export function hasConsentedToHistory(personality: Personality | undefined): boolean {
-  if (!personality) return false;
-  return personality.learnFromSent === true || personality.retainHistory === true;
+  if (personality?.retainHistory === false) return false;
+  if (personality?.learnFromSent === true || personality?.retainHistory === true) return true;
+  return HISTORY_DEFAULT_ON;
 }
 
 // ---------------------------------------------------------------------------

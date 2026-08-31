@@ -1733,7 +1733,18 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
                   // Already-pinned voices are managed from the keyboard card,
                   // so the library row only offers Add when it's not there yet.
                   ...(!isPinned ? [rowBtn("Add", pinAction(preset.id, true))] : []),
-                  rowBtn("Edit", { kind: "navigate", screenId: "tone_edit", params: { presetId: preset.id } }),
+                  // Editing happens ON this screen, in a card. Leaving for a
+                  // full screen loses the list you were comparing against —
+                  // and the whole reason you opened Edit was something you saw
+                  // in that list.
+                  rowBtn("Edit", { kind: "sequence", actions: [
+                    { kind: "haptic", style: "selection" },
+                    { kind: "setState", path: "vcId", value: preset.id },
+                    { kind: "setState", path: "vcName", value: preset.name },
+                    { kind: "setState", path: "vcPrompt",
+                      value: (preset as { promptStyle?: string }).promptStyle ?? "" },
+                    { kind: "setState", path: "vcOpen", value: true },
+                  ] }),
                 ]),
           ],
         },
@@ -1747,10 +1758,14 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     style: { padding: 14, marginBottom: 16 },
     children: [
       { type: "Overline", props: { content: "Keyboard voices" }, style: { marginBottom: 4 } },
-      { type: "Paragraph", props: { content: kbVoices.length
-          ? "These are on your keyboard — up to 6. Tap one to write with it now; Remove takes it off the keyboard (it stays in All voices)."
-          : "Nothing on the keyboard yet — Add a voice from All voices below, or create a new one." },
-        style: { fontSize: 12, marginBottom: 10 } },
+      // Only when the list is EMPTY. A populated list is self-explanatory —
+      // the rows carry Remove buttons — and the paragraph was just a wall of
+      // grey text above it.
+      ...(kbVoices.length ? [] : [{
+        type: "Paragraph",
+        props: { content: "Nothing here yet. Add one from below." },
+        style: { fontSize: 12, marginBottom: 10 },
+      } as Node]),
       ...kbVoices.map((e) => voiceRow(e, "kb")),
       gap(4),
       // Creates a tone AND pins it in one save — it lands in All voices too.
@@ -1764,8 +1779,9 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     style: { padding: 14 },
     children: [
       { type: "Overline", props: { content: "All voices" }, style: { marginBottom: 4 } },
-      { type: "Paragraph", props: { content: "Your whole library. Add puts a voice on the keyboard; Edit changes how it writes." },
-        style: { fontSize: 12, marginBottom: 10 } },
+      // Removed: the row's own Add and Edit buttons say this, and they say it
+      // where the user's thumb already is.
+      gap(6),
       ...effective.map((e) => voiceRow(e, "all")),
       gap(4),
       { type: "Button", props: { label: "＋  Add a tone", variant: "secondary" }, on: { onPress: "addTone" } },
@@ -1776,7 +1792,9 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "voices",
     title: "Voice",
-    state: {},
+    // Seeded so the card's bound fields render empty rather than undefined
+    // before anything has been opened.
+    state: { vcOpen: false, vcId: "", vcName: "", vcPrompt: "" },
     actions: {
       // Open the editor with NO presetId → the "new tone" path.
       addTone: { kind: "sequence", actions: [
@@ -1809,15 +1827,75 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
         tone: "error",
         message: "Couldn't update the keyboard voices — check your connection and try again.",
       },
+      vcSaved: { kind: "sequence", actions: [
+        { kind: "setState", path: "vcOpen", value: false },
+        { kind: "toast", message: "Voice saved.", tone: "success" },
+        { kind: "refresh" },
+      ] },
+      vcSaveErr: { kind: "toast", tone: "error", message: "Couldn't save that voice. Try again." },
     },
     root: {
       type: "Screen",
       style: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 24 },
       children: [
-        { type: "Heading", props: { content: "Voice" }, style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 6 } },
-        { type: "Paragraph", props: { content: "Tap a voice to write with it. Keyboard voices are the ones you can switch between right on the keyboard." }, style: { fontSize: 13, marginBottom: 16 } },
+        // No Heading: the nav bar already says "Voice", and a screen that
+        // says its own name twice reads as a mistake. No standfirst either —
+        // the two section headers and the buttons on each row say the same
+        // thing in fewer words and in the place the user is already looking.
         keyboardCard,
         allCard,
+
+        // ---- Edit a voice, without leaving the list ----
+        // Same shape as the training card: blurred behind, cross and
+        // tap-outside both exit, Save writes and closes.
+        {
+          type: "Modal",
+          bind: { open: "vcOpen" },
+          props: { blur: true, blurIntensity: 70, dismissable: true },
+          on: { onDismiss: { kind: "setState", path: "vcOpen", value: false } },
+          children: [
+            {
+              type: "Stack",
+              style: { direction: "row", alignItems: "center", gap: 10, marginBottom: 14 },
+              children: [
+                { type: "Text", bind: { content: "vcName" },
+                  style: { flex: 1, fontSize: 22, fontWeight: "800", color: "#FFFFFF" } },
+                {
+                  type: "Button",
+                  props: { label: "\u00d7", variant: "ghost" },
+                  style: { paddingHorizontal: 10, paddingVertical: 2, fontSize: 26, color: "rgba(255,255,255,0.55)" },
+                  on: { onPress: { kind: "setState", path: "vcOpen", value: false } },
+                },
+              ],
+            },
+            { type: "Overline", props: { content: "Name" },
+              style: { color: "rgba(255,255,255,0.4)", marginBottom: 8 } },
+            { type: "TextField", bind: { value: "vcName" },
+              props: { placeholder: "Voice name" }, style: { marginBottom: 16 } },
+            { type: "Overline", props: { content: "How it writes" },
+              style: { color: "rgba(255,255,255,0.4)", marginBottom: 8 } },
+            { type: "TextField", bind: { value: "vcPrompt" },
+              props: { placeholder: "Short, warm, no filler\u2026", multiline: true },
+              style: { minHeight: 132, marginBottom: 16 } },
+            {
+              type: "Stack",
+              style: { direction: "row", gap: 10 },
+              children: [
+                { type: "Button", props: { label: "Cancel", variant: "secondary" },
+                  style: { flex: 1 },
+                  on: { onPress: { kind: "setState", path: "vcOpen", value: false } } },
+                { type: "Button", props: { label: "Save", variant: "primary" },
+                  style: { flex: 1 },
+                  on: { onPress: { kind: "sequence", actions: [
+                    { kind: "haptic", style: "selection" },
+                    { kind: "callEndpoint", method: "POST", path: "/v1/personality/tone",
+                      body: { id: "$state.vcId", name: "$state.vcName", promptStyle: "$state.vcPrompt" },
+                      onSuccess: "vcSaved", onError: "vcSaveErr" },
+                  ] } } },
+              ],
+            },
+          ],
+        },
       ],
     },
     cacheTtlSeconds: 0,
@@ -2618,7 +2696,7 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
           {
             kind: "callEndpoint",
             method: "DELETE",
-            path: "/v1/history/$item.id",
+            path: "/v1/history/$state.item.id",
             onSuccess: "refresh",
             onError: "err",
           },
@@ -2687,14 +2765,14 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
                   children: [
                     {
                       type: "Text",
-                      bind: { content: "$item.createdAt" },
+                      bind: { content: "item.createdAt" },
                       props: { variant: "label" },
                     },
                     {
                       type: "Badge",
-                      bind: { label: "$item.targetApp" },
+                      bind: { label: "item.targetApp" },
                       props: { tone: "accent" },
-                      visibleIf: { truthy: "$item.targetApp" },
+                      visibleIf: { truthy: "item.targetApp" },
                     },
                   ],
                 },
@@ -2706,14 +2784,14 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
                 text("You said", "label", { style: { fontSize: 11, opacity: 0.6 } }),
                 {
                   type: "Text",
-                  bind: { content: "$item.input" },
+                  bind: { content: "item.input" },
                   props: { variant: "muted", numberOfLines: 3 },
                 },
                 { type: "Spacer", style: { height: 10 } },
                 text("Tailzu wrote", "label", { style: { fontSize: 11, opacity: 0.6, color: "$color.primary" } }),
                 {
                   type: "Text",
-                  bind: { content: "$item.output" },
+                  bind: { content: "item.output" },
                   props: { variant: "body", numberOfLines: 6 },
                   style: { fontWeight: "600", color: "$color.text" },
                 },
@@ -3864,14 +3942,14 @@ export function buildKeyboardConfig(
       // Row 1: q..p
       {
         type: "Row",
-        style: { gap: 6, height: 44 },
+        style: { gap: 6, height: 44, paddingHorizontal: 3 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: letterRow1.map(kLetter),
       },
       // Row 2: a..l (indented half-key each side)
       {
         type: "Row",
-        style: { gap: 6, height: 44 },
+        style: { gap: 6, height: 44, paddingHorizontal: 3 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: [kHalfSpacer(), ...letterRow2.map(kLetter), kHalfSpacer()],
       },
@@ -3882,7 +3960,7 @@ export function buildKeyboardConfig(
       // overlaps the shift/backspace hit area, so edge taps don't cross over.
       {
         type: "Row",
-        style: { gap: 6, height: 44 },
+        style: { gap: 6, height: 44, paddingHorizontal: 3 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: [
           { type: "ShiftKey", style: { flex: 1.35, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
@@ -3901,21 +3979,21 @@ export function buildKeyboardConfig(
       // Row 1: 1..0
       {
         type: "Row",
-        style: { gap: 6, height: 44 },
+        style: { gap: 6, height: 44, paddingHorizontal: 3 },
         visibleIf: { eq: ["state.layoutId", "123"] },
         children: KB_ROW_NUM_1.map(kPunct),
       },
       // Row 2: - / : ; ( ) $ & @ "
       {
         type: "Row",
-        style: { gap: 6, height: 44 },
+        style: { gap: 6, height: 44, paddingHorizontal: 3 },
         visibleIf: { eq: ["state.layoutId", "123"] },
         children: KB_ROW_NUM_2.map(kPunct),
       },
       // Row 3: [#+=] . , ? ! ' [backspace]
       {
         type: "Row",
-        style: { gap: 6, height: 44 },
+        style: { gap: 6, height: 44, paddingHorizontal: 3 },
         visibleIf: { eq: ["state.layoutId", "123"] },
         children: [
           {
@@ -3934,21 +4012,21 @@ export function buildKeyboardConfig(
       // Row 1: [ ] { } # % ^ * + =
       {
         type: "Row",
-        style: { gap: 6, height: 44 },
+        style: { gap: 6, height: 44, paddingHorizontal: 3 },
         visibleIf: { eq: ["state.layoutId", "sym"] },
         children: KB_ROW_SYM_1.map(kPunct),
       },
       // Row 2: _ \ | ~ < > € £ ¥ ·
       {
         type: "Row",
-        style: { gap: 6, height: 44 },
+        style: { gap: 6, height: 44, paddingHorizontal: 3 },
         visibleIf: { eq: ["state.layoutId", "sym"] },
         children: KB_ROW_SYM_2.map(kPunct),
       },
       // Row 3: [123] . , ? ! ' [backspace]
       {
         type: "Row",
-        style: { gap: 6, height: 44 },
+        style: { gap: 6, height: 44, paddingHorizontal: 3 },
         visibleIf: { eq: ["state.layoutId", "sym"] },
         children: [
           {
@@ -3987,7 +4065,7 @@ export function buildKeyboardConfig(
       // gets the wider space bar instead.
       {
         type: "Row",
-        style: { gap: 6, height: 44 },
+        style: { gap: 6, height: 44, paddingHorizontal: 3 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: [
           {
@@ -4026,7 +4104,7 @@ export function buildKeyboardConfig(
       // globe placement as the letter page.
       {
         type: "Row",
-        style: { gap: 6, height: 44 },
+        style: { gap: 6, height: 44, paddingHorizontal: 3 },
         visibleIf: { any: [
           { eq: ["state.layoutId", "123"] },
           { eq: ["state.layoutId", "sym"] },
@@ -4079,7 +4157,7 @@ export function buildKeyboardConfig(
       // same reason the globe key exists.
       {
         type: "Row",
-        style: { gap: 6, height: 44 },
+        style: { gap: 6, height: 44, paddingHorizontal: 3 },
         visibleIf: { eq: ["state.layoutId", "num"] },
         children: [
           ...["1", "2", "3"].map(kPunct),
@@ -4088,7 +4166,7 @@ export function buildKeyboardConfig(
       },
       {
         type: "Row",
-        style: { gap: 6, height: 44 },
+        style: { gap: 6, height: 44, paddingHorizontal: 3 },
         visibleIf: { eq: ["state.layoutId", "num"] },
         children: [
           ...["4", "5", "6"].map(kPunct),
@@ -4097,7 +4175,7 @@ export function buildKeyboardConfig(
       },
       {
         type: "Row",
-        style: { gap: 6, height: 44 },
+        style: { gap: 6, height: 44, paddingHorizontal: 3 },
         visibleIf: { eq: ["state.layoutId", "num"] },
         children: [
           ...["7", "8", "9"].map(kPunct),
@@ -4106,7 +4184,7 @@ export function buildKeyboardConfig(
       },
       {
         type: "Row",
-        style: { gap: 6, height: 44 },
+        style: { gap: 6, height: 44, paddingHorizontal: 3 },
         visibleIf: { eq: ["state.layoutId", "num"] },
         children: [
           {
