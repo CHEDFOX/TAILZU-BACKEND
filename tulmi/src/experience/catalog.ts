@@ -1175,16 +1175,46 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
   // A tappable voice row inside the blurred sheet: pick it → store the id +
   // its pill label, then close the sheet. All state, so the next Refine
   // trains in that voice.
+  // The hint is GONE from the row. Thirteen voices each carrying a line of
+  // description made the picker a wall of grey text you had to read through to
+  // find a name — and the first row wrapped to two lines, so it did not even
+  // read as a row. The list is names now; the description moved to the
+  // long-press card, where there is room for it and for the prompt too.
   const toneRow = (opt: { id: string; label: string; hint: string }, i: number): Node => ({
     type: "Row",
-    props: { label: opt.label, value: opt.hint, chevron: false, divider: i < TONE_OPTIONS.length - 1 },
-    on: { onPress: { kind: "sequence", actions: [
-      { kind: "haptic", style: "selection" },
-      { kind: "setState", path: "tone", value: opt.id },
-      { kind: "setState", path: "toneLabel", value: opt.label },
-      { kind: "setState", path: "toneSheetOpen", value: false },
-    ] } },
+    props: { label: opt.label, chevron: false, divider: i < TONE_OPTIONS.length - 1 },
+    on: {
+      onPress: { kind: "sequence", actions: [
+        { kind: "haptic", style: "selection" },
+        { kind: "setState", path: "tone", value: opt.id },
+        { kind: "setState", path: "toneLabel", value: opt.label },
+        { kind: "setState", path: "toneSheetOpen", value: false },
+      ] },
+      // Hold to look before you leap: what this voice is, and the prompt that
+      // makes it that. Everything the card shows is pushed into state HERE, so
+      // the card itself is one node bound to those values rather than thirteen
+      // cards gated on an id.
+      onLongPress: { kind: "sequence", actions: [
+        { kind: "haptic", style: "medium" },
+        { kind: "setState", path: "cardId", value: opt.id },
+        { kind: "setState", path: "cardTitle", value: opt.label },
+        { kind: "setState", path: "cardHint", value: opt.hint },
+        { kind: "setState", path: "cardPrompt", value: tonePromptOf(opt.id) },
+        { kind: "setState", path: "cardEditing", value: false },
+        { kind: "setState", path: "toneSheetOpen", value: false },
+        { kind: "setState", path: "cardOpen", value: true },
+      ] },
+    },
   });
+
+  /** The prompt behind a voice — what actually shapes the writing. */
+  function tonePromptOf(id: string): string {
+    if (id === "none") {
+      return "No voice is applied. Your words are cleaned up and left as yours.";
+    }
+    const p = effective.find((e) => e.id === id) as { promptStyle?: string } | undefined;
+    return p?.promptStyle ?? "";
+  }
 
   const boxWithVoice = (bindKey: string): Node => ({
     type: "Stack", style: { position: "relative" }, children: [
@@ -1280,6 +1310,14 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
       tone: activeVoice?.id ?? "none",
       toneLabel: activeVoice?.name ?? "ZU 8.8",
       toneSheetOpen: false,
+      // Voice card (long-press). Seeded so the card's bound Texts render empty
+      // rather than undefined before anything has been held.
+      cardOpen: false,
+      cardEditing: false,
+      cardId: "",
+      cardTitle: "",
+      cardHint: "",
+      cardPrompt: "",
       variantA: "", variantB: "", variantC: "",
       angleA: "", angleB: "", angleC: "",
       _train: null, _input: "", _chosen: "", _rejA: "", _rejB: "",
@@ -1305,6 +1343,19 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
           onError: "variantsErr",
         },
       ] },
+      // Saving from the voice card. The tone upsert makes the saved voice
+      // ACTIVE, which is right — you edited it because you want to write with
+      // it — so the picker's own state follows rather than silently disagreeing
+      // with what the server now thinks the active voice is.
+      cardSaved: { kind: "sequence", actions: [
+        { kind: "setState", path: "cardEditing", value: false },
+        { kind: "setState", path: "tone", value: "$state.cardId" },
+        { kind: "setState", path: "toneLabel", value: "$state.cardTitle" },
+        { kind: "setState", path: "cardOpen", value: false },
+        { kind: "toast", message: "Voice saved.", tone: "success" },
+      ] },
+      cardSaveErr: { kind: "toast", message: "Couldn't save that voice. Try again.", tone: "error" },
+
       gotVariants: { kind: "sequence", actions: [
         { kind: "setState", path: "refining", value: false },
         { kind: "setState", path: "variantA", value: "$state._train.variants.0.text" },
@@ -1393,8 +1444,105 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
           bind: { open: "toneSheetOpen" },
           props: { blur: true, blurIntensity: 55, dismissable: true },
           children: [
-            { type: "Text", props: { content: "Pick a voice to train" }, style: { fontSize: 18, fontWeight: "700", color: "#FFFFFF", textAlign: "center", marginBottom: 12 } },
+            { type: "Text", props: { content: "Pick a voice to train" }, style: { fontSize: 18, fontWeight: "700", color: "#FFFFFF", textAlign: "center", marginBottom: 4 } },
+            { type: "Text", props: { content: "Hold a voice to see what it does" },
+              style: { fontSize: 12.5, color: "rgba(255,255,255,0.45)", textAlign: "center", marginBottom: 12 } },
             ...TONE_OPTIONS.map(toneRow),
+          ],
+        },
+
+        // ---- Voice card: hold a voice, see what it is and what drives it ----
+        //
+        // One card bound to state, not one per voice: the row that opened it
+        // pushed the title, description and prompt in, so this is a single node
+        // however many voices exist.
+        //
+        // dismissable gives the tap-outside exit; the cross is here as well,
+        // because a card the user cannot see the edge of is a card they cannot
+        // tell is dismissable.
+        {
+          type: "Modal",
+          bind: { open: "cardOpen" },
+          props: { blur: true, blurIntensity: 70, dismissable: true },
+          on: { onDismiss: { kind: "setState", path: "cardOpen", value: false } },
+          children: [
+            {
+              type: "Stack",
+              style: { direction: "row", alignItems: "center", gap: 10, marginBottom: 6 },
+              children: [
+                { type: "Text", bind: { content: "cardTitle" },
+                  style: { flex: 1, fontSize: 22, fontWeight: "800", color: "#FFFFFF" } },
+                {
+                  type: "Button",
+                  props: { label: "\u00d7", variant: "ghost" },
+                  style: { paddingHorizontal: 10, paddingVertical: 2, fontSize: 26, color: "rgba(255,255,255,0.55)" },
+                  on: { onPress: { kind: "setState", path: "cardOpen", value: false } },
+                },
+              ],
+            },
+            { type: "Text", bind: { content: "cardHint" },
+              style: { fontSize: 14, lineHeight: 21, color: "rgba(255,255,255,0.62)", marginBottom: 18 } },
+
+            // READING. The prompt as it stands.
+            { type: "Overline", props: { content: "Prompt" },
+              visibleIf: { falsy: "cardEditing" },
+              style: { color: "rgba(255,255,255,0.4)", marginBottom: 8 } },
+            { type: "Text", bind: { content: "cardPrompt" },
+              visibleIf: { falsy: "cardEditing" },
+              style: { fontSize: 14, lineHeight: 22, color: "rgba(255,255,255,0.82)", marginBottom: 20 } },
+            {
+              type: "Button",
+              props: { label: "Edit", variant: "secondary" },
+              visibleIf: { falsy: "cardEditing" },
+              style: { width: "100%" },
+              on: { onPress: { kind: "sequence", actions: [
+                { kind: "haptic", style: "selection" },
+                { kind: "setState", path: "cardEditing", value: true },
+              ] } },
+            },
+
+            // EDITING. Same card, same place — the prompt becomes writable
+            // rather than the user being pushed to another screen and losing
+            // the voice they were looking at.
+            { type: "Overline", props: { content: "Prompt" },
+              visibleIf: { truthy: "cardEditing" },
+              style: { color: "rgba(255,255,255,0.4)", marginBottom: 8 } },
+            {
+              type: "TextField",
+              bind: { value: "cardPrompt" },
+              visibleIf: { truthy: "cardEditing" },
+              props: { placeholder: "How this voice should write…", multiline: true },
+              style: { minHeight: 132, marginBottom: 14 },
+            },
+            {
+              type: "Stack",
+              visibleIf: { truthy: "cardEditing" },
+              style: { direction: "row", gap: 10 },
+              children: [
+                {
+                  type: "Button",
+                  props: { label: "Cancel", variant: "secondary" },
+                  style: { flex: 1 },
+                  on: { onPress: { kind: "setState", path: "cardEditing", value: false } },
+                },
+                {
+                  type: "Button",
+                  props: { label: "Save", variant: "primary" },
+                  style: { flex: 1 },
+                  on: { onPress: { kind: "sequence", actions: [
+                    { kind: "haptic", style: "selection" },
+                    {
+                      kind: "callEndpoint",
+                      method: "POST",
+                      path: "/v1/personality/tone",
+                      body: { id: "$state.cardId", name: "$state.cardTitle", promptStyle: "$state.cardPrompt" },
+                      onSuccess: "cardSaved",
+                      onError: "cardSaveErr",
+                    },
+                  ] } },
+                },
+              ],
+            },
           ],
         },
       ],
