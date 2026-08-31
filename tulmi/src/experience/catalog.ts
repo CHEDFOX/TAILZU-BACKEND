@@ -4445,6 +4445,149 @@ export function buildKeyboardConfig(
         // (which also restores accent long-press trays) if a device ever shows
         // trouble — no rebuild needed.
         "kb.keyPlane.enabled": true,
+
+        // ------------------------------------------------------------------
+        // Every remaining native knob, served at its COMPILED DEFAULT.
+        //
+        // 110 values were read by the keyboards and never sent, so each was
+        // frozen at whatever the binary was built with — tuning any of them
+        // meant a store round. They are emitted here at exactly the value the
+        // native code already used, so nothing changes behaviour today and
+        // every one of them becomes adjustable without a build.
+        //
+        // The ONE deliberate change is kb.touch.holdMultiplier: iOS defaulted
+        // to 1.0, which switches the drift tolerance OFF, while Android used
+        // 1.35. A finger that rolls a millimetre while pressing was retargeting
+        // to the neighbour on iOS — the exact "it did not register my key"
+        // failure the key plane exists to prevent. Both platforms now get 1.35.
+        // ------------------------------------------------------------------
+        // accentTray
+        "kb.accentTray.chipActiveBg": "#007AFF",
+        "kb.accentTray.chipFontSize": 22,
+        "kb.accentTray.chipRadius": 6,
+        "kb.accentTray.chipWidth": 40,
+        "kb.accentTray.gap": 4,
+        "kb.accentTray.height": 48,
+        "kb.accentTray.longPressMs": 500,
+        "kb.accentTray.offsetY": -52,
+        "kb.accentTray.padding": 4,
+        "kb.accentTray.radius": 8,
+        // autoCap
+        "kb.autoCap.enabled": true,
+        // autocorrect
+        "kb.autocorrect.lang": "",
+        "kb.autocorrect.neighborCost": 0.5,
+        "kb.autocorrect.punctCost": 0.5,
+        // callout
+        "kb.callout.bg": "",
+        "kb.callout.enabled": true,
+        "kb.callout.text": "",
+        // confetti
+        "kb.confetti.birthRate": 6,
+        "kb.confetti.burstMs": 400,
+        "kb.confetti.lifetimeMs": 3000,
+        "kb.confetti.scale": 0.06,
+        "kb.confetti.spin": 3,
+        "kb.confetti.teardownMs": 3500,
+        "kb.confetti.velocity": 200,
+        // delete
+        "kb.delete.initialDelayMs": 500,
+        "kb.delete.repeatIntervalMs": 90,
+        "kb.delete.wordAfterChars": 20,
+        // dictation
+        "kb.dictation.dim.fadeMs": 250,
+        "kb.dictation.dots.alphaSpeed": -0.55,
+        "kb.dictation.dots.color": "#E8A23C",
+        "kb.dictation.dots.decayMs": 2500,
+        "kb.dictation.dots.enabled": true,
+        "kb.dictation.dots.lifetimeMs": 1800,
+        "kb.dictation.dots.scale": 0.35,
+        "kb.dictation.dots.scaleRange": 0.1,
+        "kb.dictation.dots.size": 14,
+        "kb.dictation.dots.spread": 0.08,
+        "kb.dictation.dots.velocityJitter": 0.05,
+        // flow
+        "kb.flow.armGlyph.enabled": false,
+        "kb.flow.glyphSize": 16,
+        // haptics
+        "kb.haptics.enabled": true,
+        "kb.haptics.style": "selection",
+        // key
+        "kb.key.hitSlop.x": 2,
+        "kb.key.hitSlop.y": 8,
+        "kb.key.shadow.color": "#000000",
+        "kb.key.shadow.offsetY": 1,
+        "kb.key.shadow.opacity": 0.4,
+        "kb.key.shadow.radius": 0,
+        // layer
+        "kb.layer.lettersId": "en",
+        "kb.layer.symbolIds": "123,sym",
+        // mic
+        "kb.mic.particles": true,
+        // network
+        "kb.network.timeoutMs": 15000,
+        // press
+        "kb.press.fadeMs": 120,
+        // returnKey
+        "kb.returnKey.actionBg": "#007AFF",
+        "kb.returnKey.actionFg": "#FFFFFF",
+        // row
+        "kb.row.expandHitTargets": true,
+        // shift
+        "kb.shift.doubleTapMs": 300,
+        "kb.shift.iconLowerLocked": "arrowtriangle.down.fill",
+        "kb.shift.iconLowerOutlined": "arrowtriangle.down",
+        "kb.shift.iconSize": 16,
+        "kb.shift.iconUpperLocked": "arrowtriangle.up.fill",
+        "kb.shift.iconUpperOutlined": "arrowtriangle.up",
+        "kb.shift.iconWeight": "semibold",
+        "kb.shift.lockedColor": "#E8A23C",
+        "kb.shift.longPressMs": 350,
+        // smartPeriod
+        "kb.smartPeriod.windowMs": 500,
+        // suggestion
+        "kb.suggestion.chipBorderWidth": 1,
+        "kb.suggestion.chipPadH": 12,
+        "kb.suggestion.chipPadV": 4,
+        "kb.suggestion.chipRadius": 12,
+        "kb.suggestion.dividerHeight": 18,
+        "kb.suggestion.edgeInset": 8,
+        "kb.suggestion.emphasizeFirst": true,
+        "kb.suggestion.fontSize": 15,
+        "kb.suggestion.gap": 8,
+        "kb.suggestion.height": 36,
+        "kb.suggestion.leadBg": "#E8A23C",
+        "kb.suggestion.leadFg": "#000000",
+        "kb.suggestion.style": "chips",
+        // toast
+        "kb.toast.color.error": "#FF3B30E6",
+        "kb.toast.color.info": "#000000D9",
+        "kb.toast.color.success": "#34C759E6",
+        "kb.toast.durationMs": 2000,
+        "kb.toast.fadeInMs": 180,
+        "kb.toast.fadeOutMs": 250,
+        "kb.toast.fontSize": 13,
+        "kb.toast.height": 32,
+        "kb.toast.offsetY": -18,
+        // tone
+        "kb.tone.sheet.accent": "#E8A23C",
+        "kb.tone.sheet.enabled": true,
+        "kb.tone.sheet.longPressMs": 300,
+        // touch
+        "kb.touch.cancelCommit.maxDriftPt": 12,
+        "kb.touch.cancelCommit.maxMs": 300,
+        "kb.touch.fillGaps": true,
+        "kb.touch.holdMultiplier": 1.35,
+        // waveform
+        "kb.waveform.barCount": 24,
+        "kb.waveform.baselineMax": 0.6,
+        "kb.waveform.baselineMin": 0.2,
+        "kb.waveform.color": "#999999",
+        "kb.waveform.fps": 30,
+        "kb.waveform.height": 24,
+        "kb.waveform.levelMultiplier": 0.6,
+        "kb.waveform.radius": 1.5,
+        "kb.waveform.spacing": 3,
         // Draw the key rows instead of building a Button per key.
         //
         // This is the one structural difference left between us and the system
