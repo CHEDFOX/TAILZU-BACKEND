@@ -1657,7 +1657,6 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
   const gap = (h: number): Node => ({ type: "Spacer", style: { height: h } });
 
   const effective = applyPresetOverrides(p.presetOverrides);
-  const activeId = p.activePresetId ?? "signature";
   const pinned = Array.isArray(p.pinnedPresetIds) ? p.pinnedPresetIds : [];
   // The keyboard set, in pin order; ids whose preset was deleted are dropped.
   const kbVoices = pinned
@@ -1690,7 +1689,6 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
   // One voice row. Tap = make it the ACTIVE voice (what refine writes with);
   // the trailing buttons manage the keyboard set / open the editor.
   const voiceRow = (preset: (typeof effective)[number], where: "kb" | "all"): Node => {
-    const isActive = preset.id === activeId;
     const isPinned = pinned.includes(preset.id);
     return {
       type: "Card",
@@ -1716,17 +1714,21 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
           type: "Stack",
           style: { direction: "row", alignItems: "center", gap: 10 },
           children: [
+            // No "Active" badge, and no bolding or tinting of the active row.
+            //
+            // Every voice in this list is one tap from being the one you write
+            // with, so marking one of them is telling the user about a mode
+            // they did not choose to be in and cannot see the consequences of.
+            // It read as a status they had to manage. Tapping still switches
+            // voices — the toast says so — and the keyboard's own tone pill is
+            // where "which voice am I writing in" belongs, because that is
+            // where the writing happens.
             { type: "Text", props: { content: preset.name }, style: {
               flex: 1,
               fontSize: 16,
-              fontWeight: isActive ? "800" : "600",
-              color: isActive ? "$color.primary" : "$color.text",
+              fontWeight: "600",
+              color: "$color.text",
             } },
-            ...(isActive
-              ? [{ type: "Text", props: { content: "Active" }, style: {
-                  fontSize: 11, fontWeight: "700", color: "$color.primary",
-                } } as Node]
-              : []),
             ...(where === "kb"
               ? [rowBtn("Remove", pinAction(preset.id, false))]
               : [
