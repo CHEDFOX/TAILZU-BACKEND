@@ -73,8 +73,31 @@ export const THEME: ThemeTokens = {
     // Ladder pairs: 13/21 captions, 15 body, 21 lg, 26/34 h1, 34 brand display.
     sizes: { overline: 11, caption: 13, label: 13, body: 15, lg: 21, h1: 26, brand: 34 },
     weights: { light: "300", regular: "400", medium: "500", bold: "700", heavy: "800" },
+    // Name a face for the whole app. Any name in FONTS below, or a font the OS
+    // already has. Unset = the renderer's platform serif.
+    // family: "Tailzu Display",
   },
 };
+
+/**
+ * Typefaces the app downloads and registers at boot.
+ *
+ * The app bundles no fonts and until now could only name what the OS already
+ * had, so changing the product's typeface meant adding a file to the repo and
+ * shipping a build — the one design change that should never need one.
+ *
+ * Add an entry and every screen can use it: THEME.font.family for the whole
+ * app, or style.fontFamily on a single node for a pairing.
+ *
+ *   "Tailzu Display": "https://api.tailzu.space/media/display.ttf"
+ *
+ * Serve the file from the media registry (upload it like any other asset) or
+ * any https host. The client refuses anything that is not https and does not
+ * end in .ttf/.otf/.woff/.woff2, loads them in the background, and falls back
+ * to the system font for any that fail — a dead URL costs a fallback, never a
+ * blank screen.
+ */
+export const FONTS: Record<string, string> = {};
 
 /**
  * Flow Session idle window (ms) — how long the app keeps the background mic
@@ -177,6 +200,9 @@ export function buildBootstrap(
     // Opaque cache token — clients invalidate any cached screens when this
     // changes. Bumps on every process restart plus any admin-triggered bump.
     cacheVersion: CACHE_VERSION,
+    // Typefaces to register at boot. Empty by default; the app falls back to
+    // the platform font and nothing waits on the network.
+    ...(Object.keys(FONTS).length ? { fonts: FONTS } : {}),
     theme: THEME,
     navigation: NAV,
     // The server owns onboarding AND the intro. Intro plays whenever all 4
