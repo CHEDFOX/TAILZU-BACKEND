@@ -1028,6 +1028,8 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       return homeScreen(ctx);
     case "dictionary":
       return dictionaryScreen(ctx);
+    case "haptics":
+      return hapticsScreen(ctx);
     case "language_select":
       return languageSelectScreen(ctx);
     case "delete_account":
@@ -1428,6 +1430,11 @@ function personalityScreen(): ScreenResponse {
         mediaCard("Voice", "Your tones & presets", "card.voice", "voices"),
         { type: "Spacer", style: { height: 18 } },
         mediaCard("Dictionary", "Words & shortcuts you add", "card.dictionary", "dictionary"),
+        { type: "Spacer", style: { height: 18 } },
+        // Same card treatment as the two above, so the third one does not read
+        // as an afterthought. Its media slot is "card.haptics" — upload to that
+        // key and it fills, exactly like Voice and Dictionary.
+        mediaCard("Haptics", "Choose which keys buzz", "card.haptics", "haptics"),
         { type: "Spacer", style: { height: 34 } },
         // MOVED here from Settings, not removed. App Review 2.5.4 requires a
         // background capture to be stoppable without force-quitting the app,
@@ -3127,6 +3134,121 @@ function keyboardPrimerScreen(ctx: ScreenContext): ScreenResponse {
   };
 }
 
+
+/**
+ * Haptics picker — the three keyboard layouts, exactly as they are laid out on
+ * the keyboard, with every key tappable.
+ *
+ * Selection is SERVER state, not client state. Each tap posts one key and the
+ * screen refreshes, so what you see is always what the keyboard will do. The
+ * alternative — mirroring the set locally and syncing later — is how a settings
+ * screen ends up disagreeing with the thing it configures.
+ *
+ * The master toggle and the individual keys stay INDEPENDENT. Turning "all keys"
+ * off must not discard the keys someone picked one by one, and the toggle reads
+ * as on whenever either is true, because in both cases keys are buzzing.
+ */
+function hapticsScreen(ctx: ScreenContext): ScreenResponse {
+  const chosen = new Set((ctx.personality?.hapticKeys ?? []).map((k) => String(k).toLowerCase()));
+  const all = ctx.personality?.hapticsAll === true;
+
+  // A key as it appears in the picker. Orange when it will buzz — including
+  // when the master switch is what makes it buzz, so the screen never shows a
+  // grey key that is about to vibrate.
+  const pk = (label: string, id: string, flex = 1): Node => ({
+    type: "Button",
+    props: { label, variant: "ghost" },
+    style: {
+      flex,
+      height: 44,
+      borderRadius: 6,
+      paddingHorizontal: 0,
+      backgroundColor: (all || chosen.has(id)) ? "#E8A23C" : "#FFFFFF14",
+      color: (all || chosen.has(id)) ? "#000000" : "$color.text",
+      fontSize: label.length > 2 ? 13 : 17,
+      fontWeight: "500",
+    },
+    on: {
+      onPress: {
+        kind: "sequence",
+        actions: [
+          { kind: "haptic", style: "selection" },
+          { kind: "callEndpoint", method: "POST", path: "/v1/personality/haptics",
+            body: { key: id }, onError: "err" },
+          { kind: "refresh" },
+        ],
+      },
+    },
+  });
+
+  const row = (children: Node[]): Node => ({
+    type: "Stack",
+    props: { direction: "horizontal" },
+    style: { gap: 6, marginBottom: 6 },
+    children,
+  });
+  const letters = (s2: string) => s2.split("").map((c) => pk(c, c));
+  const gap = (flex: number): Node => ({ type: "Spacer", style: { flex } });
+
+  const board = (title: string, rows: Node[]): Node => ({
+    type: "Card",
+    style: { padding: 12, borderRadius: 16, marginBottom: 16, backgroundColor: "#0b0b0f" },
+    children: [
+      { type: "Overline", props: { content: title },
+        style: { color: "$color.muted", marginBottom: 10 } },
+      ...rows,
+    ],
+  });
+
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "haptics",
+    title: "Haptics",
+    actions: { err: { kind: "toast", message: "Couldn't save that.", tone: "error" } },
+    root: {
+      type: "Screen",
+      style: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 32 },
+      children: [
+        { type: "Heading", props: { content: "Haptics" },
+          style: { fontSize: 28, fontWeight: "800", color: "$color.text", marginBottom: 8 } },
+        { type: "Paragraph", props: { content: "Tap any key to give it a buzz. Tap again to take it away." },
+          style: { marginBottom: 20 } },
+        {
+          type: "Row",
+          props: { label: "Every key", value: all ? "On" : "Off" },
+          style: { marginBottom: 22 },
+          on: {
+            onPress: {
+              kind: "sequence",
+              actions: [
+                { kind: "haptic", style: "selection" },
+                { kind: "callEndpoint", method: "POST", path: "/v1/personality/haptics",
+                  body: { all: !all }, onError: "err" },
+                { kind: "refresh" },
+              ],
+            },
+          },
+        },
+        board("Letters", [
+          row(letters("qwertyuiop")),
+          row([gap(0.5), ...letters("asdfghjkl"), gap(0.5)]),
+          row([pk("shift", "shift", 1.35), gap(0.22), ...letters("zxcvbnm"), gap(0.22), pk("del", "backspace", 1.35)]),
+          row([pk("123", "123", 2.4), pk(".", ".", 1.29), pk("space", "space", 5.2), pk("@", "@", 1.29), pk("return", "return", 2.4)]),
+        ]),
+        board("Numbers", [
+          row(letters("1234567890")),
+          row("-/:;()$&@\"".split("").map((c) => pk(c, c))),
+          row([pk("#+=", "#+=", 1.5), ...".,?!'".split("").map((c) => pk(c, c)), pk("del", "backspace", 1.5)]),
+        ]),
+        board("Tools", [
+          row([pk("mic", "mic"), pk("refine", "refine"), pk("globe", "globe")]),
+        ]),
+      ],
+    },
+    cacheTtlSeconds: 0,
+  };
+}
+
 function dictionaryScreen(ctx: ScreenContext): ScreenResponse {
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
@@ -3628,7 +3750,7 @@ export function buildKeyboardConfig(
             type: "LetterKey",
             props: { char: "123" },
             on: { onPress: { kind: "switchLayout", language: "123" } },
-            style: { flex: 2.75, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
+            style: { flex: 2.4, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
           {
             type: "GlobeKey",
@@ -3640,8 +3762,20 @@ export function buildKeyboardConfig(
             // Width children are excluded from the flex pass (like MicKey).
             style: { width: 44, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
           },
-          { type: "SpaceKey", style: { flex: 7.08, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
-          { type: "ReturnKey", style: { flex: 2.75, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
+          // Period and at-sign flank the space bar. Both are constantly needed
+          // and both were two taps away on the 123 page — an address or a
+          // sentence end should not cost a layer switch.
+          //
+          // The widths are rebalanced rather than added to: 123 and return give
+          // up 0.35 each and space gives up 1.88, so the row's flex total is
+          // unchanged and every other key keeps the size it had. Nothing is
+          // squeezed to make room.
+          { type: "LetterKey", props: { char: "." },
+            style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 20, fontWeight: "regular" } },
+          { type: "SpaceKey", style: { flex: 5.2, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
+          { type: "LetterKey", props: { char: "@" },
+            style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 20, fontWeight: "regular" } },
+          { type: "ReturnKey", style: { flex: 2.4, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
         ],
       },
       // Row 4 for the NUMBER or SYMBOL page — ABC returns to letters; same
@@ -3658,7 +3792,7 @@ export function buildKeyboardConfig(
             type: "LetterKey",
             props: { char: "ABC" },
             on: { onPress: { kind: "switchLayout", language: "en" } },
-            style: { flex: 2.75, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
+            style: { flex: 2.4, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
           },
           {
             type: "GlobeKey",
@@ -3670,8 +3804,76 @@ export function buildKeyboardConfig(
             // Width children are excluded from the flex pass (like MicKey).
             style: { width: 44, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION },
           },
-          { type: "SpaceKey", style: { flex: 7.08, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
-          { type: "ReturnKey", style: { flex: 2.75, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
+          // Period and at-sign flank the space bar. Both are constantly needed
+          // and both were two taps away on the 123 page — an address or a
+          // sentence end should not cost a layer switch.
+          //
+          // The widths are rebalanced rather than added to: 123 and return give
+          // up 0.35 each and space gives up 1.88, so the row's flex total is
+          // unchanged and every other key keeps the size it had. Nothing is
+          // squeezed to make room.
+          { type: "LetterKey", props: { char: "." },
+            style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 20, fontWeight: "regular" } },
+          { type: "SpaceKey", style: { flex: 5.2, bg: KEY_FILL_SPACE, fontSize: 16, fontWeight: "regular" } },
+          { type: "LetterKey", props: { char: "@" },
+            style: { flex: 1.29, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 20, fontWeight: "regular" } },
+          { type: "ReturnKey", style: { flex: 2.4, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
+        ],
+      },
+
+      // ========================= NUMBER-ONLY LAYER (num) ======================
+      // Shown when the FIELD itself only accepts numbers — an OTP box, a phone
+      // number, an amount. The client sets layoutId to "num" on focus and back
+      // to "en" when it leaves; nothing switches to this layer by hand.
+      //
+      // A dialer grid, not our 123 page: a number field wants big targets in
+      // the arrangement people already know, and the 123 page is a full QWERTY-
+      // width row of tiny keys with punctuation the field will reject anyway.
+      //
+      // ABC is kept in the corner deliberately. If we ever misread a field as
+      // numeric, the user must not be trapped in a pad that cannot type — the
+      // same reason the globe key exists.
+      {
+        type: "Row",
+        style: { gap: 6, height: 44 },
+        visibleIf: { eq: ["state.layoutId", "num"] },
+        children: [
+          ...["1", "2", "3"].map(kPunct),
+          { type: "BackspaceKey", style: { flex: 1, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
+        ],
+      },
+      {
+        type: "Row",
+        style: { gap: 6, height: 44 },
+        visibleIf: { eq: ["state.layoutId", "num"] },
+        children: [
+          ...["4", "5", "6"].map(kPunct),
+          { type: "Spacer", style: { flex: 1 } },
+        ],
+      },
+      {
+        type: "Row",
+        style: { gap: 6, height: 44 },
+        visibleIf: { eq: ["state.layoutId", "num"] },
+        children: [
+          ...["7", "8", "9"].map(kPunct),
+          { type: "Spacer", style: { flex: 1 } },
+        ],
+      },
+      {
+        type: "Row",
+        style: { gap: 6, height: 44 },
+        visibleIf: { eq: ["state.layoutId", "num"] },
+        children: [
+          {
+            type: "LetterKey",
+            props: { char: "ABC" },
+            on: { onPress: { kind: "switchLayout", language: "en" } },
+            style: { flex: 1, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" },
+          },
+          kPunct("0"),
+          kPunct("."),
+          { type: "ReturnKey", style: { flex: 1, bg: KEY_FILL_RETURN, fg: KEY_TEXT_FUNCTION, fontSize: 16, fontWeight: "regular" } },
         ],
       },
     ],
@@ -3768,6 +3970,9 @@ export function buildKeyboardConfig(
       },
       { language: "123", displayName: "Numbers", rows: [] },
       { language: "sym", displayName: "Symbols", rows: [] },
+      // Field-driven, never reached from the layer switcher — but it must be
+      // listed or switchLayout("num") is rejected as an unknown language.
+      { language: "num", displayName: "Number pad", rows: [] },
       // "emoji" removed: no tree rows are gated on it, so switching to it
       // rendered a keyboard with no keys and no way back — a live trap now
       // that the globe key exists (its long-press language menu lists every
@@ -3854,10 +4059,24 @@ export function buildKeyboardConfig(
         // Kill the flowing dot-stream that rises off the mic while recording —
         // birthRate 0 emits nothing. Only the in-button swarm remains.
         "kb.dictation.dots.birthRate": 0,
-        // No black dim overlay over the keys while recording — keep the keyboard
-        // looking normal during dictation. (Set true / raise dim.alpha to bring
-        // the focus-dim back.)
-        "kb.dictation.dim.enabled": false,
+        // While the mic is recording, the keys go behind frosted glass AND stop
+        // taking touches.
+        //
+        // The blur is the signal — the keys are still there, they are just not
+        // yours for the moment — and blocksTouches is what makes it true rather
+        // than decorative. Without it the keyboard looked disabled and typed
+        // anyway, so a stray thumb mid-utterance inserted a character into the
+        // very text the refine pass was about to rewrite.
+        //
+        // The tools row is deliberately NOT covered: the mic that stops the
+        // recording lives there, and blurring the way out of a state is how you
+        // strand someone in it.
+        "kb.dictation.dim.enabled": true,
+        "kb.dictation.dim.blur": true,          // iOS UIVisualEffectView
+        "kb.dictation.dim.blurRadius": 14,      // Android RenderEffect, API 31+
+        "kb.dictation.dim.alpha": 0.35,         // tint under the blur
+        "kb.dictation.dim.keyAlpha": 0.45,      // Android: how far the keys fade
+        "kb.dictation.dim.blocksTouches": true,
         // "kb.shift.lockedColor": "#E8A23C",
         // "kb.shift.longPressMs": 350,
         // "kb.shift.iconLowerOutlined": "arrowtriangle.down",
@@ -3890,6 +4109,20 @@ export function buildKeyboardConfig(
         // (which also restores accent long-press trays) if a device ever shows
         // trouble — no rebuild needed.
         "kb.keyPlane.enabled": true,
+        // Draw the key rows instead of building a Button per key.
+        //
+        // This is the one structural difference left between us and the system
+        // keyboards: they paint every key into a single surface, we built ~30
+        // views and paid a measure/layout pass for each. Drawn mode collapses a
+        // row to ONE view whose keys are geometry.
+        //
+        // OFF until it has been used on a real device. Both renderers are in
+        // the binary and the touch resolution is shared, so this is a flip in
+        // either direction with NO rebuild — which is the whole point of
+        // shipping it behind a flag rather than swapping the renderer outright.
+        // Rows the drawn path does not fully reproduce (anything with a globe,
+        // mic or suggestion strip) fall back to views on their own.
+        "kb.render.drawnKeys": false,
         // --- K18: the last compiled-in choices, now data ------------------
         // Functional-key glyphs. Full icon-spec vocabulary, so a symbol can
         // become an emoji or a hosted image without a rebuild:
@@ -3913,7 +4146,23 @@ export function buildKeyboardConfig(
         // enabled=false silences them entirely; style is "selection"
         // (default, the crisp native tick) | light | medium | heavy | rigid |
         // soft. iOS still requires Full Access for any of it.
-        // "kb.haptics.enabled": true,
+        // ---- Per-key haptics -------------------------------------------
+        // Two ways to be on, because "all keys" and "the keys I chose" are
+        // different preferences and neither should erase the other:
+        //
+        //   kb.haptics.all   — every key buzzes. The card's master toggle.
+        //   kb.haptics.keys  — a set of individual keys the user picked. A key
+        //                      listed here buzzes even when .all is off.
+        //
+        // Default is silence on both. A keyboard that buzzes on every letter
+        // out of the box is a setting people go looking for how to turn OFF,
+        // so it is opt-in in either direction.
+        //
+        // Keys are named by what they insert (" ", ".", "a") or by role
+        // ("shift", "backspace", "return", "space", "mic", "refine"), so the
+        // picker in the app and the keyboard agree without a shared table.
+        "kb.haptics.all": false,
+        "kb.haptics.keys": {},
         // "kb.haptics.style": "selection",
         //
         // Touch feel (K11). holdMultiplier is how far a finger may drift off
@@ -4267,6 +4516,18 @@ export function buildKeyboardConfig(
       // of wrong correction that costs trust.
       if (personality?.vocabulary?.trim()) {
         flags["kb.personality.vocabulary"] = personality.vocabulary.trim().slice(0, 4000);
+      }
+      // Haptics the user chose, in the shape the keyboards read: a master
+      // switch and a set of individual keys. Kept INDEPENDENT — turning the
+      // master off must not discard the keys someone picked one by one.
+      if (personality?.hapticsAll) flags["kb.haptics.all"] = true;
+      if (personality?.hapticKeys?.length) {
+        const keys: Record<string, boolean> = {};
+        for (const k of personality.hapticKeys.slice(0, 128)) {
+          const id = String(k).toLowerCase();
+          if (id) keys[id] = true;
+        }
+        flags["kb.haptics.keys"] = keys;
       }
       // Fast-tone list for the long-press tone sheet (iOS + Android read
       // `kb.personality.tones`). Rich `{ id, label }` shape so the clients apply
