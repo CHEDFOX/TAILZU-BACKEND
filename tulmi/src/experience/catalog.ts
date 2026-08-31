@@ -4108,7 +4108,19 @@ export function buildKeyboardConfig(
         // The tools row is deliberately NOT covered: the mic that stops the
         // recording lives there, and blurring the way out of a state is how you
         // strand someone in it.
-        "kb.dictation.dim.enabled": true,
+        // OFF until the build that has the BLUR ships.
+        //
+        // This was already false, with a comment saying so, and turning it on
+        // ahead of the native work was a regression: the shipped binary has
+        // only the flat black scrim, and over a transparent keyboard sitting on
+        // iOS's pale light-mode region that is a grey sheet behind the whole
+        // keyboard, not a dim. The keyboard looked fine during recording before
+        // and looked broken after, for no gain at all.
+        //
+        // Flip to true once a build containing kb.dictation.dim.blur is out —
+        // one backend edit, no rebuild. Everything else in this block is
+        // already tuned for that day.
+        "kb.dictation.dim.enabled": false,
         "kb.dictation.dim.blur": true,          // iOS UIVisualEffectView
         "kb.dictation.dim.blurRadius": 14,      // Android RenderEffect, API 31+
         // The TINT is now nearly nothing, and that is the fix for "the whole
