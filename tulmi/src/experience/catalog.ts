@@ -1559,7 +1559,25 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
  * screen on first visit (profileGate.screenIds = ["personality"]).
  */
 function personalityScreen(): ScreenResponse {
-  const mediaCard = (title: string, subtitle: string, key: string, screen: string): Node => ({
+  /**
+   * A card whose art is uploaded, not compiled.
+   *
+   * Everything about the treatment is a value, not a constant: which media
+   * key fills it, how dark the scrim is, what colour that scrim is, and how
+   * much the art is blurred behind the text. The scrim used to be a hardcoded
+   * rgba(0,0,0,0.34) on every card, so any art that came in darker or busier
+   * than expected meant a build to correct.
+   *
+   * Defaults reproduce exactly what shipped, so no card changes until someone
+   * chooses to change it — and then it is one backend edit per card.
+   */
+  const mediaCard = (
+    title: string,
+    subtitle: string,
+    key: string,
+    screen: string,
+    art: { tint?: string; tintOpacity?: number; blur?: number; blurTint?: "dark" | "light" } = {},
+  ): Node => ({
     type: "Card",
     // Card now honors onPress (client fix); padding/border stripped so the media
     // fills edge-to-edge, overflow:hidden clips it to the rounded corners.
@@ -1590,8 +1608,24 @@ function personalityScreen(): ScreenResponse {
         props: { source: { key }, contentFit: "cover" },
         style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%", borderRadius: 0 },
       },
-      // Scrim so the title stays legible over any art.
-      { type: "Stack", style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.34)" } },
+      // Optional blur over the art. Off by default (blur: 0) — a blurred card
+      // is a deliberate choice for busy photography, not a default treatment.
+      ...(Number(art.blur ?? 0) > 0 ? [{
+        type: "BlurBackground",
+        props: { intensity: art.blur, tint: art.blurTint ?? "dark" },
+        style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
+      } as Node] : []),
+      // Scrim so the title stays legible over any art. Colour and strength are
+      // both per-card: light art needs a darker scrim, dark art needs less, and
+      // some art wants a brand tint rather than black.
+      {
+        type: "Stack",
+        style: {
+          position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: art.tint ?? "#000000",
+          opacity: art.tintOpacity ?? 0.34,
+        },
+      },
       {
         type: "Stack",
         style: { position: "absolute", left: 20, right: 20, bottom: 18, direction: "column", gap: 3 },
