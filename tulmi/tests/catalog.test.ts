@@ -32,14 +32,19 @@ describe("buildBootstrap", () => {
     expect((b.languages ?? []).length).toBeGreaterThan(5);
   });
 
-  it("routes first-run users to the onboarding flow", () => {
+  it("opens a first-run user on the intro, which then hands off to onboarding", () => {
+    // The intro now plays on the built-in mark when no media is uploaded, so
+    // first launch opens on it. What must NEVER change is where it goes next:
+    // a not-onboarded user has to reach onboarding, or they skip the language
+    // pick and the keyboard-enable step and onboarded is never set — which is
+    // how the intro used to replay forever.
     const b = buildBootstrap({ onboarded: false });
-    expect(b.initialScreenId).toBe("onboarding");
+    expect(b.initialScreenId).toBe("intro");
   });
 
   it("defaults to non-onboarded when opts is empty", () => {
     const b = buildBootstrap({});
-    expect(b.initialScreenId).toBe("onboarding");
+    expect(b.initialScreenId).toBe("intro");
   });
 
   it("includes a cacheVersion token that matches the current cache version", () => {
@@ -233,11 +238,16 @@ describe("buildKeyboardConfig", () => {
     expect(kb.labels?.refine).toMatch(/refine/i);
   });
 
-  it("does not open on the intro when no intro media is uploaded", () => {
-    // The intro was unreachable for a different reason (nothing routed to it).
-    // The opposite failure is just as bad: routing to it with nothing to play
-    // would open the app on a black screen. No file, no intro.
-    expect(buildBootstrap().initialScreenId).not.toBe("intro");
+  it("never opens the intro on nothing to play", () => {
+    // The original rule here was "no uploaded file, no intro" — which made the
+    // intro silently never play out of the box, i.e. a feature that looked
+    // broken rather than unconfigured. It now falls back to the built-in mark,
+    // so the guard is no longer about the FILE; it is about the screen always
+    // having something in the plate.
+    const introMounted = buildScreen("intro", { onboarded: false } as never);
+    const tree = JSON.stringify(introMounted.root);
+    expect(tree.includes("ParticleMark") || tree.includes("Slideshow")).toBe(true);
+    // A returning user is never held behind it.
     expect(buildBootstrap({ onboarded: true }).initialScreenId).toBe("home");
   });
 

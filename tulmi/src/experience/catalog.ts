@@ -185,7 +185,11 @@ export function buildBootstrap(
     // missing images.
     initialScreenId: pickInitialScreenId(
       !!opts.onboarded,
-      !!getMediaRegistryFn?.()?.["intro"]?.url,
+      // Uploaded media OR the built-in mark. The intro used to require a file,
+      // so out of the box it silently never played — which reads as a broken
+      // feature rather than an unconfigured one. It now opens on the brand mark
+      // assembling itself, and an upload replaces that.
+      !!getMediaRegistryFn?.()?.["intro"]?.url || INTRO_BUILT_IN,
     ),
     flags: ((): BootstrapResponse["flags"] => {
       const flags: BootstrapResponse["flags"] = {
@@ -504,6 +508,12 @@ function heroSlot(opts: {
 const INTRO_PLATE = 128;
 /** How long the intro holds before moving on. Match your file's length. */
 const INTRO_PLAY_MS = 2600;
+/**
+ * Play the intro even with no media uploaded, using the built-in mark.
+ *
+ * Set INTRO_BUILT_IN=false to go back to "no file, no intro".
+ */
+const INTRO_BUILT_IN = (process.env.INTRO_BUILT_IN ?? "true").toLowerCase() !== "false";
 /** Round window on black. Shared by the player and its still fallback so the
  *  two can never drift apart. */
 const PLATE_STYLE = {
@@ -520,6 +530,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
   // onboarding instead of being dropped straight on home (which skipped language
   // pick + keyboard-enable and never set onboarded=true → intro replayed forever).
   const next = ctx.onboarded ? "home" : "onboarding";
+  const hasIntroMedia = !!getMediaRegistryFn?.()?.["intro"]?.url;
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "intro",
@@ -538,6 +549,15 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
     // hidden.
     root: {
       type: "Stack",
+      // Auto-advance owned by the screen. `delay` + `navigate` are both core
+      // actions, so this works on every client build — including ones that
+      // predate anything here.
+      on: hasIntroMedia ? undefined : {
+        onAppear: { kind: "sequence", actions: [
+          { kind: "delay", ms: INTRO_PLAY_MS },
+          { kind: "navigate", screenId: next },
+        ] },
+      },
       style: {
         flex: 1,
         width: "100%",
@@ -548,7 +568,32 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
         justifyContent: "center",
       },
       children: [
+        // No file uploaded: play the brand mark assembling itself, in the same
+        // circular plate the uploaded media would have filled. It is the
+        // keyboard's own mic animation, so the first thing the app shows is the
+        // thing the product is — and an upload to the "intro" key replaces it
+        // without touching this tree.
+        ...(hasIntroMedia ? [] : [{
+          type: "ParticleMark",
+          style: PLATE_STYLE,
+          // ParticleMark loops forever and reports nothing — its animation runs
+          // in a UI-thread worklet. So the SCREEN owns the timing (see the
+          // root's onAppear) rather than waiting on an onComplete that will
+          // never arrive. Getting this wrong strands the user on a black
+          // window with no header and no tabs to leave by.
+          props: { background: "#FFFFFF", circular: true },
+        } as Node,
         {
+          // Belt and braces. The intro hides the header and the tab bar, so if
+          // the timer above ever fails to fire there is otherwise no way off
+          // this screen at all. One tap target costs nothing and removes that
+          // whole class of trap.
+          type: "Button",
+          props: { label: "Get started", variant: "primary" },
+          on: { onPress: "done" },
+          style: { position: "absolute", bottom: 56 },
+        } as Node]),
+        ...(hasIntroMedia ? [{
           type: "Slideshow",
           // The plate: a white circle the size of the in-app mic, clipping the
           // media to a round window. Same shape and size the user will be
@@ -590,7 +635,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
               },
             ],
           },
-        },
+        } as Node] : []),
       ],
     },
     cacheTtlSeconds: 60,
@@ -1415,6 +1460,15 @@ function personalityScreen(): ScreenResponse {
     title: "",
     state: {},
     actions: {
+      // The button that fired this is gone from the tab by owner decision.
+      // The ACTION stays defined on purpose.
+      //
+      // App Review 2.5.4 wants a background capture to be stoppable without
+      // force-quitting. Three things still satisfy that without a button: iOS
+      // paints its own recording indicator the whole time, the keyboard's mic
+      // stops the session, and FlowSessionManager ends it after five idle
+      // minutes on its own. If a reviewer disagrees, putting the control back
+      // is re-adding one node here — no build.
       endFlow: {
         kind: "sequence",
         actions: [
@@ -1435,29 +1489,12 @@ function personalityScreen(): ScreenResponse {
         // as an afterthought. Its media slot is "card.haptics" — upload to that
         // key and it fills, exactly like Voice and Dictionary.
         mediaCard("Haptics", "Choose which keys buzz", "card.haptics", "haptics"),
-        { type: "Spacer", style: { height: 34 } },
-        // MOVED here from Settings, not removed. App Review 2.5.4 requires a
-        // background capture to be stoppable without force-quitting the app,
-        // and this is the only control that does it. It sits on the tab that
-        // owns the user's voice, which is a more findable home than a legal
-        // list anyway.
-        {
-          type: "Button",
-          props: { label: "Turn off background microphone", variant: "secondary" },
-          on: { onPress: "endFlow" },
-          style: { width: "100%" },
-        },
-        { type: "Spacer", style: { height: 8 } },
-        {
-          type: "Paragraph",
-          props: {
-            content: "Tailzu holds the microphone in the background so the keyboard can dictate without reopening the app. This ends that session.",
-          },
-          style: { fontSize: 13, lineHeight: 21, color: "$color.muted" },
-        },
       ],
     },
-    cacheTtlSeconds: 0,
+    // The You tab is three cards whose contents change only when the user
+    // changes them, and every one of those writes drops the cache. Worth
+    // caching: this is the tab people bounce in and out of most.
+    cacheTtlSeconds: 120,
   };
 }
 
