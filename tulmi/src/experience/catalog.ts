@@ -3337,47 +3337,64 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
   const chosen = new Set((ctx.personality?.hapticKeys ?? []).map((k) => String(k).toLowerCase()));
   const all = ctx.personality?.hapticsAll === true;
 
-  // A key as it appears in the picker. Orange when it will buzz — including
-  // when the master switch is what makes it buzz, so the screen never shows a
-  // grey key that is about to vibrate.
-  const pk = (label: string, id: string, flex = 1): Node => ({
+  // A REAL keyboard, not a list of keys.
+  //
+  // The first version was three tidy boards of chips, and it was wrong: you
+  // pick which keys buzz by pointing at where your thumbs actually go, and a
+  // reflowed list destroys exactly the spatial information you are using. So
+  // this renders the same rows, the same flex weights and the same key shapes
+  // the keyboard ships — from KB_ROW_*, which the keyboard itself is built
+  // from, so the two cannot drift apart.
+  const KEY_H = 42;
+  const on = (id: string) => all || chosen.has(id.toLowerCase());
+
+  const key = (label: string, id: string, opts: {
+    flex?: number; fn?: boolean; size?: number;
+  } = {}): Node => ({
     type: "Button",
-    props: { label, variant: "ghost" },
+    props: { label },
     style: {
-      flex,
-      height: 44,
-      borderRadius: 6,
+      flex: opts.flex ?? 1,
+      height: KEY_H,
+      borderRadius: 5,
       paddingHorizontal: 0,
-      backgroundColor: (all || chosen.has(id)) ? "#E8A23C" : "#FFFFFF14",
-      color: (all || chosen.has(id)) ? "#000000" : "$color.text",
-      fontSize: label.length > 2 ? 13 : 17,
+      // Live keys read as keys: the same two fills the keyboard uses for
+      // letters and for function keys, so a glance maps onto the real thing.
+      backgroundColor: on(id) ? "#E8A23C" : (opts.fn ? "#FFFFFF26" : "#FFFFFF8C"),
+      color: on(id) ? "#000000" : (opts.fn ? "#FFFFFF" : "#111114"),
+      fontSize: opts.size ?? (label.length > 1 ? 13 : 17),
       fontWeight: "500",
     },
-    on: {
-      onPress: {
-        kind: "sequence",
-        actions: [
-          { kind: "haptic", style: "selection" },
-          { kind: "callEndpoint", method: "POST", path: "/v1/personality/haptics",
-            body: { key: id }, onError: "err" },
-          { kind: "refresh" },
-        ],
-      },
-    },
+    on: { onPress: { kind: "sequence", actions: [
+      { kind: "haptic", style: "selection" },
+      { kind: "callEndpoint", method: "POST", path: "/v1/personality/haptics",
+        body: { key: id }, onError: "err" },
+      { kind: "refresh" },
+    ] } },
   });
 
   const row = (children: Node[]): Node => ({
     type: "Stack",
     props: { direction: "horizontal" },
-    style: { gap: 6, marginBottom: 6 },
+    style: { direction: "row", gap: 6, marginBottom: 6 },
     children,
   });
-  const letters = (s2: string) => s2.split("").map((c) => pk(c, c));
   const gap = (flex: number): Node => ({ type: "Spacer", style: { flex } });
+  const chars = (list: string[], size?: number) => list.map((c) => key(c, c, { size }));
+
+  // The bottom row is identical on every layer bar its leftmost key, so it is
+  // built once — the same way the keyboard does it.
+  const bottomRow = (leftLabel: string, leftId: string) => row([
+    key(leftLabel, leftId, { flex: 2.4, fn: true }),
+    key(".", ".", { flex: 1.29, fn: true, size: 17 }),
+    key("space", "space", { flex: 5.2, size: 13 }),
+    key("@", "@", { flex: 1.29, fn: true, size: 17 }),
+    key("return", "return", { flex: 2.4, fn: true, size: 13 }),
+  ]);
 
   const board = (title: string, rows: Node[]): Node => ({
     type: "Card",
-    style: { padding: 12, borderRadius: 16, marginBottom: 16, backgroundColor: "#0b0b0f" },
+    style: { padding: 10, borderRadius: 14, marginBottom: 16, backgroundColor: "#17171B" },
     children: [
       { type: "Overline", props: { content: title },
         style: { color: "$color.muted", marginBottom: 10 } },
@@ -3402,31 +3419,55 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
           type: "Row",
           props: { label: "Every key", value: all ? "On" : "Off" },
           style: { marginBottom: 22 },
-          on: {
-            onPress: {
-              kind: "sequence",
-              actions: [
-                { kind: "haptic", style: "selection" },
-                { kind: "callEndpoint", method: "POST", path: "/v1/personality/haptics",
-                  body: { all: !all }, onError: "err" },
-                { kind: "refresh" },
-              ],
-            },
-          },
+          on: { onPress: { kind: "sequence", actions: [
+            { kind: "haptic", style: "selection" },
+            { kind: "callEndpoint", method: "POST", path: "/v1/personality/haptics",
+              body: { all: !all }, onError: "err" },
+            { kind: "refresh" },
+          ] } },
         },
+
         board("Letters", [
-          row(letters("qwertyuiop")),
-          row([gap(0.5), ...letters("asdfghjkl"), gap(0.5)]),
-          row([pk("shift", "shift", 1.35), gap(0.22), ...letters("zxcvbnm"), gap(0.22), pk("del", "backspace", 1.35)]),
-          row([pk("123", "123", 2.4), pk(".", ".", 1.29), pk("space", "space", 5.2), pk("@", "@", 1.29), pk("return", "return", 2.4)]),
+          row(chars(KB_ROW_LETTERS_1)),
+          row([gap(0.5), ...chars(KB_ROW_LETTERS_2), gap(0.5)]),
+          row([
+            key("\u21e7", "shift", { flex: 1.35, fn: true, size: 17 }),
+            gap(0.22),
+            ...chars(KB_ROW_LETTERS_3),
+            gap(0.22),
+            key("\u232b", "backspace", { flex: 1.35, fn: true, size: 17 }),
+          ]),
+          bottomRow("123", "123"),
         ]),
+
         board("Numbers", [
-          row(letters("1234567890")),
-          row("-/:;()$&@\"".split("").map((c) => pk(c, c))),
-          row([pk("#+=", "#+=", 1.5), ...".,?!'".split("").map((c) => pk(c, c)), pk("del", "backspace", 1.5)]),
+          row(chars(KB_ROW_NUM_1)),
+          row(chars(KB_ROW_NUM_2, 15)),
+          row([
+            key("#+=", "#+=", { flex: 1.5, fn: true }),
+            ...chars(KB_ROW_PUNCT_3),
+            key("\u232b", "backspace", { flex: 1.5, fn: true, size: 17 }),
+          ]),
+          bottomRow("ABC", "abc"),
         ]),
+
+        board("Symbols", [
+          row(chars(KB_ROW_SYM_1)),
+          row(chars(KB_ROW_SYM_2, 15)),
+          row([
+            key("123", "123", { flex: 1.5, fn: true }),
+            ...chars(KB_ROW_PUNCT_3),
+            key("\u232b", "backspace", { flex: 1.5, fn: true, size: 17 }),
+          ]),
+          bottomRow("ABC", "abc"),
+        ]),
+
         board("Tools", [
-          row([pk("mic", "mic"), pk("refine", "refine"), pk("globe", "globe")]),
+          row([
+            key("mic", "mic", { fn: true, size: 13 }),
+            key("Refine", "refine", { fn: true, size: 13 }),
+            key("globe", "globe", { fn: true, size: 13 }),
+          ]),
         ]),
       ],
     },
@@ -3663,6 +3704,24 @@ const makeToolsRow = (opts: {
 // on both flips brighter for visible touch feedback. Our previous #FFFFFF40
 // (25%) letter fill was too thin — the blur swallowed it and everything read
 // dimmer than native.
+
+// ---------------------------------------------------------------------------
+// Keyboard key rows — ONE definition, consumed by two things.
+// ---------------------------------------------------------------------------
+//
+// The keyboard tree builds its rows from these, and so does the haptics picker.
+// The picker has to BE the keyboard, not a list resembling it, and the only way
+// that stays true as keys are added is if neither side owns the layout.
+const KB_ROW_LETTERS_1 = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"];
+const KB_ROW_LETTERS_2 = ["a", "s", "d", "f", "g", "h", "j", "k", "l"];
+const KB_ROW_LETTERS_3 = ["z", "x", "c", "v", "b", "n", "m"];
+const KB_ROW_NUM_1 = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
+const KB_ROW_NUM_2 = ["-", "/", ":", ";", "(", ")", "$", "&", "@", "\""];
+const KB_ROW_SYM_1 = ["[", "]", "{", "}", "#", "%", "^", "*", "+", "="];
+const KB_ROW_SYM_2 = ["_", "\\", "|", "~", "<", ">", "\u20ac", "\u00a3", "\u00a5", "\u00b7"];
+/** Row 3's punctuation, shared by the 123 and #+= layers. */
+const KB_ROW_PUNCT_3 = [".", ",", "?", "!", "'"];
+
 const KEY_FILL_LETTER = "#FFFFFF8C";      // 55% white — luminous "floating chip" like native letter keys
 const KEY_FILL_FUNCTION = "#FFFFFF33";    // 20% white — recessed/dimmer than letter keys (matches native hierarchy)
 const KEY_FILL_SPACE = "#FFFFFF8C";       // matches letter fill
@@ -3715,9 +3774,9 @@ export function buildKeyboardConfig(
   // older keyboard binaries — the ones without the SDUI renderer — can still
   // render the legacy hand-built keyboard. `features.sdui: true` is the switch
   // the SDUI-capable binary flips to walk `root` instead.
-  const letterRow1 = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"];
-  const letterRow2 = ["a", "s", "d", "f", "g", "h", "j", "k", "l"];
-  const letterRow3 = ["z", "x", "c", "v", "b", "n", "m"];
+  const letterRow1 = KB_ROW_LETTERS_1;
+  const letterRow2 = KB_ROW_LETTERS_2;
+  const letterRow3 = KB_ROW_LETTERS_3;
 
   // Emoji layer removed. Users can access the system emoji keyboard via the
   // globe key in the iOS extension bar below Tulmi, so shipping our own
@@ -3844,14 +3903,14 @@ export function buildKeyboardConfig(
         type: "Row",
         style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "123"] },
-        children: ["1","2","3","4","5","6","7","8","9","0"].map(kPunct),
+        children: KB_ROW_NUM_1.map(kPunct),
       },
       // Row 2: - / : ; ( ) $ & @ "
       {
         type: "Row",
         style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "123"] },
-        children: ["-","/",":",";","(",")","$","&","@","\""].map(kPunct),
+        children: KB_ROW_NUM_2.map(kPunct),
       },
       // Row 3: [#+=] . , ? ! ' [backspace]
       {
@@ -3865,7 +3924,7 @@ export function buildKeyboardConfig(
             on: { onPress: { kind: "switchLayout", language: "sym" } },
             style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 15, fontWeight: "regular" },
           },
-          ...[".",",","?","!","'"].map(kPunct),
+          ...KB_ROW_PUNCT_3.map(kPunct),
           { type: "BackspaceKey", style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
         ],
       },
@@ -3877,14 +3936,14 @@ export function buildKeyboardConfig(
         type: "Row",
         style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "sym"] },
-        children: ["[","]","{","}","#","%","^","*","+","="].map(kPunct),
+        children: KB_ROW_SYM_1.map(kPunct),
       },
       // Row 2: _ \ | ~ < > € £ ¥ ·
       {
         type: "Row",
         style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "sym"] },
-        children: ["_","\\","|","~","<",">","€","£","¥","·"].map(kPunct),
+        children: KB_ROW_SYM_2.map(kPunct),
       },
       // Row 3: [123] . , ? ! ' [backspace]
       {
@@ -3898,7 +3957,7 @@ export function buildKeyboardConfig(
             on: { onPress: { kind: "switchLayout", language: "123" } },
             style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION, fontSize: 15, fontWeight: "regular" },
           },
-          ...[".",",","?","!","'"].map(kPunct),
+          ...KB_ROW_PUNCT_3.map(kPunct),
           { type: "BackspaceKey", style: { flex: 1.5, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
         ],
       },
