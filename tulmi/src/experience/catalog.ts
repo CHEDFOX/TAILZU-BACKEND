@@ -5095,7 +5095,22 @@ export function buildKeyboardConfig(
         // Four rounds of reasoning about this geometry produced four wrong
         // answers; "it feels dead here" and "the rect does not reach here"
         // cannot be reconciled by argument, only by looking.
-        "kb.debug.showTouchRects": false,
+        // ON, temporarily. A build carrying the touch partition is installed
+        // and reports feeling unchanged — which either means the partition is
+        // not in that binary, or it is and the geometry is still wrong. Those
+        // two look identical from the outside and no amount of reading the
+        // code separates them. The overlay does, in one screenshot:
+        //
+        //   green   what each key owns (the partition)
+        //   white   the key's painted rect
+        //   red     controls that veto the plane
+        //   orange  shift / layer keys
+        //   blue    the outer band the fallback is bounded by
+        //
+        // If the bottom row has green boxes, the partition is live and we are
+        // arguing about geometry. If it does not, the binary predates it.
+        // Back to false once we know.
+        "kb.debug.showTouchRects": true,
         // Raised from 8. Each side of a 10pt row gap contributed 8, so the gap
         // was covered — IF both neighbours' boxes are what govern it. 12 means
         // one side alone covers the whole gap, so the coverage no longer
