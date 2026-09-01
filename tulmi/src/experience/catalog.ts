@@ -4036,14 +4036,14 @@ export function buildKeyboardConfig(
       // Row 1: q..p
       {
         type: "Row",
-        style: { gap: 6, height: 44, paddingHorizontal: 3 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: letterRow1.map(kLetter),
       },
       // Row 2: a..l (indented half-key each side)
       {
         type: "Row",
-        style: { gap: 6, height: 44, paddingHorizontal: 3 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: [kHalfSpacer(), ...letterRow2.map(kLetter), kHalfSpacer()],
       },
@@ -4054,7 +4054,7 @@ export function buildKeyboardConfig(
       // overlaps the shift/backspace hit area, so edge taps don't cross over.
       {
         type: "Row",
-        style: { gap: 6, height: 44, paddingHorizontal: 3 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: [
           { type: "ShiftKey", style: { flex: 1.35, bg: KEY_FILL_FUNCTION, fg: KEY_TEXT_FUNCTION } },
@@ -4073,21 +4073,21 @@ export function buildKeyboardConfig(
       // Row 1: 1..0
       {
         type: "Row",
-        style: { gap: 6, height: 44, paddingHorizontal: 3 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "123"] },
         children: KB_ROW_NUM_1.map(kPunct),
       },
       // Row 2: - / : ; ( ) $ & @ "
       {
         type: "Row",
-        style: { gap: 6, height: 44, paddingHorizontal: 3 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "123"] },
         children: KB_ROW_NUM_2.map(kPunct),
       },
       // Row 3: [#+=] . , ? ! ' [backspace]
       {
         type: "Row",
-        style: { gap: 6, height: 44, paddingHorizontal: 3 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "123"] },
         children: [
           {
@@ -4106,21 +4106,21 @@ export function buildKeyboardConfig(
       // Row 1: [ ] { } # % ^ * + =
       {
         type: "Row",
-        style: { gap: 6, height: 44, paddingHorizontal: 3 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "sym"] },
         children: KB_ROW_SYM_1.map(kPunct),
       },
       // Row 2: _ \ | ~ < > € £ ¥ ·
       {
         type: "Row",
-        style: { gap: 6, height: 44, paddingHorizontal: 3 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "sym"] },
         children: KB_ROW_SYM_2.map(kPunct),
       },
       // Row 3: [123] . , ? ! ' [backspace]
       {
         type: "Row",
-        style: { gap: 6, height: 44, paddingHorizontal: 3 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "sym"] },
         children: [
           {
@@ -4159,7 +4159,7 @@ export function buildKeyboardConfig(
       // gets the wider space bar instead.
       {
         type: "Row",
-        style: { gap: 6, height: 44, paddingHorizontal: 3 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "en"] },
         children: [
           {
@@ -4198,7 +4198,7 @@ export function buildKeyboardConfig(
       // globe placement as the letter page.
       {
         type: "Row",
-        style: { gap: 6, height: 44, paddingHorizontal: 3 },
+        style: { gap: 6, height: 44 },
         visibleIf: { any: [
           { eq: ["state.layoutId", "123"] },
           { eq: ["state.layoutId", "sym"] },
@@ -4251,7 +4251,7 @@ export function buildKeyboardConfig(
       // same reason the globe key exists.
       {
         type: "Row",
-        style: { gap: 6, height: 44, paddingHorizontal: 3 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "num"] },
         children: [
           ...["1", "2", "3"].map(kPunct),
@@ -4260,7 +4260,7 @@ export function buildKeyboardConfig(
       },
       {
         type: "Row",
-        style: { gap: 6, height: 44, paddingHorizontal: 3 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "num"] },
         children: [
           ...["4", "5", "6"].map(kPunct),
@@ -4269,7 +4269,7 @@ export function buildKeyboardConfig(
       },
       {
         type: "Row",
-        style: { gap: 6, height: 44, paddingHorizontal: 3 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "num"] },
         children: [
           ...["7", "8", "9"].map(kPunct),
@@ -4278,7 +4278,7 @@ export function buildKeyboardConfig(
       },
       {
         type: "Row",
-        style: { gap: 6, height: 44, paddingHorizontal: 3 },
+        style: { gap: 6, height: 44 },
         visibleIf: { eq: ["state.layoutId", "num"] },
         children: [
           {
