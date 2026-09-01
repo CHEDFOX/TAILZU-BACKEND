@@ -588,6 +588,23 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
     : reg["mic.animation"]?.url ? "mic.animation"
     : null;
   const hasIntroMedia = !!introKey;
+  // Send the RESOLVED url, not the key.
+  //
+  // A `{ key }` source makes the client look the key up in the media registry
+  // it got from the bootstrap. That registry is module state on the client and
+  // it is populated as the bootstrap lands — and the intro is the FIRST screen,
+  // rendered at exactly that moment. Lose the race and resolveMedia returns
+  // "empty", the player renders null, and the intro is a black hold. Which is
+  // what it was.
+  //
+  // The server already has the url in hand, so there is nothing to look up.
+  // `{ url, contentType }` resolves with no registry at all, and it is the
+  // oldest branch of that resolver — so it works on every installed bundle,
+  // including ones predating any of this.
+  const introEntry = introKey ? reg[introKey] : undefined;
+  const introSource = introEntry?.url
+    ? { url: introEntry.url, contentType: introEntry.contentType }
+    : { key: introKey };
   // An mp4 needs a Video node; Slideshow and Image are image-only and would
   // render nothing for it — the same "unknown thing draws as blank" failure as
   // a missing component.
@@ -679,7 +696,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           type: "Video",
           style: PLATE_STYLE,
           props: {
-            source: { key: introKey },
+            source: introSource,
             autoplay: true, loop: false, muted: true, contentFit: "cover",
           },
           on: { onComplete: "done" },
@@ -693,7 +710,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           props: {
             // ONE frame. Slideshow is here for its timer and its onComplete,
             // not to cycle anything.
-            frames: [{ key: introKey }],
+            frames: [introSource],
             frameMs: INTRO_PLAY_MS,
             loops: 1,
             // cover, so the media fills the circle edge to edge rather than
@@ -715,7 +732,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
             children: [
               {
                 type: "Image",
-                props: { source: { key: introKey }, contentFit: "cover" },
+                props: { source: introSource, contentFit: "cover" },
                 style: PLATE_STYLE,
               },
               {
