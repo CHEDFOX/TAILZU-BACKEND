@@ -657,6 +657,19 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           on: { onPress: "done" },
           style: { position: "absolute", bottom: 56 },
         } as Node]),
+        // The built-in mark sits UNDER the media, always.
+        //
+        // A media node that cannot resolve — a key whose file has gone, a
+        // codec the device refuses — renders nothing and leaves black for the
+        // whole hold. Painting the mark behind it costs one cheap layer and
+        // means the intro degrades to "the brand mark" instead of "a blank
+        // screen", which is the difference between looking deliberate and
+        // looking broken.
+        {
+          type: "ParticleMark",
+          style: { ...PLATE_STYLE, position: "absolute" },
+          props: { background: "#FFFFFF", circular: true },
+        } as Node,
         // Video path — an uploaded mp4 (what the mic prefers).
         ...(hasIntroMedia && introIsVideo ? [{
           type: "Video",
