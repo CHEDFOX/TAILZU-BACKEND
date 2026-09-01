@@ -4647,7 +4647,7 @@ export function buildKeyboardConfig(
         // the touch to whichever key is on top rather than to the nearer one —
         // trading dead space for a silent bias, which is worse.
         "kb.key.hitSlop.x": 3,
-        "kb.key.hitSlop.y": 8,
+        "kb.key.hitSlop.y": 10,
         "kb.key.shadow.color": "#000000",
         "kb.key.shadow.offsetY": 1,
         "kb.key.shadow.opacity": 0.4,
@@ -4985,13 +4985,22 @@ export function buildKeyboardConfig(
         //
         // Vertical reach beyond each key's rect. The 10pt row gaps are fully
         // covered from both sides; the nearest row wins (dx+dy scoring).
-        "kb.touch.vSlop": 8,
+        // Paint what the plane owns, on the device, in colour. Off by default.
+        // Four rounds of reasoning about this geometry produced four wrong
+        // answers; "it feels dead here" and "the rect does not reach here"
+        // cannot be reconciled by argument, only by looking.
+        "kb.debug.showTouchRects": false,
+        // Raised from 8. Each side of a 10pt row gap contributed 8, so the gap
+        // was covered — IF both neighbours' boxes are what govern it. 12 means
+        // one side alone covers the whole gap, so the coverage no longer
+        // depends on that assumption holding.
+        "kb.touch.vSlop": 12,
         // The TOP letter row (q..p) reaches further UP toward the tools row —
         // overshooting the top row still types.
-        "kb.touch.topRowUpSlop": 12,
+        "kb.touch.topRowUpSlop": 16,
         // The BOTTOM letter row (z..m) reaches further DOWN toward the space
         // row; the space/return/123 keys themselves are veto-protected.
-        "kb.touch.bottomRowDownSlop": 10,
+        "kb.touch.bottomRowDownSlop": 14,
         // Each row's outermost key owns its side margin to the keyboard edge —
         // the dead corners beside "a" and "l" on the indented middle row now
         // type "a" / "l", exactly like native.
