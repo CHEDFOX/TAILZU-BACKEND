@@ -4565,7 +4565,15 @@ export function buildKeyboardConfig(
         // is a clean OTA A/B switch: false falls straight back to that grid
         // (which also restores accent long-press trays) if a device ever shows
         // trouble — no rebuild needed.
-        "kb.keyPlane.enabled": true,
+        // TEMPORARILY FALSE — a test, not a decision.
+        //
+        // Every touch flag I have tuned (holdMultiplier, fillGaps, the slops)
+        // lives INSIDE this plane. If turning the plane off changes nothing,
+        // the plane was never handling touches and none of those flags have
+        // ever done anything — which would explain "only responds on the key"
+        // exactly. If it changes, the plane is live and its geometry is what
+        // is wrong. Put back to true either way.
+        "kb.keyPlane.enabled": false,
 
         // ------------------------------------------------------------------
         // Every remaining native knob, served at its COMPILED DEFAULT.
