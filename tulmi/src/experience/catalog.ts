@@ -541,8 +541,13 @@ const INTRO_PLAY_MS = 2600;
  */
 /** Safety net for a video that never reports completion — a refused codec, a
  *  file that never loads. The intro hides the header and the tabs, so without
- *  this there is no way off the screen at all. */
-const INTRO_VIDEO_MAX_MS = Number(process.env.INTRO_VIDEO_MAX_MS ?? 8000);
+ *  this there is no way off the screen at all.
+ *
+ *  5s, not 8: nothing is painted behind the media any more, so this is now how
+ *  long a failed video shows BLACK before the app appears. The mic animation
+ *  runs a couple of seconds and reports completion long before either number
+ *  matters — this only ever bounds the failure. */
+const INTRO_VIDEO_MAX_MS = Number(process.env.INTRO_VIDEO_MAX_MS ?? 5000);
 const INTRO_BUILT_IN = (process.env.INTRO_BUILT_IN ?? "true").toLowerCase() !== "false";
 /** Round window on black. Shared by the player and its still fallback so the
  *  two can never drift apart. */
@@ -657,19 +662,18 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           on: { onPress: "done" },
           style: { position: "absolute", bottom: 56 },
         } as Node]),
-        // The built-in mark sits UNDER the media, always.
+        // NOTHING is painted under the media.
         //
-        // A media node that cannot resolve — a key whose file has gone, a
-        // codec the device refuses — renders nothing and leaves black for the
-        // whole hold. Painting the mark behind it costs one cheap layer and
-        // means the intro degrades to "the brand mark" instead of "a blank
-        // screen", which is the difference between looking deliberate and
-        // looking broken.
-        {
-          type: "ParticleMark",
-          style: { ...PLATE_STYLE, position: "absolute" },
-          props: { background: "#FFFFFF", circular: true },
-        } as Node,
+        // The mark used to sit behind it as a blank-screen guard, for the case
+        // where a key's file has gone or the device refuses the codec. But the
+        // guard is visible in the normal case too: the mark's particles play
+        // while the video loads, so the opening read as two animations, one
+        // after the other, when it should be one.
+        //
+        // Owner decision: the opening is the in-app mic and nothing else. A
+        // missing file now shows black for the hold rather than a second
+        // animation — the timer below still carries the user through to the
+        // app either way, so the failure costs a beat, not a trap.
         // Video path — an uploaded mp4 (what the mic prefers).
         ...(hasIntroMedia && introIsVideo ? [{
           type: "Video",
