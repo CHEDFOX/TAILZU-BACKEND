@@ -1573,7 +1573,7 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
         },
       ],
     },
-    cacheTtlSeconds: 0,
+    cacheTtlSeconds: 180,
   };
 }
 
@@ -1960,7 +1960,7 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
         },
       ],
     },
-    cacheTtlSeconds: 0,
+    cacheTtlSeconds: 180,
   };
 }
 
@@ -2080,7 +2080,7 @@ function personalityDetailScreen(p: Personality, presetId: string | undefined): 
         { type: "Button", props: { label: isPinned ? "Remove from keyboard" : "Add to keyboard", variant: "secondary" }, on: { onPress: "togglePin" } },
       ],
     },
-    cacheTtlSeconds: 0,
+    cacheTtlSeconds: 300,
   };
 }
 
@@ -2322,7 +2322,7 @@ function personalityCustomizeScreen(p: Personality): ScreenResponse {
         { type: "Button", props: { label: "Learn my voice", variant: "secondary" }, on: { onPress: "learn" } },
       ],
     },
-    cacheTtlSeconds: 0,
+    cacheTtlSeconds: 300,
   };
 }
 
@@ -2488,7 +2488,7 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         row("Delete account", { kind: "navigate", screenId: "delete_account" }, { props: { label: "Delete account", danger: true, chevron: false } }),
       ],
     },
-    cacheTtlSeconds: 0,
+    cacheTtlSeconds: 300,
   };
 }
 
@@ -2672,7 +2672,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
         },
       ],
     },
-    cacheTtlSeconds: 0,
+    cacheTtlSeconds: 45,
   };
 }
 
@@ -2863,7 +2863,7 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
         },
       ],
     },
-    cacheTtlSeconds: 0,
+    cacheTtlSeconds: 45,
   };
 }
 
@@ -2996,7 +2996,7 @@ function onboardingVoice(): ScreenResponse {
         },
       ],
     },
-    cacheTtlSeconds: 0,
+    cacheTtlSeconds: 600,
   };
 }
 
@@ -3119,7 +3119,7 @@ function onboardingKeyboard(): ScreenResponse {
         props: { label: "Skip for now", variant: "secondary" }, on: { onPress: "skip" } },
       { type: "Spacer", style: { height: 55 } },
     ],
-    cacheTtlSeconds: 0,
+    cacheTtlSeconds: 600,
   };
 }
 
@@ -3455,7 +3455,7 @@ function keyboardPrimerScreen(ctx: ScreenContext): ScreenResponse {
         },
       ],
     },
-    cacheTtlSeconds: 0,
+    cacheTtlSeconds: 600,
   };
 }
 
@@ -3595,7 +3595,7 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
         ]]),
       ],
     },
-    cacheTtlSeconds: 0,
+    cacheTtlSeconds: 180,
   };
 }
 
@@ -3611,7 +3611,7 @@ function dictionaryScreen(ctx: ScreenContext): ScreenResponse {
       { type: "Paragraph", props: { content: "Type the word, get the replacement — anywhere you use the Tailzu keyboard." }, style: { marginBottom: 28 } },
       { type: "DictionaryEditor", bind: { value: "dictionary" }, props: { full: true }, on: { onError: "err" } },
     ] },
-    cacheTtlSeconds: 0,
+    cacheTtlSeconds: 180,
   };
 }
 
@@ -3632,7 +3632,7 @@ function languageSelectScreen(ctx: ScreenContext): ScreenResponse {
     state: { language: ctx.language },
     actions: {},
     root: { type: "Screen", children: LANGUAGES.map(row) },
-    cacheTtlSeconds: 0,
+    cacheTtlSeconds: 600,
   };
 }
 
