@@ -539,6 +539,10 @@ const INTRO_PLAY_MS = 2600;
  *
  * Set INTRO_BUILT_IN=false to go back to "no file, no intro".
  */
+/** Safety net for a video that never reports completion — a refused codec, a
+ *  file that never loads. The intro hides the header and the tabs, so without
+ *  this there is no way off the screen at all. */
+const INTRO_VIDEO_MAX_MS = Number(process.env.INTRO_VIDEO_MAX_MS ?? 8000);
 const INTRO_BUILT_IN = (process.env.INTRO_BUILT_IN ?? "true").toLowerCase() !== "false";
 /** Round window on black. Shared by the player and its still fallback so the
  *  two can never drift apart. */
@@ -556,7 +560,33 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
   // onboarding instead of being dropped straight on home (which skipped language
   // pick + keyboard-enable and never set onboarded=true → intro replayed forever).
   const next = ctx.onboarded ? "home" : "onboarding";
-  const hasIntroMedia = !!getMediaRegistryFn?.()?.["intro"]?.url;
+
+  // The opening scene IS the in-app mic.
+  //
+  // Owner decision: the first thing the app shows is the thing the product is,
+  // and it is already uploaded — so the intro reads the SAME media the in-app
+  // mic wears, in the same preference order the mic uses, rather than asking
+  // for a second upload of the same asset under a different key.
+  //
+  //   intro              — an explicit override, if someone ever wants a
+  //                        different opening from the mic
+  //   mic.animation.mp4  — what the mic prefers: a video, so it can hold a frame
+  //   mic.animation      — the GIF fallback
+  //   (nothing)          — the built-in mark assembling itself
+  //
+  // Only the FIRST that exists is used, so uploading a better asset upgrades
+  // the intro with no code change and no second copy of the file.
+  const reg = getMediaRegistryFn?.() ?? {};
+  const introKey =
+    reg["intro"]?.url ? "intro"
+    : reg["mic.animation.mp4"]?.url ? "mic.animation.mp4"
+    : reg["mic.animation"]?.url ? "mic.animation"
+    : null;
+  const hasIntroMedia = !!introKey;
+  // An mp4 needs a Video node; Slideshow and Image are image-only and would
+  // render nothing for it — the same "unknown thing draws as blank" failure as
+  // a missing component.
+  const introIsVideo = introKey?.endsWith(".mp4") === true;
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "intro",
@@ -578,9 +608,17 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
       // Auto-advance owned by the screen. `delay` + `navigate` are both core
       // actions, so this works on every client build — including ones that
       // predate anything here.
-      on: hasIntroMedia ? undefined : {
+      // The timer runs for the BUILT-IN and for VIDEO alike. A video reports
+      // onComplete, but a codec the device refuses, or a file that never loads,
+      // reports nothing at all — and this screen hides the header and the tabs,
+      // so there would be no way off it. Only the image path, which the
+      // Slideshow times itself, is left to its own onComplete.
+      on: (hasIntroMedia && !introIsVideo) ? undefined : {
         onAppear: { kind: "sequence", actions: [
-          { kind: "delay", ms: INTRO_PLAY_MS },
+          // Video gets a longer leash than the built-in mark: this is only the
+          // safety net for a clip that never reports finishing, and cutting a
+          // playing video short is worse than a beat of extra black.
+          { kind: "delay", ms: introIsVideo ? INTRO_VIDEO_MAX_MS : INTRO_PLAY_MS },
           { kind: "navigate", screenId: next },
         ] },
       },
@@ -619,7 +657,17 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           on: { onPress: "done" },
           style: { position: "absolute", bottom: 56 },
         } as Node]),
-        ...(hasIntroMedia ? [{
+        // Video path — an uploaded mp4 (what the mic prefers).
+        ...(hasIntroMedia && introIsVideo ? [{
+          type: "Video",
+          style: PLATE_STYLE,
+          props: {
+            source: { key: introKey },
+            autoplay: true, loop: false, muted: true, contentFit: "cover",
+          },
+          on: { onComplete: "done" },
+        } as Node] : []),
+        ...(hasIntroMedia && !introIsVideo ? [{
           type: "Slideshow",
           // The plate: a white circle the size of the in-app mic, clipping the
           // media to a round window. Same shape and size the user will be
@@ -628,7 +676,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           props: {
             // ONE frame. Slideshow is here for its timer and its onComplete,
             // not to cycle anything.
-            frames: [{ key: "intro" }],
+            frames: [{ key: introKey }],
             frameMs: INTRO_PLAY_MS,
             loops: 1,
             // cover, so the media fills the circle edge to edge rather than
@@ -650,7 +698,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
             children: [
               {
                 type: "Image",
-                props: { source: { key: "intro" }, contentFit: "cover" },
+                props: { source: { key: introKey }, contentFit: "cover" },
                 style: PLATE_STYLE,
               },
               {
