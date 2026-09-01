@@ -4565,15 +4565,25 @@ export function buildKeyboardConfig(
         // is a clean OTA A/B switch: false falls straight back to that grid
         // (which also restores accent long-press trays) if a device ever shows
         // trouble — no rebuild needed.
-        // TEMPORARILY FALSE — a test, not a decision.
+        "kb.keyPlane.enabled": true,
+
+        // Space, return and backspace take part in the touch partition.
         //
-        // Every touch flag I have tuned (holdMultiplier, fillGaps, the slops)
-        // lives INSIDE this plane. If turning the plane off changes nothing,
-        // the plane was never handling touches and none of those flags have
-        // ever done anything — which would explain "only responds on the key"
-        // exactly. If it changes, the plane is live and its geometry is what
-        // is wrong. Put back to true either way.
-        "kb.keyPlane.enabled": false,
+        // Without this the plane owned only the LETTER grid, and its
+        // nearest-key fallback was gated on that grid's bounding box — so the
+        // bottom row, and every gap between its keys, was refused by the plane
+        // and left to each button's own small hit area. That is the dead zone
+        // the user reported, and it is why raising the slops changed nothing:
+        // the plane was never asked about those points.
+        //
+        // Off falls back to that behaviour exactly, so this is a clean switch
+        // if the wider ownership ever mis-targets.
+        //
+        // The globe key is deliberately NOT in the partition, in the app or
+        // here: it opens the system keyboard switcher, and a near-miss
+        // silently swapping the user's keyboard is worse than one doing
+        // nothing.
+        "kb.keyPlane.actionKeys": true,
 
         // ------------------------------------------------------------------
         // Every remaining native knob, served at its COMPILED DEFAULT.
