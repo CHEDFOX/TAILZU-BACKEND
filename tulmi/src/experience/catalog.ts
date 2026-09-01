@@ -721,11 +721,22 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
         ...(hasIntroMedia && !introIsVideo ? [{
           // The plate: a white circle the size of the in-app mic, clipping the
           // media to a round window. Same shape and size the user will be
-          // tapping every day. `cover` so the media fills it edge to edge
-          // rather than leaving white corners inside.
-          type: "Image",
+          // tapping every day.
+          //
+          // The plate is a VIEW wrapping the image, not the image's own style.
+          // `overflow: hidden` clips a view's CHILDREN; on an image element the
+          // pixels are the element itself, so the round corners had nothing to
+          // cut and the media drew square. The Slideshow this replaced wrapped
+          // it the same way internally, which is why it looked right there.
+          type: "Stack",
           style: PLATE_STYLE,
-          props: { source: introSource, contentFit: "cover" },
+          children: [{
+            type: "Image",
+            // Fill the plate. `cover` so the media reaches the edges of the
+            // circle rather than leaving white corners inside it.
+            style: { width: "100%", height: "100%" },
+            props: { source: introSource, contentFit: "cover" },
+          } as Node],
         } as Node] : []),
       ],
     },
