@@ -4807,7 +4807,17 @@ export function buildKeyboardConfig(
         // default is FALSE so store builds never show it. To verify a fresh
         // binary + live OTA delivery in one shot: flip this to true + cache
         // bump — the stamp appearing proves both — then flip back off.
-        "kb.buildStamp.enabled": false,
+        // ON, temporarily. Every keyboard fix I have made in this session is a
+        // FLAG — holdMultiplier, hitSlop, fillGaps — and a flag only does
+        // anything if the config actually reaches the keyboard. The keyboard
+        // needs Full Access and a valid token to fetch it; without either it
+        // runs entirely on compiled defaults, including holdMultiplier 1.0,
+        // which disables the drift slack.
+        //
+        // The stamp settles that in one glance: a version means config is
+        // arriving and the touch values with it; nothing means every fix has
+        // been sitting on the server doing nothing. Turn back off once known.
+        "kb.buildStamp.enabled": true,
         // Cold-open field diagnostics (K3+ binaries). With this on, tapping the
         // keyboard mic shows "<stamp> · <path>" in the status bar — e.g.
         // "K3 · app✓@2 open=NO" (found UIApplication, iOS refused the open) or
