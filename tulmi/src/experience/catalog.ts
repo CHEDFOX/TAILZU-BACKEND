@@ -41,6 +41,60 @@ export function setMediaRegistryAccessor(fn: () => Record<string, MediaEntry>): 
   getMediaRegistryFn = fn;
 }
 
+/**
+ * Media source for a registry key, RESOLVED server-side.
+ *
+ * `{ url, contentType }` instead of `{ key }`: the client resolves it with no
+ * registry lookup at all, which removes the whole class of "the registry
+ * wasn't set yet when this screen rendered" failures — the race that kept the
+ * intro black. The key form survives as the fallback so a screen built while
+ * the registry is somehow empty still degrades to the old behaviour rather
+ * than to nothing.
+ */
+function mediaSrc(key: string): Record<string, unknown> {
+  const entry = getMediaRegistryFn?.()?.[key];
+  return entry?.url ? { url: entry.url, contentType: entry.contentType } : { key };
+}
+
+/**
+ * Optional hero art for a screen — the ONE uniform media slot every major
+ * screen carries.
+ *
+ * Upload to `hero.<screenId>` and the screen opens with that art in a rounded
+ * banner; upload nothing and the node does not exist, so an undressed screen
+ * looks deliberate instead of reserving an empty hole. The check happens HERE,
+ * server-side, which is what makes absence free.
+ *
+ *   POST /v1/media/upload?key=hero.voices      → tones list gets a header
+ *   POST /v1/media/upload?key=hero.stats       → stats screen gets one
+ *   DELETE the key → the banner is gone next fetch
+ *
+ * A GIF animates (expo-image plays it natively); a still just sits. Same
+ * resilient pattern as the intro: plain Image node, resolved url, clipped by a
+ * plain view.
+ */
+function screenHero(screenId: string, opts: { height?: number } = {}): Node[] {
+  const key = `hero.${screenId}`;
+  if (!getMediaRegistryFn?.()?.[key]?.url) return [];
+  return [
+    {
+      type: "Stack",
+      style: {
+        height: opts.height ?? 148,
+        borderRadius: 20,
+        overflow: "hidden",
+        marginBottom: 18,
+        backgroundColor: "#0b0b0f",
+      },
+      children: [{
+        type: "Image",
+        props: { source: mediaSrc(key), contentFit: "cover" },
+        style: { width: "100%", height: "100%" },
+      } as Node],
+    } as Node,
+  ];
+}
+
 // --- Global theme -----------------------------------------------------------
 
 export const THEME: ThemeTokens = {
@@ -509,9 +563,11 @@ function heroSlot(opts: {
   if (override) return { ...override, style: { ...opts.style, ...(override.style ?? {}) } };
 
   const reg = getMediaRegistryFn?.() ?? {};
+  // Resolved to urls server-side — no client registry lookup, no race with
+  // the bootstrap (the failure that kept the intro black).
   const frames = opts.mediaKeys
     .filter((k) => reg[k]?.url)
-    .map((k) => ({ key: k }));
+    .map((k) => mediaSrc(k));
 
   if (frames.length >= 2) {
     return {
@@ -521,10 +577,18 @@ function heroSlot(opts: {
     };
   }
   if (frames.length === 1) {
+    // The VIEW clips, the image fills it. `overflow: hidden` cuts a view's
+    // children; on an image element the pixels are the element itself, so
+    // rounded corners applied straight to the image have nothing to cut —
+    // the intro plate drew square for exactly this reason.
     return {
-      type: "Image",
-      style: opts.style,
-      props: { source: frames[0], contentFit: "cover" },
+      type: "Stack",
+      style: { ...opts.style, overflow: "hidden" },
+      children: [{
+        type: "Image",
+        style: { width: "100%", height: "100%" },
+        props: { source: frames[0], contentFit: "cover" },
+      } as Node],
     };
   }
   return { ...opts.builtIn, style: { ...opts.style, ...(opts.builtIn.style ?? {}) } };
@@ -992,7 +1056,11 @@ function paywallScreen(): ScreenResponse {
   // to an SDUI node, and this becomes that instead.
   children.push(heroSlot({
     id: "paywall",
-    mediaKeys: heroValid.map((f) => f.key).filter((k): k is string => !!k),
+    // `paywall.hero` first: the standing upload slot, same convention as the
+    // hero.<screenId> slots. Config keys follow for multi-frame sequences.
+    // heroSlot drops any key with no upload behind it, so listing the slot
+    // costs nothing until a file exists.
+    mediaKeys: ["paywall.hero", ...heroValid.map((f) => f.key).filter((k): k is string => !!k)],
     frameMs: cfg.heroFrameMs ?? 2200,
     style: { width: "100%", aspectRatio: 1.3, borderRadius: 20, marginBottom: 20 },
     builtIn: {
@@ -1707,7 +1775,7 @@ function personalityScreen(): ScreenResponse {
       // a GIF animates. Absolute inset so it fills regardless of the card height.
       {
         type: "Image",
-        props: { source: { key }, contentFit: "cover" },
+        props: { source: mediaSrc(key), contentFit: "cover" },
         style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%", borderRadius: 0 },
       },
       // Optional blur over the art. Off by default (blur: 0) — a blurred card
@@ -1976,6 +2044,7 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
       type: "Screen",
       style: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 24 },
       children: [
+        ...screenHero("voices"),
         // No Heading: the nav bar already says "Voice", and a screen that
         // says its own name twice reads as a mistake. No standfirst either —
         // the two section headers and the buttons on each row say the same
@@ -2538,6 +2607,7 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
     root: {
       type: "Screen",
       children: [
+        ...screenHero("settings"),
         // Left-aligned title, tighter gap. The prior right-aligned title with a
         // 64 px gap made the list appear to be missing when the first rows fell
         // just below the fold.
@@ -2655,6 +2725,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
     root: {
       type: "Screen",
       children: [
+        ...screenHero("stats"),
         {
           type: "Hero",
           props: {
@@ -2846,6 +2917,7 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
     root: {
       type: "Screen",
       children: [
+        ...screenHero("history"),
         {
           type: "Heading",
           props: { content: "@history.title" },
@@ -3683,6 +3755,7 @@ function dictionaryScreen(ctx: ScreenContext): ScreenResponse {
     state: { dictionary: ctx.dictionary ?? [] },
     actions: { err: { kind: "toast", message: "Couldn't save.", tone: "error" } },
     root: { type: "Screen", children: [
+      ...screenHero("dictionary"),
       { type: "Heading", props: { content: "Dictionary" }, style: { fontSize: 28, fontWeight: "800", color: "$color.text", marginBottom: 8 } },
       { type: "Paragraph", props: { content: "Type the word, get the replacement — anywhere you use the Tailzu keyboard." }, style: { marginBottom: 28 } },
       { type: "DictionaryEditor", bind: { value: "dictionary" }, props: { full: true }, on: { onError: "err" } },
