@@ -575,17 +575,22 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
   //
   //   intro              — an explicit override, if someone ever wants a
   //                        different opening from the mic
-  //   mic.animation.mp4  — what the mic prefers: a video, so it can hold a frame
-  //   mic.animation      — the GIF fallback
+  //   mic.animation      — the GIF
+  //   mic.animation.mp4  — the video, only if there is no GIF
   //   (nothing)          — the built-in mark assembling itself
   //
-  // Only the FIRST that exists is used, so uploading a better asset upgrades
-  // the intro with no code change and no second copy of the file.
+  // The GIF is preferred here, and ONLY here. The in-app mic wants the mp4:
+  // it can freeze on a frame between takes, which a GIF cannot. The intro
+  // needs none of that — it plays once for two seconds and leaves — and the
+  // GIF is drawn by expo-image, which is already carrying every other image in
+  // the app. The mp4 needs expo-video, a separate native module, and a player
+  // built through a hook. That is a lot of machinery to stake a first
+  // impression on when the cheap path shows the same animation.
   const reg = getMediaRegistryFn?.() ?? {};
   const introKey =
     reg["intro"]?.url ? "intro"
-    : reg["mic.animation.mp4"]?.url ? "mic.animation.mp4"
     : reg["mic.animation"]?.url ? "mic.animation"
+    : reg["mic.animation.mp4"]?.url ? "mic.animation.mp4"
     : null;
   const hasIntroMedia = !!introKey;
   // Send the RESOLVED url, not the key.
@@ -605,10 +610,12 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
   const introSource = introEntry?.url
     ? { url: introEntry.url, contentType: introEntry.contentType }
     : { key: introKey };
-  // An mp4 needs a Video node; Slideshow and Image are image-only and would
-  // render nothing for it — the same "unknown thing draws as blank" failure as
-  // a missing component.
-  const introIsVideo = introKey?.endsWith(".mp4") === true;
+  // An mp4 needs a Video node; Image would render nothing for it. Decided from
+  // the RESOLVED entry, not the key's name — an `intro` override can be a video
+  // whatever it is called, and the stored contentType is the authority.
+  const introIsVideo =
+    (introEntry?.contentType ?? "").toLowerCase().startsWith("video/") ||
+    /\.(mp4|mov|m4v|webm)(\?|$)/i.test(introEntry?.url ?? "");
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "intro",
@@ -627,19 +634,20 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
     // hidden.
     root: {
       type: "Stack",
-      // Auto-advance owned by the screen. `delay` + `navigate` are both core
-      // actions, so this works on every client build — including ones that
-      // predate anything here.
-      // The timer runs for the BUILT-IN and for VIDEO alike. A video reports
-      // onComplete, but a codec the device refuses, or a file that never loads,
-      // reports nothing at all — and this screen hides the header and the tabs,
-      // so there would be no way off it. Only the image path, which the
-      // Slideshow times itself, is left to its own onComplete.
-      on: (hasIntroMedia && !introIsVideo) ? undefined : {
+      // Auto-advance owned by the SCREEN, on every path.
+      //
+      // `delay` + `navigate` are core actions, so this works on any client
+      // build. It used to be skipped for the image path, which was left to the
+      // Slideshow's own onComplete — but this screen hides the header and the
+      // tab bar, so a component that renders and then never reports finishing
+      // strands the user with no way off at all. Nothing here depends on a
+      // component reporting anything any more.
+      on: {
         onAppear: { kind: "sequence", actions: [
-          // Video gets a longer leash than the built-in mark: this is only the
-          // safety net for a clip that never reports finishing, and cutting a
-          // playing video short is worse than a beat of extra black.
+          // Video gets a longer leash: it is the one path that can still report
+          // its own completion, so this is only the net for a clip that never
+          // loads, and cutting a playing video short is worse than a beat of
+          // extra black.
           { kind: "delay", ms: introIsVideo ? INTRO_VIDEO_MAX_MS : INTRO_PLAY_MS },
           { kind: "navigate", screenId: next },
         ] },
@@ -701,48 +709,23 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           },
           on: { onComplete: "done" },
         } as Node] : []),
+        // Image path — a GIF, drawn by expo-image, which plays it natively.
+        //
+        // This was a single-frame Slideshow, which existed only to own the
+        // timing. The screen owns that now, so the extra component bought
+        // nothing and cost a dependency: a bundle without Slideshow renders an
+        // unknown node, and an unknown node draws nothing.
+        //
+        // Image is the most basic node there is. Every bundle that can render
+        // this app at all can render it.
         ...(hasIntroMedia && !introIsVideo ? [{
-          type: "Slideshow",
           // The plate: a white circle the size of the in-app mic, clipping the
           // media to a round window. Same shape and size the user will be
-          // tapping every day.
+          // tapping every day. `cover` so the media fills it edge to edge
+          // rather than leaving white corners inside.
+          type: "Image",
           style: PLATE_STYLE,
-          props: {
-            // ONE frame. Slideshow is here for its timer and its onComplete,
-            // not to cycle anything.
-            frames: [introSource],
-            frameMs: INTRO_PLAY_MS,
-            loops: 1,
-            // cover, so the media fills the circle edge to edge rather than
-            // leaving white corners inside it.
-            contentFit: "cover",
-          },
-          on: { onComplete: "done" },
-          // A bundle predating Slideshow would render nothing here AND —
-          // chrome being hidden — have no header or tabs to leave by, since
-          // moving forward depends entirely on onComplete. The fallback shows
-          // the still in the same plate and gives the user a way out.
-          fallback: {
-            type: "Stack",
-            style: {
-              flex: 1, width: "100%", height: "100%",
-              backgroundColor: "#000000",
-              alignItems: "center", justifyContent: "center",
-            },
-            children: [
-              {
-                type: "Image",
-                props: { source: introSource, contentFit: "cover" },
-                style: PLATE_STYLE,
-              },
-              {
-                type: "Button",
-                props: { label: "Get started", variant: "primary" },
-                on: { onPress: "done" },
-                style: { position: "absolute", bottom: 56 },
-              },
-            ],
-          },
+          props: { source: introSource, contentFit: "cover" },
         } as Node] : []),
       ],
     },
