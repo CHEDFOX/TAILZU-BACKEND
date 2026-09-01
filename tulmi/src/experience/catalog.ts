@@ -4621,7 +4621,19 @@ export function buildKeyboardConfig(
         "kb.haptics.enabled": true,
         "kb.haptics.style": "selection",
         // key
-        "kb.key.hitSlop.x": 2,
+        // 3, not 2 — half the 6pt inter-key gap, so two neighbours meet exactly
+        // in the middle of it.
+        //
+        // The letter grid never needed this: the touch plane routes its gaps by
+        // nearest-key. The BOTTOM row does — 123 / . / space / @ / return sit
+        // outside the grid band, so each key covers only its own rect plus this
+        // slop. At 2 that left a 2pt dead strip in every 6pt gap, four times
+        // over, on the row thumbs use most. At 3 the row is continuous.
+        //
+        // Not 4: that would overlap neighbours, and in an overlap UIKit gives
+        // the touch to whichever key is on top rather than to the nearer one —
+        // trading dead space for a silent bias, which is worse.
+        "kb.key.hitSlop.x": 3,
         "kb.key.hitSlop.y": 8,
         "kb.key.shadow.color": "#000000",
         "kb.key.shadow.offsetY": 1,
@@ -4758,7 +4770,10 @@ export function buildKeyboardConfig(
         // means "one key-width of slack". Lower = twitchier, higher =
         // stickier, 0 = the old behavior where any drift onto dead space
         // dropped the keystroke.
-        // "kb.touch.holdMultiplier": 1.0,
+        // holdMultiplier is served live above at 1.35. It used to be commented
+        // out here at 1.0, which is the value that DISABLES the drift slack —
+        // and iOS was compiled with exactly that, so a finger rolling a
+        // millimetre retargeted to the neighbour.
         // cancelCommit rescues taps iOS CANCELS rather than ends — the
         // home-indicator band overlaps the bottom row and steals quick light
         // taps there. A cancelled touch shorter than maxMs that moved less
