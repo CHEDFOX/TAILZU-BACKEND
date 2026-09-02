@@ -149,7 +149,70 @@ function memoryRows(userId: string): StoredRow[] {
 // ---------------------------------------------------------------------------
 
 /**
- * Insert one history row. This is a no-op when:
+ * How long after a row lands a follow-up request is still "the same thing".
+ *
+ * Two clients multiply one action into several rows, and both are timing
+ * rather than intent:
+ *
+ *   - A one-shot upload that times out client-side after the server has
+ *     already transcribed and written it is retried, so the same utterance is
+ *     written again. Same kind, same input, seconds apart.
+ *   - After a dictation stops, the keyboard refines what landed — but the
+ *     stream sends one `final` per segment, and each one that arrives after
+ *     the stop re-arms the refine. One dictation becomes one voice row plus a
+ *     typing row per late segment, each refining a fragment of the text the
+ *     voice row already holds.
+ *
+ * Within this window, the first is dropped and the second is folded into the
+ * row it refines. Env-tunable; 0 disables coalescing entirely.
+ */
+function coalesceWindowMs(): number {
+  const n = Number(process.env.HISTORY_COALESCE_MS ?? 25_000);
+  return Number.isFinite(n) && n >= 0 ? n : 25_000;
+}
+
+/**
+ * Decide whether `entry` is really a continuation of `prev`, and if so what
+ * `prev` should become. Pure, so both storage backends and the tests share
+ * exactly one definition of "the same thing".
+ *
+ *   drop   — an exact repeat (a retried request); keep prev as it is
+ *   merge  — a refine of text prev already holds; prev's output becomes the
+ *            text the user actually ended up with
+ *   null   — a new entry
+ */
+export function coalesce(
+  prev: { kind: string; input: string; output: string; createdAt: string },
+  entry: HistoryInput,
+  now = Date.now(),
+): { action: "drop" } | { action: "merge"; output: string; wordsOut: number } | null {
+  const window = coalesceWindowMs();
+  if (window <= 0) return null;
+  const age = now - Date.parse(prev.createdAt);
+  if (!(age >= 0 && age <= window)) return null;
+
+  if (prev.kind === entry.kind && prev.input === entry.input) return { action: "drop" };
+
+  if (entry.kind === "typing") {
+    const from = entry.input.trim();
+    if (from.length > 0 && prev.output.includes(from)) {
+      // The keyboard replaced exactly this text at the cursor with the refined
+      // version; do the same to the row so it shows what the user has.
+      const output = prev.output.replace(from, entry.output.trim());
+      return { action: "merge", output, wordsOut: countWordsLocal(output) };
+    }
+  }
+  return null;
+}
+
+function countWordsLocal(text: string): number {
+  const t = text.trim();
+  return t ? t.split(/\s+/).length : 0;
+}
+
+/**
+ * Insert one history row — or fold it into the previous one, see coalesce().
+ * This is a no-op when:
  *  - Supabase is disabled AND we have no in-memory fallback (never — the map
  *    is always available), OR
  *  - the passed `personality` doesn't have history consent set.
@@ -168,7 +231,18 @@ export async function appendHistoryEntry(
 
   const sb = dataClientFor(user);
   if (!sb) {
-    memoryRows(user.id).unshift({
+    const rows = memoryRows(user.id);
+    const prev = rows.find((r) => !r.deletedAt);
+    if (prev) {
+      const c = coalesce(prev, entry);
+      if (c?.action === "drop") return;
+      if (c?.action === "merge") {
+        prev.output = c.output;
+        prev.wordsOut = c.wordsOut;
+        return;
+      }
+    }
+    rows.unshift({
       id: randomUUID(),
       kind: entry.kind,
       targetApp: entry.targetApp,
@@ -182,6 +256,40 @@ export async function appendHistoryEntry(
       audioSeconds,
     });
     return;
+  }
+
+  // One extra read per write, so a retried upload or a per-segment refine
+  // does not become its own row. Any failure here falls through to a plain
+  // insert — a duplicate is the lesser harm.
+  const { data: last } = await sb
+    .from("cleanup_history")
+    .select("id, kind, input, output, created_at")
+    .eq("user_id", user.id)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(1);
+  const prev = last?.[0];
+  if (prev) {
+    const c = coalesce(
+      {
+        kind: String(prev.kind),
+        input: String(prev.input ?? ""),
+        output: String(prev.output ?? ""),
+        createdAt: String(prev.created_at),
+      },
+      entry,
+    );
+    if (c?.action === "drop") return;
+    if (c?.action === "merge") {
+      const { error: upErr } = await sb
+        .from("cleanup_history")
+        .update({ output: c.output, words_out: c.wordsOut })
+        .eq("id", prev.id)
+        .eq("user_id", user.id);
+      if (!upErr) return;
+      console.error(`[history] merge failed for ${user.id}, inserting instead:`, upErr.message);
+    }
   }
 
   const { error } = await sb.from("cleanup_history").insert({

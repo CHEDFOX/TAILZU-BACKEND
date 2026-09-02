@@ -10,6 +10,7 @@ process.env.DEV_SKIP_AUTH = "true";
 // eslint-disable-next-line import/first
 import {
   appendHistoryEntry,
+  coalesce,
   deleteHistoryEntry,
   hasConsentedToHistory,
   listHistory,
@@ -70,6 +71,71 @@ describe("appendHistoryEntry", () => {
     // The row should have a UUID id + createdAt.
     expect(entries[0]?.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(typeof entries[0]?.createdAt).toBe("string");
+  });
+});
+
+describe("coalescing", () => {
+  it("drops an exact repeat inside the window — a retried upload", async () => {
+    const user = makeUser("hs-retry");
+    const entry = { kind: "voice" as const, input: "hello there", output: "Hello there." };
+    await appendHistoryEntry(user, CONSENT_HISTORY, entry);
+    await appendHistoryEntry(user, CONSENT_HISTORY, entry);
+    const { entries } = await listHistory(user);
+    expect(entries).toHaveLength(1);
+  });
+
+  it("folds the refine of a dictation into the dictation's row", async () => {
+    const user = makeUser("hs-fold");
+    await appendHistoryEntry(user, CONSENT_HISTORY, {
+      kind: "voice", input: "send it monday", output: "send it monday",
+    });
+    await appendHistoryEntry(user, CONSENT_HISTORY, {
+      kind: "typing", input: "send it monday", output: "Send it on Monday.",
+    });
+    const { entries } = await listHistory(user);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.kind).toBe("voice");
+    expect(entries[0]?.input).toBe("send it monday");
+    expect(entries[0]?.output).toBe("Send it on Monday.");
+  });
+
+  it("folds a refine of one late segment into the text the row already holds", async () => {
+    const user = makeUser("hs-fold-fragment");
+    await appendHistoryEntry(user, CONSENT_HISTORY, {
+      kind: "voice", input: "x", output: "First part. second part",
+    });
+    await appendHistoryEntry(user, CONSENT_HISTORY, {
+      kind: "typing", input: "second part", output: "Second part.",
+    });
+    const { entries } = await listHistory(user);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.output).toBe("First part. Second part.");
+  });
+
+  it("keeps a genuinely new entry", async () => {
+    const user = makeUser("hs-new");
+    await appendHistoryEntry(user, CONSENT_HISTORY, { kind: "voice", input: "a", output: "A." });
+    await appendHistoryEntry(user, CONSENT_HISTORY, { kind: "typing", input: "b", output: "B." });
+    const { entries } = await listHistory(user);
+    expect(entries).toHaveLength(2);
+  });
+
+  it("does nothing outside the window", () => {
+    const old = new Date(Date.now() - 60_000).toISOString();
+    expect(coalesce({ kind: "voice", input: "a", output: "a", createdAt: old },
+                    { kind: "voice", input: "a", output: "a" })).toBeNull();
+  });
+
+  it("is off when the window is 0", () => {
+    const prevEnv = process.env.HISTORY_COALESCE_MS;
+    process.env.HISTORY_COALESCE_MS = "0";
+    try {
+      expect(coalesce({ kind: "voice", input: "a", output: "a", createdAt: new Date().toISOString() },
+                      { kind: "voice", input: "a", output: "a" })).toBeNull();
+    } finally {
+      if (prevEnv === undefined) delete process.env.HISTORY_COALESCE_MS;
+      else process.env.HISTORY_COALESCE_MS = prevEnv;
+    }
   });
 });
 
@@ -176,7 +242,9 @@ describe("statsForUser", () => {
         CONSENT_HISTORY,
         {
           kind: "voice",
-          input: "hi",
+          // Distinct per row: identical input seconds apart is a retried
+          // upload and is coalesced away on purpose.
+          input: `hi ${i}`,
           output: "cleaned output",
           wordsOut: 40,
         },
