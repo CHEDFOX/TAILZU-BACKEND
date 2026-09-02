@@ -266,6 +266,8 @@ export function bumpCacheVersion(): string {
 const PROMPT_FIRST_LAUNCH = 3;    // not before the 3rd open
 const PROMPT_EVERY = 4;           // then every 4th
 const PROMPT_GIVE_UP_AFTER = 40;  // and never after the 40th
+/** How long to let the user get on with things before the card appears. */
+const PROMPT_AFTER_MS = 9000;
 
 function arrivalPrompt(opts: { launchCount?: number; languagesSet?: boolean }): string | null {
   if (opts.languagesSet) return null;
@@ -369,7 +371,18 @@ export function buildBootstrap(
         // shape the soft paywall already uses — so it is a card over the app,
         // not a gate in front of it. Any screen id works here; today the only
         // thing worth asking twice is which languages you speak.
-        ...(arrivalPrompt(opts) ? { promptScreenId: arrivalPrompt(opts)! } : {}),
+        ...(arrivalPrompt(opts)
+          ? {
+              promptScreenId: arrivalPrompt(opts)!,
+              // Not at the door. A card that lands the instant the app opens
+              // interrupts whatever the user came to do, which is the same
+              // mistake as asking during onboarding — just later. Waiting a
+              // few seconds means it arrives in a pause rather than in the
+              // way, and the client drops it entirely if the user starts
+              // doing something in the meantime.
+              promptAfterMs: PROMPT_AFTER_MS,
+            }
+          : {}),
 
         // IN-APP mic capture mode — the app's counterpart to the keyboard's
         // kb.mic.mode, so both surfaces are switchable from here with no app

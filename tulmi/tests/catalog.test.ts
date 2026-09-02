@@ -32,6 +32,16 @@ describe("the arrival prompt", () => {
     expect(flags({ launchCount: 11 }).promptScreenId).toBe("languages");
   });
 
+  it("waits before appearing rather than landing at the door", () => {
+    const f = flags({ launchCount: 3 });
+    expect(f.promptScreenId).toBe("languages");
+    expect(Number(f.promptAfterMs)).toBeGreaterThanOrEqual(5000);
+  });
+
+  it("carries no delay when there is nothing to show", () => {
+    expect(flags({ launchCount: 4 }).promptAfterMs).toBeUndefined();
+  });
+
   it("never asks once the card is answered", () => {
     expect(flags({ launchCount: 7, languagesSet: true }).promptScreenId).toBeUndefined();
     expect(flags({ launchCount: 39, languagesSet: true }).promptScreenId).toBeUndefined();
