@@ -14,6 +14,40 @@ import {
   currentCacheVersion,
 } from "../src/experience/catalog.js";
 
+describe("the arrival prompt", () => {
+  const flags = (o: Parameters<typeof buildBootstrap>[0]) =>
+    (buildBootstrap(o).flags ?? {}) as Record<string, unknown>;
+
+  it("stays away until the app is familiar", () => {
+    for (let n = 0; n < 3; n++) {
+      expect(flags({ launchCount: n }).promptScreenId).toBeUndefined();
+    }
+  });
+
+  it("asks on the third launch, then every fourth", () => {
+    expect(flags({ launchCount: 3 }).promptScreenId).toBe("languages");
+    expect(flags({ launchCount: 4 }).promptScreenId).toBeUndefined();
+    expect(flags({ launchCount: 6 }).promptScreenId).toBeUndefined();
+    expect(flags({ launchCount: 7 }).promptScreenId).toBe("languages");
+    expect(flags({ launchCount: 11 }).promptScreenId).toBe("languages");
+  });
+
+  it("never asks once the card is answered", () => {
+    expect(flags({ launchCount: 7, languagesSet: true }).promptScreenId).toBeUndefined();
+    expect(flags({ launchCount: 39, languagesSet: true }).promptScreenId).toBeUndefined();
+  });
+
+  it("gives up rather than nagging forever", () => {
+    expect(flags({ launchCount: 43 }).promptScreenId).toBeUndefined();
+    expect(flags({ launchCount: 400 }).promptScreenId).toBeUndefined();
+  });
+
+  it("treats a missing or junk count as too early to ask", () => {
+    expect(flags({}).promptScreenId).toBeUndefined();
+    expect(flags({ launchCount: Number.NaN }).promptScreenId).toBeUndefined();
+  });
+});
+
 describe("buildBootstrap", () => {
   it("returns theme + navigation + home initial screen when onboarded", () => {
     const b = buildBootstrap({ onboarded: true });

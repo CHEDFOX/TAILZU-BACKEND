@@ -1279,11 +1279,19 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   // Auth is optional here so the shell can boot; when present, the user's
   // profile decides whether onboarding still needs to run.
   const user = await resolveUser(req.headers["authorization"]);
-  const profile = user ? await getProfile(user) : null;
+  // The personality is read here only to know whether the Languages card has
+  // been answered — see arrivalPrompt. One read per launch, in parallel with
+  // the profile, so it costs no extra latency.
+  const [profile, personality] = user
+    ? await Promise.all([getProfile(user), getPersonality(user).catch(() => null)])
+    : [null, null];
+  const reqBody = (req.body ?? {}) as { launchCount?: number };
   const bootstrap = buildBootstrap({
     onboarded: profile?.onboarded ?? false,
     // Both answers are required by the card, so either one proves it ran.
     profileComplete: !!(profile?.fullName || profile?.gender),
+    launchCount: Number(reqBody.launchCount) || 0,
+    languagesSet: !!personality?.languages?.length,
   });
   // Attach the current media registry so clients can resolve keys → URLs
   // without a separate roundtrip. Keys are semantic ("brand.mark",

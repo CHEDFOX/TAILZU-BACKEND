@@ -246,8 +246,41 @@ export function bumpCacheVersion(): string {
 
 // --- Bootstrap --------------------------------------------------------------
 
+/**
+ * Should this launch open with a prompt on top of the first screen, and which?
+ *
+ * A question the user has not answered is worth asking again — but not at the
+ * door, and not every time. The rules, in order:
+ *
+ *   - Never before they have used the app a few times. A prompt on launch two
+ *     is onboarding wearing a different hat, which is what we just removed.
+ *   - Then periodically, not on every launch, so dismissing it buys real quiet
+ *     rather than one screen.
+ *   - And it stops for good after a while. Someone who has declined a dozen
+ *     times has answered.
+ *
+ * It resolves itself: the moment the user picks a language the condition is
+ * false and the prompt never returns. Every number here is a constant in one
+ * place, so the cadence is editable without touching the logic.
+ */
+const PROMPT_FIRST_LAUNCH = 3;    // not before the 3rd open
+const PROMPT_EVERY = 4;           // then every 4th
+const PROMPT_GIVE_UP_AFTER = 40;  // and never after the 40th
+
+function arrivalPrompt(opts: { launchCount?: number; languagesSet?: boolean }): string | null {
+  if (opts.languagesSet) return null;
+  const n = Number(opts.launchCount ?? 0);
+  if (!Number.isFinite(n) || n < PROMPT_FIRST_LAUNCH || n > PROMPT_GIVE_UP_AFTER) return null;
+  return (n - PROMPT_FIRST_LAUNCH) % PROMPT_EVERY === 0 ? "languages" : null;
+}
+
 export function buildBootstrap(
-  opts: { onboarded?: boolean; profileComplete?: boolean } = {},
+  opts: {
+    onboarded?: boolean;
+    profileComplete?: boolean;
+    launchCount?: number;
+    languagesSet?: boolean;
+  } = {},
 ): BootstrapResponse {
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
@@ -330,6 +363,13 @@ export function buildBootstrap(
         //
         // Back to true and the native grid returns, no build.
         "needsLanguagePick": false,
+
+        // A screen to present on top of the first one, this launch only.
+        // Absent on most launches. The app pushes it dismissibly — the same
+        // shape the soft paywall already uses — so it is a card over the app,
+        // not a gate in front of it. Any screen id works here; today the only
+        // thing worth asking twice is which languages you speak.
+        ...(arrivalPrompt(opts) ? { promptScreenId: arrivalPrompt(opts)! } : {}),
 
         // IN-APP mic capture mode — the app's counterpart to the keyboard's
         // kb.mic.mode, so both surfaces are switchable from here with no app

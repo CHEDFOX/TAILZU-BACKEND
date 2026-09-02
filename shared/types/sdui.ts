@@ -96,6 +96,14 @@ export interface BootstrapRequest {
   capabilities: ClientCapabilities;
   /** Opaque session/auth token if the user is signed in. */
   authToken?: string;
+  /**
+   * How many times this install has opened the app, this one included.
+   *
+   * Lets the server time a prompt by familiarity rather than by calendar —
+   * "once they have been here a few times" is a thing only the client can
+   * count, and counting it here keeps the decision itself on the server.
+   */
+  launchCount?: number;
 }
 
 export interface BootstrapResponse {
