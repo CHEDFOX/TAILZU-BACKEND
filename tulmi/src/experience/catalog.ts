@@ -416,6 +416,14 @@ export function buildBootstrap(
         // a reinstall or a second device asked the same user again. Their
         // answers live on the profile now, so this follows the account.
         "profile.complete": opts.profileComplete === true,
+        // Art behind the name-and-gender card. The app has read this flag
+        // since the card was built, and nothing ever served it — the slot was
+        // wired at one end only. A plain url, because the card is native and
+        // resolves nothing; absent until something is uploaded to
+        // `profile.card`, so the card stays as it is today.
+        ...(getMediaRegistryFn?.()?.["profile.card"]?.url
+          ? { "profileCard.media": getMediaRegistryFn!()["profile.card"]!.url }
+          : {}),
         // SMS sign-in. The auth gate runs BEFORE there is a session, so it
         // reads this from the (auth-optional) bootstrap. Off until an SMS
         // provider is actually live in Supabase — turning it on without one
