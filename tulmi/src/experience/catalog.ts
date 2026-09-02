@@ -3449,6 +3449,13 @@ function onboardingKeyboard(): ScreenResponse {
         style: { fontSize: 26, lineHeight: 34, color: "$color.text", marginBottom: 8 } },
       { type: "Paragraph", props: { content: "One minute in Settings — after that, Tailzu writes with you in every app." },
         style: { fontSize: 13, lineHeight: 21, marginBottom: 21 } },
+      // Optional demo of the walk through Settings. Upload to
+      // hero.onboarding_keyboard and it appears here, above the written
+      // steps; upload nothing and the node does not exist, so the screen
+      // stays exactly as it is. A GIF plays — which is what this screen
+      // wants, since the steps are a sequence and showing one beats
+      // describing three.
+      ...screenHero("onboarding_keyboard", { height: 200 }),
       // The steps card. Apple does NOT allow deep-linking into
       // Settings > Keyboards, so the button below lands on Tailzu's own
       // Settings page (which exists because the voice-permission screen just
