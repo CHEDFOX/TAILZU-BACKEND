@@ -417,7 +417,14 @@ export async function localize<T extends AnyResponse>(
 
   // Translate (cached) then Pass 2 — substitute.
   const map = await ensureTranslations(info.code, info.name, [...found]);
-  const localized = transformResponse(resp, (s) => map.get(s) ?? s);
+  // An empty translation is a missing one, not a blank label. `??` treated ""
+  // as an answer, so any string the model returned empty for — short button
+  // words were the ones it dropped — rendered as nothing on every screen for
+  // every non-English user. The source text is always the better fallback.
+  const localized = transformResponse(resp, (s) => {
+    const t = map.get(s);
+    return typeof t === "string" && t.trim() ? t : s;
+  });
 
   // RTL languages: tell the app to flip layout (bootstrap only).
   if (RTL.has(info.code) && "navigation" in (localized as unknown as Record<string, unknown>)) {
