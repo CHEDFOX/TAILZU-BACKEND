@@ -4514,7 +4514,9 @@ export function buildKeyboardConfig(
       listening: "Listening…",
       transcribing: "Transcribing…",
       refining: "Refining…",
-      space: "space",
+      // Blank by owner decision: the bar's size says what it is. Both
+      // keyboards honour "" as a label, not as a missing one.
+      space: "",
       return: "return",
       needFullAccess: "Enable Full Access to use voice + Refine.",
       language: "Language",
@@ -4600,7 +4602,7 @@ export function buildKeyboardConfig(
         // Flip to true once a build containing kb.dictation.dim.blur is out —
         // one backend edit, no rebuild. Everything else in this block is
         // already tuned for that day.
-        "kb.dictation.dim.enabled": false,
+        "kb.dictation.dim.enabled": true,
         "kb.dictation.dim.blur": true,          // iOS UIVisualEffectView
         "kb.dictation.dim.blurRadius": 14,      // Android RenderEffect, API 31+
         // The TINT is now nearly nothing, and that is the fix for "the whole
