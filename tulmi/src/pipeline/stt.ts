@@ -46,15 +46,6 @@ function sttLanguage(_hint: LanguageHint | undefined): string | undefined {
   return undefined;
 }
 
-/** Human-readable name for the languages we bias toward. Unknown codes pass
- *  through as-is — the bias line is prose, so an unrecognized code is
- *  harmless. */
-const LANGUAGE_NAMES: Record<string, string> = {
-  hi: "Hindi", mr: "Marathi", ta: "Tamil", te: "Telugu", bn: "Bengali",
-  gu: "Gujarati", pa: "Punjabi", kn: "Kannada", ml: "Malayalam", ur: "Urdu",
-  en: "English", es: "Spanish", fr: "French", de: "German", pt: "Portuguese",
-  ar: "Arabic", ja: "Japanese", ko: "Korean", zh: "Chinese", ru: "Russian",
-};
 
 export interface SttResult {
   text: string;
@@ -134,7 +125,15 @@ export function isUsableAlternative(primary: string, other: string): boolean {
   const o = other.trim().length;
   if (!o || !p) return false;
   const ratio = Math.min(p, o) / Math.max(p, o);
-  return ratio >= 0.4;
+  if (ratio < 0.4) return false;
+  // Two readings of the same speech share a script. One in Devanagari and
+  // one in Latin is not a disagreement about what was said — it is a
+  // translation or a romanization from an engine that drifted, and handing
+  // both to the writer as "candidates" produced text that was neither.
+  const ps = detectScript(primary);
+  const os = detectScript(other);
+  if (ps !== "unknown" && os !== "unknown" && ps !== os) return false;
+  return true;
 }
 
 function isIndicResult(r: RawSttResult): boolean {
@@ -276,13 +275,6 @@ export interface SttInput {
 // Devanagari on a whim, which then propagates through cleanup and lands as
 // text the user didn't write. Naming the languages we serve most also lifts
 // recognition on them.
-const CODE_SWITCH_HINT = [
-  "The speaker may mix multiple languages in one sentence — for example Hindi, Marathi,",
-  "Tamil, Telugu, Bengali, Gujarati, Punjabi, Kannada, Malayalam or Urdu mixed with English.",
-  "Transcribe each word in the script the speaker actually used: keep romanized speech in",
-  "Latin script, and keep native-script speech in its own script. Do not translate.",
-].join(" ");
-
 /**
  * Whisper's prompt biases spelling/vocabulary — fold in the user's dictionary
  * and (softly) whatever language they tend to speak.
@@ -293,18 +285,57 @@ const CODE_SWITCH_HINT = [
  * different language or a mid-sentence switch. Pinning the parameter does the
  * opposite — it forecloses detection entirely (see sttLanguage).
  */
-function sttPrompt(vocabulary?: string, hint?: LanguageHint): string {
-  const parts = [CODE_SWITCH_HINT];
-  const code = hint && hint !== "auto" && hint !== "hinglish" ? String(hint) : undefined;
-  if (code) {
-    const name = LANGUAGE_NAMES[code] ?? code;
-    parts.push(`This speaker often speaks ${name}, but may speak any language — transcribe what you actually hear.`);
-  } else if (hint === "hinglish") {
-    parts.push("This speaker often mixes Hindi and English in one sentence.");
-  }
+/**
+ * A short line of ordinary text in the language — and, above all, the
+ * SCRIPT — the speaker is likely to use. Whisper's prompt is not an
+ * instruction channel: the decoder treats it as the transcript that came
+ * just before, and continues in the same language and script. A paragraph of
+ * English instructions therefore did the opposite of what it said — it told
+ * the decoder the preceding speech was English, and Hindi came back
+ * romanized, or translated, or as a mix of both. Exemplars carry no
+ * instructions at all; they only set the script.
+ */
+const SCRIPT_EXEMPLARS: Record<string, string> = {
+  hi: "हाँ, कल सुबह मिलते हैं।",
+  mr: "हो, उद्या सकाळी भेटू.",
+  ta: "சரி, நாளை காலை சந்திப்போம்.",
+  te: "సరే, రేపు ఉదయం కలుద్దాం.",
+  bn: "ঠিক আছে, কাল সকালে দেখা হবে।",
+  gu: "હા, કાલે સવારે મળીએ.",
+  pa: "ਹਾਂ, ਕੱਲ੍ਹ ਸਵੇਰੇ ਮਿਲਦੇ ਹਾਂ।",
+  kn: "ಸರಿ, ನಾಳೆ ಬೆಳಿಗ್ಗೆ ಭೇಟಿಯಾಗೋಣ.",
+  ml: "ശരി, നാളെ രാവിലെ കാണാം.",
+  ur: "ٹھیک ہے، کل صبح ملتے ہیں۔",
+  // Romanized by choice: Hinglish speakers want Latin script back.
+  hinglish: "Haan, kal subah milte hain office mein.",
+  en: "Yes, let's meet tomorrow morning.",
+  es: "Sí, nos vemos mañana por la mañana.",
+  fr: "Oui, on se voit demain matin.",
+  de: "Ja, wir sehen uns morgen früh.",
+  pt: "Sim, vamos nos ver amanhã de manhã.",
+  ar: "نعم، نلتقي غدًا صباحًا.",
+  ja: "はい、明日の朝に会いましょう。",
+  ko: "네, 내일 아침에 만나요.",
+  zh: "好的，明天早上见。",
+  ru: "Да, увидимся завтра утром.",
+};
+
+/**
+ * What Whisper is told before it listens.
+ *
+ * With a language hint: a short exemplar in that language's script, then
+ * the user's dictionary terms. With "auto": the terms alone — no prose in any
+ * language, so nothing tips the decoder before it has heard a word. Empty
+ * when there is nothing to say; the SDK omits an undefined prompt.
+ */
+export function sttPrompt(vocabulary?: string, hint?: LanguageHint): string | undefined {
+  const parts: string[] = [];
+  const key = hint && hint !== "auto" ? String(hint).toLowerCase() : undefined;
+  const exemplar = key ? SCRIPT_EXEMPLARS[key] : undefined;
+  if (exemplar) parts.push(exemplar);
   const terms = vocabulary?.replace(/\s*\n\s*/g, ", ").trim();
-  if (terms) parts.push(`Likely names/terms: ${terms}.`);
-  return parts.join(" ");
+  if (terms) parts.push(terms);
+  return parts.length ? parts.join(" ") : undefined;
 }
 
 /**
