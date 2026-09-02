@@ -4813,8 +4813,15 @@ export function buildKeyboardConfig(
         "kb.tone.sheet.enabled": true,
         "kb.tone.sheet.longPressMs": 300,
         // touch
-        "kb.touch.cancelCommit.maxDriftPt": 12,
-        "kb.touch.cancelCommit.maxMs": 300,
+        // Widened. A light tap that iOS cancels instead of ending is only
+        // rescued when it was short and still; "hard touches register, light
+        // ones don't" is exactly the shape of taps falling just outside these
+        // bounds. The rescue acts only on touches iOS already cancelled and
+        // that have not committed, so it can never type twice — widening it
+        // only risks committing a cancelled gesture that was still, brief and
+        // a tap in every measurable way.
+        "kb.touch.cancelCommit.maxDriftPt": 24,
+        "kb.touch.cancelCommit.maxMs": 700,
         "kb.touch.fillGaps": true,
         "kb.touch.holdMultiplier": 1.35,
         // waveform
