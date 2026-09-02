@@ -4930,7 +4930,7 @@ export function buildKeyboardConfig(
         // The stamp settles that in one glance: a version means config is
         // arriving and the touch values with it; nothing means every fix has
         // been sitting on the server doing nothing. Turn back off once known.
-        "kb.buildStamp.enabled": true,
+        "kb.buildStamp.enabled": false,
         // Cold-open field diagnostics (K3+ binaries). With this on, tapping the
         // keyboard mic shows "<stamp> · <path>" in the status bar — e.g.
         // "K3 · app✓@2 open=NO" (found UIApplication, iOS refused the open) or
@@ -5117,7 +5117,7 @@ export function buildKeyboardConfig(
         // If the bottom row has green boxes, the partition is live and we are
         // arguing about geometry. If it does not, the binary predates it.
         // Back to false once we know.
-        "kb.debug.showTouchRects": true,
+        "kb.debug.showTouchRects": false,
         // Raised from 8. Each side of a 10pt row gap contributed 8, so the gap
         // was covered — IF both neighbours' boxes are what govern it. 12 means
         // one side alone covers the whole gap, so the coverage no longer
