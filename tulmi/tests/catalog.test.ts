@@ -322,11 +322,12 @@ describe("buildKeyboardConfig", () => {
     expect(served).toBe(Number(process.env.FREE_MONTHLY_WORDS ?? 2500) || 0);
   });
 
-  it("keeps SMS sign-in off unless the env turns it on", () => {
-    // The gate reads this BEFORE there is a session, and a phone pill with no
-    // SMS provider behind it is a dead end. Default-off is the safe state.
+  it("offers SMS sign-in unless the env turns it off", () => {
+    // Twilio is live in Supabase now, so the pill is on by default. The env
+    // stays as the kill switch: AUTH_ENABLE_PHONE=false hides it in a region
+    // where delivery goes bad, with no deploy.
     const boot = buildBootstrap();
-    expect(boot.flags?.["auth.enablePhone"]).toBe(process.env.AUTH_ENABLE_PHONE === "true");
+    expect(boot.flags?.["auth.enablePhone"]).toBe(process.env.AUTH_ENABLE_PHONE !== "false");
   });
 
   it("ships a Flow transport the app and the keyboard both read", () => {

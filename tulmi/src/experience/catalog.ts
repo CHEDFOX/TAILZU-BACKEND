@@ -174,7 +174,7 @@ const FLOW_TRANSPORT = process.env.FLOW_TRANSPORT === "oneshot" ? "oneshot" : "s
  * moment Twilio is verified in Supabase, without a deploy — and turned off just
  * as fast if SMS delivery goes bad in a region.
  */
-const AUTH_ENABLE_PHONE = process.env.AUTH_ENABLE_PHONE === "true";
+const AUTH_ENABLE_PHONE = process.env.AUTH_ENABLE_PHONE !== "false";
 
 /**
  * When the intro plays: "firstRun" (default), "everyLaunch", or "never".
@@ -784,14 +784,13 @@ function languagesScreen(ctx: ScreenContext): ScreenResponse {
         ...screenHero("languages"),
         {
           type: "Heading",
-          props: { content: "Your daily languages" },
+          props: { content: "Languages you speak" },
           style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 6 },
         },
         {
           type: "Paragraph",
           props: {
-            content:
-              "Pick every language you actually speak — mixing two in one sentence is normal, and Tailzu writes better when it knows which ones. The first is your main one.",
+            content: "Tap each one you use. The first is your main one.",
           },
           style: { marginBottom: 20 },
         },
@@ -1619,7 +1618,11 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
           // micError echoes the real failure ($event) — a permission denial or
           // an audio-session error must NOT look like a generic "check your
           // connection" toast, or it's undebuggable in the field.
-          on: { onError: "micError" },
+          // onChange fires once the transcript has been written into the
+          // field — that IS the moment to refine. Without it, speaking filled
+          // the box and nothing else happened; the user had to know to tap
+          // the card as well, and did not.
+          on: { onChange: "refine", onError: "micError" },
           // Older bundles don't have VoiceToggle in their registry. VoiceButton
           // has shipped since the initial SDUI release, drives the same bind,
           // and reads state → mic → transcript → writes back. Same product
@@ -1628,7 +1631,7 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
             type: "VoiceButton",
             bind: { value: bindKey },
             props: { targetApp: "WhatsApp", language: "auto" },
-            on: { onError: "micError" },
+            on: { onChange: "refine", onError: "micError" },
           },
         },
       ] },
@@ -1799,7 +1802,7 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
                 },
               ],
             },
-            { type: "Text", visibleIf: { falsy: "refining" }, props: { content: "Refine" },
+            { type: "Text", visibleIf: { falsy: "refining" }, props: { content: "" },
               style: { fontSize: 11, fontWeight: "600", color: "$color.muted", letterSpacing: 0.5 } },
             { type: "Text", visibleIf: { truthy: "refining" }, props: { content: "Refining\u2026" },
               style: { fontSize: 11, fontWeight: "600", color: "$color.muted", letterSpacing: 0.5 } },
@@ -3306,10 +3309,10 @@ function onboardingVoice(): ScreenResponse {
       // the same ladder (13, 21, 34, 55). One ratio everywhere is what makes
       // the screen read composed instead of arbitrary.
       children: [
-        { type: "Overline", props: { content: "Step 1 of 2" }, style: { textAlign: "center", marginBottom: 13 } },
+        { type: "Overline", props: { content: "Voice" }, style: { textAlign: "center", marginBottom: 13 } },
         {
           type: "Heading",
-          props: { content: "Speak. Tailzu writes." },
+          props: { content: "Say it. It's written." },
           style: { textAlign: "center", fontSize: 34, lineHeight: 42, color: "$color.text", marginBottom: 0 },
         },
         // The vertical middle. Swappable: upload onboarding.hero, or set
@@ -3338,7 +3341,7 @@ function onboardingVoice(): ScreenResponse {
               // of the screen empty.
               fallback: {
                 type: "Paragraph",
-                props: { content: "Talk the way you talk. Tailzu turns it into clean, finished writing — in your voice." },
+                props: { content: "Talk like you talk. It comes out clean, and still sounds like you." },
                 style: { textAlign: "center", fontSize: 21, lineHeight: 34, fontWeight: "300", color: "$color.text", maxWidth: 300 },
               },
             },
@@ -3346,19 +3349,19 @@ function onboardingVoice(): ScreenResponse {
         },
         {
           type: "Paragraph",
-          props: { content: "Allow the microphone so dictation works in every app you type in." },
+          props: { content: "The mic is what makes that possible — in every app you type in." },
           style: { textAlign: "center", fontSize: 13, lineHeight: 21, marginBottom: 21 },
         },
         {
           type: "Button",
-          props: { label: "Allow Microphone", variant: "primary" },
+          props: { label: "Turn on the mic", variant: "primary" },
           on: { onPress: "allowMic" },
           style: { width: "100%" },
         },
         { type: "Spacer", style: { height: 13 } },
         {
           type: "Button",
-          props: { label: "Maybe later", variant: "secondary" },
+          props: { label: "Not now", variant: "secondary" },
           on: { onPress: "goKeyboard" },
           style: { width: "100%" },
         },
@@ -3374,8 +3377,8 @@ function onboardingKeyboard(): ScreenResponse {
   const step = (n: string, body: string): Node => ({
     type: "Stack", style: { direction: "row", gap: 13, alignItems: "flex-start" }, children: [
       // Fixed-width number column so all five step bodies left-align.
-      { type: "Text", props: { content: n }, style: { color: "$color.text", fontSize: 14, fontWeight: "700", width: 18, lineHeight: 23 } },
-      { type: "Paragraph", props: { content: body }, style: { marginBottom: 0, flex: 1, fontSize: 14, lineHeight: 23 } },
+      { type: "Text", props: { content: n }, style: { color: "$color.muted", fontSize: 12, fontWeight: "700", width: 14, lineHeight: 18 } },
+      { type: "Paragraph", props: { content: body }, style: { marginBottom: 0, flex: 1, fontSize: 12.5, lineHeight: 18 } },
     ],
   });
   return {
@@ -3452,10 +3455,10 @@ function onboardingKeyboard(): ScreenResponse {
       // used to start under the status-bar clock). Golden ladder throughout —
       // 13/21/34/55 spacing, 26/34 heading, 13/21 sub, 14/23 steps.
       { type: "Spacer", style: { height: 66 } },
-      { type: "Overline", props: { content: "Step 2 of 2" }, style: { marginBottom: 13 } },
-      { type: "Heading", props: { content: "Add the Tailzu keyboard" },
+      { type: "Overline", props: { content: "Keyboard" }, style: { marginBottom: 13 } },
+      { type: "Heading", props: { content: "Bring it everywhere." },
         style: { fontSize: 26, lineHeight: 34, color: "$color.text", marginBottom: 8 } },
-      { type: "Paragraph", props: { content: "One minute in Settings — after that, Tailzu writes with you in every app." },
+      { type: "Paragraph", props: { content: "A moment in Settings, and Tailzu writes with you in every app." },
         style: { fontSize: 13, lineHeight: 21, marginBottom: 21 } },
       // Optional demo of the walk through Settings. Upload to
       // hero.onboarding_keyboard and it appears here, above the written
@@ -3469,7 +3472,7 @@ function onboardingKeyboard(): ScreenResponse {
       // Settings page (which exists because the voice-permission screen just
       // fired the mic prompt). Show every navigation step so the user knows
       // the path.
-      { type: "Card", style: { paddingVertical: 21, paddingHorizontal: 16 }, children: [
+      { type: "Card", style: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14 }, children: [
         step("1", "Open Settings, then tap General."),
         { type: "Spacer", style: { height: 13 } },
         step("2", "Tap Keyboard → Keyboards → Add New Keyboard."),
@@ -3484,7 +3487,7 @@ function onboardingKeyboard(): ScreenResponse {
       // "Open Settings" (not "Open Keyboard Settings") — iOS can't deliver
       // what the old label promised; be honest about where the button lands.
       { type: "Button", visibleIf: { not: { truthy: "keyboardReady" } },
-        props: { label: "Open Settings", variant: "primary" }, on: { onPress: "openSettings" } },
+        props: { label: "Go to Settings", variant: "primary" }, on: { onPress: "openSettings" } },
       { type: "Button", visibleIf: { truthy: "keyboardReady" },
         props: { label: "Start using Tailzu", variant: "primary" }, on: { onPress: "finish" } },
       { type: "Spacer", style: { height: 13 } },
