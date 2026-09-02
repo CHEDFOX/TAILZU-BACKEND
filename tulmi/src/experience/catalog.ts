@@ -4267,11 +4267,16 @@ const LIGHT_KEY_FILL_LETTER = "#FFFFFFE6";     // 90% white — solid-white chip
 export const LIGHT_KEY_FILL_FUNCTION = "#C7CDD3E6";   // ~90% opaque light gray — kept exported for the next light-mode row expansion
 const LIGHT_KEY_TEXT = "#000000";
 
+/** Which keyboard is asking. Derived server-side from the request, never
+ *  asserted by the client — see keyboardPlatform(). */
+export type KeyboardPlatform = "ios" | "android";
+
 export function buildKeyboardConfig(
   personality?: Personality,
   /** Stable id used to place this user in a rollout slice. Omit for anonymous
    *  callers — they get the baseline rather than a per-request coin flip. */
   userId?: string,
+  opts: { platform?: KeyboardPlatform } = {},
 ): KeyboardConfigResponse {
   // English QWERTY. The physical layout arrays are also emitted (below) so
   // older keyboard binaries — the ones without the SDUI renderer — can still
@@ -5267,9 +5272,16 @@ export function buildKeyboardConfig(
         "kb.autocorrect.enabled": true,
         "kb.autocorrect.minLen": 3,
         "kb.autocorrect.maxDistance": 2,
-        // Completion chips for the in-progress word (UITextChecker
-        // completions), rendered into the existing SuggestionBar node.
-        "kb.suggestions.enabled": true,
+        // The word-suggestion strip is OFF by owner decision: autocorrect
+        // stays exactly as it is, the row of guesses above the keys goes.
+        //
+        // Android keeps it for now, and only for now. Its autocorrect fed off
+        // the same spell-check request the strip triggered, so hiding the
+        // strip there silently turned autocorrect off as well; that is fixed
+        // in the Android keyboard but needs a build to reach devices. Until
+        // that build ships, Android is served the strip; then this becomes a
+        // plain `false` for both.
+        "kb.suggestions.enabled": opts.platform === "android",
         "kb.suggestions.max": 3,
         // Language-model hit-target bias — the cheap version of Apple's
         // dynamic key resizing. After typing a character, the letters likely

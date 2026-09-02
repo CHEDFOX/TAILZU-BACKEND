@@ -266,6 +266,24 @@ describe("buildScreen", () => {
 });
 
 describe("buildKeyboardConfig", () => {
+  it("hides the suggestion strip on iOS and keeps autocorrect", () => {
+    const f = buildKeyboardConfig(undefined, undefined, { platform: "ios" }).flags as Record<string, unknown>;
+    expect(f["kb.suggestions.enabled"]).toBe(false);
+    expect(f["kb.autocorrect.enabled"]).toBe(true);
+    expect(f["kb.autocorrect.backspaceRevert"]).toBe(true);
+  });
+
+  it("keeps the strip on Android until its autocorrect fix ships", () => {
+    const f = buildKeyboardConfig(undefined, undefined, { platform: "android" }).flags as Record<string, unknown>;
+    expect(f["kb.suggestions.enabled"]).toBe(true);
+    expect(f["kb.autocorrect.enabled"]).toBe(true);
+  });
+
+  it("treats an unknown caller as iOS", () => {
+    const f = buildKeyboardConfig().flags as Record<string, unknown>;
+    expect(f["kb.suggestions.enabled"]).toBe(false);
+  });
+
   it("returns a valid theme, one or more layouts, and feature flags", () => {
     const kb = buildKeyboardConfig();
     expect(kb.theme.background).toBeDefined();

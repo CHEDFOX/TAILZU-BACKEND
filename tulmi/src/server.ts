@@ -82,6 +82,7 @@ import {
 } from "./personality/store.js";
 import { PERSONALITY_PRESETS, applyPresetOverrides } from "./experience/personalityPresets.js";
 import {
+  type KeyboardPlatform,
   buildBootstrap,
   buildScreen,
   buildKeyboardConfig,
@@ -1523,6 +1524,19 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
 
 // --- Keyboard config (server-driven keyboard; cached by the native shell) ----
 
+/**
+ * Which keyboard is asking, from the one signal both send without being told
+ * to: the HTTP client's default User-Agent. The Android keyboard talks through
+ * OkHttp ("okhttp/…"); the iOS extension through URLSession, which names the
+ * bundle and CFNetwork. Neither client asserts a platform, so neither can lie
+ * about it — and an unknown agent is treated as iOS, the platform whose config
+ * is safe to serve to anyone.
+ */
+function keyboardPlatform(userAgent: unknown): KeyboardPlatform {
+  const ua = String(userAgent ?? "").toLowerCase();
+  return /okhttp|dalvik|android/.test(ua) ? "android" : "ios";
+}
+
 app.get("/v1/keyboard/config", { config: AUTHED_RL }, async (req, reply) => {
   // Personality is per-user — the keyboard uses it to render the quick-swap
   // chip row (pinned presets) + honor the active preset's default tone.
@@ -1544,7 +1558,7 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL }, async (req, reply) => {
   // (nginx, CDN) that indexed the response by URL alone could leak these
   // across users. Same policy as /v1/app/bootstrap and /v1/app/screen.
   noStoreSdui(reply);
-  return reply.send(buildKeyboardConfig(personality, userId));
+  return reply.send(buildKeyboardConfig(personality, userId, { platform: keyboardPlatform(req.headers["user-agent"]) }));
 });
 
 // --- Keyboard telemetry ------------------------------------------------------
