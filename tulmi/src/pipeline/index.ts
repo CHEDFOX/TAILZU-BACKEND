@@ -44,7 +44,13 @@ export async function runPipeline(
 ): Promise<PipelineResult> {
   const { audio, format, ...opts } = input;
 
-  const stt = await transcribe({ audio, format, language: opts.language, vocabulary: opts.personality?.vocabulary });
+  const stt = await transcribe({
+    audio, format,
+    language: opts.language,
+    vocabulary: opts.personality?.vocabulary,
+    // The Languages card, when the user has answered it.
+    languages: opts.personality?.languages?.map(String),
+  });
   // The assist step separates any embedded instruction ("…make it shorter, in
   // bullet points") from the message itself and applies the active tone, so we
   // no longer strip commands here — the model handles it. `transcript` stays
@@ -96,7 +102,13 @@ export async function* runPipelineStream(
 ): AsyncGenerator<PipelineEvent, void, unknown> {
   const { audio, format, ...opts } = input;
 
-  const stt = await transcribe({ audio, format, language: opts.language, vocabulary: opts.personality?.vocabulary });
+  const stt = await transcribe({
+    audio, format,
+    language: opts.language,
+    vocabulary: opts.personality?.vocabulary,
+    // The Languages card, when the user has answered it.
+    languages: opts.personality?.languages?.map(String),
+  });
   const { transcript, command } = detectCommand(stt.text);
   yield { type: "transcript", text: transcript };
 

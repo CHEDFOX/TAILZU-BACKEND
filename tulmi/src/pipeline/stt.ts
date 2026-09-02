@@ -266,6 +266,11 @@ export interface SttInput {
   language?: LanguageHint;
   /** Personal dictionary (names/jargon) to bias recognition toward. */
   vocabulary?: string;
+  /** Every language this user speaks day to day, primary first (the
+   *  Languages card). Each contributes its own script to the prompt, which is
+   *  what a bilingual speaker needs: one exemplar can only prime one script,
+   *  and priming the wrong one is how Hindi came back romanized. */
+  languages?: string[];
 }
 
 // The prompt is a STYLE EXEMPLAR, not an instruction — Whisper-family models
@@ -328,11 +333,26 @@ const SCRIPT_EXEMPLARS: Record<string, string> = {
  * language, so nothing tips the decoder before it has heard a word. Empty
  * when there is nothing to say; the SDK omits an undefined prompt.
  */
-export function sttPrompt(vocabulary?: string, hint?: LanguageHint): string | undefined {
+export function sttPrompt(
+  vocabulary?: string,
+  hint?: LanguageHint,
+  languages?: string[],
+): string | undefined {
+  // The user's own set leads; the single hint is the fallback for anyone who
+  // has not answered the Languages card. Capped at three: the prompt is a
+  // short run-up, and past that it starts to read as a passage of its own.
+  const keys = (languages?.length ? languages : hint ? [hint] : [])
+    .map((l) => String(l).toLowerCase())
+    .filter((l) => l && l !== "auto");
+  const seen = new Set<string>();
   const parts: string[] = [];
-  const key = hint && hint !== "auto" ? String(hint).toLowerCase() : undefined;
-  const exemplar = key ? SCRIPT_EXEMPLARS[key] : undefined;
-  if (exemplar) parts.push(exemplar);
+  for (const k of keys) {
+    const ex = SCRIPT_EXEMPLARS[k];
+    if (!ex || seen.has(k)) continue;
+    seen.add(k);
+    parts.push(ex);
+    if (seen.size >= 3) break;
+  }
   const terms = vocabulary?.replace(/\s*\n\s*/g, ", ").trim();
   if (terms) parts.push(terms);
   return parts.length ? parts.join(" ") : undefined;
@@ -607,7 +627,7 @@ async function transcribeOpenAI(input: SttInput): Promise<RawSttResult> {
     file,
     model: cfg.OPENAI_STT_MODEL,
     language: sttLanguage(input.language),
-    prompt: sttPrompt(input.vocabulary, input.language),
+    prompt: sttPrompt(input.vocabulary, input.language, input.languages),
     response_format: "json",
   });
 
@@ -749,7 +769,7 @@ async function transcribeGroq(input: SttInput): Promise<RawSttResult> {
     model: cfg.GROQ_STT_MODEL,
     language: sttLanguage(input.language),
     response_format: "verbose_json",
-    prompt: sttPrompt(input.vocabulary, input.language),
+    prompt: sttPrompt(input.vocabulary, input.language, input.languages),
     // Temperature 0 makes Whisper deterministic and much less likely to
     // "hallucinate" on silent / low-signal chunks. The provider only accepts
     // the field on some SDK versions; ignore the cast if TS complains.

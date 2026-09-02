@@ -33,6 +33,33 @@ describe("sttPrompt", () => {
   });
 });
 
+describe("sttPrompt with a set of daily languages", () => {
+  it("primes every selected script, not just one", () => {
+    const p = sttPrompt(undefined, "auto", ["hi", "en"])!;
+    expect(/[\u0900-\u097F]/.test(p)).toBe(true);   // Devanagari
+    expect(/[A-Za-z]/.test(p)).toBe(true);          // Latin
+  });
+
+  it("prefers the user's set over the single hint", () => {
+    const p = sttPrompt(undefined, "en", ["ta"])!;
+    expect(/[\u0B80-\u0BFF]/.test(p)).toBe(true);   // Tamil
+  });
+
+  it("caps at three so the prompt stays a run-up, not a passage", () => {
+    const p = sttPrompt(undefined, "auto", ["hi", "ta", "bn", "gu", "ml"])!;
+    expect(/[\u0A80-\u0AFF]/.test(p)).toBe(false);  // Gujarati, 4th, dropped
+    expect(/[\u0D00-\u0D7F]/.test(p)).toBe(false);  // Malayalam, 5th, dropped
+  });
+
+  it("ignores auto and unknown codes inside the set", () => {
+    expect(sttPrompt(undefined, "auto", ["auto", "klingon"])).toBeUndefined();
+  });
+
+  it("still appends the user's terms", () => {
+    expect(sttPrompt("Tailzu", "auto", ["hi"])!.endsWith("Tailzu")).toBe(true);
+  });
+});
+
 describe("isUsableAlternative", () => {
   it("rejects a reading in a different script — a translation, not a second opinion", () => {
     expect(isUsableAlternative("कल सुबह मिलते हैं", "let us meet tomorrow morning")).toBe(false);

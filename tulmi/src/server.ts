@@ -56,8 +56,16 @@ import { getProfile, updateProfile, type Profile } from "./profile/store.js";
  *
  * One extra read, and only on the fallback path.
  */
-async function effectiveLanguage(user: AuthedUser, hint: string | undefined): Promise<string> {
+async function effectiveLanguage(
+  user: AuthedUser,
+  hint: string | undefined,
+  personality?: Personality,
+): Promise<string> {
   if (hint && hint !== "auto") return hint;
+  // The Languages card, primary first. Free when the caller already holds the
+  // personality — which every one of these handlers does.
+  const first = personality?.languages?.[0];
+  if (first && first !== "auto") return String(first);
   const profile = await getProfile(user).catch(() => null);
   const l = profile?.language;
   return l && l !== "auto" ? l : "auto";
@@ -488,7 +496,7 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
   const t0 = Date.now();
   try {
     const personality = personalityOverride ?? await getPersonality(user);
-    const lang = await effectiveLanguage(user, language);
+    const lang = await effectiveLanguage(user, language, personality);
     const result = await runPipeline({
       audio,
       format,
@@ -555,7 +563,7 @@ app.post("/v1/refine", { config: AUTHED_RL }, async (req, reply) => {
     // shorter, in bullet points") from the message, applies the active tone,
     // and uses body.context (whatever's already in the field) as the draft /
     // conversation to continue or reply to.
-    const lang = await effectiveLanguage(user, body.language);
+    const lang = await effectiveLanguage(user, body.language, personality);
     const refinedText = await assist(body.text, {
       tone: body.tone ?? personality.activeTone,
       tonePrompt: body.tonePrompt,
@@ -741,7 +749,7 @@ const runToneRefine = (toneId: string) =>
     const t0 = Date.now();
     try {
       const personality = await getPersonality(user);
-      const lang = await effectiveLanguage(user, body.language);
+      const lang = await effectiveLanguage(user, body.language, personality);
       const refinedText = await assist(body.text, {
         tone: toneId,
         // Inline prompt still wins even on the per-tone route, so a custom tone
@@ -797,7 +805,7 @@ app.post("/v1/draft", { config: AUTHED_RL }, async (req, reply) => {
   const t0 = Date.now();
   try {
     const personality = await resolvePersonality(user, body.personality);
-    const lang = await effectiveLanguage(user, body.language);
+    const lang = await effectiveLanguage(user, body.language, personality);
     const draftText = await draftReply(
       body.screenContent ?? "",
       body.intent,
@@ -890,6 +898,19 @@ app.put("/v1/personality", { config: AUTHED_RL }, async (req, reply) => {
     return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
   }
   const personality = (req.body ?? {}) as Personality;
+  // Prompt-bound and user-supplied: every selected language becomes an
+  // exemplar in the recognizer's prompt, so an unbounded array is unbounded
+  // prompt. Twenty is far past any real answer and still cheap.
+  if (personality.languages !== undefined) {
+    if (!Array.isArray(personality.languages)) {
+      return reply.code(400).send({ code: "bad_request", message: "languages must be an array" });
+    }
+    personality.languages = personality.languages
+      .filter((l): l is string => typeof l === "string")
+      .map((l) => l.trim().toLowerCase().slice(0, 16))
+      .filter(Boolean)
+      .slice(0, 20);
+  }
   const over =
     tooLong(personality.tone) ??
     tooLong(personality.signature) ??
@@ -1858,7 +1879,7 @@ app.register(async (instance) => {
         const t0 = Date.now();
         try {
           const personality = await resolvePersonality(user, personalityOverride);
-          const lang = await effectiveLanguage(user, language);
+          const lang = await effectiveLanguage(user, language, personality);
           // Capture transcript + final cleaned text for the (opt-in) history
           // write we do after the pipeline completes.
           let capturedTranscript = "";

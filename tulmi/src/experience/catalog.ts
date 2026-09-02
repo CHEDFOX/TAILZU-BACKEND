@@ -321,7 +321,15 @@ export function buildBootstrap(
         // postLanguageScreenId is intentionally unset: after the pick the
         // client falls through to initialScreenId, which is "onboarding" for
         // new users and "home" for returning ones.
-        "needsLanguagePick": true,
+        // OFF. The pick asked for something the phone already knows, and it
+        // was the origin of a stale-language bug: what it stored was the only
+        // thing the keyboard ever read, so a later change in Settings did not
+        // reach dictation. The app now takes the device's language when
+        // nothing is stored, Settings still changes it, and the Languages card
+        // asks the better question — which languages, plural.
+        //
+        // Back to true and the native grid returns, no build.
+        "needsLanguagePick": false,
 
         // IN-APP mic capture mode — the app's counterpart to the keyboard's
         // kb.mic.mode, so both surfaces are switchable from here with no app
@@ -622,6 +630,113 @@ const PLATE_STYLE = {
   backgroundColor: "#FFFFFF",
   overflow: "hidden" as const,
 };
+
+/**
+ * Daily languages — a multi-select, saved to personality.languages.
+ *
+ * This is the one question worth asking, and it replaces the single-choice
+ * onboarding pick. A person who speaks Hindi AND English is not served by
+ * being made to choose: the answer feeds three things at once, and each of
+ * them is better with the whole set than with one of it.
+ *
+ *   - Recognition. Every selected language contributes a short line in its
+ *     own script to the recognizer's prompt, which is what stops Hindi
+ *     coming back romanized (see sttPrompt).
+ *   - Writing. The prompt already states preferred languages/scripts, so
+ *     code-switched text is written the way the user actually mixes.
+ *   - Order matters. The first selection is the primary — what "auto" falls
+ *     back to when nothing else decides.
+ *
+ * No Save button: each tap writes. A preferences screen that can be left in
+ * an unsaved state is a screen that loses answers.
+ */
+function languagesScreen(ctx: ScreenContext): ScreenResponse {
+  const selected = (ctx.personality.languages ?? []).map(String);
+  const row = (l: (typeof DAILY_LANGUAGES)[number], i: number): Node => ({
+    type: "Stack",
+    style: {
+      direction: "row",
+      alignItems: "center",
+      gap: 12,
+      paddingVertical: 14,
+      paddingHorizontal: 4,
+      borderBottomWidth: i < DAILY_LANGUAGES.length - 1 ? 1 : 0,
+      borderBottomColor: "rgba(255,255,255,0.07)",
+    },
+    on: {
+      onPress: {
+        kind: "sequence",
+        actions: [
+          { kind: "haptic", style: "selection" },
+          // min 1: the set is what primes the recognizer, and an empty set
+          // silently turns that off. Unchecking the last one does nothing.
+          { kind: "toggleInArray", path: "langs", value: l.value, min: 1 },
+          {
+            kind: "callEndpoint",
+            method: "PUT",
+            path: "/v1/personality",
+            body: { languages: "$state.langs" },
+            onError: "err",
+          },
+        ],
+      },
+    },
+    children: [
+      {
+        type: "Stack",
+        style: { flex: 1, direction: "column", gap: 2 },
+        children: [
+          { type: "Text", props: { content: l.label },
+            style: { fontSize: 16, fontWeight: "600", color: "$color.text" } },
+          { type: "Text", props: { content: l.native },
+            style: { fontSize: 13, color: "$color.muted" } },
+        ],
+      },
+      // The tick is the whole state display: present means selected. Rendered
+      // from `langs`, so it follows the tap without a refetch.
+      {
+        type: "Text",
+        visibleIf: { contains: ["langs", l.value] },
+        props: { content: "✓" },
+        style: { fontSize: 19, fontWeight: "800", color: THEME.color.primary },
+      },
+    ],
+  });
+
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "languages",
+    title: "",
+    // Seeded from the saved set so the ticks are right on open, and mutated
+    // in place by every tap after that.
+    state: { langs: selected },
+    actions: {
+      err: { kind: "toast", message: "Couldn't save that. Try again.", tone: "error" },
+    },
+    root: {
+      type: "Screen",
+      style: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 24 },
+      children: [
+        ...screenHero("languages"),
+        {
+          type: "Heading",
+          props: { content: "Your daily languages" },
+          style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 6 },
+        },
+        {
+          type: "Paragraph",
+          props: {
+            content:
+              "Pick every language you actually speak — mixing two in one sentence is normal, and Tailzu writes better when it knows which ones. The first is your main one.",
+          },
+          style: { marginBottom: 20 },
+        },
+        { type: "Card", style: { padding: 4 }, children: DAILY_LANGUAGES.map(row) },
+      ],
+    },
+    cacheTtlSeconds: 0,
+  };
+}
 
 function introScreen(ctx: ScreenContext): ScreenResponse {
   // Route the post-intro destination the SAME way pickInitialScreenId would when
@@ -1247,6 +1362,8 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       return hapticsScreen(ctx);
     case "language_select":
       return languageSelectScreen(ctx);
+    case "languages":
+      return languagesScreen(ctx);
     case "delete_account":
       return deleteAccountScreen();
     case "reply":
@@ -1298,6 +1415,41 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
 }
 
 /** Languages offered in onboarding + settings. */
+/**
+ * The languages a user can say they speak day to day.
+ *
+ * Wider than LANGUAGES (the single output-language picker) and ordered by who
+ * actually uses Tailzu: the Indic set first, then the rest. Each carries its
+ * own name in its own script, because a list of English names is a worse
+ * question — a Marathi speaker looks for "मराठी".
+ *
+ * `value` doubles as the STT exemplar key (see sttPrompt), so adding a row
+ * here is all it takes for that language's script to prime the recognizer.
+ */
+const DAILY_LANGUAGES: Array<{ value: string; label: string; native: string }> = [
+  { value: "en", label: "English", native: "English" },
+  { value: "hi", label: "Hindi", native: "हिन्दी" },
+  { value: "hinglish", label: "Hinglish", native: "Hindi + English, in Latin script" },
+  { value: "mr", label: "Marathi", native: "मराठी" },
+  { value: "bn", label: "Bengali", native: "বাংলা" },
+  { value: "ta", label: "Tamil", native: "தமிழ்" },
+  { value: "te", label: "Telugu", native: "తెలుగు" },
+  { value: "gu", label: "Gujarati", native: "ગુજરાતી" },
+  { value: "kn", label: "Kannada", native: "ಕನ್ನಡ" },
+  { value: "ml", label: "Malayalam", native: "മലയാളം" },
+  { value: "pa", label: "Punjabi", native: "ਪੰਜਾਬੀ" },
+  { value: "ur", label: "Urdu", native: "اردو" },
+  { value: "es", label: "Spanish", native: "Español" },
+  { value: "fr", label: "French", native: "Français" },
+  { value: "de", label: "German", native: "Deutsch" },
+  { value: "pt", label: "Portuguese", native: "Português" },
+  { value: "ar", label: "Arabic", native: "العربية" },
+  { value: "ru", label: "Russian", native: "Русский" },
+  { value: "ja", label: "Japanese", native: "日本語" },
+  { value: "ko", label: "Korean", native: "한국어" },
+  { value: "zh", label: "Chinese", native: "中文" },
+];
+
 const LANGUAGES: Array<{ value: string; label: string }> = [
   { value: "auto", label: "Auto-detect" },
   { value: "en", label: "English" },
@@ -1841,6 +1993,10 @@ function personalityScreen(): ScreenResponse {
         // as an afterthought. Its media slot is "card.haptics" — upload to that
         // key and it fills, exactly like Voice and Dictionary.
         mediaCard("Haptics", "Choose which keys buzz", "card.haptics", "haptics"),
+        { type: "Spacer", style: { height: 18 } },
+        // Same treatment as the cards above. Its media slot is
+        // "card.languages" — upload to that key and it fills.
+        mediaCard("Languages", "The languages you speak day to day", "card.languages", "languages"),
       ],
     },
     // The You tab is three cards whose contents change only when the user
