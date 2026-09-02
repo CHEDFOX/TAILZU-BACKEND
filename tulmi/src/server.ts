@@ -42,6 +42,26 @@ import { recordKeyboardTelemetry } from "./usage/telemetry.js";
 import { activeRollouts, bucketFor } from "./experience/rollout.js";
 import { captureException, fastifyLoggerOptions, initSentry } from "./observability.js";
 import { getProfile, updateProfile, type Profile } from "./profile/store.js";
+
+/**
+ * The language a request should be written in.
+ *
+ * Clients send a hint, but the hint is a copy of the user's choice made at
+ * first launch and does not always follow later changes — the iOS keyboard
+ * reads it from a shared store that Settings did not update, so a Hindi
+ * speaker who had picked English once kept getting Hindi speech "refined"
+ * toward English. The profile is the source of truth for that choice, so
+ * when the client sends nothing, or "auto", the profile decides. A real code
+ * from the client still wins: a per-request override is a deliberate act.
+ *
+ * One extra read, and only on the fallback path.
+ */
+async function effectiveLanguage(user: AuthedUser, hint: string | undefined): Promise<string> {
+  if (hint && hint !== "auto") return hint;
+  const profile = await getProfile(user).catch(() => null);
+  const l = profile?.language;
+  return l && l !== "auto" ? l : "auto";
+}
 import { runPipeline, runPipelineStream } from "./pipeline/index.js";
 import { assist, draftReply, inferStyle, refineVariants, updateStylePortrait, LLM_TONES } from "./pipeline/cleanup.js";
 import { synthesize } from "./pipeline/tts.js";
@@ -468,11 +488,12 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
   const t0 = Date.now();
   try {
     const personality = personalityOverride ?? await getPersonality(user);
+    const lang = await effectiveLanguage(user, language);
     const result = await runPipeline({
       audio,
       format,
       targetApp,
-      language,
+      language: lang,
       personality,
       tone: tone ?? personality.activeTone,
       tonePrompt,
@@ -534,12 +555,13 @@ app.post("/v1/refine", { config: AUTHED_RL }, async (req, reply) => {
     // shorter, in bullet points") from the message, applies the active tone,
     // and uses body.context (whatever's already in the field) as the draft /
     // conversation to continue or reply to.
+    const lang = await effectiveLanguage(user, body.language);
     const refinedText = await assist(body.text, {
       tone: body.tone ?? personality.activeTone,
       tonePrompt: body.tonePrompt,
       context: body.context,
       targetApp: body.targetApp,
-      language: body.language,
+      language: lang,
       // A second engine's reading of the same speech, when the live path saw
       // the two disagree — reconciled before the writing task.
       alternative: body.alternative,
@@ -719,13 +741,14 @@ const runToneRefine = (toneId: string) =>
     const t0 = Date.now();
     try {
       const personality = await getPersonality(user);
+      const lang = await effectiveLanguage(user, body.language);
       const refinedText = await assist(body.text, {
         tone: toneId,
         // Inline prompt still wins even on the per-tone route, so a custom tone
         // can reuse this path and the route's toneId is just the label/default.
         tonePrompt: body.tonePrompt,
         context: body.context,
-        language: body.language,
+        language: lang,
         personality,
         variables: { email: user.email, phone: user.phone },
       });
@@ -774,12 +797,13 @@ app.post("/v1/draft", { config: AUTHED_RL }, async (req, reply) => {
   const t0 = Date.now();
   try {
     const personality = await resolvePersonality(user, body.personality);
+    const lang = await effectiveLanguage(user, body.language);
     const draftText = await draftReply(
       body.screenContent ?? "",
       body.intent,
       {
         targetApp: body.targetApp,
-        language: body.language,
+        language: lang,
         personality,
         variables: { email: user.email, phone: user.phone },
       },
@@ -1834,6 +1858,7 @@ app.register(async (instance) => {
         const t0 = Date.now();
         try {
           const personality = await resolvePersonality(user, personalityOverride);
+          const lang = await effectiveLanguage(user, language);
           // Capture transcript + final cleaned text for the (opt-in) history
           // write we do after the pipeline completes.
           let capturedTranscript = "";
@@ -1841,7 +1866,7 @@ app.register(async (instance) => {
             audio,
             format,
             targetApp,
-            language,
+            language: lang,
             personality,
             variables: { email: user.email, phone: user.phone },
           })) {
