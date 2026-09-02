@@ -668,9 +668,12 @@ function languagesScreen(ctx: ScreenContext): ScreenResponse {
         kind: "sequence",
         actions: [
           { kind: "haptic", style: "selection" },
-          // min 1: the set is what primes the recognizer, and an empty set
-          // silently turns that off. Unchecking the last one does nothing.
-          { kind: "toggleInArray", path: "langs", value: l.value, min: 1 },
+          // A plain toggle: tap to select, tap to unselect, including the
+          // last one. Clearing the set is a real answer — the recognizer
+          // falls back to the single language hint, which is exactly how it
+          // behaved before this card existed. A row that refuses to
+          // deselect reads as broken, and the degradation here is mild.
+          { kind: "toggleInArray", path: "langs", value: l.value },
           {
             kind: "callEndpoint",
             method: "PUT",
