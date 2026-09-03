@@ -75,7 +75,14 @@ function mediaSrc(key: string): Record<string, unknown> {
  */
 function screenHero(
   screenId: string,
-  opts: { height?: number; width?: number | string; radius?: number } = {},
+  opts: {
+    height?: number;
+    width?: number | string;
+    radius?: number;
+    /** Show only on this platform. The condition is evaluated on the device,
+     *  so a per-platform slot needs no server-side detection. */
+    onlyOn?: "ios" | "android";
+  } = {},
 ): Node[] {
   const key = `hero.${screenId}`;
   const entry = getMediaRegistryFn?.()?.[key];
@@ -114,6 +121,7 @@ function screenHero(
       type: "Stack",
       // The VIEW clips; the media fills it. Rounded corners set on the media
       // itself have nothing to cut — see the intro plate.
+      ...(opts.onlyOn ? { visibleIf: { platform: opts.onlyOn } } : {}),
       style: {
         height: opts.height ?? 148,
         ...(opts.width ? { width: opts.width, alignSelf: "center" } : {}),
@@ -3503,16 +3511,21 @@ function onboardingKeyboard(): ScreenResponse {
         style: { fontSize: 26, lineHeight: 34, color: "$color.text", marginBottom: 8 } },
       { type: "Paragraph", props: { content: "A moment in Settings, and Tailzu writes with you in every app." },
         style: { fontSize: 13, lineHeight: 21, marginBottom: 21 } },
-      // The walk through Settings, shown rather than described. Upload to
-      // hero.onboarding_keyboard — a video or a GIF, either works — and it
-      // appears here above the written steps; upload nothing and the node
-      // does not exist, so the screen stays exactly as it is.
+      // The walk through Settings, shown rather than described — and one
+      // recording per platform, because the two walks share no screen. An iOS
+      // recording shown to an Android user is worse than no recording: it
+      // teaches them a path that does not exist on their phone.
+      //
+      // Gated on the device, like the written steps below. Upload a video or
+      // a GIF to either key; upload nothing and that platform simply shows
+      // the words, so this is safe to ship before the art exists.
       //
       // Portrait, because a recording of a phone screen IS portrait: 9:16 at
       // 200pt wide, centred. Forcing that into a landscape banner would crop
       // it to a sliver of itself. The screen scrolls, so the height is
       // affordable and the steps still sit under it.
-      ...screenHero("onboarding_keyboard", { height: 356, width: 200, radius: 18 }),
+      ...screenHero("onboarding_keyboard.ios", { height: 356, width: 200, radius: 18, onlyOn: "ios" }),
+      ...screenHero("onboarding_keyboard.android", { height: 356, width: 200, radius: 18, onlyOn: "android" }),
       // The steps card, per platform. The two systems share nothing here:
       // "General", "Add New Keyboard" and "Allow Full Access" do not exist on
       // Android, and Android's own path is shorter because the button below
