@@ -3442,6 +3442,17 @@ function onboardingKeyboard(): ScreenResponse {
           { kind: "toast", tone: "info", message: "In Settings: General → Keyboard → Keyboards → Add New → Tailzu" },
         ],
       },
+      // Android lands the user ON the keyboard list. `openSettings` with
+      // target "keyboard" fires INPUT_METHOD_SETTINGS, so none of the walk
+      // above applies — and app-settings: is an iOS URL scheme that does
+      // nothing here, which is why this cannot share the action.
+      openKeyboardSettings: {
+        kind: "sequence",
+        actions: [
+          { kind: "openSettings", target: "keyboard" },
+          { kind: "toast", tone: "info", message: "Turn on Tailzu, then come back." },
+        ],
+      },
       // Split the finish flow so `switchTab` only runs after the PUT succeeds.
       // Previously the write was fire-and-forget: any network blip / 401 / 5xx
       // was swallowed and the user still visually "completed" onboarding,
@@ -3502,27 +3513,67 @@ function onboardingKeyboard(): ScreenResponse {
       // it to a sliver of itself. The screen scrolls, so the height is
       // affordable and the steps still sit under it.
       ...screenHero("onboarding_keyboard", { height: 356, width: 200, radius: 18 }),
-      // The steps card. Apple does NOT allow deep-linking into
-      // Settings > Keyboards, so the button below lands on Tailzu's own
-      // Settings page (which exists because the voice-permission screen just
-      // fired the mic prompt). Show every navigation step so the user knows
-      // the path.
-      { type: "Card", style: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14 }, children: [
-        step("1", "Open Settings, then tap General."),
-        { type: "Spacer", style: { height: 13 } },
-        step("2", "Tap Keyboard → Keyboards → Add New Keyboard."),
-        { type: "Spacer", style: { height: 13 } },
-        step("3", "Choose Tailzu from the list."),
-        { type: "Spacer", style: { height: 13 } },
-        step("4", "Tap Tailzu again and turn on “Allow Full Access”."),
-        { type: "Spacer", style: { height: 13 } },
-        step("5", "Return to Tailzu — the globe key switches keyboards."),
-      ] },
+      // The steps card, per platform. The two systems share nothing here:
+      // "General", "Add New Keyboard" and "Allow Full Access" do not exist on
+      // Android, and Android's own path is shorter because the button below
+      // deep-links straight to its keyboard settings.
+      //
+      // Both lists ship and the device picks — the renderer's `platform`
+      // condition is evaluated on the phone, so this needs no server-side
+      // detection and cannot get it wrong.
+      //
+      // iOS. Apple does NOT allow deep-linking into Settings > Keyboards, so
+      // the button lands on Tailzu's own Settings page (which exists because
+      // the voice step just fired the mic prompt) and the user walks the rest.
+      // Every step is spelled out because none of them can be skipped for them.
+      {
+        type: "Card",
+        visibleIf: { platform: "ios" },
+        style: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14 },
+        children: [
+          step("1", "Open Settings, then tap General."),
+          { type: "Spacer", style: { height: 13 } },
+          step("2", "Tap Keyboard → Keyboards → Add New Keyboard."),
+          { type: "Spacer", style: { height: 13 } },
+          step("3", "Choose Tailzu from the list."),
+          { type: "Spacer", style: { height: 13 } },
+          step("4", "Tap Tailzu again and turn on “Allow Full Access”."),
+          { type: "Spacer", style: { height: 13 } },
+          step("5", "Return to Tailzu — the globe key switches keyboards."),
+        ],
+      },
+      // Android. The button fires INPUT_METHOD_SETTINGS, which opens the
+      // keyboard list directly — so the walk through Settings that iOS needs
+      // is replaced by one tap, and the steps start from where the user
+      // lands. Step 3 is the notice Android shows about keyboards reading what
+      // you type; it looks alarming and it is what stops people, so it is
+      // named rather than left as a surprise. There is no Full Access on
+      // Android, and no step for it.
+      {
+        type: "Card",
+        visibleIf: { platform: "android" },
+        style: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14 },
+        children: [
+          step("1", "Tap the button below — it opens your keyboard list."),
+          { type: "Spacer", style: { height: 13 } },
+          step("2", "Turn on Tailzu."),
+          { type: "Spacer", style: { height: 13 } },
+          step("3", "Android warns that a keyboard can read what you type. Accept it — that is how every keyboard works."),
+          { type: "Spacer", style: { height: 13 } },
+          step("4", "Come back, then tap the globe key to switch to Tailzu."),
+        ],
+      },
       { type: "Spacer", style: { height: 34 } },
-      // "Open Settings" (not "Open Keyboard Settings") — iOS can't deliver
-      // what the old label promised; be honest about where the button lands.
-      { type: "Button", visibleIf: { not: { truthy: "keyboardReady" } },
+      // Two buttons, one per platform, because they go to different places and
+      // a label should say where. iOS lands on Tailzu's own Settings page and
+      // the user walks from there — "Go to Settings" is the honest promise.
+      // Android lands directly on the keyboard list, so it can promise that.
+      { type: "Button",
+        visibleIf: { all: [{ not: { truthy: "keyboardReady" } }, { platform: "ios" }] },
         props: { label: "Go to Settings", variant: "primary" }, on: { onPress: "openSettings" } },
+      { type: "Button",
+        visibleIf: { all: [{ not: { truthy: "keyboardReady" } }, { platform: "android" }] },
+        props: { label: "Open keyboard settings", variant: "primary" }, on: { onPress: "openKeyboardSettings" } },
       { type: "Button", visibleIf: { truthy: "keyboardReady" },
         props: { label: "Start using Tailzu", variant: "primary" }, on: { onPress: "finish" } },
       { type: "Spacer", style: { height: 13 } },

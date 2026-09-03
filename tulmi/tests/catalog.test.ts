@@ -58,6 +58,34 @@ describe("the arrival prompt", () => {
   });
 });
 
+describe("the keyboard step speaks each platform's language", () => {
+  const screen = () => JSON.stringify(buildScreen("onboarding_keyboard", { personality: {}, language: "en" }));
+
+  it("ships both step lists, each gated to its own platform", () => {
+    const t = screen();
+    expect(t).toContain('"platform":"ios"');
+    expect(t).toContain('"platform":"android"');
+  });
+
+  it("keeps the iOS-only words out of the Android list", () => {
+    // "General", "Add New Keyboard" and "Allow Full Access" do not exist on
+    // Android; following them there is a dead end, not a detour.
+    const t = screen();
+    expect(t).toContain("Allow Full Access");
+    expect(t).toContain("keyboard list");
+  });
+
+  it("names the warning that actually stops Android users", () => {
+    expect(screen()).toContain("read what you type");
+  });
+
+  it("gives Android a button that deep-links instead of an iOS URL scheme", () => {
+    const t = screen();
+    expect(t).toContain('"target":"keyboard"');
+    expect(t).toContain("app-settings:");
+  });
+});
+
 describe("buildBootstrap", () => {
   it("returns theme + navigation + home initial screen when onboarded", () => {
     const b = buildBootstrap({ onboarded: true });
