@@ -1029,6 +1029,18 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
         // keyboard's own mic animation, so the first thing the app shows is the
         // thing the product is — and an upload to the "intro" key replaces it
         // without touching this tree.
+        // The way out, ALWAYS. This button used to live inside the
+        // "no media uploaded" branch — present only in the configuration that
+        // could not fail, and gone in the one that can. The intro hides the
+        // header and the tab bar and is the only stack entry, so if the media
+        // path stalls or the timer never fires there is otherwise nothing to
+        // tap at all. One target, and the whole class of trap is gone.
+        {
+          type: "Button",
+          props: { label: "Get started", variant: "primary" },
+          on: { onPress: "done" },
+          style: { position: "absolute", bottom: 56, left: 24, right: 24 },
+        } as Node,
         ...(hasIntroMedia ? [] : [{
           type: "ParticleMark",
           style: PLATE_STYLE,
@@ -1252,7 +1264,7 @@ function paywallScreen(): ScreenResponse {
   const ctaCondition: ActionRef = cfg.plans.reduceRight<ActionRef>(
     (acc, plan) => ({
       kind: "condition",
-      if: { eq: ["state.selectedPlanId", plan.id] },
+      if: { eq: ["selectedPlanId", plan.id] },
       then: `buy.${plan.id}`,
       else: acc,
     }),
@@ -3257,13 +3269,25 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
             kind: "callEndpoint",
             method: "GET",
             path: "/v1/history",
-            assignTo: "entries",
+            // Into a scratch key, then unwrap. The route answers
+            // { entries, nextBefore, nextBeforeId } — assigning that straight
+            // to `entries` made the list's items an OBJECT, Array.isArray said
+            // no, and History rendered empty for everyone, every time, one
+            // frame after the server-prefilled rows had appeared.
+            assignTo: "_hist",
             onSuccess: "refreshDone",
             onError: "err",
           },
         ],
       },
-      refreshDone: { kind: "setState", path: "loading", value: false },
+      refreshDone: {
+        kind: "sequence",
+        actions: [
+          // Unwrap the envelope into the key the list actually reads.
+          { kind: "setState", path: "entries", value: "$state._hist.entries" },
+          { kind: "setState", path: "loading", value: false },
+        ],
+      },
       // Tap on a card — detail view is intentionally deferred until we know
       // what belongs there beyond input/output/timestamp.
       openDetail: { kind: "toast", message: "@history.detail.toast", tone: "info" },
@@ -3941,6 +3965,19 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
         ],
       },
       micDenied: {
+        kind: "sequence",
+        actions: [
+          { kind: "toast", tone: "error",
+            message: "Allow the microphone in Settings, then tap the keyboard mic again." },
+          // AND LEAVE. This screen hides the header and the tab bar and is
+          // entered as the only stack entry, so there is no back gesture
+          // either — a toast on its own left the user on a black screen with
+          // nothing to tap and force-quit as the only way out.
+          { kind: "delay", ms: 2600 },
+          { kind: "navigate", screenId: "home" },
+        ],
+      },
+      micDeniedToastOnly: {
         kind: "toast",
         tone: "error",
         // No platform path: the two systems put this in different places, and

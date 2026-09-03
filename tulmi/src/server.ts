@@ -1405,6 +1405,9 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   }
   const screen = buildScreen(screenId, {
     personality,
+    // The editor seeds itself from ctx.dictionary, which nothing ever set —
+    // so it opened blank on every visit however much the user had saved.
+    dictionary: personality?.dictionary,
     language: profile?.language ?? "auto",
     onboarded: profile?.onboarded ?? false,
     email: user?.email,
@@ -1436,6 +1439,7 @@ app.put("/v1/profile", { config: AUTHED_RL }, async (req, reply) => {
     return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
   }
   const body = (req.body ?? {}) as {
+    dictionary?: unknown[];
     language?: string;
     onboarded?: boolean;
     full_name?: string;
@@ -1450,6 +1454,23 @@ app.put("/v1/profile", { config: AUTHED_RL }, async (req, reply) => {
   if (typeof body.full_name === "string") {
     const name = body.full_name.trim().slice(0, 120);
     if (name) patch.fullName = name;
+  }
+  // The dictionary the editor sends. It was destructured nowhere and dropped
+  // on the floor: the user got a success haptic, and their rows were gone on
+  // the next screen load. It is stored on the PERSONALITY blob (jsonb, so no
+  // migration) because that is where every other writing-behaviour setting
+  // already lives and where the refine prompt reads from.
+  if (Array.isArray(body.dictionary)) {
+    const clean = body.dictionary
+      .filter((r): r is { word: string; replacement: string } =>
+        !!r && typeof r === "object" &&
+        typeof (r as { word?: unknown }).word === "string" &&
+        typeof (r as { replacement?: unknown }).replacement === "string")
+      .map((r) => ({ word: r.word.trim().slice(0, 80), replacement: r.replacement.trim().slice(0, 200) }))
+      .filter((r) => r.word && r.replacement)
+      // Bounded, because every entry becomes prompt on every refine.
+      .slice(0, 200);
+    await updatePersonality(user, (existing) => ({ ...existing, dictionary: clean }));
   }
   if (body.gender === "female" || body.gender === "male" || body.gender === "other") {
     patch.gender = body.gender;

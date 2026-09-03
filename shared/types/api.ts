@@ -120,6 +120,10 @@ export interface Personality {
   signature?: string;
   /** Free-form extra instructions ("avoid exclamation marks", "use British spelling"). */
   customInstructions?: string;
+  /** Word → replacement pairs from the Dictionary editor. Applied by the
+   *  keyboard on device and stated to the writer, so a name the user always
+   *  spells one way comes out that way. */
+  dictionary?: Array<{ word: string; replacement: string }>;
   /** Personal dictionary: names, brands, jargon to spell exactly (one per line
    * or comma-separated). Biases speech-to-text and cleanup so the right
    * spellings come out. */
