@@ -100,9 +100,37 @@ const GRANTS = new Set([
 ]);
 const REVOKES = new Set(["EXPIRATION", "REFUND", "SUBSCRIPTION_PAUSED", "TRANSFER"]);
 
+/**
+ * Which of the ids on an event is OUR user.
+ *
+ * RevenueCat identifies a device before it knows who is using it, so the same
+ * person can carry an anonymous id ($RCAnonymousID:…) alongside the id the app
+ * later logged them in with. An event can arrive naming either, and writing an
+ * entitlement row keyed by an anonymous id stores a subscription for nobody —
+ * silently, with a 200 and a cheerful log line.
+ *
+ * Our ids are Supabase UUIDs, so the right one is recognisable on sight.
+ */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function pickUserId(ev: RcEvent): string | null {
+  const candidates = [
+    ev.app_user_id,
+    ev.original_app_user_id,
+    ...(Array.isArray(ev.aliases) ? ev.aliases : []),
+  ];
+  for (const c of candidates) {
+    const v = String(c ?? "").trim();
+    if (UUID.test(v)) return v;
+  }
+  return null;
+}
+
 export type RcEvent = {
   type?: string;
   app_user_id?: string;
+  original_app_user_id?: string;
+  aliases?: string[];
   entitlement_id?: string | null;
   entitlement_ids?: string[] | null;
   expiration_at_ms?: number | null;
@@ -121,8 +149,16 @@ export async function applyRevenueCatEvent(
   defaultEntitlement: string,
 ): Promise<{ ok: boolean; reason: string; userId?: string }> {
   const type = String(ev.type ?? "").toUpperCase();
-  const userId = String(ev.app_user_id ?? "").trim();
-  if (!userId) return { ok: false, reason: "no app_user_id" };
+  const userId = pickUserId(ev);
+  if (!userId) {
+    // Named explicitly, because this is the failure that looks like success:
+    // the webhook answers 200, the log says "granted", and the subscription
+    // is attached to an id no account will ever match.
+    return {
+      ok: false,
+      reason: `no Supabase user id on the event (saw: ${[ev.app_user_id, ev.original_app_user_id].filter(Boolean).join(", ") || "nothing"})`,
+    };
+  }
 
   // CANCELLATION is not a revoke: the user keeps what they paid for until the
   // period ends, and RevenueCat sends EXPIRATION when it actually lapses.
