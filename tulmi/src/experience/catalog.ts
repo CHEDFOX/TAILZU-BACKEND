@@ -85,6 +85,8 @@ function screenHero(
     radius?: number;
     /** Cancel this much side padding so the art reaches the screen edges. */
     fullBleed?: number;
+    /** Cancel this much of the screen's top padding as well. */
+    fullBleedTop?: number;
     /** Show only on this platform. The condition is evaluated on the device,
      *  so a per-platform slot needs no server-side detection. */
     onlyOn?: "ios" | "android";
@@ -133,8 +135,15 @@ function screenHero(
         ...(opts.width ? { width: opts.width, alignSelf: "center" } : {}),
         // Negative side margins cancel the parent's padding, which is the only
         // way a child reaches the edge of a padded screen.
+        // Cancel the parent's side padding so the art reaches the screen
+        // edges, and cancel the screen's TOP padding too — a banner that
+        // starts below the safe area is a band, not a header.
         ...(opts.fullBleed
-          ? { marginLeft: -opts.fullBleed, marginRight: -opts.fullBleed, marginTop: -12 }
+          ? {
+              marginLeft: -opts.fullBleed, marginRight: -opts.fullBleed,
+              marginTop: -(opts.fullBleedTop ?? 12),
+              width: undefined, alignSelf: "stretch",
+            }
           : {}),
         borderRadius: opts.radius ?? 20,
         overflow: "hidden",
@@ -159,7 +168,7 @@ export const THEME: ThemeTokens = {
     // surface with white primary CTAs). The brand accent (used for key
     // press flashes, refined-text word highlight, mic recording state)
     // is the warm amber sampled from mic.animation — not a punchy
-    // pure orange. See ACCENT_AMBER below.
+    // pure orange. See ACCENT_AMBER.
     primary: "#FFFFFF",
     text: "rgba(255,255,255,0.96)",
     body: "rgba(255,255,255,0.74)",
@@ -855,20 +864,26 @@ function languagesScreen(ctx: ScreenContext): ScreenResponse {
         // that back with negative margins to reach the edges — art that stops
         // short of the screen reads as a component, art that meets it reads as
         // the page.
-        ...screenHero("languages", { height: 190, fullBleed: 18, radius: 0 }),
+        // 18 is this screen's own paddingHorizontal, 12 its paddingTop — both
+        // cancelled so the banner meets three edges of the screen.
+        ...screenHero("languages", { height: 190, fullBleed: 18, fullBleedTop: 12, radius: 0 }),
         {
-          type: "Heading",
-          // "Languages" carries the brand colour and "you speak" does not, so
-          // the eye lands on the noun. Two colours in one heading is a cheap
-          // trick when the split is arbitrary; here it is the subject and its
-          // qualifier, which is the one case it earns.
-          props: { content: "Languages" },
-          style: { fontSize: 32, fontWeight: "800", color: THEME.color.primary, marginBottom: 2 },
-        },
-        {
-          type: "Heading",
-          props: { content: "you speak" },
-          style: { fontSize: 32, fontWeight: "800", color: "$color.text", marginBottom: 14 },
+          // ONE line, two colours — a row of Texts, not two stacked Headings.
+          // Heading is a block: two of them are two lines however short the
+          // words are, and "Languages / you speak" broken across a line break
+          // reads as a mistake rather than emphasis.
+          //
+          // "Languages" carries the accent so the eye lands on the noun. Note
+          // ACCENT_AMBER and not THEME.color.primary: primary is WHITE in this
+          // theme, which is why the first attempt at this was invisible.
+          type: "Stack",
+          style: { direction: "row", alignItems: "baseline", gap: 9, marginBottom: 14 },
+          children: [
+            { type: "Text", props: { content: "Languages" },
+              style: { fontSize: 30, fontWeight: "800", color: ACCENT_AMBER } },
+            { type: "Text", props: { content: "you speak" },
+              style: { fontSize: 30, fontWeight: "800", color: "$color.text" } },
+          ],
         },
         {
           type: "Paragraph",
@@ -1619,6 +1634,17 @@ const DAILY_LANGUAGES: Array<{ value: string; label: string; native: string }> =
   { value: "ko", label: "Korean", native: "한국어" },
   { value: "zh", label: "Chinese", native: "中文" },
 ];
+
+/**
+ * The brand accent — the warm amber sampled from the mic animation.
+ *
+ * The theme's `primary` is WHITE by design (black surface, white CTAs), so
+ * anything reaching for `THEME.color.primary` to get "the brand colour" gets
+ * white and silently disappears. That is exactly what happened to the
+ * Languages heading. The accent has been living as a scattered literal;
+ * this is the name the theme comment has always claimed exists.
+ */
+const ACCENT_AMBER = "#E8A23C";
 
 const LANGUAGES: Array<{ value: string; label: string }> = [
   { value: "auto", label: "Auto-detect" },
