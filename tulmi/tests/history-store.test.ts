@@ -112,6 +112,22 @@ describe("coalescing", () => {
     expect(entries[0]?.output).toBe("First part. Second part.");
   });
 
+  it("holds against concurrent appends — one dictation, one card", async () => {
+    // The real failure: a dictation fires several refines within a second, all
+    // of them read the same "previous row" before any has inserted, and every
+    // one is written. Four cards for one utterance.
+    const user = makeUser("hs-concurrent");
+    const one = { kind: "typing" as const, input: "same words", output: "Same words." };
+    await Promise.all([
+      appendHistoryEntry(user, CONSENT_HISTORY, one),
+      appendHistoryEntry(user, CONSENT_HISTORY, one),
+      appendHistoryEntry(user, CONSENT_HISTORY, one),
+      appendHistoryEntry(user, CONSENT_HISTORY, one),
+    ]);
+    const { entries } = await listHistory(user);
+    expect(entries).toHaveLength(1);
+  });
+
   it("keeps a genuinely new entry", async () => {
     const user = makeUser("hs-new");
     await appendHistoryEntry(user, CONSENT_HISTORY, { kind: "voice", input: "a", output: "A." });

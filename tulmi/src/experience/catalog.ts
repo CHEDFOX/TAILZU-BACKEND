@@ -3326,21 +3326,18 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
               },
               children: [
                 {
-                  type: "Stack",
-                  style: { direction: "row", justify: "between", align: "center" },
-                  children: [
-                    {
-                      type: "Text",
-                      bind: { content: "item.createdAt" },
-                      props: { variant: "label" },
-                    },
-                    {
-                      type: "Badge",
-                      bind: { label: "item.targetApp" },
-                      props: { tone: "accent" },
-                      visibleIf: { truthy: "item.targetApp" },
-                    },
-                  ],
+                  // Just when it happened. The app badge is gone: on iOS it
+                  // could only ever say "Generic", because a keyboard
+                  // extension cannot learn its host app — so it labelled every
+                  // card with a word that meant nothing and looked like a
+                  // category the user was supposed to understand.
+                  //
+                  // The time is formatted on the DEVICE. The server knows the
+                  // instant but not the timezone, and a list that says 08:30
+                  // to someone who dictated at 14:00 is worse than no time.
+                  type: "Text",
+                  bind: { content: "item.createdAt" },
+                  props: { variant: "label", format: "relative" },
                 },
                 { type: "Spacer", style: { height: 10 } },
                 // What was heard, then what was written. Labelled and in that
@@ -3354,7 +3351,10 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
                   props: { variant: "muted", numberOfLines: 3 },
                 },
                 { type: "Spacer", style: { height: 10 } },
-                text("Tailzu wrote", "label", { style: { fontSize: 11, opacity: 0.6, color: "$color.primary" } }),
+                // ACCENT_AMBER, not $color.primary — primary is WHITE in this
+                // theme, so this label has been rendering the same colour as
+                // the one above it and the pair read as one block.
+                text("Tailzu wrote", "label", { style: { fontSize: 11, opacity: 0.9, color: ACCENT_AMBER } }),
                 {
                   type: "Text",
                   bind: { content: "item.output" },

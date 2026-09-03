@@ -189,7 +189,10 @@ export function coalesce(
   const window = coalesceWindowMs();
   if (window <= 0) return null;
   const age = now - Date.parse(prev.createdAt);
-  if (!(age >= 0 && age <= window)) return null;
+  // A small negative age is clock skew between this process and the database
+  // that stamped the row, not a row from the future. Requiring age >= 0 let
+  // a few milliseconds of skew switch coalescing off entirely, silently.
+  if (!(age >= -5000 && age <= window)) return null;
 
   if (prev.kind === entry.kind && prev.input === entry.input) return { action: "drop" };
 
@@ -220,6 +223,39 @@ function countWordsLocal(text: string): number {
  * The caller MUST pass its already-loaded personality — this function does
  * NOT re-fetch it, so per-request handlers stay one DB round-trip lean.
  */
+/**
+ * Serialize appends per user.
+ *
+ * Coalescing reads the previous row and then writes. That is only correct if
+ * the two happen without another append in between — and they do not: a single
+ * dictation fires several refines within a second of each other, so all of
+ * them read the same "previous row" before any has inserted, none sees the
+ * others, and every one is written. One utterance, four cards.
+ *
+ * A read-then-write cannot fix concurrent writers by being cleverer about the
+ * read. They have to take turns.
+ *
+ * Per user, so one person's burst never delays anyone else, and the entry is
+ * released in a finally so a thrown append cannot wedge the queue.
+ */
+const appendLocks = new Map<string, Promise<void>>();
+
+async function withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = appendLocks.get(userId) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  appendLocks.set(userId, prev.then(() => gate));
+  await prev.catch(() => {});
+  try {
+    return await fn();
+  } finally {
+    release();
+    // Drop the entry once this was the last waiter, so the map does not grow
+    // with every user the process has ever served.
+    if (appendLocks.get(userId) === gate) appendLocks.delete(userId);
+  }
+}
+
 export async function appendHistoryEntry(
   user: AuthedUser,
   personality: Personality | undefined,
@@ -228,7 +264,14 @@ export async function appendHistoryEntry(
   audioSeconds?: number,
 ): Promise<void> {
   if (!hasConsentedToHistory(personality)) return;
+  return withUserLock(user.id, () => appendHistoryEntryLocked(user, entry, audioSeconds));
+}
 
+async function appendHistoryEntryLocked(
+  user: AuthedUser,
+  entry: HistoryInput,
+  audioSeconds?: number,
+): Promise<void> {
   const sb = dataClientFor(user);
   if (!sb) {
     const rows = memoryRows(user.id);
