@@ -58,6 +58,41 @@ export type MediaEntry = {
 
 export type MediaRegistry = Record<string, MediaEntry>;
 
+/**
+ * What this file actually IS, from its first bytes.
+ *
+ * The declared mimetype comes from whatever uploaded the file, and clients get
+ * it wrong constantly — a curl that cannot guess sends nothing, and the route
+ * fell back to application/octet-stream. That stored an mp4 with a ".bin"
+ * extension and a content type nothing recognises, so the screen that asked
+ * for a Video node got an Image node and the clip silently did not play. The
+ * upload said ok:true; the failure surfaced days later as "why is it blank".
+ *
+ * The bytes cannot be wrong. A specific declared type is still trusted — it
+ * carries detail sniffing cannot, like svg+xml versus plain xml — but a
+ * generic or missing one is repaired here rather than propagated.
+ */
+export function sniffContentType(buf: Buffer, declared: string): string {
+  const d = (declared || "").toLowerCase();
+  const generic = !d || d === "application/octet-stream" || d === "binary/octet-stream";
+  if (!generic) return declared;
+  const ascii = (start: number, len: number) => buf.slice(start, start + len).toString("latin1");
+  if (buf.length >= 12) {
+    // ISO base media (mp4, m4v, mov): a "ftyp" box at offset 4, whose brand
+    // then separates QuickTime from the mp4 family.
+    if (ascii(4, 4) === "ftyp") {
+      return ascii(8, 4).startsWith("qt") ? "video/quicktime" : "video/mp4";
+    }
+    if (ascii(0, 4) === "RIFF" && ascii(8, 4) === "WEBP") return "image/webp";
+    if (ascii(0, 4) === "GIF8") return "image/gif";
+    if (ascii(0, 4) === "\u001aE\u00df\u00a3") return "video/webm";
+  }
+  if (buf.length >= 8 && buf[0] === 0x89 && ascii(1, 3) === "PNG") return "image/png";
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+  if (buf.length >= 5 && ascii(0, 5) === "%PDF-") return "application/pdf";
+  return declared || "application/octet-stream";
+}
+
 function extForContentType(ct: string): string {
   if (!ct) return "bin";
   const map: Record<string, string> = {
@@ -275,6 +310,10 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
     }
     if (!buf) return reply.code(400).send({ code: "no_file" });
     const size = buf.length;
+    // Repair a generic declared type from the bytes before anything is derived
+    // from it — the extension, the url, and every renderer's node choice all
+    // hang off this one value.
+    contentType = sniffContentType(buf, contentType);
     const sha = crypto.createHash("sha256").update(buf).digest("hex");
     const ext = extForContentType(contentType);
     const filename = `${sha}.${ext}`;
