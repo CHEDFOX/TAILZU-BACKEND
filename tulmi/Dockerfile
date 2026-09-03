@@ -23,8 +23,12 @@ RUN npm run build
 FROM node:22-slim AS runtime
 
 # wget is needed for the HEALTHCHECK below; install + clean in one layer.
+# ffmpeg is what POST /v1/media/compress shells out to — it re-encodes both
+# the images (to WebP) and the video (to H.264), so one package covers both
+# and there is no native Node addon to build. Without it that endpoint
+# answers 503 and says so; everything else runs fine.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends wget \
+ && apt-get install -y --no-install-recommends wget ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production

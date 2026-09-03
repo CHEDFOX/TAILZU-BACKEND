@@ -24,6 +24,7 @@
  *     the file on disk (compacting is a separate op).
  */
 import { FastifyInstance } from "fastify";
+import { registerMediaCompressRoute } from "./mediaCompress.js";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -212,6 +213,21 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
   rateLimit?: { max: number; timeWindow: number };
 }): void {
   const { mediaDir, publicUrlPrefix, adminSecret, rateLimit } = opts;
+
+  // Compression lives in its own module but has to run in here: it needs the
+  // live registry, the same admin check, and the same media dir, and the
+  // rewrite has to be one operation with the registry write.
+  registerMediaCompressRoute(app, {
+    mediaDir,
+    publicUrlPrefix,
+    adminSecret,
+    registry: () => cachedRegistry,
+    writeRegistry: async (r) => {
+      cachedRegistry = r;
+      await writeRegistry(mediaDir, r);
+    },
+    checkAdmin: (req, expected) => checkAdmin(req, expected),
+  });
 
   // @fastify/rate-limit is registered global:false, so a route is only
   // throttled when it carries a `config.rateLimit`. Build it once and attach
