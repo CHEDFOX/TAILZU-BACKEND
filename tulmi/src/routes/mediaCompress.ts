@@ -56,6 +56,10 @@ const MIN_SAVING_RATIO = 0.9;
 /** Anything wider than this is bigger than any screen that will show it. */
 const MAX_VIDEO_WIDTH = 1080;
 const MAX_IMAGE_WIDTH = 1600;
+/** Animated-WebP conversion: enough for a 260–360pt slot on a 3x screen. */
+const MAX_WEBP_WIDTH = 720;
+const WEBP_FPS = 15;
+const WEBP_MAX_SECONDS = 12;
 
 export type CompressPlan = {
   key: string;
@@ -93,9 +97,35 @@ export async function hasFfmpeg(): Promise<boolean> {
 async function encode(
   src: string,
   contentType: string,
+  videoTo: "h264" | "webp" = "h264",
 ): Promise<{ buf: Buffer; contentType: string } | null> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "tulmi-compress-"));
   try {
+    if (isVideo(contentType) && videoTo === "webp") {
+      // Video → ANIMATED WEBP.
+      //
+      // A hero clip is short, silent, looping and drawn at ~260pt. That is
+      // exactly what animated WebP is for, and it is played by expo-image —
+      // the same path that carries every other image in the app, and the one
+      // known to work on device. A Video node needs expo-video, a separate
+      // native module reached through a hook, and when that does not render
+      // the result is a silent blank: the failure that kept the intro black
+      // for days and then repeated on the Flow screen.
+      //
+      // So this is not a downgrade for these slots, it is the shorter road to
+      // the same picture. 15fps and a 12s cap keep it honest — past that a
+      // WebP is heavier than the video it replaced, and a hero nobody watches
+      // twice does not need 60fps.
+      const out = path.join(dir, "out.webp");
+      await run("ffmpeg", [
+        "-y", "-t", String(WEBP_MAX_SECONDS), "-i", src,
+        "-vf", `scale='min(${MAX_WEBP_WIDTH},iw)':-2,fps=${WEBP_FPS}`,
+        "-loop", "0", "-lossless", "0", "-q:v", "58", "-preset", "picture",
+        "-an", "-vsync", "0",
+        out,
+      ], { timeout: 10 * 60 * 1000, maxBuffer: 1 << 24 });
+      return { buf: await fs.readFile(out), contentType: "image/webp" };
+    }
     if (isVideo(contentType)) {
       const out = path.join(dir, "out.mp4");
       await run("ffmpeg", [
@@ -155,6 +185,10 @@ export function registerMediaCompressRoute(
     const dry = q.dry !== "false";          // dry by default: changing every URL is not a default
     const withGif = q.gif === "true";
     const only = q.key?.trim();
+    // video=webp turns clips into animated WebP instead of re-encoding them.
+    // Opt-in, because it changes what KIND of thing the slot holds and every
+    // screen decides its node from that.
+    const videoTo: "h264" | "webp" = q.video === "webp" ? "webp" : "h264";
 
     const reg = registry();
     const plans: CompressPlan[] = [];
@@ -178,7 +212,7 @@ export function registerMediaCompressRoute(
       let result: { buf: Buffer; contentType: string } | null = null;
       try {
         await fs.access(src);
-        result = await encode(src, ct);
+        result = await encode(src, ct, videoTo);
       } catch (err) {
         totalAfter += entry.size;
         plans.push({ key, from: { size: entry.size, contentType: ct }, saved: 0,
@@ -188,7 +222,8 @@ export function registerMediaCompressRoute(
 
       // Not meaningfully smaller → keep what we have. A new URL costs every
       // client a re-download; it has to buy something.
-      if (!result || result.buf.length >= entry.size * MIN_SAVING_RATIO) {
+      const convertingKind = !!result && result.contentType !== ct;
+      if (!result || (!convertingKind && result.buf.length >= entry.size * MIN_SAVING_RATIO)) {
         totalAfter += entry.size;
         plans.push({ key, from: { size: entry.size, contentType: ct }, saved: 0,
                      status: "kept", reason: "no meaningful saving" });
@@ -197,6 +232,8 @@ export function registerMediaCompressRoute(
 
       const sha = crypto.createHash("sha256").update(result.buf).digest("hex");
       const ext = result.contentType === "video/mp4" ? "mp4" : "webp";
+      // A conversion can legitimately grow the file — it is bought for
+      // playability, not bytes — so `saved` may be negative and says so.
       const newName = `${sha}.${ext}`;
       const url = `${publicUrlPrefix}/${newName}`;
       const saved = entry.size - result.buf.length;
