@@ -4973,9 +4973,21 @@ export function buildKeyboardConfig(
         // Flip to true once a build containing kb.dictation.dim.blur is out —
         // one backend edit, no rebuild. Everything else in this block is
         // already tuned for that day.
+        // The overlay stays ON while dictating, but it is INVISIBLE.
+        //
+        // Two jobs were bundled into one thing: it veiled the keys, and it
+        // swallowed their touches. The veil is unwanted — it reads as a grey
+        // sheet dropped over the keyboard — but the touch blocking is what
+        // stops a stray thumb inserting a character into the middle of the
+        // sentence being dictated, which is a genuinely bad failure and one
+        // this keyboard has already had.
+        //
+        // So: enabled and blocksTouches stay true, and every visual dimension
+        // goes to zero. The keys look exactly as they always do; they just
+        // cannot be typed while the mic is live.
         "kb.dictation.dim.enabled": true,
-        "kb.dictation.dim.blur": true,          // iOS UIVisualEffectView
-        "kb.dictation.dim.blurRadius": 14,      // Android RenderEffect, API 31+
+        "kb.dictation.dim.blur": false,         // iOS UIVisualEffectView — off
+        "kb.dictation.dim.blurRadius": 0,       // Android RenderEffect, API 31+
         // The TINT is now nearly nothing, and that is the fix for "the whole
         // keyboard sits on a grey sheet".
         //
@@ -4988,12 +5000,15 @@ export function buildKeyboardConfig(
         // The blur carries the "not now" signal on its own. The tint only has
         // to nudge it, so it is a whisper; raise it only for builds with no
         // blur to fall back on.
-        "kb.dictation.dim.alpha": 0.08,
-        "kb.dictation.dim.keyAlpha": 0.5,       // Android: how far the keys fade
+        "kb.dictation.dim.alpha": 0,
+        "kb.dictation.dim.keyAlpha": 1,         // Android: keys do not fade
         // Builds with no blur to fall back on still need a real veil — that
         // one is served separately so lowering the blur tint cannot silently
         // leave an older binary showing nothing at all during recording.
-        "kb.dictation.dim.fallbackAlpha": 0.5,
+        // The flat veil's opacity, and the one that produced the grey sheet.
+        // Zero: the view is still there and still swallows touches, it just
+        // paints nothing.
+        "kb.dictation.dim.fallbackAlpha": 0,
         "kb.dictation.dim.blocksTouches": true,
         // "kb.shift.lockedColor": "#E8A23C",
         // "kb.shift.longPressMs": 350,
