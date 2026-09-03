@@ -734,6 +734,9 @@ function heroSlot(opts: {
 const INTRO_PLATE = 128;
 /** How long the intro holds before moving on. Match your file's length. */
 const INTRO_PLAY_MS = 2600;
+/** How long the plate takes to be drawn into the mic. Part of INTRO_PLAY_MS,
+ *  not added to it — the opening should not grow because it got nicer. */
+const INTRO_MORPH_MS = 520;
 /**
  * Play the intro even with no media uploaded, using the built-in mark.
  *
@@ -946,7 +949,8 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
     // window — critical for the intro to feel like a splash-adjacent
     // cinematic instead of "media inside the app's content area."
     hideChrome: true,
-    state: {},
+    // `handoff` flips just before the exit and drives MorphOut on the plate.
+    state: { handoff: false },
     actions: {
       done: { kind: "navigate", screenId: next },
     },
@@ -970,7 +974,14 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           // its own completion, so this is only the net for a clip that never
           // loads, and cutting a playing video short is worse than a beat of
           // extra black.
-          { kind: "delay", ms: introIsVideo ? INTRO_VIDEO_MAX_MS : INTRO_PLAY_MS },
+          // The morph's length comes OUT of the hold, so the opening still
+          // lasts what INTRO_PLAY_MS says rather than that plus an animation.
+          { kind: "delay", ms: Math.max(300, (introIsVideo ? INTRO_VIDEO_MAX_MS : INTRO_PLAY_MS) - INTRO_MORPH_MS) },
+          // Draw the plate into the mic, then navigate. Inlined rather than
+          // named: a sequence entry is an action, and no action kind calls
+          // another by name.
+          { kind: "setState", path: "handoff", value: true },
+          { kind: "delay", ms: INTRO_MORPH_MS },
           { kind: "navigate", screenId: next },
         ] },
       },
@@ -1048,9 +1059,16 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           // The plate is a VIEW wrapping the image, not the image's own style.
           // `overflow: hidden` clips a view's CHILDREN; on an image element the
           // pixels are the element itself, so the round corners had nothing to
-          // cut and the media drew square. The Slideshow this replaced wrapped
-          // it the same way internally, which is why it looked right there.
-          type: "Stack",
+          // cut and the media drew square.
+          //
+          // MorphOut rather than a plain Stack: the intro and the in-app mic
+          // are the SAME media in the SAME circle, so the exit should carry
+          // one into the other instead of cutting between two identical
+          // things. A bundle without MorphOut renders the fallback and cuts,
+          // exactly as before.
+          type: "MorphOut",
+          bind: { active: "handoff" },
+          props: { durationMs: INTRO_MORPH_MS, dy: 0.55, toScale: 0.18 },
           style: PLATE_STYLE,
           children: [{
             type: "Image",
@@ -1059,6 +1077,15 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
             style: { width: "100%", height: "100%" },
             props: { source: introSource, contentFit: "cover" },
           } as Node],
+          fallback: {
+            type: "Stack",
+            style: PLATE_STYLE,
+            children: [{
+              type: "Image",
+              style: { width: "100%", height: "100%" },
+              props: { source: introSource, contentFit: "cover" },
+            }],
+          },
         } as Node] : []),
       ],
     },
@@ -4101,6 +4128,9 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "haptics",
     title: "Haptics",
+    // Seeded from the saved setting so the switch is right the instant the
+    // screen draws, and mutated in place by the switch after that.
+    state: { hapticsAll: all },
     actions: { err: { kind: "toast", message: "Couldn't save that.", tone: "error" } },
     root: {
       type: "Screen",
@@ -4109,15 +4139,47 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
         { type: "Paragraph", props: { content: "Tap any key to give it a buzz. Tap again to take it away." },
           style: { marginBottom: 18 } },
         {
-          type: "Row",
-          props: { label: "Every key", value: all ? "On" : "Off" },
-          style: { marginBottom: 20 },
-          on: { onPress: { kind: "sequence", actions: [
-            { kind: "haptic", style: "selection" },
-            { kind: "callEndpoint", method: "POST", path: "/v1/personality/haptics",
-              body: { all: !all }, onError: "err" },
-            { kind: "refresh" },
-          ] } },
+          // A switch, not a row with the word "On" at the end of it. This is
+          // the one control on the screen that is a state rather than a
+          // destination, and a chevron row says "there is more through here" —
+          // which there is not. The switch shows the state and changes it in
+          // the same gesture.
+          //
+          // It wears the brand colour when on, not the system green: a colour
+          // Apple drew, on a control Apple did not, reads as borrowed.
+          type: "Stack",
+          style: {
+            direction: "row", alignItems: "center", justifyContent: "space-between",
+            paddingVertical: 10, marginBottom: 20,
+          },
+          children: [
+            { type: "Text", props: { content: "Every key" },
+              style: { fontSize: 16, fontWeight: "500", color: "$color.text" } },
+            {
+              type: "Switch",
+              bind: { value: "hapticsAll" },
+              // The switch writes the new value to state BEFORE this fires, so
+              // the body reads it rather than negating the old one — no second
+              // source of truth to drift.
+              on: { onChange: { kind: "sequence", actions: [
+                { kind: "haptic", style: "selection" },
+                { kind: "callEndpoint", method: "POST", path: "/v1/personality/haptics",
+                  body: { all: "$state.hapticsAll" }, onError: "err" },
+                { kind: "refresh" },
+              ] } },
+              // Older bundles keep the row they already know how to draw.
+              fallback: {
+                type: "Row",
+                props: { label: "Every key", value: all ? "On" : "Off" },
+                on: { onPress: { kind: "sequence", actions: [
+                  { kind: "haptic", style: "selection" },
+                  { kind: "callEndpoint", method: "POST", path: "/v1/personality/haptics",
+                    body: { all: !all }, onError: "err" },
+                  { kind: "refresh" },
+                ] } },
+              },
+            },
+          ],
         },
 
         board("Letters", [
