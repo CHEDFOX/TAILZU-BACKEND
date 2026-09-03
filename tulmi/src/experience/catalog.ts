@@ -35,7 +35,11 @@ import {
  * catalog can surface uploaded media URLs into the keyboard config without a
  * circular import. Signature matches routes/media.ts getMediaRegistry().
  */
-type MediaEntry = { url: string; contentType: string; size: number; uploadedAt: number };
+type MediaEntry = {
+  url: string; contentType: string; size: number; uploadedAt: number;
+  /** Playback length, when the compressor has measured it. */
+  durationMs?: number;
+};
 let getMediaRegistryFn: (() => Record<string, MediaEntry>) | null = null;
 export function setMediaRegistryAccessor(fn: () => Record<string, MediaEntry>): void {
   getMediaRegistryFn = fn;
@@ -3813,6 +3817,20 @@ function keyboardRecordScreen(ctx: ScreenContext): ScreenResponse {
  * here until the session idles out (kb.flow.idleTimeoutMs). Fully
  * backend-authored — restyle/recopy freely, it's pure SDUI.
  */
+/**
+ * How long the Flow confirmation stays.
+ *
+ * With a clip: its full length plus a beat to take in the last frame, because
+ * a demo cut off mid-play teaches nothing and looks broken. Without one: long
+ * enough to read two lines. Capped either way — this screen is a handoff, and
+ * a handoff that outstays its welcome is a wait.
+ */
+function flowDismissMs(): number {
+  const clip = getMediaRegistryFn?.()?.["hero.flow_arm"]?.durationMs;
+  if (!clip) return FLOW_ARM_DISMISS_MS;
+  return Math.min(clip + 900, 20_000);
+}
+
 function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
@@ -3842,7 +3860,11 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
           // and confirmation the user has to dismiss is a chore. Long enough
           // to read the line and watch the clip once; short enough that
           // nobody waits on it.
-          { kind: "delay", ms: FLOW_ARM_DISMISS_MS },
+          // Wait for the clip, not for a guess. The screen used to leave after
+          // a fixed 4.2s and cut its own demo off mid-play — the one thing a
+          // demo must not do. When the compressor has measured the clip, that
+          // length plus a beat is the delay; with no clip, the short default.
+          { kind: "delay", ms: flowDismissMs() },
           // Home, not back. This screen is usually reached from the keyboard
           // while the user is inside another app, so "back" is whatever the
           // app happened to be showing before — and on a fresh launch that is
@@ -3863,14 +3885,19 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
     root: {
       type: "Screen",
       on: { onAppear: "arm" },
-      // Top-aligned, not centred. Centring worked when this screen was three
-      // lines of text; with a 300pt clip appended the block grew past the
-      // fold, and the clip — the thing worth seeing — was the part below it.
-      style: { paddingHorizontal: 28, paddingTop: 96, alignItems: "center" },
+      // Text at the top, clip at the bottom, and the gap between them doing
+      // the work. The words are read in a second and then the eye has
+      // somewhere to go; a clip tucked directly under a paragraph competes
+      // with it instead.
+      style: { paddingHorizontal: 28, paddingTop: 84, alignItems: "center" },
       children: [
         {
           type: "Heading",
-          props: { content: "Flow is on." },
+          // "Flow is on" states a setting. This states what the user just
+          // gained, in their terms: the microphone stops belonging to this app
+          // and starts following them into every other one. That is the whole
+          // feature, and it is a better sentence than its own name.
+          props: { content: "The mic goes with you." },
           style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 14, textAlign: "center" },
         },
         {
@@ -3890,8 +3917,8 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
         //
         // iOS only, because Flow is. The Android keyboard has its own capture
         // path and never reaches this screen.
-        { type: "Spacer", style: { height: 28 } },
-        ...screenHero("flow_arm", { height: 260, width: 260, radius: 22, onlyOn: "ios" }),
+        { type: "Spacer", style: { height: 56 } },
+        ...screenHero("flow_arm", { height: 300, width: 300, radius: 26, onlyOn: "ios" }),
       ],
     },
   };

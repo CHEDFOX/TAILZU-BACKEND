@@ -54,6 +54,8 @@ export type MediaEntry = {
   size: number;
   uploadedAt: number;
   key?: string;
+  /** Playback length, when known (set by the compressor for video sources). */
+  durationMs?: number;
 };
 
 export type MediaRegistry = Record<string, MediaEntry>;

@@ -59,7 +59,34 @@ const MAX_IMAGE_WIDTH = 1600;
 /** Animated-WebP conversion: enough for a 260–360pt slot on a 3x screen. */
 const MAX_WEBP_WIDTH = 720;
 const WEBP_FPS = 15;
-const WEBP_MAX_SECONDS = 12;
+const WEBP_MAX_SECONDS = Number(process.env.WEBP_MAX_SECONDS ?? 30);
+
+/**
+ * Keys that must stay VIDEO even when converting.
+ *
+ * The in-app mic freezes on a frame when it is not recording — that resting
+ * frame is the button's whole idle state. Only a video can hold a frame:
+ * expo-image cannot pause an animated format, so the app UNMOUNTS a paused
+ * gif or webp, and converting the mic left an empty hole where the button
+ * used to be. Learned the hard way, in production.
+ */
+function mustStayVideo(key: string): boolean {
+  return /^mic\./i.test(key);
+}
+
+/** How long the clip runs, for a screen that has to wait for it. */
+async function probeDurationMs(src: string): Promise<number | undefined> {
+  try {
+    const { stdout } = await run("ffprobe", [
+      "-v", "error", "-show_entries", "format=duration",
+      "-of", "default=noprint_wrappers=1:nokey=1", src,
+    ], { timeout: 30_000 });
+    const secs = Number(String(stdout).trim());
+    return Number.isFinite(secs) && secs > 0 ? Math.round(secs * 1000) : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export type CompressPlan = {
   key: string;
@@ -210,9 +237,11 @@ export function registerMediaCompressRoute(
       totalBefore += entry.size;
 
       let result: { buf: Buffer; contentType: string } | null = null;
+      let durationMs: number | undefined;
       try {
         await fs.access(src);
-        result = await encode(src, ct, videoTo);
+        if (isVideo(ct)) durationMs = await probeDurationMs(src);
+        result = await encode(src, ct, mustStayVideo(key) ? "h264" : videoTo);
       } catch (err) {
         totalAfter += entry.size;
         plans.push({ key, from: { size: entry.size, contentType: ct }, saved: 0,
@@ -261,6 +290,9 @@ export function registerMediaCompressRoute(
         contentType: result.contentType,
         size: result.buf.length,
         uploadedAt: Date.now(),
+        // Kept so a screen can wait for the clip instead of guessing — see
+        // the Flow screen, which used to cut its own demo off mid-play.
+        ...(durationMs ? { durationMs } : {}),
       };
       await writeRegistry(next);
       if (filename && filename !== newName) {
