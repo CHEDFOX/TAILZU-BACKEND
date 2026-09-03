@@ -3842,6 +3842,16 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
           props: { content: "⟵  swipe back to continue" },
           style: { fontSize: 15, fontWeight: "700", color: "$color.primary", textAlign: "center" },
         },
+        // A square demo of Flow in use, below the instruction rather than
+        // above it: this screen's whole job is to send the user back to their
+        // app, so nothing may sit between them and that line. The clip shows
+        // what happens AFTER they leave, which is exactly what a person
+        // hesitating at "swipe back" wants to see.
+        //
+        // iOS only, because Flow is. The Android keyboard has its own capture
+        // path and never reaches this screen.
+        { type: "Spacer", style: { height: 28 } },
+        ...screenHero("flow_arm", { height: 300, width: 300, radius: 24, onlyOn: "ios" }),
       ],
     },
   };
