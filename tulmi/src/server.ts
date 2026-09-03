@@ -41,7 +41,8 @@ import { enforceQuota, recordUsage, usageSummary, usageWindows } from "./usage/m
 import { recordKeyboardTelemetry } from "./usage/telemetry.js";
 import { activeRollouts, bucketFor } from "./experience/rollout.js";
 import { captureException, fastifyLoggerOptions, initSentry } from "./observability.js";
-import { getProfile, updateProfile, type Profile } from "./profile/store.js";
+import { getProfile, updateProfile, touchLastSeen, type Profile } from "./profile/store.js";
+import { applyRevenueCatEvent, isEntitled } from "./billing/entitlements.js";
 
 /**
  * The language a request should be written in.
@@ -1275,6 +1276,37 @@ function noStoreSdui(reply: import("fastify").FastifyReply): void {
 // LOCALLY-verified user id when a valid JWT is present, so a real authed user
 // gets their own bucket (even sharing a NAT egress IP with many others);
 // anonymous callers fall back to per-IP (real IP now, thanks to trustProxy).
+/**
+ * RevenueCat's webhook — the only thing that may grant a subscription.
+ *
+ * Authenticated by a shared secret RevenueCat sends verbatim as the
+ * Authorization header. With no secret configured this refuses everything:
+ * an open endpoint that grants entitlements is a free subscription for anyone
+ * who finds the URL, so it fails closed.
+ *
+ * Always answers 200 once authorised, even when an event is unusable.
+ * RevenueCat retries non-2xx for hours, and a malformed event will never
+ * become valid — retrying it forever buries the real ones.
+ */
+app.post("/v1/billing/revenuecat", async (req, reply) => {
+  const expected = cfg.REVENUECAT_WEBHOOK_SECRET ?? "";
+  if (!expected) {
+    req.log.error("[billing] webhook hit with no REVENUECAT_WEBHOOK_SECRET set");
+    return reply.code(503).send({ code: "not_configured" });
+  }
+  const got = String(req.headers["authorization"] ?? "");
+  if (got !== expected && got !== `Bearer ${expected}`) {
+    return reply.code(401).send({ code: "unauthorized" });
+  }
+  const body = (req.body ?? {}) as { event?: Record<string, unknown> };
+  const ev = (body.event ?? {}) as Record<string, unknown>;
+  const res = await applyRevenueCatEvent(ev as never, cfg.REVENUECAT_ENTITLEMENT);
+  // Logged either way: a webhook that silently does nothing looks exactly like
+  // one that worked, and this is how a missing subscription gets diagnosed.
+  req.log.info({ rc: res, type: ev.type }, "[billing] revenuecat event");
+  return reply.send(res);
+});
+
 app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   noStoreSdui(reply);
   // Auth is optional here so the shell can boot; when present, the user's
@@ -1287,13 +1319,24 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     ? await Promise.all([getProfile(user), getPersonality(user).catch(() => null)])
     : [null, null];
   const reqBody = (req.body ?? {}) as { launchCount?: number };
+  // The server's own view of both, so the app never has to guess and a
+  // modified client cannot claim either. Read in parallel with everything
+  // else, so this costs no extra latency.
+  const [entitled, usage] = user
+    ? await Promise.all([isEntitled(user).catch(() => false), usageSummary(user).catch(() => null)])
+    : [false, null];
   const bootstrap = buildBootstrap({
     onboarded: profile?.onboarded ?? false,
     // Both answers are required by the card, so either one proves it ran.
     profileComplete: !!(profile?.fullName || profile?.gender),
     launchCount: Number(reqBody.launchCount) || 0,
     languagesSet: !!personality?.languages?.length,
+    entitled,
+    wordsUsed: usage?.month?.words ?? 0,
   });
+  // When they were last here. Fire and forget: a failed stamp must never cost
+  // the boot, and nothing reads it on this path.
+  if (user) void touchLastSeen(user).catch(() => {});
   // Attach the current media registry so clients can resolve keys → URLs
   // without a separate roundtrip. Keys are semantic ("brand.mark",
   // "onboarding.hero.png"); each entry has { url, contentType, size,
@@ -1336,6 +1379,30 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     user && screenId === "history"
       ? (await listHistory(user, { limit: 50 })).entries
       : undefined;
+  // THE GATE. On iOS the keyboard's mic opens the app on `flow_arm`, so this
+  // route is where an out-of-words user is stopped — before a session arms,
+  // and without needing a keyboard build to enforce it.
+  //
+  // Only for flow_arm: every other screen stays reachable when the words run
+  // out. Being out of quota is not a reason to lose your settings.
+  if (screenId === "flow_arm" && user) {
+    const [entitled, used] = await Promise.all([
+      isEntitled(user).catch(() => true),        // unknown → let them through
+      usageSummary(user).catch(() => null),
+    ]);
+    const free = Number(process.env.FREE_MONTHLY_WORDS ?? 2500) || 0;
+    if (!entitled && free > 0 && (used?.month?.words ?? 0) >= free) {
+      const paywall = buildScreen("paywall", {
+        personality,
+        language: profile?.language ?? "auto",
+        onboarded: profile?.onboarded ?? false,
+        email: user?.email,
+        phone: user?.phone,
+        params: body.params,
+      });
+      if (paywall) return reply.send(await localize(paywall, profile?.language ?? "auto"));
+    }
+  }
   const screen = buildScreen(screenId, {
     personality,
     language: profile?.language ?? "auto",

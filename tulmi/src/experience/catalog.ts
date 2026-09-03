@@ -351,6 +351,12 @@ export function buildBootstrap(
     profileComplete?: boolean;
     launchCount?: number;
     languagesSet?: boolean;
+    /** The SERVER's answer, from the entitlements table. The client asks
+     *  RevenueCat too, but only this one can lift a server-side cap. */
+    entitled?: boolean;
+    /** Words used this month, so the app can show the meter and the keyboard
+     *  can stop before it starts. */
+    wordsUsed?: number;
   } = {},
 ): BootstrapResponse {
   return {
@@ -401,6 +407,14 @@ export function buildBootstrap(
         // is the whole PaywallConfig so clients can pre-warm plan copy without
         // a separate fetch.
         "paywall.entitlement": PAYWALL_CONFIG.entitlement ?? "pro",
+        // What the SERVER believes, alongside what the client asks RevenueCat.
+        // The app hides the paywall on either, so a webhook that has not
+        // landed yet never leaves a paying user staring at one.
+        "billing.entitled": opts.entitled === true,
+        "quota.wordsUsed": Math.max(0, Math.round(opts.wordsUsed ?? 0)),
+        "quota.wordsFree": FREE_MONTHLY_WORDS,
+        // The one flag every gate reads: out of words and not paying.
+        "quota.exceeded": opts.entitled !== true && (opts.wordsUsed ?? 0) >= FREE_MONTHLY_WORDS,
         "paywall.blockUntilEntitled": false,
         // DISABLED for now: the paywall was auto-showing on every open (user
         // lacks `pro`) and its purchase fails with "could not complete purchase"
@@ -3942,7 +3956,7 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
       // the work. The words are read in a second and then the eye has
       // somewhere to go; a clip tucked directly under a paragraph competes
       // with it instead.
-      style: { paddingHorizontal: 28, paddingTop: 84, alignItems: "center" },
+      style: { paddingHorizontal: 28, paddingTop: 72, paddingBottom: 0, alignItems: "center" },
       children: [
         {
           type: "Heading",
@@ -3970,8 +3984,14 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
         //
         // iOS only, because Flow is. The Android keyboard has its own capture
         // path and never reaches this screen.
-        { type: "Spacer", style: { height: 56 } },
-        ...screenHero("flow_arm", { height: 300, width: 300, radius: 26, onlyOn: "ios" }),
+        // FULL WIDTH, at the bottom. A 300pt square centred in a 28pt-padded
+        // column is neither: it reads as a thumbnail of the demo rather than
+        // the demo. This cancels the padding on both sides and takes the
+        // height a 9:16 recording actually wants.
+        { type: "Spacer", style: { height: 44 } },
+        ...screenHero("flow_arm", {
+          height: 460, radius: 0, onlyOn: "ios", fullBleed: 28, fullBleedTop: 0,
+        }),
       ],
     },
   };

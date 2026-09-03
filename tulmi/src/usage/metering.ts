@@ -7,6 +7,7 @@
  * so the pipeline still runs end-to-end without a database.
  */
 import { dataClientFor, type AuthedUser } from "../auth/supabase.js";
+import { isEntitled } from "../billing/entitlements.js";
 import { getConfig } from "../config.js";
 import type { UsageRecord, UsageSummary } from "../../../shared/types/api.js";
 
@@ -224,6 +225,17 @@ export async function usageWindows(
  * request, cached at Supabase.
  */
 export async function enforceQuota(user: AuthedUser): Promise<string | null> {
+  // Paying users are not metered. This check did not exist, so a subscriber
+  // was counted against the free monthly cap like everyone else and cut off
+  // at 2,500 words — they had paid for unlimited and got the free tier, which
+  // is the worst failure this product can have.
+  //
+  // The answer comes from the entitlements table, written only by RevenueCat's
+  // webhook. The CLIENT also knows its entitlement and hides the paywall
+  // accordingly, but a client is not evidence and cannot be the thing that
+  // lifts a server-side cap.
+  if (await isEntitled(user)) return null;
+
   const cfg = getConfig();
   const capAudio = cfg.FREE_MONTHLY_AUDIO_SECONDS;
   const capWords = cfg.FREE_MONTHLY_WORDS;

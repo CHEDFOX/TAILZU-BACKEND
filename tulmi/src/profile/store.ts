@@ -11,6 +11,8 @@ export type Gender = "female" | "male" | "other";
 export interface Profile {
   language: string; // 'auto' | 'en' | 'hi' | 'hinglish' | ...
   onboarded: boolean;
+  /** Last app open, ISO. Set by touchLastSeen on every bootstrap. */
+  lastSeenAt?: string;
   /** From the name + gender card. Absent until the user fills it in. */
   fullName?: string;
   gender?: Gender;
@@ -88,6 +90,32 @@ function isMissingColumn(message: string): boolean {
 }
 
 /** Patch a profile (language, onboarding, name, gender). Returns the merged result. */
+/**
+ * Record that this user was here.
+ *
+ * Written on every bootstrap, which is once per app open. Fire and forget at
+ * the call site: knowing when someone last visited is worth having and worth
+ * nothing at all if it can delay or fail a launch.
+ *
+ * On profiles rather than its own table because it is a property of the person,
+ * and a user forging their own last-visit time costs us nothing.
+ */
+export async function touchLastSeen(user: AuthedUser): Promise<void> {
+  const sb = dataClientFor(user);
+  if (!sb) {
+    const cur = memory.get(user.id);
+    if (cur) memory.set(user.id, { ...cur, lastSeenAt: new Date().toISOString() });
+    return;
+  }
+  const { error } = await sb
+    .from("profiles")
+    .update({ last_seen_at: new Date().toISOString() })
+    .eq("user_id", user.id);
+  // A missing column (migration 0008 not yet run) must not look like an
+  // outage. It is a stat, not a feature.
+  if (error) console.warn(`[profile] last_seen not recorded for ${user.id}: ${error.message}`);
+}
+
 export async function updateProfile(
   user: AuthedUser,
   patch: Partial<Profile>,

@@ -178,6 +178,17 @@ const EnvSchema = z.object({
   // (currently just the cache-bump endpoint). Optional — when unset, the
   // admin endpoints refuse every request. Set to a long random string.
   ADMIN_SECRET: z.string().optional(),
+  /**
+   * Shared secret for RevenueCat's webhook.
+   *
+   * RevenueCat sends it as the Authorization header, verbatim, on every event.
+   * Without it the endpoint refuses everything: an unauthenticated webhook
+   * that grants entitlements is a free subscription for anyone who finds the
+   * URL, so this fails closed rather than open.
+   */
+  REVENUECAT_WEBHOOK_SECRET: z.string().optional(),
+  /** Entitlement id to assume when an event does not name one. */
+  REVENUECAT_ENTITLEMENT: z.string().default("pro"),
 
   // Static bearer tokens for non-Supabase clients (the desktop app). A
   // comma-separated list of LONG random secrets; a request whose Authorization
