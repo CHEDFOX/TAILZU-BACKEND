@@ -207,6 +207,12 @@ const FLOW_IDLE_TIMEOUT_MS = 600_000;
  * (buffer + one POST at stop). Env-overridable so the switch can be thrown
  * without a deploy; see kb.flow.transport for the trade-off.
  */
+/** App Store numeric id, assigned by App Store Connect. Digits only; anything
+ *  else is treated as unset so a half-filled value cannot ship a broken link. */
+const APP_STORE_ID = /^\d{6,}$/.test(process.env.APP_STORE_ID ?? "")
+  ? (process.env.APP_STORE_ID as string)
+  : "";
+
 const FLOW_TRANSPORT = process.env.FLOW_TRANSPORT === "oneshot" ? "oneshot" : "stream";
 
 /**
@@ -552,7 +558,14 @@ export function buildBootstrap(
       cta: "Update now",
       url: {
         android: "https://play.google.com/store/apps/details?id=com.tulmi.app",
-        ios: "https://apps.apple.com/app/id000000000",
+        // The numeric id is assigned by App Store Connect and is not known
+        // until the app exists there, so it comes from the environment. Until
+        // APP_STORE_ID is set the key is OMITTED rather than shipped with a
+        // placeholder: a gate that says "update now" and opens a dead App
+        // Store page is worse than one that says it without a button, and the
+        // placeholder id000000000 would have done exactly that on the day this
+        // gate first fired.
+        ...(APP_STORE_ID ? { ios: `https://apps.apple.com/app/id${APP_STORE_ID}` } : {}),
         default: "https://github.com/CHEDFOX/tulmi",
       },
     },
@@ -5290,6 +5303,8 @@ export function buildKeyboardConfig(
         // session idles out. See FlowSessionManager / TulmiFlow. Requires the
         // native flow code in the build. OTA-flippable to "handoff" (open app
         // per dictation) / "local" / "stream".
+        // iOS only — the Android keyboard has its own capture path and does
+        // not read this flag. Changing it has no effect on Android.
         "kb.mic.mode": "flow",
         // Show ONLY the finished sentence. Both engines still stream while the
         // user speaks — transcription is done by the time they stop, so this

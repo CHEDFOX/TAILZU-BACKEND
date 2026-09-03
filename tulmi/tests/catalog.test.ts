@@ -86,6 +86,22 @@ describe("the keyboard step speaks each platform's language", () => {
   });
 });
 
+describe("the update gate's store links", () => {
+  it("omits the iOS link rather than shipping a placeholder id", () => {
+    // A gate that says "update now" and opens a dead App Store page is worse
+    // than one that says it without a button.
+    const gate = JSON.stringify(buildBootstrap().updateGate ?? {});
+    expect(gate).not.toContain("id000000000");
+    if (!/^\d{6,}$/.test(process.env.APP_STORE_ID ?? "")) {
+      expect(gate).not.toContain("apps.apple.com");
+    }
+  });
+
+  it("always has the Play link, whose id is the package name we already know", () => {
+    expect(JSON.stringify(buildBootstrap().updateGate ?? {})).toContain("play.google.com");
+  });
+});
+
 describe("buildBootstrap", () => {
   it("returns theme + navigation + home initial screen when onboarded", () => {
     const b = buildBootstrap({ onboarded: true });
