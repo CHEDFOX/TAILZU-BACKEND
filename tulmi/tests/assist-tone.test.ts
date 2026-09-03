@@ -53,3 +53,37 @@ describe("toneGuidance — inline tone prompt", () => {
     expect(sys).toContain("TONE: Sound like a formal butler.");
   });
 });
+
+describe("what the refiner is told it is", () => {
+  const sys = () => buildAssistSystem({ hasContext: false });
+
+  it("names the product and the surface, so the model knows what it is inside", () => {
+    expect(sys()).toContain("Tailzu");
+    expect(sys().toLowerCase()).toContain("keyboard");
+  });
+
+  it("says the user is talking THROUGH it, not to it", () => {
+    // The single line that decides most hard cases: an angry message dictated
+    // at a third party must be written, not answered.
+    expect(sys()).toMatch(/talking THROUGH you/);
+  });
+
+  it("allows the small writing that belongs inside a message", () => {
+    const t = sys();
+    expect(t).toMatch(/poem/i);
+    expect(t).toMatch(/in their voice/i);
+  });
+
+  it("rules out the work that stops being a message", () => {
+    const t = sys();
+    for (const kind of ["essays", "code", "homework", "research"]) {
+      expect(t).toContain(kind);
+    }
+  });
+
+  it("refuses by writing something shorter, never by explaining itself", () => {
+    // A keyboard that answers "I can't help with that" has typed a sentence
+    // the user must now delete.
+    expect(sys()).toMatch(/no refusal, no apology/i);
+  });
+});

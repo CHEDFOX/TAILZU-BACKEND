@@ -111,6 +111,18 @@ const EnvSchema = z.object({
   // for a good speed × quality × price balance for short cleanup / drafting.
   OPENROUTER_API_KEY: z.string().min(1, "OPENROUTER_API_KEY is required"),
   CLEANUP_MODEL: z.string().default("openai/gpt-5.4-mini"),
+  /**
+   * Model for the style portrait, separate from the refiner's.
+   *
+   * The two jobs pull in opposite directions. Refining runs while the user
+   * waits with their thumb still on the mic, many times a day, and wants the
+   * fastest model that writes well. The portrait runs rarely, off the user's
+   * path, and is read by every refine that follows — a worse portrait is a
+   * worse keyboard for weeks, so it is worth a slower, stronger model.
+   *
+   * Defaults to CLEANUP_MODEL so nothing changes until it is set.
+   */
+  PORTRAIT_MODEL: z.string().default(""),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 

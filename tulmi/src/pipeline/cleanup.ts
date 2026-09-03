@@ -652,7 +652,9 @@ export async function updateStylePortrait(
   ].filter(Boolean).join("\n\n");
   const res = await openrouter().chat.completions.create({
     ...common(),
-    model: getConfig().CLEANUP_MODEL,
+    // The portrait is off the user's path and read by every later refine, so
+    // it can afford a stronger model than the one that runs while they wait.
+    model: getConfig().PORTRAIT_MODEL || getConfig().CLEANUP_MODEL,
     temperature: LEARN_TEMPERATURE,
     max_tokens: MAX_TOKENS_STYLE,
     response_format: { type: "json_object" },
