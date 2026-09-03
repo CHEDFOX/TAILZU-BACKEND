@@ -79,6 +79,8 @@ function screenHero(
     height?: number;
     width?: number | string;
     radius?: number;
+    /** Cancel this much side padding so the art reaches the screen edges. */
+    fullBleed?: number;
     /** Show only on this platform. The condition is evaluated on the device,
      *  so a per-platform slot needs no server-side detection. */
     onlyOn?: "ios" | "android";
@@ -125,9 +127,14 @@ function screenHero(
       style: {
         height: opts.height ?? 148,
         ...(opts.width ? { width: opts.width, alignSelf: "center" } : {}),
+        // Negative side margins cancel the parent's padding, which is the only
+        // way a child reaches the edge of a padded screen.
+        ...(opts.fullBleed
+          ? { marginLeft: -opts.fullBleed, marginRight: -opts.fullBleed, marginTop: -12 }
+          : {}),
         borderRadius: opts.radius ?? 20,
         overflow: "hidden",
-        marginBottom: 18,
+        marginBottom: opts.fullBleed ? 26 : 18,
         backgroundColor: "#0b0b0f",
       },
       children: [inner],
@@ -837,18 +844,31 @@ function languagesScreen(ctx: ScreenContext): ScreenResponse {
       type: "Screen",
       style: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 24 },
       children: [
-        ...screenHero("languages"),
+        // Full-bleed. The screen pads its sides by 18, so the banner pulls
+        // that back with negative margins to reach the edges — art that stops
+        // short of the screen reads as a component, art that meets it reads as
+        // the page.
+        ...screenHero("languages", { height: 190, fullBleed: 18, radius: 0 }),
         {
           type: "Heading",
-          props: { content: "Languages you speak" },
-          style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 6 },
+          // "Languages" carries the brand colour and "you speak" does not, so
+          // the eye lands on the noun. Two colours in one heading is a cheap
+          // trick when the split is arbitrary; here it is the subject and its
+          // qualifier, which is the one case it earns.
+          props: { content: "Languages" },
+          style: { fontSize: 32, fontWeight: "800", color: THEME.color.primary, marginBottom: 2 },
+        },
+        {
+          type: "Heading",
+          props: { content: "you speak" },
+          style: { fontSize: 32, fontWeight: "800", color: "$color.text", marginBottom: 14 },
         },
         {
           type: "Paragraph",
           props: {
             content: "Tap each one you use. The first is your main one.",
           },
-          style: { marginBottom: 20 },
+          style: { marginBottom: 30 },
         },
         { type: "Card", style: { padding: 4 }, children: DAILY_LANGUAGES.map(row) },
       ],
