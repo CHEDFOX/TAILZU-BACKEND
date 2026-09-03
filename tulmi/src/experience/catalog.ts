@@ -3823,7 +3823,12 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
           // to read the line and watch the clip once; short enough that
           // nobody waits on it.
           { kind: "delay", ms: FLOW_ARM_DISMISS_MS },
-          { kind: "navigateBack" },
+          // Home, not back. This screen is usually reached from the keyboard
+          // while the user is inside another app, so "back" is whatever the
+          // app happened to be showing before — and on a fresh launch that is
+          // the intro, which is not a place to be returned to. Naming the
+          // destination makes the exit the same every time.
+          { kind: "navigate", screenId: "home" },
         ],
       },
       micDenied: {
@@ -3836,7 +3841,10 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
     root: {
       type: "Screen",
       on: { onAppear: "arm" },
-      style: { paddingHorizontal: 28, alignItems: "center", justify: "center", flex: 1 },
+      // Top-aligned, not centred. Centring worked when this screen was three
+      // lines of text; with a 300pt clip appended the block grew past the
+      // fold, and the clip — the thing worth seeing — was the part below it.
+      style: { paddingHorizontal: 28, paddingTop: 96, alignItems: "center" },
       children: [
         {
           type: "Heading",
@@ -3865,7 +3873,7 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
         // iOS only, because Flow is. The Android keyboard has its own capture
         // path and never reaches this screen.
         { type: "Spacer", style: { height: 28 } },
-        ...screenHero("flow_arm", { height: 300, width: 300, radius: 24, onlyOn: "ios" }),
+        ...screenHero("flow_arm", { height: 260, width: 260, radius: 22, onlyOn: "ios" }),
       ],
     },
   };
