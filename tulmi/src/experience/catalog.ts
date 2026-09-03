@@ -73,24 +73,56 @@ function mediaSrc(key: string): Record<string, unknown> {
  * resilient pattern as the intro: plain Image node, resolved url, clipped by a
  * plain view.
  */
-function screenHero(screenId: string, opts: { height?: number } = {}): Node[] {
+function screenHero(
+  screenId: string,
+  opts: { height?: number; width?: number | string; radius?: number } = {},
+): Node[] {
   const key = `hero.${screenId}`;
-  if (!getMediaRegistryFn?.()?.[key]?.url) return [];
+  const entry = getMediaRegistryFn?.()?.[key];
+  if (!entry?.url) return [];
+  // A video needs a Video node — Image renders nothing for an mp4, which is
+  // the failure that kept the intro black. Decided from the stored
+  // contentType, so uploading a video to a slot that had a still just works.
+  const isVideo =
+    (entry.contentType ?? "").toLowerCase().startsWith("video/") ||
+    /\.(mp4|mov|m4v|webm)(\?|$)/i.test(entry.url);
+  const inner: Node = isVideo
+    ? {
+        type: "Video",
+        props: {
+          source: mediaSrc(key),
+          // A hero is ambient: it plays itself, forever, in silence. Muted is
+          // not politeness — an unmuted autoplay is blocked outright.
+          autoplay: true, loop: true, muted: true, contentFit: "cover",
+        },
+        style: { width: "100%", height: "100%" },
+        // A bundle without Video draws nothing at all; the still frame is a
+        // worse hero than the video and a far better one than a hole.
+        fallback: {
+          type: "Image",
+          props: { source: mediaSrc(key), contentFit: "cover" },
+          style: { width: "100%", height: "100%" },
+        },
+      }
+    : {
+        type: "Image",
+        props: { source: mediaSrc(key), contentFit: "cover" },
+        style: { width: "100%", height: "100%" },
+      };
   return [
     {
       type: "Stack",
+      // The VIEW clips; the media fills it. Rounded corners set on the media
+      // itself have nothing to cut — see the intro plate.
       style: {
         height: opts.height ?? 148,
-        borderRadius: 20,
+        ...(opts.width ? { width: opts.width, alignSelf: "center" } : {}),
+        borderRadius: opts.radius ?? 20,
         overflow: "hidden",
         marginBottom: 18,
         backgroundColor: "#0b0b0f",
       },
-      children: [{
-        type: "Image",
-        props: { source: mediaSrc(key), contentFit: "cover" },
-        style: { width: "100%", height: "100%" },
-      } as Node],
+      children: [inner],
     } as Node,
   ];
 }
@@ -3460,13 +3492,16 @@ function onboardingKeyboard(): ScreenResponse {
         style: { fontSize: 26, lineHeight: 34, color: "$color.text", marginBottom: 8 } },
       { type: "Paragraph", props: { content: "A moment in Settings, and Tailzu writes with you in every app." },
         style: { fontSize: 13, lineHeight: 21, marginBottom: 21 } },
-      // Optional demo of the walk through Settings. Upload to
-      // hero.onboarding_keyboard and it appears here, above the written
-      // steps; upload nothing and the node does not exist, so the screen
-      // stays exactly as it is. A GIF plays — which is what this screen
-      // wants, since the steps are a sequence and showing one beats
-      // describing three.
-      ...screenHero("onboarding_keyboard", { height: 200 }),
+      // The walk through Settings, shown rather than described. Upload to
+      // hero.onboarding_keyboard — a video or a GIF, either works — and it
+      // appears here above the written steps; upload nothing and the node
+      // does not exist, so the screen stays exactly as it is.
+      //
+      // Portrait, because a recording of a phone screen IS portrait: 9:16 at
+      // 200pt wide, centred. Forcing that into a landscape banner would crop
+      // it to a sliver of itself. The screen scrolls, so the height is
+      // affordable and the steps still sit under it.
+      ...screenHero("onboarding_keyboard", { height: 356, width: 200, radius: 18 }),
       // The steps card. Apple does NOT allow deep-linking into
       // Settings > Keyboards, so the button below lands on Tailzu's own
       // Settings page (which exists because the voice-permission screen just
