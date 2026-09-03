@@ -213,6 +213,9 @@ const APP_STORE_ID = /^\d{6,}$/.test(process.env.APP_STORE_ID ?? "")
   ? (process.env.APP_STORE_ID as string)
   : "";
 
+/** How long the "Flow is on" confirmation stays before it leaves by itself. */
+const FLOW_ARM_DISMISS_MS = Number(process.env.FLOW_ARM_DISMISS_MS ?? 4200);
+
 const FLOW_TRANSPORT = process.env.FLOW_TRANSPORT === "oneshot" ? "oneshot" : "stream";
 
 /**
@@ -3795,6 +3798,10 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "flow_arm",
     title: "",
+    // No tabs, no header. This screen exists for a few seconds between the
+    // keyboard and the user's own app; a tab bar invites them to go somewhere
+    // else, which is the one thing it must not do.
+    hideChrome: true,
     state: { armed: false },
     actions: {
       // Fired on appear: get mic permission, then arm the background session.
@@ -3810,6 +3817,13 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
           { kind: "armFlowSession", idleTimeoutMs: FLOW_IDLE_TIMEOUT_MS },
           { kind: "setState", path: "armed", value: true },
           { kind: "haptic", style: "success" },
+          // Then leave on its own. The session is armed the moment
+          // armFlowSession returns — everything after that is confirmation,
+          // and confirmation the user has to dismiss is a chore. Long enough
+          // to read the line and watch the clip once; short enough that
+          // nobody waits on it.
+          { kind: "delay", ms: FLOW_ARM_DISMISS_MS },
+          { kind: "navigateBack" },
         ],
       },
       micDenied: {
@@ -3833,13 +3847,13 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
           type: "Paragraph",
           props: {
             content:
-              "Swipe back to your app, then tap the keyboard mic and just talk — your words appear as you speak. No need to come back here until you’ve been idle a while.",
+              "Open any app, tap the keyboard mic, and just talk — your words appear as you speak. No need to come back here until you’ve been idle a while.",
           },
           style: { textAlign: "center", marginBottom: 30, color: "$color.muted" },
         },
         {
           type: "Text",
-          props: { content: "⟵  swipe back to continue" },
+          props: { content: "Taking you back…" },
           style: { fontSize: 15, fontWeight: "700", color: "$color.primary", textAlign: "center" },
         },
         // A square demo of Flow in use, below the instruction rather than
