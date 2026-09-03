@@ -90,7 +90,7 @@ describe("the update gate's store links", () => {
   it("omits the iOS link rather than shipping a placeholder id", () => {
     // A gate that says "update now" and opens a dead App Store page is worse
     // than one that says it without a button.
-    const gate = JSON.stringify(buildBootstrap().updateGate ?? {});
+    const gate = JSON.stringify(buildBootstrap());
     expect(gate).not.toContain("id000000000");
     if (!/^\d{6,}$/.test(process.env.APP_STORE_ID ?? "")) {
       expect(gate).not.toContain("apps.apple.com");
@@ -98,7 +98,7 @@ describe("the update gate's store links", () => {
   });
 
   it("always has the Play link, whose id is the package name we already know", () => {
-    expect(JSON.stringify(buildBootstrap().updateGate ?? {})).toContain("play.google.com");
+    expect(JSON.stringify(buildBootstrap())).toContain("play.google.com");
   });
 });
 
