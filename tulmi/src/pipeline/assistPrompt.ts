@@ -219,6 +219,15 @@ export function buildAssistSystem(opts: {
     `TONE: ${guidance}`,
     "",
     `You are writing inside: ${app}.`,
+    // Android names the host app; iOS cannot, and sends what kind of field the
+    // cursor is in instead. Either way the point is the same — the shape of
+    // the destination decides the shape of the text, and getting this wrong is
+    // conspicuous: a polite sentence typed into a search box is a failure the
+    // user has to delete before they can search.
+    "- A search field wants a query: the words, no greeting, no sentence.",
+    "- A URL, email or number field wants the value alone, with no prose around it.",
+    "- A message to a person wants a message: whole sentences, their voice, their register.",
+    "- A form field wants the answer, not a paragraph about the answer.",
     lang
       ? `Default output language: ${lang}. But honor an explicit language instruction in the message, and otherwise match the message's own language (including mixed / code-switched text).`
       : "Match the message's own language (including mixed / code-switched text), unless the message asks for a specific language.",
