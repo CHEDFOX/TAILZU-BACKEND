@@ -3834,8 +3834,10 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
       micDenied: {
         kind: "toast",
         tone: "error",
-        message:
-          "Allow the microphone in Settings → Tailzu, then swipe back and tap the keyboard mic again.",
+        // No platform path: the two systems put this in different places, and
+        // a toast that names the wrong one is worse than a toast that names
+        // none. Short enough to read before it goes.
+        message: "Allow the microphone in Settings, then tap the keyboard mic again.",
       },
     },
     root: {
@@ -3848,21 +3850,17 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
       children: [
         {
           type: "Heading",
-          props: { content: "Flow is on" },
+          props: { content: "Flow is on." },
           style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 14, textAlign: "center" },
         },
         {
+          // One line, because the screen lasts four seconds. The old copy was
+          // 27 words explaining a feature the user has just switched on — by
+          // the time it was read it was gone. This says only what changed and
+          // what to do with it, in the shape of the action itself.
           type: "Paragraph",
-          props: {
-            content:
-              "Open any app, tap the keyboard mic, and just talk — your words appear as you speak. No need to come back here until you’ve been idle a while.",
-          },
-          style: { textAlign: "center", marginBottom: 30, color: "$color.muted" },
-        },
-        {
-          type: "Text",
-          props: { content: "Taking you back…" },
-          style: { fontSize: 15, fontWeight: "700", color: "$color.primary", textAlign: "center" },
+          props: { content: "Tap the mic in any app and talk — the words land written." },
+          style: { textAlign: "center", marginBottom: 4, color: "$color.muted" },
         },
         // A square demo of Flow in use, below the instruction rather than
         // above it: this screen's whole job is to send the user back to their
