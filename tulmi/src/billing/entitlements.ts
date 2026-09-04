@@ -101,6 +101,7 @@ export async function isEntitled(user: AuthedUser): Promise<boolean> {
 async function askRevenueCat(userId: string): Promise<Entitlement | null> {
   const key = getConfig().REVENUECAT_API_KEY;
   if (!key) return null;
+  const want = idSet(getConfig().REVENUECAT_ENTITLEMENT);
   try {
     const res = await fetch(
       `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(userId)}`,
@@ -111,12 +112,26 @@ async function askRevenueCat(userId: string): Promise<Entitlement | null> {
       subscriber?: { entitlements?: Record<string, { expires_date?: string | null; store?: string }> };
     };
     const ents = body.subscriber?.entitlements ?? {};
+    // Only OUR entitlement counts. A RevenueCat project can carry several
+    // products and several entitlements — a second app, a credit pack, a tier
+    // that is not this one — and every one of them shows up on this subscriber.
+    // Returning the first live entitlement found would hand Tailzu unlimited to
+    // anyone who bought anything at all in the project.
+    const live: string[] = [];
     for (const [id, e] of Object.entries(ents)) {
       // A null expiry is a lifetime grant, not an expired one.
-      const live = !e.expires_date || Date.parse(e.expires_date) > Date.now();
-      if (live) {
-        return { entitlement: id, active: true, expiresAt: e.expires_date ?? undefined, store: e.store };
-      }
+      if (e.expires_date && Date.parse(e.expires_date) <= Date.now()) continue;
+      live.push(id);
+      if (!want.has(id.trim().toLowerCase())) continue;
+      return { entitlement: id, active: true, expiresAt: e.expires_date ?? undefined, store: e.store };
+    }
+    if (live.length) {
+      // The likeliest cause is a misconfigured REVENUECAT_ENTITLEMENT, and it
+      // is invisible from the app: the customer is paying and still capped.
+      // Name both sides so the fix is a one-line env change.
+      console.warn(
+        `[entitlements] ${userId} is live on ${live.join(", ")} but none match ${[...want].join(", ")} — check REVENUECAT_ENTITLEMENT`,
+      );
     }
     return null;
   } catch {
@@ -141,6 +156,35 @@ const GRANTS = new Set([
   "NON_RENEWING_PURCHASE", "SUBSCRIPTION_EXTENDED", "TEMPORARY_ENTITLEMENT_GRANT",
 ]);
 const REVOKES = new Set(["EXPIRATION", "REFUND", "SUBSCRIPTION_PAUSED", "TRANSFER"]);
+
+/**
+ * Which entitlement ids mean "Tailzu paid".
+ *
+ * Comma-separated, so a project with several paid tiers can name them all
+ * ("pro,unlimited") without a code change. Several PRODUCTS mapped to one
+ * entitlement — monthly, annual, lifetime — need nothing here; they arrive as
+ * the same entitlement id and always did.
+ */
+function idSet(spec: string): Set<string> {
+  return new Set(
+    String(spec ?? "")
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+/** Every entitlement id an event names, in either of the two shapes RC uses. */
+function eventEntitlements(ev: RcEvent): string[] {
+  const many = Array.isArray(ev.entitlement_ids) ? ev.entitlement_ids : [];
+  const one = ev.entitlement_id ? [ev.entitlement_id] : [];
+  const seen = new Set<string>();
+  for (const raw of [...many, ...one]) {
+    const v = String(raw ?? "").trim();
+    if (v) seen.add(v);
+  }
+  return [...seen];
+}
 
 /**
  * Which of the ids on an event is OUR user.
@@ -211,13 +255,31 @@ export async function applyRevenueCatEvent(
   const revokes = REVOKES.has(type);
   if (!grants && !revokes) return { ok: true, reason: `ignored event ${type}`, userId };
 
+  // IS THIS EVENT EVEN ABOUT US?
+  //
+  // One RevenueCat project can hold several apps, several products and several
+  // entitlements, and the webhook is configured per PROJECT — so every purchase
+  // anywhere in it arrives at this URL. Taking any of them as proof of a Tailzu
+  // subscription would give unlimited dictation to someone who bought something
+  // else entirely.
+  const want = idSet(defaultEntitlement);
+  const named = eventEntitlements(ev);
+  const ours = named.filter((n) => want.has(n.toLowerCase()));
+  if (named.length > 0 && ours.length === 0) {
+    return { ok: true, reason: `event is for ${named.join(", ")}, not ${[...want].join(", ")}`, userId };
+  }
+  if (named.length === 0 && grants) {
+    // A grant that names no entitlement cannot be shown to be ours, and the
+    // asymmetry is deliberate: a wrong grant is trusted until it expires, while
+    // a wrong revoke is repaired on the next read by askRevenueCat. Guess in
+    // the direction that heals.
+    return { ok: true, reason: `grant ${type} names no entitlement; ignored`, userId };
+  }
+
   const sb = supabase();
   if (!sb) return { ok: false, reason: "no service client", userId };
 
-  const entitlement =
-    (Array.isArray(ev.entitlement_ids) && ev.entitlement_ids[0]) ||
-    ev.entitlement_id ||
-    defaultEntitlement;
+  const entitlement = ours[0] ?? [...want][0] ?? defaultEntitlement;
 
   const { error } = await sb.from("entitlements").upsert(
     {

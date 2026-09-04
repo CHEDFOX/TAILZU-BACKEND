@@ -187,7 +187,17 @@ const EnvSchema = z.object({
    * URL, so this fails closed rather than open.
    */
   REVENUECAT_WEBHOOK_SECRET: z.string().optional(),
-  /** Entitlement id to assume when an event does not name one. */
+  /**
+   * The entitlement id(s) that mean "paid for Tailzu". Comma-separated.
+   *
+   * This is a FILTER, not just a default. A RevenueCat project can hold more
+   * than one app and more than one product, and its webhook is configured per
+   * project — so purchases of anything in it land on our endpoint. Only events
+   * naming an id listed here grant access.
+   *
+   * Several products mapped to ONE entitlement (monthly, annual, lifetime)
+   * need nothing here. Several paid TIERS do: "pro,unlimited".
+   */
   REVENUECAT_ENTITLEMENT: z.string().default("pro"),
   /**
    * RevenueCat REST secret key (sk_…), for asking about a user directly.
