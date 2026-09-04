@@ -87,14 +87,17 @@ describe("the keyboard step speaks each platform's language", () => {
 });
 
 describe("the update gate's store links", () => {
-  it("omits the iOS link rather than shipping a placeholder id", () => {
+  it("links a real App Store id, never a placeholder", () => {
     // A gate that says "update now" and opens a dead App Store page is worse
-    // than one that says it without a button.
+    // than one that says it without a button — which is why this shipped with
+    // no iOS link at all while the id was unknown. It is known now (it is in
+    // eas.json, submit.production.ios.ascAppId), so the link is the default and
+    // the assertion is that whatever ships resolves to a real listing.
     const gate = JSON.stringify(buildBootstrap());
     expect(gate).not.toContain("id000000000");
-    if (!/^\d{6,}$/.test(process.env.APP_STORE_ID ?? "")) {
-      expect(gate).not.toContain("apps.apple.com");
-    }
+    const m = gate.match(/apps\.apple\.com\/app\/id(\d+)/);
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBeGreaterThan(100000);
   });
 
   it("always has the Play link, whose id is the package name we already know", () => {

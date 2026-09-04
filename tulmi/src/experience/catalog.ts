@@ -230,9 +230,10 @@ const FLOW_IDLE_TIMEOUT_MS = 600_000;
  */
 /** App Store numeric id, assigned by App Store Connect. Digits only; anything
  *  else is treated as unset so a half-filled value cannot ship a broken link. */
+const APP_STORE_ID_DEFAULT = "6784811357"; // eas.json → submit.production.ios.ascAppId
 const APP_STORE_ID = /^\d{6,}$/.test(process.env.APP_STORE_ID ?? "")
   ? (process.env.APP_STORE_ID as string)
-  : "";
+  : APP_STORE_ID_DEFAULT;
 
 /** How long the "Flow is on" confirmation stays before it leaves by itself. */
 const FLOW_ARM_DISMISS_MS = Number(process.env.FLOW_ARM_DISMISS_MS ?? 4200);
@@ -568,7 +569,7 @@ export function buildBootstrap(
       "stats.kv.audio": "Audio dictated",
       "stats.kv.saved": "Minutes saved",
       "stats.effort.template":
-        "Your effort: you'd have spent {minutes} minutes typing what Tulmi cleaned up in seconds.",
+        "Your effort: you'd have spent {minutes} minutes typing what Tailzu cleaned up in seconds.",
       "stats.sparkline.label": "Requests, last 30 days",
       "stats.cta.history": "See history",
 
@@ -612,8 +613,8 @@ export function buildBootstrap(
     update: {
       minVersion: "0.5.0",
       latestVersion: "1.0.0",
-      title: "Update Tulmi",
-      message: "A newer version of Tulmi is available with the latest improvements.",
+      title: "Update Tailzu",
+      message: "A newer version of Tailzu is available with the latest improvements.",
       cta: "Update now",
       url: {
         android: "https://play.google.com/store/apps/details?id=com.tulmi.app",
@@ -625,7 +626,7 @@ export function buildBootstrap(
         // placeholder id000000000 would have done exactly that on the day this
         // gate first fired.
         ...(APP_STORE_ID ? { ios: `https://apps.apple.com/app/id${APP_STORE_ID}` } : {}),
-        default: "https://github.com/CHEDFOX/tulmi",
+        default: "https://tailzu.space",
       },
     },
     cacheTtlSeconds: 300,
@@ -4561,6 +4562,18 @@ const makeToolsRow = (opts: {
     // on tap; this restores start/stop for them.
     {
       type: "MicKey",
+      // Not in a password box.
+      //
+      // iOS never sees one — the system takes secure fields away from
+      // third-party keyboards — but Android hands them over like any other
+      // field, and the mic there would record into a field the user filled in
+      // with dots and send it to us. The native side refuses it either way;
+      // this stops the key being drawn at all, because a key that would be
+      // refused is a key that reads as broken.
+      //
+      // `falsy` on a state key an older client does not publish evaluates
+      // true, so every existing build keeps showing the mic exactly as now.
+      visibleIf: { falsy: "state.secured" },
       style: {
         flex: 0,
         width: 36,
@@ -4754,9 +4767,43 @@ export function buildKeyboardConfig(
       // Status label + waveform intentionally removed — the mic button's own
       // orange press state + the flash-across-keys animation on refined-text
       // arrival provide all the "is something happening?" feedback we need.
-      // A separate status band above the tone chips just adds vertical noise
-      // and makes error strings ("Error: 401 …") loud when we want the
-      // keyboard to feel calm.
+      // GUIDANCE BAND.
+      //
+      // This was left out on purpose, and the reason was right at the time: a
+      // permanent status band turns "Error: 401" and "Listening…" into noise
+      // over the keys, and the keyboard should feel calm.
+      //
+      // What that decision cost, once both keyboards stopped drawing status
+      // text at all: every message telling the user how to unblock the thing
+      // they just tapped became invisible. Full Access off, microphone denied,
+      // session expired — the mic did nothing and said nothing, on the two
+      // paths a brand-new user is most likely to hit first. An App Store
+      // reviewer who installs the keyboard and does not grant Full Access sees
+      // exactly that.
+      //
+      // Both clients now publish ONLY actionable text into state.status —
+      // chatter resolves to empty — so this band is empty in the calm case and
+      // present in the one case where silence was the bug.
+      {
+        type: "Row",
+        visibleIf: { truthy: "state.status" },
+        style: { height: 26, padding: 4, align: "center" },
+        children: [
+          {
+            type: "LetterKey",
+            bind: { content: "status" },
+            on: { onPress: { kind: "openApp" } },
+            style: {
+              flex: 1,
+              height: 22,
+              bg: "#00000000",
+              fg: BRAND_ACCENT,
+              fontSize: 12,
+              fontWeight: "medium",
+            },
+          },
+        ],
+      },
 
       // Tulmi's tools bar — emitted twice: one dark palette variant and one
       // light palette variant, gated by state.appearance. The Swift renderer's
