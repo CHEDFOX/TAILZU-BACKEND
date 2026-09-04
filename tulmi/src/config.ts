@@ -209,6 +209,18 @@ const EnvSchema = z.object({
    * notice it. With this set the server can check for itself and heal.
    */
   REVENUECAT_API_KEY: z.string().optional(),
+  /**
+   * Whether a SANDBOX purchase grants access. True while you are testing.
+   *
+   * RevenueCat marks TestFlight, Xcode and Play internal-track purchases as
+   * sandbox, and they cost nothing. Before launch that is exactly what you
+   * want — it is the only way to test the paid path. After launch it is a free
+   * subscription for anyone on a test build, so set this to false.
+   *
+   * Sandbox GRANTS are logged loudly for that reason. Revokes always apply:
+   * the sandbox setting must never be able to keep access alive.
+   */
+  REVENUECAT_ALLOW_SANDBOX: bool(true),
 
   // Static bearer tokens for non-Supabase clients (the desktop app). A
   // comma-separated list of LONG random secrets; a request whose Authorization

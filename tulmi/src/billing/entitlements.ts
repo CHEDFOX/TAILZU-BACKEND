@@ -109,9 +109,17 @@ async function askRevenueCat(userId: string): Promise<Entitlement | null> {
     );
     if (!res.ok) return null;
     const body = (await res.json()) as {
-      subscriber?: { entitlements?: Record<string, { expires_date?: string | null; store?: string }> };
+      subscriber?: {
+        entitlements?: Record<
+          string,
+          { expires_date?: string | null; store?: string; product_identifier?: string }
+        >;
+        subscriptions?: Record<string, { is_sandbox?: boolean; store?: string }>;
+      };
     };
     const ents = body.subscriber?.entitlements ?? {};
+    const subs = body.subscriber?.subscriptions ?? {};
+    const allowSandbox = getConfig().REVENUECAT_ALLOW_SANDBOX;
     // Only OUR entitlement counts. A RevenueCat project can carry several
     // products and several entitlements — a second app, a credit pack, a tier
     // that is not this one — and every one of them shows up on this subscriber.
@@ -123,6 +131,11 @@ async function askRevenueCat(userId: string): Promise<Entitlement | null> {
       if (e.expires_date && Date.parse(e.expires_date) <= Date.now()) continue;
       live.push(id);
       if (!want.has(norm(id))) continue;
+      // The webhook path refuses sandbox grants when the flag is off; this one
+      // has to agree, or a purchase blocked at the door walks in through the
+      // window on the next cache miss. Sandbox lives on the subscription, not
+      // the entitlement, so it is looked up by the product that granted it.
+      if (!allowSandbox && subs[String(e.product_identifier ?? "")]?.is_sandbox) continue;
       return { entitlement: id, active: true, expiresAt: e.expires_date ?? undefined, store: e.store };
     }
     if (live.length) {
@@ -241,6 +254,10 @@ export type RcEvent = {
   entitlement_ids?: string[] | null;
   expiration_at_ms?: number | null;
   store?: string | null;
+  /** "SANDBOX" | "PRODUCTION". A sandbox purchase cost nobody anything. */
+  environment?: string | null;
+  /** Which RevenueCat app the event came from. Recorded, never enforced. */
+  app_id?: string | null;
 };
 
 /**
@@ -300,6 +317,26 @@ export async function applyRevenueCatEvent(
     return { ok: true, reason: `grant ${type} names no entitlement; ignored`, userId };
   }
 
+  // SANDBOX PURCHASES ARE FREE PURCHASES.
+  //
+  // TestFlight, Xcode and Play's internal track all transact against the
+  // stores' sandboxes, where nobody is charged. That is what makes the paid
+  // path testable before launch, and what makes it a giveaway after: anyone
+  // on a test build could subscribe for nothing. One flag, checked on grants
+  // only — a sandbox flag must never be able to KEEP access alive, so revokes
+  // are applied whatever the environment says.
+  const sandbox = String(ev.environment ?? "").toUpperCase() === "SANDBOX";
+  if (sandbox && grants && !getConfig().REVENUECAT_ALLOW_SANDBOX) {
+    return { ok: true, reason: "sandbox purchase ignored (REVENUECAT_ALLOW_SANDBOX=false)", userId };
+  }
+  if (sandbox && grants) {
+    // The reminder has to live where it will be seen. A flag that must be
+    // remembered at launch is a flag nobody remembers at launch.
+    console.warn(
+      `[entitlements] SANDBOX grant for ${userId} — free access from a test build. Set REVENUECAT_ALLOW_SANDBOX=false once you are live.`,
+    );
+  }
+
   const sb = supabase();
   if (!sb) return { ok: false, reason: "no service client", userId };
 
@@ -312,6 +349,8 @@ export async function applyRevenueCatEvent(
       active: grants,
       expires_at: ev.expiration_at_ms ? new Date(ev.expiration_at_ms).toISOString() : null,
       store: ev.store ? String(ev.store) : null,
+      environment: ev.environment ? String(ev.environment).toUpperCase() : null,
+      app_id: ev.app_id ? String(ev.app_id) : null,
       last_event: type,
       updated_at: new Date().toISOString(),
     },
