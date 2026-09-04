@@ -92,6 +92,25 @@ describe("applyRevenueCatEvent — other products in the same project", () => {
     expect(res.reason).toContain("not pro");
   });
 
+  it("matches an id with a space in it", async () => {
+    // The live one is literally "TAILZU AIR". Both Tailzu products hang off it.
+    const res = await applyRevenueCatEvent(
+      { type: "INITIAL_PURCHASE", app_user_id: user, entitlement_ids: ["TAILZU AIR"] },
+      "TAILZU AIR",
+    );
+    expect(res.reason).toBe(WROTE);
+  });
+
+  it("survives quotes left on the env value", async () => {
+    // A value with a space invites quoting in .env, and a compose env_file can
+    // hand the quotes through verbatim. Matching must not depend on that.
+    const res = await applyRevenueCatEvent(
+      { type: "RENEWAL", app_user_id: user, entitlement_ids: ["TAILZU AIR"] },
+      '"TAILZU AIR"',
+    );
+    expect(res.reason).toBe(WROTE);
+  });
+
   it("still ignores a cancellation before any filtering", async () => {
     const res = await applyRevenueCatEvent(
       { type: "CANCELLATION", app_user_id: user, entitlement_ids: ["pro"] },

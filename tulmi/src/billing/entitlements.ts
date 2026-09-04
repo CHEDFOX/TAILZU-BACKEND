@@ -122,7 +122,7 @@ async function askRevenueCat(userId: string): Promise<Entitlement | null> {
       // A null expiry is a lifetime grant, not an expired one.
       if (e.expires_date && Date.parse(e.expires_date) <= Date.now()) continue;
       live.push(id);
-      if (!want.has(id.trim().toLowerCase())) continue;
+      if (!want.has(norm(id))) continue;
       return { entitlement: id, active: true, expiresAt: e.expires_date ?? undefined, store: e.store };
     }
     if (live.length) {
@@ -130,7 +130,7 @@ async function askRevenueCat(userId: string): Promise<Entitlement | null> {
       // is invisible from the app: the customer is paying and still capped.
       // Name both sides so the fix is a one-line env change.
       console.warn(
-        `[entitlements] ${userId} is live on ${live.join(", ")} but none match ${[...want].join(", ")} — check REVENUECAT_ENTITLEMENT`,
+        `[entitlements] ${userId} is live on ${live.join(", ")} but none match ${idList(getConfig().REVENUECAT_ENTITLEMENT).join(", ")} — check REVENUECAT_ENTITLEMENT`,
       );
     }
     return null;
@@ -166,12 +166,32 @@ const REVOKES = new Set(["EXPIRATION", "REFUND", "SUBSCRIPTION_PAUSED", "TRANSFE
  * the same entitlement id and always did.
  */
 function idSet(spec: string): Set<string> {
-  return new Set(
-    String(spec ?? "")
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .filter(Boolean),
-  );
+  return new Set(idList(spec).map(norm));
+}
+
+/** The configured ids as written, for display and for the stored row. */
+function idList(spec: string): string[] {
+  return String(spec ?? "")
+    .split(",")
+    .map((s) => s.trim().replace(/^["']|["']$/g, "").trim())
+    .filter(Boolean);
+}
+
+/**
+ * One shape for comparing two entitlement ids.
+ *
+ * Real ids are not always tidy tokens — "TAILZU AIR" is a live one — so this
+ * has to survive a space, a case difference, and the quotes a .env or a
+ * compose env_file can leave attached to a value with a space in it. Both
+ * sides of every comparison go through here, so they can never disagree.
+ */
+function norm(s: string): string {
+  return String(s ?? "")
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
 }
 
 /** Every entitlement id an event names, in either of the two shapes RC uses. */
@@ -264,9 +284,13 @@ export async function applyRevenueCatEvent(
   // else entirely.
   const want = idSet(defaultEntitlement);
   const named = eventEntitlements(ev);
-  const ours = named.filter((n) => want.has(n.toLowerCase()));
+  const ours = named.filter((n) => want.has(norm(n)));
   if (named.length > 0 && ours.length === 0) {
-    return { ok: true, reason: `event is for ${named.join(", ")}, not ${[...want].join(", ")}`, userId };
+    return {
+      ok: true,
+      reason: `event is for ${named.join(", ")}, not ${idList(defaultEntitlement).join(", ")}`,
+      userId,
+    };
   }
   if (named.length === 0 && grants) {
     // A grant that names no entitlement cannot be shown to be ours, and the
@@ -279,7 +303,7 @@ export async function applyRevenueCatEvent(
   const sb = supabase();
   if (!sb) return { ok: false, reason: "no service client", userId };
 
-  const entitlement = ours[0] ?? [...want][0] ?? defaultEntitlement;
+  const entitlement = ours[0] ?? idList(defaultEntitlement)[0] ?? "pro";
 
   const { error } = await sb.from("entitlements").upsert(
     {
