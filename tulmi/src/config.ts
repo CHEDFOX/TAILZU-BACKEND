@@ -189,6 +189,16 @@ const EnvSchema = z.object({
   REVENUECAT_WEBHOOK_SECRET: z.string().optional(),
   /** Entitlement id to assume when an event does not name one. */
   REVENUECAT_ENTITLEMENT: z.string().default("pro"),
+  /**
+   * RevenueCat REST secret key (sk_…), for asking about a user directly.
+   *
+   * Optional, and a different direction from the webhook: the webhook is
+   * RevenueCat telling us, this is us asking. It exists because webhooks get
+   * missed — a delivery fails, the server is restarting, an event is dropped —
+   * and a missed one leaves a paying customer metered as free with nothing to
+   * notice it. With this set the server can check for itself and heal.
+   */
+  REVENUECAT_API_KEY: z.string().optional(),
 
   // Static bearer tokens for non-Supabase clients (the desktop app). A
   // comma-separated list of LONG random secrets; a request whose Authorization

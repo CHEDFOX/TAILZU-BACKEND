@@ -17,6 +17,7 @@
  * state per user and everything else reads it.
  */
 import type { AuthedUser } from "../auth/supabase.js";
+import { getConfig } from "../config.js";
 import { supabase } from "../auth/supabase.js";
 
 export type Entitlement = {
@@ -58,8 +59,15 @@ export async function getEntitlement(user: AuthedUser): Promise<Entitlement | nu
     return null;
   }
   if (!data || !data.active) {
-    cache.set(user.id, { at: Date.now(), value: null });
-    return null;
+    // No row, or an inactive one. Before believing that, ASK RevenueCat.
+    //
+    // A webhook can be missed — a delivery fails, the server is mid-restart,
+    // an event is dropped — and the cost of believing a missing row is that a
+    // paying customer is metered as free with nothing anywhere to notice it.
+    // The webhook stays the fast path; this is the one that heals.
+    const live = await askRevenueCat(user.id);
+    cache.set(user.id, { at: Date.now(), value: live });
+    return live;
   }
   // Expiry is belt and braces. `active` should already be false by the time a
   // subscription lapses, but a missed webhook must not grant free months.
@@ -80,6 +88,40 @@ export async function getEntitlement(user: AuthedUser): Promise<Entitlement | nu
 /** True when this user should not be metered or shown a paywall. */
 export async function isEntitled(user: AuthedUser): Promise<boolean> {
   return (await getEntitlement(user)) !== null;
+}
+
+/**
+ * Ask RevenueCat about a user, when a REST key is configured.
+ *
+ * Returns null for "not entitled" AND for "could not tell" — the caller treats
+ * both as unentitled, which is the safe direction for a check that gates
+ * spending. A thrown request must never grant access, and it must never cost
+ * the user their dictation either, so it is bounded by a short timeout.
+ */
+async function askRevenueCat(userId: string): Promise<Entitlement | null> {
+  const key = getConfig().REVENUECAT_API_KEY;
+  if (!key) return null;
+  try {
+    const res = await fetch(
+      `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(userId)}`,
+      { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(4000) },
+    );
+    if (!res.ok) return null;
+    const body = (await res.json()) as {
+      subscriber?: { entitlements?: Record<string, { expires_date?: string | null; store?: string }> };
+    };
+    const ents = body.subscriber?.entitlements ?? {};
+    for (const [id, e] of Object.entries(ents)) {
+      // A null expiry is a lifetime grant, not an expired one.
+      const live = !e.expires_date || Date.parse(e.expires_date) > Date.now();
+      if (live) {
+        return { entitlement: id, active: true, expiresAt: e.expires_date ?? undefined, store: e.store };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export function forgetEntitlement(userId: string): void {
