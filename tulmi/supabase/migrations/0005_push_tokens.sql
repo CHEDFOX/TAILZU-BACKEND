@@ -19,15 +19,19 @@ create table if not exists public.push_tokens (
 -- code uses the service role and bypasses RLS to send pushes.
 alter table public.push_tokens enable row level security;
 
+drop policy if exists "own token select" on public.push_tokens;
 create policy "own token select" on public.push_tokens
   for select using (auth.uid() = user_id);
 
+drop policy if exists "own token upsert" on public.push_tokens;
 create policy "own token upsert" on public.push_tokens
   for insert with check (auth.uid() = user_id);
 
+drop policy if exists "own token update" on public.push_tokens;
 create policy "own token update" on public.push_tokens
   for update using (auth.uid() = user_id);
 
+drop policy if exists "own token delete" on public.push_tokens;
 create policy "own token delete" on public.push_tokens
   for delete using (auth.uid() = user_id);
 
