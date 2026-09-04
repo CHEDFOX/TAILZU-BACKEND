@@ -9,6 +9,7 @@
 import { dataClientFor, type AuthedUser } from "../auth/supabase.js";
 import { isEntitled } from "../billing/entitlements.js";
 import { getConfig } from "../config.js";
+import { computeAllowance, type Allowance } from "./allowance.js";
 import type { UsageRecord, UsageSummary } from "../../../shared/types/api.js";
 
 export interface MeterInput extends UsageRecord {
@@ -39,17 +40,6 @@ function memRecord(user: AuthedUser, audioSeconds: number, words: number): void 
   const list = (memUsage.get(user.id) ?? []).filter((e) => now - e.at < MEM_RETENTION_MS);
   list.push({ at: now, audioSeconds, words });
   memUsage.set(user.id, list);
-}
-
-function memSince(user: AuthedUser, sinceMs: number): { audioSeconds: number; words: number } {
-  const out = { audioSeconds: 0, words: 0 };
-  for (const e of memUsage.get(user.id) ?? []) {
-    if (e.at >= sinceMs) {
-      out.audioSeconds += e.audioSeconds;
-      out.words += e.words;
-    }
-  }
-  return out;
 }
 
 export async function recordUsage(input: MeterInput): Promise<void> {
@@ -241,12 +231,17 @@ export async function enforceQuota(user: AuthedUser): Promise<string | null> {
   const capWords = cfg.FREE_MONTHLY_WORDS;
   if (capAudio <= 0 && capWords <= 0) return null; // no limit configured
 
-  const now = new Date();
-  const monthStart = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
-  ).toISOString();
-  const used = await usageSince(user, monthStart);
-  if (!used) {
+  const moments = await usageMomentsSince(user, monthStartIso());
+  const used = moments
+    ? moments.reduce(
+        (acc, m) => ({
+          audioSeconds: acc.audioSeconds + m.audioSeconds,
+          words: acc.words + m.words,
+        }),
+        { audioSeconds: 0, words: 0 },
+      )
+    : null;
+  if (!used || !moments) {
     // We couldn't read usage. With auth DISABLED (dev / DEV_SKIP_AUTH) there's
     // no billing to protect → allow. But when auth is CONFIGURED, a null means
     // the read failed or the wrong Supabase key is deployed — failing OPEN here
@@ -259,11 +254,21 @@ export async function enforceQuota(user: AuthedUser): Promise<string | null> {
   if (capAudio > 0 && used.audioSeconds >= capAudio) {
     return `Monthly voice cap reached (${Math.round(capAudio / 60)} min). Resets ${monthResetDate()}.`;
   }
-  if (capWords > 0 && used.words >= capWords) {
-    // Name the number, the reset date, and the way out. A cap message that
-    // only says "no" reads as a fault; this one is the upgrade prompt.
-    return `You've used your ${capWords.toLocaleString()} free words this month. ` +
-      `Upgrade for unlimited, or wait until ${monthResetDate()}.`;
+  if (capWords > 0) {
+    // The ceiling is the plan's words PLUS what this month's use has earned.
+    // Enforcing capWords here instead would stop a user at 2,500 while the app
+    // was showing them 4,100 — the earned words have to be real where it
+    // counts, or the mechanic is a lie told by the stats screen.
+    const allowance = computeAllowance(moments);
+    if (used.words >= allowance.total) {
+      // Name the number, the reset date, and the way out. A cap message that
+      // only says "no" reads as a fault; this one is the upgrade prompt.
+      const earnedNote = allowance.earned > 0
+        ? ` (${capWords.toLocaleString()} free + ${allowance.earned.toLocaleString()} earned)`
+        : "";
+      return `You've used your ${allowance.total.toLocaleString()} words this month${earnedNote}. ` +
+        `Upgrade for unlimited, or wait until ${monthResetDate()}.`;
+    }
   }
   return null;
 }
@@ -286,23 +291,65 @@ export async function usageSince(
   user: AuthedUser,
   sinceIso: string,
 ): Promise<{ audioSeconds: number; words: number } | null> {
-  if (isStaticUser(user)) return memSince(user, Date.parse(sinceIso) || 0);
+  const rows = await usageMomentsSince(user, sinceIso);
+  if (!rows) return null;
+  return rows.reduce(
+    (acc, row) => ({
+      audioSeconds: acc.audioSeconds + row.audioSeconds,
+      words: acc.words + row.words,
+    }),
+    { audioSeconds: 0, words: 0 },
+  );
+}
+
+/**
+ * The same rows, unaggregated.
+ *
+ * Earned words are a function of WHEN dictations happened, not just how many
+ * words they produced, so the sum is no longer enough. This is the one read;
+ * usageSince reduces it and the allowance walks it, which is what keeps the
+ * number enforced and the number displayed from ever disagreeing.
+ */
+export async function usageMomentsSince(
+  user: AuthedUser,
+  sinceIso: string,
+): Promise<Array<{ at: number; audioSeconds: number; words: number }> | null> {
+  const sinceMs = Date.parse(sinceIso) || 0;
+  if (isStaticUser(user)) {
+    return (memUsage.get(user.id) ?? [])
+      .filter((e) => e.at >= sinceMs)
+      .map((e) => ({ at: e.at, audioSeconds: e.audioSeconds, words: e.words }));
+  }
   const sb = dataClientFor(user);
   if (!sb) return null;
 
   const { data, error } = await sb
     .from("usage_events")
-    .select("audio_seconds, word_count")
+    .select("audio_seconds, word_count, created_at")
     .eq("user_id", user.id)
     .gte("created_at", sinceIso);
 
   if (error || !data) return null;
 
-  return data.reduce(
-    (acc, row) => ({
-      audioSeconds: acc.audioSeconds + (row.audio_seconds ?? 0),
-      words: acc.words + (row.word_count ?? 0),
-    }),
-    { audioSeconds: 0, words: 0 },
-  );
+  return data.map((row) => ({
+    at: Date.parse(String(row.created_at)) || 0,
+    audioSeconds: row.audio_seconds ?? 0,
+    words: row.word_count ?? 0,
+  }));
+}
+
+/** The start of the current monthly window, in UTC. */
+export function monthStartIso(now = new Date()): string {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+}
+
+/**
+ * This user's word allowance right now: the plan's words plus what they have
+ * earned, against what they have spent. Null when usage could not be read, or
+ * when the user is entitled and no allowance applies.
+ */
+export async function allowanceFor(user: AuthedUser): Promise<Allowance | null> {
+  const moments = await usageMomentsSince(user, monthStartIso());
+  if (!moments) return null;
+  return computeAllowance(moments);
 }

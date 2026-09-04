@@ -37,7 +37,7 @@ import { DOWNLOAD_PAGE_HTML } from "./routes/download.js";
 import { getConfig, VERSION } from "./config.js";
 import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
 import { localUserId } from "./auth/jwt.js";
-import { enforceQuota, recordUsage, usageSummary, usageWindows } from "./usage/metering.js";
+import { allowanceFor, enforceQuota, recordUsage, usageSummary, usageWindows } from "./usage/metering.js";
 import { recordKeyboardTelemetry } from "./usage/telemetry.js";
 import { activeRollouts, bucketFor } from "./experience/rollout.js";
 import { captureException, fastifyLoggerOptions, initSentry } from "./observability.js";
@@ -1322,9 +1322,13 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   // The server's own view of both, so the app never has to guess and a
   // modified client cannot claim either. Read in parallel with everything
   // else, so this costs no extra latency.
-  const [entitled, usage] = user
-    ? await Promise.all([isEntitled(user).catch(() => false), usageSummary(user).catch(() => null)])
-    : [false, null];
+  const [entitled, usage, allowance] = user
+    ? await Promise.all([
+        isEntitled(user).catch(() => false),
+        usageSummary(user).catch(() => null),
+        allowanceFor(user).catch(() => null),
+      ])
+    : [false, null, null];
   const bootstrap = buildBootstrap({
     onboarded: profile?.onboarded ?? false,
     // Both answers are required by the card, so either one proves it ran.
@@ -1333,6 +1337,7 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     languagesSet: !!personality?.languages?.length,
     entitled,
     wordsUsed: usage?.month?.words ?? 0,
+    allowance,
   });
   // When they were last here. Fire and forget: a failed stamp must never cost
   // the boot, and nothing reads it on this path.
@@ -1375,6 +1380,10 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     user && screenId === "stats"
       ? await statsForUser(user, "month", Number(body.tzOffsetMinutes) || 0)
       : undefined;
+  // The words meter. Only the stats screen draws it, so only the stats screen
+  // pays for the read.
+  const allowance =
+    user && screenId === "stats" ? await allowanceFor(user).catch(() => null) : undefined;
   const history =
     user && screenId === "history"
       ? (await listHistory(user, { limit: 50 })).entries
@@ -1386,12 +1395,15 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   // Only for flow_arm: every other screen stays reachable when the words run
   // out. Being out of quota is not a reason to lose your settings.
   if (screenId === "flow_arm" && user) {
-    const [entitled, used] = await Promise.all([
+    const [entitled, allowance] = await Promise.all([
       isEntitled(user).catch(() => true),        // unknown → let them through
-      usageSummary(user).catch(() => null),
+      // The EARNED ceiling, not the flat one. Reading FREE_MONTHLY_WORDS
+      // directly here would stop a user at 2,500 while the stats screen was
+      // showing them 3,400 — the gate and the meter have to be the same number
+      // or the earned words are a decoration.
+      allowanceFor(user).catch(() => null),
     ]);
-    const free = Number(process.env.FREE_MONTHLY_WORDS ?? 2500) || 0;
-    if (!entitled && free > 0 && (used?.month?.words ?? 0) >= free) {
+    if (!entitled && allowance && allowance.total > 0 && allowance.used >= allowance.total) {
       const paywall = buildScreen("paywall", {
         personality,
         language: profile?.language ?? "auto",
@@ -1413,6 +1425,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     email: user?.email,
     phone: user?.phone,
     usage,
+    allowance,
     stats,
     history,
     params: body.params,

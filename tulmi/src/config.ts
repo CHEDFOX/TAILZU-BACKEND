@@ -250,6 +250,27 @@ const EnvSchema = z.object({
    */
   FREE_MONTHLY_AUDIO_SECONDS: z.coerce.number().default(0),
   FREE_MONTHLY_WORDS: z.coerce.number().default(2500),
+
+  // --- Earned words -------------------------------------------------------
+  // The free plan grows when it is used. See src/usage/allowance.ts for why
+  // frequency is rewarded and volume is not; these are the dials.
+  //
+  // Tuned so a casual user never notices a wall and a daily user reaches the
+  // cap in about three weeks: 2,500 base, up to 5,000 earned. A 30-day streak
+  // with a burst most days would earn ~11,000 if nothing capped it — the cap
+  // is what keeps the free tier generous rather than free.
+  /** Words for the first day of a streak. */
+  EARN_STREAK_WORDS: z.coerce.number().default(100),
+  /** Added per extra consecutive day: day 2 is worth 125, day 3 150, … */
+  EARN_STREAK_STEP_WORDS: z.coerce.number().default(25),
+  /** Ceiling on one day's streak grant, reached on day 9. */
+  EARN_STREAK_MAX_WORDS: z.coerce.number().default(300),
+  /** Dictations in one day that count as a day of real use. */
+  EARN_BURST_SESSIONS: z.coerce.number().default(5),
+  /** Words for reaching that. */
+  EARN_BURST_WORDS: z.coerce.number().default(150),
+  /** Most that can be earned in one month. 0 turns earning off entirely. */
+  EARN_MAX_WORDS: z.coerce.number().default(5000),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema> & {

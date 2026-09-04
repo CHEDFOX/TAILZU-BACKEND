@@ -154,6 +154,15 @@ export interface BootstrapResponse {
    * negotiated; the client may cache under existing `cacheTtlSeconds` rules.
    */
   cacheVersion?: string;
+  /**
+   * Screens to fetch and store on launch, before the user asks for them.
+   *
+   * Clients used to warm the tab destinations only, so every screen one tap
+   * deeper waited on the network the first time it was opened — on every
+   * install and again after every cacheVersion bump. The server knows the
+   * reachable set; this is it. Absent = the client warms its tabs, as before.
+   */
+  warmScreenIds?: string[];
 }
 
 export interface LanguageOption {

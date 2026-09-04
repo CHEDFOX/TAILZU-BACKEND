@@ -22,6 +22,7 @@ import type {
 import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
 import { applyRollouts, activeRollouts } from "./rollout.js";
 import type { HistoryEntry, PaywallConfig, PaywallPlan, Personality, StatsResponse, UsageSummary } from "../../../shared/types/api.js";
+import type { Allowance } from "../usage/allowance.js";
 import {
   PERSONALITY_PRESETS,
   findPreset,
@@ -357,6 +358,10 @@ export function buildBootstrap(
     /** Words used this month, so the app can show the meter and the keyboard
      *  can stop before it starts. */
     wordsUsed?: number;
+    /** The user's real ceiling — the plan's words plus what they have earned
+     *  by coming back. Null when usage could not be read; the flags then fall
+     *  back to the flat free tier, which is the conservative direction. */
+    allowance?: Allowance | null;
   } = {},
 ): BootstrapResponse {
   return {
@@ -412,9 +417,26 @@ export function buildBootstrap(
         // landed yet never leaves a paying user staring at one.
         "billing.entitled": opts.entitled === true,
         "quota.wordsUsed": Math.max(0, Math.round(opts.wordsUsed ?? 0)),
-        "quota.wordsFree": FREE_MONTHLY_WORDS,
+        // The CEILING, earned words included. `quota.wordsFree` keeps its name
+        // because every existing client reads it; what changed is that it is no
+        // longer a constant. A user who has come back four days running sees
+        // 2,900 here, and 2,900 is what the server will enforce.
+        "quota.wordsFree": opts.allowance?.total ?? FREE_MONTHLY_WORDS,
+        // The plan's own words, so the app can show the earned part separately.
+        "quota.wordsBase": FREE_MONTHLY_WORDS,
+        "quota.wordsEarned": opts.allowance?.earned ?? 0,
+        "quota.wordsRemaining": opts.allowance?.remaining
+          ?? Math.max(0, FREE_MONTHLY_WORDS - (opts.wordsUsed ?? 0)),
+        // The streak, and what tomorrow is worth. This is the whole mechanic:
+        // a number that only ever fell now has one climbing beside it, and the
+        // app can say what the next return earns BEFORE it is earned.
+        "quota.streakDays": opts.allowance?.streakDays ?? 0,
+        "quota.nextStreakWords": opts.allowance?.nextStreakWords ?? 0,
+        "quota.earnMaxed": opts.allowance?.maxed === true,
         // The one flag every gate reads: out of words and not paying.
-        "quota.exceeded": opts.entitled !== true && (opts.wordsUsed ?? 0) >= FREE_MONTHLY_WORDS,
+        "quota.exceeded":
+          opts.entitled !== true
+          && (opts.wordsUsed ?? 0) >= (opts.allowance?.total ?? FREE_MONTHLY_WORDS),
         "paywall.blockUntilEntitled": false,
         // DISABLED for now: the paywall was auto-showing on every open (user
         // lacks `pro`) and its purchase fails with "could not complete purchase"
@@ -607,8 +629,43 @@ export function buildBootstrap(
       },
     },
     cacheTtlSeconds: 300,
+    warmScreenIds: WARM_SCREEN_IDS,
   };
 }
+
+/**
+ * The screens an install should hold before it needs them.
+ *
+ * The client used to warm the four tab destinations and nothing else, so every
+ * screen one tap deeper — settings, stats detail, the personality editor —
+ * waited on the network the first time it was opened, on every install and
+ * again after every cacheVersion bump. That first wait is the one users read as
+ * "the app is slow", because it happens exactly when they are exploring.
+ *
+ * Listed here rather than derived from the switch in buildScreen, because most
+ * of what that switch can build should NOT be warmed:
+ *
+ *   - intro, onboarding, onboarding_keyboard — seen once, and by the time this
+ *     list is read the user is past them.
+ *   - keyboard_record, flow_arm, keyboard_primer — transient mic screens whose
+ *     content only means anything in the moment they are opened.
+ *   - anything taking params (personality_detail) — there is no id to warm.
+ *
+ * paywall IS warmed: it has the heaviest media of any screen, and the moment it
+ * appears is the moment a slow load costs money.
+ */
+const WARM_SCREEN_IDS = [
+  "home",
+  "history",
+  "stats",
+  "personality",
+  "settings",
+  "languages",
+  "voices",
+  "dictionary",
+  "haptics",
+  "paywall",
+];
 
 // --- Screens ----------------------------------------------------------------
 
@@ -1543,6 +1600,10 @@ export interface ScreenContext {
   /** Set instead of `email` for an SMS-only account. */
   phone?: string;
   usage?: UsageSummary;
+  /** Words available and words earned, for the stats meter. Absent for a
+   *  signed-out or unreadable user; the meter is then not drawn at all rather
+   *  than drawn with zeros, which would read as "you have nothing left". */
+  allowance?: Allowance | null;
   /**
    * Optional per-user stats projection for the "stats" screen. Populated by
    * the screen route handler when it has been wired to fetch statsForUser();
@@ -3096,6 +3157,41 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
   const streak = stats?.currentStreak ?? 0;
   const bestStreak = Math.max(streak, stats?.bestStreak ?? 0);
 
+  // The words meter. First thing on the page, because it is the only number
+  // here that decides whether the app keeps working — and now the only one
+  // that can go UP on its own.
+  const a = ctx.allowance;
+  const meterCard: Node[] = a
+    ? [{
+        type: "Card",
+        children: [{
+          type: "WordMeter",
+          props: {
+            used: a.used,
+            base: a.base,
+            earned: a.earned,
+            // One line, and only when there is something to promise. A caption
+            // that says "you have earned nothing" on day one would make the
+            // mechanic feel like a tax.
+            caption: a.maxed
+              ? "You've earned every free word this month."
+              : a.streakDays > 0
+                ? `Day ${a.streakDays} in a row. Come back tomorrow for ${a.nextStreakWords} more words.`
+                : `Use Tailzu tomorrow and earn ${a.nextStreakWords} words.`,
+          },
+          // Old bundles have no WordMeter. They still get the number that
+          // matters rather than an empty space.
+          fallback: {
+            type: "KeyValue",
+            props: {
+              label: "Words left",
+              value: `${a.remaining.toLocaleString()} of ${a.total.toLocaleString()}`,
+            },
+          },
+        }],
+      } as Node, spacer(21)]
+    : [];
+
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "stats",
@@ -3116,6 +3212,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
           },
         },
         spacer(13),
+        ...meterCard,
         // Headline tiles — golden ladder spacing (8·13·21·34).
         {
           type: "Stack",
