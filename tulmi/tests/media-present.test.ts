@@ -95,3 +95,66 @@ describe("media presentation is registry data", () => {
     expect(mediaNode().style.backgroundColor).toBe("#101014");
   });
 });
+
+// The same contract for the hero slots. A hero lives inside a padded screen,
+// so "full" here means cancelling that padding, not absolute positioning.
+
+function heroOf(screenId: string, key: string, present?: MediaPresent, contentType = "image/jpeg") {
+  setMediaRegistryAccessor(() => ({
+    [key]: {
+      url: "https://api.tailzu.space/media/x." + (contentType.startsWith("video") ? "mp4" : "jpg"),
+      contentType, size: 1, uploadedAt: 1,
+      ...(present ? { present } : {}),
+    },
+  }));
+  const screen = buildScreen(screenId, {
+    personality: {}, language: "en", onboarded: true, params: {}, email: "a@b.com",
+  } as never) as any;
+  const walk = (n: any): any => {
+    if (!n) return null;
+    if (n.type === "Stack" && n.children?.length === 1 &&
+        ["Image", "Video"].includes(n.children[0].type)) return n;
+    for (const c of n.children ?? []) { const hit = walk(c); if (hit) return hit; }
+    return null;
+  };
+  return walk(screen.root);
+}
+
+describe("hero slots take their presentation from the registry too", () => {
+  it("the paywall hero is edge to edge by default", () => {
+    const h = heroOf("paywall", "paywall.hero");
+    // The screen's own padding is 20 all round, 12 at the top.
+    expect(h.style.marginLeft).toBe(-20);
+    expect(h.style.marginRight).toBe(-20);
+    expect(h.style.marginTop).toBe(-12);
+    expect(h.style.borderRadius).toBe(0);
+    expect(h.style.alignSelf).toBe("stretch");
+  });
+
+  it("an entry can ask for the card back", () => {
+    const h = heroOf("paywall", "paywall.hero", { shape: "card", radius: 20 });
+    expect(h.style.marginLeft).toBeUndefined();
+    expect(h.style.borderRadius).toBe(20);
+  });
+
+  it("aspectRatio and fit come off the entry", () => {
+    const h = heroOf("paywall", "paywall.hero", { aspectRatio: 0.75, fit: "contain" });
+    expect(h.style.aspectRatio).toBe(0.75);
+    expect(h.children[0].props.contentFit).toBe("contain");
+  });
+
+  it("a clip in a hero slot builds a Video, not an invisible Image", () => {
+    const h = heroOf("paywall", "paywall.hero", undefined, "video/mp4");
+    expect(h.children[0].type).toBe("Video");
+    expect(h.children[0].props.autoplay).toBe(true);
+    expect(h.children[0].props.muted).toBe(true);
+    // Older bundles have no Video node; a still is a far better hero than a hole.
+    expect(h.children[0].fallback.type).toBe("Image");
+  });
+
+  it("the flow screen's hero cancels its own 28pt padding", () => {
+    const h = heroOf("flow_arm", "hero.flow_arm");
+    expect(h.style.marginLeft).toBe(-28);
+    expect(h.style.marginRight).toBe(-28);
+  });
+});
