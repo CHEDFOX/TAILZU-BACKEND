@@ -948,13 +948,17 @@ const INTRO_FULL_STYLE = {
 /**
  * How the opening media meets the edges.
  *
- * "contain" keeps the file exactly as it was made — the whole frame, its own
- * proportions, black either side of it on a screen it does not match. "cover"
- * fills every pixel and crops whatever does not fit. Contain is the default
- * because a clip that arrives zoomed and cut is the complaint that started
- * this; one word here changes it, with no build.
+ * "cover" fills every pixel and crops whatever does not fit. "contain" keeps
+ * the whole frame and its proportions, with black either side of it on a
+ * screen it does not match.
+ *
+ * Cover, because the opening media is cut 9:16 for exactly this — a tall
+ * phone is 9:19.5, so contain would letterbox the one screen that is supposed
+ * to be edge to edge, and cover loses a few percent top and bottom of a frame
+ * that was composed with room. A clip that is NOT full-bleed by design wants
+ * "contain" instead: one word, no build.
  */
-const INTRO_FIT: "contain" | "cover" = "contain";
+const INTRO_FIT: "contain" | "cover" = "cover";
 
 /**
  * Daily languages — a multi-select, saved to personality.languages.
