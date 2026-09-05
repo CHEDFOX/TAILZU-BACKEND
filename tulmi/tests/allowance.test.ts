@@ -111,7 +111,7 @@ describe("earned words", () => {
   it("caps the month's earnings", () => {
     const moments = Array.from({ length: 40 }, (_, i) => day(39 - i, 6)).flat();
     const a = at(moments);
-    expect(a.earned).toBe(1600);
+    expect(a.earned).toBe(1700);
     expect(a.maxed).toBe(true);
   });
 

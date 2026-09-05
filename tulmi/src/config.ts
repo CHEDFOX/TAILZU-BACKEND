@@ -271,7 +271,7 @@ const EnvSchema = z.object({
   /** Words for reaching that. */
   EARN_BURST_WORDS: z.coerce.number().default(150),
   /** Most that can be earned in one month. 0 turns earning off entirely. */
-  EARN_MAX_WORDS: z.coerce.number().default(1600),
+  EARN_MAX_WORDS: z.coerce.number().default(1700),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema> & {
