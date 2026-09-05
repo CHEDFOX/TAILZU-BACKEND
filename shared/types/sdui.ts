@@ -84,12 +84,45 @@ export type MediaSpec =
   | { emoji: string }
   | { data: string; contentType?: string };
 
+/**
+ * How a media slot is shown — the shape of its window, not the file in it.
+ *
+ * Stored ON the registry entry, so changing how the opening plays is a POST to
+ * /v1/media/present, not an edit to a screen builder and a deploy. Every field
+ * is optional; whatever is missing falls back to that screen's own default.
+ */
+export interface MediaPresent {
+  /** The window the media plays in.
+   *  full  — edge to edge
+   *  plate — a circle, the size of the in-app mic
+   *  card  — an inset panel, rounded */
+  shape?: "full" | "plate" | "card";
+  /** How the media meets that window. "cover" fills and crops; "contain"
+   *  keeps the whole frame and its proportions. */
+  fit?: "cover" | "contain";
+  /** Corner radius, px. Ignored by "plate", which is always a circle. */
+  radius?: number;
+  /** Gap between the media and the screen edges, px. */
+  inset?: number;
+  /** Diameter of a plate, or max width of a card, px. */
+  size?: number;
+  /** Width ÷ height. A card keeps this; full and plate ignore it. */
+  aspectRatio?: number;
+  /** What is painted behind the media. */
+  background?: string;
+  /** How long the screen holds before it moves on, ms. A GIF reports nothing
+   *  when it ends, so for a GIF this IS the length of the scene. */
+  holdMs?: number;
+}
+
 export interface MediaEntry {
   url: string;
   contentType: string;
   size: number;
   uploadedAt: number;
   key?: string;
+  /** Set by POST /v1/media/present. Absent means "use the screen's default". */
+  present?: MediaPresent;
 }
 
 export interface BootstrapRequest {

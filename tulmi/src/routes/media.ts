@@ -28,6 +28,38 @@ import { registerMediaCompressRoute } from "./mediaCompress.js";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { MediaPresent } from "../../../shared/types/sdui.js";
+
+/**
+ * Sanitise a presentation payload.
+ *
+ * Everything here ends up inside a style object a client renders, so this is a
+ * whitelist, not a merge: unknown fields are dropped, enums must match, numbers
+ * are clamped to a sane range, and the background has to look like a colour.
+ * An admin secret is not a licence to post arbitrary style into every install.
+ */
+function cleanPresent(raw: unknown): MediaPresent | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const out: MediaPresent = {};
+  const num = (v: unknown, lo: number, hi: number): number | undefined => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : undefined;
+  };
+  if (r.shape === "full" || r.shape === "plate" || r.shape === "card") out.shape = r.shape;
+  if (r.fit === "cover" || r.fit === "contain") out.fit = r.fit;
+  const radius = num(r.radius, 0, 999); if (radius !== undefined) out.radius = radius;
+  const inset = num(r.inset, 0, 200); if (inset !== undefined) out.inset = inset;
+  const size = num(r.size, 24, 2000); if (size !== undefined) out.size = size;
+  const ar = num(r.aspectRatio, 0.1, 10); if (ar !== undefined) out.aspectRatio = ar;
+  // A held scene the user cannot leave is the worst failure this screen has,
+  // so the ceiling is low on purpose.
+  const hold = num(r.holdMs, 300, 20000); if (hold !== undefined) out.holdMs = hold;
+  if (typeof r.background === "string" && /^#[0-9a-f]{3,8}$/i.test(r.background.trim())) {
+    out.background = r.background.trim();
+  }
+  return Object.keys(out).length ? out : null;
+}
 
 /** Refuse keys that would pollute Object.prototype or produce a poisoned entry. */
 const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
@@ -56,6 +88,8 @@ export type MediaEntry = {
   key?: string;
   /** Playback length, when known (set by the compressor for video sources). */
   durationMs?: number;
+  /** How the slot is shown. Set by POST /v1/media/present. */
+  present?: MediaPresent;
 };
 
 export type MediaRegistry = Record<string, MediaEntry>;
@@ -354,6 +388,47 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
     if (!guard.ok) return reply.code(guard.reason === "not_configured" ? 503 : 401)
       .send({ code: guard.reason });
     return reply.send({ registry: cachedRegistry });
+  });
+
+  // --- Presentation (admin) -------------------------------------------------
+  //
+  // How a slot is SHOWN, separate from what is in it. The opening media can go
+  // from a circle to edge-to-edge, or change how long it holds, with one call
+  // and no deploy — which is the whole point of the media store being the
+  // backend's, not the build's.
+  //
+  //   POST /v1/media/present?key=intro   {"shape":"full","fit":"cover","holdMs":4600}
+  //   POST /v1/media/present?key=intro&reset=true    → back to the screen's default
+  app.post("/v1/media/present", rl, async (req, reply) => {
+    const guard = checkAdmin(req, adminSecret);
+    if (!guard.ok) return reply.code(guard.reason === "not_configured" ? 503 : 401)
+      .send({ code: guard.reason });
+
+    const q = (req as { query?: Record<string, string> }).query ?? {};
+    const key = (q.key ?? "").trim();
+    if (!key) return reply.code(400).send({ code: "bad_request", message: "Missing ?key=" });
+    if (RESERVED_KEYS.has(key)) return reply.code(400).send({ code: "reserved_key" });
+    const entry = Object.prototype.hasOwnProperty.call(cachedRegistry, key)
+      ? cachedRegistry[key] : undefined;
+    if (!entry) return reply.code(404).send({ code: "not_found", message: `no media at key "${key}"` });
+
+    if (q.reset === "true") {
+      delete entry.present;
+      await writeRegistry(mediaDir, cachedRegistry);
+      return reply.send({ ok: true, key, present: null });
+    }
+
+    const present = cleanPresent(req.body);
+    if (!present) {
+      return reply.code(400).send({
+        code: "bad_request",
+        message: "Nothing usable. Fields: shape (full|plate|card), fit (cover|contain), radius, inset, size, aspectRatio, background (#hex), holdMs.",
+      });
+    }
+    // Merge, so setting one field does not silently drop the rest.
+    entry.present = { ...(entry.present ?? {}), ...present };
+    await writeRegistry(mediaDir, cachedRegistry);
+    return reply.send({ ok: true, key, present: entry.present });
   });
 
   // --- Delete (admin) — removes registry entry; file stays on disk ----------

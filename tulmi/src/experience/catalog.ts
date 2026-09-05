@@ -14,6 +14,7 @@ import type {
   KeyboardActionSpec,
   KeyboardConfigResponse,
   KeyboardNode,
+  MediaPresent,
   NavigationShell,
   Node,
   ScreenResponse,
@@ -40,6 +41,9 @@ type MediaEntry = {
   url: string; contentType: string; size: number; uploadedAt: number;
   /** Playback length, when the compressor has measured it. */
   durationMs?: number;
+  /** How this slot is shown — shape, fit, radius, hold. Set over HTTP by
+   *  POST /v1/media/present, so changing it needs no deploy. */
+  present?: MediaPresent;
 };
 let getMediaRegistryFn: (() => Record<string, MediaEntry>) | null = null;
 export function setMediaRegistryAccessor(fn: () => Record<string, MediaEntry>): void {
@@ -931,37 +935,77 @@ const PLATE_STYLE = {
 };
 
 /**
- * The opening media fills the window.
+ * How a piece of media is shown, resolved for one registry key.
  *
- * It used to play inside PLATE_STYLE — a 128pt white circle, chosen when the
- * opening WAS the in-app mic and the two were meant to read as one object.
- * The opening is its own piece of film now, and a circle is a crop, so it
- * covers the screen instead. Absolute so it sits under the way-out button
- * rather than pushing it off the bottom.
+ * The shape of the window, how the media meets it, what is behind it, how long
+ * the scene holds — none of that is a property of the file, and none of it
+ * should need a deploy. The entry carries it (POST /v1/media/present), env
+ * carries the fallback, and the numbers below are only what applies when
+ * nobody has said otherwise.
+ *
+ * Defaults are full-bleed and cover: the opening media is cut 9:16 for exactly
+ * that, and a tall phone is 9:19.5, so "contain" would letterbox the one screen
+ * meant to be edge to edge. A clip that is NOT full-bleed by design gets
+ * {"fit":"contain"}, or a shape of its own, over HTTP.
  */
-const INTRO_FULL_STYLE = {
-  position: "absolute" as const,
-  top: 0, left: 0, right: 0, bottom: 0,
-  width: "100%",
-  height: "100%",
-  backgroundColor: "#000000",
-  overflow: "hidden" as const,
-};
+interface Presented {
+  style: Record<string, unknown>;
+  fit: "cover" | "contain";
+  holdMs: number | null;
+}
 
-/**
- * How the opening media meets the edges.
- *
- * "cover" fills every pixel and crops whatever does not fit. "contain" keeps
- * the whole frame and its proportions, with black either side of it on a
- * screen it does not match.
- *
- * Cover, because the opening media is cut 9:16 for exactly this — a tall
- * phone is 9:19.5, so contain would letterbox the one screen that is supposed
- * to be edge to edge, and cover loses a few percent top and bottom of a frame
- * that was composed with room. A clip that is NOT full-bleed by design wants
- * "contain" instead: one word, no build.
- */
-const INTRO_FIT: "contain" | "cover" = "cover";
+function presentMedia(entry: MediaEntry | undefined): Presented {
+  const p: MediaPresent = entry?.present ?? {};
+  const envShape = (process.env.INTRO_SHAPE ?? "").trim().toLowerCase();
+  const shape = p.shape
+    ?? (envShape === "plate" || envShape === "card" || envShape === "full" ? envShape : "full");
+  const fit = p.fit
+    ?? ((process.env.INTRO_FIT ?? "").trim().toLowerCase() === "contain" ? "contain" : "cover");
+  const bg = p.background ?? "#000000";
+  const inset = p.inset ?? 0;
+
+  if (shape === "plate") {
+    const d = p.size ?? INTRO_PLATE;
+    return {
+      fit,
+      holdMs: p.holdMs ?? null,
+      style: {
+        width: d, height: d, borderRadius: d / 2,
+        backgroundColor: p.background ?? "#FFFFFF",
+        overflow: "hidden" as const,
+      },
+    };
+  }
+  if (shape === "card") {
+    return {
+      fit,
+      holdMs: p.holdMs ?? null,
+      style: {
+        width: "100%",
+        ...(p.size ? { maxWidth: p.size } : {}),
+        aspectRatio: p.aspectRatio ?? 9 / 16,
+        borderRadius: p.radius ?? 22,
+        marginHorizontal: inset || 20,
+        backgroundColor: bg,
+        overflow: "hidden" as const,
+      },
+    };
+  }
+  // full — absolutely filling its parent. width/height only when there is no
+  // inset: with edges pinned they are redundant, and together they fight.
+  return {
+    fit,
+    holdMs: p.holdMs ?? null,
+    style: {
+      position: "absolute" as const,
+      top: inset, left: inset, right: inset, bottom: inset,
+      ...(inset ? {} : { width: "100%", height: "100%" }),
+      ...(p.radius ? { borderRadius: p.radius } : {}),
+      backgroundColor: bg,
+      overflow: "hidden" as const,
+    },
+  };
+}
 
 /**
  * Daily languages — a multi-select, saved to personality.languages.
@@ -1158,6 +1202,11 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
   const introIsVideo =
     (introEntry?.contentType ?? "").toLowerCase().startsWith("video/") ||
     /\.(mp4|mov|m4v|webm)(\?|$)/i.test(introEntry?.url ?? "");
+  // Shape, fit and hold all come off the registry entry when it carries them.
+  // Nothing below decides how this looks any more; it only decides which node
+  // can play the file.
+  const shown = presentMedia(introEntry);
+  const holdMs = shown.holdMs ?? INTRO_PLAY_MS;
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "intro",
@@ -1192,7 +1241,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           // extra black.
           // The morph's length comes OUT of the hold, so the opening still
           // lasts what INTRO_PLAY_MS says rather than that plus an animation.
-          { kind: "delay", ms: introIsVideo ? INTRO_VIDEO_MAX_MS : INTRO_PLAY_MS },
+          { kind: "delay", ms: introIsVideo ? (shown.holdMs ?? INTRO_VIDEO_MAX_MS) : holdMs },
           // Draw the plate into the mic, then navigate. Inlined rather than
           // named: a sequence entry is an action, and no action kind calls
           // another by name.
@@ -1239,10 +1288,10 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
         // Video path — an uploaded mp4 (what the mic prefers).
         ...(hasIntroMedia && introIsVideo ? [{
           type: "Video",
-          style: INTRO_FULL_STYLE,
+          style: shown.style,
           props: {
             source: introSource,
-            autoplay: true, loop: false, muted: true, contentFit: INTRO_FIT,
+            autoplay: true, loop: false, muted: true, contentFit: shown.fit,
           },
           on: { onComplete: "done" },
         } as Node] : []),
@@ -1282,19 +1331,19 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           // cannot reach is what made this read as cheap; a centred collapse
           // is a decision rather than a miss. toScale 0 so the last thing on
           // screen is the move finishing, not a dot being cut off.
-          style: INTRO_FULL_STYLE,
+          style: shown.style,
           children: [{
             type: "Image",
             style: { width: "100%", height: "100%" },
-            props: { source: introSource, contentFit: INTRO_FIT },
+            props: { source: introSource, contentFit: shown.fit },
           } as Node],
           fallback: {
             type: "Stack",
-            style: INTRO_FULL_STYLE,
+            style: shown.style,
             children: [{
               type: "Image",
               style: { width: "100%", height: "100%" },
-              props: { source: introSource, contentFit: INTRO_FIT },
+              props: { source: introSource, contentFit: shown.fit },
             }],
           },
         } as Node] : []),
