@@ -91,6 +91,23 @@ function screenHero(
     /** Show only on this platform. The condition is evaluated on the device,
      *  so a per-platform slot needs no server-side detection. */
     onlyOn?: "ios" | "android";
+    /**
+     * How the media fills its box. "cover" (default) crops to fill — right for
+     * a banner, where the edges are decoration. "contain" never crops — right
+     * for a DEMO, where the cropped-off part is the thing being demonstrated.
+     */
+    fit?: "cover" | "contain";
+    /**
+     * Give the box the clip's own shape instead of a fixed height.
+     *
+     * A fixed height is a guess about the screen's width, and on any device
+     * where the guess is wrong the media is either cropped or letterboxed. An
+     * aspect ratio is the same statement made correctly: the box is as tall as
+     * its own width times this, whatever that width turns out to be.
+     */
+    aspectRatio?: number;
+    /** Space below the media. 0 sits it flush against the screen's bottom. */
+    marginBottom?: number;
   } = {},
 ): Node[] {
   const key = `hero.${screenId}`;
@@ -109,20 +126,20 @@ function screenHero(
           source: mediaSrc(key),
           // A hero is ambient: it plays itself, forever, in silence. Muted is
           // not politeness — an unmuted autoplay is blocked outright.
-          autoplay: true, loop: true, muted: true, contentFit: "cover",
+          autoplay: true, loop: true, muted: true, contentFit: opts.fit ?? "cover",
         },
         style: { width: "100%", height: "100%" },
         // A bundle without Video draws nothing at all; the still frame is a
         // worse hero than the video and a far better one than a hole.
         fallback: {
           type: "Image",
-          props: { source: mediaSrc(key), contentFit: "cover" },
+          props: { source: mediaSrc(key), contentFit: opts.fit ?? "cover" },
           style: { width: "100%", height: "100%" },
         },
       }
     : {
         type: "Image",
-        props: { source: mediaSrc(key), contentFit: "cover" },
+        props: { source: mediaSrc(key), contentFit: opts.fit ?? "cover" },
         style: { width: "100%", height: "100%" },
       };
   return [
@@ -132,7 +149,12 @@ function screenHero(
       // itself have nothing to cut — see the intro plate.
       ...(opts.onlyOn ? { visibleIf: { platform: opts.onlyOn } } : {}),
       style: {
-        height: opts.height ?? 148,
+        // An aspect ratio wins over a height: the box then takes the media's
+        // own shape at whatever width the device gives it, and nothing has to
+        // be cropped to make it fit.
+        ...(opts.aspectRatio
+          ? { aspectRatio: opts.aspectRatio }
+          : { height: opts.height ?? 148 }),
         ...(opts.width ? { width: opts.width, alignSelf: "center" } : {}),
         // Negative side margins cancel the parent's padding, which is the only
         // way a child reaches the edge of a padded screen.
@@ -148,7 +170,7 @@ function screenHero(
           : {}),
         borderRadius: opts.radius ?? 20,
         overflow: "hidden",
-        marginBottom: opts.fullBleed ? 26 : 18,
+        marginBottom: opts.marginBottom ?? (opts.fullBleed ? 26 : 18),
         backgroundColor: "#0b0b0f",
       },
       children: [inner],
@@ -4091,7 +4113,10 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
       // the work. The words are read in a second and then the eye has
       // somewhere to go; a clip tucked directly under a paragraph competes
       // with it instead.
-      style: { paddingHorizontal: 28, paddingTop: 72, paddingBottom: 0, alignItems: "center" },
+      // flexGrow lets the column fill the screen, which is what gives the
+      // spacer below something to grow INTO — without it the content is only
+      // as tall as itself and "at the bottom" means "under the text".
+      style: { paddingHorizontal: 28, paddingTop: 72, paddingBottom: 0, alignItems: "center", flexGrow: 1 },
       children: [
         {
           type: "Heading",
@@ -4119,13 +4144,27 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
         //
         // iOS only, because Flow is. The Android keyboard has its own capture
         // path and never reaches this screen.
-        // FULL WIDTH, at the bottom. A 300pt square centred in a 28pt-padded
-        // column is neither: it reads as a thumbnail of the demo rather than
-        // the demo. This cancels the padding on both sides and takes the
-        // height a 9:16 recording actually wants.
-        { type: "Spacer", style: { height: 44 } },
+        // FULL WIDTH, WHOLE CLIP, AT THE BOTTOM.
+        //
+        // It was a fixed 460pt box with contentFit "cover", and the clip is
+        // 1:1 — so the box was taller than the clip is shaped, cover scaled it
+        // up until it filled that height, and everything outside the box got
+        // cropped. That is the zoom: not a zoom setting anywhere, just a box
+        // the wrong shape and a fit rule that resolves the mismatch by
+        // cutting. Cropping a DEMO removes the thing being demonstrated.
+        //
+        // aspectRatio 1 gives the box the clip's own shape at whatever width
+        // the device is, so there is nothing left to crop, and "contain"
+        // guarantees it even if the clip is not exactly square.
+        //
+        // The spacer grows instead of measuring: a fixed 44 put the clip
+        // wherever the text happened to end. flex:1 puts it against the bottom
+        // on every screen size, with a floor so it never collides on a small
+        // one.
+        { type: "Spacer", style: { flex: 1, minHeight: 24 } },
         ...screenHero("flow_arm", {
-          height: 460, radius: 0, onlyOn: "ios", fullBleed: 28, fullBleedTop: 0,
+          aspectRatio: 1, fit: "contain", radius: 0, onlyOn: "ios",
+          fullBleed: 28, fullBleedTop: 0, marginBottom: 0,
         }),
       ],
     },
