@@ -450,11 +450,10 @@ export function buildBootstrap(
         "quota.wordsEarned": opts.allowance?.earned ?? 0,
         "quota.wordsRemaining": opts.allowance?.remaining
           ?? Math.max(0, FREE_MONTHLY_WORDS - (opts.wordsUsed ?? 0)),
-        // The streak, and what tomorrow is worth. This is the whole mechanic:
-        // a number that only ever fell now has one climbing beside it, and the
-        // app can say what the next return earns BEFORE it is earned.
+        // The streak. NOT what tomorrow is worth — that number no longer
+        // exists to send, because naming it turns anticipation into
+        // arithmetic and a known reward into a price.
         "quota.streakDays": opts.allowance?.streakDays ?? 0,
-        "quota.nextStreakWords": opts.allowance?.nextStreakWords ?? 0,
         "quota.earnMaxed": opts.allowance?.maxed === true,
         // The one flag every gate reads: out of words and not paying.
         "quota.exceeded":
@@ -839,11 +838,6 @@ const INTRO_PLATE = 128;
 const INTRO_PLAY_MS = 2600;
 /** How long the plate takes to be drawn into the mic. Part of INTRO_PLAY_MS,
  *  not added to it — the opening should not grow because it got nicer. */
-// Long enough for the wind-up to register as a gather rather than a stutter,
-// short enough that the app is not withholding itself. 520 was tuned for a
-// move that travelled; a collapse in place needs a beat more to read as
-// physical, and the plate is opaque for 82% of it either way.
-const INTRO_MORPH_MS = 600;
 /**
  * Play the intro even with no media uploaded, using the built-in mark.
  *
@@ -964,7 +958,17 @@ function languagesScreen(ctx: ScreenContext): ScreenResponse {
         // the page.
         // 18 is this screen's own paddingHorizontal, 12 its paddingTop — both
         // cancelled so the banner meets three edges of the screen.
-        ...screenHero("languages", { height: 190, fullBleed: 18, fullBleedTop: 12, radius: 0 }),
+        // EDGE TO EDGE, AND THE WHOLE PICTURE.
+        //
+        // fullBleed 18 exactly cancels this screen's own paddingHorizontal, so
+        // the art already reached both edges. What it did not do was show all
+        // of itself: a fixed 190pt box is a guess about the device's width, and
+        // "cover" resolves the mismatch by cropping — the same defect the flow
+        // clip had. 16:9 is the shape of the file, so the box takes the width
+        // it is given and the height that follows from it, and nothing is cut.
+        ...screenHero("languages", {
+          aspectRatio: 16 / 9, fullBleed: 18, fullBleedTop: 12, radius: 0,
+        }),
         {
           // ONE line, two colours — a row of Texts, not two stacked Headings.
           // Heading is a block: two of them are two lines however short the
@@ -1062,8 +1066,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
     // window — critical for the intro to feel like a splash-adjacent
     // cinematic instead of "media inside the app's content area."
     hideChrome: true,
-    // `handoff` flips just before the exit and drives MorphOut on the plate.
-    state: { handoff: false },
+    state: {},
     actions: {
       done: { kind: "navigate", screenId: next },
     },
@@ -1089,12 +1092,10 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           // extra black.
           // The morph's length comes OUT of the hold, so the opening still
           // lasts what INTRO_PLAY_MS says rather than that plus an animation.
-          { kind: "delay", ms: Math.max(300, (introIsVideo ? INTRO_VIDEO_MAX_MS : INTRO_PLAY_MS) - INTRO_MORPH_MS) },
+          { kind: "delay", ms: introIsVideo ? INTRO_VIDEO_MAX_MS : INTRO_PLAY_MS },
           // Draw the plate into the mic, then navigate. Inlined rather than
           // named: a sequence entry is an action, and no action kind calls
           // another by name.
-          { kind: "setState", path: "handoff", value: true },
-          { kind: "delay", ms: INTRO_MORPH_MS },
           { kind: "navigate", screenId: next },
         ] },
       },
@@ -1186,13 +1187,16 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           // pixels are the element itself, so the round corners had nothing to
           // cut and the media drew square.
           //
-          // MorphOut rather than a plain Stack: the intro and the in-app mic
-          // are the SAME media in the SAME circle, so the exit should carry
-          // one into the other instead of cutting between two identical
-          // things. A bundle without MorphOut renders the fallback and cuts,
-          // exactly as before.
-          type: "MorphOut",
-          bind: { active: "handoff" },
+          // NO EXIT ANIMATION. The plate holds and the screen changes.
+          //
+          // It carried a collapse, on the idea that the intro and the in-app
+          // mic are one object being handed from one screen to the other. The
+          // mic turned out to be a 38pt control on the edge of a scrolling
+          // page — nothing to hand anything to — and every version of the move
+          // read as an object dying rather than arriving. A straight cut is
+          // honest, and the opening media is being replaced anyway; whatever
+          // replaces it can bring its own exit if it wants one.
+          type: "Stack",
           // No dx/dy: the plate collapses where it stands. It used to aim
           // 70pt down at the in-app mic, and the in-app mic is a 38pt control
           // on the right edge of a text box partway down a scrolling page —
@@ -1200,7 +1204,6 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           // cannot reach is what made this read as cheap; a centred collapse
           // is a decision rather than a miss. toScale 0 so the last thing on
           // screen is the move finishing, not a dot being cut off.
-          props: { durationMs: INTRO_MORPH_MS, toScale: 0 },
           style: PLATE_STYLE,
           children: [{
             type: "Image",
@@ -3122,6 +3125,40 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
  * The screen itself does no client-side fetching — see the "history" screen
  * below for the opposite pattern.
  */
+/**
+ * Visits → pie slices.
+ *
+ * Newest first, six at most, the rest folded into one. Colour carries the tier
+ * so a big day reads as a big day at a glance — the amounts are the message,
+ * and a chart where every slice looks alike would hide exactly the thing this
+ * mechanic depends on the user noticing.
+ */
+function visitSlices(
+  visits: Array<{ day: string; words: number; tier: string }>,
+): Array<{ label: string; value: number; color: string }> {
+  const TIER_COLOR: Record<string, string> = {
+    small: "#6B5A3E",
+    good: "#C08A2E",
+    big: "#E8A23C",
+    huge: "#FFD27A",
+  };
+  const newestFirst = [...visits].reverse();
+  const shown = newestFirst.slice(0, 6);
+  const rest = newestFirst.slice(6);
+  const label = (day: string) => {
+    const d = new Date(`${day}T00:00:00Z`);
+    return `${d.getUTCDate()} ${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getUTCMonth()]}`;
+  };
+  const out = shown.map((v) => ({
+    label: label(v.day),
+    value: v.words,
+    color: TIER_COLOR[v.tier] ?? "#C08A2E",
+  }));
+  const older = rest.reduce((n, v) => n + v.words, 0);
+  if (older > 0) out.push({ label: `${rest.length} earlier`, value: older, color: "#3A3A42" });
+  return out;
+}
+
 function statsScreen(ctx: ScreenContext): ScreenResponse {
   const usage = ctx.usage ?? {
     month: { words: 0, audioSeconds: 0, requests: 0 },
@@ -3207,11 +3244,17 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
             // One line, and only when there is something to promise. A caption
             // that says "you have earned nothing" on day one would make the
             // mechanic feel like a tax.
+            // What the streak IS, never what the next one pays. The promise
+            // was the problem: it made tomorrow a transaction at a published
+            // rate, and a rate the user can read is a rate they can decide is
+            // not worth it.
             caption: a.maxed
               ? "You've earned every free word this month."
-              : a.streakDays > 0
-                ? `Day ${a.streakDays} in a row. Come back tomorrow for ${a.nextStreakWords} more words.`
-                : `Use Tailzu tomorrow and earn ${a.nextStreakWords} words.`,
+              : a.streakDays > 1
+                ? `${a.streakDays} days in a row.`
+                : a.streakDays === 1
+                  ? "Streak started."
+                  : "Words arrive when you use Tailzu.",
           },
           // Old bundles have no WordMeter. They still get the number that
           // matters rather than an empty space.
@@ -3223,7 +3266,48 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
             },
           },
         }],
-      } as Node, spacer(21)]
+      } as Node, spacer(13),
+        // WHAT EACH VISIT PAID.
+        //
+        // The meter says how many words are left; this says where they came
+        // from. One slice per visit, sized by what that day's roll gave — so
+        // the rare big day is visibly bigger than the rest, and the user can
+        // see that the amounts differ without ever being told the rule. That
+        // is the whole point of a variable reward: the pattern has to be
+        // felt, and a number in a sentence cannot be felt.
+        //
+        // Newest first and capped at six, with everything older folded into
+        // one slice: a month of visits is thirty slices nobody can read.
+        ...(a.perVisit.length
+          ? [{
+              type: "Card",
+              children: [
+                text("What each visit gave you", "label"),
+                spacer(10),
+                {
+                  type: "PieChart",
+                  props: {
+                    data: visitSlices(a.perVisit),
+                    donut: true,
+                    size: 150,
+                    legend: "right",
+                    centerValue: a.earned.toLocaleString(),
+                    centerLabel: "earned",
+                  },
+                  // Old bundles get the same fact as a line of text rather
+                  // than a hole where a chart should be.
+                  fallback: {
+                    type: "KeyValue",
+                    props: {
+                      label: "Visits",
+                      value: `${a.perVisit.length} · ${a.earned.toLocaleString()} words earned`,
+                    },
+                  },
+                },
+              ],
+            } as Node, spacer(21)]
+          : [spacer(8)]),
+      ]
     : [];
 
   return {

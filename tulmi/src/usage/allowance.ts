@@ -26,8 +26,32 @@
  * migration, no write path, and — the reason that matters — no way for the
  * number the stats screen shows and the number the quota check enforces to
  * drift apart. They are the same function of the same rows.
+ *
+ * WHY THE AMOUNT IS A SURPRISE
+ *
+ * A fixed ladder — 100, then 125, then 150 — is a schedule. The user learns it
+ * in three days, and from the fourth it is arithmetic: they know exactly what
+ * tomorrow is worth, so tomorrow carries no anticipation and the reward stops
+ * being a reward. Worse, the app was announcing it ("come back tomorrow for 125
+ * more words"), which turns the whole mechanic into a stated price for their
+ * attention.
+ *
+ * A variable amount is the oldest finding in this area and the only one that
+ * survives contact with real users: rewards that vary in size hold attention
+ * far longer than rewards that do not, because the anticipation is the thing
+ * being felt, and anticipation needs uncertainty to exist. So the day's grant
+ * lands in one of four tiers, most days small, rarely very large, and the app
+ * never says which is coming.
+ *
+ * Random, but not arbitrary: the roll is a hash of the user and the day, so the
+ * same day always yields the same number. It cannot be re-rolled by reopening
+ * the app, it survives a server restart, it needs no storage, and two devices
+ * signed into one account agree. Uncertainty for the user, determinism for us.
  */
 import { getConfig } from "../config.js";
+
+/** How big a day's roll came out. Named so the app can style the good ones. */
+export type Tier = "small" | "good" | "big" | "huge";
 
 /** One earning event, in the shape the app shows it. */
 export type Grant = {
@@ -35,8 +59,9 @@ export type Grant = {
   /** UTC date, YYYY-MM-DD. */
   day: string;
   words: number;
-  /** Human-readable, e.g. "Day 3 in a row". The app shows this verbatim. */
+  /** Human-readable, e.g. "Day 3". The app shows this verbatim. */
   label: string;
+  tier?: Tier;
 };
 
 export type Allowance = {
@@ -54,11 +79,16 @@ export type Allowance = {
   /** Most recent first. */
   grants: Grant[];
   /**
-   * What the next return is worth, so the app can say it before it happens.
-   * The whole mechanic depends on the user knowing the number is climbing.
+   * Deliberately absent: what tomorrow is worth.
+   *
+   * It used to be here, and the app said it out loud. Naming the number turns
+   * anticipation into arithmetic — the user knows the price of their return
+   * before they make it, and a known reward is a transaction. The amount is
+   * now a roll they cannot predict, so there is nothing to announce.
    */
-  nextStreakWords: number;
-  /** True once earning is capped — the app stops promising more. */
+  /** Words earned per visit, oldest first — the shape the pie chart draws. */
+  perVisit: Array<{ day: string; words: number; sessions: number; tier: Tier }>;
+  /** True once earning is capped for the month. */
   maxed: boolean;
 };
 
@@ -77,12 +107,66 @@ function dayIndex(key: string): number {
 }
 
 /**
+ * A number in [0,1) from a string — FNV-1a, then scaled.
+ *
+ * Deterministic on purpose. Math.random would re-roll the same day on every
+ * request: the stats screen would disagree with itself between two refreshes,
+ * and the quota check would disagree with both. Hashing the user and the day
+ * gives a value that is unguessable from outside and identical every time it
+ * is asked for, with nothing stored anywhere.
+ */
+function roll(seed: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h / 0x100000000;
+}
+
+/**
+ * The tiers, and how often each comes up.
+ *
+ * Most days are small; the rare large day is what the user remembers and what
+ * they are unconsciously playing for. The bands are deliberately far apart —
+ * a "big" day that is 20% better than a small one is not felt as different,
+ * and a mechanic nobody can feel is just arithmetic with extra steps.
+ */
+const TIERS: Array<{ tier: Tier; upTo: number; words: number }> = [
+  { tier: "small", upTo: 0.62, words: 75 },
+  { tier: "good",  upTo: 0.90, words: 160 },
+  { tier: "big",   upTo: 0.985, words: 340 },
+  { tier: "huge",  upTo: 1.01, words: 800 },
+];
+
+/**
+ * What one day is worth.
+ *
+ * The streak does not set the amount — it tilts the odds. A long streak shifts
+ * the roll upward, so good days get commoner the longer someone keeps coming
+ * back, without ever making tomorrow's number knowable. That is the difference
+ * between a reward that builds and a price list that grows.
+ */
+function dayGrant(seed: string, day: string, streak: number): { words: number; tier: Tier } {
+  const r = roll(`${seed}:${day}`);
+  // Up to a 0.22 nudge toward the good end, reached at a two-week streak.
+  const tilt = Math.min(0.22, 0.02 * (streak - 1));
+  const shifted = Math.min(0.999, r + tilt);
+  const hit = TIERS.find((t) => shifted < t.upTo) ?? TIERS[0];
+  return { words: hit.words, tier: hit.tier };
+}
+
+/**
  * What this month's usage has earned.
  *
  * `moments` is every dictation in the current window; `now` is injectable so
  * the streak's "ending today or yesterday" rule is testable.
  */
-export function computeAllowance(moments: UsageMoment[], now = Date.now()): Allowance {
+export function computeAllowance(
+  moments: UsageMoment[],
+  now = Date.now(),
+  seed = "",
+): Allowance {
   const cfg = getConfig();
   const base = cfg.FREE_MONTHLY_WORDS;
   const maxEarn = cfg.EARN_MAX_WORDS;
@@ -99,6 +183,7 @@ export function computeAllowance(moments: UsageMoment[], now = Date.now()): Allo
   const days = Array.from(perDay.keys()).sort();
 
   const grants: Grant[] = [];
+  const perVisit: Allowance["perVisit"] = [];
   let streak = 0;
   let prev = -Infinity;
   for (const day of days) {
@@ -106,19 +191,16 @@ export function computeAllowance(moments: UsageMoment[], now = Date.now()): Allo
     streak = idx === prev + 1 ? streak + 1 : 1;
     prev = idx;
 
-    // The streak grant. Worth more each consecutive day, to a ceiling — the
-    // curve is what makes day four feel different from day one, and the
-    // ceiling is what stops a two-month streak from being free forever.
-    const words = Math.min(
-      cfg.EARN_STREAK_MAX_WORDS,
-      cfg.EARN_STREAK_WORDS + cfg.EARN_STREAK_STEP_WORDS * (streak - 1),
-    );
+    // The day's roll. Unpredictable to the user, fixed for that user and day.
+    const { words, tier } = dayGrant(seed, day, streak);
     grants.push({
       kind: "streak",
       day,
       words,
-      label: streak === 1 ? "First day back" : `Day ${streak} in a row`,
+      label: streak === 1 ? "First day back" : `Day ${streak}`,
+      tier,
     });
+    perVisit.push({ day, words, sessions: perDay.get(day) ?? 0, tier });
 
     // The burst grant. Rewards a day of real use over a day of one dictation,
     // which is the difference between someone trying the app and someone
@@ -131,6 +213,8 @@ export function computeAllowance(moments: UsageMoment[], now = Date.now()): Allo
         words: cfg.EARN_BURST_WORDS,
         label: `${sessions} dictations in a day`,
       });
+      const last = perVisit[perVisit.length - 1];
+      if (last && last.day === day) last.words += cfg.EARN_BURST_WORDS;
     }
   }
 
@@ -148,13 +232,6 @@ export function computeAllowance(moments: UsageMoment[], now = Date.now()): Allo
   const streakDays = today - lastDay <= 1 ? streak : 0;
 
   const maxed = earned >= maxEarn;
-  const nextStreakWords = maxed
-    ? 0
-    : Math.min(
-        cfg.EARN_STREAK_MAX_WORDS,
-        cfg.EARN_STREAK_WORDS + cfg.EARN_STREAK_STEP_WORDS * streakDays,
-      );
-
   const total = base + earned;
   return {
     base,
@@ -164,7 +241,7 @@ export function computeAllowance(moments: UsageMoment[], now = Date.now()): Allo
     remaining: Math.max(0, total - used),
     streakDays,
     grants: grants.reverse(),
-    nextStreakWords,
+    perVisit,
     maxed,
   };
 }

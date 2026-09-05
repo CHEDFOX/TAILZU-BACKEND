@@ -259,7 +259,11 @@ export async function enforceQuota(user: AuthedUser): Promise<string | null> {
     // Enforcing capWords here instead would stop a user at 2,500 while the app
     // was showing them 4,100 — the earned words have to be real where it
     // counts, or the mechanic is a lie told by the stats screen.
-    const allowance = computeAllowance(moments);
+    // SAME SEED as allowanceFor. Without the user id here the roll differs
+    // from the one the stats screen drew, and the cap the server enforces
+    // stops matching the number the app showed — the exact drift the derived
+    // design exists to make impossible.
+    const allowance = computeAllowance(moments, Date.now(), user.id);
     if (used.words >= allowance.total) {
       // Name the number, the reset date, and the way out. A cap message that
       // only says "no" reads as a fault; this one is the upgrade prompt.
@@ -351,5 +355,7 @@ export function monthStartIso(now = new Date()): string {
 export async function allowanceFor(user: AuthedUser): Promise<Allowance | null> {
   const moments = await usageMomentsSince(user, monthStartIso());
   if (!moments) return null;
-  return computeAllowance(moments);
+  // The user's id seeds the day's roll, so two people active on the same day
+  // get different numbers and each person's own day never changes.
+  return computeAllowance(moments, Date.now(), user.id);
 }

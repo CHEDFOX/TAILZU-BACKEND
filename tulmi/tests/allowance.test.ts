@@ -19,101 +19,118 @@ function day(daysAgo: number, sessions = 1, words = 10): UsageMoment[] {
 }
 
 describe("earned words", () => {
+  const SEED = "user-a";
+  const at = (moments: UsageMoment[]) => computeAllowance(moments, NOW, SEED);
+
   it("gives nothing when nothing has been used", () => {
-    const a = computeAllowance([], NOW);
+    const a = at([]);
     expect(a.earned).toBe(0);
     expect(a.total).toBe(2500);
     expect(a.remaining).toBe(2500);
     expect(a.streakDays).toBe(0);
+    expect(a.perVisit).toEqual([]);
   });
 
-  it("earns the first day's words on the first day", () => {
-    const a = computeAllowance(day(0), NOW);
-    expect(a.earned).toBe(100);
-    expect(a.total).toBe(2600);
+  it("pays something for every visit", () => {
+    const a = at(day(0));
+    expect(a.earned).toBeGreaterThan(0);
+    expect(a.total).toBe(2500 + a.earned);
     expect(a.streakDays).toBe(1);
+    expect(a.perVisit).toHaveLength(1);
   });
 
-  it("pays more for each consecutive day", () => {
-    // 100 + 125 + 150.
-    const a = computeAllowance([...day(2), ...day(1), ...day(0)], NOW);
-    expect(a.earned).toBe(375);
-    expect(a.streakDays).toBe(3);
-    expect(a.nextStreakWords).toBe(175);
+  it("never announces what the next visit is worth", () => {
+    // The whole point of the change: an amount the user can read in advance is
+    // a price, and a price can be judged not worth paying.
+    const a = at(day(0)) as unknown as Record<string, unknown>;
+    expect(a.nextStreakWords).toBeUndefined();
   });
 
-  it("restarts the streak after a gap, and does not pay for the gap", () => {
-    // Two separate runs of one day each: 100 + 100.
-    const a = computeAllowance([...day(9), ...day(0)], NOW);
-    expect(a.earned).toBe(200);
-    expect(a.streakDays).toBe(1);
+  it("gives the same answer every time it is asked", () => {
+    // Math.random would re-roll on every request: the stats screen would
+    // disagree with itself between refreshes and the quota check with both.
+    const m = [...day(2), ...day(1), ...day(0)];
+    expect(at(m).earned).toBe(at(m).earned);
+    expect(computeAllowance(m, NOW + 5_000, SEED).earned).toBe(at(m).earned);
+  });
+
+  it("gives different users different amounts on the same day", () => {
+    const m = day(0);
+    const seeds = ["u1", "u2", "u3", "u4", "u5", "u6", "u7", "u8"];
+    const values = new Set(seeds.map((x) => computeAllowance(m, NOW, x).earned));
+    expect(values.size).toBeGreaterThan(1);
+  });
+
+  it("varies the amount across days — the reward is not a schedule", () => {
+    const moments = Array.from({ length: 20 }, (_, i) => day(19 - i)).flat();
+    const a = at(moments);
+    const amounts = new Set(a.perVisit.map((v) => v.words));
+    expect(amounts.size).toBeGreaterThan(1);
+  });
+
+  it("keeps every amount inside the published tiers", () => {
+    const moments = Array.from({ length: 30 }, (_, i) => day(29 - i)).flat();
+    const a = at(moments);
+    for (const v of a.perVisit) {
+      expect([75, 160, 340, 800]).toContain(v.words);
+      expect(["small", "good", "big", "huge"]).toContain(v.tier);
+    }
+  });
+
+  it("makes good days commoner as the streak grows", () => {
+    // The streak tilts the odds; it never sets the number. Compare the same
+    // days seen as one long run against the same count of isolated visits.
+    const run = Array.from({ length: 14 }, (_, i) => day(13 - i)).flat();
+    const streakAvg = at(run).earned / 14;
+    let lone = 0;
+    for (let i = 0; i < 14; i++) lone += computeAllowance(day(i * 3), NOW, SEED).earned;
+    expect(streakAvg).toBeGreaterThan(lone / 14);
   });
 
   it("counts a streak that ran to yesterday as still alive", () => {
     // Someone who has not opened the app YET today has not lost their streak;
     // telling them they had would punish them at the hour they are deciding.
-    const a = computeAllowance([...day(2), ...day(1)], NOW);
-    expect(a.streakDays).toBe(2);
+    expect(at([...day(2), ...day(1)]).streakDays).toBe(2);
   });
 
   it("drops a streak that ended before yesterday", () => {
-    const a = computeAllowance([...day(4), ...day(3)], NOW);
-    expect(a.streakDays).toBe(0);
-    expect(a.nextStreakWords).toBe(100);
-  });
-
-  it("caps one day's streak grant", () => {
-    // 12 consecutive days: 100,125,…,300 then 300 flat.
-    const moments = Array.from({ length: 12 }, (_, i) => day(11 - i)).flat();
-    const a = computeAllowance(moments, NOW);
-    const perDay = [100, 125, 150, 175, 200, 225, 250, 275, 300, 300, 300, 300];
-    expect(a.earned).toBe(perDay.reduce((x, y) => x + y, 0));
-    expect(a.nextStreakWords).toBe(300);
+    expect(at([...day(4), ...day(3)]).streakDays).toBe(0);
   });
 
   it("pays a bonus for a day of real use", () => {
-    // One day, five dictations: 100 streak + 150 burst.
-    const a = computeAllowance(day(0, 5), NOW);
-    expect(a.earned).toBe(250);
-  });
-
-  it("does not pay the bonus for a quiet day", () => {
-    const a = computeAllowance(day(0, 4), NOW);
-    expect(a.earned).toBe(100);
+    const quiet = at(day(0, 4)).earned;
+    const busy = at(day(0, 5)).earned;
+    expect(busy - quiet).toBe(150);
   });
 
   it("pays per day, not per word — volume alone earns nothing extra", () => {
     // The whole point: transcription costs us money, returning does not.
-    const light = computeAllowance(day(0, 1, 10), NOW);
-    const heavy = computeAllowance(day(0, 1, 5000), NOW);
-    expect(heavy.earned).toBe(light.earned);
+    expect(at(day(0, 1, 5000)).earned).toBe(at(day(0, 1, 10)).earned);
   });
 
   it("caps the month's earnings", () => {
-    // 40 days of heavy use would earn far more than the cap allows.
     const moments = Array.from({ length: 40 }, (_, i) => day(39 - i, 6)).flat();
-    const a = computeAllowance(moments, NOW);
+    const a = at(moments);
     expect(a.earned).toBe(5000);
     expect(a.maxed).toBe(true);
-    expect(a.nextStreakWords).toBe(0);
   });
 
   it("never reports a negative balance", () => {
-    const a = computeAllowance([{ at: NOW, words: 99_999 }], NOW);
-    expect(a.remaining).toBe(0);
+    expect(at([{ at: NOW, words: 99_999 }]).remaining).toBe(0);
   });
 
   it("counts used words from every moment", () => {
-    const a = computeAllowance([...day(1, 2, 300), ...day(0, 1, 400)], NOW);
+    const a = at([...day(1, 2, 300), ...day(0, 1, 400)]);
     expect(a.used).toBe(1000);
     expect(a.remaining).toBe(a.total - 1000);
   });
 
-  it("labels each grant so the app can name what was earned", () => {
-    const a = computeAllowance([...day(1), ...day(0, 5)], NOW);
-    // Newest first.
-    expect(a.grants[0]).toMatchObject({ kind: "burst", words: 150 });
-    expect(a.grants[1]).toMatchObject({ kind: "streak", label: "Day 2 in a row" });
-    expect(a.grants[2]).toMatchObject({ kind: "streak", label: "First day back" });
+  it("reports each visit for the chart, oldest first", () => {
+    const a = at([...day(1), ...day(0, 5)]);
+    expect(a.perVisit).toHaveLength(2);
+    expect(a.perVisit[0].day < a.perVisit[1].day).toBe(true);
+    // The burst bonus is folded into the day it happened, so the chart's
+    // slices add up to the earned total the meter shows.
+    expect(a.perVisit.reduce((n, v) => n + v.words, 0)).toBe(a.earned);
   });
 });

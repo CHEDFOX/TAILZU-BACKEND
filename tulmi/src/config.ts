@@ -256,15 +256,13 @@ const EnvSchema = z.object({
   // frequency is rewarded and volume is not; these are the dials.
   //
   // Tuned so a casual user never notices a wall and a daily user reaches the
-  // cap in about three weeks: 2,500 base, up to 5,000 earned. A 30-day streak
-  // with a burst most days would earn ~11,000 if nothing capped it — the cap
-  // is what keeps the free tier generous rather than free.
-  /** Words for the first day of a streak. */
-  EARN_STREAK_WORDS: z.coerce.number().default(100),
-  /** Added per extra consecutive day: day 2 is worth 125, day 3 150, … */
-  EARN_STREAK_STEP_WORDS: z.coerce.number().default(25),
-  /** Ceiling on one day's streak grant, reached on day 9. */
-  EARN_STREAK_MAX_WORDS: z.coerce.number().default(300),
+  // cap in a few weeks: 2,500 base, up to 5,000 earned. The cap is what keeps
+  // the free tier generous rather than free — and it is the only place the
+  // maths is bounded, since the day's amount is a roll rather than a rate.
+  // A day's grant is no longer a formula, so there is no per-day amount to
+  // configure. It is a roll across four tiers, in src/usage/allowance.ts, where
+  // the tiers sit next to the reasoning for their spacing — a value that has to
+  // be read together with its odds does not belong in an env var.
   /** Dictations in one day that count as a day of real use. */
   EARN_BURST_SESSIONS: z.coerce.number().default(5),
   /** Words for reaching that. */
