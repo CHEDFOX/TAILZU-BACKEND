@@ -1,20 +1,40 @@
 # Automatic HTTPS for the Tulmi backend.
 #
-# 1. Point a domain (or subdomain) at your VPS:
-#       create a DNS "A record"  ->  flow.yourdomain.com  ->  YOUR_VPS_IP
-# 2. Export the domain on the host (or set it in tulmi/.env so docker-compose
-#    forwards it into this container):
-#       export FLOW_DOMAIN=flow.yourdomain.com
+# 1. Point domains at your VPS via DNS A records:
+#       api.tailzu.space  -> YOUR_VPS_IP   (backend API)
+#       tailzu.space      -> YOUR_VPS_IP   (Universal Links / AASA host)
+#       app.tailzu.space  -> YOUR_VPS_IP   (Universal Links / AASA host)
+# 2. Export the API domain on the host (or set it in tulmi/.env so
+#    docker-compose forwards it into this container):
+#       export FLOW_DOMAIN=api.tailzu.space
 # 3. Deploy with:
 #       docker compose --profile https up -d --build
 #
-# Caddy fetches and renews a free Let's Encrypt certificate automatically and
-# transparently proxies both HTTPS and the WebSocket (wss://) traffic to the
-# backend container. {$FLOW_DOMAIN} is Caddy-native env-var interpolation:
+# Caddy fetches and renews Let's Encrypt certificates automatically for every
+# hostname listed. {$FLOW_DOMAIN} is Caddy-native env-var interpolation:
 # if FLOW_DOMAIN is unset, Caddy refuses to start (instead of silently trying
 # to issue a cert for "" or a placeholder host and burning a Let's Encrypt
 # rate-limit slot).
+#
+# The naked apex + app subdomain proxy to the same backend so
+# /.well-known/apple-app-site-association is served from every host Apple
+# checks for Universal Links (see backend's associatedDomains in
+# app.config.ts). Everything else on those hosts is proxied too — if you'd
+# rather serve a marketing site there, put it in front and forward
+# /.well-known/* here.
 
 {$FLOW_DOMAIN} {
+    reverse_proxy backend:8080
+}
+
+tailzu.space, app.tailzu.space {
+    # AASA + assetlinks — always through to the backend, no redirect (Apple
+    # rejects Universal Links whose AASA response is a redirect).
+    reverse_proxy /.well-known/* backend:8080
+    reverse_proxy /apple-app-site-association backend:8080
+    # Everything else on the naked apex / app subdomain also goes to the
+    # backend so /privacy, /terms, /s/<screenId> etc. work from the pretty
+    # hostname. Swap for a `respond` or a redirect if you'd rather host a
+    # marketing site here.
     reverse_proxy backend:8080
 }

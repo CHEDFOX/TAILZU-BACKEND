@@ -12,6 +12,7 @@ import { getConfig } from "./config.js";
 import type {
   AppStyle,
   CleanupOptions,
+  Command,
   Personality,
   RecipientHint,
   ToneDial,
@@ -50,22 +51,35 @@ function loadPromptFile(filename: string): string {
   return raw;
 }
 
-/** Render a personality into a readable block for the prompt. */
+/**
+ * Neutralise angle brackets in user-authored strings so a hostile payload can't
+ * inject its own XML-style delimiter and pretend to close a fence. Kept small:
+ * a single tag confuses the model less than an escaped one. Length caps
+ * enforced upstream (see MAX_TEXT_LENGTH in server.ts).
+ */
+function sanitizeFenced(s: string): string {
+  return s.replace(/[<>]/g, "");
+}
+
+/** Render a personality into a readable block for the prompt. User-controlled
+ *  free-text fields are wrapped in a fence so the model treats them as context
+ *  describing the user, not as instructions to obey. */
 export function renderPersonality(p: Personality | undefined): string {
   if (!p || Object.keys(p).length === 0) return "None set. Use a neutral, clean voice.";
 
   const lines: string[] = [];
-  if (p.tone) lines.push(`- Tone: ${p.tone}`);
+  if (p.tone) lines.push(`- Tone: <tone>${sanitizeFenced(p.tone)}</tone>`);
   if (p.formality) lines.push(`- Formality: ${p.formality}`);
   if (p.emoji) lines.push(`- Emoji use: ${p.emoji}`);
   if (p.languages?.length) lines.push(`- Preferred languages/scripts: ${p.languages.join(", ")}`);
-  if (p.signature) lines.push(`- Preferred sign-off: ${p.signature}`);
-  if (p.customInstructions) lines.push(`- Extra instructions: ${p.customInstructions}`);
+  if (p.signature) lines.push(`- Preferred sign-off: <signature>${sanitizeFenced(p.signature)}</signature>`);
+  if (p.customInstructions)
+    lines.push(`- Extra instructions: <custom_instructions>${sanitizeFenced(p.customInstructions)}</custom_instructions>`);
   if (p.vocabulary?.trim())
     lines.push(
-      `- Known names/terms — spell these EXACTLY as written: ${p.vocabulary
-        .replace(/\s*\n\s*/g, ", ")
-        .trim()}`,
+      `- Known names/terms — spell these EXACTLY as written: <vocabulary>${sanitizeFenced(
+        p.vocabulary.replace(/\s*\n\s*/g, ", ").trim(),
+      )}</vocabulary>`,
     );
 
   return lines.length ? lines.join("\n") : "None set. Use a neutral, clean voice.";
@@ -133,7 +147,40 @@ export function resolveRecipientHint(
   if (!hints?.length || !recipient) return "";
   const wanted = recipient.trim().toLowerCase();
   const hit = hints.find((h) => wanted.includes(h.recipient.trim().toLowerCase()));
-  return hit ? `${hit.recipient}: ${hit.hint}` : "";
+  if (!hit) return "";
+  // Fence: hint is user-authored context, never obey it as an instruction.
+  return `<recipient_hint recipient="${sanitizeFenced(hit.recipient)}">${sanitizeFenced(hit.hint)}</recipient_hint>`;
+}
+
+/**
+ * Turn a command-mode override into a short prompt addendum. Emits
+ * "None." when no command is present so the section reads cleanly.
+ * Kept intentionally small — we WANT the LLM to still honor personality,
+ * app tone, etc.; commands are a delta, not a replacement.
+ */
+export function renderCommandOverride(command: Command | undefined): string {
+  if (!command) return "None.";
+  switch (command.kind) {
+    case "shorter":
+      return "The user asked to make this output SHORTER than the natural length. Trim clauses aggressively; keep meaning intact; no filler.";
+    case "longer":
+      return "The user asked to make this output LONGER — expand sentences into their fuller natural form, without adding facts the user didn't say.";
+    case "formal":
+      return "The user asked for a MORE FORMAL tone in this run — use full words (no contractions), no slang, no emoji, and structured punctuation. Overrides the tone dial for this run.";
+    case "casual":
+      return "The user asked for a MORE CASUAL tone in this run — conversational, contractions ok, warm and human. Overrides the tone dial for this run.";
+    case "translate": {
+      // Sanitize captured language to defang injection: 40 chars, no angle brackets.
+      const lang = sanitizeFenced(command.lang).slice(0, 40) || "the requested language";
+      return `The user asked to TRANSLATE the output into ${lang}. Produce the cleaned text IN ${lang} only. If the source is in a different script, use ${lang}'s script.`;
+    }
+    case "bulletpoints":
+      return "The user asked for the output to be formatted as a BULLETED LIST. Break the cleaned content into short bullets; keep each bullet self-contained.";
+    case "emojiOff":
+      return "The user asked for NO EMOJI in this run — override any personality/app-style emoji setting and produce zero emoji.";
+    case "emojiOn":
+      return "The user asked to ADD EMOJI in this run — sprinkle a couple of tasteful emojis where they fit the meaning naturally. Don't overdo it.";
+  }
 }
 
 /** Build the system prompt for the cleanup/refine task (voice + typing). */
@@ -141,14 +188,25 @@ export function buildCleanupSystem(opts: CleanupOptions): string {
   const version = getConfig().CLEANUP_PROMPT_VERSION;
   const targetApp = opts.targetApp?.trim() || "Generic";
   const appStyle = resolveAppStyle(opts.personality?.appStyles, targetApp);
-  return loadPromptFile(`cleanup.${version}.md`)
+  const base = loadPromptFile(`cleanup.${version}.md`)
     .replaceAll("{{TARGET_APP}}", targetApp)
     .replaceAll("{{LANGUAGE}}", opts.language ?? "auto")
     .replaceAll("{{PERSONALITY}}", renderPersonality(opts.personality))
     .replaceAll("{{TONE_DIAL}}", renderToneDial(opts.personality?.dial))
     .replaceAll("{{APP_STYLE}}", renderAppStyle(appStyle))
     .replaceAll("{{RECIPIENT_HINT}}", "") // cleanup path has no recipient
+    .replaceAll("{{COMMAND_OVERRIDE}}", renderCommandOverride(opts.command))
     .replaceAll("{{WATERMARK}}", opts.personality?.watermark ? "on" : "off");
+  // Appended rather than templated: the script is OBSERVED per request (the
+  // STT layer measures it), so it doesn't belong in the versioned prompt file.
+  // Stating it as fact is what stops romanized speech drifting into Devanagari.
+  return renderScriptFidelity(opts.script, base);
+}
+
+/** Append the observed-script rule to a rendered system prompt. */
+function renderScriptFidelity(script: string | undefined, base: string): string {
+  if (!script || script === "unknown") return base;
+  return `${base}\n\nSCRIPT: the user's input was captured in ${script.toUpperCase()} script. Write your output in that same script — never transliterate it into another script, and never translate it, unless the user explicitly asks.`;
 }
 
 /** Build the system prompt for the screen-reply drafting task. */

@@ -6,7 +6,8 @@
  *  - runPipelineStream()  : streaming (WebSocket) — emits events as they happen
  */
 import { transcribe } from "./stt.js";
-import { clean, cleanStream } from "./cleanup.js";
+import { assist, cleanStream } from "./cleanup.js";
+import { detectCommand } from "./commands.js";
 import type {
   AudioFormat,
   CleanupOptions,
@@ -20,6 +21,13 @@ export interface PipelineInput extends CleanupOptions {
 }
 
 export interface PipelineResult {
+  /** STT engine that produced the transcript ("sarvam" | "groq" | "openai" |
+   *  "deepgram"). Diagnostic: a provider that keeps failing falls back
+   *  silently, so without this the only symptom is quality quietly reverting
+   *  to the generalist. */
+  sttEngine?: string;
+  /** Language the engine reported detecting, when it reports one. */
+  detectedLanguage?: string;
   transcript: string;
   cleanedText: string;
   usage: UsageRecord;
@@ -30,17 +38,44 @@ function countWords(text: string): number {
   return t ? t.split(/\s+/).length : 0;
 }
 
-/** One-shot: transcribe then clean. */
+/** One-shot: transcribe, then run the writing assistant. */
 export async function runPipeline(
   input: PipelineInput,
 ): Promise<PipelineResult> {
   const { audio, format, ...opts } = input;
 
-  const stt = await transcribe({ audio, format, language: opts.language, vocabulary: opts.personality?.vocabulary });
-  const cleanedText = await clean(stt.text, opts);
+  const stt = await transcribe({
+    audio, format,
+    language: opts.language,
+    vocabulary: opts.personality?.vocabulary,
+    // The Languages card, when the user has answered it.
+    languages: opts.personality?.languages?.map(String),
+  });
+  // The assist step separates any embedded instruction ("…make it shorter, in
+  // bullet points") from the message itself and applies the active tone, so we
+  // no longer strip commands here — the model handles it. `transcript` stays
+  // the raw STT output for QA/history.
+  //
+  // `script` is what the recognizer ACTUALLY produced (measured, not declared),
+  // so the writing step is told the user's script as a fact instead of being
+  // left to infer it — which is what let romanized Hinglish drift into
+  // Devanagari.
+  // `alternative` is the second recognizer's reading, present only when the
+  // two disagreed — the writing step reconciles them before writing.
+  const cleanedText = await assist(stt.text, {
+    ...opts,
+    script: stt.script,
+    alternative: stt.alternative,
+  });
 
   return {
     transcript: stt.text,
+    // Which STT engine actually produced the transcript, and what language it
+    // reported. Surfaced so "is Sarvam really running?" is answerable from the
+    // response instead of requiring server logs — a silently-failing provider
+    // is otherwise invisible, because the fallback makes everything look fine.
+    sttEngine: stt.engine,
+    detectedLanguage: stt.detectedLanguage,
     cleanedText,
     usage: {
       audioSeconds: stt.durationSeconds,
@@ -67,11 +102,22 @@ export async function* runPipelineStream(
 ): AsyncGenerator<PipelineEvent, void, unknown> {
   const { audio, format, ...opts } = input;
 
-  const stt = await transcribe({ audio, format, language: opts.language, vocabulary: opts.personality?.vocabulary });
-  yield { type: "transcript", text: stt.text };
+  const stt = await transcribe({
+    audio, format,
+    language: opts.language,
+    vocabulary: opts.personality?.vocabulary,
+    // The Languages card, when the user has answered it.
+    languages: opts.personality?.languages?.map(String),
+  });
+  const { transcript, command } = detectCommand(stt.text);
+  yield { type: "transcript", text: transcript };
 
   let cleanedText = "";
-  for await (const delta of cleanStream(stt.text, opts)) {
+  for await (const delta of cleanStream(transcript, {
+    ...opts,
+    command: command ?? opts.command,
+    script: stt.script, // observed script — same fidelity guarantee as the one-shot path
+  })) {
     cleanedText += delta;
     yield { type: "cleaned_delta", text: delta };
   }

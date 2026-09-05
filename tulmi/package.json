@@ -2,7 +2,7 @@
   "name": "tulmi-backend",
   "version": "0.1.0",
   "private": true,
-  "description": "Tulmi backend — voice + typing + screen → personalized text (Groq STT, OpenRouter LLM)",
+  "description": "Tulmi backend \u2014 voice + typing + screen \u2192 personalized text (Groq STT, OpenRouter LLM)",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -14,12 +14,15 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:pipeline": "tsx scripts/test-pipeline.ts"
+    "test:pipeline": "tsx scripts/test-pipeline.ts",
+    "smoke": "tsx scripts/smoke.ts",
+    "eval": "tsx evals/run.ts"
   },
   "dependencies": {
     "@deepgram/sdk": "^4.11.3",
     "@fastify/multipart": "^8.3.0",
     "@fastify/rate-limit": "^9.1.0",
+    "@fastify/static": "^7.0.4",
     "@fastify/websocket": "^10.0.1",
     "@sentry/node": "^8.55.0",
     "@supabase/supabase-js": "^2.45.4",
@@ -27,6 +30,7 @@
     "fastify": "^4.28.1",
     "fastify-plugin": "^6.0.0",
     "groq-sdk": "^0.7.0",
+    "jose": "^6.2.3",
     "openai": "^4.67.3",
     "zod": "^3.23.8"
   },
