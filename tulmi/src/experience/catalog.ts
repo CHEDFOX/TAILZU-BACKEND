@@ -5553,6 +5553,22 @@ export function buildKeyboardConfig(
         "kb.touch.cancelCommit.maxDriftPt": 24,
         "kb.touch.cancelCommit.maxMs": 700,
         "kb.touch.fillGaps": true,
+        // K30's two fixes, both switchable from here.
+        //
+        // This problem has cost six builds, five of them chasing a wrong
+        // diagnosis, and native Swift cannot be OTA'd — so every wrong guess
+        // was another build. These exist so the NEXT adjustment, in either
+        // direction, is a value in this file instead.
+        //
+        // alwaysRefresh: rebuild key geometry on every layout pass, which is
+        // what the debug overlay was doing by accident and why the keyboard
+        // measurably worked with it on. Turn OFF only if it ever costs more
+        // than it buys.
+        "kb.touch.alwaysRefresh": true,
+        // totalResolve: a point the plane claimed always resolves to a key.
+        // OFF restores the old behaviour, where a claimed point the resolver
+        // could not place was dropped in silence.
+        "kb.touch.totalResolve": true,
         "kb.touch.holdMultiplier": 1.35,
         // waveform
         "kb.waveform.barCount": 24,
