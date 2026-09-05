@@ -5660,7 +5660,16 @@ export function buildKeyboardConfig(
         // The stamp settles that in one glance: a version means config is
         // arriving and the touch values with it; nothing means every fix has
         // been sitting on the server doing nothing. Turn back off once known.
-        "kb.buildStamp.enabled": false,
+        // ON, TEMPORARILY. The gaps still read as dead and there are two
+        // candidate causes that look identical from the outside — the plane
+        // refusing the point, or the plane not running at all. The stamp says
+        // which in one glance: "NOPLANE" means it never mounted; otherwise
+        // k/a/r are the keys, action keys and role keys it partitioned, v the
+        // obstacles, y/h the band's top and height, and t(x,y)Y|N whether the
+        // LAST touch was claimed. Tap a dead gap and read the letter.
+        //
+        // TURN BOTH OF THESE OFF BEFORE SUBMITTING.
+        "kb.buildStamp.enabled": true,
         // Cold-open field diagnostics (K3+ binaries). With this on, tapping the
         // keyboard mic shows "<stamp> · <path>" in the status bar — e.g.
         // "K3 · app✓@2 open=NO" (found UIApplication, iOS refused the open) or
@@ -5856,7 +5865,10 @@ export function buildKeyboardConfig(
         // If the bottom row has green boxes, the partition is live and we are
         // arguing about geometry. If it does not, the binary predates it.
         // Back to false once we know.
-        "kb.debug.showTouchRects": false,
+        // Draws the partition: obstacles filled, role keys stroked, the band
+        // stroked. A dead gap sitting inside a filled obstacle is the veto; a
+        // dead gap outside the band is the band being too short.
+        "kb.debug.showTouchRects": true,
         // Raised from 8. Each side of a 10pt row gap contributed 8, so the gap
         // was covered — IF both neighbours' boxes are what govern it. 12 means
         // one side alone covers the whole gap, so the coverage no longer
