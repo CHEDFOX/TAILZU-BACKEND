@@ -898,8 +898,11 @@ function heroSlot(opts: {
 
 /** Diameter of the intro plate — the in-app mic's own size, deliberately. */
 const INTRO_PLATE = 128;
-/** How long the intro holds before moving on. Match your file's length. */
-const INTRO_PLAY_MS = 2600;
+/** How long the intro holds before moving on. Match your file's length —
+ *  a GIF reports nothing when it ends, so this timer IS the length of the
+ *  opening. Env-driven so a new clip is one line in .env and a restart, not
+ *  a code change. */
+const INTRO_PLAY_MS = Number(process.env.INTRO_PLAY_MS ?? 2600);
 /** How long the plate takes to be drawn into the mic. Part of INTRO_PLAY_MS,
  *  not added to it — the opening should not grow because it got nicer. */
 /**
