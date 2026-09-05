@@ -120,7 +120,6 @@ function transformActionSpec(a: ActionSpec, fn: StrFn): ActionSpec {
     case "pickDocument":
     case "scanQR":
     case "biometricPrompt":
-    case "setAppIcon":
     case "iap.showPaywall":
     case "iap.subscribe":
     case "iap.restore":

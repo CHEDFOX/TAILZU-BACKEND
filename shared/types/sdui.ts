@@ -531,7 +531,6 @@ export type ActionSpec =
   // build's Info.plist (via expo-alternate-app-icons plugin). name = null or
   // "" resets to the default icon. Devices without alternate-icon support
   // silently no-op.
-  | { kind: "setAppIcon"; name: string | null; onSuccess?: ActionRef; onError?: ActionRef }
   // --- IAP / RevenueCat ---
   | { kind: "iap.showPaywall"; offeringId?: string; packageId?: string; onSuccess?: ActionRef; onError?: ActionRef }
   | { kind: "iap.subscribe"; productId: string; onSuccess?: ActionRef; onError?: ActionRef }
