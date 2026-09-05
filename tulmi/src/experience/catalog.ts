@@ -3126,12 +3126,17 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
  * below for the opposite pattern.
  */
 /**
- * Visits → pie slices.
+ * Visits → pie slices. ONE SLICE PER DAY, sized by what that day gave.
  *
- * Newest first, six at most, the rest folded into one. Colour carries the tier
- * so a big day reads as a big day at a glance — the amounts are the message,
- * and a chart where every slice looks alike would hide exactly the thing this
- * mechanic depends on the user noticing.
+ * No folding, no top-six. A slice's share of the ring is its share of the
+ * month's earnings, so a 400-word day is visibly five times a 30-word one and
+ * the ring itself carries the fact that the amounts differ. Rolling the tail
+ * into a single "earlier" wedge destroyed exactly that: it made the oldest
+ * days the biggest slice on the chart, purely for having been numerous.
+ *
+ * Colour carries the tier as a second, redundant channel — size already says
+ * it, and saying it twice is what makes a big day readable at a glance in a
+ * ring of thirty.
  */
 function visitSlices(
   visits: Array<{ day: string; words: number; tier: string }>,
@@ -3142,21 +3147,17 @@ function visitSlices(
     big: "#E8A23C",
     huge: "#FFD27A",
   };
-  const newestFirst = [...visits].reverse();
-  const shown = newestFirst.slice(0, 6);
-  const rest = newestFirst.slice(6);
-  const label = (day: string) => {
-    const d = new Date(`${day}T00:00:00Z`);
-    return `${d.getUTCDate()} ${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][d.getUTCMonth()]}`;
-  };
-  const out = shown.map((v) => ({
-    label: label(v.day),
-    value: v.words,
-    color: TIER_COLOR[v.tier] ?? "#C08A2E",
-  }));
-  const older = rest.reduce((n, v) => n + v.words, 0);
-  if (older > 0) out.push({ label: `${rest.length} earlier`, value: older, color: "#3A3A42" });
-  return out;
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  // Newest first, so the ring starts at 12 o'clock with the most recent visit
+  // — the one the user is most likely to be looking for.
+  return [...visits].reverse().map((v) => {
+    const d = new Date(`${v.day}T00:00:00Z`);
+    return {
+      label: `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`,
+      value: v.words,
+      color: TIER_COLOR[v.tier] ?? "#C08A2E",
+    };
+  });
 }
 
 function statsScreen(ctx: ScreenContext): ScreenResponse {
@@ -3290,7 +3291,11 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
                     data: visitSlices(a.perVisit),
                     donut: true,
                     size: 150,
-                    legend: "right",
+                    // The legend names every slice, which is right for a week
+                    // and unreadable for a month. Past eight visits the ring
+                    // speaks for itself: the sizes are the message and thirty
+                    // dated rows beside them are noise.
+                    legend: a.perVisit.length <= 8 ? "right" : false,
                     centerValue: a.earned.toLocaleString(),
                     centerLabel: "earned",
                   },

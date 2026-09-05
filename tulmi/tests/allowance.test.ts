@@ -25,8 +25,8 @@ describe("earned words", () => {
   it("gives nothing when nothing has been used", () => {
     const a = at([]);
     expect(a.earned).toBe(0);
-    expect(a.total).toBe(2500);
-    expect(a.remaining).toBe(2500);
+    expect(a.total).toBe(800);
+    expect(a.remaining).toBe(800);
     expect(a.streakDays).toBe(0);
     expect(a.perVisit).toEqual([]);
   });
@@ -34,7 +34,7 @@ describe("earned words", () => {
   it("pays something for every visit", () => {
     const a = at(day(0));
     expect(a.earned).toBeGreaterThan(0);
-    expect(a.total).toBe(2500 + a.earned);
+    expect(a.total).toBe(800 + a.earned);
     expect(a.streakDays).toBe(1);
     expect(a.perVisit).toHaveLength(1);
   });
@@ -72,7 +72,7 @@ describe("earned words", () => {
     const moments = Array.from({ length: 30 }, (_, i) => day(29 - i)).flat();
     const a = at(moments);
     for (const v of a.perVisit) {
-      expect([75, 160, 340, 800]).toContain(v.words);
+      expect([30, 70, 150, 400]).toContain(v.words);
       expect(["small", "good", "big", "huge"]).toContain(v.tier);
     }
   });
@@ -111,7 +111,7 @@ describe("earned words", () => {
   it("caps the month's earnings", () => {
     const moments = Array.from({ length: 40 }, (_, i) => day(39 - i, 6)).flat();
     const a = at(moments);
-    expect(a.earned).toBe(5000);
+    expect(a.earned).toBe(1600);
     expect(a.maxed).toBe(true);
   });
 
@@ -120,9 +120,11 @@ describe("earned words", () => {
   });
 
   it("counts used words from every moment", () => {
-    const a = at([...day(1, 2, 300), ...day(0, 1, 400)]);
-    expect(a.used).toBe(1000);
-    expect(a.remaining).toBe(a.total - 1000);
+    // Under the 800-word plan on purpose: over it, remaining clamps to zero
+    // and would stop testing the sum.
+    const a = at([...day(1, 2, 100), ...day(0, 1, 150)]);
+    expect(a.used).toBe(350);
+    expect(a.remaining).toBe(a.total - 350);
   });
 
   it("reports each visit for the chart, oldest first", () => {

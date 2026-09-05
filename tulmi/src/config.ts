@@ -249,16 +249,19 @@ const EnvSchema = z.object({
    * two is a thing users have to reason about.
    */
   FREE_MONTHLY_AUDIO_SECONDS: z.coerce.number().default(0),
-  FREE_MONTHLY_WORDS: z.coerce.number().default(2500),
+  FREE_MONTHLY_WORDS: z.coerce.number().default(800),
 
   // --- Earned words -------------------------------------------------------
   // The free plan grows when it is used. See src/usage/allowance.ts for why
   // frequency is rewarded and volume is not; these are the dials.
   //
-  // Tuned so a casual user never notices a wall and a daily user reaches the
-  // cap in a few weeks: 2,500 base, up to 5,000 earned. The cap is what keeps
-  // the free tier generous rather than free — and it is the only place the
-  // maths is bounded, since the day's amount is a roll rather than a rate.
+  // Scaled to the base. With 800 free and 5,000 earnable, the earned half was
+  // six times the plan — the number the user was given would have been a
+  // rounding error beside the number they won, and "free words" would have
+  // stopped meaning anything. 1,600 keeps earning worth chasing (it can triple
+  // the allowance) while leaving the plan itself the larger fact. The cap is
+  // the only place this maths is bounded, since a day's amount is a roll
+  // rather than a rate.
   // A day's grant is no longer a formula, so there is no per-day amount to
   // configure. It is a roll across four tiers, in src/usage/allowance.ts, where
   // the tiers sit next to the reasoning for their spacing — a value that has to
@@ -268,7 +271,7 @@ const EnvSchema = z.object({
   /** Words for reaching that. */
   EARN_BURST_WORDS: z.coerce.number().default(150),
   /** Most that can be earned in one month. 0 turns earning off entirely. */
-  EARN_MAX_WORDS: z.coerce.number().default(5000),
+  EARN_MAX_WORDS: z.coerce.number().default(1600),
 });
 
 export type AppConfig = z.infer<typeof EnvSchema> & {

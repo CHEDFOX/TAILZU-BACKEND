@@ -131,12 +131,17 @@ function roll(seed: string): number {
  * they are unconsciously playing for. The bands are deliberately far apart —
  * a "big" day that is 20% better than a small one is not felt as different,
  * and a mechanic nobody can feel is just arithmetic with extra steps.
+ *
+ * Sized against the 800-word plan rather than in the abstract. A huge day is
+ * half the plan again, which is a real event; a small day is a nudge. When the
+ * base moves, these have to move with it, or the ratio that makes any of this
+ * feel like a reward quietly becomes something else.
  */
 const TIERS: Array<{ tier: Tier; upTo: number; words: number }> = [
-  { tier: "small", upTo: 0.62, words: 75 },
-  { tier: "good",  upTo: 0.90, words: 160 },
-  { tier: "big",   upTo: 0.985, words: 340 },
-  { tier: "huge",  upTo: 1.01, words: 800 },
+  { tier: "small", upTo: 0.62, words: 30 },
+  { tier: "good",  upTo: 0.90, words: 70 },
+  { tier: "big",   upTo: 0.985, words: 150 },
+  { tier: "huge",  upTo: 1.01, words: 400 },
 ];
 
 /**
