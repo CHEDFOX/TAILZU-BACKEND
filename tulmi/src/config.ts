@@ -222,6 +222,37 @@ const EnvSchema = z.object({
    */
   REVENUECAT_ALLOW_SANDBOX: bool(true),
 
+  // --- App review ---------------------------------------------------------
+  /**
+   * The email address App Review and Play Review sign in with.
+   *
+   * Both stores need an account that reaches the whole app, and neither
+   * reviewer can receive an OTP at an address they do not own or complete a
+   * Sign in with Apple flow on a shared test device. So this one address takes
+   * a PASSWORD instead of a code: the app shows a password field only when the
+   * typed email matches this, and signs in against Supabase normally.
+   *
+   * Unset = the path does not exist. Set it for the submission, clear it after
+   * — that is a container restart, not a release, which is the point of it
+   * living here rather than in the binary.
+   */
+  REVIEW_EMAIL: z.string().optional(),
+  /**
+   * Accounts that skip everything between launch and the app.
+   *
+   * A reviewer has three minutes and a checklist. Sending them through an
+   * intro, a language pick, a permission primer and a keyboard-enable
+   * walkthrough is how a submission comes back as "we could not locate the
+   * described functionality". Comma-separated Supabase user ids: these land on
+   * home, are treated as entitled so no paywall appears, and are never shown
+   * the arrival prompt.
+   *
+   * Ids, not the email, because the email is what they TYPE and the id is what
+   * the token PROVES — and the whole point is that this cannot be claimed by
+   * anyone who merely knows the address.
+   */
+  REVIEW_USER_IDS: z.string().default(""),
+
   // Static bearer tokens for non-Supabase clients (the desktop app). A
   // comma-separated list of LONG random secrets; a request whose Authorization
   // bearer matches one (timing-safe) is authenticated as a stable synthetic

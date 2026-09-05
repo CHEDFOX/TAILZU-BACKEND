@@ -1307,6 +1307,17 @@ app.post("/v1/billing/revenuecat", async (req, reply) => {
   return reply.send(res);
 });
 
+/**
+ * The caller's OS, narrowed to what the catalog is allowed to branch on.
+ *
+ * Anything unrecognised becomes "ios" rather than throwing or spreading an
+ * unknown string through the catalog: a screen must render for a client we do
+ * not recognise, and the iOS tree is the fuller of the two.
+ */
+function platformOf(raw: unknown): "ios" | "android" {
+  return String(raw ?? "").toLowerCase() === "android" ? "android" : "ios";
+}
+
 app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   noStoreSdui(reply);
   // Auth is optional here so the shell can boot; when present, the user's
@@ -1318,7 +1329,10 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   const [profile, personality] = user
     ? await Promise.all([getProfile(user), getPersonality(user).catch(() => null)])
     : [null, null];
-  const reqBody = (req.body ?? {}) as { launchCount?: number };
+  const reqBody = (req.body ?? {}) as {
+    launchCount?: number;
+    capabilities?: { platform?: string };
+  };
   // The server's own view of both, so the app never has to guess and a
   // modified client cannot claim either. Read in parallel with everything
   // else, so this costs no extra latency.
@@ -1329,15 +1343,36 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
         allowanceFor(user).catch(() => null),
       ])
     : [false, null, null];
+  // A REVIEWER GOES STRAIGHT IN.
+  //
+  // Both stores give the app to someone with a checklist and a few minutes. An
+  // intro, a language pick, a permission primer and a keyboard walkthrough
+  // between them and the feature is how a submission comes back as "we were
+  // unable to locate the described functionality". The id is checked, not the
+  // email — the email is what they type, the id is what their token proves.
+  const reviewIds = new Set(
+    cfg.REVIEW_USER_IDS.split(",").map((x) => x.trim()).filter(Boolean),
+  );
+  const isReviewer = !!user && reviewIds.has(user.id);
   const bootstrap = buildBootstrap({
-    onboarded: profile?.onboarded ?? false,
+    onboarded: isReviewer || (profile?.onboarded ?? false),
     // Both answers are required by the card, so either one proves it ran.
     profileComplete: !!(profile?.fullName || profile?.gender),
     launchCount: Number(reqBody.launchCount) || 0,
-    languagesSet: !!personality?.languages?.length,
-    entitled,
+    languagesSet: isReviewer || !!personality?.languages?.length,
+    // Entitled, so no paywall stands between a reviewer and the app. Guideline
+    // 2.1 asks that the reviewer can exercise the paid functionality; it does
+    // not ask them to buy it.
+    entitled: entitled || isReviewer,
     wordsUsed: usage?.month?.words ?? 0,
     allowance,
+    platform: platformOf(reqBody.capabilities?.platform),
+    isReviewer,
+    // The address the app should offer a password field for. Sent to everyone
+    // because knowing it grants nothing — the password is the credential and it
+    // lives in Supabase. Empty until REVIEW_EMAIL is set, so the path does not
+    // exist outside a submission window.
+    reviewEmail: cfg.REVIEW_EMAIL ?? "",
   });
   // When they were last here. Fire and forget: a failed stamp must never cost
   // the boot, and nothing reads it on this path.
@@ -1358,6 +1393,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     /** Caller's UTC offset (minutes, JS -getTimezoneOffset() convention) so
      * per-day stats bucket in the USER'S day, not Greenwich's. */
     tzOffsetMinutes?: number;
+    capabilities?: { platform?: string };
   };
   const screenId = body.screenId;
   if (!screenId) {
@@ -1429,6 +1465,14 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     stats,
     history,
     params: body.params,
+    // The client has always sent this and the catalog has never been able to
+    // read it, so every per-OS difference had to ship as BOTH variants with a
+    // visibleIf and be resolved on the device. That works, but it means an
+    // Android-only change cannot be pushed without also touching what iOS
+    // receives — and a screen that differs structurally between the two cannot
+    // be expressed at all. Now the server knows, so it can simply send the
+    // right one.
+    platform: platformOf(body.capabilities?.platform),
   });
   if (!screen) {
     return reply.code(404).send({ code: "bad_request", message: `Unknown screen '${screenId}'` });

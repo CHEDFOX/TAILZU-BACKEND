@@ -362,7 +362,12 @@ const PROMPT_GIVE_UP_AFTER = 40;  // and never after the 40th
 /** How long to let the user get on with things before the card appears. */
 const PROMPT_AFTER_MS = 9000;
 
-function arrivalPrompt(opts: { launchCount?: number; languagesSet?: boolean }): string | null {
+function arrivalPrompt(
+  opts: { launchCount?: number; languagesSet?: boolean; isReviewer?: boolean },
+): string | null {
+  // Never in front of a reviewer. A card that appears after nine seconds is a
+  // card that appears in the middle of their evaluation.
+  if (opts.isReviewer) return null;
   if (opts.languagesSet) return null;
   const n = Number(opts.launchCount ?? 0);
   if (!Number.isFinite(n) || n < PROMPT_FIRST_LAUNCH || n > PROMPT_GIVE_UP_AFTER) return null;
@@ -385,6 +390,24 @@ export function buildBootstrap(
      *  by coming back. Null when usage could not be read; the flags then fall
      *  back to the flat free tier, which is the conservative direction. */
     allowance?: Allowance | null;
+    /**
+     * Which OS is asking.
+     *
+     * Present so the two platforms can diverge HERE rather than by shipping
+     * both variants and letting the device choose. `visibleIf: { platform }`
+     * still works and is still the right tool for a small difference inside one
+     * screen; this is for the differences that are not small — a flag that must
+     * be on for one OS and off for the other, or a screen whose whole shape
+     * differs — and for being able to change Android without touching a single
+     * byte of what iOS receives.
+     */
+    platform?: "ios" | "android";
+    /** This launch is App Review or Play Review. No intro, no arrival prompt;
+     *  the caller already forces onboarded + entitled. */
+    isReviewer?: boolean;
+    /** The address the auth screen offers a password field for. Empty outside
+     *  a submission window, which removes the path entirely. */
+    reviewEmail?: string;
   } = {},
 ): BootstrapResponse {
   return {
@@ -556,6 +579,13 @@ export function buildBootstrap(
         // provider is actually live in Supabase — turning it on without one
         // gives every user who picks the phone pill a dead end.
         "auth.enablePhone": AUTH_ENABLE_PHONE,
+        // The one address that signs in with a password instead of a code.
+
+        // Empty for everyone outside a submission window, and the app draws
+
+        // nothing at all when it is empty.
+
+        "auth.reviewEmail": opts.reviewEmail ?? "",
         "kb.flow.armOnForeground": true,
         "kb.flow.idleTimeoutMs": FLOW_IDLE_TIMEOUT_MS,
         // How each utterance travels to the server. The APP reads this when it
@@ -570,7 +600,9 @@ export function buildBootstrap(
         flags["intro.media"] = { url: intro.url };
       }
 
-      return flags;
+      // One platform's differences, applied last so they always win.
+
+      return applyPlatformFlags(flags, opts.platform ?? "ios");
     })(),
     // Central copy — every screen can reference these with "@key".
     labels: {
@@ -653,6 +685,38 @@ export function buildBootstrap(
     cacheTtlSeconds: 300,
     warmScreenIds: WARM_SCREEN_IDS,
   };
+}
+
+/**
+ * Per-OS flag overrides, applied over the shared set.
+ *
+ * The flags above are what BOTH platforms get. Anything listed here replaces
+ * one of them for one platform only — so an Android-only change can ship
+ * without altering a single value iOS receives, and the diff shows exactly
+ * which platform it is for.
+ *
+ * Deliberately a small map rather than branching inside the flag block. A
+ * hundred inline ternaries would answer "what is different on Android?" only
+ * by reading all of them, and that question gets asked every time either store
+ * reports something the other does not.
+ */
+const PLATFORM_FLAGS: Record<"ios" | "android", Record<string, unknown>> = {
+  ios: {},
+  android: {
+    // Android's own keyboard draws a suggestion strip; iOS's does not.
+    "kb.suggestions.enabled": true,
+    // Flow Session is an iOS answer to an iOS constraint — an extension there
+    // cannot hold the microphone, so the app holds it in the background. The
+    // Android IME records inline and needs none of it.
+    "kb.flow.armOnForeground": false,
+  },
+};
+
+function applyPlatformFlags(
+  flags: BootstrapResponse["flags"],
+  platform: "ios" | "android",
+): BootstrapResponse["flags"] {
+  return { ...(flags ?? {}), ...PLATFORM_FLAGS[platform] } as BootstrapResponse["flags"];
 }
 
 /**
@@ -1659,6 +1723,15 @@ export interface ScreenContext {
   /** Deep-link / navigation params — e.g. keyboard_record receives
    * { session, host } from the keyboard extension's tulmi://s/... URL. */
   params?: Record<string, string | number | boolean | undefined>;
+  /**
+   * Which OS is asking. Defaults to iOS for a client that does not say.
+   *
+   * Lets a screen be BUILT differently per platform rather than built once
+   * with both branches inside it. Prefer `visibleIf: { platform }` for a
+   * single node; use this when the difference is structural, or when an
+   * Android change must not alter the bytes iOS receives.
+   */
+  platform?: "ios" | "android";
 }
 
 export function buildScreen(screenId: string, ctx: ScreenContext): ScreenResponse | null {
@@ -5692,6 +5765,20 @@ export function buildKeyboardConfig(
         "kb.touch.cancelCommit.maxDriftPt": 24,
         "kb.touch.cancelCommit.maxMs": 700,
         "kb.touch.fillGaps": true,
+
+        // ANDROID: how far inside its row a key is PAINTED. Its touch area
+
+        // keeps the row's full height either way, so setting this and
+
+        // removing the same amount from the column's row gap makes the
+
+        // band between rows belong to the rows instead of to nobody — the
+
+        // structural dead zone iOS spent six builds on. 0 = unchanged.
+
+        // Try it on a device before moving the gap; both are values here.
+
+        "kb.touch.vInsetPx": 0,
         // K30's two fixes, both switchable from here.
         //
         // This problem has cost six builds, five of them chasing a wrong
