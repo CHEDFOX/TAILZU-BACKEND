@@ -3315,6 +3315,11 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
             used: a.used,
             base: a.base,
             earned: a.earned,
+            // Every colour on the meter, from here. Omit any of them and the
+            // component falls back to the brand amber and the theme, so this
+            // is a lever rather than an obligation.
+            fillColor: ACCENT_AMBER,
+            earnedColor: ACCENT_AMBER,
             // One line, and only when there is something to promise. A caption
             // that says "you have earned nothing" on day one would make the
             // mechanic feel like a tax.
