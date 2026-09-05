@@ -928,6 +928,35 @@ const PLATE_STYLE = {
 };
 
 /**
+ * The opening media fills the window.
+ *
+ * It used to play inside PLATE_STYLE — a 128pt white circle, chosen when the
+ * opening WAS the in-app mic and the two were meant to read as one object.
+ * The opening is its own piece of film now, and a circle is a crop, so it
+ * covers the screen instead. Absolute so it sits under the way-out button
+ * rather than pushing it off the bottom.
+ */
+const INTRO_FULL_STYLE = {
+  position: "absolute" as const,
+  top: 0, left: 0, right: 0, bottom: 0,
+  width: "100%",
+  height: "100%",
+  backgroundColor: "#000000",
+  overflow: "hidden" as const,
+};
+
+/**
+ * How the opening media meets the edges.
+ *
+ * "contain" keeps the file exactly as it was made — the whole frame, its own
+ * proportions, black either side of it on a screen it does not match. "cover"
+ * fills every pixel and crops whatever does not fit. Contain is the default
+ * because a clip that arrives zoomed and cut is the complaint that started
+ * this; one word here changes it, with no build.
+ */
+const INTRO_FIT: "contain" | "cover" = "contain";
+
+/**
  * Daily languages — a multi-select, saved to personality.languages.
  *
  * This is the one question worth asking, and it replaces the single-choice
@@ -1178,18 +1207,6 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
         // keyboard's own mic animation, so the first thing the app shows is the
         // thing the product is — and an upload to the "intro" key replaces it
         // without touching this tree.
-        // The way out, ALWAYS. This button used to live inside the
-        // "no media uploaded" branch — present only in the configuration that
-        // could not fail, and gone in the one that can. The intro hides the
-        // header and the tab bar and is the only stack entry, so if the media
-        // path stalls or the timer never fires there is otherwise nothing to
-        // tap at all. One target, and the whole class of trap is gone.
-        {
-          type: "Button",
-          props: { label: "Get started", variant: "primary" },
-          on: { onPress: "done" },
-          style: { position: "absolute", bottom: 56, left: 24, right: 24 },
-        } as Node,
         ...(hasIntroMedia ? [] : [{
           type: "ParticleMark",
           style: PLATE_STYLE,
@@ -1199,16 +1216,6 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           // never arrive. Getting this wrong strands the user on a black
           // window with no header and no tabs to leave by.
           props: { background: "#FFFFFF", circular: true },
-        } as Node,
-        {
-          // Belt and braces. The intro hides the header and the tab bar, so if
-          // the timer above ever fails to fire there is otherwise no way off
-          // this screen at all. One tap target costs nothing and removes that
-          // whole class of trap.
-          type: "Button",
-          props: { label: "Get started", variant: "primary" },
-          on: { onPress: "done" },
-          style: { position: "absolute", bottom: 56 },
         } as Node]),
         // NOTHING is painted under the media.
         //
@@ -1225,10 +1232,10 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
         // Video path — an uploaded mp4 (what the mic prefers).
         ...(hasIntroMedia && introIsVideo ? [{
           type: "Video",
-          style: PLATE_STYLE,
+          style: INTRO_FULL_STYLE,
           props: {
             source: introSource,
-            autoplay: true, loop: false, muted: true, contentFit: "cover",
+            autoplay: true, loop: false, muted: true, contentFit: INTRO_FIT,
           },
           on: { onComplete: "done" },
         } as Node] : []),
@@ -1268,24 +1275,36 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           // cannot reach is what made this read as cheap; a centred collapse
           // is a decision rather than a miss. toScale 0 so the last thing on
           // screen is the move finishing, not a dot being cut off.
-          style: PLATE_STYLE,
+          style: INTRO_FULL_STYLE,
           children: [{
             type: "Image",
-            // Fill the plate. `cover` so the media reaches the edges of the
-            // circle rather than leaving white corners inside it.
             style: { width: "100%", height: "100%" },
-            props: { source: introSource, contentFit: "cover" },
+            props: { source: introSource, contentFit: INTRO_FIT },
           } as Node],
           fallback: {
             type: "Stack",
-            style: PLATE_STYLE,
+            style: INTRO_FULL_STYLE,
             children: [{
               type: "Image",
               style: { width: "100%", height: "100%" },
-              props: { source: introSource, contentFit: "cover" },
+              props: { source: introSource, contentFit: INTRO_FIT },
             }],
           },
         } as Node] : []),
+        // The way out, ALWAYS — and LAST, so it paints over the media.
+        //
+        // It used to be first in this list, which was harmless while the media
+        // was a 128pt circle in the middle of the screen. The media covers the
+        // screen now, and later siblings paint on top, so first in the list is
+        // the one place this button cannot be. The intro hides the header and
+        // the tab bar and is the only stack entry: if the media stalls or the
+        // timer never fires, this is the only thing to tap.
+        {
+          type: "Button",
+          props: { label: "Get started", variant: "primary" },
+          on: { onPress: "done" },
+          style: { position: "absolute", bottom: 56, left: 24, right: 24, zIndex: 2 },
+        } as Node,
       ],
     },
     cacheTtlSeconds: 60,
