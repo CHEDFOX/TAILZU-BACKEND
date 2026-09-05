@@ -839,7 +839,11 @@ const INTRO_PLATE = 128;
 const INTRO_PLAY_MS = 2600;
 /** How long the plate takes to be drawn into the mic. Part of INTRO_PLAY_MS,
  *  not added to it — the opening should not grow because it got nicer. */
-const INTRO_MORPH_MS = 520;
+// Long enough for the wind-up to register as a gather rather than a stutter,
+// short enough that the app is not withholding itself. 520 was tuned for a
+// move that travelled; a collapse in place needs a beat more to read as
+// physical, and the plate is opaque for 82% of it either way.
+const INTRO_MORPH_MS = 600;
 /**
  * Play the intro even with no media uploaded, using the built-in mark.
  *
@@ -1189,7 +1193,14 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           // exactly as before.
           type: "MorphOut",
           bind: { active: "handoff" },
-          props: { durationMs: INTRO_MORPH_MS, dy: 0.55, toScale: 0.18 },
+          // No dx/dy: the plate collapses where it stands. It used to aim
+          // 70pt down at the in-app mic, and the in-app mic is a 38pt control
+          // on the right edge of a text box partway down a scrolling page —
+          // a destination no fixed offset can find. A move toward a target it
+          // cannot reach is what made this read as cheap; a centred collapse
+          // is a decision rather than a miss. toScale 0 so the last thing on
+          // screen is the move finishing, not a dot being cut off.
+          props: { durationMs: INTRO_MORPH_MS, toScale: 0 },
           style: PLATE_STYLE,
           children: [{
             type: "Image",
