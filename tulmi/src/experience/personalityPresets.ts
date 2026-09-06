@@ -277,13 +277,13 @@ export function decoratePresets(
 
 /** Tone → segmented-toggle label mapping shown on the personality screen.
  *
- *  "none" is branded ZU 8.8 — it is not the absence of a voice, it IS the
+ *  "none" is branded ZU — it is not the absence of a voice, it IS the
  *  product's own: language auto-detected, no borrowed vibe applied, and the
  *  refinement shaped by the way THIS user has learned to talk (their style
- *  portrait). Every other tone is a costume laid over that; ZU 8.8 is the
+ *  portrait). Every other tone is a costume laid over that; ZU is the
  *  user, cleaned up. */
 export const TONE_LABELS: Record<PresetTone, string> = {
-  none: "ZU 8.8",
+  none: "ZU",
   formal: "Formal",
   casual: "Casual",
   "very-casual": "Very Casual",

@@ -17,7 +17,7 @@ import { applyPresetOverrides } from "../experience/personalityPresets.js";
 /** Short, natural-language guidance per built-in tone. "none" keeps the user's
  *  own voice — a faithful clean-up, not a restyle. */
 const TONE_GUIDANCE: Record<string, string> = {
-  // ZU 8.8 — the product's default and its actual position: not "no voice",
+  // ZU — the product's default and its actual position: not "no voice",
   // but the USER'S voice. No borrowed tone is applied; the only style that
   // shapes the output is what we've learned about how this person writes
   // (their style portrait, injected separately by portraitBlock).

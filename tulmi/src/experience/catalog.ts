@@ -2208,7 +2208,7 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
   // new custom voice appears here on the next screen fetch with no app update.
   const effective = applyPresetOverrides(ctx.personality.presetOverrides);
   const TONE_OPTIONS: Array<{ id: string; label: string; hint: string }> = [
-    { id: "none", label: "ZU 8.8", hint: "Your own way of talking — detected, cleaned, no vibe added" },
+    { id: "none", label: "ZU", hint: "Your own way of talking — detected, cleaned, no vibe added" },
     ...effective.map((p) => ({
       id: p.id,
       label: p.name,
@@ -2360,7 +2360,7 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
       // variants speak in). "none" trains the core style. Seeded to the
       // user's active voice so Refine trains what they actually use.
       tone: activeVoice?.id ?? "none",
-      toneLabel: activeVoice?.name ?? "ZU 8.8",
+      toneLabel: activeVoice?.name ?? "ZU",
       toneSheetOpen: false,
       // Voice card (long-press). Seeded so the card's bound Texts render empty
       // rather than undefined before anything has been held.
@@ -5175,7 +5175,7 @@ const makeToolsRow = (opts: {
     // definition against the transparent keyboard region.
     {
       type: "LetterKey",
-      props: { char: "ZU 8.8" },
+      props: { char: "ZU" },
       bind: { content: "tone" },
       on: { onPress: { kind: "cycleTone" } },
       style: {
