@@ -82,6 +82,29 @@ function mediaSrc(key: string): Record<string, unknown> {
  * resilient pattern as the intro: plain Image node, resolved url, clipped by a
  * plain view.
  */
+/**
+ * How a media node is told to fill the box its parent already drew.
+ *
+ * NOT `{ width: "100%", height: "100%" }`, which is what every one of these
+ * used to be and what quietly broke every full-bleed image in the app. The
+ * client's Image node applies its own defaults UNDERNEATH whatever style
+ * arrives — `aspectRatio: 1.6` and `borderRadius: 10` — and a style that sets
+ * only width and height overrides neither. Yoga then holds a width and an
+ * aspect ratio, which is enough to derive a height, so the height was ignored
+ * and the media rendered as a rounded 1.6 landscape strip: the opening media,
+ * the flow clip, every hero, all cropped through their own middle.
+ *
+ * Four insets leave Yoga nothing to derive — both dimensions come from the
+ * parent, so the aspect ratio has no job — and the explicit radius buries the
+ * other default. It is the one shape that survives a client this file cannot
+ * rebuild.
+ */
+const FILL_STYLE = {
+  position: "absolute" as const,
+  top: 0, left: 0, right: 0, bottom: 0,
+  borderRadius: 0,
+};
+
 function screenHero(
   screenId: string,
   opts: {
@@ -148,19 +171,19 @@ function screenHero(
           // not politeness — an unmuted autoplay is blocked outright.
           autoplay: true, loop: true, muted: true, contentFit: fit,
         },
-        style: { width: "100%", height: "100%" },
+        style: FILL_STYLE,
         // A bundle without Video draws nothing at all; the still frame is a
         // worse hero than the video and a far better one than a hole.
         fallback: {
           type: "Image",
           props: { source: mediaSrc(key), contentFit: fit },
-          style: { width: "100%", height: "100%" },
+          style: FILL_STYLE,
         },
       }
     : {
         type: "Image",
         props: { source: mediaSrc(key), contentFit: fit },
-        style: { width: "100%", height: "100%" },
+        style: FILL_STYLE,
       };
   return [
     {
@@ -932,7 +955,7 @@ function heroSlot(opts: {
     const isVideo =
       (entry?.contentType ?? "").toLowerCase().startsWith("video/") ||
       /\.(mp4|mov|m4v|webm)(\?|$)/i.test(entry?.url ?? "");
-    const fill = { width: "100%", height: "100%" };
+    const fill = FILL_STYLE;
     const inner: Node = isVideo
       ? {
           type: "Video",
@@ -1400,7 +1423,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           style: shown.style,
           children: [{
             type: "Image",
-            style: { width: "100%", height: "100%" },
+            style: FILL_STYLE,
             props: { source: introSource, contentFit: shown.fit },
           } as Node],
           fallback: {
@@ -1408,7 +1431,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
             style: shown.style,
             children: [{
               type: "Image",
-              style: { width: "100%", height: "100%" },
+              style: FILL_STYLE,
               props: { source: introSource, contentFit: shown.fit },
             }],
           },
