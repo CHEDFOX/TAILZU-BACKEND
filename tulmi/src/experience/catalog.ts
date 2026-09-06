@@ -169,7 +169,20 @@ function screenHero(
     ? {
         style: {
           position: "absolute" as const,
-          top: 0, left: 0, right: 0, bottom: 0,
+          // NEGATIVE, by the parent's own padding.
+          //
+          // Yoga lays an absolute child out against its parent's PADDING box,
+          // not its border box — so `top: 0` on a screen with 72pt of top
+          // padding starts 72pt down, and a backdrop meant to fill the window
+          // came out as an inset rectangle with the screen's black showing
+          // around it. Backdrop and background were the same colour, so it did
+          // not look inset; it looked absent.
+          //
+          // The call site knows the padding because the call site wrote it.
+          top: -(opts.fullBleedTop ?? 0),
+          left: -(opts.fullBleed ?? 0),
+          right: -(opts.fullBleed ?? 0),
+          bottom: 0,
           backgroundColor: entry.present?.background ?? "#000000",
           overflow: "hidden" as const,
         },
@@ -489,6 +502,9 @@ export function buildBootstrap(
       // feature rather than an unconfigured one. It now opens on the brand mark
       // assembling itself, and an upload replaces that.
       !!getMediaRegistryFn?.()?.["intro"]?.url || INTRO_BUILT_IN,
+      // Which bootstrap this is, for the whole install. The one thing that can
+      // tell "the app is opening" from "the app asked again".
+      Number(opts.launchCount ?? 0),
     ),
     flags: ((): BootstrapResponse["flags"] => {
       const flags: BootstrapResponse["flags"] = {
@@ -835,11 +851,37 @@ const WARM_SCREEN_IDS = [
  *
  * It plays only when a file is actually there. An intro slot with nothing in it
  * must not cost the user a black screen on the way in.
+ *
+ * "FIRST RUN" IS A COUNT, NOT A STATE
+ *
+ * This asked `!onboarded`, and that is a state which stays true for a while —
+ * through the auth screen, the language pick, the keyboard step. The client
+ * calls this endpoint far more often than once per launch (after sign-in, on
+ * every foreground, on every refresh) and it treats the answer as "where the
+ * app opens" every time. So a not-yet-onboarded user got the opening film again
+ * after signing in, again when the keyboard's mic tap woke the app, and again
+ * whenever a foreground reset the stack off a transient mic screen — each time
+ * over whatever they had actually asked for, dismissed by a tap, and looking
+ * like the film was leaking into the app at random.
+ *
+ * It was one bug wearing three costumes, and the mistake is in the sentence:
+ * an opening plays ONCE, and "once" is counted, not inferred.
+ *
+ * launchCount is the count. The client bumps a persisted counter on every
+ * bootstrap, so the very first call an install ever makes is 1 and there is no
+ * second 1 — not after auth, not on foreground, not on any refresh. Everything
+ * after that gets home or onboarding, which is what those callers wanted all
+ * along.
+ *
+ * 0 means the client did not say (unreadable storage, an older bundle). That
+ * resolves to no intro: a missing opening costs a first impression, a repeating
+ * one costs trust in the whole app.
  */
-function pickInitialScreenId(onboarded: boolean, introReady: boolean): string {
+function pickInitialScreenId(onboarded: boolean, introReady: boolean, launchCount: number): string {
+  const firstEver = launchCount === 1;
   const play = introReady && (
     INTRO_PLAY_WHEN === "everyLaunch" ||
-    (INTRO_PLAY_WHEN === "firstRun" && !onboarded)
+    (INTRO_PLAY_WHEN === "firstRun" && firstEver && !onboarded)
   );
   if (play) return "intro";
   return onboarded ? "home" : "onboarding";
@@ -4576,7 +4618,17 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
         // The clip, behind everything. FIRST in the list, because later
         // siblings paint on top — the same ordering rule that put a button
         // under the opening media until it was moved.
-        ...screenHero("flow_arm", { behind: true, onlyOn: "ios", fit: "cover" }),
+        // fullBleed / fullBleedTop are this screen's own padding, handed to the
+        // backdrop so it can cancel them — an absolute child is laid out inside
+        // the parent's padding, and a backdrop that respects padding is a
+        // rectangle, not a backdrop.
+        //
+        // NO onlyOn. It said "ios" because Flow itself is iOS-only, which is
+        // true of the FEATURE and not of this screen: whatever reaches here has
+        // already been routed by a client that decided Flow applies. A platform
+        // filter on the art could only ever subtract, and the one thing it
+        // reliably subtracted was the art.
+        ...screenHero("flow_arm", { behind: true, fit: "cover", fullBleed: 28, fullBleedTop: 72 }),
         {
           type: "Heading",
           // "Flow is on" states a setting. This states what the user just

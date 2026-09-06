@@ -125,17 +125,37 @@ describe("buildBootstrap", () => {
 
   it("opens a first-run user on the intro, which then hands off to onboarding", () => {
     // The intro now plays on the built-in mark when no media is uploaded, so
-    // first launch opens on it. What must NEVER change is where it goes next:
-    // a not-onboarded user has to reach onboarding, or they skip the language
-    // pick and the keyboard-enable step and onboarded is never set — which is
-    // how the intro used to replay forever.
-    const b = buildBootstrap({ onboarded: false });
+    // the FIRST bootstrap an install ever makes opens on it. What must NEVER
+    // change is where it goes next: a not-onboarded user has to reach
+    // onboarding, or they skip the language pick and the keyboard-enable step
+    // and onboarded is never set — which is how the intro used to replay.
+    const b = buildBootstrap({ onboarded: false, launchCount: 1 });
     expect(b.initialScreenId).toBe("intro");
   });
 
-  it("defaults to non-onboarded when opts is empty", () => {
-    const b = buildBootstrap({});
-    expect(b.initialScreenId).toBe("intro");
+  // The opening plays ONCE, and once is COUNTED. It used to be inferred from
+  // `!onboarded`, which stays true through auth, the language pick and the
+  // keyboard step — and the client asks this endpoint again after sign-in, on
+  // every foreground, and on every refresh, treating each answer as "where the
+  // app opens". So the film reappeared over the auth hand-off, over the screen
+  // a keyboard mic tap had asked for, and after the flow screen.
+  it("NEVER returns the intro on a later bootstrap, however un-onboarded", () => {
+    for (const launchCount of [2, 3, 9, 400]) {
+      const b = buildBootstrap({ onboarded: false, launchCount });
+      expect(b.initialScreenId).toBe("onboarding");
+    }
+  });
+
+  it("says onboarding, not intro, when the client did not count", () => {
+    // launchCount 0 is unreadable storage or an older bundle. A missing opening
+    // costs a first impression; a repeating one costs trust in the whole app.
+    expect(buildBootstrap({}).initialScreenId).toBe("onboarding");
+    expect(buildBootstrap({ onboarded: false, launchCount: 0 }).initialScreenId).toBe("onboarding");
+  });
+
+  it("an onboarded user opens on home, first launch or not", () => {
+    expect(buildBootstrap({ onboarded: true, launchCount: 1 }).initialScreenId).toBe("home");
+    expect(buildBootstrap({ onboarded: true, launchCount: 50 }).initialScreenId).toBe("home");
   });
 
   it("includes a cacheVersion token that matches the current cache version", () => {

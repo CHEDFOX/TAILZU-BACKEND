@@ -250,11 +250,27 @@ describe("hero slots take their presentation from the registry too", () => {
     // Pinned to the window, not inset from a column. A 9:16 clip at full
     // width is taller than what a heading and a paragraph leave behind, so
     // full bleed here can only mean behind them.
+    //
+    // NEGATIVE insets, by the screen's own padding: Yoga lays an absolute
+    // child out against the parent's PADDING box, so top:0 on a screen with
+    // 72pt of top padding starts 72pt down. Backdrop and background are the
+    // same black, so that did not read as inset — it read as missing.
     expect(h.style.position).toBe("absolute");
-    expect(h.style.top).toBe(0);
+    expect(h.style.top).toBe(-72);
+    expect(h.style.left).toBe(-28);
+    expect(h.style.right).toBe(-28);
     expect(h.style.bottom).toBe(0);
     expect(h.style.marginLeft).toBeUndefined();
     expect(h.children[0].props.contentFit).toBe("cover");
+  });
+
+  it("the flow clip is not filtered by platform", () => {
+    // It carried visibleIf:{platform:"ios"} because FLOW is iOS-only — true of
+    // the feature, not of this screen. Anything that reaches here was routed by
+    // a client that already decided. The filter could only subtract, and what
+    // it subtracted was the art.
+    const h = heroOf("flow_arm", "hero.flow_arm", undefined, "video/mp4");
+    expect(h.visibleIf).toBeUndefined();
   });
 
   it("the flow clip is the FIRST child, so the words paint over it", () => {
