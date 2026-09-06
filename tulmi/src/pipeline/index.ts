@@ -51,6 +51,25 @@ export async function runPipeline(
     // The Languages card, when the user has answered it.
     languages: opts.personality?.languages?.map(String),
   });
+  // NOTHING WAS SAID → nothing is written. Return before the model.
+  //
+  // The silence scrub in stt.ts returns "" for a clip it decided was silence
+  // or a hallucination, and the assist prompt asks the model to answer an
+  // empty input with an empty string. Asking is not the same as not asking:
+  // a writing model handed nothing still writes something, and that something
+  // arrived on the user's screen as a refinement of a sentence they never
+  // spoke. It is also a paid round trip to produce it.
+  if (!stt.text.trim()) {
+    return {
+      transcript: "",
+      sttEngine: stt.engine,
+      detectedLanguage: stt.detectedLanguage,
+      cleanedText: "",
+      // No words, so silence never counts against an allowance.
+      usage: { audioSeconds: stt.durationSeconds, words: 0, model: getConfig().CLEANUP_MODEL },
+    };
+  }
+
   // The assist step separates any embedded instruction ("…make it shorter, in
   // bullet points") from the message itself and applies the active tone, so we
   // no longer strip commands here — the model handles it. `transcript` stays
@@ -111,6 +130,16 @@ export async function* runPipelineStream(
   });
   const { transcript, command } = detectCommand(stt.text);
   yield { type: "transcript", text: transcript };
+
+  // Same gate as the one-shot path: silence in, silence out, no model call.
+  if (!transcript.trim()) {
+    yield {
+      type: "done",
+      cleanedText: "",
+      usage: { audioSeconds: stt.durationSeconds, words: 0, model: getConfig().CLEANUP_MODEL },
+    };
+    return;
+  }
 
   let cleanedText = "";
   for await (const delta of cleanStream(transcript, {
