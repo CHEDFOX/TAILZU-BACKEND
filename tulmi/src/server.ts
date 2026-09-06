@@ -34,6 +34,7 @@ import { registerMediaRoutes, loadMediaRegistry, getMediaRegistry } from "./rout
 import { PRIVACY_POLICY_HTML, PRIVACY_POLICY_EFFECTIVE } from "./routes/policies/privacy.js";
 import { TERMS_HTML, TERMS_EFFECTIVE } from "./routes/policies/terms.js";
 import { DOWNLOAD_PAGE_HTML } from "./routes/download.js";
+import { registerReviewCodeRoute } from "./routes/reviewCode.js";
 import { getConfig, VERSION } from "./config.js";
 import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
 import { localUserId } from "./auth/jwt.js";
@@ -442,6 +443,12 @@ const AUTHED_RL = {
 // UNAUTH_RL removed — every previously-unauth route was gated on
 // per-user hashed tokens anyway, so AUTHED_RL is the right cap and
 // avoids the 429-storm we saw on /v1/keyboard/config launch traffic.
+
+// The fixed review pair. 404s unless BOTH REVIEW_EMAIL and REVIEW_CODE are set,
+// so in ordinary operation this route does not exist. See routes/reviewCode.ts.
+registerReviewCodeRoute(app, {
+  rateLimit: { max: cfg.RATE_LIMIT_MAX, timeWindow: cfg.RATE_LIMIT_WINDOW_MS },
+});
 
 app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);

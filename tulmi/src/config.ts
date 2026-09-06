@@ -238,6 +238,28 @@ const EnvSchema = z.object({
    */
   REVIEW_EMAIL: z.string().optional(),
   /**
+   * The code that address signs in with.
+   *
+   * A fixed pair, held here, that passes auth: type the email, type this, you
+   * are in. It exists because sign-in is one-time codes and a reviewer cannot
+   * open our inbox — Supabase offers fixed test codes for phone numbers and has
+   * no equivalent for email, so the pair has to live on our side.
+   *
+   * BOTH must be set for the path to exist. Either one alone is nothing, so a
+   * half-finished configuration cannot leave a door ajar.
+   *
+   * Not a password: it never reaches Supabase's password field. The server
+   * checks it, and on a match mints a one-time link for that account — the same
+   * kind of link the emailed code redeems. The session that comes back is an
+   * ordinary session, indistinguishable from any other user's.
+   *
+   * Make it long. The email is broadcast to every client (the app has to know
+   * which address to route), so this is the whole secret. Six digits is a
+   * million guesses; sixteen is beyond reach. Clear it the day review passes —
+   * a container restart, not a release.
+   */
+  REVIEW_CODE: z.string().optional(),
+  /**
    * Accounts that skip everything between launch and the app.
    *
    * A reviewer has three minutes and a checklist. Sending them through an
@@ -317,6 +339,22 @@ export type AppConfig = z.infer<typeof EnvSchema> & {
 };
 
 let cached: AppConfig | null = null;
+
+/**
+ * Drop the cache so the next getConfig() re-reads the environment.
+ *
+ * For tests, and named so nobody mistakes it for a runtime feature: config is
+ * parsed once at boot on purpose, and a server that re-read its environment
+ * mid-flight would be a server whose behaviour changed without a deploy.
+ *
+ * It earns its place by letting the review-pair tests prove the door is SHUT in
+ * every configuration — no email, no code, one but not the other — and those are
+ * exactly the cases that cannot be checked without changing the environment
+ * between them.
+ */
+export function resetConfigForTests(): void {
+  cached = null;
+}
 
 export function getConfig(): AppConfig {
   if (cached) return cached;
