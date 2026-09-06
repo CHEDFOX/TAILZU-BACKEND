@@ -1372,7 +1372,13 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     // because knowing it grants nothing — the password is the credential and it
     // lives in Supabase. Empty until REVIEW_EMAIL is set, so the path does not
     // exist outside a submission window.
-    reviewEmail: cfg.REVIEW_EMAIL ?? "",
+    //
+    // NORMALISED, because the client compares `typed.trim().toLowerCase()` to
+    // this string. An env value with a capital in it therefore matches nothing:
+    // the reviewer types the address, gets a one-time code posted to a mailbox
+    // nobody can open, and reports that they cannot sign in. A whole submission
+    // cycle, spent on the shift key.
+    reviewEmail: (cfg.REVIEW_EMAIL ?? "").trim().toLowerCase(),
   });
   // When they were last here. Fire and forget: a failed stamp must never cost
   // the boot, and nothing reads it on this path.
