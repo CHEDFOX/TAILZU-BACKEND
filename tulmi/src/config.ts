@@ -253,10 +253,16 @@ const EnvSchema = z.object({
    * kind of link the emailed code redeems. The session that comes back is an
    * ordinary session, indistinguishable from any other user's.
    *
-   * Make it long. The email is broadcast to every client (the app has to know
-   * which address to route), so this is the whole secret. Six digits is a
-   * million guesses; sixteen is beyond reach. Clear it the day review passes —
-   * a container restart, not a release.
+   * SIX DIGITS. Not a choice — the code screen strips non-digits and truncates
+   * to six, because it is the same screen every user types an emailed code
+   * into. Anything longer, or with a letter in it, silently becomes something
+   * else on the way in and simply never matches.
+   *
+   * So this is one secret in a million, behind an address every client is told.
+   * What makes that survivable is the route's own rate limit — eight attempts a
+   * quarter-hour, far below the app's — and the fact that the pair is set for a
+   * submission and cleared when review passes. Clearing it is a container
+   * restart, not a release. Do it.
    */
   REVIEW_CODE: z.string().optional(),
   /**

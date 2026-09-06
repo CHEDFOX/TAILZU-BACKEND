@@ -446,8 +446,21 @@ const AUTHED_RL = {
 
 // The fixed review pair. 404s unless BOTH REVIEW_EMAIL and REVIEW_CODE are set,
 // so in ordinary operation this route does not exist. See routes/reviewCode.ts.
+//
+// ITS OWN LIMIT, far below the app's.
+//
+// The code has to be SIX DIGITS — the code screen strips non-digits and
+// truncates to six, because it is the same screen every user types an emailed
+// code into, and giving the reviewer a different one would prove nothing about
+// the flow being reviewed. So the secret is one of a million, standing behind
+// an address that every client is told.
+//
+// A million falls to the app's ordinary limiter in days. Eight attempts a
+// quarter-hour turns it into years, which is longer than the pair is meant to
+// exist: it is set for a submission and cleared when review passes. The
+// reviewer needs one attempt, and two if they fumble.
 registerReviewCodeRoute(app, {
-  rateLimit: { max: cfg.RATE_LIMIT_MAX, timeWindow: cfg.RATE_LIMIT_WINDOW_MS },
+  rateLimit: { max: 8, timeWindow: 15 * 60_000 },
 });
 
 app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
