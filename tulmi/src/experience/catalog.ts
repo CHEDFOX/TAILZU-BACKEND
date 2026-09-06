@@ -1133,7 +1133,19 @@ function presentMedia(entry: MediaEntry | undefined): Presented {
   // Size comes from the parent instead, origin from the nudge. What slides off
   // one edge is not visible arriving at the other — the screen behind is the
   // same black the media is matted on.
-  const nudged = p.nudgeX !== undefined || p.nudgeY !== undefined;
+  //
+  // SCALE shrinks that box, centred, before the nudge is applied — so a nudge
+  // means the same thing at any scale. It is here for one reason: a launch
+  // screen's icon is a fixed size compiled into the binary, and when the
+  // opening film's subject comes out bigger than it, the film is the only side
+  // that can move without a build. The right fix is the icon; this is the one
+  // available today.
+  const scale = p.scale !== undefined ? Math.min(1, Math.max(0.05, p.scale)) : 1;
+  const nudged = p.nudgeX !== undefined || p.nudgeY !== undefined || scale !== 1;
+  // Four decimals: enough to place a mark inside a pixel, short enough that the
+  // served JSON reads as a number a person chose.
+  const pct = (n: number) => `${Math.round(n * 1e4) / 1e4}%`;
+  const centred = ((1 - scale) / 2) * 100;
   return {
     fit,
     holdMs: p.holdMs ?? null,
@@ -1141,9 +1153,9 @@ function presentMedia(entry: MediaEntry | undefined): Presented {
       position: "absolute" as const,
       ...(nudged
         ? {
-            top: `${p.nudgeY ?? 0}%`,
-            left: `${p.nudgeX ?? 0}%`,
-            width: "100%", height: "100%",
+            top: pct(centred + (p.nudgeY ?? 0)),
+            left: pct(centred + (p.nudgeX ?? 0)),
+            width: pct(scale * 100), height: pct(scale * 100),
           }
         : {
             top: inset, left: inset, right: inset, bottom: inset,

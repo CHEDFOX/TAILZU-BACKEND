@@ -126,6 +126,33 @@ describe("media presentation is registry data", () => {
     expect(n.style.right).toBe(0);
     expect(n.style.bottom).toBe(0);
   });
+
+  // A launch screen's icon is a fixed size compiled into the binary. When the
+  // opening film's subject comes out bigger, the film is the only side that can
+  // move without a build.
+  it("scale shrinks the box and centres what is left", () => {
+    withPresent({ scale: 0.8 });
+    const n = mediaNode();
+    expect(n.style.width).toBe("80%");
+    expect(n.style.height).toBe("80%");
+    // (1 - 0.8) / 2 — the leftover split evenly, so the media stays centred.
+    expect(n.style.top).toBe("10%");
+    expect(n.style.left).toBe("10%");
+  });
+
+  it("a nudge means the same thing at any scale: distance from centre", () => {
+    withPresent({ scale: 0.8, nudgeX: 2.5, nudgeY: 2.25 });
+    const n = mediaNode();
+    expect(n.style.left).toBe("12.5%");
+    expect(n.style.top).toBe("12.25%");
+  });
+
+  it("scale 1 is exactly the unscaled nudge", () => {
+    withPresent({ scale: 1, nudgeX: 3.2, nudgeY: 2.85 });
+    const n = mediaNode();
+    expect(n.style.left).toBe("3.2%");
+    expect(n.style.width).toBe("100%");
+  });
 });
 
 // The same contract for the hero slots. A hero lives inside a padded screen,

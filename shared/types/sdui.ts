@@ -133,9 +133,31 @@ export interface MediaPresent {
    *
    * Applies to the "full" shape. A nudge replaces the pinned right/bottom
    * edges, so it and `inset` are alternatives — the nudge wins.
+   *
+   * A nudge is measured from the media's BOX, which `scale` may have shrunk.
+   * Scaling centres the box first, so a nudge means the same thing at any
+   * scale: how far off centre the media sits.
    */
   nudgeX?: number;
   nudgeY?: number;
+  /**
+   * How much of the window the media is drawn at, 0.05–1. 1 fills it, which is
+   * the default and what full bleed means.
+   *
+   * Below 1 the media is drawn smaller and centred, on the window's own
+   * background. This exists to MATCH something the media cannot change: a
+   * launch screen's icon is a fixed size compiled into the binary, so when the
+   * opening film's subject comes out larger than it, the film is the only side
+   * that can move without a build.
+   *
+   * It is a compromise, and it should be named as one. Shrinking the film to
+   * meet an undersized launch icon is the wrong direction — the icon is what
+   * is wrong — and the moment a build can carry the right icon size, this
+   * should go back to 1. A scaled film is also only invisible while its own
+   * edges are the same colour as the screen behind it; on brighter art the
+   * gutters show.
+   */
+  scale?: number;
 }
 
 export interface MediaEntry {
