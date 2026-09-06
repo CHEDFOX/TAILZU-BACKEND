@@ -5942,9 +5942,15 @@ export function buildKeyboardConfig(
         //
         // alwaysRefresh: rebuild key geometry on every layout pass, which is
         // what the debug overlay was doing by accident and why the keyboard
-        // measurably worked with it on. Turn OFF only if it ever costs more
-        // than it buys.
-        "kb.touch.alwaysRefresh": true,
+        // measurably worked with it on.
+        //
+        // OFF from K31. It was belt-and-braces for a broken cheap check: the
+        // witness list held ONE key, from a Dictionary, and could only speak
+        // for its own row. K31 keeps one witness per row and checks all of
+        // them, so the cheap path is now correct and a full rebuild on every
+        // layout pass is forty-odd coordinate conversions per keystroke that
+        // buy nothing. Back to true if a dead gap ever returns.
+        "kb.touch.alwaysRefresh": false,
         // totalResolve: a point the plane claimed always resolves to a key.
         // OFF restores the old behaviour, where a claimed point the resolver
         // could not place was dropped in silence.
@@ -6064,8 +6070,9 @@ export function buildKeyboardConfig(
         // obstacles, y/h the band's top and height, and t(x,y)Y|N whether the
         // LAST touch was claimed. Tap a dead gap and read the letter.
         //
-        // TURN BOTH OF THESE OFF BEFORE SUBMITTING.
-        "kb.buildStamp.enabled": true,
+        // Off. It did its job — the stamp is how we learned build 60 was
+        // running its embedded bundle and had never taken an update.
+        "kb.buildStamp.enabled": false,
         // Cold-open field diagnostics (K3+ binaries). With this on, tapping the
         // keyboard mic shows "<stamp> · <path>" in the status bar — e.g.
         // "K3 · app✓@2 open=NO" (found UIApplication, iOS refused the open) or
@@ -6264,7 +6271,12 @@ export function buildKeyboardConfig(
         // Draws the partition: obstacles filled, role keys stroked, the band
         // stroked. A dead gap sitting inside a filled obstacle is the veto; a
         // dead gap outside the band is the band being too short.
-        "kb.debug.showTouchRects": true,
+        //
+        // Off. Beyond being visible to users, this one is not free: it marks
+        // setNeedsDisplay() on every layout, draw() calls ensureFrames(), and
+        // with alwaysRefresh that was a full geometry rebuild per frame in a
+        // process iOS keeps on a short leash.
+        "kb.debug.showTouchRects": false,
         // Raised from 8. Each side of a 10pt row gap contributed 8, so the gap
         // was covered — IF both neighbours' boxes are what govern it. 12 means
         // one side alone covers the whole gap, so the coverage no longer
