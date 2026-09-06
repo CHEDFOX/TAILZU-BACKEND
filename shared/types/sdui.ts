@@ -113,6 +113,13 @@ export interface MediaPresent {
   /** How long the screen holds before it moves on, ms. A GIF reports nothing
    *  when it ends, so for a GIF this IS the length of the scene. */
   holdMs?: number;
+  /** Hold the first frame this long before the clip starts, ms. Lets a screen
+   *  arrive on a still and then move, instead of opening mid-motion. Video
+   *  only — a GIF cannot be paused on a frame. */
+  startDelayMs?: number;
+  /** Whether the clip repeats. Default true: a hero is ambient. False plays it
+   *  once and freezes on the last frame. */
+  loop?: boolean;
 }
 
 export interface MediaEntry {

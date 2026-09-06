@@ -105,6 +105,10 @@ const FILL_STYLE = {
   borderRadius: 0,
 };
 
+/** State key a delayed hero clip is bound to. The screen declaring the hero
+ *  has to declare this too, or the clip never starts. */
+const HERO_PLAY_KEY = "_heroPlaying";
+
 function screenHero(
   screenId: string,
   opts: {
@@ -182,15 +186,31 @@ function screenHero(
         opts.fullBleed ? "full" : "card",
       );
   const fit = entry.present?.fit ?? opts.fit ?? "cover";
+  // Arrive on a still, then move.
+  //
+  // startDelayMs holds the first frame and starts the clip afterwards, so a
+  // screen can open on a photograph instead of opening mid-motion. The Video
+  // node's `playing` is bindable, so the wait is a delay and a setState —
+  // nothing native, nothing that needs a build.
+  const startDelay = Number(entry.present?.startDelayMs ?? 0);
+  const loops = entry.present?.loop ?? true;
   const inner: Node = isVideo
     ? {
         type: "Video",
         props: {
           source: mediaSrc(key),
-          // A hero is ambient: it plays itself, forever, in silence. Muted is
-          // not politeness — an unmuted autoplay is blocked outright.
-          autoplay: true, loop: true, muted: true, contentFit: fit,
+          // A hero is ambient: it plays itself, in silence. Muted is not
+          // politeness — an unmuted autoplay is blocked outright.
+          autoplay: !startDelay, loop: loops, muted: true, contentFit: fit,
+          ...(startDelay ? { playing: false } : {}),
         },
+        ...(startDelay ? { bind: { playing: HERO_PLAY_KEY } } : {}),
+        ...(startDelay ? {
+          on: { onAppear: { kind: "sequence", actions: [
+            { kind: "delay", ms: startDelay },
+            { kind: "setState", path: HERO_PLAY_KEY, value: true },
+          ] } },
+        } : {}),
         style: FILL_STYLE,
         // A bundle without Video draws nothing at all; the still frame is a
         // worse hero than the video and a far better one than a hole.
@@ -4431,7 +4451,10 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
     // keyboard and the user's own app; a tab bar invites them to go somewhere
     // else, which is the one thing it must not do.
     hideChrome: true,
-    state: { armed: false },
+    // _heroPlaying: false so a clip with a startDelayMs sits on its first
+    // frame until its own timer flips this. Harmless when there is no delay —
+    // the Video autoplays and never reads it.
+    state: { armed: false, [HERO_PLAY_KEY]: false },
     actions: {
       // Fired on appear: get mic permission, then arm the background session.
       arm: {

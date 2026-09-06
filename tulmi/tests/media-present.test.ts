@@ -181,3 +181,45 @@ describe("hero slots take their presentation from the registry too", () => {
     expect(screen.root.children[1].type).toBe("Heading");
   });
 });
+
+describe("a hero clip can arrive on a still and then move", () => {
+  function flowVideo(present?: MediaPresent) {
+    setMediaRegistryAccessor(() => ({
+      "hero.flow_arm": {
+        url: "https://api.tailzu.space/media/f.mp4",
+        contentType: "video/mp4", size: 1, uploadedAt: 1,
+        ...(present ? { present } : {}),
+      },
+    }));
+    const screen = buildScreen("flow_arm", {
+      personality: {}, language: "en", onboarded: true, params: {}, email: "a@b.com",
+    } as never) as any;
+    return { screen, video: screen.root.children[0].children[0] };
+  }
+
+  it("plays itself, looping, when nothing says otherwise", () => {
+    const { video } = flowVideo();
+    expect(video.props.autoplay).toBe(true);
+    expect(video.props.loop).toBe(true);
+    expect(video.bind).toBeUndefined();
+  });
+
+  it("startDelayMs holds the first frame, then starts it once", () => {
+    const { screen, video } = flowVideo({ startDelayMs: 1500, loop: false });
+    expect(video.props.autoplay).toBe(false);
+    expect(video.props.loop).toBe(false);
+    // Bound to state the screen declares, flipped by the clip's own timer.
+    expect(video.bind.playing).toBe("_heroPlaying");
+    expect(screen.state._heroPlaying).toBe(false);
+    const seq = video.on.onAppear.actions;
+    expect(seq[0]).toEqual({ kind: "delay", ms: 1500 });
+    expect(seq[1].path).toBe("_heroPlaying");
+    expect(seq[1].value).toBe(true);
+  });
+
+  it("holdMs sets how long the screen stays", () => {
+    const { screen } = flowVideo({ startDelayMs: 1500, holdMs: 3000 });
+    const delay = screen.actions.doArm.actions.find((a: any) => a.kind === "delay");
+    expect(delay.ms).toBe(3000);
+  });
+});
