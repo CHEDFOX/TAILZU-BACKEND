@@ -182,7 +182,7 @@ describe("hero slots take their presentation from the registry too", () => {
   });
 });
 
-describe("a hero clip can arrive on a still and then move", () => {
+describe("a hero clip plays itself", () => {
   function flowVideo(present?: MediaPresent) {
     setMediaRegistryAccessor(() => ({
       "hero.flow_arm": {
@@ -197,28 +197,29 @@ describe("a hero clip can arrive on a still and then move", () => {
     return { screen, video: screen.root.children[0].children[0] };
   }
 
-  it("plays itself, looping, when nothing says otherwise", () => {
+  it("autoplays, looping, by default", () => {
     const { video } = flowVideo();
     expect(video.props.autoplay).toBe(true);
     expect(video.props.loop).toBe(true);
+  });
+
+  it("loop:false plays once and holds the last frame", () => {
+    const { video } = flowVideo({ loop: false });
+    expect(video.props.loop).toBe(false);
+    expect(video.props.autoplay).toBe(true);
+  });
+
+  it("NEVER hands the player a false `playing`", () => {
+    // MediaPlayer resolves shouldPlay = playing ?? autoplay, and a paused
+    // expo-video player that has never played renders nothing at all. A clip
+    // that arrives paused is a clip that does not arrive.
+    const { video } = flowVideo({ loop: false, holdMs: 4200 });
+    expect(video.props.playing).toBeUndefined();
     expect(video.bind).toBeUndefined();
   });
 
-  it("startDelayMs holds the first frame, then starts it once", () => {
-    const { screen, video } = flowVideo({ startDelayMs: 1500, loop: false });
-    expect(video.props.autoplay).toBe(false);
-    expect(video.props.loop).toBe(false);
-    // Bound to state the screen declares, flipped by the clip's own timer.
-    expect(video.bind.playing).toBe("_heroPlaying");
-    expect(screen.state._heroPlaying).toBe(false);
-    const seq = video.on.onAppear.actions;
-    expect(seq[0]).toEqual({ kind: "delay", ms: 1500 });
-    expect(seq[1].path).toBe("_heroPlaying");
-    expect(seq[1].value).toBe(true);
-  });
-
   it("holdMs sets how long the screen stays", () => {
-    const { screen } = flowVideo({ startDelayMs: 1500, holdMs: 3000 });
+    const { screen } = flowVideo({ holdMs: 3000 });
     const delay = screen.actions.doArm.actions.find((a: any) => a.kind === "delay");
     expect(delay.ms).toBe(3000);
   });

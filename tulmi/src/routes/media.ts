@@ -55,7 +55,6 @@ function cleanPresent(raw: unknown): MediaPresent | null {
   // A held scene the user cannot leave is the worst failure this screen has,
   // so the ceiling is low on purpose.
   const hold = num(r.holdMs, 300, 20000); if (hold !== undefined) out.holdMs = hold;
-  const start = num(r.startDelayMs, 0, 10000); if (start !== undefined) out.startDelayMs = start;
   if (typeof r.loop === "boolean") out.loop = r.loop;
   if (typeof r.background === "string" && /^#[0-9a-f]{3,8}$/i.test(r.background.trim())) {
     out.background = r.background.trim();
