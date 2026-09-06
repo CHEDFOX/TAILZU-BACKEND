@@ -4403,7 +4403,21 @@ function keyboardRecordScreen(ctx: ScreenContext): ScreenResponse {
  * a handoff that outstays its welcome is a wait.
  */
 function flowDismissMs(): number {
-  const clip = getMediaRegistryFn?.()?.["hero.flow_arm"]?.durationMs;
+  const entry = getMediaRegistryFn?.()?.["hero.flow_arm"];
+  // The upload says how long the screen lasts, in order of how much it knows:
+  //
+  //   present.holdMs  — someone said so, over HTTP. Ends the argument.
+  //   durationMs      — the compressor measured the clip. One play, plus a
+  //                     beat to read the last frame on.
+  //   the default     — no clip, or nothing has measured it yet.
+  //
+  // holdMs is here because a bare upload carries no duration: only the
+  // compressor probes that, so a clip that never needed compressing left this
+  // screen sitting on a default while a one-second film looped four times
+  // underneath it and got cut mid-play.
+  const hold = entry?.present?.holdMs;
+  if (hold) return Math.min(hold, 20_000);
+  const clip = entry?.durationMs;
   if (!clip) return FLOW_ARM_DISMISS_MS;
   return Math.min(clip + 900, 20_000);
 }
