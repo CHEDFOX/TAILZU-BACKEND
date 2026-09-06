@@ -535,6 +535,19 @@ export interface PaywallPlan {
   badge?: string;                   // "Save 40%", "Best value", "3-day trial"
   accent?: string;                  // hex — overrides theme primary on select
   default?: boolean;                // pre-selected when the screen opens
+  /**
+   * A card that is shown but cannot be bought — the free tier, standing next to
+   * what money buys.
+   *
+   * It is not selectable, it carries no purchase action, and the CTA chain skips
+   * it entirely. Without that last part a "free plan" is a button that tries to
+   * buy a product with no id and fails in front of the user.
+   *
+   * Worth showing: a paywall that lists only paid tiers implies the free one has
+   * run out or never existed, and App Review reads "what do I get for nothing"
+   * as part of a subscription being honestly described.
+   */
+  free?: boolean;
 }
 
 /**

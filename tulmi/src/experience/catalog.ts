@@ -23,6 +23,7 @@ import type {
 import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
 import { applyRollouts, activeRollouts } from "./rollout.js";
 import type { HistoryEntry, PaywallConfig, PaywallPlan, Personality, StatsResponse, UsageSummary } from "../../../shared/types/api.js";
+import { getConfig } from "../config.js";
 import type { Allowance } from "../usage/allowance.js";
 import {
   PERSONALITY_PRESETS,
@@ -387,11 +388,23 @@ const INTRO_PLAY_WHEN =
   : "firstRun";
 
 /**
- * Free words per month, mirrored from the same env the server enforces
- * (FREE_MONTHLY_WORDS). Read here so the number the app SHOWS and the number
- * the server ENFORCES can never drift — one source, two readers.
+ * Free words per month — THE SAME NUMBER THE SERVER ENFORCES.
+ *
+ * This claimed to be that already, and was not. It re-read the env with its own
+ * default of 2500 while config.ts defaults to 800, so with the variable unset —
+ * which is how it actually runs — the app promised 2,500 words and the meter cut
+ * users off at 800. Two readers, two sources, and the drift was the value
+ * itself.
+ *
+ * Read through getConfig() now. It is the one place the env is parsed, and both
+ * the allowance and the meter read it, so a number shown here cannot disagree
+ * with the number charged there. A function, not a module constant: config is
+ * resolved at boot, and a const evaluated at import time would freeze whatever
+ * the env looked like before that.
  */
-const FREE_MONTHLY_WORDS = Number(process.env.FREE_MONTHLY_WORDS ?? 2500) || 0;
+function freeMonthlyWords(): number {
+  return Math.max(0, getConfig().FREE_MONTHLY_WORDS);
+}
 
 const NAV: NavigationShell = {
   kind: "tabs",
@@ -575,12 +588,12 @@ export function buildBootstrap(
         // because every existing client reads it; what changed is that it is no
         // longer a constant. A user who has come back four days running sees
         // 2,900 here, and 2,900 is what the server will enforce.
-        "quota.wordsFree": opts.allowance?.total ?? FREE_MONTHLY_WORDS,
+        "quota.wordsFree": opts.allowance?.total ?? freeMonthlyWords(),
         // The plan's own words, so the app can show the earned part separately.
-        "quota.wordsBase": FREE_MONTHLY_WORDS,
+        "quota.wordsBase": freeMonthlyWords(),
         "quota.wordsEarned": opts.allowance?.earned ?? 0,
         "quota.wordsRemaining": opts.allowance?.remaining
-          ?? Math.max(0, FREE_MONTHLY_WORDS - (opts.wordsUsed ?? 0)),
+          ?? Math.max(0, freeMonthlyWords() - (opts.wordsUsed ?? 0)),
         // The streak. NOT what tomorrow is worth — that number no longer
         // exists to send, because naming it turns anticipation into
         // arithmetic and a known reward into a price.
@@ -589,7 +602,7 @@ export function buildBootstrap(
         // The one flag every gate reads: out of words and not paying.
         "quota.exceeded":
           opts.entitled !== true
-          && (opts.wordsUsed ?? 0) >= (opts.allowance?.total ?? FREE_MONTHLY_WORDS),
+          && (opts.wordsUsed ?? 0) >= (opts.allowance?.total ?? freeMonthlyWords()),
         "paywall.blockUntilEntitled": false,
         // DISABLED for now: the paywall was auto-showing on every open (user
         // lacks `pro`) and its purchase fails with "could not complete purchase"
@@ -603,7 +616,7 @@ export function buildBootstrap(
         // without it the client has to guess the number, and a guess that
         // disagrees with the server means a user hitting a wall the UI never
         // warned them about. 0 = unlimited.
-        "quota.freeMonthlyWords": FREE_MONTHLY_WORDS,
+        "quota.freeMonthlyWords": freeMonthlyWords(),
         "paywall.showAfterOnboarding": false,
         "paywall.config": PAYWALL_CONFIG as unknown as Record<string, unknown>,
 
@@ -1660,6 +1673,26 @@ export const PAYWALL_CONFIG: PaywallConfig = {
   // `default: true` pre-selects it.
   plans: [
     {
+      // BITE — the free tier, shown but not sold.
+      //
+      // A paywall listing only paid tiers implies the free one has run out or
+      // never existed. Standing it next to Lite and Elite is what makes the
+      // other two read as a choice rather than a toll.
+      //
+      // NO NUMBER HERE. It is filled in by paywallScreen from the allowance the
+      // server actually enforces, because writing "800" in this file would be a
+      // promise the backend never agreed to — and the day the allowance moves,
+      // the paywall would keep quoting the old one to everyone who reads it.
+      //
+      // It cannot be computed here either: this object is built when the module
+      // is imported, and config is resolved after that, so anything read at this
+      // point is whatever the environment looked like before boot.
+      id: "free",
+      free: true,
+      label: "Bite",
+      price: "Free",
+    },
+    {
       id: "annual",
       // VERIFIED against the RevenueCat dashboard (entitlement "TAILZU AIR",
       // Associated products): "tailzu_annu" is the exact full identifier.
@@ -1715,12 +1748,17 @@ export const PAYWALL_CONFIG: PaywallConfig = {
  */
 function paywallScreen(): ScreenResponse {
   const cfg = PAYWALL_CONFIG;
-  const defaultPlan = cfg.plans.find((p) => p.default) ?? cfg.plans[0];
+  // The cards that can actually be bought. A `free` plan is a card and nothing
+  // else: no purchase action is built for it, the CTA chain never dispatches to
+  // it, and it can never become the fallback — a CTA aimed at a plan with no
+  // product id is a button that fails in front of the user, every time.
+  const sellable = cfg.plans.filter((p) => !p.free);
+  const defaultPlan = sellable.find((p) => p.default) ?? sellable[0];
 
   // One action per plan — the CTA references the currently-selected one
   // via a `condition` chain.
   const planActions: Record<string, ActionRef> = {};
-  cfg.plans.forEach((plan) => {
+  sellable.forEach((plan) => {
     planActions[`buy.${plan.id}`] = {
       kind: "sequence",
       actions: [
@@ -1744,7 +1782,7 @@ function paywallScreen(): ScreenResponse {
   });
 
   // CTA chain: check selectedPlanId, dispatch to matching buy.* action.
-  const ctaCondition: ActionRef = cfg.plans.reduceRight<ActionRef>(
+  const ctaCondition: ActionRef = sellable.reduceRight<ActionRef>(
     (acc, plan) => ({
       kind: "condition",
       if: { eq: ["selectedPlanId", plan.id] },
@@ -1790,6 +1828,12 @@ function paywallScreen(): ScreenResponse {
     (f) => f.key || f.url || f.asset,
   );
 
+  // Three cards where there were two. The price is the widest thing in a card,
+  // and at three across a phone leaves about 77pt of content width — "$59.99"
+  // at 22pt weight 800 is within a hair of that. Step it down rather than
+  // discover the overflow on someone's SE.
+  const priceSize = cfg.plans.length >= 3 ? 19 : 22;
+
   const planCard = (plan: PaywallPlan): Node => ({
     type: "Card",
     style: {
@@ -1797,27 +1841,42 @@ function paywallScreen(): ScreenResponse {
       padding: 14,
       borderRadius: 16,
       borderWidth: 1.5,
-      borderColor: {
-        eq: ["selectedPlanId", plan.id],
-        then: plan.accent ?? THEME.color.primary,
-        else: THEME.color.border,
-      } as unknown as string,
-      backgroundColor: {
-        eq: ["selectedPlanId", plan.id],
-        then: "rgba(255,255,255,0.06)",
-        else: "transparent",
-      } as unknown as string,
+      // A free card never selects, so a selection-dependent border would be a
+      // condition with one branch. It gets the quiet edge permanently, and sits
+      // back from the two that are asking for something.
+      borderColor: plan.free
+        ? THEME.color.border
+        : ({
+            eq: ["selectedPlanId", plan.id],
+            then: plan.accent ?? THEME.color.primary,
+            else: THEME.color.border,
+          } as unknown as string),
+      backgroundColor: plan.free
+        ? "transparent"
+        : ({
+            eq: ["selectedPlanId", plan.id],
+            then: "rgba(255,255,255,0.06)",
+            else: "transparent",
+          } as unknown as string),
+      ...(plan.free ? { opacity: 0.62 } : {}),
       minHeight: 118,
     },
-    on: {
-      onPress: {
-        kind: "sequence",
-        actions: [
-          { kind: "haptic", style: "selection" },
-          { kind: "setState", path: "selectedPlanId", value: plan.id },
-        ],
-      },
-    },
+    // NO onPress on a free card. Selecting it would arm a CTA that has nothing
+    // to buy; leaving it untappable says "this is what you already have" with
+    // the one gesture the user does not get.
+    ...(plan.free
+      ? {}
+      : {
+          on: {
+            onPress: {
+              kind: "sequence",
+              actions: [
+                { kind: "haptic", style: "selection" },
+                { kind: "setState", path: "selectedPlanId", value: plan.id },
+              ],
+            },
+          },
+        }),
     children: [
       ...(plan.badge
         ? [
@@ -1840,7 +1899,14 @@ function paywallScreen(): ScreenResponse {
         : []),
       text(plan.label, "label", { style: { color: THEME.color.muted, fontSize: 12, letterSpacing: 0.6, textTransform: "uppercase" } }),
       spacer(6),
-      text(plan.price, "h1", { style: { color: THEME.color.text, fontSize: 22, fontWeight: "800" } }),
+      text(plan.price, "h1", { style: { color: THEME.color.text, fontSize: priceSize, fontWeight: "800" } }),
+      // The free card's second line is the ALLOWANCE, read at build time from
+      // the same config the meter enforces. It is not in PAYWALL_CONFIG because
+      // that object is built at import, before config exists.
+      ...(plan.free && !plan.period
+        ? [text(`${freeMonthlyWords().toLocaleString("en-US")} words / month`, "caption",
+            { style: { color: THEME.color.body, fontSize: 12, marginTop: 2 } })]
+        : []),
       ...(plan.period
         ? [text(plan.period, "caption", { style: { color: THEME.color.body, fontSize: 12, marginTop: 2 } })]
         : []),

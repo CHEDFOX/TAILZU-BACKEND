@@ -13,6 +13,7 @@ import {
   bumpCacheVersion,
   currentCacheVersion,
 } from "../src/experience/catalog.js";
+import { getConfig } from "../src/config.js";
 
 describe("the arrival prompt", () => {
   const flags = (o: Parameters<typeof buildBootstrap>[0]) =>
@@ -85,6 +86,49 @@ describe("the mic step asks with one row, not two offers", () => {
     expect(accept.style.backgroundColor).toBe("#E8A23C");
     expect(Number(decline.style.opacity)).toBeLessThan(1);
     expect(Number(decline.style.paddingVertical)).toBeLessThan(17);
+  });
+});
+
+describe("the paywall shows the free tier without selling it", () => {
+  const cards = () => {
+    const s = buildScreen("paywall", { personality: {}, language: "en" } as never) as {
+      root: Record<string, any>; actions: Record<string, unknown>;
+    };
+    const find = (n: any): any => {
+      if (n?.style?.flexDirection === "row" && n?.style?.gap === 10 && n.children?.length >= 3) return n;
+      for (const c of n?.children ?? []) { const h = find(c); if (h) return h; }
+      return null;
+    };
+    return { row: find(s.root), actions: s.actions };
+  };
+
+  it("stands Bite next to what money buys", () => {
+    const texts = cards().row.children.map((c: any) =>
+      c.children.map((x: any) => x.props?.content ?? x.props?.text).filter(Boolean));
+    expect(texts[0]).toContain("Bite");
+    expect(texts[0]).toContain("Free");
+    expect(texts.flat()).toContain("$59.99");
+    expect(texts.flat()).toContain("$9.99");
+  });
+
+  it("NEVER builds a purchase for the free card", () => {
+    // A CTA aimed at a plan with no product id is a button that fails in front
+    // of the user, every time it is pressed.
+    const { row, actions } = cards();
+    expect(Object.keys(actions).filter((k) => k.startsWith("buy."))).toEqual(["buy.annual", "buy.monthly"]);
+    expect(row.children[0].on).toBeUndefined();      // untappable, so unselectable
+    expect(JSON.stringify(actions.cta)).not.toContain("free");
+  });
+
+  it("quotes the allowance the SERVER enforces, not a literal", () => {
+    // This drifted once: the catalog re-read the env with its own default of
+    // 2500 while config defaults to 800, so the app promised 2,500 words and
+    // the meter cut users off at 800. One reader now, through getConfig.
+    const shown = cards().row.children[0].children
+      .map((x: any) => x.props?.content).filter(Boolean)
+      .find((s: string) => /words \/ month$/.test(s));
+    const flags = (buildBootstrap({}).flags ?? {}) as Record<string, unknown>;
+    expect(shown).toBe(`${Number(flags["quota.freeMonthlyWords"]).toLocaleString("en-US")} words / month`);
   });
 });
 
@@ -434,10 +478,16 @@ describe("buildKeyboardConfig", () => {
     // The app shows progress against this and decides when to put the paywall
     // up. If it disagreed with what the server enforces, a user would hit a
     // wall the UI never warned them about.
+    //
+    // This assertion USED TO ENCODE THE BUG. It compared the served number to
+    // `process.env.FREE_MONTHLY_WORDS ?? 2500`, which is what the catalog did —
+    // so it passed while the catalog said 2,500 and config said 800, and the
+    // one thing it existed to catch was the one thing it could not see. It now
+    // asks the config, which is what the meter charges against.
     const boot = buildBootstrap();
     const served = boot.flags?.["quota.freeMonthlyWords"];
     expect(typeof served).toBe("number");
-    expect(served).toBe(Number(process.env.FREE_MONTHLY_WORDS ?? 2500) || 0);
+    expect(served).toBe(getConfig().FREE_MONTHLY_WORDS);
   });
 
   it("offers SMS sign-in unless the env turns it off", () => {

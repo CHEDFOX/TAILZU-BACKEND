@@ -1,4 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
+
+// The catalog reads the app's config now — the free tier it quotes has to be
+// the one the meter enforces — so building a screen needs a valid environment.
+process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+process.env.OPENAI_API_KEY = "test-openai-key";
+process.env.STT_PROVIDER = "openai";
+process.env.DEV_SKIP_AUTH = "true";
+
+// eslint-disable-next-line import/first
 import { buildScreen, setMediaRegistryAccessor } from "../src/experience/catalog.js";
 import type { MediaPresent } from "../../shared/types/sdui.js";
 
