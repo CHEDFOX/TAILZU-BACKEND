@@ -1314,6 +1314,13 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
     // hidden.
     root: {
       type: "Stack",
+      // Tap anywhere to skip — and the only way out if the timer never fires.
+      //
+      // There used to be a "Get started" button here. It was the escape hatch
+      // for a screen with no header and no tab bar, and it was also a white
+      // bar across the bottom of a four-second film. The screen keeps the
+      // hatch and loses the furniture: a Stack takes a press directly, so the
+      // whole frame is the target and nothing is drawn over the media.
       // Auto-advance owned by the SCREEN, on every path.
       //
       // `delay` + `navigate` are core actions, so this works on any client
@@ -1323,6 +1330,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
       // strands the user with no way off at all. Nothing here depends on a
       // component reporting anything any more.
       on: {
+        onPress: { kind: "navigate", screenId: next },
         onAppear: { kind: "sequence", actions: [
           // Video gets a longer leash: it is the one path that can still report
           // its own completion, so this is only the net for a clip that never
@@ -1436,37 +1444,6 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
             }],
           },
         } as Node] : []),
-        // The way out, ALWAYS — and LAST, so it paints over the media.
-        //
-        // It used to be first in this list, which was harmless while the media
-        // was a 128pt circle in the middle of the screen. The media covers the
-        // screen now, and later siblings paint on top, so first in the list is
-        // the one place this button cannot be. The intro hides the header and
-        // the tab bar and is the only stack entry: if the media stalls or the
-        // timer never fires, this is the only thing to tap.
-        //
-        // A STACK carries the position, not the Button.
-        //
-        // The client's Button is a Pressable wrapping an Animated.View, and
-        // the style it is given lands on the INNER view. So `position:
-        // absolute` took the button out of the flow of its own wrapper: the
-        // Pressable, left holding nothing laid out, collapsed to zero, and the
-        // insets then resolved against a 0×0 parent. What was meant to be a
-        // bar across the bottom rendered as its own padding — a 56pt white
-        // pill, floating in the middle of the screen, because a zero-size
-        // Pressable is centred by this root. Clickable, and unrecognisable.
-        //
-        // A plain Stack has no such wrapper. It takes the position, the button
-        // sits in its flow, and it stretches to the width the Stack was given.
-        {
-          type: "Stack",
-          style: { position: "absolute", bottom: 56, left: 24, right: 24, zIndex: 2 },
-          children: [{
-            type: "Button",
-            props: { label: "Get started", variant: "primary" },
-            on: { onPress: "done" },
-          }],
-        } as Node,
       ],
     },
     cacheTtlSeconds: 60,
