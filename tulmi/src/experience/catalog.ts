@@ -1444,11 +1444,28 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
         // the one place this button cannot be. The intro hides the header and
         // the tab bar and is the only stack entry: if the media stalls or the
         // timer never fires, this is the only thing to tap.
+        //
+        // A STACK carries the position, not the Button.
+        //
+        // The client's Button is a Pressable wrapping an Animated.View, and
+        // the style it is given lands on the INNER view. So `position:
+        // absolute` took the button out of the flow of its own wrapper: the
+        // Pressable, left holding nothing laid out, collapsed to zero, and the
+        // insets then resolved against a 0×0 parent. What was meant to be a
+        // bar across the bottom rendered as its own padding — a 56pt white
+        // pill, floating in the middle of the screen, because a zero-size
+        // Pressable is centred by this root. Clickable, and unrecognisable.
+        //
+        // A plain Stack has no such wrapper. It takes the position, the button
+        // sits in its flow, and it stretches to the width the Stack was given.
         {
-          type: "Button",
-          props: { label: "Get started", variant: "primary" },
-          on: { onPress: "done" },
+          type: "Stack",
           style: { position: "absolute", bottom: 56, left: 24, right: 24, zIndex: 2 },
+          children: [{
+            type: "Button",
+            props: { label: "Get started", variant: "primary" },
+            on: { onPress: "done" },
+          }],
         } as Node,
       ],
     },
