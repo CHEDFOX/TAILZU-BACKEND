@@ -64,6 +64,10 @@ function cleanPresent(raw: unknown): MediaPresent | null {
   // How big the media is drawn inside that window. Floor at 0.05 so a typo
   // shrinks the opening rather than deleting it.
   const sc = num(r.scale, 0.05, 1); if (sc !== undefined) out.scale = sc;
+  // A box in points, for matching something the platform itself measures in
+  // points. Floor at 40 so a box is always big enough to see it went wrong.
+  const bw = num(r.boxWidth, 40, 4000); if (bw !== undefined) out.boxWidth = bw;
+  const bh = num(r.boxHeight, 40, 4000); if (bh !== undefined) out.boxHeight = bh;
   if (typeof r.background === "string" && /^#[0-9a-f]{3,8}$/i.test(r.background.trim())) {
     out.background = r.background.trim();
   }
@@ -431,7 +435,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
     if (!present) {
       return reply.code(400).send({
         code: "bad_request",
-        message: "Nothing usable. Fields: shape (full|plate|card), fit (cover|contain), radius, inset, size, aspectRatio, background (#hex), holdMs, loop, nudgeX, nudgeY (percent of the window, +/-50), scale (0.05-1).",
+        message: "Nothing usable. Fields: shape (full|plate|card), fit (cover|contain), radius, inset, size, aspectRatio, background (#hex), holdMs, loop, nudgeX, nudgeY (percent of the window, +/-50), scale (0.05-1), boxWidth, boxHeight (points).",
       });
     }
     // Merge, so setting one field does not silently drop the rest.

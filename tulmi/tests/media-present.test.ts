@@ -153,6 +153,40 @@ describe("media presentation is registry data", () => {
     expect(n.style.left).toBe("3.2%");
     expect(n.style.width).toBe("100%");
   });
+
+  // A launch screen's icon is 17pt on every phone. Media under `cover` is a
+  // share of the screen. A percentage cannot equal a fixed number on more than
+  // one screen size, so matching one means fixing the other in points too.
+  it("a box in points anchors at the middle and pulls back half its size", () => {
+    withPresent({ boxWidth: 358, boxHeight: 644 });
+    const n = mediaNode();
+    expect(n.style.width).toBe(358);
+    expect(n.style.height).toBe(644);
+    expect(n.style.left).toBe("50%");
+    expect(n.style.top).toBe("50%");
+    expect(n.style.marginLeft).toBe(-179);
+    expect(n.style.marginTop).toBe(-322);
+  });
+
+  it("a nudge on a fixed box is percent OF THE BOX, so it stays fixed too", () => {
+    withPresent({ boxWidth: 358, boxHeight: 644, nudgeX: 2.62, nudgeY: 2.85 });
+    const n = mediaNode();
+    // -179 + 2.62% of 358
+    expect(n.style.marginLeft).toBe(-169.62);
+    // -322 + 2.85% of 644
+    expect(n.style.marginTop).toBe(-303.65);
+  });
+
+  it("each axis decides for itself", () => {
+    withPresent({ boxHeight: 644, nudgeX: 3.2, nudgeY: 2.85 });
+    const n = mediaNode();
+    // Height fixed in points, width still a share of the screen.
+    expect(n.style.height).toBe(644);
+    expect(n.style.marginTop).toBe(-303.65);
+    expect(n.style.width).toBe("100%");
+    expect(n.style.left).toBe("3.2%");
+    expect(n.style.marginLeft).toBeUndefined();
+  });
 });
 
 // The same contract for the hero slots. A hero lives inside a padded screen,

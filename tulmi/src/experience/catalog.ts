@@ -1140,12 +1140,30 @@ function presentMedia(entry: MediaEntry | undefined): Presented {
   // opening film's subject comes out bigger than it, the film is the only side
   // that can move without a build. The right fix is the icon; this is the one
   // available today.
+  // A BOX in points is the same idea taken all the way. A launch screen's icon
+  // is 17pt on a mini and 17pt on a Pro Max; media under `cover` is a share of
+  // the screen, so 17pt then 20pt. A percentage of a number that changes cannot
+  // equal a number that does not — the two agree on one screen size and drift
+  // on every other. Fixing the box in points puts both on the same ruler.
+  //
+  // Each axis decides for itself: a point size anchors at 50% and pulls back by
+  // half its own size (the standard centring pair), a missing one keeps the
+  // screen-relative behaviour above.
   const scale = p.scale !== undefined ? Math.min(1, Math.max(0.05, p.scale)) : 1;
-  const nudged = p.nudgeX !== undefined || p.nudgeY !== undefined || scale !== 1;
+  const boxed = p.boxWidth !== undefined || p.boxHeight !== undefined;
+  const nudged = p.nudgeX !== undefined || p.nudgeY !== undefined || scale !== 1 || boxed;
   // Four decimals: enough to place a mark inside a pixel, short enough that the
   // served JSON reads as a number a person chose.
   const pct = (n: number) => `${Math.round(n * 1e4) / 1e4}%`;
+  const round = (n: number) => Math.round(n * 100) / 100;
   const centred = ((1 - scale) / 2) * 100;
+  /** One axis of the box: its size, where it starts, and any pull-back. */
+  const axis = (points: number | undefined, nudge: number) =>
+    points !== undefined
+      ? { size: points, at: "50%", margin: round(-points / 2 + (nudge / 100) * points) }
+      : { size: pct(scale * 100), at: pct(centred + nudge), margin: undefined };
+  const x = axis(p.boxWidth, p.nudgeX ?? 0);
+  const y = axis(p.boxHeight, p.nudgeY ?? 0);
   return {
     fit,
     holdMs: p.holdMs ?? null,
@@ -1153,9 +1171,10 @@ function presentMedia(entry: MediaEntry | undefined): Presented {
       position: "absolute" as const,
       ...(nudged
         ? {
-            top: pct(centred + (p.nudgeY ?? 0)),
-            left: pct(centred + (p.nudgeX ?? 0)),
-            width: pct(scale * 100), height: pct(scale * 100),
+            top: y.at, left: x.at,
+            width: x.size, height: y.size,
+            ...(x.margin !== undefined ? { marginLeft: x.margin } : {}),
+            ...(y.margin !== undefined ? { marginTop: y.margin } : {}),
           }
         : {
             top: inset, left: inset, right: inset, bottom: inset,

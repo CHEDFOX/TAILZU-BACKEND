@@ -158,6 +158,29 @@ export interface MediaPresent {
    * gutters show.
    */
   scale?: number;
+  /**
+   * Draw the media in a box of this many POINTS, instead of a share of the
+   * screen. Either axis, or both; an axis left out keeps the screen-relative
+   * behaviour (`scale`).
+   *
+   * This is the only way to match something the platform measures in points.
+   * A launch screen's icon is a fixed size compiled into the binary — 17pt on
+   * a mini and 17pt on a Pro Max. Media under `cover` is a share of the screen
+   * — 17pt on a mini, 20pt on a Pro Max. A percentage of a number that changes
+   * can never equal a number that does not, so the two only agree on one screen
+   * size. Fixing the box in points puts both on the same ruler, and then they
+   * agree on all of them.
+   *
+   * What it costs: the media stops filling the screen, and reads smaller on
+   * bigger phones. For art that is a subject on the screen's own background
+   * that costs nothing — the subject is the only thing visible and it is now
+   * exact. For art that reaches its own edges, the box becomes visible.
+   *
+   * The box is centred, then nudged, so nudgeX/nudgeY keep their meaning: how
+   * far off centre, in percent of the box.
+   */
+  boxWidth?: number;
+  boxHeight?: number;
 }
 
 export interface MediaEntry {
