@@ -5961,13 +5961,18 @@ export function buildKeyboardConfig(
         // what the debug overlay was doing by accident and why the keyboard
         // measurably worked with it on.
         //
-        // OFF from K31. It was belt-and-braces for a broken cheap check: the
-        // witness list held ONE key, from a Dictionary, and could only speak
-        // for its own row. K31 keeps one witness per row and checks all of
-        // them, so the cheap path is now correct and a full rebuild on every
-        // layout pass is forty-odd coordinate conversions per keystroke that
-        // buy nothing. Back to true if a dead gap ever returns.
-        "kb.touch.alwaysRefresh": false,
+        // BACK ON, and staying on. It was turned off with the overlay on the
+        // theory that K31's per-row witnesses made it redundant. The dead gaps
+        // came straight back, which says the cheap check is not equivalent —
+        // and the likely reason is ordering, not correctness: the plane lays
+        // out before the key buttons settle, so every witness compares a stale
+        // rect against the stale rect it recorded, agrees with itself, and
+        // reports a grid that has not moved. Rebuilding unconditionally cannot
+        // be fooled that way.
+        //
+        // The cost is real and it is small: forty-odd coordinate conversions
+        // per layout pass. A keyboard with dead gaps is not cheaper.
+        "kb.touch.alwaysRefresh": true,
         // totalResolve: a point the plane claimed always resolves to a key.
         // OFF restores the old behaviour, where a claimed point the resolver
         // could not place was dropped in silence.
