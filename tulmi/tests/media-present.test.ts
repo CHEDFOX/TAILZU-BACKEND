@@ -264,6 +264,24 @@ describe("hero slots take their presentation from the registry too", () => {
     expect(h.children[0].props.contentFit).toBe("cover");
   });
 
+  // The SHIPPED Video node boxes a plain { url } into { source: url }, and the
+  // resolver behind it has never known that shape — so it resolved to "empty",
+  // the player returned null, and every backend Video rendered nothing at all.
+  // The payload carries both keys so the broken build and the fixed one each
+  // find what they look for.
+  it("a media source survives the shipped Video node", () => {
+    const h = heroOf("flow_arm", "hero.flow_arm", undefined, "video/mp4");
+    const src = h.children[0].props.source as Record<string, unknown>;
+    // `source` puts the old node on its pass-through branch, so it stops
+    // wrapping and the object reaches the resolver intact.
+    expect(src.source).toBe(src.url);
+    // `url` is what the resolver matches on — first, and it never looks at
+    // `source`. The fixed node reads .source instead, and the resolver's string
+    // branch turns that back into { url }.
+    expect(String(src.url)).toMatch(/^https:\/\/.+\.mp4$/);
+    expect(src.contentType).toBe("video/mp4");
+  });
+
   it("the flow clip is not filtered by platform", () => {
     // It carried visibleIf:{platform:"ios"} because FLOW is iOS-only — true of
     // the feature, not of this screen. Anything that reaches here was routed by

@@ -62,7 +62,41 @@ export function setMediaRegistryAccessor(fn: () => Record<string, MediaEntry>): 
  */
 function mediaSrc(key: string): Record<string, unknown> {
   const entry = getMediaRegistryFn?.()?.[key];
-  return entry?.url ? { url: entry.url, contentType: entry.contentType } : { key };
+  return entry?.url ? mediaSource(entry.url, entry.contentType) : { key };
+}
+
+/**
+ * A media source shaped to survive the SHIPPED Video node.
+ *
+ * That node does this before handing the source to the player:
+ *
+ *   spec = "source" in raw ? raw : { source: raw }
+ *
+ * and the resolver behind it understands { url }, { key }, { asset }, { data },
+ * { emoji } and a bare string — never { source }. So a plain { url } was boxed
+ * into a shape nothing could read, resolved to "empty", and the player returned
+ * null. Every backend Video rendered nothing, silently. That is the black
+ * intro and the flow clip that was "just the text".
+ *
+ * The fix is one line in the app, and it is written and pushed. This is what
+ * reaches the builds already installed, which cannot be fixed at all otherwise:
+ *
+ *   `source` present  → the node takes the pass-through branch and stops
+ *                       wrapping, so the object arrives at the resolver intact.
+ *   `url` present     → the resolver matches on it, first, and never looks at
+ *                       `source`.
+ *
+ * Forward-safe, deliberately. The fixed node reads `raw.source`, which is the
+ * url string, and the resolver's string branch turns that back into { url };
+ * the extension then names the type where contentType would have. So both the
+ * broken build and the fixed one play the same clip from the same payload, and
+ * nothing has to be timed against an OTA.
+ *
+ * REMOVE IT when no install predating that fix is still in the field, and not
+ * before — a shim whose reason has been forgotten is worse than the bug.
+ */
+function mediaSource(url: string, contentType?: string): Record<string, unknown> {
+  return { url, ...(contentType ? { contentType } : {}), source: url };
 }
 
 /**
@@ -1416,7 +1450,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
   // including ones predating any of this.
   const introEntry = introKey ? reg[introKey] : undefined;
   const introSource = introEntry?.url
-    ? { url: introEntry.url, contentType: introEntry.contentType }
+    ? mediaSource(introEntry.url, introEntry.contentType)
     : { key: introKey };
   // An mp4 needs a Video node; Image would render nothing for it. Decided from
   // the RESOLVED entry, not the key's name — an `intro` override can be a video
