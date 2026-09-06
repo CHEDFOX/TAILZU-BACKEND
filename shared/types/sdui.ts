@@ -116,6 +116,26 @@ export interface MediaPresent {
   /** Whether the clip repeats. Default true: a hero is ambient. False plays it
    *  once and freezes on the last frame. */
   loop?: boolean;
+  /**
+   * Move the media inside its window, as a PERCENTAGE of that window —
+   * nudgeX of its width, nudgeY of its height. Positive is right and down.
+   *
+   * `cover` centres the FRAME. The subject of a frame is rarely at its centre,
+   * and the opening media is the case in point: its mark sits at (0.474,
+   * 0.471) of its own art, so `cover` lands it left of and above the middle of
+   * the screen while the launch screen draws the same mark dead centre. That
+   * difference is the jump between them, and it is not in the art — it is in
+   * where the art is placed.
+   *
+   * Percentages rather than points because the miss is not a fixed size: on a
+   * phone taller than the art, `cover` scales the art to the screen's HEIGHT,
+   * so the offset grows with the device. A percentage is right on all of them.
+   *
+   * Applies to the "full" shape. A nudge replaces the pinned right/bottom
+   * edges, so it and `inset` are alternatives — the nudge wins.
+   */
+  nudgeX?: number;
+  nudgeY?: number;
 }
 
 export interface MediaEntry {

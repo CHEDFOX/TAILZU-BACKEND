@@ -56,6 +56,11 @@ function cleanPresent(raw: unknown): MediaPresent | null {
   // so the ceiling is low on purpose.
   const hold = num(r.holdMs, 300, 20000); if (hold !== undefined) out.holdMs = hold;
   if (typeof r.loop === "boolean") out.loop = r.loop;
+  // Where the media sits inside its window, in percent of that window. Bounded
+  // to +/-50 because a nudge past half the screen is not a nudge — it is a
+  // media file pushed off the screen with no way to see that it happened.
+  const nx = num(r.nudgeX, -50, 50); if (nx !== undefined) out.nudgeX = nx;
+  const ny = num(r.nudgeY, -50, 50); if (ny !== undefined) out.nudgeY = ny;
   if (typeof r.background === "string" && /^#[0-9a-f]{3,8}$/i.test(r.background.trim())) {
     out.background = r.background.trim();
   }
@@ -423,7 +428,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
     if (!present) {
       return reply.code(400).send({
         code: "bad_request",
-        message: "Nothing usable. Fields: shape (full|plate|card), fit (cover|contain), radius, inset, size, aspectRatio, background (#hex), holdMs.",
+        message: "Nothing usable. Fields: shape (full|plate|card), fit (cover|contain), radius, inset, size, aspectRatio, background (#hex), holdMs, loop, nudgeX, nudgeY (percent of the window, +/-50).",
       });
     }
     // Merge, so setting one field does not silently drop the rest.

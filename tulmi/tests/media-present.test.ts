@@ -94,6 +94,38 @@ describe("media presentation is registry data", () => {
     withPresent({ background: "#101014" });
     expect(mediaNode().style.backgroundColor).toBe("#101014");
   });
+
+  // The opening media's mark is not at the centre of its own frame, so `cover`
+  // — which centres the FRAME — puts it off centre on screen, while the launch
+  // screen draws the same mark dead centre. A nudge is how that is corrected
+  // without touching the art or shipping a build.
+  it("a nudge moves the window in PERCENT, not points", () => {
+    withPresent({ nudgeX: 3.18, nudgeY: 2.85 });
+    const n = mediaNode();
+    // Percent because cover scales the art to the screen's HEIGHT, so the miss
+    // grows with the device. A fixed number of points is right on one phone.
+    expect(n.style.left).toBe("3.18%");
+    expect(n.style.top).toBe("2.85%");
+  });
+
+  it("a nudge drops the pinned right/bottom and sizes from the parent", () => {
+    withPresent({ nudgeY: 2.85 });
+    const n = mediaNode();
+    // A box cannot be pinned to an edge and moved off it.
+    expect(n.style.right).toBeUndefined();
+    expect(n.style.bottom).toBeUndefined();
+    expect(n.style.width).toBe("100%");
+    expect(n.style.height).toBe("100%");
+    // The axis nobody asked about does not drift.
+    expect(n.style.left).toBe("0%");
+  });
+
+  it("no nudge leaves the pinned box exactly as it was", () => {
+    const n = mediaNode();
+    expect(n.style.top).toBe(0);
+    expect(n.style.right).toBe(0);
+    expect(n.style.bottom).toBe(0);
+  });
 });
 
 // The same contract for the hero slots. A hero lives inside a padded screen,

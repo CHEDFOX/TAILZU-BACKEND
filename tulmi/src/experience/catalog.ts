@@ -1117,13 +1117,38 @@ function presentMedia(entry: MediaEntry | undefined): Presented {
   }
   // full — absolutely filling its parent. width/height only when there is no
   // inset: with edges pinned they are redundant, and together they fight.
+  //
+  // A NUDGE moves the whole window inside the screen, in percent. `cover`
+  // centres the frame, and the subject of a frame is rarely at its centre —
+  // the opening media's mark sits at (0.474, 0.471) of its own art, so cover
+  // lands it left of and above the middle while the launch screen draws the
+  // same mark dead centre. The jump between them is placement, not art.
+  //
+  // Percent because the miss scales: on a phone taller than the art, cover
+  // scales the art to the screen's HEIGHT, so the offset grows with the
+  // device. `top`/`left` percentages resolve against the parent's height and
+  // width, so one pair of numbers is right on every screen.
+  //
+  // Right and bottom go: a box cannot be pinned to an edge and moved off it.
+  // Size comes from the parent instead, origin from the nudge. What slides off
+  // one edge is not visible arriving at the other — the screen behind is the
+  // same black the media is matted on.
+  const nudged = p.nudgeX !== undefined || p.nudgeY !== undefined;
   return {
     fit,
     holdMs: p.holdMs ?? null,
     style: {
       position: "absolute" as const,
-      top: inset, left: inset, right: inset, bottom: inset,
-      ...(inset ? {} : { width: "100%", height: "100%" }),
+      ...(nudged
+        ? {
+            top: `${p.nudgeY ?? 0}%`,
+            left: `${p.nudgeX ?? 0}%`,
+            width: "100%", height: "100%",
+          }
+        : {
+            top: inset, left: inset, right: inset, bottom: inset,
+            ...(inset ? {} : { width: "100%", height: "100%" }),
+          }),
       ...(p.radius ? { borderRadius: p.radius } : {}),
       backgroundColor: bg,
       overflow: "hidden" as const,
