@@ -4154,18 +4154,38 @@ function onboardingVoice(): ScreenResponse {
           props: { content: "The mic is what makes that possible — in every app you type in." },
           style: { textAlign: "center", fontSize: 13, lineHeight: 21, marginBottom: 21 },
         },
+        // ONE ROW, NOT A STACK. Two full-width pills read as two offers of equal
+        // weight, one merely above the other. Side by side, size and colour do
+        // the arguing: the accent pill is two thirds of the row and the decline
+        // is a dim third, so the choice is legible before either label is read.
+        //
+        // Decline on the LEFT. The thumb rests on the right, and the button
+        // under a resting thumb should be the one that moves the user forward.
         {
-          type: "Button",
-          props: { label: "Turn on the mic", variant: "primary" },
-          on: { onPress: "allowMic" },
-          style: { width: "100%" },
-        },
-        { type: "Spacer", style: { height: 13 } },
-        {
-          type: "Button",
-          props: { label: "Not now", variant: "secondary" },
-          on: { onPress: "goKeyboard" },
-          style: { width: "100%" },
+          type: "Stack",
+          style: { direction: "row", gap: 12, width: "100%", alignItems: "center" },
+          children: [
+            {
+              type: "Button",
+              props: { label: "Not now", variant: "secondary" },
+              on: { onPress: "goKeyboard" },
+              // Shorter and dimmer than its neighbour. The label's size is set
+              // inside the component and cannot be reached from here, so
+              // "smaller" is padding and width; "quieter" is opacity.
+              style: { flex: 1, paddingVertical: 14, paddingHorizontal: 14, opacity: 0.55 },
+            },
+            {
+              type: "Button",
+              props: { label: "Enable", variant: "primary" },
+              on: { onPress: "allowMic" },
+              // The accent, not the theme's white. `primary` still decides the
+              // LABEL colour — readableOn(white) is black, which is also what
+              // reads on amber (about 10:1, where white would be 2:1) — while
+              // the style overrides the pill itself, because style is merged
+              // last.
+              style: { flex: 1.7, backgroundColor: ACCENT_AMBER },
+            },
+          ],
         },
       ],
     },

@@ -240,6 +240,18 @@ export function registerMediaRetimeRoute(
     // setting and no `present` field can override it. Changing it means
     // re-encoding, which is what this route already does.
     const loopRaw = q.loop === undefined || q.loop === "" ? undefined : q.loop !== "false";
+    // HOLD ON THE FIRST FRAME, in the file.
+    //
+    // This was once a client feature and it hid the clip completely: it paused
+    // the player for the lead-in, and a paused expo-video that has never played
+    // renders NOTHING — no poster, no first frame, just a hole where the film
+    // should be. It was removed rather than patched, with a note saying the
+    // lead-in belongs in the file. This is that.
+    //
+    // In the file it also costs nothing to ship and works on every build,
+    // including ones already installed, because it is not a feature at all any
+    // more — it is footage.
+    const leadMs = q.lead === undefined || q.lead === "" ? 0 : Number(q.lead);
     if (!key) return reply.code(400).send({ code: "bad_request", message: "Missing 'key'." });
     if (!Number.isFinite(speed) || speed < 0.1 || speed > 20) {
       return reply.code(400).send({
@@ -247,10 +259,16 @@ export function registerMediaRetimeRoute(
         message: "'speed' must be between 0.1 and 20. 4 plays it four times as fast.",
       });
     }
-    if (speed === 1 && loopRaw === undefined) {
+    if (!Number.isFinite(leadMs) || leadMs < 0 || leadMs > 10_000) {
       return reply.code(400).send({
         code: "bad_request",
-        message: "Nothing to change. Pass 'speed' (0.1-20), 'loop' (true|false), or both.",
+        message: "'lead' is milliseconds to hold the FIRST frame before playing, 0-10000.",
+      });
+    }
+    if (speed === 1 && loopRaw === undefined && leadMs === 0) {
+      return reply.code(400).send({
+        code: "bad_request",
+        message: "Nothing to change. Pass 'speed' (0.1-20), 'loop' (true|false), 'lead' (ms), or any combination.",
       });
     }
     const entry = registry()[key];
@@ -267,7 +285,19 @@ export function registerMediaRetimeRoute(
     const filename = entry.url.split("/").pop() ?? "";
     const src = path.join(mediaDir, filename);
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "tulmi-retime-"));
-    let out: { buf: Buffer; name: string; contentType: string };
+    // The retime, as a filter chain. ORDER IS THE POINT: speed first, hold
+    // second. Padding before setpts would speed the pad up too, so a 2.5s hold
+    // asked for at 4x would arrive as 0.6s — the one bug this ordering exists
+    // to prevent.
+    //
+    // tpad with start_mode=clone repeats the FIRST decoded frame for the
+    // duration, which is exactly "hold on the opening frame" and needs no
+    // second input, no still image and no concat.
+    const timeline = (extra = "") =>
+      `setpts=PTS/${speed}` +
+      (leadMs > 0 ? `,tpad=start_duration=${(leadMs / 1000).toFixed(3)}:start_mode=clone` : "") +
+      extra;
+    let out: { buf: Buffer; name: string; contentType: string; path: string };
     try {
       await fs.access(src);
       if (isVideo(ct)) {
@@ -276,12 +306,12 @@ export function registerMediaRetimeRoute(
         const dst = path.join(dir, "out.mp4");
         await run("ffmpeg", [
           "-y", "-i", src,
-          "-filter:v", `setpts=PTS/${speed}`,
+          "-filter:v", timeline(),
           "-c:v", "libx264", "-preset", "slow", "-crf", "28",
           "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an",
           dst,
         ], { timeout: 10 * 60 * 1000, maxBuffer: 1 << 24 });
-        out = { buf: await fs.readFile(dst), name: "mp4", contentType: "video/mp4" };
+        out = { buf: await fs.readFile(dst), name: "mp4", contentType: "video/mp4", path: dst };
       } else {
         // GIF and animated WebP carry a per-frame delay rather than a clock, so
         // the retime is setpts plus a fixed output rate. The palette pass is not
@@ -300,31 +330,44 @@ export function registerMediaRetimeRoute(
           ? (wantLoop ? "0" : "1")
           : (wantLoop ? "0" : "-1");
         const args = isWebp
-          ? ["-y", "-i", src, "-filter:v", `setpts=PTS/${speed},fps=${WEBP_FPS}`,
+          ? ["-y", "-i", src, "-filter:v", timeline(`,fps=${WEBP_FPS}`),
              "-loop", loopArg, "-lossless", "0", "-q:v", "58", "-preset", "picture", "-an", dst]
           : ["-y", "-i", src,
              "-filter_complex",
-             `[0:v]setpts=PTS/${speed},fps=${GIF_FPS},split[a][b];` +
+             `[0:v]${timeline(`,fps=${GIF_FPS}`)},split[a][b];` +
              `[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5`,
              "-loop", loopArg, dst];
         await run("ffmpeg", args, { timeout: 10 * 60 * 1000, maxBuffer: 1 << 24 });
         out = isWebp
-          ? { buf: await fs.readFile(dst), name: "webp", contentType: "image/webp" }
-          : { buf: await fs.readFile(dst), name: "gif", contentType: "image/gif" };
+          ? { buf: await fs.readFile(dst), name: "webp", contentType: "image/webp", path: dst }
+          : { buf: await fs.readFile(dst), name: "gif", contentType: "image/gif", path: dst };
       }
     } catch (err) {
       await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
       return reply.code(500).send({ code: "retime_failed", message: (err as Error).message.slice(0, 300) });
     }
+    // MEASURE the result rather than predict it. Speed and lead are both known,
+    // so the new length could be arithmetic — but the arithmetic starts from an
+    // entry.durationMs that is usually absent, because only the compressor ever
+    // wrote one. Probing costs one ffprobe and fills that gap for good, which
+    // the screens want anyway: flowDismissMs reads durationMs before it falls
+    // back to a default.
+    const probedMs = await probeDurationMs(out.path);
     await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
 
     const sha = crypto.createHash("sha256").update(out.buf).digest("hex");
     const newName = `${sha}.${out.name}`;
     const url = `${publicUrlPrefix}/${newName}`;
-    const durationMs = entry.durationMs ? Math.round(entry.durationMs / speed) : undefined;
-    // The hold is the length of the scene. A gif reports nothing when it ends,
-    // so a hold left at its old value after a 4x speed-up is three quarters of
-    // the opening spent on a frozen last frame.
+    const durationMs = probedMs
+      ?? (entry.durationMs ? Math.round(entry.durationMs / speed) + leadMs : undefined);
+    // The hold is the length of the SCENE, and it has two jobs that pull in
+    // opposite directions: it must not sit for seconds on a frozen last frame,
+    // and it must never cut the clip off mid-play. So it scales down with speed
+    // — a hold left alone after a 4x speed-up is three quarters of the opening
+    // spent frozen — and is then floored at the clip's real length plus a beat,
+    // which is what stops a lead-in from being trimmed away by the scene that
+    // was sized before it existed.
+    //
     // `loop` is recorded as well as encoded, so the file and the metadata agree.
     // They drive different things and both are needed: a Video node takes its
     // repeat from present.loop, because a player owns an mp4's looping; a GIF
@@ -332,11 +375,14 @@ export function registerMediaRetimeRoute(
     // One request sets whichever applies and leaves nothing to contradict it.
     const present = ((): typeof entry.present => {
       const p = entry.present;
-      const scaled = p?.holdMs
-        ? { ...p, holdMs: Math.max(300, Math.round(p.holdMs / speed)) }
-        : p;
-      if (loopRaw === undefined) return scaled;
-      return { ...(scaled ?? {}), loop: loopRaw };
+      let next = p;
+      if (p?.holdMs) {
+        const scaled = Math.max(300, Math.round(p.holdMs / speed));
+        const floor = durationMs ? durationMs + 400 : 0;
+        next = { ...p, holdMs: Math.min(20_000, Math.max(scaled, floor)) };
+      }
+      if (loopRaw === undefined) return next;
+      return { ...(next ?? {}), loop: loopRaw };
     })();
 
     // File first, registry second, delete last: a crash in between leaves an
@@ -357,7 +403,7 @@ export function registerMediaRetimeRoute(
       await fs.rm(path.join(mediaDir, filename), { force: true }).catch(() => {});
     }
 
-    return reply.send({ ok: true, key, speed, loop: loopRaw, entry: next[key] });
+    return reply.send({ ok: true, key, speed, loop: loopRaw, leadMs, entry: next[key] });
   });
 }
 

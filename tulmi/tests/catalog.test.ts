@@ -58,6 +58,36 @@ describe("the arrival prompt", () => {
   });
 });
 
+describe("the mic step asks with one row, not two offers", () => {
+  const row = () => {
+    const s = buildScreen("onboarding", { personality: {}, language: "en" } as never) as {
+      root: { children: Array<Record<string, any>> };
+    };
+    return s.root.children.find((c) => c.style?.direction === "row")!;
+  };
+
+  it("puts the decline first and the accent second", () => {
+    // Two full-width pills read as two offers of equal weight. Side by side,
+    // size and colour argue for you — and the button under a resting thumb, on
+    // the right, should be the one that moves the user forward.
+    const [decline, accept] = row().children;
+    expect(decline.props.label).toBe("Not now");
+    expect(accept.props.label).toBe("Enable");
+    expect(accept.on.onPress).toBe("allowMic");
+    expect(decline.on.onPress).toBe("goKeyboard");
+  });
+
+  it("makes the accent bigger, warmer and the decline quieter", () => {
+    const [decline, accept] = row().children;
+    expect(Number(accept.style.flex)).toBeGreaterThan(Number(decline.style.flex));
+    // The brand amber, not the theme's primary — primary is WHITE by design on
+    // this black surface, so reaching for "the brand colour" there gets white.
+    expect(accept.style.backgroundColor).toBe("#E8A23C");
+    expect(Number(decline.style.opacity)).toBeLessThan(1);
+    expect(Number(decline.style.paddingVertical)).toBeLessThan(17);
+  });
+});
+
 describe("the keyboard step speaks each platform's language", () => {
   const screen = () => JSON.stringify(buildScreen("onboarding_keyboard", { personality: {}, language: "en" }));
 
