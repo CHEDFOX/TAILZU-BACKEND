@@ -152,9 +152,32 @@ describe("hero slots take their presentation from the registry too", () => {
     expect(h.children[0].fallback.type).toBe("Image");
   });
 
-  it("the flow screen's hero cancels its own 28pt padding", () => {
-    const h = heroOf("flow_arm", "hero.flow_arm");
-    expect(h.style.marginLeft).toBe(-28);
-    expect(h.style.marginRight).toBe(-28);
+  it("the flow clip fills the window, behind the words", () => {
+    const h = heroOf("flow_arm", "hero.flow_arm", undefined, "video/mp4");
+    // Pinned to the window, not inset from a column. A 9:16 clip at full
+    // width is taller than what a heading and a paragraph leave behind, so
+    // full bleed here can only mean behind them.
+    expect(h.style.position).toBe("absolute");
+    expect(h.style.top).toBe(0);
+    expect(h.style.bottom).toBe(0);
+    expect(h.style.marginLeft).toBeUndefined();
+    expect(h.children[0].props.contentFit).toBe("cover");
+  });
+
+  it("the flow clip is the FIRST child, so the words paint over it", () => {
+    setMediaRegistryAccessor(() => ({
+      "hero.flow_arm": {
+        url: "https://api.tailzu.space/media/x.mp4",
+        contentType: "video/mp4", size: 1, uploadedAt: 1,
+      },
+    }));
+    const screen = buildScreen("flow_arm", {
+      personality: {}, language: "en", onboarded: true, params: {}, email: "a@b.com",
+    } as never) as any;
+    // A Stack root, not a Screen: an absolute child of a ScrollView is placed
+    // against the content, not the window.
+    expect(screen.root.type).toBe("Stack");
+    expect(screen.root.children[0].children[0].type).toBe("Video");
+    expect(screen.root.children[1].type).toBe("Heading");
   });
 });

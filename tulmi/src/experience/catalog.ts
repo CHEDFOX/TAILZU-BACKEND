@@ -135,6 +135,16 @@ function screenHero(
     aspectRatio?: number;
     /** Space below the media. 0 sits it flush against the screen's bottom. */
     marginBottom?: number;
+    /**
+     * Fill the whole screen, behind everything else.
+     *
+     * A hero normally sits IN the column and cancels its padding. A 9:16 clip
+     * at full width is taller than what is left of the screen once a heading
+     * and a paragraph have had their share, so "full bleed" for one of those
+     * can only mean behind the text, not below it. Put this first in children
+     * and later siblings paint over it.
+     */
+    behind?: boolean;
   } = {},
 ): Node[] {
   const key = `hero.${screenId}`;
@@ -155,12 +165,22 @@ function screenHero(
     borderRadius: opts.radius ?? 20,
     backgroundColor: "#0b0b0f",
   };
-  const shown = heroStyle(
-    entry,
-    base,
-    { x: opts.fullBleed ?? 0, top: opts.fullBleedTop ?? 12 },
-    opts.fullBleed ? "full" : "card",
-  );
+  const shown = opts.behind
+    ? {
+        style: {
+          position: "absolute" as const,
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: entry.present?.background ?? "#000000",
+          overflow: "hidden" as const,
+        },
+        fit: entry.present?.fit ?? opts.fit ?? "cover",
+      }
+    : heroStyle(
+        entry,
+        base,
+        { x: opts.fullBleed ?? 0, top: opts.fullBleedTop ?? 12 },
+        opts.fullBleed ? "full" : "card",
+      );
   const fit = entry.present?.fit ?? opts.fit ?? "cover";
   const inner: Node = isVideo
     ? {
@@ -191,11 +211,13 @@ function screenHero(
       // The VIEW clips; the media fills it. Rounded corners set on the media
       // itself have nothing to cut — see the intro plate.
       ...(opts.onlyOn ? { visibleIf: { platform: opts.onlyOn } } : {}),
-      style: {
-        ...shown.style,
-        overflow: "hidden",
-        marginBottom: opts.marginBottom ?? (opts.fullBleed ? 26 : 18),
-      },
+      style: opts.behind
+        ? shown.style
+        : {
+            ...shown.style,
+            overflow: "hidden",
+            marginBottom: opts.marginBottom ?? (opts.fullBleed ? 26 : 18),
+          },
       children: [inner],
     } as Node,
   ];
@@ -4451,17 +4473,27 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
       },
     },
     root: {
-      type: "Screen",
+      type: "Stack",
       on: { onAppear: "arm" },
-      // Text at the top, clip at the bottom, and the gap between them doing
-      // the work. The words are read in a second and then the eye has
-      // somewhere to go; a clip tucked directly under a paragraph competes
-      // with it instead.
-      // flexGrow lets the column fill the screen, which is what gives the
-      // spacer below something to grow INTO — without it the content is only
-      // as tall as itself and "at the bottom" means "under the text".
-      style: { paddingHorizontal: 28, paddingTop: 72, paddingBottom: 0, alignItems: "center", flexGrow: 1 },
+      // A STACK, not a Screen.
+      //
+      // Screen is a ScrollView, and an absolutely positioned child of one is
+      // placed against the CONTENT, not the window — fine while the content
+      // happens to be exactly a screen tall, wrong the moment it is not. The
+      // clip fills the window now, so the root has to be a plain box with a
+      // real height. Same shape the intro uses, for the same reason. There is
+      // nothing to scroll here: four seconds, no header, no tabs.
+      style: {
+        flex: 1, width: "100%", height: "100%",
+        backgroundColor: "#000000",
+        paddingHorizontal: 28, paddingTop: 72, paddingBottom: 0,
+        alignItems: "center",
+      },
       children: [
+        // The clip, behind everything. FIRST in the list, because later
+        // siblings paint on top — the same ordering rule that put a button
+        // under the opening media until it was moved.
+        ...screenHero("flow_arm", { behind: true, onlyOn: "ios", fit: "cover" }),
         {
           type: "Heading",
           // "Flow is on" states a setting. This states what the user just
@@ -4506,11 +4538,7 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
         // on every screen size, with a floor so it never collides on a small
         // one.
         { type: "Spacer", style: { flex: 1, minHeight: 24 } },
-        ...screenHero("flow_arm", {
-          aspectRatio: 1, fit: "contain", radius: 0, onlyOn: "ios",
-          fullBleed: 28, fullBleedTop: 0, marginBottom: 0,
-        }),
-      ],
+              ],
     },
   };
 }
