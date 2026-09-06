@@ -59,6 +59,10 @@ const MAX_IMAGE_WIDTH = 1600;
 /** Animated-WebP conversion: enough for a 260–360pt slot on a 3x screen. */
 const MAX_WEBP_WIDTH = 720;
 const WEBP_FPS = 15;
+/** Output rate for a retimed GIF. A gif carries per-frame delays, not a clock,
+ *  so speeding one up means re-sampling it onto a fixed rate. 20 is smooth for
+ *  a short reveal and keeps the palette pass affordable. */
+const GIF_FPS = 20;
 const WEBP_MAX_SECONDS = Number(process.env.WEBP_MAX_SECONDS ?? 30);
 
 /**
@@ -181,6 +185,149 @@ async function encode(
   } finally {
     await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+/**
+ * Re-time one file: same pictures, played faster or slower.
+ *
+ * Deliberately NOT a flag on /compress. Compression discards a result that is
+ * not meaningfully smaller — correct for compression, wrong here, where the
+ * point is the timing and the size is whatever it turns out to be. Two jobs,
+ * two routes, two rules.
+ *
+ * The output keeps the input's KIND. A gif stays a gif and a clip stays a clip,
+ * because the screens choose their node from the stored contentType and a
+ * silent change of kind is how the intro went black once already.
+ *
+ * A retimed file is different bytes, so a different sha, so a different URL —
+ * which is exactly how every device picks it up. Files are served immutable for
+ * a year; nothing has to be invalidated because nothing is being replaced.
+ *
+ * `present.holdMs` scales with the clip. The hold IS the length of the scene
+ * (a gif reports nothing when it ends), so leaving it alone after a 4x speed-up
+ * would hold a still last frame for three quarters of the opening.
+ */
+export function registerMediaRetimeRoute(
+  app: FastifyInstance,
+  opts: {
+    mediaDir: string;
+    publicUrlPrefix: string;
+    adminSecret: string;
+    registry: () => MediaRegistry;
+    writeRegistry: (r: MediaRegistry) => Promise<void>;
+    checkAdmin: (req: unknown, expected: string) => { ok: boolean; reason?: string };
+  },
+): void {
+  const { mediaDir, publicUrlPrefix, adminSecret, registry, writeRegistry, checkAdmin } = opts;
+
+  app.post("/v1/media/retime", async (req, reply) => {
+    const guard = checkAdmin(req, adminSecret);
+    if (!guard.ok) {
+      return reply.code(guard.reason === "not_configured" ? 503 : 401).send({ code: guard.reason });
+    }
+    if (!(await hasFfmpeg())) {
+      return reply.code(503).send({
+        code: "ffmpeg_missing",
+        message: "ffmpeg is not installed in this image — rebuild the backend to get it.",
+      });
+    }
+
+    const q = (req as { query?: Record<string, string> }).query ?? {};
+    const key = q.key?.trim();
+    const speed = Number(q.speed);
+    if (!key) return reply.code(400).send({ code: "bad_request", message: "Missing 'key'." });
+    if (!Number.isFinite(speed) || speed < 0.1 || speed > 20) {
+      return reply.code(400).send({
+        code: "bad_request",
+        message: "'speed' must be between 0.1 and 20. 4 plays it four times as fast.",
+      });
+    }
+    const entry = registry()[key];
+    if (!entry) return reply.code(404).send({ code: "not_found", message: `No media at '${key}'.` });
+
+    const ct = entry.contentType ?? "";
+    if (!isGif(ct) && !isVideo(ct) && !/^image\/webp$/i.test(ct)) {
+      return reply.code(400).send({
+        code: "bad_request",
+        message: `'${key}' is ${ct || "unknown"} — only gif, animated webp and video have a timeline.`,
+      });
+    }
+
+    const filename = entry.url.split("/").pop() ?? "";
+    const src = path.join(mediaDir, filename);
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "tulmi-retime-"));
+    let out: { buf: Buffer; name: string; contentType: string };
+    try {
+      await fs.access(src);
+      if (isVideo(ct)) {
+        // setpts divides every timestamp, which is what "faster" means for a
+        // container with a real timeline. Audio is already dropped on these.
+        const dst = path.join(dir, "out.mp4");
+        await run("ffmpeg", [
+          "-y", "-i", src,
+          "-filter:v", `setpts=PTS/${speed}`,
+          "-c:v", "libx264", "-preset", "slow", "-crf", "28",
+          "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an",
+          dst,
+        ], { timeout: 10 * 60 * 1000, maxBuffer: 1 << 24 });
+        out = { buf: await fs.readFile(dst), name: "mp4", contentType: "video/mp4" };
+      } else {
+        // GIF and animated WebP carry a per-frame delay rather than a clock, so
+        // the retime is setpts plus a fixed output rate. The palette pass is not
+        // optional for gif: ffmpeg's default 256-colour quantiser bands a dark
+        // gradient badly, and this art is almost entirely dark gradient.
+        const isWebp = /^image\/webp$/i.test(ct);
+        const dst = path.join(dir, isWebp ? "out.webp" : "out.gif");
+        const args = isWebp
+          ? ["-y", "-i", src, "-filter:v", `setpts=PTS/${speed},fps=${WEBP_FPS}`,
+             "-loop", "0", "-lossless", "0", "-q:v", "58", "-preset", "picture", "-an", dst]
+          : ["-y", "-i", src,
+             "-filter_complex",
+             `[0:v]setpts=PTS/${speed},fps=${GIF_FPS},split[a][b];` +
+             `[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5`,
+             "-loop", "0", dst];
+        await run("ffmpeg", args, { timeout: 10 * 60 * 1000, maxBuffer: 1 << 24 });
+        out = isWebp
+          ? { buf: await fs.readFile(dst), name: "webp", contentType: "image/webp" }
+          : { buf: await fs.readFile(dst), name: "gif", contentType: "image/gif" };
+      }
+    } catch (err) {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+      return reply.code(500).send({ code: "retime_failed", message: (err as Error).message.slice(0, 300) });
+    }
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+
+    const sha = crypto.createHash("sha256").update(out.buf).digest("hex");
+    const newName = `${sha}.${out.name}`;
+    const url = `${publicUrlPrefix}/${newName}`;
+    const durationMs = entry.durationMs ? Math.round(entry.durationMs / speed) : undefined;
+    // The hold is the length of the scene. A gif reports nothing when it ends,
+    // so a hold left at its old value after a 4x speed-up is three quarters of
+    // the opening spent on a frozen last frame.
+    const present = entry.present?.holdMs
+      ? { ...entry.present, holdMs: Math.max(300, Math.round(entry.present.holdMs / speed)) }
+      : entry.present;
+
+    // File first, registry second, delete last: a crash in between leaves an
+    // orphan file (costs disk) rather than a dead URL (costs the screen).
+    await fs.writeFile(path.join(mediaDir, newName), out.buf);
+    const next = registry();
+    next[key] = {
+      ...entry,
+      url,
+      contentType: out.contentType,
+      size: out.buf.length,
+      uploadedAt: Date.now(),
+      ...(durationMs ? { durationMs } : {}),
+      ...(present ? { present } : {}),
+    };
+    await writeRegistry(next);
+    if (filename && filename !== newName) {
+      await fs.rm(path.join(mediaDir, filename), { force: true }).catch(() => {});
+    }
+
+    return reply.send({ ok: true, key, speed, entry: next[key] });
+  });
 }
 
 export function registerMediaCompressRoute(
