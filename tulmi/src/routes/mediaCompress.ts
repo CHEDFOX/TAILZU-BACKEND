@@ -234,12 +234,23 @@ export function registerMediaRetimeRoute(
 
     const q = (req as { query?: Record<string, string> }).query ?? {};
     const key = q.key?.trim();
-    const speed = Number(q.speed);
+    const speed = q.speed === undefined || q.speed === "" ? 1 : Number(q.speed);
+    // Whether the file repeats. For a GIF or an animated WebP this is not a
+    // playback option — the repeat count lives INSIDE the file, and no player
+    // setting and no `present` field can override it. Changing it means
+    // re-encoding, which is what this route already does.
+    const loopRaw = q.loop === undefined || q.loop === "" ? undefined : q.loop !== "false";
     if (!key) return reply.code(400).send({ code: "bad_request", message: "Missing 'key'." });
     if (!Number.isFinite(speed) || speed < 0.1 || speed > 20) {
       return reply.code(400).send({
         code: "bad_request",
         message: "'speed' must be between 0.1 and 20. 4 plays it four times as fast.",
+      });
+    }
+    if (speed === 1 && loopRaw === undefined) {
+      return reply.code(400).send({
+        code: "bad_request",
+        message: "Nothing to change. Pass 'speed' (0.1-20), 'loop' (true|false), or both.",
       });
     }
     const entry = registry()[key];
@@ -278,14 +289,24 @@ export function registerMediaRetimeRoute(
         // gradient badly, and this art is almost entirely dark gradient.
         const isWebp = /^image\/webp$/i.test(ct);
         const dst = path.join(dir, isWebp ? "out.webp" : "out.gif");
+        // The repeat count, written into the file. The two formats spell "once"
+        // differently and neither spells it the way you would guess: a GIF's
+        // -loop is how many EXTRA passes to make, so -1 is play once and 0 is
+        // forever; an animated WebP's is the total number of passes, so 1 is
+        // play once and 0 is forever. Getting these backwards produces a file
+        // that loops when it should stop, which looks like the screen is stuck.
+        const wantLoop = loopRaw ?? true;
+        const loopArg = isWebp
+          ? (wantLoop ? "0" : "1")
+          : (wantLoop ? "0" : "-1");
         const args = isWebp
           ? ["-y", "-i", src, "-filter:v", `setpts=PTS/${speed},fps=${WEBP_FPS}`,
-             "-loop", "0", "-lossless", "0", "-q:v", "58", "-preset", "picture", "-an", dst]
+             "-loop", loopArg, "-lossless", "0", "-q:v", "58", "-preset", "picture", "-an", dst]
           : ["-y", "-i", src,
              "-filter_complex",
              `[0:v]setpts=PTS/${speed},fps=${GIF_FPS},split[a][b];` +
              `[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=5`,
-             "-loop", "0", dst];
+             "-loop", loopArg, dst];
         await run("ffmpeg", args, { timeout: 10 * 60 * 1000, maxBuffer: 1 << 24 });
         out = isWebp
           ? { buf: await fs.readFile(dst), name: "webp", contentType: "image/webp" }
@@ -304,9 +325,19 @@ export function registerMediaRetimeRoute(
     // The hold is the length of the scene. A gif reports nothing when it ends,
     // so a hold left at its old value after a 4x speed-up is three quarters of
     // the opening spent on a frozen last frame.
-    const present = entry.present?.holdMs
-      ? { ...entry.present, holdMs: Math.max(300, Math.round(entry.present.holdMs / speed)) }
-      : entry.present;
+    // `loop` is recorded as well as encoded, so the file and the metadata agree.
+    // They drive different things and both are needed: a Video node takes its
+    // repeat from present.loop, because a player owns an mp4's looping; a GIF
+    // or WebP takes it from the bytes, because no player can override those.
+    // One request sets whichever applies and leaves nothing to contradict it.
+    const present = ((): typeof entry.present => {
+      const p = entry.present;
+      const scaled = p?.holdMs
+        ? { ...p, holdMs: Math.max(300, Math.round(p.holdMs / speed)) }
+        : p;
+      if (loopRaw === undefined) return scaled;
+      return { ...(scaled ?? {}), loop: loopRaw };
+    })();
 
     // File first, registry second, delete last: a crash in between leaves an
     // orphan file (costs disk) rather than a dead URL (costs the screen).
@@ -326,7 +357,7 @@ export function registerMediaRetimeRoute(
       await fs.rm(path.join(mediaDir, filename), { force: true }).catch(() => {});
     }
 
-    return reply.send({ ok: true, key, speed, entry: next[key] });
+    return reply.send({ ok: true, key, speed, loop: loopRaw, entry: next[key] });
   });
 }
 
