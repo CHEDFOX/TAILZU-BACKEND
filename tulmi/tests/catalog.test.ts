@@ -132,6 +132,33 @@ describe("the paywall shows the free tier without selling it", () => {
   });
 });
 
+describe("Settings has a way to pay", () => {
+  const upgradeRow = () => {
+    const s = buildScreen("settings", { personality: {}, language: "en" } as never) as {
+      root: { children: Array<Record<string, any>> };
+    };
+    return s.root.children.find((c) => c.props?.label === "Upgrade");
+  };
+
+  it("offers Upgrade, and it goes to the paywall", () => {
+    // Before this row there was NO route to the paywall except running out of
+    // words. A customer who wanted to pay had to be stopped first, and an App
+    // Review tester — who will never dictate eight hundred words — would have
+    // reported two auto-renewing products as unlocatable.
+    const up = upgradeRow();
+    expect(up).toBeTruthy();
+    expect(up!.on.onPress).toEqual({ kind: "navigate", screenId: "paywall" });
+  });
+
+  it("hides itself from anyone who already paid", () => {
+    // The client holds billing.entitled from the bootstrap, so this costs no
+    // extra call and corrects itself on the next foreground. visibleIf is
+    // evaluated before the fallback, so an old bundle renders nothing rather
+    // than a row it does not know how to hide.
+    expect(upgradeRow()!.visibleIf).toEqual({ not: { flag: "billing.entitled" } });
+  });
+});
+
 describe("the keyboard step speaks each platform's language", () => {
   const screen = () => JSON.stringify(buildScreen("onboarding_keyboard", { personality: {}, language: "en" }));
 

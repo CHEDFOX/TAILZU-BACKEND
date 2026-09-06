@@ -3576,6 +3576,25 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         // — will always be empty. The screen and its endpoint are left intact
         // so restoring the toggle is a backend edit if that is wanted later.
 
+        // THE WAY IN. Until this row existed there was none.
+        //
+        // The paywall could only be reached by running out of words: the
+        // post-onboarding prompt is off, the hard gate is off, and nothing else
+        // navigated there. So a user who wanted to pay had to first be stopped,
+        // and an App Review tester — who will never dictate eight hundred words
+        // — would have reported the in-app purchases as unlocatable and had
+        // them rejected. Two auto-renewing products, submitted with no door.
+        //
+        // Hidden from anyone who has already paid, by the flag the client
+        // already holds from the bootstrap, so it costs no extra call and
+        // updates on the next foreground. `not` + `flag` are both understood by
+        // every shipped bundle, and visibleIf is evaluated before the fallback,
+        // so an old client renders nothing rather than a row it cannot hide.
+        {
+          ...row("Upgrade", { kind: "navigate", screenId: "paywall" }, { props: { label: "Upgrade" } }),
+          visibleIf: { not: { flag: "billing.entitled" } },
+        },
+
         // Preferences
         row("Language", { kind: "navigate", screenId: "language_select" }, { props: { label: "Language", value: current } }),
 
