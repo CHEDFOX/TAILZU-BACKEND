@@ -1165,6 +1165,21 @@ interface Presented {
   style: Record<string, unknown>;
   fit: "cover" | "contain";
   holdMs: number | null;
+  /**
+   * What the media is matted on — so the SCREEN can be matted on it too.
+   *
+   * Art is rarely graded to pure black. This one is rgb(8,8,9), and on an OLED
+   * that is not a near-miss: #000000 is the pixel off and #080809 is the pixel
+   * faintly on. Painting the screen black and the media's own ground eight
+   * values above it puts a hard edge exactly where the media stops, and the eye
+   * finds an edge far more easily than it judges a shade.
+   *
+   * Invisible while the media was full bleed, because then its ground WAS the
+   * screen and there was nothing to compare. Boxing it to a fixed size — to
+   * match a launch icon that cannot scale — is what produced the surround, and
+   * with it a grey rectangle floating on black.
+   */
+  background: string;
 }
 
 function presentMedia(entry: MediaEntry | undefined): Presented {
@@ -1182,6 +1197,7 @@ function presentMedia(entry: MediaEntry | undefined): Presented {
     return {
       fit,
       holdMs: p.holdMs ?? null,
+      background: p.background ?? "#FFFFFF",
       style: {
         width: d, height: d, borderRadius: d / 2,
         backgroundColor: p.background ?? "#FFFFFF",
@@ -1193,6 +1209,7 @@ function presentMedia(entry: MediaEntry | undefined): Presented {
     return {
       fit,
       holdMs: p.holdMs ?? null,
+      background: bg,
       style: {
         width: "100%",
         ...(p.size ? { maxWidth: p.size } : {}),
@@ -1256,6 +1273,7 @@ function presentMedia(entry: MediaEntry | undefined): Presented {
   return {
     fit,
     holdMs: p.holdMs ?? null,
+    background: bg,
     style: {
       position: "absolute" as const,
       ...(nudged
@@ -1529,8 +1547,24 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
         flex: 1,
         width: "100%",
         height: "100%",
-        backgroundColor: "#000000",
-        // Center the small media in the middle of the black window.
+        // THE SAME GROUND THE MEDIA IS MATTED ON, not black by assumption.
+        //
+        // This art is graded to rgb(8,8,9). On an OLED that is not a near-miss
+        // to #000000 — black is the pixel off, and eight values is the pixel
+        // faintly on — so a black screen behind it drew a hard edge exactly
+        // where the media stopped, and the reveal read as a grey panel floating
+        // on a darker screen.
+        //
+        // It did not show while the media was full bleed: its ground was the
+        // screen, and there was no surround to compare against. Boxing it to a
+        // fixed size, to match a launch icon that cannot scale, is what created
+        // the surround and with it the edge.
+        //
+        // One value now, from the entry, painting both the window and what is
+        // around it. Set `background` on the media and the screen follows —
+        // they cannot disagree, because there is only one of them.
+        backgroundColor: shown.background,
+        // Center the small media in the middle of the window.
         alignItems: "center",
         justifyContent: "center",
       },
