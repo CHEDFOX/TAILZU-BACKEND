@@ -1027,6 +1027,124 @@ function pickInitialScreenId(
 }
 
 /**
+ * THE ALLOW PILL — one control that carries both answers.
+ *
+ * A light track, a dismiss on the left, and a dark pill taking everything
+ * else. The weighting IS the argument: yes is the whole width of the control
+ * and no is a glyph, so the recommended path is obvious before a word is read
+ * — and the way out is still there, in plain sight, which a permission screen
+ * has to offer or it is a wall.
+ *
+ * It replaces a row of two buttons on both permission steps. Two buttons side
+ * by side make the choice look balanced, and it is not: one of them is what
+ * the app needs to work and the other is "not yet".
+ *
+ * Every value is here, so its shape and its colours are a deploy rather than
+ * a build.
+ */
+const ALLOW_PILL = {
+  height: 64,
+  /** The light track the dark pill floats in. */
+  track: "#F4F4F2",
+  padding: 6,
+  radius: 999,
+  /** The dismiss, on the left. Its box is the tap target, not the glyph. */
+  dismissWidth: 54,
+  dismissColor: "#141416",
+  dismissSize: 17,
+  dismissStroke: 2.1,
+  /** The action. */
+  fill: "#0D0D0F",
+  color: "#FFFFFF",
+  fontSize: 16,
+  tracking: 0.1,
+  /** Lift, so the control sits above the screen rather than on it. */
+  shadowColor: "#000000",
+  shadowOpacity: 0.34,
+  shadowRadius: 18,
+  shadowOffset: { width: 0, height: 8 },
+  elevation: 8,
+};
+
+/**
+ * Build one. `label` is the promise, `onPress` keeps it, `onDismiss` is the
+ * way past. Omit onDismiss and the ✕ is not drawn at all — some screens have
+ * nothing to decline.
+ */
+function allowPill(label: string, onPress: ActionRef, onDismiss?: ActionRef): Node {
+  const p = ALLOW_PILL;
+  return {
+    type: "Stack",
+    style: {
+      flexDirection: "row",
+      alignItems: "center",
+      height: p.height,
+      borderRadius: p.radius,
+      backgroundColor: p.track,
+      padding: p.padding,
+      shadowColor: p.shadowColor,
+      shadowOpacity: p.shadowOpacity,
+      shadowRadius: p.shadowRadius,
+      shadowOffset: p.shadowOffset,
+      elevation: p.elevation,
+    },
+    children: [
+      ...(onDismiss
+        ? [{
+            type: "Stack",
+            on: { onPress: onDismiss },
+            style: {
+              width: p.dismissWidth,
+              height: "100%",
+              alignItems: "center",
+              justifyContent: "center",
+            },
+            children: [{
+              type: "SVG",
+              props: {
+                viewBox: "0 0 24 24",
+                // Two strokes in one path — a ✕ drawn rather than typed, so it
+                // keeps its weight and its soft ends at any size.
+                d: "M6 6 L18 18 M18 6 L6 18",
+                fill: "none",
+                stroke: p.dismissColor,
+                strokeWidth: p.dismissStroke,
+                strokeLinecap: "round",
+              },
+              style: { width: p.dismissSize, height: p.dismissSize },
+            }],
+          } as Node]
+        : []),
+      {
+        type: "Stack",
+        on: { onPress },
+        style: {
+          flex: 1,
+          height: "100%",
+          borderRadius: p.radius,
+          backgroundColor: p.fill,
+          alignItems: "center",
+          justifyContent: "center",
+          // No dismiss means the dark pill is the whole control, so it needs
+          // the inset back on the left that the ✕ was standing in.
+          marginLeft: onDismiss ? 0 : 0,
+        },
+        children: [{
+          type: "Text",
+          props: { content: label },
+          style: {
+            fontSize: p.fontSize,
+            letterSpacing: p.tracking,
+            color: p.color,
+            fontWeight: "500",
+          },
+        }],
+      },
+    ],
+  };
+}
+
+/**
  * Post-splash intro — a pure SDUI screen. ONE piece of media (the `intro`
  * key), played inside the same circular white plate the in-app mic wears, on
  * black. Same shape, same size: the first thing a user sees is the thing
@@ -5195,49 +5313,10 @@ function onboardingVoice(): ScreenResponse {
           props: { content: "The mic is what makes that possible — in every app you type in." },
           style: { textAlign: "center", fontSize: 13, lineHeight: 21, marginBottom: 21 },
         },
-        // ONE ROW, NOT A STACK. Two full-width pills read as two offers of equal
-        // weight, one merely above the other. Side by side, size and colour do
-        // the arguing: the accent pill is two thirds of the row and the decline
-        // is a dim third, so the choice is legible before either label is read.
-        //
-        // Decline on the LEFT. The thumb rests on the right, and the button
-        // under a resting thumb should be the one that moves the user forward.
-        {
-          type: "Stack",
-          style: { direction: "row", gap: 12, width: "100%", alignItems: "center" },
-          children: [
-            {
-              type: "Button",
-              props: { label: "Not now", variant: "secondary" },
-              on: { onPress: "goKeyboard" },
-              // Shorter and dimmer than its neighbour. The label's size is set
-              // inside the component and cannot be reached from here, so
-              // "smaller" is padding and width; "quieter" is opacity.
-              style: { flex: 1, paddingVertical: 14, paddingHorizontal: 14, opacity: 0.55 },
-            },
-            {
-              type: "Button",
-              props: { label: "Enable", variant: "primary" },
-              on: { onPress: "allowMic" },
-              // White at rest; the brand for a beat under the thumb.
-              //
-              // The flash is NOT staged here. Button hands SpringPressable
-              // flashColor={BRAND_ACCENT} — the same amber the keyboard flashes
-              // on every key — which snaps on in 60ms and decays over 280ms
-              // after release. Driving it from state instead would have meant a
-              // delay between the tap and the permission dialog, and a second
-              // haptic on top of the one the press already fires.
-              //
-              // White is also the theme's own `primary`, so this override
-              // changes nothing today; it is written out because the pill's
-              // colour is this screen's decision, and it should not silently
-              // follow a change to the app-wide primary. The label stays black
-              // either way — readableOn() reads the theme's primary, which is
-              // white, and black is what reads on both white and the amber.
-              style: { flex: 1.7, backgroundColor: "#FFFFFF" },
-            },
-          ],
-        },
+        // ONE CONTROL, TWO ANSWERS. The dark pill is the whole width of the
+        // thing and the way past is a ✕ — because these are not two equal
+        // offers. One of them is the microphone the product runs on.
+        allowPill("Allow access", "allowMic", "goKeyboard"),
         // THE WATCHER. Draws nothing; exists to notice.
         //
         // visibleIf + onAppear means "run this when the condition becomes
@@ -5280,36 +5359,14 @@ function onboardingKeyboard(): ScreenResponse {
     // finish/skip PUT — profile.onboarded stays false and every next launch
     // routes back into onboarding (the "voice screen forever" loop).
     hideChrome: true,
-    state: { keyboardReady: false, keyboardEnabled: false, settingsPressed: false },
+    state: { keyboardReady: false, keyboardEnabled: false },
     actions: {
-      // THE FLASH HAS TO BE HELD, and this is the one screen where that is
-      // true. Button already flashes the brand amber under a finger — 60ms on,
-      // 280ms off — but that decay is racing iOS: the next action hands the
-      // screen to Settings, and the app is gone before the colour reads. So
-      // the press is staged in state instead, which holds the amber for a
-      // guaranteed beat, and only then leaves.
-      //
-      // 220ms: long enough to register as a colour, short enough that nobody
-      // waits for it.
-      pressSettings: {
-        kind: "sequence",
-        actions: [
-          { kind: "setState", path: "settingsPressed", value: true },
-          { kind: "delay", ms: 220 },
-          { kind: "setState", path: "settingsPressed", value: false },
-          "openSettings",
-        ],
-      },
-      pressKeyboardSettings: {
-        kind: "sequence",
-        actions: [
-          { kind: "setState", path: "settingsPressed", value: true },
-          { kind: "delay", ms: 220 },
-          { kind: "setState", path: "settingsPressed", value: false },
-          "openKeyboardSettings",
-        ],
-      },
-
+      // No staged flash any more. It existed because the old Button's own
+      // amber decay was racing iOS — the next action handed the screen to
+      // Settings before the colour read. The pill is a Stack with an onPress,
+      // which is a Pressable, and its dim-on-press lands the instant the
+      // finger does: immediate feedback, and nothing between the tap and the
+      // door opening.
       // MOVE ON BY ITSELF once the keyboard is actually enabled.
       //
       // The app polls the keyboard's status every 1.5s and on every return to
@@ -5501,27 +5558,22 @@ function onboardingKeyboard(): ScreenResponse {
       // a label should say where. iOS lands on Tailzu's own Settings page and
       // the user walks from there — "Go to Settings" is the honest promise.
       // Android lands directly on the keyboard list, so it can promise that.
-      { type: "Button",
-        visibleIf: { all: [{ not: { truthy: "keyboardReady" } }, { platform: "ios" }] },
-        props: { label: "Go to Settings", variant: "primary" }, on: { onPress: "pressSettings" },
-        // White at rest, brand while the press is held. The label stays black
-        // through both — readableOn() reads the theme's primary, which is
-        // white, and black is what reads on white and on amber alike.
-        style: { backgroundColor: { truthy: "settingsPressed", then: ACCENT_AMBER, else: "#FFFFFF" } } },
-      { type: "Button",
-        visibleIf: { all: [{ not: { truthy: "keyboardReady" } }, { platform: "android" }] },
-        props: { label: "Open keyboard settings", variant: "primary" }, on: { onPress: "pressKeyboardSettings" },
-        style: { backgroundColor: { truthy: "settingsPressed", then: ACCENT_AMBER, else: "#FFFFFF" } } },
-      { type: "Button", visibleIf: { truthy: "keyboardReady" },
-        props: { label: "Start using Tailzu", variant: "primary" }, on: { onPress: "finish" } },
-      { type: "Spacer", style: { height: 13 } },
-      // Ghost / text-only "Skip" so users aren't trapped if they can't or
-      // won't add the keyboard right now.
-      // Dim. Skip is a way out, not an option being offered — it should be
-      // findable by someone looking for it and invisible to everyone else.
-      { type: "Button", visibleIf: { not: { truthy: "keyboardReady" } },
-        props: { label: "Skip for now", variant: "secondary" }, on: { onPress: "skip" },
-        style: { opacity: 0.45 } },
+      // iOS lands on Tailzu's own Settings page and the user walks from there;
+      // Android lands directly on the keyboard list. Same control, different
+      // promise, because a label should say where it goes.
+      {
+        ...allowPill("Allow access", "openSettings", "skip"),
+        visibleIf: { all: [{ not: { truthy: "keyboardEnabled" } }, { platform: "ios" }] },
+      },
+      {
+        ...allowPill("Allow access", "openKeyboardSettings", "skip"),
+        visibleIf: { all: [{ not: { truthy: "keyboardEnabled" } }, { platform: "android" }] },
+      },
+      // Already done. No ✕ — there is nothing left to decline.
+      {
+        ...allowPill("Start using Tailzu", "finish"),
+        visibleIf: { truthy: "keyboardEnabled" },
+      },
       { type: "Spacer", style: { height: 55 } },
       // THE WATCHER. Draws nothing; exists to notice.
       //
