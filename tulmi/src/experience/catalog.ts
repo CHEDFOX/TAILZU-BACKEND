@@ -2717,7 +2717,10 @@ const TRAINING_UI = {
      */
     scrim: ["rgba(0,0,0,0)", "rgba(0,0,0,0.28)", "rgba(0,0,0,0.72)"] as string[],
 
-    /** The way in. One button; what it opens is decided by `enter`. */
+    /**
+     * The way in. A pill whose disc is DRAGGED to the far end — the sign-in
+     * pills' gesture, so the product has one way of saying "commit this".
+     */
     cta: {
       label: "BEGIN",
       background: "#0B0B0D",
@@ -2726,11 +2729,20 @@ const TRAINING_UI = {
       tracking: 1.8,
       height: 58,
       radius: 999,
-      /** The disc on the right, and the dot inside it. */
+      /** The disc that travels, and the dot inside it. Starts on the LEFT. */
       disc: 46,
       discBackground: "rgba(255,255,255,0.14)",
       dot: 7,
       dotColor: "#FFFFFF",
+      /** Where it lands. The one warm thing on the pill, so the end of the
+       *  journey is visible from the start of it. Same dim amber as auth. */
+      targetBackground: "#C9862B",
+      targetDotColor: "#000000",
+      /** How far along counts as committed, as a share of the run. */
+      threshold: 0.62,
+      /** When the disc nudges itself to advertise the drag. 0 removes the
+       *  hint — and with it, most people's chance of finding the gesture. */
+      hintDelayMs: 1250,
       /** Breathing room either side of the pill. */
       inset: 22,
     },
@@ -2872,60 +2884,42 @@ function homeScreen(_ctx: ScreenContext): ScreenResponse {
               },
             },
             { type: "Stack", style: { flex: ui.spaceBelow } },
-            // THE PILL. A Stack, not a Button: Button owns its own shape and
-            // paints one surface, and this is a label and a disc that have to
-            // sit at opposite ends of the same pill. A Stack with an onPress is
-            // a Pressable, so the whole thing is the target and the composition
-            // stays here rather than becoming a component.
+            // THE WAY IN, AND IT IS A DRAG.
+            //
+            // Behind this is a live microphone and a voice on the other end. A
+            // tap is the cheapest gesture there is and it is over before
+            // anyone has decided anything; a drag is a held intention, so
+            // nobody opens a conversation by brushing the screen on the way
+            // past. It is also the same gesture the sign-in pills use, which
+            // is the point — one way of saying "commit this", everywhere.
             {
-              type: "Stack",
-              on: { onPress: "enter" },
-              style: {
-                flexDirection: "row",
-                alignItems: "center",
-                marginHorizontal: ui.cta.inset,
+              type: "SwipeAction",
+              props: {
+                label: ui.cta.label,
                 height: ui.cta.height,
-                borderRadius: ui.cta.radius,
-                backgroundColor: ui.cta.background,
-                paddingLeft: 6,
-                paddingRight: 6,
+                radius: ui.cta.radius,
+                background: ui.cta.background,
+                color: ui.cta.color,
+                fontSize: ui.cta.fontSize,
+                tracking: ui.cta.tracking,
+                disc: ui.cta.disc,
+                discBackground: ui.cta.discBackground,
+                dot: ui.cta.dot,
+                dotColor: ui.cta.dotColor,
+                targetBackground: ui.cta.targetBackground,
+                targetDotColor: ui.cta.targetDotColor,
+                threshold: ui.cta.threshold,
+                hintDelayMs: ui.cta.hintDelayMs,
               },
-              children: [
-                // An empty disc's width on the left, so the label is centred in
-                // the PILL rather than in the space the disc left over.
-                { type: "Stack", style: { width: ui.cta.disc } },
-                {
-                  type: "Text",
-                  props: { content: ui.cta.label },
-                  style: {
-                    flex: 1,
-                    textAlign: "center",
-                    fontSize: ui.cta.fontSize,
-                    letterSpacing: ui.cta.tracking,
-                    color: ui.cta.color,
-                  },
-                },
-                {
-                  type: "Stack",
-                  style: {
-                    width: ui.cta.disc,
-                    height: ui.cta.disc,
-                    borderRadius: ui.cta.disc / 2,
-                    backgroundColor: ui.cta.discBackground,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  },
-                  children: [{
-                    type: "Stack",
-                    style: {
-                      width: ui.cta.dot,
-                      height: ui.cta.dot,
-                      borderRadius: ui.cta.dot / 2,
-                      backgroundColor: ui.cta.dotColor,
-                    },
-                  }],
-                },
-              ],
+              on: { onComplete: "enter" },
+              style: { marginHorizontal: ui.cta.inset },
+              // A bundle without SwipeAction still has a way in.
+              fallback: {
+                type: "Button",
+                props: { label: ui.cta.label, variant: "primary" },
+                on: { onPress: "enter" },
+                style: { marginHorizontal: ui.cta.inset, backgroundColor: ui.cta.background },
+              },
             },
           ],
         },
