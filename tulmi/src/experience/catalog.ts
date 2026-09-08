@@ -736,6 +736,17 @@ export function buildBootstrap(
       // contentType travels with it because the client has to choose between a
       // Video node and an Image node before it can render anything, and it has
       // no other way to know which this is.
+      // The whole sign-in screen. Rides here for the same reason the backdrop
+      // does: bootstrap is the only channel that reaches the app before there
+      // is a session. The app draws it only when auth.sdui is on, and keeps
+      // its own screen as the fallback either way.
+      if (flags) {
+        flags["auth.sdui"] = AUTH_SDUI;
+        flags["auth.scrim"] = AUTH_UI.scrim;
+        flags["auth.screen"] = authScreenTree();
+        flags["auth.suction"] = AUTH_UI.entry.suction;
+      }
+
       const authBg = reg["hero.auth"];
       if (authBg?.url && flags) {
         flags["auth.background"] = {
@@ -2344,6 +2355,168 @@ const LANGUAGES: Array<{ value: string; label: string }> = [
  * where a re-render starts to cost anything.
  */
 const THREAD_MAX = 60;
+
+/**
+ * Whether the app draws the server-composed sign-in screen or its own.
+ *
+ * OFF until the screen has been seen working on a device. This is the whole
+ * revert: the native screen stays in the binary and stays the thing that owns
+ * the auth logic, so flipping this back is a deploy and nobody is ever locked
+ * out waiting for a build.
+ */
+const AUTH_SDUI = false;
+
+/**
+ * The sign-in screen, in one object.
+ *
+ * Auth was the last screen the server did not compose. Not for a technical
+ * reason — bootstrap reaches the app before there is a session — but because
+ * the pills and the native sign-in buttons had no registry entries. Those
+ * shipped; this is the screen built out of them.
+ *
+ * Everything below is a string, a size, a spacing or a duration. There is no
+ * logic here and there must never be: the flow still lives in the app, because
+ * a sign-in screen composed by a server that is having a bad day has to still
+ * be a sign-in screen. This decides how it LOOKS.
+ */
+const AUTH_UI = {
+  brand: "Tailzu",
+  tagline: "You talk. It writes.",
+
+  /** The window. hideChrome is on, so this padding IS the safe area. */
+  paddingHorizontal: 28,
+  paddingBottom: 42,
+  paddingTop: 72,
+
+  /** How dark the scrim over the uploaded backdrop is. 0 shows the art raw. */
+  scrim: 0.42,
+
+  entry: {
+    gap: 16,
+    brandSize: 34,
+    brandGap: 6,
+    taglineSize: 14,
+    /** Space between the copy block and the first pill. */
+    blockGap: 34,
+    /** When each pill nudges its badge to advertise the swipe. */
+    hintDelayMs: 1100,
+    hintStaggerMs: 160,
+    social: { size: 52, gap: 16, topGap: 22 },
+    /** Sucked up from the bottom, last one first, each with its own overshoot. */
+    suction: { staggerMs: 95, durationMs: 780, fromY: 120 },
+  },
+
+  code: {
+    title: "Check your messages",
+    sub: "Six digits, and you are in.",
+    titleSize: 26,
+    subSize: 14,
+    gap: 10,
+    blockGap: 30,
+    /** The pill that replaced the six circles. */
+    height: 56,
+    letterSpacing: 8,
+    fontSize: 17,
+  },
+};
+
+/**
+ * Build it. Returned inside BOOTSTRAP rather than from buildScreen, because the
+ * auth gate runs before there is a session and can never fetch a screen — the
+ * same reason the backdrop rides in the flags.
+ *
+ * AuthPhase gates the two halves. The phase lives in a React context in the
+ * app, not in the SDUI store, so `visibleIf` has no state path to read; a node
+ * is the honest way to express it rather than mirroring the phase into the
+ * store and living with a frame where the two disagree.
+ */
+function authScreenTree(): Record<string, unknown> {
+  const ui = AUTH_UI;
+  return {
+    type: "Screen",
+    props: { scroll: false },
+    style: {
+      flex: 1,
+      justifyContent: "flex-end",
+      paddingHorizontal: ui.paddingHorizontal,
+      paddingTop: ui.paddingTop,
+      paddingBottom: ui.paddingBottom,
+    },
+    children: [
+      // ── entry ──────────────────────────────────────────────────────────
+      {
+        type: "AuthPhase",
+        props: { phases: ["entry", "sending"] },
+        children: [
+          {
+            type: "Stack",
+            style: { gap: ui.entry.gap },
+            children: [
+              {
+                type: "Stack",
+                style: { gap: ui.entry.brandGap, marginBottom: ui.entry.blockGap },
+                children: [
+                  { type: "Text", props: { content: ui.brand },
+                    style: { fontSize: ui.entry.brandSize, fontWeight: "800", color: "#FFFFFF", letterSpacing: -0.5 } },
+                  { type: "Text", props: { content: ui.tagline },
+                    style: { fontSize: ui.entry.taglineSize, color: "rgba(255,255,255,0.55)" } },
+                ],
+              },
+              // Email is always offered. Phone draws nothing when the backend
+              // has not enabled it, so the row simply is not there rather than
+              // being there and failing when someone taps it.
+              { type: "SwipePill", props: { method: "email", hintDelayMs: ui.entry.hintDelayMs } },
+              { type: "SwipePill", props: { method: "phone", hintDelayMs: ui.entry.hintDelayMs + ui.entry.hintStaggerMs } },
+              {
+                type: "Stack",
+                style: {
+                  direction: "row", gap: ui.entry.social.gap,
+                  justifyContent: "center", marginTop: ui.entry.social.topGap,
+                },
+                children: [
+                  { type: "AppleSignIn", props: { size: ui.entry.social.size } },
+                  { type: "GoogleSignIn", props: { size: ui.entry.social.size } },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+
+      // ── code ───────────────────────────────────────────────────────────
+      {
+        type: "AuthPhase",
+        props: { phases: ["verify", "verifying"] },
+        children: [
+          {
+            type: "Stack",
+            style: { gap: ui.code.gap },
+            children: [
+              {
+                type: "Stack",
+                style: { gap: 6, marginBottom: ui.code.blockGap },
+                children: [
+                  { type: "Text", props: { content: ui.code.title },
+                    style: { fontSize: ui.code.titleSize, fontWeight: "800", color: "#FFFFFF", letterSpacing: -0.4 } },
+                  { type: "Text", props: { content: ui.code.sub },
+                    style: { fontSize: ui.code.subSize, color: "rgba(255,255,255,0.55)" } },
+                ],
+              },
+              {
+                type: "CodeEntry",
+                props: {
+                  height: ui.code.height,
+                  letterSpacing: ui.code.letterSpacing,
+                  fontSize: ui.code.fontSize,
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
 
 const TRAINING_UI = {
   entry: {
