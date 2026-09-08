@@ -1596,7 +1596,10 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
     hideChrome: true,
     state: {},
     actions: {
-      done: { kind: "navigate", screenId: next },
+      // replace: the intro is a step in a sequence, not somewhere to return
+      // to. Pushing left it under the permission screen, so an edge swipe from
+      // there played the opening film again.
+      done: { kind: "navigate", screenId: next, replace: true },
     },
     // Root is a flex View (Stack, not the ScrollView-based Screen). The
     // Slideshow gets width:100% + height:100% + flex:1 so it stretches to
@@ -1620,7 +1623,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
       // strands the user with no way off at all. Nothing here depends on a
       // component reporting anything any more.
       on: {
-        onPress: { kind: "navigate", screenId: next },
+        onPress: { kind: "navigate", screenId: next, replace: true },
         onAppear: { kind: "sequence", actions: [
           // Video gets a longer leash: it is the one path that can still report
           // its own completion, so this is only the net for a clip that never
@@ -1632,7 +1635,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           // Draw the plate into the mic, then navigate. Inlined rather than
           // named: a sequence entry is an action, and no action kind calls
           // another by name.
-          { kind: "navigate", screenId: next },
+          { kind: "navigate", screenId: next, replace: true },
         ] },
       },
       style: {
@@ -4989,7 +4992,9 @@ function onboardingVoice(): ScreenResponse {
         kind: "condition",
         if: { truthy: "keyboardReady" },
         then: "finishOnboarding",
-        else: { kind: "navigate", screenId: "onboarding_keyboard" },
+        // replace, not push: onboarding is a sequence, and an edge swipe must
+        // not walk back into a permission screen that has been answered.
+        else: { kind: "navigate", screenId: "onboarding_keyboard", replace: true },
       },
       // Same finish the keyboard step performs, for the case where that step
       // is skipped. Errors land the user in the app anyway: the flag is worth
@@ -5013,7 +5018,7 @@ function onboardingVoice(): ScreenResponse {
         kind: "sequence",
         actions: [
           { kind: "toast", tone: "info", message: "You can allow the microphone anytime in Settings → Tailzu." },
-          { kind: "navigate", screenId: "onboarding_keyboard" },
+          { kind: "navigate", screenId: "onboarding_keyboard", replace: true },
         ],
       },
     },
@@ -5190,7 +5195,7 @@ function onboardingKeyboard(): ScreenResponse {
     // finish/skip PUT — profile.onboarded stays false and every next launch
     // routes back into onboarding (the "voice screen forever" loop).
     hideChrome: true,
-    state: { keyboardReady: false, settingsPressed: false },
+    state: { keyboardReady: false, keyboardEnabled: false, settingsPressed: false },
     actions: {
       // THE FLASH HAS TO BE HELD, and this is the one screen where that is
       // true. Button already flashes the brand amber under a finger — 60ms on,
@@ -5436,11 +5441,20 @@ function onboardingKeyboard(): ScreenResponse {
       // THE WATCHER. Draws nothing; exists to notice.
       //
       // visibleIf + onAppear means "run this when the condition becomes true",
-      // so this fires the moment keyboardReady flips — which is the moment the
-      // app comes back from Settings with the keyboard enabled. A zero-height
-      // Spacer because the screen needs the event, not the pixel.
-      { type: "Spacer", style: { height: 0 },
-        visibleIf: { truthy: "keyboardReady" },
+      // so this fires the moment the signal flips — which is the moment the app
+      // comes back from Settings with the keyboard turned on.
+      //
+      // keyboardEnabled, NOT keyboardReady. Full Access is readable only from
+      // inside the keyboard extension, and ADDING A KEYBOARD DOES NOT RUN IT —
+      // so keyboardReady stays false until the user happens to type with it
+      // somewhere, and a screen waiting on that waits forever. `enabled` comes
+      // from the system's own list of keyboards and turns true as soon as
+      // Tailzu is switched on, which is when this step has nothing left to ask.
+      //
+      // A Stack, not a Spacer: Spacer reads height 0 as "no height given" and
+      // takes flex: 1, which pushes the rest of the screen apart.
+      { type: "Stack", style: { height: 0 },
+        visibleIf: { truthy: "keyboardEnabled" },
         on: { onAppear: "autoFinish" } },
           ],
         },

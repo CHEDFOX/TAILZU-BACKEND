@@ -45,6 +45,13 @@ export interface ClientCapabilities {
     colorScheme: "light" | "dark";
     locale: string;
     reduceMotion?: boolean;
+    /** What this phone already has. Device-level, so a different account on
+     *  the same handset inherits them — which is why the server routes
+     *  onboarding on these rather than on the profile alone. Absent from older
+     *  clients; absent reads as not granted. */
+    micGranted?: boolean;
+    keyboardEnabled?: boolean;
+    keyboardReady?: boolean;
   };
 }
 
@@ -533,7 +540,10 @@ export type ActionRef = string | ActionSpec;
 
 export type ActionSpec =
   // --- navigation & flow ---
-  | { kind: "navigate"; screenId: string; params?: Record<string, unknown> }
+  /** `replace: true` swaps the top of the stack instead of pushing onto it, so
+   *  there is nothing behind to go back to — what a step in a linear flow
+   *  wants: onboarding must not be walkable backwards. */
+  | { kind: "navigate"; screenId: string; params?: Record<string, unknown>; replace?: boolean }
   | { kind: "navigateBack" }
   | { kind: "switchTab"; tabId: string }
   | { kind: "openUrl"; url: string; external?: boolean }
