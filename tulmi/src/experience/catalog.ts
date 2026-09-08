@@ -2665,16 +2665,36 @@ function authScreenTree(): Record<string, unknown> {
 const TRAINING_UI = {
   entry: {
     /** Tiny, tracked, uppercase — the line above the title. "" removes it. */
-    kicker: "IT LEARNS HOW YOU TALK",
-    kickerSize: 10,
-    kickerTracking: 2.6,
-    kickerColor: "rgba(255,255,255,0.62)",
-    kickerGap: 14,
+    kicker: "IT LEARNS YOU",
+    kickerSize: 9.5,
+    kickerTracking: 3,
+    kickerColor: "rgba(255,255,255,0.55)",
+    kickerGap: 16,
 
-    title: "Train your voice",
-    titleSize: 40,
-    titleLineHeight: 46,
+    /**
+     * Two words, and they are the product.
+     *
+     * What is behind this button is a conversation — no prompts to answer, no
+     * form, nothing to read. "Just talk." says the whole of that, and a screen
+     * whose job is to be looked at rather than read cannot afford a sentence
+     * anyway: every extra word competes with the art for the same attention.
+     */
+    title: "Just talk.",
+    titleSize: 32,
+    titleLineHeight: 38,
     titleColor: "#FFFFFF",
+    /**
+     * LIGHT SANS, NOT THE APP SERIF.
+     *
+     * Heading paints in the platform serif at regular weight, and at display
+     * size that reads heavy and loud — it fills the frame and starts competing
+     * with the image instead of sitting on it. A light sans at the same point
+     * size occupies visibly less ink, which is why the reference can run its
+     * title large and still feel quiet. Negative tracking because letter
+     * spacing set for body text opens up too far at this size.
+     */
+    titleWeight: "300",
+    titleTracking: -0.3,
 
     /**
      * WHERE THE COPY SITS, as a share of the run between the top of the window
@@ -2837,15 +2857,18 @@ function homeScreen(_ctx: ScreenContext): ScreenResponse {
                   },
                 } as Node]
               : []),
+            // Text, not Heading: Heading hardcodes the app's serif, and this
+            // title is the one place that face is wrong for the job.
             {
-              type: "Heading",
+              type: "Text",
               props: { content: ui.title },
               style: {
                 textAlign: "center",
                 fontSize: ui.titleSize,
                 lineHeight: ui.titleLineHeight,
+                fontWeight: ui.titleWeight,
+                letterSpacing: ui.titleTracking,
                 color: ui.titleColor,
-                marginBottom: 0,
               },
             },
             { type: "Stack", style: { flex: ui.spaceBelow } },
