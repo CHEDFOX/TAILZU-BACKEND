@@ -16,7 +16,8 @@
     "test:watch": "vitest",
     "test:pipeline": "tsx scripts/test-pipeline.ts",
     "smoke": "tsx scripts/smoke.ts",
-    "eval": "tsx evals/run.ts"
+    "eval": "tsx evals/run.ts",
+    "spec": "tsx scripts/spec-dump.ts"
   },
   "dependencies": {
     "@deepgram/sdk": "^4.11.3",
