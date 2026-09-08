@@ -747,6 +747,19 @@ export function buildBootstrap(
         flags["auth.suction"] = AUTH_UI.entry.suction;
       }
 
+      // The code step gets its own backdrop when one is uploaded, and falls
+      // back to the entry's when it is not — so a single upload still dresses
+      // the whole flow, and a second one is an option rather than a duty.
+      const authCodeBg = reg["hero.auth.code"];
+      if (authCodeBg?.url && flags) {
+        flags["auth.background.code"] = {
+          url: authCodeBg.url,
+          ...(authCodeBg.contentType ? { contentType: authCodeBg.contentType } : {}),
+          background: authCodeBg.present?.background ?? "#000000",
+          fit: authCodeBg.present?.fit ?? "cover",
+        };
+      }
+
       const authBg = reg["hero.auth"];
       if (authBg?.url && flags) {
         flags["auth.background"] = {
