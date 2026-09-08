@@ -2664,32 +2664,55 @@ function authScreenTree(): Record<string, unknown> {
 
 const TRAINING_UI = {
   entry: {
-    kicker: "Voice",
+    /** Tiny, tracked, uppercase — the line above the title. "" removes it. */
+    kicker: "IT LEARNS HOW YOU TALK",
+    kickerSize: 10,
+    kickerTracking: 2.6,
+    kickerColor: "rgba(255,255,255,0.62)",
+    kickerGap: 14,
+
     title: "Train your voice",
-    sub: "Two ways. Both teach it how you sound.",
-    /** How far the art reaches past the screen's own padding. */
-    bleedX: 24,
-    bleedTop: 16,
-    /** Painted over the art so the copy stays readable on any upload. */
-    veil: "rgba(6,6,8,0.55)",
-    /** Where the copy block sits in the window. */
-    justify: "flex-end" as const,
-    paddingHorizontal: 24,
+    titleSize: 40,
+    titleLineHeight: 46,
+    titleColor: "#FFFFFF",
+
+    /**
+     * WHERE THE COPY SITS, as a share of the run between the top of the window
+     * and the button. The two flexes are a ratio, not a position: 1 above and
+     * 0.85 below puts the block at 54% of that run on every screen size, which
+     * a percentage or a fixed offset cannot promise.
+     */
+    spaceAbove: 1,
+    spaceBelow: 0.85,
+
+    paddingHorizontal: 26,
+    /** Clears the status bar. The header is hidden, so this is the safe area. */
+    paddingTop: 64,
     paddingBottom: 26,
-    gap: 10,
-    doors: {
-      chat: {
-        label: "Talk or type",
-        hint: "Reply, then pick what sounds like you",
-        background: ACCENT_AMBER,
-        color: "#000000",
-      },
-      live: {
-        label: "Just talk",
-        hint: "A real conversation, out loud",
-        background: "rgba(255,255,255,0.07)",
-        color: "#FFFFFF",
-      },
+
+    /**
+     * The scrim. Not a flat veil over the whole frame — that dulls the art
+     * everywhere to fix legibility in one place. A vertical gradient leaves the
+     * top as it was shot and darkens only where the words are.
+     */
+    scrim: ["rgba(0,0,0,0)", "rgba(0,0,0,0.28)", "rgba(0,0,0,0.72)"] as string[],
+
+    /** The way in. One button; what it opens is decided by `enter`. */
+    cta: {
+      label: "BEGIN",
+      background: "#0B0B0D",
+      color: "#FFFFFF",
+      fontSize: 12,
+      tracking: 1.8,
+      height: 58,
+      radius: 999,
+      /** The disc on the right, and the dot inside it. */
+      disc: 46,
+      discBackground: "rgba(255,255,255,0.14)",
+      dot: 7,
+      dotColor: "#FFFFFF",
+      /** Breathing room either side of the pill. */
+      inset: 22,
     },
   },
   chat: {
@@ -2760,94 +2783,135 @@ const TRAINING_UI = {
 function homeScreen(_ctx: ScreenContext): ScreenResponse {
   const ui = TRAINING_UI.entry;
 
-  /** A door: title, one line under it, the whole card is the tap target. */
-  const door = (
-    d: { label: string; hint: string; background: string; color: string },
-    action: ActionRef,
-    extra: Partial<Node> = {},
-  ): Node => ({
-    type: "Card",
-    on: { onPress: action },
-    style: {
-      backgroundColor: d.background,
-      borderWidth: 0,
-      borderRadius: 16,
-      paddingVertical: 14,
-      paddingHorizontal: 16,
-      width: "100%",
-    },
-    ...extra,
-    children: [
-      { type: "Text", props: { content: d.label },
-        style: { fontSize: 15.5, fontWeight: "700", color: d.color } },
-      { type: "Text", props: { content: d.hint },
-        style: { fontSize: 12, color: d.color, opacity: 0.72, marginTop: 2 } },
-    ],
-  });
-
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "home",
     title: "",
+    // Header off, tabs on. The art runs to the top of the window — the header
+    // sits IN FLOW, so its status-bar padding is space the art could never
+    // reach — but this is a tab root, and hiding the tabs on the tab you are
+    // standing on leaves no way off it.
+    hideHeader: true,
     state: {},
     actions: {
-      openChat: { kind: "sequence", actions: [
+      enter: { kind: "sequence", actions: [
         { kind: "haptic", style: "light" },
         { kind: "navigate", screenId: "training_chat" },
       ] },
-      openLive: { kind: "sequence", actions: [
-        { kind: "haptic", style: "light" },
-        { kind: "navigate", screenId: "training_live" },
-      ] },
     },
     root: {
-      type: "Screen",
-      style: {
-        paddingHorizontal: ui.paddingHorizontal,
-        paddingTop: ui.bleedTop,
-        justifyContent: ui.justify,
-      },
+      type: "Stack",
+      // Black under everything: what is seen before the art loads, and all
+      // there is if nothing has been uploaded to the slot.
+      style: { flex: 1, backgroundColor: "#000000" },
       children: [
-        // The art, behind everything. Empty slot → nothing here at all, and
-        // the screen still reads: the veil below paints the ground either way.
-        ...screenHero("training", {
-          behind: true,
-          fit: "cover",
-          fullBleed: ui.bleedX,
-          fullBleedTop: ui.bleedTop,
-        }),
+        // The art, edge to edge. Upload to `training`; upload nothing and
+        // screenHero returns no nodes and the screen is simply black.
+        ...screenHero("training", { behind: true, fit: "cover" }),
+        // The scrim over it, and under everything else.
         {
-          type: "Stack",
-          style: {
-            position: "absolute",
-            top: -ui.bleedTop, left: -ui.bleedX, right: -ui.bleedX, bottom: 0,
-            backgroundColor: ui.veil,
-          },
+          type: "Gradient",
+          props: { colors: ui.scrim, direction: "vertical" },
+          style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
         },
         {
           type: "Stack",
-          style: { gap: ui.gap, paddingBottom: ui.paddingBottom },
+          style: {
+            flex: 1,
+            paddingHorizontal: ui.paddingHorizontal,
+            paddingTop: ui.paddingTop,
+            paddingBottom: ui.paddingBottom,
+          },
           children: [
-            { type: "Overline", props: { content: ui.kicker },
-              style: { color: "rgba(255,255,255,0.5)" } },
-            { type: "Heading", props: { content: ui.title },
-              style: { fontSize: 29, lineHeight: 33, color: "#FFFFFF" } },
-            { type: "Text", props: { content: ui.sub },
-              style: { fontSize: 13.5, lineHeight: 20, color: "rgba(255,255,255,0.62)", marginBottom: 8 } },
-            door(ui.doors.chat, "openChat"),
-            // The second door only exists once realtime does. A flag rather
-            // than a comment, so turning it on is a bootstrap edit and the
-            // screen behind it is already built.
-            door(ui.doors.live, "openLive", { visibleIf: { flag: "train.realtime" } }),
+            { type: "Stack", style: { flex: ui.spaceAbove } },
+            ...(ui.kicker
+              ? [{
+                  type: "Text",
+                  props: { content: ui.kicker },
+                  style: {
+                    textAlign: "center",
+                    fontSize: ui.kickerSize,
+                    letterSpacing: ui.kickerTracking,
+                    color: ui.kickerColor,
+                    marginBottom: ui.kickerGap,
+                  },
+                } as Node]
+              : []),
+            {
+              type: "Heading",
+              props: { content: ui.title },
+              style: {
+                textAlign: "center",
+                fontSize: ui.titleSize,
+                lineHeight: ui.titleLineHeight,
+                color: ui.titleColor,
+                marginBottom: 0,
+              },
+            },
+            { type: "Stack", style: { flex: ui.spaceBelow } },
+            // THE PILL. A Stack, not a Button: Button owns its own shape and
+            // paints one surface, and this is a label and a disc that have to
+            // sit at opposite ends of the same pill. A Stack with an onPress is
+            // a Pressable, so the whole thing is the target and the composition
+            // stays here rather than becoming a component.
+            {
+              type: "Stack",
+              on: { onPress: "enter" },
+              style: {
+                flexDirection: "row",
+                alignItems: "center",
+                marginHorizontal: ui.cta.inset,
+                height: ui.cta.height,
+                borderRadius: ui.cta.radius,
+                backgroundColor: ui.cta.background,
+                paddingLeft: 6,
+                paddingRight: 6,
+              },
+              children: [
+                // An empty disc's width on the left, so the label is centred in
+                // the PILL rather than in the space the disc left over.
+                { type: "Stack", style: { width: ui.cta.disc } },
+                {
+                  type: "Text",
+                  props: { content: ui.cta.label },
+                  style: {
+                    flex: 1,
+                    textAlign: "center",
+                    fontSize: ui.cta.fontSize,
+                    letterSpacing: ui.cta.tracking,
+                    color: ui.cta.color,
+                  },
+                },
+                {
+                  type: "Stack",
+                  style: {
+                    width: ui.cta.disc,
+                    height: ui.cta.disc,
+                    borderRadius: ui.cta.disc / 2,
+                    backgroundColor: ui.cta.discBackground,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  },
+                  children: [{
+                    type: "Stack",
+                    style: {
+                      width: ui.cta.dot,
+                      height: ui.cta.dot,
+                      borderRadius: ui.cta.dot / 2,
+                      backgroundColor: ui.cta.dotColor,
+                    },
+                  }],
+                },
+              ],
+            },
           ],
         },
       ],
     },
-    cacheTtlSeconds: 180,
+    cacheTtlSeconds: 300,
   };
 }
 
-/** The refine playground — proves the full SDUI loop incl. a brain call. */
 function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
   // In-app mic media. Prefer an MP4 upload (mic.animation.mp4) when present —
   // MediaPlayer's video branch freezes it on-frame while paused AND reacts its

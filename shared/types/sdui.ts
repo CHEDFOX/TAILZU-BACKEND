@@ -363,6 +363,14 @@ export interface ScreenResponse {
    * paywalls that need immersion, onboarding videos, etc.
    */
   hideChrome?: boolean;
+  /**
+   * Hide the top bar but KEEP the tab bar. hideChrome is all or nothing, and a
+   * tab root cannot use it — losing the tabs on the tab you are standing on
+   * leaves no way off it. But the header is IN FLOW, so its status-bar padding
+   * is space a full-bleed backdrop can never reach. This is the middle: the
+   * screen starts at the top of the window, the tabs stay.
+   */
+  hideHeader?: boolean;
 }
 
 // ===========================================================================
