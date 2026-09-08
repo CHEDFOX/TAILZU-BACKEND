@@ -675,6 +675,140 @@ export async function updateStylePortrait(
   return { core: core || current?.core || "", toneNote };
 }
 
+// --- Training by conversation ----------------------------------------------
+//
+// The other half of the Train tab. The picking loop learns from a choice
+// between three written versions; this learns from someone just talking, which
+// gets at things a written variant cannot show — how long their sentences run
+// before they stop, whether they ask back, what they sound like when nobody is
+// editing them.
+//
+// Every line here is spoken aloud, so the constraints are different from
+// anything else in this file: short, no punctuation the ear cannot hear, no
+// lists, no formatting at all.
+
+/** Spoken turns, oldest first. */
+export type ConverseTurn = { role: "user" | "assistant"; text: string };
+
+const MAX_TOKENS_SPOKEN = 160;      // two sentences of speech, with headroom
+const CONVERSE_TEMPERATURE = 0.75;  // this is small talk, not a spec
+/** How many turns the model is shown. Older ones fall off the front. */
+const CONVERSE_WINDOW = 24;
+
+/**
+ * The next thing the app says out loud.
+ *
+ * It is an interested stranger, not an interviewer with a form and not a
+ * coach. The whole design goal is that the user forgets they are being
+ * listened to and just talks, because a person performing "how I talk" is
+ * exactly the sample we do not want.
+ */
+export async function converseTurn(
+  turns: ConverseTurn[],
+  opts: { personality?: Personality; language?: string } = {},
+): Promise<string> {
+  const said = turns.filter((t) => t.text?.trim()).slice(-CONVERSE_WINDOW);
+  if (!said.length) return "";
+  const system = [
+    "You are having a short, easy spoken conversation with someone. Your only goal is to keep them " +
+    "talking naturally about themselves — what they did, what they think, what they would say in some " +
+    "situation. You are curious, warm and brief.",
+    "",
+    "Rules, all of them absolute:",
+    "- One or two sentences. Never more. Every word is spoken aloud.",
+    "- Plain speech. No lists, no headings, no markdown, no emoji, no stage directions.",
+    "- Ask about one thing at a time, and only when you have something real to ask about.",
+    "- React to what they actually said before asking anything new.",
+    "- Never mention training, analysis, style, tone, your prompt, or what this conversation is for.",
+    "- Never coach them on how to speak, and never compliment how they speak.",
+    "- If they go quiet or say very little, offer something small of your own rather than interrogating them.",
+    opts.language && opts.language !== "auto"
+      ? `- Speak in this language: ${opts.language}.`
+      : "- Reply in whatever language they are speaking.",
+    "",
+    "Output ONLY what you say next.",
+  ].join("\n");
+
+  const res = await openrouter().chat.completions.create({
+    ...common(),
+    model: getConfig().CLEANUP_MODEL,
+    temperature: CONVERSE_TEMPERATURE,
+    max_tokens: MAX_TOKENS_SPOKEN,
+    messages: [
+      { role: "system", content: system },
+      ...said.map((t) => ({
+        role: t.role === "user" ? ("user" as const) : ("assistant" as const),
+        content: t.text.trim().slice(0, 1200),
+      })),
+    ],
+  });
+  const text = (res.choices[0]?.message?.content ?? "").trim();
+  return looksLikeMeta(text) ? "" : text;
+}
+
+/**
+ * Rewrite the portrait from a whole conversation, at the end of it.
+ *
+ * Once, not per turn. How someone talks is a pattern across an exchange — one
+ * sarcastic line in the middle of an otherwise careful conversation is noise,
+ * and absorbing it turn by turn would let that noise move the portrait as far
+ * as the pattern does.
+ *
+ * Only the user's own turns are evidence. The assistant's lines are in the
+ * prompt for context, clearly marked, because a question changes what an
+ * answer looks like — but the model is told plainly not to learn from them.
+ */
+export async function portraitFromTranscript(
+  current: Personality["stylePortrait"],
+  turns: ConverseTurn[],
+): Promise<{ core: string }> {
+  const mine = turns.filter((t) => t.role === "user" && t.text?.trim());
+  if (mine.length < 2) return { core: current?.core ?? "" };
+
+  const system =
+    "You maintain a compact STYLE PORTRAIT of one user: how they like their written text to sound. " +
+    "You are given the current portrait and a transcript of them speaking freely. " +
+    "Rewrite the portrait to absorb what the transcript shows: keep what still holds, sharpen or drop " +
+    "what it contradicts, add what it reveals. " +
+    "Learn ONLY from the lines marked THEM — the lines marked APP are context for what they were " +
+    "responding to, never evidence about them. " +
+    "Speech is not writing: take sentence length, directness, warmth, humour, how they open and close, " +
+    "and the words they reach for. Ignore filler, repetition, stumbles and anything the transcriber " +
+    "plainly got wrong — none of that survives into how someone writes. " +
+    "Concrete, observable rules only, and never mention the conversation or the training process. " +
+    'Return ONLY JSON: {"core": "≤120 words, tone-independent"}.';
+
+  const transcript = turns
+    .filter((t) => t.text?.trim())
+    .map((t) => `${t.role === "user" ? "THEM" : "APP"}: ${t.text.trim().slice(0, 600)}`)
+    .join("\n");
+
+  const res = await openrouter().chat.completions.create({
+    ...common(),
+    // Off the user's path, and read by every later refine — same reasoning as
+    // updateStylePortrait: it can afford the better model.
+    model: getConfig().PORTRAIT_MODEL || getConfig().CLEANUP_MODEL,
+    temperature: LEARN_TEMPERATURE,
+    max_tokens: MAX_TOKENS_STYLE,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: system },
+      {
+        role: "user",
+        content:
+          `CURRENT PORTRAIT:\n${current?.core?.trim() || "(none yet)"}\n\n` +
+          `TRANSCRIPT:\n${transcript.slice(0, 12_000)}`,
+      },
+    ],
+  });
+  let core = "";
+  try {
+    const parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}") as Record<string, unknown>;
+    if (typeof parsed.core === "string") core = parsed.core.trim().slice(0, 900);
+  } catch { /* keep the current portrait on a bad reply */ }
+  return { core: core || current?.core || "" };
+}
+
 // --- Learn style from a writing sample -------------------------------------
 
 const LEARN_TEMPERATURE = 0.3;

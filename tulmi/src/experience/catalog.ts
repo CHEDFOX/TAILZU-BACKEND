@@ -572,10 +572,10 @@ export function buildBootstrap(
         "intro.background": THEME.color.bg,
         "intro.showEveryLaunch": false,
 
-        // The Training tab's second door. Off until there is a live audio
-        // session behind it — the screen itself is already built, so turning
-        // realtime on is this line and a deploy.
-        "train.realtime": false,
+        // The Training tab's second door. The screen behind it is a real
+        // spoken conversation now, built from modules that already shipped —
+        // so this is the whole switch, and turning it off again is one edit.
+        "train.realtime": true,
 
         // Paywall gating. When `paywall.entitlement` is set, the client checks
         // RevenueCat for that entitlement on boot; when the user does NOT
@@ -2350,11 +2350,23 @@ const TRAINING_UI = {
     refiningLabel: "Refining…",
     live: {
       title: "Just talk",
-      listening: "Listening",
+      /** One word per session state. Caption, not the only signal — the
+       *  bubble's motion says the same thing without being read. */
+      status: {
+        idle: "Ready",
+        listening: "Listening",
+        thinking: "Thinking",
+        speaking: "Speaking",
+        error: "Something went wrong",
+      },
       hint: "Talk the way you normally would. Nothing here is graded.",
       end: "End & save",
-      /** Size of the bubble's box. Waveform stands in until VoiceBubble ships. */
+      saving: "Reading the conversation",
+      saved: "It knows you a little better.",
       bubble: 190,
+      tint: ACCENT_AMBER,
+      /** A pause this long, with something said, ends your turn. */
+      silenceMs: 1500,
     },
     /** The background media slot. 0 hides it without removing the upload. */
     backgroundOpacity: 0.4,
@@ -2893,24 +2905,76 @@ function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
 }
 
 /**
- * The realtime door — behind the `train.realtime` flag, which is off.
+ * The realtime door: a spoken conversation, and a portrait read from it.
  *
- * It is built now rather than later so the flag is the only thing standing
- * between the app and this screen. Two pieces are still missing and both are
- * client-side: a live audio session, and the Skia bubble. `Waveform` stands in
- * for the bubble because it ships in every installed build; swapping it for a
- * `VoiceBubble` node is one edit here once that component exists.
+ * Three nodes do the work and none of them is native. VoiceSession owns the
+ * audio loop and writes `sessionState`, `level`, `line` and `turns` into this
+ * screen's state; VoiceBubble draws from the first two; the End button posts
+ * the fourth. Everything else here is ordinary layout, so where the bubble
+ * sits, what the states are called and how long a pause ends a turn are all
+ * edits to TRAINING_UI.
+ *
+ * It is turn-based, not full duplex — you cannot interrupt it. That needs a
+ * bidirectional audio session and a native module the app does not carry, so
+ * it is honestly absent rather than half-built. The pieces this DOES use
+ * (the streaming mic, speech synthesis, Skia) all shipped long ago, which is
+ * why the whole screen arrives without a build.
  */
 function trainingLiveScreen(): ScreenResponse {
   const ui = TRAINING_UI.chat.live;
+
+  /** The status word, one node per state. Cheaper than a bound lookup table
+   *  and it keeps every string in TRAINING_UI where the rest of them are. */
+  const status = (key: keyof typeof ui.status): Node => ({
+    type: "Text",
+    props: { content: ui.status[key] },
+    visibleIf: { eq: ["sessionState", key] },
+    style: {
+      fontSize: 11, letterSpacing: 2, textTransform: "uppercase",
+      color: key === "error" ? "$color.danger" : "$color.muted",
+    },
+  });
+
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "training_live",
     title: ui.title,
-    state: { level: 0.25 },
+    state: {
+      sessionState: "idle",
+      level: 0,
+      line: "",
+      turns: [],
+      saving: false,
+      saved: false,
+    },
     actions: {
+      sessionErr: { kind: "toast", message: "$event", tone: "error" },
+      // The conversation is read ONCE, here, on the way out. Per-turn updates
+      // would let a single throwaway line move the portrait as far as the
+      // pattern does.
       finish: { kind: "sequence", actions: [
         { kind: "haptic", style: "success" },
+        { kind: "setState", path: "saving", value: true },
+        {
+          kind: "callEndpoint",
+          method: "POST",
+          path: "/v1/train/portrait",
+          body: { turns: "$state.turns" },
+          onSuccess: "saved",
+          onError: "saveErr",
+        },
+      ] },
+      saved: { kind: "sequence", actions: [
+        { kind: "setState", path: "saving", value: false },
+        { kind: "setState", path: "saved", value: true },
+        { kind: "toast", message: ui.saved, tone: "success" },
+        { kind: "navigate", screenId: "home" },
+      ] },
+      // A failed save must not trap someone on this screen. They leave either
+      // way; what they lose is the portrait update, and the toast says so.
+      saveErr: { kind: "sequence", actions: [
+        { kind: "setState", path: "saving", value: false },
+        { kind: "toast", message: "Couldn't save that conversation.", tone: "error" },
         { kind: "navigate", screenId: "home" },
       ] },
     },
@@ -2918,28 +2982,59 @@ function trainingLiveScreen(): ScreenResponse {
       type: "Screen",
       style: { paddingHorizontal: 24, paddingTop: 16, alignItems: "center" },
       children: [
-        { type: "Overline", props: { content: ui.listening },
-          style: { color: "$color.muted", marginBottom: 18 } },
+        // Draws nothing. Mounting it starts the conversation; leaving the
+        // screen unmounts it, which is what stops the mic.
         {
-          type: "Stack",
-          style: {
-            width: ui.bubble, height: ui.bubble, borderRadius: ui.bubble / 2,
-            backgroundColor: ACCENT_AMBER, overflow: "hidden",
-            alignItems: "center", justifyContent: "center", marginBottom: 22,
+          type: "VoiceSession",
+          props: {
+            path: "/v1/train/converse",
+            silenceMs: ui.silenceMs,
+            statePath: "sessionState",
+            levelPath: "level",
+            linePath: "line",
+            turnsPath: "turns",
           },
-          children: [
-            { type: "Waveform", bind: { level: "level" }, props: { level: 0.25 },
-              style: { width: ui.bubble * 0.62, height: ui.bubble * 0.42 } },
-          ],
+          on: { onError: "sessionErr" },
         },
-        { type: "Text", props: { content: ui.hint },
-          style: { fontSize: 13.5, lineHeight: 20, color: "$color.muted", textAlign: "center", marginBottom: 26 } },
-        { type: "Button", props: { label: ui.end, variant: "primary" },
+        status("idle"), status("listening"), status("thinking"),
+        status("speaking"), status("error"),
+        { type: "Spacer", style: { height: 18 } },
+        {
+          type: "VoiceBubble",
+          bind: { level: "level", state: "sessionState" },
+          props: { size: ui.bubble, tint: ui.tint },
+          // Every installed build has Skia, but a bundle old enough to predate
+          // this component would render a hole where the only visual is. The
+          // wave mark is a worse bubble and a far better nothing.
+          fallback: {
+            type: "Waveform",
+            bind: { level: "level" },
+            style: { width: ui.bubble * 0.62, height: ui.bubble * 0.42 },
+          },
+          style: { marginBottom: 20 },
+        },
+        // The last thing said, whoever said it. One line, so the screen stays
+        // something you listen to rather than something you read.
+        { type: "Text", bind: { content: "line" }, props: { content: ui.hint },
+          style: {
+            fontSize: 14, lineHeight: 21, color: "$color.text",
+            textAlign: "center", minHeight: 42, marginBottom: 24,
+          } },
+        {
+          type: "Button",
+          props: { label: ui.end, variant: "primary" },
+          visibleIf: { falsy: "saving" },
           style: { width: "100%" },
-          on: { onPress: "finish" } },
+          on: { onPress: "finish" },
+        },
+        { type: "Text", props: { content: ui.saving },
+          visibleIf: { truthy: "saving" },
+          style: { fontSize: 13, color: "$color.muted", textAlign: "center", paddingVertical: 14 } },
       ],
     },
-    cacheTtlSeconds: 180,
+    // Never cached: this screen's whole content is the conversation it is
+    // having, and a cached copy of that is a copy of someone else's.
+    cacheTtlSeconds: 0,
   };
 }
 

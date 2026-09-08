@@ -358,6 +358,30 @@ describe("buildScreen", () => {
     expect(json).toContain("Train your voice");
   });
 
+  it("Training live is a real conversation: a session, a bubble, and one read at the end", () => {
+    const live = buildScreen("training_live", { personality: {}, language: "en" });
+    expect(live).not.toBeNull();
+    const json = JSON.stringify(live);
+    // The loop: one node owns the audio and writes what it hears into state.
+    expect(json).toContain('"VoiceSession"');
+    expect(json).toContain("/v1/train/converse");
+    // The bubble reads that state — and degrades to the wave mark on a bundle
+    // too old to have it, rather than leaving a hole where the only visual is.
+    expect(json).toContain('"VoiceBubble"');
+    expect(json).toContain('"level":"level"');
+    expect(json).toContain('"state":"sessionState"');
+    expect(json).toContain('"Waveform"');
+    // The portrait is read ONCE, on the way out, from the whole transcript.
+    expect(json).toContain("/v1/train/portrait");
+    expect(json).toContain('"turns":"$state.turns"');
+    // A conversation is never served from cache.
+    expect(live!.cacheTtlSeconds).toBe(0);
+    // Status words compare against state with the tuple form evalCondition
+    // actually implements — the object form silently evaluates to false, which
+    // would hide every one of them and leave the screen with no caption.
+    expect(json).toContain('"eq":["sessionState","listening"]');
+  });
+
   it("Training chat is the refine surface: variants + pick endpoints, tone sheet trains a tone", () => {
     const home = buildScreen("training_chat", { personality: {}, language: "en" });
     expect(home).not.toBeNull();

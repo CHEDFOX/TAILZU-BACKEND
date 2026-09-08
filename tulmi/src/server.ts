@@ -73,7 +73,10 @@ async function effectiveLanguage(
   return l && l !== "auto" ? l : "auto";
 }
 import { runPipeline, runPipelineStream } from "./pipeline/index.js";
-import { assist, draftReply, inferStyle, refineVariants, updateStylePortrait, LLM_TONES } from "./pipeline/cleanup.js";
+import {
+  assist, draftReply, inferStyle, refineVariants, updateStylePortrait, LLM_TONES,
+  converseTurn, portraitFromTranscript, type ConverseTurn,
+} from "./pipeline/cleanup.js";
 import { synthesize } from "./pipeline/tts.js";
 import {
   getPersonality,
@@ -733,6 +736,93 @@ app.post("/v1/train/pick", { config: AUTHED_RL }, async (req, reply) => {
   } catch (err) {
     req.log.error(err);
     return reply.code(500).send({ code: "internal", message: "Couldn't save your pick" });
+  }
+});
+
+// --- Training by conversation ----------------------------------------------
+//
+// The spoken half of the Train tab. /converse answers one turn out loud;
+// /portrait reads the whole exchange once, at the end, and rewrites the style
+// portrait from it. Split that way on purpose: the reply has a person waiting
+// on it and must be fast, the portrait does not and can take the better model.
+//
+// The transcript is never stored. It arrives in the request body, is used, and
+// is gone — what survives a conversation is the portrait it produced.
+
+/** Read and bound a transcript from a request body. Shared by both routes. */
+function readTurns(raw: unknown): { turns: ConverseTurn[] } | { error: string } {
+  if (!Array.isArray(raw)) return { error: "Missing 'turns'" };
+  // A cap on both count and length: this body is user-controlled and every
+  // character of it reaches an LLM prompt.
+  if (raw.length > 200) return { error: "Too many turns" };
+  const turns: ConverseTurn[] = [];
+  for (const t of raw) {
+    if (!t || typeof t !== "object") continue;
+    const { role, text } = t as { role?: unknown; text?: unknown };
+    if (role !== "user" && role !== "assistant") continue;
+    if (typeof text !== "string") continue;
+    const trimmed = text.trim();
+    if (trimmed) turns.push({ role, text: trimmed.slice(0, 2000) });
+  }
+  return turns.length ? { turns } : { error: "Missing 'turns'" };
+}
+
+app.post("/v1/train/converse", { config: AUTHED_RL }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) {
+    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+  }
+  const body = (req.body ?? {}) as { turns?: unknown; language?: string };
+  const read = readTurns(body.turns);
+  if ("error" in read) return reply.code(400).send({ code: "bad_request", message: read.error });
+  const quota = await enforceQuota(user);
+  if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+  try {
+    const personality = await getPersonality(user);
+    const text = await converseTurn(read.turns, { personality, language: body.language });
+    if (!text) {
+      return reply.code(500).send({ code: "cleanup_failed", message: "Couldn't answer that" });
+    }
+    await recordUsage({
+      user,
+      source: "rest",
+      audioSeconds: 0,
+      words: countWords(text),
+      model: getConfig().CLEANUP_MODEL,
+    });
+    return reply.send({ reply: text });
+  } catch (err) {
+    req.log.error(err);
+    return reply.code(500).send({ code: "cleanup_failed", message: "Couldn't answer that" });
+  }
+});
+
+app.post("/v1/train/portrait", { config: AUTHED_RL }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) {
+    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+  }
+  const read = readTurns((req.body as { turns?: unknown } | undefined)?.turns);
+  if ("error" in read) return reply.code(400).send({ code: "bad_request", message: read.error });
+  try {
+    const personalityNow = await getPersonality(user);
+    const next = await portraitFromTranscript(personalityNow.stylePortrait, read.turns);
+    // Core only. A conversation is not held in any one voice, so it has
+    // nothing to say about a specific tone's note — and merging under the lock
+    // keeps the notes the picking loop learned exactly as they were.
+    const merged = await updatePersonality(user, (existing) => ({
+      ...existing,
+      stylePortrait: {
+        core: next.core,
+        tones: existing.stylePortrait?.tones ?? {},
+        examples: (existing.stylePortrait?.examples ?? 0) + 1,
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+    return reply.send({ ok: true, examples: merged.stylePortrait?.examples ?? 1 });
+  } catch (err) {
+    req.log.error(err);
+    return reply.code(500).send({ code: "internal", message: "Couldn't save what it heard" });
   }
 });
 
