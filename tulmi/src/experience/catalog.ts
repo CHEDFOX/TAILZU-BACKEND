@@ -726,6 +726,28 @@ export function buildBootstrap(
         flags["intro.media"] = { url: intro.url };
       }
 
+      // The sign-in screen's backdrop.
+      //
+      // It rides in the BOOT FLAGS rather than in a screen, because the auth
+      // gate runs before there is a session and so can never fetch a screen —
+      // bootstrap is the only channel that reaches it. Uploading to `hero.auth`
+      // is therefore the entire operation: no deploy, and certainly no build.
+      //
+      // contentType travels with it because the client has to choose between a
+      // Video node and an Image node before it can render anything, and it has
+      // no other way to know which this is.
+      const authBg = reg["hero.auth"];
+      if (authBg?.url && flags) {
+        flags["auth.background"] = {
+          url: authBg.url,
+          ...(authBg.contentType ? { contentType: authBg.contentType } : {}),
+          // The screen paints this behind the media so the gap before a video's
+          // first frame is the art's own ground rather than a black flash.
+          background: authBg.present?.background ?? "#000000",
+          fit: authBg.present?.fit ?? "cover",
+        };
+      }
+
       // One platform's differences, applied last so they always win.
 
       return applyPlatformFlags(flags, opts.platform ?? "ios");
