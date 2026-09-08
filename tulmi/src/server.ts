@@ -1472,7 +1472,7 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     : [null, null];
   const reqBody = (req.body ?? {}) as {
     launchCount?: number;
-    capabilities?: { platform?: string; bundle?: string; appVersion?: string };
+    capabilities?: { platform?: string; bundle?: string; appVersion?: string; lastBoot?: string };
   };
   // WHICH BUNDLE IS ACTUALLY RUNNING.
   //
@@ -1490,6 +1490,9 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
       appVersion: reqBody.capabilities?.appVersion ?? "unknown",
       launchCount: reqBody.launchCount ?? 0,
       platform: reqBody.capabilities?.platform ?? "unknown",
+      // How the PREVIOUS launch ended. A boot that hangs cannot report on
+      // itself, so the app leaves a breadcrumb and the next launch carries it.
+      lastBoot: reqBody.capabilities?.lastBoot ?? "unknown",
     },
     "[boot] client bundle",
   );
