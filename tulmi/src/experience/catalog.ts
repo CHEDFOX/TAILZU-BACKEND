@@ -2493,19 +2493,6 @@ function authScreenTree(): Record<string, unknown> {
             type: "Stack",
             style: { gap: ui.entry.gap },
             children: [
-              // Each row arrives on its OWN timing, carried with it.
-              { type: "Rise",
-                props: { ...ui.entry.suction.spring, scaleFrom: ui.entry.suction.scaleFrom, ...ui.entry.suction.rows.brand },
-                children: [{
-                  type: "Stack",
-                  style: { gap: ui.entry.brandGap, marginBottom: ui.entry.blockGap },
-                  children: [
-                    { type: "Text", props: { content: ui.brand },
-                      style: { fontSize: ui.entry.brandSize, fontWeight: "800", color: "#FFFFFF", letterSpacing: -0.5 } },
-                    { type: "Text", props: { content: ui.tagline },
-                      style: { fontSize: ui.entry.taglineSize, color: "rgba(255,255,255,0.55)" } },
-                  ],
-                }] },
               // Email is always offered. Phone draws nothing when the backend
               // has not enabled it, so the row simply is not there rather than
               // being there and failing when someone taps it.
