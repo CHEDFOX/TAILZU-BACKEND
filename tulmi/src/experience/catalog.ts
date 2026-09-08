@@ -4853,15 +4853,22 @@ function onboardingVoice(): ScreenResponse {
     title: "",
     // Full-bleed: no header/back/tabs — this is the gate.
     hideChrome: true,
-    state: {},
+    // micGranted is overwritten live by the app, which re-reads the permission
+    // on a timer and on every return to the foreground.
+    state: { micGranted: false },
     actions: {
       // ALREADY ALLOWED? DO NOT ASK AGAIN, AND DO NOT SIT THERE.
       //
-      // The system prompt fires as this screen arrives, so by the time anyone
-      // has read it they may have already answered — and then the screen is
-      // asking for something they have given, with a button that does nothing
-      // visible. A beat, then the same check: granted moves on, anything else
-      // leaves the screen exactly as it was for them to answer properly.
+      // Fired by the watcher at the foot of this screen, which is gated on
+      // micGranted — so this runs when the permission is granted, whenever
+      // that happens: already true when the screen opens, or turned on in
+      // Settings and discovered the moment the app comes back.
+      //
+      // IT CANNOT BE DONE ON THE SCREEN APPEARING. The permission is changed
+      // in Settings, which means the app was in the background when it
+      // changed, and returning from the background is not a mount — the screen
+      // that checked once on the way in never checks again, and sits there
+      // asking for something it already has. That was the bug.
       //
       // The beat is deliberate. Passing instantly would flash this screen for
       // a frame and read as a glitch; a second and a half reads as the screen
@@ -4898,7 +4905,6 @@ function onboardingVoice(): ScreenResponse {
     },
     root: {
       type: "Stack",
-      on: { onAppear: "autoPass" },
       // hideChrome = truly full-bleed, so the top/bottom padding IS the safe
       // area: 76 clears the status bar on notch phones, 48 clears the home
       // indicator (28/28 put the title under the clock and clipped "Not now").
@@ -5028,6 +5034,15 @@ function onboardingVoice(): ScreenResponse {
             },
           ],
         },
+        // THE WATCHER. Draws nothing; exists to notice.
+        //
+        // visibleIf + onAppear means "run this when the condition becomes
+        // true", and micGranted is re-read on every return to the foreground —
+        // so this fires whether the permission was already there when the
+        // screen opened or was granted in Settings a minute later.
+        { type: "Stack", style: { height: 0 },
+          visibleIf: { truthy: "micGranted" },
+          on: { onAppear: "autoPass" } },
       ],
     },
     cacheTtlSeconds: 600,
