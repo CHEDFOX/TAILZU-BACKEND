@@ -5038,12 +5038,20 @@ function onboardingVoice(): ScreenResponse {
 function onboardingKeyboard(): ScreenResponse {
   // Golden body pair: 14/23 (14 × φ ≈ 22.65) — see the voice screen's scale note.
   const step = (n: string, body: string): Node => ({
-    type: "Stack", style: { direction: "row", gap: 13, alignItems: "flex-start" }, children: [
+    type: "Stack", style: { direction: "row", gap: 10, alignItems: "flex-start" }, children: [
       // Fixed-width number column so all five step bodies left-align.
-      { type: "Text", props: { content: n }, style: { color: "$color.muted", fontSize: 12, fontWeight: "700", width: 14, lineHeight: 18 } },
-      { type: "Paragraph", props: { content: body }, style: { marginBottom: 0, flex: 1, fontSize: 12.5, lineHeight: 18 } },
+      { type: "Text", props: { content: n }, style: { color: "$color.muted", fontSize: 10.5, fontWeight: "700", width: 12, lineHeight: 16 } },
+      { type: "Paragraph", props: { content: body }, style: { marginBottom: 0, flex: 1, fontSize: 11.5, lineHeight: 16 } },
     ],
   });
+  // The line that used to sit under the headline, now the box's own first
+  // line. It belongs here: it is not a second thought after the title, it is
+  // what the list under it is for.
+  const stepsTitle: Node = {
+    type: "Paragraph",
+    props: { content: "A moment in Settings, and Tailzu writes with you in every app." },
+    style: { fontSize: 12.5, lineHeight: 18, color: "$color.text", marginBottom: 11 },
+  };
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "onboarding_keyboard",
@@ -5053,7 +5061,6 @@ function onboardingKeyboard(): ScreenResponse {
     // finish/skip PUT — profile.onboarded stays false and every next launch
     // routes back into onboarding (the "voice screen forever" loop).
     hideChrome: true,
-    template: "scroll",
     state: { keyboardReady: false, settingsPressed: false },
     actions: {
       // THE FLASH HAS TO BE HELD, and this is the one screen where that is
@@ -5168,15 +5175,38 @@ function onboardingKeyboard(): ScreenResponse {
         onError: "finishErr",
       },
     },
-    blocks: [
+    // A ROOT, NOT A TEMPLATE — because of the backdrop.
+    //
+    // "scroll" composes exactly one node, a Screen, so a template leaves
+    // nowhere to put a layer BEHIND the content: anything added to blocks is
+    // inside the ScrollView, where an absolute child anchors to the content
+    // box and scrolls away with it. A backdrop has to be the Screen's sibling
+    // to stay still and to fill the window, and that needs a root.
+    //
+    // The Screen is transparent so the art shows through, and the Stack under
+    // both stays black — that is what is seen before the media loads, and if
+    // nothing has been uploaded to the key it is all that is ever seen. Safe
+    // to ship ahead of the art.
+    root: {
+      type: "Stack",
+      style: { flex: 1, backgroundColor: "#000000" },
+      children: [
+        // Upload to `onboarding_keyboard.bg` and it appears; upload nothing and
+        // screenHero returns no nodes at all. Video or still, either works.
+        ...screenHero("onboarding_keyboard.bg", { behind: true }),
+        {
+          type: "Screen",
+          style: { backgroundColor: "transparent" },
+          children: [
       // hideChrome = full-bleed: this spacer IS the top safe area (the card
       // used to start under the status-bar clock). Golden ladder throughout —
-      // 13/21/34/55 spacing, 26/34 heading, 13/21 sub, 14/23 steps.
+      // 13/21/34/55 spacing, 34/42 heading, 12.5/18 box title, 11.5/16 steps.
       { type: "Spacer", style: { height: 66 } },
+      // 34/42, the display size off the same golden ladder the voice step uses.
+      // With the supporting line moved into the box below, the headline is the
+      // only thing at the top of the screen and should read like it.
       { type: "Heading", props: { content: "Bring it everywhere." },
-        style: { fontSize: 26, lineHeight: 34, color: "$color.text", marginBottom: 8 } },
-      { type: "Paragraph", props: { content: "A moment in Settings, and Tailzu writes with you in every app." },
-        style: { fontSize: 13, lineHeight: 21, marginBottom: 21 } },
+        style: { fontSize: 34, lineHeight: 42, color: "$color.text", marginBottom: 21 } },
       // The walk through Settings, shown rather than described — and one
       // recording per platform, because the two walks share no screen. An iOS
       // recording shown to an Android user is worse than no recording: it
@@ -5211,16 +5241,17 @@ function onboardingKeyboard(): ScreenResponse {
         // Brand border. The steps ARE the screen — the button only opens a
         // door — so the card is what the eye should land on, and an amber
         // hairline says that without a fill loud enough to fight the headline.
-        style: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: ACCENT_AMBER },
+        style: { paddingVertical: 11, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: ACCENT_AMBER },
         children: [
+          stepsTitle,
           step("1", "Open Settings, then tap General."),
-          { type: "Spacer", style: { height: 13 } },
+          { type: "Spacer", style: { height: 10 } },
           step("2", "Tap Keyboard → Keyboards → Add New Keyboard."),
-          { type: "Spacer", style: { height: 13 } },
+          { type: "Spacer", style: { height: 10 } },
           step("3", "Choose Tailzu from the list."),
-          { type: "Spacer", style: { height: 13 } },
+          { type: "Spacer", style: { height: 10 } },
           step("4", "Tap Tailzu again and turn on “Allow Full Access”."),
-          { type: "Spacer", style: { height: 13 } },
+          { type: "Spacer", style: { height: 10 } },
           step("5", "Return to Tailzu — the globe key switches keyboards."),
         ],
       },
@@ -5234,14 +5265,15 @@ function onboardingKeyboard(): ScreenResponse {
       {
         type: "Card",
         visibleIf: { platform: "android" },
-        style: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: ACCENT_AMBER },
+        style: { paddingVertical: 11, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: ACCENT_AMBER },
         children: [
+          stepsTitle,
           step("1", "Tap the button below — it opens your keyboard list."),
-          { type: "Spacer", style: { height: 13 } },
+          { type: "Spacer", style: { height: 10 } },
           step("2", "Turn on Tailzu."),
-          { type: "Spacer", style: { height: 13 } },
+          { type: "Spacer", style: { height: 10 } },
           step("3", "Android warns that a keyboard can read what you type. Accept it — that is how every keyboard works."),
-          { type: "Spacer", style: { height: 13 } },
+          { type: "Spacer", style: { height: 10 } },
           step("4", "Come back, then tap the globe key to switch to Tailzu."),
         ],
       },
@@ -5281,7 +5313,10 @@ function onboardingKeyboard(): ScreenResponse {
       { type: "Spacer", style: { height: 0 },
         visibleIf: { truthy: "keyboardReady" },
         on: { onAppear: "autoFinish" } },
-    ],
+          ],
+        },
+      ],
+    },
     cacheTtlSeconds: 600,
   };
 }
