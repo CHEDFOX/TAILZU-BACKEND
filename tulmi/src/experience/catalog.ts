@@ -4367,9 +4367,13 @@ function replyScreen(): ScreenResponse {
   };
 }
 
-/** Settings — server-driven app info, account, language, and links. */
+/** Settings — server-driven app info, account, and links. */
 function settingsScreen(ctx: ScreenContext): ScreenResponse {
-  const current = LANGUAGES.find((l) => l.value === ctx.language)?.label ?? "Auto";
+  // Language is NOT here. It lives on the You tab, with the rest of what the
+  // app knows about the person — voices, dictionary, haptics. Two doors to one
+  // setting is how the two get out of step in someone's head, and Settings is
+  // the wrong one: it is where the account and the legal links live, not where
+  // the product is shaped.
   // Row helper attaches a Button-styled-as-row fallback so old bundles that
   // lack the "Row" component still render each Settings item as a full-width
   // tappable strip, not a pill. Uses only v1 primitives (Button + style
@@ -4462,7 +4466,6 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         },
 
         // Preferences
-        row("Language", { kind: "navigate", screenId: "language_select" }, { props: { label: "Language", value: current } }),
 
         // Legal + account
         row("Privacy Policy", "privacy", { props: { label: "Privacy Policy" } }),
