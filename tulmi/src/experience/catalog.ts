@@ -572,6 +572,11 @@ export function buildBootstrap(
         "intro.background": THEME.color.bg,
         "intro.showEveryLaunch": false,
 
+        // The Training tab's second door. Off until there is a live audio
+        // session behind it — the screen itself is already built, so turning
+        // realtime on is this line and a deploy.
+        "train.realtime": false,
+
         // Paywall gating. When `paywall.entitlement` is set, the client checks
         // RevenueCat for that entitlement on boot; when the user does NOT
         // have it and `paywall.blockUntilEntitled` is true, the client
@@ -863,6 +868,9 @@ function applyPlatformFlags(
  */
 const WARM_SCREEN_IDS = [
   "home",
+  // One tap from the tab root and it holds the whole refine loop — exactly the
+  // "the app is slow" wait this list exists to remove.
+  "training_chat",
   "history",
   "stats",
   "personality",
@@ -2171,6 +2179,10 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
   switch (screenId) {
     case "home":
       return homeScreen(ctx);
+    case "training_chat":
+      return trainingChatScreen(ctx);
+    case "training_live":
+      return trainingLiveScreen();
     case "dictionary":
       return dictionaryScreen(ctx);
     case "haptics":
@@ -2287,8 +2299,169 @@ const LANGUAGES: Array<{ value: string; label: string }> = [
   { value: "pt", label: "Portuguese" },
 ];
 
+/**
+ * Every string, every gap and every media slot in the Training tab, in one
+ * place.
+ *
+ * The point of this object is that the screens below read from it and hold no
+ * literals of their own. Changing where the copy block sits, how far the art
+ * bleeds, how strongly the background is veiled, or which of the two doors
+ * exists is an edit HERE and a deploy — never a build, never an OTA.
+ *
+ * Media is separate again: `hero.training` and `hero.training_chat` are
+ * registry keys, so the art itself changes by upload with no code change at
+ * all. Both slots are optional — screenHero returns nothing for an empty key,
+ * and both screens are designed to read correctly with no art behind them.
+ */
+const TRAINING_UI = {
+  entry: {
+    kicker: "Voice",
+    title: "Train your voice",
+    sub: "Two ways. Both teach it how you sound.",
+    /** How far the art reaches past the screen's own padding. */
+    bleedX: 24,
+    bleedTop: 16,
+    /** Painted over the art so the copy stays readable on any upload. */
+    veil: "rgba(6,6,8,0.55)",
+    /** Where the copy block sits in the window. */
+    justify: "flex-end" as const,
+    paddingHorizontal: 24,
+    paddingBottom: 26,
+    gap: 10,
+    doors: {
+      chat: {
+        label: "Talk or type",
+        hint: "Reply, then pick what sounds like you",
+        background: ACCENT_AMBER,
+        color: "#000000",
+      },
+      live: {
+        label: "Just talk",
+        hint: "A real conversation, out loud",
+        background: "rgba(255,255,255,0.07)",
+        color: "#FFFFFF",
+      },
+    },
+  },
+  chat: {
+    title: "Train",
+    heading: "Write it your way",
+    variantsLabel: "Which sounds most like you?",
+    refiningLabel: "Refining…",
+    live: {
+      title: "Just talk",
+      listening: "Listening",
+      hint: "Talk the way you normally would. Nothing here is graded.",
+      end: "End & save",
+      /** Size of the bubble's box. Waveform stands in until VoiceBubble ships. */
+      bubble: 190,
+    },
+    /** The background media slot. 0 hides it without removing the upload. */
+    backgroundOpacity: 0.4,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+  },
+};
+
+/**
+ * The Training tab's front door: the art, one line, and the ways in.
+ *
+ * The refine loop did not shrink — it moved one tap deeper, to training_chat,
+ * intact. What this screen buys is a place for the media and a choice that is
+ * legible before anything is typed.
+ */
+function homeScreen(_ctx: ScreenContext): ScreenResponse {
+  const ui = TRAINING_UI.entry;
+
+  /** A door: title, one line under it, the whole card is the tap target. */
+  const door = (
+    d: { label: string; hint: string; background: string; color: string },
+    action: ActionRef,
+    extra: Partial<Node> = {},
+  ): Node => ({
+    type: "Card",
+    on: { onPress: action },
+    style: {
+      backgroundColor: d.background,
+      borderWidth: 0,
+      borderRadius: 16,
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      width: "100%",
+    },
+    ...extra,
+    children: [
+      { type: "Text", props: { content: d.label },
+        style: { fontSize: 15.5, fontWeight: "700", color: d.color } },
+      { type: "Text", props: { content: d.hint },
+        style: { fontSize: 12, color: d.color, opacity: 0.72, marginTop: 2 } },
+    ],
+  });
+
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "home",
+    title: "",
+    state: {},
+    actions: {
+      openChat: { kind: "sequence", actions: [
+        { kind: "haptic", style: "light" },
+        { kind: "navigate", screenId: "training_chat" },
+      ] },
+      openLive: { kind: "sequence", actions: [
+        { kind: "haptic", style: "light" },
+        { kind: "navigate", screenId: "training_live" },
+      ] },
+    },
+    root: {
+      type: "Screen",
+      style: {
+        paddingHorizontal: ui.paddingHorizontal,
+        paddingTop: ui.bleedTop,
+        justifyContent: ui.justify,
+      },
+      children: [
+        // The art, behind everything. Empty slot → nothing here at all, and
+        // the screen still reads: the veil below paints the ground either way.
+        ...screenHero("training", {
+          behind: true,
+          fit: "cover",
+          fullBleed: ui.bleedX,
+          fullBleedTop: ui.bleedTop,
+        }),
+        {
+          type: "Stack",
+          style: {
+            position: "absolute",
+            top: -ui.bleedTop, left: -ui.bleedX, right: -ui.bleedX, bottom: 0,
+            backgroundColor: ui.veil,
+          },
+        },
+        {
+          type: "Stack",
+          style: { gap: ui.gap, paddingBottom: ui.paddingBottom },
+          children: [
+            { type: "Overline", props: { content: ui.kicker },
+              style: { color: "rgba(255,255,255,0.5)" } },
+            { type: "Heading", props: { content: ui.title },
+              style: { fontSize: 29, lineHeight: 33, color: "#FFFFFF" } },
+            { type: "Text", props: { content: ui.sub },
+              style: { fontSize: 13.5, lineHeight: 20, color: "rgba(255,255,255,0.62)", marginBottom: 8 } },
+            door(ui.doors.chat, "openChat"),
+            // The second door only exists once realtime does. A flag rather
+            // than a comment, so turning it on is a bootstrap edit and the
+            // screen behind it is already built.
+            door(ui.doors.live, "openLive", { visibleIf: { flag: "train.realtime" } }),
+          ],
+        },
+      ],
+    },
+    cacheTtlSeconds: 180,
+  };
+}
+
 /** The refine playground — proves the full SDUI loop incl. a brain call. */
-function homeScreen(ctx: ScreenContext): ScreenResponse {
+function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
   // In-app mic media. Prefer an MP4 upload (mic.animation.mp4) when present —
   // MediaPlayer's video branch freezes it on-frame while paused AND reacts its
   // speed to the mic level (voiceReactive), so the in-app mic feels alive and
@@ -2452,8 +2625,8 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
-    screenId: "home",
-    title: "",
+    screenId: "training_chat",
+    title: TRAINING_UI.chat.title,
     state: {
       input: "", recording: false, refining: false,
       // Training target: which VOICE this session trains (and which the
@@ -2526,9 +2699,25 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
     },
     root: {
       type: "Screen",
-      style: { paddingHorizontal: 24, paddingTop: 16 },
+      style: {
+        paddingHorizontal: TRAINING_UI.chat.paddingHorizontal,
+        paddingTop: TRAINING_UI.chat.paddingTop,
+      },
       children: [
-        { type: "Heading", props: { content: "Train your voice" },
+        // Background media slot — `hero.training_chat`. Same node and the same
+        // present rules as the entry hero; what differs is that words sit on
+        // top of it, so it is dimmed rather than veiled and the opacity is a
+        // number you can tune from here. Empty key → nothing rendered.
+        ...screenHero("training_chat", {
+          behind: true,
+          fit: "cover",
+          fullBleed: TRAINING_UI.chat.paddingHorizontal,
+          fullBleedTop: TRAINING_UI.chat.paddingTop,
+        }).map((n) => ({
+          ...n,
+          style: { ...(n.style ?? {}), opacity: TRAINING_UI.chat.backgroundOpacity },
+        })),
+        { type: "Heading", props: { content: TRAINING_UI.chat.heading },
           style: { fontSize: 26, lineHeight: 34, color: "$color.text", marginBottom: 13 } },
         boxWithVoice("input"),
         { type: "Spacer", style: { height: 21 } },
@@ -2567,7 +2756,7 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
             },
             { type: "Text", visibleIf: { falsy: "refining" }, props: { content: "" },
               style: { fontSize: 11, fontWeight: "600", color: "$color.muted", letterSpacing: 0.5 } },
-            { type: "Text", visibleIf: { truthy: "refining" }, props: { content: "Refining\u2026" },
+            { type: "Text", visibleIf: { truthy: "refining" }, props: { content: TRAINING_UI.chat.refiningLabel },
               style: { fontSize: 11, fontWeight: "600", color: "$color.muted", letterSpacing: 0.5 } },
           ] },
           // Voice pill \u2014 which voice this session trains. A full golden step
@@ -2585,7 +2774,7 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
         ] },
         { type: "Spacer", style: { height: 21 } },
         { type: "Text", visibleIf: { truthy: "variantA" },
-          props: { content: "Which sounds most like you?" },
+          props: { content: TRAINING_UI.chat.variantsLabel },
           style: { fontSize: 13, fontWeight: "700", color: "$color.label", marginBottom: 10 } },
         variantCard("variantA", "angleA"),
         variantCard("variantB", "angleB"),
@@ -2697,6 +2886,57 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
             },
           ],
         },
+      ],
+    },
+    cacheTtlSeconds: 180,
+  };
+}
+
+/**
+ * The realtime door — behind the `train.realtime` flag, which is off.
+ *
+ * It is built now rather than later so the flag is the only thing standing
+ * between the app and this screen. Two pieces are still missing and both are
+ * client-side: a live audio session, and the Skia bubble. `Waveform` stands in
+ * for the bubble because it ships in every installed build; swapping it for a
+ * `VoiceBubble` node is one edit here once that component exists.
+ */
+function trainingLiveScreen(): ScreenResponse {
+  const ui = TRAINING_UI.chat.live;
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "training_live",
+    title: ui.title,
+    state: { level: 0.25 },
+    actions: {
+      finish: { kind: "sequence", actions: [
+        { kind: "haptic", style: "success" },
+        { kind: "navigate", screenId: "home" },
+      ] },
+    },
+    root: {
+      type: "Screen",
+      style: { paddingHorizontal: 24, paddingTop: 16, alignItems: "center" },
+      children: [
+        { type: "Overline", props: { content: ui.listening },
+          style: { color: "$color.muted", marginBottom: 18 } },
+        {
+          type: "Stack",
+          style: {
+            width: ui.bubble, height: ui.bubble, borderRadius: ui.bubble / 2,
+            backgroundColor: ACCENT_AMBER, overflow: "hidden",
+            alignItems: "center", justifyContent: "center", marginBottom: 22,
+          },
+          children: [
+            { type: "Waveform", bind: { level: "level" }, props: { level: 0.25 },
+              style: { width: ui.bubble * 0.62, height: ui.bubble * 0.42 } },
+          ],
+        },
+        { type: "Text", props: { content: ui.hint },
+          style: { fontSize: 13.5, lineHeight: 20, color: "$color.muted", textAlign: "center", marginBottom: 26 } },
+        { type: "Button", props: { label: ui.end, variant: "primary" },
+          style: { width: "100%" },
+          on: { onPress: "finish" } },
       ],
     },
     cacheTtlSeconds: 180,

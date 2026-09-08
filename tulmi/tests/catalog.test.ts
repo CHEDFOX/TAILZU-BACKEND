@@ -344,8 +344,22 @@ describe("buildScreen", () => {
     expect(buildScreen("does-not-exist", { personality: {}, language: "en" })).toBeNull();
   });
 
-  it("Home is the Training surface: variants + pick endpoints, tone sheet trains a tone", () => {
+  it("Home is the Training entry: the art, and the ways in", () => {
     const home = buildScreen("home", { personality: {}, language: "en" });
+    expect(home).not.toBeNull();
+    const json = JSON.stringify(home);
+    // The refine loop moved one tap deeper. The entry's job is to get there.
+    expect(json).toContain('"screenId":"training_chat"');
+    // The realtime door is built but gated, so flipping the flag is the whole
+    // change — and until then the screen must not offer a dead tap.
+    expect(json).toContain('"flag":"train.realtime"');
+    expect(json).toContain('"screenId":"training_live"');
+    // Nothing on this screen may assume the media slot is filled.
+    expect(json).toContain("Train your voice");
+  });
+
+  it("Training chat is the refine surface: variants + pick endpoints, tone sheet trains a tone", () => {
+    const home = buildScreen("training_chat", { personality: {}, language: "en" });
     expect(home).not.toBeNull();
     // Training target seeded to the user's active voice (default: Signature).
     expect((home!.state as Record<string, unknown>).tone).toBe("signature");
