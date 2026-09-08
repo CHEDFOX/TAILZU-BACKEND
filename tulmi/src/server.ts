@@ -1472,8 +1472,27 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     : [null, null];
   const reqBody = (req.body ?? {}) as {
     launchCount?: number;
-    capabilities?: { platform?: string };
+    capabilities?: { platform?: string; bundle?: string; appVersion?: string };
   };
+  // WHICH BUNDLE IS ACTUALLY RUNNING.
+  //
+  // The app reports "embedded" when it is running the bundle baked into the
+  // binary and the first eight characters of an update id when an OTA has
+  // applied. Without this line the two are indistinguishable from the server,
+  // which is exactly the ambiguity that has made every "I published, nothing
+  // changed" report unfalsifiable — a fix that never arrived and a fix that
+  // arrived and did not work look identical from here.
+  //
+  // One line, on the one request every launch makes.
+  req.log.info(
+    {
+      bundle: reqBody.capabilities?.bundle ?? "unknown",
+      appVersion: reqBody.capabilities?.appVersion ?? "unknown",
+      launchCount: reqBody.launchCount ?? 0,
+      platform: reqBody.capabilities?.platform ?? "unknown",
+    },
+    "[boot] client bundle",
+  );
   // The server's own view of both, so the app never has to guess and a
   // modified client cannot claim either. Read in parallel with everything
   // else, so this costs no extra latency.
