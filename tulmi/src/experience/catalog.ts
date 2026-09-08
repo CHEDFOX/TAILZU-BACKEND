@@ -2473,11 +2473,22 @@ const AUTH_UI = {
  */
 function authScreenTree(): Record<string, unknown> {
   const ui = AUTH_UI;
+  // A STACK, NOT A SCREEN.
+  //
+  // Screen is a ScrollView that paints theme.color.bg and adds its own content
+  // padding. Both are wrong here and both were visible: the paint covered the
+  // uploaded backdrop entirely, and a scroll container does not honour
+  // justifyContent unless its content is told to grow — so the rows sat under
+  // the top padding instead of at the bottom. A plain filling stack has
+  // neither problem.
   return {
-    type: "Screen",
-    props: { scroll: false },
+    type: "Stack",
     style: {
-      flex: 1,
+      position: "absolute",
+      top: 0, left: 0, right: 0, bottom: 0,
+      // Transparent, so the art behind is the background rather than being
+      // hidden by one.
+      backgroundColor: "transparent",
       justifyContent: "flex-end",
       paddingHorizontal: ui.paddingHorizontal,
       paddingTop: ui.paddingTop,
