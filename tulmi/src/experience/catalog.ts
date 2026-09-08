@@ -2404,6 +2404,19 @@ const AUTH_UI = {
   /** How dark the scrim over the uploaded backdrop is. 0 shows the art raw. */
   scrim: 0.42,
 
+  /**
+   * The pill itself, for both methods. Every key here is forwarded to
+   * SwipePill and lands on what draws; anything left out keeps the shipped
+   * value, so this can be as small as one line.
+   */
+  pill: {
+    // A dimmer amber than the brand's own. Full #E8A23C is the brightest thing
+    // in a dark window by a distance and reads as a warning rather than an
+    // invitation; pulled down it still says "go" without shouting.
+    targetBackground: "#C9862B",
+    targetIconColor: "#000000",
+  },
+
   entry: {
     gap: 16,
     brandSize: 34,
@@ -2511,10 +2524,10 @@ function authScreenTree(): Record<string, unknown> {
               // being there and failing when someone taps it.
               { type: "Rise",
                 props: { ...ui.entry.suction.spring, scaleFrom: ui.entry.suction.scaleFrom, ...ui.entry.suction.rows.email },
-                children: [{ type: "SwipePill", props: { method: "email", hintDelayMs: ui.entry.hintDelayMs } }] },
+                children: [{ type: "SwipePill", props: { method: "email", hintDelayMs: ui.entry.hintDelayMs, ...ui.pill } }] },
               { type: "Rise",
                 props: { ...ui.entry.suction.spring, scaleFrom: ui.entry.suction.scaleFrom, ...ui.entry.suction.rows.phone },
-                children: [{ type: "SwipePill", props: { method: "phone", hintDelayMs: ui.entry.hintDelayMs + ui.entry.hintStaggerMs } }] },
+                children: [{ type: "SwipePill", props: { method: "phone", hintDelayMs: ui.entry.hintDelayMs + ui.entry.hintStaggerMs, ...ui.pill } }] },
               { type: "Rise",
                 props: { ...ui.entry.suction.spring, scaleFrom: ui.entry.suction.scaleFrom, ...ui.entry.suction.rows.socials },
                 children: [{
