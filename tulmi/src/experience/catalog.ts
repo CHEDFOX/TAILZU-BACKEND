@@ -5054,8 +5054,52 @@ function onboardingKeyboard(): ScreenResponse {
     // routes back into onboarding (the "voice screen forever" loop).
     hideChrome: true,
     template: "scroll",
-    state: { keyboardReady: false }, // the app overwrites keyboardReady live
+    state: { keyboardReady: false, settingsPressed: false },
     actions: {
+      // THE FLASH HAS TO BE HELD, and this is the one screen where that is
+      // true. Button already flashes the brand amber under a finger — 60ms on,
+      // 280ms off — but that decay is racing iOS: the next action hands the
+      // screen to Settings, and the app is gone before the colour reads. So
+      // the press is staged in state instead, which holds the amber for a
+      // guaranteed beat, and only then leaves.
+      //
+      // 220ms: long enough to register as a colour, short enough that nobody
+      // waits for it.
+      pressSettings: {
+        kind: "sequence",
+        actions: [
+          { kind: "setState", path: "settingsPressed", value: true },
+          { kind: "delay", ms: 220 },
+          { kind: "setState", path: "settingsPressed", value: false },
+          "openSettings",
+        ],
+      },
+      pressKeyboardSettings: {
+        kind: "sequence",
+        actions: [
+          { kind: "setState", path: "settingsPressed", value: true },
+          { kind: "delay", ms: 220 },
+          { kind: "setState", path: "settingsPressed", value: false },
+          "openKeyboardSettings",
+        ],
+      },
+
+      // MOVE ON BY ITSELF once the keyboard is actually enabled.
+      //
+      // The app polls the keyboard's status every 1.5s and on every return to
+      // foreground, so keyboardReady flips true moments after the user finishes
+      // in Settings and comes back. This fires on that flip (see the watcher
+      // node at the foot of the screen) and finishes onboarding for them —
+      // there is nothing left to ask, and asking them to tap a button that
+      // says the thing they just did is a step for its own sake.
+      //
+      // The beat before it is the point: land back in the app, see the screen
+      // acknowledge the change, and then move. Passing instantly would look
+      // like a dropped frame rather than a result.
+      autoFinish: {
+        kind: "sequence",
+        actions: [{ kind: "delay", ms: 1100 }, "finish"],
+      },
       // Prefer openUrl("app-settings:") over openSettings — same underlying
       // iOS mechanism but a different Linking code path. Critically, this
       // action only reliably opens iOS Settings AFTER at least one permission
@@ -5129,7 +5173,6 @@ function onboardingKeyboard(): ScreenResponse {
       // used to start under the status-bar clock). Golden ladder throughout —
       // 13/21/34/55 spacing, 26/34 heading, 13/21 sub, 14/23 steps.
       { type: "Spacer", style: { height: 66 } },
-      { type: "Overline", props: { content: "Keyboard" }, style: { marginBottom: 13 } },
       { type: "Heading", props: { content: "Bring it everywhere." },
         style: { fontSize: 26, lineHeight: 34, color: "$color.text", marginBottom: 8 } },
       { type: "Paragraph", props: { content: "A moment in Settings, and Tailzu writes with you in every app." },
@@ -5165,7 +5208,10 @@ function onboardingKeyboard(): ScreenResponse {
       {
         type: "Card",
         visibleIf: { platform: "ios" },
-        style: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14 },
+        // Brand border. The steps ARE the screen — the button only opens a
+        // door — so the card is what the eye should land on, and an amber
+        // hairline says that without a fill loud enough to fight the headline.
+        style: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: ACCENT_AMBER },
         children: [
           step("1", "Open Settings, then tap General."),
           { type: "Spacer", style: { height: 13 } },
@@ -5188,7 +5234,7 @@ function onboardingKeyboard(): ScreenResponse {
       {
         type: "Card",
         visibleIf: { platform: "android" },
-        style: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14 },
+        style: { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: ACCENT_AMBER },
         children: [
           step("1", "Tap the button below — it opens your keyboard list."),
           { type: "Spacer", style: { height: 13 } },
@@ -5206,18 +5252,35 @@ function onboardingKeyboard(): ScreenResponse {
       // Android lands directly on the keyboard list, so it can promise that.
       { type: "Button",
         visibleIf: { all: [{ not: { truthy: "keyboardReady" } }, { platform: "ios" }] },
-        props: { label: "Go to Settings", variant: "primary" }, on: { onPress: "openSettings" } },
+        props: { label: "Go to Settings", variant: "primary" }, on: { onPress: "pressSettings" },
+        // White at rest, brand while the press is held. The label stays black
+        // through both — readableOn() reads the theme's primary, which is
+        // white, and black is what reads on white and on amber alike.
+        style: { backgroundColor: { truthy: "settingsPressed", then: ACCENT_AMBER, else: "#FFFFFF" } } },
       { type: "Button",
         visibleIf: { all: [{ not: { truthy: "keyboardReady" } }, { platform: "android" }] },
-        props: { label: "Open keyboard settings", variant: "primary" }, on: { onPress: "openKeyboardSettings" } },
+        props: { label: "Open keyboard settings", variant: "primary" }, on: { onPress: "pressKeyboardSettings" },
+        style: { backgroundColor: { truthy: "settingsPressed", then: ACCENT_AMBER, else: "#FFFFFF" } } },
       { type: "Button", visibleIf: { truthy: "keyboardReady" },
         props: { label: "Start using Tailzu", variant: "primary" }, on: { onPress: "finish" } },
       { type: "Spacer", style: { height: 13 } },
       // Ghost / text-only "Skip" so users aren't trapped if they can't or
       // won't add the keyboard right now.
+      // Dim. Skip is a way out, not an option being offered — it should be
+      // findable by someone looking for it and invisible to everyone else.
       { type: "Button", visibleIf: { not: { truthy: "keyboardReady" } },
-        props: { label: "Skip for now", variant: "secondary" }, on: { onPress: "skip" } },
+        props: { label: "Skip for now", variant: "secondary" }, on: { onPress: "skip" },
+        style: { opacity: 0.45 } },
       { type: "Spacer", style: { height: 55 } },
+      // THE WATCHER. Draws nothing; exists to notice.
+      //
+      // visibleIf + onAppear means "run this when the condition becomes true",
+      // so this fires the moment keyboardReady flips — which is the moment the
+      // app comes back from Settings with the keyboard enabled. A zero-height
+      // Spacer because the screen needs the event, not the pixel.
+      { type: "Spacer", style: { height: 0 },
+        visibleIf: { truthy: "keyboardReady" },
+        on: { onAppear: "autoFinish" } },
     ],
     cacheTtlSeconds: 600,
   };
