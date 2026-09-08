@@ -2364,7 +2364,7 @@ const THREAD_MAX = 60;
  * the auth logic, so flipping this back is a deploy and nobody is ever locked
  * out waiting for a build.
  */
-const AUTH_SDUI = false;
+const AUTH_SDUI = true;
 
 /**
  * The sign-in screen, in one object.
