@@ -2402,8 +2402,36 @@ const AUTH_UI = {
     hintDelayMs: 1100,
     hintStaggerMs: 160,
     social: { size: 52, gap: 16, topGap: 22 },
-    /** Sucked up from the bottom, last one first, each with its own overshoot. */
-    suction: { staggerMs: 95, durationMs: 780, fromY: 120 },
+    /**
+     * The entrance, PER ELEMENT.
+     *
+     * There is no stagger index and no "which one am I" — each row carries its
+     * own delay. A stagger computed from position means the order is decided by
+     * the layout and can only be changed by moving things; a delay per row means
+     * the socials can arrive first, or two rows can land together, or the brand
+     * can be held back a beat, without touching the composition.
+     *
+     * Bottom-up as shipped: socials leave the floor first, the brand settles
+     * last. `spring` is the shape, shared unless a row overrides it — lower
+     * damping overshoots more, higher stiffness lands sooner.
+     */
+    suction: {
+      spring: { damping: 14, stiffness: 110, mass: 0.9 },
+      scaleFrom: 0.86,
+      // Kept so an older bundle, which reads these three and computes its own
+      // stagger, still animates rather than snapping in.
+      staggerMs: 95,
+      durationMs: 780,
+      fromY: 120,
+      rows: {
+        brand:   { delayMs: 285, fromY: 90 },
+        email:   { delayMs: 190, fromY: 120 },
+        phone:   { delayMs: 95,  fromY: 120 },
+        socials: { delayMs: 0,   fromY: 120 },
+        codeTitle: { delayMs: 120, fromY: 80 },
+        codePill:  { delayMs: 0,   fromY: 110 },
+      },
+    },
   },
 
   code: {
@@ -2452,32 +2480,41 @@ function authScreenTree(): Record<string, unknown> {
             type: "Stack",
             style: { gap: ui.entry.gap },
             children: [
-              {
-                type: "Stack",
-                style: { gap: ui.entry.brandGap, marginBottom: ui.entry.blockGap },
-                children: [
-                  { type: "Text", props: { content: ui.brand },
-                    style: { fontSize: ui.entry.brandSize, fontWeight: "800", color: "#FFFFFF", letterSpacing: -0.5 } },
-                  { type: "Text", props: { content: ui.tagline },
-                    style: { fontSize: ui.entry.taglineSize, color: "rgba(255,255,255,0.55)" } },
-                ],
-              },
+              // Each row arrives on its OWN timing, carried with it.
+              { type: "Rise",
+                props: { ...ui.entry.suction.spring, scaleFrom: ui.entry.suction.scaleFrom, ...ui.entry.suction.rows.brand },
+                children: [{
+                  type: "Stack",
+                  style: { gap: ui.entry.brandGap, marginBottom: ui.entry.blockGap },
+                  children: [
+                    { type: "Text", props: { content: ui.brand },
+                      style: { fontSize: ui.entry.brandSize, fontWeight: "800", color: "#FFFFFF", letterSpacing: -0.5 } },
+                    { type: "Text", props: { content: ui.tagline },
+                      style: { fontSize: ui.entry.taglineSize, color: "rgba(255,255,255,0.55)" } },
+                  ],
+                }] },
               // Email is always offered. Phone draws nothing when the backend
               // has not enabled it, so the row simply is not there rather than
               // being there and failing when someone taps it.
-              { type: "SwipePill", props: { method: "email", hintDelayMs: ui.entry.hintDelayMs } },
-              { type: "SwipePill", props: { method: "phone", hintDelayMs: ui.entry.hintDelayMs + ui.entry.hintStaggerMs } },
-              {
-                type: "Stack",
-                style: {
-                  direction: "row", gap: ui.entry.social.gap,
-                  justifyContent: "center", marginTop: ui.entry.social.topGap,
-                },
-                children: [
-                  { type: "AppleSignIn", props: { size: ui.entry.social.size } },
-                  { type: "GoogleSignIn", props: { size: ui.entry.social.size } },
-                ],
-              },
+              { type: "Rise",
+                props: { ...ui.entry.suction.spring, scaleFrom: ui.entry.suction.scaleFrom, ...ui.entry.suction.rows.email },
+                children: [{ type: "SwipePill", props: { method: "email", hintDelayMs: ui.entry.hintDelayMs } }] },
+              { type: "Rise",
+                props: { ...ui.entry.suction.spring, scaleFrom: ui.entry.suction.scaleFrom, ...ui.entry.suction.rows.phone },
+                children: [{ type: "SwipePill", props: { method: "phone", hintDelayMs: ui.entry.hintDelayMs + ui.entry.hintStaggerMs } }] },
+              { type: "Rise",
+                props: { ...ui.entry.suction.spring, scaleFrom: ui.entry.suction.scaleFrom, ...ui.entry.suction.rows.socials },
+                children: [{
+                  type: "Stack",
+                  style: {
+                    direction: "row", gap: ui.entry.social.gap,
+                    justifyContent: "center", marginTop: ui.entry.social.topGap,
+                  },
+                  children: [
+                    { type: "AppleSignIn", props: { size: ui.entry.social.size } },
+                    { type: "GoogleSignIn", props: { size: ui.entry.social.size } },
+                  ],
+                }] },
             ],
           },
         ],
@@ -2492,7 +2529,9 @@ function authScreenTree(): Record<string, unknown> {
             type: "Stack",
             style: { gap: ui.code.gap },
             children: [
-              {
+              { type: "Rise",
+                props: { ...ui.entry.suction.spring, scaleFrom: ui.entry.suction.scaleFrom, ...ui.entry.suction.rows.codeTitle },
+                children: [{
                 type: "Stack",
                 style: { gap: 6, marginBottom: ui.code.blockGap },
                 children: [
@@ -2501,15 +2540,17 @@ function authScreenTree(): Record<string, unknown> {
                   { type: "Text", props: { content: ui.code.sub },
                     style: { fontSize: ui.code.subSize, color: "rgba(255,255,255,0.55)" } },
                 ],
-              },
-              {
-                type: "CodeEntry",
-                props: {
-                  height: ui.code.height,
-                  letterSpacing: ui.code.letterSpacing,
-                  fontSize: ui.code.fontSize,
-                },
-              },
+                }] },
+              { type: "Rise",
+                props: { ...ui.entry.suction.spring, scaleFrom: ui.entry.suction.scaleFrom, ...ui.entry.suction.rows.codePill },
+                children: [{
+                  type: "CodeEntry",
+                  props: {
+                    height: ui.code.height,
+                    letterSpacing: ui.code.letterSpacing,
+                    fontSize: ui.code.fontSize,
+                  },
+                }] },
             ],
           },
         ],
