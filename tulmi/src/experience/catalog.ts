@@ -2834,6 +2834,10 @@ const TRAINING_UI = {
      * top as it was shot and darkens only where the words are.
      */
     scrim: ["rgba(0,0,0,0)", "rgba(0,0,0,0.28)", "rgba(0,0,0,0.72)"] as string[],
+    /** Where each scrim colour sits, 0..1. Evenly spread reads wrong here: the
+     *  art should stay clear for most of the height and fall away only where
+     *  the words start. */
+    scrimStops: [0, 0.55, 1] as number[],
 
     /**
      * The way in. A pill whose disc is DRAGGED to the far end — the sign-in
@@ -2962,7 +2966,7 @@ function homeScreen(_ctx: ScreenContext): ScreenResponse {
         // The scrim over it, and under everything else.
         {
           type: "Gradient",
-          props: { colors: ui.scrim, direction: "vertical" },
+          props: { colors: ui.scrim, locations: ui.scrimStops, direction: "vertical" },
           style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
         },
         {
