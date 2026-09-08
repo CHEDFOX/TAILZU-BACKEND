@@ -2494,8 +2494,30 @@ const AUTH_UI = {
         socials: { delayMs: 0,   fromY: 120 },
         codeTitle: { delayMs: 120, fromY: 80 },
         codePill:  { delayMs: 0,   fromY: 110 },
+        // Last in, and barely travels. It is the smallest thing on the screen
+        // and should settle rather than arrive.
+        legal:   { delayMs: 380, fromY: 40 },
       },
     },
+  },
+
+  /**
+   * The consent line under everything.
+   *
+   * Not a link. The tappable Terms and Privacy Policy live in Settings, which
+   * is where a store reviewer is told to find them; this is the notice at the
+   * point of consent, and a sign-in screen is a bad place to send someone out
+   * to a web page mid-flow. Set `text` to "" and the line disappears — it is a
+   * value, not a node, so removing it needs no deploy.
+   */
+  legal: {
+    text: "Continuing means you agree to our Terms and Privacy Policy.",
+    fontSize: 10.5,
+    lineHeight: 15,
+    // Dim enough to read as fine print and no dimmer — this is the one line on
+    // the screen that has to survive being looked at by a reviewer.
+    color: "rgba(255,255,255,0.40)",
+    marginTop: 24,
   },
 
   code: {
@@ -2579,6 +2601,30 @@ function authScreenTree(): Record<string, unknown> {
                     { type: "GoogleSignIn", props: { size: ui.entry.social.size } },
                   ],
                 }] },
+              // The consent notice, under everything. Inside the same Rise
+              // sequence as the rows above it, because a static line appearing
+              // instantly beneath five that fly in reads as a rendering fault.
+              ...(ui.legal.text
+                ? [{
+                    type: "Rise",
+                    props: {
+                      ...ui.entry.suction.spring,
+                      scaleFrom: ui.entry.suction.scaleFrom,
+                      ...ui.entry.suction.rows.legal,
+                    },
+                    children: [{
+                      type: "Text",
+                      props: { content: ui.legal.text },
+                      style: {
+                        textAlign: "center",
+                        fontSize: ui.legal.fontSize,
+                        lineHeight: ui.legal.lineHeight,
+                        color: ui.legal.color,
+                        marginTop: ui.legal.marginTop,
+                      },
+                    }],
+                  }]
+                : []),
             ],
           },
         ],
