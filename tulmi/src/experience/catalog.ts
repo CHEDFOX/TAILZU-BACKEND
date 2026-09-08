@@ -2729,10 +2729,11 @@ const TRAINING_UI = {
       tracking: 1.8,
       height: 58,
       radius: 999,
-      /** The disc that travels, and the dot inside it. Starts on the LEFT. */
+      /** The disc that travels. Starts on the LEFT. Plain — nothing drawn
+       *  inside it; set `dot` above 0 to put a mark back. */
       disc: 46,
       discBackground: "rgba(255,255,255,0.14)",
-      dot: 7,
+      dot: 0,
       dotColor: "#FFFFFF",
       /** Where it lands. The one warm thing on the pill, so the end of the
        *  journey is visible from the start of it. Same dim amber as auth. */
