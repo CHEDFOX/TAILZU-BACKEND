@@ -1472,7 +1472,16 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     : [null, null];
   const reqBody = (req.body ?? {}) as {
     launchCount?: number;
-    capabilities?: { platform?: string; bundle?: string; appVersion?: string; lastBoot?: string };
+    capabilities?: {
+      platform?: string;
+      bundle?: string;
+      appVersion?: string;
+      lastBoot?: string;
+      // Device-level facts the app reads before it asks. Optional: an older
+      // bundle sends none of it, and every consumer here treats absent as
+      // "not granted", which is the pre-existing behaviour.
+      device?: { micGranted?: boolean; keyboardReady?: boolean; keyboardEnabled?: boolean };
+    };
   };
   // WHICH BUNDLE IS ACTUALLY RUNNING.
   //
@@ -1517,8 +1526,37 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     cfg.REVIEW_USER_IDS.split(",").map((x) => x.trim()).filter(Boolean),
   );
   const isReviewer = !!user && reviewIds.has(user.id);
+  // What the phone says it already has. Both are device-level — a different
+  // account on the same handset inherits them — so they decide which setup
+  // steps are worth showing. Coerced to a strict boolean: an older client
+  // sends neither, which reads as false and shows both steps, exactly as
+  // before this existed.
+  const devCaps = reqBody.capabilities?.device as
+    | { micGranted?: boolean; keyboardReady?: boolean }
+    | undefined;
+  const micGranted = devCaps?.micGranted === true;
+  const keyboardReady = devCaps?.keyboardReady === true;
+
+  // NOTHING LEFT TO ASK MEANS ONBOARDING IS DONE.
+  //
+  // Both steps exist to obtain these two permissions. When the device already
+  // has them, every step is skipped and the user goes straight into the app —
+  // but the profile would still say not-onboarded, and would say so on every
+  // launch forever. Recorded once, here, so the flag matches what is true.
+  //
+  // Guarded on !onboarded, so this is a single write for such a user and a
+  // no-op on every launch after. A reviewer is already forced onboarded and
+  // never reaches this.
+  if (user && profile && !profile.onboarded && micGranted && keyboardReady) {
+    updateProfile(user, { onboarded: true }).catch((e) => {
+      // Losing this write costs a repeat of the same skip next launch, not a
+      // broken app — so it must never fail the bootstrap.
+      req.log.warn({ err: e }, "[boot] could not mark onboarded after skipping setup");
+    });
+  }
+
   const bootstrap = buildBootstrap({
-    onboarded: isReviewer || (profile?.onboarded ?? false),
+    onboarded: isReviewer || micGranted && keyboardReady || (profile?.onboarded ?? false),
     // Both answers are required by the card, so either one proves it ran.
     profileComplete: !!(profile?.fullName || profile?.gender),
     launchCount: Number(reqBody.launchCount) || 0,
@@ -1542,6 +1580,8 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     // nobody can open, and reports that they cannot sign in. A whole submission
     // cycle, spent on the shift key.
     reviewEmail: (cfg.REVIEW_EMAIL ?? "").trim().toLowerCase(),
+    micGranted,
+    keyboardReady,
   });
   // When they were last here. Fire and forget: a failed stamp must never cost
   // the boot, and nothing reads it on this path.

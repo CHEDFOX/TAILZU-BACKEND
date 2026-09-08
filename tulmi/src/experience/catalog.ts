@@ -526,6 +526,20 @@ export function buildBootstrap(
     /** The address the auth screen offers a password field for. Empty outside
      *  a submission window, which removes the path entirely. */
     reviewEmail?: string;
+    /**
+     * WHAT THIS PHONE ALREADY HAS, as reported in the bootstrap capabilities.
+     *
+     * The microphone permission and the keyboard's Full Access belong to the
+     * device, not to the account — so signing out and back in with a different
+     * email does not un-grant them. The steps that ask for them are then steps
+     * with nothing to ask, and showing them is asking someone to do something
+     * they have already done.
+     *
+     * Both default to false, which shows the steps: a step shown unnecessarily
+     * costs a tap, a step skipped wrongly leaves the keyboard never enabled.
+     */
+    micGranted?: boolean;
+    keyboardReady?: boolean;
   } = {},
 ): BootstrapResponse {
   return {
@@ -552,6 +566,7 @@ export function buildBootstrap(
       // Which bootstrap this is, for the whole install. The one thing that can
       // tell "the app is opening" from "the app asked again".
       Number(opts.launchCount ?? 0),
+      { micGranted: !!opts.micGranted, keyboardReady: !!opts.keyboardReady },
     ),
     flags: ((): BootstrapResponse["flags"] => {
       const flags: BootstrapResponse["flags"] = {
@@ -677,7 +692,13 @@ export function buildBootstrap(
         // after the activation screen lands the user on You, the card is the
         // first thing they complete there. (Client default is ["home"]; this
         // moves it to You.)
-        "profileGate.screenIds": ["personality"],
+        // "home" as well as "personality": someone whose phone already had the
+        // microphone and the keyboard skips both setup steps and opens on
+        // home, and the name/gender card is the one thing still owed. Listed
+        // here rather than by routing them somewhere else, because home IS
+        // where that person belongs — the card is what is missing, not the
+        // screen under it.
+        "profileGate.screenIds": ["personality", "home"],
 
         // Flow Session warm-keeping (iOS). When true, the app re-arms the
         // background mic on every foreground so the keyboard dictates WITHOUT
@@ -978,14 +999,31 @@ const WARM_SCREEN_IDS = [
  * resolves to no intro: a missing opening costs a first impression, a repeating
  * one costs trust in the whole app.
  */
-function pickInitialScreenId(onboarded: boolean, introReady: boolean, launchCount: number): string {
+function pickInitialScreenId(
+  onboarded: boolean,
+  introReady: boolean,
+  launchCount: number,
+  device: { micGranted?: boolean; keyboardReady?: boolean } = {},
+): string {
   const firstEver = launchCount === 1;
   const play = introReady && (
     INTRO_PLAY_WHEN === "everyLaunch" ||
     (INTRO_PLAY_WHEN === "firstRun" && firstEver && !onboarded)
   );
   if (play) return "intro";
-  return onboarded ? "home" : "onboarding";
+  if (onboarded) return "home";
+  // ONBOARDING ONLY ASKS FOR WHAT IT DOES NOT HAVE.
+  //
+  // Its two steps exist to obtain the microphone and the keyboard, and both
+  // are properties of the phone. A second account on the same phone — the
+  // same person signing in with a different email — has already granted them,
+  // and every step below is skipped in order until one has something to ask.
+  //
+  // Nothing left to ask means onboarding is done, whatever the profile says:
+  // the caller marks it so, and this returns the app.
+  if (!device.micGranted) return "onboarding";
+  if (!device.keyboardReady) return "onboarding_keyboard";
+  return "home";
 }
 
 /**
@@ -4853,9 +4891,11 @@ function onboardingVoice(): ScreenResponse {
     title: "",
     // Full-bleed: no header/back/tabs — this is the gate.
     hideChrome: true,
-    // micGranted is overwritten live by the app, which re-reads the permission
-    // on a timer and on every return to the foreground.
-    state: { micGranted: false },
+    // Both are overwritten live by the app, which re-reads the device on a
+    // timer and on every return to the foreground. Declared with the
+    // conservative answer so a store that has not been filled in yet routes
+    // the long way round rather than skipping a step.
+    state: { micGranted: false, keyboardReady: false },
     actions: {
       // ALREADY ALLOWED? DO NOT ASK AGAIN, AND DO NOT SIT THERE.
       //
@@ -4894,7 +4934,35 @@ function onboardingVoice(): ScreenResponse {
         onGranted: "goKeyboard",
         onDenied: "deniedNext",
       },
-      goKeyboard: { kind: "navigate", screenId: "onboarding_keyboard" },
+      // Forward from here means the NEXT thing still missing — not always the
+      // keyboard step. Someone whose keyboard is already set up (a second
+      // account on the same phone, mic denied but everything else in place)
+      // would otherwise land on a walkthrough for something already done and
+      // watch it dismiss itself.
+      goKeyboard: {
+        kind: "condition",
+        if: { truthy: "keyboardReady" },
+        then: "finishOnboarding",
+        else: { kind: "navigate", screenId: "onboarding_keyboard" },
+      },
+      // Same finish the keyboard step performs, for the case where that step
+      // is skipped. Errors land the user in the app anyway: the flag is worth
+      // one retry next launch, not a dead end on a screen with nothing to do.
+      finishOnboarding: {
+        kind: "callEndpoint",
+        method: "PUT",
+        path: "/v1/profile",
+        body: { onboarded: true },
+        onSuccess: "landInApp",
+        onError: "landInApp",
+      },
+      landInApp: {
+        kind: "sequence",
+        actions: [
+          { kind: "haptic", style: "success" },
+          { kind: "switchTab", tabId: "personality" },
+        ],
+      },
       deniedNext: {
         kind: "sequence",
         actions: [
