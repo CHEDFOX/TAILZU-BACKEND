@@ -592,6 +592,21 @@ export type ActionSpec =
       onGranted?: ActionRef;
       onDenied?: ActionRef;
     }
+  // Read a permission WITHOUT asking for it. Same shape as requestPermission,
+  // but it never shows a system dialog — so a screen can react to a permission
+  // it already has (skip itself, hide its CTA) without the act of checking
+  // being the very prompt the screen exists to introduce. An undetermined
+  // permission reads as denied: we do not have it.
+  | {
+      kind: "checkPermission";
+      permission:
+        | "microphone" | "camera" | "notifications" | "photoLibrary"
+        | "contacts" | "calendar" | "location" | "tracking";
+      onGranted?: ActionRef;
+      onDenied?: ActionRef;
+      /** Optional: also write the boolean answer to this state path. */
+      assignTo?: string;
+    }
   // --- auth ---
   | { kind: "biometricPrompt"; reason?: string; onSuccess?: ActionRef; onError?: ActionRef }
   | { kind: "signOut" }

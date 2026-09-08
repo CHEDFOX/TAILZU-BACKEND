@@ -4855,6 +4855,29 @@ function onboardingVoice(): ScreenResponse {
     hideChrome: true,
     state: {},
     actions: {
+      // ALREADY ALLOWED? DO NOT ASK AGAIN, AND DO NOT SIT THERE.
+      //
+      // The system prompt fires as this screen arrives, so by the time anyone
+      // has read it they may have already answered — and then the screen is
+      // asking for something they have given, with a button that does nothing
+      // visible. A beat, then the same check: granted moves on, anything else
+      // leaves the screen exactly as it was for them to answer properly.
+      //
+      // The beat is deliberate. Passing instantly would flash this screen for
+      // a frame and read as a glitch; a second and a half reads as the screen
+      // noticing.
+      autoPass: {
+        kind: "sequence",
+        actions: [
+          { kind: "delay", ms: 1500 },
+          // checkPermission, NOT requestPermission. Requesting is how you find
+          // out, and on an undetermined permission the finding out IS the
+          // prompt — which would fire the dialog on arrival, before this screen
+          // had said a word. This reads the answer and never asks.
+          { kind: "checkPermission", permission: "microphone", onGranted: "goKeyboard" },
+        ],
+      },
+
       // CTA — fire the system mic prompt. Either answer moves forward; the
       // permission REQUEST itself (not the grant) is what creates the per-app
       // Settings page the next screen deep-links to.
@@ -4875,6 +4898,7 @@ function onboardingVoice(): ScreenResponse {
     },
     root: {
       type: "Stack",
+      on: { onAppear: "autoPass" },
       // hideChrome = truly full-bleed, so the top/bottom padding IS the safe
       // area: 76 clears the status bar on notch phones, 48 clears the home
       // indicator (28/28 put the title under the clock and clipped "Not now").
@@ -4893,11 +4917,36 @@ function onboardingVoice(): ScreenResponse {
       // the same ladder (13, 21, 34, 55). One ratio everywhere is what makes
       // the screen read composed instead of arbitrary.
       children: [
-        { type: "Overline", props: { content: "Voice" }, style: { textAlign: "center", marginBottom: 13 } },
+        // TWO HEADINGS, ONE SENTENCE. A Text paints one colour, so the last
+        // word cannot carry the brand while the rest stays white — the sentence
+        // has to be split to be two-toned. Both halves are Headings rather than
+        // Texts so the serif family and tracking come from the same place they
+        // always did, and only the colour differs.
+        //
+        // Row wraps, so a narrow screen breaks between the two halves — a clean
+        // break after "It's" — instead of clipping. flexWrap needs a width to
+        // wrap within, hence 100%.
         {
-          type: "Heading",
-          props: { content: "Say it. It's written." },
-          style: { textAlign: "center", fontSize: 34, lineHeight: 42, color: "$color.text", marginBottom: 0 },
+          type: "Stack",
+          style: {
+            flexDirection: "row",
+            flexWrap: "wrap",
+            justifyContent: "center",
+            alignItems: "flex-end",
+            width: "100%",
+          },
+          children: [
+            {
+              type: "Heading",
+              props: { content: "Say it. It's " },
+              style: { fontSize: 34, lineHeight: 42, color: "$color.text", marginBottom: 0 },
+            },
+            {
+              type: "Heading",
+              props: { content: "written." },
+              style: { fontSize: 34, lineHeight: 42, color: ACCENT_AMBER, marginBottom: 0 },
+            },
+          ],
         },
         // The vertical middle. Swappable: upload onboarding.hero, or set
         // HERO_ONBOARDING to an SDUI node, and this becomes that instead.
@@ -4960,12 +5009,22 @@ function onboardingVoice(): ScreenResponse {
               type: "Button",
               props: { label: "Enable", variant: "primary" },
               on: { onPress: "allowMic" },
-              // The accent, not the theme's white. `primary` still decides the
-              // LABEL colour — readableOn(white) is black, which is also what
-              // reads on amber (about 10:1, where white would be 2:1) — while
-              // the style overrides the pill itself, because style is merged
-              // last.
-              style: { flex: 1.7, backgroundColor: ACCENT_AMBER },
+              // White at rest; the brand for a beat under the thumb.
+              //
+              // The flash is NOT staged here. Button hands SpringPressable
+              // flashColor={BRAND_ACCENT} — the same amber the keyboard flashes
+              // on every key — which snaps on in 60ms and decays over 280ms
+              // after release. Driving it from state instead would have meant a
+              // delay between the tap and the permission dialog, and a second
+              // haptic on top of the one the press already fires.
+              //
+              // White is also the theme's own `primary`, so this override
+              // changes nothing today; it is written out because the pill's
+              // colour is this screen's decision, and it should not silently
+              // follow a change to the app-wide primary. The label stays black
+              // either way — readableOn() reads the theme's primary, which is
+              // white, and black is what reads on both white and the amber.
+              style: { flex: 1.7, backgroundColor: "#FFFFFF" },
             },
           ],
         },
