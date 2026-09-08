@@ -2448,8 +2448,10 @@ const AUTH_UI = {
   },
 
   code: {
-    title: "Check your messages",
-    sub: "Six digits, and you are in.",
+    // Kept as empty strings rather than deleted, so putting a line back is a
+    // value rather than a node.
+    title: "",
+    sub: "",
     titleSize: 26,
     subSize: 14,
     gap: 10,
@@ -2540,18 +2542,8 @@ function authScreenTree(): Record<string, unknown> {
             type: "Stack",
             style: { gap: ui.code.gap },
             children: [
-              { type: "Rise",
-                props: { ...ui.entry.suction.spring, scaleFrom: ui.entry.suction.scaleFrom, ...ui.entry.suction.rows.codeTitle },
-                children: [{
-                type: "Stack",
-                style: { gap: 6, marginBottom: ui.code.blockGap },
-                children: [
-                  { type: "Text", props: { content: ui.code.title },
-                    style: { fontSize: ui.code.titleSize, fontWeight: "800", color: "#FFFFFF", letterSpacing: -0.4 } },
-                  { type: "Text", props: { content: ui.code.sub },
-                    style: { fontSize: ui.code.subSize, color: "rgba(255,255,255,0.55)" } },
-                ],
-                }] },
+              // No heading and no supporting line. The step is one field and one
+              // way on, exactly like the screen before it.
               { type: "Rise",
                 props: { ...ui.entry.suction.spring, scaleFrom: ui.entry.suction.scaleFrom, ...ui.entry.suction.rows.codePill },
                 children: [{
