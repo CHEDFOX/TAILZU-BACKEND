@@ -558,6 +558,7 @@ export type ActionSpec =
    *  multi-select needs. `min` refuses the removal that would take the array
    *  below that length, so a required choice cannot be emptied. */
   | { kind: "toggleInArray"; path: string; value: unknown; min?: number }
+  | { kind: "appendState"; path: string; value: unknown; max?: number }
   | { kind: "incrementState"; path: string; by?: number }
   | { kind: "clearState"; path: string }
   // --- feedback & sensory ---
@@ -1199,6 +1200,7 @@ export type KeyboardActionSpec =
    *  multi-select needs. `min` refuses the removal that would take the array
    *  below that length, so a required choice cannot be emptied. */
   | { kind: "toggleInArray"; path: string; value: unknown; min?: number }
+  | { kind: "appendState"; path: string; value: unknown; max?: number }
   | { kind: "incrementState"; path: string; by?: number }
   | { kind: "clearState"; path: string }
   // ----- network + analytics + logging -----

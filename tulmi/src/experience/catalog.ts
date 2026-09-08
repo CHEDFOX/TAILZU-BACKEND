@@ -2313,6 +2313,16 @@ const LANGUAGES: Array<{ value: string; label: string }> = [
  * all. Both slots are optional — screenHero returns nothing for an empty key,
  * and both screens are designed to read correctly with no art behind them.
  */
+/**
+ * How many rows the chat thread keeps. Old rows drop off the front.
+ *
+ * A conversation is state on the device, not history on the server — nothing
+ * here is stored — so the only thing that grows is what the screen has to
+ * draw. Sixty is far more than anyone scrolls back through and well under
+ * where a re-render starts to cost anything.
+ */
+const THREAD_MAX = 60;
+
 const TRAINING_UI = {
   entry: {
     kicker: "Voice",
@@ -2345,9 +2355,35 @@ const TRAINING_UI = {
   },
   chat: {
     title: "Train",
-    heading: "Write it your way",
+    /** The first thing on the thread, before anyone has typed. */
+    opener: "Someone cancels dinner an hour before. What do you write back?",
     variantsLabel: "Which sounds most like you?",
-    refiningLabel: "Refining…",
+    refiningLabel: "Reading it…",
+    placeholder: "Type your reply",
+    send: "Send",
+    /** Shown in place of the thread on a bundle too old to have ChatThread. */
+    needsUpdate: "Update the app to see this conversation.",
+    /** Every colour in the thread. The component defaults to these; passing
+     *  them from here means a re-skin is a deploy rather than a bundle. */
+    colors: {
+      askBg: "rgba(255,255,255,0.06)",
+      askBorder: "rgba(255,255,255,0.09)",
+      askText: "rgba(255,255,255,0.9)",
+      mineBg: "#FFFFFF",
+      mineText: "#000000",
+      noteText: ACCENT_AMBER,
+      noteBg: "rgba(232,162,60,0.1)",
+      noteBorder: "rgba(232,162,60,0.26)",
+      variantBg: "rgba(255,255,255,0.05)",
+      variantBorder: "rgba(255,255,255,0.1)",
+      variantText: "rgba(255,255,255,0.92)",
+      angleText: "rgba(255,255,255,0.4)",
+      pickedBg: "rgba(232,162,60,0.13)",
+      pickedBorder: ACCENT_AMBER,
+      labelText: "rgba(255,255,255,0.38)",
+      radius: 16,
+      gap: 11,
+    },
     live: {
       title: "Just talk",
       /** One word per session state. Caption, not the only signal — the
@@ -2549,9 +2585,15 @@ function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
     return p?.promptStyle ?? "";
   }
 
+  // The composer. It was a 96pt writing box with the mic parked inside it,
+  // which is the right shape for a form and the wrong one for a chat: a field
+  // that tall pushes the conversation off the screen before anyone has typed.
+  // It grows with what you write instead, and stops before it eats the thread.
   const boxWithVoice = (bindKey: string): Node => ({
-    type: "Stack", style: { position: "relative" }, children: [
-      { type: "TextField", bind: { value: bindKey }, props: { placeholder: "Type here…", multiline: true }, style: { paddingRight: 56, minHeight: 96 } },
+    type: "Stack", style: { position: "relative", flex: 1 }, children: [
+      { type: "TextField", bind: { value: bindKey },
+        props: { placeholder: TRAINING_UI.chat.placeholder, multiline: true },
+        style: { paddingRight: 52, minHeight: 44, maxHeight: 120 } },
       { type: "Stack", style: { position: "absolute", right: 12, top: 0, bottom: 0, justify: "center" }, children: [
         {
           type: "VoiceToggle",
@@ -2570,7 +2612,7 @@ function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
           // field — that IS the moment to refine. Without it, speaking filled
           // the box and nothing else happened; the user had to know to tap
           // the card as well, and did not.
-          on: { onChange: "refine", onError: "micError" },
+          on: { onChange: "send", onError: "micError" },
           // Older bundles don't have VoiceToggle in their registry. VoiceButton
           // has shipped since the initial SDUI release, drives the same bind,
           // and reads state → mic → transcript → writes back. Same product
@@ -2579,59 +2621,10 @@ function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
             type: "VoiceButton",
             bind: { value: bindKey },
             props: { targetApp: "WhatsApp", language: "auto" },
-            on: { onChange: "refine", onError: "micError" },
+            on: { onChange: "send", onError: "micError" },
           },
         },
       ] },
-    ],
-  });
-
-  // One pick action per variant slot. Order matters: snapshot the pick into
-  // private keys FIRST (the endpoint body resolves at call time), then apply
-  // the optimistic UI (chosen text replaces the input, variants clear), and
-  // only then fire the learn call — the tap must feel instant even though the
-  // portrait update is an LLM round-trip.
-  const pickAction = (chosen: "variantA" | "variantB" | "variantC"): ActionRef => {
-    const others = (["variantA", "variantB", "variantC"] as const).filter((v) => v !== chosen);
-    return { kind: "sequence", actions: [
-      { kind: "haptic", style: "success" },
-      { kind: "setState", path: "_input", value: "$state.input" },
-      { kind: "setState", path: "_chosen", value: `$state.${chosen}` },
-      { kind: "setState", path: "_rejA", value: `$state.${others[0]}` },
-      { kind: "setState", path: "_rejB", value: `$state.${others[1]}` },
-      { kind: "setState", path: "input", value: `$state.${chosen}` },
-      { kind: "setState", path: "variantA", value: "" },
-      { kind: "setState", path: "variantB", value: "" },
-      { kind: "setState", path: "variantC", value: "" },
-      {
-        kind: "callEndpoint",
-        method: "POST",
-        path: "/v1/train/pick",
-        body: {
-          input: "$state._input",
-          chosen: "$state._chosen",
-          rejectedA: "$state._rejA",
-          rejectedB: "$state._rejB",
-          tone: "$state.tone",
-        },
-        onSuccess: "learned",
-        onError: "err",
-      },
-    ] };
-  };
-
-  // One tappable variant card. The angle rides as a small kicker so the three
-  // options read as directions ("closest" / "tighter" / "warmer"), not clones.
-  const variantCard = (slot: "variantA" | "variantB" | "variantC", angleKey: string): Node => ({
-    type: "Card",
-    visibleIf: { truthy: slot },
-    style: { paddingVertical: 13, paddingHorizontal: 14, marginBottom: 8 },
-    on: { onPress: pickAction(slot) },
-    children: [
-      { type: "Text", bind: { content: angleKey }, props: { content: "" },
-        style: { fontSize: 11, fontWeight: "700", color: "$color.label", marginBottom: 5 } },
-      { type: "Text", bind: { content: slot }, props: { content: "" },
-        style: { fontSize: 14, lineHeight: 23, color: "$color.text" } },
     ],
   });
 
@@ -2641,9 +2634,12 @@ function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
     title: TRAINING_UI.chat.title,
     state: {
       input: "", recording: false, refining: false,
+      // The conversation itself. Every row was appended by an action below, so
+      // what the screen says is server-authored the same way its layout is.
+      thread: [{ role: "ask", text: TRAINING_UI.chat.opener }],
       // Training target: which VOICE this session trains (and which the
       // variants speak in). "none" trains the core style. Seeded to the
-      // user's active voice so Refine trains what they actually use.
+      // user's active voice so a first send trains what they actually use.
       tone: activeVoice?.id ?? "none",
       toneLabel: activeVoice?.name ?? "ZU",
       toneSheetOpen: false,
@@ -2655,31 +2651,83 @@ function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
       cardTitle: "",
       cardHint: "",
       cardPrompt: "",
-      variantA: "", variantB: "", variantC: "",
-      angleA: "", angleB: "", angleC: "",
-      _train: null, _input: "", _chosen: "", _rejA: "", _rejB: "",
+      // ChatThread writes the tap into these; the pick action reads them.
+      _train: null, _pick: null, _input: "", _chosen: "", _angle: "", _rejA: "", _rejB: "",
     },
     actions: {
       err: { kind: "toast", message: "Something went wrong. Check your connection.", tone: "error" },
       // Echoes the real reason ($event) the mic control failed — permission /
       // audio-session / transcribe failures each show their own cause.
       micError: { kind: "toast", message: "$event", tone: "error" },
-      refine: { kind: "sequence", actions: [
+
+      // Sending. The message lands on the thread and the field empties in the
+      // same beat as the tap; the variants arrive when they arrive. Order
+      // matters: _input is snapshotted BEFORE the field is cleared, because
+      // the pick call sent a minute later still has to say what was asked.
+      send: { kind: "sequence", actions: [
         { kind: "haptic", style: "light" },
-        { kind: "setState", path: "variantA", value: "" },
-        { kind: "setState", path: "variantB", value: "" },
-        { kind: "setState", path: "variantC", value: "" },
+        { kind: "setState", path: "_input", value: "$state.input" },
+        { kind: "appendState", path: "thread", max: THREAD_MAX,
+          value: { role: "mine", text: "$state.input" } },
+        { kind: "setState", path: "input", value: "" },
         { kind: "setState", path: "refining", value: true },
         {
           kind: "callEndpoint",
           method: "POST",
           path: "/v1/train/variants",
-          body: { text: "$state.input", tone: "$state.tone", language: "auto" },
+          body: { text: "$state._input", tone: "$state.tone", language: "auto" },
           assignTo: "_train",
           onSuccess: "gotVariants",
           onError: "variantsErr",
         },
       ] },
+      gotVariants: { kind: "sequence", actions: [
+        { kind: "setState", path: "refining", value: false },
+        { kind: "appendState", path: "thread", max: THREAD_MAX,
+          value: {
+            role: "variants",
+            label: TRAINING_UI.chat.variantsLabel,
+            options: "$state._train.variants",
+          } },
+        { kind: "haptic", style: "light" },
+      ] },
+      variantsErr: { kind: "sequence", actions: [
+        { kind: "setState", path: "refining", value: false },
+        { kind: "toast", message: "Couldn’t refine that. Check your connection and try again.", tone: "error" },
+      ] },
+
+      // The tap already happened — ChatThread highlighted the card and wrote
+      // the choice into _chosen/_angle/_rejA/_rejB before firing this. All
+      // that is left is telling the server, which is why nothing here is
+      // optimistic: there is no UI waiting on it.
+      picked: { kind: "sequence", actions: [
+        { kind: "haptic", style: "success" },
+        {
+          kind: "callEndpoint",
+          method: "POST",
+          path: "/v1/train/pick",
+          body: {
+            input: "$state._input",
+            chosen: "$state._chosen",
+            rejectedA: "$state._rejA",
+            rejectedB: "$state._rejB",
+            tone: "$state.tone",
+          },
+          assignTo: "_pick",
+          onSuccess: "learned",
+          onError: "err",
+        },
+      ] },
+      // What it took from the pick, then the next thing to answer. The prompt
+      // comes back WITH the pick, so the list of them lives in one place on
+      // the server and a conversation never runs out of things to ask.
+      learned: { kind: "sequence", actions: [
+        { kind: "appendState", path: "thread", max: THREAD_MAX,
+          value: { role: "note", text: "$state._pick.learned" } },
+        { kind: "appendState", path: "thread", max: THREAD_MAX,
+          value: { role: "ask", text: "$state._pick.next" } },
+      ] },
+
       // Saving from the voice card. The tone upsert makes the saved voice
       // ACTIVE, which is right — you edited it because you want to write with
       // it — so the picker's own state follows rather than silently disagreeing
@@ -2692,34 +2740,22 @@ function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
         { kind: "toast", message: "Voice saved.", tone: "success" },
       ] },
       cardSaveErr: { kind: "toast", message: "Couldn't save that voice. Try again.", tone: "error" },
-
-      gotVariants: { kind: "sequence", actions: [
-        { kind: "setState", path: "refining", value: false },
-        { kind: "setState", path: "variantA", value: "$state._train.variants.0.text" },
-        { kind: "setState", path: "angleA", value: "$state._train.variants.0.angle" },
-        { kind: "setState", path: "variantB", value: "$state._train.variants.1.text" },
-        { kind: "setState", path: "angleB", value: "$state._train.variants.1.angle" },
-        { kind: "setState", path: "variantC", value: "$state._train.variants.2.text" },
-        { kind: "setState", path: "angleC", value: "$state._train.variants.2.angle" },
-        { kind: "haptic", style: "light" },
-      ] },
-      variantsErr: { kind: "sequence", actions: [
-        { kind: "setState", path: "refining", value: false },
-        { kind: "toast", message: "Couldn\u2019t refine that. Check your connection and try again.", tone: "error" },
-      ] },
-      learned: { kind: "toast", message: "Learned \u2014 that\u2019s more you.", tone: "success" },
     },
     root: {
       type: "Screen",
+      // The THREAD scrolls, not the screen. A scrolling screen under a pinned
+      // composer gives you two scrollers fighting over one gesture.
+      props: { scroll: false },
       style: {
         paddingHorizontal: TRAINING_UI.chat.paddingHorizontal,
         paddingTop: TRAINING_UI.chat.paddingTop,
+        flex: 1,
       },
       children: [
         // Background media slot — `hero.training_chat`. Same node and the same
         // present rules as the entry hero; what differs is that words sit on
         // top of it, so it is dimmed rather than veiled and the opacity is a
-        // number you can tune from here. Empty key → nothing rendered.
+        // number in TRAINING_UI. An empty key renders nothing at all.
         ...screenHero("training_chat", {
           behind: true,
           fit: "cover",
@@ -2729,69 +2765,108 @@ function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
           ...n,
           style: { ...(n.style ?? {}), opacity: TRAINING_UI.chat.backgroundOpacity },
         })),
-        { type: "Heading", props: { content: TRAINING_UI.chat.heading },
-          style: { fontSize: 26, lineHeight: 34, color: "$color.text", marginBottom: 13 } },
-        boxWithVoice("input"),
-        { type: "Spacer", style: { height: 21 } },
-        // Refine trigger \u2014 the brand MEDIA itself, not a text button: tap \u2192
-        // it PLAYS while the variants generate \u2192 pauses when they land. An
-        // mp4 upload freezes on its frame when paused; the GIF unmounts when
-        // paused, revealing the static three-bar wave mark beneath. Same
-        // living-mark language as the mic in the input box.
-        { type: "Stack", visibleIf: { falsy: "recording" }, style: { align: "center", direction: "column", gap: 21 }, children: [
-          { type: "Stack", style: { align: "center", direction: "column", gap: 8 }, children: [
+
+        // Which voice this session trains. A chip at the top rather than the
+        // old pill under the box: on a chat screen the only thing that belongs
+        // at the bottom is the thing you type into.
+        {
+          type: "Stack",
+          style: { direction: "row", alignItems: "center", gap: 10, marginBottom: 10 },
+          children: [
             {
-              type: "Card",
-              on: { onPress: "refine" },
-              style: {
-                width: 68, height: 68, borderRadius: 34, padding: 0, borderWidth: 0,
-                backgroundColor: "#E8A23C", overflow: "hidden",
-                alignItems: "center", justifyContent: "center", position: "relative",
-              },
+              type: "Button",
+              bind: { label: "toneLabel" },
+              props: { variant: "secondary" },
+              style: { paddingVertical: 7, paddingHorizontal: 16, borderRadius: 18 },
+              on: { onPress: { kind: "sequence", actions: [
+                { kind: "haptic", style: "light" },
+                { kind: "setState", path: "toneSheetOpen", value: true },
+              ] } },
+            },
+            // Thinking. The brand media itself, playing only while the
+            // variants generate — the same living mark the mic uses, kept at
+            // caption size because on a chat screen the thing you are waiting
+            // for is the message, not the spinner.
+            {
+              type: "Stack",
+              visibleIf: { truthy: "refining" },
+              style: { direction: "row", alignItems: "center", gap: 8 },
               children: [
-                // Static under-layer: the three-bar wave mark.
-                { type: "Stack", style: { direction: "row", gap: 4, alignItems: "center" }, children: [
-                  { type: "Stack", style: { width: 4, height: 11, borderRadius: 2, backgroundColor: "#FFFFFF" } },
-                  { type: "Stack", style: { width: 4, height: 21, borderRadius: 2, backgroundColor: "#FFFFFF" } },
-                  { type: "Stack", style: { width: 4, height: 11, borderRadius: 2, backgroundColor: "#FFFFFF" } },
-                ] },
                 {
-                  type: "Video",
-                  bind: { playing: "refining" },
-                  props: { source: micIdle, loop: true, muted: true, contentFit: "cover" },
-                  style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" },
-                  // Old bundles rendered Video as a text stub \u2014 hide it there;
-                  // the wave-mark circle alone stays a perfectly good button.
-                  fallback: { type: "Spacer", style: { height: 0 } },
+                  type: "Stack",
+                  style: {
+                    width: 22, height: 22, borderRadius: 11, overflow: "hidden",
+                    backgroundColor: ACCENT_AMBER, alignItems: "center", justifyContent: "center",
+                  },
+                  children: [
+                    // Static under-layer: the three-bar wave mark, so an old
+                    // bundle with no Video still shows the brand and not a dot.
+                    { type: "Stack", style: { direction: "row", gap: 1.5, alignItems: "center" }, children: [
+                      { type: "Stack", style: { width: 1.5, height: 4, borderRadius: 1, backgroundColor: "#FFFFFF" } },
+                      { type: "Stack", style: { width: 1.5, height: 8, borderRadius: 1, backgroundColor: "#FFFFFF" } },
+                      { type: "Stack", style: { width: 1.5, height: 4, borderRadius: 1, backgroundColor: "#FFFFFF" } },
+                    ] },
+                    {
+                      type: "Video",
+                      bind: { playing: "refining" },
+                      props: { source: micIdle, loop: true, muted: true, contentFit: "cover" },
+                      style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" },
+                      fallback: { type: "Spacer", style: { height: 0 } },
+                    },
+                  ],
                 },
+                { type: "Text", props: { content: TRAINING_UI.chat.refiningLabel },
+                  style: { fontSize: 11.5, fontWeight: "600", color: "$color.muted", letterSpacing: 0.5 } },
               ],
             },
-            { type: "Text", visibleIf: { falsy: "refining" }, props: { content: "" },
-              style: { fontSize: 11, fontWeight: "600", color: "$color.muted", letterSpacing: 0.5 } },
-            { type: "Text", visibleIf: { truthy: "refining" }, props: { content: TRAINING_UI.chat.refiningLabel },
-              style: { fontSize: 11, fontWeight: "600", color: "$color.muted", letterSpacing: 0.5 } },
-          ] },
-          // Voice pill \u2014 which voice this session trains. A full golden step
-          // (21) away from the trigger so the two reads never crowd.
-          {
-            type: "Button",
-            bind: { label: "toneLabel" },
-            props: { variant: "secondary" },
-            style: { paddingVertical: 10, paddingHorizontal: 22, borderRadius: 22 },
-            on: { onPress: { kind: "sequence", actions: [
-              { kind: "haptic", style: "light" },
-              { kind: "setState", path: "toneSheetOpen", value: true },
-            ] } },
+          ],
+        },
+
+        // The conversation. SDUI has no repeater, so this one node IS the
+        // thread: it reads the array above and draws it, and owns the tap so a
+        // pick never waits on the network to look chosen.
+        {
+          type: "ChatThread",
+          bind: { thread: "thread" },
+          props: {
+            pickLabel: TRAINING_UI.chat.variantsLabel,
+            chosenPath: "_chosen",
+            anglePath: "_angle",
+            rejectedAPath: "_rejA",
+            rejectedBPath: "_rejB",
+            colors: TRAINING_UI.chat.colors,
           },
-        ] },
-        { type: "Spacer", style: { height: 21 } },
-        { type: "Text", visibleIf: { truthy: "variantA" },
-          props: { content: TRAINING_UI.chat.variantsLabel },
-          style: { fontSize: 13, fontWeight: "700", color: "$color.label", marginBottom: 10 } },
-        variantCard("variantA", "angleA"),
-        variantCard("variantB", "angleB"),
-        variantCard("variantC", "angleC"),
-        // Blurred tone-picker sheet \u2014 pick which tone to train.
+          on: { onSelect: "picked" },
+          style: { flex: 1 },
+          // A bundle without ChatThread would render this screen's only content
+          // as a hole. The field and the voice picker below still work, so the
+          // honest fallback is a line saying where the conversation went.
+          fallback: {
+            type: "Text",
+            props: { content: TRAINING_UI.chat.needsUpdate },
+            style: { flex: 1, fontSize: 13.5, color: "$color.muted", textAlign: "center", paddingTop: 40 },
+          },
+        },
+
+        // The composer, pinned. Type or speak — the mic writes into the same
+        // field, so everything after the input is identical either way. Send
+        // appears only once there is something to send.
+        {
+          type: "Stack",
+          style: { direction: "row", alignItems: "flex-end", gap: 9, paddingTop: 10, paddingBottom: 6 },
+          children: [
+            boxWithVoice("input"),
+            {
+              type: "Button",
+              props: { label: TRAINING_UI.chat.send, variant: "primary" },
+              visibleIf: { truthy: "input" },
+              style: { paddingVertical: 12, paddingHorizontal: 18, borderRadius: 22 },
+              on: { onPress: "send" },
+            },
+          ],
+        },
+
+        // Blurred tone-picker sheet — pick which voice to train.
         {
           type: "Modal",
           bind: { open: "toneSheetOpen" },
@@ -2803,6 +2878,7 @@ function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
             ...TONE_OPTIONS.map(toneRow),
           ],
         },
+
 
         // ---- Voice card: hold a voice, see what it is and what drives it ----
         //

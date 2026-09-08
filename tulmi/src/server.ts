@@ -732,12 +732,43 @@ app.post("/v1/train/pick", { config: AUTHED_RL }, async (req, reply) => {
         updatedAt: new Date().toISOString(),
       },
     }));
-    return reply.send({ ok: true, examples: merged.stylePortrait?.examples ?? 1 });
+    const examples = merged.stylePortrait?.examples ?? 1;
+    // The thread's next two rows come back with the pick: what was taken from
+    // it, and the next thing to answer. Sent from here rather than held on the
+    // client so the prompts are one server-side list — the app never runs out
+    // of them, and changing them is a deploy rather than a release.
+    return reply.send({
+      ok: true,
+      examples,
+      learned: `Learned${toneLabel ? ` · ${toneLabel}` : ""}`,
+      next: TRAIN_PROMPTS[examples % TRAIN_PROMPTS.length],
+    });
   } catch (err) {
     req.log.error(err);
     return reply.code(500).send({ code: "internal", message: "Couldn't save your pick" });
   }
 });
+
+/**
+ * What the Train thread asks next, after a pick.
+ *
+ * Everyday moments with a real decision in them about how to say something —
+ * that is where a person's own register actually shows. Deliberately not
+ * generated: an LLM asked for "a texting scenario" writes prompts that all
+ * sound the same, and this list costs nothing and never fails.
+ */
+const TRAIN_PROMPTS = [
+  "A friend asks how your week's going. One line.",
+  "You're running late. What do you send?",
+  "Someone you barely know asks for a favour you'd rather not do.",
+  "A friend got good news. First thing you'd write back.",
+  "You need to say no to a work thing without making it a whole conversation.",
+  "Someone apologises for something small. What do you say?",
+  "You're double-booked and have to move a plan. How do you put it?",
+  "A friend is having a bad day and hasn't asked for anything.",
+  "You forgot to reply for three days. What do you open with?",
+  "Someone asks what you did at the weekend.",
+];
 
 // --- Training by conversation ----------------------------------------------
 //

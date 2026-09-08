@@ -396,11 +396,22 @@ describe("buildScreen", () => {
     expect(json).toContain("/v1/train/pick");
     expect(json).toContain('"tone":"$state.tone"');
     expect(json).toContain('"rejectedA":"$state._rejA"');
-    // Three variant slots render as tappable cards.
-    expect(json).toContain('"truthy":"variantA"');
-    expect(json).toContain('"truthy":"variantC"');
-    // The action row hides while recording.
-    expect(json).toContain('"falsy":"recording"');
+    // It is a THREAD now, not a form with three variant slots under it: the
+    // rows are appended as the conversation happens, and one component draws
+    // whatever is in the array.
+    expect(json).toContain('"ChatThread"');
+    expect(json).toContain('"thread":"thread"');
+    expect(json).toContain('"appendState"');
+    expect(json).toContain('"options":"$state._train.variants"');
+    // The tap is handled in the component and reported back by onSelect — an
+    // event the renderer has always had. A made-up event name would type-check
+    // on the server and silently never fire on the device.
+    expect(json).toContain('"onSelect":"picked"');
+    // The next two rows come back WITH the pick, so a conversation never runs
+    // out of things to ask.
+    expect(json).toContain('"$state._pick.next"');
+    // A bundle without ChatThread must say so rather than render a hole.
+    expect(json).toContain("Update the app");
     // Blurred voice sheet: Core style + the whole voice library.
     expect(json).toContain('"blur":true');
     expect(json).toContain('"open":"toneSheetOpen"');
