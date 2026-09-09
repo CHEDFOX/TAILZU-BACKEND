@@ -4073,9 +4073,17 @@ const YOU_UI = {
     damping: 19,
     mass: 0.9,
     throwFactor: 0.9,
+    /**
+     * How hard each CARD's own art is blurred. 0 leaves it sharp.
+     *
+     * Softer than the backdrop's: the backdrop is blurred past reading because
+     * it is a wash, and a card still has to look like a place.
+     */
+    cardBlur: 26,
+    cardBlurTint: "dark" as const,
     /** Over each card's own art, so an uploaded photo can never eat the title. */
     scrim: "#000000",
-    scrimOpacity: 0.24,
+    scrimOpacity: 0.34,
     titleSize: 15,
     titleTracking: -0.2,
     /** The middle card's art again, behind everything. */
@@ -4234,8 +4242,20 @@ function personalityScreen(): ScreenResponse {
     children: [
       { type: "Image", props: { source: mediaSrc(c.media), contentFit: "cover" },
         style: { ...FILL_STYLE } },
+      // BLURRED, like the backdrop it is cut from.
+      //
+      // The card carries a name, not a picture — the art is there to give the
+      // deck a colour and a mood, and a sharp photograph competes with the one
+      // word that is actually being chosen. Blurring it also makes every
+      // upload behave: the deck reads the same whether someone puts a portrait
+      // or a screenshot behind a card.
+      ...(d.cardBlur > 0 ? [{
+        type: "BlurBackground",
+        props: { intensity: d.cardBlur, tint: d.cardBlurTint },
+        style: { ...FILL_STYLE },
+      } as Node] : []),
       // Under the title, over the art. A card whose art comes back pale is a
-      // card whose title has vanished, and the art is uploaded — so the scrim
+      // card whose title has vanished, and the art is uploaded — so the tint
       // is not a treatment, it is the guarantee that the deck stays readable
       // whatever anyone uploads to it.
       { type: "Stack",
