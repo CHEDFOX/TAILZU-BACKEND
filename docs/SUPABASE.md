@@ -59,14 +59,17 @@ Both ship with `{{ .ConfirmationURL }}` in them, which mails a *link*. Fixing
 only one is why codes look random — a new tester gets a code, and the same
 person signing in again gets a link.
 
-Dashboard → **Authentication → Email Templates**. Edit **both** so the body
-carries the token instead of the URL:
+Dashboard → **Authentication → Email Templates**. Paste
+[`tulmi/supabase/email/confirm-signup.html`](../tulmi/supabase/email/confirm-signup.html)
+and [`magic-link.html`](../tulmi/supabase/email/magic-link.html) into the two
+templates of those names. Their bodies are identical — the reader asked for a
+code and should not be able to tell which of GoTrue's paths answered — and both
+carry `{{ .Token }}` instead of `{{ .ConfirmationURL }}`.
 
-```html
-<h2>Your Tailzu code</h2>
-<p style="font-size:28px;letter-spacing:6px"><strong>{{ .Token }}</strong></p>
-<p>It expires in an hour. If you didn't ask for it, ignore this email.</p>
-```
+They are in the app's Stats palette: amber ground, black ink, the code as the
+hero figure, one black card. See
+[`tulmi/supabase/email/_README.md`](../tulmi/supabase/email/_README.md) for why
+the markup is table-based and why every colour is a flat hex.
 
 Check it end to end with an address that has **never** signed in (Confirm
 signup) and then again with one that has (Magic Link). Testing only one proves

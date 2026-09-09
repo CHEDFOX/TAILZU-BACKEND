@@ -493,4 +493,36 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
     const entry = cachedRegistry[key];
     return reply.send(entry);
   });
+
+  /**
+   * THE FILE ITSELF, AT A URL THAT NEVER CHANGES.
+   *
+   * Everything else here addresses media by content hash, which is right for
+   * the app — it fetches the registry first and follows whatever URL it finds,
+   * so a new upload is picked up on the next bootstrap. An EMAIL cannot do
+   * that. Its HTML is pasted into Supabase by hand and then sits there for
+   * months, so a content-addressed URL in it means the icon breaks the day
+   * anyone re-uploads it, silently, in mail nobody on the team receives.
+   *
+   * So: a redirect keyed by name. The template names `email.mark` forever and
+   * this points it at whatever is currently under that key.
+   *
+   * Public and unauthenticated, like /media/* — it serves what an anonymous
+   * client could already fetch, and reveals only whether a key exists, which
+   * /v1/media/resolve above already tells anyone who asks. 302 rather than 301
+   * because the target is expected to change; a permanent redirect is exactly
+   * the thing a mail client would cache past the next upload.
+   */
+  app.get<{ Params: { key: string } }>("/media/k/:key", async (req, reply) => {
+    const key = String(req.params.key ?? "").trim();
+    if (!key || RESERVED_KEYS.has(key)) return reply.code(404).send({ code: "not_found" });
+    if (!Object.prototype.hasOwnProperty.call(cachedRegistry, key)) {
+      return reply.code(404).send({ code: "not_found" });
+    }
+    const url = cachedRegistry[key]?.url;
+    if (!url) return reply.code(404).send({ code: "not_found" });
+    // Short, so swapping the art shows up the same day, and long enough that a
+    // mail client opened twice does not fetch twice.
+    return reply.header("cache-control", "public, max-age=3600").redirect(url, 302);
+  });
 }
