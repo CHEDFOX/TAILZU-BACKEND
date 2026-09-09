@@ -29,6 +29,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { MediaPresent } from "../../../shared/types/sdui.js";
+import { bumpCacheVersion } from "../experience/catalog.js";
 
 /**
  * Sanitise a presentation payload.
@@ -248,6 +249,27 @@ async function readRegistry(mediaDir: string): Promise<MediaRegistry> {
 // could collide). Each write chains onto the previous one.
 let writeChain: Promise<void> = Promise.resolve();
 
+/**
+ * Every registry write goes through here, and every one of them INVALIDATES
+ * THE SCREEN CACHE.
+ *
+ * A screen is built with the media baked into it — the resolved url, the box
+ * its placement implies, whether it is a Video node or an Image one — and the
+ * result is cached under a version token the app compares against. So changing
+ * how a clip is presented used to change nothing a user could see: the server
+ * kept serving the screen it had already built, and the new values only
+ * appeared when something else happened to bump the token.
+ *
+ * That failure is invisible from both ends. The POST answers ok:true with the
+ * new values echoed back, and the app shows the old ones, which reads as the
+ * setting not working rather than as a stale cache. Two people spent a while
+ * re-uploading a clip that had been correct on the server the whole time.
+ */
+async function writeRegistryAndInvalidate(mediaDir: string, r: MediaRegistry): Promise<void> {
+  await writeRegistry(mediaDir, r);
+  bumpCacheVersion();
+}
+
 async function writeRegistry(mediaDir: string, r: MediaRegistry): Promise<void> {
   const run = writeChain.then(async () => {
     const file = registryPath(mediaDir);
@@ -285,7 +307,7 @@ export async function loadMediaRegistry(mediaDir: string): Promise<void> {
   } catch {
     if (Object.keys(cachedRegistry).length > 0) {
       try {
-        await writeRegistry(mediaDir, cachedRegistry);
+        await writeRegistryAndInvalidate(mediaDir, cachedRegistry);
       } catch (err) {
         console.error("[media] failed to migrate legacy registry to new path", err);
       }
@@ -325,7 +347,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
     registry: () => cachedRegistry,
     writeRegistry: async (r: MediaRegistry) => {
       cachedRegistry = r;
-      await writeRegistry(mediaDir, r);
+      await writeRegistryAndInvalidate(mediaDir, r);
     },
     checkAdmin: (req: unknown, expected: string) => checkAdmin(req, expected),
   };
@@ -412,7 +434,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
     if (RESERVED_KEYS.has(key)) return reply.code(400).send({ code: "reserved_key" });
     entry.key = key;
     cachedRegistry[key] = entry;
-    await writeRegistry(mediaDir, cachedRegistry);
+    await writeRegistryAndInvalidate(mediaDir, cachedRegistry);
 
     return reply.send({ ok: true, key, url, sha, size, contentType });
   });
@@ -449,7 +471,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
 
     if (q.reset === "true") {
       delete entry.present;
-      await writeRegistry(mediaDir, cachedRegistry);
+      await writeRegistryAndInvalidate(mediaDir, cachedRegistry);
       return reply.send({ ok: true, key, present: null });
     }
 
@@ -462,7 +484,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
     }
     // Merge, so setting one field does not silently drop the rest.
     entry.present = { ...(entry.present ?? {}), ...present };
-    await writeRegistry(mediaDir, cachedRegistry);
+    await writeRegistryAndInvalidate(mediaDir, cachedRegistry);
     return reply.send({ ok: true, key, present: entry.present });
   });
 
@@ -478,7 +500,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
       return reply.code(404).send({ code: "not_found" });
     }
     delete cachedRegistry[key];
-    await writeRegistry(mediaDir, cachedRegistry);
+    await writeRegistryAndInvalidate(mediaDir, cachedRegistry);
     return reply.send({ ok: true });
   });
 

@@ -3067,8 +3067,25 @@ export const TRAINING_UI = {
       end: "End & save",
       saving: "Reading the conversation",
       saved: "It knows you a little better.",
-      bubble: 190,
+      /** The orb's canvas. The sphere is `orbRadius` of it, so the rest is the
+       *  room the rim light falls off into — not padding. */
+      bubble: 260,
+      /** The major colour: band highlight, rim, and what the eye reads it as. */
       tint: ACCENT_AMBER,
+      /**
+       * The trough the bands fall into. An ember brown-red rather than a
+       * neutral dark, because a warm object shaded with a cold shadow reads as
+       * two materials rather than one.
+       */
+      orbDeep: "#4A1D08",
+      /** The pale top of the shimmer ramp. */
+      orbGold: "#FFDCA0",
+      /** Sphere radius as a share of the canvas. 0.32 is about 64% across. */
+      orbRadius: 0.32,
+      /** 0 is bands alone; past ~0.45 the shimmer washes the bands out. */
+      orbShimmer: 0.28,
+      /** How hard the rim brightens at full volume. Higher clips to white. */
+      orbRim: 0.75,
       /** A pause this long, with something said, ends your turn. */
       silenceMs: 1500,
     },
@@ -3788,16 +3805,42 @@ function trainingLiveScreen(): ScreenResponse {
         status("speaking"), status("error"),
         { type: "Spacer", style: { height: 18 } },
         {
-          type: "VoiceBubble",
+          // THE ORB IS A SHADER NOW, not a stack of blurred paths.
+          //
+          // VoiceBubble built an outline from a sum of sines and drew five
+          // blurred lobes inside it. That is a soft blob; this is an object
+          // with light on it — bands of drifting noise on a lambert-shaded
+          // sphere, with a rim that brightens when the voice does. One
+          // fragment program on the GPU, so the whole thing costs the JS
+          // thread a clock and a level.
+          //
+          // It also cannot repeat the bug the old one had. VoiceBubble's halo
+          // was drawn past the edge of its own canvas and Skia clipped it, so
+          // the orb arrived as a visible rectangle; this fades to nothing well
+          // inside its bounds by construction.
+          type: "AuroraOrb",
           bind: { level: "level", state: "sessionState" },
-          props: { size: ui.bubble, tint: ui.tint },
-          // Every installed build has Skia, but a bundle old enough to predate
-          // this component would render a hole where the only visual is. The
-          // wave mark is a worse bubble and a far better nothing.
+          props: {
+            size: ui.bubble,
+            tint: ui.tint,
+            deep: ui.orbDeep,
+            gold: ui.orbGold,
+            radius: ui.orbRadius,
+            shimmer: ui.orbShimmer,
+            rim: ui.orbRim,
+          },
+          // Older bundles fall back to the orb they already have, and older
+          // ones still to the wave mark. Both are worse than this and far
+          // better than a hole where the only visual is.
           fallback: {
-            type: "Waveform",
-            bind: { level: "level" },
-            style: { width: ui.bubble * 0.62, height: ui.bubble * 0.42 },
+            type: "VoiceBubble",
+            bind: { level: "level", state: "sessionState" },
+            props: { size: ui.bubble, tint: ui.tint },
+            fallback: {
+              type: "Waveform",
+              bind: { level: "level" },
+              style: { width: ui.bubble * 0.62, height: ui.bubble * 0.42 },
+            },
           },
           style: { marginBottom: 20 },
         },
