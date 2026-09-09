@@ -4508,312 +4508,332 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
     cacheTtlSeconds: 300,
   };
 }
-
 /**
- * Server-rendered usage stats screen. Prefers a fresh StatsResponse
- * (`ctx.stats`) when the screen route provides one, otherwise degrades to
- * the aggregate UsageSummary that /v1/app/screen already knows how to fetch.
- * The screen itself does no client-side fetching — see the "history" screen
- * below for the opposite pattern.
- */
-/**
- * Visits → pie slices. ONE SLICE PER DAY, sized by what that day gave.
+ * TWO COLOURS, AND THAT IS THE WHOLE DESIGN RULE.
  *
- * No folding, no top-six. A slice's share of the ring is its share of the
- * month's earnings, so a 400-word day is visibly five times a 30-word one and
- * the ring itself carries the fact that the amounts differ. Rolling the tail
- * into a single "earlier" wedge destroyed exactly that: it made the oldest
- * days the biggest slice on the chart, purely for having been numerous.
+ * The brand amber is the ground and near-black is the ink — the inverse of
+ * every other screen, which is what makes this tab read as its own place
+ * rather than Home with charts on it. Nothing else appears: no greys, no
+ * second accent, no semantic red or green.
  *
- * Colour carries the tier as a second, redundant channel — size already says
- * it, and saying it twice is what makes a big day readable at a glance in a
- * ring of thirty.
+ * That constraint is most of the work in the charts. Normally hue separates
+ * one series from another; with one hue, WEIGHT and OPACITY have to do it —
+ * bars sit at 45% with the peak at full, the streak grid uses three steps of
+ * opacity, and rows separate on a 13%-alpha rule rather than a border colour.
+ * It holds, but it means no chart here can encode two series by colour: a card
+ * that needs that needs two charts.
  */
-function visitSlices(
-  visits: Array<{ day: string; words: number; tier: string }>,
-): Array<{ label: string; value: number; color: string }> {
-  const TIER_COLOR: Record<string, string> = {
-    small: "#6B5A3E",
-    good: "#C08A2E",
-    big: "#E8A23C",
-    huge: "#FFD27A",
-  };
-  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-  // Newest first, so the ring starts at 12 o'clock with the most recent visit
-  // — the one the user is most likely to be looking for.
-  return [...visits].reverse().map((v) => {
-    const d = new Date(`${v.day}T00:00:00Z`);
-    return {
-      label: `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`,
-      value: v.words,
-      color: TIER_COLOR[v.tier] ?? "#C08A2E",
-    };
-  });
-}
+const STATS_UI = {
+  ground: ACCENT_AMBER,
+  ink: "#0B0B0D",
+  /** Ink at reduced strength, for everything that is not the number itself. */
+  inkDim: "rgba(11,11,13,0.62)",
+  inkFaint: "rgba(11,11,13,0.42)",
+  /** Amber on the black cards, at the strengths the two-colour rule allows. */
+  onCard: ACCENT_AMBER,
+  onCardDim: "rgba(232,162,60,0.72)",
+  onCardFaint: "rgba(232,162,60,0.55)",
+  rule: "rgba(232,162,60,0.13)",
+  barRest: 0.45,
+  cardRadius: 13,
+  gap: 9,
+  padding: 16,
+};
 
 function statsScreen(ctx: ScreenContext): ScreenResponse {
+  const u = STATS_UI;
   const usage = ctx.usage ?? {
     month: { words: 0, audioSeconds: 0, requests: 0 },
     total: { words: 0, audioSeconds: 0, requests: 0 },
   };
-  const stats = ctx.stats;
+  const st = ctx.stats;
 
-  const wordsMonth = stats?.wordsOut ?? usage.month.words;
-  const sessions = stats?.requests ?? usage.month.requests;
-  // Same 40 wpm baseline the /v1/stats endpoint uses (see history/store.ts).
-  const minutesSaved = stats?.minutesSaved ?? Math.max(0, Math.round(usage.total.words / 40));
-  const typingMinutes = Math.max(1, Math.round((stats?.wordsOut ?? usage.total.words) / 40));
-  const hasData = sessions > 0;
+  const wordsMonth = st?.wordsOut ?? usage.month.words;
+  const sessions = st?.requests ?? usage.month.requests;
+  const minutesSaved = st?.minutesSaved ?? Math.max(0, Math.round(usage.total.words / 40));
+  const perDay = st?.wordsPerDay ?? st?.sparklinePerDay ?? [];
+  const days = perDay.length || 30;
+  const daysActive = st?.daysActive ?? perDay.filter((d) => d > 0).length;
+  const streak = st?.currentStreak ?? 0;
+  const avgPerSession = st?.avgWordsPerSession ?? (sessions ? Math.round(wordsMonth / sessions) : 0);
+  const n = (v: number) => v.toLocaleString("en-US");
 
-  // A small metric tile (StatCard v3 node, plain KeyValue fallback for old
-  // bundles).
-  const stat = (label: string, value: string, delta?: number): Node => ({
-    type: "StatCard",
-    props: { label, value, ...(delta != null ? { delta } : {}) },
-    style: { flex: 1 },
-    fallback: { type: "KeyValue", props: { label, value }, style: { flex: 1 } },
-  });
+  /** Split a per-day series into equal buckets — weeks, usually. */
+  const bucket = (src: number[], count: number): number[] => {
+    if (!src.length) return new Array(count).fill(0);
+    const size = Math.ceil(src.length / count);
+    return Array.from({ length: count }, (_, i) =>
+      src.slice(i * size, (i + 1) * size).reduce((a, b) => a + b, 0));
+  };
 
-  // A chart wrapped in a titled Card — the reusable "stat block" template.
-  const chartCard = (title: string, chart: Node, fallback?: Node): Node => ({
-    type: "Card",
+  /**
+   * Bars, drawn from Stacks rather than a chart component — because the chart
+   * components colour their own series and this screen may not have a second
+   * colour. Height is the value; the tallest bar is the only one at full
+   * strength, which is how a peak reads without a label on it.
+   */
+  const bars = (values: number[], labels: string[], height = 88): Node => {
+    const max = Math.max(1, ...values);
+    return {
+      type: "Stack",
+      children: [
+        {
+          type: "Stack",
+          style: { flexDirection: "row", alignItems: "flex-end", gap: 5, height },
+          children: values.map((v) => ({
+            type: "Stack",
+            style: {
+              flex: 1,
+              height: Math.max(3, Math.round((v / max) * height)),
+              backgroundColor: u.onCard,
+              opacity: v === max ? 1 : u.barRest,
+              borderTopLeftRadius: 3, borderTopRightRadius: 3,
+            },
+          })),
+        },
+        {
+          type: "Stack",
+          style: { flexDirection: "row", gap: 5, marginTop: 6 },
+          children: labels.map((l) => ({
+            type: "Text", props: { content: l },
+            style: { flex: 1, textAlign: "center", fontSize: 7.5, color: u.onCardFaint },
+          })),
+        },
+      ],
+    };
+  };
+
+  /** A month of days as a grid, three opacity steps: none, some, a lot. */
+  const dotGrid = (values: number[]): Node => {
+    const max = Math.max(1, ...values);
+    return {
+      type: "Stack",
+      style: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
+      children: values.map((v) => ({
+        type: "Stack",
+        style: {
+          width: "12%", aspectRatio: 1, borderRadius: 4,
+          backgroundColor: u.onCard,
+          opacity: v === 0 ? 0.16 : v > max * 0.5 ? 1 : 0.5,
+        },
+      })),
+    };
+  };
+
+  const row = (label: string, value: string): Node => ({
+    type: "Stack",
+    style: {
+      flexDirection: "row", justifyContent: "space-between", alignItems: "baseline",
+      paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: u.rule,
+    },
     children: [
-      text(title, "label"),
-      spacer(10),
-      fallback ? { ...chart, fallback } : chart,
+      { type: "Text", props: { content: label }, style: { fontSize: 12, color: u.onCardDim } },
+      { type: "Text", props: { content: value },
+        style: { fontSize: 12, fontWeight: "700", color: u.onCard } },
     ],
   });
-  const kv = (label: string, value: string): Node => ({ type: "KeyValue", props: { label, value } });
 
-  // 14-day words bar chart; Text sparkline fallback for old bundles.
-  const wordsBars = (stats?.wordsPerDay ?? stats?.sparklinePerDay ?? []).slice(-14)
-    .map((v) => ({ label: "", value: Math.max(0, Number(v) || 0) }));
-  const sparklineText = renderSparkline(stats?.wordsPerDay ?? stats?.sparklinePerDay);
+  const secLab = (t: string): Node => ({
+    type: "Text", props: { content: t },
+    style: { fontSize: 8.5, letterSpacing: 2, textTransform: "uppercase",
+             color: u.onCardFaint, marginTop: 16, marginBottom: 9 },
+  });
 
-  // "How you write" — words by capture kind.
-  const kindData = [
-    { label: "Voice", value: stats?.kindWords?.voice ?? 0, color: "#E8A23C" },
-    { label: "Typed", value: stats?.kindWords?.typing ?? 0, color: "#6EA8FE" },
-    { label: "Drafts", value: stats?.kindWords?.draft ?? 0, color: "#48D39A" },
-  ];
-  const kindTotal = kindData.reduce((s, d) => s + d.value, 0);
+  /** One tile. The whole card is the tap target; the detail opens over it. */
+  const card = (id: string, label: string, value: string, unit?: string): Node => ({
+    type: "Stack",
+    on: { onPress: { kind: "setState", path: "openCard", value: id } },
+    props: { pressOpacity: 0.75 },
+    style: {
+      flex: 1, backgroundColor: u.ink, borderRadius: u.cardRadius,
+      paddingTop: 11, paddingBottom: 12, paddingHorizontal: 12,
+    },
+    children: [
+      { type: "Text", props: { content: label },
+        style: { fontSize: 8, letterSpacing: 1.8, textTransform: "uppercase",
+                 color: u.onCardDim, textAlign: "right" } },
+      {
+        type: "Stack",
+        style: { flexDirection: "row", alignItems: "baseline", marginTop: 12 },
+        children: [
+          { type: "Text", props: { content: value },
+            style: { fontSize: 27, fontWeight: "800", letterSpacing: -1, color: u.onCard } },
+          ...(unit
+            ? [{ type: "Text", props: { content: unit },
+                 style: { fontSize: 11, fontWeight: "700", color: u.onCardDim, marginLeft: 3 } } as Node]
+            : []),
+        ],
+      },
+    ],
+  });
 
-  // "When you write" — sessions by local time of day.
-  const dp = stats?.daypartSessions;
-  const daypartData = [
-    { label: "Morning", value: dp?.morning ?? 0, color: "#F2C078" },
-    { label: "Afternoon", value: dp?.afternoon ?? 0, color: "#E8A23C" },
-    { label: "Evening", value: dp?.evening ?? 0, color: "#B98CFF" },
-    { label: "Night", value: dp?.night ?? 0, color: "#6EA8FE" },
-  ];
-  const daypartTotal = daypartData.reduce((s, d) => s + d.value, 0);
-
-  // "Where you write" — top apps by words.
-  const appData = (stats?.topApps ?? []).map((a, i) => ({
-    label: a.app,
-    value: a.words,
-    // Amber leads; the rest of the categorical set follows in rank order.
-    color: ["#E8A23C", "#6EA8FE", "#48D39A", "#F0736A", "#B98CFF", "#7DD3FC"][i % 6],
-  }));
-  const appTotal = appData.reduce((s, d) => s + d.value, 0);
-
-  const streak = stats?.currentStreak ?? 0;
-  const bestStreak = Math.max(streak, stats?.bestStreak ?? 0);
-
-  // The words meter. First thing on the page, because it is the only number
-  // here that decides whether the app keeps working — and now the only one
-  // that can go UP on its own.
-  const a = ctx.allowance;
-  const meterCard: Node[] = a
-    ? [{
-        type: "Card",
-        children: [{
-          type: "WordMeter",
-          props: {
-            used: a.used,
-            base: a.base,
-            earned: a.earned,
-            // Every colour on the meter, from here. Omit any of them and the
-            // component falls back to the brand amber and the theme, so this
-            // is a lever rather than an obligation.
-            fillColor: ACCENT_AMBER,
-            earnedColor: ACCENT_AMBER,
-            // One line, and only when there is something to promise. A caption
-            // that says "you have earned nothing" on day one would make the
-            // mechanic feel like a tax.
-            // What the streak IS, never what the next one pays. The promise
-            // was the problem: it made tomorrow a transaction at a published
-            // rate, and a rate the user can read is a rate they can decide is
-            // not worth it.
-            caption: a.maxed
-              ? "You've earned every free word this month."
-              : a.streakDays > 1
-                ? `${a.streakDays} days in a row.`
-                : a.streakDays === 1
-                  ? "Streak started."
-                  : "Words arrive when you use Tailzu.",
+  /** The detail behind one card. Scrolls inside itself when it outgrows. */
+  const panel = (id: string, label: string, value: string, unit: string, inner: Node[]): Node => ({
+    type: "Stack",
+    visibleIf: { eq: ["openCard", id] },
+    style: { flex: 1 },
+    children: [
+      {
+        type: "Stack",
+        style: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+        children: [
+          {
+            type: "Stack",
+            children: [
+              { type: "Text", props: { content: label },
+                style: { fontSize: 9, letterSpacing: 2.2, textTransform: "uppercase", color: u.onCardDim } },
+              { type: "Text", props: { content: unit ? `${value} ${unit}` : value },
+                style: { fontSize: 30, fontWeight: "800", letterSpacing: -1.1, color: u.onCard, marginTop: 6 } },
+            ],
           },
-          // Old bundles have no WordMeter. They still get the number that
-          // matters rather than an empty space.
-          fallback: {
-            type: "KeyValue",
-            props: {
-              label: "Words left",
-              value: `${a.remaining.toLocaleString()} of ${a.total.toLocaleString()}`,
+          {
+            type: "Stack",
+            on: { onPress: "closeCard" },
+            style: {
+              width: 28, height: 28, borderRadius: 14, borderWidth: 1, borderColor: u.rule,
+              alignItems: "center", justifyContent: "center",
             },
+            children: [{
+              type: "SVG",
+              props: { viewBox: "0 0 24 24", d: "M6 6 L18 18 M18 6 L6 18",
+                       fill: "none", stroke: u.onCard, strokeWidth: 2.4 },
+              style: { width: 11, height: 11 },
+            }],
           },
-        }],
-      } as Node, spacer(13),
-        // WHAT EACH VISIT PAID.
-        //
-        // The meter says how many words are left; this says where they came
-        // from. One slice per visit, sized by what that day's roll gave — so
-        // the rare big day is visibly bigger than the rest, and the user can
-        // see that the amounts differ without ever being told the rule. That
-        // is the whole point of a variable reward: the pattern has to be
-        // felt, and a number in a sentence cannot be felt.
-        //
-        // Newest first and capped at six, with everything older folded into
-        // one slice: a month of visits is thirty slices nobody can read.
-        ...(a.perVisit.length
-          ? [{
-              type: "Card",
-              children: [
-                text("What each visit gave you", "label"),
-                spacer(10),
-                {
-                  type: "PieChart",
-                  props: {
-                    data: visitSlices(a.perVisit),
-                    donut: true,
-                    size: 150,
-                    // The legend names every slice, which is right for a week
-                    // and unreadable for a month. Past eight visits the ring
-                    // speaks for itself: the sizes are the message and thirty
-                    // dated rows beside them are noise.
-                    legend: a.perVisit.length <= 8 ? "right" : false,
-                    centerValue: a.earned.toLocaleString(),
-                    centerLabel: "earned",
-                  },
-                  // Old bundles get the same fact as a line of text rather
-                  // than a hole where a chart should be.
-                  fallback: {
-                    type: "KeyValue",
-                    props: {
-                      label: "Visits",
-                      value: `${a.perVisit.length} · ${a.earned.toLocaleString()} words earned`,
-                    },
-                  },
-                },
-              ],
-            } as Node, spacer(21)]
-          : [spacer(8)]),
-      ]
-    : [];
+        ],
+      },
+      { type: "Screen", style: { backgroundColor: "transparent", paddingHorizontal: 0, paddingTop: 4 },
+        children: inner },
+    ],
+  });
+
+  const weeks = bucket(perDay, 4);
+  const wLabels = ["W1", "W2", "W3", "W4"];
+  const dayparts = st?.daypartSessions;
+  const apps = st?.topApps ?? [];
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "stats",
-    title: "Stats",
-    state: {},
+    title: "",
+    // The amber runs to the top of the window; the tabs stay, because this is
+    // a tab root and losing them here strands the user.
+    hideHeader: true,
+    state: { openCard: "" },
     actions: {
+      closeCard: { kind: "clearState", path: "openCard" },
       openHistory: { kind: "navigate", screenId: "history" },
     },
     root: {
-      type: "Screen",
+      type: "Stack",
+      style: { flex: 1, backgroundColor: u.ground },
       children: [
-        ...screenHero("stats"),
         {
-          type: "Hero",
-          props: {
-            title: wordsMonth.toLocaleString() + " words",
-            subtitle: "@stats.hero.subtitle",
+          type: "Screen",
+          style: {
+            backgroundColor: "transparent",
+            paddingHorizontal: u.padding, paddingTop: 58, paddingBottom: 20,
           },
-        },
-        spacer(13),
-        ...meterCard,
-        // Headline tiles — golden ladder spacing (8·13·21·34).
-        {
-          type: "Stack",
-          style: { direction: "row", gap: 8 },
           children: [
-            stat("Minutes saved", minutesSaved.toLocaleString()),
-            stat("Sessions", sessions.toLocaleString()),
+            { type: "Text", props: { content: "This month" },
+              style: { fontSize: 9, letterSpacing: 3, textTransform: "uppercase",
+                       color: u.inkDim, marginBottom: 2, marginLeft: 4 } },
+            {
+              type: "Stack",
+              style: { flexDirection: "row", alignItems: "baseline", marginLeft: 2, marginBottom: 4 },
+              children: [
+                { type: "Text", props: { content: n(wordsMonth) },
+                  style: { fontSize: 62, lineHeight: 62, fontWeight: "800",
+                           letterSpacing: -2.6, color: u.ink } },
+                { type: "Text", props: { content: "words" },
+                  style: { fontSize: 14, fontWeight: "700", color: u.inkDim, marginLeft: 8 } },
+              ],
+            },
+            { type: "Text", props: { content: "Spoken, cleaned, and sent as you." },
+              style: { fontSize: 10.5, color: u.inkDim, marginBottom: 16, marginLeft: 4 } },
+
+            {
+              type: "Stack",
+              style: { flexDirection: "row", gap: u.gap, marginBottom: u.gap },
+              children: [
+                card("minutes", "Minutes saved", n(minutesSaved), "min"),
+                card("sessions", "Sessions", n(sessions)),
+              ],
+            },
+            {
+              type: "Stack",
+              style: { flexDirection: "row", gap: u.gap },
+              children: [
+                card("streak", "Day streak", n(streak), "days"),
+                card("active", "Active days", n(daysActive), `of ${days}`),
+              ],
+            },
+
+            {
+              type: "Stack",
+              on: { onPress: "openHistory" },
+              style: {
+                height: 46, borderRadius: 999, backgroundColor: u.ink,
+                alignItems: "center", justifyContent: "center", marginTop: 14,
+              },
+              children: [{ type: "Text", props: { content: "FULL HISTORY" },
+                style: { fontSize: 11, letterSpacing: 1.9, fontWeight: "700", color: u.onCard } }],
+            },
           ],
         },
-        spacer(8),
+
+        // THE DETAIL. One Modal, one `openCard`, four panels gated on it —
+        // rather than four Modals, which would be four things that can be open
+        // at once and one bug away from being.
         {
-          type: "Stack",
-          style: { direction: "row", gap: 8 },
-          children: [
-            stat("Day streak", String(streak)),
-            stat("Active days", String(stats?.daysActive ?? 0)),
-          ],
-        },
-        spacer(21),
-        ...(hasData ? [] : [{
-          type: "Card",
-          children: [
-            { type: "Paragraph", props: { content: "Your stats build as you write. Dictate or refine a few messages and this page fills with charts — words per day, streaks, where and when you write." }, style: { marginBottom: 0 } },
-          ],
-        } as Node, spacer(21)]),
-        // Words per day — the last 14 days.
-        ...(wordsBars.some((b) => b.value > 0) ? [chartCard(
-          "Words per day — last 14 days",
-          {
-            type: "BarChart",
-            props: { series: wordsBars, color: "#E8A23C" },
-            style: { height: 110 },
+          type: "Modal",
+          bind: { open: "openCard" },
+          props: { blur: true, blurIntensity: 40, blurTint: "light" },
+          on: { onDismiss: "closeCard" },
+          style: {
+            backgroundColor: u.ink, borderRadius: 18,
+            padding: 16, width: "92%", height: "76%",
           },
-          text(sparklineText, "body", { style: { fontSize: 22, letterSpacing: 2 } }),
-        ), spacer(13)] : []),
-        // How you write — voice vs typed vs drafts.
-        ...(kindTotal > 0 ? [chartCard("How you write", {
-          type: "PieChart",
-          props: {
-            data: kindData,
-            donut: true,
-            size: 150,
-            legend: "right",
-            centerValue: kindTotal.toLocaleString(),
-            centerLabel: "words",
-          },
-        }), spacer(13)] : []),
-        // Where you write — top apps.
-        ...(appTotal > 0 ? [chartCard("Where you write", {
-          type: "PieChart",
-          props: { data: appData, donut: true, size: 150, legend: "right" },
-        }), spacer(13)] : []),
-        // When you write — sessions by time of day.
-        ...(daypartTotal > 0 ? [chartCard("When you write", {
-          type: "PieChart",
-          props: { data: daypartData, donut: false, size: 150, legend: "right" },
-        }), spacer(13)] : []),
-        // Records + averages.
-        ...(hasData ? [{
-          type: "Card",
           children: [
-            text("Records", "label"),
-            spacer(8),
-            ...(stats?.bestDay ? [kv("Best day", `${stats.bestDay.words.toLocaleString()} words · ${stats.bestDay.date}`)] : []),
-            kv("Average per session", `${(stats?.avgWordsPerSession ?? 0).toLocaleString()} words`),
-            ...(stats?.speakingMinutes ? [kv("Speaking time", `${stats.speakingMinutes.toLocaleString()} min`)] : []),
-            kv("Best streak", bestStreak > 0 ? `${bestStreak} days` : "—"),
+            panel("minutes", "Minutes saved", n(minutesSaved), "min", [
+              secLab("By week"), bars(weeks, wLabels),
+              ...(apps.length ? [secLab("Where it went"),
+                ...apps.map((a) => row(a.app, `${n(a.words)} words`))] : []),
+              secLab("Against typing"),
+              row("Words written", n(wordsMonth)),
+              row("At 40 wpm, typed", `${n(Math.round(wordsMonth / 40))} min`),
+              ...(st?.speakingMinutes ? [row("Spoken", `${st.speakingMinutes} min`)] : []),
+            ]),
+            panel("sessions", "Sessions", n(sessions), "", [
+              secLab("By week"), bars(bucket(st?.sparklinePerDay ?? perDay, 4), wLabels),
+              secLab("Shape"),
+              row("Average per session", `${n(avgPerSession)} words`),
+              ...(st?.bestDay ? [row("Best day", `${n(st.bestDay.words)} words`)] : []),
+              ...(st?.kindWords ? [
+                row("By voice", n(st.kindWords.voice)),
+                row("By typing", n(st.kindWords.typing)),
+                row("Drafted", n(st.kindWords.draft)),
+              ] : []),
+            ]),
+            panel("streak", "Day streak", n(streak), "days", [
+              secLab("This month"), dotGrid(perDay.length ? perDay : new Array(30).fill(0)),
+              secLab("Records"),
+              row("Current streak", `${n(streak)} days`),
+              row("Best streak", `${n(st?.bestStreak ?? streak)} days`),
+              row("Active days", `${n(daysActive)} of ${days}`),
+            ]),
+            panel("active", "Active days", n(daysActive), `of ${days}`, [
+              ...(dayparts ? [secLab("Time of day"), bars(
+                [dayparts.morning, dayparts.afternoon, dayparts.evening, dayparts.night],
+                ["Morning", "Afternoon", "Evening", "Night"],
+              )] : []),
+              secLab("Pattern"),
+              row("Active days", `${n(daysActive)} of ${days}`),
+              row("Average per active day",
+                  `${n(daysActive ? Math.round(wordsMonth / daysActive) : 0)} words`),
+              ...(st?.bestDay ? [row("Biggest day", `${n(st.bestDay.words)} words`)] : []),
+            ]),
           ],
-        } as Node, spacer(21)] : []),
-        {
-          type: "Paragraph",
-          props: {
-            content:
-              `Your effort: you'd have spent ${typingMinutes.toLocaleString()} minutes typing ` +
-              `what Tailzu cleaned up in seconds.`,
-          },
-        },
-        spacer(21),
-        {
-          type: "Button",
-          props: { label: "@stats.cta.history", variant: "secondary" },
-          on: { onPress: "openHistory" },
         },
       ],
     },
@@ -4821,22 +4841,6 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
   };
 }
 
-/**
- * Render a request-per-day series as a compact Unicode block-chart. The input
- * is normalised to the eight-glyph ramp below; missing/empty input renders as
- * a neutral flat baseline so the screen never looks broken.
- */
-function renderSparkline(series: number[] | undefined): string {
-  const glyphs = ["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
-  const s = series && series.length > 0 ? series : [0, 0, 0, 0, 0, 0, 0];
-  const max = Math.max(1, ...s);
-  return s
-    .map((v) => {
-      const idx = Math.max(0, Math.min(glyphs.length - 1, Math.round((v / max) * (glyphs.length - 1))));
-      return glyphs[idx];
-    })
-    .join("");
-}
 
 /**
  * History browser. Loads the caller's opt-in cleanup history via /v1/history
