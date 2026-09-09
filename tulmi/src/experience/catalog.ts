@@ -243,6 +243,19 @@ function screenHero(
   // head of the mp4 costs nothing and works on every client, including the
   // ones already shipped.
   const loops = entry.present?.loop ?? true;
+  /**
+   * Placement facts, forwarded untouched. The client measures the box it is
+   * really drawing into and works out the offset there — which is the whole
+   * point: a stored offset is right on one aspect ratio and wrong on the next,
+   * and the opening film is authored at exactly one device's shape.
+   */
+  const place = {
+    ...(entry.present?.aspect ? { aspect: entry.present.aspect } : {}),
+    ...(entry.present?.focusX !== undefined ? { focusX: entry.present.focusX } : {}),
+    ...(entry.present?.focusY !== undefined ? { focusY: entry.present.focusY } : {}),
+    ...(entry.present?.anchorX !== undefined ? { anchorX: entry.present.anchorX } : {}),
+    ...(entry.present?.anchorY !== undefined ? { anchorY: entry.present.anchorY } : {}),
+  };
   const inner: Node = isVideo
     ? {
         type: "Video",
@@ -250,7 +263,7 @@ function screenHero(
           source: mediaSrc(key),
           // A hero is ambient: it plays itself, in silence. Muted is not
           // politeness — an unmuted autoplay is blocked outright.
-          autoplay: true, loop: loops, muted: true, contentFit: fit,
+          autoplay: true, loop: loops, muted: true, contentFit: fit, ...place,
         },
         style: FILL_STYLE,
         // A bundle without Video draws nothing at all; the still frame is a

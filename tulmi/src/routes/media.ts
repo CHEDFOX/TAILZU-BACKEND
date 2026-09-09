@@ -68,6 +68,14 @@ function cleanPresent(raw: unknown): MediaPresent | null {
   // points. Floor at 40 so a box is always big enough to see it went wrong.
   const bw = num(r.boxWidth, 40, 4000); if (bw !== undefined) out.boxWidth = bw;
   const bh = num(r.boxHeight, 40, 4000); if (bh !== undefined) out.boxHeight = bh;
+  // The two facts placement is computed from, rather than the offset someone
+  // measured once. `aspect` is the switch — without the art's shape the client
+  // has nothing to compute and keeps the old centred cover.
+  const asp = num(r.aspect, 0.1, 10); if (asp !== undefined) out.aspect = asp;
+  const fx = num(r.focusX, 0, 1); if (fx !== undefined) out.focusX = fx;
+  const fy = num(r.focusY, 0, 1); if (fy !== undefined) out.focusY = fy;
+  const axr = num(r.anchorX, 0, 1); if (axr !== undefined) out.anchorX = axr;
+  const ayr = num(r.anchorY, 0, 1); if (ayr !== undefined) out.anchorY = ayr;
   if (typeof r.background === "string" && /^#[0-9a-f]{3,8}$/i.test(r.background.trim())) {
     out.background = r.background.trim();
   }

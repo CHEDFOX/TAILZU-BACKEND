@@ -148,6 +148,31 @@ export interface MediaPresent {
   nudgeX?: number;
   nudgeY?: number;
   /**
+   * WHERE THE SUBJECT IS, and where it should land. The replacement for
+   * nudgeX/nudgeY, and the reason placement stopped needing to be re-measured.
+   *
+   * A nudge stores the ANSWER — an offset someone found by eye, correct for one
+   * art file on one aspect ratio, wrong the moment either changes. These store
+   * the two FACTS the answer is computed from:
+   *
+   *   aspect          the art's width ÷ height        a property of the file
+   *   focusX/focusY   where the subject sits in it    a property of the file
+   *   anchorX/anchorY where it should sit on screen   a property of the screen
+   *
+   * All 0..1 except aspect. The client measures the box it is actually drawing
+   * into and does the arithmetic there, so the placement is right on hardware
+   * nobody tested on — which a stored offset can never be. Swap the art and
+   * only `focus` changes; move the mark and only `anchor` does.
+   *
+   * `aspect` is the switch: without the art's shape there is nothing to
+   * compute, so media that does not declare one keeps the old centred `cover`.
+   */
+  aspect?: number;
+  focusX?: number;
+  focusY?: number;
+  anchorX?: number;
+  anchorY?: number;
+  /**
    * How much of the window the media is drawn at, 0.05–1. 1 fills it, which is
    * the default and what full bleed means.
    *
