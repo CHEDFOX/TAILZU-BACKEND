@@ -4075,6 +4075,8 @@ const YOU_UI = {
     backdropTint: "dark" as const,
     backdropWash: "#0B0B0D",
     backdropWashOpacity: 0.46,
+    /** The key the deck's last position is stored under. "" forgets. */
+    memory: "you.deck",
   },
 };
 
@@ -4323,6 +4325,11 @@ function personalityScreen(): ScreenResponse {
             perspective: d.perspective, shrink: d.shrink, fade: d.fade,
             stiffness: d.stiffness, damping: d.damping, mass: d.mass,
             throwFactor: d.throwFactor,
+            // REMEMBER WHERE IT WAS LEFT. Opening a card unmounts this screen,
+            // so coming back rebuilt the deck at card one and the card you were
+            // just inside was two throws away. Named, because remembering is a
+            // decision — a deck of search results should not do this.
+            memory: d.memory,
           },
           // onChange is the deck moving; onSelect is the user choosing. The
           // backdrop follows the first and must not wait for the second.
@@ -6963,7 +6970,16 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
     // Seeded from the saved setting so the switch is right the instant the
     // screen draws, and mutated in place by the switch after that.
     state: { hapticsAll: all },
-    actions: { err: { kind: "toast", message: "Couldn't save that.", tone: "error" } },
+    actions: {
+      // The ONLY place this screen refetches. Every tap is applied locally the
+      // moment it happens; a failure is the one time the server disagrees with
+      // what the user is looking at, and then the screen has to go and find out
+      // what is true rather than leave a key lit that is not.
+      err: { kind: "sequence", actions: [
+        { kind: "toast", message: "Couldn't save that.", tone: "error" },
+        { kind: "refresh" },
+      ] },
+    },
     // The amber block reaches the top of the window, so the app's own header
     // has to go. The block carries the way back in its place.
     hideHeader: true,
