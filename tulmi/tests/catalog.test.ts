@@ -371,6 +371,44 @@ describe("buildScreen", () => {
     expect(buildScreen("does-not-exist", { personality: {}, language: "en" })).toBeNull();
   });
 
+  it("every Stats card opens a panel, and every panel has a card", () => {
+    // The screen is one Modal, one `openCard` key, and a panel per value. So a
+    // card whose id nothing renders is a tile that opens a blank sheet, and a
+    // panel no card writes is detail nobody can reach — neither shows up as an
+    // error anywhere, and both are one typo away at all times.
+    const walk = (root: unknown, hit: (n: Record<string, any>) => void): void => {
+      const go = (n: any): void => {
+        if (!n || typeof n !== "object") return;
+        hit(n);
+        for (const c of n.children ?? []) go(c);
+      };
+      go(root);
+    };
+    for (const [label, ctx] of [
+      ["with data", {
+        personality: {}, language: "en",
+        usage: { month: { words: 4820, audioSeconds: 2100, requests: 96 },
+                 total: { words: 51230, audioSeconds: 24800, requests: 1140 } },
+        allowance: { base: 800, earned: 260, total: 1060, used: 742, remaining: 318,
+                     streakDays: 5, grants: [], maxed: false,
+                     perVisit: [{ day: "2026-09-01", words: 20, sessions: 3, tier: "a" }] },
+      }],
+      ["with nothing", { personality: {}, language: "en" }],
+    ] as const) {
+      const screen = buildScreen("stats", ctx as never);
+      const cards: string[] = [];
+      const panels: string[] = [];
+      walk(screen!.root, (n) => {
+        if (n.on?.onPress?.kind === "setState" && n.on.onPress.path === "openCard") {
+          cards.push(String(n.on.onPress.value));
+        }
+        if (n.visibleIf?.eq?.[0] === "openCard") panels.push(String(n.visibleIf.eq[1]));
+      });
+      expect(cards.length, `${label}: no tappable cards`).toBeGreaterThan(0);
+      expect([...cards].sort(), `${label}: cards and panels disagree`).toEqual([...panels].sort());
+    }
+  });
+
   it("Settings is reachable — the tab roots hide the header the gear lived in", () => {
     // Settings has never been a tab. The app draws a gear in the header of
     // whichever tab root is showing and pushes the screen from there — so a
@@ -383,14 +421,13 @@ describe("buildScreen", () => {
       const s = buildScreen(id, ctx) as { hideHeader?: boolean; hideChrome?: boolean } | null;
       return !!(s?.hideHeader || s?.hideChrome);
     });
-    // Not an assertion about the design — full bleed is the design. It is the
-    // trigger for the one below.
-    if (headerless.length === roots.length) {
-      const reachable = roots.some((id) =>
-        JSON.stringify(buildScreen(id, ctx)).includes('"screenId":"settings"'));
+    // EVERY headerless root, not just one. A control that appears on some tabs
+    // and not others has to be hunted for on each of them, which is worse than
+    // one that is simply always in the same corner.
+    for (const id of headerless) {
       expect(
-        reachable,
-        "every tab root hides the header, so at least one must draw its own way into Settings",
+        JSON.stringify(buildScreen(id, ctx)).includes('"screenId":"settings"'),
+        `tab root "${id}" hides the header, so it must draw its own way into Settings`,
       ).toBe(true);
     }
     // And the screen it points at has to exist.

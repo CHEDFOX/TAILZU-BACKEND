@@ -157,6 +157,67 @@ const FILL_STYLE = {
  */
 const HERO_PLAY_KEY = "_heroPlaying";
 
+/**
+ * THE WAY INTO SETTINGS, ON EVERY TAB ROOT.
+ *
+ * Settings has never been a tab. The app draws a gear in the header of
+ * whichever root is showing and pushes the screen from there — so when all
+ * three roots went full bleed and hid that header, the gear went with it and
+ * the Settings screen became a screen nothing could reach.
+ *
+ * Drawn by the screens rather than by restoring the header, because the
+ * full-bleed roots are the design and a bar above them is not. One helper, so
+ * it sits in the same place on all three and cannot drift: a control that
+ * moves between tabs has to be found again on each one.
+ *
+ * The colour is the caller's, because the ground is not the same on all three
+ * — white on the Train art and the You backdrop, ink on the Stats amber. A
+ * light glyph on amber is the kind of thing that survives review and then
+ * cannot be seen on a phone.
+ */
+const GEAR = {
+  size: 34,
+  inset: 16,
+  top: 58,
+  glyph: 15,
+  stroke: 2.1,
+  onDark: "rgba(255,255,255,0.66)",
+  onDarkBackground: "rgba(255,255,255,0.10)",
+  onLight: "rgba(11,11,13,0.62)",
+  onLightBackground: "rgba(11,11,13,0.08)",
+};
+
+function settingsGear(on: "dark" | "light" = "dark"): Node {
+  const color = on === "light" ? GEAR.onLight : GEAR.onDark;
+  const background = on === "light" ? GEAR.onLightBackground : GEAR.onDarkBackground;
+  return {
+    type: "Stack",
+    on: { onPress: { kind: "sequence", actions: [
+      { kind: "haptic", style: "selection" },
+      { kind: "navigate", screenId: "settings" },
+    ] } },
+    props: { pressOpacity: 0.6 },
+    style: {
+      position: "absolute", top: GEAR.top, right: GEAR.inset,
+      width: GEAR.size, height: GEAR.size, borderRadius: GEAR.size / 2,
+      alignItems: "center", justifyContent: "center",
+      backgroundColor: background,
+    },
+    children: [{
+      type: "SVG",
+      // Three right-aligned lines, shortest at the top — the same mark the
+      // header drew, at the same weight, so nothing has to be relearnt.
+      props: {
+        viewBox: "0 0 24 24",
+        d: "M12 7 H21 M7.5 12 H21 M3 17 H21",
+        fill: "none", stroke: color, strokeWidth: GEAR.stroke,
+        strokeLinecap: "round",
+      },
+      style: { width: GEAR.glyph, height: GEAR.glyph },
+    }],
+  };
+}
+
 function screenHero(
   screenId: string,
   opts: {
@@ -3243,6 +3304,9 @@ function homeScreen(_ctx: ScreenContext): ScreenResponse {
             },
           ],
         },
+        // The way into Settings — see settingsGear(). White, because this
+        // root is the art and the art is dark.
+        settingsGear("dark"),
       ],
     },
     cacheTtlSeconds: 300,
@@ -3957,28 +4021,6 @@ const YOU_UI = {
   },
   /** A section label on the black ground. */
   label: { size: 8.5, tracking: 2.2, marginTop: 22, marginBottom: 9 },
-  /**
-   * The way into Settings, on the deck.
-   *
-   * IT HAS TO BE HERE BECAUSE THE HEADER IS GONE. Settings has never been a
-   * tab; the app draws a gear in the header of whichever tab root is showing
-   * and pushes the screen from there. All three roots now hide that header to
-   * get their art to the top of the window — so the gear went with it, and the
-   * Settings screen became a screen nothing could reach.
-   *
-   * Drawn here rather than by restoring the header, because the full-bleed
-   * roots are the design and a bar above them is not. Three right-aligned
-   * lines, the same mark the header drew, so nothing has to be relearnt.
-   */
-  gear: {
-    size: 34,
-    inset: 16,
-    top: 58,
-    color: "rgba(255,255,255,0.62)",
-    background: "rgba(255,255,255,0.10)",
-    lineWidth: 15,
-    stroke: 1.8,
-  },
   /** The deck on the tab root. */
   deck: {
     cardWidth: 198,
@@ -4202,13 +4244,6 @@ function personalityScreen(): ScreenResponse {
         kind: "sequence",
         actions: [{ kind: "setState", path: "deck", value: "$event" }, route(0)],
       },
-      openSettings: {
-        kind: "sequence",
-        actions: [
-          { kind: "haptic", style: "selection" },
-          { kind: "navigate", screenId: "settings" },
-        ],
-      },
       // The button that fired this is gone from the tab by owner decision.
       // The ACTION stays defined on purpose.
       //
@@ -4283,35 +4318,8 @@ function personalityScreen(): ScreenResponse {
           },
         },
 
-        // THE WAY INTO SETTINGS. Last in the list, so it paints over the deck.
-        //
-        // See YOU_UI.gear: the app draws this in the header of a tab root, and
-        // all three roots now hide that header to get their art to the top of
-        // the window. Without this node the Settings screen is still built,
-        // still routable, and reachable from nowhere.
-        {
-          type: "Stack",
-          on: { onPress: "openSettings" },
-          props: { pressOpacity: 0.6 },
-          style: {
-            position: "absolute", top: u.gear.top, right: u.gear.inset,
-            width: u.gear.size, height: u.gear.size, borderRadius: u.gear.size / 2,
-            alignItems: "center", justifyContent: "center",
-            backgroundColor: u.gear.background,
-          },
-          children: [{
-            type: "SVG",
-            // Three right-aligned lines, shortest at the top — the same mark the
-            // header drew, at the same weight, so nothing has to be relearnt.
-            props: {
-              viewBox: "0 0 24 24",
-              d: "M12 7 H21 M7.5 12 H21 M3 17 H21",
-              fill: "none", stroke: u.gear.color, strokeWidth: 2.1,
-              strokeLinecap: "round",
-            },
-            style: { width: u.gear.lineWidth, height: u.gear.lineWidth },
-          }],
-        },
+        // Last in the list, so it paints over the deck.
+        settingsGear("dark"),
       ],
     },
     // The You tab is four cards whose contents change only when the user
@@ -5197,6 +5205,22 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
   const streak = st?.currentStreak ?? 0;
   const avgPerSession = st?.avgWordsPerSession ?? (sessions ? Math.round(wordsMonth / sessions) : 0);
   const n = (v: number) => v.toLocaleString("en-US");
+  /**
+   * THE ALLOWANCE, which went missing when this screen was rebuilt.
+   *
+   * It is the only number here that decides whether the app keeps working, and
+   * the only one that goes UP on its own — so it belongs above the pretty ones
+   * rather than in a panel behind them. Absent for a signed-out or unreadable
+   * user, and then the meter is not drawn at all rather than drawn with zeros,
+   * which would read as "you have nothing left".
+   */
+  const allow = ctx.allowance;
+  const spokenMinutes = st?.speakingMinutes
+    ?? Math.round((usage.month.audioSeconds / 60) * 10) / 10;
+  /** All time, not this month — the only place the running total is shown. */
+  const lifetime = usage.total;
+  /** Nothing has been written yet. Zeros in a grid read as a broken screen. */
+  const empty = sessions === 0 && wordsMonth === 0;
 
   /** Split a per-day series into equal buckets — weeks, usually. */
   const bucket = (src: number[], count: number): number[] => {
@@ -5392,6 +5416,80 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
             { type: "Text", props: { content: "Spoken, cleaned, and sent as you." },
               style: { fontSize: 10.5, color: u.inkDim, marginBottom: 16, marginLeft: 4 } },
 
+            // NOTHING YET. A grid of zeros reads as a screen that is broken
+            // rather than as a month that has not started, and it is the first
+            // thing a new user sees on this tab.
+            ...(empty ? [{
+              type: "Stack",
+              style: {
+                backgroundColor: u.ink, borderRadius: u.cardRadius,
+                paddingVertical: 22, paddingHorizontal: 16,
+              },
+              children: [
+                { type: "Text", props: { content: "Nothing here yet." },
+                  style: { fontSize: 16, fontWeight: "700", color: u.onCard } },
+                { type: "Text",
+                  props: { content: "Dictate or refine a few messages and this fills in — words a day, streaks, where and when you write." },
+                  style: { fontSize: 11.5, lineHeight: 17, color: u.onCardDim, marginTop: 6 } },
+              ],
+            } as Node] : []),
+
+            // THE ALLOWANCE. Above the grid, because it is the only number on
+            // this screen that decides whether the app keeps working — and the
+            // only one that goes up on its own. Tapping opens where it came
+            // from. Not drawn at all when there is no allowance to read, rather
+            // than drawn with zeros, which would say "you have nothing left".
+            ...(allow ? [{
+              type: "Stack",
+              on: { onPress: { kind: "setState", path: "openCard", value: "words" } },
+              props: { pressOpacity: 0.75 },
+              style: {
+                backgroundColor: u.ink, borderRadius: u.cardRadius,
+                paddingTop: 12, paddingBottom: 14, paddingHorizontal: 14,
+                marginBottom: u.gap,
+              },
+              children: [
+                {
+                  type: "Stack",
+                  style: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
+                  children: [
+                    { type: "Text", props: { content: "Words left" },
+                      style: { fontSize: 8, letterSpacing: 1.8, textTransform: "uppercase", color: u.onCardDim } },
+                    { type: "Text", props: { content: n(allow.remaining) },
+                      style: { fontSize: 20, fontWeight: "800", letterSpacing: -0.6, color: u.onCard } },
+                  ],
+                },
+                {
+                  type: "WordMeter",
+                  props: {
+                    used: allow.used, base: allow.base, earned: allow.earned,
+                    // Every colour from here, so the meter cannot introduce a
+                    // third one into a screen that has exactly two.
+                    fillColor: u.onCard,
+                    earnedColor: u.onCard,
+                    trackColor: u.rule,
+                    labelColor: u.onCardFaint,
+                  },
+                  style: { marginTop: 10 },
+                  // Older bundles get the same fact as a line of type.
+                  fallback: {
+                    type: "Text",
+                    props: { content: `${n(allow.used)} of ${n(allow.total)} used` },
+                    style: { fontSize: 11, color: u.onCardDim, marginTop: 8 },
+                  },
+                },
+                ...(allow.earned > 0 ? [{
+                  type: "Text",
+                  props: {
+                    content: allow.maxed
+                      ? `${n(allow.earned)} earned — that is the most this month.`
+                      : `${n(allow.earned)} of these you earned by turning up.`,
+                  },
+                  style: { fontSize: 10.5, color: u.onCardDim, marginTop: 8 },
+                } as Node] : []),
+              ],
+            } as Node] : []),
+
             {
               type: "Stack",
               style: { flexDirection: "row", gap: u.gap, marginBottom: u.gap },
@@ -5402,10 +5500,22 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
             },
             {
               type: "Stack",
-              style: { flexDirection: "row", gap: u.gap },
+              style: { flexDirection: "row", gap: u.gap, marginBottom: u.gap },
               children: [
                 card("streak", "Day streak", n(streak), "days"),
                 card("active", "Active days", n(daysActive), `of ${days}`),
+              ],
+            },
+            // The two that were built and then not shown. Per-session is the
+            // shape of a habit — whether someone writes a sentence or a page —
+            // and spoken minutes is the only figure here measured in the thing
+            // the user actually did rather than in what came out of it.
+            {
+              type: "Stack",
+              style: { flexDirection: "row", gap: u.gap },
+              children: [
+                card("persession", "Per session", n(avgPerSession), "words"),
+                card("spoken", "Spoken", spokenMinutes ? String(spokenMinutes) : "0", "min"),
               ],
             },
 
@@ -5421,6 +5531,11 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
             },
           ],
         },
+
+        // The way into Settings — see settingsGear(). INK, not white: this
+        // root's ground is the brand amber, and a light glyph on it is the
+        // kind of thing that survives review and cannot be seen on a phone.
+        settingsGear("light"),
 
         // THE DETAIL. One Modal, one `openCard`, four panels gated on it —
         // rather than four Modals, which would be four things that can be open
@@ -5473,6 +5588,62 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
                   `${n(daysActive ? Math.round(wordsMonth / daysActive) : 0)} words`),
               ...(st?.bestDay ? [row("Biggest day", `${n(st.bestDay.words)} words`)] : []),
             ]),
+
+            // --- the three that had no detail behind them ------------------
+            panel("persession", "Per session", n(avgPerSession), "words", [
+              secLab("By week"), bars(weeks, wLabels),
+              secLab("Shape"),
+              row("Average per session", `${n(avgPerSession)} words`),
+              row("Sessions", n(sessions)),
+              ...(st?.bestDay ? [row("Best day", `${n(st.bestDay.words)} words`)] : []),
+              // ALL TIME, and the only place it appears. Everything above is a
+              // rolling month, which is the right window for a habit and the
+              // wrong one for "how much has this actually done for me".
+              secLab("All time"),
+              row("Words", n(lifetime.words)),
+              row("Sessions", n(lifetime.requests)),
+              row("Spoken", `${Math.round(lifetime.audioSeconds / 60)} min`),
+            ]),
+
+            panel("spoken", "Spoken", spokenMinutes ? String(spokenMinutes) : "0", "min", [
+              ...(dayparts ? [secLab("When you speak"), bars(
+                [dayparts.morning, dayparts.afternoon, dayparts.evening, dayparts.night],
+                ["Morning", "Afternoon", "Evening", "Night"],
+              )] : []),
+              secLab("Rate"),
+              row("Spoken this month", `${spokenMinutes} min`),
+              row("Words out", n(wordsMonth)),
+              // The one figure here that is genuinely about the user rather
+              // than about the app: how fast they talk.
+              row("Words a minute",
+                  spokenMinutes > 0 ? n(Math.round(wordsMonth / spokenMinutes)) : "—"),
+              row("All time", `${Math.round(lifetime.audioSeconds / 60)} min`),
+            ]),
+
+            // Where the allowance came from. The meter above opens this.
+            ...(allow ? [panel("words", "Words left", n(allow.remaining), "", [
+              secLab("This month"),
+              row("Plan", n(allow.base)),
+              row("Earned by turning up", n(allow.earned)),
+              row("Used", n(allow.used)),
+              row("Left", n(allow.remaining)),
+              ...(allow.streakDays ? [row("Day streak", `${n(allow.streakDays)} days`)] : []),
+              // WHAT EACH VISIT GAVE, as bars rather than the pie this used to
+              // be: a pie of thirty visits is thirty slices nobody can read,
+              // and a pie needs a colour per slice on a screen that has two.
+              ...(allow.perVisit.length ? [
+                secLab("Earned per visit"),
+                bars(
+                  allow.perVisit.slice(-8).map((v) => v.words),
+                  allow.perVisit.slice(-8).map((v) => v.day.slice(5)),
+                ),
+              ] : []),
+              ...(allow.maxed
+                ? [{ type: "Text",
+                     props: { content: "You have earned the most you can this month." },
+                     style: { fontSize: 11, color: u.onCardDim, marginTop: 14 } } as Node]
+                : []),
+            ])] : []),
           ],
         },
       ],
