@@ -6861,7 +6861,36 @@ function keyboardPrimerScreen(ctx: ScreenContext): ScreenResponse {
  * off must not discard the keys someone picked one by one, and the toggle reads
  * as on whenever either is true, because in both cases keys are buzzing.
  */
+/**
+ * How the haptics screen draws its keyboards.
+ *
+ * Every value here was a constant inside KeyboardPreview. They are here now
+ * because this screen's entire job is showing the keyboard, and a picture of a
+ * keyboard that cannot be changed without a build is a picture that goes stale
+ * the moment the real one is restyled.
+ */
+const HAPTICS_UI = {
+  keyHeight: 42,
+  gap: 6,
+  radius: 5,
+  accent: ACCENT_AMBER,
+  /** Unlit ordinary key, and unlit function key. */
+  keyFill: "#FFFFFF8C",
+  fnFill: "#FFFFFF26",
+  /** Label on a lit key, an ordinary key, a function key. */
+  litLabel: "#000000",
+  keyLabel: "#111114",
+  fnLabel: "#FFFFFF",
+  fontSize: 17,
+  longFontSize: 13,
+  /** How the reels behave. Paging, because a keyboard resting half off the
+   *  bottom has a bottom row nobody can reach. */
+  paging: true,
+  align: "center",
+};
+
 function hapticsScreen(ctx: ScreenContext): ScreenResponse {
+  const kb = HAPTICS_UI;
   const chosen = (ctx.personality?.hapticKeys ?? []).map((k) => String(k).toLowerCase());
   const all = ctx.personality?.hapticsAll === true;
 
@@ -6907,7 +6936,24 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
     children: [
       {
         type: "KeyboardPreview",
-        props: { rows, selected: chosen, all, keyHeight: 42 },
+        // THE WHOLE LOOK, from here. These were constants in the component,
+        // which meant the screen that exists to show what the keyboard looks
+        // like could only be restyled with a build — and would therefore
+        // disagree with the real keyboard the first time that changed.
+        props: {
+          rows, selected: chosen, all,
+          keyHeight: kb.keyHeight,
+          gap: kb.gap,
+          radius: kb.radius,
+          accent: kb.accent,
+          keyFill: kb.keyFill,
+          fnFill: kb.fnFill,
+          litLabel: kb.litLabel,
+          keyLabel: kb.keyLabel,
+          fnLabel: kb.fnLabel,
+          fontSize: kb.fontSize,
+          longFontSize: kb.longFontSize,
+        },
         // A client without this component renders node.fallback — and without
         // one, renders NOTHING, which is how this screen came back as four
         // empty cards. Any node the backend adds ahead of the app that draws
@@ -7042,6 +7088,7 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
         },
         {
           type: "Reels",
+          props: { paging: kb.paging, align: kb.align },
           style: { flex: 1 },
           children: boards,
           // A bundle without Reels gets the four boards down a scroll. Less
