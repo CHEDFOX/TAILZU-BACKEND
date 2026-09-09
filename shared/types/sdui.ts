@@ -173,6 +173,42 @@ export interface MediaPresent {
   anchorX?: number;
   anchorY?: number;
   /**
+   * WHICH AXIS THE ART IS MADE TO FIT when it is drawn behind a whole screen.
+   *
+   * `focus`/`anchor` above choose WHAT SURVIVES a crop. This chooses whether
+   * there is a crop at all, and it is the answer for art that must not be cut
+   * on any axis — a keyboard reaching almost the full width of a 9:16 frame,
+   * say. No phone is 9:16 any more: every one of them is taller, so `cover`
+   * matches the height and takes about a tenth of the width off each side,
+   * which on that art is the outer column of keys. No focal point saves it,
+   * because the thing that must survive is the full width.
+   *
+   *   window  fill the whole screen, cropping whichever axis overflows. The
+   *           default, and right for art that is a texture or a backdrop.
+   *   width   the box is as wide as the screen and as tall as the art's own
+   *           aspect makes it. NOTHING is cropped; what is left over is the
+   *           screen's own ground.
+   *   height  the same trade the other way round, for art shorter than the
+   *           window is tall.
+   *
+   * `width` and `height` need `aspect` — without the art's shape there is no
+   * box to derive — and fall back to `window` when it is missing.
+   *
+   * The leftover is only invisible while the art's own edge matches the screen
+   * behind it. That is a real condition, not a detail: this is right for art
+   * grounded in the screen's colour and wrong for art that ends in a hard edge.
+   */
+  fill?: "window" | "width" | "height";
+  /**
+   * Which edge the box is held against when `fill` leaves a remainder.
+   *
+   * The art was composed against one of its own edges — the keyboard sits on
+   * the bottom of its frame because that is where a keyboard is — and pinning
+   * it to the matching edge of the screen is what makes the leftover read as
+   * the screen continuing rather than as a bar.
+   */
+  pin?: "top" | "bottom" | "center";
+  /**
    * How much of the window the media is drawn at, 0.05–1. 1 fills it, which is
    * the default and what full bleed means.
    *

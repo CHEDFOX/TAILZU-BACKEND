@@ -76,6 +76,12 @@ function cleanPresent(raw: unknown): MediaPresent | null {
   const fy = num(r.focusY, 0, 1); if (fy !== undefined) out.focusY = fy;
   const axr = num(r.anchorX, 0, 1); if (axr !== undefined) out.anchorX = axr;
   const ayr = num(r.anchorY, 0, 1); if (ayr !== undefined) out.anchorY = ayr;
+  // Whether the art is cropped to the window at all. focus/anchor above choose
+  // WHAT SURVIVES a crop; these choose whether there is one — the answer for
+  // art whose full width is the subject, which no focal point can protect.
+  // Needs `aspect`; without the art's shape there is no box to derive.
+  if (r.fill === "window" || r.fill === "width" || r.fill === "height") out.fill = r.fill;
+  if (r.pin === "top" || r.pin === "bottom" || r.pin === "center") out.pin = r.pin;
   if (typeof r.background === "string" && /^#[0-9a-f]{3,8}$/i.test(r.background.trim())) {
     out.background = r.background.trim();
   }
@@ -448,7 +454,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
     if (!present) {
       return reply.code(400).send({
         code: "bad_request",
-        message: "Nothing usable. Fields: shape (full|plate|card), fit (cover|contain), radius, inset, size, aspectRatio, background (#hex), holdMs, loop, nudgeX, nudgeY (percent of the window, +/-50), scale (0.05-1), boxWidth, boxHeight (points).",
+        message: "Nothing usable. Fields: shape (full|plate|card), fit (cover|contain), radius, inset, size, aspectRatio, background (#hex), holdMs, loop, nudgeX, nudgeY (percent of the window, +/-50), scale (0.05-1), boxWidth, boxHeight (points), aspect (art width/height), focusX, focusY, anchorX, anchorY (0-1), fill (window|width|height), pin (top|bottom|center).",
       });
     }
     // Merge, so setting one field does not silently drop the rest.

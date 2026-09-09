@@ -180,11 +180,65 @@ function screenHero(
      * and later siblings paint over it.
      */
     behind?: boolean;
+    /**
+     * Which axis the art is made to fit, with `behind`. See MediaPresent.fill:
+     * "window" crops whatever overflows, "width" and "height" crop nothing and
+     * leave the screen's own ground in the remainder. The upload overrides
+     * this, so a clip that needs the other rule is one POST and no deploy.
+     */
+    fill?: "window" | "width" | "height";
+    /** Which edge the box is held against when `fill` leaves a remainder. */
+    pin?: "top" | "bottom" | "center";
+    /**
+     * WHAT FILLS THE BOX WHEN NOTHING HAS BEEN UPLOADED.
+     *
+     * An empty slot is normally right: a screen with no art should look
+     * deliberate rather than reserve a hole. That stops being true the moment
+     * the art is the screen — a full-bleed paywall whose media key is empty is
+     * not an undressed screen, it is a black one, and it stays black until
+     * somebody remembers to upload something.
+     *
+     * So a screen whose art carries the argument names a built-in here, and
+     * the uploaded file replaces it rather than turning it on. Same contract
+     * the hero slots have always had: override, then upload, then built-in.
+     */
+    builtIn?: Node;
   } = {},
 ): Node[] {
   const key = `hero.${screenId}`;
   const entry = getMediaRegistryFn?.()?.[key];
-  if (!entry?.url) return [];
+  if (!entry?.url) {
+    if (!opts.builtIn) return [];
+    // The built-in gets the same box the upload would have had, so swapping
+    // one for the other changes what is drawn and not where.
+    return [{
+      type: "Stack",
+      ...(opts.onlyOn ? { visibleIf: { platform: opts.onlyOn } } : {}),
+      style: opts.behind
+        ? {
+            position: "absolute",
+            top: opts.fullBleedTop ? -opts.fullBleedTop : 0,
+            left: opts.fullBleed ? -opts.fullBleed : 0,
+            right: opts.fullBleed ? -opts.fullBleed : 0,
+            bottom: 0,
+            overflow: "hidden",
+            alignItems: "center",
+            justifyContent: "center",
+          }
+        : {
+            ...(opts.aspectRatio
+              ? { aspectRatio: opts.aspectRatio }
+              : { height: opts.height ?? 148 }),
+            ...(opts.width ? { width: opts.width, alignSelf: "center" } : {}),
+            borderRadius: opts.radius ?? 20,
+            overflow: "hidden",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: opts.marginBottom ?? (opts.fullBleed ? 26 : 18),
+          },
+      children: [opts.builtIn],
+    } as Node];
+  }
   // A video needs a Video node — Image renders nothing for an mp4, which is
   // the failure that kept the intro black. Decided from the stored
   // contentType, so uploading a video to a slot that had a still just works.
@@ -200,6 +254,55 @@ function screenHero(
     borderRadius: opts.radius ?? 20,
     backgroundColor: "#0b0b0f",
   };
+  /**
+   * THE BOX, when the media sits behind a whole screen.
+   *
+   * "window" is the original: pin all four edges and let `cover` resolve the
+   * mismatch between the art's shape and the screen's by cutting. That is the
+   * right trade for a texture and the wrong one for art whose full width IS
+   * the subject — no phone is 9:16 any more, so a 9:16 keyboard loses its
+   * outer column of keys on every device, and no focal point can save it
+   * because the thing that has to survive is the whole width.
+   *
+   * "width" gives the box the SCREEN'S width and the ART'S aspect. The two
+   * agree by construction, so there is nothing left to crop, and the leftover
+   * is the screen's own ground — invisible exactly when the art is grounded in
+   * the same colour, which is the case this exists for. `pin` then decides
+   * which edge it is held against, because art composed against its own bottom
+   * edge has to meet the screen's.
+   *
+   * Needs the art's aspect. Without one there is no box to derive, so it falls
+   * back to "window" rather than guessing.
+   */
+  const fillMode = entry.present?.fill ?? opts.fill ?? "window";
+  const artAspect = Number(entry.present?.aspect ?? 0);
+  const pin = entry.present?.pin ?? opts.pin ?? "bottom";
+  // Guarded so no padding yields 0 and not -0. They mean the same to the
+  // layout and different to anything comparing them.
+  const bleedTop = opts.fullBleedTop ? -opts.fullBleedTop : 0;
+  const bleedX = opts.fullBleed ? -opts.fullBleed : 0;
+  // Only meaningful behind a whole screen. In the column, the box already has
+  // a shape the call site chose, and there is no window to leave over.
+  const fitsAxis =
+    opts.behind === true && artAspect > 0 && (fillMode === "width" || fillMode === "height");
+  const axisBox: Record<string, unknown> = !fitsAxis
+    ? {}
+    : fillMode === "width"
+      ? {
+          left: bleedX, right: bleedX, aspectRatio: artAspect,
+          // ONE EDGE ONLY. Naming both would give Yoga a height as well as a
+          // shape, and then the shape — which is the whole point — is the
+          // constraint it drops. So there is no "center" on this axis: a box
+          // with a fixed aspect cannot be centred by edges alone, and "bottom"
+          // is what art grounded in its own frame actually wants.
+          ...(pin === "top" ? { top: bleedTop } : { bottom: 0 }),
+        }
+      : {
+          top: bleedTop, bottom: 0, aspectRatio: artAspect,
+          // No left/right, so alignSelf is free to centre it on the cross axis.
+          alignSelf: pin === "top" ? "flex-start" : pin === "bottom" ? "flex-end" : "center",
+        };
+
   const shown = opts.behind
     ? {
         style: {
@@ -214,10 +317,14 @@ function screenHero(
           // not look inset; it looked absent.
           //
           // The call site knows the padding because the call site wrote it.
-          top: -(opts.fullBleedTop ?? 0),
-          left: -(opts.fullBleed ?? 0),
-          right: -(opts.fullBleed ?? 0),
-          bottom: 0,
+          // All four edges fill the window. When the box is being given the
+          // ART'S shape instead, `axisBox` supplies three edges and a ratio —
+          // and it has to REPLACE these rather than be merged over them, since
+          // a fourth edge would give Yoga a height and the ratio would be the
+          // constraint it dropped.
+          ...(fitsAxis
+            ? axisBox
+            : { top: bleedTop, left: bleedX, right: bleedX, bottom: 0 }),
           backgroundColor: entry.present?.background ?? "#000000",
           overflow: "hidden" as const,
         },
@@ -229,7 +336,12 @@ function screenHero(
         { x: opts.fullBleed ?? 0, top: opts.fullBleedTop ?? 12 },
         opts.fullBleed ? "full" : "card",
       );
-  const fit = entry.present?.fit ?? opts.fit ?? "cover";
+  // "contain" whenever the box was cut to the art's own shape. The two are
+  // identical when the ratios agree exactly, and they do not always agree
+  // exactly — a declared aspect is rounded, a decoded frame is not — so this
+  // is the difference between a hairline of ground and a hairline cropped off
+  // the very thing the mode exists to protect.
+  const fit = fitsAxis ? "contain" : (entry.present?.fit ?? opts.fit ?? "cover");
   // NO startDelayMs. It was here, and it hid the clip entirely.
   //
   // The idea was to hold the first frame and start the video afterwards, via
@@ -1538,16 +1650,23 @@ function presentMedia(entry: MediaEntry | undefined): Presented {
  */
 function languagesScreen(ctx: ScreenContext): ScreenResponse {
   const selected = (ctx.personality.languages ?? []).map(String);
-  const row = (l: (typeof DAILY_LANGUAGES)[number], i: number): Node => ({
+  const up = YOU_UI.pill;
+  const row = (l: (typeof DAILY_LANGUAGES)[number], _i: number): Node => ({
+    // The same pill as every other list on the You screens. A run of pills
+    // needs no rules between them: the gap already says where one stops.
     type: "Stack",
+    props: { pressOpacity: 0.7 },
     style: {
-      direction: "row",
+      flexDirection: "row",
       alignItems: "center",
-      gap: 12,
-      paddingVertical: 14,
-      paddingHorizontal: 4,
-      borderBottomWidth: i < DAILY_LANGUAGES.length - 1 ? 1 : 0,
-      borderBottomColor: "rgba(255,255,255,0.07)",
+      gap: up.gap,
+      backgroundColor: up.background,
+      borderRadius: up.radius,
+      paddingLeft: up.paddingLeft,
+      paddingRight: 18,
+      paddingVertical: up.paddingVertical,
+      minHeight: up.minHeight,
+      marginBottom: up.marginBottom,
     },
     on: {
       onPress: {
@@ -1573,21 +1692,23 @@ function languagesScreen(ctx: ScreenContext): ScreenResponse {
     children: [
       {
         type: "Stack",
-        style: { flex: 1, direction: "column", gap: 2 },
+        style: { flex: 1, gap: 1 },
         children: [
           { type: "Text", props: { content: l.label },
-            style: { fontSize: 16, fontWeight: "600", color: "$color.text" } },
+            style: { fontSize: up.labelSize, fontWeight: "600", color: YOU_UI.text } },
           { type: "Text", props: { content: l.native },
-            style: { fontSize: 13, color: "$color.muted" } },
+            style: { fontSize: up.subSize, color: YOU_UI.textDim } },
         ],
       },
       // The tick is the whole state display: present means selected. Rendered
-      // from `langs`, so it follows the tap without a refetch.
+      // from `langs`, so it follows the tap without a refetch. Amber, not the
+      // theme's primary — primary is WHITE here, and a white tick on a pill
+      // reads as another piece of the label rather than as the answer.
       {
         type: "Text",
         visibleIf: { contains: ["langs", l.value] },
         props: { content: "✓" },
-        style: { fontSize: 19, fontWeight: "800", color: THEME.color.primary },
+        style: { fontSize: 17, fontWeight: "800", color: YOU_UI.accent },
       },
     ],
   });
@@ -1602,53 +1723,25 @@ function languagesScreen(ctx: ScreenContext): ScreenResponse {
     actions: {
       err: { kind: "toast", message: "Couldn't save that. Try again.", tone: "error" },
     },
+    // The amber block reaches the top of the window, so the app's own header
+    // has to go. The block carries the way back in its place.
+    hideHeader: true,
     root: {
-      type: "Screen",
-      style: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 24 },
+      type: "Stack",
+      style: { flex: 1, backgroundColor: YOU_UI.ground },
       children: [
-        // Full-bleed. The screen pads its sides by 18, so the banner pulls
-        // that back with negative margins to reach the edges — art that stops
-        // short of the screen reads as a component, art that meets it reads as
-        // the page.
-        // 18 is this screen's own paddingHorizontal, 12 its paddingTop — both
-        // cancelled so the banner meets three edges of the screen.
-        // EDGE TO EDGE, AND THE WHOLE PICTURE.
-        //
-        // fullBleed 18 exactly cancels this screen's own paddingHorizontal, so
-        // the art already reached both edges. What it did not do was show all
-        // of itself: a fixed 190pt box is a guess about the device's width, and
-        // "cover" resolves the mismatch by cropping — the same defect the flow
-        // clip had. 16:9 is the shape of the file, so the box takes the width
-        // it is given and the height that follows from it, and nothing is cut.
-        ...screenHero("languages", {
-          aspectRatio: 16 / 9, fullBleed: 18, fullBleedTop: 12, radius: 0,
-        }),
+        // No hero. The amber block IS the top of this screen now, and a banner
+        // above it would put two different treatments in the first 200 points.
+        // The art it used to carry is on the deck card that opens this screen.
+        youHead("Tap each one you use.", "Languages"),
         {
-          // ONE line, two colours — a row of Texts, not two stacked Headings.
-          // Heading is a block: two of them are two lines however short the
-          // words are, and "Languages / you speak" broken across a line break
-          // reads as a mistake rather than emphasis.
-          //
-          // "Languages" carries the accent so the eye lands on the noun. Note
-          // ACCENT_AMBER and not THEME.color.primary: primary is WHITE in this
-          // theme, which is why the first attempt at this was invisible.
-          type: "Stack",
-          style: { direction: "row", alignItems: "baseline", gap: 9, marginBottom: 14 },
-          children: [
-            { type: "Text", props: { content: "Languages" },
-              style: { fontSize: 30, fontWeight: "800", color: ACCENT_AMBER } },
-            { type: "Text", props: { content: "you speak" },
-              style: { fontSize: 30, fontWeight: "800", color: "$color.text" } },
-          ],
-        },
-        {
-          type: "Paragraph",
-          props: {
-            content: "Tap each one you use. The first is your main one.",
+          type: "Screen",
+          style: {
+            backgroundColor: "transparent",
+            paddingHorizontal: YOU_UI.padding, paddingTop: 20, paddingBottom: 28,
           },
-          style: { marginBottom: 30 },
+          children: DAILY_LANGUAGES.map(row),
         },
-        { type: "Card", style: { padding: 4 }, children: DAILY_LANGUAGES.map(row) },
       ],
     },
     cacheTtlSeconds: 0,
@@ -2189,7 +2282,32 @@ function paywallScreen(): ScreenResponse {
         // The pitch. With the headline and the benefit list gone, the art is
         // the whole argument — so it is not painted over until something has
         // to be read.
-        ...screenHero("paywall", { behind: true, fit: "cover" }),
+        ...screenHero("paywall", {
+          behind: true, fit: "cover",
+          // Until something is uploaded, the wordmark decoding itself out of
+          // binary. The product's claim is that it turns raw noise into
+          // finished words; this is that claim made literal at the moment the
+          // user is deciding whether to believe it — and it is what keeps this
+          // screen from being plain black on a fresh install.
+          builtIn: {
+            type: "BinaryReveal",
+            props: {
+              text: "Tailzu",
+              color: THEME.color.primary,
+              background: "#000000",
+              flipMs: 36,
+              lockMs: 70,
+              scrambleMs: 620,
+              holdMs: 2200,
+              fontSize: 46,
+            },
+            fallback: {
+              type: "Heading",
+              props: { content: "Tailzu" },
+              style: { fontSize: 46, fontWeight: "800", color: THEME.color.primary },
+            },
+          },
+        }),
         {
           type: "Gradient",
           props: {
@@ -2689,7 +2807,7 @@ function authScreenTree(): Record<string, unknown> {
   };
 }
 
-const TRAINING_UI = {
+export const TRAINING_UI = {
   entry: {
     /** Tiny, tracked, uppercase — the line above the title. "" removes it. */
     kicker: "IT LEARNS YOU",
@@ -2858,9 +2976,24 @@ function homeScreen(_ctx: ScreenContext): ScreenResponse {
     hideHeader: true,
     state: {},
     actions: {
+      // WHERE THE SWIPE GOES, decided by a flag rather than by a deploy.
+      //
+      // The door this entry is meant to open is the spoken one — the orb, and
+      // a real conversation. It is gated because the realtime voice behind it
+      // is not finished, and an entry that opens an unfinished screen is worse
+      // than one that opens a working older screen. So the flag chooses, and
+      // turning it on is the whole change when the voice lands.
+      //
+      // The fallback is not a consolation: training_chat is the refine loop,
+      // intact, one tap deeper than it used to be.
       enter: { kind: "sequence", actions: [
         { kind: "haptic", style: "light" },
-        { kind: "navigate", screenId: "training_chat" },
+        {
+          kind: "condition",
+          if: { flag: "train.realtime" },
+          then: { kind: "navigate", screenId: "training_live" },
+          else: { kind: "navigate", screenId: "training_chat" },
+        },
       ] },
     },
     root: {
@@ -3573,90 +3706,296 @@ function trainingLiveScreen(): ScreenResponse {
  * media keys (swap OTA). The "Hello, name + gender" profile card overlays this
  * screen on first visit (profileGate.screenIds = ["personality"]).
  */
-function personalityScreen(): ScreenResponse {
+/**
+ * THE YOU TAB — a deck of cards turned in depth, and the four screens behind it.
+ *
+ * TWO COLOURS, THE OTHER WAY ROUND. The Stats screen is an amber ground with
+ * black cards on it. These are the reverse: a black ground with the brand
+ * block on top. Same two colours, same discipline about using nothing else —
+ * so the two tabs read as one system seen from either side, and neither needs
+ * a third colour to say which is which.
+ *
+ * Everything here is a value. Card size, how far the deck turns, how hard the
+ * backdrop is blurred, the strength of every scrim, the size and tracking of
+ * every piece of type: all of it sits in YOU_UI and none of it is compiled
+ * into the app. Changing how this tab looks is changing this object.
+ */
+const YOU_UI = {
+  ground: "#0B0B0D",
+  accent: ACCENT_AMBER,
+  /** Ink ON the amber block — the ground and the ink swap roles up there. */
+  onAccent: "#0B0B0D",
+  onAccentDim: "rgba(11,11,13,0.58)",
+  /** Type on the black ground. */
+  text: "#FFFFFF",
+  textDim: "rgba(255,255,255,0.56)",
+  textFaint: "rgba(255,255,255,0.30)",
+  rule: "rgba(255,255,255,0.07)",
+  padding: 18,
   /**
-   * A card whose art is uploaded, not compiled.
-   *
-   * Everything about the treatment is a value, not a constant: which media
-   * key fills it, how dark the scrim is, what colour that scrim is, and how
-   * much the art is blurred behind the text. The scrim used to be a hardcoded
-   * rgba(0,0,0,0.34) on every card, so any art that came in darker or busier
-   * than expected meant a build to correct.
-   *
-   * Defaults reproduce exactly what shipped, so no card changes until someone
-   * chooses to change it — and then it is one backend edit per card.
+   * A pill — the one repeated object on all four inside screens. A voice, a
+   * language, a saved word and a keyboard all arrive as the same shape, so
+   * the four screens are learnt once rather than four times.
    */
-  const mediaCard = (
-    title: string,
-    subtitle: string,
-    key: string,
-    screen: string,
-    art: { tint?: string; tintOpacity?: number; blur?: number; blurTint?: "dark" | "light" } = {},
-  ): Node => ({
-    type: "Card",
-    // Card now honors onPress (client fix); padding/border stripped so the media
-    // fills edge-to-edge, overflow:hidden clips it to the rounded corners.
-    style: {
-      position: "relative",
-      height: 178,
-      borderRadius: 20,
-      overflow: "hidden",
-      padding: 0,
-      borderWidth: 0,
-      backgroundColor: "#0b0b0f",
-      marginBottom: 0,
-    },
+  pill: {
+    background: "#141418",
+    radius: 999,
+    paddingLeft: 16,
+    paddingRight: 7,
+    paddingVertical: 7,
+    minHeight: 44,
+    gap: 8,
+    labelSize: 14.5,
+    subSize: 11.5,
+    marginBottom: 7,
+  },
+  /** A small action on a pill — Edit, Add, Remove, Save. */
+  chip: {
+    height: 28,
+    radius: 999,
+    paddingHorizontal: 13,
+    fontSize: 10,
+    tracking: 0.7,
+    /** The quiet form: brand type on a brand wash. */
+    soft: "rgba(232,162,60,0.13)",
+  },
+  /** The amber block every inside screen opens with. */
+  head: {
+    paddingTop: 56,
+    paddingBottom: 18,
+    radius: 0,
+    kickerSize: 8.5,
+    kickerTracking: 2.4,
+    titleSize: 28,
+    titleTracking: -1,
+    controlSize: 32,
+    gap: 14,
+  },
+  /** A section label on the black ground. */
+  label: { size: 8.5, tracking: 2.2, marginTop: 22, marginBottom: 9 },
+  /** The deck on the tab root. */
+  deck: {
+    cardWidth: 198,
+    cardHeight: 198,
+    radius: 20,
+    step: 142,
+    rotation: 42,
+    depth: 150,
+    perspective: 800,
+    shrink: 0.07,
+    fade: 0.36,
+    stiffness: 150,
+    damping: 19,
+    mass: 0.9,
+    throwFactor: 0.9,
+    /** Over each card's own art, so an uploaded photo can never eat the title. */
+    scrim: "#000000",
+    scrimOpacity: 0.24,
+    titleSize: 15,
+    titleTracking: -0.2,
+    /** The middle card's art again, behind everything. */
+    backdropBlur: 70,
+    backdropTint: "dark" as const,
+    backdropWash: "#0B0B0D",
+    backdropWashOpacity: 0.46,
+  },
+};
+
+/**
+ * The deck, in order. One list feeds the cards, the backdrops AND the routing,
+ * so a fifth card is one entry here and nothing else — there is no second
+ * place that has to be told the deck grew.
+ */
+const YOU_CARDS: { title: string; media: string; screen: string }[] = [
+  { title: "Voice", media: "card.voice", screen: "voices" },
+  { title: "Dictionary", media: "card.dictionary", screen: "dictionary" },
+  { title: "Haptics", media: "card.haptics", screen: "haptics" },
+  { title: "Languages", media: "card.languages", screen: "languages" },
+];
+
+/** The way back, on the amber. A chevron with rounded tips, not a cropped one. */
+function youBack(): Node {
+  const u = YOU_UI;
+  return {
+    type: "Stack",
     on: {
       onPress: {
         kind: "sequence",
-        actions: [
-          { kind: "haptic", style: "selection" },
-          { kind: "navigate", screenId: screen },
-        ],
+        actions: [{ kind: "haptic", style: "selection" }, { kind: "navigateBack" }],
       },
     },
+    props: { pressOpacity: 0.55 },
+    style: {
+      width: u.head.controlSize, height: u.head.controlSize,
+      borderRadius: u.head.controlSize / 2,
+      alignItems: "center", justifyContent: "center",
+      backgroundColor: "rgba(11,11,13,0.09)",
+    },
+    children: [{
+      type: "SVG",
+      props: {
+        viewBox: "0 0 24 24", d: "M14.5 5 L8 12 L14.5 19",
+        fill: "none", stroke: u.onAccent, strokeWidth: 2.3,
+        strokeLinecap: "round", strokeLinejoin: "round",
+      },
+      style: { width: 14, height: 14 },
+    }],
+  };
+}
+
+/** A round control on the amber block — the ＋ at the top right of Voice. */
+function youHeadIcon(d: string, onPress: ActionRef): Node {
+  const u = YOU_UI;
+  return {
+    type: "Stack",
+    on: { onPress },
+    props: { pressOpacity: 0.55 },
+    style: {
+      width: u.head.controlSize, height: u.head.controlSize,
+      borderRadius: u.head.controlSize / 2,
+      alignItems: "center", justifyContent: "center",
+      backgroundColor: "rgba(11,11,13,0.09)",
+    },
+    children: [{
+      type: "SVG",
+      props: {
+        viewBox: "0 0 24 24", d,
+        fill: "none", stroke: u.onAccent, strokeWidth: 2.3,
+        strokeLinecap: "round", strokeLinejoin: "round",
+      },
+      style: { width: 15, height: 15 },
+    }],
+  };
+}
+
+/**
+ * The amber block. Every inside screen opens with one, which is what makes the
+ * four of them one place — and it carries the back control, because these
+ * screens hide the app's own header to get the colour all the way to the top.
+ */
+function youHead(kicker: string, title: string, right?: Node): Node {
+  const u = YOU_UI;
+  return {
+    type: "Stack",
+    style: {
+      backgroundColor: u.accent,
+      paddingTop: u.head.paddingTop,
+      paddingBottom: u.head.paddingBottom,
+      paddingHorizontal: u.padding,
+      borderBottomLeftRadius: u.head.radius,
+      borderBottomRightRadius: u.head.radius,
+    },
     children: [
-      // Background media (uploaded under `key`). contentFit cover fills the card;
-      // a GIF animates. Absolute inset so it fills regardless of the card height.
-      {
-        type: "Image",
-        props: { source: mediaSrc(key), contentFit: "cover" },
-        style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%", borderRadius: 0 },
-      },
-      // Optional blur over the art. Off by default (blur: 0) — a blurred card
-      // is a deliberate choice for busy photography, not a default treatment.
-      ...(Number(art.blur ?? 0) > 0 ? [{
-        type: "BlurBackground",
-        props: { intensity: art.blur, tint: art.blurTint ?? "dark" },
-        style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
-      } as Node] : []),
-      // Scrim so the title stays legible over any art. Colour and strength are
-      // both per-card: light art needs a darker scrim, dark art needs less, and
-      // some art wants a brand tint rather than black.
       {
         type: "Stack",
-        style: {
-          position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: art.tint ?? "#000000",
-          opacity: art.tintOpacity ?? 0.34,
-        },
+        style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+        children: [youBack(), ...(right ? [right] : [])],
       },
-      {
-        type: "Stack",
-        style: { position: "absolute", left: 20, right: 20, bottom: 18, direction: "column", gap: 3 },
-        children: [
-          { type: "Text", props: { content: title }, style: { fontSize: 24, fontWeight: "800", color: "#FFFFFF" } },
-          { type: "Text", props: { content: subtitle }, style: { fontSize: 13, fontWeight: "500", color: "rgba(255,255,255,0.82)" } },
-        ],
-      },
+      { type: "Text", props: { content: kicker },
+        style: { fontSize: u.head.kickerSize, letterSpacing: u.head.kickerTracking,
+                 textTransform: "uppercase", color: u.onAccentDim, marginTop: u.head.gap } },
+      { type: "Text", props: { content: title },
+        style: { fontSize: u.head.titleSize, fontWeight: "800",
+                 letterSpacing: u.head.titleTracking, color: u.onAccent, marginTop: 2 } },
+    ],
+  };
+}
+
+/** A small action on a pill. `solid` is the one that commits. */
+function youChip(label: string, onPress: ActionRef, solid = false): Node {
+  const u = YOU_UI;
+  return {
+    type: "Stack",
+    on: { onPress },
+    props: { pressOpacity: 0.65 },
+    style: {
+      height: u.chip.height, borderRadius: u.chip.radius,
+      paddingHorizontal: u.chip.paddingHorizontal,
+      alignItems: "center", justifyContent: "center",
+      backgroundColor: solid ? u.accent : u.chip.soft,
+    },
+    children: [{
+      type: "Text", props: { content: label },
+      style: { fontSize: u.chip.fontSize, fontWeight: "700",
+               letterSpacing: u.chip.tracking, color: solid ? u.onAccent : u.accent },
+    }],
+  };
+}
+
+/** A section label on the black ground. Small, spaced, never a heading. */
+function youLabel(content: string): Node {
+  const u = YOU_UI;
+  return {
+    type: "Text", props: { content },
+    style: { fontSize: u.label.size, letterSpacing: u.label.tracking,
+             textTransform: "uppercase", color: u.textFaint,
+             marginTop: u.label.marginTop, marginBottom: u.label.marginBottom },
+  };
+}
+
+function personalityScreen(): ScreenResponse {
+  const u = YOU_UI;
+  const d = u.deck;
+
+  /** One card: the topic's art, a scrim, and its name. Nothing else is on it. */
+  const deckCard = (c: (typeof YOU_CARDS)[number]): Node => ({
+    type: "Stack",
+    style: {
+      flex: 1, borderRadius: d.radius, overflow: "hidden",
+      backgroundColor: "#141418",
+    },
+    children: [
+      { type: "Image", props: { source: mediaSrc(c.media), contentFit: "cover" },
+        style: { ...FILL_STYLE } },
+      // Under the title, over the art. A card whose art comes back pale is a
+      // card whose title has vanished, and the art is uploaded — so the scrim
+      // is not a treatment, it is the guarantee that the deck stays readable
+      // whatever anyone uploads to it.
+      { type: "Stack",
+        style: { ...FILL_STYLE, backgroundColor: d.scrim, opacity: d.scrimOpacity } },
+      { type: "Text", props: { content: c.title },
+        style: { position: "absolute", left: 15, right: 15, bottom: 13,
+                 fontSize: d.titleSize, fontWeight: "700",
+                 letterSpacing: d.titleTracking, color: "#FFFFFF" } },
     ],
   });
+
+  /**
+   * Where a tap goes.
+   *
+   * `condition` reads a STATE PATH, never the event — so the handler writes
+   * which card was chosen and then branches on what it wrote. That is safe
+   * here and only here: the store is a plain mutable object, so a set is
+   * visible to the very next action in the sequence rather than after a
+   * render. Built by recursion off YOU_CARDS so the chain cannot fall out of
+   * step with the deck it is routing.
+   */
+  const route = (i: number): ActionRef =>
+    i >= YOU_CARDS.length - 1
+      ? { kind: "navigate", screenId: YOU_CARDS[YOU_CARDS.length - 1].screen }
+      : {
+          kind: "condition",
+          if: { eq: ["deck", i] },
+          then: { kind: "navigate", screenId: YOU_CARDS[i].screen },
+          else: route(i + 1),
+        };
+
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "personality",
     title: "",
-    state: {},
+    // The backdrop runs to the top of the window. The tabs stay — this is a
+    // tab root, and taking them away here strands the user.
+    hideHeader: true,
+    state: { deck: 0 },
     actions: {
+      /** A different card reached the middle. Only the backdrop cares. */
+      centre: { kind: "setState", path: "deck", value: "$event" },
+      /** A card was chosen: record which, then go where that says. */
+      open: {
+        kind: "sequence",
+        actions: [{ kind: "setState", path: "deck", value: "$event" }, route(0)],
+      },
       // The button that fired this is gone from the tab by owner decision.
       // The ACTION stays defined on purpose.
       //
@@ -3675,24 +4014,64 @@ function personalityScreen(): ScreenResponse {
       },
     },
     root: {
-      type: "Screen",
-      style: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 24 },
+      type: "Stack",
+      style: { flex: 1, backgroundColor: u.ground },
       children: [
-        mediaCard("Voice", "Your tones & presets", "card.voice", "voices"),
-        { type: "Spacer", style: { height: 18 } },
-        mediaCard("Dictionary", "Words & shortcuts you add", "card.dictionary", "dictionary"),
-        { type: "Spacer", style: { height: 18 } },
-        // Same card treatment as the two above, so the third one does not read
-        // as an afterthought. Its media slot is "card.haptics" — upload to that
-        // key and it fills, exactly like Voice and Dictionary.
-        mediaCard("Haptics", "Choose which keys buzz", "card.haptics", "haptics"),
-        { type: "Spacer", style: { height: 18 } },
-        // Same treatment as the cards above. Its media slot is
-        // "card.languages" — upload to that key and it fills.
-        mediaCard("Languages", "The languages you speak day to day", "card.languages", "languages"),
+        // THE BACKDROP IS THE MIDDLE CARD'S OWN ART, blurred past reading and
+        // washed back toward the ground. So the screen changes colour as the
+        // deck turns, and the card in the middle is the one thing lighting the
+        // room — which is the difference between a deck ON a background and a
+        // deck that HAS one.
+        //
+        // Four stacked images gated on which is centred, rather than one image
+        // whose source changes: a source swap is a load, and a load is a black
+        // frame in the middle of a gesture.
+        ...YOU_CARDS.map((c, i) => ({
+          type: "Image",
+          visibleIf: { eq: ["deck", i] },
+          props: { source: mediaSrc(c.media), contentFit: "cover" },
+          style: { ...FILL_STYLE },
+        } as Node)),
+        { type: "BlurBackground",
+          props: { intensity: d.backdropBlur, tint: d.backdropTint },
+          style: { ...FILL_STYLE } },
+        { type: "Stack",
+          style: { ...FILL_STYLE, backgroundColor: d.backdropWash,
+                   opacity: d.backdropWashOpacity } },
+        {
+          type: "Coverflow",
+          props: {
+            cardWidth: d.cardWidth, cardHeight: d.cardHeight, radius: d.radius,
+            step: d.step, rotation: d.rotation, depth: d.depth,
+            perspective: d.perspective, shrink: d.shrink, fade: d.fade,
+            stiffness: d.stiffness, damping: d.damping, mass: d.mass,
+            throwFactor: d.throwFactor,
+          },
+          // onChange is the deck moving; onSelect is the user choosing. The
+          // backdrop follows the first and must not wait for the second.
+          on: { onSelect: "open", onChange: "centre" },
+          style: { flex: 1 },
+          children: YOU_CARDS.map(deckCard),
+          // A bundle without Coverflow still has a way into all four screens.
+          fallback: {
+            type: "Stack",
+            style: { flex: 1, justifyContent: "center", paddingHorizontal: u.padding },
+            children: YOU_CARDS.map((c) => ({
+              type: "Stack",
+              on: { onPress: { kind: "navigate", screenId: c.screen } },
+              props: { pressOpacity: 0.7 },
+              style: {
+                backgroundColor: u.pill.background, borderRadius: u.pill.radius,
+                paddingVertical: 14, paddingHorizontal: 18, marginBottom: 8,
+              },
+              children: [{ type: "Text", props: { content: c.title },
+                style: { fontSize: 15, fontWeight: "700", color: u.text } }],
+            } as Node)),
+          },
+        },
       ],
     },
-    // The You tab is three cards whose contents change only when the user
+    // The You tab is four cards whose contents change only when the user
     // changes them, and every one of those writes drops the cache. Worth
     // caching: this is the tab people bounce in and out of most.
     cacheTtlSeconds: 120,
@@ -3716,14 +4095,9 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     .map((id) => effective.find((e) => e.id === id))
     .filter((e): e is (typeof effective)[number] => !!e);
 
-  // Small trailing button on a row. Nested pressables win over the row press
+  // Small trailing action on a pill. Nested pressables win over the pill press
   // (standard RN nesting), so these never also activate the voice.
-  const rowBtn = (label: string, onPress: ActionRef): Node => ({
-    type: "Button",
-    props: { label, variant: "secondary" },
-    style: { paddingVertical: 6, paddingHorizontal: 12 },
-    on: { onPress },
-  });
+  const rowBtn = (label: string, onPress: ActionRef): Node => youChip(label, onPress);
   const pinAction = (presetId: string, pinnedFlag: boolean): ActionRef => ({
     kind: "sequence",
     actions: [
@@ -3743,9 +4117,20 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
   // the trailing buttons manage the keyboard set / open the editor.
   const voiceRow = (preset: (typeof effective)[number], where: "kb" | "all"): Node => {
     const isPinned = pinned.includes(preset.id);
+    const up = YOU_UI.pill;
     return {
-      type: "Card",
-      style: { paddingVertical: 12, paddingHorizontal: 14, marginBottom: 6 },
+      // A PILL, not a card. Every list on the four You screens is the same
+      // shape — a voice, a language, a saved word — so the shape is learnt
+      // once and each screen is only its contents.
+      type: "Stack",
+      props: { pressOpacity: 0.7 },
+      style: {
+        flexDirection: "row", alignItems: "center", gap: up.gap,
+        backgroundColor: up.background, borderRadius: up.radius,
+        paddingLeft: up.paddingLeft, paddingRight: up.paddingRight,
+        paddingVertical: up.paddingVertical, minHeight: up.minHeight,
+        marginBottom: up.marginBottom,
+      },
       on: { onPress: { kind: "sequence", actions: [
         { kind: "haptic", style: "selection" },
         {
@@ -3762,86 +4147,68 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
           onError: "activateErr",
         },
       ] } },
+      // Flat. The pill IS the row now, so the extra Stack that used to make one
+      // inside the card is a box around nothing.
       children: [
-        {
-          type: "Stack",
-          style: { direction: "row", alignItems: "center", gap: 10 },
-          children: [
-            // No "Active" badge, and no bolding or tinting of the active row.
-            //
-            // Every voice in this list is one tap from being the one you write
-            // with, so marking one of them is telling the user about a mode
-            // they did not choose to be in and cannot see the consequences of.
-            // It read as a status they had to manage. Tapping still switches
-            // voices — the toast says so — and the keyboard's own tone pill is
-            // where "which voice am I writing in" belongs, because that is
-            // where the writing happens.
-            { type: "Text", props: { content: preset.name }, style: {
-              flex: 1,
-              fontSize: 16,
-              fontWeight: "600",
-              color: "$color.text",
-            } },
-            ...(where === "kb"
-              ? [rowBtn("Remove", pinAction(preset.id, false))]
-              : [
-                  // Already-pinned voices are managed from the keyboard card,
-                  // so the library row only offers Add when it's not there yet.
-                  ...(!isPinned ? [rowBtn("Add", pinAction(preset.id, true))] : []),
-                  // Editing happens ON this screen, in a card. Leaving for a
-                  // full screen loses the list you were comparing against —
-                  // and the whole reason you opened Edit was something you saw
-                  // in that list.
-                  rowBtn("Edit", { kind: "sequence", actions: [
-                    { kind: "haptic", style: "selection" },
-                    { kind: "setState", path: "vcId", value: preset.id },
-                    { kind: "setState", path: "vcName", value: preset.name },
-                    { kind: "setState", path: "vcPrompt",
-                      value: (preset as { promptStyle?: string }).promptStyle ?? "" },
-                    { kind: "setState", path: "vcOpen", value: true },
-                  ] }),
-                ]),
-          ],
-        },
+        // No "Active" badge, and no bolding or tinting of the active row.
+        //
+        // Every voice in this list is one tap from being the one you write
+        // with, so marking one of them is telling the user about a mode they
+        // did not choose to be in and cannot see the consequences of. It read
+        // as a status they had to manage. Tapping still switches voices — the
+        // toast says so — and the keyboard's own tone pill is where "which
+        // voice am I writing in" belongs, because that is where the writing
+        // happens.
+        { type: "Text", props: { content: preset.name }, style: {
+          flex: 1,
+          fontSize: up.labelSize,
+          fontWeight: "600",
+          color: YOU_UI.text,
+        } },
+        ...(where === "kb"
+          ? [rowBtn("Remove", pinAction(preset.id, false))]
+          : [
+              // Already-pinned voices are managed from the keyboard set above,
+              // so the library row only offers Add when it's not there yet.
+              ...(!isPinned ? [rowBtn("Add", pinAction(preset.id, true))] : []),
+              // Editing happens ON this screen, in a card. Leaving for a full
+              // screen loses the list you were comparing against — and the
+              // whole reason you opened Edit was something you saw in that list.
+              rowBtn("Edit", { kind: "sequence", actions: [
+                { kind: "haptic", style: "selection" },
+                { kind: "setState", path: "vcId", value: preset.id },
+                { kind: "setState", path: "vcName", value: preset.name },
+                { kind: "setState", path: "vcPrompt",
+                  value: (preset as { promptStyle?: string }).promptStyle ?? "" },
+                { kind: "setState", path: "vcOpen", value: true },
+              ] }),
+            ]),
       ],
     };
   };
 
-  // Card 1 — the voices that show on the keyboard (the pinned set, max 6).
-  const keyboardCard: Node = {
-    type: "Card",
-    style: { padding: 14, marginBottom: 16 },
-    children: [
-      { type: "Overline", props: { content: "Keyboard voices" }, style: { marginBottom: 4 } },
-      // Only when the list is EMPTY. A populated list is self-explanatory —
-      // the rows carry Remove buttons — and the paragraph was just a wall of
-      // grey text above it.
-      ...(kbVoices.length ? [] : [{
-        type: "Paragraph",
-        props: { content: "Nothing here yet. Add one from below." },
-        style: { fontSize: 12, marginBottom: 10 },
-      } as Node]),
-      ...kbVoices.map((e) => voiceRow(e, "kb")),
-      gap(4),
-      // Creates a tone AND pins it in one save — it lands in All voices too.
-      { type: "Button", props: { label: "＋  New voice for keyboard", variant: "secondary" }, on: { onPress: "addKbTone" } },
-    ],
-  };
+  // NO CARDS. Two labelled runs of pills on the black ground instead — a card
+  // around a list of pills is a box around a box, and the label already says
+  // where one run stops and the next starts.
+  //
+  // The two runs stay: which voices reach the keyboard is a different question
+  // from which voices exist, and it is the one the user came here to answer.
+  const keyboardSet: Node[] = [
+    youLabel("On the keyboard"),
+    // Only when the list is EMPTY. A populated list is self-explanatory — the
+    // pills carry Remove — and the sentence was a wall of grey above it.
+    ...(kbVoices.length ? [] : [{
+      type: "Text",
+      props: { content: "Nothing here yet. Add one from below." },
+      style: { fontSize: 12, color: YOU_UI.textDim, marginBottom: 10 },
+    } as Node]),
+    ...kbVoices.map((e) => voiceRow(e, "kb")),
+  ];
 
-  // Card 2 — the whole library.
-  const allCard: Node = {
-    type: "Card",
-    style: { padding: 14 },
-    children: [
-      { type: "Overline", props: { content: "All voices" }, style: { marginBottom: 4 } },
-      // Removed: the row's own Add and Edit buttons say this, and they say it
-      // where the user's thumb already is.
-      gap(6),
-      ...effective.map((e) => voiceRow(e, "all")),
-      gap(4),
-      { type: "Button", props: { label: "＋  Add a tone", variant: "secondary" }, on: { onPress: "addTone" } },
-    ],
-  };
+  const allSet: Node[] = [
+    youLabel("All voices"),
+    ...effective.map((e) => voiceRow(e, "all")),
+  ];
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
@@ -3889,17 +4256,47 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
       ] },
       vcSaveErr: { kind: "toast", tone: "error", message: "Couldn't save that voice. Try again." },
     },
+    // The amber block reaches the top of the window, so the app's own header
+    // has to go. The block carries the way back in its place.
+    hideHeader: true,
     root: {
-      type: "Screen",
-      style: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 24 },
+      type: "Stack",
+      style: { flex: 1, backgroundColor: YOU_UI.ground },
       children: [
-        ...screenHero("voices"),
-        // No Heading: the nav bar already says "Voice", and a screen that
-        // says its own name twice reads as a mistake. No standfirst either —
-        // the two section headers and the buttons on each row say the same
-        // thing in fewer words and in the place the user is already looking.
-        keyboardCard,
-        allCard,
+        // The ＋ sits ON the amber, at the top right — the one place on the
+        // screen that is not a list, which is what makes it findable in a
+        // screen that is otherwise entirely list.
+        youHead("How it writes", "Voice",
+          youHeadIcon("M12 5 L12 19 M5 12 L19 12", "addTone")),
+        {
+          type: "Screen",
+          style: {
+            backgroundColor: "transparent",
+            paddingHorizontal: YOU_UI.padding, paddingTop: 4, paddingBottom: 28,
+          },
+          children: [
+            ...keyboardSet,
+            ...allSet,
+            gap(10),
+            // Creates a tone AND pins it in one save — it lands in All voices
+            // too. Kept as a full-width pill rather than folded into the ＋,
+            // because "new voice, and put it on the keyboard" is a different
+            // intent from "new voice".
+            {
+              type: "Stack",
+              on: { onPress: "addKbTone" },
+              props: { pressOpacity: 0.7 },
+              style: {
+                height: 46, borderRadius: YOU_UI.pill.radius,
+                borderWidth: 1, borderColor: YOU_UI.rule,
+                alignItems: "center", justifyContent: "center",
+              },
+              children: [{ type: "Text", props: { content: "NEW VOICE FOR THE KEYBOARD" },
+                style: { fontSize: 10.5, letterSpacing: 1.7, fontWeight: "700",
+                         color: YOU_UI.accent } }],
+            },
+          ],
+        },
 
         // ---- Edit a voice, without leaving the list ----
         // Same shape as the training card: blurred behind, cross and
@@ -5720,7 +6117,12 @@ function flowDismissMs(): number {
   if (hold) return Math.min(hold, 20_000);
   const clip = entry?.durationMs;
   if (!clip) return FLOW_ARM_DISMISS_MS;
-  return Math.min(clip + 900, 20_000);
+  // A FLOOR AS WELL AS A CEILING. "One play plus a beat" is the right rule for
+  // a clip long enough to be watched, and the wrong one for a 1.3-second loop:
+  // it dismissed the screen in two seconds, which is not long enough to read
+  // the line above it. The clip loops, so holding longer costs nothing and
+  // simply plays it twice.
+  return Math.min(Math.max(clip + 900, FLOW_ARM_DISMISS_MS), 20_000);
 }
 
 function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
@@ -5818,7 +6220,24 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
         // already been routed by a client that decided Flow applies. A platform
         // filter on the art could only ever subtract, and the one thing it
         // reliably subtracted was the art.
-        ...screenHero("flow_arm", { behind: true, fit: "cover", fullBleed: 28, fullBleedTop: 72 }),
+        // FIT BY WIDTH, HELD AT THE BOTTOM.
+        //
+        // The clip is a keyboard on black, reaching nearly the full width of a
+        // 9:16 frame. No phone is 9:16: every one is taller, so "cover" scales
+        // to the height and takes about a tenth of the width off each side —
+        // the outer column of keys, on every device. A focal point cannot save
+        // that, because what has to survive IS the full width.
+        //
+        // So the box takes the screen's width and the clip's own shape, and
+        // nothing is cropped. What is left above it is this screen's black,
+        // which is the clip's own ground — the join is invisible, and the
+        // keyboard sits on the bottom of the screen the way a keyboard does.
+        // Both values are overridable from the upload, so the next clip that
+        // wants the old behaviour is a POST and not a deploy.
+        ...screenHero("flow_arm", {
+          behind: true, fill: "width", pin: "bottom",
+          fullBleed: 28, fullBleedTop: 72,
+        }),
         {
           type: "Heading",
           // "Flow is on" states a setting. This states what the user just
@@ -6011,11 +6430,23 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
     k("return", "return", { flex: 2.4, fn: true }),
   ];
 
-  const board = (title: string, rows: PK[][]): Node => ({
-    type: "Card",
-    style: { padding: 10, borderRadius: 14, marginBottom: 16, backgroundColor: "#17171B" },
+  /**
+   * ONE KEYBOARD PER REEL, and no name on it.
+   *
+   * Four keyboards will not fit on a screen at once, and the old answer —
+   * stack them and scroll — left a keyboard resting half off the bottom with
+   * its last row unreachable, which on a screen whose whole job is tapping
+   * individual keys is not a cosmetic problem. So each layer gets the window
+   * to itself and you move between them the way you move between reels.
+   *
+   * No title. "Letters", "Numbers", "Symbols" name what is already drawn full
+   * size underneath them, and four labels down a screen of four keyboards
+   * read as chapter headings on a book with one word per chapter.
+   */
+  const board = (rows: PK[][]): Node => ({
+    type: "Stack",
+    style: { paddingHorizontal: 12 },
     children: [
-      { type: "Overline", props: { content: title }, style: { color: "$color.muted", marginBottom: 10 } },
       {
         type: "KeyboardPreview",
         props: { rows, selected: chosen, all, keyHeight: 42 },
@@ -6041,6 +6472,47 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
     ],
   });
 
+  /** The four layers, in the order the keyboard itself moves between them. */
+  const boards: Node[] = [
+    board([
+      chars(KB_ROW_LETTERS_1),
+      [spacer(0.5), ...chars(KB_ROW_LETTERS_2), spacer(0.5)],
+      [
+        k("⇧", "shift", { flex: 1.35, fn: true }),
+        spacer(0.22),
+        ...chars(KB_ROW_LETTERS_3),
+        spacer(0.22),
+        k("⌫", "backspace", { flex: 1.35, fn: true }),
+      ],
+      bottom("123", "123"),
+    ]),
+    board([
+      chars(KB_ROW_NUM_1),
+      chars(KB_ROW_NUM_2),
+      [
+        k("#+=", "#+=", { flex: 1.5, fn: true }),
+        ...chars(KB_ROW_PUNCT_3),
+        k("⌫", "backspace", { flex: 1.5, fn: true }),
+      ],
+      bottom("ABC", "abc"),
+    ]),
+    board([
+      chars(KB_ROW_SYM_1),
+      chars(KB_ROW_SYM_2),
+      [
+        k("123", "123", { flex: 1.5, fn: true }),
+        ...chars(KB_ROW_PUNCT_3),
+        k("⌫", "backspace", { flex: 1.5, fn: true }),
+      ],
+      bottom("ABC", "abc"),
+    ]),
+    board([[
+      k("mic", "mic", { fn: true }),
+      k("Refine", "refine", { fn: true }),
+      k("globe", "globe", { fn: true }),
+    ]]),
+  ];
+
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "haptics",
@@ -6049,29 +6521,31 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
     // screen draws, and mutated in place by the switch after that.
     state: { hapticsAll: all },
     actions: { err: { kind: "toast", message: "Couldn't save that.", tone: "error" } },
+    // The amber block reaches the top of the window, so the app's own header
+    // has to go. The block carries the way back in its place.
+    hideHeader: true,
     root: {
-      type: "Screen",
-      style: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 32 },
+      type: "Stack",
+      style: { flex: 1, backgroundColor: YOU_UI.ground },
       children: [
-        { type: "Paragraph", props: { content: "Tap any key to give it a buzz. Tap again to take it away." },
-          style: { marginBottom: 18 } },
+        // The kicker carries what the switch does, so the switch itself needs
+        // no label beside it. One sentence at the top of the screen beats the
+        // same word repeated next to a control on every layer.
+        youHead("Tap a key. Or switch them all on.", "Haptics"),
         {
-          // A switch, not a row with the word "On" at the end of it. This is
-          // the one control on the screen that is a state rather than a
-          // destination, and a chevron row says "there is more through here" —
-          // which there is not. The switch shows the state and changes it in
-          // the same gesture.
+          // THE SWITCH DOES NOT SCROLL. It belongs to all four layers, and a
+          // control that scrolls away with the one it happens to sit on reads
+          // as belonging to that one. So it is a SIBLING of the pager, below
+          // the amber and above the keyboards, and it stays where it is put.
           //
           // It wears the brand colour when on, not the system green: a colour
           // Apple drew, on a control Apple did not, reads as borrowed.
           type: "Stack",
           style: {
-            direction: "row", alignItems: "center", justifyContent: "space-between",
-            paddingVertical: 10, marginBottom: 20,
+            flexDirection: "row", alignItems: "center", justifyContent: "flex-end",
+            paddingHorizontal: YOU_UI.padding, paddingTop: 14, paddingBottom: 6,
           },
           children: [
-            { type: "Text", props: { content: "Every key" },
-              style: { fontSize: 16, fontWeight: "500", color: "$color.text" } },
             {
               type: "Switch",
               bind: { value: "hapticsAll" },
@@ -6084,7 +6558,8 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
                   body: { all: "$state.hapticsAll" }, onError: "err" },
                 { kind: "refresh" },
               ] } },
-              // Older bundles keep the row they already know how to draw.
+              // Older bundles keep the row they already know how to draw. That
+              // one carries a label, because a bare Row would be a blank line.
               fallback: {
                 type: "Row",
                 props: { label: "Every key", value: all ? "On" : "Off" },
@@ -6098,47 +6573,19 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
             },
           ],
         },
-
-        board("Letters", [
-          chars(KB_ROW_LETTERS_1),
-          [spacer(0.5), ...chars(KB_ROW_LETTERS_2), spacer(0.5)],
-          [
-            k("\u21e7", "shift", { flex: 1.35, fn: true }),
-            spacer(0.22),
-            ...chars(KB_ROW_LETTERS_3),
-            spacer(0.22),
-            k("\u232b", "backspace", { flex: 1.35, fn: true }),
-          ],
-          bottom("123", "123"),
-        ]),
-
-        board("Numbers", [
-          chars(KB_ROW_NUM_1),
-          chars(KB_ROW_NUM_2),
-          [
-            k("#+=", "#+=", { flex: 1.5, fn: true }),
-            ...chars(KB_ROW_PUNCT_3),
-            k("\u232b", "backspace", { flex: 1.5, fn: true }),
-          ],
-          bottom("ABC", "abc"),
-        ]),
-
-        board("Symbols", [
-          chars(KB_ROW_SYM_1),
-          chars(KB_ROW_SYM_2),
-          [
-            k("123", "123", { flex: 1.5, fn: true }),
-            ...chars(KB_ROW_PUNCT_3),
-            k("\u232b", "backspace", { flex: 1.5, fn: true }),
-          ],
-          bottom("ABC", "abc"),
-        ]),
-
-        board("Tools", [[
-          k("mic", "mic", { fn: true }),
-          k("Refine", "refine", { fn: true }),
-          k("globe", "globe", { fn: true }),
-        ]]),
+        {
+          type: "Reels",
+          style: { flex: 1 },
+          children: boards,
+          // A bundle without Reels gets the four boards down a scroll. Less
+          // precise, entirely usable, and the switch above still works — the
+          // same way this screen degraded before KeyboardPreview shipped.
+          fallback: {
+            type: "Screen",
+            style: { backgroundColor: "transparent", paddingBottom: 32 },
+            children: boards,
+          },
+        },
       ],
     },
     cacheTtlSeconds: 180,
@@ -6152,12 +6599,65 @@ function dictionaryScreen(ctx: ScreenContext): ScreenResponse {
     title: "Dictionary",
     state: { dictionary: ctx.dictionary ?? [] },
     actions: { err: { kind: "toast", message: "Couldn't save.", tone: "error" } },
-    root: { type: "Screen", children: [
-      ...screenHero("dictionary"),
-      { type: "Heading", props: { content: "Dictionary" }, style: { fontSize: 28, fontWeight: "800", color: "$color.text", marginBottom: 8 } },
-      { type: "Paragraph", props: { content: "Type the word, get the replacement — anywhere you use the Tailzu keyboard." }, style: { marginBottom: 28 } },
-      { type: "DictionaryEditor", bind: { value: "dictionary" }, props: { full: true }, on: { onError: "err" } },
-    ] },
+    // The amber block reaches the top of the window, so the app's own header
+    // has to go. The block carries the way back in its place.
+    hideHeader: true,
+    root: {
+      type: "Stack",
+      style: { flex: 1, backgroundColor: YOU_UI.ground },
+      children: [
+        // The kicker IS the instruction. A screen of two fields does not also
+        // need a sentence under a heading explaining that it is two fields.
+        youHead("Type the word, get the phrase.", "Dictionary"),
+        {
+          type: "Screen",
+          style: {
+            backgroundColor: "transparent",
+            paddingHorizontal: YOU_UI.padding, paddingTop: 20, paddingBottom: 28,
+          },
+          children: [
+            {
+              // TWO PILLS AND A SAVE. The column headings are gone — "Word"
+              // and "Replace With" label two fields that already say what they
+              // are, in their own placeholders.
+              //
+              // What is NOT gone is the list of pairs already saved. The pairs
+              // arrive as more of the same pill, one row each, with the blank
+              // one to add always at the end — so an empty dictionary IS two
+              // pills and a save, and a full one is the same shape repeated.
+              // Dropping the list would have hidden every word the user had
+              // added and left no way to remove one.
+              type: "DictionaryEditor",
+              bind: { value: "dictionary" },
+              props: {
+                full: true,
+                showLabels: false,
+                cellRadius: YOU_UI.pill.radius,
+                cellBackground: YOU_UI.pill.background,
+                cellBorderWidth: 0,
+                cellColor: YOU_UI.text,
+                placeholderColor: YOU_UI.textFaint,
+                cellPaddingHorizontal: 16,
+                cellPaddingVertical: 13,
+                cellFontSize: YOU_UI.pill.labelSize,
+                gap: 8,
+                rowGap: YOU_UI.pill.marginBottom,
+                removeColor: YOU_UI.textFaint,
+                saveLabel: "SAVE",
+                saveBackground: YOU_UI.accent,
+                saveColor: YOU_UI.onAccent,
+                saveRadius: YOU_UI.pill.radius,
+                saveHeight: 46,
+                saveFontSize: 11,
+                saveTracking: 1.9,
+                saveFullWidth: true,
+              },
+              on: { onError: "err" },
+            },
+          ],
+        },
+      ],
+    },
     cacheTtlSeconds: 180,
   };
 }

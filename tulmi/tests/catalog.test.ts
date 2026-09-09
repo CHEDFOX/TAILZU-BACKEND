@@ -12,6 +12,7 @@ import {
   buildKeyboardConfig,
   bumpCacheVersion,
   currentCacheVersion,
+  TRAINING_UI,
 } from "../src/experience/catalog.js";
 import { getConfig } from "../src/config.js";
 
@@ -59,76 +60,102 @@ describe("the arrival prompt", () => {
   });
 });
 
-describe("the mic step asks with one row, not two offers", () => {
-  const row = () => {
+describe("the mic step asks with one control, not two offers", () => {
+  // Two full-width buttons read as two offers of equal weight. One control —
+  // a light track carrying a small ✕ and a dark pill — says the same thing
+  // with the answer and the way past at different sizes.
+  const pill = () => {
     const s = buildScreen("onboarding", { personality: {}, language: "en" } as never) as {
       root: { children: Array<Record<string, any>> };
     };
-    return s.root.children.find((c) => c.style?.direction === "row")!;
+    return s.root.children.find(
+      (c) => c.style?.flexDirection === "row" && c.style?.backgroundColor === "#F4F4F2",
+    )!;
   };
 
-  it("puts the decline first and the accent second", () => {
-    // Two full-width pills read as two offers of equal weight. Side by side,
-    // size and colour argue for you — and the button under a resting thumb, on
-    // the right, should be the one that moves the user forward.
-    const [decline, accept] = row().children;
-    expect(decline.props.label).toBe("Not now");
-    expect(accept.props.label).toBe("Enable");
+  it("puts the way past first and the answer second", () => {
+    const [dismiss, accept] = pill().children;
+    expect(dismiss.on.onPress).toBe("goKeyboard");
     expect(accept.on.onPress).toBe("allowMic");
-    expect(decline.on.onPress).toBe("goKeyboard");
+    expect(accept.children[0].props.content).toBe("Allow access");
   });
 
-  it("makes the accent bigger, warmer and the decline quieter", () => {
-    const [decline, accept] = row().children;
-    expect(Number(accept.style.flex)).toBeGreaterThan(Number(decline.style.flex));
-    // The brand amber, not the theme's primary — primary is WHITE by design on
-    // this black surface, so reaching for "the brand colour" there gets white.
-    expect(accept.style.backgroundColor).toBe("#E8A23C");
-    expect(Number(decline.style.opacity)).toBeLessThan(1);
-    expect(Number(decline.style.paddingVertical)).toBeLessThan(17);
+  it("gives the answer the room and the dismiss a fixed corner", () => {
+    const [dismiss, accept] = pill().children;
+    // The action takes whatever is left; the ✕ never grows into it.
+    expect(accept.style.flex).toBe(1);
+    expect(Number(dismiss.style.width)).toBeGreaterThan(0);
+    expect(dismiss.style.flex).toBeUndefined();
+    // Dark pill in a light track — the contrast IS the hierarchy, so neither
+    // may drift toward the other.
+    expect(accept.style.backgroundColor).toBe("#0D0D0F");
+    // The ✕ is drawn, not typed, so it keeps its weight at any size.
+    expect(dismiss.children[0].type).toBe("SVG");
   });
 });
 
 describe("the paywall shows the free tier without selling it", () => {
-  const cards = () => {
+  // The three side-by-side cards are now rows down the screen: a plan is a
+  // name, a short note, a price and an arrow. Paid rows carry the brand and
+  // are the way through; the free row is the way out and stays quiet.
+  const plans = () => {
     const s = buildScreen("paywall", { personality: {}, language: "en" } as never) as {
       root: Record<string, any>; actions: Record<string, unknown>;
     };
-    const find = (n: any): any => {
-      if (n?.style?.flexDirection === "row" && n?.style?.gap === 10 && n.children?.length >= 3) return n;
-      for (const c of n?.children ?? []) { const h = find(c); if (h) return h; }
-      return null;
+    const rows: any[] = [];
+    const walk = (n: any): void => {
+      if (n?.style?.flexDirection === "row" && n?.style?.borderRadius === 16 && n.on?.onPress) {
+        rows.push(n);
+      }
+      for (const c of n?.children ?? []) walk(c);
     };
-    return { row: find(s.root), actions: s.actions };
+    walk(s.root);
+    return { rows, actions: s.actions };
   };
 
-  it("stands Bite next to what money buys", () => {
-    const texts = cards().row.children.map((c: any) =>
-      c.children.map((x: any) => x.props?.content ?? x.props?.text).filter(Boolean));
-    expect(texts[0]).toContain("Bite");
-    expect(texts[0]).toContain("Free");
-    expect(texts.flat()).toContain("$59.99");
-    expect(texts.flat()).toContain("$9.99");
+  const textsOf = (n: any): string[] => {
+    const out: string[] = [];
+    const walk = (x: any): void => {
+      if (typeof x?.props?.content === "string") out.push(x.props.content);
+      for (const c of x?.children ?? []) walk(c);
+    };
+    walk(n);
+    return out;
+  };
+
+  it("stands the free tier next to what money buys", () => {
+    const { rows } = plans();
+    const all = rows.flatMap(textsOf);
+    expect(all).toContain("$59.99");
+    expect(all).toContain("$9.99");
+    // Paid first — the free row is the floor, not the offer.
+    expect(textsOf(rows[rows.length - 1]).join(" ")).toMatch(/free/i);
   });
 
-  it("NEVER builds a purchase for the free card", () => {
+  it("NEVER builds a purchase for the free row", () => {
     // A CTA aimed at a plan with no product id is a button that fails in front
     // of the user, every time it is pressed.
-    const { row, actions } = cards();
-    expect(Object.keys(actions).filter((k) => k.startsWith("buy."))).toEqual(["buy.annual", "buy.monthly"]);
-    expect(row.children[0].on).toBeUndefined();      // untappable, so unselectable
-    expect(JSON.stringify(actions.cta)).not.toContain("free");
+    const { rows, actions } = plans();
+    expect(Object.keys(actions).filter((k) => k.startsWith("buy."))).toEqual(
+      ["buy.annual", "buy.monthly"],
+    );
+    // The free row dismisses. It never reaches a purchase.
+    expect(rows[rows.length - 1].on.onPress).toBe("dismiss");
+    for (const r of rows.slice(0, -1)) {
+      expect(String(r.on.onPress)).toMatch(/^buy\./);
+    }
   });
 
   it("quotes the allowance the SERVER enforces, not a literal", () => {
     // This drifted once: the catalog re-read the env with its own default of
     // 2500 while config defaults to 800, so the app promised 2,500 words and
     // the meter cut users off at 800. One reader now, through getConfig.
-    const shown = cards().row.children[0].children
-      .map((x: any) => x.props?.content).filter(Boolean)
-      .find((s: string) => /words \/ month$/.test(s));
+    const { rows } = plans();
+    const shown = textsOf(rows[rows.length - 1]).find((s) => /words a month$/.test(s));
     const flags = (buildBootstrap({}).flags ?? {}) as Record<string, unknown>;
-    expect(shown).toBe(`${Number(flags["quota.freeMonthlyWords"]).toLocaleString("en-US")} words / month`);
+    expect(shown).toBe(
+      `${Number(flags["quota.freeMonthlyWords"]).toLocaleString()} words a month`,
+    );
   });
 });
 
@@ -351,11 +378,18 @@ describe("buildScreen", () => {
     // The refine loop moved one tap deeper. The entry's job is to get there.
     expect(json).toContain('"screenId":"training_chat"');
     // The realtime door is built but gated, so flipping the flag is the whole
-    // change — and until then the screen must not offer a dead tap.
+    // change — and until then the swipe lands on the refine loop rather than
+    // on an unfinished screen.
     expect(json).toContain('"flag":"train.realtime"');
     expect(json).toContain('"screenId":"training_live"');
-    // Nothing on this screen may assume the media slot is filled.
-    expect(json).toContain("Train your voice");
+    // Nothing on this screen may assume the media slot is filled. Asserted as
+    // the CONFIGURED copy rather than a literal, so rewording the entry is a
+    // change to one object and not to this file — but an entry that says
+    // nothing at all still fails.
+    const entry = TRAINING_UI.entry;
+    expect(entry.title.trim().length).toBeGreaterThan(0);
+    expect(json).toContain(entry.title);
+    expect(json).toContain(entry.cta.label);
   });
 
   it("Training live is a real conversation: a session, a bubble, and one read at the end", () => {
@@ -427,25 +461,34 @@ describe("buildScreen", () => {
     expect(json).toContain('"playing":"refining"');
   });
 
-  it("You tab shows Voice + Dictionary media cards; the voice list carries the saved tone", () => {
-    // The You tab is now just two media-background cards that navigate to the
-    // voice list and the dictionary editor.
+  it("You tab is a deck whose cards carry the topic art and route to their screens", () => {
+    // The You tab is a Coverflow deck: one card per topic, its art from the
+    // media registry, and a tap that routes to that topic's screen.
     const you = buildScreen("personality", { personality: {}, language: "en" });
     expect(you).not.toBeNull();
     const json = JSON.stringify(you);
+    expect(json).toContain('"Coverflow"');
     expect(json).toContain('"screenId":"voices"');
     expect(json).toContain('"screenId":"dictionary"');
     expect(json).toContain("card.voice");
     expect(json).toContain("card.dictionary");
+    // Every card in the deck has to be reachable, so the route chain must name
+    // as many destinations as there are cards. A card with no branch opens
+    // whatever the chain falls through to, which is silent and wrong.
+    for (const screenId of ["voices", "dictionary", "haptics", "languages"]) {
+      expect(json).toContain(`"screenId":"${screenId}"`);
+    }
 
-    // The tone list (opened from the Voice card) lists the tones and each opens
-    // the two-field editor; the "Add a tone" button opens it empty.
+    // The tone list (opened from the Voice card) lists the tones, and there is
+    // a way to create one. Asserted as the ACTION, not as a label: the button
+    // that used to say "Add a tone" is now the ＋ on the header, and the next
+    // redesign will move it again.
     const voices = buildScreen("voices", { personality: {}, language: "en" });
     expect(voices).not.toBeNull();
     const vjson = JSON.stringify(voices);
     expect(vjson).toContain("Signature");
     expect(vjson).toContain('"screenId":"tone_edit"');
-    expect(vjson).toContain("Add a tone");
+    expect(voices!.actions?.addTone).toBeTruthy();
   });
 
   it("tone detail shows the tone's name + prompt and toggles the keyboard pin", () => {

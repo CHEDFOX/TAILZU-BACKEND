@@ -223,35 +223,70 @@ function heroOf(screenId: string, key: string, present?: MediaPresent, contentTy
 }
 
 describe("hero slots take their presentation from the registry too", () => {
-  it("the paywall hero is edge to edge by default", () => {
-    const h = heroOf("paywall", "paywall.hero");
-    // The screen's own padding is 20 all round, 12 at the top.
-    expect(h.style.marginLeft).toBe(-20);
-    expect(h.style.marginRight).toBe(-20);
-    expect(h.style.marginTop).toBe(-12);
-    expect(h.style.borderRadius).toBe(0);
-    expect(h.style.alignSelf).toBe("stretch");
+  // The paywall's art moved BEHIND the screen when the paywall went full
+  // bleed, so it is no longer a hero in the column and has no margins to
+  // cancel. Settings still carries one the old way, and is the subject for
+  // everything about the in-column shape below.
+  it("art behind a screen fills the window rather than sitting in the column", () => {
+    const h = heroOf("paywall", "hero.paywall");
+    expect(h.style.position).toBe("absolute");
+    expect(h.style.top).toBe(0);
+    expect(h.style.left).toBe(0);
+    expect(h.style.right).toBe(0);
+    expect(h.style.bottom).toBe(0);
   });
 
-  it("an entry can ask for the card back", () => {
-    const h = heroOf("paywall", "paywall.hero", { shape: "card", radius: 20 });
-    expect(h.style.marginLeft).toBeUndefined();
-    expect(h.style.borderRadius).toBe(20);
+  it("an entry can send an in-column hero to the edges, and keep a radius there", () => {
+    // Default is the card: a radius, and no margins pulling it outward.
+    const card = heroOf("settings", "hero.settings");
+    expect(card.style.marginLeft).toBeUndefined();
+    expect(card.style.borderRadius).toBe(20);
+
+    // "full" cancels the screen's own top padding and squares the corners,
+    // unless the entry asks for a radius anyway.
+    const full = heroOf("settings", "hero.settings", { shape: "full" });
+    expect(full.style.marginTop).toBe(-12);
+    expect(full.style.alignSelf).toBe("stretch");
+    expect(full.style.borderRadius).toBe(0);
+
+    const rounded = heroOf("settings", "hero.settings", { shape: "full", radius: 14 });
+    expect(rounded.style.borderRadius).toBe(14);
   });
 
   it("aspectRatio and fit come off the entry", () => {
-    const h = heroOf("paywall", "paywall.hero", { aspectRatio: 0.75, fit: "contain" });
+    const h = heroOf("settings", "hero.settings", { aspectRatio: 0.75, fit: "contain" });
     expect(h.style.aspectRatio).toBe(0.75);
     expect(h.children[0].props.contentFit).toBe("contain");
   });
 
   it("a clip in a hero slot builds a Video, not an invisible Image", () => {
-    const h = heroOf("paywall", "paywall.hero", undefined, "video/mp4");
+    const h = heroOf("settings", "hero.settings", undefined, "video/mp4");
     expect(h.children[0].type).toBe("Video");
     expect(h.children[0].props.autoplay).toBe(true);
     expect(h.children[0].props.muted).toBe(true);
     // Older bundles have no Video node; a still is a far better hero than a hole.
     expect(h.children[0].fallback.type).toBe("Image");
+  });
+
+  // The rule the new flow clip needed: art whose full width IS the subject
+  // must not be cropped to fill a window that is a different shape.
+  it("fill:width gives the box the ART'S shape, so nothing is cropped", () => {
+    const h = heroOf("flow_arm", "hero.flow_arm",
+      { fill: "width", pin: "bottom", aspect: 9 / 16 }, "video/mp4");
+    expect(h.style.aspectRatio).toBe(9 / 16);
+    // One edge only — a fourth would give Yoga a height and the ratio would be
+    // the constraint it dropped.
+    expect(h.style.bottom).toBe(0);
+    expect(h.style.top).toBeUndefined();
+    // And it can no longer crop, whatever the call site asked for.
+    expect(h.children[0].props.contentFit).toBe("contain");
+  });
+
+  it("fill:width without an aspect falls back to filling the window", () => {
+    const h = heroOf("flow_arm", "hero.flow_arm", { fill: "width" }, "video/mp4");
+    expect(h.style.aspectRatio).toBeUndefined();
+    expect(h.style.top).toBe(-72);
+    expect(h.style.bottom).toBe(0);
   });
 
   it("the flow clip fills the window, behind the words", () => {
