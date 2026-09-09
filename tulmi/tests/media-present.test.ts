@@ -368,16 +368,34 @@ describe("a hero clip plays itself", () => {
     return { screen, video: screen.root.children[0].children[0] };
   }
 
-  it("autoplays, looping, by default", () => {
+  it("a DEMO plays once and rests on its last frame", () => {
+    // The flow clip is not ambient. Looping would leave it with no final state
+    // to hold, and the final state is the thing being demonstrated — so the
+    // screen asks for loop:false and its own length is computed from that.
     const { video } = flowVideo();
     expect(video.props.autoplay).toBe(true);
-    expect(video.props.loop).toBe(true);
+    expect(video.props.loop).toBe(false);
   });
 
-  it("loop:false plays once and holds the last frame", () => {
-    const { video } = flowVideo({ loop: false });
-    expect(video.props.loop).toBe(false);
-    expect(video.props.autoplay).toBe(true);
+  it("an ambient hero still loops", () => {
+    // The default is unchanged for everything that is not a demo: a hero has
+    // no end, so it repeats.
+    setMediaRegistryAccessor(() => ({
+      "hero.settings": {
+        url: "https://api.tailzu.space/media/h.mp4",
+        contentType: "video/mp4", size: 1, uploadedAt: 1,
+      },
+    }));
+    const screen = buildScreen("settings", {
+      personality: {}, language: "en", onboarded: true, params: {}, email: "a@b.com",
+    } as never) as any;
+    const find = (n: any): any =>
+      n?.type === "Video" ? n : (n?.children ?? []).map(find).find(Boolean);
+    expect(find(screen.root).props.loop).toBe(true);
+  });
+
+  it("the upload can overrule either way", () => {
+    expect(flowVideo({ loop: true }).video.props.loop).toBe(true);
   });
 
   it("NEVER hands the player a false `playing`", () => {

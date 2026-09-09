@@ -268,6 +268,12 @@ function screenHero(
     /** Which edge the box is held against when `fill` leaves a remainder. */
     pin?: "top" | "bottom" | "center";
     /**
+     * Whether a clip repeats. Default true — a hero is ambient. A DEMO sets
+     * false, so it comes to rest on its last frame instead of snapping back to
+     * the first, which is what makes "hold the final state" possible at all.
+     */
+    loop?: boolean;
+    /**
      * WHAT FILLS THE BOX WHEN NOTHING HAS BEEN UPLOADED.
      *
      * An empty slot is normally right: a screen with no art should look
@@ -453,7 +459,13 @@ function screenHero(
    * screen is doing, which must not be held up by it.
    */
   const startDelay = Math.max(0, Number(entry.present?.startDelayMs ?? 0));
-  const loops = entry.present?.loop ?? true;
+  /**
+   * Looping is the right default for a hero, which is ambient and has no end.
+   * It is the WRONG one for a demo: a clip that loops has no last frame to
+   * come to rest on, so "hold the final state" is not a thing it can do. The
+   * call site knows which kind it is; the upload can still overrule.
+   */
+  const loops = entry.present?.loop ?? opts.loop ?? true;
   /**
    * Placement facts, forwarded untouched. The client measures the box it is
    * really drawing into and works out the offset there — which is the whole
@@ -597,6 +609,14 @@ const APP_STORE_ID = /^\d{6,}$/.test(process.env.APP_STORE_ID ?? "")
 
 /** How long the "Flow is on" confirmation stays before it leaves by itself. */
 const FLOW_ARM_DISMISS_MS = Number(process.env.FLOW_ARM_DISMISS_MS ?? 4200);
+/**
+ * How long the clip's LAST frame is held before the screen closes.
+ *
+ * A demo that cuts on its final frame teaches nothing — the thing being
+ * demonstrated is the state it ends in, and that state needs a beat to be
+ * read. Overridable per upload as present.endHoldMs.
+ */
+const FLOW_END_HOLD_MS = Number(process.env.FLOW_END_HOLD_MS ?? 1200);
 
 const FLOW_TRANSPORT = process.env.FLOW_TRANSPORT === "oneshot" ? "oneshot" : "stream";
 
@@ -6591,16 +6611,31 @@ function flowDismissMs(): number {
   // compressor probes that, so a clip that never needed compressing left this
   // screen sitting on a default while a one-second film looped four times
   // underneath it and got cut mid-play.
+  // holdMs ends the argument: someone said how long, over HTTP.
   const hold = entry?.present?.holdMs;
   if (hold) return Math.min(hold, 20_000);
   const clip = entry?.durationMs;
   if (!clip) return FLOW_ARM_DISMISS_MS;
-  // A FLOOR AS WELL AS A CEILING. "One play plus a beat" is the right rule for
-  // a clip long enough to be watched, and the wrong one for a 1.3-second loop:
-  // it dismissed the screen in two seconds, which is not long enough to read
-  // the line above it. The clip loops, so holding longer costs nothing and
-  // simply plays it twice.
-  return Math.min(Math.max(clip + 900, FLOW_ARM_DISMISS_MS), 20_000);
+  /**
+   * THE SCREEN LASTS AS LONG AS THE THREE THINGS IT DOES.
+   *
+   *   startDelayMs   hold the first frame, so the screen arrives on a still
+   *                  rather than mid-motion
+   *   durationMs     play it once — the clip does not loop here, so it comes
+   *                  to rest on its last frame rather than snapping back
+   *   endHoldMs      hold THAT frame, so the thing being demonstrated is the
+   *                  last thing seen and not a cut
+   *
+   * Added, not guessed. The old rule was `clip + 900` with a floor, which
+   * ignored the lead-in entirely: a clip told to wait two seconds and then play
+   * for one had its screen dismissed at 4.2s by a floor that happened to be
+   * long enough, and would have been cut mid-play the moment either number
+   * moved. A screen whose length is a coincidence is a screen that breaks when
+   * someone edits the film.
+   */
+  const start = Math.max(0, Number(entry?.present?.startDelayMs ?? 0));
+  const endHold = Math.max(0, Number(entry?.present?.endHoldMs ?? FLOW_END_HOLD_MS));
+  return Math.min(Math.max(start + clip + endHold, FLOW_ARM_DISMISS_MS), 20_000);
 }
 
 function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
@@ -6712,8 +6747,16 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
         // keyboard sits on the bottom of the screen the way a keyboard does.
         // Both values are overridable from the upload, so the next clip that
         // wants the old behaviour is a POST and not a deploy.
+        // ARRIVE ON A STILL, PLAY ONCE, REST ON THE LAST FRAME.
+        //
+        // The three phases the screen's own length is computed from — see
+        // flowDismissMs(). loop:false is what makes the third one possible: a
+        // looping clip has no final state to hold, it just starts again.
+        //
+        // The lead-in itself is an upload value (present.startDelayMs), because
+        // how long to wait before moving depends on the film.
         ...screenHero("flow_arm", {
-          behind: true, fill: "width", pin: "bottom",
+          behind: true, fill: "width", pin: "bottom", loop: false,
           fullBleed: 28, fullBleedTop: 72,
         }),
         {

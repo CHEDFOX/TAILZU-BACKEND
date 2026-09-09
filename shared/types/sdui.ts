@@ -214,6 +214,16 @@ export interface MediaPresent {
    */
   startDelayMs?: number;
   /**
+   * HOW LONG THE LAST FRAME IS HELD before whatever is showing the clip moves
+   * on. Needs `loop: false`, or there is no last frame to hold.
+   *
+   * A demo that cuts on its final frame teaches nothing: the thing being
+   * demonstrated is the state it ends in, and that state needs a beat to be
+   * read. Together with startDelayMs and the measured duration this is what a
+   * screen's whole length is computed from, rather than guessed at.
+   */
+  endHoldMs?: number;
+  /**
    * How much of the box the art is drawn at, 0.05–1, with `fill`.
    *
    * `fill: "width"` makes the art exactly as wide as the screen, which is the
