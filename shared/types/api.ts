@@ -532,6 +532,14 @@ export interface PaywallPlan {
   price: string;                    // "$59.99/yr", "$9.99/mo" — the shown copy
   period?: string;                  // "per year", "per month" — secondary line
   perUnit?: string;                 // "$4.99/mo billed annually" — footnote
+  /**
+   * ONE LINE saying what tapping this row does.
+   *
+   * The paywall has no confirm button — the row is the commitment — so this is
+   * the only place the terms get stated, and the stores require them stated
+   * before a purchase, not after.
+   */
+  note?: string;
   badge?: string;                   // "Save 40%", "Best value", "3-day trial"
   accent?: string;                  // hex — overrides theme primary on select
   default?: boolean;                // pre-selected when the screen opens

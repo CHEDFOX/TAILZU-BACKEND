@@ -1936,8 +1936,11 @@ export const PAYWALL_CONFIG: PaywallConfig = {
       // point is whatever the environment looked like before boot.
       id: "free",
       free: true,
-      label: "Bite",
-      price: "Free",
+      label: "Stay free",
+      price: "",
+      /** One line, and it is the number that makes the paid rows read as a
+       *  choice. Filled from the allowance the server actually enforces. */
+      note: "",
     },
     {
       id: "annual",
@@ -1946,10 +1949,12 @@ export const PAYWALL_CONFIG: PaywallConfig = {
       productId: "tailzu_annu",
       offeringId: "default",
       packageId: "$rc_annual",
-      label: "Elite",
+      label: "Yearly",
       price: "$59.99",
-      period: "per year",
-      perUnit: "$5.00/mo, billed annually",
+      period: "$5.00 / mo",
+      // With no confirm button, the ROW is where the commitment gets
+      // disclosed — which is also what the stores require before a purchase.
+      note: "7 days free, then billed yearly",
       badge: "Save 50%",
       default: true,
     },
@@ -1959,9 +1964,10 @@ export const PAYWALL_CONFIG: PaywallConfig = {
       productId: "TAILZU_MONT",
       offeringId: "default",
       packageId: "$rc_monthly",
-      label: "Lite",
+      label: "Monthly",
       price: "$9.99",
       period: "per month",
+      note: "Billed monthly, cancel anytime",
     },
   ],
   cta: "Start free trial",
@@ -2071,272 +2077,162 @@ function paywallScreen(): ScreenResponse {
     openPrivacy: { kind: "openUrl", url: cfg.privacy ?? "https://tailzu.space/privacy", external: true },
   };
 
-  const heroValid = (cfg.heroFrames ?? []).filter(
-    (f) => f.key || f.url || f.asset,
-  );
+  // heroFrames is gone with the slideshow it fed. The pitch is one piece of
+  // art in the `paywall` media slot now, behind everything, rather than a
+  // carousel above a wall of copy that no longer exists.
 
-  // Three cards where there were two. The price is the widest thing in a card,
-  // and at three across a phone leaves about 77pt of content width — "$59.99"
-  // at 22pt weight 800 is within a hair of that. Step it down rather than
-  // discover the overflow on someone's SE.
-  const priceSize = cfg.plans.length >= 3 ? 19 : 22;
-
-  const planCard = (plan: PaywallPlan): Node => ({
-    type: "Card",
+  /**
+   * A PLAN IS A BUTTON. There is no confirm step.
+   *
+   * Choosing and buying were two acts, and with the benefit list gone the
+   * second one carried no new information — it asked the same question again.
+   * The row commits, so the row is also where the terms are stated, which is
+   * what the stores require before a purchase rather than after.
+   */
+  const planRow = (plan: PaywallPlan): Node => ({
+    type: "Stack",
+    on: { onPress: plan.free ? "dismiss" : `buy.${plan.id}` },
+    props: { pressOpacity: 0.82 },
     style: {
-      flex: 1,
-      padding: 14,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
       borderRadius: 16,
-      borderWidth: 1.5,
-      // A free card never selects, so a selection-dependent border would be a
-      // condition with one branch. It gets the quiet edge permanently, and sits
-      // back from the two that are asking for something.
-      borderColor: plan.free
-        ? THEME.color.border
-        : ({
-            eq: ["selectedPlanId", plan.id],
-            then: plan.accent ?? THEME.color.primary,
-            else: THEME.color.border,
-          } as unknown as string),
-      backgroundColor: plan.free
-        ? "transparent"
-        : ({
-            eq: ["selectedPlanId", plan.id],
-            then: "rgba(255,255,255,0.06)",
-            else: "transparent",
-          } as unknown as string),
-      ...(plan.free ? { opacity: 0.62 } : {}),
-      minHeight: 118,
+      borderWidth: 1,
+      paddingVertical: 13,
+      paddingHorizontal: 15,
+      marginBottom: 8,
+      // The paid rows are the way through, so they carry the brand. The free
+      // one is a way out and stays quiet.
+      borderColor: plan.free ? "rgba(255,255,255,0.12)" : ACCENT_AMBER,
+      backgroundColor: plan.free ? "rgba(255,255,255,0.05)" : "rgba(232,162,60,0.12)",
     },
-    // NO onPress on a free card. Selecting it would arm a CTA that has nothing
-    // to buy; leaving it untappable says "this is what you already have" with
-    // the one gesture the user does not get.
-    ...(plan.free
-      ? {}
-      : {
-          on: {
-            onPress: {
-              kind: "sequence",
-              actions: [
-                { kind: "haptic", style: "selection" },
-                { kind: "setState", path: "selectedPlanId", value: plan.id },
-              ],
-            },
-          },
-        }),
     children: [
-      ...(plan.badge
-        ? [
-            {
-              type: "Badge",
-              props: { text: plan.badge, tone: "brand" },
-              style: {
-                alignSelf: "flex-start",
-                backgroundColor: plan.accent ?? THEME.color.primary,
-                color: "#000",
-                paddingHorizontal: 8,
-                paddingVertical: 3,
-                borderRadius: 999,
-                fontSize: 11,
-                fontWeight: "700",
-                marginBottom: 8,
-              },
-            } satisfies Node,
-          ]
-        : []),
-      text(plan.label, "label", { style: { color: THEME.color.muted, fontSize: 12, letterSpacing: 0.6, textTransform: "uppercase" } }),
-      spacer(6),
-      text(plan.price, "h1", { style: { color: THEME.color.text, fontSize: priceSize, fontWeight: "800" } }),
-      // The free card's second line is the ALLOWANCE, read at build time from
-      // the same config the meter enforces. It is not in PAYWALL_CONFIG because
-      // that object is built at import, before config exists.
-      ...(plan.free && !plan.period
-        ? [text(`${freeMonthlyWords().toLocaleString("en-US")} words / month`, "caption",
-            { style: { color: THEME.color.body, fontSize: 12, marginTop: 2 } })]
-        : []),
-      ...(plan.period
-        ? [text(plan.period, "caption", { style: { color: THEME.color.body, fontSize: 12, marginTop: 2 } })]
-        : []),
-      ...(plan.perUnit
-        ? [text(plan.perUnit, "caption", { style: { color: THEME.color.muted, fontSize: 11, marginTop: 6 } })]
-        : []),
-    ],
-  });
-
-  const featureRow = (line: string): Node => ({
-    type: "Stack",
-    style: { flexDirection: "row", alignItems: "flex-start", gap: 10, marginBottom: 8 },
-    children: [
-      text("✓", "body", { style: { color: THEME.color.primary, fontWeight: "700", fontSize: 16, lineHeight: 22 } }),
-      text(line, "body", { style: { color: THEME.color.body, fontSize: 14, flex: 1, lineHeight: 22 } }),
-    ],
-  });
-
-  const children: Node[] = [];
-
-  // Swappable: put keys back in PAYWALL_CONFIG.heroFrames, or set HERO_PAYWALL
-  // to an SDUI node, and this becomes that instead.
-  children.push(heroSlot({
-    id: "paywall",
-    // `paywall.hero` first: the standing upload slot, same convention as the
-    // hero.<screenId> slots. Config keys follow for multi-frame sequences.
-    // heroSlot drops any key with no upload behind it, so listing the slot
-    // costs nothing until a file exists.
-    mediaKeys: ["paywall.hero", ...heroValid.map((f) => f.key).filter((k): k is string => !!k)],
-    frameMs: cfg.heroFrameMs ?? 2200,
-    // Edge to edge. This screen's own padding is 20 all round and 12 at the
-    // top; cancelling both is what lets the art reach the glass instead of
-    // sitting in a rounded card with a black border around it. The entry can
-    // still ask for a card back — {"shape":"card","radius":20} — but the
-    // default is the one that makes the moment feel like the product rather
-    // than a picture of it.
-    bleed: { x: 20, top: 12 },
-    defaultShape: "full",
-    style: { width: "100%", aspectRatio: 1.3, marginBottom: 20 },
-    builtIn: {
-      // The wordmark decoding itself out of binary. The product's claim is that
-      // it turns raw noise into finished words; this is that claim made literal
-      // at the moment the user is deciding whether to believe it.
-      type: "BinaryReveal",
-      props: {
-        text: "Tailzu",
-        color: THEME.color.primary,
-        background: "#000000",
-        flipMs: 36,
-        lockMs: 70,
-        scrambleMs: 620,
-        holdMs: 2200,
-        fontSize: 46,
+      {
+        type: "Stack",
+        style: { flex: 1 },
+        children: [
+          { type: "Text", props: { content: plan.label },
+            style: { fontSize: 15, fontWeight: "500", color: "#FFFFFF" } },
+          ...(plan.note
+            ? [{ type: "Text", props: { content: plan.note },
+                 style: { fontSize: 11, color: "rgba(255,255,255,0.52)", marginTop: 1 } } as Node]
+            : []),
+        ],
       },
-      fallback: {
-        type: "Heading",
-        props: { content: "Tailzu" },
+      ...(plan.price
+        ? [{
+            type: "Stack",
+            style: { alignItems: "flex-end" },
+            children: [
+              { type: "Text", props: { content: plan.price },
+                style: { fontSize: 15, fontWeight: "600", color: "#FFFFFF" } },
+              ...(plan.period
+                ? [{ type: "Text", props: { content: plan.period },
+                     style: { fontSize: 10, color: "rgba(255,255,255,0.45)", marginTop: 1 } } as Node]
+                : []),
+            ],
+          } as Node]
+        : []),
+      // The arrow. It is what says a row goes somewhere rather than selects.
+      {
+        type: "Stack",
         style: {
-          backgroundColor: "#000000", color: THEME.color.primary,
-          textAlign: "center", fontSize: 46, lineHeight: 200,
+          width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center",
+          backgroundColor: plan.free ? "rgba(255,255,255,0.10)" : ACCENT_AMBER,
         },
+        children: [{
+          type: "SVG",
+          props: {
+            viewBox: "0 0 24 24", d: "M9 5 L16 12 L9 19", fill: "none",
+            stroke: plan.free ? "rgba(255,255,255,0.6)" : "#0B0B0D", strokeWidth: 2.6,
+          },
+          style: { width: 11, height: 11 },
+        }],
       },
-    },
-  }));
-
-  children.push(
-    text(cfg.title, "h1", {
-      style: { fontSize: 28, fontWeight: "800", color: THEME.color.text, textAlign: "center", lineHeight: 34 },
-    }),
-  );
-
-  if (cfg.subtitle) {
-    children.push(
-      spacer(10),
-      text(cfg.subtitle, "body", {
-        style: { fontSize: 15, color: THEME.color.body, textAlign: "center", lineHeight: 22 },
-      }),
-    );
-  }
-
-  if (cfg.features?.length) {
-    children.push(spacer(22));
-    children.push({
-      type: "Stack",
-      style: { paddingHorizontal: 8 },
-      children: cfg.features.map(featureRow),
-    });
-  }
-
-  children.push(spacer(20));
-  children.push({
-    type: "Stack",
-    style: { flexDirection: "row", gap: 10 },
-    children: cfg.plans.map(planCard),
-  });
-
-  children.push(spacer(22));
-  children.push({
-    type: "Button",
-    props: { label: cfg.cta, variant: "primary" },
-    style: { paddingVertical: 18 },
-    on: { onPress: "cta" },
-  });
-
-  if (cfg.footnote) {
-    children.push(
-      spacer(10),
-      text(cfg.footnote, "caption", {
-        style: { fontSize: 11, color: THEME.color.muted, textAlign: "center", lineHeight: 16 },
-      }),
-    );
-  }
-
-  children.push(spacer(14));
-  children.push({
-    type: "Stack",
-    style: { flexDirection: "row", justifyContent: "center", flexWrap: "wrap", gap: 16 },
-    children: [
-      cfg.restoreLabel
-        ? {
-            type: "Button",
-            props: { label: cfg.restoreLabel, variant: "ghost" },
-            style: { paddingVertical: 8, paddingHorizontal: 4 },
-            on: { onPress: "restore" },
-          }
-        : null,
-      cfg.terms
-        ? {
-            type: "Button",
-            props: { label: "Terms", variant: "ghost" },
-            style: { paddingVertical: 8, paddingHorizontal: 4 },
-            on: { onPress: "openTerms" },
-          }
-        : null,
-      cfg.privacy
-        ? {
-            type: "Button",
-            props: { label: "Privacy", variant: "ghost" },
-            style: { paddingVertical: 8, paddingHorizontal: 4 },
-            on: { onPress: "openPrivacy" },
-          }
-        : null,
-    ].filter(Boolean) as Node[],
-  });
-
-  const root: Node = {
-    type: "Screen",
-    style: {
-      backgroundColor: THEME.color.bg,
-      padding: 20,
-      paddingTop: 12,
-      paddingBottom: 32,
-    },
-    children: [
-      // Close row — visible only when dismissible.
-      ...(cfg.dismissible !== false
-        ? [
-            {
-              type: "Stack",
-              style: { flexDirection: "row", justifyContent: "flex-end", marginBottom: 6 },
-              children: [
-                {
-                  type: "Button",
-                  props: { label: cfg.dismissLabel ?? "Not now", variant: "ghost" },
-                  style: { paddingVertical: 8, paddingHorizontal: 12 },
-                  on: { onPress: "dismiss" },
-                } satisfies Node,
-              ],
-            } satisfies Node,
-          ]
-        : []),
-      ...children,
     ],
-  };
+  });
+
+  const tiny = (label: string, action: ActionRef): Node => ({
+    type: "Stack",
+    on: { onPress: action },
+    style: { paddingHorizontal: 7, paddingVertical: 4 },
+    children: [{ type: "Text", props: { content: label },
+      style: { fontSize: 9.5, color: "rgba(255,255,255,0.34)" } }],
+  });
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "paywall",
     title: "",
+    // Full bleed. The paywall owns the window — no header, no tabs.
+    hideChrome: true,
     state: { selectedPlanId: defaultPlan.id },
     actions,
-    root,
-    cacheTtlSeconds: 60,
+    root: {
+      type: "Stack",
+      style: { flex: 1, backgroundColor: "#000000" },
+      children: [
+        // The pitch. With the headline and the benefit list gone, the art is
+        // the whole argument — so it is not painted over until something has
+        // to be read.
+        ...screenHero("paywall", { behind: true, fit: "cover" }),
+        {
+          type: "Gradient",
+          props: {
+            colors: ["rgba(0,0,0,0)", "rgba(0,0,0,0.20)", "rgba(0,0,0,0.80)", "rgba(0,0,0,0.94)"],
+            locations: [0, 0.4, 0.72, 1],
+            direction: "vertical",
+          },
+          style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
+        },
+        ...(cfg.dismissible
+          ? [{
+              type: "Stack",
+              on: { onPress: "dismiss" },
+              style: {
+                position: "absolute", top: 56, right: 16, width: 32, height: 32,
+                borderRadius: 16, backgroundColor: "rgba(255,255,255,0.12)",
+                alignItems: "center", justifyContent: "center",
+              },
+              children: [{
+                type: "SVG",
+                props: { viewBox: "0 0 24 24", d: "M6 6 L18 18 M18 6 L6 18",
+                         fill: "none", stroke: "#FFFFFF", strokeWidth: 2.4 },
+                style: { width: 12, height: 12 },
+              }],
+            } as Node]
+          : []),
+        {
+          type: "Stack",
+          style: { flex: 1, justifyContent: "flex-end", paddingHorizontal: 16, paddingBottom: 24 },
+          children: [
+            // Not a headline — a label on what is being bought.
+            { type: "Text", props: { content: cfg.title ? "Tailzu Unlimited" : "" },
+              style: { fontSize: 9, letterSpacing: 3, textTransform: "uppercase",
+                       color: "rgba(255,255,255,0.5)", textAlign: "center", marginBottom: 14 } },
+            // PAID FIRST. The free row is the way out, and a way out listed
+            // above the offer reads as the recommendation.
+            ...[...cfg.plans].sort((a, b) => Number(!!a.free) - Number(!!b.free))
+              .map((plan) => planRow(
+                plan.free
+                  ? { ...plan, note: plan.note || `${freeMonthlyWords().toLocaleString()} words a month` }
+                  : plan,
+              )),
+            {
+              type: "Stack",
+              style: { flexDirection: "row", justifyContent: "center", marginTop: 8 },
+              children: [
+                tiny(cfg.restoreLabel ?? "Restore", "restore"),
+                tiny("Terms", "openTerms"),
+                tiny("Privacy", "openPrivacy"),
+              ],
+            },
+          ],
+        },
+      ],
+    },
+    cacheTtlSeconds: 300,
   };
 }
 
