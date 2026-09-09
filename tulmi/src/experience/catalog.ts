@@ -3900,6 +3900,28 @@ const YOU_UI = {
   },
   /** A section label on the black ground. */
   label: { size: 8.5, tracking: 2.2, marginTop: 22, marginBottom: 9 },
+  /**
+   * The way into Settings, on the deck.
+   *
+   * IT HAS TO BE HERE BECAUSE THE HEADER IS GONE. Settings has never been a
+   * tab; the app draws a gear in the header of whichever tab root is showing
+   * and pushes the screen from there. All three roots now hide that header to
+   * get their art to the top of the window — so the gear went with it, and the
+   * Settings screen became a screen nothing could reach.
+   *
+   * Drawn here rather than by restoring the header, because the full-bleed
+   * roots are the design and a bar above them is not. Three right-aligned
+   * lines, the same mark the header drew, so nothing has to be relearnt.
+   */
+  gear: {
+    size: 34,
+    inset: 16,
+    top: 58,
+    color: "rgba(255,255,255,0.62)",
+    background: "rgba(255,255,255,0.10)",
+    lineWidth: 15,
+    stroke: 1.8,
+  },
   /** The deck on the tab root. */
   deck: {
     cardWidth: 198,
@@ -4123,6 +4145,13 @@ function personalityScreen(): ScreenResponse {
         kind: "sequence",
         actions: [{ kind: "setState", path: "deck", value: "$event" }, route(0)],
       },
+      openSettings: {
+        kind: "sequence",
+        actions: [
+          { kind: "haptic", style: "selection" },
+          { kind: "navigate", screenId: "settings" },
+        ],
+      },
       // The button that fired this is gone from the tab by owner decision.
       // The ACTION stays defined on purpose.
       //
@@ -4195,6 +4224,36 @@ function personalityScreen(): ScreenResponse {
                 style: { fontSize: 15, fontWeight: "700", color: u.text } }],
             } as Node)),
           },
+        },
+
+        // THE WAY INTO SETTINGS. Last in the list, so it paints over the deck.
+        //
+        // See YOU_UI.gear: the app draws this in the header of a tab root, and
+        // all three roots now hide that header to get their art to the top of
+        // the window. Without this node the Settings screen is still built,
+        // still routable, and reachable from nowhere.
+        {
+          type: "Stack",
+          on: { onPress: "openSettings" },
+          props: { pressOpacity: 0.6 },
+          style: {
+            position: "absolute", top: u.gear.top, right: u.gear.inset,
+            width: u.gear.size, height: u.gear.size, borderRadius: u.gear.size / 2,
+            alignItems: "center", justifyContent: "center",
+            backgroundColor: u.gear.background,
+          },
+          children: [{
+            type: "SVG",
+            // Three right-aligned lines, shortest at the top — the same mark the
+            // header drew, at the same weight, so nothing has to be relearnt.
+            props: {
+              viewBox: "0 0 24 24",
+              d: "M12 7 H21 M7.5 12 H21 M3 17 H21",
+              fill: "none", stroke: u.gear.color, strokeWidth: 2.1,
+              strokeLinecap: "round",
+            },
+            style: { width: u.gear.lineWidth, height: u.gear.lineWidth },
+          }],
         },
       ],
     },

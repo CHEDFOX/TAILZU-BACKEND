@@ -371,6 +371,32 @@ describe("buildScreen", () => {
     expect(buildScreen("does-not-exist", { personality: {}, language: "en" })).toBeNull();
   });
 
+  it("Settings is reachable — the tab roots hide the header the gear lived in", () => {
+    // Settings has never been a tab. The app draws a gear in the header of
+    // whichever tab root is showing and pushes the screen from there — so a
+    // root that sets hideHeader takes the only way in with it, and the screen
+    // goes on building perfectly while being reachable from nowhere. Which is
+    // exactly what happened when all three roots went full bleed.
+    const ctx = { personality: {}, language: "en", onboarded: true } as never;
+    const roots = ["home", "stats", "personality"];
+    const headerless = roots.filter((id) => {
+      const s = buildScreen(id, ctx) as { hideHeader?: boolean; hideChrome?: boolean } | null;
+      return !!(s?.hideHeader || s?.hideChrome);
+    });
+    // Not an assertion about the design — full bleed is the design. It is the
+    // trigger for the one below.
+    if (headerless.length === roots.length) {
+      const reachable = roots.some((id) =>
+        JSON.stringify(buildScreen(id, ctx)).includes('"screenId":"settings"'));
+      expect(
+        reachable,
+        "every tab root hides the header, so at least one must draw its own way into Settings",
+      ).toBe(true);
+    }
+    // And the screen it points at has to exist.
+    expect(buildScreen("settings", ctx)).not.toBeNull();
+  });
+
   it("Home is the Training entry: the art, and the ways in", () => {
     const home = buildScreen("home", { personality: {}, language: "en" });
     expect(home).not.toBeNull();
