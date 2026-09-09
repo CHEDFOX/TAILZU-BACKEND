@@ -4421,8 +4421,6 @@ function personalityScreen(): ScreenResponse {
  */
 function voicesScreen(ctx: ScreenContext): ScreenResponse {
   const p = ctx.personality;
-  const gap = (h: number): Node => ({ type: "Spacer", style: { height: h } });
-
   const effective = applyPresetOverrides(p.presetOverrides);
   const pinned = Array.isArray(p.pinnedPresetIds) ? p.pinnedPresetIds : [];
   // The keyboard set, in pin order; ids whose preset was deleted are dropped.
@@ -4558,11 +4556,9 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
         { kind: "haptic", style: "selection" },
         { kind: "navigate", screenId: "tone_edit" },
       ] },
-      // Same, but the save also pins the new tone to the keyboard set.
-      addKbTone: { kind: "sequence", actions: [
-        { kind: "haptic", style: "selection" },
-        { kind: "navigate", screenId: "tone_edit", params: { pin: true } },
-      ] },
+      // addKbTone — "create it AND pin it" — went with the button that fired
+      // it. The tone_edit screen still honours params.pin, so restoring the
+      // shortcut is one node here and nothing on the client.
       // A voice was made active: confirm + re-render so the "Active" badge
       // moves. The keyboard picks it up on its next config fetch.
       activated: { kind: "sequence", actions: [
@@ -4612,24 +4608,11 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
           children: [
             ...keyboardSet,
             ...allSet,
-            gap(10),
-            // Creates a tone AND pins it in one save — it lands in All voices
-            // too. Kept as a full-width pill rather than folded into the ＋,
-            // because "new voice, and put it on the keyboard" is a different
-            // intent from "new voice".
-            {
-              type: "Stack",
-              on: { onPress: "addKbTone" },
-              props: { pressOpacity: 0.7 },
-              style: {
-                height: 46, borderRadius: YOU_UI.pill.radius,
-                borderWidth: 1, borderColor: YOU_UI.rule,
-                alignItems: "center", justifyContent: "center",
-              },
-              children: [{ type: "Text", props: { content: "NEW VOICE FOR THE KEYBOARD" },
-                style: { fontSize: 10.5, letterSpacing: 1.7, fontWeight: "700",
-                         color: YOU_UI.accent } }],
-            },
+            // NO SECOND ADD BUTTON. The ＋ on the header already makes a voice,
+            // and any row's Add puts one on the keyboard — so a full-width pill
+            // for "make one AND pin it" was a shortcut through two steps the
+            // user can already see, sitting at the bottom of a list it had
+            // nothing to do with.
           ],
         },
 
