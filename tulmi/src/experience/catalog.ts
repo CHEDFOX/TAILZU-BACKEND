@@ -140,6 +140,23 @@ const FILL_STYLE = {
   borderRadius: 0,
 };
 
+/**
+ * State key a delayed hero clip is bound to.
+ *
+ * NO SCREEN HAS TO DECLARE IT. The node carries `playing: false` as a literal
+ * and binds this key on top; an unset key resolves to undefined and the
+ * renderer keeps the literal, so the clip holds its still. The delay's setState
+ * then writes true and the bind takes over.
+ *
+ * The first version of this did require every hosting screen to seed the key,
+ * because a bind used to overwrite the literal with undefined — so forgetting
+ * it in one screen produced a video with `playing: undefined`, falling through
+ * to `autoplay: false`, which is a clip that never starts and says nothing
+ * about why. Which screens host a hero is decided by an UPLOAD, so that list
+ * could never be got right from here anyway.
+ */
+const HERO_PLAY_KEY = "_heroPlaying";
+
 function screenHero(
   screenId: string,
   opts: {
@@ -285,11 +302,25 @@ function screenHero(
   // a shape the call site chose, and there is no window to leave over.
   const fitsAxis =
     opts.behind === true && artAspect > 0 && (fillMode === "width" || fillMode === "height");
+  /**
+   * ZOOM. 1 means the art reaches the edges of its axis; less pulls it back,
+   * keeping the shape and the pinned edge.
+   *
+   * As a percentage rather than points, because the inset has to stay the same
+   * fraction of every screen — a fixed number of points is a wide margin on a
+   * mini and a narrow one on a Pro Max, which is the same mistake as a fixed
+   * box under `cover`.
+   */
+  const zoom = Math.min(1, Math.max(0.05, Number(entry.present?.scale ?? 1)));
+  const inset = `${Math.round(((1 - zoom) / 2) * 1e4) / 1e2}%`;
   const axisBox: Record<string, unknown> = !fitsAxis
     ? {}
     : fillMode === "width"
       ? {
-          left: bleedX, right: bleedX, aspectRatio: artAspect,
+          // The bleed cancels the parent's padding at full size; below it the
+          // art is deliberately inset, so a percentage replaces both.
+          ...(zoom < 1 ? { left: inset, right: inset } : { left: bleedX, right: bleedX }),
+          aspectRatio: artAspect,
           // ONE EDGE ONLY. Naming both would give Yoga a height as well as a
           // shape, and then the shape — which is the whole point — is the
           // constraint it drops. So there is no "center" on this axis: a box
@@ -342,18 +373,25 @@ function screenHero(
   // is the difference between a hairline of ground and a hairline cropped off
   // the very thing the mode exists to protect.
   const fit = fitsAxis ? "contain" : (entry.present?.fit ?? opts.fit ?? "cover");
-  // NO startDelayMs. It was here, and it hid the clip entirely.
-  //
-  // The idea was to hold the first frame and start the video afterwards, via
-  // the Video node's bindable `playing`. But MediaPlayer resolves
-  // `shouldPlay = playing ?? autoplay`, and a paused expo-video player that
-  // has never played renders NOTHING — there is no poster frame, so the screen
-  // showed its text over black for a second and a half and the clip only
-  // existed once it started.
-  //
-  // A lead-in belongs in the file: 1.5 seconds of the opening frame at the
-  // head of the mp4 costs nothing and works on every client, including the
-  // ones already shipped.
+  /**
+   * ARRIVE ON A STILL, THEN MOVE.
+   *
+   * Held out of this file for a while, and the reason is worth keeping: a
+   * paused expo-video player that has never played renders NOTHING. There is
+   * no poster frame, so a clip told to wait a second and a half showed a second
+   * and a half of black — indistinguishable from a missing file, which is
+   * exactly how it was reported.
+   *
+   * The client now primes the surface: on the first pause it plays, stops on
+   * the next tick and rewinds, so one frame is decoded and held. That makes
+   * `playing: false` mean "showing the still" instead of "showing nothing",
+   * which is what this always assumed and never got.
+   *
+   * Still off by default, and still nothing native — the wait is a delay and a
+   * setState on the clip's own onAppear, running independently of whatever the
+   * screen is doing, which must not be held up by it.
+   */
+  const startDelay = Math.max(0, Number(entry.present?.startDelayMs ?? 0));
   const loops = entry.present?.loop ?? true;
   /**
    * Placement facts, forwarded untouched. The client measures the box it is
@@ -375,8 +413,16 @@ function screenHero(
           source: mediaSrc(key),
           // A hero is ambient: it plays itself, in silence. Muted is not
           // politeness — an unmuted autoplay is blocked outright.
-          autoplay: true, loop: loops, muted: true, contentFit: fit, ...place,
+          autoplay: !startDelay, loop: loops, muted: true, contentFit: fit, ...place,
+          ...(startDelay ? { playing: false } : {}),
         },
+        ...(startDelay ? { bind: { playing: HERO_PLAY_KEY } } : {}),
+        ...(startDelay ? {
+          on: { onAppear: { kind: "sequence", actions: [
+            { kind: "delay", ms: startDelay },
+            { kind: "setState", path: HERO_PLAY_KEY, value: true },
+          ] } },
+        } : {}),
         style: FILL_STYLE,
         // A bundle without Video draws nothing at all; the still frame is a
         // worse hero than the video and a far better one than a hole.
@@ -3681,7 +3727,10 @@ function trainingLiveScreen(): ScreenResponse {
     state: {
       sessionState: "idle",
       level: 0,
-      line: "",
+      // NOT seeded. The line below carries the hint as its literal content and
+      // binds `line` over it, so leaving this unset is what makes the hint the
+      // opening state — seeded as "", the bind won with an empty string and the
+      // hint never appeared at all.
       turns: [],
       saving: false,
       saved: false,

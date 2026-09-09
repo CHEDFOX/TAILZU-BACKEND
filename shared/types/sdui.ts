@@ -198,6 +198,33 @@ export interface MediaPresent {
    * behind it. That is a real condition, not a detail: this is right for art
    * grounded in the screen's colour and wrong for art that ends in a hard edge.
    */
+  /**
+   * HOLD THE FIRST FRAME FOR THIS LONG, THEN PLAY.
+   *
+   * So a screen can open on a photograph rather than opening mid-motion. The
+   * Video node's `playing` is bindable, so the wait is a delay and a setState
+   * — nothing native.
+   *
+   * This shipped once and had to be pulled, because expo-video has no poster:
+   * a player created and then paused has decoded no frames, so a clip told to
+   * wait a second and a half showed a second and a half of BLACK, which is
+   * indistinguishable from a missing file. The client now primes the surface —
+   * play, then stop on the next tick and rewind — so a paused clip holds a real
+   * frame. Do not restore this against an app build older than that fix.
+   */
+  startDelayMs?: number;
+  /**
+   * How much of the box the art is drawn at, 0.05–1, with `fill`.
+   *
+   * `fill: "width"` makes the art exactly as wide as the screen, which is the
+   * right answer for art that is meant to reach the edges and the wrong one for
+   * art that needs room around it. This shrinks the box, keeping its shape and
+   * its pinned edge, so the subject can be pulled back off the sides without
+   * re-exporting anything.
+   *
+   * What is left over is the screen's own ground, so this is invisible on art
+   * matted in the same colour and a visible inset on art that is not.
+   */
   fill?: "window" | "width" | "height";
   /**
    * Which edge the box is held against when `fill` leaves a remainder.

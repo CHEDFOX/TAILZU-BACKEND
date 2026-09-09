@@ -82,6 +82,9 @@ function cleanPresent(raw: unknown): MediaPresent | null {
   // Needs `aspect`; without the art's shape there is no box to derive.
   if (r.fill === "window" || r.fill === "width" || r.fill === "height") out.fill = r.fill;
   if (r.pin === "top" || r.pin === "bottom" || r.pin === "center") out.pin = r.pin;
+  // Hold the first frame this long, then play. Capped low: a screen frozen on
+  // a still the user cannot get past is worse than one that opens mid-motion.
+  const sd = num(r.startDelayMs, 0, 8000); if (sd !== undefined) out.startDelayMs = sd;
   if (typeof r.background === "string" && /^#[0-9a-f]{3,8}$/i.test(r.background.trim())) {
     out.background = r.background.trim();
   }
@@ -454,7 +457,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
     if (!present) {
       return reply.code(400).send({
         code: "bad_request",
-        message: "Nothing usable. Fields: shape (full|plate|card), fit (cover|contain), radius, inset, size, aspectRatio, background (#hex), holdMs, loop, nudgeX, nudgeY (percent of the window, +/-50), scale (0.05-1), boxWidth, boxHeight (points), aspect (art width/height), focusX, focusY, anchorX, anchorY (0-1), fill (window|width|height), pin (top|bottom|center).",
+        message: "Nothing usable. Fields: shape (full|plate|card), fit (cover|contain), radius, inset, size, aspectRatio, background (#hex), holdMs, loop, nudgeX, nudgeY (percent of the window, +/-50), scale (0.05-1), boxWidth, boxHeight (points), aspect (art width/height), focusX, focusY, anchorX, anchorY (0-1), startDelayMs (0-8000), fill (window|width|height), pin (top|bottom|center).",
       });
     }
     // Merge, so setting one field does not silently drop the rest.
