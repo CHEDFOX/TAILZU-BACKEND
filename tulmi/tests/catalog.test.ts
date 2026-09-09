@@ -473,10 +473,25 @@ describe("buildScreen", () => {
     expect(json).toContain('"turns":"$state.turns"');
     // A conversation is never served from cache.
     expect(live!.cacheTtlSeconds).toBe(0);
-    // Status words compare against state with the tuple form evalCondition
-    // actually implements — the object form silently evaluates to false, which
-    // would hide every one of them and leave the screen with no caption.
-    expect(json).toContain('"eq":["sessionState","listening"]');
+
+    // THE SCREEN IS THE ORB AND A WAY OUT. No status word, no transcript line,
+    // no End button — a conversation is something you have, not something you
+    // read, and each of those was the screen talking over the user.
+    const texts: string[] = [];
+    const walk = (n: any): void => {
+      if (typeof n?.props?.content === "string" && n.props.content.trim()) texts.push(n.props.content);
+      for (const c of n?.children ?? []) walk(c);
+    };
+    walk(live!.root);
+    expect(texts, `nothing may be written on this screen, found: ${texts.join(" | ")}`).toEqual([]);
+
+    // LEAVING IS SAVING, and exactly once. The arrow marks a flag before it
+    // posts; onDisappear posts only when that flag is unset, which is the case
+    // when someone swipes back instead. Lose either half and the conversation
+    // is read twice or not at all — and "not at all" is silent.
+    expect(live!.root.on?.onDisappear).toBe("saveIfUnhandled");
+    expect(JSON.stringify(live!.actions?.saveIfUnhandled)).toContain('"falsy":"leaving"');
+    expect(JSON.stringify(live!.actions?.finish)).toContain('"path":"leaving"');
   });
 
   it("Training chat is the refine surface: variants + pick endpoints, tone sheet trains a tone", () => {

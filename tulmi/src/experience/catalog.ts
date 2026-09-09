@@ -3161,6 +3161,18 @@ export const TRAINING_UI = {
       orbShimmer: 0.28,
       /** How hard the rim brightens at full volume. Higher clips to white. */
       orbRim: 0.75,
+      /**
+       * How far off the bottom the orb sits. The screen is the orb and nothing
+       * else, so this is the only layout number on it.
+       */
+      orbBottom: 120,
+      /** The way out, top left. Rounded tips — a chevron cut square reads as
+       *  cropped rather than drawn. */
+      backSize: 38,
+      backTop: 56,
+      backInset: 14,
+      backColor: "rgba(255,255,255,0.72)",
+      backBackground: "rgba(255,255,255,0.08)",
       /** A pause this long, with something said, ends your turn. */
       silenceMs: 1500,
     },
@@ -3803,18 +3815,6 @@ function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
 function trainingLiveScreen(): ScreenResponse {
   const ui = TRAINING_UI.chat.live;
 
-  /** The status word, one node per state. Cheaper than a bound lookup table
-   *  and it keeps every string in TRAINING_UI where the rest of them are. */
-  const status = (key: keyof typeof ui.status): Node => ({
-    type: "Text",
-    props: { content: ui.status[key] },
-    visibleIf: { eq: ["sessionState", key] },
-    style: {
-      fontSize: 11, letterSpacing: 2, textTransform: "uppercase",
-      color: key === "error" ? "$color.danger" : "$color.muted",
-    },
-  });
-
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "training_live",
@@ -3829,14 +3829,27 @@ function trainingLiveScreen(): ScreenResponse {
       turns: [],
       saving: false,
       saved: false,
+      /** Set by the back arrow, so onDisappear does not post a second time. */
+      leaving: false,
     },
     actions: {
       sessionErr: { kind: "toast", message: "$event", tone: "error" },
       // The conversation is read ONCE, here, on the way out. Per-turn updates
       // would let a single throwaway line move the portrait as far as the
       // pattern does.
+      /**
+       * LEAVING IS SAVING. There is no End button any more — the screen is the
+       * orb and nothing else — so the way out has to carry the save.
+       *
+       * `leaving` is the guard. The back arrow runs this, which marks the flag
+       * before it posts; the root's onDisappear runs the same post ONLY if the
+       * flag is unset, which is the case when someone swipes back or is taken
+       * off the screen some other way. So the conversation is read exactly
+       * once however it ends, and never twice.
+       */
       finish: { kind: "sequence", actions: [
         { kind: "haptic", style: "success" },
+        { kind: "setState", path: "leaving", value: true },
         { kind: "setState", path: "saving", value: true },
         {
           kind: "callEndpoint",
@@ -3847,6 +3860,18 @@ function trainingLiveScreen(): ScreenResponse {
           onError: "saveErr",
         },
       ] },
+      /** The other way out. Fires on unmount, and does nothing if the arrow
+       *  already handled it. */
+      saveIfUnhandled: {
+        kind: "condition",
+        if: { falsy: "leaving" },
+        then: {
+          kind: "callEndpoint",
+          method: "POST",
+          path: "/v1/train/portrait",
+          body: { turns: "$state.turns" },
+        },
+      },
       saved: { kind: "sequence", actions: [
         { kind: "setState", path: "saving", value: false },
         { kind: "setState", path: "saved", value: true },
@@ -3861,9 +3886,15 @@ function trainingLiveScreen(): ScreenResponse {
         { kind: "navigate", screenId: "home" },
       ] },
     },
+    // The header carried the screen's name, and the name was a second copy of
+    // the words on the button that opened it. Gone, so the way out is drawn
+    // here instead — see the arrow below.
+    hideHeader: true,
     root: {
-      type: "Screen",
-      style: { paddingHorizontal: 24, paddingTop: 16, alignItems: "center" },
+      type: "Stack",
+      // The save happens here for anyone who leaves without using the arrow.
+      on: { onDisappear: "saveIfUnhandled" },
+      style: { flex: 1, backgroundColor: "#000000", justifyContent: "flex-end", alignItems: "center" },
       children: [
         // Draws nothing. Mounting it starts the conversation; leaving the
         // screen unmounts it, which is what stops the mic.
@@ -3879,23 +3910,15 @@ function trainingLiveScreen(): ScreenResponse {
           },
           on: { onError: "sessionErr" },
         },
-        status("idle"), status("listening"), status("thinking"),
-        status("speaking"), status("error"),
-        { type: "Spacer", style: { height: 18 } },
+
+        // THE ONLY THING ON THE SCREEN.
+        //
+        // No status word, no transcript line, no button. A conversation is
+        // something you have, not something you read, and every one of those
+        // was the screen explaining itself while the user was mid-sentence.
+        // What the orb is doing says which state it is in, which is the whole
+        // reason it moves.
         {
-          // THE ORB IS A SHADER NOW, not a stack of blurred paths.
-          //
-          // VoiceBubble built an outline from a sum of sines and drew five
-          // blurred lobes inside it. That is a soft blob; this is an object
-          // with light on it — bands of drifting noise on a lambert-shaded
-          // sphere, with a rim that brightens when the voice does. One
-          // fragment program on the GPU, so the whole thing costs the JS
-          // thread a clock and a level.
-          //
-          // It also cannot repeat the bug the old one had. VoiceBubble's halo
-          // was drawn past the edge of its own canvas and Skia clipped it, so
-          // the orb arrived as a visible rectangle; this fades to nothing well
-          // inside its bounds by construction.
           type: "AuroraOrb",
           bind: { level: "level", state: "sessionState" },
           props: {
@@ -3920,25 +3943,31 @@ function trainingLiveScreen(): ScreenResponse {
               style: { width: ui.bubble * 0.62, height: ui.bubble * 0.42 },
             },
           },
-          style: { marginBottom: 20 },
+          style: { marginBottom: ui.orbBottom },
         },
-        // The last thing said, whoever said it. One line, so the screen stays
-        // something you listen to rather than something you read.
-        { type: "Text", bind: { content: "line" }, props: { content: ui.hint },
-          style: {
-            fontSize: 14, lineHeight: 21, color: "$color.text",
-            textAlign: "center", minHeight: 42, marginBottom: 24,
-          } },
+
+        // THE WAY OUT, and the only control left. Last in the list so it paints
+        // over everything, and absolute so the orb's own placement ignores it.
         {
-          type: "Button",
-          props: { label: ui.end, variant: "primary" },
-          visibleIf: { falsy: "saving" },
-          style: { width: "100%" },
+          type: "Stack",
           on: { onPress: "finish" },
+          props: { pressOpacity: 0.6 },
+          style: {
+            position: "absolute", top: ui.backTop, left: ui.backInset,
+            width: ui.backSize, height: ui.backSize, borderRadius: ui.backSize / 2,
+            alignItems: "center", justifyContent: "center",
+            backgroundColor: ui.backBackground,
+          },
+          children: [{
+            type: "SVG",
+            props: {
+              viewBox: "0 0 24 24", d: "M14.5 5 L8 12 L14.5 19",
+              fill: "none", stroke: ui.backColor, strokeWidth: 2.2,
+              strokeLinecap: "round", strokeLinejoin: "round",
+            },
+            style: { width: 16, height: 16 },
+          }],
         },
-        { type: "Text", props: { content: ui.saving },
-          visibleIf: { truthy: "saving" },
-          style: { fontSize: 13, color: "$color.muted", textAlign: "center", paddingVertical: 14 } },
       ],
     },
     // Never cached: this screen's whole content is the conversation it is
