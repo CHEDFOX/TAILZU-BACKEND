@@ -1501,6 +1501,22 @@ interface Presented {
   fit: "cover" | "contain";
   holdMs: number | null;
   /**
+   * The placement facts, forwarded to the media node as props.
+   *
+   * A NUDGE IS A PERCENTAGE OF THE WINDOW, and that is its limit. When the box
+   * is fixed in points — which is the whole point of boxWidth, so the film's
+   * mark can match a launch icon that cannot scale — the correction needed is
+   * also a fixed number of points, and a percentage of a screen that changes
+   * size cannot be that on more than one device. Right on a Pro Max, two
+   * points out on an SE.
+   *
+   * These are the same two facts screenHero forwards: where the subject sits
+   * in the art, and where it should land in the box. The client measures the
+   * box it is actually drawing into and does the arithmetic there, so the
+   * answer is exact on every device rather than on the one it was tuned for.
+   */
+  place: Record<string, number>;
+  /**
    * What the media is matted on — so the SCREEN can be matted on it too.
    *
    * Art is rarely graded to pure black. This one is rgb(8,8,9), and on an OLED
@@ -1519,6 +1535,16 @@ interface Presented {
 
 function presentMedia(entry: MediaEntry | undefined): Presented {
   const p: MediaPresent = entry?.present ?? {};
+  // Forwarded untouched, and only when the upload declared them. `aspect` is
+  // the switch: without the art's shape the client has nothing to compute and
+  // keeps the centred `cover` it has always done.
+  const place: Record<string, number> = {
+    ...(p.aspect !== undefined ? { aspect: p.aspect } : {}),
+    ...(p.focusX !== undefined ? { focusX: p.focusX } : {}),
+    ...(p.focusY !== undefined ? { focusY: p.focusY } : {}),
+    ...(p.anchorX !== undefined ? { anchorX: p.anchorX } : {}),
+    ...(p.anchorY !== undefined ? { anchorY: p.anchorY } : {}),
+  };
   const envShape = (process.env.INTRO_SHAPE ?? "").trim().toLowerCase();
   const shape = p.shape
     ?? (envShape === "plate" || envShape === "card" || envShape === "full" ? envShape : "full");
@@ -1533,6 +1559,7 @@ function presentMedia(entry: MediaEntry | undefined): Presented {
       fit,
       holdMs: p.holdMs ?? null,
       background: p.background ?? "#FFFFFF",
+      place,
       style: {
         width: d, height: d, borderRadius: d / 2,
         backgroundColor: p.background ?? "#FFFFFF",
@@ -1545,6 +1572,7 @@ function presentMedia(entry: MediaEntry | undefined): Presented {
       fit,
       holdMs: p.holdMs ?? null,
       background: bg,
+      place,
       style: {
         width: "100%",
         ...(p.size ? { maxWidth: p.size } : {}),
@@ -1609,6 +1637,7 @@ function presentMedia(entry: MediaEntry | undefined): Presented {
     fit,
     holdMs: p.holdMs ?? null,
     background: bg,
+    place,
     style: {
       position: "absolute" as const,
       ...(nudged
@@ -1922,6 +1951,10 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           props: {
             source: introSource,
             autoplay: true, loop: false, muted: true, contentFit: shown.fit,
+            // Where the mark is in the film, and where it must land in the box.
+            // Without these the box is centred and the mark is wherever the art
+            // put it — which is what the launch screen never agrees with.
+            ...shown.place,
           },
           on: { onComplete: "done" },
         } as Node] : []),
@@ -1965,7 +1998,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           children: [{
             type: "Image",
             style: FILL_STYLE,
-            props: { source: introSource, contentFit: shown.fit },
+            props: { source: introSource, contentFit: shown.fit, ...shown.place },
           } as Node],
           fallback: {
             type: "Stack",
@@ -1973,7 +2006,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
             children: [{
               type: "Image",
               style: FILL_STYLE,
-              props: { source: introSource, contentFit: shown.fit },
+              props: { source: introSource, contentFit: shown.fit, ...shown.place },
             }],
           },
         } as Node] : []),
@@ -2001,6 +2034,36 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
 //
 // Everything below the plans is optional — the CTA is the only required
 // element. Set `dismissible: false` for a hard paywall (no "×"/close).
+
+/**
+ * The paywall's LAYOUT, apart from its content.
+ *
+ * PAYWALL_CONFIG says what is sold; this says where it sits on the art. They
+ * are separate because they change for different reasons — a price changes
+ * with the business, the composition changes with whatever was uploaded last.
+ */
+export const PAYWALL_UI = {
+  /**
+   * Which end of the screen the plan rows sit at.
+   *
+   * "bottom" is the poster reading: art above, offer beneath, the shape of
+   * every app-store screenshot. "top" is for art whose subject is in the
+   * lower half and would be covered by rows sitting on it — which is a
+   * property of the upload, not of the paywall, so it is a value here and not
+   * a rewrite.
+   *
+   * The scrim follows automatically. It has to: rows are only legible over an
+   * unknown image because something darkens the end they sit at.
+   */
+  plansAt: "top" as "top" | "bottom",
+  /** Clear of the status bar and the ✕ when the plans are at the top. */
+  paddingTop: 104,
+  paddingBottom: 24,
+  paddingHorizontal: 16,
+  /** Transparent where the art shows, opaque where the rows are. */
+  scrim: ["rgba(0,0,0,0)", "rgba(0,0,0,0.20)", "rgba(0,0,0,0.80)", "rgba(0,0,0,0.94)"],
+  scrimStops: [0, 0.4, 0.72, 1],
+};
 
 export const PAYWALL_CONFIG: PaywallConfig = {
   // Empty on purpose: with no frames the paywall renders BinaryReveal — the
@@ -2107,6 +2170,19 @@ export const PAYWALL_CONFIG: PaywallConfig = {
  */
 function paywallScreen(): ScreenResponse {
   const cfg = PAYWALL_CONFIG;
+  const pw = PAYWALL_UI;
+  /**
+   * WHICH END OF THE SCREEN THE PLANS SIT AT, and therefore which end the
+   * scrim darkens. The two cannot be set separately: a scrim that falls away
+   * at the bottom under rows pinned to the top is rows on bare art, and the
+   * pairing is the only thing keeping them readable over an upload nobody has
+   * seen yet.
+   */
+  const atTop = pw.plansAt === "top";
+  const scrimStops = atTop ? [...pw.scrim].reverse() : pw.scrim;
+  const scrimAt = atTop
+    ? [...pw.scrimStops].reverse().map((s) => 1 - s)
+    : pw.scrimStops;
   // The cards that can actually be bought. A `free` plan is a card and nothing
   // else: no purchase action is built for it, the CTA chain never dispatches to
   // it, and it can never become the fallback — a CTA aimed at a plan with no
@@ -2310,11 +2386,7 @@ function paywallScreen(): ScreenResponse {
         }),
         {
           type: "Gradient",
-          props: {
-            colors: ["rgba(0,0,0,0)", "rgba(0,0,0,0.20)", "rgba(0,0,0,0.80)", "rgba(0,0,0,0.94)"],
-            locations: [0, 0.4, 0.72, 1],
-            direction: "vertical",
-          },
+          props: { colors: scrimStops, locations: scrimAt, direction: "vertical" },
           style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
         },
         ...(cfg.dismissible
@@ -2336,7 +2408,13 @@ function paywallScreen(): ScreenResponse {
           : []),
         {
           type: "Stack",
-          style: { flex: 1, justifyContent: "flex-end", paddingHorizontal: 16, paddingBottom: 24 },
+          style: {
+            flex: 1,
+            justifyContent: atTop ? "flex-start" : "flex-end",
+            paddingHorizontal: pw.paddingHorizontal,
+            paddingTop: atTop ? pw.paddingTop : 0,
+            paddingBottom: atTop ? 0 : pw.paddingBottom,
+          },
           children: [
             // Not a headline — a label on what is being bought.
             { type: "Text", props: { content: cfg.title ? "Tailzu Unlimited" : "" },
