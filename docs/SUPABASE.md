@@ -44,6 +44,43 @@ Dashboard → **Authentication → Providers → Email**:
 (Google / Apple are deferred — they need per-app OAuth credentials. The app
 shows them as "coming soon" until then.)
 
+### 3a. Send a CODE, not a magic link — both templates
+
+The app signs in with `signInWithOtp` and shows six code boxes. Whether the
+user actually receives six digits is decided entirely by an email template, and
+**GoTrue picks which template by account state**:
+
+| The address is | Template used |
+| --- | --- |
+| new to the project | **Confirm signup** |
+| already a user | **Magic Link** |
+
+Both ship with `{{ .ConfirmationURL }}` in them, which mails a *link*. Fixing
+only one is why codes look random — a new tester gets a code, and the same
+person signing in again gets a link.
+
+Dashboard → **Authentication → Email Templates**. Edit **both** so the body
+carries the token instead of the URL:
+
+```html
+<h2>Your Tailzu code</h2>
+<p style="font-size:28px;letter-spacing:6px"><strong>{{ .Token }}</strong></p>
+<p>It expires in an hour. If you didn't ask for it, ignore this email.</p>
+```
+
+Check it end to end with an address that has **never** signed in (Confirm
+signup) and then again with one that has (Magic Link). Testing only one proves
+nothing about the other.
+
+While you are there, **Authentication → Providers → Email → Email OTP Expiration**
+should be an hour or less; the default of 24 hours is a long time for a code
+sitting in an inbox.
+
+If a link goes out anyway, the app now redeems it instead of dead-ending
+(`app/src/deeplinks/router.ts`). That is a safety net, not the fix — a user who
+has to leave the app and come back has still had a worse time than one who read
+six digits off a notification.
+
 ## 4. Keys
 
 Dashboard → **Project Settings → API**:
