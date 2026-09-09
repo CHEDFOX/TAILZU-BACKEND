@@ -2381,19 +2381,27 @@ function paywallScreen(): ScreenResponse {
   const planRow = (plan: PaywallPlan): Node => ({
     type: "Stack",
     on: { onPress: plan.free ? "dismiss" : `buy.${plan.id}` },
-    props: { pressOpacity: 0.82 },
+    props: {
+      pressOpacity: 0.82,
+      // NO BORDER UNTIL A FINGER IS ON IT.
+      //
+      // Every row here is selectable, so a border on all of them says nothing
+      // about which one is being chosen — it is just the loudest thing a row
+      // can wear, worn by everything. Drawn on press, it says exactly that and
+      // nothing the rest of the time.
+      pressBorderColor: plan.free ? "rgba(255,255,255,0.28)" : ACCENT_AMBER,
+      pressBorderWidth: 1,
+    },
     style: {
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
       borderRadius: 16,
-      borderWidth: 1,
       paddingVertical: 13,
       paddingHorizontal: 15,
       marginBottom: 8,
-      // The paid rows are the way through, so they carry the brand. The free
-      // one is a way out and stays quiet.
-      borderColor: plan.free ? "rgba(255,255,255,0.12)" : ACCENT_AMBER,
+      // The paid rows are the way through, so they carry the brand — now in
+      // the fill alone, which is quieter and still unmistakable.
       backgroundColor: plan.free ? "rgba(255,255,255,0.05)" : "rgba(232,162,60,0.12)",
     },
     children: [
