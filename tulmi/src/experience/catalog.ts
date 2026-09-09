@@ -2937,7 +2937,15 @@ export const TRAINING_UI = {
     kicker: "IT LEARNS YOU",
     kickerSize: 9.5,
     kickerTracking: 3,
-    kickerColor: "rgba(255,255,255,0.55)",
+    /**
+     * BRIGHT WHITE, and it is the title that carries the brand instead.
+     *
+     * The usual arrangement — a dimmed kicker over a white headline — makes the
+     * small line a caption on the big one. Swapping them makes the two lines a
+     * pair: white states the claim, amber answers it, and the eye lands on the
+     * amber because it is the only colour on the screen that is not the art.
+     */
+    kickerColor: "#FFFFFF",
     kickerGap: 16,
 
     /**
@@ -2951,7 +2959,13 @@ export const TRAINING_UI = {
     title: "Just talk.",
     titleSize: 32,
     titleLineHeight: 38,
-    titleColor: "#FFFFFF",
+    /**
+     * The brand amber, and NOT THEME.color.primary — primary is WHITE on this
+     * black surface by design, so reaching for "the brand colour" through the
+     * theme gets white and the change looks like it did nothing. The same trap
+     * caught the Languages heading and the Stats tick.
+     */
+    titleColor: ACCENT_AMBER,
     /**
      * LIGHT SANS, NOT THE APP SERIF.
      *
