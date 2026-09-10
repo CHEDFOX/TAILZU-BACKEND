@@ -39,11 +39,32 @@ import { bumpCacheVersion } from "../experience/catalog.js";
  * are clamped to a sane range, and the background has to look like a colour.
  * An admin secret is not a licence to post arbitrary style into every install.
  */
-function cleanPresent(raw: unknown): MediaPresent | null {
+export function cleanPresent(raw: unknown): MediaPresent | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const r = raw as Record<string, unknown>;
   const out: MediaPresent = {};
+  /**
+   * A number, or nothing — and NOTHING IS NOT ZERO.
+   *
+   * This used to be `Number(v)` and a finite check, which quietly accepted
+   * every value JavaScript is willing to turn into 0: null, "", false, []. So
+   * a caller trying to clear a field by sending null did not clear it. The
+   * value became 0, 0 was clamped up to the field's floor, and the field came
+   * back set to its minimum — the opposite of what was asked, with a 200 and
+   * a body that looked like it had worked.
+   *
+   * Found by sending {"boxHeight": null} and getting boxHeight 40, which put
+   * a 9:16 film in a forty-point-tall box.
+   *
+   * Only a real number, or a string that is entirely one, counts. Anything
+   * else is "not provided" and leaves the stored value alone — clearing is
+   * what ?reset=true is for.
+   */
   const num = (v: unknown, lo: number, hi: number): number | undefined => {
+    if (typeof v === "number") {
+      return Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : undefined;
+    }
+    if (typeof v !== "string" || v.trim() === "") return undefined;
     const n = Number(v);
     return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : undefined;
   };
