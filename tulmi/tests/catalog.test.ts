@@ -150,6 +150,36 @@ describe("the paywall shows the free tier without selling it", () => {
     }
   });
 
+  it("discloses auto-renewal on the screen where the purchase happens", () => {
+    // Both stores require this sentence to be where the money is taken. It
+    // was written into PAYWALL_CONFIG and nothing rendered it, so the rows
+    // carried the price and the period and nothing said it renews by itself.
+    const s = buildScreen("paywall", { personality: {}, language: "en" } as never);
+    const shown = JSON.stringify(s);
+    expect(shown).toMatch(/auto-?renew/i);
+    expect(shown).toMatch(/cancel/i);
+    // And the three controls a store checks for are still on it.
+    for (const label of ["Restore purchases", "Terms", "Privacy"]) {
+      expect(shown).toContain(label);
+    }
+  });
+
+  it("puts the disclosure above the small print, not among it", () => {
+    // It is a condition of the rows just above it, not chrome at the foot of
+    // the screen — and a store reviewer reads it as belonging to the offer.
+    const s: any = buildScreen("paywall", { personality: {}, language: "en" } as never);
+    const texts: string[] = [];
+    const walk = (n: any): void => {
+      if (typeof n?.props?.content === "string") texts.push(n.props.content);
+      for (const c of n?.children ?? []) walk(c);
+    };
+    walk(s.root);
+    const foot = texts.findIndex((t) => /auto-?renew/i.test(t));
+    const restore = texts.findIndex((t) => /restore/i.test(t));
+    expect(foot).toBeGreaterThanOrEqual(0);
+    expect(foot).toBeLessThan(restore);
+  });
+
   it("quotes the allowance the SERVER enforces, not a literal", () => {
     // This drifted once: the catalog re-read the env with its own default of
     // 2500 while config defaults to 800, so the app promised 2,500 words and

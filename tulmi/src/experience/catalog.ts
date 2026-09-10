@@ -2692,6 +2692,15 @@ export const PAYWALL_UI = {
   /** Transparent where the art shows, opaque where the rows are. */
   scrim: ["rgba(0,0,0,0)", "rgba(0,0,0,0.20)", "rgba(0,0,0,0.80)", "rgba(0,0,0,0.94)"],
   scrimStops: [0, 0.4, 0.72, 1],
+  /**
+   * The auto-renewal line under the rows.
+   *
+   * Quiet, but not decorative — both stores require this sentence to be on the
+   * screen where the purchase happens, so it has to be legible over whatever
+   * art someone uploads, which is the scrim's job above and this colour's job
+   * here. Do not take it below the muted step.
+   */
+  footnoteColor: "rgba(255,255,255,0.55)",
 };
 
 export const PAYWALL_CONFIG: PaywallConfig = {
@@ -2768,6 +2777,14 @@ export const PAYWALL_CONFIG: PaywallConfig = {
       note: "Billed monthly, cancel anytime",
     },
   ],
+  /**
+   * NOT DRAWN, and required by the type rather than by the screen.
+   *
+   * This paywall has no confirm button: tapping a plan row IS the purchase,
+   * which is why each row carries its own commitment line. A single CTA under
+   * the rows would also have had to lie on one of them — "Start free trial"
+   * is true of the annual plan and false of the monthly one.
+   */
   cta: "Start free trial",
   restoreLabel: "Restore purchases",
   footnote:
@@ -3065,6 +3082,27 @@ function paywallScreen(): ScreenResponse {
                   ? { ...plan, note: plan.note || `${freeMonthlyWords().toLocaleString()} words a month` }
                   : plan,
               )),
+            // THE AUTO-RENEWAL DISCLOSURE, which was written and never drawn.
+            //
+            // It sat in PAYWALL_CONFIG.footnote and nothing rendered it, so
+            // the screen where the purchase happens never said the thing both
+            // stores require it to say: that this renews by itself until it is
+            // cancelled. The rows carry the price and the period; this is the
+            // sentence that turns those into terms.
+            //
+            // It goes ABOVE the restore/terms/privacy row rather than below
+            // it, because it is a condition of the thing just above it and not
+            // a piece of chrome at the foot of the screen.
+            ...(cfg.footnote
+              ? [{
+                  type: "Text",
+                  props: { content: cfg.footnote, variant: "caption" },
+                  style: {
+                    textAlign: "center", marginTop: 12,
+                    paddingHorizontal: 8, color: pw.footnoteColor,
+                  },
+                } as Node]
+              : []),
             {
               type: "Stack",
               style: { flexDirection: "row", justifyContent: "center", marginTop: 8 },
