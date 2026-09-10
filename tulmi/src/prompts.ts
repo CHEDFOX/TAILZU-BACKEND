@@ -81,6 +81,22 @@ export function renderPersonality(p: Personality | undefined): string {
         p.vocabulary.replace(/\s*\n\s*/g, ", ").trim(),
       )}</vocabulary>`,
     );
+  // THE LEARNED PORTRAIT, which every path but this one already had.
+  //
+  // Training writes it, assist() reads it on every refine — and the file-based
+  // prompts (clean, cleanStream, draftReply) silently dropped it, because this
+  // function was written before the portrait existed and nobody came back. So
+  // a user could train for weeks and the streaming pipeline and the screen-
+  // reply path would still write them as a stranger.
+  //
+  // Last in the block and stated as the strongest signal: the dials above are
+  // what they SAID they want, the portrait is what they were observed to do.
+  if (p.stylePortrait?.core?.trim())
+    lines.push(
+      `- How they actually write — observed from what they picked, and worth more than the settings above: <style_portrait>${sanitizeFenced(
+        p.stylePortrait.core.trim(),
+      )}</style_portrait>`,
+    );
 
   return lines.length ? lines.join("\n") : "None set. Use a neutral, clean voice.";
 }

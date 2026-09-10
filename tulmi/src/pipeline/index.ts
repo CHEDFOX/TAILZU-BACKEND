@@ -48,6 +48,10 @@ export async function runPipeline(
     audio, format,
     language: opts.language,
     vocabulary: opts.personality?.vocabulary,
+    // The learned portrait, for its QUOTED WORDS only (see portraitTerms).
+    // The recognizer gets the terms this speaker actually uses; the prose
+    // never reaches it, because Whisper reads its prompt as preceding speech.
+    portraitCore: opts.personality?.stylePortrait?.core,
     // The Languages card, when the user has answered it.
     languages: opts.personality?.languages?.map(String),
   });
@@ -125,6 +129,10 @@ export async function* runPipelineStream(
     audio, format,
     language: opts.language,
     vocabulary: opts.personality?.vocabulary,
+    // The learned portrait, for its QUOTED WORDS only (see portraitTerms).
+    // The recognizer gets the terms this speaker actually uses; the prose
+    // never reaches it, because Whisper reads its prompt as preceding speech.
+    portraitCore: opts.personality?.stylePortrait?.core,
     // The Languages card, when the user has answered it.
     languages: opts.personality?.languages?.map(String),
   });

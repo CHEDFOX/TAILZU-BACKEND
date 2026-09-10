@@ -289,6 +289,9 @@ export interface SttInput {
   language?: LanguageHint;
   /** Personal dictionary (names/jargon) to bias recognition toward. */
   vocabulary?: string;
+  /** The user's learned style portrait. Only the WORDS it quotes are used —
+   *  see portraitTerms for why the prose must never reach the decoder. */
+  portraitCore?: string;
   /** Every language this user speaks day to day, primary first (the
    *  Languages card). Each contributes its own script to the prompt, which is
    *  what a bilingual speaker needs: one exemplar can only prime one script,
@@ -356,10 +359,47 @@ const SCRIPT_EXEMPLARS: Record<string, string> = {
  * language, so nothing tips the decoder before it has heard a word. Empty
  * when there is nothing to say; the SDK omits an undefined prompt.
  */
+/**
+ * The words this person actually reaches for, pulled out of their portrait.
+ *
+ * The portrait is worth giving the recognizer — it is the only record of how
+ * this user talks — but NOT as prose. Whisper's prompt is not an instruction
+ * channel: the decoder treats it as the transcript that came just before and
+ * continues it. Hand it "Short sentences. Lowercase openers. Says 'yaar'." and
+ * you have told the decoder the speaker was just describing someone, which is
+ * both useless and echoable.
+ *
+ * What IS the right shape is their vocabulary, and a portrait is full of it —
+ * the writing model is asked for observable habits, so it quotes the words
+ * they use. Those quoted spans are exactly what biasing wants: real terms, in
+ * their script, with no sentence around them to continue.
+ *
+ * Capped at eight. The prompt is a short run-up; past that it stops biasing
+ * and starts competing with the audio.
+ */
+export function portraitTerms(portraitCore?: string): string | undefined {
+  const core = portraitCore?.trim();
+  if (!core) return undefined;
+  const out: string[] = [];
+  const seen = new Set<string>();
+  // Straight and curly quotes, single and double. The portrait model uses all
+  // of them, and which one it picks is not something to depend on.
+  for (const m of core.matchAll(/['"\u2018\u2019\u201C\u201D]([^'"\u2018\u2019\u201C\u201D]{1,40})['"\u2018\u2019\u201C\u201D]/g)) {
+    const term = m[1].trim();
+    const key = term.toLowerCase();
+    if (!term || seen.has(key)) continue;
+    seen.add(key);
+    out.push(term);
+    if (out.length >= 8) break;
+  }
+  return out.length ? out.join(", ") : undefined;
+}
+
 export function sttPrompt(
   vocabulary?: string,
   hint?: LanguageHint,
   languages?: string[],
+  portraitCore?: string,
 ): string | undefined {
   // The user's own set leads; the single hint is the fallback for anyone who
   // has not answered the Languages card. Capped at three: the prompt is a
@@ -378,6 +418,10 @@ export function sttPrompt(
   }
   const terms = vocabulary?.replace(/\s*\n\s*/g, ", ").trim();
   if (terms) parts.push(terms);
+  // Their own words, after their own dictionary. The dictionary is what they
+  // told us to spell correctly; these are what they were observed to say.
+  const learned = portraitTerms(portraitCore);
+  if (learned) parts.push(learned);
   return parts.length ? parts.join(" ") : undefined;
 }
 
@@ -673,7 +717,7 @@ async function transcribeOpenAI(input: SttInput): Promise<RawSttResult> {
     file,
     model: cfg.OPENAI_STT_MODEL,
     language: sttLanguage(input.language),
-    prompt: sttPrompt(input.vocabulary, input.language, input.languages),
+    prompt: sttPrompt(input.vocabulary, input.language, input.languages, input.portraitCore),
     response_format: "json",
   });
 
@@ -815,7 +859,7 @@ async function transcribeGroq(input: SttInput): Promise<RawSttResult> {
     model: cfg.GROQ_STT_MODEL,
     language: sttLanguage(input.language),
     response_format: "verbose_json",
-    prompt: sttPrompt(input.vocabulary, input.language, input.languages),
+    prompt: sttPrompt(input.vocabulary, input.language, input.languages, input.portraitCore),
     // Temperature 0 makes Whisper deterministic and much less likely to
     // "hallucinate" on silent / low-signal chunks. The provider only accepts
     // the field on some SDK versions; ignore the cast if TS complains.
