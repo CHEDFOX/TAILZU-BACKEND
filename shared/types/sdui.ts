@@ -349,6 +349,8 @@ export interface BootstrapResponse {
   media?: Record<string, MediaEntry>;
   /** Version gating — force or suggest an app update from the server. */
   update?: UpdateGate;
+  /** A card shown over the app on open — an announcement, a nudge, an offer. */
+  launchCard?: LaunchCard;
   /** Languages for the native post-auth picker (code/name/greeting). */
   languages?: LanguageOption[];
   /** Seconds the client may cache bootstrap before refetching. */
@@ -382,6 +384,44 @@ export interface LanguageOption {
  * Lets the backend block or nudge old app versions without an app-store action.
  * The client sends its appVersion in capabilities; the server returns thresholds.
  */
+/**
+ * A card the app puts up when it opens: something to say, and a way to act on
+ * it. A new feature to point at, a setup step never finished, an offer.
+ *
+ * `root` is an ordinary node tree, so there is no fixed card shape to work
+ * around — a title and a button, or art and three choices, are the same
+ * amount of backend and no amount of app. Its buttons carry ordinary actions;
+ * `navigate` is what sends someone to the screen the card is about.
+ *
+ * Inside the card, `navigate` and `dismiss` both close it first, so a card is
+ * never left hanging over the screen it just sent you to. Nothing else needs
+ * to know it exists.
+ *
+ * `id` IS THE SHOWING. A card is shown once per id and then remembered, so
+ * changing the copy of a card people have already seen shows nobody anything;
+ * changing its id shows everybody. That is the intended way to send a second
+ * announcement, and the reason the id is not derived from the content.
+ */
+export interface LaunchCard {
+  /** Shown once per id. Change it to say something new. */
+  id: string;
+  /** The card itself. Any node tree. */
+  root: Node;
+  /**
+   * "once" (default) — remembered per id, per install.
+   * "everyLaunch" — shown on every cold open. For a card that is a state, not
+   * an announcement: an expired subscription, a setup step still owed.
+   */
+  repeat?: "once" | "everyLaunch";
+  /** Tap outside to close. Default true; false makes the card's own controls
+   *  the only way out, for something that must be answered. */
+  dismissOnBackdrop?: boolean;
+  /** Behind the card. Defaults to a scrim over the app. */
+  backdrop?: string;
+  /** The card container's own style — width, radius, padding, fill. */
+  sheet?: Record<string, unknown>;
+}
+
 export interface UpdateGate {
   /** Apps below this are hard-blocked with a non-dismissible screen. */
   minVersion?: string;

@@ -12,6 +12,7 @@ import {
   buildKeyboardConfig,
   bumpCacheVersion,
   currentCacheVersion,
+  launchCard,
   THEME,
   TRAINING_UI,
   TYPE_ROLES,
@@ -1009,6 +1010,90 @@ describe("the You tab greets you by name", () => {
         c?.children?.some((k: any) => k?.type === "FlipText"));
       expect(block.children).toHaveLength(1);
     }
+  });
+});
+
+describe("the keyboard opens with one voice, and it is ours", () => {
+  const pinned = (p?: Record<string, unknown>) =>
+    (buildKeyboardConfig(p as never).flags as Record<string, any>)["kb.personality.pinned"];
+
+  it("gives a new keyboard exactly one tone, named Zu", () => {
+    // The row used to be empty until the first pin, which handed the keyboard
+    // back to its own built-in cycle — a set of names nobody chose, on a
+    // control that is supposed to be the user's.
+    for (const p of [undefined, {}, { pinnedPresetIds: [] }]) {
+      expect(pinned(p)).toHaveLength(1);
+      expect(pinned(p)[0].name).toBe("Zu");
+    }
+  });
+
+  it("keeps the default preset's id, so nobody has to be migrated", () => {
+    // Zu is the built-in default wearing the product's name. A new id would
+    // have stranded every account already sitting on "signature".
+    expect(pinned()[0].id).toBe("signature");
+    expect(pinned()[0].tone).toBeDefined();
+  });
+
+  it("steps aside the moment the user adds a voice", () => {
+    const chips = pinned({ pinnedPresetIds: ["professional", "witty"] });
+    expect(chips.map((c: any) => c.id)).toEqual(["professional", "witty"]);
+    expect(chips.some((c: any) => c.name === "Zu")).toBe(false);
+  });
+
+  it("falls back to Zu when every pinned voice has been deleted", () => {
+    // Ids that no longer resolve would otherwise send an empty row and drop
+    // the keyboard back to its own cycle. One tone is the floor.
+    expect(pinned({ pinnedPresetIds: ["deleted_1", "deleted_2"] })).toEqual([
+      pinned()[0],
+    ]);
+  });
+});
+
+describe("the card the app opens with", () => {
+  it("ships no card by default", () => {
+    // An app that greets everyone with a card on the day they install it has
+    // spent the one moment it had.
+    expect(buildBootstrap({ onboarded: true }).launchCard).toBeUndefined();
+  });
+
+  it("composes a card whose button is an ordinary navigate", () => {
+    // Nothing in the tree knows it is inside a card — the app closes the card
+    // on the way out, so this is the same action any button carries.
+    const c = launchCard({
+      id: "voices-2026-09", kicker: "New", title: "Make a voice of your own",
+      body: "Add one in Voices and the keyboard carries it.",
+      cta: "Open Voices", screenId: "voices", dismiss: "Later",
+    });
+    const kids = (c.root as any).children;
+    const button = kids.find((k: any) => k.type === "Button" && k.props.label === "Open Voices");
+    expect(button.on.onPress).toEqual({ kind: "navigate", screenId: "voices" });
+    const later = kids.find((k: any) => k.props?.label === "Later");
+    expect(later.on.onPress).toEqual({ kind: "dismiss" });
+  });
+
+  it("shows once per id, and the id is not derived from the words", () => {
+    // Changing the copy of a card people have seen must show nobody anything;
+    // a second announcement needs a second id.
+    const a = launchCard({ id: "same", title: "One", cta: "Go", screenId: "home" });
+    const b = launchCard({ id: "same", title: "Two", cta: "Go", screenId: "home" });
+    expect(a.id).toBe(b.id);
+    expect(a.repeat).toBe("once");
+    expect(JSON.stringify(a.root)).not.toBe(JSON.stringify(b.root));
+  });
+
+  it("leaves out what it wasn't given rather than drawing an empty line", () => {
+    const bare = launchCard({ id: "bare", title: "Just this", cta: "Go", screenId: "home" });
+    const kids = (bare.root as any).children;
+    expect(kids.filter((k: any) => k.type === "Text")).toHaveLength(1);
+    expect(kids.filter((k: any) => k.type === "Button")).toHaveLength(1);
+  });
+
+  it("sets the card in the app's own type, not sizes of its own", () => {
+    const c = launchCard({ id: "t", kicker: "New", title: "T", body: "B", cta: "Go", screenId: "home" });
+    const variants = (c.root as any).children
+      .filter((k: any) => k.type === "Text").map((k: any) => k.props.variant);
+    expect(variants).toEqual(["overline", "h1", "muted"]);
+    for (const v of variants) expect(TYPE_ROLES[v]).toBeDefined();
   });
 });
 

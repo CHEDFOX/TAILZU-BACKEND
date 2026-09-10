@@ -14,6 +14,7 @@ import type {
   KeyboardActionSpec,
   KeyboardConfigResponse,
   KeyboardNode,
+  LaunchCard,
   MediaPresent,
   NavigationShell,
   TabGlyph,
@@ -1375,8 +1376,96 @@ export function buildBootstrap(
         default: "https://tailzu.space",
       },
     },
+    ...(LAUNCH_CARD ? { launchCard: LAUNCH_CARD } : {}),
     cacheTtlSeconds: 300,
     warmScreenIds: WARM_SCREEN_IDS,
+  };
+}
+
+/**
+ * The card the app opens with — the one place to say something to everybody.
+ *
+ * A new feature to point at, a setup step never finished, an offer running
+ * this week. It is a node tree, so there is no card shape to work around: a
+ * line and a button, or art and three choices, are the same amount of work
+ * here and none at all in the app.
+ *
+ * TO SHOW A CARD, write one and give it an id nobody has seen. To stop
+ * showing it, set this to null. Changing the words of a card people have
+ * already seen shows nobody anything — the id is the showing, not the
+ * content, so a second announcement needs a second id.
+ *
+ * Null by default. An app that greets everyone with a card on the day they
+ * install it has spent the one moment it had.
+ */
+const LAUNCH_CARD: LaunchCard | null = null;
+
+/**
+ * A card, composed. Not exported and not called while LAUNCH_CARD is null —
+ * it is the shape to copy when there IS something to say, so that writing one
+ * is filling in five strings rather than authoring a tree from nothing.
+ *
+ * Used by the tests, which hold the wiring in place for the day it is needed:
+ * a mechanism that is only exercised the first time it ships is a mechanism
+ * that breaks the first time it ships.
+ */
+export function launchCard(opts: {
+  id: string;
+  kicker?: string;
+  title: string;
+  body?: string;
+  cta: string;
+  screenId: string;
+  /** The quiet way out. Omit for a card whose only control is the CTA. */
+  dismiss?: string;
+  repeat?: "once" | "everyLaunch";
+}): LaunchCard {
+  return {
+    id: opts.id,
+    repeat: opts.repeat ?? "once",
+    dismissOnBackdrop: true,
+    backdrop: "rgba(4,4,6,0.72)",
+    sheet: {
+      backgroundColor: THEME.color.card,
+      borderRadius: THEME.radius.card,
+      borderWidth: 1,
+      borderColor: THEME.color.border,
+      padding: 24,
+      width: "100%",
+      maxWidth: 360,
+    },
+    root: {
+      type: "Stack",
+      children: [
+        ...(opts.kicker
+          ? [{ type: "Text", props: { content: opts.kicker, variant: "overline" } } as Node]
+          : []),
+        { type: "Text", props: { content: opts.title, variant: "h1" } },
+        ...(opts.body
+          ? [{
+              type: "Text",
+              props: { content: opts.body, variant: "muted" },
+              style: { marginTop: 10 },
+            } as Node]
+          : []),
+        {
+          type: "Button",
+          props: { label: opts.cta },
+          style: { marginTop: 22 },
+          // An ordinary navigate. The card closes itself on the way out, so
+          // this is the same action any other button would carry.
+          on: { onPress: { kind: "navigate", screenId: opts.screenId } },
+        },
+        ...(opts.dismiss
+          ? [{
+              type: "Button",
+              props: { label: opts.dismiss, variant: "ghost" },
+              style: { marginTop: 6 },
+              on: { onPress: { kind: "dismiss" } },
+            } as Node]
+          : []),
+      ],
+    },
   };
 }
 
@@ -4414,6 +4503,24 @@ export const YOU_UI = {
    */
   greet: GREET,
 };
+
+/**
+ * Zu — the house voice, and the keyboard's whole tone row until the user
+ * makes it theirs.
+ *
+ * It is the built-in default preset wearing the product's name. Keeping the
+ * id means every account already on "signature" is already on Zu: nothing to
+ * migrate, and a voice the user later renames or overrides still resolves.
+ *
+ * The NAME is the point. "Signature" is a description of a voice; Zu is the
+ * one the app speaks in, and a keyboard that opens with a single chip saying
+ * Zu is making a smaller and more honest claim than one offering a menu of
+ * moods nobody asked for.
+ */
+const HOUSE_TONE = (() => {
+  const base = PERSONALITY_PRESETS.find((p) => p.id === "signature") ?? PERSONALITY_PRESETS[0]!;
+  return { id: base.id, name: "Zu", tone: base.defaultTone };
+})();
 
 /**
  * "Hello", around the world — the one cycle, the same for everyone.
@@ -9277,19 +9384,30 @@ export function buildKeyboardConfig(
       // + a display emoji + a short name; tapping it sets the active
       // preset for subsequent refine calls. The active preset id is passed
       // through too so the current chip can highlight without an extra
-      // fetch. When the user hasn't picked anything, the built-in tone
-      // cycle stays as the fallback (that's the client-side default).
+      // fetch.
+      //
+      // NOBODY PINNED YET GETS EXACTLY ONE TONE, and it is Zu.
+      //
+      // The row used to be empty until the first pin, which handed the
+      // keyboard back to its own built-in tone cycle — a set of names nobody
+      // chose, on a control that is supposed to be the user's. A new keyboard
+      // now carries one voice: ours, doing the ordinary thing. Adding a voice
+      // in Voices replaces it with what they picked, which is the moment the
+      // control becomes theirs and reads as an answer to something they did.
       const pinnedIds = Array.isArray(personality?.pinnedPresetIds)
         ? personality!.pinnedPresetIds!
         : [];
-      if (pinnedIds.length > 0) {
-        const chips = pinnedIds
-          .map((id) => PERSONALITY_PRESETS.find((p) => p.id === id))
-          .filter((p): p is (typeof PERSONALITY_PRESETS)[number] => !!p)
-          .slice(0, MAX_PINNED_PRESETS)
-          .map((p) => ({ id: p.id, name: p.name, tone: p.defaultTone }));
-        flags["kb.personality.pinned"] = chips;
-      }
+      const chips = pinnedIds.length > 0
+        ? pinnedIds
+            .map((id) => PERSONALITY_PRESETS.find((p) => p.id === id))
+            .filter((p): p is (typeof PERSONALITY_PRESETS)[number] => !!p)
+            .slice(0, MAX_PINNED_PRESETS)
+            .map((p) => ({ id: p.id, name: p.name, tone: p.defaultTone }))
+        : [HOUSE_TONE];
+      // A pin list of ids that no longer resolve — voices deleted since —
+      // would otherwise send an empty row and drop the keyboard back to its
+      // own cycle. One tone is the floor, whatever the reason for the gap.
+      flags["kb.personality.pinned"] = chips.length ? chips : [HOUSE_TONE];
       if (personality?.activePresetId) {
         flags["kb.personality.activeId"] = personality.activePresetId;
       }
