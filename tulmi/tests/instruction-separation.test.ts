@@ -15,7 +15,6 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
-import { buildTonePrompt } from "../src/pipeline/tonePrompts.js";
 
 describe("assist path — instruction separation", () => {
   const system = buildAssistSystem({ hasContext: false });
@@ -54,45 +53,67 @@ describe("assist path — instruction separation", () => {
   });
 });
 
-describe("per-tone path — instruction separation parity", () => {
-  // The tone endpoints are the ones that had NO separation layer. Every tone
-  // must carry it, or "make it shorter" spoken into that tone gets rewritten
-  // as part of the message.
+describe("a selected tone goes through the SAME prompt", () => {
+  // There used to be two definitions of every tone: TONE_GUIDANCE here, and a
+  // hand-tuned system prompt per tone in tonePrompts.ts reached through
+  // refineWithTone(). Nothing called the second one — POST /v1/refine/<tone>
+  // has run through assist() for a while — so the app carried a parallel
+  // "formal" that no request ever saw and that had already drifted. It is
+  // deleted; these tests pin the path that actually runs.
   const tones = ["formal", "casual", "very-casual", "excited"] as const;
 
   for (const tone of tones) {
-    it(`"${tone}" separates instruction from message and keeps the script`, () => {
-      const p = buildTonePrompt(tone);
-      expect(p).toMatch(/Part of the input may be addressed to you/i);
-      expect(p).toMatch(/never echo it back/i);
+    it(`"${tone}" still carries the separation principle and the script rule`, () => {
+      // A tone is a voice, not a different contract. Picking one must not cost
+      // the user instruction separation — that regressed once already, when the
+      // tone endpoints had no separation layer at all and "make it shorter"
+      // spoken into a tone got politely rewritten instead of executed.
+      const p = buildAssistSystem({ tone, hasContext: false });
+      expect(p).toMatch(/Part of what they say may be addressed to you/i);
       expect(p).toMatch(/When you cannot tell which it is, it is what they want said/i);
-      expect(p).toMatch(/Keep their language and their script exactly as they used them/i);
+      expect(p).toMatch(/their language and their script, exactly as they used them/i);
+      expect(p).toMatch(/Everything you return is what they send/i);
     });
   }
 
-  it("puts the shared contract first and the tone's own voice next to its work", () => {
-    const p = buildTonePrompt("formal");
-    expect(p.indexOf("Everything you return")).toBeLessThan(p.indexOf("TONE: Formal."));
+  it("puts each tone's own voice on the TONE line", () => {
+    expect(buildAssistSystem({ tone: "formal", hasContext: false }))
+      .toMatch(/TONE: Formal\. Professional register/);
+    expect(buildAssistSystem({ tone: "very-casual", hasContext: false }))
+      .toMatch(/TONE: Group-chat energy/);
   });
 
-  it("layers the learned style portrait after the tone, before the mechanics", () => {
-    const p = buildTonePrompt("casual", {
-      portrait: "PORTRAIT_MARKER",
-      vocabulary: "Tailzu",
-      language: "hi",
+  it("keeps the tone LAST, so the voice sits next to the material it shapes", () => {
+    const p = buildAssistSystem({ tone: "casual", hasContext: true, targetApp: "WhatsApp" });
+    expect(p.indexOf("TONE:")).toBeGreaterThan(p.indexOf("Everything you return"));
+    expect(p.indexOf("TONE:")).toBeGreaterThan(p.indexOf("decides the SHAPE"));
+  });
+
+  it("layers the learned portrait under the tone, never over it", () => {
+    const p = buildAssistSystem({
+      tone: "casual",
+      hasContext: false,
+      personality: { activeTone: "casual", stylePortrait: { core: "PORTRAIT_MARKER" } } as never,
     });
-    expect(p.indexOf("TONE: Casual.")).toBeLessThan(p.indexOf("PORTRAIT_MARKER"));
-    expect(p.indexOf("PORTRAIT_MARKER")).toBeLessThan(p.indexOf("Preserve these spellings"));
-    expect(p).toContain("Output language:");
+    expect(p.indexOf("TONE:")).toBeLessThan(p.indexOf("PORTRAIT_MARKER"));
   });
 
-  it("keeps every tone short enough to be read as a voice, not a spec", () => {
+  it("keeps every tone short enough to read as a voice, not a spec", () => {
     // Each of these was six to eight bullets. A tone is described, not
     // specified — the bullets were an attempt to pin down by enumeration
     // something the model already knows how to hear.
     for (const tone of tones) {
-      const voice = buildTonePrompt(tone).split("TONE:")[1] ?? "";
+      const voice = buildAssistSystem({ tone, hasContext: false }).split("TONE:")[1] ?? "";
       expect(voice.trim().length, tone).toBeLessThan(320);
     }
+  });
+
+  it("gives the DEFAULT voice the same brevity as a chosen one", () => {
+    // ZU was a hundred words of "don't" — don't make it friendlier, more
+    // formal, more upbeat, more polished. The default is the tone most people
+    // never change, so it was the longest thing in the prompt by far.
+    const zu = buildAssistSystem({ hasContext: false }).split("TONE:")[1] ?? "";
+    expect(zu.trim().length).toBeLessThan(320);
+    expect(zu).toMatch(/Their own voice, not a style/);
   });
 });

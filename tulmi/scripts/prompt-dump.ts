@@ -42,6 +42,19 @@ parts.push(buildAssistSystem({
   hasContext: true, script: "devanagari", hasAlternative: true,
 }));
 
+parts.push(RULE("REFINE WITH A TONE SELECTED — POST /v1/refine/<tone>"));
+parts.push(
+  "The SAME prompt. Picking a tone changes one line and nothing else, so a",
+  "chosen voice never costs the user instruction separation or script fidelity.",
+  "The four voices, as they appear on that line:\n",
+);
+for (const t of ["formal", "casual", "very-casual", "excited"]) {
+  const line = (buildAssistSystem({ tone: t, hasContext: false }).split("TONE:")[1] ?? "").trim();
+  parts.push(`  ${t}`, `    ${line}`, "");
+}
+parts.push("  (default, no tone chosen)",
+  `    ${(buildAssistSystem({ hasContext: false }).split("TONE:")[1] ?? "").trim()}`);
+
 parts.push(RULE("TRAIN — POST /v1/train/variants"));
 parts.push(
   "Same system prompt as refine (so a variant is never off-voice), plus ONE",

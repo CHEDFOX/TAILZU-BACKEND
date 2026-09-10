@@ -10,10 +10,9 @@ import OpenAI from "openai";
 import { getConfig } from "../config.js";
 import { buildCleanupSystem, buildReplySystem } from "../prompts.js";
 import type { CleanupOptions, Personality } from "../../../shared/types/api.js";
-import { buildTonePrompt, LLM_TONES } from "./tonePrompts.js";
+import { LLM_TONES } from "./tonePrompts.js";
 import { buildAssistSystem, portraitBlock } from "./assistPrompt.js";
 export { portraitBlock };
-import type { PresetTone } from "../experience/personalityPresets.js";
 
 let client: OpenAI | null = null;
 function openrouter(): OpenAI {
@@ -430,52 +429,6 @@ export async function clean(
   // with this, so an empty completion would delete the user's text. Fall back
   // to the original so a failed cleanup is a no-op, not data loss. A meta/
   // refusal reply is discarded (→ "") so it never lands on the typepad.
-  return finalizeCompletion(out, input.trim());
-}
-
-/**
- * Per-tone refine: uses the hand-tuned prompt for the given tone with NO
- * dynamic mixing. Called by the tone-specific endpoints so each tone is
- * fully isolated — the LLM only ever sees one voice at a time.
- *
- * "none" is not accepted here — the /v1/refine/none route returns the
- * input directly (with snippet expansion) without ever calling this
- * function.
- */
-export async function refineWithTone(
-  input: string,
-  tone: Exclude<PresetTone, "none">,
-  opts: {
-    language?: string;
-    personality?: Personality;
-  } = {},
-): Promise<string> {
-  if (!input.trim()) return "";
-  const system = buildTonePrompt(tone, {
-    language: opts.language,
-    vocabulary: opts.personality?.vocabulary,
-    portrait: portraitBlock(opts.personality, tone),
-  });
-  const res = await openrouter().chat.completions.create({
-    ...common(),
-    model: getConfig().CLEANUP_MODEL,
-    temperature: TEMPERATURE,
-    max_tokens: MAX_TOKENS_CLEANUP,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: input },
-    ],
-  });
-  const raw = (res.choices[0]?.message?.content ?? "").trim();
-  // Snippet expansion still runs on the refined text so "brb" → "be right
-  // back" works regardless of tone.
-  const out = expandSnippets(
-    raw,
-    opts.personality?.snippets,
-    { targetApp: "Generic" },
-  );
-  // Never wipe the field on an empty completion — fall back to the input.
-  // A meta/refusal reply is discarded so it never lands on the typepad.
   return finalizeCompletion(out, input.trim());
 }
 
