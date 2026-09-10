@@ -4170,6 +4170,9 @@ export const YOU_UI = {
     backdropWashOpacity: 0.46,
     /** The key the deck's last position is stored under. "" forgets. */
     memory: "you.deck",
+    /** A tap on a side card centres it; a tap on the centred card opens it.
+     *  false makes any tap open, which is what this did before. */
+    tapToCentre: true,
   },
 };
 
@@ -4430,6 +4433,14 @@ function personalityScreen(): ScreenResponse {
             perspective: d.perspective, shrink: d.shrink, fade: d.fade,
             stiffness: d.stiffness, damping: d.damping, mass: d.mass,
             throwFactor: d.throwFactor,
+            // ONE TAP TO LOOK, ONE TO ENTER.
+            //
+            // A side card is turned away, shrunk and half-covered by its
+            // neighbours, so what the thumb lands on is not what the eye was
+            // on — a tap that opened it was a tap you then had to undo. Now a
+            // side tap only brings the card to the middle, and the second tap,
+            // on a card that is finally facing you, is the one that commits.
+            tapToCentre: d.tapToCentre,
             // REMEMBER WHERE IT WAS LEFT. Opening a card unmounts this screen,
             // so coming back rebuilt the deck at card one and the card you were
             // just inside was two throws away. Named, because remembering is a

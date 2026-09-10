@@ -783,3 +783,40 @@ describe("which tab the app opens on", () => {
     expect(b.navigation.initialTabId).toBe("stats");
   });
 });
+
+describe("the You deck asks twice before it opens", () => {
+  const deck = () => {
+    const s = buildScreen("personality", { personality: {}, language: "en" } as never);
+    let found: Record<string, any> | null = null;
+    const walk = (n: any): void => {
+      if (n?.type === "Coverflow") found = n;
+      for (const c of n?.children ?? []) walk(c);
+    };
+    walk((s as any).root);
+    if (!found) throw new Error("no Coverflow in the You screen");
+    return found as Record<string, any>;
+  };
+
+  it("centres a side tap instead of opening it", () => {
+    // A side card is turned away, shrunk and half-covered by its neighbours,
+    // so what the thumb lands on is not what the eye was on. Opening that is a
+    // tap the user then has to undo.
+    expect(deck().props.tapToCentre).toBe(true);
+  });
+
+  it("keeps opening on onSelect, so the second tap still commits", () => {
+    // Centring must not cost the deck its way in — one tap to look, one to
+    // enter, and the second tap is on a card that is finally facing you.
+    expect(deck().on.onSelect).toBe("open");
+  });
+
+  it("still follows the middle card while the finger is moving", () => {
+    // onChange drives the backdrop and must not wait for a choice. If centring
+    // had been folded into onSelect, the backdrop would lag a whole tap behind.
+    expect(deck().on.onChange).toBe("centre");
+  });
+
+  it("leaves the flag in the catalog, so the feel is tunable without a build", () => {
+    expect(YOU_UI.deck.tapToCentre).toBe(true);
+  });
+});
