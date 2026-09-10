@@ -59,46 +59,71 @@ import { applyRevenueCatEvent, isEntitled } from "./billing/entitlements.js";
  * One extra read, and only on the fallback path.
  */
 /**
- * Learn from ordinary use, off the user's path.
+ * Learn from ordinary use, ONCE PER SESSION, off the user's path.
  *
- * Fire-and-forget after the response has already gone out. Every refine
- * increments a counter; every PORTRAIT_LEARN_EVERY-th one reads the recent
- * history back and rewrites the portrait from it. Nothing here can slow a
- * refine down, and nothing here can fail one — the whole body is wrapped, and
- * a portrait that does not update is invisible while a refine that throws is
- * not.
+ * A session is a run of refines with no gap longer than
+ * PORTRAIT_SESSION_GAP_MINUTES. The roll-up fires on the FIRST refine after
+ * such a gap, which reads back the sitting that just ended — so the user
+ * coming back is itself the trigger, and there are no timers or background
+ * jobs anywhere. One consequence worth knowing: the last session before
+ * someone stops using the app waits until they return. Nothing is lost.
  *
- * The counter lives on the portrait rather than in memory so it survives a
- * restart and a second server process. It resets on every rewrite, so this is
- * "every twelve since the last read", not "every twelve ever".
+ * A second trigger backstops a session that never ends. Someone dictating all
+ * afternoon would otherwise never cross a gap, so every PORTRAIT_LEARN_EVERY
+ * refines within one sitting also rolls up.
+ *
+ * Fire-and-forget after the response has gone out, and the whole body is
+ * wrapped: a portrait that fails to update is invisible, a refine that throws
+ * because of it is not.
  */
 function learnFromUsage(user: AuthedUser, personality: Personality): void {
   const cfg = getConfig();
   if (!cfg.PORTRAIT_LEARN_EVERY) return;
   void (async () => {
     try {
-      const seen = (personality.stylePortrait?.observed ?? 0) + 1;
-      if (seen < cfg.PORTRAIT_LEARN_EVERY) {
+      const now = Date.now();
+      const sp = personality.stylePortrait;
+      const last = sp?.lastSeenAt ? Date.parse(sp.lastSeenAt) : 0;
+      const gapMs = cfg.PORTRAIT_SESSION_GAP_MINUTES * 60_000;
+      // A new sitting has started when the previous refine is older than the
+      // gap. The very first refine ever is a new sitting too, but there is
+      // nothing behind it to read, so it only opens the session.
+      const newSession = !!last && now - last > gapMs;
+      const seen = (sp?.observed ?? 0) + 1;
+      const longSession = seen >= cfg.PORTRAIT_LEARN_EVERY;
+
+      if (!newSession && !longSession) {
         await updatePersonality(user, (existing) => ({
           ...existing,
-          stylePortrait: { ...existing.stylePortrait, observed: seen },
+          stylePortrait: {
+            ...existing.stylePortrait,
+            observed: seen,
+            lastSeenAt: new Date(now).toISOString(),
+            firstSeenAt: existing.stylePortrait?.firstSeenAt ?? new Date(now).toISOString(),
+          },
         }));
         return;
       }
+
       const { entries } = await listHistory(user, { limit: cfg.PORTRAIT_LEARN_WINDOW });
       const next = await portraitFromUsage(
-        personality.stylePortrait,
+        sp,
         entries.map((e) => ({ input: e.input, output: e.output, targetApp: e.targetApp })),
       );
       await updatePersonality(user, (existing) => ({
         ...existing,
         stylePortrait: {
           ...existing.stylePortrait,
-          // A null reply means too little evidence or a bad completion. Reset
-          // the counter anyway: retrying the same thin window every single
-          // refine would burn a call each time and still not learn anything.
-          ...(next ? { core: next.core, updatedAt: new Date().toISOString() } : {}),
+          // A null reply means too little evidence or a bad completion. The
+          // counters still move: retrying the same thin window on every refine
+          // would burn a call each time and still learn nothing.
+          ...(next ? { core: next.core, updatedAt: new Date(now).toISOString() } : {}),
           observed: 0,
+          // Sittings, not roll-ups: the long-session backstop must not inflate
+          // the number the writer uses to decide how settled the portrait is.
+          sessions: (existing.stylePortrait?.sessions ?? 0) + (newSession ? 1 : 0),
+          lastSeenAt: new Date(now).toISOString(),
+          firstSeenAt: existing.stylePortrait?.firstSeenAt ?? new Date(now).toISOString(),
         },
       }));
     } catch {

@@ -112,6 +112,21 @@ const EnvSchema = z.object({
    * costs one extra LLM call per dozen refines and never lands on the user's
    * path. Set to 0 to turn the whole thing off and learn only from training.
    */
+  /**
+   * Silence that ends a sitting, in minutes.
+   *
+   * The portrait is rewritten once per session, at the START of the next one:
+   * the first refine after a gap this long reads back everything from the
+   * session that just finished. No timers, no background jobs — the user
+   * coming back IS the trigger.
+   *
+   * One consequence, stated because it is easy to be surprised by: the very
+   * last session before someone stops using the app is not rolled up until
+   * they return. Nothing is lost, it just waits.
+   */
+  PORTRAIT_SESSION_GAP_MINUTES: z.coerce.number().int().min(1).default(30),
+  /** Backstop for a session that never ends — someone dictating all afternoon
+   *  would otherwise never hit a gap. 0 disables ordinary-use learning. */
   PORTRAIT_LEARN_EVERY: z.coerce.number().int().min(0).default(12),
   /** How many recent messages the roll-up reads. Enough for a habit to repeat
    *  in, short enough that last month's mood does not outvote this week. */

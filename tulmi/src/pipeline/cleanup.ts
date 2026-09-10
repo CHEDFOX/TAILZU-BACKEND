@@ -12,7 +12,7 @@ import { buildCleanupSystem, buildReplySystem } from "../prompts.js";
 import type { CleanupOptions, Personality } from "../../../shared/types/api.js";
 import { LLM_TONES } from "./tonePrompts.js";
 import {
-  PORTRAIT_DIMENSIONS, PORTRAIT_BOUNDS, portraitJsonContract,
+  PORTRAIT_DIMENSIONS, PORTRAIT_BOUNDS, portraitJsonContract, portraitProvenance,
 } from "./portraitDimensions.js";
 import { buildAssistSystem, portraitBlock } from "./assistPrompt.js";
 export { portraitBlock };
@@ -620,11 +620,16 @@ export async function refineVariants(
  * readable and testable without instrumenting a live request. `npm run prompts`
  * prints it.
  */
-export function portraitSystem(trainingTone?: string): string {
+export function portraitSystem(
+  trainingTone?: string,
+  current?: Personality["stylePortrait"],
+): string {
   return [
     "You keep a portrait of how one person writes, close enough that their sentences could be reproduced from it. You have the portrait so far, and one new piece of evidence: what they said, the version they chose as sounding most like them, and the ones they did not.",
     "The version they REJECTED is evidence too, and the sharpest kind — it tells you what they are not, which a hundred accepted messages never would.",
     "Rewrite the portrait against that evidence: keep what still holds, drop what it contradicts, add what it reveals.",
+    "",
+    portraitProvenance(current),
     "",
     "What to notice:",
     PORTRAIT_DIMENSIONS,
@@ -649,7 +654,7 @@ export async function updateStylePortrait(
   },
 ): Promise<{ core: string; toneNote?: string }> {
   const trainingTone = example.tone && example.tone !== "none" ? example.tone : undefined;
-  const system = portraitSystem(trainingTone);
+  const system = portraitSystem(trainingTone, current);
   const user = [
     `CURRENT PORTRAIT:\n${current?.core?.trim() || "(none yet)"}`,
     trainingTone && example.currentToneNote
@@ -769,27 +774,33 @@ export async function converseTurn(
  */
 /** The prompt that WRITES the portrait on the spoken path — one read of the
  *  whole conversation, at the end of it. Exported for review and testing. */
-export const PORTRAIT_FROM_TRANSCRIPT_SYSTEM = [
-  "You keep a portrait of how one person writes, close enough that their sentences could be reproduced from it. You have the portrait so far, and a transcript of them talking freely. Rewrite the portrait against it: keep what still holds, drop what it contradicts, add what it reveals.",
-  "Only the lines marked THEM are evidence. The APP lines are what they were answering.",
-  "Speech is not writing. Take what survives the crossing and leave what does not: filler, repetition, stumbles and the transcriber's own mistakes are not theirs.",
-  "",
-  "What to notice:",
-  PORTRAIT_DIMENSIONS,
-  "",
-  PORTRAIT_BOUNDS,
-  "",
-  portraitJsonContract(),
-].join("\n");
+export function transcriptSystem(current?: Personality["stylePortrait"]): string {
+  return [
+    "You keep a portrait of how one person writes, close enough that their sentences could be reproduced from it. You have the portrait so far, and a transcript of them talking freely. Rewrite the portrait against it: keep what still holds, drop what it contradicts, add what it reveals.",
+    "Only the lines marked THEM are evidence. The APP lines are what they were answering.",
+    "Speech is not writing. Take what survives the crossing and leave what does not: filler, repetition, stumbles and the transcriber's own mistakes are not theirs.",
+    "",
+    portraitProvenance(current),
+    "",
+    "What to notice:",
+    PORTRAIT_DIMENSIONS,
+    "",
+    PORTRAIT_BOUNDS,
+    "",
+    portraitJsonContract(),
+  ].join("\n");
+}
 
 /** The prompt that writes the portrait from ordinary use. Exported so it can
  *  be read (`npm run prompts`) and tested like the other two. */
-export function usageSystem(): string {
+export function usageSystem(current?: Personality["stylePortrait"]): string {
   return [
     "You keep a portrait of how one person writes, close enough that their sentences could be reproduced from it. You have the portrait so far, and a stretch of their real messages.",
     "Each SAID line is how they put it themselves. Each SENT line is what they accepted and sent, having read it. The gap between the two is evidence: what they consistently let a rewrite change is not part of their voice, and what survives every rewrite is the core of it.",
     "Weight what recurs. One odd message is a mood; the same habit across ten is the person.",
     "Rewrite the portrait against this: keep what still holds, drop what it contradicts, add what it reveals.",
+    "",
+    portraitProvenance(current),
     "",
     "What to notice:",
     PORTRAIT_DIMENSIONS,
@@ -831,7 +842,7 @@ export async function portraitFromUsage(
   // messages swings hard on whatever mood those three were written in.
   if (usable.length < 6) return null;
 
-  const system = usageSystem();
+  const system = usageSystem(current);
 
   const evidence = usable
     .map((r) => {
@@ -874,7 +885,7 @@ export async function portraitFromTranscript(
   const mine = turns.filter((t) => t.role === "user" && t.text?.trim());
   if (mine.length < 2) return { core: current?.core ?? "" };
 
-  const system = PORTRAIT_FROM_TRANSCRIPT_SYSTEM;
+  const system = transcriptSystem(current);
 
   const transcript = turns
     .filter((t) => t.text?.trim())

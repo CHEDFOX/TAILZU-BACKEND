@@ -10,7 +10,7 @@
  */
 import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
 import {
-  VARIANT_ANGLES, portraitSystem, PORTRAIT_FROM_TRANSCRIPT_SYSTEM, converseSystem,
+  VARIANT_ANGLES, portraitSystem, transcriptSystem, converseSystem,
   usageSystem,
 } from "../src/pipeline/cleanup.js";
 import { PORTRAIT_DIMENSIONS, PORTRAIT_BOUNDS } from "../src/pipeline/portraitDimensions.js";
@@ -28,6 +28,15 @@ const PERSON = {
     tones: { none: "keeps it clipped" },
   },
 } as unknown as Personality;
+
+// A portrait with some history behind it, so the provenance line renders as
+// it would for a real returning user rather than as the first-run case.
+const SEASONED = {
+  core: "(the portrait so far)",
+  sessions: 23,
+  examples: 6,
+  firstSeenAt: new Date(Date.now() - 97 * 86_400_000).toISOString(),
+};
 
 const parts: string[] = [];
 
@@ -70,7 +79,7 @@ parts.push(
   "rejected candidates and the previous portrait to the model, which rewrites",
   "the portrait. That is the only place the portrait changes on this path.\n",
 );
-parts.push(portraitSystem("Signature"));
+parts.push(portraitSystem("Signature", SEASONED));
 
 parts.push(RULE("TRAIN — POST /v1/train/converse   (talking, not picking)"));
 parts.push(converseSystem("hi"));
@@ -80,7 +89,7 @@ parts.push(
   "The spoken path's ending. One read of the whole transcript at the end of the",
   "session, rather than a portrait rewrite per turn.\n",
 );
-parts.push(PORTRAIT_FROM_TRANSCRIPT_SYSTEM);
+parts.push(transcriptSystem(SEASONED));
 
 parts.push(RULE("THE PORTRAIT WRITTEN FROM ORDINARY USE  (no endpoint — it just happens)"));
 parts.push(
@@ -90,7 +99,7 @@ parts.push(
   "disk. Both halves of each row are evidence: SAID is how they put it, SENT is",
   "what they read and let through.\n",
 );
-parts.push(usageSystem());
+parts.push(usageSystem(SEASONED));
 
 parts.push(RULE("WHAT EVERY PORTRAIT WRITER LOOKS FOR"));
 parts.push(PORTRAIT_DIMENSIONS, "", PORTRAIT_BOUNDS);

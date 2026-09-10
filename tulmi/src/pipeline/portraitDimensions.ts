@@ -69,3 +69,50 @@ export function portraitJsonContract(trainingTone?: string): string {
     "}."
   );
 }
+
+/**
+ * The portrait's own provenance, told to the writer that is about to rewrite it.
+ *
+ * Without this, every rewrite treats the existing portrait as an equal — a
+ * first impression from one afternoon and a habit confirmed across fifty
+ * sittings arrive looking identical, so a single odd session can overturn
+ * months of evidence. Telling it how much is behind what it is reading is what
+ * turns "rewrite this" into "revise this, and know what you are revising".
+ *
+ * The thresholds are deliberately coarse. The writer needs to know whether it
+ * is sketching or amending, and there is no useful third state between them.
+ */
+export function portraitProvenance(p: {
+  sessions?: number;
+  examples?: number;
+  firstSeenAt?: string;
+} | undefined): string {
+  const sessions = p?.sessions ?? 0;
+  const trained = p?.examples ?? 0;
+  if (!sessions && !trained) {
+    return "This is the FIRST thing you have ever seen of this person. Write only what this evidence actually shows and leave the rest out — an invented habit will be read back on every message they send until something contradicts it.";
+  }
+
+  const days = p?.firstSeenAt
+    ? Math.max(0, Math.round((Date.now() - Date.parse(p.firstSeenAt)) / 86_400_000))
+    : 0;
+  const span =
+    days >= 60 ? `over about ${Math.round(days / 30)} months`
+    : days >= 14 ? `over about ${Math.round(days / 7)} weeks`
+    : days >= 1 ? `over ${days} day${days === 1 ? "" : "s"}`
+    : "today";
+
+  const history =
+    `The portrait you are given was built from ${sessions} sitting${sessions === 1 ? "" : "s"} ` +
+    `${span}${trained ? `, plus ${trained} round${trained === 1 ? "" : "s"} where they picked between versions of their own writing` : ""}.`;
+
+  // Under five sittings the existing text is one or two afternoons of evidence
+  // and should bend easily. Past that it has survived repetition, and the bar
+  // for overturning a line is that this session contradicts it MORE THAN ONCE.
+  const weight =
+    sessions < 5
+      ? "That is still a sketch. Revise it freely where this evidence disagrees, and drop anything it does not support."
+      : "That is a lot of evidence, and most of it is no longer in front of you. Treat what is already written as established: keep it unless this session contradicts it repeatedly, and change a line for one counter-example only if that example is unmistakable. Add what is genuinely new.";
+
+  return `${history} ${weight}`;
+}

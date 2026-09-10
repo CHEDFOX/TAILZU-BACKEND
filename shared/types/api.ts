@@ -148,6 +148,17 @@ export interface Personality {
      *  them. Most people train a handful of times and then just use the
      *  keyboard for months, so this is where nearly all the evidence is. */
     observed?: number;
+    /** How many distinct sittings have fed this portrait. Sent to the writer
+     *  so it knows whether what is already there is a first impression or a
+     *  settled observation — one odd session should not overturn a habit seen
+     *  across fifty. */
+    sessions?: number;
+    /** When this person first wrote anything we learned from. With sessions,
+     *  it gives the portrait its own age. */
+    firstSeenAt?: string;
+    /** Last refine of any kind. A gap larger than PORTRAIT_SESSION_GAP_MINUTES
+     *  is what ends a session and triggers the roll-up. */
+    lastSeenAt?: string;
     updatedAt?: string;
   };
 
