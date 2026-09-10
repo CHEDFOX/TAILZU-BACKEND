@@ -874,6 +874,74 @@ describe("the You deck asks twice before it opens", () => {
   });
 });
 
+describe("the card in the middle says what it is", () => {
+  const boxes = () => {
+    const s = buildScreen("personality", { personality: {}, language: "en" } as never) as any;
+    return s.root.children.filter((c: any) => c?.style?.backgroundColor === YOU_UI.info.background);
+  };
+
+  it("gives every card a note and a way in, never a card without one", () => {
+    // A deck of four words shows four things and says what none of them are.
+    const found = boxes();
+    expect(found).toHaveLength(4);
+    for (const b of found) {
+      const [text, cta] = b.children;
+      expect(String(text.props.content).length).toBeGreaterThan(20);
+      expect(String(cta.children[0].props.content).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("shows exactly one — the one that reached the middle", () => {
+    // Four stacked nodes gated on `deck`, like the backdrop. A single node
+    // re-reading its content would swap words while the card is still moving.
+    const found = boxes();
+    expect(found.map((b: any) => b.visibleIf)).toEqual([
+      { eq: ["deck", 0] }, { eq: ["deck", 1] }, { eq: ["deck", 2] }, { eq: ["deck", 3] },
+    ]);
+  });
+
+  it("sends its button where the card itself goes", () => {
+    // Two ways in, one place. A second way that went somewhere else would be
+    // a third card.
+    const s = buildScreen("personality", { personality: {}, language: "en" } as never) as any;
+    const decks: string[] = [];
+    const walk = (n: any): void => {
+      if (n?.type === "Coverflow") for (const c of n.children ?? []) decks.push(c.children?.at(-1)?.props?.content);
+      for (const c of n?.children ?? []) walk(c);
+    };
+    walk(s.root);
+    boxes().forEach((b: any, i: number) => {
+      const nav = b.children[1].on.onPress.actions.find((a: any) => a.kind === "navigate");
+      expect(nav.screenId).toBeTruthy();
+      // Same order as the deck, so box i belongs to card i.
+      expect(decks[i]).toBeTruthy();
+    });
+  });
+
+  it("sits under the deck in flow, not over it", () => {
+    // The deck has flex and gives back what the note takes, so the cards sit
+    // up by exactly its height instead of being covered.
+    for (const b of boxes()) expect(b.style.position).toBeUndefined();
+    const s = buildScreen("personality", { personality: {}, language: "en" } as never) as any;
+    const kids = s.root.children;
+    const deckAt = kids.findIndex((c: any) => c?.type === "Coverflow");
+    const firstBox = kids.findIndex((c: any) => c?.style?.backgroundColor === YOU_UI.info.background);
+    expect(firstBox).toBeGreaterThan(deckAt);
+  });
+
+  it("is the brand block with black ink, not another dark card", () => {
+    // Everything else on this tab is glass over blurred art, or black. The
+    // one thing you are meant to READ cannot look like scenery.
+    const [text, cta] = boxes()[0].children;
+    expect(boxes()[0].style.backgroundColor).toBe(YOU_UI.accent);
+    expect(text.style.color).toBe("#0B0B0D");
+    // Mid-weight. Bold on a solid colour reads as shouting, not as speech.
+    expect(Number(text.style.fontWeight)).toBeLessThan(700);
+    expect(cta.style.backgroundColor).toBe("#0B0B0D");
+    expect(cta.children[0].style.color).toBe(YOU_UI.accent);
+  });
+});
+
 describe("the You tab greets you by name", () => {
   const find = (ctx: Record<string, unknown>, type: string) => {
     const s = buildScreen("personality", ctx as never);

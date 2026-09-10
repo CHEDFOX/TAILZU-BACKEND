@@ -4502,6 +4502,48 @@ export const YOU_UI = {
    * colours, each settable alone.
    */
   greet: GREET,
+  /**
+   * The note under the deck — what the card in the middle actually is.
+   *
+   * A deck of four words is a beautiful way to show four things and a poor
+   * way to say what any of them are. "Dictionary" is a label, not an
+   * explanation, and the card it sits on is a picture. So the middle card
+   * gets a line of plain speech beneath it and a second way in.
+   *
+   * THE BRAND BLOCK, not another dark card. The deck is glass over blurred
+   * art and everything on this tab is either that or black; a solid amber
+   * rectangle with black ink is the one shape here that cannot be mistaken
+   * for scenery, which is what a thing you are meant to read has to be. It is
+   * the same block the four inside screens open with, so arriving on one is
+   * the box growing to fill the screen rather than a new colour appearing.
+   */
+  info: {
+    background: ACCENT_AMBER,
+    /** Ink on the amber. Black, and mid-weight — not bold, which on a solid
+     *  colour reads as shouting rather than as speech. */
+    text: "#0B0B0D",
+    textSize: 13.5,
+    textWeight: "600",
+    textLineHeight: 19,
+    radius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 12,
+    /** Air between the deck and the box, and between the box and the tabs. */
+    marginTop: 6,
+    marginBottom: 14,
+    marginHorizontal: 18,
+    /** The way in, on the amber: black pill, amber ink. */
+    cta: {
+      height: 32,
+      radius: 999,
+      paddingHorizontal: 15,
+      fontSize: 11,
+      tracking: 0.6,
+      background: "#0B0B0D",
+      text: ACCENT_AMBER,
+    },
+  },
 };
 
 /**
@@ -4608,11 +4650,38 @@ function helloCycle(): string[] {
  * so a fifth card is one entry here and nothing else — there is no second
  * place that has to be told the deck grew.
  */
-const YOU_CARDS: { title: string; media: string; screen: string }[] = [
-  { title: "Voice", media: "card.voice", screen: "voices" },
-  { title: "Dictionary", media: "card.dictionary", screen: "dictionary" },
-  { title: "Haptics", media: "card.haptics", screen: "haptics" },
-  { title: "Languages", media: "card.languages", screen: "languages" },
+const YOU_CARDS: {
+  title: string;
+  media: string;
+  screen: string;
+  /** The line under the deck when this card is the one in the middle. One
+   *  sentence, plain, about what the thing IS — the title is already the
+   *  label and a second label helps nobody. */
+  blurb: string;
+  /** The button on that line. Names the destination, so the deck's own tap
+   *  and this one visibly go to the same place. */
+  cta: string;
+}[] = [
+  {
+    title: "Voice", media: "card.voice", screen: "voices",
+    blurb: "How Tailzu writes for you. Zu is your own voice, learned — add others for the moments it isn't.",
+    cta: "Voices",
+  },
+  {
+    title: "Dictionary", media: "card.dictionary", screen: "dictionary",
+    blurb: "Names, brands and the words only you use. Saved here, they are never corrected into something else.",
+    cta: "Words",
+  },
+  {
+    title: "Haptics", media: "card.haptics", screen: "haptics",
+    blurb: "What the keyboard feels like under your thumb.",
+    cta: "Feel",
+  },
+  {
+    title: "Languages", media: "card.languages", screen: "languages",
+    blurb: "The languages you write in. Each one you pick is one it listens for and writes back in.",
+    cta: "Languages",
+  },
 ];
 
 /** The way back, on the amber. A chevron with rounded tips, not a cropped one. */
@@ -4813,6 +4882,66 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
   });
 
   /**
+   * The note under the deck, one per card, only one ever on screen.
+   *
+   * FOUR STACKED NODES GATED ON `deck`, not one whose text changes — the same
+   * shape the backdrop uses. A single node re-reading its content would swap
+   * words mid-turn while the card is still moving; four that appear and
+   * disappear are each finished before they are seen, and cost nothing but a
+   * little JSON.
+   *
+   * `deck` is written by the Coverflow's onChange, which fires as the card
+   * reaches the middle rather than when the finger lifts — so the note
+   * belongs to whatever is centred at that instant, including a throw the
+   * user is still watching.
+   */
+  const infoBox = (c: (typeof YOU_CARDS)[number], i: number): Node => ({
+    type: "Stack",
+    visibleIf: { eq: ["deck", i] },
+    style: {
+      flexDirection: "row", alignItems: "center", gap: u.info.gap,
+      backgroundColor: u.info.background, borderRadius: u.info.radius,
+      paddingHorizontal: u.info.paddingHorizontal,
+      paddingVertical: u.info.paddingVertical,
+      marginHorizontal: u.info.marginHorizontal,
+      marginTop: u.info.marginTop, marginBottom: u.info.marginBottom,
+    },
+    children: [
+      {
+        type: "Text",
+        props: { content: c.blurb },
+        style: {
+          flex: 1, fontSize: u.info.textSize, fontWeight: u.info.textWeight,
+          lineHeight: u.info.textLineHeight, color: u.info.text,
+        },
+      },
+      {
+        type: "Stack",
+        // The SAME destination as the card above it. Two ways in, one place —
+        // a second way that went somewhere else would be a third card.
+        on: { onPress: { kind: "sequence", actions: [
+          { kind: "haptic", style: "selection" },
+          { kind: "navigate", screenId: c.screen },
+        ] } },
+        props: { pressOpacity: 0.65 },
+        style: {
+          height: u.info.cta.height, borderRadius: u.info.cta.radius,
+          paddingHorizontal: u.info.cta.paddingHorizontal,
+          alignItems: "center", justifyContent: "center",
+          backgroundColor: u.info.cta.background,
+        },
+        children: [{
+          type: "Text", props: { content: c.cta },
+          style: {
+            fontSize: u.info.cta.fontSize, fontWeight: "700",
+            letterSpacing: u.info.cta.tracking, color: u.info.cta.text,
+          },
+        }],
+      },
+    ],
+  });
+
+  /**
    * Where a tap goes.
    *
    * `condition` reads a STATE PATH, never the event — so the handler writes
@@ -4934,6 +5063,11 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
             } as Node)),
           },
         },
+
+        // Under the deck, in flow rather than over it: the deck has flex and
+        // gives back whatever this takes, so the cards sit up by exactly the
+        // height of the note instead of being covered by it.
+        ...YOU_CARDS.map(infoBox),
 
         // Last in the list, so they paint over the deck. The greeting and the
         // gear share a line: who this is on the left, the way out on the right.
