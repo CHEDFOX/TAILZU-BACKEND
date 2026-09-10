@@ -3547,14 +3547,40 @@ export const TRAINING_UI = {
        * two materials rather than one.
        */
       orbDeep: "#4A1D08",
-      /** The pale top of the shimmer ramp. */
-      orbGold: "#FFDCA0",
+      /**
+       * The pale top of the shimmer ramp — a LIGHT AMBER, not a cream.
+       *
+       * This was #FFDCA0, which is a peach: red and green nearly level with a
+       * little blue under them. The shader ramps the shimmer from the deep to
+       * this and then washes it over the bands, so the brightest part of the
+       * orb — the part the eye names the colour by — was drifting off the
+       * brand toward candlelight. Lightening the accent itself keeps the
+       * highlight in the same family as the rim and the bands, so the whole
+       * object reads as one colour lit, rather than an amber object with a
+       * cream sheen on it.
+       */
+      orbGold: "#F8C879",
       /** Sphere radius as a share of the canvas. 0.32 is about 64% across. */
       orbRadius: 0.32,
-      /** 0 is bands alone; past ~0.45 the shimmer washes the bands out. */
-      orbShimmer: 0.28,
-      /** How hard the rim brightens at full volume. Higher clips to white. */
-      orbRim: 0.75,
+      /**
+       * 0 is bands alone; past ~0.45 the shimmer washes the bands out.
+       *
+       * Down from 0.28. The bands run deep → accent and are where the brand
+       * colour actually lives; the shimmer is a wash over them. Less wash is
+       * more amber, and with the ramp's top now amber too, 0.22 still reads as
+       * a lit surface rather than a flat disc.
+       */
+      orbShimmer: 0.22,
+      /**
+       * How hard the rim brightens at full volume. Higher clips to white.
+       *
+       * Up from 0.75. The rim is the one part of the orb drawn in the accent
+       * UNMIXED — `col += fres * accent * (0.35 + amp * rim)` — so it is the
+       * cheapest brand in the whole object, and it only shows when the person
+       * is actually speaking. 0.9 makes the edge flare amber on a loud word
+       * and still stops short of the white it clips to.
+       */
+      orbRim: 0.9,
       /**
        * How far off the bottom the orb sits. The screen is the orb and nothing
        * else, so this is the only layout number on it.
