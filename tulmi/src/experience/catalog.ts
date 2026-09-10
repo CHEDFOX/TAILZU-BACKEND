@@ -2756,9 +2756,20 @@ export const PAYWALL_CONFIG: PaywallConfig = {
       productId: "tailzu_annu",
       offeringId: "default",
       packageId: "$rc_annual",
-      label: "Yearly",
+      // THE TIER'S NAME, not its billing period.
+      //
+      // "Yearly" said the period twice — the row already carries it in the
+      // price line and again in the commitment note below it — and said the
+      // product's name nowhere. Both stores list these as Elite and Lite, so
+      // a customer who checks their subscriptions sees a name the app never
+      // showed them.
+      //
+      // The period disclosure both stores require is unaffected: it lives in
+      // `period` and `note`, which is why the name could move into `label` at
+      // all. Do not remove either of those to make room for anything.
+      label: "Elite",
       price: "$59.99",
-      period: "$5.00 / mo",
+      period: "$5.00 / mo, billed yearly",
       // With no confirm button, the ROW is where the commitment gets
       // disclosed — which is also what the stores require before a purchase.
       note: "7 days free, then billed yearly",
@@ -2771,7 +2782,7 @@ export const PAYWALL_CONFIG: PaywallConfig = {
       productId: "TAILZU_MONT",
       offeringId: "default",
       packageId: "$rc_monthly",
-      label: "Monthly",
+      label: "Lite",
       price: "$9.99",
       period: "per month",
       note: "Billed monthly, cancel anytime",
