@@ -999,8 +999,18 @@ describe("the charts show measured things, or nothing", () => {
     // and at this size a wedge reads where a thin arc is a hairline.
     for (const r of rings("personality", { stats: STATS })) {
       expect(r.props.thickness).toBe(r.props.size / 2);
-      expect(r.props.size).toBeLessThanOrEqual(48);
     }
+  });
+
+  it("keeps the caption's chart well under the one on Stats", () => {
+    // Relational, not a magic number: the note is glanced at and Stats is
+    // read, and the sizes have to keep saying which is which however either
+    // is retuned.
+    const note = rings("personality", { stats: STATS })[0].props.size;
+    const stat = rings("stats", { stats: STATS })[0].props.size;
+    expect(note).toBeLessThan(stat / 2);
+    // Still big enough to read a lean off without looking for it.
+    expect(note).toBeGreaterThanOrEqual(52);
   });
 
   it("charts the user's own rows once there are some", () => {

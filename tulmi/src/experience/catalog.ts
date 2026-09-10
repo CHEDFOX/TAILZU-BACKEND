@@ -4530,9 +4530,11 @@ export const YOU_UI = {
     /** Ink on the amber. Black, and mid-weight — not bold, which on a solid
      *  colour reads as shouting rather than as speech. */
     text: "#0B0B0D",
-    textSize: 13.5,
+    // A SHORT LINE CAN BE SMALLER. Nine words at 13 read as fast as fifteen
+    // at 13.5 and leave the chart the room it now takes.
+    textSize: 13,
     textWeight: "600",
-    textLineHeight: 19,
+    textLineHeight: 18,
     radius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
@@ -4549,10 +4551,13 @@ export const YOU_UI = {
      * fills it to the centre, which is also what reads at this size: at 46pt
      * a thin arc is a hairline, a wedge is a shape.
      *
-     * Small, because it shares a strip with a sentence and a button, and
-     * anything larger turns the caption into a panel.
+     * Sized to be READ ACROSS THE ROOM, not squinted at. At 46 the shape was
+     * there and you had to look for it; at 58 you see which way it leans
+     * without meaning to, which is the whole job of a chart in a caption. The
+     * sentence beside it got shorter in the same change, so the strip did not
+     * grow to pay for it.
      */
-    chart: { size: 46, thickness: 23, gap: 1.5 },
+    chart: { size: 58, thickness: 29, gap: 2 },
     /** The way in, on the amber: black pill, amber ink. */
     cta: {
       height: 32,
@@ -4829,26 +4834,26 @@ const YOU_CARDS: {
 }[] = [
   {
     title: "Voice", media: "card.voice", screen: "voices",
-    blurb: "How Tailzu writes for you. Zu is your own voice, learned — add others for the moments it isn't.",
+    blurb: "Zu writes as you. Add a voice for when it shouldn't.",
     cta: "Voices",
     chart: (ctx) => voiceSlices(ctx.stats, ctx.personality, CHART_ON_AMBER),
   },
   {
     title: "Dictionary", media: "card.dictionary", screen: "dictionary",
-    blurb: "Names, brands and the words only you use. Saved here, they are never corrected into something else.",
+    blurb: "Your words, spelled your way. Never corrected.",
     cta: "Words",
     chart: (ctx) => dictionarySlices(ctx.stats, CHART_ON_AMBER),
   },
   {
     title: "Haptics", media: "card.haptics", screen: "haptics",
-    blurb: "What the keyboard feels like under your thumb.",
+    blurb: "How it feels under your thumb.",
     cta: "Feel",
     // No ring. Haptics is a preference, not a behaviour — there is nothing
     // measured here, and a chart of a setting is decoration.
   },
   {
     title: "Languages", media: "card.languages", screen: "languages",
-    blurb: "The languages you write in. Each one you pick is one it listens for and writes back in.",
+    blurb: "Pick a language. It listens for it.",
     cta: "Languages",
     chart: (ctx) => languageSlices(ctx.stats, CHART_ON_AMBER),
   },
