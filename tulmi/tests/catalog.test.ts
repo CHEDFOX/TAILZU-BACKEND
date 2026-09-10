@@ -909,6 +909,24 @@ describe("the You tab greets you by name", () => {
     expect(new Set(w).size).toBe(w.length);
   });
 
+  it("gives each line its own colour, tunable without moving anything else", () => {
+    // Pointing these at `label` and `text` would have made the greeting
+    // untunable in practice: those two carry most of the app's type, so
+    // balancing the hello against the name would have dragged every caption
+    // and heading with it.
+    expect(TYPE_ROLES.greetHello.color).toBe("greetHello");
+    expect(TYPE_ROLES.greetName.color).toBe("greetName");
+    expect(THEME.color.greetHello).toBeDefined();
+    expect(THEME.color.greetName).toBeDefined();
+    // Not aliases of the shared tokens — a token that IS `label` is `label`.
+    const shared = ["label", "text", "body", "muted"];
+    for (const role of ["greetHello", "greetName"] as const) {
+      expect(shared).not.toContain(TYPE_ROLES[role].color);
+    }
+    // And not each other, or there is one colour, not two.
+    expect(THEME.color.greetHello).not.toBe(THEME.color.greetName);
+  });
+
   it("sends the cadence, so the app only knows how to turn a word", () => {
     const p = hello().props;
     expect(p.intervalMs).toBe(YOU_UI.greet.intervalMs);

@@ -587,8 +587,16 @@ export const TYPE_ROLES: Record<string, TypeRole> = {
   // The You tab's greeting: a quiet hello over the person's name. The hello is
   // small and tracked because it is a label, not a sentence; the name is the
   // display face because it is the one proper noun on the screen.
-  greetHello: { size: S.label, weight: "300", letterSpacing: 1.6, color: "label" },
-  greetName:  { family: "display", size: S.h1, weight: "300", letterSpacing: 0.2, color: "text" },
+  //
+  // EACH LINE HAS ITS OWN COLOUR TOKEN, and neither is shared with anything
+  // else. Pointing them at `label` and `text` would have made the greeting
+  // untunable in practice: those two carry most of the app's type, so pulling
+  // the hello up or pushing it back would have moved every caption and every
+  // heading with it. Two tokens of their own is what makes the pair
+  // adjustable against each other — which is the whole relationship here,
+  // a name that reads and a hello that stays behind it.
+  greetHello: { size: S.label, weight: "300", letterSpacing: 1.6, color: "greetHello" },
+  greetName:  { family: "display", size: S.h1, weight: "300", letterSpacing: 0.2, color: "greetName" },
 
   // The shell: title bar, error card, refresh banner, update gate, toast.
   title:        { size: 22, weight: "800", color: "text" },
@@ -642,6 +650,12 @@ export const THEME: ThemeTokens = {
     label: "rgba(255,255,255,0.42)",
     danger: "#e0556b",
     success: "#4caf50",
+    // The You tab's greeting, one token per line. Kept apart from `label` and
+    // `text` on purpose: those two carry most of the app's type, so the pair
+    // could not be balanced against each other without dragging every caption
+    // and heading along. Set either alone.
+    greetHello: "rgba(255,255,255,0.42)",
+    greetName: "rgba(255,255,255,0.96)",
   },
   // GOLDEN SCALE (φ via the Fibonacci ladder 5·8·13·21·34·55): every spacing
   // step and type size in the app comes off this ladder, so screens compose
