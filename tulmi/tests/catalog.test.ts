@@ -326,7 +326,9 @@ describe("buildBootstrap", () => {
     // Settings is no longer a bottom tab — it's opened from the header gear.
     // Stats sits between Home and You (the deep-stats tab).
     expect(nav.tabs.map((t) => t.id)).toEqual(["home", "stats", "personality"]);
-    expect(b.initialScreenId).toBe("home");
+    // The screen follows the TAB, and for a first-timer that is You. These
+    // used to disagree — the bar lit one tab while another screen showed.
+    expect(b.initialScreenId).toBe("personality");
     // Common labels the app relies on.
     expect(b.labels?.["app.name"]).toBe("Tailzu");
     // Language list is present.
@@ -365,8 +367,14 @@ describe("buildBootstrap", () => {
   });
 
   it("an onboarded user opens on home, first launch or not", () => {
-    expect(buildBootstrap({ onboarded: true, launchCount: 1 }).initialScreenId).toBe("home");
-    expect(buildBootstrap({ onboarded: true, launchCount: 50 }).initialScreenId).toBe("home");
+    // First launch or fiftieth, an onboarded user opens on a tab root — and
+    // on the SAME one the tab bar is lighting.
+    for (const launchCount of [1, 50]) {
+      const b = buildBootstrap({ onboarded: true, launchCount });
+      const nav = b.navigation as { kind: "tabs"; initialTabId?: string; tabs: Array<{ id: string; screenId?: string }> };
+      const tab = nav.tabs.find((t) => t.id === nav.initialTabId)!;
+      expect(b.initialScreenId).toBe(tab.screenId ?? tab.id);
+    }
   });
 
   it("includes a cacheVersion token that matches the current cache version", () => {
@@ -767,7 +775,7 @@ describe("buildKeyboardConfig", () => {
     const tree = JSON.stringify(introMounted.root);
     expect(tree.includes("ParticleMark") || tree.includes("Slideshow")).toBe(true);
     // A returning user is never held behind it.
-    expect(buildBootstrap({ onboarded: true }).initialScreenId).toBe("home");
+    expect(buildBootstrap({ onboarded: true }).initialScreenId).toBe("personality");
   });
 
   it("gives every hero a built-in, so no screen ships an empty middle", () => {
@@ -977,6 +985,39 @@ describe("the card in the middle says what it is", () => {
     expect(Number(text.style.fontWeight)).toBeLessThan(700);
     expect(cta.style.backgroundColor).toBe("#0B0B0D");
     expect(cta.children[0].style.color).toBe(YOU_UI.accent);
+  });
+});
+
+describe("the bar never lies about where you are", () => {
+  // A tab bar is not a label on the screen, it is a claim about where you
+  // are. These were decided independently and disagreed for a returning user:
+  // the bar lit Stats while Train was showing, so the first tap on the tab you
+  // appeared to be on did nothing.
+  const pair = (o: Parameters<typeof buildBootstrap>[0]) => {
+    const b = buildBootstrap(o);
+    const nav = b.navigation as { kind: "tabs"; initialTabId?: string; tabs: Array<{ id: string; screenId?: string }> };
+    const tab = nav.tabs.find((t) => t.id === nav.initialTabId);
+    return { screen: b.initialScreenId, tabScreen: tab ? tab.screenId ?? tab.id : undefined };
+  };
+
+  it("opens the screen the lit tab belongs to", () => {
+    for (const o of [{ onboarded: true }, { onboarded: true, landedBefore: true }]) {
+      const { screen, tabScreen } = pair(o);
+      expect(screen).toBe(tabScreen);
+    }
+  });
+
+  it("sends a first-timer to You and a returning user to Stats", () => {
+    expect(pair({ onboarded: true }).screen).toBe("personality");
+    expect(pair({ onboarded: true, landedBefore: true }).screen).toBe("stats");
+  });
+
+  it("never redirects a screen that comes BEFORE the tabs", () => {
+    // Onboarding's two steps obtain the microphone and the keyboard. Landing
+    // someone on Stats because a tab id says so would skip both.
+    expect(buildBootstrap({ onboarded: false }).initialScreenId).toMatch(/^onboarding/);
+    expect(buildBootstrap({ onboarded: false, landedBefore: true }).initialScreenId)
+      .toMatch(/^onboarding/);
   });
 });
 

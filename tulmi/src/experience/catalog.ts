@@ -586,6 +586,23 @@ const GREET = {
   intervalMs: 2600,
   /** The turn itself. Half out, half in. */
   flipMs: 620,
+  /**
+   * HOW ONE WORD BECOMES THE NEXT — and it is a performance decision here as
+   * much as a visual one.
+   *
+   * "turn" is the 3D flip and it is the better effect. It is also expensive:
+   * a rotateX with a perspective makes its parent composite in 3D, and on
+   * Android every blurred view beneath re-renders when that happens. This tab
+   * carries five of them — a full-screen backdrop and one per card — so the
+   * turn showed up as the whole screen flickering on every word: the name,
+   * the settings icon, the note under the deck, none of them near the
+   * greeting.
+   *
+   * "fade" is a crossfade. Opacity alone, no transform, no offscreen pass,
+   * nothing else disturbed. A caption quietly changing language does not need
+   * the more expensive gesture.
+   */
+  flip: "fade" as "fade" | "turn",
   /** The small tracked line. A label, not a sentence. */
   hello: {
     size: 13,
@@ -1051,6 +1068,7 @@ export function buildBootstrap(
     keyboardReady?: boolean;
   } = {},
 ): BootstrapResponse {
+  const nav = navigationFor(!!opts.landedBefore);
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     // Opaque cache token — clients invalidate any cached screens when this
@@ -1060,12 +1078,25 @@ export function buildBootstrap(
     // the platform font and nothing waits on the network.
     ...(Object.keys(FONTS).length ? { fonts: FONTS } : {}),
     theme: THEME,
-    navigation: navigationFor(!!opts.landedBefore),
+    navigation: nav,
     // The server owns onboarding AND the intro. Intro plays whenever all 4
     // frames are uploaded to the media store; falls through to onboarding /
     // home when they're not, so we never render an intro screen with
     // missing images.
-    initialScreenId: pickInitialScreenId(
+    // THE TAB AND THE SCREEN HAVE TO BE THE SAME PLACE.
+    //
+    // These were decided independently — the tab by `initialTabId`, the screen
+    // by pickInitialScreenId — and for a returning user they disagreed: the
+    // tab bar lit Stats while the screen showing was Train. The bar is not a
+    // label on the screen, it is a claim about where you are, and a bar that
+    // lies is worse than a bar that is wrong, because the first tap on the tab
+    // you appear to be on does nothing.
+    //
+    // Only a TAB ROOT is redirected. intro and onboarding come before the tabs
+    // exist and must survive this untouched — landing a first-run user on
+    // Stats because a tab id says so would skip the two steps that obtain the
+    // microphone and the keyboard.
+    initialScreenId: landingScreenId(nav, pickInitialScreenId(
       !!opts.onboarded,
       // Uploaded media OR the built-in mark. The intro used to require a file,
       // so out of the box it silently never played — which reads as a broken
@@ -1076,7 +1107,7 @@ export function buildBootstrap(
       // tell "the app is opening" from "the app asked again".
       Number(opts.launchCount ?? 0),
       { micGranted: !!opts.micGranted, keyboardReady: !!opts.keyboardReady },
-    ),
+    )),
     flags: ((): BootstrapResponse["flags"] => {
       const flags: BootstrapResponse["flags"] = {
         // Policy URLs — Settings screen links open these in-browser.
@@ -1753,6 +1784,28 @@ const WARM_SCREEN_IDS = [
  * resolves to no intro: a missing opening costs a first impression, a repeating
  * one costs trust in the whole app.
  */
+/**
+ * The screen that belongs to the tab we are landing on.
+ *
+ * The tab and the screen used to be decided independently, and for a
+ * returning user they disagreed: the bar lit Stats while Train was on screen.
+ * A tab bar is not a label on the screen, it is a claim about where you are —
+ * and a bar that lies is worse than one that is wrong, because the first tap
+ * on the tab you appear to be on does nothing at all.
+ *
+ * ONLY A TAB ROOT IS REDIRECTED. intro and onboarding come before the tabs
+ * exist, and sending a first-run user to Stats because a tab id says so would
+ * skip the two steps that obtain the microphone and the keyboard. Anything
+ * that is not already a tab's own screen is returned untouched.
+ */
+function landingScreenId(nav: NavigationShell, picked: string): string {
+  if (nav.kind !== "tabs") return picked;
+  const isTabRoot = nav.tabs.some((t) => (t.screenId ?? t.id) === picked);
+  if (!isTabRoot) return picked;
+  const landing = nav.tabs.find((t) => t.id === nav.initialTabId);
+  return landing ? (landing.screenId ?? landing.id) : picked;
+}
+
 function pickInitialScreenId(
   onboarded: boolean,
   introReady: boolean,
@@ -5240,6 +5293,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
           words: helloCycle(),
           intervalMs: g.intervalMs,
           flipMs: g.flipMs,
+          flip: g.flip,
           variant: "greetHello",
         },
       },
