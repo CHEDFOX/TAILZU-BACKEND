@@ -52,6 +52,7 @@ export async function runPipeline(
     // The recognizer gets the terms this speaker actually uses; the prose
     // never reaches it, because Whisper reads its prompt as preceding speech.
     portraitCore: opts.personality?.stylePortrait?.core,
+    portraitWords: opts.personality?.stylePortrait?.words,
     // The Languages card, when the user has answered it.
     languages: opts.personality?.languages?.map(String),
   });
@@ -133,6 +134,7 @@ export async function* runPipelineStream(
     // The recognizer gets the terms this speaker actually uses; the prose
     // never reaches it, because Whisper reads its prompt as preceding speech.
     portraitCore: opts.personality?.stylePortrait?.core,
+    portraitWords: opts.personality?.stylePortrait?.words,
     // The Languages card, when the user has answered it.
     languages: opts.personality?.languages?.map(String),
   });

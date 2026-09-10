@@ -140,8 +140,32 @@ export interface Personality {
    * id; `examples` counts absorbed picks.
    */
   stylePortrait?: {
+    /** The prose summary. Still the thing every refine reads first. */
     core?: string;
+    /**
+     * Their own words, with what each one MEANS to them.
+     *
+     * A list rather than a sentence, because these are the part that must
+     * accumulate: someone's slang is learned one word at a time over months,
+     * and a prose paragraph rewritten each session forgets the ones that
+     * happened not to come up. The meaning is what makes them usable — knowing
+     * that this person says "jugaad" is preservation, knowing what they mean by
+     * it is the difference between keeping the word and using it.
+     */
+    words?: Array<{ term: string; means: string }>;
+    /** The handful of modes they actually write in, and when each shows up. */
+    styles?: Array<{ name: string; when: string }>;
+    /**
+     * How they differ by time of day. Only ever written when the user's UTC
+     * offset is known — a day-part computed against the wrong clock is worse
+     * than no day-part at all.
+     */
+    rhythms?: Array<{ when: string; vibe: string }>;
+    /** Per-voice notes, keyed by voice or tone id. */
     tones?: Record<string, string>;
+    /** Last known offset from UTC, in minutes, sent by the app with its stats
+     *  call. Without it, `rhythms` stays empty. */
+    tzOffsetMinutes?: number;
     /** Deliberate training rounds: variants picked, spoken sessions finished. */
     examples?: number;
     /** Ordinary refines observed since the portrait was last rewritten from

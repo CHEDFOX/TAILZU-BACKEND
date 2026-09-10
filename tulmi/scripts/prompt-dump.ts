@@ -33,6 +33,12 @@ const PERSON = {
 // it would for a real returning user rather than as the first-run case.
 const SEASONED = {
   core: "(the portrait so far)",
+  words: [
+    { term: "yaar", means: "mate — close friends only" },
+    { term: "jugaad", means: "a scrappy workaround they are pleased with" },
+  ],
+  styles: [{ name: "clipped", when: "work chats" }],
+  rhythms: [{ when: "early morning", vibe: "terser, skips the greeting" }],
   sessions: 23,
   examples: 6,
   firstSeenAt: new Date(Date.now() - 97 * 86_400_000).toISOString(),
@@ -99,10 +105,22 @@ parts.push(
   "disk. Both halves of each row are evidence: SAID is how they put it, SENT is",
   "what they read and let through.\n",
 );
-parts.push(usageSystem(SEASONED));
+parts.push(usageSystem(SEASONED, true));
 
 parts.push(RULE("WHAT EVERY PORTRAIT WRITER LOOKS FOR"));
 parts.push(PORTRAIT_DIMENSIONS, "", PORTRAIT_BOUNDS);
+
+parts.push(RULE("WHAT A PORTRAIT LOOKS LIKE ONCE WRITTEN"));
+parts.push(
+  "Fields, not one paragraph — because prose forgets. A word learned in March",
+  "that did not come up in April was gone by May, since the rewrite had no",
+  "reason to carry it. `words` accumulates and dedupes across sessions; the",
+  "rest is a fresh read each time.\n",
+);
+parts.push(buildAssistSystem({
+  hasContext: false,
+  personality: { activeTone: "none", stylePortrait: SEASONED } as never,
+}).split("TONE:")[1].trim());
 
 parts.push(RULE("WHERE THE PORTRAIT IS READ BACK"));
 parts.push(

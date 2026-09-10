@@ -108,7 +108,10 @@ function learnFromUsage(user: AuthedUser, personality: Personality): void {
       const { entries } = await listHistory(user, { limit: cfg.PORTRAIT_LEARN_WINDOW });
       const next = await portraitFromUsage(
         sp,
-        entries.map((e) => ({ input: e.input, output: e.output, targetApp: e.targetApp })),
+        entries.map((e) => ({
+          input: e.input, output: e.output, targetApp: e.targetApp, createdAt: e.createdAt,
+        })),
+        sp?.tzOffsetMinutes,
       );
       await updatePersonality(user, (existing) => ({
         ...existing,
@@ -117,7 +120,19 @@ function learnFromUsage(user: AuthedUser, personality: Personality): void {
           // A null reply means too little evidence or a bad completion. The
           // counters still move: retrying the same thin window on every refine
           // would burn a call each time and still learn nothing.
-          ...(next ? { core: next.core, updatedAt: new Date(now).toISOString() } : {}),
+          ...(next
+            ? {
+                ...(next.core ? { core: next.core } : {}),
+                // WORDS ACCUMULATE, everything else is a fresh read. Someone's
+                // slang is learned a term at a time over months, and a
+                // replace would forget every word that happened not to come up
+                // in the last forty messages.
+                words: mergePortraitWords(existing.stylePortrait?.words, next.words),
+                ...(next.styles?.length ? { styles: next.styles } : {}),
+                ...(next.rhythms?.length ? { rhythms: next.rhythms } : {}),
+                updatedAt: new Date(now).toISOString(),
+              }
+            : {}),
           observed: 0,
           // Sittings, not roll-ups: the long-session backstop must not inflate
           // the number the writer uses to decide how settled the portrait is.
@@ -150,6 +165,9 @@ import { runPipeline, runPipelineStream } from "./pipeline/index.js";
 import {
   assist, draftReply, inferStyle, refineVariants, updateStylePortrait, LLM_TONES,
   portraitFromUsage,
+} from "./pipeline/cleanup.js";
+import { mergePortraitWords } from "./pipeline/portraitDimensions.js";
+import {
   converseTurn, portraitFromTranscript, type ConverseTurn,
 } from "./pipeline/cleanup.js";
 import { synthesize } from "./pipeline/tts.js";
@@ -800,7 +818,10 @@ app.post("/v1/train/pick", { config: AUTHED_RL }, async (req, reply) => {
     const merged = await updatePersonality(user, (existing) => ({
       ...existing,
       stylePortrait: {
+        ...existing.stylePortrait,
         core: next.core,
+        words: mergePortraitWords(existing.stylePortrait?.words, next.words),
+        ...(next.styles?.length ? { styles: next.styles } : {}),
         tones: {
           ...(existing.stylePortrait?.tones ?? {}),
           ...(toneKey && next.toneNote ? { [toneKey]: next.toneNote } : {}),
@@ -1699,6 +1720,18 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   // "month" window: the Stats tab charts 14-day bars + 30-day streaks, which
   // a 7-day projection can't feed. tzOffsetMinutes keeps "today"/"evening"
   // meaning the user's clock.
+  // THE ONLY PLACE THE APP EVER TELLS US ITS CLOCK. Remembered on the portrait
+  // so the usage roll-up can turn a row's UTC timestamp into the hour the user
+  // actually wrote it — without it, `rhythms` stays empty, because a day-part
+  // computed against the wrong timezone is a confident lie that the writing
+  // model would then act on for months.
+  if (user && typeof body.tzOffsetMinutes === "number" && Number.isFinite(body.tzOffsetMinutes)) {
+    const tz = Math.max(-14 * 60, Math.min(14 * 60, Math.round(body.tzOffsetMinutes)));
+    void updatePersonality(user, (existing) => ({
+      ...existing,
+      stylePortrait: { ...existing.stylePortrait, tzOffsetMinutes: tz },
+    })).catch(() => { /* a stats call must never fail over this */ });
+  }
   const stats =
     user && screenId === "stats"
       ? await statsForUser(user, "month", Number(body.tzOffsetMinutes) || 0)

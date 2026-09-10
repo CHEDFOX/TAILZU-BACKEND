@@ -4,6 +4,9 @@ import {
   PORTRAIT_BOUNDS,
   portraitJsonContract,
   portraitProvenance,
+  parsePortraitDraft,
+  mergePortraitWords,
+  MAX_PORTRAIT_WORDS,
 } from "../src/pipeline/portraitDimensions.js";
 import {
   usageSystem, portraitSystem, transcriptSystem,
@@ -81,17 +84,51 @@ describe("what a portrait may never contain", () => {
 });
 
 describe("the output contract", () => {
-  it("is one shape, whether or not a tone is being trained", () => {
-    expect(portraitJsonContract()).toContain('"core"');
-    expect(portraitJsonContract()).not.toContain("toneNote");
-    expect(portraitJsonContract("Signature")).toContain('"toneNote"');
-    expect(portraitJsonContract("Signature")).toContain("Signature");
+  // FIELDS, NOT ONE PARAGRAPH. The portrait used to be a single prose blob
+  // rewritten from scratch each session, and prose forgets: a word learned in
+  // March that did not come up in April was gone by May, because the rewrite
+  // had no reason to carry it.
+  it("asks for the parts that accumulate separately from the ones that do not", () => {
+    const c = portraitJsonContract();
+    expect(c).toContain('"core"');
+    expect(c).toContain('"words"');
+    expect(c).toContain('"styles"');
   });
 
-  it("bounds the core, because it rides on every request the user makes", () => {
-    // Unbounded, it grows each round and eventually crowds out the message
-    // the model is supposed to be writing.
-    expect(portraitJsonContract()).toMatch(/≤130 words/);
+  it("asks what each word MEANS to them, not what a dictionary says", () => {
+    // Knowing someone says "jugaad" tells the model to preserve it. Knowing
+    // what they mean by it is what lets the model use it.
+    const c = portraitJsonContract();
+    expect(c).toMatch(/what THEY use it to mean/);
+    expect(c).toMatch(/not a dictionary definition/);
+    expect(c).toMatch(/Skip anything a dictionary of their language would carry/);
+  });
+
+  it("asks for their script, so the recognizer can be biased with the words", () => {
+    expect(portraitJsonContract()).toMatch(/exactly as they write it, in their script/);
+  });
+
+  it("only asks for rhythms when the clock is actually known", () => {
+    // A day-part computed against the wrong timezone is worse than none, so
+    // the field is not even requested unless the app has told us the offset.
+    expect(portraitJsonContract()).not.toContain('"rhythms"');
+    expect(portraitJsonContract({ withRhythms: true })).toContain('"rhythms"');
+    // And even then, "none" is offered as the right answer for most people.
+    expect(portraitJsonContract({ withRhythms: true })).toMatch(/an empty list is the honest answer/i);
+  });
+
+  it("adds the tone note only when a tone is being trained", () => {
+    expect(portraitJsonContract()).not.toContain("toneNote");
+    expect(portraitJsonContract({ trainingTone: "Signature" })).toContain('"toneNote"');
+    expect(portraitJsonContract({ trainingTone: "Signature" })).toContain("Signature");
+  });
+
+  it("bounds every list, because the portrait rides on every request", () => {
+    const c = portraitJsonContract({ withRhythms: true });
+    expect(c).toMatch(/≤130 words/);
+    expect(c).toMatch(/At most 12 new ones per pass/);
+    expect(c).toMatch(/styles: at most 4/);
+    expect(c).toMatch(/rhythms: at most 3/);
   });
 });
 
@@ -164,5 +201,92 @@ describe("the writer is told what it is revising", () => {
       expect(text, `${name} writer lost the dimensions`).toContain("REGISTER");
       expect(text, `${name} writer lost the bounds`).toContain("Never judge them");
     }
+  });
+});
+
+describe("words accumulate; everything else is a fresh read", () => {
+  // The one part of the portrait that must survive a session it did not come
+  // up in. Somebody's slang is learned a term at a time over months, and a
+  // rewrite-from-scratch forgets every word that happened not to appear in the
+  // last forty messages.
+  it("keeps what was learned before, and adds what is new", () => {
+    const before = [{ term: "yaar", means: "mate, close friend" }];
+    const after = mergePortraitWords(before, [{ term: "jugaad", means: "a scrappy workaround" }]);
+    expect(after.map((w) => w.term)).toEqual(["jugaad", "yaar"]);
+  });
+
+  it("updates a meaning rather than storing the word twice", () => {
+    // The later reading is the better-evidenced one.
+    const merged = mergePortraitWords(
+      [{ term: "solid", means: "good" }],
+      [{ term: "Solid", means: "agreed, will do" }],
+    );
+    expect(merged).toHaveLength(1);
+    expect(merged[0].means).toBe("agreed, will do");
+  });
+
+  it("moves a word that came up again to the front", () => {
+    // Being used again is what makes a word current, and the front is what
+    // survives the cap.
+    const merged = mergePortraitWords(
+      [{ term: "a", means: "1" }, { term: "b", means: "2" }],
+      [{ term: "b", means: "2" }],
+    );
+    expect(merged[0].term).toBe("b");
+  });
+
+  it("caps the list, keeping the newest rather than the oldest", () => {
+    // Dropping the newest would mean the list stops learning the moment it
+    // fills up — which is the opposite of the point.
+    const old = Array.from({ length: MAX_PORTRAIT_WORDS }, (_, i) => ({
+      term: `old${i}`, means: "x",
+    }));
+    const merged = mergePortraitWords(old, [{ term: "fresh", means: "y" }]);
+    expect(merged).toHaveLength(MAX_PORTRAIT_WORDS);
+    expect(merged[0].term).toBe("fresh");
+    expect(merged.some((w) => w.term === `old${MAX_PORTRAIT_WORDS - 1}`)).toBe(false);
+  });
+
+  it("survives a portrait that has never had a word list", () => {
+    expect(mergePortraitWords(undefined, undefined)).toEqual([]);
+    expect(mergePortraitWords(undefined, [{ term: "x", means: "y" }])).toHaveLength(1);
+  });
+});
+
+describe("parsePortraitDraft — a missing part is fine, an invented one is not", () => {
+  it("reads every field the writers can return", () => {
+    const d = parsePortraitDraft(JSON.stringify({
+      core: "Short sentences.",
+      words: [{ term: "yaar", means: "mate" }],
+      styles: [{ name: "clipped", when: "work chats" }],
+      rhythms: [{ when: "early morning", vibe: "terser, no greeting" }],
+      toneNote: "keeps it clipped",
+    }));
+    expect(d.core).toBe("Short sentences.");
+    expect(d.words).toEqual([{ term: "yaar", means: "mate" }]);
+    expect(d.styles?.[0].name).toBe("clipped");
+    expect(d.rhythms?.[0].vibe).toBe("terser, no greeting");
+    expect(d.toneNote).toBe("keeps it clipped");
+  });
+
+  it("drops a half-written entry instead of defaulting it", () => {
+    // A word with no meaning is worse than no word: it reaches the prompt as
+    // "term — " and the model fills the blank itself.
+    const d = parsePortraitDraft(JSON.stringify({
+      words: [{ term: "yaar" }, { means: "no term" }, { term: "ok", means: "fine" }],
+    }));
+    expect(d.words).toEqual([{ term: "ok", means: "fine" }]);
+  });
+
+  it("returns nothing at all for a reply that is not JSON", () => {
+    // Which the callers then treat as "keep what we had" rather than wiping it.
+    expect(parsePortraitDraft("sorry, I can't help with that")).toEqual({});
+  });
+
+  it("ignores a field of the wrong shape", () => {
+    const d = parsePortraitDraft(JSON.stringify({ core: 42, words: "yaar", styles: {} }));
+    expect(d.core).toBeUndefined();
+    expect(d.words).toEqual([]);
+    expect(d.styles).toEqual([]);
   });
 });

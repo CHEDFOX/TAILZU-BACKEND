@@ -130,3 +130,38 @@ describe("portraitTerms — the recognizer gets their words, never the prose", (
     expect(p.indexOf("हाँ")).toBeLessThan(p.indexOf("Tailzu"));
   });
 })
+
+describe("the word list is the better source for biasing", () => {
+  // Scraping quotes out of the prose was always a fallback. The list is the
+  // exact terms, already deduped, already in the user's script — and it
+  // accumulates across sessions instead of surviving only as long as the last
+  // rewrite happened to mention each word.
+  const WORDS = [
+    { term: "yaar", means: "mate" },
+    { term: "jugaad", means: "a scrappy workaround" },
+  ];
+
+  it("leads with the list and lets the prose fill the rest", () => {
+    // Not either-or. The list is the better evidence so it goes first, but a
+    // quoted word the list has not caught yet is still a real term worth
+    // biasing on — there is room for eight and no reason to waste the slots.
+    expect(portraitTerms("Says 'anyway' a lot.", WORDS)).toBe("yaar, jugaad, anyway");
+  });
+
+  it("still falls back to the prose for a portrait with no list yet", () => {
+    expect(portraitTerms("Says 'anyway' a lot.", [])).toBe("anyway");
+    expect(portraitTerms("Says 'anyway' a lot.", undefined)).toBe("anyway");
+  });
+
+  it("reaches the recognizer through the STT prompt", () => {
+    const p = sttPrompt("Tailzu", "hi", ["hi"], undefined, WORDS) ?? "";
+    expect(p).toContain("yaar, jugaad");
+    // Still after the user's own dictionary: told beats observed.
+    expect(p.indexOf("Tailzu")).toBeLessThan(p.indexOf("yaar"));
+  });
+
+  it("caps at eight, list or prose", () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ term: `w${i}`, means: "x" }));
+    expect((portraitTerms(undefined, many) ?? "").split(", ")).toHaveLength(8);
+  });
+});

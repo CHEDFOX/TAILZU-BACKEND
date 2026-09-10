@@ -13,6 +13,7 @@ import type { CleanupOptions, Personality } from "../../../shared/types/api.js";
 import { LLM_TONES } from "./tonePrompts.js";
 import {
   PORTRAIT_DIMENSIONS, PORTRAIT_BOUNDS, portraitJsonContract, portraitProvenance,
+  parsePortraitDraft, type PortraitDraft,
 } from "./portraitDimensions.js";
 import { buildAssistSystem, portraitBlock } from "./assistPrompt.js";
 export { portraitBlock };
@@ -636,7 +637,7 @@ export function portraitSystem(
     "",
     PORTRAIT_BOUNDS,
     "",
-    portraitJsonContract(trainingTone),
+    portraitJsonContract({ trainingTone }),
   ].join("\n");
 }
 
@@ -652,7 +653,7 @@ export async function updateStylePortrait(
      * (voice id), which may differ from the display name above. */
     currentToneNote?: string;
   },
-): Promise<{ core: string; toneNote?: string }> {
+): Promise<PortraitDraft & { core: string }> {
   const trainingTone = example.tone && example.tone !== "none" ? example.tone : undefined;
   const system = portraitSystem(trainingTone, current);
   const user = [
@@ -679,16 +680,8 @@ export async function updateStylePortrait(
       { role: "user", content: user },
     ],
   });
-  let core = "";
-  let toneNote: string | undefined;
-  try {
-    const parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}") as Record<string, unknown>;
-    if (typeof parsed.core === "string") core = parsed.core.trim().slice(0, 900);
-    if (typeof parsed.toneNote === "string" && parsed.toneNote.trim()) {
-      toneNote = parsed.toneNote.trim().slice(0, 300);
-    }
-  } catch { /* keep the current portrait on a bad reply */ }
-  return { core: core || current?.core || "", toneNote };
+  const draft = parsePortraitDraft(res.choices[0]?.message?.content ?? "{}");
+  return { ...draft, core: draft.core || current?.core || "" };
 }
 
 // --- Training by conversation ----------------------------------------------
@@ -793,11 +786,17 @@ export function transcriptSystem(current?: Personality["stylePortrait"]): string
 
 /** The prompt that writes the portrait from ordinary use. Exported so it can
  *  be read (`npm run prompts`) and tested like the other two. */
-export function usageSystem(current?: Personality["stylePortrait"]): string {
+export function usageSystem(
+  current?: Personality["stylePortrait"],
+  withRhythms = false,
+): string {
   return [
     "You keep a portrait of how one person writes, close enough that their sentences could be reproduced from it. You have the portrait so far, and a stretch of their real messages.",
     "Each SAID line is how they put it themselves. Each SENT line is what they accepted and sent, having read it. The gap between the two is evidence: what they consistently let a rewrite change is not part of their voice, and what survives every rewrite is the core of it.",
     "Weight what recurs. One odd message is a mood; the same habit across ten is the person.",
+    withRhythms
+      ? "Each line carries the local time it was written. Use it only if the same difference shows up repeatedly at the same part of the day — someone who is short in the morning every morning. One late-night message is not a rhythm."
+      : "",
     "Rewrite the portrait against this: keep what still holds, drop what it contradicts, add what it reveals.",
     "",
     portraitProvenance(current),
@@ -807,8 +806,8 @@ export function usageSystem(current?: Personality["stylePortrait"]): string {
     "",
     PORTRAIT_BOUNDS,
     "",
-    portraitJsonContract(),
-  ].join("\n");
+    portraitJsonContract({ withRhythms }),
+  ].filter(Boolean).join("\n");
 }
 
 /**
@@ -835,19 +834,35 @@ export function usageSystem(current?: Personality["stylePortrait"]): string {
  */
 export async function portraitFromUsage(
   current: Personality["stylePortrait"],
-  rows: Array<{ input: string; output: string; targetApp?: string }>,
-): Promise<{ core: string } | null> {
+  rows: Array<{ input: string; output: string; targetApp?: string; createdAt?: string }>,
+  /** Minutes from UTC, when the app has told us. Absent means no rhythms:
+   *  a day-part computed against the wrong clock is worse than none. */
+  tzOffsetMinutes?: number,
+): Promise<PortraitDraft | null> {
   const usable = rows.filter((r) => r.input?.trim() && r.output?.trim());
   // Too little evidence is worse than none: a portrait rewritten off three
   // messages swings hard on whatever mood those three were written in.
   if (usable.length < 6) return null;
 
-  const system = usageSystem(current);
+  const knowsClock = typeof tzOffsetMinutes === "number";
+  const system = usageSystem(current, knowsClock);
 
   const evidence = usable
     .map((r) => {
       const where = r.targetApp?.trim() ? ` (${r.targetApp.trim()})` : "";
-      return `SAID${where}: ${r.input.trim().slice(0, 400)}\nSENT: ${r.output.trim().slice(0, 400)}`;
+      // Their clock, not the server's. Rendered as a plain local time so the
+      // model reads "07:40" rather than doing arithmetic on an offset.
+      let when = "";
+      if (knowsClock && r.createdAt) {
+        const t = Date.parse(r.createdAt);
+        if (Number.isFinite(t)) {
+          const local = new Date(t + tzOffsetMinutes! * 60_000);
+          const hh = String(local.getUTCHours()).padStart(2, "0");
+          const mm = String(local.getUTCMinutes()).padStart(2, "0");
+          when = ` ${hh}:${mm}`;
+        }
+      }
+      return `SAID${when}${where}: ${r.input.trim().slice(0, 400)}\nSENT: ${r.output.trim().slice(0, 400)}`;
     })
     .join("\n\n");
 
@@ -869,19 +884,15 @@ export async function portraitFromUsage(
       },
     ],
   });
-  let core = "";
-  try {
-    const parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}") as Record<string, unknown>;
-    if (typeof parsed.core === "string") core = parsed.core.trim().slice(0, 1_100);
-  } catch { /* keep the current portrait on a bad reply */ }
-  // A blank reply must never wipe months of learning.
-  return core ? { core } : null;
+  const draft = parsePortraitDraft(res.choices[0]?.message?.content ?? "{}");
+  // A reply with nothing usable in it must never wipe months of learning.
+  return draft.core || draft.words?.length || draft.styles?.length ? draft : null;
 }
 
 export async function portraitFromTranscript(
   current: Personality["stylePortrait"],
   turns: ConverseTurn[],
-): Promise<{ core: string }> {
+): Promise<PortraitDraft & { core: string }> {
   const mine = turns.filter((t) => t.role === "user" && t.text?.trim());
   if (mine.length < 2) return { core: current?.core ?? "" };
 
@@ -910,12 +921,8 @@ export async function portraitFromTranscript(
       },
     ],
   });
-  let core = "";
-  try {
-    const parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}") as Record<string, unknown>;
-    if (typeof parsed.core === "string") core = parsed.core.trim().slice(0, 900);
-  } catch { /* keep the current portrait on a bad reply */ }
-  return { core: core || current?.core || "" };
+  const draft = parsePortraitDraft(res.choices[0]?.message?.content ?? "{}");
+  return { ...draft, core: draft.core || current?.core || "" };
 }
 
 // --- Learn style from a writing sample -------------------------------------

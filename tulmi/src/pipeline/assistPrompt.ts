@@ -123,11 +123,35 @@ export function portraitBlock(personality: Personality | undefined, tone?: strin
   if (!p) return "";
   const parts: string[] = [];
   if (p.core?.trim()) parts.push(p.core.trim().slice(0, 900));
+
+  // THEIR WORDS, WITH WHAT THEY MEAN. This is why the list is stored as pairs
+  // rather than folded into the prose: knowing that someone says "jugaad" only
+  // tells the model to preserve it, and knowing what they mean by it is what
+  // lets the model USE it. Capped hard — the portrait rides on every request
+  // and a lexicon that grows without limit eventually crowds out the message.
+  if (p.words?.length) {
+    parts.push(
+      "Words that are theirs — keep them, and use them where they fit:\n" +
+        p.words.slice(0, 24).map((w) => `  ${w.term} — ${w.means}`).join("\n"),
+    );
+  }
+  if (p.styles?.length) {
+    parts.push(
+      "How they write, by situation:\n" +
+        p.styles.slice(0, 4).map((x) => `  ${x.name}${x.when ? ` — ${x.when}` : ""}`).join("\n"),
+    );
+  }
+  // Only ever populated when the user's clock is known, so it is safe to state
+  // plainly here rather than hedged.
+  if (p.rhythms?.length) {
+    parts.push(
+      "How they differ through the day:\n" +
+        p.rhythms.slice(0, 3).map((r) => `  ${r.when} — ${r.vibe}`).join("\n"),
+    );
+  }
+
   const toneNote = tone && p.tones?.[tone]?.trim();
   if (toneNote) parts.push(`For the "${tone}" tone specifically: ${toneNote.slice(0, 300)}`);
-  // Notes are also keyed by VOICE id (the Train sheet lists the voice
-  // library) — the ACTIVE voice's note applies to every refine made while
-  // that voice is selected. Skip when it's the same key as `tone` above.
   const voiceId = personality?.activePresetId;
   if (voiceId && voiceId !== tone) {
     const voiceNote = p.tones?.[voiceId]?.trim();

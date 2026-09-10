@@ -292,6 +292,8 @@ export interface SttInput {
   /** The user's learned style portrait. Only the WORDS it quotes are used —
    *  see portraitTerms for why the prose must never reach the decoder. */
   portraitCore?: string;
+  /** The portrait's word list — the preferred source for biasing. */
+  portraitWords?: Array<{ term: string }>;
   /** Every language this user speaks day to day, primary first (the
    *  Languages card). Each contributes its own script to the prompt, which is
    *  what a bilingual speaker needs: one exemplar can only prime one script,
@@ -377,11 +379,26 @@ const SCRIPT_EXEMPLARS: Record<string, string> = {
  * Capped at eight. The prompt is a short run-up; past that it stops biasing
  * and starts competing with the audio.
  */
-export function portraitTerms(portraitCore?: string): string | undefined {
-  const core = portraitCore?.trim();
-  if (!core) return undefined;
+export function portraitTerms(
+  portraitCore?: string,
+  /** The portrait's own word list, when it has one. Far better than scraping
+   *  the prose: these are already the exact terms, already deduped, already in
+   *  the user's script — and they accumulate across sessions rather than
+   *  surviving only as long as the last rewrite happened to mention them. */
+  words?: Array<{ term: string }>,
+): string | undefined {
   const out: string[] = [];
   const seen = new Set<string>();
+  for (const w of words ?? []) {
+    const term = w?.term?.trim();
+    const key = term?.toLowerCase();
+    if (!term || !key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(term);
+    if (out.length >= 8) return out.join(", ");
+  }
+  const core = portraitCore?.trim();
+  if (!core) return out.length ? out.join(", ") : undefined;
   // Straight and curly quotes, single and double. The portrait model uses all
   // of them, and which one it picks is not something to depend on.
   for (const m of core.matchAll(/['"\u2018\u2019\u201C\u201D]([^'"\u2018\u2019\u201C\u201D]{1,40})['"\u2018\u2019\u201C\u201D]/g)) {
@@ -400,6 +417,7 @@ export function sttPrompt(
   hint?: LanguageHint,
   languages?: string[],
   portraitCore?: string,
+  portraitWords?: Array<{ term: string }>,
 ): string | undefined {
   // The user's own set leads; the single hint is the fallback for anyone who
   // has not answered the Languages card. Capped at three: the prompt is a
@@ -420,7 +438,7 @@ export function sttPrompt(
   if (terms) parts.push(terms);
   // Their own words, after their own dictionary. The dictionary is what they
   // told us to spell correctly; these are what they were observed to say.
-  const learned = portraitTerms(portraitCore);
+  const learned = portraitTerms(portraitCore, portraitWords);
   if (learned) parts.push(learned);
   return parts.length ? parts.join(" ") : undefined;
 }
@@ -717,7 +735,10 @@ async function transcribeOpenAI(input: SttInput): Promise<RawSttResult> {
     file,
     model: cfg.OPENAI_STT_MODEL,
     language: sttLanguage(input.language),
-    prompt: sttPrompt(input.vocabulary, input.language, input.languages, input.portraitCore),
+    prompt: sttPrompt(
+      input.vocabulary, input.language, input.languages,
+      input.portraitCore, input.portraitWords,
+    ),
     response_format: "json",
   });
 
@@ -859,7 +880,10 @@ async function transcribeGroq(input: SttInput): Promise<RawSttResult> {
     model: cfg.GROQ_STT_MODEL,
     language: sttLanguage(input.language),
     response_format: "verbose_json",
-    prompt: sttPrompt(input.vocabulary, input.language, input.languages, input.portraitCore),
+    prompt: sttPrompt(
+      input.vocabulary, input.language, input.languages,
+      input.portraitCore, input.portraitWords,
+    ),
     // Temperature 0 makes Whisper deterministic and much less likely to
     // "hallucinate" on silent / low-signal chunks. The provider only accepts
     // the field on some SDK versions; ignore the cast if TS complains.
