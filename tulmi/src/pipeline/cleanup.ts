@@ -11,6 +11,9 @@ import { getConfig } from "../config.js";
 import { buildCleanupSystem, buildReplySystem } from "../prompts.js";
 import type { CleanupOptions, Personality } from "../../../shared/types/api.js";
 import { LLM_TONES } from "./tonePrompts.js";
+import {
+  PORTRAIT_DIMENSIONS, PORTRAIT_BOUNDS, portraitJsonContract,
+} from "./portraitDimensions.js";
 import { buildAssistSystem, portraitBlock } from "./assistPrompt.js";
 export { portraitBlock };
 
@@ -618,17 +621,18 @@ export async function refineVariants(
  * prints it.
  */
 export function portraitSystem(trainingTone?: string): string {
-  return (
-    "You keep a short portrait of how one person writes. You have the portrait so far, and one new " +
-    "piece of evidence: what they said, the version they chose as sounding most like them, and the " +
-    "ones they did not. " +
-    "Rewrite the portrait against that evidence — keep what still holds, drop what it contradicts, " +
-    "add what it reveals. Write only what someone could observe in their text, never a judgement " +
-    "about them, and never anything about how you learned it. " +
-    "Return ONLY JSON: {\"core\": \"≤120 words, tone-independent\"" +
-    (trainingTone ? `, \"toneNote\": \"≤40 words, specific to their '${trainingTone}' voice\"` : "") +
-    "}."
-  );
+  return [
+    "You keep a portrait of how one person writes, close enough that their sentences could be reproduced from it. You have the portrait so far, and one new piece of evidence: what they said, the version they chose as sounding most like them, and the ones they did not.",
+    "The version they REJECTED is evidence too, and the sharpest kind — it tells you what they are not, which a hundred accepted messages never would.",
+    "Rewrite the portrait against that evidence: keep what still holds, drop what it contradicts, add what it reveals.",
+    "",
+    "What to notice:",
+    PORTRAIT_DIMENSIONS,
+    "",
+    PORTRAIT_BOUNDS,
+    "",
+    portraitJsonContract(trainingTone),
+  ].join("\n");
 }
 
 export async function updateStylePortrait(
@@ -765,17 +769,103 @@ export async function converseTurn(
  */
 /** The prompt that WRITES the portrait on the spoken path — one read of the
  *  whole conversation, at the end of it. Exported for review and testing. */
-export const PORTRAIT_FROM_TRANSCRIPT_SYSTEM =
-  "You keep a short portrait of how one person writes. You have the portrait so far, and a " +
-  "transcript of them talking freely. Rewrite the portrait against it — keep what still holds, " +
-  "drop what it contradicts, add what it reveals. " +
-  "Only the lines marked THEM are evidence; the APP lines are what they were answering. " +
-  "Take from speech only what survives into writing: how long their sentences run, how direct they " +
-  "are, how warm, how they open and close, the words they reach for. Filler, repetition, stumbles " +
-  "and the transcriber\'s own mistakes are not theirs. " +
-  "Write only what someone could observe in their text, never a judgement about them, and never " +
-  "anything about this conversation. " +
-  'Return ONLY JSON: {"core": "≤120 words, tone-independent"}.';
+export const PORTRAIT_FROM_TRANSCRIPT_SYSTEM = [
+  "You keep a portrait of how one person writes, close enough that their sentences could be reproduced from it. You have the portrait so far, and a transcript of them talking freely. Rewrite the portrait against it: keep what still holds, drop what it contradicts, add what it reveals.",
+  "Only the lines marked THEM are evidence. The APP lines are what they were answering.",
+  "Speech is not writing. Take what survives the crossing and leave what does not: filler, repetition, stumbles and the transcriber's own mistakes are not theirs.",
+  "",
+  "What to notice:",
+  PORTRAIT_DIMENSIONS,
+  "",
+  PORTRAIT_BOUNDS,
+  "",
+  portraitJsonContract(),
+].join("\n");
+
+/** The prompt that writes the portrait from ordinary use. Exported so it can
+ *  be read (`npm run prompts`) and tested like the other two. */
+export function usageSystem(): string {
+  return [
+    "You keep a portrait of how one person writes, close enough that their sentences could be reproduced from it. You have the portrait so far, and a stretch of their real messages.",
+    "Each SAID line is how they put it themselves. Each SENT line is what they accepted and sent, having read it. The gap between the two is evidence: what they consistently let a rewrite change is not part of their voice, and what survives every rewrite is the core of it.",
+    "Weight what recurs. One odd message is a mood; the same habit across ten is the person.",
+    "Rewrite the portrait against this: keep what still holds, drop what it contradicts, add what it reveals.",
+    "",
+    "What to notice:",
+    PORTRAIT_DIMENSIONS,
+    "",
+    PORTRAIT_BOUNDS,
+    "",
+    portraitJsonContract(),
+  ].join("\n");
+}
+
+/**
+ * The portrait built from ORDINARY USE, which is where nearly all the evidence
+ * has always been.
+ *
+ * Until this, the portrait only moved when someone deliberately trained: they
+ * picked a variant, or they sat through a spoken session. Most people do that
+ * a handful of times and then use the keyboard for months. Every one of those
+ * dictations passed through the writing model and was thrown away, while the
+ * portrait stayed frozen at whatever six taps had taught it.
+ *
+ * The evidence was already on disk. Every refine writes a history row with
+ * what the user said and what they accepted, so this reads them back. No new
+ * capture, no new consent surface, nothing stored that was not stored before.
+ *
+ * WHY BOTH HALVES OF EACH ROW. The input is how they talk when nobody is
+ * watching — the raw shape of their thought. The output is what they let
+ * through: they had it in front of them and they sent it, which makes it a
+ * quiet accept. Neither alone is the person. The distance between them is the
+ * most interesting signal in the product, because it is the part we are
+ * adding, and a portrait that drifts toward the output would slowly describe
+ * the model's habits back to itself.
+ */
+export async function portraitFromUsage(
+  current: Personality["stylePortrait"],
+  rows: Array<{ input: string; output: string; targetApp?: string }>,
+): Promise<{ core: string } | null> {
+  const usable = rows.filter((r) => r.input?.trim() && r.output?.trim());
+  // Too little evidence is worse than none: a portrait rewritten off three
+  // messages swings hard on whatever mood those three were written in.
+  if (usable.length < 6) return null;
+
+  const system = usageSystem();
+
+  const evidence = usable
+    .map((r) => {
+      const where = r.targetApp?.trim() ? ` (${r.targetApp.trim()})` : "";
+      return `SAID${where}: ${r.input.trim().slice(0, 400)}\nSENT: ${r.output.trim().slice(0, 400)}`;
+    })
+    .join("\n\n");
+
+  const res = await openrouter().chat.completions.create({
+    ...common(),
+    // Off the user's path and read by every later refine — the same reasoning
+    // as the other two writers: it can afford the better model.
+    model: getConfig().PORTRAIT_MODEL || getConfig().CLEANUP_MODEL,
+    temperature: LEARN_TEMPERATURE,
+    max_tokens: MAX_TOKENS_STYLE,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: system },
+      {
+        role: "user",
+        content:
+          `CURRENT PORTRAIT:\n${current?.core?.trim() || "(none yet)"}\n\n` +
+          `THEIR MESSAGES:\n${evidence.slice(0, 14_000)}`,
+      },
+    ],
+  });
+  let core = "";
+  try {
+    const parsed = JSON.parse(res.choices[0]?.message?.content ?? "{}") as Record<string, unknown>;
+    if (typeof parsed.core === "string") core = parsed.core.trim().slice(0, 1_100);
+  } catch { /* keep the current portrait on a bad reply */ }
+  // A blank reply must never wipe months of learning.
+  return core ? { core } : null;
+}
 
 export async function portraitFromTranscript(
   current: Personality["stylePortrait"],

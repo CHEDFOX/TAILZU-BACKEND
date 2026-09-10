@@ -100,6 +100,23 @@ const EnvSchema = z.object({
   // second stream they are paying for.
   STT_LIVE_DUAL: bool(true),
 
+  /**
+   * How many ordinary refines pass before the portrait is rewritten from them.
+   *
+   * The portrait used to move only on deliberate training, which most people
+   * do a handful of times and then never again — so it froze at whatever six
+   * taps had taught it while months of real evidence went past unread.
+   *
+   * Twelve is a working default, not a measured one: often enough that a new
+   * user is recognised within a session or two, rare enough that the roll-up
+   * costs one extra LLM call per dozen refines and never lands on the user's
+   * path. Set to 0 to turn the whole thing off and learn only from training.
+   */
+  PORTRAIT_LEARN_EVERY: z.coerce.number().int().min(0).default(12),
+  /** How many recent messages the roll-up reads. Enough for a habit to repeat
+   *  in, short enough that last month's mood does not outvote this week. */
+  PORTRAIT_LEARN_WINDOW: z.coerce.number().int().min(6).max(200).default(40),
+
   // Add Deepgram's pre-recorded API as a THIRD candidate in STT_PROVIDER=auto.
   // Opt-in: a third opinion costs a third call (no extra latency — the legs run
   // in parallel) but its gain is smaller than Sarvam + Whisper together, and it

@@ -142,7 +142,12 @@ export interface Personality {
   stylePortrait?: {
     core?: string;
     tones?: Record<string, string>;
+    /** Deliberate training rounds: variants picked, spoken sessions finished. */
     examples?: number;
+    /** Ordinary refines observed since the portrait was last rewritten from
+     *  them. Most people train a handful of times and then just use the
+     *  keyboard for months, so this is where nearly all the evidence is. */
+    observed?: number;
     updatedAt?: string;
   };
 

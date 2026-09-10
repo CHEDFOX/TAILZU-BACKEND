@@ -11,7 +11,9 @@
 import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
 import {
   VARIANT_ANGLES, portraitSystem, PORTRAIT_FROM_TRANSCRIPT_SYSTEM, converseSystem,
+  usageSystem,
 } from "../src/pipeline/cleanup.js";
+import { PORTRAIT_DIMENSIONS, PORTRAIT_BOUNDS } from "../src/pipeline/portraitDimensions.js";
 import type { Personality } from "../../shared/types/api.js";
 
 const RULE = (s: string) => `\n${"=".repeat(76)}\n${s}\n${"=".repeat(76)}\n`;
@@ -79,6 +81,19 @@ parts.push(
   "session, rather than a portrait rewrite per turn.\n",
 );
 parts.push(PORTRAIT_FROM_TRANSCRIPT_SYSTEM);
+
+parts.push(RULE("THE PORTRAIT WRITTEN FROM ORDINARY USE  (no endpoint — it just happens)"));
+parts.push(
+  "The one that does most of the work. Deliberate training is a handful of taps;",
+  "this reads the last PORTRAIT_LEARN_WINDOW real messages every",
+  "PORTRAIT_LEARN_EVERY refines, off the user's path, from history already on",
+  "disk. Both halves of each row are evidence: SAID is how they put it, SENT is",
+  "what they read and let through.\n",
+);
+parts.push(usageSystem());
+
+parts.push(RULE("WHAT EVERY PORTRAIT WRITER LOOKS FOR"));
+parts.push(PORTRAIT_DIMENSIONS, "", PORTRAIT_BOUNDS);
 
 parts.push(RULE("WHERE THE PORTRAIT IS READ BACK"));
 parts.push(

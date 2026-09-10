@@ -58,6 +58,55 @@ import { applyRevenueCatEvent, isEntitled } from "./billing/entitlements.js";
  *
  * One extra read, and only on the fallback path.
  */
+/**
+ * Learn from ordinary use, off the user's path.
+ *
+ * Fire-and-forget after the response has already gone out. Every refine
+ * increments a counter; every PORTRAIT_LEARN_EVERY-th one reads the recent
+ * history back and rewrites the portrait from it. Nothing here can slow a
+ * refine down, and nothing here can fail one — the whole body is wrapped, and
+ * a portrait that does not update is invisible while a refine that throws is
+ * not.
+ *
+ * The counter lives on the portrait rather than in memory so it survives a
+ * restart and a second server process. It resets on every rewrite, so this is
+ * "every twelve since the last read", not "every twelve ever".
+ */
+function learnFromUsage(user: AuthedUser, personality: Personality): void {
+  const cfg = getConfig();
+  if (!cfg.PORTRAIT_LEARN_EVERY) return;
+  void (async () => {
+    try {
+      const seen = (personality.stylePortrait?.observed ?? 0) + 1;
+      if (seen < cfg.PORTRAIT_LEARN_EVERY) {
+        await updatePersonality(user, (existing) => ({
+          ...existing,
+          stylePortrait: { ...existing.stylePortrait, observed: seen },
+        }));
+        return;
+      }
+      const { entries } = await listHistory(user, { limit: cfg.PORTRAIT_LEARN_WINDOW });
+      const next = await portraitFromUsage(
+        personality.stylePortrait,
+        entries.map((e) => ({ input: e.input, output: e.output, targetApp: e.targetApp })),
+      );
+      await updatePersonality(user, (existing) => ({
+        ...existing,
+        stylePortrait: {
+          ...existing.stylePortrait,
+          // A null reply means too little evidence or a bad completion. Reset
+          // the counter anyway: retrying the same thin window every single
+          // refine would burn a call each time and still not learn anything.
+          ...(next ? { core: next.core, updatedAt: new Date().toISOString() } : {}),
+          observed: 0,
+        },
+      }));
+    } catch {
+      // Learning is a nice-to-have riding on a request that already succeeded.
+    }
+  })();
+}
+
 async function effectiveLanguage(
   user: AuthedUser,
   hint: string | undefined,
@@ -75,6 +124,7 @@ async function effectiveLanguage(
 import { runPipeline, runPipelineStream } from "./pipeline/index.js";
 import {
   assist, draftReply, inferStyle, refineVariants, updateStylePortrait, LLM_TONES,
+  portraitFromUsage,
   converseTurn, portraitFromTranscript, type ConverseTurn,
 } from "./pipeline/cleanup.js";
 import { synthesize } from "./pipeline/tts.js";
@@ -549,6 +599,7 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       },
       result.usage.audioSeconds,
     );
+    learnFromUsage(user, personality);
     return reply.send(result);
   } catch (err) {
     req.log.error(err);
@@ -617,6 +668,7 @@ app.post("/v1/refine", { config: AUTHED_RL }, async (req, reply) => {
       wordsIn: countWords(body.text),
       wordsOut: usage.words,
     });
+    learnFromUsage(user, personality);
     const res: RefineResponse = { refinedText, usage };
     return reply.send(res);
   } catch (err) {
@@ -915,6 +967,7 @@ const runToneRefine = (toneId: string) =>
         wordsIn: countWords(body.text),
         wordsOut: usage.words,
       });
+      learnFromUsage(user, personality);
       return reply.send({ refinedText, usage });
     } catch (err) {
       req.log.error(err);
