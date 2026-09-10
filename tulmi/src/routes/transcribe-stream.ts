@@ -10,12 +10,19 @@
  * Sarvam. The wire protocol to the phone never changes, so switching engines
  * is a config change on the VPS, never an app update.
  *
- * DUAL MODE (STT_LIVE_DUAL): both engines hear the audio. The primary streams
- * partials/finals to the user as usual; the second listens silently. At stop,
- * when their transcripts disagree, `done` carries the second reading as
- * `{ type:"done", alternative }` — the client forwards it to /v1/refine, which
- * reconciles the two before writing (the same fusion the one-shot path runs).
- * The field is additive: older clients ignore it.
+ * DUAL MODE (STT_LIVE_DUAL): both engines hear the audio, and BOTH produce a
+ * live transcript — the second is a full streaming engine, not a file job. So
+ * which one reaches the cursor is a decision, made once per utterance rather
+ * than once in config: the primary streams until a committed segment comes
+ * back in a native Indic script from one engine and not the other, and from
+ * then on the engine that recognised the language is the one being watched.
+ * Once, at a segment boundary, because swapping per partial makes the text
+ * jitter between two readings.
+ *
+ * At stop, when the two transcripts disagree, `done` carries the other reading
+ * as `{ type:"done", alternative }` — the client forwards it to /v1/refine,
+ * which reconciles them before writing (the same fusion the one-shot path
+ * runs). The field is additive: older clients ignore it.
  *
  * SECURITY: this endpoint verifies the caller's Supabase JWT before opening a
  * Deepgram session so an unauthenticated client can never burn Deepgram credit.
@@ -39,7 +46,7 @@ import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { enforceQuota, recordUsage } from "../usage/metering.js";
 import {
   sanitizePlainTranscript, transcriptsAgree, isUsableAlternative,
-  detectScript, INDIC_SCRIPTS,
+  detectScript, INDIC_SCRIPTS, leadsOnScript,
 } from "../pipeline/stt.js";
 
 interface StartMessage {
@@ -99,6 +106,21 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
       // Committed segments from each engine, joined at stop.
       const primaryFinals: string[] = [];
       const shadowFinals: string[] = [];
+      // WHOSE TEXT THE USER IS WATCHING. Both engines produce a live
+      // transcript — the shadow is a full streaming engine, not a file job —
+      // so keeping the user pinned to the primary for a whole utterance is a
+      // choice, and for an Indic speaker it was the wrong one: they watched
+      // Deepgram guess at Devanagari for the entire dictation and only got
+      // Sarvam's reading after they stopped.
+      //
+      // So the lead is decided ONCE, mid-stream, on the first committed
+      // segment that shows a native Indic script from one engine and not the
+      // other. Once, and at a segment boundary, because that is what keeps
+      // this from flickering: swapping per partial would make the text jitter
+      // between two readings and switching back later would undo words the
+      // user already watched land.
+      let lead: "primary" | "shadow" = "primary";
+      let leadLocked = false;
       let closed = false;
       let user: AuthedUser | null = null;
       let bytes = 0;
@@ -161,6 +183,27 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         try { socket.close(); } catch { /* ignore */ }
       };
 
+      /**
+       * Hand the lead to whichever engine understood the language.
+       *
+       * Called on every committed segment from either side. A native Indic
+       * script is the signal, because it is the one thing that cannot be
+       * faked: the generalist does not spontaneously emit Devanagari, so when
+       * one engine does and the other does not, the one that did is the one
+       * that recognised the speech rather than approximating it.
+       *
+       * Romanized Hinglish has no script to see, so it never triggers this and
+       * stays with whichever engine is primary — the same limit the stop-time
+       * reconciliation has.
+       */
+      const considerLead = (mine: "primary" | "shadow", text: string) => {
+        if (leadLocked) return;
+        const theirs = (mine === "primary" ? shadowFinals : primaryFinals).join(" ");
+        if (!leadsOnScript(text, theirs)) return;
+        lead = mine;
+        leadLocked = true;
+      };
+
       // Terminal "done" for a graceful/engine close: tell the client we're done
       // (unless we already errored) and close. safeClose does the metering.
       const finishDone = () => {
@@ -173,12 +216,18 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         // its transcript would lose a dictation we actually have, so promote it
         // to a real final and send it to the cursor. Runs even when `errored`
         // is set: real words beat an error message.
+        //
+        // Skipped when the shadow already HAS the lead, because then every one
+        // of those segments has already been sent and re-sending the joined
+        // transcript would type the whole sentence at the cursor a second time.
         const primaryDry = primaryFinals.join(" ").trim();
         const shadowDry = shadowFinals.join(" ").trim();
-        if (!primaryDry && shadowDry) {
+        if (!primaryDry && shadowDry && lead !== "shadow") {
           totalWords += countWords(shadowDry);
           send({ type: "final", text: shadowDry });
           errored = false;   // we recovered; don't report a failure to the user
+        } else if (!primaryDry && shadowDry) {
+          errored = false;   // the shadow carried the session; that is not a failure
         }
 
         if (!errored) {
@@ -205,7 +254,12 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           const flip = shadowIndic && !primaryIndic && !!shadowDry;
           const primaryText = flip ? shadowDry : primaryDry;
           const shadowText = flip ? primaryDry : shadowDry;
-          if (flip) send({ type: "final", text: shadowDry });
+          // Only correct the cursor when the user was NOT already watching the
+          // shadow. Mid-stream the lead switches on the first Indic segment, so
+          // in the usual case those words are already there and this would
+          // duplicate them; this send is for the utterance whose script only
+          // became clear at the very end.
+          if (flip && lead !== "shadow") send({ type: "final", text: shadowDry });
           const useAlternative =
             !!shadowText &&
             !!primaryText &&
@@ -248,8 +302,10 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
             },
             onPartial: (text) => {
               // Provisional — forward as-is for the live effect; the final
-              // below is the sanitized commit point.
-              send({ type: "partial", text });
+              // below is the sanitized commit point. Silent once the shadow
+              // has taken the lead: two engines' partials at one cursor is
+              // the flicker this design exists to avoid.
+              if (lead === "primary") send({ type: "partial", text });
             },
             onFinal: (raw) => {
               // Sanitize the finalized segment before it reaches the cursor:
@@ -266,7 +322,10 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
                 totalWords += countWords(text);
                 primaryFinals.push(text);
               }
-              send({ type: "final", text });
+              considerLead("primary", text);
+              // Both readings are still kept for the stop-time reconciliation;
+              // the lead only decides which one the user WATCHES.
+              if (lead === "primary") send({ type: "final", text });
             },
             onError: (message) => {
               errored = true;
@@ -287,18 +346,33 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           },
         );
 
-        // Second listener (dual mode). Its partials are ignored entirely — only
-        // committed segments matter for the end-of-stream reconciliation — and
-        // every one of its callbacks is inert toward the user's session, so a
-        // shadow that dies mid-stream costs nothing.
+        // Second listener (dual mode). Silent UNTIL it earns the lead by
+        // returning a native Indic script the primary did not — from then on
+        // its segments are the ones the user watches. Its failures stay inert
+        // toward the session either way: a shadow that dies mid-stream costs
+        // nothing but the lead going back to nobody.
         shadow = openShadowEngine(
           { sampleRate, channels: start.channels ?? 1 },
           {
             onReady: () => { /* the user's session is already live */ },
-            onPartial: () => { /* provisional; never displayed */ },
+            onPartial: (text) => {
+              if (lead === "shadow") send({ type: "partial", text });
+            },
             onFinal: (raw) => {
               const text = sanitizePlainTranscript(raw, { trustSpeech: true });
               if (text) shadowFinals.push(text);
+              const had = leadLocked;
+              considerLead("shadow", text);
+              // Words are metered off whatever the user actually receives, so
+              // the count follows the lead rather than the primary engine.
+              if (lead === "shadow") {
+                if (text) totalWords += countWords(text);
+                send({ type: "final", text });
+                // The segment that WON the lead is sent above; nothing earlier
+                // is re-sent, because those words are already at the cursor and
+                // the refine step at stop is what reconciles the whole line.
+                void had;
+              }
             },
             onError: () => { /* best-effort second opinion */ },
             onClose: () => { /* the primary owns session teardown */ },

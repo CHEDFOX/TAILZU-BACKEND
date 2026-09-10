@@ -143,6 +143,29 @@ function isIndicResult(r: RawSttResult): boolean {
   return INDIC_SCRIPTS.has(detectScript(r.text));
 }
 
+/**
+ * Has THIS engine's reading earned the live stream from the other one?
+ *
+ * Live dictation runs two engines and only one of them reaches the user's
+ * cursor. Deciding that up front is impossible — you cannot route by language
+ * before you have heard the language — but a committed segment is evidence,
+ * and a native Indic script is the strongest kind: the generalist does not
+ * spontaneously emit Devanagari. When one engine produces it and the other
+ * does not, the one that did recognised the speech; the other approximated it.
+ *
+ * Two guards keep this from firing on noise. The other engine must have said
+ * something already, because being first to speak is not evidence of being
+ * right. And its reading must be in a different script, because two engines
+ * agreeing on Devanagari is not a reason to swap between them.
+ *
+ * Romanized Hinglish has no script to see and never triggers this. That case
+ * stays with whichever engine is primary.
+ */
+export function leadsOnScript(mine: string, theirs: string): boolean {
+  if (!mine.trim() || !theirs.trim()) return false;
+  return INDIC_SCRIPTS.has(detectScript(mine)) && !INDIC_SCRIPTS.has(detectScript(theirs));
+}
+
 /** The generalist (Whisper family) — strong across ~100 languages. */
 function transcribeGeneralist(input: SttInput): Promise<RawSttResult> {
   const cfg = getConfig();
