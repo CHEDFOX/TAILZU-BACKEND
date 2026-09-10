@@ -6,7 +6,7 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import { buildBootstrap, buildScreen, buildKeyboardConfig } from "../src/experience/catalog.js";
+import { buildBootstrap, buildScreen, buildKeyboardConfig, WORDS_GATE } from "../src/experience/catalog.js";
 
 const allow = (used: number, total = 800) =>
   ({ base: total, earned: 0, total, used, remaining: Math.max(0, total - used), streakDays: 0, grants: [] } as never);
@@ -129,5 +129,91 @@ describe("the out-of-words screen", () => {
   it("quotes the ceiling the server enforces, earned words included", () => {
     const s = screen(2900, 2900);
     expect(JSON.stringify(s)).toContain("2,900");
+  });
+});
+
+describe("the gate is one editable block", () => {
+  // It used to be a list of numbers beside a map of copy keyed by those exact
+  // numbers. Retuning a mark without editing the map left the lookup
+  // undefined and threw on the next bootstrap — for every user at once, from
+  // a change that looked like editing a number.
+
+  it("carries its own words on every mark, so none can go missing", () => {
+    for (const m of WORDS_GATE.milestones) {
+      expect(m.at).toBeGreaterThan(0);
+      for (const line of [m.kicker, m.title, m.body]) {
+        expect(typeof line).toBe("string");
+        expect(line.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("survives a mark being retuned to a number no copy was written for", () => {
+    // The property the whole shape exists for: adding, moving or deleting a
+    // mark is editing one entry and cannot desync anything.
+    const original = [...WORDS_GATE.milestones];
+    try {
+      (WORDS_GATE.milestones as any).length = 0;
+      (WORDS_GATE.milestones as any).push({
+        at: 99, kicker: "{left} left", title: "New mark", body: "{used} of {total}.",
+      });
+      const c = buildBootstrap({ wordsUsed: 120, allowance: allow(120) }).launchCard!;
+      expect(c.id).toBe("words-99");
+      const texts = (c.root as any).children.map((k: any) => k.props?.content).filter(Boolean);
+      // And the templating filled the reader's own figures in.
+      expect(texts.join(" ")).toContain("680 left");
+      expect(texts.join(" ")).toContain("120 of 800.");
+    } finally {
+      (WORDS_GATE.milestones as any).length = 0;
+      (WORDS_GATE.milestones as any).push(...original);
+    }
+  });
+
+  it("templates the numbers rather than computing them in code", () => {
+    // Changing what a card says — including WHICH numbers it says — has to be
+    // editing a string, or the copy is code and only a developer can touch it.
+    const withNumbers = WORDS_GATE.milestones.filter((m) =>
+      /\{(used|left|total)\}/.test(`${m.kicker}${m.title}${m.body}`));
+    expect(withNumbers.length).toBeGreaterThan(0);
+    // None of them leak an unfilled token to the reader.
+    for (const m of [222, 446, 732]) {
+      const c = buildBootstrap({ wordsUsed: m, allowance: allow(m) }).launchCard!;
+      expect(JSON.stringify(c)).not.toMatch(/\{(used|left|total|streak)\}/);
+    }
+  });
+
+  it("leaks no unfilled token on the out-of-words screen either", () => {
+    const s = buildScreen("words_out", {
+      personality: {}, language: "en",
+      allowance: { ...(allow(800) as any), streakDays: 4 },
+    } as never);
+    expect(JSON.stringify(s)).not.toMatch(/\{(used|left|total|streak)\}/);
+    expect(JSON.stringify(s)).toContain("4 days running");
+  });
+
+  it("names one destination that everything routes through", () => {
+    // The paywall id and the out-of-words id each live in exactly one place,
+    // so moving either is one edit and nothing is left pointing at the old.
+    const c = buildBootstrap({ wordsUsed: 500, allowance: allow(500) }).launchCard!;
+    const go = (c.root as any).children.find((k: any) => k.on?.onPress?.kind === "navigate");
+    expect(go.on.onPress.screenId).toBe(WORDS_GATE.paywallScreenId);
+    const f = buildKeyboardConfig(undefined, undefined, {
+      quota: { remaining: 0, total: 800, entitled: false },
+    }).flags as Record<string, any>;
+    expect(f["kb.quota.screenId"]).toBe(WORDS_GATE.outScreenId);
+    expect(buildScreen(WORDS_GATE.outScreenId, { personality: {}, language: "en" } as never)).not.toBeNull();
+  });
+
+  it("keeps the keyboard's warning thresholds as values, not arithmetic", () => {
+    const low = (remaining: number, total: number) =>
+      (buildKeyboardConfig(undefined, undefined, {
+        quota: { remaining, total, entitled: false },
+      }).flags as Record<string, any>)["kb.quota.low"];
+    const floor = WORDS_GATE.lowFloor;
+    const share = WORDS_GATE.lowShare;
+    // The floor governs a small ceiling, the share governs a large one.
+    expect(low(floor, 100)).toBe(true);
+    expect(low(floor + 1, 100)).toBe(false);
+    expect(low(Math.round(2900 * share), 2900)).toBe(true);
   });
 });

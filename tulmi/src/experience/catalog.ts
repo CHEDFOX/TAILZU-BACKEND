@@ -1413,31 +1413,122 @@ export function buildBootstrap(
  * install it has spent the one moment it had.
  */
 /**
- * WHERE THE FREE WORDS RUN OUT — the three points a card is worth showing.
+ * THE FREE-WORD GATE — every mark, every line and every threshold, in one
+ * object, so all of it is edited here and none of it can fall out of step.
  *
- * Not evenly spaced, and not round. Each one is a different sentence:
+ * It used to be a list of numbers beside a map of copy keyed by those exact
+ * numbers. That reads fine and is a trap: retuning a mark without editing the
+ * map left the lookup undefined and threw on the next bootstrap — for every
+ * user at once, from a change that looked like editing a number. One entry
+ * carrying its own words cannot do that.
  *
- *   222  the first time using it has clearly become a habit rather than a
- *        trial. Early enough that the card reads as news, not as a bill.
- *   446  about halfway. The only one of the three that is a fact rather than
- *        a nudge, and it is worth saying plainly.
- *   732  close enough that the next few days decide it. The last moment a
- *        person can act BEFORE being stopped, which is the difference between
- *        an offer and a toll gate.
- *
- * A card fires when the count PASSES a mark, not when it sits on one. Words
- * land in whole cleanups, so a user goes 210 → 264 and never equals 222; a
- * threshold that had to be hit exactly would fire for almost nobody.
+ * COPY IS TEMPLATED, not computed in code. `{used}`, `{left}`, `{total}` and
+ * `{streak}` are filled with the reader's own figures, already grouped for
+ * their locale. So changing what a card says — including which numbers it
+ * says — is editing a string, and a card that mentions no numbers simply
+ * mentions none.
  */
-const WORD_MILESTONES = [222, 446, 732] as const;
+export const WORDS_GATE = {
+  /**
+   * Where a card is worth showing, and what it says there.
+   *
+   * `at` is a count of words used. Not evenly spaced and not round, because
+   * each is a different sentence rather than a step on a meter:
+   *
+   *   222  the first point where using it is clearly a habit and not a trial.
+   *        Early enough to read as news rather than as a bill.
+   *   446  about halfway. The only one of the three that is a fact rather
+   *        than a nudge, and worth saying plainly.
+   *   732  close enough that the next few days decide it — the last moment a
+   *        person can act BEFORE being stopped, which is the difference
+   *        between an offer and a toll gate.
+   *
+   * Order does not matter; the latest mark passed is the one that shows.
+   * Adding a fourth is one entry. Removing one is deleting it.
+   */
+  milestones: [
+    {
+      at: 222,
+      kicker: "222 words",
+      title: "It is writing for you now",
+      body: "That is a habit, not a trial. {left} free words left this month.",
+    },
+    {
+      at: 446,
+      kicker: "Halfway",
+      title: "Half your free words",
+      body: "{used} used, {left} left. Coming back each day earns more.",
+    },
+    {
+      at: 732,
+      kicker: "{left} left",
+      title: "The month is nearly up",
+      body: "Upgrade now and nothing stops mid-sentence.",
+    },
+  ],
+  /** On every milestone card. The way in, and the way out that is not buying. */
+  cta: "See plans",
+  dismiss: "Not now",
+  /** Where both the cards and the out-of-words screen send someone. */
+  paywallScreenId: "paywall",
+  /** The screen the keyboard's mic diverts to. Named here so the destination
+   *  can move without a keyboard build. */
+  outScreenId: "words_out",
+  /**
+   * WHEN THE KEYBOARD CALLS IT "NEARLY OUT".
+   *
+   * A share of the month's ceiling, floored at a fixed count — a tenth of
+   * 2,900 earned words is a warning that arrives while there is still a week
+   * of writing left, and a tenth of a small ceiling is not enough words to
+   * act on. The floor is roughly one real message, which is what the warning
+   * has to be worth to be worth showing.
+   */
+  lowShare: 0.1,
+  lowFloor: 40,
+  /** The out-of-words screen. Same templating as the cards. */
+  out: {
+    kicker: "Out of words",
+    title: "That is the month",
+    body: "You have used all {total} of your free words. The keyboard still types — it just cannot write for you until they come back.",
+    /** Shown only when there IS a streak. "0 days" is not encouragement. */
+    streakNote: "{streak} days running. Coming back keeps earning words — upgrading stops the counting.",
+    meter: "{used} of {total} used",
+    cta: "Get more words",
+    back: "Back to typing",
+  },
+  /** What the keyboard's status line says when it cannot open the app. */
+  keyboardStatus: "Out of free words — open Tailzu to get more.",
+};
+
+/**
+ * Fill {used} / {left} / {total} / {streak} in a line of gate copy.
+ *
+ * Numbers are grouped before they land, so a template never has to think
+ * about it and a line that mentions no numbers is returned untouched.
+ */
+function wordsCopy(
+  line: string,
+  figures: { used: number; total: number; streak?: number },
+): string {
+  const n = (v: number) => Math.max(0, Math.round(v)).toLocaleString("en-US");
+  return line
+    .replaceAll("{used}", n(figures.used))
+    .replaceAll("{left}", n(figures.total - figures.used))
+    .replaceAll("{total}", n(figures.total))
+    .replaceAll("{streak}", n(figures.streak ?? 0));
+}
 
 /**
  * The card for whichever mark was last passed, or none.
  *
  * ONE CARD, THE LATEST — someone who arrives at 800 having never opened the
- * app gets the 732 card, not all three in a queue. And the id carries the
- * mark, so the launch-card machinery shows each exactly once without any of
- * this needing to remember what it has said.
+ * app gets the 732 card, not all three in a queue. And the mark is the id, so
+ * the launch-card machinery shows each exactly once without any of this
+ * needing to remember what it has said.
+ *
+ * A card fires when the count PASSES a mark, not when it sits on one. Words
+ * land in whole cleanups, so a user goes 210 → 264 and never equals 222; a
+ * threshold that had to be hit exactly would fire for almost nobody.
  *
  * Never for someone who has paid, and never for a reviewer: both are being
  * sold something they already have.
@@ -1451,40 +1542,24 @@ function wordsMilestoneCard(opts: {
   if (opts.entitled === true || opts.isReviewer) return null;
   const used = Math.max(0, Math.round(opts.wordsUsed ?? 0));
   const total = opts.allowance?.total ?? freeMonthlyWords();
-  const passed = WORD_MILESTONES.filter((m) => used >= m);
-  if (!passed.length) return null;
-  const mark = passed[passed.length - 1]!;
   // Past the ceiling there is a different card with a different job — see the
   // words_out screen. An offer and a stop sign should not arrive together.
   if (used >= total) return null;
-  const left = Math.max(0, total - used);
-  const copy: Record<number, { kicker: string; title: string; body: string }> = {
-    222: {
-      kicker: "222 words",
-      title: "It is writing for you now",
-      body: `That is a habit, not a trial. ${left.toLocaleString("en-US")} free words left this month.`,
-    },
-    446: {
-      kicker: "Halfway",
-      title: "Half your free words",
-      body: `${used.toLocaleString("en-US")} used, ${left.toLocaleString("en-US")} left. Coming back each day earns more.`,
-    },
-    732: {
-      kicker: `${left.toLocaleString("en-US")} left`,
-      title: "The month is nearly up",
-      body: "Upgrade now and nothing stops mid-sentence.",
-    },
-  };
-  const c = copy[mark]!;
+  const passed = WORDS_GATE.milestones
+    .filter((m) => used >= m.at)
+    .sort((a, b) => a.at - b.at);
+  const m = passed[passed.length - 1];
+  if (!m) return null;
+  const fill = (line: string) => wordsCopy(line, { used, total });
   return launchCard({
     // The mark is the id, so each is shown once and a later one still shows.
-    id: `words-${mark}`,
-    kicker: c.kicker,
-    title: c.title,
-    body: c.body,
-    cta: "See plans",
-    screenId: "paywall",
-    dismiss: "Not now",
+    id: `words-${m.at}`,
+    kicker: fill(m.kicker),
+    title: fill(m.title),
+    body: fill(m.body),
+    cta: WORDS_GATE.cta,
+    screenId: WORDS_GATE.paywallScreenId,
+    dismiss: WORDS_GATE.dismiss,
   });
 }
 
@@ -3065,7 +3140,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       return languagesScreen(ctx);
     case "delete_account":
       return deleteAccountScreen();
-    case "words_out":
+    case WORDS_GATE.outScreenId:
       return wordsOutScreen(ctx);
     case "reply":
       return replyScreen();
@@ -8366,8 +8441,9 @@ function wordsOutScreen(ctx: ScreenContext): ScreenResponse {
   const a = ctx.allowance;
   const total = a?.total ?? freeMonthlyWords();
   const used = a?.used ?? total;
-  const n = (v: number) => Math.max(0, Math.round(v)).toLocaleString("en-US");
   const streak = a?.streakDays ?? 0;
+  const w = WORDS_GATE.out;
+  const fill = (line: string) => wordsCopy(line, { used, total, streak });
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "words_out",
@@ -8375,7 +8451,7 @@ function wordsOutScreen(ctx: ScreenContext): ScreenResponse {
     hideChrome: true,
     state: {},
     actions: {
-      upgrade: { kind: "navigate", screenId: "paywall", replace: true },
+      upgrade: { kind: "navigate", screenId: WORDS_GATE.paywallScreenId, replace: true },
       // Straight back to the app they were writing in. Anything else strands
       // someone mid-message on a screen they did not choose to open.
       back: { kind: "navigateBack" },
@@ -8387,38 +8463,26 @@ function wordsOutScreen(ctx: ScreenContext): ScreenResponse {
         paddingHorizontal: 28, paddingTop: 96, paddingBottom: 34,
       },
       children: [
-        { type: "Text", props: { content: "Out of words", variant: "overline" },
+        { type: "Text", props: { content: fill(w.kicker), variant: "overline" },
           style: { color: ACCENT_AMBER } },
-        { type: "Text", props: { content: "That is the month", variant: "h1" } },
-        {
-          type: "Text",
-          props: {
-            content: `You have used all ${n(total)} of your free words. The keyboard still types — it just cannot write for you until they come back.`,
-            variant: "muted",
-          },
-          style: { marginTop: 12 },
-        },
+        { type: "Text", props: { content: fill(w.title), variant: "h1" } },
+        { type: "Text", props: { content: fill(w.body), variant: "muted" },
+          style: { marginTop: 12 } },
         // The one fact that is theirs rather than ours. Only shown when there
         // is a streak to show: "0 days" is not encouragement.
         ...(streak > 0
           ? [{
               type: "Text",
-              props: {
-                content: `${n(streak)} days running. Coming back keeps earning words — upgrading stops the counting.`,
-                variant: "caption",
-              },
+              props: { content: fill(w.streakNote), variant: "caption" },
               style: { marginTop: 10 },
             } as Node]
           : []),
         { type: "Spacer", style: { flex: 1 } },
-        {
-          type: "Text",
-          props: { content: `${n(used)} of ${n(total)} used`, variant: "caption" },
-          style: { textAlign: "center", marginBottom: 12 },
-        },
-        { type: "Button", props: { label: "Get more words", variant: "primary" },
+        { type: "Text", props: { content: fill(w.meter), variant: "caption" },
+          style: { textAlign: "center", marginBottom: 12 } },
+        { type: "Button", props: { label: w.cta, variant: "primary" },
           on: { onPress: "upgrade" } },
-        { type: "Button", props: { label: "Back to typing", variant: "ghost" },
+        { type: "Button", props: { label: w.back, variant: "ghost" },
           style: { marginTop: 6 }, on: { onPress: "back" } },
       ],
     },
@@ -9798,16 +9862,21 @@ export function buildKeyboardConfig(
               "kb.quota.remaining": Math.max(0, Math.round(opts.quota.remaining)),
               "kb.quota.total": Math.max(0, Math.round(opts.quota.total)),
               "kb.quota.exhausted": !opts.quota.entitled && opts.quota.remaining <= 0,
-              // A tenth of the month's ceiling, floored at 40 — enough words
-              // for one real message, which is what "nearly out" has to mean
-              // for the warning to be worth anything.
+              // A share of the ceiling with a fixed floor, both tunable in
+              // WORDS_GATE — see the note there on why "nearly out" needs to
+              // be worth about one message rather than a flat percentage.
               "kb.quota.low":
                 !opts.quota.entitled
                 && opts.quota.remaining > 0
-                && opts.quota.remaining <= Math.max(40, Math.round(opts.quota.total * 0.1)),
+                && opts.quota.remaining <= Math.max(
+                  WORDS_GATE.lowFloor,
+                  Math.round(opts.quota.total * WORDS_GATE.lowShare),
+                ),
               /** Where to send them when it is gone. A screen id the app
                *  deep-links to, so changing the destination needs no build. */
-              "kb.quota.screenId": "words_out",
+              "kb.quota.screenId": WORDS_GATE.outScreenId,
+              /** What the keyboard says when it cannot open the app at all. */
+              "kb.quota.status": WORDS_GATE.keyboardStatus,
             }
           : {}),
 
