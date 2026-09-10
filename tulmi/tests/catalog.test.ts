@@ -13,6 +13,7 @@ import {
   bumpCacheVersion,
   currentCacheVersion,
   TRAINING_UI,
+  YOU_UI,
 } from "../src/experience/catalog.js";
 import { getConfig } from "../src/config.js";
 
@@ -492,6 +493,38 @@ describe("buildScreen", () => {
     expect(live!.root.on?.onDisappear).toBe("saveIfUnhandled");
     expect(JSON.stringify(live!.actions?.saveIfUnhandled)).toContain('"falsy":"leaving"');
     expect(JSON.stringify(live!.actions?.finish)).toContain('"path":"leaving"');
+  });
+
+  it("the Train entry blurs and tints its art, and both are catalog values", () => {
+    const home = buildScreen("home", { personality: {}, language: "en" });
+    expect(home).not.toBeNull();
+    const ui = TRAINING_UI.entry;
+
+    // The art is behind two layers and the layers are in the right order:
+    // blur first, then the flat tint, then the gradient the copy sits on.
+    // Order is the whole point — tint under blur gets blurred away, and either
+    // one over the gradient darkens the words instead of the picture.
+    const kinds: string[] = [];
+    const walk = (n: any): void => {
+      if (n?.type) kinds.push(n.type);
+      for (const c of n?.children ?? []) walk(c);
+    };
+    walk(home!.root);
+    const blur = kinds.indexOf("BlurBackground");
+    const grad = kinds.indexOf("Gradient");
+    expect(blur, "the training art must be blurred").toBeGreaterThan(-1);
+    expect(grad).toBeGreaterThan(blur);
+
+    const json = JSON.stringify(home);
+    expect(json).toContain(`"intensity":${ui.mediaBlur}`);
+    expect(json).toContain(`"tint":"${ui.mediaBlurTint}"`);
+    expect(json).toContain(`"opacity":${ui.mediaTintOpacity}`);
+
+    // Same numbers as the You deck's cards. Two screens showing uploaded art
+    // behind a word should not drift apart, and they will if each carries its
+    // own constant.
+    expect(ui.mediaBlur).toBe(YOU_UI.deck.cardBlur);
+    expect(ui.mediaTintOpacity).toBe(YOU_UI.deck.scrimOpacity);
   });
 
   it("Training chat is the refine surface: variants + pick endpoints, tone sheet trains a tone", () => {

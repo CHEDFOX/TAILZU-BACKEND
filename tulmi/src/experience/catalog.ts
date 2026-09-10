@@ -3083,6 +3083,27 @@ export const TRAINING_UI = {
     paddingBottom: 26,
 
     /**
+     * HOW HARD THE ART IS BLURRED. 0 leaves it sharp.
+     *
+     * Same treatment as the You deck's cards, for the same reason and at the
+     * same numbers. This screen carries two words and a pill; a sharp clip
+     * behind them competes with both, and the eye keeps going back to the
+     * moving detail instead of landing on "Just talk." Blurred, the art does
+     * the job it is actually there for — colour, motion, mood — and stops
+     * arguing with the copy.
+     *
+     * It also makes the slot forgiving. The art is uploaded, so it can be a
+     * clip, a screenshot, a photograph or a frame with text burnt into it, and
+     * the screen has to read the same either way.
+     */
+    mediaBlur: 26,
+    mediaBlurTint: "dark" as const,
+    /** Flat, over the blur, under the gradient. The blur softens the art; this
+     *  is what guarantees a pale upload can never wash the title out. */
+    mediaTint: "#000000",
+    mediaTintOpacity: 0.34,
+
+    /**
      * The scrim. Not a flat veil over the whole frame — that dulls the art
      * everywhere to fix legibility in one place. A vertical gradient leaves the
      * top as it was shot and darkens only where the words are.
@@ -3261,6 +3282,19 @@ function homeScreen(_ctx: ScreenContext): ScreenResponse {
         // The art, edge to edge. Upload to `training`; upload nothing and
         // screenHero returns no nodes and the screen is simply black.
         ...screenHero("training", { behind: true, fit: "cover" }),
+        // Blurred and tinted, exactly as the You deck's cards are. Both layers
+        // are driven from TRAINING_UI.entry, so the strength is a catalog edit
+        // and never a build. Set mediaBlur to 0 to get the sharp art back.
+        ...(ui.mediaBlur > 0 ? [{
+          type: "BlurBackground",
+          props: { intensity: ui.mediaBlur, tint: ui.mediaBlurTint },
+          style: { ...FILL_STYLE },
+        } as Node] : []),
+        ...(ui.mediaTintOpacity > 0 ? [{
+          type: "Stack",
+          style: { ...FILL_STYLE, backgroundColor: ui.mediaTint,
+                   opacity: ui.mediaTintOpacity },
+        } as Node] : []),
         // The scrim over it, and under everything else.
         {
           type: "Gradient",
@@ -4025,7 +4059,7 @@ function trainingLiveScreen(): ScreenResponse {
  * every piece of type: all of it sits in YOU_UI and none of it is compiled
  * into the app. Changing how this tab looks is changing this object.
  */
-const YOU_UI = {
+export const YOU_UI = {
   ground: "#0B0B0D",
   accent: ACCENT_AMBER,
   /** Ink ON the amber block — the ground and the ink swap roles up there. */
