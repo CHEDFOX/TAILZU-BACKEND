@@ -1384,7 +1384,13 @@ export function buildBootstrap(
         default: "https://tailzu.space",
       },
     },
-    ...(LAUNCH_CARD ? { launchCard: LAUNCH_CARD } : {}),
+    // The words card wins over a standing announcement. Someone about to be
+    // stopped mid-sentence does not need to hear about a feature first, and
+    // two cards on one open is one too many.
+    ...(() => {
+      const card = wordsMilestoneCard(opts) ?? LAUNCH_CARD;
+      return card ? { launchCard: card } : {};
+    })(),
     cacheTtlSeconds: 300,
     warmScreenIds: WARM_SCREEN_IDS,
   };
@@ -1406,6 +1412,82 @@ export function buildBootstrap(
  * Null by default. An app that greets everyone with a card on the day they
  * install it has spent the one moment it had.
  */
+/**
+ * WHERE THE FREE WORDS RUN OUT — the three points a card is worth showing.
+ *
+ * Not evenly spaced, and not round. Each one is a different sentence:
+ *
+ *   222  the first time using it has clearly become a habit rather than a
+ *        trial. Early enough that the card reads as news, not as a bill.
+ *   446  about halfway. The only one of the three that is a fact rather than
+ *        a nudge, and it is worth saying plainly.
+ *   732  close enough that the next few days decide it. The last moment a
+ *        person can act BEFORE being stopped, which is the difference between
+ *        an offer and a toll gate.
+ *
+ * A card fires when the count PASSES a mark, not when it sits on one. Words
+ * land in whole cleanups, so a user goes 210 → 264 and never equals 222; a
+ * threshold that had to be hit exactly would fire for almost nobody.
+ */
+const WORD_MILESTONES = [222, 446, 732] as const;
+
+/**
+ * The card for whichever mark was last passed, or none.
+ *
+ * ONE CARD, THE LATEST — someone who arrives at 800 having never opened the
+ * app gets the 732 card, not all three in a queue. And the id carries the
+ * mark, so the launch-card machinery shows each exactly once without any of
+ * this needing to remember what it has said.
+ *
+ * Never for someone who has paid, and never for a reviewer: both are being
+ * sold something they already have.
+ */
+function wordsMilestoneCard(opts: {
+  entitled?: boolean;
+  isReviewer?: boolean;
+  wordsUsed?: number;
+  allowance?: Allowance | null;
+}): LaunchCard | null {
+  if (opts.entitled === true || opts.isReviewer) return null;
+  const used = Math.max(0, Math.round(opts.wordsUsed ?? 0));
+  const total = opts.allowance?.total ?? freeMonthlyWords();
+  const passed = WORD_MILESTONES.filter((m) => used >= m);
+  if (!passed.length) return null;
+  const mark = passed[passed.length - 1]!;
+  // Past the ceiling there is a different card with a different job — see the
+  // words_out screen. An offer and a stop sign should not arrive together.
+  if (used >= total) return null;
+  const left = Math.max(0, total - used);
+  const copy: Record<number, { kicker: string; title: string; body: string }> = {
+    222: {
+      kicker: "222 words",
+      title: "It is writing for you now",
+      body: `That is a habit, not a trial. ${left.toLocaleString("en-US")} free words left this month.`,
+    },
+    446: {
+      kicker: "Halfway",
+      title: "Half your free words",
+      body: `${used.toLocaleString("en-US")} used, ${left.toLocaleString("en-US")} left. Coming back each day earns more.`,
+    },
+    732: {
+      kicker: `${left.toLocaleString("en-US")} left`,
+      title: "The month is nearly up",
+      body: "Upgrade now and nothing stops mid-sentence.",
+    },
+  };
+  const c = copy[mark]!;
+  return launchCard({
+    // The mark is the id, so each is shown once and a later one still shows.
+    id: `words-${mark}`,
+    kicker: c.kicker,
+    title: c.title,
+    body: c.body,
+    cta: "See plans",
+    screenId: "paywall",
+    dismiss: "Not now",
+  });
+}
+
 const LAUNCH_CARD: LaunchCard | null = null;
 
 /**
@@ -2983,6 +3065,8 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       return languagesScreen(ctx);
     case "delete_account":
       return deleteAccountScreen();
+    case "words_out":
+      return wordsOutScreen(ctx);
     case "reply":
       return replyScreen();
     case "personality":
@@ -8260,6 +8344,90 @@ function languageSelectScreen(ctx: ScreenContext): ScreenResponse {
   };
 }
 
+/**
+ * OUT OF WORDS — where the keyboard's mic sends you when there is nothing
+ * left to spend.
+ *
+ * Its own screen rather than the paywall, and that is the whole point. The
+ * paywall is a shop: three plans, a price each, a decision to make. Someone
+ * who has just pressed a mic in the middle of writing a message did not come
+ * shopping — they came to say something and were stopped, and the first thing
+ * they need is to be told why in one line. The offer comes second, as a
+ * button, not as a price list they have to read to understand what happened.
+ *
+ * It also has to be a screen and not a card, because the keyboard reaches it
+ * by deep link from another app entirely. A card is something the app puts up
+ * over what you were doing; there is nothing here to put it over.
+ *
+ * The way out is the way back: there is no "not now" that leaves you on a
+ * dead end. Dismiss returns you to whatever you were writing in.
+ */
+function wordsOutScreen(ctx: ScreenContext): ScreenResponse {
+  const a = ctx.allowance;
+  const total = a?.total ?? freeMonthlyWords();
+  const used = a?.used ?? total;
+  const n = (v: number) => Math.max(0, Math.round(v)).toLocaleString("en-US");
+  const streak = a?.streakDays ?? 0;
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "words_out",
+    title: "",
+    hideChrome: true,
+    state: {},
+    actions: {
+      upgrade: { kind: "navigate", screenId: "paywall", replace: true },
+      // Straight back to the app they were writing in. Anything else strands
+      // someone mid-message on a screen they did not choose to open.
+      back: { kind: "navigateBack" },
+    },
+    root: {
+      type: "Screen",
+      style: {
+        flex: 1, backgroundColor: THEME.color.bg,
+        paddingHorizontal: 28, paddingTop: 96, paddingBottom: 34,
+      },
+      children: [
+        { type: "Text", props: { content: "Out of words", variant: "overline" },
+          style: { color: ACCENT_AMBER } },
+        { type: "Text", props: { content: "That is the month", variant: "h1" } },
+        {
+          type: "Text",
+          props: {
+            content: `You have used all ${n(total)} of your free words. The keyboard still types — it just cannot write for you until they come back.`,
+            variant: "muted",
+          },
+          style: { marginTop: 12 },
+        },
+        // The one fact that is theirs rather than ours. Only shown when there
+        // is a streak to show: "0 days" is not encouragement.
+        ...(streak > 0
+          ? [{
+              type: "Text",
+              props: {
+                content: `${n(streak)} days running. Coming back keeps earning words — upgrading stops the counting.`,
+                variant: "caption",
+              },
+              style: { marginTop: 10 },
+            } as Node]
+          : []),
+        { type: "Spacer", style: { flex: 1 } },
+        {
+          type: "Text",
+          props: { content: `${n(used)} of ${n(total)} used`, variant: "caption" },
+          style: { textAlign: "center", marginBottom: 12 },
+        },
+        { type: "Button", props: { label: "Get more words", variant: "primary" },
+          on: { onPress: "upgrade" } },
+        { type: "Button", props: { label: "Back to typing", variant: "ghost" },
+          style: { marginTop: 6 }, on: { onPress: "back" } },
+      ],
+    },
+    // Never cached: the whole screen is a statement about a number that
+    // changes, and a cached copy of it is a claim that may already be false.
+    cacheTtlSeconds: 0,
+  };
+}
+
 function deleteAccountScreen(): ScreenResponse {
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
@@ -8533,7 +8701,12 @@ export function buildKeyboardConfig(
   /** Stable id used to place this user in a rollout slice. Omit for anonymous
    *  callers — they get the baseline rather than a per-request coin flip. */
   userId?: string,
-  opts: { platform?: KeyboardPlatform } = {},
+  opts: {
+    platform?: KeyboardPlatform;
+    /** What is left to spend. Absent for an anonymous or unreadable caller,
+     *  and then the mic behaves as it always did and the 429 catches it. */
+    quota?: { remaining: number; total: number; entitled: boolean };
+  } = {},
 ): KeyboardConfigResponse {
   // English QWERTY. The physical layout arrays are also emitted (below) so
   // older keyboard binaries — the ones without the SDUI renderer — can still
@@ -9608,6 +9781,35 @@ export function buildKeyboardConfig(
         // STREAMING provider (Deepgram) ALSO defer to after-stop. Default here is
         // false to match "don't show text while recording — wait for stop".
         "kb.mic.liveText": false,
+
+        // WHAT IS LEFT TO SPEND, so the mic can say so before the user does.
+        //
+        // The 429 on the transcribe route is the authority and stays the
+        // backstop; this is here because being refused AFTER saying a sentence
+        // is a worse way to learn it than being told when you reach for the
+        // button. Absent for an anonymous caller, and then the mic behaves
+        // exactly as it always did.
+        //
+        // `exhausted` is the only one the keyboard has to act on: true means
+        // send them to the words screen instead of opening the microphone.
+        // `low` is for a quieter mark on the key — a warning, not a stop.
+        ...(opts.quota
+          ? {
+              "kb.quota.remaining": Math.max(0, Math.round(opts.quota.remaining)),
+              "kb.quota.total": Math.max(0, Math.round(opts.quota.total)),
+              "kb.quota.exhausted": !opts.quota.entitled && opts.quota.remaining <= 0,
+              // A tenth of the month's ceiling, floored at 40 — enough words
+              // for one real message, which is what "nearly out" has to mean
+              // for the warning to be worth anything.
+              "kb.quota.low":
+                !opts.quota.entitled
+                && opts.quota.remaining > 0
+                && opts.quota.remaining <= Math.max(40, Math.round(opts.quota.total * 0.1)),
+              /** Where to send them when it is gone. A screen id the app
+               *  deep-links to, so changing the destination needs no build. */
+              "kb.quota.screenId": "words_out",
+            }
+          : {}),
 
         // ------- Typing engine (K4+ binaries; older builds ignore all of it) --
         //

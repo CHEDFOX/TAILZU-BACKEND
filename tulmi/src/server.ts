@@ -1790,8 +1790,14 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
       : undefined;
   // The words meter. Only the stats screen draws it, so only the stats screen
   // pays for the read.
+  // The words screen is a statement about this number, so it has to read it
+  // too — a screen that says "out of words" without knowing how many is a
+  // guess with a button on it.
+  const ALLOWANCE_SCREENS = new Set(["stats", "words_out"]);
   const allowance =
-    user && screenId === "stats" ? await allowanceFor(user).catch(() => null) : undefined;
+    user && ALLOWANCE_SCREENS.has(screenId)
+      ? await allowanceFor(user).catch(() => null)
+      : undefined;
   const history =
     user && screenId === "history"
       ? (await listHistory(user, { limit: 50 })).entries
@@ -2067,11 +2073,28 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL }, async (req, reply) => {
   // Also the rollout key: a user's experiment slice is derived from their id,
   // so it stays put across requests instead of re-rolling mid-session.
   let userId: string | undefined;
+  /**
+   * What is left to spend, so the mic can say so BEFORE the user speaks.
+   *
+   * The 429 on the transcribe route is the authority and stays the backstop —
+   * a config is cached and can be minutes stale. But being refused after
+   * saying a sentence is a worse way to learn this than being told when you
+   * reach for the button, so the keyboard is given the number too.
+   */
+  let quota: { remaining: number; total: number; entitled: boolean } | undefined;
   try {
     const user = await resolveUser(req.headers["authorization"]);
     if (user) {
       userId = user.id;
-      personality = await getPersonality(user);
+      const [p, entitled, allowance] = await Promise.all([
+        getPersonality(user),
+        isEntitled(user).catch(() => true),          // unknown → let them through
+        allowanceFor(user).catch(() => null),
+      ]);
+      personality = p;
+      if (allowance) {
+        quota = { remaining: allowance.remaining, total: allowance.total, entitled };
+      }
     }
   } catch { /* keyboard should never fail on personality lookup */ }
   // Cache-Control: no-store — keyboard config carries per-user
@@ -2079,7 +2102,10 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL }, async (req, reply) => {
   // (nginx, CDN) that indexed the response by URL alone could leak these
   // across users. Same policy as /v1/app/bootstrap and /v1/app/screen.
   noStoreSdui(reply);
-  return reply.send(buildKeyboardConfig(personality, userId, { platform: keyboardPlatform(req.headers["user-agent"]) }));
+  return reply.send(buildKeyboardConfig(personality, userId, {
+    platform: keyboardPlatform(req.headers["user-agent"]),
+    quota,
+  }));
 });
 
 // --- Keyboard telemetry ------------------------------------------------------
