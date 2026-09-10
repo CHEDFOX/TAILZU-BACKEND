@@ -145,3 +145,43 @@ describe("the tone block keeps its parts apart", () => {
     expect(g).not.toContain("\n\n\n");
   });
 });
+
+describe("Zu is the user's own writing, not a voice laid over it", () => {
+  // Zu is the app writing as this person from what it has learned of them.
+  // Everything the prompt says about the voice must therefore come from the
+  // portrait; anything Zu asserted on its own would be exactly the generic
+  // style it exists to replace.
+  const onZu = (extra: Record<string, unknown> = {}) =>
+    toneGuidance("none", { activePresetId: "signature", activeTone: "none", ...extra } as never);
+
+  it("adds no style of its own on top of the tone principle", () => {
+    // "Write in a clean, natural voice — warm without being cutesy, clear
+    // without being clinical" used to be appended here. It reads harmless and
+    // is not: it is a description of someone else's writing.
+    const zu = onZu();
+    const other = toneGuidance("none", { activePresetId: "poetic", activeTone: "none" } as never);
+    expect(other.length).toBeGreaterThan(zu.length);
+    expect(zu).not.toMatch(/clean, natural voice|warm without|clear without/i);
+  });
+
+  it("still says the one thing that IS Zu — their voice, repaired", () => {
+    expect(onZu()).toMatch(/their own voice, not a style/i);
+    expect(onZu()).toMatch(/believe they wrote it/i);
+  });
+
+  it("lets the portrait be the whole description of the voice", () => {
+    const withPortrait = onZu({
+      stylePortrait: { core: "Lowercase. Fragments. Ends on the point." },
+    });
+    expect(withPortrait).toContain("Lowercase. Fragments. Ends on the point.");
+    expect(withPortrait).toMatch(/HOW THEY WRITE/);
+  });
+
+  it("keeps carrying what the user asked for themselves", () => {
+    // Zu asserting nothing is not Zu ignoring everything: a person's own
+    // instruction and sign-off are theirs, not a style we chose for them.
+    const g = onZu({ customInstructions: "never use exclamation marks", signature: "— R" });
+    expect(g).toContain("never use exclamation marks");
+    expect(g).toContain("— R");
+  });
+});

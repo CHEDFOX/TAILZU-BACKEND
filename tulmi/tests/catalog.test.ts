@@ -582,9 +582,10 @@ describe("buildScreen", () => {
   it("Training chat is the refine surface: variants + pick endpoints, tone sheet trains a tone", () => {
     const home = buildScreen("training_chat", { personality: {}, language: "en" });
     expect(home).not.toBeNull();
-    // Training target seeded to the user's active voice (default: Signature).
+    // Training target seeded to the user's active voice — Zu, the house one.
+    // The id stays "signature" so accounts already on it need no migration.
     expect((home!.state as Record<string, unknown>).tone).toBe("signature");
-    expect((home!.state as Record<string, unknown>).toneLabel).toBe("Signature");
+    expect((home!.state as Record<string, unknown>).toneLabel).toBe("Zu");
     expect((home!.state as Record<string, unknown>).toneSheetOpen).toBe(false);
     const json = JSON.stringify(home);
     // The training loop: variants in, a pick out — with the rejected pair so
@@ -649,7 +650,7 @@ describe("buildScreen", () => {
     const voices = buildScreen("voices", { personality: {}, language: "en" });
     expect(voices).not.toBeNull();
     const vjson = JSON.stringify(voices);
-    expect(vjson).toContain("Signature");
+    expect(vjson).toContain("Zu");
     expect(vjson).toContain('"screenId":"tone_edit"');
     expect(voices!.actions?.addTone).toBeTruthy();
   });
@@ -687,7 +688,7 @@ describe("buildScreen", () => {
       params: { presetId: "does-not-exist" },
     });
     expect(screen).not.toBeNull();
-    expect(screen!.title).toBe("Signature");
+    expect(screen!.title).toBe("Zu");
   });
 });
 

@@ -4505,21 +4505,19 @@ export const YOU_UI = {
 };
 
 /**
- * Zu — the house voice, and the keyboard's whole tone row until the user
- * makes it theirs.
+ * Zu on the keyboard — the whole tone row until the user makes it theirs.
  *
- * It is the built-in default preset wearing the product's name. Keeping the
- * id means every account already on "signature" is already on Zu: nothing to
- * migrate, and a voice the user later renames or overrides still resolves.
+ * Zu is not a style among the others: it is the app writing as this person,
+ * from what it has learned of them. So a keyboard that opens with one chip
+ * saying Zu is making a smaller and truer claim than one offering a menu of
+ * moods nobody asked for — there is nothing to choose between yet, because
+ * the only voice so far is the user's own.
  *
- * The NAME is the point. "Signature" is a description of a voice; Zu is the
- * one the app speaks in, and a keyboard that opens with a single chip saying
- * Zu is making a smaller and more honest claim than one offering a menu of
- * moods nobody asked for.
+ * Read off the preset rather than restated, so the name has one home.
  */
 const HOUSE_TONE = (() => {
   const base = PERSONALITY_PRESETS.find((p) => p.id === "signature") ?? PERSONALITY_PRESETS[0]!;
-  return { id: base.id, name: "Zu", tone: base.defaultTone };
+  return { id: base.id, name: base.name, tone: base.defaultTone };
 })();
 
 /**
@@ -5319,7 +5317,10 @@ function personalityDetailScreen(p: Personality, presetId: string | undefined): 
       style: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 24 },
       children: [
         { type: "Heading", props: { content: preset.name }, style: { fontSize: 28, fontWeight: "800", color: "$color.text", marginBottom: 16 } },
-        { type: "Text", props: { content: preset.promptStyle }, style: { fontSize: 16, color: "$color.text", lineHeight: 24 } },
+        // A voice's own instruction is what describes it — except Zu's, which
+        // is deliberately empty, because Zu asserts nothing and lets the
+        // portrait describe the voice. Its description says so in words.
+        { type: "Text", props: { content: preset.promptStyle || preset.description }, style: { fontSize: 16, color: "$color.text", lineHeight: 24 } },
         gap(28),
         { type: "Button", props: { label: "Use this voice", variant: "primary" }, on: { onPress: "use" } },
         gap(10),

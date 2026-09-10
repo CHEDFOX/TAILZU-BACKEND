@@ -39,24 +39,49 @@ export interface PersonalityPreset {
   name: string;
   tagline: string;
   description: string;
-  formality: "casual" | "neutral" | "formal";
-  emojiUse: "none" | "minimal" | "expressive";
+  /**
+   * OPTIONAL, and omitted by exactly one preset.
+   *
+   * Every voice here is a claim about how the writing should sound, and these
+   * two are part of that claim — they are stated to the model as instructions.
+   * Zu makes no such claim: it is the person's own writing, so anything it
+   * asserted about formality or emoji would be a generic style laid over the
+   * thing it exists to protect. Left off, nothing is stated, and the learned
+   * portrait is the only description of the voice.
+   */
+  formality?: "casual" | "neutral" | "formal";
+  emojiUse?: "none" | "minimal" | "expressive";
   defaultTone: PresetTone;
   promptStyle: string;
 }
 
 export const PERSONALITY_PRESETS: PersonalityPreset[] = [
+  /**
+   * ZU — the app writing as the user, from everything it has learned of them.
+   *
+   * Not a voice among the others. The eleven below are styles you put ON your
+   * writing; Zu is your writing, repaired. What shapes it is the style
+   * portrait — the words that are yours, how you build a sentence, what you
+   * sound like at eleven at night — and that is built from your own dictation,
+   * session by session. It gets more like you the more you write.
+   *
+   * WHICH IS WHY promptStyle IS EMPTY, and must stay empty. Anything written
+   * here is appended to the request as an instruction, so a sentence like
+   * "clear, warm, even-keeled" — which is what stood here — is a generic voice
+   * laid over the person's own. Zu asserts nothing and lets the portrait
+   * describe the voice. The description below is what the USER reads; the
+   * model reads the portrait.
+   *
+   * The id stays "signature" so every account already on it is already on Zu.
+   */
   {
     id: "signature",
-    name: "Signature",
-    tagline: "Your everyday voice",
+    name: "Zu",
+    tagline: "Your own voice, learned",
     description:
-      "The default — clear, warm, and even-keeled. Works for most messages, from Slack to a note to your landlord.",
-    formality: "neutral",
-    emojiUse: "minimal",
+      "Tailzu writing as you — your words, your rhythm, your habits. Nothing generic on top, and closer to you every session.",
     defaultTone: "none",
-    promptStyle:
-      "Write in a clean, natural voice — warm without being cutesy, clear without being clinical.",
+    promptStyle: "",
   },
   {
     id: "professional",
