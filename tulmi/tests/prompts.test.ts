@@ -6,6 +6,7 @@ import {
   resolveAppStyle,
   resolveRecipientHint,
 } from "../src/prompts.js";
+import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
 import type { Personality } from "../../shared/types/api.js";
 
 describe("renderPersonality", () => {
@@ -131,5 +132,58 @@ describe("resolveRecipientHint", () => {
     expect(resolveRecipientHint(hints, "someone new")).toBe("");
     expect(resolveRecipientHint(undefined, "mom")).toBe("");
     expect(resolveRecipientHint(hints, undefined)).toBe("");
+  });
+});
+
+describe("the keyboard never answers what was dictated", () => {
+  // iOS cannot name the host app, so the keyboard sends a DESCRIPTION of the
+  // field the cursor sits in — "a search field", "one field of a longer form",
+  // and most often just "a text field". Those strings land in the assist
+  // prompt's destination block, and that block used to say a form field "wants
+  // the answer". Read literally, that is permission to answer: a question
+  // dictated into an ordinary field came back as a reply to the question
+  // instead of as the question. The in-app mic never hit it because it sends
+  // an app name, not a field kind.
+  const FIELD_KINDS = [
+    "a text field",
+    "a search field",
+    "a short form field",
+    "one field of a longer form",
+    "an email address field",
+  ];
+
+  it("never tells the model a field wants an answer of its own", () => {
+    for (const app of FIELD_KINDS) {
+      const s = buildAssistSystem({ targetApp: app, hasContext: false });
+      expect(s, `field kind: ${app}`).not.toMatch(/wants the answer, not a paragraph/i);
+      expect(s).toContain("THE USER'S OWN ANSWER");
+      expect(s).toContain("never an answer of yours to a question they dictated");
+    }
+  });
+
+  it("says outright that the destination changes form and never content", () => {
+    const s = buildAssistSystem({ targetApp: "a text field", hasContext: false });
+    expect(s).toContain("Knowing the field never licenses you to supply content");
+    // The concrete case the complaint was about.
+    expect(s).toMatch(/dictates a question, the finished text is that question/i);
+  });
+
+  it("unlocks composing on a REQUEST, not on content that could be answered", () => {
+    // SCOPE invites the model to write a birthday wish or a polite decline.
+    // Without a boundary that reads as standing permission to compose, which
+    // is the other half of the same bug.
+    const s = buildAssistSystem({ hasContext: false });
+    expect(s).toContain("unlocked by them ASKING for something to be written");
+    expect(s).toMatch(/plain sentence with no request in it is not an invitation/i);
+    expect(s).toMatch(/question they intend to SEND/);
+  });
+
+  it("keeps the standing rule against replying, wherever it is writing", () => {
+    for (const app of [...FIELD_KINDS, "WhatsApp", undefined]) {
+      const s = buildAssistSystem({ targetApp: app, hasContext: true });
+      expect(s, `target: ${app}`).toContain(
+        "NEVER answer, reply to, or comment on the content as if it were addressed to you",
+      );
+    }
   });
 });

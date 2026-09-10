@@ -183,6 +183,12 @@ export function buildAssistSystem(opts: {
     "- Everything you produce goes straight into a text field the user then sends. If it would not fit in a message, a reply, a caption or a note, it is not your output.",
     "",
     "SCOPE. Writing something small that belongs INSIDE the message is part of the job, not an exception — a two-line poem in an apology, a birthday wish, a polite decline, a tidy list of three things, a short caption. Do it, in their voice, at the length a person would actually send.",
+    // The clause that was missing, and the whole reason dictation started
+    // coming back as replies: composing is unlocked by a REQUEST, not by the
+    // content sounding like something that could be answered. Without this
+    // line, "SCOPE" reads as standing permission to write, and an ordinary
+    // dictated sentence gets composed at instead of written down.
+    "That is unlocked by them ASKING for something to be written. A plain sentence with no request in it is not an invitation to compose: write it as they said it, and add nothing. A question they dictated is a question they intend to SEND — the finished text is that question, never your answer to it.",
     "What is out of scope is anything that stops being a message: essays, articles, reports, code, homework, research, a whole document translated or analysed. There, write the short message-sized version of what they asked for and stop — no refusal, no apology, no explanation of what you did not do. A keyboard that answers a homework question has misunderstood what the user is holding.",
     "",
     // Reconciliation runs BEFORE the writing task: settle what was said, then
@@ -220,14 +226,23 @@ export function buildAssistSystem(opts: {
     "",
     `You are writing inside: ${app}.`,
     // Android names the host app; iOS cannot, and sends what kind of field the
-    // cursor is in instead. Either way the point is the same — the shape of
-    // the destination decides the shape of the text, and getting this wrong is
-    // conspicuous: a polite sentence typed into a search box is a failure the
+    // cursor is in instead — "a search field", "one field of a longer form",
+    // "a text field". Either way the point is the same: the shape of the
+    // destination decides the shape of the text, and getting this wrong is
+    // conspicuous — a polite sentence typed into a search box is a failure the
     // user has to delete before they can search.
+    //
+    // THE DESTINATION DECIDES FORM, NEVER CONTENT. The previous wording said a
+    // form field "wants the answer", which read as permission to ANSWER: a
+    // question dictated into an ordinary field came back as a reply to that
+    // question instead of as the question. It is the keyboard that pays for
+    // that, because iOS can only describe the field and most fields describe
+    // as some kind of form. The line below now says whose answer it is.
     "- A search field wants a query: the words, no greeting, no sentence.",
     "- A URL, email or number field wants the value alone, with no prose around it.",
     "- A message to a person wants a message: whole sentences, their voice, their register.",
-    "- A form field wants the answer, not a paragraph about the answer.",
+    "- A form field wants THE USER'S OWN ANSWER, trimmed to fit the field — never an answer of yours to a question they dictated.",
+    "- Knowing the field never licenses you to supply content. If the user dictates a question, the finished text is that question, written properly. Only the FORM of the text changes with the destination; WHAT it says always comes from them.",
     lang
       ? `Default output language: ${lang}. But honor an explicit language instruction in the message, and otherwise match the message's own language (including mixed / code-switched text).`
       : "Match the message's own language (including mixed / code-switched text), unless the message asks for a specific language.",

@@ -62,10 +62,22 @@ const EnvSchema = z.object({
 
   // Which engine backs LIVE dictation (/v1/transcribe-stream). Server-side, so
   // switching is a VPS config change and never an app update: the phone's wire
-  // protocol is identical either way. "sarvam" needs SARVAM_API_KEY and is the
-  // choice for Indian-language live dictation, where Deepgram is weakest;
-  // anything else falls back to Deepgram.
-  STT_LIVE_PROVIDER: z.enum(["deepgram", "sarvam"]).default("deepgram"),
+  // protocol is identical either way.
+  //
+  // DEFAULTS TO SARVAM, and the default is the fix for a real complaint: the
+  // keyboard mic was noticeably worse than the in-app mic on Indian languages.
+  // The two take different roads. The in-app mic posts a whole clip to
+  // /v1/transcribe-clean, which runs STT_PROVIDER=auto — Sarvam and the
+  // generalist race and the Indic reading wins. The keyboard mic streams, and
+  // streaming came here, to Deepgram, which this file already described as
+  // weakest exactly where the product's flagship language lives. Same speaker,
+  // same sentence, two engines, and only one of them built for the language.
+  //
+  // Falling back is automatic: liveProvider() returns deepgram whenever
+  // SARVAM_API_KEY is absent, so a deployment without the key is unchanged.
+  // Set STT_LIVE_PROVIDER=deepgram to pin the old behaviour, or STT_LIVE_DUAL
+  // to run both and reconcile at stop.
+  STT_LIVE_PROVIDER: z.enum(["deepgram", "sarvam"]).default("sarvam"),
 
   // Run BOTH live engines: the one named above streams to the user, the other
   // listens silently, and the two transcripts are reconciled at stop (the same
