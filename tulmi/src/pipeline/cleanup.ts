@@ -108,6 +108,43 @@ const META_PATTERNS: RegExp[] = [
 ];
 
 /**
+ * The model TYPING the absence instead of producing it.
+ *
+ * The prompt used to say "output an EMPTY STRING" on silence, and models did
+ * exactly that — the words EMPTY STRING landed in the user's message. The
+ * prompt no longer names a literal (see assistPrompt.ts), but an instruction
+ * about emptiness will always tempt a placeholder, so the echo is caught here
+ * too. Belt and braces, because the failure is invisible until it is in
+ * somebody's WhatsApp.
+ *
+ * ANCHORED AND WHOLE-OUTPUT ONLY. These words are ordinary English and a real
+ * dictation may contain them — "send me an empty box", "the file is null" —
+ * so a match anywhere inside a sentence must never fire. The response has to
+ * BE the placeholder and nothing else.
+ */
+const EMPTY_ECHO =
+  /^[\s"'`(\[<{*_-]*(?:an?\s+)?(?:empty(?:\s+(?:string|response|output|text|message))?|no(?:ne|thing|\s+text|\s+output|\s+content)|null|nil|undefined|n\/?a|blank|silence|<\s*empty\s*>)[\s"'`)\]>}*_.,;:-]*$/i;
+
+/**
+ * A pair of wrappers with nothing inside — the model showing you the empty
+ * string rather than being it.
+ *
+ * Deliberately narrow: only a matched, EMPTY pair. A bare "?" or "..." is a
+ * message people really do send, and a rule that swallowed all punctuation
+ * would eat it.
+ */
+const BARE_WRAPPER = /^(?:""|''|``|\(\)|\[\]|<>|\{\}|"\s*"|'\s*')$/;
+
+/** True when the whole completion is a stand-in for "I have nothing to say". */
+export function looksLikeEmptyEcho(text: string): boolean {
+  const t = text.trim();
+  // Bounded hard: the longest of these is a couple of words. Anything longer is
+  // a real message that happens to start with one of them.
+  if (!t || t.length > 24) return false;
+  return BARE_WRAPPER.test(t) || EMPTY_ECHO.test(t);
+}
+
+/**
  * True when `text` is a wholly conversational meta/refusal/clarification reply
  * rather than a rewrite of the user's words — the kind of thing the model emits
  * on silence/noise and that must never reach the cursor. Bounded to short
@@ -138,6 +175,11 @@ export function looksLikeMeta(text: string): boolean {
  */
 function finalizeCompletion(out: string, input: string): string {
   const inp = (input ?? "").trim();
+  // The placeholder is treated as the empty output it was meant to be, NOT as
+  // meta: falling back to `input` here would insert the raw noisy transcript
+  // the model correctly decided was unintelligible. On a silent clip `inp` is
+  // already "" and both paths agree; on a noisy one only this path is right.
+  if (out && looksLikeEmptyEcho(out)) return "";
   if (out && looksLikeMeta(out) && !looksLikeMeta(inp)) return inp;
   return out || inp;
 }

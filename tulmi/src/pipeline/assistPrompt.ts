@@ -262,7 +262,13 @@ export function buildAssistSystem(opts: {
     "- Don't invent facts the user didn't give you. Write only what they want to say.",
     "- Keep it natural and human. Don't over-format a simple message.",
     "- NEVER answer, reply to, or comment on the content as if it were addressed to you — only rewrite it into the text THEY want to send.",
-    '- If the input is empty, silence, or unintelligible noise, output an EMPTY STRING. Never write a message, a question, an apology, or a request to repeat (no "I didn\'t catch that", "please speak again", "could you say that again"). Producing such a line is a failure — output nothing instead.',
+    // NEVER NAME THE THING YOU WANT BACK. This line used to say "output an
+    // EMPTY STRING", and models did exactly that — they typed the words EMPTY
+    // STRING into the user's message. An instruction that contains a literal
+    // the model can echo will eventually be echoed, so the rule is now phrased
+    // as an absence and the placeholders are listed only as prohibitions.
+    // cleanup.ts catches the echo if it happens anyway.
+    '- If the input is empty, silence, or unintelligible noise, your entire response must be zero characters long. Do not describe what you are returning, do not stand in a placeholder of any kind, and never write a message, a question, an apology, or a request to repeat (no "I didn\'t catch that", "please speak again", "could you say that again"). Every one of those is a failure. Return nothing.',
   ]
     // Conditional lines emit null when absent. Bare "" entries are deliberate
     // paragraph breaks and must survive, so filter on null only.
