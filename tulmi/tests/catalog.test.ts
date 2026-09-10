@@ -890,23 +890,45 @@ describe("the You tab greets you by name", () => {
     // The first word is on screen when the tab opens. An opening word that
     // changes with the account is not an opening word.
     expect(hello().props.words[0]).toBe("Hello");
-    expect(hello({ personality: { languages: ["ta", "hi"] }, language: "ta" })
-      .props.words[0]).toBe("Hello");
   });
 
-  it("turns into the languages this person actually writes in, first", () => {
-    // A greeting in a language you don't read is decoration.
-    const w = hello({ personality: { languages: ["ta", "hi"] }, language: "en" }).props.words;
-    expect(w.slice(0, 3)).toEqual(["Hello", "வணக்கம்", "नमस्ते"]);
+  it("shows one person the same cycle as the next", () => {
+    // Nothing after English depends on the account.
+    const a = hello({ personality: { languages: ["ta", "hi"] }, language: "ta" }).props.words;
+    const b = hello({ personality: { languages: ["fr"] }, language: "fr" }).props.words;
+    const c = hello({ personality: {}, language: "en" }).props.words;
+    expect(a).toEqual(c);
+    expect(b).toEqual(c);
   });
 
-  it("keeps going for someone who has chosen nothing", () => {
-    expect(hello().props.words.length).toBeGreaterThan(8);
+  it("has enough languages to keep turning", () => {
+    expect(hello().props.words.length).toBeGreaterThanOrEqual(40);
   });
 
-  it("never says the same word twice in a row of the cycle", () => {
-    const w = hello({ personality: { languages: ["mr", "hi"] }, language: "en" }).props.words;
+  it("never says the same word twice", () => {
+    // The same word twice running reads as a skipped turn, not a language.
+    const w = hello().props.words;
     expect(new Set(w).size).toBe(w.length);
+  });
+
+  it("changes script from one turn to the next, where it can", () => {
+    // The word turns over in place, so two words in the same script one after
+    // the other read as a typo rather than a change of language.
+    const script = (w: string): string => {
+      const c = w.codePointAt(0)!;
+      if (c < 0x0370) return "latin";
+      if (c < 0x0400) return "greek";
+      if (c < 0x0590) return "cyrillic";
+      if (c < 0x0600) return "hebrew";
+      if (c < 0x0900) return "arabic";
+      return `u+${(c >> 8).toString(16)}`;   // one block per Indic/SEA script
+    };
+    const w = hello().props.words;
+    let repeats = 0;
+    for (let i = 1; i < w.length; i++) if (script(w[i]) === script(w[i - 1])) repeats++;
+    // Latin has the most entries and cannot always be avoided; what must not
+    // happen is a run of one script down the list.
+    expect(repeats).toBeLessThan(w.length / 4);
   });
 
   it("gives each line its own colour, tunable without moving anything else", () => {

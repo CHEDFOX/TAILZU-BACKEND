@@ -4416,57 +4416,85 @@ export const YOU_UI = {
 };
 
 /**
- * "Hello" in each language the app speaks, in that language's own script.
+ * "Hello", around the world — the one cycle, the same for everyone.
  *
- * The list is the backend's copy, like every other word in the product. It is
- * keyed by language code so the cycle can be ordered per person rather than
- * shipped as a fixed sequence — see helloCycle.
+ * THE ORDER IS THE DESIGN, which is why this is a list and not a map. The
+ * greeting turns over in place, so two words in the same script one after the
+ * other read as a typo rather than a change of language. Every step here moves
+ * to a different writing system where it can — Latin, then Devanagari, then
+ * Latin, then Han — so each turn is visibly a turn.
+ *
+ * English is first because it is the word on screen when the tab opens.
+ * Nothing after it depends on the account: one person's phone shows the same
+ * sequence as the next one's.
+ *
+ * The code beside each word is documentation, not a lookup. It says which
+ * language the word belongs to so the next person to edit this list can check
+ * one without guessing from the script.
  */
-const HELLOS: Record<string, string> = {
-  en: "Hello",
-  hi: "नमस्ते",
-  hinglish: "Namaste",
-  mr: "नमस्कार",
-  bn: "নমস্কার",
-  ta: "வணக்கம்",
-  te: "నమస్కారం",
-  gu: "નમસ્તે",
-  kn: "ನಮಸ್ಕಾರ",
-  ml: "നമസ്കാരം",
-  pa: "ਸਤ ਸ੍ਰੀ ਅਕਾਲ",
-  ur: "السلام علیکم",
-  es: "Hola",
-  fr: "Bonjour",
-  de: "Hallo",
-  it: "Ciao",
-  pt: "Olá",
-  ru: "Привет",
-  ar: "مرحبا",
-  ja: "こんにちは",
-  ko: "안녕하세요",
-  zh: "你好",
-};
+const HELLOS: Array<[code: string, hello: string]> = [
+  ["en", "Hello"],
+  ["hi", "\u0928\u092e\u0938\u094d\u0924\u0947"],
+  ["es", "Hola"],
+  ["zh", "\u4f60\u597d"],
+  ["fr", "Bonjour"],
+  ["ar", "\u0645\u0631\u062d\u0628\u0627"],
+  ["ja", "\u3053\u3093\u306b\u3061\u306f"],
+  ["pt", "Ol\u00e1"],
+  ["ru", "\u041f\u0440\u0438\u0432\u0435\u0442"],
+  ["ta", "\u0bb5\u0ba3\u0b95\u0bcd\u0b95\u0bae\u0bcd"],
+  ["it", "Ciao"],
+  ["ko", "\uc548\ub155\ud558\uc138\uc694"],
+  ["de", "Hallo"],
+  ["bn", "\u09a8\u09ae\u09b8\u09cd\u0995\u09be\u09b0"],
+  ["tr", "Merhaba"],
+  ["he", "\u05e9\u05dc\u05d5\u05dd"],
+  ["te", "\u0c28\u0c2e\u0c38\u0c4d\u0c15\u0c3e\u0c30\u0c02"],
+  ["pl", "Cze\u015b\u0107"],
+  ["th", "\u0e2a\u0e27\u0e31\u0e2a\u0e14\u0e35"],
+  ["gu", "\u0aa8\u0aae\u0ab8\u0acd\u0aa4\u0ac7"],
+  ["el", "\u0393\u03b5\u03b9\u03b1 \u03c3\u03b1\u03c2"],
+  ["vi", "Xin ch\u00e0o"],
+  ["kn", "\u0ca8\u0cae\u0cb8\u0ccd\u0c95\u0cbe\u0cb0"],
+  ["fa", "\u0633\u0644\u0627\u0645"],
+  ["sv", "Hej"],
+  ["ml", "\u0d28\u0d2e\u0d38\u0d4d\u0d15\u0d3e\u0d30\u0d02"],
+  ["uk", "\u041f\u0440\u0438\u0432\u0456\u0442"],
+  ["pa", "\u0a38\u0a24 \u0a38\u0a4d\u0a30\u0a40 \u0a05\u0a15\u0a3e\u0a32"],
+  ["id", "Halo"],
+  ["or", "\u0b28\u0b2e\u0b38\u0b4d\u0b15\u0b3e\u0b30"],
+  ["tl", "Kumusta"],
+  ["ur", "\u0627\u0644\u0633\u0644\u0627\u0645 \u0639\u0644\u06cc\u06a9\u0645"],
+  ["cs", "Ahoj"],
+  ["my", "\u1019\u1004\u103a\u1039\u1002\u101c\u102c\u1015\u102b"],
+  ["sw", "Habari"],
+  ["mr", "\u0928\u092e\u0938\u094d\u0915\u093e\u0930"],
+  ["hu", "Szia"],
+  ["ka", "\u10d2\u10d0\u10db\u10d0\u10e0\u10ef\u10dd\u10d1\u10d0"],
+  ["zu", "Sawubona"],
+  ["si", "\u0d86\u0dba\u0dd4\u0db6\u0ddd\u0dc0\u0db1\u0dca"],
+  ["ro", "Salut"],
+  ["am", "\u1230\u120b\u121d"],
+  ["no", "Hei"],
+  ["km", "\u179f\u17bd\u179f\u17d2\u178f\u17b8"],
+  ["hy", "\u0532\u0561\u0580\u0587"],
+  ["fi", "Moi"],
+  ["yo", "Bawo"],
+  ["nl", "Hoi"],
+  ["ha", "Sannu"],
+];
 
 /**
- * The order the greeting turns through.
+ * The cycle, built once.
  *
- * ENGLISH FIRST, ALWAYS — it is the word on screen when the tab opens, and an
- * opening word that changes with the account is not an opening word. After it
- * come the languages this person actually writes in, in the order they chose
- * them, because a greeting in a language you don't read is decoration. The
- * rest of the list follows so the cycle keeps going for someone who has
- * chosen nothing yet.
+ * The dedup is a guard on the list above, not a feature: two languages can
+ * genuinely share a word, and the same word twice running reads as a skipped
+ * turn rather than a greeting in another language.
  */
-function helloCycle(languages?: string[]): string[] {
-  const mine = (languages ?? [])
-    .map((l) => String(l).toLowerCase())
-    .filter((l) => l !== "en" && HELLOS[l]);
-  const rest = Object.keys(HELLOS).filter((c) => c !== "en" && !mine.includes(c));
+function helloCycle(): string[] {
   const seen = new Set<string>();
-  return ["en", ...mine, ...rest]
-    .map((c) => HELLOS[c])
-    // Two languages can share a word (Marathi and Hindi both greet with
-    // नमस्कार in some lists); the same word twice reads as a skipped turn.
+  return HELLOS
+    .map(([, hello]) => hello)
     .filter((w) => (seen.has(w) ? false : (seen.add(w), true)));
 }
 
@@ -4626,7 +4654,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
       {
         type: "FlipText",
         props: {
-          words: helloCycle(ctx.personality?.languages),
+          words: helloCycle(),
           intervalMs: g.intervalMs,
           flipMs: g.flipMs,
           variant: "greetHello",
