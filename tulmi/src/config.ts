@@ -64,34 +64,47 @@ const EnvSchema = z.object({
   // switching is a VPS config change and never an app update: the phone's wire
   // protocol is identical either way.
   //
-  // DEFAULTS TO SARVAM, and the default is the fix for a real complaint: the
-  // keyboard mic was noticeably worse than the in-app mic on Indian languages.
-  // The two take different roads. The in-app mic posts a whole clip to
-  // /v1/transcribe-clean, which runs STT_PROVIDER=auto — Sarvam and the
-  // generalist race and the Indic reading wins. The keyboard mic streams, and
-  // streaming came here, to Deepgram, which this file already described as
-  // weakest exactly where the product's flagship language lives. Same speaker,
-  // same sentence, two engines, and only one of them built for the language.
+  // THIS DECIDES THE LIVE PARTIALS, not the final text. Deepgram, because it
+  // is the only one of the two that covers the whole world: Sarvam is built
+  // for 22 Indian languages plus English and has no French, Spanish, German,
+  // Japanese or Arabic at all. Making it primary would have fixed Hindi by
+  // breaking every language it does not speak.
   //
-  // Falling back is automatic: liveProvider() returns deepgram whenever
-  // SARVAM_API_KEY is absent, so a deployment without the key is unchanged.
-  // Set STT_LIVE_PROVIDER=deepgram to pin the old behaviour, or STT_LIVE_DUAL
-  // to run both and reconcile at stop.
-  STT_LIVE_PROVIDER: z.enum(["deepgram", "sarvam"]).default("sarvam"),
+  // The Indic fix lives in STT_LIVE_DUAL below instead, which is the same
+  // answer the one-shot path already reached: run both, decide afterwards.
+  // Set this to sarvam if your traffic is overwhelmingly Indic and you want
+  // the LIVE partials in the right language too — romanized Hinglish has no
+  // script to detect at stop, so it is the one case that still rides on
+  // whichever engine is primary here.
+  STT_LIVE_PROVIDER: z.enum(["deepgram", "sarvam"]).default("deepgram"),
 
   // Run BOTH live engines: the one named above streams to the user, the other
-  // listens silently, and the two transcripts are reconciled at stop (the same
-  // fusion the one-shot path does, applied at the end of the stream). Each
-  // engine has areas the other is weak in — Deepgram on English/European,
-  // Sarvam on Indic and code-mixed — so the committed text can be better than
-  // either alone. Costs two live STT streams for the same audio.
-  STT_LIVE_DUAL: z.coerce.boolean().default(false),
+  // listens silently, and the two transcripts are reconciled at stop.
+  //
+  // ON BY DEFAULT, because off is what made the keyboard mic worse than the
+  // in-app mic on Indian languages. The in-app mic posts a clip to
+  // /v1/transcribe-clean, where STT_PROVIDER=auto already runs both engines and
+  // keeps the Indic reading. The keyboard mic streams, and streaming ran one
+  // engine — Deepgram, the weaker of the two exactly where the flagship
+  // language lives. Same speaker, same sentence, worse transcript, purely for
+  // reaching for the keyboard instead of the app.
+  //
+  // Costs two live STT streams for the same audio. STT is cents-per-hour and
+  // far cheaper than the LLM call that follows it; set false to halve it and
+  // accept one engine's blind spots. Without SARVAM_API_KEY there is no second
+  // engine to open and this is a no-op.
+  // bool(), not z.coerce.boolean(): coerce runs Boolean("false"), which is
+  // TRUE. Every other flag in this file already uses the helper; these two did
+  // not, so STT_LIVE_DUAL=false in a .env was silently ignored — and with the
+  // default now true, that would have been an operator unable to turn off the
+  // second stream they are paying for.
+  STT_LIVE_DUAL: bool(true),
 
   // Add Deepgram's pre-recorded API as a THIRD candidate in STT_PROVIDER=auto.
   // Opt-in: a third opinion costs a third call (no extra latency — the legs run
   // in parallel) but its gain is smaller than Sarvam + Whisper together, and it
   // widens the failure surface. Turn on to A/B it.
-  STT_AUTO_INCLUDE_DEEPGRAM: z.coerce.boolean().default(false),
+  STT_AUTO_INCLUDE_DEEPGRAM: bool(false),
 
   // OpenAI STT (used when STT_PROVIDER=openai). gpt-4o-transcribe is the
   // current best; gpt-4o-mini-transcribe is cheaper; whisper-1 is the legacy.

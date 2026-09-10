@@ -37,7 +37,10 @@ import {
 } from "./live-engines.js";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { enforceQuota, recordUsage } from "../usage/metering.js";
-import { sanitizePlainTranscript, transcriptsAgree, isUsableAlternative } from "../pipeline/stt.js";
+import {
+  sanitizePlainTranscript, transcriptsAgree, isUsableAlternative,
+  detectScript, INDIC_SCRIPTS,
+} from "../pipeline/stt.js";
 
 interface StartMessage {
   type: "start";
@@ -185,8 +188,24 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           // send the alternative when it's a real disagreement; identical
           // readings carry no information. Older clients ignore the extra
           // field, so this stays wire-compatible.
-          const primaryText = primaryDry;
-          const shadowText = shadowDry;
+          //
+          // WHICH READING LEADS is decided by the TEXT, not by which engine
+          // happened to be primary — the same rule the one-shot path uses.
+          // It matters because the refine step is told candidate 1 is the more
+          // reliable recognizer: hand it Deepgram's attempt at a Devanagari
+          // sentence as candidate 1 and it will trust the wrong one. Whichever
+          // engine came back in a native Indic script is the one that actually
+          // understood the speech, so it leads and the other rides along.
+          //
+          // Romanized Hinglish has no script to detect, so it still leads with
+          // the primary. Point STT_LIVE_PROVIDER at sarvam if that is the bulk
+          // of your traffic.
+          const primaryIndic = INDIC_SCRIPTS.has(detectScript(primaryDry));
+          const shadowIndic = INDIC_SCRIPTS.has(detectScript(shadowDry));
+          const flip = shadowIndic && !primaryIndic && !!shadowDry;
+          const primaryText = flip ? shadowDry : primaryDry;
+          const shadowText = flip ? primaryDry : shadowDry;
+          if (flip) send({ type: "final", text: shadowDry });
           const useAlternative =
             !!shadowText &&
             !!primaryText &&

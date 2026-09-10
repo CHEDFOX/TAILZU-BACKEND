@@ -93,7 +93,7 @@ const INDIC_LANGUAGES = new Set([
   "hi", "mr", "ta", "te", "bn", "gu", "pa", "kn", "ml", "ur",
   "or", "as", "sa", "ne", "sd", "kok", "mai", "doi", "brx", "mni", "sat", "ks",
 ]);
-const INDIC_SCRIPTS = new Set<DetectedScript>([
+export const INDIC_SCRIPTS = new Set<DetectedScript>([
   "devanagari", "tamil", "telugu", "bengali", "gujarati",
   "gurmukhi", "kannada", "malayalam",
 ]);
@@ -401,6 +401,29 @@ export function detectScript(text: string): DetectedScript {
   }
   return bestCount > 0 ? best : "unknown";
 }
+
+/**
+ * One engine, by name, with no provider selection in the way.
+ *
+ * `transcribe()` reads STT_PROVIDER and decides for itself, which is right for
+ * the product and useless for measuring: you cannot compare two engines through
+ * a function whose whole job is to hide which one ran. The bench
+ * (scripts/stt-bench.ts) needs to address each leg directly, so the legs are
+ * named here rather than reached for through config.
+ *
+ * "generalist" is whichever of Groq/OpenAI the environment is set up for —
+ * the same choice transcribeGeneralist makes for the real path, so the bench
+ * measures what production would actually run.
+ */
+export const STT_ENGINES = {
+  sarvam: transcribeSarvam,
+  generalist: transcribeGeneralist,
+  deepgram: transcribeDeepgram,
+  openai: transcribeOpenAI,
+  groq: transcribeGroq,
+} as const;
+
+export type SttEngineName = keyof typeof STT_ENGINES;
 
 export async function transcribe(input: SttInput): Promise<SttResult> {
   // Provider selection (and its fallback) lives in transcribeWithProvider.
