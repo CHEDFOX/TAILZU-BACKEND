@@ -53,51 +53,51 @@ describe("isUsableAlternative — a failed call is not a second opinion", () => 
 });
 
 describe("assist prompt — reconciliation block", () => {
+  const withAlt = () => buildAssistSystem({ hasContext: false, hasAlternative: true });
+
   it("is ABSENT when the recognizers agreed (the common case stays untouched)", () => {
     const s = buildAssistSystem({ hasContext: false });
-    expect(s).not.toContain("SETTLE WHAT WAS SAID");
-    expect(s).not.toContain("CANDIDATE 1");
+    expect(s).not.toContain("candidates");
+    expect(s).not.toContain("Candidate 1");
   });
 
   it("appears when a second reading is present", () => {
-    const s = buildAssistSystem({ hasContext: false, hasAlternative: true });
-    expect(s).toContain("FIRST, SETTLE WHAT WAS SAID");
-    expect(s).toContain("two different speech recognizers");
+    expect(withAlt()).toMatch(/two recognizers heard this and disagreed/i);
+    expect(withAlt()).toContain("two candidates");
   });
 
   it("forbids inventing words absent from both candidates", () => {
-    const s = buildAssistSystem({ hasContext: false, hasAlternative: true });
-    expect(s).toContain("NEVER introduce a word that appears in NEITHER candidate");
-    expect(s).toContain("Do not smooth them into a new sentence");
+    // The load-bearing half. Given two readings a model will happily average
+    // them into a fluent third sentence nobody said, which is worse than
+    // simply picking one.
+    expect(withAlt()).toMatch(/invent nothing that is in neither/i);
   });
 
-  it("allows taking part of each — the whole point of fusing", () => {
-    const s = buildAssistSystem({ hasContext: false, hasAlternative: true });
-    expect(s).toContain("part of one candidate and part of the other");
+  it("allows taking the better reading where they differ — the point of fusing", () => {
+    expect(withAlt()).toMatch(/keep what they agree on/i);
+    expect(withAlt()).toMatch(/take the plausible reading where they differ/i);
   });
 
   it("breaks ties toward the primary recognizer", () => {
-    const s = buildAssistSystem({ hasContext: false, hasAlternative: true });
-    expect(s).toContain("CANDIDATE 1 is the more reliable recognizer");
+    expect(withAlt()).toMatch(/Candidate 1 is the more reliable one/i);
   });
 
-  it("keeps reconciliation BEFORE the writing task — settle, then write", () => {
-    const s = buildAssistSystem({ hasContext: false, hasAlternative: true });
-    expect(s.indexOf("SETTLE WHAT WAS SAID")).toBeLessThan(
-      s.indexOf("SEPARATE message from instruction"),
-    );
+  it("settles what was said BEFORE the writing task, not after", () => {
+    // Reconciliation is a pre-step. Placed after the writing contract it reads
+    // as an afterthought about output rather than a decision about input.
+    const s = withAlt();
+    expect(s.indexOf("two candidates")).toBeLessThan(s.indexOf("Part of what they say"));
   });
 
   it("never leaks the mechanism into the user's text", () => {
-    const s = buildAssistSystem({ hasContext: false, hasAlternative: true });
-    expect(s).toContain("Never mention the candidates");
+    expect(withAlt()).toMatch(/Never mention that there were two/i);
   });
 
   it("still carries the writing contract alongside reconciliation", () => {
-    // Fusion is a pre-step, not a replacement — instruction separation and
-    // script fidelity must survive it.
+    // Fusion is a pre-step, not a replacement — the separation principle and
+    // the observed script must survive it.
     const s = buildAssistSystem({ hasContext: false, hasAlternative: true, script: "latin" });
-    expect(s).toContain("SEPARATE message from instruction");
-    expect(s).toContain("captured in LATIN script");
+    expect(s).toMatch(/When you cannot tell which it is, it is what they want said/i);
+    expect(s).toContain("Theirs was latin.");
   });
 });

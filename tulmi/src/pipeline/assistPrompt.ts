@@ -1,15 +1,23 @@
 /**
  * The "assist" system prompt — Tailzu's writing brain.
  *
- * One prompt for the whole product: the user dictates or types a MESSAGE that
- * may have an INSTRUCTION mixed into it ("…and make it short, in bullet points,
- * in English"). The model separates the two — writes the content, follows the
- * instruction — applies the active TONE, and uses whatever is already in the
- * text field as CONTEXT (draft / conversation) when present.
+ * ONE prompt runs the product: keyboard dictation, keyboard typing and the
+ * in-app mic all build it. Someone tells their keyboard what they want to say
+ * and it writes it for them, finished and in their voice.
  *
- * This replaces the old split of "clean the transcript" vs "refine per tone" vs
- * "pass through": there's now a single writing assistant that understands what
- * the user wants written and how.
+ * It is written as PRINCIPLES rather than rules, and that is a deliberate
+ * reversal. It used to be sixty lines of do-and-don't — a scope list, a
+ * separation procedure, four worked examples, a table of field types — and
+ * that approach cannot finish. Every case it enumerated implied three it did
+ * not, each new failure got answered with another line, and every added line
+ * made the earlier ones fainter. A list of exceptions is a promise to keep
+ * writing exceptions forever.
+ *
+ * What is left is a handful of sentences that each generalise, and the tone
+ * block, which is the user's own material rather than instruction to the
+ * model. Adding to this file should feel expensive. If a new failure appears,
+ * the first question is which existing principle failed to cover it, not what
+ * sentence to append.
  */
 import type { Personality } from "../../../shared/types/api.js";
 import { applyPresetOverrides } from "../experience/personalityPresets.js";
@@ -17,15 +25,20 @@ import { applyPresetOverrides } from "../experience/personalityPresets.js";
 /** Short, natural-language guidance per built-in tone. "none" keeps the user's
  *  own voice — a faithful clean-up, not a restyle. */
 const TONE_GUIDANCE: Record<string, string> = {
-  // ZU — the product's default and its actual position: not "no voice",
-  // but the USER'S voice. No borrowed tone is applied; the only style that
-  // shapes the output is what we've learned about how this person writes
-  // (their style portrait, injected separately by portraitBlock).
-  none: "Write in the user's OWN voice — this is the default mode, not a style. Apply NO tone, persona, or vibe of your own: don't make it friendlier, more formal, more upbeat, or more polished than they are. Keep their words, their phrasing, their level of formality, their punctuation habits. Only do what they cannot do while speaking or thumb-typing: drop filler and false starts, repair obvious slips, fix capitalization and punctuation, and give it structure. If you have learned how this person writes, follow that; otherwise stay as close to their input as possible. The reader should believe they typed it carefully themselves.",
-  formal: "Formal and professional: full words (no contractions), precise punctuation, no slang, no emoji, one idea per sentence.",
-  casual: "Warm and conversational, like talking to a friend. Contractions are welcome. Natural, never stiff.",
-  "very-casual": "Group-chat energy: punchy, lowercase is fine, contractions and casual phrasing throughout, fragments are fine. Keep the user's slang.",
-  excited: "Genuinely enthusiastic: active verbs and energy the content earns — never forced hype. Exclamation marks where they fit.",
+  // ZU — the product's default, and its actual position: not "no voice" but
+  // the USER'S voice. Nothing is applied on top; the only thing that shapes
+  // the output is what we have learned about how this person writes, injected
+  // separately by portraitBlock.
+  //
+  // This entry was a hundred words of don't — don't make it friendlier, more
+  // formal, more upbeat, more polished. One sentence says the same and says it
+  // positively, which is the difference between a rule to check against and a
+  // voice to write in.
+  none: "Their own voice, not a style. Change nothing about how they sound — repair only what speaking or thumb-typing cost them: filler, false starts, slips, punctuation, shape. They should read it back and believe they wrote it carefully.",
+  formal: "Formal. Professional register, full words, one idea per sentence, precise punctuation. No slang, no emoji, and no exclamation mark the input did not earn.",
+  casual: "The way they would talk to a friend — warm, contracted, unhurried. Never formalize someone who said 'yo'.",
+  "very-casual": "Group-chat energy. Punchy, fragments welcome, lowercase fine. Keep every piece of their slang exactly as they wrote it.",
+  excited: "As excited as the input actually is, and no more. Active verbs, exclamation marks where they are earned, never manufactured enthusiasm.",
 };
 
 /**
@@ -35,45 +48,6 @@ const TONE_GUIDANCE: Record<string, string> = {
  * boundary.
  */
 export const MAX_TONE_PROMPT = 600;
-
-/**
- * Worked examples of message-vs-instruction separation.
- *
- * The rules alone were stated but never DEMONSTRATED, and only in English —
- * while real instructions arrive in the user's own language ("marathi madhe
- * lihi", "isko thoda formal bana do"). These few-shots teach the four hard
- * cases: (1) an instruction naming a language + audience, with the content
- * quoted mid-sentence in another language, (2) an instruction arriving in a
- * non-English language, (3) a message that merely MENTIONS writing and must
- * NOT be treated as an instruction, and (4) script fidelity — Latin-script
- * Hindi comes back in Latin script, not Devanagari, unless asked.
- *
- * Kept as compact input→output pairs: enough to pin the behavior, short
- * enough to leave room for the real request.
- */
-export const SEPARATION_EXAMPLES = [
-  "EXAMPLES (input → what you output):",
-  "",
-  '1. "write a message for me to my dear friend asking tum kaise ho and write in marathi"',
-  "   → INSTRUCTION: write a message, audience = a close friend, output language = Marathi.",
-  '     CONTENT: asking how they are. You output a warm Marathi message asking how they are —',
-  "     e.g. \"अरे, कसा आहेस? खूप दिवस झाले बोलणं नाही झालं. सगळं ठीक ना?\"",
-  '     You do NOT output the words "write a message" or "in marathi", and you do NOT',
-  '     merely transliterate "tum kaise ho".',
-  "",
-  '2. "boss ko bolo ki main aaj thoda late aaunga — isko formal bana do"',
-  "   → INSTRUCTION (itself in Hindi): make it formal, audience = boss.",
-  "     CONTENT: I'll be a little late today. You output one polite, formal message saying so,",
-  "     in the same language the content was spoken in.",
-  "",
-  '3. "I told her I would write the report tonight"',
-  "   → NO instruction. \"write\" is part of what they're saying, not a command to you.",
-  "     You output the sentence cleanly as their message.",
-  "",
-  '4. "yaar kal ka plan cancel karna padega, sorry"',
-  "   → NO instruction. Spoken in Latin-script Hinglish, so it comes back in LATIN script —",
-  "     cleaned, not converted to Devanagari and not translated to English.",
-].join("\n");
 
 /**
  * Resolve the tone guidance for a request.
@@ -164,13 +138,40 @@ export function portraitBlock(personality: Personality | undefined, tone?: strin
     }
   }
   if (!parts.length) return "";
-  return (
-    "THIS USER'S STYLE PORTRAIT (learned from the versions they picked as " +
-    "sounding most like them — follow it over generic style):\n" + parts.join("\n")
-  );
+  // "HOW THEY WRITE", not a paragraph explaining where the portrait came from.
+  // The model does not need the provenance; it needs the observation.
+  return "HOW THEY WRITE — follow this over any generic style:\n" + parts.join("\n");
 }
 
-/** Build the assist system prompt for one request. */
+/**
+ * Build the assist system prompt for one request.
+ *
+ * PRINCIPLES, NOT RULES. This was sixty lines of do-and-don't: a scope list, a
+ * separation procedure, four worked examples, a destination table. That
+ * approach cannot finish. Every case it enumerated implied three it did not,
+ * and each new failure got answered with another line — which made the prompt
+ * longer, the earlier lines fainter, and the next gap likelier. A list of
+ * exceptions is a promise to keep writing exceptions forever.
+ *
+ * What replaced it is a handful of sentences that each generalise:
+ *
+ *   "Everything you return is what they send."
+ *        does the work of the old scope list, the no-preamble rule, the
+ *        no-essay rule and the no-explanation rule at once.
+ *
+ *   "When you cannot tell which it is, it is what they want said."
+ *        does the work of the whole separation procedure and its examples,
+ *        including the ones nobody thought to write down.
+ *
+ *   "The field decides the shape, never the content."
+ *        does the work of the destination table, and — unlike the table —
+ *        cannot be read as permission to supply an answer.
+ *
+ * The framing changed with it. The old opening insisted the user was not
+ * talking TO the model but THROUGH it, which is a distinction the model has to
+ * hold rather than something it can act on. They ARE talking to their keyboard;
+ * it writes for them. Say that, and the rest follows.
+ */
 export function buildAssistSystem(opts: {
   tone?: string;
   tonePrompt?: string;
@@ -187,101 +188,41 @@ export function buildAssistSystem(opts: {
 }): string {
   const guidance = toneGuidance(opts.tone, opts.personality, opts.tonePrompt);
   const lang = opts.language && opts.language !== "auto" ? opts.language : "";
-  const app = opts.targetApp?.trim() || "Generic";
+  const app = opts.targetApp?.trim();
   return [
-    "You are the writing engine inside Tailzu, a phone keyboard. The user speaks or types a MESSAGE — sometimes with an INSTRUCTION about how to write it mixed in — and you turn it into the finished text they are about to send.",
+    "You are the writing assistant inside Tailzu, a keyboard. Someone tells you what they want to say. You write it — as well as it can be written, in their voice, finished and ready to send.",
     "",
-    "Two things follow from where you sit, and they decide almost every hard case:",
-    "- The user is not talking TO you. They are talking THROUGH you, to someone else. You are never the recipient.",
-    "- Everything you produce goes straight into a text field the user then sends. If it would not fit in a message, a reply, a caption or a note, it is not your output.",
+    "Everything you return is what they send. Nothing else has anywhere to go.",
     "",
-    "SCOPE. Writing something small that belongs INSIDE the message is part of the job, not an exception — a two-line poem in an apology, a birthday wish, a polite decline, a tidy list of three things, a short caption. Do it, in their voice, at the length a person would actually send.",
-    // The clause that was missing, and the whole reason dictation started
-    // coming back as replies: composing is unlocked by a REQUEST, not by the
-    // content sounding like something that could be answered. Without this
-    // line, "SCOPE" reads as standing permission to write, and an ordinary
-    // dictated sentence gets composed at instead of written down.
-    "That is unlocked by them ASKING for something to be written. A plain sentence with no request in it is not an invitation to compose: write it as they said it, and add nothing. A question they dictated is a question they intend to SEND — the finished text is that question, never your answer to it.",
-    "What is out of scope is anything that stops being a message: essays, articles, reports, code, homework, research, a whole document translated or analysed. There, write the short message-sized version of what they asked for and stop — no refusal, no apology, no explanation of what you did not do. A keyboard that answers a homework question has misunderstood what the user is holding.",
-    "",
-    // Reconciliation runs BEFORE the writing task: settle what was said, then
-    // write it. Two speech recognizers heard the same audio and disagreed —
-    // they fail in different places, so each usually holds part of the truth
-    // (one gets the Hindi right, the other the English brand name). The
-    // no-invention rule is the load-bearing line: given two readings a model
-    // will otherwise happily average them into a fluent third sentence NOBODY
-    // said, which is worse than simply picking one.
+    // Two recognizers heard the same audio and disagreed. The no-invention
+    // clause is the load-bearing half: given two readings a model will happily
+    // average them into a fluent third sentence nobody said, which is worse
+    // than simply picking one.
     opts.hasAlternative
-      ? [
-          "FIRST, SETTLE WHAT WAS SAID. The message below is given as TWO candidate transcripts of the same audio, from two different speech recognizers.",
-          "- Where they agree, that text is almost certainly correct.",
-          "- Where they differ, choose the reading that is coherent and plausible in context — the right word for the sentence, the right spelling of a name or brand. You may take part of one candidate and part of the other.",
-          "- CANDIDATE 1 is the more reliable recognizer for this speaker; prefer it when you cannot tell which is right.",
-          "- NEVER introduce a word that appears in NEITHER candidate. Do not smooth them into a new sentence — reconstruct only what was actually said.",
-          "- Then do the writing task below on the settled text. Never mention the candidates or that there were two.",
-          "",
-        ].join("\n")
+      ? "Two recognizers heard this and disagreed, so it comes to you as two candidates. Keep what they agree on, take the plausible reading where they differ, and invent nothing that is in neither. Candidate 1 is the more reliable one. Never mention that there were two.\n"
       : null,
-    "SEPARATE message from instruction:",
-    '- The input may contain directions about FORMAT, LENGTH, TONE, LANGUAGE, or AUDIENCE — e.g. "…and make it short and in bullet points", "write this in English", "tell them politely that…", "reply saying…".',
-    "- Work out which part is the CONTENT to write and which part is the INSTRUCTION about how to write it. Follow the instruction; write the content. NEVER echo the instruction back as part of the output.",
-    "- The instruction may itself be spoken in ANY language (Hindi, Marathi, Hinglish, Tamil…) and may name a DIFFERENT language for the output. Recognize it in whatever language it arrives, then write the content in the language it asks for.",
-    "- An instruction is a direction addressed to YOU. Words like \"write\", \"tell\", \"send\" INSIDE what the user is saying to someone else are content, not commands — when in doubt, treat it as content and write it faithfully.",
-    "- If there is no instruction, just write the message faithfully — remove filler and false starts, fix capitalization/punctuation, give it structure — without changing the meaning or wording choices, and without adding anything.",
+    "Part of what they say may be addressed to you: how to write it, how long, what language, who it is for. Do that part; write the rest. When you cannot tell which it is, it is what they want said — a question they dictate is a question they are sending, not one for you to answer.",
     "",
-    SEPARATION_EXAMPLES,
+    lang
+      ? `Write in ${lang} unless they ask otherwise or plainly speak another language, and in the same script they used.`
+      : "Write in their language and their script, exactly as they used them.",
+    // Observed, not guessed: the STT layer measured what came back, so state it
+    // as fact rather than hoping the model infers it. Without this, romanized
+    // Hinglish drifts into Devanagari.
+    opts.script && opts.script !== "unknown"
+      ? `Theirs was ${opts.script}.`
+      : null,
     "",
+    app
+      ? `They are writing into ${app}. The field decides the SHAPE of the text and never its content: a search box wants the words, a number field wants the number, a message wants sentences.`
+      : "The field they are writing into decides the SHAPE of the text and never its content.",
     opts.hasContext
-      ? "CONTEXT: the text already in the field is provided as CONTEXT — an existing draft or the conversation so far. Continue it, revise it, or reply to it as the message implies. Don't repeat context that's already there unless asked."
-      : "There is no prior context; write the message on its own.",
+      ? "What is already in the field is given as context — their draft, or the conversation. Continue or revise it; do not repeat it."
+      : null,
+    "",
+    "Say nothing they did not give you. If there is nothing to write, return nothing at all: no placeholder, no apology, no asking them to repeat.",
     "",
     `TONE: ${guidance}`,
-    "",
-    `You are writing inside: ${app}.`,
-    // Android names the host app; iOS cannot, and sends what kind of field the
-    // cursor is in instead — "a search field", "one field of a longer form",
-    // "a text field". Either way the point is the same: the shape of the
-    // destination decides the shape of the text, and getting this wrong is
-    // conspicuous — a polite sentence typed into a search box is a failure the
-    // user has to delete before they can search.
-    //
-    // THE DESTINATION DECIDES FORM, NEVER CONTENT. The previous wording said a
-    // form field "wants the answer", which read as permission to ANSWER: a
-    // question dictated into an ordinary field came back as a reply to that
-    // question instead of as the question. It is the keyboard that pays for
-    // that, because iOS can only describe the field and most fields describe
-    // as some kind of form. The line below now says whose answer it is.
-    "- A search field wants a query: the words, no greeting, no sentence.",
-    "- A URL, email or number field wants the value alone, with no prose around it.",
-    "- A message to a person wants a message: whole sentences, their voice, their register.",
-    "- A form field wants THE USER'S OWN ANSWER, trimmed to fit the field — never an answer of yours to a question they dictated.",
-    "- Knowing the field never licenses you to supply content. If the user dictates a question, the finished text is that question, written properly. Only the FORM of the text changes with the destination; WHAT it says always comes from them.",
-    lang
-      ? `Default output language: ${lang}. But honor an explicit language instruction in the message, and otherwise match the message's own language (including mixed / code-switched text).`
-      : "Match the message's own language (including mixed / code-switched text), unless the message asks for a specific language.",
-    // Script fidelity: a Hinglish speaker typing/dictating in Latin script
-    // wants Latin script back; a Marathi speaker wants Devanagari. Without
-    // this the model "helpfully" converts scripts and the output stops
-    // looking like the user.
-    "SCRIPT: write in the SAME SCRIPT the user used, unless they ask otherwise. Romanized/Latin-script Hindi, Marathi, Urdu, Tamil etc. stay in Latin script — do not convert them to Devanagari or any native script, and do not translate them to English. When the instruction names a language without naming a script, use that language's native script.",
-    // Observed, not guessed: the STT layer measured the script of what came
-    // back, so state it outright instead of hoping the model infers it.
-    opts.script && opts.script !== "unknown"
-      ? `The user's input was captured in ${opts.script.toUpperCase()} script — keep it there unless they explicitly ask for another.`
-      : null,
-    "",
-    "RULES:",
-    '- Output ONLY the final text — no preamble, no quotes, no explanation, no "here you go".',
-    "- Don't invent facts the user didn't give you. Write only what they want to say.",
-    "- Keep it natural and human. Don't over-format a simple message.",
-    "- NEVER answer, reply to, or comment on the content as if it were addressed to you — only rewrite it into the text THEY want to send.",
-    // NEVER NAME THE THING YOU WANT BACK. This line used to say "output an
-    // EMPTY STRING", and models did exactly that — they typed the words EMPTY
-    // STRING into the user's message. An instruction that contains a literal
-    // the model can echo will eventually be echoed, so the rule is now phrased
-    // as an absence and the placeholders are listed only as prohibitions.
-    // cleanup.ts catches the echo if it happens anyway.
-    '- If the input is empty, silence, or unintelligible noise, your entire response must be zero characters long. Do not describe what you are returning, do not stand in a placeholder of any kind, and never write a message, a question, an apology, or a request to repeat (no "I didn\'t catch that", "please speak again", "could you say that again"). Every one of those is a failure. Return nothing.',
   ]
     // Conditional lines emit null when absent. Bare "" entries are deliberate
     // paragraph breaks and must survive, so filter on null only.

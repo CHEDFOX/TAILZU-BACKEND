@@ -184,8 +184,8 @@ const EnvSchema = z.object({
   // Prompt versions to load from shared/prompts/. v3 (cleanup) / v2 (reply)
   // add the tone dial + per-app overrides + watermark. Roll back by exporting
   // CLEANUP_PROMPT_VERSION=v2 / REPLY_PROMPT_VERSION=v1 without a code change.
-  CLEANUP_PROMPT_VERSION: z.string().default("v3"),
-  REPLY_PROMPT_VERSION: z.string().default("v2"),
+  CLEANUP_PROMPT_VERSION: z.string().default("v4"),
+  REPLY_PROMPT_VERSION: z.string().default("v3"),
 
   // Sentry (backend). Optional — the observability layer no-ops when unset,
   // so the value can safely stay empty in dev.

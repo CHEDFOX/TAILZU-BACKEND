@@ -11,18 +11,18 @@ describe("toneGuidance — inline tone prompt", () => {
     const g = toneGuidance("my-pirate", undefined, "Talk like a pirate; say arr.");
     expect(g).toContain("Talk like a pirate; say arr.");
     // The built-in "formal"/"none" guidance must NOT bleed in.
-    expect(g).not.toContain("Formal and professional");
-    expect(g).not.toContain("keep the user's own words");
+    expect(g).not.toContain("Formal. Professional register");
+    expect(g).not.toMatch(/Their own voice, not a style/);
   });
 
   it("falls back to the built-in tone guidance when no inline prompt is sent", () => {
     const g = toneGuidance("formal", undefined, undefined);
-    expect(g).toContain("Formal and professional");
+    expect(g).toContain("Formal. Professional register");
   });
 
   it("treats a blank inline prompt as absent (falls back to built-in)", () => {
     const g = toneGuidance("formal", undefined, "   ");
-    expect(g).toContain("Formal and professional");
+    expect(g).toContain("Formal. Professional register");
   });
 
   it("caps an overlong inline prompt at MAX_TONE_PROMPT", () => {
@@ -62,29 +62,46 @@ describe("what the refiner is told it is", () => {
     expect(sys().toLowerCase()).toContain("keyboard");
   });
 
-  it("says the user is talking THROUGH it, not to it", () => {
-    // The single line that decides most hard cases: an angry message dictated
-    // at a third party must be written, not answered.
-    expect(sys()).toMatch(/talking THROUGH you/);
+  it("frames it as their assistant — they talk to it, it writes for them", () => {
+    // The old framing insisted the user was not talking TO the model but
+    // THROUGH it, which is a distinction to hold rather than something to act
+    // on. They are talking to their keyboard; it writes for them.
+    expect(sys()).toMatch(/writing assistant/i);
+    expect(sys()).toMatch(/tells you what they want to say/i);
+    expect(sys()).toMatch(/in their voice/i);
   });
 
-  it("allows the small writing that belongs inside a message", () => {
+  it("carries the one principle that replaced the whole scope list", () => {
+    // "Everything you return is what they send" does the work of the old
+    // no-preamble, no-essay, no-explanation and no-refusal rules at once —
+    // and covers the cases none of them named.
+    expect(sys()).toMatch(/Everything you return is what they send/i);
+    expect(sys()).toMatch(/Nothing else has anywhere to go/i);
+  });
+
+  it("settles the ambiguous case by principle rather than by example", () => {
+    // Four worked examples used to teach this. One sentence decides every
+    // case they covered, including the ones they did not.
+    expect(sys()).toMatch(/When you cannot tell which it is, it is what they want said/i);
+    expect(sys()).toMatch(/a question they dictate is a question they are sending/i);
+  });
+
+  it("stays SHORT, because a prompt that keeps growing keeps being ignored", () => {
+    // The guard on this whole rewrite. v3 of this prompt reached ~4,000
+    // characters of enumerated rules; each addition dimmed the lines above it.
+    // If this assertion starts failing, the fix is to find which principle
+    // failed to cover the new case — not to raise the number.
+    const t = buildAssistSystem({ hasContext: true, targetApp: "WhatsApp", script: "latin" });
+    expect(t.length).toBeLessThan(2000);
+    expect(t.split("\n").filter((l) => l.trim()).length).toBeLessThan(20);
+  });
+
+  it("names no worked examples at all", () => {
+    // They were the largest block in the prompt and taught four cases by
+    // demonstration. The separation principle replaced them.
     const t = sys();
-    expect(t).toMatch(/poem/i);
-    expect(t).toMatch(/in their voice/i);
-  });
-
-  it("rules out the work that stops being a message", () => {
-    const t = sys();
-    for (const kind of ["essays", "code", "homework", "research"]) {
-      expect(t).toContain(kind);
-    }
-  });
-
-  it("refuses by writing something shorter, never by explaining itself", () => {
-    // A keyboard that answers "I can't help with that" has typed a sentence
-    // the user must now delete.
-    expect(sys()).toMatch(/no refusal, no apology/i);
+    expect(t).not.toContain("EXAMPLES");
+    expect(t).not.toContain("→");
   });
 });
 
@@ -111,7 +128,7 @@ describe("the tone block keeps its parts apart", () => {
     const g = toneGuidance("none", PERSON);
     expect(g).toContain("\n\nnever use exclamation marks\n\n");
     expect(g).toMatch(/\n\nIf a sign-off fits the message/);
-    expect(g).toMatch(/\n\nTHIS USER'S STYLE PORTRAIT/);
+    expect(g).toMatch(/\n\nHOW THEY WRITE/);
   });
 
   it("never runs the user's instruction into the sentence before it", () => {

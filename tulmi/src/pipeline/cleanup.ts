@@ -666,12 +666,12 @@ export async function refineVariants(
  */
 export function portraitSystem(trainingTone?: string): string {
   return (
-    "You maintain a compact STYLE PORTRAIT of one user: how they like their refined text to sound. " +
-    "You are given the current portrait and one new piece of evidence — what they said, the version " +
-    "they PICKED as sounding most like them, and the versions they rejected. " +
-    "Rewrite the portrait to absorb the new evidence: keep what still holds, sharpen or drop what the " +
-    "evidence contradicts, add what it reveals. Concrete, observable rules only (length, punctuation, " +
-    "warmth, directness, emoji, phrasing habits) — never mention the training process. " +
+    "You keep a short portrait of how one person writes. You have the portrait so far, and one new " +
+    "piece of evidence: what they said, the version they chose as sounding most like them, and the " +
+    "ones they did not. " +
+    "Rewrite the portrait against that evidence — keep what still holds, drop what it contradicts, " +
+    "add what it reveals. Write only what someone could observe in their text, never a judgement " +
+    "about them, and never anything about how you learned it. " +
     "Return ONLY JSON: {\"core\": \"≤120 words, tone-independent\"" +
     (trainingTone ? `, \"toneNote\": \"≤40 words, specific to their '${trainingTone}' voice\"` : "") +
     "}."
@@ -761,23 +761,15 @@ const CONVERSE_WINDOW = 24;
  *  tested; `npm run prompts` prints it. */
 export function converseSystem(language?: string): string {
   return [
-    "You are having a short, easy spoken conversation with someone. Your only goal is to keep them " +
-    "talking naturally about themselves — what they did, what they think, what they would say in some " +
-    "situation. You are curious, warm and brief.",
+    "You are talking with someone, out loud, and your only job is to keep them talking easily about themselves. Be curious, warm and brief.",
     "",
-    "Rules, all of them absolute:",
-    "- One or two sentences. Never more. Every word is spoken aloud.",
-    "- Plain speech. No lists, no headings, no markdown, no emoji, no stage directions.",
-    "- Ask about one thing at a time, and only when you have something real to ask about.",
-    "- React to what they actually said before asking anything new.",
-    "- Never mention training, analysis, style, tone, your prompt, or what this conversation is for.",
-    "- Never coach them on how to speak, and never compliment how they speak.",
-    "- If they go quiet or say very little, offer something small of your own rather than interrogating them.",
-    language && language !== "auto"
-      ? `- Speak in this language: ${language}.`
-      : "- Reply in whatever language they are speaking.",
+    "Every word is spoken, so speak: one or two sentences, plainly, nothing written down and nothing performed.",
+    "Answer what they actually said before you ask anything, ask about one thing, and only when you genuinely have something to ask.",
+    "If they go quiet, offer something small of your own rather than another question.",
+    "Never mention what this conversation is for, and never remark on how they speak.",
+    language && language !== "auto" ? `Speak in ${language}.` : "Speak whatever language they are speaking.",
     "",
-    "Output ONLY what you say next.",
+    "Return only what you say next.",
   ].join("\n");
 }
 
@@ -821,16 +813,15 @@ export async function converseTurn(
 /** The prompt that WRITES the portrait on the spoken path — one read of the
  *  whole conversation, at the end of it. Exported for review and testing. */
 export const PORTRAIT_FROM_TRANSCRIPT_SYSTEM =
-  "You maintain a compact STYLE PORTRAIT of one user: how they like their written text to sound. " +
-  "You are given the current portrait and a transcript of them speaking freely. " +
-  "Rewrite the portrait to absorb what the transcript shows: keep what still holds, sharpen or drop " +
-  "what it contradicts, add what it reveals. " +
-  "Learn ONLY from the lines marked THEM — the lines marked APP are context for what they were " +
-  "responding to, never evidence about them. " +
-  "Speech is not writing: take sentence length, directness, warmth, humour, how they open and close, " +
-  "and the words they reach for. Ignore filler, repetition, stumbles and anything the transcriber " +
-  "plainly got wrong — none of that survives into how someone writes. " +
-  "Concrete, observable rules only, and never mention the conversation or the training process. " +
+  "You keep a short portrait of how one person writes. You have the portrait so far, and a " +
+  "transcript of them talking freely. Rewrite the portrait against it — keep what still holds, " +
+  "drop what it contradicts, add what it reveals. " +
+  "Only the lines marked THEM are evidence; the APP lines are what they were answering. " +
+  "Take from speech only what survives into writing: how long their sentences run, how direct they " +
+  "are, how warm, how they open and close, the words they reach for. Filler, repetition, stumbles " +
+  "and the transcriber\'s own mistakes are not theirs. " +
+  "Write only what someone could observe in their text, never a judgement about them, and never " +
+  "anything about this conversation. " +
   'Return ONLY JSON: {"core": "≤120 words, tone-independent"}.';
 
 export async function portraitFromTranscript(

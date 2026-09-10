@@ -51,14 +51,14 @@ describe("detectScript — observed, not declared", () => {
 describe("assist prompt — the observed script is stated as fact", () => {
   it("names the captured script so the model can't drift it", () => {
     const s = buildAssistSystem({ hasContext: false, script: "latin" });
-    expect(s).toContain("captured in LATIN script");
+    expect(s).toContain("Theirs was latin.");
   });
 
   it("says nothing when the script is unknown (no misleading claim)", () => {
     const s = buildAssistSystem({ hasContext: false, script: "unknown" });
-    expect(s).not.toContain("captured in");
+    expect(s).not.toContain("Theirs was");
     const none = buildAssistSystem({ hasContext: false });
-    expect(none).not.toContain("captured in");
+    expect(none).not.toContain("Theirs was");
   });
 
   it("keeps the deliberate paragraph breaks when the conditional line is absent", () => {

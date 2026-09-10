@@ -1,43 +1,56 @@
 /**
- * The assistant contract: the user is the master, the app is the assistant.
+ * The assistant contract, as principles.
  *
- * Every writing path must (a) recognize an INSTRUCTION addressed to the app
- * and separate it from the CONTENT to write, in whatever language the
- * instruction arrives, and (b) preserve the user's SCRIPT so romanized
- * Hinglish doesn't come back in Devanagari.
+ * Someone talks to their keyboard and it writes for them. Two things have to
+ * survive on EVERY writing path: it must tell what is addressed to it apart
+ * from what is meant for someone else, in whatever language that arrives, and
+ * it must keep the user's script so romanized Hinglish does not come back in
+ * Devanagari.
  *
- * These are prompt-contract tests — they assert the rules actually reach each
- * path's system prompt. Both paths regressed here before: the per-tone
- * endpoints carried no separation layer at all, so a spoken command was
- * politely rewritten instead of executed.
+ * These used to be pinned by asserting on a five-bullet procedure and four
+ * worked examples. Both paths now state one sentence each instead, and these
+ * tests assert THAT — not the phrasing of a list that no longer exists. The
+ * per-tone endpoints regressed here once with no separation layer at all, so
+ * a spoken command was politely rewritten instead of executed.
  */
 import { describe, expect, it } from "vitest";
-import { buildAssistSystem, SEPARATION_EXAMPLES } from "../src/pipeline/assistPrompt.js";
+import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
 import { buildTonePrompt } from "../src/pipeline/tonePrompts.js";
 
 describe("assist path — instruction separation", () => {
   const system = buildAssistSystem({ hasContext: false });
 
-  it("ships the worked examples, including the Marathi command case", () => {
-    expect(system).toContain(SEPARATION_EXAMPLES);
-    expect(system).toContain("write in marathi");
-    // The example must teach the OUTPUT, not just restate the rule.
-    expect(SEPARATION_EXAMPLES).toContain("कसा आहेस");
+  it("states what is addressed to it and what is not, in one sentence", () => {
+    expect(system).toMatch(/Part of what they say may be addressed to you/i);
+    expect(system).toMatch(/Do that part; write the rest/i);
   });
 
-  it("teaches that an instruction may arrive in a non-English language", () => {
-    expect(system).toContain("may itself be spoken in ANY language");
-    expect(SEPARATION_EXAMPLES).toContain("isko formal bana do");
+  it("decides the ambiguous case by default, rather than by example", () => {
+    // "write"/"tell"/"send" inside what someone is saying to a third party.
+    // Four examples taught this; one default settles it, and settles the
+    // cases the examples never reached.
+    expect(system).toMatch(/When you cannot tell which it is, it is what they want said/i);
   });
 
-  it("teaches the negative case — 'write' inside the message is content", () => {
-    expect(system).toContain("are content, not commands");
-    expect(SEPARATION_EXAMPLES).toContain("I would write the report tonight");
+  it("never echoes the direction back into the message", () => {
+    expect(system).toMatch(/Do that part; write the rest/i);
+    expect(system).toMatch(/a question they dictate is a question they are sending/i);
   });
 
   it("pins script fidelity so romanized speech stays romanized", () => {
-    expect(system).toContain("SCRIPT:");
-    expect(system).toContain("do not convert them to Devanagari");
+    expect(system).toMatch(/their language and their script, exactly as they used them/i);
+    const latin = buildAssistSystem({ hasContext: false, script: "latin" });
+    expect(latin).toContain("Theirs was latin.");
+  });
+
+  it("carries no language-specific instruction at all", () => {
+    // The old prompt listed Hindi, Marathi, Hinglish and Tamil by name and
+    // showed Devanagari examples — which reads as a prompt for those
+    // languages. "Their language, exactly as they used it" covers every
+    // language there is, including the ones nobody listed.
+    for (const named of ["Marathi", "Hinglish", "Devanagari", "Tamil"]) {
+      expect(system, `should not name ${named}`).not.toContain(named);
+    }
   });
 });
 
@@ -50,15 +63,16 @@ describe("per-tone path — instruction separation parity", () => {
   for (const tone of tones) {
     it(`"${tone}" separates instruction from message and keeps the script`, () => {
       const p = buildTonePrompt(tone);
-      expect(p).toContain("separate MESSAGE from INSTRUCTION");
-      expect(p).toContain("NEVER echo the direction back");
-      expect(p).toContain("SCRIPT: keep the user's script");
+      expect(p).toMatch(/Part of the input may be addressed to you/i);
+      expect(p).toMatch(/never echo it back/i);
+      expect(p).toMatch(/When you cannot tell which it is, it is what they want said/i);
+      expect(p).toMatch(/Keep their language and their script exactly as they used them/i);
     });
   }
 
-  it("keeps the tone's own voice first — the separation layer never leads", () => {
+  it("puts the shared contract first and the tone's own voice next to its work", () => {
     const p = buildTonePrompt("formal");
-    expect(p.indexOf("TONE: Formal.")).toBeLessThan(p.indexOf("separate MESSAGE from INSTRUCTION"));
+    expect(p.indexOf("Everything you return")).toBeLessThan(p.indexOf("TONE: Formal."));
   });
 
   it("layers the learned style portrait after the tone, before the mechanics", () => {
@@ -70,5 +84,15 @@ describe("per-tone path — instruction separation parity", () => {
     expect(p.indexOf("TONE: Casual.")).toBeLessThan(p.indexOf("PORTRAIT_MARKER"));
     expect(p.indexOf("PORTRAIT_MARKER")).toBeLessThan(p.indexOf("Preserve these spellings"));
     expect(p).toContain("Output language:");
+  });
+
+  it("keeps every tone short enough to be read as a voice, not a spec", () => {
+    // Each of these was six to eight bullets. A tone is described, not
+    // specified — the bullets were an attempt to pin down by enumeration
+    // something the model already knows how to hear.
+    for (const tone of tones) {
+      const voice = buildTonePrompt(tone).split("TONE:")[1] ?? "";
+      expect(voice.trim().length, tone).toBeLessThan(320);
+    }
   });
 });
