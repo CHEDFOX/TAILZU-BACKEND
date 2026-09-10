@@ -972,13 +972,34 @@ describe("the charts show measured things, or nothing", () => {
     return out;
   };
 
-  it("draws no slices at all when the person has done nothing", () => {
-    // The honest picture of "you have not done this yet" is an empty ring
-    // with a caption. Zeros would read as a measurement that came back empty.
-    for (const r of rings("personality")) {
+  it("puts no chart on the note at all when there is nothing to show", () => {
+    // An empty chart in a strip this size is a hole with a caption in it. The
+    // box goes back to being the sentence and the button it was before.
+    expect(rings("personality")).toEqual([]);
+    // Stats is the screen for reading, so there the empty case is drawn and
+    // says so in words.
+    for (const r of rings("stats")) {
       expect(r.props.slices).toEqual([]);
       expect(String(r.props.emptyLabel).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("writes nothing on the You tab chart — it is a shape, not a report", () => {
+    // Percentages, a label in the middle and a legend are all for Stats.
+    // Putting them in the caption strip would make it a panel.
+    for (const r of rings("personality", { stats: STATS })) {
       expect(r.props.centerValue).toBeUndefined();
+      expect(r.props.centerLabel).toBeUndefined();
+      expect(r.props.legend).toBe(false);
+    }
+  });
+
+  it("fills the You tab chart to its centre, since no number lives there", () => {
+    // A ring's hole exists to hold a number. With none, a hole is a hole —
+    // and at this size a wedge reads where a thin arc is a hairline.
+    for (const r of rings("personality", { stats: STATS })) {
+      expect(r.props.thickness).toBe(r.props.size / 2);
+      expect(r.props.size).toBeLessThanOrEqual(48);
     }
   });
 
@@ -994,8 +1015,8 @@ describe("the charts show measured things, or nothing", () => {
     expect(values).toEqual([4, 6, 60, 100, 200, 240]);
   });
 
-  it("puts a number in the hole that the ring around it agrees with", () => {
-    const found = rings("personality", { stats: STATS });
+  it("puts a number in the Stats ring that the ring around it agrees with", () => {
+    const found = rings("stats", { stats: STATS });
     const dict = found.find((r) => r.props.centerLabel === "IN USE");
     // 4 of 10 saved words used.
     expect(dict.props.centerValue).toBe("40%");
@@ -1006,7 +1027,7 @@ describe("the charts show measured things, or nothing", () => {
   });
 
   it("names voices the way the user does, not by id", () => {
-    const found = rings("personality", { stats: STATS });
+    const found = rings("stats", { stats: STATS });
     const voice = found.find((r) => r.props.centerLabel === "TOP");
     expect(voice.props.slices[0].label).toBe("Zu");
     expect(voice.props.slices.map((sl: any) => sl.label)).not.toContain("signature");

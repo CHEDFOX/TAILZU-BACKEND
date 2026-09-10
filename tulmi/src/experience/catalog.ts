@@ -4542,10 +4542,17 @@ export const YOU_UI = {
     marginBottom: 14,
     marginHorizontal: 18,
     /**
-     * The ring in the note. Small: it shares a strip with a sentence and a
-     * button, and anything larger turns the strip into a panel.
+     * The chart in the note.
+     *
+     * SOLID, NOT A RING. A ring's hole exists to hold a number, and there is
+     * no number here — so a hole would be a hole. thickness === size / 2
+     * fills it to the centre, which is also what reads at this size: at 46pt
+     * a thin arc is a hairline, a wedge is a shape.
+     *
+     * Small, because it shares a strip with a sentence and a button, and
+     * anything larger turns the caption into a panel.
      */
-    chart: { size: 58, thickness: 9 },
+    chart: { size: 46, thickness: 23, gap: 1.5 },
     /** The way in, on the amber: black pill, amber ink. */
     cta: {
       height: 32,
@@ -4767,6 +4774,7 @@ function pieNode(opts: {
   slices: Slice[];
   size: number;
   thickness?: number;
+  gap?: number;
   legend?: boolean;
   legendColor?: string;
   centerValue?: string;
@@ -4780,6 +4788,7 @@ function pieNode(opts: {
       slices: opts.slices,
       size: opts.size,
       thickness: opts.thickness ?? Math.round(opts.size * 0.17),
+      ...(opts.gap !== undefined ? { gap: opts.gap } : {}),
       legend: opts.legend ?? false,
       ...(opts.legendColor ? { legendColor: opts.legendColor } : {}),
       ...(opts.centerValue ? { centerValue: opts.centerValue } : {}),
@@ -4807,47 +4816,28 @@ const YOU_CARDS: {
    *  and this one visibly go to the same place. */
   cta: string;
   /**
-   * The ring beside the words, built from this user's own history.
+   * The small chart beside the words, built from this user's own history.
    *
    * A function of the context rather than a value, because it is measured per
    * request. Cards with nothing to measure — Haptics is a preference, not a
    * behaviour — simply have none, and the box is words and a button as before.
+   *
+   * Slices only. What each one is worth, what share it takes and what it is
+   * called are questions for Stats; here the chart is a shape.
    */
   chart?: (ctx: ScreenContext) => Slice[];
-  /** The one number in the hole. Same rows as the slices, so they agree. */
-  chartValue?: (ctx: ScreenContext) => string | undefined;
-  chartCenterLabel?: string;
-  /** What the ring says when the person has not done this yet. */
-  chartEmpty?: string;
 }[] = [
   {
     title: "Voice", media: "card.voice", screen: "voices",
     blurb: "How Tailzu writes for you. Zu is your own voice, learned — add others for the moments it isn't.",
     cta: "Voices",
     chart: (ctx) => voiceSlices(ctx.stats, ctx.personality, CHART_ON_AMBER),
-    // The share the top voice takes. "Which one writes for you" in one number.
-    chartValue: (ctx) => {
-      const rows = ctx.stats?.voiceWords ?? [];
-      const total = rows.reduce((sum, r) => sum + r.words, 0);
-      if (!total) return undefined;
-      return `${Math.round((rows[0]!.words / total) * 100)}%`;
-    },
-    chartCenterLabel: "TOP",
-    chartEmpty: "No writing yet",
   },
   {
     title: "Dictionary", media: "card.dictionary", screen: "dictionary",
     blurb: "Names, brands and the words only you use. Saved here, they are never corrected into something else.",
     cta: "Words",
     chart: (ctx) => dictionarySlices(ctx.stats, CHART_ON_AMBER),
-    // How much of the list earns its place — the question the card asks.
-    chartValue: (ctx) => {
-      const d = ctx.stats?.dictionary;
-      if (!d || d.saved <= 0) return undefined;
-      return `${Math.round((d.used / d.saved) * 100)}%`;
-    },
-    chartCenterLabel: "IN USE",
-    chartEmpty: "No words saved",
   },
   {
     title: "Haptics", media: "card.haptics", screen: "haptics",
@@ -4861,12 +4851,6 @@ const YOU_CARDS: {
     blurb: "The languages you write in. Each one you pick is one it listens for and writes back in.",
     cta: "Languages",
     chart: (ctx) => languageSlices(ctx.stats, CHART_ON_AMBER),
-    chartValue: (ctx) => {
-      const n = (ctx.stats?.languageWords ?? []).length;
-      return n > 0 ? String(n) : undefined;
-    },
-    chartCenterLabel: "USED",
-    chartEmpty: "No writing yet",
   },
 ];
 
@@ -5081,6 +5065,11 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
    * belongs to whatever is centred at that instant, including a throw the
    * user is still watching.
    */
+  /** This card's slices, read once — the presence check and the chart must
+   *  never disagree about whether there is anything to draw. */
+  const chartSlices = (c: (typeof YOU_CARDS)[number], k: ScreenContext): Slice[] =>
+    c.chart ? c.chart(k) : [];
+
   const infoBox = (c: (typeof YOU_CARDS)[number], i: number): Node => ({
     type: "Stack",
     visibleIf: { eq: ["deck", i] },
@@ -5093,24 +5082,26 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
       marginTop: u.info.marginTop, marginBottom: u.info.marginBottom,
     },
     children: [
-      // THE RING FIRST, then the words.
+      // A SMALL PIE AND NOTHING WRITTEN ON IT.
       //
-      // The card above is a name and a picture; the note under it says what
-      // the thing is. The ring is the third thing and the only one that is
-      // about THEM — how much of the dictionary they actually use, which
-      // voice does the writing. It leads because it is the part that changes.
+      // This strip is the card's caption: a sentence about what the thing is,
+      // and a way in. The chart is here to show the shape of it at a glance —
+      // mostly used, evenly split, one voice doing everything — and a shape
+      // needs no number to be read. Percentages, a label in the middle and a
+      // legend all belong on Stats, which is the screen for reading rather
+      // than glancing, and putting them here would make a caption into a
+      // report.
       //
-      // No legend here: the box is a strip under a deck, and five legend rows
-      // would make it a panel. The legend lives on the Stats card, which has
-      // the room for it.
-      ...(c.chart
+      // Absent entirely when there is nothing to show. An empty chart in a
+      // strip this size is a hole with a caption in it; the box simply goes
+      // back to being the sentence and the button it was before.
+      ...(chartSlices(c, ctx).length
         ? [pieNode({
-            slices: c.chart(ctx),
+            slices: chartSlices(c, ctx),
             size: u.info.chart.size,
             thickness: u.info.chart.thickness,
-            centerValue: c.chartValue?.(ctx),
-            centerLabel: c.chartCenterLabel,
-            emptyLabel: c.chartEmpty ?? "Nothing yet",
+            gap: u.info.chart.gap,
+            emptyLabel: "",
           })]
         : []),
       {
