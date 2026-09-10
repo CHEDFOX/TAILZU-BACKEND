@@ -40,7 +40,7 @@ describe("what the charts are built from", () => {
     const zu = s.voiceWords!.find((v) => v.id === "signature");
     const witty = s.voiceWords!.find((v) => v.id === "witty");
     expect(zu!.words).toBeGreaterThanOrEqual(7);
-    expect(witty).toEqual({ id: "witty", tone: "casual", words: 3 });
+    expect(witty).toEqual({ id: "witty", words: 3 });
     // Biggest first, so the chart's first slice is the top voice.
     expect(s.voiceWords![0]!.words).toBeGreaterThanOrEqual(s.voiceWords![1]!.words);
   });
@@ -80,5 +80,45 @@ describe("dictionary density", () => {
       kind: "typing", input: "a", output: "some text", wordsOut: 2,
     } as never);
     expect((await statsForUser(u4, "all", 0, [])).dictionary).toBeUndefined();
+  });
+});
+
+describe("the detail the Stats tab goes into", () => {
+  const u5 = { id: "u-detail", email: "g@b.c" } as never;
+  const keep2 = { retainHistory: true } as never;
+
+  it("splits by register as well as by voice", async () => {
+    // A voice is who is writing, a tone is how. Zu written in a formal
+    // register is still Zu, so the two cannot be read off one another.
+    await appendHistoryEntry(u5, keep2, {
+      kind: "typing", input: "a", output: "one", wordsOut: 10, presetId: "signature", tone: "none",
+    } as never);
+    await appendHistoryEntry(u5, keep2, {
+      kind: "typing", input: "b", output: "two", wordsOut: 4, presetId: "signature", tone: "formal",
+    } as never);
+    const s = await statsForUser(u5, "all");
+    expect(s.toneWords).toEqual([{ tone: "none", words: 10 }, { tone: "formal", words: 4 }]);
+    // Both rows are the same voice — the voice split must not be the tone split.
+    expect(s.voiceWords).toEqual([{ id: "signature", words: 14 }]);
+  });
+
+  it("names the words that never turned up, not just how many", async () => {
+    const u6 = { id: "u-idle", email: "h@b.c" } as never;
+    await appendHistoryEntry(u6, keep2, {
+      kind: "typing", input: "a", output: "Nykaa shipped today", wordsOut: 3,
+    } as never);
+    const s = await statsForUser(u6, "all", 0, ["Nykaa", "Sequoia", "Kubernetes"]);
+    // "Six unused" is a fact; "these six" is something you can act on.
+    expect(s.dictionary!.unusedWords).toEqual(["Sequoia", "Kubernetes"]);
+    expect(s.dictionary!.unused).toBe(2);
+  });
+
+  it("leaves the list out entirely when every word is working", async () => {
+    const u7 = { id: "u-allused", email: "i@b.c" } as never;
+    await appendHistoryEntry(u7, keep2, {
+      kind: "typing", input: "a", output: "Nykaa again", wordsOut: 2,
+    } as never);
+    const s = await statsForUser(u7, "all", 0, ["Nykaa"]);
+    expect(s.dictionary!.unusedWords).toBeUndefined();
   });
 });

@@ -955,7 +955,7 @@ describe("the charts show measured things, or nothing", () => {
     window: "month", requests: 6, wordsOut: 300, audioSeconds: 0, minutesSaved: 5,
     sparklinePerDay: [], 
     languageWords: [{ language: "en", words: 200 }, { language: "hi", words: 100 }],
-    voiceWords: [{ id: "signature", tone: "none", words: 240 }, { id: "witty", words: 60 }],
+    voiceWords: [{ id: "signature", words: 240 }, { id: "witty", words: 60 }],
     dictionary: { saved: 10, used: 4, unused: 6, scanned: 6, top: [{ word: "Nykaa", uses: 3 }] },
   } as never;
   const ctx = (extra: Record<string, unknown> = {}) =>

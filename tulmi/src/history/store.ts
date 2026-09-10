@@ -109,11 +109,16 @@ export interface StatsForUser {
    */
   languageWords?: Array<{ language: string; words: number }>;
   /**
-   * Words by voice, biggest first. `id` is the preset id and `tone` the
-   * register asked for; a row with neither is counted under Zu, which is
-   * what an unmarked request was written in.
+   * Words by voice, biggest first. A row with no voice recorded counts under
+   * Zu, which is what an unmarked request was written in.
+   *
+   * NO TONE HERE. A voice can be written in any register, so a single tone
+   * beside it could only ever be a sample of one of them — and it was in
+   * practice whichever row happened to be read first, which reads as a fact
+   * and is an accident of ordering. `toneWords` answers that question
+   * properly, over every row.
    */
-  voiceWords?: Array<{ id: string; tone?: string; words: number }>;
+  voiceWords?: Array<{ id: string; words: number }>;
   /**
    * How much of the saved dictionary is doing any work.
    *
@@ -132,7 +137,21 @@ export interface StatsForUser {
     /** Cleanups scanned to produce the counts. */
     scanned: number;
     top?: Array<{ word: string; uses: number }>;
+    /**
+     * The words that have never turned up. Named, not just counted, because
+     * "six unused" is a fact and "these six" is something you can act on —
+     * the list is there to be pruned or spelled differently.
+     */
+    unusedWords?: string[];
   };
+  /**
+   * Words by register — which tone the writing was actually asked for in.
+   *
+   * Separate from voiceWords because they answer different questions: a voice
+   * is who is writing, a tone is how. "none" is Zu, their own voice, which is
+   * what an unmarked request was written in.
+   */
+  toneWords?: Array<{ tone: string; words: number }>;
 }
 
 /**
@@ -569,7 +588,8 @@ export async function statsForUser(
   // The three breakdowns the cards chart. Words, not requests: a slice should
   // grow with how much was written in it, not how often it was reached for.
   const langWords = new Map<string, number>();
-  const voiceWords = new Map<string, { tone?: string; words: number }>();
+  const voiceWords = new Map<string, number>();
+  const toneWordsMap = new Map<string, number>();
   const outputs: string[] = [];
   const todayMidnight = localMidnight(Date.now());
 
@@ -590,10 +610,11 @@ export async function statsForUser(
     // "no register asked for" IS Zu, and it is what every row predating the
     // column was written in.
     const vid = (r.presetId ?? "signature").trim() || "signature";
-    const v = voiceWords.get(vid) ?? { tone: r.tone, words: 0 };
-    v.words += words;
-    if (!v.tone && r.tone) v.tone = r.tone;
-    voiceWords.set(vid, v);
+    voiceWords.set(vid, (voiceWords.get(vid) ?? 0) + words);
+    // A row with no register asked for was written in Zu. Same reading as the
+    // voice above, for the same reason.
+    const tid = (r.tone ?? "none").trim() || "none";
+    toneWordsMap.set(tid, (toneWordsMap.get(tid) ?? 0) + words);
     if (r.output) outputs.push(r.output);
 
     const created = Date.parse(r.createdAt);
@@ -654,9 +675,13 @@ export async function statsForUser(
     .sort((a, b) => b[1] - a[1])
     .map(([language, words]) => ({ language, words }));
   const voiceList = [...voiceWords.entries()]
-    .filter(([, v]) => v.words > 0)
-    .sort((a, b) => b[1].words - a[1].words)
-    .map(([id, v]) => ({ id, tone: v.tone, words: v.words }));
+    .filter(([, w]) => w > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, words]) => ({ id, words }));
+  const toneList = [...toneWordsMap.entries()]
+    .filter(([, w]) => w > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([tone, words]) => ({ tone, words }));
 
   return {
     window,
@@ -677,6 +702,7 @@ export async function statsForUser(
     speakingMinutes: Math.round((audioSeconds / 60) * 10) / 10,
     languageWords: languageWords.length ? languageWords : undefined,
     voiceWords: voiceList.length ? voiceList : undefined,
+    toneWords: toneList.length ? toneList : undefined,
     dictionary: dictionaryDensity(savedWords, outputs),
   };
 }
@@ -725,12 +751,16 @@ function dictionaryDensity(
   }
   if (!uses.length) return undefined;
   const used = uses.filter((u) => u.uses > 0);
+  const idle = uses.filter((u) => u.uses === 0).map((u) => u.word);
   return {
     saved: uses.length,
     used: used.length,
     unused: uses.length - used.length,
     scanned: outputs.length,
     top: used.sort((a, b) => b.uses - a.uses).slice(0, 5),
+    // Capped: the point is a list you can read and act on, and a hundred
+    // names is a wall, not a prompt to prune.
+    unusedWords: idle.length ? idle.slice(0, 12) : undefined,
   };
 }
 

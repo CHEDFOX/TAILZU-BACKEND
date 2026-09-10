@@ -823,11 +823,14 @@ export interface StatsResponse {
    */
   languageWords?: Array<{ language: string; words: number }>;
   /**
-   * Words by voice, biggest first. `id` is the preset, `tone` the register
-   * asked for. A request with neither counts under Zu — "no register asked
-   * for" IS Zu, so that is a reading of the data, not a guess at it.
+   * Words by voice, biggest first. A request with no voice recorded counts
+   * under Zu — "no voice asked for" IS Zu, so that is a reading of the data
+   * rather than a guess at it.
+   *
+   * No tone here: a voice can be written in any register, so one tone beside
+   * it could only be a sample. `toneWords` answers that over every row.
    */
-  voiceWords?: Array<{ id: string; tone?: string; words: number }>;
+  voiceWords?: Array<{ id: string; words: number }>;
   /**
    * How much of the saved dictionary earns its place. `used` and `unused`
    * count SAVED WORDS, not occurrences — one word used two hundred times is
@@ -841,7 +844,18 @@ export interface StatsResponse {
     /** Cleanups scanned to produce the counts. */
     scanned: number;
     top?: Array<{ word: string; uses: number }>;
+    /**
+     * The words that have never turned up, named rather than only counted:
+     * "six unused" is a fact, "these six" is something you can act on.
+     * Capped — the point is a list you can read, not a wall.
+     */
+    unusedWords?: string[];
   };
+  /**
+   * Words by register — how the writing was asked for, as opposed to who
+   * wrote it. "none" is Zu, which is what an unmarked request was written in.
+   */
+  toneWords?: Array<{ tone: string; words: number }>;
   /** Minutes of speech processed, rounded to one decimal. */
   speakingMinutes?: number;
 }

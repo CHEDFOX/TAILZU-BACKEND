@@ -6630,6 +6630,13 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
                 secLab("Most used"),
                 ...st.dictionary.top.map((w) => row(w.word, `${n(w.uses)} cleanups`)),
               ] : []),
+              // NAMED, not just counted. "Six unused" is a fact; "these six"
+              // is something you can act on — prune them, or notice one is
+              // spelled a way you never actually type.
+              ...(st?.dictionary?.unusedWords?.length ? [
+                secLab("Never turned up"),
+                ...st.dictionary.unusedWords.map((w) => row(w, "—")),
+              ] : []),
             ]),
 
             panel("voices", "Voices", topVoiceShare, topVoiceShare === "—" ? "" : "top", [
@@ -6639,6 +6646,13 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
               ...(voiceRows.length ? [
                 secLab("By words"),
                 ...voiceRows.map((v) => row(v.label, n(v.words))),
+              ] : []),
+              // WHICH REGISTER, which is a different question from which
+              // voice: a voice is who is writing, a tone is how. Zu written
+              // in a formal register is still Zu.
+              ...(st?.toneWords?.length ? [
+                secLab("In which register"),
+                ...st.toneWords.map((t) => row(TONE_LABELS[t.tone as keyof typeof TONE_LABELS] ?? t.tone, n(t.words))),
               ] : []),
             ]),
 
