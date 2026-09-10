@@ -47,6 +47,10 @@ export interface HistoryInput {
   durationMs?: number;
   wordsIn?: number;
   wordsOut?: number;
+  /** Register asked for on this request (none/formal/casual/…). */
+  tone?: string;
+  /** Voice that was active — built-in preset id or a custom one. */
+  presetId?: string;
 }
 
 /** Filters accepted by listHistory. */
@@ -98,6 +102,37 @@ export interface StatsForUser {
   avgWordsPerSession?: number;
   /** Minutes of speech processed (voice rows), rounded to one decimal. */
   speakingMinutes?: number;
+  /**
+   * Words by language, biggest first — the "what you write in" split.
+   * Rows with no language recorded are folded into "auto" rather than
+   * dropped, so the slices always sum to the words in the window.
+   */
+  languageWords?: Array<{ language: string; words: number }>;
+  /**
+   * Words by voice, biggest first. `id` is the preset id and `tone` the
+   * register asked for; a row with neither is counted under Zu, which is
+   * what an unmarked request was written in.
+   */
+  voiceWords?: Array<{ id: string; tone?: string; words: number }>;
+  /**
+   * How much of the saved dictionary is doing any work.
+   *
+   * `used` and `unused` are counts of SAVED WORDS, not of occurrences — the
+   * question is what share of the list earns its place. `top` names the ones
+   * that appear most, with the number of cleanups each turned up in.
+   *
+   * Absent, not zeroed, when the text needed to count is not there: history
+   * off, or nothing written yet. Zero would read as "none of your words are
+   * used", which is a different and untrue statement.
+   */
+  dictionary?: {
+    saved: number;
+    used: number;
+    unused: number;
+    /** Cleanups scanned to produce the counts. */
+    scanned: number;
+    top?: Array<{ word: string; uses: number }>;
+  };
 }
 
 /**
@@ -295,6 +330,8 @@ async function appendHistoryEntryLocked(
       durationMs: entry.durationMs,
       wordsIn: entry.wordsIn,
       wordsOut: entry.wordsOut,
+      tone: entry.tone,
+      presetId: entry.presetId,
       createdAt: new Date().toISOString(),
       audioSeconds,
     });
@@ -345,6 +382,8 @@ async function appendHistoryEntryLocked(
     duration_ms: entry.durationMs ?? null,
     words_in: entry.wordsIn ?? null,
     words_out: entry.wordsOut ?? null,
+    tone: entry.tone ?? null,
+    preset_id: entry.presetId ?? null,
   });
   if (error) {
     // Never fail the user's request because history logging failed.
@@ -476,6 +515,14 @@ export async function statsForUser(
   user: AuthedUser,
   window: "week" | "month" | "all",
   tzOffsetMinutes = 0,
+  /**
+   * The user's saved dictionary, for the density breakdown.
+   *
+   * Passed in rather than read here: this module knows history, not people,
+   * and the caller already holds the personality. Omitted → no dictionary
+   * breakdown, which is the honest answer when we don't know the list.
+   */
+  savedWords: string[] = [],
 ): Promise<StatsForUser> {
   const sinceMs = windowSinceMs(window);
   const sinceIso = sinceMs != null ? new Date(Date.now() - sinceMs).toISOString() : undefined;
@@ -519,6 +566,11 @@ export async function statsForUser(
   const kindWords = { voice: 0, typing: 0, draft: 0 };
   const daypartSessions = { morning: 0, afternoon: 0, evening: 0, night: 0 };
   const appWords = new Map<string, number>();
+  // The three breakdowns the cards chart. Words, not requests: a slice should
+  // grow with how much was written in it, not how often it was reached for.
+  const langWords = new Map<string, number>();
+  const voiceWords = new Map<string, { tone?: string; words: number }>();
+  const outputs: string[] = [];
   const todayMidnight = localMidnight(Date.now());
 
   for (const r of rows) {
@@ -530,6 +582,19 @@ export async function statsForUser(
     else if (r.kind === "draft") kindWords.draft += words;
     else kindWords.typing += words;
     if (r.targetApp) appWords.set(r.targetApp, (appWords.get(r.targetApp) ?? 0) + words);
+    // Unrecorded language is "auto" — the setting that produced it — rather
+    // than a dropped row, so the slices sum to the words in the window.
+    const lang = (r.language ?? "auto").trim() || "auto";
+    langWords.set(lang, (langWords.get(lang) ?? 0) + words);
+    // A row with no voice recorded was written in Zu. That is not a guess:
+    // "no register asked for" IS Zu, and it is what every row predating the
+    // column was written in.
+    const vid = (r.presetId ?? "signature").trim() || "signature";
+    const v = voiceWords.get(vid) ?? { tone: r.tone, words: 0 };
+    v.words += words;
+    if (!v.tone && r.tone) v.tone = r.tone;
+    voiceWords.set(vid, v);
+    if (r.output) outputs.push(r.output);
 
     const created = Date.parse(r.createdAt);
     if (!Number.isFinite(created)) continue;
@@ -581,6 +646,18 @@ export async function statsForUser(
   const tail = ranked.slice(5).reduce((s, [, w]) => s + w, 0);
   if (tail > 0) topApps.push({ app: "Other", words: tail });
 
+  // Languages and voices, biggest first. Zero-word slices are dropped: a
+  // language someone selected but never wrote a word in is a setting, and
+  // this is a picture of what they did.
+  const languageWords = [...langWords.entries()]
+    .filter(([, w]) => w > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([language, words]) => ({ language, words }));
+  const voiceList = [...voiceWords.entries()]
+    .filter(([, v]) => v.words > 0)
+    .sort((a, b) => b[1].words - a[1].words)
+    .map(([id, v]) => ({ id, tone: v.tone, words: v.words }));
+
   return {
     window,
     requests,
@@ -598,6 +675,62 @@ export async function statsForUser(
     bestDay,
     avgWordsPerSession: requests > 0 ? Math.round(wordsOut / requests) : 0,
     speakingMinutes: Math.round((audioSeconds / 60) * 10) / 10,
+    languageWords: languageWords.length ? languageWords : undefined,
+    voiceWords: voiceList.length ? voiceList : undefined,
+    dictionary: dictionaryDensity(savedWords, outputs),
+  };
+}
+
+/**
+ * How much of the saved dictionary is doing any work.
+ *
+ * The question the card answers is "what share of this list earns its place",
+ * so the counts are of SAVED WORDS, not of occurrences — one word used two
+ * hundred times is still one word used.
+ *
+ * A word counts as used when it appears in the cleaned output of a cleanup,
+ * matched whole and case-insensitively. Whole-word matching is the part that
+ * matters: a dictionary entry like "Ana" would otherwise be "used" by every
+ * "analysis" the person ever wrote, and the chart would say the list is
+ * working when it is not.
+ *
+ * Returns undefined rather than zeros when there is nothing to scan. Zero
+ * would read as "none of your words are used", which is a different claim and
+ * an untrue one.
+ */
+function dictionaryDensity(
+  saved: string[],
+  outputs: string[],
+): StatsForUser["dictionary"] {
+  if (!saved.length) return undefined;
+  if (!outputs.length) return undefined;
+  // One pass over the text per word would be saved.length × outputs.length
+  // scans. Tokenise once instead and count membership.
+  const seen = new Map<string, number>();
+  for (const text of outputs) {
+    const words = new Set(
+      text.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) ?? [],
+    );
+    for (const w of words) seen.set(w, (seen.get(w) ?? 0) + 1);
+  }
+  const uses: Array<{ word: string; uses: number }> = [];
+  for (const raw of saved) {
+    // A multi-word entry ("Sequoia Capital") counts when every part of it
+    // turned up in the same cleanup. Approximated by its rarest part, which
+    // is the closest answer available without re-scanning per entry.
+    const parts = raw.toLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu) ?? [];
+    if (!parts.length) continue;
+    const n = Math.min(...parts.map((pt) => seen.get(pt) ?? 0));
+    uses.push({ word: raw, uses: n });
+  }
+  if (!uses.length) return undefined;
+  const used = uses.filter((u) => u.uses > 0);
+  return {
+    saved: uses.length,
+    used: used.length,
+    unused: uses.length - used.length,
+    scanned: outputs.length,
+    top: used.sort((a, b) => b.uses - a.uses).slice(0, 5),
   };
 }
 
@@ -668,6 +801,19 @@ interface StatRow {
   audioSeconds?: number;
   kind?: string;
   targetApp?: string;
+  /** Language hint in effect — backs the Languages breakdown. */
+  language?: string;
+  /** Register asked for — backs the Voices breakdown. */
+  tone?: string;
+  /** Voice that was active — backs the Voices breakdown. */
+  presetId?: string;
+  /**
+   * The cleaned text. ONLY read to count which saved words a person actually
+   * uses, and never returned to the client. It exists on history rows and
+   * nowhere else, so the Dictionary breakdown is the one of the three that
+   * cannot fall back to usage_events — see statsForUser.
+   */
+  output?: string;
 }
 
 async function fetchStatRowsSupabase(
@@ -677,7 +823,7 @@ async function fetchStatRowsSupabase(
 ): Promise<StatRow[]> {
   let q = sb
     .from("cleanup_history")
-    .select("created_at, words_out, duration_ms, kind, target_app")
+    .select("created_at, words_out, duration_ms, kind, target_app, language, tone, preset_id, output")
     .eq("user_id", userId)
     .is("deleted_at", null);
   if (sinceIso) q = q.gte("created_at", sinceIso);
@@ -693,6 +839,10 @@ async function fetchStatRowsSupabase(
     duration_ms?: number | null;
     kind?: string;
     target_app?: string | null;
+    language?: string | null;
+    tone?: string | null;
+    preset_id?: string | null;
+    output?: string | null;
   }>).map((r) => ({
     createdAt: r.created_at ?? new Date(0).toISOString(),
     wordsOut: r.words_out ?? 0,
@@ -701,6 +851,10 @@ async function fetchStatRowsSupabase(
     audioSeconds: r.kind === "voice" && r.duration_ms ? r.duration_ms / 1000 : 0,
     kind: r.kind,
     targetApp: r.target_app ?? undefined,
+    language: r.language ?? undefined,
+    tone: r.tone ?? undefined,
+    presetId: r.preset_id ?? undefined,
+    output: r.output ?? undefined,
   }));
 }
 
@@ -714,6 +868,10 @@ function fetchStatRowsMemory(userId: string, sinceIso: string | undefined): Stat
       audioSeconds: r.audioSeconds ?? 0,
       kind: r.kind,
       targetApp: r.targetApp,
+      language: r.language,
+      tone: r.tone,
+      presetId: r.presetId,
+      output: r.output,
     }));
 }
 
@@ -728,6 +886,8 @@ function rowToEntry(r: Record<string, unknown>): HistoryEntry {
     durationMs: (r.duration_ms as number | null) ?? undefined,
     wordsIn: (r.words_in as number | null) ?? undefined,
     wordsOut: (r.words_out as number | null) ?? undefined,
+    tone: (r.tone as string | null) ?? undefined,
+    presetId: (r.preset_id as string | null) ?? undefined,
     createdAt: (r.created_at as string) ?? new Date(0).toISOString(),
   };
 }

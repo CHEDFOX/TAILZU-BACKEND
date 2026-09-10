@@ -639,6 +639,10 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
         durationMs: Date.now() - t0,
         wordsIn: countWords(result.transcript),
         wordsOut: result.usage.words,
+        // Whose voice wrote it. Without these the Voices card could only ever
+        // show the tone currently selected, which is a setting, not a habit.
+        tone: tone ?? personality.activeTone,
+        presetId: personality.activePresetId,
       },
       result.usage.audioSeconds,
     );
@@ -710,6 +714,8 @@ app.post("/v1/refine", { config: AUTHED_RL }, async (req, reply) => {
       durationMs: Date.now() - t0,
       wordsIn: countWords(body.text),
       wordsOut: usage.words,
+      tone: body.tone ?? personality.activeTone,
+      presetId: personality.activePresetId,
     });
     learnFromUsage(user, personality);
     const res: RefineResponse = { refinedText, usage };
@@ -1012,6 +1018,9 @@ const runToneRefine = (toneId: string) =>
         durationMs: Date.now() - t0,
         wordsIn: countWords(body.text),
         wordsOut: usage.words,
+        // The route IS the tone here.
+        tone: toneId,
+        presetId: personality.activePresetId,
       });
       learnFromUsage(user, personality);
       return reply.send({ refinedText, usage });
@@ -1074,6 +1083,8 @@ app.post("/v1/draft", { config: AUTHED_RL }, async (req, reply) => {
       durationMs: Date.now() - t0,
       wordsIn: countWords(body.intent),
       wordsOut: usage.words,
+      tone: personality.activeTone,
+      presetId: personality.activePresetId,
     });
     const res: DraftResponse = { draftText, usage };
     return reply.send(res);
@@ -1238,6 +1249,22 @@ app.post("/v1/personality/haptics", { config: AUTHED_RL }, async (req, reply) =>
 // under the per-user lock so it can't clobber the user's other tones (the PUT
 // above shallow-merges the whole map). id present = edit; absent = new custom
 // tone; remove=true = delete/reset. On save the tone becomes the active voice.
+/**
+ * The saved dictionary as a list of terms.
+ *
+ * `vocabulary` is one free-text field the user types into, one term per line,
+ * so this is where "what did they actually save" is decided. Blank lines and
+ * a runaway paste are both dropped here rather than downstream — the density
+ * chart counts entries, and an empty line would be an entry nobody wrote.
+ */
+function savedWords(personality: { vocabulary?: string } | undefined): string[] {
+  return (personality?.vocabulary ?? "")
+    .split(/\r?\n/)
+    .map((w) => w.trim())
+    .filter(Boolean)
+    .slice(0, 500);
+}
+
 const toneUpsertSchema = z.object({
   id: z.string().max(120).optional(),
   name: z.string().max(80).optional(),
@@ -1753,9 +1780,13 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
       stylePortrait: { ...existing.stylePortrait, tzOffsetMinutes: tz },
     })).catch(() => { /* a stats call must never fail over this */ });
   }
+  // The Stats tab AND the You tab both chart these now — the You cards carry
+  // a ring each for the thing they are about — so both pay for the read.
+  const STATS_SCREENS = new Set(["stats", "personality"]);
   const stats =
-    user && screenId === "stats"
-      ? await statsForUser(user, "month", Number(body.tzOffsetMinutes) || 0)
+    user && STATS_SCREENS.has(screenId)
+      ? await statsForUser(user, "month", Number(body.tzOffsetMinutes) || 0,
+                           savedWords(personality))
       : undefined;
   // The words meter. Only the stats screen draws it, so only the stats screen
   // pays for the read.
@@ -2245,7 +2276,10 @@ app.get("/v1/stats", { config: AUTHED_RL }, async (req, reply) => {
   }
 
   try {
-    const stats = await statsForUser(user, parsed.data.window);
+    const stats = await statsForUser(
+      user, parsed.data.window, 0,
+      savedWords(await getPersonality(user).catch(() => undefined)),
+    );
     const res: StatsResponse = stats;
     return reply.send(res);
   } catch (err) {

@@ -880,12 +880,20 @@ describe("the card in the middle says what it is", () => {
     return s.root.children.filter((c: any) => c?.style?.backgroundColor === YOU_UI.info.background);
   };
 
+  // The box is [ring?, text, button] — the ring only on cards that measure
+  // something — so parts are found by shape, never by index.
+  const parts = (b: any) => ({
+    ring: b.children.find((k: any) => k?.type === "PieChart"),
+    text: b.children.find((k: any) => k?.type === "Text"),
+    cta: b.children.find((k: any) => k?.type === "Stack" && k?.on?.onPress),
+  });
+
   it("gives every card a note and a way in, never a card without one", () => {
     // A deck of four words shows four things and says what none of them are.
     const found = boxes();
     expect(found).toHaveLength(4);
     for (const b of found) {
-      const [text, cta] = b.children;
+      const { text, cta } = parts(b);
       expect(String(text.props.content).length).toBeGreaterThan(20);
       expect(String(cta.children[0].props.content).length).toBeGreaterThan(0);
     }
@@ -911,7 +919,7 @@ describe("the card in the middle says what it is", () => {
     };
     walk(s.root);
     boxes().forEach((b: any, i: number) => {
-      const nav = b.children[1].on.onPress.actions.find((a: any) => a.kind === "navigate");
+      const nav = parts(b).cta.on.onPress.actions.find((a: any) => a.kind === "navigate");
       expect(nav.screenId).toBeTruthy();
       // Same order as the deck, so box i belongs to card i.
       expect(decks[i]).toBeTruthy();
@@ -932,13 +940,98 @@ describe("the card in the middle says what it is", () => {
   it("is the brand block with black ink, not another dark card", () => {
     // Everything else on this tab is glass over blurred art, or black. The
     // one thing you are meant to READ cannot look like scenery.
-    const [text, cta] = boxes()[0].children;
+    const { text, cta } = parts(boxes()[0]);
     expect(boxes()[0].style.backgroundColor).toBe(YOU_UI.accent);
     expect(text.style.color).toBe("#0B0B0D");
     // Mid-weight. Bold on a solid colour reads as shouting, not as speech.
     expect(Number(text.style.fontWeight)).toBeLessThan(700);
     expect(cta.style.backgroundColor).toBe("#0B0B0D");
     expect(cta.children[0].style.color).toBe(YOU_UI.accent);
+  });
+});
+
+describe("the charts show measured things, or nothing", () => {
+  const STATS = {
+    window: "month", requests: 6, wordsOut: 300, audioSeconds: 0, minutesSaved: 5,
+    sparklinePerDay: [], 
+    languageWords: [{ language: "en", words: 200 }, { language: "hi", words: 100 }],
+    voiceWords: [{ id: "signature", tone: "none", words: 240 }, { id: "witty", words: 60 }],
+    dictionary: { saved: 10, used: 4, unused: 6, scanned: 6, top: [{ word: "Nykaa", uses: 3 }] },
+  } as never;
+  const ctx = (extra: Record<string, unknown> = {}) =>
+    ({ personality: {}, language: "en", ...extra } as never);
+
+  const rings = (screen: string, c: Record<string, unknown> = {}) => {
+    const s = buildScreen(screen, ctx(c)) as any;
+    const out: any[] = [];
+    const walk = (n: any): void => {
+      if (n?.type === "PieChart") out.push(n);
+      for (const k of n?.children ?? []) walk(k);
+    };
+    walk(s.root);
+    return out;
+  };
+
+  it("draws no slices at all when the person has done nothing", () => {
+    // The honest picture of "you have not done this yet" is an empty ring
+    // with a caption. Zeros would read as a measurement that came back empty.
+    for (const r of rings("personality")) {
+      expect(r.props.slices).toEqual([]);
+      expect(String(r.props.emptyLabel).length).toBeGreaterThan(0);
+      expect(r.props.centerValue).toBeUndefined();
+    }
+  });
+
+  it("charts the user's own rows once there are some", () => {
+    const found = rings("personality", { stats: STATS });
+    // Voice, Dictionary and Languages measure something; Haptics is a
+    // preference, and a chart of a setting is decoration.
+    expect(found).toHaveLength(3);
+    const all = found.flatMap((r) => r.props.slices);
+    expect(all.every((sl: any) => sl.value > 0)).toBe(true);
+    // Every slice value came off the stats, not out of the catalog.
+    const values = all.map((sl: any) => sl.value).sort((a: number, b: number) => a - b);
+    expect(values).toEqual([4, 6, 60, 100, 200, 240]);
+  });
+
+  it("puts a number in the hole that the ring around it agrees with", () => {
+    const found = rings("personality", { stats: STATS });
+    const dict = found.find((r) => r.props.centerLabel === "IN USE");
+    // 4 of 10 saved words used.
+    expect(dict.props.centerValue).toBe("40%");
+    expect(dict.props.slices.map((sl: any) => sl.value)).toEqual([4, 6]);
+    const voice = found.find((r) => r.props.centerLabel === "TOP");
+    // 240 of 300 words in the top voice.
+    expect(voice.props.centerValue).toBe("80%");
+  });
+
+  it("names voices the way the user does, not by id", () => {
+    const found = rings("personality", { stats: STATS });
+    const voice = found.find((r) => r.props.centerLabel === "TOP");
+    expect(voice.props.slices[0].label).toBe("Zu");
+    expect(voice.props.slices.map((sl: any) => sl.label)).not.toContain("signature");
+  });
+
+  it("keeps the legend off the deck strip and on the Stats card", () => {
+    // The note is a strip under a deck; five legend rows would make it a panel.
+    for (const r of rings("personality", { stats: STATS })) expect(r.props.legend).toBe(false);
+    for (const r of rings("stats", { stats: STATS })) expect(r.props.legend).toBe(true);
+  });
+
+  it("gives Stats a card for each field, with its ring", () => {
+    const found = rings("stats", { stats: STATS });
+    expect(found.length).toBeGreaterThanOrEqual(3);
+    const s = JSON.stringify(buildScreen("stats", ctx({ stats: STATS })));
+    for (const id of ["dictionary", "voices", "languages"]) expect(s).toContain(`"${id}"`);
+  });
+
+  it("colours each surface for the ground it sits on", () => {
+    // Near-black on the amber note, amber on the black Stats card. The same
+    // slice in the same colour on both would be invisible on one of them.
+    const onAmber = rings("personality", { stats: STATS })[0].props.slices[0].color;
+    const onDark = rings("stats", { stats: STATS })[0].props.slices[0].color;
+    expect(onAmber).toBe("#0B0B0D");
+    expect(onDark).toBe(YOU_UI.accent);
   });
 });
 

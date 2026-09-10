@@ -639,6 +639,14 @@ export const TYPE_ROLES: Record<string, TypeRole> = {
   greeting:     { family: "display", size: 46, weight: "300", letterSpacing: 0.2, align: "center", marginBottom: 40 },
   greetingPill: { size: S.body, weight: "300", letterSpacing: 0.5 },
 
+  // Charts. The ring's one big number, the word under it, and the legend
+  // rows beside it. Small and quiet: a chart that shouts is a chart you read
+  // instead of the thing it is about.
+  chartValue:       { size: 24, weight: "700", color: "text" },
+  chartCenterLabel: { size: 9, letterSpacing: 0.8, color: "label" },
+  chartLegend:      { size: 11.5, color: "body" },
+  chartLegendValue: { size: 11.5, weight: "600", color: "text" },
+
   // The You tab's greeting. Both lines come off GREET above — the one place
   // that owns this block — so the roles here are a view of it, never a second
   // set of numbers to keep in step.
@@ -4533,6 +4541,11 @@ export const YOU_UI = {
     marginTop: 6,
     marginBottom: 14,
     marginHorizontal: 18,
+    /**
+     * The ring in the note. Small: it shares a strip with a sentence and a
+     * button, and anything larger turns the strip into a panel.
+     */
+    chart: { size: 58, thickness: 9 },
     /** The way in, on the amber: black pill, amber ink. */
     cta: {
       height: 32,
@@ -4646,6 +4659,138 @@ function helloCycle(): string[] {
 }
 
 /**
+ * THE CHARTS — one place that turns measured stats into slices.
+ *
+ * Every number here came off the user's own history. Nothing is smoothed,
+ * padded or invented: a card with no data returns no slices and the ring says
+ * so in words, because an empty ring is the truthful picture of "you have not
+ * done this yet" and a full one of a single grey slice is not.
+ *
+ * COLOURS ARE PER SURFACE, and that is why they are arguments rather than
+ * constants. The You cards sit on solid amber and the Stats cards on black,
+ * so the same slice needs near-black ink on one and amber on the other. Both
+ * palettes are one hue at falling weight rather than a spectrum — a chart of
+ * five unrelated colours invites the reader to look for meaning in the hue,
+ * and here the only meaning is size.
+ */
+type Slice = { label: string; value: number; color: string };
+
+/** Ink on the amber block: black at falling weight. */
+const CHART_ON_AMBER = [
+  "#0B0B0D", "rgba(11,11,13,0.72)", "rgba(11,11,13,0.50)",
+  "rgba(11,11,13,0.32)", "rgba(11,11,13,0.18)",
+];
+/** On the black ground: the brand amber at falling weight. */
+const CHART_ON_DARK = [
+  ACCENT_AMBER, "rgba(232,162,60,0.72)", "rgba(232,162,60,0.50)",
+  "rgba(232,162,60,0.32)", "rgba(255,255,255,0.16)",
+];
+
+/** Language codes as people read them. Anything unlisted shows its own code. */
+const LANGUAGE_NAMES: Record<string, string> = {
+  auto: "Auto", en: "English", hi: "Hindi", hinglish: "Hinglish", mr: "Marathi",
+  bn: "Bengali", ta: "Tamil", te: "Telugu", gu: "Gujarati", kn: "Kannada",
+  ml: "Malayalam", pa: "Punjabi", ur: "Urdu", es: "Spanish", fr: "French",
+  de: "German", it: "Italian", pt: "Portuguese", ru: "Russian", ar: "Arabic",
+  ja: "Japanese", ko: "Korean", zh: "Chinese",
+};
+
+/**
+ * Top N slices, with the tail folded into one.
+ *
+ * Five is the ceiling because a ring is read by comparing arcs, and past five
+ * the arcs are too close to tell apart — the sixth-largest thing is better
+ * served by the word "Other" than by a slice nobody can measure.
+ */
+function topSlices(
+  rows: Array<{ label: string; words: number }>,
+  palette: string[],
+  tailLabel = "Other",
+): Slice[] {
+  const ranked = [...rows].filter((r) => r.words > 0).sort((a, b) => b.words - a.words);
+  const head = ranked.slice(0, palette.length - 1);
+  const tail = ranked.slice(palette.length - 1).reduce((sum, r) => sum + r.words, 0);
+  const out: Slice[] = head.map((r, i) => ({
+    label: r.label, value: r.words, color: palette[i]!,
+  }));
+  if (tail > 0) out.push({ label: tailLabel, value: tail, color: palette[palette.length - 1]! });
+  return out;
+}
+
+/** What share of the saved dictionary is doing any work. */
+function dictionarySlices(stats: StatsResponse | undefined, palette: string[]): Slice[] {
+  const d = stats?.dictionary;
+  if (!d || d.saved <= 0) return [];
+  return [
+    { label: "Used", value: d.used, color: palette[0]! },
+    { label: "Never used", value: d.unused, color: palette[palette.length - 1]! },
+  ].filter((sl) => sl.value > 0);
+}
+
+/** Which voice actually writes. Ids resolve to the names the user sees. */
+function voiceSlices(
+  stats: StatsResponse | undefined,
+  personality: Personality | undefined,
+  palette: string[],
+): Slice[] {
+  const rows = stats?.voiceWords ?? [];
+  if (!rows.length) return [];
+  const named = applyPresetOverrides(personality?.presetOverrides);
+  return topSlices(
+    rows.map((r) => ({
+      label: named.find((p) => p.id === r.id)?.name ?? r.id,
+      words: r.words,
+    })),
+    palette,
+  );
+}
+
+/** What they write in. */
+function languageSlices(stats: StatsResponse | undefined, palette: string[]): Slice[] {
+  const rows = stats?.languageWords ?? [];
+  if (!rows.length) return [];
+  return topSlices(
+    rows.map((r) => ({ label: LANGUAGE_NAMES[r.language] ?? r.language, words: r.words })),
+    palette,
+  );
+}
+
+/**
+ * The ring, as a node.
+ *
+ * `centerValue` is the one number worth reading without the legend — the share
+ * of the dictionary in use, the count of languages written in. It is computed
+ * here from the same rows the slices come from, so the hole can never disagree
+ * with the ring around it.
+ */
+function pieNode(opts: {
+  slices: Slice[];
+  size: number;
+  thickness?: number;
+  legend?: boolean;
+  legendColor?: string;
+  centerValue?: string;
+  centerLabel?: string;
+  emptyLabel: string;
+  style?: Record<string, unknown>;
+}): Node {
+  return {
+    type: "PieChart",
+    props: {
+      slices: opts.slices,
+      size: opts.size,
+      thickness: opts.thickness ?? Math.round(opts.size * 0.17),
+      legend: opts.legend ?? false,
+      ...(opts.legendColor ? { legendColor: opts.legendColor } : {}),
+      ...(opts.centerValue ? { centerValue: opts.centerValue } : {}),
+      ...(opts.centerLabel ? { centerLabel: opts.centerLabel } : {}),
+      emptyLabel: opts.emptyLabel,
+    },
+    ...(opts.style ? { style: opts.style } : {}),
+  };
+}
+
+/**
  * The deck, in order. One list feeds the cards, the backdrops AND the routing,
  * so a fifth card is one entry here and nothing else — there is no second
  * place that has to be told the deck grew.
@@ -4661,26 +4806,67 @@ const YOU_CARDS: {
   /** The button on that line. Names the destination, so the deck's own tap
    *  and this one visibly go to the same place. */
   cta: string;
+  /**
+   * The ring beside the words, built from this user's own history.
+   *
+   * A function of the context rather than a value, because it is measured per
+   * request. Cards with nothing to measure — Haptics is a preference, not a
+   * behaviour — simply have none, and the box is words and a button as before.
+   */
+  chart?: (ctx: ScreenContext) => Slice[];
+  /** The one number in the hole. Same rows as the slices, so they agree. */
+  chartValue?: (ctx: ScreenContext) => string | undefined;
+  chartCenterLabel?: string;
+  /** What the ring says when the person has not done this yet. */
+  chartEmpty?: string;
 }[] = [
   {
     title: "Voice", media: "card.voice", screen: "voices",
     blurb: "How Tailzu writes for you. Zu is your own voice, learned — add others for the moments it isn't.",
     cta: "Voices",
+    chart: (ctx) => voiceSlices(ctx.stats, ctx.personality, CHART_ON_AMBER),
+    // The share the top voice takes. "Which one writes for you" in one number.
+    chartValue: (ctx) => {
+      const rows = ctx.stats?.voiceWords ?? [];
+      const total = rows.reduce((sum, r) => sum + r.words, 0);
+      if (!total) return undefined;
+      return `${Math.round((rows[0]!.words / total) * 100)}%`;
+    },
+    chartCenterLabel: "TOP",
+    chartEmpty: "No writing yet",
   },
   {
     title: "Dictionary", media: "card.dictionary", screen: "dictionary",
     blurb: "Names, brands and the words only you use. Saved here, they are never corrected into something else.",
     cta: "Words",
+    chart: (ctx) => dictionarySlices(ctx.stats, CHART_ON_AMBER),
+    // How much of the list earns its place — the question the card asks.
+    chartValue: (ctx) => {
+      const d = ctx.stats?.dictionary;
+      if (!d || d.saved <= 0) return undefined;
+      return `${Math.round((d.used / d.saved) * 100)}%`;
+    },
+    chartCenterLabel: "IN USE",
+    chartEmpty: "No words saved",
   },
   {
     title: "Haptics", media: "card.haptics", screen: "haptics",
     blurb: "What the keyboard feels like under your thumb.",
     cta: "Feel",
+    // No ring. Haptics is a preference, not a behaviour — there is nothing
+    // measured here, and a chart of a setting is decoration.
   },
   {
     title: "Languages", media: "card.languages", screen: "languages",
     blurb: "The languages you write in. Each one you pick is one it listens for and writes back in.",
     cta: "Languages",
+    chart: (ctx) => languageSlices(ctx.stats, CHART_ON_AMBER),
+    chartValue: (ctx) => {
+      const n = (ctx.stats?.languageWords ?? []).length;
+      return n > 0 ? String(n) : undefined;
+    },
+    chartCenterLabel: "USED",
+    chartEmpty: "No writing yet",
   },
 ];
 
@@ -4907,6 +5093,26 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
       marginTop: u.info.marginTop, marginBottom: u.info.marginBottom,
     },
     children: [
+      // THE RING FIRST, then the words.
+      //
+      // The card above is a name and a picture; the note under it says what
+      // the thing is. The ring is the third thing and the only one that is
+      // about THEM — how much of the dictionary they actually use, which
+      // voice does the writing. It leads because it is the part that changes.
+      //
+      // No legend here: the box is a strip under a deck, and five legend rows
+      // would make it a panel. The legend lives on the Stats card, which has
+      // the room for it.
+      ...(c.chart
+        ? [pieNode({
+            slices: c.chart(ctx),
+            size: u.info.chart.size,
+            thickness: u.info.chart.thickness,
+            centerValue: c.chartValue?.(ctx),
+            centerLabel: c.chartCenterLabel,
+            emptyLabel: c.chartEmpty ?? "Nothing yet",
+          })]
+        : []),
       {
         type: "Text",
         props: { content: c.blurb },
@@ -5075,10 +5281,18 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
         settingsGear("dark"),
       ],
     },
-    // The You tab is four cards whose contents change only when the user
-    // changes them, and every one of those writes drops the cache. Worth
-    // caching: this is the tab people bounce in and out of most.
-    cacheTtlSeconds: 120,
+    // SHORTER NOW THAT THE CARDS CARRY NUMBERS.
+    //
+    // The four cards' CONTENTS change only when the user changes them, and
+    // every one of those writes drops the cache — 120s was right for that.
+    // The rings do not work that way: they move every time the person
+    // dictates anything, from the keyboard, in another app, without ever
+    // opening this tab. A two-minute window meant coming back to a chart that
+    // did not include what you just wrote.
+    //
+    // 45s matches the Stats tab, which charts the same rows. Fresh on any
+    // return that was not a bounce, and still cached across the bounce.
+    cacheTtlSeconds: 45,
   };
 }
 
@@ -6071,6 +6285,40 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
   });
 
   /** The detail behind one card. Scrolls inside itself when it outgrows. */
+  /**
+   * The three field breakdowns, read once so the tile and the panel behind it
+   * can never disagree about their own number.
+   */
+  const langRows = languageSlices(st, CHART_ON_DARK).map((sl) => ({ label: sl.label, words: sl.value }));
+  const voiceRows = voiceSlices(st, ctx.personality, CHART_ON_DARK).map((sl) => ({ label: sl.label, words: sl.value }));
+  const dictShare = st?.dictionary && st.dictionary.saved > 0
+    ? `${Math.round((st.dictionary.used / st.dictionary.saved) * 100)}%`
+    : "—";
+  const topVoiceShare = (() => {
+    const total = voiceRows.reduce((sum, v) => sum + v.words, 0);
+    if (!total || !voiceRows.length) return "—";
+    return `${Math.round((voiceRows[0]!.words / total) * 100)}%`;
+  })();
+
+  /**
+   * A ring inside a panel — big, with its legend, on the black card.
+   *
+   * Centred rather than inline: the panel is a column of rows, and a chart
+   * squeezed beside text in a column reads as an afterthought. Here it is the
+   * first thing, at the size the legend needs to sit under it.
+   */
+  const ring = (slices: Slice[], centerValue: string, centerLabel: string, empty: string): Node =>
+    pieNode({
+      slices,
+      size: 148,
+      thickness: 22,
+      legend: true,
+      legendColor: u.onCard,
+      ...(centerValue && centerValue !== "—" ? { centerValue, centerLabel } : {}),
+      emptyLabel: empty,
+      style: { alignSelf: "center", marginTop: 4, marginBottom: 8, width: "100%" },
+    });
+
   const panel = (id: string, label: string, value: string, unit: string, inner: Node[]): Node => ({
     type: "Stack",
     visibleIf: { eq: ["openCard", id] },
@@ -6251,10 +6499,33 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
             // the user actually did rather than in what came out of it.
             {
               type: "Stack",
-              style: { flexDirection: "row", gap: u.gap },
+              style: { flexDirection: "row", gap: u.gap, marginBottom: u.gap },
               children: [
                 card("persession", "Per session", n(avgPerSession), "words"),
                 card("spoken", "Spoken", spokenMinutes ? String(spokenMinutes) : "0", "min"),
+              ],
+            },
+            // THE THREE FIELDS — the same things the You cards are about, in
+            // the place that has room to show them properly. Each tile carries
+            // the one number, and opening it gives the ring, its legend, and
+            // the rows behind it.
+            {
+              type: "Stack",
+              style: { flexDirection: "row", gap: u.gap, marginBottom: u.gap },
+              children: [
+                card("dictionary", "Dictionary", dictShare, dictShare === "—" ? "" : "in use"),
+                card("voices", "Voices", topVoiceShare, topVoiceShare === "—" ? "" : "top"),
+              ],
+            },
+            {
+              type: "Stack",
+              style: { flexDirection: "row", gap: u.gap },
+              children: [
+                card("languages", "Languages", String(langRows.length || "—"),
+                     langRows.length ? "used" : ""),
+                // The row needs a second cell or the first stretches to the
+                // full width and stops matching the grid above it.
+                { type: "Stack", style: { flex: 1 } },
               ],
             },
 
@@ -6342,6 +6613,44 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
               row("Words", n(lifetime.words)),
               row("Sessions", n(lifetime.requests)),
               row("Spoken", `${Math.round(lifetime.audioSeconds / 60)} min`),
+            ]),
+
+            panel("dictionary", "Dictionary", dictShare, dictShare === "—" ? "" : "in use", [
+              secLab("What earns its place"),
+              ring(dictionarySlices(st, CHART_ON_DARK), dictShare, "IN USE",
+                   "Save a word and it starts counting"),
+              ...(st?.dictionary ? [
+                secLab("The list"),
+                row("Saved", n(st.dictionary.saved)),
+                row("Used", n(st.dictionary.used)),
+                row("Never used", n(st.dictionary.unused)),
+                row("Cleanups scanned", n(st.dictionary.scanned)),
+              ] : []),
+              ...(st?.dictionary?.top?.length ? [
+                secLab("Most used"),
+                ...st.dictionary.top.map((w) => row(w.word, `${n(w.uses)} cleanups`)),
+              ] : []),
+            ]),
+
+            panel("voices", "Voices", topVoiceShare, topVoiceShare === "—" ? "" : "top", [
+              secLab("Who writes for you"),
+              ring(voiceSlices(st, ctx.personality, CHART_ON_DARK), topVoiceShare, "TOP",
+                   "No writing yet"),
+              ...(voiceRows.length ? [
+                secLab("By words"),
+                ...voiceRows.map((v) => row(v.label, n(v.words))),
+              ] : []),
+            ]),
+
+            panel("languages", "Languages", String(langRows.length || "—"),
+                  langRows.length ? "used" : "", [
+              secLab("What you write in"),
+              ring(languageSlices(st, CHART_ON_DARK), String(langRows.length || ""), "USED",
+                   "No writing yet"),
+              ...(langRows.length ? [
+                secLab("By words"),
+                ...langRows.map((l) => row(l.label, n(l.words))),
+              ] : []),
             ]),
 
             panel("spoken", "Spoken", spokenMinutes ? String(spokenMinutes) : "0", "min", [

@@ -741,6 +741,19 @@ export interface HistoryEntry {
   wordsIn?: number;
   /** Word count of the output. */
   wordsOut?: number;
+  /**
+   * The register asked for on this request — "none" (Zu, their own voice),
+   * "formal", "casual", "very-casual", "excited". Absent on rows written
+   * before it was recorded, and counted as unknown rather than guessed at.
+   */
+  tone?: string;
+  /**
+   * The voice that was active — a built-in preset id or one the user made.
+   * Kept beside `tone` because neither derives from the other: a voice can be
+   * written in any register. A custom voice keeps this id through a rename,
+   * so renaming does not split its history in two.
+   */
+  presetId?: string;
   /** ISO-8601 timestamp of when the row was created. */
   createdAt: string;
 }
@@ -803,6 +816,32 @@ export interface StatsResponse {
   bestDay?: { date: string; words: number };
   /** wordsOut / sessions, rounded. */
   avgWordsPerSession?: number;
+  /**
+   * Words by language, biggest first — what you write in. Rows with no
+   * language recorded fold into "auto" rather than being dropped, so the
+   * slices sum to the words in the window.
+   */
+  languageWords?: Array<{ language: string; words: number }>;
+  /**
+   * Words by voice, biggest first. `id` is the preset, `tone` the register
+   * asked for. A request with neither counts under Zu — "no register asked
+   * for" IS Zu, so that is a reading of the data, not a guess at it.
+   */
+  voiceWords?: Array<{ id: string; tone?: string; words: number }>;
+  /**
+   * How much of the saved dictionary earns its place. `used` and `unused`
+   * count SAVED WORDS, not occurrences — one word used two hundred times is
+   * still one word used. Absent, never zeroed, when there is no text to scan:
+   * zero would read as "none of your words are used", which is untrue.
+   */
+  dictionary?: {
+    saved: number;
+    used: number;
+    unused: number;
+    /** Cleanups scanned to produce the counts. */
+    scanned: number;
+    top?: Array<{ word: string; uses: number }>;
+  };
   /** Minutes of speech processed, rounded to one decimal. */
   speakingMinutes?: number;
 }
