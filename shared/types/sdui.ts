@@ -394,6 +394,30 @@ export interface UpdateGate {
   url?: { ios?: string; android?: string; default?: string };
 }
 
+/**
+ * One tab icon, as paths on a 32-unit grid.
+ *
+ * Two states, one geometry. A layer is stroked at `stroke` when idle and at
+ * `activeStroke` when the tab is open; `fill` / `activeFill` switch it to a
+ * solid instead. `punch` is for a hole: filled with the bar's own surface
+ * colour when active, so a solid shape keeps its cut-out. Colour is never in
+ * here — idle takes the bar's muted colour and active the brand amber, and
+ * both belong to the theme, not the icon.
+ */
+export interface TabGlyph {
+  /** Defaults to "0 0 32 32". */
+  viewBox?: string;
+  layers: Array<{
+    d: string;
+    stroke?: number;
+    activeStroke?: number;
+    fill?: boolean;
+    activeFill?: boolean;
+    punch?: boolean;
+    opacity?: number;
+  }>;
+}
+
 /** The persistent navigation chrome. Either a tab bar or a plain stack. */
 export type NavigationShell =
   | {
@@ -403,7 +427,20 @@ export type NavigationShell =
         title: string;
         icon?: string;
         screenId: string;
+        /**
+         * The tab's icon, as DATA. The backend is the creator and the app is
+         * a renderer, and an icon is the one place that rule was quietly not
+         * true: the app matched the tab id against a set of shapes it carried
+         * itself, and the `icon` field above was never read. Now the shape
+         * comes down the wire, so a redrawn set ships with a cache bump.
+         *
+         * Absent → the app falls back to the set it was built with.
+         */
+        glyph?: TabGlyph;
       }>;
+      /** Draw the thread that runs across the whole bar behind the icons.
+       *  Absent means yes. */
+      rail?: boolean;
       /**
        * Which tab the app opens on. Absent means the first one, which is what
        * every client did before this existed.

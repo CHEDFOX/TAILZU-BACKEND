@@ -820,3 +820,58 @@ describe("the You deck asks twice before it opens", () => {
     expect(YOU_UI.deck.tapToCentre).toBe(true);
   });
 });
+
+describe("the tab icons come down the wire", () => {
+  // The backend is the creator and the app is a renderer. Icons were the one
+  // place that was quietly untrue: the app matched each tab's id against
+  // shapes it carried itself, and the `icon` slot was never read. A redrawn
+  // set meant a release.
+  const shell = () => {
+    const b = buildBootstrap({ onboarded: true });
+    if (b.navigation.kind !== "tabs") throw new Error("expected a tabs shell");
+    return b.navigation;
+  };
+
+  it("sends a glyph for every tab", () => {
+    for (const t of shell().tabs) {
+      expect(t.glyph, `${t.id} has no glyph`).toBeTruthy();
+      expect(t.glyph!.layers.length, `${t.id} has no layers`).toBeGreaterThan(0);
+    }
+  });
+
+  it("gives every layer a path and a way to be drawn in both states", () => {
+    for (const t of shell().tabs) {
+      for (const l of t.glyph!.layers) {
+        expect(l.d, `${t.id}: empty path`).toMatch(/^M/);
+        // Either it is stroked, or it is a punch (drawn only over a fill).
+        expect(l.stroke !== undefined || l.punch, `${t.id}: layer with no stroke`).toBeTruthy();
+      }
+    }
+  });
+
+  it("keeps every path inside the 32-unit grid", () => {
+    // A coordinate past 32 is clipped by the viewBox and the icon arrives
+    // with a flat edge. Cheap to check, expensive to notice on a device.
+    for (const t of shell().tabs) {
+      for (const l of t.glyph!.layers) {
+        for (const n of l.d.match(/-?\d+(?:\.\d+)?/g) ?? []) {
+          const v = Number(n);
+          expect(v, `${t.id}: ${n} is outside the grid`).toBeGreaterThanOrEqual(0);
+          expect(v, `${t.id}: ${n} is outside the grid`).toBeLessThanOrEqual(32);
+        }
+      }
+    }
+  });
+
+  it("carries the rail flag, so the bar's thread is a backend decision too", () => {
+    expect(shell().rail).toBe(true);
+  });
+
+  it("lets the tag keep its hole when it goes solid", () => {
+    // A punch layer is drawn in the bar's own surface colour over the fill.
+    // Without it the active You icon is a solid blob and the label reads as a
+    // house.
+    const you = shell().tabs.find((t) => t.id === "personality")!;
+    expect(you.glyph!.layers.some((l) => l.punch)).toBe(true);
+  });
+});

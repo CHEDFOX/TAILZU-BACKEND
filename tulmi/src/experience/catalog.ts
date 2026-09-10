@@ -16,6 +16,7 @@ import type {
   KeyboardNode,
   MediaPresent,
   NavigationShell,
+  TabGlyph,
   Node,
   ScreenResponse,
   ThemeTokens,
@@ -672,11 +673,72 @@ function freeMonthlyWords(): number {
 const FIRST_TAB = "personality";
 const RETURNING_TAB = "stats";
 
+/**
+ * THE TAB ICONS, AS DATA.
+ *
+ * The backend is the creator and the app is a renderer. Icons were the one
+ * place that was quietly untrue: the app matched each tab's id against shapes
+ * it carried itself, and the `icon` slot on the tab was never read. A redrawn
+ * set meant a release. Now the geometry is here, on a 32-unit grid, and the
+ * app draws whatever it is handed — so the next set ships with a cache bump.
+ *
+ * Three things done to one material. The thread passes THROUGH the node (your
+ * voice going in); one thread FOLDED until it is cloth (how much you have
+ * made); the label that says whose it is. Silhouettes differ by axis —
+ * diagonal, horizontal, solid — because a tab bar is read peripherally and the
+ * outline is all that survives. The node keeps the mark's measured 0.204
+ * corner radius.
+ *
+ * Idle strokes and active strokes differ because an open stroke thickens and
+ * a closed shape fills; the tag's hole is `punch`ed with the bar's own surface
+ * so it stays a hole when the tag goes solid. Stats has FOUR rows — with three
+ * the serpentine reads as the numeral 2.
+ */
+const TAB_GLYPHS: Record<string, TabGlyph> = {
+  home: {
+    layers: [
+      { d: "M3.2 25.8 L11.6 18.0 M20.4 14.0 L28.8 6.2", stroke: 2.2, activeStroke: 2.7 },
+      {
+        d: "M13.16 11.2 H18.84 A1.96 1.96 0 0 1 20.8 13.16 V18.84 A1.96 1.96 0 0 1 18.84 20.8 " +
+           "H13.16 A1.96 1.96 0 0 1 11.2 18.84 V13.16 A1.96 1.96 0 0 1 13.16 11.2 Z",
+        stroke: 2.0, activeFill: true,
+      },
+    ],
+  },
+  stats: {
+    layers: [
+      {
+        d: "M4.6 7.6 H23 A2.8 2.8 0 0 1 23 13.2 H9 A2.8 2.8 0 0 0 9 18.8 H24 A2.8 2.8 0 0 1 24 24.4 H5.6",
+        stroke: 2.0, activeStroke: 2.5,
+      },
+    ],
+  },
+  personality: {
+    layers: [
+      {
+        d: "M13.4 5.2 H24.6 A2.4 2.4 0 0 1 27 7.6 V18.8 A2.4 2.4 0 0 1 26.3 20.5 L20.5 26.3 " +
+           "A2.4 2.4 0 0 1 18.8 27 H7.6 A2.4 2.4 0 0 1 5.2 24.6 V13.4 A2.4 2.4 0 0 1 5.9 11.7 " +
+           "L11.7 5.9 A2.4 2.4 0 0 1 13.4 5.2 Z",
+        stroke: 1.7, activeFill: true,
+      },
+      { d: "M19.3 10.5 A2.15 2.15 0 1 1 23.6 10.5 A2.15 2.15 0 1 1 19.3 10.5 Z", stroke: 1.7, punch: true },
+    ],
+  },
+};
+
 function navigationFor(landedBefore: boolean): NavigationShell {
   // NAV is the tabs shell; the narrowing keeps this honest if it ever is not.
   if (NAV.kind !== "tabs") return NAV;
-  return { ...NAV, initialTabId: landedBefore ? RETURNING_TAB : FIRST_TAB };
+  return {
+    ...NAV,
+    tabs: NAV.tabs.map((t) => ({ ...t, glyph: TAB_GLYPHS[t.id] })),
+    rail: TAB_RAIL,
+    initialTabId: landedBefore ? RETURNING_TAB : FIRST_TAB,
+  };
 }
+
+/** The thread across the whole bar behind the icons. false hides it. */
+const TAB_RAIL = true;
 
 const NAV: NavigationShell = {
   kind: "tabs",
