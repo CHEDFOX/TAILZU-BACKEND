@@ -1656,6 +1656,10 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
 
   const bootstrap = buildBootstrap({
     onboarded: isReviewer || micGranted && keyboardReady || (profile?.onboarded ?? false),
+    // Have they ever been inside the app before? A reviewer always has — a
+    // fresh account walked into You on every submission otherwise, which is
+    // not the screen you want a reviewer to open on.
+    landedBefore: isReviewer || !!personality?.shellSeenAt,
     // Both answers are required by the card, so either one proves it ran.
     profileComplete: !!(profile?.fullName || profile?.gender),
     launchCount: Number(reqBody.launchCount) || 0,
@@ -1685,6 +1689,23 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   // When they were last here. Fire and forget: a failed stamp must never cost
   // the boot, and nothing reads it on this path.
   if (user) void touchLastSeen(user).catch(() => {});
+  // AND that they have now been inside. Written on the first bootstrap that
+  // serves a finished onboarding, which is the moment the tabs actually
+  // appear — so the next launch opens on Stats instead of You.
+  //
+  // After the bootstrap is built, deliberately: reading it and writing it in
+  // the same request would land the new user on Stats on their very first
+  // visit, which is the one thing this is here to prevent.
+  if (user && bootstrap.navigation.kind === "tabs" && !personality?.shellSeenAt) {
+    const onboarded = (bootstrap.flags ?? {})["onboarded"] === true
+      || (profile?.onboarded ?? false);
+    if (onboarded) {
+      void updatePersonality(user, (existing) => ({
+        ...existing,
+        shellSeenAt: existing.shellSeenAt ?? new Date().toISOString(),
+      })).catch(() => { /* a lost stamp costs one repeat, never the boot */ });
+    }
+  }
   // Attach the current media registry so clients can resolve keys → URLs
   // without a separate roundtrip. Keys are semantic ("brand.mark",
   // "onboarding.hero.png"); each entry has { url, contentType, size,

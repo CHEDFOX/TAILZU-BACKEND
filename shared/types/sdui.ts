@@ -404,6 +404,17 @@ export type NavigationShell =
         icon?: string;
         screenId: string;
       }>;
+      /**
+       * Which tab the app opens on. Absent means the first one, which is what
+       * every client did before this existed.
+       *
+       * SERVER-DECIDED, because it depends on something only the server knows:
+       * whether this person has ever reached the tabs before. A brand-new user
+       * who has just finished onboarding lands on You — the tab that is about
+       * setting the product up for them. Everyone after that lands on Stats,
+       * which is the one worth reopening the app for.
+       */
+      initialTabId?: string;
     }
   | { kind: "stack"; rootScreenId: string };
 

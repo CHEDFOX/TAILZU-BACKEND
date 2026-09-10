@@ -658,6 +658,26 @@ function freeMonthlyWords(): number {
   return Math.max(0, getConfig().FREE_MONTHLY_WORDS);
 }
 
+/**
+ * Where the app opens.
+ *
+ * A first-time user has just finished onboarding and has never seen the inside
+ * of the product: You is the tab that sets it up for them — their voices,
+ * words, keys and languages — so that is where they land, once.
+ *
+ * Everyone after that lands on Stats, because it is the only tab that has
+ * changed since they last looked. Train is where you go to do something; Stats
+ * is what makes reopening the app worth it.
+ */
+const FIRST_TAB = "personality";
+const RETURNING_TAB = "stats";
+
+function navigationFor(landedBefore: boolean): NavigationShell {
+  // NAV is the tabs shell; the narrowing keeps this honest if it ever is not.
+  if (NAV.kind !== "tabs") return NAV;
+  return { ...NAV, initialTabId: landedBefore ? RETURNING_TAB : FIRST_TAB };
+}
+
 const NAV: NavigationShell = {
   kind: "tabs",
   // Settings is no longer a bottom tab — it's reached via the ⚙ gear in the
@@ -747,6 +767,9 @@ function arrivalPrompt(
 export function buildBootstrap(
   opts: {
     onboarded?: boolean;
+    /** Has this person ever reached the tab shell before? Decides which tab
+     *  the app opens on — see navigationFor. */
+    landedBefore?: boolean;
     profileComplete?: boolean;
     launchCount?: number;
     languagesSet?: boolean;
@@ -803,7 +826,7 @@ export function buildBootstrap(
     // the platform font and nothing waits on the network.
     ...(Object.keys(FONTS).length ? { fonts: FONTS } : {}),
     theme: THEME,
-    navigation: NAV,
+    navigation: navigationFor(!!opts.landedBefore),
     // The server owns onboarding AND the intro. Intro plays whenever all 4
     // frames are uploaded to the media store; falls through to onboarding /
     // home when they're not, so we never render an intro screen with

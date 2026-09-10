@@ -738,3 +738,48 @@ describe("buildKeyboardConfig", () => {
     expect(boot.flags?.["kb.flow.transport"]).toBe(kb.flags?.["kb.flow.transport"]);
   });
 });
+
+describe("which tab the app opens on", () => {
+  const nav = (landedBefore: boolean) => {
+    const b = buildBootstrap({ onboarded: true, landedBefore });
+    if (b.navigation.kind !== "tabs") throw new Error("expected a tabs shell");
+    return b.navigation;
+  };
+
+  it("puts a first-timer in You, straight out of onboarding", () => {
+    // They have never seen the inside of the product. You is the tab that sets
+    // it up for them — their voices, words, keys, languages.
+    expect(nav(false).initialTabId).toBe("personality");
+  });
+
+  it("opens on Stats every time after that", () => {
+    // The only tab that has changed since they last looked. Train is where you
+    // go to do something; Stats is what makes reopening the app worth it.
+    expect(nav(true).initialTabId).toBe("stats");
+  });
+
+  it("names a tab that actually exists", () => {
+    // A landing id with no matching tab strands the app on a blank screen, and
+    // the client's fallback would hide it rather than fix it.
+    for (const before of [false, true]) {
+      const n = nav(before);
+      expect(n.tabs.some((t) => t.id === n.initialTabId), `landedBefore=${before}`).toBe(true);
+    }
+  });
+
+  it("never reorders the tabs to do it", () => {
+    // The bar reads left to right in a fixed order; moving Stats to the front
+    // for returning users would move it under a different thumb.
+    expect(nav(true).tabs.map((t) => t.id)).toEqual(nav(false).tabs.map((t) => t.id));
+    expect(nav(true).tabs.map((t) => t.id)).toEqual(["home", "stats", "personality"]);
+  });
+
+  it("sends a reviewer to Stats, not to You", () => {
+    // A fresh review account has landedBefore false by definition, and walking
+    // App Review into the setup tab on every submission is not the first
+    // impression to give them.
+    const b = buildBootstrap({ isReviewer: true, onboarded: true, landedBefore: true });
+    if (b.navigation.kind !== "tabs") throw new Error("expected a tabs shell");
+    expect(b.navigation.initialTabId).toBe("stats");
+  });
+});

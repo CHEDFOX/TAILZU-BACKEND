@@ -139,6 +139,17 @@ export interface Personality {
    * `core` is tone-independent; `tones` carries per-tone notes keyed by tone
    * id; `examples` counts absorbed picks.
    */
+  /**
+   * When they first reached the tab shell — i.e. finished onboarding and
+   * arrived in the app proper.
+   *
+   * Kept here rather than on the profile because personality is a JSON
+   * document and the profile is columns: one is a field, the other a
+   * migration. It is the only thing that separates "first visit" from "every
+   * later visit", which is what decides the tab they open on.
+   */
+  shellSeenAt?: string;
+
   stylePortrait?: {
     /** The prose summary. Still the thing every refine reads first. */
     core?: string;
