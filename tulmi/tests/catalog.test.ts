@@ -916,8 +916,6 @@ describe("the You tab greets you by name", () => {
     // and heading with it.
     expect(TYPE_ROLES.greetHello.color).toBe("greetHello");
     expect(TYPE_ROLES.greetName.color).toBe("greetName");
-    expect(THEME.color.greetHello).toBeDefined();
-    expect(THEME.color.greetName).toBeDefined();
     // Not aliases of the shared tokens — a token that IS `label` is `label`.
     const shared = ["label", "text", "body", "muted"];
     for (const role of ["greetHello", "greetName"] as const) {
@@ -925,6 +923,41 @@ describe("the You tab greets you by name", () => {
     }
     // And not each other, or there is one colour, not two.
     expect(THEME.color.greetHello).not.toBe(THEME.color.greetName);
+  });
+
+  it("keeps the whole greeting in one block, each value on its own", () => {
+    // Sizes in one section, colours in another and the position in a third is
+    // three places to read to change a three-line greeting. GREET owns it;
+    // the roles and the palette are views of it.
+    const g = YOU_UI.greet;
+    expect(TYPE_ROLES.greetHello.size).toBe(g.hello.size);
+    expect(TYPE_ROLES.greetHello.weight).toBe(g.hello.weight);
+    expect(TYPE_ROLES.greetHello.letterSpacing).toBe(g.hello.tracking);
+    expect(TYPE_ROLES.greetName.size).toBe(g.name.size);
+    expect(TYPE_ROLES.greetName.weight).toBe(g.name.weight);
+    expect(TYPE_ROLES.greetName.letterSpacing).toBe(g.name.tracking);
+    expect(TYPE_ROLES.greetName.family).toBe(g.name.family);
+    expect(THEME.color.greetHello).toBe(g.hello.color);
+    expect(THEME.color.greetName).toBe(g.name.color);
+    // The sizes are the greeting's own numbers, not references to the ladder —
+    // moving the ladder must not move the greeting.
+    expect(g.hello.size).not.toBe(g.name.size);
+    for (const v of [g.top, g.left, g.gap, g.nameMaxWidth, g.intervalMs, g.flipMs]) {
+      expect(typeof v).toBe("number");
+    }
+  });
+
+  it("trims a long name rather than wrapping it into the deck", () => {
+    // The gear is 34 at 16 from the right edge. A second line would push the
+    // greeting down over the cards, which are what the screen is for.
+    const s = buildScreen("personality", {
+      personality: {}, language: "en",
+      name: "Aaravindhan Venkataraghavan Subramaniam",
+    } as never) as any;
+    const block = s.root.children.find((c: any) =>
+      c?.children?.some((k: any) => k?.type === "FlipText"));
+    expect(block.children[1].props.numberOfLines).toBe(YOU_UI.greet.nameLines);
+    expect(block.children[1].style.maxWidth).toBe(YOU_UI.greet.nameMaxWidth);
   });
 
   it("sends the cadence, so the app only knows how to turn a word", () => {

@@ -548,6 +548,60 @@ const TYPE_SIZES = { overline: 11, caption: 13, label: 13, body: 15, lg: 21, h1:
  * the next cache bump.
  */
 const S = TYPE_SIZES;
+
+/**
+ * The You tab's greeting, whole — every value it has, in one place.
+ *
+ * It sits up here rather than beside the rest of the You tab because its two
+ * lines are part of the type scale, and the scale is built below. Splitting it
+ * would have put the sizes in one section, the colours in another and the
+ * position in a third, and a three-line greeting is not worth reading three
+ * places to change.
+ *
+ * NOTHING HERE IS SHARED. The sizes start on the golden ladder (13 and 26 are
+ * its label and h1 rungs) but they are the greeting's own numbers now, not
+ * references to them — so moving the ladder does not move the greeting, and
+ * balancing the greeting does not move the app. Same for the two colours.
+ * Every value can be set alone, which is what makes the pair adjustable
+ * against each other: a name that reads, and a hello that stays behind it.
+ */
+const GREET = {
+  /** Where the block sits. Top left, on the settings gear's line. */
+  top: 56,
+  left: 18,
+  /** Air between the hello and the name. */
+  gap: 2,
+  /**
+   * How much width the name may take before it is cut short.
+   *
+   * The gear is 34pt at 16pt from the right edge, so the name has the screen
+   * less about 66pt before the two meet. A long name is trimmed with an
+   * ellipsis rather than wrapped: a second line would push the greeting into
+   * the deck, and the deck is the thing this screen is for.
+   */
+  nameMaxWidth: 240,
+  nameLines: 1,
+  /** How long a hello is held before it turns over. */
+  intervalMs: 2600,
+  /** The turn itself. Half out, half in. */
+  flipMs: 620,
+  /** The small tracked line. A label, not a sentence. */
+  hello: {
+    size: 13,
+    weight: "300",
+    tracking: 1.6,
+    color: "rgba(255,255,255,0.42)",
+  },
+  /** The one proper noun on the screen, so it gets the display face. */
+  name: {
+    family: "display" as const,
+    size: 26,
+    weight: "300",
+    tracking: 0.2,
+    color: "rgba(255,255,255,0.96)",
+  },
+};
+
 export const TYPE_ROLES: Record<string, TypeRole> = {
   // Text variants — `{ type: "Text", props: { variant } }`.
   brand:    { family: "display", size: S.brand, lineHeight: 38, letterSpacing: 0.2, color: "text" },
@@ -584,19 +638,22 @@ export const TYPE_ROLES: Record<string, TypeRole> = {
   greeting:     { family: "display", size: 46, weight: "300", letterSpacing: 0.2, align: "center", marginBottom: 40 },
   greetingPill: { size: S.body, weight: "300", letterSpacing: 0.5 },
 
-  // The You tab's greeting: a quiet hello over the person's name. The hello is
-  // small and tracked because it is a label, not a sentence; the name is the
-  // display face because it is the one proper noun on the screen.
-  //
-  // EACH LINE HAS ITS OWN COLOUR TOKEN, and neither is shared with anything
-  // else. Pointing them at `label` and `text` would have made the greeting
-  // untunable in practice: those two carry most of the app's type, so pulling
-  // the hello up or pushing it back would have moved every caption and every
-  // heading with it. Two tokens of their own is what makes the pair
-  // adjustable against each other — which is the whole relationship here,
-  // a name that reads and a hello that stays behind it.
-  greetHello: { size: S.label, weight: "300", letterSpacing: 1.6, color: "greetHello" },
-  greetName:  { family: "display", size: S.h1, weight: "300", letterSpacing: 0.2, color: "greetName" },
+  // The You tab's greeting. Both lines come off GREET above — the one place
+  // that owns this block — so the roles here are a view of it, never a second
+  // set of numbers to keep in step.
+  greetHello: {
+    size: GREET.hello.size,
+    weight: GREET.hello.weight,
+    letterSpacing: GREET.hello.tracking,
+    color: "greetHello",
+  },
+  greetName: {
+    family: GREET.name.family,
+    size: GREET.name.size,
+    weight: GREET.name.weight,
+    letterSpacing: GREET.name.tracking,
+    color: "greetName",
+  },
 
   // The shell: title bar, error card, refresh banner, update gate, toast.
   title:        { size: 22, weight: "800", color: "text" },
@@ -650,12 +707,12 @@ export const THEME: ThemeTokens = {
     label: "rgba(255,255,255,0.42)",
     danger: "#e0556b",
     success: "#4caf50",
-    // The You tab's greeting, one token per line. Kept apart from `label` and
-    // `text` on purpose: those two carry most of the app's type, so the pair
-    // could not be balanced against each other without dragging every caption
-    // and heading along. Set either alone.
-    greetHello: "rgba(255,255,255,0.42)",
-    greetName: "rgba(255,255,255,0.96)",
+    // The You tab's greeting, one token per line, both owned by GREET. Kept
+    // apart from `label` and `text` on purpose: those two carry most of the
+    // app's type, so the pair could not be balanced against each other
+    // without dragging every caption and heading along.
+    greetHello: GREET.hello.color,
+    greetName: GREET.name.color,
   },
   // GOLDEN SCALE (φ via the Fibonacci ladder 5·8·13·21·34·55): every spacing
   // step and type size in the app comes off this ladder, so screens compose
@@ -4351,20 +4408,11 @@ export const YOU_UI = {
    * and keeps going. The name never moves — the greeting changes language,
    * the person does not.
    *
-   * Every number here is the backend's. The app is told which words, how long
-   * each is held, and how long the turn takes; it knows only how to turn one
-   * word into the next.
+   * Defined up with the type scale, because its two lines are part of it. One
+   * block owns the whole greeting: position, cadence, both type sets and both
+   * colours, each settable alone.
    */
-  greet: {
-    top: 56,
-    left: 18,
-    /** How long a hello is held before it turns over. */
-    intervalMs: 2600,
-    /** The turn itself. Half out, half in. */
-    flipMs: 620,
-    /** Air between the hello and the name. */
-    gap: 2,
-  },
+  greet: GREET,
 };
 
 /**
@@ -4587,8 +4635,10 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
       ...(name
         ? [{
             type: "Text",
-            props: { content: name, variant: "greetName" },
-            style: { marginTop: g.gap },
+            // Trimmed, not wrapped. A second line would push the greeting
+            // down into the deck, and the deck is what this screen is for.
+            props: { content: name, variant: "greetName", numberOfLines: g.nameLines },
+            style: { marginTop: g.gap, maxWidth: g.nameMaxWidth },
           } as Node]
         : []),
     ],
