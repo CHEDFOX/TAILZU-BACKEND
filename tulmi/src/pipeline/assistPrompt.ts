@@ -121,7 +121,20 @@ export function toneGuidance(
   // The learned portrait rides every request, scoped to the active tone.
   const portrait = portraitBlock(personality, tone);
   if (portrait) parts.push(portrait);
-  return parts.join(" ");
+  // JOINED ON BLANK LINES, not on a space. These parts come from four
+  // different places — the tone, the preset's style, the user's own
+  // instruction, their sign-off, their portrait — and a space ran them into
+  // one another. Rendering the real prompt showed the result:
+  //
+  //   "...typed it carefully themselves. Write in a clean, natural voice —
+  //   ...clear without being clinical. never use exclamation marks If a
+  //   sign-off fits the message, you may use: — R THIS USER'S STYLE PORTRAIT"
+  //
+  // A lowercase user instruction wedged mid-sentence, a sign-off with the
+  // portrait's heading welded to it. Each part is a separate rule and has to
+  // look like one, or the weakest-stated one gets read as part of its
+  // neighbour and dropped.
+  return parts.map((p) => p.trim()).filter(Boolean).join("\n\n");
 }
 
 /**

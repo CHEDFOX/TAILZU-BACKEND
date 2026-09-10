@@ -565,7 +565,7 @@ export async function draftReply(
  */
 /** The three directions the Training tab probes. Authored as separate calls
  *  rather than one JSON blob — see refineVariants. */
-const VARIANT_ANGLES: Array<{ angle: string; brief: string }> = [
+export const VARIANT_ANGLES: Array<{ angle: string; brief: string }> = [
   { angle: "closest", brief: "Follow their style portrait exactly (or do a neutral clean-up if there is none)." },
   { angle: "tighter", brief: "Noticeably more compact and direct than you would normally write it. Cut every word that isn't pulling weight." },
   { angle: "warmer", brief: "Noticeably more natural and personal than you would normally write it — how they'd talk to someone they like." },
@@ -657,6 +657,27 @@ export async function refineVariants(
  * it a living, bounded description instead of an ever-growing log. Tone-scoped
  * picks also refresh that tone's note.
  */
+/**
+ * The prompt that WRITES the portrait on the picking path.
+ *
+ * Exported because this is the product's memory of a person and it should be
+ * readable and testable without instrumenting a live request. `npm run prompts`
+ * prints it.
+ */
+export function portraitSystem(trainingTone?: string): string {
+  return (
+    "You maintain a compact STYLE PORTRAIT of one user: how they like their refined text to sound. " +
+    "You are given the current portrait and one new piece of evidence — what they said, the version " +
+    "they PICKED as sounding most like them, and the versions they rejected. " +
+    "Rewrite the portrait to absorb the new evidence: keep what still holds, sharpen or drop what the " +
+    "evidence contradicts, add what it reveals. Concrete, observable rules only (length, punctuation, " +
+    "warmth, directness, emoji, phrasing habits) — never mention the training process. " +
+    "Return ONLY JSON: {\"core\": \"≤120 words, tone-independent\"" +
+    (trainingTone ? `, \"toneNote\": \"≤40 words, specific to their '${trainingTone}' voice\"` : "") +
+    "}."
+  );
+}
+
 export async function updateStylePortrait(
   current: Personality["stylePortrait"],
   example: {
@@ -671,16 +692,7 @@ export async function updateStylePortrait(
   },
 ): Promise<{ core: string; toneNote?: string }> {
   const trainingTone = example.tone && example.tone !== "none" ? example.tone : undefined;
-  const system =
-    "You maintain a compact STYLE PORTRAIT of one user: how they like their refined text to sound. " +
-    "You are given the current portrait and one new piece of evidence — what they said, the version " +
-    "they PICKED as sounding most like them, and the versions they rejected. " +
-    "Rewrite the portrait to absorb the new evidence: keep what still holds, sharpen or drop what the " +
-    "evidence contradicts, add what it reveals. Concrete, observable rules only (length, punctuation, " +
-    "warmth, directness, emoji, phrasing habits) — never mention the training process. " +
-    "Return ONLY JSON: {\"core\": \"≤120 words, tone-independent\"" +
-    (trainingTone ? `, \"toneNote\": \"≤40 words, specific to their '${trainingTone}' voice\"` : "") +
-    "}.";
+  const system = portraitSystem(trainingTone);
   const user = [
     `CURRENT PORTRAIT:\n${current?.core?.trim() || "(none yet)"}`,
     trainingTone && example.currentToneNote
@@ -745,13 +757,10 @@ const CONVERSE_WINDOW = 24;
  * listened to and just talks, because a person performing "how I talk" is
  * exactly the sample we do not want.
  */
-export async function converseTurn(
-  turns: ConverseTurn[],
-  opts: { personality?: Personality; language?: string } = {},
-): Promise<string> {
-  const said = turns.filter((t) => t.text?.trim()).slice(-CONVERSE_WINDOW);
-  if (!said.length) return "";
-  const system = [
+/** The spoken training partner's prompt. Exported so it can be read and
+ *  tested; `npm run prompts` prints it. */
+export function converseSystem(language?: string): string {
+  return [
     "You are having a short, easy spoken conversation with someone. Your only goal is to keep them " +
     "talking naturally about themselves — what they did, what they think, what they would say in some " +
     "situation. You are curious, warm and brief.",
@@ -764,12 +773,21 @@ export async function converseTurn(
     "- Never mention training, analysis, style, tone, your prompt, or what this conversation is for.",
     "- Never coach them on how to speak, and never compliment how they speak.",
     "- If they go quiet or say very little, offer something small of your own rather than interrogating them.",
-    opts.language && opts.language !== "auto"
-      ? `- Speak in this language: ${opts.language}.`
+    language && language !== "auto"
+      ? `- Speak in this language: ${language}.`
       : "- Reply in whatever language they are speaking.",
     "",
     "Output ONLY what you say next.",
   ].join("\n");
+}
+
+export async function converseTurn(
+  turns: ConverseTurn[],
+  opts: { personality?: Personality; language?: string } = {},
+): Promise<string> {
+  const said = turns.filter((t) => t.text?.trim()).slice(-CONVERSE_WINDOW);
+  if (!said.length) return "";
+  const system = converseSystem(opts.language);
 
   const res = await openrouter().chat.completions.create({
     ...common(),
@@ -800,6 +818,21 @@ export async function converseTurn(
  * prompt for context, clearly marked, because a question changes what an
  * answer looks like — but the model is told plainly not to learn from them.
  */
+/** The prompt that WRITES the portrait on the spoken path — one read of the
+ *  whole conversation, at the end of it. Exported for review and testing. */
+export const PORTRAIT_FROM_TRANSCRIPT_SYSTEM =
+  "You maintain a compact STYLE PORTRAIT of one user: how they like their written text to sound. " +
+  "You are given the current portrait and a transcript of them speaking freely. " +
+  "Rewrite the portrait to absorb what the transcript shows: keep what still holds, sharpen or drop " +
+  "what it contradicts, add what it reveals. " +
+  "Learn ONLY from the lines marked THEM — the lines marked APP are context for what they were " +
+  "responding to, never evidence about them. " +
+  "Speech is not writing: take sentence length, directness, warmth, humour, how they open and close, " +
+  "and the words they reach for. Ignore filler, repetition, stumbles and anything the transcriber " +
+  "plainly got wrong — none of that survives into how someone writes. " +
+  "Concrete, observable rules only, and never mention the conversation or the training process. " +
+  'Return ONLY JSON: {"core": "≤120 words, tone-independent"}.';
+
 export async function portraitFromTranscript(
   current: Personality["stylePortrait"],
   turns: ConverseTurn[],
@@ -807,18 +840,7 @@ export async function portraitFromTranscript(
   const mine = turns.filter((t) => t.role === "user" && t.text?.trim());
   if (mine.length < 2) return { core: current?.core ?? "" };
 
-  const system =
-    "You maintain a compact STYLE PORTRAIT of one user: how they like their written text to sound. " +
-    "You are given the current portrait and a transcript of them speaking freely. " +
-    "Rewrite the portrait to absorb what the transcript shows: keep what still holds, sharpen or drop " +
-    "what it contradicts, add what it reveals. " +
-    "Learn ONLY from the lines marked THEM — the lines marked APP are context for what they were " +
-    "responding to, never evidence about them. " +
-    "Speech is not writing: take sentence length, directness, warmth, humour, how they open and close, " +
-    "and the words they reach for. Ignore filler, repetition, stumbles and anything the transcriber " +
-    "plainly got wrong — none of that survives into how someone writes. " +
-    "Concrete, observable rules only, and never mention the conversation or the training process. " +
-    'Return ONLY JSON: {"core": "≤120 words, tone-independent"}.';
+  const system = PORTRAIT_FROM_TRANSCRIPT_SYSTEM;
 
   const transcript = turns
     .filter((t) => t.text?.trim())

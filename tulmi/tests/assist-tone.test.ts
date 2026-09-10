@@ -87,3 +87,44 @@ describe("what the refiner is told it is", () => {
     expect(sys()).toMatch(/no refusal, no apology/i);
   });
 });
+
+describe("the tone block keeps its parts apart", () => {
+  // Found by rendering the real prompt instead of reading the code. The parts
+  // come from five different places — the tone, the preset's style, the user's
+  // own instruction, their sign-off, their portrait — and joining on a space
+  // ran them together:
+  //
+  //   "...typed it carefully themselves. Write in a clean, natural voice —
+  //   ...clear without being clinical. never use exclamation marks If a
+  //   sign-off fits the message, you may use: — R THIS USER'S STYLE PORTRAIT"
+  //
+  // A lowercase user instruction wedged mid-sentence and a sign-off welded to
+  // the portrait's heading. Each is a separate rule and has to look like one.
+  const PERSON = {
+    activeTone: "none",
+    customInstructions: "never use exclamation marks",
+    signature: "— R",
+    stylePortrait: { core: "Short sentences. Lowercase openers." },
+  } as never;
+
+  it("puts a blank line between every part", () => {
+    const g = toneGuidance("none", PERSON);
+    expect(g).toContain("\n\nnever use exclamation marks\n\n");
+    expect(g).toMatch(/\n\nIf a sign-off fits the message/);
+    expect(g).toMatch(/\n\nTHIS USER'S STYLE PORTRAIT/);
+  });
+
+  it("never runs the user's instruction into the sentence before it", () => {
+    const g = toneGuidance("none", PERSON);
+    expect(g).not.toContain("themselves. never use");
+    expect(g).not.toMatch(/exclamation marks If a sign-off/);
+    expect(g).not.toMatch(/— R THIS USER'S/);
+  });
+
+  it("emits no stray blank lines when the user has set nothing", () => {
+    const g = toneGuidance("none", {} as never);
+    expect(g.startsWith("\n")).toBe(false);
+    expect(g.endsWith("\n")).toBe(false);
+    expect(g).not.toContain("\n\n\n");
+  });
+});
