@@ -12,7 +12,9 @@ import {
   buildKeyboardConfig,
   bumpCacheVersion,
   currentCacheVersion,
+  THEME,
   TRAINING_UI,
+  TYPE_ROLES,
   YOU_UI,
 } from "../src/experience/catalog.js";
 import { getConfig } from "../src/config.js";
@@ -231,6 +233,55 @@ describe("the update gate's store links", () => {
 
   it("always has the Play link, whose id is the package name we already know", () => {
     expect(JSON.stringify(buildBootstrap())).toContain("play.google.com");
+  });
+});
+
+describe("the type scale", () => {
+  // Every run of text the renderer sets on its own reads one of these. A
+  // missing role falls back to a number baked into the app, which is the
+  // thing this scale exists to end.
+  const RENDERER_ROLES = [
+    // Text variants
+    "brand", "h1", "overline", "quote", "label", "muted", "caption", "body",
+    // Content blocks
+    "heading", "paragraph", "quoteBlock", "badge",
+    // Controls and lists
+    "button", "buttonSecondary", "chip", "chipSelected", "mic", "row", "rowValue", "rowChevron",
+    "keyValueLabel", "keyValueValue", "heroTitle", "heroSubtitle", "icon", "greeting", "greetingPill",
+    // Shell
+    "title", "headerIcon", "toast", "errorTitle", "errorBody", "errorAction", "banner",
+    "updateTitle", "updateBody", "updateAction", "updateLater",
+    // Sign-in
+    "authField", "authPrompt", "authCode", "authNote", "authSearch", "authPickName", "authPickDial",
+    // Native onboarding
+    "langGreeting", "langPill", "profileHello", "profileName", "profileLabel", "profileAction",
+  ];
+
+  it("names every role the renderer reads", () => {
+    for (const r of RENDERER_ROLES) expect(TYPE_ROLES[r], r).toBeDefined();
+  });
+
+  it("gives every role a size, and only theme colours", () => {
+    for (const [name, role] of Object.entries(TYPE_ROLES)) {
+      expect(role.size, name).toBeGreaterThan(0);
+      if (role.color) expect(THEME.color[role.color], `${name}.color`).toBeDefined();
+      if (role.weight) expect(role.weight, `${name}.weight`).toMatch(/^[1-9]00$/);
+    }
+  });
+
+  it("sets the headings in the display slot, never a face name", () => {
+    for (const r of ["brand", "h1", "quote", "heading", "quoteBlock", "greeting", "profileHello"]) {
+      expect(TYPE_ROLES[r].family, r).toBe("display");
+    }
+    for (const role of Object.values(TYPE_ROLES)) {
+      if (role.family) expect(["display", "body"]).toContain(role.family);
+    }
+  });
+
+  it("ships the scale in the bootstrap theme", () => {
+    const b = buildBootstrap({ onboarded: true });
+    expect(b.theme.font.roles).toBe(TYPE_ROLES);
+    expect(b.theme.font.sizes.body).toBe(TYPE_ROLES.body.size);
   });
 });
 

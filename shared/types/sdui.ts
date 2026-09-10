@@ -874,14 +874,53 @@ export type Condition =
 // The backend owns the look. Nodes reference tokens ("$color.primary") so the
 // server can re-theme the whole app by changing the token map alone.
 
+/**
+ * One role in the type scale: everything needed to set a run of text, so no
+ * size, weight, leading, tracking or rhythm is decided on the device.
+ *
+ * `family` names a SLOT, not a font — "display" for the heading face, "body"
+ * for the running face. The slots are filled by `font.display` / `font.family`
+ * below, so a typeface swap is one line in the theme and none in the renderer.
+ * A literal face name is also accepted, for a one-off.
+ *
+ * `color` is a key in `ThemeTokens.color`, resolved on the device, so a role
+ * keeps its colour across themes. Margins live here because a role's rhythm
+ * (the air under a heading) is part of the role, not of each screen.
+ */
+export interface TypeRole {
+  size: number;
+  weight?: string;
+  lineHeight?: number;
+  letterSpacing?: number;
+  family?: "display" | "body" | string;
+  italic?: boolean;
+  transform?: "uppercase" | "lowercase" | "capitalize" | "none";
+  align?: "left" | "center" | "right";
+  color?: string;
+  marginTop?: number;
+  marginBottom?: number;
+  marginVertical?: number;
+}
+
 export interface ThemeTokens {
   color: Record<string, string>; // primary, bg, surface, text, muted, danger…
   space: Record<string, number>; // xs, sm, md, lg, xl
   radius: Record<string, number>;
   font: {
+    /** Running face for the whole app. Unset = the system font. */
     family?: string;
+    /** Heading face. Unset = `family`, else the platform serif. */
+    display?: string;
     sizes: Record<string, number>; // body, h1, caption…
     weights: Record<string, string>; // regular, bold…
+    /**
+     * The type scale, by role. Every run of text the renderer sets on its
+     * own — Text variants, content blocks, buttons, rows, the shell's title
+     * bar, error and update cards — reads one of these by name. A role the
+     * theme leaves out falls back to the renderer's built-in copy of it, so
+     * a bootstrap cached before the scale existed still draws.
+     */
+    roles?: Record<string, TypeRole>;
   };
 }
 

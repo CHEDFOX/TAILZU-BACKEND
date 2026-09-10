@@ -20,6 +20,7 @@ import type {
   Node,
   ScreenResponse,
   ThemeTokens,
+  TypeRole,
 } from "../../../shared/types/sdui.js";
 import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
 import { applyRollouts, activeRollouts } from "./rollout.js";
@@ -531,6 +532,91 @@ function screenHero(
 
 // --- Global theme -----------------------------------------------------------
 
+// Ladder pairs: 13/21 captions, 15 body, 21 lg, 26/34 h1, 34 brand display.
+const TYPE_SIZES = { overline: 11, caption: 13, label: 13, body: 15, lg: 21, h1: 26, brand: 34 };
+
+/**
+ * The type scale. Every run of text the app sets on its own is one of these:
+ * a Text variant, a content block, a button label, a settings row, the title
+ * bar, the error and update cards, the native onboarding screens. The
+ * renderer reads a role by name and adds nothing — no size, weight, leading,
+ * tracking or margin is decided on the device.
+ *
+ * `family` is a slot: "display" is filled by THEME.font.display, "body" by
+ * THEME.font.family. Values mirror what the renderer shipped with, so this
+ * moves ownership, not the look. Change a number here and the app follows on
+ * the next cache bump.
+ */
+const S = TYPE_SIZES;
+export const TYPE_ROLES: Record<string, TypeRole> = {
+  // Text variants — `{ type: "Text", props: { variant } }`.
+  brand:    { family: "display", size: S.brand, lineHeight: 38, letterSpacing: 0.2, color: "text" },
+  h1:       { family: "display", size: S.h1, lineHeight: 34, letterSpacing: 0.3, color: "text" },
+  overline: { size: S.overline, weight: "500", letterSpacing: 3, transform: "uppercase", color: "label", marginBottom: 10 },
+  quote:    { family: "display", size: S.lg, lineHeight: 28, italic: true, color: "muted" },
+  label:    { size: S.label, letterSpacing: 1, color: "label", marginBottom: 8 },
+  muted:    { size: S.body, lineHeight: 22, color: "muted" },
+  caption:  { size: S.caption, color: "muted" },
+  body:     { size: S.body, lineHeight: 26, weight: "300", color: "body" },
+
+  // Content blocks — the same voices with their rhythm attached.
+  heading:    { family: "display", size: S.h1, lineHeight: 34, letterSpacing: 0.3, color: "text", marginBottom: 24 },
+  paragraph:  { size: S.body, lineHeight: 26, weight: "300", color: "body", marginBottom: 18 },
+  quoteBlock: { family: "display", size: S.lg, lineHeight: 28, italic: true, color: "muted", align: "center", marginVertical: 16 },
+  badge:      { size: S.overline, weight: "500", letterSpacing: 2.5, transform: "uppercase" },
+
+  // Controls and lists.
+  button:          { size: 16, weight: "700", letterSpacing: 0.4 },
+  buttonSecondary: { size: 16, weight: "600", letterSpacing: 0.4 },
+  chip:            { size: 14 },
+  chipSelected:    { size: 14, weight: "700" },
+  mic:             { size: S.body, weight: "700" },
+  row:             { size: 16, color: "text" },
+  rowValue:        { size: S.body, color: "muted" },
+  rowChevron:      { size: 20, color: "muted" },
+  keyValueLabel:   { size: S.body, color: "muted" },
+  keyValueValue:   { size: S.body, weight: "600", color: "text" },
+  heroTitle:       { size: S.h1, weight: "800", color: "text" },
+  heroSubtitle:    { size: S.body, color: "muted", marginTop: 4 },
+  icon:            { size: 20, color: "text" },
+
+  // Greeting grid — the big hello and the language pills under it.
+  greeting:     { family: "display", size: 46, weight: "300", letterSpacing: 0.2, align: "center", marginBottom: 40 },
+  greetingPill: { size: S.body, weight: "300", letterSpacing: 0.5 },
+
+  // The shell: title bar, error card, refresh banner, update gate, toast.
+  title:        { size: 22, weight: "800", color: "text" },
+  headerIcon:   { size: 24, weight: "700", color: "text" },
+  toast:        { size: 14 },
+  errorTitle:   { size: 18, weight: "700", color: "text", marginBottom: 8 },
+  errorBody:    { size: 14, color: "muted", align: "center", marginBottom: 20 },
+  errorAction:  { size: 14, weight: "700" },
+  banner:       { size: 14, weight: "600" },
+  updateTitle:  { size: 22, weight: "800", color: "text", align: "center", marginBottom: 10 },
+  updateBody:   { size: S.body, lineHeight: 22, color: "muted", align: "center", marginBottom: 22 },
+  updateAction: { size: S.body, weight: "700" },
+  updateLater:  { size: 14, color: "muted" },
+
+  // The sign-in screen's own chrome. The brand and tagline sizes live in
+  // AUTH_UI (that screen's contract); these are the rest of its type.
+  authField:    { size: S.body, weight: "300", letterSpacing: 0.3 },
+  authPrompt:   { size: S.body, weight: "300", letterSpacing: 0.3 },
+  authCode:     { size: 17, weight: "300" },
+  authNote:     { size: 12, align: "center" },
+  authSearch:   { size: S.body },
+  authPickName: { size: S.body, weight: "300" },
+  authPickDial: { size: 14 },
+
+  // Native onboarding — the language picker and the name card draw before
+  // any screen JSON exists, but after bootstrap, so they read the scale too.
+  langGreeting:  { size: 52, weight: "300", align: "center" },
+  langPill:      { size: S.body, weight: "300", letterSpacing: 0.5 },
+  profileHello:  { family: "display", size: 32, weight: "700", marginBottom: 18 },
+  profileName:   { size: 22, weight: "300", align: "center" },
+  profileLabel:  { size: 12 },
+  profileAction: { size: 16, weight: "700" },
+};
+
 export const THEME: ThemeTokens = {
   color: {
     bg: "#000000",
@@ -557,13 +643,13 @@ export const THEME: ThemeTokens = {
   space: { xs: 5, sm: 8, md: 13, lg: 21, xl: 34, content: 21, contentTop: 34 },
   radius: { sm: 8, md: 13, card: 18, pill: 999 },
   font: {
-    // Headings render in a serif (set per-platform in the renderer); body is sans.
-    // Ladder pairs: 13/21 captions, 15 body, 21 lg, 26/34 h1, 34 brand display.
-    sizes: { overline: 11, caption: 13, label: 13, body: 15, lg: 21, h1: 26, brand: 34 },
+    sizes: TYPE_SIZES,
     weights: { light: "300", regular: "400", medium: "500", bold: "700", heavy: "800" },
-    // Name a face for the whole app. Any name in FONTS below, or a font the OS
-    // already has. Unset = the renderer's platform serif.
-    // family: "Tailzu Display",
+    // The two faces. Any name in FONTS below, or one the OS already has.
+    // Unset: body is the system font, display is the platform serif.
+    // family: "Tailzu Sans",
+    // display: "Tailzu Display",
+    roles: TYPE_ROLES,
   },
 };
 
@@ -574,8 +660,8 @@ export const THEME: ThemeTokens = {
  * had, so changing the product's typeface meant adding a file to the repo and
  * shipping a build — the one design change that should never need one.
  *
- * Add an entry and every screen can use it: THEME.font.family for the whole
- * app, or style.fontFamily on a single node for a pairing.
+ * Add an entry and every screen can use it: THEME.font.family for the running
+ * text, THEME.font.display for headings, or style.fontFamily on one node.
  *
  *   "Tailzu Display": "https://api.tailzu.space/media/display.ttf"
  *
