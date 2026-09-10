@@ -1801,6 +1801,10 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     onboarded: profile?.onboarded ?? false,
     email: user?.email,
     phone: user?.phone,
+    // The You tab greets the person by name. ScreenContext has carried this
+    // field all along and nothing ever filled it, so every screen that asked
+    // for a name got undefined and drew around it.
+    name: profile?.fullName,
     usage,
     allowance,
     stats,

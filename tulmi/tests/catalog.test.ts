@@ -872,6 +872,73 @@ describe("the You deck asks twice before it opens", () => {
   });
 });
 
+describe("the You tab greets you by name", () => {
+  const find = (ctx: Record<string, unknown>, type: string) => {
+    const s = buildScreen("personality", ctx as never);
+    let found: Record<string, any> | null = null;
+    const walk = (n: any): void => {
+      if (n?.type === type && !found) found = n;
+      for (const c of n?.children ?? []) walk(c);
+    };
+    walk((s as any).root);
+    return found as Record<string, any> | null;
+  };
+  const hello = (ctx: Record<string, unknown> = { personality: {}, language: "en" }) =>
+    find(ctx, "FlipText")!;
+
+  it("opens in English, whoever is looking", () => {
+    // The first word is on screen when the tab opens. An opening word that
+    // changes with the account is not an opening word.
+    expect(hello().props.words[0]).toBe("Hello");
+    expect(hello({ personality: { languages: ["ta", "hi"] }, language: "ta" })
+      .props.words[0]).toBe("Hello");
+  });
+
+  it("turns into the languages this person actually writes in, first", () => {
+    // A greeting in a language you don't read is decoration.
+    const w = hello({ personality: { languages: ["ta", "hi"] }, language: "en" }).props.words;
+    expect(w.slice(0, 3)).toEqual(["Hello", "வணக்கம்", "नमस्ते"]);
+  });
+
+  it("keeps going for someone who has chosen nothing", () => {
+    expect(hello().props.words.length).toBeGreaterThan(8);
+  });
+
+  it("never says the same word twice in a row of the cycle", () => {
+    const w = hello({ personality: { languages: ["mr", "hi"] }, language: "en" }).props.words;
+    expect(new Set(w).size).toBe(w.length);
+  });
+
+  it("sends the cadence, so the app only knows how to turn a word", () => {
+    const p = hello().props;
+    expect(p.intervalMs).toBe(YOU_UI.greet.intervalMs);
+    expect(p.flipMs).toBe(YOU_UI.greet.flipMs);
+    expect(p.variant).toBe("greetHello");
+    expect(TYPE_ROLES.greetHello).toBeDefined();
+    expect(TYPE_ROLES.greetName).toBeDefined();
+  });
+
+  it("puts the name under the hello when there is one", () => {
+    const ctx = { personality: {}, language: "en", name: "Aarav" };
+    const s = buildScreen("personality", ctx as never) as any;
+    const block = s.root.children.find((c: any) =>
+      c?.children?.some((k: any) => k?.type === "FlipText"));
+    expect(block.children[1].props.content).toBe("Aarav");
+    expect(block.children[1].props.variant).toBe("greetName");
+    // Top left, on the settings gear's line.
+    expect(block.style.left).toBe(YOU_UI.greet.left);
+  });
+
+  it("greets nobody rather than an empty name", () => {
+    for (const name of [undefined, "", "   "]) {
+      const s = buildScreen("personality", { personality: {}, language: "en", name } as never) as any;
+      const block = s.root.children.find((c: any) =>
+        c?.children?.some((k: any) => k?.type === "FlipText"));
+      expect(block.children).toHaveLength(1);
+    }
+  });
+});
+
 describe("the tab icons come down the wire", () => {
   // The backend is the creator and the app is a renderer. Icons were the one
   // place that was quietly untrue: the app matched each tab's id against

@@ -584,6 +584,12 @@ export const TYPE_ROLES: Record<string, TypeRole> = {
   greeting:     { family: "display", size: 46, weight: "300", letterSpacing: 0.2, align: "center", marginBottom: 40 },
   greetingPill: { size: S.body, weight: "300", letterSpacing: 0.5 },
 
+  // The You tab's greeting: a quiet hello over the person's name. The hello is
+  // small and tracked because it is a label, not a sentence; the name is the
+  // display face because it is the one proper noun on the screen.
+  greetHello: { size: S.label, weight: "300", letterSpacing: 1.6, color: "label" },
+  greetName:  { family: "display", size: S.h1, weight: "300", letterSpacing: 0.2, color: "text" },
+
   // The shell: title bar, error card, refresh banner, update gate, toast.
   title:        { size: 22, weight: "800", color: "text" },
   headerIcon:   { size: 24, weight: "700", color: "text" },
@@ -2812,7 +2818,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
     case "reply":
       return replyScreen();
     case "personality":
-      return personalityScreen();
+      return personalityScreen(ctx);
     case "voices":
       return voicesScreen(ctx);
     case "tone_edit":
@@ -4322,7 +4328,85 @@ export const YOU_UI = {
      *  false makes any tap open, which is what this did before. */
     tapToCentre: true,
   },
+  /**
+   * The greeting, top left — "hello" over the person's name.
+   *
+   * It sits opposite the settings gear and on its line, so the top of the
+   * screen reads as one row: who this is on the left, the way out on the
+   * right. The hello starts in English and turns over into another language,
+   * and keeps going. The name never moves — the greeting changes language,
+   * the person does not.
+   *
+   * Every number here is the backend's. The app is told which words, how long
+   * each is held, and how long the turn takes; it knows only how to turn one
+   * word into the next.
+   */
+  greet: {
+    top: 56,
+    left: 18,
+    /** How long a hello is held before it turns over. */
+    intervalMs: 2600,
+    /** The turn itself. Half out, half in. */
+    flipMs: 620,
+    /** Air between the hello and the name. */
+    gap: 2,
+  },
 };
+
+/**
+ * "Hello" in each language the app speaks, in that language's own script.
+ *
+ * The list is the backend's copy, like every other word in the product. It is
+ * keyed by language code so the cycle can be ordered per person rather than
+ * shipped as a fixed sequence — see helloCycle.
+ */
+const HELLOS: Record<string, string> = {
+  en: "Hello",
+  hi: "नमस्ते",
+  hinglish: "Namaste",
+  mr: "नमस्कार",
+  bn: "নমস্কার",
+  ta: "வணக்கம்",
+  te: "నమస్కారం",
+  gu: "નમસ્તે",
+  kn: "ನಮಸ್ಕಾರ",
+  ml: "നമസ്കാരം",
+  pa: "ਸਤ ਸ੍ਰੀ ਅਕਾਲ",
+  ur: "السلام علیکم",
+  es: "Hola",
+  fr: "Bonjour",
+  de: "Hallo",
+  it: "Ciao",
+  pt: "Olá",
+  ru: "Привет",
+  ar: "مرحبا",
+  ja: "こんにちは",
+  ko: "안녕하세요",
+  zh: "你好",
+};
+
+/**
+ * The order the greeting turns through.
+ *
+ * ENGLISH FIRST, ALWAYS — it is the word on screen when the tab opens, and an
+ * opening word that changes with the account is not an opening word. After it
+ * come the languages this person actually writes in, in the order they chose
+ * them, because a greeting in a language you don't read is decoration. The
+ * rest of the list follows so the cycle keeps going for someone who has
+ * chosen nothing yet.
+ */
+function helloCycle(languages?: string[]): string[] {
+  const mine = (languages ?? [])
+    .map((l) => String(l).toLowerCase())
+    .filter((l) => l !== "en" && HELLOS[l]);
+  const rest = Object.keys(HELLOS).filter((c) => c !== "en" && !mine.includes(c));
+  const seen = new Set<string>();
+  return ["en", ...mine, ...rest]
+    .map((c) => HELLOS[c])
+    // Two languages can share a word (Marathi and Hindi both greet with
+    // नमस्कार in some lists); the same word twice reads as a skipped turn.
+    .filter((w) => (seen.has(w) ? false : (seen.add(w), true)));
+}
 
 /**
  * The deck, in order. One list feeds the cards, the backdrops AND the routing,
@@ -4456,9 +4540,45 @@ function youLabel(content: string): Node {
   };
 }
 
-function personalityScreen(): ScreenResponse {
+function personalityScreen(ctx: ScreenContext): ScreenResponse {
   const u = YOU_UI;
   const d = u.deck;
+  const g = u.greet;
+
+  /**
+   * The greeting, top left.
+   *
+   * Two nodes, not one: the app is handed a word list and a name, and given
+   * no say in either. FlipText knows how to turn one word into the next and
+   * nothing else — which words, how long they hold, how they are set and
+   * where they sit are all decided here.
+   *
+   * A person with no name saved gets the hello alone rather than a greeting
+   * addressed to nobody.
+   */
+  const name = (ctx.name ?? "").trim();
+  const greeting: Node = {
+    type: "Stack",
+    style: { position: "absolute", top: g.top, left: g.left },
+    children: [
+      {
+        type: "FlipText",
+        props: {
+          words: helloCycle(ctx.personality?.languages),
+          intervalMs: g.intervalMs,
+          flipMs: g.flipMs,
+          variant: "greetHello",
+        },
+      },
+      ...(name
+        ? [{
+            type: "Text",
+            props: { content: name, variant: "greetName" },
+            style: { marginTop: g.gap },
+          } as Node]
+        : []),
+    ],
+  };
 
   /** One card: the topic's art, a scrim, and its name. Nothing else is on it. */
   const deckCard = (c: (typeof YOU_CARDS)[number]): Node => ({
@@ -4618,7 +4738,9 @@ function personalityScreen(): ScreenResponse {
           },
         },
 
-        // Last in the list, so it paints over the deck.
+        // Last in the list, so they paint over the deck. The greeting and the
+        // gear share a line: who this is on the left, the way out on the right.
+        greeting,
         settingsGear("dark"),
       ],
     },
