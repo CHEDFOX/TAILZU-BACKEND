@@ -795,6 +795,19 @@ export type ActionSpec =
         | "contacts" | "calendar" | "location" | "tracking";
       onGranted?: ActionRef;
       onDenied?: ActionRef;
+      /**
+       * THE SYSTEM WILL NOT ASK AGAIN.
+       *
+       * iOS shows a permission dialog once per install. After the answer is on
+       * record — Don't Allow, or the switch turned off in Settings later —
+       * requesting returns denied instantly and draws nothing, so a button
+       * wired only to onDenied appears to do nothing at all.
+       *
+       * This branch is that state, and the only useful thing to offer in it is
+       * Settings. Falls back to onDenied when unset, so a screen that does not
+       * distinguish the two keeps the behaviour it has.
+       */
+      onBlocked?: ActionRef;
     }
   // Read a permission WITHOUT asking for it. Same shape as requestPermission,
   // but it never shows a system dialog — so a screen can react to a permission

@@ -7283,6 +7283,25 @@ function onboardingVoice(): ScreenResponse {
         permission: "microphone",
         onGranted: "goKeyboard",
         onDenied: "deniedNext",
+        // ALREADY ANSWERED MEANS THE DIALOG IS NEVER COMING.
+        //
+        // iOS shows it once per install. After Don't Allow, or after the
+        // switch is turned off in Settings later, this request returns denied
+        // instantly and draws nothing — so the Allow button did visibly
+        // nothing and read as broken rather than as a decision already made.
+        //
+        // Settings is the only place that answer can change, so that is where
+        // this goes. The watcher at the foot of this screen is already looking
+        // for the permission to appear, so coming back with it granted moves
+        // the user on by itself.
+        onBlocked: "micBlocked",
+      },
+      micBlocked: {
+        kind: "sequence",
+        actions: [
+          { kind: "toast", tone: "info", message: "Turn on Microphone for Tailzu, then come back." },
+          { kind: "openSettings", target: "app" },
+        ],
       },
       // Forward from here means the NEXT thing still missing — not always the
       // keyboard step. Someone whose keyboard is already set up (a second
