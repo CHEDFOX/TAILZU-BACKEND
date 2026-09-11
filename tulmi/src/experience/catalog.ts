@@ -8908,7 +8908,23 @@ export function buildKeyboardConfig(
     //   • Row/key height 44pt (set per-row below) — matches a modern iPhone's
     //     ~43–46pt key. (Was 50pt "for a roomier feel"; that read taller than
     //     native, especially on smaller phones.)
-    style: { paddingLeft: 3, paddingRight: 3, paddingTop: 8, paddingBottom: 4, gap: 10 },
+    //
+    // ANDROID GETS NO SIDE OR BOTTOM PADDING. On iOS that 3pt edge is reclaimed
+    // by kb.touch.edgeToMargin, which hands each row's outermost key its own
+    // margin, so a touch in it types "a" rather than nothing. Android has no
+    // such rule and its key plane works a row at a time, so it cannot reach
+    // outside the row it belongs to: those 3pt strips run the full height of
+    // the key stack and are the one place on that keyboard where a finger
+    // truly lands on nothing. Android also drops `gap` entirely in the mode it
+    // ships, so the inset was not buying the visual breathing room it buys
+    // here — it was only shrinking the keys.
+    style: {
+      paddingLeft: opts.platform === "android" ? 0 : 3,
+      paddingRight: opts.platform === "android" ? 0 : 3,
+      paddingTop: 8,
+      paddingBottom: opts.platform === "android" ? 0 : 4,
+      gap: 10,
+    },
     children: [
       // NOTE: no standalone suggestion bar row. The suggestion strip lives in
       // the middle of the tools row (see makeToolsRow) so predictions appear
@@ -9994,6 +10010,23 @@ export function buildKeyboardConfig(
         // key immediately, so overlapped two-thumb presses land in press order
         // ("the", not "teh"). Matches the system keyboard's rollover.
         "kb.keyPlane.rolloverCommit": true,
+        // COMMIT ON TOUCH-DOWN. The letter is inserted when the finger lands,
+        // not when it lifts.
+        //
+        // Everything else about a press already happened on the way down — the
+        // key lights, the click sounds, the haptic fires — and only the
+        // character waited for the lift. A tap holds a key for 60 to 120 ms,
+        // so the letter trailed its own keypress by three to seven frames on
+        // every single press. That is the lag, and no work taken out of the
+        // keystroke path could ever have closed it, because the delay was the
+        // user's own finger.
+        //
+        // Keys with an accent tray are excluded client-side: there the hold has
+        // to be ruled out before anything can be typed.
+        //
+        // Sent true, read with a false default, so old binaries are untouched
+        // and a bad one can be taken back by changing this word.
+        "kb.keyPlane.commitOnDown": true,
         // Accent long-press trays routed through the multi-touch plane (the
         // v1 plane dropped them; K4 restores them plane-side).
         "kb.keyPlane.accentTrays": true,
@@ -10110,7 +10143,22 @@ export function buildKeyboardConfig(
         "kb.touch.vSlop": 12,
         // The TOP letter row (q..p) reaches further UP toward the tools row —
         // overshooting the top row still types.
-        "kb.touch.topRowUpSlop": 16,
+        //
+        // 52, not 16, because 16 left a 46pt band across the whole keyboard
+        // that belonged to no key at all. The server puts 52pt above the first
+        // letter row — 8pt of container padding plus the 44pt tools row — and
+        // the letter grid's touch band began 16pt above q, so everything from
+        // the top edge down to 46pt resolved to nothing. That band is the
+        // width of the keyboard and it is exactly where a thumb reaching for
+        // the number row lands.
+        //
+        // Nothing is stolen by this. It is a touch-only value, so the keyboard
+        // looks identical, and the mic, the tone pill and every other control
+        // in the tools row are protected by the obstacle veto that runs before
+        // the grid is consulted. What changes is the leftovers: the space
+        // BETWEEN those controls used to type nothing and now types the letter
+        // above which it sits.
+        "kb.touch.topRowUpSlop": 52,
         // The BOTTOM letter row (z..m) reaches further DOWN toward the space
         // row; the space/return/123 keys themselves are veto-protected.
         "kb.touch.bottomRowDownSlop": 14,
