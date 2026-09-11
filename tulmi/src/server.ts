@@ -1995,7 +1995,26 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
     history: false, pushTokens: false, authAccount: false,
   };
 
-  if (admin) {
+  // NO SERVICE KEY, NO DELETION, AND SAY SO.
+  //
+  // supabase() returns null whenever SUPABASE_SERVICE_KEY is unset, and the
+  // whole block below was simply skipped — then answered 200 with a cheerful
+  // summary of six things that did not happen. The app reads 200 as success:
+  // it showed "Your account has been deleted." and signed the user out, and
+  // the account was still there to sign back into.
+  //
+  // That is the exact failure Apple's 5.1.1(v) is written about, and it is
+  // worse than having no delete button, because the user believes it is done.
+  // A deletion that cannot run must fail in front of the person who asked.
+  if (!admin) {
+    req.log.error("account delete attempted with no service-role key");
+    return reply.code(503).send({
+      code: "delete_unavailable",
+      message: "Account deletion is temporarily unavailable. Please try again shortly.",
+    });
+  }
+
+  {
     // Delete usage rows and application-level tables. Errors are logged but
     // don't abort the sequence — the user still gets a partial receipt.
     try {
@@ -2040,12 +2059,23 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
     }
   }
 
+  // The auth record IS the account. Everything above is data the account
+  // owned; if this one did not go, the account did not go, and the only
+  // honest answer is an error — the app then keeps the user signed in and
+  // tells them it failed, which is recoverable. Reporting success here is
+  // not: it signs them out believing they are gone.
+  if (!summary.authAccount) {
+    req.log.error({ summary }, "account delete: auth record survived");
+    return reply.code(500).send({
+      code: "delete_incomplete",
+      message: "We could not finish deleting the account. Please try again.",
+    });
+  }
+
   return reply.send({
-    status: summary.authAccount ? "deleted" : "partial",
+    status: "deleted",
     ...summary,
-    message: summary.authAccount
-      ? "Your account and all associated data have been deleted."
-      : "Data removed. To finalize account deletion, email privacy@tailzu.space.",
+    message: "Your account and all associated data have been deleted.",
   });
 });
 

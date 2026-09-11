@@ -382,3 +382,22 @@ describe("Stats + History", () => {
     expect(latest.output).toBe("assisted:quick note about the shipment");
   });
 });
+
+describe("deleting an account", () => {
+  // THE FAILURE THIS GUARDS IS A LIE, NOT A CRASH.
+  //
+  // With no service-role key the route cannot touch Supabase Auth, and it used
+  // to answer 200 with a summary of six things it had not done. The app reads
+  // 200 as success: it said "Your account has been deleted", signed the user
+  // out, and left the account sitting there to sign back into.
+  //
+  // This test environment has no Supabase configured, which is exactly the
+  // condition that produced it. The contract is simply that a deletion which
+  // did not happen can never come back as success.
+  it("does not report success when it cannot delete anything", async () => {
+    const res = await app.inject({ method: "DELETE", url: "/v1/account" });
+    expect(res.statusCode).not.toBe(200);
+    expect(res.statusCode).toBe(503);
+    expect(res.json().code).toBe("delete_unavailable");
+  });
+});
