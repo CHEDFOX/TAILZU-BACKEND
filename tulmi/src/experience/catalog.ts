@@ -1818,6 +1818,30 @@ function pickInitialScreenId(
     (INTRO_PLAY_WHEN === "firstRun" && firstEver && !onboarded)
   );
   if (play) return "intro";
+  // THE FLAG IS ABOUT THE ACCOUNT. THE MICROPHONE AND THE KEYBOARD ARE ABOUT
+  // THE PHONE.
+  //
+  // `onboarded` outranked the device entirely, and the two are not about the
+  // same thing. Sign in on a NEW phone and the flag says the asking is done,
+  // so the app opened straight into the tabs on a device that had granted
+  // nothing: a microphone that refuses and a keyboard that was never added,
+  // with no step anywhere to explain either.
+  //
+  // The first launch of an install is the one moment the device's answer is
+  // worth more than the profile's. It is per-install, so a new phone gets the
+  // steps and the phone that already did them is not asked twice.
+  //
+  // It also cannot become a loop, which is the reason the flag outranked the
+  // device in the first place. Declining routes onward and still finishes, and
+  // this only ever fires on launch number one — so someone who said no is not
+  // returned to the same screen the next time they open the app.
+  //
+  // launchCount is 0 from a client too old to send it, and 0 is not 1, so
+  // those clients keep exactly the behaviour they have now.
+  if (launchCount === 1) {
+    if (!device.micGranted) return "onboarding";
+    if (!device.keyboardReady) return "onboarding_keyboard";
+  }
   if (onboarded) return "home";
   // ONBOARDING ONLY ASKS FOR WHAT IT DOES NOT HAVE.
   //

@@ -366,11 +366,36 @@ describe("buildBootstrap", () => {
     expect(buildBootstrap({ onboarded: false, launchCount: 0 }).initialScreenId).toBe("onboarding");
   });
 
+  // THE PROFILE CANNOT ANSWER FOR THE PHONE.
+  //
+  // `onboarded` used to outrank the device outright, and the two are not about
+  // the same thing: the flag is per ACCOUNT, the microphone and the keyboard
+  // are per PHONE. Signing in on a new phone therefore opened straight into
+  // the tabs on a device that had granted nothing — a mic that refuses and a
+  // keyboard never added, with no step left anywhere to explain either.
+  it("asks the phone, not the profile, on the first launch of an install", () => {
+    expect(buildBootstrap({ onboarded: true, launchCount: 1 }).initialScreenId)
+      .toBe("onboarding");
+    expect(buildBootstrap({ onboarded: true, launchCount: 1, micGranted: true }).initialScreenId)
+      .toBe("onboarding_keyboard");
+  });
+
+  it("asks once per install, so declining is not a loop", () => {
+    // The reason the flag outranked the device in the first place: declining
+    // routes onward and still finishes onboarding, so a device check that ran
+    // on every launch would return the refuser to the same screen forever.
+    for (const launchCount of [2, 3, 50]) {
+      const b = buildBootstrap({ onboarded: true, launchCount });
+      expect(b.initialScreenId).not.toBe("onboarding");
+      expect(b.initialScreenId).not.toBe("onboarding_keyboard");
+    }
+  });
+
   it("an onboarded user opens on home, first launch or not", () => {
     // First launch or fiftieth, an onboarded user opens on a tab root — and
     // on the SAME one the tab bar is lighting.
     for (const launchCount of [1, 50]) {
-      const b = buildBootstrap({ onboarded: true, launchCount });
+      const b = buildBootstrap({ onboarded: true, launchCount, micGranted: true, keyboardReady: true });
       const nav = b.navigation as { kind: "tabs"; initialTabId?: string; tabs: Array<{ id: string; screenId?: string }> };
       const tab = nav.tabs.find((t) => t.id === nav.initialTabId)!;
       expect(b.initialScreenId).toBe(tab.screenId ?? tab.id);
