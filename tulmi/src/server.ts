@@ -259,6 +259,38 @@ app.addHook("onError", async (req, _reply, err) => {
   captureException(err, { route: req.routeOptions?.url, method: req.method });
 });
 
+// AN EMPTY JSON BODY IS NOT A MALFORMED ONE.
+//
+// Fastify's default parser rejects `content-type: application/json` with no
+// body outright — FST_ERR_CTP_EMPTY_JSON_BODY, 400, thrown before any handler
+// runs. The app sets that header on every request it makes and only attaches a
+// body when it has one, so DELETE /v1/account arrived as a header with nothing
+// behind it and was refused at the door.
+//
+// Which is how Delete account came to be a button that could never work. The
+// request left the phone, reached the server, and was turned away by the
+// parser; the handler was never entered, nothing was ever deleted, and the app
+// showed "Couldn't delete the account" no matter how many times it was tapped.
+// Every endpoint the app calls without a body had the same hole.
+//
+// Empty now means `{}`, which is what a body-less request means. Malformed
+// JSON still fails, exactly as before — this widens what is accepted by one
+// case, the empty one, and nothing else.
+app.addContentTypeParser(
+  "application/json",
+  { parseAs: "string", bodyLimit: 1 * 1024 * 1024 },
+  (_req, body, done) => {
+    const raw = typeof body === "string" ? body.trim() : "";
+    if (raw === "") return done(null, {});
+    try {
+      done(null, JSON.parse(raw));
+    } catch (err) {
+      (err as Error & { statusCode?: number }).statusCode = 400;
+      done(err as Error, undefined);
+    }
+  },
+);
+
 await app.register(multipart, {
   limits: { fileSize: 50 * 1024 * 1024, files: 1 },
 });

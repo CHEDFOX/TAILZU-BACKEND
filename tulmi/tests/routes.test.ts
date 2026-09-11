@@ -394,6 +394,22 @@ describe("deleting an account", () => {
   // This test environment has no Supabase configured, which is exactly the
   // condition that produced it. The contract is simply that a deletion which
   // did not happen can never come back as success.
+  // THE BUTTON COULD NEVER HAVE WORKED, ON ANY BUILD.
+  //
+  // The app sets content-type: application/json on everything it sends and
+  // attaches a body only when it has one. Fastify's default parser rejects
+  // that combination — FST_ERR_CTP_EMPTY_JSON_BODY — before the handler runs.
+  // So the request left the phone, reached the server, and was turned away at
+  // the door. Nothing was deleted and nothing could be.
+  it("accepts a body-less DELETE the way the app actually sends it", async () => {
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/account",
+      headers: { "content-type": "application/json" },
+    });
+    expect(res.statusCode).not.toBe(400);
+  });
+
   it("does not report success when it cannot delete anything", async () => {
     const res = await app.inject({ method: "DELETE", url: "/v1/account" });
     expect(res.statusCode).not.toBe(200);
