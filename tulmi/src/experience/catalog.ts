@@ -897,62 +897,62 @@ const RETURNING_TAB = "stats";
  * before.
  */
 const TAB_GLYPHS: Record<string, TabGlyph> = {
-  // TRAIN — two nodes and the thread between them. The mark itself, reduced to
-  // the smallest thing that is still recognisably it.
+  // ONE CIRCLE, THREE TIMES. At rest the bar is three identical dots and says
+  // nothing; choosing a tab is what draws. Selection stops being a colour
+  // change applied to a picture and becomes the only event in the bar.
+  //
+  // HOW A LAYER IS HIDDEN IN ONE STATE, with no new client field: the renderer
+  // takes `activeStroke ?? stroke` for the width, and a width of 0 draws
+  // nothing. So `activeStroke: 0` is a layer that exists only at rest, and
+  // `stroke: 0` with `activeFill` is a layer that exists only when chosen.
+  // Both work on every build already out there.
+
+  // TRAIN — the circle splits into two unequal ones, joined. The mark's own
+  // move: one thing becomes a pair with something between them. Unequal
+  // because two of a size is a symbol and two of different sizes is a
+  // relationship.
   home: {
     layers: [
+      { d: "M9.00 16.00 A7.0 7.0 0 1 1 23.00 16.00 A7.0 7.0 0 1 1 9.00 16.00 Z", stroke: 1.6, activeStroke: 0 },
+      { d: "M13.65 17.74 L16.41 15.93", stroke: 0, activeStroke: 1.6 },
       {
-        d: "M9.37 16.90 H13.63 A1.47 1.47 0 0 1 15.10 18.37 V22.63 " +
-           "A1.47 1.47 0 0 1 13.63 24.10 H9.37 A1.47 1.47 0 0 1 7.90 22.63 " +
-           "V18.37 A1.47 1.47 0 0 1 9.37 16.90 Z",
-        stroke: 1.6, activeFill: true,
+        d: "M7.40 19.60 A3.4 3.4 0 1 1 14.20 19.60 A3.4 3.4 0 1 1 7.40 19.60 Z",
+        stroke: 0, activeFill: true,
       },
       {
-        d: "M18.37 7.90 H22.63 A1.47 1.47 0 0 1 24.10 9.37 V13.63 " +
-           "A1.47 1.47 0 0 1 22.63 15.10 H18.37 A1.47 1.47 0 0 1 16.90 13.63 " +
-           "V9.37 A1.47 1.47 0 0 1 18.37 7.90 Z",
-        stroke: 1.6, activeFill: true,
+        d: "M15.60 13.20 A5.0 5.0 0 1 1 25.60 13.20 A5.0 5.0 0 1 1 15.60 13.20 Z",
+        stroke: 0, activeFill: true,
       },
-      { d: "M14.3 17.7 L17.7 14.3", stroke: 1.6 },
     ],
   },
-  // STATS — one node, the thread leaving it, and where it has got to. Same
-  // three parts as Train, arranged as a departure rather than a pair.
+
+  // STATS — the circle fills and one slice steps out of it. The gap the slice
+  // leaves behind is what reads at 26 points, not the slice itself, so the
+  // offset is along the wedge's own bisector and large enough to survive.
   stats: {
     layers: [
+      { d: "M9.00 16.00 A7.0 7.0 0 1 1 23.00 16.00 A7.0 7.0 0 1 1 9.00 16.00 Z", stroke: 1.6, activeStroke: 0 },
       {
-        d: "M8.37 17.90 H12.63 A1.47 1.47 0 0 1 14.10 19.37 V23.63 " +
-           "A1.47 1.47 0 0 1 12.63 25.10 H8.37 A1.47 1.47 0 0 1 6.90 23.63 " +
-           "V19.37 A1.47 1.47 0 0 1 8.37 17.90 Z",
-        stroke: 1.6, activeFill: true,
+        d: "M15.20 16.80 L22.33 15.80 A7.2 7.2 0 1 1 16.70 9.76 Z",
+        stroke: 0, activeFill: true,
       },
-      { d: "M14.0 18.0 L22.0 10.0", stroke: 1.6 },
       {
-        // fill AND activeFill: the renderer fills only when the matching flag
-        // is set for that state, so a dot with `fill` alone disappears the
-        // moment the tab is selected.
-        d: "M21.80 8.70 A1.5 1.5 0 1 1 24.80 8.70 A1.5 1.5 0 1 1 21.80 8.70 Z",
-        fill: true, activeFill: true,
+        d: "M16.59 15.50 L18.09 8.46 A7.2 7.2 0 0 1 23.72 14.50 Z",
+        stroke: 0, activeFill: true,
       },
     ],
   },
-  // YOU — the node on its own, at the size the other two are made of, with the
-  // mark's dot inside it. Selected, the node fills and the dot goes with it:
-  // one solid form, which is the only solid form in the bar.
+
+  // YOU — the circle goes, and the label is left alone in the accent.
+  //
+  // The one tab that draws nothing when you are on it. It is the strongest
+  // signal in the set precisely because it is an absence: three dots and a
+  // hole, and the hole is where you are. It also happens to be the only
+  // honest picture of "you" — this screen is about the person holding the
+  // phone, and every attempt to draw them was a stock silhouette.
   personality: {
     layers: [
-      {
-        d: "M11.71 8.75 H20.29 A2.96 2.96 0 0 1 23.25 11.71 V20.29 " +
-           "A2.96 2.96 0 0 1 20.29 23.25 H11.71 A2.96 2.96 0 0 1 8.75 20.29 " +
-           "V11.71 A2.96 2.96 0 0 1 11.71 8.75 Z",
-        stroke: 1.6, activeFill: true,
-      },
-      {
-        // Filled in both states. Selected, it is the same colour as the node it
-        // sits in, so the two become one solid form — which is the intent.
-        d: "M18.00 12.40 A1.6 1.6 0 1 1 21.20 12.40 A1.6 1.6 0 1 1 18.00 12.40 Z",
-        fill: true, activeFill: true,
-      },
+      { d: "M9.00 16.00 A7.0 7.0 0 1 1 23.00 16.00 A7.0 7.0 0 1 1 9.00 16.00 Z", stroke: 1.6, activeStroke: 0 },
     ],
   },
 };
@@ -967,8 +967,13 @@ function navigationFor(landedBefore: boolean): NavigationShell {
   };
 }
 
-/** The thread across the whole bar behind the icons. false hides it. */
-const TAB_RAIL = true;
+/** The thread across the whole bar behind the icons. false hides it.
+ *
+ *  Off. The icons became circles that change into something when you choose
+ *  them, and a wave running between them turns three quiet marks into a busy
+ *  strip. The thread earned its place when the glyphs were outlines competing
+ *  with it; against a single dot it is the loudest thing in the bar. */
+const TAB_RAIL = false;
 
 const NAV: NavigationShell = {
   kind: "tabs",

@@ -1434,7 +1434,10 @@ describe("the tab icons come down the wire", () => {
   });
 
   it("carries the rail flag, so the bar's thread is a backend decision too", () => {
-    expect(shell().rail).toBe(true);
+    // The VALUE is the backend's to choose and will change again. What must
+    // never happen is the field going missing, because absent means yes on the
+    // client and the thread would come back by omission.
+    expect(typeof shell().rail).toBe("boolean");
   });
 
   it("says which tab you are on with weight, not only colour", () => {
