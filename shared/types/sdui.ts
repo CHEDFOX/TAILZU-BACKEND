@@ -505,6 +505,35 @@ export type NavigationShell =
        * which is the one worth reopening the app for.
        */
       initialTabId?: string;
+      /**
+       * THE DOCK — the tabs as a cluster of separate objects rather than a bar.
+       *
+       * A bar spreads its tabs across the full width and lets the edges of the
+       * screen do the spacing, which is right when the tabs are labels on a
+       * strip. These are not: they are three marks, and spread that far apart
+       * they stop being one control and become three unrelated things sitting
+       * near the bottom of the app.
+       *
+       * Close together, each on its own rounded ground, they read as one group
+       * with three positions in it — which is exactly what a tab bar is, and
+       * it says so without a panel behind the lot of them.
+       *
+       * Absent → the full-width row every client drew before this existed.
+       */
+      dock?: {
+        /** The square each icon sits on. */
+        size: number;
+        /** Its corner. Half the size would make discs; less keeps them squares. */
+        radius: number;
+        /** Between one square and the next. Small — that is the whole point. */
+        gap: number;
+        /** The ground under an icon you are not on. */
+        background: string;
+        /** And under the one you are. Absent → the same, and only the icon says. */
+        activeBackground?: string;
+        /** Extra lift above whatever the device reports as its safe inset. */
+        lift?: number;
+      };
     }
   | { kind: "stack"; rootScreenId: string };
 

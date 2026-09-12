@@ -1035,6 +1035,41 @@ export const TAB_GLYPH_PERSON: TabGlyph = {
     },
   ],
 };
+/**
+ * THE DOCK — three squares close together, not a bar across the screen.
+ *
+ * Spread across the full width, the three marks stopped being one control.
+ * The eye has to travel the whole screen to take them in, nothing says they
+ * belong to each other, and the gap between them is decided by the width of
+ * the phone rather than by anyone. Pulled together and each given its own
+ * ground, they read as one group with three positions in it — which is what a
+ * tab bar is — and they say it without a panel drawn behind the lot of them.
+ *
+ * The ground is what lets them sit on anything. These tabs float over
+ * full-bleed art on one tab and a black deck on another; a mark alone has to
+ * hope the art behind it is dark, and a mark on its own square never does.
+ *
+ * 58 with a 19 radius is a squircle, not a circle and not a box — half of 58
+ * would be a disc, and a disc under a glyph that is itself made of discs
+ * turns the whole thing into a target. 10 between them is close enough to
+ * group and far enough that the selected one is clearly one of three.
+ */
+const TAB_DOCK = {
+  size: 58,
+  radius: 19,
+  gap: 10,
+  /** Lighter than black so it reads on the deck, dark enough to sit on art. */
+  background: "rgba(30,30,32,0.92)",
+  /**
+   * The one you are on is a LITTLE lighter, and no more than that. The icon
+   * already carries the accent; a lit square as well would put the colour in
+   * two places and the eye would go to the bigger one — which is the ground,
+   * not the mark.
+   */
+  activeBackground: "rgba(52,52,56,0.96)",
+  lift: 6,
+};
+
 function navigationFor(landedBefore: boolean): NavigationShell {
   // NAV is the tabs shell; the narrowing keeps this honest if it ever is not.
   if (NAV.kind !== "tabs") return NAV;
@@ -1042,6 +1077,7 @@ function navigationFor(landedBefore: boolean): NavigationShell {
     ...NAV,
     tabs: NAV.tabs.map((t) => ({ ...t, glyph: TAB_GLYPHS[t.id] })),
     rail: TAB_RAIL,
+    dock: TAB_DOCK,
     initialTabId: landedBefore ? RETURNING_TAB : FIRST_TAB,
   };
 }

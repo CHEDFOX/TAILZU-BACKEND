@@ -1510,6 +1510,21 @@ describe("the tab icons come down the wire", () => {
     expect(flip.style.height).toBeGreaterThan(0);
   });
 
+  it("docks the tabs close together, each on its own ground", () => {
+    const d = shell().dock;
+    expect(d, "no dock — the tabs would spread across the width again").toBeTruthy();
+    // Close is the whole point. A gap approaching the square's own size stops
+    // reading as a group and starts reading as three separate controls.
+    expect(d!.gap).toBeLessThan(d!.size / 2);
+    // A square, not a disc: half the size would round it away entirely, and a
+    // disc under a glyph made of discs turns the tab into a target.
+    expect(d!.radius).toBeLessThan(d!.size / 2);
+    // Each one carries its own ground, which is what lets them sit on art.
+    expect(d!.background).toMatch(/^(#|rgba?\()/);
+    // And the whole row still has to fit the narrowest phone we support.
+    expect(3 * d!.size + 2 * d!.gap).toBeLessThan(320);
+  });
+
   it("carries the rail flag, so the bar's thread is a backend decision too", () => {
     // The VALUE is the backend's to choose and will change again. What must
     // never happen is the field going missing, because absent means yes on the
