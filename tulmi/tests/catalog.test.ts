@@ -1432,11 +1432,17 @@ describe("the tab icons come down the wire", () => {
     expect(shell().rail).toBe(true);
   });
 
-  it("lets the tag keep its hole when it goes solid", () => {
-    // A punch layer is drawn in the bar's own surface colour over the fill.
-    // Without it the active You icon is a solid blob and the label reads as a
-    // house.
-    const you = shell().tabs.find((t) => t.id === "personality")!;
-    expect(you.glyph!.layers.some((l) => l.punch)).toBe(true);
+  it("says which tab you are on with weight, not only colour", () => {
+    // A selected tab that differs from the others only in colour is a tab bar
+    // that cannot be read in bright light, or by anyone who does not separate
+    // those two colours. Every glyph has to change SHAPE when it is active:
+    // an open stroke thickens, a closed one fills.
+    for (const t of shell().tabs) {
+      const layers = t.glyph!.layers;
+      expect(
+        layers.some((l) => l.activeFill === true || typeof l.activeStroke === "number"),
+        `${t.id} looks identical whether or not you are on it`,
+      ).toBe(true);
+    }
   });
 });

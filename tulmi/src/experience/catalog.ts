@@ -871,50 +871,63 @@ const RETURNING_TAB = "stats";
  * set meant a release. Now the geometry is here, on a 32-unit grid, and the
  * app draws whatever it is handed — so the next set ships with a cache bump.
  *
- * Three things done to one material. The thread passes THROUGH the node (your
- * voice going in); one thread FOLDED until it is cloth (how much you have
- * made); the label that says whose it is. Silhouettes differ by axis —
- * diagonal, horizontal, solid — because a tab bar is read peripherally and the
- * outline is all that survives. The node keeps the mark's measured 0.204
- * corner radius.
+ * WHAT WAS HERE BEFORE, AND WHY IT IS NOT ANY MORE.
  *
- * Idle strokes and active strokes differ because an open stroke thickens and
- * a closed shape fills; the tag's hole is `punch`ed with the bar's own surface
- * so it stays a hole when the tag goes solid. Stats has FOUR rows — with three
- * the serpentine reads as the numeral 2.
+ * The old three were a conceit about one material: a thread through a node, a
+ * thread folded into cloth, a label saying whose it is. It reads beautifully
+ * written down and not at all on a phone. Drawn, the node became a small
+ * square with a diagonal struck through it, which is the universal sign for
+ * NOT ALLOWED; the folded thread became a numeral, which the comment here
+ * admitted by adding a fourth row so it would stop reading as a 2; and the
+ * label became a luggage tag, which says price, not person.
+ *
+ * A tab bar is read peripherally, in a fifth of a second, by someone who is
+ * not looking at it. It is the one surface in a product where being understood
+ * beats being interesting, and three glyphs nobody can name is a navigation
+ * bar that has to be learned.
+ *
+ * So: a waveform, bars, a person. Train is speech becoming writing and a
+ * waveform is what speech looks like everywhere. Stats is quantities and bars
+ * are quantities. You is a person. None of them is clever and all three are
+ * legible at 28 points, which is the size they are actually drawn at.
+ *
+ * The house style is kept where it costs nothing: one stroke weight family,
+ * round caps and joins, the same 32-unit grid, everything optically centred on
+ * 16. Active thickens the open strokes and fills the closed one, exactly as
+ * before.
  */
 const TAB_GLYPHS: Record<string, TabGlyph> = {
+  // Five bars, tallest in the middle, falling away on both sides. Symmetrical
+  // rather than random: a peripheral glance reads the silhouette, and a
+  // symmetric one resolves faster than a waveform that looks like real audio.
   home: {
     layers: [
-      { d: "M3.2 25.8 L11.6 18.0 M20.4 14.0 L28.8 6.2", stroke: 2.2, activeStroke: 2.7 },
       {
-        d: "M13.16 11.2 H18.84 A1.96 1.96 0 0 1 20.8 13.16 V18.84 A1.96 1.96 0 0 1 18.84 20.8 " +
-           "H13.16 A1.96 1.96 0 0 1 11.2 18.84 V13.16 A1.96 1.96 0 0 1 13.16 11.2 Z",
-        stroke: 2.0, activeFill: true,
+        d: "M6 13 V19 M11 9.5 V22.5 M16 6.5 V25.5 M21 10.5 V21.5 M26 13.5 V18.5",
+        stroke: 2.4, activeStroke: 3.0,
       },
     ],
   },
+  // Three bars on one baseline, ascending. Ascending because it is also the
+  // shape of the thing being counted going up.
   stats: {
     layers: [
-      {
-        d: "M4.6 7.6 H23 A2.8 2.8 0 0 1 23 13.2 H9 A2.8 2.8 0 0 0 9 18.8 H24 A2.8 2.8 0 0 1 24 24.4 H5.6",
-        stroke: 2.0, activeStroke: 2.5,
-      },
+      { d: "M9 25.5 V17.5 M16 25.5 V12 M23 25.5 V6.5", stroke: 2.8, activeStroke: 3.4 },
     ],
   },
+  // Head and shoulders. The head fills when active and the shoulders thicken,
+  // so the two states differ in weight as well as in fill — a bar that only
+  // changes colour is hard to read in bright light.
   personality: {
     layers: [
       {
-        d: "M13.4 5.2 H24.6 A2.4 2.4 0 0 1 27 7.6 V18.8 A2.4 2.4 0 0 1 26.3 20.5 L20.5 26.3 " +
-           "A2.4 2.4 0 0 1 18.8 27 H7.6 A2.4 2.4 0 0 1 5.2 24.6 V13.4 A2.4 2.4 0 0 1 5.9 11.7 " +
-           "L11.7 5.9 A2.4 2.4 0 0 1 13.4 5.2 Z",
-        stroke: 1.7, activeFill: true,
+        d: "M11.8 11.5 A4.2 4.2 0 1 1 20.2 11.5 A4.2 4.2 0 1 1 11.8 11.5 Z",
+        stroke: 2.2, activeFill: true,
       },
-      { d: "M19.3 10.5 A2.15 2.15 0 1 1 23.6 10.5 A2.15 2.15 0 1 1 19.3 10.5 Z", stroke: 1.7, punch: true },
+      { d: "M6.4 26.4 A9.6 9.6 0 0 1 25.6 26.4", stroke: 2.2, activeStroke: 2.8 },
     ],
   },
 };
-
 function navigationFor(landedBefore: boolean): NavigationShell {
   // NAV is the tabs shell; the narrowing keeps this honest if it ever is not.
   if (NAV.kind !== "tabs") return NAV;
