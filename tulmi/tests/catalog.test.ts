@@ -1408,8 +1408,13 @@ describe("the tab icons come down the wire", () => {
     for (const t of shell().tabs) {
       for (const l of t.glyph!.layers) {
         expect(l.d, `${t.id}: empty path`).toMatch(/^M/);
-        // Either it is stroked, or it is a punch (drawn only over a fill).
-        expect(l.stroke !== undefined || l.punch, `${t.id}: layer with no stroke`).toBeTruthy();
+        // Three ways a layer can appear: stroked, filled outright, or punched
+        // out of a fill beneath it. A layer that is none of them is invisible,
+        // which is the only thing worth failing on here.
+        expect(
+          l.stroke !== undefined || l.fill || l.punch,
+          `${t.id}: a layer that would draw nothing`,
+        ).toBeTruthy();
       }
     }
   });

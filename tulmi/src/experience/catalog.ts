@@ -897,34 +897,49 @@ const RETURNING_TAB = "stats";
  * before.
  */
 const TAB_GLYPHS: Record<string, TabGlyph> = {
-  // Five bars, tallest in the middle, falling away on both sides. Symmetrical
-  // rather than random: a peripheral glance reads the silhouette, and a
-  // symmetric one resolves faster than a waveform that looks like real audio.
+  // TRAIN — speech, as a level meter. Five bars, centred on the midline, and
+  // deliberately ASYMMETRIC: a symmetric one reads as a decoration, an uneven
+  // one reads as a voice. It is the only glyph here with vertical texture,
+  // which is what separates it from Stats at a glance.
   home: {
     layers: [
       {
-        d: "M6 13 V19 M11 9.5 V22.5 M16 6.5 V25.5 M21 10.5 V21.5 M26 13.5 V18.5",
-        stroke: 2.4, activeStroke: 3.0,
+        d: "M6.5 13.2 V18.8 M11.2 8.8 V23.2 M15.9 5.8 V26.2 M20.6 10.6 V21.4 M25.3 14.4 V17.6",
+        stroke: 2.3, activeStroke: 3.0,
       },
     ],
   },
-  // Three bars on one baseline, ascending. Ascending because it is also the
-  // shape of the thing being counted going up.
+  // STATS — one rising line with a dot at its end. The dot is the mark's own
+  // terminal dot, so the one flourish in the set is the logo's.
+  //
+  // A line, not bars: bars would share Train's vertical rhythm, and at 28pt
+  // two glyphs with the same rhythm are one glyph. This is the diagonal in a
+  // set that is otherwise vertical and round.
+  //
+  // It dips before it rises. A line that only goes up is a stock photo; a
+  // line that recovers is a week of writing.
   stats: {
     layers: [
-      { d: "M9 25.5 V17.5 M16 25.5 V12 M23 25.5 V6.5", stroke: 2.8, activeStroke: 3.4 },
+      { d: "M5.6 24.4 L13 17 L18.4 21.2 L25.4 10", stroke: 2.4, activeStroke: 3.0 },
+      { d: "M24.35 8.1 A1.85 1.85 0 1 1 28.05 8.1 A1.85 1.85 0 1 1 24.35 8.1 Z", fill: true },
     ],
   },
-  // Head and shoulders. The head fills when active and the shoulders thicken,
-  // so the two states differ in weight as well as in fill — a bar that only
-  // changes colour is hard to read in bright light.
+  // YOU — a person whose head is the brand's own rounded square, at the mark's
+  // measured 0.204 corner radius. Everyone recognises the silhouette before
+  // they notice the head is not a circle, which is the right order: understood
+  // first, ours second.
+  //
+  // The shoulders are flatter than a semicircle so a clear gap stays open
+  // under the head. At tab size a head touching its shoulders becomes one blob.
   personality: {
     layers: [
       {
-        d: "M11.8 11.5 A4.2 4.2 0 1 1 20.2 11.5 A4.2 4.2 0 1 1 11.8 11.5 Z",
-        stroke: 2.2, activeFill: true,
+        d: "M13.28 5.80 H18.72 A1.88 1.88 0 0 1 20.60 7.68 V13.12 " +
+           "A1.88 1.88 0 0 1 18.72 15.00 H13.28 A1.88 1.88 0 0 1 11.40 13.12 " +
+           "V7.68 A1.88 1.88 0 0 1 13.28 5.80 Z",
+        stroke: 2.3, activeFill: true,
       },
-      { d: "M6.4 26.4 A9.6 9.6 0 0 1 25.6 26.4", stroke: 2.2, activeStroke: 2.8 },
+      { d: "M5.5 26.4 A10.74 10.74 0 0 1 26.5 26.4", stroke: 2.3, activeStroke: 2.9 },
     ],
   },
 };
