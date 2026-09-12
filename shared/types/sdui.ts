@@ -455,6 +455,19 @@ export interface TabGlyph {
     activeFill?: boolean;
     punch?: boolean;
     opacity?: number;
+    /**
+     * This layer's own colour, instead of the bar's.
+     *
+     * The glyph used to be one colour with opacity standing in for a second —
+     * and a dimmed accent is not another colour, it is the same colour saying
+     * less. Two real tones let the SHAPE be one material and the thing that
+     * happened be the accent, which is the whole idea these icons are built on.
+     *
+     * Absent, the layer takes the bar's colour exactly as before.
+     */
+    color?: string;
+    /** The same, for the selected state. Falls back to `color`, then the bar. */
+    activeColor?: string;
   }>;
 }
 

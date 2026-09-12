@@ -896,59 +896,59 @@ const RETURNING_TAB = "stats";
  * 16. Active thickens the open strokes and fills the closed one, exactly as
  * before.
  */
+/**
+ * MALT — the second colour in the bar.
+ *
+ * Sampled from the mark's own light squares and warmed until it stops reading
+ * as white. It is what the SHAPE is made of; the accent is reserved for the
+ * thing that happened to it. One colour at low opacity was standing in for
+ * this, and a dimmed accent is not a second colour, it is the same colour
+ * saying less.
+ */
+const TAB_MALT = "#D8C3A5";
+
 const TAB_GLYPHS: Record<string, TabGlyph> = {
-  // ONE CIRCLE, THREE TIMES. At rest the bar is three identical rings and says
-  // nothing; choosing a tab is the only thing that draws.
+  // ONE CIRCLE, THREE TIMES. At rest the bar is three identical rings in malt
+  // and says nothing; choosing a tab is the only thing that draws.
   //
   // HOW A LAYER IS HIDDEN IN ONE STATE, with no new client field: the renderer
   // takes `activeStroke ?? stroke` for the width, and a width of 0 draws
-  // nothing. `activeStroke: 0` is a layer that exists only at rest;
-  // `stroke: 0` with `activeFill` is one that exists only when chosen. Both
-  // already work on every build in the wild.
+  // nothing. `activeStroke: 0` exists only at rest; `stroke: 0` with
+  // `activeFill` exists only when chosen.
 
   // TRAIN — the ring itself is cut in two and the halves come apart. Not two
-  // circles arriving: the ONE circle, divided. The cut is off-centre so the
-  // pieces are unequal, because a circle halved is a symbol and a circle
-  // divided unevenly is something having happened to it.
-  //
-  // The pieces sit back at a third and the thread across the gap is at full
-  // strength, the same rule Stats follows: the accent marks the event, not the
-  // shape.
+  // circles arriving: the ONE circle, divided, off-centre so the pieces are
+  // unequal — a circle halved is a symbol, a circle divided unevenly is
+  // something having happened to it. Malt pieces, accent thread.
   home: {
     layers: [
-      { d: "M9.00 16.00 A7.0 7.0 0 1 1 23.00 16.00 A7.0 7.0 0 1 1 9.00 16.00 Z", stroke: 1.6, activeStroke: 0 },
-      { d: "M11.34 11.06 A7.0 7.0 0 1 0 20.94 20.66 Z", stroke: 0, activeFill: true, opacity: 0.32 },
-      { d: "M23.06 18.54 A7.0 7.0 0 0 0 13.46 8.94 Z", stroke: 0, activeFill: true, opacity: 0.32 },
+      { d: "M9.00 16.00 A7.0 7.0 0 1 1 23.00 16.00 A7.0 7.0 0 1 1 9.00 16.00 Z", stroke: 1.6, activeStroke: 0, color: TAB_MALT, opacity: 0.55 },
+      { d: "M11.34 11.06 A7.0 7.0 0 1 0 20.94 20.66 Z", stroke: 0, activeFill: true, activeColor: TAB_MALT },
+      { d: "M23.06 18.54 A7.0 7.0 0 0 0 13.46 8.94 Z", stroke: 0, activeFill: true, activeColor: TAB_MALT },
       { d: "M13.46 18.54 L20.95 11.05", stroke: 0, activeStroke: 2.0 },
     ],
   },
 
-  // STATS — the ring becomes a pie and one slice steps out of it. The slice is
-  // the only thing at full strength; the body sits back at a third, so what
-  // the accent marks is the piece that moved rather than the whole shape.
+  // STATS — the ring becomes a pie and one slice steps out of it. The pie is
+  // malt and the slice is the accent, so what is lit is the piece that moved.
   stats: {
     layers: [
-      { d: "M9.00 16.00 A7.0 7.0 0 1 1 23.00 16.00 A7.0 7.0 0 1 1 9.00 16.00 Z", stroke: 1.6, activeStroke: 0 },
+      { d: "M9.00 16.00 A7.0 7.0 0 1 1 23.00 16.00 A7.0 7.0 0 1 1 9.00 16.00 Z", stroke: 1.6, activeStroke: 0, color: TAB_MALT, opacity: 0.55 },
       {
         d: "M15.20 16.80 L22.33 15.80 A7.2 7.2 0 1 1 16.70 9.76 Z",
-        stroke: 0, activeFill: true, opacity: 0.32,
+        stroke: 0, activeFill: true, activeColor: TAB_MALT,
       },
-      {
-        d: "M16.59 15.50 L18.09 8.46 A7.2 7.2 0 0 1 23.72 14.50 Z",
-        stroke: 0, activeFill: true,
-      },
+      { d: "M16.59 15.50 L18.09 8.46 A7.2 7.2 0 0 1 23.72 14.50 Z", stroke: 0, activeFill: true },
     ],
   },
 
   // YOU — the ring goes and nothing takes its place.
   //
   // THIS BAR HAS NO LABELS, so the slot is genuinely empty while you are on
-  // it. That is the intent — three rings and a gap, and the gap is where you
-  // are — and it is also the one decision here that cannot be softened: there
-  // is nothing else in the slot to carry it.
+  // it. Three rings and a gap, and the gap is where you are.
   personality: {
     layers: [
-      { d: "M9.00 16.00 A7.0 7.0 0 1 1 23.00 16.00 A7.0 7.0 0 1 1 9.00 16.00 Z", stroke: 1.6, activeStroke: 0 },
+      { d: "M9.00 16.00 A7.0 7.0 0 1 1 23.00 16.00 A7.0 7.0 0 1 1 9.00 16.00 Z", stroke: 1.6, activeStroke: 0, color: TAB_MALT, opacity: 0.55 },
     ],
   },
 };
