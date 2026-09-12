@@ -897,44 +897,33 @@ const RETURNING_TAB = "stats";
  * before.
  */
 const TAB_GLYPHS: Record<string, TabGlyph> = {
-  // ONE CIRCLE, THREE TIMES. At rest the bar is three identical dots and says
-  // nothing; choosing a tab is what draws. Selection stops being a colour
-  // change applied to a picture and becomes the only event in the bar.
+  // ONE CIRCLE, THREE TIMES. At rest the bar is three identical rings and says
+  // nothing; choosing a tab is the only thing that draws.
   //
   // HOW A LAYER IS HIDDEN IN ONE STATE, with no new client field: the renderer
   // takes `activeStroke ?? stroke` for the width, and a width of 0 draws
-  // nothing. So `activeStroke: 0` is a layer that exists only at rest, and
-  // `stroke: 0` with `activeFill` is a layer that exists only when chosen.
-  // Both work on every build already out there.
+  // nothing. `activeStroke: 0` is a layer that exists only at rest;
+  // `stroke: 0` with `activeFill` is one that exists only when chosen. Both
+  // already work on every build in the wild.
 
-  // TRAIN — the circle splits into two unequal ones, joined. The mark's own
-  // move: one thing becomes a pair with something between them. Unequal
-  // because two of a size is a symbol and two of different sizes is a
-  // relationship.
+  // TRAIN — the ring opens into a single line. One gesture: the closed thing
+  // becomes the thread.
   home: {
     layers: [
       { d: "M9.00 16.00 A7.0 7.0 0 1 1 23.00 16.00 A7.0 7.0 0 1 1 9.00 16.00 Z", stroke: 1.6, activeStroke: 0 },
-      { d: "M13.65 17.74 L16.41 15.93", stroke: 0, activeStroke: 1.6 },
-      {
-        d: "M7.40 19.60 A3.4 3.4 0 1 1 14.20 19.60 A3.4 3.4 0 1 1 7.40 19.60 Z",
-        stroke: 0, activeFill: true,
-      },
-      {
-        d: "M15.60 13.20 A5.0 5.0 0 1 1 25.60 13.20 A5.0 5.0 0 1 1 15.60 13.20 Z",
-        stroke: 0, activeFill: true,
-      },
+      { d: "M9.6 21.4 L22.4 10.6", stroke: 0, activeStroke: 2.0 },
     ],
   },
 
-  // STATS — the circle fills and one slice steps out of it. The gap the slice
-  // leaves behind is what reads at 26 points, not the slice itself, so the
-  // offset is along the wedge's own bisector and large enough to survive.
+  // STATS — the ring becomes a pie and one slice steps out of it. The slice is
+  // the only thing at full strength; the body sits back at a third, so what
+  // the accent marks is the piece that moved rather than the whole shape.
   stats: {
     layers: [
       { d: "M9.00 16.00 A7.0 7.0 0 1 1 23.00 16.00 A7.0 7.0 0 1 1 9.00 16.00 Z", stroke: 1.6, activeStroke: 0 },
       {
         d: "M15.20 16.80 L22.33 15.80 A7.2 7.2 0 1 1 16.70 9.76 Z",
-        stroke: 0, activeFill: true,
+        stroke: 0, activeFill: true, opacity: 0.32,
       },
       {
         d: "M16.59 15.50 L18.09 8.46 A7.2 7.2 0 0 1 23.72 14.50 Z",
@@ -943,13 +932,12 @@ const TAB_GLYPHS: Record<string, TabGlyph> = {
     ],
   },
 
-  // YOU — the circle goes, and the label is left alone in the accent.
+  // YOU — the ring goes and nothing takes its place.
   //
-  // The one tab that draws nothing when you are on it. It is the strongest
-  // signal in the set precisely because it is an absence: three dots and a
-  // hole, and the hole is where you are. It also happens to be the only
-  // honest picture of "you" — this screen is about the person holding the
-  // phone, and every attempt to draw them was a stock silhouette.
+  // THIS BAR HAS NO LABELS, so the slot is genuinely empty while you are on
+  // it. That is the intent — three rings and a gap, and the gap is where you
+  // are — and it is also the one decision here that cannot be softened: there
+  // is nothing else in the slot to carry it.
   personality: {
     layers: [
       { d: "M9.00 16.00 A7.0 7.0 0 1 1 23.00 16.00 A7.0 7.0 0 1 1 9.00 16.00 Z", stroke: 1.6, activeStroke: 0 },
