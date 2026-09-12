@@ -906,12 +906,25 @@ const TAB_GLYPHS: Record<string, TabGlyph> = {
   // `stroke: 0` with `activeFill` is one that exists only when chosen. Both
   // already work on every build in the wild.
 
-  // TRAIN — the ring opens into a single line. One gesture: the closed thing
-  // becomes the thread.
+  // TRAIN — the ring splits into two unequal circles with the thread between
+  // them. Unequal because two of a size is a symbol and two of different sizes
+  // is a relationship.
+  //
+  // Only the THREAD is at full strength; the two circles sit back at a third,
+  // the same way Stats holds its pie back behind the slice that moved. In both
+  // tabs the accent marks the thing that happened, not the whole shape.
   home: {
     layers: [
       { d: "M9.00 16.00 A7.0 7.0 0 1 1 23.00 16.00 A7.0 7.0 0 1 1 9.00 16.00 Z", stroke: 1.6, activeStroke: 0 },
-      { d: "M9.6 21.4 L22.4 10.6", stroke: 0, activeStroke: 2.0 },
+      {
+        d: "M7.40 19.60 A3.4 3.4 0 1 1 14.20 19.60 A3.4 3.4 0 1 1 7.40 19.60 Z",
+        stroke: 0, activeFill: true, opacity: 0.32,
+      },
+      {
+        d: "M15.60 13.20 A5.0 5.0 0 1 1 25.60 13.20 A5.0 5.0 0 1 1 15.60 13.20 Z",
+        stroke: 0, activeFill: true, opacity: 0.32,
+      },
+      { d: "M13.65 17.74 L16.41 15.93", stroke: 0, activeStroke: 2.0 },
     ],
   },
 
