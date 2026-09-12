@@ -1173,6 +1173,13 @@ export function buildBootstrap(
         // is the whole PaywallConfig so clients can pre-warm plan copy without
         // a separate fetch.
         "paywall.entitlement": PAYWALL_CONFIG.entitlement ?? "pro",
+        // The app prefers these over its own baked copies. Absent or empty,
+        // it falls back to the manifest exactly as before, so a server without
+        // them set changes nothing.
+        ...(getConfig().REVENUECAT_IOS_KEY
+          ? { "billing.revenueCatKey.ios": getConfig().REVENUECAT_IOS_KEY! } : {}),
+        ...(getConfig().REVENUECAT_ANDROID_KEY
+          ? { "billing.revenueCatKey.android": getConfig().REVENUECAT_ANDROID_KEY! } : {}),
         // What the SERVER believes, alongside what the client asks RevenueCat.
         // The app hides the paywall on either, so a webhook that has not
         // landed yet never leaves a paying user staring at one.

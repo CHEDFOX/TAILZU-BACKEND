@@ -266,6 +266,16 @@ const EnvSchema = z.object({
    * notice it. With this set the server can check for itself and heal.
    */
   REVENUECAT_API_KEY: z.string().optional(),
+  // The PUBLIC SDK keys the apps configure RevenueCat with. Not secrets: they
+  // ship inside every binary and sit in the update manifest in plain text.
+  //
+  // They are here because the app can no longer be trusted to keep its own
+  // copy. app.config.ts bakes them from the build environment, and that config
+  // is re-evaluated on every `eas update` — so an update published from a
+  // machine without them set replaces two working keys with two empty strings,
+  // and purchases stop in a build that was made correctly.
+  REVENUECAT_IOS_KEY: z.string().optional(),
+  REVENUECAT_ANDROID_KEY: z.string().optional(),
   /**
    * Whether a SANDBOX purchase grants access. True while you are testing.
    *
