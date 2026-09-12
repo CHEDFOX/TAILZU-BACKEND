@@ -803,6 +803,41 @@ describe("buildKeyboardConfig", () => {
     expect(buildBootstrap({ onboarded: true }).initialScreenId).toBe("personality");
   });
 
+  it("sends the intro out through the landing rule, not straight to Train", () => {
+    // "home" is the Train tab's screen and the intro used to hand it to the
+    // navigate outright, so every launch that played the film landed on Train
+    // whatever the bootstrap had decided. The rule was applied in one place
+    // and bypassed in the other, and the app was reported as opening on Train
+    // for as long as that was true.
+    const returning: any = buildScreen("intro", {
+      onboarded: true, personality: { shellSeenAt: "2026-01-01T00:00:00.000Z" }, language: "en",
+    } as never);
+    expect(returning.actions.done.screenId).not.toBe("home");
+    expect(returning.actions.done.screenId).toBe("stats");
+
+    // Not onboarded is not a tab root, so it passes through untouched — the
+    // film must never skip the steps that obtain the mic and the keyboard.
+    const fresh: any = buildScreen("intro", { onboarded: false, personality: {}, language: "en" } as never);
+    expect(fresh.actions.done.screenId).toBe("onboarding");
+  });
+
+  it("lets the opening film play, whatever the hand on the phone is doing", () => {
+    // The whole frame was a press that skipped to the next screen. Four
+    // seconds of film is four seconds of someone holding a phone, and a
+    // finger resting on the glass ended the one thing in the product that is
+    // meant to be watched. The timer owns the advance on every path now.
+    const s: any = buildScreen("intro", { onboarded: true, personality: {}, language: "en" } as never);
+    const presses = (n: any): number => {
+      if (!n || typeof n !== "object") return 0;
+      return (n.on?.onPress ? 1 : 0)
+        + (n.on?.onLongPress ? 1 : 0)
+        + (n.children ?? []).reduce((a: number, c: any) => a + presses(c), 0);
+    };
+    expect(presses(s.root), "the intro can still be cut short by a touch").toBe(0);
+    // And it still leaves on its own.
+    expect(JSON.stringify(s.actions.done)).toContain("navigate");
+  });
+
   it("gives every hero a built-in, so no screen ships an empty middle", () => {
     // Heroes resolve override → uploaded media → built-in. With nothing
     // uploaded and no override set, the built-in animation must be what

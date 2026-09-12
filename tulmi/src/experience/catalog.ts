@@ -2616,11 +2616,27 @@ function languagesScreen(ctx: ScreenContext): ScreenResponse {
 }
 
 function introScreen(ctx: ScreenContext): ScreenResponse {
-  // Route the post-intro destination the SAME way pickInitialScreenId would when
-  // the intro is NOT playing — so a brand-new (not-onboarded) user goes through
+  // Route the post-intro destination the SAME way the bootstrap would when the
+  // intro is NOT playing — so a brand-new (not-onboarded) user goes through
   // onboarding instead of being dropped straight on home (which skipped language
   // pick + keyboard-enable and never set onboarded=true → intro replayed forever).
-  const next = ctx.onboarded ? "home" : "onboarding";
+  //
+  // AND THE SAME WAY IT DECIDES WHICH TAB, which this did not do.
+  //
+  // "home" is the Train tab's screen, and it was handed straight to the
+  // navigate. Every launch that played the film therefore landed on Train no
+  // matter what the bootstrap had decided — the landing rule was applied in
+  // one place and quietly bypassed in the other, so the app opened on Train,
+  // was reported as opening on Train, and the fix kept going to the side that
+  // was already right.
+  //
+  // landingScreenId only redirects a TAB ROOT, so "onboarding" passes through
+  // it untouched and only "home" is turned into the tab that is actually being
+  // landed on.
+  const next = landingScreenId(
+    navigationFor(!!ctx.personality?.shellSeenAt),
+    ctx.onboarded ? "home" : "onboarding",
+  );
 
   // The opening scene IS the in-app mic.
   //
@@ -2698,13 +2714,21 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
     // hidden.
     root: {
       type: "Stack",
-      // Tap anywhere to skip — and the only way out if the timer never fires.
+      // NOTHING HERE TAKES A TOUCH, and that is the point of it.
       //
-      // There used to be a "Get started" button here. It was the escape hatch
-      // for a screen with no header and no tab bar, and it was also a white
-      // bar across the bottom of a four-second film. The screen keeps the
-      // hatch and loses the furniture: a Stack takes a press directly, so the
-      // whole frame is the target and nothing is drawn over the media.
+      // The whole frame used to be a press that skipped to the next screen. It
+      // was there as the escape hatch for a screen with no header and no tab
+      // bar, from when the media reported its own completion and might not.
+      // The timer below owns the advance on every path now, so the hatch was
+      // insurance against something that can no longer happen — and the cost
+      // of it was that the opening ended under a thumb.
+      //
+      // A film four seconds long is four seconds someone is holding a phone.
+      // A finger resting on the glass, a tap at the wrong moment, the hand
+      // that is already moving toward where the first button will be: all of
+      // them cut the one thing in the product that is supposed to be watched,
+      // and none of them were a decision to skip it.
+      //
       // Auto-advance owned by the SCREEN, on every path.
       //
       // `delay` + `navigate` are core actions, so this works on any client
@@ -2714,7 +2738,6 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
       // strands the user with no way off at all. Nothing here depends on a
       // component reporting anything any more.
       on: {
-        onPress: { kind: "navigate", screenId: next, replace: true },
         onAppear: { kind: "sequence", actions: [
           // Video gets a longer leash: it is the one path that can still report
           // its own completion, so this is only the net for a clip that never
