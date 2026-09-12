@@ -927,7 +927,13 @@ const TAB_GLYPHS: Record<string, TabGlyph> = {
         stroke: 1.6, activeFill: true,
       },
       { d: "M14.0 18.0 L22.0 10.0", stroke: 1.6 },
-      { d: "M21.80 8.70 A1.5 1.5 0 1 1 24.80 8.70 A1.5 1.5 0 1 1 21.80 8.70 Z", fill: true },
+      {
+        // fill AND activeFill: the renderer fills only when the matching flag
+        // is set for that state, so a dot with `fill` alone disappears the
+        // moment the tab is selected.
+        d: "M21.80 8.70 A1.5 1.5 0 1 1 24.80 8.70 A1.5 1.5 0 1 1 21.80 8.70 Z",
+        fill: true, activeFill: true,
+      },
     ],
   },
   // YOU — the node on its own, at the size the other two are made of, with the
@@ -941,7 +947,12 @@ const TAB_GLYPHS: Record<string, TabGlyph> = {
            "V11.71 A2.96 2.96 0 0 1 11.71 8.75 Z",
         stroke: 1.6, activeFill: true,
       },
-      { d: "M18.00 12.40 A1.6 1.6 0 1 1 21.20 12.40 A1.6 1.6 0 1 1 18.00 12.40 Z", fill: true },
+      {
+        // Filled in both states. Selected, it is the same colour as the node it
+        // sits in, so the two become one solid form — which is the intent.
+        d: "M18.00 12.40 A1.6 1.6 0 1 1 21.20 12.40 A1.6 1.6 0 1 1 18.00 12.40 Z",
+        fill: true, activeFill: true,
+      },
     ],
   },
 };
