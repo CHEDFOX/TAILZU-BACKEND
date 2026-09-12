@@ -928,11 +928,27 @@ const TAB_PALE = "#F3E2C6";
 const TAB_GLYPHS: Record<string, TabGlyph> = {
   // TRAIN — two plates, offset, the front one lifting off the back. Two takes
   // on the same thing, which is what this tab does.
+  //
+  // The corners are cut back along each edge and closed with a quadratic
+  // through the original vertex, which is what a rounded corner IS on a shape
+  // whose angles are not right angles. A border radius cannot help here.
   home: {
     layers: [
-      { d: "M16 7.5 L25.0 12.5 L16 17.5 L7.0 12.5 Z", fill: true, activeFill: true, color: TAB_MALT },
-      { d: "M16 14.5 L25.0 19.5 L16 24.5 L7.0 19.5 Z", fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_ACCENT },
-      { d: "M16 14.5 L18.70 16.0 L16 17.5 L13.30 16.0 Z", fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_PALE },
+      {
+        d: "M13.73 8.76 Q16.00 7.50 18.27 8.76 L22.73 11.24 Q25.00 12.50 22.73 13.76 " +
+           "L18.27 16.24 Q16.00 17.50 13.73 16.24 L9.27 13.76 Q7.00 12.50 9.27 11.24 Z",
+        fill: true, activeFill: true, color: TAB_MALT,
+      },
+      {
+        d: "M13.73 15.76 Q16.00 14.50 18.27 15.76 L22.73 18.24 Q25.00 19.50 22.73 20.76 " +
+           "L18.27 23.24 Q16.00 24.50 13.73 23.24 L9.27 20.76 Q7.00 19.50 9.27 18.24 Z",
+        fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_ACCENT,
+      },
+      {
+        d: "M15.34 14.86 Q16.00 14.50 16.66 14.86 L18.04 15.64 Q18.70 16.00 18.04 16.36 " +
+           "L16.66 17.14 Q16.00 17.50 15.34 17.14 L13.96 16.36 Q13.30 16.00 13.96 15.64 Z",
+        fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_PALE,
+      },
     ],
   },
 
@@ -951,7 +967,14 @@ const TAB_GLYPHS: Record<string, TabGlyph> = {
   personality: {
     layers: [
       { d: "M6.2 26.8 A9.8 9.8 0 0 1 25.8 26.8 Z", fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_ACCENT },
-      { d: "M11.4 10.6 A4.6 4.6 0 1 1 20.6 10.6 A4.6 4.6 0 1 1 11.4 10.6 Z", fill: true, activeFill: true, color: TAB_MALT },
+      {
+        // Low, sitting ON the shoulders rather than floating above them. A head
+        // with air under it reads as a balloon; this is the proportion the
+        // reference uses and it is most of why that set looks drawn rather
+        // than assembled.
+        d: "M11.3 12.4 A4.7 4.7 0 1 1 20.7 12.4 A4.7 4.7 0 1 1 11.3 12.4 Z",
+        fill: true, activeFill: true, color: TAB_MALT,
+      },
     ],
   },
 };
@@ -963,9 +986,20 @@ const TAB_GLYPHS: Record<string, TabGlyph> = {
  */
 export const TAB_GLYPH_CONTRAST: TabGlyph = {
   layers: [
-    { d: "M6.20 16.00 A7.0 7.0 0 1 1 20.20 16.00 A7.0 7.0 0 1 1 6.20 16.00 Z", fill: true, activeFill: true, color: TAB_MALT },
-    { d: "M14.60 16.00 A5.6 5.6 0 1 1 25.80 16.00 A5.6 5.6 0 1 1 14.60 16.00 Z", fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_ACCENT },
-    { d: "M17.96 10.87 A7.0 7.0 0 0 1 17.96 21.13 A5.6 5.6 0 0 1 17.96 10.87 Z", fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_PALE },
+    {
+      d: "M5.80 16.00 A7.2 7.2 0 1 1 20.20 16.00 A7.2 7.2 0 1 1 5.80 16.00 Z",
+      fill: true, activeFill: true, color: TAB_MALT,
+    },
+    {
+      // Clearly the smaller of the two, and still substantial. Taken further
+      // it stops reading as a pair and starts reading as a satellite.
+      d: "M16.20 16.00 A4.6 4.6 0 1 1 25.40 16.00 A4.6 4.6 0 1 1 16.20 16.00 Z",
+      fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_ACCENT,
+    },
+    {
+      d: "M18.87 11.83 A7.2 7.2 0 0 1 18.87 20.17 A4.6 4.6 0 0 1 18.87 11.83 Z",
+      fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_PALE,
+    },
   ],
 };
 function navigationFor(landedBefore: boolean): NavigationShell {
