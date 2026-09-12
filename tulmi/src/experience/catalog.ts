@@ -4947,6 +4947,15 @@ export const YOU_UI = {
     titleSize: 28,
     titleTracking: -1,
     controlSize: 32,
+    /**
+     * How far past its own edge a head control still answers a touch.
+     *
+     * 32 is the size the block wants — a bigger disc on that amber bar reads
+     * as a button stuck onto it rather than as part of it — and 32 is under
+     * what a thumb reliably hits. The slop is the difference, so the control
+     * stays the size it looks right at and is the size a hand needs.
+     */
+    controlSlop: 11,
     gap: 14,
   },
   /** A section label on the black ground. */
@@ -5364,7 +5373,7 @@ function youBack(): Node {
         actions: [{ kind: "haptic", style: "selection" }, { kind: "navigateBack" }],
       },
     },
-    props: { pressOpacity: 0.55 },
+    props: { pressOpacity: 0.55, hitSlop: u.head.controlSlop },
     style: {
       width: u.head.controlSize, height: u.head.controlSize,
       borderRadius: u.head.controlSize / 2,
@@ -5389,7 +5398,7 @@ function youHeadIcon(d: string, onPress: ActionRef): Node {
   return {
     type: "Stack",
     on: { onPress },
-    props: { pressOpacity: 0.55 },
+    props: { pressOpacity: 0.55, hitSlop: u.head.controlSlop },
     style: {
       width: u.head.controlSize, height: u.head.controlSize,
       borderRadius: u.head.controlSize / 2,

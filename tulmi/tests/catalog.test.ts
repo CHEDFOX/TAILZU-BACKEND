@@ -838,6 +838,30 @@ describe("buildKeyboardConfig", () => {
     expect(JSON.stringify(s.actions.done)).toContain("navigate");
   });
 
+  it("makes every round head control reachable by a thumb", () => {
+    // The controls on the amber block are 32pt, because a bigger disc there
+    // reads as a button stuck onto the bar rather than as part of it. 32 is
+    // also under what a thumb hits reliably, and the back arrow is the one
+    // control on those screens a user needs every time. The size stays; the
+    // slop is what makes up the difference.
+    const MIN = 44;
+    for (const id of ["languages", "voices", "haptics", "dictionary"]) {
+      const s: any = buildScreen(id, { personality: {}, language: "en" } as never);
+      const round = (n: any, out: any[] = []): any[] => {
+        if (!n || typeof n !== "object") return out;
+        const w = n.style?.width;
+        if (n.on?.onPress && typeof w === "number" && n.style?.borderRadius === w / 2) out.push(n);
+        for (const c of n.children ?? []) round(c, out);
+        return out;
+      };
+      for (const n of round(s.root)) {
+        const reach = n.style.width + 2 * Number(n.props?.hitSlop ?? 0);
+        expect(reach, `${id}: a ${n.style.width}pt control reaching only ${reach}pt`)
+          .toBeGreaterThanOrEqual(MIN);
+      }
+    }
+  });
+
   it("gives every hero a built-in, so no screen ships an empty middle", () => {
     // Heroes resolve override → uploaded media → built-in. With nothing
     // uploaded and no override set, the built-in animation must be what
