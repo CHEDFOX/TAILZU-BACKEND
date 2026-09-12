@@ -897,60 +897,76 @@ const RETURNING_TAB = "stats";
  * before.
  */
 /**
- * MALT — the second colour in the bar.
+ * THE BAR'S TWO TONES.
  *
- * Sampled from the mark's own light squares and warmed until it stops reading
- * as white. It is what the SHAPE is made of; the accent is reserved for the
- * thing that happened to it. One colour at low opacity was standing in for
- * this, and a dimmed accent is not a second colour, it is the same colour
- * saying less.
+ * MALT is what the shapes are made of — sampled from the mark's own light
+ * squares and warmed until it stops reading as white. PALE is what shows where
+ * two of them overlap, lighter than either, so a stack reads as two things and
+ * not as one silhouette with a seam.
+ *
+ * The accent is reserved: it is never the material, only the layer that has
+ * been chosen.
  */
 const TAB_MALT = "#D8C3A5";
+/** The accent, by value. ACCENT_AMBER is declared further down the file and
+ *  this block is read while the module is still being evaluated. */
+const TAB_ACCENT = "#E8A23C";
+const TAB_PALE = "#F3E2C6";
 
+/**
+ * DUOTONE, AND THE STATE IS A COLOUR RATHER THAN A SHAPE.
+ *
+ * At rest every layer is malt, so each icon is one flat silhouette and the bar
+ * says nothing. Selected, ONE layer turns to the accent and the overlap turns
+ * pale — the shape never moves. Nothing animates into place, nothing has to be
+ * learned, and the eye is drawn by warmth rather than by a change of form.
+ *
+ * Layer order is paint order: back first, then front, then the overlap on top
+ * of both. That third layer is drawn geometry rather than a blend mode, which
+ * react-native-svg does not have.
+ */
 const TAB_GLYPHS: Record<string, TabGlyph> = {
-  // ONE CIRCLE, THREE TIMES. At rest the bar is three identical rings in malt
-  // and says nothing; choosing a tab is the only thing that draws.
-  //
-  // HOW A LAYER IS HIDDEN IN ONE STATE, with no new client field: the renderer
-  // takes `activeStroke ?? stroke` for the width, and a width of 0 draws
-  // nothing. `activeStroke: 0` exists only at rest; `stroke: 0` with
-  // `activeFill` exists only when chosen.
-
-  // TRAIN — the ring itself is cut in two and the halves come apart. Not two
-  // circles arriving: the ONE circle, divided, off-centre so the pieces are
-  // unequal — a circle halved is a symbol, a circle divided unevenly is
-  // something having happened to it. Malt pieces, accent thread.
+  // TRAIN — two plates, offset, the front one lifting off the back. Two takes
+  // on the same thing, which is what this tab does.
   home: {
     layers: [
-      { d: "M9.00 16.00 A7.0 7.0 0 1 1 23.00 16.00 A7.0 7.0 0 1 1 9.00 16.00 Z", stroke: 1.6, activeStroke: 0, color: TAB_MALT, opacity: 0.55 },
-      { d: "M11.34 11.06 A7.0 7.0 0 1 0 20.94 20.66 Z", stroke: 0, activeFill: true, activeColor: TAB_MALT },
-      { d: "M23.06 18.54 A7.0 7.0 0 0 0 13.46 8.94 Z", stroke: 0, activeFill: true, activeColor: TAB_MALT },
-      { d: "M13.46 18.54 L20.95 11.05", stroke: 0, activeStroke: 2.0 },
+      { d: "M16 7.5 L25.0 12.5 L16 17.5 L7.0 12.5 Z", fill: true, activeFill: true, color: TAB_MALT },
+      { d: "M16 14.5 L25.0 19.5 L16 24.5 L7.0 19.5 Z", fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_ACCENT },
+      { d: "M16 14.5 L18.70 16.0 L16 17.5 L13.30 16.0 Z", fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_PALE },
     ],
   },
 
-  // STATS — the ring becomes a pie and one slice steps out of it. The pie is
-  // malt and the slice is the accent, so what is lit is the piece that moved.
+  // STATS — a disc with one slice stepped out of it. The slice is the layer
+  // that lights, so what the accent marks is the share, not the whole.
   stats: {
     layers: [
-      { d: "M9.00 16.00 A7.0 7.0 0 1 1 23.00 16.00 A7.0 7.0 0 1 1 9.00 16.00 Z", stroke: 1.6, activeStroke: 0, color: TAB_MALT, opacity: 0.55 },
-      {
-        d: "M15.20 16.80 L22.33 15.80 A7.2 7.2 0 1 1 16.70 9.76 Z",
-        stroke: 0, activeFill: true, activeColor: TAB_MALT,
-      },
-      { d: "M16.59 15.50 L18.09 8.46 A7.2 7.2 0 0 1 23.72 14.50 Z", stroke: 0, activeFill: true },
+      { d: "M15.30 16.70 L22.39 15.45 A7.2 7.2 0 1 1 16.55 9.61 Z", fill: true, activeFill: true, color: TAB_MALT },
+      { d: "M16.57 15.43 L17.82 8.34 A7.2 7.2 0 0 1 23.66 14.18 Z", fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_ACCENT },
     ],
   },
 
-  // YOU — the ring goes and nothing takes its place.
-  //
-  // THIS BAR HAS NO LABELS, so the slot is genuinely empty while you are on
-  // it. Three rings and a gap, and the gap is where you are.
+  // YOU — body first so the head sits over it. The BODY is the layer that
+  // lights and the head stays malt, which is the way round the reference set
+  // does it: the person is the warm part.
   personality: {
     layers: [
-      { d: "M9.00 16.00 A7.0 7.0 0 1 1 23.00 16.00 A7.0 7.0 0 1 1 9.00 16.00 Z", stroke: 1.6, activeStroke: 0, color: TAB_MALT, opacity: 0.55 },
+      { d: "M6.2 26.8 A9.8 9.8 0 0 1 25.8 26.8 Z", fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_ACCENT },
+      { d: "M11.4 10.6 A4.6 4.6 0 1 1 20.6 10.6 A4.6 4.6 0 1 1 11.4 10.6 Z", fill: true, activeFill: true, color: TAB_MALT },
     ],
   },
+};
+
+/**
+ * Two overlapping discs, built and kept for whenever You wants it instead.
+ * Same rules as the three above: malt at rest, one disc to the accent and the
+ * lens between them to pale. Unused — swap it into `personality` to use it.
+ */
+export const TAB_GLYPH_CONTRAST: TabGlyph = {
+  layers: [
+    { d: "M6.20 16.00 A7.0 7.0 0 1 1 20.20 16.00 A7.0 7.0 0 1 1 6.20 16.00 Z", fill: true, activeFill: true, color: TAB_MALT },
+    { d: "M14.60 16.00 A5.6 5.6 0 1 1 25.80 16.00 A5.6 5.6 0 1 1 14.60 16.00 Z", fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_ACCENT },
+    { d: "M17.96 10.87 A7.0 7.0 0 0 1 17.96 21.13 A5.6 5.6 0 0 1 17.96 10.87 Z", fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_PALE },
+  ],
 };
 function navigationFor(landedBefore: boolean): NavigationShell {
   // NAV is the tabs shell; the narrowing keeps this honest if it ever is not.
