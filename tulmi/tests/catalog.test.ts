@@ -1433,11 +1433,47 @@ describe("the tab icons come down the wire", () => {
     }
   });
 
+  it("gives the greeting a fixed line, so the name under it cannot move", () => {
+    // The hellos are not one script, and each measures a different height. A
+    // line left to size itself grew and shrank as the words turned over and
+    // stepped the name up and down with it — the one still thing on the screen
+    // moving because of a decoration above it.
+    const s: any = buildScreen("personality", { personality: {}, language: "en" } as never);
+    const find = (n: any): any => {
+      if (!n || typeof n !== "object") return null;
+      if (n.type === "FlipText") return n;
+      for (const c of n.children ?? []) { const hit = find(c); if (hit) return hit; }
+      return null;
+    };
+    const flip = find(s.root);
+    expect(flip, "no greeting on the You tab").toBeTruthy();
+    expect(typeof flip.style?.height, "the greeting can still resize itself").toBe("number");
+    expect(flip.style.height).toBeGreaterThan(0);
+  });
+
   it("carries the rail flag, so the bar's thread is a backend decision too", () => {
     // The VALUE is the backend's to choose and will change again. What must
     // never happen is the field going missing, because absent means yes on the
     // client and the thread would come back by omission.
     expect(typeof shell().rail).toBe("boolean");
+  });
+
+  it("keeps one layer plain and lights another, so a tab is two tones", () => {
+    // The set is duotone: the shape is a material and the accent marks the one
+    // part of it the tab is about. A glyph whose layers ALL carry the accent
+    // turns into a solid amber silhouette when selected, which is exactly what
+    // shipped once and is the thing this guards.
+    for (const t of shell().tabs) {
+      const layers = t.glyph!.layers;
+      expect(
+        layers.some((l) => l.activeColor !== undefined),
+        `${t.id} has nothing that lights`,
+      ).toBe(true);
+      expect(
+        layers.some((l) => l.activeColor === undefined && l.color !== undefined),
+        `${t.id} lights all over instead of in one place`,
+      ).toBe(true);
+    }
   });
 
   it("says which tab you are on with weight, not only colour", () => {

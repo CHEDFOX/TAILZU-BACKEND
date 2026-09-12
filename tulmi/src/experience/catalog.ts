@@ -609,6 +609,23 @@ const GREET = {
     weight: "300",
     tracking: 1.6,
     color: "rgba(255,255,255,0.42)",
+    /**
+     * A FIXED BOX FOR THE WORD, and this is the whole reason it is here.
+     *
+     * The words are not one script. "Hello" is Latin and sits inside the
+     * ascender and descender of its own face; नमस्ते hangs a headline above the
+     * letters and drops matras below them; Thai stacks tone marks a second
+     * storey up. Each measures a different height, so a line left to size
+     * itself grew and shrank as the greeting turned over — and the name, which
+     * is laid out under it, stepped down and back up with every word. The one
+     * still thing on the screen was moving, and it was moving because of a
+     * decoration above it.
+     *
+     * So the line is given a height once and never asked again. It is set from
+     * the tallest script rather than from "Hello", which means a little air
+     * under the Latin word and no movement anywhere.
+     */
+    lineHeight: 22,
   },
   /** The one proper noun on the screen, so it gets the display face. */
   name: {
@@ -669,6 +686,7 @@ export const TYPE_ROLES: Record<string, TypeRole> = {
   // set of numbers to keep in step.
   greetHello: {
     size: GREET.hello.size,
+    lineHeight: GREET.hello.lineHeight,
     weight: GREET.hello.weight,
     letterSpacing: GREET.hello.tracking,
     color: "greetHello",
@@ -925,6 +943,34 @@ const TAB_PALE = "#F3E2C6";
  * of both. That third layer is drawn geometry rather than a blend mode, which
  * react-native-svg does not have.
  */
+/**
+ * Two overlapping discs — the You tab's mark.
+ *
+ * Declared before the set because the set uses it, and a `const` read while
+ * the module is still being evaluated has to already exist.
+ */
+export const TAB_GLYPH_CONTRAST: TabGlyph = {
+  layers: [
+    {
+      d: "M5.80 16.00 A7.2 7.2 0 1 1 20.20 16.00 A7.2 7.2 0 1 1 5.80 16.00 Z",
+      fill: true, activeFill: true, color: TAB_MALT,
+    },
+    {
+      // Clearly the smaller of the two, and still substantial. Taken further
+      // it stops reading as a pair and starts reading as a satellite.
+      d: "M16.20 16.00 A4.6 4.6 0 1 1 25.40 16.00 A4.6 4.6 0 1 1 16.20 16.00 Z",
+      fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_ACCENT,
+    },
+    {
+      // The overlap, drawn as its own shape. Two translucent discs would give
+      // it for free and would also make the whole glyph translucent, which on
+      // art rather than on black is a different colour every screen.
+      d: "M18.87 11.83 A7.2 7.2 0 0 1 18.87 20.17 A4.6 4.6 0 0 1 18.87 11.83 Z",
+      fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_PALE,
+    },
+  ],
+};
+
 const TAB_GLYPHS: Record<string, TabGlyph> = {
   // TRAIN — two plates, offset, the front one lifting off the back. Two takes
   // on the same thing, which is what this tab does.
@@ -961,44 +1007,31 @@ const TAB_GLYPHS: Record<string, TabGlyph> = {
     ],
   },
 
-  // YOU — body first so the head sits over it. The BODY is the layer that
-  // lights and the head stays malt, which is the way round the reference set
-  // does it: the person is the warm part.
-  personality: {
-    layers: [
-      { d: "M6.2 26.8 A9.8 9.8 0 0 1 25.8 26.8 Z", fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_ACCENT },
-      {
-        // Low, sitting ON the shoulders rather than floating above them. A head
-        // with air under it reads as a balloon; this is the proportion the
-        // reference uses and it is most of why that set looks drawn rather
-        // than assembled.
-        d: "M11.3 12.4 A4.7 4.7 0 1 1 20.7 12.4 A4.7 4.7 0 1 1 11.3 12.4 Z",
-        fill: true, activeFill: true, color: TAB_MALT,
-      },
-    ],
-  },
+  // YOU — two overlapping discs, the large one plain and the small one lit.
+  //
+  // The person was the obvious drawing and that is the problem with it: a head
+  // on shoulders is the same mark every app in the tray already carries, so
+  // the one tab that is about THIS person looked like everyone else's account
+  // button. The pair says the same thing sideways — you, and the part of you
+  // the app is holding — and it is the only glyph in the bar with an overlap,
+  // which is what makes it findable without being read.
+  personality: TAB_GLYPH_CONTRAST,
 };
 
 /**
- * Two overlapping discs, built and kept for whenever You wants it instead.
- * Same rules as the three above: malt at rest, one disc to the accent and the
- * lens between them to pale. Unused — swap it into `personality` to use it.
+ * The person, built and kept for whenever You wants it back. Same rules as the
+ * three above: malt at rest, the body to the accent when lit. Unused — swap it
+ * into `personality` to use it.
  */
-export const TAB_GLYPH_CONTRAST: TabGlyph = {
+export const TAB_GLYPH_PERSON: TabGlyph = {
   layers: [
+    // Body first so the head sits over it.
+    { d: "M6.2 26.8 A9.8 9.8 0 0 1 25.8 26.8 Z", fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_ACCENT },
     {
-      d: "M5.80 16.00 A7.2 7.2 0 1 1 20.20 16.00 A7.2 7.2 0 1 1 5.80 16.00 Z",
+      // Low, sitting ON the shoulders rather than floating above them. A head
+      // with air under it reads as a balloon.
+      d: "M11.3 12.4 A4.7 4.7 0 1 1 20.7 12.4 A4.7 4.7 0 1 1 11.3 12.4 Z",
       fill: true, activeFill: true, color: TAB_MALT,
-    },
-    {
-      // Clearly the smaller of the two, and still substantial. Taken further
-      // it stops reading as a pair and starts reading as a satellite.
-      d: "M16.20 16.00 A4.6 4.6 0 1 1 25.40 16.00 A4.6 4.6 0 1 1 16.20 16.00 Z",
-      fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_ACCENT,
-    },
-    {
-      d: "M18.87 11.83 A7.2 7.2 0 0 1 18.87 20.17 A4.6 4.6 0 0 1 18.87 11.83 Z",
-      fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_PALE,
     },
   ],
 };
@@ -3975,6 +4008,8 @@ export const TRAINING_UI = {
       backSize: 38,
       backTop: 56,
       backInset: 14,
+      /** How far past its own edge the arrow still answers a touch. */
+      backSlop: 16,
       backColor: "rgba(255,255,255,0.72)",
       backBackground: "rgba(255,255,255,0.08)",
       /** A pause this long, with something said, ends your turn. */
@@ -4728,6 +4763,29 @@ function trainingLiveScreen(): ScreenResponse {
           on: { onError: "sessionErr" },
         },
 
+        // EVERYTHING THAT IS NOT THE ORB IS THE WAY OUT.
+        //
+        // The arrow is a 38pt target in the corner and a thumb is wider than
+        // that, so leaving was the one thing on this screen that took aim. It
+        // does not have to: the screen holds a single object and the rest is
+        // ground, and ground that dismisses is a gesture people already have
+        // from every sheet they have ever closed.
+        //
+        // Placed BEFORE the orb and after everything else, which is what makes
+        // it "outside the orb" rather than "anywhere": the topmost view under
+        // a finger is the one that answers, so the orb keeps its own area and
+        // the arrow, drawn last, keeps its own. This layer gets the rest.
+        //
+        // It fires `finish`, not a bare navigate — leaving by tapping the black
+        // is still leaving, and the conversation is saved exactly as the arrow
+        // saves it.
+        {
+          type: "Stack",
+          on: { onPress: "finish" },
+          props: { pressOpacity: 1 },
+          style: { ...FILL_STYLE },
+        },
+
         // THE ONLY THING ON THE SCREEN.
         //
         // No status word, no transcript line, no button. A conversation is
@@ -4768,7 +4826,10 @@ function trainingLiveScreen(): ScreenResponse {
         {
           type: "Stack",
           on: { onPress: "finish" },
-          props: { pressOpacity: 0.6 },
+          // The disc is 38pt and a thumb is about 44. The slop is the
+          // difference, taken outward, so the target is a thumb's width while
+          // the thing drawn stays the size it should be.
+          props: { pressOpacity: 0.6, hitSlop: ui.backSlop },
           style: {
             position: "absolute", top: ui.backTop, left: ui.backInset,
             width: ui.backSize, height: ui.backSize, borderRadius: ui.backSize / 2,
@@ -5419,6 +5480,10 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
           flip: g.flip,
           variant: "greetHello",
         },
+        // The height again, on the node. A lineHeight makes the text sit the
+        // same inside its box; a height makes the box the same. Both, or a
+        // script whose glyphs overrun the line still grows the row.
+        style: { height: g.hello.lineHeight },
       },
       ...(name
         ? [{
