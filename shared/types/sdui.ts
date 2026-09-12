@@ -45,6 +45,13 @@ export interface ClientCapabilities {
     colorScheme: "light" | "dark";
     locale: string;
     reduceMotion?: boolean;
+    /** What this phone already has. Device-level, so a different account on
+     *  the same handset inherits them — which is why the server routes
+     *  onboarding on these rather than on the profile alone. Absent from older
+     *  clients; absent reads as not granted. */
+    micGranted?: boolean;
+    keyboardEnabled?: boolean;
+    keyboardReady?: boolean;
   };
 }
 
@@ -56,10 +63,253 @@ export interface ClientCapabilities {
 // back the global theme, the navigation shell (e.g. tab bar), and the id of the
 // first screen to load. Everything after that is screen fetches + actions.
 
+/**
+ * MediaSpec — canonical way to reference an asset from a node's props.
+ *
+ * All image / video / audio / SVG source fields across the app + keyboard
+ * accept this shape (with sensible fallbacks for unset entries):
+ *
+ *   { key: "brand.mark" }              → resolve via bootstrap.media[key]
+ *   { url: "https://cdn/foo.png" }     → direct URL, disk-cached client-side
+ *   { asset: "TailzuMark" }            → bundled iOS/Android/RN asset
+ *   { emoji: "🎙️" }                    → render as text glyph
+ *   { data: "data:image/png;base64…" } → inline data URI
+ *
+ * String shorthand ALSO supported for compact backend trees:
+ *   "media:brand.mark"    → { key: "brand.mark" }
+ *   "asset:TailzuMark"    → { asset: "TailzuMark" }
+ *   "https://…"           → { url: "…" }
+ *
+ * A missing/broken key falls back to bundled defaults so a bad registry
+ * entry never blanks out UI — clients render whatever they can.
+ */
+export type MediaSpec =
+  | string
+  | { key: string }
+  | { url: string; contentType?: string }
+  | { asset: string }
+  | { emoji: string }
+  | { data: string; contentType?: string };
+
+/**
+ * How a media slot is shown — the shape of its window, not the file in it.
+ *
+ * Stored ON the registry entry, so changing how the opening plays is a POST to
+ * /v1/media/present, not an edit to a screen builder and a deploy. Every field
+ * is optional; whatever is missing falls back to that screen's own default.
+ */
+export interface MediaPresent {
+  /** The window the media plays in.
+   *  full  — edge to edge
+   *  plate — a circle, the size of the in-app mic
+   *  card  — an inset panel, rounded */
+  shape?: "full" | "plate" | "card";
+  /** How the media meets that window. "cover" fills and crops; "contain"
+   *  keeps the whole frame and its proportions. */
+  fit?: "cover" | "contain";
+  /** Corner radius, px. Ignored by "plate", which is always a circle. */
+  radius?: number;
+  /** Gap between the media and the screen edges, px. */
+  inset?: number;
+  /** Diameter of a plate, or max width of a card, px. */
+  size?: number;
+  /** Width ÷ height. A card keeps this; full and plate ignore it. */
+  aspectRatio?: number;
+  /** What is painted behind the media. */
+  background?: string;
+  /** How long the screen holds before it moves on, ms. A GIF reports nothing
+   *  when it ends, so for a GIF this IS the length of the scene. */
+  holdMs?: number;
+  /** Whether the clip repeats. Default true: a hero is ambient. False plays it
+   *  once and freezes on the last frame. */
+  loop?: boolean;
+  /**
+   * Move the media inside its window, as a PERCENTAGE of that window —
+   * nudgeX of its width, nudgeY of its height. Positive is right and down.
+   *
+   * `cover` centres the FRAME. The subject of a frame is rarely at its centre,
+   * and the opening media is the case in point: its mark sits at (0.474,
+   * 0.471) of its own art, so `cover` lands it left of and above the middle of
+   * the screen while the launch screen draws the same mark dead centre. That
+   * difference is the jump between them, and it is not in the art — it is in
+   * where the art is placed.
+   *
+   * Percentages rather than points because the miss is not a fixed size: on a
+   * phone taller than the art, `cover` scales the art to the screen's HEIGHT,
+   * so the offset grows with the device. A percentage is right on all of them.
+   *
+   * Applies to the "full" shape. A nudge replaces the pinned right/bottom
+   * edges, so it and `inset` are alternatives — the nudge wins.
+   *
+   * A nudge is measured from the media's BOX, which `scale` may have shrunk.
+   * Scaling centres the box first, so a nudge means the same thing at any
+   * scale: how far off centre the media sits.
+   */
+  nudgeX?: number;
+  nudgeY?: number;
+  /**
+   * WHERE THE SUBJECT IS, and where it should land. The replacement for
+   * nudgeX/nudgeY, and the reason placement stopped needing to be re-measured.
+   *
+   * A nudge stores the ANSWER — an offset someone found by eye, correct for one
+   * art file on one aspect ratio, wrong the moment either changes. These store
+   * the two FACTS the answer is computed from:
+   *
+   *   aspect          the art's width ÷ height        a property of the file
+   *   focusX/focusY   where the subject sits in it    a property of the file
+   *   anchorX/anchorY where it should sit on screen   a property of the screen
+   *
+   * All 0..1 except aspect. The client measures the box it is actually drawing
+   * into and does the arithmetic there, so the placement is right on hardware
+   * nobody tested on — which a stored offset can never be. Swap the art and
+   * only `focus` changes; move the mark and only `anchor` does.
+   *
+   * `aspect` is the switch: without the art's shape there is nothing to
+   * compute, so media that does not declare one keeps the old centred `cover`.
+   */
+  aspect?: number;
+  focusX?: number;
+  focusY?: number;
+  anchorX?: number;
+  anchorY?: number;
+  /**
+   * WHICH AXIS THE ART IS MADE TO FIT when it is drawn behind a whole screen.
+   *
+   * `focus`/`anchor` above choose WHAT SURVIVES a crop. This chooses whether
+   * there is a crop at all, and it is the answer for art that must not be cut
+   * on any axis — a keyboard reaching almost the full width of a 9:16 frame,
+   * say. No phone is 9:16 any more: every one of them is taller, so `cover`
+   * matches the height and takes about a tenth of the width off each side,
+   * which on that art is the outer column of keys. No focal point saves it,
+   * because the thing that must survive is the full width.
+   *
+   *   window  fill the whole screen, cropping whichever axis overflows. The
+   *           default, and right for art that is a texture or a backdrop.
+   *   width   the box is as wide as the screen and as tall as the art's own
+   *           aspect makes it. NOTHING is cropped; what is left over is the
+   *           screen's own ground.
+   *   height  the same trade the other way round, for art shorter than the
+   *           window is tall.
+   *
+   * `width` and `height` need `aspect` — without the art's shape there is no
+   * box to derive — and fall back to `window` when it is missing.
+   *
+   * The leftover is only invisible while the art's own edge matches the screen
+   * behind it. That is a real condition, not a detail: this is right for art
+   * grounded in the screen's colour and wrong for art that ends in a hard edge.
+   */
+  /**
+   * HOLD THE FIRST FRAME FOR THIS LONG, THEN PLAY.
+   *
+   * So a screen can open on a photograph rather than opening mid-motion. The
+   * Video node's `playing` is bindable, so the wait is a delay and a setState
+   * — nothing native.
+   *
+   * This shipped once and had to be pulled, because expo-video has no poster:
+   * a player created and then paused has decoded no frames, so a clip told to
+   * wait a second and a half showed a second and a half of BLACK, which is
+   * indistinguishable from a missing file. The client now primes the surface —
+   * play, then stop on the next tick and rewind — so a paused clip holds a real
+   * frame. Do not restore this against an app build older than that fix.
+   */
+  startDelayMs?: number;
+  /**
+   * HOW LONG THE LAST FRAME IS HELD before whatever is showing the clip moves
+   * on. Needs `loop: false`, or there is no last frame to hold.
+   *
+   * A demo that cuts on its final frame teaches nothing: the thing being
+   * demonstrated is the state it ends in, and that state needs a beat to be
+   * read. Together with startDelayMs and the measured duration this is what a
+   * screen's whole length is computed from, rather than guessed at.
+   */
+  endHoldMs?: number;
+  /**
+   * How much of the box the art is drawn at, 0.05–1, with `fill`.
+   *
+   * `fill: "width"` makes the art exactly as wide as the screen, which is the
+   * right answer for art that is meant to reach the edges and the wrong one for
+   * art that needs room around it. This shrinks the box, keeping its shape and
+   * its pinned edge, so the subject can be pulled back off the sides without
+   * re-exporting anything.
+   *
+   * What is left over is the screen's own ground, so this is invisible on art
+   * matted in the same colour and a visible inset on art that is not.
+   */
+  fill?: "window" | "width" | "height";
+  /**
+   * Which edge the box is held against when `fill` leaves a remainder.
+   *
+   * The art was composed against one of its own edges — the keyboard sits on
+   * the bottom of its frame because that is where a keyboard is — and pinning
+   * it to the matching edge of the screen is what makes the leftover read as
+   * the screen continuing rather than as a bar.
+   */
+  pin?: "top" | "bottom" | "center";
+  /**
+   * How much of the window the media is drawn at, 0.05–1. 1 fills it, which is
+   * the default and what full bleed means.
+   *
+   * Below 1 the media is drawn smaller and centred, on the window's own
+   * background. This exists to MATCH something the media cannot change: a
+   * launch screen's icon is a fixed size compiled into the binary, so when the
+   * opening film's subject comes out larger than it, the film is the only side
+   * that can move without a build.
+   *
+   * It is a compromise, and it should be named as one. Shrinking the film to
+   * meet an undersized launch icon is the wrong direction — the icon is what
+   * is wrong — and the moment a build can carry the right icon size, this
+   * should go back to 1. A scaled film is also only invisible while its own
+   * edges are the same colour as the screen behind it; on brighter art the
+   * gutters show.
+   */
+  scale?: number;
+  /**
+   * Draw the media in a box of this many POINTS, instead of a share of the
+   * screen. Either axis, or both; an axis left out keeps the screen-relative
+   * behaviour (`scale`).
+   *
+   * This is the only way to match something the platform measures in points.
+   * A launch screen's icon is a fixed size compiled into the binary — 17pt on
+   * a mini and 17pt on a Pro Max. Media under `cover` is a share of the screen
+   * — 17pt on a mini, 20pt on a Pro Max. A percentage of a number that changes
+   * can never equal a number that does not, so the two only agree on one screen
+   * size. Fixing the box in points puts both on the same ruler, and then they
+   * agree on all of them.
+   *
+   * What it costs: the media stops filling the screen, and reads smaller on
+   * bigger phones. For art that is a subject on the screen's own background
+   * that costs nothing — the subject is the only thing visible and it is now
+   * exact. For art that reaches its own edges, the box becomes visible.
+   *
+   * The box is centred, then nudged, so nudgeX/nudgeY keep their meaning: how
+   * far off centre, in percent of the box.
+   */
+  boxWidth?: number;
+  boxHeight?: number;
+}
+
+export interface MediaEntry {
+  url: string;
+  contentType: string;
+  size: number;
+  uploadedAt: number;
+  key?: string;
+  /** Set by POST /v1/media/present. Absent means "use the screen's default". */
+  present?: MediaPresent;
+}
+
 export interface BootstrapRequest {
   capabilities: ClientCapabilities;
   /** Opaque session/auth token if the user is signed in. */
   authToken?: string;
+  /**
+   * How many times this install has opened the app, this one included.
+   *
+   * Lets the server time a prompt by familiarity rather than by calendar —
+   * "once they have been here a few times" is a thing only the client can
+   * count, and counting it here keeps the decision itself on the server.
+   */
+  launchCount?: number;
 }
 
 export interface BootstrapResponse {
@@ -70,20 +320,57 @@ export interface BootstrapResponse {
   navigation: NavigationShell;
   /** Screen to render first. */
   initialScreenId: string;
-  /** Optional remote feature flags the renderer can read in conditions. */
-  flags?: Record<string, boolean | number | string>;
+  /**
+   * Optional remote feature flags the renderer can read in conditions.
+   * Values are opaque to the framework — most flags are primitives, but a
+   * few carry small JSON objects (e.g. media specs, deep-link shapes) so
+   * the type is intentionally permissive.
+   */
+  flags?: Record<string, boolean | number | string | Record<string, unknown> | unknown[]>;
   /**
    * Central copy: every user-facing string the app can show. Nodes reference
    * a label with "@key" (e.g. props.content = "@home.title"), so ALL wording is
    * controlled from the backend and reusable across screens.
    */
   labels?: Record<string, string>;
+  /**
+   * Central media registry: every image / video / audio / SVG asset the app
+   * can render, keyed by a semantic name (e.g. "brand.mark", "onboarding.hero").
+   *
+   * Nodes reference an entry via MediaSpec { key: "brand.mark" } or the shorthand
+   * "media:brand.mark". The runtime resolves the key → entry.url → fetches (with
+   * disk cache). Missing key → clients fall back to bundled default or emoji.
+   *
+   * Populated from admin uploads via POST /v1/media/upload; the registry file
+   * lives on the server so uploads persist across restarts. Deleting an entry
+   * only removes it from the registry — the underlying file stays on disk
+   * (safe: cache-hits from clients still work).
+   */
+  media?: Record<string, MediaEntry>;
   /** Version gating — force or suggest an app update from the server. */
   update?: UpdateGate;
+  /** A card shown over the app on open — an announcement, a nudge, an offer. */
+  launchCard?: LaunchCard;
   /** Languages for the native post-auth picker (code/name/greeting). */
   languages?: LanguageOption[];
   /** Seconds the client may cache bootstrap before refetching. */
   cacheTtlSeconds?: number;
+  /**
+   * Opaque cache token. When the server catalog changes (deploy, admin bump),
+   * this string changes; clients compare it to their stored value and drop
+   * every cached screen when it differs. Absent = no cache invalidation
+   * negotiated; the client may cache under existing `cacheTtlSeconds` rules.
+   */
+  cacheVersion?: string;
+  /**
+   * Screens to fetch and store on launch, before the user asks for them.
+   *
+   * Clients used to warm the tab destinations only, so every screen one tap
+   * deeper waited on the network the first time it was opened — on every
+   * install and again after every cacheVersion bump. The server knows the
+   * reachable set; this is it. Absent = the client warms its tabs, as before.
+   */
+  warmScreenIds?: string[];
 }
 
 export interface LanguageOption {
@@ -97,6 +384,44 @@ export interface LanguageOption {
  * Lets the backend block or nudge old app versions without an app-store action.
  * The client sends its appVersion in capabilities; the server returns thresholds.
  */
+/**
+ * A card the app puts up when it opens: something to say, and a way to act on
+ * it. A new feature to point at, a setup step never finished, an offer.
+ *
+ * `root` is an ordinary node tree, so there is no fixed card shape to work
+ * around — a title and a button, or art and three choices, are the same
+ * amount of backend and no amount of app. Its buttons carry ordinary actions;
+ * `navigate` is what sends someone to the screen the card is about.
+ *
+ * Inside the card, `navigate` and `dismiss` both close it first, so a card is
+ * never left hanging over the screen it just sent you to. Nothing else needs
+ * to know it exists.
+ *
+ * `id` IS THE SHOWING. A card is shown once per id and then remembered, so
+ * changing the copy of a card people have already seen shows nobody anything;
+ * changing its id shows everybody. That is the intended way to send a second
+ * announcement, and the reason the id is not derived from the content.
+ */
+export interface LaunchCard {
+  /** Shown once per id. Change it to say something new. */
+  id: string;
+  /** The card itself. Any node tree. */
+  root: Node;
+  /**
+   * "once" (default) — remembered per id, per install.
+   * "everyLaunch" — shown on every cold open. For a card that is a state, not
+   * an announcement: an expired subscription, a setup step still owed.
+   */
+  repeat?: "once" | "everyLaunch";
+  /** Tap outside to close. Default true; false makes the card's own controls
+   *  the only way out, for something that must be answered. */
+  dismissOnBackdrop?: boolean;
+  /** Behind the card. Defaults to a scrim over the app. */
+  backdrop?: string;
+  /** The card container's own style — width, radius, padding, fill. */
+  sheet?: Record<string, unknown>;
+}
+
 export interface UpdateGate {
   /** Apps below this are hard-blocked with a non-dismissible screen. */
   minVersion?: string;
@@ -109,6 +434,43 @@ export interface UpdateGate {
   url?: { ios?: string; android?: string; default?: string };
 }
 
+/**
+ * One tab icon, as paths on a 32-unit grid.
+ *
+ * Two states, one geometry. A layer is stroked at `stroke` when idle and at
+ * `activeStroke` when the tab is open; `fill` / `activeFill` switch it to a
+ * solid instead. `punch` is for a hole: filled with the bar's own surface
+ * colour when active, so a solid shape keeps its cut-out. Colour is never in
+ * here — idle takes the bar's muted colour and active the brand amber, and
+ * both belong to the theme, not the icon.
+ */
+export interface TabGlyph {
+  /** Defaults to "0 0 32 32". */
+  viewBox?: string;
+  layers: Array<{
+    d: string;
+    stroke?: number;
+    activeStroke?: number;
+    fill?: boolean;
+    activeFill?: boolean;
+    punch?: boolean;
+    opacity?: number;
+    /**
+     * This layer's own colour, instead of the bar's.
+     *
+     * The glyph used to be one colour with opacity standing in for a second —
+     * and a dimmed accent is not another colour, it is the same colour saying
+     * less. Two real tones let the SHAPE be one material and the thing that
+     * happened be the accent, which is the whole idea these icons are built on.
+     *
+     * Absent, the layer takes the bar's colour exactly as before.
+     */
+    color?: string;
+    /** The same, for the selected state. Falls back to `color`, then the bar. */
+    activeColor?: string;
+  }>;
+}
+
 /** The persistent navigation chrome. Either a tab bar or a plain stack. */
 export type NavigationShell =
   | {
@@ -118,7 +480,60 @@ export type NavigationShell =
         title: string;
         icon?: string;
         screenId: string;
+        /**
+         * The tab's icon, as DATA. The backend is the creator and the app is
+         * a renderer, and an icon is the one place that rule was quietly not
+         * true: the app matched the tab id against a set of shapes it carried
+         * itself, and the `icon` field above was never read. Now the shape
+         * comes down the wire, so a redrawn set ships with a cache bump.
+         *
+         * Absent → the app falls back to the set it was built with.
+         */
+        glyph?: TabGlyph;
       }>;
+      /** Draw the thread that runs across the whole bar behind the icons.
+       *  Absent means yes. */
+      rail?: boolean;
+      /**
+       * Which tab the app opens on. Absent means the first one, which is what
+       * every client did before this existed.
+       *
+       * SERVER-DECIDED, because it depends on something only the server knows:
+       * whether this person has ever reached the tabs before. A brand-new user
+       * who has just finished onboarding lands on You — the tab that is about
+       * setting the product up for them. Everyone after that lands on Stats,
+       * which is the one worth reopening the app for.
+       */
+      initialTabId?: string;
+      /**
+       * THE DOCK — the tabs as a cluster of separate objects rather than a bar.
+       *
+       * A bar spreads its tabs across the full width and lets the edges of the
+       * screen do the spacing, which is right when the tabs are labels on a
+       * strip. These are not: they are three marks, and spread that far apart
+       * they stop being one control and become three unrelated things sitting
+       * near the bottom of the app.
+       *
+       * Close together, each on its own rounded ground, they read as one group
+       * with three positions in it — which is exactly what a tab bar is, and
+       * it says so without a panel behind the lot of them.
+       *
+       * Absent → the full-width row every client drew before this existed.
+       */
+      dock?: {
+        /** The square each icon sits on. */
+        size: number;
+        /** Its corner. Half the size would make discs; less keeps them squares. */
+        radius: number;
+        /** Between one square and the next. Small — that is the whole point. */
+        gap: number;
+        /** The ground under an icon you are not on. */
+        background: string;
+        /** And under the one you are. Absent → the same, and only the icon says. */
+        activeBackground?: string;
+        /** Extra lift above whatever the device reports as its safe inset. */
+        lift?: number;
+      };
     }
   | { kind: "stack"; rootScreenId: string };
 
@@ -136,6 +551,9 @@ export interface ScreenRequest {
   authToken?: string;
   /** Params passed by a `navigate` action (e.g. an item id). */
   params?: Record<string, unknown>;
+  /** Caller's UTC offset in minutes (JS -getTimezoneOffset() convention) so
+   * server-baked per-day stats bucket in the user's local day. */
+  tzOffsetMinutes?: number;
 }
 
 export interface ScreenResponse {
@@ -166,6 +584,21 @@ export interface ScreenResponse {
   actions?: Record<string, ActionSpec>;
   /** Seconds the client may cache this screen. 0 = always refetch. */
   cacheTtlSeconds?: number;
+  /**
+   * When true, the client hides its app-level chrome (top bar with brand /
+   * back / gear, bottom tab bar) for this screen so the root renders truly
+   * full-bleed. Use for splash-adjacent screens like the intro slideshow,
+   * paywalls that need immersion, onboarding videos, etc.
+   */
+  hideChrome?: boolean;
+  /**
+   * Hide the top bar but KEEP the tab bar. hideChrome is all or nothing, and a
+   * tab root cannot use it — losing the tabs on the tab you are standing on
+   * leaves no way off it. But the header is IN FLOW, so its status-bar padding
+   * is space a full-bleed backdrop can never reach. This is the middle: the
+   * screen starts at the top of the window, the tabs stay.
+   */
+  hideHeader?: boolean;
 }
 
 // ===========================================================================
@@ -206,44 +639,129 @@ export interface Node {
 export type NodeEvent =
   | "onPress"
   | "onLongPress"
+  | "onDoubleTap"
   | "onChange"
   | "onSubmit"
+  | "onFocus"
+  | "onBlur"
   | "onAppear"
   | "onDisappear"
   | "onRefresh"
   | "onEndReached"
+  | "onSwipeLeft"
+  | "onSwipeRight"
+  | "onScroll"
+  | "onScrollEnd"
+  | "onSelect"
+  | "onDismiss"
+  | "onComplete"
   | "onResult" // async component produced a value (e.g. VoiceButton transcript)
   | "onError"; // async component failed
 
 /**
- * The component registry the v1 renderer ships. The server discovers the real
- * set from capabilities.components, but this is the baseline contract.
+ * The component registry the renderer ships. The server discovers the real
+ * set from capabilities.components. Grouped by role so future additions land
+ * in the right bucket. Every entry here has an implementation in the RN
+ * renderer; no aspirational names.
  */
 export const CORE_COMPONENTS = [
-  "Screen", // scroll/safe-area root
-  "Stack", // flex container (props.direction: "row" | "column")
-  "Spacer", // flexible/empty space
-  "Text", // props.content, props.variant ("h1"|"body"|"caption"…)
-  "Image", // props.source (url), props.aspectRatio
-  "Icon", // props.name
-  "Button", // props.label, props.variant; on.onPress
-  "TextField", // props.placeholder, bind.value; on.onChange
-  "Chip", // selectable pill; props.label, props.selected
-  "Card", // elevated container
-  "List", // props.items (data path) + props.itemTemplate (Node)
+  // v1 primitives — always present.
+  "Screen",       // scroll/safe-area root
+  "Stack",        // flex container (props.direction: "row" | "column")
+  "Spacer",       // flexible/empty space
+  "Text",         // props.content, props.variant
+  "Image",        // props.source (url), props.aspectRatio
+  "Icon",         // props.name
+  "Button",       // props.label, props.variant
+  "TextField",    // props.placeholder, bind.value
+  "Chip",         // selectable pill
+  "Card",         // elevated container
+  "List",         // props.items + props.itemTemplate
   "Divider",
   "ProgressBar",
-  "VoiceButton", // records mic → /v1/transcribe-clean → bind.value
-  // SDUI v2 content blocks:
-  "Heading", // props.content
-  "Paragraph", // props.content
-  "Badge", // props.label, props.tone ("accent")
-  "KeyValue", // props.label, props.value
-  "Hero", // props.title, props.subtitle, props.image
+  "VoiceButton",  // records mic → /v1/transcribe-clean → bind.value
+
+  // v2 content blocks (editorial).
+  "Overline", "Heading", "Paragraph", "Quote", "Badge", "KeyValue", "Hero",
+
+  // v2 morphing playground controls (Home).
+  "VoiceToggle", "RefineButton", "DraftButton", "Pager",
+
+  // v2 settings.
+  "Row",
+
+  // v2 dictionary / word chips.
+  "DictionaryEditor", "WordChips",
+
+  // v3 layout / navigation additions.
+  "Grid",             // props.columns, gap; wraps children
+  "MasonryGrid",      // like Grid but variable-height columns
+  "Modal",            // props.open (bind), props.dismissable
+  "BottomSheet",      // props.open (bind), props.snapPoints
+  "ActionSheet",      // props.actions (list of {label, action, destructive})
+  "Popover",          // anchored floating panel
+  "Tooltip",          // props.content, wraps a child anchor
+  "Collapsible",      // props.title, props.defaultOpen
+  "StickyHeader",     // pins its first child while children scroll
+  "SwipeableRow",     // props.leftActions, props.rightActions
+  "PullToRefresh",    // wraps a scrollable; fires onRefresh
+  "SafeArea",         // insets-only wrapper for edge-to-edge screens
+  "Tabs",             // in-screen tabs, props.tabs
+
+  // v3 inputs.
+  "Switch",           // bind.value
+  "Slider",           // bind.value; props.min/max/step
+  "Stepper",          // bind.value; props.min/max/step
+  "SegmentedControl", // props.options, bind.value
+  "SearchField",      // props.placeholder, bind.value, on.onSubmit
+  "Picker",           // props.options, bind.value
+  "DatePicker",       // bind.value, props.mode ("date"|"time"|"datetime")
+
+  // v3 data viz.
+  "LineChart",        // props.series (array of {x, y}), props.color
+  "BarChart",         // props.series (array of {label, value})
+  "Sparkline",        // props.data (array of numbers)
+  "ProgressRing",     // props.progress (0..1), props.label
+  "Gauge",            // props.value, props.min, props.max
+  "StatCard",         // props.label, props.value, props.delta
+  "Waveform",         // amplitude visualizer; bind.level
+
+  // v3 media.
+  "Video",            // props.source, props.autoplay, props.loop
+  "Audio",            // props.source, props.autoplay
+  "Camera",           // props.mode ("photo"|"scan"), on.onResult
+  "QRScanner",        // on.onResult
+  "ImagePickerButton",// on.onResult → {uri}
+  "Avatar",           // props.source, props.name (initials fallback)
+  "AvatarStack",      // props.avatars
+
+  // v3 feedback.
+  "Toast",            // props.tone, props.message (fires from action, not usually authored)
+  "Snackbar",         // like Toast but with an action button
+  "LoadingSkeleton",  // shimmering placeholder
+  "Confetti",         // triggered by action `confetti.fire`
+  "Rating",           // props.value, on.onChange; props.max=5
+  "EmptyState",       // props.icon, props.title, props.action
+  "Countdown",        // props.until (ISO date), on.onComplete
+  "LottieAnimation",  // props.preset (server-named), props.loop
+
+  // v3 meta.
+  "WebView",          // bounded HTML (terms, help pages)
+  "SVG",              // inline SVG (props.d, props.viewBox)
+  "Gradient",         // props.colors, props.direction
+  "BlurBackground",   // wraps children under an iOS-blur backdrop
+  "QRCode",           // props.value
+
+  // v3 conditional / structural helpers.
+  "IfElse",           // props.if (Condition), children=[thenNode, elseNode]
+  "ForEach",          // props.items (state path), children=[template]
+  "Portal",           // renders to a named layer (e.g. above toast)
 ] as const;
 
 /** Named layouts for `template` + `blocks` screens. */
-export const CORE_TEMPLATES = ["scroll", "feature", "list", "centered"] as const;
+export const CORE_TEMPLATES = [
+  "scroll", "feature", "list", "centered", "detail", "grid", "hero",
+] as const;
 
 // ===========================================================================
 // 4. Actions — declarative behavior
@@ -258,42 +776,161 @@ export type ActionRef = string | ActionSpec;
 
 export type ActionSpec =
   // --- navigation & flow ---
-  | { kind: "navigate"; screenId: string; params?: Record<string, unknown> }
+  /** `replace: true` swaps the top of the stack instead of pushing onto it, so
+   *  there is nothing behind to go back to — what a step in a linear flow
+   *  wants: onboarding must not be walkable backwards. */
+  | { kind: "navigate"; screenId: string; params?: Record<string, unknown>; replace?: boolean }
   | { kind: "navigateBack" }
   | { kind: "switchTab"; tabId: string }
   | { kind: "openUrl"; url: string; external?: boolean }
   | { kind: "openSettings"; target?: "app" | "keyboard" }
+  | { kind: "openInAppBrowser"; url: string }
   | { kind: "dismiss" }
   // --- data & network ---
   | {
       kind: "callEndpoint";
       method: "GET" | "POST" | "PUT" | "DELETE";
-      /** Path on the backend, e.g. "/v1/personality". */
       path: string;
-      /**
-       * Request body. Either an object whose values may be placeholders
-       * ("$state.x"), or a single placeholder string that resolves to a whole
-       * subtree (e.g. "$state.form" → send the form object as the body).
-       */
       body?: Record<string, unknown> | string;
-      /** Store the JSON response at this state path. */
       assignTo?: string;
       onSuccess?: ActionRef;
       onError?: ActionRef;
     }
-  | { kind: "refresh" } // re-fetch the current screen
+  | { kind: "refresh" }
   // --- local state ---
   | { kind: "setState"; path: string; value: unknown }
   | { kind: "toggleState"; path: string }
+  /** Add or remove one value in the array at `path` — the primitive a
+   *  multi-select needs. `min` refuses the removal that would take the array
+   *  below that length, so a required choice cannot be emptied. */
+  | { kind: "toggleInArray"; path: string; value: unknown; min?: number }
+  | { kind: "appendState"; path: string; value: unknown; max?: number }
+  | { kind: "incrementState"; path: string; by?: number }
+  | { kind: "clearState"; path: string }
   // --- feedback & sensory ---
   | { kind: "haptic"; style: HapticStyle }
   | { kind: "toast"; message: string; tone?: "info" | "success" | "error" }
+  | { kind: "snackbar"; message: string; actionLabel?: string; onAction?: ActionRef }
   | { kind: "playMedia"; url: string }
-  | { kind: "speak"; text: string } // uses /v1/speak under the hood
-  | { kind: "signOut" } // clears the Supabase session; app returns to the auth gate
+  | { kind: "stopMedia" }
+  | { kind: "speak"; text: string; voice?: string }
+  | { kind: "confetti" }
+  // --- system / sharing / clipboard ---
+  | { kind: "share"; text?: string; url?: string; title?: string }
+  | { kind: "shareFile"; path: string; mimeType?: string }
+  | { kind: "copyToClipboard"; text: string; toastMessage?: string }
+  | { kind: "readClipboard"; assignTo: string }
+  | { kind: "sms"; number?: string; body?: string }
+  | { kind: "email"; to?: string; subject?: string; body?: string }
+  | { kind: "phone"; number: string }
+  | { kind: "download"; url: string; filename?: string; onSuccess?: ActionRef; onError?: ActionRef }
+  | { kind: "saveToPhotos"; path: string }
+  // --- media pickers ---
+  | { kind: "pickImage"; assignTo: string; source?: "library" | "camera"; onSuccess?: ActionRef; onError?: ActionRef }
+  | { kind: "pickDocument"; assignTo: string; types?: string[]; onSuccess?: ActionRef; onError?: ActionRef }
+  | { kind: "scanQR"; assignTo: string; onSuccess?: ActionRef; onError?: ActionRef }
+  // --- permissions ---
+  | {
+      kind: "requestPermission";
+      permission:
+        | "microphone" | "camera" | "notifications" | "photoLibrary"
+        | "contacts" | "calendar" | "location" | "tracking";
+      onGranted?: ActionRef;
+      onDenied?: ActionRef;
+      /**
+       * THE SYSTEM WILL NOT ASK AGAIN.
+       *
+       * iOS shows a permission dialog once per install. After the answer is on
+       * record — Don't Allow, or the switch turned off in Settings later —
+       * requesting returns denied instantly and draws nothing, so a button
+       * wired only to onDenied appears to do nothing at all.
+       *
+       * This branch is that state, and the only useful thing to offer in it is
+       * Settings. Falls back to onDenied when unset, so a screen that does not
+       * distinguish the two keeps the behaviour it has.
+       */
+      onBlocked?: ActionRef;
+    }
+  // Read a permission WITHOUT asking for it. Same shape as requestPermission,
+  // but it never shows a system dialog — so a screen can react to a permission
+  // it already has (skip itself, hide its CTA) without the act of checking
+  // being the very prompt the screen exists to introduce. An undetermined
+  // permission reads as denied: we do not have it.
+  | {
+      kind: "checkPermission";
+      permission:
+        | "microphone" | "camera" | "notifications" | "photoLibrary"
+        | "contacts" | "calendar" | "location" | "tracking";
+      onGranted?: ActionRef;
+      onDenied?: ActionRef;
+      /** Optional: also write the boolean answer to this state path. */
+      assignTo?: string;
+    }
+  // --- auth ---
+  | { kind: "biometricPrompt"; reason?: string; onSuccess?: ActionRef; onError?: ActionRef }
+  | { kind: "signOut" }
+  // --- app-level chrome ---
+  // Switch the home-screen app icon to one of the alternates declared in the
+  // build's Info.plist (via expo-alternate-app-icons plugin). name = null or
+  // "" resets to the default icon. Devices without alternate-icon support
+  // silently no-op.
+  // --- IAP / RevenueCat ---
+  | { kind: "iap.showPaywall"; offeringId?: string; packageId?: string; onSuccess?: ActionRef; onError?: ActionRef }
+  | { kind: "iap.subscribe"; productId: string; onSuccess?: ActionRef; onError?: ActionRef }
+  | { kind: "iap.restore"; onSuccess?: ActionRef; onError?: ActionRef }
+  | { kind: "iap.checkEntitlement"; entitlement: string; assignTo: string }
+  // --- notifications ---
+  | {
+      kind: "scheduleNotification";
+      title: string;
+      body?: string;
+      afterSeconds?: number;
+      atIso?: string;
+      identifier?: string;
+      payload?: Record<string, unknown>;
+    }
+  | { kind: "cancelNotification"; identifier: string }
+  | { kind: "requestPushPermission"; onGranted?: ActionRef; onDenied?: ActionRef }
+  // --- analytics ---
+  | { kind: "analytics.track"; event: string; props?: Record<string, unknown> }
+  | { kind: "analytics.identify"; userId: string; traits?: Record<string, unknown> }
+  | { kind: "analytics.reset" }
+  // --- calendar / contacts ---
+  | { kind: "calendar.addEvent"; title: string; startsAtIso: string; endsAtIso?: string; notes?: string; location?: string }
+  // --- app-store review prompt ---
+  | { kind: "requestReview" }
+  // --- keyboard bridge (extension) ---
+  | { kind: "keyboard.reload" }
+  | { kind: "keyboard.setLayout"; language: string }
+  // --- mic handoff ---
+  // The keyboard extension can't hold the microphone (iOS blocks it in
+  // extension processes). So mic taps in the keyboard hand off to the main
+  // app, which records + refines and calls back with the cleaned text.
+  // See targets/keyboard/TulmiHandoff.swift for the full flow.
+  | {
+      kind: "completeKeyboardHandoff";
+      sessionId?: string;
+      text?: string;
+      textPath?: string;
+      onSuccess?: ActionRef;
+    }
+  | { kind: "cancelKeyboardHandoff"; sessionId?: string; onSuccess?: ActionRef }
+  // Arm the background-audio "Flow Session" (iOS): the app holds the mic alive
+  // in the background so the keyboard can drive dictation after swipe-back.
+  // Dispatched by the flow_arm screen. iOS-only; a no-op on Android.
+  | { kind: "armFlowSession"; idleTimeoutMs?: number; onSuccess?: ActionRef }
+  // End the background-audio Flow Session now — the user-visible off switch
+  // for the background mic (wired from Settings; no-op when not armed).
+  | { kind: "endFlowSession"; onSuccess?: ActionRef }
+  // --- cache / dev ---
+  | { kind: "clearCache" }
+  | { kind: "reloadApp" }
   // --- composition ---
   | { kind: "sequence"; actions: ActionRef[] }
-  | { kind: "condition"; if: Condition; then: ActionRef; else?: ActionRef };
+  | { kind: "parallel"; actions: ActionRef[] }
+  | { kind: "condition"; if: Condition; then: ActionRef; else?: ActionRef }
+  | { kind: "delay"; ms: number }
+  | { kind: "log"; message: string; level?: "info" | "warn" | "error" };
 
 export type HapticStyle =
   | "light"
@@ -306,9 +943,21 @@ export type HapticStyle =
 
 /** A small expression evaluated against state + flags for visibleIf/condition. */
 export type Condition =
-  | { eq: [string, unknown] } // state path == value
-  | { neq: [string, unknown] }
-  | { truthy: string } // state/flag path is truthy
+  | { eq: [string, unknown] }              // state path == value
+  | { neq: [string, unknown] }             // state path != value
+  | { gt: [string, number] }               // state path > value
+  | { gte: [string, number] }              // state path >= value
+  | { lt: [string, number] }               // state path < value
+  | { lte: [string, number] }              // state path <= value
+  | { in: [string, unknown[]] }            // state value ∈ list
+  | { contains: [string, string] }         // state string includes substring
+  | { startsWith: [string, string] }       // state string starts with prefix
+  | { endsWith: [string, string] }         // state string ends with suffix
+  | { truthy: string }                     // state/flag path is truthy
+  | { falsy: string }                      // state/flag path is falsy
+  | { entitled: string }                   // IAP entitlement id is active
+  | { flag: string }                       // bootstrap flags[path] is truthy
+  | { platform: "ios" | "android" }
   | { not: Condition }
   | { all: Condition[] }
   | { any: Condition[] };
@@ -320,14 +969,53 @@ export type Condition =
 // The backend owns the look. Nodes reference tokens ("$color.primary") so the
 // server can re-theme the whole app by changing the token map alone.
 
+/**
+ * One role in the type scale: everything needed to set a run of text, so no
+ * size, weight, leading, tracking or rhythm is decided on the device.
+ *
+ * `family` names a SLOT, not a font — "display" for the heading face, "body"
+ * for the running face. The slots are filled by `font.display` / `font.family`
+ * below, so a typeface swap is one line in the theme and none in the renderer.
+ * A literal face name is also accepted, for a one-off.
+ *
+ * `color` is a key in `ThemeTokens.color`, resolved on the device, so a role
+ * keeps its colour across themes. Margins live here because a role's rhythm
+ * (the air under a heading) is part of the role, not of each screen.
+ */
+export interface TypeRole {
+  size: number;
+  weight?: string;
+  lineHeight?: number;
+  letterSpacing?: number;
+  family?: "display" | "body" | string;
+  italic?: boolean;
+  transform?: "uppercase" | "lowercase" | "capitalize" | "none";
+  align?: "left" | "center" | "right";
+  color?: string;
+  marginTop?: number;
+  marginBottom?: number;
+  marginVertical?: number;
+}
+
 export interface ThemeTokens {
   color: Record<string, string>; // primary, bg, surface, text, muted, danger…
   space: Record<string, number>; // xs, sm, md, lg, xl
   radius: Record<string, number>;
   font: {
+    /** Running face for the whole app. Unset = the system font. */
     family?: string;
+    /** Heading face. Unset = `family`, else the platform serif. */
+    display?: string;
     sizes: Record<string, number>; // body, h1, caption…
     weights: Record<string, string>; // regular, bold…
+    /**
+     * The type scale, by role. Every run of text the renderer sets on its
+     * own — Text variants, content blocks, buttons, rows, the shell's title
+     * bar, error and update cards — reads one of these by name. A role the
+     * theme leaves out falls back to the renderer's built-in copy of it, so
+     * a bootstrap cached before the scale existed still draws.
+     */
+    roles?: Record<string, TypeRole>;
   };
 }
 
@@ -398,6 +1086,15 @@ export interface KeyboardConfigResponse {
     keyText: string;
     accent: string; // the ✨ Refine / active color
     keyPressed: string;
+    /**
+     * v2 additions honored by the SDUI-capable keyboard build. When present
+     * they win over `background`. Older Swift/Kotlin binaries ignore them and
+     * continue to read `background` as an opaque hex.
+     */
+    backgroundEffect?: KeyboardEffect;
+    keyEffect?: KeyboardEffect;
+    keyRadius?: number;
+    keyShadow?: boolean;
   };
   /** Enabled key layouts, one per language; first is default. */
   layouts: KeyboardLayout[];
@@ -405,18 +1102,439 @@ export interface KeyboardConfigResponse {
   features: {
     voice: boolean;
     refine: boolean;
-    /** Show a live-streaming dictation UI vs. one-shot. */
     streaming: boolean;
+    /**
+     * Android only: live-stream the mic straight from the keyboard (an Android
+     * IME can hold the mic in-process). true → the Android keyboard opens a
+     * WebSocket and shows words as you speak; false → batch record→upload. iOS
+     * ignores this (it uses kb.mic.mode, since iOS extensions can't record).
+     */
+    liveVoice?: boolean;
+    /**
+     * v2: turn on the SDUI-driven renderer. When true, the extension walks
+     * `root` instead of laying out from `layouts`+`theme`.
+     */
+    sdui?: boolean;
   };
   /** All user-facing strings, so copy is server-controlled. */
-  labels: Record<string, string>; // e.g. { refine: "✨ Refine", listening: "Listening…" }
+  labels: Record<string, string>;
+  /**
+   * Backend-tunable knobs for keyboard visuals + behavior. Every value here
+   * has a native default; pushing an override lets you change the look/feel
+   * without a rebuild. Full reference (dot-notation keys under "kb.*"):
+   *
+   *   Press feedback
+   *     kb.press.fadeMs        (default 120)  release-fade duration; 0 = instant snap
+   *
+   *   Backspace-on-hold
+   *     kb.delete.initialDelayMs      (default 500)  hold time before repeat starts
+   *     kb.delete.repeatIntervalMs    (default 90)   per-char delete cadence
+   *     kb.delete.wordAfterChars      (default 20)   how many chars before word-jump mode
+   *
+   *   Auto-cap
+   *     kb.autoCap.enabled            (default true) global auto-cap kill switch
+   *
+   *   Typing engine (K4+ binaries)
+   *     kb.keyPlane.rolloverCommit    (default true)  press-order rollover: a new
+   *                                     finger down commits the still-held key so
+   *                                     overlapped presses land in press order
+   *     kb.keyPlane.accentTrays       (default true)  accent long-press trays
+   *                                     routed through the multi-touch plane
+   *     kb.autocorrect.enabled        (default false) word-boundary autocorrect —
+   *                                     UITextChecker guesses re-ranked by physical
+   *                                     key adjacency; typed original becomes a
+   *                                     one-tap revert chip in the suggestion bar
+   *     kb.autocorrect.minLen         (default 3)     shortest word considered
+   *     kb.autocorrect.maxDistance    (default 2)     weighted edit-distance cap
+   *                                     (neighbor-key substitution costs 0.5,
+   *                                      apostrophe/space insertion costs 0.5)
+   *     kb.autocorrect.lang           (default ""     = follow primaryLanguage)
+   *     kb.suggestions.enabled        (default false) completion chips for the
+   *                                     in-progress word in the SuggestionBar
+   *     kb.suggestions.max            (default 3)
+   *     kb.touch.lmBias.enabled       (default false) next-letter hit-target bias
+   *     kb.touch.lmBias.pt            (default 3)     extra gap points a likely
+   *                                     letter claims; in-bounds hits never stolen
+   *     kb.touch.bigrams              object: prev char → string of likely next
+   *                                     letters, most likely first; " " row =
+   *                                     word-start letter frequency
+   *     kb.host.traitRefreshMs        (default 500)   min interval between host
+   *                                     trait reads from textDidChange; 0 = every
+   *                                     keystroke (pre-K4 behavior)
+   *
+   *   Touch spaces (K5+ binaries) — native-style key reach; real controls
+   *   (shift/delete/space/return/mic/tone/chips) always veto the reach
+   *     kb.touch.vSlop                (default 8)     vertical reach beyond each
+   *                                     key's rect; row gaps resolve to the
+   *                                     nearest row via dx+dy scoring
+   *     kb.touch.topRowUpSlop         (default 12)    extra upward reach for the
+   *                                     top letter row
+   *     kb.touch.bottomRowDownSlop    (default 10)    extra downward reach for
+   *                                     the bottom letter row
+   *     kb.touch.edgeToMargin         (default true)  a row's outermost key owns
+   *                                     its side margin to the keyboard edge
+   *                                     (dead corners beside a/l type a/l)
+   *
+   *   Space-bar trackpad (hold space → cursor scrubbing; K5 fixed the gesture
+   *   being cancelled by its own remount — state change is now in-place)
+   *     kb.trackpad.enabled           (default true)
+   *     kb.trackpad.longPressMs       (default 300)   hold-to-activate
+   *     kb.trackpad.ptPerChar         (default 7)     drag pt per cursor step
+   *
+   *   Layer ergonomics (K6+)
+   *     kb.layer.returnAfterSpace     (default true)  space/return on 123/#+=
+   *                                     flips back to the letter layer (native)
+   *
+   *   Swipe typing + role keys (K7+)
+   *     kb.swipe.enabled              (default false) QuickPath glide typing —
+   *                                     embedded frequency lexicon, first/last-key
+   *                                     anchoring, neighbor-tolerant path match
+   *     kb.swipe.minKeys              (default 3)     distinct keys before a drag
+   *                                     promotes from roll to swipe
+   *     kb.swipe.maxAlternates        (default 3)     runner-up chips in the bar
+   *     kb.swipe.trail.color/.width/.fadeMs — the fading ink trail
+   *     kb.swipe.extraWords           array — OTA lexicon extension
+   *     kb.keyPlane.shift             (default true)  shift rides the plane:
+   *                                     arms on touch-down, slide-to-letter
+   *                                     one-shot capitals, hold locks caps
+   *     kb.layerPeek.enabled          (default true)  123/#+=/ABC switch on
+   *                                     touch-down; press-slide-release types a
+   *                                     key and bounces back (native layer-peek)
+   *     kb.autocorrect.backspaceRevert (default true) backspace right after an
+   *                                     autocorrect restores the typed original
+   *     kb.autocorrect.confusables    object: word → alternatives OFFERED as
+   *                                     chips when the word is spelled fine
+   *                                     (their/there, your/you're…)
+   *     kb.flow.glyphSize             (default 16)    Start Flow bolt size; the
+   *                                     SDUI mic shows kb.flow.startGlyph when
+   *                                     no flow session is armed (K7+)
+   *     kb.height.pt                  (default 0 = system height) explicit
+   *                                     keyboard height constraint
+   *
+   *   Shift key
+   *     kb.shift.iconLowerOutlined    (default "arrowtriangle.down")
+   *     kb.shift.iconUpperOutlined    (default "arrowtriangle.up")
+   *     kb.shift.iconLowerLocked      (default "arrowtriangle.down.fill")
+   *     kb.shift.iconUpperLocked      (default "arrowtriangle.up.fill")
+   *     kb.shift.iconSize             (default 16)
+   *     kb.shift.iconWeight           (default "semibold")
+   *     kb.shift.lockedColor          (default "#FF6B1F")
+   *     kb.shift.longPressMs          (default 350)  hold-to-lock threshold
+   *
+   *   Mic key
+   *     kb.mic.idleIcon               icon-spec (default = bundled TailzuMark)
+   *     kb.mic.idleIconInset          (default 12)
+   *     kb.mic.recordingIcon          icon-spec (default = SF "minus" thick bar)
+   *     kb.mic.recordingIconSize      (default 14)
+   *     kb.mic.recordingIconWeight    (default "heavy")
+   *     kb.mic.liveText               (default true)  dictation "button logic":
+   *                                     true  = words paint the field live as you speak
+   *                                     false = nothing shows until STOP, then the whole
+   *                                             utterance lands in one block (after-stop).
+   *                                     Governs iOS Flow, iOS stream, and Android liveVoice.
+   *                                     Batch STT (Groq) is always after-stop regardless;
+   *                                     this flag makes a streaming STT (Deepgram) defer too.
+   *
+   *   Dictation visuals — key dim + dot stream
+   *     kb.dictation.dim.enabled      (default true)
+   *     kb.dictation.dim.color        (default "#000000")
+   *     kb.dictation.dim.alpha        (default 0.45)
+   *     kb.dictation.dim.fadeMs       (default 250)
+   *     kb.dictation.dots.enabled     (default true)
+   *     kb.dictation.dots.color       (default "#FF6B1F")
+   *     kb.dictation.dots.size        (default 14)
+   *     kb.dictation.dots.birthRate   (default 7)     dots per second
+   *     kb.dictation.dots.lifetimeMs  (default 1800)
+   *     kb.dictation.dots.decayMs     (default 2500)  post-stop trailing dots
+   *     kb.dictation.dots.spread      (default 0.08)
+   *     kb.dictation.dots.velocityJitter (default 0.05)
+   *     kb.dictation.dots.scale       (default 0.35)
+   *     kb.dictation.dots.scaleRange  (default 0.10)
+   *     kb.dictation.dots.alphaSpeed  (default -0.55)
+   *
+   *   Smart typography
+   *     kb.smartPunctuation           (default true)  curly quotes / em-dash / ellipsis
+   *     kb.smartPeriod                (default true)  double-space → ". "
+   *
+   *   Tones
+   *     kb.tones                      comma-separated list; default "Neutral,Casual,Formal,Excited"
+   *
+   *   Toast
+   *     kb.toast.durationMs   (default 2000)  visible time before fade begins
+   *     kb.toast.fadeInMs     (default 180)
+   *     kb.toast.fadeOutMs    (default 250)
+   *     kb.toast.height       (default 32)
+   *     kb.toast.offsetY      (default -18)   negative = above bottom anchor
+   *     kb.toast.fontSize     (default 13)
+   *     kb.toast.color.error   (default "#FF3B30E6")
+   *     kb.toast.color.success (default "#34C759E6")
+   *     kb.toast.color.info    (default "#000000D9")
+   *
+   *   Confetti
+   *     kb.confetti.colors            array of hex strings (default 6 system colors)
+   *     kb.confetti.birthRate         (default 6)     particles/sec per color
+   *     kb.confetti.lifetimeMs        (default 3000)
+   *     kb.confetti.velocity          (default 200)
+   *     kb.confetti.spin              (default 3)     rad/sec
+   *     kb.confetti.scale             (default 0.06)
+   *     kb.confetti.burstMs           (default 400)   birth cutoff
+   *     kb.confetti.teardownMs        (default 3500)
+   *
+   *   Waveform
+   *     kb.waveform.barCount          (default 24)
+   *     kb.waveform.color             (default "#999999")
+   *     kb.waveform.radius            (default 1.5)
+   *     kb.waveform.spacing           (default 3)
+   *     kb.waveform.height            (default 24)
+   *     kb.waveform.levelMultiplier   (default 0.6)
+   *     kb.waveform.baselineMin       (default 0.2)
+   *     kb.waveform.baselineMax       (default 0.6)
+   *     kb.waveform.fps               (default 30)
+   *
+   *   Accent tray (long-press on a letter with accents)
+   *     kb.accentTray.longPressMs     (default 500)
+   *     kb.accentTray.chipWidth       (default 40)
+   *     kb.accentTray.chipFontSize    (default 22)
+   *     kb.accentTray.chipRadius      (default 6)
+   *     kb.accentTray.chipActiveBg    (default "#007AFF")
+   *     kb.accentTray.height          (default 48)
+   *     kb.accentTray.offsetY         (default -52)   negative = above the key
+   *     kb.accentTray.radius          (default 8)
+   *     kb.accentTray.padding         (default 4)
+   *     kb.accentTray.gap             (default 4)
+   *
+   *   Return key
+   *     kb.returnKey.actionBg   (default "#007AFF")   accent for Go/Send/Search/Done
+   *     kb.returnKey.actionFg   (default "#FFFFFF")
+   *
+   *   Trackpad (space-bar long-press → cursor mode)
+   *     kb.trackpad.enabled           (default true)
+   *     kb.trackpad.longPressMs       (default 300)
+   *     kb.trackpad.ptPerChar         (default 7)     pt of drag per char step
+   *
+   *   Smart-period window (double-space → ". " gap)
+   *     kb.smartPeriod.windowMs       (default 500)
+   *
+   *   Network
+   *     kb.network.timeoutMs          (default 15000) callEndpoint request timeout
+   *
+   *   Suggestion bar
+   *     kb.suggestion.gap             (default 8)
+   *     kb.suggestion.edgeInset       (default 8)
+   *     kb.suggestion.chipRadius      (default 12)
+   *     kb.suggestion.chipPadV        (default 4)
+   *     kb.suggestion.chipPadH        (default 12)
+   *     kb.suggestion.height          (default 36)
+   *
+   *   Key shadow
+   *     kb.key.shadow.color           (default "#000000")
+   *     kb.key.shadow.offsetY         (default 1)
+   *     kb.key.shadow.radius          (default 0)
+   *     kb.key.shadow.opacity         (default 0.4)
+   *
+   *   Audio recorder (dictation input)
+   *     kb.audio.sampleRate           (default 16000)
+   *     kb.audio.channels             (default 1)
+   *     kb.audio.quality              (default "high")  min/low/medium/high/max
+   *
+   *   Dictation params (sent to backend endpoints)
+   *     kb.dictation.targetApp        (default "Generic")
+   *     kb.dictation.language         (default "auto")
+   *
+   * Icon-spec fields accept any of:
+   *   { sf: "mic.fill" } / { asset: "TailzuMark" } / { url: "https://…" } / { emoji: "🎙️" }
+   *   Or shorthand strings: "sf:mic.fill" | "asset:TailzuMark" | "https://…"
+   */
+  flags?: Record<string, unknown>;
   /** Seconds before the shell refetches config. */
   cacheTtlSeconds: number;
+  /**
+   * v2 (SDUI keyboard): the whole keyboard as a Node tree the native
+   * renderer walks. Uses KEYBOARD_COMPONENTS + KEYBOARD_ACTIONS below.
+   * When absent, the extension falls back to `layouts`+`theme`+`features`.
+   */
+  root?: KeyboardNode;
+  /** v2: named keyboard actions referenced by node `on` handlers. */
+  actions?: Record<string, KeyboardActionSpec>;
+  /** v2: an opaque cache token — bump to force clients to drop cached configs. */
+  cacheVersion?: string;
+  /**
+   * v3 (dark/light adaptive): explicit per-appearance palettes. When the next
+   * SDUI-renderer build lands, it will read `themeDark` / `themeLight` based
+   * on the extension's current `UITraitCollection.userInterfaceStyle` and
+   * re-render on `traitCollectionDidChange`. Until then, the shipped renderer
+   * ignores these fields entirely and reads the top-level `theme` — which we
+   * keep populated as a backward-compatible dark-mode default. Same for the
+   * SDUI `root`: we may emit `rootDark` / `rootLight` later; today just `root`.
+   */
+  themeDark?: KeyboardConfigResponse["theme"];
+  themeLight?: KeyboardConfigResponse["theme"];
 }
 
 export interface KeyboardLayout {
   /** ISO code or name, e.g. "en", "hi", "hinglish". */
   language: string;
+  /** Human-readable name for the language switcher (endonym). */
+  displayName?: string;
   /** Rows of key captions; specials use tokens like "{shift}" "{space}". */
   rows: string[][];
 }
+
+/** Backdrop / surface effect the native renderer maps to platform APIs. */
+export type KeyboardEffect =
+  | { kind: "solid"; color: string }
+  | { kind: "blur"; style: "regular" | "chromeMaterialDark" | "chromeMaterialLight" | "systemThinMaterial" | "systemUltraThinMaterial" }
+  | { kind: "gradient"; colors: string[]; direction?: "vertical" | "horizontal" };
+
+/**
+ * A subset of the app SDUI Node tree — only what the keyboard extension can
+ * render safely under the 60MB memory ceiling. Extras (bind, visibleIf) are
+ * evaluated against the keyboard's state store, which exposes:
+ *
+ *   state.shift / capsLock / dictating / refining / hasFullAccess
+ *   state.layoutId / tone / trackpadActive / status / micLevel
+ *   state.primaryLanguage      → "EN" / "FR" / "DE" (follows input mode)
+ *   state.hasMultipleKeyboards → true when needsInputModeSwitchKey is on
+ *   state.appearance           → "dark" | "light" (trait collection)
+ *   state.deviceModel          → "iPhone" / "iPad"
+ *   state.systemVersion        → "18.5" etc.
+ *   state.isNetworkReachable   → boolean, updated on major state changes
+ *   state.keyboardHeight       → CGFloat, current input view height
+ *   state.user.<any>           → backend scratch dict — setState / toggleState /
+ *                                 incrementState / clearState / readClipboard /
+ *                                 callEndpoint.assignTo all write here. Reads
+ *                                 via bind: { text: "user.myFlag" } or
+ *                                 visibleIf: { truthy: "state.user.myFlag" }.
+ *
+ * Backend can use any of these in bind or visibleIf without a native rebuild.
+ *
+ * Icon shapes accepted by IconKey.props.icon AND Image.props.source (no rebuild):
+ *
+ *   { sf: "mic.fill" }                    // SF Symbol
+ *   { asset: "TailzuMark" }               // bundled UIImage
+ *   { url: "https://cdn/mark@3x.png" }    // remote — auto-cached to disk
+ *   { emoji: "🎙️" }                      // rendered as title text
+ *   "sf:mic.fill" | "asset:TailzuMark" | "https://…"   // string shorthand
+ *
+ * Style bag additions honored by all nodes:
+ *   opacity: number             // 0..1
+ *   borderColor / borderWidth   // hex + pt
+ *   shadow: { color, opacity, radius, offset: [x, y] }
+ */
+export interface KeyboardNode {
+  type: string;
+  id?: string;
+  props?: Record<string, unknown>;
+  style?: Record<string, unknown>;
+  children?: KeyboardNode[];
+  bind?: Record<string, string>;
+  on?: Partial<Record<"onPress" | "onLongPress" | "onDoubleTap", KeyboardActionRef>>;
+  effect?: KeyboardEffect;
+  visibleIf?: Condition;
+}
+
+/** Component types the native keyboard renderer understands. */
+export const KEYBOARD_COMPONENTS = [
+  // ----- layout / structure -----
+  "Container",     // vertical column, main root
+  "Row",           // horizontal row (a layout row of keys)
+  "Column",        // vertical group
+  "Spacer",        // fills flex space
+  "ScrollView",    // horizontal or vertical scrollable region (props.horizontal)
+  // ----- keys (specialized behaviors) -----
+  "LetterKey",     // props.char
+  "IconKey",       // props.icon (sf/asset/url/emoji spec — see IconKey docs above)
+  "SpaceKey",
+  "ShiftKey",
+  "ReturnKey",
+  "BackspaceKey",
+  "GlobeKey",      // language switcher
+  "MicKey",        // triggers dictation
+  "RefineKey",     // triggers /v1/refine on current text
+  // ----- data + status -----
+  "SuggestionBar", // predictions row
+  "Waveform",      // live mic amplitude
+  "StatusLabel",   // text status (Listening…, Refining…)
+  "Divider",
+  "BlurBackdrop",  // wraps children under a UIVisualEffectView
+  // ----- generic display + input (backend can render arbitrary UI) -----
+  "TextLabel",     // props.text + style.fg/fontSize/fontWeight/align; bind.text supported
+  "Image",         // props.source (icon spec: sf/asset/url/emoji) — same shape as IconKey.icon
+  "ProgressBar",   // bind.value → 0..1; style trackBg/fg/radius
+  "Toggle",        // UISwitch bound to state.user.* via bind.value; on.onChange action ref
+] as const;
+
+/**
+ * Actions the keyboard extension can execute. This union is intentionally
+ * broad — the goal is to let backend compose almost any keyboard behavior
+ * without a native rebuild.
+ *
+ * Extension slot: `{ kind: "extension", name, params? }` invokes a native
+ * handler registered via SDUIRenderer.registerExtension(). Unknown names
+ * silently no-op, so backend can push forward-looking action names to older
+ * builds without crashing them.
+ */
+export type KeyboardActionRef = string | KeyboardActionSpec;
+export type KeyboardActionSpec =
+  // ----- text + editing -----
+  | { kind: "insertText"; text: string }
+  | { kind: "insertKey"; char: string }
+  | { kind: "deleteBackward" }
+  | { kind: "deleteWord" }
+  | { kind: "shift" }              // toggle shift
+  | { kind: "capsLock" }
+  | { kind: "return" }
+  // ----- layouts + dictation + refine -----
+  | { kind: "switchLayout"; language?: string }   // cycle if not provided
+  | { kind: "showLanguageMenu" }
+  | { kind: "startDictation" }
+  | { kind: "stopDictation" }
+  | { kind: "runRefine" }
+  | { kind: "cycleTone" }
+  // ----- app / system -----
+  | { kind: "openApp"; screenId?: string }
+  | { kind: "openSettings" }
+  | { kind: "openUrl"; url: string; external?: boolean }
+  // ----- feedback -----
+  | { kind: "haptic"; style: HapticStyle }
+  | { kind: "toast"; message: string; tone?: "info" | "success" | "error" }
+  | { kind: "confetti" }
+  | { kind: "speak"; text: string; voice?: string }
+  | { kind: "playMedia"; url: string }
+  | { kind: "stopMedia" }
+  // ----- clipboard + share -----
+  | { kind: "copyToClipboard"; text: string; toastMessage?: string }
+  | { kind: "readClipboard"; assignTo: string }
+  | { kind: "share"; text?: string; url?: string; title?: string }
+  // ----- state store (backend scratch dict) -----
+  | { kind: "setState"; path: string; value: unknown }
+  | { kind: "toggleState"; path: string }
+  /** Add or remove one value in the array at `path` — the primitive a
+   *  multi-select needs. `min` refuses the removal that would take the array
+   *  below that length, so a required choice cannot be emptied. */
+  | { kind: "toggleInArray"; path: string; value: unknown; min?: number }
+  | { kind: "appendState"; path: string; value: unknown; max?: number }
+  | { kind: "incrementState"; path: string; by?: number }
+  | { kind: "clearState"; path: string }
+  // ----- network + analytics + logging -----
+  | {
+      kind: "callEndpoint";
+      method: "GET" | "POST" | "PUT" | "DELETE";
+      path: string;
+      body?: Record<string, unknown> | string;
+      assignTo?: string;
+      onSuccess?: KeyboardActionRef;
+      onError?: KeyboardActionRef;
+    }
+  | { kind: "analytics.track"; event: string; props?: Record<string, unknown> }
+  | { kind: "log"; message: string; level?: "info" | "warn" | "error" }
+  // ----- cache / reload -----
+  | { kind: "clearCache" }
+  | { kind: "reloadApp" }
+  // ----- flow control -----
+  | { kind: "sequence"; actions: KeyboardActionRef[] }
+  | { kind: "parallel"; actions: KeyboardActionRef[] }
+  | { kind: "condition"; if: Condition; then: KeyboardActionRef; else?: KeyboardActionRef }
+  | { kind: "delay"; ms: number }
+  // ----- extensibility (forward-compat slot) -----
+  | { kind: "extension"; name: string; params?: Record<string, unknown> };

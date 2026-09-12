@@ -44,6 +44,46 @@ Dashboard → **Authentication → Providers → Email**:
 (Google / Apple are deferred — they need per-app OAuth credentials. The app
 shows them as "coming soon" until then.)
 
+### 3a. Send a CODE, not a magic link — both templates
+
+The app signs in with `signInWithOtp` and shows six code boxes. Whether the
+user actually receives six digits is decided entirely by an email template, and
+**GoTrue picks which template by account state**:
+
+| The address is | Template used |
+| --- | --- |
+| new to the project | **Confirm signup** |
+| already a user | **Magic Link** |
+
+Both ship with `{{ .ConfirmationURL }}` in them, which mails a *link*. Fixing
+only one is why codes look random — a new tester gets a code, and the same
+person signing in again gets a link.
+
+Dashboard → **Authentication → Email Templates**. Paste
+[`tulmi/supabase/email/confirm-signup.html`](../tulmi/supabase/email/confirm-signup.html)
+and [`magic-link.html`](../tulmi/supabase/email/magic-link.html) into the two
+templates of those names. Their bodies are identical — the reader asked for a
+code and should not be able to tell which of GoTrue's paths answered — and both
+carry `{{ .Token }}` instead of `{{ .ConfirmationURL }}`.
+
+They are in the app's Stats palette: amber ground, black ink, the code as the
+hero figure, one black card. See
+[`tulmi/supabase/email/_README.md`](../tulmi/supabase/email/_README.md) for why
+the markup is table-based and why every colour is a flat hex.
+
+Check it end to end with an address that has **never** signed in (Confirm
+signup) and then again with one that has (Magic Link). Testing only one proves
+nothing about the other.
+
+While you are there, **Authentication → Providers → Email → Email OTP Expiration**
+should be an hour or less; the default of 24 hours is a long time for a code
+sitting in an inbox.
+
+If a link goes out anyway, the app now redeems it instead of dead-ending
+(`app/src/deeplinks/router.ts`). That is a safety net, not the fix — a user who
+has to leave the app and come back has still had a worse time than one who read
+six digits off a notification.
+
 ## 4. Keys
 
 Dashboard → **Project Settings → API**:
