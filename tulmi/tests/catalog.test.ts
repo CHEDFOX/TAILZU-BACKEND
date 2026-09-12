@@ -862,6 +862,42 @@ describe("buildKeyboardConfig", () => {
     }
   });
 
+  it("puts the stats ink on a ground it can be read on", () => {
+    // The screen used to be a full sheet of the accent, which spent the one
+    // colour the app has on its largest surface and left it meaning nothing.
+    // Whatever the ground becomes, the type on it has to be legible — so this
+    // checks the thing that actually matters rather than the hex.
+    const s: any = buildScreen("stats", { personality: {}, language: "en" } as never);
+    const lum = (hex: string) => {
+      const v = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+        .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * v[0]! + 0.7152 * v[1]! + 0.0722 * v[2]!;
+    };
+    const ground = String(s.root.style.backgroundColor);
+    expect(ground).toMatch(/^#[0-9a-fA-F]{6}$/);
+    const ratio = (Math.max(lum(ground), lum("#0B0B0D")) + 0.05)
+      / (Math.min(lum(ground), lum("#0B0B0D")) + 0.05);
+    expect(ratio, `stats ink on ${ground} is only ${ratio.toFixed(1)}:1`).toBeGreaterThan(7);
+  });
+
+  it("leaves no half-tile stranded in the stats grid", () => {
+    // The grid used to end on a single tile beside an empty cell that existed
+    // only to stop the last one stretching. A blank card-shaped hole at the
+    // bottom of a screen reads as something that failed to load.
+    const s: any = buildScreen("stats", { personality: {}, language: "en" } as never);
+    const rows: any[] = [];
+    const walk = (n: any) => {
+      if (!n || typeof n !== "object") return;
+      if (n.style?.flexDirection === "row" && (n.children ?? []).some((c: any) => c?.on?.onPress)) rows.push(n);
+      (n.children ?? []).forEach(walk);
+    };
+    walk(s.root);
+    for (const r of rows) {
+      const blanks = (r.children ?? []).filter((c: any) => !c?.on && !(c?.children ?? []).length);
+      expect(blanks.length, "a spacer standing in for a missing tile").toBe(0);
+    }
+  });
+
   it("gives every hero a built-in, so no screen ships an empty middle", () => {
     // Heroes resolve override → uploaded media → built-in. With nothing
     // uploaded and no override set, the built-in animation must be what

@@ -6665,7 +6665,24 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
  * that needs that needs two charts.
  */
 const STATS_UI = {
-  ground: ACCENT_AMBER,
+  /**
+   * BONE, not amber.
+   *
+   * A full screen of the accent spends the one colour the app has on the
+   * largest possible surface. It cannot then mean anything: the number that
+   * matters and the empty space behind it were the same colour, so the accent
+   * stopped marking and started decorating, and every black card on it read as
+   * a hole punched in the brand rather than as a card.
+   *
+   * A warm near-white gives the black cards a ground to be objects on, and
+   * gives the amber back its job — it appears only inside them, on the
+   * figures, which is the only place on this screen worth pointing at.
+   *
+   * Warm, and biased a little toward the accent rather than a neutral grey: a
+   * grey with no hue in it reads as the absence of a decision. This is the one
+   * the paper in a good notebook is.
+   */
+  ground: "#EDEAE4",
   ink: "#0B0B0D",
   /** Ink at reduced strength, for everything that is not the number itself. */
   inkDim: "rgba(11,11,13,0.62)",
@@ -6824,6 +6841,51 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
     ],
   });
 
+  /**
+   * A card that takes the whole width — label left, number right.
+   *
+   * The same shape as the allowance above it, on purpose. Two figures on this
+   * screen are about TIME rather than about volume: how many words are left
+   * before the month runs out, and how much of the month was handed back. They
+   * are the two anybody would open the tab to read, and a tile in a grid says
+   * the opposite — a grid is a set of peers, and putting the headline number
+   * in one makes it the same size as "Active days".
+   *
+   * A full width also lets the number sit at the far end of the line instead
+   * of under its own label, which is what a figure does when it is the point
+   * of the row rather than a detail in a cell.
+   */
+  const wideCard = (id: string, label: string, value: string, unit?: string): Node => ({
+    type: "Stack",
+    on: { onPress: { kind: "setState", path: "openCard", value: id } },
+    props: { pressOpacity: 0.75 },
+    style: {
+      backgroundColor: u.ink, borderRadius: u.cardRadius,
+      paddingTop: 12, paddingBottom: 14, paddingHorizontal: 14,
+      marginBottom: u.gap,
+    },
+    children: [{
+      type: "Stack",
+      style: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
+      children: [
+        { type: "Text", props: { content: label },
+          style: { fontSize: 8, letterSpacing: 1.8, textTransform: "uppercase", color: u.onCardDim } },
+        {
+          type: "Stack",
+          style: { flexDirection: "row", alignItems: "baseline" },
+          children: [
+            { type: "Text", props: { content: value },
+              style: { fontSize: 20, fontWeight: "800", letterSpacing: -0.6, color: u.onCard } },
+            ...(unit
+              ? [{ type: "Text", props: { content: unit },
+                   style: { fontSize: 11, fontWeight: "700", color: u.onCardDim, marginLeft: 3 } } as Node]
+              : []),
+          ],
+        },
+      ],
+    }],
+  });
+
   /** The detail behind one card. Scrolls inside itself when it outgrows. */
   /**
    * The three field breakdowns, read once so the tile and the panel behind it
@@ -6907,7 +6969,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "stats",
     title: "",
-    // The amber runs to the top of the window; the tabs stay, because this is
+    // The ground runs to the top of the window; the tabs stay, because this is
     // a tab root and losing them here strands the user.
     hideHeader: true,
     state: { openCard: "" },
@@ -7017,32 +7079,37 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
               ],
             } as Node] : []),
 
+            // Under the allowance and shaped like it. Minutes saved is the
+            // other figure on this screen that is about time rather than
+            // volume, and it is the one the product is actually for.
+            wideCard("minutes", "Minutes saved", n(minutesSaved), "min"),
+
             {
               type: "Stack",
               style: { flexDirection: "row", gap: u.gap, marginBottom: u.gap },
               children: [
-                card("minutes", "Minutes saved", n(minutesSaved), "min"),
                 card("sessions", "Sessions", n(sessions)),
-              ],
-            },
-            {
-              type: "Stack",
-              style: { flexDirection: "row", gap: u.gap, marginBottom: u.gap },
-              children: [
                 card("streak", "Day streak", n(streak), "days"),
-                card("active", "Active days", n(daysActive), `of ${days}`),
               ],
             },
-            // The two that were built and then not shown. Per-session is the
-            // shape of a habit — whether someone writes a sentence or a page —
-            // and spoken minutes is the only figure here measured in the thing
-            // the user actually did rather than in what came out of it.
             {
               type: "Stack",
               style: { flexDirection: "row", gap: u.gap, marginBottom: u.gap },
               children: [
+                card("active", "Active days", n(daysActive), `of ${days}`),
                 card("persession", "Per session", n(avgPerSession), "words"),
+              ],
+            },
+            // Per-session is the shape of a habit — whether someone writes a
+            // sentence or a page — and spoken minutes is the only figure here
+            // measured in the thing the user actually did rather than in what
+            // came out of it.
+            {
+              type: "Stack",
+              style: { flexDirection: "row", gap: u.gap, marginBottom: u.gap },
+              children: [
                 card("spoken", "Spoken", spokenMinutes ? String(spokenMinutes) : "0", "min"),
+                card("dictionary", "Dictionary", dictShare, dictShare === "—" ? "" : "in use"),
               ],
             },
             // THE THREE FIELDS — the same things the You cards are about, in
@@ -7053,19 +7120,9 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
               type: "Stack",
               style: { flexDirection: "row", gap: u.gap, marginBottom: u.gap },
               children: [
-                card("dictionary", "Dictionary", dictShare, dictShare === "—" ? "" : "in use"),
                 card("voices", "Voices", topVoiceShare, topVoiceShare === "—" ? "" : "top"),
-              ],
-            },
-            {
-              type: "Stack",
-              style: { flexDirection: "row", gap: u.gap },
-              children: [
                 card("languages", "Languages", String(langRows.length || "—"),
                      langRows.length ? "used" : ""),
-                // The row needs a second cell or the first stretches to the
-                // full width and stops matching the grid above it.
-                { type: "Stack", style: { flex: 1 } },
               ],
             },
 
