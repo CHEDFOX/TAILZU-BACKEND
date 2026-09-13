@@ -1613,6 +1613,22 @@ app.post("/v1/billing/revenuecat", async (req, reply) => {
  * unknown string through the catalog: a screen must render for a client we do
  * not recognise, and the iOS tree is the fuller of the two.
  */
+/**
+ * The window the client says it has, or nothing.
+ *
+ * Nothing is the right answer for a client that does not say: a guessed
+ * height is worse than none, because a pane too tall hides the control and a
+ * pane too short puts the next section in the opening view — which is the one
+ * thing it exists to prevent.
+ */
+function viewportOf(
+  d: { width?: number; height?: number } | undefined,
+): { width: number; height: number } | undefined {
+  const w = Number(d?.width), h = Number(d?.height);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w < 200 || h < 320) return undefined;
+  return { width: Math.round(w), height: Math.round(h) };
+}
+
 function platformOf(raw: unknown): "ios" | "android" {
   return String(raw ?? "").toLowerCase() === "android" ? "android" : "ios";
 }
@@ -1781,7 +1797,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     /** Caller's UTC offset (minutes, JS -getTimezoneOffset() convention) so
      * per-day stats bucket in the USER'S day, not Greenwich's. */
     tzOffsetMinutes?: number;
-    capabilities?: { platform?: string };
+    capabilities?: { platform?: string; device?: { width?: number; height?: number } };
   };
   const screenId = body.screenId;
   if (!screenId) {
@@ -1887,6 +1903,14 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     // be expressed at all. Now the server knows, so it can simply send the
     // right one.
     platform: platformOf(body.capabilities?.platform),
+    // HOW TALL THE WINDOW IS, which the client has been sending all along.
+    //
+    // A screen that scrolls cannot lay its opening view out with flex — a
+    // scroll container is sized by its content — so "one window tall" has to
+    // be a number, and the only honest source for it is the phone. Reading it
+    // here means the training tab's first view is exact on EVERY installed
+    // bundle, rather than depending on one that knows a new prop.
+    viewport: viewportOf(body.capabilities?.device),
   });
   if (!screen) {
     return reply.code(404).send({ code: "bad_request", message: `Unknown screen '${screenId}'` });

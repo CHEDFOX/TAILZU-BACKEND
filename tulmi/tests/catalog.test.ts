@@ -1428,7 +1428,27 @@ describe("the training tab shows what it has learned", () => {
   const home = (sp?: Record<string, unknown>) =>
     JSON.stringify(buildScreen("home", {
       personality: sp ? { stylePortrait: sp } : {}, language: "en",
+      viewport: { width: 390, height: 844 },
     } as never));
+
+  it("keeps the numbers out of the opening view when the phone is silent", () => {
+    // Without a height for the opening pane it collapses to its content and
+    // the sheet lands in the first screen — the tab opens on a ring of
+    // numbers instead of on the field. A client that does not say how tall it
+    // is gets the tab exactly as it was.
+    const quiet = JSON.stringify(buildScreen("home", {
+      personality: { stylePortrait: portrait }, language: "en",
+    } as never));
+    expect(quiet).not.toContain("Sittings");
+    expect(quiet).not.toContain("WHAT IT KNOWS");
+  });
+
+  it("sizes the opening view to the window the phone reports", () => {
+    // The phone has been sending this all along. Reading it means the first
+    // view is exact on every installed bundle, not only on one that knows a
+    // new prop.
+    expect(home(portrait)).toContain('"minHeight":844');
+  });
 
   it("keeps the opening view one window tall, above the numbers", () => {
     // The tab still opens as a thing you LOOK at — the field, two words and

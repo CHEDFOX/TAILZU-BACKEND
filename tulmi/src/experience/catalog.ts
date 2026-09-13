@@ -3449,6 +3449,16 @@ export interface ScreenContext {
    * Android change must not alter the bytes iOS receives.
    */
   platform?: "ios" | "android";
+  /**
+   * The window the phone says it has, in points. Absent for a client that
+   * does not report it.
+   *
+   * A screen that scrolls cannot lay its opening view out with flex — a
+   * scroll container is sized by its content, so a child asking for flex: 1
+   * inside one collapses. "One window tall" has to be a number, and the phone
+   * is the only thing that knows it.
+   */
+  viewport?: { width: number; height: number };
 }
 
 export function buildScreen(screenId: string, ctx: ScreenContext): ScreenResponse | null {
@@ -4416,8 +4426,14 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
           children: [
         {
           type: "Stack",
+          // Both, and they answer the same question twice on purpose: the
+          // number is exact and works on every installed bundle, the prop is
+          // what keeps the pane right if the phone is ever rotated or split.
+          // A bundle that knows neither still gets the opening view it always
+          // had — see the guard on the sheet below.
           props: { fillViewport: true },
           style: {
+            ...(ctx.viewport ? { minHeight: ctx.viewport.height } : {}),
             paddingHorizontal: ui.paddingHorizontal,
             paddingTop: ui.paddingTop,
             paddingBottom: ui.paddingBottom,
@@ -4495,10 +4511,14 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
             },
           ],
         },
-            // THE SHEET. Blur plus a wash, because a blur alone leaves the
-            // brightest fibres reading through the type — and a panel you can
-            // read through is not a surface, it is interference.
-            {
+            // THE SHEET, and ONLY when the pane above it can be a full window.
+            //
+            // Without a height for the opening view the pane collapses to its
+            // content and this lands in the first screen — the tab opens on a
+            // ring of numbers instead of on the field, which is the one thing
+            // the layout exists to prevent. A phone that does not say how tall
+            // it is keeps the tab exactly as it was.
+            ...(ctx.viewport ? [{
               type: "BlurBackground",
               props: { intensity: st.sheetBlur, tint: st.sheetTint },
               style: {
@@ -4517,7 +4537,7 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
                   children: panel,
                 },
               ],
-            },
+            } as Node] : []),
           ],
         },
         // The way into Settings — see settingsGear(). White, because this
