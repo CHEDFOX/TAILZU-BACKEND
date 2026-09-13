@@ -684,6 +684,16 @@ export const TYPE_ROLES: Record<string, TypeRole> = {
   // The You tab's greeting. Both lines come off GREET above — the one place
   // that owns this block — so the roles here are a view of it, never a second
   // set of numbers to keep in step.
+  /**
+   * The portrait sentence on the You tab, and the one live word in it.
+   *
+   * Sized by value rather than off YOU_UI.portrait, which is declared further
+   * down the file — this table is read while the module is still being
+   * evaluated, and a reference to a `const` that does not exist yet throws on
+   * the first bootstrap, for every user at once. Keep the two in step by hand.
+   */
+  portraitText: { family: "display", size: 21, lineHeight: 26, color: "text" },
+  portraitLive: { family: "display", size: 21, lineHeight: 26, italic: true, color: "primary" },
   greetHello: {
     size: GREET.hello.size,
     lineHeight: GREET.hello.lineHeight,
@@ -3841,8 +3851,64 @@ function authScreenTree(): Record<string, unknown> {
   };
 }
 
+/**
+ * THE NEURAL FIELD — the training tab's hero, as data.
+ *
+ * A connectome: a region of interlinked systems, each its own core, branching
+ * and colour family, wired to each other by a few great highways that every
+ * long-range connection merges into. It fires in cascades and grows new fibres
+ * while a session runs.
+ *
+ * Every number is here, so retuning the hero is a cache bump. `regions` is the
+ * composition: each entry is a cluster of systems around a seat given in
+ * fractions of the frame, so the layout holds on any phone. Seats outside 0..1
+ * are deliberate — roughly a third of the field is past the edge, which is
+ * what makes the picture read as a section of something larger.
+ */
+export const NEURAL_FIELD = {
+  /** The whole field's opacity. Lower it where the field is scenery behind
+   *  copy; leave it at 1 where the field IS the screen. */
+  alpha: 1,
+  bloom: 0.44,
+  /** The z the lens is focused on. Everything either side of it softens. */
+  focal: 0.35,
+  maxPulses: 700,
+  /** The one warm light: activity, and nothing else. */
+  signal: [232, 162, 60],
+  head: [255, 241, 214],
+  regions: [
+    { x: 0.55, y: 0.42, hue: 335, n: 6, z: 0.40, sc: 1.00 },
+    { x: 0.02, y: 0.14, hue: 196, n: 5, z: -0.35, sc: 0.78 },
+    { x: 1.04, y: 0.22, hue: 40, n: 5, z: 0.65, sc: 0.74 },
+    { x: 0.10, y: 0.86, hue: 262, n: 6, z: 0.10, sc: 0.80 },
+    { x: 0.98, y: 0.80, hue: 152, n: 5, z: -0.55, sc: 0.76 },
+    { x: 0.55, y: 1.16, hue: 58, n: 4, z: 0.30, sc: 0.62 },
+    { x: 0.60, y: -0.16, hue: 300, n: 4, z: -0.75, sc: 0.62 },
+  ],
+};
+
+/** The field as a node. `dim` is how far back it sits behind whatever is on it. */
+function neuralField(dim: number, bind?: Record<string, string>): Node {
+  return {
+    type: "NeuralField",
+    ...(bind ? { bind } : {}),
+    props: { ...NEURAL_FIELD, alpha: NEURAL_FIELD.alpha * dim },
+    style: { ...FILL_STYLE },
+    // A bundle without it draws nothing rather than a hole: the screens it
+    // sits on are black, and black is what they were before it existed.
+    fallback: { type: "Stack", style: { ...FILL_STYLE, backgroundColor: "#000000" } },
+  };
+}
+
 export const TRAINING_UI = {
   entry: {
+    /**
+     * How far back the field sits behind the copy. It is the art here, not
+     * the subject — the title and the control have to read over it — so it is
+     * dimmed rather than blurred: blurring a network turns it into weather,
+     * and the point is that you can see it is a network.
+     */
+    fieldDim: 0.55,
     /** Tiny, tracked, uppercase — the line above the title. "" removes it. */
     kicker: "IT LEARNS YOU",
     kickerSize: 9.5,
@@ -4128,22 +4194,15 @@ function homeScreen(_ctx: ScreenContext): ScreenResponse {
       // there is if nothing has been uploaded to the slot.
       style: { flex: 1, backgroundColor: "#000000" },
       children: [
-        // The art, edge to edge. Upload to `training`; upload nothing and
-        // screenHero returns no nodes and the screen is simply black.
-        ...screenHero("training", { behind: true, fit: "cover" }),
-        // Blurred and tinted, exactly as the You deck's cards are. Both layers
-        // are driven from TRAINING_UI.entry, so the strength is a catalog edit
-        // and never a build. Set mediaBlur to 0 to get the sharp art back.
-        ...(ui.mediaBlur > 0 ? [{
-          type: "BlurBackground",
-          props: { intensity: ui.mediaBlur, tint: ui.mediaBlurTint },
-          style: { ...FILL_STYLE },
-        } as Node] : []),
-        ...(ui.mediaTintOpacity > 0 ? [{
-          type: "Stack",
-          style: { ...FILL_STYLE, backgroundColor: ui.mediaTint,
-                   opacity: ui.mediaTintOpacity },
-        } as Node] : []),
+        // THE FIELD, edge to edge, and it IS the art.
+        //
+        // The entry used to be an uploaded still under a blur and a tint. A
+        // still cannot say the one thing this tab is about — that the thing
+        // inside is alive and gets bigger every time you talk to it — so the
+        // hero is the network itself, dimmed back to scenery so the title and
+        // the control read over it. It is already firing before anyone
+        // touches the screen, because it is already trained.
+        neuralField(TRAINING_UI.entry.fieldDim),
         // The scrim over it, and under everything else.
         {
           type: "Gradient",
@@ -4852,32 +4911,19 @@ function trainingLiveScreen(): ScreenResponse {
         // was the screen explaining itself while the user was mid-sentence.
         // What the orb is doing says which state it is in, which is the whole
         // reason it moves.
+        // THE FIELD, AND IT IS THE WHOLE SCREEN.
+        //
+        // The orb was one object pulsing in the middle of a black screen: a
+        // good abstraction for a voice and a poor one for a thing that
+        // LEARNS. This is the same network the entry shows, at full strength,
+        // and it is bound to the session — the cascades run inward while it
+        // listens, spill while it thinks, run outward while it answers, and
+        // new fibres grow the whole time. What the state is, is what the
+        // picture is doing, so the status word underneath is a caption on
+        // something already legible.
         {
-          type: "AuroraOrb",
-          bind: { level: "level", state: "sessionState" },
-          props: {
-            size: ui.bubble,
-            tint: ui.tint,
-            deep: ui.orbDeep,
-            gold: ui.orbGold,
-            radius: ui.orbRadius,
-            shimmer: ui.orbShimmer,
-            rim: ui.orbRim,
-          },
-          // Older bundles fall back to the orb they already have, and older
-          // ones still to the wave mark. Both are worse than this and far
-          // better than a hole where the only visual is.
-          fallback: {
-            type: "VoiceBubble",
-            bind: { level: "level", state: "sessionState" },
-            props: { size: ui.bubble, tint: ui.tint },
-            fallback: {
-              type: "Waveform",
-              bind: { level: "level" },
-              style: { width: ui.bubble * 0.62, height: ui.bubble * 0.42 },
-            },
-          },
-          style: { marginBottom: ui.orbBottom },
+          ...neuralField(1, { state: "sessionState", level: "level" }),
+          props: { ...NEURAL_FIELD, training: true },
         },
 
         // THE WAY OUT, and the only control left. Last in the list so it paints
@@ -4998,6 +5044,47 @@ export const YOU_UI = {
   },
   /** A section label on the black ground. */
   label: { size: 8.5, tracking: 2.2, marginTop: 22, marginBottom: 9 },
+  /**
+   * THE PORTRAIT — the sentence at the top that says the whole setup.
+   *
+   * This tab is about a person. A person is read at a glance, the way a face
+   * is, and the deck made you tap four times to learn four things. The
+   * sentence says all of it in one line, in the display face, with the one
+   * live thing — the voice actually writing — in the accent.
+   */
+  portrait: {
+    size: 21,
+    lineHeight: 26,
+    marginTop: 104,
+    marginBottom: 16,
+  },
+  /**
+   * A LINE — one domain, its current value, and the way to change it.
+   *
+   * The card's own art, blurred, runs under it as a strip, so the deck's
+   * colour and mood survive; the scrim rises to the right so the value has
+   * something to sit on. The domain is small on the left, the VALUE is large
+   * on the right, and that is the inversion: what a thing is set to belongs on
+   * the surface, not behind a tap.
+   */
+  line: {
+    height: 78,
+    radius: 18,
+    gap: 9,
+    background: "#141418",
+    artBlur: 34,
+    artTint: "dark" as const,
+    scrim: "rgba(11,11,13,0.72)",
+    paddingRight: 16,
+    kickerSize: 7.5,
+    kickerTracking: 2.2,
+    valueSize: 20,
+    valueTracking: -0.3,
+    unitSize: 11,
+    /** The dot beside the active voice. The one amber on the tab. */
+    dot: 7,
+    chevron: 7,
+  },
   /** The deck on the tab root. */
   deck: {
     cardWidth: 198,
@@ -5375,19 +5462,16 @@ const YOU_CARDS: {
    * Slices only. What each one is worth, what share it takes and what it is
    * called are questions for Stats; here the chart is a shape.
    */
-  chart?: (ctx: ScreenContext) => Slice[];
 }[] = [
   {
     title: "Voice", media: "card.voice", screen: "voices",
     blurb: "Zu writes as you. Add a voice for when it shouldn't.",
     cta: "Voices",
-    chart: (ctx) => voiceSlices(ctx.stats, ctx.personality, CHART_ON_DARK),
   },
   {
     title: "Dictionary", media: "card.dictionary", screen: "dictionary",
     blurb: "Your words, spelled your way. Never corrected.",
     cta: "Words",
-    chart: (ctx) => dictionarySlices(ctx.stats, CHART_ON_DARK),
   },
   {
     title: "Haptics", media: "card.haptics", screen: "haptics",
@@ -5400,7 +5484,6 @@ const YOU_CARDS: {
     title: "Languages", media: "card.languages", screen: "languages",
     blurb: "Pick a language. It listens for it.",
     cta: "Languages",
-    chart: (ctx) => languageSlices(ctx.stats, CHART_ON_DARK),
   },
 ];
 
@@ -5576,146 +5659,113 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
   };
 
   /** One card: the topic's art, a scrim, and its name. Nothing else is on it. */
-  const deckCard = (c: (typeof YOU_CARDS)[number]): Node => ({
-    type: "Stack",
-    style: {
-      flex: 1, borderRadius: d.radius, overflow: "hidden",
-      backgroundColor: "#141418",
-    },
-    children: [
-      { type: "Image", props: { source: mediaSrc(c.media), contentFit: "cover" },
-        style: { ...FILL_STYLE } },
-      // BLURRED, like the backdrop it is cut from.
-      //
-      // The card carries a name, not a picture — the art is there to give the
-      // deck a colour and a mood, and a sharp photograph competes with the one
-      // word that is actually being chosen. Blurring it also makes every
-      // upload behave: the deck reads the same whether someone puts a portrait
-      // or a screenshot behind a card.
-      ...(d.cardBlur > 0 ? [{
-        type: "BlurBackground",
-        props: { intensity: d.cardBlur, tint: d.cardBlurTint },
-        style: { ...FILL_STYLE },
-      } as Node] : []),
-      // Under the title, over the art. A card whose art comes back pale is a
-      // card whose title has vanished, and the art is uploaded — so the tint
-      // is not a treatment, it is the guarantee that the deck stays readable
-      // whatever anyone uploads to it.
-      { type: "Stack",
-        style: { ...FILL_STYLE, backgroundColor: d.scrim, opacity: d.scrimOpacity } },
-      { type: "Text", props: { content: c.title },
-        style: { position: "absolute", left: 15, right: 15, bottom: 13,
-                 fontSize: d.titleSize, fontWeight: "700",
-                 letterSpacing: d.titleTracking, color: "#FFFFFF" } },
-    ],
-  });
+  /**
+   * ONE LINE. The art it is cut from, the domain, what it is set to, and a
+   * chevron. `live` is the single amber dot, and only the voice gets it.
+   */
+  const youLine = (c: (typeof YOU_CARDS)[number], value: string, unit: string, live = false): Node => {
+    const L = u.line;
+    return {
+      type: "Stack",
+      on: { onPress: { kind: "sequence", actions: [
+        { kind: "haptic", style: "selection" },
+        { kind: "navigate", screenId: c.screen },
+      ] } },
+      props: { pressOpacity: 0.72 },
+      style: {
+        height: L.height, borderRadius: L.radius, overflow: "hidden",
+        backgroundColor: L.background, marginBottom: L.gap,
+        flexDirection: "row", alignItems: "center",
+        paddingRight: L.paddingRight,
+      },
+      children: [
+        { type: "Image", props: { source: mediaSrc(c.media), contentFit: "cover" },
+          style: { ...FILL_STYLE } },
+        // Blurred hard. The art is here for colour and mood; a sharp
+        // photograph behind two words is a photograph with words on it.
+        { type: "BlurBackground",
+          props: { intensity: L.artBlur, tint: L.artTint },
+          style: { ...FILL_STYLE } },
+        // Rising to the right, so the value always has a ground whatever was
+        // uploaded. The left stays open, which is where the art shows.
+        { type: "Gradient",
+          props: { colors: ["rgba(11,11,13,0.10)", L.scrim, "rgba(11,11,13,0.88)"],
+                   locations: [0, 0.45, 1], direction: "horizontal" },
+          style: { ...FILL_STYLE } },
+        { type: "Stack", style: { flex: 1 } },
+        {
+          type: "Stack",
+          style: { alignItems: "flex-end" },
+          children: [
+            { type: "Text", props: { content: c.title },
+              style: { fontSize: L.kickerSize, letterSpacing: L.kickerTracking,
+                       textTransform: "uppercase", color: u.textDim } },
+            {
+              type: "Stack",
+              style: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
+              children: [
+                ...(live ? [{
+                  type: "Stack",
+                  style: { width: L.dot, height: L.dot, borderRadius: L.dot / 2,
+                           backgroundColor: u.accent },
+                } as Node] : []),
+                { type: "Text", props: { content: value },
+                  style: { fontSize: L.valueSize, fontWeight: "700",
+                           letterSpacing: L.valueTracking, color: u.text } },
+                ...(unit ? [{
+                  type: "Text", props: { content: unit },
+                  style: { fontSize: L.unitSize, fontWeight: "500", color: u.textDim },
+                } as Node] : []),
+              ],
+            },
+          ],
+        },
+        { type: "SVG",
+          props: { viewBox: "0 0 24 24", d: "M9 5 L15.5 12 L9 19",
+                   fill: "none", stroke: u.textFaint, strokeWidth: 2.2,
+                   strokeLinecap: "round", strokeLinejoin: "round" },
+          style: { width: L.chevron * 2, height: L.chevron * 2, marginLeft: 10 } },
+      ],
+    };
+  };
+
+  // ---------------------------------------------------------- the values
+  //
+  // Every line says what it is SET TO, which means reading the same places
+  // the sub-screens write to. A value that cannot be read says so plainly
+  // rather than showing a zero, because "0 words" and "never opened" are
+  // different facts and only one of them is true.
+  const presets = applyPresetOverrides(ctx.personality.presetOverrides);
+  const activeId = ctx.personality.activePresetId ?? "signature";
+  const voiceName = presets.find((e) => e.id === activeId)?.name ?? "Zu";
+  const wordCount = ctx.dictionary?.length ?? 0;
+  const langCodes = (ctx.personality.languages ?? []).map(String);
+  const langNames = langCodes.map((c) => LANGUAGE_NAMES[c] ?? c.toUpperCase());
+  const langLabel = langNames.length === 0 ? "Auto"
+    : langNames.length <= 2 ? langNames.join(", ")
+    : `${langNames[0]} +${langNames.length - 1}`;
+  const hapticsOn = ctx.personality?.hapticsAll === true
+    || (ctx.personality?.hapticKeys ?? []).length > 0;
 
   /**
-   * The note under the deck, one per card, only one ever on screen.
-   *
-   * FOUR STACKED NODES GATED ON `deck`, not one whose text changes — the same
-   * shape the backdrop uses. A single node re-reading its content would swap
-   * words mid-turn while the card is still moving; four that appear and
-   * disappear are each finished before they are seen, and cost nothing but a
-   * little JSON.
-   *
-   * `deck` is written by the Coverflow's onChange, which fires as the card
-   * reaches the middle rather than when the finger lifts — so the note
-   * belongs to whatever is centred at that instant, including a throw the
-   * user is still watching.
+   * THE SENTENCE. The whole setup in one line, in the display face — what it
+   * writes as, what it listens for, how much of your own vocabulary it holds.
+   * The voice is the one live thing on this tab, so the voice is the only
+   * thing in the accent.
    */
-  /** This card's slices, read once — the presence check and the chart must
-   *  never disagree about whether there is anything to draw. */
-  const chartSlices = (c: (typeof YOU_CARDS)[number], k: ScreenContext): Slice[] =>
-    c.chart ? c.chart(k) : [];
-
-  const infoBox = (c: (typeof YOU_CARDS)[number], i: number): Node => ({
+  const portrait: Node = {
     type: "Stack",
-    visibleIf: { eq: ["deck", i] },
-    style: {
-      flexDirection: "row", alignItems: "center", gap: u.info.gap,
-      backgroundColor: u.info.background, borderRadius: u.info.radius,
-      paddingHorizontal: u.info.paddingHorizontal,
-      paddingVertical: u.info.paddingVertical,
-      marginHorizontal: u.info.marginHorizontal,
-      marginTop: u.info.marginTop, marginBottom: u.info.marginBottom,
-    },
+    style: { flexDirection: "row", flexWrap: "wrap", alignItems: "baseline",
+             marginTop: u.portrait.marginTop, marginBottom: u.portrait.marginBottom },
     children: [
-      // A SMALL PIE AND NOTHING WRITTEN ON IT.
-      //
-      // This strip is the card's caption: a sentence about what the thing is,
-      // and a way in. The chart is here to show the shape of it at a glance —
-      // mostly used, evenly split, one voice doing everything — and a shape
-      // needs no number to be read. Percentages, a label in the middle and a
-      // legend all belong on Stats, which is the screen for reading rather
-      // than glancing, and putting them here would make a caption into a
-      // report.
-      //
-      // Absent entirely when there is nothing to show. An empty chart in a
-      // strip this size is a hole with a caption in it; the box simply goes
-      // back to being the sentence and the button it was before.
-      ...(chartSlices(c, ctx).length
-        ? [pieNode({
-            slices: chartSlices(c, ctx),
-            size: u.info.chart.size,
-            thickness: u.info.chart.thickness,
-            gap: u.info.chart.gap,
-            emptyLabel: "",
-          })]
+      { type: "Text", props: { content: "Writes as ", variant: "portraitText" } },
+      { type: "Text", props: { content: voiceName, variant: "portraitLive" } },
+      { type: "Text", props: { content: `. ${langLabel}.`, variant: "portraitText" } },
+      ...(wordCount > 0
+        ? [{ type: "Text", props: { content: ` ${wordCount} words of yours.`, variant: "portraitText" } } as Node]
         : []),
-      {
-        type: "Text",
-        props: { content: c.blurb },
-        style: {
-          flex: 1, fontSize: u.info.textSize, fontWeight: u.info.textWeight,
-          lineHeight: u.info.textLineHeight, color: u.info.text,
-        },
-      },
-      {
-        type: "Stack",
-        // The SAME destination as the card above it. Two ways in, one place —
-        // a second way that went somewhere else would be a third card.
-        on: { onPress: { kind: "sequence", actions: [
-          { kind: "haptic", style: "selection" },
-          { kind: "navigate", screenId: c.screen },
-        ] } },
-        props: { pressOpacity: 0.65 },
-        style: {
-          height: u.info.cta.height, borderRadius: u.info.cta.radius,
-          paddingHorizontal: u.info.cta.paddingHorizontal,
-          alignItems: "center", justifyContent: "center",
-          backgroundColor: u.info.cta.background,
-        },
-        children: [{
-          type: "Text", props: { content: c.cta },
-          style: {
-            fontSize: u.info.cta.fontSize, fontWeight: "700",
-            letterSpacing: u.info.cta.tracking, color: u.info.cta.text,
-          },
-        }],
-      },
     ],
-  });
-
-  /**
-   * Where a tap goes.
-   *
-   * `condition` reads a STATE PATH, never the event — so the handler writes
-   * which card was chosen and then branches on what it wrote. That is safe
-   * here and only here: the store is a plain mutable object, so a set is
-   * visible to the very next action in the sequence rather than after a
-   * render. Built by recursion off YOU_CARDS so the chain cannot fall out of
-   * step with the deck it is routing.
-   */
-  const route = (i: number): ActionRef =>
-    i >= YOU_CARDS.length - 1
-      ? { kind: "navigate", screenId: YOU_CARDS[YOU_CARDS.length - 1].screen }
-      : {
-          kind: "condition",
-          if: { eq: ["deck", i] },
-          then: { kind: "navigate", screenId: YOU_CARDS[i].screen },
-          else: route(i + 1),
-        };
+  };
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
@@ -5724,15 +5774,16 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
     // The backdrop runs to the top of the window. The tabs stay — this is a
     // tab root, and taking them away here strands the user.
     hideHeader: true,
+    /**
+     * Which card's art is the backdrop. It followed the coverflow; with the
+     * deck gone it is fixed on the Voice card, which is the right answer and
+     * not a leftover — the voice is what this tab is about, so the voice's
+     * art is the mood behind it. Kept as state rather than inlined because
+     * the Image nodes below still read it, and because the day a screen
+     * wants to change the mood it writes one path.
+     */
     state: { deck: 0 },
     actions: {
-      /** A different card reached the middle. Only the backdrop cares. */
-      centre: { kind: "setState", path: "deck", value: "$event" },
-      /** A card was chosen: record which, then go where that says. */
-      open: {
-        kind: "sequence",
-        actions: [{ kind: "setState", path: "deck", value: "$event" }, route(0)],
-      },
       // The button that fired this is gone from the tab by owner decision.
       // The ACTION stays defined on purpose.
       //
@@ -5763,6 +5814,8 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
         // Four stacked images gated on which is centred, rather than one image
         // whose source changes: a source swap is a load, and a load is a black
         // frame in the middle of a gesture.
+        // The mood behind the tab is the voice's own art — the thing that is
+        // actually writing, not the last card swiped past.
         ...YOU_CARDS.map((c, i) => ({
           type: "Image",
           visibleIf: { eq: ["deck", i] },
@@ -5775,58 +5828,29 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
         { type: "Stack",
           style: { ...FILL_STYLE, backgroundColor: d.backdropWash,
                    opacity: d.backdropWashOpacity } },
+        // THE PORTRAIT AND THE FOUR LINES.
+        //
+        // The deck showed one card and hid three, and what each card was
+        // ABOUT — which voice, how many words, which languages — was behind a
+        // tap. This tab is about a person, and a person is read at a glance.
+        // So: a sentence that says the whole setup, then four lines that each
+        // carry their own current value on the surface.
         {
-          type: "Coverflow",
-          props: {
-            cardWidth: d.cardWidth, cardHeight: d.cardHeight, radius: d.radius,
-            step: d.step, rotation: d.rotation, depth: d.depth,
-            perspective: d.perspective, shrink: d.shrink, fade: d.fade,
-            stiffness: d.stiffness, damping: d.damping, mass: d.mass,
-            throwFactor: d.throwFactor,
-            // ONE TAP TO LOOK, ONE TO ENTER.
-            //
-            // A side card is turned away, shrunk and half-covered by its
-            // neighbours, so what the thumb lands on is not what the eye was
-            // on — a tap that opened it was a tap you then had to undo. Now a
-            // side tap only brings the card to the middle, and the second tap,
-            // on a card that is finally facing you, is the one that commits.
-            tapToCentre: d.tapToCentre,
-            // REMEMBER WHERE IT WAS LEFT. Opening a card unmounts this screen,
-            // so coming back rebuilt the deck at card one and the card you were
-            // just inside was two throws away. Named, because remembering is a
-            // decision — a deck of search results should not do this.
-            memory: d.memory,
+          type: "Screen",
+          style: {
+            backgroundColor: "transparent",
+            paddingHorizontal: u.padding, paddingTop: 0, paddingBottom: 24,
           },
-          // onChange is the deck moving; onSelect is the user choosing. The
-          // backdrop follows the first and must not wait for the second.
-          on: { onSelect: "open", onChange: "centre" },
-          style: { flex: 1 },
-          children: YOU_CARDS.map(deckCard),
-          // A bundle without Coverflow still has a way into all four screens.
-          fallback: {
-            type: "Stack",
-            style: { flex: 1, justifyContent: "center", paddingHorizontal: u.padding },
-            children: YOU_CARDS.map((c) => ({
-              type: "Stack",
-              on: { onPress: { kind: "navigate", screenId: c.screen } },
-              props: { pressOpacity: 0.7 },
-              style: {
-                backgroundColor: u.pill.background, borderRadius: u.pill.radius,
-                paddingVertical: 14, paddingHorizontal: 18, marginBottom: 8,
-              },
-              children: [{ type: "Text", props: { content: c.title },
-                style: { fontSize: 15, fontWeight: "700", color: u.text } }],
-            } as Node)),
-          },
+          children: [
+            portrait,
+            youLine(YOU_CARDS[0], voiceName, "", true),
+            youLine(YOU_CARDS[1], wordCount > 0 ? String(wordCount) : "None yet",
+                    wordCount > 0 ? "words" : ""),
+            youLine(YOU_CARDS[3], langLabel, ""),
+            youLine(YOU_CARDS[2], hapticsOn ? "On" : "Off", ""),
+          ],
         },
 
-        // Under the deck, in flow rather than over it: the deck has flex and
-        // gives back whatever this takes, so the cards sit up by exactly the
-        // height of the note instead of being covered by it.
-        ...YOU_CARDS.map(infoBox),
-
-        // Last in the list, so they paint over the deck. The greeting and the
-        // gear share a line: who this is on the left, the way out on the right.
         greeting,
         settingsGear("dark"),
       ],

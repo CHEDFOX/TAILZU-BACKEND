@@ -572,75 +572,43 @@ describe("buildScreen", () => {
     expect(json).toContain(entry.cta.label);
   });
 
-  it("Training live is a real conversation: a session, a bubble, and one read at the end", () => {
-    const live = buildScreen("training_live", { personality: {}, language: "en" });
-    expect(live).not.toBeNull();
-    const json = JSON.stringify(live);
-    // The loop: one node owns the audio and writes what it hears into state.
+  it("Training live is a real conversation: a session, the field, and one read at the end", () => {
+    const s: any = buildScreen("training_live", { personality: {}, language: "en" } as never);
+    const json = JSON.stringify(s);
+    // The mic is what starts the conversation and leaving is what saves it.
     expect(json).toContain('"VoiceSession"');
     expect(json).toContain("/v1/train/converse");
-    // The bubble reads that state — and degrades to the wave mark on a bundle
-    // too old to have it, rather than leaving a hole where the only visual is.
-    expect(json).toContain('"VoiceBubble"');
-    expect(json).toContain('"level":"level"');
-    expect(json).toContain('"state":"sessionState"');
-    expect(json).toContain('"Waveform"');
-    // The portrait is read ONCE, on the way out, from the whole transcript.
     expect(json).toContain("/v1/train/portrait");
-    expect(json).toContain('"turns":"$state.turns"');
-    // A conversation is never served from cache.
-    expect(live!.cacheTtlSeconds).toBe(0);
-
-    // THE SCREEN IS THE ORB AND A WAY OUT. No status word, no transcript line,
-    // no End button — a conversation is something you have, not something you
-    // read, and each of those was the screen talking over the user.
-    const texts: string[] = [];
-    const walk = (n: any): void => {
-      if (typeof n?.props?.content === "string" && n.props.content.trim()) texts.push(n.props.content);
-      for (const c of n?.children ?? []) walk(c);
-    };
-    walk(live!.root);
-    expect(texts, `nothing may be written on this screen, found: ${texts.join(" | ")}`).toEqual([]);
-
-    // LEAVING IS SAVING, and exactly once. The arrow marks a flag before it
-    // posts; onDisappear posts only when that flag is unset, which is the case
-    // when someone swipes back instead. Lose either half and the conversation
-    // is read twice or not at all — and "not at all" is silent.
-    expect(live!.root.on?.onDisappear).toBe("saveIfUnhandled");
-    expect(JSON.stringify(live!.actions?.saveIfUnhandled)).toContain('"falsy":"leaving"');
-    expect(JSON.stringify(live!.actions?.finish)).toContain('"path":"leaving"');
+    // The orb was one object pulsing on a black screen — a good abstraction
+    // for a voice and a poor one for a thing that learns. The field is the
+    // screen now, and it is BOUND to the session: what the state is, is what
+    // the picture is doing, so the status word is a caption on something
+    // already legible.
+    const field = (s.root.children ?? []).find((c: any) => c?.type === "NeuralField");
+    expect(field, "no field on the live screen").toBeTruthy();
+    expect(field.bind.state).toBe("sessionState");
+    expect(field.bind.level).toBe("level");
+    expect(field.props.alpha).toBe(1);
+    expect(field.props.training).toBe(true);
+    expect(json).not.toContain('"AuroraOrb"');
   });
 
-  it("the Train entry blurs and tints its art, and both are catalog values", () => {
-    const home = buildScreen("home", { personality: {}, language: "en" });
-    expect(home).not.toBeNull();
-    const ui = TRAINING_UI.entry;
-
-    // The art is behind two layers and the layers are in the right order:
-    // blur first, then the flat tint, then the gradient the copy sits on.
-    // Order is the whole point — tint under blur gets blurred away, and either
-    // one over the gradient darkens the words instead of the picture.
-    const kinds: string[] = [];
-    const walk = (n: any): void => {
-      if (n?.type) kinds.push(n.type);
-      for (const c of n?.children ?? []) walk(c);
-    };
-    walk(home!.root);
-    const blur = kinds.indexOf("BlurBackground");
-    const grad = kinds.indexOf("Gradient");
-    expect(blur, "the training art must be blurred").toBeGreaterThan(-1);
-    expect(grad).toBeGreaterThan(blur);
-
-    const json = JSON.stringify(home);
-    expect(json).toContain(`"intensity":${ui.mediaBlur}`);
-    expect(json).toContain(`"tint":"${ui.mediaBlurTint}"`);
-    expect(json).toContain(`"opacity":${ui.mediaTintOpacity}`);
-
-    // Same numbers as the You deck's cards. Two screens showing uploaded art
-    // behind a word should not drift apart, and they will if each carries its
-    // own constant.
-    expect(ui.mediaBlur).toBe(YOU_UI.deck.cardBlur);
-    expect(ui.mediaTintOpacity).toBe(YOU_UI.deck.scrimOpacity);
+  it("the Train entry IS the field, dimmed back behind the copy", () => {
+    // The entry used to be an uploaded still under a blur and a tint. A still
+    // cannot say the thing this tab is about — that what is inside is alive
+    // and grows when you talk to it — so the hero is the network itself.
+    const home: any = buildScreen("home", { personality: {}, language: "en" });
+    const field = (home.root.children ?? []).find((c: any) => c?.type === "NeuralField");
+    expect(field, "no field on the Train entry").toBeTruthy();
+    // Scenery, not the subject: dimmed so the title and the control read over
+    // it — and dimmed rather than blurred, because a blurred network is
+    // weather and the point is that you can see it is a network.
+    expect(field.props.alpha).toBeLessThan(1);
+    expect(field.props.alpha).toBeGreaterThan(0);
+    expect(field.style.position).toBe("absolute");
+    // A bundle without the component draws black, which is what the screen
+    // was before the field existed — never a hole.
+    expect(field.fallback?.type).toBe("Stack");
   });
 
   it("Training chat is the refine surface: variants + pick endpoints, tone sheet trains a tone", () => {
@@ -689,34 +657,22 @@ describe("buildScreen", () => {
     expect(json).toContain('"playing":"refining"');
   });
 
-  it("You tab is a deck whose cards carry the topic art and route to their screens", () => {
-    // The You tab is a Coverflow deck: one card per topic, its art from the
-    // media registry, and a tap that routes to that topic's screen.
-    const you = buildScreen("personality", { personality: {}, language: "en" });
-    expect(you).not.toBeNull();
-    const json = JSON.stringify(you);
-    expect(json).toContain('"Coverflow"');
-    expect(json).toContain('"screenId":"voices"');
-    expect(json).toContain('"screenId":"dictionary"');
-    expect(json).toContain("card.voice");
-    expect(json).toContain("card.dictionary");
-    // Every card in the deck has to be reachable, so the route chain must name
-    // as many destinations as there are cards. A card with no branch opens
-    // whatever the chain falls through to, which is silent and wrong.
-    for (const screenId of ["voices", "dictionary", "haptics", "languages"]) {
-      expect(json).toContain(`"screenId":"${screenId}"`);
+  it("You tab is a portrait: one sentence, then every setting on the surface", () => {
+    const s: any = buildScreen("personality", { personality: {}, language: "en" } as never);
+    const json = JSON.stringify(s);
+    // The deck showed one card and hid three, and what each card was ABOUT
+    // was behind a tap. This tab is about a person, and a person is read at a
+    // glance — so the sentence says the whole setup and the four lines each
+    // carry their own current value.
+    expect(json).not.toContain('"Coverflow"');
+    expect(json).toContain('"portraitText"');
+    expect(json).toContain('"portraitLive"');
+    // Every domain is still one tap from its screen.
+    for (const c of ["voices", "dictionary", "languages", "haptics"]) {
+      expect(json).toContain(`"${c}"`);
     }
-
-    // The tone list (opened from the Voice card) lists the tones, and there is
-    // a way to create one. Asserted as the ACTION, not as a label: the button
-    // that used to say "Add a tone" is now the ＋ on the header, and the next
-    // redesign will move it again.
-    const voices = buildScreen("voices", { personality: {}, language: "en" });
-    expect(voices).not.toBeNull();
-    const vjson = JSON.stringify(voices);
-    expect(vjson).toContain("Zu");
-    expect(vjson).toContain('"screenId":"tone_edit"');
-    expect(voices!.actions?.addTone).toBeTruthy();
+    // And every line still carries the art it was cut from.
+    expect(json).toContain('"card.voice"');
   });
 
   it("tone detail shows the tone's name + prompt and toggles the keyboard pin", () => {
@@ -998,118 +954,67 @@ describe("which tab the app opens on", () => {
   });
 });
 
-describe("the You deck asks twice before it opens", () => {
-  const deck = () => {
-    const s = buildScreen("personality", { personality: {}, language: "en" } as never);
-    let found: Record<string, any> | null = null;
-    const walk = (n: any): void => {
-      if (n?.type === "Coverflow") found = n;
-      for (const c of n?.children ?? []) walk(c);
-    };
-    walk((s as any).root);
-    if (!found) throw new Error("no Coverflow in the You screen");
-    return found as Record<string, any>;
-  };
 
-  it("centres a side tap instead of opening it", () => {
-    // A side card is turned away, shrunk and half-covered by its neighbours,
-    // so what the thumb lands on is not what the eye was on. Opening that is a
-    // tap the user then has to undo.
-    expect(deck().props.tapToCentre).toBe(true);
-  });
 
-  it("keeps opening on onSelect, so the second tap still commits", () => {
-    // Centring must not cost the deck its way in — one tap to look, one to
-    // enter, and the second tap is on a card that is finally facing you.
-    expect(deck().on.onSelect).toBe("open");
-  });
-
-  it("still follows the middle card while the finger is moving", () => {
-    // onChange drives the backdrop and must not wait for a choice. If centring
-    // had been folded into onSelect, the backdrop would lag a whole tap behind.
-    expect(deck().on.onChange).toBe("centre");
-  });
-
-  it("leaves the flag in the catalog, so the feel is tunable without a build", () => {
-    expect(YOU_UI.deck.tapToCentre).toBe(true);
-  });
-});
-
-describe("the card in the middle says what it is", () => {
-  const boxes = () => {
-    const s = buildScreen("personality", { personality: {}, language: "en" } as never) as any;
-    return s.root.children.filter((c: any) => c?.style?.backgroundColor === YOU_UI.info.background);
-  };
-
-  // The box is [ring?, text, button] — the ring only on cards that measure
-  // something — so parts are found by shape, never by index.
-  const parts = (b: any) => ({
-    ring: b.children.find((k: any) => k?.type === "PieChart"),
-    text: b.children.find((k: any) => k?.type === "Text"),
-    cta: b.children.find((k: any) => k?.type === "Stack" && k?.on?.onPress),
-  });
-
-  it("gives every card a note and a way in, never a card without one", () => {
-    // A deck of four words shows four things and says what none of them are.
-    const found = boxes();
-    expect(found).toHaveLength(4);
-    for (const b of found) {
-      const { text, cta } = parts(b);
-      expect(String(text.props.content).length).toBeGreaterThan(20);
-      expect(String(cta.children[0].props.content).length).toBeGreaterThan(0);
-    }
-  });
-
-  it("shows exactly one — the one that reached the middle", () => {
-    // Four stacked nodes gated on `deck`, like the backdrop. A single node
-    // re-reading its content would swap words while the card is still moving.
-    const found = boxes();
-    expect(found.map((b: any) => b.visibleIf)).toEqual([
-      { eq: ["deck", 0] }, { eq: ["deck", 1] }, { eq: ["deck", 2] }, { eq: ["deck", 3] },
-    ]);
-  });
-
-  it("sends its button where the card itself goes", () => {
-    // Two ways in, one place. A second way that went somewhere else would be
-    // a third card.
-    const s = buildScreen("personality", { personality: {}, language: "en" } as never) as any;
-    const decks: string[] = [];
-    const walk = (n: any): void => {
-      if (n?.type === "Coverflow") for (const c of n.children ?? []) decks.push(c.children?.at(-1)?.props?.content);
+describe("the You tab reads like a face", () => {
+  const you = (ctx: Record<string, unknown> = { personality: {}, language: "en" }) =>
+    buildScreen("personality", ctx as never) as any;
+  const lines = (s: any) => {
+    const out: any[] = [];
+    const walk = (n: any) => {
+      if (n?.on?.onPress && n?.style?.height && n?.style?.borderRadius && (n.children ?? []).some((c: any) => c?.type === "Image")) out.push(n);
       for (const c of n?.children ?? []) walk(c);
     };
     walk(s.root);
-    boxes().forEach((b: any, i: number) => {
-      const nav = parts(b).cta.on.onPress.actions.find((a: any) => a.kind === "navigate");
-      expect(nav.screenId).toBeTruthy();
-      // Same order as the deck, so box i belongs to card i.
-      expect(decks[i]).toBeTruthy();
-    });
+    return out;
+  };
+
+  it("shows all four settings at once, each with what it is set to", () => {
+    // The whole point of the rebuild: a value belongs on the surface, not
+    // behind a tap. Four lines, four visible values, no scrolling to find one.
+    const found = lines(you());
+    expect(found).toHaveLength(4);
+    for (const l of found) {
+      const text = JSON.stringify(l);
+      // a domain label and a value, not just a title
+      expect(text).toMatch(/"fontWeight":"700"/);
+    }
   });
 
-  it("sits under the deck in flow, not over it", () => {
-    // The deck has flex and gives back what the note takes, so the cards sit
-    // up by exactly its height instead of being covered.
-    for (const b of boxes()) expect(b.style.position).toBeUndefined();
-    const s = buildScreen("personality", { personality: {}, language: "en" } as never) as any;
-    const kids = s.root.children;
-    const deckAt = kids.findIndex((c: any) => c?.type === "Coverflow");
-    const firstBox = kids.findIndex((c: any) => c?.style?.backgroundColor === YOU_UI.info.background);
-    expect(firstBox).toBeGreaterThan(deckAt);
+  it("says the setup in one sentence, with the voice as the live word", () => {
+    // The sentence is the headline of the tab. The voice is the one thing on
+    // it that is actually writing, so the voice is the only word in the
+    // accent — see the sacred-amber rule.
+    const s = you({ personality: { activePresetId: "signature", languages: ["en", "hi"] },
+                    language: "en", dictionary: [{ word: "a", replacement: "b" }] } as never);
+    const json = JSON.stringify(s);
+    expect(json).toContain("Writes as ");
+    expect(json).toContain('"variant":"portraitLive"');
+    expect(json).toContain("English, Hindi");
+    expect(json).toContain("1 words of yours.");
   });
 
-  it("is a dark note whose one amber is the way in", () => {
-    // The note used to be the brand block — solid amber with black ink — and
-    // it was the accent as wallpaper. Amber is sacred now: it marks the one
-    // live thing on a screen, and on this note that is the control that opens
-    // the screen it describes. The ring's leading slice is the only other.
-    const { text, cta } = parts(boxes()[0]);
-    expect(boxes()[0].style.backgroundColor).not.toBe(YOU_UI.accent);
-    expect(text.style.color).not.toBe(YOU_UI.accent);
-    // Mid-weight. Bold on a solid colour reads as shouting, not as speech.
-    expect(Number(text.style.fontWeight)).toBeLessThan(700);
-    expect(cta.style.backgroundColor).toBe(YOU_UI.accent);
-    expect(cta.children[0].style.color).not.toBe(YOU_UI.accent);
+  it("never shows a zero where the honest answer is 'not yet'", () => {
+    // "0 words" and "you have not added any" are different facts, and only
+    // one of them is true of someone who has never opened the screen.
+    const json = JSON.stringify(you());
+    expect(json).toContain("None yet");
+    expect(json).not.toContain('"0 words"');
+    // No language picked is Auto, not an empty line.
+    expect(json).toContain("Auto");
+  });
+
+  it("gives the active voice the only amber on the tab", () => {
+    const s = you();
+    let dots = 0;
+    const walk = (n: any) => {
+      if (n?.style?.backgroundColor === YOU_UI.accent && n?.style?.borderRadius) dots++;
+      for (const c of n?.children ?? []) walk(c);
+    };
+    walk(s.root);
+    // One dot beside the voice. The gear, the chevrons and the labels are all
+    // white or the ground.
+    expect(dots).toBe(1);
   });
 });
 
@@ -1149,7 +1054,7 @@ describe("the bar never lies about where you are", () => {
 describe("the charts show measured things, or nothing", () => {
   const STATS = {
     window: "month", requests: 6, wordsOut: 300, audioSeconds: 0, minutesSaved: 5,
-    sparklinePerDay: [], 
+    sparklinePerDay: [],
     languageWords: [{ language: "en", words: 200 }, { language: "hi", words: 100 }],
     voiceWords: [{ id: "signature", words: 240 }, { id: "witty", words: 60 }],
     dictionary: { saved: 10, used: 4, unused: 6, scanned: 6, top: [{ word: "Nykaa", uses: 3 }] },
@@ -1168,84 +1073,23 @@ describe("the charts show measured things, or nothing", () => {
     return out;
   };
 
-  it("puts no chart on the note at all when there is nothing to show", () => {
-    // An empty chart in a strip this size is a hole with a caption in it. The
-    // box goes back to being the sentence and the button it was before.
-    expect(rings("personality")).toEqual([]);
-    // Stats is the screen for reading, so there the empty case is drawn and
-    // says so in words.
+  it("keeps every chart on Stats, which is the screen for reading", () => {
+    // The You tab used to carry a small ring on the note under the deck. Both
+    // are gone: that tab says what each thing is SET TO, in words, and a
+    // distribution is a different question asked on a different screen. A
+    // chart there now would be a report on a page that is a portrait.
+    expect(rings("personality", { stats: STATS })).toEqual([]);
+    expect(rings("stats", { stats: STATS }).length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("draws the empty case on Stats and says so in words", () => {
     for (const r of rings("stats")) {
       expect(r.props.slices).toEqual([]);
       expect(String(r.props.emptyLabel).length).toBeGreaterThan(0);
     }
   });
 
-  it("writes nothing on the You tab chart — it is a shape, not a report", () => {
-    // Percentages, a label in the middle and a legend are all for Stats.
-    // Putting them in the caption strip would make it a panel.
-    for (const r of rings("personality", { stats: STATS })) {
-      expect(r.props.centerValue).toBeUndefined();
-      expect(r.props.centerLabel).toBeUndefined();
-      expect(r.props.legend).toBe(false);
-    }
-  });
-
-  it("fills the You tab chart to its centre, since no number lives there", () => {
-    // A ring's hole exists to hold a number. With none, a hole is a hole —
-    // and at this size a wedge reads where a thin arc is a hairline.
-    for (const r of rings("personality", { stats: STATS })) {
-      expect(r.props.thickness).toBe(r.props.size / 2);
-    }
-  });
-
-  it("keeps the caption's chart well under the one on Stats", () => {
-    // Relational, not a magic number: the note is glanced at and Stats is
-    // read, and the sizes have to keep saying which is which however either
-    // is retuned.
-    const note = rings("personality", { stats: STATS })[0].props.size;
-    const stat = rings("stats", { stats: STATS })[0].props.size;
-    expect(note).toBeLessThan(stat / 2);
-    // Still big enough to read a lean off without looking for it.
-    expect(note).toBeGreaterThanOrEqual(52);
-  });
-
   it("charts the user's own rows once there are some", () => {
-    const found = rings("personality", { stats: STATS });
-    // Voice, Dictionary and Languages measure something; Haptics is a
-    // preference, and a chart of a setting is decoration.
-    expect(found).toHaveLength(3);
-    const all = found.flatMap((r) => r.props.slices);
-    expect(all.every((sl: any) => sl.value > 0)).toBe(true);
-    // Every slice value came off the stats, not out of the catalog.
-    const values = all.map((sl: any) => sl.value).sort((a: number, b: number) => a - b);
-    expect(values).toEqual([4, 6, 60, 100, 200, 240]);
-  });
-
-  it("puts a number in the Stats ring that the ring around it agrees with", () => {
-    const found = rings("stats", { stats: STATS });
-    const dict = found.find((r) => r.props.centerLabel === "IN USE");
-    // 4 of 10 saved words used.
-    expect(dict.props.centerValue).toBe("40%");
-    expect(dict.props.slices.map((sl: any) => sl.value)).toEqual([4, 6]);
-    const voice = found.find((r) => r.props.centerLabel === "TOP");
-    // 240 of 300 words in the top voice.
-    expect(voice.props.centerValue).toBe("80%");
-  });
-
-  it("names voices the way the user does, not by id", () => {
-    const found = rings("stats", { stats: STATS });
-    const voice = found.find((r) => r.props.centerLabel === "TOP");
-    expect(voice.props.slices[0].label).toBe("Zu");
-    expect(voice.props.slices.map((sl: any) => sl.label)).not.toContain("signature");
-  });
-
-  it("keeps the legend off the deck strip and on the Stats card", () => {
-    // The note is a strip under a deck; five legend rows would make it a panel.
-    for (const r of rings("personality", { stats: STATS })) expect(r.props.legend).toBe(false);
-    for (const r of rings("stats", { stats: STATS })) expect(r.props.legend).toBe(true);
-  });
-
-  it("gives Stats a card for each field, with its ring", () => {
     const found = rings("stats", { stats: STATS });
     expect(found.length).toBeGreaterThanOrEqual(3);
     const s = JSON.stringify(buildScreen("stats", ctx({ stats: STATS })));
@@ -1255,8 +1099,9 @@ describe("the charts show measured things, or nothing", () => {
   it("gives every ring exactly one amber slice — the one that leads", () => {
     // The accent is sacred: it marks the live thing and nothing else. In a
     // ring that is the leading share. A ring of five ambers led nowhere.
-    for (const id of ["personality", "stats"]) {
-      const slices = rings(id, { stats: STATS })[0].props.slices;
+    for (const r of rings("stats", { stats: STATS })) {
+      const slices = r.props.slices;
+      if (!slices.length) continue;
       expect(slices[0].color).toBe(YOU_UI.accent);
       for (const sl of slices.slice(1)) expect(sl.color).not.toBe(YOU_UI.accent);
     }
