@@ -693,7 +693,7 @@ export const TYPE_ROLES: Record<string, TypeRole> = {
    * the first bootstrap, for every user at once. Keep the two in step by hand.
    */
   /** The voice's own name on its card. Sized by value — see the note above. */
-  voiceName: { family: "display", size: 34, lineHeight: 38, color: "text" },
+  voiceName: { family: "display", size: 34, lineHeight: 38, weight: "800", color: "text" },
   portraitText: { family: "display", size: 21, lineHeight: 26, color: "text" },
   portraitLive: { family: "display", size: 21, lineHeight: 26, italic: true, color: "primary" },
   greetHello: {
@@ -4008,25 +4008,52 @@ export const TRAINING_UI = {
      * pills' gesture, so the product has one way of saying "commit this".
      */
     cta: {
-      label: "BEGIN",
-      background: "#0B0B0D",
+      /**
+       * IT NAMES THE GESTURE, because the gesture is the one thing about this
+       * control nobody can see. "BEGIN" is a button's word — it says what
+       * happens and leaves the disc, the run and the far end unexplained, so
+       * the pill reads as a button that does not answer a press.
+       */
+      label: "SLIDE TO BEGIN",
+      /**
+       * SMOKED GLASS, NOT A BLACK SLAB.
+       *
+       * A near-black pill on a black field is a rectangle of nothing with a
+       * bright dot at one end — the control had no shape of its own, only the
+       * disc's. Warm and translucent, it sits ON the network instead of
+       * cutting a hole in it, and the hairline is what gives it an edge over
+       * moving art.
+       */
+      background: "rgba(20,17,14,0.62)",
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.12)",
       color: "#FFFFFF",
-      fontSize: 12,
-      tracking: 1.8,
+      fontSize: 12.5,
+      /** Bold. This is the way into the product, not a caption on it. */
+      weight: "800",
+      tracking: 2.2,
       height: 58,
       radius: 999,
       /** The disc that travels. Starts on the LEFT. Plain — nothing drawn
        *  inside it; set `dot` above 0 to put a mark back. */
       disc: 46,
-      discBackground: "rgba(255,255,255,0.14)",
+      /** Pale, and deliberately NOT amber: this is the thing in your hand,
+       *  and the amber is where it is going. Two ambers and the journey has
+       *  no direction. */
+      discBackground: "rgba(255,255,255,0.20)",
       dot: 0,
       dotColor: "#FFFFFF",
-      /** Where it lands. The one warm thing on the pill, so the end of the
-       *  journey is visible from the start of it. Same dim amber as auth. */
-      targetBackground: "#C9862B",
+      /** Where it lands, in the brand amber itself now that the pill is glass
+       *  rather than black — it warms up as the disc approaches, so the end of
+       *  the journey is visible from the start of it. */
+      targetBackground: ACCENT_AMBER,
       targetDotColor: "#000000",
       /** How far along counts as committed, as a share of the run. */
       threshold: 0.62,
+      /** How long the disc takes to cross the WHOLE pill once committed. The
+       *  renderer scales it by the distance left, so a tap — which has the
+       *  furthest to go — no longer arrives fastest. */
+      commitMs: 460,
       /** When the disc nudges itself to advertise the drag. 0 removes the
        *  hint — and with it, most people's chance of finding the gesture. */
       hintDelayMs: 1250,
@@ -4119,6 +4146,29 @@ export const TRAINING_UI = {
       end: "End & save",
       saving: "Reading the conversation",
       saved: "It knows you a little better.",
+      /**
+       * THE LAST THING THE SCREEN SAYS, and it turns over as it says it.
+       *
+       * Ending used to be a toast and a jump home — the one moment the app has
+       * to show that the conversation went somewhere, spent on a grey rectangle
+       * sliding in from the top. Three words, in the middle of the field, each
+       * turning into the next while the portrait is actually being written.
+       *
+       * They are in the order the work happens: it heard you, it learned from
+       * it, what it learned is yours. Nothing here is a status — the save is
+       * what takes the time, and these are what the time is FOR.
+       */
+      farewell: {
+        words: ["Heard.", "Learned.", "Yours."],
+        intervalMs: 1000,
+        flipMs: 560,
+        size: 34,
+        weight: "800",
+        tracking: -0.6,
+        color: "#FFFFFF",
+        /** How long the last word is held after the save lands, ms. */
+        holdMs: 1500,
+      },
       /** The orb's canvas. The sphere is `orbRadius` of it, so the rest is the
        *  room the rim light falls off into — not padding. */
       bubble: 260,
@@ -4417,9 +4467,13 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
                 height: ui.cta.height,
                 radius: ui.cta.radius,
                 background: ui.cta.background,
+                borderWidth: ui.cta.borderWidth,
+                borderColor: ui.cta.borderColor,
                 color: ui.cta.color,
                 fontSize: ui.cta.fontSize,
+                weight: ui.cta.weight,
                 tracking: ui.cta.tracking,
+                commitMs: ui.cta.commitMs,
                 disc: ui.cta.disc,
                 discBackground: ui.cta.discBackground,
                 dot: ui.cta.dot,
@@ -5022,10 +5076,12 @@ function trainingLiveScreen(): ScreenResponse {
           body: { turns: "$state.turns" },
         },
       },
+      // The flip is the confirmation. A toast on top of it is the same fact
+      // said twice, in two voices, one of them grey.
       saved: { kind: "sequence", actions: [
-        { kind: "setState", path: "saving", value: false },
         { kind: "setState", path: "saved", value: true },
-        { kind: "toast", message: ui.saved, tone: "success" },
+        { kind: "delay", ms: ui.farewell.holdMs },
+        { kind: "setState", path: "saving", value: false },
         { kind: "navigate", screenId: "home" },
       ] },
       // A failed save must not trap someone on this screen. They leave either
@@ -5080,6 +5136,7 @@ function trainingLiveScreen(): ScreenResponse {
         {
           type: "Stack",
           on: { onPress: "finish" },
+          visibleIf: { falsy: "saving" },
           props: { pressOpacity: 1 },
           style: { ...FILL_STYLE },
         },
@@ -5106,11 +5163,42 @@ function trainingLiveScreen(): ScreenResponse {
           props: { ...NEURAL_FIELD, training: true },
         },
 
+        // ENDING, IN THE MIDDLE OF THE FIELD.
+        //
+        // Over the network and under nothing, because for these three seconds
+        // it is the only thing on the screen — the field goes on running
+        // behind it, which is the point: the conversation is being folded into
+        // the thing you were just talking to.
+        {
+          type: "Stack",
+          visibleIf: { truthy: "saving" },
+          style: { ...FILL_STYLE, alignItems: "center", justifyContent: "center" },
+          children: [
+            {
+              type: "FlipText",
+              props: {
+                words: ui.farewell.words,
+                intervalMs: ui.farewell.intervalMs,
+                flipMs: ui.farewell.flipMs,
+                flip: "turn",
+              },
+              style: {
+                fontSize: ui.farewell.size,
+                fontWeight: ui.farewell.weight,
+                letterSpacing: ui.farewell.tracking,
+                color: ui.farewell.color,
+                textAlign: "center",
+              },
+            },
+          ],
+        },
+
         // THE WAY OUT, and the only control left. Last in the list so it paints
         // over everything, and absolute so the orb's own placement ignores it.
         {
           type: "Stack",
           on: { onPress: "finish" },
+          visibleIf: { falsy: "saving" },
           // The disc is 38pt and a thumb is about 44. The slop is the
           // difference, taken outward, so the target is a thumb's width while
           // the thing drawn stays the size it should be.

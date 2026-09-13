@@ -1376,6 +1376,47 @@ describe("History wears the ground it was opened from", () => {
   });
 });
 
+describe("ending a session is a moment, not a toast", () => {
+  const live = () => buildScreen("training_live", { personality: {}, language: "en" } as never)!;
+
+  it("turns three words over in the middle of the field while it saves", () => {
+    const json = JSON.stringify(live());
+    expect(json).toContain('"FlipText"');
+    for (const w of TRAINING_UI.chat.live.farewell.words) expect(json).toContain(w);
+    // It plays while the portrait is being written, and only then.
+    expect(json).toContain('"visibleIf":{"truthy":"saving"}');
+  });
+
+  it("stops answering touches while it plays", () => {
+    // The dismiss layer fires finish. Left live during the farewell, a stray
+    // tap posts the conversation a second time and jumps the screen mid-word.
+    const root = live().root as any;
+    const dismiss = (root.children ?? []).filter((c: any) => c?.on?.onPress === "finish");
+    expect(dismiss.length).toBeGreaterThan(0);
+    for (const d of dismiss) expect(d.visibleIf).toEqual({ falsy: "saving" });
+  });
+
+  it("says it once — the flip, not the flip and a toast", () => {
+    const saved = (live().actions as any).saved;
+    expect(JSON.stringify(saved)).not.toContain('"toast"');
+    expect(JSON.stringify(saved)).toContain('"delay"');
+  });
+});
+
+describe("the way in names its own gesture", () => {
+  it("says what to do with it, in bold", () => {
+    // "BEGIN" is a button's word: it says what happens and leaves the disc,
+    // the run and the far end unexplained — so the pill reads as a button
+    // that does not answer a press.
+    const cta = TRAINING_UI.entry.cta;
+    expect(cta.label.toLowerCase()).toContain("slide");
+    expect(cta.weight).toBe("800");
+    const json = JSON.stringify(buildScreen("home", { personality: {}, language: "en" } as never));
+    expect(json).toContain(cta.label);
+    expect(json).toContain('"weight":"800"');
+  });
+});
+
 describe("the training tab shows what it has learned", () => {
   const portrait = {
     words: [{ term: "jugaad", means: "a fix" }, { term: "ping", means: "message" }],
