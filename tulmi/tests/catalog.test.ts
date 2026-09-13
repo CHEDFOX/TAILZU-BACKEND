@@ -20,6 +20,7 @@ import {
   STATS_UI,
 } from "../src/experience/catalog.js";
 import { getConfig } from "../src/config.js";
+import { PERSONALITY_PRESETS } from "../src/experience/personalityPresets.js";
 
 describe("the arrival prompt", () => {
   const flags = (o: Parameters<typeof buildBootstrap>[0]) =>
@@ -1009,16 +1010,39 @@ describe("the You tab reads like a face", () => {
     return out;
   };
 
-  it("shows all four settings at once, each with what it is set to", () => {
-    // The whole point of the rebuild: a value belongs on the surface, not
-    // behind a tap. Four lines, four visible values, no scrolling to find one.
-    const found = lines(you());
-    expect(found).toHaveLength(4);
-    for (const l of found) {
-      const text = JSON.stringify(l);
-      // a domain label and a value, not just a title
-      expect(text).toMatch(/"fontWeight":"700"/);
+  it("gives the voice an object and the settings rows", () => {
+    // Four identical strips said the voice, the dictionary, the languages and
+    // the haptics all matter the same amount. They do not: the voice is what
+    // this tab is ABOUT and the rest are settings you adjust occasionally. So
+    // one object with its own art, and three rows without any.
+    const s = you();
+    const json = JSON.stringify(s);
+    // The card carries the voice's art. The rows carry none — four blurred
+    // strips stacked on each other is four mud smears fighting, and at row
+    // height the art was never a picture anyway, only a colour wash.
+    for (const m of ["card.dictionary", "card.languages", "card.haptics"]) {
+      expect(json, `${m} should not be behind a row`).not.toContain(m);
     }
+    // Still every setting visible without a tap, with its value on it.
+    for (const l of ["Dictionary", "Languages", "Haptics"]) expect(json).toContain(`"${l}"`);
+    // And every one still one tap from its screen.
+    for (const c of ["voices", "dictionary", "languages", "haptics"]) expect(json).toContain(`"${c}"`);
+  });
+
+  it("says how the voice writes, not just which one is on", () => {
+    // Every voice carries a tagline and it has never been on this screen. The
+    // name tells you which voice is on; the line tells you what that MEANS,
+    // which is the thing anybody opening this tab wanted to know.
+    const s = you({ personality: { activePresetId: "signature" }, language: "en" } as never);
+    const json = JSON.stringify(s);
+    expect(json).toContain('"voiceName"');
+    expect(json).toContain("WRITING AS");
+    // The line itself comes from the preset, so read it from there — retuning
+    // a voice must never mean editing this file.
+    const zu = PERSONALITY_PRESETS.find((p) => p.id === "signature")!;
+    expect(json).toContain(zu.name);
+    expect(json, "the card says which voice is on, not how it writes")
+      .toContain(zu.tagline);
   });
 
   it("says the setup in one sentence, with the voice as the live word", () => {
@@ -1309,10 +1333,18 @@ describe("the keyboard opens with one voice, and it is ours", () => {
     expect(pinned()[0].tone).toBeDefined();
   });
 
-  it("steps aside the moment the user adds a voice", () => {
+  it("keeps Zu first however many voices are pinned", () => {
+    // Zu used to step aside on the first pin, which made the user's own
+    // writing the one voice they could lose. The tone row is how you change
+    // voice mid-sentence, so the way BACK to your own has to be on it —
+    // always, and not as something Voices offers to add or remove.
     const chips = pinned({ pinnedPresetIds: ["professional", "witty"] });
-    expect(chips.map((c: any) => c.id)).toEqual(["professional", "witty"]);
-    expect(chips.some((c: any) => c.name === "Zu")).toBe(false);
+    expect(chips.map((c: any) => c.id)).toEqual(["signature", "professional", "witty"]);
+  });
+
+  it("never pins Zu twice", () => {
+    const chips = pinned({ pinnedPresetIds: ["signature", "witty"] });
+    expect(chips.map((c: any) => c.id)).toEqual(["signature", "witty"]);
   });
 
   it("falls back to Zu when every pinned voice has been deleted", () => {
@@ -1321,6 +1353,33 @@ describe("the keyboard opens with one voice, and it is ours", () => {
     expect(pinned({ pinnedPresetIds: ["deleted_1", "deleted_2"] })).toEqual([
       pinned()[0],
     ]);
+  });
+});
+
+describe("Zu is not a voice in the list", () => {
+  const voices = (p: Record<string, unknown> = {}) =>
+    JSON.stringify(buildScreen("voices", { personality: p } as never));
+
+  it("keeps Zu out of the styles, where Add and Edit live", () => {
+    // Zu is the person's own writing, repaired — not a style laid on top of
+    // it. In the list it read as the twelfth voice, with an Add implying it
+    // could be absent and an Edit inviting a generic sentence over the one
+    // voice whose prompt has to stay empty.
+    const json = voices();
+    const rows = json.slice(json.indexOf("Styles"));
+    expect(rows, "Zu is still in the styles list").not.toContain('"Zu"');
+  });
+
+  it("says what Zu is, above them", () => {
+    const zu = PERSONALITY_PRESETS.find((p) => p.id === "signature")!;
+    const json = voices();
+    expect(json).toContain(zu.name);
+    expect(json).toContain(zu.tagline);
+  });
+
+  it("marks Zu amber only while it is the voice writing", () => {
+    expect(voices({ activePresetId: "signature" })).toContain("WRITING AS YOU");
+    expect(voices({ activePresetId: "witty" })).toContain("YOUR OWN VOICE");
   });
 });
 

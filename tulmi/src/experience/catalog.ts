@@ -692,6 +692,8 @@ export const TYPE_ROLES: Record<string, TypeRole> = {
    * evaluated, and a reference to a `const` that does not exist yet throws on
    * the first bootstrap, for every user at once. Keep the two in step by hand.
    */
+  /** The voice's own name on its card. Sized by value — see the note above. */
+  voiceName: { family: "display", size: 30, lineHeight: 34, color: "text" },
   portraitText: { family: "display", size: 21, lineHeight: 26, color: "text" },
   portraitLive: { family: "display", size: 21, lineHeight: 26, italic: true, color: "primary" },
   greetHello: {
@@ -5009,6 +5011,31 @@ export const YOU_UI = {
     subSize: 11.5,
     marginBottom: 7,
   },
+  /**
+   * ZU, ABOVE THE LIST.
+   *
+   * Zu is not the twelfth voice. The eleven are styles laid ON the writing;
+   * Zu IS the writing, repaired — which is why its prompt is empty and must
+   * stay empty. Sitting in the list it read as a peer of the styles, with an
+   * Add that implied it could be absent and an Edit that invited a generic
+   * sentence over the one voice that exists to assert nothing. It is lifted
+   * out: always on the keyboard, never editable, above the styles.
+   */
+  selfVoice: {
+    radius: 18,
+    padding: 16,
+    /** Amber only while Zu is the voice actually writing — the sacred rule. */
+    liveBackground: "rgba(232,162,60,0.07)",
+    liveBorder: "rgba(232,162,60,0.22)",
+    restBackground: "#141418",
+    kickerSize: 8.5,
+    kickerTracking: 2.4,
+    nameSize: 22,
+    lineSize: 12.5,
+    lineHeight: 17,
+    dot: 7,
+    marginBottom: 4,
+  },
   /** A small action on a pill — Edit, Add, Remove, Save. */
   chip: {
     height: 28,
@@ -5059,33 +5086,58 @@ export const YOU_UI = {
     marginBottom: 16,
   },
   /**
-   * A LINE — one domain, its current value, and the way to change it.
+   * THE VOICE CARD — the one object on this tab, and the reason it has a
+   * hierarchy at all.
    *
-   * The card's own art, blurred, runs under it as a strip, so the deck's
-   * colour and mood survive; the scrim rises to the right so the value has
-   * something to sit on. The domain is small on the left, the VALUE is large
-   * on the right, and that is the inversion: what a thing is set to belongs on
-   * the surface, not behind a tap.
+   * Four identical rows said the voice, the dictionary, the languages and the
+   * haptics all matter the same amount. They do not. The voice is what this
+   * tab is ABOUT — it is the thing writing as you — and the other three are
+   * settings you adjust occasionally. So the voice gets an object with its
+   * own art, its name in the display face, and the line that says how it
+   * writes; the rest get rows.
+   *
+   * The tagline is the point. Every voice carries one and it has never been
+   * on this screen: the name alone tells you which voice is on, and the line
+   * tells you what that MEANS, which is the thing you actually wanted to know.
    */
-  line: {
-    height: 78,
-    radius: 18,
-    gap: 9,
-    background: "#141418",
-    artBlur: 34,
+  voiceCard: {
+    height: 168,
+    radius: 22,
+    artBlur: 26,
     artTint: "dark" as const,
-    scrim: "rgba(11,11,13,0.72)",
-    paddingRight: 16,
-    kickerSize: 7.5,
-    kickerTracking: 2.2,
-    valueSize: 20,
-    valueTracking: -0.3,
-    unitSize: 11,
-    /** The dot beside the active voice. The one amber on the tab. */
+    /** Rising from the bottom, so the words always have a ground whatever the
+     *  art is, and the top of the card keeps the colour. */
+    scrim: ["rgba(11,11,13,0.05)", "rgba(11,11,13,0.62)", "rgba(11,11,13,0.92)"],
+    scrimStops: [0, 0.45, 1],
+    padding: 18,
+    kickerSize: 8,
+    kickerTracking: 2.4,
+    nameSize: 30,
+    taglineSize: 12.5,
+    taglineLineHeight: 17,
     dot: 7,
+    marginBottom: 14,
+  },
+  /**
+   * A ROW — one setting, what it is set to, and the way in.
+   *
+   * No art. The art belonged to the deck, and four blurred strips stacked on
+   * top of each other is four mud smears fighting; at row height it was never
+   * a picture anyway, only a colour wash. A setting should look like a
+   * setting: a name, a value, a chevron, and enough air that the eye runs
+   * down the values in one pass.
+   */
+  row: {
+    height: 58,
+    radius: 16,
+    background: "rgba(255,255,255,0.045)",
+    paddingHorizontal: 16,
+    gap: 7,
+    labelSize: 13.5,
+    valueSize: 13.5,
     chevron: 7,
   },
-  /** The deck on the tab root. */
+ /** The deck on the tab root. */
   deck: {
     cardWidth: 198,
     cardHeight: 198,
@@ -5436,56 +5488,6 @@ function pieNode(opts: {
   };
 }
 
-/**
- * The deck, in order. One list feeds the cards, the backdrops AND the routing,
- * so a fifth card is one entry here and nothing else — there is no second
- * place that has to be told the deck grew.
- */
-const YOU_CARDS: {
-  title: string;
-  media: string;
-  screen: string;
-  /** The line under the deck when this card is the one in the middle. One
-   *  sentence, plain, about what the thing IS — the title is already the
-   *  label and a second label helps nobody. */
-  blurb: string;
-  /** The button on that line. Names the destination, so the deck's own tap
-   *  and this one visibly go to the same place. */
-  cta: string;
-  /**
-   * The small chart beside the words, built from this user's own history.
-   *
-   * A function of the context rather than a value, because it is measured per
-   * request. Cards with nothing to measure — Haptics is a preference, not a
-   * behaviour — simply have none, and the box is words and a button as before.
-   *
-   * Slices only. What each one is worth, what share it takes and what it is
-   * called are questions for Stats; here the chart is a shape.
-   */
-}[] = [
-  {
-    title: "Voice", media: "card.voice", screen: "voices",
-    blurb: "Zu writes as you. Add a voice for when it shouldn't.",
-    cta: "Voices",
-  },
-  {
-    title: "Dictionary", media: "card.dictionary", screen: "dictionary",
-    blurb: "Your words, spelled your way. Never corrected.",
-    cta: "Words",
-  },
-  {
-    title: "Haptics", media: "card.haptics", screen: "haptics",
-    blurb: "How it feels under your thumb.",
-    cta: "Feel",
-    // No ring. Haptics is a preference, not a behaviour — there is nothing
-    // measured here, and a chart of a setting is decoration.
-  },
-  {
-    title: "Languages", media: "card.languages", screen: "languages",
-    blurb: "Pick a language. It listens for it.",
-    cta: "Languages",
-  },
-];
 
 /** The way back, on the amber. A chevron with rounded tips, not a cropped one. */
 function youBack(): Node {
@@ -5660,71 +5662,83 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
 
   /** One card: the topic's art, a scrim, and its name. Nothing else is on it. */
   /**
-   * ONE LINE. The art it is cut from, the domain, what it is set to, and a
-   * chevron. `live` is the single amber dot, and only the voice gets it.
+   * THE VOICE CARD. Its art, its name, and the line that says how it writes.
+   * The amber dot is the one accent on the tab: this is the voice actually
+   * writing, which is the only thing here that is live.
    */
-  const youLine = (c: (typeof YOU_CARDS)[number], value: string, unit: string, live = false): Node => {
-    const L = u.line;
+  const voiceCard = (name: string, tagline: string): Node => {
+    const V = u.voiceCard;
     return {
       type: "Stack",
       on: { onPress: { kind: "sequence", actions: [
         { kind: "haptic", style: "selection" },
-        { kind: "navigate", screenId: c.screen },
+        { kind: "navigate", screenId: "voices" },
       ] } },
-      props: { pressOpacity: 0.72 },
+      props: { pressOpacity: 0.85 },
       style: {
-        height: L.height, borderRadius: L.radius, overflow: "hidden",
-        backgroundColor: L.background, marginBottom: L.gap,
-        flexDirection: "row", alignItems: "center",
-        paddingRight: L.paddingRight,
+        height: V.height, borderRadius: V.radius, overflow: "hidden",
+        marginBottom: V.marginBottom, justifyContent: "flex-end",
+        padding: V.padding, backgroundColor: "#141418",
       },
       children: [
-        { type: "Image", props: { source: mediaSrc(c.media), contentFit: "cover" },
+        { type: "Image", props: { source: mediaSrc("card.voice"), contentFit: "cover" },
           style: { ...FILL_STYLE } },
-        // Blurred hard. The art is here for colour and mood; a sharp
-        // photograph behind two words is a photograph with words on it.
         { type: "BlurBackground",
-          props: { intensity: L.artBlur, tint: L.artTint },
+          props: { intensity: V.artBlur, tint: V.artTint },
           style: { ...FILL_STYLE } },
-        // Rising to the right, so the value always has a ground whatever was
-        // uploaded. The left stays open, which is where the art shows.
         { type: "Gradient",
-          props: { colors: ["rgba(11,11,13,0.10)", L.scrim, "rgba(11,11,13,0.88)"],
-                   locations: [0, 0.45, 1], direction: "horizontal" },
+          props: { colors: V.scrim, locations: V.scrimStops, direction: "vertical" },
           style: { ...FILL_STYLE } },
-        { type: "Stack", style: { flex: 1 } },
         {
           type: "Stack",
-          style: { alignItems: "flex-end" },
+          style: { flexDirection: "row", alignItems: "center", gap: 8 },
           children: [
-            { type: "Text", props: { content: c.title },
-              style: { fontSize: L.kickerSize, letterSpacing: L.kickerTracking,
+            { type: "Stack",
+              style: { width: V.dot, height: V.dot, borderRadius: V.dot / 2,
+                       backgroundColor: u.accent } },
+            { type: "Text", props: { content: "WRITING AS" },
+              style: { fontSize: V.kickerSize, letterSpacing: V.kickerTracking,
                        textTransform: "uppercase", color: u.textDim } },
-            {
-              type: "Stack",
-              style: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 4 },
-              children: [
-                ...(live ? [{
-                  type: "Stack",
-                  style: { width: L.dot, height: L.dot, borderRadius: L.dot / 2,
-                           backgroundColor: u.accent },
-                } as Node] : []),
-                { type: "Text", props: { content: value },
-                  style: { fontSize: L.valueSize, fontWeight: "700",
-                           letterSpacing: L.valueTracking, color: u.text } },
-                ...(unit ? [{
-                  type: "Text", props: { content: unit },
-                  style: { fontSize: L.unitSize, fontWeight: "500", color: u.textDim },
-                } as Node] : []),
-              ],
-            },
           ],
         },
+        { type: "Text", props: { content: name, variant: "voiceName" },
+          style: { marginTop: 4 } },
+        ...(tagline
+          ? [{ type: "Text", props: { content: tagline },
+               style: { fontSize: V.taglineSize, lineHeight: V.taglineLineHeight,
+                        color: u.textDim, marginTop: 5 } } as Node]
+          : []),
+      ],
+    };
+  };
+
+  /** A setting: what it is, what it is set to, and the way in. */
+  const youRow = (label: string, value: string, screen: string): Node => {
+    const R = u.row;
+    return {
+      type: "Stack",
+      on: { onPress: { kind: "sequence", actions: [
+        { kind: "haptic", style: "selection" },
+        { kind: "navigate", screenId: screen },
+      ] } },
+      props: { pressOpacity: 0.7 },
+      style: {
+        height: R.height, borderRadius: R.radius,
+        backgroundColor: R.background, marginBottom: R.gap,
+        paddingHorizontal: R.paddingHorizontal,
+        flexDirection: "row", alignItems: "center",
+      },
+      children: [
+        { type: "Text", props: { content: label },
+          style: { fontSize: R.labelSize, fontWeight: "500", color: u.text } },
+        { type: "Stack", style: { flex: 1 } },
+        { type: "Text", props: { content: value },
+          style: { fontSize: R.valueSize, color: u.textDim } },
         { type: "SVG",
           props: { viewBox: "0 0 24 24", d: "M9 5 L15.5 12 L9 19",
                    fill: "none", stroke: u.textFaint, strokeWidth: 2.2,
                    strokeLinecap: "round", strokeLinejoin: "round" },
-          style: { width: L.chevron * 2, height: L.chevron * 2, marginLeft: 10 } },
+          style: { width: R.chevron * 2, height: R.chevron * 2, marginLeft: 10 } },
       ],
     };
   };
@@ -5737,7 +5751,11 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
   // different facts and only one of them is true.
   const presets = applyPresetOverrides(ctx.personality.presetOverrides);
   const activeId = ctx.personality.activePresetId ?? "signature";
-  const voiceName = presets.find((e) => e.id === activeId)?.name ?? "Zu";
+  const active = presets.find((e) => e.id === activeId);
+  const voiceName = active?.name ?? "Zu";
+  // What that voice actually DOES. The name says which one is on; this says
+  // what it means, which is the thing anybody opening this tab wanted to know.
+  const voiceLine = (active as { tagline?: string } | undefined)?.tagline ?? "";
   const wordCount = ctx.dictionary?.length ?? 0;
   const langCodes = (ctx.personality.languages ?? []).map(String);
   const langNames = langCodes.map((c) => LANGUAGE_NAMES[c] ?? c.toUpperCase());
@@ -5816,12 +5834,9 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
         // frame in the middle of a gesture.
         // The mood behind the tab is the voice's own art — the thing that is
         // actually writing, not the last card swiped past.
-        ...YOU_CARDS.map((c, i) => ({
-          type: "Image",
-          visibleIf: { eq: ["deck", i] },
-          props: { source: mediaSrc(c.media), contentFit: "cover" },
-          style: { ...FILL_STYLE },
-        } as Node)),
+        { type: "Image",
+          props: { source: mediaSrc("card.voice"), contentFit: "cover" },
+          style: { ...FILL_STYLE } } as Node,
         { type: "BlurBackground",
           props: { intensity: d.backdropBlur, tint: d.backdropTint },
           style: { ...FILL_STYLE } },
@@ -5843,11 +5858,10 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
           },
           children: [
             portrait,
-            youLine(YOU_CARDS[0], voiceName, "", true),
-            youLine(YOU_CARDS[1], wordCount > 0 ? String(wordCount) : "None yet",
-                    wordCount > 0 ? "words" : ""),
-            youLine(YOU_CARDS[3], langLabel, ""),
-            youLine(YOU_CARDS[2], hapticsOn ? "On" : "Off", ""),
+            voiceCard(voiceName, voiceLine),
+            youRow("Dictionary", wordCount > 0 ? `${wordCount} words` : "None yet", "dictionary"),
+            youRow("Languages", langLabel, "languages"),
+            youRow("Haptics", hapticsOn ? "On" : "Off", "haptics"),
           ],
         },
 
@@ -5880,9 +5894,14 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
   const p = ctx.personality;
   const effective = applyPresetOverrides(p.presetOverrides);
   const pinned = Array.isArray(p.pinnedPresetIds) ? p.pinnedPresetIds : [];
+  // ZU IS NOT IN EITHER LIST. It is the person's own voice, always on the
+  // keyboard and never edited, so it has no Add to offer and no prompt to
+  // change. It sits above the styles as itself — see YOU_UI.selfVoice.
+  const self = effective.find((e) => e.id === HOUSE_TONE.id);
+  const styles = effective.filter((e) => e.id !== HOUSE_TONE.id);
   // The keyboard set, in pin order; ids whose preset was deleted are dropped.
   const kbVoices = pinned
-    .map((id) => effective.find((e) => e.id === id))
+    .map((id) => styles.find((e) => e.id === id))
     .filter((e): e is (typeof effective)[number] => !!e);
 
   // Small trailing action on a pill. Nested pressables win over the pill press
@@ -5903,6 +5922,66 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     ],
   });
 
+  /** Make this the voice refine writes with. The one action every voice has. */
+  const activate = (preset: (typeof effective)[number]): ActionRef => ({
+    kind: "sequence",
+    actions: [
+      { kind: "haptic", style: "selection" },
+      {
+        kind: "callEndpoint",
+        method: "PUT",
+        path: "/v1/personality",
+        // Carry the voice's tone along so the keyboard's tone pill follows
+        // the voice instead of keeping a stale tone.
+        body: {
+          activePresetId: preset.id,
+          ...(preset.defaultTone ? { activeTone: preset.defaultTone } : {}),
+        },
+        onSuccess: "activated",
+        onError: "activateErr",
+      },
+    ],
+  });
+
+  /** Zu, as itself: the name, the line that says what it is, one tap to use it. */
+  const selfBlock = (preset: (typeof effective)[number]): Node => {
+    const sv = YOU_UI.selfVoice;
+    const live = (p.activePresetId ?? HOUSE_TONE.id) === preset.id;
+    return {
+      type: "Stack",
+      on: { onPress: activate(preset) },
+      props: { pressOpacity: 0.8 },
+      style: {
+        borderRadius: sv.radius, padding: sv.padding,
+        backgroundColor: live ? sv.liveBackground : sv.restBackground,
+        borderWidth: 1,
+        borderColor: live ? sv.liveBorder : "transparent",
+        marginBottom: sv.marginBottom,
+      },
+      children: [
+        {
+          type: "Stack",
+          style: { flexDirection: "row", alignItems: "center", gap: 8 },
+          children: [
+            { type: "Stack", style: {
+              width: sv.dot, height: sv.dot, borderRadius: sv.dot / 2,
+              backgroundColor: live ? YOU_UI.accent : YOU_UI.textFaint } },
+            { type: "Text", props: { content: live ? "WRITING AS YOU" : "YOUR OWN VOICE" },
+              style: { fontSize: sv.kickerSize, letterSpacing: sv.kickerTracking,
+                       textTransform: "uppercase", color: YOU_UI.textDim } },
+          ],
+        },
+        { type: "Text", props: { content: preset.name },
+          style: { fontSize: sv.nameSize, fontWeight: "700",
+                   color: YOU_UI.text, marginTop: 5 } },
+        { type: "Text",
+          props: { content: (preset as { tagline?: string }).tagline ?? "" },
+          style: { fontSize: sv.lineSize, lineHeight: sv.lineHeight,
+                   color: YOU_UI.textDim, marginTop: 3 } },
+      ],
+    };
+  };
+
   // One voice row. Tap = make it the ACTIVE voice (what refine writes with);
   // the trailing buttons manage the keyboard set / open the editor.
   const voiceRow = (preset: (typeof effective)[number], where: "kb" | "all"): Node => {
@@ -5921,22 +6000,7 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
         paddingVertical: up.paddingVertical, minHeight: up.minHeight,
         marginBottom: up.marginBottom,
       },
-      on: { onPress: { kind: "sequence", actions: [
-        { kind: "haptic", style: "selection" },
-        {
-          kind: "callEndpoint",
-          method: "PUT",
-          path: "/v1/personality",
-          // Carry the voice's tone along so the keyboard's tone pill follows
-          // the voice instead of keeping a stale tone.
-          body: {
-            activePresetId: preset.id,
-            ...(preset.defaultTone ? { activeTone: preset.defaultTone } : {}),
-          },
-          onSuccess: "activated",
-          onError: "activateErr",
-        },
-      ] } },
+      on: { onPress: activate(preset) },
       // Flat. The pill IS the row now, so the extra Stack that used to make one
       // inside the card is a box around nothing.
       children: [
@@ -5987,17 +6051,19 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     youLabel("On the keyboard"),
     // Only when the list is EMPTY. A populated list is self-explanatory — the
     // pills carry Remove — and the sentence was a wall of grey above it.
+    // It says Zu is there because Zu IS there, always, and is the reason the
+    // row is never empty even when the user has pinned nothing.
     ...(kbVoices.length ? [] : [{
       type: "Text",
-      props: { content: "Nothing here yet. Add one from below." },
+      props: { content: "Zu is always on it. Add a style from below." },
       style: { fontSize: 12, color: YOU_UI.textDim, marginBottom: 10 },
     } as Node]),
     ...kbVoices.map((e) => voiceRow(e, "kb")),
   ];
 
   const allSet: Node[] = [
-    youLabel("All voices"),
-    ...effective.map((e) => voiceRow(e, "all")),
+    youLabel("Styles"),
+    ...styles.map((e) => voiceRow(e, "all")),
   ];
 
   return {
@@ -6063,6 +6129,7 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
             paddingHorizontal: YOU_UI.padding, paddingTop: 4, paddingBottom: 28,
           },
           children: [
+            ...(self ? [selfBlock(self)] : []),
             ...keyboardSet,
             ...allSet,
             // NO SECOND ADD BUTTON. The ＋ on the header already makes a voice,
@@ -10697,13 +10764,18 @@ export function buildKeyboardConfig(
       const pinnedIds = Array.isArray(personality?.pinnedPresetIds)
         ? personality!.pinnedPresetIds!
         : [];
-      const chips = pinnedIds.length > 0
-        ? pinnedIds
-            .map((id) => PERSONALITY_PRESETS.find((p) => p.id === id))
-            .filter((p): p is (typeof PERSONALITY_PRESETS)[number] => !!p)
-            .slice(0, MAX_PINNED_PRESETS)
-            .map((p) => ({ id: p.id, name: p.name, tone: p.defaultTone }))
-        : [HOUSE_TONE];
+      // ZU IS ALWAYS FIRST, and is not something the user adds or removes.
+      // The keyboard's tone row is how you change voice mid-sentence, so the
+      // way back to your own writing has to be on it whatever else is pinned
+      // — Voices manages the styles, and your own voice is not a style.
+      const chips = [
+        HOUSE_TONE,
+        ...pinnedIds
+          .filter((id) => id !== HOUSE_TONE.id)
+          .map((id) => PERSONALITY_PRESETS.find((p) => p.id === id))
+          .filter((p): p is (typeof PERSONALITY_PRESETS)[number] => !!p)
+          .map((p) => ({ id: p.id, name: p.name, tone: p.defaultTone })),
+      ].slice(0, MAX_PINNED_PRESETS);
       // A pin list of ids that no longer resolve — voices deleted since —
       // would otherwise send an empty row and drop the keyboard back to its
       // own cycle. One tone is the floor, whatever the reason for the gap.
