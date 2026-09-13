@@ -693,7 +693,7 @@ export const TYPE_ROLES: Record<string, TypeRole> = {
    * the first bootstrap, for every user at once. Keep the two in step by hand.
    */
   /** The voice's own name on its card. Sized by value — see the note above. */
-  voiceName: { family: "display", size: 30, lineHeight: 34, color: "text" },
+  voiceName: { family: "display", size: 34, lineHeight: 38, color: "text" },
   portraitText: { family: "display", size: 21, lineHeight: 26, color: "text" },
   portraitLive: { family: "display", size: 21, lineHeight: 26, italic: true, color: "primary" },
   greetHello: {
@@ -4034,6 +4034,45 @@ export const TRAINING_UI = {
       inset: 22,
     },
   },
+  /**
+   * WHAT IT KNOWS — the panel under the button.
+   *
+   * The first screen is the field, two words and the way in, and it stays
+   * that: a screen you look at. The evidence lives one scroll below it, on a
+   * sheet that rises OVER the network and blurs it — so the network is the
+   * ground the whole tab stands on rather than a picture at the top of it.
+   *
+   * Everything here is counted from the portrait, which is the only honest
+   * source: it is literally what the app has learned. Nothing is smoothed and
+   * nothing is invented, so a new account sees small numbers rather than a
+   * chart of nothing.
+   */
+  stats: {
+    sheetRadius: 26,
+    sheetBlur: 34,
+    sheetTint: "dark" as const,
+    /** Over the blur. A blur alone leaves the brightest fibres reading
+     *  through the type; this is what makes the sheet a surface. */
+    wash: "rgba(9,8,7,0.82)",
+    padding: 22,
+    /** Clears the docked tabs at the bottom of the scroll. */
+    bottom: 132,
+    kicker: "WHAT IT KNOWS",
+    kickerSize: 9,
+    kickerTracking: 3,
+    ring: 150,
+    ringThickness: 22,
+    text: "#FFFFFF",
+    textDim: "rgba(255,255,255,0.56)",
+    textFaint: "rgba(255,255,255,0.34)",
+    tile: "rgba(255,255,255,0.055)",
+    tileRadius: 14,
+    tileGap: 8,
+    chip: "rgba(255,255,255,0.07)",
+    chipRadius: 999,
+    /** How many of their own words are shown. The rest are still learned. */
+    chipLimit: 8,
+  },
   chat: {
     title: "Train",
     /** The first thing on the thread, before anyone has typed. */
@@ -4156,8 +4195,108 @@ export const TRAINING_UI = {
  * intact. What this screen buys is a place for the media and a choice that is
  * legible before anything is typed.
  */
-function homeScreen(_ctx: ScreenContext): ScreenResponse {
+function homeScreen(ctx: ScreenContext): ScreenResponse {
   const ui = TRAINING_UI.entry;
+  const st = TRAINING_UI.stats;
+
+  // ------------------------------------------------------------ what it knows
+  //
+  // Counted off the style portrait, which is not a metric about the app — it
+  // IS what the app has learned of this person. Every number below is a thing
+  // it can point at: a word of theirs, a mode it has seen them write in, a
+  // sitting it learned from.
+  const n = (v: number) => Math.max(0, Math.round(v)).toLocaleString("en-US");
+  const sp = ctx.personality?.stylePortrait ?? {};
+  const words = sp.words ?? [];
+  const styles = sp.styles ?? [];
+  const rhythms = sp.rhythms ?? [];
+  const voices = Object.keys(sp.tones ?? {}).length;
+  const known = words.length + styles.length + rhythms.length + voices;
+  const sessions = sp.sessions ?? 0;
+  const rounds = sp.examples ?? 0;
+  const refines = sp.observed ?? 0;
+
+  const slices: Slice[] = [
+    { label: "Words", value: words.length, color: CHART_ON_DARK[0]! },
+    { label: "Styles", value: styles.length, color: CHART_ON_DARK[1]! },
+    { label: "Rhythms", value: rhythms.length, color: CHART_ON_DARK[2]! },
+    { label: "Voices", value: voices, color: CHART_ON_DARK[3]! },
+  ].filter((sl) => sl.value > 0);
+
+  /** One counted thing. Three of them in a row, and no sentence between. */
+  const tile = (label: string, value: number): Node => ({
+    type: "Stack",
+    style: {
+      flex: 1, backgroundColor: st.tile, borderRadius: st.tileRadius,
+      paddingVertical: 13, paddingHorizontal: 12,
+    },
+    children: [
+      { type: "Text", props: { content: n(value) },
+        style: { fontSize: 23, fontWeight: "800", letterSpacing: -0.9, color: st.text } },
+      { type: "Text", props: { content: label },
+        style: { fontSize: 8, letterSpacing: 1.8, textTransform: "uppercase",
+                 color: st.textDim, marginTop: 4 } },
+    ],
+  });
+
+  /** Their own word, as it was learned. The most specific thing on the tab. */
+  const chip = (term: string): Node => ({
+    type: "Stack",
+    style: {
+      backgroundColor: st.chip, borderRadius: st.chipRadius,
+      paddingHorizontal: 11, paddingVertical: 6,
+    },
+    children: [{ type: "Text", props: { content: term },
+                 style: { fontSize: 12, fontWeight: "600", color: st.text } }],
+  });
+
+  const label = (content: string, top: number): Node => ({
+    type: "Text", props: { content },
+    style: { fontSize: st.kickerSize, letterSpacing: st.kickerTracking,
+             textTransform: "uppercase", color: st.textFaint, marginTop: top,
+             marginBottom: 12 },
+  });
+
+  // NOTHING LEARNED YET is a sentence, not a chart of zeros. A ring with no
+  // slices and three tiles of 0 reads as a broken screen on the day someone
+  // installs the app — which is the one day it has to read as an invitation.
+  const panel: Node[] = known + sessions + refines === 0
+    ? [
+        label(st.kicker, 0),
+        { type: "Text", props: { content: "Nothing learned yet." },
+          style: { fontSize: 17, fontWeight: "700", color: st.text } },
+        { type: "Text", props: { content: "Talk once and this fills in — your words, the way you build a sentence, the hours you write in." },
+          style: { fontSize: 12, lineHeight: 18, color: st.textDim, marginTop: 6 } },
+      ]
+    : [
+        label(st.kicker, 0),
+        pieNode({
+          slices, size: st.ring, thickness: st.ringThickness,
+          legend: true, legendColor: st.textDim,
+          centerValue: n(known), centerLabel: "learned",
+          emptyLabel: "",
+          style: { alignSelf: "center", marginBottom: 6, width: "100%" },
+        }),
+        {
+          type: "Stack",
+          style: { flexDirection: "row", gap: st.tileGap, marginTop: 14 },
+          children: [
+            tile("Sittings", sessions),
+            tile("Rounds", rounds),
+            tile("Refines", refines),
+          ],
+        },
+        ...(words.length
+          ? [
+              label("Your words", 22),
+              {
+                type: "Stack",
+                style: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+                children: words.slice(0, st.chipLimit).map((w) => chip(w.term)),
+              } as Node,
+            ]
+          : []),
+      ];
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
@@ -4211,10 +4350,24 @@ function homeScreen(_ctx: ScreenContext): ScreenResponse {
           props: { colors: ui.scrim, locations: ui.scrimStops, direction: "vertical" },
           style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
         },
+        // THE SCROLL, over a field that does not move.
+        //
+        // The first pane is exactly one window tall — the network, two words
+        // and the way in, nothing else — so the tab still opens as a thing you
+        // look at. What the app has learned is one scroll below it, on a sheet
+        // that rises over the network and blurs it. The field never scrolls:
+        // it is the ground, not the top of the page.
+        {
+          type: "Screen",
+          style: {
+            backgroundColor: "transparent",
+            paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0,
+          },
+          children: [
         {
           type: "Stack",
+          props: { fillViewport: true },
           style: {
-            flex: 1,
             paddingHorizontal: ui.paddingHorizontal,
             paddingTop: ui.paddingTop,
             paddingBottom: ui.paddingBottom,
@@ -4285,6 +4438,31 @@ function homeScreen(_ctx: ScreenContext): ScreenResponse {
                 on: { onPress: "enter" },
                 style: { marginHorizontal: ui.cta.inset, backgroundColor: ui.cta.background },
               },
+            },
+          ],
+        },
+            // THE SHEET. Blur plus a wash, because a blur alone leaves the
+            // brightest fibres reading through the type — and a panel you can
+            // read through is not a surface, it is interference.
+            {
+              type: "BlurBackground",
+              props: { intensity: st.sheetBlur, tint: st.sheetTint },
+              style: {
+                borderTopLeftRadius: st.sheetRadius,
+                borderTopRightRadius: st.sheetRadius,
+                overflow: "hidden",
+              },
+              children: [
+                { type: "Stack", style: { ...FILL_STYLE, backgroundColor: st.wash } },
+                {
+                  type: "Stack",
+                  style: {
+                    paddingHorizontal: st.padding, paddingTop: st.padding,
+                    paddingBottom: st.bottom,
+                  },
+                  children: panel,
+                },
+              ],
             },
           ],
         },
@@ -5030,9 +5208,10 @@ export const YOU_UI = {
     restBackground: "#141418",
     kickerSize: 8.5,
     kickerTracking: 2.4,
-    nameSize: 22,
-    lineSize: 12.5,
-    lineHeight: 17,
+    nameSize: 25,
+    nameGap: 8,
+    lineSize: 13,
+    lineHeight: 18,
     dot: 7,
     marginBottom: 4,
   },
@@ -5112,9 +5291,13 @@ export const YOU_UI = {
     padding: 18,
     kickerSize: 8,
     kickerTracking: 2.4,
-    nameSize: 30,
-    taglineSize: 12.5,
-    taglineLineHeight: 17,
+    /** The biggest type on the tab. It is the answer to what the tab is for. */
+    nameSize: 34,
+    /** Air under the name. The two lines were touching, which made them one
+     *  block of text instead of a name and a line about it. */
+    nameGap: 9,
+    taglineSize: 13,
+    taglineLineHeight: 18,
     dot: 7,
     marginBottom: 14,
   },
@@ -5702,11 +5885,11 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
           ],
         },
         { type: "Text", props: { content: name, variant: "voiceName" },
-          style: { marginTop: 4 } },
+          style: { marginTop: 5 } },
         ...(tagline
           ? [{ type: "Text", props: { content: tagline },
                style: { fontSize: V.taglineSize, lineHeight: V.taglineLineHeight,
-                        color: u.textDim, marginTop: 5 } } as Node]
+                        color: u.textDim, marginTop: V.nameGap } } as Node]
           : []),
       ],
     };
@@ -5973,11 +6156,11 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
         },
         { type: "Text", props: { content: preset.name },
           style: { fontSize: sv.nameSize, fontWeight: "700",
-                   color: YOU_UI.text, marginTop: 5 } },
+                   color: YOU_UI.text, marginTop: 6 } },
         { type: "Text",
           props: { content: (preset as { tagline?: string }).tagline ?? "" },
           style: { fontSize: sv.lineSize, lineHeight: sv.lineHeight,
-                   color: YOU_UI.textDim, marginTop: 3 } },
+                   color: YOU_UI.textDim, marginTop: sv.nameGap } },
       ],
     };
   };
@@ -7457,23 +7640,32 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
  * is the honest version of "look what we saved you" — the user can see the
  * whole trade rather than a number we chose.
  */
-function historyBreakdown(entries: HistoryEntry[] | undefined): Array<{ label: string; value: number }> {
+function historyBreakdown(entries: HistoryEntry[] | undefined): Slice[] {
   const rows = entries ?? [];
   if (rows.length === 0) return [];
   const spoken = rows.reduce((n, e) => n + (e.wordsIn ?? 0), 0);
   const written = rows.reduce((n, e) => n + (e.wordsOut ?? 0), 0);
   if (spoken === 0 && written === 0) return [];
+  // The chart's own colours, sent with the data. Without them the renderer
+  // reaches for its default palette, which is the one thing on this screen
+  // that would not be the Stats ground it was opened from.
   return [
-    { label: "Written", value: written },
-    { label: "Spoken", value: spoken },
+    { label: "Written", value: written, color: CHART_ON_DARK[0]! },
+    { label: "Spoken", value: spoken, color: CHART_ON_DARK[2]! },
   ];
 }
 
 function historyScreen(ctx: ScreenContext): ScreenResponse {
+  // Opened from Stats, so it wears the Stats ground. See STATS_UI.
+  const u = STATS_UI;
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "history",
     title: "History",
+    // Its own ground and its own way back: History is opened FROM Stats, and
+    // the default header paints the theme black over the Stats ground, which
+    // reads as a seam across the top of the screen.
+    hideHeader: true,
     state: {
       entries: ctx.history ?? [],
       loading: false,
@@ -7532,99 +7724,131 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
       err: { kind: "toast", message: "@history.delete.error", tone: "error" },
     },
     root: {
-      type: "Screen",
+      type: "Stack",
+      style: { flex: 1, backgroundColor: u.ground },
       children: [
-        ...screenHero("history"),
         {
-          type: "Heading",
-          props: { content: "@history.title" },
-          style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 6 },
-        },
-        {
-          type: "Paragraph",
-          props: { content: "@history.subtitle" },
-          style: { marginBottom: 20 },
-        },
-        { type: "ProgressBar", visibleIf: { truthy: "loading" } },
-        // The ease, at the top. Words SPOKEN against words WRITTEN across the
-        // entries below — the gap between the two is the work Tailzu did, which
-        // is the only number on this screen the user did not produce themselves.
-        // Hidden when there is nothing to summarise rather than drawing an
-        // empty ring.
-        {
-          type: "Card",
-          visibleIf: { truthy: "entries" },
-          style: { marginBottom: 18 },
-          children: [
-            text("The ease", "label", { style: { marginBottom: 12 } }),
-            {
-              type: "DonutChart",
-              bind: { data: "historyBreakdown" },
-              props: {
-                donut: true,
-                size: 150,
-                legend: "right",
-                centerLabel: "words written",
-              },
-            },
-          ],
-        },
-        {
-          type: "List",
-          bind: { items: "entries" },
-          on: {
-            onAppear: "refresh",
-            onRefresh: "refresh",
+          type: "Screen",
+          style: {
+            backgroundColor: "transparent",
+            paddingHorizontal: u.padding, paddingTop: 58, paddingBottom: 20,
           },
-          props: {
-            emptyLabel: "@history.empty",
-            itemTemplate: {
-              type: "Card",
-              style: { marginBottom: 10 },
-              on: {
-                onPress: "openDetail",
-                onLongPress: "deleteEntry",
+          children: [
+            // The way back, in the ink of this screen rather than the theme's.
+            {
+              type: "Stack",
+              on: { onPress: { kind: "sequence", actions: [
+                { kind: "haptic", style: "selection" },
+                { kind: "navigateBack" },
+              ] } },
+              props: { pressOpacity: 0.55, hitSlop: 11 },
+              style: {
+                width: 34, height: 34, borderRadius: 17, borderWidth: 1,
+                borderColor: u.rule, alignItems: "center", justifyContent: "center",
+                marginBottom: 18, marginLeft: -2,
+              },
+              children: [{
+                type: "SVG",
+                props: { viewBox: "0 0 24 24", d: "M15 5 L8.5 12 L15 19",
+                         fill: "none", stroke: u.ink, strokeWidth: 2.2,
+                         strokeLinecap: "round", strokeLinejoin: "round" },
+                style: { width: 15, height: 15 },
+              }],
+            },
+            { type: "Text", props: { content: "@history.title" },
+              style: { fontSize: 34, fontWeight: "800", letterSpacing: -1.2,
+                       color: u.ink } },
+            { type: "Text", props: { content: "@history.subtitle" },
+              style: { fontSize: 11.5, lineHeight: 17, color: u.inkDim,
+                       marginTop: 6, marginBottom: 18 } },
+            { type: "ProgressBar", visibleIf: { truthy: "loading" } },
+
+            // THE EASE, at the top. Words spoken against words written across
+            // the entries below — the gap between the two is the work Tailzu
+            // did, and the only number on this screen the user did not make
+            // themselves. Amber leads it, as everywhere else: the written
+            // half is the one in play.
+            {
+              type: "Stack",
+              visibleIf: { truthy: "entries" },
+              style: {
+                backgroundColor: u.card, borderRadius: u.cardRadius,
+                paddingVertical: 16, paddingHorizontal: 16, marginBottom: 18,
               },
               children: [
+                { type: "Text", props: { content: "The ease" },
+                  style: { fontSize: 9, letterSpacing: 2.2, textTransform: "uppercase",
+                           color: u.onCardDim, marginBottom: 10 } },
                 {
-                  // Just when it happened. The app badge is gone: on iOS it
-                  // could only ever say "Generic", because a keyboard
-                  // extension cannot learn its host app — so it labelled every
-                  // card with a word that meant nothing and looked like a
-                  // category the user was supposed to understand.
-                  //
-                  // The time is formatted on the DEVICE. The server knows the
-                  // instant but not the timezone, and a list that says 08:30
-                  // to someone who dictated at 14:00 is worse than no time.
-                  type: "Text",
-                  bind: { content: "item.createdAt" },
-                  props: { variant: "label", format: "relative" },
-                },
-                { type: "Spacer", style: { height: 10 } },
-                // What was heard, then what was written. Labelled and in that
-                // order, because the whole point of the pair is the difference
-                // between them — unlabelled, the raw transcript reads as a
-                // mistake rather than as the input.
-                text("You said", "label", { style: { fontSize: 11, opacity: 0.6 } }),
-                {
-                  type: "Text",
-                  bind: { content: "item.input" },
-                  props: { variant: "muted", numberOfLines: 3 },
-                },
-                { type: "Spacer", style: { height: 10 } },
-                // ACCENT_AMBER, not $color.primary — primary is WHITE in this
-                // theme, so this label has been rendering the same colour as
-                // the one above it and the pair read as one block.
-                text("Tailzu wrote", "label", { style: { fontSize: 11, opacity: 0.9, color: ACCENT_AMBER } }),
-                {
-                  type: "Text",
-                  bind: { content: "item.output" },
-                  props: { variant: "body", numberOfLines: 6 },
-                  style: { fontWeight: "600", color: "$color.text" },
+                  type: "DonutChart",
+                  bind: { data: "historyBreakdown" },
+                  props: {
+                    donut: true, size: 132, thickness: 20, legend: "right",
+                    centerLabel: "written",
+                    legendColor: u.onCard,
+                    legendValueColor: u.onCardDim,
+                    centerColor: u.onCard,
+                    centerLabelColor: u.onCardDim,
+                    emptyColor: u.rule,
+                  },
                 },
               ],
             },
-          },
+            {
+              type: "List",
+              bind: { items: "entries" },
+              on: { onAppear: "refresh", onRefresh: "refresh" },
+              props: {
+                emptyLabel: "@history.empty",
+                itemTemplate: {
+                  type: "Stack",
+                  on: { onPress: "openDetail", onLongPress: "deleteEntry" },
+                  props: { pressOpacity: 0.85 },
+                  style: {
+                    backgroundColor: u.card, borderRadius: u.cardRadius,
+                    padding: 14, marginBottom: u.gap,
+                  },
+                  children: [
+                    {
+                      // Just when it happened. The app badge is gone: on iOS a
+                      // keyboard extension cannot learn its host app, so it
+                      // labelled every card "Generic" — a word that meant
+                      // nothing and looked like a category to understand.
+                      //
+                      // The time is formatted on the DEVICE. The server knows
+                      // the instant but not the timezone, and a list that says
+                      // 08:30 to someone who dictated at 14:00 is worse than
+                      // no time at all.
+                      type: "Text",
+                      bind: { content: "item.createdAt" },
+                      props: { format: "relative" },
+                      style: { fontSize: 9, letterSpacing: 1.6,
+                               textTransform: "uppercase", color: u.onCardFaint },
+                    },
+                    // What was heard, then what was written. Labelled and in
+                    // that order: the whole point of the pair is the
+                    // difference between them, and unlabelled the raw
+                    // transcript reads as a mistake rather than as the input.
+                    { type: "Text", props: { content: "You said" },
+                      style: { fontSize: 9, letterSpacing: 1.6, textTransform: "uppercase",
+                               color: u.onCardFaint, marginTop: 12 } },
+                    { type: "Text", bind: { content: "item.input" },
+                      props: { numberOfLines: 3 },
+                      style: { fontSize: 13, lineHeight: 19, color: u.onCardDim, marginTop: 4 } },
+                    // THE AMBER LINE. What the app actually wrote is the one
+                    // thing on the card that is its work.
+                    { type: "Text", props: { content: "Tailzu wrote" },
+                      style: { fontSize: 9, letterSpacing: 1.6, textTransform: "uppercase",
+                               color: u.accent, marginTop: 12 } },
+                    { type: "Text", bind: { content: "item.output" },
+                      props: { numberOfLines: 6 },
+                      style: { fontSize: 14, lineHeight: 20, fontWeight: "600",
+                               color: u.onCard, marginTop: 4 } },
+                  ],
+                },
+              },
+            },
+          ],
         },
       ],
     },

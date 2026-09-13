@@ -1356,6 +1356,66 @@ describe("the keyboard opens with one voice, and it is ours", () => {
   });
 });
 
+describe("History wears the ground it was opened from", () => {
+  const hist = () => JSON.stringify(buildScreen("history", { personality: {}, language: "en" } as never));
+
+  it("paints the Stats ground and its own way back", () => {
+    // History is one tap off Stats. On the theme's black under a themed
+    // header it read as a different app — and the default header paints that
+    // black straight across the top of the Stats ground.
+    const json = hist();
+    expect(json).toContain(STATS_UI.ground);
+    expect(json).toContain('"hideHeader":true');
+    expect(json).not.toContain('"Card"');
+  });
+
+  it("hands the chart its colours instead of letting it pick", () => {
+    // legendColor was already being sent to this component and silently
+    // dropped, so the ring was drawing in a palette no screen chose.
+    expect(hist()).toContain('"legendColor"');
+  });
+});
+
+describe("the training tab shows what it has learned", () => {
+  const portrait = {
+    words: [{ term: "jugaad", means: "a fix" }, { term: "ping", means: "message" }],
+    styles: [{ name: "Late", when: "after midnight" }],
+    rhythms: [{ when: "morning", vibe: "clipped" }],
+    tones: { witty: "drier than most" },
+    sessions: 9, examples: 3, observed: 214,
+  };
+  const home = (sp?: Record<string, unknown>) =>
+    JSON.stringify(buildScreen("home", {
+      personality: sp ? { stylePortrait: sp } : {}, language: "en",
+    } as never));
+
+  it("keeps the opening view one window tall, above the numbers", () => {
+    // The tab still opens as a thing you LOOK at — the field, two words and
+    // the way in. A ScrollView sizes itself to its content, so the pane has
+    // to be told it is the opening view or its spacers collapse and the
+    // title rides up against the button.
+    expect(home(portrait)).toContain('"fillViewport":true');
+  });
+
+  it("counts the portrait rather than inventing a metric", () => {
+    const json = home(portrait);
+    // 2 words + 1 style + 1 rhythm + 1 voice.
+    expect(json).toContain('"centerValue":"5"');
+    expect(json).toContain("Sittings");
+    expect(json).toContain("214");
+    // Their own words, as they were learned.
+    expect(json).toContain("jugaad");
+  });
+
+  it("says nothing is learned rather than charting zeros", () => {
+    // A ring with no slices and three tiles of 0 reads as a broken screen on
+    // the one day it has to read as an invitation.
+    const json = home();
+    expect(json).toContain("Nothing learned yet.");
+    expect(json).not.toContain('"PieChart"');
+  });
+});
+
 describe("Zu is not a voice in the list", () => {
   const voices = (p: Record<string, unknown> = {}) =>
     JSON.stringify(buildScreen("voices", { personality: p } as never));
