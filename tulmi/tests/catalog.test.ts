@@ -17,6 +17,7 @@ import {
   TRAINING_UI,
   TYPE_ROLES,
   YOU_UI,
+  STATS_UI,
 } from "../src/experience/catalog.js";
 import { getConfig } from "../src/config.js";
 
@@ -863,21 +864,23 @@ describe("buildKeyboardConfig", () => {
   });
 
   it("puts the stats ink on a ground it can be read on", () => {
-    // The screen used to be a full sheet of the accent, which spent the one
-    // colour the app has on its largest surface and left it meaning nothing.
-    // Whatever the ground becomes, the type on it has to be legible — so this
-    // checks the thing that actually matters rather than the hex.
-    const s: any = buildScreen("stats", { personality: {}, language: "en" } as never);
+    // The screen has been amber, then bone, and is now a warm near-black.
+    // Whatever it is, the type on it and on its cards has to clear a real
+    // contrast — so this checks the thing that matters rather than the hex.
     const lum = (hex: string) => {
       const v = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
         .map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
       return 0.2126 * v[0]! + 0.7152 * v[1]! + 0.0722 * v[2]!;
     };
-    const ground = String(s.root.style.backgroundColor);
-    expect(ground).toMatch(/^#[0-9a-fA-F]{6}$/);
-    const ratio = (Math.max(lum(ground), lum("#0B0B0D")) + 0.05)
-      / (Math.min(lum(ground), lum("#0B0B0D")) + 0.05);
-    expect(ratio, `stats ink on ${ground} is only ${ratio.toFixed(1)}:1`).toBeGreaterThan(7);
+    const ratio = (a: string, b: string) => (Math.max(lum(a), lum(b)) + 0.05) / (Math.min(lum(a), lum(b)) + 0.05);
+    const s: any = buildScreen("stats", { personality: {}, language: "en" } as never);
+    expect(String(s.root.style.backgroundColor)).toBe(STATS_UI.ground);
+    expect(ratio(STATS_UI.ground, STATS_UI.ink), "headline on the ground").toBeGreaterThan(7);
+    expect(ratio(STATS_UI.card, STATS_UI.onCard), "figures on a card").toBeGreaterThan(7);
+    // And the accent is not the reading colour. Amber is for the one thing
+    // that moves; a screen whose every figure is amber has no accent at all.
+    expect(STATS_UI.onCard).not.toBe(STATS_UI.accent);
+    expect(STATS_UI.ink).not.toBe(STATS_UI.accent);
   });
 
   it("leaves no half-tile stranded in the stats grid", () => {
@@ -1095,16 +1098,18 @@ describe("the card in the middle says what it is", () => {
     expect(firstBox).toBeGreaterThan(deckAt);
   });
 
-  it("is the brand block with black ink, not another dark card", () => {
-    // Everything else on this tab is glass over blurred art, or black. The
-    // one thing you are meant to READ cannot look like scenery.
+  it("is a dark note whose one amber is the way in", () => {
+    // The note used to be the brand block — solid amber with black ink — and
+    // it was the accent as wallpaper. Amber is sacred now: it marks the one
+    // live thing on a screen, and on this note that is the control that opens
+    // the screen it describes. The ring's leading slice is the only other.
     const { text, cta } = parts(boxes()[0]);
-    expect(boxes()[0].style.backgroundColor).toBe(YOU_UI.accent);
-    expect(text.style.color).toBe("#0B0B0D");
+    expect(boxes()[0].style.backgroundColor).not.toBe(YOU_UI.accent);
+    expect(text.style.color).not.toBe(YOU_UI.accent);
     // Mid-weight. Bold on a solid colour reads as shouting, not as speech.
     expect(Number(text.style.fontWeight)).toBeLessThan(700);
-    expect(cta.style.backgroundColor).toBe("#0B0B0D");
-    expect(cta.children[0].style.color).toBe(YOU_UI.accent);
+    expect(cta.style.backgroundColor).toBe(YOU_UI.accent);
+    expect(cta.children[0].style.color).not.toBe(YOU_UI.accent);
   });
 });
 
@@ -1247,13 +1252,14 @@ describe("the charts show measured things, or nothing", () => {
     for (const id of ["dictionary", "voices", "languages"]) expect(s).toContain(`"${id}"`);
   });
 
-  it("colours each surface for the ground it sits on", () => {
-    // Near-black on the amber note, amber on the black Stats card. The same
-    // slice in the same colour on both would be invisible on one of them.
-    const onAmber = rings("personality", { stats: STATS })[0].props.slices[0].color;
-    const onDark = rings("stats", { stats: STATS })[0].props.slices[0].color;
-    expect(onAmber).toBe("#0B0B0D");
-    expect(onDark).toBe(YOU_UI.accent);
+  it("gives every ring exactly one amber slice — the one that leads", () => {
+    // The accent is sacred: it marks the live thing and nothing else. In a
+    // ring that is the leading share. A ring of five ambers led nowhere.
+    for (const id of ["personality", "stats"]) {
+      const slices = rings(id, { stats: STATS })[0].props.slices;
+      expect(slices[0].color).toBe(YOU_UI.accent);
+      for (const sl of slices.slice(1)) expect(sl.color).not.toBe(YOU_UI.accent);
+    }
   });
 });
 

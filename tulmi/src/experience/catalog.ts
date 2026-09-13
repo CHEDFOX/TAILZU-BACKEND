@@ -4971,7 +4971,9 @@ export const YOU_UI = {
     fontSize: 10,
     tracking: 0.7,
     /** The quiet form: brand type on a brand wash. */
-    soft: "rgba(232,162,60,0.13)",
+    /** A quiet chip is a white tint. A solid one is the accent, and there
+     *  is at most one of those on a screen. */
+    soft: "rgba(255,255,255,0.08)",
   },
   /** The amber block every inside screen opens with. */
   head: {
@@ -5065,10 +5067,12 @@ export const YOU_UI = {
    * the box growing to fill the screen rather than a new colour appearing.
    */
   info: {
-    background: ACCENT_AMBER,
+    // A dark note, not an amber one. The ring inside it carries the one
+    // amber — its leading slice — and a note that was all amber drowned it.
+    background: "#141418",
     /** Ink on the amber. Black, and mid-weight — not bold, which on a solid
      *  colour reads as shouting rather than as speech. */
-    text: "#0B0B0D",
+    text: "#FFFFFF",
     // A SHORT LINE CAN BE SMALLER. Nine words at 13 read as fast as fifteen
     // at 13.5 and leave the chart the room it now takes.
     textSize: 13,
@@ -5104,8 +5108,11 @@ export const YOU_UI = {
       paddingHorizontal: 15,
       fontSize: 11,
       tracking: 0.6,
-      background: "#0B0B0D",
-      text: ACCENT_AMBER,
+      // THE ONE AMBER ON THE YOU TAB. The note is dark now, so the way into
+      // the screen it describes is the solid thing on it — the single control
+      // here that opens something.
+      background: ACCENT_AMBER,
+      text: "#0B0B0D",
     },
   },
 };
@@ -5226,15 +5233,14 @@ function helloCycle(): string[] {
  */
 type Slice = { label: string; value: number; color: string };
 
-/** Ink on the amber block: black at falling weight. */
-const CHART_ON_AMBER = [
-  "#0B0B0D", "rgba(11,11,13,0.72)", "rgba(11,11,13,0.50)",
-  "rgba(11,11,13,0.32)", "rgba(11,11,13,0.18)",
-];
-/** On the black ground: the brand amber at falling weight. */
+/**
+ * On the dark ground: the TOP slice in amber and the rest in pale at falling
+ * weight. One amber per ring — the share that leads is the live one, and a
+ * ring of five ambers was a ring where nothing led.
+ */
 const CHART_ON_DARK = [
-  ACCENT_AMBER, "rgba(232,162,60,0.72)", "rgba(232,162,60,0.50)",
-  "rgba(232,162,60,0.32)", "rgba(255,255,255,0.16)",
+  ACCENT_AMBER, "rgba(243,226,198,0.78)", "rgba(243,226,198,0.52)",
+  "rgba(243,226,198,0.32)", "rgba(243,226,198,0.16)",
 ];
 
 /** Language codes as people read them. Anything unlisted shows its own code. */
@@ -5375,13 +5381,13 @@ const YOU_CARDS: {
     title: "Voice", media: "card.voice", screen: "voices",
     blurb: "Zu writes as you. Add a voice for when it shouldn't.",
     cta: "Voices",
-    chart: (ctx) => voiceSlices(ctx.stats, ctx.personality, CHART_ON_AMBER),
+    chart: (ctx) => voiceSlices(ctx.stats, ctx.personality, CHART_ON_DARK),
   },
   {
     title: "Dictionary", media: "card.dictionary", screen: "dictionary",
     blurb: "Your words, spelled your way. Never corrected.",
     cta: "Words",
-    chart: (ctx) => dictionarySlices(ctx.stats, CHART_ON_AMBER),
+    chart: (ctx) => dictionarySlices(ctx.stats, CHART_ON_DARK),
   },
   {
     title: "Haptics", media: "card.haptics", screen: "haptics",
@@ -5394,7 +5400,7 @@ const YOU_CARDS: {
     title: "Languages", media: "card.languages", screen: "languages",
     blurb: "Pick a language. It listens for it.",
     cta: "Languages",
-    chart: (ctx) => languageSlices(ctx.stats, CHART_ON_AMBER),
+    chart: (ctx) => languageSlices(ctx.stats, CHART_ON_DARK),
   },
 ];
 
@@ -5414,13 +5420,13 @@ function youBack(): Node {
       width: u.head.controlSize, height: u.head.controlSize,
       borderRadius: u.head.controlSize / 2,
       alignItems: "center", justifyContent: "center",
-      backgroundColor: "rgba(11,11,13,0.09)",
+      backgroundColor: "rgba(255,255,255,0.08)",
     },
     children: [{
       type: "SVG",
       props: {
         viewBox: "0 0 24 24", d: "M14.5 5 L8 12 L14.5 19",
-        fill: "none", stroke: u.onAccent, strokeWidth: 2.3,
+        fill: "none", stroke: u.text, strokeWidth: 2.3,
         strokeLinecap: "round", strokeLinejoin: "round",
       },
       style: { width: 14, height: 14 },
@@ -5439,13 +5445,13 @@ function youHeadIcon(d: string, onPress: ActionRef): Node {
       width: u.head.controlSize, height: u.head.controlSize,
       borderRadius: u.head.controlSize / 2,
       alignItems: "center", justifyContent: "center",
-      backgroundColor: "rgba(11,11,13,0.09)",
+      backgroundColor: "rgba(255,255,255,0.08)",
     },
     children: [{
       type: "SVG",
       props: {
         viewBox: "0 0 24 24", d,
-        fill: "none", stroke: u.onAccent, strokeWidth: 2.3,
+        fill: "none", stroke: u.text, strokeWidth: 2.3,
         strokeLinecap: "round", strokeLinejoin: "round",
       },
       style: { width: 15, height: 15 },
@@ -5463,7 +5469,11 @@ function youHead(kicker: string, title: string, right?: Node): Node {
   return {
     type: "Stack",
     style: {
-      backgroundColor: u.accent,
+      // The ground, not the accent. A full amber slab at the top of every
+      // sub-screen was the accent as wallpaper; the way back and the title
+      // read as well on black, and the amber is kept for the one control on
+      // the screen that changes something.
+      backgroundColor: u.ground,
       paddingTop: u.head.paddingTop,
       paddingBottom: u.head.paddingBottom,
       paddingHorizontal: u.padding,
@@ -5478,10 +5488,10 @@ function youHead(kicker: string, title: string, right?: Node): Node {
       },
       { type: "Text", props: { content: kicker },
         style: { fontSize: u.head.kickerSize, letterSpacing: u.head.kickerTracking,
-                 textTransform: "uppercase", color: u.onAccentDim, marginTop: u.head.gap } },
+                 textTransform: "uppercase", color: u.textDim, marginTop: u.head.gap } },
       { type: "Text", props: { content: title },
         style: { fontSize: u.head.titleSize, fontWeight: "800",
-                 letterSpacing: u.head.titleTracking, color: u.onAccent, marginTop: 2 } },
+                 letterSpacing: u.head.titleTracking, color: u.text, marginTop: 2 } },
     ],
   };
 }
@@ -5502,7 +5512,7 @@ function youChip(label: string, onPress: ActionRef, solid = false): Node {
     children: [{
       type: "Text", props: { content: label },
       style: { fontSize: u.chip.fontSize, fontWeight: "700",
-               letterSpacing: u.chip.tracking, color: solid ? u.onAccent : u.accent },
+               letterSpacing: u.chip.tracking, color: solid ? u.onAccent : u.text },
     }],
   };
 }
@@ -6664,34 +6674,39 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
  * It holds, but it means no chart here can encode two series by colour: a card
  * that needs that needs two charts.
  */
-const STATS_UI = {
+export const STATS_UI = {
   /**
-   * BONE, not amber.
+   * A WARM NEAR-BLACK, not bone.
    *
-   * A full screen of the accent spends the one colour the app has on the
-   * largest possible surface. It cannot then mean anything: the number that
-   * matters and the empty space behind it were the same colour, so the accent
-   * stopped marking and started decorating, and every black card on it read as
-   * a hole punched in the brand rather than as a card.
+   * The app is a dark object with one warm light in it. Train is black art;
+   * You is black with the voice's art blurred behind it. A bone Stats was a
+   * second visual world, and every tab switch was a change of mode — and a
+   * colour cannot be sacred if the ground under it changes temperature. On
+   * dark, the figures are lights; on bone they were ink. Lights are what a
+   * record of your own output should feel like, and lights are what the
+   * amber already is. One material system.
    *
-   * A warm near-white gives the black cards a ground to be objects on, and
-   * gives the amber back its job — it appears only inside them, on the
-   * figures, which is the only place on this screen worth pointing at.
-   *
-   * Warm, and biased a little toward the accent rather than a neutral grey: a
-   * grey with no hue in it reads as the absence of a decision. This is the one
-   * the paper in a good notebook is.
+   * Biased toward the accent's hue rather than a neutral black, so the amber
+   * sits IN the ground rather than ON it; a shade above the You tab's black,
+   * so Stats has its own air without being a different room.
    */
-  ground: "#EDEAE4",
-  ink: "#0B0B0D",
-  /** Ink at reduced strength, for everything that is not the number itself. */
-  inkDim: "rgba(11,11,13,0.62)",
-  inkFaint: "rgba(11,11,13,0.42)",
-  /** Amber on the black cards, at the strengths the two-colour rule allows. */
-  onCard: ACCENT_AMBER,
-  onCardDim: "rgba(232,162,60,0.72)",
-  onCardFaint: "rgba(232,162,60,0.55)",
-  rule: "rgba(232,162,60,0.13)",
+  ground: "#0F0D0B",
+  /** A card is a step up from the ground, not a hole punched in it. */
+  card: "#1A1714",
+  /** The reading colour — the app's pale, which is the amber's own family. */
+  ink: "#F3E2C6",
+  inkDim: "rgba(243,226,198,0.58)",
+  inkFaint: "rgba(243,226,198,0.38)",
+  onCard: "#F3E2C6",
+  onCardDim: "rgba(243,226,198,0.55)",
+  onCardFaint: "rgba(243,226,198,0.36)",
+  /**
+   * THE ONE AMBER. It marks the single live thing on the screen — the
+   * allowance meter, which is the only figure here that moves on its own —
+   * and nothing else. Every number in amber was amber meaning nothing.
+   */
+  accent: ACCENT_AMBER,
+  rule: "rgba(243,226,198,0.10)",
   barRest: 0.45,
   cardRadius: 13,
   gap: 9,
@@ -6819,7 +6834,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
     on: { onPress: { kind: "setState", path: "openCard", value: id } },
     props: { pressOpacity: 0.75 },
     style: {
-      flex: 1, backgroundColor: u.ink, borderRadius: u.cardRadius,
+      flex: 1, backgroundColor: u.card, borderRadius: u.cardRadius,
       paddingTop: 11, paddingBottom: 12, paddingHorizontal: 12,
     },
     children: [
@@ -6860,7 +6875,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
     on: { onPress: { kind: "setState", path: "openCard", value: id } },
     props: { pressOpacity: 0.75 },
     style: {
-      backgroundColor: u.ink, borderRadius: u.cardRadius,
+      backgroundColor: u.card, borderRadius: u.cardRadius,
       paddingTop: 12, paddingBottom: 14, paddingHorizontal: 14,
       marginBottom: u.gap,
     },
@@ -7011,7 +7026,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
             ...(empty ? [{
               type: "Stack",
               style: {
-                backgroundColor: u.ink, borderRadius: u.cardRadius,
+                backgroundColor: u.card, borderRadius: u.cardRadius,
                 paddingVertical: 22, paddingHorizontal: 16,
               },
               children: [
@@ -7033,7 +7048,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
               on: { onPress: { kind: "setState", path: "openCard", value: "words" } },
               props: { pressOpacity: 0.75 },
               style: {
-                backgroundColor: u.ink, borderRadius: u.cardRadius,
+                backgroundColor: u.card, borderRadius: u.cardRadius,
                 paddingTop: 12, paddingBottom: 14, paddingHorizontal: 14,
                 marginBottom: u.gap,
               },
@@ -7054,8 +7069,9 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
                     used: allow.used, base: allow.base, earned: allow.earned,
                     // Every colour from here, so the meter cannot introduce a
                     // third one into a screen that has exactly two.
-                    fillColor: u.onCard,
-                    earnedColor: u.onCard,
+                    // The one amber on the screen. See STATS_UI.accent.
+                    fillColor: u.accent,
+                    earnedColor: u.accent,
                     trackColor: u.rule,
                     labelColor: u.onCardFaint,
                   },
@@ -7130,7 +7146,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
               type: "Stack",
               on: { onPress: "openHistory" },
               style: {
-                height: 46, borderRadius: 999, backgroundColor: u.ink,
+                height: 46, borderRadius: 999, backgroundColor: u.card,
                 alignItems: "center", justifyContent: "center", marginTop: 14,
               },
               children: [{ type: "Text", props: { content: "FULL HISTORY" },
@@ -7153,7 +7169,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
           props: { blur: true, blurIntensity: 40, blurTint: "light" },
           on: { onDismiss: "closeCard" },
           style: {
-            backgroundColor: u.ink, borderRadius: 18,
+            backgroundColor: u.card, borderRadius: 18,
             padding: 16, width: "92%", height: "76%",
           },
           children: [
