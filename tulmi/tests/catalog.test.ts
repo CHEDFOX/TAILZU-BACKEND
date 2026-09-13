@@ -819,6 +819,46 @@ describe("buildKeyboardConfig", () => {
     }
   });
 
+  it("gives amber only to what is still in play", () => {
+    // The rule is not a quota — "one amber per screen" says how much, not
+    // what for. It is a meaning: almost everything on Stats is a settled fact
+    // about a month already gone, and the accent marks the things you could
+    // still change today. A streak is only one of them while it is RUNNING;
+    // a number left over from a week you stopped is a record, not a streak,
+    // and colouring it live would be the colour lying.
+    const day = (n: number) => Array.from({ length: 30 }, (_, i) => (i < n ? 500 : 0));
+    const tile = (s: any, label: string) => {
+      let hit: any = null;
+      const walk = (n: any): void => {
+        // A tile is the pressable whose first child is its label and whose
+        // second is the value row. The panels behind them repeat the same
+        // words, so match on the shape and not on the words alone.
+        if (!hit && n?.on?.onPress && n?.children?.[0]?.props?.content === label
+            && n?.children?.[1]?.children?.[0]?.props?.content != null) hit = n;
+        for (const c of n?.children ?? []) walk(c);
+      };
+      walk(s.root);
+      expect(hit, `no ${label} tile on Stats`).toBeTruthy();
+      return hit;
+    };
+    const value = (t: any) => t.children[1].children[0].style.color;
+
+    // wrote today → the run is alive → amber
+    const alive: any = buildScreen("stats", { personality: {}, language: "en",
+      stats: { requests: 12, wordsOut: 4000, currentStreak: 9, wordsPerDay: day(30) } } as never);
+    expect(value(tile(alive, "Day streak"))).toBe(STATS_UI.accent);
+
+    // same number, nothing written today → the run is over → pale
+    const over: any = buildScreen("stats", { personality: {}, language: "en",
+      stats: { requests: 12, wordsOut: 4000, currentStreak: 9, wordsPerDay: [...day(29), 0] } } as never);
+    expect(value(tile(over, "Day streak"))).toBe(STATS_UI.onCard);
+
+    // and the settled facts never take it, however good the month was
+    for (const label of ["Sessions", "Active days", "Per session", "Spoken"]) {
+      expect(value(tile(alive, label)), `${label} should not be amber`).toBe(STATS_UI.onCard);
+    }
+  });
+
   it("puts the stats ink on a ground it can be read on", () => {
     // The screen has been amber, then bone, and is now a warm near-black.
     // Whatever it is, the type on it and on its cards has to clear a real

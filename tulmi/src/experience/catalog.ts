@@ -6725,9 +6725,20 @@ export const STATS_UI = {
   onCardDim: "rgba(243,226,198,0.55)",
   onCardFaint: "rgba(243,226,198,0.36)",
   /**
-   * THE ONE AMBER. It marks the single live thing on the screen — the
-   * allowance meter, which is the only figure here that moves on its own —
-   * and nothing else. Every number in amber was amber meaning nothing.
+   * AMBER MARKS WHAT IS STILL IN PLAY.
+   *
+   * Not "one per screen", which is a quota and not a meaning — a rule about
+   * how MUCH of a colour there is says nothing about what it is for. This one
+   * says what it is for, and the discipline follows from it: almost everything
+   * on Stats is a settled fact about a month that has already happened, and a
+   * settled fact is read, not acted on. Three things are not settled — the
+   * allowance, which depletes while you use it; the streak, which is running
+   * right now and breaks tomorrow if you stop; and today, which is not over.
+   *
+   * So the amber is exactly the things you could still change by doing
+   * something today, and the eye picks them out without being told. A dead
+   * streak goes pale, which is the colour doing real work: whether it is amber
+   * IS whether it is alive.
    */
   accent: ACCENT_AMBER,
   rule: "rgba(243,226,198,0.10)",
@@ -6752,6 +6763,15 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
   const days = perDay.length || 30;
   const daysActive = st?.daysActive ?? perDay.filter((d) => d > 0).length;
   const streak = st?.currentStreak ?? 0;
+  /**
+   * Is the streak actually running? A streak only counts while it is unbroken
+   * to TODAY — a number left over from a week you stopped is a record, not a
+   * streak, and colouring it as live would be the colour lying. The last day
+   * in the series is today; if nothing was written on it the run is already
+   * over and the tile goes pale.
+   */
+  const wroteToday = (perDay[perDay.length - 1] ?? 0) > 0;
+  const streakLive = streak > 0 && wroteToday;
   const avgPerSession = st?.avgWordsPerSession ?? (sessions ? Math.round(wordsMonth / sessions) : 0);
   const n = (v: number) => v.toLocaleString("en-US");
   /**
@@ -6819,15 +6839,20 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
   /** A month of days as a grid, three opacity steps: none, some, a lot. */
   const dotGrid = (values: number[]): Node => {
     const max = Math.max(1, ...values);
+    const today = values.length - 1;
     return {
       type: "Stack",
       style: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
-      children: values.map((v) => ({
+      children: values.map((v, i) => ({
         type: "Stack",
         style: {
           width: "12%", aspectRatio: 1, borderRadius: 4,
-          backgroundColor: u.onCard,
-          opacity: v === 0 ? 0.16 : v > max * 0.5 ? 1 : 0.5,
+          // Today is the one square in the month that is not finished, so it
+          // is the one square in the accent — and at full strength whether or
+          // not anything has been written on it yet, because an empty today
+          // is an invitation and an empty Tuesday three weeks ago is not.
+          backgroundColor: i === today ? u.accent : u.onCard,
+          opacity: i === today ? 1 : v === 0 ? 0.16 : v > max * 0.5 ? 1 : 0.5,
         },
       })),
     };
@@ -6853,7 +6878,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
   });
 
   /** One tile. The whole card is the tap target; the detail opens over it. */
-  const card = (id: string, label: string, value: string, unit?: string): Node => ({
+  const card = (id: string, label: string, value: string, unit?: string, live = false): Node => ({
     type: "Stack",
     on: { onPress: { kind: "setState", path: "openCard", value: id } },
     props: { pressOpacity: 0.75 },
@@ -6870,7 +6895,8 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
         style: { flexDirection: "row", alignItems: "baseline", marginTop: 12 },
         children: [
           { type: "Text", props: { content: value },
-            style: { fontSize: 27, fontWeight: "800", letterSpacing: -1, color: u.onCard } },
+            style: { fontSize: 27, fontWeight: "800", letterSpacing: -1,
+                     color: live ? u.accent : u.onCard } },
           ...(unit
             ? [{ type: "Text", props: { content: unit },
                  style: { fontSize: 11, fontWeight: "700", color: u.onCardDim, marginLeft: 3 } } as Node]
@@ -7129,7 +7155,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
               style: { flexDirection: "row", gap: u.gap, marginBottom: u.gap },
               children: [
                 card("sessions", "Sessions", n(sessions)),
-                card("streak", "Day streak", n(streak), "days"),
+                card("streak", "Day streak", n(streak), "days", streakLive),
               ],
             },
             {
