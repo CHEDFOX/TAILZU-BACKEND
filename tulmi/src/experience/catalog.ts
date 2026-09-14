@@ -570,8 +570,9 @@ const GREET = {
   /** Where the block sits. Top left, on the settings gear's line. */
   top: 56,
   left: 18,
-  /** Air between the hello and the name. */
-  gap: 2,
+  /** Air between the hello and the name. Two points read as one block of
+   *  type set badly; the hello is a label ON the name, not a line of it. */
+  gap: 7,
   /**
    * How much width the name may take before it is cut short.
    *
@@ -5369,8 +5370,16 @@ export const YOU_UI = {
   portrait: {
     size: 21,
     lineHeight: 26,
-    marginTop: 104,
-    marginBottom: 16,
+    /**
+     * CLEAR OF THE GREETING, not tucked under it.
+     *
+     * The hello, the name and this sentence are three different things — a
+     * label, a proper noun and a statement about the setup — and stacked at
+     * two points apart they read as one dense clump of type in the corner.
+     * The gap is what separates them into three facts.
+     */
+    marginTop: 134,
+    marginBottom: 24,
   },
   /**
    * THE VOICE CARD — the one object on this tab, and the reason it has a
@@ -5396,7 +5405,7 @@ export const YOU_UI = {
      *  art is, and the top of the card keeps the colour. */
     scrim: ["rgba(11,11,13,0.05)", "rgba(11,11,13,0.62)", "rgba(11,11,13,0.92)"],
     scrimStops: [0, 0.45, 1],
-    padding: 18,
+    padding: 20,
     kickerSize: 8,
     kickerTracking: 2.4,
     /** The biggest type on the tab. It is the answer to what the tab is for. */
@@ -5407,7 +5416,7 @@ export const YOU_UI = {
     taglineSize: 13,
     taglineLineHeight: 18,
     dot: 7,
-    marginBottom: 14,
+    marginBottom: 20,
   },
   /**
    * A ROW — one setting, what it is set to, and the way in.
@@ -5419,13 +5428,19 @@ export const YOU_UI = {
    * down the values in one pass.
    */
   row: {
-    height: 58,
-    radius: 16,
+    /**
+     * ROOM, because there is room. The tab carries five things and ends
+     * two-thirds of the way down the screen — rows pinched to 58pt bought
+     * space nothing was waiting for, and read as a list that had been
+     * squeezed to fit something below it.
+     */
+    height: 68,
+    radius: 18,
     background: "rgba(255,255,255,0.045)",
-    paddingHorizontal: 16,
-    gap: 7,
-    labelSize: 13.5,
-    valueSize: 13.5,
+    paddingHorizontal: 18,
+    gap: 12,
+    labelSize: 15,
+    valueSize: 14.5,
     chevron: 7,
   },
  /** The deck on the tab root. */
