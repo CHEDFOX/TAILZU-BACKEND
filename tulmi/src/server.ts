@@ -1797,7 +1797,13 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     /** Caller's UTC offset (minutes, JS -getTimezoneOffset() convention) so
      * per-day stats bucket in the USER'S day, not Greenwich's. */
     tzOffsetMinutes?: number;
-    capabilities?: { platform?: string; device?: { width?: number; height?: number } };
+    capabilities?: {
+      platform?: string;
+      device?: { width?: number; height?: number };
+      /** What this bundle can render. Absence is the only honest signal that a
+       *  screen needing something new must not be sent to it. */
+      components?: string[];
+    };
   };
   const screenId = body.screenId;
   if (!screenId) {
@@ -1911,6 +1917,11 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     // here means the training tab's first view is exact on EVERY installed
     // bundle, rather than depending on one that knows a new prop.
     viewport: viewportOf(body.capabilities?.device),
+    can: new Set(
+      Array.isArray(body.capabilities?.components)
+        ? body.capabilities!.components!.map(String)
+        : [],
+    ),
   });
   if (!screen) {
     return reply.code(404).send({ code: "bad_request", message: `Unknown screen '${screenId}'` });

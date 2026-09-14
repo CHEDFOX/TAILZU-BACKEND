@@ -3460,6 +3460,13 @@ export interface ScreenContext {
    * is the only thing that knows it.
    */
   viewport?: { width: number; height: number };
+  /**
+   * What the asking bundle says it can render.
+   *
+   * Empty for a client that does not say, which is the conservative reading:
+   * a screen that needs something new is withheld rather than sent broken.
+   */
+  can?: Set<string>;
 }
 
 export function buildScreen(screenId: string, ctx: ScreenContext): ScreenResponse | null {
@@ -4277,6 +4284,24 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
   const rounds = sp.examples ?? 0;
   const refines = sp.observed ?? 0;
 
+  /**
+   * WHETHER THIS TAB IS ALLOWED TO SCROLL AT ALL.
+   *
+   * Two conditions, and both are about not shipping a broken screen:
+   *
+   *  - a height, or the opening pane collapses and the sheet lands in the
+   *    first view, which is the one thing this layout exists to prevent;
+   *  - a Screen that holds its touches, because a scroll view cancels the
+   *    touches inside it the moment its pan engages — and the way into this
+   *    tab is a disc DRAGGED across a pill. Nobody draws that arc level, so on
+   *    a bundle without it the drift handed the gesture to the scroll, the
+   *    disc sprang home, and the slide did nothing.
+   *
+   * Without both, the tab is exactly what it was: one screen, no scroll, a
+   * pill that works.
+   */
+  const scrollable = !!ctx.viewport && ctx.can?.has("ScreenHoldTouches") === true;
+
   const slices: Slice[] = [
     { label: "Words", value: words.length, color: CHART_ON_DARK[0]! },
     { label: "Styles", value: styles.length, color: CHART_ON_DARK[1]! },
@@ -4420,6 +4445,8 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
         // it is the ground, not the top of the page.
         {
           type: "Screen",
+          // The scroll must not take the touch off the pill. See holdTouches.
+          props: { holdTouches: true },
           style: {
             backgroundColor: "transparent",
             paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0,
@@ -4434,7 +4461,7 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
           // had — see the guard on the sheet below.
           props: { fillViewport: true },
           style: {
-            ...(ctx.viewport ? { minHeight: ctx.viewport.height } : {}),
+            ...(scrollable ? { minHeight: ctx.viewport!.height } : {}),
             paddingHorizontal: ui.paddingHorizontal,
             paddingTop: ui.paddingTop,
             paddingBottom: ui.paddingBottom,
@@ -4519,7 +4546,7 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
             // ring of numbers instead of on the field, which is the one thing
             // the layout exists to prevent. A phone that does not say how tall
             // it is keeps the tab exactly as it was.
-            ...(ctx.viewport ? [{
+            ...(scrollable ? [{
               type: "BlurBackground",
               props: { intensity: st.sheetBlur, tint: st.sheetTint },
               style: {
@@ -5335,6 +5362,17 @@ export const YOU_UI = {
     /** A quiet chip is a white tint. A solid one is the accent, and there
      *  is at most one of those on a screen. */
     soft: "rgba(255,255,255,0.08)",
+    /**
+     * A SIGN, NOT A WORD.
+     *
+     * "Add" and "Remove" are two different lengths, so a list of voices had a
+     * ragged right edge and every row's button had to be read before it could
+     * be used. + and − are the same shape, in the same place, on every row:
+     * one glance says which voices are on the keyboard and one tap changes it.
+     */
+    signSize: 30,
+    signFontSize: 19,
+    signWeight: "800",
   },
   /** The amber block every inside screen opens with. */
   head: {
@@ -5399,12 +5437,14 @@ export const YOU_UI = {
   voiceCard: {
     height: 168,
     radius: 22,
-    artBlur: 26,
-    artTint: "dark" as const,
-    /** Rising from the bottom, so the words always have a ground whatever the
-     *  art is, and the top of the card keeps the colour. */
-    scrim: ["rgba(11,11,13,0.05)", "rgba(11,11,13,0.62)", "rgba(11,11,13,0.92)"],
-    scrimStops: [0, 0.45, 1],
+    /** The card's own dark, a step up off the ground so it reads as an object
+     *  on it rather than a panel cut into it. */
+    background: "#17161A",
+    border: "rgba(255,255,255,0.07)",
+    /** A warm fall from the top — the light the art used to provide, in the
+     *  app's own colour and the same on every account. */
+    scrim: ["rgba(232,162,60,0.10)", "rgba(232,162,60,0.03)", "rgba(0,0,0,0)"],
+    scrimStops: [0, 0.5, 1],
     padding: 20,
     kickerSize: 8,
     kickerTracking: 2.4,
@@ -5887,23 +5927,29 @@ function youHead(kicker: string, title: string, right?: Node): Node {
   };
 }
 
-/** A small action on a pill. `solid` is the one that commits. */
-function youChip(label: string, onPress: ActionRef, solid = false): Node {
-  const u = YOU_UI;
+
+/**
+ * A round chip carrying one sign. Same size and same place on every row, so
+ * the column of them reads as a single control repeated rather than as a
+ * different button per voice.
+ */
+function youSign(sign: string, onPress: ActionRef, solid = false): Node {
+  const c = YOU_UI.chip;
   return {
     type: "Stack",
     on: { onPress },
-    props: { pressOpacity: 0.65 },
+    props: { pressOpacity: 0.65, hitSlop: 8 },
     style: {
-      height: u.chip.height, borderRadius: u.chip.radius,
-      paddingHorizontal: u.chip.paddingHorizontal,
+      width: c.signSize, height: c.signSize, borderRadius: c.signSize / 2,
       alignItems: "center", justifyContent: "center",
-      backgroundColor: solid ? u.accent : u.chip.soft,
+      backgroundColor: solid ? YOU_UI.accent : c.soft,
     },
     children: [{
-      type: "Text", props: { content: label },
-      style: { fontSize: u.chip.fontSize, fontWeight: "700",
-               letterSpacing: u.chip.tracking, color: solid ? u.onAccent : u.text },
+      type: "Text", props: { content: sign },
+      style: {
+        fontSize: c.signFontSize, fontWeight: c.signWeight, lineHeight: c.signSize,
+        color: solid ? YOU_UI.onAccent : YOU_UI.text,
+      },
     }],
   };
 }
@@ -5921,7 +5967,6 @@ function youLabel(content: string): Node {
 
 function personalityScreen(ctx: ScreenContext): ScreenResponse {
   const u = YOU_UI;
-  const d = u.deck;
   const g = u.greet;
 
   /**
@@ -5984,14 +6029,17 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
       style: {
         height: V.height, borderRadius: V.radius, overflow: "hidden",
         marginBottom: V.marginBottom, justifyContent: "flex-end",
-        padding: V.padding, backgroundColor: "#141418",
+        padding: V.padding, backgroundColor: V.background,
+        borderWidth: 1, borderColor: V.border,
       },
       children: [
-        { type: "Image", props: { source: mediaSrc("card.voice"), contentFit: "cover" },
-          style: { ...FILL_STYLE } },
-        { type: "BlurBackground",
-          props: { intensity: V.artBlur, tint: V.artTint },
-          style: { ...FILL_STYLE } },
+        // THE CARD IS LIT, NOT PICTURED.
+        //
+        // Its art was the same blurred upload as the ground, so the one object
+        // on the tab was a rainbow smear with a name on it — and what the name
+        // sat on changed with the upload rather than with the design. A single
+        // warm fall from the top does the job the art was there for: it says
+        // this block is the subject, and it says it in the app's own colour.
         { type: "Gradient",
           props: { colors: V.scrim, locations: V.scrimStops, direction: "vertical" },
           style: { ...FILL_STYLE } },
@@ -6129,26 +6177,17 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
       type: "Stack",
       style: { flex: 1, backgroundColor: u.ground },
       children: [
-        // THE BACKDROP IS THE MIDDLE CARD'S OWN ART, blurred past reading and
-        // washed back toward the ground. So the screen changes colour as the
-        // deck turns, and the card in the middle is the one thing lighting the
-        // room — which is the difference between a deck ON a background and a
-        // deck that HAS one.
+        // A GROUND, NOT A PHOTOGRAPH.
         //
-        // Four stacked images gated on which is centred, rather than one image
-        // whose source changes: a source swap is a load, and a load is a black
-        // frame in the middle of a gesture.
-        // The mood behind the tab is the voice's own art — the thing that is
-        // actually writing, not the last card swiped past.
-        { type: "Image",
-          props: { source: mediaSrc("card.voice"), contentFit: "cover" },
-          style: { ...FILL_STYLE } } as Node,
-        { type: "BlurBackground",
-          props: { intensity: d.backdropBlur, tint: d.backdropTint },
-          style: { ...FILL_STYLE } },
-        { type: "Stack",
-          style: { ...FILL_STYLE, backgroundColor: d.backdropWash,
-                   opacity: d.backdropWashOpacity } },
+        // The tab used to stand on the voice's own art, blurred past reading
+        // and washed back — a mood behind the words. Blurred art is not a
+        // colour: it is a smear whose hue is whatever was uploaded, it changes
+        // under every card and every row on the tab, and nothing on top of it
+        // sits on the same value twice. The content is a name, a line and
+        // three settings; all of them read better on one flat, chosen dark.
+        //
+        // It also takes five blurred views off the screen, which is what made
+        // the greeting's turn flicker the whole tab on Android.
         // THE PORTRAIT AND THE FOUR LINES.
         //
         // The deck showed one card and hid three, and what each card was
@@ -6210,9 +6249,19 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     .map((id) => styles.find((e) => e.id === id))
     .filter((e): e is (typeof effective)[number] => !!e);
 
-  // Small trailing action on a pill. Nested pressables win over the pill press
-  // (standard RN nesting), so these never also activate the voice.
-  const rowBtn = (label: string, onPress: ActionRef): Node => youChip(label, onPress);
+  /** Open the editor on a voice — what a row now does when it is tapped. */
+  const openEditor = (preset: (typeof effective)[number]): ActionRef => ({
+    kind: "sequence",
+    actions: [
+      { kind: "haptic", style: "selection" },
+      { kind: "setState", path: "vcId", value: preset.id },
+      { kind: "setState", path: "vcName", value: preset.name },
+      { kind: "setState", path: "vcTone", value: preset.defaultTone ?? "" },
+      { kind: "setState", path: "vcPrompt",
+        value: (preset as { promptStyle?: string }).promptStyle ?? "" },
+      { kind: "setState", path: "vcOpen", value: true },
+    ],
+  });
   const pinAction = (presetId: string, pinnedFlag: boolean): ActionRef => ({
     kind: "sequence",
     actions: [
@@ -6255,7 +6304,7 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     const live = (p.activePresetId ?? HOUSE_TONE.id) === preset.id;
     return {
       type: "Stack",
-      on: { onPress: activate(preset) },
+      on: { onPress: openEditor(preset) },
       props: { pressOpacity: 0.8 },
       style: {
         borderRadius: sv.radius, padding: sv.padding,
@@ -6288,8 +6337,9 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     };
   };
 
-  // One voice row. Tap = make it the ACTIVE voice (what refine writes with);
-  // the trailing buttons manage the keyboard set / open the editor.
+  // One voice row. Tap = open it — what this voice is, how it writes, and the
+  // button that makes it yours. The sign on the right is the keyboard set, and
+  // it is the only thing on the row that is not "look at this".
   const voiceRow = (preset: (typeof effective)[number], where: "kb" | "all"): Node => {
     const isPinned = pinned.includes(preset.id);
     const up = YOU_UI.pill;
@@ -6312,37 +6362,26 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
       children: [
         // No "Active" badge, and no bolding or tinting of the active row.
         //
-        // Every voice in this list is one tap from being the one you write
-        // with, so marking one of them is telling the user about a mode they
-        // did not choose to be in and cannot see the consequences of. It read
-        // as a status they had to manage. Tapping still switches voices — the
-        // toast says so — and the keyboard's own tone pill is where "which
-        // voice am I writing in" belongs, because that is where the writing
-        // happens.
+        // Marking one row tells the user about a mode they did not choose to
+        // be in and cannot see the consequences of; it read as a status they
+        // had to manage. The keyboard's own tone pill is where "which voice am
+        // I writing in" belongs, because that is where the writing happens.
         { type: "Text", props: { content: preset.name }, style: {
           flex: 1,
           fontSize: up.labelSize,
           fontWeight: "600",
           color: YOU_UI.text,
         } },
-        ...(where === "kb"
-          ? [rowBtn("Remove", pinAction(preset.id, false))]
-          : [
-              // Already-pinned voices are managed from the keyboard set above,
-              // so the library row only offers Add when it's not there yet.
-              ...(!isPinned ? [rowBtn("Add", pinAction(preset.id, true))] : []),
-              // Editing happens ON this screen, in a card. Leaving for a full
-              // screen loses the list you were comparing against — and the
-              // whole reason you opened Edit was something you saw in that list.
-              rowBtn("Edit", { kind: "sequence", actions: [
-                { kind: "haptic", style: "selection" },
-                { kind: "setState", path: "vcId", value: preset.id },
-                { kind: "setState", path: "vcName", value: preset.name },
-                { kind: "setState", path: "vcPrompt",
-                  value: (preset as { promptStyle?: string }).promptStyle ?? "" },
-                { kind: "setState", path: "vcOpen", value: true },
-              ] }),
-            ]),
+        // ONE SIGN, AND IT IS ALWAYS IN THE SAME PLACE.
+        //
+        // + puts this voice on the keyboard, − takes it off. Nested pressables
+        // win over the row's own press (standard RN nesting), so the sign
+        // never also opens the editor. The Edit button is gone: the row IS the
+        // way in now, and a row with one word-button on it made the button the
+        // thing you tapped rather than the voice.
+        ...(where === "kb" || isPinned
+          ? [youSign("\u2212", pinAction(preset.id, false))]
+          : [youSign("+", pinAction(preset.id, true))]),
       ],
     };
   };
@@ -6378,7 +6417,7 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     title: "Voice",
     // Seeded so the card's bound fields render empty rather than undefined
     // before anything has been opened.
-    state: { vcOpen: false, vcId: "", vcName: "", vcPrompt: "" },
+    state: { vcOpen: false, vcId: "", vcName: "", vcTone: "", vcPrompt: "" },
     actions: {
       // Open the editor with NO presetId → the "new tone" path.
       addTone: { kind: "sequence", actions: [
@@ -6392,6 +6431,8 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
       // moves. The keyboard picks it up on its next config fetch.
       activated: { kind: "sequence", actions: [
         { kind: "haptic", style: "success" },
+        { kind: "setState", path: "vcOpen", value: false },
+        { kind: "toast", message: "Writing as $state.vcName.", tone: "success" },
         { kind: "refresh" },
       ] },
       activateErr: {
@@ -6478,6 +6519,20 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
             { type: "TextField", bind: { value: "vcPrompt" },
               props: { placeholder: "Short, warm, no filler\u2026", multiline: true },
               style: { minHeight: 132, marginBottom: 16 } },
+            // WHERE A VOICE IS CHOSEN, now that the row opens this instead of
+            // switching under the finger. Tapping a name used to change what
+            // the app writes as — a consequence you could not see from a list
+            // of names, fired by the most casual gesture there is. Here the
+            // name, the line and the prompt are in front of you when you
+            // decide.
+            { type: "Button", props: { label: "Write as this voice", variant: "primary" },
+              style: { marginBottom: 10 },
+              on: { onPress: { kind: "sequence", actions: [
+                { kind: "haptic", style: "selection" },
+                { kind: "callEndpoint", method: "PUT", path: "/v1/personality",
+                  body: { activePresetId: "$state.vcId", activeTone: "$state.vcTone" },
+                  onSuccess: "activated", onError: "activateErr" },
+              ] } } },
             {
               type: "Stack",
               style: { direction: "row", gap: 10 },
@@ -6485,7 +6540,7 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
                 { type: "Button", props: { label: "Cancel", variant: "secondary" },
                   style: { flex: 1 },
                   on: { onPress: { kind: "setState", path: "vcOpen", value: false } } },
-                { type: "Button", props: { label: "Save", variant: "primary" },
+                { type: "Button", props: { label: "Save", variant: "secondary" },
                   style: { flex: 1 },
                   on: { onPress: { kind: "sequence", actions: [
                     { kind: "haptic", style: "selection" },

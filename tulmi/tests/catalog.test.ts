@@ -672,8 +672,11 @@ describe("buildScreen", () => {
     for (const c of ["voices", "dictionary", "languages", "haptics"]) {
       expect(json).toContain(`"${c}"`);
     }
-    // And every line still carries the art it was cut from.
-    expect(json).toContain('"card.voice"');
+    // AND NO MEDIA ANYWHERE ON IT. Blurred art is not a colour: it is a
+    // smear whose hue is whatever was uploaded, changing under every card and
+    // row, so nothing on top of it sits on the same value twice.
+    expect(json).not.toContain("card.");
+    expect(json).not.toContain('"BlurBackground"');
   });
 
   it("tone detail shows the tone's name + prompt and toggles the keyboard pin", () => {
@@ -1429,6 +1432,7 @@ describe("the training tab shows what it has learned", () => {
     JSON.stringify(buildScreen("home", {
       personality: sp ? { stylePortrait: sp } : {}, language: "en",
       viewport: { width: 390, height: 844 },
+      can: new Set(["ScreenHoldTouches"]),
     } as never));
 
   it("keeps the numbers out of the opening view when the phone is silent", () => {
@@ -1436,11 +1440,19 @@ describe("the training tab shows what it has learned", () => {
     // the sheet lands in the first screen — the tab opens on a ring of
     // numbers instead of on the field. A client that does not say how tall it
     // is gets the tab exactly as it was.
-    const quiet = JSON.stringify(buildScreen("home", {
-      personality: { stylePortrait: portrait }, language: "en",
-    } as never));
-    expect(quiet).not.toContain("Sittings");
-    expect(quiet).not.toContain("WHAT IT KNOWS");
+    for (const ctx of [
+      // No window: the opening pane collapses and the sheet lands in it.
+      { personality: { stylePortrait: portrait }, language: "en",
+        can: new Set(["ScreenHoldTouches"]) },
+      // A Screen that cancels its own touches: the scroll takes the drag off
+      // the pill, and the way in stops working. Better no numbers than that.
+      { personality: { stylePortrait: portrait }, language: "en",
+        viewport: { width: 390, height: 844 } },
+    ]) {
+      const quiet = JSON.stringify(buildScreen("home", ctx as never));
+      expect(quiet).not.toContain("Sittings");
+      expect(quiet).not.toContain("WHAT IT KNOWS");
+    }
   });
 
   it("sizes the opening view to the window the phone reports", () => {
@@ -1474,6 +1486,32 @@ describe("the training tab shows what it has learned", () => {
     const json = home();
     expect(json).toContain("Nothing learned yet.");
     expect(json).not.toContain('"PieChart"');
+  });
+});
+
+describe("a voice is opened, not switched under your finger", () => {
+  const voices = (p: Record<string, unknown> = {}) =>
+    JSON.stringify(buildScreen("voices", { personality: p } as never));
+
+  it("opens the card on a tap instead of changing what the app writes as", () => {
+    // Changing the voice is a consequence you cannot see from a list of names,
+    // and it was fired by the most casual gesture there is. The row opens the
+    // card; the card is where the name, the line and the prompt are in front
+    // of you when you decide.
+    const json = voices();
+    expect(json).toContain('"vcOpen"');
+    expect(json).toContain("Write as this voice");
+  });
+
+  it("says the keyboard set in signs, not in words", () => {
+    // "Add" and "Remove" are two lengths, so the list had a ragged right edge
+    // and every row's button had to be read before it could be used.
+    const json = voices({ pinnedPresetIds: ["witty"] });
+    expect(json).toContain('"+"');
+    expect(json).toContain('"\u2212"');
+    expect(json).not.toContain('"Add"');
+    expect(json).not.toContain('"Remove"');
+    expect(json).not.toContain('"Edit"');
   });
 });
 
