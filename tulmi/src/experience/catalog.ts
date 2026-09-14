@@ -10440,24 +10440,28 @@ export function buildKeyboardConfig(
         // keyboard, not a dim. The keyboard looked fine during recording before
         // and looked broken after, for no gain at all.
         //
-        // Flip to true once a build containing kb.dictation.dim.blur is out —
-        // one backend edit, no rebuild. Everything else in this block is
-        // already tuned for that day.
-        // The overlay stays ON while dictating, but it is INVISIBLE.
+        // THE KEYS GO BEHIND GLASS WHILE THE MIC IS LIVE.
         //
-        // Two jobs were bundled into one thing: it veiled the keys, and it
-        // swallowed their touches. The veil is unwanted — it reads as a grey
-        // sheet dropped over the keyboard — but the touch blocking is what
-        // stops a stray thumb inserting a character into the middle of the
-        // sentence being dictated, which is a genuinely bad failure and one
-        // this keyboard has already had.
+        // The overlay has two jobs and only one of them was ever wanted: it
+        // swallows the keys' touches, which is what stops a stray thumb
+        // inserting a character into the middle of a sentence being dictated.
+        // The other was a flat veil, and a flat veil over a deliberately
+        // transparent keyboard sitting on iOS's pale light-mode region is a
+        // grey sheet behind the whole thing rather than a dim. So it was
+        // turned all the way down and the keyboard said nothing at all about
+        // being inert.
         //
-        // So: enabled and blocksTouches stay true, and every visual dimension
-        // goes to zero. The keys look exactly as they always do; they just
-        // cannot be typed while the mic is live.
+        // A blur is the honest form of the same signal: the keys are still
+        // there, still legible as keys, and plainly not for touching. It is a
+        // material on iOS and a RenderEffect on Android, so neither is a
+        // rectangle of paint over the top.
+        //
+        // The tint stays a whisper. The blur carries this on its own; the
+        // tint only has to keep it from disappearing on a pale ground, and
+        // anything more is the grey sheet again.
         "kb.dictation.dim.enabled": true,
-        "kb.dictation.dim.blur": false,         // iOS UIVisualEffectView — off
-        "kb.dictation.dim.blurRadius": 0,       // Android RenderEffect, API 31+
+        "kb.dictation.dim.blur": true,          // iOS UIVisualEffectView
+        "kb.dictation.dim.blurRadius": 14,      // Android RenderEffect, API 31+
         // The TINT is now nearly nothing, and that is the fix for "the whole
         // keyboard sits on a grey sheet".
         //
@@ -10470,8 +10474,11 @@ export function buildKeyboardConfig(
         // The blur carries the "not now" signal on its own. The tint only has
         // to nudge it, so it is a whisper; raise it only for builds with no
         // blur to fall back on.
-        "kb.dictation.dim.alpha": 0,
-        "kb.dictation.dim.keyAlpha": 1,         // Android: keys do not fade
+        "kb.dictation.dim.alpha": 0.06,
+        // Android fades the rows a little under the blur — RenderEffect alone
+        // keeps every key at full contrast, which reads as a rendering fault
+        // rather than as a surface that is out of play.
+        "kb.dictation.dim.keyAlpha": 0.72,
         // Builds with no blur to fall back on still need a real veil — that
         // one is served separately so lowering the blur tint cannot silently
         // leave an older binary showing nothing at all during recording.
