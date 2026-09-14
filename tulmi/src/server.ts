@@ -1836,7 +1836,10 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   }
   // The Stats tab AND the You tab both chart these now — the You cards carry
   // a ring each for the thing they are about — so both pay for the read.
-  const STATS_SCREENS = new Set(["stats", "personality"]);
+  // The training tab charts what the app has been learning FROM — the days
+  // the person actually wrote — under the numbers for what it has learned.
+  // Same read, one more screen.
+  const STATS_SCREENS = new Set(["stats", "personality", "home"]);
   const stats =
     user && STATS_SCREENS.has(screenId)
       ? await statsForUser(user, "month", Number(body.tzOffsetMinutes) || 0,

@@ -3476,7 +3476,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
     case "training_chat":
       return trainingChatScreen(ctx);
     case "training_live":
-      return trainingLiveScreen();
+      return trainingLiveScreen(ctx);
     case "dictionary":
       return dictionaryScreen(ctx);
     case "haptics":
@@ -3908,11 +3908,40 @@ export const NEURAL_FIELD = {
 };
 
 /** The field as a node. `dim` is how far back it sits behind whatever is on it. */
-function neuralField(dim: number, bind?: Record<string, string>): Node {
+/**
+ * HOW MUCH OF THE NETWORK HAS BEEN EARNED, 0..1.
+ *
+ * The screen's claim is that the thing inside gets bigger every time you talk
+ * to it, and a field that looks identical on day one and month six is that
+ * claim being false in the one place it is visible. So the density is a
+ * measurement, not a constant: it comes off the same style portrait the stats
+ * under the button are counted from — the person's own words, the modes they
+ * write in, their hours, the sittings, the refines observed.
+ *
+ * Saturating rather than linear, because the difference between nothing and a
+ * first session has to be obvious and the difference between the fiftieth and
+ * the fifty-first does not.
+ *
+ * Never zero. A brand-new account still sees a network — the hubs are the
+ * shape of the thing and they are all there from the start. What grows is the
+ * CONNECTIONS between them, which is exactly what training makes.
+ */
+function fieldGrowth(p: Personality | undefined): number {
+  const sp = p?.stylePortrait;
+  if (!sp) return 0.18;
+  const learned =
+    (sp.words?.length ?? 0) + (sp.styles?.length ?? 0) +
+    (sp.rhythms?.length ?? 0) + Object.keys(sp.tones ?? {}).length;
+  const evidence = learned + (sp.sessions ?? 0) * 2 + (sp.observed ?? 0) / 40;
+  const g = 0.18 + 0.82 * (1 - Math.exp(-evidence / 60));
+  return Math.max(0.18, Math.min(1, Number(g.toFixed(3))));
+}
+
+function neuralField(dim: number, growth: number, bind?: Record<string, string>): Node {
   return {
     type: "NeuralField",
     ...(bind ? { bind } : {}),
-    props: { ...NEURAL_FIELD, alpha: NEURAL_FIELD.alpha * dim },
+    props: { ...NEURAL_FIELD, alpha: NEURAL_FIELD.alpha * dim, growth },
     style: { ...FILL_STYLE },
     // A bundle without it draws nothing rather than a hole: the screens it
     // sits on are black, and black is what they were before it existed.
@@ -4108,6 +4137,8 @@ export const TRAINING_UI = {
     ring: 150,
     ringThickness: 22,
     text: "#FFFFFF",
+    /** The one warm thing on the panel — today, and nothing else. */
+    accent: ACCENT_AMBER,
     textDim: "rgba(255,255,255,0.56)",
     textFaint: "rgba(255,255,255,0.34)",
     tile: "rgba(255,255,255,0.055)",
@@ -4274,6 +4305,9 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
   // it can point at: a word of theirs, a mode it has seen them write in, a
   // sitting it learned from.
   const n = (v: number) => Math.max(0, Math.round(v)).toLocaleString("en-US");
+  // Days the person actually wrote. This is the evidence the portrait is built
+  // from, which is why it belongs under the count of what the portrait holds.
+  const perDay = ctx.stats?.wordsPerDay ?? ctx.stats?.sparklinePerDay ?? [];
   const sp = ctx.personality?.stylePortrait ?? {};
   const words = sp.words ?? [];
   const styles = sp.styles ?? [];
@@ -4325,6 +4359,37 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
     ],
   });
 
+  /**
+   * WHAT IT HAS BEEN LEARNING FROM — a bar a day, newest at the right.
+   *
+   * The ring says what the app knows and the tiles say how much; neither says
+   * when any of it happened, and "it gets better the more you write" is a
+   * claim about TIME. This is the only shape on the tab that carries it: a
+   * run of days, the gaps included, because a gap is information too.
+   *
+   * Today is the amber one — the sacred rule, unchanged: amber marks the thing
+   * still in play.
+   */
+  const feed = (values: number[]): Node => {
+    const max = Math.max(1, ...values);
+    const last = values.length - 1;
+    return {
+      type: "Stack",
+      style: { flexDirection: "row", alignItems: "flex-end", gap: 3, height: 44 },
+      children: values.map((v, i) => ({
+        type: "Stack",
+        style: {
+          flex: 1, borderRadius: 2,
+          // A floor, so a day with nothing is a mark rather than a hole. The
+          // row is a run of days; a missing bar reads as missing data.
+          height: `${Math.max(7, Math.round((v / max) * 100))}%`,
+          backgroundColor: i === last ? st.accent : st.text,
+          opacity: i === last ? 1 : v === 0 ? 0.12 : 0.34 + (v / max) * 0.3,
+        },
+      })),
+    };
+  };
+
   /** Their own word, as it was learned. The most specific thing on the tab. */
   const chip = (term: string): Node => ({
     type: "Stack",
@@ -4372,6 +4437,12 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
             tile("Refines", refines),
           ],
         },
+        ...(perDay.some((v) => v > 0)
+          ? [
+              label("What it learns from", 22),
+              feed(perDay.slice(-21)) as Node,
+            ]
+          : []),
         ...(words.length
           ? [
               label("Your words", 22),
@@ -4429,7 +4500,7 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
         // hero is the network itself, dimmed back to scenery so the title and
         // the control read over it. It is already firing before anyone
         // touches the screen, because it is already trained.
-        neuralField(TRAINING_UI.entry.fieldDim),
+        neuralField(TRAINING_UI.entry.fieldDim, fieldGrowth(ctx.personality)),
         // The scrim over it, and under everything else.
         {
           type: "Gradient",
@@ -5064,8 +5135,12 @@ function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
  * (the streaming mic, speech synthesis, Skia) all shipped long ago, which is
  * why the whole screen arrives without a build.
  */
-function trainingLiveScreen(): ScreenResponse {
+function trainingLiveScreen(ctx: ScreenContext): ScreenResponse {
   const ui = TRAINING_UI.chat.live;
+  // The field on the live screen is THIS person's, at the density they have
+  // earned — and it sprouts new fibres while the session runs, so the growth
+  // it opens at is the floor for the conversation, not a decoration.
+  const growth = fieldGrowth(ctx.personality);
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
@@ -5207,8 +5282,8 @@ function trainingLiveScreen(): ScreenResponse {
         // picture is doing, so the status word underneath is a caption on
         // something already legible.
         {
-          ...neuralField(1, { state: "sessionState", level: "level" }),
-          props: { ...NEURAL_FIELD, training: true },
+          ...neuralField(1, growth, { state: "sessionState", level: "level" }),
+          props: { ...NEURAL_FIELD, growth, training: true },
         },
 
         // ENDING, IN THE MIDDLE OF THE FIELD.
@@ -6304,7 +6379,7 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     const live = (p.activePresetId ?? HOUSE_TONE.id) === preset.id;
     return {
       type: "Stack",
-      on: { onPress: openEditor(preset) },
+      on: { onPress: activate(preset) },
       props: { pressOpacity: 0.8 },
       style: {
         borderRadius: sv.radius, padding: sv.padding,
@@ -6356,7 +6431,7 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
         paddingVertical: up.paddingVertical, minHeight: up.minHeight,
         marginBottom: up.marginBottom,
       },
-      on: { onPress: activate(preset) },
+      on: { onPress: openEditor(preset) },
       // Flat. The pill IS the row now, so the extra Stack that used to make one
       // inside the card is a box around nothing.
       children: [
@@ -6419,10 +6494,20 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     // before anything has been opened.
     state: { vcOpen: false, vcId: "", vcName: "", vcTone: "", vcPrompt: "" },
     actions: {
-      // Open the editor with NO presetId → the "new tone" path.
+      // A NEW VOICE IS A CARD TOO, not a screen.
+      //
+      // Editing one happens here, over the list, because the list is what you
+      // were comparing against when you decided to change something. Making
+      // one is the same act with empty fields — sending it to a full screen
+      // made the two feel like different features and threw away the list on
+      // the way. Empty vcId is what marks it as new: the same POST upserts.
       addTone: { kind: "sequence", actions: [
         { kind: "haptic", style: "selection" },
-        { kind: "navigate", screenId: "tone_edit" },
+        { kind: "setState", path: "vcId", value: "" },
+        { kind: "setState", path: "vcName", value: "" },
+        { kind: "setState", path: "vcTone", value: "" },
+        { kind: "setState", path: "vcPrompt", value: "" },
+        { kind: "setState", path: "vcOpen", value: true },
       ] },
       // addKbTone — "create it AND pin it" — went with the button that fired
       // it. The tone_edit screen still honours params.pin, so restoring the
@@ -6501,6 +6586,10 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
               style: { direction: "row", alignItems: "center", gap: 10, marginBottom: 14 },
               children: [
                 { type: "Text", bind: { content: "vcName" },
+                  // The name IS the title. Before one is typed the card says
+                  // what it is instead of showing an empty line where a
+                  // heading should be.
+                  props: { content: "New voice" },
                   style: { flex: 1, fontSize: 22, fontWeight: "800", color: "#FFFFFF" } },
                 {
                   type: "Button",
@@ -6526,6 +6615,9 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
             // name, the line and the prompt are in front of you when you
             // decide.
             { type: "Button", props: { label: "Write as this voice", variant: "primary" },
+              // Nothing to write as until it exists. A new voice is saved
+              // first, and the row it becomes is one tap from this card again.
+              visibleIf: { truthy: "vcId" },
               style: { marginBottom: 10 },
               on: { onPress: { kind: "sequence", actions: [
                 { kind: "haptic", style: "selection" },

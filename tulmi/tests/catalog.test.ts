@@ -1420,6 +1420,46 @@ describe("the way in names its own gesture", () => {
   });
 });
 
+describe("the network grows with what it has learned", () => {
+  const field = (sp?: Record<string, unknown>) => {
+    const json = JSON.stringify(buildScreen("home", {
+      personality: sp ? { stylePortrait: sp } : {}, language: "en",
+      viewport: { width: 390, height: 844 },
+      can: new Set(["ScreenHoldTouches"]),
+    } as never));
+    return Number(/"growth":([\d.]+)/.exec(json)?.[1]);
+  };
+
+  it("opens sparse and fills in", () => {
+    // A field that looks identical on day one and month six makes the screen's
+    // one claim — that the thing inside gets bigger every time you talk to it
+    // — false in the only place it is visible.
+    const fresh = field();
+    const worked = field({
+      words: Array.from({ length: 40 }, (_, i) => ({ term: `w${i}`, means: "x" })),
+      sessions: 30, observed: 900,
+    });
+    expect(fresh).toBeLessThan(0.3);
+    expect(worked).toBeGreaterThan(0.85);
+    expect(field({ sessions: 1, observed: 12 })).toBeGreaterThan(fresh);
+  });
+
+  it("never draws an empty screen", () => {
+    // The hubs are the shape of the thing and they are all there from the
+    // start. What grows is the connections between them.
+    expect(field()).toBeGreaterThanOrEqual(0.18);
+  });
+
+  it("gives the live screen the same field, not a stock one", () => {
+    const live = JSON.stringify(buildScreen("training_live", {
+      personality: { stylePortrait: { sessions: 12, observed: 300 } }, language: "en",
+    } as never));
+    const g = Number(/"growth":([\d.]+)/.exec(live)?.[1]);
+    expect(g).toBeGreaterThan(0.18);
+    expect(g).toBeLessThan(1);
+  });
+});
+
 describe("the training tab shows what it has learned", () => {
   const portrait = {
     words: [{ term: "jugaad", means: "a fix" }, { term: "ping", means: "message" }],
@@ -1480,6 +1520,28 @@ describe("the training tab shows what it has learned", () => {
     expect(json).toContain("jugaad");
   });
 
+  it("charts the days it has been learning from", () => {
+    // The ring says what it knows and the tiles say how much; neither says
+    // WHEN, and "it gets better the more you write" is a claim about time.
+    const json = JSON.stringify(buildScreen("home", {
+      personality: { stylePortrait: portrait }, language: "en",
+      viewport: { width: 390, height: 844 },
+      can: new Set(["ScreenHoldTouches"]),
+      stats: { wordsPerDay: [0, 40, 0, 120, 60, 0, 220] },
+    } as never));
+    expect(json).toContain("What it learns from");
+  });
+
+  it("draws no feed when there are no days to draw", () => {
+    const json = JSON.stringify(buildScreen("home", {
+      personality: { stylePortrait: portrait }, language: "en",
+      viewport: { width: 390, height: 844 },
+      can: new Set(["ScreenHoldTouches"]),
+      stats: { wordsPerDay: [0, 0, 0] },
+    } as never));
+    expect(json).not.toContain("What it learns from");
+  });
+
   it("says nothing is learned rather than charting zeros", () => {
     // A ring with no slices and three tiles of 0 reads as a broken screen on
     // the one day it has to read as an invitation.
@@ -1501,6 +1563,38 @@ describe("a voice is opened, not switched under your finger", () => {
     const json = voices();
     expect(json).toContain('"vcOpen"');
     expect(json).toContain("Write as this voice");
+    // EVERY style row, not one of them. This was wrong once: the edit action
+    // landed on Zu's block and the rows kept switching voices under the
+    // finger, which looks from the outside exactly like a change that never
+    // shipped.
+    const rows = JSON.stringify(JSON.parse(json).root);
+    const opens = (rows.match(/"path":"vcOpen","value":true/g) ?? []).length;
+    expect(opens).toBe(PERSONALITY_PRESETS.length - 1);
+  });
+
+  it("leaves Zu alone — a tap on it writes as it", () => {
+    // Zu has nothing to edit: its prompt has to stay empty, and a card
+    // offering to change that is the one thing this tab must not have.
+    const root = JSON.parse(voices()).root;
+    let block: any;
+    // The SHALLOWEST node holding the kicker — the block itself, not the row
+    // inside it that draws the dot and the words.
+    const walk = (n: any) => {
+      if (!block && n?.on?.onPress
+          && /OWN VOICE|WRITING AS YOU/.test(JSON.stringify(n.children ?? []))) block = n;
+      for (const c of n?.children ?? []) walk(c);
+    };
+    walk(root);
+    expect(JSON.stringify(block?.on?.onPress)).toContain("/v1/personality");
+    expect(JSON.stringify(block?.on?.onPress)).not.toContain("vcOpen");
+  });
+
+  it("makes a new voice in the same card, not on another screen", () => {
+    // Editing happens over the list because the list is what you were
+    // comparing against. Making one is the same act with empty fields.
+    const addTone = (buildScreen("voices", { personality: {} } as never) as any).actions.addTone;
+    expect(JSON.stringify(addTone)).not.toContain("navigate");
+    expect(JSON.stringify(addTone)).toContain("vcOpen");
   });
 
   it("says the keyboard set in signs, not in words", () => {
