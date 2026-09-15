@@ -10739,8 +10739,35 @@ export function buildKeyboardConfig(
         // Not 4: that would overlap neighbours, and in an overlap UIKit gives
         // the touch to whichever key is on top rather than to the nearer one —
         // trading dead space for a silent bias, which is worse.
-        "kb.key.hitSlop.x": 3,
-        "kb.key.hitSlop.y": 10,
+        /**
+         * ZERO, AND THAT IS WHAT HANDS THE GAPS TO THE PLANE.
+         *
+         * This slop does two things and they pull opposite ways. It widens
+         * what a button ACCEPTS — the forgiveness it was added for — and it
+         * widens what that button VETOES on the touch plane, because
+         * refreshObstacleRects grows every key's rect by its own slop before
+         * adding it to the veto list. A veto is checked before the plane
+         * resolves anything.
+         *
+         * At y:10, clipped to its row, a letter vetoed the full height of its
+         * column. At x:3, two neighbours' halos met across a five-point gap
+         * with a point to spare. So the plane owned almost none of its own
+         * keyboard, and every fix written for it — filling the gaps, resolving
+         * every claimed point, warming the geometry — was landing on slivers.
+         *
+         * Zero gives each key a veto the size of what it paints. Everything
+         * between and around them goes to the plane, which resolves a claimed
+         * point to the nearest key and never drops one. That is strictly more
+         * forgiveness than the halo bought, and it comes from the component
+         * built for it rather than from thirty overlapping rectangles.
+         *
+         * The trade, stated: shift and the layer key lose their own halo too —
+         * one factory makes every key — so a near miss on those now resolves
+         * to the nearest letter instead. Raise these two numbers to undo all
+         * of it in one cache bump.
+         */
+        "kb.key.hitSlop.x": 0,
+        "kb.key.hitSlop.y": 0,
         "kb.key.shadow.color": "#000000",
         "kb.key.shadow.offsetY": 1,
         "kb.key.shadow.opacity": 0.4,
