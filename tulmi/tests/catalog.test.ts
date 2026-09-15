@@ -1420,6 +1420,23 @@ describe("the way in names its own gesture", () => {
   });
 });
 
+describe("Android is never shown an empty step", () => {
+  it("draws the keyboard list when no recording has been uploaded", () => {
+    // iOS ships a screen recording of its walk through Settings. Android has
+    // none uploaded and the node is gated per platform, so that step showed
+    // the written steps and a hole where the art is.
+    const json = JSON.stringify(buildScreen("onboarding_keyboard", {
+      personality: {}, language: "en", platform: "android",
+    } as never));
+    expect(json).toContain("Manage keyboards");
+    expect(json).toContain("On-screen keyboard");
+    // The notice that actually stops people, named rather than left as a
+    // surprise — the same fact step 3 states in words.
+    expect(json).toContain("collect all the text you type");
+    expect(json).toContain('"platform":"android"');
+  });
+});
+
 describe("the network grows with what it has learned", () => {
   const field = (sp?: Record<string, unknown>) => {
     const json = JSON.stringify(buildScreen("home", {

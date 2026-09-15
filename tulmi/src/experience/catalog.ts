@@ -8530,7 +8530,13 @@ function onboardingKeyboard(): ScreenResponse {
       // it to a sliver of itself. The screen scrolls, so the height is
       // affordable and the steps still sit under it.
       ...screenHero("onboarding_keyboard.ios", { height: 356, width: 200, radius: 18, onlyOn: "ios" }),
-      ...screenHero("onboarding_keyboard.android", { height: 356, width: 200, radius: 18, onlyOn: "android" }),
+      // Android: the uploaded hero if one exists, otherwise the drawn one —
+      // see androidKeyboardArt(). Either way the slot is never empty on a
+      // platform whose step is the harder of the two to follow.
+      ...(getMediaRegistryFn?.()?.["hero.onboarding_keyboard.android"]?.url
+        ? screenHero("onboarding_keyboard.android", { height: 356, width: 200, radius: 18, onlyOn: "android" })
+        : [{ ...androidKeyboardArt(), visibleIf: { platform: "android" } } as Node,
+           { type: "Spacer", style: { height: 22 } } as Node]),
       // The steps card, per platform. The two systems share nothing here:
       // "General", "Add New Keyboard" and "Allow Full Access" do not exist on
       // Android, and Android's own path is shorter because the button below
@@ -9172,6 +9178,99 @@ const HAPTICS_UI = {
   paging: true,
   align: "center",
 };
+
+/**
+ * ANDROID'S KEYBOARD LIST, DRAWN RATHER THAN RECORDED.
+ *
+ * iOS ships a screen recording of the walk through Settings. Android has no
+ * equivalent uploaded, and the node is gated per platform — so that step has
+ * been showing Android users the written steps and an empty space where the
+ * art is.
+ *
+ * A recording is also the wrong artefact here. Android's settings differ by
+ * manufacturer and by version, so a capture from one phone teaches a screen
+ * half the users do not have, and it goes stale the first time Samsung moves
+ * something. What does not go stale is the SHAPE of the moment: a list of
+ * keyboards, and one switch to turn on.
+ *
+ * So it is drawn from nodes. No upload, no build, nothing to re-record — and
+ * an uploaded hero still wins if one ever appears, because the caller checks
+ * the registry first.
+ */
+function androidKeyboardArt(): Node {
+  const panel = "#141418";
+  const rowBg = "rgba(255,255,255,0.04)";
+  const ink = "rgba(255,255,255,0.92)";
+  const dim = "rgba(255,255,255,0.45)";
+
+  /** One keyboard in the list, and the switch beside it. */
+  const row = (name: string, on: boolean, lit = false): Node => ({
+    type: "Stack",
+    style: {
+      flexDirection: "row", alignItems: "center", gap: 10,
+      backgroundColor: lit ? "rgba(232,162,60,0.12)" : rowBg,
+      borderRadius: 10, paddingHorizontal: 11, paddingVertical: 11,
+      ...(lit ? { borderWidth: 1, borderColor: "rgba(232,162,60,0.45)" } : {}),
+    },
+    children: [
+      { type: "Stack", style: {
+        width: 22, height: 22, borderRadius: 6,
+        backgroundColor: lit ? ACCENT_AMBER : "rgba(255,255,255,0.10)" } },
+      { type: "Text", props: { content: name },
+        style: { flex: 1, fontSize: 12, fontWeight: lit ? "700" : "500",
+                 color: lit ? "#FFFFFF" : dim } },
+      // The switch. Two nodes: the track, and the knob parked at the end the
+      // state puts it.
+      { type: "Stack", style: {
+          width: 34, height: 20, borderRadius: 10, padding: 2,
+          justifyContent: "center",
+          alignItems: on ? "flex-end" : "flex-start",
+          backgroundColor: on ? (lit ? ACCENT_AMBER : "rgba(255,255,255,0.28)")
+                              : "rgba(255,255,255,0.12)" },
+        children: [{ type: "Stack", style: {
+          width: 16, height: 16, borderRadius: 8, backgroundColor: "#FFFFFF" } }] },
+    ],
+  });
+
+  return {
+    type: "Stack",
+    style: {
+      width: 200, height: 356, borderRadius: 18, overflow: "hidden",
+      alignSelf: "center", backgroundColor: panel,
+      borderWidth: 1, borderColor: "rgba(255,255,255,0.10)",
+      paddingHorizontal: 14, paddingTop: 16, paddingBottom: 16,
+    },
+    children: [
+      // The panel's own header, so it reads as a settings screen rather than
+      // as one of our cards.
+      { type: "Text", props: { content: "Manage keyboards" },
+        style: { fontSize: 13, fontWeight: "700", color: ink, marginBottom: 3 } },
+      { type: "Text", props: { content: "On-screen keyboard" },
+        style: { fontSize: 9.5, letterSpacing: 1.4, textTransform: "uppercase",
+                 color: "rgba(255,255,255,0.32)", marginBottom: 14 } },
+      { type: "Stack", style: { gap: 8 }, children: [
+        row("Gboard", true),
+        row("Samsung Keyboard", false),
+        // The one that matters arrives last and from below, so the eye lands
+        // on the switch rather than on the list.
+        { type: "Rise", props: { delayMs: 420, fromY: 26 }, children: [row("Tailzu", true, true)] },
+      ] },
+      { type: "Stack", style: { flex: 1 } },
+      // What Android says next, named rather than left as a surprise — it is
+      // the notice that stops people, and it is step 3 in the words below.
+      { type: "Stack",
+        style: { borderRadius: 10, padding: 11,
+                 backgroundColor: "rgba(255,255,255,0.05)" },
+        children: [
+          { type: "Text", props: { content: "Attention" },
+            style: { fontSize: 9.5, letterSpacing: 1.4, textTransform: "uppercase",
+                     color: "rgba(255,255,255,0.4)", marginBottom: 5 } },
+          { type: "Text", props: { content: "This keyboard may collect all the text you type. Use it?" },
+            style: { fontSize: 10.5, lineHeight: 15, color: dim } },
+        ] },
+    ],
+  };
+}
 
 function hapticsScreen(ctx: ScreenContext): ScreenResponse {
   const kb = HAPTICS_UI;
@@ -10461,6 +10560,11 @@ export function buildKeyboardConfig(
         // anything more is the grey sheet again.
         "kb.dictation.dim.enabled": true,
         "kb.dictation.dim.blur": true,          // iOS UIVisualEffectView
+        // WHICH MATERIAL. Every system material carries a fill as well as a
+        // blur, and "thin" carries enough of one to read as a sheet laid over
+        // the keyboard rather than the keyboard seen through something. Ultra
+        // thin is nearly all blur, which is the signal we actually want.
+        "kb.dictation.dim.material": "ultraThin",
         "kb.dictation.dim.blurRadius": 14,      // Android RenderEffect, API 31+
         // The TINT is now nearly nothing, and that is the fix for "the whole
         // keyboard sits on a grey sheet".
