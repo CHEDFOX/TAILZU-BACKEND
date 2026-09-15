@@ -10559,13 +10559,31 @@ export function buildKeyboardConfig(
         // tint only has to keep it from disappearing on a pale ground, and
         // anything more is the grey sheet again.
         "kb.dictation.dim.enabled": true,
-        "kb.dictation.dim.blur": true,          // iOS UIVisualEffectView
+        /**
+         * OFF UNTIL A BUILD CARRIES THE RAISE, and this flag is the whole
+         * reason a grey sheet appeared on the mic tap.
+         *
+         * The shipped binary buries the overlay behind the fresh tree on every
+         * remount, and tapping the mic schedules exactly such a remount. With
+         * blur OFF the overlay is a transparent view, so buried it paints
+         * nothing and nobody sees it. Turning it ON gave that same buried view
+         * a material to paint — one with nothing in front of it left to blur,
+         * which is a flat sheet showing through a transparent keyboard.
+         *
+         * So this cannot be true before the build that raises the overlay
+         * again. It is one backend edit on the day that ships, and everything
+         * else in this block is already tuned for it.
+         */
+        "kb.dictation.dim.blur": false,         // iOS UIVisualEffectView
         // WHICH MATERIAL. Every system material carries a fill as well as a
         // blur, and "thin" carries enough of one to read as a sheet laid over
         // the keyboard rather than the keyboard seen through something. Ultra
         // thin is nearly all blur, which is the signal we actually want.
         "kb.dictation.dim.material": "ultraThin",
         "kb.dictation.dim.blurRadius": 14,      // Android RenderEffect, API 31+
+        // Zero while the blur is off: the veil's only job then is to swallow
+        // touches, and a tint with nothing to tint is the grey sheet again.
+        // Raise it to 0.06 on the day the blur goes on.
         // The TINT is now nearly nothing, and that is the fix for "the whole
         // keyboard sits on a grey sheet".
         //
@@ -10578,7 +10596,7 @@ export function buildKeyboardConfig(
         // The blur carries the "not now" signal on its own. The tint only has
         // to nudge it, so it is a whisper; raise it only for builds with no
         // blur to fall back on.
-        "kb.dictation.dim.alpha": 0.06,
+        "kb.dictation.dim.alpha": 0,
         // Android fades the rows a little under the blur — RenderEffect alone
         // keeps every key at full contrast, which reads as a rendering fault
         // rather than as a surface that is out of play.
