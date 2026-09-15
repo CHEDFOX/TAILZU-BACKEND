@@ -76,6 +76,15 @@ function transformActionSpec(a: ActionSpec, fn: StrFn): ActionSpec {
   switch (a.kind) {
     case "toast":
       return { ...a, message: fn(a.message) };
+    case "snackbar":
+      // Its own copy (message + actionLabel) plus an optional inline action
+      // (onAction) whose nested toast/speak copy must be translated too.
+      return {
+        ...a,
+        message: fn(a.message),
+        actionLabel: a.actionLabel ? fn(a.actionLabel) : a.actionLabel,
+        onAction: a.onAction ? transformActionRef(a.onAction, fn) : a.onAction,
+      };
     case "speak":
       return { ...a, text: fn(a.text) };
     case "setState":
@@ -85,7 +94,20 @@ function transformActionSpec(a: ActionSpec, fn: StrFn): ActionSpec {
         ? { ...a, value: fn(a.value) }
         : a;
     case "sequence":
+    case "parallel":
       return { ...a, actions: a.actions.map((r) => transformActionRef(r, fn)) };
+    case "requestPermission":
+    case "requestPushPermission":
+      return {
+        ...a,
+        onGranted: a.onGranted ? transformActionRef(a.onGranted, fn) : a.onGranted,
+        onDenied: a.onDenied ? transformActionRef(a.onDenied, fn) : a.onDenied,
+      };
+    case "armFlowSession":
+    case "completeKeyboardHandoff":
+    case "cancelKeyboardHandoff":
+      // Carry only an onSuccess callback ref.
+      return { ...a, onSuccess: a.onSuccess ? transformActionRef(a.onSuccess, fn) : a.onSuccess };
     case "condition":
       return {
         ...a,
@@ -93,6 +115,16 @@ function transformActionSpec(a: ActionSpec, fn: StrFn): ActionSpec {
         else: a.else ? transformActionRef(a.else, fn) : a.else,
       };
     case "callEndpoint":
+    case "download":
+    case "pickImage":
+    case "pickDocument":
+    case "scanQR":
+    case "biometricPrompt":
+    case "iap.showPaywall":
+    case "iap.subscribe":
+    case "iap.restore":
+      // Each carries optional onSuccess/onError refs that may be inline specs
+      // with nested copy (a toast on failure, a speak on success).
       return {
         ...a,
         onSuccess: a.onSuccess ? transformActionRef(a.onSuccess, fn) : a.onSuccess,
@@ -103,12 +135,64 @@ function transformActionSpec(a: ActionSpec, fn: StrFn): ActionSpec {
   }
 }
 
+// Prop keys on a Node whose value is user-facing display text — the whole set
+// the SDUI catalog uses today. Add here whenever a new copy-bearing prop lands
+// in shared/types/sdui.ts; the transformer walks the same set both passes so a
+// new prop is silently untranslated until it's on this list.
+const NODE_TEXT_PROPS = [
+  "content",
+  "label",
+  "placeholder",
+  "title",
+  "subtitle",
+  "heading",
+  "text",
+  "message",
+  "hint",
+  "caption",
+  // NOTE: "value" is deliberately NOT translated. Selection controls (tone /
+  // language chips, radio rows) carry their IDENTIFIER in `value` ("formal",
+  // "casual", "en") and their display copy in `label`/`content` — translating
+  // `value` would rewrite the identifier ("formal"→"formell") and break the
+  // selection for every non-English user. The rare display-only `value` (e.g. a
+  // settings KeyValue "You") simply stays untranslated, which is acceptable.
+  "emptyLabel",
+  "helper",
+  "helperText",
+  "footer",
+  "header",
+] as const;
+
+// Some props hold an array of strings (chips, quick replies) — treat every
+// element the same as a scalar copy prop.
+const NODE_TEXT_ARRAY_PROPS = ["chips", "options", "choices", "items"] as const;
+
 function transformNode(node: Node, fn: StrFn): Node {
   const out: Node = { ...node };
   if (node.props) {
     const p: Record<string, unknown> = { ...node.props };
-    for (const key of ["content", "label", "placeholder"]) {
+    for (const key of NODE_TEXT_PROPS) {
       if (typeof p[key] === "string") p[key] = fn(p[key] as string);
+    }
+    for (const key of NODE_TEXT_ARRAY_PROPS) {
+      const v = p[key];
+      if (Array.isArray(v)) {
+        p[key] = v.map((item) =>
+          typeof item === "string"
+            ? fn(item)
+            : item && typeof item === "object"
+              ? {
+                  ...(item as Record<string, unknown>),
+                  ...(typeof (item as { label?: unknown }).label === "string"
+                    ? { label: fn((item as { label: string }).label) }
+                    : {}),
+                  ...(typeof (item as { title?: unknown }).title === "string"
+                    ? { title: fn((item as { title: string }).title) }
+                    : {}),
+                }
+              : item,
+        );
+      }
     }
     out.props = p;
   }
@@ -332,7 +416,14 @@ export async function localize<T extends AnyResponse>(
 
   // Translate (cached) then Pass 2 — substitute.
   const map = await ensureTranslations(info.code, info.name, [...found]);
-  const localized = transformResponse(resp, (s) => map.get(s) ?? s);
+  // An empty translation is a missing one, not a blank label. `??` treated ""
+  // as an answer, so any string the model returned empty for — short button
+  // words were the ones it dropped — rendered as nothing on every screen for
+  // every non-English user. The source text is always the better fallback.
+  const localized = transformResponse(resp, (s) => {
+    const t = map.get(s);
+    return typeof t === "string" && t.trim() ? t : s;
+  });
 
   // RTL languages: tell the app to flip layout (bootstrap only).
   if (RTL.has(info.code) && "navigation" in (localized as unknown as Record<string, unknown>)) {
