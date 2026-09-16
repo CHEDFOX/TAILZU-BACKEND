@@ -1840,11 +1840,35 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   // the person actually wrote — under the numbers for what it has learned.
   // Same read, one more screen.
   const STATS_SCREENS = new Set(["stats", "personality", "home"]);
-  const stats =
-    user && STATS_SCREENS.has(screenId)
-      ? await statsForUser(user, "month", Number(body.tzOffsetMinutes) || 0,
-                           savedWords(personality))
-      : undefined;
+  /**
+   * AN AGGREGATE MUST NOT GATE THE TAB SOMEONE LANDS ON.
+   *
+   * This is a month-wide roll-up over every row the user has written, and on
+   * the stats screen it is the point — waiting for it is waiting for the
+   * content. On the training tab it is one strip of bars below the fold, and
+   * on the You tab it is a ring; neither is worth holding the screen for, and
+   * home is where the app OPENS. A slow read there is the whole app feeling
+   * slow, which is exactly how it was described.
+   *
+   * So the screens that are ABOUT the numbers wait for them, and the screens
+   * that merely show some give them a deadline. Past it the screen is built
+   * without them — the feed is simply not drawn, which is already what a user
+   * with no history sees — and the next fetch, with the read warm, has them.
+   */
+  const STATS_BLOCKING = new Set(["stats"]);
+  const STATS_DEADLINE_MS = 700;
+  const statsRead = user && STATS_SCREENS.has(screenId)
+    ? statsForUser(user, "month", Number(body.tzOffsetMinutes) || 0,
+                   savedWords(personality)).catch(() => undefined)
+    : undefined;
+  const stats = statsRead
+    ? (STATS_BLOCKING.has(screenId)
+        ? await statsRead
+        : await Promise.race([
+            statsRead,
+            new Promise<undefined>((r) => setTimeout(() => r(undefined), STATS_DEADLINE_MS)),
+          ]))
+    : undefined;
   // The words meter. Only the stats screen draws it, so only the stats screen
   // pays for the read.
   // The words screen is a statement about this number, so it has to read it
