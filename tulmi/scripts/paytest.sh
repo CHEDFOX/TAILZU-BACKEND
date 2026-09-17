@@ -25,7 +25,12 @@ no(){ echo "  FAIL  $1"; fail=$((fail+1)); }
 # server holds by a character nobody can see, and then EVERY call is 401 —
 # including the one meant to prove a bad secret is rejected, which passes for
 # the wrong reason. Both are stripped here.
-val(){ grep -m1 "^$1=" $ENVF | cut -d= -f2- | tr -d '\r' | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'\$//"; }
+# `$$` in the file is how you tell Compose to pass a literal `$` through, so
+# the process receives one `$` where the file holds two. Undone here, or this
+# script compares the file's spelling against the container's value and reports
+# a mismatch that is only in its own reading.
+val(){ grep -m1 "^$1=" $ENVF | cut -d= -f2- | tr -d '\r' \
+        | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'\$//" -e 's/\$\$/$/g'; }
 SEC=$(val REVENUECAT_WEBHOOK_SECRET)
 WANT=$(val REVENUECAT_ENTITLEMENT); WANT=${WANT:-pro}
 [ -n "$SEC" ] || { echo "no REVENUECAT_WEBHOOK_SECRET — the webhook refuses everything"; exit 1; }
