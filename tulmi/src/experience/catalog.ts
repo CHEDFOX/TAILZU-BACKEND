@@ -1240,6 +1240,13 @@ export function buildBootstrap(
      */
     micGranted?: boolean;
     keyboardReady?: boolean;
+    /**
+     * "phone" (the default, and every mobile client) or "desktop".
+     *
+     * A window is not a handset, and the two steps above are about a handset.
+     * Absent means phone, so nothing that does not send it changes.
+     */
+    formFactor?: string;
   } = {},
 ): BootstrapResponse {
   const nav = navigationFor(!!opts.landedBefore);
@@ -1280,7 +1287,11 @@ export function buildBootstrap(
       // Which bootstrap this is, for the whole install. The one thing that can
       // tell "the app is opening" from "the app asked again".
       Number(opts.launchCount ?? 0),
-      { micGranted: !!opts.micGranted, keyboardReady: !!opts.keyboardReady },
+      {
+        micGranted: !!opts.micGranted,
+        keyboardReady: !!opts.keyboardReady,
+        formFactor: opts.formFactor,
+      },
     )),
     flags: ((): BootstrapResponse["flags"] => {
       const flags: BootstrapResponse["flags"] = {
@@ -1991,9 +2002,22 @@ function pickInitialScreenId(
   onboarded: boolean,
   introReady: boolean,
   launchCount: number,
-  device: { micGranted?: boolean; keyboardReady?: boolean } = {},
+  device: { micGranted?: boolean; keyboardReady?: boolean; formFactor?: string } = {},
 ): string {
   const firstEver = launchCount === 1;
+  // NEITHER STEP HAS ANYTHING TO ASK A WINDOW.
+  //
+  // Both exist to obtain something from a phone: a permission the OS grants to
+  // an app, and a keyboard added in Settings. A desktop has no keyboard
+  // extension to add, and its microphone is granted by the operating system
+  // outside the app — Windows in Privacy settings, macOS in its own prompt at
+  // first use. No screen we draw can move either one.
+  //
+  // The desktop already refused to show them, by discarding this answer and
+  // landing on the first tab. That worked and was the wrong shape: the client
+  // was correcting the server rather than telling it something it did not
+  // know. It reports its form factor now, and the answer comes back right.
+  const askDevice = device.formFactor !== "desktop";
   const play = introReady && (
     INTRO_PLAY_WHEN === "everyLaunch" ||
     (INTRO_PLAY_WHEN === "firstRun" && firstEver && !onboarded)
@@ -2019,7 +2043,7 @@ function pickInitialScreenId(
   //
   // launchCount is 0 from a client too old to send it, and 0 is not 1, so
   // those clients keep exactly the behaviour they have now.
-  if (launchCount === 1) {
+  if (launchCount === 1 && askDevice) {
     if (!device.micGranted) return "onboarding";
     if (!device.keyboardReady) return "onboarding_keyboard";
   }
@@ -2033,8 +2057,10 @@ function pickInitialScreenId(
   //
   // Nothing left to ask means onboarding is done, whatever the profile says:
   // the caller marks it so, and this returns the app.
-  if (!device.micGranted) return "onboarding";
-  if (!device.keyboardReady) return "onboarding_keyboard";
+  if (askDevice) {
+    if (!device.micGranted) return "onboarding";
+    if (!device.keyboardReady) return "onboarding_keyboard";
+  }
   return "home";
 }
 

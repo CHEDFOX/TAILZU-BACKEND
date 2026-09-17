@@ -393,6 +393,34 @@ describe("buildBootstrap", () => {
     }
   });
 
+  // A WINDOW IS NOT A HANDSET.
+  //
+  // Both setup steps exist to obtain something from a phone: a permission the
+  // OS grants an app, and a keyboard added in Settings. The desktop has no
+  // keyboard extension, and Electron already holds its microphone — so both
+  // steps have nothing to ask and neither may be the landing.
+  //
+  // The desktop used to be sent "onboarding_keyboard" and discard it, which
+  // worked and was backwards: the renderer overruling the creator.
+  it("never lands a desktop on a step that has nothing to ask it", () => {
+    for (const launchCount of [1, 2, 50]) {
+      for (const onboarded of [false, true]) {
+        const b = buildBootstrap({ onboarded, launchCount, formFactor: "desktop" });
+        expect(b.initialScreenId).not.toBe("onboarding");
+        expect(b.initialScreenId).not.toBe("onboarding_keyboard");
+      }
+    }
+  });
+
+  it("a phone is still asked — absent means phone", () => {
+    // Every client older than the field sends nothing, and nothing must read
+    // as a phone, or one release would silently skip setup for all of them.
+    for (const formFactor of [undefined, "phone"]) {
+      expect(buildBootstrap({ onboarded: true, launchCount: 1, formFactor }).initialScreenId)
+        .toBe("onboarding");
+    }
+  });
+
   it("an onboarded user opens on home, first launch or not", () => {
     // First launch or fiftieth, an onboarded user opens on a tab root — and
     // on the SAME one the tab bar is lighting.

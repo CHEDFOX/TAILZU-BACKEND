@@ -1706,10 +1706,13 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   // sends neither, which reads as false and shows both steps, exactly as
   // before this existed.
   const devCaps = reqBody.capabilities?.device as
-    | { micGranted?: boolean; keyboardReady?: boolean }
+    | { micGranted?: boolean; keyboardReady?: boolean; formFactor?: string }
     | undefined;
   const micGranted = devCaps?.micGranted === true;
   const keyboardReady = devCaps?.keyboardReady === true;
+  // A window says so. Everything else is a phone, including every client that
+  // predates this field.
+  const isDesktop = devCaps?.formFactor === "desktop";
 
   // NOTHING LEFT TO ASK MEANS ONBOARDING IS DONE.
   //
@@ -1760,6 +1763,7 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     reviewEmail: (cfg.REVIEW_EMAIL ?? "").trim().toLowerCase(),
     micGranted,
     keyboardReady,
+    formFactor: isDesktop ? "desktop" : "phone",
   });
   // When they were last here. Fire and forget: a failed stamp must never cost
   // the boot, and nothing reads it on this path.
