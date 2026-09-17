@@ -257,6 +257,30 @@ const EnvSchema = z.object({
    */
   REVENUECAT_ENTITLEMENT: z.string().default("pro"),
   /**
+   * The RevenueCat Web Billing paywall link, for the desktop app.
+   *
+   * WHY THE DESKTOP NEEDS ONE AT ALL. RevenueCat has no desktop SDK, so the
+   * window cannot call `iap.subscribe` the way the phones do — it rendered the
+   * paywall with every row on it dead. Web Billing is RevenueCat's own
+   * Stripe-backed checkout, and it is the cheapest possible fix here because
+   * the identity already lines up: the phones configure RevenueCat with
+   * `appUserID: <supabase user id>`, the webhook resolves that same id back,
+   * and a web purchase for the same id lands on the same customer and writes
+   * the same entitlements row. Nothing about the webhook changes — it keys on
+   * the event type, the entitlement and the user, and only RECORDS the store.
+   *
+   * So a user who paid on a phone is already entitled in the window, and one
+   * who pays in the window is entitled on their phone.
+   *
+   * This is a PUBLIC link (pay.rev.cat/...), not a credential — it is opened
+   * in the user's browser and is safe in a flag. The secret key is the other
+   * value below and must never leave the server.
+   *
+   * Unset means no web purchase path: the desktop is told so and withholds the
+   * paywall rather than drawing buttons that do nothing.
+   */
+  REVENUECAT_WEB_PAYWALL_URL: z.string().url().optional(),
+  /**
    * RevenueCat REST secret key (sk_…), for asking about a user directly.
    *
    * Optional, and a different direction from the webhook: the webhook is

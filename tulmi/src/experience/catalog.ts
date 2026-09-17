@@ -1324,6 +1324,17 @@ const DESKTOP_UI = {
   },
 } as const;
 
+/**
+ * Does a user without an entitlement get stopped, or merely shown the price?
+ *
+ * One edit turns the paywall from a screen you can open into a wall you have
+ * to pass. It is false while the store products are not purchasable — see the
+ * note at the flag — and reading it from here rather than from a literal in
+ * the middle of a flags block is what makes flipping it a one-line change that
+ * is findable.
+ */
+const PAYWALL_BLOCK = false;
+
 export function buildBootstrap(
   opts: {
     onboarded?: boolean;
@@ -1444,6 +1455,22 @@ export function buildBootstrap(
         // and would carry the whole block on every launch for nothing.
         ...(opts.formFactor === "desktop" ? { "desktop.shell": DESKTOP_UI } : {}),
 
+        // HOW A WINDOW PAYS.
+        //
+        // RevenueCat has no desktop SDK, so `iap.subscribe` — which is what
+        // every row on the paywall fires — has nothing to call there. Web
+        // Billing is its own checkout, opened in the user's browser, and the
+        // identity already lines up: the app user id is the Supabase user id
+        // on both sides, so a purchase here writes the same entitlements row a
+        // phone purchase does and the webhook needs no change at all.
+        //
+        // Only to a desktop, because a phone has a store and must use it —
+        // sending an external purchase link to an iOS build is the
+        // anti-steering rule Apple rejects for, and the surest way to get one.
+        ...(opts.formFactor === "desktop" && getConfig().REVENUECAT_WEB_PAYWALL_URL
+          ? { "paywall.web.url": getConfig().REVENUECAT_WEB_PAYWALL_URL }
+          : {}),
+
         // Post-splash intro — max duration + background. `intro.media` is
         // spliced in below from whatever's under the "intro" key in the media
         // registry, so uploading is the entire "swap the intro animation"
@@ -1489,20 +1516,43 @@ export function buildBootstrap(
         // The streak. NOT what tomorrow is worth — that number no longer
         // exists to send, because naming it turns anticipation into
         // arithmetic and a known reward into a price.
+        /**
+         * IS THIS ACCOUNT PAID — the server's own answer.
+         *
+         * The phones never needed one: they ask RevenueCat directly and
+         * `paywall.entitlement` tells them which entitlement to look for. The
+         * desktop has no RevenueCat SDK, so it had no way to know at all —
+         * which meant it could not hide a paywall from somebody who had
+         * already paid, or confirm a purchase that had just gone through.
+         *
+         * This is also the more honest source for anyone: it comes from the
+         * entitlements table the webhook writes, which is the same thing every
+         * quota check on the server reads. The client remains not-evidence —
+         * this flag only decides what is SHOWN.
+         */
+        "quota.entitled": opts.entitled === true,
         "quota.streakDays": opts.allowance?.streakDays ?? 0,
         "quota.earnMaxed": opts.allowance?.maxed === true,
         // The one flag every gate reads: out of words and not paying.
         "quota.exceeded":
           opts.entitled !== true
           && (opts.wordsUsed ?? 0) >= (opts.allowance?.total ?? freeMonthlyWords()),
-        "paywall.blockUntilEntitled": false,
         // DISABLED for now: the paywall was auto-showing on every open (user
         // lacks `pro`) and its purchase fails with "could not complete purchase"
         // because the App Store IAP products aren't purchasable yet (not
         // "Ready to Submit" / Paid Apps Agreement / sandbox tester). That blocked
-        // the mic-flow testing. Re-enable (true) once the IAP products are live in
-        // App Store Connect + RevenueCat so a purchase actually completes. The
-        // paywall screen itself still exists and can be opened manually.
+        // the mic-flow testing. Re-enable (PAYWALL_BLOCK = true) once the IAP
+        // products are live in App Store Connect + RevenueCat so a purchase
+        // actually completes. The paywall screen itself still exists and can be
+        // opened manually.
+        //
+        // AND NEVER BLOCK A SURFACE THAT CANNOT PAY. The desktop has no store:
+        // its only way through is the Web Billing link, and without one
+        // configured a hard block is a locked door with no handle — the app
+        // demands a subscription and offers no way to buy one. The day this
+        // flips to true, that is the shape of the bug it would otherwise ship.
+        "paywall.blockUntilEntitled": PAYWALL_BLOCK &&
+          !(opts.formFactor === "desktop" && !getConfig().REVENUECAT_WEB_PAYWALL_URL),
         // The free tier, in WORDS REFINED per month. The app reads this to show
         // progress and to know when to put the paywall in front of someone —
         // without it the client has to guess the number, and a guess that

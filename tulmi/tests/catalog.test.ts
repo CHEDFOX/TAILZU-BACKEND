@@ -19,7 +19,7 @@ import {
   YOU_UI,
   STATS_UI,
 } from "../src/experience/catalog.js";
-import { getConfig } from "../src/config.js";
+import { getConfig, resetConfigForTests } from "../src/config.js";
 import { PERSONALITY_PRESETS } from "../src/experience/personalityPresets.js";
 
 describe("the arrival prompt", () => {
@@ -485,6 +485,48 @@ describe("buildBootstrap", () => {
     // A phone still has to say so.
     expect(tall(buildScreen("home", ctx("phone")))).toBe(false);
     expect(tall(buildScreen("home", ctx("phone", ["ScreenHoldTouches"])))).toBe(true);
+  });
+
+  // A WINDOW HAS NO STORE, AND AN iOS BUILD MUST NOT BE OFFERED ONE.
+  //
+  // RevenueCat has no desktop SDK, so every row on the paywall fired an action
+  // with nothing to call and the window rendered a screen of dead buttons. Web
+  // Billing is the way through, and it must reach a desktop and ONLY a
+  // desktop: an external purchase link in an iOS build is the anti-steering
+  // rule Apple rejects for.
+  it("offers a web purchase link to a desktop and never to a phone", () => {
+    const url = "https://pay.rev.cat/test-token";
+    const prev = process.env.REVENUECAT_WEB_PAYWALL_URL;
+    process.env.REVENUECAT_WEB_PAYWALL_URL = url;
+    resetConfigForTests();
+    try {
+      expect(buildBootstrap({ onboarded: true, formFactor: "desktop" }).flags?.["paywall.web.url"])
+        .toBe(url);
+      for (const formFactor of [undefined, "phone"]) {
+        expect(buildBootstrap({ onboarded: true, formFactor }).flags?.["paywall.web.url"])
+          .toBeUndefined();
+      }
+    } finally {
+      if (prev === undefined) delete process.env.REVENUECAT_WEB_PAYWALL_URL;
+      else process.env.REVENUECAT_WEB_PAYWALL_URL = prev;
+      resetConfigForTests();
+    }
+  });
+
+  it("never blocks a desktop that has no way to pay", () => {
+    // The day paywall.blockUntilEntitled flips to true, a desktop with no Web
+    // Billing link configured would be a locked door with no handle: the app
+    // demands a subscription and offers nothing to buy one with.
+    expect(buildBootstrap({ onboarded: true, formFactor: "desktop" })
+      .flags?.["paywall.blockUntilEntitled"]).toBe(false);
+  });
+
+  it("tells the client whether the account is paid", () => {
+    // The phones ask RevenueCat themselves; the desktop has no SDK and had no
+    // way to know at all — so it could not hide the paywall from somebody who
+    // had already paid, or confirm a purchase that had just gone through.
+    expect(buildBootstrap({ onboarded: true, entitled: true }).flags?.["quota.entitled"]).toBe(true);
+    expect(buildBootstrap({ onboarded: true }).flags?.["quota.entitled"]).toBe(false);
   });
 
   it("a phone is still asked — absent means phone", () => {
