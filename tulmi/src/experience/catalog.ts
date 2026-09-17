@@ -4651,6 +4651,49 @@ export const TRAINING_UI = {
         error: "Something went wrong",
       },
       hint: "Talk the way you normally would. Nothing here is graded.",
+      /**
+       * WHAT IT SAYS THE MOMENT THE SESSION OPENS.
+       *
+       * The screen used to open by LISTENING. Nothing was said, nothing
+       * happened, and the first thing the app ever said arrived only after the
+       * user had spoken into silence and waited out a round trip — so the
+       * feature's first impression was a pause long enough to read as broken.
+       *
+       * These cost nothing, because they are not asked for. The server already
+       * knows who this is and what it has learned of them, so the greeting is
+       * composed here and travels with the screen. It is spoken while the
+       * microphone and the socket are still opening, which is what turns the
+       * warm-up into the greeting instead of a wait before one.
+       *
+       * `{name}` and `{word}` are filled in when there is one; a line naming
+       * something it has not got is never chosen.
+       */
+      greeting: {
+        /** Nothing learned yet — say what is about to happen. */
+        first: [
+          "I don't know how you sound yet. Just talk, and I'll listen.",
+          "This is the part where I learn your voice. Start anywhere.",
+        ],
+        /** Some evidence, not much. */
+        early: [
+          "I've got a little of you so far. Keep going.",
+          "A few of your words are mine now. Let's get more.",
+        ],
+        /** Enough that naming it is true. */
+        known: [
+          "Back for more. I've been getting the hang of you.",
+          "I know some of how you talk now. Let's sharpen it.",
+        ],
+        /** Used when a real learned word is available — the strongest proof
+         *  that it has been paying attention. */
+        withWord: [
+          "Last time I picked up \u201c{word}\u201d. Say more like that.",
+          "\u201c{word}\u201d stuck with me. Keep talking.",
+        ],
+        /** Prefixed when a name is known. Its own value so it can be dropped
+         *  without rewriting every line above. */
+        withName: "{name} \u2014 ",
+      },
       end: "End & save",
       saving: "Reading the conversation",
       saved: "It knows you a little better.",
@@ -5606,25 +5649,82 @@ function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
  * (the streaming mic, speech synthesis, Skia) all shipped long ago, which is
  * why the whole screen arrives without a build.
  */
+/**
+ * THE FIRST THING THE SESSION SAYS, decided here and sent with the screen.
+ *
+ * No model is asked, because nothing it would say needs one: the facts are the
+ * person's name and what has actually been learned of them, and both are in
+ * hand at the moment the screen is built. Asking would cost a round trip, and
+ * the round trip IS the bug — the screen opened listening, so the first app
+ * voice arrived only after someone had talked into silence and waited.
+ *
+ * It picks the most specific thing that is TRUE. A real learned word is the
+ * strongest, because it is the one line that could not have been written for
+ * anybody else. Below that, how far along the portrait is. A line naming
+ * something it does not have is never reachable.
+ *
+ * Varied by the day so a daily user is not greeted identically every time —
+ * deterministic rather than random, so the same open twice in a row says the
+ * same thing and does not look like a reroll.
+ */
+function liveGreeting(ctx: ScreenContext): string {
+  const g = TRAINING_UI.chat.live.greeting;
+  const sp = ctx.personality?.stylePortrait;
+  const sessions = sp?.sessions ?? 0;
+  // Their own slang, each stored with what it means to them. Only the term is
+  // spoken: the meaning is what makes the word usable in a refine, and reading
+  // a definition back at someone is not a greeting.
+  const words = (sp?.words ?? [])
+    .map((w) => String(w?.term ?? "").trim())
+    .filter((t) => t.length > 1);
+  // Rotates daily, and is the same for every choice in one render.
+  const pick = (xs: readonly string[]): string =>
+    xs[Math.floor(Date.now() / 86_400_000) % xs.length] ?? xs[0] ?? "";
+
+  let line: string;
+  if (words.length && sessions > 0) {
+    line = pick(g.withWord).replace("{word}", pick(words));
+  } else if (sessions === 0) {
+    line = pick(g.first);
+  } else if (sessions < 3) {
+    line = pick(g.early);
+  } else {
+    line = pick(g.known);
+  }
+
+  // A first name only. The greeting is spoken aloud, and a full legal name
+  // read out by a machine is the opposite of the thing this is for.
+  const name = String(ctx.name ?? "").trim().split(/\s+/)[0];
+  return name ? g.withName.replace("{name}", name) + line : line;
+}
+
 function trainingLiveScreen(ctx: ScreenContext): ScreenResponse {
   const ui = TRAINING_UI.chat.live;
   // The field on the live screen is THIS person's, at the density they have
   // earned — and it sprouts new fibres while the session runs, so the growth
   // it opens at is the floor for the conversation, not a decoration.
   const growth = fieldGrowth(ctx.personality);
+  const greeting = liveGreeting(ctx);
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "training_live",
     title: ui.title,
     state: {
-      sessionState: "idle",
-      level: 0,
+      // "speaking", not "idle". The session opens by SAYING something — see
+      // liveGreeting — so the orb is already moving when the screen lands
+      // rather than sitting still through a warm-up.
+      sessionState: "speaking",
+      level: 0.5,
+      // The greeting, on screen at the same moment it is spoken. Seeded into
+      // the transcript too, so the model's first reply answers something and
+      // the conversation does not start mid-air.
+      line: greeting,
       // NOT seeded. The line below carries the hint as its literal content and
       // binds `line` over it, so leaving this unset is what makes the hint the
       // opening state — seeded as "", the bind won with an empty string and the
       // hint never appeared at all.
-      turns: [],
+      turns: [{ role: "assistant", text: greeting }],
       saving: false,
       saved: false,
       /** Set by the back arrow, so onDisappear does not post a second time. */
@@ -5707,6 +5807,24 @@ function trainingLiveScreen(ctx: ScreenContext): ScreenResponse {
             levelPath: "level",
             linePath: "line",
             turnsPath: "turns",
+            /**
+             * SPOKEN FIRST, AND WHILE THE MICROPHONE IS STILL OPENING.
+             *
+             * The session used to begin by listening, so the warm-up — asking
+             * for the mic, opening the socket, waiting for it — happened in
+             * silence, and the first thing the app ever said came after the
+             * user had spoken into that silence and waited out a round trip.
+             *
+             * This is already written (liveGreeting builds it from the name
+             * and what has actually been learned), so it can be said at once.
+             * Saying it is what the warm-up hides behind: by the time the
+             * sentence ends the socket is open, and the handover to listening
+             * is instant instead of being where the wait moved to.
+             *
+             * An older bundle ignores an unknown prop and starts as it always
+             * did, which is the behaviour this replaces rather than breaks.
+             */
+            greeting,
           },
           on: { onError: "sessionErr" },
         },
