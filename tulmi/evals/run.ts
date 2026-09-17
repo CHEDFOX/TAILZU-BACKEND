@@ -62,6 +62,29 @@ export function scoreOutput(c: EvalCase, out: string): string[] {
   if (c.maxChars && out.length > c.maxChars) {
     problems.push(`too long: ${out.length} chars > ${c.maxChars}`);
   }
+  /**
+   * LENGTH IS THEIRS, measured.
+   *
+   * The reported fault was the model "adding things which are not needed", and
+   * it is invisible to every assertion above: nothing is missing, nothing
+   * forbidden leaked, the script is right. What changed is the SHAPE — four
+   * words came back as a paragraph.
+   *
+   * A ratio rather than a ceiling because the fault is proportional. "ok"
+   * becoming a sentence and a short note becoming twice itself are the same
+   * mistake, and one fixed number cannot catch both.
+   */
+  if (c.maxGrowth) {
+    const words = (t: string) => (t.trim().match(/\S+/g) ?? []).length;
+    const from = words(c.input);
+    const to = words(out);
+    if (from && to > from * c.maxGrowth) {
+      problems.push(
+        `grew ${from} → ${to} words (${(to / from).toFixed(2)}x > ${c.maxGrowth}x): ` +
+        JSON.stringify(out.slice(0, 90)),
+      );
+    }
+  }
   return problems;
 }
 
@@ -76,6 +99,9 @@ async function runCase(c: EvalCase, runs: number): Promise<CaseResult> {
         personality: c.personality,
         script: c.script,
         alternative: c.alternative,
+        // Passed exactly as the app passes it, so a case can prove the saved
+        // setting biases and never converts.
+        language: c.language,
         targetApp: "Generic",
       });
     } catch (err) {

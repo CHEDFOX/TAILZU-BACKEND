@@ -108,3 +108,58 @@ describe("the case set itself", () => {
     }
   });
 });
+
+/**
+ * The growth assertion, which is the one that catches "it added things".
+ *
+ * Worth testing harder than the others. Every assertion above asks about the
+ * CONTENT of the output, and the padding fault leaves content alone: nothing
+ * is missing, nothing forbidden leaked, the script is right, and the message
+ * is simply longer than what was said. A scorer bug here would pass that
+ * silently, which is worse than not measuring it.
+ */
+describe("maxGrowth", () => {
+  const c = (over: Partial<EvalCase> = {}): EvalCase => ({
+    id: "t", intent: "t", input: "reaching in ten", maxGrowth: 1.6, ...over,
+  });
+
+  it("passes a repair that keeps the length", () => {
+    expect(scoreOutput(c(), "Reaching in ten.")).toEqual([]);
+    // Punctuation and a fixed word are repair, not addition.
+    expect(scoreOutput(c(), "I'm reaching in ten.")).toEqual([]);
+  });
+
+  it("fails a terse line that grew a greeting and a sign-off", () => {
+    const problems = scoreOutput(c(), "Hi there, just letting you know I will be reaching in ten minutes. Thanks!");
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain("grew");
+    // The message names the real numbers, because "too long" without them
+    // cannot be acted on.
+    expect(problems[0]).toMatch(/3 → \d+ words/);
+  });
+
+  it("is proportional, not a fixed ceiling", () => {
+    // The same 2x growth has to fail at both lengths, or the assertion only
+    // protects short inputs — and a short note doubling is the same fault.
+    const short = c({ input: "on my way", maxGrowth: 1.5 });
+    const long = c({
+      input: "the deploy went out this morning and the numbers look fine so far",
+      maxGrowth: 1.5,
+    });
+    expect(scoreOutput(short, "I am on my way to you now")).not.toEqual([]);
+    expect(scoreOutput(long,
+      "The deploy went out this morning and the numbers look fine so far. " +
+      "I will keep watching them through the afternoon and will let you know " +
+      "immediately if anything at all changes for the worse.")).not.toEqual([]);
+  });
+
+  it("says nothing when the case does not ask", () => {
+    // Most cases are about content. Growth must not become an assertion
+    // everything is silently held to.
+    expect(scoreOutput(c({ maxGrowth: undefined }), "a considerably longer rewrite of that line")).toEqual([]);
+  });
+
+  it("does not divide by an empty input", () => {
+    expect(scoreOutput(c({ input: "   " }), "something")).toEqual([]);
+  });
+});

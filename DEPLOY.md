@@ -153,6 +153,34 @@ Switch to Option A before real use — Android needs HTTPS/`wss://`.
 
 ---
 
+## Checking a deploy
+
+Three levels, cheapest first. All run from `~/tulmi` on the VPS.
+
+```
+npm --prefix tulmi test          # 605 unit tests, no network, no cost
+./tulmi/scripts/paytest.sh       # the purchase path, end to end, no account touched
+./tulmi/scripts/quality.sh       # what the deployed backend actually WRITES
+```
+
+`quality.sh` is the one that answers "did that change help?". It asks the
+running server over HTTP, so it measures the prompt version, the model and the
+config that are actually serving users — not the ones in a checkout. The
+production image is built `--omit=dev`, so `npm run eval` cannot run there;
+that one is for while you are editing a prompt, against the pipeline in
+process.
+
+It costs a few real LLM calls. It reads no user data and writes none.
+
+What it holds, all of it a fault that has actually shipped:
+
+  - a terse line does not grow a greeting, a sign-off or a finished thought
+  - a question dictated is SENT, not answered
+  - romanized Hindi comes back romanized, not translated and not in Devanagari
+  - Devanagari comes back in Devanagari
+  - a saved language biases spelling and never converts what was said
+  - a sentence that switches languages keeps switching
+
 ## Everyday commands
 
 ```bash

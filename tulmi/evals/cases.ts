@@ -39,9 +39,105 @@ export interface EvalCase {
   mustPreserve?: string[];
   /** Soft ceiling on output length, for "make it shorter" style cases. */
   maxChars?: number;
+  /**
+   * How much longer the output may be than the input, as a multiple of its
+   * word count. 1.4 allows repair and punctuation; it does not allow a
+   * sentence to grow a greeting, a sign-off, or a finished thought.
+   *
+   * A RATIO rather than a ceiling, because the fault it measures is
+   * proportional: "ok" becoming a paragraph and a four-line note becoming
+   * eight are the same mistake, and one fixed number cannot catch both.
+   */
+  maxGrowth?: number;
+  /**
+   * The language setting the user has saved, passed through as the app does.
+   * Present to prove it acts as a BIAS and never as a target — a setting read
+   * as "convert to this" is the translation bug wearing the opposite sign.
+   */
+  language?: string;
 }
 
 export const CASES: EvalCase[] = [
+  // --- Adding: the length is theirs ----------------------------------------
+  //
+  // Reported as "sometimes it adds things which are not needed". The principle
+  // that was meant to cover it — "say only what they gave you" — did not:
+  // finishing a terse thought adds no FACT, so it never read as a violation.
+  // These measure the shape of the output, not its content, because that is
+  // where the fault actually lives.
+  {
+    id: "add/terse-stays-terse",
+    intent: "Four words come back as four words, repaired. Brevity is a choice, not an unfinished thought.",
+    input: "reaching in ten",
+    maxGrowth: 1.6,
+    mustNotContain: ["hi ", "hello", "dear", "hope this", "regards", "thanks"],
+  },
+  {
+    id: "add/no-greeting-invented",
+    intent: "A message with no greeting spoken must not acquire one on the way out.",
+    input: "send me the file when you get a chance",
+    maxGrowth: 1.5,
+    mustNotContain: ["hi ", "hello", "hey ", "dear ", "good morning"],
+  },
+  {
+    id: "add/no-signoff-invented",
+    intent: "Nor a sign-off. The watermark is off, so there is nothing that may add one.",
+    input: "the meeting moved to four",
+    maxGrowth: 1.6,
+    mustNotContain: ["regards", "best,", "thanks,", "cheers", "sincerely"],
+  },
+  {
+    id: "add/question-is-sent-not-answered",
+    intent:
+      "A question they dictate is a question they are SENDING. Answering it is the most " +
+      "expensive form of adding: the reader gets an answer to something never asked of them.",
+    input: "kya tum kal office aa rahe ho",
+    mustBeScript: "latin",
+    maxGrowth: 1.6,
+    mustNotContain: ["yes", "no,", "i will", "sure"],
+  },
+
+  // --- Language: repair, never translate -----------------------------------
+  //
+  // Reported as "translating the dictation and giving refinement in english".
+  // The cleanup prompt had no language rule at all between v4 and v5 — the
+  // placeholder was substituted inside a comment — so these are the cases that
+  // would have caught it, and the ones that keep it caught.
+  {
+    id: "lang/hinglish-not-translated",
+    intent: "Romanized Hindi comes back romanized Hindi. Not English, not Devanagari.",
+    input: "yaar kal ka plan cancel ho gaya hai, ab agle hafte milte hain",
+    mustBeScript: "latin",
+    mustNotContain: ["cancelled the plan", "let us meet next week", "the plan for tomorrow"],
+  },
+  {
+    id: "lang/devanagari-not-translated",
+    intent: "Native script comes back in its own script.",
+    input: "मैं थोड़ा लेट पहुँचूँगा, मीटिंग शुरू कर देना",
+    mustBeScript: "devanagari",
+  },
+  {
+    id: "lang/setting-is-a-bias-not-a-target",
+    intent:
+      "THE BUG WEARING THE OPPOSITE SIGN. A saved language of English must not turn Hindi " +
+      "speech into English — the setting biases spelling and script when the input is " +
+      "ambiguous, and what they actually said always wins.",
+    input: "kal subah nikalna hai, alarm laga dena",
+    language: "en",
+    mustBeScript: "latin",
+    mustNotContain: ["we have to leave", "set an alarm", "tomorrow morning"],
+  },
+  {
+    id: "lang/mixed-stays-mixed",
+    intent:
+      "A sentence that switches between languages keeps switching, in the same places. " +
+      "Normalising it to either one is a rewrite, not a repair.",
+    input: "the deploy is done but abhi testing baaki hai",
+    mustBeScript: "latin",
+    mustContain: ["deploy"],
+    mustNotContain: ["testing is still pending", "abhi testing remains"],
+  },
+
   // --- Instruction separation: the assistant contract ----------------------
   {
     id: "instr/marathi-friend",
