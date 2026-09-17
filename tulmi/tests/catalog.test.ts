@@ -452,6 +452,32 @@ describe("buildBootstrap", () => {
     }
   });
 
+  // THE TRAIN TAB HAS TO SCROLL ON THE SURFACE WITH THE MOST ROOM.
+  //
+  // The scroll is gated on a Screen that holds its touches, because on a phone
+  // the way into this tab is a disc dragged across a pill and a scroll view
+  // steals the touches of a child being dragged. Nothing is dragged in a
+  // window — the pill there is a click — so the condition is satisfied for a
+  // reason the capability list cannot express, and without this the desktop
+  // got the no-scroll layout: no stats panel, on the widest screen there is.
+  it("lets a desktop scroll the training tab without claiming a component", () => {
+    const ctx = (formFactor: "phone" | "desktop", can: string[] = []) => ({
+      personality: {},
+      language: "en",
+      viewport: { width: 1200, height: 800 },
+      can: new Set(can),
+      formFactor,
+    }) as never;
+    // The scrolling layout sizes its opening pane to the reported window; the
+    // one-screen layout has no height to state.
+    const tall = (screen: unknown) => JSON.stringify(screen).includes("minHeight");
+    // A window scrolls with an empty capability list.
+    expect(tall(buildScreen("home", ctx("desktop")))).toBe(true);
+    // A phone still has to say so.
+    expect(tall(buildScreen("home", ctx("phone")))).toBe(false);
+    expect(tall(buildScreen("home", ctx("phone", ["ScreenHoldTouches"])))).toBe(true);
+  });
+
   it("a phone is still asked — absent means phone", () => {
     // Every client older than the field sends nothing, and nothing must read
     // as a phone, or one release would silently skip setup for all of them.

@@ -1803,7 +1803,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     tzOffsetMinutes?: number;
     capabilities?: {
       platform?: string;
-      device?: { width?: number; height?: number };
+      device?: { width?: number; height?: number; formFactor?: string };
       /** What this bundle can render. Absence is the only honest signal that a
        *  screen needing something new must not be sent to it. */
       components?: string[];
@@ -1948,6 +1948,9 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     // here means the training tab's first view is exact on EVERY installed
     // bundle, rather than depending on one that knows a new prop.
     viewport: viewportOf(body.capabilities?.device),
+    // A window, not a handset. Separate from `platform` (which tree it can
+    // draw) and from `viewport` (how wide it is): this is the input device.
+    formFactor: body.capabilities?.device?.formFactor === "desktop" ? "desktop" : "phone",
     can: new Set(
       Array.isArray(body.capabilities?.components)
         ? body.capabilities!.components!.map(String)

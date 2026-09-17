@@ -3596,6 +3596,16 @@ export interface ScreenContext {
    * a screen that needs something new is withheld rather than sent broken.
    */
   can?: Set<string>;
+  /**
+   * "phone" (the default) or "desktop". A window, not a handset.
+   *
+   * Separate from `platform`, which is a drawing question — the desktop
+   * answers "ios" there because that is the tree it can render — and from
+   * `viewport`, which is a width. This is the input device: a window is driven
+   * by a mouse, and a few layouts turn on that and not on either of the other
+   * two.
+   */
+  formFactor?: "phone" | "desktop";
 }
 
 /**
@@ -4494,7 +4504,19 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
    * Without both, the tab is exactly what it was: one screen, no scroll, a
    * pill that works.
    */
-  const scrollable = !!ctx.viewport && ctx.can?.has("ScreenHoldTouches") === true;
+  const scrollable = !!ctx.viewport &&
+    (ctx.can?.has("ScreenHoldTouches") === true ||
+     // A WINDOW HAS THE SECOND CONDITION FOR FREE.
+     //
+     // The reason for it is that a scroll view steals the touches of a child
+     // being dragged. Nothing is dragged on a desktop: the pill there is a
+     // click, because a mouse has no thumb to rest and the deliberateness the
+     // gesture was protecting is already in a click on an object that size.
+     //
+     // Without this the window got the no-scroll layout, so the stats panel
+     // below the fold did not exist on the one surface with the most room to
+     // show it — the opposite of what the height was being read for.
+     ctx.formFactor === "desktop");
 
   const slices: Slice[] = [
     { label: "Words", value: words.length, color: CHART_ON_DARK[0]! },
