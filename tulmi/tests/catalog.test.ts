@@ -18,6 +18,8 @@ import {
   TYPE_ROLES,
   YOU_UI,
   PAYWALL_UI,
+  POLICY,
+  AUTH_UI,
   STATS_UI,
 } from "../src/experience/catalog.js";
 import { getConfig, resetConfigForTests } from "../src/config.js";
@@ -566,6 +568,37 @@ describe("buildBootstrap", () => {
     const phone = rootOf("phone");
     expect(phone.children!.find((c) => c.type === "Gradient")!.props!.direction).toBe("vertical");
     expect(phone.children!.at(-1)!.style!.width).toBeUndefined();
+  });
+
+  // CONSENTING TO TERMS YOU CANNOT READ IS NOT CONSENT.
+  //
+  // The line under the sign-in pills was flat text, on the reasoning that the
+  // tappable copies live in Settings. Wrong trade: this is the moment of
+  // consent, it is what Paddle checks before it will sell on your behalf, and
+  // it is where a reviewer expects to find them rather than two screens away.
+  it("the sign-in consent line opens the pages it names", () => {
+    const b = buildBootstrap({ onboarded: true });
+    type N = { type?: string; props?: Record<string, unknown>;
+               on?: { onPress?: { kind?: string; url?: string } }; children?: N[] };
+    const opens: Array<[string, string]> = [];
+    (function walk(n: N | undefined) {
+      if (!n || typeof n !== "object") return;
+      const a = n.on?.onPress;
+      if (a?.kind === "openUrl" && a.url) opens.push([String(n.props?.content ?? ""), a.url]);
+      (n.children ?? []).forEach(walk);
+    })(b.flags?.["auth.screen"] as N);
+
+    expect(opens).toEqual([
+      ["Terms", POLICY.terms],
+      ["Privacy Policy", POLICY.privacy],
+    ]);
+  });
+
+  it("the parts still read as the sentence they replaced", () => {
+    // Split into parts because only two words are links — but the words, and
+    // the spaces between them, have to survive being taken apart.
+    expect(AUTH_UI.legal.parts.map((p) => p.text).join(""))
+      .toBe(AUTH_UI.legal.text);
   });
 
   it("a phone is still asked — absent means phone", () => {

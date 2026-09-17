@@ -137,6 +137,18 @@ function mediaSource(url: string, contentType?: string): Record<string, unknown>
  * other default. It is the one shape that survives a client this file cannot
  * rebuild.
  */
+/**
+ * The two pages every surface has to be able to reach.
+ *
+ * Written seven times across this file before this existed, which is seven
+ * chances for one of them to be the old one. They are also the pages Paddle
+ * checks before it will sell on your behalf, so a stale copy is not cosmetic.
+ */
+export const POLICY = {
+  privacy: "https://tailzu.space/privacy",
+  terms: "https://tailzu.space/terms",
+} as const;
+
 const FILL_STYLE = {
   position: "absolute" as const,
   top: 0, left: 0, right: 0, bottom: 0,
@@ -1460,8 +1472,8 @@ export function buildBootstrap(
         // deploy/Caddyfile) so the URL a user copies from the address bar looks
         // like a real domain rather than an internal api. host. Same content
         // either way.
-        "policy.privacy.url": "https://tailzu.space/privacy",
-        "policy.terms.url": "https://tailzu.space/terms",
+        "policy.privacy.url": POLICY.privacy,
+        "policy.terms.url": POLICY.terms,
         "support.url": "mailto:support@tailzu.space",
 
         // The desktop's chrome — gate, rail, tray, notifications. Sent only to
@@ -3370,8 +3382,8 @@ export const PAYWALL_CONFIG: PaywallConfig = {
   restoreLabel: "Restore purchases",
   footnote:
     "Auto-renews unless canceled 24h before period end. Manage in Settings.",
-  terms: "https://tailzu.space/terms",
-  privacy: "https://tailzu.space/privacy",
+  terms: POLICY.terms,
+  privacy: POLICY.privacy,
   dismissible: true,
   dismissLabel: "Not now",
   // The RevenueCat entitlement IDENTIFIER (case/space-sensitive). The app calls
@@ -3487,8 +3499,8 @@ function paywallScreen(isDesktop = false): ScreenResponse {
       tone: "success",
     },
     dismiss: { kind: "navigateBack" },
-    openTerms: { kind: "openUrl", url: cfg.terms ?? "https://tailzu.space/terms", external: true },
-    openPrivacy: { kind: "openUrl", url: cfg.privacy ?? "https://tailzu.space/privacy", external: true },
+    openTerms: { kind: "openUrl", url: cfg.terms ?? POLICY.terms, external: true },
+    openPrivacy: { kind: "openUrl", url: cfg.privacy ?? POLICY.privacy, external: true },
   };
 
   // heroFrames is gone with the slideshow it fed. The pitch is one piece of
@@ -4004,7 +4016,7 @@ const AUTH_SDUI = true;
  * a sign-in screen composed by a server that is having a bad day has to still
  * be a sign-in screen. This decides how it LOOKS.
  */
-const AUTH_UI = {
+export const AUTH_UI = {
   brand: "Tailzu",
   tagline: "You talk. It writes.",
 
@@ -4091,13 +4103,39 @@ const AUTH_UI = {
    * to a web page mid-flow. Set `text` to "" and the line disappears — it is a
    * value, not a node, so removing it needs no deploy.
    */
+  /**
+   * The consent line under everything.
+   *
+   * IT OPENS THE PAGES IT NAMES. It used to be flat text, on the reasoning
+   * that the tappable copies live in Settings and a sign-in screen is a bad
+   * place to send someone out to a web page. That was the wrong trade: this is
+   * the moment of consent, and consenting to terms you cannot read is not
+   * consent. It is also what Paddle looks for before it will sell on your
+   * behalf, and what a store reviewer expects to find here rather than two
+   * screens away.
+   *
+   * Written as parts rather than one string because only two of them are
+   * links. They lay out as one wrapping sentence, so it still reads as a
+   * sentence and not as a row of buttons.
+   */
   legal: {
+    /** Kept, and still the fallback for any bundle too old to draw the parts. */
     text: "Continuing means you agree to our Terms and Privacy Policy.",
+    parts: [
+      { text: "Continuing means you agree to our " },
+      { text: "Terms", url: POLICY.terms },
+      { text: " and " },
+      { text: "Privacy Policy", url: POLICY.privacy },
+      { text: "." },
+    ] as ReadonlyArray<{ text: string; url?: string }>,
     fontSize: 10.5,
     lineHeight: 15,
     // Dim enough to read as fine print and no dimmer — this is the one line on
     // the screen that has to survive being looked at by a reviewer.
     color: "rgba(255,255,255,0.40)",
+    /** The two that open something. Brighter, and underlined, because fine
+     *  print nobody can tell is tappable is fine print nobody taps. */
+    linkColor: "rgba(255,255,255,0.78)",
     marginTop: 24,
   },
 
@@ -4208,14 +4246,52 @@ function authScreenTree(isDesktop = false): Record<string, unknown> {
                       ...ui.entry.suction.rows.legal,
                     },
                     children: [{
-                      type: "Text",
-                      props: { content: ui.legal.text },
+                      // ONE SENTENCE, TWO OF WHOSE WORDS OPEN SOMETHING.
+                      //
+                      // A row that wraps, so it stays a sentence rather than
+                      // becoming a row of buttons. The parts with a `url` get
+                      // the brighter colour and the underline, because fine
+                      // print nobody can tell is tappable is fine print nobody
+                      // taps — and the whole point of moving these here was
+                      // that they can be read at the moment of consent.
+                      //
+                      // The action is written inline rather than named: the
+                      // sign-in screen runs before there is a session and has
+                      // no action table to look a name up in.
+                      type: "Stack",
                       style: {
-                        textAlign: "center",
-                        fontSize: ui.legal.fontSize,
-                        lineHeight: ui.legal.lineHeight,
-                        color: ui.legal.color,
+                        flexDirection: "row",
+                        flexWrap: "wrap",
+                        justifyContent: "center",
+                        alignItems: "center",
                         marginTop: ui.legal.marginTop,
+                      },
+                      children: ui.legal.parts.map((part) => ({
+                        type: "Text",
+                        props: { content: part.text },
+                        ...(part.url
+                          ? { on: { onPress: { kind: "openUrl", url: part.url, external: true } } }
+                          : {}),
+                        style: {
+                          fontSize: ui.legal.fontSize,
+                          lineHeight: ui.legal.lineHeight,
+                          color: part.url ? ui.legal.linkColor : ui.legal.color,
+                          ...(part.url ? { textDecorationLine: "underline" } : {}),
+                        },
+                      })) as Node[],
+                      // A bundle that cannot lay this out still shows the
+                      // sentence, because consent copy missing entirely is
+                      // worse than consent copy that does not open.
+                      fallback: {
+                        type: "Text",
+                        props: { content: ui.legal.text },
+                        style: {
+                          textAlign: "center",
+                          fontSize: ui.legal.fontSize,
+                          lineHeight: ui.legal.lineHeight,
+                          color: ui.legal.color,
+                          marginTop: ui.legal.marginTop,
+                        },
                       },
                     }],
                   }]
@@ -7556,8 +7632,8 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
     state: { language: ctx.language },
     actions: {
       signOut: { kind: "signOut" },
-      privacy: { kind: "openUrl", url: "https://tailzu.space/privacy", external: true },
-      terms: { kind: "openUrl", url: "https://tailzu.space/terms", external: true },
+      privacy: { kind: "openUrl", url: POLICY.privacy, external: true },
+      terms: { kind: "openUrl", url: POLICY.terms, external: true },
       // openHistory / historyOn removed with the rows that fired them —
       // Settings no longer has a History entry or a retention toggle. History
       // stays reachable from Stats, which keeps its own openHistory alias.
