@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildCleanupSystem,
   renderPersonality,
   renderToneDial,
   renderAppStyle,
@@ -7,6 +8,16 @@ import {
   resolveRecipientHint,
 } from "../src/prompts.js";
 import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
+
+// buildCleanupSystem reads the config for the prompt version, and the config
+// refuses to resolve without these. Set at module scope rather than in a hook:
+// getConfig() memoises on first call, so it has to be right before the first
+// test that reaches it, not before each one.
+process.env.NODE_ENV ??= "test";
+process.env.OPENROUTER_API_KEY ??= "test-openrouter-key";
+process.env.OPENAI_API_KEY ??= "test-openai-key";
+process.env.STT_PROVIDER ??= "openai";
+process.env.DEV_SKIP_AUTH ??= "true";
 import type { Personality } from "../../shared/types/api.js";
 
 describe("renderPersonality", () => {
@@ -228,5 +239,65 @@ describe("the portrait reaches the file-based prompts too", () => {
   it("says nothing at all when the user has never trained", () => {
     expect(renderPersonality({ tone: "friendly" } as Personality)).not.toContain("style_portrait");
     expect(renderPersonality({} as Personality)).toBe("None set. Use a neutral, clean voice.");
+  });
+});
+
+/**
+ * THE THINGS THAT WERE NOT WORDING PROBLEMS.
+ *
+ * Two of the three reported faults — the model translating instead of
+ * repairing, and the model padding a terse dictation — traced to the prompt
+ * not saying anything about either, which is a different bug from saying it
+ * badly. These pin the shape rather than the prose, so a future version can
+ * rewrite every sentence and still be caught dropping a rule.
+ */
+describe("what reaches the model", () => {
+  it("does not carry the editor's notes", () => {
+    // Every prompt file opens with an HTML comment explaining what the last
+    // version got wrong. None of it was stripped, so all of it was sent: on
+    // v4 that was half the request, including the sentence explaining that
+    // the prompt is deliberately short.
+    const sys = buildCleanupSystem({ targetApp: "WhatsApp", language: "hi" });
+    expect(sys.startsWith("You are the writing assistant")).toBe(true);
+    expect(sys).not.toContain("Placeholders, substituted by the backend");
+    expect(sys).not.toContain("Versioning: never edit a shipped prompt");
+  });
+
+  it("states the user's language as a rule", () => {
+    // v4 dropped {{LANGUAGE}} from the body — v1, v2 and v3 all had it — so
+    // the setting was substituted into a placeholder table inside a comment
+    // and reached the model as documentation rather than instruction. With
+    // nothing else holding it, romanized Hindi drifted into English.
+    const sys = buildCleanupSystem({ targetApp: "WhatsApp", language: "hi" });
+    expect(sys).toContain("Their setting is hi");
+    expect(sys).not.toContain("{{LANGUAGE}}");
+    // And it is a BIAS, not a target. A setting read as "convert to this" is
+    // the same bug wearing the opposite sign.
+    // Whitespace-tolerant: the file is hard-wrapped, so a rule can break
+    // across a line. These pin what the prompt SAYS, not how it is set.
+    expect(sys).toMatch(/never\s+as\s+an\s+instruction\s+to\s+convert/i);
+  });
+
+  it("forbids translating and transliterating outright", () => {
+    const sys = buildCleanupSystem({ targetApp: "Generic", language: "auto" });
+    expect(sys).toMatch(/never\s+translate/i);
+    expect(sys).toMatch(/never\s+transliterate/i);
+  });
+
+  it("says that a short message stays short", () => {
+    // "Say only what they gave you" did not cover it: finishing four terse
+    // words adds no fact, so it never read as a violation.
+    const sys = buildCleanupSystem({ targetApp: "Generic", language: "auto" });
+    expect(sys).toMatch(/length\s+is\s+theirs/i);
+    expect(sys).toMatch(/if\s+you\s+are\s+adding,\s+you\s+are\s+wrong/i);
+  });
+
+  it("still states the observed script when there is one", () => {
+    // The script rule is appended per request because it is MEASURED, not
+    // declared. It and the language rule answer different questions and both
+    // have to be there.
+    const sys = buildCleanupSystem({ targetApp: "Generic", language: "hi", script: "latin" });
+    expect(sys).toContain("LATIN");
+    expect(sys).toContain("Their setting is hi");
   });
 });

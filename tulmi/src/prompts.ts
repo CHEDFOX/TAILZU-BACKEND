@@ -46,7 +46,26 @@ function loadPromptFile(filename: string): string {
     );
   }
 
-  const raw = readFileSync(path, "utf8");
+  /**
+   * THE EDITOR'S NOTES ARE NOT THE MODEL'S INSTRUCTIONS.
+   *
+   * Every prompt file opens with an HTML comment explaining why it is written
+   * the way it is — what the previous version got wrong, what each placeholder
+   * means, how to version it. None of that was stripped, so all of it was sent
+   * on every single request: the model read an essay about prompt engineering,
+   * including the sentence saying the prompt is deliberately short, before
+   * reaching a word it was meant to act on.
+   *
+   * Worse than wasted tokens. A placeholder table listing `"auto" | "hi" |
+   * "en" | "hinglish"` was substituted inside that comment, so the user's
+   * language setting arrived as a fragment of documentation rather than as a
+   * rule — present in the context, absent from the instructions.
+   *
+   * Only a comment at the TOP is removed, and only the first one. A comment
+   * further down would be inside the prompt's own prose, where it is far more
+   * likely to be deliberate than decorative.
+   */
+  const raw = readFileSync(path, "utf8").replace(/^\s*<!--[\s\S]*?-->\s*/, "");
   cache.set(filename, raw);
   return raw;
 }
