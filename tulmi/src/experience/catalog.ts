@@ -1216,19 +1216,13 @@ const DESKTOP_UI = {
   // The sign-in gate. The only screen this app draws before it has an account,
   // so it is also the only one the catalog cannot reach.
   gate: {
+    // THE FORM ITSELF IS `auth.screen` — the same tree the phones render, pills
+    // and all. What is left here is the copy AROUND it, which is the window's
+    // own: a phone has no room for a heading above the pills and does not draw
+    // one. Every label that WAS here — the method tabs, the send button, the
+    // two social rows — described a form this window no longer builds.
     title: "Tailzu",
     subtitle: "Sign in the same way you do on your phone — your voices, history and words come with you.",
-    emailTab: "Email",
-    phoneTab: "Phone",
-    emailPlaceholder: "you@example.com",
-    phonePlaceholder: "555 000 1234",
-    sendCode: "Send code",
-    or: "or",
-    apple: "Continue with Apple",
-    google: "Continue with Google",
-    codePlaceholder: "6-digit code",
-    verify: "Sign in",
-    startOver: "Start over",
     // Says what is true since dictation started requiring an account. It said
     // the opposite for one release, which is exactly the kind of line that used
     // to need an installer to correct.
@@ -1642,7 +1636,7 @@ export function buildBootstrap(
       if (flags) {
         flags["auth.sdui"] = AUTH_SDUI;
         flags["auth.scrim"] = AUTH_UI.scrim;
-        flags["auth.screen"] = authScreenTree();
+        flags["auth.screen"] = authScreenTree(opts.formFactor === "desktop");
         flags["auth.suction"] = AUTH_UI.entry.suction;
       }
 
@@ -3898,6 +3892,13 @@ const AUTH_UI = {
     // invitation; pulled down it still says "go" without shouting.
     targetBackground: "#C9862B",
     targetIconColor: "#000000",
+    // What the empty pill says. The phones take their placeholder from the
+    // field definition in the binary; the window reads these, so the one piece
+    // of copy inside the form is tunable on the surface that has no other way
+    // to change it. An unknown key in `look` is ignored, so sending them costs
+    // the phones nothing.
+    emailLabel: "Email address",
+    phoneLabel: "Phone number",
   },
 
   entry: {
@@ -3991,7 +3992,7 @@ const AUTH_UI = {
  * is the honest way to express it rather than mirroring the phase into the
  * store and living with a frame where the two disagree.
  */
-function authScreenTree(): Record<string, unknown> {
+function authScreenTree(isDesktop = false): Record<string, unknown> {
   const ui = AUTH_UI;
   // A STACK, NOT A SCREEN.
   //
@@ -4001,19 +4002,33 @@ function authScreenTree(): Record<string, unknown> {
   // justifyContent unless its content is told to grow — so the rows sat under
   // the top padding instead of at the bottom. A plain filling stack has
   // neither problem.
+  //
+  // A WINDOW ANCHORS DIFFERENTLY. On a phone this fills the screen and the rows
+  // sit at the bottom, where a thumb is. A window has no thumb and no bottom to
+  // reach for: the form is a column beside the art, placed by gateLayout, and a
+  // tree that fills the viewport and pushes to the floor would fight that
+  // placement for control of the same pixels. So the same rows, in a box that
+  // lets its container decide where it sits.
+  const root: Record<string, unknown> = isDesktop
+    ? {
+        position: "relative",
+        backgroundColor: "transparent",
+        justifyContent: "center",
+      }
+    : {
+        position: "absolute",
+        top: 0, left: 0, right: 0, bottom: 0,
+        // Transparent, so the art behind is the background rather than being
+        // hidden by one.
+        backgroundColor: "transparent",
+        justifyContent: "flex-end",
+        paddingHorizontal: ui.paddingHorizontal,
+        paddingTop: ui.paddingTop,
+        paddingBottom: ui.paddingBottom,
+      };
   return {
     type: "Stack",
-    style: {
-      position: "absolute",
-      top: 0, left: 0, right: 0, bottom: 0,
-      // Transparent, so the art behind is the background rather than being
-      // hidden by one.
-      backgroundColor: "transparent",
-      justifyContent: "flex-end",
-      paddingHorizontal: ui.paddingHorizontal,
-      paddingTop: ui.paddingTop,
-      paddingBottom: ui.paddingBottom,
-    },
+    style: root,
     children: [
       // ── entry ──────────────────────────────────────────────────────────
       {
