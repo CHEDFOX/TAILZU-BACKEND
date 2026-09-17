@@ -8,6 +8,7 @@ import {
   resolveRecipientHint,
 } from "../src/prompts.js";
 import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
+import { CASES } from "../evals/cases.js";
 
 // buildCleanupSystem reads the config for the prompt version, and the config
 // refuses to resolve without these. Set at module scope rather than in a hook:
@@ -282,6 +283,37 @@ describe("what reaches the model", () => {
     const sys = buildCleanupSystem({ targetApp: "Generic", language: "auto" });
     expect(sys).toMatch(/never\s+translate/i);
     expect(sys).toMatch(/never\s+transliterate/i);
+  });
+
+  it("scopes the mixing rule to LANGUAGES, not just scripts", () => {
+    // The one case v5 still lost on the deployed server. Its switching rule
+    // read "Romanized Hindi comes back romanized; Devanagari comes back in
+    // Devanagari; a sentence that switches between them keeps switching" —
+    // and "them" is those two SCRIPTS. A sentence that opens in English and
+    // finishes in Hindi matched no rule in the file and came back wholly in
+    // English: the exact translation the section exists to prevent, through
+    // the gap in how its rule was scoped.
+    const sys = buildCleanupSystem({ targetApp: "WhatsApp", language: "auto" });
+    expect(sys).toMatch(/more\s+than\s+one\s+language/i);
+    // Mixing is not an error to be repaired — the rationalisation that makes
+    // the rewrite feel like the requested repair.
+    expect(sys).toMatch(/not\s+a\s+repair,\s+it\s+is\s+a\s+rewrite/i);
+    // And neither end of the sentence gets to decide for the other.
+    expect(sys).toMatch(/does\s+not\s+decide\s+the\s+rest\s+of\s+it/i);
+  });
+
+  it("never names the cases it is measured on", () => {
+    // A prompt that lists its test inputs passes them without the behaviour
+    // behind them moving, and the harness stops measuring anything. This is
+    // the cheapest moment to catch that: the temptation is strongest right
+    // after a case fails, which is exactly when a version gets written.
+    const sys = buildCleanupSystem({ targetApp: "Generic", language: "auto" });
+    const hay = sys.toLowerCase();
+    for (const c of CASES) {
+      const input = c.input.trim().toLowerCase();
+      if (input.length < 12) continue; // too short to be a smoking gun
+      expect(hay, `prompt quotes the eval case ${c.id}`).not.toContain(input);
+    }
   });
 
   it("says that a short message stays short", () => {

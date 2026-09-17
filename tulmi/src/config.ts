@@ -15,9 +15,49 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const backendEnv = resolve(__dirname, "..", ".env");
 const rootEnv = resolve(__dirname, "..", "..", ".env");
 
-if (existsSync(backendEnv)) loadEnv({ path: backendEnv });
-else if (existsSync(rootEnv)) loadEnv({ path: rootEnv });
-else loadEnv(); // fall back to process env / default lookup
+/**
+ * A TEST RUN NEVER READS THE DEPLOYMENT'S .env.
+ *
+ * Every test file declares the handful of variables it needs and assumes
+ * nothing else is set. That assumption held only because the machines we ran
+ * on happened to have no .env beside the source. On the server, which does,
+ * the same suite read the live configuration and 56 tests failed — not
+ * because anything was broken, but because they were answering a different
+ * question than the one they were written to ask.
+ *
+ * Two of those were worth more than a red line. The stores fall back to an
+ * in-memory map when Supabase is disabled, and that map is what the store
+ * tests are written against; a real SUPABASE_SERVICE_KEY in the environment
+ * silently swapped it for the production database, so `npm test` began
+ * writing rows to it. It was caught by the foreign key — the ids in the
+ * tests are not UUIDs — which is luck, not a design. And the entitlement
+ * tests upsert against a table that grants paid access.
+ *
+ * So the file is skipped under the runner rather than documented around. A
+ * test asks about the code; if it can also read the deployment, it is asking
+ * about the deployment too, and the answer stops meaning anything.
+ */
+export function envFileToLoad(where: {
+  underTest: boolean;
+  backendEnv?: boolean;
+  rootEnv?: boolean;
+}): "backend" | "root" | "default" | "none" {
+  if (where.underTest) return "none";
+  if (where.backendEnv) return "backend";
+  if (where.rootEnv) return "root";
+  return "default";
+}
+
+const source = envFileToLoad({
+  underTest: !!process.env.VITEST,
+  backendEnv: existsSync(backendEnv),
+  rootEnv: existsSync(rootEnv),
+});
+
+if (source === "backend") loadEnv({ path: backendEnv });
+else if (source === "root") loadEnv({ path: rootEnv });
+else if (source === "default") loadEnv(); // process env / default lookup
+// "none" — under the runner. process.env as the test file left it.
 
 const bool = (def: boolean) =>
   z
@@ -222,7 +262,12 @@ const EnvSchema = z.object({
   // Prompt versions to load from shared/prompts/. v3 (cleanup) / v2 (reply)
   // add the tone dial + per-app overrides + watermark. Roll back by exporting
   // CLEANUP_PROMPT_VERSION=v2 / REPLY_PROMPT_VERSION=v1 without a code change.
-  CLEANUP_PROMPT_VERSION: z.string().default("v5"),
+  // v6 scopes the language rule to LANGUAGES, not just scripts: v5's switching
+  // sentence named romanized Hindi and Devanagari, so a sentence that opens in
+  // English and finishes in Hindi matched no rule and came back translated.
+  // v5 is still on disk — set this to v5 to compare the two against
+  // scripts/quality.sh without a deploy.
+  CLEANUP_PROMPT_VERSION: z.string().default("v6"),
   REPLY_PROMPT_VERSION: z.string().default("v3"),
 
   // Sentry (backend). Optional — the observability layer no-ops when unset,

@@ -51,7 +51,22 @@ facts/number-survives|auto|call me on 98200 41122 tomorrow|nowords:xxx|
 EOF
 )
 
+# WHICH PROMPT PRODUCED THE SCORE. A run that reports "9 passed, 1 failed"
+# without naming the version answers a question nobody can repeat later. Read
+# it from the RUNNING CONTAINER, never from the file: a value can differ
+# between the two, which is how a "$" in the webhook secret once made the
+# process hold a different string than tulmi/.env did.
+VER=$(docker compose exec -T backend printenv CLEANUP_PROMPT_VERSION 2>/dev/null | tr -d '\r')
+if [ -n "$VER" ]; then VER="$VER (pinned in the env)"
+else
+  # Unset in the container means the schema's default decides. Name it rather
+  # than printing "default" — the point of the line is to be repeatable.
+  D=$(grep -m1 'CLEANUP_PROMPT_VERSION: z.string().default' tulmi/src/config.ts \
+      | sed -n 's/.*default("\([^"]*\)").*/\1/p')
+  VER="${D:-unknown} (the checkout's default)"
+fi
 echo "Asking the deployed backend to write. Each line is one real call."
+echo "cleanup prompt: $VER"
 echo
 
 while IFS='|' read -r id lang input rule _; do

@@ -158,10 +158,23 @@ Switch to Option A before real use — Android needs HTTPS/`wss://`.
 Three levels, cheapest first. All run from `~/tulmi` on the VPS.
 
 ```
-npm --prefix tulmi test          # 605 unit tests, no network, no cost
+npm --prefix tulmi test          # 609 unit tests, no network, no cost
 ./tulmi/scripts/paytest.sh       # the purchase path, end to end, no account touched
 ./tulmi/scripts/quality.sh       # what the deployed backend actually WRITES
 ```
+
+The unit tests do not read `tulmi/.env`, on this machine or any other. They
+used to, and it mattered: the stores fall back to an in-memory map when
+Supabase is off, so a real service key in the environment pointed `npm test` at
+the production database and it began writing rows there — caught only by the
+foreign key, because the ids in the tests are not UUIDs. The suite now skips
+the file under the runner, which is also why it means the same thing here as on
+a laptop.
+
+If four suites fail to load with `Failed to load url @fastify/static` or
+`jose`, the checkout's `node_modules` is a production install. `npm --prefix
+tulmi ci` fixes it. That has no effect on the running container, which builds
+its own.
 
 `quality.sh` is the one that answers "did that change help?". It asks the
 running server over HTTP, so it measures the prompt version, the model and the
@@ -171,6 +184,11 @@ that one is for while you are editing a prompt, against the pipeline in
 process.
 
 It costs a few real LLM calls. It reads no user data and writes none.
+
+It prints the cleanup prompt version it measured, read from the running
+container rather than the file. To compare two, pin the old one and run it
+again — `CLEANUP_PROMPT_VERSION=v5` in `tulmi/.env`, rebuild, run, then remove
+the line to go back to the default.
 
 What it holds, all of it a fault that has actually shipped:
 
