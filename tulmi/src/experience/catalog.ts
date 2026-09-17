@@ -290,10 +290,24 @@ function screenHero(
      * the hero slots have always had: override, then upload, then built-in.
      */
     builtIn?: Node;
+    /** Prefer `hero.<screen>.desktop` when one has been uploaded. */
+    desktop?: boolean;
   } = {},
 ): Node[] {
+  /**
+   * A LANDSCAPE UPLOAD FOR A LANDSCAPE SCREEN.
+   *
+   * `hero.<screen>.desktop` is preferred for a window and falls back to the
+   * shared key, which is what every install has. Art composed for a portrait
+   * phone and art composed for a window are different pictures — a hand rising
+   * from the bottom of a 16:9 frame with the offer beside it does not survive
+   * being cropped into a phone, and the phone's does not fill a window.
+   *
+   * Same rule the sign-in backdrop follows, for the same reason.
+   */
+  const reg = getMediaRegistryFn?.();
   const key = `hero.${screenId}`;
-  const entry = getMediaRegistryFn?.()?.[key];
+  const entry = (opts.desktop ? reg?.[`${key}.desktop`] : undefined) ?? reg?.[key];
   if (!entry?.url) {
     if (!opts.builtIn) return [];
     // The built-in gets the same box the upload would have had, so swapping
@@ -3218,6 +3232,45 @@ export const PAYWALL_UI = {
    * here. Do not take it below the muted step.
    */
   footnoteColor: "rgba(255,255,255,0.55)",
+
+  /**
+   * THE SAME SCREEN, TURNED ON ITS SIDE.
+   *
+   * `plansAt` above is a portrait idea: art at one end, offer at the other,
+   * the shape of every app-store screenshot. A window is wider than it is
+   * tall, and landscape art puts its subject SIDEWAYS — so a band across the
+   * bottom either covers the subject or leaves the rows on bare art, and the
+   * scrim that follows `plansAt` darkens the wrong axis either way.
+   *
+   * So the window reads the same three decisions on the other axis: which side
+   * the rows take, how wide they get, and which side the scrim darkens. As
+   * with the sign-in art, these are numbers rather than a stylesheet because
+   * the art is an upload — one composed the other way round is an edit here
+   * and a cache bump.
+   *
+   * Set for the art in the paywall slot today: a hand rising from the bottom
+   * centre, a pool of light on the right, and a clean dark grey down the left.
+   * White rows are only readable on that left side.
+   */
+  desktop: {
+    /** "left" or "right" — which side the rows take. */
+    align: "left",
+    /** Their column's centre, 0..1 across the window. */
+    column: 0.24,
+    /** How wide that column is. Wider than the sign-in form: this one holds a
+     *  title, three rows, a restore and the auto-renewal notice. */
+    columnWidth: 360,
+    /**
+     * Darkening under the rows, ACROSS rather than down.
+     *
+     * Doing the same job the vertical scrim does on a phone — rows are only
+     * legible over art nobody has seen yet because something darkens the end
+     * they sit at — and it is what lets the column be wider than the art's own
+     * dark side. The far end stays clear so the subject is not dimmed.
+     */
+    scrim: ["rgba(0,0,0,0.92)", "rgba(0,0,0,0.78)", "rgba(0,0,0,0.25)", "rgba(0,0,0,0)"],
+    scrimStops: [0, 0.3, 0.5, 0.62],
+  },
 };
 
 export const PAYWALL_CONFIG: PaywallConfig = {
@@ -3342,9 +3395,10 @@ export const PAYWALL_CONFIG: PaywallConfig = {
  * on that value to fire the right iap.showPaywall (offering+package) or
  * iap.subscribe (product).
  */
-function paywallScreen(): ScreenResponse {
+function paywallScreen(isDesktop = false): ScreenResponse {
   const cfg = PAYWALL_CONFIG;
   const pw = PAYWALL_UI;
+  const dk = pw.desktop;
   /**
    * WHICH END OF THE SCREEN THE PLANS SIT AT, and therefore which end the
    * scrim darkens. The two cannot be set separately: a scrim that falls away
@@ -3353,10 +3407,14 @@ function paywallScreen(): ScreenResponse {
    * seen yet.
    */
   const atTop = pw.plansAt === "top";
-  const scrimStops = atTop ? [...pw.scrim].reverse() : pw.scrim;
-  const scrimAt = atTop
-    ? [...pw.scrimStops].reverse().map((s) => 1 - s)
-    : pw.scrimStops;
+  // A window reads the same decision on the other axis — see PAYWALL_UI.desktop.
+  const atLeft = dk.align === "left";
+  const scrimStops = isDesktop
+    ? (atLeft ? dk.scrim : [...dk.scrim].reverse())
+    : (atTop ? [...pw.scrim].reverse() : pw.scrim);
+  const scrimAt = isDesktop
+    ? (atLeft ? dk.scrimStops : [...dk.scrimStops].reverse().map((v) => 1 - v))
+    : (atTop ? [...pw.scrimStops].reverse().map((v) => 1 - v) : pw.scrimStops);
   // The cards that can actually be bought. A `free` plan is a card and nothing
   // else: no purchase action is built for it, the CTA chain never dispatches to
   // it, and it can never become the fallback — a CTA aimed at a plan with no
@@ -3542,6 +3600,7 @@ function paywallScreen(): ScreenResponse {
         // to be read.
         ...screenHero("paywall", {
           behind: true, fit: "cover",
+          desktop: isDesktop,
           // Until something is uploaded, the wordmark decoding itself out of
           // binary. The product's claim is that it turns raw noise into
           // finished words; this is that claim made literal at the moment the
@@ -3568,7 +3627,10 @@ function paywallScreen(): ScreenResponse {
         }),
         {
           type: "Gradient",
-          props: { colors: scrimStops, locations: scrimAt, direction: "vertical" },
+          props: {
+            colors: scrimStops, locations: scrimAt,
+            direction: isDesktop ? "horizontal" : "vertical",
+          },
           style: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
         },
         ...(cfg.dismissible
@@ -3590,13 +3652,36 @@ function paywallScreen(): ScreenResponse {
           : []),
         {
           type: "Stack",
-          style: {
-            flex: 1,
-            justifyContent: atTop ? "flex-start" : "flex-end",
-            paddingHorizontal: pw.paddingHorizontal,
-            paddingTop: atTop ? pw.paddingTop : 0,
-            paddingBottom: atTop ? 0 : pw.paddingBottom,
-          },
+          style: isDesktop
+            ? {
+                // A COLUMN, PLACED BY ITS OWN CENTRE. One number from
+                // `column` positions it whatever the window is doing, the same
+                // way the sign-in form is placed on its art.
+                flex: 1,
+                justifyContent: "center",
+                // STRETCH, not the side it is on. The column is already placed
+                // by its margin; aligning its contents to one edge as well
+                // left every plan row as wide as its own text, so the three of
+                // them had three different widths and none of them the
+                // column's. Where the column sits is the margin's job; how
+                // wide a row is inside it is this one's.
+                alignItems: "stretch",
+                paddingHorizontal: 0,
+                // Left and right both set, because a percentage margin on one
+                // side leaves the other free to stretch the column wider than
+                // it asked to be.
+                marginLeft: atLeft ? `calc(${dk.column * 100}% - ${dk.columnWidth / 2}px)` : 0,
+                marginRight: atLeft ? 0 : `calc(${(1 - dk.column) * 100}% - ${dk.columnWidth / 2}px)`,
+                maxWidth: dk.columnWidth,
+                width: dk.columnWidth,
+              }
+            : {
+                flex: 1,
+                justifyContent: atTop ? "flex-start" : "flex-end",
+                paddingHorizontal: pw.paddingHorizontal,
+                paddingTop: atTop ? pw.paddingTop : 0,
+                paddingBottom: atTop ? 0 : pw.paddingBottom,
+              },
           children: [
             // Not a headline — a label on what is being bought.
             { type: "Text", props: { content: cfg.title ? "Tailzu Unlimited" : "" },
@@ -3808,7 +3893,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
     case "intro":
       return introScreen(ctx);
     case "paywall":
-      return paywallScreen();
+      return paywallScreen(ctx.formFactor === "desktop");
     default:
       return null;
   }

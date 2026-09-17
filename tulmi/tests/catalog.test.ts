@@ -17,6 +17,7 @@ import {
   TRAINING_UI,
   TYPE_ROLES,
   YOU_UI,
+  PAYWALL_UI,
   STATS_UI,
 } from "../src/experience/catalog.js";
 import { getConfig, resetConfigForTests } from "../src/config.js";
@@ -527,6 +528,44 @@ describe("buildBootstrap", () => {
     // had already paid, or confirm a purchase that had just gone through.
     expect(buildBootstrap({ onboarded: true, entitled: true }).flags?.["quota.entitled"]).toBe(true);
     expect(buildBootstrap({ onboarded: true }).flags?.["quota.entitled"]).toBe(false);
+  });
+
+  // THE SAME SCREEN, TURNED ON ITS SIDE.
+  //
+  // plansAt is a portrait idea — art at one end, offer at the other. A window
+  // is wider than it is tall and landscape art puts its subject sideways, so a
+  // band across the bottom either covers the subject or leaves the rows on
+  // bare art, and the scrim that follows plansAt darkens the wrong axis.
+  it("gives a window a side column and a scrim across it", () => {
+    const ctx = (formFactor: "phone" | "desktop") => ({
+      personality: {}, language: "en",
+      viewport: { width: 1200, height: 800 }, can: new Set<string>(), formFactor,
+    }) as never;
+    type N = { type?: string; props?: Record<string, unknown>; style?: Record<string, unknown>;
+               children?: N[] };
+    const rootOf = (ff: "phone" | "desktop") =>
+      (buildScreen("paywall", ctx(ff)) as unknown as { root: N }).root;
+
+    const desk = rootOf("desktop");
+    const deskScrim = desk.children!.find((c) => c.type === "Gradient")!;
+    expect(deskScrim.props!.direction).toBe("horizontal");
+    // Darkest where the rows are, clear at the far end so the subject is not
+    // dimmed along with them.
+    expect(String((deskScrim.props!.colors as string[])[0])).toMatch(/0\.9/);
+    expect(String((deskScrim.props!.colors as string[]).at(-1))).toMatch(/,0\)$/);
+
+    const col = desk.children!.at(-1)!;
+    expect(col.style!.justifyContent).toBe("center");
+    // Stretch, not the side it sits on: aligning contents to an edge as well
+    // left every row as wide as its own text.
+    expect(col.style!.alignItems).toBe("stretch");
+    expect(col.style!.width).toBe(PAYWALL_UI.desktop.columnWidth);
+    expect(String(col.style!.marginLeft)).toContain("calc(");
+
+    // A phone keeps the axis it had.
+    const phone = rootOf("phone");
+    expect(phone.children!.find((c) => c.type === "Gradient")!.props!.direction).toBe("vertical");
+    expect(phone.children!.at(-1)!.style!.width).toBeUndefined();
   });
 
   it("a phone is still asked — absent means phone", () => {
