@@ -3469,6 +3469,37 @@ export interface ScreenContext {
   can?: Set<string>;
 }
 
+/**
+ * IS THIS A WINDOW RATHER THAN A PHONE?
+ *
+ * Asked of the viewport, not of the platform. A desktop window, a tablet held
+ * landscape and a phone in a car dock are the same question — there is more
+ * width here than a single column needs — and the answer should not depend on
+ * which binary is asking. The desktop app has been sending its window size all
+ * along; it simply declared itself as iOS, which was true about what it can
+ * draw and silent about how much room it has.
+ *
+ * 720 because that is roughly where a 390pt column stops being the shape of
+ * the screen and starts being a strip down the middle of one.
+ */
+const WIDE_AT = 720;
+function isWide(ctx: ScreenContext): boolean {
+  return (ctx.viewport?.width ?? 0) >= WIDE_AT;
+}
+
+/**
+ * A column that stops growing.
+ *
+ * Text does not get more readable past about sixty characters, so a window
+ * twice as wide as a phone should not be a line twice as long — it should be
+ * the same line with air either side. Everything that is a LIST on this app
+ * (settings, voices, words, languages) stays a column and is centred; only the
+ * things that are genuinely two things side by side get to use the width.
+ */
+function readable(ctx: ScreenContext, max = 560): Record<string, unknown> {
+  return isWide(ctx) ? { maxWidth: max, width: "100%", alignSelf: "center" } : {};
+}
+
 export function buildScreen(screenId: string, ctx: ScreenContext): ScreenResponse | null {
   switch (screenId) {
     case "home":
@@ -6277,11 +6308,25 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
             paddingHorizontal: u.padding, paddingTop: 0, paddingBottom: 24,
           },
           children: [
-            portrait,
-            voiceCard(voiceName, voiceLine),
-            youRow("Dictionary", wordCount > 0 ? `${wordCount} words` : "None yet", "dictionary"),
-            youRow("Languages", langLabel, "languages"),
-            youRow("Haptics", hapticsOn ? "On" : "Off", "haptics"),
+            // ONE COLUMN, CENTRED, WHATEVER THE WINDOW IS.
+            //
+            // This tab is a name, a line about the voice, and three settings.
+            // None of that is wider on a desktop than it is on a phone — a
+            // setting row stretched across a 1400px window puts its label and
+            // its value at opposite ends of the desk, and the eye has to
+            // travel the whole way to read one fact. So the column keeps the
+            // width it was designed at and takes the air instead.
+            {
+              type: "Stack",
+              style: { ...readable(ctx) },
+              children: [
+                portrait,
+                voiceCard(voiceName, voiceLine),
+                youRow("Dictionary", wordCount > 0 ? `${wordCount} words` : "None yet", "dictionary"),
+                youRow("Languages", langLabel, "languages"),
+                youRow("Haptics", hapticsOn ? "On" : "Off", "haptics"),
+              ],
+            },
           ],
         },
 
@@ -6559,6 +6604,8 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
           style: {
             backgroundColor: "transparent",
             paddingHorizontal: YOU_UI.padding, paddingTop: 4, paddingBottom: 28,
+            // A list of rows is a column at any width — see readable().
+            ...readable(ctx),
           },
           children: [
             ...(self ? [selfBlock(self)] : []),
@@ -7571,6 +7618,11 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
           style: {
             backgroundColor: "transparent",
             paddingHorizontal: u.padding, paddingTop: 58, paddingBottom: 20,
+            // Wider than the You column because this screen is genuinely two
+            // things side by side — the cards are already a two-up grid, and
+            // on a window they get to be a proper one rather than two narrow
+            // strips with a desk of empty ground beside them.
+            ...readable(ctx, 760),
           },
           children: [
             { type: "Text", props: { content: "This month" },
@@ -8002,6 +8054,9 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
           style: {
             backgroundColor: "transparent",
             paddingHorizontal: u.padding, paddingTop: 58, paddingBottom: 20,
+            // Entries are prose. Sixty characters is where a line stops being
+            // easier to read and starts being further to travel.
+            ...readable(ctx, 620),
           },
           children: [
             // The way back, in the ink of this screen rather than the theme's.

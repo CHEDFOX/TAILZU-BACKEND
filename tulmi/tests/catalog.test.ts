@@ -1437,6 +1437,44 @@ describe("Android is never shown an empty step", () => {
   });
 });
 
+describe("a window is not a tall phone", () => {
+  const wide = (id: string) => JSON.stringify(buildScreen(id, {
+    personality: { stylePortrait: {} }, language: "en",
+    viewport: { width: 1180, height: 760 }, can: new Set(["ScreenHoldTouches"]),
+    stats: { wordsPerDay: [10, 20] }, allowance: null,
+  } as never));
+  const phone = (id: string) => JSON.stringify(buildScreen(id, {
+    personality: { stylePortrait: {} }, language: "en",
+    viewport: { width: 390, height: 844 }, can: new Set(["ScreenHoldTouches"]),
+    stats: { wordsPerDay: [10, 20] }, allowance: null,
+  } as never));
+
+  it("keeps the column readable instead of stretching it", () => {
+    // A setting row stretched across a 1180px window puts its label and its
+    // value at opposite ends of the desk, and the eye has to travel the whole
+    // way to read one fact.
+    expect(wide("personality")).toContain('"maxWidth"');
+    expect(phone("personality")).not.toContain('"maxWidth"');
+  });
+
+  it("gives the paired cards more room than the settings list", () => {
+    // Stats is genuinely two things side by side; the You tab is a name and
+    // three rows. They should not be the same width.
+    expect(wide("stats")).toContain("760");
+    expect(wide("history")).toContain("620");
+  });
+
+  it("asks the viewport, not the platform", () => {
+    // A desktop window, a tablet held landscape and a phone in a car dock are
+    // the same question, and the answer must not depend on which binary asks.
+    const tablet = JSON.stringify(buildScreen("personality", {
+      personality: {}, language: "en", platform: "ios",
+      viewport: { width: 1024, height: 768 },
+    } as never));
+    expect(tablet).toContain('"maxWidth"');
+  });
+});
+
 describe("the network grows with what it has learned", () => {
   const field = (sp?: Record<string, unknown>) => {
     const json = JSON.stringify(buildScreen("home", {
