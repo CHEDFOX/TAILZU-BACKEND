@@ -444,12 +444,21 @@ describe("buildBootstrap", () => {
     // stops being editable from the server. Catch it where it is written.
     const shell = buildBootstrap({ onboarded: true, formFactor: "desktop" })
       .flags?.["desktop.shell"] as Record<string, Record<string, unknown>>;
+    // gateLayout is the one section that is not copy — it is where the form
+    // sits on the art, so it carries numbers and switches.
     for (const [section, entries] of Object.entries(shell)) {
+      if (section === "gateLayout") continue;
       for (const [key, value] of Object.entries(entries)) {
         expect(typeof value, `${section}.${key}`).toBe("string");
         expect(String(value).trim(), `${section}.${key}`).not.toBe("");
       }
     }
+    // The art is a composition with its subject on the left, so the form has
+    // to be told to stand beside it rather than on it.
+    const g = shell.gateLayout;
+    expect(g.align).toBe("right");
+    expect(Number(g.column)).toBeGreaterThan(0.5);
+    expect(Number(g.column)).toBeLessThan(1);
   });
 
   // THE TRAIN TAB HAS TO SCROLL ON THE SURFACE WITH THE MOST ROOM.

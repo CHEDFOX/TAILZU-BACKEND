@@ -1234,6 +1234,49 @@ const DESKTOP_UI = {
     // to need an installer to correct.
     note: "Dictation needs an account, the same as on your phone.",
   },
+  /**
+   * WHERE THE FORM SITS ON THE ART.
+   *
+   * The sign-in art is a composition, not a texture: the mark and the headline
+   * are placed in it, and a form centred in the window lands on top of them.
+   * A phone has no room for that problem — the art is a backdrop behind a
+   * single column — but a window is wide enough for the two to be beside each
+   * other, and wide enough for them to collide if nobody says so.
+   *
+   * All of it is here rather than in the stylesheet because the art is an
+   * upload. A new one with its subject on the right is a change to these
+   * numbers and a cache bump; in CSS it would be a change to an installer.
+   */
+  gateLayout: {
+    /** Which side of the window the form takes: "right", "left" or "center". */
+    align: "right",
+    /** Below this width there is no room for two columns and the form
+     *  re-centres over the art, which is what a narrow window gets. */
+    wideAt: 900,
+    /**
+     * The form column's centre, 0..1 across the window.
+     *
+     * The art rules a line at 0.573 of ITSELF, but the art is 16:9 and a window
+     * rarely is — `cover` crops the sides, which walks that line inward. In a
+     * 1120x760 window it lands near 0.59 of the window rather than 0.573, so
+     * this is set for where the line actually appears rather than where it is
+     * in the file.
+     */
+    column: 0.77,
+    /** How wide the form is when it has a column to itself. Narrower than the
+     *  centred layout's 352, because the band the art leaves empty is narrower
+     *  than the window and a form that does not fit in it is back on the art. */
+    columnWidth: 300,
+    /** Darkening under the form, so a field stays readable over whatever the
+     *  art does there. Across rather than down: the art's own contrast holds
+     *  the left side, and a full-width bottom scrim crushed it. */
+    scrim: "linear-gradient(90deg, rgba(0,0,0,0) 34%, rgba(0,0,0,0.45) 60%, rgba(0,0,0,0.66) 100%)",
+    /** The art already says "Code sent." and "Say it right.", so the window's
+     *  own heading and subtitle would be the same words twice. Turn either on
+     *  again for art that carries no copy. */
+    showTitle: false,
+    showSubtitle: false,
+  },
   // The rail down the left of the window, and the crumb above the screen.
   rail: {
     brand: "Tailzu",
@@ -1603,29 +1646,49 @@ export function buildBootstrap(
         flags["auth.suction"] = AUTH_UI.entry.suction;
       }
 
+      /**
+       * A PHONE IS PORTRAIT AND A WINDOW IS NOT, so one upload cannot be right
+       * for both when the art is a composition.
+       *
+       * Sign-in art with a mark, a headline and rules at its corners is placed,
+       * not tiled. Cropped to a portrait phone it loses its own edges; letter-
+       * boxed into one it becomes a strip. So a desktop client may be given its
+       * own upload — `hero.auth.desktop` — and falls back to the shared one
+       * when nobody has made a landscape version, which is what every install
+       * has today.
+       *
+       * And FIT follows the same split. A phone crops to fill, because a
+       * backdrop behind one column should reach the edges. A window contains,
+       * because cropping a 16:9 composition into a window that is never 16:9
+       * cuts exactly the corners the composition put something in. `present`
+       * still wins outright where it is set, so a deliberate choice at upload
+       * time is never overruled by this.
+       */
+      const isDesk = opts.formFactor === "desktop";
+      const authArt = (key: string) =>
+        (isDesk ? reg[`${key}.desktop`] : undefined) ?? reg[key];
+      const authSpec = (m: NonNullable<ReturnType<typeof authArt>>) => ({
+        url: m.url,
+        ...(m.contentType ? { contentType: m.contentType } : {}),
+        // The screen paints this behind the media so the gap before a video's
+        // first frame is the art's own ground rather than a black flash. It is
+        // also what fills the letterbox when the fit is "contain", so art that
+        // does not match the window should set it to the art's own ground.
+        background: m.present?.background ?? "#000000",
+        fit: m.present?.fit ?? (isDesk ? "contain" : "cover"),
+      });
+
       // The code step gets its own backdrop when one is uploaded, and falls
       // back to the entry's when it is not — so a single upload still dresses
       // the whole flow, and a second one is an option rather than a duty.
-      const authCodeBg = reg["hero.auth.code"];
+      const authCodeBg = authArt("hero.auth.code");
       if (authCodeBg?.url && flags) {
-        flags["auth.background.code"] = {
-          url: authCodeBg.url,
-          ...(authCodeBg.contentType ? { contentType: authCodeBg.contentType } : {}),
-          background: authCodeBg.present?.background ?? "#000000",
-          fit: authCodeBg.present?.fit ?? "cover",
-        };
+        flags["auth.background.code"] = authSpec(authCodeBg);
       }
 
-      const authBg = reg["hero.auth"];
+      const authBg = authArt("hero.auth");
       if (authBg?.url && flags) {
-        flags["auth.background"] = {
-          url: authBg.url,
-          ...(authBg.contentType ? { contentType: authBg.contentType } : {}),
-          // The screen paints this behind the media so the gap before a video's
-          // first frame is the art's own ground rather than a black flash.
-          background: authBg.present?.background ?? "#000000",
-          fit: authBg.present?.fit ?? "cover",
-        };
+        flags["auth.background"] = authSpec(authBg);
       }
 
       // One platform's differences, applied last so they always win.
