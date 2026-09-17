@@ -412,6 +412,46 @@ describe("buildBootstrap", () => {
     }
   });
 
+  // THE CHROME IS COPY, AND COPY THE DESKTOP CANNOT FIX IS COPY THAT IS STUCK.
+  //
+  // The window's screens were server-drawn; the gate, the rail, the tray menu
+  // and the notifications were literals in the binary. There is no OTA channel
+  // on desktop — a release is a download the user has to notice, accept past
+  // SmartScreen and run — so one wrong word used to be permanent.
+  it("sends the desktop its chrome, and only to a desktop", () => {
+    const desk = buildBootstrap({ onboarded: true, formFactor: "desktop" });
+    const shell = desk.flags?.["desktop.shell"] as Record<string, Record<string, string>>;
+    expect(shell).toBeTruthy();
+    // The four things the binary used to own outright.
+    for (const section of ["gate", "rail", "tray", "notify"]) {
+      expect(Object.keys(shell[section] ?? {}).length).toBeGreaterThan(0);
+    }
+    // The line that was wrong for a release: it promised dictation without an
+    // account, on the surface where that had just stopped being true.
+    expect(shell.gate.note).toMatch(/account/i);
+
+    // A phone has no tray to label, and would carry the whole block on every
+    // launch for nothing.
+    for (const formFactor of [undefined, "phone"]) {
+      expect(buildBootstrap({ onboarded: true, formFactor }).flags?.["desktop.shell"])
+        .toBeUndefined();
+    }
+  });
+
+  it("every desktop chrome value is a non-empty string", () => {
+    // The client merges its own defaults under this and only lets non-empty
+    // strings win, so a blank here is not a crash — it is a key that silently
+    // stops being editable from the server. Catch it where it is written.
+    const shell = buildBootstrap({ onboarded: true, formFactor: "desktop" })
+      .flags?.["desktop.shell"] as Record<string, Record<string, unknown>>;
+    for (const [section, entries] of Object.entries(shell)) {
+      for (const [key, value] of Object.entries(entries)) {
+        expect(typeof value, `${section}.${key}`).toBe("string");
+        expect(String(value).trim(), `${section}.${key}`).not.toBe("");
+      }
+    }
+  });
+
   it("a phone is still asked — absent means phone", () => {
     // Every client older than the field sends nothing, and nothing must read
     // as a phone, or one release would silently skip setup for all of them.

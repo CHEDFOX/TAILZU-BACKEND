@@ -1189,6 +1189,104 @@ function arrivalPrompt(
   return (n - PROMPT_FIRST_LAUNCH) % PROMPT_EVERY === 0 ? "languages" : null;
 }
 
+/**
+ * THE DESKTOP'S CHROME, WRITTEN HERE.
+ *
+ * The window's screens were already server-drawn — same catalog JSON the phones
+ * render — but everything AROUND them was not. The sign-in gate, the rail down
+ * the left, the tray menu and every notification were literals in main.js and
+ * app.html, so changing a single word of them meant cutting an installer and
+ * asking people to run it.
+ *
+ * That is the one thing the desktop cannot afford. There is no OTA channel here
+ * and no store to push through: a build is a download the user has to notice,
+ * accept past SmartScreen, and install. Copy that lives in the binary is copy
+ * that can never be fixed.
+ *
+ * So it lives here, and the window renders it. The desktop still ships defaults
+ * for every key — the tray is built at launch, before any network call can have
+ * returned, and a first run on a plane must still have words in it — but the
+ * server's answer wins the moment it lands and is cached for the next launch.
+ *
+ * The shape is flat and boring on purpose: string in, string out, no nodes to
+ * interpret. The chrome is a menu bar and a form, not a screen, and giving it
+ * the full SDUI vocabulary would buy nothing a label cannot already say.
+ */
+const DESKTOP_UI = {
+  // The sign-in gate. The only screen this app draws before it has an account,
+  // so it is also the only one the catalog cannot reach.
+  gate: {
+    title: "Tailzu",
+    subtitle: "Sign in the same way you do on your phone — your voices, history and words come with you.",
+    emailTab: "Email",
+    phoneTab: "Phone",
+    emailPlaceholder: "you@example.com",
+    phonePlaceholder: "555 000 1234",
+    sendCode: "Send code",
+    or: "or",
+    apple: "Continue with Apple",
+    google: "Continue with Google",
+    codePlaceholder: "6-digit code",
+    verify: "Sign in",
+    startOver: "Start over",
+    // Says what is true since dictation started requiring an account. It said
+    // the opposite for one release, which is exactly the kind of line that used
+    // to need an installer to correct.
+    note: "Dictation needs an account, the same as on your phone.",
+  },
+  // The rail down the left of the window, and the crumb above the screen.
+  rail: {
+    brand: "Tailzu",
+    dictate: "Dictate now",
+    settings: "Settings",
+    signOut: "Sign out",
+    back: "← Back",
+  },
+  // The tray menu. Built before the first bootstrap can have answered, so the
+  // desktop's own defaults carry the first paint and this replaces them.
+  tray: {
+    dictate: "Dictate",
+    listening: "◉ Listening — press hotkey to stop",
+    signInToDictate: "Sign in to dictate…",
+    open: "Open Tailzu",
+    tone: "Tone",
+    toneThisDevice: "this device",
+    liveCaptions: "Live captions while dictating",
+    startAtLogin: "Start at login",
+    hotkey: "Hotkey",
+    holdToTalk: "Hold-to-talk: hold",
+    holdUnavailable: "unavailable",
+    holdOff: "Hold-to-talk: off (set \"hold\": true in config)",
+    backend: "Backend",
+    signedIn: "Signed in — dictation lands on your account",
+    editConfig: "Edit config…",
+    quit: "Quit Tailzu",
+    tooltipReady: "Tailzu — ready",
+    tooltipListening: "Tailzu — listening…",
+    tooltipSignIn: "Tailzu — sign in to dictate",
+  },
+  // Native notifications and the sentences the recorder shows when capture
+  // fails. Every one of these names something the user has to go and do, and
+  // every one of them was previously unfixable without a release.
+  notify: {
+    title: "Tailzu",
+    signIn: "Sign in to dictate — your words belong to your account.",
+    holdUnavailable: "Hold-to-talk unavailable (uiohook-napi didn't load) — using the toggle hotkey.",
+    micBlockedWindows: "microphone blocked — Settings → Privacy & security → Microphone → let desktop apps access",
+    micBlockedMac: "microphone blocked — System Settings → Privacy & Security → Microphone → Tailzu",
+    micMissing: "no microphone found — plug one in, then try again",
+    micBusy: "microphone is in use by another app",
+    noSpeech: "no speech detected — check your microphone",
+    // {braces} are filled in by the desktop. Reordering or renaming one here
+    // without the matching build leaves the placeholder on screen, so a new
+    // variable is a new key rather than an edit to an existing one.
+    unknownHoldKey: "Unknown holdKey \"{key}\" — use a key name like F9, F10, F12.",
+    dictationFailed: "Dictation failed: {message}",
+    hotkeyTaken: "{taken} is taken by another app, so dictation is on {bound}. Change it under Edit config.",
+    noHotkey: "No hotkey could be registered. Use Dictate in the tray menu, and set a free one under Edit config.",
+  },
+} as const;
+
 export function buildBootstrap(
   opts: {
     onboarded?: boolean;
@@ -1303,6 +1401,11 @@ export function buildBootstrap(
         "policy.privacy.url": "https://tailzu.space/privacy",
         "policy.terms.url": "https://tailzu.space/terms",
         "support.url": "mailto:support@tailzu.space",
+
+        // The desktop's chrome — gate, rail, tray, notifications. Sent only to
+        // a window that said it was one, because a phone has no tray to label
+        // and would carry the whole block on every launch for nothing.
+        ...(opts.formFactor === "desktop" ? { "desktop.shell": DESKTOP_UI } : {}),
 
         // Post-splash intro — max duration + background. `intro.media` is
         // spliced in below from whatever's under the "intro" key in the media
