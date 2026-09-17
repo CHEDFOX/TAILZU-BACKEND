@@ -104,6 +104,68 @@ export const INDIC_SCRIPTS = new Set<DetectedScript>([
  * providers differ constantly in casing and comma placement, and those
  * differences are not worth a second opinion.
  */
+/**
+ * ROMANIZED HINDI, WITHOUT A SCRIPT TO SEE IT BY.
+ *
+ * Script is the strongest evidence of which engine understood the speech, and
+ * it is the only evidence the stop-time reconciliation had. That left one case
+ * undecided — romanized Hinglish, written in Latin by both engines — and an
+ * undecided case fell back to whichever engine an operator had named primary.
+ * So recognition quality depended on a guess about traffic, and that guess is
+ * wrong for every user who falls on the other side of it.
+ *
+ * These are the evidence for the case script cannot reach. Two engines hear
+ * the SAME audio: one that understood "yeh kaam nahi ho raha" writes those
+ * words, and one that did not writes English that sounds like them. So the
+ * count differs, and the difference is a measurement rather than a preference.
+ *
+ * Every word here is chosen for being unambiguous. `the`, `to`, `me`, `main`,
+ * `par`, `is`, `so`, `do` and `have` are all real Hindi transliterations AND
+ * ordinary English, and including any of them would score plain English as
+ * Hindi — which would hand the lead to whichever engine was worse.
+ */
+const ROMAN_HINDI = new Set([
+  "hai", "hain", "haan", "nahi", "nahin", "tha", "thi", "thay", "hoga", "hogi",
+  "kya", "kyun", "kyon", "kyunki", "kaise", "kahan", "kaun", "kitna", "kitne",
+  "aap", "tum", "tumhara", "mera", "meri", "mere", "tera", "teri", "uska", "uski",
+  "hamara", "hamare", "unka", "unki", "yeh", "woh", "koi", "kuch", "sab", "sabhi",
+  "karo", "karna", "karke", "kiya", "karta", "karte", "karti", "raha", "rahi", "rahe",
+  "gaya", "gayi", "diya", "liya", "milega", "chahiye", "sakta", "sakte", "sakti",
+  "bhi", "toh", "phir", "abhi", "lekin", "magar", "isliye", "matlab", "waise",
+  "bahut", "bohot", "zyada", "thoda", "jaldi", "bilkul", "accha", "achha",
+  "theek", "thik", "yaar", "bhai", "arre", "arey", "wala", "wali", "ekdum",
+]);
+
+/**
+ * How much of this reads as romanized Hindi, 0..1.
+ *
+ * A fraction rather than a count, because the two transcripts of one utterance
+ * can differ in length and a longer wrong reading should not win on volume.
+ */
+export function romanHindiScore(text: string): number {
+  const words = text.toLowerCase().match(/[a-z']+/g);
+  if (!words?.length) return 0;
+  let hits = 0;
+  for (const w of words) if (ROMAN_HINDI.has(w)) hits++;
+  return hits / words.length;
+}
+
+/**
+ * Does the shadow read as romanized Hindi where the primary does not?
+ *
+ * Deliberately asymmetric. Leading with the wrong engine is the expensive
+ * mistake — the refine is told candidate 1 is the more reliable recognizer —
+ * so the shadow has to be CLEARLY better, not merely ahead. A margin rather
+ * than a comparison is what keeps one shared word from deciding anything.
+ */
+export function readsAsRomanHindi(primary: string, shadow: string): boolean {
+  const p = romanHindiScore(primary);
+  const s = romanHindiScore(shadow);
+  // At least two words in ten, and at least double the other reading. One
+  // marker in a long English sentence is a name or a loanword, not a language.
+  return s >= 0.2 && s >= p * 2 + 0.08;
+}
+
 export function transcriptsAgree(a: string, b: string): boolean {
   const norm = (s: string) =>
     s.toLowerCase()
@@ -163,7 +225,12 @@ function isIndicResult(r: RawSttResult): boolean {
  */
 export function leadsOnScript(mine: string, theirs: string): boolean {
   if (!mine.trim() || !theirs.trim()) return false;
-  return INDIC_SCRIPTS.has(detectScript(mine)) && !INDIC_SCRIPTS.has(detectScript(theirs));
+  if (INDIC_SCRIPTS.has(detectScript(theirs))) return false;   // they already have it
+  if (INDIC_SCRIPTS.has(detectScript(mine))) return true;      // script is decisive
+  // NO SCRIPT ON EITHER SIDE — romanized Hinglish, the case this used to leave
+  // to whichever engine an operator had named primary. Decided on the words
+  // instead, so which engine leads never depends on a guess about traffic.
+  return readsAsRomanHindi(theirs, mine);
 }
 
 /** The generalist (Whisper family) — strong across ~100 languages. */

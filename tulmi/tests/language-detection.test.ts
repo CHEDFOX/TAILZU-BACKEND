@@ -10,7 +10,7 @@
  * flagship case) broke outright.
  */
 import { describe, expect, it } from "vitest";
-import { detectScript, leadsOnScript } from "../src/pipeline/stt.js";
+import { detectScript, leadsOnScript, romanHindiScore, readsAsRomanHindi } from "../src/pipeline/stt.js";
 import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
 
 describe("detectScript — observed, not declared", () => {
@@ -94,10 +94,46 @@ describe("who gets the live stream, mid-utterance", () => {
     expect(leadsOnScript("मैं ठीक हूँ", "मैं ठीक हुँ")).toBe(false);
   });
 
-  it("never fires on romanized Hinglish, which has no script to see", () => {
-    // The known limit, pinned so nobody assumes it is covered. This case rides
-    // on whichever engine is primary; STT_LIVE_PROVIDER exists for it.
-    expect(leadsOnScript("aaj main thoda late aaunga", "today I am a little late")).toBe(false);
+  /**
+   * ROMANIZED HINGLISH USED TO BE THE KNOWN LIMIT, and it was pinned here as
+   * one: no script to see, so the lead stayed with whichever engine an
+   * operator had named primary. That made recognition quality depend on a
+   * guess about traffic, and a guess is wrong for everybody on the other side
+   * of it.
+   *
+   * It is decided on the words now. Both engines heard the same audio — the
+   * one that understood wrote the Hindi, the one that did not wrote English
+   * that sounds like it.
+   */
+  it("fires on romanized Hinglish, on the words rather than the script", () => {
+    expect(leadsOnScript("aaj main thoda late aaunga yaar", "today I am a little late")).toBe(true);
+  });
+
+  it("does not fire on one borrowed word in an English sentence", () => {
+    // A name or a loanword is not a language. Leading with the wrong engine is
+    // the expensive mistake — the refine is told candidate 1 is the more
+    // reliable recognizer — so the margin has to be clear, not merely ahead.
+    expect(leadsOnScript("my friend yaar is coming to the office today", "my friend is coming to the office today")).toBe(false);
+  });
+
+  it("does not fire when the other engine read it as Hindi too", () => {
+    // Both understood. Swapping between them buys nothing and costs the user
+    // a cursor correction.
+    expect(leadsOnScript("aaj main thoda late aaunga", "aaj main thoda late aunga")).toBe(false);
+  });
+
+  it("never scores plain English as Hindi", () => {
+    // The markers are chosen for being unambiguous: `the`, `to`, `me`, `main`,
+    // `par`, `is` and `so` are all real transliterations AND ordinary English,
+    // and any of them in the set would hand the lead to the worse engine on a
+    // sentence with no Hindi in it at all.
+    for (const english of [
+      "the main point is to do so par for the course",
+      "I have to go to the main office",
+      "so do you have the time",
+    ]) {
+      expect(romanHindiScore(english), english).toBeLessThan(0.2);
+    }
   });
 
   it("does not fire for a European language against English", () => {
@@ -105,5 +141,45 @@ describe("who gets the live stream, mid-utterance", () => {
     // handing French to the Indic specialist would be the exact mistake this
     // rule is meant to prevent in the other direction.
     expect(leadsOnScript("je serai un peu en retard", "I will be a little late")).toBe(false);
+  });
+});
+
+/**
+ * The evidence the no-script case is decided on.
+ *
+ * Two engines hear the same audio. The one that understood the speech writes
+ * the Hindi function words; the one that did not writes English that sounds
+ * like them. That difference is a measurement, which is the whole point —
+ * before this, the case was settled by a config value.
+ */
+describe("romanized Hindi, measured", () => {
+  it("scores real Hinglish well above plain English", () => {
+    expect(romanHindiScore("yaar yeh kaam abhi tak nahi hua")).toBeGreaterThan(0.3);
+    expect(romanHindiScore("this work is still not done")).toBe(0);
+  });
+
+  it("prefers the engine that heard the Hindi", () => {
+    // What the two engines actually produce for one utterance: the specialist
+    // writes the words, the generalist writes English that rhymes with them.
+    expect(readsAsRomanHindi(
+      "your yeah come up he duck nahi",      // generalist, approximating
+      "yaar yeh kaam abhi tak nahi hua",     // specialist, understanding
+    )).toBe(true);
+  });
+
+  it("refuses to flip on a thin margin", () => {
+    // Asymmetric on purpose. Leading with the wrong engine is the expensive
+    // mistake, so "slightly ahead" is not enough to take the lead.
+    expect(readsAsRomanHindi(
+      "okay theek hai I will come",
+      "okay thik hai I will come",
+    )).toBe(false);
+  });
+
+  it("leaves other languages entirely alone", () => {
+    // The specialist is the wrong engine for French, and this rule must never
+    // be the thing that hands it one.
+    expect(readsAsRomanHindi("I will be a little late", "je serai un peu en retard")).toBe(false);
+    expect(romanHindiScore("je serai un peu en retard")).toBe(0);
   });
 });

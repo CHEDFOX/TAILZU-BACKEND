@@ -72,10 +72,16 @@ const EnvSchema = z.object({
   //
   // The Indic fix lives in STT_LIVE_DUAL below instead, which is the same
   // answer the one-shot path already reached: run both, decide afterwards.
-  // Set this to sarvam if your traffic is overwhelmingly Indic and you want
-  // the LIVE partials in the right language too — romanized Hinglish has no
-  // script to detect at stop, so it is the one case that still rides on
-  // whichever engine is primary here.
+  // WHICH ENGINE LEADS IS NO LONGER DECIDED HERE. This names who streams the
+  // partials the user watches while talking; which reading is KEPT is decided
+  // by the text, on script where there is one and on the words where there is
+  // not (see leadsOnScript and readsAsRomanHindi). Romanized Hinglish used to
+  // be the exception that rode on this value, which made recognition quality
+  // depend on a guess about traffic — and a guess is wrong for everybody on
+  // the other side of it.
+  //
+  // So this is a latency and cost choice, not a quality one. Leave it unless
+  // you have a reason about the partials specifically.
   STT_LIVE_PROVIDER: z.enum(["deepgram", "sarvam"]).default("deepgram"),
 
   // Run BOTH live engines: the one named above streams to the user, the other

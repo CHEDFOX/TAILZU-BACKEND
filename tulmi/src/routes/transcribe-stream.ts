@@ -45,7 +45,7 @@ import {
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { enforceQuota, recordUsage } from "../usage/metering.js";
 import {
-  sanitizePlainTranscript, transcriptsAgree, isUsableAlternative,
+  sanitizePlainTranscript, transcriptsAgree, isUsableAlternative, readsAsRomanHindi,
   detectScript, INDIC_SCRIPTS, leadsOnScript,
 } from "../pipeline/stt.js";
 
@@ -192,9 +192,11 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
        * one engine does and the other does not, the one that did is the one
        * that recognised the speech rather than approximating it.
        *
-       * Romanized Hinglish has no script to see, so it never triggers this and
-       * stays with whichever engine is primary — the same limit the stop-time
-       * reconciliation has.
+       * Romanized Hinglish has no script to see, so leadsOnScript falls back
+       * to the words themselves — the Hindi function words one engine writes
+       * and the other approximates into English. Same evidence the stop-time
+       * reconciliation uses, and the reason neither depends any more on which
+       * engine an operator happened to name primary.
        */
       const considerLead = (mine: "primary" | "shadow", text: string) => {
         if (leadLocked) return;
@@ -246,12 +248,25 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           // engine came back in a native Indic script is the one that actually
           // understood the speech, so it leads and the other rides along.
           //
-          // Romanized Hinglish has no script to detect, so it still leads with
-          // the primary. Point STT_LIVE_PROVIDER at sarvam if that is the bulk
-          // of your traffic.
+          // ROMANIZED HINGLISH HAS NO SCRIPT, and used to fall through to
+          // whichever engine an operator had named primary — so for that one
+          // case recognition quality depended on a guess about traffic, and a
+          // guess is wrong for everybody on the other side of it.
+          //
+          // It is decided on evidence now too. Both engines heard the same
+          // audio: the one that understood "yeh kaam nahi ho raha" wrote those
+          // words, and the one that did not wrote English that sounds like
+          // them. readsAsRomanHindi measures that difference, and demands a
+          // clear margin — leading with the wrong engine is the expensive
+          // mistake, because the refine is told candidate 1 is the more
+          // reliable recognizer.
+          //
+          // Script still wins where there is one. It is the stronger signal,
+          // and it cannot be faked by a name or a loanword.
           const primaryIndic = INDIC_SCRIPTS.has(detectScript(primaryDry));
           const shadowIndic = INDIC_SCRIPTS.has(detectScript(shadowDry));
-          const flip = shadowIndic && !primaryIndic && !!shadowDry;
+          const flip = !!shadowDry && !primaryIndic &&
+            (shadowIndic || readsAsRomanHindi(primaryDry, shadowDry));
           const primaryText = flip ? shadowDry : primaryDry;
           const shadowText = flip ? primaryDry : shadowDry;
           // Only correct the cursor when the user was NOT already watching the
