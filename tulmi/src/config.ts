@@ -485,6 +485,40 @@ export function getConfig(): AppConfig {
 
   const env = parsed.data;
 
+  /**
+   * A SECRET WITH A `$` IN IT IS A SECRET DOCKER COMPOSE HAS ALREADY EATEN.
+   *
+   * Compose interpolates `$NAME` inside `env_file` values. A shared secret
+   * containing one therefore reaches the process with that chunk REPLACED —
+   * usually by nothing, since the variable is rarely set — and the only sign
+   * is a line on startup that scrolls past:
+   *
+   *   WARN The "V_LTBATS" variable is not set. Defaulting to a blank string.
+   *
+   * What it produces is the worst kind of broken. The service starts, every
+   * screen works, and the only thing that fails is the one path nobody
+   * exercises until it matters: RevenueCat sends the secret as written, the
+   * process compares it against the mangled copy, answers 401, and a customer
+   * who has just been charged is never granted anything.
+   *
+   * Warned rather than thrown, because a running service is worth more than a
+   * strict one and the affected path may not be in use yet. Both values are
+   * checked: the same trap catches the admin secret.
+   */
+  for (const [name, value] of [
+    ["REVENUECAT_WEBHOOK_SECRET", env.REVENUECAT_WEBHOOK_SECRET],
+    ["ADMIN_SECRET", env.ADMIN_SECRET],
+  ] as const) {
+    if (typeof value === "string" && value.includes("$")) {
+      console.warn(
+        `[config] ${name} contains a "$". Docker Compose interpolates those in ` +
+          `env_file values, so the running process may be holding a DIFFERENT ` +
+          `secret than the file does — and the sender would get 401 with no ` +
+          `other symptom. Use a secret with no "$" in it.`,
+      );
+    }
+  }
+
   // The selected STT provider must have its key.
   if (env.STT_PROVIDER === "openai" && !env.OPENAI_API_KEY) {
     throw new Error(
