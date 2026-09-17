@@ -257,27 +257,43 @@ const EnvSchema = z.object({
    */
   REVENUECAT_ENTITLEMENT: z.string().default("pro"),
   /**
-   * The RevenueCat Web Billing paywall link, for the desktop app.
+   * The RevenueCat web purchase link, for the desktop app.
    *
    * WHY THE DESKTOP NEEDS ONE AT ALL. RevenueCat has no desktop SDK, so the
    * window cannot call `iap.subscribe` the way the phones do — it rendered the
-   * paywall with every row on it dead. Web Billing is RevenueCat's own
-   * Stripe-backed checkout, and it is the cheapest possible fix here because
-   * the identity already lines up: the phones configure RevenueCat with
-   * `appUserID: <supabase user id>`, the webhook resolves that same id back,
-   * and a web purchase for the same id lands on the same customer and writes
-   * the same entitlements row. Nothing about the webhook changes — it keys on
-   * the event type, the entitlement and the user, and only RECORDS the store.
+   * paywall with every row on it dead. A web purchase link is the way through,
+   * and it is nearly free here because the identity already lines up: the
+   * phones configure RevenueCat with `appUserID: <supabase user id>`, the
+   * webhook resolves that same id back, and a web purchase for the same id
+   * lands on the same customer and writes the same entitlements row. Nothing
+   * about the webhook changes — it keys on the event type, the entitlement and
+   * the user, and only RECORDS the store.
    *
    * So a user who paid on a phone is already entitled in the window, and one
    * who pays in the window is entitled on their phone.
    *
-   * This is a PUBLIC link (pay.rev.cat/...), not a credential — it is opened
-   * in the user's browser and is safe in a flag. The secret key is the other
-   * value below and must never leave the server.
+   * WHICH BILLING ENGINE IS BEHIND IT IS A DASHBOARD CHOICE, NOT A CODE ONE.
+   * RevenueCat backs these links with its own billing, with Stripe, or with
+   * Paddle, and nothing on this side can tell the difference — the link is a
+   * link, the webhook is the same webhook, and `store` is recorded rather than
+   * branched on. That matters because Paddle is the MERCHANT OF RECORD: it
+   * registers, collects and remits sales tax worldwide, which Stripe does not.
+   * Swapping to it later is a new link in this variable.
    *
-   * Unset means no web purchase path: the desktop is told so and withholds the
-   * paywall rather than drawing buttons that do nothing.
+   * WHERE THE USER ID GOES IS PART OF THE LINK. The shapes differ — a hosted
+   * paywall link takes a trailing path segment, a Web Purchase Link takes an
+   * `app_user_id` query parameter — and guessing wrong is the failure that
+   * looks like success: the card is charged and the webhook arrives with no id
+   * to attach it to. Put `{app_user_id}` where it belongs, e.g.
+   * `https://pay.rev.cat/xxxx/{app_user_id}`; with no placeholder the desktop
+   * appends `?app_user_id=…`, which is what a Web Purchase Link expects.
+   *
+   * This is a PUBLIC link, not a credential — it is opened in the user's
+   * browser and is safe in a flag. The secret key is the other value below and
+   * must never leave the server.
+   *
+   * Unset means no web purchase path: the desktop is told so and is never
+   * blocked by a paywall it has no way to pass.
    */
   REVENUECAT_WEB_PAYWALL_URL: z.string().url().optional(),
   /**
