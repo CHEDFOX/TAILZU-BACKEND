@@ -20,10 +20,17 @@ ok(){ echo "  PASS  $1"; pass=$((pass+1)); }
 no(){ echo "  FAIL  $1"; fail=$((fail+1)); }
 
 [ -f "$ENVF" ] || { echo "run this from ~/tulmi"; exit 1; }
-SEC=$(grep -m1 '^REVENUECAT_WEBHOOK_SECRET=' $ENVF | cut -d= -f2-)
-WANT=$(grep -m1 '^REVENUECAT_ENTITLEMENT=' $ENVF | cut -d= -f2- | tr -d '"'); WANT=${WANT:-pro}
+# A .env value can arrive wrapped in quotes, and a file ever edited on Windows
+# carries a trailing CR. Either one makes the header differ from what the
+# server holds by a character nobody can see, and then EVERY call is 401 —
+# including the one meant to prove a bad secret is rejected, which passes for
+# the wrong reason. Both are stripped here.
+val(){ grep -m1 "^$1=" $ENVF | cut -d= -f2- | tr -d '\r' | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'\$//"; }
+SEC=$(val REVENUECAT_WEBHOOK_SECRET)
+WANT=$(val REVENUECAT_ENTITLEMENT); WANT=${WANT:-pro}
 [ -n "$SEC" ] || { echo "no REVENUECAT_WEBHOOK_SECRET — the webhook refuses everything"; exit 1; }
 echo "entitlement filter: '$WANT'"
+echo "webhook secret: ${#SEC} chars"
 
 send(){ curl -s -X POST $API/v1/billing/revenuecat -H "Authorization: ${2:-$SEC}" \
         -H 'Content-Type: application/json' -d "$1"; }
@@ -48,6 +55,16 @@ echo; echo "2. the webhook refuses what it should"
 B=$(send "$(evt INITIAL_PURCHASE "$GHOST" "$WANT")" "wrong-secret")
 case "$B" in *unauthorized*) ok "a bad secret is rejected";;
   *) no "a bad secret was NOT rejected: $B";; esac
+
+LIVE=$(send "$(evt CANCELLATION "$GHOST" "$WANT")")
+case "$LIVE" in *unauthorized*)
+  echo
+  echo "  STOP — the real secret is being rejected too, so everything below would"
+  echo "  fail for one reason. The value in $ENVF does not match what the running"
+  echo "  container holds. Either it was changed without a restart:"
+  echo "      cd ~/tulmi && docker compose up -d --build backend"
+  echo "  or the container reads a different file — check env_file in compose.yml."
+  exit 1;; esac
 
 A=$(send "$(evt INITIAL_PURCHASE '$RCAnonymousID:deadbeef' "$WANT")")
 case "$A" in *'no Supabase user id'*) ok "an anonymous purchase is refused, and says why";;
