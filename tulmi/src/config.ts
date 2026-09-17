@@ -491,6 +491,51 @@ const EnvSchema = z.object({
   EARN_MAX_WORDS: z.coerce.number().default(1700),
 });
 
+/**
+ * Everything the server reads out of the environment, in one list.
+ *
+ * Skipping tulmi/.env under the runner was half a fix. A variable can also be
+ * EXPORTED into the shell — which is how the server's own ADMIN_SECRET reached
+ * a test that exists to check the branch where it is absent, and turned a 503
+ * into a 401. dotenv never touched it; the process simply inherited it.
+ *
+ * So the test setup clears this list instead of trusting a shell to be empty.
+ * The names read straight from process.env elsewhere in src/ are included:
+ * they are read the same way and contaminate the same way, and INTRO_PLAY_WHEN
+ * on the server is what opened an onboarded user on the intro.
+ *
+ * NODE_ENV is in here, via the schema, and belongs here: an exported
+ * NODE_ENV=production made the DEV_SKIP_AUTH guard throw ahead of the
+ * assertion a test was making. The setup clears it with the rest and then
+ * pins it back to "test", so the order does the work, not an exemption.
+ */
+export const ENV_KEYS: readonly string[] = [
+  ...Object.keys(EnvSchema.shape),
+  "ANDROID_SIGNING_SHA256",
+  "APP_STORE_ID",
+  "AUTH_ENABLE_PHONE",
+  "DOWNLOADS_DIR",
+  "FLOW_ARM_DISMISS_MS",
+  "FLOW_END_HOLD_MS",
+  "FLOW_TRANSPORT",
+  "HISTORY_COALESCE_MS",
+  "HISTORY_DEFAULT_ON",
+  "INTRO_BUILT_IN",
+  "INTRO_FIT",
+  "INTRO_PLAY_MS",
+  "INTRO_PLAY_WHEN",
+  "INTRO_SHAPE",
+  "INTRO_VIDEO_MAX_MS",
+  "KB_ROLLOUTS",
+  "LLM_REASONING_EFFORT",
+  "LOG_LEVEL",
+  "MEDIA_DIR",
+  "MEDIA_PUBLIC_URL",
+  "PUBLIC_ORIGIN",
+  "TULMI_SHARED_DIR",
+  "WEBP_MAX_SECONDS",
+].filter((k, i, all) => all.indexOf(k) === i);
+
 export type AppConfig = z.infer<typeof EnvSchema> & {
   /** True if Supabase is fully configured for metering (needs the service key). */
   supabaseEnabled: boolean;

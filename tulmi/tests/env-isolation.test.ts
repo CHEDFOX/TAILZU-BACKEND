@@ -6,7 +6,9 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import { envFileToLoad, getConfig } from "../src/config.js";
+import { ENV_KEYS, envFileToLoad, getConfig } from "../src/config.js";
+// eslint-disable-next-line import/first
+import { clearAppEnv } from "./env-surface.js";
 
 /**
  * WHAT THIS IS GUARDING.
@@ -45,6 +47,46 @@ describe("a test run never reads the deployment's env", () => {
     // variable ever changes name, the two tests above keep passing while the
     // guard they describe does nothing at all.
     expect(process.env.VITEST).toBeTruthy();
+  });
+
+  it("clears what a shell exported, which no file guard can reach", () => {
+    // The second half of the same lesson, and the one that survived the
+    // first fix. ADMIN_SECRET was exported in the server's shell, so the test
+    // for "no secret configured" ran on a machine where one was — 401, not
+    // 503 — with dotenv never involved.
+    const env: Record<string, string | undefined> = {
+      ADMIN_SECRET: "exported-by-the-shell",
+      SUPABASE_SERVICE_KEY: "the-one-that-bypasses-every-rls-rule",
+      INTRO_PLAY_WHEN: "everyLaunch",
+      NODE_ENV: "production",
+      PATH: "/usr/bin",
+    };
+    const removed = clearAppEnv(env);
+
+    expect(env.ADMIN_SECRET).toBeUndefined();
+    expect(env.SUPABASE_SERVICE_KEY).toBeUndefined();
+    expect(env.INTRO_PLAY_WHEN).toBeUndefined();
+    expect(removed).toContain("ADMIN_SECRET");
+    // NODE_ENV is pinned, not dropped — production made the DEV_SKIP_AUTH
+    // guard throw ahead of the assertion the test was making.
+    expect(env.NODE_ENV).toBe("test");
+    // And it touches nothing that is not ours. Deleting PATH from a worker
+    // would be a far more interesting bug than the one being fixed.
+    expect(env.PATH).toBe("/usr/bin");
+  });
+
+  it("knows about the variables that actually caused failures", () => {
+    // The list is the whole mechanism: a name missing from it is a variable
+    // the suite still reads off the machine. These three each broke a test.
+    expect(ENV_KEYS).toContain("ADMIN_SECRET");
+    expect(ENV_KEYS).toContain("SUPABASE_SERVICE_KEY");
+    expect(ENV_KEYS).toContain("INTRO_PLAY_WHEN");
+    // NODE_ENV is in the list and is meant to be: an exported
+    // NODE_ENV=production is a contaminant like any other. It is cleared with
+    // the rest and pinned back afterwards, which the test above checks.
+    expect(ENV_KEYS).toContain("NODE_ENV");
+    // VITEST is not, and must not be — the loader's own guard reads it.
+    expect(ENV_KEYS).not.toContain("VITEST");
   });
 
   it("leaves the stores on their in-memory fallback", () => {

@@ -163,13 +163,18 @@ npm --prefix tulmi test          # 609 unit tests, no network, no cost
 ./tulmi/scripts/quality.sh       # what the deployed backend actually WRITES
 ```
 
-The unit tests do not read `tulmi/.env`, on this machine or any other. They
-used to, and it mattered: the stores fall back to an in-memory map when
-Supabase is off, so a real service key in the environment pointed `npm test` at
-the production database and it began writing rows there — caught only by the
-foreign key, because the ids in the tests are not UUIDs. The suite now skips
-the file under the runner, which is also why it means the same thing here as on
-a laptop.
+The unit tests read nothing off the machine they run on — not `tulmi/.env`, and
+not what a shell exported. They used to, and it mattered: the stores fall back
+to an in-memory map when Supabase is off, so a real service key in the
+environment pointed `npm test` at the production database and it began writing
+rows there, caught only by the foreign key because the ids in the tests are not
+UUIDs. Skipping the file left the exported half — `ADMIN_SECRET` in the shell
+made the test for "no secret configured" fail, since on that machine one was.
+Both are closed now: every variable the server reads is cleared before each
+test file, so a run means the same thing here as on a laptop.
+
+`cd ~/tulmi && ./tulmi/scripts/quality.sh` is unaffected by that — it talks to
+the container over HTTP and measures the deployment on purpose.
 
 If four suites fail to load with `Failed to load url @fastify/static` or
 `jose`, the checkout's `node_modules` is a production install. `npm --prefix
@@ -185,10 +190,15 @@ process.
 
 It costs a few real LLM calls. It reads no user data and writes none.
 
-It prints the cleanup prompt version it measured, read from the running
-container rather than the file. To compare two, pin the old one and run it
-again — `CLEANUP_PROMPT_VERSION=v5` in `tulmi/.env`, rebuild, run, then remove
-the line to go back to the default.
+It prints the cleanup prompt version it measured, asked of the container's own
+node — not `printenv`, which is blank whenever the default is in force, and not
+the checkout, which `git pull` has already changed while the image is still
+whatever it was. It also refuses to run if the prompt file that version names
+is missing from the image, which is what a forgotten `--build` looks like.
+
+To compare two versions, pin the old one and run it again —
+`CLEANUP_PROMPT_VERSION=v5` in `tulmi/.env`, rebuild, run, then delete the line
+to go back to the default.
 
 What it holds, all of it a fault that has actually shipped:
 

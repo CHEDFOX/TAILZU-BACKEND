@@ -4,6 +4,9 @@ export default defineConfig({
   test: {
     globals: false,
     include: ["tests/**/*.test.ts"],
+    // Empties the app's env surface before each file loads, so the suite is
+    // not reading the machine it happens to be running on. See tests/setup.ts.
+    setupFiles: ["tests/setup.ts"],
     // Each test loads the config module which reads env — start from a clean
     // slate so one test's overrides can't leak into another's.
     isolate: true,

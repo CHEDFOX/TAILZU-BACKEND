@@ -56,17 +56,28 @@ EOF
 # it from the RUNNING CONTAINER, never from the file: a value can differ
 # between the two, which is how a "$" in the webhook secret once made the
 # process hold a different string than tulmi/.env did.
-VER=$(docker compose exec -T backend printenv CLEANUP_PROMPT_VERSION 2>/dev/null | tr -d '\r')
-if [ -n "$VER" ]; then VER="$VER (pinned in the env)"
-else
-  # Unset in the container means the schema's default decides. Name it rather
-  # than printing "default" — the point of the line is to be repeatable.
-  D=$(grep -m1 'CLEANUP_PROMPT_VERSION: z.string().default' tulmi/src/config.ts \
-      | sed -n 's/.*default("\([^"]*\)").*/\1/p')
-  VER="${D:-unknown} (the checkout's default)"
+dex(){ docker compose exec -T backend "$@" 2>/dev/null | tr -d '\r'; }
+# Ask the container's own node what it resolved. Not printenv, which is blank
+# whenever the default is in force; not the checkout, which is what `git pull`
+# just changed while the image is still whatever it was before the rebuild.
+# This is the value the process is actually using, however it got there.
+VER=$(dex node -e \
+  'import("file:///app/tulmi/dist/tulmi/src/config.js").then(m=>console.log(m.getConfig().CLEANUP_PROMPT_VERSION))')
+if [ -z "$VER" ]; then
+  echo "Could not read the prompt version from the container. Is it running?" >&2
+  echo "  docker compose ps" >&2
+  exit 1
 fi
+# And the file has to be IN the image, or the version is a label on nothing:
+# a missing file falls back to an older prompt and the run measures that one.
+dex sh -c "test -f /app/shared/prompts/cleanup.$VER.md && echo yes" | grep -q yes || {
+  echo "The container resolves cleanup prompt $VER, but" >&2
+  echo "/app/shared/prompts/cleanup.$VER.md is not in the image — it was not" >&2
+  echo "rebuilt after the pull. Nothing below would measure what you changed:" >&2
+  echo "  docker compose up -d --build backend" >&2
+  exit 1; }
 echo "Asking the deployed backend to write. Each line is one real call."
-echo "cleanup prompt: $VER"
+echo "cleanup prompt: $VER  (resolved inside the running container)"
 echo
 
 while IFS='|' read -r id lang input rule _; do
