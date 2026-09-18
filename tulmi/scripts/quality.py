@@ -375,6 +375,8 @@ def main():
                     help="CLEANUP_PROMPT_VERSION — the STREAMING path only")
     ap.add_argument("--assist", default="unknown",
                     help="fingerprint of the assist prompt, which serves everything else")
+    ap.add_argument("--pipeline", default="unknown",
+                    help="fingerprint of the compiled writing path (cleanup + assistPrompt)")
     ap.add_argument("--repeat", type=int, default=1,
                     help="run each case N times; a case passes only if every run passes")
     ap.add_argument("--only", default="", help="one group, e.g. lang")
@@ -408,6 +410,7 @@ def main():
     # governs, so nobody again reads a green run as a verdict on the file they
     # just edited.
     print("assist prompt:  %s   (refine, transcribe-clean, draft)" % args.assist)
+    print("writing path:   %s   (everything else that shapes the output)" % args.pipeline)
     print("cleanup prompt: %s   (the streaming mic only)" % args.version)
     print("cases: %d   spoken aloud: %d%s"
           % (len(cases), spoken,
@@ -549,6 +552,7 @@ def main():
 
     doc = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
            "promptVersion": args.version, "assistPrompt": args.assist,
+           "writingPath": args.pipeline,
            "repeat": args.repeat, "passed": len(passed),
            "failed": len(failed), "errored": len(errored),
            "total": len(results), "results": results}
@@ -581,9 +585,18 @@ def main():
         if prev.get("errored"):
             print("   the baseline had %d case(s) that never got an answer — those"
                   " show as FIXED below and mean nothing" % prev["errored"])
-        if prev.get("assistPrompt") == args.assist and args.assist != "unknown":
-            print("   the assist prompt is identical on both sides — any change"
-                  " below is the model varying, not your edit")
+        same_prompt = prev.get("assistPrompt") == args.assist and args.assist != "unknown"
+        same_code = prev.get("writingPath") == args.pipeline and args.pipeline != "unknown"
+        if same_prompt and same_code:
+            # Both halves unchanged: nothing that decides the output differs,
+            # so every line below is the model varying. Requiring BOTH matters
+            # — a release can leave the prompt untouched and still change the
+            # script derivation, the refusal filter and the leak guard.
+            print("   nothing that shapes the output changed between these runs —"
+                  " every difference below is the model varying, not your edit")
+        elif same_prompt:
+            print("   the prompt is identical; the difference is elsewhere in the"
+                  " writing path")
         elif args.repeat == 1:
             print("   single run each side: a one-case difference here is as"
                   " likely to be variance as a real change. --repeat 3 to tell them apart")

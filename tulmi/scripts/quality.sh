@@ -74,5 +74,24 @@ import("file:///app/tulmi/dist/tulmi/src/pipeline/assistPrompt.js").then(async (
   console.log(createHash("sha256").update(s).digest("hex").slice(0, 12));
 })')
 
+# THE PROMPT IS NOT THE ONLY THING THAT DECIDES THE OUTPUT.
+#
+# The assist fingerprint covers assistPrompt.ts and nothing else, so a release
+# that changed the script derivation, the refusal filter and the prompt-leak
+# guard — all of which live in cleanup.ts and all of which change what comes
+# back — left it identical. Identical looked like "nothing deployed", which
+# was wrong, and the opposite mistake is the expensive one.
+#
+# So hash the compiled writing path as well. Between them: a prompt edit moves
+# the first, any other change to how text is produced moves the second.
+PIPE=$(dex node -e '
+Promise.all([import("node:crypto"), import("node:fs")]).then(([c, fs]) => {
+  const h = c.createHash("sha256");
+  for (const f of ["/app/tulmi/dist/tulmi/src/pipeline/cleanup.js",
+                   "/app/tulmi/dist/tulmi/src/pipeline/assistPrompt.js"]) h.update(fs.readFileSync(f));
+  console.log(h.digest("hex").slice(0, 12));
+})')
+
 exec python3 tulmi/scripts/quality.py \
-  --api "$API" --token "$TOKEN" --version "$VER" --assist "${ASSIST:-unreadable}" "$@"
+  --api "$API" --token "$TOKEN" --version "$VER" \
+  --assist "${ASSIST:-unreadable}" --pipeline "${PIPE:-unreadable}" "$@"
