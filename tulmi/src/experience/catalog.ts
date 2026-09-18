@@ -175,18 +175,37 @@ export const SITE_UI = {
   again: "Again",
   said: "You said",
   wrote: "It wrote",
+  languages: "22 Indian languages, and most of the world's.",
+  invite: "No sign-up. It stops when you pause.",
   after: "That is the whole product. It works everywhere you type.",
   demoOff: "The live demo is resting. The apps below are not.",
   micDenied: "Your browser blocked the microphone. Allow it and try again.",
-  // WHAT IT NEVER DOES. Four promises rather than three features, because
-  // every one of them is a fault the quality harness tests for — a claim we
-  // can lose, not a claim we can make. Each is one line: the page is read
-  // standing up.
-  never: [
-    "Add a greeting you never spoke",
-    "Translate you into English",
-    "Answer a question you were sending",
-    "Change a number, a name or an amount",
+  /**
+   * THE LOOP. One field on the page, and these run through it until the
+   * visitor presses the microphone and replaces them with their own sentence.
+   *
+   * There are no tabs and no chapters, because the claim is not three
+   * labelled tricks — it is that the same thing happens whatever you speak
+   * and whatever script you speak it in. Ten of them go by in half a minute,
+   * so every line is short on purpose: a long one stalls the cycle and the
+   * point is the rhythm.
+   *
+   * Each line is a fault the quality harness already tests for, which is why
+   * they can be shown rather than claimed: filler dropped with every fact
+   * kept, two languages left as two languages, a misheard word repaired while
+   * the amount and the name are not touched.
+   */
+  cases: [
+    { lang: "ENGLISH", said: "um so like can we push the call to four", wrote: "Can we push the call to four?" },
+    { lang: "HINGLISH", said: "the deploy is done but abhi testing baaki hai", wrote: "The deploy is done, but abhi testing baaki hai." },
+    { lang: "हिन्दी", said: "हाँ वो फाइल वो मैंने भेज दी थी कल शाम को", wrote: "हाँ, वो फाइल मैंने कल शाम भेज दी थी।" },
+    { lang: "தமிழ்", said: "நான் இப்போ கிளம்பறேன் கொஞ்சம் லேட் ஆகும்", wrote: "நான் இப்போ கிளம்பறேன், கொஞ்சம் லேட் ஆகும்." },
+    { lang: "NUMBERS", said: "trensfer 2500 rupeez to ramesh tomorow", wrote: "Transfer 2500 rupees to Ramesh tomorrow." },
+    { lang: "বাংলা", said: "আমি কাল অফিসে আসব না একটু কাজ আছে", wrote: "আমি কাল অফিসে আসব না, একটু কাজ আছে।" },
+    { lang: "मराठी", said: "मी उद्या ऑफिसला येणार नाही जरा काम आहे", wrote: "मी उद्या ऑफिसला येणार नाही, जरा काम आहे." },
+    { lang: "ESPAÑOL", said: "eh o sea puedo llegar como a las siete", wrote: "Puedo llegar como a las siete." },
+    { lang: "తెలుగు", said: "నేను రేపు ఆఫీస్ కి రాను కొంచెం పని ఉంది", wrote: "నేను రేపు ఆఫీస్‌కి రాను, కొంచెం పని ఉంది." },
+    { lang: "ਪੰਜਾਬੀ", said: "ਮੈਂ ਕੱਲ੍ਹ ਨਹੀਂ ਆ ਸਕਦਾ ਥੋੜ੍ਹਾ ਕੰਮ ਹੈ", wrote: "ਮੈਂ ਕੱਲ੍ਹ ਨਹੀਂ ਆ ਸਕਦਾ, ਥੋੜ੍ਹਾ ਕੰਮ ਹੈ।" },
   ],
   price: "Free to {words} words a month.",
   download: { win: "Windows", mac: "macOS", linux: "Linux", ios: "iPhone", android: "Android", soon: "soon" },

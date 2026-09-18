@@ -86,8 +86,16 @@ describe("the landing page", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.copy.headline).toBe("Watch it take the mess out.");
-    // Four promises, each of them a fault the quality harness tests for.
-    expect(body.copy.never).toHaveLength(4);
+    // The page is one field running one loop, so the loop has to arrive with
+    // it — and every case needs all three parts or the field types a blank.
+    expect(body.copy.cases.length).toBeGreaterThan(3);
+    for (const c of body.copy.cases) {
+      expect(c.lang.length).toBeGreaterThan(0);
+      expect(c.said.length).toBeGreaterThan(0);
+      expect(c.wrote.length).toBeGreaterThan(0);
+      // A case whose two sides match demonstrates nothing.
+      expect(c.wrote).not.toBe(c.said);
+    }
     expect(typeof body.freeWords).toBe("number");
     expect(body.demo).toBe(true);
     expect(body.maxSeconds).toBe(15);
