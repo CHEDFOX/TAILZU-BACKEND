@@ -76,8 +76,29 @@ function common(): Record<string, unknown> {
     : { reasoning: { effort: REASONING_EFFORT } };
 }
 
-const TEMPERATURE = 0.2; // low: faithful cleanup, not creativity
-const REPLY_TEMPERATURE = 0.4; // a touch more latitude for natural drafting
+/**
+ * Temperature for the writing pass. Faithfulness is the whole job here, and
+ * sampling is the opposite of faithful.
+ *
+ * WHY THIS MOVED FROM 0.2 TO 0. Run the same 79 cases three times against an
+ * unchanged server and the answers differ: "mujhe kal subah jaldi uthna hai"
+ * came back in Devanagari once in three, with the script stated as a measured
+ * fact and transliteration forbidden in the prompt. That is not the prompt
+ * losing an argument, it is the sampler picking a less likely token, and no
+ * amount of instruction fixes a coin.
+ *
+ * It is also what made every comparison hard to read: several cases have now
+ * printed REGRESSED on a run where nothing changed. A rewrite of a sentence
+ * someone just said has one good answer, not a distribution over several.
+ *
+ * Env-settable so this is a decision that can be measured rather than argued
+ * about — CLEANUP_TEMPERATURE=0.2 restores the old behaviour, and the quality
+ * harness is the place to settle whether variety was ever worth anything.
+ */
+export const TEMPERATURE = Number(process.env.CLEANUP_TEMPERATURE ?? 0);
+// Drafting a reply from someone else's message is a genuinely open task —
+// there are many good replies — so it keeps its latitude.
+export const REPLY_TEMPERATURE = Number(process.env.REPLY_TEMPERATURE ?? 0.4);
 
 // Output ceilings. Set explicitly so OpenRouter's per-request credit
 // reservation matches what we actually produce (~200 tokens for cleanup,

@@ -6,7 +6,7 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import { stripEchoedContext } from "../src/pipeline/cleanup.js";
+import { stripEchoedContext, TEMPERATURE, REPLY_TEMPERATURE } from "../src/pipeline/cleanup.js";
 
 /**
  * The field keeps what the user already typed. The keyboard's deferred path
@@ -78,5 +78,23 @@ describe("stripEchoedContext", () => {
     // The context must be fully consumed before anything is removed.
     expect(stripEchoedContext("I checked with the", "I checked with the team and"))
       .toBe("I checked with the");
+  });
+});
+
+describe("the writing pass is not a creative task", () => {
+  it("samples nothing by default", () => {
+    // Three runs of the same 79 cases against an unchanged server disagreed:
+    // "mujhe kal subah jaldi uthna hai" came back in Devanagari once in
+    // three, with the script stated as a measured fact and transliteration
+    // forbidden in the prompt. That is the sampler picking a less likely
+    // token, not the prompt losing an argument, and no instruction fixes a
+    // coin. A rewrite of a sentence someone just said has one good answer.
+    expect(TEMPERATURE).toBe(0);
+  });
+
+  it("leaves drafting its latitude", () => {
+    // Drafting a reply to someone else's message is genuinely open — there
+    // are many good replies — so it is not the same decision.
+    expect(REPLY_TEMPERATURE).toBeGreaterThan(0);
   });
 });

@@ -101,3 +101,4 @@ describe("config guards", () => {
     expect(() => getConfig()).toThrow(/GROQ_API_KEY/);
   });
 });
+

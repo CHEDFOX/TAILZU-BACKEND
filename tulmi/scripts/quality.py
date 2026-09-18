@@ -461,10 +461,27 @@ def main():
             # path cannot assert a fixed script the way the keyboard path
             # does; what it can assert is that the writer did not change the
             # one it was handed. That is the WRITER's fault, so it counts.
+            #
+            # UNLESS THE FLIP IS A CORRECTION. Asked for Tamil, the recogniser
+            # returned Tamil words spelled in Devanagari — "नान कुँझ्चम
+            # तामदमाग वरुवेन" — and the writer put them back into Tamil. That
+            # is the right answer and this check called it a fault, because it
+            # treated the recogniser's script as authoritative. It is not: a
+            # recogniser can pick the wrong alphabet outright.
+            #
+            # So a flip only counts against the writer when it moves AWAY from
+            # what was actually said. Moving toward it is the recovery this
+            # whole stage exists to provide.
             if case.get("keep_transcript_script") and transcript.strip():
-                a, b = dominant_script(transcript), dominant_script(out)
-                if a != "none" and b != a:
-                    bad.append("writer flipped the script: heard %s, wrote %s" % (a, b))
+                heard_s = dominant_script(transcript)
+                wrote_s = dominant_script(out)
+                said_s = dominant_script(case["say"])
+                if heard_s != "none" and wrote_s != heard_s and wrote_s != said_s:
+                    bad.append("writer flipped the script: heard %s, said %s, wrote %s"
+                               % (heard_s, said_s, wrote_s))
+                elif heard_s != "none" and wrote_s != heard_s:
+                    drift.append("recogniser used %s for %s speech; the writer put it back"
+                                 % (heard_s, said_s))
         # Drift explains a bad output; on a good one it is worth saying out
         # loud and worth nothing against the score.
         return {"transcript": transcript, "output": out, "error": err,
