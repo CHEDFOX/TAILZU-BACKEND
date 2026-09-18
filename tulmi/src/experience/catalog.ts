@@ -161,25 +161,32 @@ export const POLICY = {
  * is made by the visitor's own sentence coming back clean.
  */
 export const SITE_UI = {
-  headline: "Say something.",
-  sub: "No sign-up. A few seconds of your voice, written the way you would have typed it.",
+  // The page is one demonstration, so the headline points at it rather than
+  // describing the product. Nobody believes a claim about dictation; they
+  // believe the mess turning into a sentence in front of them.
+  headline: "Watch it take the mess out.",
+  sub: "Nobody speaks in clean sentences. Tailzu keeps every word you meant and drops every one you didn't.",
   // Press, not hold. A long press on a phone selects text and opens menus,
   // and a clip this short does not need a second gesture to end: it stops
   // itself when you pause, or at the cap.
-  cta: "Press and talk",
-  ctaHeld: "Listening — it stops when you pause",
+  cta: "Use your own voice",
+  ctaHeld: "Stop",
   writing: "Writing",
-  again: "Try another",
-  suggest: ["Try it in Hindi.", "Say a phone number.", "Mix two languages."],
+  again: "Again",
   said: "You said",
   wrote: "It wrote",
   after: "That is the whole product. It works everywhere you type.",
-  demoOff: "The live demo is resting. The apps are not.",
+  demoOff: "The live demo is resting. The apps below are not.",
   micDenied: "Your browser blocked the microphone. Allow it and try again.",
-  promises: [
-    { title: "Your voice, not a style", body: "Filler and false starts gone. Nothing added, nothing invented." },
-    { title: "22 Indian languages", body: "And most of the world's. Mix two in one sentence — both come back the way you said them." },
-    { title: "Every app you use", body: "A keyboard on your phone. Double-tap Ctrl on your desk. It lands where the cursor is." },
+  // WHAT IT NEVER DOES. Four promises rather than three features, because
+  // every one of them is a fault the quality harness tests for — a claim we
+  // can lose, not a claim we can make. Each is one line: the page is read
+  // standing up.
+  never: [
+    "Add a greeting you never spoke",
+    "Translate you into English",
+    "Answer a question you were sending",
+    "Change a number, a name or an amount",
   ],
   price: "Free to {words} words a month.",
   download: { win: "Windows", mac: "macOS", linux: "Linux", ios: "iPhone", android: "Android", soon: "soon" },

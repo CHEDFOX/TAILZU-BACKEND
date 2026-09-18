@@ -85,8 +85,9 @@ describe("the landing page", () => {
     const res = await app.inject({ method: "GET", url: "/v1/site" });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.copy.headline).toBe("Say something.");
-    expect(body.copy.promises).toHaveLength(3);
+    expect(body.copy.headline).toBe("Watch it take the mess out.");
+    // Four promises, each of them a fault the quality harness tests for.
+    expect(body.copy.never).toHaveLength(4);
     expect(typeof body.freeWords).toBe("number");
     expect(body.demo).toBe(true);
     expect(body.maxSeconds).toBe(15);
