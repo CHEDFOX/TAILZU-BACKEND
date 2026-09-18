@@ -234,6 +234,20 @@ def check(case, out, stage="out"):
 
 # --- talking to the server --------------------------------------------------
 
+class Exhausted(Exception):
+    """The account ran out of quota. Not a quality result — a stopped run.
+
+    A 79-case pass at --repeat 3 spent the synthetic user's monthly words
+    around a third of the way in. Every remaining case then "failed" with a
+    429, the report read 16 passed / 63 failed, and --compare printed 57
+    REGRESSED against a healthy baseline. None of it was true, and it was
+    saved to disk where it would have been compared against again.
+
+    So this stops the run where it happens. A harness that cannot get an
+    answer must say so, not score the silence.
+    """
+
+
 def _send(req, timeout, binary=False):
     """One request with backoff. A harness reports failures, never raises."""
     for attempt in range(4):
@@ -242,6 +256,11 @@ def _send(req, timeout, binary=False):
                 return (r.read() if binary else json.load(r)), None
         except urllib.error.HTTPError as e:
             body = e.read()[:160].decode("utf8", "replace")
+            # A 429 is two different things. Rate limiting passes with time,
+            # so it is retried; a spent monthly allowance does not, so
+            # retrying it three times just spends three more seconds.
+            if e.code == 429 and "quota_exceeded" in body:
+                raise Exhausted(body) from None
             if e.code in (429, 500, 502, 503, 504) and attempt < 3:
                 time.sleep(2 ** attempt)
                 continue
@@ -332,6 +351,18 @@ def run_case(api, token, case, audio_format="wav"):
             body[k] = case[k]
     res, err = post_json(api, token, "/v1/refine", body)
     return "", (res or {}).get("refinedText", ""), err
+
+
+def synthetic_user_id(token):
+    """The id a STATIC_BEARER_TOKENS value resolves to, server-side.
+
+    Mirrors matchStaticToken in src/auth/supabase.ts: "static-" plus the first
+    12 hex of the token's SHA-256. Computed here so the harness can name the
+    id in the one message where it is needed, instead of sending someone to
+    read the source while a run sits broken.
+    """
+    import hashlib
+    return "static-" + hashlib.sha256(token.encode()).hexdigest()[:12]
 
 
 # --- reporting --------------------------------------------------------------
@@ -436,8 +467,26 @@ def main():
             **shown,
         }
 
-    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        list(pool.map(run, range(len(cases))))
+    try:
+        with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+            list(pool.map(run, range(len(cases))))
+    except Exhausted as e:
+        done = sum(1 for r in results if r)
+        print()
+        print("STOPPED after %d of %d cases — the account is out of words." % (done, len(cases)))
+        print("  %s" % str(e)[:200])
+        print()
+        print("Nothing was saved. A partial run is not a quality result, and the")
+        print("last one like this reported 57 REGRESSED against a healthy baseline.")
+        print()
+        print("The token authenticates as a synthetic user that cannot hold an")
+        print("entitlement (its id is not a UUID), so the cap is lifted by id:")
+        print()
+        print("    QUOTA_EXEMPT_USER_IDS=%s" % synthetic_user_id(args.token))
+        print()
+        print("Add that to tulmi/.env, rebuild, and run again. It is a billing")
+        print("bypass for exactly one operator id — never put a real account in it.")
+        return 2
 
     groups = []
     for r in results:
@@ -486,13 +535,23 @@ def main():
         print("recognition: median WER %.2f across %d spoken cases  (0.00 is perfect)%s"
               % (sorted(heard)[len(heard) // 2], len(heard),
                  "; %d not scored, heard in another script" % len(skipped) if skipped else ""))
-    print("%d passed, %d failed  (%d cases, %.0fs)"
-          % (len(passed), len(failed), len(results), time.time() - started))
+    # An error is not a verdict. A case that never got an answer says nothing
+    # about quality, and counting it as a failure is how a broken run comes to
+    # look like a bad prompt.
+    errored = [r for r in results if r.get("error")]
+    print("%d passed, %d failed%s  (%d cases, %.0fs)"
+          % (len(passed), len(failed) - len(errored),
+             ", %d errored" % len(errored) if errored else "",
+             len(results), time.time() - started))
+    if errored:
+        print("  %d case(s) never got an answer — this run is not a clean baseline"
+              % len(errored))
 
     doc = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
            "promptVersion": args.version, "assistPrompt": args.assist,
            "repeat": args.repeat, "passed": len(passed),
-           "failed": len(failed), "total": len(results), "results": results}
+           "failed": len(failed), "errored": len(errored),
+           "total": len(results), "results": results}
     out_path = Path(args.out) if args.out else (
         HERE.parent / ".quality" / ("run-%s.json" % datetime.now().strftime("%Y%m%d-%H%M%S")))
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -519,6 +578,9 @@ def main():
         # Say when a difference cannot be attributed. Same prompt on both
         # sides means every FIXED and REGRESSED below is the model varying,
         # not a change; single-sample runs cannot separate the two at all.
+        if prev.get("errored"):
+            print("   the baseline had %d case(s) that never got an answer — those"
+                  " show as FIXED below and mean nothing" % prev["errored"])
         if prev.get("assistPrompt") == args.assist and args.assist != "unknown":
             print("   the assist prompt is identical on both sides — any change"
                   " below is the model varying, not your edit")

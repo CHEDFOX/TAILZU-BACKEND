@@ -214,6 +214,19 @@ export async function usageWindows(
  * Cheap enough to call on every request path: one indexed query per user per
  * request, cached at Supabase.
  */
+/**
+ * Is this id on the operator exemption list?
+ *
+ * Exact match after trimming, never a prefix or a pattern: this lifts a
+ * billing cap, and every shortcut that makes such a list convenient also makes
+ * it possible to exempt more than was meant. An empty or absent list exempts
+ * nobody, which is the default.
+ */
+export function isQuotaExempt(id: string, configured: string | undefined): boolean {
+  if (!configured || !id) return false;
+  return configured.split(",").some((entry) => entry.trim() === id);
+}
+
 export async function enforceQuota(user: AuthedUser): Promise<string | null> {
   // Paying users are not metered. This check did not exist, so a subscriber
   // was counted against the free monthly cap like everyone else and cut off
@@ -227,6 +240,12 @@ export async function enforceQuota(user: AuthedUser): Promise<string | null> {
   if (await isEntitled(user)) return null;
 
   const cfg = getConfig();
+  // Operator tokens, listed one id at a time. See QUOTA_EXEMPT_USER_IDS —
+  // this exists because a static bearer token resolves to a `static-<hash>`
+  // user, which cannot hold an entitlements row (that table's foreign key
+  // points at auth.users), so the quality harness had no way to run a full
+  // pass without spending a real monthly allowance.
+  if (isQuotaExempt(user.id, cfg.QUOTA_EXEMPT_USER_IDS)) return null;
   const capAudio = cfg.FREE_MONTHLY_AUDIO_SECONDS;
   const capWords = cfg.FREE_MONTHLY_WORDS;
   if (capAudio <= 0 && capWords <= 0) return null; // no limit configured

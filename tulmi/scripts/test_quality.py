@@ -14,7 +14,8 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from quality import (check, dominant_script, scripts_in, wer,  # noqa: E402
+from quality import (Exhausted, check, dominant_script, scripts_in,  # noqa: E402
+                     synthetic_user_id, wer,
                      wer_if_comparable)
 from quality_cases import CASES  # noqa: E402
 
@@ -156,6 +157,27 @@ class Checks(unittest.TestCase):
         self.assertTrue(check(case, "call me on 98200 41123", stage="transcript"))
         # A plain key must not be applied to the transcript stage.
         self.assertEqual(check({"say": "x", "forbid": ["um"]}, "um hello", stage="transcript"), [])
+
+
+class StoppingCleanly(unittest.TestCase):
+    def test_the_synthetic_id_matches_the_server(self):
+        # Mirrors matchStaticToken in src/auth/supabase.ts: "static-" plus the
+        # first 12 hex of the token's SHA-256. If that derivation ever changes,
+        # the harness would print an id that exempts nobody and the run would
+        # keep failing for a reason the message said was fixed.
+        import hashlib
+        token = "a-long-enough-operator-token-value"
+        want = "static-" + hashlib.sha256(token.encode()).hexdigest()[:12]
+        self.assertEqual(synthetic_user_id(token), want)
+        self.assertTrue(synthetic_user_id(token).startswith("static-"))
+        self.assertEqual(len(synthetic_user_id(token)), len("static-") + 12)
+
+    def test_a_spent_allowance_is_not_a_quality_result(self):
+        # The whole point of Exhausted: it is raised rather than recorded, so
+        # a run that cannot get answers stops instead of scoring the silence.
+        # The last time it did not, 63 quota errors were reported as failures
+        # and --compare printed 57 REGRESSED against a healthy baseline.
+        self.assertTrue(issubclass(Exhausted, Exception))
 
 
 class CaseFile(unittest.TestCase):

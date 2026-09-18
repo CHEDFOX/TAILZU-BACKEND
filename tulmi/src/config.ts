@@ -465,6 +465,22 @@ const EnvSchema = z.object({
    * 0 disables a cap. Audio is left at 0 on purpose — one meter is legible,
    * two is a thing users have to reason about.
    */
+  /**
+   * User ids that skip the free-tier cap. Comma-separated, empty by default.
+   *
+   * FOR OPERATOR TOKENS, AND IT IS A BILLING BYPASS — hence a list of exact
+   * ids rather than a flag. The quality harness authenticates with a
+   * STATIC_BEARER_TOKENS value, which resolves to a synthetic `static-<hash>`
+   * user; that id is not a UUID, so it cannot have an entitlements row (the
+   * table's foreign key points at auth.users), and there was no other way to
+   * lift the cap for it. A 79-case run exhausted the monthly free words and
+   * reported 63 quota errors as quality failures.
+   *
+   * Do not put a real account in here. Raising FREE_MONTHLY_WORDS instead
+   * would have done the same job for the harness and handed it to every user
+   * at the same time.
+   */
+  QUOTA_EXEMPT_USER_IDS: z.string().optional(),
   FREE_MONTHLY_AUDIO_SECONDS: z.coerce.number().default(0),
   FREE_MONTHLY_WORDS: z.coerce.number().default(800),
 

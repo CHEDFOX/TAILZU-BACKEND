@@ -8,6 +8,7 @@ process.env.NODE_ENV = "test";
 
 // eslint-disable-next-line import/first
 import { computeAllowance, type UsageMoment } from "../src/usage/allowance.js";
+import { isQuotaExempt } from "../src/usage/metering.js";
 
 const DAY = 86_400_000;
 const NOW = Date.parse("2026-03-20T12:00:00Z");
@@ -134,5 +135,32 @@ describe("earned words", () => {
     // The burst bonus is folded into the day it happened, so the chart's
     // slices add up to the earned total the meter shows.
     expect(a.perVisit.reduce((n, v) => n + v.words, 0)).toBe(a.earned);
+  });
+});
+
+describe("the operator exemption", () => {
+  // Added because a full quality run exhausted the free monthly words and the
+  // harness reported 63 quota errors as quality failures. A static bearer
+  // token resolves to a `static-<hash>` user, which is not a UUID and so
+  // cannot hold an entitlements row — there was no other way to lift the cap.
+  it("exempts nobody by default", () => {
+    expect(isQuotaExempt("static-abc123", undefined)).toBe(false);
+    expect(isQuotaExempt("static-abc123", "")).toBe(false);
+    expect(isQuotaExempt("static-abc123", "   ")).toBe(false);
+  });
+
+  it("matches one listed id, and tolerates spacing", () => {
+    expect(isQuotaExempt("static-abc123", "static-abc123")).toBe(true);
+    expect(isQuotaExempt("static-abc123", "other, static-abc123 , third")).toBe(true);
+  });
+
+  it("matches EXACTLY — never a prefix, never a pattern", () => {
+    // This lifts a billing cap. Every shortcut that makes the list convenient
+    // also makes it possible to exempt more people than were meant.
+    expect(isQuotaExempt("static-abc123", "static-")).toBe(false);
+    expect(isQuotaExempt("static-abc123", "static")).toBe(false);
+    expect(isQuotaExempt("static-abc123", "*")).toBe(false);
+    expect(isQuotaExempt("static-abc1234", "static-abc123")).toBe(false);
+    expect(isQuotaExempt("", "static-abc123")).toBe(false);
   });
 });
