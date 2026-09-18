@@ -179,8 +179,14 @@ def check(case, out, stage="out"):
         return ["empty %s" % stage]
 
     if stage == "out" and not case.get("allow_meta"):
+        # ONLY WHEN THE MODEL INTRODUCED IT. The leak guard now returns the
+        # user's own text for a message that addresses the model, which is
+        # correct — and this check then failed it for containing "system
+        # prompt", a phrase the user had typed. The server makes the same
+        # distinction in finalizeCompletion and for the same reason.
+        said = (case.get("text") or case.get("say") or case.get("intent") or "").lower()
         for phrase in META:
-            if phrase in low:
+            if phrase in low and phrase not in said:
                 bad.append("assistant voice leaked: %r" % phrase)
 
     grow = get("max_growth")

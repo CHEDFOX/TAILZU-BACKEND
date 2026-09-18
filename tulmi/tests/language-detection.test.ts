@@ -10,7 +10,7 @@
  * flagship case) broke outright.
  */
 import { describe, expect, it } from "vitest";
-import { detectScript, leadsOnScript, romanHindiScore, readsAsRomanHindi } from "../src/pipeline/stt.js";
+import { detectScript, leadsOnScript, romanHindiScore, readsAsRomanHindi, mixesEnglishAndRomanHindi } from "../src/pipeline/stt.js";
 import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
 
 describe("detectScript — observed, not declared", () => {
@@ -181,5 +181,67 @@ describe("romanized Hindi, measured", () => {
     // be the thing that hands it one.
     expect(readsAsRomanHindi("I will be a little late", "je serai un peu en retard")).toBe(false);
     expect(romanHindiScore("je serai un peu en retard")).toBe(0);
+  });
+});
+
+describe("one sentence, two languages, one script", () => {
+  // The script fact fixed romanized Hindi being pushed into Devanagari. It
+  // cannot reach this: "the deploy is done but abhi testing baaki hai" is
+  // Latin end to end, so "Theirs was latin." is true and settles nothing, and
+  // the model repairs whichever language is outnumbered. It came back "The
+  // deploy is done, but testing is still pending." on the deployed server,
+  // three runs of three, with a rule in the prompt forbidding exactly that.
+  const mixed = [
+    "the deploy is done but abhi testing baaki hai",
+    "kal ka meeting cancel ho gaya so please inform the team",
+    "I will be there by 5 lekin traffic bahut zyada hai",
+  ];
+  for (const t of mixed) {
+    it(`sees the mixture: ${t.slice(0, 32)}…`, () =>
+      expect(mixesEnglishAndRomanHindi(t)).toBe(true));
+  }
+
+  // The cost of a false positive is telling someone writing plain English
+  // that they are writing two languages, so both sides must be clearly there.
+  const notMixed = [
+    "the deploy is done but testing is still pending",
+    "please send me the invoice before friday and copy priya",
+    // Hindi with English NOUNS in it is not a mixture — those are the very
+    // words Hindi borrows, which is why only function words count.
+    "mera deploy ka kaam abhi baaki hai",
+    "yaar kal ka plan cancel ho gaya hai",
+    "ok",
+    "",
+    "12345",
+  ];
+  for (const t of notMixed) {
+    it(`leaves it alone: ${JSON.stringify(t.slice(0, 32))}`, () =>
+      expect(mixesEnglishAndRomanHindi(t)).toBe(false));
+  }
+});
+
+describe("what the prompt is told about a mixed sentence", () => {
+  it("states it as an observation, not another rule", () => {
+    // The rule was already there and lost three runs of three. An observation
+    // about THIS sentence is not something to weigh — which is exactly why
+    // the script line works where the script rule alone did not.
+    const t = buildAssistSystem({ hasContext: false, script: "latin", mixedLanguages: true });
+    expect(t).toMatch(/in two languages at once/i);
+    expect(t).toMatch(/every word stays in the language it arrived in/i);
+  });
+
+  it("says nothing when the sentence is in one language", () => {
+    const t = buildAssistSystem({ hasContext: false, script: "latin" });
+    expect(t).not.toMatch(/two languages at once/i);
+  });
+
+  it("does not push the prompt past its length guard", () => {
+    // The file's own rule: adding to it should feel expensive. If this fails,
+    // the fix is to find which line is now redundant — not to raise the cap.
+    const t = buildAssistSystem({
+      hasContext: true, targetApp: "WhatsApp", script: "latin",
+      mixedLanguages: true, hasAlternative: true,
+    });
+    expect(t.length).toBeLessThan(2400);
   });
 });

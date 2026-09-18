@@ -134,7 +134,62 @@ const ROMAN_HINDI = new Set([
   "bhi", "toh", "phir", "abhi", "lekin", "magar", "isliye", "matlab", "waise",
   "bahut", "bohot", "zyada", "thoda", "jaldi", "bilkul", "accha", "achha",
   "theek", "thik", "yaar", "bhai", "arre", "arey", "wala", "wali", "ekdum",
+  // The grammar, which was the gap: the list had pronouns and verbs but not
+  // the particles that hold a Hindi sentence together, so "kal ka meeting
+  // cancel ho gaya so please inform the team" scored on one word.
+  //
+  // NOTHING THAT IS ALSO AN ENGLISH WORD. "hi", "to", "so", "par", "in" and
+  // "at" are all real romanized Hindi and all excluded, because a marker that
+  // fires on English would make every English sentence look part-Hindi and
+  // the mixture signal worthless in the direction that matters most.
+  "kal", "aaj", "ka", "ki", "ke", "ko", "ho", "hota", "hote", "hoti",
+  "aur", "mein", "se", "tak", "ab", "jab", "tab", "agar", "bas", "sirf",
+  "baaki", "jaana", "aana", "dena", "lena", "wapas", "zaroor", "shayad",
 ]);
+
+/**
+ * English words so common that seeing several means English is really there,
+ * not that one loanword drifted in. Function words only: "deploy", "testing"
+ * and "meeting" are English too and are exactly the words a Hindi sentence
+ * borrows, so counting them would call almost anything mixed.
+ */
+const ENGLISH_FUNCTION = new Set([
+  "the", "a", "an", "is", "are", "was", "were", "be", "been", "am",
+  "and", "but", "or", "so", "if", "then", "than", "because",
+  "of", "to", "in", "on", "at", "for", "with", "from", "by", "about",
+  "this", "that", "these", "those", "it", "its",
+  "we", "you", "they", "he", "she", "i", "me", "my", "your", "our", "their",
+  "will", "would", "can", "could", "should", "have", "has", "had",
+  "not", "no", "do", "does", "did", "get", "got", "done",
+]);
+
+/**
+ * One sentence, two languages, one script — the case nothing else can see.
+ *
+ * The writing step is told the user's SCRIPT as a measured fact, and that
+ * fixed romanized Hindi being pushed into Devanagari. It cannot help here:
+ * "the deploy is done but abhi testing baaki hai" is Latin from end to end, so
+ * the fact is true and says nothing, and the model repairs whichever language
+ * is outnumbered. It came back "The deploy is done, but testing is still
+ * pending." on the deployed server, three runs out of three, with a rule in
+ * the prompt explicitly forbidding it.
+ *
+ * So this measures the mixture too, and states it. BOTH sides have to be
+ * clearly present — two Hindi markers and two English function words — because
+ * the cost of a false positive is telling someone writing plain English that
+ * they are writing two languages.
+ */
+export function mixesEnglishAndRomanHindi(text: string): boolean {
+  const words = text.toLowerCase().match(/[a-z']+/g);
+  if (!words || words.length < 4) return false;
+  let hindi = 0;
+  let english = 0;
+  for (const w of words) {
+    if (ROMAN_HINDI.has(w)) hindi++;
+    else if (ENGLISH_FUNCTION.has(w)) english++;
+  }
+  return hindi >= 2 && english >= 2;
+}
 
 /**
  * How much of this reads as romanized Hindi, 0..1.
@@ -577,7 +632,35 @@ export const STT_ENGINES = {
 
 export type SttEngineName = keyof typeof STT_ENGINES;
 
+/**
+ * Below this, there is no speech to find and every provider says so with an
+ * error. A tenth of a second of audio is not a word in any language.
+ */
+export const MIN_USABLE_AUDIO_BYTES = 1024;
+
 export async function transcribe(input: SttInput): Promise<SttResult> {
+  // A CLIP WITH NOTHING IN IT NEVER REACHES A PROVIDER.
+  //
+  // Recognisers reject audio that is empty or too short with a 4xx, which
+  // threw, which the route turned into a 500. So recording silence and
+  // stopping — a thing people do by accident constantly — answered "Pipeline
+  // failed" instead of writing nothing. Measured on the deployed server:
+  // dictation/silence-writes-nothing, two runs in three.
+  //
+  // Decided locally, before any network call, so it stays a statement about
+  // the AUDIO. Swallowing a provider's 5xx as "you said nothing" would hide a
+  // real outage behind a shrug and leave the user thinking their words
+  // vanished; that error still travels.
+  if (!input.audio || input.audio.length < MIN_USABLE_AUDIO_BYTES) {
+    return {
+      text: "",
+      durationSeconds: estimateDurationSeconds(input.audio, input.format),
+      script: "unknown",
+      detectedLanguage: undefined,
+      engine: "none",
+      alternative: undefined,
+    };
+  }
   // Provider selection (and its fallback) lives in transcribeWithProvider.
   const raw: RawSttResult = await transcribeWithProvider(input);
 

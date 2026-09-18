@@ -16,7 +16,7 @@ import {
   parsePortraitDraft, type PortraitDraft,
 } from "./portraitDimensions.js";
 import { buildAssistSystem, portraitBlock } from "./assistPrompt.js";
-import { detectScript } from "./stt.js";
+import { detectScript, mixesEnglishAndRomanHindi } from "./stt.js";
 
 /**
  * The script a piece of text is written in, or undefined when there is no
@@ -451,6 +451,9 @@ export async function assist(
     // them and a fourth will be added without this. A caller that DID measure
     // it (the STT path, which sees the recognizer's own reading) still wins.
     script: opts.script ?? scriptOf(message),
+    // Only meaningful within one script — a sentence that already switches
+    // alphabets shows its own mixture, and the script fact carries it.
+    mixedLanguages: mixesEnglishAndRomanHindi(message),
     hasContext: !!context,
     hasAlternative,
   });

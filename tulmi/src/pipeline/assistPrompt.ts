@@ -209,6 +209,9 @@ export function buildAssistSystem(opts: {
   /** True when the user message carries TWO candidate transcripts that need
    *  reconciling before the writing task begins. */
   hasAlternative?: boolean;
+  /** Measured: this text is English and romanized Hindi in one sentence, which
+   *  the script fact cannot express because both halves are Latin. */
+  mixedLanguages?: boolean;
 }): string {
   const guidance = toneGuidance(opts.tone, opts.personality, opts.tonePrompt);
   const lang = opts.language && opts.language !== "auto" ? opts.language : "";
@@ -266,6 +269,20 @@ export function buildAssistSystem(opts: {
     // Hinglish drifts into Devanagari.
     opts.script && opts.script !== "unknown"
       ? `Theirs was ${opts.script}.`
+      : null,
+    // MEASURED, LIKE THE SCRIPT, AND FOR THE SAME REASON.
+    //
+    // The rule above says a sentence may hold two languages. It was in the
+    // prompt, and "the deploy is done but abhi testing baaki hai" still came
+    // back entirely in English, three runs of three — because the script fact
+    // is "latin" for both halves and so settles nothing, leaving the model to
+    // repair whichever language is outnumbered.
+    //
+    // A rule is something to weigh; an observation about THIS sentence is not.
+    // That difference is what made the script line work, and it is the only
+    // thing left to try short of a different model.
+    opts.mixedLanguages
+      ? "This one is in two languages at once, English and romanized Hindi. Both halves are theirs: every word stays in the language it arrived in."
       : null,
     "",
     app
