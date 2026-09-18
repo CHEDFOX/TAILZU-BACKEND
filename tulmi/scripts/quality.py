@@ -1,0 +1,473 @@
+#!/usr/bin/env python3
+"""
+End-to-end quality harness: dictation in, finished text out.
+
+Asks the DEPLOYED backend to do the whole job, over HTTP, as the app does.
+Nothing is mocked — real prompt version, real recognisers, real language
+rules, real personality handling.
+
+    cd ~/tulmi && ./tulmi/scripts/quality.sh                  # everything
+    cd ~/tulmi && ./tulmi/scripts/quality.sh --quick          # smoke subset
+    cd ~/tulmi && ./tulmi/scripts/quality.sh --only dictation # one group
+    cd ~/tulmi && ./tulmi/scripts/quality.sh --no-audio       # skip the mic path
+    cd ~/tulmi && ./tulmi/scripts/quality.sh --compare .quality/run-<ts>.json
+
+THREE PATHS, WHICH IS THE POINT.
+
+  dictate   POST /v1/speak to synthesise the sentence, then POST the audio to
+            /v1/transcribe-clean exactly as the app's mic does. The response
+            carries BOTH stages, so a failure says which one broke: what the
+            recogniser HEARD and what the writer WROTE. A refinement fault and
+            a recognition fault look identical from the outside and need
+            completely different fixes.
+  refine    POST /v1/refine — the keyboard's path, text in.
+  draft     POST /v1/draft — the reply/share-sheet path.
+
+WHAT THE AUDIO PATH DOES NOT PROVE. Synthesised speech is clean: no accent,
+no room, no crosstalk, no real hesitation. It exercises the pipeline, the
+language and script decisions, and the recogniser's handling of Indic and
+non-Indic input. It does not stand in for a noisy kitchen. Cases ask TTS for
+a hurried, natural delivery, which narrows the gap without closing it.
+
+WHY NOT `npm run eval`. That calls assist() in process and is right while
+editing a prompt — but the production image is built --omit=dev, has no tsx,
+and cannot run where the thing being questioned actually runs.
+
+A case asserts a PROPERTY, never an exact sentence. The model may write it a
+dozen good ways; a harness that pins wording fails on every improvement.
+
+Stdlib only. The server is the only dependency.
+"""
+import argparse
+import json
+import os
+import re
+import sys
+import time
+import unicodedata
+import urllib.error
+import urllib.request
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from quality_cases import CASES  # noqa: E402
+
+# Phrasings that are the assistant talking rather than the user sending.
+# Deliberately tight — a loose list flags real messages. Applied everywhere
+# unless a case opts out, because leaking one of these into someone's chat is
+# the most visible way this can fail.
+META = [
+    "here's the refined", "here is the refined", "here's your refined",
+    "here is your refined", "i've refined", "i have refined",
+    "as an ai", "as an assistant", "as a language model",
+    "let me know if you'd like", "let me know if you need any changes",
+    "sure, here", "certainly! here", "i'm sorry, but i",
+    "system prompt", "you are the writing assistant",
+]
+
+SCRIPT_BLOCKS = [
+    "DEVANAGARI", "TAMIL", "BENGALI", "GURMUKHI", "TELUGU", "KANNADA",
+    "MALAYALAM", "GUJARATI", "ORIYA", "ARABIC", "CYRILLIC", "HIRAGANA",
+    "KATAKANA", "CJK", "HANGUL", "HEBREW", "THAI",
+]
+
+
+def scripts_in(text):
+    found = {}
+    for ch in text:
+        if not ch.isalpha():
+            continue
+        if ch.isascii():
+            found["latin"] = found.get("latin", 0) + 1
+            continue
+        name = unicodedata.name(ch, "")
+        for block in SCRIPT_BLOCKS:
+            if block in name:
+                found[block.lower()] = found.get(block.lower(), 0) + 1
+                break
+        else:
+            if "LATIN" in name:
+                found["latin"] = found.get("latin", 0) + 1
+    return found
+
+
+def dominant_script(text):
+    """The script most of the letters are in.
+
+    Counting matters: 'the first non-ASCII letter wins' calls a whole English
+    sentence Devanagari because one word survived, which is the opposite of
+    what a script check is for.
+    """
+    found = scripts_in(text)
+    return max(found.items(), key=lambda kv: kv[1])[0] if found else "none"
+
+
+def words(text):
+    return re.findall(r"\S+", text)
+
+
+def digits(text):
+    return re.sub(r"\D", "", text)
+
+
+def norm_words(text):
+    """Lowercased, punctuation-free words — for comparing what was said to
+    what was heard without scoring a comma as a mistake."""
+    out = []
+    for w in text.split():
+        w = "".join(c for c in w if not unicodedata.category(c).startswith("P"))
+        if w:
+            out.append(w.lower())
+    return out
+
+
+def wer(said, heard):
+    """Word error rate: edits to turn what was heard into what was said,
+    over the number of words said. 0.0 is perfect, 1.0 is every word wrong.
+
+    The one number that says how good recognition was, independently of
+    whether the writer then did its job.
+    """
+    a, b = norm_words(said), norm_words(heard)
+    if not a:
+        return 0.0
+    prev = list(range(len(b) + 1))
+    for i, x in enumerate(a, 1):
+        cur = [i]
+        for j, y in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (x != y)))
+        prev = cur
+    return prev[len(b)] / len(a)
+
+
+def check(case, out, stage="out"):
+    """Every way this output fails its case. Empty list means it passed.
+
+    `stage` picks the prefix for the case's keys, so the same checks can be
+    aimed at the transcript ("transcript_script") and at the finished text
+    ("script") without writing them twice.
+    """
+    p = "" if stage == "out" else stage + "_"
+    get = lambda k, d=None: case.get(p + k, d)  # noqa: E731
+    bad = []
+    low = out.lower()
+
+    if stage == "out" and case.get("expect_empty"):
+        if out.strip():
+            bad.append("should have returned nothing, returned %r" % out[:60])
+        return bad
+    if not out.strip():
+        return ["empty %s" % stage]
+
+    if stage == "out" and not case.get("allow_meta"):
+        for phrase in META:
+            if phrase in low:
+                bad.append("assistant voice leaked: %r" % phrase)
+
+    grow = get("max_growth")
+    if grow:
+        src = case.get("text") or case.get("say") or ""
+        a, b = len(words(src)), len(words(out))
+        if a and b > a * grow:
+            bad.append("grew %d -> %d words (%.2fx, limit %.2fx)" % (a, b, b / a, grow))
+
+    if get("min_words") and len(words(out)) < get("min_words"):
+        bad.append("shrank to %d words, expected at least %d"
+                   % (len(words(out)), get("min_words")))
+    if get("max_words") and len(words(out)) > get("max_words"):
+        bad.append("ran to %d words, expected at most %d"
+                   % (len(words(out)), get("max_words")))
+
+    for s in get("forbid", []):
+        if s.lower() in low:
+            bad.append("contains %r" % s)
+    for s in get("require", []):
+        if s.lower() not in low:
+            bad.append("lost %r" % s)
+    for s in get("require_exact", []):
+        if s not in out:
+            bad.append("lost the exact spelling %r" % s)
+    for group in get("require_any", []):
+        if not any(s.lower() in low for s in group):
+            bad.append("none of %s survived" % (group,))
+
+    if get("keep_digits"):
+        want = digits(get("keep_digits"))
+        if want and want not in digits(out):
+            bad.append("digits changed: %r is not in %r" % (want, digits(out)))
+    if get("forbid_digits") and re.search(r"\d", out):
+        bad.append("invented a number: %r" % re.findall(r"\d+", out))
+
+    if get("script"):
+        got = dominant_script(out)
+        if got != get("script"):
+            bad.append("%s script is %s, expected %s" % (stage, got, get("script")))
+    for s in get("has_scripts", []):
+        if s not in scripts_in(out):
+            bad.append("no %s left in the %s" % (s, stage))
+
+    if get("forbid_regex") and re.search(get("forbid_regex"), out, re.I):
+        bad.append("matched %s" % get("forbid_regex"))
+    if get("require_regex") and not re.search(get("require_regex"), out, re.I):
+        bad.append("did not match %s" % get("require_regex"))
+    return bad
+
+
+# --- talking to the server --------------------------------------------------
+
+def _send(req, timeout, binary=False):
+    """One request with backoff. A harness reports failures, never raises."""
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return (r.read() if binary else json.load(r)), None
+        except urllib.error.HTTPError as e:
+            body = e.read()[:160].decode("utf8", "replace")
+            if e.code in (429, 500, 502, 503, 504) and attempt < 3:
+                time.sleep(2 ** attempt)
+                continue
+            return None, "HTTP %s %s" % (e.code, body)
+        except Exception as e:  # noqa: BLE001
+            if attempt < 3:
+                time.sleep(2 ** attempt)
+                continue
+            return None, str(e)
+    return None, "gave up after 4 attempts"
+
+
+def post_json(api, token, path, body, timeout=90, binary=False):
+    return _send(urllib.request.Request(
+        api + path, data=json.dumps(body).encode(),
+        headers={"Authorization": "Bearer " + token,
+                 "Content-Type": "application/json"},
+        method="POST"), timeout, binary)
+
+
+def post_multipart(api, token, path, fields, filename, blob, timeout=180):
+    """Hand-rolled multipart — the app uploads a file, so the harness does too,
+    rather than testing a JSON door the mic never knocks on."""
+    boundary = "----tailzu" + uuid.uuid4().hex
+    parts = []
+    for k, v in fields.items():
+        parts.append(
+            ('--%s\r\nContent-Disposition: form-data; name="%s"\r\n\r\n%s\r\n'
+             % (boundary, k, v)).encode())
+    parts.append(
+        ('--%s\r\nContent-Disposition: form-data; name="audio"; filename="%s"\r\n'
+         'Content-Type: application/octet-stream\r\n\r\n' % (boundary, filename)).encode())
+    parts.append(blob)
+    parts.append(("\r\n--%s--\r\n" % boundary).encode())
+    return _send(urllib.request.Request(
+        api + path, data=b"".join(parts),
+        headers={"Authorization": "Bearer " + token,
+                 "Content-Type": "multipart/form-data; boundary=" + boundary},
+        method="POST"), timeout)
+
+
+def run_case(api, token, case, audio_format="wav"):
+    """Returns (transcript, output, error). transcript is '' off the mic path."""
+    kind = case.get("endpoint", "refine")
+
+    if kind == "draft":
+        body = {"screenContent": case["screenContent"], "intent": case["intent"],
+                "targetApp": case.get("targetApp", "Generic"),
+                "language": case.get("language", "auto")}
+        if case.get("recipient"):
+            body["recipient"] = case["recipient"]
+        for k in ("tone", "tonePrompt", "personality"):
+            if k in case:
+                body[k] = case[k]
+        res, err = post_json(api, token, "/v1/draft", body)
+        return "", (res or {}).get("draftText", ""), err
+
+    if kind == "dictate":
+        # Say it out loud first. The steer asks for ordinary speech rather
+        # than a newsreader, which is the closest a synthesiser gets to a
+        # person holding a phone.
+        speak = {"text": case["say"], "format": audio_format,
+                 "instructions": case.get("speak_as",
+                                          "natural conversational pace, as if speaking to a friend")}
+        blob, err = post_json(api, token, "/v1/speak", speak, timeout=120, binary=True)
+        if err:
+            return "", "", "TTS: " + err
+        if not blob:
+            return "", "", "TTS returned no audio"
+
+        fields = {"targetApp": case.get("targetApp", "Generic"),
+                  "language": case.get("language", "auto")}
+        for k in ("tone", "tonePrompt", "context"):
+            if k in case:
+                fields[k] = case[k]
+        if "personality" in case:
+            fields["personality"] = json.dumps(case["personality"])
+        res, err = post_multipart(api, token, "/v1/transcribe-clean", fields,
+                                  "clip." + audio_format, blob)
+        if err:
+            return "", "", "STT: " + err
+        return (res or {}).get("transcript", ""), (res or {}).get("cleanedText", ""), None
+
+    body = {"text": case["text"], "targetApp": case.get("targetApp", "Generic"),
+            "language": case.get("language", "auto")}
+    for k in ("tone", "tonePrompt", "context", "personality", "alternative"):
+        if k in case:
+            body[k] = case[k]
+    res, err = post_json(api, token, "/v1/refine", body)
+    return "", (res or {}).get("refinedText", ""), err
+
+
+# --- reporting --------------------------------------------------------------
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--api", default=os.environ.get("API", "http://127.0.0.1:8770"))
+    ap.add_argument("--token", default=os.environ.get("TOKEN", ""))
+    ap.add_argument("--version", default=os.environ.get("PROMPT_VERSION", "unknown"))
+    ap.add_argument("--only", default="", help="one group, e.g. lang")
+    ap.add_argument("--quick", action="store_true", help="the smoke subset")
+    ap.add_argument("--no-audio", action="store_true", help="skip the mic path")
+    ap.add_argument("--audio-format", default="wav")
+    ap.add_argument("--jobs", type=int, default=5)
+    ap.add_argument("--compare", default="", help="a previous run's JSON")
+    ap.add_argument("--out", default="")
+    args = ap.parse_args()
+
+    if not args.token:
+        print("no token — run this through scripts/quality.sh", file=sys.stderr)
+        return 2
+
+    cases = CASES
+    if args.quick:
+        cases = [c for c in cases if c.get("smoke")]
+    if args.only:
+        cases = [c for c in cases if c["id"].split("/", 1)[0].startswith(args.only)]
+    if args.no_audio:
+        cases = [c for c in cases if c.get("endpoint") != "dictate"]
+    if not cases:
+        print("no cases matched", file=sys.stderr)
+        return 2
+
+    spoken = sum(1 for c in cases if c.get("endpoint") == "dictate")
+    print("Asking the deployed backend to do the whole job. Every line is real work.")
+    print("cleanup prompt: %s   cases: %d   spoken aloud: %d"
+          % (args.version, len(cases), spoken))
+    print()
+
+    started = time.time()
+    results = [None] * len(cases)
+
+    def run(i):
+        case = cases[i]
+        t0 = time.time()
+        transcript, out, err = run_case(args.api, args.token, case, args.audio_format)
+        failures = [err] if err else check(case, out)
+        heard_wer = None
+        if not err and case.get("endpoint") == "dictate":
+            failures += check(case, transcript, stage="transcript")
+            heard_wer = wer(case["say"], transcript)
+            limit = case.get("max_wer")
+            if limit is not None and heard_wer > limit:
+                failures.append("recognition drifted: WER %.2f (limit %.2f)"
+                                % (heard_wer, limit))
+            # SPEECH HAS NO SCRIPT. Someone who SAYS a Hindi sentence has not
+            # chosen Devanagari or romanised — the recogniser did. So the mic
+            # path cannot assert a fixed script the way the keyboard path
+            # does; what it can assert is that the writer did not change the
+            # one it was handed, which is the actual fault.
+            if case.get("keep_transcript_script") and transcript.strip():
+                a, b = dominant_script(transcript), dominant_script(out)
+                if a != "none" and b != a:
+                    failures.append("writer flipped the script: heard %s, wrote %s" % (a, b))
+        results[i] = {
+            "id": case["id"], "why": case.get("why", ""),
+            "said": case.get("say", ""),
+            "input": case.get("text") or case.get("say") or case.get("intent", ""),
+            "transcript": transcript, "output": out, "error": err,
+            "wer": heard_wer, "failures": failures,
+            "ms": int((time.time() - t0) * 1000),
+        }
+
+    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+        list(pool.map(run, range(len(cases))))
+
+    groups = []
+    for r in results:
+        g = r["id"].split("/", 1)[0]
+        if g not in groups:
+            groups.append(g)
+
+    for g in groups:
+        rows = [r for r in results if r["id"].startswith(g + "/")]
+        ok = [r for r in rows if not r["failures"]]
+        print("%-11s %d/%d" % (g, len(ok), len(rows)))
+        for r in rows:
+            if not r["failures"]:
+                continue
+            print("   FAIL  %s" % r["id"])
+            if r["why"]:
+                print("         %s" % r["why"])
+            for f in r["failures"]:
+                print("         %s" % f)
+            # Three lines for a spoken case, so the stage that broke is named
+            # rather than guessed at.
+            if r["said"]:
+                print("         said   %s" % r["said"])
+                print("         heard  %s%s" % (
+                    r["transcript"] or "(nothing)",
+                    "   [WER %.2f]" % r["wer"] if r["wer"] is not None else ""))
+                print("         wrote  %s" % (r["output"] or "(nothing)"))
+            else:
+                print("         in     %s" % r["input"])
+                print("         out    %s" % (r["output"] or "(nothing)"))
+        print()
+
+    passed = [r for r in results if not r["failures"]]
+    failed = [r for r in results if r["failures"]]
+    heard = [r["wer"] for r in results if r["wer"] is not None]
+    if heard:
+        print("recognition: median WER %.2f across %d spoken cases  (0.00 is perfect)"
+              % (sorted(heard)[len(heard) // 2], len(heard)))
+    print("%d passed, %d failed  (%d cases, %.0fs)"
+          % (len(passed), len(failed), len(results), time.time() - started))
+
+    doc = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+           "promptVersion": args.version, "passed": len(passed),
+           "failed": len(failed), "total": len(results), "results": results}
+    out_path = Path(args.out) if args.out else (
+        HERE.parent / ".quality" / ("run-%s.json" % datetime.now().strftime("%Y%m%d-%H%M%S")))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(doc, indent=1, ensure_ascii=False))
+    print("saved: %s" % out_path)
+
+    if args.compare:
+        # A traceback here would land on top of a run that cost real money and
+        # succeeded. Say what is wrong and keep the results.
+        try:
+            prev = json.loads(Path(args.compare).read_text())
+        except (OSError, ValueError) as e:
+            print()
+            print("could not read --compare %s: %s" % (args.compare, e))
+            return 1 if failed else 0
+        was = {r["id"]: not r["failures"] for r in prev["results"]}
+        now = {r["id"]: not r["failures"] for r in results}
+        fixed = sorted(i for i in now if now[i] and was.get(i) is False)
+        broke = sorted(i for i in now if not now[i] and was.get(i) is True)
+        print()
+        print("vs %s (%s): %d -> %d passing"
+              % (prev.get("promptVersion", "?"), prev.get("at", "?"),
+                 prev.get("passed", 0), len(passed)))
+        for i in fixed:
+            print("   FIXED      %s" % i)
+        for i in broke:
+            print("   REGRESSED  %s" % i)
+        if not fixed and not broke:
+            print("   no case changed verdict")
+
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

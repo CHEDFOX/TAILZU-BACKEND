@@ -160,8 +160,19 @@ Three levels, cheapest first. All run from `~/tulmi` on the VPS.
 ```
 npm --prefix tulmi test          # 609 unit tests, no network, no cost
 ./tulmi/scripts/paytest.sh       # the purchase path, end to end, no account touched
-./tulmi/scripts/quality.sh       # what the deployed backend actually WRITES
+./tulmi/scripts/quality.sh       # dictation in, finished text out — 79 cases
 ```
+
+`quality.sh --quick` is the smoke subset when you only want to know the deploy
+is alive; `--only dictation` runs the mic path alone; `--no-audio` skips it.
+Each run saves its results, so the next one can be compared to it:
+
+```
+./tulmi/scripts/quality.sh --compare tulmi/.quality/run-<timestamp>.json
+```
+
+which prints FIXED and REGRESSED per case. That is the only honest way to say
+a prompt change helped.
 
 The unit tests read nothing off the machine they run on — not `tulmi/.env`, and
 not what a shell exported. They used to, and it mattered: the stores fall back
@@ -200,14 +211,35 @@ To compare two versions, pin the old one and run it again —
 `CLEANUP_PROMPT_VERSION=v5` in `tulmi/.env`, rebuild, run, then delete the line
 to go back to the default.
 
-What it holds, all of it a fault that has actually shipped:
+79 cases across the three paths a user can reach:
 
-  - a terse line does not grow a greeting, a sign-off or a finished thought
-  - a question dictated is SENT, not answered
-  - romanized Hindi comes back romanized, not translated and not in Devanagari
-  - Devanagari comes back in Devanagari
-  - a saved language biases spelling and never converts what was said
-  - a sentence that switches languages keeps switching
+  - `dictate`  spoken through /v1/speak, posted to /v1/transcribe-clean as the
+              in-app mic does. Both stages come back, so a failure prints
+              said / heard / wrote and names which half broke — a recognition
+              fault and a writing fault look identical from outside and need
+              completely different fixes. It also reports word error rate.
+  - `refine`   POST /v1/refine, the keyboard's path.
+  - `draft`    POST /v1/draft, the reply and share-sheet path.
+
+The groups: length (invention), meta (instruction vs content), lang (11
+languages and scripts), facts (digits, names, links that must survive), repair
+(the actual job — fillers, false starts, self-corrections), app (search box vs
+message), voice (tone, custom instructions, dictionary, snippets), context,
+alt (the live path's second recogniser), draft, dictation.
+
+Every case asserts a property — did it grow, did the digits survive, did the
+script flip — never an exact sentence. A harness that pins wording fails on
+every good change and passes anything that happens to match.
+
+What the audio path does NOT prove: synthesised speech is clean. No accent, no
+room noise, no crosstalk. It exercises the pipeline and the language decisions;
+it is not a substitute for testing on real recordings.
+
+    python3 tulmi/scripts/test_quality.py    # the harness checks itself, free
+
+That last one runs offline and costs nothing. It exists because a scorer bug
+passes everything silently, which is worse than not measuring: a green run
+would be evidence of nothing while reading as proof.
 
 ## Everyday commands
 
