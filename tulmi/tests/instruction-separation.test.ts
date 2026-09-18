@@ -124,8 +124,22 @@ describe("assist path — instruction separation", () => {
     // into looking right cannot, and that is inventing a fact — forbidden two
     // lines above and re-permitted by any rule that stops at "write what they
     // meant".
-    expect(system).toMatch(/numbers, names, amounts and codes/i);
-    expect(system).toMatch(/even when they look wrong/i);
+    expect(system).toMatch(/never correct a number, a name, an amount or a code/i);
+  });
+
+  it("still lets the speaker change their own number", () => {
+    // The first wording was "numbers, names, amounts and codes arrive as they
+    // are and leave as they are, even when they look wrong", and the model
+    // obeyed it exactly: "lets meet at five no wait six thirty" came back as
+    // "Let's meet at five. No, wait, six thirty." three runs of three. Five is
+    // a number, numbers do not change, so it stayed — after the speaker had
+    // retracted it.
+    //
+    // Not second-guessing a number and refusing to drop one are opposite
+    // things, and one sentence has to hold both.
+    expect(system).toMatch(/only they can change those/i);
+    expect(system).toMatch(/the last one they said wins/i);
+    expect(system).not.toMatch(/arrive as they are and leave as they are/i);
   });
 
   it("states low recognizer confidence, and only when it is low", () => {

@@ -636,8 +636,12 @@ def main():
 
         was = {r["id"]: verdict(r) for r in prev["results"]}
         now = {r["id"]: verdict(r) for r in results}
+        # A case the baseline never ran is new, not changed. It printed
+        # "? -> pass" for all four cases added in one commit, which reads like
+        # movement and is only arrival.
+        fresh = sorted(i for i in now if i not in was)
         wobbly = sorted(i for i in now
-                        if "flaky" in (now[i], was.get(i, "flaky")) and now[i] != was.get(i))
+                        if i in was and "flaky" in (now[i], was[i]) and now[i] != was[i])
         fixed = sorted(i for i in now if now[i] == "pass" and was.get(i) == "fail")
         broke = sorted(i for i in now if now[i] == "fail" and was.get(i) == "pass")
         print()
@@ -671,7 +675,9 @@ def main():
             print("   REGRESSED  %s" % i)
         for i in wobbly:
             print("   WOBBLED    %s  (%s -> %s, not a verdict either way)"
-                  % (i, was.get(i, "?"), now[i]))
+                  % (i, was[i], now[i]))
+        for i in fresh:
+            print("   NEW        %s  (%s, nothing to compare it to)" % (i, now[i]))
         if not fixed and not broke:
             print("   no case changed verdict")
 

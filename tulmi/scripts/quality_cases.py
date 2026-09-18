@@ -258,7 +258,12 @@ CASES = [
     dict(id="garbled/misheard-word-in-hinglish",
          why="the same repair where the sentence is not English",
          text="kal ka meting cancel ho gaya hai",
-         require=["meeting"], forbid=["meting"]),
+         # The script assertion is here because without it the failure lied.
+         # This came back as "कल का मीटिंग कैंसिल हो गया है।" — repaired AND
+         # transliterated — and the report said "lost 'meeting'", pointing at
+         # the repair when the fault was the script. A case that names the
+         # wrong fault costs more than one that fails.
+         script="latin", require=["meeting"], forbid=["meting"]),
     dict(id="garbled/digits-survive-a-garbled-sentence", smoke=True,
          why="words get repaired and numbers do not — both halves, one sentence",
          text="trensfer 2500 rupeez to ramesh tomorow",

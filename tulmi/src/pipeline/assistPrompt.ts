@@ -338,7 +338,18 @@ export function buildAssistSystem(opts: {
     // is the same failure as inventing a fact — which is forbidden two lines
     // above and would be re-permitted here by a rule that stopped at "write
     // what they meant".
-    "What reaches you is often a rough hearing, not a recording. Where a word is not a word, or cannot belong in that sentence, write the one they meant — you know the language and the microphone does not. Where the language cannot decide it, nothing can: numbers, names, amounts and codes arrive as they are and leave as they are, even when they look wrong.",
+    // "ARRIVE AS THEY ARE AND LEAVE AS THEY ARE" WAS TOO ABSOLUTE, and the
+    // model obeyed it exactly: "lets meet at five no wait six thirty" came
+    // back as "Let's meet at five. No, wait, six thirty." three runs of three.
+    // Five is a number, the rule said numbers do not change, so it stayed —
+    // even though the speaker themselves had just retracted it.
+    //
+    // The bound was always about not SECOND-GUESSING a number, never about
+    // refusing to drop one the speaker took back. Those are opposite
+    // directions and one sentence had to distinguish them: the writer may not
+    // correct a number toward something that reads better, and the speaker
+    // may change it whenever they like.
+    "What reaches you is often a rough hearing, not a recording. Where a word is not a word, or cannot belong in that sentence, write the one they meant. Where the language cannot decide it, nothing can: never correct a number, a name, an amount or a code into something that reads better — only they can change those, and the last one they said wins.",
     // Measured, like the script and the mixture: the recognizer's own reading
     // of how much it trusted itself. Stated rather than acted on, because the
     // two lines above already say what to do about it.
