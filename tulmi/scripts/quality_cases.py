@@ -287,9 +287,21 @@ CASES = [
          why="a stammer is not emphasis",
          text="i i i will call you in the evening", forbid=["i i"]),
     dict(id="repair/self-correction-resolved",
-         why="the correction wins; keeping both makes it unreadable",
+         why="the correction wins, and the whole message is 'Let's meet at six thirty'",
          text="lets meet at five no wait six thirty",
-         forbid=["five"], require_any=[["6", "six"]]),
+         # "no wait" exists only because speech is linear — they could not
+         # backspace, so they corrected out loud. The growth cap is here
+         # because dropping the five is half the job: "Let's meet at six
+         # thirty, sorry for the confusion" also passes the other two checks
+         # and is still not what they would have typed.
+         forbid=["five"], require_any=[["6", "six"]], max_growth=1.1),
+    dict(id="repair/a-choice-is-not-a-correction",
+         why="the opposite fault: two times genuinely offered must both survive",
+         # Guards the over-resolving end of the same rule. A harness that only
+         # tests "the correction wins" rewards a writer that deletes whichever
+         # option came first, and this is the sentence that catches it.
+         text="lets meet at five or six thirty, your call",
+         require_any=[["five", "5"]], require=["thirty"]),
     dict(id="repair/runon-gets-punctuation",
          why="one long breath becomes sentences",
          text=("i reached the office early today then the client called and "
