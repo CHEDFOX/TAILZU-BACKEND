@@ -228,6 +228,54 @@ export function quotesPrompt(out: string, system: string): boolean {
 }
 
 /**
+ * Remove the user's own prior text when the model repeated it back.
+ *
+ * NEITHER CLIENT DELETES THAT TEXT. The keyboard's deferred path inserts at
+ * the cursor; the live path deletes only the tail it inserted itself. So
+ * "I checked with the team and" + a dictated "we can do friday" coming back as
+ * "I checked with the team and we can do Friday." lands in the field as
+ * "I checked with the team and I checked with the team and we can do Friday."
+ *
+ * The prompt says not to, in as many words, and the model did it three runs
+ * out of three — because a fragment continuing a half-typed line genuinely
+ * reads as an unfinished sentence and finishing it is the helpful-looking
+ * move. This is the same lesson as the prompt leak: when an instruction keeps
+ * losing to the model's instincts, stop asking and check the output.
+ *
+ * Tolerant of rewording at the seam — a model that echoes often re-punctuates
+ * — so the comparison ignores case, spacing and punctuation. Prefix only: the
+ * echo appears at the front because that is where the text was, and hunting it
+ * anywhere in the output would eventually cut a sentence someone meant.
+ */
+export function stripEchoedContext(out: string, context: string | undefined): string {
+  const ctx = (context ?? "").trim();
+  if (!ctx || !out) return out;
+  const key = (c: string) => c.toLowerCase();
+  // Anything that is not punctuation, a symbol or whitespace counts — which
+  // has to include combining marks. Testing for letters and digits instead
+  // dropped Devanagari matras: they are category Mn, so "की" was compared as
+  // "क" and the stripped output kept a stray "ी" at the front.
+  const meaningful = (c: string) => !/[\s\p{P}\p{S}]/u.test(c);
+
+  let ci = 0;
+  let oi = 0;
+  while (ci < ctx.length && !meaningful(ctx[ci]!)) ci++;
+  while (oi < out.length && ci < ctx.length) {
+    if (!meaningful(out[oi]!)) { oi++; continue; }
+    if (key(out[oi]!) !== key(ctx[ci]!)) return out; // not an echo — leave it
+    oi++; ci++;
+    while (ci < ctx.length && !meaningful(ctx[ci]!)) ci++;
+  }
+  if (ci < ctx.length) return out; // output ran out first; not an echo
+  // Drop the separator the model wrote between the two halves, never the
+  // first letter of what it actually added.
+  const rest = out.slice(oi).replace(/^[\s,;:.!?—–-]+/, "");
+  // An output that is ONLY the echo means the model wrote nothing new. Better
+  // to hand back what they said than to insert nothing at all.
+  return rest || out;
+}
+
+/**
  * Finalize an LLM completion for insertion. `out` is the (trimmed, snippet-
  * expanded) model output; `input` is what the user actually said/typed.
  *
@@ -482,9 +530,12 @@ export async function assist(
   // the same policy as a refusal: a request that happened to address the model
   // goes out as the message it always was.
   if (quotesPrompt(out, system)) return message.trim();
+  // Their own prior text stays in the field either way, so an echo of it here
+  // is a second copy on screen.
+  const trimmed = stripEchoedContext(out, context);
   // Discard a meta/refusal reply ("speak again"…); else keep the completion,
   // falling back to the input on an empty one so we never wipe the field.
-  return finalizeCompletion(out, message.trim());
+  return finalizeCompletion(trimmed, message.trim());
 }
 
 /** Non-streaming cleanup of a transcript or typed text. */
