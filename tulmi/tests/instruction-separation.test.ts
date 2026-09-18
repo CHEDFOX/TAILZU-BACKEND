@@ -15,6 +15,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
+import { scriptOf } from "../src/pipeline/cleanup.js";
 
 describe("assist path — instruction separation", () => {
   const system = buildAssistSystem({ hasContext: false });
@@ -53,7 +54,17 @@ describe("assist path — instruction separation", () => {
     // phrasing, while "only about the writing" also covers role changes and
     // anything else that is not the job.
     expect(system).toMatch(/only ever ask you about the writing/i);
-    expect(system).toMatch(/is simply part of their message/i);
+    expect(system).toMatch(/simply part of what they are saying/i);
+  });
+
+  it("says only what is NOT a request, and nothing about how to write", () => {
+    // The first draft of the bound ended "...and gets written as they said
+    // it". That is a general instruction about writing wearing a local
+    // disguise, and the next run kept a self-correction verbatim and turned a
+    // search query into a question back at the user. Everything else in the
+    // prompt already says how to write; this sentence's only job is to say
+    // what is not a request.
+    expect(system).not.toMatch(/written as they said it/i);
   });
 
   it("names both ways of leaving someone's language", () => {
@@ -72,6 +83,29 @@ describe("assist path — instruction separation", () => {
     expect(system).toMatch(/more than one language/i);
     expect(system).toMatch(/not a mistake to repair/i);
     expect(system).toMatch(/does not decide the rest of it/i);
+  });
+
+  it("can state the script for TYPED text, not only for speech", () => {
+    // The prompt states the script as a measured fact and its own comment
+    // says that without it romanized Hinglish drifts into Devanagari. Only
+    // the STT layer measured it, so every typed path — the keyboard's
+    // /v1/refine, /v1/draft — built the prompt with no script at all. On the
+    // deployed server "mujhe kal subah jaldi uthna hai" came back as
+    // "मुझे कल सुबह जल्दी उठना है।", which is the transliteration the rule
+    // exists to prevent. It is derivable from the text itself.
+    expect(scriptOf("mujhe kal subah jaldi uthna hai")).toBe("latin");
+    expect(scriptOf("मुझे कल सुबह जल्दी उठना है")).toBe("devanagari");
+    // A sentence in two scripts still has a dominant one, and stating it is
+    // better than stating nothing.
+    expect(scriptOf("the deploy is done but abhi testing baaki hai")).toBe("latin");
+  });
+
+  it("says nothing rather than 'unknown' when there is no answer", () => {
+    // "Theirs was unknown." is worse than silence: it invites a choice where
+    // the fact was meant to remove one.
+    expect(scriptOf("")).toBeUndefined();
+    expect(scriptOf("   ")).toBeUndefined();
+    expect(scriptOf("12345")).toBeUndefined();
   });
 
   it("describes the context field as what the clients actually send", () => {

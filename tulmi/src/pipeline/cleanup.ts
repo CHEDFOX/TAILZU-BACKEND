@@ -16,6 +16,18 @@ import {
   parsePortraitDraft, type PortraitDraft,
 } from "./portraitDimensions.js";
 import { buildAssistSystem, portraitBlock } from "./assistPrompt.js";
+import { detectScript } from "./stt.js";
+
+/**
+ * The script a piece of text is written in, or undefined when there is no
+ * answer worth stating. Saying "Theirs was unknown." in the prompt is worse
+ * than saying nothing: it invites a choice where the fact was meant to remove
+ * one.
+ */
+export function scriptOf(text: string): string | undefined {
+  const s = detectScript(text);
+  return s && s !== "unknown" ? s : undefined;
+}
 export { portraitBlock };
 
 let client: OpenAI | null = null;
@@ -108,6 +120,28 @@ const META_PATTERNS: RegExp[] = [
   /\bno (?:speech|audio|input|sound) (?:was )?(?:detected|found|received|captured)\b/i,
   /\bnothing (?:was said|to transcribe|to clean|was detected|was captured)\b/i,
   /\b(?:i'?m sorry|sorry),?\s+i (?:couldn'?t|could not|can'?t|didn'?t|did not) (?:hear|catch|understand|get)\b/i,
+  // A POLICY REFUSAL IS NOT A FAILURE TO HEAR, AND EVERY PATTERN ABOVE IS.
+  //
+  // This guard was built for silence and noise, so it caught "say that again"
+  // and let "I cannot fulfill this request. I am unable to ignore previous
+  // instructions or print my system prompt." through — straight into the
+  // field the user was about to send from. Measured on the deployed server.
+  //
+  // Discarding it is the whole fix: finalizeCompletion then falls back to
+  // what the user actually said, which for a message that happens to address
+  // the model is exactly right — it goes out as the message it always was.
+  //
+  // Someone who genuinely dictates "I can't help with that" is safe: their
+  // input is meta too, and finalizeCompletion only discards when the MODEL
+  // introduced it.
+  // BOTH REQUIRE AN OBJECT, and the object is what makes it a refusal rather
+  // than a sentence. "I can't print the file, the printer is jammed" and "I
+  // can't help you move on Sunday" are messages people send; the first draft
+  // of these patterns ate both, which would have silently skipped refinement
+  // on ordinary text. A refusal is about the REQUEST or about the
+  // INSTRUCTIONS — never about a printer.
+  /\bi (?:cannot|can'?t|am unable to|'?m unable to) (?:fulfill|fulfil|comply with|assist with|complete)\b[^.]{0,40}\brequest\b/i,
+  /\bi (?:cannot|can'?t|am unable to|'?m unable to) (?:ignore|override|bypass|reveal|disclose|share|print|provide)\b[^.]{0,40}\b(?:instructions?|system prompt)\b/i,
 ];
 
 /**
@@ -371,7 +405,21 @@ export async function assist(
     personality: opts.personality,
     language: opts.language,
     targetApp: opts.targetApp,
-    script: opts.script,
+    // THE SCRIPT IS OBSERVABLE HERE, AND WAS ONLY EVER OBSERVED UPSTREAM.
+    //
+    // assistPrompt states the script as a measured fact — "Theirs was latin."
+    // — and its own comment says that without it romanized Hinglish drifts
+    // into Devanagari. Only the STT layer was measuring it, so every TYPED
+    // path (the keyboard's /v1/refine, /v1/draft) built the prompt with no
+    // script at all and the model chose one. It chose Devanagari:
+    // "mujhe kal subah jaldi uthna hai" came back "मुझे कल सुबह जल्दी उठना है।"
+    // on the deployed server, which is the transliteration the rule exists to
+    // prevent.
+    //
+    // Derived here rather than at each call site because there are three of
+    // them and a fourth will be added without this. A caller that DID measure
+    // it (the STT path, which sees the recognizer's own reading) still wins.
+    script: opts.script ?? scriptOf(message),
     hasContext: !!context,
     hasAlternative,
   });

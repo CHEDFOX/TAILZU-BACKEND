@@ -340,7 +340,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--api", default=os.environ.get("API", "http://127.0.0.1:8770"))
     ap.add_argument("--token", default=os.environ.get("TOKEN", ""))
-    ap.add_argument("--version", default=os.environ.get("PROMPT_VERSION", "unknown"))
+    ap.add_argument("--version", default=os.environ.get("PROMPT_VERSION", "unknown"),
+                    help="CLEANUP_PROMPT_VERSION — the STREAMING path only")
+    ap.add_argument("--assist", default="unknown",
+                    help="fingerprint of the assist prompt, which serves everything else")
+    ap.add_argument("--repeat", type=int, default=1,
+                    help="run each case N times; a case passes only if every run passes")
     ap.add_argument("--only", default="", help="one group, e.g. lang")
     ap.add_argument("--quick", action="store_true", help="the smoke subset")
     ap.add_argument("--no-audio", action="store_true", help="skip the mic path")
@@ -367,16 +372,21 @@ def main():
 
     spoken = sum(1 for c in cases if c.get("endpoint") == "dictate")
     print("Asking the deployed backend to do the whole job. Every line is real work.")
-    print("cleanup prompt: %s   cases: %d   spoken aloud: %d"
-          % (args.version, len(cases), spoken))
+    # The assist fingerprint comes first because it is the prompt nearly every
+    # case exercises. The cleanup version is labelled with the one path it
+    # governs, so nobody again reads a green run as a verdict on the file they
+    # just edited.
+    print("assist prompt:  %s   (refine, transcribe-clean, draft)" % args.assist)
+    print("cleanup prompt: %s   (the streaming mic only)" % args.version)
+    print("cases: %d   spoken aloud: %d%s"
+          % (len(cases), spoken,
+             "   x%d runs each" % args.repeat if args.repeat > 1 else ""))
     print()
 
     started = time.time()
     results = [None] * len(cases)
 
-    def run(i):
-        case = cases[i]
-        t0 = time.time()
+    def attempt(case):
         transcript, out, err = run_case(args.api, args.token, case, args.audio_format)
         failures = [err] if err else check(case, out)
         heard_wer = None
@@ -397,13 +407,33 @@ def main():
                 a, b = dominant_script(transcript), dominant_script(out)
                 if a != "none" and b != a:
                     failures.append("writer flipped the script: heard %s, wrote %s" % (a, b))
+        return {"transcript": transcript, "output": out, "error": err,
+                "wer": heard_wer, "scriptNote": script_note, "failures": failures}
+
+    def run(i):
+        """One case, --repeat times.
+
+        A MODEL IS NOT A FUNCTION. Two runs of the same case can disagree, so a
+        single sample cannot tell a regression from the weather — and four
+        cases 'regressed' between two runs of the same prompt. Repeating turns
+        that into something readable: a case passes only if every run passes,
+        and a case that fails 1 of 3 is reported as flaky rather than as a
+        verdict on the change.
+        """
+        case = cases[i]
+        t0 = time.time()
+        tries = [attempt(case) for _ in range(max(1, args.repeat))]
+        bad = [t for t in tries if t["failures"]]
+        # Report the failing run when there is one: an output that passed says
+        # nothing about why the other did not.
+        shown = bad[0] if bad else tries[0]
         results[i] = {
             "id": case["id"], "why": case.get("why", ""),
             "said": case.get("say", ""),
             "input": case.get("text") or case.get("say") or case.get("intent", ""),
-            "transcript": transcript, "output": out, "error": err,
-            "wer": heard_wer, "scriptNote": script_note, "failures": failures,
+            "runs": len(tries), "failedRuns": len(bad),
             "ms": int((time.time() - t0) * 1000),
+            **shown,
         }
 
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
@@ -422,7 +452,11 @@ def main():
         for r in rows:
             if not r["failures"]:
                 continue
-            print("   FAIL  %s" % r["id"])
+            flaky = r.get("runs", 1) > 1 and 0 < r["failedRuns"] < r["runs"]
+            print("   %s  %s%s" % (
+                "FLAKY" if flaky else "FAIL ", r["id"],
+                "   (failed %d of %d runs)" % (r["failedRuns"], r["runs"])
+                if r.get("runs", 1) > 1 else ""))
             if r["why"]:
                 print("         %s" % r["why"])
             for f in r["failures"]:
@@ -456,7 +490,8 @@ def main():
           % (len(passed), len(failed), len(results), time.time() - started))
 
     doc = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-           "promptVersion": args.version, "passed": len(passed),
+           "promptVersion": args.version, "assistPrompt": args.assist,
+           "repeat": args.repeat, "passed": len(passed),
            "failed": len(failed), "total": len(results), "results": results}
     out_path = Path(args.out) if args.out else (
         HERE.parent / ".quality" / ("run-%s.json" % datetime.now().strftime("%Y%m%d-%H%M%S")))
@@ -479,8 +514,17 @@ def main():
         broke = sorted(i for i in now if not now[i] and was.get(i) is True)
         print()
         print("vs %s (%s): %d -> %d passing"
-              % (prev.get("promptVersion", "?"), prev.get("at", "?"),
-                 prev.get("passed", 0), len(passed)))
+              % (prev.get("assistPrompt", prev.get("promptVersion", "?")),
+                 prev.get("at", "?"), prev.get("passed", 0), len(passed)))
+        # Say when a difference cannot be attributed. Same prompt on both
+        # sides means every FIXED and REGRESSED below is the model varying,
+        # not a change; single-sample runs cannot separate the two at all.
+        if prev.get("assistPrompt") == args.assist and args.assist != "unknown":
+            print("   the assist prompt is identical on both sides — any change"
+                  " below is the model varying, not your edit")
+        elif args.repeat == 1:
+            print("   single run each side: a one-case difference here is as"
+                  " likely to be variance as a real change. --repeat 3 to tell them apart")
         for i in fixed:
             print("   FIXED      %s" % i)
         for i in broke:

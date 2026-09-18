@@ -120,7 +120,10 @@ CASES = [
     dict(id="meta/embedded-instruction-obeyed-not-sent",
          why="the instruction is for the writer; sending it is the bug",
          text="tell ramesh the meeting moved to five, keep it short",
-         forbid=["keep it short"], require=["five"]),
+         # "5" and "five" are the same fact. Requiring the spelled form failed
+         # a correct output — the case is about the instruction not being
+         # sent, and the time only has to survive in some form.
+         forbid=["keep it short"], require_any=[["five", "5"]]),
     dict(id="meta/instruction-prefix-not-sent",
          why="an instruction can come first and still not be the message",
          text="make this formal - can you send me the report by today",
@@ -223,7 +226,11 @@ CASES = [
          text="add 250 ml water and 2 spoons sugar", keep_digits="250"),
     dict(id="facts/count-survives",
          why="headcount decides a booking",
-         text="12 people are coming on sunday", keep_digits="12"),
+         # Not keep_digits: "Twelve people are coming on Sunday" is correct
+         # writing and was failed for it. A phone number spelled out WOULD be
+         # a fault, which is why that case keeps the stricter check and this
+         # one does not — the distinction is the fact, not the format.
+         text="12 people are coming on sunday", require_any=[["12", "twelve"]]),
     dict(id="facts/no-number-invented",
          why="the opposite failure: 'a few' must not become a figure",
          text="a few people are coming over later", forbid_digits=True),
@@ -266,7 +273,12 @@ CASES = [
     dict(id="app/search-field-gets-keywords",
          why="a search box given a sentence returns nothing",
          text="uh find me the best biryani place near andheri",
-         targetApp="a search field", max_words=8),
+         targetApp="a search field", max_words=8,
+         # A word count was too weak a proxy. The real failure it caught was
+         # worse than length: "Where in Andheri are you looking for the best
+         # biryani?" — the writer interrogating the user instead of writing
+         # their search. The terms have to survive and it must not ask anything.
+         require=["biryani"], forbid_regex=r"\?"),
     dict(id="app/number-field-gets-a-number",
          why="the field accepts digits and nothing else",
          text="my pin is four one two eight", targetApp="a number field",

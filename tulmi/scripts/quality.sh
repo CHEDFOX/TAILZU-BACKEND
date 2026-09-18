@@ -55,5 +55,24 @@ dex sh -c "test -f /app/shared/prompts/cleanup.$VER.md && echo yes" | grep -q ye
   echo "  docker compose up -d --build backend" >&2
   exit 1; }
 
+# THE VERSION ABOVE IS NOT THE PROMPT MOST OF THIS MEASURES.
+#
+# CLEANUP_PROMPT_VERSION governs shared/prompts/cleanup.*.md, which serves one
+# caller: cleanStream, on the in-app streaming mic. /v1/refine,
+# /v1/transcribe-clean and /v1/draft all build their prompt in
+# pipeline/assistPrompt.ts, which has no version at all — so a header reading
+# "cleanup prompt: v6" was reporting a true fact about the wrong file while
+# every case below exercised the other one.
+#
+# A prompt with no version can still have an identity: hash what the container
+# actually builds. The fingerprint changes when the prompt changes and does not
+# when it does not, which is the entire job of a version.
+ASSIST=$(dex node -e '
+import("file:///app/tulmi/dist/tulmi/src/pipeline/assistPrompt.js").then(async (m) => {
+  const { createHash } = await import("node:crypto");
+  const s = m.buildAssistSystem({ hasContext: false });
+  console.log(createHash("sha256").update(s).digest("hex").slice(0, 12));
+})')
+
 exec python3 tulmi/scripts/quality.py \
-  --api "$API" --token "$TOKEN" --version "$VER" "$@"
+  --api "$API" --token "$TOKEN" --version "$VER" --assist "${ASSIST:-unreadable}" "$@"
