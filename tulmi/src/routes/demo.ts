@@ -46,6 +46,30 @@ const INSTALLERS = {
   linux: "Tailzu.AppImage",
 } as const;
 
+/**
+ * A page from the published site, or null if that file is not there.
+ *
+ * THE SITE WINS OVER THE BUILT-IN COPY. /privacy, /terms and /download have
+ * lived in this repo as HTML strings since before there was a site, and they
+ * still do — but once a file of the same name is published they are the
+ * fallback, not the answer. That makes the whole site editable in one place
+ * and one language, without the legal text ever being unreachable: delete the
+ * file and the built-in page is back.
+ *
+ * Read per request rather than cached, because the point of the bind mount is
+ * that an scp is live without a restart, and these are a few kilobytes.
+ */
+export function sitePage(siteDir: string, name: string): string | null {
+  // The names are ours, never a request's, but path.join with something that
+  // climbs is the kind of thing that only stays safe while nobody edits it.
+  if (!/^[a-z0-9-]+$/.test(name)) return null;
+  try {
+    return fs.readFileSync(path.join(siteDir, `${name}.html`), "utf8");
+  } catch {
+    return null;
+  }
+}
+
 export function registerDemoRoutes(app: FastifyInstance, opts: {
   downloadsDir: string;
   siteDir: string;
@@ -67,6 +91,17 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
     // having to remember a cache bump for a static file.
     reply.header("Cache-Control", "public, max-age=60");
     return html;
+  });
+
+  // The one stylesheet the published pages share. Served by hand rather than
+  // through a static mount at "/" so it cannot shadow an API route.
+  app.get("/site.css", async (_req, reply) => {
+    let css: string | null = null;
+    try { css = fs.readFileSync(path.join(siteDir, "site.css"), "utf8"); } catch { css = null; }
+    if (css === null) return reply.code(404).send({ code: "not_found" });
+    reply.type("text/css; charset=utf-8");
+    reply.header("Cache-Control", "public, max-age=60");
+    return css;
   });
 
   // --- The words, and what is on the shelf ---------------------------------

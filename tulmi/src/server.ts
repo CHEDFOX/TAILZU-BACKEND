@@ -34,7 +34,7 @@ import { registerMediaRoutes, loadMediaRegistry, getMediaRegistry } from "./rout
 import { PRIVACY_POLICY_HTML, PRIVACY_POLICY_EFFECTIVE } from "./routes/policies/privacy.js";
 import { TERMS_HTML, TERMS_EFFECTIVE } from "./routes/policies/terms.js";
 import { DOWNLOAD_PAGE_HTML } from "./routes/download.js";
-import { registerDemoRoutes } from "./routes/demo.js";
+import { registerDemoRoutes, sitePage } from "./routes/demo.js";
 import { registerReviewCodeRoute } from "./routes/reviewCode.js";
 import { getConfig, VERSION } from "./config.js";
 import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
@@ -408,24 +408,29 @@ app.get("/healthz", async (): Promise<HealthResponse> => {
 // the cache-version and clients will refetch.
 
 app.get("/privacy", async (_req, reply) => {
+  // The published site wins; this file's copy is the fallback, so the legal
+  // text is never unreachable even if the site directory is empty.
+  const published = sitePage(cfg.SITE_DIR, "privacy");
   reply.type("text/html; charset=utf-8");
-  reply.header("Cache-Control", "public, max-age=3600");
-  return PRIVACY_POLICY_HTML;
+  reply.header("Cache-Control", published ? "public, max-age=60" : "public, max-age=3600");
+  return published ?? PRIVACY_POLICY_HTML;
 });
 
 app.get("/terms", async (_req, reply) => {
+  const published = sitePage(cfg.SITE_DIR, "terms");
   reply.type("text/html; charset=utf-8");
-  reply.header("Cache-Control", "public, max-age=3600");
-  return TERMS_HTML;
+  reply.header("Cache-Control", published ? "public, max-age=60" : "public, max-age=3600");
+  return published ?? TERMS_HTML;
 });
 
 // OS-aware desktop-app download page (tailzu.space/download). The page itself
 // HEAD-checks /downloads/* so platforms without a published installer show as
 // "coming soon" instead of a dead link.
 app.get("/download", async (_req, reply) => {
+  const published = sitePage(cfg.SITE_DIR, "download");
   reply.type("text/html; charset=utf-8");
-  reply.header("Cache-Control", "public, max-age=3600");
-  return DOWNLOAD_PAGE_HTML;
+  reply.header("Cache-Control", published ? "public, max-age=60" : "public, max-age=3600");
+  return published ?? DOWNLOAD_PAGE_HTML;
 });
 
 // The landing page at /, its copy at /v1/site, and the live demo — a visitor's

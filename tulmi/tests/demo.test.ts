@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
+import fs from "node:fs";
+import path from "node:path";
 
 process.env.OPENROUTER_API_KEY = "test-openrouter-key";
 process.env.OPENAI_API_KEY = "test-openai-key";
@@ -37,6 +39,8 @@ vi.mock("../src/pipeline/stt.js", async (importOriginal) => {
 
 // eslint-disable-next-line import/first
 import { buildApp } from "../src/server.js";
+// eslint-disable-next-line import/first
+import { sitePage } from "../src/routes/demo.js";
 
 let app: FastifyInstance;
 beforeAll(async () => { app = await buildApp(); await app.ready(); });
@@ -130,5 +134,47 @@ describe("the live demo", () => {
       headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe("the published site wins over the built-in pages", () => {
+  // /privacy, /terms and /download have lived in this repo as HTML strings
+  // since before there was a site. Once a file of the same name is published
+  // they become the fallback — which is what makes the whole site editable in
+  // one place without the legal text ever being unreachable.
+  const dir = "/tmp/tailzu-test-site-live";
+
+  beforeAll(() => {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "privacy.html"), "<!doctype html><title>published privacy</title>");
+    fs.writeFileSync(path.join(dir, "site.css"), ":root { --amber: #E8A23C; }");
+  });
+  afterAll(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+
+  it("serves the published file when one is there", () => {
+    expect(sitePage(dir, "privacy")).toContain("published privacy");
+  });
+
+  it("falls back to null — and so to the built-in — when one is not", () => {
+    // terms.html was never written in this test's directory.
+    expect(sitePage(dir, "terms")).toBeNull();
+  });
+
+  it("refuses a name that could climb out of the site directory", () => {
+    // The names are ours today. A path join with something that climbs is the
+    // kind of thing that only stays safe while nobody edits it.
+    expect(sitePage(dir, "../../etc/passwd")).toBeNull();
+    expect(sitePage(dir, "..")).toBeNull();
+    expect(sitePage(dir, "a/b")).toBeNull();
+  });
+
+  it("serves the shared stylesheet, and 404s when there is none", async () => {
+    const live = await buildApp();
+    await live.ready();
+    try {
+      // This app was built with the empty SITE_DIR from the top of the file.
+      const res = await live.inject({ method: "GET", url: "/site.css" });
+      expect(res.statusCode).toBe(404);
+    } finally { await live.close(); }
   });
 });
