@@ -366,10 +366,30 @@ async function transcribeWithProvider(input: SttInput): Promise<RawSttResult> {
       .filter((r) => r.text.trim());
 
     if (!ok.length) {
-      const firstFailure = settled.find((s) => s.status === "rejected") as PromiseRejectedResult | undefined;
-      if (firstFailure) {
-        console.error("[stt] every provider failed:", (firstFailure.reason as Error)?.message);
-        throw firstFailure.reason;
+      const rejected = settled.filter(
+        (s): s is PromiseRejectedResult => s.status === "rejected",
+      );
+      if (rejected.length) {
+        // EVERY PROVIDER REFUSING THE AUDIO IS NOT AN OUTAGE.
+        //
+        // Recognizers answer a clip with nothing in it with a 4xx — too
+        // short, no speech, unsupported. Throwing turned that into HTTP 500
+        // "Pipeline failed", so stopping a recording before saying anything
+        // answered with an error instead of writing nothing. The byte-length
+        // guard added earlier catches an empty buffer; it does not catch a
+        // real recording of a quiet room, which is the common case.
+        //
+        // A 4xx is the provider looking at the audio and refusing it — that
+        // is an answer, and the answer is silence. A 5xx or a network failure
+        // is nobody looking at all, and that must still travel: swallowing it
+        // would hide an outage and leave someone thinking their words
+        // vanished.
+        if (rejected.every((r) => isAudioRejection(r.reason))) {
+          console.error("[stt] every provider refused the audio — treating as silence");
+          return { text: "", durationSeconds: 0, speechConfidence: "low" };
+        }
+        console.error("[stt] every provider failed:", (rejected[0]!.reason as Error)?.message);
+        throw rejected[0]!.reason;
       }
       // All succeeded but every transcript was empty — a genuinely silent
       // clip. Return one so the existing silence handling applies.
@@ -647,6 +667,28 @@ export type SttEngineName = keyof typeof STT_ENGINES;
  * error. A tenth of a second of audio is not a word in any language.
  */
 export const MIN_USABLE_AUDIO_BYTES = 1024;
+
+/**
+ * Did the provider look at this audio and refuse it, or did it never look?
+ *
+ * A 4xx is a verdict on the clip: too short, no speech, unsupported codec.
+ * Every provider returning one means there is nothing to hear, and silence is
+ * the right answer. A 5xx, a timeout or a socket error is nobody answering,
+ * which has to stay an error — a user whose dictation vanished into a shrug
+ * would never know the difference, and we would never hear about the outage.
+ *
+ * Read from whichever shape the provider threw: the OpenAI SDK sets `status`,
+ * and the hand-rolled fetch paths put it in the message ("sarvam stt failed:
+ * 400 …"). 429 is excluded deliberately — being rate limited says nothing
+ * about the audio.
+ */
+export function isAudioRejection(err: unknown): boolean {
+  const status = (err as { status?: number })?.status;
+  const code = typeof status === "number"
+    ? status
+    : Number(/\b(\d{3})\b/.exec(String((err as Error)?.message ?? ""))?.[1]);
+  return Number.isFinite(code) && code >= 400 && code < 500 && code !== 429;
+}
 
 export async function transcribe(input: SttInput): Promise<SttResult> {
   // A CLIP WITH NOTHING IN IT NEVER REACHES A PROVIDER.

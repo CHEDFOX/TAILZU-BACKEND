@@ -108,38 +108,36 @@ describe("assist path — instruction separation", () => {
     expect(scriptOf("12345")).toBeUndefined();
   });
 
-  it("says the input is a hearing, and bounds what may be repaired from it", () => {
+  it("treats a misheard word as repairable, and says so once", () => {
     // Everything else in the prompt treats the input as what they said. Most
     // of the time it is a recognizer's best guess, and recognizers mishear —
     // so the writing step was repairing what SPEAKING cost them and
     // faithfully preserving what the MICROPHONE cost them.
-    expect(system).toMatch(/rough hearing, not a recording/i);
-    expect(system).toMatch(/write the one they meant/i);
+    expect(system).toMatch(/recognition is imperfect/i);
+    expect(system).toMatch(/write the word they meant/i);
   });
 
-  it("forbids repairing what the language cannot decide", () => {
-    // THE BOUND IS THE WHOLE POINT. A language decides which word belongs in
-    // a sentence; it says nothing about which digit belongs in a number. A
-    // wrong number that looks wrong can be noticed. A wrong number smoothed
-    // into looking right cannot, and that is inventing a fact — forbidden two
-    // lines above and re-permitted by any rule that stops at "write what they
-    // meant".
-    expect(system).toMatch(/never correct a number, a name, an amount or a code/i);
+  it("scopes that repair to the WORD and nowhere else", () => {
+    // Without "change nothing else" the licence spread to the sentence:
+    // "tomorrow 6pm gym" came back "Tomorrow at 6 PM, I'll be at the gym."
+    // three runs of three. One misheard word is a repair; a note turned into
+    // a sentence is the invention this prompt spends four other lines
+    // forbidding.
+    expect(system).toMatch(/change nothing else/i);
   });
 
-  it("still lets the speaker change their own number", () => {
-    // The first wording was "numbers, names, amounts and codes arrive as they
-    // are and leave as they are, even when they look wrong", and the model
-    // obeyed it exactly: "lets meet at five no wait six thirty" came back as
-    // "Let's meet at five. No, wait, six thirty." three runs of three. Five is
-    // a number, numbers do not change, so it stayed — after the speaker had
-    // retracted it.
+  it("names no protected category of fact, because one already exists", () => {
+    // Two wordings tried to protect numbers and names from being "corrected",
+    // and both preserved a correction the speaker had just made themselves:
+    // "lets meet at five no wait six thirty" kept the five, 3 of 3, twice.
+    // Naming numbers at all was enough to make them sacred.
     //
-    // Not second-guessing a number and refusing to drop one are opposite
-    // things, and one sentence has to hold both.
-    expect(system).toMatch(/only they can change those/i);
-    expect(system).toMatch(/the last one they said wins/i);
+    // The run before any of this scored facts 11/11 with no such clause —
+    // "Say nothing they did not give you" was already doing the work. A
+    // second guard on the same risk bought nothing and cost two behaviours.
+    expect(system).not.toMatch(/never correct a number/i);
     expect(system).not.toMatch(/arrive as they are and leave as they are/i);
+    expect(system).toMatch(/Say nothing they did not give you/i);
   });
 
   it("states low recognizer confidence, and only when it is low", () => {

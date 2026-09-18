@@ -338,18 +338,29 @@ export function buildAssistSystem(opts: {
     // is the same failure as inventing a fact — which is forbidden two lines
     // above and would be re-permitted here by a rule that stopped at "write
     // what they meant".
-    // "ARRIVE AS THEY ARE AND LEAVE AS THEY ARE" WAS TOO ABSOLUTE, and the
-    // model obeyed it exactly: "lets meet at five no wait six thirty" came
-    // back as "Let's meet at five. No, wait, six thirty." three runs of three.
-    // Five is a number, the rule said numbers do not change, so it stayed —
-    // even though the speaker themselves had just retracted it.
+    // THE BOUND CAME OUT, BECAUSE AN EXISTING PRINCIPLE ALREADY HELD IT.
     //
-    // The bound was always about not SECOND-GUESSING a number, never about
-    // refusing to drop one the speaker took back. Those are opposite
-    // directions and one sentence had to distinguish them: the writer may not
-    // correct a number toward something that reads better, and the speaker
-    // may change it whenever they like.
-    "What reaches you is often a rough hearing, not a recording. Where a word is not a word, or cannot belong in that sentence, write the one they meant. Where the language cannot decide it, nothing can: never correct a number, a name, an amount or a code into something that reads better — only they can change those, and the last one they said wins.",
+    // This line arrived with a second half protecting numbers and names from
+    // being "corrected". Two wordings, two measured runs, and the same two
+    // consistent failures:
+    //
+    //   "lets meet at five no wait six thirty"
+    //     -> "Let's meet at five. No, wait, six thirty."   (3 of 3, both)
+    //   "tomorrow 6pm gym"
+    //     -> "Tomorrow at 6 PM, I'll be at the gym."       (3 of 3, second)
+    //
+    // Five is a number and the rule said numbers do not change, so a
+    // correction the speaker had just made themselves was preserved. Saying
+    // "only they can change those" did not rescue it; naming numbers at all
+    // was enough to make them sacred.
+    //
+    // And the run BEFORE any of this scored facts 11/11 with no such clause
+    // anywhere — "Say nothing they did not give you", four lines down, was
+    // already doing the work. So the clause defended something already
+    // defended and cost two behaviours that were working. What is left is one
+    // repair, scoped to the word, with "change nothing else" to stop it
+    // spreading to the sentence.
+    "Recognition is imperfect: a word that is not a word, or that cannot belong in that sentence, is a mishearing — write the word they meant and change nothing else.",
     // Measured, like the script and the mixture: the recognizer's own reading
     // of how much it trusted itself. Stated rather than acted on, because the
     // two lines above already say what to do about it.

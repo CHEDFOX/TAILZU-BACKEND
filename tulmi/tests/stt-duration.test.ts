@@ -6,7 +6,7 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import { estimateDurationSeconds, probeMp4Duration } from "../src/pipeline/stt.js";
+import { estimateDurationSeconds, probeMp4Duration, isAudioRejection } from "../src/pipeline/stt.js";
 
 /** Wrap `body` in an MP4 box: size(4) + type(4) + body. */
 function box(type: string, body: Buffer): Buffer {
@@ -122,5 +122,34 @@ describe("estimateDurationSeconds", () => {
     expect(estimateDurationSeconds(data, "ogg")).toBe(0);
     expect(estimateDurationSeconds(data, "webm")).toBe(0);
     expect(estimateDurationSeconds(data, "flac")).toBe(0);
+  });
+});
+
+describe("a provider refusing the audio is not an outage", () => {
+  // Every recognizer answers a clip with nothing in it with a 4xx — too
+  // short, no speech, unsupported. That was thrown, and the route turned it
+  // into HTTP 500 "Pipeline failed", so stopping a recording before saying
+  // anything answered with an error instead of writing nothing.
+  it("reads a 4xx as a verdict on the clip", () => {
+    expect(isAudioRejection({ status: 400 })).toBe(true);
+    expect(isAudioRejection({ status: 415 })).toBe(true);
+    expect(isAudioRejection({ status: 422 })).toBe(true);
+    // The hand-rolled fetch paths put the status in the message instead.
+    expect(isAudioRejection(new Error("sarvam stt failed: 400 audio too short"))).toBe(true);
+  });
+
+  it("lets a real failure stay a real failure", () => {
+    // Nobody looked at the audio. Swallowing this would hide an outage and
+    // leave someone thinking their dictation vanished.
+    expect(isAudioRejection({ status: 500 })).toBe(false);
+    expect(isAudioRejection({ status: 503 })).toBe(false);
+    expect(isAudioRejection(new Error("fetch failed"))).toBe(false);
+    expect(isAudioRejection(new Error("socket hang up"))).toBe(false);
+    expect(isAudioRejection(undefined)).toBe(false);
+  });
+
+  it("does not read rate limiting as a verdict on the clip", () => {
+    // 429 says something about us, not about the audio.
+    expect(isAudioRejection({ status: 429 })).toBe(false);
   });
 });
