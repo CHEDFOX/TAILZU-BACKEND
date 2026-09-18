@@ -149,6 +149,42 @@ export const POLICY = {
   terms: "https://tailzu.space/terms",
 } as const;
 
+/**
+ * Every word on tailzu.space. The page is a renderer; this is the writer.
+ *
+ * Served by GET /v1/site, read by the landing page on load with built-in
+ * fallbacks for the seconds before the answer lands. A headline change is an
+ * edit here and a cache bump — the same move as every string in the app,
+ * and no site deploy.
+ *
+ * The copy is short because the page's argument is not made in words. It
+ * is made by the visitor's own sentence coming back clean.
+ */
+export const SITE_UI = {
+  headline: "Say something.",
+  sub: "No sign-up. A few seconds of your voice, written the way you would have typed it.",
+  // Press, not hold. A long press on a phone selects text and opens menus,
+  // and a clip this short does not need a second gesture to end: it stops
+  // itself when you pause, or at the cap.
+  cta: "Press and talk",
+  ctaHeld: "Listening — it stops when you pause",
+  writing: "Writing",
+  again: "Try another",
+  suggest: ["Try it in Hindi.", "Say a phone number.", "Mix two languages."],
+  said: "You said",
+  wrote: "It wrote",
+  after: "That is the whole product. It works everywhere you type.",
+  demoOff: "The live demo is resting. The apps are not.",
+  micDenied: "Your browser blocked the microphone. Allow it and try again.",
+  promises: [
+    { title: "Your voice, not a style", body: "Filler and false starts gone. Nothing added, nothing invented." },
+    { title: "22 Indian languages", body: "And most of the world's. Mix two in one sentence — both come back the way you said them." },
+    { title: "Every app you use", body: "A keyboard on your phone. Double-tap Ctrl on your desk. It lands where the cursor is." },
+  ],
+  price: "Free to {words} words a month.",
+  download: { win: "Windows", mac: "macOS", linux: "Linux", ios: "iPhone", android: "Android", soon: "soon" },
+} as const;
+
 const FILL_STYLE = {
   position: "absolute" as const,
   top: 0, left: 0, right: 0, bottom: 0,

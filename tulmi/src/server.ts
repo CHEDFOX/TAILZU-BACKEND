@@ -34,6 +34,7 @@ import { registerMediaRoutes, loadMediaRegistry, getMediaRegistry } from "./rout
 import { PRIVACY_POLICY_HTML, PRIVACY_POLICY_EFFECTIVE } from "./routes/policies/privacy.js";
 import { TERMS_HTML, TERMS_EFFECTIVE } from "./routes/policies/terms.js";
 import { DOWNLOAD_PAGE_HTML } from "./routes/download.js";
+import { registerDemoRoutes } from "./routes/demo.js";
 import { registerReviewCodeRoute } from "./routes/reviewCode.js";
 import { getConfig, VERSION } from "./config.js";
 import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
@@ -425,6 +426,14 @@ app.get("/download", async (_req, reply) => {
   reply.type("text/html; charset=utf-8");
   reply.header("Cache-Control", "public, max-age=3600");
   return DOWNLOAD_PAGE_HTML;
+});
+
+// The landing page at /, its copy at /v1/site, and the live demo — a visitor's
+// own voice written clean, no account. See routes/demo.ts for why the demo is
+// off by default and how it is bounded when on.
+registerDemoRoutes(app, {
+  downloadsDir: DOWNLOADS_DIR,
+  siteDir: cfg.SITE_DIR,
 });
 
 // --- Universal Links / App Links (AASA + assetlinks) -----------------------

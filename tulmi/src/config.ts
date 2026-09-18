@@ -348,6 +348,28 @@ const EnvSchema = z.object({
    */
   REVENUECAT_WEB_PAYWALL_URL: z.string().url().optional(),
   /**
+   * THE LANDING PAGE'S LIVE DEMO. Off by default, on purpose.
+   *
+   * tailzu.space lets a visitor press a mic, talk for a few seconds, and see
+   * their own words come back clean — no account, no install. That is the
+   * whole pitch, and it is also an unauthenticated route that spends real
+   * recogniser and model calls. Bounded three ways: a kill switch, a clip
+   * length cap, and a per-IP rate. Turning it on is a decision about money,
+   * so it is a line in .env rather than a default.
+   */
+  DEMO_ENABLED: bool(false),
+  /** Longest clip the demo will accept, in seconds. A pitch, not a dictation. */
+  DEMO_MAX_SECONDS: z.coerce.number().default(15),
+  /** Demo calls one address may make per minute. */
+  DEMO_PER_MINUTE: z.coerce.number().default(6),
+  /**
+   * Where the landing page lives. `index.html` here is served at `/`; absent,
+   * `/` sends people to /download so the apex is never a blank page. Bind
+   * mounted from ~/tulmi/site on the server, so publishing the site is one
+   * scp — the same shape as /downloads.
+   */
+  SITE_DIR: z.string().default("/data/site"),
+  /**
    * RevenueCat REST secret key (sk_…), for asking about a user directly.
    *
    * Optional, and a different direction from the webhook: the webhook is

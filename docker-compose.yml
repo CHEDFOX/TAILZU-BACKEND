@@ -42,6 +42,9 @@ services:
       # Host-side bind mount so publishing a release is just:
       #   scp "Tailzu-Setup.exe" server:~/tulmi/downloads/
       - ./downloads:/data/downloads
+      # The landing page, served at /. Same shape as the installers:
+      #   scp index.html server:~/tulmi/site/
+      - ./site:/data/site
     restart: unless-stopped
     # Docker uses the image's HEALTHCHECK directive by default; restate it here
     # so a misconfigured base image can't silently disable liveness probing.
