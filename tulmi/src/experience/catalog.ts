@@ -167,37 +167,32 @@ export const SITE_UI = {
   // about dictation; they believe the mess turning into a sentence in front
   // of them — which is what the line under this one is for.
   headline: "Say it badly.|Send it perfect.",
-  sub: "Nobody speaks in clean sentences. Tailzu keeps every word you meant and drops every one you didn't.",
-  // The one label on the stage. The arrow is the whole product.
-  flow: "What you said → what it wrote",
+  lede: "Nobody speaks in clean sentences. Tailzu drops the filler and keeps every number, every name, and the language you said it in.",
   // Press, not hold. A long press on a phone selects text and opens menus,
   // and a clip this short does not need a second gesture to end: it stops
   // itself when you pause, or at the cap.
   cta: "Use your own voice",
   ctaHeld: "Stop",
-  writing: "Writing",
+  writing: "Writing…",
   again: "Again",
   invite: "No sign-up. It stops when you pause.",
   after: "That is the whole product. It works everywhere you type.",
   demoOff: "The live demo is resting. The apps below are not.",
   micDenied: "Your browser blocked the microphone. Allow it and try again.",
   /**
-   * THE STAGE. These run through the page's one animation until the visitor
-   * presses the microphone and their own sentence takes it over for good.
+   * THE RIVER. Everything anybody ever said travels along one line across the
+   * page: the mess flows in from the left, is swallowed at the microphone,
+   * and leaves to the right as a written sentence. These are what it carries,
+   * strung together, until a visitor presses the button and their own words
+   * take the line over for good.
    *
-   * NOTHING HERE IS CHOREOGRAPHED. The page is handed two strings per case —
-   * what was said, what was written — and works out for itself which word
-   * became which, which were dropped and which were repaired. That is the
-   * only reason the same animation can run on a stranger's voice a second
-   * after they speak it, and the reason these can be changed, reordered or
-   * replaced from here without anybody touching the site.
+   * They are joined into one endless stream rather than shown one at a time,
+   * because the claim is not a handful of tricks — it is that the same thing
+   * happens whatever you speak and whatever script you speak it in, and a
+   * claim like that is made by volume. Every line is short on purpose: a long
+   * one holds the river still, and the point is that it never stops.
    *
-   * There are no chapters and no labels, because the claim is not a handful
-   * of tricks — it is that the same thing happens whatever you speak and
-   * whatever script you speak it in. Every line is short on purpose: a long
-   * one stalls the cycle, and the point is the rhythm.
-   *
-   * Each line is a fault the quality harness already tests for, which is why
+   * Each one is a fault the quality harness already tests for, which is why
    * they can be shown rather than claimed: filler dropped with every fact
    * kept, two languages left as two languages, a misheard word repaired while
    * the amount and the name are not touched.
@@ -213,6 +208,45 @@ export const SITE_UI = {
     { lang: "ESPAÑOL", said: "eh o sea puedo llegar como a las siete", wrote: "Puedo llegar como a las siete." },
     { lang: "తెలుగు", said: "నేను రేపు ఆఫీస్ కి రాను కొంచెం పని ఉంది", wrote: "నేను రేపు ఆఫీస్‌కి రాను, కొంచెం పని ఉంది." },
     { lang: "ਪੰਜਾਬੀ", said: "ਮੈਂ ਕੱਲ੍ਹ ਨਹੀਂ ਆ ਸਕਦਾ ਥੋੜ੍ਹਾ ਕੰਮ ਹੈ", wrote: "ਮੈਂ ਕੱਲ੍ਹ ਨਹੀਂ ਆ ਸਕਦਾ, ਥੋੜ੍ਹਾ ਕੰਮ ਹੈ।" },
+  ],
+  /**
+   * THE THREE CLAIMS, each shown on the same card rather than asserted.
+   *
+   * `cut` are the words struck out as the reader watches; `keep` are the ones
+   * marked and then left standing in the written line. A step names at most
+   * one of the two, because the argument of each is different: the first is
+   * about what goes, the other two are about what survives.
+   *
+   * The words are matched by letters and digits only, lowercased, so "ramesh"
+   * here marks "Ramesh." in the sentence. Anything not listed is untouched,
+   * which is the safe direction to be wrong in: a missed mark is a quiet
+   * animation, a wrong one is a false claim about the product.
+   */
+  steps: [
+    {
+      tab: "The mess goes",
+      note: "Filler, false starts, the sentence you began and abandoned.",
+      said: "um so like i think we should probably move the review to thursday because the design is uh not done",
+      wrote: "I think we should move the review to Thursday — the design is not done.",
+      cut: ["um", "so", "like", "probably", "uh"],
+      pill: "Filler and false starts",
+    },
+    {
+      tab: "The facts stay",
+      note: "A number, a name or an amount is never guessed at.",
+      said: "trensfer 2500 rupeez to ramesh tomorow",
+      wrote: "Transfer 2500 rupees to Ramesh tomorrow.",
+      keep: ["2500", "ramesh"],
+      pill: "Misheard words repaired · 2500 and Ramesh untouched",
+    },
+    {
+      tab: "Your language stays",
+      note: "Two languages in one sentence come back as two languages.",
+      said: "the deploy is done but abhi testing baaki hai",
+      wrote: "The deploy is done, but abhi testing baaki hai.",
+      keep: ["abhi", "testing", "baaki", "hai"],
+      pill: "Never translated, never transliterated",
+    },
   ],
   price: "Free to {words} words a month.",
   download: { win: "Windows", mac: "macOS", linux: "Linux", ios: "iPhone", android: "Android", soon: "soon" },
