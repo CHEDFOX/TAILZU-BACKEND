@@ -418,8 +418,15 @@ async function transcribeWithProvider(input: SttInput): Promise<RawSttResult> {
         // is nobody looking at all, and that must still travel: swallowing it
         // would hide an outage and leave someone thinking their words
         // vanished.
-        if (rejected.every((r) => isAudioRejection(r.reason))) {
-          console.error("[stt] every provider refused the audio — treating as silence");
+        //
+        // AND ONLY FOR A CLIP THAT COULD BE SILENT. A 4xx does not always
+        // mean "nothing here" — it can mean "I cannot process this", for a
+        // language or an encoding a provider does not handle. Believing that
+        // on a ten-second recording would eat somebody's dictation and report
+        // nothing, which is the worst outcome this product has. A quiet room
+        // is short; a sentence is not.
+        if (rejected.every((r) => isAudioRejection(r.reason)) && plausiblySilent(input.audio, input.format)) {
+          console.error("[stt] every provider refused a short clip — treating as silence");
           return { text: "", durationSeconds: 0, speechConfidence: "low" };
         }
         console.error("[stt] every provider failed:", (rejected[0]!.reason as Error)?.message);
@@ -716,6 +723,27 @@ export const MIN_USABLE_AUDIO_BYTES = 1024;
  * 400 …"). 429 is excluded deliberately — being rate limited says nothing
  * about the audio.
  */
+/** Longest a clip can be and still plausibly hold no speech at all. */
+export const SILENCE_PLAUSIBLE_S = 2;
+/** Fallback ceiling for containers whose duration we cannot read (ogg, webm,
+ *  flac): roughly two seconds of 16 kHz 16-bit mono, and far more than two
+ *  seconds of anything compressed. */
+export const QUIET_CLIP_BYTES = 64_000;
+
+/**
+ * Could this clip genuinely contain nothing?
+ *
+ * The gate on treating a universal 4xx as silence. Every provider refusing a
+ * two-second recording is a quiet room; every provider refusing a ten-second
+ * one is a failure to process it, and reporting that as "you said nothing"
+ * loses the words and the error at once.
+ */
+export function plausiblySilent(audio: Buffer, format: AudioFormat): boolean {
+  const seconds = estimateDurationSeconds(audio, format);
+  if (seconds > 0) return seconds <= SILENCE_PLAUSIBLE_S;
+  return audio.length <= QUIET_CLIP_BYTES;
+}
+
 export function isAudioRejection(err: unknown): boolean {
   const status = (err as { status?: number })?.status;
   const code = typeof status === "number"

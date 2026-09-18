@@ -6,7 +6,7 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import { estimateDurationSeconds, probeMp4Duration, isAudioRejection } from "../src/pipeline/stt.js";
+import { estimateDurationSeconds, probeMp4Duration, isAudioRejection, plausiblySilent } from "../src/pipeline/stt.js";
 
 /** Wrap `body` in an MP4 box: size(4) + type(4) + body. */
 function box(type: string, body: Buffer): Buffer {
@@ -151,5 +151,50 @@ describe("a provider refusing the audio is not an outage", () => {
   it("does not read rate limiting as a verdict on the clip", () => {
     // 429 says something about us, not about the audio.
     expect(isAudioRejection({ status: 429 })).toBe(false);
+  });
+});
+
+describe("only a clip that could be silent is treated as silent", () => {
+  // A 4xx does not always mean "nothing here" — it can mean "I cannot process
+  // this", for a language or an encoding a provider does not handle.
+  // Believing that on a real sentence would eat somebody's dictation and
+  // report nothing, which is the worst outcome this product has.
+  const wav = (seconds: number) => {
+    const byteRate = 16000 * 1 * 2;
+    const dataSize = Math.round(byteRate * seconds);
+    const buf = Buffer.alloc(44 + dataSize);
+    buf.write("RIFF", 0, "ascii");
+    buf.writeUInt32LE(36 + dataSize, 4);
+    buf.write("WAVE", 8, "ascii");
+    buf.write("fmt ", 12, "ascii");
+    buf.writeUInt32LE(16, 16);
+    buf.writeUInt16LE(1, 20);
+    buf.writeUInt16LE(1, 22);
+    buf.writeUInt32LE(16000, 24);
+    buf.writeUInt32LE(byteRate, 28);
+    buf.writeUInt16LE(2, 32);
+    buf.writeUInt16LE(16, 34);
+    buf.write("data", 36, "ascii");
+    buf.writeUInt32LE(dataSize, 40);
+    return buf;
+  };
+
+  it("believes a quiet room", () => {
+    expect(plausiblySilent(wav(0.4), "wav")).toBe(true);
+    expect(plausiblySilent(wav(2), "wav")).toBe(true);
+  });
+
+  it("does not believe a sentence", () => {
+    // Ten seconds of Tamil that every provider refused is a failure to
+    // process it, not an empty room.
+    expect(plausiblySilent(wav(10), "wav")).toBe(false);
+    expect(plausiblySilent(wav(3), "wav")).toBe(false);
+  });
+
+  it("falls back to size for containers whose duration we cannot read", () => {
+    // ogg/webm/flac report 0 seconds — guessing "silent" from that alone
+    // would swallow every one of them.
+    expect(plausiblySilent(Buffer.alloc(1000), "ogg")).toBe(true);
+    expect(plausiblySilent(Buffer.alloc(500_000), "ogg")).toBe(false);
   });
 });
