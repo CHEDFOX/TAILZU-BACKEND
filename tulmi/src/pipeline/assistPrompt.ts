@@ -118,6 +118,54 @@ export function toneGuidance(
  * the per-tone endpoints). Hard-capped so a runaway portrait can never crowd
  * out the actual task.
  */
+/**
+ * The words they have told us are theirs, handed to the writer.
+ *
+ * THIS NEVER REACHED THE WRITING STEP. The Dictionary biases the recognizer
+ * (stt.ts) and is rendered into the streaming cleanup prompt (prompts.ts),
+ * and buildAssistSystem — which serves /v1/refine, /v1/transcribe-clean and
+ * /v1/draft — was never given it. Its whole promise is that a name someone
+ * always spells one way comes out that way, and on every main path the writer
+ * had no idea the list existed.
+ *
+ * What that costs is exactly the case that found it: "the Nykaa order got
+ * delayed again" came back from the microphone as "The Nika order", and the
+ * writer left it, because nothing in the sentence says otherwise and the one
+ * thing that did was never shown to it. "Nika" is a plausible name; only the
+ * Dictionary knows it is wrong.
+ *
+ * The last clause of each line is what makes it usable rather than decorative
+ * — a list of words on its own says "keep these", and the failure here was
+ * never about keeping, it was about recognising one that arrived bent.
+ *
+ * Capped hard: this rides on every request, and a lexicon that grows without
+ * limit eventually crowds out the message it was meant to help write.
+ */
+export function lexiconBlock(personality: Personality | undefined): string {
+  const terms = (personality?.vocabulary ?? "")
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 24);
+  const pairs = (personality?.dictionary ?? [])
+    .filter((d) => d?.word?.trim() && d?.replacement?.trim())
+    .slice(0, 12);
+  const lines: string[] = [];
+  if (terms.length) {
+    lines.push(
+      `Names and words that are theirs, spelled this way: ${terms.join(", ")}. `
+      + "Something close to one of these, in a place one of these would sit, is that word.",
+    );
+  }
+  if (pairs.length) {
+    lines.push(
+      "They always write these as: "
+      + pairs.map((d) => `${d.word.trim()} → ${d.replacement.trim()}`).join(", ") + ".",
+    );
+  }
+  return lines.join("\n");
+}
+
 export function portraitBlock(personality: Personality | undefined, tone?: string): string {
   const p = personality?.stylePortrait;
   if (!p) return "";
@@ -361,6 +409,11 @@ export function buildAssistSystem(opts: {
     // repair, scoped to the word, with "change nothing else" to stop it
     // spreading to the sentence.
     "Recognition is imperfect: a word that is not a word, or that cannot belong in that sentence, is a mishearing — write the word they meant and change nothing else.",
+    // Sits here, directly under the repair it makes possible. On its own the
+    // rule above cannot rescue a misheard NAME: "Nika" is a plausible company
+    // and nothing in the sentence contradicts it. The list is the only thing
+    // that does, and it was never in this prompt.
+    lexiconBlock(opts.personality) || null,
     // Measured, like the script and the mixture: the recognizer's own reading
     // of how much it trusted itself. Stated rather than acted on, because the
     // two lines above already say what to do about it.

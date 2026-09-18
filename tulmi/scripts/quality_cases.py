@@ -269,6 +269,16 @@ CASES = [
          text="trensfer 2500 rupeez to ramesh tomorow",
          keep_digits="2500", require=["ramesh"],
          forbid=["rupeez", "tomorow", "trensfer"]),
+    dict(id="garbled/a-saved-name-is-restored", smoke=True,
+         why="the Dictionary exists so a misheard name still comes out their way",
+         # The case that found the gap arrived through the mic: "Nykaa" was
+         # heard as "Nika" and written as "Nika", because the Dictionary
+         # reached the recogniser and the streaming prompt and never reached
+         # the writer. This tests the same repair from the keyboard, where the
+         # recogniser is not involved at all.
+         text="the nika order got delayed again",
+         personality={"vocabulary": "Nykaa, Zomato, Swiggy"},
+         require_exact=["Nykaa"]),
     dict(id="garbled/an-unfamiliar-name-is-left-alone",
          why="a name it does not recognise is still their name",
          text="the invoice is for chedfox labs, send it today",
@@ -300,8 +310,13 @@ CASES = [
          # Guards the over-resolving end of the same rule. A harness that only
          # tests "the correction wins" rewards a writer that deletes whichever
          # option came first, and this is the sentence that catches it.
+         # "Let's meet at 5:00 or 6:30. Your call." is a correct answer and
+         # this case failed it for writing 6:30 instead of the word. That is
+         # the third time I have pinned one spelling of a number — after
+         # "five"/"5" and "12"/"Twelve" — so: a time survives in whatever form
+         # it survives in, and only its absence is a fault.
          text="lets meet at five or six thirty, your call",
-         require_any=[["five", "5"]], require=["thirty"]),
+         require_any=[["five", "5"], ["thirty", "30"]]),
     dict(id="repair/runon-gets-punctuation",
          why="one long breath becomes sentences",
          text=("i reached the office early today then the client called and "

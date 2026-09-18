@@ -185,3 +185,53 @@ describe("Zu is the user's own writing, not a voice laid over it", () => {
     expect(g).toContain("— R");
   });
 });
+
+describe("the Dictionary reaches the writer", () => {
+  // It never did. The Dictionary biases the recognizer (stt.ts) and is
+  // rendered into the STREAMING cleanup prompt (prompts.ts), and
+  // buildAssistSystem — which serves /v1/refine, /v1/transcribe-clean and
+  // /v1/draft — was never given it. Its whole promise is that a name someone
+  // always spells one way comes out that way.
+  //
+  // What it cost: "the Nykaa order got delayed again" came back from the
+  // microphone as "The Nika order", and the writer left it. Nothing in the
+  // sentence says otherwise, and the one thing that did was never shown to it.
+  const withDict = () => buildAssistSystem({
+    hasContext: false,
+    personality: { vocabulary: "Nykaa, Zomato, Swiggy" },
+  });
+
+  it("states the saved names", () => {
+    expect(withDict()).toContain("Nykaa");
+    expect(withDict()).toContain("Swiggy");
+  });
+
+  it("says what to DO with them, not just that they exist", () => {
+    // A bare list reads as "keep these", and keeping was never the failure —
+    // recognising one that arrived bent was.
+    expect(withDict()).toMatch(/something close to one of these/i);
+  });
+
+  it("carries the word-for-word replacements too", () => {
+    const t = buildAssistSystem({
+      hasContext: false,
+      personality: { dictionary: [{ word: "nikaa", replacement: "Nykaa" }] },
+    });
+    expect(t).toMatch(/nikaa → Nykaa/);
+  });
+
+  it("says nothing at all when the Dictionary is empty", () => {
+    // It rides on every request. An empty heading is pure cost.
+    const bare = buildAssistSystem({ hasContext: false });
+    expect(bare).not.toMatch(/names and words that are theirs/i);
+    expect(buildAssistSystem({ hasContext: false, personality: { vocabulary: "  " } }))
+      .not.toMatch(/names and words that are theirs/i);
+  });
+
+  it("caps the list, because it rides on every request", () => {
+    const many = Array.from({ length: 60 }, (_, i) => `Word${i}`).join(", ");
+    const t = buildAssistSystem({ hasContext: false, personality: { vocabulary: many } });
+    expect(t).toContain("Word0");
+    expect(t).not.toContain("Word30");
+  });
+});
