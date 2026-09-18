@@ -90,6 +90,11 @@ export async function runPipeline(
     ...opts,
     script: stt.script,
     alternative: stt.alternative,
+    // How much the recognizer trusted its own reading. Measured, like the
+    // script, and for the same reason: the writing step is the only place a
+    // mishearing can still be repaired, and it was never told there might be
+    // one.
+    speechConfidence: stt.speechConfidence,
   });
 
   return {

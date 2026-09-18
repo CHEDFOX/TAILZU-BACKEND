@@ -523,6 +523,10 @@ export async function assist(
     // Only meaningful within one script — a sentence that already switches
     // alphabets shows its own mixture, and the script fact carries it.
     mixedLanguages: mixesEnglishAndRomanHindi(message),
+    // Only "low" is worth saying. "unknown" means the provider reports no
+    // confidence at all (the OpenAI path), and calling that uncertain would
+    // tell the model every transcript from that engine is a guess.
+    uncertain: opts.speechConfidence === "low",
     hasContext: !!context,
     hasAlternative,
   });

@@ -53,8 +53,8 @@ describe("assist path — instruction separation", () => {
     // Bounded by SUBJECT, not by a list of phrasings: a list invites the next
     // phrasing, while "only about the writing" also covers role changes and
     // anything else that is not the job.
-    expect(system).toMatch(/only ever ask you about the writing/i);
-    expect(system).toMatch(/simply part of what they are saying/i);
+    expect(system).toMatch(/only ask you about the writing/i);
+    expect(system).toMatch(/part of what they are saying/i);
   });
 
   it("says only what is NOT a request, and nothing about how to write", () => {
@@ -108,6 +108,36 @@ describe("assist path — instruction separation", () => {
     expect(scriptOf("12345")).toBeUndefined();
   });
 
+  it("says the input is a hearing, and bounds what may be repaired from it", () => {
+    // Everything else in the prompt treats the input as what they said. Most
+    // of the time it is a recognizer's best guess, and recognizers mishear —
+    // so the writing step was repairing what SPEAKING cost them and
+    // faithfully preserving what the MICROPHONE cost them.
+    expect(system).toMatch(/rough hearing, not a recording/i);
+    expect(system).toMatch(/write the one they meant/i);
+  });
+
+  it("forbids repairing what the language cannot decide", () => {
+    // THE BOUND IS THE WHOLE POINT. A language decides which word belongs in
+    // a sentence; it says nothing about which digit belongs in a number. A
+    // wrong number that looks wrong can be noticed. A wrong number smoothed
+    // into looking right cannot, and that is inventing a fact — forbidden two
+    // lines above and re-permitted by any rule that stops at "write what they
+    // meant".
+    expect(system).toMatch(/numbers, names, amounts and codes/i);
+    expect(system).toMatch(/even when they look wrong/i);
+  });
+
+  it("states low recognizer confidence, and only when it is low", () => {
+    // Measured like the script and the mixture. "unknown" means the provider
+    // reports no confidence at all, and treating that as uncertain would tell
+    // the model every transcript from that engine is a guess.
+    expect(buildAssistSystem({ hasContext: false, uncertain: true }))
+      .toMatch(/came back with low confidence/i);
+    expect(buildAssistSystem({ hasContext: false }))
+      .not.toMatch(/low confidence/i);
+  });
+
   it("describes the context field as what the clients actually send", () => {
     // context is priorText — the user's own text, already in the field. The
     // prompt also offered "or the conversation", which no client sends, and
@@ -117,8 +147,8 @@ describe("assist path — instruction separation", () => {
     // cursor, the live path deletes only the tail it inserted itself. So a
     // restatement appears TWICE in the user's field.
     const withCtx = buildAssistSystem({ hasContext: true });
-    expect(withCtx).toMatch(/their own text, from before this dictation/i);
-    expect(withCtx).toMatch(/never restate any of it/i);
+    expect(withCtx).toMatch(/their own text from before this dictation/i);
+    expect(withCtx).toMatch(/never restate it/i);
     expect(withCtx).not.toMatch(/or the conversation/i);
     // And it is only said when there is something to say it about.
     expect(buildAssistSystem({ hasContext: false })).not.toMatch(/already in the field/i);

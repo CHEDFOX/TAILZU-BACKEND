@@ -245,6 +245,30 @@ CASES = [
          personality={"vocabulary": "Nykaa, Zomato, Swiggy"},
          require_exact=["Nykaa"]),
 
+    # --- A ROUGH HEARING, NOT A RECORDING ----------------------------------
+    # Recognition is not reliable and never will be. The writing step knows the
+    # language and the microphone does not, so it can often say what was meant
+    # — and the bound is the whole point: a language decides which WORD belongs
+    # in a sentence and says nothing about which DIGIT belongs in a number.
+    # Every case here tests one side of that line.
+    dict(id="garbled/misheard-word-is-decoded", smoke=True,
+         why="the language decides this one, and the microphone got it wrong",
+         text="can you send me the sails report before the meeting",
+         require=["sales"], forbid=["sails"]),
+    dict(id="garbled/misheard-word-in-hinglish",
+         why="the same repair where the sentence is not English",
+         text="kal ka meting cancel ho gaya hai",
+         require=["meeting"], forbid=["meting"]),
+    dict(id="garbled/digits-survive-a-garbled-sentence", smoke=True,
+         why="words get repaired and numbers do not — both halves, one sentence",
+         text="trensfer 2500 rupeez to ramesh tomorow",
+         keep_digits="2500", require=["ramesh"],
+         forbid=["rupeez", "tomorow", "trensfer"]),
+    dict(id="garbled/an-unfamiliar-name-is-left-alone",
+         why="a name it does not recognise is still their name",
+         text="the invoice is for chedfox labs, send it today",
+         require=["chedfox"]),
+
     # --- DISFLUENCY: the actual job ---------------------------------------
     dict(id="repair/filler-removed", smoke=True,
          why="this is what the product is for",

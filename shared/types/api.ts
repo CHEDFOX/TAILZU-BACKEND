@@ -349,6 +349,16 @@ export interface CleanupOptions {
    */
   alternative?: string;
   /**
+   * The recognizer's own confidence that it heard real, intelligible speech.
+   * Observed like `script`, and stated to the writing step for the same
+   * reason: it is what separates "they said this" from "this is my best guess
+   * at what they said", and the writing step is the only place a mishearing
+   * can still be repaired.
+   *
+   * Never sent by clients — the STT layer fills it in.
+   */
+  speechConfidence?: "high" | "low" | "unknown";
+  /**
    * Personality override for this request. If omitted, the backend uses the
    * user's saved personality (resolved from their account).
    */

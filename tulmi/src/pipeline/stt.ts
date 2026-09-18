@@ -71,6 +71,16 @@ export interface SttResult {
    * two agree (the common case), so the prompt stays untouched.
    */
   alternative?: string;
+  /**
+   * How sure the recognizer was that it heard real, intelligible speech.
+   *
+   * Computed already — it decides whether a bare "thank you" is a real
+   * one-word dictation or a silence hallucination — and then discarded. It is
+   * the one thing that separates "they said this" from "this is my best
+   * guess at what they said", and the writing step, which knows the language
+   * and could repair a mishearing, never saw it.
+   */
+  speechConfidence?: "high" | "low" | "unknown";
 }
 
 /**
@@ -706,6 +716,11 @@ export async function transcribe(input: SttInput): Promise<SttResult> {
     // silence scrub — offering an alternative to an empty result would
     // resurrect text we just decided was a hallucination.
     alternative: text ? raw.alternative : undefined,
+    // Forwarded now rather than discarded. A low reading here does not mean
+    // silence — that was already handled above — it means the words that came
+    // back are a guess, which is exactly what the writing step needs to know
+    // before deciding how hard to repair them.
+    speechConfidence: raw.speechConfidence,
   };
 }
 
