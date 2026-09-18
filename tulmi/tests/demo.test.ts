@@ -85,9 +85,11 @@ describe("the landing page", () => {
     const res = await app.inject({ method: "GET", url: "/v1/site" });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.copy.headline).toBe("Watch it take the mess out.");
-    // The page is one field running one loop, so the loop has to arrive with
-    // it — and every case needs all three parts or the field types a blank.
+    // The headline is set in two lines split on the pipe, so it must carry
+    // one — a headline without it renders as a single run-on line.
+    expect(body.copy.headline.split("|")).toHaveLength(2);
+    // The stage has to arrive with the page, and every case needs all three
+    // parts: a missing one animates an empty string for four seconds.
     expect(body.copy.cases.length).toBeGreaterThan(3);
     for (const c of body.copy.cases) {
       expect(c.lang.length).toBeGreaterThan(0);

@@ -161,11 +161,15 @@ export const POLICY = {
  * is made by the visitor's own sentence coming back clean.
  */
 export const SITE_UI = {
-  // The page is one demonstration, so the headline points at it rather than
-  // describing the product. Nobody believes a claim about dictation; they
-  // believe the mess turning into a sentence in front of them.
-  headline: "Watch it take the mess out.",
+  eyebrow: "Dictation that writes, not transcribes",
+  // Two lines, split on the pipe, because the second one is the promise and
+  // it is set in the brand colour on its own line. Nobody believes a claim
+  // about dictation; they believe the mess turning into a sentence in front
+  // of them — which is what the line under this one is for.
+  headline: "Say it badly.|Send it perfect.",
   sub: "Nobody speaks in clean sentences. Tailzu keeps every word you meant and drops every one you didn't.",
+  // The one label on the stage. The arrow is the whole product.
+  flow: "What you said → what it wrote",
   // Press, not hold. A long press on a phone selects text and opens menus,
   // and a clip this short does not need a second gesture to end: it stops
   // itself when you pause, or at the cap.
@@ -173,22 +177,25 @@ export const SITE_UI = {
   ctaHeld: "Stop",
   writing: "Writing",
   again: "Again",
-  said: "You said",
-  wrote: "It wrote",
-  languages: "22 Indian languages, and most of the world's.",
   invite: "No sign-up. It stops when you pause.",
   after: "That is the whole product. It works everywhere you type.",
   demoOff: "The live demo is resting. The apps below are not.",
   micDenied: "Your browser blocked the microphone. Allow it and try again.",
   /**
-   * THE LOOP. One field on the page, and these run through it until the
-   * visitor presses the microphone and replaces them with their own sentence.
+   * THE STAGE. These run through the page's one animation until the visitor
+   * presses the microphone and their own sentence takes it over for good.
    *
-   * There are no tabs and no chapters, because the claim is not three
-   * labelled tricks — it is that the same thing happens whatever you speak
-   * and whatever script you speak it in. Ten of them go by in half a minute,
-   * so every line is short on purpose: a long one stalls the cycle and the
-   * point is the rhythm.
+   * NOTHING HERE IS CHOREOGRAPHED. The page is handed two strings per case —
+   * what was said, what was written — and works out for itself which word
+   * became which, which were dropped and which were repaired. That is the
+   * only reason the same animation can run on a stranger's voice a second
+   * after they speak it, and the reason these can be changed, reordered or
+   * replaced from here without anybody touching the site.
+   *
+   * There are no chapters and no labels, because the claim is not a handful
+   * of tricks — it is that the same thing happens whatever you speak and
+   * whatever script you speak it in. Every line is short on purpose: a long
+   * one stalls the cycle, and the point is the rhythm.
    *
    * Each line is a fault the quality harness already tests for, which is why
    * they can be shown rather than claimed: filler dropped with every fact
