@@ -312,8 +312,8 @@ CASES = [
          forbid_regex=r"[\U0001F300-\U0001FAFF☀-➿]"),
 
     # --- CONTEXT: what is already in the field -----------------------------
-    dict(id="context/reply-does-not-echo-the-question",
-         why="the field already holds their message; repeating it is noise",
+    dict(id="context/does-not-echo-what-is-already-there",
+         why="neither client removes the prior text, so a restatement appears twice",
          text="yes confirm it", context="Are we still on for Friday?",
          forbid=["are we still on"], max_words=12),
     dict(id="context/draft-is-continued-not-restarted",

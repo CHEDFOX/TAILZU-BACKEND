@@ -14,7 +14,8 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from quality import check, dominant_script, scripts_in, wer  # noqa: E402
+from quality import (check, dominant_script, scripts_in, wer,  # noqa: E402
+                     wer_if_comparable)
 from quality_cases import CASES  # noqa: E402
 
 
@@ -59,6 +60,29 @@ class Wer(unittest.TestCase):
 
     def test_empty_said_is_not_a_crash(self):
         self.assertEqual(wer("", "anything"), 0.0)
+
+    def test_across_scripts_it_declines_to_score(self):
+        # The harness's own bug, caught by the first real run: someone SAYS
+        # romanised Hindi, the recogniser returns Devanagari, and every word
+        # counts as wrong — WER 1.00 on a perfect transcript. Both readings
+        # are fair; speech has no script. So it reports rather than scores.
+        rate, note = wer_if_comparable(
+            "yaar kal ka plan cancel ho gaya hai",
+            "यार कल का प्लान कैंसल हो गया है")
+        self.assertIsNone(rate)
+        self.assertIn("devanagari", note)
+        self.assertIn("fair reading", note)
+
+    def test_within_one_script_it_still_scores(self):
+        rate, note = wer_if_comparable("meet me at four", "meet me at five")
+        self.assertAlmostEqual(rate, 0.25)
+        self.assertEqual(note, "")
+
+    def test_silence_is_still_scored(self):
+        # An empty or digits-only transcript has no script, which must not be
+        # mistaken for a script mismatch and silently excused.
+        rate, _ = wer_if_comparable("call me tomorrow", "")
+        self.assertIsNotNone(rate)
 
 
 class Checks(unittest.TestCase):

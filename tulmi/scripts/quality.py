@@ -144,6 +144,21 @@ def wer(said, heard):
     return prev[len(b)] / len(a)
 
 
+def wer_if_comparable(said, heard):
+    """(rate, note). rate is None when the two are in different scripts.
+
+    WORD ERROR RATE ONLY MEANS ANYTHING WITHIN ONE SCRIPT. Speaking romanised
+    Hindi and getting Devanagari back scores 1.00 — every word "wrong" — when
+    the recognition was in fact perfect. Comparing across scripts would need
+    transliteration to compare at all, so the honest move is to decline to
+    score it and say why, rather than publish a number that means nothing.
+    """
+    a, b = dominant_script(said), dominant_script(heard)
+    if a == b or "none" in (a, b):
+        return wer(said, heard), ""
+    return None, "heard in %s, said in %s — a fair reading, not an error" % (b, a)
+
+
 def check(case, out, stage="out"):
     """Every way this output fails its case. Empty list means it passed.
 
@@ -365,11 +380,12 @@ def main():
         transcript, out, err = run_case(args.api, args.token, case, args.audio_format)
         failures = [err] if err else check(case, out)
         heard_wer = None
+        script_note = ""
         if not err and case.get("endpoint") == "dictate":
             failures += check(case, transcript, stage="transcript")
-            heard_wer = wer(case["say"], transcript)
+            heard_wer, script_note = wer_if_comparable(case["say"], transcript)
             limit = case.get("max_wer")
-            if limit is not None and heard_wer > limit:
+            if heard_wer is not None and limit is not None and heard_wer > limit:
                 failures.append("recognition drifted: WER %.2f (limit %.2f)"
                                 % (heard_wer, limit))
             # SPEECH HAS NO SCRIPT. Someone who SAYS a Hindi sentence has not
@@ -386,7 +402,7 @@ def main():
             "said": case.get("say", ""),
             "input": case.get("text") or case.get("say") or case.get("intent", ""),
             "transcript": transcript, "output": out, "error": err,
-            "wer": heard_wer, "failures": failures,
+            "wer": heard_wer, "scriptNote": script_note, "failures": failures,
             "ms": int((time.time() - t0) * 1000),
         }
 
@@ -415,9 +431,13 @@ def main():
             # rather than guessed at.
             if r["said"]:
                 print("         said   %s" % r["said"])
-                print("         heard  %s%s" % (
-                    r["transcript"] or "(nothing)",
-                    "   [WER %.2f]" % r["wer"] if r["wer"] is not None else ""))
+                if r["wer"] is not None:
+                    tag = "   [WER %.2f]" % r["wer"]
+                elif r.get("scriptNote"):
+                    tag = "   [%s]" % r["scriptNote"]
+                else:
+                    tag = ""
+                print("         heard  %s%s" % (r["transcript"] or "(nothing)", tag))
                 print("         wrote  %s" % (r["output"] or "(nothing)"))
             else:
                 print("         in     %s" % r["input"])
@@ -427,9 +447,11 @@ def main():
     passed = [r for r in results if not r["failures"]]
     failed = [r for r in results if r["failures"]]
     heard = [r["wer"] for r in results if r["wer"] is not None]
+    skipped = [r for r in results if r["wer"] is None and r.get("scriptNote")]
     if heard:
-        print("recognition: median WER %.2f across %d spoken cases  (0.00 is perfect)"
-              % (sorted(heard)[len(heard) // 2], len(heard)))
+        print("recognition: median WER %.2f across %d spoken cases  (0.00 is perfect)%s"
+              % (sorted(heard)[len(heard) // 2], len(heard),
+                 "; %d not scored, heard in another script" % len(skipped) if skipped else ""))
     print("%d passed, %d failed  (%d cases, %.0fs)"
           % (len(passed), len(failed), len(results), time.time() - started))
 

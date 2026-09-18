@@ -218,7 +218,29 @@ export function renderCommandOverride(command: Command | undefined): string {
   }
 }
 
-/** Build the system prompt for the cleanup/refine task (voice + typing). */
+/**
+ * Build the system prompt for the STREAMING cleanup pass.
+ *
+ * READ THIS BEFORE EDITING shared/prompts/cleanup.*.md.
+ *
+ * The name is older than the architecture and it misleads. This prompt does
+ * NOT run the keyboard's /v1/refine, the in-app mic's /v1/transcribe-clean,
+ * or /v1/draft. All three call assist(), which builds its prompt in
+ * pipeline/assistPrompt.ts — a TypeScript string, not a file, and not
+ * versioned by CLEANUP_PROMPT_VERSION. The only caller left here is
+ * cleanStream() on the in-app streaming mic.
+ *
+ * The cost of not knowing that: two prompt versions, v5 and v6, were written
+ * to fix reported faults in refinement and shipped to production. Both were
+ * correct and neither reached the paths users were complaining about. The
+ * end-to-end run proved it — the same sentence passed through the mic and
+ * failed through the keyboard, and an injection case printed the assist
+ * prompt back, which is how the mismatch was finally visible.
+ *
+ * So: a change to how Tailzu WRITES belongs in assistPrompt.ts. A change to
+ * this file reaches one path, and a quality run is the only thing that will
+ * tell you which one you actually changed.
+ */
 export function buildCleanupSystem(opts: CleanupOptions): string {
   const version = getConfig().CLEANUP_PROMPT_VERSION;
   const targetApp = opts.targetApp?.trim() || "Generic";
