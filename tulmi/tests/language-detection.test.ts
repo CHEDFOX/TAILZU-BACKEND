@@ -10,7 +10,7 @@
  * flagship case) broke outright.
  */
 import { describe, expect, it } from "vitest";
-import { detectScript, leadsOnScript, romanHindiScore, readsAsRomanHindi, mixesEnglishAndRomanHindi } from "../src/pipeline/stt.js";
+import { detectScript, leadsOnScript, romanHindiScore, readsAsRomanHindi, mixesEnglishAndRomanHindi, transliterated } from "../src/pipeline/stt.js";
 import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
 
 describe("detectScript — observed, not declared", () => {
@@ -243,5 +243,44 @@ describe("what the prompt is told about a mixed sentence", () => {
       mixedLanguages: true, hasAlternative: true,
     });
     expect(t.length).toBeLessThan(2400);
+  });
+});
+
+describe("transliteration is caught on the way out", () => {
+  // The prompt has forbidden this in four wordings across four deployed runs,
+  // holding sometimes and not others; at temperature 0 it now fails every
+  // time, which makes it a decision rather than a wobble. An instruction the
+  // model keeps losing is not an instruction, it is a hope.
+  it("catches their own words re-spelled in another alphabet", () => {
+    expect(transliterated(
+      "mujhe kal subah jaldi uthna hai",
+      "मुझे कल सुबह जल्दी उठना है।",
+    )).toBe(true);
+    expect(transliterated(
+      "yaar kal ka plan cancel ho gaya hai",
+      "यार कल का प्लान कैंसल हो गया है।",
+    )).toBe(true);
+  });
+
+  it("leaves a genuine translation request alone", () => {
+    // THIS IS WHAT MAKES THE GUARD SAFE TO ENFORCE. Someone asking to be
+    // written in Hindi is doing something different from being transliterated
+    // without asking, and English prose carries no romanized Indic markers.
+    expect(transliterated(
+      "please send me the invoice before friday",
+      "कृपया शुक्रवार से पहले मुझे चालान भेजें।",
+    )).toBe(false);
+  });
+
+  it("does nothing when nothing changed alphabet", () => {
+    expect(transliterated("mujhe kal jaldi uthna hai", "Mujhe kal jaldi uthna hai.")).toBe(false);
+    expect(transliterated("मुझे कल जल्दी उठना है", "मुझे कल जल्दी उठना है।")).toBe(false);
+    expect(transliterated("", "मुझे कल")).toBe(false);
+    expect(transliterated("mujhe kal jaldi uthna hai", "")).toBe(false);
+  });
+
+  it("needs real evidence, not one shared word", () => {
+    // A single marker could be a loanword or a coincidence; two is a sentence.
+    expect(transliterated("the hai brand launch", "द हाय ब्रांड लॉन्च")).toBe(false);
   });
 });

@@ -16,7 +16,7 @@ import {
   parsePortraitDraft, type PortraitDraft,
 } from "./portraitDimensions.js";
 import { buildAssistSystem, portraitBlock } from "./assistPrompt.js";
-import { detectScript, mixesEnglishAndRomanHindi } from "./stt.js";
+import { detectScript, mixesEnglishAndRomanHindi, transliterated } from "./stt.js";
 
 /**
  * The script a piece of text is written in, or undefined when there is no
@@ -555,6 +555,12 @@ export async function assist(
   // the same policy as a refusal: a request that happened to address the model
   // goes out as the message it always was.
   if (quotesPrompt(out, system)) return message.trim();
+  // Their words, re-spelled in another alphabet. Four wordings of the rule
+  // across four deployed runs held sometimes and not others; at temperature 0
+  // it now fails every time, which makes it a decision rather than a wobble.
+  // Checked here for the same reason the prompt leak is: an instruction the
+  // model keeps losing is not an instruction, it is a hope.
+  if (transliterated(message, out)) return message.trim();
   // Their own prior text stays in the field either way, so an echo of it here
   // is a second copy on screen.
   const trimmed = stripEchoedContext(out, context);

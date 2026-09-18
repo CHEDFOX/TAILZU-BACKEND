@@ -210,9 +210,43 @@ export function mixesEnglishAndRomanHindi(text: string): boolean {
 export function romanHindiScore(text: string): number {
   const words = text.toLowerCase().match(/[a-z']+/g);
   if (!words?.length) return 0;
+  return romanHindiHits(text) / words.length;
+}
+
+/** How many romanized-Indic marker words are in here, as a count.
+ *  The fraction above answers "how much of this is Hindi"; some questions
+ *  want "is any of it", and a long English sentence dilutes a real signal. */
+export function romanHindiHits(text: string): number {
+  const words = text.toLowerCase().match(/[a-z']+/g);
+  if (!words?.length) return 0;
   let hits = 0;
   for (const w of words) if (ROMAN_HINDI.has(w)) hits++;
-  return hits / words.length;
+  return hits;
+}
+
+/**
+ * Did the writer re-spell their words in another alphabet?
+ *
+ * TRANSLITERATION, NOT TRANSLATION, AND THE DIFFERENCE IS WHAT MAKES THIS
+ * SAFE TO ENFORCE. "mujhe kal subah jaldi uthna hai" coming back as
+ * "मुझे कल सुबह जल्दी उठना है।" is the same words in a different script —
+ * nobody asked for that, and the prompt has forbidden it in four different
+ * wordings across as many deployed runs, holding sometimes and not others.
+ *
+ * Someone asking to be written in Hindi is a different thing and must keep
+ * working, so the test is narrow: their text was Latin, it carried romanized
+ * Indic words, and what came back is in an Indic script. A request to
+ * translate English prose has no such markers and is untouched.
+ *
+ * The one case this catches wrongly is someone dictating Hinglish and asking,
+ * in that same sentence, to be written in Devanagari. They get their own
+ * words back unchanged, which is the same thing every other guard here does.
+ */
+export function transliterated(input: string, output: string): boolean {
+  if (!input.trim() || !output.trim()) return false;
+  if (detectScript(input) !== "latin") return false;
+  if (!INDIC_SCRIPTS.has(detectScript(output))) return false;
+  return romanHindiHits(input) >= 2;
 }
 
 /**
