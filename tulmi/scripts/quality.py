@@ -427,28 +427,50 @@ def main():
     results = [None] * len(cases)
 
     def attempt(case):
+        """One call, scored.
+
+        WHAT THE USER GETS IS THE OUTPUT, so that is what decides pass or fail.
+        The transcript is a diagnostic — it says WHICH stage to blame when the
+        output is wrong, and nothing more when the output is right.
+
+        That distinction was missing and it failed the product for working.
+        Tamil came back from the recogniser with four words mangled, WER 0.83,
+        and the writer restored the sentence exactly — the whole point of
+        having a writing step after a recogniser. Scored on the transcript
+        alone it read as a failure.
+
+        The phone number is the other half of the same rule: recognition
+        drifted there too, the writer could not know the right digits, the
+        output carried the wrong number, and it fails. Same signal, opposite
+        verdict, decided by what actually reached the field.
+        """
         transcript, out, err = run_case(args.api, args.token, case, args.audio_format)
-        failures = [err] if err else check(case, out)
+        bad = [err] if err else check(case, out)
         heard_wer = None
         script_note = ""
+        drift = []
         if not err and case.get("endpoint") == "dictate":
-            failures += check(case, transcript, stage="transcript")
+            drift += check(case, transcript, stage="transcript")
             heard_wer, script_note = wer_if_comparable(case["say"], transcript)
             limit = case.get("max_wer")
             if heard_wer is not None and limit is not None and heard_wer > limit:
-                failures.append("recognition drifted: WER %.2f (limit %.2f)"
-                                % (heard_wer, limit))
+                drift.append("recognition drifted: WER %.2f (limit %.2f)"
+                             % (heard_wer, limit))
             # SPEECH HAS NO SCRIPT. Someone who SAYS a Hindi sentence has not
             # chosen Devanagari or romanised — the recogniser did. So the mic
             # path cannot assert a fixed script the way the keyboard path
             # does; what it can assert is that the writer did not change the
-            # one it was handed, which is the actual fault.
+            # one it was handed. That is the WRITER's fault, so it counts.
             if case.get("keep_transcript_script") and transcript.strip():
                 a, b = dominant_script(transcript), dominant_script(out)
                 if a != "none" and b != a:
-                    failures.append("writer flipped the script: heard %s, wrote %s" % (a, b))
+                    bad.append("writer flipped the script: heard %s, wrote %s" % (a, b))
+        # Drift explains a bad output; on a good one it is worth saying out
+        # loud and worth nothing against the score.
         return {"transcript": transcript, "output": out, "error": err,
-                "wer": heard_wer, "scriptNote": script_note, "failures": failures}
+                "wer": heard_wer, "scriptNote": script_note,
+                "failures": bad + drift if bad else [],
+                "recovered": drift if not bad else []}
 
     def run(i):
         """One case, --repeat times.
@@ -509,6 +531,12 @@ def main():
         print("%-11s %d/%d" % (g, len(ok), len(rows)))
         for r in rows:
             if not r["failures"]:
+                # Passed, but the recogniser struggled and the writer covered
+                # for it. Worth saying: it is where the next recognition
+                # problem will show up first.
+                for note in r.get("recovered", []):
+                    print("   ok    %s" % r["id"])
+                    print("         %s — the writer recovered it" % note)
                 continue
             flaky = r.get("runs", 1) > 1 and 0 < r["failedRuns"] < r["runs"]
             print("   %s  %s%s" % (
@@ -577,10 +605,24 @@ def main():
             print()
             print("could not read --compare %s: %s" % (args.compare, e))
             return 1 if failed else 0
-        was = {r["id"]: not r["failures"] for r in prev["results"]}
-        now = {r["id"]: not r["failures"] for r in results}
-        fixed = sorted(i for i in now if now[i] and was.get(i) is False)
-        broke = sorted(i for i in now if not now[i] and was.get(i) is True)
+        # A CASE THAT FAILED 1 RUN IN 3 DID NOT REGRESS; IT WOBBLED.
+        #
+        # Recognition is stochastic and two of these have wobbled across three
+        # runs now, printing REGRESSED each time and pulling attention away
+        # from the cases that actually moved. A transition is only called
+        # either way when both sides were decisive.
+        def verdict(r):
+            runs, failed = r.get("runs", 1), r.get("failedRuns", 0)
+            if runs > 1 and 0 < failed < runs:
+                return "flaky"
+            return "pass" if not r["failures"] else "fail"
+
+        was = {r["id"]: verdict(r) for r in prev["results"]}
+        now = {r["id"]: verdict(r) for r in results}
+        wobbly = sorted(i for i in now
+                        if "flaky" in (now[i], was.get(i, "flaky")) and now[i] != was.get(i))
+        fixed = sorted(i for i in now if now[i] == "pass" and was.get(i) == "fail")
+        broke = sorted(i for i in now if now[i] == "fail" and was.get(i) == "pass")
         print()
         print("vs %s (%s): %d -> %d passing"
               % (prev.get("assistPrompt", prev.get("promptVersion", "?")),
@@ -610,6 +652,9 @@ def main():
             print("   FIXED      %s" % i)
         for i in broke:
             print("   REGRESSED  %s" % i)
+        for i in wobbly:
+            print("   WOBBLED    %s  (%s -> %s, not a verdict either way)"
+                  % (i, was.get(i, "?"), now[i]))
         if not fixed and not broke:
             print("   no case changed verdict")
 

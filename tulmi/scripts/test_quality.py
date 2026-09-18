@@ -190,6 +190,38 @@ class StoppingCleanly(unittest.TestCase):
         self.assertTrue(issubclass(Exhausted, Exception))
 
 
+class WhatDecidesTheVerdict(unittest.TestCase):
+    """The output is what reaches the user, so the output decides.
+
+    Both halves were measured on the deployed server in one run. Tamil came
+    back from the recogniser with four words mangled (WER 0.83) and the writer
+    restored the sentence exactly — the whole reason there is a writing step
+    after a recogniser — and it was scored a failure. The phone number drifted
+    the same way, the writer could not know the right digits, and the wrong
+    number reached the field. Same signal, opposite verdict.
+    """
+
+    def test_a_drifted_transcript_with_a_good_output_is_not_a_failure(self):
+        case = {"say": "call me on 98200 41122", "endpoint": "dictate",
+                "keep_digits": "9820041122"}
+        # The writer got it right regardless of what was heard.
+        self.assertEqual(check(case, "Call me on 98200 41122."), [])
+
+    def test_a_drifted_transcript_with_a_bad_output_still_fails(self):
+        case = {"say": "call me on 98200 41122", "endpoint": "dictate",
+                "keep_digits": "9820041122"}
+        bad = check(case, "Call me on 982-000-41122.")
+        self.assertTrue(any("digits changed" in f for f in bad), bad)
+
+    def test_transcript_checks_are_aimed_at_the_transcript(self):
+        # They still run — they are what names the stage to blame — they just
+        # do not decide the verdict on their own.
+        case = {"say": "call me on 98200 41122",
+                "transcript_keep_digits": "9820041122"}
+        self.assertTrue(check(case, "Call me on 982-000-41122.", stage="transcript"))
+        self.assertEqual(check(case, "call me on 98200 41122", stage="transcript"), [])
+
+
 class CaseFile(unittest.TestCase):
     def test_ids_are_unique(self):
         ids = [c["id"] for c in CASES]
