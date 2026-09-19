@@ -119,6 +119,25 @@ describe("the landing page", () => {
     expect(body.copy.absorb.trim().split(/\s+/).length).toBeLessThanOrEqual(2);
     expect(body.copy.absorb).not.toMatch(/[<>]/);
     expect(body.copy.identity).toBeUndefined();
+    // BELOW THE RIVER. Every case names its language, because it is a chip
+    // now; the two titles are short enough to be titles; the tones are the
+    // keyboard's own, distinct in name and in sentence, and none of them is
+    // the line as it was said; the facts are few and each is a few words.
+    for (const c of body.copy.cases) {
+      expect(typeof c.lang).toBe("string");
+      expect(c.lang.length).toBeGreaterThan(0);
+    }
+    for (const t of [body.copy.reel.title, body.copy.tone.title]) {
+      expect(t.trim().split(/\s+/).length).toBeLessThanOrEqual(4);
+    }
+    const tones: { name: string; text: string }[] = body.copy.tone.tones;
+    expect(tones.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(tones.map((t) => t.name)).size).toBe(tones.length);
+    expect(new Set(tones.map((t) => t.text)).size).toBe(tones.length);
+    for (const t of tones) expect(t.text).not.toBe(body.copy.tone.said);
+    expect(body.copy.facts.length).toBeGreaterThanOrEqual(3);
+    expect(body.copy.facts.length).toBeLessThanOrEqual(6);
+    for (const f of body.copy.facts) expect(f.trim().split(/\s+/).length).toBeLessThanOrEqual(5);
     expect(typeof body.freeWords).toBe("number");
     expect(body.demo).toBe(true);
     expect(body.maxSeconds).toBe(15);
