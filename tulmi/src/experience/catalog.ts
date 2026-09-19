@@ -180,8 +180,8 @@ export const SITE_UI = {
   /*
    * ONE TITLE, FOUR WORDS AT MOST, NOT IN THE ACCENT.
    * It sits over the download buttons. There is nothing over the river —
-   * the river is the headline. Under the river are the reel, the tones and
-   * the facts (below), and then this. A test holds it to four words.
+   * the river is the headline. Under the river are the dust and the
+   * materials (below), and then this. A test holds it to four words.
    */
   get: "Free to start.",
   // One word each where one word does it. The button has a microphone on
@@ -220,51 +220,52 @@ export const SITE_UI = {
    * kept, two languages left as two languages, a misheard word repaired while
    * the amount and the name are not touched.
    */
-  /*
-   * `lang` is the chip under the reel below the river — the same twenty
-   * lines, one at a time, each named by what it is. A test insists every
-   * case carries one: a chip with no name is a button nobody can choose.
-   */
   cases: [
-    { lang: "English", said: "um so like can we push the call to four", wrote: "Can we push the call to four?" },
-    { lang: "Hinglish", said: "the deploy is done but abhi testing baaki hai", wrote: "The deploy is done, but abhi testing baaki hai." },
-    { lang: "Hindi", said: "हाँ वो फाइल मैंने भेज दी थी कल शाम को", wrote: "हाँ, वो फाइल मैंने कल शाम भेज दी थी।" },
-    { lang: "Tamil", said: "நான் இப்போ கிளம்பறேன் கொஞ்சம் லேட் ஆகும்", wrote: "நான் இப்போ கிளம்பறேன், கொஞ்சம் லேட் ஆகும்." },
-    { lang: "English", said: "trensfer 2500 rupeez to ramesh tomorow", wrote: "Transfer 2500 rupees to Ramesh tomorrow." },
-    { lang: "Bengali", said: "আমি কাল অফিসে আসব না একটু কাজ আছে", wrote: "আমি কাল অফিসে আসব না, একটু কাজ আছে।" },
-    { lang: "Marathi", said: "मी उद्या ऑफिसला येणार नाही जरा काम आहे", wrote: "मी उद्या ऑफिसला येणार नाही, जरा काम आहे." },
-    { lang: "Spanish", said: "eh o sea puedo llegar como a las siete", wrote: "Puedo llegar como a las siete." },
-    { lang: "Telugu", said: "నేను రేపు ఆఫీస్ కి రాను కొంచెం పని ఉంది", wrote: "నేను రేపు ఆఫీస్‌కి రాను, కొంచెం పని ఉంది." },
-    { lang: "Punjabi", said: "ਮੈਂ ਕੱਲ੍ਹ ਨਹੀਂ ਆ ਸਕਦਾ ਥੋੜ੍ਹਾ ਕੰਮ ਹੈ", wrote: "ਮੈਂ ਕੱਲ੍ਹ ਨਹੀਂ ਆ ਸਕਦਾ, ਥੋੜ੍ਹਾ ਕੰਮ ਹੈ।" },
-    { lang: "Gujarati", said: "હું કાલે ઓફિસે નહીં આવું થોડું કામ છે", wrote: "હું કાલે ઓફિસે નહીં આવું, થોડું કામ છે." },
-    { lang: "Kannada", said: "ನಾನು ನಾಳೆ ಆಫೀಸಿಗೆ ಬರಲ್ಲ ಸ್ವಲ್ಪ ಕೆಲಸ ಇದೆ", wrote: "ನಾನು ನಾಳೆ ಆಫೀಸಿಗೆ ಬರಲ್ಲ, ಸ್ವಲ್ಪ ಕೆಲಸ ಇದೆ." },
-    { lang: "Malayalam", said: "ഞാൻ നാളെ ഓഫീസിൽ വരില്ല കുറച്ച് ജോലി ഉണ്ട്", wrote: "ഞാൻ നാളെ ഓഫീസിൽ വരില്ല, കുറച്ച് ജോലി ഉണ്ട്." },
-    { lang: "Odia", said: "ମୁଁ କାଲି ଅଫିସ ଆସିବି ନାହିଁ ଟିକେ କାମ ଅଛି", wrote: "ମୁଁ କାଲି ଅଫିସ ଆସିବି ନାହିଁ, ଟିକେ କାମ ଅଛି।" },
-    { lang: "French", said: "euh ben je peux arriver vers sept heures je pense", wrote: "Je peux arriver vers sept heures, je pense." },
-    { lang: "Portuguese", said: "é tipo assim eu posso chegar por volta das sete", wrote: "Eu posso chegar por volta das sete." },
-    { lang: "German", said: "ähm also ich komme so gegen sieben glaube ich", wrote: "Ich komme so gegen sieben, glaube ich." },
-    { lang: "Indonesian", said: "eh gimana ya saya bisa datang sekitar jam tujuh", wrote: "Saya bisa datang sekitar jam tujuh." },
-    { lang: "Turkish", said: "yani sey saat yedi gibi gelebilirim heralde", wrote: "Yani saat yedi gibi gelebilirim, herhalde." },
-    { lang: "Filipino", said: "ano eto nakaka pagod pero tapos na yung report", wrote: "Nakakapagod, pero tapos na yung report." },
+    { said: "um so like can we push the call to four", wrote: "Can we push the call to four?" },
+    { said: "the deploy is done but abhi testing baaki hai", wrote: "The deploy is done, but abhi testing baaki hai." },
+    { said: "हाँ वो फाइल मैंने भेज दी थी कल शाम को", wrote: "हाँ, वो फाइल मैंने कल शाम भेज दी थी।" },
+    { said: "நான் இப்போ கிளம்பறேன் கொஞ்சம் லேட் ஆகும்", wrote: "நான் இப்போ கிளம்பறேன், கொஞ்சம் லேட் ஆகும்." },
+    { said: "trensfer 2500 rupeez to ramesh tomorow", wrote: "Transfer 2500 rupees to Ramesh tomorrow." },
+    { said: "আমি কাল অফিসে আসব না একটু কাজ আছে", wrote: "আমি কাল অফিসে আসব না, একটু কাজ আছে।" },
+    { said: "मी उद्या ऑफिसला येणार नाही जरा काम आहे", wrote: "मी उद्या ऑफिसला येणार नाही, जरा काम आहे." },
+    { said: "eh o sea puedo llegar como a las siete", wrote: "Puedo llegar como a las siete." },
+    { said: "నేను రేపు ఆఫీస్ కి రాను కొంచెం పని ఉంది", wrote: "నేను రేపు ఆఫీస్‌కి రాను, కొంచెం పని ఉంది." },
+    { said: "ਮੈਂ ਕੱਲ੍ਹ ਨਹੀਂ ਆ ਸਕਦਾ ਥੋੜ੍ਹਾ ਕੰਮ ਹੈ", wrote: "ਮੈਂ ਕੱਲ੍ਹ ਨਹੀਂ ਆ ਸਕਦਾ, ਥੋੜ੍ਹਾ ਕੰਮ ਹੈ।" },
+    { said: "હું કાલે ઓફિસે નહીં આવું થોડું કામ છે", wrote: "હું કાલે ઓફિસે નહીં આવું, થોડું કામ છે." },
+    { said: "ನಾನು ನಾಳೆ ಆಫೀಸಿಗೆ ಬರಲ್ಲ ಸ್ವಲ್ಪ ಕೆಲಸ ಇದೆ", wrote: "ನಾನು ನಾಳೆ ಆಫೀಸಿಗೆ ಬರಲ್ಲ, ಸ್ವಲ್ಪ ಕೆಲಸ ಇದೆ." },
+    { said: "ഞാൻ നാളെ ഓഫീസിൽ വരില്ല കുറച്ച് ജോലി ഉണ്ട്", wrote: "ഞാൻ നാളെ ഓഫീസിൽ വരില്ല, കുറച്ച് ജോലി ഉണ്ട്." },
+    { said: "ମୁଁ କାଲି ଅଫିସ ଆସିବି ନାହିଁ ଟିକେ କାମ ଅଛି", wrote: "ମୁଁ କାଲି ଅଫିସ ଆସିବି ନାହିଁ, ଟିକେ କାମ ଅଛି।" },
+    { said: "euh ben je peux arriver vers sept heures je pense", wrote: "Je peux arriver vers sept heures, je pense." },
+    { said: "é tipo assim eu posso chegar por volta das sete", wrote: "Eu posso chegar por volta das sete." },
+    { said: "ähm also ich komme so gegen sieben glaube ich", wrote: "Ich komme so gegen sieben, glaube ich." },
+    { said: "eh gimana ya saya bisa datang sekitar jam tujuh", wrote: "Saya bisa datang sekitar jam tujuh." },
+    { said: "yani sey saat yedi gibi gelebilirim heralde", wrote: "Yani saat yedi gibi gelebilirim, herhalde." },
+    { said: "ano eto nakaka pagod pero tapos na yung report", wrote: "Nakakapagod, pero tapos na yung report." },
   ],
   /*
-   * BELOW THE RIVER. Three things, and each is shown before it is said.
+   * BELOW THE RIVER. Two set pieces, no features, no facts.
    *
-   * The reel plays the twenty lines above one at a time: the mess in
-   * handwriting, then the sentence in type, born in the accent and cooling
-   * to the reading colour — the same rule the river's word keeps. Its title
-   * is two words because the pair under it is the sentence.
+   * THE DUST. One sentence as it was said, in handwriting, that the scroll
+   * breaks into a few thousand grains and settles as the sentence as it
+   * was meant, in type. The visitor drives it and can stop it halfway.
+   * `from` and `to` are the only words on it, a caption each, three words
+   * at most, and the one that is true is the one that is lit.
    *
-   * The tone block is one messy line and the same words in each of the
+   * THE MATERIALS. One messy line and the same words in each of the
    * keyboard's own tones (kb.tones — the names here are those names, so
-   * what the page shows is what the tone pill offers). A test holds the
-   * tones to distinct names and distinct sentences, none of them the line
-   * as it was said.
-   *
-   * The facts are the page's only claims in words, and there are four: each
-   * one a fact about what ships, five words at most, none of them a promise.
+   * what the page shows is what the tone pill offers), and each tone is
+   * set in a different medium: print, marker, an engraved plate, a poster.
+   * The page picks the medium from the NAME, so renaming a tone here moves
+   * it to a different material and an unknown name is set in print. A test
+   * holds the tones to distinct names and distinct sentences, none of them
+   * the line as it was said.
    */
-  reel: { title: "Said. Written." },
+  morph: {
+    said: "um so like can we push the call to four",
+    wrote: "Can we push the call to four?",
+    from: "what you said",
+    to: "what you meant",
+  },
   tone: {
     title: "Same words. Your tone.",
     said: "hey can u send the file tonight its kinda urgent",
@@ -275,7 +276,6 @@ export const SITE_UI = {
       { name: "Excited", text: "Can you send the file tonight? Can't wait to dig in!" },
     ],
   },
-  facts: ["22 Indian languages", "Most of the world's", "Any app, any field", "Phone and desk"],
   /**
    * THE WORD THE WHOLE FIELD POURS INTO.
    *
