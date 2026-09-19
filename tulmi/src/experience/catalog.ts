@@ -290,26 +290,21 @@ export const SITE_UI = {
     },
   ],
   /**
-   * WHAT LEAVES THE CARET WHEN NOBODY HAS SPOKEN YET.
+   * THE WORD THE WHOLE FIELD POURS INTO.
    *
-   * Not a sample of the product's output — a statement of what it is. Thirteen
-   * lanes of other people's noise arrive from every direction and this is the
-   * one line going the other way, at a quarter of their pace, in the only face
-   * on the page anybody chose. The contrast is the argument; these are the
-   * words it is made with.
+   * There is no caret on the page any more and no second stream of text:
+   * a hundred threads of everybody's mess arrive from off the screen and
+   * one word swallows them. The two sides of that picture were only ever
+   * two because something stood between them.
    *
-   * A visitor's own sentence replaces it the moment they press the button,
-   * because their sentence is the better argument.
+   * A word or two, never more. It is set at the size of a thing that can
+   * swallow a hundred threads, so a third word does not fit on a laptop —
+   * and it has to be read at a glance or it is not a destination, it is
+   * just more text. A visitor's own sentence replaces it the moment they
+   * press the button, because what it actually absorbed beats what it
+   * claims to. A test holds it to two words.
    */
-  // Four, and short enough that one pass fits on the page. The card proves
-  // the numbers and the names; the river proves the languages; this line
-  // only has to say what the whole thing is, once, in the fewest words.
-  identity: [
-    "Every word you meant.",
-    "None you didn't.",
-    "In your language.",
-    "Tailzu.",
-  ],
+  absorb: "Exactly.",
   download: { win: "Windows", mac: "macOS", linux: "Linux", ios: "iPhone", android: "Android", soon: "soon" },
 } as const;
 

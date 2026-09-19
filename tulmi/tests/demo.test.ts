@@ -104,13 +104,13 @@ describe("the landing page", () => {
       // A case whose two sides match demonstrates nothing.
       expect(c.wrote).not.toBe(c.said);
     }
-    // The one line going the other way has to arrive with the page, and it
-    // is set as text — an angle bracket in it would print, not render.
-    expect(body.copy.identity.length).toBeGreaterThan(3);
-    for (const line of body.copy.identity as string[]) {
-      expect(line.length).toBeGreaterThan(0);
-      expect(line).not.toMatch(/[<>]/);
-    }
+    // The word the whole field pours into. A word or two and never more:
+    // it is set at the size of a thing swallowing a hundred threads, so a
+    // third word does not fit on a laptop. Set as text, so an angle bracket
+    // in it would print rather than render.
+    expect(body.copy.absorb.trim().split(/\s+/).length).toBeLessThanOrEqual(2);
+    expect(body.copy.absorb).not.toMatch(/[<>]/);
+    expect(body.copy.identity).toBeUndefined();
     expect(typeof body.freeWords).toBe("number");
     expect(body.demo).toBe(true);
     expect(body.maxSeconds).toBe(15);
