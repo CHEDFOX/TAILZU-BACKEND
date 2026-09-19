@@ -1669,6 +1669,13 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
       // bundle sends none of it, and every consumer here treats absent as
       // "not granted", which is the pre-existing behaviour.
       device?: { micGranted?: boolean; keyboardReady?: boolean; keyboardEnabled?: boolean };
+      /**
+       * This JavaScript can sign in with Google by way of Supabase's page and
+       * come back on tulmi://. Declared by every bundle that carries the web
+       * path; absent from the store binary's own bundle, which is how a fresh
+       * install on Android is told apart from one the OTA has reached.
+       */
+      googleWeb?: boolean;
     };
   };
   // WHICH BUNDLE IS ACTUALLY RUNNING.
@@ -1690,6 +1697,7 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
       // How the PREVIOUS launch ended. A boot that hangs cannot report on
       // itself, so the app leaves a breadcrumb and the next launch carries it.
       lastBoot: reqBody.capabilities?.lastBoot ?? "unknown",
+      googleWeb: reqBody.capabilities?.googleWeb === true,
     },
     "[boot] client bundle",
   );
@@ -1783,6 +1791,14 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
           resume: AUTH_RESUME_SCHEME_URL,
         }
       : null,
+    // An Android client that has NOT declared the web path is running
+    // JavaScript that cannot come back from Google — the store bundle on a
+    // fresh install, before any OTA. Its Google button would strand the user,
+    // so the screen it is handed has no Google button. Not tied to the
+    // switch above: even with the switch off, that bundle cannot use it.
+    googleHidden:
+      platformOf(reqBody.capabilities?.platform) === "android"
+      && reqBody.capabilities?.googleWeb !== true,
     micGranted,
     keyboardReady,
     formFactor: isDesktop ? "desktop" : "phone",

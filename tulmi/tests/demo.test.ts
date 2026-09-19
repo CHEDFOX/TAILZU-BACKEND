@@ -151,6 +151,26 @@ describe("Google sign-in's way back", () => {
     });
   });
 
+  it("leaves the Google button out for an Android bundle that cannot come back", async () => {
+    // The store binary's own bundle never claimed the scheme the native client
+    // returns on and has no web path either, so on a fresh install the button
+    // would strand the user on google.com. That bundle cannot be changed —
+    // but it draws whatever screen it is handed, and it is handed one with
+    // no Google button. New JavaScript declares `googleWeb` and gets it back.
+    const boot = async (capabilities: Record<string, unknown>) => {
+      const res = await app.inject({ method: "POST", url: "/v1/app/bootstrap", payload: { capabilities } });
+      expect(res.statusCode).toBe(200);
+      return JSON.stringify(res.json().flags["auth.screen"]);
+    };
+    expect(await boot({ platform: "android" })).not.toContain("GoogleSignIn");
+    expect(await boot({ platform: "android", bundle: "embedded" })).not.toContain("GoogleSignIn");
+    expect(await boot({ platform: "android", googleWeb: true })).toContain("GoogleSignIn");
+    // iOS never had the problem: its scheme was registered from the start.
+    expect(await boot({ platform: "ios" })).toContain("GoogleSignIn");
+    // And the button that is drawn still sits beside Apple's, not instead of it.
+    expect(await boot({ platform: "ios" })).toContain("AppleSignIn");
+  });
+
   it("interpolates nothing of the request into the page", async () => {
     // The tokens travel in the fragment and never reach the server, but the
     // query does — and a page that echoed it would be a page that could leak

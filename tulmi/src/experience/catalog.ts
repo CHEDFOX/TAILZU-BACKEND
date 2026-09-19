@@ -1520,6 +1520,13 @@ export function buildBootstrap(
      */
     googleWeb?: { callback: string; resume: string } | null;
     /**
+     * Leave the Google button out of the server-composed sign-in screen.
+     * Set by the server for an Android client that has not declared the
+     * `googleWeb` capability — the store bundle on a fresh install — because
+     * that JavaScript cannot come back from Google. See authScreenTree.
+     */
+    googleHidden?: boolean;
+    /**
      * WHAT THIS PHONE ALREADY HAS, as reported in the bootstrap capabilities.
      *
      * The microphone permission and the keyboard's Full Access belong to the
@@ -1837,7 +1844,7 @@ export function buildBootstrap(
       if (flags) {
         flags["auth.sdui"] = AUTH_SDUI;
         flags["auth.scrim"] = AUTH_UI.scrim;
-        flags["auth.screen"] = authScreenTree(opts.formFactor === "desktop");
+        flags["auth.screen"] = authScreenTree(opts.formFactor === "desktop", { googleHidden: opts.googleHidden === true });
         flags["auth.suction"] = AUTH_UI.entry.suction;
       }
 
@@ -4290,7 +4297,17 @@ export const AUTH_UI = {
  * is the honest way to express it rather than mirroring the phase into the
  * store and living with a frame where the two disagree.
  */
-function authScreenTree(isDesktop = false): Record<string, unknown> {
+/**
+ * @param googleHidden Omit the Google button entirely. For an Android client
+ * whose JavaScript cannot come back from Google: the store binary's bundle
+ * never claimed the scheme the native client returns on, and lacks the web
+ * path that goes round it — so on a FRESH INSTALL, before any OTA has
+ * applied, the button would strand the user on google.com. Omitted, they
+ * sign in by email on that first open; the moment the OTA lands, the client
+ * declares `googleWeb` and the button is back. The old bundle cannot be
+ * changed, but what it draws can, because it draws this.
+ */
+function authScreenTree(isDesktop = false, opts: { googleHidden?: boolean } = {}): Record<string, unknown> {
   const ui = AUTH_UI;
   // A STACK, NOT A SCREEN.
   //
@@ -4356,7 +4373,7 @@ function authScreenTree(isDesktop = false): Record<string, unknown> {
                   },
                   children: [
                     { type: "AppleSignIn", props: { size: ui.entry.social.size } },
-                    { type: "GoogleSignIn", props: { size: ui.entry.social.size } },
+                    ...(opts.googleHidden ? [] : [{ type: "GoogleSignIn", props: { size: ui.entry.social.size } }]),
                   ],
                 }] },
               // The consent notice, under everything. Inside the same Rise
