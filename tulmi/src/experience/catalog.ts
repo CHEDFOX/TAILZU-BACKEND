@@ -177,13 +177,6 @@ export const SITE_UI = {
   // Press, not hold. A long press on a phone selects text and opens menus,
   // and a clip this short does not need a second gesture to end: it stops
   // itself when you pause, or at the cap.
-  /*
-   * ONE TITLE, FOUR WORDS AT MOST, NOT IN THE ACCENT.
-   * It sits over the download buttons. There is nothing over the river —
-   * the river is the headline. Under the river are the dust and the
-   * materials (below), and then this. A test holds it to four words.
-   */
-  get: "Free to start.",
   // One word each where one word does it. The button has a microphone on
   // it; "Speak" is the whole instruction.
   cta: "Speak",
@@ -243,37 +236,81 @@ export const SITE_UI = {
     { said: "ano eto nakaka pagod pero tapos na yung report", wrote: "Nakakapagod, pero tapos na yung report." },
   ],
   /*
-   * BELOW THE RIVER. Two set pieces, no features, no facts.
+   * THE WORDS UNDER THE RIVER.
    *
-   * THE DUST. One sentence as it was said, in handwriting, that the scroll
-   * breaks into a few thousand grains and settles as the sentence as it
-   * was meant, in type. The visitor drives it and can stop it halfway.
-   * `from` and `to` are the only words on it, a caption each, three words
-   * at most, and the one that is true is the one that is lit.
+   * The headline and its line sit on the dark, right after the river, with
+   * the buttons. Then six fields of colour, each one thing: how it works,
+   * the tones, the apps, the desk, the price, the questions. Every claim
+   * here is one the product makes good on — the three steps are the three
+   * things the quality harness tests for (filler dropped, two languages
+   * kept as two, names and amounts untouched); the tones are the keyboard's
+   * own (kb.tones); the desk copy is what the tray app does (a hotkey, or a
+   * held key, then paste at the cursor); "{n}" is FREE_MONTHLY_WORDS, put
+   * in by the page from the number served beside this copy, so the price
+   * on the site is the price the server charges.
    *
-   * THE MATERIALS. One messy line and the same words in each of the
-   * keyboard's own tones (kb.tones — the names here are those names, so
-   * what the page shows is what the tone pill offers), and each tone is
-   * set in a different medium: print, marker, an engraved plate, a poster.
-   * The page picks the medium from the NAME, so renaming a tone here moves
-   * it to a different material and an unknown name is set in print. A test
-   * holds the tones to distinct names and distinct sentences, none of them
-   * the line as it was said.
+   * Nothing here claims sign-up is optional: the app has a sign-in gate.
    */
-  morph: {
-    said: "um so like can we push the call to four",
-    wrote: "Can we push the call to four?",
-    from: "what you said",
-    to: "what you meant",
+  hero: {
+    title: "Say it badly. Send it perfectly.",
+    lede: "Talk the way you talk — half Hindi, half English, ums and all. Tailzu turns it into the sentence you meant, in your tone, in any app.",
+  },
+  how: {
+    kick: "How it works",
+    title: "Talk. It writes.",
+    lede: "No commands, no script. Speak the way you speak and send what you meant.",
+    steps: [
+      { title: "Speak", text: "Tap the mic on your keyboard and just talk. Mid-sentence changes of mind are fine." },
+      { title: "It listens in your language", text: "Twenty-two Indian languages and most of the world's. Mix two in one breath and it keeps both." },
+      { title: "It writes what you meant", text: "Fillers gone. Names and amounts untouched. A misheard word repaired. A sentence you would actually send." },
+    ],
   },
   tone: {
+    kick: "Tone",
     title: "Same words. Your tone.",
+    lede: "Pick a tone once and every message wears it. Change it in one tap when the room changes.",
     said: "hey can u send the file tonight its kinda urgent",
     tones: [
       { name: "Neutral", text: "Can you send the file tonight? It's fairly urgent." },
       { name: "Casual", text: "Hey, can you send the file tonight? Kinda urgent." },
       { name: "Formal", text: "Could you please send the file this evening? It is time-sensitive." },
       { name: "Excited", text: "Can you send the file tonight? Can't wait to dig in!" },
+    ],
+  },
+  apps: {
+    kick: "Everywhere",
+    title: "It's a keyboard. It works everywhere you type.",
+    lede: "WhatsApp, Mail, Slack, Notes, the search bar. Anywhere a keyboard opens, Tailzu opens with it.",
+    // `kind` picks the drawing: a chat bubble, a mail, a note, a search bar.
+    fields: [
+      { kind: "message", app: "Message", text: "Can we push the call to four?" },
+      { kind: "mail", app: "Mail", to: "To: Priya", text: "The deploy is done, but abhi testing baaki hai." },
+      { kind: "memo", app: "Notes", text: "Transfer 2500 rupees to Ramesh tomorrow." },
+      { kind: "search", app: "Search", text: "Flights to Goa, Friday evening" },
+    ],
+  },
+  desk: {
+    kick: "On the desk",
+    title: "Mac and Windows too.",
+    lede: "Press a key, talk, let go. The words land wherever your cursor is — any app, any window.",
+    key: "F9",
+    keyLabel: "hold to talk",
+  },
+  free: {
+    kick: "Price",
+    unit: "free words a month",
+    title: "Free to start.",
+    lede: "On us, every month. No card. Upgrade when you need more.",
+  },
+  faq: {
+    kick: "Questions",
+    title: "Asked, answered.",
+    items: [
+      { q: "Does it work in WhatsApp?", a: "Yes. Tailzu is a keyboard, so it works in every app on your phone — WhatsApp, Instagram, Mail, Notes, anything with a text field." },
+      { q: "Which languages?", a: "Twenty-two Indian languages and most of the world's. Mix two in one sentence and it keeps both." },
+      { q: "Does it change what I said?", a: "It cleans, it does not rewrite. Fillers go, facts stay, names and amounts are never touched. A tone changes how it sounds, not what it says." },
+      { q: "Is it free?", a: "Free to start, with {n} words a month. Upgrade when you need more." },
+      { q: "Phone or desk?", a: "Both. iPhone and Android as a keyboard. Mac and Windows as a key you press to talk." },
     ],
   },
   /**

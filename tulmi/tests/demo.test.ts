@@ -92,17 +92,35 @@ describe("the landing page", () => {
     const res = await app.inject({ method: "GET", url: "/v1/site" });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    // ONE TITLE, FOUR WORDS AT MOST. It sits over the buttons; there is
-    // nothing over the river and no second viewport under it. The limit is
-    // the point of the test.
-    expect(typeof body.copy.get).toBe("string");
-    expect(body.copy.get.trim().split(/\s+/).length).toBeLessThanOrEqual(4);
-    // And nothing the page does not render: a string here that renders
-    // nowhere is a claim nobody can check. The card and its three claims
-    // are gone with the second viewport.
-    for (const dead of ["eyebrow", "headline", "lede", "price", "proof", "steps"]) {
-      expect(body.copy[dead]).toBeUndefined();
+    // THE WORDS UNDER THE RIVER. A headline short enough to be one, a line
+    // under it, three steps, four tones, four drawn fields, a desk, a price
+    // whose number is the server's, and questions that end in one.
+    const c = body.copy;
+    expect(c.hero.title.trim().split(/\s+/).length).toBeLessThanOrEqual(8);
+    expect(c.hero.lede.length).toBeGreaterThan(20);
+    expect(c.how.steps.length).toBe(3);
+    for (const s of c.how.steps) {
+      expect(s.title.length).toBeGreaterThan(0);
+      expect(s.text.length).toBeGreaterThan(0);
     }
+    expect(c.apps.fields.length).toBeGreaterThanOrEqual(3);
+    for (const f of c.apps.fields) {
+      expect(["message", "mail", "memo", "search"]).toContain(f.kind);
+      expect(f.text.length).toBeGreaterThan(0);
+    }
+    expect(c.desk.key.length).toBeGreaterThan(0);
+    expect(c.free.unit).toMatch(/word/);
+    expect(c.faq.items.length).toBeGreaterThanOrEqual(3);
+    for (const q of c.faq.items) {
+      expect(q.q.trim().endsWith("?")).toBe(true);
+      expect(q.a.length).toBeGreaterThan(0);
+    }
+    // Nothing the page does not render, and nothing the product cannot
+    // honour: no sign-up-optional claim anywhere in the copy.
+    for (const dead of ["get", "morph", "reel", "facts", "eyebrow", "headline", "lede", "price", "proof", "steps"]) {
+      expect(c[dead]).toBeUndefined();
+    }
+    expect(JSON.stringify(c).toLowerCase()).not.toMatch(/no sign[- ]?up/);
     // The river has to arrive with the page, and every case needs both sides:
     // a missing one puts a gap in a line that is meant never to break.
     expect(body.copy.cases.length).toBeGreaterThan(3);
@@ -119,22 +137,13 @@ describe("the landing page", () => {
     expect(body.copy.absorb.trim().split(/\s+/).length).toBeLessThanOrEqual(2);
     expect(body.copy.absorb).not.toMatch(/[<>]/);
     expect(body.copy.identity).toBeUndefined();
-    // BELOW THE RIVER. The dust needs both sides and they must differ, and
-    // its two captions are three words each at most. The tones are the
-    // keyboard's own, distinct in name and in sentence, and none of them is
-    // the line as it was said. Nothing else: no reel, no facts.
-    const m = body.copy.morph;
-    expect(m.said.length).toBeGreaterThan(0);
-    expect(m.wrote.length).toBeGreaterThan(0);
-    expect(m.wrote).not.toBe(m.said);
-    for (const cap of [m.from, m.to]) expect(cap.trim().split(/\s+/).length).toBeLessThanOrEqual(3);
-    expect(body.copy.tone.title.trim().split(/\s+/).length).toBeLessThanOrEqual(4);
+    // The tones are the keyboard's own, distinct in name and in sentence,
+    // and none of them is the line as it was said.
     const tones: { name: string; text: string }[] = body.copy.tone.tones;
     expect(tones.length).toBeGreaterThanOrEqual(3);
     expect(new Set(tones.map((t) => t.name)).size).toBe(tones.length);
     expect(new Set(tones.map((t) => t.text)).size).toBe(tones.length);
     for (const t of tones) expect(t.text).not.toBe(body.copy.tone.said);
-    for (const dead of ["reel", "facts"]) expect(body.copy[dead]).toBeUndefined();
     expect(typeof body.freeWords).toBe("number");
     expect(body.demo).toBe(true);
     expect(body.maxSeconds).toBe(15);
