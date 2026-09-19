@@ -1799,6 +1799,15 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     googleHidden:
       platformOf(reqBody.capabilities?.platform) === "android"
       && reqBody.capabilities?.googleWeb !== true,
+    // And what that client gets instead: Supabase's own sign-in as a plain
+    // link, returning on the callback page above. Same switch as the web
+    // path, because it needs the same dashboard work — the callback on
+    // Supabase's redirect list, and the Google provider given its secret.
+    googleLink: cfg.AUTH_GOOGLE_WEB && cfg.SUPABASE_URL
+      ? `${cfg.SUPABASE_URL.replace(/\/$/, "")}/auth/v1/authorize?provider=google`
+        + `&redirect_to=${encodeURIComponent(`${process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"}/auth/callback`)}`
+        + `&prompt=select_account`
+      : null,
     micGranted,
     keyboardReady,
     formFactor: isDesktop ? "desktop" : "phone",

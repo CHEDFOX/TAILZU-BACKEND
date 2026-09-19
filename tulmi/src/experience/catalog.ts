@@ -1527,6 +1527,13 @@ export function buildBootstrap(
      */
     googleHidden?: boolean;
     /**
+     * The bridge for that same client: Supabase's authorize URL, which the
+     * old bundle can open as a plain link and which returns on tulmi://.
+     * Set only when the web path is switched on, because it needs the same
+     * dashboard work; null leaves the button out instead.
+     */
+    googleLink?: string | null;
+    /**
      * WHAT THIS PHONE ALREADY HAS, as reported in the bootstrap capabilities.
      *
      * The microphone permission and the keyboard's Full Access belong to the
@@ -1844,7 +1851,10 @@ export function buildBootstrap(
       if (flags) {
         flags["auth.sdui"] = AUTH_SDUI;
         flags["auth.scrim"] = AUTH_UI.scrim;
-        flags["auth.screen"] = authScreenTree(opts.formFactor === "desktop", { googleHidden: opts.googleHidden === true });
+        flags["auth.screen"] = authScreenTree(opts.formFactor === "desktop", {
+          googleHidden: opts.googleHidden === true,
+          googleLink: opts.googleHidden === true ? (opts.googleLink ?? null) : null,
+        });
         flags["auth.suction"] = AUTH_UI.entry.suction;
       }
 
@@ -4192,6 +4202,15 @@ export const AUTH_UI = {
     hintStaggerMs: 160,
     social: { size: 52, gap: 16, topGap: 22 },
     /**
+     * THE BRIDGE, for an Android bundle that cannot come back from Google.
+     * That bundle's Google button is a LINK to Supabase's own sign-in, which
+     * returns on tulmi:// with the session; and because that bundle has no
+     * way to notice a session landing, a second button reloads the app so
+     * boot finds it. Revealed only after Google was tapped, so the screen
+     * does not carry a button nobody has a use for yet.
+     */
+    googleWeb: { continueLabel: "Continue", continueTopGap: 18 },
+    /**
      * The entrance, PER ELEMENT.
      *
      * There is no stagger index and no "which one am I" — each row carries its
@@ -4307,7 +4326,53 @@ export const AUTH_UI = {
  * declares `googleWeb` and the button is back. The old bundle cannot be
  * changed, but what it draws can, because it draws this.
  */
-function authScreenTree(isDesktop = false, opts: { googleHidden?: boolean } = {}): Record<string, unknown> {
+/**
+ * @param googleLink With it, the Google button is a link to Supabase's own
+ * sign-in rather than the native GoogleSignIn component — for a bundle whose
+ * native client cannot come back (see googleHidden), but which CAN open a
+ * URL and CAN reload itself, both of which the shipped action set has. The
+ * link returns on tulmi:// with the session; a Continue button, revealed by
+ * the tap, reloads the app so boot finds that session. Google on a fresh
+ * install's first open, with one extra tap, and no new binary.
+ */
+/**
+ * Google's "G", in its four colours, as four SVG nodes over one another — the
+ * shipped bundle has an SVG node that takes one path, and has had since June.
+ * The circle matches the native social button to the half-point border. The
+ * tap records itself in the screen's store before opening the link, which is
+ * what reveals Continue.
+ */
+function googleLinkButton(url: string, size: number): Record<string, unknown> {
+  const G = 20, inset = (size - G) / 2;
+  const paths: Array<[string, string]> = [
+    ["#EA4335", "M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"],
+    ["#4285F4", "M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"],
+    ["#FBBC05", "M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"],
+    ["#34A853", "M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"],
+  ];
+  return {
+    type: "Stack",
+    on: { onPress: { kind: "sequence", actions: [
+      { kind: "setState", path: "googleStarted", value: true },
+      { kind: "openUrl", url, external: true },
+    ] } },
+    props: { pressOpacity: 0.7, accessibilityLabel: "Sign in with Google" },
+    style: {
+      width: size, height: size, borderRadius: size / 2, borderWidth: 0.5,
+      borderColor: "rgba(255,255,255,0.18)", backgroundColor: "rgba(255,255,255,0.03)",
+    },
+    children: paths.map(([fill, d]) => ({
+      type: "SVG",
+      props: { viewBox: "0 0 48 48", d, fill },
+      style: { position: "absolute", left: inset, top: inset, width: G, height: G },
+    })),
+  };
+}
+
+function authScreenTree(
+  isDesktop = false,
+  opts: { googleHidden?: boolean; googleLink?: string | null } = {},
+): Record<string, unknown> {
   const ui = AUTH_UI;
   // A STACK, NOT A SCREEN.
   //
@@ -4373,7 +4438,9 @@ function authScreenTree(isDesktop = false, opts: { googleHidden?: boolean } = {}
                   },
                   children: [
                     { type: "AppleSignIn", props: { size: ui.entry.social.size } },
-                    ...(opts.googleHidden ? [] : [{ type: "GoogleSignIn", props: { size: ui.entry.social.size } }]),
+                    ...(opts.googleLink
+                      ? [googleLinkButton(opts.googleLink, ui.entry.social.size)]
+                      : opts.googleHidden ? [] : [{ type: "GoogleSignIn", props: { size: ui.entry.social.size } }]),
                   ],
                 }] },
               // The consent notice, under everything. Inside the same Rise
@@ -4454,6 +4521,27 @@ function authScreenTree(isDesktop = false, opts: { googleHidden?: boolean } = {}
             children: [
               // No heading and no supporting line. The step is one field and one
               // way on, exactly like the screen before it.
+              // THE SECOND HALF OF THE BRIDGE. Only with the link, only after the
+              // link was tapped: reloads the bundle, and boot finds the session the
+              // link brought back. A bundle that could notice a session landing
+              // would not need this; the one this is for cannot.
+              ...(opts.googleLink ? [{
+                type: "Stack",
+                visibleIf: { eq: ["googleStarted", true] },
+                on: { onPress: { kind: "reloadApp" } },
+                props: { pressOpacity: 0.75 },
+                style: {
+                  alignSelf: "center", marginTop: ui.entry.googleWeb.continueTopGap,
+                  height: 44, paddingHorizontal: 26, borderRadius: 22,
+                  backgroundColor: "rgba(255,255,255,0.10)", borderWidth: 1, borderColor: "rgba(255,255,255,0.18)",
+                  alignItems: "center", justifyContent: "center",
+                },
+                children: [{
+                  type: "Text",
+                  props: { content: ui.entry.googleWeb.continueLabel },
+                  style: { fontSize: 15, fontWeight: "600", color: "#FFFFFF" },
+                }],
+              }] : []),
               { type: "Rise",
                 props: { ...ui.entry.suction.spring, scaleFrom: ui.entry.suction.scaleFrom, ...ui.entry.suction.rows.codePill },
                 children: [{

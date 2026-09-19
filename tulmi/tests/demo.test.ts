@@ -18,6 +18,9 @@ process.env.DEMO_MAX_SECONDS = "15";
 // flag the app reads can be checked to the character.
 process.env.AUTH_GOOGLE_WEB = "true";
 process.env.PUBLIC_ORIGIN = "https://api.test.tailzu";
+// The URL only, no key: enough to build the authorize link, not enough to
+// turn real auth on for these tests.
+process.env.SUPABASE_URL = "https://test-project.supabase.co";
 
 vi.mock("../src/pipeline/cleanup.js", () => ({
   assist: vi.fn(async (input: string) => `assisted:${input}`),
@@ -162,9 +165,23 @@ describe("Google sign-in's way back", () => {
       expect(res.statusCode).toBe(200);
       return JSON.stringify(res.json().flags["auth.screen"]);
     };
-    expect(await boot({ platform: "android" })).not.toContain("GoogleSignIn");
+    const old = await boot({ platform: "android" });
+    expect(old).not.toContain("GoogleSignIn");
+    // What it gets instead: Supabase's sign-in as a link, coming back on the
+    // callback page, and a reload to finish — the two things that bundle CAN
+    // do. Google on a fresh install's first open without a new binary.
+    expect(old).toContain(
+      "https://test-project.supabase.co/auth/v1/authorize?provider=google"
+      + "&redirect_to=https%3A%2F%2Fapi.test.tailzu%2Fauth%2Fcallback",
+    );
+    expect(old).toContain('"kind":"reloadApp"');
+    expect(old).toContain('"googleStarted"');
     expect(await boot({ platform: "android", bundle: "embedded" })).not.toContain("GoogleSignIn");
-    expect(await boot({ platform: "android", googleWeb: true })).toContain("GoogleSignIn");
+    // A bundle that can come back gets the real button and no bridge.
+    const fresh = await boot({ platform: "android", googleWeb: true });
+    expect(fresh).toContain("GoogleSignIn");
+    expect(fresh).not.toContain("/auth/v1/authorize");
+    expect(fresh).not.toContain("reloadApp");
     // iOS never had the problem: its scheme was registered from the start.
     expect(await boot({ platform: "ios" })).toContain("GoogleSignIn");
     // And the button that is drawn still sits beside Apple's, not instead of it.
