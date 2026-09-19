@@ -22,7 +22,11 @@ export const DOWNLOAD_PAGE_HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Download Tailzu for Desktop</title>
 <style>
-  :root { --bg:#0e0e13; --card:#17171f; --text:#f5f0e8; --dim:#9a94a6; --accent:#E8A23C; }
+  /* The Stats palette, which is the site's and the app's. The old near-black
+     here was biased blue and the pale was neutral, so the amber sat ON this
+     page and IN every other one — a visible change of room between a link and
+     the page it opens. */
+  :root { --bg:#0F0D0B; --card:#1A1714; --text:#F3E2C6; --dim:rgba(243,226,198,.55); --accent:#E8A23C; }
   * { box-sizing: border-box; margin: 0; }
   body {
     background: var(--bg); color: var(--text); min-height: 100vh;
@@ -37,7 +41,7 @@ export const DOWNLOAD_PAGE_HTML = `<!doctype html>
   h1 { font-size: 30px; margin-bottom: 8px; }
   .sub { color: var(--dim); margin-bottom: 32px; }
   .primary {
-    display: inline-block; background: var(--accent); color: #14100c;
+    display: inline-block; background: var(--accent); color: var(--bg);
     font-weight: 700; font-size: 17px; padding: 15px 34px; border-radius: 14px;
     text-decoration: none; transition: transform .12s ease;
   }
