@@ -283,13 +283,13 @@ export const SITE_UI = {
    * A visitor's own sentence replaces it the moment they press the button,
    * because their sentence is the better argument.
    */
+  // Four, and short enough that one pass fits on the page. The card proves
+  // the numbers and the names; the river proves the languages; this line
+  // only has to say what the whole thing is, once, in the fewest words.
   identity: [
     "Every word you meant.",
     "None you didn't.",
-    "Numbers stay numbers. Names stay names.",
-    "Your language stays yours.",
-    "22 Indian languages. Most of the world's.",
-    "Lands at your cursor.",
+    "In your language.",
     "Tailzu.",
   ],
   download: { win: "Windows", mac: "macOS", linux: "Linux", ios: "iPhone", android: "Android", soon: "soon" },
