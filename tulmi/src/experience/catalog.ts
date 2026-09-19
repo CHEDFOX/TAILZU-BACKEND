@@ -258,6 +258,28 @@ export const SITE_UI = {
       pill: "Never translated, never transliterated",
     },
   ],
+  /**
+   * WHAT LEAVES THE CARET WHEN NOBODY HAS SPOKEN YET.
+   *
+   * Not a sample of the product's output — a statement of what it is. Thirteen
+   * lanes of other people's noise arrive from every direction and this is the
+   * one line going the other way, at a quarter of their pace, in the only face
+   * on the page anybody chose. The contrast is the argument; these are the
+   * words it is made with.
+   *
+   * A visitor's own sentence replaces it the moment they press the button,
+   * because their sentence is the better argument.
+   */
+  identity: [
+    "Every word you meant.",
+    "Not one you didn't.",
+    "Your numbers stay numbers, your names stay names.",
+    "Your language stays yours.",
+    "Never translated, never transliterated.",
+    "Twenty-two Indian languages, and most of the world's.",
+    "It lands where your cursor is.",
+    "Tailzu.",
+  ],
   price: "Free to {words} words a month.",
   download: { win: "Windows", mac: "macOS", linux: "Linux", ios: "iPhone", android: "Android", soon: "soon" },
 } as const;

@@ -97,6 +97,13 @@ describe("the landing page", () => {
       // A case whose two sides match demonstrates nothing.
       expect(c.wrote).not.toBe(c.said);
     }
+    // The one line going the other way has to arrive with the page, and it
+    // is set as text — an angle bracket in it would print, not render.
+    expect(body.copy.identity.length).toBeGreaterThan(3);
+    for (const line of body.copy.identity as string[]) {
+      expect(line.length).toBeGreaterThan(0);
+      expect(line).not.toMatch(/[<>]/);
+    }
     expect(typeof body.freeWords).toBe("number");
     expect(body.demo).toBe(true);
     expect(body.maxSeconds).toBe(15);
