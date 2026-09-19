@@ -177,14 +177,16 @@ export const SITE_UI = {
   // Press, not hold. A long press on a phone selects text and opens menus,
   // and a clip this short does not need a second gesture to end: it stops
   // itself when you pause, or at the cap.
-  cta: "Use your own voice",
+  // One word each where one word does it. The button has a microphone on
+  // it; "Speak" is the whole instruction.
+  cta: "Speak",
   ctaHeld: "Stop",
   writing: "Writing…",
   again: "Again",
-  invite: "No sign-up. It stops when you pause.",
-  after: "That is the whole product. It works everywhere you type.",
-  demoOff: "The live demo is resting. The apps below are not.",
-  micDenied: "Your browser blocked the microphone. Allow it and try again.",
+  invite: "No sign-up. Stops when you pause.",
+  after: "That's it. Everywhere you type.",
+  demoOff: "Demo asleep. The apps aren't.",
+  micDenied: "Mic blocked. Allow it, try again.",
   /**
    * THE RIVER. Everything anybody ever said travels along one line across the
    * page: the mess flows in from the left, is swallowed at the microphone,
@@ -239,29 +241,34 @@ export const SITE_UI = {
    * animation, a wrong one is a false claim about the product.
    */
   steps: [
+    // Three tabs that read as one sentence down the rail: mess goes, facts
+    // stay, language stays. The note under each is the claim in as few words
+    // as it survives in; the sentence beside it is the proof.
     {
-      tab: "The mess goes",
-      note: "Filler, false starts, the sentence you began and abandoned.",
+      tab: "Mess goes",
+      note: "Filler. False starts. Gone.",
       said: "um so like i think we should probably move the review to thursday because the design is uh not done",
       wrote: "I think we should move the review to Thursday — the design is not done.",
       cut: ["um", "so", "like", "probably", "uh"],
-      pill: "Filler and false starts",
+      pill: "Filler cut",
     },
     {
-      tab: "The facts stay",
-      note: "A number, a name or an amount is never guessed at.",
+      tab: "Facts stay",
+      note: "Numbers, names, amounts. Never guessed.",
       said: "trensfer 2500 rupeez to ramesh tomorow",
       wrote: "Transfer 2500 rupees to Ramesh tomorrow.",
       keep: ["2500", "ramesh"],
-      pill: "Misheard words repaired · 2500 and Ramesh untouched",
+      // The repair is visible in the line; the pill only has to name what
+      // was NOT touched, and name it specifically.
+      pill: "2500 and Ramesh untouched",
     },
     {
-      tab: "Your language stays",
-      note: "Two languages in one sentence come back as two languages.",
+      tab: "Language stays",
+      note: "Two languages in. Two out.",
       said: "the deploy is done but abhi testing baaki hai",
       wrote: "The deploy is done, but abhi testing baaki hai.",
       keep: ["abhi", "testing", "baaki", "hai"],
-      pill: "Never translated, never transliterated",
+      pill: "Never translated",
     },
   ],
   /**
@@ -278,12 +285,11 @@ export const SITE_UI = {
    */
   identity: [
     "Every word you meant.",
-    "Not one you didn't.",
-    "Your numbers stay numbers, your names stay names.",
+    "None you didn't.",
+    "Numbers stay numbers. Names stay names.",
     "Your language stays yours.",
-    "Never translated, never transliterated.",
-    "Twenty-two Indian languages, and most of the world's.",
-    "It lands where your cursor is.",
+    "22 Indian languages. Most of the world's.",
+    "Lands at your cursor.",
     "Tailzu.",
   ],
   download: { win: "Windows", mac: "macOS", linux: "Linux", ios: "iPhone", android: "Android", soon: "soon" },
