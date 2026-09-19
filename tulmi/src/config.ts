@@ -358,6 +358,22 @@ const EnvSchema = z.object({
    * so it is a line in .env rather than a default.
    */
   DEMO_ENABLED: bool(false),
+  /**
+   * Google sign-in on Android by way of Supabase's own OAuth page.
+   *
+   * The native Google client returns to `com.tulmi.app:/oauthredirect`, and a
+   * build that never claimed that scheme strands the user on Google after
+   * consent. Claiming it is a manifest change, which no OTA can carry. This
+   * is the way round that: with it ON, the app opens Supabase's Google flow
+   * instead, Supabase finishes Google with the web client secret it already
+   * holds, and lands on /auth/callback here — which hands the session to the
+   * app on tulmi://, a scheme every build has always claimed.
+   *
+   * Off by default because it needs two things done first: the callback URL
+   * in Supabase → Auth → URL Configuration → Redirect URLs, and the Google
+   * provider there configured with the web client id AND secret.
+   */
+  AUTH_GOOGLE_WEB: bool(false),
   /** Longest clip the demo will accept, in seconds. A pitch, not a dictation. */
   DEMO_MAX_SECONDS: z.coerce.number().default(15),
   /** Demo calls one address may make per minute. */
@@ -557,6 +573,7 @@ export const ENV_KEYS: readonly string[] = [
   "FLOW_END_HOLD_MS",
   "FLOW_TRANSPORT",
   "HISTORY_COALESCE_MS",
+  "AUTH_GOOGLE_WEB",
   "HISTORY_DEFAULT_ON",
   "INTRO_BUILT_IN",
   "INTRO_FIT",

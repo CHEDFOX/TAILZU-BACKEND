@@ -70,11 +70,81 @@ export function sitePage(siteDir: string, name: string): string | null {
   }
 }
 
+/**
+ * Where the auth callback page hands the session to the app. The one scheme
+ * every build has always claimed — the keyboard opens the app on it — so it
+ * is the one that can be relied on without a new binary.
+ */
+export const AUTH_RESUME_SCHEME_URL = "tulmi://auth/callback";
+
+/**
+ * THE LANDING PAGE FOR GOOGLE SIGN-IN ON ANDROID.
+ *
+ * Supabase finishes Google and redirects here with the session in the URL
+ * FRAGMENT. A fragment never leaves the browser: this server does not receive
+ * it, does not log it, and cannot — the page is a static string with nothing
+ * of the request interpolated into it, which a test holds it to. The script
+ * reads the fragment on the device and hands it to the app on tulmi://, where
+ * the deep-link router already knows how to adopt a session.
+ *
+ * It bounces by script AND offers a button, because a custom-scheme
+ * navigation without a tap is the one thing some browsers refuse; the tap is
+ * the way through when they do.
+ */
+export const AUTH_CALLBACK_HTML = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Tailzu</title>
+<style>
+  html { background: #0F0D0B; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: #F3E2C6; background: #0F0D0B; }
+  .w { text-align: center; padding: 24px; }
+  p { margin: 0 0 18px; color: rgba(243,226,198,.62); }
+  a { display: inline-block; padding: 14px 26px; border-radius: 999px; background: #F3E2C6; color: #0F0D0B;
+      font-weight: 600; text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="w">
+  <p id="m">Signed in. Opening Tailzu.</p>
+  <a id="go" href="${AUTH_RESUME_SCHEME_URL}">Open Tailzu</a>
+</div>
+<script>
+(function () {
+  var t = "${AUTH_RESUME_SCHEME_URL}" + location.search + location.hash;
+  document.getElementById("go").href = t;
+  try { location.replace(t); } catch (e) {}
+  setTimeout(function () {
+    document.getElementById("m").textContent = "Tap to return to Tailzu.";
+  }, 1800);
+})();
+</script>
+</body>
+</html>
+`;
+
 export function registerDemoRoutes(app: FastifyInstance, opts: {
   downloadsDir: string;
   siteDir: string;
 }): void {
   const { downloadsDir, siteDir } = opts;
+
+  // --- Google sign-in's way back into the app --------------------------
+  // Served whether or not AUTH_GOOGLE_WEB is on: the switch decides whether
+  // the app is SENT here, and a page that is reachable a minute before the
+  // switch is flipped costs nothing. no-store, because whatever is in the
+  // URL is a session and must not sit in a cache.
+  app.get("/auth/callback", async (_req, reply) => {
+    reply.type("text/html; charset=utf-8");
+    reply.header("Cache-Control", "no-store");
+    reply.header("Referrer-Policy", "no-referrer");
+    return AUTH_CALLBACK_HTML;
+  });
 
   // --- The page ----------------------------------------------------------
   app.get("/", async (_req, reply) => {

@@ -1512,6 +1512,14 @@ export function buildBootstrap(
      *  a submission window, which removes the path entirely. */
     reviewEmail?: string;
     /**
+     * Google on Android through Supabase's OAuth page rather than the native
+     * client. `callback` is where Supabase lands after Google (a page on this
+     * server); `resume` is the app scheme that page hands the session to.
+     * Null when AUTH_GOOGLE_WEB is off, and the app then uses the native
+     * client exactly as before.
+     */
+    googleWeb?: { callback: string; resume: string } | null;
+    /**
      * WHAT THIS PHONE ALREADY HAS, as reported in the bootstrap capabilities.
      *
      * The microphone permission and the keyboard's Full Access belong to the
@@ -1794,6 +1802,10 @@ export function buildBootstrap(
         // nothing at all when it is empty.
 
         "auth.reviewEmail": opts.reviewEmail ?? "",
+        // Google on Android, by way of Supabase's own OAuth page — see
+        // AUTH_GOOGLE_WEB in config.ts. Absent when off, and absence is the
+        // signal: the app falls back to the native client.
+        ...(opts.googleWeb ? { "auth.googleWeb": opts.googleWeb } : {}),
         "kb.flow.armOnForeground": true,
         "kb.flow.idleTimeoutMs": FLOW_IDLE_TIMEOUT_MS,
         // How each utterance travels to the server. The APP reads this when it

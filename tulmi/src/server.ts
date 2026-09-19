@@ -34,7 +34,7 @@ import { registerMediaRoutes, loadMediaRegistry, getMediaRegistry } from "./rout
 import { PRIVACY_POLICY_HTML, PRIVACY_POLICY_EFFECTIVE } from "./routes/policies/privacy.js";
 import { TERMS_HTML, TERMS_EFFECTIVE } from "./routes/policies/terms.js";
 import { DOWNLOAD_PAGE_HTML } from "./routes/download.js";
-import { registerDemoRoutes, sitePage } from "./routes/demo.js";
+import { registerDemoRoutes, sitePage, AUTH_RESUME_SCHEME_URL } from "./routes/demo.js";
 import { registerReviewCodeRoute } from "./routes/reviewCode.js";
 import { getConfig, VERSION } from "./config.js";
 import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
@@ -1775,6 +1775,14 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     // nobody can open, and reports that they cannot sign in. A whole submission
     // cycle, spent on the shift key.
     reviewEmail: (cfg.REVIEW_EMAIL ?? "").trim().toLowerCase(),
+    // Same origin the media URLs are built on: the callback has to be a page
+    // THIS server serves, and it has to be the one Supabase is told about.
+    googleWeb: cfg.AUTH_GOOGLE_WEB
+      ? {
+          callback: `${process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"}/auth/callback`,
+          resume: AUTH_RESUME_SCHEME_URL,
+        }
+      : null,
     micGranted,
     keyboardReady,
     formFactor: isDesktop ? "desktop" : "phone",

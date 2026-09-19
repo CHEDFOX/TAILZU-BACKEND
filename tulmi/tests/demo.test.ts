@@ -14,6 +14,10 @@ process.env.MEDIA_DIR = "/tmp/tailzu-test-media";
 process.env.SITE_DIR = "/tmp/tailzu-test-site-that-is-not-there";
 process.env.DEMO_ENABLED = "true";
 process.env.DEMO_MAX_SECONDS = "15";
+// Google-on-Android by way of Supabase's page: on, at a known origin, so the
+// flag the app reads can be checked to the character.
+process.env.AUTH_GOOGLE_WEB = "true";
+process.env.PUBLIC_ORIGIN = "https://api.test.tailzu";
 
 vi.mock("../src/pipeline/cleanup.js", () => ({
   assist: vi.fn(async (input: string) => `assisted:${input}`),
@@ -119,6 +123,42 @@ describe("the landing page", () => {
     // "soon" rather than a dead link.
     expect(Object.keys(body.downloads).sort()).toEqual(["linux", "mac", "win"]);
     for (const v of Object.values(body.downloads)) expect(typeof v).toBe("boolean");
+  });
+});
+
+describe("Google sign-in's way back", () => {
+  it("hands the session to the app on the scheme every build has claimed", async () => {
+    const res = await app.inject({ method: "GET", url: "/auth/callback" });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toMatch(/text\/html/);
+    // A session is in the URL, so nothing about this page may be cached.
+    expect(res.headers["cache-control"]).toBe("no-store");
+    expect(res.body).toContain("tulmi://auth/callback");
+    // It forwards the FRAGMENT, which is where Supabase puts the tokens.
+    expect(res.body).toContain("location.hash");
+  });
+
+  it("tells the app where to go and where to come back, when switched on", async () => {
+    // The app is a renderer: it reads both halves from the bootstrap and
+    // invents neither. The callback is a page THIS server serves, on the same
+    // origin the media URLs are built on, and the resume is the one scheme
+    // every build has claimed.
+    const res = await app.inject({ method: "POST", url: "/v1/app/bootstrap", payload: {} });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().flags["auth.googleWeb"]).toEqual({
+      callback: "https://api.test.tailzu/auth/callback",
+      resume: "tulmi://auth/callback",
+    });
+  });
+
+  it("interpolates nothing of the request into the page", async () => {
+    // The tokens travel in the fragment and never reach the server, but the
+    // query does — and a page that echoed it would be a page that could leak
+    // a code. The page is a static string; the request must not change it.
+    const res = await app.inject({ method: "GET", url: "/auth/callback?access_token=LEAK-ME&code=LEAK-TOO" });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain("LEAK-ME");
+    expect(res.body).not.toContain("LEAK-TOO");
   });
 });
 
