@@ -178,13 +178,13 @@ export const SITE_UI = {
   // and a clip this short does not need a second gesture to end: it stops
   // itself when you pause, or at the cap.
   /*
-   * THREE TITLES, NONE OVER FOUR WORDS, NONE IN THE ACCENT.
+   * TWO TITLES, NONE OVER FOUR WORDS, NONE IN THE ACCENT.
    * A title is a claim and the thing under it is the proof, so each stays
    * short enough to be read after the proof rather than instead of it.
-   * `headline` sits over the river, `proof` over the card, `get` over the
-   * buttons. A test holds each to four words.
+   * `proof` sits over the card, `get` over the buttons. There is nothing
+   * over the river: the river is the headline. A test holds each to four
+   * words.
    */
-  headline: "Talk. It writes.",
   proof: "Only the mess goes.",
   get: "Free to start.",
   // One word each where one word does it. The button has a microphone on

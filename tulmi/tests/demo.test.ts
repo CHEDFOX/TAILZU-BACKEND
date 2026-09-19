@@ -85,16 +85,16 @@ describe("the landing page", () => {
     const res = await app.inject({ method: "GET", url: "/v1/site" });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    // THREE TITLES, NONE OVER FOUR WORDS. A title is a claim and the thing
+    // TWO TITLES, NONE OVER FOUR WORDS. A title is a claim and the thing
     // under it is the proof, so it stays short enough to be read after the
     // proof rather than instead of it. The limit is the point of the test.
-    for (const t of ["headline", "proof", "get"]) {
+    for (const t of ["proof", "get"]) {
       expect(typeof body.copy[t]).toBe("string");
       expect(body.copy[t].trim().split(/\s+/).length).toBeLessThanOrEqual(4);
     }
     // And nothing the page does not render: a string here that renders
     // nowhere is a claim nobody can check.
-    for (const dead of ["eyebrow", "lede", "price"]) expect(body.copy[dead]).toBeUndefined();
+    for (const dead of ["eyebrow", "headline", "lede", "price"]) expect(body.copy[dead]).toBeUndefined();
     // The river has to arrive with the page, and every case needs both sides:
     // a missing one puts a gap in a line that is meant never to break.
     expect(body.copy.cases.length).toBeGreaterThan(3);
