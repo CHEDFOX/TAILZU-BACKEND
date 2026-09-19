@@ -11985,6 +11985,15 @@ export function buildKeyboardConfig(
         // Sent true, read with a false default, so old binaries are untouched
         // and a bad one can be taken back by changing this word.
         "kb.keyPlane.commitOnDown": true,
+        // THE SHEET, WITHOUT ITS PAINT (K36 binaries; older ones ignore it).
+        //
+        // The one thing measured rather than reasoned about this keyboard: with
+        // kb.debug.showTouchRects on it has worked every time, with it off some
+        // spots stay dead. The binary now keeps every runtime side effect of
+        // that overlay — a display pass after each hit test, layout, rebind and
+        // commit, with the geometry re-checked at that pass — and draws
+        // nothing. False restores the K34 path, over the air.
+        "kb.keyPlane.sheet": true,
         // Accent long-press trays routed through the multi-touch plane (the
         // v1 plane dropped them; K4 restores them plane-side).
         "kb.keyPlane.accentTrays": true,
