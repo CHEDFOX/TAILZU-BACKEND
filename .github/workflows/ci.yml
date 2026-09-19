@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # claude/** included: production deploys pull feature branches directly
+    # (see LAUNCH.md), so they must be CI-gated too — main-only left the
+    # deployed branch entirely unchecked.
+    branches: [main, "claude/**"]
   pull_request:
     branches: [main]
 
