@@ -161,13 +161,19 @@ export const POLICY = {
  * is made by the visitor's own sentence coming back clean.
  */
 export const SITE_UI = {
-  eyebrow: "Dictation that writes, not transcribes",
-  // Two lines, split on the pipe, because the second one is the promise and
-  // it is set in the brand colour on its own line. Nobody believes a claim
-  // about dictation; they believe the mess turning into a sentence in front
-  // of them — which is what the line under this one is for.
-  headline: "Say it badly.|Send it perfect.",
-  lede: "Nobody speaks in clean sentences. Tailzu drops the filler and keeps every number, every name, and the language you said it in.",
+  /*
+   * THERE IS NO HEADLINE, EYEBROW OR LEDE, AND NO PRICE ON THE PAGE.
+   *
+   * They were the three lines that told a visitor in words what the picture
+   * under them was already doing, and the weaker of the two was read first.
+   * What is left is the product speaking: the mess pouring into the caret,
+   * `identity` leaving it, three claims each proved on a real sentence, and
+   * the buttons. Nothing here asserts anything it does not also show.
+   *
+   * So these are not "unused strings kept in case" — a string in this file
+   * is a string on the page, and one that renders nowhere is a claim nobody
+   * can check. Removed rather than orphaned.
+   */
   // Press, not hold. A long press on a phone selects text and opens menus,
   // and a clip this short does not need a second gesture to end: it stops
   // itself when you pause, or at the cap.
@@ -280,7 +286,6 @@ export const SITE_UI = {
     "It lands where your cursor is.",
     "Tailzu.",
   ],
-  price: "Free to {words} words a month.",
   download: { win: "Windows", mac: "macOS", linux: "Linux", ios: "iPhone", android: "Android", soon: "soon" },
 } as const;
 

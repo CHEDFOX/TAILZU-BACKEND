@@ -85,9 +85,14 @@ describe("the landing page", () => {
     const res = await app.inject({ method: "GET", url: "/v1/site" });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    // The headline is set in two lines split on the pipe, so it must carry
-    // one — a headline without it renders as a single run-on line.
-    expect(body.copy.headline.split("|")).toHaveLength(2);
+    // NOTHING THE PAGE DOES NOT RENDER. The page has no headline, eyebrow,
+    // lede or price any more — it argues by showing rather than by claiming.
+    // A string here that renders nowhere is a claim nobody can check, so the
+    // absence is the thing worth testing: adding one back means adding the
+    // element that shows it.
+    for (const dead of ["eyebrow", "headline", "lede", "price"]) {
+      expect(body.copy[dead]).toBeUndefined();
+    }
     // The river has to arrive with the page, and every case needs both sides:
     // a missing one puts a gap in a line that is meant never to break.
     expect(body.copy.cases.length).toBeGreaterThan(3);
