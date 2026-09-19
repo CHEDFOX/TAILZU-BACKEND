@@ -193,10 +193,18 @@ export const SITE_UI = {
   ctaHeld: "Stop",
   writing: "Writing…",
   again: "Again",
-  invite: "No sign-up. Stops when you pause.",
-  after: "That's it. Everywhere you type.",
-  demoOff: "Demo asleep. The apps aren't.",
-  micDenied: "Mic blocked. Allow it, try again.",
+  /*
+   * THE BUTTON IS THE ONLY PLACE THE PAGE SPEAKS.
+   *
+   * The caption under it is gone, and with it `invite`, `after` and
+   * `demoOff`. Each said in words what was already happening: that it stops
+   * when you pause (the button says Stop), that your sentence came back
+   * clean (it is in the river, in your own words), that the demo is resting
+   * (there is no button at all when it is). The button wears what is left
+   * for a moment and goes back to being a button, so these stay short
+   * enough to fit on one.
+   */
+  micDenied: "Mic blocked.",
   /**
    * THE RIVER. Everything anybody ever said travels along one line across the
    * page: the mess flows in from the left, is swallowed at the microphone,
