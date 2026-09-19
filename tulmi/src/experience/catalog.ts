@@ -178,14 +178,12 @@ export const SITE_UI = {
   // and a clip this short does not need a second gesture to end: it stops
   // itself when you pause, or at the cap.
   /*
-   * TWO TITLES, NONE OVER FOUR WORDS, NONE IN THE ACCENT.
-   * A title is a claim and the thing under it is the proof, so each stays
-   * short enough to be read after the proof rather than instead of it.
-   * `proof` sits over the card, `get` over the buttons. There is nothing
-   * over the river: the river is the headline. A test holds each to four
-   * words.
+   * ONE TITLE, FOUR WORDS AT MOST, NOT IN THE ACCENT.
+   * It sits over the download buttons. There is nothing over the river —
+   * the river is the headline — and there is no second viewport under it:
+   * the river, this title and the buttons are the whole page. A test holds
+   * it to four words.
    */
-  proof: "Only the mess goes.",
   get: "Free to start.",
   // One word each where one word does it. The button has a microphone on
   // it; "Speak" is the whole instruction.
@@ -244,50 +242,6 @@ export const SITE_UI = {
     { said: "eh gimana ya saya bisa datang sekitar jam tujuh", wrote: "Saya bisa datang sekitar jam tujuh." },
     { said: "yani sey saat yedi gibi gelebilirim heralde", wrote: "Yani saat yedi gibi gelebilirim, herhalde." },
     { said: "ano eto nakaka pagod pero tapos na yung report", wrote: "Nakakapagod, pero tapos na yung report." },
-  ],
-  /**
-   * THE THREE CLAIMS, each shown on the same card rather than asserted.
-   *
-   * `cut` are the words struck out as the reader watches; `keep` are the ones
-   * marked and then left standing in the written line. A step names at most
-   * one of the two, because the argument of each is different: the first is
-   * about what goes, the other two are about what survives.
-   *
-   * The words are matched by letters and digits only, lowercased, so "ramesh"
-   * here marks "Ramesh." in the sentence. Anything not listed is untouched,
-   * which is the safe direction to be wrong in: a missed mark is a quiet
-   * animation, a wrong one is a false claim about the product.
-   */
-  steps: [
-    // Three tabs that read as one sentence down the rail: mess goes, facts
-    // stay, language stays. The note under each is the claim in as few words
-    // as it survives in; the sentence beside it is the proof.
-    {
-      tab: "Mess goes",
-      note: "Filler. False starts. Gone.",
-      said: "um so like i think we should probably move the review to thursday because the design is uh not done",
-      wrote: "I think we should move the review to Thursday — the design is not done.",
-      cut: ["um", "so", "like", "probably", "uh"],
-      pill: "Filler cut",
-    },
-    {
-      tab: "Facts stay",
-      note: "Numbers, names, amounts. Never guessed.",
-      said: "trensfer 2500 rupeez to ramesh tomorow",
-      wrote: "Transfer 2500 rupees to Ramesh tomorrow.",
-      keep: ["2500", "ramesh"],
-      // The repair is visible in the line; the pill only has to name what
-      // was NOT touched, and name it specifically.
-      pill: "2500 and Ramesh untouched",
-    },
-    {
-      tab: "Language stays",
-      note: "Two languages in. Two out.",
-      said: "the deploy is done but abhi testing baaki hai",
-      wrote: "The deploy is done, but abhi testing baaki hai.",
-      keep: ["abhi", "testing", "baaki", "hai"],
-      pill: "Never translated",
-    },
   ],
   /**
    * THE WORD THE WHOLE FIELD POURS INTO.

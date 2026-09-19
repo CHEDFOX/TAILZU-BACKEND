@@ -85,16 +85,17 @@ describe("the landing page", () => {
     const res = await app.inject({ method: "GET", url: "/v1/site" });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    // TWO TITLES, NONE OVER FOUR WORDS. A title is a claim and the thing
-    // under it is the proof, so it stays short enough to be read after the
-    // proof rather than instead of it. The limit is the point of the test.
-    for (const t of ["proof", "get"]) {
-      expect(typeof body.copy[t]).toBe("string");
-      expect(body.copy[t].trim().split(/\s+/).length).toBeLessThanOrEqual(4);
-    }
+    // ONE TITLE, FOUR WORDS AT MOST. It sits over the buttons; there is
+    // nothing over the river and no second viewport under it. The limit is
+    // the point of the test.
+    expect(typeof body.copy.get).toBe("string");
+    expect(body.copy.get.trim().split(/\s+/).length).toBeLessThanOrEqual(4);
     // And nothing the page does not render: a string here that renders
-    // nowhere is a claim nobody can check.
-    for (const dead of ["eyebrow", "headline", "lede", "price"]) expect(body.copy[dead]).toBeUndefined();
+    // nowhere is a claim nobody can check. The card and its three claims
+    // are gone with the second viewport.
+    for (const dead of ["eyebrow", "headline", "lede", "price", "proof", "steps"]) {
+      expect(body.copy[dead]).toBeUndefined();
+    }
     // The river has to arrive with the page, and every case needs both sides:
     // a missing one puts a gap in a line that is meant never to break.
     expect(body.copy.cases.length).toBeGreaterThan(3);
@@ -118,35 +119,6 @@ describe("the landing page", () => {
     // "soon" rather than a dead link.
     expect(Object.keys(body.downloads).sort()).toEqual(["linux", "mac", "win"]);
     for (const v of Object.values(body.downloads)) expect(typeof v).toBe("boolean");
-  });
-
-  it("gives every claim a line it can actually mark", async () => {
-    // The card strikes out `cut` and highlights `keep` by matching letters and
-    // digits, lowercased. A word listed but absent from the line it belongs to
-    // marks nothing — a silent animation that quietly stops making the claim.
-    const bare = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
-    const res = await app.inject({ method: "GET", url: "/v1/site" });
-    const steps = res.json().copy.steps as Array<{
-      tab: string; note: string; said: string; wrote: string;
-      pill: string; cut?: string[]; keep?: string[];
-    }>;
-    expect(steps.length).toBeGreaterThan(1);
-    for (const s of steps) {
-      for (const k of [s.tab, s.note, s.said, s.wrote, s.pill]) expect(k.length).toBeGreaterThan(0);
-      expect(s.wrote).not.toBe(s.said);
-      // The pill is copy, and copy is never markup: the page sets it as text.
-      expect(s.pill).not.toMatch(/[<>]/);
-      const inSaid = new Set(s.said.split(/\s+/).map(bare));
-      for (const w of s.cut ?? []) expect(inSaid.has(bare(w))).toBe(true);
-      // A kept word has to survive into the written line — that is the claim.
-      const inWrote = new Set(s.wrote.split(/\s+/).map(bare));
-      for (const w of s.keep ?? []) {
-        expect(inSaid.has(bare(w))).toBe(true);
-        expect(inWrote.has(bare(w))).toBe(true);
-      }
-      // A word cannot both go and stay.
-      for (const w of s.cut ?? []) expect((s.keep ?? []).map(bare)).not.toContain(bare(w));
-    }
   });
 });
 
