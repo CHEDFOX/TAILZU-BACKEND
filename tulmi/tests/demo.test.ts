@@ -115,7 +115,10 @@ describe("the landing page", () => {
       expect(st.wrote.length).toBeGreaterThan(0);
       expect(st.wrote).not.toBe(st.said);
     }
+    // A few named machines and a note that there are more — not a directory.
     expect(c.llm.targets.length).toBeGreaterThanOrEqual(2);
+    expect(c.llm.targets.length).toBeLessThanOrEqual(4);
+    expect(c.llm.more.split(/\s+/).length).toBeLessThanOrEqual(2);
     expect(typeof body.perMinute).toBe("number");
     // One button, and the two store links it needs.
     expect(c.download.get.length).toBeGreaterThan(0);
