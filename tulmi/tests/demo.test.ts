@@ -123,6 +123,9 @@ describe("the landing page", () => {
     expect(c.desk.keys).toEqual(["Ctrl", "Ctrl"]);
     expect(c.desk.title.toLowerCase()).toContain("ctrl");
     expect(c.free.title.length).toBeGreaterThan(0);
+    // The price screen is a title, a button and the three marks. Nothing
+    // under the title tells the reader what upgrading is for.
+    expect(c.free.lede).toBeUndefined();
     // The two stages: the machines and the editor. Each has a said line and
     // a written one that differ, and the machines have their tabs.
     for (const st of [c.llm, c.dev]) {

@@ -320,7 +320,6 @@ export const SITE_UI = {
   },
   free: {
     title: "Free to start.",
-    lede: "Upgrade when you need more.",
   },
   /*
    * THE MACHINES. Say it rough, and a clean prompt lands in the box of
