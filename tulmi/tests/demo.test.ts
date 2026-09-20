@@ -118,7 +118,13 @@ describe("the landing page", () => {
     for (const f of c.apps.fields) {
       expect(["message", "mail", "memo", "search"]).toContain(f.kind);
       expect(f.text.length).toBeGreaterThan(0);
+      // An instruction is something other than the sentence that lands.
+      if (f.say !== undefined) { expect(f.say.length).toBeGreaterThan(0); expect(f.say).not.toBe(f.text); }
     }
+    // Some of them are instructions, and more than one script is spoken.
+    const spoken = c.apps.fields.filter((f) => f.say !== undefined);
+    expect(spoken.length).toBeGreaterThanOrEqual(3);
+    expect(spoken.some((f) => /[^\u0000-\u024F\s\p{P}]/u.test(f.say))).toBe(true);
     // The gesture on the page is the tray app's default way in: Ctrl, twice.
     expect(c.desk.keys).toEqual(["Ctrl", "Ctrl"]);
     expect(c.desk.title.toLowerCase()).toContain("ctrl");
