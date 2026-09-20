@@ -15,6 +15,7 @@
  */
 import { timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 
 /** Constant-time string comparison — avoids leaking a secret via response
  * timing. Returns false on any length mismatch (lengths aren't secret). */
@@ -375,6 +376,12 @@ await app.register(fastifyStatic, {
   decorateReply: false,
   cacheControl: true,
   maxAge: "1h",
+  // THE CLICK IS THE DOWNLOAD. An installer is never something to show in
+  // a tab, so it is named as an attachment: the site's Download button
+  // starts the file and the page stays where it was.
+  setHeaders(res, filePath) {
+    res.setHeader("Content-Disposition", `attachment; filename="${path.basename(filePath)}"`);
+  },
 });
 
 await app.register(transcribeStream);
