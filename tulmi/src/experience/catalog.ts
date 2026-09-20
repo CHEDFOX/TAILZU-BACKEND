@@ -293,8 +293,8 @@ export const SITE_UI = {
   },
   desk: {
     kick: "On the desk",
-    title: "Mac and Windows too.",
-    lede: "Tap Ctrl twice. Talk. Tap twice. It's typed.",
+    title: "Tap Ctrl twice.",
+    lede: "Mac and Windows. Talk. Tap twice. It's typed.",
     // The tray app's way in (desktop/main.js, `tap` on by default): a
     // double-tap on Ctrl, or on Alt. The chord and F9 are fallbacks and are
     // not what the page shows. Two keys drawn is the gesture; `join` is
