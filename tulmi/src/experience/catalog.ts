@@ -238,8 +238,8 @@ export const SITE_UI = {
   /*
    * THE WORDS UNDER THE RIVER.
    *
-   * The headline and its line sit on the dark, right after the river, with
-   * the buttons. Then six fields of colour, each one thing: how it works,
+   * Nothing sits between the river and the colour: no headline, no line, no
+   * buttons — the river is the headline. Six fields, each one thing: how it works,
    * the tones, the apps, the desk, the price, the questions. Every claim
    * here is one the product makes good on — the three steps are the three
    * things the quality harness tests for (filler dropped, two languages
@@ -257,10 +257,6 @@ export const SITE_UI = {
    * Second person, concrete nouns, the benefit before the mechanism, and a
    * full stop where a comma would have kept going.
    */
-  hero: {
-    title: "Say it badly. Send it perfectly.",
-    lede: "Ums, Hinglish, half-thoughts in. Your sentence, out.",
-  },
   how: {
     kick: "How it works",
     title: "Talk. It writes.",
@@ -335,9 +331,7 @@ export const SITE_UI = {
    * claims to. A test holds it to two words.
    */
   absorb: "Exactly.",
-  // `also` and `and` build the one line under the hero's single button:
-  // "Also on Android. macOS and Windows soon."
-  download: { win: "Windows", mac: "macOS", linux: "Linux", ios: "iPhone", android: "Android", soon: "soon", also: "Also on", and: "and" },
+  download: { win: "Windows", mac: "macOS", linux: "Linux", ios: "iPhone", android: "Android", soon: "soon" },
 } as const;
 
 const FILL_STYLE = {

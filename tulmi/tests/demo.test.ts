@@ -96,8 +96,7 @@ describe("the landing page", () => {
     // under it, three steps, four tones, four drawn fields, a desk, a price
     // whose number is the server's, and questions that end in one.
     const c = body.copy;
-    expect(c.hero.title.trim().split(/\s+/).length).toBeLessThanOrEqual(8);
-    expect(c.hero.lede.length).toBeGreaterThan(20);
+    expect(c.hero).toBeUndefined();   // the river is the headline
     expect(c.how.steps.length).toBe(3);
     for (const s of c.how.steps) {
       expect(s.title.length).toBeGreaterThan(0);
