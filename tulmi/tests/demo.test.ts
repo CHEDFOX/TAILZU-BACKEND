@@ -112,7 +112,14 @@ describe("the landing page", () => {
     // numbers served beside it.
     expect(c.dev.note).toContain("{perMinute}");
     expect(c.dev.note).toContain("{maxSeconds}");
+    expect(c.dev.facts.length).toBeLessThanOrEqual(3);
+    for (const f of c.dev.facts) expect(f.t.trim().split(/\s+/).length).toBeLessThanOrEqual(9);
+    expect(c.dev.mail).toMatch(/^[^@\s]+@tailzu\.space$/);
     expect(typeof body.perMinute).toBe("number");
+    // One button, and the two store links it needs.
+    expect(c.download.get.length).toBeGreaterThan(0);
+    expect(c.stores.ios).toMatch(/^https:\/\/apps\.apple\.com\//);
+    expect(c.stores.android).toMatch(/^https:\/\/play\.google\.com\//);
     expect(c.faq.items.length).toBeGreaterThanOrEqual(3);
     expect(c.faq.items.length).toBeLessThanOrEqual(8);   // not bulky
     for (const q of c.faq.items) {

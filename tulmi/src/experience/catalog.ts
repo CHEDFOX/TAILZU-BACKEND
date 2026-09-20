@@ -316,9 +316,20 @@ export const SITE_UI = {
    */
   dev: {
     kick: "For developers",
-    title: "Try it from a terminal.",
-    lede: "One request. Audio in, a sentence out.",
+    title: "Built to be built on.",
+    lede: "Every screen is JSON from the server. The apps are renderers.",
+    // Three things a developer can check: the endpoint they can curl below,
+    // the architecture this file is the proof of, the tray app in the repo.
+    facts: [
+      { k: "One endpoint", t: "Audio in. Clean text out. 22 Indian languages." },
+      { k: "Server-driven UI", t: "A screen ships without a release." },
+      { k: "Desktop hook", t: "A tray app. Hotkey, record, paste anywhere." },
+    ],
     note: "No key. {perMinute} a minute. {maxSeconds} seconds each. webm, mp4, ogg.",
+    // A key on request. The address must exist on the domain, or the link
+    // is a dead end for exactly the person it was written for.
+    ask: "Want a key?",
+    mail: "hello@tailzu.space",
   },
   faq: {
     kick: "Questions",
@@ -353,7 +364,15 @@ export const SITE_UI = {
    * claims to. A test holds it to two words.
    */
   absorb: "Exactly.",
-  download: { win: "Windows", mac: "macOS", linux: "Linux", ios: "iPhone", android: "Android", soon: "soon" },
+  // ONE BUTTON. The page sends a phone to its store and a desk to its
+  // installer (or to /download while there is none), so the only word on
+  // it is this one. The store links live here so they can change without a
+  // site deploy — the App Store id and the package name are the app's.
+  download: { get: "Download" },
+  stores: {
+    ios: "https://apps.apple.com/app/id6784811357",
+    android: "https://play.google.com/store/apps/details?id=com.tulmi.app",
+  },
 } as const;
 
 const FILL_STYLE = {
