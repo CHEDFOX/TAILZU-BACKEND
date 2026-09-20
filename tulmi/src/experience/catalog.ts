@@ -329,7 +329,9 @@ export const SITE_UI = {
    * claims to. A test holds it to two words.
    */
   absorb: "Exactly.",
-  download: { win: "Windows", mac: "macOS", linux: "Linux", ios: "iPhone", android: "Android", soon: "soon" },
+  // `also` and `and` build the one line under the hero's single button:
+  // "Also on Android. macOS and Windows soon."
+  download: { win: "Windows", mac: "macOS", linux: "Linux", ios: "iPhone", android: "Android", soon: "soon", also: "Also on", and: "and" },
 } as const;
 
 const FILL_STYLE = {
