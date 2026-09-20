@@ -96,7 +96,8 @@ describe("the landing page", () => {
     // under it, three steps, four tones, four drawn fields, a desk, a price
     // whose number is the server's, and questions that end in one.
     const c = body.copy;
-    expect(c.hero).toBeUndefined();   // the river is the headline
+    // The hero's one label, over the spoken line: two or three words.
+    expect(c.hero.said.trim().split(/\s+/).length).toBeLessThanOrEqual(3);
     expect(c.how.steps.length).toBe(3);
     for (const s of c.how.steps) expect(s.title.trim().split(/\s+/).length).toBeLessThanOrEqual(5);
     expect(c.apps.fields.length).toBeGreaterThanOrEqual(3);
@@ -144,6 +145,8 @@ describe("the landing page", () => {
       expect(c.wrote.length).toBeGreaterThan(0);
       // A case whose two sides match demonstrates nothing.
       expect(c.wrote).not.toBe(c.said);
+      // Each is named: the language is the page's proof, shown as a word.
+      expect(c.lang.trim().split(/\s+/).length).toBeLessThanOrEqual(2);
     }
     // The word the whole field pours into. A word or two and never more:
     // it is set at the size of a thing swallowing a hundred threads, so a
