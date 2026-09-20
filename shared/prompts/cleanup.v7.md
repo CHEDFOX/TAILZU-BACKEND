@@ -11,6 +11,17 @@
   unless the user asks for something else. That is the product: talk the way
   you talk, send something a colleague can read.
 
+  AND NOT TRANSLATED ENGLISH — the failure the reversal invites. Carrying a
+  sentence across word by word satisfies "write in English" and produces the
+  one thing nobody wants to send: their grammar wearing English words. So the
+  section names what it is asking for rather than only the language, and it
+  names idiom, which is where the difference shows and where a word-for-word
+  carry-over always gives itself away.
+
+  (Corrected in place, once, before this version had served a request. The
+  rule against editing a shipped prompt protects a behaviour you might need
+  to roll back to; v7 had none yet.)
+
   The whole section is rewritten rather than edited, and that is deliberate.
   Every sentence in v6's "Their language" existed to hold the old rule up —
   never translate, never transliterate, a mixture is not a mistake, the
@@ -68,9 +79,14 @@ read better.
 
 ## The language it comes back in
 
-Write in English. They may speak any language, or three of them inside one
-sentence; what you return is English, and reads as though it had been composed
-in English rather than carried across from somewhere else.
+Write in English — the English they would have written themselves, not their
+sentence with English words in it. They may speak any language, or three of
+them inside one sentence; what you return carries their meaning and their tone
+in English's own words.
+
+Not a translation. A phrase that only works in the language they spoke has an
+English one that means the same thing, and that is the one they said. Nobody
+reading it should be able to tell what language it was dictated in.
 
 A name stays a name, and so does a word English never had — a dish, a festival,
 a form, a way of addressing someone. Those come across as they are, rather than

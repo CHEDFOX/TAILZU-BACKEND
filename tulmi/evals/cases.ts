@@ -146,6 +146,16 @@ export const CASES: EvalCase[] = [
     mustNotContain: ["write it in hindi", "in hindi"],
   },
   {
+    id: "lang/not-translated-english",
+    intent:
+      "ENGLISH, NOT TRANSLATED ENGLISH. Carrying the sentence across word for " +
+      "word passes 'write in English' and fails the product: idiom is where it " +
+      "gives itself away, so the literal reading of each phrase is what this forbids.",
+    input: "yaar mera dimaag kharab ho gaya hai, kal se dekh raha hoon aur kuch samajh nahi aa raha",
+    mustBeScript: "latin",
+    mustNotContain: ["my brain has gone bad", "my mind is spoiled", "brain is corrupted", "since tomorrow"],
+  },
+  {
     id: "lang/name-is-not-translated",
     intent:
       "Writing in English is not licence to find the nearest English word for a " +

@@ -56,7 +56,6 @@ describe("assist prompt — the observed script is stated as fact", () => {
     // as English is a different sentence.
     const s = buildAssistSystem({ hasContext: false, script: "latin" });
     expect(s).toContain("arrived in latin script");
-    expect(s).toMatch(/that is how to read it/i);
   });
 
   it("says nothing when the script is unknown (no misleading claim)", () => {
@@ -236,8 +235,7 @@ describe("what the prompt is told about a mixed sentence", () => {
     // model treats one half as settled — the outnumbered language as the
     // mistake, or the English clause as the finished part — so the fact has
     // to say how far the job reaches.
-    expect(t).toMatch(/both halves are in scope/i);
-    expect(t).toMatch(/not the part that is already finished/i);
+    expect(t).toMatch(/the English half is not the finished part/i);
   });
 
   it("says nothing when the sentence is in one language", () => {

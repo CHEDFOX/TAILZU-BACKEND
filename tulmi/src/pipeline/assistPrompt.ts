@@ -321,19 +321,29 @@ export function buildAssistSystem(opts: {
     // It is a DEFAULT and not a claim about the person: a language asked for
     // in this dictation, or saved on their account, arrives here as `lang`
     // and simply takes its place.
+    // AND NOT TRANSLATED ENGLISH, which is the failure the rule invites.
+    // Carrying a sentence across word by word satisfies "write in English"
+    // and produces the thing nobody wants to send: their grammar wearing
+    // English words. The rule has to name what it is asking for, not only
+    // the language, and idiom is where the difference shows.
     lang
-      ? `Write in ${lang}, in that language's own script.`
-      : "Write in English. They may speak any language, or three of them in one sentence; what comes back is English, written as English rather than carried across from somewhere else.",
+      ? `Write in ${lang} — the ${lang} they would have written themselves, not their sentence with ${lang} words in it.`
+      : "Write in English — the English they would have written themselves, not their sentence with English words in it.",
+    "Nobody reading it should be able to tell what it was dictated in.",
     // Unconditional, both here and below: a rule that lives only in the
     // "auto" branch is a rule that vanishes the moment somebody sets a
     // language, and neither of these is about which language it is.
-    "A name stays a name, and so does a word the language you are writing in never had.",
+    //
+    // One line rather than two, because they are the two halves of a single
+    // judgement — what has an equivalent worth reaching for, and what does
+    // not — and the length guard was down to three characters of room.
+    "A phrase that only works in the language they spoke has an English one that means it. A name does not, and neither does a thing English never had a word for.",
     "They can ask for another language, in any words. Then that is the one, for that message.",
     // Observed, not guessed, and still worth stating — but only as what it
     // is. What was said has to be READ before it can be written, and
     // romanized Hindi read as English is a different sentence.
     opts.script && opts.script !== "unknown"
-      ? `What they said arrived in ${opts.script} script; that is how to read it.`
+      ? `What they said arrived in ${opts.script} script.`
       : null,
     // MEASURED, AND NOW POINTING THE OTHER WAY.
     //
@@ -345,7 +355,7 @@ export function buildAssistSystem(opts: {
     // THIS sentence, which is not something to weigh, and say how far the
     // job reaches.
     opts.mixedLanguages
-      ? "This one is in two languages at once, English and romanized Hindi. Both halves are in scope: the English one is not the part that is already finished."
+      ? "This one is in two languages at once, English and romanized Hindi. The English half is not the finished part."
       : null,
     "",
     app

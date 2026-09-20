@@ -79,12 +79,28 @@ describe("assist path — instruction separation", () => {
     expect(system).not.toMatch(/never\s+transliterate/i);
   });
 
-  it("keeps a name out of the translating, and lets them ask for a language", () => {
-    // The two halves that survive the reversal: writing in English is not
-    // licence to find the nearest English word for a name, and English is a
-    // default rather than a policy — one sentence of theirs replaces it, for
-    // one message.
-    expect(system).toMatch(/a name stays a name/i);
+  it("asks for English, and not for a translation into it", () => {
+    // The failure the reversal invites, and the one worth naming: carrying a
+    // sentence across word for word satisfies "write in English" exactly,
+    // and produces the one thing nobody wants to send — their grammar
+    // wearing English words. So the prompt names what it is asking for
+    // rather than only the language, and gives the test for it.
+    expect(system).toMatch(/not their sentence with English words in it/i);
+    expect(system).toMatch(/Nobody reading it should be able to tell what it was dictated in/i);
+  });
+
+  it("knows what has an English equivalent and what has not", () => {
+    // Both halves of one judgement. Idiom is where a word-for-word carry-over
+    // gives itself away, so a phrase that only works in the spoken language
+    // gets the English one that means it — while a name, and a thing English
+    // never had a word for, are exactly what must NOT be approximated.
+    expect(system).toMatch(/has an English one that means it/i);
+    expect(system).toMatch(/A name does not/i);
+  });
+
+  it("lets them ask for another language, for one message", () => {
+    // English is a default rather than a policy: one sentence of theirs
+    // replaces it, and only for the message it was said in.
     expect(system).toMatch(/can ask for another language/i);
     expect(system).toMatch(/for that message/i);
   });
@@ -179,7 +195,8 @@ describe("assist path — instruction separation", () => {
     // "auto" branch, where neither is about which language it is.
     const pinned = buildAssistSystem({ hasContext: false, language: "hi", mixedLanguages: true });
     expect(pinned).toMatch(/Write in hi/i);
-    expect(pinned).toMatch(/a name stays a name/i);
+    expect(pinned).toMatch(/not their sentence with hi words in it/i);
+    expect(pinned).toMatch(/A name does not/i);
     expect(pinned).toMatch(/can ask for another language/i);
     expect(pinned).toMatch(/in two languages at once/i);
   });

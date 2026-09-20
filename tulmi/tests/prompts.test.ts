@@ -302,7 +302,7 @@ describe("what reaches the model", () => {
     // inferred, and it has been inferred wrongly by every version so far.
     const sys = buildCleanupSystem({ targetApp: "WhatsApp", language: "auto" });
     expect(sys).toMatch(/three\s+of\s+them\s+inside\s+one\s+sentence/i);
-    expect(sys).toMatch(/what\s+you\s+return\s+is\s+English/i);
+    expect(sys).toMatch(/carries\s+their\s+meaning\s+and\s+their\s+tone/i);
   });
 
   it("leaves a name and an untranslatable word alone", () => {
