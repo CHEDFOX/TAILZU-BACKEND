@@ -334,7 +334,7 @@ export const SITE_UI = {
     kick: "Prompts",
     title: "Talk to the machine.",
     lede: "Say it rough. A clean prompt lands in the box.",
-    targets: ["ChatGPT", "Claude", "Grok"],
+    targets: ["ChatGPT", "Claude", "Grok", "Gemini", "Perplexity", "Copilot", "DeepSeek", "Cursor"],
     tag: "New chat",
     said: "okay so um help me think through pricing for the team plan like per seat or usage or maybe both and what could go wrong with each",
     wrote: "Help me think through pricing for the team plan: per seat, usage-based, or a hybrid of the two. For each, give the price point, the target customer and the biggest risk.",
