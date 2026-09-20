@@ -297,6 +297,9 @@ export const SITE_UI = {
   },
   apps: {
     title: "It's a keyboard.",
+    // The correction the page draws: this word is struck through and this
+    // one written above it by hand. It's a keyless board.
+    cut: "key", fix: "keyless",
     // `kind` picks the drawing: a chat bubble, a mail, a note, a search bar.
     fields: [
       { kind: "message", app: "Message", text: "Can we push the call to four?" },

@@ -102,6 +102,9 @@ describe("the landing page", () => {
     for (const sec of [c.how, c.tone, c.llm, c.apps, c.desk, c.dev, c.faq]) expect(sec.kick).toBeUndefined();
     expect(c.how.steps.length).toBe(3);
     for (const s of c.how.steps) expect(s.title.trim().split(/\s+/).length).toBeLessThanOrEqual(5);
+    // The correction: the cut word is in the title, and the fix is one word.
+    expect(c.apps.title.toLowerCase()).toContain(c.apps.cut.toLowerCase());
+    expect(c.apps.fix.trim().split(/\s+/).length).toBe(1);
     expect(c.apps.fields.length).toBeGreaterThanOrEqual(3);
     for (const f of c.apps.fields) {
       expect(["message", "mail", "memo", "search"]).toContain(f.kind);
