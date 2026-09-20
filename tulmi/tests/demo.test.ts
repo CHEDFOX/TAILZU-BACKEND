@@ -96,8 +96,14 @@ describe("the landing page", () => {
     // under it, three steps, four tones, four drawn fields, a desk, a price
     // whose number is the server's, and questions that end in one.
     const c = body.copy;
-    // The hero's one label, over the spoken line: two or three words.
+    // The hero is the demo: an invitation, three states, a headline for
+    // when there is no button, and nothing longer than it has room for.
     expect(c.hero.said.trim().split(/\s+/).length).toBeLessThanOrEqual(3);
+    for (const k of ["invite", "listening", "writing", "again", "title"]) {
+      expect(typeof c.hero[k]).toBe("string");
+      expect(c.hero[k].trim().length).toBeGreaterThan(0);
+      expect(c.hero[k].trim().split(/\s+/).length).toBeLessThanOrEqual(4);
+    }
     // No small title over any main title: the title is the title.
     for (const sec of [c.how, c.tone, c.llm, c.apps, c.desk, c.dev, c.faq]) expect(sec.kick).toBeUndefined();
     expect(c.how.steps.length).toBe(3);

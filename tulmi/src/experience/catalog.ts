@@ -386,7 +386,18 @@ export const SITE_UI = {
    */
   // The hero's one label: over the line as somebody said it. The line it
   // became needs none — the story word beside it says what happened.
-  hero: { said: "You said" },
+  // THE HERO IS THE DEMO, and this is everything it ever says: the
+  // invitation, the three states it moves through, and what it offers once
+  // they have heard it. `title` is the headline for when the demo is
+  // switched off and there is no button to press.
+  hero: {
+    said: "You said",
+    invite: "Press. Say anything.",
+    listening: "Listening",
+    writing: "Writing",
+    again: "Say another.",
+    title: "Talk. It writes."
+  },
   absorb: "Heard.",
   /*
    * THE STORY, ONE WORD AT A TIME. The page cycles the word through these
