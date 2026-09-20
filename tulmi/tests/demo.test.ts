@@ -148,6 +148,14 @@ describe("the landing page", () => {
     // in it would print rather than render.
     expect(body.copy.absorb.trim().split(/\s+/).length).toBeLessThanOrEqual(2);
     expect(body.copy.absorb).not.toMatch(/[<>]/);
+    // The story it cycles through: several words, each as short as the one
+    // above, the first of them being that one.
+    expect(body.copy.absorbs.length).toBeGreaterThanOrEqual(2);
+    expect(body.copy.absorbs[0]).toBe(body.copy.absorb);
+    for (const w of body.copy.absorbs) {
+      expect(w.trim().split(/\s+/).length).toBeLessThanOrEqual(2);
+      expect(w).not.toMatch(/[<>]/);
+    }
     expect(body.copy.identity).toBeUndefined();
     // The tones are the keyboard's own, distinct in name and in sentence,
     // and none of them is the line as it was said.

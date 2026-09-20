@@ -234,6 +234,24 @@ export const SITE_UI = {
     { said: "eh gimana ya saya bisa datang sekitar jam tujuh", wrote: "Saya bisa datang sekitar jam tujuh." },
     { said: "yani sey saat yedi gibi gelebilirim heralde", wrote: "Yani saat yedi gibi gelebilirim, herhalde." },
     { said: "ano eto nakaka pagod pero tapos na yung report", wrote: "Nakakapagod, pero tapos na yung report." },
+    { said: "يعني ممكن نأجل الاجتماع لبكرة الساعة أربعة", wrote: "ممكن نأجل الاجتماع لبكرة الساعة أربعة؟" },
+    { said: "えっと明日の会議ちょっと遅れるかも", wrote: "明日の会議、少し遅れるかもしれません。" },
+    { said: "음 내일 회의 조금 늦을 것 같아요", wrote: "내일 회의에 조금 늦을 것 같아요." },
+    { said: "那个 我明天可能会晚一点到", wrote: "我明天可能会晚一点到。" },
+    { said: "ну короче я завтра приду часам к семи", wrote: "Я завтра приду часам к семи." },
+    { said: "คือว่า พรุ่งนี้ขอไปสายนิดนึงนะ", wrote: "พรุ่งนี้ขอไปสายนิดหนึ่งนะ" },
+    { said: "ờ thì mai mình đến hơi muộn xíu nha", wrote: "Mai mình đến hơi muộn một chút nhé." },
+    { said: "ε λοιπόν θα έρθω κατά τις εφτά νομίζω", wrote: "Θα έρθω κατά τις εφτά, νομίζω." },
+    { said: "אה אני אגיע בערך בשבע נראה לי", wrote: "אני אגיע בערך בשבע, נראה לי." },
+    { said: "yaani naweza kufika saa moja hivi", wrote: "Naweza kufika saa moja hivi." },
+    { said: "یعنی میں کل نہیں آ سکوں گا تھوڑا کام ہے", wrote: "میں کل نہیں آ سکوں گا، تھوڑا کام ہے۔" },
+    { said: "उम म भोलि अफिस आउँदिन अलि काम छ", wrote: "म भोलि अफिस आउँदिनँ, अलि काम छ।" },
+    { said: "cioè tipo posso arrivare verso le sette", wrote: "Posso arrivare verso le sette." },
+    { said: "eh dus ik kan rond zeven uur komen denk ik", wrote: "Ik kan rond zeven uur komen, denk ik." },
+    { said: "no więc mogę być koło siódmej chyba", wrote: "Mogę być koło siódmej, chyba." },
+    { said: "ну коротше я прийду десь о сьомій", wrote: "Я прийду десь о сьомій." },
+    { said: "یعنی فکر کنم حدود ساعت هفت برسم", wrote: "فکر کنم حدود ساعت هفت برسم." },
+    { said: "ඒ කියන්නේ මම හෙට ඔෆිස් එන්නේ නෑ පොඩි වැඩක් තියෙනවා", wrote: "මම හෙට ඔෆිස් එන්නේ නැහැ, පොඩි වැඩක් තියෙනවා." },
   ],
   /*
    * THE WORDS UNDER THE RIVER.
@@ -369,7 +387,15 @@ export const SITE_UI = {
    * press the button, because what it actually absorbed beats what it
    * claims to. A test holds it to two words.
    */
-  absorb: "Exactly.",
+  absorb: "Heard.",
+  /*
+   * THE STORY, ONE WORD AT A TIME. The page cycles the word through these
+   * in order, every few seconds — heard, meant, written, sent — each born
+   * warm and cooling, and stops for good once a visitor's own sentence has
+   * taken the word over. `absorb` above is the first of them, kept for a
+   * page that only knows one. Two words each at most; a test holds it.
+   */
+  absorbs: ["Heard.", "Meant.", "Written.", "Sent."],
   // ONE BUTTON. The page sends a phone to its store and a desk to its
   // installer (or to /download while there is none), so the only word on
   // it is this one. The store links live here so they can change without a
