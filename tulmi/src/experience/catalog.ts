@@ -1711,6 +1711,10 @@ export function buildBootstrap(
      * Absent means phone, so nothing that does not send it changes.
      */
     formFactor?: string;
+    /** The desktop's operating system — "mac", "windows" or "linux" — when
+     *  the window says. Apple's button is drawn on a Mac and left out on
+     *  the others; a phone never sends this. */
+    os?: string;
   } = {},
 ): BootstrapResponse {
   const nav = navigationFor(!!opts.landedBefore);
@@ -2011,6 +2015,7 @@ export function buildBootstrap(
         flags["auth.screen"] = authScreenTree(opts.formFactor === "desktop", {
           googleHidden: opts.googleHidden === true,
           googleLink: opts.googleHidden === true ? (opts.googleLink ?? null) : null,
+          appleHidden: opts.formFactor === "desktop" && opts.os !== "mac",
         });
         flags["auth.suction"] = AUTH_UI.entry.suction;
       }
@@ -4528,7 +4533,7 @@ function googleLinkButton(url: string, size: number): Record<string, unknown> {
 
 function authScreenTree(
   isDesktop = false,
-  opts: { googleHidden?: boolean; googleLink?: string | null } = {},
+  opts: { googleHidden?: boolean; googleLink?: string | null; appleHidden?: boolean } = {},
 ): Record<string, unknown> {
   const ui = AUTH_UI;
   // A STACK, NOT A SCREEN.
@@ -4594,7 +4599,9 @@ function authScreenTree(
                     justifyContent: "center", marginTop: ui.entry.social.topGap,
                   },
                   children: [
-                    { type: "AppleSignIn", props: { size: ui.entry.social.size } },
+                    // Apple's button on a Windows or Linux desktop is a door
+                    // to an account almost nobody there has. A Mac keeps it.
+                    ...(opts.appleHidden ? [] : [{ type: "AppleSignIn", props: { size: ui.entry.social.size } }]),
                     ...(opts.googleLink
                       ? [googleLinkButton(opts.googleLink, ui.entry.social.size)]
                       : opts.googleHidden ? [] : [{ type: "GoogleSignIn", props: { size: ui.entry.social.size } }]),

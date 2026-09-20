@@ -257,6 +257,14 @@ describe("Google sign-in's way back", () => {
     expect(await boot({ platform: "ios" })).toContain("GoogleSignIn");
     // And the button that is drawn still sits beside Apple's, not instead of it.
     expect(await boot({ platform: "ios" })).toContain("AppleSignIn");
+    // A desktop gets Apple's button on a Mac and not on the others: a window
+    // says which it is, and a Windows machine is not offered a door to an
+    // account almost nobody there has. A desktop that says nothing is
+    // treated as not a Mac.
+    expect(await boot({ platform: "ios", device: { formFactor: "desktop", os: "mac" } })).toContain("AppleSignIn");
+    expect(await boot({ platform: "ios", device: { formFactor: "desktop", os: "windows" } })).not.toContain("AppleSignIn");
+    expect(await boot({ platform: "ios", device: { formFactor: "desktop", os: "windows" } })).toContain("GoogleSignIn");
+    expect(await boot({ platform: "ios", device: { formFactor: "desktop" } })).not.toContain("AppleSignIn");
   });
 
   it("interpolates nothing of the request into the page", async () => {

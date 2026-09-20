@@ -1735,7 +1735,7 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   // sends neither, which reads as false and shows both steps, exactly as
   // before this existed.
   const devCaps = reqBody.capabilities?.device as
-    | { micGranted?: boolean; keyboardReady?: boolean; formFactor?: string }
+    | { micGranted?: boolean; keyboardReady?: boolean; formFactor?: string; os?: string }
     | undefined;
   const micGranted = devCaps?.micGranted === true;
   const keyboardReady = devCaps?.keyboardReady === true;
@@ -1818,6 +1818,10 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     micGranted,
     keyboardReady,
     formFactor: isDesktop ? "desktop" : "phone",
+    // Which desktop. Sign in with Apple is offered on a Mac and not on the
+    // others: it works there in the sense that a browser flow works, and it
+    // is a button nobody on Windows is looking for.
+    os: typeof devCaps?.os === "string" ? devCaps.os : undefined,
   });
   // When they were last here. Fire and forget: a failed stamp must never cost
   // the boot, and nothing reads it on this path.
