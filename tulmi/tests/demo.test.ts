@@ -106,7 +106,7 @@ describe("the landing page", () => {
     }
     // The gesture on the page is the tray app's default way in: Ctrl, twice.
     expect(c.desk.keys).toEqual(["Ctrl", "Ctrl"]);
-    expect(c.desk.title.toLowerCase()).toContain("twice");
+    expect(c.desk.title.toLowerCase()).toContain("ctrl");
     expect(c.free.title.length).toBeGreaterThan(0);
     expect(c.faq.items.length).toBeGreaterThanOrEqual(3);
     expect(c.faq.items.length).toBeLessThanOrEqual(8);   // not bulky

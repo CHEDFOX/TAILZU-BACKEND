@@ -292,7 +292,7 @@ export const SITE_UI = {
   },
   desk: {
     kick: "On the desk",
-    title: "Tap Ctrl twice. Take control.",
+    title: "Touch Ctrl. Take control.",
     lede: "Mac and Windows.",
     // The tray app's way in (desktop/main.js, `tap` on by default): a
     // double-tap on Ctrl, or on Alt. The chord and F9 are fallbacks and are
