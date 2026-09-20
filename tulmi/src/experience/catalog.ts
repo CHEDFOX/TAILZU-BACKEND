@@ -251,24 +251,30 @@ export const SITE_UI = {
    *
    * Nothing here claims sign-up is optional: the app has a sign-in gate.
    */
+  /*
+   * SMALL WORDS, EVERY ONE LOADED. Nothing here runs past a line: a claim
+   * that needs a paragraph is a claim the picture beside it is not making.
+   * Second person, concrete nouns, the benefit before the mechanism, and a
+   * full stop where a comma would have kept going.
+   */
   hero: {
     title: "Say it badly. Send it perfectly.",
-    lede: "Talk the way you talk — half Hindi, half English, ums and all. Tailzu turns it into the sentence you meant, in your tone, in any app.",
+    lede: "Ums, Hinglish, half-thoughts in. Your sentence, out.",
   },
   how: {
     kick: "How it works",
     title: "Talk. It writes.",
-    lede: "No commands, no script. Speak the way you speak and send what you meant.",
+    lede: "Three seconds. No script.",
     steps: [
-      { title: "Speak", text: "Tap the mic on your keyboard and just talk. Mid-sentence changes of mind are fine." },
-      { title: "It listens in your language", text: "Twenty-two Indian languages and most of the world's. Mix two in one breath and it keeps both." },
-      { title: "It writes what you meant", text: "Fillers gone. Names and amounts untouched. A misheard word repaired. A sentence you would actually send." },
+      { title: "Speak", text: "Tap the mic. Talk like you do." },
+      { title: "It listens", text: "22 Indian languages. Most of the world's. Mix two." },
+      { title: "It writes", text: "Fillers gone. Facts kept. Send." },
     ],
   },
   tone: {
     kick: "Tone",
     title: "Same words. Your tone.",
-    lede: "Pick a tone once and every message wears it. Change it in one tap when the room changes.",
+    lede: "Pick once. Every message wears it.",
     said: "hey can u send the file tonight its kinda urgent",
     tones: [
       { name: "Neutral", text: "Can you send the file tonight? It's fairly urgent." },
@@ -279,8 +285,8 @@ export const SITE_UI = {
   },
   apps: {
     kick: "Everywhere",
-    title: "It's a keyboard. It works everywhere you type.",
-    lede: "WhatsApp, Mail, Slack, Notes, the search bar. Anywhere a keyboard opens, Tailzu opens with it.",
+    title: "It's a keyboard.",
+    lede: "Every app. Every field. No copy-paste.",
     // `kind` picks the drawing: a chat bubble, a mail, a note, a search bar.
     fields: [
       { kind: "message", app: "Message", text: "Can we push the call to four?" },
@@ -292,7 +298,7 @@ export const SITE_UI = {
   desk: {
     kick: "On the desk",
     title: "Mac and Windows too.",
-    lede: "Press a key, talk, let go. The words land wherever your cursor is — any app, any window.",
+    lede: "Press a key. Talk. It's typed.",
     key: "F9",
     keyLabel: "hold to talk",
   },
@@ -300,17 +306,17 @@ export const SITE_UI = {
     kick: "Price",
     unit: "free words a month",
     title: "Free to start.",
-    lede: "On us, every month. No card. Upgrade when you need more.",
+    lede: "No card. Upgrade when you need more.",
   },
   faq: {
     kick: "Questions",
     title: "Asked, answered.",
     items: [
-      { q: "Does it work in WhatsApp?", a: "Yes. Tailzu is a keyboard, so it works in every app on your phone — WhatsApp, Instagram, Mail, Notes, anything with a text field." },
-      { q: "Which languages?", a: "Twenty-two Indian languages and most of the world's. Mix two in one sentence and it keeps both." },
-      { q: "Does it change what I said?", a: "It cleans, it does not rewrite. Fillers go, facts stay, names and amounts are never touched. A tone changes how it sounds, not what it says." },
-      { q: "Is it free?", a: "Free to start, with {n} words a month. Upgrade when you need more." },
-      { q: "Phone or desk?", a: "Both. iPhone and Android as a keyboard. Mac and Windows as a key you press to talk." },
+      { q: "Does it work in WhatsApp?", a: "Yes. It's a keyboard. Every app." },
+      { q: "Which languages?", a: "22 Indian. Most of the world's. Mix two." },
+      { q: "Does it change what I said?", a: "It cleans. It never rewrites. Names and amounts stay." },
+      { q: "Is it free?", a: "{n} words a month, free. Then upgrade." },
+      { q: "Phone or desk?", a: "Both. A keyboard on the phone. A key on the desk." },
     ],
   },
   /**
