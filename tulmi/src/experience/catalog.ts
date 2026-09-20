@@ -260,11 +260,12 @@ export const SITE_UI = {
   how: {
     kick: "How it works",
     title: "Talk. It writes.",
-    lede: "Three seconds. No script.",
+    // Four steps, a title each and nothing under it. The fourth is the desk.
     steps: [
-      { title: "Speak", text: "Tap the mic. Talk like you do." },
-      { title: "It listens", text: "22 Indian languages. Most of the world's. Mix two." },
-      { title: "It writes", text: "Fillers gone. Facts kept. Send." },
+      { title: "You speak." },
+      { title: "It hears what you mean." },
+      { title: "Written." },
+      { title: "Tap Ctrl. Take control." },
     ],
   },
   tone: {
@@ -282,7 +283,6 @@ export const SITE_UI = {
   apps: {
     kick: "Everywhere",
     title: "It's a keyboard.",
-    lede: "Every app. Every field. No copy-paste.",
     // `kind` picks the drawing: a chat bubble, a mail, a note, a search bar.
     fields: [
       { kind: "message", app: "Message", text: "Can we push the call to four?" },
@@ -303,20 +303,24 @@ export const SITE_UI = {
     join: "",
   },
   free: {
-    kick: "Price",
-    unit: "free words a month",
     title: "Free to start.",
-    lede: "No card. Upgrade when you need more.",
+    lede: "Upgrade when you need more.",
   },
   faq: {
     kick: "Questions",
     title: "Asked, answered.",
+    // Eight, each answered in a breath. Every answer is something the
+    // product does: Full Access is how an iOS keyboard reaches the network
+    // at all, and there is no offline mode.
     items: [
       { q: "Does it work in WhatsApp?", a: "Yes. It's a keyboard. Every app." },
-      { q: "Which languages?", a: "22 Indian. Most of the world's. Mix two." },
+      { q: "Which languages?", a: "22 Indian. Most of the world's." },
+      { q: "Hinglish?", a: "Native. Two languages stay two." },
       { q: "Does it change what I said?", a: "It cleans. It never rewrites. Names and amounts stay." },
+      { q: "Can I change the tone?", a: "One tap on the keyboard." },
       { q: "Is it free?", a: "{n} words a month, free. Then upgrade." },
-      { q: "Phone or desk?", a: "Both. A keyboard on the phone. A key on the desk." },
+      { q: "Why Full Access on iPhone?", a: "It's how a keyboard reaches the internet." },
+      { q: "Offline?", a: "No. It needs a connection to hear you." },
     ],
   },
   /**
