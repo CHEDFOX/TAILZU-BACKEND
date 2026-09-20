@@ -276,7 +276,6 @@ export const SITE_UI = {
    * full stop where a comma would have kept going.
    */
   how: {
-    kick: "How it works",
     title: "Talk. It writes.",
     // Three steps, a title each and nothing under it.
     steps: [
@@ -286,7 +285,6 @@ export const SITE_UI = {
     ],
   },
   tone: {
-    kick: "Tone",
     title: "Same words. Your tone.",
     lede: "Pick once. Every message wears it.",
     said: "hey can u send the file tonight its kinda urgent",
@@ -298,7 +296,6 @@ export const SITE_UI = {
     ],
   },
   apps: {
-    kick: "Everywhere",
     title: "It's a keyboard.",
     // `kind` picks the drawing: a chat bubble, a mail, a note, a search bar.
     fields: [
@@ -309,7 +306,6 @@ export const SITE_UI = {
     ],
   },
   desk: {
-    kick: "On the desk",
     title: "Touch Ctrl. Take control.",
     lede: "Mac and Windows.",
     // The tray app's way in (desktop/main.js, `tap` on by default): a
@@ -331,7 +327,6 @@ export const SITE_UI = {
    * The two lines are a real cleanup — structure restored, nothing added.
    */
   llm: {
-    kick: "Prompts",
     title: "Talk to the machine.",
     lede: "Say it rough. A clean prompt lands in the box.",
     targets: ["ChatGPT", "Claude", "Grok"],
@@ -347,7 +342,6 @@ export const SITE_UI = {
    * promise. The file, the app and the language are set dressing.
    */
   dev: {
-    kick: "For developers",
     title: "Talk to your editor.",
     lede: "Say the change. It lands where the cursor is.",
     app: "Cursor",
@@ -357,7 +351,6 @@ export const SITE_UI = {
     wrote: "// Add a retry to the upload: three attempts with exponential backoff. Log each failure.",
   },
   faq: {
-    kick: "Questions",
     title: "Asked, answered.",
     // Eight, each answered in a breath. Every answer is something the
     // product does: Full Access is how an iOS keyboard reaches the network

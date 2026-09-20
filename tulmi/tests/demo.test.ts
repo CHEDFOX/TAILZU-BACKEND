@@ -98,6 +98,8 @@ describe("the landing page", () => {
     const c = body.copy;
     // The hero's one label, over the spoken line: two or three words.
     expect(c.hero.said.trim().split(/\s+/).length).toBeLessThanOrEqual(3);
+    // No small title over any main title: the title is the title.
+    for (const sec of [c.how, c.tone, c.llm, c.apps, c.desk, c.dev, c.faq]) expect(sec.kick).toBeUndefined();
     expect(c.how.steps.length).toBe(3);
     for (const s of c.how.steps) expect(s.title.trim().split(/\s+/).length).toBeLessThanOrEqual(5);
     expect(c.apps.fields.length).toBeGreaterThanOrEqual(3);
