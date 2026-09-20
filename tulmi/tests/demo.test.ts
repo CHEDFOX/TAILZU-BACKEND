@@ -96,10 +96,12 @@ describe("the landing page", () => {
     // under it, three steps, four tones, four drawn fields, a desk, a price
     // whose number is the server's, and questions that end in one.
     const c = body.copy;
-    // The hero is the demo: an invitation, three states, a headline for
-    // when there is no button, and nothing longer than it has room for.
+    // The hero is the demo: an invitation, three states, the line that
+    // holds a place until somebody speaks, and nothing longer than there
+    // is room for. No headline: the demo is the top screen, not a claim.
     expect(c.hero.said.trim().split(/\s+/).length).toBeLessThanOrEqual(3);
-    for (const k of ["invite", "listening", "writing", "again", "title"]) {
+    expect(c.hero.title).toBeUndefined();
+    for (const k of ["invite", "listening", "writing", "again", "placeholder"]) {
       expect(typeof c.hero[k]).toBe("string");
       expect(c.hero[k].trim().length).toBeGreaterThan(0);
       expect(c.hero[k].trim().split(/\s+/).length).toBeLessThanOrEqual(4);
@@ -132,6 +134,9 @@ describe("the landing page", () => {
     expect(c.llm.targets.length).toBeLessThanOrEqual(4);
     expect(c.llm.more.split(/\s+/).length).toBeLessThanOrEqual(2);
     expect(typeof body.perMinute).toBe("number");
+    // Readable from a page hosted anywhere, so a preview shows the real
+    // copy rather than falling back to the one baked into the file.
+    expect(res.headers["access-control-allow-origin"]).toBe("*");
     // One button, and the two store links it needs.
     expect(c.download.get.length).toBeGreaterThan(0);
     expect(c.stores.ios).toMatch(/^https:\/\/apps\.apple\.com\//);

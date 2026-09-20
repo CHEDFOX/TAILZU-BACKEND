@@ -175,8 +175,17 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
   });
 
   // --- The words, and what is on the shelf ---------------------------------
+  // READABLE FROM ANYWHERE. On tailzu.space the page and this route are the
+  // same server and none of this is needed; a preview of the page hosted
+  // anywhere else 404s on its own origin instead, and then runs on its
+  // built-in fallbacks — wrong prices, wrong copy, and no way to know the
+  // demo exists. This is public, read-only, cacheable copy with nothing in
+  // it that belongs to anybody, so it is served to any origin that asks.
+  // Nothing else on the server is: the demo route stays same-origin, so a
+  // page somewhere else cannot spend a recogniser call.
   app.get("/v1/site", async (_req, reply) => {
     const cfg = getConfig();
+    reply.header("Access-Control-Allow-Origin", "*");
     const downloads: Record<string, boolean> = {};
     for (const [key, name] of Object.entries(INSTALLERS)) {
       downloads[key] = fs.existsSync(path.join(downloadsDir, name));

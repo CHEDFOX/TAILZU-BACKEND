@@ -384,19 +384,19 @@ export const SITE_UI = {
    * press the button, because what it actually absorbed beats what it
    * claims to. A test holds it to two words.
    */
-  // The hero's one label: over the line as somebody said it. The line it
-  // became needs none — the story word beside it says what happened.
-  // THE HERO IS THE DEMO, and this is everything it ever says: the
-  // invitation, the three states it moves through, and what it offers once
-  // they have heard it. `title` is the headline for when the demo is
-  // switched off and there is no button to press.
+  /* THE HERO IS THE DEMO, and this is everything it ever says: the label
+     over the line as somebody said it, the invitation, the three states it
+     moves through, what it offers once they have heard it, and the line
+     that holds the place until somebody has spoken into it. There is no
+     headline: the top screen is the product doing its one thing, not a
+     claim about it. */
   hero: {
     said: "You said",
     invite: "Press. Say anything.",
     listening: "Listening",
     writing: "Writing",
     again: "Say another.",
-    title: "Talk. It writes."
+    placeholder: "Your words land here."
   },
   absorb: "Heard.",
   /*
