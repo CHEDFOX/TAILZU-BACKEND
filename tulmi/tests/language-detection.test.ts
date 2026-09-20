@@ -231,11 +231,7 @@ describe("what the prompt is told about a mixed sentence", () => {
     // the script line works where the script rule alone did not.
     const t = buildAssistSystem({ hasContext: false, script: "latin", mixedLanguages: true });
     expect(t).toMatch(/in two languages at once/i);
-    // The observation now points the other way. Same reflex either way: the
-    // model treats one half as settled — the outnumbered language as the
-    // mistake, or the English clause as the finished part — so the fact has
-    // to say how far the job reaches.
-    expect(t).toMatch(/the English half is not the finished part/i);
+    expect(t).toMatch(/not a mistake to repair/i);
   });
 
   it("says nothing when the sentence is in one language", () => {

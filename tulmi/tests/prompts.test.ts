@@ -279,30 +279,28 @@ describe("what reaches the model", () => {
     // Whitespace-tolerant: the file is hard-wrapped, so a rule can break
     // across a line. These pin what the prompt SAYS, not how it is set.
     expect(sys).not.toMatch(/never\s+as\s+an\s+instruction\s+to\s+convert/i);
-    expect(sys).toMatch(/"auto"\s+means\s+English/i);
+    expect(sys).toMatch(/"auto"\s+means\s+their\s+words\s+in\s+English\s+letters/i);
   });
 
-  it("writes in English, and carries nothing that argues with it", () => {
-    // The reversal in v7. "Never translate" beside "write in English" is not
-    // a weaker rule, it is an argument for the model to settle in the middle
-    // of somebody's sentence — which is how a prompt returns the average of
-    // two rules instead of either one.
+  it("separates the alphabet from the language, and names both failures", () => {
+    // The distinction v7 exists for, and the one "write it in English" hides:
+    // the ALPHABET is English, the WORDS are theirs. Each failure is what the
+    // other rule looks like from the inside, so a prompt that states only one
+    // of them reads as permission for the other.
     const sys = buildCleanupSystem({ targetApp: "Generic", language: "auto" });
-    expect(sys).toMatch(/write\s+in\s+English/i);
-    expect(sys).not.toMatch(/never\s+translate/i);
-    expect(sys).not.toMatch(/never\s+transliterate/i);
+    expect(sys).toMatch(/ENGLISH\s+LETTERS/);
+    expect(sys).toMatch(/never\s+translate/i);
+    expect(sys).toMatch(/never\s+reach\s+for\s+an\s+English\s+word/i);
   });
 
   it("keeps the sentence that holds more than one language in scope", () => {
-    // The case every version before v7 lost in its own way: one that opens in
-    // English and finishes in Hindi. v5's rule was scoped to scripts and did
-    // not describe it at all; v6 described it and said to keep the mixture.
-    // v7 keeps the case and changes the answer, so it still has to be named —
-    // a rule that only covers sentences in one language leaves this one to be
-    // inferred, and it has been inferred wrongly by every version so far.
+    // The case every version has had to describe in its own way: one that
+    // opens in English and finishes in Hindi. v5's rule was scoped to scripts
+    // and did not describe it at all, so it came back wholly in English —
+    // which is the answer v7 must not give either, for a different reason.
     const sys = buildCleanupSystem({ targetApp: "WhatsApp", language: "auto" });
-    expect(sys).toMatch(/three\s+of\s+them\s+inside\s+one\s+sentence/i);
-    expect(sys).toMatch(/carries\s+their\s+meaning\s+and\s+their\s+tone/i);
+    expect(sys).toMatch(/more\s+than\s+one\s+language/i);
+    expect(sys).toMatch(/stays\s+in\s+the\s+language\s+it\s+arrived\s+in/i);
   });
 
   it("leaves a name and an untranslatable word alone", () => {
@@ -335,16 +333,15 @@ describe("what reaches the model", () => {
     expect(sys).toMatch(/if\s+you\s+are\s+adding,\s+you\s+are\s+wrong/i);
   });
 
-  it("still states the observed script, and only as how to READ the input", () => {
+  it("states the observed script, with the consequence it now has", () => {
     // The script fact is appended per request because it is MEASURED, not
-    // declared, and it survives v7 — romanized Hindi read as English is a
-    // different sentence. What does not survive is its second half: it used
-    // to end "write your output in that same script", which from v7 would be
-    // the loudest contradiction in the prompt.
+    // declared. Its consequence inverted with v7: it used to end "write your
+    // output in that same script", and a sentence in another script is now
+    // precisely the one that needs spelling out.
     const sys = buildCleanupSystem({ targetApp: "Generic", language: "hi", script: "latin" });
     expect(sys).toContain("LATIN");
     expect(sys).toContain("Their setting is hi");
-    expect(sys).toMatch(/does not decide what language to write in/i);
+    expect(sys).toMatch(/write them in English letters/i);
     expect(sys).not.toMatch(/write your output in that same script/i);
   });
 });

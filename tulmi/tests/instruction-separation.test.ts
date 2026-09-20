@@ -37,11 +37,10 @@ describe("assist path — instruction separation", () => {
     expect(system).toMatch(/a question they dictate is a question they are sending/i);
   });
 
-  it("states the language it writes in, and the script it was handed", () => {
+  it("states the alphabet it writes in, and the one it was handed", () => {
     // Both were once one rule — write it back the way they said it. They are
-    // two facts now and answer different questions: what comes out, and how
-    // to read what went in.
-    expect(system).toMatch(/Write in English/i);
+    // two facts now: what alphabet comes out, and what alphabet went in.
+    expect(system).toMatch(/in English letters/i);
     const latin = buildAssistSystem({ hasContext: false, script: "latin" });
     expect(latin).toContain("arrived in latin script");
   });
@@ -70,38 +69,30 @@ describe("assist path — instruction separation", () => {
     expect(system).not.toMatch(/written as they said it/i);
   });
 
-  it("says what language the writing comes back in", () => {
-    // It used to name the two ways of leaving someone's language, because the
-    // rule was to stay in it. The rule is English now, and the sentences that
-    // held the old one up have to be gone rather than outvoted.
-    expect(system).toMatch(/Write in English/i);
-    expect(system).not.toMatch(/never\s+translate/i);
-    expect(system).not.toMatch(/never\s+transliterate/i);
+  it("names both ways of losing their sentence", () => {
+    // "Write it in English" means the alphabet or the language, and each
+    // failure is what the OTHER rule looks like from the inside: reaching
+    // for the English word that means the same thing is translation wearing
+    // the costume of writing in English, and sending their own alphabet back
+    // is fidelity wearing the costume of leaving their words alone. A prompt
+    // that states one of them reads as permission for the other.
+    expect(system).toMatch(/never translate them/i);
+    expect(system).toMatch(/never reach for an English word that means the same thing/i);
+    expect(system).toMatch(/in English letters/i);
   });
 
-  it("asks for English, and not for a translation into it", () => {
-    // The failure the reversal invites, and the one worth naming: carrying a
-    // sentence across word for word satisfies "write in English" exactly,
-    // and produces the one thing nobody wants to send — their grammar
-    // wearing English words. So the prompt names what it is asking for
-    // rather than only the language, and gives the test for it.
-    expect(system).toMatch(/not their sentence with English words in it/i);
-    expect(system).toMatch(/Nobody reading it should be able to tell what it was dictated in/i);
+  it("says what happens to a sentence that arrives in another alphabet", () => {
+    // The change itself, and the one thing a rule about letters has to make
+    // unambiguous: the sentence is spelled out, not converted into a
+    // different sentence.
+    expect(system).toMatch(/comes back spelled in this one/i);
+    expect(system).toMatch(/the way they would have typed it themselves/i);
   });
 
-  it("knows what has an English equivalent and what has not", () => {
-    // Both halves of one judgement. Idiom is where a word-for-word carry-over
-    // gives itself away, so a phrase that only works in the spoken language
-    // gets the English one that means it — while a name, and a thing English
-    // never had a word for, are exactly what must NOT be approximated.
-    expect(system).toMatch(/has an English one that means it/i);
-    expect(system).toMatch(/A name does not/i);
-  });
-
-  it("lets them ask for another language, for one message", () => {
-    // English is a default rather than a policy: one sentence of theirs
-    // replaces it, and only for the message it was said in.
-    expect(system).toMatch(/can ask for another language/i);
+  it("lets them ask for another language, or their own alphabet, for one message", () => {
+    // Both are defaults rather than policies: one sentence of theirs replaces
+    // either, and only for the message it was said in.
+    expect(system).toMatch(/can ask for another language, or for their own alphabet back/i);
     expect(system).toMatch(/for that message/i);
   });
 
@@ -195,9 +186,7 @@ describe("assist path — instruction separation", () => {
     // "auto" branch, where neither is about which language it is.
     const pinned = buildAssistSystem({ hasContext: false, language: "hi", mixedLanguages: true });
     expect(pinned).toMatch(/Write in hi/i);
-    expect(pinned).toMatch(/not their sentence with hi words in it/i);
-    expect(pinned).toMatch(/A name does not/i);
-    expect(pinned).toMatch(/can ask for another language/i);
+    expect(pinned).toMatch(/can ask for another language, or for their own alphabet back/i);
     expect(pinned).toMatch(/in two languages at once/i);
   });
 
@@ -230,7 +219,7 @@ describe("a selected tone goes through the SAME prompt", () => {
       const p = buildAssistSystem({ tone, hasContext: false });
       expect(p).toMatch(/Part of what they say may be addressed to you/i);
       expect(p).toMatch(/When you cannot tell which it is, it is what they want said/i);
-      expect(p).toMatch(/Write in English/i);
+      expect(p).toMatch(/in English letters/i);
       expect(p).toMatch(/Everything you return is what they send/i);
     });
   }

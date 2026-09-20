@@ -97,73 +97,66 @@ export const CASES: EvalCase[] = [
     mustNotContain: ["yes", "no,", "i will", "sure"],
   },
 
-  // --- Language: speak anything, send English --------------------------
+  // --- Language: their words, this alphabet --------------------------------
   //
-  // These were the mirror of this until v7 of the cleanup prompt: they
-  // asserted that romanized Hindi came back romanized and that a mixture
-  // stayed mixed. The product rule reversed — talk the way you talk, send
-  // something a colleague can read — and a harness that keeps measuring the
-  // old rule reports the new one as a regression on every run.
+  // The distinction the whole section turns on, and the one "write it in
+  // English" hides: the ALPHABET is English, the WORDS are theirs. These were
+  // written twice — once for keeping their script, once for translating into
+  // English — and both readings are failures the cases below now name.
   {
-    id: "lang/hinglish-becomes-english",
-    intent: "Romanized Hindi is spoken; English is what gets sent.",
+    id: "lang/hinglish-is-not-translated",
+    intent: "Romanized Hindi is already in this alphabet. It comes back as itself.",
     input: "yaar kal ka plan cancel ho gaya hai, ab agle hafte milte hain",
     mustBeScript: "latin",
-    mustNotContain: ["yaar", "kal ka", "agle hafte", "ho gaya"],
+    mustContain: ["kal"],
+    mustNotContain: ["cancelled the plan", "let us meet next week", "the plan for tomorrow"],
   },
   {
-    id: "lang/devanagari-becomes-english",
-    intent: "Native script in, English out. The script of the input decides nothing about the output.",
+    id: "lang/devanagari-is-spelled-out",
+    intent:
+      "THE CHANGE IN v7. Their own alphabet comes back spelled in this one — " +
+      "the same sentence, the same words, a different alphabet. Not translated, and not left in Devanagari.",
     input: "मैं थोड़ा लेट पहुँचूँगा, मीटिंग शुरू कर देना",
     mustBeScript: "latin",
+    mustNotContain: ["i will be late", "start the meeting", "a little late"],
+  },
+  {
+    id: "lang/reaching-for-the-english-word",
+    intent:
+      "The failure that reads as obedience: 'write it in English' is satisfied " +
+      "by the English phrase that means the same thing, and that is the one thing it must not be.",
+    input: "mera matlab samajh gaye",
+    mustBeScript: "latin",
+    mustContain: ["matlab"],
+    mustNotContain: ["you understood", "did you understand", "you got my point", "what i meant"],
+  },
+  {
+    id: "lang/mixed-stays-mixed",
+    intent:
+      "A sentence that switches between languages keeps switching, in the same places. " +
+      "Normalising it to either one is a rewrite, not a repair.",
+    input: "the deploy is done but abhi testing baaki hai",
+    mustBeScript: "latin",
+    mustContain: ["deploy", "abhi"],
+    mustNotContain: ["testing is still pending"],
   },
   {
     id: "lang/setting-is-the-target",
     intent:
-      "A saved language is a choice, not a bias. Hindi on the account means the " +
-      "message comes back in Hindi, in its own script — the one case where English is not the answer.",
+      "A saved language is a choice, and the one case where the alphabet is not " +
+      "English: Hindi on the account means the message comes back in Hindi, in its own script.",
     input: "kal subah nikalna hai, alarm laga dena",
     language: "hi",
     mustBeScript: "devanagari",
   },
   {
-    id: "lang/mixed-becomes-english",
-    intent:
-      "A sentence carrying both languages comes back wholly in English. The half " +
-      "already in English is not the finished part — stopping there is the failure this case exists for.",
-    input: "the deploy is done but abhi testing baaki hai",
-    mustBeScript: "latin",
-    mustContain: ["deploy"],
-    mustNotContain: ["abhi", "baaki"],
-  },
-  {
     id: "lang/asked-for-another",
     intent:
-      "English is a default, not a policy: one sentence of theirs replaces it. " +
+      "The alphabet is a default, not a policy: one sentence of theirs replaces it. " +
       "The request itself is never part of the message.",
     input: "tell Priya the deploy is done, write it in hindi",
     mustBeScript: "devanagari",
     mustNotContain: ["write it in hindi", "in hindi"],
-  },
-  {
-    id: "lang/not-translated-english",
-    intent:
-      "ENGLISH, NOT TRANSLATED ENGLISH. Carrying the sentence across word for " +
-      "word passes 'write in English' and fails the product: idiom is where it " +
-      "gives itself away, so the literal reading of each phrase is what this forbids.",
-    input: "yaar mera dimaag kharab ho gaya hai, kal se dekh raha hoon aur kuch samajh nahi aa raha",
-    mustBeScript: "latin",
-    mustNotContain: ["my brain has gone bad", "my mind is spoiled", "brain is corrupted", "since tomorrow"],
-  },
-  {
-    id: "lang/name-is-not-translated",
-    intent:
-      "Writing in English is not licence to find the nearest English word for a " +
-      "name or for a thing English has no word for.",
-    input: "Diwali ke liye Ramesh ko invite kar dena",
-    mustBeScript: "latin",
-    mustContain: ["ramesh"],
-    mustNotContain: ["festival of lights"],
   },
 
   // --- Instruction separation: the assistant contract ----------------------
@@ -199,28 +192,25 @@ export const CASES: EvalCase[] = [
     maxChars: 200,
   },
 
-  // --- Script: the input's script is for reading it ------------------------
-  //
-  // The observed script used to pin the OUTPUT too. It now says only how to
-  // read what was said, and these measure that the reading still works: a
-  // sentence misread as English is a different sentence, whichever language
-  // it is written back in.
+  // --- Script: what comes back is this alphabet ----------------------------
   {
-    id: "script/hinglish-read-correctly",
-    intent:
-      "Romanized Hinglish, read as Hinglish rather than as broken English, and sent as English.",
+    id: "script/hinglish-already-latin",
+    intent: "Romanized Hinglish is already spelled in this alphabet. Nothing to convert, nothing to translate.",
     input: "yaar kal ka plan cancel karna padega, sorry",
     script: "latin",
     mustBeScript: "latin",
     mustContain: ["cancel"],
-    mustNotContain: ["yaar", "padega"],
+    mustNotContain: ["we will have to cancel", "tomorrow's plan"],
   },
   {
-    id: "script/devanagari-read-correctly",
-    intent: "Native-script input is read in its own script and sent as English.",
+    id: "script/devanagari-comes-back-latin",
+    intent:
+      "Native-script input is spelled out in English letters. The old rule sent it " +
+      "back in its own script, and a keyboard that types Latin has nothing to do with that.",
     input: "मैं आज ऑफिस नहीं आ पाऊंगा, तबीयत ठीक नहीं है",
     script: "devanagari",
     mustBeScript: "latin",
+    mustNotContain: ["i will not be able", "not feeling well", "office today"],
   },
 
   // --- Transcript fusion ---------------------------------------------------

@@ -321,24 +321,28 @@ export function buildAssistSystem(opts: {
     // It is a DEFAULT and not a claim about the person: a language asked for
     // in this dictation, or saved on their account, arrives here as `lang`
     // and simply takes its place.
-    // AND NOT TRANSLATED ENGLISH, which is the failure the rule invites.
-    // Carrying a sentence across word by word satisfies "write in English"
-    // and produces the thing nobody wants to send: their grammar wearing
-    // English words. The rule has to name what it is asking for, not only
-    // the language, and idiom is where the difference shows.
-    lang
-      ? `Write in ${lang} — the ${lang} they would have written themselves, not their sentence with ${lang} words in it.`
-      : "Write in English — the English they would have written themselves, not their sentence with English words in it.",
-    "Nobody reading it should be able to tell what it was dictated in.",
-    // Unconditional, both here and below: a rule that lives only in the
-    // "auto" branch is a rule that vanishes the moment somebody sets a
-    // language, and neither of these is about which language it is.
+    // ENGLISH IS THE ALPHABET, NOT THE LANGUAGE. The two are one word in
+    // ordinary speech — "write it in English" — and the difference is the
+    // whole rule: "mera matlab samajh gaye" comes back as itself, spelled in
+    // the letters this keyboard types, and NOT as "you understood what I
+    // meant". Their words are the one thing here that is not ours to change.
     //
-    // One line rather than two, because they are the two halves of a single
-    // judgement — what has an equivalent worth reaching for, and what does
-    // not — and the length guard was down to three characters of room.
-    "A phrase that only works in the language they spoke has an English one that means it. A name does not, and neither does a thing English never had a word for.",
-    "They can ask for another language, in any words. Then that is the one, for that message.",
+    // Both failures are named because each is a whole family, and each is
+    // what the other rule looks like from the inside: reaching for the
+    // English word that means the same thing is translation wearing the
+    // costume of writing in English, and sending back their own alphabet is
+    // fidelity wearing the costume of leaving their words alone.
+    lang
+      ? `Write in ${lang}.`
+      : "Their words stay their words: never translate them, and never reach for an English word that means the same thing.",
+    lang
+      ? null
+      // The spelling rule lives in "the way they would have typed it
+      // themselves" rather than in a line of its own: it was the fourth
+      // sentence here, and the length guard is what decides how many a rule
+      // is worth.
+      : "Write them in English letters, whatever language they are: a sentence that arrives in another alphabet comes back spelled in this one, the way they would have typed it themselves.",
+    "They can ask for another language, or for their own alphabet back. Then that is what they get, for that message.",
     // Observed, not guessed, and still worth stating — but only as what it
     // is. What was said has to be READ before it can be written, and
     // romanized Hindi read as English is a different sentence.
@@ -355,7 +359,7 @@ export function buildAssistSystem(opts: {
     // THIS sentence, which is not something to weigh, and say how far the
     // job reaches.
     opts.mixedLanguages
-      ? "This one is in two languages at once, English and romanized Hindi. The English half is not the finished part."
+      ? "This one is in two languages at once, English and romanized Hindi. That is how they talk, not a mistake to repair."
       : null,
     "",
     app

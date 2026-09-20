@@ -266,17 +266,15 @@ export function buildCleanupSystem(opts: CleanupOptions): string {
 /**
  * Append what script the input actually arrived in.
  *
- * It used to end "write your output in that same script", which was the
- * whole point of it while the rule was to write back in the user's own
- * language. The rule is now English unless they ask otherwise, so a fact
- * about the input that carries an instruction about the output would be the
- * loudest contradiction in the prompt. The fact is still worth stating —
- * romanized Hindi read as English is a different sentence — so it stays, and
- * says only what it is for.
+ * It used to end "write your output in that same script" — the whole point
+ * of it, while the rule was to send back the user's own alphabet. The
+ * alphabet is English now, so the fact has the opposite consequence and has
+ * to carry it: a sentence in another script is the one that needs spelling
+ * out, and this is how the model knows it is looking at one.
  */
 function renderObservedScript(script: string | undefined, base: string): string {
   if (!script || script === "unknown") return base;
-  return `${base}\n\nSCRIPT: what the user said arrived in ${script.toUpperCase()} script. That is how to READ it. It does not decide what language to write in.`;
+  return `${base}\n\nSCRIPT: what the user said arrived in ${script.toUpperCase()} script. Their words stay as they are; write them in English letters.`;
 }
 
 /** Build the system prompt for the screen-reply drafting task. */
