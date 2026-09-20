@@ -391,12 +391,14 @@ export const SITE_UI = {
      headline: the top screen is the product doing its one thing, not a
      claim about it. */
   hero: {
-    said: "You said",
+    said: "Said",
+    typed: "Typed",
+    taps: "taps",
+    press: "press",
     invite: "Press. Say anything.",
     listening: "Listening",
     writing: "Writing",
-    again: "Say another.",
-    placeholder: "Your words land here."
+    again: "Say another."
   },
   absorb: "Heard.",
   /*
