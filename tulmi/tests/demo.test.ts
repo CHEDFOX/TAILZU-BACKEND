@@ -108,13 +108,14 @@ describe("the landing page", () => {
     expect(c.desk.keys).toEqual(["Ctrl", "Ctrl"]);
     expect(c.desk.title.toLowerCase()).toContain("ctrl");
     expect(c.free.title.length).toBeGreaterThan(0);
-    // The developers' card states the demo's real limits, filled from the
-    // numbers served beside it.
-    expect(c.dev.note).toContain("{perMinute}");
-    expect(c.dev.note).toContain("{maxSeconds}");
-    expect(c.dev.facts.length).toBeLessThanOrEqual(3);
-    for (const f of c.dev.facts) expect(f.t.trim().split(/\s+/).length).toBeLessThanOrEqual(9);
-    expect(c.dev.mail).toMatch(/^[^@\s]+@tailzu\.space$/);
+    // The two stages: the machines and the editor. Each has a said line and
+    // a written one that differ, and the machines have their tabs.
+    for (const st of [c.llm, c.dev]) {
+      expect(st.said.length).toBeGreaterThan(0);
+      expect(st.wrote.length).toBeGreaterThan(0);
+      expect(st.wrote).not.toBe(st.said);
+    }
+    expect(c.llm.targets.length).toBeGreaterThanOrEqual(2);
     expect(typeof body.perMinute).toBe("number");
     // One button, and the two store links it needs.
     expect(c.download.get.length).toBeGreaterThan(0);

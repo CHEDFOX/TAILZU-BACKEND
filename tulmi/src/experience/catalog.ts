@@ -306,30 +306,36 @@ export const SITE_UI = {
     lede: "Upgrade when you need more.",
   },
   /*
-   * FOR DEVELOPERS. The same demo the page's button uses, as one curl. The
-   * page builds the command from its own API origin and answers it with
-   * the river's first case, so nothing on the card is invented. The note
-   * carries the real limits — {perMinute} and {maxSeconds} are filled from
-   * the numbers served beside this copy — and the whole field is hidden
-   * while DEMO_ENABLED is off, because a command that answers 404 is not
-   * an invitation.
+   * THE MACHINES. Say it rough, and a clean prompt lands in the box of
+   * whichever machine you talk to. The page plays it: the said line runs
+   * through a pill like the keyboard's own bar, then the written line types
+   * into a chat window, under a tab for each of the machines named here.
+   * The two lines are a real cleanup — structure restored, nothing added.
+   */
+  llm: {
+    kick: "Prompts",
+    title: "Talk to the machine.",
+    lede: "Say it rough. A clean prompt lands in the box.",
+    targets: ["ChatGPT", "Claude", "Grok"],
+    tag: "New chat",
+    said: "okay so um help me think through pricing for the team plan like per seat or usage or maybe both and what could go wrong with each",
+    wrote: "Help me think through pricing for the team plan: per seat, usage-based, or a hybrid of the two. For each, give the price point, the target customer and the biggest risk.",
+  },
+  /*
+   * FOR DEVELOPERS. The same picture in an editor: something said, and the
+   * change landing at the cursor as a clean line. The tray app pastes into
+   * any window, an editor included, so this is what it does and not a
+   * promise. The file, the app and the language are set dressing.
    */
   dev: {
     kick: "For developers",
-    title: "Built to be built on.",
-    lede: "Every screen is JSON from the server. The apps are renderers.",
-    // Three things a developer can check: the endpoint they can curl below,
-    // the architecture this file is the proof of, the tray app in the repo.
-    facts: [
-      { k: "One endpoint", t: "Audio in. Clean text out. 22 Indian languages." },
-      { k: "Server-driven UI", t: "A screen ships without a release." },
-      { k: "Desktop hook", t: "A tray app. Hotkey, record, paste anywhere." },
-    ],
-    note: "No key. {perMinute} a minute. {maxSeconds} seconds each. webm, mp4, ogg.",
-    // A key on request. The address must exist on the domain, or the link
-    // is a dead end for exactly the person it was written for.
-    ask: "Want a key?",
-    mail: "hello@tailzu.space",
+    title: "Talk to your editor.",
+    lede: "Say the change. It lands where the cursor is.",
+    app: "Cursor",
+    file: "upload.ts",
+    lang: "TypeScript",
+    said: "um add a retry to the upload thing like three attempts with backoff and log every failure",
+    wrote: "// Add a retry to the upload: three attempts with exponential backoff. Log each failure.",
   },
   faq: {
     kick: "Questions",
