@@ -294,9 +294,12 @@ export const SITE_UI = {
   desk: {
     kick: "On the desk",
     title: "Mac and Windows too.",
-    lede: "Press a key. Talk. It's typed.",
-    key: "F9",
-    keyLabel: "hold to talk",
+    lede: "Press once. Talk. Press again. It's typed.",
+    // The chord the tray app binds by default (desktop/main.js:
+    // CommandOrControl+Shift+Space, toggle mode). F9 is only the optional
+    // hold-to-talk key, so it is not what the page shows.
+    keys: ["Ctrl", "Shift", "Space"],
+    keysMac: ["⌘", "Shift", "Space"],
   },
   free: {
     kick: "Price",

@@ -107,7 +107,9 @@ describe("the landing page", () => {
       expect(["message", "mail", "memo", "search"]).toContain(f.kind);
       expect(f.text.length).toBeGreaterThan(0);
     }
-    expect(c.desk.key.length).toBeGreaterThan(0);
+    // The chord on the page is the one the tray app binds by default.
+    expect(c.desk.keys).toEqual(["Ctrl", "Shift", "Space"]);
+    expect(c.desk.keysMac.length).toBe(3);
     expect(c.free.unit).toMatch(/word/);
     expect(c.faq.items.length).toBeGreaterThanOrEqual(3);
     for (const q of c.faq.items) {
