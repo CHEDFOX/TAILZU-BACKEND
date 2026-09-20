@@ -1579,7 +1579,7 @@ const DESKTOP_UI = {
   // desktop's own defaults carry the first paint and this replaces them.
   tray: {
     dictate: "Dictate",
-    listening: "◉ Listening — press hotkey to stop",
+    listening: "◉ Listening — {key} stops",
     signInToDictate: "Sign in to dictate…",
     open: "Open Tailzu",
     tone: "Tone",
