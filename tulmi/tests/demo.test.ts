@@ -97,7 +97,7 @@ describe("the landing page", () => {
     // whose number is the server's, and questions that end in one.
     const c = body.copy;
     expect(c.hero).toBeUndefined();   // the river is the headline
-    expect(c.how.steps.length).toBe(4);
+    expect(c.how.steps.length).toBe(3);
     for (const s of c.how.steps) expect(s.title.trim().split(/\s+/).length).toBeLessThanOrEqual(5);
     expect(c.apps.fields.length).toBeGreaterThanOrEqual(3);
     for (const f of c.apps.fields) {
@@ -106,7 +106,7 @@ describe("the landing page", () => {
     }
     // The gesture on the page is the tray app's default way in: Ctrl, twice.
     expect(c.desk.keys).toEqual(["Ctrl", "Ctrl"]);
-    expect(c.desk.lede.toLowerCase()).toContain("twice");
+    expect(c.desk.title.toLowerCase()).toContain("twice");
     expect(c.free.title.length).toBeGreaterThan(0);
     expect(c.faq.items.length).toBeGreaterThanOrEqual(3);
     expect(c.faq.items.length).toBeLessThanOrEqual(8);   // not bulky

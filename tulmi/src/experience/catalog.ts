@@ -260,12 +260,11 @@ export const SITE_UI = {
   how: {
     kick: "How it works",
     title: "Talk. It writes.",
-    // Four steps, a title each and nothing under it. The fourth is the desk.
+    // Three steps, a title each and nothing under it.
     steps: [
       { title: "You speak." },
       { title: "It hears what you mean." },
       { title: "Written." },
-      { title: "Tap Ctrl. Take control." },
     ],
   },
   tone: {
@@ -293,8 +292,8 @@ export const SITE_UI = {
   },
   desk: {
     kick: "On the desk",
-    title: "Tap Ctrl twice.",
-    lede: "Mac and Windows. Talk. Tap twice. It's typed.",
+    title: "Tap Ctrl twice. Take control.",
+    lede: "Mac and Windows.",
     // The tray app's way in (desktop/main.js, `tap` on by default): a
     // double-tap on Ctrl, or on Alt. The chord and F9 are fallbacks and are
     // not what the page shows. Two keys drawn is the gesture; `join` is
