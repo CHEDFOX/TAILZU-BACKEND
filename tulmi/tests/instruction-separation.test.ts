@@ -37,10 +37,13 @@ describe("assist path — instruction separation", () => {
     expect(system).toMatch(/a question they dictate is a question they are sending/i);
   });
 
-  it("pins script fidelity so romanized speech stays romanized", () => {
-    expect(system).toMatch(/their language and their script, exactly as they used them/i);
+  it("states the language it writes in, and the script it was handed", () => {
+    // Both were once one rule — write it back the way they said it. They are
+    // two facts now and answer different questions: what comes out, and how
+    // to read what went in.
+    expect(system).toMatch(/Write in English/i);
     const latin = buildAssistSystem({ hasContext: false, script: "latin" });
-    expect(latin).toContain("Theirs was latin.");
+    expect(latin).toContain("arrived in latin script");
   });
 
   it("bounds what may be asked of it to the writing", () => {
@@ -67,22 +70,23 @@ describe("assist path — instruction separation", () => {
     expect(system).not.toMatch(/written as they said it/i);
   });
 
-  it("names both ways of leaving someone's language", () => {
-    // "In their language and their script" states the goal and names neither
-    // way of missing it. Both were measured missing on the deployed server:
-    // romanised Hindi came back in Devanagari, and a sentence that began in
-    // English and ended in Hindi came back entirely in English.
-    expect(system).toMatch(/never\s+translate/i);
-    expect(system).toMatch(/never\s+transliterate/i);
+  it("says what language the writing comes back in", () => {
+    // It used to name the two ways of leaving someone's language, because the
+    // rule was to stay in it. The rule is English now, and the sentences that
+    // held the old one up have to be gone rather than outvoted.
+    expect(system).toMatch(/Write in English/i);
+    expect(system).not.toMatch(/never\s+translate/i);
+    expect(system).not.toMatch(/never\s+transliterate/i);
   });
 
-  it("says a mixed sentence is how someone talks, not an error to repair", () => {
-    // The fault this closes is specific: a model handed a sentence in two
-    // languages "fixes" whichever half is outnumbered, and that reads as the
-    // repair it was asked for rather than the rewrite it is.
-    expect(system).toMatch(/more than one language/i);
-    expect(system).toMatch(/not a mistake to repair/i);
-    expect(system).toMatch(/does not decide the rest of it/i);
+  it("keeps a name out of the translating, and lets them ask for a language", () => {
+    // The two halves that survive the reversal: writing in English is not
+    // licence to find the nearest English word for a name, and English is a
+    // default rather than a policy — one sentence of theirs replaces it, for
+    // one message.
+    expect(system).toMatch(/a name stays a name/i);
+    expect(system).toMatch(/can ask for another language/i);
+    expect(system).toMatch(/for that message/i);
   });
 
   it("can state the script for TYPED text, not only for speech", () => {
@@ -170,9 +174,14 @@ describe("assist path — instruction separation", () => {
     // The language line has two forms and only one of them was ever read in
     // testing. A rule that exists in the "auto" branch and not the other is
     // a rule that vanishes as soon as someone sets their language.
-    const pinned = buildAssistSystem({ hasContext: false, language: "hi" });
-    expect(pinned).toMatch(/never\s+translate/i);
-    expect(pinned).toMatch(/more than one language/i);
+    // Caught exactly that when the English default was written: the name
+    // rule and the mixed-sentence observation had both been put inside the
+    // "auto" branch, where neither is about which language it is.
+    const pinned = buildAssistSystem({ hasContext: false, language: "hi", mixedLanguages: true });
+    expect(pinned).toMatch(/Write in hi/i);
+    expect(pinned).toMatch(/a name stays a name/i);
+    expect(pinned).toMatch(/can ask for another language/i);
+    expect(pinned).toMatch(/in two languages at once/i);
   });
 
   it("carries no language-specific instruction at all", () => {
@@ -196,7 +205,7 @@ describe("a selected tone goes through the SAME prompt", () => {
   const tones = ["formal", "casual", "very-casual", "excited"] as const;
 
   for (const tone of tones) {
-    it(`"${tone}" still carries the separation principle and the script rule`, () => {
+    it(`"${tone}" still carries the separation principle and the language rule`, () => {
       // A tone is a voice, not a different contract. Picking one must not cost
       // the user instruction separation — that regressed once already, when the
       // tone endpoints had no separation layer at all and "make it shorter"
@@ -204,7 +213,7 @@ describe("a selected tone goes through the SAME prompt", () => {
       const p = buildAssistSystem({ tone, hasContext: false });
       expect(p).toMatch(/Part of what they say may be addressed to you/i);
       expect(p).toMatch(/When you cannot tell which it is, it is what they want said/i);
-      expect(p).toMatch(/their language and their script, exactly as they used them/i);
+      expect(p).toMatch(/Write in English/i);
       expect(p).toMatch(/Everything you return is what they send/i);
     });
   }

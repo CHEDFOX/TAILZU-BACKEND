@@ -209,6 +209,10 @@ export function renderCommandOverride(command: Command | undefined): string {
       const lang = sanitizeFenced(command.lang).slice(0, 40) || "the requested language";
       return `The user asked to TRANSLATE the output into ${lang}. Produce the cleaned text IN ${lang} only. If the source is in a different script, use ${lang}'s script.`;
     }
+    case "language": {
+      const lang = sanitizeFenced(command.lang).slice(0, 40) || "the requested language";
+      return `The user asked for this message IN ${lang}. Write the whole of it in ${lang}, in that language's own script — for this run only, over English and over any saved language.`;
+    }
     case "bulletpoints":
       return "The user asked for the output to be formatted as a BULLETED LIST. Break the cleaned content into short bullets; keep each bullet self-contained.";
     case "emojiOff":
@@ -256,14 +260,23 @@ export function buildCleanupSystem(opts: CleanupOptions): string {
     .replaceAll("{{WATERMARK}}", opts.personality?.watermark ? "on" : "off");
   // Appended rather than templated: the script is OBSERVED per request (the
   // STT layer measures it), so it doesn't belong in the versioned prompt file.
-  // Stating it as fact is what stops romanized speech drifting into Devanagari.
-  return renderScriptFidelity(opts.script, base);
+  return renderObservedScript(opts.script, base);
 }
 
-/** Append the observed-script rule to a rendered system prompt. */
-function renderScriptFidelity(script: string | undefined, base: string): string {
+/**
+ * Append what script the input actually arrived in.
+ *
+ * It used to end "write your output in that same script", which was the
+ * whole point of it while the rule was to write back in the user's own
+ * language. The rule is now English unless they ask otherwise, so a fact
+ * about the input that carries an instruction about the output would be the
+ * loudest contradiction in the prompt. The fact is still worth stating —
+ * romanized Hindi read as English is a different sentence — so it stays, and
+ * says only what it is for.
+ */
+function renderObservedScript(script: string | undefined, base: string): string {
   if (!script || script === "unknown") return base;
-  return `${base}\n\nSCRIPT: the user's input was captured in ${script.toUpperCase()} script. Write your output in that same script — never transliterate it into another script, and never translate it, unless the user explicitly asks.`;
+  return `${base}\n\nSCRIPT: what the user said arrived in ${script.toUpperCase()} script. That is how to READ it. It does not decide what language to write in.`;
 }
 
 /** Build the system prompt for the screen-reply drafting task. */

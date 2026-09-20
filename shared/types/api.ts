@@ -325,6 +325,10 @@ export type Command =
   | { kind: "formal" }
   | { kind: "casual" }
   | { kind: "translate"; lang: string }
+  /** "write this in Hindi" — compose in that language rather than carry a
+   *  finished English text across into it. The two end in the same place
+   *  and people say both, so both are heard. */
+  | { kind: "language"; lang: string }
   | { kind: "bulletpoints" }
   | { kind: "emojiOff" }
   | { kind: "emojiOn" };

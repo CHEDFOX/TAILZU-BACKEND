@@ -272,34 +272,45 @@ describe("what reaches the model", () => {
     const sys = buildCleanupSystem({ targetApp: "WhatsApp", language: "hi" });
     expect(sys).toContain("Their setting is hi");
     expect(sys).not.toContain("{{LANGUAGE}}");
-    // And it is a BIAS, not a target. A setting read as "convert to this" is
-    // the same bug wearing the opposite sign.
+    // From v7 it is a TARGET. Until then a setting read as "convert to this"
+    // was the bug wearing the opposite sign, and a sentence in the file said
+    // so; now that reading IS the rule, so that sentence has to be gone
+    // rather than merely outvoted by a newer one.
     // Whitespace-tolerant: the file is hard-wrapped, so a rule can break
     // across a line. These pin what the prompt SAYS, not how it is set.
-    expect(sys).toMatch(/never\s+as\s+an\s+instruction\s+to\s+convert/i);
+    expect(sys).not.toMatch(/never\s+as\s+an\s+instruction\s+to\s+convert/i);
+    expect(sys).toMatch(/"auto"\s+means\s+English/i);
   });
 
-  it("forbids translating and transliterating outright", () => {
+  it("writes in English, and carries nothing that argues with it", () => {
+    // The reversal in v7. "Never translate" beside "write in English" is not
+    // a weaker rule, it is an argument for the model to settle in the middle
+    // of somebody's sentence — which is how a prompt returns the average of
+    // two rules instead of either one.
     const sys = buildCleanupSystem({ targetApp: "Generic", language: "auto" });
-    expect(sys).toMatch(/never\s+translate/i);
-    expect(sys).toMatch(/never\s+transliterate/i);
+    expect(sys).toMatch(/write\s+in\s+English/i);
+    expect(sys).not.toMatch(/never\s+translate/i);
+    expect(sys).not.toMatch(/never\s+transliterate/i);
   });
 
-  it("scopes the mixing rule to LANGUAGES, not just scripts", () => {
-    // The one case v5 still lost on the deployed server. Its switching rule
-    // read "Romanized Hindi comes back romanized; Devanagari comes back in
-    // Devanagari; a sentence that switches between them keeps switching" —
-    // and "them" is those two SCRIPTS. A sentence that opens in English and
-    // finishes in Hindi matched no rule in the file and came back wholly in
-    // English: the exact translation the section exists to prevent, through
-    // the gap in how its rule was scoped.
+  it("keeps the sentence that holds more than one language in scope", () => {
+    // The case every version before v7 lost in its own way: one that opens in
+    // English and finishes in Hindi. v5's rule was scoped to scripts and did
+    // not describe it at all; v6 described it and said to keep the mixture.
+    // v7 keeps the case and changes the answer, so it still has to be named —
+    // a rule that only covers sentences in one language leaves this one to be
+    // inferred, and it has been inferred wrongly by every version so far.
     const sys = buildCleanupSystem({ targetApp: "WhatsApp", language: "auto" });
-    expect(sys).toMatch(/more\s+than\s+one\s+language/i);
-    // Mixing is not an error to be repaired — the rationalisation that makes
-    // the rewrite feel like the requested repair.
-    expect(sys).toMatch(/not\s+a\s+repair,\s+it\s+is\s+a\s+rewrite/i);
-    // And neither end of the sentence gets to decide for the other.
-    expect(sys).toMatch(/does\s+not\s+decide\s+the\s+rest\s+of\s+it/i);
+    expect(sys).toMatch(/three\s+of\s+them\s+inside\s+one\s+sentence/i);
+    expect(sys).toMatch(/what\s+you\s+return\s+is\s+English/i);
+  });
+
+  it("leaves a name and an untranslatable word alone", () => {
+    // The half of the old language section that was never about which
+    // language: writing in English is not licence to find the nearest English
+    // thing for a name, a dish or a festival.
+    const sys = buildCleanupSystem({ targetApp: "Generic", language: "auto" });
+    expect(sys).toMatch(/a\s+name\s+stays\s+a\s+name/i);
   });
 
   it("never names the cases it is measured on", () => {
@@ -324,12 +335,16 @@ describe("what reaches the model", () => {
     expect(sys).toMatch(/if\s+you\s+are\s+adding,\s+you\s+are\s+wrong/i);
   });
 
-  it("still states the observed script when there is one", () => {
-    // The script rule is appended per request because it is MEASURED, not
-    // declared. It and the language rule answer different questions and both
-    // have to be there.
+  it("still states the observed script, and only as how to READ the input", () => {
+    // The script fact is appended per request because it is MEASURED, not
+    // declared, and it survives v7 — romanized Hindi read as English is a
+    // different sentence. What does not survive is its second half: it used
+    // to end "write your output in that same script", which from v7 would be
+    // the loudest contradiction in the prompt.
     const sys = buildCleanupSystem({ targetApp: "Generic", language: "hi", script: "latin" });
     expect(sys).toContain("LATIN");
     expect(sys).toContain("Their setting is hi");
+    expect(sys).toMatch(/does not decide what language to write in/i);
+    expect(sys).not.toMatch(/write your output in that same script/i);
   });
 });

@@ -49,16 +49,21 @@ describe("detectScript — observed, not declared", () => {
 });
 
 describe("assist prompt — the observed script is stated as fact", () => {
-  it("names the captured script so the model can't drift it", () => {
+  it("names the captured script, as how to read what was said", () => {
+    // It used to be stated so the model could not drift the OUTPUT script.
+    // From the English default the output script is decided elsewhere, and
+    // the fact is kept for the other half of its job: romanized Hindi read
+    // as English is a different sentence.
     const s = buildAssistSystem({ hasContext: false, script: "latin" });
-    expect(s).toContain("Theirs was latin.");
+    expect(s).toContain("arrived in latin script");
+    expect(s).toMatch(/that is how to read it/i);
   });
 
   it("says nothing when the script is unknown (no misleading claim)", () => {
     const s = buildAssistSystem({ hasContext: false, script: "unknown" });
-    expect(s).not.toContain("Theirs was");
+    expect(s).not.toContain("arrived in");
     const none = buildAssistSystem({ hasContext: false });
-    expect(none).not.toContain("Theirs was");
+    expect(none).not.toContain("arrived in");
   });
 
   it("keeps the deliberate paragraph breaks when the conditional line is absent", () => {
@@ -227,7 +232,12 @@ describe("what the prompt is told about a mixed sentence", () => {
     // the script line works where the script rule alone did not.
     const t = buildAssistSystem({ hasContext: false, script: "latin", mixedLanguages: true });
     expect(t).toMatch(/in two languages at once/i);
-    expect(t).toMatch(/every word stays in the language it arrived in/i);
+    // The observation now points the other way. Same reflex either way: the
+    // model treats one half as settled — the outnumbered language as the
+    // mistake, or the English clause as the finished part — so the fact has
+    // to say how far the job reaches.
+    expect(t).toMatch(/both halves are in scope/i);
+    expect(t).toMatch(/not the part that is already finished/i);
   });
 
   it("says nothing when the sentence is in one language", () => {

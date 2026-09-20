@@ -47,6 +47,40 @@ describe("detectCommand", () => {
     expect(r.transcript).toBe("the meeting is at three");
   });
 
+  it("detects 'write it in <lang>' — the other way people ask for one", () => {
+    // The commoner way to ask, now that English is what comes back by
+    // default: they are not asking for a finished text to be carried across,
+    // they are saying which language to write in.
+    const r = detectCommand("tell Priya the deploy is done, write it in hindi");
+    expect(r.command).toEqual({ kind: "language", lang: "hindi" });
+    expect(r.transcript).toBe("tell Priya the deploy is done");
+    expect(detectCommand("call mom, say it in marathi").command).toEqual({
+      kind: "language", lang: "marathi",
+    });
+    expect(detectCommand("the deck is ready, reply in brazilian portuguese").command).toEqual({
+      kind: "language", lang: "brazilian portuguese",
+    });
+  });
+
+  it("does not read a format instruction as a language", () => {
+    // "write in bullets" starts earlier in the string than the bullets
+    // pattern does, so without the exclusion the earliest-match rule hands it
+    // to the language command and the user gets prose in a language called
+    // bullets.
+    expect(detectCommand("three things went wrong, write it in bullets").command)
+      .toEqual({ kind: "bulletpoints" });
+    expect(detectCommand("the summary, write it in bullet points").command)
+      .toEqual({ kind: "bulletpoints" });
+  });
+
+  it("leaves a sentence that merely mentions a language alone", () => {
+    // The verb is what anchors the pattern. Without it, an ordinary sentence
+    // ending in a language name loses its tail.
+    const r = detectCommand("the movie we watched last night was in hindi");
+    expect(r.command).toBeNull();
+    expect(r.transcript).toBe("the movie we watched last night was in hindi");
+  });
+
   it("detects emoji on / off variants", () => {
     expect(detectCommand("thanks a lot no emojis").command).toEqual({ kind: "emojiOff" });
     expect(detectCommand("thanks a lot less emoji").command).toEqual({ kind: "emojiOff" });

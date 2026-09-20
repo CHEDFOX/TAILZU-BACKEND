@@ -267,8 +267,8 @@ const EnvSchema = z.object({
   // English and finishes in Hindi matched no rule and came back translated.
   // v5 is still on disk — set this to v5 to compare the two against
   // scripts/quality.sh without a deploy.
-  CLEANUP_PROMPT_VERSION: z.string().default("v6"),
-  REPLY_PROMPT_VERSION: z.string().default("v3"),
+  CLEANUP_PROMPT_VERSION: z.string().default("v7"),
+  REPLY_PROMPT_VERSION: z.string().default("v4"),
 
   // Sentry (backend). Optional — the observability layer no-ops when unset,
   // so the value can safely stay empty in dev.

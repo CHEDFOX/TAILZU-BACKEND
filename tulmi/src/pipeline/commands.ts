@@ -101,6 +101,26 @@ const PATTERNS: Array<{ re: RegExp; make: (m: RegExpMatchArray) => Command }> = 
     make: (m) => ({ kind: "translate", lang: (m[1] ?? "").trim().toLowerCase() }),
   },
 
+  // write in X — the other way people ask for a language, and the commoner
+  // one now that English is what comes back by default: "say it in Hindi",
+  // "reply in Spanish". `translate` carries a finished text across; this
+  // composes in that language from the start. Same destination either way.
+  //
+  // The verb is what anchors it. A bare "in Hindi" tail would also swallow
+  // "the movie was in Hindi", and the format words have to be excluded by
+  // name or "write in bullets" becomes a language called bullets — this
+  // pattern starts earlier in the string than the bullets one, so without
+  // the lookahead it would win the earliest-match rule.
+  {
+    re: new RegExp(
+      `[,;\\-—…]?\\s*(?:and\\s+|then\\s+)?(?:write|say|send|reply|put|make|give\\s+(?:it|this|me))\\s+(?:it|this|that)?\\s*(?:in|into)\\s+` +
+        `(?!bullets?\\b|bullet\\s|points?\\b|caps\\b|capitals?\\b|short\\b|brief\\b|full\\b|detail)` +
+        `([A-Za-z][A-Za-z\\-]*(?:\\s+[A-Za-z][A-Za-z\\-]*)?)${TAIL}$`,
+      "i",
+    ),
+    make: (m) => ({ kind: "language", lang: (m[1] ?? "").trim().toLowerCase() }),
+  },
+
   // emoji off — "no emoji", "no emojis", "without emojis", "less emoji"
   {
     re: new RegExp(

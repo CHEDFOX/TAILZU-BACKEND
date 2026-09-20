@@ -98,6 +98,6 @@ describe("assist prompt — reconciliation block", () => {
     // the observed script must survive it.
     const s = buildAssistSystem({ hasContext: false, hasAlternative: true, script: "latin" });
     expect(s).toMatch(/When you cannot tell which it is, it is what they want said/i);
-    expect(s).toContain("Theirs was latin.");
+    expect(s).toContain("arrived in latin script");
   });
 });
