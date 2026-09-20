@@ -294,12 +294,13 @@ export const SITE_UI = {
   desk: {
     kick: "On the desk",
     title: "Mac and Windows too.",
-    lede: "Press once. Talk. Press again. It's typed.",
-    // The chord the tray app binds by default (desktop/main.js:
-    // CommandOrControl+Shift+Space, toggle mode). F9 is only the optional
-    // hold-to-talk key, so it is not what the page shows.
-    keys: ["Ctrl", "Shift", "Space"],
-    keysMac: ["⌘", "Shift", "Space"],
+    lede: "Tap Ctrl twice. Talk. Tap twice. It's typed.",
+    // The tray app's way in (desktop/main.js, `tap` on by default): a
+    // double-tap on Ctrl, or on Alt. The chord and F9 are fallbacks and are
+    // not what the page shows. Two keys drawn is the gesture; `join` is
+    // what goes between them, and for a double-tap nothing does.
+    keys: ["Ctrl", "Ctrl"],
+    join: "",
   },
   free: {
     kick: "Price",
