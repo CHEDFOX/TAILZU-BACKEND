@@ -188,6 +188,9 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
       downloads,
       demo: cfg.DEMO_ENABLED,
       maxSeconds: cfg.DEMO_MAX_SECONDS,
+      // The rate the demo route enforces, so the developers' card can say
+      // it rather than guess it.
+      perMinute: Math.max(1, cfg.DEMO_PER_MINUTE),
     };
   });
 

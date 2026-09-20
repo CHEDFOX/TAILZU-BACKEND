@@ -305,6 +305,21 @@ export const SITE_UI = {
     title: "Free to start.",
     lede: "Upgrade when you need more.",
   },
+  /*
+   * FOR DEVELOPERS. The same demo the page's button uses, as one curl. The
+   * page builds the command from its own API origin and answers it with
+   * the river's first case, so nothing on the card is invented. The note
+   * carries the real limits — {perMinute} and {maxSeconds} are filled from
+   * the numbers served beside this copy — and the whole field is hidden
+   * while DEMO_ENABLED is off, because a command that answers 404 is not
+   * an invitation.
+   */
+  dev: {
+    kick: "For developers",
+    title: "Try it from a terminal.",
+    lede: "One request. Audio in, a sentence out.",
+    note: "No key. {perMinute} a minute. {maxSeconds} seconds each. webm, mp4, ogg.",
+  },
   faq: {
     kick: "Questions",
     title: "Asked, answered.",

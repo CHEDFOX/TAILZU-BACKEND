@@ -108,6 +108,11 @@ describe("the landing page", () => {
     expect(c.desk.keys).toEqual(["Ctrl", "Ctrl"]);
     expect(c.desk.title.toLowerCase()).toContain("ctrl");
     expect(c.free.title.length).toBeGreaterThan(0);
+    // The developers' card states the demo's real limits, filled from the
+    // numbers served beside it.
+    expect(c.dev.note).toContain("{perMinute}");
+    expect(c.dev.note).toContain("{maxSeconds}");
+    expect(typeof body.perMinute).toBe("number");
     expect(c.faq.items.length).toBeGreaterThanOrEqual(3);
     expect(c.faq.items.length).toBeLessThanOrEqual(8);   // not bulky
     for (const q of c.faq.items) {
