@@ -1713,6 +1713,20 @@ export function buildBootstrap(
     micGranted?: boolean;
     keyboardReady?: boolean;
     /**
+     * Where the live subscription was bought — RevenueCat's own `store`, as
+     * recorded on the entitlement row: "app_store", "play_store", "paddle",
+     * "stripe", "rc_billing", "promotional".
+     *
+     * It travels because ENTITLEMENT IS NOT ENOUGH TO ACT ON. One account can
+     * be reached from a phone and a window, and only one of those can change
+     * an App Store subscription — Apple allows nothing else to cancel one, and
+     * Paddle cannot be reached from iOS Settings. A client that knows only
+     * "paid" can say nothing true about how to stop paying, and can offer a
+     * second subscription on a different store to somebody who already has
+     * one, which bills them twice for the same entitlement.
+     */
+    billingStore?: string;
+    /**
      * "phone" (the default, and every mobile client) or "desktop".
      *
      * A window is not a handset, and the two steps above are about a handset.
@@ -1832,6 +1846,8 @@ export function buildBootstrap(
         // The app hides the paywall on either, so a webhook that has not
         // landed yet never leaves a paying user staring at one.
         "billing.entitled": opts.entitled === true,
+        ...(opts.billingStore ? { "billing.store": opts.billingStore } : {}),
+        ...(opts.entitled === true ? manageFlags(opts.billingStore) : {}),
         "quota.wordsUsed": Math.max(0, Math.round(opts.wordsUsed ?? 0)),
         // The CEILING, earned words included. `quota.wordsFree` keeps its name
         // because every existing client reads it; what changed is that it is no
@@ -8197,6 +8213,17 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
           ...row("Upgrade", { kind: "navigate", screenId: "paywall" }, { props: { label: "Upgrade" } }),
           visibleIf: { not: { flag: "billing.entitled" } },
         },
+        // AND ITS OPPOSITE, for the people the row above hides itself from.
+        //
+        // Someone who had paid was shown nothing at all: no plan, no renewal,
+        // no way to stop. Where to go is not ours to choose — it is decided by
+        // where they bought it, and a subscription bought on a phone cannot be
+        // cancelled anywhere else. At most one of these is visible, and none
+        // is for a store nothing here can send them to.
+        ...MANAGE_AT.map(([key, , label, url]) => ({
+          ...row(label, { kind: "openUrl", url }, { props: { label } }),
+          visibleIf: { all: [{ flag: "billing.entitled" }, { flag: `billing.manage.${key}` }] },
+        })),
 
         // Preferences
 
@@ -8210,6 +8237,49 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
     cacheTtlSeconds: 300,
   };
 }
+/**
+ * Where a live subscription is managed, grouped by who can actually change it.
+ *
+ * ONE BOOLEAN PER DESTINATION, NOT A COMPARISON AGAINST THE STORE NAME. The
+ * two renderers disagree about what `eq` reads: the window resolves a
+ * `flags.`-prefixed reference, and the phones resolve every operand against
+ * SCREEN STATE, where a boot flag has never been. A row gated on
+ * `eq: ["billing.store", …]` would therefore be correct, silent, and invisible
+ * on the phones forever — and a row nobody can see is indistinguishable from
+ * the bug this exists to fix. `flag` is understood identically by both.
+ *
+ * The label says CHANGE as well as cancel, because on a phone this row is
+ * the upgrade path too. Moving from monthly to annual is a change Apple and
+ * Google each make on their own subscription page, and neither lets anything
+ * else make it — so a subscriber who wants the bigger plan is not looking for
+ * a paywall, they are looking for this row.
+ *
+ * Grouped by destination rather than by store because that is the question:
+ * the Mac App Store and the App Store are one subscription page, and Paddle,
+ * Stripe and RevenueCat's own billing are all "on the web". An unknown store,
+ * or a promotional grant, lights none of them — silence beats sending someone
+ * to a settings page with nothing of theirs on it.
+ */
+const MANAGE_AT: [string, string[], string, string][] = [
+  // Apple lets nothing but Apple cancel an App Store subscription.
+  ["apple", ["app_store", "mac_app_store"], "Change or cancel · App Store", "https://apps.apple.com/account/subscriptions"],
+  ["google", ["play_store"], "Change or cancel · Google Play", "https://play.google.com/store/account/subscriptions"],
+  // Paddle and Stripe each mail a management link on purchase, to a
+  // per-customer URL this server never holds. Support is the one address that
+  // is true for every one of them.
+  ["web", ["paddle", "stripe", "rc_billing"], "Change or cancel · billed on the web", "mailto:support@tailzu.space"],
+];
+
+/** `billing.manage.*`, one true at most, from RevenueCat's store name. */
+export function manageFlags(store: string | undefined): Record<string, boolean> {
+  const s = String(store ?? "").trim().toLowerCase();
+  if (!s) return {};
+  const hit = MANAGE_AT.find(([, stores]) => stores.includes(s));
+  return hit ? { [`billing.manage.${hit[0]}`]: true } : {};
+}
+
+
+
 /**
  * TWO COLOURS, AND THAT IS THE WHOLE DESIGN RULE.
  *

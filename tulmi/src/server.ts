@@ -45,7 +45,7 @@ import { recordKeyboardTelemetry } from "./usage/telemetry.js";
 import { activeRollouts, bucketFor } from "./experience/rollout.js";
 import { captureException, fastifyLoggerOptions, initSentry } from "./observability.js";
 import { getProfile, updateProfile, touchLastSeen, type Profile } from "./profile/store.js";
-import { applyRevenueCatEvent, isEntitled } from "./billing/entitlements.js";
+import { applyRevenueCatEvent, getEntitlement, isEntitled } from "./billing/entitlements.js";
 
 /**
  * The language a request should be written in.
@@ -1711,13 +1711,18 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   // The server's own view of both, so the app never has to guess and a
   // modified client cannot claim either. Read in parallel with everything
   // else, so this costs no extra latency.
-  const [entitled, usage, allowance] = user
+  // The ROW rather than the boolean, because where a subscription was bought
+  // decides where it can be changed — Apple will not let anything else cancel
+  // an App Store subscription, and Paddle cannot be reached from Settings.
+  // isEntitled() is that same read with the answer thrown away.
+  const [ent, usage, allowance] = user
     ? await Promise.all([
-        isEntitled(user).catch(() => false),
+        getEntitlement(user).catch(() => null),
         usageSummary(user).catch(() => null),
         allowanceFor(user).catch(() => null),
       ])
-    : [false, null, null];
+    : [null, null, null];
+  const entitled = ent !== null;
   // A REVIEWER GOES STRAIGHT IN.
   //
   // Both stores give the app to someone with a checklist and a few minutes. An
@@ -1775,6 +1780,7 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     // 2.1 asks that the reviewer can exercise the paid functionality; it does
     // not ask them to buy it.
     entitled: entitled || isReviewer,
+    billingStore: ent?.store,
     wordsUsed: usage?.month?.words ?? 0,
     allowance,
     platform: platformOf(reqBody.capabilities?.platform),

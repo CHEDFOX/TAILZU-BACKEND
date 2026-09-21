@@ -7,6 +7,7 @@ process.env.STT_PROVIDER = "openai";
 process.env.NODE_ENV = "test";
 
 import type { RcEvent } from "../src/billing/entitlements.js";
+import { manageFlags, buildScreen } from "../src/experience/catalog.js";
 
 /**
  * Every assertion here is about the FILTER, which runs before any database
@@ -250,5 +251,58 @@ describe("applyRevenueCatEvent — buying from the desktop", () => {
     const res = await apply(web({ type: "CANCELLATION" }), "TAILZU AIR", false);
     expect(res.ok).toBe(true);
     expect(res.reason).toContain("access runs to expiry");
+  });
+});
+
+describe("where a subscription is managed", () => {
+  // WHERE YOU BOUGHT IT DECIDES WHERE YOU CAN CHANGE IT, and one account is
+  // reachable from a phone and a window at once. Apple lets nothing but Apple
+  // cancel an App Store subscription; Paddle cannot be reached from iOS
+  // Settings. A client that knows only "paid" can say nothing true about how
+  // to stop paying — and can offer a second subscription on another store to
+  // somebody who already has one, which bills them twice for one entitlement.
+  it("groups the stores by who can actually change the subscription", () => {
+    expect(manageFlags("app_store")).toEqual({ "billing.manage.apple": true });
+    expect(manageFlags("mac_app_store")).toEqual({ "billing.manage.apple": true });
+    expect(manageFlags("play_store")).toEqual({ "billing.manage.google": true });
+    // The three web engines are one destination: Paddle is what this project
+    // uses today, and swapping it is a dashboard change, not a release.
+    expect(manageFlags("paddle")).toEqual({ "billing.manage.web": true });
+    expect(manageFlags("stripe")).toEqual({ "billing.manage.web": true });
+    expect(manageFlags("rc_billing")).toEqual({ "billing.manage.web": true });
+  });
+
+  it("says nothing for a store it cannot send anyone to", () => {
+    // A promotional grant, or a billing engine added after this build. Silence
+    // beats a row that opens a settings page with nothing of theirs on it.
+    expect(manageFlags("promotional")).toEqual({});
+    expect(manageFlags("amazon")).toEqual({});
+    expect(manageFlags(undefined)).toEqual({});
+    expect(manageFlags("")).toEqual({});
+  });
+
+  it("reads the store however RevenueCat happens to case it", () => {
+    expect(manageFlags("APP_STORE")).toEqual({ "billing.manage.apple": true });
+    expect(manageFlags(" Play_Store ")).toEqual({ "billing.manage.google": true });
+  });
+
+  it("puts exactly one manage row in Settings, and only for a subscriber", () => {
+    // The row and its flag are written in two places; this is the one test
+    // that reads them together. A row gated on a flag nothing ever sets is
+    // indistinguishable from the bug it was added to fix.
+    const screen = buildScreen("settings", { personality: {}, language: "en" } as never) as never as {
+      root: { children: { visibleIf?: unknown; props?: { label?: string } }[] };
+    };
+    const manage = screen.root.children.filter((c) =>
+      JSON.stringify(c.visibleIf ?? "").includes("billing.manage."),
+    );
+    expect(manage.length).toBe(3);
+    for (const r of manage) {
+      expect(JSON.stringify(r.visibleIf)).toContain('"billing.entitled"');
+    }
+    // Every flag a row waits for is one manageFlags() can actually produce.
+    const waited = manage.map((r) => JSON.stringify(r.visibleIf).match(/billing\.manage\.\w+/)![0]);
+    const produced = ["app_store", "play_store", "paddle"].flatMap((s) => Object.keys(manageFlags(s)));
+    expect([...waited].sort()).toEqual([...produced].sort());
   });
 });
