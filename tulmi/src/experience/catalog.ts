@@ -8270,12 +8270,21 @@ const MANAGE_AT: [string, string[], string, string][] = [
   ["web", ["paddle", "stripe", "rc_billing"], "Change or cancel · billed on the web", "mailto:support@tailzu.space"],
 ];
 
-/** `billing.manage.*`, one true at most, from RevenueCat's store name. */
-export function manageFlags(store: string | undefined): Record<string, boolean> {
+/**
+ * `billing.manage.*` — one destination flag at most, plus the URL itself.
+ *
+ * THE URL TRAVELS BECAUSE THE CLIENTS SHOULD NOT BE TELLING ANYONE WHERE TO
+ * GO. A subscriber who taps Upgrade wants to upgrade; answering with the
+ * directions to a settings screen is asking them to do the work of finding it,
+ * and it is the part that turns a wrong tap into a support email. With the
+ * address here, the tap can simply arrive at the place that can change the
+ * plan — and when the destination moves, it moves once, here.
+ */
+export function manageFlags(store: string | undefined): Record<string, string | boolean> {
   const s = String(store ?? "").trim().toLowerCase();
   if (!s) return {};
   const hit = MANAGE_AT.find(([, stores]) => stores.includes(s));
-  return hit ? { [`billing.manage.${hit[0]}`]: true } : {};
+  return hit ? { [`billing.manage.${hit[0]}`]: true, "billing.manage.url": hit[3] } : {};
 }
 
 

@@ -262,14 +262,24 @@ describe("where a subscription is managed", () => {
   // to stop paying — and can offer a second subscription on another store to
   // somebody who already has one, which bills them twice for one entitlement.
   it("groups the stores by who can actually change the subscription", () => {
-    expect(manageFlags("app_store")).toEqual({ "billing.manage.apple": true });
-    expect(manageFlags("mac_app_store")).toEqual({ "billing.manage.apple": true });
-    expect(manageFlags("play_store")).toEqual({ "billing.manage.google": true });
+    expect(manageFlags("app_store")).toMatchObject({ "billing.manage.apple": true });
+    expect(manageFlags("mac_app_store")).toMatchObject({ "billing.manage.apple": true });
+    expect(manageFlags("play_store")).toMatchObject({ "billing.manage.google": true });
     // The three web engines are one destination: Paddle is what this project
     // uses today, and swapping it is a dashboard change, not a release.
-    expect(manageFlags("paddle")).toEqual({ "billing.manage.web": true });
-    expect(manageFlags("stripe")).toEqual({ "billing.manage.web": true });
-    expect(manageFlags("rc_billing")).toEqual({ "billing.manage.web": true });
+    expect(manageFlags("paddle")).toMatchObject({ "billing.manage.web": true });
+    expect(manageFlags("stripe")).toMatchObject({ "billing.manage.web": true });
+    expect(manageFlags("rc_billing")).toMatchObject({ "billing.manage.web": true });
+  });
+
+  it("carries the address, so a client never has to give directions", () => {
+    // A subscriber who taps Upgrade wants to upgrade. Answering with the route
+    // to a settings screen asks them to do the finding, which is the part that
+    // turns a wrong tap into a support email.
+    expect(manageFlags("app_store")["billing.manage.url"]).toContain("apps.apple.com");
+    expect(manageFlags("play_store")["billing.manage.url"]).toContain("play.google.com");
+    expect(manageFlags("paddle")["billing.manage.url"]).toContain("support@tailzu.space");
+    expect(manageFlags("promotional")["billing.manage.url"]).toBeUndefined();
   });
 
   it("says nothing for a store it cannot send anyone to", () => {
@@ -282,8 +292,8 @@ describe("where a subscription is managed", () => {
   });
 
   it("reads the store however RevenueCat happens to case it", () => {
-    expect(manageFlags("APP_STORE")).toEqual({ "billing.manage.apple": true });
-    expect(manageFlags(" Play_Store ")).toEqual({ "billing.manage.google": true });
+    expect(manageFlags("APP_STORE")).toMatchObject({ "billing.manage.apple": true });
+    expect(manageFlags(" Play_Store ")).toMatchObject({ "billing.manage.google": true });
   });
 
   it("puts exactly one manage row in Settings, and only for a subscriber", () => {
@@ -302,7 +312,9 @@ describe("where a subscription is managed", () => {
     }
     // Every flag a row waits for is one manageFlags() can actually produce.
     const waited = manage.map((r) => JSON.stringify(r.visibleIf).match(/billing\.manage\.\w+/)![0]);
-    const produced = ["app_store", "play_store", "paddle"].flatMap((s) => Object.keys(manageFlags(s)));
+    const produced = ["app_store", "play_store", "paddle"]
+      .flatMap((s) => Object.keys(manageFlags(s)))
+      .filter((k) => k !== "billing.manage.url");
     expect([...waited].sort()).toEqual([...produced].sort());
   });
 });
