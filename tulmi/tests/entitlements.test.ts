@@ -377,3 +377,44 @@ describe("the paywall, for somebody who already pays", () => {
     expect(promo).not.toContain("Change or cancel");
   });
 });
+
+describe("who is charging, and when next", () => {
+  // The one thing the big subscriptions put on this screen that we did not.
+  // A subscription with no date on it reads as something you have rather than
+  // something you are paying for, and that is how a renewal becomes a
+  // surprise.
+  const paywall = (entitlement: unknown) =>
+    JSON.stringify(buildScreen("paywall", { personality: {}, language: "en", entitlement } as never));
+
+  const inAMonth = new Date(Date.now() + 30 * 86400_000).toISOString();
+
+  it("names the biller and the date together", () => {
+    const json = paywall({ store: "app_store", expiresAt: inAMonth });
+    expect(json).toContain("Billed through Apple");
+    expect(json).toContain("renews");
+  });
+
+  it("says nothing when either half is missing", () => {
+    // A date with no biller against it, or a biller with "soon" after it, is
+    // a number nobody can check against their bank.
+    expect(paywall({ store: "app_store" })).not.toContain("Billed through");
+    expect(paywall({ expiresAt: inAMonth })).not.toContain("Billed through");
+    expect(paywall({ store: "promotional", expiresAt: inAMonth })).not.toContain("Billed through");
+  });
+
+  it("says nothing for a grant that never renews", () => {
+    // A lifetime entitlement has no expiry, and a past one is not a renewal
+    // date — it is a subscription that should already have gone.
+    expect(paywall({ store: "app_store", expiresAt: "" })).not.toContain("Billed through");
+    expect(paywall({ store: "app_store", expiresAt: "not a date" })).not.toContain("Billed through");
+    expect(paywall({ store: "app_store", expiresAt: "2020-01-01T00:00:00Z" })).not.toContain("Billed through");
+  });
+
+  it("still shows the subscription itself without a date", () => {
+    // The line is an addition, never a precondition: somebody whose expiry we
+    // cannot read is still a subscriber and must not be sold to.
+    const json = paywall({ store: "app_store" });
+    expect(json).toContain("covers this account");
+    expect(json).not.toContain("iap.");
+  });
+});

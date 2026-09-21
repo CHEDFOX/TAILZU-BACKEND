@@ -3730,8 +3730,17 @@ export const PAYWALL_CONFIG: PaywallConfig = {
  * that guesses "Monthly" at somebody on the annual plan is worse than one
  * that says nothing about it.
  */
-function subscribedScreen(store?: string): ScreenResponse {
+function subscribedScreen(store?: string, expiresAt?: string): ScreenResponse {
   const where = MANAGE_AT.find(([, stores]) => stores.includes(String(store ?? "").toLowerCase()));
+  // WHO IS CHARGING, AND WHEN NEXT. The one thing the big subscriptions put on
+  // this screen that we did not, and the pair of facts somebody actually came
+  // for: a subscription with no date on it reads as something you have rather
+  // than something you are paying for, and that is how a renewal becomes a
+  // surprise. `expires_at` on a live subscription IS the next charge.
+  //
+  // Said only when both are known. "Renews soon", or a date with no biller
+  // against it, is the shape of a number nobody can check.
+  const renews = renewLine(where?.[4], expiresAt);
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "paywall",
@@ -3753,8 +3762,15 @@ function subscribedScreen(store?: string): ScreenResponse {
             content:
               "Your subscription covers this account — every device you sign in on, with nothing to buy again.",
           },
-          style: { fontSize: 16, lineHeight: 23, color: "$color.muted", marginBottom: 26 },
+          style: { fontSize: 16, lineHeight: 23, color: "$color.muted", marginBottom: renews ? 14 : 26 },
         },
+        ...(renews
+          ? [{
+              type: "Text",
+              props: { content: renews },
+              style: { fontSize: 14, color: "$color.muted", marginBottom: 26 },
+            } as Node]
+          : []),
         // The store, named once, where somebody would actually look for it.
         ...(where
           ? [{
@@ -3788,7 +3804,7 @@ function subscribedScreen(store?: string): ScreenResponse {
  * on that value to fire the right iap.showPaywall (offering+package) or
  * iap.subscribe (product).
  */
-function paywallScreen(isDesktop = false, live?: { store?: string } | null): ScreenResponse {
+function paywallScreen(isDesktop = false, live?: { store?: string; expiresAt?: string } | null): ScreenResponse {
   // NOBODY IS SOLD SOMETHING THEY HAVE ALREADY BOUGHT.
   //
   // This screen sold to everyone who reached it, and one account reaches a
@@ -3802,7 +3818,7 @@ function paywallScreen(isDesktop = false, live?: { store?: string } | null): Scr
   // has one looks like. Nothing to choose, nothing to refuse, and the store
   // named exactly once — in the one place somebody would look for it, which
   // is when they want to stop or change it.
-  if (live) return subscribedScreen(live.store);
+  if (live) return subscribedScreen(live.store, live.expiresAt);
   const cfg = PAYWALL_CONFIG;
   const pw = PAYWALL_UI;
   const dk = pw.desktop;
@@ -4152,7 +4168,7 @@ export interface ScreenContext {
    * page: a screen that hid the plans because a lookup failed would be a
    * screen nobody could buy from.
    */
-  entitlement?: { store?: string } | null;
+  entitlement?: { store?: string; expiresAt?: string } | null;
   language: string;
   email?: string;
   /** Set instead of `email` for an SMS-only account. */
@@ -8338,15 +8354,31 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
  * or a promotional grant, lights none of them — silence beats sending someone
  * to a settings page with nothing of theirs on it.
  */
-const MANAGE_AT: [string, string[], string, string][] = [
+const MANAGE_AT: [string, string[], string, string, string][] = [
   // Apple lets nothing but Apple cancel an App Store subscription.
-  ["apple", ["app_store", "mac_app_store"], "Change or cancel · App Store", "https://apps.apple.com/account/subscriptions"],
-  ["google", ["play_store"], "Change or cancel · Google Play", "https://play.google.com/store/account/subscriptions"],
+  ["apple", ["app_store", "mac_app_store"], "Change or cancel · App Store", "https://apps.apple.com/account/subscriptions", "Apple"],
+  ["google", ["play_store"], "Change or cancel · Google Play", "https://play.google.com/store/account/subscriptions", "Google Play"],
   // Paddle and Stripe each mail a management link on purchase, to a
   // per-customer URL this server never holds. Support is the one address that
   // is true for every one of them.
-  ["web", ["paddle", "stripe", "rc_billing"], "Change or cancel · billed on the web", "mailto:support@tailzu.space"],
+  ["web", ["paddle", "stripe", "rc_billing"], "Change or cancel · billed on the web", "mailto:support@tailzu.space", "the web"],
 ];
+
+/**
+ * "Billed through Apple · renews 12 Oct 2026", or nothing.
+ *
+ * Nothing is the answer whenever either half is missing or unreadable: a date
+ * with no biller against it, or a biller with "soon" after it, is a number
+ * nobody can check against their bank. A lifetime grant has no expiry and gets
+ * no line, which is correct — it never renews.
+ */
+function renewLine(biller: string | undefined, expiresAt: string | undefined): string | null {
+  if (!biller || !expiresAt) return null;
+  const t = Date.parse(expiresAt);
+  if (!Number.isFinite(t) || t <= Date.now()) return null;
+  const on = new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return `Billed through ${biller} · renews ${on}`;
+}
 
 /**
  * `billing.manage.*` — one destination flag at most, plus the URL itself.
