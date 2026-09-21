@@ -7,7 +7,7 @@ process.env.STT_PROVIDER = "openai";
 process.env.NODE_ENV = "test";
 
 import type { RcEvent } from "../src/billing/entitlements.js";
-import { manageFlags, buildScreen } from "../src/experience/catalog.js";
+import { manageFlags, buildScreen, PAYWALL_CONFIG } from "../src/experience/catalog.js";
 
 /**
  * Every assertion here is about the FILTER, which runs before any database
@@ -316,5 +316,64 @@ describe("where a subscription is managed", () => {
       .flatMap((s) => Object.keys(manageFlags(s)))
       .filter((k) => k !== "billing.manage.url");
     expect([...waited].sort()).toEqual([...produced].sort());
+  });
+});
+
+describe("the paywall, for somebody who already pays", () => {
+  // EVERY GUARD IN THE CLIENTS IS THE COST OF THIS SCREEN BEING DRAWN.
+  //
+  // It sold to whoever reached it, and one account reaches two phones and a
+  // window — so a subscriber saw plans, prices and a buy button for the thing
+  // they were already paying for. The refusal, the alert, the sentence naming
+  // a store: all of it exists to catch a tap on a page that should not have
+  // been there.
+  const sells = (s: unknown) => JSON.stringify(s).includes("iap.");
+
+  it("sells to a free account, as it always did", () => {
+    const free = buildScreen("paywall", { personality: {}, language: "en" } as never);
+    expect(sells(free)).toBe(true);
+  });
+
+  it("sells to a lookup that failed, rather than hiding the plans", () => {
+    // The safe direction here is the opposite of the clients'. A screen that
+    // hid its plans because a read timed out is a screen nobody can buy from,
+    // and a second purchase is still refused on the other side.
+    const unknown = buildScreen("paywall", {
+      personality: {}, language: "en", entitlement: null,
+    } as never);
+    expect(sells(unknown)).toBe(true);
+  });
+
+  it("shows a subscriber their subscription, and never a price", () => {
+    const paid = buildScreen("paywall", {
+      personality: {}, language: "en", entitlement: { store: "app_store" },
+    } as never);
+    const json = JSON.stringify(paid);
+    expect(sells(paid)).toBe(false);
+    // Not one plan card, not one price. Read from the config rather than
+    // hardcoded, so a new tier cannot leak onto this screen unnoticed.
+    for (const plan of PAYWALL_CONFIG.plans) {
+      if (plan.price) expect(json).not.toContain(plan.price);
+      expect(json).not.toContain(plan.id);
+    }
+    expect(json).toContain("covers this account");
+    // The store, named exactly once, where somebody would look for it.
+    expect(json).toContain("apps.apple.com");
+    expect(json).toContain("Change or cancel");
+  });
+
+  it("names the right store, and no store it cannot place", () => {
+    const play = JSON.stringify(buildScreen("paywall", {
+      personality: {}, language: "en", entitlement: { store: "play_store" },
+    } as never));
+    expect(play).toContain("play.google.com");
+    expect(play).not.toContain("apps.apple.com");
+
+    // A promotional grant is still a subscription; it just has no door.
+    const promo = JSON.stringify(buildScreen("paywall", {
+      personality: {}, language: "en", entitlement: { store: "promotional" },
+    } as never));
+    expect(promo).toContain("covers this account");
+    expect(promo).not.toContain("Change or cancel");
   });
 });

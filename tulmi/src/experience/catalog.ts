@@ -3723,6 +3723,59 @@ export const PAYWALL_CONFIG: PaywallConfig = {
 };
 
 /**
+ * What the paywall is for somebody who already pays.
+ *
+ * One statement and one door. The plan's tier is deliberately not on it: the
+ * server knows the entitlement, not which product bought it, and a screen
+ * that guesses "Monthly" at somebody on the annual plan is worse than one
+ * that says nothing about it.
+ */
+function subscribedScreen(store?: string): ScreenResponse {
+  const where = MANAGE_AT.find(([, stores]) => stores.includes(String(store ?? "").toLowerCase()));
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "paywall",
+    title: "",
+    state: {},
+    actions: { dismiss: { kind: "navigateBack" } },
+    root: {
+      type: "Screen",
+      style: { padding: 24, justifyContent: "center", flex: 1 },
+      children: [
+        {
+          type: "Text",
+          props: { content: "You're on Tailzu." },
+          style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 10 },
+        },
+        {
+          type: "Text",
+          props: {
+            content:
+              "Your subscription covers this account — every device you sign in on, with nothing to buy again.",
+          },
+          style: { fontSize: 16, lineHeight: 23, color: "$color.muted", marginBottom: 26 },
+        },
+        // The store, named once, where somebody would actually look for it.
+        ...(where
+          ? [{
+              type: "Row",
+              props: { label: where[2] },
+              on: { onPress: { kind: "openUrl", url: where[3] } as ActionRef },
+            } as Node]
+          : []),
+        {
+          type: "Button",
+          props: { label: "Done", variant: "primary" },
+          on: { onPress: { kind: "navigateBack" } },
+          style: { marginTop: 26 },
+        },
+      ],
+    },
+    cacheTtlSeconds: 0,
+  };
+}
+
+/**
  * "paywall" SDUI screen. Renders a scrollable page:
  *   [close] [hero media Slideshow]
  *   [title / subtitle]
@@ -3735,7 +3788,21 @@ export const PAYWALL_CONFIG: PaywallConfig = {
  * on that value to fire the right iap.showPaywall (offering+package) or
  * iap.subscribe (product).
  */
-function paywallScreen(isDesktop = false): ScreenResponse {
+function paywallScreen(isDesktop = false, live?: { store?: string } | null): ScreenResponse {
+  // NOBODY IS SOLD SOMETHING THEY HAVE ALREADY BOUGHT.
+  //
+  // This screen sold to everyone who reached it, and one account reaches a
+  // phone, another phone and a window — so a subscriber who opened it saw
+  // plans, prices and a buy button for the thing they were already paying
+  // for. Every guard in the clients exists because of that: the refusal, the
+  // alert, the sentence about which store it lives on. All of it is the cost
+  // of a sales page that should not have been drawn.
+  //
+  // The subscription belongs to the account, so this is what an account that
+  // has one looks like. Nothing to choose, nothing to refuse, and the store
+  // named exactly once — in the one place somebody would look for it, which
+  // is when they want to stop or change it.
+  if (live) return subscribedScreen(live.store);
   const cfg = PAYWALL_CONFIG;
   const pw = PAYWALL_UI;
   const dk = pw.desktop;
@@ -4075,6 +4142,17 @@ function paywallScreen(isDesktop = false): ScreenResponse {
 
 export interface ScreenContext {
   personality: Personality;
+  /**
+   * The live subscription, if there is one — the entitlement row, not a
+   * boolean, because which STORE sold it decides where it can be changed and
+   * nothing else can answer that.
+   *
+   * Only the paywall reads it, and only the paywall route pays for the read.
+   * Absent means "not entitled, or nobody asked", and both draw the sales
+   * page: a screen that hid the plans because a lookup failed would be a
+   * screen nobody could buy from.
+   */
+  entitlement?: { store?: string } | null;
   language: string;
   email?: string;
   /** Set instead of `email` for an SMS-only account. */
@@ -4233,7 +4311,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
     case "intro":
       return introScreen(ctx);
     case "paywall":
-      return paywallScreen(ctx.formFactor === "desktop");
+      return paywallScreen(ctx.formFactor === "desktop", ctx.entitlement);
     default:
       return null;
   }

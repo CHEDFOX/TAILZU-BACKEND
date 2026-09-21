@@ -1951,6 +1951,17 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     user && screenId === "history"
       ? (await listHistory(user, { limit: 50 })).entries
       : undefined;
+  // THE ONE SCREEN THAT MUST NOT SELL TO A SUBSCRIBER, so the one screen that
+  // pays for this read. The row rather than the boolean: which store sold it
+  // decides where it can be changed, and nothing else can answer that.
+  //
+  // A failed read draws the sales page, deliberately. A screen that hid the
+  // plans because a lookup timed out would be a screen nobody could buy from,
+  // and the clients still refuse a second purchase on another store.
+  const entitlement =
+    user && screenId === "paywall"
+      ? await getEntitlement(user).catch(() => null)
+      : undefined;
   // THE GATE. On iOS the keyboard's mic opens the app on `flow_arm`, so this
   // route is where an out-of-words user is stopped — before a session arms,
   // and without needing a keyboard build to enforce it.
@@ -1980,6 +1991,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   }
   const screen = buildScreen(screenId, {
     personality,
+    entitlement,
     // The editor seeds itself from ctx.dictionary, which nothing ever set —
     // so it opened blank on every visit however much the user had saved.
     dictionary: personality?.dictionary,
