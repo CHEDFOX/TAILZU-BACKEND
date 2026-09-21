@@ -305,8 +305,21 @@ const EnvSchema = z.object({
    *
    * Several products mapped to ONE entitlement (monthly, annual, lifetime)
    * need nothing here. Several paid TIERS do: "pro,unlimited".
+   *
+   * THE DEFAULT HAS TO BE THIS PROJECT'S OWN ID, and it was "pro" — a name
+   * borrowed from RevenueCat's documentation and true of nobody's project by
+   * accident. The entitlement here is called TAILZU AIR, so every purchase
+   * that ever completed was filtered out on arrival: money taken, webhook
+   * accepted, 200 returned, nothing granted. The failure leaves no error
+   * anywhere, because refusing an entitlement we were not asked about is
+   * exactly what this filter is for.
+   *
+   * It matches PAYWALL_CONFIG.entitlement, which is what the apps are told to
+   * look for — the two are the same question asked at both ends, and
+   * config.test.ts fails if they drift. Not imported from there: the catalog
+   * reads this config, and the cycle would cost more than the test does.
    */
-  REVENUECAT_ENTITLEMENT: z.string().default("pro"),
+  REVENUECAT_ENTITLEMENT: z.string().default("TAILZU AIR"),
   /**
    * The RevenueCat web purchase link, for the desktop app.
    *
