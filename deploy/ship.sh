@@ -76,10 +76,37 @@ case "$code" in
   *)   bad "webhook answered $code to an unsigned call (expected 401)" ;;
 esac
 
-SECRET=$(grep -m1 '^REVENUECAT_WEBHOOK_SECRET=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-)
+# The secret the server is actually holding — the bytes the webhook compares
+# against — read straight out of the running container. The env file is only
+# the fallback, for a machine without docker, and it is read the way compose
+# reads it: the last line wins, quotes come off, a Windows line ending is not
+# part of the value. A naive grep of the file sent the quotes and got a 401
+# from a server that was configured correctly.
+secret_from_container() {
+  docker compose exec -T backend printenv REVENUECAT_WEBHOOK_SECRET 2>/dev/null | tr -d '\r\n'
+}
+secret_from_file() {
+  grep -E '^(export )?REVENUECAT_WEBHOOK_SECRET=' "$ENV_FILE" 2>/dev/null | tail -n1 \
+    | cut -d= -f2- | tr -d '\r' \
+    | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+          -e "s/^'\(.*\)'\$/\1/" -e 's/^"\(.*\)"$/\1/'
+}
+FILE_SECRET=$(secret_from_file)
+SECRET=$(secret_from_container)
+if [ -n "$SECRET" ]; then src="the running container"; else SECRET="$FILE_SECRET"; src="$ENV_FILE"; fi
+
 if [ -z "$SECRET" ]; then
   bad "no REVENUECAT_WEBHOOK_SECRET in $ENV_FILE"
 else
+  # The file and the container disagree only when the file was edited after
+  # the last build — a CHECK=1 run on a stale container. Compared here, in the
+  # shell, so neither value is ever printed.
+  if [ -n "$FILE_SECRET" ] && [ "$src" = "the running container" ] && [ "$FILE_SECRET" != "$SECRET" ]; then
+    bad "$ENV_FILE changed since the container was built — run again without CHECK=1"
+  fi
+  n=$(grep -cE '^(export )?REVENUECAT_WEBHOOK_SECRET=' "$ENV_FILE" 2>/dev/null)
+  [ "${n:-0}" -gt 1 ] && bad "REVENUECAT_WEBHOOK_SECRET is set $n times in $ENV_FILE — the last one wins; delete the others"
+
   # THE ONE THAT WOULD HAVE CAUGHT IT.
   #
   # An event naming an entitlement that is deliberately not ours is refused,
@@ -95,9 +122,12 @@ else
   if [ -z "$body" ]; then
     bad "webhook returned nothing to a signed call"
   elif printf '%s' "$body" | grep -qi "not $WANT_ENTITLEMENT"; then
-    ok "webhook accepts the secret, and filters on $WANT_ENTITLEMENT"
+    ok "webhook accepts its secret, and filters on $WANT_ENTITLEMENT"
+    # The one thing no command on this machine can prove: that RevenueCat is
+    # sending THIS secret. Its dashboard can — Webhooks → Send test event → 200.
+    printf '        (RevenueCat sending the same secret: prove it with Send test event → 200)\n'
   elif printf '%s' "$body" | grep -qi 'unauthorized'; then
-    bad "the secret in $ENV_FILE is not the one RevenueCat's webhook sends"
+    bad "the server rejects the secret read from $src"
   else
     bad "server is NOT filtering on $WANT_ENTITLEMENT — every purchase is charged and granted nothing"
     printf '        it said: %s\n' "$body"
