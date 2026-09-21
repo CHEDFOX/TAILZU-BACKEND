@@ -342,6 +342,42 @@ export async function applyRevenueCatEvent(
 
   const entitlement = ours[0] ?? idList(defaultEntitlement)[0] ?? "pro";
 
+  // TWO STORES BILLING ONE ACCOUNT, and the row can only name one of them.
+  //
+  // Nothing here can stop it happening. Apple, Google and Paddle each own
+  // their own recurring billing, and no message from this server or from
+  // RevenueCat can tell one of them to stop because another started — only
+  // the person, at that store. So every other defence is prevention, and this
+  // is what is left when prevention was not in the build the user is running.
+  //
+  // What must NOT happen is this row quietly forgetting the first store. It
+  // upserts on user_id, so a purchase on a second store overwrites `store` —
+  // and from that moment the app tells them to cancel at the newer one while
+  // the older one goes on charging, unnamed and unmentioned anywhere. A silent
+  // double charge is bad; one the product actively points away from is worse.
+  //
+  // It cannot be shown without somewhere to put it, so for now it is named in
+  // the log, loudly, with both stores and the user: enough to answer "why am I
+  // being charged twice" from the server rather than from two support queues.
+  if (grants) {
+    const { data: before } = await sb
+      .from("entitlements")
+      .select("store, active, expires_at")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const had = String(before?.store ?? "").trim().toLowerCase();
+    const now = String(ev.store ?? "").trim().toLowerCase();
+    const stillLive =
+      before?.active === true &&
+      (!before?.expires_at || Date.parse(String(before.expires_at)) > Date.now());
+    if (had && now && had !== now && stillLive) {
+      console.error(
+        `[entitlements] DOUBLE BILLING: ${userId} just bought on ${now} while ${had} is still live. ` +
+        `Two stores are charging one account for one entitlement, and only the user can cancel ${had}.`,
+      );
+    }
+  }
+
   const { error } = await sb.from("entitlements").upsert(
     {
       user_id: userId,
