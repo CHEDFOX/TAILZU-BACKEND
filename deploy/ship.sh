@@ -77,13 +77,16 @@ case "$code" in
 esac
 
 # The secret the server is actually holding — the bytes the webhook compares
-# against — read straight out of the running container. The env file is only
-# the fallback, for a machine without docker, and it is read the way compose
-# reads it: the last line wins, quotes come off, a Windows line ending is not
-# part of the value. A naive grep of the file sent the quotes and got a 401
-# from a server that was configured correctly.
+# against — read from the container's environment as docker started it, after
+# compose has parsed the file, stripped quotes, and interpolated any "$". The
+# env file is the fallback for a machine without docker, read the way compose
+# reads it. A naive grep of the file sent the quotes and got a 401 from a
+# server that was configured correctly.
+CID=$(docker compose ps -q backend 2>/dev/null | head -n1)
 secret_from_container() {
-  docker compose exec -T backend printenv REVENUECAT_WEBHOOK_SECRET 2>/dev/null | tr -d '\r\n'
+  [ -n "$CID" ] || return 0
+  docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$CID" 2>/dev/null \
+    | grep -m1 '^REVENUECAT_WEBHOOK_SECRET=' | cut -d= -f2- | tr -d '\r\n'
 }
 secret_from_file() {
   grep -E '^(export )?REVENUECAT_WEBHOOK_SECRET=' "$ENV_FILE" 2>/dev/null | tail -n1 \
@@ -93,45 +96,78 @@ secret_from_file() {
 }
 FILE_SECRET=$(secret_from_file)
 SECRET=$(secret_from_container)
-if [ -n "$SECRET" ]; then src="the running container"; else SECRET="$FILE_SECRET"; src="$ENV_FILE"; fi
+if [ -n "$SECRET" ]; then src="the container"; else SECRET="$FILE_SECRET"; src="$ENV_FILE"; fi
+
+# The container, asked directly, past nginx and DNS. Whatever the public
+# hostname says, this is what the process itself answers.
+DIRECT=""
+[ -n "$CID" ] && DIRECT="http://127.0.0.1:${FLOW_PORT:-8770}"
+
+# A signed probe. The event names an entitlement that is deliberately not ours,
+# so it is refused — and the refusal NAMES what the server does filter on. The
+# answer to "which entitlement is this server configured for" comes from the
+# server itself rather than from a file somebody meant to edit. Nothing is
+# written: the filter returns before the database is touched, and the user id
+# is random and belongs to nobody.
+probe() {
+  curl -sS -m 10 -X POST "$1/v1/billing/revenuecat" \
+    -H "Authorization: $SECRET" -H 'Content-Type: application/json' \
+    -d '{"event":{"type":"INITIAL_PURCHASE","app_user_id":"00000000-0000-4000-8000-000000000000","entitlement_ids":["ship-sh-probe"],"store":"APP_STORE","environment":"PRODUCTION"}}' 2>/dev/null
+}
+# One word for what a probe came back with.
+verdict() {
+  if [ -z "$1" ]; then echo none
+  elif printf '%s' "$1" | grep -qi "not $WANT_ENTITLEMENT"; then echo filters
+  elif printf '%s' "$1" | grep -qi 'unauthorized'; then echo unauthorized
+  else echo wrong
+  fi
+}
 
 if [ -z "$SECRET" ]; then
   bad "no REVENUECAT_WEBHOOK_SECRET in $ENV_FILE"
 else
-  # The file and the container disagree only when the file was edited after
-  # the last build — a CHECK=1 run on a stale container. Compared here, in the
-  # shell, so neither value is ever printed.
-  if [ -n "$FILE_SECRET" ] && [ "$src" = "the running container" ] && [ "$FILE_SECRET" != "$SECRET" ]; then
-    bad "$ENV_FILE changed since the container was built — run again without CHECK=1"
-  fi
+  printf '        secret read from %s\n' "$src"
+
+  # Things the file can say about itself. Compared in the shell; nothing printed.
   n=$(grep -cE '^(export )?REVENUECAT_WEBHOOK_SECRET=' "$ENV_FILE" 2>/dev/null)
   [ "${n:-0}" -gt 1 ] && bad "REVENUECAT_WEBHOOK_SECRET is set $n times in $ENV_FILE — the last one wins; delete the others"
+  case "$FILE_SECRET" in *'$'*)
+    bad "the secret in $ENV_FILE contains a \$ — compose replaces it, so the container holds a DIFFERENT value and RevenueCat gets 401. Use a secret with no \$, set in RevenueCat and here" ;;
+  esac
+  if [ "$src" = "the container" ] && [ -n "$FILE_SECRET" ] && [ "$FILE_SECRET" != "$SECRET" ]; then
+    case "$FILE_SECRET" in *'$'*) ;; *)
+      bad "$ENV_FILE changed since the container was built — run again without CHECK=1" ;;
+    esac
+  fi
 
   # THE ONE THAT WOULD HAVE CAUGHT IT.
-  #
-  # An event naming an entitlement that is deliberately not ours is refused,
-  # and the refusal NAMES what the server does filter on. So the answer to
-  # "which entitlement is this server configured for" comes from the server
-  # itself rather than from a file somebody meant to edit.
-  #
-  # Nothing is written: the filter returns before the database is touched, and
-  # the user id is random and belongs to nobody.
-  body=$(curl -sS -X POST "$API/v1/billing/revenuecat" \
-    -H "Authorization: $SECRET" -H 'Content-Type: application/json' \
-    -d '{"event":{"type":"INITIAL_PURCHASE","app_user_id":"00000000-0000-4000-8000-000000000000","entitlement_ids":["ship-sh-probe"],"store":"APP_STORE","environment":"PRODUCTION"}}')
-  if [ -z "$body" ]; then
-    bad "webhook returned nothing to a signed call"
-  elif printf '%s' "$body" | grep -qi "not $WANT_ENTITLEMENT"; then
-    ok "webhook accepts its secret, and filters on $WANT_ENTITLEMENT"
-    # The one thing no command on this machine can prove: that RevenueCat is
-    # sending THIS secret. Its dashboard can — Webhooks → Send test event → 200.
-    printf '        (RevenueCat sending the same secret: prove it with Send test event → 200)\n'
-  elif printf '%s' "$body" | grep -qi 'unauthorized'; then
-    bad "the server rejects the secret read from $src"
-  else
-    bad "server is NOT filtering on $WANT_ENTITLEMENT — every purchase is charged and granted nothing"
-    printf '        it said: %s\n' "$body"
-  fi
+  d=""; [ -n "$DIRECT" ] && d=$(verdict "$(probe "$DIRECT")")
+  a=$(verdict "$(probe "$API")")
+
+  case "$d" in
+    filters)      ok "the container filters on $WANT_ENTITLEMENT (asked directly on ${DIRECT#http://})" ;;
+    unauthorized) bad "${DIRECT#http://} rejects the container's own secret — something OTHER than this container holds that port (FLOW_PORT? an old process?)" ;;
+    wrong)        bad "the container is NOT filtering on $WANT_ENTITLEMENT — every purchase is charged and granted nothing"
+                  printf '        it said: %s\n' "$(probe "$DIRECT")" ;;
+    none)         bad "nothing answered on ${DIRECT#http://} — the container is not listening there" ;;
+  esac
+
+  case "$a" in
+    filters)      ok "$API accepts the secret, and filters on $WANT_ENTITLEMENT"
+                  # The one thing no command on this machine can prove: that
+                  # RevenueCat sends THIS secret. Its dashboard can —
+                  # Webhooks → Send test event → 200.
+                  printf '        (RevenueCat sending the same secret: prove it with Send test event → 200)\n' ;;
+    unauthorized)
+      if [ "$d" = filters ]; then
+        bad "$API is NOT this container — the same secret works on ${DIRECT#http://} and fails there. nginx is proxying somewhere else, or an old process answers the public name"
+      else
+        bad "$API rejects the secret read from $src"
+      fi ;;
+    wrong)        bad "$API is NOT filtering on $WANT_ENTITLEMENT — every purchase is charged and granted nothing"
+                  printf '        it said: %s\n' "$(probe "$API")" ;;
+    none)         bad "$API returned nothing to a signed call" ;;
+  esac
 fi
 
 # What a phone is told before anyone signs in. A bootstrap that cannot answer
