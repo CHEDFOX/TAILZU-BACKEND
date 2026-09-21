@@ -44,11 +44,16 @@ process.env.DEV_SKIP_AUTH = "true";
 process.env.MEDIA_DIR = "/tmp/tailzu-test-media";
 process.env.NODE_ENV = "test";
 process.env.REVENUECAT_WEBHOOK_SECRET = SECRET;
-// The posture a live server must run in. It defaults to TRUE, which is a
-// giveaway once the app is on a store — every TestFlight and Play internal
-// build transacts against a sandbox where nobody is charged. Pinned here so
-// this file tests the shipped configuration rather than the convenient one.
-process.env.REVENUECAT_ALLOW_SANDBOX = "false";
+// Sandbox grants are ON, which is the deployed choice and not an oversight.
+// A sandbox transaction can only come from a TestFlight or Play internal
+// build — a closed list — and from APP STORE REVIEW, which buys in sandbox
+// too. Refusing it would hand a reviewer a purchase that completes and
+// unlocks nothing, which is a rejection for "in-app purchase not working".
+// So testers and reviewers get it free, deliberately.
+//
+// Both directions of the flag are covered in entitlements.test.ts, which can
+// re-import the module per case. This file tests the one that is deployed.
+process.env.REVENUECAT_ALLOW_SANDBOX = "true";
 process.env.FREE_MONTHLY_WORDS = "800";
 // AUTH HAS TO LOOK CONFIGURED, or the meter is not the meter. With auth off,
 // enforceQuota allows everything by design — there is no billing to protect in
@@ -270,14 +275,20 @@ describe("payments, end to end", () => {
     expect((await bootstrap()).json().flags["billing.entitled"]).toBe(false);
   });
 
-  it("grants nothing for a sandbox purchase, because nobody was charged", async () => {
-    // TestFlight and Play's internal track transact against the stores'
-    // sandboxes. That is what makes the paid path testable before launch, and
-    // a giveaway after.
-    expect(getConfig().REVENUECAT_ALLOW_SANDBOX).toBe(false);
+  it("lets a tester and a reviewer through, because that is the deployed choice", async () => {
+    // A sandbox purchase reaches this endpoint from exactly two places: a
+    // build only the tester list can install, and App Store review. Both are
+    // meant to end up with a working subscription, so the whole journey runs
+    // for them — including the meter, which is the half a reviewer checks.
+    expect(getConfig().REVENUECAT_ALLOW_SANDBOX).toBe(true);
     const sand = await webhook(event({ environment: "SANDBOX" }));
-    expect(sand.json().reason).toMatch(/sandbox/i);
-    expect(row).toBeNull();
+    expect(sand.json()).toMatchObject({ ok: true, reason: "granted" });
+    expect(row).toMatchObject({ active: true, environment: "SANDBOX" });
+
+    const paid = (await bootstrap()).json();
+    expect(paid.flags["billing.entitled"]).toBe(true);
+    wordsUsed = 5_000;
+    expect(await enforceQuota(user as never)).toBeNull();
   });
 
   it("ignores a subscription that belongs to nobody we know", async () => {
