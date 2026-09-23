@@ -293,6 +293,13 @@ export const SITE_UI = {
       { name: "Casual", text: "Hey, can you send the file tonight? Kinda urgent." },
       { name: "Formal", text: "Could you please send the file this evening? It is time-sensitive." },
       { name: "Excited", text: "Can you send the file tonight? Can't wait to dig in!" },
+      // The four nobody expects a keyboard to have. All four are real voices
+      // in the app (personalityPresets.ts), so the page promises nothing the
+      // picker does not already offer.
+      { name: "Shakespeare", text: "Prithee, send the file ere night doth fall. 'Tis most urgent." },
+      { name: "Pirate", text: "Arr, send the file tonight, matey. It be urgent." },
+      { name: "Movie Trailer", text: "One file. One night. And time is running out." },
+      { name: "Noir", text: "The file. Tonight. In this town, urgent means yesterday." },
     ],
   },
   apps: {
@@ -367,7 +374,7 @@ export const SITE_UI = {
     // at all, and there is no offline mode.
     items: [
       { q: "Does it work in WhatsApp?", a: "Yes. It's a keyboard. Every app." },
-      { q: "Which languages?", a: "22 Indian. Most of the world's." },
+      { q: "Which languages?", a: "Most of the world's." },
       { q: "Hinglish?", a: "Native. Two languages stay two." },
       { q: "Does it change what I said?", a: "It cleans. It never rewrites. Names and amounts stay." },
       { q: "Can I change the tone?", a: "One tap on the keyboard." },

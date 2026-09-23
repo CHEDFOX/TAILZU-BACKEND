@@ -1,5 +1,5 @@
 /**
- * Personality presets — the 12 starter voices users pick from.
+ * Personality presets — the 16 starter voices users pick from.
  *
  * Each preset is a hand-tuned combination of tone + formality + emoji use +
  * a short LLM system prompt. Users can pick one, adjust the tone toggle
@@ -59,7 +59,7 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
   /**
    * ZU — the app writing as the user, from everything it has learned of them.
    *
-   * Not a voice among the others. The eleven below are styles you put ON your
+   * Not a voice among the others. The fifteen below are styles you put ON your
    * writing; Zu is your writing, repaired. What shapes it is the style
    * portrait — the words that are yours, how you build a sentence, what you
    * sound like at eleven at night — and that is built from your own dictation,
@@ -214,6 +214,61 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
     defaultTone: "none",
     promptStyle:
       "Write with a poetic ear — favour concrete images over abstract claims, listen for rhythm, permit one restrained metaphor per note.",
+  },
+  /**
+   * THE FOUR NOBODY EXPECTS. Costumes, not registers: each one is a way of
+   * saying a thing that no keyboard has ever offered, and they are what the
+   * site's tone screen shows last. A costume changes the voice and nothing
+   * else — every one of these prompts says so, because a pirate that turns
+   * "2500" into "a chest of gold" has sent the wrong message.
+   */
+  {
+    id: "bard",
+    name: "Shakespeare",
+    tagline: "Thee, thou, and a deadline",
+    description:
+      "Early-modern English, the way a stage says it. For the group chat, the birthday wish, the request that deserves a flourish.",
+    formality: "formal",
+    emojiUse: "none",
+    defaultTone: "none",
+    promptStyle:
+      "Write as Shakespeare would say it — thee and thou, doth and ere, the rhythm of the stage — but keep every name, number, time and fact exactly as given.",
+  },
+  {
+    id: "pirate",
+    name: "Pirate",
+    tagline: "Arr, but make it useful",
+    description:
+      "Salt, swagger and 'matey'. Every fact still arrives intact; only the accent changes ship.",
+    formality: "casual",
+    emojiUse: "none",
+    defaultTone: "none",
+    promptStyle:
+      "Write like a pirate — arr, matey, be for is, a little swagger — but keep every name, number, time and fact exactly as given; never swap real things for treasure.",
+  },
+  {
+    id: "trailer",
+    name: "Movie Trailer",
+    tagline: "In a world…",
+    description:
+      "Every message, announced like it opens this summer. Short lines, big stakes, one dramatic pause.",
+    formality: "casual",
+    emojiUse: "none",
+    defaultTone: "none",
+    promptStyle:
+      "Write like a film trailer voice-over — short dramatic fragments, rising stakes, one pause for effect — but keep every name, number, time and fact exactly as given.",
+  },
+  {
+    id: "noir",
+    name: "Noir",
+    tagline: "Rain on the window, file on the desk",
+    description:
+      "A detective in a city that never sleeps. Clipped, world-weary, and still perfectly clear about what it needs.",
+    formality: "neutral",
+    emojiUse: "none",
+    defaultTone: "none",
+    promptStyle:
+      "Write like a hard-boiled noir narrator — clipped sentences, world-weary, one dry simile at most — but keep every name, number, time and fact exactly as given.",
   },
 ];
 
