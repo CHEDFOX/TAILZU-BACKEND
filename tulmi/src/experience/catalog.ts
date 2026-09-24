@@ -1534,10 +1534,12 @@ const DESKTOP_UI = {
     // two social rows — described a form this window no longer builds.
     title: "Tailzu",
     subtitle: "Sign in the same way you do on your phone — your voices, history and words come with you.",
-    // Says what is true since dictation started requiring an account. It said
-    // the opposite for one release, which is exactly the kind of line that used
-    // to need an installer to correct.
-    note: "Dictation needs an account, the same as on your phone.",
+    // NOTHING UNDER THE FORM. The line here said dictation needs an account,
+    // under a form whose whole job is asking for one: the same fact twice, and
+    // the second time as small print. Empty is how the server says "no line";
+    // the window hides the element rather than showing its own word, so a
+    // sentence can be put back from here without an installer.
+    note: "",
   },
   /**
    * WHERE THE FORM SITS ON THE ART.

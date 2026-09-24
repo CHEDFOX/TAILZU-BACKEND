@@ -429,9 +429,11 @@ describe("buildBootstrap", () => {
     for (const section of ["gate", "rail", "tray", "notify"]) {
       expect(Object.keys(shell[section] ?? {}).length).toBeGreaterThan(0);
     }
-    // The line that was wrong for a release: it promised dictation without an
-    // account, on the surface where that had just stopped being true.
-    expect(shell.gate.note).toMatch(/account/i);
+    // Nothing under the form. The line that stood here restated what the form
+    // already asks for; if a note ever comes back it must not promise
+    // dictation without an account, on the surface where that is not true.
+    expect(shell.gate.note ?? "").not.toMatch(/without an account/i);
+    expect(shell.gate.note ?? "").toBe("");
 
     // A phone has no tray to label, and would carry the whole block on every
     // launch for nothing.
@@ -453,6 +455,10 @@ describe("buildBootstrap", () => {
       if (section === "gateLayout") continue;
       for (const [key, value] of Object.entries(entries)) {
         expect(typeof value, `${section}.${key}`).toBe("string");
+        // The one line that may be absent: the window hides the note when it
+        // is blank instead of falling back to a word of its own, so blank is
+        // an instruction here, not a lost key.
+        if (section === "gate" && key === "note") continue;
         expect(String(value).trim(), `${section}.${key}`).not.toBe("");
       }
     }
