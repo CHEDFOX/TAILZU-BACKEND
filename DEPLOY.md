@@ -1,5 +1,12 @@
 # Deploying the Tulmi backend to a Hostinger VPS (shared with other apps)
 
+> **Already set up?** The one command that deploys is
+> `ssh root@91.108.104.168 'cd ~/tulmi && git pull --ff-only && ./deploy/ship.sh'`
+> — it pulls, rebuilds, and proves the site, the installer and payments are
+> live. `CHECK=1` runs the proof alone. The rest of this page is the first
+> setup. The commands for the phones, the desktop and the site are in the
+> frontend repo's `SHIP.md`.
+
 > **Already cloned before the rename?** The backend folder moved from `backend/`
 > to `tulmi/`. Update with:
 > ```bash
