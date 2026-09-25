@@ -2199,6 +2199,10 @@ describe("the mic key's mark comes from the server", () => {
         // The wave while recording is water: tides with a period and a length.
         expect(rec.wave.tide.period).toBeGreaterThan(0);
         expect(rec.wave.tide.length).toBeGreaterThan(0);
+        // A sea has depth: rows behind the bars, and a crest that leans.
+        expect(rec.wave.tide.rows).toBeGreaterThanOrEqual(2);
+        expect(rec.wave.tide.depth).toBeGreaterThan(0);
+        expect(rec.wave.tide.lean).toBeGreaterThanOrEqual(0);
         // The bars rise well clear of their rest, in ink: the swell is a height, not a colour.
         expect(kept.swell.height).toBeGreaterThan(1.3);
       }

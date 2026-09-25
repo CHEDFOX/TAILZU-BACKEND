@@ -11179,11 +11179,17 @@ const BRAND_MARK = {
  * `shrink` and fading as it crosses the rim. Once they are away the kept
  * shape (`keep`, the dashed link between the blocks) glides to the middle
  * (`centre`, after `wait` seconds) and grows by `lift`: the wave, and the
- * wave is water. Two crests travel its bars, a long slow one (`tide.length`
- * of the line, one pass every `tide.period` seconds) and a shorter quicker
- * one riding it; where they add a tide forms — each bar rising under the
- * crest, up to `tide.rise` of its full swell, and collapsing behind it —
- * and where they cancel it goes flat. All in the mark's own ink. On
+ * wave is a sea. The bars are the front of a surface `tide.rows` deep, each
+ * row `tide.depth` units behind the last and a little smaller and fainter,
+ * the way distance is; between the rows the water is facets of ink, faint,
+ * deeper where the crest stands. Two crests travel it, a long slow one
+ * (`tide.length` of the line, one pass every `tide.period` seconds) and a
+ * shorter quicker one riding it, each row meeting them `tide.skew` of a
+ * cycle later so they run diagonally across the water; under a crest the
+ * surface rises, up to `tide.rise` of the bars' full swell, its top leaning
+ * forward by `tide.lean` of its height — the curl of a breaking wave — and
+ * collapses behind it. The rows grow out of the bars as the wave opens and
+ * sink back into them as it closes. All in the mark's own ink. On
  * stop it all reverses: the wave settles back into the link, and the parts
  * glide in on the same arcs in the opposite order and land exactly where
  * they began, within `settle` seconds; then the idle signal resumes. Every
@@ -11211,7 +11217,7 @@ const MIC_MOTION = {
   ],
   recording: {
     kind: "disperse", keep: "link", out: 1.9, spin: 40, arc: 0.22, shrink: 0.45, gather: 0.05, stagger: 0.07, settle: 1.2,
-    wave: { lift: 2, centre: true, wait: 0.25, tide: { period: 1.2, length: 0.6, rise: 1 } },
+    wave: { lift: 2, centre: true, wait: 0.25, tide: { period: 1.2, length: 0.6, rise: 1, rows: 5, depth: 14, lean: 0.55, skew: 0.09 } },
   },
 };
 
