@@ -11241,27 +11241,34 @@ const MIC_PROGRAM = {
     "bturb": 0.14,
     "btumble": 1,
     "bstagger": 0.05,
-    "lift": 3.6,
+    "lift": 2.0,
     "wait": 0.25,
     "tperiod": 2.6,
     "tlength": 0.7,
     "trise": 1,
     "rows": 7,
-    "depth": 17,
+    "depth": 30,
     "lean": 0.26,
     "skew": 0.07,
     "mess": 0.35,
     "persp": 0.08,
     "pts": 25,
-    "drop": 0.22,
+    "drop": 0.34,
     "below": 0,
     "clean": 0.15,
     "fill": 0.06,
-    "span": 1.45,
-    "amp": 1.45,
-    "flutter": 0.14,
+    "span": 2.6,
+    "amp": 2.4,
+    "flutter": 0.2,
     "jitter": 0.09,
-    "gap0": 3
+    "gap0": 1,
+    "tilt": 1.1,
+    "sway": 0.3,
+    "rowsw": 0.7,
+    "nst": 24,
+    "stlen": 22,
+    "stw": 0.9,
+    "push": 0.7
   },
   "funcs": {
     "tide": {
@@ -11326,6 +11333,54 @@ const MIC_PROGRAM = {
         "f"
       ],
       "expr": "y1 + (y2 - y1)*fa(r, f) + ny*((depth*(r - 1) + gap0)*q + hr(r, f)/2) + ly*clean*hr(r, f)*tide(f, r)*q"
+    },
+    "sc": {
+      "args": [
+        "k"
+      ],
+      "expr": "0.5 + ((k + 0.5)/nst - 0.5)*span*0.92 + 0.05*noise(k*1.7)"
+    },
+    "so": {
+      "args": [
+        "k"
+      ],
+      "expr": "14*noise(k*3.1) - 6"
+    },
+    "sl": {
+      "args": [
+        "k"
+      ],
+      "expr": "stlen*(0.55 + 0.5*(0.5 + 0.5*noise(k*2.3)))*(1 + 0.6*tide(clamp(sc(k), 0, 1), 0))*q"
+    },
+    "sa": {
+      "args": [
+        "k"
+      ],
+      "expr": "1.2*noise(k*5.3) + sway*sin(t*1.2 + k*1.9) + push*tide(clamp(sc(k), 0, 1), 0)"
+    },
+    "sx1": {
+      "args": [
+        "k"
+      ],
+      "expr": "x1 + (x2 - x1)*sc(k) + nx*so(k)*q - (nx*cos(sa(k)) + lx*sin(sa(k)))*sl(k)"
+    },
+    "sy1": {
+      "args": [
+        "k"
+      ],
+      "expr": "y1 + (y2 - y1)*sc(k) + ny*so(k)*q - (ny*cos(sa(k)) + ly*sin(sa(k)))*sl(k)"
+    },
+    "sx2": {
+      "args": [
+        "k"
+      ],
+      "expr": "x1 + (x2 - x1)*sc(k) + nx*so(k)*q + (nx*cos(sa(k)) + lx*sin(sa(k)))*sl(k)"
+    },
+    "sy2": {
+      "args": [
+        "k"
+      ],
+      "expr": "y1 + (y2 - y1)*sc(k) + ny*so(k)*q + (ny*cos(sa(k)) + ly*sin(sa(k)))*sl(k)"
     }
   },
   "springs": {
@@ -11423,7 +11478,7 @@ const MIC_PROGRAM = {
       "rot": "(180 - atan2(y2 - y1, x2 - x1)*180/pi)*q",
       "scale": "1 + (lift - 1)*q",
       "rise": "max(tide(f, 0)*q*(1 - flutter*0.5 + flutter*0.5*sin(t*2.1 + i*1.9)) + q*flutter*(0.5 + 0.5*noise(t*0.9 + i*3.1)), run(f, t % period, 1.33, 0.95, 0.3)*(1 - q))",
-      "lean": "lean*rise + q*jitter*sin(t*1.1 + i*2.7)"
+      "lean": "lean*rise + q*(tilt*noise(i*2.9 + 1.1) + sway*sin(t*1.1 + i*2.7))"
     }
   },
   "emit": [
@@ -11461,7 +11516,24 @@ const MIC_PROGRAM = {
         "y": "sy(rows - j, i/(pts - 1))"
       },
       "opacity": "q*(0.8 - 0.1*(rows - j))",
-      "width": "thick*0.38*(1 - persp*(rows - j))",
+      "width": "thick*rowsw*(1 - persp*(rows - j))",
+      "color": "ink"
+    },
+    {
+      "attach": "link",
+      "kind": "line",
+      "repeat": [
+        "nst"
+      ],
+      "as": [
+        "k"
+      ],
+      "x1": "sx1(k)",
+      "y1": "sy1(k)",
+      "x2": "sx2(k)",
+      "y2": "sy2(k)",
+      "opacity": "q*(0.6 + 0.3*noise(k*4.1))",
+      "width": "thick*stw",
       "color": "ink"
     }
   ],
