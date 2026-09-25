@@ -11241,44 +11241,20 @@ const MIC_PROGRAM = {
     "bturb": 0.14,
     "btumble": 1,
     "bstagger": 0.05,
-    "lift": 2.0,
+    "lift": 2.8,
     "wait": 0.25,
-    "tperiod": 2.6,
-    "tlength": 0.7,
-    "trise": 1,
-    "rows": 7,
-    "depth": 30,
-    "lean": 0.2,
-    "skew": 0.07,
-    "mess": 0.3,
-    "persp": 0.08,
-    "pts": 33,
-    "drop": 0.34,
-    "below": 0,
-    "clean": 0.1,
-    "fill": 0.06,
-    "span": 2.6,
-    "amp": 2.4,
-    "flutter": 0.2,
-    "jitter": 0.09,
-    "gap0": 1,
-    "tilt": 0.6,
-    "sway": 0.3,
-    "rowsw": 0.7,
-    "nst": 40,
-    "stlen": 36,
-    "stw": 0.9,
-    "push": 0.5,
-    "spread": 1.0
+    "krad": 1.636,
+    "ring": 0.72,
+    "nt": 42,
+    "tick": 0.05,
+    "swell": 0.15,
+    "sweep": 1.1,
+    "turn": 0.12,
+    "voice": 0.75,
+    "bloom": 0.35,
+    "breath": 0.035
   },
   "funcs": {
-    "tide": {
-      "args": [
-        "f",
-        "r"
-      ],
-      "expr": "clamp((crest(tau*(f/tlength - t/tperiod + r*skew)) + 0.4*crest(tau*(f/(tlength*0.55) - t/(tperiod*0.7) + 0.3 + r*skew)) + mess*(0.35*pow(max(0, sin(tau*(f/(tlength*0.8) + t/(tperiod*1.3) - r*skew*1.5))), 1.4) + 0.1*sin(t*0.9 + r*1.3 + f*2.5)))*trise, 0, 1)"
-    },
     "turbs": {
       "args": [],
       "expr": "rec ? 0 : bturb*R*abs(p)*(0.6*sin(t*11 + k*2.1) + 0.4*sin(t*17 + k*0.7))"
@@ -11295,111 +11271,41 @@ const MIC_PROGRAM = {
       "args": [],
       "expr": "out*R*p + turbr()"
     },
-    "u": {
-      "args": [
-        "f"
-      ],
-      "expr": "clamp(f*cols - 0.5, 0, cols - 1)"
-    },
-    "hc": {
-      "args": [
-        "f"
-      ],
-      "expr": "lerp(height(floor(u(f))), height(min(cols - 1, floor(u(f)) + 1)), u(f) - floor(u(f)))"
-    },
-    "fa": {
-      "args": [
-        "r",
-        "f"
-      ],
-      "expr": "0.5 + (f - 0.5)*span*(1 - persp*r)"
-    },
-    "hr": {
-      "args": [
-        "r",
-        "f"
-      ],
-      "expr": "amp*hc(f)*(1 + (swh - 1)*tide(f, r))*(1 - persp*r)"
-    },
-    "sx": {
-      "args": [
-        "r",
-        "f"
-      ],
-      "expr": "x1 + (x2 - x1)*fa(r, f) + nx*((depth*(r - 1) + gap0)*q + hr(r, f)/2) + lx*clean*hr(r, f)*tide(f, r)*q"
-    },
-    "sy": {
-      "args": [
-        "r",
-        "f"
-      ],
-      "expr": "y1 + (y2 - y1)*fa(r, f) + ny*((depth*(r - 1) + gap0)*q + hr(r, f)/2) + ly*clean*hr(r, f)*tide(f, r)*q"
-    },
-    "sc": {
+    "ang": {
       "args": [
         "k"
       ],
-      "expr": "clamp(0.5 + cos(sang(k))*srad(k)/(L*span), 0, 1)"
+      "expr": "tau*k/nt + turn*t"
     },
-    "sl": {
+    "rr": {
+      "args": [],
+      "expr": "krad*R*ring*(bloom + (1 - bloom)*q)*(1 + breath*lv)/lift"
+    },
+    "cr": {
       "args": [
         "k"
       ],
-      "expr": "stlen*(0.55 + 0.5*(0.5 + 0.5*noise(k*2.3)))*(1 + 0.5*tide(sc(k), 0))*q"
+      "expr": "0.6*crest(ang(k)*2 - sweep*t) + 0.4*crest(ang(k)*3 + sweep*0.7*t + 1)"
     },
-    "sa": {
+    "th": {
       "args": [
         "k"
       ],
-      "expr": "1.4*noise(k*5.3) + sway*sin(t*1.2 + k*1.9) + push*tide(sc(k), 0)"
+      "expr": "(tick*krad*R*(0.5 + 0.5*height(k % cols)/46) + swell*krad*R*cr(k)*(1 - voice + voice*lv))/lift*q"
     },
-    "sx1": {
+    "tx": {
       "args": [
-        "k"
+        "k",
+        "s"
       ],
-      "expr": "scx(k) - (nx*cos(sa(k)) + lx*sin(sa(k)))*sl(k)"
+      "expr": "(x1 + x2)/2 + (lx*cos(ang(k)) + nx*sin(ang(k)))*(rr() + th(k)*s)"
     },
-    "sy1": {
+    "ty": {
       "args": [
-        "k"
+        "k",
+        "s"
       ],
-      "expr": "scy(k) - (ny*cos(sa(k)) + ly*sin(sa(k)))*sl(k)"
-    },
-    "sx2": {
-      "args": [
-        "k"
-      ],
-      "expr": "scx(k) + (nx*cos(sa(k)) + lx*sin(sa(k)))*sl(k)"
-    },
-    "sy2": {
-      "args": [
-        "k"
-      ],
-      "expr": "scy(k) + (ny*cos(sa(k)) + ly*sin(sa(k)))*sl(k)"
-    },
-    "sang": {
-      "args": [
-        "k"
-      ],
-      "expr": "k*2.399 + 0.3*noise(k*1.7)"
-    },
-    "srad": {
-      "args": [
-        "k"
-      ],
-      "expr": "spread*U/lift*sqrt((k + 0.5)/nst)*(0.94 + 0.06*noise(k*1.3))*q"
-    },
-    "scx": {
-      "args": [
-        "k"
-      ],
-      "expr": "(x1 + x2)/2 + (lx*cos(sang(k)) + nx*sin(sang(k)))*srad(k)"
-    },
-    "scy": {
-      "args": [
-        "k"
-      ],
-      "expr": "(y1 + y2)/2 + (ly*cos(sang(k)) + ny*sin(sang(k)))*srad(k)"
+      "expr": "(y1 + y2)/2 + (ly*cos(ang(k)) + ny*sin(ang(k)))*(rr() + th(k)*s)"
     }
   },
   "springs": {
@@ -11415,6 +11321,13 @@ const MIC_PROGRAM = {
       "rest": 0,
       "target": "rec ? (since >= wait ? 1 : 0) : 0",
       "rate": "7",
+      "damp": "1"
+    },
+    "lv": {
+      "scope": "global",
+      "rest": 0,
+      "target": "rec ? level : 0",
+      "rate": "16",
       "damp": "1"
     }
   },
@@ -11493,66 +11406,29 @@ const MIC_PROGRAM = {
     },
     "link": {
       "dx": "(cx - home.x)*q",
-      "dy": "(cy - home.y)*q + drop*depth*lift*q*q",
+      "dy": "(cy - home.y)*q",
       "rot": "(180 - atan2(y2 - y1, x2 - x1)*180/pi)*q",
       "scale": "1 + (lift - 1)*q",
-      "rise": "max(tide(f, 0)*q*(1 - flutter*0.5 + flutter*0.5*sin(t*2.1 + i*1.9)) + q*flutter*(0.5 + 0.5*noise(t*0.9 + i*3.1)), run(f, t % period, 1.33, 0.95, 0.3)*(1 - q))",
-      "lean": "lean*rise + q*(tilt*noise(i*2.9 + 1.1) + sway*sin(t*1.1 + i*2.7))"
+      "rise": "max(q*clamp(0.2*cr(i*6) + 1.1*lv*(0.6 + 0.4*sin(t*9 + i*1.7)), 0, 1), run(f, t % period, 1.33, 0.95, 0.3)*(1 - q))",
+      "lean": "0"
     }
   },
   "emit": [
     {
       "attach": "link",
-      "kind": "polygon",
-      "repeat": [
-        "rows - 1"
-      ],
-      "as": [
-        "j"
-      ],
-      "points": {
-        "count": "2*pts",
-        "as": "i",
-        "x": "i < pts ? sx(rows - 1 - j, i/(pts - 1)) : sx(rows - j, (2*pts - 1 - i)/(pts - 1))",
-        "y": "i < pts ? sy(rows - 1 - j, i/(pts - 1)) : sy(rows - j, (2*pts - 1 - i)/(pts - 1))"
-      },
-      "opacity": "q*fill*(1 - 0.12*(rows - 1 - j))",
-      "color": "ink"
-    },
-    {
-      "attach": "link",
-      "kind": "polyline",
-      "repeat": [
-        "rows"
-      ],
-      "as": [
-        "j"
-      ],
-      "points": {
-        "count": "pts",
-        "as": "i",
-        "x": "sx(rows - j, i/(pts - 1))",
-        "y": "sy(rows - j, i/(pts - 1))"
-      },
-      "opacity": "q*(0.8 - 0.1*(rows - j))",
-      "width": "thick*rowsw*(1 - persp*(rows - j))",
-      "color": "ink"
-    },
-    {
-      "attach": "link",
       "kind": "line",
       "repeat": [
-        "nst"
+        "nt"
       ],
       "as": [
         "k"
       ],
-      "x1": "sx1(k)",
-      "y1": "sy1(k)",
-      "x2": "sx2(k)",
-      "y2": "sy2(k)",
-      "opacity": "q*(0.5 + 0.3*noise(k*4.1))",
-      "width": "thick*stw",
+      "x1": "tx(k, -0.3)",
+      "y1": "ty(k, -0.3)",
+      "x2": "tx(k, 0.7)",
+      "y2": "ty(k, 0.7)",
+      "opacity": "q*(0.42 + 0.5*cr(k)*(0.5 + 0.5*lv))",
+      "width": "thick*1.5",
       "color": "ink"
     }
   ],
