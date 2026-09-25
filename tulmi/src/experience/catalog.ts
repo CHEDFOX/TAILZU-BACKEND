@@ -11188,15 +11188,19 @@ const BRAND_MARK = {
  * cycle later so they run diagonally across the water; under a crest the
  * surface rises, up to `tide.rise` of the bars' full swell, its top leaning
  * forward by `tide.lean` of its height — the curl of a breaking wave — and
- * collapses behind it. The rows grow out of the bars as the wave opens and
- * sink back into them as it closes. All in the mark's own ink. On
- * stop it all reverses: the wave settles back into the link, and the parts
- * glide in on the same arcs in the opposite order and land exactly where
- * they began, within `settle` seconds; then the idle signal resumes. Every
- * part follows one number, its progress from home to away, on a critically
- * damped spring, so a stop mid-flight simply turns it around: nothing ever
- * jumps. A build that predates the dispersal reads `recording` as a name
- * and shows its particles.
+ * collapses behind it; `tide.mess` adds a third crest running against the
+ * others, a chop of short ripples and a slow noise, so no two tides are
+ * alike. The rows grow out of the bars as the wave opens and sink back
+ * into them as it closes. All in the mark's own ink. Stop is a throw
+ * (`back`): the wave settles back into the link, and the parts are hurled
+ * in from outside in cascade (`back.stagger` apart), tumbling `back.tumble`
+ * extra turns, buffeted by a turbulence of `back.turbulence` key-radii that
+ * dies as they close in, on a fast spring (`back.speed`) underdamped by
+ * `back.bounce` so each overshoots the core a touch and snaps onto it,
+ * within `settle` seconds; then the idle signal resumes. Every part follows
+ * one number, its progress from home to away, so a stop mid-flight simply
+ * turns it around: nothing ever jumps. A build that predates the dispersal
+ * reads `recording` as a name and shows its particles.
  *
  * Motion on a shape the mark lacks is ignored, a kind a build does not know
  * is ignored, and a build older than this ignores all of it and draws its
@@ -11216,8 +11220,9 @@ const MIC_MOTION = {
     { on: "mark", kind: "breathe", period: 4.2, scale: 1.06, opacity: 1 },
   ],
   recording: {
-    kind: "disperse", keep: "link", out: 1.9, spin: 40, arc: 0.22, shrink: 0.45, gather: 0.05, stagger: 0.07, settle: 1.2,
-    wave: { lift: 2, centre: true, wait: 0.25, tide: { period: 1.2, length: 0.6, rise: 1, rows: 5, depth: 14, lean: 0.55, skew: 0.09 } },
+    kind: "disperse", keep: "link", out: 1.9, spin: 40, arc: 0.22, shrink: 0.45, gather: 0.05, stagger: 0.07, settle: 1.4,
+    back: { speed: 12, bounce: 0.6, turbulence: 0.14, tumble: 1, stagger: 0.05 },
+    wave: { lift: 2, centre: true, wait: 0.25, tide: { period: 1.2, length: 0.6, rise: 1, rows: 5, depth: 14, lean: 0.55, skew: 0.09, mess: 0.7 } },
   },
 };
 

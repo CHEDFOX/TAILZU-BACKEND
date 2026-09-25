@@ -2193,7 +2193,12 @@ describe("the mic key's mark comes from the server", () => {
         expect(kept.swell.thick, platform).toBeGreaterThanOrEqual(1);
         expect(rec.out).toBeGreaterThan(1);       // clear of the rim
         expect(rec.stagger).toBeGreaterThanOrEqual(0);
-        expect(rec.settle).toBeGreaterThan((mark.shapes.length - 1) * rec.stagger + 0.15);   // time for the last part to land
+        // The throw home: fast, underdamped so it snaps on, in a cascade the settle outlasts.
+        expect(rec.back.speed).toBeGreaterThan(rec.stagger > 0 ? 1 / rec.stagger / 2 : 1);
+        expect(rec.back.bounce).toBeGreaterThan(0);
+        expect(rec.back.bounce).toBeLessThan(1);
+        expect(rec.settle).toBeGreaterThan((mark.shapes.length - 1) * rec.back.stagger + 0.12 + 0.5);   // time for the last part to land
+        expect(rec.wave.tide.mess).toBeGreaterThanOrEqual(0);
         expect(rec.settle).toBeGreaterThan(0);
         expect(rec.wave.lift).toBeGreaterThan(0);
         // The wave while recording is water: tides with a period and a length.
