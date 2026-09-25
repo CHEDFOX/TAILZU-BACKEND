@@ -11125,6 +11125,9 @@ const BRAND_ACCENT = "#E8A23C";
  */
 const BRAND_MARK = {
   viewBox: [170, 228, 680, 512],
+  // The key is round. Fit by the artboard's diagonal, so its corners touch
+  // the circle and no square is cut off at the rim; "box" fits the sides.
+  fit: "circle",
   // On the key every shape wears the key's own ink (`fg`), as the bundled
   // mark always did. `tint: false` shows the brand colours instead.
   tint: true,
