@@ -2163,7 +2163,7 @@ describe("the mic key's mark comes from the server", () => {
         expect(mark.shapes, platform).toHaveLength(7);
         // Geometry only. A picture can never stand where the mark stands.
         for (const s of mark.shapes) {
-          expect(["rect", "line", "circle"], platform).toContain(s.kind);
+          expect(["rect", "line", "circle", "bars"], platform).toContain(s.kind);
           expect(s, platform).not.toHaveProperty("url");
         }
         // Motion names shapes the mark actually has, or the whole mark.
@@ -2186,8 +2186,11 @@ describe("the mic key's mark comes from the server", () => {
         const rec = k.props.motion.recording;
         expect(rec.kind).toBe("disperse");
         const kept = mark.shapes.find((s: any) => s.id === rec.keep);
-        expect(kept?.kind, `${platform} keeps a line`).toBe("line");
-        expect(kept.dash?.length, `${platform} keeps a dashed line`).toBeGreaterThan(0);
+        // The wave of the icon: bars across the line, uneven, seven of them.
+        expect(kept?.kind, `${platform} keeps the bars`).toBe("bars");
+        expect(kept.heights.length, platform).toBeGreaterThanOrEqual(5);
+        expect(new Set(kept.heights).size, `${platform} uneven`).toBeGreaterThan(2);
+        expect(kept.swell.thick, platform).toBeGreaterThan(1);
         expect(rec.out).toBeGreaterThan(1);       // clear of the rim
         expect(rec.stagger).toBeGreaterThanOrEqual(0);
         expect(rec.settle).toBeGreaterThan((mark.shapes.length - 1) * rec.stagger + 0.15);   // time for the last part to land

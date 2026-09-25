@@ -11136,7 +11136,13 @@ const BRAND_MARK = {
   // second, up the long line to the dot.
   shapes: [
     { id: "line1", kind: "line", x1: 346, y1: 402, x2: 270, y2: 598, width: 9, cap: "round", color: "#E9CBA2" },
-    { id: "link", kind: "line", x1: 444, y1: 394, x2: 554, y2: 486, width: 30, dash: [9, 11], color: BRAND_ACCENT },
+    {
+      // THE WAVE OF THE ICON, measured from the splash: seven thin bars of
+      // uneven height across the line, and under the bright swell each bar
+      // is thicker by half and a touch taller.
+      id: "link", kind: "bars", x1: 444, y1: 394, x2: 554, y2: 486, thick: 6,
+      heights: [28, 36, 41, 46, 43, 34, 28], swell: { thick: 1.5, height: 1.07 }, color: BRAND_ACCENT,
+    },
     { id: "line2", kind: "line", x1: 668, y1: 478, x2: 828, y2: 243, width: 9, cap: "round", color: "#C77A3A" },
     { id: "dot", kind: "circle", cx: 828, cy: 243, r: 11, color: "#B06240" },
     { id: "a", kind: "rect", x: 308, y: 269, w: 132, h: 132, rx: 28, color: "#F4F1EA" },
