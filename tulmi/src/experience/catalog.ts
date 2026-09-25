@@ -11438,6 +11438,12 @@ const MIC_PROGRAM = {
   }
 };
 
+/** THE MIC KEY, FOR THE SITE. The landing page draws the keyboard's mic key
+ *  with the renderer the phones run, from this same mark and program, so
+ *  what the site shows is what the key does. `inset` is the key's idle
+ *  icon inset, as the keyboard flag `kb.mic.idleIconInset` has it. */
+export const SITE_MIC = { mark: BRAND_MARK, program: MIC_PROGRAM, inset: 7 };
+
 const MIC_MOTION = {
   idle: [
     {

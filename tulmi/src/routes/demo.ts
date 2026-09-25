@@ -31,7 +31,7 @@ import type { AudioFormat } from "../../../shared/types/api.js";
 import { getConfig } from "../config.js";
 import { runPipeline } from "../pipeline/index.js";
 import { estimateDurationSeconds } from "../pipeline/stt.js";
-import { SITE_UI } from "../experience/catalog.js";
+import { SITE_UI, SITE_MIC } from "../experience/catalog.js";
 
 const FORMATS: AudioFormat[] = ["wav", "m4a", "webm", "mp3", "ogg", "flac"];
 
@@ -193,6 +193,8 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
     reply.header("Cache-Control", "public, max-age=60");
     return {
       copy: SITE_UI,
+      // The keyboard's mic key, for the page to draw as the phones do.
+      mic: SITE_MIC,
       freeWords: Math.max(0, cfg.FREE_MONTHLY_WORDS),
       downloads,
       demo: cfg.DEMO_ENABLED,

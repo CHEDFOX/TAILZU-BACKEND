@@ -107,6 +107,11 @@ describe("the landing page", () => {
       expect(c.hero[k].trim().length).toBeGreaterThan(0);
       expect(c.hero[k].trim().split(/\s+/).length).toBeLessThanOrEqual(4);
     }
+    // THE MIC KEY, FOR THE PAGE TO DRAW: the phones' mark and program, so
+    // the key on the site is the key on the keyboard.
+    expect(body.mic.program.version).toBe(1);
+    expect(body.mic.mark.shapes.some((sh: { kind: string }) => sh.kind === "bars")).toBe(true);
+    expect(body.mic.inset).toBe(7);
     // No small title over any main title: the title is the title.
     for (const sec of [c.how, c.tone, c.llm, c.apps, c.desk, c.dev, c.faq]) expect(sec.kick).toBeUndefined();
     expect(c.how.steps.length).toBe(3);
