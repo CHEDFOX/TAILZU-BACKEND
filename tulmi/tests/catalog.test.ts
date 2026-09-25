@@ -2179,23 +2179,22 @@ describe("the mic key's mark comes from the server", () => {
         // square, along the link, square.
         const sig = k.props.motion.idle.find((m: any) => m.kind === "signal");
         expect(sig?.steps.map((st: any) => st.on)).toEqual(["c", "a", "link", "b"]);
-        // While the microphone is open the structure is played with, cartoon
-        // style, and springs home on stop. The gags travel with the key, so a
-        // new one is a deploy: each is a few keyframes in rising time, pulling
-        // only squares the mark has, and a spin wraps its full turn back off.
+        // While the microphone is open the structure is a physical thing in
+        // the key, and a series of scenes runs through it. The scenes travel
+        // with the key, so a new one is a deploy: each runs for a while, pins
+        // only squares the mark has, and keeps its numbers where the engine
+        // stays stable.
         const rec = k.props.motion.recording;
-        expect(rec.kind).toBe("play");
-        expect(rec.wobble).toBeGreaterThan(0);
-        expect(rec.wobble).toBeLessThan(1);
+        expect(rec.kind).toBe("physics");
         expect(rec.settle).toBeGreaterThan(0);
-        expect(rec.gags.length).toBeGreaterThanOrEqual(6);
-        for (const g of rec.gags) {
-          expect(g.frames.length, g.name).toBeGreaterThan(1);
-          for (let i = 1; i < g.frames.length; i++) expect(g.frames[i].t, g.name).toBeGreaterThan(g.frames[i - 1].t);
-          for (const f of g.frames) {
-            for (const pl of f.pull ?? []) expect(ids.has(pl.on), `${g.name} pulls ${pl.on}`).toBe(true);
-            if (f.rot !== undefined && Math.abs(f.rot) >= 180) expect(g.frames.some((x: any) => x.wrap === f.rot), `${g.name} wraps its turn`).toBe(true);
-          }
+        expect(rec.blend).toBeGreaterThan(0);
+        expect(rec.scenes.length).toBeGreaterThanOrEqual(5);
+        for (const sc of rec.scenes) {
+          expect(sc.for, sc.name).toBeGreaterThanOrEqual(3);
+          for (const id of sc.pin ?? []) expect(ids.has(id), `${sc.name} pins ${id}`).toBe(true);
+          expect(sc.stiff ?? 0.9, sc.name).toBeLessThanOrEqual(1);
+          expect(sc.bounce ?? 0.5, sc.name).toBeLessThanOrEqual(1);
+          expect(sc.hold ?? 0, sc.name).toBeLessThan(400);
         }
       }
     }

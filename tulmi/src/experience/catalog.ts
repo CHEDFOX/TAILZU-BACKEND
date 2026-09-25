@@ -11161,46 +11161,42 @@ const BRAND_MARK = {
  * The whole mark (`on: "mark"`) takes a slow `breathe`; the hatch still runs,
  * for the sizes where dashes resolve.
  *
- * `recording` is what the key does while the microphone is open: the play.
- * The structure is played with, cartoon style — yanked wide, squashed flat,
- * spun, pinched by a corner, bounced, wrung, rattled — every move with a
- * rubbery overshoot and wobble. The body has six channels (slide x/y, turn,
- * shear, stretch x/y) and every square and the dot is a node a gag can pull
- * by its corner, the lines tied to them. A gag is a few keyframes of
- * targets; the keyboard chases each on an underdamped spring (`wobble` is
- * the damping ratio, `speed` the spring's rate), which is where the
- * anticipation, snap and wobble come from. The voice is the hand: a rise
- * fires a gag at once, talking keeps them coming at `tempo` a second,
- * silence is a slow jelly breath (`idle`) and the odd small poke. `reach`
- * scales every gag. Stop turns the damping critical and the targets to
- * home, so the mark comes back smoothly within `settle` seconds and lands
- * exactly; then the idle signal resumes. New gags are a deploy, not a
- * build. A build that predates the play reads `recording` as a name and
- * shows its particles.
+ * `recording` is what the key does while the microphone is open: the
+ * physics. The structure becomes a thing inside the round key. The squares
+ * and the dot are masses, each line a rod between the two nearest (rigid or
+ * rubbery by `stiff`), the rim a wall, and the masses collide. A series of
+ * `scenes` runs through it — each for `for` seconds, blending into the next
+ * over `blend` by lerping every number, so nothing ever jumps — and each is
+ * one setting of the same engine: `hold` a tether to home, `gravity` in
+ * key-widths a second squared turning `spin` degrees a second (0 is straight
+ * down), `wind` and `swirl` a current, `centre` a pull to the middle for
+ * orbits, `bounce` the wall's restitution, `kick` what a rise in the voice
+ * throws in, `jitter` ambient shake, `squash` how much a square stretches
+ * along its own speed, `launch` a turn given once on entry, `toss` the
+ * seconds of quiet before a toy is thrown up, `pin` squares held fast. The
+ * live voice is the force in all of them. `force` scales every push. Stop
+ * blends to a stiff, critically damped tether with the wall gone, so the
+ * mark comes home smoothly within `settle` seconds and lands exactly; then
+ * the idle signal resumes. A new scene is a deploy, not a build. A build
+ * that predates the physics reads `recording` as a name and shows its
+ * particles.
  *
  * Motion on a shape the mark lacks is ignored, a kind a build does not know
  * is ignored, and a build older than this ignores all of it and draws its
  * bundled mark: the same picture, still.
  */
 /**
- * THE GAGS. Frames are seconds from the gag's start; tx/ty/out and pull
- * dx/dy are fractions of the artboard's short side, rot is degrees, shear
- * is the skew factor, sx/sy multiply. `pull` drags named squares by a corner
- * (an empty pull lets go of all); `out` pulls every node from the centre;
- * `wrap` takes a full turn back off the count once it is done, so a spin
- * ends at home. A full turn is never scaled by the voice.
+ * THE SCENES, in the order they run. Everything unnamed is 0, except stiff
+ * (0.9), bounce (0.5) and drag (1).
  */
-const MIC_GAGS = [
-  { name: "yank", frames: [{ t: 0, sx: 0.92, sy: 1.06 }, { t: 0.12, sx: 1.45, sy: 0.72 }, { t: 0.38, sx: 1, sy: 1 }] },
-  { name: "squash", frames: [{ t: 0, sy: 1.08, sx: 0.95, ty: -0.02 }, { t: 0.12, sy: 0.55, sx: 1.35, ty: 0.05 }, { t: 0.4, sy: 1, sx: 1, ty: 0 }] },
-  { name: "spin", frames: [{ t: 0, rot: -14, sx: 0.9, sy: 1.1 }, { t: 0.12, rot: 360, sx: 1, sy: 1 }, { t: 0.6, wrap: 360 }] },
-  { name: "pinch", frames: [{ t: 0, pull: [{ on: "a", dx: 0.06, dy: -0.2 }], rot: -4 }, { t: 0.3, pull: [], rot: 0 }] },
-  { name: "bounce", frames: [{ t: 0, sy: 0.7, sx: 1.25, ty: 0.05 }, { t: 0.14, ty: -0.16, sy: 1.35, sx: 0.8 }, { t: 0.4, ty: 0.04, sy: 0.6, sx: 1.3 }, { t: 0.55, ty: 0, sy: 1, sx: 1 }] },
-  { name: "wring", frames: [{ t: 0, shear: -0.15 }, { t: 0.14, shear: 0.6, rot: -8 }, { t: 0.45, shear: 0, rot: 0 }] },
-  { name: "hoist", frames: [{ t: 0, sy: 0.9, sx: 1.06 }, { t: 0.12, sy: 1.5, sx: 0.75, ty: -0.07 }, { t: 0.4, sy: 1, sx: 1, ty: 0 }] },
-  { name: "burst", frames: [{ t: 0, out: 0.14, sx: 1.12, sy: 1.12 }, { t: 0.3, out: 0, sx: 1, sy: 1 }] },
-  { name: "rattle", frames: [{ t: 0, tx: 0.05 }, { t: 0.07, tx: -0.05 }, { t: 0.14, tx: 0.045 }, { t: 0.21, tx: -0.03 }, { t: 0.28, tx: 0 }] },
-  { name: "tug", frames: [{ t: 0, pull: [{ on: "c", dx: -0.18, dy: 0.12 }] }, { t: 0.32, pull: [] }] },
+const MIC_SCENES = [
+  { name: "jelly", for: 7, hold: 45, stiff: 0.9, drag: 2.5, bounce: 0.4, kick: 1.8, jitter: 0.5, squash: 1 },
+  { name: "current", for: 8, hold: 22, stiff: 0.5, drag: 1.6, wind: 2.2, swirl: 1, bounce: 0.3, kick: 0.8, jitter: 0.1, squash: 0.8 },
+  { name: "swing", for: 9, hold: 10, stiff: 0.85, drag: 1.0, gravity: 1.8, spin: 45, bounce: 0.5, kick: 1.2, jitter: 0.1, squash: 0.9 },
+  { name: "tumble", for: 9, stiff: 0.95, drag: 0.12, wind: 0.15, bounce: 0.85, kick: 1.4, squash: 0.7, launch: 1.6 },
+  { name: "orbit", for: 8, stiff: 0.6, drag: 0.05, centre: 4, bounce: 0.9, kick: 0.9, squash: 0.6, launch: 2 },
+  { name: "toy", for: 8, stiff: 0.95, drag: 0.25, gravity: 2.6, bounce: 0.7, kick: 2, toss: 1.8, squash: 1 },
+  { name: "hang", for: 8, pin: ["dot"], stiff: 0.95, drag: 0.8, gravity: 1.8, bounce: 0.3, kick: 1.2, squash: 0.8 },
 ];
 
 const MIC_MOTION = {
@@ -11217,11 +11213,7 @@ const MIC_MOTION = {
     { on: "mark", kind: "breathe", period: 4.2, scale: 1.06, opacity: 1 },
     { on: "link", kind: "hatch", period: 2.6 },
   ],
-  recording: {
-    kind: "play", wobble: 0.32, speed: 16, reach: 1, tempo: 1.2, settle: 0.8,
-    idle: { squash: 0.03, period: 2.4 },
-    gags: MIC_GAGS,
-  },
+  recording: { kind: "physics", force: 1, wall: 0.96, blend: 1.2, settle: 1, scenes: MIC_SCENES },
 };
 
 // -------- Light-mode counterparts (used by the next SDUI build) -----------
