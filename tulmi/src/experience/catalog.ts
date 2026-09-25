@@ -11149,17 +11149,18 @@ const BRAND_MARK = {
  * HOW THE MARK MOVES, AT THE SIZE OF A KEY — the splash, on a loop.
  *
  * The app's splash lights the mark in a sequence: the low square turns
- * amber and goes pale again, then the top square, then a run of light
- * travels dash by dash along the hatched link, and the right square lights
- * last. That is the `signal`: a timeline of steps, each naming a shape, when
- * it lights (seconds into the period) and for how long — `hold` for a shape
- * that fills, `run` for a dashed line the light travels along. On a 36pt key
+ * amber and goes pale again, then the top square, then a bright cluster of
+ * dashes travels down the link between the blocks — the dashes themselves
+ * stay put — and the right square lights last. That is the `signal`: a
+ * timeline of steps, each naming a shape, when it lights (seconds into the
+ * period) and for how long — `hold` for a shape that fills, `run` for a
+ * dashed line the cluster travels along, `width` how much of the line the
+ * cluster spans, fully lit at its core and soft at its edges. On a 36pt key
  * the squares and the link are the shapes big enough to read, which is why
  * the signal lives on them. `color` is what the shape wears while lit: pale
  * on the key's dark ink, so it reads on the amber circle.
  *
- * The whole mark (`on: "mark"`) takes a slow `breathe`; the hatch still runs,
- * for the sizes where dashes resolve.
+ * The whole mark (`on: "mark"`) takes a slow `breathe`.
  *
  * `recording` is what the key does while the microphone is open: the
  * dance. One choreography, on one clock, looping. The squares and the dot
@@ -11207,12 +11208,11 @@ const MIC_MOTION = {
       steps: [
         { on: "c", at: 0.33, hold: 0.42 },
         { on: "a", at: 0.92, hold: 0.42 },
-        { on: "link", at: 1.33, run: 0.95 },
+        { on: "link", at: 1.33, run: 0.95, width: 0.3 },
         { on: "b", at: 2.33, hold: 0.42 },
       ],
     },
     { on: "mark", kind: "breathe", period: 4.2, scale: 1.06, opacity: 1 },
-    { on: "link", kind: "hatch", period: 2.6 },
   ],
   recording: { kind: "dance", tempo: 1, reach: 1, blend: 1.5, voice: 0.35, settle: 0.9, score: MIC_SCORE },
 };
