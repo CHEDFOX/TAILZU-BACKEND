@@ -2194,6 +2194,11 @@ describe("the mic key's mark comes from the server", () => {
         expect(rec.settle).toBeGreaterThan(0);
         expect(rec.wave.lift).toBeGreaterThan(0);
         expect(rec.wave.run).toBeGreaterThan(0);
+        expect(rec.wave.gap).toBeGreaterThanOrEqual(0);
+        // The wave while recording is the splash's own run: the same cluster, at the same pace.
+        const link = k.props.motion.idle.find((m: any) => m.kind === "signal").steps.find((st: any) => st.on === rec.keep);
+        expect(Math.abs(rec.wave.run - link.run)).toBeLessThan(0.2);
+        expect(rec.wave.width).toBe(link.width);
       }
     }
   });

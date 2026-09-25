@@ -11170,10 +11170,10 @@ const BRAND_MARK = {
  * key-radii away past the rim, turning `spin` degrees, shrinking by
  * `shrink` and fading as it crosses the rim. Once they are away the kept
  * shape (`keep`, the dashed link between the blocks) glides to the middle
- * (`centre`, after `wait` seconds) and grows by `lift`: the wave, its dashes
- * bars that rise and fall with the live voice — up to `rise` more than their
- * height — while the bright cluster keeps running along it every `run`
- * seconds, `width` of the line wide, a touch faster the louder it gets. On
+ * (`centre`, after `wait` seconds) and grows by `lift`: the wave, doing
+ * exactly what it does in the splash — the dashes stay put, and the bright
+ * cluster, `width` of the line wide, travels from end to end in `run`
+ * seconds, rests for `gap`, and goes again. On
  * stop it all reverses: the wave settles back into the link, and the parts
  * glide in on the same arcs in the opposite order and land exactly where
  * they began, within `settle` seconds; then the idle signal resumes. Every
@@ -11200,8 +11200,8 @@ const MIC_MOTION = {
     { on: "mark", kind: "breathe", period: 4.2, scale: 1.06, opacity: 1 },
   ],
   recording: {
-    kind: "disperse", keep: "link", out: 1.6, spin: 40, arc: 0.22, shrink: 0.45, gather: 0.05, stagger: 0.07, settle: 1.2,
-    wave: { lift: 2, rise: 0.9, run: 1, width: 0.3, centre: true, wait: 0.25 },
+    kind: "disperse", keep: "link", out: 1.9, spin: 40, arc: 0.22, shrink: 0.45, gather: 0.05, stagger: 0.07, settle: 1.2,
+    wave: { lift: 2, run: 0.95, gap: 0.25, width: 0.3, centre: true, wait: 0.25 },
   },
 };
 
@@ -12313,11 +12313,13 @@ export function buildKeyboardConfig(
         // claimed a hit). A console-log substitute readable on the phone.
         // Flip OFF (with the deploy's automatic cache bump) once diagnosed.
         "kb.coldOpen.debugStatus": false,
-        // Idle mic mark inset (points). The TailzuMark spans its full canvas
-        // width, so 0 makes the "structure" touch the button's side walls
-        // instead of sitting small in the middle. OTA-tunable — takes effect on
-        // the current build without a rebuild.
-        "kb.mic.idleIconInset": 0,
+        // Mic mark inset (points on iOS, dp on Android). The mark fits the key
+        // by its diagonal, so 0 has its corners on the rim; 7 on a 36pt key
+        // leaves it small in the middle with clear space around it — the
+        // owner's call: a small mark, nice negative space. The recording state
+        // lives in the same inset frame. OTA-tunable — takes effect on the
+        // current build without a rebuild.
+        "kb.mic.idleIconInset": 7,
         // Mic mode (iOS only — Android reads `liveVoice` and records in-process,
         // which iOS extensions CANNOT do). iOS blocks microphone recording
         // inside a keyboard extension: even with Full Access,
