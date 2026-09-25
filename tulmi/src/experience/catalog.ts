@@ -11161,7 +11161,10 @@ const BRAND_MARK = {
  */
 const MIC_MOTION = {
   idle: [
-    { on: "mark", kind: "pulse", period: 2.6, low: 0.55, rest: 0.35, order: ["c", "line1", "a", "link", "b", "line2", "dot"] },
+    // `spread`: how many shapes' worth of time each brightening lasts. At 2
+    // every shape overlaps the ones beside it and the light travels; at 1 it
+    // hops from block to block.
+    { on: "mark", kind: "pulse", period: 2.6, low: 0.55, rest: 0.35, spread: 2, order: ["c", "line1", "a", "link", "b", "line2", "dot"] },
     { on: "mark", kind: "breathe", period: 4.2, scale: 1.06, opacity: 1 },
     { on: "link", kind: "hatch", period: 2.6 },
   ],
