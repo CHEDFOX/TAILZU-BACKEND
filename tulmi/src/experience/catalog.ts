@@ -11159,11 +11159,23 @@ const BRAND_MARK = {
  * on the key's dark ink, so it reads on the amber circle.
  *
  * The whole mark (`on: "mark"`) takes a slow `breathe`; the hatch still runs,
- * for the sizes where dashes resolve. `recording` names what the key shows
- * while the microphone is open: the dots the mark bursts into. Motion on a
- * shape the mark lacks is ignored, a kind a build does not know is ignored,
- * and a build older than this ignores all of it and draws its bundled mark:
- * the same picture, still.
+ * for the sizes where dashes resolve.
+ *
+ * `recording` is what the key does while the microphone is open. `twist`:
+ * the structure comes alive. Every square and the dot rides its own slow
+ * orbit and turns about its centre, phased left to right so the motion runs
+ * through the mark like a wave; the lines stretch between them like a
+ * linkage; the whole mark sways. The voice drives the clock and the reach —
+ * quiet is a slow float, speech quickens it, a sudden rise kicks a node into
+ * a turn. Stop, and every part springs home, critically damped, in `settle`
+ * seconds at most; then the still mark takes over. `drift` is the reach as
+ * a fraction of the artboard's short side, `spin` the turn in degrees, `sway`
+ * the whole mark's, `lag` the phase across the mark in radians. A build that
+ * predates the twist reads `recording` as a name and shows its particles.
+ *
+ * Motion on a shape the mark lacks is ignored, a kind a build does not know
+ * is ignored, and a build older than this ignores all of it and draws its
+ * bundled mark: the same picture, still.
  */
 const MIC_MOTION = {
   idle: [
@@ -11179,7 +11191,7 @@ const MIC_MOTION = {
     { on: "mark", kind: "breathe", period: 4.2, scale: 1.06, opacity: 1 },
     { on: "link", kind: "hatch", period: 2.6 },
   ],
-  recording: "particles",
+  recording: { kind: "twist", drift: 0.11, spin: 26, sway: 5, lag: 1.2, settle: 0.7 },
 };
 
 // -------- Light-mode counterparts (used by the next SDUI build) -----------

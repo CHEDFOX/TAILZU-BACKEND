@@ -2179,7 +2179,13 @@ describe("the mic key's mark comes from the server", () => {
         // square, along the link, square.
         const sig = k.props.motion.idle.find((m: any) => m.kind === "signal");
         expect(sig?.steps.map((st: any) => st.on)).toEqual(["c", "a", "link", "b"]);
-        expect(k.props.motion.recording).toBe("particles");
+        // While the microphone is open the structure comes alive and springs
+        // home on stop; the numbers that shape it travel with it.
+        const rec = k.props.motion.recording;
+        expect(rec.kind).toBe("twist");
+        expect(rec.drift).toBeGreaterThan(0);
+        expect(rec.drift).toBeLessThan(0.5);
+        expect(rec.settle).toBeGreaterThan(0);
       }
     }
   });
