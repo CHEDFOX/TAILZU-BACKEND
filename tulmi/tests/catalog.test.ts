@@ -814,6 +814,45 @@ describe("buildScreen", () => {
     }
   });
 
+  it("a subscriber's meter is the month filling slowly, never words left", () => {
+    // A subscriber has no word limit, so "words left" is not a number they
+    // have. The free plan's earned-words meter is replaced by one slow line
+    // — what they dictated against a span no month reaches — and nothing
+    // about earning shows. The free plan keeps its meter.
+    const allowance = { base: 800, earned: 260, total: 1060, used: 742, remaining: 318,
+                        streakDays: 5, grants: [], maxed: false, perVisit: [] };
+    const texts = (root: unknown): string[] => {
+      const out: string[] = [];
+      const go = (n: { type?: string; props?: { content?: unknown }; children?: unknown[] } | undefined) => {
+        if (!n || typeof n !== "object") return;
+        if (typeof n.props?.content === "string") out.push(n.props.content);
+        for (const c of n.children ?? []) go(c as never);
+      };
+      go(root as never);
+      return out;
+    };
+    const types = (root: unknown): string[] => {
+      const out: string[] = [];
+      const go = (n: { type?: string; children?: unknown[]; style?: { width?: unknown } } | undefined) => {
+        if (!n || typeof n !== "object") return;
+        if (n.type) out.push(String(n.type) + (typeof n.style?.width === "string" ? `:${n.style.width}` : ""));
+        for (const c of n.children ?? []) go(c as never);
+      };
+      go(root as never);
+      return out;
+    };
+    const paid = buildScreen("stats", { personality: {}, language: "en", allowance, entitlement: { store: "app_store" } } as never)!;
+    const free = buildScreen("stats", { personality: {}, language: "en", allowance } as never)!;
+    expect(texts(paid.root)).not.toContain("Words left");
+    expect(texts(paid.root)).toContain("Words this month");
+    expect(texts(paid.root).some((c) => /earned/i.test(c))).toBe(false);
+    expect(types(paid.root)).not.toContain("WordMeter");
+    // 742 of 120,000: the line has barely begun.
+    expect(types(paid.root)).toContain("Stack:0.6%");
+    expect(texts(free.root)).toContain("Words left");
+    expect(types(free.root)).toContain("WordMeter");
+  });
+
   it("Settings is reachable — the tab roots hide the header the gear lived in", () => {
     // Settings has never been a tab. The app draws a gear in the header of
     // whichever tab root is showing and pushes the screen from there — so a

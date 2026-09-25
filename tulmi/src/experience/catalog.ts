@@ -8509,6 +8509,15 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
    * which would read as "you have nothing left".
    */
   const allow = ctx.allowance;
+  /**
+   * A subscriber has no word limit, so "words left" is not a number they
+   * have. Their meter is the month itself: what they have dictated, against a
+   * span no month reaches, so the line fills very slowly and never runs out.
+   * Nothing about earning appears either — there is nothing to earn.
+   */
+  const paid = !!ctx.entitlement;
+  const PAID_METER_SPAN = 120_000;
+  const paidPct = allow ? Math.min(100, (Math.max(0, allow.used) / PAID_METER_SPAN) * 100) : 0;
   const spokenMinutes = st?.speakingMinutes
     ?? Math.round((usage.month.audioSeconds / 60) * 10) / 10;
   /** All time, not this month — the only place the running total is shown. */
@@ -8837,33 +8846,43 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
                   type: "Stack",
                   style: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
                   children: [
-                    { type: "Text", props: { content: "Words left" },
+                    { type: "Text", props: { content: paid ? "Words this month" : "Words left" },
                       style: { fontSize: 8, letterSpacing: 1.8, textTransform: "uppercase", color: u.onCardDim } },
-                    { type: "Text", props: { content: n(allow.remaining) },
+                    { type: "Text", props: { content: n(paid ? allow.used : allow.remaining) },
                       style: { fontSize: 20, fontWeight: "800", letterSpacing: -0.6, color: u.onCard } },
                   ],
                 },
-                {
-                  type: "WordMeter",
-                  props: {
-                    used: allow.used, base: allow.base, earned: allow.earned,
-                    // Every colour from here, so the meter cannot introduce a
-                    // third one into a screen that has exactly two.
-                    // The one amber on the screen. See STATS_UI.accent.
-                    fillColor: u.accent,
-                    earnedColor: u.accent,
-                    trackColor: u.rule,
-                    labelColor: u.onCardFaint,
+                ...(paid ? [
+                  {
+                    type: "Stack",
+                    style: { marginTop: 10, height: 6, borderRadius: 3, backgroundColor: u.rule, overflow: "hidden" },
+                    children: [{ type: "Stack", style: { width: `${paidPct.toFixed(1)}%`, height: 6, backgroundColor: u.accent } }],
+                  } as Node,
+                  { type: "Text", props: { content: "No limit on your plan. The line is the month." },
+                    style: { fontSize: 11, color: u.onCardDim, marginTop: 8 } } as Node,
+                ] : [
+                  {
+                    type: "WordMeter",
+                    props: {
+                      used: allow.used, base: allow.base, earned: allow.earned,
+                      // Every colour from here, so the meter cannot introduce a
+                      // third one into a screen that has exactly two.
+                      // The one amber on the screen. See STATS_UI.accent.
+                      fillColor: u.accent,
+                      earnedColor: u.accent,
+                      trackColor: u.rule,
+                      labelColor: u.onCardFaint,
+                    },
+                    style: { marginTop: 10 },
+                    // Older bundles get the same fact as a line of type.
+                    fallback: {
+                      type: "Text",
+                      props: { content: `${n(allow.used)} of ${n(allow.total)} used` },
+                      style: { fontSize: 11, color: u.onCardDim, marginTop: 8 },
+                    },
                   },
-                  style: { marginTop: 10 },
-                  // Older bundles get the same fact as a line of type.
-                  fallback: {
-                    type: "Text",
-                    props: { content: `${n(allow.used)} of ${n(allow.total)} used` },
-                    style: { fontSize: 11, color: u.onCardDim, marginTop: 8 },
-                  },
-                },
-                ...(allow.earned > 0 ? [{
+                ]),
+                ...(!paid && allow.earned > 0 ? [{
                   type: "Text",
                   props: {
                     content: allow.maxed
@@ -9076,7 +9095,12 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
             ]),
 
             // Where the allowance came from. The meter above opens this.
-            ...(allow ? [panel("words", "Words left", n(allow.remaining), "", [
+            ...(allow ? [paid ? panel("words", "Words this month", n(allow.used), "", [
+              secLab("This month"),
+              row("Plan", "No limit"),
+              row("Used", n(allow.used)),
+              ...(allow.streakDays ? [row("Day streak", `${n(allow.streakDays)} days`)] : []),
+            ]) : panel("words", "Words left", n(allow.remaining), "", [
               secLab("This month"),
               row("Plan", n(allow.base)),
               row("Earned by turning up", n(allow.earned)),
