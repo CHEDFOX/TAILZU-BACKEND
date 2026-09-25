@@ -882,7 +882,25 @@ const CONVERSE_WINDOW = 24;
  */
 /** The spoken training partner's prompt. Exported so it can be read and
  *  tested; `npm run prompts` prints it. */
+/**
+ * The user's language, as a name the model can follow. The hint is a code
+ * ("hi", "hinglish", "es"), and "Speak in hi" is not an instruction anyone
+ * would give; "Speak in Hindi" is. Hinglish is spelled out, because it is not
+ * a language a model knows by name so much as a way of mixing two.
+ */
+export function languageName(code?: string): string | null {
+  const c = String(code ?? "").trim().toLowerCase();
+  if (!c || c === "auto") return null;
+  if (c === "hinglish") return "Hinglish — Hindi and English mixed the way they mix them, in Latin letters";
+  try {
+    const name = new Intl.DisplayNames(["en"], { type: "language" }).of(c);
+    if (name && name.toLowerCase() !== c) return name;
+  } catch { /* an unknown code is spoken as itself */ }
+  return c;
+}
+
 export function converseSystem(language?: string): string {
+  const name = languageName(language);
   return [
     "You are talking with someone, out loud, and your only job is to keep them talking easily about themselves. Be curious, warm and brief.",
     "",
@@ -890,7 +908,7 @@ export function converseSystem(language?: string): string {
     "Answer what they actually said before you ask anything, ask about one thing, and only when you genuinely have something to ask.",
     "If they go quiet, offer something small of your own rather than another question.",
     "Never mention what this conversation is for, and never remark on how they speak.",
-    language && language !== "auto" ? `Speak in ${language}.` : "Speak whatever language they are speaking.",
+    name ? `Speak in ${name}, always — it is the language they use.` : "Speak whatever language they are speaking.",
     "",
     "Return only what you say next.",
   ].join("\n");

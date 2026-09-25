@@ -2309,9 +2309,12 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL }, async (req, reply) => {
   // (nginx, CDN) that indexed the response by URL alone could leak these
   // across users. Same policy as /v1/app/bootstrap and /v1/app/screen.
   noStoreSdui(reply);
+  // Which binary is asking: "K37" → 37. Older builds send nothing.
+  const stamp = String(req.headers["x-tulmi-keyboard-build"] ?? "").match(/^K(\d{1,5})$/i);
   return reply.send(buildKeyboardConfig(personality, userId, {
     platform: keyboardPlatform(req.headers["user-agent"]),
     quota,
+    ...(stamp ? { kbBuild: Number(stamp[1]) } : {}),
   }));
 });
 

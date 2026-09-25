@@ -6188,7 +6188,37 @@ function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
  * deterministic rather than random, so the same open twice in a row says the
  * same thing and does not look like a reroll.
  */
+/**
+ * THE VOICE SPEAKS THEIR LANGUAGE. The session's language is the one the user
+ * set for dictation; the phone's synthesiser needs it as a locale, and "auto"
+ * or English means the phone's own voice. Hinglish is read by an Indian
+ * English voice, which handles Latin-letter Hindi where a Hindi voice does
+ * not. Anything else is its own locale.
+ */
+export function speechLocale(hint?: string): string | undefined {
+  const h = String(hint ?? "").trim().toLowerCase();
+  if (!h || h === "auto" || h === "en") return undefined;
+  const table: Record<string, string> = {
+    hinglish: "en-IN", hi: "hi-IN", bn: "bn-IN", ta: "ta-IN", te: "te-IN", mr: "mr-IN", gu: "gu-IN",
+    kn: "kn-IN", ml: "ml-IN", pa: "pa-IN", ur: "ur-PK", es: "es-ES", fr: "fr-FR", de: "de-DE",
+    it: "it-IT", pt: "pt-BR", ar: "ar-SA", ja: "ja-JP", ko: "ko-KR", zh: "zh-CN", ru: "ru-RU",
+    tr: "tr-TR", nl: "nl-NL", id: "id-ID", vi: "vi-VN", th: "th-TH", pl: "pl-PL", sv: "sv-SE",
+    uk: "uk-UA", fa: "fa-IR",
+  };
+  return table[h] ?? h;
+}
+
+/** The greeting in the flagship languages. Elsewhere the session opens by
+ *  listening, as it did before there was a greeting: an English line in a
+ *  Hindi voice is worse than a moment of quiet. */
+const LIVE_GREETING_BY_LANGUAGE: Record<string, string> = {
+  hinglish: "Bas aise hi baat karte hain. Aaj kya chal raha hai?",
+  hi: "बस ऐसे ही बात करते हैं। आज क्या चल रहा है?",
+};
+
 function liveGreeting(ctx: ScreenContext): string {
+  const lang = String(ctx.language ?? "").trim().toLowerCase();
+  if (lang && lang !== "auto" && lang !== "en") return LIVE_GREETING_BY_LANGUAGE[lang] ?? "";
   const g = TRAINING_UI.chat.live.greeting;
   const sp = ctx.personality?.stylePortrait;
   const sessions = sp?.sessions ?? 0;
@@ -6245,7 +6275,7 @@ function trainingLiveScreen(ctx: ScreenContext): ScreenResponse {
       // binds `line` over it, so leaving this unset is what makes the hint the
       // opening state — seeded as "", the bind won with an empty string and the
       // hint never appeared at all.
-      turns: [{ role: "assistant", text: greeting }],
+      turns: greeting ? [{ role: "assistant", text: greeting }] : [],
       saving: false,
       saved: false,
       /** Set by the back arrow, so onDisappear does not post a second time. */
@@ -6323,6 +6353,10 @@ function trainingLiveScreen(ctx: ScreenContext): ScreenResponse {
           type: "VoiceSession",
           props: {
             path: "/v1/train/converse",
+            // THEIR LANGUAGE, both ways: the hint the recogniser and the
+            // partner get, and the locale the phone speaks the replies in.
+            language: ctx.language || "auto",
+            ...(speechLocale(ctx.language) ? { speakLanguage: speechLocale(ctx.language) } : {}),
             silenceMs: ui.silenceMs,
             statePath: "sessionState",
             levelPath: "level",
@@ -6345,7 +6379,7 @@ function trainingLiveScreen(ctx: ScreenContext): ScreenResponse {
              * An older bundle ignores an unknown prop and starts as it always
              * did, which is the behaviour this replaces rather than breaks.
              */
-            greeting,
+            ...(greeting ? { greeting } : {}),
           },
           on: { onError: "sessionErr" },
         },
@@ -11524,8 +11558,17 @@ export function buildKeyboardConfig(
     /** What is left to spend. Absent for an anonymous or unreadable caller,
      *  and then the mic behaves as it always did and the 429 catches it. */
     quota?: { remaining: number; total: number; entitled: boolean };
+    /** The keyboard binary's build number (the K-stamp), from the request
+     *  header `X-Tulmi-Keyboard-Build`. Absent from builds before K37, which
+     *  never sent one — and which must not be given the veil's blur. */
+    kbBuild?: number;
   } = {},
 ): KeyboardConfigResponse {
+  /** K37 is the first build that raises the recording veil above the keys and
+   *  lets the mic through it. Only such a build may wear the blur: on an older
+   *  one the veil sits buried behind the tree, where a material paints as a
+   *  grey sheet through a transparent keyboard. */
+  const veilBlurs = (opts.kbBuild ?? 0) >= 37;
   // English QWERTY. The physical layout arrays are also emitted (below) so
   // older keyboard binaries — the ones without the SDUI renderer — can still
   // render the legacy hand-built keyboard. `features.sdui: true` is the switch
@@ -12153,8 +12196,9 @@ export function buildKeyboardConfig(
         // anything more is the grey sheet again.
         "kb.dictation.dim.enabled": true,
         /**
-         * OFF UNTIL A BUILD CARRIES THE RAISE, and this flag is the whole
-         * reason a grey sheet appeared on the mic tap.
+         * ON FOR THE BUILDS THAT CARRY THE RAISE (K37 and later, which say so
+         * in a header), OFF for the rest — see veilBlurs. This flag was the
+         * whole reason a grey sheet appeared on the mic tap.
          *
          * The shipped binary buries the overlay behind the fresh tree on every
          * remount, and tapping the mic schedules exactly such a remount. With
@@ -12167,7 +12211,7 @@ export function buildKeyboardConfig(
          * again. It is one backend edit on the day that ships, and everything
          * else in this block is already tuned for it.
          */
-        "kb.dictation.dim.blur": false,         // iOS UIVisualEffectView
+        "kb.dictation.dim.blur": veilBlurs,     // iOS UIVisualEffectView — see veilBlurs
         // WHICH MATERIAL. Every system material carries a fill as well as a
         // blur, and "thin" carries enough of one to read as a sheet laid over
         // the keyboard rather than the keyboard seen through something. Ultra
@@ -12189,7 +12233,7 @@ export function buildKeyboardConfig(
         // The blur carries the "not now" signal on its own. The tint only has
         // to nudge it, so it is a whisper; raise it only for builds with no
         // blur to fall back on.
-        "kb.dictation.dim.alpha": 0,
+        "kb.dictation.dim.alpha": veilBlurs ? 0.06 : 0,
         // Android fades the rows a little under the blur — RenderEffect alone
         // keeps every key at full contrast, which reads as a rendering fault
         // rather than as a surface that is out of play.
