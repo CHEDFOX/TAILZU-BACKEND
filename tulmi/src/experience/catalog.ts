@@ -10995,7 +10995,7 @@ const makeToolsRow = (opts: {
       visibleIf: { falsy: "state.secured" },
       // The mark and its motion, as data. A build that understands them draws
       // the mark from here; one that does not draws its bundled asset.
-      props: { mark: BRAND_MARK, motion: MIC_MOTION },
+      props: { mark: BRAND_MARK, motion: MIC_MOTION, program: MIC_PROGRAM },
       style: {
         flex: 0,
         width: 36,
@@ -11206,6 +11206,232 @@ const BRAND_MARK = {
  * is ignored, and a build older than this ignores all of it and draws its
  * bundled mark: the same picture, still.
  */
+/**
+ * THE PROGRAM. What the mic key does — the idle signal and breath, the
+ * dispersal when the microphone opens, the sea with its tides, the throw
+ * home — written in the motion language the keyboards run (see
+ * docs/keyboard-spec.md, "The program"). Numbers, functions, springs, and
+ * for every shape an expression for where it is, how it is turned, scaled,
+ * faded and coloured this frame, plus what to draw around it. A change here
+ * is a deploy, not a build; `motion` below stays for builds that predate
+ * the program. Checked by tests/catalog.test.ts with the same evaluator.
+ */
+const MIC_PROGRAM = {
+  version: 1,
+  fps: {
+    idle: 24,
+    rec: 60,
+  },
+  colors: {
+    signal: "#F4F1EA",
+  },
+  vars: {
+    period: 3.6,
+    n: 6,
+    breathe: 4.2,
+    bscale: 1.06,
+    out: 1.9,
+    spin: 40,
+    arc: 0.22,
+    shrink: 0.45,
+    gather: 0.05,
+    stagger: 0.07,
+    bspeed: 12,
+    bbounce: 0.6,
+    bturb: 0.14,
+    btumble: 1,
+    bstagger: 0.05,
+    lift: 2,
+    wait: 0.25,
+    tperiod: 1.2,
+    tlength: 0.6,
+    trise: 1,
+    rows: 5,
+    depth: 14,
+    lean: 0.55,
+    skew: 0.09,
+    mess: 0.7,
+  },
+  funcs: {
+    tide: {
+      args: ["f", "r"],
+      expr: "clamp((crest(tau*(f/tlength - t/tperiod + r*skew)) + 0.45*crest(tau*(f/(tlength*0.55) - t/(tperiod*0.7) + 0.3 + r*skew)) + mess*(0.35*pow(max(0, sin(tau*(f/(tlength*0.8) + t/(tperiod*1.3) - r*skew*1.5))), 1.4) + 0.18*sin(tau*(f*6.5 - t*2.3 + r*0.37))*sin(tau*(f*3.1 + t*1.7)) + 0.15*sin(t*3.7 + r*2.1 + f*11)*sin(t*2.3 - f*7 + r)))*trise, 0, 1)",
+    },
+    fr: {
+      args: ["i"],
+      expr: "(i + 0.5)/cols",
+    },
+    off: {
+      args: ["r"],
+      expr: "depth*r*q*(1 + mess*0.12*sin(t*1.3 + r*1.9))",
+    },
+    hh: {
+      args: ["r", "i"],
+      expr: "height(i)*(1 + (swh - 1)*tide(fr(i), r)*q)*(1 - 0.12*r)",
+    },
+    topx: {
+      args: ["r", "i"],
+      expr: "x1 + (x2 - x1)*fr(i) + bx*off(r) + nx*hh(r, i)/2 + lx*lean*hh(r, i)*tide(fr(i), r)*q",
+    },
+    topy: {
+      args: ["r", "i"],
+      expr: "y1 + (y2 - y1)*fr(i) + by*off(r) + ny*hh(r, i)/2 + ly*lean*hh(r, i)*tide(fr(i), r)*q",
+    },
+    kav: {
+      args: ["r", "i"],
+      expr: "(tide(fr(i), r) + tide(fr(i + 1), r) + tide(fr(i), r + 1) + tide(fr(i + 1), r + 1))/4",
+    },
+    turbs: {
+      args: [],
+      expr: "rec ? 0 : bturb*R*abs(p)*(0.6*sin(t*11 + k*2.1) + 0.4*sin(t*17 + k*0.7))",
+    },
+    turbr: {
+      args: [],
+      expr: "rec ? 0 : bturb*R*0.5*abs(p)*sin(t*13 + k*1.3)",
+    },
+    side: {
+      args: [],
+      expr: "arc*R*sin(pi*clamp(p, 0, 1))*sign + turbs()",
+    },
+    along: {
+      args: [],
+      expr: "out*R*p + turbr()",
+    },
+  },
+  springs: {
+    p: {
+      scope: "shape",
+      rest: 0,
+      target: "rec ? (since < k*stagger ? 0 : (since < k*stagger + 0.1 ? -gather : 1)) : (since >= (n - 1 - k)*bstagger + 0.12 ? 0 : prev)",
+      rate: "rec ? 6.5 : bspeed",
+      damp: "rec ? 1 : bbounce",
+    },
+    q: {
+      scope: "global",
+      rest: 0,
+      target: "rec ? (since >= wait ? 1 : 0) : 0",
+      rate: "7",
+      damp: "1",
+    },
+  },
+  mark: {
+    scale: "1 + (bscale - 1)*(0.5 - 0.5*cos(tau*t/breathe))",
+  },
+  shapes: {
+    a: {
+      vars: {
+        k: 0,
+        sign: 1,
+      },
+      dx: "dir.x*along() - dir.y*side()",
+      dy: "dir.y*along() + dir.x*side()",
+      rot: "(spin + (rec ? 0 : btumble*360))*p*sign",
+      scale: "1 - shrink*clamp(p, 0, 1)",
+      opacity: "1 - smooth(0.55, 1, clamp(p, 0, 1))",
+      mix: "rec ? 0 : ramp(t % period, 0.92, 0.42)",
+    },
+    b: {
+      vars: {
+        k: 1,
+        sign: -1,
+      },
+      dx: "dir.x*along() - dir.y*side()",
+      dy: "dir.y*along() + dir.x*side()",
+      rot: "(spin + (rec ? 0 : btumble*360))*p*sign",
+      scale: "1 - shrink*clamp(p, 0, 1)",
+      opacity: "1 - smooth(0.55, 1, clamp(p, 0, 1))",
+      mix: "rec ? 0 : ramp(t % period, 2.33, 0.42)",
+    },
+    line1: {
+      vars: {
+        k: 2,
+        sign: 1,
+      },
+      dx: "dir.x*along() - dir.y*side()",
+      dy: "dir.y*along() + dir.x*side()",
+      rot: "(spin + (rec ? 0 : btumble*360))*p*sign",
+      scale: "1 - shrink*clamp(p, 0, 1)",
+      opacity: "1 - smooth(0.55, 1, clamp(p, 0, 1))",
+    },
+    line2: {
+      vars: {
+        k: 3,
+        sign: -1,
+      },
+      dx: "dir.x*along() - dir.y*side()",
+      dy: "dir.y*along() + dir.x*side()",
+      rot: "(spin + (rec ? 0 : btumble*360))*p*sign",
+      scale: "1 - shrink*clamp(p, 0, 1)",
+      opacity: "1 - smooth(0.55, 1, clamp(p, 0, 1))",
+    },
+    c: {
+      vars: {
+        k: 4,
+        sign: 1,
+      },
+      dx: "dir.x*along() - dir.y*side()",
+      dy: "dir.y*along() + dir.x*side()",
+      rot: "(spin + (rec ? 0 : btumble*360))*p*sign",
+      scale: "1 - shrink*clamp(p, 0, 1)",
+      opacity: "1 - smooth(0.55, 1, clamp(p, 0, 1))",
+      mix: "rec ? 0 : ramp(t % period, 0.33, 0.42)",
+    },
+    dot: {
+      vars: {
+        k: 5,
+        sign: -1,
+      },
+      dx: "dir.x*along() - dir.y*side()",
+      dy: "dir.y*along() + dir.x*side()",
+      rot: "(spin + (rec ? 0 : btumble*360))*p*sign",
+      scale: "1 - shrink*clamp(p, 0, 1)",
+      opacity: "1 - smooth(0.55, 1, clamp(p, 0, 1))",
+    },
+    link: {
+      dx: "(cx - home.x)*q",
+      dy: "(cy - home.y)*q",
+      scale: "1 + (lift - 1)*q",
+      rise: "max(tide(f, 0)*q, run(f, t % period, 1.33, 0.95, 0.3)*(1 - q))",
+      lean: "lean*q",
+    },
+  },
+  emit: [
+    {
+      attach: "link",
+      kind: "polygon",
+      repeat: ["rows - 1", "cols - 1"],
+      as: ["r", "i"],
+      points: [
+        ["topx(r, i)", "topy(r, i)"],
+        ["topx(r, i + 1)", "topy(r, i + 1)"],
+        ["topx(r + 1, i + 1)", "topy(r + 1, i + 1)"],
+        ["topx(r + 1, i)", "topy(r + 1, i)"],
+      ],
+      opacity: "q*(0.09 + 0.3*kav(r, i))*(1 - 0.12*r)",
+      color: "ink",
+    },
+    {
+      attach: "link",
+      kind: "polyline",
+      repeat: ["rows"],
+      as: ["r"],
+      points: {
+        count: "cols",
+        as: "i",
+        x: "topx(r, i)",
+        y: "topy(r, i)",
+      },
+      opacity: "q*(r == 0 ? 0.85 : 0.6 - 0.1*r)",
+      width: "thick*0.35",
+      color: "ink",
+    },
+  ],
+  settle: {
+    eps: 0.002,
+    timeout: 1.4,
+  },
+};
+
 const MIC_MOTION = {
   idle: [
     {

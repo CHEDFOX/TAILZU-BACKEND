@@ -1,3 +1,4 @@
+import { compile, evaluate, type Ctx } from "../src/experience/motionLang";
 import { describe, expect, it } from "vitest";
 
 process.env.OPENROUTER_API_KEY = "test-openrouter-key";
@@ -2199,6 +2200,33 @@ describe("the mic key's mark comes from the server", () => {
         expect(rec.back.bounce).toBeLessThan(1);
         expect(rec.settle).toBeGreaterThan((mark.shapes.length - 1) * rec.back.stagger + 0.12 + 0.5);   // time for the last part to land
         expect(rec.wave.tide.mess).toBeGreaterThanOrEqual(0);
+        // THE PROGRAM: every expression parses, every function it calls exists,
+        // and a sample frame — recording, at idle, coming home — evaluates to
+        // finite numbers for every shape and every emitted drawable.
+        const prog = k.props.program;
+        expect(prog.version).toBe(1);
+        const compiled = compile(prog);
+        expect(compiled.errors, platform).toEqual([]);
+        const link = mark.shapes.find((s: any) => s.id === "link");
+        const base: Ctx = {
+          ...prog.vars, pi: Math.PI, tau: 2 * Math.PI, e: Math.E, cx: 510, cy: 484, U: 512, R: 425, vbw: 680, vbh: 512,
+          level: 0.4, q: 0.7, p: 0.5, prev: 1, k: 1, sign: -1, "home.x": 374, "home.y": 335, "dir.x": -0.7, "dir.y": -0.7,
+          x1: link.x1, y1: link.y1, x2: link.x2, y2: link.y2, L: 143, lx: 0.77, ly: 0.64, nx: -0.64, ny: 0.77, bx: -0.5, by: -0.86,
+          thick: link.thick, cols: link.heights.length, swh: link.swell.height, swt: link.swell.thick, "fn:height": (i: number) => link.heights[Math.max(0, Math.min(link.heights.length - 1, Math.round(i)))],
+          i: 2, f: 0.36, hgt: 41, rise: 0.5, r: 1, w: 132, h: 132,
+        };
+        for (const frame of [{ t: 0.4, rec: 0, since: 0.4 }, { t: 2.2, rec: 1, since: 0.5 }, { t: 5.1, rec: 0, since: 0.3 }]) {
+          const ctx = { ...base, ...frame };
+          for (const { where, ast } of compiled.exprs) {
+            const v = evaluate(ast, ctx, compiled.funcs);
+            expect(Number.isFinite(v), `${platform} ${where} at t=${frame.t}`).toBe(true);
+          }
+        }
+        // The program names only shapes the mark has, and emits attach to them.
+        for (const id of Object.keys(prog.shapes)) expect(ids.has(id), `${platform} program shape ${id}`).toBe(true);
+        for (const e of prog.emit) expect(ids.has(e.attach), `${platform} emit attaches to ${e.attach}`).toBe(true);
+        // Springs are what make a stop seamless: every one has a rest and a target.
+        for (const [name, sp] of Object.entries<any>(prog.springs)) { expect(typeof sp.target, name).toBe("string"); expect(typeof sp.rest, name).toBe("number"); }
         expect(rec.settle).toBeGreaterThan(0);
         expect(rec.wave.lift).toBeGreaterThan(0);
         // The wave while recording is water: tides with a period and a length.
