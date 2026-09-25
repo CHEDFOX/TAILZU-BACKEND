@@ -11241,22 +11241,27 @@ const MIC_PROGRAM = {
     "bturb": 0.14,
     "btumble": 1,
     "bstagger": 0.05,
-    "lift": 5,
+    "lift": 3.6,
     "wait": 0.25,
     "tperiod": 2.6,
     "tlength": 0.7,
     "trise": 1,
     "rows": 7,
-    "depth": 13,
-    "lean": 0.28,
+    "depth": 17,
+    "lean": 0.26,
     "skew": 0.07,
     "mess": 0.35,
     "persp": 0.08,
     "pts": 25,
-    "drop": 0.4,
+    "drop": 0.22,
     "below": 0,
     "clean": 0.15,
-    "fill": 0.06
+    "fill": 0.06,
+    "span": 1.45,
+    "amp": 1.45,
+    "flutter": 0.14,
+    "jitter": 0.09,
+    "gap0": 3
   },
   "funcs": {
     "tide": {
@@ -11299,28 +11304,28 @@ const MIC_PROGRAM = {
         "r",
         "f"
       ],
-      "expr": "0.5 + (f - 0.5)*(1 - persp*r)"
+      "expr": "0.5 + (f - 0.5)*span*(1 - persp*r)"
     },
     "hr": {
       "args": [
         "r",
         "f"
       ],
-      "expr": "hc(f)*(1 + (swh - 1)*tide(f, r))*(1 - persp*r)"
+      "expr": "amp*hc(f)*(1 + (swh - 1)*tide(f, r))*(1 - persp*r)"
     },
     "sx": {
       "args": [
         "r",
         "f"
       ],
-      "expr": "x1 + (x2 - x1)*fa(r, f) + nx*(depth*r*q + hr(r, f)/2) + lx*clean*hr(r, f)*tide(f, r)*q"
+      "expr": "x1 + (x2 - x1)*fa(r, f) + nx*((depth*(r - 1) + gap0)*q + hr(r, f)/2) + lx*clean*hr(r, f)*tide(f, r)*q"
     },
     "sy": {
       "args": [
         "r",
         "f"
       ],
-      "expr": "y1 + (y2 - y1)*fa(r, f) + ny*(depth*r*q + hr(r, f)/2) + ly*clean*hr(r, f)*tide(f, r)*q"
+      "expr": "y1 + (y2 - y1)*fa(r, f) + ny*((depth*(r - 1) + gap0)*q + hr(r, f)/2) + ly*clean*hr(r, f)*tide(f, r)*q"
     }
   },
   "springs": {
@@ -11417,8 +11422,8 @@ const MIC_PROGRAM = {
       "dy": "(cy - home.y)*q + drop*depth*lift*q*q",
       "rot": "(180 - atan2(y2 - y1, x2 - x1)*180/pi)*q",
       "scale": "1 + (lift - 1)*q",
-      "rise": "max(tide(f, 0)*q, run(f, t % period, 1.33, 0.95, 0.3)*(1 - q))",
-      "lean": "lean*rise"
+      "rise": "max(tide(f, 0)*q*(1 - flutter*0.5 + flutter*0.5*sin(t*2.1 + i*1.9)) + q*flutter*(0.5 + 0.5*noise(t*0.9 + i*3.1)), run(f, t % period, 1.33, 0.95, 0.3)*(1 - q))",
+      "lean": "lean*rise + q*jitter*sin(t*1.1 + i*2.7)"
     }
   },
   "emit": [
