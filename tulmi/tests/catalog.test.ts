@@ -2179,22 +2179,18 @@ describe("the mic key's mark comes from the server", () => {
         // square, along the link, square.
         const sig = k.props.motion.idle.find((m: any) => m.kind === "signal");
         expect(sig?.steps.map((st: any) => st.on)).toEqual(["c", "a", "link", "b"]);
-        // While the microphone is open the structure is a physical thing in
-        // the key, and a series of scenes runs through it. The scenes travel
-        // with the key, so a new one is a deploy: each runs for a while, pins
-        // only squares the mark has, and keeps its numbers where the engine
-        // stays stable.
+        // While the microphone is open the structure dances one score, on
+        // one clock, looping. The score travels with the key, so a new
+        // movement is a deploy: each runs a whole number of beats, so it
+        // starts and ends at rest, and is long enough to fade in and out.
         const rec = k.props.motion.recording;
-        expect(rec.kind).toBe("physics");
+        expect(rec.kind).toBe("dance");
         expect(rec.settle).toBeGreaterThan(0);
         expect(rec.blend).toBeGreaterThan(0);
-        expect(rec.scenes.length).toBeGreaterThanOrEqual(5);
-        for (const sc of rec.scenes) {
-          expect(sc.for, sc.name).toBeGreaterThanOrEqual(3);
-          for (const id of sc.pin ?? []) expect(ids.has(id), `${sc.name} pins ${id}`).toBe(true);
-          expect(sc.stiff ?? 0.9, sc.name).toBeLessThanOrEqual(1);
-          expect(sc.bounce ?? 0.5, sc.name).toBeLessThanOrEqual(1);
-          expect(sc.hold ?? 0, sc.name).toBeLessThan(400);
+        expect(rec.score.length).toBeGreaterThanOrEqual(5);
+        for (const mv of rec.score) {
+          expect(mv.for, mv.move).toBeGreaterThanOrEqual(2 * rec.blend);
+          expect(Math.abs(mv.for / mv.beat - Math.round(mv.for / mv.beat)), `${mv.move} runs whole beats`).toBeLessThan(1e-9);
         }
       }
     }

@@ -11162,41 +11162,42 @@ const BRAND_MARK = {
  * for the sizes where dashes resolve.
  *
  * `recording` is what the key does while the microphone is open: the
- * physics. The structure becomes a thing inside the round key. The squares
- * and the dot are masses, each line a rod between the two nearest (rigid or
- * rubbery by `stiff`), the rim a wall, and the masses collide. A series of
- * `scenes` runs through it — each for `for` seconds, blending into the next
- * over `blend` by lerping every number, so nothing ever jumps — and each is
- * one setting of the same engine: `hold` a tether to home, `gravity` in
- * key-widths a second squared turning `spin` degrees a second (0 is straight
- * down), `wind` and `swirl` a current, `centre` a pull to the middle for
- * orbits, `bounce` the wall's restitution, `kick` what a rise in the voice
- * throws in, `jitter` ambient shake, `squash` how much a square stretches
- * along its own speed, `launch` a turn given once on entry, `toss` the
- * seconds of quiet before a toy is thrown up, `pin` squares held fast. The
- * live voice is the force in all of them. `force` scales every push. Stop
- * blends to a stiff, critically damped tether with the wall gone, so the
- * mark comes home smoothly within `settle` seconds and lands exactly; then
- * the idle signal resumes. A new scene is a deploy, not a build. A build
- * that predates the physics reads `recording` as a name and shows its
- * particles.
+ * dance. One choreography, on one clock, looping. The squares and the dot
+ * are the dancers, in chain order left to right and by depth from the top;
+ * the `score` is a series of movements, each a figure of time — a sway, a
+ * wave down the chain, a carousel, a fold and unfold, a pendulum, a figure
+ * of eight, a spiral — that says where every dancer is and how it is turned
+ * at each second, always at rest at its start and its end. Each movement
+ * runs `for` seconds and its figure repeats every `beat`; `for` is a whole
+ * number of beats, and the next movement fades in over `blend` seconds
+ * while this one fades out, so one flows into the next and every part
+ * moves in relation to the others. The keyboard chases the pose on
+ * critically damped springs, which gives it the lag and weight of a real
+ * thing, and stretches each square along its own speed. The live voice
+ * sets the tempo and the reach, by `voice`, and a rise in it is an accent —
+ * one breath of the whole. `tempo` and `reach` scale the whole score. Stop
+ * chases home, within `settle` seconds, and lands exactly; then the idle
+ * signal resumes. A new movement, or a new order, is a deploy, not a build.
+ * A build that predates the dance reads `recording` as a name and shows
+ * its particles.
  *
  * Motion on a shape the mark lacks is ignored, a kind a build does not know
  * is ignored, and a build older than this ignores all of it and draws its
  * bundled mark: the same picture, still.
  */
 /**
- * THE SCENES, in the order they run. Everything unnamed is 0, except stiff
- * (0.9), bounce (0.5) and drag (1).
+ * THE SCORE, in the order it plays. Sizes are fractions of the artboard's
+ * short side; turns are degrees; `lag` is the phase, in radians, from one
+ * part of the chain to the next.
  */
-const MIC_SCENES = [
-  { name: "jelly", for: 7, hold: 45, stiff: 0.9, drag: 2.5, bounce: 0.4, kick: 1.8, jitter: 0.5, squash: 1 },
-  { name: "current", for: 8, hold: 22, stiff: 0.5, drag: 1.6, wind: 2.2, swirl: 1, bounce: 0.3, kick: 0.8, jitter: 0.1, squash: 0.8 },
-  { name: "swing", for: 9, hold: 10, stiff: 0.85, drag: 1.0, gravity: 1.8, spin: 45, bounce: 0.5, kick: 1.2, jitter: 0.1, squash: 0.9 },
-  { name: "tumble", for: 9, stiff: 0.95, drag: 0.12, wind: 0.15, bounce: 0.85, kick: 1.4, squash: 0.7, launch: 1.6 },
-  { name: "orbit", for: 8, stiff: 0.6, drag: 0.05, centre: 4, bounce: 0.9, kick: 0.9, squash: 0.6, launch: 2 },
-  { name: "toy", for: 8, stiff: 0.95, drag: 0.25, gravity: 2.6, bounce: 0.7, kick: 2, toss: 1.8, squash: 1 },
-  { name: "hang", for: 8, pin: ["dot"], stiff: 0.95, drag: 0.8, gravity: 1.8, bounce: 0.3, kick: 1.2, squash: 0.8 },
+const MIC_SCORE = [
+  { move: "sway", for: 5, beat: 2.5, turn: 12, breathe: 0.06 },
+  { move: "wave", for: 6, beat: 2, lift: 0.16, lag: 1.1, tilt: 26 },
+  { move: "carousel", for: 8, beat: 2, turns: 1, epicycle: 0.06 },
+  { move: "fold", for: 5, beat: 5, depth: 0.42, turn: 40 },
+  { move: "pendulum", for: 6, beat: 3, swing: 24, lag: 0.55 },
+  { move: "eight", for: 6, beat: 3, size: 0.14, lag: 0.9, tilt: 20 },
+  { move: "spiral", for: 6, beat: 6, turns: 1, breathe: 0.08 },
 ];
 
 const MIC_MOTION = {
@@ -11213,7 +11214,7 @@ const MIC_MOTION = {
     { on: "mark", kind: "breathe", period: 4.2, scale: 1.06, opacity: 1 },
     { on: "link", kind: "hatch", period: 2.6 },
   ],
-  recording: { kind: "physics", force: 1, wall: 0.96, blend: 1.2, settle: 1, scenes: MIC_SCENES },
+  recording: { kind: "dance", tempo: 1, reach: 1, blend: 1.5, voice: 0.35, settle: 0.9, score: MIC_SCORE },
 };
 
 // -------- Light-mode counterparts (used by the next SDUI build) -----------
