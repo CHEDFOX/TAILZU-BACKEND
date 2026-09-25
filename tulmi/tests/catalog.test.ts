@@ -2179,13 +2179,24 @@ describe("the mic key's mark comes from the server", () => {
         // square, along the link, square.
         const sig = k.props.motion.idle.find((m: any) => m.kind === "signal");
         expect(sig?.steps.map((st: any) => st.on)).toEqual(["c", "a", "link", "b"]);
-        // While the microphone is open the structure comes alive and springs
-        // home on stop; the numbers that shape it travel with it.
+        // While the microphone is open the structure is played with, cartoon
+        // style, and springs home on stop. The gags travel with the key, so a
+        // new one is a deploy: each is a few keyframes in rising time, pulling
+        // only squares the mark has, and a spin wraps its full turn back off.
         const rec = k.props.motion.recording;
-        expect(rec.kind).toBe("twist");
-        expect(rec.drift).toBeGreaterThan(0);
-        expect(rec.drift).toBeLessThan(0.5);
+        expect(rec.kind).toBe("play");
+        expect(rec.wobble).toBeGreaterThan(0);
+        expect(rec.wobble).toBeLessThan(1);
         expect(rec.settle).toBeGreaterThan(0);
+        expect(rec.gags.length).toBeGreaterThanOrEqual(6);
+        for (const g of rec.gags) {
+          expect(g.frames.length, g.name).toBeGreaterThan(1);
+          for (let i = 1; i < g.frames.length; i++) expect(g.frames[i].t, g.name).toBeGreaterThan(g.frames[i - 1].t);
+          for (const f of g.frames) {
+            for (const pl of f.pull ?? []) expect(ids.has(pl.on), `${g.name} pulls ${pl.on}`).toBe(true);
+            if (f.rot !== undefined && Math.abs(f.rot) >= 180) expect(g.frames.some((x: any) => x.wrap === f.rot), `${g.name} wraps its turn`).toBe(true);
+          }
+        }
       }
     }
   });

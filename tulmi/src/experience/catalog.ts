@@ -11161,22 +11161,48 @@ const BRAND_MARK = {
  * The whole mark (`on: "mark"`) takes a slow `breathe`; the hatch still runs,
  * for the sizes where dashes resolve.
  *
- * `recording` is what the key does while the microphone is open. `twist`:
- * the structure comes alive. Every square and the dot rides its own slow
- * orbit and turns about its centre, phased left to right so the motion runs
- * through the mark like a wave; the lines stretch between them like a
- * linkage; the whole mark sways. The voice drives the clock and the reach —
- * quiet is a slow float, speech quickens it, a sudden rise kicks a node into
- * a turn. Stop, and every part springs home, critically damped, in `settle`
- * seconds at most; then the still mark takes over. `drift` is the reach as
- * a fraction of the artboard's short side, `spin` the turn in degrees, `sway`
- * the whole mark's, `lag` the phase across the mark in radians. A build that
- * predates the twist reads `recording` as a name and shows its particles.
+ * `recording` is what the key does while the microphone is open: the play.
+ * The structure is played with, cartoon style — yanked wide, squashed flat,
+ * spun, pinched by a corner, bounced, wrung, rattled — every move with a
+ * rubbery overshoot and wobble. The body has six channels (slide x/y, turn,
+ * shear, stretch x/y) and every square and the dot is a node a gag can pull
+ * by its corner, the lines tied to them. A gag is a few keyframes of
+ * targets; the keyboard chases each on an underdamped spring (`wobble` is
+ * the damping ratio, `speed` the spring's rate), which is where the
+ * anticipation, snap and wobble come from. The voice is the hand: a rise
+ * fires a gag at once, talking keeps them coming at `tempo` a second,
+ * silence is a slow jelly breath (`idle`) and the odd small poke. `reach`
+ * scales every gag. Stop turns the damping critical and the targets to
+ * home, so the mark comes back smoothly within `settle` seconds and lands
+ * exactly; then the idle signal resumes. New gags are a deploy, not a
+ * build. A build that predates the play reads `recording` as a name and
+ * shows its particles.
  *
  * Motion on a shape the mark lacks is ignored, a kind a build does not know
  * is ignored, and a build older than this ignores all of it and draws its
  * bundled mark: the same picture, still.
  */
+/**
+ * THE GAGS. Frames are seconds from the gag's start; tx/ty/out and pull
+ * dx/dy are fractions of the artboard's short side, rot is degrees, shear
+ * is the skew factor, sx/sy multiply. `pull` drags named squares by a corner
+ * (an empty pull lets go of all); `out` pulls every node from the centre;
+ * `wrap` takes a full turn back off the count once it is done, so a spin
+ * ends at home. A full turn is never scaled by the voice.
+ */
+const MIC_GAGS = [
+  { name: "yank", frames: [{ t: 0, sx: 0.92, sy: 1.06 }, { t: 0.12, sx: 1.45, sy: 0.72 }, { t: 0.38, sx: 1, sy: 1 }] },
+  { name: "squash", frames: [{ t: 0, sy: 1.08, sx: 0.95, ty: -0.02 }, { t: 0.12, sy: 0.55, sx: 1.35, ty: 0.05 }, { t: 0.4, sy: 1, sx: 1, ty: 0 }] },
+  { name: "spin", frames: [{ t: 0, rot: -14, sx: 0.9, sy: 1.1 }, { t: 0.12, rot: 360, sx: 1, sy: 1 }, { t: 0.6, wrap: 360 }] },
+  { name: "pinch", frames: [{ t: 0, pull: [{ on: "a", dx: 0.06, dy: -0.2 }], rot: -4 }, { t: 0.3, pull: [], rot: 0 }] },
+  { name: "bounce", frames: [{ t: 0, sy: 0.7, sx: 1.25, ty: 0.05 }, { t: 0.14, ty: -0.16, sy: 1.35, sx: 0.8 }, { t: 0.4, ty: 0.04, sy: 0.6, sx: 1.3 }, { t: 0.55, ty: 0, sy: 1, sx: 1 }] },
+  { name: "wring", frames: [{ t: 0, shear: -0.15 }, { t: 0.14, shear: 0.6, rot: -8 }, { t: 0.45, shear: 0, rot: 0 }] },
+  { name: "hoist", frames: [{ t: 0, sy: 0.9, sx: 1.06 }, { t: 0.12, sy: 1.5, sx: 0.75, ty: -0.07 }, { t: 0.4, sy: 1, sx: 1, ty: 0 }] },
+  { name: "burst", frames: [{ t: 0, out: 0.14, sx: 1.12, sy: 1.12 }, { t: 0.3, out: 0, sx: 1, sy: 1 }] },
+  { name: "rattle", frames: [{ t: 0, tx: 0.05 }, { t: 0.07, tx: -0.05 }, { t: 0.14, tx: 0.045 }, { t: 0.21, tx: -0.03 }, { t: 0.28, tx: 0 }] },
+  { name: "tug", frames: [{ t: 0, pull: [{ on: "c", dx: -0.18, dy: 0.12 }] }, { t: 0.32, pull: [] }] },
+];
+
 const MIC_MOTION = {
   idle: [
     {
@@ -11191,7 +11217,11 @@ const MIC_MOTION = {
     { on: "mark", kind: "breathe", period: 4.2, scale: 1.06, opacity: 1 },
     { on: "link", kind: "hatch", period: 2.6 },
   ],
-  recording: { kind: "twist", drift: 0.11, spin: 26, sway: 5, lag: 1.2, settle: 0.7 },
+  recording: {
+    kind: "play", wobble: 0.32, speed: 16, reach: 1, tempo: 1.2, settle: 0.8,
+    idle: { squash: 0.03, period: 2.4 },
+    gags: MIC_GAGS,
+  },
 };
 
 // -------- Light-mode counterparts (used by the next SDUI build) -----------
