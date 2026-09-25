@@ -2170,10 +2170,15 @@ describe("the mic key's mark comes from the server", () => {
         const ids = new Set(mark.shapes.map((s: any) => s.id).filter(Boolean));
         for (const m of k.props.motion.idle) {
           expect(m.on === "mark" || ids.has(m.on), `${platform} ${m.on}`).toBe(true);
-          for (const o of m.order ?? []) expect(ids.has(o), `${platform} pulse ${o}`).toBe(true);
+          for (const st of m.steps ?? []) {
+            expect(ids.has(st.on), `${platform} signal ${st.on}`).toBe(true);
+            expect(st.at + (st.hold ?? st.run ?? 0), `${platform} signal ${st.on} ends inside the period`).toBeLessThanOrEqual(m.period);
+          }
         }
-        // Something moves at the size of a key: the pulse runs through the big shapes.
-        expect(k.props.motion.idle.some((m: any) => m.kind === "pulse" && m.order.length >= 5)).toBe(true);
+        // Something moves at the size of a key: the splash's signal, square,
+        // square, along the link, square.
+        const sig = k.props.motion.idle.find((m: any) => m.kind === "signal");
+        expect(sig?.steps.map((st: any) => st.on)).toEqual(["c", "a", "link", "b"]);
         expect(k.props.motion.recording).toBe("particles");
       }
     }
