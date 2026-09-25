@@ -2144,3 +2144,33 @@ describe("the tab icons come down the wire", () => {
     }
   });
 });
+
+describe("the mic key's mark comes from the server", () => {
+  // Every MicKey in a keyboard tree, wherever it sits.
+  const micKeys = (n: any): any[] =>
+    !n || typeof n !== "object" ? [] :
+      (n.type === "MicKey" ? [n] : []).concat(...(n.children ?? []).map(micKeys));
+
+  it("is geometry with motion, on both platforms", () => {
+    for (const platform of ["ios", "android"] as const) {
+      const kb = buildKeyboardConfig(undefined, undefined, { platform }) as any;
+      const keys = micKeys(kb.root);
+      expect(keys.length, platform).toBeGreaterThan(0);
+      for (const k of keys) {
+        const mark = k.props?.mark;
+        expect(mark?.viewBox, platform).toHaveLength(4);
+        // Three squares, the hatched link, two lines and the dot.
+        expect(mark.shapes, platform).toHaveLength(7);
+        // Geometry only. A picture can never stand where the mark stands.
+        for (const s of mark.shapes) {
+          expect(["rect", "line", "circle"], platform).toContain(s.kind);
+          expect(s, platform).not.toHaveProperty("url");
+        }
+        // Motion names shapes the mark actually has.
+        const ids = new Set(mark.shapes.map((s: any) => s.id).filter(Boolean));
+        for (const m of k.props.motion.idle) expect(ids.has(m.on), `${platform} ${m.on}`).toBe(true);
+        expect(k.props.motion.recording).toBe("particles");
+      }
+    }
+  });
+});

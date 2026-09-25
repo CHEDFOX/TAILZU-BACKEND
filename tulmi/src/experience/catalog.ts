@@ -10993,6 +10993,9 @@ const makeToolsRow = (opts: {
       // `falsy` on a state key an older client does not publish evaluates
       // true, so every existing build keeps showing the mic exactly as now.
       visibleIf: { falsy: "state.secured" },
+      // The mark and its motion, as data. A build that understands them draws
+      // the mark from here; one that does not draws its bundled asset.
+      props: { mark: BRAND_MARK, motion: MIC_MOTION },
       style: {
         flex: 0,
         width: 36,
@@ -11107,6 +11110,50 @@ const KEY_PRESSED = "#E8A23C";            // BRAND_ACCENT — warm amber press f
 // waveform bars during dictation. Colored feedback when the user is
 // speaking; invisible the rest of the time. Not a decorative accent.
 const BRAND_ACCENT = "#E8A23C";
+
+/**
+ * THE MARK, AS GEOMETRY. The same seven shapes the site's header, the favicon
+ * and the app icon draw: three squares, the hatched link, the line up to the
+ * dot. Sent to the keyboards as shapes rather than as a picture, so the mark
+ * on the mic key is redrawn from here — resized, recoloured, set moving —
+ * without a store build; and so that nothing but geometry can ever stand
+ * where the mark stands. A pushed GIF cannot replace it, because the key no
+ * longer takes a picture at idle at all.
+ *
+ * Coordinates are the mark's own artboard; `viewBox` is the part of it the
+ * key shows. A shape with an `id` can be given motion below.
+ */
+const BRAND_MARK = {
+  viewBox: [170, 228, 680, 512],
+  // On the key every shape wears the key's own ink (`fg`), as the bundled
+  // mark always did. `tint: false` shows the brand colours instead.
+  tint: true,
+  shapes: [
+    { kind: "line", x1: 346, y1: 402, x2: 270, y2: 598, width: 9, cap: "round", color: "#E9CBA2" },
+    { id: "link", kind: "line", x1: 444, y1: 394, x2: 554, y2: 486, width: 30, dash: [9, 11], color: BRAND_ACCENT },
+    { kind: "line", x1: 668, y1: 478, x2: 828, y2: 243, width: 9, cap: "round", color: "#C77A3A" },
+    { id: "dot", kind: "circle", cx: 828, cy: 243, r: 11, color: "#B06240" },
+    { kind: "rect", x: 308, y: 269, w: 132, h: 132, rx: 28, color: "#F4F1EA" },
+    { kind: "rect", x: 558, y: 478, w: 132, h: 132, rx: 28, color: "#F4F1EA" },
+    { kind: "rect", x: 178, y: 598, w: 132, h: 132, rx: 28, color: "#F4F1EA" },
+  ],
+};
+
+/**
+ * HOW THE MARK MOVES. `hatch` runs a dashed line's dashes along it, the way
+ * the site's header does; `breathe` swells a shape and lets it settle, on a
+ * period. `recording` names what the key shows while the microphone is open:
+ * the dots the mark bursts into, as today. Motion on a shape the mark lacks
+ * is ignored, a kind a build does not know is ignored, and a build older than
+ * this ignores all of it and draws its bundled mark: the same picture, still.
+ */
+const MIC_MOTION = {
+  idle: [
+    { on: "link", kind: "hatch", period: 2.6 },
+    { on: "dot", kind: "breathe", period: 3.8, scale: 1.45, opacity: 0.72 },
+  ],
+  recording: "particles",
+};
 
 // -------- Light-mode counterparts (used by the next SDUI build) -----------
 //
