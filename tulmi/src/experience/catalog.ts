@@ -11163,44 +11163,24 @@ const BRAND_MARK = {
  * The whole mark (`on: "mark"`) takes a slow `breathe`.
  *
  * `recording` is what the key does while the microphone is open: the
- * dance. One choreography, on one clock, looping. The squares and the dot
- * are the dancers, in chain order left to right and by depth from the top;
- * the `score` is a series of movements, each a figure of time — a sway, a
- * wave down the chain, a carousel, a fold and unfold, a pendulum, a figure
- * of eight, a spiral — that says where every dancer is and how it is turned
- * at each second, always at rest at its start and its end. Each movement
- * runs `for` seconds and its figure repeats every `beat`; `for` is a whole
- * number of beats, and the next movement fades in over `blend` seconds
- * while this one fades out, so one flows into the next and every part
- * moves in relation to the others. The keyboard chases the pose on
- * critically damped springs, which gives it the lag and weight of a real
- * thing, and stretches each square along its own speed. The live voice
- * sets the tempo and the reach, by `voice`, and a rise in it is an accent —
- * one breath of the whole. `tempo` and `reach` scale the whole score. Stop
- * chases home, within `settle` seconds, and lands exactly; then the idle
- * signal resumes. A new movement, or a new order, is a deploy, not a build.
- * A build that predates the dance reads `recording` as a name and shows
- * its particles.
+ * dispersal. Everything but the wave leaves. The squares, the plain lines
+ * and the dot fly straight out from the middle, turning `spin` degrees as
+ * they go, `out` key-radii away — past the rim, out of sight. The kept
+ * shape (`keep`, the dashed link between the blocks) is the wave: it eases
+ * to the middle (`centre`) and grows by `lift`, and its dashes become bars
+ * that rise and fall with the live voice — up to `rise` more than their
+ * height — while the bright cluster keeps running along it every `run`
+ * seconds, `width` of the line wide, a touch faster the louder it gets. On
+ * stop every part flies back and lands exactly where it began, within
+ * `settle` seconds, the wave goes back to being the link, and the idle
+ * signal resumes. All of it on critically damped springs, so nothing ever
+ * jumps. A build that predates the dispersal reads `recording` as a name
+ * and shows its particles.
  *
  * Motion on a shape the mark lacks is ignored, a kind a build does not know
  * is ignored, and a build older than this ignores all of it and draws its
  * bundled mark: the same picture, still.
  */
-/**
- * THE SCORE, in the order it plays. Sizes are fractions of the artboard's
- * short side; turns are degrees; `lag` is the phase, in radians, from one
- * part of the chain to the next.
- */
-const MIC_SCORE = [
-  { move: "sway", for: 5, beat: 2.5, turn: 12, breathe: 0.06 },
-  { move: "wave", for: 6, beat: 2, lift: 0.16, lag: 1.1, tilt: 26 },
-  { move: "carousel", for: 8, beat: 2, turns: 1, epicycle: 0.06 },
-  { move: "fold", for: 5, beat: 5, depth: 0.42, turn: 40 },
-  { move: "pendulum", for: 6, beat: 3, swing: 24, lag: 0.55 },
-  { move: "eight", for: 6, beat: 3, size: 0.14, lag: 0.9, tilt: 20 },
-  { move: "spiral", for: 6, beat: 6, turns: 1, breathe: 0.08 },
-];
-
 const MIC_MOTION = {
   idle: [
     {
@@ -11214,7 +11194,10 @@ const MIC_MOTION = {
     },
     { on: "mark", kind: "breathe", period: 4.2, scale: 1.06, opacity: 1 },
   ],
-  recording: { kind: "dance", tempo: 1, reach: 1, blend: 1.5, voice: 0.35, settle: 0.9, score: MIC_SCORE },
+  recording: {
+    kind: "disperse", keep: "link", out: 1.7, spin: 35, settle: 0.8,
+    wave: { lift: 2, rise: 0.9, run: 1, width: 0.3, centre: true },
+  },
 };
 
 // -------- Light-mode counterparts (used by the next SDUI build) -----------

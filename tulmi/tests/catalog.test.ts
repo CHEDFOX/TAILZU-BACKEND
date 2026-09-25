@@ -2179,19 +2179,19 @@ describe("the mic key's mark comes from the server", () => {
         // square, along the link, square.
         const sig = k.props.motion.idle.find((m: any) => m.kind === "signal");
         expect(sig?.steps.map((st: any) => st.on)).toEqual(["c", "a", "link", "b"]);
-        // While the microphone is open the structure dances one score, on
-        // one clock, looping. The score travels with the key, so a new
-        // movement is a deploy: each runs a whole number of beats, so it
-        // starts and ends at rest, and is long enough to fade in and out.
+        // While the microphone is open everything but the wave leaves: the
+        // parts fly out past the rim, the kept dashed line stays as the wave
+        // and rises with the voice, and on stop all of it flies back into
+        // place. The kept shape must be a dashed line the mark has.
         const rec = k.props.motion.recording;
-        expect(rec.kind).toBe("dance");
+        expect(rec.kind).toBe("disperse");
+        const kept = mark.shapes.find((s: any) => s.id === rec.keep);
+        expect(kept?.kind, `${platform} keeps a line`).toBe("line");
+        expect(kept.dash?.length, `${platform} keeps a dashed line`).toBeGreaterThan(0);
+        expect(rec.out).toBeGreaterThan(1);       // clear of the rim
         expect(rec.settle).toBeGreaterThan(0);
-        expect(rec.blend).toBeGreaterThan(0);
-        expect(rec.score.length).toBeGreaterThanOrEqual(5);
-        for (const mv of rec.score) {
-          expect(mv.for, mv.move).toBeGreaterThanOrEqual(2 * rec.blend);
-          expect(Math.abs(mv.for / mv.beat - Math.round(mv.for / mv.beat)), `${mv.move} runs whole beats`).toBeLessThan(1e-9);
-        }
+        expect(rec.wave.lift).toBeGreaterThan(0);
+        expect(rec.wave.run).toBeGreaterThan(0);
       }
     }
   });
