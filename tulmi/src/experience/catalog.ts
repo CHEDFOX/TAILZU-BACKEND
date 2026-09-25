@@ -11248,27 +11248,28 @@ const MIC_PROGRAM = {
     "trise": 1,
     "rows": 7,
     "depth": 30,
-    "lean": 0.26,
+    "lean": 0.2,
     "skew": 0.07,
-    "mess": 0.35,
+    "mess": 0.3,
     "persp": 0.08,
-    "pts": 25,
+    "pts": 33,
     "drop": 0.34,
     "below": 0,
-    "clean": 0.15,
+    "clean": 0.1,
     "fill": 0.06,
     "span": 2.6,
     "amp": 2.4,
     "flutter": 0.2,
     "jitter": 0.09,
     "gap0": 1,
-    "tilt": 1.1,
+    "tilt": 0.6,
     "sway": 0.3,
     "rowsw": 0.7,
-    "nst": 24,
-    "stlen": 22,
+    "nst": 40,
+    "stlen": 36,
     "stw": 0.9,
-    "push": 0.7
+    "push": 0.5,
+    "spread": 1.0
   },
   "funcs": {
     "tide": {
@@ -11276,7 +11277,7 @@ const MIC_PROGRAM = {
         "f",
         "r"
       ],
-      "expr": "clamp((crest(tau*(f/tlength - t/tperiod + r*skew)) + 0.4*crest(tau*(f/(tlength*0.55) - t/(tperiod*0.7) + 0.3 + r*skew)) + mess*(0.3*pow(max(0, sin(tau*(f/(tlength*0.8) + t/(tperiod*1.3) - r*skew*1.5))), 1.4) + 0.07*sin(tau*(f*4.5 - t*1.9 + r*0.37))*sin(tau*(f*2.6 + t*1.3)) + 0.08*sin(t*2.7 + r*2.1 + f*7)*sin(t*1.9 - f*5 + r)))*trise, 0, 1)"
+      "expr": "clamp((crest(tau*(f/tlength - t/tperiod + r*skew)) + 0.4*crest(tau*(f/(tlength*0.55) - t/(tperiod*0.7) + 0.3 + r*skew)) + mess*(0.35*pow(max(0, sin(tau*(f/(tlength*0.8) + t/(tperiod*1.3) - r*skew*1.5))), 1.4) + 0.1*sin(t*0.9 + r*1.3 + f*2.5)))*trise, 0, 1)"
     },
     "turbs": {
       "args": [],
@@ -11338,49 +11339,67 @@ const MIC_PROGRAM = {
       "args": [
         "k"
       ],
-      "expr": "0.5 + ((k + 0.5)/nst - 0.5)*span*0.92 + 0.05*noise(k*1.7)"
-    },
-    "so": {
-      "args": [
-        "k"
-      ],
-      "expr": "14*noise(k*3.1) - 6"
+      "expr": "clamp(0.5 + cos(sang(k))*srad(k)/(L*span), 0, 1)"
     },
     "sl": {
       "args": [
         "k"
       ],
-      "expr": "stlen*(0.55 + 0.5*(0.5 + 0.5*noise(k*2.3)))*(1 + 0.6*tide(clamp(sc(k), 0, 1), 0))*q"
+      "expr": "stlen*(0.55 + 0.5*(0.5 + 0.5*noise(k*2.3)))*(1 + 0.5*tide(sc(k), 0))*q"
     },
     "sa": {
       "args": [
         "k"
       ],
-      "expr": "1.2*noise(k*5.3) + sway*sin(t*1.2 + k*1.9) + push*tide(clamp(sc(k), 0, 1), 0)"
+      "expr": "1.4*noise(k*5.3) + sway*sin(t*1.2 + k*1.9) + push*tide(sc(k), 0)"
     },
     "sx1": {
       "args": [
         "k"
       ],
-      "expr": "x1 + (x2 - x1)*sc(k) + nx*so(k)*q - (nx*cos(sa(k)) + lx*sin(sa(k)))*sl(k)"
+      "expr": "scx(k) - (nx*cos(sa(k)) + lx*sin(sa(k)))*sl(k)"
     },
     "sy1": {
       "args": [
         "k"
       ],
-      "expr": "y1 + (y2 - y1)*sc(k) + ny*so(k)*q - (ny*cos(sa(k)) + ly*sin(sa(k)))*sl(k)"
+      "expr": "scy(k) - (ny*cos(sa(k)) + ly*sin(sa(k)))*sl(k)"
     },
     "sx2": {
       "args": [
         "k"
       ],
-      "expr": "x1 + (x2 - x1)*sc(k) + nx*so(k)*q + (nx*cos(sa(k)) + lx*sin(sa(k)))*sl(k)"
+      "expr": "scx(k) + (nx*cos(sa(k)) + lx*sin(sa(k)))*sl(k)"
     },
     "sy2": {
       "args": [
         "k"
       ],
-      "expr": "y1 + (y2 - y1)*sc(k) + ny*so(k)*q + (ny*cos(sa(k)) + ly*sin(sa(k)))*sl(k)"
+      "expr": "scy(k) + (ny*cos(sa(k)) + ly*sin(sa(k)))*sl(k)"
+    },
+    "sang": {
+      "args": [
+        "k"
+      ],
+      "expr": "k*2.399 + 0.3*noise(k*1.7)"
+    },
+    "srad": {
+      "args": [
+        "k"
+      ],
+      "expr": "spread*U/lift*sqrt((k + 0.5)/nst)*(0.94 + 0.06*noise(k*1.3))*q"
+    },
+    "scx": {
+      "args": [
+        "k"
+      ],
+      "expr": "(x1 + x2)/2 + (lx*cos(sang(k)) + nx*sin(sang(k)))*srad(k)"
+    },
+    "scy": {
+      "args": [
+        "k"
+      ],
+      "expr": "(y1 + y2)/2 + (ly*cos(sang(k)) + ny*sin(sang(k)))*srad(k)"
     }
   },
   "springs": {
@@ -11532,7 +11551,7 @@ const MIC_PROGRAM = {
       "y1": "sy1(k)",
       "x2": "sx2(k)",
       "y2": "sy2(k)",
-      "opacity": "q*(0.6 + 0.3*noise(k*4.1))",
+      "opacity": "q*(0.5 + 0.3*noise(k*4.1))",
       "width": "thick*stw",
       "color": "ink"
     }
