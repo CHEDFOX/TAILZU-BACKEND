@@ -11131,29 +11131,39 @@ const BRAND_MARK = {
   // On the key every shape wears the key's own ink (`fg`), as the bundled
   // mark always did. `tint: false` shows the brand colours instead.
   tint: true,
+  // Every shape named, in the order a signal travels through the mark: the
+  // low square, up the line to the first square, across the link to the
+  // second, up the long line to the dot.
   shapes: [
-    { kind: "line", x1: 346, y1: 402, x2: 270, y2: 598, width: 9, cap: "round", color: "#E9CBA2" },
+    { id: "line1", kind: "line", x1: 346, y1: 402, x2: 270, y2: 598, width: 9, cap: "round", color: "#E9CBA2" },
     { id: "link", kind: "line", x1: 444, y1: 394, x2: 554, y2: 486, width: 30, dash: [9, 11], color: BRAND_ACCENT },
-    { kind: "line", x1: 668, y1: 478, x2: 828, y2: 243, width: 9, cap: "round", color: "#C77A3A" },
+    { id: "line2", kind: "line", x1: 668, y1: 478, x2: 828, y2: 243, width: 9, cap: "round", color: "#C77A3A" },
     { id: "dot", kind: "circle", cx: 828, cy: 243, r: 11, color: "#B06240" },
-    { kind: "rect", x: 308, y: 269, w: 132, h: 132, rx: 28, color: "#F4F1EA" },
-    { kind: "rect", x: 558, y: 478, w: 132, h: 132, rx: 28, color: "#F4F1EA" },
-    { kind: "rect", x: 178, y: 598, w: 132, h: 132, rx: 28, color: "#F4F1EA" },
+    { id: "a", kind: "rect", x: 308, y: 269, w: 132, h: 132, rx: 28, color: "#F4F1EA" },
+    { id: "b", kind: "rect", x: 558, y: 478, w: 132, h: 132, rx: 28, color: "#F4F1EA" },
+    { id: "c", kind: "rect", x: 178, y: 598, w: 132, h: 132, rx: 28, color: "#F4F1EA" },
   ],
 };
 
 /**
- * HOW THE MARK MOVES. `hatch` runs a dashed line's dashes along it, the way
- * the site's header does; `breathe` swells a shape and lets it settle, on a
- * period. `recording` names what the key shows while the microphone is open:
- * the dots the mark bursts into, as today. Motion on a shape the mark lacks
- * is ignored, a kind a build does not know is ignored, and a build older than
- * this ignores all of it and draws its bundled mark: the same picture, still.
+ * HOW THE MARK MOVES, AT THE SIZE OF A KEY. On a 36pt key the hatching's
+ * dashes are a third of a pixel and the dot is half of one, so motion on
+ * them is motion nobody sees. What can be seen at that size is the big
+ * shapes, so the idle motion lives there: a `pulse` runs a signal through
+ * the mark in the order the shapes are wired — each brightens as it passes,
+ * then the mark rests — and the whole mark (`on: "mark"`) takes a slow
+ * `breathe`. The hatch still runs, for the sizes where it can be seen.
+ *
+ * `recording` names what the key shows while the microphone is open: the
+ * dots the mark bursts into. Motion on a shape the mark lacks is ignored, a
+ * kind a build does not know is ignored, and a build older than this ignores
+ * all of it and draws its bundled mark: the same picture, still.
  */
 const MIC_MOTION = {
   idle: [
+    { on: "mark", kind: "pulse", period: 2.6, low: 0.55, rest: 0.35, order: ["c", "line1", "a", "link", "b", "line2", "dot"] },
+    { on: "mark", kind: "breathe", period: 4.2, scale: 1.06, opacity: 1 },
     { on: "link", kind: "hatch", period: 2.6 },
-    { on: "dot", kind: "breathe", period: 3.8, scale: 1.45, opacity: 0.72 },
   ],
   recording: "particles",
 };

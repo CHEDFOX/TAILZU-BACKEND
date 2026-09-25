@@ -2166,9 +2166,14 @@ describe("the mic key's mark comes from the server", () => {
           expect(["rect", "line", "circle"], platform).toContain(s.kind);
           expect(s, platform).not.toHaveProperty("url");
         }
-        // Motion names shapes the mark actually has.
+        // Motion names shapes the mark actually has, or the whole mark.
         const ids = new Set(mark.shapes.map((s: any) => s.id).filter(Boolean));
-        for (const m of k.props.motion.idle) expect(ids.has(m.on), `${platform} ${m.on}`).toBe(true);
+        for (const m of k.props.motion.idle) {
+          expect(m.on === "mark" || ids.has(m.on), `${platform} ${m.on}`).toBe(true);
+          for (const o of m.order ?? []) expect(ids.has(o), `${platform} pulse ${o}`).toBe(true);
+        }
+        // Something moves at the size of a key: the pulse runs through the big shapes.
+        expect(k.props.motion.idle.some((m: any) => m.kind === "pulse" && m.order.length >= 5)).toBe(true);
         expect(k.props.motion.recording).toBe("particles");
       }
     }
