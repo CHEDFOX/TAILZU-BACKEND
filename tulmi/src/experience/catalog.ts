@@ -11163,17 +11163,22 @@ const BRAND_MARK = {
  * The whole mark (`on: "mark"`) takes a slow `breathe`.
  *
  * `recording` is what the key does while the microphone is open: the
- * dispersal. Everything but the wave leaves. The squares, the plain lines
- * and the dot fly straight out from the middle, turning `spin` degrees as
- * they go, `out` key-radii away — past the rim, out of sight. The kept
- * shape (`keep`, the dashed link between the blocks) is the wave: it eases
- * to the middle (`centre`) and grows by `lift`, and its dashes become bars
- * that rise and fall with the live voice — up to `rise` more than their
+ * dispersal. Everything but the wave leaves. The whole gathers inward a
+ * touch (`gather`), then each part — the squares, the plain lines, the dot —
+ * leaves in turn, `stagger` seconds after the last, nearest the wave first:
+ * out from the middle along an arc bent `arc` key-radii sideways, `out`
+ * key-radii away past the rim, turning `spin` degrees, shrinking by
+ * `shrink` and fading as it crosses the rim. Once they are away the kept
+ * shape (`keep`, the dashed link between the blocks) glides to the middle
+ * (`centre`, after `wait` seconds) and grows by `lift`: the wave, its dashes
+ * bars that rise and fall with the live voice — up to `rise` more than their
  * height — while the bright cluster keeps running along it every `run`
  * seconds, `width` of the line wide, a touch faster the louder it gets. On
- * stop every part flies back and lands exactly where it began, within
- * `settle` seconds, the wave goes back to being the link, and the idle
- * signal resumes. All of it on critically damped springs, so nothing ever
+ * stop it all reverses: the wave settles back into the link, and the parts
+ * glide in on the same arcs in the opposite order and land exactly where
+ * they began, within `settle` seconds; then the idle signal resumes. Every
+ * part follows one number, its progress from home to away, on a critically
+ * damped spring, so a stop mid-flight simply turns it around: nothing ever
  * jumps. A build that predates the dispersal reads `recording` as a name
  * and shows its particles.
  *
@@ -11195,8 +11200,8 @@ const MIC_MOTION = {
     { on: "mark", kind: "breathe", period: 4.2, scale: 1.06, opacity: 1 },
   ],
   recording: {
-    kind: "disperse", keep: "link", out: 1.7, spin: 35, settle: 0.8,
-    wave: { lift: 2, rise: 0.9, run: 1, width: 0.3, centre: true },
+    kind: "disperse", keep: "link", out: 1.6, spin: 40, arc: 0.22, shrink: 0.45, gather: 0.05, stagger: 0.07, settle: 1.2,
+    wave: { lift: 2, rise: 0.9, run: 1, width: 0.3, centre: true, wait: 0.25 },
   },
 };
 
