@@ -11138,10 +11138,12 @@ const BRAND_MARK = {
     { id: "line1", kind: "line", x1: 346, y1: 402, x2: 270, y2: 598, width: 9, cap: "round", color: "#E9CBA2" },
     {
       // THE WAVE OF THE ICON, measured from the splash: seven thin bars of
-      // uneven height across the line, and under the bright swell each bar
-      // is thicker by half and a touch taller.
+      // uneven height across the line. The bars move like water, in the
+      // mark's own ink — nothing lights: a crest passes and each bar rises
+      // under it, `swell.height` times taller and `swell.thick` thicker, and
+      // collapses behind it.
       id: "link", kind: "bars", x1: 444, y1: 394, x2: 554, y2: 486, thick: 6,
-      heights: [28, 36, 41, 46, 43, 34, 28], swell: { thick: 1.5, height: 1.07 }, color: BRAND_ACCENT,
+      heights: [28, 36, 41, 46, 43, 34, 28], swell: { thick: 1.3, height: 1.9 }, color: BRAND_ACCENT,
     },
     { id: "line2", kind: "line", x1: 668, y1: 478, x2: 828, y2: 243, width: 9, cap: "round", color: "#C77A3A" },
     { id: "dot", kind: "circle", cx: 828, cy: 243, r: 11, color: "#B06240" },
@@ -11176,10 +11178,12 @@ const BRAND_MARK = {
  * key-radii away past the rim, turning `spin` degrees, shrinking by
  * `shrink` and fading as it crosses the rim. Once they are away the kept
  * shape (`keep`, the dashed link between the blocks) glides to the middle
- * (`centre`, after `wait` seconds) and grows by `lift`: the wave, doing
- * exactly what it does in the splash — the dashes stay put, and the bright
- * cluster, `width` of the line wide, travels from end to end in `run`
- * seconds, rests for `gap`, and goes again. On
+ * (`centre`, after `wait` seconds) and grows by `lift`: the wave, and the
+ * wave is water. Two crests travel its bars, a long slow one (`tide.length`
+ * of the line, one pass every `tide.period` seconds) and a shorter quicker
+ * one riding it; where they add a tide forms — each bar rising under the
+ * crest, up to `tide.rise` of its full swell, and collapsing behind it —
+ * and where they cancel it goes flat. All in the mark's own ink. On
  * stop it all reverses: the wave settles back into the link, and the parts
  * glide in on the same arcs in the opposite order and land exactly where
  * they began, within `settle` seconds; then the idle signal resumes. Every
@@ -11207,7 +11211,7 @@ const MIC_MOTION = {
   ],
   recording: {
     kind: "disperse", keep: "link", out: 1.9, spin: 40, arc: 0.22, shrink: 0.45, gather: 0.05, stagger: 0.07, settle: 1.2,
-    wave: { lift: 2, run: 0.95, gap: 0.25, width: 0.3, centre: true, wait: 0.25 },
+    wave: { lift: 2, centre: true, wait: 0.25, tide: { period: 1.2, length: 0.6, rise: 1 } },
   },
 };
 

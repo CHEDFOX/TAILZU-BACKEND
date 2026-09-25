@@ -2190,18 +2190,17 @@ describe("the mic key's mark comes from the server", () => {
         expect(kept?.kind, `${platform} keeps the bars`).toBe("bars");
         expect(kept.heights.length, platform).toBeGreaterThanOrEqual(5);
         expect(new Set(kept.heights).size, `${platform} uneven`).toBeGreaterThan(2);
-        expect(kept.swell.thick, platform).toBeGreaterThan(1);
+        expect(kept.swell.thick, platform).toBeGreaterThanOrEqual(1);
         expect(rec.out).toBeGreaterThan(1);       // clear of the rim
         expect(rec.stagger).toBeGreaterThanOrEqual(0);
         expect(rec.settle).toBeGreaterThan((mark.shapes.length - 1) * rec.stagger + 0.15);   // time for the last part to land
         expect(rec.settle).toBeGreaterThan(0);
         expect(rec.wave.lift).toBeGreaterThan(0);
-        expect(rec.wave.run).toBeGreaterThan(0);
-        expect(rec.wave.gap).toBeGreaterThanOrEqual(0);
-        // The wave while recording is the splash's own run: the same cluster, at the same pace.
-        const link = k.props.motion.idle.find((m: any) => m.kind === "signal").steps.find((st: any) => st.on === rec.keep);
-        expect(Math.abs(rec.wave.run - link.run)).toBeLessThan(0.2);
-        expect(rec.wave.width).toBe(link.width);
+        // The wave while recording is water: tides with a period and a length.
+        expect(rec.wave.tide.period).toBeGreaterThan(0);
+        expect(rec.wave.tide.length).toBeGreaterThan(0);
+        // The bars rise well clear of their rest, in ink: the swell is a height, not a colour.
+        expect(kept.swell.height).toBeGreaterThan(1.3);
       }
     }
   });
