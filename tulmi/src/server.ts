@@ -2343,19 +2343,22 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL }, async (req, reply) => {
   // (nginx, CDN) that indexed the response by URL alone could leak these
   // across users. Same policy as /v1/app/bootstrap and /v1/app/screen.
   noStoreSdui(reply);
-  // Which binary is asking: "K37" → 37. Older builds send nothing.
-  const stamp = String(req.headers["x-tulmi-keyboard-build"] ?? "").match(/^K(\d{1,5})$/i);
+  // Which binary is asking: iOS "K37" → 37, Android "A2" → 2. Older builds
+  // send nothing. The K-number gates iOS-only features (kbBuild); either
+  // number lets a control rule target a build range on its own platform.
+  const stamp = String(req.headers["x-tulmi-keyboard-build"] ?? "").match(/^([KA])(\d{1,5})$/i);
   const kbPlatform = keyboardPlatform(req.headers["user-agent"]);
+  const isIosStamp = !!stamp && stamp[1]!.toUpperCase() === "K";
   const kbConfig = buildKeyboardConfig(personality, userId, {
     platform: kbPlatform,
     quota,
-    ...(stamp ? { kbBuild: Number(stamp[1]) } : {}),
+    ...(isIosStamp ? { kbBuild: Number(stamp![2]) } : {}),
   });
   return reply.send(withControl(req, reply, kbConfig, {
     surface: "keyboard",
     platform: kbPlatform,
     formFactor: "phone",
-    ...(stamp ? { build: Number(stamp[1]) } : {}),
+    ...(stamp ? { build: Number(stamp[2]) } : {}),
     userId,
     signedIn: !!userId,
   }));

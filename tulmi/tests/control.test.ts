@@ -281,3 +281,22 @@ describe("through the real routes", () => {
     expect((await kb({ ...IOS, "x-tulmi-keyboard-build": "K40" })).flags["kb.touch.vSlop"]).not.toBe(21);
   });
 });
+
+describe("android build header", () => {
+  let app2: FastifyInstance;
+  const admin2 = { "x-admin-secret": "test-admin-secret-xyz" };
+  beforeAll(async () => { app2 = await buildApp(); await app2.ready(); });
+  afterAll(async () => { await app2.close(); });
+  it("A<n> targets Android builds and never unlocks iOS-only gates", async () => {
+    await app2.inject({ method: "PUT", url: "/v1/admin/control/rules/android-a2", headers: admin2, payload: {
+      surface: "keyboard", when: { platform: ["android"], build: { min: 2 } },
+      ops: [{ op: "set", path: "/flags/kb.android.probe", value: true }] } });
+    const get = async (b: string) => JSON.parse((await app2.inject({ method: "GET", url: "/v1/keyboard/config",
+      headers: { "user-agent": "okhttp/4.12 TailzuKeyboard", "x-tulmi-keyboard-build": b } })).body);
+    expect((await get("A2")).flags["kb.android.probe"]).toBe(true);
+    expect((await get("A1")).flags["kb.android.probe"]).toBeUndefined();
+    // A2 must not read as iOS K2-or-later for iOS-only gates like the veil blur.
+    expect((await get("A99")).flags["kb.dictation.dim.blur"]).toBe(false);
+    await app2.inject({ method: "DELETE", url: "/v1/admin/control/rules/android-a2", headers: admin2 });
+  });
+});
