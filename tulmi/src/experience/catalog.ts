@@ -12335,6 +12335,10 @@ export function buildKeyboardConfig(
         "kb.accentTray.gap": 4,
         "kb.accentTray.height": 48,
         "kb.accentTray.longPressMs": 500,
+        // The long-press alternates, per key. Both keyboards read this; the
+        // iOS built-in map is only its fallback. Change a language's set here
+        // or per user from the control console.
+        "kb.accents": {"a": ["à", "á", "â", "ä", "æ", "ã", "å", "ā"], "e": ["è", "é", "ê", "ë", "ē", "ė", "ę"], "i": ["î", "ï", "í", "ī", "į", "ì"], "o": ["ô", "ö", "ò", "ó", "œ", "ø", "ō", "õ"], "u": ["û", "ü", "ù", "ú", "ū"], "y": ["ÿ"], "s": ["ß", "ś", "š"], "l": ["ł"], "z": ["ž", "ź", "ż"], "c": ["ç", "ć", "č"], "n": ["ñ", "ń"], "d": ["ď"], "h": ["ĥ", "ħ"], "0": ["°"], "-": ["–", "—", "•"], "/": ["\\"], "$": ["€", "£", "¥", "₹", "¢"], "&": ["§"], "\"": ["“", "”", "„", "«", "»"], ".": ["…"], "?": ["¿"], "!": ["¡"], "'": ["‘", "’", "‚", "`"], "%": ["‰"], "=": ["≠", "≈"]},
         "kb.accentTray.offsetY": -52,
         "kb.accentTray.padding": 4,
         "kb.accentTray.radius": 8,
