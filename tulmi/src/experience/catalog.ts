@@ -12415,6 +12415,12 @@ export function buildKeyboardConfig(
          */
         "kb.key.hitSlop.x": 0,
         "kb.key.hitSlop.y": 0,
+        // K39: space, return and the other plain-tap keys keep a tap that
+        // lifts this many POINTS outside the key (a fast thumb drifts), and a
+        // tap the system cancels early (the home-indicator band) — both used
+        // to type nothing. Letters are the plane's and were already kept.
+        "kb.key.liftSlop": 14,
+        "kb.key.cancelMs": 250,
         "kb.key.shadow.color": "#000000",
         "kb.key.shadow.offsetY": 1,
         "kb.key.shadow.opacity": 0.4,

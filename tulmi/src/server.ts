@@ -2331,6 +2331,15 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL }, async (req, reply) => {
 // if a future client tried to send it.
 const TELEMETRY_COUNTERS = new Set([
   "keystrokes",
+  // The touch path, counted (K39+): so a dropped keystroke is a number.
+  "planeTouches",
+  "planeMissed",
+  "liftRescued",
+  "cancelRescued",
+  "trayRetracted",
+  "remounts",
+  "keyMs",
+  "slowKeys",
   "autocorrectApplied",
   "autocorrectReverted",
   "suggestionAccepted",
@@ -2389,6 +2398,9 @@ app.post("/v1/keyboard/telemetry", { config: AUTHED_RL }, async (req, reply) => 
   const short = (v: unknown, max: number) =>
     typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined;
 
+  // Numbers only, by construction — safe to log, and the quickest way to read
+  // a phone's touch path: `docker compose logs backend | grep "keyboard telemetry"`.
+  req.log.info({ build: short(body.build, 16), counters }, "keyboard telemetry");
   try {
     await recordKeyboardTelemetry(user, {
       build: short(body.build, 16),
