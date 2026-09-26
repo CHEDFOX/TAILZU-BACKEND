@@ -12419,6 +12419,10 @@ export function buildKeyboardConfig(
         "kb.accentTray.gap": 4,
         "kb.accentTray.height": 48,
         "kb.accentTray.longPressMs": 500,
+        // Which backend errors the keyboard explains, and with which label.
+        // 5xx is left out on purpose: those stay silent until voice_unavailable
+        // says something users should read.
+        "kb.errors.statusByCode": { "401": "auth_expired", "429": "words_out_status" },
         // The long-press alternates, per key. Both keyboards read this; the
         // iOS built-in map is only its fallback. Change a language's set here
         // or per user from the control console.

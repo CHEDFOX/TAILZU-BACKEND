@@ -17,7 +17,8 @@ describe("app knobs", () => {
   it("the bootstrap carries every knob label and flag", () => {
     const b = buildBootstrap({});
     for (const k of Object.keys(APP_KNOB_LABELS)) expect(b.labels?.[k], k).toBeTypeOf("string");
-    for (const k of Object.keys(APP_KNOB_FLAGS)) expect(b.flags?.[k], k).toBeDefined();
+    const conditional = new Set(["promptScreenId", "promptAfterMs"]);
+    for (const k of Object.keys(APP_KNOB_FLAGS)) if (!conditional.has(k)) expect(b.flags?.[k], k).toBeDefined();
     expect(Object.keys(APP_KNOB_LABELS).length).toBeGreaterThan(0);
   });
   it("catalog values win over knob defaults", () => {

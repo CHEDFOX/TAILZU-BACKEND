@@ -10,11 +10,21 @@ import type { BootstrapResponse } from "../../../shared/types/sdui.js";
 import { APP_KNOB_FLAGS, APP_KNOB_LABELS } from "./appKnobsData.js";
 import { KEYBOARD_KNOBS } from "./keyboardKnobsData.js";
 
+/**
+ * Flags whose ABSENCE means something ("no arrival prompt this launch"). The
+ * catalog sets them only when they apply; filling them with the knob default
+ * would say "ask" or "wait 9s" when it meant nothing at all. A control rule
+ * can still set them.
+ */
+const CATALOG_CONDITIONAL = new Set(["promptScreenId", "promptAfterMs"]);
+
 export function withAppKnobs<T extends Pick<BootstrapResponse, "labels" | "flags">>(boot: T): T {
+  const fill: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(APP_KNOB_FLAGS)) if (!CATALOG_CONDITIONAL.has(k)) fill[k] = v;
   return {
     ...boot,
     labels: { ...APP_KNOB_LABELS, ...(boot.labels ?? {}) },
-    flags: { ...APP_KNOB_FLAGS, ...(boot.flags ?? {}) } as T["flags"],
+    flags: { ...fill, ...(boot.flags ?? {}) } as T["flags"],
   };
 }
 
