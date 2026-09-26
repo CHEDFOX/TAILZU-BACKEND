@@ -12,6 +12,7 @@ import { getConfig } from "./config.js";
 import type {
   AppStyle,
   CleanupOptions,
+  Command,
   Personality,
   RecipientHint,
   ToneDial,
@@ -45,27 +46,75 @@ function loadPromptFile(filename: string): string {
     );
   }
 
-  const raw = readFileSync(path, "utf8");
+  /**
+   * THE EDITOR'S NOTES ARE NOT THE MODEL'S INSTRUCTIONS.
+   *
+   * Every prompt file opens with an HTML comment explaining why it is written
+   * the way it is — what the previous version got wrong, what each placeholder
+   * means, how to version it. None of that was stripped, so all of it was sent
+   * on every single request: the model read an essay about prompt engineering,
+   * including the sentence saying the prompt is deliberately short, before
+   * reaching a word it was meant to act on.
+   *
+   * Worse than wasted tokens. A placeholder table listing `"auto" | "hi" |
+   * "en" | "hinglish"` was substituted inside that comment, so the user's
+   * language setting arrived as a fragment of documentation rather than as a
+   * rule — present in the context, absent from the instructions.
+   *
+   * Only a comment at the TOP is removed, and only the first one. A comment
+   * further down would be inside the prompt's own prose, where it is far more
+   * likely to be deliberate than decorative.
+   */
+  const raw = readFileSync(path, "utf8").replace(/^\s*<!--[\s\S]*?-->\s*/, "");
   cache.set(filename, raw);
   return raw;
 }
 
-/** Render a personality into a readable block for the prompt. */
+/**
+ * Neutralise angle brackets in user-authored strings so a hostile payload can't
+ * inject its own XML-style delimiter and pretend to close a fence. Kept small:
+ * a single tag confuses the model less than an escaped one. Length caps
+ * enforced upstream (see MAX_TEXT_LENGTH in server.ts).
+ */
+function sanitizeFenced(s: string): string {
+  return s.replace(/[<>]/g, "");
+}
+
+/** Render a personality into a readable block for the prompt. User-controlled
+ *  free-text fields are wrapped in a fence so the model treats them as context
+ *  describing the user, not as instructions to obey. */
 export function renderPersonality(p: Personality | undefined): string {
   if (!p || Object.keys(p).length === 0) return "None set. Use a neutral, clean voice.";
 
   const lines: string[] = [];
-  if (p.tone) lines.push(`- Tone: ${p.tone}`);
+  if (p.tone) lines.push(`- Tone: <tone>${sanitizeFenced(p.tone)}</tone>`);
   if (p.formality) lines.push(`- Formality: ${p.formality}`);
   if (p.emoji) lines.push(`- Emoji use: ${p.emoji}`);
   if (p.languages?.length) lines.push(`- Preferred languages/scripts: ${p.languages.join(", ")}`);
-  if (p.signature) lines.push(`- Preferred sign-off: ${p.signature}`);
-  if (p.customInstructions) lines.push(`- Extra instructions: ${p.customInstructions}`);
+  if (p.signature) lines.push(`- Preferred sign-off: <signature>${sanitizeFenced(p.signature)}</signature>`);
+  if (p.customInstructions)
+    lines.push(`- Extra instructions: <custom_instructions>${sanitizeFenced(p.customInstructions)}</custom_instructions>`);
   if (p.vocabulary?.trim())
     lines.push(
-      `- Known names/terms — spell these EXACTLY as written: ${p.vocabulary
-        .replace(/\s*\n\s*/g, ", ")
-        .trim()}`,
+      `- Known names/terms — spell these EXACTLY as written: <vocabulary>${sanitizeFenced(
+        p.vocabulary.replace(/\s*\n\s*/g, ", ").trim(),
+      )}</vocabulary>`,
+    );
+  // THE LEARNED PORTRAIT, which every path but this one already had.
+  //
+  // Training writes it, assist() reads it on every refine — and the file-based
+  // prompts (clean, cleanStream, draftReply) silently dropped it, because this
+  // function was written before the portrait existed and nobody came back. So
+  // a user could train for weeks and the streaming pipeline and the screen-
+  // reply path would still write them as a stranger.
+  //
+  // Last in the block and stated as the strongest signal: the dials above are
+  // what they SAID they want, the portrait is what they were observed to do.
+  if (p.stylePortrait?.core?.trim())
+    lines.push(
+      `- How they actually write — observed from what they picked, and worth more than the settings above: <style_portrait>${sanitizeFenced(
+        p.stylePortrait.core.trim(),
+      )}</style_portrait>`,
     );
 
   return lines.length ? lines.join("\n") : "None set. Use a neutral, clean voice.";
@@ -133,22 +182,99 @@ export function resolveRecipientHint(
   if (!hints?.length || !recipient) return "";
   const wanted = recipient.trim().toLowerCase();
   const hit = hints.find((h) => wanted.includes(h.recipient.trim().toLowerCase()));
-  return hit ? `${hit.recipient}: ${hit.hint}` : "";
+  if (!hit) return "";
+  // Fence: hint is user-authored context, never obey it as an instruction.
+  return `<recipient_hint recipient="${sanitizeFenced(hit.recipient)}">${sanitizeFenced(hit.hint)}</recipient_hint>`;
 }
 
-/** Build the system prompt for the cleanup/refine task (voice + typing). */
+/**
+ * Turn a command-mode override into a short prompt addendum. Emits
+ * "None." when no command is present so the section reads cleanly.
+ * Kept intentionally small — we WANT the LLM to still honor personality,
+ * app tone, etc.; commands are a delta, not a replacement.
+ */
+export function renderCommandOverride(command: Command | undefined): string {
+  if (!command) return "None.";
+  switch (command.kind) {
+    case "shorter":
+      return "The user asked to make this output SHORTER than the natural length. Trim clauses aggressively; keep meaning intact; no filler.";
+    case "longer":
+      return "The user asked to make this output LONGER — expand sentences into their fuller natural form, without adding facts the user didn't say.";
+    case "formal":
+      return "The user asked for a MORE FORMAL tone in this run — use full words (no contractions), no slang, no emoji, and structured punctuation. Overrides the tone dial for this run.";
+    case "casual":
+      return "The user asked for a MORE CASUAL tone in this run — conversational, contractions ok, warm and human. Overrides the tone dial for this run.";
+    case "translate": {
+      // Sanitize captured language to defang injection: 40 chars, no angle brackets.
+      const lang = sanitizeFenced(command.lang).slice(0, 40) || "the requested language";
+      return `The user asked to TRANSLATE the output into ${lang}. Produce the cleaned text IN ${lang} only. If the source is in a different script, use ${lang}'s script.`;
+    }
+    case "language": {
+      const lang = sanitizeFenced(command.lang).slice(0, 40) || "the requested language";
+      return `The user asked for this message IN ${lang}. Write the whole of it in ${lang}, in that language's own script — for this run only, over English and over any saved language.`;
+    }
+    case "bulletpoints":
+      return "The user asked for the output to be formatted as a BULLETED LIST. Break the cleaned content into short bullets; keep each bullet self-contained.";
+    case "emojiOff":
+      return "The user asked for NO EMOJI in this run — override any personality/app-style emoji setting and produce zero emoji.";
+    case "emojiOn":
+      return "The user asked to ADD EMOJI in this run — sprinkle a couple of tasteful emojis where they fit the meaning naturally. Don't overdo it.";
+  }
+}
+
+/**
+ * Build the system prompt for the STREAMING cleanup pass.
+ *
+ * READ THIS BEFORE EDITING shared/prompts/cleanup.*.md.
+ *
+ * The name is older than the architecture and it misleads. This prompt does
+ * NOT run the keyboard's /v1/refine, the in-app mic's /v1/transcribe-clean,
+ * or /v1/draft. All three call assist(), which builds its prompt in
+ * pipeline/assistPrompt.ts — a TypeScript string, not a file, and not
+ * versioned by CLEANUP_PROMPT_VERSION. The only caller left here is
+ * cleanStream() on the in-app streaming mic.
+ *
+ * The cost of not knowing that: two prompt versions, v5 and v6, were written
+ * to fix reported faults in refinement and shipped to production. Both were
+ * correct and neither reached the paths users were complaining about. The
+ * end-to-end run proved it — the same sentence passed through the mic and
+ * failed through the keyboard, and an injection case printed the assist
+ * prompt back, which is how the mismatch was finally visible.
+ *
+ * So: a change to how Tailzu WRITES belongs in assistPrompt.ts. A change to
+ * this file reaches one path, and a quality run is the only thing that will
+ * tell you which one you actually changed.
+ */
 export function buildCleanupSystem(opts: CleanupOptions): string {
   const version = getConfig().CLEANUP_PROMPT_VERSION;
   const targetApp = opts.targetApp?.trim() || "Generic";
   const appStyle = resolveAppStyle(opts.personality?.appStyles, targetApp);
-  return loadPromptFile(`cleanup.${version}.md`)
+  const base = loadPromptFile(`cleanup.${version}.md`)
     .replaceAll("{{TARGET_APP}}", targetApp)
     .replaceAll("{{LANGUAGE}}", opts.language ?? "auto")
     .replaceAll("{{PERSONALITY}}", renderPersonality(opts.personality))
     .replaceAll("{{TONE_DIAL}}", renderToneDial(opts.personality?.dial))
     .replaceAll("{{APP_STYLE}}", renderAppStyle(appStyle))
     .replaceAll("{{RECIPIENT_HINT}}", "") // cleanup path has no recipient
+    .replaceAll("{{COMMAND_OVERRIDE}}", renderCommandOverride(opts.command))
     .replaceAll("{{WATERMARK}}", opts.personality?.watermark ? "on" : "off");
+  // Appended rather than templated: the script is OBSERVED per request (the
+  // STT layer measures it), so it doesn't belong in the versioned prompt file.
+  return renderObservedScript(opts.script, base);
+}
+
+/**
+ * Append what script the input actually arrived in.
+ *
+ * It used to end "write your output in that same script" — the whole point
+ * of it, while the rule was to send back the user's own alphabet. The
+ * alphabet is English now, so the fact has the opposite consequence and has
+ * to carry it: a sentence in another script is the one that needs spelling
+ * out, and this is how the model knows it is looking at one.
+ */
+function renderObservedScript(script: string | undefined, base: string): string {
+  if (!script || script === "unknown") return base;
+  return `${base}\n\nSCRIPT: what the user said arrived in ${script.toUpperCase()} script. Their words stay as they are; write them in English letters.`;
 }
 
 /** Build the system prompt for the screen-reply drafting task. */
