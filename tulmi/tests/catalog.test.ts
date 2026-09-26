@@ -1685,6 +1685,44 @@ describe("the keyboard opens with one voice, and it is ours", () => {
   });
 });
 
+describe("the keyboard offers Zu and the voices the user added, nothing else", () => {
+  const flags = (p?: Record<string, unknown>, platform?: "ios" | "android") =>
+    buildKeyboardConfig(p as never, undefined, { platform }).flags as Record<string, any>;
+
+  it("gives a keyboard with nothing added Zu alone, labelled ZU on the pill", () => {
+    const f = flags({});
+    expect(f["kb.personality.pinned"]).toHaveLength(1);
+    expect(f["kb.personality.pinned"][0].label).toBe("ZU");
+    expect(f["kb.personality.keyboardTones"]).toBe(false);
+    expect(f["kb.personality.activeTone"]).toBe("none");
+  });
+
+  it("sends no generic tones: Zu's alone to iOS, none to Android", () => {
+    // Older iOS builds cycle kb.personality.tones and fall back to a built-in
+    // list when it is empty; older Android builds add it to their voices.
+    expect(flags({}, "ios")["kb.personality.tones"]).toEqual([{ id: "none", label: "ZU" }]);
+    expect(flags({}, "android")["kb.personality.tones"]).toEqual([]);
+  });
+
+  it("lists the user's own voices, renamed and custom ones included", () => {
+    const f = flags({
+      pinnedPresetIds: ["professional", "my_voice"],
+      presetOverrides: {
+        professional: { name: "Work" },
+        my_voice: { name: "Mine", promptStyle: "short and kind" },
+      },
+    });
+    expect(f["kb.personality.pinned"].map((c: any) => [c.id, c.label])).toEqual([
+      ["signature", "ZU"], ["professional", "Work"], ["my_voice", "Mine"],
+    ]);
+  });
+
+  it("writes in the active voice's tone, not a tone left over from an older keyboard", () => {
+    const f = flags({ pinnedPresetIds: ["witty"], activePresetId: "witty", activeTone: "formal" });
+    expect(f["kb.personality.activeTone"]).toBe("none");
+  });
+});
+
 describe("History wears the ground it was opened from", () => {
   const hist = () => JSON.stringify(buildScreen("history", { personality: {}, language: "en" } as never));
 

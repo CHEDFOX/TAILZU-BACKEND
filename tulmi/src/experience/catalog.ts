@@ -33,6 +33,7 @@ import {
   PERSONALITY_PRESETS,
   findPreset,
   TONE_LABELS,
+  DEFAULT_TONE,
   MAX_PINNED_PRESETS,
   applyPresetOverrides,
 } from "./personalityPresets.js";
@@ -12189,8 +12190,8 @@ export function buildKeyboardConfig(
       // exact strings if the backend omits them — editing here re-words them
       // over-the-air, no rebuild). 444 = mic/capture failed ("not listening");
       // 222 = backend/processing failed ("we'll be back").
-      voice_not_listening: "444 : Not Listening",
-      voice_unavailable: "222 : will let you know when we are back",
+      voice_not_listening: "Not listening — tap the mic to try again.",
+      voice_unavailable: "Voice is unavailable right now — try again soon.",
       // Flow Session (kb.mic.mode="flow", iOS). Wispr-style copy — but the mic
       // button should read as a clean, native, ICON-ONLY control (bolt → mic →
       // ✓), so ALL three flow status strings are blanked. Blank ("") means the
@@ -13186,24 +13187,35 @@ export function buildKeyboardConfig(
       // The keyboard's tone row is how you change voice mid-sentence, so the
       // way back to your own writing has to be on it whatever else is pinned
       // — Voices manages the styles, and your own voice is not a style.
+      //
+      // Resolved against the user's own presets — renamed built-ins and the
+      // voices they created — not the stock list, which dropped every custom
+      // voice they had put on the keyboard. Each carries `label`, what the
+      // pill shows: "ZU" for Zu (the pill's own word for it), the name for
+      // the rest.
+      const presets = applyPresetOverrides(personality?.presetOverrides);
+      const houseChip = { ...HOUSE_TONE, label: TONE_LABELS[DEFAULT_TONE] };
       const chips = [
-        HOUSE_TONE,
+        houseChip,
         ...pinnedIds
           .filter((id) => id !== HOUSE_TONE.id)
-          .map((id) => PERSONALITY_PRESETS.find((p) => p.id === id))
-          .filter((p): p is (typeof PERSONALITY_PRESETS)[number] => !!p)
-          .map((p) => ({ id: p.id, name: p.name, tone: p.defaultTone })),
+          .map((id) => presets.find((p) => p.id === id))
+          .filter((p): p is (typeof presets)[number] => !!p)
+          .map((p) => ({ id: p.id, name: p.name, tone: p.defaultTone, label: p.name })),
       ].slice(0, MAX_PINNED_PRESETS);
       // A pin list of ids that no longer resolve — voices deleted since —
       // would otherwise send an empty row and drop the keyboard back to its
       // own cycle. One tone is the floor, whatever the reason for the gap.
-      flags["kb.personality.pinned"] = chips.length ? chips : [HOUSE_TONE];
+      flags["kb.personality.pinned"] = chips.length ? chips : [houseChip];
       if (personality?.activePresetId) {
         flags["kb.personality.activeId"] = personality.activePresetId;
       }
-      if (personality?.activeTone) {
-        flags["kb.personality.activeTone"] = personality.activeTone;
-      }
+      // The tone the keyboard writes in is the ACTIVE VOICE's — the keyboard
+      // offers voices, not a separate tone list. A tone picked on an older
+      // keyboard (Formal, Casual…) would otherwise stay stuck on it: those
+      // builds keep the last pick until the server names a tone they offer.
+      const activeChip = chips.find((c) => c.id === personality?.activePresetId) ?? houseChip;
+      flags["kb.personality.activeTone"] = activeChip.tone || DEFAULT_TONE;
       // The user's own dictionary — names, brands, jargon. The keyboard biases
       // swipe decoding and autocorrect toward these; a generic lexicon will
       // never contain a colleague's name, and "fixing" it is exactly the kind
@@ -13223,13 +13235,24 @@ export function buildKeyboardConfig(
         }
         flags["kb.haptics.keys"] = keys;
       }
-      // Fast-tone list for the long-press tone sheet (iOS + Android read
-      // `kb.personality.tones`). Rich `{ id, label }` shape so the clients apply
-      // the exact tone id (→ per-tone refine) and the labels/order/set are fully
-      // backend-controlled — rename, reorder, or add a tone with no app update.
-      flags["kb.personality.tones"] = (
+      // THE KEYBOARD OFFERS ZU AND THE VOICES THE USER PUT ON IT — nothing
+      // else. It used to add the whole tone list (Formal, Casual, Very Casual,
+      // Excited) to every keyboard, so a user who had added nothing still got
+      // four options they never chose, beside a Voices screen that says "Zu is
+      // always on it. Add a style from below."
+      //
+      // kb.personality.keyboardTones puts the tone list back, for builds that
+      // read it (a console switch; off). What older builds get is what makes
+      // them show only Zu: iOS through K40 cycles THIS list and falls back to
+      // a built-in one when it is empty, so it gets Zu's tone alone; Android
+      // shows its voices plus this list, so it gets nothing here.
+      const keyboardTones = (
         Object.keys(TONE_LABELS) as Array<keyof typeof TONE_LABELS>
       ).map((id) => ({ id, label: TONE_LABELS[id] }));
+      flags["kb.personality.keyboardTones"] = false;
+      flags["kb.personality.tones"] = opts.platform === "android"
+        ? []
+        : keyboardTones.filter((t) => t.id === DEFAULT_TONE);
       // Staged rollout LAST, so an experiment can override anything above.
       // Keyed on the user id, so a user's slice is stable across requests —
       // settings must never flip under their fingers mid-sentence.
