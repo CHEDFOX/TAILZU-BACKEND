@@ -1076,6 +1076,19 @@ export const THEME: ThemeTokens = {
     label: "rgba(255,255,255,0.42)",
     danger: "#e0556b",
     success: "#4caf50",
+    // The app reads these; until now they fell back to values in its code.
+    // primaryText is the label ON a primary (white) button — the update
+    // gate's button text was white on white without it.
+    primaryText: "#000000",
+    errorBanner: "#3a1417",
+    errorBannerText: "#FFFFFF",
+    toastError: "#3a1417",
+    toastSuccess: "#13301a",
+    toastInfo: "#1c1c25",
+    toastText: "#FFFFFF",
+    tabBar: "transparent",
+    updateOverlay: "rgba(8,8,12,0.96)",
+    hairline: "rgba(255,255,255,0.12)",
     // The You tab's greeting, one token per line, both owned by GREET. Kept
     // apart from `label` and `text` on purpose: those two carry most of the
     // app's type, so the pair could not be balanced against each other
@@ -1856,6 +1869,10 @@ export function buildBootstrap(
         // The app hides the paywall on either, so a webhook that has not
         // landed yet never leaves a paying user staring at one.
         "billing.entitled": opts.entitled === true,
+        // Whether this is a first run is the server's answer: it knows
+        // whether onboarding is done. The app's own flag for it was never
+        // set, so every launch waited out the first-run splash.
+        "boot.firstRun": opts.onboarded !== true,
         ...(opts.billingStore ? { "billing.store": opts.billingStore } : {}),
         ...(opts.entitled === true ? manageFlags(opts.billingStore) : {}),
         "quota.wordsUsed": Math.max(0, Math.round(opts.wordsUsed ?? 0)),
