@@ -18,7 +18,8 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "app.offline.retryFactor": 1.6,
   "app.offline.retryMaxMs": 30000,
   "app.offline.retryMs": 8000,
-  "app.offline.titleSize": 22
+  "app.offline.titleSize": 22,
+  "quota.screenId": "paywall"
 };
 
 /** Knobs whose app-side default comes from other inputs; sent only if set. */
