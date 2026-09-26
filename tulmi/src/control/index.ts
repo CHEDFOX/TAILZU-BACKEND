@@ -22,6 +22,7 @@ import { timingSafeEqual } from "node:crypto";
 import { applyRules, RuleSchema, SURFACES, type Applied, type ControlCtx, type Rule, type Surface } from "./rules.js";
 import { ControlStore } from "./store.js";
 import { CONSOLE_HTML } from "./console.js";
+import { PUSH_DEFAULTS } from "../push/defaults.js";
 
 let store: ControlStore | null = null;
 let adminSecret: () => string | undefined = () => undefined;
@@ -39,6 +40,22 @@ function isAdmin(req: FastifyRequest): boolean {
   if (!expected || typeof got !== "string" || !got) return false;
   const a = Buffer.from(got), b = Buffer.from(expected);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * The admin gate for routes outside this file (the push engine's). Sends the
+ * refusal itself; true means go ahead.
+ */
+export function requireAdmin(req: FastifyRequest, reply: FastifyReply): boolean {
+  if (!adminSecret()) {
+    reply.code(503).send({ code: "not_configured", message: "ADMIN_SECRET is not set on the server" });
+    return false;
+  }
+  if (!isAdmin(req)) {
+    reply.code(401).send({ code: "unauthorized", message: "Bad or missing admin secret" });
+    return false;
+  }
+  return true;
 }
 
 function header(req: FastifyRequest, name: string): string | undefined {
@@ -182,6 +199,20 @@ export function registerControlRoutes(app: FastifyInstance, opts: {
     const surface = b.surface;
     if (!surface || !SURFACES.includes(surface)) return reply.code(400).send({ code: "invalid", message: "surface?" });
     const ctx = b.ctx ?? {};
+    // The push engine's config has no route: build it here, as the engine does.
+    if (surface === "push") {
+      const base = structuredClone(PUSH_DEFAULTS);
+      let rules: readonly Rule[] = store!.rules();
+      let draftError: string | undefined;
+      if (b.draft !== undefined) {
+        try {
+          const d = RuleSchema.parse(b.draft);
+          rules = [...rules.filter((r) => r.id !== d.id), d];
+        } catch (e) { draftError = (e as Error).message; }
+      }
+      const { payload, applied } = applyRules(structuredClone(base), rules, { ...ctx, surface: "push", signedIn: true });
+      return reply.send({ status: 200, base, result: payload, applied, ...(draftError ? { draftError } : {}) });
+    }
     const platform = ctx.platform ?? (surface === "site" ? "web" : "ios");
     const headers: Record<string, string> = { "x-admin-secret": header(req, "x-admin-secret")!, "content-type": "application/json" };
     if (b.authorization) headers["authorization"] = b.authorization;

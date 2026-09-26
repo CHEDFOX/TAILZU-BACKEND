@@ -58,7 +58,7 @@ table{border-collapse:collapse;width:100%;font-size:12.5px}td,th{border-bottom:1
   <div class="bar"><button class="primary" id="new">New rule</button>
     <select id="tpl" aria-label="Start from"><option value="flag">Change a flag</option><option value="text">Rewrite text</option>
     <option value="node">Patch a node</option><option value="screen">Replace a screen</option><option value="exp">Experiment</option>
-    <option value="keycolor">Keyboard: colour one key</option><option value="press">Keyboard: key press colour</option><option value="blur">Keyboard: blur while recording</option><option value="blank">Blank</option></select></div>
+    <option value="keycolor">Keyboard: colour one key</option><option value="press">Keyboard: key press colour</option><option value="blur">Keyboard: blur while recording</option><option value="push">Notifications: tune</option><option value="pushoff">Notifications: stop</option><option value="blank">Blank</option></select></div>
   <div class="msg bad" id="storeErr"></div>
   <div id="rules" style="display:grid;gap:8px"></div>
 </aside>
@@ -69,7 +69,7 @@ table{border-collapse:collapse;width:100%;font-size:12.5px}td,th{border-bottom:1
     <div class="bar"><select id="k-src" aria-label="Surface">
       <option value="bootstrap|ios">App · iPhone</option><option value="bootstrap|android">App · Android</option>
       <option value="bootstrap|desktop">Desktop app</option><option value="keyboard|ios">Keyboard · iOS</option>
-      <option value="keyboard|android">Keyboard · Android</option><option value="site|web">Website</option></select>
+      <option value="keyboard|android">Keyboard · Android</option><option value="site|web">Website</option><option value="push|ios">Notifications</option></select>
       <select id="k-kind" aria-label="Kind"><option value="flags">Settings</option><option value="labels">Words</option><option value="theme">Theme</option></select>
       <select id="k-aud" aria-label="Audience"><option value="all">Change for everyone</option><option value="platform">Only this platform</option></select>
       <input id="k-q" placeholder="Search keys or values" style="flex:1;min-width:160px"><button id="k-load">Load</button></div>
@@ -120,6 +120,8 @@ const TPL={
  keycolor:{id:"kb-key-q",surface:"keyboard",note:"One key's colours: bg, fg (label), pressedBg (while touched). Any key: LetterKey with props.char, or ShiftKey, BackspaceKey, SpaceKey, ReturnKey, GlobeKey.",ops:[{op:"patch",select:{type:"LetterKey",props:{char:"q"}},value:{style:{bg:"#E8A23C",fg:"#000000",pressedBg:"#FFFFFF"}}}]},
  press:{id:"kb-press",surface:"keyboard",note:"The colour every key shows while touched, dark and light keyboards",ops:[{op:"set",path:"/theme/keyPressed",value:"#E8A23C"},{op:"set",path:"/themeDark/keyPressed",value:"#E8A23C"},{op:"set",path:"/themeLight/keyPressed",value:"#E8A23C"}]},
  blur:{id:"kb-rec-blur",surface:"keyboard",note:"How much the keys blur and fade while recording (iOS and Android read their own keys)",ops:[{op:"set",path:"/flags/kb.dictation.dim.iosBlurRadius",value:2.5},{op:"set",path:"/flags/kb.dictation.dim.iosKeyAlpha",value:0.6},{op:"set",path:"/flags/kb.dictation.dim.blurRadius",value:14},{op:"set",path:"/flags/kb.dictation.dim.keyAlpha",value:0.45}]},
+ push:{id:"push-tune",surface:"push",note:"Smart notifications: caps, timing and words. Flags push.smart.*, push.<reason>.*; labels push.<reason>.title / .body. Reasons: streak, refill, weekly, winback, lowWords.",ops:[{op:"set",path:"/flags/push.smart.maxPerWeek",value:2},{op:"set",path:"/labels/push.winback.title",value:"Say it, don't type it"}]},
+ pushoff:{id:"push-off",surface:"push",note:"Stop every push (or target a platform, a language or named users)",ops:[{op:"set",path:"/flags/push.smart.enabled",value:false}]},
  blank:{id:"new-rule",surface:"bootstrap",when:{},ops:[]}};
 async function api(method,url,body){const r=await fetch(url,{method,headers:{"content-type":"application/json","x-admin-secret":S.getItem("sec")||"","x-admin-name":S.getItem("who")||"admin"},body:body===undefined?undefined:JSON.stringify(body)});
  const t=await r.text();let j;try{j=JSON.parse(t)}catch{j={raw:t}}if(!r.ok)throw Object.assign(new Error(j.message||j.code||("HTTP "+r.status)),{data:j});return j}

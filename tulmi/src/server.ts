@@ -37,6 +37,7 @@ import { TERMS_HTML, TERMS_EFFECTIVE } from "./routes/policies/terms.js";
 import { DOWNLOAD_PAGE_HTML } from "./routes/download.js";
 import { registerDemoRoutes, sitePage, AUTH_RESUME_SCHEME_URL } from "./routes/demo.js";
 import { initControl, registerControlRoutes, withControl } from "./control/index.js";
+import { initPush, pushEngine, registerPushRoutes } from "./push/index.js";
 import { registerReviewCodeRoute } from "./routes/reviewCode.js";
 import { getConfig, VERSION } from "./config.js";
 import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
@@ -599,6 +600,10 @@ initControl({
   adminSecret: () => cfg.ADMIN_SECRET,
 });
 registerControlRoutes(app, { bumpCache: bumpCacheVersion, rateLimit: AUTHED_RL });
+// Smart notifications: the engine is built here (routes need it), started in
+// main() once the server listens.
+if (cfg.PUSH_ENGINE) initPush({ accessToken: cfg.EXPO_ACCESS_TOKEN });
+registerPushRoutes(app, { rateLimit: AUTHED_RL });
 // UNAUTH_RL removed — every previously-unauth route was gated on
 // per-user hashed tokens anyway, so AUTHED_RL is the right cap and
 // avoids the 429-storm we saw on /v1/keyboard/config launch traffic.
@@ -1899,6 +1904,9 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   }
 
   const user = await resolveUser(req.headers["authorization"]);
+  // A tapped push opens its screen with the push's data as the params, so its
+  // id comes back here: the engine counts it as answered (src/push).
+  if (user && typeof body.params?.pushId === "string") pushEngine()?.markOpened(user.id, body.params.pushId);
   const [personality, profile] = user
     ? await Promise.all([getPersonality(user), getProfile(user)])
     : [{}, null];
@@ -2793,6 +2801,14 @@ if (process.env.NODE_ENV !== "test") {
   try {
     const app = await buildApp();
     await app.listen({ port: cfg.PORT, host: cfg.HOST });
+    const push = pushEngine();
+    if (push) {
+      push.start(cfg.PUSH_TICK_SEC * 1000);
+      console.log(`[push] smart notifications on, every ${cfg.PUSH_TICK_SEC}s` +
+        ` expoToken=${cfg.EXPO_ACCESS_TOKEN ? "set" : "not set"}`);
+    } else {
+      console.log(`[push] smart notifications off (${cfg.PUSH_ENGINE ? "no Supabase" : "PUSH_ENGINE=false"})`);
+    }
     // Announce the EFFECTIVE speech config on every boot.
     //
     // "no [stt] error lines" is ambiguous on its own: it means the Sarvam leg

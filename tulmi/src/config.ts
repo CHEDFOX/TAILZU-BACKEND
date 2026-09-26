@@ -287,6 +287,17 @@ const EnvSchema = z.object({
   // admin endpoints refuse every request. Set to a long random string.
   ADMIN_SECRET: z.string().optional(),
   /**
+   * Smart notifications (src/push): one push at most on a day there is a
+   * reason for it, at the hour each person usually dictates. On unless set to
+   * "false"; the control plane's push.smart.enabled turns it off live, per
+   * audience, without a restart. Needs Supabase to do anything.
+   */
+  PUSH_ENGINE: bool(true),
+  /** How often the engine looks for a push that has come due. */
+  PUSH_TICK_SEC: z.coerce.number().int().min(60).max(3600).default(300),
+  /** Only needed when "enhanced push security" is on for the Expo project. */
+  EXPO_ACCESS_TOKEN: z.string().optional(),
+  /**
    * Shared secret for RevenueCat's webhook.
    *
    * RevenueCat sends it as the Authorization header, verbatim, on every event.
