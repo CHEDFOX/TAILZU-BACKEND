@@ -7,6 +7,7 @@
  *
  * See ../../../shared/types/sdui.ts for the contract.
  */
+import { withAppKnobs } from "./appKnobs.js";
 import type {
   ActionRef,
   ActionSpec,
@@ -1749,7 +1750,7 @@ export function buildBootstrap(
   } = {},
 ): BootstrapResponse {
   const nav = navigationFor(!!opts.landedBefore);
-  return {
+  return withAppKnobs({
     schemaVersion: SDUI_SCHEMA_VERSION,
     // Opaque cache token — clients invalidate any cached screens when this
     // changes. Bumps on every process restart plus any admin-triggered bump.
@@ -2189,7 +2190,7 @@ export function buildBootstrap(
     })(),
     cacheTtlSeconds: 300,
     warmScreenIds: WARM_SCREEN_IDS,
-  };
+  });
 }
 
 /**
