@@ -57,7 +57,8 @@ table{border-collapse:collapse;width:100%;font-size:12.5px}td,th{border-bottom:1
 <aside>
   <div class="bar"><button class="primary" id="new">New rule</button>
     <select id="tpl" aria-label="Start from"><option value="flag">Change a flag</option><option value="text">Rewrite text</option>
-    <option value="node">Patch a node</option><option value="screen">Replace a screen</option><option value="exp">Experiment</option><option value="blank">Blank</option></select></div>
+    <option value="node">Patch a node</option><option value="screen">Replace a screen</option><option value="exp">Experiment</option>
+    <option value="keycolor">Keyboard: colour one key</option><option value="press">Keyboard: key press colour</option><option value="blur">Keyboard: blur while recording</option><option value="blank">Blank</option></select></div>
   <div class="msg bad" id="storeErr"></div>
   <div id="rules" style="display:grid;gap:8px"></div>
 </aside>
@@ -116,6 +117,9 @@ const TPL={
  node:{id:"node-patch",surface:"screen",when:{screens:["home"]},ops:[{op:"patch",select:{type:"Text",props:{content:"Old"}},value:{props:{content:"New"}}}]},
  screen:{id:"screen-swap",surface:"screen",when:{screens:["home"]},ops:[{op:"set",path:"/root",value:{type:"Stack",children:[{type:"Text",props:{content:"Hello"}}]}}]},
  exp:{id:"exp-cta",surface:"screen",note:"Two arms, half each",when:{screens:["paywall"],signedIn:true},variants:[{name:"a",weight:1,ops:[]},{name:"b",weight:1,ops:[{op:"text",find:"Continue",value:"Start now"}]}]},
+ keycolor:{id:"kb-key-q",surface:"keyboard",note:"One key's colours: bg, fg (label), pressedBg (while touched). Any key: LetterKey with props.char, or ShiftKey, BackspaceKey, SpaceKey, ReturnKey, GlobeKey.",ops:[{op:"patch",select:{type:"LetterKey",props:{char:"q"}},value:{style:{bg:"#E8A23C",fg:"#000000",pressedBg:"#FFFFFF"}}}]},
+ press:{id:"kb-press",surface:"keyboard",note:"The colour every key shows while touched, dark and light keyboards",ops:[{op:"set",path:"/theme/keyPressed",value:"#E8A23C"},{op:"set",path:"/themeDark/keyPressed",value:"#E8A23C"},{op:"set",path:"/themeLight/keyPressed",value:"#E8A23C"}]},
+ blur:{id:"kb-rec-blur",surface:"keyboard",note:"How much the keys blur and fade while recording (iOS and Android read their own keys)",ops:[{op:"set",path:"/flags/kb.dictation.dim.iosBlurRadius",value:2.5},{op:"set",path:"/flags/kb.dictation.dim.iosKeyAlpha",value:0.6},{op:"set",path:"/flags/kb.dictation.dim.blurRadius",value:14},{op:"set",path:"/flags/kb.dictation.dim.keyAlpha",value:0.45}]},
  blank:{id:"new-rule",surface:"bootstrap",when:{},ops:[]}};
 async function api(method,url,body){const r=await fetch(url,{method,headers:{"content-type":"application/json","x-admin-secret":S.getItem("sec")||"","x-admin-name":S.getItem("who")||"admin"},body:body===undefined?undefined:JSON.stringify(body)});
  const t=await r.text();let j;try{j=JSON.parse(t)}catch{j={raw:t}}if(!r.ok)throw Object.assign(new Error(j.message||j.code||("HTTP "+r.status)),{data:j});return j}
