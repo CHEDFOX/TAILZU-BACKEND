@@ -19,6 +19,7 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "app.offline.retryMaxMs": 30000,
   "app.offline.retryMs": 8000,
   "app.offline.titleSize": 22,
+  "push.ask": {},
   "quota.screenId": "paywall"
 };
 
