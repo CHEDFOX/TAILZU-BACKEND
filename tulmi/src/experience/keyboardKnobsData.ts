@@ -694,6 +694,7 @@ export const KEYBOARD_KNOBS: {
       "listening": "Listening…",
       "listening_tap_stop": "Listening… tap mic to stop",
       "mic": "●",
+      "micSecure": "Dictation is off in password fields.",
       "mic_denied": "Microphone permission denied",
       "mic_permission": "Open the Tailzu app once to allow microphone access.",
       "mic_unavailable": "Mic unavailable",
