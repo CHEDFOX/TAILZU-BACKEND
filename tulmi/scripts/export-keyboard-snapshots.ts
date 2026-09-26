@@ -20,7 +20,7 @@ process.env.DEV_SKIP_AUTH ??= "true";
 const { buildKeyboardConfig } = await import("../src/experience/catalog.js");
 const app = process.argv[2];
 if (!app) { console.error("usage: export-keyboard-snapshots.ts <frontend app dir>"); process.exit(2); }
-const BUILD = Number(process.env.KB_BUILD ?? 40);
+const BUILD = Number(process.env.KB_BUILD ?? 41);
 const targets: Array<[string, "ios" | "android"]> = [
   ["targets/keyboard/default-config.json", "ios"],
   ["modules/tulmi-keyboard/android/res/raw/tailzu_default_config.json", "android"],
