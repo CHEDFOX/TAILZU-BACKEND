@@ -27,6 +27,8 @@ services:
       PORT: 8080 # container-internal port
       NODE_ENV: production
       MEDIA_DIR: /data/media
+      # The control plane's live rules and their history (GET /admin).
+      CONTROL_DIR: /data/control
       # Public URL clients see for uploaded media. Default assumes
       # api.tailzu.space serves /media/* through your nginx proxy.
       MEDIA_PUBLIC_URL: ${MEDIA_PUBLIC_URL:-https://api.tailzu.space/media}
@@ -38,6 +40,8 @@ services:
     # named docker volume; contents survive `docker compose down/up`.
     volumes:
       - tulmi_media:/data/media
+      # Control-plane rules survive every deploy, like the media.
+      - tulmi_control:/data/control
       # Desktop-app installers, served at /downloads/* (see the /download page).
       # Host-side bind mount so publishing a release is just:
       #   scp "Tailzu-Setup.exe" server:~/tulmi/downloads/
@@ -91,3 +95,5 @@ volumes:
   # audio, video, SVGs). Files live under /data/media inside the container;
   # this named volume keeps them across `docker compose up -d --build`.
   tulmi_media:
+  # Live rules edited from the console at /admin, with every saved version.
+  tulmi_control:

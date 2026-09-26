@@ -24,6 +24,7 @@
  * a demo is not an account, and a visitor who never signs up should leave
  * nothing behind.
  */
+import { withControl } from "../control/index.js";
 import type { FastifyInstance } from "fastify";
 import fs from "node:fs";
 import path from "node:path";
@@ -183,7 +184,7 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
   // it that belongs to anybody, so it is served to any origin that asks.
   // Nothing else on the server is: the demo route stays same-origin, so a
   // page somewhere else cannot spend a recogniser call.
-  app.get("/v1/site", async (_req, reply) => {
+  app.get("/v1/site", async (req, reply) => {
     const cfg = getConfig();
     reply.header("Access-Control-Allow-Origin", "*");
     const downloads: Record<string, boolean> = {};
@@ -191,7 +192,7 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
       downloads[key] = fs.existsSync(path.join(downloadsDir, name));
     }
     reply.header("Cache-Control", "public, max-age=60");
-    return {
+    return withControl(req, reply, {
       copy: SITE_UI,
       // The keyboard's mic key, for the page to draw as the phones do.
       mic: SITE_MIC,
@@ -202,7 +203,7 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
       // The rate the demo route enforces, so the developers' card can say
       // it rather than guess it.
       perMinute: Math.max(1, cfg.DEMO_PER_MINUTE),
-    };
+    }, { surface: "site", platform: "web", formFactor: "web" });
   });
 
   // --- The demo ------------------------------------------------------------

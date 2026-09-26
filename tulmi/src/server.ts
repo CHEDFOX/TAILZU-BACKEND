@@ -36,6 +36,7 @@ import { PRIVACY_POLICY_HTML, PRIVACY_POLICY_EFFECTIVE } from "./routes/policies
 import { TERMS_HTML, TERMS_EFFECTIVE } from "./routes/policies/terms.js";
 import { DOWNLOAD_PAGE_HTML } from "./routes/download.js";
 import { registerDemoRoutes, sitePage, AUTH_RESUME_SCHEME_URL } from "./routes/demo.js";
+import { initControl, registerControlRoutes, withControl } from "./control/index.js";
 import { registerReviewCodeRoute } from "./routes/reviewCode.js";
 import { getConfig, VERSION } from "./config.js";
 import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
@@ -589,6 +590,15 @@ function formatFromFilename(name: string | undefined): AudioFormat | null {
 const AUTHED_RL = {
   rateLimit: { max: cfg.RATE_LIMIT_MAX, timeWindow: cfg.RATE_LIMIT_WINDOW_MS },
 };
+
+// --- The control plane ------------------------------------------------------
+// Live rules over every payload the server sends — see src/control. The
+// console is GET /admin; the rules live on the tulmi_control volume.
+initControl({
+  dir: process.env.CONTROL_DIR || "/data/control",
+  adminSecret: () => cfg.ADMIN_SECRET,
+});
+registerControlRoutes(app, { bumpCache: bumpCacheVersion, rateLimit: AUTHED_RL });
 // UNAUTH_RL removed — every previously-unauth route was gated on
 // per-user hashed tokens anyway, so AUTHED_RL is the right cap and
 // avoids the 429-storm we saw on /v1/keyboard/config launch traffic.
@@ -1854,7 +1864,17 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   // "onboarding.hero.png"); each entry has { url, contentType, size,
   // uploadedAt }. Missing key → clients fall back to bundled default.
   (bootstrap as unknown as { media?: Record<string, unknown> }).media = getMediaRegistry();
-  return reply.send(await localize(bootstrap, profile?.language ?? "en"));
+  const controlled = withControl(req, reply, bootstrap, {
+    surface: "bootstrap",
+    platform: isDesktop ? "desktop" : platformOf(reqBody.capabilities?.platform),
+    formFactor: isDesktop ? "desktop" : "phone",
+    appVersion: reqBody.capabilities?.appVersion,
+    bundle: reqBody.capabilities?.bundle,
+    userId: user?.id,
+    locale: profile?.language,
+    signedIn: !!user,
+  });
+  return reply.send(await localize(controlled, profile?.language ?? "en"));
 });
 
 app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
@@ -1882,6 +1902,16 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   const [personality, profile] = user
     ? await Promise.all([getPersonality(user), getProfile(user)])
     : [{}, null];
+  const screenFormFactor = body.capabilities?.device?.formFactor === "desktop" ? "desktop" : "phone";
+  const screenCtx = (screen: string) => ({
+    surface: "screen" as const,
+    screen,
+    platform: screenFormFactor === "desktop" ? "desktop" : platformOf(body.capabilities?.platform),
+    formFactor: screenFormFactor,
+    userId: user?.id,
+    locale: profile?.language,
+    signedIn: !!user,
+  });
 
   // Load per-screen aggregates only for the screens that need them.
   // usageSummary covers legacy stats numbers; statsForUser adds the
@@ -1986,7 +2016,10 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
         phone: user?.phone,
         params: body.params,
       });
-      if (paywall) return reply.send(await localize(paywall, profile?.language ?? "auto"));
+      if (paywall) {
+        return reply.send(await localize(withControl(req, reply, paywall, screenCtx("paywall")),
+          profile?.language ?? "auto"));
+      }
     }
   }
   const screen = buildScreen(screenId, {
@@ -2036,7 +2069,8 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   if (!screen) {
     return reply.code(404).send({ code: "bad_request", message: `Unknown screen '${screenId}'` });
   }
-  return reply.send(await localize(screen, profile?.language ?? "auto"));
+  return reply.send(await localize(withControl(req, reply, screen, screenCtx(screenId)),
+    profile?.language ?? "auto"));
 });
 
 // --- Profile (REST): language + onboarding state ----------------------------
@@ -2311,10 +2345,19 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL }, async (req, reply) => {
   noStoreSdui(reply);
   // Which binary is asking: "K37" → 37. Older builds send nothing.
   const stamp = String(req.headers["x-tulmi-keyboard-build"] ?? "").match(/^K(\d{1,5})$/i);
-  return reply.send(buildKeyboardConfig(personality, userId, {
-    platform: keyboardPlatform(req.headers["user-agent"]),
+  const kbPlatform = keyboardPlatform(req.headers["user-agent"]);
+  const kbConfig = buildKeyboardConfig(personality, userId, {
+    platform: kbPlatform,
     quota,
     ...(stamp ? { kbBuild: Number(stamp[1]) } : {}),
+  });
+  return reply.send(withControl(req, reply, kbConfig, {
+    surface: "keyboard",
+    platform: kbPlatform,
+    formFactor: "phone",
+    ...(stamp ? { build: Number(stamp[1]) } : {}),
+    userId,
+    signedIn: !!userId,
   }));
 });
 

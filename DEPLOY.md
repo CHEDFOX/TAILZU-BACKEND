@@ -248,6 +248,22 @@ That last one runs offline and costs nothing. It exists because a scorer bug
 passes everything silently, which is worse than not measuring: a green run
 would be evidence of nothing while reading as proof.
 
+## Control console — change anything, live
+
+Open `https://<your API domain>/admin` and paste `ADMIN_SECRET` from `~/tulmi/tulmi/.env`.
+
+- **Rules** edit what the server sends after the code builds it: the app's bootstrap and screens, the keyboard config, the site copy.
+- **Targeting:** platform, keyboard build, app version, language, signed-in, named users, a percentage of users, or a date window.
+- **Experiments:** give a rule variants and each user gets one, stable by user id.
+- **Preview** builds any payload as any target and shows exactly which paths changed. Use **Find a path** to search a payload for the value you want to change.
+- **Every save** is live at once, bumps the cache so apps refetch, and becomes a version you can roll back to under **History**.
+
+The rules live on the `tulmi_control` volume, so they survive every deploy. The same API works from the command line:
+
+```bash
+curl -H "x-admin-secret: $SECRET" https://<your API domain>/v1/admin/control
+```
+
 ## Everyday commands
 
 ```bash

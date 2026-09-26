@@ -594,6 +594,7 @@ export const ENV_KEYS: readonly string[] = [
   "INTRO_PLAY_WHEN",
   "INTRO_SHAPE",
   "INTRO_VIDEO_MAX_MS",
+  "CONTROL_DIR",
   "KB_ROLLOUTS",
   "LLM_REASONING_EFFORT",
   "LOG_LEVEL",

@@ -51,7 +51,8 @@ COPY --from=build /app/shared /app/shared
 # creates named volumes as root:root by default, which would EACCES on first
 # upload; pre-creating /data with node ownership means the writable-under-mount
 # strategy works even though the mount point overlays this later.
-RUN mkdir -p /data/media && chown -R node:node /app /data
+# /data/control holds the control plane's live rules (tulmi_control volume).
+RUN mkdir -p /data/media /data/control && chown -R node:node /app /data
 USER node
 
 EXPOSE 8080
