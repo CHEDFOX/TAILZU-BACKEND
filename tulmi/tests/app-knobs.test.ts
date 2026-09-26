@@ -26,3 +26,25 @@ describe("app knobs", () => {
     expect(out.labels?.[k!]).toBe("from catalog");
   });
 });
+
+import { buildKeyboardConfig } from "../src/experience/catalog.js";
+import { KEYBOARD_KNOBS } from "../src/experience/keyboardKnobsData.js";
+
+describe("keyboard knobs", () => {
+  for (const platform of ["ios", "android"] as const) {
+    it(`${platform}: every flag and label the keyboard reads is sent`, () => {
+      const cfg = buildKeyboardConfig(undefined, undefined, { platform }) as unknown as {
+        flags: Record<string, unknown>; labels: Record<string, string>;
+      };
+      const k = KEYBOARD_KNOBS[platform];
+      const missingFlags = Object.keys(k.flags).filter((f) => !(f in cfg.flags));
+      const missingLabels = Object.keys(k.labels).filter((l) => !(l in cfg.labels));
+      expect(missingFlags).toEqual([]);
+      expect(missingLabels).toEqual([]);
+    });
+  }
+  it("the catalog's own values still win", () => {
+    const cfg = buildKeyboardConfig(undefined, undefined, { platform: "ios" }) as unknown as { labels: Record<string, string> };
+    expect(cfg.labels.full_access_required).toBe("Enable Full Access to use voice + Refine.");
+  });
+});

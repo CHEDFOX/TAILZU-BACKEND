@@ -7,7 +7,7 @@
  *
  * See ../../../shared/types/sdui.ts for the contract.
  */
-import { withAppKnobs } from "./appKnobs.js";
+import { withAppKnobs, withKeyboardKnobs } from "./appKnobs.js";
 import type {
   ActionRef,
   ActionSpec,
@@ -11984,7 +11984,7 @@ export function buildKeyboardConfig(
     refine: { kind: "runRefine" },
   };
 
-  return {
+  return withKeyboardKnobs(opts.platform ?? "ios", {
     schemaVersion: SDUI_SCHEMA_VERSION,
     // Bump so warm keyboard sessions re-fetch on next open when we push a new
     // tree; the native cache respects this the same way SduiApp does.
@@ -12096,6 +12096,10 @@ export function buildKeyboardConfig(
       space: "",
       return: "return",
       needFullAccess: "Enable Full Access to use voice + Refine.",
+      // The iOS keyboard reads the same message under this key.
+      full_access_required: "Enable Full Access to use voice + Refine.",
+      // The words-out line, under the key both keyboards read it by.
+      words_out_status: WORDS_GATE.keyboardStatus,
       language: "Language",
       // Branded, non-technical status text (both keyboards fall back to these
       // exact strings if the backend omits them — editing here re-words them
@@ -13142,5 +13146,5 @@ export function buildKeyboardConfig(
     // Was 600 (10 min). A live theme fix couldn't reach users mid-session.
     // 60 s keeps cost negligible and lets themed rollouts hit within a minute.
     cacheTtlSeconds: 60,
-  };
+  });
 }
