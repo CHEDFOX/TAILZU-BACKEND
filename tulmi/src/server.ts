@@ -2335,6 +2335,7 @@ const TELEMETRY_COUNTERS = new Set([
   "planeTouches",
   "planeMissed",
   "liftRescued",
+  "liftRolled",
   "cancelRescued",
   "trayRetracted",
   "remounts",

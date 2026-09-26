@@ -12421,6 +12421,13 @@ export function buildKeyboardConfig(
         // to type nothing. Letters are the plane's and were already kept.
         "kb.key.liftSlop": 14,
         "kb.key.cancelMs": 250,
+        // K40: a key landing fires space / return still held by the other
+        // thumb first, so "hello world" typed fast stops coming out
+        // "hellow orld". false = lift-only, as K39 and before.
+        "kb.key.liftRollover": true,
+        // K40: shift and 123 own the gap beside them up to the midpoint
+        // with the next key, within this many points.
+        "kb.touch.roleReach": 20,
         "kb.key.shadow.color": "#000000",
         "kb.key.shadow.offsetY": 1,
         "kb.key.shadow.opacity": 0.4,
