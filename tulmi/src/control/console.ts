@@ -62,7 +62,19 @@ table{border-collapse:collapse;width:100%;font-size:12.5px}td,th{border-bottom:1
   <div id="rules" style="display:grid;gap:8px"></div>
 </aside>
 <section>
-  <div class="tabs"><button data-t="edit" class="on">Rule</button><button data-t="find">Find a path</button><button data-t="hist">History</button><button data-t="help">How rules work</button></div>
+  <div class="tabs"><button data-t="knobs">Knobs</button><button data-t="edit" class="on">Rule</button><button data-t="find">Find a path</button><button data-t="hist">History</button><button data-t="help">How rules work</button></div>
+  <div id="t-knobs" class="hidden">
+    <p class="note">Every value a client is sent, as it goes out now. Change one and it is live for that audience at once; clear it and the code's value comes back.</p>
+    <div class="bar"><select id="k-src" aria-label="Surface">
+      <option value="bootstrap|ios">App · iPhone</option><option value="bootstrap|android">App · Android</option>
+      <option value="bootstrap|desktop">Desktop app</option><option value="keyboard|ios">Keyboard · iOS</option>
+      <option value="keyboard|android">Keyboard · Android</option><option value="site|web">Website</option></select>
+      <select id="k-kind" aria-label="Kind"><option value="flags">Settings</option><option value="labels">Words</option><option value="theme">Theme</option></select>
+      <select id="k-aud" aria-label="Audience"><option value="all">Change for everyone</option><option value="platform">Only this platform</option></select>
+      <input id="k-q" placeholder="Search keys or values" style="flex:1;min-width:160px"><button id="k-load">Load</button></div>
+    <div class="msg" id="k-msg" style="margin:8px 0"></div>
+    <div class="out" id="k-out" style="max-height:62vh"></div>
+  </div>
   <div id="t-edit">
     <textarea id="json" spellcheck="false"></textarea>
     <div class="bar" style="margin-top:8px"><button class="primary" id="save">Save live</button><button id="test">Test on preview</button>
@@ -142,11 +154,41 @@ $("#q").oninput=draw;$("#onlyChanged").onchange=draw;
 async function hist(){const j=await api("GET","/v1/admin/control/history");const tb=$("#hist");tb.innerHTML="";for(const v of j.versions){const tr=document.createElement("tr");
  tr.innerHTML="<td>v"+v.version+"</td><td>"+new Date(v.updatedAt).toLocaleString()+"</td><td></td><td>"+v.rules+"</td><td></td>";tr.children[2].textContent=v.updatedBy||"";
  if(DOC&&v.version!==DOC.version){const b=document.createElement("button");b.textContent="Make live";b.onclick=async()=>{if(!confirm("Make v"+v.version+" live again?"))return;await api("POST","/v1/admin/control/rollback",{version:v.version});await load();hist()};tr.children[4].appendChild(b)}else tr.children[4].textContent="live";tb.appendChild(tr)}}
-function tab(t){document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));$("#t-edit").classList.toggle("hidden",t!=="edit");$("#ctxBox").classList.toggle("hidden",!(t==="edit"||t==="find"));
+let KN=null;
+const esc=k=>k.replace(/~/g,"~0").replace(/\//g,"~1");
+function knobRuleId(src,kind,key){const [surf,plat]=src.split("|");const aud=$("#k-aud").value;
+ let id=("knob."+surf+(aud==="platform"?"."+plat:"")+"."+kind+"."+key).replace(/[^a-z0-9._-]/gi,"-");
+ if(id.length>80){let h=0;for(const c of id)h=(h*31+c.charCodeAt(0))>>>0;id=id.slice(0,70)+"-"+h.toString(36)}return id}
+function knobPath(kind,key){if(kind==="theme")return (KN&&KN.result.theme&&KN.result.theme.color?"/theme/color/":"/theme/")+esc(key);return "/"+kind+"/"+esc(key)}
+async function loadKnobs(){const [surf,plat]=$("#k-src").value.split("|");msg($("#k-msg"),"Loading…");
+ try{const ctx={platform:plat};if(plat==="desktop")ctx.formFactor="desktop";
+  const j=await api("POST","/v1/admin/control/preview",{surface:surf,ctx});KN={surf,plat,base:j.base||{},result:j.result||{}};drawKnobs()}
+ catch(e){msg($("#k-msg"),e.message,"bad")}}
+function knobMap(o,kind){if(!o)return{};if(kind==="theme")return(o.theme&&(o.theme.color||o.theme))||{};if(surfIsSite()&&kind!=="theme")return kind==="labels"?(o.copy||{}):{};return o[kind]||{}}
+function surfIsSite(){return KN&&KN.surf==="site"}
+function drawKnobs(){if(!KN)return;const kind=$("#k-kind").value,q=$("#k-q").value.toLowerCase();
+ const B=knobMap(KN.base,kind),R=knobMap(KN.result,kind),keys=[...new Set([...Object.keys(B),...Object.keys(R)])].sort();
+ const out=$("#k-out");out.innerHTML="";let n=0;
+ for(const k of keys){const v=R[k]===undefined?B[k]:R[k];const sv=JSON.stringify(v);if(q&&!k.toLowerCase().includes(q)&&!(sv||"").toLowerCase().includes(q))continue;
+  if(++n>600)break;const changed=JSON.stringify(B[k])!==JSON.stringify(R[k]);
+  const d=document.createElement("div");d.className=changed?"chg":"";d.innerHTML="<span></span><span></span>";d.children[0].textContent=k;d.children[1].textContent=sv===undefined?"(unset)":sv;
+  d.title="Click to change";d.style.cursor="pointer";d.onclick=()=>editKnob(kind,k,v,changed);out.appendChild(d)}
+ msg($("#k-msg"),n+" shown · "+keys.length+" "+kind+(n>600?" (first 600 — search to narrow)":"")+" · amber = changed by a rule")}
+async function editKnob(kind,key,cur,changed){const src=$("#k-src").value;const id=knobRuleId(src,kind,key);
+ const raw=prompt("New value for "+key+" (JSON: 12, true, \"text\", [..], {..}).\nLeave empty to go back to the code's value.",JSON.stringify(cur));
+ if(raw===null)return;
+ try{if(raw.trim()===""){await api("DELETE","/v1/admin/control/rules/"+encodeURIComponent(id)).catch(()=>{});msg($("#k-msg"),key+": back to the code's value.","ok")}
+  else{let value;try{value=JSON.parse(raw)}catch{value=raw}
+   const [surf,plat]=src.split("|");const when={};if($("#k-aud").value==="platform"){if(plat==="desktop")when.formFactor=["desktop"];else when.platform=[plat]}
+   const r={id,surface:surf,note:"Knob "+key,when,ops:[{op:"set",path:knobPath(surfIsSite()&&kind==="labels"?"copy":kind,key),value}]};
+   await api("PUT","/v1/admin/control/rules/"+encodeURIComponent(id),r);msg($("#k-msg"),key+" is live.","ok")}
+  await load();await loadKnobs()}catch(e){msg($("#k-msg"),e.message,"bad")}}
+$("#k-load").onclick=loadKnobs;$("#k-src").onchange=loadKnobs;$("#k-kind").onchange=drawKnobs;$("#k-q").oninput=drawKnobs;
+function tab(t){document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));$("#t-edit").classList.toggle("hidden",t!=="edit");$("#ctxBox").classList.toggle("hidden",!(t==="edit"||t==="find"));$("#t-knobs").classList.toggle("hidden",t!=="knobs");if(t==="knobs"&&!KN)loadKnobs();
  $("#t-hist").classList.toggle("hidden",t!=="hist");$("#t-help").classList.toggle("hidden",t!=="help");if(t==="hist")hist();if(t==="find")$("#onlyChanged").checked=false}
 document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>tab(b.dataset.t));
 $("#reload").onclick=load;$("#lock").onclick=()=>{S.removeItem("sec");location.reload()};
-$("#enter").onclick=async()=>{const sv=$("#secret").value.trim();if(sv)S.setItem("sec",sv);const wv=$("#who").value.trim();if(wv||!S.getItem("who"))S.setItem("who",wv||"admin");try{await load();$("#gate").classList.add("hidden");$("#app").classList.remove("hidden")}catch(e){msg($("#gateMsg"),e.message,"bad")}};
+$("#enter").onclick=async()=>{const sv=$("#secret").value.trim();if(sv)S.setItem("sec",sv);const wv=$("#who").value.trim();if(wv||!S.getItem("who"))S.setItem("who",wv||"admin");try{await load();$("#gate").classList.add("hidden");$("#app").classList.remove("hidden");tab("knobs")}catch(e){msg($("#gateMsg"),e.message,"bad")}};
 $("#secret").onkeydown=e=>{if(e.key==="Enter")$("#enter").click()};
 if(S.getItem("sec"))$("#enter").click();
 </script>
