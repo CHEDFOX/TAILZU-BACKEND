@@ -12218,12 +12218,16 @@ export function buildKeyboardConfig(
         // thin is nearly all blur, which is the signal we actually want.
         "kb.dictation.dim.material": "ultraThin",
         "kb.dictation.dim.blurRadius": 14,      // Android RenderEffect, API 31+
-        // iOS from K37: the key rows are photographed and blurred this many
-        // POINTS, faded to keyAlpha, and shown in their place while the rows
-        // are hidden; the tools row with the mic is never covered. The system
-        // material (kb.dictation.dim.material) sat over the whole keyboard,
-        // hid the mic, and turned dark keys into fog — it is no longer read.
-        "kb.dictation.dim.iosBlurRadius": 4,
+        // iOS from K38: each KEY is photographed on its own, blurred this many
+        // POINTS, faded to iosKeyAlpha and drawn iosKeyScale smaller in its
+        // own place while the key is hidden — the keys go soft, key by key,
+        // and nothing is laid over the rows. The tools row with the mic is
+        // never touched. The system material (kb.dictation.dim.material) sat
+        // over the whole keyboard, hid the mic, and turned dark keys into fog;
+        // it is no longer read.
+        "kb.dictation.dim.iosBlurRadius": 2.5,
+        "kb.dictation.dim.iosKeyAlpha": 0.6,
+        "kb.dictation.dim.iosKeyScale": 0.985,
         // Zero while the blur is off: the veil's only job then is to swallow
         // touches, and a tint with nothing to tint is the grey sheet again.
         // Raise it to 0.06 on the day the blur goes on.
