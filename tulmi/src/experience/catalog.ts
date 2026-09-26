@@ -11520,6 +11520,73 @@ const MIC_PROGRAM = {
  *  icon inset, as the keyboard flag `kb.mic.idleIconInset` has it. */
 export const SITE_MIC = { mark: BRAND_MARK, program: MIC_PROGRAM, inset: 7 };
 
+/**
+ * The landing page's look and order, sent with its copy (/v1/site): every
+ * CSS custom property the page draws with, the order of its sections, which
+ * are hidden, each band's colour class, and the page title and description.
+ * These are the values the page's own file uses, so sending them changes
+ * nothing — and makes each one changeable from the control console.
+ */
+export const SITE_SHAPE = {
+  "theme": {
+    "ink": "#0F0D0B",
+    "wash": "#141110",
+    "card": "#211C17",
+    "raise": "rgba(243,226,198,.055)",
+    "rule": "rgba(243,226,198,.15)",
+    "white": "#F3E2C6",
+    "grey": "rgba(243,226,198,.62)",
+    "dim": "rgba(243,226,198,.52)",
+    "amber": "#E8A23C",
+    "paper": "#FBF8F2",
+    "ink2": "#1B1712",
+    "ink2-soft": "rgba(27,23,18,.66)",
+    "line": "rgba(27,23,18,.12)",
+    "saffron": "#F4A72C",
+    "saffron-deep": "#B8650C",
+    "indigo": "#2A2878",
+    "indigo-deep": "#17163F",
+    "teal": "#167D71",
+    "teal-deep": "#0C4F47",
+    "sun": "#F7CF4A",
+    "rose": "#E4587B",
+    "sky": "#DCEBF7",
+    "leaf": "#DDF3E3",
+    "butter": "#FFF3C2",
+    "violet": "#1C1640",
+    "serif": "'Newsreader', Georgia, 'Times New Roman', serif",
+    "sans": "'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif",
+    "mono": "'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
+  },
+  "layout": {
+    "order": [
+      "river",
+      "how",
+      "llm",
+      "desk",
+      "tone",
+      "dev",
+      "free",
+      "questions"
+    ],
+    "hidden": [],
+    "bands": {
+      "how": "on-saffron",
+      "llm": "on-lilac",
+      "desk": "on-indigo",
+      "tone": "on-paper",
+      "dev": "on-ink",
+      "free": "on-sun",
+      "questions": "on-paper"
+    }
+  },
+  "meta": {
+    "title": "Tailzu",
+    "description": "Talk. It writes. Speak Hindi, Hinglish or any of 22 Indian languages — your own words come back spelled in English letters, ready to send, in any app."
+  }
+};
+
+
 const MIC_MOTION = {
   idle: [
     {
