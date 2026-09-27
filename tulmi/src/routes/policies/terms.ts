@@ -5,29 +5,10 @@
  * Bump the effective date if you meaningfully change subscription terms,
  * refund policy, or governing law.
  */
+import { siteShell } from "./shell.js";
 export const TERMS_EFFECTIVE = "September 27, 2026";
 
-export const TERMS_HTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Terms of Service — Tailzu</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.6; }
-  h1 { font-size: 28px; margin-bottom: 6px; }
-  h2 { font-size: 20px; margin-top: 32px; }
-  h3 { font-size: 16px; margin-top: 20px; }
-  .effective { color: #6b6b6b; font-size: 14px; margin-bottom: 32px; }
-  ul { padding-left: 22px; }
-  li { margin-bottom: 6px; }
-  a { color: #2563eb; }
-  code { background: #f4f4f5; padding: 2px 6px; border-radius: 4px; font-size: 14px; }
-  hr { border: 0; border-top: 1px solid #e5e5e5; margin: 32px 0; }
-</style>
-</head>
-<body>
-
+const TERMS_BODY = `
 <h1>Terms of Service</h1>
 <p class="effective">Effective: ${TERMS_EFFECTIVE}</p>
 
@@ -186,6 +167,11 @@ XOOTEQ LAB PRIVATE LIMITED (Tailzu) · <a href="mailto:support@tailzu.space">sup
 
 <h2>16. Contact</h2>
 <p>Questions about these Terms: <a href="mailto:legal@tailzu.space">legal@tailzu.space</a></p>
+`;
 
-</body>
-</html>`;
+export const TERMS_HTML = siteShell({
+  title: "Terms of Service",
+  path: "/terms",
+  description: "The terms for using Tailzu, its apps and its keyboard.",
+  main: `<article class="prose">\n${TERMS_BODY}\n</article>`,
+});

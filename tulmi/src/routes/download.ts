@@ -14,68 +14,39 @@
  * The page HEAD-checks each file and marks missing ones "coming soon", so it
  * can ship before every platform's installer exists.
  */
+import { siteShell } from "./policies/shell.js";
 
-export const DOWNLOAD_PAGE_HTML = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Download Tailzu for Desktop</title>
-<style>
-  /* The Stats palette, which is the site's and the app's. The old near-black
-     here was biased blue and the pale was neutral, so the amber sat ON this
-     page and IN every other one — a visible change of room between a link and
-     the page it opens. */
-  :root { --bg:#0F0D0B; --card:#1A1714; --text:#F3E2C6; --dim:rgba(243,226,198,.55); --accent:#E8A23C; }
-  * { box-sizing: border-box; margin: 0; }
-  body {
-    background: var(--bg); color: var(--text); min-height: 100vh;
-    font: 16px/1.6 -apple-system, "Segoe UI", system-ui, sans-serif;
-    display: flex; align-items: center; justify-content: center; padding: 24px;
-  }
-  .wrap { max-width: 560px; width: 100%; text-align: center; }
-  .mark {
-    width: 64px; height: 64px; border-radius: 50%; background: var(--accent);
-    margin: 0 auto 20px;
-  }
-  h1 { font-size: 30px; margin-bottom: 8px; }
-  .sub { color: var(--dim); margin-bottom: 32px; }
-  .primary {
-    display: inline-block; background: var(--accent); color: var(--bg);
-    font-weight: 700; font-size: 17px; padding: 15px 34px; border-radius: 14px;
-    text-decoration: none; transition: transform .12s ease;
-  }
-  .primary:hover { transform: translateY(-1px); }
-  .primary.disabled { opacity: .45; pointer-events: none; }
-  .hint { color: var(--dim); font-size: 13px; margin-top: 10px; min-height: 20px; }
-  .others { margin-top: 40px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-  .other {
-    background: var(--card); color: var(--text); text-decoration: none;
-    padding: 10px 18px; border-radius: 10px; font-size: 14px;
-  }
+
+const CSS = `
+  .get { margin: 40px 0 0; }
+  .hint { color: var(--dim); font-size: 14px; margin: 12px 0 0; min-height: 22px; text-transform: none; }
+  .others { margin: 36px 0 0; display: flex; gap: 10px; flex-wrap: wrap; }
+  .others:not(:empty)::before { content: "Also for"; display: block; width: 100%; font-family: var(--mono); font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: var(--dim); }
+  .other { display: inline-flex; align-items: center; min-height: 42px; padding: 0 18px; border: 1px solid var(--rule); border-radius: 999px; color: var(--white); text-decoration: none; font-size: 14px; transition: border-color .2s; }
+  .other:hover { border-color: var(--white); }
   .other.disabled { opacity: .4; pointer-events: none; }
-  .foot { margin-top: 44px; color: var(--dim); font-size: 12.5px; }
-  .foot a { color: var(--dim); }
-</style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="mark"></div>
-    <h1>Tailzu for Desktop</h1>
-    <p class="sub">Press a hotkey, talk, and clean polished text lands wherever your cursor is. Works in every app.</p>
+  .foot { margin: 56px 0 0; color: var(--dim); font-size: 14px; max-width: 60ch; text-transform: none; }
+`;
 
-    <a id="main" class="primary disabled" href="#">Detecting your system…</a>
-    <div id="hint" class="hint"></div>
+export const DOWNLOAD_PAGE_HTML = siteShell({
+  title: "Download for desktop",
+  path: "/download",
+  description: "Tailzu for Windows, macOS and Linux: press a hotkey, talk, and clean text lands wherever your cursor is.",
+  css: CSS,
+  main: `
+<p class="eye">Desktop</p>
+<h1>Tailzu for your computer.</h1>
+<p class="lede">Press a hotkey, talk, and clean, polished text lands wherever your cursor is. Works in every app.</p>
 
-    <div class="others" id="others"></div>
+<div class="get">
+  <a id="main" class="btn disabled" href="#">Detecting your system…</a>
+  <div id="hint" class="hint"></div>
+</div>
 
-    <p class="foot">
-      Windows may show a SmartScreen prompt on first run — choose “More info → Run anyway”.<br/>
-      <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>
-    </p>
-  </div>
+<div class="others" id="others"></div>
 
-<script>
+<p class="foot">Windows may show a SmartScreen prompt on first run: choose “More info”, then “Run anyway”.</p>`,
+  script: `
   var FILES = {
     win:   { label: "Download for Windows", file: "/downloads/Tailzu-Setup.exe" },
     mac:   { label: "Download for macOS",   file: "/downloads/Tailzu.dmg" },
@@ -121,6 +92,5 @@ export const DOWNLOAD_PAGE_HTML = `<!doctype html>
       }
     });
   });
-</script>
-</body>
-</html>`;
+`,
+});

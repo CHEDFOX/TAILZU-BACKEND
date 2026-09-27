@@ -8,29 +8,10 @@
  * lives → bump the effective date AND remember to update the App Privacy
  * questionnaire in App Store Connect.
  */
+import { siteShell } from "./shell.js";
 export const PRIVACY_POLICY_EFFECTIVE = "July 7, 2026";
 
-export const PRIVACY_POLICY_HTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Privacy Policy — Tailzu</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 760px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.6; }
-  h1 { font-size: 28px; margin-bottom: 6px; }
-  h2 { font-size: 20px; margin-top: 32px; }
-  h3 { font-size: 16px; margin-top: 20px; }
-  .effective { color: #6b6b6b; font-size: 14px; margin-bottom: 32px; }
-  ul { padding-left: 22px; }
-  li { margin-bottom: 6px; }
-  a { color: #2563eb; }
-  code { background: #f4f4f5; padding: 2px 6px; border-radius: 4px; font-size: 14px; }
-  hr { border: 0; border-top: 1px solid #e5e5e5; margin: 32px 0; }
-</style>
-</head>
-<body>
-
+const PRIVACY_POLICY_BODY = `
 <h1>Privacy Policy</h1>
 <p class="effective">Effective: ${PRIVACY_POLICY_EFFECTIVE}</p>
 
@@ -222,6 +203,11 @@ export const PRIVACY_POLICY_HTML = `<!DOCTYPE html>
 <p>Questions or requests: <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a></p>
 
 <p style="color:#6b6b6b; font-size:13px; margin-top:40px;">This policy is available at <code>https://tailzu.space/privacy</code>. The version served by the app matches the version linked in App Store Connect.</p>
+`;
 
-</body>
-</html>`;
+export const PRIVACY_POLICY_HTML = siteShell({
+  title: "Privacy Policy",
+  path: "/privacy",
+  description: "What Tailzu collects, why, who processes it, and your rights.",
+  main: `<article class="prose">\n${PRIVACY_POLICY_BODY}\n</article>`,
+});

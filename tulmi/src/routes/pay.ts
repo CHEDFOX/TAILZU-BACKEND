@@ -13,16 +13,30 @@
  *                                     opens that checkout by itself
  *
  * With no account id the prices still show, and the buttons do not: a payment
- * that belongs to nobody unlocks nothing.
+ * that belongs to nobody unlocks nothing. Dressed in the site's own room
+ * (policies/shell.ts), with the plans on its sun field as on /pricing.
  */
 import type { PaywallConfig } from "../../../shared/types/api.js";
-import { SELLER } from "./policies/pricing.js";
+import { PLAN_CSS, SELLER } from "./policies/pricing.js";
+import { siteShell } from "./policies/shell.js";
 
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const amount = (price: string | undefined) => Number(String(price ?? "").replace(/[^0-9.]/g, "")) || 0;
 
 const PRICE_ID = /^pri_[a-z0-9]+$/;
 const CLIENT_TOKEN = /^(live|test)_[A-Za-z0-9]+$/;
+
+const CSS = `${PLAN_CSS}
+  .note { display: none; margin: 20px 0 0; padding: 16px 20px; border-radius: 16px; background: var(--card); color: var(--white); }
+  #pay[data-state="nouser"] .note.nouser, #pay[data-state="done"] .note.done,
+  #pay[data-state="error"] .note.error, #pay[data-state="off"] .note.off, #pay[data-state="txn"] .note.txn { display: block; }
+  #pay[data-state="nouser"] .plan .btn, #pay[data-state="off"] .plan .btn { display: none; }
+  #pay[data-state="done"] .field { opacity: .45; pointer-events: none; }
+  .fine { margin: 56px 0 0; max-width: 720px; }
+  .fine p { color: var(--dim); font-size: 14px; margin: 0 0 12px; text-transform: none; }
+  .fine a { text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+`;
 
 export function payHtml(opts: {
   plans: PaywallConfig["plans"];
@@ -37,6 +51,7 @@ export function payHtml(opts: {
   // Every paid plan shows its price; only one with a valid price id gets a button.
   const offered = (opts.plans ?? [])
     .filter((p) => !p.free && p.price)
+    .sort((a, b) => amount(a.price) - amount(b.price))
     .map((p) => {
       const id = opts.priceIds[p.id];
       return { plan: p, priceId: id && PRICE_ID.test(id) ? id : null };
@@ -45,85 +60,49 @@ export function payHtml(opts: {
 
   const cards = offered.map(({ plan, priceId }) => `
     <section class="plan${plan.default ? " lead" : ""}">
-      <div class="head"><h2>${esc(plan.label)}</h2>${plan.badge ? `<span class="badge">${esc(plan.badge)}</span>` : ""}</div>
+      <div class="top"><h2>${esc(plan.label)}</h2>${plan.badge ? `<span class="badge">${esc(plan.badge)}</span>` : ""}</div>
       <p class="price">${esc(plan.price)}</p>
-      <p class="period">${esc(plan.period ?? "")}</p>
-      ${priceId ? `<button type="button" data-price="${esc(priceId)}" disabled>Choose ${esc(plan.label)}</button>` : ""}
+      <p class="per">${esc(plan.period ?? "")}</p>
+      ${priceId ? `<button type="button" class="btn" data-price="${esc(priceId)}" disabled>Choose ${esc(plan.label)}</button>` : ""}
     </section>`).join("");
 
   const config = JSON.stringify({ token }).replace(/</g, "\\u003c");
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Subscribe — Tailzu</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex">
-<meta name="referrer" content="no-referrer">
-<style>
-  :root { --bg: #ffffff; --ink: #16171a; --muted: #62656d; --line: #e4e5e8; --card: #fafafb; --btn: #16171a; --btn-ink: #ffffff; --link: #2656c9; }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #0e0f11; --ink: #eceef1; --muted: #9a9ea6; --line: #26282d; --card: #15171a; --btn: #eceef1; --btn-ink: #0e0f11; --link: #8fb0ff; }
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-  main { max-width: 760px; margin: 0 auto; padding: 48px 20px 64px; }
-  .brand { font-weight: 700; letter-spacing: 0.02em; margin: 0 0 32px; }
-  h1 { font-size: 30px; line-height: 1.2; margin: 0 0 8px; text-wrap: balance; }
-  .lede { color: var(--muted); margin: 0 0 28px; }
-  .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
-  .plan { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px; display: flex; flex-direction: column; }
-  .plan.lead { border-color: var(--ink); }
-  .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .plan h2 { font-size: 18px; margin: 0; }
-  .badge { font-size: 12px; font-weight: 600; letter-spacing: 0.03em; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; color: var(--muted); }
-  .price { font-size: 32px; font-weight: 700; margin: 14px 0 0; font-variant-numeric: tabular-nums; }
-  .period { color: var(--muted); margin: 0 0 20px; }
-  button { margin-top: auto; font: inherit; font-weight: 600; min-height: 46px; border-radius: 10px; border: 0; background: var(--btn); color: var(--btn-ink); cursor: pointer; }
-  button:disabled { opacity: 0.4; cursor: default; }
-  button:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
-  .note { margin: 24px 0 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; display: none; }
-  body[data-state="nouser"] .note.nouser, body[data-state="done"] .note.done,
-  body[data-state="error"] .note.error, body[data-state="off"] .note.off, body[data-state="txn"] .note.txn { display: block; }
-  body[data-state="nouser"] button, body[data-state="off"] button { display: none; }
-  body[data-state="done"] .plans { opacity: 0.4; pointer-events: none; }
-  .fine { color: var(--muted); font-size: 14px; margin-top: 36px; border-top: 1px solid var(--line); padding-top: 20px; }
-  .fine p { margin: 0 0 10px; }
-  a { color: var(--link); }
-</style>
-</head>
-<body data-state="${ready ? "loading" : "off"}">
-<main>
-  <p class="brand">TAILZU</p>
-  <h1>Choose Your Plan</h1>
-  <p class="lede">Unlimited words on every device you sign in to. Prices in US dollars; tax is added at checkout where it applies.</p>
+  return siteShell({
+    title: "Subscribe",
+    noindex: true,
+    css: CSS,
+    main: `
+<div id="pay" data-state="${ready ? "loading" : "off"}">
+<p class="eye">Subscribe</p>
+<h1>Choose your plan.</h1>
+<p class="lede">Unlimited words on every device you sign in to.</p>
 
-  <div class="plans">${cards}
-  </div>
+<div class="field"><div class="plans">${cards}
+</div></div>
 
-  <p class="note nouser">Open this page from Tailzu: Settings, then Subscribe. That is how your payment reaches your account.</p>
-  <p class="note txn">Opening checkout…</p>
-  <p class="note done"><strong>Paid.</strong> Go back to Tailzu. It unlocks in a moment, on every device you sign in to.</p>
-  <p class="note error">Checkout could not load. Check your connection and reload this page.</p>
-  <p class="note off">Web checkout is not open yet. Subscribe in the Tailzu app on iPhone or Android.</p>
+<p class="note nouser">Open this page from Tailzu: Settings, then Subscribe. That is how your payment reaches your account.</p>
+<p class="note txn">Opening checkout…</p>
+<p class="note done">Paid. Go back to Tailzu; it unlocks in a moment, on every device you sign in to.</p>
+<p class="note error">Checkout could not load. Check your connection and reload this page.</p>
+<p class="note off">Web checkout is not open yet. Subscribe in the Tailzu app on iPhone or Android.</p>
 
-  <div class="fine">
-    <p>Payments are processed by <strong>Paddle.com</strong>, our authorised reseller and Merchant of Record, on behalf of ${SELLER}, which makes Tailzu.</p>
-    <p>Plans renew automatically until you cancel. Cancel any time from your Paddle receipt or at <a href="https://paddle.net">paddle.net</a>; you keep access until the end of the period already paid for. Purchases are non-refundable, except where the law requires a refund.</p>
-    <p><a href="${esc(opts.pricing)}">Pricing</a> · <a href="${esc(opts.terms)}">Terms</a> · <a href="${esc(opts.privacy)}">Privacy</a> · <a href="https://xooteq.com/refunds">Refunds</a> · <a href="mailto:support@tailzu.space">support@tailzu.space</a></p>
-  </div>
-</main>
-<script>
+<div class="fine">
+  <p>Prices in US dollars; tax is added at checkout where it applies. Payments are processed by <strong>Paddle.com</strong>, our authorised reseller and Merchant of Record, on behalf of ${SELLER}, which makes Tailzu.</p>
+  <p>Plans renew automatically until you cancel. Cancel any time from your Paddle receipt or at <a href="https://paddle.net">paddle.net</a>; you keep access until the end of the period already paid for. Purchases are non-refundable, except where the law requires a refund.</p>
+  <p><a href="${esc(opts.pricing)}">Pricing</a> · <a href="${esc(opts.terms)}">Terms</a> · <a href="${esc(opts.privacy)}">Privacy</a> · <a href="https://xooteq.com/refunds">Refunds</a> · <a href="mailto:support@tailzu.space">support@tailzu.space</a></p>
+</div>
+</div>`,
+    script: `
 (function () {
   var C = ${config};
-  var body = document.body;
-  if (body.dataset.state === "off") return;
+  var root = document.getElementById("pay");
+  if (root.dataset.state === "off") return;
   var q = new URLSearchParams(location.search);
   var uid = (q.get("app_user_id") || q.get("user") || "").trim();
   var txn = q.get("_ptxn");
   var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  var set = function (s) { body.dataset.state = s; };
+  var set = function (s) { root.dataset.state = s; };
   if (!txn && !UUID.test(uid)) { set("nouser"); return; }
 
   var s = document.createElement("script");
@@ -140,7 +119,6 @@ export function payHtml(opts: {
     // A transaction link: Paddle.js opens that checkout itself.
     if (txn) { set("txn"); return; }
     set("pick");
-    var dark = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches;
     Array.prototype.forEach.call(document.querySelectorAll("button[data-price]"), function (b) {
       b.disabled = false;
       b.addEventListener("click", function () {
@@ -148,7 +126,7 @@ export function payHtml(opts: {
           Paddle.Checkout.open({
             items: [{ priceId: b.getAttribute("data-price"), quantity: 1 }],
             customData: { app_user_id: uid },
-            settings: { displayMode: "overlay", theme: dark ? "dark" : "light", allowLogout: false }
+            settings: { displayMode: "overlay", theme: "dark", allowLogout: false }
           });
         } catch (e) { set("error"); }
       });
@@ -156,7 +134,6 @@ export function payHtml(opts: {
   };
   document.head.appendChild(s);
 })();
-</script>
-</body>
-</html>`;
+`,
+  });
 }
