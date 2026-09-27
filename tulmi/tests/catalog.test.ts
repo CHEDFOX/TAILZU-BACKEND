@@ -531,6 +531,13 @@ describe("buildBootstrap", () => {
       .flags?.["paywall.blockUntilEntitled"]).toBe(false);
   });
 
+  it("asks phones for notifications on Stats, and never a desktop", () => {
+    expect(buildBootstrap({ onboarded: true, formFactor: "phone" }).flags?.["push.ask"])
+      .toEqual({ screen: "stats", afterMs: 4000, key: "v1" });
+    expect(buildBootstrap({ onboarded: true }).flags?.["push.ask"]).toMatchObject({ screen: "stats" });
+    expect(buildBootstrap({ onboarded: true, formFactor: "desktop" }).flags?.["push.ask"]).not.toHaveProperty("screen");
+  });
+
   it("tells the client whether the account is paid", () => {
     // The phones ask RevenueCat themselves; the desktop has no SDK and had no
     // way to know at all — so it could not hide the paywall from somebody who

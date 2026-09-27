@@ -1504,6 +1504,15 @@ const PROMPT_GIVE_UP_AFTER = 40;  // and never after the 40th
 /** How long to let the user get on with things before the card appears. */
 const PROMPT_AFTER_MS = 9000;
 
+/**
+ * WHEN THE APP ASKS FOR NOTIFICATIONS. Without this nothing ever asks, no
+ * phone registers a token, and no push reaches anyone. The first time Stats
+ * shows on an install, a few seconds in: Stats is where a returning person
+ * lands, so it is never the first thing a new one sees. A new key asks once
+ * more on installs that were asked before.
+ */
+const PUSH_ASK = { screen: "stats", afterMs: 4000, key: "v1" };
+
 function arrivalPrompt(
   opts: { launchCount?: number; languagesSet?: boolean; isReviewer?: boolean },
 ): string | null {
@@ -1971,6 +1980,9 @@ export function buildBootstrap(
               promptAfterMs: PROMPT_AFTER_MS,
             }
           : {}),
+
+        // Phones only: the desktop has no push.
+        ...(opts.formFactor !== "desktop" ? { "push.ask": PUSH_ASK } : {}),
 
         // IN-APP mic capture mode — the app's counterpart to the keyboard's
         // kb.mic.mode, so both surfaces are switchable from here with no app
