@@ -16,13 +16,20 @@
 import type { ControlCtx } from "../control/rules.js";
 import type { PushPayload } from "./defaults.js";
 import type { PushMessage, PushSender, Ticket } from "./expo.js";
-import { knobsOf, plan, type Decision, type Facts } from "./plan.js";
+import { knobsOf, plan, timingKnobs, type Decision, type Facts } from "./plan.js";
+import { isQuiet } from "./timing.js";
 import { tokenHash, type Candidate, type PushStore, type TicketRecord } from "./store.js";
 
 const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
 
 export type ConfigFor = (ctx: Partial<ControlCtx>) => PushPayload;
+
+/** What deliver needs: a planned push, or a broadcast. */
+type Deliverable = Pick<Extract<Decision, { sendAt: number }>, "sendAt" | "title" | "body" | "screenId" | "ttlSec"> & {
+  kind: string;
+  periodKey: string;
+};
 
 export interface TickReport {
   at: string;
@@ -187,8 +194,53 @@ export class PushEngine {
     }
   }
 
+  /**
+   * One message to everyone with a phone, now. Claimed per person under
+   * "broadcast:<key>", so running it twice sends nothing the second time, and
+   * logged as sent, so the smart engine counts it against today's cap and
+   * does not follow it with a nudge. People the control plane has switched
+   * off are left alone, and so is anyone whose clock says it is night.
+   */
+  async broadcast(
+    msg: { title: string; body: string; screenId: string; key: string },
+    now = Date.now(),
+    opts: { dryRun?: boolean; ignoreQuiet?: boolean } = {},
+  ): Promise<{ key: string; dryRun: boolean; candidates: number; sent: number; failed: number; skipped: Record<string, number>; tokensDropped: number }> {
+    const report = { key: msg.key, dryRun: !!opts.dryRun, candidates: 0, sent: 0, failed: 0, skipped: {} as Record<string, number>, tokensDropped: 0 };
+    const skip = (why: string) => { report.skipped[why] = (report.skipped[why] ?? 0) + 1; };
+    const candidates = await this.store.candidates(now);
+    report.candidates = candidates.length;
+    const hour = Math.floor(now / (60 * MIN)) * 60 * MIN;
+    for (let i = 0; i < candidates.length; i += 8) {
+      await Promise.all(candidates.slice(i, i + 8).map(async (c) => {
+        try {
+          if (!c.tokens.length) return skip("no token");
+          const payload = this.configFor(c, now);
+          const k = knobsOf(payload);
+          if (!k.flag("push.smart.enabled", true)) return skip("off");
+          if (!opts.ignoreQuiet && isQuiet(hour, c.tzOffsetMin, timingKnobs(k))) return skip("night");
+          if (opts.dryRun) { report.sent++; return; }
+          const d = {
+            kind: "broadcast", periodKey: `broadcast:${msg.key}`, sendAt: now,
+            title: msg.title, body: msg.body, screenId: msg.screenId,
+            ttlSec: Math.max(60, Math.round(k.flag("push.smart.ttlMin", 180) * 60)),
+          };
+          const ok = await this.deliver(c, d, payload, now);
+          if (ok === null) return skip("already sent");
+          if (ok.sent) report.sent++; else report.failed++;
+          report.tokensDropped += ok.dropped;
+        } catch (e) {
+          skip("error");
+          this.log.warn({ userId: c.userId, err: String(e) }, "[push] broadcast skipped a person");
+        }
+      }));
+    }
+    this.log.info(report, "[push] broadcast");
+    return report;
+  }
+
   /** Claim, send to every phone, record. Null when someone else claimed it. */
-  async deliver(c: Candidate, d: Extract<Decision, { sendAt: number }>, payload: PushPayload, now: number, periodKey = d.periodKey):
+  async deliver(c: Candidate, d: Deliverable, payload: PushPayload, now: number, periodKey = d.periodKey):
     Promise<{ sent: boolean; dropped: number; id: string } | null> {
     const id = await this.store.claim({ userId: c.userId, kind: d.kind, periodKey, plannedAt: d.sendAt });
     if (!id) return null;

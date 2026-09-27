@@ -268,6 +268,56 @@ describe("the engine", () => {
   });
 });
 
+describe("a broadcast", () => {
+  const NOON = TODAY + 12 * HOUR;
+  const MSG = { title: "Your thumbs filed a complaint", body: "Give them the day off.", screenId: "stats", key: "k1" };
+
+  it("a dry run counts and sends nothing", async () => {
+    const { store, sender, engine } = setup();
+    const r = await engine.broadcast(MSG, NOON, { dryRun: true });
+    expect(r).toMatchObject({ candidates: 1, sent: 1, dryRun: true });
+    expect(sender.sent.length).toBe(0);
+    expect(store.rows.length).toBe(0);
+  });
+
+  it("sends once to every phone, and the same key twice sends nothing more", async () => {
+    const { store, sender, engine } = setup();
+    const r = await engine.broadcast(MSG, NOON);
+    expect(r.sent).toBe(1);
+    expect(sender.sent[0].map((m) => m.to)).toEqual(["ExponentPushToken[ios-a]", "ExponentPushToken[and-a]"]);
+    expect(sender.sent[0][0]).toMatchObject({ title: MSG.title, body: MSG.body, data: { screenId: "stats", kind: "broadcast" } });
+    expect(store.rows[0]).toMatchObject({ periodKey: "broadcast:k1", status: "sent" });
+    const again = await engine.broadcast(MSG, NOON + MIN);
+    expect(again.sent).toBe(0);
+    expect(again.skipped["already sent"]).toBe(1);
+    expect(sender.sent.length).toBe(1);
+  });
+
+  it("counts as the day's push, so the smart engine stays quiet after it", async () => {
+    const { sender, engine } = setup();
+    await engine.broadcast(MSG, NOON);
+    const r = await engine.tick(TODAY + 19 * HOUR + 5 * MIN);
+    expect(r.sent).toBe(0);
+    expect(sender.sent.length).toBe(1);
+  });
+
+  it("skips someone in their night unless told otherwise, and anyone switched off", async () => {
+    const { sender, engine, cand } = setup();
+    cand.tzOffsetMin = 12 * 60; // noon UTC is midnight for them
+    const r = await engine.broadcast(MSG, NOON);
+    expect(r.skipped.night).toBe(1);
+    expect(sender.sent.length).toBe(0);
+    const anyway = await engine.broadcast(MSG, NOON, { ignoreQuiet: true });
+    expect(anyway.sent).toBe(1);
+
+    const { store: s2, sender: send2 } = setup();
+    const off = new PushEngine(s2, send2, () => payload({ "push.smart.enabled": false }), { info: () => {}, warn: () => {} });
+    const r2 = await off.broadcast(MSG, NOON);
+    expect(r2.skipped.off).toBe(1);
+    expect(send2.sent.length).toBe(0);
+  });
+});
+
 describe("Expo's push service", () => {
   it("sends in hundreds, reads tickets in order, and maps failures", async () => {
     const calls: Array<{ url: string; body: unknown; auth?: string }> = [];

@@ -6,12 +6,14 @@
  * Admin API — x-admin-secret (ADMIN_SECRET) on every call:
  *   GET  /v1/admin/push/plan?userId=…   what this person would get, when, and why
  *   POST /v1/admin/push/send            { userId, kind? } — send it now, ignoring the clock
+ *   POST /v1/admin/push/broadcast       { title, body, screenId?, key?, send? } — everyone, now (dry run unless send: true)
  *   POST /v1/admin/push/tick            { dryRun? } — run one pass now
  *   GET  /v1/admin/push/stats?days=7    sent / opened / failed per reason
  *
  * Tuning lives in the control plane: surface "push", flags push.* and labels
  * push.*.title / .body (see defaults.ts).
  */
+import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { applyRules } from "../control/rules.js";
 import { controlStore, requireAdmin } from "../control/index.js";
@@ -102,6 +104,24 @@ export function registerPushRoutes(app: FastifyInstance, opts: { rateLimit?: Rec
     };
     const res = await e.deliver(c, d, payload, now);
     return reply.send({ ok: !!res?.sent, pushId: res?.id ?? null, title: d.title, body: d.body });
+  });
+
+  // One message to everyone, now. A dry run unless send is true.
+  app.post("/v1/admin/push/broadcast", cfg, async (req, reply) => {
+    const e = ready(req, reply);
+    if (!e) return;
+    const b = (req.body ?? {}) as { title?: unknown; body?: unknown; screenId?: unknown; key?: unknown; send?: unknown; ignoreQuiet?: unknown };
+    const title = typeof b.title === "string" ? b.title.trim().slice(0, 120) : "";
+    const body = typeof b.body === "string" ? b.body.trim().slice(0, 240) : "";
+    if (!title || !body) return reply.code(400).send({ code: "bad_request", message: "title and body are required" });
+    const screenId = typeof b.screenId === "string" && /^[a-z0-9_-]{1,40}$/i.test(b.screenId) ? b.screenId : "stats";
+    const key = typeof b.key === "string" && /^[a-z0-9_.:-]{1,60}$/i.test(b.key)
+      ? b.key
+      : createHash("sha256").update(`${title}\n${body}`).digest("hex").slice(0, 12);
+    return reply.send(await e.broadcast({ title, body, screenId, key }, Date.now(), {
+      dryRun: b.send !== true,
+      ignoreQuiet: b.ignoreQuiet === true,
+    }));
   });
 
   app.post("/v1/admin/push/tick", cfg, async (req, reply) => {
