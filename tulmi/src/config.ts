@@ -386,8 +386,10 @@ const EnvSchema = z.object({
    * off the pay page, not stop the whole server from booting.
    */
   PADDLE_CLIENT_TOKEN: z.string().default("live_a3920a3a08ac449c692844c6d09"),
-  PADDLE_PRICE_ELITE: z.string().optional(),
-  PADDLE_PRICE_LITE: z.string().optional(),
+  // Paddle → Catalog → Tailzu: Elite is the yearly price, Lite the monthly.
+  // Public ids, not credentials. The env overrides them.
+  PADDLE_PRICE_ELITE: z.string().default("pri_01m2qch0nwws80p705cd8we3vt"),
+  PADDLE_PRICE_LITE: z.string().default("pri_01m2qcg1t6amqa9hcxd15zkhd7"),
   /**
    * THE LANDING PAGE'S LIVE DEMO. Off by default, on purpose.
    *
