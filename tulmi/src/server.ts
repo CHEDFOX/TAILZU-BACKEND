@@ -451,7 +451,7 @@ app.get("/pricing", async (_req, reply) => {
   });
 });
 
-// Tailzu's pay page (pay.tailzu.space → /pay): where the desktop's Subscribe
+// Tailzu's pay page (tailzu.space/pay): where the desktop's Subscribe
 // goes. Both plans, and Paddle's checkout with the account id on it.
 app.get("/pay", async (_req, reply) => {
   reply.type("text/html; charset=utf-8");

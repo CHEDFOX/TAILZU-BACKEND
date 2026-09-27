@@ -1,5 +1,5 @@
 /**
- * Tailzu's pay page — GET /pay, served as pay.tailzu.space.
+ * Tailzu's pay page — GET /pay, served as tailzu.space/pay.
  *
  * Where the desktop's Subscribe goes (REVENUECAT_WEB_PAYWALL_URL), because a
  * window has no App Store to buy through. It lists the same plans the app's

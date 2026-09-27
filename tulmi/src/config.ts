@@ -372,10 +372,10 @@ const EnvSchema = z.object({
    */
   REVENUECAT_WEB_PAYWALL_URL: z.string().url().optional(),
   /**
-   * TAILZU'S OWN PAY PAGE (GET /pay, served as pay.tailzu.space): both plans,
+   * TAILZU'S OWN PAY PAGE (GET /pay, served as tailzu.space/pay): both plans,
    * and Paddle's checkout over them with the buyer's account id on the
    * transaction (customData.app_user_id). Point REVENUECAT_WEB_PAYWALL_URL at
-   * https://pay.tailzu.space and the desktop's Subscribe opens it.
+   * https://tailzu.space/pay and the desktop's Subscribe opens it.
    *
    * The client-side token is public by design (it is in every page that runs
    * Paddle.js); `test_…` runs Paddle's sandbox. The price ids come from
