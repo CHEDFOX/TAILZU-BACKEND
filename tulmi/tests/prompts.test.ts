@@ -168,7 +168,7 @@ describe("the keyboard never answers what was dictated", () => {
   it("says the destination decides form and never content", () => {
     for (const app of FIELD_KINDS) {
       const s = buildAssistSystem({ targetApp: app, hasContext: false });
-      expect(s, `field kind: ${app}`).toMatch(/decides the SHAPE of the text and never its content/);
+      expect(s, `field kind: ${app}`).toMatch(/decides the shape of the text, never its content/i);
       expect(s).toContain(app);
     }
   });
@@ -183,9 +183,10 @@ describe("the keyboard never answers what was dictated", () => {
   it("states the dictated-question case outright, wherever it is writing", () => {
     for (const app of [...FIELD_KINDS, "WhatsApp", undefined]) {
       const s = buildAssistSystem({ targetApp: app, hasContext: true });
-      expect(s, `target: ${app}`).toMatch(
-        /a question they dictate is a question they are sending, not one for you to answer/i,
-      );
+      expect(s, `target: ${app}`).toMatch(/a question they dictate is a question they are sending/i);
+      // "Not one for you to answer" moved up into the contract, where it
+      // binds every line below it rather than one clause.
+      expect(s, `target: ${app}`).toMatch(/and no answer/i);
     }
   });
 

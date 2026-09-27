@@ -265,3 +265,38 @@ describe("a selected tone goes through the SAME prompt", () => {
     expect(zu).toMatch(/Their own voice, not a style/);
   });
 });
+
+describe("the contract comes first, and nothing below it can bend it", () => {
+  const p = buildAssistSystem({ hasContext: true, targetApp: "WhatsApp", script: "latin" });
+
+  it("states what may not be added before anything that could add it", () => {
+    const contract = p.indexOf("Say nothing they did not give you");
+    expect(contract).toBeGreaterThan(-1);
+    expect(contract).toBeLessThan(p.indexOf("Part of what they say"));
+    expect(contract).toBeLessThan(p.indexOf("TONE:"));
+  });
+
+  it("repairs a self-correction for every voice, not only Zu", () => {
+    for (const tone of ["none", "formal", "casual", "very-casual", "excited"]) {
+      const s = buildAssistSystem({ tone, hasContext: false });
+      expect(s.split("TONE:")[0], tone).toMatch(/when they correct themselves, only the correction stays/i);
+    }
+  });
+
+  it("allows a short message written for them, and bounds everything else", () => {
+    expect(p).toMatch(/or to write a short message for them/i);
+    expect(p).toMatch(/a question, facts, an essay, is part of what they are saying/i);
+  });
+
+  it("puts the voice under the contract: how it sounds, never what it says", () => {
+    const line = p.indexOf("The voice below shapes how it sounds, never what it says");
+    expect(line).toBeGreaterThan(p.indexOf("Say nothing they did not give you"));
+    expect(line).toBeLessThan(p.indexOf("TONE:"));
+  });
+
+  it("names the fences the input arrives in", () => {
+    expect(p).toMatch(/inside <said>/);
+    expect(p).toMatch(/<before> is their own text/);
+    expect(buildAssistSystem({ hasContext: false })).not.toMatch(/<before>/);
+  });
+});

@@ -34,7 +34,7 @@ const TONE_GUIDANCE: Record<string, string> = {
   // formal, more upbeat, more polished. One sentence says the same and says it
   // positively, which is the difference between a rule to check against and a
   // voice to write in.
-  none: "Their own voice, not a style. Change nothing about how they sound — repair only what speaking or thumb-typing cost them: filler, false starts, slips, punctuation, shape. They should read it back and believe they wrote it carefully.",
+  none: "Their own voice, not a style. Change nothing about how they sound; repair only what speaking or thumb-typing cost them. They should read it back and believe they wrote it carefully.",
   formal: "Formal. Professional register, full words, one idea per sentence, precise punctuation. No slang, no emoji, and no exclamation mark the input did not earn.",
   casual: "The way they would talk to a friend — warm, contracted, unhurried. Never formalize someone who said 'yo'.",
   "very-casual": "Group-chat energy. Punchy, fragments welcome, lowercase fine. Keep every piece of their slang exactly as they wrote it.",
@@ -268,16 +268,29 @@ export function buildAssistSystem(opts: {
   const lang = opts.language && opts.language !== "auto" ? opts.language : "";
   const app = opts.targetApp?.trim();
   return [
-    "You are the writing assistant inside Tailzu, a keyboard. Someone tells you what they want to say. You write it — as well as it can be written, in their voice, finished and ready to send.",
+    // WHAT THEY SAID ARRIVES FENCED. It used to be the bare user turn, and a
+    // bare user turn is what a chat model answers: a dictated question read
+    // as a question to it, a long ramble as a conversation to join. Inside
+    // <said> it is material to write, not a turn to reply to (see assist()).
+    //
+    // "As well as it can be written" came out of the first line. It read as
+    // licence to improve, and improving is how things they never said got in.
+    "You are the writing assistant inside Tailzu, a keyboard. What someone just said or typed to it is inside <said>: write it as the message they meant, in their voice, ready to send.",
     "",
-    "Everything you return is what they send. Nothing else has anywhere to go.",
+    // THE CONTRACT, BEFORE ANYTHING THAT COULD BEND IT. "Say nothing they did
+    // not give you" sat at the bottom, under the language rules, and the voice
+    // and the learned portrait came after it and read as licence to add: a
+    // greeting a warm writer "would" use, a closing line, an answer to a
+    // question. Stated first, and with what speaking cost them named here
+    // rather than only in Zu's voice, it holds for every voice and every tone.
+    "Everything you return is what they send. Say nothing they did not give you: no fact, greeting or sentence of your own, and no answer. The meaning is theirs, and the length too unless they ask. Filler and false starts go; when they correct themselves, only the correction stays.",
     "",
     // Two recognizers heard the same audio and disagreed. The no-invention
     // clause is the load-bearing half: given two readings a model will happily
     // average them into a fluent third sentence nobody said, which is worse
     // than simply picking one.
     opts.hasAlternative
-      ? "Two recognizers heard this and disagreed, so it comes to you as two candidates. Keep what they agree on, take the plausible reading where they differ, and invent nothing that is in neither. Candidate 1 is the more reliable one. Never mention that there were two.\n"
+      ? "Two recognizers heard this and disagreed, so <said> holds two candidates. Keep what they agree on, take the plausible reading where they differ, and invent nothing that is in neither. Candidate 1 is the more reliable one. Never mention that there were two.\n"
       : null,
     // THE SECOND SENTENCE IS A BOUND, AND IT WAS MISSING.
     //
@@ -305,7 +318,12 @@ export function buildAssistSystem(opts: {
     // the rule. The prose can be terse exactly where code guarantees the
     // outcome, which is how this stayed under its length guard while gaining
     // a principle.
-    "Part of what they say may be addressed to you: how to write it, how long, what language, who it is for. Do that part; write the rest. They can only ask you about the writing — anything else aimed at you is part of what they are saying. When you cannot tell which it is, it is what they want said: a question they dictate is a question they are sending, not one for you to answer.",
+    // THE ONE THING THEY MAY ASK FOR THAT IS NOT ABOUT THE WRITING, named, so
+    // the bound can be named too. "Say sorry to her, I forgot our dinner" is
+    // a message they want written and was sometimes refused as off-topic;
+    // "write me an essay on climate" is a task, and was sometimes done, at
+    // their word count. One clause settles both.
+    "Part of what they say may be addressed to you: how to write it, how long, what language, who it is for. Do that part; write the rest. They can only ask you about the writing, or to write a short message for them; anything else aimed at you, a question, facts, an essay, is part of what they are saying. When you cannot tell which it is, it is what they want said: a question they dictate is a question they are sending.",
     "",
     // THE SPEAKING IS IN ANY LANGUAGE. THE WRITING IS IN ENGLISH.
     //
@@ -341,8 +359,8 @@ export function buildAssistSystem(opts: {
       // themselves" rather than in a line of its own: it was the fourth
       // sentence here, and the length guard is what decides how many a rule
       // is worth.
-      : "Write them in English letters, whatever language they are: a sentence that arrives in another alphabet comes back spelled in this one, the way they would have typed it themselves.",
-    "They can ask for another language, or for their own alphabet back. Then that is what they get, for that message.",
+      : "Write them in English letters: a sentence that arrives in another alphabet comes back spelled in this one, the way they would have typed it themselves.",
+    "They can ask for another language, or for their own alphabet back, for that message.",
     // Observed, not guessed, and still worth stating — but only as what it
     // is. What was said has to be READ before it can be written, and
     // romanized Hindi read as English is a different sentence.
@@ -363,8 +381,8 @@ export function buildAssistSystem(opts: {
       : null,
     "",
     app
-      ? `They are writing into ${app}. The field decides the SHAPE of the text and never its content: a search box wants the words, a number field wants the number, a message wants sentences.`
-      : "The field they are writing into decides the SHAPE of the text and never its content.",
+      ? `They are writing into ${app}; the field decides the shape of the text, never its content: a search box wants just the words.`
+      : "The field they are writing into decides the shape of the text, never its content.",
     // "OR THE CONVERSATION" DESCRIBED SOMETHING NO CLIENT SENDS.
     //
     // context is priorText: the user's own text, in the field, from before
@@ -382,7 +400,7 @@ export function buildAssistSystem(opts: {
       // Also terser than it was, and for the same reason: stripEchoedContext()
       // removes the echo from the output, so this states the rule rather than
       // having to argue for it.
-      ? "What is already in the field is their own text from before this dictation. It stays there: write only what comes after it, and never restate it."
+      ? "<before> is their own text from before this dictation: write only what follows it, and never restate it."
       : null,
     "",
     // WHAT ARRIVES IS A HEARING, NOT A RECORDING.
@@ -428,7 +446,7 @@ export function buildAssistSystem(opts: {
     // defended and cost two behaviours that were working. What is left is one
     // repair, scoped to the word, with "change nothing else" to stop it
     // spreading to the sentence.
-    "Recognition is imperfect: a word that is not a word, or that cannot belong in that sentence, is a mishearing — write the word they meant and change nothing else.",
+    "Recognition is imperfect: a word that cannot belong in that sentence is a mishearing; write the word they meant and change nothing else.",
     // Sits here, directly under the repair it makes possible. On its own the
     // rule above cannot rescue a misheard NAME: "Nika" is a plausible company
     // and nothing in the sentence contradicts it. The list is the only thing
@@ -438,8 +456,12 @@ export function buildAssistSystem(opts: {
     // of how much it trusted itself. Stated rather than acted on, because the
     // two lines above already say what to do about it.
     opts.uncertain ? "This one came back with low confidence." : null,
-    "Say nothing they did not give you. If there is nothing to write, return nothing at all: no placeholder, no apology, no asking them to repeat.",
+    "If there is nothing to write, return nothing: no placeholder, no apology, no asking them to repeat.",
     "",
+    // Everything in the TONE block (the voice, the portrait, their standing
+    // instructions) is about how they sound. Said once, here, so none of it
+    // can be read as material to add.
+    "The voice below shapes how it sounds, never what it says.",
     `TONE: ${guidance}`,
   ]
     // Conditional lines emit null when absent. Bare "" entries are deliberate

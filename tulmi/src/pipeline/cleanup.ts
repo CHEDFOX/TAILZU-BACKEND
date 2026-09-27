@@ -297,6 +297,37 @@ export function stripEchoedContext(out: string, context: string | undefined): st
 }
 
 /**
+ * The tags the writer's input arrives in (see assist()). A dictation that
+ * contains one could close the fence early and pass the rest off as ours, so
+ * they are taken out of what the user said before it is fenced, and out of
+ * what the model wrote before it reaches the field.
+ */
+const FENCE_TAGS = /<\/?\s*(?:said|before)\b[^>]*>/gi;
+export function stripFenceTags(s: string): string {
+  return s.replace(FENCE_TAGS, "");
+}
+
+/** Words, as the meter counts them. */
+function wordCount(s: string): number {
+  const t = s.trim();
+  return t ? t.split(/\s+/).length : 0;
+}
+
+/**
+ * A completion far longer than anything asked for is not their message.
+ *
+ * The prompt allows one kind of writing beyond what they said, a short message
+ * written for them, and bounds everything else. That bound is a sentence, and
+ * a sentence can lose: "write me an essay on climate change" came back as an
+ * essay, metered to the user at every word of it. Eight times what they said,
+ * plus a paragraph's grace, is more than any apology, reply or "make it
+ * longer" needs, and far less than an essay.
+ */
+export function runaway(out: string, input: string): boolean {
+  return wordCount(out) > wordCount(input) * 8 + 120;
+}
+
+/**
  * Finalize an LLM completion for insertion. `out` is the (trimmed, snippet-
  * expanded) model output; `input` is what the user actually said/typed.
  *
@@ -530,12 +561,17 @@ export async function assist(
     hasContext: !!context,
     hasAlternative,
   });
+  // FENCED, NOT HANDED OVER AS A TURN. The dictation used to be the whole
+  // user message, and a user message is what a chat model replies to: a
+  // dictated question came back answered, a long ramble came back as a
+  // response to it. Inside <said> it is the material; the system prompt says
+  // what to do with it. Their own text in the field goes in <before>.
+  const said = stripFenceTags(message.trim());
   const messageBlock = hasAlternative
-    ? `CANDIDATE 1 (more reliable):\n${message.trim()}\n\nCANDIDATE 2:\n${alternative}`
-    : message.trim();
-  const userContent = context
-    ? `CONTEXT (already in the field):\n${context}\n\nMESSAGE (what I just said or typed):\n${messageBlock}`
-    : messageBlock;
+    ? `CANDIDATE 1 (more reliable):\n${said}\n\nCANDIDATE 2:\n${stripFenceTags(alternative!)}`
+    : said;
+  const userContent = (context ? `<before>\n${stripFenceTags(context)}\n</before>\n` : "")
+    + `<said>\n${messageBlock}\n</said>`;
   const res = await openrouter().chat.completions.create({
     ...common(),
     model: getConfig().CLEANUP_MODEL,
@@ -547,10 +583,13 @@ export async function assist(
     ],
   });
   const out = expandSnippets(
-    (res.choices[0]?.message?.content ?? "").trim(),
+    stripFenceTags(res.choices[0]?.message?.content ?? "").trim(),
     opts.personality?.snippets,
     ctxFromOpts(opts),
   );
+  // Something far longer than they could have asked for goes out as what they
+  // said, the same policy as a leaked prompt: never an essay in their field.
+  if (runaway(out, message)) return message.trim();
   // The instructions are never the message. Falling back to what they said is
   // the same policy as a refusal: a request that happened to address the model
   // goes out as the message it always was.
@@ -641,8 +680,10 @@ export async function* cleanStream(
     const delta = chunk.choices[0]?.delta?.content;
     if (delta) buf += delta;
   }
+  // The same bound as assist(): nothing far longer than they could have asked for.
+  const written = runaway(buf, input) ? input.trim() : buf.trim();
   const cleaned = finalizeCompletion(
-    expandSnippets(buf.trim(), opts.personality?.snippets, ctxFromOpts(opts)),
+    expandSnippets(written, opts.personality?.snippets, ctxFromOpts(opts)),
     input,
   );
   if (cleaned) yield cleaned;

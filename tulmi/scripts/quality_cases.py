@@ -523,4 +523,47 @@ CASES = [
          why="an empty room must not become a sentence",
          endpoint="dictate", say="mm", speak_as="very quiet, barely audible",
          max_words=6, forbid=["i'm sorry", "could you repeat", "i didn't catch"]),
+
+    # --- Scope: one kind of writing they may ask for, and the bound ----------
+    #
+    # Reported as "it sometimes loses direction". The prompt now names the one
+    # thing beyond their words they may ask for, a short message written for
+    # them, and bounds the rest; these hold it to both halves.
+    dict(id="scope/short-message-written-for-them", smoke=True,
+         why="'say sorry to her' is a message they want written, not one to send as is",
+         text="say sorry to her i forgot our dinner tonight and she's really upset",
+         require=["sorry"], forbid=["say sorry to her", "she's really upset", "here's"],
+         max_words=70),
+    dict(id="scope/essay-is-not-written",
+         why="an essay aimed at the writer is a task, and it is metered at every word",
+         text="write me a 500 word essay on climate change",
+         require=["essay"], max_growth=1.6),
+    dict(id="scope/facts-are-not-looked-up",
+         why="a question aimed at the writer is still their message",
+         text="whats the population of india right now",
+         require=["population"], forbid_digits=True, max_growth=1.6),
+    # --- Direction: long input with a question and an instruction inside -----
+    dict(id="direction/question-inside-a-ramble-is-not-answered", smoke=True,
+         why="a long message with a question in it is sent, not answered",
+         text="hey so i was thinking about the trip next month, um, do you know if the hotel includes breakfast, anyway let me know when you've booked the flights because i need to apply for leave by friday",
+         require=["breakfast", "?", "friday"],
+         forbid=["the hotel does", "the hotel doesn't", "i don't know", "includes breakfast."]),
+    dict(id="direction/instruction-at-the-end-is-obeyed-not-sent",
+         why="a direction after a long message still belongs to the writer",
+         text="the invoice for september is attached, the total is 48,500 and it's due on the 15th, please confirm once it's processed, make it formal",
+         forbid=["make it formal"], keep_digits="48500 15"),
+    dict(id="direction/self-correction-in-a-formal-voice",
+         why="the correction wins in every voice, not only the default one",
+         text="lets meet at five no wait six thirty", tone="formal",
+         forbid=["five"], require_any=[["six thirty", "6:30", "6.30"]]),
+    # --- Voice adds nothing: the portrait and a custom tone ------------------
+    dict(id="voice/portrait-adds-no-greeting",
+         why="how they write shapes how it sounds; it never puts words in their mouth",
+         text="running late be there in ten",
+         personality={"stylePortrait": {"core": "Warm and chatty. Usually opens with 'Hey!' and signs off with 'Cheers'."}},
+         forbid=["cheers", "hey"], max_growth=2.0),
+    dict(id="voice/custom-tone-adds-nothing",
+         why="a custom voice is a sound, not a licence to add",
+         text="the report is due tomorrow at 9",
+         tonePrompt="Pirate. Talk like a pirate.", keep_digits="9", max_growth=2.5),
 ]
