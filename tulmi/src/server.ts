@@ -35,6 +35,7 @@ import { registerMediaRoutes, loadMediaRegistry, getMediaRegistry } from "./rout
 import { PRIVACY_POLICY_HTML, PRIVACY_POLICY_EFFECTIVE } from "./routes/policies/privacy.js";
 import { TERMS_HTML, TERMS_EFFECTIVE } from "./routes/policies/terms.js";
 import { pricingHtml } from "./routes/policies/pricing.js";
+import { payHtml } from "./routes/pay.js";
 import { DOWNLOAD_PAGE_HTML } from "./routes/download.js";
 import { registerDemoRoutes, sitePage, AUTH_RESUME_SCHEME_URL } from "./routes/demo.js";
 import { initControl, registerControlRoutes, withControl } from "./control/index.js";
@@ -445,6 +446,21 @@ app.get("/pricing", async (_req, reply) => {
     plans: PAYWALL_CONFIG.plans,
     freeWords: cfg.FREE_MONTHLY_WORDS,
     earnMaxWords: cfg.EARN_MAX_WORDS,
+    terms: POLICY.terms,
+    privacy: POLICY.privacy,
+  });
+});
+
+// Tailzu's pay page (pay.tailzu.space → /pay): where the desktop's Subscribe
+// goes. Both plans, and Paddle's checkout with the account id on it.
+app.get("/pay", async (_req, reply) => {
+  reply.type("text/html; charset=utf-8");
+  reply.header("Cache-Control", "public, max-age=300");
+  return payHtml({
+    plans: PAYWALL_CONFIG.plans,
+    clientToken: cfg.PADDLE_CLIENT_TOKEN,
+    priceIds: { annual: cfg.PADDLE_PRICE_ELITE, monthly: cfg.PADDLE_PRICE_LITE },
+    pricing: "https://tailzu.space/pricing",
     terms: POLICY.terms,
     privacy: POLICY.privacy,
   });

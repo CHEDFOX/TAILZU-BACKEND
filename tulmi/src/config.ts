@@ -372,6 +372,23 @@ const EnvSchema = z.object({
    */
   REVENUECAT_WEB_PAYWALL_URL: z.string().url().optional(),
   /**
+   * TAILZU'S OWN PAY PAGE (GET /pay, served as pay.tailzu.space): both plans,
+   * and Paddle's checkout over them with the buyer's account id on the
+   * transaction (customData.app_user_id). Point REVENUECAT_WEB_PAYWALL_URL at
+   * https://pay.tailzu.space and the desktop's Subscribe opens it.
+   *
+   * The client-side token is public by design (it is in every page that runs
+   * Paddle.js); `test_…` runs Paddle's sandbox. The price ids come from
+   * Paddle → Catalog → the Tailzu product → Prices. A plan with no price id is
+   * not offered. The Paddle API key is a different thing and never goes here.
+   *
+   * Checked by the page, not here: a mistyped price id should take one plan
+   * off the pay page, not stop the whole server from booting.
+   */
+  PADDLE_CLIENT_TOKEN: z.string().default("live_a3920a3a08ac449c692844c6d09"),
+  PADDLE_PRICE_ELITE: z.string().optional(),
+  PADDLE_PRICE_LITE: z.string().optional(),
+  /**
    * THE LANDING PAGE'S LIVE DEMO. Off by default, on purpose.
    *
    * tailzu.space lets a visitor press a mic, talk for a few seconds, and see
