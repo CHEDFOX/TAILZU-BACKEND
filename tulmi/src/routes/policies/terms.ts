@@ -5,7 +5,7 @@
  * Bump the effective date if you meaningfully change subscription terms,
  * refund policy, or governing law.
  */
-export const TERMS_EFFECTIVE = "July 7, 2026";
+export const TERMS_EFFECTIVE = "September 27, 2026";
 
 export const TERMS_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -31,7 +31,7 @@ export const TERMS_HTML = `<!DOCTYPE html>
 <h1>Terms of Service</h1>
 <p class="effective">Effective: ${TERMS_EFFECTIVE}</p>
 
-<p>These Terms of Service ("Terms") govern your use of the Tailzu applications, keyboard extension, and related services (collectively, the "Service"). By using the Service you agree to these Terms.</p>
+<p>These Terms of Service ("Terms") govern your use of the Tailzu applications, keyboard extension, and related services (collectively, the "Service"). The Service is provided by XOOTEQ LAB PRIVATE LIMITED ("Tailzu", "we", "us"). By using the Service you agree to these Terms.</p>
 
 <hr>
 
@@ -53,7 +53,7 @@ export const TERMS_HTML = `<!DOCTYPE html>
 <h2>3. Subscriptions and billing</h2>
 
 <h3>3.1 Purchase</h3>
-<p>Certain Tailzu features are available only through a paid subscription. Subscriptions are billed through the Apple App Store or Google Play; you agree to the terms of those stores in addition to these Terms.</p>
+<p>Certain Tailzu features are available only through a paid subscription. In the app, subscriptions are billed through the Apple App Store or Google Play, and you agree to the terms of those stores in addition to these Terms. On the web, subscriptions are bought at checkout on xooteq.com and sold by <strong>Paddle.com</strong>, our authorised reseller and Merchant of Record, whose <a href="https://www.paddle.com/legal/checkout-buyer-terms">Buyer Terms</a> also apply to that purchase.</p>
 
 <h3>3.2 Auto-renewal (App Store / Google Play required disclosures)</h3>
 <ul>
@@ -66,13 +66,13 @@ export const TERMS_HTML = `<!DOCTYPE html>
 </ul>
 
 <h3>3.2.1 Current subscription plans</h3>
-<p>The current subscription plans, prices, and durations are shown inside the app on the paywall screen and in your device's App Store or Google Play. Plans and prices may change over time; the price you see at purchase is the price you pay.</p>
+<p>The current subscription plans, prices, and durations are listed at <a href="https://tailzu.space/pricing">tailzu.space/pricing</a>, and shown inside the app on the paywall screen and in your device's App Store or Google Play. Plans and prices may change over time; the price you see at purchase is the price you pay.</p>
 
 <h3>3.3 Free trials</h3>
 <p>If we offer a free trial, you will not be charged during the trial period. If you do not cancel before the trial ends, you will be automatically billed for the subscription.</p>
 
 <h3>3.4 Refunds</h3>
-<p>Subscription refunds are handled by Apple or Google according to their policies. We do not process refunds directly for App Store or Google Play purchases.</p>
+<p>Purchases are non-refundable, except where the law requires a refund. App Store and Google Play purchases are refunded, if at all, by Apple or Google under their own policies; we do not process refunds for them. Web purchases follow our <a href="https://xooteq.com/refunds">Refund Policy</a>, and any refund the law requires is handled by Paddle. Web subscriptions can be cancelled from your Paddle receipt or at <a href="https://paddle.net">paddle.net</a>.</p>
 
 <h3>3.5 Price changes</h3>
 <p>We may adjust subscription prices from time to time. You will be notified of any material change before it takes effect. Continued use after the change constitutes acceptance.</p>
@@ -144,8 +144,7 @@ export const TERMS_HTML = `<!DOCTYPE html>
 <hr>
 
 <h2>13. Governing law and disputes</h2>
-<p><em>NOTE FOR OPERATOR: replace the placeholder below with your registered legal jurisdiction before submitting to the App Store.</em></p>
-<p>These Terms are governed by the laws of <strong>India</strong>, without regard to its conflict-of-law rules. Any dispute arising from or relating to these Terms or the Service shall be resolved exclusively in the courts of <strong>Bangalore, India</strong>, unless the App Store's or Google Play's own terms require otherwise for consumer disputes.</p>
+<p>These Terms are governed by the laws of <strong>India</strong>, without regard to its conflict-of-law rules. Any dispute arising from or relating to these Terms or the Service shall be resolved in the courts of India, unless the App Store's or Google Play's own terms require otherwise for consumer disputes.</p>
 <p>If you are a consumer resident in the European Union, United Kingdom, or another jurisdiction whose mandatory consumer-protection laws grant you the right to bring proceedings in the courts of your place of residence, that right is preserved.</p>
 
 <hr>
@@ -176,8 +175,7 @@ export const TERMS_HTML = `<!DOCTYPE html>
 
 <h3>14.8 Developer contact</h3>
 <p>For questions, complaints, or claims regarding the app, contact:<br>
-Tailzu · <a href="mailto:support@tailzu.space">support@tailzu.space</a><br>
-Business address: <em>[Add your registered business address before submission.]</em></p>
+XOOTEQ LAB PRIVATE LIMITED (Tailzu) · <a href="mailto:support@tailzu.space">support@tailzu.space</a></p>
 
 <hr>
 

@@ -34,6 +34,7 @@ import transcribeStream from "./routes/transcribe-stream.js";
 import { registerMediaRoutes, loadMediaRegistry, getMediaRegistry } from "./routes/media.js";
 import { PRIVACY_POLICY_HTML, PRIVACY_POLICY_EFFECTIVE } from "./routes/policies/privacy.js";
 import { TERMS_HTML, TERMS_EFFECTIVE } from "./routes/policies/terms.js";
+import { pricingHtml } from "./routes/policies/pricing.js";
 import { DOWNLOAD_PAGE_HTML } from "./routes/download.js";
 import { registerDemoRoutes, sitePage, AUTH_RESUME_SCHEME_URL } from "./routes/demo.js";
 import { initControl, registerControlRoutes, withControl } from "./control/index.js";
@@ -191,6 +192,7 @@ import {
   bumpCacheVersion,
   currentCacheVersion,
   setMediaRegistryAccessor,
+  PAYWALL_CONFIG, POLICY,
 } from "./experience/catalog.js";
 import { localize } from "./experience/i18n.js";
 import {
@@ -430,6 +432,22 @@ app.get("/terms", async (_req, reply) => {
   reply.type("text/html; charset=utf-8");
   reply.header("Cache-Control", published ? "public, max-age=60" : "public, max-age=3600");
   return published ?? TERMS_HTML;
+});
+
+// The prices, on a page of their own (tailzu.space/pricing), linked from the
+// site's footer rather than set on the landing page. Built from the paywall's
+// plans and the allowance the server enforces, so the three never disagree.
+app.get("/pricing", async (_req, reply) => {
+  const published = sitePage(cfg.SITE_DIR, "pricing");
+  reply.type("text/html; charset=utf-8");
+  reply.header("Cache-Control", "public, max-age=300");
+  return published ?? pricingHtml({
+    plans: PAYWALL_CONFIG.plans,
+    freeWords: cfg.FREE_MONTHLY_WORDS,
+    earnMaxWords: cfg.EARN_MAX_WORDS,
+    terms: POLICY.terms,
+    privacy: POLICY.privacy,
+  });
 });
 
 // OS-aware desktop-app download page (tailzu.space/download). The page itself
