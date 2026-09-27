@@ -6754,6 +6754,13 @@ export const YOU_UI = {
     ctaHeight: 46,
     ctaGap: 14,
     marginBottom: 20,
+    /**
+     * A TAP, NOT A DRAG. The drag needs the screen to hold its touches, and
+     * a screen that holds them cannot be scrolled by a finger that lands on
+     * any card or row, which on this tab is nearly all of it. True brings the
+     * drag back at that cost.
+     */
+    swipe: false,
   },
   /**
    * A ROW — one setting, what it is set to, and the way in.
@@ -7379,7 +7386,8 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
     const learned = known + sittings > 0
       ? T.learned.replace("{n}", known.toLocaleString("en-US")).replace("{s}", sittings.toLocaleString("en-US"))
       : T.learnedNone;
-    const canDrag = ctx.can?.has("ScreenHoldTouches") === true || ctx.formFactor === "desktop";
+    const canDrag = T.swipe === true
+      && (ctx.can?.has("ScreenHoldTouches") === true || ctx.formFactor === "desktop");
     const button: Node = {
       type: "Button",
       props: { label: ui.cta.label, variant: "primary" },
@@ -7575,9 +7583,10 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
         // carry their own current value on the surface.
         {
           type: "Screen",
-          // The training card's drag must not be taken by the scroll the
-          // moment it drifts; same as the Train tab it came from.
-          props: { holdTouches: true },
+          // Held only when the training card is a drag (trainCard.swipe):
+          // holding touches stops a drag that starts on a card or a row
+          // from scrolling the tab at all.
+          props: { holdTouches: u.trainCard.swipe === true },
           style: {
             backgroundColor: "transparent",
             paddingHorizontal: u.padding, paddingTop: 0, paddingBottom: 24,

@@ -2369,12 +2369,15 @@ describe("training lives on You, as a card", () => {
     expect(texts).toContain("1 learned, 3 sittings");
   });
 
-  it("holds the drag where the scroll could steal it, and taps where it cannot", () => {
-    const withHold = you({ can: new Set(["ScreenHoldTouches"]) });
-    expect(find(withHold.root, (o) => o.type === "SwipeAction").length).toBe(1);
-    const without = you({ can: new Set() });
-    expect(find(without.root, (o) => o.type === "SwipeAction").length).toBe(0);
-    expect(find(without.root, (o) => o.type === "Button" && JSON.stringify(o.on).includes("enterTraining")).length).toBe(1);
+  it("is a tap, so the tab scrolls from anywhere", () => {
+    // Holding touches for a drag stopped any drag that began on a card or a
+    // row from scrolling the tab, which on You is nearly all of it.
+    for (const can of [new Set(["ScreenHoldTouches"]), new Set<string>()]) {
+      const s = you({ can });
+      expect(find(s.root, (o) => o.type === "SwipeAction").length).toBe(0);
+      expect(find(s.root, (o) => o.type === "Button" && JSON.stringify(o.on).includes("enterTraining")).length).toBe(1);
+      expect(find(s.root, (o) => o.type === "Screen" && (o.props as { holdTouches?: boolean } | undefined)?.holdTouches === true).length).toBe(0);
+    }
   });
 
   it("still lands an onboarded launch on a tab, not on the old Train screen", () => {
