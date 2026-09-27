@@ -216,7 +216,7 @@ export function plan(f: Facts, k: Knobs): Decision {
       basis: t.basis,
       title: k.label(`push.${kind}.title`, "", vars),
       body: k.label(`push.${kind}.body`, "", vars),
-      screenId: k.flag(`push.${kind}.screenId`, kind === "lowWords" ? "paywall" : kind === "streak" || kind === "weekly" ? "stats" : "home"),
+      screenId: k.flag(`push.${kind}.screenId`, kind === "lowWords" ? "paywall" : kind === "winback" ? "personality" : "stats"),
       ttlSec: Math.max(60, Math.round(k.flag("push.smart.ttlMin", 180) * 60)),
     };
   }

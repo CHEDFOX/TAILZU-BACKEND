@@ -124,7 +124,7 @@ describe("whether and why", () => {
   it("someone who drifted away gets one gentle push, at their hour", () => {
     const moments = habit(range(5, 20));
     const d = plan(facts({ moments, lastSeenAt: null }), knobsOf(payload()));
-    expect(d).toMatchObject({ kind: "winback", periodKey: "winback:2026-09-26", screenId: "home" });
+    expect(d).toMatchObject({ kind: "winback", periodKey: "winback:2026-09-26", screenId: "personality" });
     if ("sendAt" in d) expect(at(d.sendAt) >= "18:50" && at(d.sendAt) <= "18:58").toBe(true);
   });
 

@@ -73,7 +73,7 @@ export const PUSH_DEFAULTS: PushPayload = {
 
     "push.refill.enabled": true,
     "push.refill.days": 3,
-    "push.refill.screenId": "home",
+    "push.refill.screenId": "stats",
 
     "push.weekly.enabled": true,
     "push.weekly.minWords": 200,
@@ -84,7 +84,7 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.winback.maxDays": 30,
     "push.winback.everyDays": 7,
     "push.winback.maxUnanswered": 3,
-    "push.winback.screenId": "home",
+    "push.winback.screenId": "personality",
 
     "push.lowWords.enabled": false,
     "push.lowWords.fraction": 0.1,

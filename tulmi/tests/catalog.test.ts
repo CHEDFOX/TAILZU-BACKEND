@@ -329,9 +329,9 @@ describe("buildBootstrap", () => {
     expect(b.theme.color.bg).toBe("#000000");
     expect(b.navigation.kind).toBe("tabs");
     const nav = b.navigation as { kind: "tabs"; tabs: Array<{ id: string }> };
-    // Settings is no longer a bottom tab — it's opened from the header gear.
-    // Stats sits between Home and You (the deep-stats tab).
-    expect(nav.tabs.map((t) => t.id)).toEqual(["home", "stats", "personality"]);
+    // Settings is no longer a bottom tab — it's opened from the header gear,
+    // and Train is a card on You.
+    expect(nav.tabs.map((t) => t.id)).toEqual(["stats", "personality"]);
     // The screen follows the TAB, and for a first-timer that is You. These
     // used to disagree — the bar lit one tab while another screen showed.
     expect(b.initialScreenId).toBe("personality");
@@ -1311,7 +1311,7 @@ describe("which tab the app opens on", () => {
     // The bar reads left to right in a fixed order; moving Stats to the front
     // for returning users would move it under a different thumb.
     expect(nav(true).tabs.map((t) => t.id)).toEqual(nav(false).tabs.map((t) => t.id));
-    expect(nav(true).tabs.map((t) => t.id)).toEqual(["home", "stats", "personality"]);
+    expect(nav(true).tabs.map((t) => t.id)).toEqual(["stats", "personality"]);
   });
 
   it("sends a reviewer to Stats, not to You", () => {
@@ -2317,5 +2317,62 @@ describe("the mic key's mark comes from the server", () => {
         expect(kept.swell.height).toBeGreaterThan(1.3);
       }
     }
+  });
+});
+
+describe("training lives on You, as a card", () => {
+  const you = (extra: Record<string, unknown> = {}) =>
+    buildScreen("personality", { personality: {}, language: "en", ...extra } as never) as {
+      root: unknown; actions: Record<string, { actions?: unknown[] }>;
+    };
+  const find = (n: unknown, pred: (x: Record<string, unknown>) => boolean): Record<string, unknown>[] => {
+    const out: Record<string, unknown>[] = [];
+    const walk = (x: unknown) => {
+      if (!x || typeof x !== "object") return;
+      if (Array.isArray(x)) { x.forEach(walk); return; }
+      const o = x as Record<string, unknown>;
+      if (pred(o)) out.push(o);
+      Object.values(o).forEach(walk);
+    };
+    walk(n);
+    return out;
+  };
+
+  it("draws the network, the two lines and a way in", () => {
+    const s = you();
+    expect(find(s.root, (o) => o.type === "NeuralField").length).toBe(1);
+    const texts = find(s.root, (o) => o.type === "Text").map((o) => (o.props as { content?: string })?.content);
+    expect(texts).toContain("Just talk.");
+    expect(texts).toContain("IT LEARNS YOU");
+    // Before anything is learned it says what will happen, not a row of zeros.
+    expect(texts).toContain("Talk once and it starts learning you.");
+  });
+
+  it("enters training exactly as the Train tab did", () => {
+    const s = you();
+    const enter = JSON.stringify(s.actions.enterTraining);
+    expect(enter).toContain('"training_live"');
+    expect(enter).toContain('"training_chat"');
+    expect(enter).toContain('"train.realtime"');
+  });
+
+  it("says what it has learned once it has", () => {
+    const s = you({ personality: { stylePortrait: { words: [{ term: "jugaad", means: "a fix" }], sessions: 3 } } });
+    const texts = find(s.root, (o) => o.type === "Text").map((o) => (o.props as { content?: string })?.content);
+    expect(texts).toContain("1 learned, 3 sittings");
+  });
+
+  it("holds the drag where the scroll could steal it, and taps where it cannot", () => {
+    const withHold = you({ can: new Set(["ScreenHoldTouches"]) });
+    expect(find(withHold.root, (o) => o.type === "SwipeAction").length).toBe(1);
+    const without = you({ can: new Set() });
+    expect(find(without.root, (o) => o.type === "SwipeAction").length).toBe(0);
+    expect(find(without.root, (o) => o.type === "Button" && JSON.stringify(o.on).includes("enterTraining")).length).toBe(1);
+  });
+
+  it("still lands an onboarded launch on a tab, not on the old Train screen", () => {
+    const b = buildBootstrap({ onboarded: true, landedBefore: true });
+    expect(b.initialScreenId).toBe("stats");
+    expect(buildBootstrap({ onboarded: true }).initialScreenId).toBe("personality");
   });
 });

@@ -1435,9 +1435,10 @@ const NAV: NavigationShell = {
   // top-right of the header (client renders it on the tab roots). The settings
   // screen itself still exists at screenId "settings" and is pushed on tap.
   tabs: [
-    // Home IS the training surface — refine, pick the version that sounds
-    // like you, and the style portrait learns from every pick.
-    { id: "home", title: "Train", screenId: "home" },
+    // TRAIN IS A CARD ON YOU NOW, not a tab. Training is how the app learns
+    // the person, and You is the page about the person. "home" still names
+    // the landing (see landingScreenId) and still opens the old screen for
+    // any client that asks for it.
     { id: "stats", title: "Stats", screenId: "stats" },
     { id: "personality", title: "You", screenId: "personality" },
   ],
@@ -2503,9 +2504,8 @@ function applyPlatformFlags(
  * appears is the moment a slow load costs money.
  */
 const WARM_SCREEN_IDS = [
-  "home",
-  // One tap from the tab root and it holds the whole refine loop — exactly the
-  // "the app is slow" wait this list exists to remove.
+  // One tap from the You tab's training card and it holds the whole refine
+  // loop — exactly the "the app is slow" wait this list exists to remove.
   "training_chat",
   "history",
   "stats",
@@ -2584,7 +2584,11 @@ const WARM_SCREEN_IDS = [
  */
 function landingScreenId(nav: NavigationShell, picked: string): string {
   if (nav.kind !== "tabs") return picked;
-  const isTabRoot = nav.tabs.some((t) => (t.screenId ?? t.id) === picked);
+  // "home" was the Train tab's screen, and every "go to the app" still says
+  // it: the first launch, the return from the intro. With Train folded into
+  // You it is no tab's screen, and without this it would open on its own,
+  // outside the tabs. It means the landing tab.
+  const isTabRoot = picked === "home" || nav.tabs.some((t) => (t.screenId ?? t.id) === picked);
   if (!isTabRoot) return picked;
   const landing = nav.tabs.find((t) => t.id === nav.initialTabId);
   return landing ? (landing.screenId ?? landing.id) : picked;
@@ -3918,7 +3922,7 @@ function paywallScreen(isDesktop = false, live?: { store?: string; expiresAt?: s
       actions: [
         { kind: "haptic", style: "success" },
         { kind: "toast", message: "You're in.", tone: "success" },
-        { kind: "navigate", screenId: "home" },
+        { kind: "navigate", screenId: "stats" },
       ],
     },
     purchaseFailed: {
@@ -6346,14 +6350,14 @@ function trainingLiveScreen(ctx: ScreenContext): ScreenResponse {
         { kind: "setState", path: "saved", value: true },
         { kind: "delay", ms: ui.farewell.holdMs },
         { kind: "setState", path: "saving", value: false },
-        { kind: "navigate", screenId: "home" },
+        { kind: "navigate", screenId: "personality" },
       ] },
       // A failed save must not trap someone on this screen. They leave either
       // way; what they lose is the portrait update, and the toast says so.
       saveErr: { kind: "sequence", actions: [
         { kind: "setState", path: "saving", value: false },
         { kind: "toast", message: "Couldn't save that conversation.", tone: "error" },
-        { kind: "navigate", screenId: "home" },
+        { kind: "navigate", screenId: "personality" },
       ] },
     },
     // The header carried the screen's name, and the name was a second copy of
@@ -6694,6 +6698,43 @@ export const YOU_UI = {
     taglineSize: 13,
     taglineLineHeight: 18,
     dot: 7,
+    marginBottom: 20,
+  },
+  /**
+   * THE TRAINING CARD — the Train tab, folded into You.
+   *
+   * Training is how the app learns this person, and You is the page about
+   * that person, so it lives here now rather than as a tab of its own. The
+   * card is the Train screen's own parts at card size: the live network it
+   * grows, the two lines, what it has learned so far, and the same way in.
+   *
+   * The title is white, not amber. On this tab the voice card's dot is the
+   * one accent, and a second would split the eye.
+   */
+  trainCard: {
+    height: 212,
+    radius: 22,
+    background: "#000000",
+    border: "rgba(255,255,255,0.07)",
+    /** The field sits a little further back here: the card is one object
+     *  among several, not the whole window. */
+    fieldDim: 0.5,
+    scrim: ["rgba(0,0,0,0.05)", "rgba(0,0,0,0.35)", "rgba(0,0,0,0.78)"],
+    scrimStops: [0, 0.45, 1],
+    padding: 18,
+    kicker: "IT LEARNS YOU",
+    kickerSize: 8,
+    kickerTracking: 2.4,
+    title: "Just talk.",
+    titleSize: 26,
+    titleColor: "#FFFFFF",
+    /** "{n} learned, {s} sittings"; "" hides the line. */
+    learned: "{n} learned, {s} sittings",
+    /** Said instead, before anything has been learned. */
+    learnedNone: "Talk once and it starts learning you.",
+    learnedSize: 12,
+    ctaHeight: 46,
+    ctaGap: 14,
     marginBottom: 20,
   },
   /**
@@ -7304,6 +7345,76 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
     };
   };
 
+  /**
+   * THE TRAINING CARD. What the Train tab was, at card size: the network it
+   * grows, the two lines, what it has learned, and the same drag in. A tap
+   * where the drag cannot be held (a bundle whose scroll steals it) falls
+   * back to a button, the same way the tab did.
+   */
+  const trainCard = (): Node => {
+    const T = u.trainCard;
+    const ui = TRAINING_UI.entry;
+    const sp = ctx.personality?.stylePortrait ?? {};
+    const known = (sp.words?.length ?? 0) + (sp.styles?.length ?? 0)
+      + (sp.rhythms?.length ?? 0) + Object.keys(sp.tones ?? {}).length;
+    const sittings = sp.sessions ?? 0;
+    const learned = known + sittings > 0
+      ? T.learned.replace("{n}", known.toLocaleString("en-US")).replace("{s}", sittings.toLocaleString("en-US"))
+      : T.learnedNone;
+    const canDrag = ctx.can?.has("ScreenHoldTouches") === true || ctx.formFactor === "desktop";
+    const button: Node = {
+      type: "Button",
+      props: { label: ui.cta.label, variant: "primary" },
+      on: { onPress: "enterTraining" },
+      style: { backgroundColor: ui.cta.background, height: T.ctaHeight },
+    };
+    return {
+      type: "Stack",
+      style: {
+        height: T.height, borderRadius: T.radius, overflow: "hidden",
+        marginBottom: T.marginBottom, justifyContent: "flex-end",
+        padding: T.padding, backgroundColor: T.background,
+        borderWidth: 1, borderColor: T.border,
+      },
+      children: [
+        neuralField(T.fieldDim, fieldGrowth(ctx.personality)),
+        { type: "Gradient",
+          props: { colors: T.scrim, locations: T.scrimStops, direction: "vertical" },
+          style: { ...FILL_STYLE } },
+        ...(T.kicker
+          ? [{ type: "Text", props: { content: T.kicker },
+               style: { fontSize: T.kickerSize, letterSpacing: T.kickerTracking,
+                        textTransform: "uppercase", color: u.textDim } } as Node]
+          : []),
+        { type: "Text", props: { content: T.title },
+          style: { fontSize: T.titleSize, fontWeight: "300", letterSpacing: -0.3,
+                   color: T.titleColor, marginTop: 6 } },
+        ...(learned
+          ? [{ type: "Text", props: { content: learned },
+               style: { fontSize: T.learnedSize, color: u.textDim, marginTop: 4 } } as Node]
+          : []),
+        { type: "Stack", style: { height: T.ctaGap } },
+        canDrag
+          ? {
+              type: "SwipeAction",
+              props: {
+                label: ui.cta.label, height: T.ctaHeight, radius: ui.cta.radius,
+                background: ui.cta.background, borderWidth: ui.cta.borderWidth,
+                borderColor: ui.cta.borderColor, color: ui.cta.color,
+                fontSize: ui.cta.fontSize, weight: ui.cta.weight, tracking: ui.cta.tracking,
+                commitMs: ui.cta.commitMs, disc: ui.cta.disc, discBackground: ui.cta.discBackground,
+                dot: ui.cta.dot, dotColor: ui.cta.dotColor,
+                targetBackground: ui.cta.targetBackground, targetDotColor: ui.cta.targetDotColor,
+                threshold: ui.cta.threshold, hintDelayMs: ui.cta.hintDelayMs,
+              },
+              on: { onComplete: "enterTraining" },
+              fallback: button,
+            }
+          : button,
+      ],
+    };
+  };
+
   /** A setting: what it is, what it is set to, and the way in. */
   const youRow = (label: string, value: string, screen: string): Node => {
     const R = u.row;
@@ -7410,6 +7521,17 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
           { kind: "toast", message: "Background microphone turned off.", tone: "success" },
         ],
       },
+      // The Train tab's way in, unchanged: the spoken door when the flag says
+      // the realtime voice is ready, the refine loop until then.
+      enterTraining: { kind: "sequence", actions: [
+        { kind: "haptic", style: "light" },
+        {
+          kind: "condition",
+          if: { flag: "train.realtime" },
+          then: { kind: "navigate", screenId: "training_live" },
+          else: { kind: "navigate", screenId: "training_chat" },
+        },
+      ] },
     },
     root: {
       type: "Stack",
@@ -7435,6 +7557,9 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
         // carry their own current value on the surface.
         {
           type: "Screen",
+          // The training card's drag must not be taken by the scroll the
+          // moment it drifts; same as the Train tab it came from.
+          props: { holdTouches: true },
           style: {
             backgroundColor: "transparent",
             paddingHorizontal: u.padding, paddingTop: 0, paddingBottom: 24,
@@ -7454,6 +7579,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
               children: [
                 portrait,
                 voiceCard(voiceName, voiceLine),
+                trainCard(),
                 youRow("Dictionary", wordCount > 0 ? `${wordCount} words` : "None yet", "dictionary"),
                 youRow("Languages", langLabel, "languages"),
                 youRow("Haptics", hapticsOn ? "On" : "Off", "haptics"),
@@ -10194,7 +10320,7 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
           // app happened to be showing before — and on a fresh launch that is
           // the intro, which is not a place to be returned to. Naming the
           // destination makes the exit the same every time.
-          { kind: "navigate", screenId: "home" },
+          { kind: "navigate", screenId: "stats" },
         ],
       },
       micDenied: {
@@ -10207,7 +10333,7 @@ function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
           // either — a toast on its own left the user on a black screen with
           // nothing to tap and force-quit as the only way out.
           { kind: "delay", ms: 2600 },
-          { kind: "navigate", screenId: "home" },
+          { kind: "navigate", screenId: "stats" },
         ],
       },
       micDeniedToastOnly: {
