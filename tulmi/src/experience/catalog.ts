@@ -4952,6 +4952,12 @@ function neuralField(dim: number, growth: number, bind?: Record<string, string>)
   };
 }
 
+/**
+ * The keyboard's own ground: 2% black. Not zero, because iOS delivers a touch to
+ * a custom keyboard only where it has painted something (see the theme).
+ */
+const KEYBOARD_GROUND = "#00000005";
+
 export const TRAINING_UI = {
   entry: {
     /**
@@ -12208,12 +12214,18 @@ export function buildKeyboardConfig(
       // explicit `bg` in their style — so wiring the new palette here is what
       // makes the letter keys actually pick up the lighter, more translucent
       // fill instead of the legacy #48484a opaque gray.
-      // Fully transparent — no our-blur, no our-fill. This lets iOS's own
-      // keyboard-region backdrop show through (the "OS chrome"), which every
-      // third-party keyboard sits over. Whatever the OS paints there IS what
-      // the user sees behind the keys. If this reads cleaner than our applied
-      // blur was, we ditch the blur entirely.
-      background: "#00000000",
+      // ALMOST transparent, and the "almost" is the fix for the dead gaps.
+      //
+      // iOS hands a custom keyboard a touch only where the keyboard has
+      // painted something; a pixel it left fully clear goes nowhere. At
+      // #00000000 the gaps between keys, the margins beside a and l and the
+      // strip under the space bar painted nothing, so a tap there never
+      // reached the keyboard at all, whatever its touch code said. That is
+      // why the green debug sheet cured it every time: it painted the gaps.
+      // Two per cent black does the same and cannot be seen over the OS
+      // backdrop, which still shows through as it did. Works on every
+      // installed build, no app update: the colour comes from here.
+      background: KEYBOARD_GROUND,
       key: KEY_FILL_LETTER,
       keyText: KEY_TEXT,
       // Accent used ONLY by legacy path for the shift-active indicator dot.
@@ -12232,7 +12244,7 @@ export function buildKeyboardConfig(
     // v3 adaptive palettes — the SDUI-renderer build picks between these
     // based on the current userInterfaceStyle and re-renders on trait change.
     themeDark: {
-      background: "#00000000",
+      background: KEYBOARD_GROUND,
       key: KEY_FILL_LETTER,
       keyText: KEY_TEXT,
       accent: "#8E8E93",
@@ -12246,7 +12258,8 @@ export function buildKeyboardConfig(
       // system chrome). This is the "no sheet, keys on the base surface"
       // pattern — same as themeDark. Removed backgroundEffect so we don't
       // paint our own blur that would double-tint the light system chrome.
-      background: "#00000000",
+      // Not quite clear, for the same reason as the dark one (see theme).
+      background: KEYBOARD_GROUND,
       key: LIGHT_KEY_FILL_LETTER,
       keyText: LIGHT_KEY_TEXT,
       accent: "#8E8E93",
@@ -12651,7 +12664,10 @@ export function buildKeyboardConfig(
         "kb.key.liftRollover": true,
         // K40: shift and 123 own the gap beside them up to the midpoint
         // with the next key, within this many points.
-        "kb.touch.roleReach": 20,
+        //
+        // 32, so the strip under 123 is 123's rather than the nearest letter's,
+        // now that the space row reaches the bottom edge.
+        "kb.touch.roleReach": 32,
         "kb.key.shadow.color": "#000000",
         "kb.key.shadow.offsetY": 1,
         "kb.key.shadow.opacity": 0.4,
@@ -13036,7 +13052,14 @@ export function buildKeyboardConfig(
         // that overlay — a display pass after each hit test, layout, rebind and
         // commit, with the geometry re-checked at that pass — and draws
         // nothing. False restores the K34 path, over the air.
-        "kb.keyPlane.sheet": true,
+        //
+        // OFF NOW. The sheet's cure was never its display passes, it was its
+        // paint: the gaps get touches because the ground is painted (see the
+        // theme's background). Its passes cost a full redraw on every hit test,
+        // i.e. every keystroke, which is exactly what fast typing cannot afford.
+        "kb.keyPlane.sheet": false,
+        // The same on K42+, under its own key (the plane there is tinted too).
+        "kb.keyPlane.redrawOnTouch": false,
         // Accent long-press trays routed through the multi-touch plane (the
         // v1 plane dropped them; K4 restores them plane-side).
         "kb.keyPlane.accentTrays": true,
@@ -13171,7 +13194,11 @@ export function buildKeyboardConfig(
         "kb.touch.topRowUpSlop": 52,
         // The BOTTOM letter row (z..m) reaches further DOWN toward the space
         // row; the space/return/123 keys themselves are veto-protected.
-        "kb.touch.bottomRowDownSlop": 14,
+        //
+        // 40: the bottom row is the space row, and the strip under it, down to
+        // the keyboard's edge, was nobody's. K42 also owns it by rule
+        // (kb.touch.bottomToEdge); this covers the builds installed now.
+        "kb.touch.bottomRowDownSlop": 40,
         // Each row's outermost key owns its side margin to the keyboard edge —
         // the dead corners beside "a" and "l" on the indented middle row now
         // type "a" / "l", exactly like native.
