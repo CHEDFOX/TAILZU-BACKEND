@@ -3043,21 +3043,6 @@ const INTRO_PLAY_MS = Number(process.env.INTRO_PLAY_MS ?? 2600);
  *  runs a couple of seconds and reports completion long before either number
  *  matters — this only ever bounds the failure. */
 const INTRO_VIDEO_MAX_MS = Number(process.env.INTRO_VIDEO_MAX_MS ?? 5000);
-/**
- * THE OPENING FILM'S FIRST FRAME HOLDS THE SPLASH'S PLACE until the film runs.
- *
- * A clip cannot be prefetched into its player, and a player that has not yet
- * decoded a frame draws nothing — so lifting the splash onto a film that is
- * still loading shows the empty ground for a beat: the mark vanishes and
- * comes back, the blink. With `intro.poster` uploaded (POST
- * /v1/media/poster?key=intro, the film's own first frame, lossless) the
- * opening is: the still, the film parked under it on that same frame; after
- * HOLD the film plays; after OVERLAP more the still steps away. Every step
- * shows the same picture, so no step can be seen — and the splash waits on
- * the still, which an image cache holds. HOLD is the film's time to load.
- */
-const INTRO_POSTER_HOLD_MS = Number(process.env.INTRO_POSTER_HOLD_MS ?? 600);
-const INTRO_POSTER_OVERLAP_MS = Number(process.env.INTRO_POSTER_OVERLAP_MS ?? 100);
 const INTRO_BUILT_IN = (process.env.INTRO_BUILT_IN ?? "true").toLowerCase() !== "false";
 /** Round window on black. Shared by the player and its still fallback so the
  *  two can never drift apart. */
@@ -3442,10 +3427,6 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
   // can play the file.
   const shown = presentMedia(introEntry);
   const holdMs = shown.holdMs ?? INTRO_PLAY_MS;
-  // The film's first frame as a still, when one has been made (see
-  // INTRO_POSTER_HOLD_MS). Only for a film: a gif or a still has no load gap.
-  const posterEntry = introIsVideo && introKey ? reg[`${introKey}.poster`] : undefined;
-  const poster = posterEntry?.url ? mediaSource(posterEntry.url, posterEntry.contentType) : null;
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "intro",
@@ -3454,7 +3435,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
     // window — critical for the intro to feel like a splash-adjacent
     // cinematic instead of "media inside the app's content area."
     hideChrome: true,
-    state: poster ? { introPlaying: false, introPoster: true } : {},
+    state: {},
     actions: {
       // replace: the intro is a step in a sequence, not somewhere to return
       // to. Pushing left it under the permission screen, so an edge swipe from
@@ -3498,11 +3479,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           // extra black.
           // The morph's length comes OUT of the hold, so the opening still
           // lasts what INTRO_PLAY_MS says rather than that plus an animation.
-          // Held by the poster's HOLD too: the film starts that much later, so
-          // the screen moves on that much later and the film still plays whole.
-          { kind: "delay", ms: introIsVideo
-            ? (shown.holdMs ?? INTRO_VIDEO_MAX_MS) + (poster ? INTRO_POSTER_HOLD_MS : 0)
-            : holdMs },
+          { kind: "delay", ms: introIsVideo ? (shown.holdMs ?? INTRO_VIDEO_MAX_MS) : holdMs },
           // Draw the plate into the mic, then navigate. Inlined rather than
           // named: a sequence entry is an action, and no action kind calls
           // another by name.
@@ -3574,28 +3551,27 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
             // put it — which is what the launch screen never agrees with.
             ...shown.place,
           },
-          // Parked on its first frame under the poster until the poster's
-          // timer lets it run. No poster, no bind: it plays as it always has.
-          ...(poster ? { bind: { playing: "introPlaying" } } : {}),
           on: { onComplete: "done" },
-        } as Node] : []),
-        // The film's first frame, over the film, in the film's own box and
-        // placement. The splash lifts onto this; the film takes over under it.
-        ...(poster ? [{
-          type: "Stack",
-          style: shown.style,
-          visibleIf: { truthy: "introPoster" },
-          on: { onAppear: { kind: "sequence", actions: [
-            { kind: "delay", ms: INTRO_POSTER_HOLD_MS },
-            { kind: "setState", path: "introPlaying", value: true },
-            { kind: "delay", ms: INTRO_POSTER_OVERLAP_MS },
-            { kind: "setState", path: "introPoster", value: false },
-          ] } },
-          children: [{
+          // THE SPLASH WAITS FOR THE FILM.
+          //
+          // Before it lifts, the app downloads the opening's first remote
+          // picture: on a first launch every file on the screen, on every
+          // later launch only an Image's. A Video is not an Image, so on a
+          // later launch the splash lifted as soon as the screen existed,
+          // before the film had loaded, and the ground showed for a beat:
+          // the mark vanished and came back. That is the blink.
+          //
+          // This fallback names the film itself, so every launch waits on the
+          // film's download, as a first launch always did (which is why a
+          // first launch was seamless). It is never drawn: every installed
+          // build has Video. No state and no timers, deliberately: the first
+          // screen is rebuilt when the fresh copy replaces the cached one,
+          // and anything keyed to its state is lost in that swap.
+          fallback: {
             type: "Image",
             style: FILL_STYLE,
-            props: { source: poster, contentFit: shown.fit, ...shown.place },
-          }],
+            props: { source: introSource, contentFit: shown.fit },
+          },
         } as Node] : []),
         // Image path — a GIF, drawn by expo-image, which plays it natively.
         //
