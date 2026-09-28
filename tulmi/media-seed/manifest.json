@@ -28,33 +28,6 @@
     }
   },
   {
-    "file": "mic.mp4",
-    "key": "onboarding.hero",
-    "contentType": "video/mp4",
-    "loop": true,
-    "durationMs": 6000,
-    "present": {
-      "shape": "full",
-      "aspectRatio": 0.9,
-      "radius": 28,
-      "fit": "cover",
-      "loop": true,
-      "background": "#000000"
-    }
-  },
-  {
-    "file": "keys.mp4",
-    "key": "hero.onboarding_keyboard",
-    "contentType": "video/mp4",
-    "loop": true,
-    "durationMs": 7000,
-    "present": {
-      "fit": "cover",
-      "loop": true,
-      "background": "#000000"
-    }
-  },
-  {
     "file": "you-voice-signature.png",
     "key": "you.voice.signature",
     "contentType": "image/png",
@@ -188,26 +161,6 @@
     "contentType": "image/png",
     "present": {
       "fit": "cover"
-    }
-  },
-  {
-    "file": "auth.mp4",
-    "key": "hero.auth",
-    "contentType": "video/mp4",
-    "present": {
-      "fit": "cover",
-      "background": "#0A0908",
-      "loop": true
-    }
-  },
-  {
-    "file": "auth-desktop.mp4",
-    "key": "hero.auth.desktop",
-    "contentType": "video/mp4",
-    "present": {
-      "fit": "cover",
-      "background": "#0A0908",
-      "loop": true
     }
   }
 ]
