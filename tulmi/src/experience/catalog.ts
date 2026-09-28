@@ -3004,6 +3004,9 @@ function heroSlot(opts: {
   return { ...opts.builtIn, style: { ...shown, ...(opts.builtIn.style ?? {}) } };
 }
 
+/** The keyboard film's shape (tools/media renders it at 1080 × 1400). */
+const KB_FILM_ASPECT = 1080 / 1400;
+
 /** Diameter of the intro plate — the in-app mic's own size, deliberately. */
 const INTRO_PLATE = 128;
 /** How long the intro holds before moving on. Match your file's length —
@@ -6712,8 +6715,8 @@ export const YOU_UI = {
      * two points apart they read as one dense clump of type in the corner.
      * The gap is what separates them into three facts.
      */
-    marginTop: 134,
-    marginBottom: 24,
+    marginTop: 164,
+    marginBottom: 32,
   },
   /**
    * THE VOICE CARD — the one object on this tab, and the reason it has a
@@ -6731,7 +6734,8 @@ export const YOU_UI = {
    * tells you what that MEANS, which is the thing you actually wanted to know.
    */
   voiceCard: {
-    height: 168,
+    /** The same height as the training card beneath it: two cards, one rhythm. */
+    height: 220,
     /**
      * Its height when it wears a poster (you.voice.<id>). The poster carries
      * the voice's own sentence above the card's words, and 168 leaves no band
@@ -6772,7 +6776,7 @@ export const YOU_UI = {
    * one accent, and a second would split the eye.
    */
   trainCard: {
-    height: 212,
+    height: 220,
     radius: 22,
     background: "#000000",
     border: "rgba(255,255,255,0.07)",
@@ -9859,6 +9863,9 @@ function onboardingVoice(ctx?: ScreenContext): ScreenResponse {
 
 /** Step 2 — enable the Tailzu keyboard, then finish (marks onboarded). */
 function onboardingKeyboard(): ScreenResponse {
+  // Which devices have the keyboard film (tools/media: the website's hero).
+  const kbReg = getMediaRegistryFn?.() ?? {};
+  const kbFilm = { ios: !!kbReg["hero.onboarding_keyboard.card"]?.url, android: !!kbReg["hero.onboarding_keyboard.card.android"]?.url };
   // Golden body pair: 14/23 (14 × φ ≈ 22.65) — see the voice screen's scale note.
   const step = (n: string, body: string): Node => ({
     type: "Stack", style: { direction: "row", gap: 10, alignItems: "flex-start" }, children: [
@@ -10009,16 +10016,22 @@ function onboardingKeyboard(): ScreenResponse {
       // 34/42, the display size off the same golden ladder the voice step uses.
       // With the supporting line moved into the box below, the headline is the
       // only thing at the top of the screen and should read like it.
-      { type: "Heading", props: { content: "Bring it everywhere." },
-        style: { fontSize: 34, lineHeight: 42, color: "$color.text", marginBottom: 24 } },
+      // The film carries the screen's title ("It's a keyboard.", corrected
+      // to keyless), so this heading shows only where no film has been
+      // uploaded for the device.
+      ...(kbFilm.ios && kbFilm.android ? [] : [{
+        type: "Heading", props: { content: "Bring it everywhere." },
+        ...(kbFilm.ios ? { visibleIf: { platform: "android" } } : kbFilm.android ? { visibleIf: { platform: "ios" } } : {}),
+        style: { fontSize: 34, lineHeight: 42, color: "$color.text", marginBottom: 24 },
+      } as Node]),
       // The keyboard's own picture, between the headline and the walk, per
       // device like the walk itself: `hero.onboarding_keyboard.card` on iOS,
       // `hero.onboarding_keyboard.card.android` on Android (each shows its
       // own system tray giving way to Tailzu's). A 4:3 card the width of
       // the column; nothing at all until something is uploaded. Phones only:
       // a window never reaches this screen (pickInitialScreenId).
-      ...screenHero("onboarding_keyboard.card", { width: "100%", aspectRatio: 4 / 3, radius: 28, marginBottom: 24, onlyOn: "ios" }),
-      ...screenHero("onboarding_keyboard.card.android", { width: "100%", aspectRatio: 4 / 3, radius: 28, marginBottom: 24, onlyOn: "android" }),
+      ...screenHero("onboarding_keyboard.card", { width: "100%", aspectRatio: KB_FILM_ASPECT, radius: 0, marginBottom: 24, onlyOn: "ios" }),
+      ...screenHero("onboarding_keyboard.card.android", { width: "100%", aspectRatio: KB_FILM_ASPECT, radius: 0, marginBottom: 24, onlyOn: "android" }),
       // The walk through Settings, shown rather than described — and one
       // recording per platform, because the two walks share no screen. An iOS
       // recording shown to an Android user is worse than no recording: it
@@ -10032,11 +10045,14 @@ function onboardingKeyboard(): ScreenResponse {
       // 200pt wide, centred. Forcing that into a landscape banner would crop
       // it to a sliver of itself. The screen scrolls, so the height is
       // affordable and the steps still sit under it.
-      ...screenHero("onboarding_keyboard.ios", { height: 356, width: 200, radius: 18, onlyOn: "ios" }),
+      // The older per-device art only where there is no film for the device:
+      // the film and a second picture above the same steps was two pictures
+      // and a gap.
+      ...(kbFilm.ios ? [] : screenHero("onboarding_keyboard.ios", { height: 356, width: 200, radius: 18, onlyOn: "ios" })),
       // Android: the uploaded hero if one exists, otherwise the drawn one —
       // see androidKeyboardArt(). Either way the slot is never empty on a
       // platform whose step is the harder of the two to follow.
-      ...(getMediaRegistryFn?.()?.["hero.onboarding_keyboard.android"]?.url
+      ...(kbFilm.android ? [] : getMediaRegistryFn?.()?.["hero.onboarding_keyboard.android"]?.url
         ? screenHero("onboarding_keyboard.android", { height: 356, width: 200, radius: 18, onlyOn: "android" })
         : [{ ...androidKeyboardArt(), visibleIf: { platform: "android" } } as Node,
            { type: "Spacer", style: { height: 22 } } as Node]),

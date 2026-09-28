@@ -37,11 +37,14 @@ describe("the You tab's posters", () => {
     expect(withUrl(screen("personality", { personality: { activePresetId: "pirate" } }).root, "https://m/any.png").length).toBe(1);
   });
 
-  it("a voice card wearing a poster grows to give the sentence its band", () => {
-    const cardOf = (root: any) => find(root, (o) => o.type === "Stack" && o.style?.borderRadius === 22 && JSON.stringify(o.on ?? {}).includes('"voices"'))[0];
-    expect(cardOf(screen("personality").root).style.height).toBe(168);
+  it("the voice card and the training card are one height, poster or not", () => {
+    const voiceOf = (root: any) => find(root, (o) => o.type === "Stack" && o.style?.borderRadius === 22 && JSON.stringify(o.on ?? {}).includes('"voices"'))[0];
+    const trainOf = (root: any) => find(root, (o) => o.type === "Stack" && o.style?.borderRadius === 22 && !o.on && o.style?.backgroundColor === "#000000")[0];
+    const bare = screen("personality").root;
+    expect(voiceOf(bare).style.height).toBe(trainOf(bare).style.height);
     reg({ "you.voice.signature": entry("https://m/zu.png", "image/png") });
-    expect(cardOf(screen("personality").root).style.height).toBe(220);
+    const dressed = screen("personality").root;
+    expect(voiceOf(dressed).style.height).toBe(trainOf(dressed).style.height);
   });
 
   it("a clip at you.train replaces the live field, muted and looping, with a still behind it", () => {
@@ -57,6 +60,15 @@ describe("the You tab's posters", () => {
 });
 
 describe("the onboarding films", () => {
+  it("the keyboard film carries the title: the heading steps aside only where there is a film", () => {
+    const heading = (root: any) => find(root, (o) => o.type === "Heading" && o.props?.content === "Bring it everywhere.");
+    expect(heading(screen("onboarding_keyboard").root)[0].visibleIf).toBeUndefined();
+    reg({ "hero.onboarding_keyboard.card": entry("https://m/keys-ios.mp4", "video/mp4") });
+    expect(heading(screen("onboarding_keyboard").root)[0].visibleIf).toEqual({ platform: "android" });
+    reg({ "hero.onboarding_keyboard.card": entry("https://m/keys-ios.mp4", "video/mp4"), "hero.onboarding_keyboard.card.android": entry("https://m/keys-android.mp4", "video/mp4") });
+    expect(heading(screen("onboarding_keyboard").root).length).toBe(0);
+  });
+
   it("the keyboard step gets a hero per device, each shown only to its own", () => {
     expect(find(screen("onboarding_keyboard").root, (o) => o.type === "Video").length).toBe(0);
     reg({ "hero.onboarding_keyboard.card": entry("https://m/keys-ios.mp4", "video/mp4"), "hero.onboarding_keyboard.card.android": entry("https://m/keys-android.mp4", "video/mp4") });
