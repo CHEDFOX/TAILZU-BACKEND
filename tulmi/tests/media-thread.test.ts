@@ -37,6 +37,15 @@ describe("the You tab's posters", () => {
     expect(withUrl(screen("personality", { personality: { activePresetId: "pirate" } }).root, "https://m/any.png").length).toBe(1);
   });
 
+  it("dictionary and languages are cards of the voice card's size, with posters of their own", () => {
+    const cards = (root: any) => find(root, (o) => o.type === "Stack" && o.style?.borderRadius === 22 && o.style?.height === 220);
+    expect(cards(screen("personality").root).length).toBe(4);
+    reg({ "you.dictionary": entry("https://m/dict.png", "image/png"), "you.languages": entry("https://m/lang.png", "image/png") });
+    const root = screen("personality").root;
+    expect(withUrl(root, "https://m/dict.png").length).toBe(1);
+    expect(withUrl(root, "https://m/lang.png").length).toBe(1);
+  });
+
   it("the voice card and the training card are one height, poster or not", () => {
     const voiceOf = (root: any) => find(root, (o) => o.type === "Stack" && o.style?.borderRadius === 22 && JSON.stringify(o.on ?? {}).includes('"voices"'))[0];
     const trainOf = (root: any) => find(root, (o) => o.type === "Stack" && o.style?.borderRadius === 22 && !o.on && o.style?.backgroundColor === "#000000")[0];

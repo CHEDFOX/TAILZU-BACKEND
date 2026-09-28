@@ -6715,7 +6715,7 @@ export const YOU_UI = {
      * two points apart they read as one dense clump of type in the corner.
      * The gap is what separates them into three facts.
      */
-    marginTop: 164,
+    marginTop: 184,
     marginBottom: 32,
   },
   /**
@@ -6775,6 +6775,20 @@ export const YOU_UI = {
    * The title is white, not amber. On this tab the voice card's dot is the
    * one accent, and a second would split the eye.
    */
+  /**
+   * DICTIONARY AND LANGUAGES, AS CARDS. The same object as the voice card
+   * and the training card, so the tab is one column of one shape: a kicker,
+   * the value set large, and a line about it. A poster (you.dictionary,
+   * you.languages) fills each when uploaded. Haptics stays a row: it is a
+   * switch, not a thing about the person.
+   */
+  settingCard: {
+    dictionaryLine: "Names and words it spells your way.",
+    languagesLine: "Say it in any of them. It writes the way you type.",
+    /** The value's size when it runs long (three languages, say). */
+    longValueSize: 26,
+    longAfter: 14,
+  },
   trainCard: {
     height: 220,
     radius: 22,
@@ -7420,6 +7434,40 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
     };
   };
 
+  /** Dictionary and Languages: the voice card's shape, no accent dot. */
+  const settingCard = (kicker: string, value: string, line: string, screen: string, poster: string): Node => {
+    const V = u.voiceCard, S = u.settingCard;
+    const art = mediaFill(poster, ctx.formFactor);
+    return {
+      type: "Stack",
+      on: { onPress: { kind: "sequence", actions: [
+        { kind: "haptic", style: "selection" },
+        { kind: "navigate", screenId: screen },
+      ] } },
+      props: { pressOpacity: 0.85 },
+      style: {
+        height: V.height, borderRadius: V.radius, overflow: "hidden",
+        marginBottom: V.marginBottom, justifyContent: "flex-end",
+        padding: V.padding, backgroundColor: V.background,
+        borderWidth: 1, borderColor: V.border,
+      },
+      children: [
+        ...(art ? [art] : []),
+        { type: "Gradient",
+          props: { colors: V.scrim, locations: V.scrimStops, direction: "vertical" },
+          style: { ...FILL_STYLE } },
+        { type: "Text", props: { content: kicker },
+          style: { fontSize: V.kickerSize, letterSpacing: V.kickerTracking,
+                   textTransform: "uppercase", color: u.textDim } },
+        { type: "Text", props: { content: value, variant: "voiceName" },
+          style: { marginTop: 5, ...(value.length > S.longAfter ? { fontSize: S.longValueSize, lineHeight: S.longValueSize + 4 } : {}) } },
+        { type: "Text", props: { content: line },
+          style: { fontSize: V.taglineSize, lineHeight: V.taglineLineHeight,
+                   color: u.textDim, marginTop: V.nameGap } },
+      ],
+    };
+  };
+
   /**
    * THE TRAINING CARD. What the Train tab was, at card size: the network it
    * grows, the two lines, what it has learned, and the same drag in. A tap
@@ -7659,8 +7707,8 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
                 portrait,
                 voiceCard(voiceName, voiceLine, activeId),
                 trainCard(),
-                youRow("Dictionary", wordCount > 0 ? `${wordCount} words` : "None yet", "dictionary"),
-                youRow("Languages", langLabel, "languages"),
+                settingCard("Dictionary", wordCount > 0 ? `${wordCount} words` : "None yet", u.settingCard.dictionaryLine, "dictionary", "you.dictionary"),
+                settingCard("Languages", langLabel, u.settingCard.languagesLine, "languages", "you.languages"),
                 youRow("Haptics", hapticsOn ? "On" : "Off", "haptics"),
               ],
             },

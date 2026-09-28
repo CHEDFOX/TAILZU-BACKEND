@@ -1,29 +1,5 @@
 [
   {
-    "file": "keys-ios.mp4",
-    "key": "hero.onboarding_keyboard.card",
-    "contentType": "video/mp4",
-    "loop": true,
-    "durationMs": 15532,
-    "present": {
-      "fit": "cover",
-      "loop": true,
-      "background": "#000000"
-    }
-  },
-  {
-    "file": "keys-android.mp4",
-    "key": "hero.onboarding_keyboard.card.android",
-    "contentType": "video/mp4",
-    "loop": true,
-    "durationMs": 15532,
-    "present": {
-      "fit": "cover",
-      "loop": true,
-      "background": "#000000"
-    }
-  },
-  {
     "file": "you-voice-signature.png",
     "key": "you.voice.signature",
     "contentType": "image/png",
@@ -157,6 +133,46 @@
     "contentType": "image/png",
     "present": {
       "fit": "cover"
+    }
+  },
+  {
+    "file": "you-dictionary.png",
+    "key": "you.dictionary",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-languages.png",
+    "key": "you.languages",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "keys-ios.mp4",
+    "key": "hero.onboarding_keyboard.card",
+    "contentType": "video/mp4",
+    "loop": true,
+    "durationMs": 15532,
+    "present": {
+      "fit": "cover",
+      "loop": true,
+      "background": "#000000"
+    }
+  },
+  {
+    "file": "keys-android.mp4",
+    "key": "hero.onboarding_keyboard.card.android",
+    "contentType": "video/mp4",
+    "loop": true,
+    "durationMs": 15532,
+    "present": {
+      "fit": "cover",
+      "loop": true,
+      "background": "#000000"
     }
   },
   {
