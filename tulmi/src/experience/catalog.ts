@@ -10003,9 +10003,10 @@ function onboardingKeyboard(): ScreenResponse {
       { type: "Heading", props: { content: "Bring it everywhere." },
         style: { fontSize: 34, lineHeight: 42, color: "$color.text", marginBottom: 21 } },
       // The keyboard's own picture, between the headline and the walk: upload
-      // to `hero.onboarding_keyboard` (a window prefers `.desktop`). A 16:10
-      // card, centred; nothing at all until something is uploaded.
-      ...screenHero("onboarding_keyboard", { width: 320, aspectRatio: 1.6, radius: 28, marginBottom: 21, desktop: true }),
+      // to `hero.onboarding_keyboard`. A 4:3 card the width of the column;
+      // nothing at all until something is uploaded. Phones only: a window
+      // never reaches this screen (pickInitialScreenId).
+      ...screenHero("onboarding_keyboard", { width: "100%", aspectRatio: 4 / 3, radius: 28, marginBottom: 21 }),
       // The walk through Settings, shown rather than described — and one
       // recording per platform, because the two walks share no screen. An iOS
       // recording shown to an Android user is worse than no recording: it

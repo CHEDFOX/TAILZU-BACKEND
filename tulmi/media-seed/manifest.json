@@ -32,29 +32,26 @@
     "key": "onboarding.hero",
     "contentType": "video/mp4",
     "loop": true,
-    "durationMs": 4000,
+    "durationMs": 6000,
     "present": {
-      "shape": "card",
-      "boxWidth": 300,
-      "aspectRatio": 1,
-      "radius": 32,
+      "shape": "full",
+      "aspectRatio": 0.9,
+      "radius": 28,
       "fit": "cover",
-      "loop": true
+      "loop": true,
+      "background": "#000000"
     }
   },
   {
     "file": "keys.mp4",
-    "key": "onboarding.keyboard.hero",
+    "key": "hero.onboarding_keyboard",
     "contentType": "video/mp4",
     "loop": true,
-    "durationMs": 4000,
+    "durationMs": 7000,
     "present": {
-      "shape": "card",
-      "boxWidth": 320,
-      "aspectRatio": 1.6,
-      "radius": 28,
       "fit": "cover",
-      "loop": true
+      "loop": true,
+      "background": "#000000"
     }
   },
   {
@@ -191,6 +188,26 @@
     "contentType": "image/png",
     "present": {
       "fit": "cover"
+    }
+  },
+  {
+    "file": "auth.mp4",
+    "key": "hero.auth",
+    "contentType": "video/mp4",
+    "present": {
+      "fit": "cover",
+      "background": "#0A0908",
+      "loop": true
+    }
+  },
+  {
+    "file": "auth-desktop.mp4",
+    "key": "hero.auth.desktop",
+    "contentType": "video/mp4",
+    "present": {
+      "fit": "cover",
+      "background": "#0A0908",
+      "loop": true
     }
   }
 ]
