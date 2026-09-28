@@ -1,152 +1,152 @@
 [
   {
-    "file": "you-voice-signature.png",
+    "file": "you-voice-signature.webp",
     "key": "you.voice.signature",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-voice-professional.png",
+    "file": "you-voice-professional.webp",
     "key": "you.voice.professional",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-voice-friendly.png",
+    "file": "you-voice-friendly.webp",
     "key": "you.voice.friendly",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-voice-witty.png",
+    "file": "you-voice-witty.webp",
     "key": "you.voice.witty",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-voice-concise.png",
+    "file": "you-voice-concise.webp",
     "key": "you.voice.concise",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-voice-gentle.png",
+    "file": "you-voice-gentle.webp",
     "key": "you.voice.gentle",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-voice-playful.png",
+    "file": "you-voice-playful.webp",
     "key": "you.voice.playful",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-voice-romantic.png",
+    "file": "you-voice-romantic.webp",
     "key": "you.voice.romantic",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-voice-concise-boss.png",
+    "file": "you-voice-concise-boss.webp",
     "key": "you.voice.concise-boss",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-voice-explainer.png",
+    "file": "you-voice-explainer.webp",
     "key": "you.voice.explainer",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-voice-excited.png",
+    "file": "you-voice-excited.webp",
     "key": "you.voice.excited",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-voice-poetic.png",
+    "file": "you-voice-poetic.webp",
     "key": "you.voice.poetic",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-voice-bard.png",
+    "file": "you-voice-bard.webp",
     "key": "you.voice.bard",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-voice-pirate.png",
+    "file": "you-voice-pirate.webp",
     "key": "you.voice.pirate",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-voice-trailer.png",
+    "file": "you-voice-trailer.webp",
     "key": "you.voice.trailer",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-voice-noir.png",
+    "file": "you-voice-noir.webp",
     "key": "you.voice.noir",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-train.png",
+    "file": "you-train.webp",
     "key": "you.train",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-dictionary.png",
+    "file": "you-dictionary.webp",
     "key": "you.dictionary",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
   },
   {
-    "file": "you-languages.png",
+    "file": "you-languages.webp",
     "key": "you.languages",
-    "contentType": "image/png",
+    "contentType": "image/webp",
     "present": {
       "fit": "cover"
     }
