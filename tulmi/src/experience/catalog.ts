@@ -9997,6 +9997,9 @@ function onboardingKeyboard(): ScreenResponse {
         ...screenHero("onboarding_keyboard.bg", { behind: true }),
         {
           type: "Screen",
+          // The footer below carries the pill; the column needs no tab-bar
+          // clearance under its last card.
+          props: { paddingBottom: 24 },
           style: { backgroundColor: "transparent" },
           children: [
       // hideChrome = full-bleed: this spacer IS the top safe area (the card
@@ -10007,15 +10010,15 @@ function onboardingKeyboard(): ScreenResponse {
       // With the supporting line moved into the box below, the headline is the
       // only thing at the top of the screen and should read like it.
       { type: "Heading", props: { content: "Bring it everywhere." },
-        style: { fontSize: 34, lineHeight: 42, color: "$color.text", marginBottom: 21 } },
+        style: { fontSize: 34, lineHeight: 42, color: "$color.text", marginBottom: 24 } },
       // The keyboard's own picture, between the headline and the walk, per
       // device like the walk itself: `hero.onboarding_keyboard.card` on iOS,
       // `hero.onboarding_keyboard.card.android` on Android (each shows its
       // own system tray giving way to Tailzu's). A 4:3 card the width of
       // the column; nothing at all until something is uploaded. Phones only:
       // a window never reaches this screen (pickInitialScreenId).
-      ...screenHero("onboarding_keyboard.card", { width: "100%", aspectRatio: 4 / 3, radius: 28, marginBottom: 21, onlyOn: "ios" }),
-      ...screenHero("onboarding_keyboard.card.android", { width: "100%", aspectRatio: 4 / 3, radius: 28, marginBottom: 21, onlyOn: "android" }),
+      ...screenHero("onboarding_keyboard.card", { width: "100%", aspectRatio: 4 / 3, radius: 28, marginBottom: 24, onlyOn: "ios" }),
+      ...screenHero("onboarding_keyboard.card.android", { width: "100%", aspectRatio: 4 / 3, radius: 28, marginBottom: 24, onlyOn: "android" }),
       // The walk through Settings, shown rather than described — and one
       // recording per platform, because the two walks share no screen. An iOS
       // recording shown to an Android user is worse than no recording: it
@@ -10092,28 +10095,6 @@ function onboardingKeyboard(): ScreenResponse {
           step("4", "Come back, then tap the globe key to switch to Tailzu."),
         ],
       },
-      { type: "Spacer", style: { height: 34 } },
-      // Two buttons, one per platform, because they go to different places and
-      // a label should say where. iOS lands on Tailzu's own Settings page and
-      // the user walks from there — "Go to Settings" is the honest promise.
-      // Android lands directly on the keyboard list, so it can promise that.
-      // iOS lands on Tailzu's own Settings page and the user walks from there;
-      // Android lands directly on the keyboard list. Same control, different
-      // promise, because a label should say where it goes.
-      {
-        ...allowPill("Allow access", "openSettings", "skip"),
-        visibleIf: { all: [{ not: { truthy: "keyboardEnabled" } }, { platform: "ios" }] },
-      },
-      {
-        ...allowPill("Allow access", "openKeyboardSettings", "skip"),
-        visibleIf: { all: [{ not: { truthy: "keyboardEnabled" } }, { platform: "android" }] },
-      },
-      // Already done. No ✕ — there is nothing left to decline.
-      {
-        ...allowPill("Start using Tailzu", "finish"),
-        visibleIf: { truthy: "keyboardEnabled" },
-      },
-      { type: "Spacer", style: { height: 55 } },
       // THE WATCHER. Draws nothing; exists to notice.
       //
       // visibleIf + onAppear means "run this when the condition becomes true",
@@ -10132,6 +10113,35 @@ function onboardingKeyboard(): ScreenResponse {
       { type: "Stack", style: { height: 0 },
         visibleIf: { truthy: "keyboardEnabled" },
         on: { onAppear: "autoFinish" } },
+          ],
+        },
+        // THE PILL SITS AT THE BOTTOM, whatever the phone's height: a footer
+        // beside the scrolling column, not the last thing in it, so the way
+        // on is always in reach and the column takes the room above it.
+        {
+          type: "Stack",
+          style: { paddingHorizontal: 28, paddingTop: 21, paddingBottom: 48 },
+          children: [
+          // Two buttons, one per platform, because they go to different places and
+          // a label should say where. iOS lands on Tailzu's own Settings page and
+          // the user walks from there — "Go to Settings" is the honest promise.
+          // Android lands directly on the keyboard list, so it can promise that.
+          // iOS lands on Tailzu's own Settings page and the user walks from there;
+          // Android lands directly on the keyboard list. Same control, different
+          // promise, because a label should say where it goes.
+          {
+            ...allowPill("Allow access", "openSettings", "skip"),
+            visibleIf: { all: [{ not: { truthy: "keyboardEnabled" } }, { platform: "ios" }] },
+          },
+          {
+            ...allowPill("Allow access", "openKeyboardSettings", "skip"),
+            visibleIf: { all: [{ not: { truthy: "keyboardEnabled" } }, { platform: "android" }] },
+          },
+          // Already done. No ✕ — there is nothing left to decline.
+          {
+            ...allowPill("Start using Tailzu", "finish"),
+            visibleIf: { truthy: "keyboardEnabled" },
+          },
           ],
         },
       ],
