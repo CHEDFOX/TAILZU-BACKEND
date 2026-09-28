@@ -1,0 +1,196 @@
+[
+  {
+    "file": "intro.mp4",
+    "key": "intro",
+    "contentType": "video/mp4",
+    "loop": false,
+    "durationMs": 3000,
+    "present": {
+      "shape": "full",
+      "fit": "cover",
+      "holdMs": 2800,
+      "loop": false,
+      "background": "#0F0D0B"
+    }
+  },
+  {
+    "file": "intro-desktop.mp4",
+    "key": "intro.desktop",
+    "contentType": "video/mp4",
+    "loop": false,
+    "durationMs": 3000,
+    "present": {
+      "shape": "full",
+      "fit": "cover",
+      "holdMs": 2800,
+      "loop": false,
+      "background": "#0F0D0B"
+    }
+  },
+  {
+    "file": "mic.mp4",
+    "key": "onboarding.hero",
+    "contentType": "video/mp4",
+    "loop": true,
+    "durationMs": 4000,
+    "present": {
+      "shape": "card",
+      "boxWidth": 300,
+      "aspectRatio": 1,
+      "radius": 32,
+      "fit": "cover",
+      "loop": true
+    }
+  },
+  {
+    "file": "keys.mp4",
+    "key": "onboarding.keyboard.hero",
+    "contentType": "video/mp4",
+    "loop": true,
+    "durationMs": 4000,
+    "present": {
+      "shape": "card",
+      "boxWidth": 320,
+      "aspectRatio": 1.6,
+      "radius": 28,
+      "fit": "cover",
+      "loop": true
+    }
+  },
+  {
+    "file": "you-voice-signature.png",
+    "key": "you.voice.signature",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-voice-professional.png",
+    "key": "you.voice.professional",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-voice-friendly.png",
+    "key": "you.voice.friendly",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-voice-witty.png",
+    "key": "you.voice.witty",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-voice-concise.png",
+    "key": "you.voice.concise",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-voice-gentle.png",
+    "key": "you.voice.gentle",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-voice-playful.png",
+    "key": "you.voice.playful",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-voice-romantic.png",
+    "key": "you.voice.romantic",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-voice-concise-boss.png",
+    "key": "you.voice.concise-boss",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-voice-explainer.png",
+    "key": "you.voice.explainer",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-voice-excited.png",
+    "key": "you.voice.excited",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-voice-poetic.png",
+    "key": "you.voice.poetic",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-voice-bard.png",
+    "key": "you.voice.bard",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-voice-pirate.png",
+    "key": "you.voice.pirate",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-voice-trailer.png",
+    "key": "you.voice.trailer",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-voice-noir.png",
+    "key": "you.voice.noir",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
+    "file": "you-train.png",
+    "key": "you.train",
+    "contentType": "image/png",
+    "present": {
+      "fit": "cover"
+    }
+  }
+]

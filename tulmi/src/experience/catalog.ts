@@ -72,6 +72,35 @@ function mediaSrc(key: string): Record<string, unknown> {
 }
 
 /**
+ * The key a window reads: "<key>.desktop" when one has been uploaded, else
+ * the phone's. A portrait opening and a landscape one are different pictures
+ * (see screenHero), and the same rule now holds for every slot.
+ */
+function mediaKeyFor(key: string, formFactor?: string): string {
+  if (formFactor !== "desktop") return key;
+  return getMediaRegistryFn?.()?.[`${key}.desktop`]?.url ? `${key}.desktop` : key;
+}
+
+/**
+ * A poster or a clip filling a card, behind whatever the card says. Null when
+ * nothing is uploaded, so the card keeps the look it was designed with. The
+ * card clips it (overflow hidden + its own radius); a clip is ambient: muted,
+ * looping, and a still where the bundle has no Video.
+ */
+function mediaFill(key: string, formFactor?: string): Node | null {
+  const entry = getMediaRegistryFn?.()?.[mediaKeyFor(key, formFactor)];
+  if (!entry?.url) return null;
+  const source = mediaSource(entry.url, entry.contentType);
+  const fit = entry.present?.fit ?? "cover";
+  const isVideo = (entry.contentType ?? "").toLowerCase().startsWith("video/")
+    || /\.(mp4|mov|m4v|webm)(\?|$)/i.test(entry.url);
+  const still: Node = { type: "Image", style: { ...FILL_STYLE }, props: { source, contentFit: fit } };
+  return isVideo
+    ? { type: "Video", style: { ...FILL_STYLE }, props: { source, autoplay: true, loop: true, muted: true, contentFit: fit }, fallback: still } as Node
+    : still;
+}
+
+/**
  * A media source shaped to survive the SHIPPED Video node.
  *
  * That node does this before handing the source to the player:
@@ -2055,7 +2084,7 @@ export function buildBootstrap(
       };
 
       const reg = getMediaRegistryFn?.() ?? {};
-      const intro = reg["intro"];
+      const intro = reg[mediaKeyFor("intro", opts.formFactor)];
       if (intro?.url && flags) {
         flags["intro.media"] = { url: intro.url };
       }
@@ -2876,6 +2905,10 @@ function heroStyle(
   const shape = pr.shape === "plate" ? "card" : (pr.shape ?? defaultShape);
   const style: Record<string, unknown> = { ...base };
   if (pr.aspectRatio) { style.aspectRatio = pr.aspectRatio; delete style.height; }
+  // A size of its own, in points, centred: a 300pt card where the built-in
+  // was a 208pt circle. Height follows the ratio unless given.
+  if (pr.boxWidth) { style.width = pr.boxWidth; style.alignSelf = "center"; if (!pr.aspectRatio && !pr.boxHeight) style.aspectRatio = 1; }
+  if (pr.boxHeight) { style.height = pr.boxHeight; delete style.aspectRatio; }
   if (pr.radius !== undefined) style.borderRadius = pr.radius;
   if (pr.background) style.backgroundColor = pr.background;
   if (shape === "full") {
@@ -2906,12 +2939,14 @@ function heroSlot(opts: {
   bleed?: { x: number; top: number };
   /** What this slot looks like when the entry says nothing. */
   defaultShape?: "full" | "card";
+  /** A window prefers "<key>.desktop" (mediaKeyFor). */
+  formFactor?: string;
 }): Node {
   const override = HERO_OVERRIDES[opts.id];
   if (override) return { ...override, style: { ...opts.style, ...(override.style ?? {}) } };
 
   const reg = getMediaRegistryFn?.() ?? {};
-  const live = opts.mediaKeys.filter((k) => reg[k]?.url);
+  const live = opts.mediaKeys.map((k) => mediaKeyFor(k, opts.formFactor)).filter((k) => reg[k]?.url);
   // Resolved to urls server-side — no client registry lookup, no race with
   // the bootstrap (the failure that kept the intro black).
   const frames = live.map((k) => mediaSrc(k));
@@ -3342,8 +3377,9 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
   // built through a hook. That is a lot of machinery to stake a first
   // impression on when the cheap path shows the same animation.
   const reg = getMediaRegistryFn?.() ?? {};
+  const introBase = mediaKeyFor("intro", ctx.formFactor);
   const introKey =
-    reg["intro"]?.url ? "intro"
+    reg[introBase]?.url ? introBase
     : reg["mic.animation"]?.url ? "mic.animation"
     : reg["mic.animation.mp4"]?.url ? "mic.animation.mp4"
     : null;
@@ -4356,7 +4392,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
     case "history":
       return historyScreen(ctx);
     case "onboarding":
-      return onboardingVoice();
+      return onboardingVoice(ctx);
     // "onboarding_language" removed — the language pick is the client's native
     // post-auth screen now (needsLanguagePick bootstrap flag). Unknown ids fall
     // through to null → 404, which the client surfaces gracefully.
@@ -7321,8 +7357,11 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
    * The amber dot is the one accent on the tab: this is the voice actually
    * writing, which is the only thing here that is live.
    */
-  const voiceCard = (name: string, tagline: string): Node => {
+  const voiceCard = (name: string, tagline: string, voiceId: string): Node => {
     const V = u.voiceCard;
+    // A poster for this voice (you.voice.<id>), else the set's (you.voice),
+    // else the lit card as designed. The words stay on top either way.
+    const art = mediaFill(`you.voice.${voiceId}`, ctx.formFactor) ?? mediaFill("you.voice", ctx.formFactor);
     return {
       type: "Stack",
       on: { onPress: { kind: "sequence", actions: [
@@ -7337,6 +7376,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
         borderWidth: 1, borderColor: V.border,
       },
       children: [
+        ...(art ? [art] : []),
         // THE CARD IS LIT, NOT PICTURED.
         //
         // Its art was the same blurred upload as the ground, so the one object
@@ -7403,7 +7443,9 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
         borderWidth: 1, borderColor: T.border,
       },
       children: [
-        neuralField(T.fieldDim, fieldGrowth(ctx.personality)),
+        // A poster at you.train replaces the live field; nothing uploaded, the
+        // network it grows is the picture.
+        mediaFill("you.train", ctx.formFactor) ?? neuralField(T.fieldDim, fieldGrowth(ctx.personality)),
         { type: "Gradient",
           props: { colors: T.scrim, locations: T.scrimStops, direction: "vertical" },
           style: { ...FILL_STYLE } },
@@ -7605,7 +7647,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
               style: { ...readable(ctx) },
               children: [
                 portrait,
-                voiceCard(voiceName, voiceLine),
+                voiceCard(voiceName, voiceLine, activeId),
                 trainCard(),
                 youRow("Dictionary", wordCount > 0 ? `${wordCount} words` : "None yet", "dictionary"),
                 youRow("Languages", langLabel, "languages"),
@@ -9593,7 +9635,7 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
  * user can still type with the keyboard; voice can be enabled later in
  * Settings → Tailzu). Fully backend-authored — copy/media/flow change OTA.
  */
-function onboardingVoice(): ScreenResponse {
+function onboardingVoice(ctx?: ScreenContext): ScreenResponse {
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "onboarding",
@@ -9760,6 +9802,7 @@ function onboardingVoice(): ScreenResponse {
           children: [heroSlot({
             id: "onboarding",
             mediaKeys: ["onboarding.hero"],
+            formFactor: ctx?.formFactor,
             style: { width: HERO_PARTICLE, height: HERO_PARTICLE, borderRadius: HERO_PARTICLE / 2 },
             builtIn: {
               // The mark comes apart in vacuum, holds, and springs back
@@ -9959,6 +10002,10 @@ function onboardingKeyboard(): ScreenResponse {
       // only thing at the top of the screen and should read like it.
       { type: "Heading", props: { content: "Bring it everywhere." },
         style: { fontSize: 34, lineHeight: 42, color: "$color.text", marginBottom: 21 } },
+      // The keyboard's own picture, between the headline and the walk: upload
+      // to `hero.onboarding_keyboard` (a window prefers `.desktop`). A 16:10
+      // card, centred; nothing at all until something is uploaded.
+      ...screenHero("onboarding_keyboard", { width: 320, aspectRatio: 1.6, radius: 28, marginBottom: 21, desktop: true }),
       // The walk through Settings, shown rather than described — and one
       // recording per platform, because the two walks share no screen. An iOS
       // recording shown to an Android user is worse than no recording: it
