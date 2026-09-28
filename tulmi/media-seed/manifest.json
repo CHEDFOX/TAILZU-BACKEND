@@ -1,29 +1,14 @@
 [
   {
-    "file": "mic.mp4",
-    "key": "onboarding.hero",
-    "contentType": "video/mp4",
-    "loop": true,
-    "durationMs": 10000,
-    "present": {
-      "shape": "full",
-      "aspectRatio": 0.9,
-      "radius": 28,
-      "fit": "cover",
-      "loop": true,
-      "background": "#E5931D"
-    }
-  },
-  {
     "file": "keys-ios.mp4",
     "key": "hero.onboarding_keyboard.card",
     "contentType": "video/mp4",
     "loop": true,
-    "durationMs": 10000,
+    "durationMs": 15532,
     "present": {
       "fit": "cover",
       "loop": true,
-      "background": "#1A1748"
+      "background": "#000000"
     }
   },
   {
@@ -31,63 +16,11 @@
     "key": "hero.onboarding_keyboard.card.android",
     "contentType": "video/mp4",
     "loop": true,
-    "durationMs": 10000,
+    "durationMs": 15532,
     "present": {
       "fit": "cover",
       "loop": true,
-      "background": "#1A1748"
-    }
-  },
-  {
-    "file": "auth.mp4",
-    "key": "hero.auth",
-    "contentType": "video/mp4",
-    "loop": true,
-    "durationMs": 18000,
-    "present": {
-      "fit": "cover",
-      "background": "#0A0908",
-      "loop": true
-    }
-  },
-  {
-    "file": "auth-desktop.mp4",
-    "key": "hero.auth.desktop",
-    "contentType": "video/mp4",
-    "loop": true,
-    "durationMs": 18000,
-    "present": {
-      "fit": "cover",
-      "background": "#0A0908",
-      "loop": true
-    }
-  },
-  {
-    "file": "intro.mp4",
-    "key": "intro",
-    "contentType": "video/mp4",
-    "loop": false,
-    "durationMs": 3000,
-    "present": {
-      "shape": "full",
-      "fit": "cover",
-      "holdMs": 2800,
-      "loop": false,
-      "background": "#0F0D0B"
-    }
-  },
-  {
-    "file": "intro-desktop.mp4",
-    "key": "intro.desktop",
-    "contentType": "video/mp4",
-    "loop": false,
-    "durationMs": 3000,
-    "present": {
-      "shape": "full",
-      "fit": "cover",
-      "holdMs": 2800,
-      "loop": false,
-      "background": "#0F0D0B"
+      "background": "#000000"
     }
   },
   {
@@ -224,6 +157,73 @@
     "contentType": "image/png",
     "present": {
       "fit": "cover"
+    }
+  },
+  {
+    "file": "auth.mp4",
+    "key": "hero.auth",
+    "contentType": "video/mp4",
+    "loop": true,
+    "durationMs": 18000,
+    "present": {
+      "fit": "cover",
+      "background": "#0A0908",
+      "loop": true
+    }
+  },
+  {
+    "file": "auth-desktop.mp4",
+    "key": "hero.auth.desktop",
+    "contentType": "video/mp4",
+    "loop": true,
+    "durationMs": 18000,
+    "present": {
+      "fit": "cover",
+      "background": "#0A0908",
+      "loop": true
+    }
+  },
+  {
+    "file": "mic.mp4",
+    "key": "onboarding.hero",
+    "contentType": "video/mp4",
+    "loop": true,
+    "durationMs": 10000,
+    "present": {
+      "shape": "full",
+      "aspectRatio": 0.9,
+      "radius": 28,
+      "fit": "cover",
+      "loop": true,
+      "background": "#E5931D"
+    }
+  },
+  {
+    "file": "intro.mp4",
+    "key": "intro",
+    "contentType": "video/mp4",
+    "loop": false,
+    "durationMs": 3000,
+    "present": {
+      "shape": "full",
+      "fit": "cover",
+      "holdMs": 2800,
+      "loop": false,
+      "background": "#0F0D0B"
+    }
+  },
+  {
+    "file": "intro-desktop.mp4",
+    "key": "intro.desktop",
+    "contentType": "video/mp4",
+    "loop": false,
+    "durationMs": 3000,
+    "present": {
+      "shape": "full",
+      "fit": "cover",
+      "holdMs": 2800,
+      "loop": false,
+      "background": "#0F0D0B"
     }
   }
 ]
