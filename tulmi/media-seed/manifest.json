@@ -213,33 +213,5 @@
       "loop": true,
       "background": "#E5931D"
     }
-  },
-  {
-    "file": "intro.mp4",
-    "key": "intro",
-    "contentType": "video/mp4",
-    "loop": false,
-    "durationMs": 3000,
-    "present": {
-      "shape": "full",
-      "fit": "cover",
-      "holdMs": 2800,
-      "loop": false,
-      "background": "#0F0D0B"
-    }
-  },
-  {
-    "file": "intro-desktop.mp4",
-    "key": "intro.desktop",
-    "contentType": "video/mp4",
-    "loop": false,
-    "durationMs": 3000,
-    "present": {
-      "shape": "full",
-      "fit": "cover",
-      "holdMs": 2800,
-      "loop": false,
-      "background": "#0F0D0B"
-    }
   }
 ]

@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 
 process.env.DEV_SKIP_AUTH = "true";
@@ -94,17 +95,11 @@ describe("the onboarding films", () => {
     expect(box.style.height).toBeUndefined();
   });
 
-  it("a window opens with intro.desktop when there is one; a phone never does", () => {
-    reg({ intro: entry("https://m/intro.mp4", "video/mp4"), "intro.desktop": entry("https://m/intro-desktop.mp4", "video/mp4") });
-    expect(withUrl(screen("intro", { formFactor: "desktop" }).root, "https://m/intro-desktop.mp4").length).toBe(1);
-    expect(withUrl(screen("intro", { formFactor: "phone" }).root, "https://m/intro.mp4").length).toBe(1);
-    expect(withUrl(screen("intro").root, "https://m/intro.mp4").length).toBe(1);
-    expect((buildBootstrap({ onboarded: true, formFactor: "desktop" }).flags as any)["intro.media"]).toEqual({ url: "https://m/intro-desktop.mp4" });
-    expect((buildBootstrap({ onboarded: true }).flags as any)["intro.media"]).toEqual({ url: "https://m/intro.mp4" });
-  });
-
-  it("without a desktop twin, the window gets the phone's", () => {
-    reg({ intro: entry("https://m/intro.mp4", "video/mp4") });
-    expect(withUrl(screen("intro", { formFactor: "desktop" }).root, "https://m/intro.mp4").length).toBe(1);
+  it("the opening is the in-app mic's own media: nothing in the seed may replace it", () => {
+    reg({ "mic.animation": entry("https://m/mic.gif", "image/gif") });
+    expect(withUrl(screen("intro", { formFactor: "desktop" }).root, "https://m/mic.gif").length).toBeGreaterThan(0);
+    expect(withUrl(screen("intro").root, "https://m/mic.gif").length).toBeGreaterThan(0);
+    const seed = JSON.parse(fs.readFileSync(new URL("../media-seed/manifest.json", import.meta.url), "utf8")) as Array<{ key: string }>;
+    expect(seed.filter((e) => /^intro/.test(e.key) || /^mic\.animation/.test(e.key))).toEqual([]);
   });
 });

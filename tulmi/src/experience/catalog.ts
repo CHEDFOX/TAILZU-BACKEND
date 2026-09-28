@@ -2084,7 +2084,7 @@ export function buildBootstrap(
       };
 
       const reg = getMediaRegistryFn?.() ?? {};
-      const intro = reg[mediaKeyFor("intro", opts.formFactor)];
+      const intro = reg["intro"];
       if (intro?.url && flags) {
         flags["intro.media"] = { url: intro.url };
       }
@@ -3380,9 +3380,8 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
   // built through a hook. That is a lot of machinery to stake a first
   // impression on when the cheap path shows the same animation.
   const reg = getMediaRegistryFn?.() ?? {};
-  const introBase = mediaKeyFor("intro", ctx.formFactor);
   const introKey =
-    reg[introBase]?.url ? introBase
+    reg["intro"]?.url ? "intro"
     : reg["mic.animation"]?.url ? "mic.animation"
     : reg["mic.animation.mp4"]?.url ? "mic.animation.mp4"
     : null;
