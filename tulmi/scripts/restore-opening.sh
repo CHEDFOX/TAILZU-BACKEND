@@ -5,10 +5,15 @@
 #   cd ~/tulmi && ./tulmi/scripts/restore-opening.sh
 #
 # The file is still in the media volume, because nothing there is ever
-# deleted; it is pinned by its checksum. Safe to run again. It also removes
-# the seed's intro.desktop and an old onboarding.hero.still, which nothing
-# reads: the splash waits on the film's own first frame now (the app's
-# media/firstFrame), not on another screen's picture.
+# deleted; it is pinned by its checksum. Safe to run again.
+#
+# Then the film's first frame, as intro.poster: the server pulls it out of
+# the film itself (POST /v1/media/poster). The splash lifts onto that still
+# and the film takes over under it on the same frame, so the hand-over from
+# the splash cannot blink. The film is not touched.
+#
+# It also removes the seed's intro.desktop and an old onboarding.hero.still,
+# which nothing reads.
 set -u
 API=${API:-http://127.0.0.1:8770}
 ENVF=tulmi/.env
@@ -38,4 +43,5 @@ curl -sS -X POST "$API/v1/media/present?key=intro" -H "x-admin-secret: $SECRET" 
   -H "content-type: application/json" --data "$PRESENT" | grep -q '"ok":true' || { echo "intro: presentation refused"; exit 1; }
 curl -sS -o /dev/null -X DELETE "$API/v1/media/intro.desktop" -H "x-admin-secret: $SECRET"
 curl -sS -o /dev/null -X DELETE "$API/v1/media/onboarding.hero.still" -H "x-admin-secret: $SECRET"
-echo "done"
+curl -sS -X POST "$API/v1/media/poster?key=intro" -H "x-admin-secret: $SECRET" \
+  | grep -q '"ok":true' && echo "intro.poster  ok" || { echo "intro.poster: failed"; exit 1; }

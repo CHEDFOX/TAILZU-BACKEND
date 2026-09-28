@@ -50,6 +50,21 @@ describe("the You tab's posters", () => {
     expect(JSON.stringify(haptics.on)).toContain('"screenId":"haptics"');
   });
 
+  it("training gets the microphone to itself on iPhone, and Flow comes back after", () => {
+    const you = screen("personality");
+    const go = JSON.stringify(you.actions.enterTraining);
+    expect(go.indexOf('"endFlowSession"')).toBeGreaterThan(-1);
+    expect(go.indexOf('"endFlowSession"')).toBeLessThan(go.indexOf('"training_live"'));
+    expect(go).toContain('"platform":"ios"');
+    const live = screen("training_live");
+    const out = JSON.stringify(live.root.on.onDisappear);
+    expect(out).toContain('"armFlowSession"');
+    expect(out).toContain('"flag":"kb.flow.armOnForeground"');
+    // The unhandled save is still made, once, only when the arrow did not.
+    expect(out).toContain('"falsy":"leaving"');
+    expect(out).toContain("/v1/train/portrait");
+  });
+
   it("the training card shows its way in and answers a tap anywhere on it", () => {
     const root = screen("personality").root;
     const card = find(root, (o) => o.type === "Stack" && o.style?.height === 220 && o.style?.backgroundColor === "#000000")[0];

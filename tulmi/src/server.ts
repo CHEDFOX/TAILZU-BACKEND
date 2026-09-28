@@ -1004,6 +1004,9 @@ function readTurns(raw: unknown): { turns: ConverseTurn[] } | { error: string } 
   return turns.length ? { turns } : { error: "Missing 'turns'" };
 }
 
+/** Said when the conversation model has nothing usable to say twice running. */
+const CONVERSE_KEEP_GOING = "Go on, I'm listening.";
+
 app.post("/v1/train/converse", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
   if (!user) {
@@ -1016,15 +1019,21 @@ app.post("/v1/train/converse", { config: AUTHED_RL }, async (req, reply) => {
   if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
   try {
     const personality = await getPersonality(user);
-    const text = await converseTurn(read.turns, { personality, language: body.language });
-    if (!text) {
-      return reply.code(500).send({ code: "cleanup_failed", message: "Couldn't answer that" });
-    }
+    // A reply the meta filter drops ("could you say that again?") used to be
+    // a 500, and a 500 ends the spoken session: the person talks into a
+    // screen that has stopped. One more try, then a line that keeps them
+    // talking — a conversation that pauses is better than one that dies.
+    const text = (await converseTurn(read.turns, { personality, language: body.language }))
+      || (await converseTurn(read.turns, { personality, language: body.language }))
+      || CONVERSE_KEEP_GOING;
+    // The MODEL's words are not the person's: nothing they dictated is in
+    // this reply, so none of it comes off their allowance. Recorded at zero
+    // words so the call still shows in usage.
     await recordUsage({
       user,
       source: "rest",
       audioSeconds: 0,
-      words: countWords(text),
+      words: 0,
       model: getConfig().CLEANUP_MODEL,
     });
     return reply.send({ reply: text });

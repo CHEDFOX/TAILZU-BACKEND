@@ -535,3 +535,82 @@ export function registerMediaCompressRoute(
     });
   });
 }
+
+/**
+ * A CLIP'S FIRST FRAME, AS A STILL.
+ *
+ *   POST /v1/media/poster?key=intro    → intro.poster
+ *
+ * A clip cannot be prefetched into its player, and a player that has not
+ * decoded a frame draws nothing. So a screen that must open ON a clip — the
+ * opening, straight off the splash — shows this still first, the clip parked
+ * under it on the same frame, and steps the still away once the clip runs.
+ * The splash waits on the still, which an image cache can hold.
+ *
+ * Lossless: the still and the clip's first frame have to be the same picture,
+ * or the hand-over between them is a change of its own. Registered under
+ * `<key>.poster` and never touches the clip's own entry.
+ */
+export function registerMediaPosterRoute(
+  app: FastifyInstance,
+  opts: {
+    mediaDir: string;
+    publicUrlPrefix: string;
+    adminSecret: string;
+    registry: () => MediaRegistry;
+    writeRegistry: (r: MediaRegistry) => Promise<void>;
+    checkAdmin: (req: unknown, expected: string) => { ok: boolean; reason?: string };
+  },
+): void {
+  const { mediaDir, publicUrlPrefix, adminSecret, registry, writeRegistry, checkAdmin } = opts;
+
+  app.post("/v1/media/poster", async (req, reply) => {
+    const guard = checkAdmin(req, adminSecret);
+    if (!guard.ok) {
+      return reply.code(guard.reason === "not_configured" ? 503 : 401).send({ code: guard.reason });
+    }
+    if (!(await hasFfmpeg())) {
+      return reply.code(503).send({
+        code: "ffmpeg_missing",
+        message: "ffmpeg is not installed in this image — rebuild the backend to get it.",
+      });
+    }
+    const key = ((req as { query?: Record<string, string> }).query?.key ?? "").trim();
+    if (!key) return reply.code(400).send({ code: "bad_request", message: "Missing 'key'." });
+    const entry = registry()[key];
+    if (!entry) return reply.code(404).send({ code: "not_found", message: `No media at '${key}'.` });
+    if (!isVideo(entry.contentType ?? "")) {
+      return reply.code(400).send({ code: "bad_request", message: `'${key}' is not a clip.` });
+    }
+
+    const src = path.join(mediaDir, entry.url.split("/").pop() ?? "");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "tulmi-poster-"));
+    try {
+      const out = path.join(dir, "poster.webp");
+      await run("ffmpeg", [
+        "-y", "-loglevel", "error", "-i", src, "-frames:v", "1",
+        "-c:v", "libwebp", "-lossless", "1", "-compression_level", "6", out,
+      ], { timeout: 60_000 });
+      const buf = await fs.readFile(out);
+      const sha = crypto.createHash("sha256").update(buf).digest("hex");
+      const name = `${sha}.webp`;
+      await fs.writeFile(path.join(mediaDir, name), buf);
+      const posterKey = `${key}.poster`;
+      const next = registry();
+      next[posterKey] = {
+        url: `${publicUrlPrefix}/${name}`,
+        contentType: "image/webp",
+        size: buf.length,
+        uploadedAt: Date.now(),
+        key: posterKey,
+      };
+      await writeRegistry(next);
+      return reply.send({ ok: true, key: posterKey, url: next[posterKey].url, size: buf.length });
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ code: "poster_failed", message: "Could not read a frame from that clip." });
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+    }
+  });
+}

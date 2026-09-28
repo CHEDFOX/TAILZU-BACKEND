@@ -3043,6 +3043,21 @@ const INTRO_PLAY_MS = Number(process.env.INTRO_PLAY_MS ?? 2600);
  *  runs a couple of seconds and reports completion long before either number
  *  matters — this only ever bounds the failure. */
 const INTRO_VIDEO_MAX_MS = Number(process.env.INTRO_VIDEO_MAX_MS ?? 5000);
+/**
+ * THE OPENING FILM'S FIRST FRAME HOLDS THE SPLASH'S PLACE until the film runs.
+ *
+ * A clip cannot be prefetched into its player, and a player that has not yet
+ * decoded a frame draws nothing — so lifting the splash onto a film that is
+ * still loading shows the empty ground for a beat: the mark vanishes and
+ * comes back, the blink. With `intro.poster` uploaded (POST
+ * /v1/media/poster?key=intro, the film's own first frame, lossless) the
+ * opening is: the still, the film parked under it on that same frame; after
+ * HOLD the film plays; after OVERLAP more the still steps away. Every step
+ * shows the same picture, so no step can be seen — and the splash waits on
+ * the still, which an image cache holds. HOLD is the film's time to load.
+ */
+const INTRO_POSTER_HOLD_MS = Number(process.env.INTRO_POSTER_HOLD_MS ?? 600);
+const INTRO_POSTER_OVERLAP_MS = Number(process.env.INTRO_POSTER_OVERLAP_MS ?? 100);
 const INTRO_BUILT_IN = (process.env.INTRO_BUILT_IN ?? "true").toLowerCase() !== "false";
 /** Round window on black. Shared by the player and its still fallback so the
  *  two can never drift apart. */
@@ -3427,6 +3442,10 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
   // can play the file.
   const shown = presentMedia(introEntry);
   const holdMs = shown.holdMs ?? INTRO_PLAY_MS;
+  // The film's first frame as a still, when one has been made (see
+  // INTRO_POSTER_HOLD_MS). Only for a film: a gif or a still has no load gap.
+  const posterEntry = introIsVideo && introKey ? reg[`${introKey}.poster`] : undefined;
+  const poster = posterEntry?.url ? mediaSource(posterEntry.url, posterEntry.contentType) : null;
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "intro",
@@ -3435,7 +3454,7 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
     // window — critical for the intro to feel like a splash-adjacent
     // cinematic instead of "media inside the app's content area."
     hideChrome: true,
-    state: {},
+    state: poster ? { introPlaying: false, introPoster: true } : {},
     actions: {
       // replace: the intro is a step in a sequence, not somewhere to return
       // to. Pushing left it under the permission screen, so an edge swipe from
@@ -3479,7 +3498,11 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           // extra black.
           // The morph's length comes OUT of the hold, so the opening still
           // lasts what INTRO_PLAY_MS says rather than that plus an animation.
-          { kind: "delay", ms: introIsVideo ? (shown.holdMs ?? INTRO_VIDEO_MAX_MS) : holdMs },
+          // Held by the poster's HOLD too: the film starts that much later, so
+          // the screen moves on that much later and the film still plays whole.
+          { kind: "delay", ms: introIsVideo
+            ? (shown.holdMs ?? INTRO_VIDEO_MAX_MS) + (poster ? INTRO_POSTER_HOLD_MS : 0)
+            : holdMs },
           // Draw the plate into the mic, then navigate. Inlined rather than
           // named: a sequence entry is an action, and no action kind calls
           // another by name.
@@ -3551,7 +3574,28 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
             // put it — which is what the launch screen never agrees with.
             ...shown.place,
           },
+          // Parked on its first frame under the poster until the poster's
+          // timer lets it run. No poster, no bind: it plays as it always has.
+          ...(poster ? { bind: { playing: "introPlaying" } } : {}),
           on: { onComplete: "done" },
+        } as Node] : []),
+        // The film's first frame, over the film, in the film's own box and
+        // placement. The splash lifts onto this; the film takes over under it.
+        ...(poster ? [{
+          type: "Stack",
+          style: shown.style,
+          visibleIf: { truthy: "introPoster" },
+          on: { onAppear: { kind: "sequence", actions: [
+            { kind: "delay", ms: INTRO_POSTER_HOLD_MS },
+            { kind: "setState", path: "introPlaying", value: true },
+            { kind: "delay", ms: INTRO_POSTER_OVERLAP_MS },
+            { kind: "setState", path: "introPoster", value: false },
+          ] } },
+          children: [{
+            type: "Image",
+            style: FILL_STYLE,
+            props: { source: poster, contentFit: shown.fit, ...shown.place },
+          }],
         } as Node] : []),
         // Image path — a GIF, drawn by expo-image, which plays it natively.
         //
@@ -5021,6 +5065,25 @@ function neuralField(dim: number, growth: number, bind?: Record<string, string>)
  */
 const KEYBOARD_GROUND = "#00000005";
 
+/**
+ * THE CONVERSATION GETS THE MICROPHONE TO ITSELF.
+ *
+ * On iPhone the keyboard's background session (Flow) holds a microphone
+ * engine of its own, armed at every launch (kb.flow.armOnForeground). The
+ * spoken training screen opens a second one the moment its greeting ends,
+ * and when the two meet, the conversation's can come up recording silence:
+ * the greeting is spoken, nothing the person says is ever heard, and the
+ * screen waits for a pause that never comes. So Flow is stood down on the
+ * way in and armed again on the way out, however the screen is left. Android
+ * never arms Flow, so neither step runs there.
+ */
+const QUIET_FLOW_FOR_TRAINING: ActionRef = { kind: "condition", if: { platform: "ios" }, then: { kind: "endFlowSession" } };
+const REARM_FLOW_AFTER_TRAINING: ActionRef = {
+  kind: "condition",
+  if: { all: [{ platform: "ios" }, { flag: "kb.flow.armOnForeground" }] },
+  then: { kind: "armFlowSession" },
+};
+
 export const TRAINING_UI = {
   entry: {
     /**
@@ -5608,7 +5671,7 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
         {
           kind: "condition",
           if: { flag: "train.realtime" },
-          then: { kind: "navigate", screenId: "training_live" },
+          then: { kind: "sequence", actions: [QUIET_FLOW_FOR_TRAINING, { kind: "navigate", screenId: "training_live" }] },
           else: { kind: "navigate", screenId: "training_chat" },
         },
       ] },
@@ -6401,18 +6464,6 @@ function trainingLiveScreen(ctx: ScreenContext): ScreenResponse {
           onError: "saveErr",
         },
       ] },
-      /** The other way out. Fires on unmount, and does nothing if the arrow
-       *  already handled it. */
-      saveIfUnhandled: {
-        kind: "condition",
-        if: { falsy: "leaving" },
-        then: {
-          kind: "callEndpoint",
-          method: "POST",
-          path: "/v1/train/portrait",
-          body: { turns: "$state.turns" },
-        },
-      },
       // The flip is the confirmation. A toast on top of it is the same fact
       // said twice, in two voices, one of them grey.
       saved: { kind: "sequence", actions: [
@@ -6436,7 +6487,20 @@ function trainingLiveScreen(ctx: ScreenContext): ScreenResponse {
     root: {
       type: "Stack",
       // The save happens here for anyone who leaves without using the arrow.
-      on: { onDisappear: "saveIfUnhandled" },
+      // And Flow, stood down on the way in, is armed again on the way out.
+      on: { onDisappear: { kind: "sequence", actions: [
+        {
+          kind: "condition",
+          if: { falsy: "leaving" },
+          then: {
+            kind: "callEndpoint",
+            method: "POST",
+            path: "/v1/train/portrait",
+            body: { turns: "$state.turns" },
+          },
+        },
+        REARM_FLOW_AFTER_TRAINING,
+      ] } },
       style: { flex: 1, backgroundColor: "#000000", justifyContent: "flex-end", alignItems: "center" },
       children: [
         // Draws nothing. Mounting it starts the conversation; leaving the
@@ -7630,7 +7694,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
         {
           kind: "condition",
           if: { flag: "train.realtime" },
-          then: { kind: "navigate", screenId: "training_live" },
+          then: { kind: "sequence", actions: [QUIET_FLOW_FOR_TRAINING, { kind: "navigate", screenId: "training_live" }] },
           else: { kind: "navigate", screenId: "training_chat" },
         },
       ] },

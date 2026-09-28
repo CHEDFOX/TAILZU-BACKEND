@@ -24,7 +24,7 @@
  *     the file on disk (compacting is a separate op).
  */
 import { FastifyInstance } from "fastify";
-import { registerMediaCompressRoute, registerMediaRetimeRoute } from "./mediaCompress.js";
+import { registerMediaCompressRoute, registerMediaPosterRoute, registerMediaRetimeRoute } from "./mediaCompress.js";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -377,6 +377,8 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
     checkAdmin: (req: unknown, expected: string) => checkAdmin(req, expected),
   };
   registerMediaCompressRoute(app, processing);
+  // A clip's first frame as a still, for a screen that must open on the clip.
+  registerMediaPosterRoute(app, processing);
   // Same plumbing, different job: /compress makes a file smaller, /retime makes
   // it faster. Kept apart because compression discards a result that is not
   // smaller, which would throw away every retime that is not also a saving.
