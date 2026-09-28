@@ -37,6 +37,13 @@ describe("the You tab's posters", () => {
     expect(withUrl(screen("personality", { personality: { activePresetId: "pirate" } }).root, "https://m/any.png").length).toBe(1);
   });
 
+  it("a voice card wearing a poster grows to give the sentence its band", () => {
+    const cardOf = (root: any) => find(root, (o) => o.type === "Stack" && o.style?.borderRadius === 22 && JSON.stringify(o.on ?? {}).includes('"voices"'))[0];
+    expect(cardOf(screen("personality").root).style.height).toBe(168);
+    reg({ "you.voice.signature": entry("https://m/zu.png", "image/png") });
+    expect(cardOf(screen("personality").root).style.height).toBe(220);
+  });
+
   it("a clip at you.train replaces the live field, muted and looping, with a still behind it", () => {
     const before = screen("personality").root;
     expect(find(before, (o) => o.type === "NeuralField").length).toBe(1);

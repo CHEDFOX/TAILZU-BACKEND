@@ -6732,6 +6732,12 @@ export const YOU_UI = {
    */
   voiceCard: {
     height: 168,
+    /**
+     * Its height when it wears a poster (you.voice.<id>). The poster carries
+     * the voice's own sentence above the card's words, and 168 leaves no band
+     * for one: the kicker starts 55% down. 220 does, at 1200×750.
+     */
+    posterHeight: 220,
     radius: 22,
     /** The card's own dark, a step up off the ground so it reads as an object
      *  on it rather than a panel cut into it. */
@@ -7370,7 +7376,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
       ] } },
       props: { pressOpacity: 0.85 },
       style: {
-        height: V.height, borderRadius: V.radius, overflow: "hidden",
+        height: art ? V.posterHeight : V.height, borderRadius: V.radius, overflow: "hidden",
         marginBottom: V.marginBottom, justifyContent: "flex-end",
         padding: V.padding, backgroundColor: V.background,
         borderWidth: 1, borderColor: V.border,
