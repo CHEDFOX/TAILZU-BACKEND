@@ -2952,6 +2952,15 @@ function heroSlot(opts: {
    * renderer reads urls.
    */
   videoByKey?: boolean;
+  /**
+   * A still behind a clip: the fallback a bundle without Video draws, and —
+   * served as a url — the file a first launch's splash waits on. The mic
+   * step's still is the one the opening was tuned against: while the splash
+   * waited on it, the opening film painted its first frame underneath, so
+   * the splash lifted straight onto the film. Waiting on nothing lifted it a
+   * beat early, which is the blink.
+   */
+  stillKey?: string;
 }): Node {
   const override = HERO_OVERRIDES[opts.id];
   if (override) return { ...override, style: { ...opts.style, ...(override.style ?? {}) } };
@@ -2984,6 +2993,7 @@ function heroSlot(opts: {
     const fill = FILL_STYLE;
     const clip = isVideo && opts.videoByKey && opts.formFactor !== "desktop"
       ? { key: live[0] } : frames[0];
+    const still = isVideo && opts.stillKey && reg[opts.stillKey]?.url ? mediaSrc(opts.stillKey) : clip;
     const inner: Node = isVideo
       ? {
           type: "Video",
@@ -2996,7 +3006,7 @@ function heroSlot(opts: {
           fallback: {
             type: "Image",
             style: fill,
-            props: { source: clip, contentFit: fit },
+            props: { source: still, contentFit: fit },
           },
         } as Node
       : {
@@ -9873,8 +9883,10 @@ function onboardingVoice(ctx?: ScreenContext): ScreenResponse {
             id: "onboarding",
             mediaKeys: ["onboarding.hero"],
             formFactor: ctx?.formFactor,
-            // The screen a first launch's splash waits on: see videoByKey.
+            // The screen a first launch's splash waits on: see videoByKey and
+            // stillKey. The still is restore-opening.sh's to set.
             videoByKey: true,
+            stillKey: "onboarding.hero.still",
             style: { width: HERO_PARTICLE, height: HERO_PARTICLE, borderRadius: HERO_PARTICLE / 2 },
             builtIn: {
               // The mark comes apart in vacuum, holds, and springs back

@@ -88,7 +88,7 @@ describe("the onboarding films", () => {
     expect(holder("https://m/keys-android.mp4").visibleIf).toEqual({ platform: "android" });
   });
 
-  it("the splash never waits on the mic step's clip: it goes by key, so the opening lifts on its own film", () => {
+  it("the splash waits on the mic step's still, never its clip, so the opening lifts onto its own film", () => {
     reg({ intro: entry("https://m/splash.mp4", "video/mp4"), "onboarding.hero": entry("https://m/mic.mp4", "video/mp4") });
     const root = screen("onboarding", { onboarded: false }).root;
     // What the app's first-run splash gate collects: every http url under a source.
@@ -105,6 +105,13 @@ describe("the onboarding films", () => {
     const v = find(root, (o) => o.type === "Video")[0];
     expect(v.props.source).toEqual({ key: "onboarding.hero" });
     expect(v.fallback.props.source).toEqual({ key: "onboarding.hero" });
+    // With the still the opening was tuned against, the splash waits on that
+    // still and nothing else on this screen, exactly as it did.
+    reg({ intro: entry("https://m/splash.mp4", "video/mp4"), "onboarding.hero": entry("https://m/mic.mp4", "video/mp4"), "onboarding.hero.still": entry("https://m/still.webp", "image/webp") });
+    const dressed = screen("onboarding", { onboarded: false }).root;
+    urls.length = 0; walk(dressed);
+    expect(urls).toEqual(["https://m/still.webp"]);
+    expect(find(dressed, (o) => o.type === "Video")[0].props.source).toEqual({ key: "onboarding.hero" });
     // A still stays a url: prefetching an image is what keeps it from popping in.
     reg({ "onboarding.hero": entry("https://m/mic.webp", "image/webp") });
     const still = find(screen("onboarding", { onboarded: false }).root, (o) => o.type === "Image")[0];
