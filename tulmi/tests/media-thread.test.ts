@@ -95,10 +95,11 @@ describe("the onboarding films", () => {
     expect(box.style.height).toBeUndefined();
   });
 
-  it("the opening is the in-app mic's own media: nothing in the seed may replace it", () => {
-    reg({ "mic.animation": entry("https://m/mic.gif", "image/gif") });
-    expect(withUrl(screen("intro", { formFactor: "desktop" }).root, "https://m/mic.gif").length).toBeGreaterThan(0);
-    expect(withUrl(screen("intro").root, "https://m/mic.gif").length).toBeGreaterThan(0);
+  it("the opening is the splash film under intro, on every device, and the seed never touches it", () => {
+    reg({ intro: entry("https://m/splash.mp4", "video/mp4"), "intro.desktop": entry("https://m/other.mp4", "video/mp4") });
+    expect(withUrl(screen("intro", { formFactor: "desktop" }).root, "https://m/splash.mp4").length).toBeGreaterThan(0);
+    expect(withUrl(screen("intro").root, "https://m/splash.mp4").length).toBeGreaterThan(0);
+    expect((buildBootstrap({ onboarded: true, formFactor: "desktop" }).flags as any)["intro.media"]).toEqual({ url: "https://m/splash.mp4" });
     const seed = JSON.parse(fs.readFileSync(new URL("../media-seed/manifest.json", import.meta.url), "utf8")) as Array<{ key: string }>;
     expect(seed.filter((e) => /^intro/.test(e.key) || /^mic\.animation/.test(e.key))).toEqual([]);
   });

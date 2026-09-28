@@ -26,6 +26,8 @@ python3 - "$SEED/manifest.json" "$ONLY" <<'EOF' | while IFS=$'\t' read -r file k
 import json, sys
 for e in json.load(open(sys.argv[1])):
     if sys.argv[2] and e["key"] != sys.argv[2]: continue
+    # The opening (the splash film under intro) is set by hand, never seeded.
+    if e["key"].startswith(("intro", "mic.animation")): continue
     print("\t".join([e["file"], e["key"], e["contentType"], json.dumps(e.get("present") or {})]))
 EOF
   printf '%-28s ' "$key"
