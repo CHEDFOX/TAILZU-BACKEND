@@ -10008,11 +10008,14 @@ function onboardingKeyboard(): ScreenResponse {
       // only thing at the top of the screen and should read like it.
       { type: "Heading", props: { content: "Bring it everywhere." },
         style: { fontSize: 34, lineHeight: 42, color: "$color.text", marginBottom: 21 } },
-      // The keyboard's own picture, between the headline and the walk: upload
-      // to `hero.onboarding_keyboard`. A 4:3 card the width of the column;
-      // nothing at all until something is uploaded. Phones only: a window
-      // never reaches this screen (pickInitialScreenId).
-      ...screenHero("onboarding_keyboard", { width: "100%", aspectRatio: 4 / 3, radius: 28, marginBottom: 21 }),
+      // The keyboard's own picture, between the headline and the walk, per
+      // device like the walk itself: `hero.onboarding_keyboard.card` on iOS,
+      // `hero.onboarding_keyboard.card.android` on Android (each shows its
+      // own system tray giving way to Tailzu's). A 4:3 card the width of
+      // the column; nothing at all until something is uploaded. Phones only:
+      // a window never reaches this screen (pickInitialScreenId).
+      ...screenHero("onboarding_keyboard.card", { width: "100%", aspectRatio: 4 / 3, radius: 28, marginBottom: 21, onlyOn: "ios" }),
+      ...screenHero("onboarding_keyboard.card.android", { width: "100%", aspectRatio: 4 / 3, radius: 28, marginBottom: 21, onlyOn: "android" }),
       // The walk through Settings, shown rather than described — and one
       // recording per platform, because the two walks share no screen. An iOS
       // recording shown to an Android user is worse than no recording: it

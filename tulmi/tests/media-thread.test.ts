@@ -57,10 +57,13 @@ describe("the You tab's posters", () => {
 });
 
 describe("the onboarding films", () => {
-  it("the keyboard step gets a hero of its own at hero.onboarding_keyboard", () => {
+  it("the keyboard step gets a hero per device, each shown only to its own", () => {
     expect(find(screen("onboarding_keyboard").root, (o) => o.type === "Video").length).toBe(0);
-    reg({ "hero.onboarding_keyboard": entry("https://m/keys.mp4", "video/mp4") });
-    expect(find(screen("onboarding_keyboard").root, (o) => o.type === "Video" && o.props?.source?.url === "https://m/keys.mp4").length).toBe(1);
+    reg({ "hero.onboarding_keyboard.card": entry("https://m/keys-ios.mp4", "video/mp4"), "hero.onboarding_keyboard.card.android": entry("https://m/keys-android.mp4", "video/mp4") });
+    const root = screen("onboarding_keyboard").root;
+    const holder = (url: string) => find(root, (o) => (o.children ?? []).some((c: any) => c.type === "Video" && c.props?.source?.url === url))[0];
+    expect(holder("https://m/keys-ios.mp4").visibleIf).toEqual({ platform: "ios" });
+    expect(holder("https://m/keys-android.mp4").visibleIf).toEqual({ platform: "android" });
   });
 
   it("the mic step's card takes its size from the upload", () => {
