@@ -2943,24 +2943,15 @@ function heroSlot(opts: {
   formFactor?: string;
   /**
    * Hand a clip over by its registry key, not its url. For the screen a first
-   * launch's splash waits on (the one after the opening): the splash holds
-   * until every url on that screen is prefetched, and a prefetch cannot warm
-   * a clip for the video player anyway, so a url there only kept the splash
-   * up while the opening film played underneath it — the blink between the
-   * splash and the film. The app publishes the registry before any screen
-   * draws, so a key resolves as surely as a url. Phones only: the desktop
-   * renderer reads urls.
+   * launch's splash also waits on (the one after the opening): the splash
+   * holds until every url on it is prefetched, and a prefetch cannot warm a
+   * clip for the video player, so a url there only held the splash for
+   * nothing. The splash waits on the opening film's own first frame instead
+   * (the app's media/firstFrame). The app publishes the registry before any
+   * screen draws, so a key resolves as surely as a url. Phones only: the
+   * desktop renderer reads urls.
    */
   videoByKey?: boolean;
-  /**
-   * A still behind a clip: the fallback a bundle without Video draws, and —
-   * served as a url — the file a first launch's splash waits on. The mic
-   * step's still is the one the opening was tuned against: while the splash
-   * waited on it, the opening film painted its first frame underneath, so
-   * the splash lifted straight onto the film. Waiting on nothing lifted it a
-   * beat early, which is the blink.
-   */
-  stillKey?: string;
 }): Node {
   const override = HERO_OVERRIDES[opts.id];
   if (override) return { ...override, style: { ...opts.style, ...(override.style ?? {}) } };
@@ -2993,7 +2984,6 @@ function heroSlot(opts: {
     const fill = FILL_STYLE;
     const clip = isVideo && opts.videoByKey && opts.formFactor !== "desktop"
       ? { key: live[0] } : frames[0];
-    const still = isVideo && opts.stillKey && reg[opts.stillKey]?.url ? mediaSrc(opts.stillKey) : clip;
     const inner: Node = isVideo
       ? {
           type: "Video",
@@ -3006,7 +2996,7 @@ function heroSlot(opts: {
           fallback: {
             type: "Image",
             style: fill,
-            props: { source: still, contentFit: fit },
+            props: { source: clip, contentFit: fit },
           },
         } as Node
       : {
@@ -6798,15 +6788,15 @@ export const YOU_UI = {
    * one accent, and a second would split the eye.
    */
   /**
-   * DICTIONARY AND LANGUAGES, AS CARDS. The same object as the voice card
-   * and the training card, so the tab is one column of one shape: a kicker,
-   * the value set large, and a line about it. A poster (you.dictionary,
-   * you.languages) fills each when uploaded. Haptics stays a row: it is a
-   * switch, not a thing about the person.
+   * DICTIONARY, LANGUAGES AND HAPTICS, AS CARDS. The same object as the
+   * voice card and the training card, so the tab is one column of one shape:
+   * a kicker, the value set large, and a line about it. A poster
+   * (you.dictionary, you.languages, you.haptics) fills each when uploaded.
    */
   settingCard: {
     dictionaryLine: "Names and words it spells your way.",
     languagesLine: "Say it in any of them. It writes the way you type.",
+    hapticsLine: "Feel every key as you type.",
     /** The value's size when it runs long (three languages, say). */
     longValueSize: 26,
     longAfter: 14,
@@ -6835,6 +6825,9 @@ export const YOU_UI = {
     learnedSize: 12,
     ctaHeight: 46,
     ctaGap: 14,
+    /** The button's word when the card is a tap. "SLIDE TO BEGIN" belongs to
+     *  the drag; on a button it names a gesture that is not there. */
+    tapLabel: "BEGIN",
     marginBottom: 20,
     /**
      * A TAP, NOT A DRAG. The drag needs the screen to hold its touches, and
@@ -6843,31 +6836,6 @@ export const YOU_UI = {
      * drag back at that cost.
      */
     swipe: false,
-  },
-  /**
-   * A ROW — one setting, what it is set to, and the way in.
-   *
-   * No art. The art belonged to the deck, and four blurred strips stacked on
-   * top of each other is four mud smears fighting; at row height it was never
-   * a picture anyway, only a colour wash. A setting should look like a
-   * setting: a name, a value, a chevron, and enough air that the eye runs
-   * down the values in one pass.
-   */
-  row: {
-    /**
-     * ROOM, because there is room. The tab carries five things and ends
-     * two-thirds of the way down the screen — rows pinched to 58pt bought
-     * space nothing was waiting for, and read as a list that had been
-     * squeezed to fit something below it.
-     */
-    height: 68,
-    radius: 18,
-    background: "rgba(255,255,255,0.045)",
-    paddingHorizontal: 18,
-    gap: 12,
-    labelSize: 15,
-    valueSize: 14.5,
-    chevron: 7,
   },
  /** The deck on the tab root. */
   deck: {
@@ -7456,7 +7424,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
     };
   };
 
-  /** Dictionary and Languages: the voice card's shape, no accent dot. */
+  /** Dictionary, Languages and Haptics: the voice card's shape, no accent dot. */
   const settingCard = (kicker: string, value: string, line: string, screen: string, poster: string): Node => {
     const V = u.voiceCard, S = u.settingCard;
     const art = mediaFill(poster, ctx.formFactor);
@@ -7508,14 +7476,31 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
       : T.learnedNone;
     const canDrag = T.swipe === true
       && (ctx.can?.has("ScreenHoldTouches") === true || ctx.formFactor === "desktop");
+    // THE GLASS PILL, READABLE. The button used the drag's smoked glass as
+    // its fill and kept the primary variant's label, which is dark for a
+    // white pill: dark on dark glass, so the card showed no way in at all.
+    // The pill's own white label, weight and tracking now come with it.
     const button: Node = {
       type: "Button",
-      props: { label: ui.cta.label, variant: "primary" },
+      props: {
+        label: canDrag ? ui.cta.label : T.tapLabel, variant: "primary",
+        labelColor: ui.cta.color, fontSize: ui.cta.fontSize, fontWeight: ui.cta.weight,
+        tracking: ui.cta.tracking, paddingVertical: 0,
+      },
       on: { onPress: "enterTraining" },
-      style: { backgroundColor: ui.cta.background, height: T.ctaHeight },
+      style: {
+        backgroundColor: ui.cta.background, height: T.ctaHeight,
+        borderWidth: ui.cta.borderWidth, borderColor: ui.cta.borderColor,
+      },
     };
     return {
       type: "Stack",
+      // A tap anywhere on the card is the way in, as on every other card —
+      // not only on the pill. A drag keeps the card still so it can be held.
+      ...(canDrag ? {} : {
+        on: { onPress: "enterTraining" },
+        props: { pressOpacity: 0.85 },
+      }),
       style: {
         height: T.height, borderRadius: T.radius, overflow: "hidden",
         marginBottom: T.marginBottom, justifyContent: "flex-end",
@@ -7559,37 +7544,6 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
               fallback: button,
             }
           : button,
-      ],
-    };
-  };
-
-  /** A setting: what it is, what it is set to, and the way in. */
-  const youRow = (label: string, value: string, screen: string): Node => {
-    const R = u.row;
-    return {
-      type: "Stack",
-      on: { onPress: { kind: "sequence", actions: [
-        { kind: "haptic", style: "selection" },
-        { kind: "navigate", screenId: screen },
-      ] } },
-      props: { pressOpacity: 0.7 },
-      style: {
-        height: R.height, borderRadius: R.radius,
-        backgroundColor: R.background, marginBottom: R.gap,
-        paddingHorizontal: R.paddingHorizontal,
-        flexDirection: "row", alignItems: "center",
-      },
-      children: [
-        { type: "Text", props: { content: label },
-          style: { fontSize: R.labelSize, fontWeight: "500", color: u.text } },
-        { type: "Stack", style: { flex: 1 } },
-        { type: "Text", props: { content: value },
-          style: { fontSize: R.valueSize, color: u.textDim } },
-        { type: "SVG",
-          props: { viewBox: "0 0 24 24", d: "M9 5 L15.5 12 L9 19",
-                   fill: "none", stroke: u.textFaint, strokeWidth: 2.2,
-                   strokeLinecap: "round", strokeLinejoin: "round" },
-          style: { width: R.chevron * 2, height: R.chevron * 2, marginLeft: 10 } },
       ],
     };
   };
@@ -7731,7 +7685,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
                 trainCard(),
                 settingCard("Dictionary", wordCount > 0 ? `${wordCount} words` : "None yet", u.settingCard.dictionaryLine, "dictionary", "you.dictionary"),
                 settingCard("Languages", langLabel, u.settingCard.languagesLine, "languages", "you.languages"),
-                youRow("Haptics", hapticsOn ? "On" : "Off", "haptics"),
+                settingCard("Haptics", hapticsOn ? "On" : "Off", u.settingCard.hapticsLine, "haptics", "you.haptics"),
               ],
             },
           ],
@@ -9883,10 +9837,8 @@ function onboardingVoice(ctx?: ScreenContext): ScreenResponse {
             id: "onboarding",
             mediaKeys: ["onboarding.hero"],
             formFactor: ctx?.formFactor,
-            // The screen a first launch's splash waits on: see videoByKey and
-            // stillKey. The still is restore-opening.sh's to set.
+            // The screen a first launch's splash waits on: see videoByKey.
             videoByKey: true,
-            stillKey: "onboarding.hero.still",
             style: { width: HERO_PARTICLE, height: HERO_PARTICLE, borderRadius: HERO_PARTICLE / 2 },
             builtIn: {
               // The mark comes apart in vacuum, holds, and springs back

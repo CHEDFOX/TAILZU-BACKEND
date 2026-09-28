@@ -38,18 +38,32 @@ describe("the You tab's posters", () => {
     expect(withUrl(screen("personality", { personality: { activePresetId: "pirate" } }).root, "https://m/any.png").length).toBe(1);
   });
 
-  it("dictionary and languages are cards of the voice card's size, with posters of their own", () => {
+  it("dictionary, languages and haptics are cards of the voice card's size, with posters of their own", () => {
     const cards = (root: any) => find(root, (o) => o.type === "Stack" && o.style?.borderRadius === 22 && o.style?.height === 220);
-    expect(cards(screen("personality").root).length).toBe(4);
-    reg({ "you.dictionary": entry("https://m/dict.png", "image/png"), "you.languages": entry("https://m/lang.png", "image/png") });
+    expect(cards(screen("personality").root).length).toBe(5);
+    reg({ "you.dictionary": entry("https://m/dict.png", "image/png"), "you.languages": entry("https://m/lang.png", "image/png"), "you.haptics": entry("https://m/hap.webp", "image/webp") });
     const root = screen("personality").root;
     expect(withUrl(root, "https://m/dict.png").length).toBe(1);
     expect(withUrl(root, "https://m/lang.png").length).toBe(1);
+    expect(withUrl(root, "https://m/hap.webp").length).toBe(1);
+    const haptics = cards(root).find((c: any) => JSON.stringify(c).includes('"Haptics"'));
+    expect(JSON.stringify(haptics.on)).toContain('"screenId":"haptics"');
+  });
+
+  it("the training card shows its way in and answers a tap anywhere on it", () => {
+    const root = screen("personality").root;
+    const card = find(root, (o) => o.type === "Stack" && o.style?.height === 220 && o.style?.backgroundColor === "#000000")[0];
+    expect(card.on).toEqual({ onPress: "enterTraining" });
+    const button = find(card, (o) => o.type === "Button")[0];
+    expect(button.on).toEqual({ onPress: "enterTraining" });
+    // A white label on the glass, not the primary variant's dark one.
+    expect(button.props.labelColor).toBe("#FFFFFF");
+    expect(button.props.label).toBe("BEGIN");
   });
 
   it("the voice card and the training card are one height, poster or not", () => {
     const voiceOf = (root: any) => find(root, (o) => o.type === "Stack" && o.style?.borderRadius === 22 && JSON.stringify(o.on ?? {}).includes('"voices"'))[0];
-    const trainOf = (root: any) => find(root, (o) => o.type === "Stack" && o.style?.borderRadius === 22 && !o.on && o.style?.backgroundColor === "#000000")[0];
+    const trainOf = (root: any) => find(root, (o) => o.type === "Stack" && o.style?.borderRadius === 22 && o.on?.onPress === "enterTraining" && o.style?.backgroundColor === "#000000")[0];
     const bare = screen("personality").root;
     expect(voiceOf(bare).style.height).toBe(trainOf(bare).style.height);
     reg({ "you.voice.signature": entry("https://m/zu.png", "image/png") });
@@ -88,7 +102,7 @@ describe("the onboarding films", () => {
     expect(holder("https://m/keys-android.mp4").visibleIf).toEqual({ platform: "android" });
   });
 
-  it("the splash waits on the mic step's still, never its clip, so the opening lifts onto its own film", () => {
+  it("the splash never waits on the mic step's clip: it goes by key", () => {
     reg({ intro: entry("https://m/splash.mp4", "video/mp4"), "onboarding.hero": entry("https://m/mic.mp4", "video/mp4") });
     const root = screen("onboarding", { onboarded: false }).root;
     // What the app's first-run splash gate collects: every http url under a source.
@@ -105,13 +119,6 @@ describe("the onboarding films", () => {
     const v = find(root, (o) => o.type === "Video")[0];
     expect(v.props.source).toEqual({ key: "onboarding.hero" });
     expect(v.fallback.props.source).toEqual({ key: "onboarding.hero" });
-    // With the still the opening was tuned against, the splash waits on that
-    // still and nothing else on this screen, exactly as it did.
-    reg({ intro: entry("https://m/splash.mp4", "video/mp4"), "onboarding.hero": entry("https://m/mic.mp4", "video/mp4"), "onboarding.hero.still": entry("https://m/still.webp", "image/webp") });
-    const dressed = screen("onboarding", { onboarded: false }).root;
-    urls.length = 0; walk(dressed);
-    expect(urls).toEqual(["https://m/still.webp"]);
-    expect(find(dressed, (o) => o.type === "Video")[0].props.source).toEqual({ key: "onboarding.hero" });
     // A still stays a url: prefetching an image is what keeps it from popping in.
     reg({ "onboarding.hero": entry("https://m/mic.webp", "image/webp") });
     const still = find(screen("onboarding", { onboarded: false }).root, (o) => o.type === "Image")[0];

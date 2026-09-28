@@ -1,21 +1,18 @@
 #!/usr/bin/env bash
-# Put the app's opening back exactly as it was before the media seed:
-#
-#   intro                  the splash film, with the presentation set on 11 Sep
-#   onboarding.hero.still  the mic step's old still (it was onboarding.hero).
-#                          A first launch's splash waits on it, and while it
-#                          waits the splash film paints its first frame — that
-#                          wait is what made splash-to-film seamless.
+# Put the app's opening back exactly as it was before the media seed: the
+# splash film under `intro`, with the presentation set on 11 Sep.
 #
 #   cd ~/tulmi && ./tulmi/scripts/restore-opening.sh
 #
-# Both files are still in the media volume, because nothing there is ever
-# deleted; each is pinned by its checksum. Safe to run again.
+# The file is still in the media volume, because nothing there is ever
+# deleted; it is pinned by its checksum. Safe to run again. It also removes
+# the seed's intro.desktop and an old onboarding.hero.still, which nothing
+# reads: the splash waits on the film's own first frame now (the app's
+# media/firstFrame), not on another screen's picture.
 set -u
 API=${API:-http://127.0.0.1:8770}
 ENVF=tulmi/.env
 SPLASH=d95d046ea5ea641eef83cc20c323e84c84936f612f199bfe1e8cbfcb730e1f5d
-STILL=1236d353ac90f95bb072aad7114436faab65e14787c5223d4fd20340acea8661
 PRESENT='{"shape":"full","fit":"cover","holdMs":5300,"nudgeX":0.0347,"nudgeY":0.0154,"boxWidth":480,"boxHeight":1080,"aspect":0.444444,"background":"#0B0A0D"}'
 
 [ -f "$ENVF" ] || { echo "run this from ~/tulmi"; exit 1; }
@@ -40,4 +37,5 @@ curl -sS -o /dev/null -X POST "$API/v1/media/present?key=intro&reset=true" -H "x
 curl -sS -X POST "$API/v1/media/present?key=intro" -H "x-admin-secret: $SECRET" \
   -H "content-type: application/json" --data "$PRESENT" | grep -q '"ok":true' || { echo "intro: presentation refused"; exit 1; }
 curl -sS -o /dev/null -X DELETE "$API/v1/media/intro.desktop" -H "x-admin-secret: $SECRET"
-put "$STILL" webp image/webp onboarding.hero.still || exit 1
+curl -sS -o /dev/null -X DELETE "$API/v1/media/onboarding.hero.still" -H "x-admin-secret: $SECRET"
+echo "done"

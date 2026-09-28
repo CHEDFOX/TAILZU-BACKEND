@@ -152,6 +152,14 @@
     }
   },
   {
+    "file": "you-haptics.webp",
+    "key": "you.haptics",
+    "contentType": "image/webp",
+    "present": {
+      "fit": "cover"
+    }
+  },
+  {
     "file": "keys-ios.mp4",
     "key": "hero.onboarding_keyboard.card",
     "contentType": "video/mp4",
