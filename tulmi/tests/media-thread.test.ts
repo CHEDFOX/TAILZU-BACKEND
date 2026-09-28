@@ -88,6 +88,29 @@ describe("the onboarding films", () => {
     expect(holder("https://m/keys-android.mp4").visibleIf).toEqual({ platform: "android" });
   });
 
+  it("the splash never waits on the mic step's clip: it goes by key, so the opening lifts on its own film", () => {
+    reg({ intro: entry("https://m/splash.mp4", "video/mp4"), "onboarding.hero": entry("https://m/mic.mp4", "video/mp4") });
+    const root = screen("onboarding", { onboarded: false }).root;
+    // What the app's first-run splash gate collects: every http url under a source.
+    const urls: string[] = [];
+    const walk = (n: any) => {
+      if (!n || typeof n !== "object") return;
+      if (Array.isArray(n)) return n.forEach(walk);
+      const src = n.props?.source; const u = typeof src === "string" ? src : src?.url;
+      if (typeof u === "string" && /^https?:/.test(u)) urls.push(u);
+      for (const k of Object.keys(n)) if (k !== "style") walk(n[k]);
+    };
+    walk(root);
+    expect(urls).not.toContain("https://m/mic.mp4");
+    const v = find(root, (o) => o.type === "Video")[0];
+    expect(v.props.source).toEqual({ key: "onboarding.hero" });
+    expect(v.fallback.props.source).toEqual({ key: "onboarding.hero" });
+    // A still stays a url: prefetching an image is what keeps it from popping in.
+    reg({ "onboarding.hero": entry("https://m/mic.webp", "image/webp") });
+    const still = find(screen("onboarding", { onboarded: false }).root, (o) => o.type === "Image")[0];
+    expect(still.props.source.url).toBe("https://m/mic.webp");
+  });
+
   it("the mic step's card takes its size from the upload", () => {
     reg({ "onboarding.hero": entry("https://m/mic.mp4", "video/mp4", { shape: "card", boxWidth: 300, aspectRatio: 1, radius: 32 }) });
     const box = find(screen("onboarding").root, (o) => o.type === "Stack" && (o.children ?? []).some((c: any) => c.type === "Video"))[0];

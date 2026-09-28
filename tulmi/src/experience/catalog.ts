@@ -2941,6 +2941,17 @@ function heroSlot(opts: {
   defaultShape?: "full" | "card";
   /** A window prefers "<key>.desktop" (mediaKeyFor). */
   formFactor?: string;
+  /**
+   * Hand a clip over by its registry key, not its url. For the screen a first
+   * launch's splash waits on (the one after the opening): the splash holds
+   * until every url on that screen is prefetched, and a prefetch cannot warm
+   * a clip for the video player anyway, so a url there only kept the splash
+   * up while the opening film played underneath it — the blink between the
+   * splash and the film. The app publishes the registry before any screen
+   * draws, so a key resolves as surely as a url. Phones only: the desktop
+   * renderer reads urls.
+   */
+  videoByKey?: boolean;
 }): Node {
   const override = HERO_OVERRIDES[opts.id];
   if (override) return { ...override, style: { ...opts.style, ...(override.style ?? {}) } };
@@ -2971,19 +2982,21 @@ function heroSlot(opts: {
       (entry?.contentType ?? "").toLowerCase().startsWith("video/") ||
       /\.(mp4|mov|m4v|webm)(\?|$)/i.test(entry?.url ?? "");
     const fill = FILL_STYLE;
+    const clip = isVideo && opts.videoByKey && opts.formFactor !== "desktop"
+      ? { key: live[0] } : frames[0];
     const inner: Node = isVideo
       ? {
           type: "Video",
           style: fill,
           // A hero is ambient: it plays itself, forever, in silence. Muted is
           // not politeness — an unmuted autoplay is blocked outright.
-          props: { source: frames[0], autoplay: true, loop: true, muted: true, contentFit: fit },
+          props: { source: clip, autoplay: true, loop: true, muted: true, contentFit: fit },
           // A bundle without Video draws nothing at all; a still frame is a
           // worse hero than the clip and a far better one than a hole.
           fallback: {
             type: "Image",
             style: fill,
-            props: { source: frames[0], contentFit: fit },
+            props: { source: clip, contentFit: fit },
           },
         } as Node
       : {
@@ -9860,6 +9873,8 @@ function onboardingVoice(ctx?: ScreenContext): ScreenResponse {
             id: "onboarding",
             mediaKeys: ["onboarding.hero"],
             formFactor: ctx?.formFactor,
+            // The screen a first launch's splash waits on: see videoByKey.
+            videoByKey: true,
             style: { width: HERO_PARTICLE, height: HERO_PARTICLE, borderRadius: HERO_PARTICLE / 2 },
             builtIn: {
               // The mark comes apart in vacuum, holds, and springs back
