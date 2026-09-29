@@ -84,15 +84,16 @@ describe("the You tab's posters", () => {
     expect(button.props.label).toBe("BEGIN");
   });
 
-  it("a clip at you.train replaces the live field, muted and looping, with a still behind it", () => {
-    const before = screen("personality").root;
-    expect(find(before, (o) => o.type === "NeuralField").length).toBe(1);
-    reg({ "you.train": entry("https://m/train.mp4", "video/mp4") });
-    const root = screen("personality").root;
-    expect(find(root, (o) => o.type === "NeuralField").length).toBe(0);
-    const v = find(root, (o) => o.type === "Video")[0];
-    expect(v.props).toMatchObject({ autoplay: true, loop: true, muted: true });
-    expect(v.fallback.type).toBe("Image");
+  it("the training card always draws the live field, whatever is uploaded at you.train", () => {
+    // The uploaded art carried a sentence of its own ("I don't know how you
+    // sound yet…") that showed through behind the card's text. The field has
+    // no words, and grows with the person.
+    for (const media of [{}, { "you.train": entry("https://m/train.mp4", "video/mp4") }, { "you.train": entry("https://m/train.png", "image/png") }]) {
+      reg(media as never);
+      const root = screen("personality").root;
+      expect(find(root, (o) => o.type === "NeuralField").length).toBe(1);
+      expect(withUrl(root, "https://m/train.mp4").length + withUrl(root, "https://m/train.png").length).toBe(0);
+    }
   });
 });
 

@@ -94,25 +94,6 @@ function mediaKeyFor(key: string, formFactor?: string): string {
 }
 
 /**
- * A poster or a clip filling a card, behind whatever the card says. Null when
- * nothing is uploaded, so the card keeps the look it was designed with. The
- * card clips it (overflow hidden + its own radius); a clip is ambient: muted,
- * looping, and a still where the bundle has no Video.
- */
-function mediaFill(key: string, formFactor?: string): Node | null {
-  const entry = getMediaRegistryFn?.()?.[mediaKeyFor(key, formFactor)];
-  if (!entry?.url) return null;
-  const source = mediaSource(entry.url, entry.contentType);
-  const fit = entry.present?.fit ?? "cover";
-  const isVideo = (entry.contentType ?? "").toLowerCase().startsWith("video/")
-    || /\.(mp4|mov|m4v|webm)(\?|$)/i.test(entry.url);
-  const still: Node = { type: "Image", style: { ...FILL_STYLE }, props: { source, contentFit: fit } };
-  return isVideo
-    ? { type: "Video", style: { ...FILL_STYLE }, props: { source, autoplay: true, loop: true, muted: true, contentFit: fit }, fallback: still } as Node
-    : still;
-}
-
-/**
  * A media source shaped to survive the SHIPPED Video node.
  *
  * That node does this before handing the source to the player:
@@ -7721,7 +7702,12 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
       children: [
         // The network it grows, faint: a texture under the words, not a picture.
         { type: "Stack", style: { ...FILL_STYLE, opacity: 0.32 },
-          children: [mediaFill("you.train", ctx.formFactor) ?? neuralField(T.fieldDim, fieldGrowth(ctx.personality), undefined, FIELD_SIGNAL_AT_REST)] },
+          // Always the live field, never an upload. The art uploaded at
+          // you.train was rendered with words of its own ("I don't know how
+          // you sound yet…"), and at this opacity they showed through behind
+          // the card's real text. The field has no words, and it is theirs:
+          // it grows with what has been learned.
+          children: [neuralField(T.fieldDim, fieldGrowth(ctx.personality), undefined, FIELD_SIGNAL_AT_REST)] },
         ...(T.kicker ? [label(T.kicker, { color: "rgba(243,226,198,0.62)" })] : []),
         {
           type: "Stack",
