@@ -44,11 +44,15 @@ describe("the You tab's posters", () => {
     expect(pirate.style.backgroundColor).toBe("#106A60");
   });
 
-  it("dictionary, languages and haptics are quiet outlined cards, each one tap from its screen", () => {
+  it("dictionary, languages and haptics are cards in their own colours, each one tap from its screen", () => {
     reg({ "you.dictionary": entry("https://m/dict.png", "image/png"), "you.languages": entry("https://m/lang.png", "image/png"), "you.haptics": entry("https://m/hap.webp", "image/webp") });
     const root = screen("personality").root;
-    const cards = find(root, (o) => o.type === "Stack" && o.style?.borderWidth === 1 && o.style?.borderRadius === 20);
+    const fills = ["#16463D", "#4B2240", "#253A5C"];
+    const cards = find(root, (o) => o.type === "Stack" && o.style?.borderRadius === 20 && fills.includes(o.style?.backgroundColor));
     expect(cards.length).toBe(3);
+    // Three colours, not one stamped three times, and none of them amber.
+    expect(new Set(cards.map((c: any) => c.style.backgroundColor)).size).toBe(3);
+    expect(JSON.stringify(cards)).not.toMatch(/E8A23C|232,\s*162,\s*60/i);
     for (const [name, id] of [["Dictionary", "dictionary"], ["Languages", "languages"], ["Haptics", "haptics"]]) {
       const card = cards.find((c: any) => JSON.stringify(c).includes(`"${name}"`));
       expect(JSON.stringify(card.on), name).toContain(`"screenId":"${id}"`);

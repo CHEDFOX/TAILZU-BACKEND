@@ -482,6 +482,9 @@ export const SITE_UI = {
   },
 } as const;
 
+/** The You tab's three small cards (see settingCard). */
+export const YOU_CARD_FILL = { dictionary: "#16463D", languages: "#4B2240", haptics: "#253A5C" } as const;
+
 const FILL_STYLE = {
   position: "absolute" as const,
   top: 0, left: 0, right: 0, bottom: 0,
@@ -1112,10 +1115,9 @@ export const THEME: ThemeTokens = {
     inputBg: "#0e0e12",
     border: "rgba(255,255,255,0.10)",
     // WHITE primary — matches the original Plutto-style design (black
-    // surface with white primary CTAs). The brand accent (used for key
-    // press flashes, refined-text word highlight, mic recording state)
-    // is the warm amber sampled from mic.animation — not a punchy
-    // pure orange. See ACCENT_AMBER.
+    // surface with white primary CTAs). The brand accent is the warm amber
+    // sampled from mic.animation, and it is reserved for what is live right
+    // now (recording, listening, a live voice session). See ACCENT_AMBER.
     primary: "#FFFFFF",
     text: "rgba(255,255,255,0.96)",
     body: "rgba(255,255,255,0.74)",
@@ -3391,14 +3393,14 @@ function languagesScreen(ctx: ScreenContext): ScreenResponse {
         ],
       },
       // The tick is the whole state display: present means selected. Rendered
-      // from `langs`, so it follows the tap without a refetch. Amber, not the
-      // theme's primary — primary is WHITE here, and a white tick on a pill
-      // reads as another piece of the label rather than as the answer.
+      // from `langs`, so it follows the tap without a refetch. Pale ink, in
+      // the label's own face colour and heavy — not amber: a chosen language
+      // is a setting, not something live.
       {
         type: "Text",
         visibleIf: { contains: ["langs", l.value] },
         props: { content: "✓" },
-        style: { fontSize: 17, fontWeight: "800", color: YOU_UI.accent },
+        style: { fontSize: 17, fontWeight: "800", color: PHONE_LOOK.ink },
       },
     ],
   });
@@ -3622,7 +3624,9 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
           // root's onAppear) rather than waiting on an onComplete that will
           // never arrive. Getting this wrong strands the user on a black
           // window with no header and no tabs to leave by.
-          props: { background: "#FFFFFF", circular: true },
+          // The particles' colour, named rather than left to the component's
+          // default (which was amber): ink, because the plate here is white.
+          props: { background: "#FFFFFF", circular: true, color: "#1B1712" },
         } as Node]),
         // NOTHING is painted under the media.
         //
@@ -4169,7 +4173,7 @@ function paywallScreen(
       // about which one is being chosen — it is just the loudest thing a row
       // can wear, worn by everything. Drawn on press, it says exactly that and
       // nothing the rest of the time.
-      pressBorderColor: plan.free ? "rgba(255,255,255,0.28)" : ACCENT_AMBER,
+      pressBorderColor: plan.free ? "rgba(255,255,255,0.28)" : "#F3E2C6",
       pressBorderWidth: 1,
     },
     style: {
@@ -4180,9 +4184,10 @@ function paywallScreen(
       paddingVertical: 13,
       paddingHorizontal: 15,
       marginBottom: 8,
-      // The paid rows are the way through, so they carry the brand — now in
-      // the fill alone, which is quieter and still unmistakable.
-      backgroundColor: plan.free ? "rgba(255,255,255,0.05)" : "rgba(232,162,60,0.12)",
+      // The paid rows are the way through, so they carry a warm pale-ink
+      // fill — quiet, and still set apart from the free row. Not amber:
+      // amber is for what is live, and a price is not.
+      backgroundColor: plan.free ? "rgba(255,255,255,0.05)" : "rgba(243,226,198,0.08)",
     },
     children: [
       {
@@ -4216,12 +4221,13 @@ function paywallScreen(
         type: "Stack",
         style: {
           width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center",
-          backgroundColor: plan.free ? "rgba(255,255,255,0.10)" : ACCENT_AMBER,
+          backgroundColor: plan.free ? "rgba(255,255,255,0.10)" : "#F3E2C6",
         },
         children: [{
           type: "SVG",
           props: {
             viewBox: "0 0 24 24", d: "M9 5 L16 12 L9 19", fill: "none",
+            // The ground's ink on the pale circle.
             stroke: plan.free ? "rgba(255,255,255,0.6)" : "#0B0B0D", strokeWidth: 2.6,
           },
           style: { width: 11, height: 11 },
@@ -4577,7 +4583,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       // Dimmed to sit behind the Train page's words, as on the phone's card.
       update: updateFor(ctx.appVersion, ctx.os, DESKTOP_LATEST),
       field: screenId === "desk_train" && ctx.can?.has("DeskField")
-        ? neuralField(0.5, fieldGrowth(ctx.personality))
+        ? neuralField(0.5, fieldGrowth(ctx.personality), undefined, FIELD_SIGNAL_AT_REST)
         : undefined,
     });
   }
@@ -4766,10 +4772,10 @@ export const AUTH_UI = {
    * value, so this can be as small as one line.
    */
   pill: {
-    // A dimmer amber than the brand's own. Full #E8A23C is the brightest thing
-    // in a dark window by a distance and reads as a warning rather than an
-    // invitation; pulled down it still says "go" without shouting.
-    targetBackground: "#C9862B",
+    // Pale ink, not amber (not even a dimmed one): signing in is not
+    // something live, and amber is kept for what is. The dark icon on it
+    // still says "go".
+    targetBackground: "#F3E2C6",
     targetIconColor: "#000000",
     // What the empty pill says. The phones take their placeholder from the
     // field definition in the binary; the window reads these, so the one piece
@@ -5174,7 +5180,10 @@ export const NEURAL_FIELD = {
   /** The z the lens is focused on. Everything either side of it softens. */
   focal: 0.35,
   maxPulses: 700,
-  /** The one warm light: activity, and nothing else. */
+  /** The one warm light: activity, and nothing else. Amber, because the
+   *  field this default serves is the LIVE one (the training session, bound
+   *  to sessionState). Where the field is scenery — nothing live — its
+   *  placements pass FIELD_SIGNAL_AT_REST instead. */
   signal: [232, 162, 60],
   head: [255, 241, 214],
   regions: [
@@ -5218,11 +5227,20 @@ function fieldGrowth(p: Personality | undefined): number {
   return Math.max(0.18, Math.min(1, Number(g.toFixed(3))));
 }
 
-function neuralField(dim: number, growth: number, bind?: Record<string, string>): Node {
+/**
+ * The pulses' colour where the field is scenery rather than a live session:
+ * pale ink. Amber is for what is live right now (recording, listening, a
+ * voice session), and a field behind a title or on a card is not.
+ */
+const FIELD_SIGNAL_AT_REST = [243, 226, 198];
+
+/** `signal` overrides NEURAL_FIELD.signal — pass FIELD_SIGNAL_AT_REST for
+ *  every placement that is not the live session. */
+function neuralField(dim: number, growth: number, bind?: Record<string, string>, signal?: readonly number[]): Node {
   return {
     type: "NeuralField",
     ...(bind ? { bind } : {}),
-    props: { ...NEURAL_FIELD, alpha: NEURAL_FIELD.alpha * dim, growth },
+    props: { ...NEURAL_FIELD, alpha: NEURAL_FIELD.alpha * dim, growth, ...(signal ? { signal: [...signal] } : {}) },
     style: { ...FILL_STYLE },
     // A bundle without it draws nothing rather than a hole: the screens it
     // sits on are black, and black is what they were before it existed.
@@ -5269,12 +5287,12 @@ export const TRAINING_UI = {
     kickerSize: 9.5,
     kickerTracking: 3,
     /**
-     * BRIGHT WHITE, and it is the title that carries the brand instead.
+     * BRIGHT WHITE, over a title in pale ink.
      *
      * The usual arrangement — a dimmed kicker over a white headline — makes the
-     * small line a caption on the big one. Swapping them makes the two lines a
-     * pair: white states the claim, amber answers it, and the eye lands on the
-     * amber because it is the only colour on the screen that is not the art.
+     * small line a caption on the big one. Here the two lines are a pair:
+     * white states the claim, the warm pale title answers it. Not amber —
+     * nothing on this screen is live.
      */
     kickerColor: "#FFFFFF",
     kickerGap: 16,
@@ -5291,12 +5309,11 @@ export const TRAINING_UI = {
     titleSize: 32,
     titleLineHeight: 38,
     /**
-     * The brand amber, and NOT THEME.color.primary — primary is WHITE on this
-     * black surface by design, so reaching for "the brand colour" through the
-     * theme gets white and the change looks like it did nothing. The same trap
-     * caught the Languages heading and the Stats tick.
+     * Pale ink, the warm neutral of the palette — NOT the brand amber, which
+     * is reserved for what is live (recording, listening), and NOT
+     * THEME.color.primary, which is plain white on this black surface.
      */
-    titleColor: ACCENT_AMBER,
+    titleColor: "#F3E2C6",
     /**
      * LIGHT SANS, NOT THE APP SERIF.
      *
@@ -5390,16 +5407,17 @@ export const TRAINING_UI = {
       /** The disc that travels. Starts on the LEFT. Plain — nothing drawn
        *  inside it; set `dot` above 0 to put a mark back. */
       disc: 46,
-      /** Pale, and deliberately NOT amber: this is the thing in your hand,
-       *  and the amber is where it is going. Two ambers and the journey has
-       *  no direction. */
+      /** Glass, and deliberately NOT the target's solid pale: this is the
+       *  thing in your hand, and the solid is where it is going. Two of the
+       *  same and the journey has no direction. */
       discBackground: "rgba(255,255,255,0.20)",
       dot: 0,
       dotColor: "#FFFFFF",
-      /** Where it lands, in the brand amber itself now that the pill is glass
-       *  rather than black — it warms up as the disc approaches, so the end of
-       *  the journey is visible from the start of it. */
-      targetBackground: ACCENT_AMBER,
+      /** Where it lands, in pale ink now that the pill is glass rather than
+       *  black — it brightens as the disc approaches, so the end of the
+       *  journey is visible from the start of it. Not amber: nothing here is
+       *  live yet. */
+      targetBackground: "#F3E2C6",
       targetDotColor: "#000000",
       /** How far along counts as committed, as a share of the run. */
       threshold: 0.62,
@@ -5443,8 +5461,6 @@ export const TRAINING_UI = {
     ring: 150,
     ringThickness: 22,
     text: "#FFFFFF",
-    /** The one warm thing on the panel — today, and nothing else. */
-    accent: ACCENT_AMBER,
     textDim: "rgba(255,255,255,0.56)",
     textFaint: "rgba(255,255,255,0.34)",
     tile: "rgba(255,255,255,0.055)",
@@ -5473,15 +5489,16 @@ export const TRAINING_UI = {
       askText: "rgba(255,255,255,0.9)",
       mineBg: "#FFFFFF",
       mineText: "#000000",
-      noteText: ACCENT_AMBER,
-      noteBg: "rgba(232,162,60,0.1)",
-      noteBorder: "rgba(232,162,60,0.26)",
+      // Pale ink, not amber: a note on the thread is not something live.
+      noteText: "#F3E2C6",
+      noteBg: "rgba(243,226,198,0.1)",
+      noteBorder: "rgba(243,226,198,0.26)",
       variantBg: "rgba(255,255,255,0.05)",
       variantBorder: "rgba(255,255,255,0.1)",
       variantText: "rgba(255,255,255,0.92)",
       angleText: "rgba(255,255,255,0.4)",
-      pickedBg: "rgba(232,162,60,0.13)",
-      pickedBorder: ACCENT_AMBER,
+      pickedBg: "rgba(243,226,198,0.13)",
+      pickedBorder: "#F3E2C6",
       labelText: "rgba(255,255,255,0.38)",
       radius: 16,
       gap: 11,
@@ -5728,8 +5745,8 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
    * claim about TIME. This is the only shape on the tab that carries it: a
    * run of days, the gaps included, because a gap is information too.
    *
-   * Today is the amber one — the sacred rule, unchanged: amber marks the thing
-   * still in play.
+   * Today is the one at full strength. Not amber: amber is only for what is
+   * live right now (recording, listening), and a bar of counted days is not.
    */
   const feed = (values: number[]): Node => {
     const max = Math.max(1, ...values);
@@ -5744,7 +5761,7 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
           // A floor, so a day with nothing is a mark rather than a hole. The
           // row is a run of days; a missing bar reads as missing data.
           height: `${Math.max(7, Math.round((v / max) * 100))}%`,
-          backgroundColor: i === last ? st.accent : st.text,
+          backgroundColor: st.text,
           opacity: i === last ? 1 : v === 0 ? 0.12 : 0.34 + (v / max) * 0.3,
         },
       })),
@@ -5861,7 +5878,7 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
         // hero is the network itself, dimmed back to scenery so the title and
         // the control read over it. It is already firing before anyone
         // touches the screen, because it is already trained.
-        neuralField(TRAINING_UI.entry.fieldDim, fieldGrowth(ctx.personality)),
+        neuralField(TRAINING_UI.entry.fieldDim, fieldGrowth(ctx.personality), undefined, FIELD_SIGNAL_AT_REST),
         // The scrim over it, and under everything else.
         {
           type: "Gradient",
@@ -6102,7 +6119,9 @@ function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
             targetApp: "WhatsApp",
             language: "auto",
             size: 38,
-            background: "#E8A23C",
+            // Pale ink at rest, not amber: the mark's own motion is what says
+            // it is listening.
+            background: "#F3E2C6",
             iconIdle: micIdle,
           },
           // micError echoes the real failure ($event) — a permission denial or
@@ -6296,15 +6315,17 @@ function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
                   type: "Stack",
                   style: {
                     width: 22, height: 22, borderRadius: 11, overflow: "hidden",
-                    backgroundColor: ACCENT_AMBER, alignItems: "center", justifyContent: "center",
+                    // Pale ink, not amber: generating is waiting, not live.
+                    backgroundColor: "#F3E2C6", alignItems: "center", justifyContent: "center",
                   },
                   children: [
                     // Static under-layer: the three-bar wave mark, so an old
                     // bundle with no Video still shows the brand and not a dot.
+                    // In the dark ground's ink, to read on the pale circle.
                     { type: "Stack", style: { direction: "row", gap: 1.5, alignItems: "center" }, children: [
-                      { type: "Stack", style: { width: 1.5, height: 4, borderRadius: 1, backgroundColor: "#FFFFFF" } },
-                      { type: "Stack", style: { width: 1.5, height: 8, borderRadius: 1, backgroundColor: "#FFFFFF" } },
-                      { type: "Stack", style: { width: 1.5, height: 4, borderRadius: 1, backgroundColor: "#FFFFFF" } },
+                      { type: "Stack", style: { width: 1.5, height: 4, borderRadius: 1, backgroundColor: "#0F0D0B" } },
+                      { type: "Stack", style: { width: 1.5, height: 8, borderRadius: 1, backgroundColor: "#0F0D0B" } },
+                      { type: "Stack", style: { width: 1.5, height: 4, borderRadius: 1, backgroundColor: "#0F0D0B" } },
                     ] },
                     {
                       type: "Video",
@@ -6850,6 +6871,9 @@ function trainingLiveScreen(ctx: ScreenContext): ScreenResponse {
  */
 export const YOU_UI = {
   ground: "#0B0B0D",
+  /** The brand amber, for what is live right now (recording, listening) —
+   *  which nothing on You or its sub-screens is, so nothing there uses it;
+   *  the tests check for its absence by this name. */
   accent: ACCENT_AMBER,
   /** Ink ON the amber block — the ground and the ink swap roles up there. */
   onAccent: "#0B0B0D",
@@ -7025,8 +7049,8 @@ export const YOU_UI = {
    * card is the Train screen's own parts at card size: the live network it
    * grows, the two lines, what it has learned so far, and the same way in.
    *
-   * The title is white, not amber. On this tab the voice card's dot is the
-   * one accent, and a second would split the eye.
+   * The title is white, not amber: nothing on this tab is live, so nothing
+   * on it is amber.
    */
   /**
    * DICTIONARY, LANGUAGES AND HAPTICS, AS CARDS. The same object as the
@@ -7305,21 +7329,21 @@ function helloCycle(): string[] {
  * done this yet" and a full one of a single grey slice is not.
  *
  * COLOURS ARE PER SURFACE, and that is why they are arguments rather than
- * constants. The You cards sit on solid amber and the Stats cards on black,
- * so the same slice needs near-black ink on one and amber on the other. Both
- * palettes are one hue at falling weight rather than a spectrum — a chart of
+ * constants: the same slice needs a different ink on a different ground. A
+ * palette is one hue at falling weight rather than a spectrum — a chart of
  * five unrelated colours invites the reader to look for meaning in the hue,
  * and here the only meaning is size.
  */
 type Slice = { label: string; value: number; color: string };
 
 /**
- * On the dark ground: the TOP slice in amber and the rest in pale at falling
- * weight. One amber per ring — the share that leads is the live one, and a
- * ring of five ambers was a ring where nothing led.
+ * On the dark ground: pale ink at falling weight, the TOP slice at full
+ * strength. No amber — a ring is a count, not something live — so the share
+ * that leads is marked by weight alone, and the steps are spaced evenly in
+ * lightness (full → 0.7 → 0.52 → …) so the first two slices still part.
  */
 const CHART_ON_DARK = [
-  ACCENT_AMBER, "rgba(243,226,198,0.78)", "rgba(243,226,198,0.52)",
+  "#F3E2C6", "rgba(243,226,198,0.7)", "rgba(243,226,198,0.52)",
   "rgba(243,226,198,0.32)", "rgba(243,226,198,0.16)",
 ];
 
@@ -7584,8 +7608,8 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
    *
    * What was said, in the hand, above what this voice makes of it: the one
    * thing anybody opening this tab wants to know about a voice is what it
-   * does to their words. The amber dot stays the one accent on the tab — this
-   * is the voice actually writing, the only live thing here.
+   * does to their words. The dot beside WRITING AS is in the card's own ink:
+   * a chosen voice is a setting, not something live, so no amber here.
    */
   const voiceCard = (name: string, tagline: string, voiceId: string): Node => {
     const room = PHONE_ROOMS[DESK_ROOMS[voiceId] ?? "d-w-zu"] ?? PHONE_ROOMS["d-w-zu"]!;
@@ -7611,7 +7635,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
               type: "Stack",
               style: { flexDirection: "row", alignItems: "center", gap: 7 },
               children: [
-                { type: "Stack", style: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: u.accent } },
+                { type: "Stack", style: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: room.ink } },
                 label("WRITING AS", { color: room.dim }),
               ],
             },
@@ -7634,18 +7658,24 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
    * Dictionary, Languages and Haptics: outlined, not filled — the two cards
    * above have colour; these are settings, and say so quietly.
    */
-  const settingCard = (kicker: string, body: Node[], screen: string, style: Record<string, unknown> = {}): Node => ({
+  /**
+   * THE THREE SMALL CARDS, EACH IN ITS OWN COLOUR. Outlines made them read as
+   * settings rows; a deep fill of their own makes each a place, beside the
+   * voice card and the training card's indigo. Deep so the pale ink carries,
+   * and none of them amber or saffron: nothing on them is live.
+   *   Dictionary  evergreen — a page the proof marks sit on
+   *   Languages   plum
+   *   Haptics     lapis
+   */
+  const settingCard = (kicker: string, body: Node[], screen: string, fill: string, style: Record<string, unknown> = {}): Node => ({
     type: "Stack",
     on: { onPress: { kind: "sequence", actions: [
       { kind: "haptic", style: "selection" },
       { kind: "navigate", screenId: screen },
     ] } },
     props: { pressOpacity: 0.7 },
-    style: {
-      borderRadius: 20, padding: 20, borderWidth: 1, borderColor: "rgba(243,226,198,0.1)",
-      ...style,
-    },
-    children: [label(kicker), ...body],
+    style: { borderRadius: 20, padding: 20, backgroundColor: fill, ...style },
+    children: [label(kicker, { color: "rgba(243,226,198,0.62)" }), ...body],
   });
 
   /**
@@ -7685,7 +7715,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
       children: [
         // The network it grows, faint: a texture under the words, not a picture.
         { type: "Stack", style: { ...FILL_STYLE, opacity: 0.32 },
-          children: [mediaFill("you.train", ctx.formFactor) ?? neuralField(T.fieldDim, fieldGrowth(ctx.personality))] },
+          children: [mediaFill("you.train", ctx.formFactor) ?? neuralField(T.fieldDim, fieldGrowth(ctx.personality), undefined, FIELD_SIGNAL_AT_REST)] },
         ...(T.kicker ? [label(T.kicker, { color: "rgba(243,226,198,0.62)" })] : []),
         {
           type: "Stack",
@@ -7857,17 +7887,17 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
                       : [t("None yet", "writtenLight", 17, { lineHeight: 24, color: PHONE_LOOK.ink2 })],
                   },
                   ...(wordCount > 0 ? [label(`${wordCount} words`, { marginTop: 14 })] : []),
-                ], "dictionary", { marginBottom: 14 }),
+                ], "dictionary", YOU_CARD_FILL.dictionary, { marginBottom: 14 }),
                 {
                   type: "Stack",
                   style: { flexDirection: "row", gap: 14 },
                   children: [
                     settingCard("Languages", [
                       t(langLabel, "writtenLight", 17, { lineHeight: 24, marginTop: 14 }),
-                    ], "languages", { flex: 1 }),
+                    ], "languages", YOU_CARD_FILL.languages, { flex: 1 }),
                     settingCard("Haptics", [
                       t(hapticsOn ? "On" : "Off", "writtenLight", 17, { lineHeight: 24, marginTop: 14 }),
-                    ], "haptics", { flex: 1 }),
+                    ], "haptics", YOU_CARD_FILL.haptics, { flex: 1 }),
                   ],
                 },
               ],
@@ -8048,7 +8078,9 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
         type: "Stack",
         style: { flexDirection: "row", alignItems: "center", gap: 7 },
         children: [
-          ...(live ? [{ type: "Stack", style: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: YOU_UI.accent } } as Node] : []),
+          // In the card's own ink, not amber: the voice that writes is a
+          // setting, not something live.
+          ...(live ? [{ type: "Stack", style: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: room.ink } } as Node] : []),
           label(live ? "WRITING AS YOU" : "YOUR OWN VOICE", { color: room.dim }),
         ],
       },
@@ -8950,10 +8982,11 @@ export const STATS_UI = {
    * allowance, which depletes while you use it; the streak, which is running
    * right now and breaks tomorrow if you stop; and today, which is not over.
    *
-   * So the amber is exactly the things you could still change by doing
-   * something today, and the eye picks them out without being told. A dead
-   * streak goes pale, which is the colour doing real work: whether it is amber
-   * IS whether it is alive.
+   * Of those, amber goes only to what is LIVE: the running streak — its
+   * figure, and today's square in the month while the run holds. The eye
+   * picks it out without being told. A dead streak goes pale (and today's
+   * square with it), which is the colour doing real work: whether it is
+   * amber IS whether it is alive.
    */
   accent: ACCENT_AMBER,
   rule: "rgba(243,226,198,0.10)",
@@ -9064,6 +9097,15 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
   const dotGrid = (values: number[]): Node => {
     const max = Math.max(1, ...values);
     const today = values.length - 1;
+    // Today is the one square in the month that is not finished, and it is
+    // at full strength whether or not anything has been written on it yet,
+    // because an empty today is an invitation and an empty Tuesday three
+    // weeks ago is not. It is amber ONLY while the streak is live (the same
+    // test as the Day streak figure); otherwise it is drawn in the card's own
+    // ink, ringed so it still reads as today — filled once written on.
+    const todayLook = streakLive
+      ? { backgroundColor: u.accent }
+      : { backgroundColor: (values[today] ?? 0) > 0 ? u.onCard : "transparent", borderWidth: 1.5, borderColor: u.onCard };
     return {
       type: "Stack",
       style: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
@@ -9071,11 +9113,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
         type: "Stack",
         style: {
           width: "12%", aspectRatio: 1, borderRadius: 4,
-          // Today is the one square in the month that is not finished, so it
-          // is the one square in the accent — and at full strength whether or
-          // not anything has been written on it yet, because an empty today
-          // is an invitation and an empty Tuesday three weeks ago is not.
-          backgroundColor: i === today ? u.accent : u.onCard,
+          ...(i === today ? todayLook : { backgroundColor: u.onCard }),
           opacity: i === today ? 1 : v === 0 ? 0.16 : v > max * 0.5 ? 1 : 0.5,
         },
       })),
@@ -9539,8 +9577,9 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
             // THE EASE, at the top. Words spoken against words written across
             // the entries below — the gap between the two is the work Tailzu
             // did, and the only number on this screen the user did not make
-            // themselves. Amber leads it, as everywhere else: the written
-            // half is the one in play.
+            // themselves. No amber here (none inside History): the written
+            // half is the full pale and leads it, the spoken half the faint
+            // one (see historyBreakdown).
             {
               type: "Stack",
               visibleIf: { truthy: "entries" },
@@ -9782,8 +9821,9 @@ function onboardingVoice(ctx?: ScreenContext): ScreenResponse {
       // the screen read composed instead of arbitrary.
       children: [
         // TWO HEADINGS, ONE SENTENCE. A Text paints one colour, so the last
-        // word cannot carry the brand while the rest stays white — the sentence
-        // has to be split to be two-toned. Both halves are Headings rather than
+        // word cannot take its own tone (warm pale ink, not amber — nothing is
+        // live here yet) while the rest stays white — the sentence has to be
+        // split to be two-toned. Both halves are Headings rather than
         // Texts so the serif family and tracking come from the same place they
         // always did, and only the colour differs.
         //
@@ -9808,7 +9848,7 @@ function onboardingVoice(ctx?: ScreenContext): ScreenResponse {
             {
               type: "Heading",
               props: { content: "written." },
-              style: { fontSize: 34, lineHeight: 42, color: ACCENT_AMBER, marginBottom: 0 },
+              style: { fontSize: 34, lineHeight: 42, color: "#F3E2C6", marginBottom: 0 },
             },
           ],
         },
@@ -10082,10 +10122,11 @@ function onboardingKeyboard(): ScreenResponse {
       {
         type: "Card",
         visibleIf: { platform: "ios" },
-        // Brand border. The steps ARE the screen — the button only opens a
-        // door — so the card is what the eye should land on, and an amber
-        // hairline says that without a fill loud enough to fight the headline.
-        style: { paddingVertical: 11, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: ACCENT_AMBER },
+        // A pale-ink border. The steps ARE the screen — the button only opens a
+        // door — so the card is what the eye should land on, and a hairline
+        // says that without a fill loud enough to fight the headline. Not
+        // amber: amber is for what is live.
+        style: { paddingVertical: 11, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: "rgba(243,226,198,0.7)" },
         children: [
           stepsTitle,
           step("1", "Open Settings, then tap General."),
@@ -10109,7 +10150,7 @@ function onboardingKeyboard(): ScreenResponse {
       {
         type: "Card",
         visibleIf: { platform: "android" },
-        style: { paddingVertical: 11, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: ACCENT_AMBER },
+        style: { paddingVertical: 11, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: "rgba(243,226,198,0.7)" },
         children: [
           stepsTitle,
           step("1", "Tap the button below — it opens your keyboard list."),
@@ -10699,7 +10740,9 @@ const HAPTICS_UI = {
   keyHeight: 42,
   gap: 6,
   radius: 5,
-  accent: ACCENT_AMBER,
+  /** A lit (chosen) key: pale ink, not amber — choosing is a setting, not
+   *  something live. The black litLabel reads on it. */
+  accent: "#F3E2C6",
   /** Unlit ordinary key, and unlit function key. */
   keyFill: "#FFFFFF8C",
   fnFill: "#FFFFFF26",
@@ -10744,14 +10787,16 @@ function androidKeyboardArt(): Node {
     type: "Stack",
     style: {
       flexDirection: "row", alignItems: "center", gap: 10,
-      backgroundColor: lit ? "rgba(232,162,60,0.12)" : rowBg,
+      // The row to turn on, lit in pale ink rather than amber: nothing in a
+      // settings list is live.
+      backgroundColor: lit ? "rgba(243,226,198,0.12)" : rowBg,
       borderRadius: 10, paddingHorizontal: 11, paddingVertical: 11,
-      ...(lit ? { borderWidth: 1, borderColor: "rgba(232,162,60,0.45)" } : {}),
+      ...(lit ? { borderWidth: 1, borderColor: "rgba(243,226,198,0.45)" } : {}),
     },
     children: [
       { type: "Stack", style: {
         width: 22, height: 22, borderRadius: 6,
-        backgroundColor: lit ? ACCENT_AMBER : "rgba(255,255,255,0.10)" } },
+        backgroundColor: lit ? "#F3E2C6" : "rgba(255,255,255,0.10)" } },
       { type: "Text", props: { content: name },
         style: { flex: 1, fontSize: 12, fontWeight: lit ? "700" : "500",
                  color: lit ? "#FFFFFF" : dim } },
@@ -10761,7 +10806,8 @@ function androidKeyboardArt(): Node {
           width: 34, height: 20, borderRadius: 10, padding: 2,
           justifyContent: "center",
           alignItems: on ? "flex-end" : "flex-start",
-          backgroundColor: on ? (lit ? ACCENT_AMBER : "rgba(255,255,255,0.28)")
+          // Lit: pale ink, kept under full strength so the white knob reads.
+          backgroundColor: on ? (lit ? "rgba(243,226,198,0.62)" : "rgba(255,255,255,0.28)")
                               : "rgba(255,255,255,0.12)" },
         children: [{ type: "Stack", style: {
           width: 16, height: 16, borderRadius: 8, backgroundColor: "#FFFFFF" } }] },
@@ -11201,8 +11247,9 @@ function wordsOutScreen(ctx: ScreenContext): ScreenResponse {
         paddingHorizontal: 28, paddingTop: 96, paddingBottom: 34,
       },
       children: [
+        // The theme's muted ink, not amber: running out is not something live.
         { type: "Text", props: { content: fill(w.kicker), variant: "overline" },
-          style: { color: ACCENT_AMBER } },
+          style: { color: THEME.color.muted } },
         { type: "Text", props: { content: fill(w.title), variant: "h1" } },
         { type: "Text", props: { content: fill(w.body), variant: "muted" },
           style: { marginTop: 12 } },
@@ -11332,7 +11379,7 @@ const makeToolsRow = (opts: {
   style: { gap: 8, height: 44, padding: 4 },
   visibleIf: opts.visibleIf,
   children: [
-    // Mic — LEFT side. Solid brand-orange circle. When idle it starts
+    // Mic — LEFT side. Solid neutral circle (see the rows' micBg). When idle it starts
     // dictation; when recording it stops + immediately fires runRefine so the
     // captured text moves straight into the refinement pipeline.
     //
@@ -11461,18 +11508,19 @@ const KEY_FILL_SPACE = "#FFFFFF8C";       // matches letter fill
 const KEY_FILL_RETURN = "#FFFFFF33";      // matches function fill
 const KEY_TEXT = "#FFFFFF";
 const KEY_TEXT_FUNCTION = "#FFFFFF";
-// Brand amber press color — every key (letter, function, shift, backspace,
-// return) flashes brand accent for ~120ms on tap. Fires on touch-down inside
-// the Swift renderer's keyTouchDown handler (theme.keyPressed → this hex),
-// then keyTouchUp animates back to the resting bg via UIView.animate. This is
-// the "typing has our color" identity moment — not a permanent tint.
-// Sampled from the mic.animation media so the whole app reads as one palette
-// family (previously #FF6B1F pure orange — too punchy against the amber
-// media, felt like two different brands sharing the screen).
-const KEY_PRESSED = "#E8A23C";            // BRAND_ACCENT — warm amber press feedback on every key
-// Brand amber kept only for functional signals — right now that's the
-// waveform bars during dictation. Colored feedback when the user is
-// speaking; invisible the rest of the time. Not a decorative accent.
+// Press color — every key (letter, function, shift, backspace, return)
+// flashes this for ~120ms on tap. Fires on touch-down inside the Swift
+// renderer's keyTouchDown handler (theme.keyPressed → this hex), then
+// keyTouchUp animates back to the resting bg via UIView.animate. Neutral, not
+// the brand amber: amber is reserved for what is live (listening), and a
+// keystroke is not. Pale ink over a dark backdrop; ink over a light one
+// (LIGHT_KEY_PRESSED). #RRGGBBAA, because the keyboards parse only hex.
+const KEY_PRESSED = "#F3E2C638";          // pale ink #F3E2C6 at 22%
+const LIGHT_KEY_PRESSED = "#1B171224";    // ink #1B1712 at 14%
+// Brand amber, here only as the brand mark's own colour for its hatched link
+// (BRAND_MARK below — shown only where the mark is drawn untinted; on the key
+// it wears the key's ink). Not a key, band or fill colour: amber is for what
+// is live, and the keyboard's live signal is the dictation dots.
 const BRAND_ACCENT = "#E8A23C";
 
 /**
@@ -11530,7 +11578,7 @@ const BRAND_MARK = {
  * cluster spans, fully lit at its core and soft at its edges. On a 36pt key
  * the squares and the link are the shapes big enough to read, which is why
  * the signal lives on them. `color` is what the shape wears while lit: pale
- * on the key's dark ink, so it reads on the amber circle.
+ * on the key's dark ink.
  *
  * The whole mark (`on: "mark"`) takes a slow `breathe`.
  *
@@ -12036,7 +12084,9 @@ export function buildKeyboardConfig(
               flex: 1,
               height: 22,
               bg: "#00000000",
-              fg: BRAND_ACCENT,
+              // The keyboard's own neutral grey (theme.accent) — reads on both
+              // appearances. Amber is only for what is live.
+              fg: "#8E8E93",
               fontSize: 12,
               fontWeight: "medium",
             },
@@ -12057,24 +12107,24 @@ export function buildKeyboardConfig(
       // is initialized to "dark" in Swift, so the eq check handles the default
       // case; no need for a redundant `falsy` OR (which forced two evaluations
       // per remount for zero real benefit and added latency to every keystroke).
-      // Dark-mode tools row. Mic = solid brand-orange with black icon target
-      // (icon renders white on current shipped Swift until the queued tint fix
-      // lands — orange bg still reads confidently). Tone pill = solid dark
-      // gray with a 1pt subtle border for definition.
+      // Dark-mode tools row. Mic at rest = a strong neutral circle: pale ink
+      // with the mark in the dark ground. Amber is only for what is live (the
+      // dictation dots while listening), never the resting key. Tone pill =
+      // solid dark gray with a 1pt subtle border for definition.
       makeToolsRow({
-        micBg: BRAND_ACCENT,
-        micFg: "#000000",
+        micBg: "#F3E2C6",
+        micFg: "#0F0D0B",
         toneBg: "#2C2C2E",         // Apple systemGray5 dark — solid, no melt into blur
         toneFg: "#FFFFFF",
         toneBorderColor: "#FFFFFF29",  // 16% white — barely-there border for shape definition
         visibleIf: { neq: ["state.appearance", "light"] },
       }),
-      // Light-mode tools row. Same brand orange (works in both modes). Tone
-      // pill is solid white with a light-gray border for definition against
-      // a light backdrop.
+      // Light-mode tools row. Mic at rest = the same strong neutral, inverted
+      // for a light backdrop: ink circle, white mark. Tone pill is solid white
+      // with a light-gray border for definition against a light backdrop.
       makeToolsRow({
-        micBg: BRAND_ACCENT,
-        micFg: "#000000",
+        micBg: "#1B1712",
+        micFg: "#FFFFFF",
         toneBg: "#FFFFFF",
         toneFg: "#000000",
         toneBorderColor: "#00000029",   // 16% black — subtle border on light
@@ -12421,9 +12471,8 @@ export function buildKeyboardConfig(
       key: LIGHT_KEY_FILL_LETTER,
       keyText: LIGHT_KEY_TEXT,
       accent: "#8E8E93",
-      // Same brand-orange press flash as dark mode — the moment of tap
-      // reads as the Tulmi accent regardless of appearance.
-      keyPressed: KEY_PRESSED,
+      // The dark rows' neutral press, in ink for a light backdrop.
+      keyPressed: LIGHT_KEY_PRESSED,
       keyRadius: 5,
       keyShadow: true,
     },
@@ -12643,7 +12692,7 @@ export function buildKeyboardConfig(
         // paints nothing.
         "kb.dictation.dim.fallbackAlpha": 0,
         "kb.dictation.dim.blocksTouches": true,
-        // "kb.shift.lockedColor": "#E8A23C",
+        // "kb.shift.lockedColor": "#8E8E93",
         // "kb.shift.longPressMs": 350,
         // "kb.shift.iconLowerOutlined": "arrowtriangle.down",
         // Double-tap shift → caps lock (system-keyboard behavior). Window in ms
@@ -12852,7 +12901,11 @@ export function buildKeyboardConfig(
         "kb.shift.iconUpperLocked": "arrowtriangle.up.fill",
         "kb.shift.iconUpperOutlined": "arrowtriangle.up",
         "kb.shift.iconWeight": "semibold",
-        "kb.shift.lockedColor": "#E8A23C",
+        // Neutral, not amber: caps lock is a mode, not something live. The
+        // keyboard's own grey (theme.accent, the legacy shift-active dot),
+        // one value that reads on both appearances; the filled arrow is what
+        // says "locked".
+        "kb.shift.lockedColor": "#8E8E93",
         "kb.shift.longPressMs": 350,
         // smartPeriod
         "kb.smartPeriod.windowMs": 500,
@@ -12867,8 +12920,11 @@ export function buildKeyboardConfig(
         "kb.suggestion.fontSize": 15,
         "kb.suggestion.gap": 8,
         "kb.suggestion.height": 36,
-        "kb.suggestion.leadBg": "#E8A23C",
-        "kb.suggestion.leadFg": "#000000",
+        // The lead chip: a solid neutral (pale ink, ink text), not amber —
+        // one flag serves both appearances, so it is solid rather than a
+        // translucent tint whose text could only suit one of them.
+        "kb.suggestion.leadBg": "#F3E2C6",
+        "kb.suggestion.leadFg": "#1B1712",
         "kb.suggestion.style": "chips",
         // toast
         "kb.toast.color.error": "#FF3B30E6",
@@ -12881,7 +12937,9 @@ export function buildKeyboardConfig(
         "kb.toast.height": 32,
         "kb.toast.offsetY": -18,
         // tone
-        "kb.tone.sheet.accent": "#E8A23C",
+        // The chosen row: the keyboard's neutral grey (reads on the dark and
+        // the light sheet alike); the tick and the weight mark it. Not amber.
+        "kb.tone.sheet.accent": "#8E8E93",
         "kb.tone.sheet.enabled": true,
         "kb.tone.sheet.longPressMs": 300,
         // touch
@@ -12971,7 +13029,7 @@ export function buildKeyboardConfig(
         // "kb.icon.refine": { "sf": "sparkles" },
         //
         // Suggestion bar SHAPE (not just its colours):
-        //   "chips" (default) — rounded pills, brand amber on the lead
+        //   "chips" (default) — rounded pills, a solid neutral lead chip
         //   "flat"            — the native three-slot strip: no surfaces, thin
         //                       dividers, lead distinguished by weight/colour
         // "kb.suggestion.style": "chips",

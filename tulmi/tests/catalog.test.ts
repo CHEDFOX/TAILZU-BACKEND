@@ -1409,17 +1409,29 @@ describe("the You tab reads like a face", () => {
     expect(json).toContain("Auto");
   });
 
-  it("gives the active voice the only amber on the tab", () => {
+  it("gives nothing on the tab the amber — the voice's dot is in its card's ink", () => {
+    // Amber marks what is live right now (recording, listening, a live voice
+    // session). The voice that writes is a setting, not a live thing, so the
+    // dot beside WRITING AS wears its card's own ink, and the tab carries the
+    // accent nowhere.
     const s = you();
-    let dots = 0;
+    let amber = 0;
+    const dots: any[] = [];
     const walk = (n: any) => {
-      if (n?.style?.backgroundColor === YOU_UI.accent && n?.style?.borderRadius) dots++;
+      const st = n?.style ?? {};
+      if (st.backgroundColor === YOU_UI.accent || st.color === YOU_UI.accent || st.borderColor === YOU_UI.accent) amber++;
+      if (st.width === 5 && st.height === 5 && st.borderRadius === 2.5) dots.push(n);
       for (const c of n?.children ?? []) walk(c);
     };
     walk(s.root);
-    // One dot beside the voice. The gear, the chevrons and the labels are all
-    // white or the ground.
-    expect(dots).toBe(1);
+    expect(amber).toBe(0);
+    // The dot is still there — one, beside the voice — just not amber.
+    expect(dots).toHaveLength(1);
+    expect(dots[0].style.backgroundColor).toBeTruthy();
+    expect(dots[0].style.backgroundColor).not.toBe(YOU_UI.accent);
+    const json = JSON.stringify(s).toUpperCase();
+    expect(json).not.toContain(YOU_UI.accent.toUpperCase());
+    expect(json).not.toContain("232,162,60");
   });
 });
 
@@ -1501,14 +1513,19 @@ describe("the charts show measured things, or nothing", () => {
     for (const id of ["dictionary", "voices", "languages"]) expect(s).toContain(`"${id}"`);
   });
 
-  it("gives every ring exactly one amber slice — the one that leads", () => {
-    // The accent is sacred: it marks the live thing and nothing else. In a
-    // ring that is the leading share. A ring of five ambers led nowhere.
+  it("gives no ring an amber slice — the one that leads is the full pale", () => {
+    // The accent is sacred: it marks what is live right now and nothing else,
+    // and a ring is a count. The leading share is marked by weight alone: the
+    // full-strength pale, every other slice a fainter step of it.
     for (const r of rings("stats", { stats: STATS })) {
       const slices = r.props.slices;
       if (!slices.length) continue;
-      expect(slices[0].color).toBe(YOU_UI.accent);
-      for (const sl of slices.slice(1)) expect(sl.color).not.toBe(YOU_UI.accent);
+      expect(slices[0].color).toBe(STATS_UI.ink);
+      for (const sl of slices.slice(1)) expect(sl.color).not.toBe(slices[0].color);
+      for (const sl of slices) {
+        expect(sl.color).not.toBe(YOU_UI.accent);
+        expect(String(sl.color).replace(/\s/g, "")).not.toContain("232,162,60");
+      }
     }
   });
 });
@@ -2061,9 +2078,15 @@ describe("Zu is not a voice in the list", () => {
     expect(json).toContain(zu.tagline);
   });
 
-  it("marks Zu amber only while it is the voice writing", () => {
+  it("marks Zu while it is the voice writing — in its ink, never amber", () => {
     expect(voices({ activePresetId: "signature" })).toContain("WRITING AS YOU");
     expect(voices({ activePresetId: "witty" })).toContain("YOUR OWN VOICE");
+    // Writing as Zu is a setting, not something live: no amber either way.
+    for (const id of ["signature", "witty"]) {
+      const json = voices({ activePresetId: id }).toUpperCase();
+      expect(json, id).not.toContain(YOU_UI.accent.toUpperCase());
+      expect(json, id).not.toContain("232,162,60");
+    }
   });
 });
 

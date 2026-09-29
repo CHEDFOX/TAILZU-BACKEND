@@ -167,12 +167,34 @@ describe("the phone refresh", () => {
     expect(homes.size).toBeGreaterThan(1);
   });
 
-  it("keeps amber for what is live", () => {
-    // The only amber on You is the dot beside the voice that is writing.
-    let amber = 0;
+  it("keeps amber for what is live — and nothing on You, Voices or Languages is", () => {
+    // Amber marks what is live right now: recording, listening, a live voice
+    // session. The voice that is writing is a setting, so the dot beside it is
+    // in its card's own ink; a chosen language's tick is pale; the network on
+    // the training card pulses pale. None of these screens carries amber at
+    // all — not as a colour, a border, a fill or the field's signal.
+    const cases: Array<[string, Record<string, unknown>]> = [
+      screens[1]!, screens[2]!,
+      ["languages", { personality: { languages: ["hi", "en"] }, language: "en" }],
+    ];
+    for (const [id, ctx] of cases) {
+      const s = buildScreen(id, ctx as never)!;
+      let amber = 0;
+      walk(s.root, (n) => {
+        const st = n.style ?? {};
+        if ([st.backgroundColor, st.color, st.borderColor].includes(PHONE_LOOK.accent)) amber++;
+      });
+      expect(amber, id).toBe(0);
+      const json = JSON.stringify(s).toUpperCase().replace(/\s/g, "");
+      expect(json, id).not.toContain(PHONE_LOOK.accent.toUpperCase());
+      expect(json, id).not.toContain("232,162,60");
+    }
+    // The dot beside the writing voice is still drawn — in the card's ink.
+    const dots: Array<Record<string, any>> = [];
     walk(buildScreen("personality", screens[1]![1] as never)!.root, (n) => {
-      if (n.style?.backgroundColor === PHONE_LOOK.accent || n.style?.color === PHONE_LOOK.accent) amber++;
+      if (n.style?.width === 5 && n.style?.height === 5 && n.style?.borderRadius === 2.5) dots.push(n);
     });
-    expect(amber).toBe(1);
+    expect(dots).toHaveLength(1);
+    expect(dots[0]!.style.backgroundColor).toBeTruthy();
   });
 });
