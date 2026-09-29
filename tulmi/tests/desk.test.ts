@@ -109,6 +109,7 @@ describe("the desk is for a window that can draw it", () => {
     expect(b.flags["desktop.desk"]).toBe(true);
     expect(b.flags["desktop.desk.settingsScreenId"]).toBe("desk_settings");
     expect(b.flags["quota.screenId"]).toBe("desk_plan");
+    expect(b.flags["desktop.mast"]).toEqual({ logo: 19, brand: 18, tabs: "center" });
   });
 
   it("a closed desktop window opens fresh next time", () => {

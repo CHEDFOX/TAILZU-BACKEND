@@ -1892,6 +1892,9 @@ export function buildBootstrap(
           "desktop.desk": true,
           "desktop.desk.settingsScreenId": "desk_settings",
           "quota.screenId": "desk_plan",
+          // The masthead's proportions: the mark's width and the name's size
+          // in pixels, and the tabs in the middle of the window.
+          "desktop.mast": { logo: 19, brand: 18, tabs: "center" },
         } : {}),
 
         // HOW A WINDOW PAYS.
