@@ -872,8 +872,10 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
     "very-casual",
     "excited"
   ],
+  "desktop.recorder.contextChars": 600,
   "desktop.recorder.meterPollMs": 120,
   "desktop.recorder.minSegmentMs": 700,
+  "desktop.recorder.minSpeechMs": 400,
   "desktop.recorder.speechLevel": 0.012,
   "desktop.row.chevronSize": 20,
   "desktop.row.fontSize": 16,

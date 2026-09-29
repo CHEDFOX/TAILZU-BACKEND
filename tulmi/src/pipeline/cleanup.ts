@@ -319,6 +319,27 @@ export function stripAddedClosing(out: string, said: string): string {
 }
 
 /**
+ * Hesitation at the edges, in whatever alphabet it was heard.
+ *
+ * "Filler goes" is in the prompt, and "হুম হুম" still opened a dictation:
+ * the recogniser wrote a Bengali speaker's "hmm" in Bengali, and a word in
+ * another alphabet does not look like filler to a writer reading for meaning.
+ * Only the sounds that are never words — hmm, mm, um, uh and their Bengali and
+ * Devanagari spellings — and only at the very start or end, where hesitation
+ * sits. Hindi "हम" ("we") is a word and is not among them.
+ */
+const FILLER = "(?:h+m+|u+m+|u+h+|e+r+m+|হু+ম+|হুঁ+|উ+ম+|হ্ম+|हु?म्म+|हुँ+|उम्म+|ह्म+)";
+const LEADING_FILLER = new RegExp(`^(?:${FILLER}(?![\\p{L}\\p{M}])[\\s,.…!?—–-]*)+`, "iu");
+const TRAILING_FILLER = new RegExp(`(?:[\\s,.…—–-]+${FILLER})+[\\s.…!?]*$`, "iu");
+export function stripEdgeFiller(out: string): string {
+  const t = out.trim();
+  const cut = t.replace(LEADING_FILLER, "").replace(TRAILING_FILLER, (m) => (/[.!?]\s*$/.test(m) ? "." : "")).trim();
+  if (!cut) return out;
+  // The sentence now starts where the filler did: give it its capital back.
+  return cut === t ? out : cut.charAt(0).toUpperCase() + cut.slice(1);
+}
+
+/**
  * The tags the writer's input arrives in (see assist()). A dictation that
  * contains one could close the fence early and pass the rest off as ours, so
  * they are taken out of what the user said before it is fenced, and out of
@@ -648,7 +669,7 @@ export async function assist(
   if (!askedLanguage && transliterated(message, out)) return message.trim();
   // Their own prior text stays in the field either way, so an echo of it here
   // is a second copy on screen.
-  const trimmed = stripAddedClosing(stripEchoedContext(out, context), message);
+  const trimmed = stripEdgeFiller(stripAddedClosing(stripEchoedContext(out, context), message));
   // Discard a meta/refusal reply ("speak again"…); else keep the completion,
   // falling back to the input on an empty one so we never wipe the field.
   return finalizeCompletion(trimmed, message.trim());

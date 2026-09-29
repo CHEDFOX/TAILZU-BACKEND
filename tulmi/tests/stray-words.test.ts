@@ -8,7 +8,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { stripAddedClosing } from "../src/pipeline/cleanup.js";
+import { stripAddedClosing, stripEdgeFiller } from "../src/pipeline/cleanup.js";
 import { isAmbiguousPhrase, speechSeconds } from "../src/pipeline/stt.js";
 
 const hasFfmpeg = (() => { try { execFileSync("ffmpeg", ["-version"], { stdio: "ignore" }); return true; } catch { return false; } })();
@@ -49,5 +49,28 @@ describe("a clip that is only a breath", () => {
 
   it("says unknown, not silent, when it cannot read the clip", async () => {
     expect(await speechSeconds(Buffer.from("not audio"), "webm")).toBe(-1);
+  });
+});
+
+describe("hesitation at the edges, in any alphabet", () => {
+  it("drops a hmm the recogniser wrote in Bengali or Devanagari", () => {
+    expect(stripEdgeFiller("হুম হুম Why is the keyboard so slow and stuck up?")).toBe("Why is the keyboard so slow and stuck up?");
+    expect(stripEdgeFiller("हम्म, मैं कल आऊंगा।")).toBe("मैं कल आऊंगा।");
+  });
+
+  it("drops it in English letters, at either end, and gives the sentence its capital", () => {
+    expect(stripEdgeFiller("Hmm, hmm. let me check the file.")).toBe("Let me check the file.");
+    expect(stripEdgeFiller("Umm I think so, uh.")).toBe("I think so.");
+  });
+
+  it("keeps words that only start like one", () => {
+    expect(stripEdgeFiller("हम कल मिलेंगे।")).toBe("हम कल मिलेंगे।");      // "we"
+    expect(stripEdgeFiller("Hummus for lunch?")).toBe("Hummus for lunch?");
+    expect(stripEdgeFiller("Umbrella is in the car.")).toBe("Umbrella is in the car.");
+    expect(stripEdgeFiller("Mmm, that was good.")).toBe("Mmm, that was good.");
+  });
+
+  it("leaves a message that is only the sound alone", () => {
+    expect(stripEdgeFiller("hmm")).toBe("hmm");
   });
 });
