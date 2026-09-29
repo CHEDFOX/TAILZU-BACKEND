@@ -7378,8 +7378,8 @@ function youHead(kicker: string, title: string, right?: Node): Node {
       // the screen that changes something.
       backgroundColor: u.ground,
       paddingTop: u.head.paddingTop,
-      paddingBottom: u.head.paddingBottom,
-      paddingHorizontal: u.padding,
+      paddingBottom: 20,
+      paddingHorizontal: PHONE_LOOK.side,
       borderBottomLeftRadius: u.head.radius,
       borderBottomRightRadius: u.head.radius,
     },
@@ -7389,52 +7389,18 @@ function youHead(kicker: string, title: string, right?: Node): Node {
         style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
         children: [youBack(), ...(right ? [right] : [])],
       },
-      { type: "Text", props: { content: kicker },
-        style: { fontSize: u.head.kickerSize, letterSpacing: u.head.kickerTracking,
-                 textTransform: "uppercase", color: u.textDim, marginTop: u.head.gap } },
-      { type: "Text", props: { content: title },
-        style: { fontSize: u.head.titleSize, fontWeight: "800",
-                 letterSpacing: u.head.titleTracking, color: u.text, marginTop: 2 } },
+      // The refresh: a small mono kicker and the title in the written face.
+      label(kicker, { marginTop: 18 }),
+      t(title, "writtenLight", 26, { lineHeight: 31, letterSpacing: -0.4, marginTop: 8 }),
     ],
   };
 }
 
 
-/**
- * A round chip carrying one sign. Same size and same place on every row, so
- * the column of them reads as a single control repeated rather than as a
- * different button per voice.
- */
-function youSign(sign: string, onPress: ActionRef, solid = false): Node {
-  const c = YOU_UI.chip;
-  return {
-    type: "Stack",
-    on: { onPress },
-    props: { pressOpacity: 0.65, hitSlop: 8 },
-    style: {
-      width: c.signSize, height: c.signSize, borderRadius: c.signSize / 2,
-      alignItems: "center", justifyContent: "center",
-      backgroundColor: solid ? YOU_UI.accent : c.soft,
-    },
-    children: [{
-      type: "Text", props: { content: sign },
-      style: {
-        fontSize: c.signFontSize, fontWeight: c.signWeight, lineHeight: c.signSize,
-        color: solid ? YOU_UI.onAccent : YOU_UI.text,
-      },
-    }],
-  };
-}
-
 /** A section label on the black ground. Small, spaced, never a heading. */
 function youLabel(content: string): Node {
-  const u = YOU_UI;
-  return {
-    type: "Text", props: { content },
-    style: { fontSize: u.label.size, letterSpacing: u.label.tracking,
-             textTransform: "uppercase", color: u.textFaint,
-             marginTop: u.label.marginTop, marginBottom: u.label.marginBottom },
-  };
+  // The refresh's label: small mono, with air above it (phoneLook.ts).
+  return label(content, { marginTop: 32, marginBottom: 12 });
 }
 
 /** The You sentence in the written face, smaller and quieter than it was. */
@@ -7873,111 +7839,111 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     ],
   });
 
-  /** Zu, as itself: the name, the line that says what it is, one tap to use it. */
-  const selfBlock = (preset: (typeof effective)[number]): Node => {
-    const sv = YOU_UI.selfVoice;
-    const live = (p.activePresetId ?? HOUSE_TONE.id) === preset.id;
+  // ------------------------------------------------------------------
+  // EACH VOICE IN ITS OWN COLOUR, writing the same said line — per kind of
+  // writing (Chats, Work, Email, Other; `vctx`), because a voice that suits a
+  // chat can be wrong for an email and that is the reason to see them side
+  // by side. A voice made by the user has no colour or sample: it shows what
+  // it was told to do, outlined.
+  // ------------------------------------------------------------------
+  const faceFor = (roomId: string | undefined): { face: keyof typeof PHONE_FONT; size: number; style?: Record<string, unknown> } => {
+    switch (roomId) {
+      case "d-w-saffron": return { face: "uiMedium", size: 16 };
+      case "d-w-teal": return { face: "said", size: 20 };
+      case "d-w-noir": return { face: "writtenItalic", size: 16.5 };
+      case "d-w-night": return { face: "writtenLight", size: 13.5, style: { letterSpacing: 1.6, textTransform: "uppercase" } };
+      default: return { face: "written", size: 16.5 };
+    }
+  };
+  /** The + or − on a card, in the card's own ink. Hit area reaches 46 pt. */
+  const cardSign = (sign: string, onPress: ActionRef, ink: string): Node => ({
+    type: "Stack",
+    on: { onPress },
+    props: { pressOpacity: 0.6, hitSlop: 8 },
+    style: {
+      width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: ink,
+      alignItems: "center", justifyContent: "center", opacity: 0.8,
+    },
+    children: [t(sign, "ui", 17, { lineHeight: 20, color: ink })],
+  });
+  const samples = (id: string, ink: string, roomId: string | undefined): Node[] => {
+    const set = DESK_SAMPLES[id];
+    if (!set) return [];
+    const f = faceFor(roomId);
+    return DESK_CONTEXTS.map((c) => ({
+      ...t(set[c.id], f.face, f.size, { lineHeight: Math.round(f.size * 1.45), color: ink, marginTop: 12, ...(f.style ?? {}) }),
+      visibleIf: { eq: ["vctx", c.id] },
+    }) as Node);
+  };
+  const voiceCardOf = (preset: (typeof effective)[number], opts: {
+    onPress: ActionRef; kicker?: Node; sign?: (ink: string) => Node; live?: boolean;
+  }): Node => {
+    const roomId = DESK_ROOMS[preset.id];
+    const room = roomId ? PHONE_ROOMS[roomId] : undefined;
+    const ink = room?.ink ?? PHONE_LOOK.ink;
+    const dim = room?.dim ?? PHONE_LOOK.ink3;
+    const tagline = (preset as { tagline?: string }).tagline ?? "";
+    const own = (preset as { promptStyle?: string }).promptStyle ?? "";
+    const shown = samples(preset.id, ink, roomId);
     return {
       type: "Stack",
-      on: { onPress: activate(preset) },
+      on: { onPress: opts.onPress },
       props: { pressOpacity: 0.8 },
       style: {
-        borderRadius: sv.radius, padding: sv.padding,
-        backgroundColor: live ? sv.liveBackground : sv.restBackground,
-        borderWidth: 1,
-        borderColor: live ? sv.liveBorder : "transparent",
-        marginBottom: sv.marginBottom,
+        borderRadius: 16, padding: 18, marginBottom: 12,
+        backgroundColor: room?.bg ?? "transparent",
+        ...(room?.edge || !room ? { borderWidth: 1, borderColor: room?.edge ?? "rgba(243,226,198,0.12)" } : {}),
+        ...(opts.live ? { borderWidth: 1.5, borderColor: PHONE_LOOK.ink } : {}),
       },
       children: [
         {
           type: "Stack",
-          style: { flexDirection: "row", alignItems: "center", gap: 8 },
+          style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
           children: [
-            { type: "Stack", style: {
-              width: sv.dot, height: sv.dot, borderRadius: sv.dot / 2,
-              backgroundColor: live ? YOU_UI.accent : YOU_UI.textFaint } },
-            { type: "Text", props: { content: live ? "WRITING AS YOU" : "YOUR OWN VOICE" },
-              style: { fontSize: sv.kickerSize, letterSpacing: sv.kickerTracking,
-                       textTransform: "uppercase", color: YOU_UI.textDim } },
+            opts.kicker ?? label(preset.name, { color: dim }),
+            ...(opts.sign ? [opts.sign(ink)] : []),
           ],
         },
-        { type: "Text", props: { content: preset.name },
-          style: { fontSize: sv.nameSize, fontWeight: "700",
-                   color: YOU_UI.text, marginTop: 6 } },
-        { type: "Text",
-          props: { content: (preset as { tagline?: string }).tagline ?? "" },
-          style: { fontSize: sv.lineSize, lineHeight: sv.lineHeight,
-                   color: YOU_UI.textDim, marginTop: sv.nameGap } },
+        ...(opts.kicker ? [t(preset.name, "writtenLight", 22, { lineHeight: 27, color: ink, marginTop: 10 })] : []),
+        ...(shown.length ? shown
+          : own ? [t(own.length > 140 ? `${own.slice(0, 137)}…` : own, "written", 15, { lineHeight: 22, color: ink, marginTop: 10 })]
+          : []),
+        ...(tagline ? [label(tagline, { color: dim, marginTop: 12, letterSpacing: 1.2 })] : []),
       ],
     };
   };
 
-  // One voice row. Tap = open it — what this voice is, how it writes, and the
-  // button that makes it yours. The sign on the right is the keyboard set, and
-  // it is the only thing on the row that is not "look at this".
+  /** Zu, as itself: its own voice, one tap to write as it. */
+  const selfBlock = (preset: (typeof effective)[number]): Node => {
+    const live = (p.activePresetId ?? HOUSE_TONE.id) === preset.id;
+    const room = PHONE_ROOMS[DESK_ROOMS[preset.id] ?? "d-w-zu"] ?? PHONE_ROOMS["d-w-zu"]!;
+    return voiceCardOf(preset, {
+      onPress: activate(preset),
+      live,
+      kicker: {
+        type: "Stack",
+        style: { flexDirection: "row", alignItems: "center", gap: 7 },
+        children: [
+          ...(live ? [{ type: "Stack", style: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: YOU_UI.accent } } as Node] : []),
+          label(live ? "WRITING AS YOU" : "YOUR OWN VOICE", { color: room.dim }),
+        ],
+      },
+    });
+  };
+
   const voiceRow = (preset: (typeof effective)[number], where: "kb" | "all"): Node => {
     const isPinned = pinned.includes(preset.id);
-    const up = YOU_UI.pill;
-    return {
-      // A PILL, not a card. Every list on the four You screens is the same
-      // shape — a voice, a language, a saved word — so the shape is learnt
-      // once and each screen is only its contents.
-      type: "Stack",
-      props: { pressOpacity: 0.7 },
-      style: {
-        flexDirection: "row", alignItems: "center", gap: up.gap,
-        backgroundColor: up.background, borderRadius: up.radius,
-        paddingLeft: up.paddingLeft, paddingRight: up.paddingRight,
-        paddingVertical: up.paddingVertical, minHeight: up.minHeight,
-        marginBottom: up.marginBottom,
-      },
-      on: { onPress: openEditor(preset) },
-      // Flat. The pill IS the row now, so the extra Stack that used to make one
-      // inside the card is a box around nothing.
-      children: [
-        // No "Active" badge, and no bolding or tinting of the active row.
-        //
-        // Marking one row tells the user about a mode they did not choose to
-        // be in and cannot see the consequences of; it read as a status they
-        // had to manage. The keyboard's own tone pill is where "which voice am
-        // I writing in" belongs, because that is where the writing happens.
-        { type: "Text", props: { content: preset.name }, style: {
-          flex: 1,
-          fontSize: up.labelSize,
-          fontWeight: "600",
-          color: YOU_UI.text,
-        } },
-        // ONE SIGN, AND IT IS ALWAYS IN THE SAME PLACE.
-        //
-        // + puts this voice on the keyboard, − takes it off. Nested pressables
-        // win over the row's own press (standard RN nesting), so the sign
-        // never also opens the editor. The Edit button is gone: the row IS the
-        // way in now, and a row with one word-button on it made the button the
-        // thing you tapped rather than the voice.
-        ...(where === "kb" || isPinned
-          ? [youSign("\u2212", pinAction(preset.id, false))]
-          : [youSign("+", pinAction(preset.id, true))]),
-      ],
-    };
+    return voiceCardOf(preset, {
+      onPress: openEditor(preset),
+      sign: (ink) => where === "kb" || isPinned
+        ? cardSign("\u2212", pinAction(preset.id, false), ink)
+        : cardSign("+", pinAction(preset.id, true), ink),
+    });
   };
 
-  // NO CARDS. Two labelled runs of pills on the black ground instead — a card
-  // around a list of pills is a box around a box, and the label already says
-  // where one run stops and the next starts.
-  //
-  // The two runs stay: which voices reach the keyboard is a different question
-  // from which voices exist, and it is the one the user came here to answer.
   const keyboardSet: Node[] = [
     youLabel("On the keyboard"),
-    // Only when the list is EMPTY. A populated list is self-explanatory — the
-    // pills carry Remove — and the sentence was a wall of grey above it.
-    // It says Zu is there because Zu IS there, always, and is the reason the
-    // row is never empty even when the user has pinned nothing.
-    ...(kbVoices.length ? [] : [{
-      type: "Text",
-      props: { content: "Zu is always on it. Add a style from below." },
-      style: { fontSize: 12, color: YOU_UI.textDim, marginBottom: 10 },
-    } as Node]),
+    ...(kbVoices.length ? [] : [caption("Zu is always on it. Add a style from below.", { marginBottom: 12 })]),
     ...kbVoices.map((e) => voiceRow(e, "kb")),
   ];
 
@@ -7986,13 +7952,32 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     ...styles.map((e) => voiceRow(e, "all")),
   ];
 
+  /** Which kind of writing the samples are shown for. */
+  const contextSwitch: Node = {
+    type: "SegmentedControl",
+    bind: { value: "vctx" },
+    props: {
+      options: DESK_CONTEXTS.map((c) => ({ label: c.label.toUpperCase(), value: c.id })),
+      background: "transparent", activeBackground: PHONE_LOOK.ink, activeColor: PHONE_LOOK.ground,
+      color: PHONE_LOOK.ink2, fontSize: 10, fontWeight: "600", radius: 12, itemRadius: 9,
+      padding: 3, paddingVertical: 12,
+    },
+    style: { borderWidth: 1, borderColor: "rgba(243,226,198,0.12)", marginTop: 4 },
+  };
+  const saidLine: Node[] = DESK_CONTEXTS.map((c) => ({
+    type: "Stack",
+    visibleIf: { eq: ["vctx", c.id] },
+    style: { marginTop: 28, marginBottom: 16 },
+    children: [label("You said"), t(c.said, "said", 19, { lineHeight: 24, color: PHONE_LOOK.ink2, marginTop: 8 })],
+  }) as Node);
+
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "voices",
     title: "Voice",
     // Seeded so the card's bound fields render empty rather than undefined
     // before anything has been opened.
-    state: { vcOpen: false, vcId: "", vcName: "", vcTone: "", vcPrompt: "" },
+    state: { vcOpen: false, vcId: "", vcName: "", vcTone: "", vcPrompt: "", vctx: "chats" },
     actions: {
       // A NEW VOICE IS A CARD TOO, not a screen.
       //
@@ -8052,17 +8037,19 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
         // The ＋ sits ON the amber, at the top right — the one place on the
         // screen that is not a list, which is what makes it findable in a
         // screen that is otherwise entirely list.
-        youHead("How it writes", "Voice",
+        youHead("Voices", "Same words. The voice you choose.",
           youHeadIcon("M12 5 L12 19 M5 12 L19 12", "addTone")),
         {
           type: "Screen",
           style: {
             backgroundColor: "transparent",
-            paddingHorizontal: YOU_UI.padding, paddingTop: 4, paddingBottom: 28,
+            paddingHorizontal: PHONE_LOOK.side, paddingTop: 8, paddingBottom: 40,
             // A list of rows is a column at any width — see readable().
             ...readable(ctx),
           },
           children: [
+            contextSwitch,
+            ...saidLine,
             ...(self ? [selfBlock(self)] : []),
             ...keyboardSet,
             ...allSet,
@@ -8656,12 +8643,13 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
     },
     root: {
       type: "Screen",
+      // The refresh: the warm ground and the page's sides (phoneLook.ts).
+      style: { backgroundColor: PHONE_LOOK.ground, paddingHorizontal: PHONE_LOOK.side },
       children: [
         ...screenHero("settings"),
-        // Left-aligned title, tighter gap. The prior right-aligned title with a
-        // 64 px gap made the list appear to be missing when the first rows fell
-        // just below the fold.
-        { type: "Heading", props: { content: "Settings" }, style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 20 } },
+        // The title in the written face; the groups under small mono labels.
+        t("Settings", "writtenLight", 30, { lineHeight: 36, letterSpacing: -0.5, marginBottom: 12 }),
+        label("Plan", { marginTop: 20, marginBottom: 4 }),
 
         // Personality and Stats are BOTTOM TABS — listing them here too was
         // two doors to one room. Dictionary is reached from the You tab.
@@ -8707,8 +8695,10 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         // Preferences
 
         // Legal + account
+        label("About", { marginTop: 36, marginBottom: 4 }),
         row("Privacy Policy", "privacy", { props: { label: "Privacy Policy" } }),
         row("Terms of Use", "terms", { props: { label: "Terms of Use" } }),
+        label("Account", { marginTop: 36, marginBottom: 4 }),
         row("Sign out", "signOut", { props: { label: "Sign out", chevron: false } }),
         row("Delete account", { kind: "navigate", screenId: "delete_account" }, { props: { label: "Delete account", danger: true, chevron: false } }),
       ],
@@ -9102,10 +9092,10 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
           ],
         },
 
-        // The way into Settings — see settingsGear(). INK, not white: this
-        // root's ground is the brand amber, and a light glyph on it is the
-        // kind of thing that survives review and cannot be seen on a phone.
-        settingsGear("light"),
+        // The way into Settings — see settingsGear(). The light glyph: this
+        // ground is the warm near-black now, and the ink one (from when it
+        // was amber) all but vanished on it.
+        settingsGear("dark"),
 
         // THE DETAIL. One Modal, one `openCard`, four panels gated on it —
         // rather than four Modals, which would be four things that can be open
@@ -10925,12 +10915,12 @@ function dictionaryScreen(ctx: ScreenContext): ScreenResponse {
       children: [
         // The kicker IS the instruction. A screen of two fields does not also
         // need a sentence under a heading explaining that it is two fields.
-        youHead("Type the word, get the phrase.", "Dictionary"),
+        youHead("Dictionary", "Type the word, get the phrase."),
         {
           type: "Screen",
           style: {
             backgroundColor: "transparent",
-            paddingHorizontal: YOU_UI.padding, paddingTop: 20, paddingBottom: 28,
+            paddingHorizontal: PHONE_LOOK.side, paddingTop: 24, paddingBottom: 40,
           },
           children: [
             {
@@ -10949,24 +10939,27 @@ function dictionaryScreen(ctx: ScreenContext): ScreenResponse {
               props: {
                 full: true,
                 showLabels: false,
-                cellRadius: YOU_UI.pill.radius,
-                cellBackground: YOU_UI.pill.background,
-                cellBorderWidth: 0,
-                cellColor: YOU_UI.text,
-                placeholderColor: YOU_UI.textFaint,
-                cellPaddingHorizontal: 16,
-                cellPaddingVertical: 13,
-                cellFontSize: YOU_UI.pill.labelSize,
-                gap: 8,
-                rowGap: YOU_UI.pill.marginBottom,
-                removeColor: YOU_UI.textFaint,
+                // The refresh: quiet fields on the ground, and Save in the
+                // app's pale — saving is not live, so it is not amber.
+                cellRadius: 12,
+                cellBackground: "rgba(243,226,198,0.045)",
+                cellBorderWidth: 1,
+                cellBorderColor: "rgba(243,226,198,0.1)",
+                cellColor: PHONE_LOOK.ink,
+                placeholderColor: PHONE_LOOK.ink3,
+                cellPaddingHorizontal: 14,
+                cellPaddingVertical: 12,
+                cellFontSize: 15,
+                gap: 10,
+                rowGap: 10,
+                removeColor: PHONE_LOOK.ink3,
                 saveLabel: "SAVE",
-                saveBackground: YOU_UI.accent,
-                saveColor: YOU_UI.onAccent,
-                saveRadius: YOU_UI.pill.radius,
-                saveHeight: 46,
-                saveFontSize: 11,
-                saveTracking: 1.9,
+                saveBackground: PHONE_LOOK.ink,
+                saveColor: PHONE_LOOK.ground,
+                saveRadius: 12,
+                saveHeight: 44,
+                saveFontSize: 10,
+                saveTracking: 1.8,
                 saveFullWidth: true,
               },
               on: { onError: "err" },

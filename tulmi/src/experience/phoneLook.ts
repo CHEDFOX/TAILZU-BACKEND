@@ -249,7 +249,8 @@ export function phoneStatsBody(
     });
 
     // TODAY — a line, and the week as seven dots with today ringed.
-    const todayWords = s.perDay[s.perDay.length - 1] ?? 0;
+    // The caller's own day, when the server counted it; else the last bucket.
+    const todayWords = ctx.usage?.today?.words ?? s.perDay[s.perDay.length - 1] ?? 0;
     const todaySec = ctx.usage?.today?.audioSeconds ?? 0;
     const week = s.perDay.slice(-7);
     while (week.length < 7) week.unshift(0);
