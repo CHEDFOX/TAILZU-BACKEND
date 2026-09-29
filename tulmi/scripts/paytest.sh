@@ -121,6 +121,8 @@ case "$TOK" in live_) ok "live client token (public by design)";; test_) no "a S
 SEEN=$(docker compose logs --since 72h backend 2>/dev/null | grep 'pay: checkout failed' | grep -o '"code":"[^"]*"' | sort | uniq -c | sort -rn | head -5)
 if [ -n "$SEEN" ]; then
   echo "  Paddle refused a checkout in the last 3 days:"; printf '%s\n' "$SEEN" | sed 's/^/    /'
+  LAST=$(docker compose logs --since 72h backend 2>/dev/null | grep 'pay: checkout failed' | tail -1 | grep -o '"detail":"[^"]*"' | cut -d'"' -f4-)
+  [ -n "$LAST" ] && echo "    latest, in Paddle's words: $LAST"
   case "$SEEN" in
     *default_checkout_url*) echo "    FIX  Paddle > Checkout > Checkout settings > Default payment link = https://tailzu.space/pay";;
     *domain_is_not_approved*) echo "    FIX  Paddle > Checkout > Website approval: tailzu.space must show Approved";;

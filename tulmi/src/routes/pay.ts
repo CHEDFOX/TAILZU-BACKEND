@@ -116,13 +116,18 @@ export function payHtml(opts: {
   var report = function (where, err) {
     var e = (err && (err.error || (err.data && err.data.error) || err.data)) || err || {};
     var code = String(e.code || e.type || e.name || where).slice(0, 80);
-    var detail = String(e.detail || e.message || "").slice(0, 300);
+    // A "validation" error names its reason per field (errors[]), not in its
+    // detail; without them the log says only that something was invalid.
+    var fields = Array.isArray(e.errors) ? e.errors.map(function (x) { return (x.field || "") + ": " + (x.message || ""); }).join("; ") : "";
+    var detail = [e.detail || e.message || "", fields].filter(Boolean).join(" | ");
+    if (!detail) { try { detail = JSON.stringify(err); } catch (x) {} }
+    detail = String(detail || "").slice(0, 600);
     try {
       var body = JSON.stringify({ where: where, code: code, detail: detail });
       if (!(navigator.sendBeacon && navigator.sendBeacon("/v1/pay/report", new Blob([body], { type: "application/json" }))))
         fetch("/v1/pay/report", { method: "POST", headers: { "Content-Type": "application/json" }, body: body, keepalive: true });
     } catch (x) {}
-    return code;
+    return code + (detail ? " · " + detail.slice(0, 200) : "");
   };
   var fail = function (where, err) {
     var code = report(where, err);

@@ -477,7 +477,7 @@ app.post("/v1/pay/report", { config: { rateLimit: { max: 20, timeWindow: 60_000 
   const b = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
   const clip = (v: unknown, n: number) => String(v ?? "").replace(/[^\x20-\x7E]/g, "").slice(0, n);
   const code = clip(b.code, 80);
-  if (code) req.log.warn({ where: clip(b.where, 20), code, detail: clip(b.detail, 300) }, "pay: checkout failed");
+  if (code) req.log.warn({ where: clip(b.where, 20), code, detail: clip(b.detail, 600) }, "pay: checkout failed");
   return reply.code(204).send();
 });
 
