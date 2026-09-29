@@ -34,6 +34,11 @@ import { applyRollouts, activeRollouts } from "./rollout.js";
 import type { HistoryEntry, PaywallConfig, PaywallPlan, Personality, StatsResponse, UsageSummary } from "../../../shared/types/api.js";
 import { getConfig } from "../config.js";
 import type { Allowance } from "../usage/allowance.js";
+import { desktopOs, installerUrl, publishedVersion, updateFor } from "./desktopRelease.js";
+
+/** The desktop release every OS has at least, for an OS whose installer was
+ *  published before versions were recorded beside it. */
+const DESKTOP_LATEST = "0.2.1";
 import {
   PERSONALITY_PRESETS,
   findPreset,
@@ -1911,7 +1916,17 @@ export function buildBootstrap(
           // once, and the click opens the download page. Raise it with each
           // release (desktop/package.json's version); `min` only when an old
           // build would break against this backend.
-          "desktop.update": { latest: "0.2.1", min: "", url: "https://tailzu.space/download", notes: "" },
+          //
+          // Read from what was published for this OS (desktopRelease.ts), so a
+          // build that lands tells every older install without anyone raising
+          // a number. DESKTOP_LATEST is only the floor for an OS with nothing
+          // published with a version yet. The click downloads the installer.
+          "desktop.update": {
+            latest: (desktopOs(opts.os) ? publishedVersion(desktopOs(opts.os)!) : "") || DESKTOP_LATEST,
+            min: "",
+            url: installerUrl(opts.os) ?? "https://tailzu.space/download",
+            notes: "",
+          },
         } : {}),
         // The desk: its pages, where its settings live, and where out of words
         // leads — the plan page, not the phone's full-screen paywall.
@@ -4443,6 +4458,10 @@ export interface ScreenContext {
   /** The caller's UTC offset in minutes, so a desk page's "today" and its
    *  times are the person's own. */
   tzOffsetMinutes?: number;
+  /** The build asking, and the computer it runs on — a desk page offers a
+   *  newer build when one has been published for that OS. */
+  appVersion?: string;
+  os?: string;
 }
 
 /**
@@ -4505,6 +4524,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       plans: PAYWALL_CONFIG.plans,
       manageUrl: ctx.entitlement ? String(manageFlags(ctx.entitlement.store)["billing.manage.url"] ?? "") || undefined : undefined,
       // Dimmed to sit behind the Train page's words, as on the phone's card.
+      update: updateFor(ctx.appVersion, ctx.os, DESKTOP_LATEST),
       field: screenId === "desk_train" && ctx.can?.has("DeskField")
         ? neuralField(0.5, fieldGrowth(ctx.personality))
         : undefined,

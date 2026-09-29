@@ -67,6 +67,8 @@ export interface DeskContext {
   /** This person's network, at the growth they have earned — built by the
    *  catalog, and only for a window that can show it on a page (DeskField). */
   field?: Node;
+  /** A newer build published for this window's OS (desktopRelease.ts). */
+  update?: { version: string; url: string } | null;
 }
 
 // ---- nodes ---------------------------------------------------------------------
@@ -663,7 +665,28 @@ export function deskPlan(ctx: DeskContext): ScreenResponse {
 }
 
 /** The desk's page for an id, or null for an id that is not one of them. */
-export function buildDeskScreen(screenId: string, ctx: DeskContext): ScreenResponse | null {
+/**
+ * A NEWER TAILZU, SAID IN THE WINDOW.
+ *
+ * The tray's notification was the only notice, and a notification is gone in
+ * five seconds and off entirely for anyone who silenced the app. This sits at
+ * the top of every page until the new build is installed, and its one button
+ * downloads the installer itself — not a page to find it on.
+ */
+function updateCard(u: { version: string; url: string }): Node {
+  return stack([
+    row([
+      stack([
+        text("Update", "d-eyebrow"),
+        text(`Tailzu ${u.version} is ready.`, "d-written", { marginTop: 4 }),
+        text("Download it, open it, and this window restarts on the new version.", "d-lede", { marginTop: 2 }),
+      ], { flex: 1, minWidth: 0 }),
+      link("Download update", { kind: "openUrl", url: u.url }, "d-btn"),
+    ], { align: "center", gap: 24, justify: "between", flexWrap: "wrap", paddingTop: 18, paddingBottom: 18 }, "d-room-inner"),
+  ], { borderBottom: "1px solid var(--d-rule)" });
+}
+
+function deskPage(screenId: string, ctx: DeskContext): ScreenResponse | null {
   switch (screenId) {
     case "desk_today": return deskToday(ctx);
     case "desk_insights": return deskInsights(ctx);
@@ -674,4 +697,10 @@ export function buildDeskScreen(screenId: string, ctx: DeskContext): ScreenRespo
     case "desk_plan": return deskPlan(ctx);
     default: return null;
   }
+}
+
+export function buildDeskScreen(screenId: string, ctx: DeskContext): ScreenResponse | null {
+  const s = deskPage(screenId, ctx);
+  if (s?.root && ctx.update) s.root.children = [updateCard(ctx.update), ...(s.root.children ?? [])];
+  return s;
 }

@@ -16,6 +16,10 @@ vi.mock("../src/pipeline/stt.js", () => ({
 
 // eslint-disable-next-line import/first
 import { buildBootstrap, buildScreen } from "../src/experience/catalog.js";
+import { resetPublishedVersions } from "../src/experience/desktopRelease.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 // eslint-disable-next-line import/first
 import { DESK_NAV, DESK_SCREENS } from "../src/experience/desk.js";
 // eslint-disable-next-line import/first
@@ -241,6 +245,46 @@ describe("the network on the desk", () => {
 
   it("no other desk page carries it", () => {
     for (const id of DESK_SCREENS) if (id !== "desk_train") expect(fields(buildScreen(id, withField)!.root), id).toBe(0);
+  });
+});
+
+describe("a newer build, said in the window", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tz-dl-"));
+  const at = (appVersion: string, osName: string) =>
+    ({ ...sampleCtx, formFactor: "desktop", can: new Set(["DeskShell"]), appVersion, os: osName }) as never;
+  const card = (s: unknown) => JSON.stringify((s as { root: { children: unknown[] } }).root.children[0]);
+
+  beforeAll(() => {
+    process.env.DOWNLOADS_DIR = dir;
+    fs.writeFileSync(path.join(dir, "Tailzu-Setup.exe.version"), "0.2.2\n");
+    resetPublishedVersions();
+  });
+  afterAll(() => { delete process.env.DOWNLOADS_DIR; resetPublishedVersions(); });
+
+  it("tops every page on an older build, and its button downloads the installer", () => {
+    for (const id of DESK_SCREENS) {
+      const c = card(buildScreen(id, at("0.2.1", "windows")));
+      expect(c, id).toContain("Tailzu 0.2.2 is ready.");
+      expect(c, id).toContain('"kind":"openUrl","url":"https://tailzu.space/downloads/Tailzu-Setup.exe"');
+    }
+  });
+
+  it("is not there once the build is current", () => {
+    expect(card(buildScreen("desk_today", at("0.2.2", "windows")))).not.toContain("is ready");
+  });
+
+  it("is not offered to an OS with nothing newer published", () => {
+    expect(card(buildScreen("desk_today", at("0.2.1", "mac")))).not.toContain("is ready");
+  });
+
+  it("is not guessed at for a build that does not say its version", () => {
+    expect(card(buildScreen("desk_today", at("", "windows")))).not.toContain("is ready");
+  });
+
+  it("tells the tray's notification the same version, with the installer as its link", () => {
+    const b = buildBootstrap({ formFactor: "desktop", desk: true, os: "win32" } as never) as { flags: Record<string, { latest: string; url: string }> };
+    expect(b.flags["desktop.update"]!.latest).toBe("0.2.2");
+    expect(b.flags["desktop.update"]!.url).toBe("https://tailzu.space/downloads/Tailzu-Setup.exe");
   });
 });
 

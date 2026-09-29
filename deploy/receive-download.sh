@@ -9,8 +9,18 @@
 # installer, the requested command is its name, and the name must be one of
 # the three the /download page serves. It lands under a temporary name and
 # is renamed into place, so a half-sent file is never what someone downloads.
+#
+# The build may send its version after the name ("Tailzu.dmg 0.2.2"). It is
+# written beside the installer (Tailzu.dmg.version) once the file is in place,
+# and the server reads it to tell every older install on that OS, in the
+# window, that an update is ready (tulmi/src/experience/desktopRelease.ts).
 set -euo pipefail
-name="${SSH_ORIGINAL_COMMAND:-}"
+read -r name version extra <<< "${SSH_ORIGINAL_COMMAND:-}"
+name="${name:-}"; version="${version:-}"
+[ -z "${extra:-}" ] || { echo "refused: too many words" >&2; exit 2; }
+if [ -n "$version" ] && ! [[ "$version" =~ ^[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,6}$ ]]; then
+  echo "refused: '$version' is not a version" >&2; exit 2
+fi
 case "$name" in
   Tailzu-Setup.exe|Tailzu.dmg|Tailzu.AppImage) ;;
   *) echo "refused: '$name' is not an installer name" >&2; exit 2 ;;
@@ -25,4 +35,11 @@ size=$(stat -c %s "$tmp")
 chmod 644 "$tmp"
 mv -f "$tmp" "$dir/$name"
 trap - EXIT
-echo "published $name ($size bytes)"
+# After the installer, never before: a version that names a file not yet in
+# place would send people to download the old one.
+if [ -n "$version" ]; then
+  printf '%s\n' "$version" > "$dir/.$name.version.tmp"
+  chmod 644 "$dir/.$name.version.tmp"
+  mv -f "$dir/.$name.version.tmp" "$dir/$name.version"
+fi
+echo "published $name${version:+ $version} ($size bytes)"
