@@ -1940,6 +1940,11 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     entitled: entitled || isReviewer,
     billingStore: ent?.store,
     wordsUsed: usage?.month?.words ?? 0,
+    // Setup's Live Activity: its first step is an account, its last a word.
+    // A reviewer is shown none of it.
+    signedIn: !!user,
+    wordsEver: usage?.total?.words ?? 0,
+    setupDone: isReviewer,
     allowance,
     platform: platformOf(reqBody.capabilities?.platform),
     // The desk: Tailzu's own pages for a desktop window that can draw them.
