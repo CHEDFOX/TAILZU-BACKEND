@@ -136,6 +136,35 @@ describe("the phone refresh", () => {
     expect(you).toContain("Dogri, Santali");
   });
 
+  it("shows each haptics key once across the keyboards, placed by a stable shuffle", () => {
+    const keysOn = (email: string) => {
+      const out: Array<{ id: string; layer: number }> = [];
+      // The reels, not the fallback (the same boards again for old bundles).
+      let reels: any = null;
+      walk(buildScreen("haptics", { personality: {}, language: "en", email } as never)!.root, (n) => {
+        if (!reels && n.type === "Reels") reels = n;
+      });
+      reels.children.forEach((board: any, layer: number) => {
+        walk({ ...board, fallback: undefined }, (n) => {
+          if (n.type !== "KeyboardPreview") return;
+          for (const row of n.props.rows) for (const k of row) if (!k.spacer && k.id) out.push({ id: k.id, layer });
+        });
+      });
+      return out;
+    };
+    const a = keysOn("asha@example.com");
+    const ids = a.map((k) => k.id);
+    expect(new Set(ids).size, "a key shown twice").toBe(ids.length);
+    for (const id of ["space", "backspace", "return", ".", "@", "123", "abc", "shift", "q", "1", "mic"]) expect(ids).toContain(id);
+    // Stable for the same account — every tap refreshes the screen.
+    expect(keysOn("asha@example.com")).toEqual(a);
+    // And not simply "first keyboard wins": across accounts, a shared key
+    // lands on more than one keyboard.
+    const homes = new Set(["a@x.io", "b@x.io", "c@x.io", "d@x.io", "e@x.io", "f@x.io"]
+      .map((e) => keysOn(e).find((k) => k.id === "backspace")!.layer));
+    expect(homes.size).toBeGreaterThan(1);
+  });
+
   it("keeps amber for what is live", () => {
     // The only amber on You is the dot beside the voice that is writing.
     let amber = 0;

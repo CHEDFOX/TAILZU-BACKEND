@@ -10797,8 +10797,8 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
   });
 
   /** The four layers, in the order the keyboard itself moves between them. */
-  const boards: Node[] = [
-    board([
+  const layers: PK[][][] = [
+    [
       chars(KB_ROW_LETTERS_1),
       [spacer(0.5), ...chars(KB_ROW_LETTERS_2), spacer(0.5)],
       [
@@ -10809,8 +10809,8 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
         k("⌫", "backspace", { flex: 1.35, fn: true }),
       ],
       bottom("123", "123"),
-    ]),
-    board([
+    ],
+    [
       chars(KB_ROW_NUM_1),
       chars(KB_ROW_NUM_2),
       [
@@ -10819,8 +10819,8 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
         k("⌫", "backspace", { flex: 1.5, fn: true }),
       ],
       bottom("ABC", "abc"),
-    ]),
-    board([
+    ],
+    [
       chars(KB_ROW_SYM_1),
       chars(KB_ROW_SYM_2),
       [
@@ -10829,13 +10829,51 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
         k("⌫", "backspace", { flex: 1.5, fn: true }),
       ],
       bottom("ABC", "abc"),
-    ]),
-    board([[
+    ],
+    [[
       k("mic", "mic", { fn: true }),
       k("Refine", "refine", { fn: true }),
       k("globe", "globe", { fn: true }),
-    ]]),
+    ]],
   ];
+
+  /**
+   * EACH KEY ONCE, across all four keyboards.
+   *
+   * Backspace, space, return, ".", "@", the layer keys and a whole row of
+   * punctuation sit on more than one keyboard, so the picker showed them two
+   * and three times — and a key you have already chosen on one reel looked
+   * unchosen-and-available on the next. Now each appears on ONE keyboard,
+   * picked by a shuffle rather than by position (not always the first reel),
+   * and where it would have repeated the space stays blank at the key's own
+   * width, so every keyboard keeps its shape.
+   *
+   * The shuffle is seeded by the account, not by the clock: every tap
+   * refreshes this screen, and keys that moved on each refresh would be
+   * impossible to find twice. Random to look at, stable to use.
+   */
+  const seed = String(ctx.email ?? ctx.phone ?? "tailzu");
+  const hash = (text: string) => {
+    let h = 2166136261;
+    for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  };
+  const onLayers = new Map<string, number[]>();
+  layers.forEach((rows, li) => rows.forEach((row) => row.forEach((key) => {
+    if (key.spacer || !key.id) return;
+    const list = onLayers.get(key.id) ?? [];
+    if (!list.includes(li)) list.push(li);
+    onLayers.set(key.id, list);
+  })));
+  const home = new Map<string, number>();
+  for (const [id, list] of onLayers) home.set(id, list[hash(`${seed}:${id}`) % list.length]!);
+  const drawn = new Set<string>();
+  const boards: Node[] = layers.map((rows, li) => board(rows.map((row) => row.map((key) => {
+    if (key.spacer || !key.id) return key;
+    if (home.get(key.id) !== li || drawn.has(key.id)) return spacer(key.flex ?? 1);
+    drawn.add(key.id);
+    return key;
+  }))));
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
