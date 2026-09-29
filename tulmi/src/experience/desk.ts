@@ -124,10 +124,6 @@ const text = (content: string, cls: string, style?: Style): Node => {
   const st = styled(cls, style);
   return { type: "Text", props: { content, cls }, ...(st ? { style: st } : {}) };
 };
-const bound = (path: string, cls: string, style?: Style, visibleIf?: Node["visibleIf"]): Node => {
-  const st = styled(cls, style);
-  return { type: "Text", props: { content: "", cls }, bind: { content: path }, ...(st ? { style: st } : {}), ...(visibleIf ? { visibleIf } : {}) };
-};
 const stack = (children: Node[], style: Style = {}, cls?: string, extra: Partial<Node> = {}): Node =>
   ({ type: "Stack", props: cls ? { cls } : {}, style: { ...typeFor(cls), ...style }, children, ...extra });
 const row = (children: Node[], style: Style = {}, cls?: string, extra: Partial<Node> = {}): Node =>
@@ -217,20 +213,29 @@ function entryItems(ctx: DeskContext, entries: HistoryEntry[], withDate = false)
   });
 }
 
-/** One note: when and where in the margin; said above written; its tools on hover. */
-function entryTemplate(): Node {
+/**
+ * One note: when and where in the margin; said above written; Copy on hover.
+ *
+ * WRITTEN OUT PER NOTE, NOT AS A LIST TEMPLATE. A template's `$state.item` is
+ * only there while the row is drawn; an action reads its values when it is
+ * CLICKED, by which time the row's item is gone. So Copy put an empty string
+ * on the clipboard and still said "Copied", and Delete asked to delete
+ * "/v1/history/" — nothing. Each note now carries its own text in its action.
+ *
+ * No Delete. A note is the record of what was said; removing one belongs with
+ * the history settings, not one stray click away under the pointer.
+ */
+function entryNode(it: EntryItem): Node {
   return row([
-    stack([bound("item.time", "d-margin-strong"), bound("item.app", "d-margin")], { width: 96, flex: "none", paddingTop: 3 }),
     stack([
-      bound("item.said", "d-said", undefined, { truthy: "item.said" }),
-      bound("item.written", "d-written", undefined, { falsy: "item.deva" }),
-      bound("item.written", "d-written d-deva", undefined, { truthy: "item.deva" }),
+      text(it.time, "d-margin-strong"),
+      ...(it.app ? [text(it.app, "d-margin")] : []),
+    ], { width: 96, flex: "none", paddingTop: 3 }),
+    stack([
+      ...(it.said ? [text(it.said, "d-said")] : []),
+      text(it.written, it.deva ? "d-written d-deva" : "d-written"),
       row([
-        link("Copy", { kind: "copyText", text: "$state.item.written", message: "Copied" }),
-        link("Delete", {
-          kind: "callEndpoint", method: "DELETE", path: "/v1/history/$state.item.id",
-          onError: { kind: "toast", message: "Couldn't delete that note" },
-        }),
+        link("Copy", { kind: "copyText", text: it.written, message: "Copied" }),
       ], { gap: 18, marginTop: 10 }, "d-tools"),
     ], { flex: 1, minWidth: 0, gap: 4 }),
   ], { gap: 24, paddingTop: 24, paddingBottom: 24 }, "d-entry");
@@ -289,7 +294,7 @@ export function deskToday(ctx: DeskContext): ScreenResponse {
   ], {}, "d-room");
 
   const notes: Node[] = todays.length
-    ? [{ type: "List", props: { items: entryItems(ctx, todays), itemTemplate: entryTemplate() } }]
+    ? entryItems(ctx, todays).map(entryNode)
     : [
         stack([
           text("Nothing yet today.", "d-written", { fontSize: 19, lineHeight: "27px" }),
@@ -298,7 +303,7 @@ export function deskToday(ctx: DeskContext): ScreenResponse {
         ], { paddingBottom: 26 }),
         ...(earlier.length ? [
           text("Earlier", "d-eyebrow", { marginTop: 10, marginBottom: 6 }),
-          { type: "List", props: { items: entryItems(ctx, earlier, true), itemTemplate: entryTemplate() } } as Node,
+          ...entryItems(ctx, earlier, true).map(entryNode),
         ] : []),
       ];
 
@@ -429,22 +434,25 @@ export function deskWords(ctx: DeskContext): ScreenResponse {
     onError: { kind: "toast", message: "Say a name and what it writes, then add" },
   };
 
-  const wordTemplate = row([
+  // Rows written out, each with its own values in its action — the same
+  // reason as the notes on Today (entryNode): a template's item is gone by
+  // the time Remove is clicked, so it removed nothing.
+  const wordRow = (w: { word: string; was: string; kind: string }): Node => row([
     stack([
-      bound("item.was", "d-was", undefined, { truthy: "item.was" }),
-      bound("item.word", "d-inherit"),
+      ...(w.was ? [text(w.was, "d-was")] : []),
+      text(w.word, "d-inherit"),
     ], { alignSelf: "flex-start" }, "d-fix"),
     row([link("Remove", {
-      kind: "callEndpoint", method: "POST", path: "/v1/words", body: { remove: "$state.item.word", kind: "$state.item.kind" },
+      kind: "callEndpoint", method: "POST", path: "/v1/words", body: { remove: w.word, kind: w.kind },
       onError: { kind: "toast", message: "Couldn't remove that word" },
     })], {}, "d-tools"),
   ], { justify: "between", align: "center", gap: 14, paddingTop: 14, paddingBottom: 14 }, "d-entry");
 
-  const snipTemplate = stack([
-    row([text("say", "d-margin", { marginRight: 6 }), bound("item.say", "d-say")], { align: "baseline" }),
-    bound("item.get", "d-get"),
+  const snipRow = (x: { say: string; get: string }): Node => stack([
+    row([text("say", "d-margin", { marginRight: 6 }), text(x.say, "d-say")], { align: "baseline" }),
+    text(x.get, "d-get"),
     row([link("Remove", {
-      kind: "callEndpoint", method: "POST", path: "/v1/snippets", body: { remove: "$state.item.say" },
+      kind: "callEndpoint", method: "POST", path: "/v1/snippets", body: { remove: x.say },
       onError: { kind: "toast", message: "Couldn't remove that snippet" },
     })], { marginTop: 6 }, "d-tools"),
   ], { gap: 4, paddingTop: 14, paddingBottom: 14 }, "d-entry");
@@ -461,7 +469,7 @@ export function deskWords(ctx: DeskContext): ScreenResponse {
           link("Add", addWord, "d-btn"),
         ], { gap: 10, marginTop: 18, marginBottom: 10, align: "center" }),
         ...(words.length
-          ? [{ type: "List", props: { items: words, itemTemplate: wordTemplate } } as Node]
+          ? words.map(wordRow)
           : [text("No words yet. Names, places, the words only your team uses: add them here.", "d-lede", { marginTop: 8 })]),
       ], { flex: 1, minWidth: 0 }),
       stack([
@@ -473,7 +481,7 @@ export function deskWords(ctx: DeskContext): ScreenResponse {
           row([link("Add snippet", addSnip, "d-btn")]),
         ], { gap: 12, marginTop: 18, marginBottom: 10 }),
         ...(snips.length
-          ? [{ type: "List", props: { items: snips, itemTemplate: snipTemplate } } as Node]
+          ? snips.map(snipRow)
           : [text("No snippets yet. An address, a UPI id, a sign-off you type every day.", "d-lede", { marginTop: 8 })]),
       ], { flex: 1, minWidth: 0 }),
     ], { gap: 72, marginTop: 48, align: "start" }, "d-wrap-narrow"),

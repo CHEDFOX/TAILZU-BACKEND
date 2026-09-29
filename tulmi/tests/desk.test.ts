@@ -164,6 +164,22 @@ describe("the desk pages", () => {
     expect(s).not.toContain("send the deck tonight");
   });
 
+  it("Today's Copy carries the note's own text, and there is no Delete", () => {
+    // An action reads its values when clicked, when a list row's item is gone:
+    // Copy put "" on the clipboard. Each note's action holds its text now.
+    const s = JSON.stringify(buildScreen("desk_today", sampleCtx));
+    expect(s).toContain('"kind":"copyText","text":"Haan bhai, kal milte hain.","message":"Copied"');
+    expect(s).not.toContain("$state.item");
+    expect(s).not.toContain('"label":"Delete"');
+    expect(s).not.toContain("/v1/history/");
+  });
+
+  it("Words' Remove names the word it removes", () => {
+    const s = JSON.stringify(buildScreen("desk_words", sampleCtx));
+    expect(s).not.toContain("$state.item");
+    expect(s).toContain('"body":{"remove":"Kubernetes","kind":"word"}');
+  });
+
   it("Today with nothing written offers to start talking", () => {
     const s = buildScreen("desk_today", { personality: {}, language: "en", history: [] } as never);
     expect(actionKinds(s!.root).has("dictate")).toBe(true);
