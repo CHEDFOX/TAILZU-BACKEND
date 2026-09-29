@@ -467,6 +467,20 @@ app.get("/pay", async (_req, reply) => {
   });
 });
 
+// What went wrong in a buyer's checkout, in Paddle's own words. The pay page
+// sends Paddle's error code here when the checkout refuses to open, so the
+// cause (almost always a dashboard setting) is one grep away:
+//   docker compose logs --since 1h | grep "pay:"
+// Unauthenticated by necessity (the buyer is on a web page), so it is capped,
+// trimmed to printable text and only ever logged.
+app.post("/v1/pay/report", { config: { rateLimit: { max: 20, timeWindow: 60_000 } } }, async (req, reply) => {
+  const b = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+  const clip = (v: unknown, n: number) => String(v ?? "").replace(/[^\x20-\x7E]/g, "").slice(0, n);
+  const code = clip(b.code, 80);
+  if (code) req.log.warn({ where: clip(b.where, 20), code, detail: clip(b.detail, 300) }, "pay: checkout failed");
+  return reply.code(204).send();
+});
+
 // OS-aware desktop-app download page (tailzu.space/download). The page itself
 // HEAD-checks /downloads/* so platforms without a published installer show as
 // "coming soon" instead of a dead link.

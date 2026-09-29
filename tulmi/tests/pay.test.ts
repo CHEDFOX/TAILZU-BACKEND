@@ -5,6 +5,7 @@ process.env.OPENROUTER_API_KEY = "test-openrouter-key";
 process.env.OPENAI_API_KEY = "test-openai-key";
 process.env.STT_PROVIDER = "openai";
 process.env.NODE_ENV = "test";
+process.env.MEDIA_DIR = "/tmp/tailzu-test-media";
 
 // eslint-disable-next-line import/first
 import { payHtml } from "../src/routes/pay.js";
@@ -44,5 +45,36 @@ describe("the pay page", () => {
     expect(html).toContain("XOOTEQ LAB PRIVATE LIMITED");
     expect(html).toMatch(/non-refundable, except where the law requires a refund/);
     expect(html).not.toMatch(/undefined|NaN/);
+  });
+});
+
+describe("when Paddle refuses the checkout", () => {
+  // Paddle's overlay says "Something went wrong" whatever the cause, and every
+  // cause is a dashboard setting with a name. The page must pass that name on.
+  const html = page({ annual: "pri_01elite", monthly: "pri_01lite" });
+
+  it("listens for Paddle's error and shows the buyer a code to quote", () => {
+    expect(html).toContain('e.name === "checkout.error"');
+    expect(html).toContain('<p class="note failed">');
+    expect(html).toContain("support@tailzu.space with this code: <code></code>");
+    expect(html).toContain('#pay[data-state="failed"] .note.failed');
+  });
+
+  it("sends the code to the server, and checks the prices before anyone clicks", () => {
+    expect(html).toContain('"/v1/pay/report"');
+    expect(html).toContain("Paddle.PricePreview(");
+  });
+
+  it("the server takes the report, logs it, and answers nothing", async () => {
+    const { buildApp } = await import("../src/server.js");
+    const app = await buildApp(); await app.ready();
+    try {
+      const res = await app.inject({ method: "POST", url: "/v1/pay/report",
+        payload: { where: "checkout", code: "transaction_default_checkout_url_not_set", detail: "x".repeat(5000) } });
+      expect(res.statusCode).toBe(204);
+      expect(res.body).toBe("");
+      const junk = await app.inject({ method: "POST", url: "/v1/pay/report", payload: "not json", headers: { "content-type": "text/plain" } });
+      expect([204, 400, 415]).toContain(junk.statusCode);
+    } finally { await app.close(); }
   });
 });

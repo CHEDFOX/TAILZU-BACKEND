@@ -30,7 +30,9 @@ const CLIENT_TOKEN = /^(live|test)_[A-Za-z0-9]+$/;
 const CSS = `${PLAN_CSS}
   .note { display: none; margin: 20px 0 0; padding: 16px 20px; border-radius: 16px; background: var(--card); color: var(--white); }
   #pay[data-state="nouser"] .note.nouser, #pay[data-state="done"] .note.done,
-  #pay[data-state="error"] .note.error, #pay[data-state="off"] .note.off, #pay[data-state="txn"] .note.txn { display: block; }
+  #pay[data-state="error"] .note.error, #pay[data-state="off"] .note.off, #pay[data-state="txn"] .note.txn,
+  #pay[data-state="failed"] .note.failed { display: block; }
+  .note code { font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; opacity: .8; text-transform: none; }
   #pay[data-state="nouser"] .plan .btn, #pay[data-state="off"] .plan .btn { display: none; }
   #pay[data-state="done"] .field { opacity: .45; pointer-events: none; }
   .fine { margin: 56px 0 0; max-width: 720px; }
@@ -85,6 +87,7 @@ export function payHtml(opts: {
 <p class="note txn">Opening checkout…</p>
 <p class="note done">Paid. Go back to Tailzu; it unlocks in a moment, on every device you sign in to.</p>
 <p class="note error">Checkout could not load. Check your connection and reload this page.</p>
+<p class="note failed">Checkout could not open. Try again in a minute. If it keeps happening, write to support@tailzu.space with this code: <code></code></p>
 <p class="note off">Web checkout is not open yet. Subscribe in the Tailzu app on iPhone or Android.</p>
 
 <div class="fine">
@@ -105,6 +108,28 @@ export function payHtml(opts: {
   var set = function (s) { root.dataset.state = s; };
   if (!txn && !UUID.test(uid)) { set("nouser"); return; }
 
+  // WHEN PADDLE SAYS NO, SAY WHY. Its overlay shows a buyer "Something went
+  // wrong" whatever the cause, and every cause is a dashboard setting with a
+  // name: no default payment link, a domain not approved, a price from the
+  // other environment. So the code Paddle gives goes to the buyer (to quote to
+  // support) and to the server's log, where one grep names the fix.
+  var report = function (where, err) {
+    var e = (err && (err.error || (err.data && err.data.error) || err.data)) || err || {};
+    var code = String(e.code || e.type || e.name || where).slice(0, 80);
+    var detail = String(e.detail || e.message || "").slice(0, 300);
+    try {
+      var body = JSON.stringify({ where: where, code: code, detail: detail });
+      if (!(navigator.sendBeacon && navigator.sendBeacon("/v1/pay/report", new Blob([body], { type: "application/json" }))))
+        fetch("/v1/pay/report", { method: "POST", headers: { "Content-Type": "application/json" }, body: body, keepalive: true });
+    } catch (x) {}
+    return code;
+  };
+  var fail = function (where, err) {
+    var code = report(where, err);
+    var c = root.querySelector(".note.failed code"); if (c) c.textContent = code;
+    set("failed");
+  };
+
   var s = document.createElement("script");
   s.src = "https://cdn.paddle.com/paddle/v2/paddle.js";
   s.onerror = function () { set("error"); };
@@ -113,12 +138,24 @@ export function payHtml(opts: {
       if (C.token.indexOf("test_") === 0) Paddle.Environment.set("sandbox");
       Paddle.Initialize({
         token: C.token,
-        eventCallback: function (e) { if (e && e.name === "checkout.completed") set("done"); }
+        eventCallback: function (e) {
+          if (!e) return;
+          if (e.name === "checkout.completed") set("done");
+          else if (e.name === "checkout.error") fail("checkout", e);
+        }
       });
-    } catch (e) { set("error"); return; }
+    } catch (e) { fail("init", e); return; }
     // A transaction link: Paddle.js opens that checkout itself.
     if (txn) { set("txn"); return; }
     set("pick");
+    // The token and the price ids, asked of Paddle before anybody clicks: a
+    // price from the sandbox with a live token (or the reverse) fails here,
+    // quietly, into the log, instead of in front of a buyer.
+    var ids = Array.prototype.map.call(document.querySelectorAll("button[data-price]"), function (b) { return b.getAttribute("data-price"); });
+    try {
+      if (ids.length && Paddle.PricePreview) Paddle.PricePreview({ items: ids.map(function (id) { return { priceId: id, quantity: 1 }; }) })
+        .catch(function (err) { report("prices", err); });
+    } catch (x) { report("prices", x); }
     Array.prototype.forEach.call(document.querySelectorAll("button[data-price]"), function (b) {
       b.disabled = false;
       b.addEventListener("click", function () {
@@ -128,7 +165,7 @@ export function payHtml(opts: {
             customData: { app_user_id: uid },
             settings: { displayMode: "overlay", theme: "dark", allowLogout: false }
           });
-        } catch (e) { set("error"); }
+        } catch (e) { fail("open", e); }
       });
     });
   };

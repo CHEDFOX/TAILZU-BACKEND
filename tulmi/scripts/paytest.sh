@@ -100,5 +100,43 @@ case "$W" in
   *) no "unexpected: $W" ;;
 esac
 
+echo; echo "4. the checkout the desktop opens"
+URL=$(printf '%s' "$D" | grep -o '"paywall.web.url":"[^"]*"' | cut -d'"' -f4)
+echo "  link: ${URL:-none}"
+case "$URL" in
+  https://tailzu.space/pay*) ok "the link is tailzu.space/pay, the domain Paddle approved";;
+  *api.tailzu.space*) no "the link is on api.tailzu.space — Paddle approved tailzu.space; set REVENUECAT_WEB_PAYWALL_URL=https://tailzu.space/pay";;
+  "") no "no link at all — set REVENUECAT_WEB_PAYWALL_URL=https://tailzu.space/pay in $ENVF, then: docker compose up -d backend";;
+  *) echo "  NOTE  not our pay page; checks below cover tailzu.space/pay only";;
+esac
+PAGE=$(curl -s "$API/pay")
+case "$PAGE" in *'data-state="loading"'*) ok "the pay page is open for checkout";;
+  *'data-state="off"'*) no "the pay page says checkout is not open — PADDLE_CLIENT_TOKEN or both price ids are missing or malformed";;
+  *) no "the pay page did not render";; esac
+N=$(printf '%s' "$PAGE" | grep -o 'data-price="pri_[a-z0-9]*"' | sort -u | wc -l | tr -d ' ')
+[ "$N" = 2 ] && ok "both plans have a price id" || no "$N of 2 plans have a price id"
+TOK=$(printf '%s' "$PAGE" | grep -o '"token":"[a-z]*_' | cut -d'"' -f4)
+case "$TOK" in live_) ok "live client token (public by design)";; test_) no "a SANDBOX token — live prices will not open with it";; *) no "no client token";; esac
+# What a buyer's browser reported, in Paddle's words (the pay page sends it).
+SEEN=$(docker compose logs --since 72h backend 2>/dev/null | grep 'pay: checkout failed' | grep -o '"code":"[^"]*"' | sort | uniq -c | sort -rn | head -5)
+if [ -n "$SEEN" ]; then
+  echo "  Paddle refused a checkout in the last 3 days:"; printf '%s\n' "$SEEN" | sed 's/^/    /'
+  case "$SEEN" in
+    *default_checkout_url*) echo "    FIX  Paddle > Checkout > Checkout settings > Default payment link = https://tailzu.space/pay";;
+    *domain_is_not_approved*) echo "    FIX  Paddle > Checkout > Website approval: tailzu.space must show Approved";;
+    *not_found*|*price*) echo "    FIX  the price ids are not in the same Paddle environment as the token (live vs sandbox)";;
+  esac
+else
+  echo "  no checkout failure reported by a browser in the last 3 days"
+fi
+cat <<'TXT'
+  Dashboard settings this script cannot see (each one stops a desktop purchase):
+    Paddle      Checkout > Checkout settings > Default payment link = https://tailzu.space/pay
+    RevenueCat  Web > Paddle config: API key set, Webhook Configuration > Apply in Paddle
+    RevenueCat  Track new purchases from server-to-server notifications = ON
+    RevenueCat  Metadata field key = app_user_id
+    RevenueCat  both Paddle products attached to the entitlement this server checks
+TXT
+
 echo; echo "$pass passed, $fail failed  (no account touched)"
 [ "$fail" -eq 0 ] || exit 1
