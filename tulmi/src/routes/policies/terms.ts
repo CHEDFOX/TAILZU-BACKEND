@@ -6,6 +6,7 @@
  * refund policy, or governing law.
  */
 import { siteShell } from "./shell.js";
+import { crumbsLd, pageLd } from "../../seo/head.js";
 export const TERMS_EFFECTIVE = "September 27, 2026";
 
 const TERMS_BODY = `
@@ -173,5 +174,9 @@ export const TERMS_HTML = siteShell({
   title: "Terms of Service",
   path: "/terms",
   description: "The terms for using Tailzu, its apps and its keyboard.",
+  ld: [
+    pageLd("/terms", "Tailzu terms of service", "The terms for using Tailzu, its apps and its keyboard."),
+    crumbsLd([["Tailzu", "/"], ["Terms", "/terms"]]),
+  ],
   main: `<article class="prose">\n${TERMS_BODY}\n</article>`,
 });

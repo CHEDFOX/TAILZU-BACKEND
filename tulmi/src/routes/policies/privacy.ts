@@ -9,6 +9,7 @@
  * questionnaire in App Store Connect.
  */
 import { siteShell } from "./shell.js";
+import { crumbsLd, pageLd } from "../../seo/head.js";
 export const PRIVACY_POLICY_EFFECTIVE = "July 7, 2026";
 
 const PRIVACY_POLICY_BODY = `
@@ -209,5 +210,9 @@ export const PRIVACY_POLICY_HTML = siteShell({
   title: "Privacy Policy",
   path: "/privacy",
   description: "What Tailzu collects, why, who processes it, and your rights.",
+  ld: [
+    pageLd("/privacy", "Tailzu privacy policy", "What Tailzu collects, why, who processes it, and your rights.", { "@type": "WebPage" }),
+    crumbsLd([["Tailzu", "/"], ["Privacy", "/privacy"]]),
+  ],
   main: `<article class="prose">\n${PRIVACY_POLICY_BODY}\n</article>`,
 });

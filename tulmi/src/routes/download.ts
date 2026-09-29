@@ -15,6 +15,10 @@
  * can ship before every platform's installer exists.
  */
 import { siteShell } from "./policies/shell.js";
+import { crumbsLd, pageLd } from "../seo/head.js";
+import { SITE_UI } from "../experience/catalog.js";
+
+const DESCRIPTION = "Tailzu for Windows and Mac: tap Ctrl twice, talk, and clean text lands wherever your cursor is. Also on iPhone and Android.";
 
 
 const CSS = `
@@ -30,8 +34,13 @@ const CSS = `
 
 export const DOWNLOAD_PAGE_HTML = siteShell({
   title: "Download for desktop",
+  headTitle: "Download Tailzu for Windows and Mac — Voice Typing at Your Cursor",
   path: "/download",
-  description: "Tailzu for Windows, macOS and Linux: press a hotkey, talk, and clean text lands wherever your cursor is.",
+  description: DESCRIPTION,
+  ld: [
+    pageLd("/download", "Download Tailzu", DESCRIPTION),
+    crumbsLd([["Tailzu", "/"], ["Download", "/download"]]),
+  ],
   css: CSS,
   main: `
 <p class="eye">Desktop</p>
@@ -45,7 +54,8 @@ export const DOWNLOAD_PAGE_HTML = siteShell({
 
 <div class="others" id="others"></div>
 
-<p class="foot">Windows may show a SmartScreen prompt on first run: choose “More info”, then “Run anyway”.</p>`,
+<p class="foot">Windows may show a SmartScreen prompt on first run: choose “More info”, then “Run anyway”.</p>
+<p class="foot">On your phone: <a href="${SITE_UI.stores.ios}">App Store</a> · <a href="${SITE_UI.stores.android}">Google Play</a></p>`,
   script: `
   var FILES = {
     win:   { label: "Download for Windows", file: "/downloads/Tailzu-Setup.exe" },

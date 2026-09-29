@@ -400,17 +400,22 @@ export const SITE_UI = {
   },
   faq: {
     title: "Asked, answered.",
-    // Eight, each answered in a breath. Every answer is something the
-    // product does: Full Access is how an iOS keyboard reaches the network
-    // at all, and there is no offline mode.
+    // Eight, each answered in a breath (a test holds both numbers). Every
+    // answer is something the product does: there is no offline mode, and
+    // audio is kept only with session history on (the privacy policy, 1.2).
+    //
+    // EACH ANSWER STANDS ALONE. Answer engines quote one answer, never the
+    // one above it, and these are also the page's FAQPage data — so "Most of
+    // the world's" became the languages it means, and the page now says in
+    // its own words what the product is.
     items: [
-      { q: "Does it work in WhatsApp?", a: "Yes. It's a keyboard. Every app." },
-      { q: "Which languages?", a: "Most of the world's." },
+      { q: "What is Tailzu?", a: "A voice keyboard. Talk in any language, send clean text." },
+      { q: "Does it work in WhatsApp?", a: "Yes. It's a keyboard, so every app." },
+      { q: "Which languages?", a: "22 Indian languages, Hinglish, English and 20+ more." },
       { q: "Hinglish?", a: "Native. Two languages stay two." },
       { q: "Does it change what I said?", a: "It cleans. It never rewrites. Names and amounts stay." },
-      { q: "Can I change the tone?", a: "One tap on the keyboard." },
       { q: "Is it free?", a: "{n} words a month, free. Then upgrade." },
-      { q: "Why Full Access on iPhone?", a: "It's how a keyboard reaches the internet." },
+      { q: "Is my voice stored?", a: "Not by default. Audio is deleted once it's written." },
       { q: "Offline?", a: "No. It needs a connection to hear you." },
     ],
   },
@@ -11883,9 +11888,12 @@ export const SITE_SHAPE = {
       "questions": "on-paper"
     }
   },
+  // What a search result says. The page sets document.title from this, so it
+  // IS the title a crawler that runs the script reads; the static <head> is
+  // written from the same two lines (scripts/sync-site.mts).
   "meta": {
-    "title": "Tailzu",
-    "description": "Talk. It writes. Speak Hindi, Hinglish or any of 22 Indian languages — your own words come back spelled in English letters, ready to send, in any app."
+    "title": "Tailzu — AI Voice Typing for Hindi, Hinglish & 22 Indian Languages",
+    "description": "Talk. It writes. Speak Hindi, Hinglish or any of 22 Indian languages and clean, ready-to-send text lands in any app. iPhone, Android, Windows and Mac."
   }
 };
 

@@ -37,6 +37,7 @@ import { TERMS_HTML, TERMS_EFFECTIVE } from "./routes/policies/terms.js";
 import { pricingHtml } from "./routes/policies/pricing.js";
 import { payHtml } from "./routes/pay.js";
 import { DOWNLOAD_PAGE_HTML } from "./routes/download.js";
+import { registerSeoRoutes } from "./routes/seo.js";
 import { registerDemoRoutes, sitePage, AUTH_RESUME_SCHEME_URL } from "./routes/demo.js";
 import { initControl, registerControlRoutes, withControl } from "./control/index.js";
 import { initPush, pushEngine, registerPushRoutes } from "./push/index.js";
@@ -475,6 +476,11 @@ app.get("/download", async (_req, reply) => {
   reply.header("Cache-Control", published ? "public, max-age=60" : "public, max-age=3600");
   return published ?? DOWNLOAD_PAGE_HTML;
 });
+
+// What search and answer engines read: the language pages, the questions, the
+// sitemap and llms.txt. Served through the site's proxy, canonical at
+// tailzu.space, built from seo/facts.ts like every other page's facts.
+registerSeoRoutes(app);
 
 // The landing page at /, its copy at /v1/site, and the live demo — a visitor's
 // own voice written clean, no account. See routes/demo.ts for why the demo is

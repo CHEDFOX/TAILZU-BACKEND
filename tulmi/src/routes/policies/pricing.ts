@@ -13,6 +13,7 @@
  */
 import type { PaywallConfig } from "../../../../shared/types/api.js";
 import { siteShell } from "./shell.js";
+import { appLd, crumbsLd, pageLd } from "../../seo/facts.js";
 
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -81,10 +82,27 @@ export function pricingHtml(opts: {
     ], p.default === true, p.badge ?? "");
   });
 
+  // The search title names the numbers, so a result answers "how much" before
+  // anyone clicks. Built from the same plans the cards are.
+  const priced = paid.map((p) => {
+    const monthly = /month/i.test(p.period ?? "") && !/year/i.test(p.period ?? "");
+    return `${p.label ?? ""} ${p.price ?? ""}/${monthly ? "mo" : "yr"}`;
+  });
+  const description = `Tailzu is free to start with ${n(opts.freeWords)} words a month. ` +
+    paid.map((p) => {
+      const monthly = /month/i.test(p.period ?? "") && !/year/i.test(p.period ?? "");
+      return `${p.label} is ${p.price} a ${monthly ? "month" : "year"}`;
+    }).join("; ") + ". Both remove the word limit.";
   return siteShell({
     title: "Pricing",
+    headTitle: `Tailzu Pricing — Free, ${priced.join(", ")}`,
     path: "/pricing",
-    description: "Tailzu is free to start. Lite and Elite remove the monthly word limit.",
+    description,
+    ld: [
+      pageLd("/pricing", "Tailzu pricing", description),
+      crumbsLd([["Tailzu", "/"], ["Pricing", "/pricing"]]),
+      appLd(),
+    ],
     css: CSS,
     main: `
 <p class="eye">Pricing</p>

@@ -13,15 +13,13 @@
  * one exception, because a contract set in title case cannot be read.
  * The amber stays out: on the site it means "the microphone is open".
  */
-const esc = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
-const FAVICON = "data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%201000%201000%22%3E%20%3Crect%20width=%221000%22%20height=%221000%22%20fill=%22%230F0D0B%22/%3E%20%3Csvg%20x=%2270%22%20y=%22176%22%20width=%22860%22%20height=%22648%22%20viewBox=%22170%20228%20680%20512%22%3E%20%3Cline%20x1=%22346%22%20y1=%22402%22%20x2=%22270%22%20y2=%22598%22%20stroke=%22%23E9CBA2%22%20stroke-width=%229%22%20stroke-linecap=%22round%22/%3E%20%3Cline%20x1=%22444%22%20y1=%22394%22%20x2=%22554%22%20y2=%22486%22%20stroke=%22%23E8A23C%22%20stroke-width=%2230%22%20stroke-dasharray=%229%2011%22/%3E%20%3Cline%20x1=%22668%22%20y1=%22478%22%20x2=%22828%22%20y2=%22243%22%20stroke=%22%23C77A3A%22%20stroke-width=%229%22%20stroke-linecap=%22round%22/%3E%20%3Ccircle%20cx=%22828%22%20cy=%22243%22%20r=%2211%22%20fill=%22%23B06240%22/%3E%20%3Crect%20x=%22308%22%20y=%22269%22%20width=%22132%22%20height=%22132%22%20rx=%2228%22%20fill=%22%23F4F1EA%22/%3E%20%3Crect%20x=%22558%22%20y=%22478%22%20width=%22132%22%20height=%22132%22%20rx=%2228%22%20fill=%22%23F4F1EA%22/%3E%20%3Crect%20x=%22178%22%20y=%22598%22%20width=%22132%22%20height=%22132%22%20rx=%2228%22%20fill=%22%23F4F1EA%22/%3E%20%3C/svg%3E%20%3C/svg%3E";
+import { headTags } from "../../seo/head.js";
 
 const MARK = `<svg viewBox="170 228 680 512" aria-hidden="true"> <line x1="346" y1="402" x2="270" y2="598" stroke="#E9CBA2" stroke-width="9" stroke-linecap="round"/> <line x1="444" y1="394" x2="554" y2="486" stroke="#E8A23C" stroke-width="30" stroke-dasharray="9 11"/> <line x1="668" y1="478" x2="828" y2="243" stroke="#C77A3A" stroke-width="9" stroke-linecap="round"/> <circle cx="828" cy="243" r="11" fill="#B06240"/> <rect x="308" y="269" width="132" height="132" rx="28" fill="#F4F1EA"/> <rect x="558" y="478" width="132" height="132" rx="28" fill="#F4F1EA"/> <rect x="178" y="598" width="132" height="132" rx="28" fill="#F4F1EA"/> </svg>`;
 
 const NAV: Array<[string, string]> = [
-  ["/pricing", "Pricing"], ["/privacy", "Privacy"], ["/terms", "Terms"], ["/download", "Download"],
+  ["/languages", "Languages"], ["/faq", "FAQ"], ["/pricing", "Pricing"],
+  ["/privacy", "Privacy"], ["/terms", "Terms"], ["/download", "Download"],
 ];
 
 const CSS = `
@@ -89,7 +87,13 @@ const CSS = `
 export function siteShell(o: {
   /** The tab title, before " — Tailzu". */
   title: string;
+  /** The whole <title> instead, when the page's search title says more. */
+  headTitle?: string;
   description?: string;
+  /** Structured data for this page (seo/facts.ts builds it). */
+  ld?: object[];
+  /** More Google Fonts families, as the css2 query wants them. */
+  fonts?: string;
   /** Which footer link this page is. */
   path?: string;
   /** Everything between the header and the footer. */
@@ -100,19 +104,25 @@ export function siteShell(o: {
   script?: string;
   noindex?: boolean;
 }): string {
+  const here = (href: string) => o.path === href || (o.path ?? "").startsWith(`${href}/`);
   const nav = NAV.map(([href, label]) =>
-    `<a href="${href}"${href === o.path ? ' aria-current="page"' : ""}>${label}</a>`).join("");
+    `<a href="${href}"${here(href) ? ' aria-current="page"' : ""}>${label}</a>`).join("");
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(o.title)} — Tailzu</title>
-${o.description ? `<meta name="description" content="${esc(o.description)}">\n` : ""}${o.noindex ? '<meta name="robots" content="noindex">\n' : ""}<meta name="theme-color" content="#0F0D0B">
-<link rel="icon" href="${FAVICON}">
+${headTags({
+  path: o.path ?? "/",
+  title: o.headTitle ?? `${o.title} — Tailzu`,
+  description: o.description ?? "",
+  noindex: o.noindex || !o.path,
+  ld: o.ld,
+})}
+<meta name="theme-color" content="#0F0D0B">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,300..500&family=Instrument+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,300..500&family=Instrument+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400${o.fonts ? `&${o.fonts}` : ""}&display=swap">
 <style>${CSS}${o.css ?? ""}</style>
 </head>
 <body>
