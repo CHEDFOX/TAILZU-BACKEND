@@ -12128,12 +12128,14 @@ export function buildKeyboardConfig(
       // is initialized to "dark" in Swift, so the eq check handles the default
       // case; no need for a redundant `falsy` OR (which forced two evaluations
       // per remount for zero real benefit and added latency to every keystroke).
-      // Dark-mode tools row. Mic at rest = a strong neutral circle: pale ink
-      // with the mark in the dark ground. Amber is only for what is live (the
-      // dictation dots while listening), never the resting key. Tone pill =
-      // solid dark gray with a 1pt subtle border for definition.
+      // Dark-mode tools row. Mic at rest = malt, the colour the app's tab
+      // icons rest in (TAB_MALT), with the mark in the dark ground — the
+      // keyboard's one solid key reads as the app's, not as a cream blank.
+      // Amber is only for what is live (the dictation dots while listening),
+      // never the resting key. Tone pill = solid dark gray with a 1pt subtle
+      // border for definition.
       makeToolsRow({
-        micBg: "#F3E2C6",
+        micBg: TAB_MALT,
         micFg: "#0F0D0B",
         toneBg: "#2C2C2E",         // Apple systemGray5 dark — solid, no melt into blur
         toneFg: "#FFFFFF",
