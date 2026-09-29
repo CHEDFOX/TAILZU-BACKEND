@@ -82,6 +82,7 @@ export const APP_KNOB_LABELS: Record<string, string> = {
   "desktop.notify.segmentLost": "segment lost — still listening",
   "desktop.notify.title": "Tailzu",
   "desktop.notify.updateAvailable": "Tailzu {latest} is available. Click to download it.",
+  "desktop.notify.updateReady": "Tailzu {latest} is ready. Click to update.",
   "desktop.notify.updateRequired": "This version of Tailzu ({current}) is no longer supported. Click to download the update.",
   "desktop.notify.wordsOut": "You're out of words this month.",
   "desktop.oauth.badRedirect": "bad redirect",

@@ -46,24 +46,35 @@ export function compareVersions(a: string, b: string): number {
 }
 
 const VERSION = /^\d{1,4}\.\d{1,4}\.\d{1,6}$/;
-const cache = new Map<DesktopOs, { at: number; version: string }>();
+const SHA512 = /^[a-f0-9]{128}$/;
+const cache = new Map<DesktopOs, { at: number; version: string; sha512: string }>();
 const TTL_MS = 60_000;
 
 function downloadsDir(): string {
   return process.env.DOWNLOADS_DIR || "/data/downloads";
 }
 
+/**
+ * What was published for this OS: its version, and the installer's SHA-512
+ * (receive-download.sh writes both beside it). Either is "" when not recorded.
+ */
+export function publishedRelease(os: DesktopOs, now = Date.now()): { version: string; sha512: string } {
+  const hit = cache.get(os);
+  if (hit && now - hit.at < TTL_MS) return { version: hit.version, sha512: hit.sha512 };
+  const read = (ext: string, ok: RegExp) => {
+    try {
+      const v = fs.readFileSync(path.join(downloadsDir(), `${FILES[os]}.${ext}`), "utf8").trim().toLowerCase();
+      return ok.test(v) ? v : "";
+    } catch { return ""; }
+  };
+  const version = read("version", VERSION), sha512 = read("sha512", SHA512);
+  cache.set(os, { at: now, version, sha512 });
+  return { version, sha512 };
+}
+
 /** The published version for this OS, or "" when none was recorded. */
 export function publishedVersion(os: DesktopOs, now = Date.now()): string {
-  const hit = cache.get(os);
-  if (hit && now - hit.at < TTL_MS) return hit.version;
-  let version = "";
-  try {
-    const v = fs.readFileSync(path.join(downloadsDir(), `${FILES[os]}.version`), "utf8").trim();
-    if (VERSION.test(v)) version = v;
-  } catch { /* nothing published with a version yet */ }
-  cache.set(os, { at: now, version });
-  return version;
+  return publishedRelease(os, now).version;
 }
 
 /** Forget what was read, so a test (or a publish) is seen at once. */
@@ -75,6 +86,12 @@ export interface DesktopUpdate {
   version: string;
   /** The installer itself, not the page: one click and it downloads. */
   url: string;
+  /**
+   * The installer's SHA-512, when it was recorded. A build that installs its
+   * own update checks the download against it, and is offered that only when
+   * there is one to check against.
+   */
+  sha512?: string;
 }
 
 /**
@@ -87,9 +104,13 @@ export function updateFor(appVersion: unknown, os: unknown, fallbackLatest = "")
   const o = desktopOs(os);
   const current = String(appVersion ?? "").trim();
   if (!o || !VERSION.test(current)) return null;
-  const latest = publishedVersion(o) || (VERSION.test(fallbackLatest) ? fallbackLatest : "");
+  const rel = publishedRelease(o);
+  const latest = rel.version || (VERSION.test(fallbackLatest) ? fallbackLatest : "");
   if (!latest || compareVersions(current, latest) >= 0) return null;
-  return { version: latest, url: `${SITE_ORIGIN}/downloads/${FILES[o]}` };
+  // The checksum belongs to the published file, so it only stands for the
+  // version that was published with it — never for the fallback number.
+  const sha512 = rel.version === latest && rel.sha512 ? rel.sha512 : undefined;
+  return { version: latest, url: `${SITE_ORIGIN}/downloads/${FILES[o]}`, ...(sha512 ? { sha512 } : {}) };
 }
 
 /** The direct installer link for this OS, for the tray's notification. */

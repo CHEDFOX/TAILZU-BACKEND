@@ -14,6 +14,10 @@
 # written beside the installer (Tailzu.dmg.version) once the file is in place,
 # and the server reads it to tell every older install on that OS, in the
 # window, that an update is ready (tulmi/src/experience/desktopRelease.ts).
+#
+# The installer's SHA-512 is written beside it too (Tailzu.dmg.sha512), before
+# the version: a build that updates itself checks what it downloaded against
+# it, so an announced version always has a checksum to be held to.
 set -euo pipefail
 read -r name version extra <<< "${SSH_ORIGINAL_COMMAND:-}"
 name="${name:-}"; version="${version:-}"
@@ -35,8 +39,12 @@ size=$(stat -c %s "$tmp")
 chmod 644 "$tmp"
 mv -f "$tmp" "$dir/$name"
 trap - EXIT
-# After the installer, never before: a version that names a file not yet in
-# place would send people to download the old one.
+sha="$(sha512sum "$dir/$name" | cut -d' ' -f1)"
+printf '%s\n' "$sha" > "$dir/.$name.sha512.tmp"
+chmod 644 "$dir/.$name.sha512.tmp"
+mv -f "$dir/.$name.sha512.tmp" "$dir/$name.sha512"
+# After the installer and its checksum, never before: a version that names a
+# file not yet in place would send people to download the old one.
 if [ -n "$version" ]; then
   printf '%s\n' "$version" > "$dir/.$name.version.tmp"
   chmod 644 "$dir/.$name.version.tmp"

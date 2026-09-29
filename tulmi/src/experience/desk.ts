@@ -68,7 +68,9 @@ export interface DeskContext {
    *  catalog, and only for a window that can show it on a page (DeskField). */
   field?: Node;
   /** A newer build published for this window's OS (desktopRelease.ts). */
-  update?: { version: string; url: string } | null;
+  update?: { version: string; url: string; sha512?: string } | null;
+  /** This build installs its own update in place (it said "DeskSelfUpdate"). */
+  selfUpdate?: boolean;
 }
 
 // ---- nodes ---------------------------------------------------------------------
@@ -681,7 +683,40 @@ export function deskPlan(ctx: DeskContext): ScreenResponse {
  * the top of every page until the new build is installed, and its one button
  * downloads the installer itself — not a page to find it on.
  */
-function updateCard(u: { version: string; url: string }): Node {
+/**
+ * THE UPDATE, INSTALLED FROM HERE.
+ *
+ * A build that says it can ("DeskSelfUpdate") gets one button: it downloads
+ * the new build, checks it against the SHA-512 recorded when it was
+ * published, puts it in place of this one and restarts on it. No browser, no
+ * installer to click through, still signed in. The words for each step are
+ * sent with the action; the window only fills in the percentage.
+ *
+ * Anything else — an older build, or a publish with no checksum recorded —
+ * gets the link, which is all it could do before.
+ */
+function updateCard(u: { version: string; url: string; sha512?: string }, selfUpdate = false): Node {
+  if (selfUpdate && u.sha512) {
+    const install: ActionRef = {
+      kind: "installUpdate", version: u.version, url: u.url, sha512: u.sha512,
+      words: {
+        downloading: "Downloading. {pct}%",
+        installing: "Installing. Tailzu restarts in a moment.",
+        failed: "The update didn't finish. Try again.",
+        manual: "This copy can't update itself. The download is opening in your browser.",
+      },
+    };
+    return stack([
+      row([
+        stack([
+          text("Update", "d-eyebrow"),
+          text(`Tailzu ${u.version} is ready.`, "d-written", { marginTop: 4 }),
+          { ...text("It installs itself and restarts. You stay signed in.", "d-lede", { marginTop: 2 }), bind: { content: "upd.line" } },
+        ], { flex: 1, minWidth: 0 }),
+        { ...link("Update now", install, "d-btn"), visibleIf: { falsy: "upd.busy" } },
+      ], { align: "center", gap: 24, justify: "between", flexWrap: "wrap", paddingTop: 18, paddingBottom: 18 }, "d-room-inner"),
+    ], { borderBottom: "1px solid var(--d-rule)" });
+  }
   return stack([
     row([
       stack([
@@ -709,6 +744,6 @@ function deskPage(screenId: string, ctx: DeskContext): ScreenResponse | null {
 
 export function buildDeskScreen(screenId: string, ctx: DeskContext): ScreenResponse | null {
   const s = deskPage(screenId, ctx);
-  if (s?.root && ctx.update) s.root.children = [updateCard(ctx.update), ...(s.root.children ?? [])];
+  if (s?.root && ctx.update) s.root.children = [updateCard(ctx.update, !!ctx.selfUpdate), ...(s.root.children ?? [])];
   return s;
 }

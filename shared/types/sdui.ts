@@ -835,6 +835,11 @@ export type ActionSpec =
   | { kind: "desktop.config"; key: string; value: unknown }
   /** Start (or stop) dictation, as the hotkey does. */
   | { kind: "dictate" }
+  /** Download, check and install a newer build in place of this one, then
+   *  restart on it (desktop/updater.js). `words` are the card's line for each
+   *  step; "{pct}" in `downloading` is filled in by the window. */
+  | { kind: "installUpdate"; version: string; url: string; sha512: string;
+      words?: { downloading?: string; installing?: string; failed?: string; manual?: string } }
   | { kind: "readClipboard"; assignTo: string }
   | { kind: "sms"; number?: string; body?: string }
   | { kind: "email"; to?: string; subject?: string; body?: string }
@@ -1528,6 +1533,11 @@ export type KeyboardActionSpec =
   | { kind: "desktop.config"; key: string; value: unknown }
   /** Start (or stop) dictation, as the hotkey does. */
   | { kind: "dictate" }
+  /** Download, check and install a newer build in place of this one, then
+   *  restart on it (desktop/updater.js). `words` are the card's line for each
+   *  step; "{pct}" in `downloading` is filled in by the window. */
+  | { kind: "installUpdate"; version: string; url: string; sha512: string;
+      words?: { downloading?: string; installing?: string; failed?: string; manual?: string } }
   | { kind: "readClipboard"; assignTo: string }
   | { kind: "share"; text?: string; url?: string; title?: string }
   // ----- state store (backend scratch dict) -----

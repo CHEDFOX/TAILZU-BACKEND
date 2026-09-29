@@ -302,6 +302,48 @@ describe("a newer build, said in the window", () => {
     expect(b.flags["desktop.update"]!.latest).toBe("0.2.2");
     expect(b.flags["desktop.update"]!.url).toBe("https://tailzu.space/downloads/Tailzu-Setup.exe");
   });
+
+  describe("installed from the window", () => {
+    const sha = "ab".repeat(64);
+    const selfUpdating = (appVersion: string) =>
+      ({ ...sampleCtx, formFactor: "desktop", can: new Set(["DeskShell", "DeskSelfUpdate"]), appVersion, os: "windows" }) as never;
+    beforeAll(() => { fs.writeFileSync(path.join(dir, "Tailzu-Setup.exe.sha512"), sha.toUpperCase() + "\n"); resetPublishedVersions(); });
+    afterAll(() => { fs.rmSync(path.join(dir, "Tailzu-Setup.exe.sha512"), { force: true }); resetPublishedVersions(); });
+
+    it("a build that can update itself gets one button that installs, checked against the published checksum", () => {
+      const s = buildScreen("desk_today", selfUpdating("0.2.1")) as { root: { children: Array<Record<string, unknown>> } };
+      const c = JSON.stringify(s.root.children[0]);
+      expect(c).toContain('"kind":"installUpdate"');
+      expect(c).toContain(`"sha512":"${sha}"`);
+      expect(c).toContain('"version":"0.2.2"');
+      expect(c).toContain('"url":"https://tailzu.space/downloads/Tailzu-Setup.exe"');
+      expect(c).toContain("Update now");
+      // Its line follows the install, and the button steps aside while it runs.
+      expect(c).toContain('"bind":{"content":"upd.line"}');
+      expect(c).toContain('"visibleIf":{"falsy":"upd.busy"}');
+      expect(c).toContain("{pct}");
+      expect(c).not.toContain('"kind":"openUrl"');
+    });
+
+    it("an older build keeps the download link", () => {
+      expect(card(buildScreen("desk_today", at("0.2.1", "windows")))).toContain('"kind":"openUrl"');
+    });
+
+    it("the tray's notification is told there is a checksum, so it can open the card instead", () => {
+      const b = buildBootstrap({ formFactor: "desktop", desk: true, os: "win32" } as never) as { flags: Record<string, { sha512?: string }> };
+      expect(b.flags["desktop.update"]!.sha512).toBe(sha);
+    });
+
+    it("with no checksum recorded, even a self-updating build gets the link", () => {
+      fs.rmSync(path.join(dir, "Tailzu-Setup.exe.sha512"), { force: true });
+      resetPublishedVersions();
+      const c = card(buildScreen("desk_today", selfUpdating("0.2.1")));
+      expect(c).toContain('"kind":"openUrl"');
+      expect(c).not.toContain("installUpdate");
+      fs.writeFileSync(path.join(dir, "Tailzu-Setup.exe.sha512"), sha + "\n");
+      resetPublishedVersions();
+    });
+  });
 });
 
 describe("what a note was written in", () => {

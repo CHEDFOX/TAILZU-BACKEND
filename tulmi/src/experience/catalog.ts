@@ -34,7 +34,7 @@ import { applyRollouts, activeRollouts } from "./rollout.js";
 import type { HistoryEntry, PaywallConfig, PaywallPlan, Personality, StatsResponse, UsageSummary } from "../../../shared/types/api.js";
 import { getConfig } from "../config.js";
 import type { Allowance } from "../usage/allowance.js";
-import { desktopOs, installerUrl, publishedVersion, updateFor } from "./desktopRelease.js";
+import { desktopOs, installerUrl, publishedRelease, updateFor } from "./desktopRelease.js";
 
 /** The desktop release every OS has at least, for an OS whose installer was
  *  published before versions were recorded beside it. */
@@ -1911,12 +1911,15 @@ export function buildBootstrap(
           // build that lands tells every older install without anyone raising
           // a number. DESKTOP_LATEST is only the floor for an OS with nothing
           // published with a version yet. The click downloads the installer.
-          "desktop.update": {
-            latest: (desktopOs(opts.os) ? publishedVersion(desktopOs(opts.os)!) : "") || DESKTOP_LATEST,
+          "desktop.update": ((rel) => ({
+            latest: rel.version || DESKTOP_LATEST,
             min: "",
             url: installerUrl(opts.os) ?? "https://tailzu.space/download",
             notes: "",
-          },
+            // For a build that installs its own update: the tray's notice then
+            // opens the window's card instead of the browser.
+            ...(rel.version && rel.sha512 ? { sha512: rel.sha512 } : {}),
+          }))(desktopOs(opts.os) ? publishedRelease(desktopOs(opts.os)!) : { version: "", sha512: "" }),
         } : {}),
         // The desk: its pages, where its settings live, and where out of words
         // leads — the plan page, not the phone's full-screen paywall.
@@ -4571,6 +4574,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       manageUrl: ctx.entitlement ? String(manageFlags(ctx.entitlement.store)["billing.manage.url"] ?? "") || undefined : undefined,
       // Dimmed to sit behind the Train page's words, as on the phone's card.
       update: updateFor(ctx.appVersion, ctx.os, DESKTOP_LATEST),
+      selfUpdate: ctx.can?.has("DeskSelfUpdate") === true,
       field: screenId === "desk_train" && ctx.can?.has("DeskField")
         ? neuralField(0.5, fieldGrowth(ctx.personality), undefined, FIELD_SIGNAL_AT_REST)
         : undefined,
