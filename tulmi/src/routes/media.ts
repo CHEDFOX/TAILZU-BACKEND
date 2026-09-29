@@ -26,10 +26,15 @@
 import { FastifyInstance } from "fastify";
 import { registerMediaCompressRoute, registerMediaRetimeRoute } from "./mediaCompress.js";
 import crypto from "node:crypto";
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import type { MediaPresent } from "../../../shared/types/sdui.js";
 import { bumpCacheVersion } from "../experience/catalog.js";
+
+const runFile = promisify(execFile);
 
 /**
  * Sanitise a presentation payload.
@@ -146,6 +151,12 @@ export type MediaEntry = {
   durationMs?: number;
   /** How the slot is shown. Set by POST /v1/media/present. */
   present?: MediaPresent;
+  /**
+   * A video's first frame as a still, cut by the server (ensureVideoPosters).
+   * `from` is the video url it was cut from, so a replaced video is re-cut
+   * rather than wearing the old one's frame.
+   */
+  poster?: { url: string; contentType: string; from: string };
 };
 
 export type MediaRegistry = Record<string, MediaEntry>;
@@ -293,6 +304,110 @@ let writeChain: Promise<void> = Promise.resolve();
 async function writeRegistryAndInvalidate(mediaDir: string, r: MediaRegistry): Promise<void> {
   await writeRegistry(mediaDir, r);
   bumpCacheVersion();
+  // Whatever changed, a new or replaced video gets its first frame cut.
+  schedulePosters();
+}
+
+// --- First frames ------------------------------------------------------------
+//
+// THE STILL THAT MAKES A FILM'S OPENING SEAMLESS.
+//
+// A video player has decoded nothing until the file arrives, and the app's
+// player (expo-video) has no poster: for those first moments it draws only
+// its background. On the opening film that is the launch image's mark
+// vanishing and coming back when the first frame lands — the blink between
+// the splash and its animation. So the server cuts each video's frame 0 into
+// a still once, and the screens put it under the film: the app's splash wait
+// already prefetches a screen's images, so the still is on disk before the
+// launch image lifts, and the film plays over its own first frame.
+
+/** One video file in, its first frame out as WebP bytes (or null). */
+export type FrameExtractor = (videoFile: string) => Promise<Buffer | null>;
+
+export const ffmpegFirstFrame: FrameExtractor = async (videoFile) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "tulmi-poster-"));
+  try {
+    const out = path.join(dir, "frame.webp");
+    await runFile("ffmpeg", [
+      "-y", "-i", videoFile, "-frames:v", "1", "-an",
+      // Near-lossless: the still has to be the film's own frame, not an
+      // approximation of it, or the hand-over is a visible change of grain.
+      "-c:v", "libwebp", "-lossless", "0", "-quality", "95",
+      out,
+    ], { timeout: 60_000, maxBuffer: 1 << 24 });
+    return await fs.readFile(out);
+  } catch {
+    return null;
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+};
+
+let posterCfg: { mediaDir: string; publicUrlPrefix: string; extract: FrameExtractor } | null = null;
+let posterRun: Promise<number> | null = null;
+let posterAgain = false;
+
+/**
+ * Cut the first frame of every video that has none (or whose still was cut
+ * from a file since replaced). Returns how many were cut. Never throws: a
+ * video without a still simply plays as it always has.
+ */
+export async function ensureVideoPosters(opts: {
+  mediaDir: string; publicUrlPrefix: string; extract?: FrameExtractor;
+}): Promise<number> {
+  const extract = opts.extract ?? ffmpegFirstFrame;
+  let cut = 0;
+  for (const [key, e] of Object.entries(cachedRegistry)) {
+    if (!/^video\//i.test(e.contentType ?? "")) continue;
+    if (e.poster && e.poster.from === e.url) continue;
+    const name = String(e.url).split("?")[0]!.split("/").pop() ?? "";
+    if (!/^[A-Za-z0-9._-]+$/.test(name)) continue;
+    const file = path.join(opts.mediaDir, name);
+    try { await fs.access(file); } catch { continue; }
+    const buf = await extract(file).catch(() => null);
+    if (!buf || buf.length < 64) continue;
+    const sha = crypto.createHash("sha256").update(buf).digest("hex");
+    const filename = `${sha}.webp`;
+    const target = path.join(opts.mediaDir, filename);
+    try { await fs.access(target); } catch { await fs.writeFile(target, buf); }
+    // The entry may have been replaced while ffmpeg ran; only attach the still
+    // to the same file it was cut from.
+    const now = cachedRegistry[key];
+    if (!now || now.url !== e.url) continue;
+    cachedRegistry = {
+      ...cachedRegistry,
+      [key]: { ...now, poster: { url: `${opts.publicUrlPrefix}/${filename}`, contentType: "image/webp", from: now.url } },
+    };
+    cut++;
+  }
+  if (cut) {
+    await writeRegistry(opts.mediaDir, cachedRegistry);
+    bumpCacheVersion();
+  }
+  return cut;
+}
+
+/** Run ensureVideoPosters in the background, once at a time, again if asked meanwhile. */
+function schedulePosters(): void {
+  if (!posterCfg) return;
+  if (posterRun) { posterAgain = true; return; }
+  const cfg = posterCfg;
+  posterRun = (async () => {
+    let total = 0;
+    do {
+      posterAgain = false;
+      total += await ensureVideoPosters(cfg).catch((err) => {
+        console.error("[media] first-frame cut failed", err);
+        return 0;
+      });
+    } while (posterAgain);
+    return total;
+  })().finally(() => { posterRun = null; });
+}
+
+/** For tests and boot: wait for any background cut to finish. */
+export async function postersSettled(): Promise<void> {
+  while (posterRun) await posterRun.catch(() => 0);
 }
 
 async function writeRegistry(mediaDir: string, r: MediaRegistry): Promise<void> {
@@ -361,6 +476,11 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
   rateLimit?: { max: number; timeWindow: number };
 }): void {
   const { mediaDir, publicUrlPrefix, adminSecret, rateLimit } = opts;
+
+  // The server cuts each video's first frame (see ensureVideoPosters) — now,
+  // for what is already stored, and after every change from here on.
+  posterCfg = { mediaDir, publicUrlPrefix, extract: ffmpegFirstFrame };
+  schedulePosters();
 
   // Compression lives in its own module but has to run in here: it needs the
   // live registry, the same admin check, and the same media dir, and the

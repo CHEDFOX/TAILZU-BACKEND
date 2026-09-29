@@ -296,6 +296,8 @@ export interface MediaEntry {
   key?: string;
   /** Set by POST /v1/media/present. Absent means "use the screen's default". */
   present?: MediaPresent;
+  /** A video's first frame as a still, cut by the server; `from` is the video it came from. */
+  poster?: { url: string; contentType: string; from: string };
 }
 
 export interface BootstrapRequest {

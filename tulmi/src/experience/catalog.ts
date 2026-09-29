@@ -54,6 +54,8 @@ type MediaEntry = {
   /** How this slot is shown — shape, fit, radius, hold. Set over HTTP by
    *  POST /v1/media/present, so changing it needs no deploy. */
   present?: MediaPresent;
+  /** A video's first frame, cut by the server (routes/media.ts). */
+  poster?: { url: string; contentType: string; from: string };
 };
 let getMediaRegistryFn: (() => Record<string, MediaEntry>) | null = null;
 export function setMediaRegistryAccessor(fn: () => Record<string, MediaEntry>): void {
@@ -3486,6 +3488,9 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
   // can play the file.
   const shown = presentMedia(introEntry);
   const holdMs = shown.holdMs ?? INTRO_PLAY_MS;
+  // Only a still cut from THIS file — a replaced film waits for its own.
+  const introPoster = introEntry?.poster && introEntry.poster.from === introEntry.url
+    ? introEntry.poster : null;
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "intro",
@@ -3599,9 +3604,24 @@ function introScreen(ctx: ScreenContext): ScreenResponse {
         // animation — the timer below still carries the user through to the
         // app either way, so the failure costs a beat, not a trap.
         // Video path — an uploaded mp4 (what the mic prefers).
+        // THE FILM'S OWN FIRST FRAME, under the film. The server cuts it
+        // (routes/media.ts ensureVideoPosters) and the app's splash wait
+        // prefetches it with the screen's other images, so it is on disk
+        // before the launch image lifts. The film's box is then transparent
+        // until its first frame lands on top of the same picture — where it
+        // used to be the bare ground for those moments, which was the blink.
+        ...(hasIntroMedia && introIsVideo && introPoster ? [{
+          type: "Image",
+          style: shown.style,
+          props: {
+            source: mediaSource(introPoster.url, introPoster.contentType),
+            contentFit: shown.fit,
+            ...shown.place,
+          },
+        } as Node] : []),
         ...(hasIntroMedia && introIsVideo ? [{
           type: "Video",
-          style: shown.style,
+          style: introPoster ? { ...shown.style, backgroundColor: "transparent" } : shown.style,
           props: {
             source: introSource,
             autoplay: true, loop: false, muted: true, contentFit: shown.fit,
