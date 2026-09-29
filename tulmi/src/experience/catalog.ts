@@ -2257,10 +2257,9 @@ export function buildBootstrap(
       // History screen (see historyScreen).
       "history.title": "History",
       "history.subtitle":
-        "Every cleanup you've kept, newest first. Tap for details, long-press to remove.",
+        "Every cleanup you've kept, newest first. Tap to copy, long-press to remove.",
       "history.empty":
         "No history yet. Turn on 'Keep history' in your personality to start collecting your cleanups.",
-      "history.detail.toast": "Detail view coming soon",
       "history.delete.error": "Couldn't reach history. Try again.",
     },
     languages: [
@@ -7943,6 +7942,10 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
       { kind: "haptic", style: "selection" },
       { kind: "setState", path: "vcId", value: preset.id },
       { kind: "setState", path: "vcName", value: preset.name },
+      // The toast's whole sentence, made here where the name is known. A
+      // phone fills in a message that IS "$state.x", not one that holds it:
+      // "Writing as $state.vcName." reached the screen as written.
+      { kind: "setState", path: "vcToast", value: `Writing as ${preset.name}.` },
       { kind: "setState", path: "vcTone", value: preset.defaultTone ?? "" },
       { kind: "setState", path: "vcPrompt",
         value: (preset as { promptStyle?: string }).promptStyle ?? "" },
@@ -8125,7 +8128,7 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     title: "Voice",
     // Seeded so the card's bound fields render empty rather than undefined
     // before anything has been opened.
-    state: { vcOpen: false, vcId: "", vcName: "", vcTone: "", vcPrompt: "", vctx: "chats" },
+    state: { vcOpen: false, vcId: "", vcName: "", vcToast: "", vcTone: "", vcPrompt: "", vctx: "chats" },
     actions: {
       // A NEW VOICE IS A CARD TOO, not a screen.
       //
@@ -8150,7 +8153,7 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
       activated: { kind: "sequence", actions: [
         { kind: "haptic", style: "success" },
         { kind: "setState", path: "vcOpen", value: false },
-        { kind: "toast", message: "Writing as $state.vcName.", tone: "success" },
+        { kind: "toast", message: "$state.vcToast", tone: "success" },
         { kind: "refresh" },
       ] },
       activateErr: {
@@ -9503,9 +9506,18 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
           { kind: "setState", path: "loading", value: false },
         ],
       },
-      // Tap on a card — detail view is intentionally deferred until we know
-      // what belongs there beyond input/output/timestamp.
-      openDetail: { kind: "toast", message: "@history.detail.toast", tone: "info" },
+      // Tap on a card copies what Tailzu wrote. It used to toast a stub
+      // ("Detail view coming soon"), and by its label key at that: a phone's
+      // toast does not look labels up, so "@history.detail.toast" is what
+      // people saw. A build that cannot fill a row's text into the clipboard
+      // (no "ActionText") gets the touch and nothing else, never a
+      // placeholder.
+      openDetail: ctx.can?.has("ActionText")
+        ? { kind: "sequence", actions: [
+            { kind: "haptic", style: "success" },
+            { kind: "copyToClipboard", text: "$state.item.output", toastMessage: "Copied." },
+          ] }
+        : { kind: "haptic", style: "selection" },
       // Long-press on a card — the row template resolves the entry id via a
       // "$item.id" placeholder that the renderer expands per row.
       deleteEntry: {
@@ -9521,7 +9533,7 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
           { kind: "haptic", style: "success" },
         ],
       },
-      err: { kind: "toast", message: "@history.delete.error", tone: "error" },
+      err: { kind: "toast", message: "Couldn't reach history. Try again.", tone: "error" },
     },
     root: {
       type: "Stack",
@@ -9561,7 +9573,10 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
             { type: "Text", props: { content: "@history.title" },
               style: { fontSize: 34, fontWeight: "800", letterSpacing: -1.2,
                        color: u.ink } },
-            { type: "Text", props: { content: "@history.subtitle" },
+            // A tap only copies where the build can; elsewhere it says so.
+            { type: "Text", props: { content: ctx.can?.has("ActionText")
+                ? "@history.subtitle"
+                : "Every cleanup you've kept, newest first. Long-press to remove." },
               style: { fontSize: 11.5, lineHeight: 17, color: u.inkDim,
                        marginTop: 6, marginBottom: 18 } },
             { type: "ProgressBar", visibleIf: { truthy: "loading" } },
