@@ -299,6 +299,26 @@ export function stripEchoedContext(out: string, context: string | undefined): st
 }
 
 /**
+ * A closing the writer added that the speaker never said.
+ *
+ * "Say nothing they did not give you" names greetings and sentences of the
+ * model's own, and a polite close still slipped past it: dictations came back
+ * ending "Thank you." or "Okay." that nobody said. A last sentence that is
+ * only a thanks or an okay, with no such word anywhere in what they said, is
+ * the model's and comes off. One they said stays, however it was written.
+ */
+const CLOSING = /^(?:thank\s*you|thanks|okay|ok|cheers|bye)(?:\s+(?:so\s+much|a\s+lot|very\s+much))?[.!]*$/i;
+export function stripAddedClosing(out: string, said: string): string {
+  const m = /^([\s\S]*?[.!?])\s+([^\n.!?]+[.!]*)\s*$/.exec(out.trim());
+  if (!m || !CLOSING.test(m[2]!.trim())) return out;
+  const heard = said.toLowerCase();
+  const word = m[2]!.trim().toLowerCase().replace(/[^a-z\s]/g, "").split(/\s+/)[0]!;
+  const key = word.startsWith("thank") ? "thank" : word;
+  if (new RegExp(`\\b${key}`).test(heard)) return out;
+  return m[1]!;
+}
+
+/**
  * The tags the writer's input arrives in (see assist()). A dictation that
  * contains one could close the fence early and pass the rest off as ours, so
  * they are taken out of what the user said before it is fenced, and out of
@@ -628,7 +648,7 @@ export async function assist(
   if (!askedLanguage && transliterated(message, out)) return message.trim();
   // Their own prior text stays in the field either way, so an echo of it here
   // is a second copy on screen.
-  const trimmed = stripEchoedContext(out, context);
+  const trimmed = stripAddedClosing(stripEchoedContext(out, context), message);
   // Discard a meta/refusal reply ("speak again"…); else keep the completion,
   // falling back to the input on an empty one so we never wipe the field.
   return finalizeCompletion(trimmed, message.trim());

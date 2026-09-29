@@ -9,6 +9,11 @@
  */
 import OpenAI, { toFile as toOpenAIFile } from "openai";
 import Groq, { toFile as toGroqFile } from "groq-sdk";
+import { execFile } from "node:child_process";
+import { promises as fsp } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
 import { getConfig } from "../config.js";
 import type { AudioFormat, LanguageHint } from "../../../shared/types/api.js";
 
@@ -804,10 +809,20 @@ export async function transcribe(input: SttInput): Promise<SttResult> {
   // as "short/silence", or a genuine one-word dictation from Android gets nuked.
   // (Multi-word YouTube boilerplate is still stripped regardless.)
   const durationKnown = duration > 0;
-  const trustSpeech =
+  let trustSpeech =
     raw.speechConfidence === "high" ||
     (raw.speechConfidence !== "low" &&
       (!durationKnown || duration >= SPEECH_MIN_DURATION_S));
+  // UNKNOWN IS NOT THE SAME AS LONG ENOUGH. The desktop sends webm, whose
+  // length cannot be read from a header, so every clip it sent was trusted —
+  // including the breath between two sentences that its pause-flush uploads
+  // on its own, which came back "Thank you." or "Okay." and was pasted. Only
+  // when the whole clip is one of those phrases, the audio is measured: under
+  // a word's worth of sound above the room, it was not said.
+  if (trustSpeech && raw.speechConfidence !== "high" && !durationKnown && isAmbiguousPhrase(raw.text)) {
+    const spoken = await speechSeconds(input.audio, input.format);
+    if (spoken >= 0 && spoken < SPOKEN_WORD_MIN_S) trustSpeech = false;
+  }
   const text = sanitizePlainTranscript(raw.text, { trustSpeech });
 
   return {
@@ -1280,7 +1295,50 @@ const AMBIGUOUS_SILENCE_PATTERNS: RegExp[] = [
   /^\s*you[!.\s]*$/i,
   /^\s*bye[!.\s]*$/i,
   /^\s*(um|uh|hmm|mm|ah)[!.\s]*$/i,
+  // The recognisers' other answer to a breath or a chair creaking.
+  /^\s*(okay|ok)[!.\s]*$/i,
 ];
+
+/** True when the whole transcript is one of the phrases above. */
+export function isAmbiguousPhrase(text: string): boolean {
+  const t = (text ?? "").trim();
+  return !!t && AMBIGUOUS_SILENCE_PATTERNS.some((p) => p.test(t));
+}
+
+/** Less sound than this above the room, and no word was said. */
+const SPOKEN_WORD_MIN_S = 0.3;
+
+/**
+ * Seconds of the clip that are louder than the room, measured by ffmpeg's
+ * silencedetect. -1 when it cannot be measured (no ffmpeg, a clip it cannot
+ * read), which callers treat as "unknown" and leave the transcript alone.
+ */
+export async function speechSeconds(audio: Buffer, format: AudioFormat): Promise<number> {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "tz-speech-"));
+  const file = path.join(dir, `clip.${format}`);
+  try {
+    await fsp.writeFile(file, audio);
+    const { stderr } = await promisify(execFile)("ffmpeg", [
+      "-hide_banner", "-nostats", "-i", file,
+      "-af", "silencedetect=noise=-38dB:d=0.2", "-f", "null", "-",
+    ], { timeout: 4000 });
+    const times = [...stderr.matchAll(/time=(\d+):(\d+):([\d.]+)/g)];
+    const last = times[times.length - 1];
+    const total = last ? Number(last[1]) * 3600 + Number(last[2]) * 60 + Number(last[3]) : 0;
+    if (!(total > 0)) return -1;
+    let silent = 0;
+    for (const m of stderr.matchAll(/silence_duration: ([\d.]+)/g)) silent += Number(m[1]);
+    // A silence still open at the end has a start and no duration.
+    const starts = [...stderr.matchAll(/silence_start: ([\d.]+)/g)].map((m) => Number(m[1]));
+    const ends = [...stderr.matchAll(/silence_end: ([\d.]+)/g)].length;
+    if (starts.length > ends) silent += Math.max(0, total - starts[starts.length - 1]!);
+    return Math.max(0, total - silent);
+  } catch {
+    return -1;
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
 
 function stripHallucinationPhrases(text: string, trustSpeech: boolean): string {
   const t = text.trim();
