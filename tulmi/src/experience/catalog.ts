@@ -1878,7 +1878,14 @@ export function buildBootstrap(
         // The desktop's chrome — gate, rail, tray, notifications. Sent only to
         // a window that said it was one, because a phone has no tray to label
         // and would carry the whole block on every launch for nothing.
-        ...(opts.formFactor === "desktop" ? { "desktop.shell": DESKTOP_UI } : {}),
+        ...(opts.formFactor === "desktop" ? {
+          "desktop.shell": DESKTOP_UI,
+          // Closing the window really closes it, so opening it again starts
+          // on the landing page with fresh numbers — not on whatever page it
+          // was hidden on an hour ago. The tray, the pill and the hotkey live
+          // in other windows and keep running.
+          "desktop.window.closeAction": "close",
+        } : {}),
         // The desk: its pages, where its settings live, and where out of words
         // leads — the plan page, not the phone's full-screen paywall.
         ...(desk ? {
