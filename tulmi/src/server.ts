@@ -175,7 +175,7 @@ import {
 } from "./pipeline/cleanup.js";
 import { mergePortraitWords } from "./pipeline/portraitDimensions.js";
 import {
-  converseTurn, portraitFromTranscript, type ConverseTurn,
+  converseTurn, portraitFromTranscript, spokenLanguage, type ConverseTurn,
 } from "./pipeline/cleanup.js";
 import { synthesize } from "./pipeline/tts.js";
 import {
@@ -1073,7 +1073,11 @@ app.post("/v1/train/converse", { config: AUTHED_RL }, async (req, reply) => {
       words: 0,
       model: getConfig().CLEANUP_MODEL,
     });
-    return reply.send({ reply: text });
+    // The voice to say it in, read from the reply itself: a Bengali answer
+    // spoken by the English voice the screen opened with is not an answer.
+    // Older clients ignore the field and keep the screen's voice.
+    const speak = spokenLanguage(text)?.locale;
+    return reply.send(speak ? { reply: text, speak } : { reply: text });
   } catch (err) {
     req.log.error(err);
     return reply.code(500).send({ code: "cleanup_failed", message: "Couldn't answer that" });

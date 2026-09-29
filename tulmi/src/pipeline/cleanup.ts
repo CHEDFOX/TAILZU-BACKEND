@@ -18,7 +18,7 @@ import {
 import { buildAssistSystem, portraitBlock } from "./assistPrompt.js";
 import { splitInstruction } from "./commands.js";
 import { renderCommandOverride } from "../prompts.js";
-import { detectScript, INDIC_SCRIPTS, mixesEnglishAndRomanHindi, readsAsRomanHindi, transliterated } from "./stt.js";
+import { detectScript, INDIC_SCRIPTS, mixesEnglishAndRomanHindi, readsAsRomanHindi, romanHindiHits, transliterated } from "./stt.js";
 
 /**
  * The script a piece of text is written in, or undefined when there is no
@@ -1007,8 +1007,40 @@ export function languageName(code?: string): string | null {
   return c;
 }
 
-export function converseSystem(language?: string): string {
+/**
+ * WHAT THEY ARE SPEAKING, read from what they just said.
+ *
+ * The conversation was told the language saved on their account — "Speak in
+ * English, always" — and answered in it while they spoke Bengali. What they
+ * say is the only thing that says what they speak. The script names most
+ * languages outright; romanized Hindi is recognised by its words.
+ */
+const SCRIPT_LANGUAGE: Partial<Record<string, { name: string; locale: string }>> = {
+  devanagari: { name: "Hindi (or the Devanagari language they are using), in Devanagari", locale: "hi-IN" },
+  bengali: { name: "Bengali, in Bengali script", locale: "bn-IN" },
+  tamil: { name: "Tamil, in Tamil script", locale: "ta-IN" },
+  telugu: { name: "Telugu, in Telugu script", locale: "te-IN" },
+  gujarati: { name: "Gujarati, in Gujarati script", locale: "gu-IN" },
+  gurmukhi: { name: "Punjabi, in Gurmukhi", locale: "pa-IN" },
+  kannada: { name: "Kannada, in Kannada script", locale: "kn-IN" },
+  malayalam: { name: "Malayalam, in Malayalam script", locale: "ml-IN" },
+  arabic: { name: "the language they are using (Urdu, Arabic or Persian), in its script", locale: "ur-PK" },
+};
+export function spokenLanguage(text: string): { name: string; locale?: string } | null {
+  const t = (text ?? "").trim();
+  if (!t) return null;
+  const script = detectScript(t);
+  const known = SCRIPT_LANGUAGE[script];
+  if (known) return known;
+  if (script === "latin" && romanHindiHits(t) >= 2) {
+    return { name: "Hinglish, Hindi and English mixed the way they mix them, in English letters", locale: "en-IN" };
+  }
+  return null;
+}
+
+export function converseSystem(language?: string, heard?: string): string {
   const name = languageName(language);
+  const now = heard ? spokenLanguage(heard) : null;
   return [
     "You are talking with someone, out loud, and your only job is to keep them talking easily about themselves. Be curious, warm and brief.",
     "",
@@ -1016,10 +1048,12 @@ export function converseSystem(language?: string): string {
     "Answer what they actually said before you ask anything, ask about one thing, and only when you genuinely have something to ask.",
     "If they go quiet, offer something small of your own rather than another question.",
     "Never mention what this conversation is for, and never remark on how they speak.",
-    name ? `Speak in ${name}, always — it is the language they use.` : "Speak whatever language they are speaking.",
+    // What they speak decides, every turn. The saved language only opens.
+    "Always answer in the language they last spoke, in the same script, even if it changes mid-conversation.",
+    now ? `They are speaking ${now.name}: answer in that.` : name ? `Until they speak, use ${name}.` : null,
     "",
     "Return only what you say next.",
-  ].join("\n");
+  ].filter((l): l is string => l !== null).join("\n");
 }
 
 export async function converseTurn(
@@ -1028,7 +1062,8 @@ export async function converseTurn(
 ): Promise<string> {
   const said = turns.filter((t) => t.text?.trim()).slice(-CONVERSE_WINDOW);
   if (!said.length) return "";
-  const system = converseSystem(opts.language);
+  const lastTheirs = [...said].reverse().find((t) => t.role === "user")?.text ?? "";
+  const system = converseSystem(opts.language, lastTheirs);
 
   const res = await openrouter().chat.completions.create({
     ...common(),

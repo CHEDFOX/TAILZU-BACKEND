@@ -57,7 +57,9 @@ describe("the phone refresh", () => {
     // the mono was set at 1.26 of its size and its line box is 1.30.
     const MIN: Record<string, number> = {
       "Tailzu Label": 1.45, "Tailzu Said": 1.34, "Tailzu UI": 1.4, "Tailzu UI Medium": 1.4,
-      "Tailzu Written": 1.3, "Tailzu Written Italic": 1.3, "Tailzu Written Light": 1.3, "Tailzu Written Light Italic": 1.3,
+      // Newsreader draws to 0.9em (0.925 italic) above a 0.735em ascender:
+      // at 1.3 the training card's title lost the tops of its letters.
+      "Tailzu Written": 1.45, "Tailzu Written Italic": 1.45, "Tailzu Written Light": 1.45, "Tailzu Written Light Italic": 1.45,
     };
     for (const [id, ctx] of screens) {
       walk(buildScreen(id, ctx as never)!.root, (n) => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { converseSystem, languageName } from "../src/pipeline/cleanup";
+import { converseSystem, languageName, spokenLanguage } from "../src/pipeline/cleanup";
 import { buildScreen, buildKeyboardConfig, speechLocale } from "../src/experience/catalog";
 
 describe("the spoken training partner speaks the user's language", () => {
@@ -9,9 +9,25 @@ describe("the spoken training partner speaks the user's language", () => {
     expect(languageName("hinglish")).toMatch(/Hinglish/);
     expect(languageName("auto")).toBeNull();
     expect(languageName(undefined)).toBeNull();
-    expect(converseSystem("hi")).toContain("Speak in Hindi");
-    expect(converseSystem("hi")).not.toContain("Speak in hi");
-    expect(converseSystem("auto")).toContain("whatever language they are speaking");
+    // The saved language only opens the conversation; it is named, not coded.
+    expect(converseSystem("hi")).toContain("Until they speak, use Hindi.");
+    expect(converseSystem("hi")).not.toContain("use hi.");
+    expect(converseSystem("auto")).toContain("Always answer in the language they last spoke");
+  });
+
+  it("answers in what they are speaking, not in what the account says", () => {
+    // Saved as English; they spoke Bengali. The Bengali wins.
+    const s = converseSystem("en", "আমি আজ অফিসে অনেক কাজ করেছি");
+    expect(s).toContain("They are speaking Bengali");
+    expect(s).not.toContain("Until they speak");
+    expect(converseSystem("en", "aaj kaam bahut tha yaar, thak gaya hoon")).toContain("Hinglish");
+    expect(converseSystem("hi", "I had a long day at work")).not.toMatch(/They are speaking/);
+  });
+
+  it("names the voice for a reply by the reply's own script", () => {
+    expect(spokenLanguage("আজ কেমন গেল?")?.locale).toBe("bn-IN");
+    expect(spokenLanguage("आज कैसा रहा?")?.locale).toBe("hi-IN");
+    expect(spokenLanguage("How was today?")).toBeNull();
   });
 
   it("gives the live session the hint to listen with and the locale to speak in", () => {

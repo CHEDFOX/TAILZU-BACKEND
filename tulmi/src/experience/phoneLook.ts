@@ -63,8 +63,12 @@ type Style = Record<string, unknown>;
  * what cut the training card's "IT LEARNS YOU". So every text is held to it,
  * whatever a caller asks for.
  */
+// Newsreader reserves 0.735em above the baseline in its metrics and draws up
+// to 0.9em (0.925 in italic): at 1.3 the extra leading, split above and
+// below, left the tops of its tallest letters shaved off — the training
+// card's title, among others. 1.45 gives every glyph its room.
 const MIN_LINE: Record<keyof typeof PHONE_FONT, number> = {
-  writtenLight: 1.3, writtenLightItalic: 1.3, written: 1.3, writtenItalic: 1.3,
+  writtenLight: 1.45, writtenLightItalic: 1.45, written: 1.45, writtenItalic: 1.45,
   said: 1.34, label: 1.45, ui: 1.4, uiMedium: 1.4,
 };
 export const lineFor = (face: keyof typeof PHONE_FONT, size: number, asked?: unknown): number =>
