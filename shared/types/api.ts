@@ -56,6 +56,8 @@ export interface UsageRecord {
 export interface UsageSummary {
   month: { words: number; audioSeconds: number; requests: number };
   total: { words: number; audioSeconds: number; requests: number };
+  /** The caller's own calendar day, when their clock was given. */
+  today?: { words: number; audioSeconds: number; requests: number };
 }
 
 /**

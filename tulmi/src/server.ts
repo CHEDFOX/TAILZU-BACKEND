@@ -1076,9 +1076,14 @@ app.post("/v1/train/portrait", { config: AUTHED_RL }, async (req, reply) => {
     // Core only. A conversation is not held in any one voice, so it has
     // nothing to say about a specific tone's note — and merging under the lock
     // keeps the notes the picking loop learned exactly as they were.
+    // Over the portrait that is there, not in place of it: this used to write
+    // a new object with four fields, and every word, style, rhythm, session
+    // count and timezone the rest of the app had learned was gone after one
+    // spoken session.
     const merged = await updatePersonality(user, (existing) => ({
       ...existing,
       stylePortrait: {
+        ...(existing.stylePortrait ?? {}),
         core: next.core,
         tones: existing.stylePortrait?.tones ?? {},
         examples: (existing.stylePortrait?.examples ?? 0) + 1,
@@ -1090,6 +1095,54 @@ app.post("/v1/train/portrait", { config: AUTHED_RL }, async (req, reply) => {
     req.log.error(err);
     return reply.code(500).send({ code: "internal", message: "Couldn't save what it heard" });
   }
+});
+
+// --- Words and snippets, one at a time (the desk's Words page) ---------------
+// The vocabulary is one newline-separated string and the snippets another, and
+// both are saved whole by PUT /v1/personality. A page with an add field and a
+// remove link per row needs to change ONE line without holding the rest, so
+// these do that under the personality lock.
+const WORD_MAX = 80, SNIP_SAY_MAX = 40, SNIP_GET_MAX = 600, LINES_MAX = 400;
+const oneLine = (v: unknown, max: number) => String(v ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, max);
+
+app.post("/v1/words", { config: AUTHED_RL }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+  const b = (req.body ?? {}) as { add?: unknown; remove?: unknown; kind?: unknown };
+  const add = oneLine(b.add, WORD_MAX), remove = oneLine(b.remove, WORD_MAX);
+  if (!add && !remove) return reply.code(400).send({ code: "bad_request", message: "Say which word to add or remove" });
+  const same = (a: string, z: string) => a.toLowerCase() === z.toLowerCase();
+  const merged = await updatePersonality(user, (existing) => {
+    let lines = String(existing.vocabulary ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    let dictionary = existing.dictionary ?? [];
+    if (add && !lines.some((l) => same(l, add))) lines = [...lines, add].slice(-LINES_MAX);
+    if (remove) {
+      lines = lines.filter((l) => !same(l, remove));
+      // A proof mark on the page is a dictionary pair, named by what it is
+      // written as.
+      if (b.kind === "pair") dictionary = dictionary.filter((d) => !same(String(d.replacement ?? ""), remove));
+    }
+    return { ...existing, vocabulary: lines.join("\n"), dictionary };
+  });
+  return reply.send({ ok: true, words: String(merged.vocabulary ?? "").split("\n").filter(Boolean).length });
+});
+
+app.post("/v1/snippets", { config: AUTHED_RL }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+  const b = (req.body ?? {}) as { say?: unknown; get?: unknown; remove?: unknown };
+  const say = oneLine(b.say, SNIP_SAY_MAX).replace(/=/g, ""), remove = oneLine(b.remove, SNIP_SAY_MAX);
+  // What it writes may span lines; stored on one, the way the parser reads it.
+  const get = String(b.get ?? "").trim().slice(0, SNIP_GET_MAX).replace(/\r?\n/g, "\\n");
+  if (!remove && (!say || !get)) return reply.code(400).send({ code: "bad_request", message: "A snippet needs a name and what it writes" });
+  const key = (l: string) => l.slice(0, Math.max(0, l.indexOf("="))).trim().toLowerCase();
+  await updatePersonality(user, (existing) => {
+    let lines = String(existing.snippets ?? "").split(/\r?\n/).map((l) => l.trim()).filter((l) => l.includes("="));
+    if (remove) lines = lines.filter((l) => key(l) !== remove.toLowerCase());
+    if (say && get) lines = [...lines.filter((l) => key(l) !== say.toLowerCase()), `${say} = ${get}`].slice(-LINES_MAX);
+    return { ...existing, snippets: lines.join("\n") };
+  });
+  return reply.send({ ok: true });
 });
 
 // --- Per-tone refine (REST): one endpoint per tone --------------------------
@@ -1761,6 +1814,9 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
        * install on Android is told apart from one the OTA has reached.
        */
       googleWeb?: boolean;
+      /** What the bundle can render; the desk is sent only to one that
+       *  declares DeskShell. */
+      components?: string[];
     };
   };
   // WHICH BUNDLE IS ACTUALLY RUNNING.
@@ -1862,6 +1918,9 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     wordsUsed: usage?.month?.words ?? 0,
     allowance,
     platform: platformOf(reqBody.capabilities?.platform),
+    // The desk: Tailzu's own pages for a desktop window that can draw them.
+    desk: Array.isArray(reqBody.capabilities?.components)
+      && reqBody.capabilities!.components!.includes("DeskShell"),
     isReviewer,
     // The address the app should offer a password field for. Sent to everyone
     // because knowing it grants nothing — the password is the credential and it
@@ -1987,7 +2046,12 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   // Load per-screen aggregates only for the screens that need them.
   // usageSummary covers legacy stats numbers; statsForUser adds the
   // history-derived "minutes saved" + sparkline for the SDUI stats screen.
-  const usage = user && screenId === "stats" ? await usageSummary(user) : undefined;
+  // The desk's pages that show today's or this month's numbers read the
+  // meter in the caller's own day.
+  const USAGE_SCREENS = new Set(["stats", "desk_today", "desk_insights", "desk_settings"]);
+  const usage = user && USAGE_SCREENS.has(screenId)
+    ? await usageSummary(user, typeof body.tzOffsetMinutes === "number" ? body.tzOffsetMinutes : undefined)
+    : undefined;
   // "month" window: the Stats tab charts 14-day bars + 30-day streaks, which
   // a 7-day projection can't feed. tzOffsetMinutes keeps "today"/"evening"
   // meaning the user's clock.
@@ -2008,7 +2072,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   // The training tab charts what the app has been learning FROM — the days
   // the person actually wrote — under the numbers for what it has learned.
   // Same read, one more screen.
-  const STATS_SCREENS = new Set(["stats", "personality", "home"]);
+  const STATS_SCREENS = new Set(["stats", "personality", "home", "desk_today", "desk_insights"]);
   /**
    * AN AGGREGATE MUST NOT GATE THE TAB SOMEONE LANDS ON.
    *
@@ -2024,11 +2088,11 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
    * without them — the feed is simply not drawn, which is already what a user
    * with no history sees — and the next fetch, with the read warm, has them.
    */
-  const STATS_BLOCKING = new Set(["stats"]);
+  const STATS_BLOCKING = new Set(["stats", "desk_insights"]);
   const STATS_DEADLINE_MS = 700;
   const statsRead = user && STATS_SCREENS.has(screenId)
     ? statsForUser(user, "month", Number(body.tzOffsetMinutes) || 0,
-                   savedWords(personality)).catch(() => undefined)
+                   savedWords(personality), personality?.languages ?? []).catch(() => undefined)
     : undefined;
   const stats = statsRead
     ? (STATS_BLOCKING.has(screenId)
@@ -2043,13 +2107,13 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   // The words screen is a statement about this number, so it has to read it
   // too — a screen that says "out of words" without knowing how many is a
   // guess with a button on it.
-  const ALLOWANCE_SCREENS = new Set(["stats", "words_out"]);
+  const ALLOWANCE_SCREENS = new Set(["stats", "words_out", "desk_settings", "desk_plan"]);
   const allowance =
     user && ALLOWANCE_SCREENS.has(screenId)
       ? await allowanceFor(user).catch(() => null)
       : undefined;
   const history =
-    user && screenId === "history"
+    user && (screenId === "history" || screenId === "desk_today")
       ? (await listHistory(user, { limit: 50 })).entries
       : undefined;
   // THE ONE SCREEN THAT MUST NOT SELL TO A SUBSCRIBER, so the one screen that
@@ -2059,8 +2123,12 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   // A failed read draws the sales page, deliberately. A screen that hid the
   // plans because a lookup timed out would be a screen nobody could buy from,
   // and the clients still refuse a second purchase on another store.
+  // Stats reads it too: it drew the free words-left meter for everybody,
+  // subscribers included, because it was never told who had paid. And the
+  // desk's settings and plan pages say which plan this is.
+  const ENTITLEMENT_SCREENS = new Set(["paywall", "stats", "desk_settings", "desk_plan"]);
   const entitlement =
-    user && screenId === "paywall"
+    user && ENTITLEMENT_SCREENS.has(screenId)
       ? await getEntitlement(user).catch(() => null)
       : undefined;
   // THE GATE. On iOS the keyboard's mic opens the app on `flow_arm`, so this
@@ -2131,6 +2199,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     // A window, not a handset. Separate from `platform` (which tree it can
     // draw) and from `viewport` (how wide it is): this is the input device.
     formFactor: body.capabilities?.device?.formFactor === "desktop" ? "desktop" : "phone",
+    tzOffsetMinutes: typeof body.tzOffsetMinutes === "number" ? body.tzOffsetMinutes : undefined,
     can: new Set(
       Array.isArray(body.capabilities?.components)
         ? body.capabilities!.components!.map(String)

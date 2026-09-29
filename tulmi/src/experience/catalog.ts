@@ -8,6 +8,8 @@
  * See ../../../shared/types/sdui.ts for the contract.
  */
 import { withAppKnobs, withKeyboardKnobs } from "./appKnobs.js";
+import { DESK_NAV, DESK_SCREENS, buildDeskScreen } from "./desk.js";
+import type { StatsForUser } from "../history/store.js";
 import type {
   ActionRef,
   ActionSpec,
@@ -1805,9 +1807,17 @@ export function buildBootstrap(
      *  the window says. Apple's button is drawn on a Mac and left out on
      *  the others; a phone never sends this. */
     os?: string;
+    /**
+     * THE DESK: a desktop that declared DeskShell gets Tailzu's own pages
+     * (experience/desk.ts) — the masthead's tabs, landing on Today — instead
+     * of the phone's. An older installer does not declare it and keeps the
+     * rail and the phone's screens.
+     */
+    desk?: boolean;
   } = {},
 ): BootstrapResponse {
-  const nav = navigationFor(!!opts.landedBefore);
+  const desk = opts.desk === true && opts.formFactor === "desktop";
+  const nav = desk ? DESK_NAV : navigationFor(!!opts.landedBefore);
   return withAppKnobs({
     schemaVersion: SDUI_SCHEMA_VERSION,
     // Opaque cache token — clients invalidate any cached screens when this
@@ -1835,7 +1845,10 @@ export function buildBootstrap(
     // exist and must survive this untouched — landing a first-run user on
     // Stats because a tab id says so would skip the two steps that obtain the
     // microphone and the keyboard.
-    initialScreenId: landingScreenId(nav, pickInitialScreenId(
+    // The desk opens on Today. A window has no setup steps to walk (no
+    // keyboard to add, the OS asks for the microphone), so there is nothing to
+    // come before it.
+    initialScreenId: desk ? "desk_today" : landingScreenId(nav, pickInitialScreenId(
       !!opts.onboarded,
       // Uploaded media OR the built-in mark. The intro used to require a file,
       // so out of the box it silently never played — which reads as a broken
@@ -1866,6 +1879,13 @@ export function buildBootstrap(
         // a window that said it was one, because a phone has no tray to label
         // and would carry the whole block on every launch for nothing.
         ...(opts.formFactor === "desktop" ? { "desktop.shell": DESKTOP_UI } : {}),
+        // The desk: its pages, where its settings live, and where out of words
+        // leads — the plan page, not the phone's full-screen paywall.
+        ...(desk ? {
+          "desktop.desk": true,
+          "desktop.desk.settingsScreenId": "desk_settings",
+          "quota.screenId": "desk_plan",
+        } : {}),
 
         // HOW A WINDOW PAYS.
         //
@@ -4352,6 +4372,9 @@ export interface ScreenContext {
    * two.
    */
   formFactor?: "phone" | "desktop";
+  /** The caller's UTC offset in minutes, so a desk page's "today" and its
+   *  times are the person's own. */
+  tzOffsetMinutes?: number;
 }
 
 /**
@@ -4386,6 +4409,23 @@ function readable(ctx: ScreenContext, max = 560): Record<string, unknown> {
 }
 
 export function buildScreen(screenId: string, ctx: ScreenContext): ScreenResponse | null {
+  // The desk's own pages, for a desktop that can draw them (experience/desk.ts).
+  if (DESK_SCREENS.has(screenId)) {
+    return buildDeskScreen(screenId, {
+      personality: ctx.personality,
+      history: ctx.history,
+      usage: ctx.usage,
+      stats: ctx.stats as unknown as StatsForUser | undefined,
+      allowance: ctx.allowance,
+      entitlement: ctx.entitlement,
+      email: ctx.email,
+      phone: ctx.phone,
+      name: ctx.name,
+      tzOffsetMinutes: ctx.tzOffsetMinutes,
+      plans: PAYWALL_CONFIG.plans,
+      manageUrl: ctx.entitlement ? String(manageFlags(ctx.entitlement.store)["billing.manage.url"] ?? "") || undefined : undefined,
+    });
+  }
   switch (screenId) {
     case "home":
       return homeScreen(ctx);

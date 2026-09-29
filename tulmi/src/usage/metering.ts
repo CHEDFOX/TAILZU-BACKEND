@@ -74,9 +74,16 @@ export async function recordUsage(input: MeterInput): Promise<void> {
 }
 
 /** Aggregate a user's usage into this-month + all-time totals (for the stats screen). */
-export async function usageSummary(user: AuthedUser): Promise<UsageSummary> {
+export async function usageSummary(user: AuthedUser, tzOffsetMinutes?: number): Promise<UsageSummary> {
   const empty = () => ({ words: 0, audioSeconds: 0, requests: 0 });
   const out: UsageSummary = { month: empty(), total: empty() };
+  // TODAY, IN THE CALLER'S DAY. Only when their clock was given: a "today"
+  // bucketed on Greenwich would put an Indian evening into tomorrow.
+  const withToday = typeof tzOffsetMinutes === "number" && Number.isFinite(tzOffsetMinutes);
+  const tzMs = withToday ? Math.max(-840, Math.min(840, Math.round(tzOffsetMinutes!))) * 60_000 : 0;
+  const shifted = new Date(Date.now() + tzMs);
+  const todayStartMs = Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) - tzMs;
+  if (withToday) out.today = empty();
   if (isStaticUser(user)) {
     const now = new Date();
     const monthStartMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
@@ -84,6 +91,9 @@ export async function usageSummary(user: AuthedUser): Promise<UsageSummary> {
       out.total.words += e.words; out.total.audioSeconds += e.audioSeconds; out.total.requests += 1;
       if (e.at >= monthStartMs) {
         out.month.words += e.words; out.month.audioSeconds += e.audioSeconds; out.month.requests += 1;
+      }
+      if (out.today && e.at >= todayStartMs) {
+        out.today.words += e.words; out.today.audioSeconds += e.audioSeconds; out.today.requests += 1;
       }
     }
     return out;
@@ -105,6 +115,9 @@ export async function usageSummary(user: AuthedUser): Promise<UsageSummary> {
     out.total.words += w; out.total.audioSeconds += a; out.total.requests += 1;
     if ((r.created_at ?? "") >= monthStart) {
       out.month.words += w; out.month.audioSeconds += a; out.month.requests += 1;
+    }
+    if (out.today && Date.parse(r.created_at ?? "") >= todayStartMs) {
+      out.today.words += w; out.today.audioSeconds += a; out.today.requests += 1;
     }
   }
   return out;

@@ -15,6 +15,7 @@
  * timestamp; rows are never physically removed here (a periodic 90-day purge
  * runs out-of-tree — see 0004_history.sql).
  */
+import { writtenIn } from "./writtenIn.js";
 import { randomUUID } from "node:crypto";
 import { dataClientFor, type AuthedUser } from "../auth/supabase.js";
 import { usageEventsSince } from "../usage/metering.js";
@@ -152,6 +153,12 @@ export interface StatsForUser {
    * what an unmarked request was written in.
    */
   toneWords?: Array<{ tone: string; words: number }>;
+  /**
+   * Words by the language they were WRITTEN in, read from the text (see
+   * writtenIn.ts), biggest first. Absent when there is no text to read —
+   * history off, or nothing written yet.
+   */
+  writtenIn?: Array<{ key: string; words: number }>;
 }
 
 /**
@@ -452,7 +459,7 @@ export async function listHistory(
 
   let q = sb
     .from("cleanup_history")
-    .select("id, kind, target_app, language, input, output, duration_ms, words_in, words_out, created_at")
+    .select("id, kind, target_app, language, input, output, duration_ms, words_in, words_out, created_at, tone, preset_id")
     .eq("user_id", user.id)
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
@@ -542,6 +549,9 @@ export async function statsForUser(
    * breakdown, which is the honest answer when we don't know the list.
    */
   savedWords: string[] = [],
+  /** The person's chosen languages, to tell apart the languages that share a
+   *  script. Omitted → each script's most common language. */
+  languages: readonly string[] = [],
 ): Promise<StatsForUser> {
   const sinceMs = windowSinceMs(window);
   const sinceIso = sinceMs != null ? new Date(Date.now() - sinceMs).toISOString() : undefined;
@@ -591,6 +601,7 @@ export async function statsForUser(
   const voiceWords = new Map<string, number>();
   const toneWordsMap = new Map<string, number>();
   const outputs: string[] = [];
+  const writtenWords = new Map<string, number>();
   const todayMidnight = localMidnight(Date.now());
 
   for (const r of rows) {
@@ -615,7 +626,11 @@ export async function statsForUser(
     // voice above, for the same reason.
     const tid = (r.tone ?? "none").trim() || "none";
     toneWordsMap.set(tid, (toneWordsMap.get(tid) ?? 0) + words);
-    if (r.output) outputs.push(r.output);
+    if (r.output) {
+      outputs.push(r.output);
+      const key = writtenIn(r.output, languages);
+      if (key) writtenWords.set(key, (writtenWords.get(key) ?? 0) + words);
+    }
 
     const created = Date.parse(r.createdAt);
     if (!Number.isFinite(created)) continue;
@@ -704,6 +719,9 @@ export async function statsForUser(
     voiceWords: voiceList.length ? voiceList : undefined,
     toneWords: toneList.length ? toneList : undefined,
     dictionary: dictionaryDensity(savedWords, outputs),
+    writtenIn: writtenWords.size
+      ? [...writtenWords.entries()].filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).map(([key, words]) => ({ key, words }))
+      : undefined,
   };
 }
 

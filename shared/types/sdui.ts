@@ -599,6 +599,12 @@ export interface ScreenResponse {
    * screen starts at the top of the window, the tabs stay.
    */
   hideHeader?: boolean;
+  /**
+   * "desk" — a page drawn for the desktop window's own shell (experience/
+   * desk.ts), on its paper-and-ink ground. Absent → a phone screen, which a
+   * desk window shows in its own dark room.
+   */
+  look?: "desk";
 }
 
 // ===========================================================================
@@ -819,6 +825,14 @@ export type ActionSpec =
   | { kind: "share"; text?: string; url?: string; title?: string }
   | { kind: "shareFile"; path: string; mimeType?: string }
   | { kind: "copyToClipboard"; text: string; toastMessage?: string }
+  // --- the desktop window only (desktop/sdui.js) ---
+  /** Put text on the clipboard and say so. */
+  | { kind: "copyText"; text: string; message?: string }
+  /** Change one of this computer's own settings (the pill, pausing, start at
+   *  login, tap to talk). "$toggle" flips the current value. */
+  | { kind: "desktop.config"; key: string; value: unknown }
+  /** Start (or stop) dictation, as the hotkey does. */
+  | { kind: "dictate" }
   | { kind: "readClipboard"; assignTo: string }
   | { kind: "sms"; number?: string; body?: string }
   | { kind: "email"; to?: string; subject?: string; body?: string }
@@ -1504,6 +1518,14 @@ export type KeyboardActionSpec =
   | { kind: "stopMedia" }
   // ----- clipboard + share -----
   | { kind: "copyToClipboard"; text: string; toastMessage?: string }
+  // --- the desktop window only (desktop/sdui.js) ---
+  /** Put text on the clipboard and say so. */
+  | { kind: "copyText"; text: string; message?: string }
+  /** Change one of this computer's own settings (the pill, pausing, start at
+   *  login, tap to talk). "$toggle" flips the current value. */
+  | { kind: "desktop.config"; key: string; value: unknown }
+  /** Start (or stop) dictation, as the hotkey does. */
+  | { kind: "dictate" }
   | { kind: "readClipboard"; assignTo: string }
   | { kind: "share"; text?: string; url?: string; title?: string }
   // ----- state store (backend scratch dict) -----
