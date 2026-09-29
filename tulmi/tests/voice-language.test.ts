@@ -42,26 +42,18 @@ describe("the spoken training partner speaks the user's language", () => {
       go(screen.root as never);
       return { props: found!, state: screen.state as Record<string, unknown> };
     };
+    // It listens in their language and speaks in its voice; it no longer
+    // opens with a line of its own in any language (see catalog.test).
     const hi = props("hi");
     expect(hi.props.language).toBe("hi");
     expect(hi.props.speakLanguage).toBe("hi-IN");
-    // The greeting is in their language, and seeded as the first line.
-    expect(String(hi.props.greeting)).toMatch(/[\u0900-\u097F]/);
-    expect((hi.state.turns as unknown[]).length).toBe(1);
-    const hing = props("hinglish");
-    expect(hing.props.speakLanguage).toBe("en-IN");
-    expect(String(hing.props.greeting)).toMatch(/baat/);
-    // English and auto keep the phone's own voice and the written greeting.
+    expect(hi.props.greeting).toBeUndefined();
+    expect((hi.state.turns as unknown[]).length).toBe(0);
+    expect(props("hinglish").props.speakLanguage).toBe("en-IN");
     const en = props("en");
     expect(en.props.language).toBe("en");
     expect(en.props.speakLanguage).toBeUndefined();
-    expect(typeof en.props.greeting).toBe("string");
-    // A language with no greeting of its own opens by listening: nothing
-    // seeded, nothing spoken in the wrong voice.
-    const es = props("es");
-    expect(es.props.speakLanguage).toBe("es-ES");
-    expect(es.props.greeting).toBeUndefined();
-    expect((es.state.turns as unknown[]).length).toBe(0);
+    expect(props("es").props.speakLanguage).toBe("es-ES");
     expect(speechLocale("auto")).toBeUndefined();
     expect(speechLocale("ta")).toBe("ta-IN");
   });

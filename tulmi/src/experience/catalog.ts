@@ -6602,7 +6602,13 @@ function trainingLiveScreen(ctx: ScreenContext): ScreenResponse {
   // earned — and it sprouts new fibres while the session runs, so the growth
   // it opens at is the floor for the conversation, not a decoration.
   const growth = fieldGrowth(ctx.personality);
-  const greeting = liveGreeting(ctx);
+  // NO SPOKEN OPENER. It was said while the microphone was still opening, and
+  // the audio session switching over to listen cut it off mid-sentence — "I
+  // don't know how you sound yet. Just talk, and I'll…". The session opens by
+  // listening, with the field already moving; the lines stay in TRAINING_UI
+  // for the day a greeting can be said whole.
+  const greeting = "";
+  void liveGreeting;
   // Back where it was opened: the You tab on a phone, the Train page on the
   // desk. switchTab, not navigate, so the page is drawn fresh with the new
   // round counted and the desk's stack starts clean.
@@ -6618,7 +6624,7 @@ function trainingLiveScreen(ctx: ScreenContext): ScreenResponse {
       // "speaking", not "idle". The session opens by SAYING something — see
       // liveGreeting — so the orb is already moving when the screen lands
       // rather than sitting still through a warm-up.
-      sessionState: "speaking",
+      sessionState: greeting ? "speaking" : "listening",
       level: 0.5,
       // The greeting, on screen at the same moment it is spoken. Seeded into
       // the transcript too, so the model's first reply answers something and

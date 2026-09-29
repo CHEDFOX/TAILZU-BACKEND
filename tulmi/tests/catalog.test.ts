@@ -621,7 +621,7 @@ describe("buildBootstrap", () => {
   // with the screen already up, and the first thing the app ever said came
   // only after the user had spoken into that silence and waited out a round
   // trip. That reads as broken rather than as thinking.
-  describe("the live session's greeting", () => {
+  describe("the live session opens by listening", () => {
     const live = (personality: Record<string, unknown>, name?: string) =>
       buildScreen("training_live", {
         personality, language: "en", ...(name ? { name } : {}),
@@ -629,52 +629,23 @@ describe("buildBootstrap", () => {
         state: Record<string, unknown>;
         root: { children: Array<Record<string, any>> };
       };
-    const greetingOf = (s: ReturnType<typeof live>) => String(s.state.line ?? "");
+    const find = (n: any): any => n?.type === "VoiceSession"
+      ? n : (n?.children ?? []).map(find).find(Boolean);
 
-    it("is written before the screen arrives, not asked for", () => {
-      const s = live({});
-      expect(greetingOf(s)).not.toBe("");
-      // On screen, in the transcript, and in the component's props — one
-      // string, so what is shown, what is spoken and what the model sees as
-      // turn one cannot drift apart.
-      expect(s.state.turns).toEqual([{ role: "assistant", text: greetingOf(s) }]);
-      const find = (n: any): any => n?.type === "VoiceSession"
-        ? n : (n?.children ?? []).map(find).find(Boolean);
-      expect(find(s.root).props.greeting).toBe(greetingOf(s));
-    });
-
-    it("opens speaking, so the orb is already moving", () => {
-      expect(live({}).state.sessionState).toBe("speaking");
-    });
-
-    it("names one of their own words once it has one", () => {
-      const s = live({
-        stylePortrait: { sessions: 4, words: [{ term: "jugaad", means: "a fix" }] },
-      });
-      expect(greetingOf(s)).toContain("jugaad");
-    });
-
-    it("never names a word it has not got", () => {
-      // The whole value of the line is that it could not have been written for
-      // anybody else. A placeholder left in would say the opposite.
-      for (const p of [{}, { stylePortrait: { sessions: 9 } }, { stylePortrait: { words: [] } }]) {
-        expect(greetingOf(live(p))).not.toContain("{word}");
+    it("says nothing first: a greeting spoken while the mic opened was cut off mid-sentence", () => {
+      // "I don't know how you sound yet. Just talk, and I'll…" — the audio
+      // session switching over to listen cut the line. Nothing is spoken, so
+      // nothing is cut, and the first turn is theirs.
+      for (const p of [{}, { stylePortrait: { sessions: 4, words: [{ term: "jugaad", means: "a fix" }] } }]) {
+        const s = live(p, "Ada Lovelace");
+        expect(s.state.line ?? "").toBe("");
+        expect(s.state.turns).toEqual([]);
+        expect(find(s.root).props.greeting).toBeUndefined();
       }
     });
 
-    it("uses a first name, and only when there is one", () => {
-      // Spoken aloud — a machine reading out a full legal name is the
-      // opposite of what this is for.
-      expect(greetingOf(live({}, "Ada Lovelace"))).toContain("Ada");
-      expect(greetingOf(live({}, "Ada Lovelace"))).not.toContain("Lovelace");
-      expect(greetingOf(live({}))).not.toContain("{name}");
-    });
-
-    it("says the same thing twice in a row", () => {
-      // Varied by the day so a daily user is not greeted identically forever,
-      // but never on re-render: a line that changes when you come back to the
-      // screen looks like a reroll, not a greeting.
-      expect(greetingOf(live({}))).toBe(greetingOf(live({})));
+    it("is listening from the first frame, so the field is already moving", () => {
+      expect(live({}).state.sessionState).toBe("listening");
     });
   });
 
