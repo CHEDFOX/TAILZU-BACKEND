@@ -18,6 +18,7 @@
  *  - Case-insensitive; tolerant of trailing punctuation (".", "!", "…").
  */
 import type { Command } from "../../../shared/types/api.js";
+import { LANGS } from "../experience/languages.js";
 
 // Common "please make it" / "now make it" preamble. Kept non-capturing so
 // the whole match can be sliced off the transcript in one go.
@@ -185,4 +186,71 @@ export function detectCommand(rawTranscript: string): {
   }
 
   return { transcript: text, command: head };
+}
+
+/** Every language Tailzu takes, by the name people say it, plus the few other
+ *  names they use for some of them. */
+const LANGUAGE_WORDS = new Set([
+  ...LANGS.map((l) => l.name.toLowerCase()),
+  "mandarin", "cantonese", "tagalog", "farsi", "bangla", "oriya", "roman hindi",
+]);
+
+/** "japanese", "simplified chinese", "brazilian portuguese" → a language. */
+function knownLanguage(lang: string): string | null {
+  const l = lang.trim().toLowerCase();
+  if (LANGUAGE_WORDS.has(l)) return l;
+  const last = l.split(/\s+/).pop() ?? "";
+  return LANGUAGE_WORDS.has(last) ? l : null;
+}
+
+/**
+ * THE INSTRUCTION, TAKEN OFF BEFORE THE WRITER EVER SEES IT.
+ *
+ * "How are you? Write this in Japanese" came back as
+ * "How are you?日本語で書いてください": the message left in English and the
+ * instruction translated into the message. The prompt says, in so many words,
+ * to do the instruction and write the rest, and it lost — the same lesson as
+ * the prompt leak and the echoed context: an instruction the model keeps
+ * losing is checked in code, not argued for in prose.
+ *
+ * So a trailing instruction that is unmistakably one is cut here, and the
+ * writer is handed the message and the instruction separately. What it never
+ * sees, it cannot write.
+ *
+ * UNMISTAKABLY is the whole design. detectCommand matches by the tail alone,
+ * which is right for its own caller and too loose to cut words out of a
+ * message: "tell him I will reply in Spanish" ends in a command-shaped phrase
+ * and is a sentence. Two things make a tail an instruction here:
+ *
+ *   - a boundary before it: the message ended ("…you? Write this in
+ *     Japanese"), or the instruction opens with a break or a connector
+ *     ("…, make it shorter", "…and make it formal"). Without one, the words
+ *     run straight on from the message and may belong to it.
+ *   - for a language, a language: "write it in bold" is not one.
+ *
+ * Anything that fails either stays in the message, where the prompt's own
+ * separation still applies. A cut that is wrong loses their words; a cut that
+ * is missed only leaves the writer to decide, as it always did.
+ */
+export function splitInstruction(text: string): { message: string; command: Command | null } {
+  const raw = (text ?? "").trim();
+  const none = { message: raw, command: null };
+  if (!raw) return none;
+  const { transcript, command } = detectCommand(raw);
+  const cut = transcript.trim();
+  if (!command || !cut || !raw.startsWith(cut)) return none;
+  // detectCommand takes the full stop with the instruction. It belongs to the
+  // sentence it ended, and is the clearest boundary there is.
+  const stop = /^[.!?…]+/.exec(raw.slice(cut.length))?.[0] ?? "";
+  const message = cut + stop;
+  const tail = raw.slice(message.length);
+  const bounded = /[.!?…]$/.test(message)
+    || /^\s*(?:[,;:—–…-]|(?:and|then|also|please|now)\b)/i.test(tail);
+  if (!bounded) return none;
+  if (command.kind === "language" || command.kind === "translate") {
+    const lang = knownLanguage(command.lang);
+    if (!lang) return none;
+    return { message, command: { ...command, lang } };
+  }
+  return { message, command };
 }

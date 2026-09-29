@@ -121,6 +121,16 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
       // user already watched land.
       let lead: "primary" | "shadow" = "primary";
       let leadLocked = false;
+      // WHAT IS ALREADY AT THE CURSOR. Every client — both keyboards and the
+      // desktop — APPENDS each final it is sent; none of them replaces. So a
+      // final is only ever new words, never a correction of old ones, and
+      // what was sent is tracked to keep it that way.
+      const sentFinals: string[] = [];
+      // How many of the primary's segments had reached the cursor when the
+      // shadow took the lead. The shadow's own segments up to that count
+      // cover the same audio in another reading; sending them typed the
+      // sentence twice.
+      let sentAtSwitch = 0;
       let closed = false;
       let user: AuthedUser | null = null;
       let bytes = 0;
@@ -202,6 +212,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         if (leadLocked) return;
         const theirs = (mine === "primary" ? shadowFinals : primaryFinals).join(" ");
         if (!leadsOnScript(text, theirs)) return;
+        if (mine === "shadow") sentAtSwitch = sentFinals.length;
         lead = mine;
         leadLocked = true;
       };
@@ -227,6 +238,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         if (!primaryDry && shadowDry && lead !== "shadow") {
           totalWords += countWords(shadowDry);
           send({ type: "final", text: shadowDry });
+          sentFinals.push(shadowDry);
           errored = false;   // we recovered; don't report a failure to the user
         } else if (!primaryDry && shadowDry) {
           errored = false;   // the shadow carried the session; that is not a failure
@@ -267,20 +279,24 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           const shadowIndic = INDIC_SCRIPTS.has(detectScript(shadowDry));
           const flip = !!shadowDry && !primaryIndic &&
             (shadowIndic || readsAsRomanHindi(primaryDry, shadowDry));
-          const primaryText = flip ? shadowDry : primaryDry;
-          const shadowText = flip ? primaryDry : shadowDry;
-          // Only correct the cursor when the user was NOT already watching the
-          // shadow. Mid-stream the lead switches on the first Indic segment, so
-          // in the usual case those words are already there and this would
-          // duplicate them; this send is for the utterance whose script only
-          // became clear at the very end.
-          if (flip && lead !== "shadow") send({ type: "final", text: shadowDry });
-          const useAlternative =
-            !!shadowText &&
-            !!primaryText &&
-            !transcriptsAgree(primaryText, shadowText) &&
-            isUsableAlternative(primaryText, shadowText);
-          send(useAlternative ? { type: "done", alternative: shadowText } : { type: "done" });
+          const better = flip ? shadowDry : primaryDry;
+          const worse = flip ? primaryDry : shadowDry;
+          // THE BETTER READING GOES IN `done`, NEVER AS ONE MORE FINAL.
+          //
+          // This used to "correct the cursor" by sending the shadow's whole
+          // line as a final. No client corrects: each appends. So a Hinglish
+          // dictation arrived as the primary's reading followed by the
+          // shadow's, the refine step was handed the sentence twice, and the
+          // field got raw words beside the written ones.
+          //
+          // The alternative is whichever reading differs from what the user
+          // was actually sent, better one first. The refine step decides which
+          // leads from the text itself (cleanup.assist), so candidate order
+          // here does not have to be right for older clients to be right.
+          const typed = sentFinals.join(" ").trim();
+          const differs = (x: string) => !!x && !!typed && !transcriptsAgree(typed, x) && isUsableAlternative(typed, x);
+          const alternative = differs(better) ? better : differs(worse) ? worse : "";
+          send(alternative ? { type: "done", alternative } : { type: "done" });
         }
         safeClose();
       };
@@ -340,7 +356,10 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
               considerLead("primary", text);
               // Both readings are still kept for the stop-time reconciliation;
               // the lead only decides which one the user WATCHES.
-              if (lead === "primary") send({ type: "final", text });
+              if (lead === "primary") {
+                send({ type: "final", text });
+                if (text) sentFinals.push(text);
+              }
             },
             onError: (message) => {
               errored = true;
@@ -381,11 +400,17 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
               // Words are metered off whatever the user actually receives, so
               // the count follows the lead rather than the primary engine.
               if (lead === "shadow") {
-                if (text) totalWords += countWords(text);
-                send({ type: "final", text });
-                // The segment that WON the lead is sent above; nothing earlier
-                // is re-sent, because those words are already at the cursor and
-                // the refine step at stop is what reconciles the whole line.
+                // Audio the primary's segments already put at the cursor is
+                // not typed again in the shadow's reading. An empty final
+                // still goes, so the client drops the partial it was showing.
+                const fresh = !!text && shadowFinals.length > sentAtSwitch;
+                if (fresh) {
+                  totalWords += countWords(text);
+                  sentFinals.push(text);
+                }
+                send({ type: "final", text: fresh ? text : "" });
+                // The refine step at stop reconciles the whole line from both
+                // readings (see `done`), so nothing skipped here is lost.
                 void had;
               }
             },

@@ -16,7 +16,9 @@ import {
   parsePortraitDraft, type PortraitDraft,
 } from "./portraitDimensions.js";
 import { buildAssistSystem, portraitBlock } from "./assistPrompt.js";
-import { detectScript, mixesEnglishAndRomanHindi, transliterated } from "./stt.js";
+import { splitInstruction } from "./commands.js";
+import { renderCommandOverride } from "../prompts.js";
+import { detectScript, INDIC_SCRIPTS, mixesEnglishAndRomanHindi, readsAsRomanHindi, transliterated } from "./stt.js";
 
 /**
  * The script a piece of text is written in, or undefined when there is no
@@ -524,17 +526,39 @@ export async function assist(
   opts: CleanupOptions = {},
 ): Promise<string> {
   if (!message.trim()) return "";
+  // THE INSTRUCTION COMES OFF FIRST (commands.splitInstruction). The writer is
+  // handed the message alone and told what was asked, so no word of the
+  // request can be written into it — and every fallback below returns the
+  // message without it, never the raw sentence with the instruction inside.
+  const split = splitInstruction(message);
+  const asked = split.command;
+  const askedLanguage = asked && (asked.kind === "language" || asked.kind === "translate")
+    ? asked.lang.replace(/\b\w/g, (c) => c.toUpperCase())
+    : undefined;
+  message = split.message;
   const context = opts.context?.trim();
   // A second recognizer's reading, when it disagreed with the first. Kept as
   // USER content (never spliced into the system prompt) so recognizer output
   // can't act as instructions.
-  const alternative = opts.alternative?.trim();
+  // Its instruction comes off too, or candidate 2 carries the words candidate
+  // 1 no longer does.
+  const alternative = opts.alternative ? splitInstruction(opts.alternative).message : undefined;
   const hasAlternative = !!alternative && alternative !== message.trim();
+  // WHICH READING LEADS IS DECIDED BY THE TEXT, as the stream and the
+  // one-shot path decide it: the prompt calls candidate 1 the more reliable,
+  // and the live path hands over what reached the cursor first, which for an
+  // Indic speaker is often the engine that only approximated them. The one
+  // that came back in their script, or in their romanized words, leads.
+  const altLeads = hasAlternative && (
+    (INDIC_SCRIPTS.has(detectScript(alternative!)) && !INDIC_SCRIPTS.has(detectScript(message)))
+    || readsAsRomanHindi(message, alternative!));
   const system = buildAssistSystem({
     tone: opts.tone,
     tonePrompt: opts.tonePrompt,
     personality: opts.personality,
-    language: opts.language,
+    // A language asked for in this dictation takes the saved one's place.
+    language: askedLanguage ?? opts.language,
+    instruction: asked && !askedLanguage ? renderCommandOverride(asked) : undefined,
     targetApp: opts.targetApp,
     // THE SCRIPT IS OBSERVABLE HERE, AND WAS ONLY EVER OBSERVED UPSTREAM.
     //
@@ -567,8 +591,9 @@ export async function assist(
   // response to it. Inside <said> it is the material; the system prompt says
   // what to do with it. Their own text in the field goes in <before>.
   const said = stripFenceTags(message.trim());
+  const other = hasAlternative ? stripFenceTags(alternative!) : "";
   const messageBlock = hasAlternative
-    ? `CANDIDATE 1 (more reliable):\n${said}\n\nCANDIDATE 2:\n${stripFenceTags(alternative!)}`
+    ? `CANDIDATE 1 (more reliable):\n${altLeads ? other : said}\n\nCANDIDATE 2:\n${altLeads ? said : other}`
     : said;
   const userContent = (context ? `<before>\n${stripFenceTags(context)}\n</before>\n` : "")
     + `<said>\n${messageBlock}\n</said>`;
@@ -599,7 +624,8 @@ export async function assist(
   // it now fails every time, which makes it a decision rather than a wobble.
   // Checked here for the same reason the prompt leak is: an instruction the
   // model keeps losing is not an instruction, it is a hope.
-  if (transliterated(message, out)) return message.trim();
+  // Not when they asked for a language: then another script is the request.
+  if (!askedLanguage && transliterated(message, out)) return message.trim();
   // Their own prior text stays in the field either way, so an echo of it here
   // is a second copy on screen.
   const trimmed = stripEchoedContext(out, context);

@@ -1187,10 +1187,12 @@ const runToneRefine = (toneId: string) =>
   async (req: FastifyRequest, reply: FastifyReply) => {
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-    const body = (req.body ?? {}) as { text?: string; language?: string; context?: string; tonePrompt?: string };
+    const body = (req.body ?? {}) as {
+      text?: string; language?: string; context?: string; tonePrompt?: string; alternative?: string; targetApp?: string;
+    };
     if (!body.text || !body.text.trim()) return reply.code(400).send({ code: "bad_request", message: "Missing 'text'" });
     // Same cap discipline as /v1/refine: every prompt-bound field counts.
-    const over = tooLong(body.text) ?? tooLong(body.context) ?? tooLong(body.tonePrompt);
+    const over = tooLong(body.text) ?? tooLong(body.context) ?? tooLong(body.tonePrompt) ?? tooLong(body.alternative);
     if (over) return reply.code(413).send({ code: "bad_request", message: over });
     const quota = await enforceQuota(user);
     if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
@@ -1204,6 +1206,11 @@ const runToneRefine = (toneId: string) =>
         // can reuse this path and the route's toneId is just the label/default.
         tonePrompt: body.tonePrompt,
         context: body.context,
+        // The same two things /v1/refine takes. This route dropped both, so a
+        // live dictation refined here lost the second engine's reading and
+        // the field it was going into.
+        alternative: body.alternative,
+        targetApp: body.targetApp,
         language: lang,
         personality,
         variables: { email: user.email, phone: user.phone },
@@ -1212,7 +1219,7 @@ const runToneRefine = (toneId: string) =>
       await recordUsage({ user, source: "rest", ...usage });
       await appendHistoryEntry(user, personality, {
         kind: "typing",
-        targetApp: "Generic",
+        targetApp: body.targetApp || "Generic",
         language: body.language,
         input: body.text,
         output: refinedText,
