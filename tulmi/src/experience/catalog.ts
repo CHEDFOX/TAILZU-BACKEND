@@ -11,6 +11,7 @@ import { withAppKnobs, withKeyboardKnobs } from "./appKnobs.js";
 import { DESK_NAV, DESK_SCREENS, buildDeskScreen } from "./desk.js";
 import { PHONE_FONT, PHONE_LOOK, PHONE_ROOMS, caption, label, lineFor, phoneStatsBody, proofMark, t } from "./phoneLook.js";
 import { DESK_CONTEXTS, DESK_ROOMS, DESK_SAMPLES } from "./deskSamples.js";
+import { LANGS as ALL_LANGS } from "./languages.js";
 import type { StatsForUser } from "../history/store.js";
 import type {
   ActionRef,
@@ -3356,10 +3357,13 @@ function languagesScreen(ctx: ScreenContext): ScreenResponse {
         type: "Stack",
         style: { flex: 1, gap: 1 },
         children: [
-          { type: "Text", props: { content: l.label },
-            style: { fontSize: up.labelSize, fontWeight: "600", color: YOU_UI.text } },
-          { type: "Text", props: { content: l.native },
-            style: { fontSize: up.subSize, color: YOU_UI.textDim } },
+          t(l.label, "uiMedium", 15),
+          // The language in its own script, which the book face does not
+          // carry: set in the system font, so every script draws.
+          ...(l.native && l.native !== l.label
+            ? [{ type: "Text", props: { content: l.native },
+                 style: { fontSize: 13, lineHeight: 21, color: PHONE_LOOK.ink2 } } as Node]
+            : []),
         ],
       },
       // The tick is the whole state display: present means selected. Rendered
@@ -3395,14 +3399,19 @@ function languagesScreen(ctx: ScreenContext): ScreenResponse {
         // No hero. The amber block IS the top of this screen now, and a banner
         // above it would put two different treatments in the first 200 points.
         // The art it used to carry is on the deck card that opens this screen.
-        youHead("Tap each one you use.", "Languages"),
+        youHead("Languages", "Tap each one you speak."),
         {
           type: "Screen",
           style: {
             backgroundColor: "transparent",
-            paddingHorizontal: YOU_UI.padding, paddingTop: 20, paddingBottom: 28,
+            paddingHorizontal: PHONE_LOOK.side, paddingTop: 8, paddingBottom: 40,
           },
-          children: DAILY_LANGUAGES.map(row),
+          children: [
+            youLabel("India"),
+            ...DAILY_LANGUAGES.filter((l) => l.india).map(row),
+            youLabel("The world"),
+            ...DAILY_LANGUAGES.filter((l) => !l.india).map(row),
+          ],
         },
       ],
     },
@@ -4559,29 +4568,23 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
  * `value` doubles as the STT exemplar key (see sttPrompt), so adding a row
  * here is all it takes for that language's script to prime the recognizer.
  */
-const DAILY_LANGUAGES: Array<{ value: string; label: string; native: string }> = [
-  { value: "en", label: "English", native: "English" },
-  { value: "hi", label: "Hindi", native: "हिन्दी" },
-  { value: "hinglish", label: "Hinglish", native: "Hindi + English, in Latin script" },
-  { value: "mr", label: "Marathi", native: "मराठी" },
-  { value: "bn", label: "Bengali", native: "বাংলা" },
-  { value: "ta", label: "Tamil", native: "தமிழ்" },
-  { value: "te", label: "Telugu", native: "తెలుగు" },
-  { value: "gu", label: "Gujarati", native: "ગુજરાતી" },
-  { value: "kn", label: "Kannada", native: "ಕನ್ನಡ" },
-  { value: "ml", label: "Malayalam", native: "മലയാളം" },
-  { value: "pa", label: "Punjabi", native: "ਪੰਜਾਬੀ" },
-  { value: "ur", label: "Urdu", native: "اردو" },
-  { value: "es", label: "Spanish", native: "Español" },
-  { value: "fr", label: "French", native: "Français" },
-  { value: "de", label: "German", native: "Deutsch" },
-  { value: "pt", label: "Portuguese", native: "Português" },
-  { value: "ar", label: "Arabic", native: "العربية" },
-  { value: "ru", label: "Russian", native: "Русский" },
-  { value: "ja", label: "Japanese", native: "日本語" },
-  { value: "ko", label: "Korean", native: "한국어" },
-  { value: "zh", label: "Chinese", native: "中文" },
-];
+/**
+ * EVERY LANGUAGE THE MODELS HANDLE, for the Languages screen — the same list
+ * the site's /languages pages show (experience/languages.ts). India first
+ * (Hindi, then Hinglish, then the other scheduled languages), then the world
+ * (English first). A value is what the pipeline reads: Hinglish is
+ * "hinglish", the rest their language code.
+ */
+const DAILY_LANGUAGES: Array<{ value: string; label: string; native: string; india: boolean }> = [
+  ...ALL_LANGS.filter((l) => l.india),
+  ...ALL_LANGS.filter((l) => !l.india && l.code === "en"),
+  ...ALL_LANGS.filter((l) => !l.india && l.code !== "en"),
+].map((l) => ({
+  value: l.slug === "hinglish" ? "hinglish" : l.code,
+  label: l.name,
+  native: l.slug === "hinglish" ? "Hindi + English, in English letters" : l.native,
+  india: l.india,
+}));
 
 /**
  * The brand accent — the warm amber sampled from the mic animation.
@@ -7223,6 +7226,7 @@ const CHART_ON_DARK = [
 
 /** Language codes as people read them. Anything unlisted shows its own code. */
 const LANGUAGE_NAMES: Record<string, string> = {
+  ...Object.fromEntries(ALL_LANGS.map((l) => [l.slug === "hinglish" ? "hinglish" : l.code, l.name])),
   auto: "Auto", en: "English", hi: "Hindi", hinglish: "Hinglish", mr: "Marathi",
   bn: "Bengali", ta: "Tamil", te: "Telugu", gu: "Gujarati", kn: "Kannada",
   ml: "Malayalam", pa: "Punjabi", ur: "Urdu", es: "Spanish", fr: "French",

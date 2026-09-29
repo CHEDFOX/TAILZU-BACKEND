@@ -9,6 +9,8 @@ process.env.DEV_SKIP_AUTH = "true";
 import { FONTS, buildBootstrap, buildScreen } from "../src/experience/catalog.js";
 // eslint-disable-next-line import/first
 import { PHONE_LOOK, sentence } from "../src/experience/phoneLook.js";
+// eslint-disable-next-line import/first
+import { LANGS } from "../src/experience/languages.js";
 
 const walk = (n: unknown, hit: (x: Record<string, any>) => void): void => {
   if (!n || typeof n !== "object") return;
@@ -119,6 +121,19 @@ describe("the phone refresh", () => {
       const lit = tab.glyph.layers.filter((l: any) => l.activeColor === "#E8A23C");
       expect(lit.length, tab.id).toBeGreaterThan(0);
     }
+  });
+
+  it("offers every language the models handle, the same list the site shows", () => {
+    const json = JSON.stringify(buildScreen("languages", { personality: {}, language: "en" } as never));
+    for (const l of LANGS) {
+      const value = l.slug === "hinglish" ? "hinglish" : l.code;
+      expect(json, l.name).toContain(`"value":"${value}"`);
+    }
+    // Grouped: India, then the world.
+    expect(json.indexOf('"India"')).toBeLessThan(json.indexOf('"The world"'));
+    // A newly offered code reads as its name on the You card, never as a code.
+    const you = JSON.stringify(buildScreen("personality", { personality: { languages: ["doi", "sat"] }, language: "en" } as never));
+    expect(you).toContain("Dogri, Santali");
   });
 
   it("keeps amber for what is live", () => {

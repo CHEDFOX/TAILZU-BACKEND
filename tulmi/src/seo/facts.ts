@@ -44,76 +44,10 @@ export const HOME = {
 // ---------------------------------------------------------------- languages
 
 export interface Example { said: string; wrote: string; app?: string }
-export interface Lang {
-  slug: string;
-  name: string;
-  native: string;
-  /** BCP 47. */
-  code: string;
-  script: string;
-  india: boolean;
-  /** What the mix with English is called, where people call it something. */
-  mix?: string;
-  /** Has a page of its own. */
-  page?: boolean;
-}
-
-/**
- * India's 22 scheduled languages (the Eighth Schedule), which is exactly the
- * set the Indic recogniser is built for (INDIC_LANGUAGES in pipeline/stt.ts),
- * with Hinglish beside Hindi. The ones with a page are the ones the site
- * already shows written clean.
- */
-export const LANGS: Lang[] = [
-  { slug: "hindi", name: "Hindi", native: "हिन्दी", code: "hi", script: "Devanagari", india: true, mix: "Hinglish", page: true },
-  { slug: "hinglish", name: "Hinglish", native: "Hinglish", code: "hi-Latn", script: "English letters", india: true, page: true },
-  { slug: "bengali", name: "Bengali", native: "বাংলা", code: "bn", script: "Bengali", india: true, mix: "Banglish", page: true },
-  { slug: "telugu", name: "Telugu", native: "తెలుగు", code: "te", script: "Telugu", india: true, mix: "Tenglish", page: true },
-  { slug: "marathi", name: "Marathi", native: "मराठी", code: "mr", script: "Devanagari", india: true, page: true },
-  { slug: "tamil", name: "Tamil", native: "தமிழ்", code: "ta", script: "Tamil", india: true, mix: "Tanglish", page: true },
-  { slug: "urdu", name: "Urdu", native: "اردو", code: "ur", script: "Perso-Arabic", india: true, page: true },
-  { slug: "gujarati", name: "Gujarati", native: "ગુજરાતી", code: "gu", script: "Gujarati", india: true, page: true },
-  { slug: "kannada", name: "Kannada", native: "ಕನ್ನಡ", code: "kn", script: "Kannada", india: true, mix: "Kanglish", page: true },
-  { slug: "malayalam", name: "Malayalam", native: "മലയാളം", code: "ml", script: "Malayalam", india: true, mix: "Manglish", page: true },
-  { slug: "odia", name: "Odia", native: "ଓଡ଼ିଆ", code: "or", script: "Odia", india: true, page: true },
-  { slug: "punjabi", name: "Punjabi", native: "ਪੰਜਾਬੀ", code: "pa", script: "Gurmukhi", india: true, page: true },
-  { slug: "nepali", name: "Nepali", native: "नेपाली", code: "ne", script: "Devanagari", india: true, page: true },
-  { slug: "assamese", name: "Assamese", native: "অসমীয়া", code: "as", script: "Assamese", india: true },
-  { slug: "maithili", name: "Maithili", native: "मैथिली", code: "mai", script: "Devanagari", india: true },
-  { slug: "santali", name: "Santali", native: "ᱥᱟᱱᱛᱟᱲᱤ", code: "sat", script: "Ol Chiki", india: true },
-  { slug: "kashmiri", name: "Kashmiri", native: "کٲشُر", code: "ks", script: "Perso-Arabic", india: true },
-  { slug: "sindhi", name: "Sindhi", native: "سنڌي", code: "sd", script: "Perso-Arabic", india: true },
-  { slug: "konkani", name: "Konkani", native: "कोंकणी", code: "kok", script: "Devanagari", india: true },
-  { slug: "dogri", name: "Dogri", native: "डोगरी", code: "doi", script: "Devanagari", india: true },
-  { slug: "manipuri", name: "Manipuri", native: "ꯃꯩꯇꯩꯂꯣꯟ", code: "mni", script: "Meetei Mayek", india: true },
-  { slug: "bodo", name: "Bodo", native: "बड़ो", code: "brx", script: "Devanagari", india: true },
-  { slug: "sanskrit", name: "Sanskrit", native: "संस्कृतम्", code: "sa", script: "Devanagari", india: true },
-  // The rest of the world: every one the site already shows written clean.
-  { slug: "english", name: "English", native: "English", code: "en", script: "Latin", india: false },
-  { slug: "spanish", name: "Spanish", native: "Español", code: "es", script: "Latin", india: false },
-  { slug: "french", name: "French", native: "Français", code: "fr", script: "Latin", india: false },
-  { slug: "portuguese", name: "Portuguese", native: "Português", code: "pt", script: "Latin", india: false },
-  { slug: "german", name: "German", native: "Deutsch", code: "de", script: "Latin", india: false },
-  { slug: "italian", name: "Italian", native: "Italiano", code: "it", script: "Latin", india: false },
-  { slug: "dutch", name: "Dutch", native: "Nederlands", code: "nl", script: "Latin", india: false },
-  { slug: "polish", name: "Polish", native: "Polski", code: "pl", script: "Latin", india: false },
-  { slug: "ukrainian", name: "Ukrainian", native: "Українська", code: "uk", script: "Cyrillic", india: false },
-  { slug: "russian", name: "Russian", native: "Русский", code: "ru", script: "Cyrillic", india: false },
-  { slug: "greek", name: "Greek", native: "Ελληνικά", code: "el", script: "Greek", india: false },
-  { slug: "turkish", name: "Turkish", native: "Türkçe", code: "tr", script: "Latin", india: false },
-  { slug: "arabic", name: "Arabic", native: "العربية", code: "ar", script: "Arabic", india: false },
-  { slug: "hebrew", name: "Hebrew", native: "עברית", code: "he", script: "Hebrew", india: false },
-  { slug: "persian", name: "Persian", native: "فارسی", code: "fa", script: "Perso-Arabic", india: false },
-  { slug: "swahili", name: "Swahili", native: "Kiswahili", code: "sw", script: "Latin", india: false },
-  { slug: "indonesian", name: "Indonesian", native: "Bahasa Indonesia", code: "id", script: "Latin", india: false },
-  { slug: "filipino", name: "Filipino", native: "Filipino", code: "fil", script: "Latin", india: false },
-  { slug: "thai", name: "Thai", native: "ไทย", code: "th", script: "Thai", india: false },
-  { slug: "vietnamese", name: "Vietnamese", native: "Tiếng Việt", code: "vi", script: "Latin", india: false },
-  { slug: "chinese", name: "Chinese", native: "中文", code: "zh", script: "Chinese characters", india: false },
-  { slug: "japanese", name: "Japanese", native: "日本語", code: "ja", script: "Japanese", india: false },
-  { slug: "korean", name: "Korean", native: "한국어", code: "ko", script: "Hangul", india: false },
-  { slug: "sinhala", name: "Sinhala", native: "සිංහල", code: "si", script: "Sinhala", india: false },
-];
+// The list itself lives in experience/languages.ts, so the app's Languages
+// screen and these pages read the same one and can never disagree.
+export { LANGS, type Lang } from "../experience/languages.js";
+import { LANGS, type Lang } from "../experience/languages.js";
 
 export const INDIA = LANGS.filter((l) => l.india && l.slug !== "hinglish");
 export const WORLD = LANGS.filter((l) => !l.india);
