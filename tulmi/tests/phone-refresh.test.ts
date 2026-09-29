@@ -6,7 +6,7 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import { FONTS, buildScreen } from "../src/experience/catalog.js";
+import { FONTS, buildBootstrap, buildScreen } from "../src/experience/catalog.js";
 // eslint-disable-next-line import/first
 import { PHONE_LOOK, sentence } from "../src/experience/phoneLook.js";
 
@@ -102,6 +102,23 @@ describe("the phone refresh", () => {
   it("draws the Stats gear so it can be seen on the dark ground", () => {
     const s = JSON.stringify(buildScreen("stats", screens[0]![1] as never));
     expect(s).toContain('"stroke":"rgba(255,255,255,0.66)"');
+  });
+
+  it("uses no amber inside Full history", () => {
+    const h = JSON.stringify(buildScreen("history", {
+      personality: {}, language: "en",
+      history: [{ id: "a", kind: "voice", input: "haan bhai", output: "Haan bhai.", wordsIn: 2, wordsOut: 2, createdAt: new Date().toISOString() }],
+    } as never)).toUpperCase();
+    expect(h).not.toContain("#E8A23C");
+    expect(h).not.toContain("232,162,60");
+  });
+
+  it("lights the selected tab in amber again", () => {
+    const b = buildBootstrap({} as never) as any;
+    for (const tab of b.navigation.tabs) {
+      const lit = tab.glyph.layers.filter((l: any) => l.activeColor === "#E8A23C");
+      expect(lit.length, tab.id).toBeGreaterThan(0);
+    }
   });
 
   it("keeps amber for what is live", () => {

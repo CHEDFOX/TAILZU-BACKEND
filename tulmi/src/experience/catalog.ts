@@ -1317,11 +1317,12 @@ const RETURNING_TAB = "stats";
  * been chosen.
  */
 const TAB_MALT = "#D8C3A5";
-/** The lit layer: the app's pale, not amber. Amber belongs to what is live
- *  (the mic, words just written), and which tab you are on is not that. */
-const TAB_ACCENT = "#F3E2C6";
-/** Where two layers overlap, lighter than either. */
-const TAB_PALE = "#FFFFFF";
+/** The accent, by value. ACCENT_AMBER is declared further down the file and
+ *  this block is read while the module is still being evaluated. The lit
+ *  layer of the selected tab wears it: the owner's call, and the one place a
+ *  tab says which room you are in. */
+const TAB_ACCENT = "#E8A23C";
+const TAB_PALE = "#F3E2C6";
 
 /**
  * DUOTONE, AND THE STATE IS A COLOUR RATHER THAN A SHAPE.
@@ -9294,8 +9295,10 @@ function historyBreakdown(entries: HistoryEntry[] | undefined): Slice[] {
   // reaches for its default palette, which is the one thing on this screen
   // that would not be the Stats ground it was opened from.
   return [
-    { label: "Written", value: written, color: CHART_ON_DARK[0]! },
-    { label: "Spoken", value: spoken, color: CHART_ON_DARK[2]! },
+    // No amber inside History (owner's call): the written half is the full
+    // pale, the spoken half the faint one.
+    { label: "Written", value: written, color: STATS_UI.ink },
+    { label: "Spoken", value: spoken, color: CHART_ON_DARK[3]! },
   ];
 }
 
@@ -9482,11 +9485,11 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
                     { type: "Text", bind: { content: "item.input" },
                       props: { numberOfLines: 3 },
                       style: { fontSize: 13, lineHeight: 19, color: u.onCardDim, marginTop: 4 } },
-                    // THE AMBER LINE. What the app actually wrote is the one
-                    // thing on the card that is its work.
+                    // What the app wrote — marked by weight below, not by
+                    // colour: no amber inside History.
                     { type: "Text", props: { content: "Tailzu wrote" },
                       style: { fontSize: 9, letterSpacing: 1.6, textTransform: "uppercase",
-                               color: u.accent, marginTop: 12 } },
+                               color: u.onCardFaint, marginTop: 12 } },
                     { type: "Text", bind: { content: "item.output" },
                       props: { numberOfLines: 6 },
                       style: { fontSize: 14, lineHeight: 20, fontWeight: "600",
