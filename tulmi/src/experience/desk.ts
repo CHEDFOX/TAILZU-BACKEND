@@ -221,11 +221,11 @@ export function deskToday(ctx: DeskContext): ScreenResponse {
       ], { minWidth: 0 }),
       row([
         keys("tap"),
-        text("tap twice, in any app, and talk", "d-count d-on-room", { maxWidth: 120, marginLeft: 6 }, ),
+        text("tap twice, in any app, and talk", "d-count d-on-room", { maxWidth: 150, marginLeft: 6 }),
       ], { align: "center", gap: 0 }, undefined, { visibleIf: { truthy: "desktop.tap" } }),
       row([
         keys("hotkey"),
-        text("in any app, and talk", "d-count d-on-room", { maxWidth: 120, marginLeft: 6 }),
+        text("in any app, and talk", "d-count d-on-room", { maxWidth: 150, marginLeft: 6 }),
       ], { align: "center", gap: 0 }, undefined, { visibleIf: { falsy: "desktop.tap" } }),
     ], { justify: "between", align: "end", gap: 24, flexWrap: "wrap" }, "d-room-inner"),
   ], {}, "d-room");
@@ -356,7 +356,9 @@ export function deskWords(ctx: DeskContext): ScreenResponse {
   // above what it is written as. The vocabulary's lines are words it knows.
   const pairs = (p.dictionary ?? []).filter((d) => d && d.word && d.replacement)
     .map((d) => ({ word: d.replacement, was: d.word, kind: "pair" }));
-  const vocab = vocabularyLines(p).map((w) => ({ word: w, was: "", kind: "word" }));
+  // A word already shown as a proof mark is not listed again under it.
+  const marked = new Set(pairs.map((x) => x.word.toLowerCase()));
+  const vocab = vocabularyLines(p).filter((w) => !marked.has(w.toLowerCase())).map((w) => ({ word: w, was: "", kind: "word" }));
   const words = [...pairs, ...vocab].slice(0, 200);
   const snips = snippetPairs(p);
 
@@ -564,7 +566,8 @@ export function deskPlan(ctx: DeskContext): ScreenResponse {
   const out = !q.paid && q.of > 0 && q.used >= q.of;
   const plans = (ctx.plans ?? []).filter((p) => !p.free && p.price);
   const cards = plans.map((p) => stack([
-    row([text(p.label, "d-eyebrow"), ...(p.badge ? [text(p.badge, "d-margin")] : [])], { justify: "between", align: "center" }),
+    // Every card carries the badge line, empty or not, so the prices line up.
+    row([text(p.label, "d-eyebrow"), text(p.badge || "\u00a0", "d-margin")], { justify: "between", align: "center" }),
     text(p.price ?? "", "d-price", { marginTop: 8 }),
     text(p.period ?? "", "d-lede", { marginTop: 2 }),
     row([link(`Choose ${p.label}`, { kind: "iap.subscribe", productId: p.productId ?? p.id } as ActionRef)], { marginTop: 14 }),
