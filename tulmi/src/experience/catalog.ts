@@ -11395,9 +11395,16 @@ const makeToolsRow = (opts: {
 }): KeyboardNode => ({
   type: "Row",
   // Compact 44pt row — the two toggles read as accents, not "here's the tools
-  // bar you must respect". Uniform padding matches container L/R so the mic
+  // bar you must respect". The 4pt sides match the container L/R so the mic
   // sits flush with the keyboard's own left edge and the tone pill flush right.
-  style: { gap: 8, height: 44, padding: 4 },
+  //
+  // THE MIC IS THE BIGGER OF THE TWO. The row centres its children instead
+  // of stretching them, so the mic can be 42 while the suggestions and the
+  // tone pill stay 36 — under .fill every child had to be exactly the inner
+  // height, or iOS broke a constraint on every mount. Top and bottom give up
+  // 3pt each to make the room, so the keyboard is no taller. `padding` stays
+  // for any build that reads only that.
+  style: { gap: 8, height: 44, padding: 4, paddingTop: 1, paddingBottom: 1, align: "center" },
   visibleIf: opts.visibleIf,
   children: [
     // Mic — LEFT side. Solid neutral circle (see the rows' micBg). When idle it starts
@@ -11430,20 +11437,20 @@ const makeToolsRow = (opts: {
       props: { mark: BRAND_MARK, motion: MIC_MOTION, program: MIC_PROGRAM },
       style: {
         flex: 0,
-        width: 36,
-        height: 36,
+        width: 42,
+        height: 42,
         bg: opts.micBg,
         fg: opts.micFg,
-        radius: 18,          // circular
+        radius: 21,          // circular
       },
     },
     // Middle slot — the suggestion strip (autocorrect revert chip + word
     // completions, K4+ binaries). Replaces the plain spacer: when empty it
     // renders as clear space exactly like the spacer did (and pre-K4 builds
     // never populate it), so the row reads identical until chips appear
-    // between the mic and the tone pill. Height 36 matches the row's inner
-    // height (44 minus 4pt padding) so no constraint fight with .fill
-    // alignment. kb.suggestion.height must agree (it defaults to 36).
+    // between the mic and the tone pill. Height 36, centred in the row
+    // beside the larger mic. kb.suggestion.height must agree (it defaults
+    // to 36).
     { type: "SuggestionBar", style: { flex: 1, height: 36 } },
     // Tone pill — RIGHT side. Compact oval with a subtle border for shape
     // definition against the transparent keyboard region.
@@ -11455,10 +11462,8 @@ const makeToolsRow = (opts: {
       style: {
         flex: 0,
         width: 96,
-        // 36, NOT 32: the row's inner content box is 44 − 2×4 padding = 36pt,
-        // and the renderer's .fill alignment + required-priority height
-        // constraints make any other value an unsatisfiable-constraints break
-        // on every mount (mic and suggestion bar are 36 for the same reason).
+        // 36, centred in the row (align: "center"), level with the
+        // suggestions; only the mic is larger.
         height: 36,
         bg: opts.toneBg,
         fg: opts.toneFg,
