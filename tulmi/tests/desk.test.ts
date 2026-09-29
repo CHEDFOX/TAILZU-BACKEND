@@ -226,6 +226,24 @@ describe("leaving a shared screen lands on the desk, not a phone tab", () => {
   });
 });
 
+describe("the network on the desk", () => {
+  const withField = { ...sampleCtx, formFactor: "desktop", can: new Set(["DeskShell", "Keys", "DeskField"]) } as never;
+  const older = { ...sampleCtx, formFactor: "desktop", can: new Set(["DeskShell", "Keys"]) } as never;
+  const fields = (s: unknown) => { let k = 0; walk(s, (n) => { if (n.type === "NeuralField") k++; }); return k; };
+
+  it("the Train page carries it for a build that can show it on a page", () => {
+    expect(fields(buildScreen("desk_train", withField)!.root)).toBe(1);
+  });
+
+  it("an older build, which drew it behind the sheet, is not sent it", () => {
+    expect(fields(buildScreen("desk_train", older)!.root)).toBe(0);
+  });
+
+  it("no other desk page carries it", () => {
+    for (const id of DESK_SCREENS) if (id !== "desk_train") expect(fields(buildScreen(id, withField)!.root), id).toBe(0);
+  });
+});
+
 describe("what a note was written in", () => {
   it("a script names its language", () => {
     expect(writtenIn("நாளை சந்திப்போம்")).toBe("ta");

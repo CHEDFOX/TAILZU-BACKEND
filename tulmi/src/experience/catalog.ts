@@ -4504,6 +4504,10 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       tzOffsetMinutes: ctx.tzOffsetMinutes,
       plans: PAYWALL_CONFIG.plans,
       manageUrl: ctx.entitlement ? String(manageFlags(ctx.entitlement.store)["billing.manage.url"] ?? "") || undefined : undefined,
+      // Dimmed to sit behind the Train page's words, as on the phone's card.
+      field: screenId === "desk_train" && ctx.can?.has("DeskField")
+        ? neuralField(0.5, fieldGrowth(ctx.personality))
+        : undefined,
     });
   }
   switch (screenId) {

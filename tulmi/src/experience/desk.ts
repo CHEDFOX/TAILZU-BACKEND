@@ -64,6 +64,9 @@ export interface DeskContext {
   plans?: PaywallPlan[];
   /** The billing flags the bootstrap would send (manage URL etc.). */
   manageUrl?: string;
+  /** This person's network, at the growth they have earned — built by the
+   *  catalog, and only for a window that can show it on a page (DeskField). */
+  field?: Node;
 }
 
 // ---- nodes ---------------------------------------------------------------------
@@ -536,17 +539,37 @@ export function deskTrain(ctx: DeskContext): ScreenResponse {
     stack([text(k, "d-written"), text(v, "d-lede", { marginTop: 2 })], { flex: 1, minWidth: 0 }),
   ], { gap: 14, paddingTop: 16, paddingBottom: 16, align: "start" }, "d-entry");
 
-  return screen("desk_train", "Train", [page([
+  const start = (onRoom: boolean) => link(
+    rounds ? "Continue training" : "Start training",
+    { kind: "navigate", screenId: "training_live" }, "d-btn",
+    onRoom ? { backgroundColor: "var(--d-pale)", color: "var(--d-violet)" } : undefined,
+  );
+  const head = (onRoom: boolean): Node[] => [
     text("Train", "d-eyebrow"),
-    text("A few minutes of talking, and it writes like you.", "d-h1", { marginTop: 6 }),
-    text("Tailzu asks a few questions and listens to how you answer. What it learns stays with your account, on every device.", "d-lede", { marginTop: 8 }),
-    row([link(rounds ? "Continue training" : "Start training", { kind: "navigate", screenId: "training_live" }, "d-btn")], { marginTop: 22 }),
+    text("A few minutes of talking, and it writes like you.", "d-h1", { marginTop: 6, maxWidth: "22ch" }),
+    text("Tailzu asks a few questions and listens to how you answer. What it learns stays with your account, on every device.",
+      "d-lede", { marginTop: 10, maxWidth: "46ch", ...(onRoom ? { color: "rgba(243,226,198,.72)" } : {}) }),
+    row([start(onRoom)], { marginTop: 26 }),
+  ];
+  // THE NETWORK, where the window can show it: the same field the phone's
+  // training card carries, at this person's growth, behind the page's head.
+  // A plain ground rather than the room's gradient — the renderer hands the
+  // colour to the field, and a gradient would sit over it.
+  const room: Node[] = ctx.field
+    ? [stack([
+        ctx.field,
+        stack(head(true), { position: "relative" }, "d-room-inner"),
+      ], { position: "relative", overflow: "hidden", backgroundColor: "var(--d-violet)", backgroundImage: "none", minHeight: 300, justify: "end" }, "d-room")]
+    : [];
+
+  return screen("desk_train", "Train", [...room, page([
+    ...(ctx.field ? [] : head(false)),
     stack([
       item(rounds > 0, rounds ? `${rounds} ${rounds === 1 ? "round" : "rounds"} of training` : "Your first round", rounds ? "Each one teaches it a little more of how you write." : "Two or three minutes, whenever you like."),
       item(terms.length > 0, "Your words", terms.length ? terms.join(", ") : "Names and words it hears you use, spelled your way."),
       item(styles.length > 0, "How you write", styles.length ? styles.join(" · ") : "Short or long, formal or not, and when."),
-    ], { marginTop: 26, maxWidth: 640 }),
-  ])]);
+    ], { marginTop: ctx.field ? 0 : 26, maxWidth: 640 }),
+  ], ctx.field ? { paddingTop: 28 } : {})]);
 }
 
 // ---- SETTINGS and PLAN ----------------------------------------------------------------
