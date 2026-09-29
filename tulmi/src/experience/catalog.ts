@@ -1167,7 +1167,31 @@ export const THEME: ThemeTokens = {
  * to the system font for any that fail — a dead URL costs a fallback, never a
  * blank screen.
  */
-export const FONTS: Record<string, string> = {};
+/** The phone's typefaces by role, each the name it is registered under. */
+export const PHONE_FONT = {
+  writtenLight: "Tailzu Written Light",
+  writtenLightItalic: "Tailzu Written Light Italic",
+  written: "Tailzu Written",
+  writtenItalic: "Tailzu Written Italic",
+  said: "Tailzu Said",
+  label: "Tailzu Label",
+  ui: "Tailzu UI",
+  uiMedium: "Tailzu UI Medium",
+} as const;
+const FONT_BASE = `${process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"}/fonts/`;
+export const FONTS: Record<string, string> = {
+  // Tailzu's four voices on paper (tulmi/fonts, served by server.ts): the
+  // written line, what was said in a hand, the small labels, and the UI.
+  // One family per face: a custom font's weight is its file, not fontWeight.
+  [PHONE_FONT.writtenLight]: `${FONT_BASE}written-light.ttf?v=1`,
+  [PHONE_FONT.writtenLightItalic]: `${FONT_BASE}written-light-italic.ttf?v=1`,
+  [PHONE_FONT.written]: `${FONT_BASE}written.ttf?v=1`,
+  [PHONE_FONT.writtenItalic]: `${FONT_BASE}written-italic.ttf?v=1`,
+  [PHONE_FONT.said]: `${FONT_BASE}said.ttf?v=1`,
+  [PHONE_FONT.label]: `${FONT_BASE}label.ttf?v=1`,
+  [PHONE_FONT.ui]: `${FONT_BASE}ui.ttf?v=1`,
+  [PHONE_FONT.uiMedium]: `${FONT_BASE}ui-medium.ttf?v=1`,
+};
 
 /**
  * Flow Session idle window (ms) — how long the app keeps the background mic

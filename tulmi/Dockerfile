@@ -42,6 +42,8 @@ COPY --from=build /app/tulmi/package.json /app/tulmi/package-lock.json* ./
 RUN npm ci --omit=dev --no-audit --no-fund \
  && npm cache clean --force
 COPY --from=build /app/tulmi/dist ./dist
+# The phone app's typefaces, served at /fonts/ (see server.ts).
+COPY --from=build /app/tulmi/fonts ./fonts
 # Prompts (.md) are read at runtime and are not emitted by tsc.
 COPY --from=build /app/shared /app/shared
 

@@ -390,6 +390,23 @@ await app.register(fastifyStatic, {
   },
 });
 
+// --- Typefaces for the phone app ---------------------------------------------
+// The app bundles no fonts and loads the ones the bootstrap names (FONTS in
+// experience/catalog.ts) from here, so a change of typeface is a deploy, not
+// a store release. Shipped in the image (tulmi/fonts); OFL.txt is their
+// licence. The names in catalog.ts carry a ?v= so a changed file is a new URL.
+const FONTS_DIR = process.env.FONTS_DIR || path.join(process.cwd(), "fonts");
+if (fs.existsSync(FONTS_DIR)) {
+  await app.register(fastifyStatic, {
+    root: FONTS_DIR,
+    prefix: "/fonts/",
+    decorateReply: false,
+    cacheControl: true,
+    maxAge: "365d",
+    immutable: true,
+  });
+}
+
 await app.register(transcribeStream);
 
 function countWords(text: string): number {
