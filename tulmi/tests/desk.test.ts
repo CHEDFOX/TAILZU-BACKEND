@@ -115,6 +115,7 @@ describe("the desk is for a window that can draw it", () => {
   it("a closed desktop window opens fresh next time", () => {
     const b = buildBootstrap({ formFactor: "desktop" } as never) as any;
     expect(b.flags["desktop.window.closeAction"]).toBe("close");
+    expect(b.flags["desktop.update"]).toMatchObject({ latest: "0.2.1", url: "https://tailzu.space/download" });
   });
 
   it("an older desktop, and every phone, keep what they had", () => {

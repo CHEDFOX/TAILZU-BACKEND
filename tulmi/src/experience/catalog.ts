@@ -1885,6 +1885,11 @@ export function buildBootstrap(
           // was hidden on an hour ago. The tray, the pill and the hotkey live
           // in other windows and keep running.
           "desktop.window.closeAction": "close",
+          // THE CURRENT RELEASE. An installed build older than `latest` is told
+          // once, and the click opens the download page. Raise it with each
+          // release (desktop/package.json's version); `min` only when an old
+          // build would break against this backend.
+          "desktop.update": { latest: "0.2.1", min: "", url: "https://tailzu.space/download", notes: "" },
         } : {}),
         // The desk: its pages, where its settings live, and where out of words
         // leads — the plan page, not the phone's full-screen paywall.
