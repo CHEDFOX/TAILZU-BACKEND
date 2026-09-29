@@ -4007,7 +4007,12 @@ function subscribedScreen(store?: string, expiresAt?: string): ScreenResponse {
  * on that value to fire the right iap.showPaywall (offering+package) or
  * iap.subscribe (product).
  */
-function paywallScreen(isDesktop = false, live?: { store?: string; expiresAt?: string } | null): ScreenResponse {
+function paywallScreen(
+  isDesktop = false,
+  live?: { store?: string; expiresAt?: string } | null,
+  // Where a purchase lands: the phone's Stats, or the desk's Today.
+  landing: ActionSpec = { kind: "navigate", screenId: "stats" },
+): ScreenResponse {
   // NOBODY IS SOLD SOMETHING THEY HAVE ALREADY BOUGHT.
   //
   // This screen sold to everyone who reached it, and one account reaches a
@@ -4093,7 +4098,7 @@ function paywallScreen(isDesktop = false, live?: { store?: string; expiresAt?: s
       actions: [
         { kind: "haptic", style: "success" },
         { kind: "toast", message: "You're in.", tone: "success" },
-        { kind: "navigate", screenId: "stats" },
+        landing,
       ],
     },
     purchaseFailed: {
@@ -4454,6 +4459,18 @@ export interface ScreenContext {
  * the screen and starts being a strip down the middle of one.
  */
 const WIDE_AT = 720;
+
+/**
+ * A DESKTOP DRAWING THE DESK'S OWN PAGES (experience/desk.ts).
+ *
+ * Its tabs are desk_today … desk_train, so a phone tab named as the way out of
+ * a screen — "personality", "stats" — lands a window on the phone's You or
+ * Stats. Screens that both can reach name their exit through this.
+ */
+function onDesk(ctx: ScreenContext): boolean {
+  return ctx.formFactor === "desktop" && !!ctx.can?.has("DeskShell");
+}
+
 function isWide(ctx: ScreenContext): boolean {
   return (ctx.viewport?.width ?? 0) >= WIDE_AT;
 }
@@ -4550,7 +4567,8 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
     case "intro":
       return introScreen(ctx);
     case "paywall":
-      return paywallScreen(ctx.formFactor === "desktop", ctx.entitlement);
+      return paywallScreen(ctx.formFactor === "desktop", ctx.entitlement,
+        onDesk(ctx) ? { kind: "switchTab", tabId: "desk_today" } : undefined);
     default:
       return null;
   }
@@ -6489,6 +6507,12 @@ function trainingLiveScreen(ctx: ScreenContext): ScreenResponse {
   // it opens at is the floor for the conversation, not a decoration.
   const growth = fieldGrowth(ctx.personality);
   const greeting = liveGreeting(ctx);
+  // Back where it was opened: the You tab on a phone, the Train page on the
+  // desk. switchTab, not navigate, so the page is drawn fresh with the new
+  // round counted and the desk's stack starts clean.
+  const exit: ActionSpec = onDesk(ctx)
+    ? { kind: "switchTab", tabId: "desk_train" }
+    : { kind: "navigate", screenId: "personality" };
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
@@ -6548,14 +6572,14 @@ function trainingLiveScreen(ctx: ScreenContext): ScreenResponse {
         { kind: "setState", path: "saved", value: true },
         { kind: "delay", ms: ui.farewell.holdMs },
         { kind: "setState", path: "saving", value: false },
-        { kind: "navigate", screenId: "personality" },
+        exit,
       ] },
       // A failed save must not trap someone on this screen. They leave either
       // way; what they lose is the portrait update, and the toast says so.
       saveErr: { kind: "sequence", actions: [
         { kind: "setState", path: "saving", value: false },
         { kind: "toast", message: "Couldn't save that conversation.", tone: "error" },
-        { kind: "navigate", screenId: "personality" },
+        exit,
       ] },
     },
     // The header carried the screen's name, and the name was a second copy of

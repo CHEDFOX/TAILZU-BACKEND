@@ -185,6 +185,47 @@ describe("the desk pages", () => {
   });
 });
 
+describe("leaving a shared screen lands on the desk, not a phone tab", () => {
+  const desk = { ...sampleCtx, formFactor: "desktop", can: new Set(["DeskShell", "Keys"]) } as never;
+  const phone = { ...sampleCtx } as never;
+  const exits = (id: string, ctx: never) => JSON.stringify(buildScreen(id, ctx));
+
+  it("training returns to the Train page on the desk and to You on the phone", () => {
+    expect(exits("training_live", desk)).toContain('"tabId":"desk_train"');
+    expect(exits("training_live", desk)).not.toContain('"screenId":"personality"');
+    expect(exits("training_live", phone)).toContain('"screenId":"personality"');
+  });
+
+  it("a purchase lands on Today on the desk and on Stats on the phone", () => {
+    expect(exits("paywall", desk)).toContain('"tabId":"desk_today"');
+    expect(exits("paywall", desk)).not.toContain('"screenId":"stats"');
+    expect(exits("paywall", phone)).toContain('"screenId":"stats"');
+  });
+
+  it("every screen a desk page opens names no phone tab as its way out", () => {
+    const all = new Set<string>();
+    for (const id of DESK_SCREENS) {
+      const opened = new Set<string>();
+      walk(buildScreen(id, desk)!.root, (n) => {
+        const a = (n as { on?: Record<string, unknown> }).on;
+        for (const v of Object.values(a ?? {})) {
+          const act = v as { kind?: string; screenId?: string };
+          if (act?.kind === "navigate" && act.screenId && !DESK_SCREENS.has(act.screenId)) opened.add(act.screenId);
+        }
+      });
+      for (const sid of opened) {
+        all.add(sid);
+        const s = exits(sid, desk);
+        for (const tab of ["personality", "stats", "home"]) {
+          expect(s, `${id} → ${sid}`).not.toContain(`"screenId":"${tab}"`);
+          expect(s, `${id} → ${sid}`).not.toContain(`"tabId":"${tab}"`);
+        }
+      }
+    }
+    expect([...all]).toEqual(expect.arrayContaining(["training_live", "languages"]));
+  });
+});
+
 describe("what a note was written in", () => {
   it("a script names its language", () => {
     expect(writtenIn("நாளை சந்திப்போம்")).toBe("ta");
