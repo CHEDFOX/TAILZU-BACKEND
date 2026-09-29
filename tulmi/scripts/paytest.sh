@@ -48,7 +48,8 @@ D=$(boot desktop); P=$(boot phone)
 case "$D" in *'paywall.web.url'*) ok "a desktop is offered a purchase link";;
   *) no "no paywall.web.url — REVENUECAT_WEB_PAYWALL_URL unset, or the container did not restart";; esac
 case "$D" in *'{app_user_id}'*|*'app_user_id='*) ok "the link carries a slot for the user id";;
-  *) no "no {app_user_id} in the link — every purchase would be anonymous";; esac
+  *'"paywall.web.url":"https://tailzu.space/pay'*) ok "the desktop adds ?app_user_id= to tailzu.space/pay, which reads it";;
+  *) echo "  NOTE  no {app_user_id} in the link: the desktop appends ?app_user_id=, right for a Web Purchase Link, wrong for a hosted paywall link";; esac
 case "$P" in *'paywall.web.url'*) no "a PHONE was offered the link — the anti-steering rule Apple rejects for";;
   *) ok "a phone is not offered it";; esac
 case "$D" in *'desktop.shell'*) ok "the desktop chrome is being served";;
@@ -118,12 +119,15 @@ N=$(printf '%s' "$PAGE" | grep -o 'data-price="pri_[a-z0-9]*"' | sort -u | wc -l
 TOK=$(printf '%s' "$PAGE" | grep -o '"token":"[a-z]*_' | cut -d'"' -f4)
 case "$TOK" in live_) ok "live client token (public by design)";; test_) no "a SANDBOX token — live prices will not open with it";; *) no "no client token";; esac
 # What a buyer's browser reported, in Paddle's words (the pay page sends it).
-SEEN=$(docker compose logs --since 72h backend 2>/dev/null | grep 'pay: checkout failed' | grep -o '"code":"[^"]*"' | sort | uniq -c | sort -rn | head -5)
+# (Logs go with the container: a deploy starts this count again from zero.)
+LINES=$(docker compose logs --since 72h backend 2>/dev/null | grep 'pay: checkout failed')
+SEEN=$(printf '%s\n' "$LINES" | grep -o '"code":"[^"]*","detail":"[^"]\{0,80\}' | sort | uniq -c | sort -rn | head -5)
 if [ -n "$SEEN" ]; then
   echo "  Paddle refused a checkout in the last 3 days:"; printf '%s\n' "$SEEN" | sed 's/^/    /'
   LAST=$(docker compose logs --since 72h backend 2>/dev/null | grep 'pay: checkout failed' | tail -1 | grep -o '"detail":"[^"]*"' | cut -d'"' -f4-)
   [ -n "$LAST" ] && echo "    latest, in Paddle's words: $LAST"
   case "$SEEN" in
+    *checkout_not_enabled*) echo "    FIX  Paddle has not switched checkout on for this account: finish onboarding at vendors.paddle.com (every step green), or write to sellers@paddle.com";;
     *default_checkout_url*) echo "    FIX  Paddle > Checkout > Checkout settings > Default payment link = https://tailzu.space/pay";;
     *domain_is_not_approved*) echo "    FIX  Paddle > Checkout > Website approval: tailzu.space must show Approved";;
     *not_found*|*price*) echo "    FIX  the price ids are not in the same Paddle environment as the token (live vs sandbox)";;
@@ -132,13 +136,14 @@ else
   echo "  no checkout failure reported by a browser in the last 3 days"
 fi
 cat <<'TXT'
-  Dashboard settings this script cannot see (each one stops a desktop purchase):
+  Settings this script cannot see (each one stops a desktop purchase):
+    Paddle      Onboarding complete at vendors.paddle.com (without it: transaction_checkout_not_enabled)
     Paddle      Checkout > Checkout settings > Default payment link = https://tailzu.space/pay
     RevenueCat  Web > Paddle config: API key set, Webhook Configuration > Apply in Paddle
     RevenueCat  Track new purchases from server-to-server notifications = ON
     RevenueCat  Metadata field key = app_user_id
-    RevenueCat  both Paddle products attached to the entitlement this server checks
 TXT
+echo "    RevenueCat  both Paddle products attached to the entitlement '$WANT'"
 
 echo; echo "$pass passed, $fail failed  (no account touched)"
 [ "$fail" -eq 0 ] || exit 1

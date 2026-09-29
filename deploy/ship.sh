@@ -71,7 +71,7 @@ if [ "${CHECK:-}" != "1" ]; then
   step "Indexing"
   code=$(curl -sS -o /dev/null -w '%{http_code}' "$API/sitemap.xml")
   [ "$code" = "200" ] && ok "sitemap serves" || bad "sitemap → $code"
-  if out=$(./tulmi/scripts/indexnow.sh 2>&1); then
+  if out=$(API="$API" ./tulmi/scripts/indexnow.sh 2>&1); then
     printf '  %s\n' "$out"
   else
     printf '  \033[33mNOTE\033[0m  %s\n' "$out"

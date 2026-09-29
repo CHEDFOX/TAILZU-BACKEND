@@ -11,8 +11,22 @@
 set -eu
 KEY=c455af44ba9aea2225f72d0744ccd725
 SITE=https://tailzu.space
-URLS=$(curl -fsS "$SITE/sitemap.xml" | grep -o '<loc>[^<]*</loc>' | sed -e 's/<loc>//' -e 's#</loc>##')
-[ -n "$URLS" ] || { echo "sitemap is empty or unreachable"; exit 1; }
+API=${API:-http://127.0.0.1:8770}
+locs(){ grep -o '<loc>[^<]*</loc>' | sed -e 's/<loc>//' -e 's#</loc>##'; }
+# The list comes from the backend, which writes the sitemap. Fetched through
+# tailzu.space it passes Vercel's edge, which can answer a server's curl with
+# something that is not the sitemap (a bot check) while browsers and crawlers
+# get the real one; the engines fetch the key file themselves, not this list.
+URLS=$(curl -fsS "$API/sitemap.xml" 2>/dev/null | locs || true)
+[ -n "$URLS" ] || URLS=$(curl -fsS "$SITE/sitemap.xml" 2>/dev/null | locs || true)
+[ -n "$URLS" ] || { echo "no sitemap at $API/sitemap.xml or $SITE/sitemap.xml"; exit 1; }
+# Still worth knowing if the public copy is not the sitemap: Search Console
+# reads that one.
+PUB=$(curl -sS -A 'Mozilla/5.0 (compatible; Googlebot/2.1)' -o /tmp/tz-sitemap.$$ -w '%{http_code} %{content_type}' "$SITE/sitemap.xml" 2>&1 || true)
+if ! grep -q '<loc>' /tmp/tz-sitemap.$$ 2>/dev/null; then
+  echo "note: $SITE/sitemap.xml answered '$PUB' without the sitemap: $(head -c 120 /tmp/tz-sitemap.$$ 2>/dev/null | tr -d '\n')"
+fi
+rm -f /tmp/tz-sitemap.$$
 BODY=$(printf '%s\n' "$URLS" | python3 -c '
 import json, sys
 urls = [u.strip() for u in sys.stdin if u.strip()]
