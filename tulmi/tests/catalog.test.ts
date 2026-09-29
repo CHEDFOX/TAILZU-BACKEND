@@ -857,7 +857,11 @@ describe("buildScreen", () => {
     // 742 of 120,000: the line has barely begun.
     expect(types(paid.root)).toContain("Stack:0.6%");
     expect(texts(free.root)).toContain("Words left");
-    expect(types(free.root)).toContain("WordMeter");
+    // The free plan's meter is a thin line of what is left (318 of 1,060),
+    // with what was earned said in words beneath it — not the old block meter.
+    expect(types(free.root)).not.toContain("WordMeter");
+    expect(types(free.root)).toContain("Stack:30.0%");
+    expect(texts(free.root)).toContain("260 of these you earned by turning up.");
   });
 
   it("Settings is reachable — the tab roots hide the header the gear lived in", () => {
@@ -1191,7 +1195,8 @@ describe("buildKeyboardConfig", () => {
     expect(value(tile(over, "Day streak"))).toBe(STATS_UI.onCard);
 
     // and the settled facts never take it, however good the month was
-    for (const label of ["Sessions", "Active days", "Per session", "Spoken"]) {
+    // (Active days is the month of squares now, not a figure.)
+    for (const label of ["Sessions", "Per session", "Spoken"]) {
       expect(value(tile(alive, label)), `${label} should not be amber`).toBe(STATS_UI.onCard);
     }
   });

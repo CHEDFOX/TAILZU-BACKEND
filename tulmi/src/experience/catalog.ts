@@ -9,6 +9,8 @@
  */
 import { withAppKnobs, withKeyboardKnobs } from "./appKnobs.js";
 import { DESK_NAV, DESK_SCREENS, buildDeskScreen } from "./desk.js";
+import { PHONE_FONT, PHONE_LOOK, PHONE_ROOMS, caption, label, phoneStatsBody, proofMark, t } from "./phoneLook.js";
+import { DESK_CONTEXTS, DESK_ROOMS, DESK_SAMPLES } from "./deskSamples.js";
 import type { StatsForUser } from "../history/store.js";
 import type {
   ActionRef,
@@ -1167,17 +1169,7 @@ export const THEME: ThemeTokens = {
  * to the system font for any that fail — a dead URL costs a fallback, never a
  * blank screen.
  */
-/** The phone's typefaces by role, each the name it is registered under. */
-export const PHONE_FONT = {
-  writtenLight: "Tailzu Written Light",
-  writtenLightItalic: "Tailzu Written Light Italic",
-  written: "Tailzu Written",
-  writtenItalic: "Tailzu Written Italic",
-  said: "Tailzu Said",
-  label: "Tailzu Label",
-  ui: "Tailzu UI",
-  uiMedium: "Tailzu UI Medium",
-} as const;
+export { PHONE_FONT };
 const FONT_BASE = `${process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"}/fonts/`;
 export const FONTS: Record<string, string> = {
   // Tailzu's four voices on paper (tulmi/fonts, served by server.ts): the
@@ -1325,10 +1317,11 @@ const RETURNING_TAB = "stats";
  * been chosen.
  */
 const TAB_MALT = "#D8C3A5";
-/** The accent, by value. ACCENT_AMBER is declared further down the file and
- *  this block is read while the module is still being evaluated. */
-const TAB_ACCENT = "#E8A23C";
-const TAB_PALE = "#F3E2C6";
+/** The lit layer: the app's pale, not amber. Amber belongs to what is live
+ *  (the mic, words just written), and which tab you are on is not that. */
+const TAB_ACCENT = "#F3E2C6";
+/** Where two layers overlap, lighter than either. */
+const TAB_PALE = "#FFFFFF";
 
 /**
  * DUOTONE, AND THE STATE IS A COLOUR RATHER THAN A SHAPE.
@@ -1454,8 +1447,9 @@ export const TAB_GLYPH_PERSON: TabGlyph = {
  * group and far enough that the selected one is clearly one of three.
  */
 const TAB_DOCK = {
-  size: 58,
-  radius: 19,
+  // Smaller since the refresh: the tabs are two quiet squares, not a bar.
+  size: 50,
+  radius: 16,
   gap: 10,
   /** Lighter than black so it reads on the deck, dark enough to sit on art. */
   background: "rgba(30,30,32,0.92)",
@@ -1466,7 +1460,7 @@ const TAB_DOCK = {
    * not the mark.
    */
   activeBackground: "rgba(52,52,56,0.96)",
-  lift: 6,
+  lift: 4,
 };
 
 function navigationFor(landedBefore: boolean): NavigationShell {
@@ -7443,6 +7437,12 @@ function youLabel(content: string): Node {
   };
 }
 
+/** The You sentence in the written face, smaller and quieter than it was. */
+const PORTRAIT_STYLE = {
+  fontFamily: PHONE_FONT.writtenLight, fontWeight: "normal", fontStyle: "normal",
+  fontSize: 17, lineHeight: 25, color: PHONE_LOOK.ink2,
+};
+
 function personalityScreen(ctx: ScreenContext): ScreenResponse {
   const u = YOU_UI;
   const g = u.greet;
@@ -7489,17 +7489,18 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
     ],
   };
 
-  /** One card: the topic's art, a scrim, and its name. Nothing else is on it. */
   /**
-   * THE VOICE CARD. Its art, its name, and the line that says how it writes.
-   * The amber dot is the one accent on the tab: this is the voice actually
-   * writing, which is the only thing here that is live.
+   * THE VOICE CARD — in the voice's own colour, writing a real sentence.
+   *
+   * What was said, in the hand, above what this voice makes of it: the one
+   * thing anybody opening this tab wants to know about a voice is what it
+   * does to their words. The amber dot stays the one accent on the tab — this
+   * is the voice actually writing, the only live thing here.
    */
   const voiceCard = (name: string, tagline: string, voiceId: string): Node => {
-    const V = u.voiceCard;
-    // A poster for this voice (you.voice.<id>), else the set's (you.voice),
-    // else the lit card as designed. The words stay on top either way.
-    const art = mediaFill(`you.voice.${voiceId}`, ctx.formFactor) ?? mediaFill("you.voice", ctx.formFactor);
+    const room = PHONE_ROOMS[DESK_ROOMS[voiceId] ?? "d-w-zu"] ?? PHONE_ROOMS["d-w-zu"]!;
+    const sample = DESK_SAMPLES[voiceId]?.chats;
+    const said = DESK_CONTEXTS.find((c) => c.id === "chats")?.said ?? "";
     return {
       type: "Stack",
       on: { onPress: { kind: "sequence", actions: [
@@ -7508,79 +7509,54 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
       ] } },
       props: { pressOpacity: 0.85 },
       style: {
-        height: art ? V.posterHeight : V.height, borderRadius: V.radius, overflow: "hidden",
-        marginBottom: V.marginBottom, justifyContent: "flex-end",
-        padding: V.padding, backgroundColor: V.background,
-        borderWidth: 1, borderColor: V.border,
+        borderRadius: 20, padding: 20, marginBottom: 14, backgroundColor: room.bg,
+        ...(room.edge ? { borderWidth: 1, borderColor: room.edge } : {}),
       },
       children: [
-        ...(art ? [art] : []),
-        // THE CARD IS LIT, NOT PICTURED.
-        //
-        // Its art was the same blurred upload as the ground, so the one object
-        // on the tab was a rainbow smear with a name on it — and what the name
-        // sat on changed with the upload rather than with the design. A single
-        // warm fall from the top does the job the art was there for: it says
-        // this block is the subject, and it says it in the app's own colour.
-        { type: "Gradient",
-          props: { colors: V.scrim, locations: V.scrimStops, direction: "vertical" },
-          style: { ...FILL_STYLE } },
         {
           type: "Stack",
-          style: { flexDirection: "row", alignItems: "center", gap: 8 },
+          style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
           children: [
-            { type: "Stack",
-              style: { width: V.dot, height: V.dot, borderRadius: V.dot / 2,
-                       backgroundColor: u.accent } },
-            { type: "Text", props: { content: "WRITING AS" },
-              style: { fontSize: V.kickerSize, letterSpacing: V.kickerTracking,
-                       textTransform: "uppercase", color: u.textDim } },
+            {
+              type: "Stack",
+              style: { flexDirection: "row", alignItems: "center", gap: 7 },
+              children: [
+                { type: "Stack", style: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: u.accent } },
+                label("WRITING AS", { color: room.dim }),
+              ],
+            },
+            label("Change", { color: room.ink }),
           ],
         },
         { type: "Text", props: { content: name, variant: "voiceName" },
-          style: { marginTop: 5 } },
-        ...(tagline
-          ? [{ type: "Text", props: { content: tagline },
-               style: { fontSize: V.taglineSize, lineHeight: V.taglineLineHeight,
-                        color: u.textDim, marginTop: V.nameGap } } as Node]
-          : []),
+          style: { marginTop: 12, fontFamily: PHONE_FONT.writtenLight, fontWeight: "normal",
+                   fontSize: 26, lineHeight: 30, letterSpacing: -0.4, color: room.ink } },
+        ...(sample ? [
+          t(said, "said", 15, { lineHeight: 20, color: room.dim, marginTop: 14 }),
+          t(sample, "written", 16, { lineHeight: 23, color: room.ink, marginTop: 2 }),
+        ] : []),
+        ...(tagline ? [label(tagline, { color: room.dim, marginTop: sample ? 14 : 8, letterSpacing: 1.2 })] : []),
       ],
     };
   };
 
-  /** Dictionary, Languages and Haptics: the voice card's shape, no accent dot. */
-  const settingCard = (kicker: string, value: string, line: string, screen: string, poster: string): Node => {
-    const V = u.voiceCard, S = u.settingCard;
-    const art = mediaFill(poster, ctx.formFactor);
-    return {
-      type: "Stack",
-      on: { onPress: { kind: "sequence", actions: [
-        { kind: "haptic", style: "selection" },
-        { kind: "navigate", screenId: screen },
-      ] } },
-      props: { pressOpacity: 0.85 },
-      style: {
-        height: V.height, borderRadius: V.radius, overflow: "hidden",
-        marginBottom: V.marginBottom, justifyContent: "flex-end",
-        padding: V.padding, backgroundColor: V.background,
-        borderWidth: 1, borderColor: V.border,
-      },
-      children: [
-        ...(art ? [art] : []),
-        { type: "Gradient",
-          props: { colors: V.scrim, locations: V.scrimStops, direction: "vertical" },
-          style: { ...FILL_STYLE } },
-        { type: "Text", props: { content: kicker },
-          style: { fontSize: V.kickerSize, letterSpacing: V.kickerTracking,
-                   textTransform: "uppercase", color: u.textDim } },
-        { type: "Text", props: { content: value, variant: "voiceName" },
-          style: { marginTop: 5, ...(value.length > S.longAfter ? { fontSize: S.longValueSize, lineHeight: S.longValueSize + 4 } : {}) } },
-        { type: "Text", props: { content: line },
-          style: { fontSize: V.taglineSize, lineHeight: V.taglineLineHeight,
-                   color: u.textDim, marginTop: V.nameGap } },
-      ],
-    };
-  };
+  /**
+   * Dictionary, Languages and Haptics: outlined, not filled — the two cards
+   * above have colour; these are settings, and say so quietly.
+   */
+  const settingCard = (kicker: string, body: Node[], screen: string, style: Record<string, unknown> = {}): Node => ({
+    type: "Stack",
+    on: { onPress: { kind: "sequence", actions: [
+      { kind: "haptic", style: "selection" },
+      { kind: "navigate", screenId: screen },
+    ] } },
+    props: { pressOpacity: 0.7 },
+    style: {
+      borderRadius: 20, padding: 20, borderWidth: 1, borderColor: "rgba(243,226,198,0.1)",
+      ...style,
+    },
+    children: [label(kicker), ...body],
+  });
 
   /**
    * THE TRAINING CARD. What the Train tab was, at card size: the network it
@@ -7590,7 +7566,6 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
    */
   const trainCard = (): Node => {
     const T = u.trainCard;
-    const ui = TRAINING_UI.entry;
     const sp = ctx.personality?.stylePortrait ?? {};
     const known = (sp.words?.length ?? 0) + (sp.styles?.length ?? 0)
       + (sp.rhythms?.length ?? 0) + Object.keys(sp.tones ?? {}).length;
@@ -7598,76 +7573,45 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
     const learned = known + sittings > 0
       ? T.learned.replace("{n}", known.toLocaleString("en-US")).replace("{s}", sittings.toLocaleString("en-US"))
       : T.learnedNone;
-    const canDrag = T.swipe === true
-      && (ctx.can?.has("ScreenHoldTouches") === true || ctx.formFactor === "desktop");
-    // THE GLASS PILL, READABLE. The button used the drag's smoked glass as
-    // its fill and kept the primary variant's label, which is dark for a
-    // white pill: dark on dark glass, so the card showed no way in at all.
-    // The pill's own white label, weight and tracking now come with it.
+    // Always a tap now (see the tests): the card scrolls with the tab.
     const button: Node = {
       type: "Button",
       props: {
-        label: canDrag ? ui.cta.label : T.tapLabel, variant: "primary",
-        labelColor: ui.cta.color, fontSize: ui.cta.fontSize, fontWeight: ui.cta.weight,
-        tracking: ui.cta.tracking, paddingVertical: 0,
+        label: T.tapLabel, variant: "primary",
+        labelColor: "#1C1640", fontSize: 10, fontWeight: "600", tracking: 1.6,
+        paddingVertical: 0, paddingHorizontal: 18, radius: 12,
       },
       on: { onPress: "enterTraining" },
-      style: {
-        backgroundColor: ui.cta.background, height: T.ctaHeight,
-        borderWidth: ui.cta.borderWidth, borderColor: ui.cta.borderColor,
-      },
+      style: { backgroundColor: PHONE_LOOK.ink, height: 44 },
     };
     return {
       type: "Stack",
-      // A tap anywhere on the card is the way in, as on every other card —
-      // not only on the pill. A drag keeps the card still so it can be held.
-      ...(canDrag ? {} : {
-        on: { onPress: "enterTraining" },
-        props: { pressOpacity: 0.85 },
-      }),
+      on: { onPress: "enterTraining" },
+      props: { pressOpacity: 0.85 },
       style: {
-        height: T.height, borderRadius: T.radius, overflow: "hidden",
-        marginBottom: T.marginBottom, justifyContent: "flex-end",
-        padding: T.padding, backgroundColor: T.background,
-        borderWidth: 1, borderColor: T.border,
+        borderRadius: 20, overflow: "hidden", marginBottom: 14,
+        padding: 20, backgroundColor: "#1E1946",
       },
       children: [
-        // A poster at you.train replaces the live field; nothing uploaded, the
-        // network it grows is the picture.
-        mediaFill("you.train", ctx.formFactor) ?? neuralField(T.fieldDim, fieldGrowth(ctx.personality)),
-        { type: "Gradient",
-          props: { colors: T.scrim, locations: T.scrimStops, direction: "vertical" },
-          style: { ...FILL_STYLE } },
-        ...(T.kicker
-          ? [{ type: "Text", props: { content: T.kicker },
-               style: { fontSize: T.kickerSize, letterSpacing: T.kickerTracking,
-                        textTransform: "uppercase", color: u.textDim } } as Node]
-          : []),
-        { type: "Text", props: { content: T.title },
-          style: { fontSize: T.titleSize, fontWeight: "300", letterSpacing: -0.3,
-                   color: T.titleColor, marginTop: 6 } },
-        ...(learned
-          ? [{ type: "Text", props: { content: learned },
-               style: { fontSize: T.learnedSize, color: u.textDim, marginTop: 4 } } as Node]
-          : []),
-        { type: "Stack", style: { height: T.ctaGap } },
-        canDrag
-          ? {
-              type: "SwipeAction",
-              props: {
-                label: ui.cta.label, height: T.ctaHeight, radius: ui.cta.radius,
-                background: ui.cta.background, borderWidth: ui.cta.borderWidth,
-                borderColor: ui.cta.borderColor, color: ui.cta.color,
-                fontSize: ui.cta.fontSize, weight: ui.cta.weight, tracking: ui.cta.tracking,
-                commitMs: ui.cta.commitMs, disc: ui.cta.disc, discBackground: ui.cta.discBackground,
-                dot: ui.cta.dot, dotColor: ui.cta.dotColor,
-                targetBackground: ui.cta.targetBackground, targetDotColor: ui.cta.targetDotColor,
-                threshold: ui.cta.threshold, hintDelayMs: ui.cta.hintDelayMs,
-              },
-              on: { onComplete: "enterTraining" },
-              fallback: button,
-            }
-          : button,
+        // The network it grows, faint: a texture under the words, not a picture.
+        { type: "Stack", style: { ...FILL_STYLE, opacity: 0.32 },
+          children: [mediaFill("you.train", ctx.formFactor) ?? neuralField(T.fieldDim, fieldGrowth(ctx.personality))] },
+        ...(T.kicker ? [label(T.kicker, { color: "rgba(243,226,198,0.62)" })] : []),
+        {
+          type: "Stack",
+          style: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 16, marginTop: 12 },
+          children: [
+            {
+              type: "Stack",
+              style: { flex: 1 },
+              children: [
+                t(T.title, "writtenLight", 26, { lineHeight: 30, letterSpacing: -0.4 }),
+                ...(learned ? [caption(learned, { marginTop: 8, color: "rgba(243,226,198,0.72)" })] : []),
+              ],
+            },
+            button,
+          ],
+        },
       ],
     };
   };
@@ -7691,6 +7635,12 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
   const langLabel = langNames.length === 0 ? "Auto"
     : langNames.length <= 2 ? langNames.join(", ")
     : `${langNames[0]} +${langNames.length - 1}`;
+  const fixes = [
+    ...(ctx.personality.dictionary ?? [])
+      .filter((d) => d && d.word && d.replacement)
+      .map((d) => ({ was: String(d.word), word: String(d.replacement) })),
+    ...(ctx.dictionary ?? []).map((d) => ({ was: "", word: String((d as { replacement?: string; word?: string }).replacement ?? (d as { word?: string }).word ?? "") })),
+  ].filter((f) => f.word).slice(0, 3);
   const hapticsOn = ctx.personality?.hapticsAll === true
     || (ctx.personality?.hapticKeys ?? []).length > 0;
 
@@ -7703,13 +7653,14 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
   const portrait: Node = {
     type: "Stack",
     style: { flexDirection: "row", flexWrap: "wrap", alignItems: "baseline",
-             marginTop: u.portrait.marginTop, marginBottom: u.portrait.marginBottom },
+             marginTop: u.portrait.marginTop, marginBottom: 32 },
     children: [
-      { type: "Text", props: { content: "Writes as ", variant: "portraitText" } },
-      { type: "Text", props: { content: voiceName, variant: "portraitLive" } },
-      { type: "Text", props: { content: `. ${langLabel}.`, variant: "portraitText" } },
+      { type: "Text", props: { content: "Writes as ", variant: "portraitText" }, style: PORTRAIT_STYLE },
+      { type: "Text", props: { content: voiceName, variant: "portraitLive" },
+        style: { ...PORTRAIT_STYLE, fontFamily: PHONE_FONT.writtenLightItalic, color: PHONE_LOOK.ink } },
+      { type: "Text", props: { content: `. ${langLabel}.`, variant: "portraitText" }, style: PORTRAIT_STYLE },
       ...(wordCount > 0
-        ? [{ type: "Text", props: { content: ` ${wordCount} words of yours.`, variant: "portraitText" } } as Node]
+        ? [{ type: "Text", props: { content: ` ${wordCount} words of yours.`, variant: "portraitText" }, style: PORTRAIT_STYLE } as Node]
         : []),
     ],
   };
@@ -7789,7 +7740,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
           props: { holdTouches: u.trainCard.swipe === true },
           style: {
             backgroundColor: "transparent",
-            paddingHorizontal: u.padding, paddingTop: 0, paddingBottom: 24,
+            paddingHorizontal: PHONE_LOOK.side, paddingTop: 0, paddingBottom: 40,
           },
           children: [
             // ONE COLUMN, CENTRED, WHATEVER THE WINDOW IS.
@@ -7807,9 +7758,28 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
                 portrait,
                 voiceCard(voiceName, voiceLine, activeId),
                 trainCard(),
-                settingCard("Dictionary", wordCount > 0 ? `${wordCount} words` : "None yet", u.settingCard.dictionaryLine, "dictionary", "you.dictionary"),
-                settingCard("Languages", langLabel, u.settingCard.languagesLine, "languages", "you.languages"),
-                settingCard("Haptics", hapticsOn ? "On" : "Off", u.settingCard.hapticsLine, "haptics", "you.haptics"),
+                settingCard("Dictionary", [
+                  {
+                    type: "Stack",
+                    style: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-end", gap: 22, marginTop: 14 },
+                    children: fixes.length
+                      ? fixes.map((f) => proofMark(f.was, f.word))
+                      : [t("None yet", "writtenLight", 17, { lineHeight: 24, color: PHONE_LOOK.ink2 })],
+                  },
+                  ...(wordCount > 0 ? [label(`${wordCount} words`, { marginTop: 14 })] : []),
+                ], "dictionary", { marginBottom: 14 }),
+                {
+                  type: "Stack",
+                  style: { flexDirection: "row", gap: 14 },
+                  children: [
+                    settingCard("Languages", [
+                      t(langLabel, "writtenLight", 17, { lineHeight: 24, marginTop: 14 }),
+                    ], "languages", { flex: 1 }),
+                    settingCard("Haptics", [
+                      t(hapticsOn ? "On" : "Off", "writtenLight", 17, { lineHeight: 24, marginTop: 14 }),
+                    ], "haptics", { flex: 1 }),
+                  ],
+                },
               ],
             },
           ],
@@ -9017,80 +8987,6 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
              color: u.onCardFaint, marginTop: 16, marginBottom: 9 },
   });
 
-  /** One tile. The whole card is the tap target; the detail opens over it. */
-  const card = (id: string, label: string, value: string, unit?: string, live = false): Node => ({
-    type: "Stack",
-    on: { onPress: { kind: "setState", path: "openCard", value: id } },
-    props: { pressOpacity: 0.75 },
-    style: {
-      flex: 1, backgroundColor: u.card, borderRadius: u.cardRadius,
-      paddingTop: 11, paddingBottom: 12, paddingHorizontal: 12,
-    },
-    children: [
-      { type: "Text", props: { content: label },
-        style: { fontSize: 8, letterSpacing: 1.8, textTransform: "uppercase",
-                 color: u.onCardDim, textAlign: "right" } },
-      {
-        type: "Stack",
-        style: { flexDirection: "row", alignItems: "baseline", marginTop: 12 },
-        children: [
-          { type: "Text", props: { content: value },
-            style: { fontSize: 27, fontWeight: "800", letterSpacing: -1,
-                     color: live ? u.accent : u.onCard } },
-          ...(unit
-            ? [{ type: "Text", props: { content: unit },
-                 style: { fontSize: 11, fontWeight: "700", color: u.onCardDim, marginLeft: 3 } } as Node]
-            : []),
-        ],
-      },
-    ],
-  });
-
-  /**
-   * A card that takes the whole width — label left, number right.
-   *
-   * The same shape as the allowance above it, on purpose. Two figures on this
-   * screen are about TIME rather than about volume: how many words are left
-   * before the month runs out, and how much of the month was handed back. They
-   * are the two anybody would open the tab to read, and a tile in a grid says
-   * the opposite — a grid is a set of peers, and putting the headline number
-   * in one makes it the same size as "Active days".
-   *
-   * A full width also lets the number sit at the far end of the line instead
-   * of under its own label, which is what a figure does when it is the point
-   * of the row rather than a detail in a cell.
-   */
-  const wideCard = (id: string, label: string, value: string, unit?: string): Node => ({
-    type: "Stack",
-    on: { onPress: { kind: "setState", path: "openCard", value: id } },
-    props: { pressOpacity: 0.75 },
-    style: {
-      backgroundColor: u.card, borderRadius: u.cardRadius,
-      paddingTop: 12, paddingBottom: 14, paddingHorizontal: 14,
-      marginBottom: u.gap,
-    },
-    children: [{
-      type: "Stack",
-      style: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
-      children: [
-        { type: "Text", props: { content: label },
-          style: { fontSize: 8, letterSpacing: 1.8, textTransform: "uppercase", color: u.onCardDim } },
-        {
-          type: "Stack",
-          style: { flexDirection: "row", alignItems: "baseline" },
-          children: [
-            { type: "Text", props: { content: value },
-              style: { fontSize: 20, fontWeight: "800", letterSpacing: -0.6, color: u.onCard } },
-            ...(unit
-              ? [{ type: "Text", props: { content: unit },
-                   style: { fontSize: 11, fontWeight: "700", color: u.onCardDim, marginLeft: 3 } } as Node]
-              : []),
-          ],
-        },
-      ],
-    }],
-  });
-
   /** The detail behind one card. Scrolls inside itself when it outgrows. */
   /**
    * The three field breakdowns, read once so the tile and the panel behind it
@@ -9190,7 +9086,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
           type: "Screen",
           style: {
             backgroundColor: "transparent",
-            paddingHorizontal: u.padding, paddingTop: 58, paddingBottom: 20,
+            paddingHorizontal: PHONE_LOOK.side, paddingTop: 70, paddingBottom: 48,
             // Wider than the You column because this screen is genuinely two
             // things side by side — the cards are already a two-up grid, and
             // on a window they get to be a proper one rather than two narrow
@@ -9198,165 +9094,11 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
             ...readable(ctx, 760),
           },
           children: [
-            { type: "Text", props: { content: "This month" },
-              style: { fontSize: 9, letterSpacing: 3, textTransform: "uppercase",
-                       color: u.inkDim, marginBottom: 2, marginLeft: 4 } },
-            {
-              type: "Stack",
-              style: { flexDirection: "row", alignItems: "baseline", marginLeft: 2, marginBottom: 4 },
-              children: [
-                { type: "Text", props: { content: n(wordsMonth) },
-                  style: { fontSize: 62, lineHeight: 62, fontWeight: "800",
-                           letterSpacing: -2.6, color: u.ink } },
-                { type: "Text", props: { content: "words" },
-                  style: { fontSize: 14, fontWeight: "700", color: u.inkDim, marginLeft: 8 } },
-              ],
-            },
-            { type: "Text", props: { content: "Spoken, cleaned, and sent as you." },
-              style: { fontSize: 10.5, color: u.inkDim, marginBottom: 16, marginLeft: 4 } },
-
-            // NOTHING YET. A grid of zeros reads as a screen that is broken
-            // rather than as a month that has not started, and it is the first
-            // thing a new user sees on this tab.
-            ...(empty ? [{
-              type: "Stack",
-              style: {
-                backgroundColor: u.card, borderRadius: u.cardRadius,
-                paddingVertical: 22, paddingHorizontal: 16,
-              },
-              children: [
-                { type: "Text", props: { content: "Nothing here yet." },
-                  style: { fontSize: 16, fontWeight: "700", color: u.onCard } },
-                { type: "Text",
-                  props: { content: "Dictate or refine a few messages and this fills in — words a day, streaks, where and when you write." },
-                  style: { fontSize: 11.5, lineHeight: 17, color: u.onCardDim, marginTop: 6 } },
-              ],
-            } as Node] : []),
-
-            // THE ALLOWANCE. Above the grid, because it is the only number on
-            // this screen that decides whether the app keeps working — and the
-            // only one that goes up on its own. Tapping opens where it came
-            // from. Not drawn at all when there is no allowance to read, rather
-            // than drawn with zeros, which would say "you have nothing left".
-            ...(allow ? [{
-              type: "Stack",
-              on: { onPress: { kind: "setState", path: "openCard", value: "words" } },
-              props: { pressOpacity: 0.75 },
-              style: {
-                backgroundColor: u.card, borderRadius: u.cardRadius,
-                paddingTop: 12, paddingBottom: 14, paddingHorizontal: 14,
-                marginBottom: u.gap,
-              },
-              children: [
-                {
-                  type: "Stack",
-                  style: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" },
-                  children: [
-                    { type: "Text", props: { content: paid ? "Words this month" : "Words left" },
-                      style: { fontSize: 8, letterSpacing: 1.8, textTransform: "uppercase", color: u.onCardDim } },
-                    { type: "Text", props: { content: n(paid ? allow.used : allow.remaining) },
-                      style: { fontSize: 20, fontWeight: "800", letterSpacing: -0.6, color: u.onCard } },
-                  ],
-                },
-                ...(paid ? [
-                  {
-                    type: "Stack",
-                    style: { marginTop: 10, height: 6, borderRadius: 3, backgroundColor: u.rule, overflow: "hidden" },
-                    children: [{ type: "Stack", style: { width: `${paidPct.toFixed(1)}%`, height: 6, backgroundColor: u.accent } }],
-                  } as Node,
-                  { type: "Text", props: { content: "No limit on your plan. The line is the month." },
-                    style: { fontSize: 11, color: u.onCardDim, marginTop: 8 } } as Node,
-                ] : [
-                  {
-                    type: "WordMeter",
-                    props: {
-                      used: allow.used, base: allow.base, earned: allow.earned,
-                      // Every colour from here, so the meter cannot introduce a
-                      // third one into a screen that has exactly two.
-                      // The one amber on the screen. See STATS_UI.accent.
-                      fillColor: u.accent,
-                      earnedColor: u.accent,
-                      trackColor: u.rule,
-                      labelColor: u.onCardFaint,
-                    },
-                    style: { marginTop: 10 },
-                    // Older bundles get the same fact as a line of type.
-                    fallback: {
-                      type: "Text",
-                      props: { content: `${n(allow.used)} of ${n(allow.total)} used` },
-                      style: { fontSize: 11, color: u.onCardDim, marginTop: 8 },
-                    },
-                  },
-                ]),
-                ...(!paid && allow.earned > 0 ? [{
-                  type: "Text",
-                  props: {
-                    content: allow.maxed
-                      ? `${n(allow.earned)} earned — that is the most this month.`
-                      : `${n(allow.earned)} of these you earned by turning up.`,
-                  },
-                  style: { fontSize: 10.5, color: u.onCardDim, marginTop: 8 },
-                } as Node] : []),
-              ],
-            } as Node] : []),
-
-            // Under the allowance and shaped like it. Minutes saved is the
-            // other figure on this screen that is about time rather than
-            // volume, and it is the one the product is actually for.
-            wideCard("minutes", "Minutes saved", n(minutesSaved), "min"),
-
-            {
-              type: "Stack",
-              style: { flexDirection: "row", gap: u.gap, marginBottom: u.gap },
-              children: [
-                card("sessions", "Sessions", n(sessions)),
-                card("streak", "Day streak", n(streak), "days", streakLive),
-              ],
-            },
-            {
-              type: "Stack",
-              style: { flexDirection: "row", gap: u.gap, marginBottom: u.gap },
-              children: [
-                card("active", "Active days", n(daysActive), `of ${days}`),
-                card("persession", "Per session", n(avgPerSession), "words"),
-              ],
-            },
-            // Per-session is the shape of a habit — whether someone writes a
-            // sentence or a page — and spoken minutes is the only figure here
-            // measured in the thing the user actually did rather than in what
-            // came out of it.
-            {
-              type: "Stack",
-              style: { flexDirection: "row", gap: u.gap, marginBottom: u.gap },
-              children: [
-                card("spoken", "Spoken", spokenMinutes ? String(spokenMinutes) : "0", "min"),
-                card("dictionary", "Dictionary", dictShare, dictShare === "—" ? "" : "in use"),
-              ],
-            },
-            // THE THREE FIELDS — the same things the You cards are about, in
-            // the place that has room to show them properly. Each tile carries
-            // the one number, and opening it gives the ring, its legend, and
-            // the rows behind it.
-            {
-              type: "Stack",
-              style: { flexDirection: "row", gap: u.gap, marginBottom: u.gap },
-              children: [
-                card("voices", "Voices", topVoiceShare, topVoiceShare === "—" ? "" : "top"),
-                card("languages", "Languages", String(langRows.length || "—"),
-                     langRows.length ? "used" : ""),
-              ],
-            },
-
-            {
-              type: "Stack",
-              on: { onPress: "openHistory" },
-              style: {
-                height: 46, borderRadius: 999, backgroundColor: u.card,
-                alignItems: "center", justifyContent: "center", marginTop: 14,
-              },
-              children: [{ type: "Text", props: { content: "FULL HISTORY" },
-                style: { fontSize: 11, letterSpacing: 1.9, fontWeight: "700", color: u.onCard } }],
-            },
+            ...phoneStatsBody(ctx, {
+              wordsMonth, sessions, perDay, days, daysActive, streak, streakLive,
+              avgPerSession, spokenMinutes, empty, allow: allow ?? null, paid, paidPct,
+              topVoiceShare, dictShare, langCount: langRows.length,
+            }),
           ],
         },
 
@@ -9378,7 +9120,9 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
             padding: 16, width: "92%", height: "76%",
           },
           children: [
-            panel("minutes", "Minutes saved", n(minutesSaved), "min", [
+            // Opened from the said-and-typed race, which an empty month does
+            // not draw — so neither is this.
+            ...(empty ? [] : [panel("minutes", "Minutes saved", n(minutesSaved), "min", [
               secLab("By week"), bars(weeks, wLabels),
               ...(apps.length ? [secLab("Where it went"),
                 ...apps.map((a) => row(a.app, `${n(a.words)} words`))] : []),
@@ -9386,7 +9130,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
               row("Words written", n(wordsMonth)),
               row("At 40 wpm, typed", `${n(Math.round(wordsMonth / 40))} min`),
               ...(st?.speakingMinutes ? [row("Spoken", `${st.speakingMinutes} min`)] : []),
-            ]),
+            ])]),
             panel("sessions", "Sessions", n(sessions), "", [
               secLab("By week"), bars(bucket(st?.sparklinePerDay ?? perDay, 4), wLabels),
               secLab("Shape"),

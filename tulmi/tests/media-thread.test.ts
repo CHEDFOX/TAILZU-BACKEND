@@ -31,23 +31,29 @@ const screen = (id: string, ctx: Record<string, unknown> = {}) =>
 const withUrl = (root: any, url: string) => find(root, (o) => (o.type === "Image" || o.type === "Video") && o.props?.source?.url === url);
 
 describe("the You tab's posters", () => {
-  it("the voice card wears its voice's poster, else the set's, else nothing", () => {
-    expect(withUrl(screen("personality").root, "x").length).toBe(0);
+  it("the voice card is the voice's own colour, writing a real sentence, not a poster", () => {
+    // The refresh (phoneLook.ts): each voice wears its room's colour and shows
+    // what it does to a said line. An uploaded poster no longer covers it.
     reg({ "you.voice.signature": entry("https://m/zu.png", "image/png"), "you.voice": entry("https://m/any.png", "image/png") });
-    expect(withUrl(screen("personality").root, "https://m/zu.png").length).toBe(1);
-    expect(withUrl(screen("personality", { personality: { activePresetId: "pirate" } }).root, "https://m/any.png").length).toBe(1);
+    const voiceOf = (root: any) => find(root, (o) => o.type === "Stack" && JSON.stringify(o.on ?? {}).includes('"voices"'))[0];
+    const zu = voiceOf(screen("personality").root);
+    expect(zu.style.backgroundColor).toBe("#F3EDE2");
+    expect(JSON.stringify(zu)).toContain("Haan bhai, kal milte hain paanch baje.");
+    expect(withUrl(zu, "https://m/zu.png").length).toBe(0);
+    const pirate = voiceOf(screen("personality", { personality: { activePresetId: "pirate" } }).root);
+    expect(pirate.style.backgroundColor).toBe("#106A60");
   });
 
-  it("dictionary, languages and haptics are cards of the voice card's size, with posters of their own", () => {
-    const cards = (root: any) => find(root, (o) => o.type === "Stack" && o.style?.borderRadius === 22 && o.style?.height === 220);
-    expect(cards(screen("personality").root).length).toBe(5);
+  it("dictionary, languages and haptics are quiet outlined cards, each one tap from its screen", () => {
     reg({ "you.dictionary": entry("https://m/dict.png", "image/png"), "you.languages": entry("https://m/lang.png", "image/png"), "you.haptics": entry("https://m/hap.webp", "image/webp") });
     const root = screen("personality").root;
-    expect(withUrl(root, "https://m/dict.png").length).toBe(1);
-    expect(withUrl(root, "https://m/lang.png").length).toBe(1);
-    expect(withUrl(root, "https://m/hap.webp").length).toBe(1);
-    const haptics = cards(root).find((c: any) => JSON.stringify(c).includes('"Haptics"'));
-    expect(JSON.stringify(haptics.on)).toContain('"screenId":"haptics"');
+    const cards = find(root, (o) => o.type === "Stack" && o.style?.borderWidth === 1 && o.style?.borderRadius === 20);
+    expect(cards.length).toBe(3);
+    for (const [name, id] of [["Dictionary", "dictionary"], ["Languages", "languages"], ["Haptics", "haptics"]]) {
+      const card = cards.find((c: any) => JSON.stringify(c).includes(`"${name}"`));
+      expect(JSON.stringify(card.on), name).toContain(`"screenId":"${id}"`);
+    }
+    for (const url of ["https://m/dict.png", "https://m/lang.png", "https://m/hap.webp"]) expect(withUrl(root, url).length).toBe(0);
   });
 
   it("training gets the microphone to itself on iPhone, and Flow comes back after", () => {
@@ -67,23 +73,11 @@ describe("the You tab's posters", () => {
 
   it("the training card shows its way in and answers a tap anywhere on it", () => {
     const root = screen("personality").root;
-    const card = find(root, (o) => o.type === "Stack" && o.style?.height === 220 && o.style?.backgroundColor === "#000000")[0];
-    expect(card.on).toEqual({ onPress: "enterTraining" });
+    const card = find(root, (o) => o.type === "Stack" && o.on?.onPress === "enterTraining")[0];
+    expect(card.style.backgroundColor).toBe("#1E1946");
     const button = find(card, (o) => o.type === "Button")[0];
     expect(button.on).toEqual({ onPress: "enterTraining" });
-    // A white label on the glass, not the primary variant's dark one.
-    expect(button.props.labelColor).toBe("#FFFFFF");
     expect(button.props.label).toBe("BEGIN");
-  });
-
-  it("the voice card and the training card are one height, poster or not", () => {
-    const voiceOf = (root: any) => find(root, (o) => o.type === "Stack" && o.style?.borderRadius === 22 && JSON.stringify(o.on ?? {}).includes('"voices"'))[0];
-    const trainOf = (root: any) => find(root, (o) => o.type === "Stack" && o.style?.borderRadius === 22 && o.on?.onPress === "enterTraining" && o.style?.backgroundColor === "#000000")[0];
-    const bare = screen("personality").root;
-    expect(voiceOf(bare).style.height).toBe(trainOf(bare).style.height);
-    reg({ "you.voice.signature": entry("https://m/zu.png", "image/png") });
-    const dressed = screen("personality").root;
-    expect(voiceOf(dressed).style.height).toBe(trainOf(dressed).style.height);
   });
 
   it("a clip at you.train replaces the live field, muted and looping, with a still behind it", () => {
