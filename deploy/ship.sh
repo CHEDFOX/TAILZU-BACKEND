@@ -62,6 +62,22 @@ case "$code" in
   *)   bad "windows installer → $code" ;;
 esac
 
+# -------------------------------------------------------------------- indexing
+# Every deploy tells Bing (and through it ChatGPT search and Copilot) that the
+# pages may have changed, instead of waiting days for a crawl. The sitemap has
+# to serve for that to mean anything; the ping itself is a note, not a
+# failure — the deploy is fine whether or not a search engine answered.
+if [ "${CHECK:-}" != "1" ]; then
+  step "Indexing"
+  code=$(curl -sS -o /dev/null -w '%{http_code}' "$API/sitemap.xml")
+  [ "$code" = "200" ] && ok "sitemap serves" || bad "sitemap → $code"
+  if out=$(./tulmi/scripts/indexnow.sh 2>&1); then
+    printf '  %s\n' "$out"
+  else
+    printf '  \033[33mNOTE\033[0m  %s\n' "$out"
+  fi
+fi
+
 # --------------------------------------------------------------------- payments
 step "Payments"
 
