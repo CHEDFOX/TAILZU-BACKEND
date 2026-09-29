@@ -78,6 +78,45 @@ const IDLE_TIMEOUT_MS = 60_000;
 /** Reject the whole session if `start` never arrives within this window. */
 const HANDSHAKE_TIMEOUT_MS = 10_000;
 
+/**
+ * WHAT A STREAM ERROR SAYS, WRITTEN FOR THE PERSON WHO WAS TALKING.
+ *
+ * Clients show `message` as it stands: the app's toast, the desktop's
+ * notification. It used to be a developer's note ("idle timeout", "stream
+ * closed abnormally (1006)", the speech provider's own error text), and that
+ * is what people read. So each one is a sentence that says what to do, and
+ * the detail goes to the server log instead. `code` is unchanged; it is the
+ * stable part a client branches on.
+ *
+ * The app tells these apart from its own native layer's text by their shape
+ * (a full sentence, no colons, no jargon), so tests/stream-errors.test.ts
+ * pins that shape for every entry.
+ */
+export const STREAM_ERROR_TEXT = {
+  /** `start` never arrived. */
+  noStart: "Voice couldn't start. Try again.",
+  /** No audio for IDLE_TIMEOUT_MS after `ready`. */
+  idle: "Stopped listening because nothing was heard. Tap the mic to start again.",
+  /** No speech engine configured on this server. */
+  unavailable: "Voice isn't available right now. Try again later.",
+  /** The speech engine reported an error. */
+  engineFailed: "Voice stopped working. Try again.",
+  /** The speech engine's socket closed abnormally. */
+  dropped: "The connection dropped while listening. Try again.",
+  /** MAX_STREAM_BYTES reached (about 15 minutes of speech). */
+  tooLong: "That recording reached the length limit. Start a new one to keep going.",
+  /**
+   * LEFT AS IT WAS, ON PURPOSE. Both keyboards (iOS and Android, every build
+   * in the stores) detect an expired sign-in by finding "invalid or missing
+   * token" or "unauthorized" in this text, and then tell the person to open
+   * Tailzu and sign in again. They never show the text itself. Rewording it
+   * would turn that prompt into a silent dead mic until a keyboard build that
+   * reads `code` is the oldest one in use. The app and the desktop show
+   * their own words for code "unauthorized" instead of this.
+   */
+  unauthorized: "invalid or missing token",
+} as const;
+
 async function transcribeStream(fastify: FastifyInstance): Promise<void> {
   if (!fastify.hasDecorator("websocketServer")) {
     await fastify.register(websocket);
@@ -136,7 +175,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
       let bytes = 0;
       let sampleRate = 16000;
       let handshakeTimer: NodeJS.Timeout | null = setTimeout(() => {
-        send({ type: "error", code: "bad_request", message: "start message not received" });
+        send({ type: "error", code: "bad_request", message: STREAM_ERROR_TEXT.noStart });
         safeClose();
       }, HANDSHAKE_TIMEOUT_MS);
       let idleTimer: NodeJS.Timeout | null = null;
@@ -304,14 +343,15 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
       const armIdle = () => {
         if (idleTimer) clearTimeout(idleTimer);
         idleTimer = setTimeout(() => {
-          send({ type: "error", code: "bad_request", message: "idle timeout" });
+          send({ type: "error", code: "bad_request", message: STREAM_ERROR_TEXT.idle });
           safeClose();
         }, IDLE_TIMEOUT_MS);
       };
 
       const openEngine = (start: StartMessage) => {
         if (!liveEngineConfigured()) {
-          send({ type: "error", code: "internal", message: "streaming STT not configured on server" });
+          req.log.error("live dictation refused: no streaming speech engine is configured");
+          send({ type: "error", code: "internal", message: STREAM_ERROR_TEXT.unavailable });
           safeClose();
           return;
         }
@@ -363,7 +403,9 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
             },
             onError: (message) => {
               errored = true;
-              send({ type: "error", code: "stt_failed", message });
+              // The provider's own words are for us, not for the person.
+              req.log.warn({ engine: engine?.label, detail: message }, "live engine error");
+              send({ type: "error", code: "stt_failed", message: STREAM_ERROR_TEXT.engineFailed });
             },
             onClose: (abnormalCode) => {
               // The engine closed. Normally this fires AFTER it flushes its
@@ -373,7 +415,8 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
               // as a successful "done".
               if (abnormalCode !== undefined && !errored) {
                 errored = true;
-                send({ type: "error", code: "stt_failed", message: `stream closed abnormally (${abnormalCode})` });
+                req.log.warn({ engine: engine?.label, closeCode: abnormalCode }, "live engine closed abnormally");
+                send({ type: "error", code: "stt_failed", message: STREAM_ERROR_TEXT.dropped });
               }
               finishDone();
             },
@@ -429,7 +472,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           if (!user || !engine) return;
           bytes += raw.length;
           if (bytes > MAX_STREAM_BYTES) {
-            send({ type: "error", code: "audio_too_long", message: "stream size cap reached" });
+            send({ type: "error", code: "audio_too_long", message: STREAM_ERROR_TEXT.tooLong });
             safeClose();
             return;
           }
@@ -452,13 +495,15 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
             ? `Bearer ${msg.token}` : undefined;
           user = await resolveUser(headerAuth ?? inlineAuth);
           if (!user) {
-            send({ type: "error", code: "unauthorized", message: "invalid or missing token" });
+            send({ type: "error", code: "unauthorized", message: STREAM_ERROR_TEXT.unauthorized });
             safeClose();
             return;
           }
           // Pre-flight quota check — refuse before we bill Deepgram anything.
           const over = await enforceQuota(user);
           if (over) {
+            // Already written for the person (metering.enforceQuota): the
+            // number, the reset date and the way out.
             send({ type: "error", code: "quota_exceeded", message: over });
             safeClose();
             return;

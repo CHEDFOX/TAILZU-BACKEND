@@ -2261,6 +2261,15 @@ export function buildBootstrap(
       "history.empty":
         "No history yet. Turn on 'Keep history' in your personality to start collecting your cleanups.",
       "history.delete.error": "Couldn't reach history. Try again.",
+
+      // FOR APP BUILDS THAT STILL FRAME A RAW ERROR. Those builds fill
+      // "Mic error: {message}" / "Voice error: {message}" with the error's own
+      // text ("Mic error: Error Domain=NSOSStatusErrorDomain …"). Sent as whole
+      // sentences with no {message} slot, the raw text has nowhere to go and
+      // those builds show these words instead. Current builds no longer read
+      // these keys (they say ui.VoiceToggle.errorMic / errorTranscribe).
+      "ui.VoiceToggle.errorMicTemplate": "Couldn't start the microphone. Try again.",
+      "ui.VoiceToggle.errorVoiceTemplate": "Couldn't turn that into text. Try again.",
     },
     languages: [
       { code: "en", name: "English", greeting: "Hello", regions: ["US","GB","CA","AU","IN"] },
@@ -6155,8 +6164,9 @@ function trainingChatScreen(ctx: ScreenContext): ScreenResponse {
     },
     actions: {
       err: { kind: "toast", message: "Something went wrong. Check your connection.", tone: "error" },
-      // Echoes the real reason ($event) the mic control failed — permission /
-      // audio-session / transcribe failures each show their own cause.
+      // Shows the words the mic control sends ($event): permission, a busy
+      // mic and a failed transcription each have their own sentence. The
+      // control never sends a raw error; that goes to the device log.
       micError: { kind: "toast", message: "$event", tone: "error" },
 
       // Sending. The message lands on the thread and the field empties in the
