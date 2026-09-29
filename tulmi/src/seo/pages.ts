@@ -232,6 +232,15 @@ ${GETS}
 
 // ---------------------------------------------------------------- /faq
 
+/**
+ * THE WAY ON TO THE LANGUAGES. The footer carries one link for all of this
+ * (FAQ), so the language pages hang off the FAQ's languages answers: every
+ * one a tap from there, and from the sitemap.
+ */
+const LANG_LINKS = `<div class="chips" style="margin-top:34px">${
+  PAGED.map((l) => `<a class="chip" href="/languages/${l.slug}">${esc(l.name)}</a>`).join("")
+}<a class="chip" href="/languages">All ${INDIA.length + WORLD.length + 1} languages</a></div>`;
+
 export function faqHtml(): string {
   const path = "/faq";
   const groups = faqGroups();
@@ -253,7 +262,7 @@ ${crumbs([["Tailzu", "/"], ["FAQ", path]])}
 <p class="eye">Questions</p>
 <h1>Asked, answered.</h1>
 <p class="lede">Everything people ask before they talk to it, answered in a breath.</p>
-${groups.map((g) => `<h2 class="label">${esc(g.title)}</h2>\n${qaList(g.items)}`).join("\n")}
+${groups.map((g) => `<h2 class="label">${esc(g.title)}</h2>\n${qaList(g.items)}${g.title === "Languages" ? LANG_LINKS : ""}`).join("\n")}
 
 ${GETS}`,
   });

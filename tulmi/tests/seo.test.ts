@@ -59,6 +59,15 @@ describe("every page a search engine can reach", () => {
     }
   });
 
+  it("one footer link in: the FAQ, and every language page is a tap from it", async () => {
+    const faq = (await get("/faq")).body;
+    const footer = faq.slice(faq.indexOf("<footer"));
+    expect(footer).toContain('href="/faq"');
+    expect(footer).not.toContain('href="/languages"');
+    expect(faq).toContain('href="/languages"');
+    for (const l of PAGED) expect(faq).toContain(`href="/languages/${l.slug}"`);
+  });
+
   it("a language nobody wrote a page for goes to the list, not a 404", async () => {
     const res = await get("/languages/klingon");
     expect(res.statusCode).toBe(301);
