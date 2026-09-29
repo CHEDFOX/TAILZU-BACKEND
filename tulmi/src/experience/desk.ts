@@ -69,16 +69,69 @@ export interface DeskContext {
 // ---- nodes ---------------------------------------------------------------------
 
 type Style = Record<string, unknown>;
-const text = (content: string, cls: string, style?: Style): Node => ({ type: "Text", props: { content, cls }, ...(style ? { style } : {}) });
-const bound = (path: string, cls: string, style?: Style, visibleIf?: Node["visibleIf"]): Node =>
-  ({ type: "Text", props: { content: "", cls }, bind: { content: path }, ...(style ? { style } : {}), ...(visibleIf ? { visibleIf } : {}) });
+
+/**
+ * THE DESK'S TYPE AND AIR — lighter than the first release, set from here.
+ *
+ * app.html's classes carry the sizes the 0.2 installer shipped with, and they
+ * read bulky: 40pt titles, 19pt notes, tight pages. Every node below passes
+ * through this table, and an inline style wins over a class, so the pages are
+ * refined from the server with no installer: one step smaller everywhere,
+ * wider margins, more room between sections. Explicit styles on a node still
+ * win over the table.
+ */
+const DESK_TYPE: Record<string, Style> = {
+  "d-h1": { fontSize: 30, lineHeight: "36px" },
+  "d-h2": { fontSize: 19, lineHeight: "25px" },
+  "d-statement": { fontSize: 26, lineHeight: "35px", maxWidth: "32ch" },
+  "d-lede": { fontSize: 13, lineHeight: "21px" },
+  "d-eyebrow": { fontSize: 10 },
+  "d-count": { fontSize: 10.5 },
+  "d-said": { fontSize: 16, lineHeight: "22px" },
+  "d-written": { fontSize: 16.5, lineHeight: "25px" },
+  "d-margin": { fontSize: 10, lineHeight: "16px" },
+  "d-margin-strong": { fontSize: 10, lineHeight: "16px" },
+  "d-link": { fontSize: 10.5 },
+  "d-btn": { fontSize: 10.5, paddingTop: 9, paddingBottom: 9, paddingLeft: 15, paddingRight: 15 },
+  "d-price": { fontSize: 26, lineHeight: "30px" },
+  "d-k": { fontSize: 13, lineHeight: "19px" },
+  "d-v": { fontSize: 15, lineHeight: "22px" },
+  "d-num": { fontSize: 11 },
+  "d-lane-label": { fontSize: 10 },
+  "d-input": { fontSize: 16 },
+  "d-seg-item": { fontSize: 10 },
+  "d-world-text": { fontSize: 16, lineHeight: "23px" },
+  "d-world-name": { fontSize: 9.5 },
+  "d-world-use": { fontSize: 9.5 },
+  "d-world": { minHeight: 170, paddingTop: 18, paddingBottom: 18, paddingLeft: 18, paddingRight: 18 },
+  // The page and the room: wider margins, a narrower column, more air.
+  "d-page": { maxWidth: 920, paddingTop: 52, paddingLeft: 56, paddingRight: 56, paddingBottom: 96 },
+  "d-room-inner": { maxWidth: 920, paddingTop: 40, paddingLeft: 56, paddingRight: 56, paddingBottom: 34 },
+};
+const typeFor = (cls?: string): Style =>
+  Object.assign({}, ...String(cls ?? "").split(/\s+/).map((c) => DESK_TYPE[c] ?? {}));
+const styled = (cls: string | undefined, style?: Style): Style | undefined => {
+  const merged = { ...typeFor(cls), ...(style ?? {}) };
+  return Object.keys(merged).length ? merged : undefined;
+};
+
+const text = (content: string, cls: string, style?: Style): Node => {
+  const st = styled(cls, style);
+  return { type: "Text", props: { content, cls }, ...(st ? { style: st } : {}) };
+};
+const bound = (path: string, cls: string, style?: Style, visibleIf?: Node["visibleIf"]): Node => {
+  const st = styled(cls, style);
+  return { type: "Text", props: { content: "", cls }, bind: { content: path }, ...(st ? { style: st } : {}), ...(visibleIf ? { visibleIf } : {}) };
+};
 const stack = (children: Node[], style: Style = {}, cls?: string, extra: Partial<Node> = {}): Node =>
-  ({ type: "Stack", props: cls ? { cls } : {}, style, children, ...extra });
+  ({ type: "Stack", props: cls ? { cls } : {}, style: { ...typeFor(cls), ...style }, children, ...extra });
 const row = (children: Node[], style: Style = {}, cls?: string, extra: Partial<Node> = {}): Node =>
   stack(children, { direction: "row", ...style }, cls, extra);
 const inline = (children: Node[], cls: string, style: Style = {}): Node => stack(children, { display: "block", ...style }, cls);
-const link = (label: string, onPress: ActionRef, cls = "d-link", style?: Style): Node =>
-  ({ type: "Button", props: { label, cls }, on: { onPress }, ...(style ? { style } : {}) });
+const link = (label: string, onPress: ActionRef, cls = "d-link", style?: Style): Node => {
+  const st = styled(cls, style);
+  return { type: "Button", props: { label, cls }, on: { onPress }, ...(st ? { style: st } : {}) };
+};
 const keys = (source: "tap" | "hotkey", small = false): Node => ({ type: "Keys", props: { source, cls: small ? "d-keys-small" : "" }, ...(small ? { style: {} } : {}) });
 const sw = (key: string, labelText: string): Node => ({
   type: "Switch", props: { cls: "d-switch", accessibilityLabel: labelText },
@@ -175,7 +228,7 @@ function entryTemplate(): Node {
         }),
       ], { gap: 18, marginTop: 10 }, "d-tools"),
     ], { flex: 1, minWidth: 0, gap: 4 }),
-  ], { gap: 18, paddingTop: 18, paddingBottom: 18 }, "d-entry");
+  ], { gap: 24, paddingTop: 24, paddingBottom: 24 }, "d-entry");
 }
 
 function weekSquares(ctx: DeskContext): Node {
@@ -220,11 +273,11 @@ export function deskToday(ctx: DeskContext): ScreenResponse {
         text(count, "d-count d-on-room", { marginTop: 12 }),
       ], { minWidth: 0 }),
       row([
-        keys("tap"),
+        keys("tap", true),
         text("tap twice, in any app, and talk", "d-count d-on-room", { maxWidth: 150, marginLeft: 6 }),
       ], { align: "center", gap: 0 }, undefined, { visibleIf: { truthy: "desktop.tap" } }),
       row([
-        keys("hotkey"),
+        keys("hotkey", true),
         text("in any app, and talk", "d-count d-on-room", { maxWidth: 150, marginLeft: 6 }),
       ], { align: "center", gap: 0 }, undefined, { visibleIf: { falsy: "desktop.tap" } }),
     ], { justify: "between", align: "end", gap: 24, flexWrap: "wrap" }, "d-room-inner"),
@@ -234,7 +287,7 @@ export function deskToday(ctx: DeskContext): ScreenResponse {
     ? [{ type: "List", props: { items: entryItems(ctx, todays), itemTemplate: entryTemplate() } }]
     : [
         stack([
-          text("Nothing yet today.", "d-written", { fontSize: 24 }),
+          text("Nothing yet today.", "d-written", { fontSize: 19, lineHeight: "27px" }),
           text("Tap twice in any app and say something. It shows up here, what you said above what Tailzu wrote.", "d-lede", { marginTop: 8 }),
           row([link("Talk now", { kind: "dictate" }, "d-btn")], { marginTop: 16 }),
         ], { paddingBottom: 26 }),
@@ -248,20 +301,20 @@ export function deskToday(ctx: DeskContext): ScreenResponse {
     ...(wordsToday > 0 ? [stack([
       text("Today, said and typed", "d-eyebrow", { marginBottom: 12 }),
       race(saidMin, typedMin),
-      ...(back >= 1 ? [inline([text(span(back), "d-em"), text(" back today.", "d-inherit")], "d-written", { fontSize: 22, marginTop: 14 })] : []),
+      ...(back >= 1 ? [inline([text(span(back), "d-em"), text(" back today.", "d-inherit")], "d-written", { fontSize: 18, lineHeight: "26px", marginTop: 16 })] : []),
       text(`Typed at ${TYPING_WPM} words a minute.`, "d-margin", { marginTop: 8 }),
     ])] : []),
     weekSquares(ctx),
     stack([
       text("Train", "d-eyebrow"),
-      text(trainLine(ctx.personality), "d-written", { fontSize: 17, marginTop: 8, marginBottom: 12 }),
+      text(trainLine(ctx.personality), "d-written", { fontSize: 15, lineHeight: "23px", marginTop: 10, marginBottom: 14 }),
       row([link("Train Tailzu", { kind: "switchTab", tabId: "desk_train" })]),
     ]),
-  ], { width: 250, flex: "none", gap: 30 }, "d-sticky");
+  ], { width: 230, flex: "none", gap: 44 }, "d-sticky");
 
   return screen("desk_today", "Today", [
     room,
-    page([row([stack(notes, { flex: 1, minWidth: 0 }), aside], { gap: 40, align: "start" }, "d-wrap-narrow")]),
+    page([row([stack(notes, { flex: 1, minWidth: 0 }), aside], { gap: 72, align: "start" }, "d-wrap-narrow")]),
   ]);
 }
 
@@ -286,8 +339,8 @@ export function deskInsights(ctx: DeskContext): ScreenResponse {
         text(span(typedMin), "d-typed", { whiteSpace: "nowrap" }),
         text(". Said, ", "d-inherit"),
         text(`${span(saidMin)}.`, "d-em", { whiteSpace: "nowrap" }),
-      ], "d-statement", { marginTop: 18, marginBottom: 26 })
-    : text("Nothing said yet this month. Tap twice in any app, and this page starts counting.", "d-statement", { marginTop: 18, marginBottom: 26 });
+      ], "d-statement", { marginTop: 20, marginBottom: 32 })
+    : text("Nothing said yet this month. Tap twice in any app, and this page starts counting.", "d-statement", { marginTop: 20, marginBottom: 32 });
 
   // The languages as type specimens, each set at a size that is its share.
   const langs = (st?.writtenIn ?? []).slice(0, 5);
@@ -295,7 +348,7 @@ export function deskInsights(ctx: DeskContext): ScreenResponse {
   const specimens: Node[] = langs.length
     ? langs.map((l) => {
         const pct = Math.round((l.words / total) * 100);
-        const size = Math.round(20 + 40 * Math.sqrt(l.words / total));
+        const size = Math.round(16 + 26 * Math.sqrt(l.words / total));
         return row([
           text(LANGUAGE_NAMES[l.key] ?? l.key, "d-spec", { fontSize: size, ...(/[^\u0000-ɏ]/.test(LANGUAGE_NAMES[l.key] ?? "") ? { fontFamily: "var(--f-deva)", fontWeight: 400 } : {}) }),
           text(`${pct}%`, "d-num"),
@@ -334,7 +387,7 @@ export function deskInsights(ctx: DeskContext): ScreenResponse {
         text(days ? `${st?.daysActive ?? 0} of the last ${days} days. The longest run was ${st?.bestStreak ?? 0}.` : "Your days show here once you have talked.",
           "d-lede", { marginTop: 10 }),
       ], { flex: 1, minWidth: 0 }),
-    ], { gap: 48, marginTop: 44, paddingTop: 30, align: "start" }, "d-rule-top d-wrap-narrow"),
+    ], { gap: 72, marginTop: 64, paddingTop: 40, align: "start" }, "d-rule-top d-wrap-narrow"),
   ])]);
 }
 
@@ -418,7 +471,7 @@ export function deskWords(ctx: DeskContext): ScreenResponse {
           ? [{ type: "List", props: { items: snips, itemTemplate: snipTemplate } } as Node]
           : [text("No snippets yet. An address, a UPI id, a sign-off you type every day.", "d-lede", { marginTop: 8 })]),
       ], { flex: 1, minWidth: 0 }),
-    ], { gap: 48, marginTop: 30, align: "start" }, "d-wrap-narrow"),
+    ], { gap: 72, marginTop: 48, align: "start" }, "d-wrap-narrow"),
   ])], { form: { word: "", say: "", get: "" } });
 }
 
@@ -440,7 +493,7 @@ export function deskVoices(ctx: DeskContext): ScreenResponse {
 
   const saidLines = DESK_CONTEXTS.map((c) => row([
     text("You said", "d-margin", { marginRight: 10 }),
-    text(c.said, "d-said", { fontSize: 22, color: "var(--d-ink2)" }),
+    text(c.said, "d-said", { fontSize: 18, lineHeight: "24px", color: "var(--d-ink2)" }),
   ], { align: "baseline", flexWrap: "wrap" }, undefined, { visibleIf: { eq: ["state.ctx", c.id] } }));
 
   const rooms = ordered.map((v) => {
@@ -502,7 +555,7 @@ const defRow = (k: string, v: Node | string, right?: Node): Node => row([
   text(k, "d-k", { width: 220, flex: "none" }),
   typeof v === "string" ? text(v, "d-v", { flex: 1, minWidth: 0 }) : stack([v], { flex: 1, minWidth: 0 }),
   ...(right ? [right] : []),
-], { align: "center", gap: 22, paddingTop: 16, paddingBottom: 16, flexWrap: "wrap" }, "d-entry");
+], { align: "center", gap: 28, paddingTop: 20, paddingBottom: 20, flexWrap: "wrap" }, "d-entry");
 
 function planWords(ctx: DeskContext): { used: number; of: number; paid: boolean } {
   return {
@@ -580,7 +633,7 @@ export function deskPlan(ctx: DeskContext): ScreenResponse {
       ? "Your subscription covers your phone and this computer."
       : `${n(q.used)} of ${n(q.of)} free words used this month. They come back on the 1st.`, "d-lede", { marginTop: 8 }),
     ...(q.paid ? [] : [
-      row(cards, { gap: 14, marginTop: 26, flexWrap: "wrap" }),
+      row(cards, { gap: 16, marginTop: 36, flexWrap: "wrap" }),
       text("One subscription covers your phone and your computer. Checkout opens in your browser; payments by Paddle.", "d-lede", { marginTop: 18 }),
     ]),
   ], { maxWidth: 820 })]);
