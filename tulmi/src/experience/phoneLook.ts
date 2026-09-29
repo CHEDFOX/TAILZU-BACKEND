@@ -54,6 +54,22 @@ export const PHONE_LOOK = {
 
 type Style = Record<string, unknown>;
 
+/**
+ * The least line height each face can be set in without the phone clipping
+ * it — measured from the files (tulmi/fonts): the mono's line box is 1.30 of
+ * its size, the hand's 1.26, the sans's 1.22 with marks to 1.34, and the book
+ * face declares 1.00 while its letters reach 1.43. A line set tighter than
+ * that loses the tops of its capitals on Android and shifts on iOS, which is
+ * what cut the training card's "IT LEARNS YOU". So every text is held to it,
+ * whatever a caller asks for.
+ */
+const MIN_LINE: Record<keyof typeof PHONE_FONT, number> = {
+  writtenLight: 1.3, writtenLightItalic: 1.3, written: 1.3, writtenItalic: 1.3,
+  said: 1.34, label: 1.45, ui: 1.4, uiMedium: 1.4,
+};
+export const lineFor = (face: keyof typeof PHONE_FONT, size: number, asked?: unknown): number =>
+  Math.max(typeof asked === "number" ? asked : 0, Math.ceil(size * MIN_LINE[face]));
+
 /** Any text in one of the four faces. */
 export function t(content: string, face: keyof typeof PHONE_FONT, size: number, style: Style = {}): Node {
   return {
@@ -61,8 +77,8 @@ export function t(content: string, face: keyof typeof PHONE_FONT, size: number, 
     props: { content },
     style: {
       fontFamily: PHONE_FONT[face], fontWeight: "normal", fontStyle: "normal",
-      fontSize: size, lineHeight: Math.round(size * (face === "label" ? 1.25 : 1.4)),
-      color: PHONE_LOOK.ink, ...style,
+      fontSize: size, color: PHONE_LOOK.ink, ...style,
+      lineHeight: lineFor(face, size, style.lineHeight ?? Math.round(size * 1.45)),
     },
   };
 }
@@ -77,7 +93,7 @@ export const caption = (content: string, style: Style = {}): Node =>
 
 /** A section heading in the written face. */
 export const heading = (content: string, style: Style = {}): Node =>
-  t(content, "written", 18, { lineHeight: 23, ...style });
+  t(content, "written", 16, style);
 
 /**
  * A sentence whose parts can differ — an italic phrase, a coloured figure —
@@ -146,8 +162,8 @@ function figure(id: string, name: string, value: string, unit = "", live = false
         type: "Stack",
         style: { flexDirection: "row", alignItems: "baseline", marginTop: 8 },
         children: [
-          t(value, "writtenLight", 22, { lineHeight: 26, color: live ? PHONE_LOOK.accent : PHONE_LOOK.ink }),
-          ...(unit ? [t(` ${unit}`, "ui", 11, { lineHeight: 14, color: PHONE_LOOK.ink3 })] : []),
+          t(value, "writtenLight", 18, { color: live ? PHONE_LOOK.accent : PHONE_LOOK.ink }),
+          ...(unit ? [t(` ${unit}`, "ui", 10.5, { color: PHONE_LOOK.ink3 })] : []),
         ],
       },
     ],
@@ -211,7 +227,7 @@ export function phoneStatsBody(
 
   if (s.empty) {
     out.push(
-      t("Nothing here yet.", "writtenLight", 24, { lineHeight: 32 }),
+      t("Nothing here yet.", "writtenLight", 20),
       caption("Say a few things in any app and this fills in: how much you said, where it went, the days you talked.", { marginTop: 10, maxWidth: 300 }),
     );
   } else {
@@ -225,7 +241,7 @@ export function phoneStatsBody(
            { text: `${span(saidMin)}.`, face: "writtenLightItalic" }]
         : [`You wrote ${n(s.wordsMonth)} words this month. Typed by hand, they would have taken `,
            { text: `${span(typedMin)}.`, style: { color: L.typedInk } }],
-      "writtenLight", 24, { lineHeight: 33, letterSpacing: -0.3 },
+      "writtenLight", 20, { lineHeight: 28, letterSpacing: -0.2 },
     ));
     const most = Math.max(typedMin, saidMin, 0.01);
     const lane = (name: string, min: number, color: string, ink: string): Node => ({
@@ -282,8 +298,8 @@ export function phoneStatsBody(
           ? sentence(
               [`${n(todayWords)} ${todayWords === 1 ? "word" : "words"}`,
                ...(todaySec > 0 ? [{ text: `, said in ${span(todaySec / 60).replace("sec", "seconds")}.`, face: "writtenLightItalic" as const }] : ["."])],
-              "writtenLight", 19, { lineHeight: 27 }, { marginTop: 10 })
-          : t("Nothing yet today.", "writtenLight", 19, { lineHeight: 27, marginTop: 10, color: L.ink2 }),
+              "writtenLight", 16, {}, { marginTop: 10 })
+          : t("Nothing yet today.", "writtenLight", 16, { marginTop: 10, color: L.ink2 }),
       ],
     });
   }
@@ -299,8 +315,8 @@ export function phoneStatsBody(
       children: [
         label(s.paid ? "Words this month" : "Words left"),
         s.paid
-          ? t(`${n(a.used)}. No limit on your plan.`, "writtenLight", 19, { lineHeight: 27, marginTop: 10 })
-          : t(`${n(a.remaining)} of ${n(a.total)}, back on the 1st.`, "writtenLight", 19, { lineHeight: 27, marginTop: 10 }),
+          ? t(`${n(a.used)}. No limit on your plan.`, "writtenLight", 16, { marginTop: 10 })
+          : t(`${n(a.remaining)} of ${n(a.total)}, back on the 1st.`, "writtenLight", 16, { marginTop: 10 }),
         s.paid
           ? bar(s.paidPct, L.ink, 3, { marginTop: 12 })
           : bar(a.total ? (a.remaining / a.total) * 100 : 0, L.ink, 3, { marginTop: 12 }),
@@ -319,7 +335,7 @@ export function phoneStatsBody(
       : (st.languageWords ?? []).filter((l) => l.language !== "auto").map((l) => ({ name: WRITTEN_NAMES[l.language] ?? l.language, words: l.words }));
     const total = byScript.reduce((sum, l) => sum + l.words, 0);
     if (total > 0) {
-      const sizes = [36, 27, 20, 17];
+      const sizes = [26, 21, 17, 15];
       out.push({
         type: "Stack",
         on: { onPress: { kind: "setState", path: "openCard", value: "languages" } },
@@ -336,8 +352,8 @@ export function phoneStatsBody(
             },
             children: [
               latin(l.name)
-                ? t(l.name, "writtenLight", sizes[i]!, { lineHeight: Math.round(sizes[i]! * 1.15), letterSpacing: -0.4 })
-                : { type: "Text", props: { content: l.name }, style: { fontSize: Math.min(20, sizes[i]!), lineHeight: Math.round(Math.min(20, sizes[i]!) * 1.5), color: L.ink } } as Node,
+                ? t(l.name, "writtenLight", sizes[i]!, { letterSpacing: -0.3 })
+                : { type: "Text", props: { content: l.name }, style: { fontSize: Math.min(17, sizes[i]!), lineHeight: Math.round(Math.min(17, sizes[i]!) * 1.6), color: L.ink } } as Node,
               label(`${Math.round((l.words / total) * 100)}%`, { color: L.ink2 }),
             ],
           } as Node)),

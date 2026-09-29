@@ -9,7 +9,7 @@
  */
 import { withAppKnobs, withKeyboardKnobs } from "./appKnobs.js";
 import { DESK_NAV, DESK_SCREENS, buildDeskScreen } from "./desk.js";
-import { PHONE_FONT, PHONE_LOOK, PHONE_ROOMS, caption, label, phoneStatsBody, proofMark, t } from "./phoneLook.js";
+import { PHONE_FONT, PHONE_LOOK, PHONE_ROOMS, caption, label, lineFor, phoneStatsBody, proofMark, t } from "./phoneLook.js";
 import { DESK_CONTEXTS, DESK_ROOMS, DESK_SAMPLES } from "./deskSamples.js";
 import type { StatsForUser } from "../history/store.js";
 import type {
@@ -7391,7 +7391,7 @@ function youHead(kicker: string, title: string, right?: Node): Node {
       },
       // The refresh: a small mono kicker and the title in the written face.
       label(kicker, { marginTop: 18 }),
-      t(title, "writtenLight", 26, { lineHeight: 31, letterSpacing: -0.4, marginTop: 8 }),
+      t(title, "writtenLight", 22, { letterSpacing: -0.3, marginTop: 8 }),
     ],
   };
 }
@@ -7406,7 +7406,7 @@ function youLabel(content: string): Node {
 /** The You sentence in the written face, smaller and quieter than it was. */
 const PORTRAIT_STYLE = {
   fontFamily: PHONE_FONT.writtenLight, fontWeight: "normal", fontStyle: "normal",
-  fontSize: 17, lineHeight: 25, color: PHONE_LOOK.ink2,
+  fontSize: 16, lineHeight: 24, color: PHONE_LOOK.ink2,
 };
 
 function personalityScreen(ctx: ScreenContext): ScreenResponse {
@@ -7496,7 +7496,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
         },
         { type: "Text", props: { content: name, variant: "voiceName" },
           style: { marginTop: 12, fontFamily: PHONE_FONT.writtenLight, fontWeight: "normal",
-                   fontSize: 26, lineHeight: 30, letterSpacing: -0.4, color: room.ink } },
+                   fontSize: 22, lineHeight: lineFor("writtenLight", 22), letterSpacing: -0.3, color: room.ink } },
         ...(sample ? [
           t(said, "said", 15, { lineHeight: 20, color: room.dim, marginTop: 14 }),
           t(sample, "written", 16, { lineHeight: 23, color: room.ink, marginTop: 2 }),
@@ -7571,7 +7571,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
               type: "Stack",
               style: { flex: 1 },
               children: [
-                t(T.title, "writtenLight", 26, { lineHeight: 30, letterSpacing: -0.4 }),
+                t(T.title, "writtenLight", 22, { letterSpacing: -0.3 }),
                 ...(learned ? [caption(learned, { marginTop: 8, color: "rgba(243,226,198,0.72)" })] : []),
               ],
             },
@@ -7904,7 +7904,7 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
             ...(opts.sign ? [opts.sign(ink)] : []),
           ],
         },
-        ...(opts.kicker ? [t(preset.name, "writtenLight", 22, { lineHeight: 27, color: ink, marginTop: 10 })] : []),
+        ...(opts.kicker ? [t(preset.name, "writtenLight", 20, { color: ink, marginTop: 10 })] : []),
         ...(shown.length ? shown
           : own ? [t(own.length > 140 ? `${own.slice(0, 137)}…` : own, "written", 15, { lineHeight: 22, color: ink, marginTop: 10 })]
           : []),
@@ -8648,7 +8648,7 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
       children: [
         ...screenHero("settings"),
         // The title in the written face; the groups under small mono labels.
-        t("Settings", "writtenLight", 30, { lineHeight: 36, letterSpacing: -0.5, marginBottom: 12 }),
+        t("Settings", "writtenLight", 24, { letterSpacing: -0.3, marginBottom: 12 }),
         label("Plan", { marginTop: 20, marginBottom: 4 }),
 
         // Personality and Stats are BOTTOM TABS — listing them here too was

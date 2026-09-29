@@ -50,6 +50,31 @@ describe("the phone refresh", () => {
     }
   });
 
+  it("never sets a face tighter than its letters need, so no line is clipped", () => {
+    // The training card's "IT LEARNS YOU" lost the tops of its capitals:
+    // the mono was set at 1.26 of its size and its line box is 1.30.
+    const MIN: Record<string, number> = {
+      "Tailzu Label": 1.45, "Tailzu Said": 1.34, "Tailzu UI": 1.4, "Tailzu UI Medium": 1.4,
+      "Tailzu Written": 1.3, "Tailzu Written Italic": 1.3, "Tailzu Written Light": 1.3, "Tailzu Written Light Italic": 1.3,
+    };
+    for (const [id, ctx] of screens) {
+      walk(buildScreen(id, ctx as never)!.root, (n) => {
+        const fam = n.style?.fontFamily;
+        if (!fam || !(fam in MIN)) return;
+        const need = Math.ceil(Number(n.style.fontSize) * MIN[fam]!);
+        expect(Number(n.style.lineHeight), `${id}: "${n.props?.content}" in ${fam} ${n.style.fontSize}`).toBeGreaterThanOrEqual(need);
+      });
+    }
+  });
+
+  it("keeps the Stats type small: nothing on the page above 26", () => {
+    walk(buildScreen("stats", screens[0]![1] as never)!.root, (n) => {
+      if (n.type === "Text" && n.style?.fontFamily && String(n.style.fontFamily).startsWith("Tailzu")) {
+        expect(Number(n.style.fontSize), String(n.props?.content)).toBeLessThanOrEqual(26);
+      }
+    });
+  });
+
   it("says the month as a sentence, with typing in its colour", () => {
     const s = JSON.stringify(buildScreen("stats", screens[0]![1] as never));
     for (const w of ["You ", "said ", "612 ", "words ", "15 ", "min"]) expect(s).toContain(`"${w}`);
