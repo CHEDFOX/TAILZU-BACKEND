@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+# Prove the desktop purchase path, touching no account and spending nothing.
+#
+# Run from ~/tulmi:   ./tulmi/scripts/paytest.sh
+#
+# WHY NO USER ID IS NEEDED. Every decision the server makes about a purchase —
+# is this event ours, is the entitlement ours, is there an account to attach it
+# to — happens BEFORE the database write. Those are all exercised here against
+# nothing. The write itself is proven by a synthetic user id: the table has
+# `user_id references auth.users(id)`, so the row is refused by the foreign
+# key. A refusal at that exact point is the proof, because reaching it means
+# the secret, the filter, the service client and the table are all working.
+set -u
+API=http://127.0.0.1:8770
+ENVF=tulmi/.env
+# Deliberately synthetic, and not a shape Supabase mints.
+GHOST=00000000-0000-4000-8000-0000000000ff
+pass=0; fail=0
+ok(){ echo "  PASS  $1"; pass=$((pass+1)); }
+no(){ echo "  FAIL  $1"; fail=$((fail+1)); }
+
+[ -f "$ENVF" ] || { echo "run this from ~/tulmi"; exit 1; }
+# A .env value can arrive wrapped in quotes, and a file ever edited on Windows
+# carries a trailing CR. Either one makes the header differ from what the
+# server holds by a character nobody can see, and then EVERY call is 401 —
+# including the one meant to prove a bad secret is rejected, which passes for
+# the wrong reason. Both are stripped here.
+# `$$` in the file is how you tell Compose to pass a literal `$` through, so
+# the process receives one `$` where the file holds two. Undone here, or this
+# script compares the file's spelling against the container's value and reports
+# a mismatch that is only in its own reading.
+val(){ grep -m1 "^$1=" $ENVF | cut -d= -f2- | tr -d '\r' \
+        | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'\$//" -e 's/\$\$/$/g'; }
+SEC=$(val REVENUECAT_WEBHOOK_SECRET)
+WANT=$(val REVENUECAT_ENTITLEMENT); WANT=${WANT:-pro}
+[ -n "$SEC" ] || { echo "no REVENUECAT_WEBHOOK_SECRET — the webhook refuses everything"; exit 1; }
+echo "entitlement filter: '$WANT'"
+echo "webhook secret: ${#SEC} chars"
+
+send(){ curl -s -X POST $API/v1/billing/revenuecat -H "Authorization: ${2:-$SEC}" \
+        -H 'Content-Type: application/json' -d "$1"; }
+evt(){ printf '{"event":{"type":"%s","app_user_id":"%s","entitlement_ids":["%s"],"environment":"PRODUCTION","store":"paddle"}}' "$1" "$2" "$3"; }
+boot(){ curl -s -X POST $API/v1/app/bootstrap -H 'Content-Type: application/json' \
+  -d "{\"launchCount\":1,\"capabilities\":{\"platform\":\"ios\",\"components\":[],\"device\":{\"formFactor\":\"$1\",\"width\":1120,\"height\":780}}}"; }
+
+echo; echo "1. what a desktop is offered"
+D=$(boot desktop); P=$(boot phone)
+case "$D" in *'paywall.web.url'*) ok "a desktop is offered a purchase link";;
+  *) no "no paywall.web.url — REVENUECAT_WEB_PAYWALL_URL unset, or the container did not restart";; esac
+case "$D" in *'{app_user_id}'*|*'app_user_id='*) ok "the link carries a slot for the user id";;
+  *'"paywall.web.url":"https://tailzu.space/pay'*) ok "the desktop adds ?app_user_id= to tailzu.space/pay, which reads it";;
+  *) echo "  NOTE  no {app_user_id} in the link: the desktop appends ?app_user_id=, right for a Web Purchase Link, wrong for a hosted paywall link";; esac
+case "$P" in *'paywall.web.url'*) no "a PHONE was offered the link — the anti-steering rule Apple rejects for";;
+  *) ok "a phone is not offered it";; esac
+case "$D" in *'desktop.shell'*) ok "the desktop chrome is being served";;
+  *) no "no desktop.shell — this deploy predates that change";; esac
+case "$D" in *'"paywall.blockUntilEntitled":false'*) ok "no desktop is locked out of a paywall it cannot pass";;
+  *) no "blockUntilEntitled is true for a desktop";; esac
+
+echo; echo "2. the webhook refuses what it should"
+B=$(send "$(evt INITIAL_PURCHASE "$GHOST" "$WANT")" "wrong-secret")
+case "$B" in *unauthorized*) ok "a bad secret is rejected";;
+  *) no "a bad secret was NOT rejected: $B";; esac
+
+LIVE=$(send "$(evt CANCELLATION "$GHOST" "$WANT")")
+case "$LIVE" in *unauthorized*)
+  echo
+  echo "  STOP — the real secret is being rejected too, so everything below would"
+  echo "  fail for one reason. The value in $ENVF does not match what the running"
+  echo "  container holds. Either it was changed without a restart:"
+  echo "      cd ~/tulmi && docker compose up -d --build backend"
+  echo "  or the container reads a different file — check env_file in compose.yml."
+  exit 1;; esac
+
+A=$(send "$(evt INITIAL_PURCHASE '$RCAnonymousID:deadbeef' "$WANT")")
+case "$A" in *'no Supabase user id'*) ok "an anonymous purchase is refused, and says why";;
+  *) no "an anonymous purchase was not refused: $A";; esac
+
+X=$(send "$(evt INITIAL_PURCHASE "$GHOST" "some-other-thing")")
+case "$X" in *'event is for'*) ok "a purchase of something else in the project grants nothing";;
+  *) no "a foreign entitlement was not filtered out: $X";; esac
+
+I=$(send "$(evt TEST "$GHOST" "$WANT")")
+case "$I" in *'ignored event'*) ok "an event type we do not act on is ignored";;
+  *) no "an unknown event was not ignored: $I";; esac
+
+C=$(send "$(evt CANCELLATION "$GHOST" "$WANT")")
+case "$C" in *'runs to expiry'*) ok "cancelling does not revoke — they paid to the end of the period";;
+  *) no "a cancellation was treated as a revoke: $C";; esac
+
+echo; echo "3. the write reaches the database"
+W=$(send "$(evt INITIAL_PURCHASE "$GHOST" "$WANT")")
+case "$W" in
+  *'"ok":true'*)
+    no "a purchase for a non-existent user was WRITTEN — the foreign key is missing"
+    send "$(evt EXPIRATION "$GHOST" "$WANT")" >/dev/null ;;
+  *foreign*key*|*violates*)
+    ok "filter passed, Supabase reached, row refused by the foreign key — exactly right" ;;
+  *'no service client'*)
+    no "SUPABASE_SERVICE_KEY is not set — no purchase can ever be recorded" ;;
+  *) no "unexpected: $W" ;;
+esac
+
+echo; echo "4. the checkout the desktop opens"
+URL=$(printf '%s' "$D" | grep -o '"paywall.web.url":"[^"]*"' | cut -d'"' -f4)
+echo "  link: ${URL:-none}"
+case "$URL" in
+  https://tailzu.space/pay*) ok "the link is tailzu.space/pay, the domain Paddle approved";;
+  *api.tailzu.space*) no "the link is on api.tailzu.space — Paddle approved tailzu.space; set REVENUECAT_WEB_PAYWALL_URL=https://tailzu.space/pay";;
+  "") no "no link at all — set REVENUECAT_WEB_PAYWALL_URL=https://tailzu.space/pay in $ENVF, then: docker compose up -d backend";;
+  *) echo "  NOTE  not our pay page; checks below cover tailzu.space/pay only";;
+esac
+PAGE=$(curl -s "$API/pay")
+case "$PAGE" in *'data-state="loading"'*) ok "the pay page is open for checkout";;
+  *'data-state="off"'*) no "the pay page says checkout is not open — PADDLE_CLIENT_TOKEN or both price ids are missing or malformed";;
+  *) no "the pay page did not render";; esac
+N=$(printf '%s' "$PAGE" | grep -o 'data-price="pri_[a-z0-9]*"' | sort -u | wc -l | tr -d ' ')
+[ "$N" = 2 ] && ok "both plans have a price id" || no "$N of 2 plans have a price id"
+TOK=$(printf '%s' "$PAGE" | grep -o '"token":"[a-z]*_' | cut -d'"' -f4)
+case "$TOK" in live_) ok "live client token (public by design)";; test_) no "a SANDBOX token — live prices will not open with it";; *) no "no client token";; esac
+# What a buyer's browser reported, in Paddle's words (the pay page sends it).
+# (Logs go with the container: a deploy starts this count again from zero.)
+LINES=$(docker compose logs --since 72h backend 2>/dev/null | grep 'pay: checkout failed')
+SEEN=$(printf '%s\n' "$LINES" | grep -o '"code":"[^"]*","detail":"[^"]\{0,80\}' | sort | uniq -c | sort -rn | head -5)
+if [ -n "$SEEN" ]; then
+  echo "  Paddle refused a checkout in the last 3 days:"; printf '%s\n' "$SEEN" | sed 's/^/    /'
+  LAST=$(docker compose logs --since 72h backend 2>/dev/null | grep 'pay: checkout failed' | tail -1 | grep -o '"detail":"[^"]*"' | cut -d'"' -f4-)
+  [ -n "$LAST" ] && echo "    latest, in Paddle's words: $LAST"
+  case "$SEEN" in
+    *checkout_not_enabled*) echo "    FIX  Paddle has not switched checkout on for this account: finish onboarding at vendors.paddle.com (every step green), or write to sellers@paddle.com";;
+    *default_checkout_url*) echo "    FIX  Paddle > Checkout > Checkout settings > Default payment link = https://tailzu.space/pay";;
+    *domain_is_not_approved*) echo "    FIX  Paddle > Checkout > Website approval: tailzu.space must show Approved";;
+    *not_found*|*price*) echo "    FIX  the price ids are not in the same Paddle environment as the token (live vs sandbox)";;
+  esac
+else
+  echo "  no checkout failure reported by a browser in the last 3 days"
+fi
+cat <<'TXT'
+  Settings this script cannot see (each one stops a desktop purchase):
+    Paddle      Onboarding complete at vendors.paddle.com (without it: transaction_checkout_not_enabled)
+    Paddle      Checkout > Checkout settings > Default payment link = https://tailzu.space/pay
+    RevenueCat  Web > Paddle config: API key set, Webhook Configuration > Apply in Paddle
+    RevenueCat  Track new purchases from server-to-server notifications = ON
+    RevenueCat  Metadata field key = app_user_id
+TXT
+echo "    RevenueCat  both Paddle products attached to the entitlement '$WANT'"
+
+echo; echo "$pass passed, $fail failed  (no account touched)"
+[ "$fail" -eq 0 ] || exit 1

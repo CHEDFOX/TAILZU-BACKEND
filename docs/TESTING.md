@@ -81,7 +81,7 @@ npx eas-cli build --profile development --platform ios
 
 ## 4. Known not-yet-built (by design, for after this pass)
 
-- Live streaming dictation wired into the keyboards (backend `/v1/stream` exists).
+- Live streaming dictation wired into the keyboards (backend `/v1/transcribe-stream` exists).
 - Accounts/login (Supabase scaffolded; needs your project keys).
 - "Learns your style" personalization (needs persistence/accounts).
 - Visual polish: app icon/splash, final spacing/animation pass.

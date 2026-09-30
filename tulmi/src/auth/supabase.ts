@@ -7,6 +7,7 @@
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getConfig } from "../config.js";
+import { digest, sameSecret } from "./secret.js";
 
 let client: SupabaseClient | null = null;
 let verifier: SupabaseClient | null = null;
@@ -43,6 +44,12 @@ function verifyClient(): SupabaseClient | null {
 export interface AuthedUser {
   id: string;
   email?: string;
+  /**
+   * E.164 phone, for accounts created through SMS sign-in. Exactly one of
+   * `email` / `phone` is set for a single-method account, so neither can be
+   * treated as the identity — that is always `id`. This is only ever a label.
+   */
+  phone?: string;
   /** The raw Supabase JWT, used to build a RLS-scoped data client. */
   token?: string;
 }
@@ -52,7 +59,7 @@ export interface AuthedUser {
  * so Row-Level Security applies (auth.uid() = user_id). This is what lets the
  * backend persist data with just the public anon key — no service-role secret.
  */
-export function userClient(token: string | undefined): SupabaseClient | null {
+function userClient(token: string | undefined): SupabaseClient | null {
   const cfg = getConfig();
   if (!cfg.authEnabled || !token) return null;
   const key = cfg.SUPABASE_ANON_KEY ?? cfg.SUPABASE_SERVICE_KEY!;
@@ -89,14 +96,48 @@ export async function resolveUser(
     return { id: "dev-user", email: "dev@flow.local" };
   }
 
-  const sb = verifyClient();
-  if (!sb) return null;
-
   const token = authorization?.replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
+
+  // Static bearer tokens (desktop app). Checked BEFORE the Supabase round-trip:
+  // these are long random secrets from STATIC_BEARER_TOKENS, not JWTs, so they
+  // never expire on the client. Each token maps to a stable synthetic user id
+  // derived from its hash — per-token identity for metering/personality without
+  // a Supabase account. Compare timing-safe so the list can't be probed.
+  const staticUser = matchStaticToken(token, cfg.STATIC_BEARER_TOKENS);
+  if (staticUser) return staticUser;
+
+  const sb = verifyClient();
+  if (!sb) return null;
 
   const { data, error } = await sb.auth.getUser(token);
   if (error || !data.user) return null;
 
-  return { id: data.user.id, email: data.user.email ?? undefined, token };
+  return {
+    id: data.user.id,
+    email: data.user.email ?? undefined,
+    phone: data.user.phone ?? undefined,
+    token,
+  };
+}
+
+/**
+ * Match a presented bearer against the STATIC_BEARER_TOKENS list (comma-
+ * separated secrets), timing-safe (auth/secret.ts). Tokens shorter than 16
+ * chars are ignored so a lazy "test" entry can't become an auth bypass. Returns
+ * the synthetic user or null. AuthedUser.token is left unset on purpose: it's
+ * not a Supabase JWT, so RLS-scoped clients can't use it — data helpers fall
+ * back to the service-role client or memory.
+ */
+function matchStaticToken(
+  presented: string,
+  configured: string | undefined,
+): AuthedUser | null {
+  for (const raw of configured?.split(",") ?? []) {
+    const secret = raw.trim();
+    if (secret.length >= 16 && sameSecret(presented, secret)) {
+      return { id: `static-${digest(secret).toString("hex").slice(0, 12)}` };
+    }
+  }
+  return null;
 }

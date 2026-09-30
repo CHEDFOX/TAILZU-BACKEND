@@ -66,7 +66,7 @@ iOS. Voice, typing, and the keyboard work on both.
 
 | Mode    | Endpoint                                   |
 |---------|--------------------------------------------|
-| Voice   | `POST /v1/transcribe-clean`, `WS /v1/stream` |
+| Voice   | `POST /v1/transcribe-clean`, `WS /v1/transcribe-stream` |
 | Typing  | `POST /v1/refine`                          |
 | Screen  | `POST /v1/draft`                           |
 | Voice out (TTS) | `POST /v1/speak`                   |

@@ -1,0 +1,200 @@
+import { describe, expect, it } from "vitest";
+
+process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+process.env.OPENAI_API_KEY = "test-openai-key";
+process.env.STT_PROVIDER = "openai";
+process.env.DEV_SKIP_AUTH = "true";
+
+// eslint-disable-next-line import/first
+import { estimateDurationSeconds, probeMp4Duration, isAudioRejection, plausiblySilent } from "../src/pipeline/stt.js";
+
+/** Wrap `body` in an MP4 box: size(4) + type(4) + body. */
+function box(type: string, body: Buffer): Buffer {
+  const b = Buffer.alloc(8 + body.length);
+  b.writeUInt32BE(8 + body.length, 0);
+  b.write(type, 4, "ascii");
+  body.copy(b, 8);
+  return b;
+}
+
+/**
+ * Build a minimal m4a/MP4: an `ftyp` sibling (to exercise the box walker
+ * skipping past it) followed by `moov > mvhd` (version 0) carrying the
+ * timescale + duration the probe reads. seconds = duration / timescale.
+ */
+function makeM4a(timescale: number, duration: number): Buffer {
+  const mvhdBody = Buffer.alloc(20); // version+flags, creation, mod, timescale, duration
+  mvhdBody.writeUInt8(0, 0); // version 0
+  mvhdBody.writeUInt32BE(timescale, 12);
+  mvhdBody.writeUInt32BE(duration, 16);
+  const moov = box("moov", box("mvhd", mvhdBody));
+  const ftyp = box("ftyp", Buffer.from("M4A isom", "ascii"));
+  return Buffer.concat([ftyp, moov]);
+}
+
+/**
+ * Build a canonical PCM WAV header + `dataSize` bytes of fake sample data.
+ * sampleRate*channels*(bitsPerSample/8) bytes per second → dataSize / byteRate
+ * seconds of audio. Matches the layout probeWavDuration walks.
+ */
+function makeWav(opts: {
+  sampleRate: number;
+  channels: number;
+  bitsPerSample: number;
+  dataSize: number;
+}): Buffer {
+  const { sampleRate, channels, bitsPerSample, dataSize } = opts;
+  const byteRate = sampleRate * channels * (bitsPerSample / 8);
+  const blockAlign = channels * (bitsPerSample / 8);
+  const buf = Buffer.alloc(44 + dataSize);
+  buf.write("RIFF", 0, "ascii");
+  buf.writeUInt32LE(36 + dataSize, 4);
+  buf.write("WAVE", 8, "ascii");
+  buf.write("fmt ", 12, "ascii");
+  buf.writeUInt32LE(16, 16); // fmt chunk size
+  buf.writeUInt16LE(1, 20); // PCM
+  buf.writeUInt16LE(channels, 22);
+  buf.writeUInt32LE(sampleRate, 24);
+  buf.writeUInt32LE(byteRate, 28);
+  buf.writeUInt16LE(blockAlign, 32);
+  buf.writeUInt16LE(bitsPerSample, 34);
+  buf.write("data", 36, "ascii");
+  buf.writeUInt32LE(dataSize, 40);
+  return buf;
+}
+
+describe("estimateDurationSeconds", () => {
+  it("computes seconds from a well-formed WAV header", () => {
+    // 1 s of 16 kHz mono 16-bit → 32_000 bytes of samples.
+    const wav = makeWav({
+      sampleRate: 16000,
+      channels: 1,
+      bitsPerSample: 16,
+      dataSize: 32000,
+    });
+    expect(estimateDurationSeconds(wav, "wav")).toBeCloseTo(1, 5);
+
+    // 2.5 s at 44.1 kHz stereo 16-bit → 44100 * 2 * 2 * 2.5 = 441_000 bytes.
+    const longer = makeWav({
+      sampleRate: 44100,
+      channels: 2,
+      bitsPerSample: 16,
+      dataSize: 441_000,
+    });
+    expect(estimateDurationSeconds(longer, "wav")).toBeCloseTo(2.5, 5);
+  });
+
+  it("returns 0 for a short/corrupt WAV buffer without throwing", () => {
+    const junk = Buffer.from("not-a-wav");
+    expect(() => estimateDurationSeconds(junk, "wav")).not.toThrow();
+    expect(estimateDurationSeconds(junk, "wav")).toBe(0);
+
+    // Buffer < 44 bytes — fails the "too short" guard.
+    expect(estimateDurationSeconds(Buffer.alloc(20), "wav")).toBe(0);
+  });
+
+  it("estimates MP3 duration at ~CBR 128 kbps (±1%)", () => {
+    // 128 kbps = 16 000 bytes / second; 32_000 bytes → 2 seconds.
+    const mp3 = Buffer.alloc(32_000);
+    const out = estimateDurationSeconds(mp3, "mp3");
+    expect(out).toBeGreaterThan(1.98);
+    expect(out).toBeLessThan(2.02);
+  });
+
+  it("reads the exact duration from an m4a/MP4 mvhd box", () => {
+    // 8000 / 16000 = 0.5 s.
+    expect(estimateDurationSeconds(makeM4a(16000, 8000), "m4a")).toBeCloseTo(0.5, 5);
+    // 44100 timescale, 132300 units → 3 s.
+    expect(estimateDurationSeconds(makeM4a(44100, 132300), "m4a")).toBeCloseTo(3, 5);
+    // probeMp4Duration is exported and works standalone too.
+    expect(probeMp4Duration(makeM4a(1000, 2500))).toBeCloseTo(2.5, 5);
+  });
+
+  it("returns 0 (not a throw) for an m4a buffer with no moov box", () => {
+    const data = Buffer.alloc(10_000); // zero-filled — no boxes
+    expect(() => estimateDurationSeconds(data, "m4a")).not.toThrow();
+    expect(estimateDurationSeconds(data, "m4a")).toBe(0);
+  });
+
+  it("returns 0 for containers we don't parse yet (ogg/webm/flac)", () => {
+    const data = Buffer.alloc(10_000);
+    // These paths hit warnUnsupportedFormatOnce; the return value is what we care about.
+    expect(estimateDurationSeconds(data, "ogg")).toBe(0);
+    expect(estimateDurationSeconds(data, "webm")).toBe(0);
+    expect(estimateDurationSeconds(data, "flac")).toBe(0);
+  });
+});
+
+describe("a provider refusing the audio is not an outage", () => {
+  // Every recognizer answers a clip with nothing in it with a 4xx — too
+  // short, no speech, unsupported. That was thrown, and the route turned it
+  // into HTTP 500 "Pipeline failed", so stopping a recording before saying
+  // anything answered with an error instead of writing nothing.
+  it("reads a 4xx as a verdict on the clip", () => {
+    expect(isAudioRejection({ status: 400 })).toBe(true);
+    expect(isAudioRejection({ status: 415 })).toBe(true);
+    expect(isAudioRejection({ status: 422 })).toBe(true);
+    // The hand-rolled fetch paths put the status in the message instead.
+    expect(isAudioRejection(new Error("sarvam stt failed: 400 audio too short"))).toBe(true);
+  });
+
+  it("lets a real failure stay a real failure", () => {
+    // Nobody looked at the audio. Swallowing this would hide an outage and
+    // leave someone thinking their dictation vanished.
+    expect(isAudioRejection({ status: 500 })).toBe(false);
+    expect(isAudioRejection({ status: 503 })).toBe(false);
+    expect(isAudioRejection(new Error("fetch failed"))).toBe(false);
+    expect(isAudioRejection(new Error("socket hang up"))).toBe(false);
+    expect(isAudioRejection(undefined)).toBe(false);
+  });
+
+  it("does not read rate limiting as a verdict on the clip", () => {
+    // 429 says something about us, not about the audio.
+    expect(isAudioRejection({ status: 429 })).toBe(false);
+  });
+});
+
+describe("only a clip that could be silent is treated as silent", () => {
+  // A 4xx does not always mean "nothing here" — it can mean "I cannot process
+  // this", for a language or an encoding a provider does not handle.
+  // Believing that on a real sentence would eat somebody's dictation and
+  // report nothing, which is the worst outcome this product has.
+  const wav = (seconds: number) => {
+    const byteRate = 16000 * 1 * 2;
+    const dataSize = Math.round(byteRate * seconds);
+    const buf = Buffer.alloc(44 + dataSize);
+    buf.write("RIFF", 0, "ascii");
+    buf.writeUInt32LE(36 + dataSize, 4);
+    buf.write("WAVE", 8, "ascii");
+    buf.write("fmt ", 12, "ascii");
+    buf.writeUInt32LE(16, 16);
+    buf.writeUInt16LE(1, 20);
+    buf.writeUInt16LE(1, 22);
+    buf.writeUInt32LE(16000, 24);
+    buf.writeUInt32LE(byteRate, 28);
+    buf.writeUInt16LE(2, 32);
+    buf.writeUInt16LE(16, 34);
+    buf.write("data", 36, "ascii");
+    buf.writeUInt32LE(dataSize, 40);
+    return buf;
+  };
+
+  it("believes a quiet room", () => {
+    expect(plausiblySilent(wav(0.4), "wav")).toBe(true);
+    expect(plausiblySilent(wav(2), "wav")).toBe(true);
+  });
+
+  it("does not believe a sentence", () => {
+    // Ten seconds of Tamil that every provider refused is a failure to
+    // process it, not an empty room.
+    expect(plausiblySilent(wav(10), "wav")).toBe(false);
+    expect(plausiblySilent(wav(3), "wav")).toBe(false);
+  });
+
+  it("falls back to size for containers whose duration we cannot read", () => {
+    // ogg/webm/flac report 0 seconds — guessing "silent" from that alone
+    // would swallow every one of them.
+    expect(plausiblySilent(Buffer.alloc(1000), "ogg")).toBe(true);
+    expect(plausiblySilent(Buffer.alloc(500_000), "ogg")).toBe(false);
+  });
+});
