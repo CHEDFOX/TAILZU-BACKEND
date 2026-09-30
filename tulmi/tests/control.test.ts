@@ -300,3 +300,36 @@ describe("android build header", () => {
     await app2.inject({ method: "DELETE", url: "/v1/admin/control/rules/android-a2", headers: admin2 });
   });
 });
+
+describe("a rule cannot reach Object.prototype", () => {
+  // payload.__proto__ IS Object.prototype, so a pointer or a merge that walks
+  // into it writes onto every object in the process: one saved rule (or one
+  // admin preview header) poisoning the whole server.
+  const clean = () => expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+
+  it("refuses a path through __proto__, constructor or prototype", () => {
+    for (const path of ["/__proto__/polluted", "/flags/__proto__/polluted", "/constructor/prototype/polluted"]) {
+      expect(() => applyOp(tree(), { op: "set", path, value: true })).toThrow(/forbidden/);
+      expect(() => applyOp(tree(), { op: "merge", path, value: { polluted: true } })).toThrow(/forbidden/);
+    }
+    clean();
+  });
+
+  it("drops __proto__ keys from a merged value", () => {
+    const value = JSON.parse('{"__proto__": {"polluted": true}, "ok": 1}') as Record<string, unknown>;
+    const t = tree();
+    applyOp(t, { op: "merge", path: "/flags", value });
+    applyOp(t, { op: "patch", select: { id: "hello" }, value });
+    expect((t.flags as Record<string, unknown>).ok).toBe(1);
+    clean();
+  });
+
+  it("reports the refused op and still sends the payload", () => {
+    const { payload, applied } = applyRules(tree(), [rule({ id: "evil", ops: [
+      { op: "set", path: "/__proto__/polluted", value: true },
+    ] })], { surface: "keyboard" });
+    expect(applied[0]?.error).toMatch(/forbidden/);
+    expect(payload.list).toEqual([1, 2, 3]);
+    clean();
+  });
+});

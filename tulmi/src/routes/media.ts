@@ -10,7 +10,8 @@
  *
  * Registry shape: { [key: string]: { url: string; contentType: string; size: number; uploadedAt: number } }
  *
- * Public reads: /media/* is served by @fastify/static (no auth). Named
+ * Public reads: /media/* is served by @fastify/static (no auth), and
+ * /media/k/<key> redirects to a key's current file (for emails). Named
  * registry entries flow through the bootstrap response so clients don't need
  * to poll a separate endpoint.
  *
@@ -33,6 +34,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { MediaPresent } from "../../../shared/types/sdui.js";
 import { bumpCacheVersion } from "../experience/catalog.js";
+import { requireAdmin } from "../control/index.js";
 
 const runFile = promisify(execFile);
 
@@ -125,20 +127,9 @@ export function cleanPresent(raw: unknown): MediaPresent | null {
 /** Refuse keys that would pollute Object.prototype or produce a poisoned entry. */
 const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
-/**
- * Timing-safe string compare. `provided === expected` leaks length via
- * response time on repeated probes; this uses Node's timingSafeEqual which
- * runs in constant time relative to length.
- */
-function safeEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ab.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ab, bb);
-}
-
-// Registry file lives OUTSIDE MEDIA_DIR so @fastify/static doesn't serve it
-// publicly at /media/registry.json (which would leak every named mapping).
+// Inside MEDIA_DIR (see registryPath), so it is also reachable at
+// /media/_registry_v1.json. That is not a leak: the same mapping goes out in
+// every bootstrap (bootstrap.media).
 const REGISTRY_FILENAME = "_registry_v1.json";
 
 export type MediaEntry = {
@@ -215,7 +206,13 @@ function extForContentType(ct: string): string {
     "application/pdf": "pdf",
     "text/plain": "txt",
   };
-  return map[ct.toLowerCase()] ?? ct.split("/")[1] ?? "bin";
+  const known = map[ct.toLowerCase()];
+  if (known) return known;
+  // The fallback comes from the uploader's declared type, so it is held to a
+  // plain token, and never one the static server would hand a browser as a
+  // page: "text/html" must not become a script-running .html on this origin.
+  const sub = ct.split("/")[1]?.toLowerCase() ?? "";
+  return /^[a-z0-9]{1,10}$/.test(sub) && !/html/.test(sub) ? sub : "bin";
 }
 
 /**
@@ -405,11 +402,6 @@ function schedulePosters(): void {
   })().finally(() => { posterRun = null; });
 }
 
-/** For tests and boot: wait for any background cut to finish. */
-export async function postersSettled(): Promise<void> {
-  while (posterRun) await posterRun.catch(() => 0);
-}
-
 async function writeRegistry(mediaDir: string, r: MediaRegistry): Promise<void> {
   const run = writeChain.then(async () => {
     const file = registryPath(mediaDir);
@@ -455,27 +447,18 @@ export async function loadMediaRegistry(mediaDir: string): Promise<void> {
   }
 }
 
-/** Guard: admin-secret header must match the ADMIN_SECRET env var (timing-safe). */
-function checkAdmin(req: any, expected: string): { ok: boolean; reason?: string } {
-  if (!expected) return { ok: false, reason: "not_configured" };
-  const provided = req.headers["x-admin-secret"];
-  if (typeof provided !== "string" || provided.length === 0) {
-    return { ok: false, reason: "unauthorized" };
-  }
-  if (!safeEqual(provided, expected)) {
-    return { ok: false, reason: "unauthorized" };
-  }
-  return { ok: true };
-}
-
 export function registerMediaRoutes(app: FastifyInstance, opts: {
   mediaDir: string;
   publicUrlPrefix: string;   // e.g. "https://api.tailzu.space/media"
-  adminSecret: string;
   /** Per-IP rate-limit cap for the admin routes (the app's AUTHED_RL tier). */
   rateLimit?: { max: number; timeWindow: number };
 }): void {
-  const { mediaDir, publicUrlPrefix, adminSecret, rateLimit } = opts;
+  const { mediaDir, publicUrlPrefix, rateLimit } = opts;
+
+  // @fastify/rate-limit is registered global:false, so a route is only
+  // throttled when it carries a `config.rateLimit`. Every admin route here
+  // carries one, so the admin secret cannot be guessed at line rate.
+  const rl = rateLimit ? { config: { rateLimit } } : {};
 
   // The server cuts each video's first frame (see ensureVideoPosters) — now,
   // for what is already stored, and after every change from here on.
@@ -488,13 +471,12 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
   const processing = {
     mediaDir,
     publicUrlPrefix,
-    adminSecret,
+    route: rl,
     registry: () => cachedRegistry,
     writeRegistry: async (r: MediaRegistry) => {
       cachedRegistry = r;
       await writeRegistryAndInvalidate(mediaDir, r);
     },
-    checkAdmin: (req: unknown, expected: string) => checkAdmin(req, expected),
   };
   registerMediaCompressRoute(app, processing);
   // Same plumbing, different job: /compress makes a file smaller, /retime makes
@@ -502,20 +484,12 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
   // smaller, which would throw away every retime that is not also a saving.
   registerMediaRetimeRoute(app, processing);
 
-  // @fastify/rate-limit is registered global:false, so a route is only
-  // throttled when it carries a `config.rateLimit`. Build it once and attach
-  // it to the admin routes below (the public /v1/media/resolve read is left
-  // unthrottled by design).
-  const rl = rateLimit ? { config: { rateLimit } } : {};
-
   // --- Upload -----------------------------------------------------------------
   // Multipart body with a single "file" field (image, svg, audio, etc.).
   // Optional query "key" registers the upload under a named lookup, e.g.
   // ?key=brand.mark makes it reachable via bootstrap.media["brand.mark"].
   app.post("/v1/media/upload", rl, async (req, reply) => {
-    const guard = checkAdmin(req, adminSecret);
-    if (!guard.ok) return reply.code(guard.reason === "not_configured" ? 503 : 401)
-      .send({ code: guard.reason });
+    if (!requireAdmin(req, reply)) return;
 
     // @fastify/multipart iterator — take the first file we encounter.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -586,9 +560,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
 
   // --- List (admin) -----------------------------------------------------------
   app.get("/v1/media/list", rl, async (req, reply) => {
-    const guard = checkAdmin(req, adminSecret);
-    if (!guard.ok) return reply.code(guard.reason === "not_configured" ? 503 : 401)
-      .send({ code: guard.reason });
+    if (!requireAdmin(req, reply)) return;
     return reply.send({ registry: cachedRegistry });
   });
 
@@ -602,9 +574,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
   //   POST /v1/media/present?key=intro   {"shape":"full","fit":"cover","holdMs":4600}
   //   POST /v1/media/present?key=intro&reset=true    → back to the screen's default
   app.post("/v1/media/present", rl, async (req, reply) => {
-    const guard = checkAdmin(req, adminSecret);
-    if (!guard.ok) return reply.code(guard.reason === "not_configured" ? 503 : 401)
-      .send({ code: guard.reason });
+    if (!requireAdmin(req, reply)) return;
 
     const q = (req as { query?: Record<string, string> }).query ?? {};
     const key = (q.key ?? "").trim();
@@ -635,9 +605,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
 
   // --- Delete (admin) — removes registry entry; file stays on disk ----------
   app.delete("/v1/media/:key", rl, async (req, reply) => {
-    const guard = checkAdmin(req, adminSecret);
-    if (!guard.ok) return reply.code(guard.reason === "not_configured" ? 503 : 401)
-      .send({ code: guard.reason });
+    if (!requireAdmin(req, reply)) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const key = ((req as any).params?.key ?? "") as string;
     if (RESERVED_KEYS.has(key)) return reply.code(400).send({ code: "reserved_key" });
@@ -647,21 +615,6 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
     delete cachedRegistry[key];
     await writeRegistryAndInvalidate(mediaDir, cachedRegistry);
     return reply.send({ ok: true });
-  });
-
-  // --- Public read (no auth) --------------------------------------------------
-  // Named lookup for clients that only know the semantic key. Returns the URL
-  // + content type; clients then fetch the actual bytes from /media/*.
-  app.get("/v1/media/resolve", async (req, reply) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const key = String(((req as any).query?.key ?? "")).trim();
-    if (!key) return reply.code(400).send({ code: "missing_key" });
-    if (RESERVED_KEYS.has(key)) return reply.code(400).send({ code: "reserved_key" });
-    if (!Object.prototype.hasOwnProperty.call(cachedRegistry, key)) {
-      return reply.code(404).send({ code: "not_found" });
-    }
-    const entry = cachedRegistry[key];
-    return reply.send(entry);
   });
 
   /**
@@ -679,7 +632,7 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
    *
    * Public and unauthenticated, like /media/* — it serves what an anonymous
    * client could already fetch, and reveals only whether a key exists, which
-   * /v1/media/resolve above already tells anyone who asks. 302 rather than 301
+   * every bootstrap's `media` map already tells anyone who asks. 302 rather than 301
    * because the target is expected to change; a permanent redirect is exactly
    * the thing a mail client would cache past the next upload.
    */

@@ -18,10 +18,17 @@
  *   2. Asymmetric keys via the project JWKS endpoint — for projects that have
  *      migrated to ES256/RS256 signing keys (no shared secret to configure).
  * When neither can verify, `localUserId` returns null and the caller keys by IP.
+ *
+ * Only a USER session counts: Supabase signs those with aud "authenticated"
+ * (anonymous sign-ins included). The anon and service keys are JWTs from the
+ * same signer with no `sub`, and anything else from it is not a person, so a
+ * token for any other audience falls back to the IP bucket too. Expiry is
+ * enforced by jwtVerify.
  */
 import { jwtVerify, createRemoteJWKSet, type JWTVerifyGetKey } from "jose";
 import { getConfig } from "../config.js";
 
+const AUDIENCE = "authenticated";
 let hsSecret: Uint8Array | null | undefined; // undefined = not yet resolved
 let jwks: JWTVerifyGetKey | null | undefined;
 
@@ -55,7 +62,7 @@ export async function localUserId(authorization: string | undefined): Promise<st
   const secret = symmetricKey();
   if (secret) {
     try {
-      const { payload } = await jwtVerify(token, secret, { algorithms: ["HS256"] });
+      const { payload } = await jwtVerify(token, secret, { algorithms: ["HS256"], audience: AUDIENCE });
       if (typeof payload.sub === "string" && payload.sub) return payload.sub;
     } catch {
       /* fall through to JWKS, then to null */
@@ -66,7 +73,7 @@ export async function localUserId(authorization: string | undefined): Promise<st
   const keys = jwksKey();
   if (keys) {
     try {
-      const { payload } = await jwtVerify(token, keys, { algorithms: ["ES256", "RS256"] });
+      const { payload } = await jwtVerify(token, keys, { algorithms: ["ES256", "RS256"], audience: AUDIENCE });
       if (typeof payload.sub === "string" && payload.sub) return payload.sub;
     } catch {
       /* invalid / unfetchable → null */
@@ -74,10 +81,4 @@ export async function localUserId(authorization: string | undefined): Promise<st
   }
 
   return null;
-}
-
-/** Test/hot-reload aid: drop the cached key material so config changes re-read. */
-export function _resetJwtKeyCache(): void {
-  hsSecret = undefined;
-  jwks = undefined;
 }

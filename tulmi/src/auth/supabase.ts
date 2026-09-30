@@ -6,8 +6,8 @@
  * JWT, and sends it to us; we verify it here to resolve the user id.
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { createHash, timingSafeEqual } from "node:crypto";
 import { getConfig } from "../config.js";
+import { digest, sameSecret } from "./secret.js";
 
 let client: SupabaseClient | null = null;
 let verifier: SupabaseClient | null = null;
@@ -59,7 +59,7 @@ export interface AuthedUser {
  * so Row-Level Security applies (auth.uid() = user_id). This is what lets the
  * backend persist data with just the public anon key — no service-role secret.
  */
-export function userClient(token: string | undefined): SupabaseClient | null {
+function userClient(token: string | undefined): SupabaseClient | null {
   const cfg = getConfig();
   if (!cfg.authEnabled || !token) return null;
   const key = cfg.SUPABASE_ANON_KEY ?? cfg.SUPABASE_SERVICE_KEY!;
@@ -123,26 +123,20 @@ export async function resolveUser(
 
 /**
  * Match a presented bearer against the STATIC_BEARER_TOKENS list (comma-
- * separated secrets). Comparison is over SHA-256 digests via timingSafeEqual —
- * constant-time and length-independent. Tokens shorter than 16 chars are
- * ignored so a lazy "test" entry can't become an auth bypass. Returns the
- * synthetic user or null. AuthedUser.token is left unset on purpose: it's not a
- * Supabase JWT, so RLS-scoped clients can't use it — data helpers fall back to
- * the service-role client or memory.
+ * separated secrets), timing-safe (auth/secret.ts). Tokens shorter than 16
+ * chars are ignored so a lazy "test" entry can't become an auth bypass. Returns
+ * the synthetic user or null. AuthedUser.token is left unset on purpose: it's
+ * not a Supabase JWT, so RLS-scoped clients can't use it — data helpers fall
+ * back to the service-role client or memory.
  */
 function matchStaticToken(
   presented: string,
   configured: string | undefined,
 ): AuthedUser | null {
-  if (!configured) return null;
-  const presentedHash = createHash("sha256").update(presented).digest();
-  for (const raw of configured.split(",")) {
+  for (const raw of configured?.split(",") ?? []) {
     const secret = raw.trim();
-    if (secret.length < 16) continue;
-    const secretHash = createHash("sha256").update(secret).digest();
-    if (timingSafeEqual(presentedHash, secretHash)) {
-      const idTag = secretHash.toString("hex").slice(0, 12);
-      return { id: `static-${idTag}`, email: undefined };
+    if (secret.length >= 16 && sameSecret(presented, secret)) {
+      return { id: `static-${digest(secret).toString("hex").slice(0, 12)}` };
     }
   }
   return null;

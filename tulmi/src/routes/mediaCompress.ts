@@ -46,8 +46,19 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, RouteShorthandOptions } from "fastify";
 import type { MediaRegistry } from "./media.js";
+import { requireAdmin } from "../control/index.js";
+
+/** What both routes need from the media store (see registerMediaRoutes). */
+type MediaProcessing = {
+  mediaDir: string;
+  publicUrlPrefix: string;
+  /** Route options — the admin rate limit. */
+  route: RouteShorthandOptions;
+  registry: () => MediaRegistry;
+  writeRegistry: (r: MediaRegistry) => Promise<void>;
+};
 
 const run = promisify(execFile);
 
@@ -209,22 +220,12 @@ async function encode(
  */
 export function registerMediaRetimeRoute(
   app: FastifyInstance,
-  opts: {
-    mediaDir: string;
-    publicUrlPrefix: string;
-    adminSecret: string;
-    registry: () => MediaRegistry;
-    writeRegistry: (r: MediaRegistry) => Promise<void>;
-    checkAdmin: (req: unknown, expected: string) => { ok: boolean; reason?: string };
-  },
+  opts: MediaProcessing,
 ): void {
-  const { mediaDir, publicUrlPrefix, adminSecret, registry, writeRegistry, checkAdmin } = opts;
+  const { mediaDir, publicUrlPrefix, route, registry, writeRegistry } = opts;
 
-  app.post("/v1/media/retime", async (req, reply) => {
-    const guard = checkAdmin(req, adminSecret);
-    if (!guard.ok) {
-      return reply.code(guard.reason === "not_configured" ? 503 : 401).send({ code: guard.reason });
-    }
+  app.post("/v1/media/retime", route, async (req, reply) => {
+    if (!requireAdmin(req, reply)) return;
     if (!(await hasFfmpeg())) {
       return reply.code(503).send({
         code: "ffmpeg_missing",
@@ -409,22 +410,12 @@ export function registerMediaRetimeRoute(
 
 export function registerMediaCompressRoute(
   app: FastifyInstance,
-  opts: {
-    mediaDir: string;
-    publicUrlPrefix: string;
-    adminSecret: string;
-    registry: () => MediaRegistry;
-    writeRegistry: (r: MediaRegistry) => Promise<void>;
-    checkAdmin: (req: unknown, expected: string) => { ok: boolean; reason?: string };
-  },
+  opts: MediaProcessing,
 ): void {
-  const { mediaDir, publicUrlPrefix, adminSecret, registry, writeRegistry, checkAdmin } = opts;
+  const { mediaDir, publicUrlPrefix, route, registry, writeRegistry } = opts;
 
-  app.post("/v1/media/compress", async (req, reply) => {
-    const guard = checkAdmin(req, adminSecret);
-    if (!guard.ok) {
-      return reply.code(guard.reason === "not_configured" ? 503 : 401).send({ code: guard.reason });
-    }
+  app.post("/v1/media/compress", route, async (req, reply) => {
+    if (!requireAdmin(req, reply)) return;
     if (!(await hasFfmpeg())) {
       return reply.code(503).send({
         code: "ffmpeg_missing",

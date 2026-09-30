@@ -184,7 +184,21 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
   // it that belongs to anybody, so it is served to any origin that asks.
   // Nothing else on the server is: the demo route stays same-origin, so a
   // page somewhere else cannot spend a recogniser call.
-  app.get("/v1/site", async (req, reply) => {
+  //
+  // Its one privileged path is the admin preview (x-admin-secret, see
+  // control/withControl), so a request carrying that header is throttled like
+  // every other admin surface — the secret cannot be guessed here at line
+  // rate. Visitors never send it and are never counted: the site reaches this
+  // through one proxy, and a per-address cap would be one cap for everybody.
+  app.get("/v1/site", {
+    config: {
+      rateLimit: {
+        max: getConfig().RATE_LIMIT_MAX,
+        timeWindow: getConfig().RATE_LIMIT_WINDOW_MS,
+        allowList: (req) => req.headers["x-admin-secret"] === undefined,
+      },
+    },
+  }, async (req, reply) => {
     const cfg = getConfig();
     reply.header("Access-Control-Allow-Origin", "*");
     const downloads: Record<string, boolean> = {};
@@ -219,18 +233,23 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
 
     let audio: Buffer | null = null;
     let format: AudioFormat | null = null;
-    for await (const part of req.parts()) {
-      if (part.type !== "file") continue;
-      const ext = part.filename?.split(".").pop()?.toLowerCase() as AudioFormat | undefined;
-      format = ext && FORMATS.includes(ext) ? ext : "webm";
-      audio = await part.toBuffer();
-      break;
+    // The byte cap is enforced WHILE reading, not after: an anonymous upload
+    // is otherwise buffered whole, up to the server's 50 MB multipart ceiling,
+    // before it can be refused.
+    try {
+      for await (const part of req.parts({ limits: { fileSize: DEMO_MAX_BYTES, files: 1 } })) {
+        if (part.type !== "file") continue;
+        const ext = part.filename?.split(".").pop()?.toLowerCase() as AudioFormat | undefined;
+        format = ext && FORMATS.includes(ext) ? ext : "webm";
+        audio = await part.toBuffer();
+        break;
+      }
+    } catch (err) {
+      if ((err as { code?: string }).code !== "FST_REQ_FILE_TOO_LARGE") throw err;
+      return reply.code(413).send({ code: "too_long", message: "Keep it under fifteen seconds." });
     }
     if (!audio || !format) {
       return reply.code(400).send({ code: "bad_request", message: "Missing 'audio' file" });
-    }
-    if (audio.length > DEMO_MAX_BYTES) {
-      return reply.code(413).send({ code: "too_long", message: "Keep it under fifteen seconds." });
     }
     const seconds = estimateDurationSeconds(audio, format);
     if (seconds > getConfig().DEMO_MAX_SECONDS) {

@@ -18,33 +18,31 @@
  * their next launch; the keyboard picks changes up on its next config fetch.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { timingSafeEqual } from "node:crypto";
 import { applyRules, RuleSchema, SURFACES, type Applied, type ControlCtx, type Rule, type Surface } from "./rules.js";
 import { ControlStore } from "./store.js";
 import { CONSOLE_HTML } from "./console.js";
 import { PUSH_DEFAULTS } from "../push/defaults.js";
+import { getConfig } from "../config.js";
+import { sameSecret } from "../auth/secret.js";
 
 let store: ControlStore | null = null;
-let adminSecret: () => string | undefined = () => undefined;
 
-export function initControl(opts: { dir: string; adminSecret: () => string | undefined; recheckMs?: number }): ControlStore {
+export function initControl(opts: { dir: string; recheckMs?: number }): ControlStore {
   store = new ControlStore(opts.dir, opts.recheckMs);
-  adminSecret = opts.adminSecret;
   return store;
 }
 export function controlStore(): ControlStore | null { return store; }
 
+const adminSecret = () => getConfig().ADMIN_SECRET;
+
 function isAdmin(req: FastifyRequest): boolean {
-  const expected = adminSecret();
   const got = req.headers["x-admin-secret"];
-  if (!expected || typeof got !== "string" || !got) return false;
-  const a = Buffer.from(got), b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
+  return typeof got === "string" && sameSecret(got, adminSecret() ?? "");
 }
 
 /**
- * The admin gate for routes outside this file (the push engine's). Sends the
- * refusal itself; true means go ahead.
+ * THE admin gate — every route behind ADMIN_SECRET goes through here (control,
+ * push, media, cache bump). Sends the refusal itself; true means go ahead.
  */
 export function requireAdmin(req: FastifyRequest, reply: FastifyReply): boolean {
   if (!adminSecret()) {
@@ -112,14 +110,7 @@ export function registerControlRoutes(app: FastifyInstance, opts: {
 }): void {
   const cfg = opts.rateLimit ? { config: opts.rateLimit } : {};
   const guard = (req: FastifyRequest, reply: FastifyReply): boolean => {
-    if (!adminSecret()) {
-      reply.code(503).send({ code: "not_configured", message: "ADMIN_SECRET is not set on the server" });
-      return false;
-    }
-    if (!isAdmin(req)) {
-      reply.code(401).send({ code: "unauthorized", message: "Bad or missing admin secret" });
-      return false;
-    }
+    if (!requireAdmin(req, reply)) return false;
     if (!store) {
       reply.code(503).send({ code: "no_store", message: "The control store is not initialised" });
       return false;

@@ -124,12 +124,6 @@ export async function usageSummary(user: AuthedUser, tzOffsetMinutes?: number): 
 }
 
 /**
- * Windowed usage projection for the Privacy audit endpoint. Reads the same
- * usage_events rows and buckets them into fixed windows: 24h / 7d / 30d /
- * all-time. When Supabase is disabled all counts come back as zero (the caller
- * still gets a valid PrivacyAuditResponse shape).
- */
-/**
  * Raw metered events for the Stats tab.
  *
  * Stats used to read ONLY cleanup_history — which is gated behind explicit
@@ -179,54 +173,6 @@ export async function usageEventsSince(
     }));
 }
 
-export async function usageWindows(
-  user: AuthedUser,
-): Promise<Array<{ window: string; requests: number; audioSeconds: number; words: number }>> {
-  const buckets = [
-    { window: "last24h", sinceMs: 24 * 60 * 60 * 1000 },
-    { window: "last7d", sinceMs: 7 * 24 * 60 * 60 * 1000 },
-    { window: "last30d", sinceMs: 30 * 24 * 60 * 60 * 1000 },
-    { window: "allTime", sinceMs: Number.POSITIVE_INFINITY },
-  ];
-  const empty = () =>
-    buckets.map((b) => ({ window: b.window, requests: 0, audioSeconds: 0, words: 0 }));
-
-  const sb = dataClientFor(user);
-  if (!sb) return empty();
-
-  const { data, error } = await sb
-    .from("usage_events")
-    .select("audio_seconds, word_count, created_at")
-    .eq("user_id", user.id);
-  if (error || !data) return empty();
-
-  const now = Date.now();
-  const out = empty();
-  for (const r of data as Array<{ audio_seconds?: number; word_count?: number; created_at?: string }>) {
-    const ts = r.created_at ? Date.parse(r.created_at) : NaN;
-    const age = Number.isFinite(ts) ? now - ts : Number.POSITIVE_INFINITY;
-    const a = r.audio_seconds ?? 0;
-    const w = r.word_count ?? 0;
-    for (let i = 0; i < buckets.length; i++) {
-      if (age <= buckets[i]!.sinceMs) {
-        out[i]!.audioSeconds += a;
-        out[i]!.words += w;
-        out[i]!.requests += 1;
-      }
-    }
-  }
-  return out;
-}
-
-/**
- * Pre-flight free-tier check. Returns a human-readable reason string when the
- * user is over the configured monthly ceiling — the caller should refuse the
- * request BEFORE calling any paid upstream. Returns null when the user is
- * inside the limit (or no limit is configured).
- *
- * Cheap enough to call on every request path: one indexed query per user per
- * request, cached at Supabase.
- */
 /**
  * Is this id on the operator exemption list?
  *
@@ -240,6 +186,15 @@ export function isQuotaExempt(id: string, configured: string | undefined): boole
   return configured.split(",").some((entry) => entry.trim() === id);
 }
 
+/**
+ * Pre-flight free-tier check. Returns a human-readable reason string when the
+ * user is over the configured monthly ceiling — the caller should refuse the
+ * request BEFORE calling any paid upstream. Returns null when the user is
+ * inside the limit (or no limit is configured).
+ *
+ * Cheap enough to call on every request path: one indexed query per user per
+ * request, cached at Supabase.
+ */
 export async function enforceQuota(user: AuthedUser): Promise<string | null> {
   // Paying users are not metered. This check did not exist, so a subscriber
   // was counted against the free monthly cap like everyone else and cut off
@@ -264,24 +219,19 @@ export async function enforceQuota(user: AuthedUser): Promise<string | null> {
   if (capAudio <= 0 && capWords <= 0) return null; // no limit configured
 
   const moments = await usageMomentsSince(user, monthStartIso());
-  const used = moments
-    ? moments.reduce(
-        (acc, m) => ({
-          audioSeconds: acc.audioSeconds + m.audioSeconds,
-          words: acc.words + m.words,
-        }),
-        { audioSeconds: 0, words: 0 },
-      )
-    : null;
-  if (!used || !moments) {
+  if (!moments) {
     // We couldn't read usage. With auth DISABLED (dev / DEV_SKIP_AUTH) there's
     // no billing to protect → allow. But when auth is CONFIGURED, a null means
     // the read failed or the wrong Supabase key is deployed — failing OPEN here
     // would hand out unlimited paid STT (the reported bypass), so fail CLOSED
     // with a soft retry rather than a permanent lock.
-    if (!getConfig().authEnabled) return null;
+    if (!cfg.authEnabled) return null;
     return "Couldn't verify your usage right now — please try again in a moment.";
   }
+  const used = moments.reduce(
+    (acc, m) => ({ audioSeconds: acc.audioSeconds + m.audioSeconds, words: acc.words + m.words }),
+    { audioSeconds: 0, words: 0 },
+  );
 
   if (capAudio > 0 && used.audioSeconds >= capAudio) {
     return `Monthly voice cap reached (${Math.round(capAudio / 60)} min). Resets ${monthResetDate()}.`;
@@ -316,35 +266,17 @@ function monthResetDate(): string {
 }
 
 /**
- * Sum a user's audio-seconds usage since a given ISO timestamp. This is the
- * read side free-tier enforcement uses (see enforceQuota).
+ * A user's metered rows since a given ISO timestamp — the read side of
+ * free-tier enforcement (enforceQuota) and of the allowance.
+ *
+ * Unaggregated, because earned words are a function of WHEN dictations
+ * happened, not just how many words they produced. This is the one read;
+ * enforceQuota sums it and the allowance walks it, which is what keeps the
+ * number enforced and the number displayed from ever disagreeing.
  *
  * Reads via `dataClientFor(user)` — the service client when configured, else
  * the JWT-scoped (RLS) client — so quota reads work on anon-key-only
  * deployments too (a service-only read there returned null → quota fail-open).
- */
-export async function usageSince(
-  user: AuthedUser,
-  sinceIso: string,
-): Promise<{ audioSeconds: number; words: number } | null> {
-  const rows = await usageMomentsSince(user, sinceIso);
-  if (!rows) return null;
-  return rows.reduce(
-    (acc, row) => ({
-      audioSeconds: acc.audioSeconds + row.audioSeconds,
-      words: acc.words + row.words,
-    }),
-    { audioSeconds: 0, words: 0 },
-  );
-}
-
-/**
- * The same rows, unaggregated.
- *
- * Earned words are a function of WHEN dictations happened, not just how many
- * words they produced, so the sum is no longer enough. This is the one read;
- * usageSince reduces it and the allowance walks it, which is what keeps the
- * number enforced and the number displayed from ever disagreeing.
  */
 export async function usageMomentsSince(
   user: AuthedUser,

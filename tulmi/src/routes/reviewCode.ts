@@ -31,22 +31,9 @@
  *     CODE is the whole secret. Make it long, and clear it when review passes.
  */
 import type { FastifyInstance } from "fastify";
-import crypto from "node:crypto";
 import { getConfig } from "../config.js";
 import { supabase } from "../auth/supabase.js";
-
-/**
- * Constant-time compare of two strings.
- *
- * Lengths are hashed first so the comparison itself is over equal-length
- * buffers: timingSafeEqual throws on a length mismatch, and branching on that
- * throw would leak the length it is meant to hide.
- */
-function sameSecret(a: string, b: string): boolean {
-  const ha = crypto.createHash("sha256").update(a).digest();
-  const hb = crypto.createHash("sha256").update(b).digest();
-  return crypto.timingSafeEqual(ha, hb);
-}
+import { sameSecret } from "../auth/secret.js";
 
 export function registerReviewCodeRoute(
   app: FastifyInstance,

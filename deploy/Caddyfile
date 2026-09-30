@@ -23,11 +23,20 @@
 # rather serve a marketing site there, put it in front and forward
 # /.well-known/* here.
 
+# HSTS: these hosts are HTTPS-only, so a browser is told never to try plain
+# HTTP first (where a network could answer for us). No includeSubDomains —
+# that would bind every future subdomain, including ones hosted elsewhere.
+(hsts) {
+    header Strict-Transport-Security "max-age=31536000"
+}
+
 {$FLOW_DOMAIN} {
+    import hsts
     reverse_proxy backend:8080
 }
 
 tailzu.space, app.tailzu.space {
+    import hsts
     # AASA + assetlinks — always through to the backend, no redirect (Apple
     # rejects Universal Links whose AASA response is a redirect).
     reverse_proxy /.well-known/* backend:8080

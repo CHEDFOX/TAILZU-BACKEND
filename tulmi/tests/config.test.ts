@@ -71,13 +71,14 @@ describe("config guards", () => {
     process.env.OPENAI_API_KEY = "test-openai-key";
     process.env.DEV_SKIP_AUTH = "true";
     process.env.NODE_ENV = "production";
-    delete process.env.DEV_SKIP_AUTH_ALLOW_PROD;
 
     const getConfig = await loadFreshConfig();
     expect(() => getConfig()).toThrow(/DEV_SKIP_AUTH=true is not allowed/i);
   });
 
-  it("allows the DEV_SKIP_AUTH override with the explicit escape hatch", async () => {
+  it("has no escape hatch: the retired DEV_SKIP_AUTH_ALLOW_PROD opens nothing", async () => {
+    // It used to. One more line in a production .env would have booted the
+    // server with every request mapped to the same stub user.
     process.env.OPENROUTER_API_KEY = "test-openrouter-key";
     process.env.STT_PROVIDER = "openai";
     process.env.OPENAI_API_KEY = "test-openai-key";
@@ -86,7 +87,8 @@ describe("config guards", () => {
     process.env.DEV_SKIP_AUTH_ALLOW_PROD = "true";
 
     const getConfig = await loadFreshConfig();
-    expect(() => getConfig()).not.toThrow();
+    expect(() => getConfig()).toThrow(/DEV_SKIP_AUTH=true is not allowed/i);
+    delete process.env.DEV_SKIP_AUTH_ALLOW_PROD;
   });
 
   it("refuses when the selected STT provider has no key", async () => {

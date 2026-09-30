@@ -15,10 +15,12 @@ import type { PaywallConfig } from "../../../../shared/types/api.js";
 import { siteShell } from "./shell.js";
 import { appLd, crumbsLd, pageLd } from "../../seo/facts.js";
 
-const esc = (s: string) =>
+/** HTML-escape for text and attribute values. Shared with the pay page. */
+export const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const n = (v: number) => Math.max(0, Math.round(v)).toLocaleString("en-US");
-const amount = (price: string | undefined) => Number(String(price ?? "").replace(/[^0-9.]/g, "")) || 0;
+/** A plan's price as a number, for ordering plans. Shared with the pay page. */
+export const amount = (price: string | undefined) => Number(String(price ?? "").replace(/[^0-9.]/g, "")) || 0;
 
 export const SELLER = "XOOTEQ LAB PRIVATE LIMITED";
 

@@ -231,7 +231,6 @@ const EnvSchema = z.object({
 
   // --- Text-to-speech (voice output: read-aloud / screen-clarify) ---
   // Uses OPENAI_API_KEY. gpt-4o-mini-tts is cheap, multilingual, and steerable.
-  TTS_PROVIDER: z.enum(["openai"]).default("openai"),
   OPENAI_TTS_MODEL: z.string().default("gpt-4o-mini-tts"),
   TTS_VOICE: z.string().default("alloy"),
   TTS_FORMAT: z.enum(["mp3", "opus", "aac", "flac", "wav", "pcm"]).default("mp3"),
@@ -253,11 +252,9 @@ const EnvSchema = z.object({
   HOST: z.string().default("0.0.0.0"),
   NODE_ENV: z.string().optional(),
 
-  // When true, auth + metering are skipped (local pipeline testing).
+  // When true, auth + metering are skipped (local pipeline testing). Only
+  // ever under NODE_ENV=development or test — see the boot-time refusal.
   DEV_SKIP_AUTH: bool(false),
-  // Explicit escape hatch for running with auth off in production-shaped envs
-  // (load tests, smoke checks). Off by default — see the boot-time refusal.
-  DEV_SKIP_AUTH_ALLOW_PROD: bool(false),
 
   // Prompt versions to load from shared/prompts/. v3 (cleanup) / v2 (reply)
   // add the tone dial + per-app overrides + watermark. Roll back by exporting
@@ -276,15 +273,16 @@ const EnvSchema = z.object({
   SENTRY_ENVIRONMENT: z.string().default("production"),
   SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().default(0.05),
 
-  // Rate limiting — abuse buckets are keyed per client IP (see the
-  // keyGenerator in server.ts). Per-user fairness is enforced downstream by
-  // metering/quota, not by this coarse limiter.
+  // Rate limiting — buckets are keyed by the locally verified user id when the
+  // request carries a valid session, else by client IP (see the keyGenerator
+  // in server.ts). Spending is bounded downstream by metering/quota.
   RATE_LIMIT_MAX: z.coerce.number().default(120),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
 
-  // Admin secret used to authorize server-side operations reachable over HTTP
-  // (currently just the cache-bump endpoint). Optional — when unset, the
-  // admin endpoints refuse every request. Set to a long random string.
+  // Admin secret for every operator route over HTTP (x-admin-secret): the
+  // control plane and its console, push, media, and the cache bump. Optional —
+  // when unset, the admin endpoints refuse every request. Set to a long random
+  // string (openssl rand -hex 32).
   ADMIN_SECRET: z.string().optional(),
   /**
    * Smart notifications (src/push): one push at most on a day there is a
@@ -616,7 +614,6 @@ export const ENV_KEYS: readonly string[] = [
   "FLOW_END_HOLD_MS",
   "FLOW_TRANSPORT",
   "HISTORY_COALESCE_MS",
-  "AUTH_GOOGLE_WEB",
   "HISTORY_DEFAULT_ON",
   "INTRO_BUILT_IN",
   "INTRO_FIT",
@@ -712,6 +709,12 @@ export function getConfig(): AppConfig {
           `other symptom. Use a secret with no "$" in it.`,
       );
     }
+    // Every comparison is timing-safe and every route that checks one is
+    // throttled, which only makes guessing slow; a short secret makes it
+    // short. Warned, not refused, for the same reason as above.
+    if (typeof value === "string" && value && value.length < 24) {
+      console.warn(`[config] ${name} is under 24 characters. Use a long random value (openssl rand -hex 32).`);
+    }
   }
 
   // The selected STT provider must have its key.
@@ -744,17 +747,18 @@ export function getConfig(): AppConfig {
   // Hard refuse to boot with auth disabled UNLESS this is explicitly a dev/test
   // environment. A forgotten DEV_SKIP_AUTH=true is the single largest
   // cost-amplification footgun (unauthenticated requests spend OpenAI/OpenRouter
-  // budget). We treat anything that isn't an affirmative "development"/"test" as
-  // production — so a typo'd or unset NODE_ENV ("prod", "PRODUCTION", "") fails
-  // safe rather than booting wide open.
+  // budget, and every caller is the same user). We treat anything that isn't an
+  // affirmative "development"/"test" as production — so a typo'd or unset
+  // NODE_ENV ("prod", "PRODUCTION", "") fails safe rather than booting wide open.
+  // There is no override: a load test runs under NODE_ENV=development, on a box
+  // that is not the production one.
   const nodeEnv = (env.NODE_ENV ?? "").toLowerCase();
   const isDevOrTest = nodeEnv === "development" || nodeEnv === "test";
-  if (env.DEV_SKIP_AUTH && !isDevOrTest && !env.DEV_SKIP_AUTH_ALLOW_PROD) {
+  if (env.DEV_SKIP_AUTH && !isDevOrTest) {
     throw new Error(
       "DEV_SKIP_AUTH=true is not allowed when NODE_ENV=production. " +
         "Configure Supabase (SUPABASE_URL + SUPABASE_ANON_KEY) and remove " +
-        "DEV_SKIP_AUTH before deploying. To override for a controlled load " +
-        "test, set DEV_SKIP_AUTH_ALLOW_PROD=true (NOT recommended).",
+        "DEV_SKIP_AUTH before deploying.",
     );
   }
 

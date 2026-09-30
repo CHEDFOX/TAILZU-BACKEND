@@ -313,9 +313,12 @@ describe("the live demo", () => {
 
   it("refuses a clip too big to be short, whatever the container", async () => {
     // webm cannot be measured, so bytes are the only guard that reaches it.
+    // Refused while it is read, with the demo's own words, rather than after
+    // an anonymous upload has been buffered whole.
     const { payload, headers } = multipart(Buffer.alloc(900 * 1024), "clip.webm");
     const res = await app.inject({ method: "POST", url: "/v1/demo/transcribe", payload, headers });
     expect(res.statusCode).toBe(413);
+    expect(res.json().code).toBe("too_long");
   });
 
   it("asks for a file when none arrives", async () => {

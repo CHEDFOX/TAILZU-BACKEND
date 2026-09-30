@@ -197,6 +197,28 @@ describe("payments, end to end", () => {
     expect(row).toBeNull();
   });
 
+  it("takes the secret bare or as a bearer, and nothing near it", async () => {
+    // Compared timing-safe, both spellings every time (auth/secret.ts).
+    expect((await webhook(event(), `Bearer ${SECRET}`)).statusCode).toBe(200);
+    expect((await webhook(event(), `${SECRET}x`)).statusCode).toBe(401);
+    expect((await webhook(event(), `Bearer ${SECRET.slice(0, -1)}`)).statusCode).toBe(401);
+    expect((await webhook(event(), SECRET)).statusCode).toBe(200);
+  });
+
+  it("does not let last period's EXPIRATION revoke a renewed subscriber", async () => {
+    // RevenueCat promises no order and retries. This month's RENEWAL landed
+    // first; the EXPIRATION of last month arrives after it.
+    await webhook(event({ type: "RENEWAL", expiration_at_ms: Date.now() + 30 * 86_400_000 }));
+    const late = await webhook(event({ type: "EXPIRATION", expiration_at_ms: Date.now() - 86_400_000 }));
+    expect(late.json().reason).toMatch(/stale EXPIRATION ignored/);
+    expect(row?.active).toBe(true);
+    wordsUsed = 5_000;
+    expect(await enforceQuota(user as never)).toBeNull();
+    // The expiration of the period the row actually holds still ends it.
+    const real = await webhook(event({ type: "EXPIRATION", expiration_at_ms: Date.parse(String(row?.expires_at)) }));
+    expect(real.json()).toMatchObject({ ok: true, reason: "revoked" });
+  });
+
   it("carries a purchase from the webhook to every place a user can tell", async () => {
     // --- before: nothing bought -------------------------------------------
     const free = (await bootstrap()).json();

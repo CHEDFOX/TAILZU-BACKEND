@@ -42,8 +42,11 @@ export async function getEntitlement(user: AuthedUser): Promise<Entitlement | nu
   const hit = cache.get(user.id);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
 
+  // Only a Supabase account can hold a row (user_id is a uuid referencing
+  // auth.users). A static-token or dev user's id is not one, and asking made
+  // the database refuse the query and log an error on every quota check.
   const sb = supabase();
-  if (!sb) return null;
+  if (!sb || !UUID.test(user.id)) return null;
 
   const { data, error } = await sb
     .from("entitlements")
@@ -359,17 +362,35 @@ export async function applyRevenueCatEvent(
   // It cannot be shown without somewhere to put it, so for now it is named in
   // the log, loudly, with both stores and the user: enough to answer "why am I
   // being charged twice" from the server rather than from two support queues.
+  const { data: before } = await sb
+    .from("entitlements")
+    .select("store, active, expires_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const beforeExpiry = before?.expires_at ? Date.parse(String(before.expires_at)) : NaN;
+
+  // AN EXPIRATION FOR A PERIOD THAT WAS ALREADY RENEWED IS NOT NEWS.
+  //
+  // RevenueCat does not promise order, and it retries. An EXPIRATION for last
+  // month arriving after this month's RENEWAL would otherwise revoke someone
+  // who has just paid — and with no REVENUECAT_API_KEY nothing heals it until
+  // the next renewal. The row already runs past the expiry the event names, so
+  // the event describes a period that is over and replaced. At worst this
+  // keeps access to the end of a period the row says was paid for; the expiry
+  // check in getEntitlement still ends it there.
+  if (
+    type === "EXPIRATION" && before?.active === true && ev.expiration_at_ms &&
+    beforeExpiry > ev.expiration_at_ms
+  ) {
+    return { ok: true, reason: `stale EXPIRATION ignored: access already runs to ${new Date(beforeExpiry).toISOString()}`, userId };
+  }
+
   if (grants) {
-    const { data: before } = await sb
-      .from("entitlements")
-      .select("store, active, expires_at")
-      .eq("user_id", userId)
-      .maybeSingle();
     const had = String(before?.store ?? "").trim().toLowerCase();
     const now = String(ev.store ?? "").trim().toLowerCase();
     const stillLive =
       before?.active === true &&
-      (!before?.expires_at || Date.parse(String(before.expires_at)) > Date.now());
+      (!before?.expires_at || beforeExpiry > Date.now());
     if (had && now && had !== now && stillLive) {
       console.error(
         `[entitlements] DOUBLE BILLING: ${userId} just bought on ${now} while ${had} is still live. ` +

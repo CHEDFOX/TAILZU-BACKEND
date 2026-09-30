@@ -225,39 +225,6 @@ describe("Personality routes", () => {
     expect(body.personality.tone).toBe("warm and concise");
     expect(body.personality.formality).toBe("casual");
   });
-
-  it("POST /v1/personality/vocabulary/learn adds corrections to vocabulary", async () => {
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/personality/vocabulary/learn",
-      payload: {
-        corrections: [
-          { from: "kubernetes", to: "K8s" },
-          { from: "postgres", to: "PostgreSQL" },
-          { from: "redis-svc", to: "Redis" },
-        ],
-      },
-    });
-    expect(res.statusCode).toBe(200);
-    const p = res.json().personality;
-    const lines = (p.vocabulary ?? "").split("\n");
-    expect(lines).toContain("K8s");
-    expect(lines).toContain("PostgreSQL");
-    expect(lines).toContain("Redis");
-  });
-
-  it("POST /v1/personality/vocabulary/learn refuses more than 20 corrections", async () => {
-    const many = Array.from({ length: 25 }, (_, i) => ({
-      from: `f${i}`,
-      to: `t${i}`,
-    }));
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1/personality/vocabulary/learn",
-      payload: { corrections: many },
-    });
-    expect(res.statusCode).toBe(400);
-  });
 });
 
 describe("SDUI /v1/app/*", () => {
@@ -292,23 +259,7 @@ describe("SDUI /v1/app/*", () => {
   });
 });
 
-describe("Stats + History", () => {
-  it("GET /v1/stats?window=week returns the stats shape", async () => {
-    const res = await app.inject({
-      method: "GET",
-      url: "/v1/stats?window=week",
-    });
-    expect(res.statusCode).toBe(200);
-    const body = res.json();
-    expect(body.window).toBe("week");
-    expect(typeof body.requests).toBe("number");
-    expect(typeof body.wordsOut).toBe("number");
-    expect(typeof body.audioSeconds).toBe("number");
-    expect(typeof body.minutesSaved).toBe("number");
-    expect(Array.isArray(body.sparklinePerDay)).toBe(true);
-    expect(body.sparklinePerDay.length).toBe(7);
-  });
-
+describe("Cache + History", () => {
   it("bootstrap response includes a cacheVersion token", async () => {
     const res = await app.inject({
       method: "POST",

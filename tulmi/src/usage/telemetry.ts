@@ -21,30 +21,15 @@ export interface TelemetryInput {
   windowMs: number;
 }
 
-/**
- * In-memory fallback for deployments without Supabase (DEV_SKIP_AUTH local
- * runs, and static-token desktop users whose synthetic ids aren't in
- * auth.users, so an insert would violate the FK). Bounded — telemetry must
- * never become a memory leak in a long-running process.
- */
-const MEM_LIMIT = 500;
-const memory: Array<TelemetryInput & { userId: string; at: number }> = [];
-
-export function memoryTelemetry(): ReadonlyArray<TelemetryInput & { userId: string; at: number }> {
-  return memory;
-}
-
 export async function recordKeyboardTelemetry(
   user: AuthedUser,
   input: TelemetryInput,
 ): Promise<void> {
   const sb = dataClientFor(user);
-  // Static-token users aren't rows in auth.users; the FK would reject them.
-  if (!sb || user.id.startsWith("static-")) {
-    memory.push({ ...input, userId: user.id, at: Date.now() });
-    if (memory.length > MEM_LIMIT) memory.splice(0, memory.length - MEM_LIMIT);
-    return;
-  }
+  // No database (DEV_SKIP_AUTH), or a static-token user whose synthetic id is
+  // not a row in auth.users (the FK would reject it): the route's own log line
+  // is the only record.
+  if (!sb || user.id.startsWith("static-")) return;
 
   const { error } = await sb.from("keyboard_telemetry").insert({
     user_id: user.id,

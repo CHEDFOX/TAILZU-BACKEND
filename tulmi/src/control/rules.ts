@@ -217,10 +217,19 @@ type Container = Record<string, unknown> | unknown[];
 const isObj = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
+/**
+ * Keys no rule may walk into or write. `payload.__proto__` is Object.prototype,
+ * so "/__proto__/x" would set x on EVERY object in the process — one saved
+ * rule (or one x-control-draft header) poisoning the whole server.
+ */
+const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 export function parsePointer(p: string): string[] {
   if (p === "" || p === "/") return [];
   if (!p.startsWith("/")) throw new Error(`path must start with "/": ${p}`);
-  return p.slice(1).split("/").map((t) => t.replace(/~1/g, "/").replace(/~0/g, "~"));
+  const tokens = p.slice(1).split("/").map((t) => t.replace(/~1/g, "/").replace(/~0/g, "~"));
+  if (tokens.some((t) => FORBIDDEN_KEYS.has(t))) throw new Error(`forbidden key in path: ${p}`);
+  return tokens;
 }
 
 function parentOf(root: unknown, tokens: string[], create: boolean): { parent: Container; key: string } {
@@ -251,6 +260,7 @@ function get(root: unknown, tokens: string[]): unknown {
 
 export function deepMerge(target: Record<string, unknown>, src: Record<string, unknown>): void {
   for (const [k, v] of Object.entries(src)) {
+    if (FORBIDDEN_KEYS.has(k)) continue;
     const t = target[k];
     if (isObj(t) && isObj(v)) deepMerge(t, v);
     else target[k] = clone(v);

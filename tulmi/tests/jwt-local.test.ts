@@ -75,6 +75,15 @@ describe("localUserId — local JWT verification for rate-limit keying", () => {
     expect(await localUserId("Bearer not.a.jwt")).toBeNull();
   });
 
+  it("returns null for a validly-signed token that is not a user session", async () => {
+    const localUserId = await freshVerifier({ SUPABASE_JWT_SECRET: SECRET });
+    // Same signer, wrong audience (or none): not a person, so no user bucket.
+    for (const aud of [undefined, "anon", "service_role"]) {
+      const token = await sign(SECRET, aud ? { sub: "user-123", aud } : { sub: "user-123" });
+      expect(await localUserId(`Bearer ${token}`)).toBeNull();
+    }
+  });
+
   it("returns null for a valid signature but no sub claim", async () => {
     const localUserId = await freshVerifier({ SUPABASE_JWT_SECRET: SECRET });
     const token = await sign(SECRET, { aud: "authenticated" }); // no sub

@@ -125,9 +125,11 @@ DIRECT=""
 # server itself rather than from a file somebody meant to edit. Nothing is
 # written: the filter returns before the database is touched, and the user id
 # is random and belongs to nobody.
+# The header goes in on stdin (-H @-), never as an argument: an argument is
+# readable by every user on the box in `ps` for as long as curl runs.
 probe() {
-  curl -sS -m 10 -X POST "$1/v1/billing/revenuecat" \
-    -H "Authorization: $SECRET" -H 'Content-Type: application/json' \
+  printf 'Authorization: %s\n' "$SECRET" | curl -sS -m 10 -X POST "$1/v1/billing/revenuecat" \
+    -H @- -H 'Content-Type: application/json' \
     -d '{"event":{"type":"INITIAL_PURCHASE","app_user_id":"00000000-0000-4000-8000-000000000000","entitlement_ids":["ship-sh-probe"],"store":"APP_STORE","environment":"PRODUCTION"}}' 2>/dev/null
 }
 # One word for what a probe came back with.

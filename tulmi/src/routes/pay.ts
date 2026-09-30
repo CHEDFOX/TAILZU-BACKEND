@@ -17,12 +17,8 @@
  * (policies/shell.ts), with the plans on its sun field as on /pricing.
  */
 import type { PaywallConfig } from "../../../shared/types/api.js";
-import { PLAN_CSS, SELLER } from "./policies/pricing.js";
+import { PLAN_CSS, SELLER, amount, esc } from "./policies/pricing.js";
 import { siteShell } from "./policies/shell.js";
-
-const esc = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const amount = (price: string | undefined) => Number(String(price ?? "").replace(/[^0-9.]/g, "")) || 0;
 
 const PRICE_ID = /^pri_[a-z0-9]+$/;
 const CLIENT_TOKEN = /^(live|test)_[A-Za-z0-9]+$/;

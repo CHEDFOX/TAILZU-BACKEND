@@ -79,6 +79,18 @@ const IDLE_TIMEOUT_MS = 60_000;
 const HANDSHAKE_TIMEOUT_MS = 10_000;
 
 /**
+ * The audio format a client may declare, clamped. Every client sends 16 kHz
+ * mono, and the value goes straight to the engine and into the metering sum
+ * (bytes ÷ rate): a declared rate of a billion would meter a minute of speech
+ * as nothing, and a nonsense one would have the engine decode noise.
+ */
+function audioFormat(start: StartMessage): { sampleRate: number; channels: number } {
+  const clamp = (v: unknown, lo: number, hi: number, def: number) =>
+    typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : def;
+  return { sampleRate: clamp(start.sampleRate, 8000, 48000, 16000), channels: clamp(start.channels, 1, 2, 1) };
+}
+
+/**
  * WHAT A STREAM ERROR SAYS, WRITTEN FOR THE PERSON WHO WAS TALKING.
  *
  * Clients show `message` as it stands: the app's toast, the desktop's
@@ -171,9 +183,13 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
       // sentence twice.
       let sentAtSwitch = 0;
       let closed = false;
+      // One `start` per socket. A second one used to open a second engine over
+      // the first, which was never closed: a paid provider session left
+      // running, whose eventual close then ended the user's live one.
+      let started = false;
       let user: AuthedUser | null = null;
       let bytes = 0;
-      let sampleRate = 16000;
+      let format = { sampleRate: 16000, channels: 1 };
       let handshakeTimer: NodeJS.Timeout | null = setTimeout(() => {
         send({ type: "error", code: "bad_request", message: STREAM_ERROR_TEXT.noStart });
         safeClose();
@@ -211,8 +227,8 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         if (metered) return;
         metered = true;
         if (!user || bytes <= 0) return;
-        // linear16 mono → 2 bytes/sample. Rough seconds of audio processed.
-        const seconds = bytes / (sampleRate * 2);
+        // linear16 → 2 bytes per sample per channel. Seconds of audio processed.
+        const seconds = bytes / (format.sampleRate * 2 * format.channels);
         recordUsage({
           user,
           source: "stream",
@@ -355,7 +371,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           safeClose();
           return;
         }
-        sampleRate = start.sampleRate ?? 16000;
+        format = audioFormat(start);
 
         // WHICH engine (Deepgram / Sarvam) is decided server-side in
         // live-engines.ts. Neither is pinned to a language — the backend
@@ -365,7 +381,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         // and honoring it locked the recognizer to that single language,
         // breaking code-switching.
         engine = openLiveEngine(
-          { sampleRate, channels: start.channels ?? 1 },
+          format,
           {
             onReady: () => {
               send({ type: "ready" });
@@ -429,7 +445,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         // toward the session either way: a shadow that dies mid-stream costs
         // nothing but the lead going back to nobody.
         shadow = openShadowEngine(
-          { sampleRate, channels: start.channels ?? 1 },
+          format,
           {
             onReady: () => { /* the user's session is already live */ },
             onPartial: (text) => {
@@ -438,7 +454,6 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
             onFinal: (raw) => {
               const text = sanitizePlainTranscript(raw, { trustSpeech: true });
               if (text) shadowFinals.push(text);
-              const had = leadLocked;
               considerLead("shadow", text);
               // Words are metered off whatever the user actually receives, so
               // the count follows the lead rather than the primary engine.
@@ -454,7 +469,6 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
                 send({ type: "final", text: fresh ? text : "" });
                 // The refine step at stop reconciles the whole line from both
                 // readings (see `done`), so nothing skipped here is lost.
-                void had;
               }
             },
             onError: () => { /* best-effort second opinion */ },
@@ -487,29 +501,47 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         // Text frames are JSON control messages.
         let msg: any;
         try { msg = JSON.parse(raw.toString()); } catch { return; }
+        if (!msg || typeof msg !== "object") return;
 
         if (msg.type === "start") {
-          // Extract JWT: prefer header, fall back to inline token.
-          const headerAuth = req.headers["authorization"];
-          const inlineAuth = typeof msg.token === "string" && msg.token
-            ? `Bearer ${msg.token}` : undefined;
-          user = await resolveUser(headerAuth ?? inlineAuth);
-          if (!user) {
-            send({ type: "error", code: "unauthorized", message: STREAM_ERROR_TEXT.unauthorized });
+          if (started) return;
+          started = true; // before the first await, so a second start can't slip in
+          try {
+            // Extract JWT: prefer header, fall back to inline token.
+            const headerAuth = req.headers["authorization"];
+            const inlineAuth = typeof msg.token === "string" && msg.token
+              ? `Bearer ${msg.token}` : undefined;
+            user = await resolveUser(headerAuth ?? inlineAuth);
+            if (!user) {
+              send({ type: "error", code: "unauthorized", message: STREAM_ERROR_TEXT.unauthorized });
+              safeClose();
+              return;
+            }
+            // Pre-flight quota check — refuse before we bill Deepgram anything.
+            const over = await enforceQuota(user);
+            if (over) {
+              // Already written for the person (metering.enforceQuota): the
+              // number, the reset date and the way out.
+              send({ type: "error", code: "quota_exceeded", message: over });
+              safeClose();
+              return;
+            }
+          } catch (err) {
+            // A transient auth/database failure. This handler is async and
+            // nothing awaits it, so an escape would be an unhandled rejection;
+            // fail this socket only.
+            req.log.error({ err }, "live dictation: could not verify the session");
+            send({ type: "error", code: "internal", message: STREAM_ERROR_TEXT.unavailable });
             safeClose();
             return;
           }
-          // Pre-flight quota check — refuse before we bill Deepgram anything.
-          const over = await enforceQuota(user);
-          if (over) {
-            // Already written for the person (metering.enforceQuota): the
-            // number, the reset date and the way out.
-            send({ type: "error", code: "quota_exceeded", message: over });
-            safeClose();
-            return;
-          }
+          // The socket may have gone while auth was in flight.
+          if (closed) return;
           if (handshakeTimer) { clearTimeout(handshakeTimer); handshakeTimer = null; }
           openEngine(msg as StartMessage);
+          // Until the engine says ready, the idle window covers the wait: an
+          // engine that never opens must not strand the socket.
+          if (!closed) armIdle();
           return;
         }
 

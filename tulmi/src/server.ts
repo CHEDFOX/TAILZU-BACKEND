@@ -3,7 +3,7 @@
  *
  *   GET  /healthz                 → liveness
  *   POST /v1/transcribe-clean     → voice: multipart audio → cleaned text
- *   WS   /v1/stream               → voice (live): audio frames up, text down
+ *   WS   /v1/transcribe-stream    → voice (live): PCM up, partials/finals down
  *   POST /v1/refine               → typing: text → polished text (autocorrect)
  *   POST /v1/draft                → screen: screen content + intent → reply
  *   POST /v1/speak                → voice out: text → spoken audio (TTS)
@@ -13,18 +13,8 @@
  * Every output is shaped by the user's personality + the target-app context,
  * resolved here on the backend (the app just sends the inputs).
  */
-import { timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-
-/** Constant-time string comparison — avoids leaking a secret via response
- * timing. Returns false on any length mismatch (lengths aren't secret). */
-function safeStrEqual(a: string, b: string): boolean {
-  const ab = Buffer.from(a, "utf8");
-  const bb = Buffer.from(b, "utf8");
-  if (ab.length !== bb.length) return false;
-  return timingSafeEqual(ab, bb);
-}
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from "fastify";
 import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
@@ -39,32 +29,68 @@ import { payHtml } from "./routes/pay.js";
 import { DOWNLOAD_PAGE_HTML } from "./routes/download.js";
 import { registerSeoRoutes } from "./routes/seo.js";
 import { registerDemoRoutes, sitePage, AUTH_RESUME_SCHEME_URL } from "./routes/demo.js";
-import { initControl, registerControlRoutes, withControl } from "./control/index.js";
+import { initControl, registerControlRoutes, requireAdmin, withControl } from "./control/index.js";
 import { initPush, pushEngine, registerPushRoutes } from "./push/index.js";
 import { registerReviewCodeRoute } from "./routes/reviewCode.js";
 import { getConfig, VERSION } from "./config.js";
 import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
+import { sameSecret } from "./auth/secret.js";
 import { localUserId } from "./auth/jwt.js";
-import { allowanceFor, enforceQuota, recordUsage, usageSummary, usageWindows } from "./usage/metering.js";
+import { allowanceFor, enforceQuota, recordUsage, usageSummary } from "./usage/metering.js";
 import { recordKeyboardTelemetry } from "./usage/telemetry.js";
 import { activeRollouts, bucketFor } from "./experience/rollout.js";
 import { captureException, fastifyLoggerOptions, initSentry } from "./observability.js";
 import { getProfile, updateProfile, touchLastSeen, type Profile } from "./profile/store.js";
 import { applyRevenueCatEvent, getEntitlement, isEntitled } from "./billing/entitlements.js";
+import { runPipeline } from "./pipeline/index.js";
+import { estimateDurationSeconds } from "./pipeline/stt.js";
+import {
+  assist, draftReply, inferStyle, refineVariants, updateStylePortrait, LLM_TONES,
+  portraitFromUsage, converseTurn, portraitFromTranscript, spokenLanguage, type ConverseTurn,
+} from "./pipeline/cleanup.js";
+import { mergePortraitWords } from "./pipeline/portraitDimensions.js";
+import { synthesize } from "./pipeline/tts.js";
+import {
+  getPersonality,
+  resolvePersonality,
+  upsertPresetTone,
+  updatePersonality,
+} from "./personality/store.js";
+import { PERSONALITY_PRESETS, applyPresetOverrides } from "./experience/personalityPresets.js";
+import {
+  type KeyboardPlatform,
+  buildBootstrap,
+  buildScreen,
+  buildKeyboardConfig,
+  bumpCacheVersion,
+  currentCacheVersion,
+  setMediaRegistryAccessor,
+  PAYWALL_CONFIG, POLICY,
+} from "./experience/catalog.js";
+import { localize } from "./experience/i18n.js";
+import {
+  appendHistoryEntry,
+  deleteHistoryEntry,
+  listHistory,
+  statsForUser,
+  MAX_LIMIT as HISTORY_MAX_LIMIT,
+} from "./history/store.js";
+import { z } from "zod";
+import type {
+  AudioFormat,
+  DraftRequest,
+  DraftResponse,
+  HealthResponse,
+  HistoryListResponse,
+  LanguageHint,
+  Personality,
+  PersonalityResponse,
+  RefineRequest,
+  RefineResponse,
+  SpeakRequest,
+  TargetAppHint,
+} from "../../shared/types/api.js";
 
-/**
- * The language a request should be written in.
- *
- * Clients send a hint, but the hint is a copy of the user's choice made at
- * first launch and does not always follow later changes — the iOS keyboard
- * reads it from a shared store that Settings did not update, so a Hindi
- * speaker who had picked English once kept getting Hindi speech "refined"
- * toward English. The profile is the source of truth for that choice, so
- * when the client sends nothing, or "auto", the profile decides. A real code
- * from the client still wins: a per-request override is a deliberate act.
- *
- * One extra read, and only on the fallback path.
- */
 /**
  * Learn from ordinary use, ONCE PER SESSION, off the user's path.
  *
@@ -154,6 +180,19 @@ function learnFromUsage(user: AuthedUser, personality: Personality): void {
   })();
 }
 
+/**
+ * The language a request should be written in.
+ *
+ * Clients send a hint, but the hint is a copy of the user's choice made at
+ * first launch and does not always follow later changes — the iOS keyboard
+ * reads it from a shared store that Settings did not update, so a Hindi
+ * speaker who had picked English once kept getting Hindi speech "refined"
+ * toward English. The profile is the source of truth for that choice, so
+ * when the client sends nothing, or "auto", the profile decides. A real code
+ * from the client still wins: a per-request override is a deliberate act.
+ *
+ * One extra read, and only on the fallback path.
+ */
 async function effectiveLanguage(
   user: AuthedUser,
   hint: string | undefined,
@@ -168,64 +207,6 @@ async function effectiveLanguage(
   const l = profile?.language;
   return l && l !== "auto" ? l : "auto";
 }
-import { runPipeline, runPipelineStream } from "./pipeline/index.js";
-import {
-  assist, draftReply, inferStyle, refineVariants, updateStylePortrait, LLM_TONES,
-  portraitFromUsage,
-} from "./pipeline/cleanup.js";
-import { mergePortraitWords } from "./pipeline/portraitDimensions.js";
-import {
-  converseTurn, portraitFromTranscript, spokenLanguage, type ConverseTurn,
-} from "./pipeline/cleanup.js";
-import { synthesize } from "./pipeline/tts.js";
-import {
-  getPersonality,
-  resolvePersonality,
-  learnVocabularyCorrections,
-  upsertPresetTone,
-  updatePersonality,
-} from "./personality/store.js";
-import { PERSONALITY_PRESETS, applyPresetOverrides } from "./experience/personalityPresets.js";
-import {
-  type KeyboardPlatform,
-  buildBootstrap,
-  buildScreen,
-  buildKeyboardConfig,
-  bumpCacheVersion,
-  currentCacheVersion,
-  setMediaRegistryAccessor,
-  PAYWALL_CONFIG, POLICY,
-} from "./experience/catalog.js";
-import { localize } from "./experience/i18n.js";
-import {
-  appendHistoryEntry,
-  deleteHistoryEntry,
-  listHistory,
-  statsForUser,
-  MAX_LIMIT as HISTORY_MAX_LIMIT,
-} from "./history/store.js";
-import { z } from "zod";
-import type {
-  AudioFormat,
-  ClientMessage,
-  DraftRequest,
-  DraftResponse,
-  HealthResponse,
-  HistoryListResponse,
-  LanguageHint,
-  LearnVocabularyRequest,
-  Personality,
-  PersonalityResponse,
-  PrivacyAuditResponse,
-  RefineRequest,
-  RefineResponse,
-  ServerMessage,
-  SpeakRequest,
-  StatsResponse,
-  TargetAppHint,
-  VoicePreviewRequest,
-} from "../../shared/types/api.js";
-import { WS_PATH } from "../../shared/types/api.js";
 
 /**
  * Build (but do NOT listen on) a fully-configured Fastify instance.
@@ -260,11 +241,41 @@ const app = Fastify({
   trustProxy: 1,
 });
 
+const isClientError = (err: { statusCode?: number }) =>
+  !!err.statusCode && err.statusCode >= 400 && err.statusCode < 500;
+
 // Route unhandled errors through the observability layer (Sentry when
-// configured, console otherwise) — Fastify's default error handler still runs
-// after and formats the JSON response, this only tees the event.
+// configured, console otherwise) — the error handler below writes the
+// response, this only tees the event.
+//
+// 5xx only. A 4xx is the caller's mistake, not the server's, and every 429
+// and malformed body used to be reported too — noise that buried real errors,
+// and a way for anyone to spend the error-reporting quota by being refused.
 app.addHook("onError", async (req, _reply, err) => {
-  captureException(err, { route: req.routeOptions?.url, method: req.method });
+  if (!isClientError(err)) captureException(err, { route: req.routeOptions?.url, method: req.method });
+});
+
+// A 5xx says that something failed, never what. Fastify's default handler
+// puts err.message in the body, and for an unexpected throw that is an
+// internal detail — a file path, an SQL error, an upstream's own words. The
+// full error goes to the log (and Sentry, via onError above); 4xx keep
+// Fastify's shape, since their message is written for the caller.
+app.setErrorHandler((err, req, reply) => {
+  if (isClientError(err)) return reply.code(err.statusCode!).send(err);
+  req.log.error({ err }, "request failed");
+  return reply.code(500).send({ code: "internal", message: "Something went wrong. Try again in a moment." });
+});
+
+// Every HTML page this server renders (the site, the policies, the SEO pages,
+// the auth callback, the admin console) goes out with the headers that stop
+// it being framed or content-sniffed. A route that sets its own wins.
+app.addHook("onSend", async (_req, reply, payload) => {
+  if (String(reply.getHeader("content-type") ?? "").startsWith("text/html")) {
+    reply.header("X-Content-Type-Options", "nosniff");
+    if (!reply.hasHeader("X-Frame-Options")) reply.header("X-Frame-Options", "DENY");
+    if (!reply.hasHeader("Referrer-Policy")) reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+  }
+  return payload;
 });
 
 // AN EMPTY JSON BODY IS NOT A MALFORMED ONE.
@@ -299,10 +310,16 @@ app.addContentTypeParser(
   },
 );
 
+// One file, and a handful of text fields: the most any route reads is six
+// (/v1/transcribe-clean). Unbounded, a single request could stream field after
+// field for as long as the connection stayed open.
 await app.register(multipart, {
-  limits: { fileSize: 50 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 50 * 1024 * 1024, files: 1, fields: 20 },
 });
-await app.register(websocket);
+// One frame is a few KB of PCM (the largest a client sends is its pre-roll,
+// ~96 KB). The library default is 100 MB per frame, buffered whole before any
+// route code can refuse it.
+await app.register(websocket, { options: { maxPayload: 4 * 1024 * 1024 } });
 
 // --- Rate limiter (must register BEFORE any route that needs throttling) ---
 // Fastify applies plugin hooks in registration order, so /v1/media/* + admin
@@ -355,7 +372,6 @@ await app.register(fastifyStatic, {
 registerMediaRoutes(app, {
   mediaDir: MEDIA_DIR,
   publicUrlPrefix: MEDIA_PUBLIC_URL,
-  adminSecret: cfg.ADMIN_SECRET ?? "",
   // The rate-limit plugin is registered global:false, so the media admin
   // routes only get throttled if they opt in per-route. Hand the same
   // per-IP cap the app routes use (AUTHED_RL) down so they actually apply it.
@@ -409,6 +425,13 @@ if (fs.existsSync(FONTS_DIR)) {
 
 await app.register(transcribeStream);
 
+/** The one answer to a request with no valid session. */
+const unauthorized = (reply: FastifyReply) =>
+  reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+
+/** A client-sent value made safe to log: printable ASCII, bounded. */
+const clip = (v: unknown, n: number) => String(v ?? "").replace(/[^\x20-\x7E]/g, "").slice(0, n);
+
 function countWords(text: string): number {
   const t = text.trim();
   return t ? t.split(/\s+/).length : 0;
@@ -422,6 +445,32 @@ function tooLong(text: string | undefined): string | null {
     return `text exceeds ${cfg.MAX_TEXT_LENGTH} chars (got ${text.length})`;
   }
   return null;
+}
+
+/**
+ * Bound a personality the CLIENT sent, whether to save it (PUT /v1/personality)
+ * or to use it for one request in place of the saved one (the `personality`
+ * override on /v1/transcribe-clean, /v1/refine, /v1/draft). Either way its
+ * text reaches the prompt, so it gets the same ceilings in both places — the
+ * override used to skip them and carry up to the 1 MB body limit of unmetered
+ * prompt. Normalises `languages` in place. Returns the refusal, or null.
+ */
+function personalityProblem(p: Personality | undefined): { status: 400 | 413; message: string } | null {
+  if (p == null) return null;
+  if (typeof p !== "object" || Array.isArray(p)) return { status: 400, message: "personality must be an object" };
+  // Every selected language becomes an exemplar in the recognizer's prompt, so
+  // an unbounded array is unbounded prompt. Twenty is far past any real answer.
+  if (p.languages !== undefined) {
+    if (!Array.isArray(p.languages)) return { status: 400, message: "languages must be an array" };
+    p.languages = p.languages
+      .filter((l): l is string => typeof l === "string")
+      .map((l) => l.trim().toLowerCase().slice(0, 16))
+      .filter(Boolean)
+      .slice(0, 20);
+  }
+  const over = tooLong(p.tone) ?? tooLong(p.signature) ?? tooLong(p.customInstructions)
+    ?? tooLong(p.vocabulary) ?? tooLong(p.snippets);
+  return over ? { status: 413, message: over } : null;
 }
 
 // --- Health -----------------------------------------------------------------
@@ -492,7 +541,6 @@ app.get("/pay", async (_req, reply) => {
 // trimmed to printable text and only ever logged.
 app.post("/v1/pay/report", { config: { rateLimit: { max: 20, timeWindow: 60_000 } } }, async (req, reply) => {
   const b = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
-  const clip = (v: unknown, n: number) => String(v ?? "").replace(/[^\x20-\x7E]/g, "").slice(0, n);
   const code = clip(b.code, 80);
   if (code) req.log.warn({ where: clip(b.where, 20), code, detail: clip(b.detail, 600) }, "pay: checkout failed");
   return reply.code(204).send();
@@ -654,6 +702,8 @@ const ALLOWED_FORMATS: AudioFormat[] = [
   "flac",
 ];
 
+const MAX_CLIP_SECONDS = 15 * 60;
+
 function formatFromFilename(name: string | undefined): AudioFormat | null {
   const ext = name?.split(".").pop()?.toLowerCase() as AudioFormat | undefined;
   return ext && ALLOWED_FORMATS.includes(ext) ? ext : null;
@@ -666,10 +716,7 @@ const AUTHED_RL = {
 // --- The control plane ------------------------------------------------------
 // Live rules over every payload the server sends — see src/control. The
 // console is GET /admin; the rules live on the tulmi_control volume.
-initControl({
-  dir: process.env.CONTROL_DIR || "/data/control",
-  adminSecret: () => cfg.ADMIN_SECRET,
-});
+initControl({ dir: process.env.CONTROL_DIR || "/data/control" });
 registerControlRoutes(app, { bumpCache: bumpCacheVersion, rateLimit: AUTHED_RL });
 // Smart notifications: the engine is built here (routes need it), started in
 // main() once the server listens.
@@ -700,9 +747,7 @@ registerReviewCodeRoute(app, {
 
 app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
 
   let audio: Buffer | null = null;
   let format: AudioFormat | null = null;
@@ -740,12 +785,25 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
   if (!audio || !format) {
     return reply.code(400).send({ code: "bad_request", message: "Missing 'audio' file" });
   }
+  // The live route's ceiling (~15 minutes), for the same reason: past it the
+  // recognisers refuse the file anyway (OpenAI's cap is 25 MB), and a clear
+  // answer beats a failed pipeline after the upload. Read from the container
+  // header where there is one (wav, m4a); others are bounded by the 50 MB
+  // multipart cap alone.
+  if (estimateDurationSeconds(audio, format) > MAX_CLIP_SECONDS) {
+    return reply.code(413).send({
+      code: "audio_too_long",
+      message: "That recording is longer than 15 minutes. Record it in shorter parts.",
+    });
+  }
 
   // The multipart text fields feed the LLM prompt exactly like /v1/refine's
   // JSON body does — cap them the same way (multipart's own fieldSize limit is
   // ~1 MiB, far above MAX_TEXT_LENGTH).
   const fieldOver = tooLong(context) ?? tooLong(tonePrompt);
   if (fieldOver) return reply.code(413).send({ code: "bad_request", message: fieldOver });
+  const badPersonality = personalityProblem(personalityOverride);
+  if (badPersonality) return reply.code(badPersonality.status).send({ code: "bad_request", message: badPersonality.message });
 
   const quota = await enforceQuota(user);
   if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
@@ -794,76 +852,88 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
 });
 
 // --- Typing (REST): refine typed text ---------------------------------------
+//
+//   POST /v1/refine          body.tone (else the active tone), and optionally a
+//                            whole `personality` to use in place of the saved one
+//   POST /v1/refine/<tone>   the route IS the tone; the saved personality
+//
+// One per tone so the client can pick the endpoint from the user's active
+// tone; /v1/refine stays for legacy callers. All of them share one brain,
+// assist(): it separates any embedded instruction ("…make it shorter, in
+// bullet points") from the message, writes in the tone, and uses body.context
+// (whatever is already in the field) as the draft or conversation to continue
+// or reply to. An inline tonePrompt still wins on the per-tone routes, so a
+// custom tone can reuse them and the route's tone is just the label/default.
+// "none" does not restyle: it keeps the user's own voice and repairs only what
+// speaking or thumb-typing cost them.
+const refineRoute = (routeTone?: string) =>
+  async (req: FastifyRequest, reply: FastifyReply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return unauthorized(reply);
 
-app.post("/v1/refine", { config: AUTHED_RL }, async (req, reply) => {
-  const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+    const body = (req.body ?? {}) as RefineRequest;
+    if (!body.text || !body.text.trim()) {
+      return reply.code(400).send({ code: "bad_request", message: "Missing 'text'" });
+    }
+    // Cap EVERY prompt-bound field, not just body.text — context, tonePrompt
+    // and `alternative` (a second recognizer's reading, forwarded by the live
+    // path) reach the prompt too, and uncapped they let one request smuggle up
+    // to the 1 MB bodyLimit of unmetered input tokens past MAX_TEXT_LENGTH.
+    const over =
+      tooLong(body.text) ?? tooLong(body.context) ?? tooLong(body.tonePrompt) ?? tooLong(body.alternative);
+    if (over) return reply.code(413).send({ code: "bad_request", message: over });
+    const override = routeTone ? undefined : body.personality;
+    const badPersonality = personalityProblem(override);
+    if (badPersonality) return reply.code(badPersonality.status).send({ code: "bad_request", message: badPersonality.message });
 
-  const body = (req.body ?? {}) as RefineRequest;
-  if (!body.text || !body.text.trim()) {
-    return reply.code(400).send({ code: "bad_request", message: "Missing 'text'" });
-  }
-  // Cap EVERY prompt-bound text field, not just body.text — context/tonePrompt
-  // flow into the LLM prompt too, and uncapped they let one request smuggle up
-  // to the 1 MB bodyLimit of unmetered input tokens past MAX_TEXT_LENGTH.
-  // Cap EVERY prompt-bound field — `alternative` (a second recognizer's
-  // reading, forwarded by the live path) reaches the prompt exactly like
-  // context does, so it gets the same ceiling.
-  const over =
-    tooLong(body.text) ?? tooLong(body.context) ?? tooLong(body.tonePrompt) ?? tooLong(body.alternative);
-  if (over) return reply.code(413).send({ code: "bad_request", message: over });
+    const quota = await enforceQuota(user);
+    if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
 
-  const quota = await enforceQuota(user);
-  if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+    const t0 = Date.now();
+    try {
+      const personality = override ?? await getPersonality(user);
+      const tone = routeTone ?? body.tone ?? personality.activeTone;
+      const lang = await effectiveLanguage(user, body.language, personality);
+      const refinedText = await assist(body.text, {
+        tone,
+        tonePrompt: body.tonePrompt,
+        context: body.context,
+        targetApp: body.targetApp,
+        language: lang,
+        // A second engine's reading of the same speech, when the live path saw
+        // the two disagree — reconciled before the writing task.
+        alternative: body.alternative,
+        personality,
+        variables: { email: user.email, phone: user.phone },
+      });
+      const usage = { audioSeconds: 0, words: countWords(refinedText), model: cfg.CLEANUP_MODEL };
+      await recordUsage({ user, source: "rest", ...usage });
+      await appendHistoryEntry(user, personality, {
+        kind: "typing",
+        targetApp: body.targetApp || (routeTone ? "Generic" : undefined),
+        language: body.language,
+        input: body.text,
+        output: refinedText,
+        durationMs: Date.now() - t0,
+        wordsIn: countWords(body.text),
+        wordsOut: usage.words,
+        tone,
+        presetId: personality.activePresetId,
+      });
+      learnFromUsage(user, personality);
+      const res: RefineResponse = { refinedText, usage };
+      return reply.send(res);
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ code: "cleanup_failed", message: "Refine failed" });
+    }
+  };
 
-  const t0 = Date.now();
-  try {
-    const personality = body.personality ?? await getPersonality(user);
-    // The writing assistant separates any embedded instruction ("…make it
-    // shorter, in bullet points") from the message, applies the active tone,
-    // and uses body.context (whatever's already in the field) as the draft /
-    // conversation to continue or reply to.
-    const lang = await effectiveLanguage(user, body.language, personality);
-    const refinedText = await assist(body.text, {
-      tone: body.tone ?? personality.activeTone,
-      tonePrompt: body.tonePrompt,
-      context: body.context,
-      targetApp: body.targetApp,
-      language: lang,
-      // A second engine's reading of the same speech, when the live path saw
-      // the two disagree — reconciled before the writing task.
-      alternative: body.alternative,
-      personality,
-      variables: { email: user.email, phone: user.phone },
-    });
-    const usage = {
-      audioSeconds: 0,
-      words: countWords(refinedText),
-      model: cfg.CLEANUP_MODEL,
-    };
-    await recordUsage({ user, source: "rest", ...usage });
-    await appendHistoryEntry(user, personality, {
-      kind: "typing",
-      targetApp: body.targetApp,
-      language: body.language,
-      input: body.text,
-      output: refinedText,
-      durationMs: Date.now() - t0,
-      wordsIn: countWords(body.text),
-      wordsOut: usage.words,
-      tone: body.tone ?? personality.activeTone,
-      presetId: personality.activePresetId,
-    });
-    learnFromUsage(user, personality);
-    const res: RefineResponse = { refinedText, usage };
-    return reply.send(res);
-  } catch (err) {
-    req.log.error(err);
-    return reply.code(500).send({ code: "cleanup_failed", message: "Refine failed" });
-  }
-});
+app.post("/v1/refine", { config: AUTHED_RL }, refineRoute());
+app.post("/v1/refine/none", { config: AUTHED_RL }, refineRoute("none"));
+for (const toneId of LLM_TONES) {
+  app.post(`/v1/refine/${toneId}`, { config: AUTHED_RL }, refineRoute(toneId));
+}
 
 // --- Training (REST): variant generation + style-portrait learning ----------
 //
@@ -875,9 +945,7 @@ app.post("/v1/refine", { config: AUTHED_RL }, async (req, reply) => {
 
 app.post("/v1/train/variants", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
   const body = (req.body ?? {}) as { text?: string; tone?: string; language?: string };
   const textIn = (body.text ?? "").trim();
   if (!textIn) return reply.code(400).send({ code: "bad_request", message: "Missing 'text'" });
@@ -921,9 +989,7 @@ app.post("/v1/train/variants", { config: AUTHED_RL }, async (req, reply) => {
 
 app.post("/v1/train/pick", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
   const body = (req.body ?? {}) as {
     input?: string;
     chosen?: string;
@@ -938,6 +1004,10 @@ app.post("/v1/train/pick", { config: AUTHED_RL }, async (req, reply) => {
   }
   const over = tooLong(input) ?? tooLong(chosen) ?? tooLong(body.rejectedA) ?? tooLong(body.rejectedB);
   if (over) return reply.code(413).send({ code: "bad_request", message: over });
+  // A model call like its siblings, so behind the same gate: without it an
+  // account past its allowance could keep the model busy through this route.
+  const quota = await enforceQuota(user);
+  if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
   try {
     const personalityNow = await getPersonality(user);
     const current = personalityNow.stylePortrait;
@@ -1023,11 +1093,14 @@ const TRAIN_PROMPTS = [
 // The transcript is never stored. It arrives in the request body, is used, and
 // is gone — what survives a conversation is the portrait it produced.
 
+const TRANSCRIPT_MAX_CHARS = 4 * cfg.MAX_TEXT_LENGTH;
+
 /** Read and bound a transcript from a request body. Shared by both routes. */
 function readTurns(raw: unknown): { turns: ConverseTurn[] } | { error: string } {
   if (!Array.isArray(raw)) return { error: "Missing 'turns'" };
-  // A cap on both count and length: this body is user-controlled and every
-  // character of it reaches an LLM prompt.
+  // A cap on count, on each turn, and on the whole: this body is
+  // user-controlled, every character of it reaches an LLM prompt, and none of
+  // it is metered. 200 turns of 2,000 used to be 400,000 characters a call.
   if (raw.length > 200) return { error: "Too many turns" };
   const turns: ConverseTurn[] = [];
   for (const t of raw) {
@@ -1038,6 +1111,10 @@ function readTurns(raw: unknown): { turns: ConverseTurn[] } | { error: string } 
     const trimmed = text.trim();
     if (trimmed) turns.push({ role, text: trimmed.slice(0, 2000) });
   }
+  // Past the whole-transcript ceiling the OLDEST turns go: the reply answers
+  // the latest ones, and a portrait has plenty to read in what is left.
+  let total = turns.reduce((n, t) => n + t.text.length, 0);
+  while (total > TRANSCRIPT_MAX_CHARS && turns.length > 1) total -= turns.shift()!.text.length;
   return turns.length ? { turns } : { error: "Missing 'turns'" };
 }
 
@@ -1046,9 +1123,7 @@ const CONVERSE_KEEP_GOING = "Go on, I'm listening.";
 
 app.post("/v1/train/converse", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
   const body = (req.body ?? {}) as { turns?: unknown; language?: string };
   const read = readTurns(body.turns);
   if ("error" in read) return reply.code(400).send({ code: "bad_request", message: read.error });
@@ -1086,11 +1161,11 @@ app.post("/v1/train/converse", { config: AUTHED_RL }, async (req, reply) => {
 
 app.post("/v1/train/portrait", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
   const read = readTurns((req.body as { turns?: unknown } | undefined)?.turns);
   if ("error" in read) return reply.code(400).send({ code: "bad_request", message: read.error });
+  const quota = await enforceQuota(user);
+  if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
   try {
     const personalityNow = await getPersonality(user);
     const next = await portraitFromTranscript(personalityNow.stylePortrait, read.turns);
@@ -1128,7 +1203,7 @@ const oneLine = (v: unknown, max: number) => String(v ?? "").replace(/[\r\n]+/g,
 
 app.post("/v1/words", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+  if (!user) return unauthorized(reply);
   const b = (req.body ?? {}) as { add?: unknown; remove?: unknown; kind?: unknown };
   const add = oneLine(b.add, WORD_MAX), remove = oneLine(b.remove, WORD_MAX);
   if (!add && !remove) return reply.code(400).send({ code: "bad_request", message: "Say which word to add or remove" });
@@ -1150,7 +1225,7 @@ app.post("/v1/words", { config: AUTHED_RL }, async (req, reply) => {
 
 app.post("/v1/snippets", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+  if (!user) return unauthorized(reply);
   const b = (req.body ?? {}) as { say?: unknown; get?: unknown; remove?: unknown };
   const say = oneLine(b.say, SNIP_SAY_MAX).replace(/=/g, ""), remove = oneLine(b.remove, SNIP_SAY_MAX);
   // What it writes may span lines; stored on one, the way the parser reads it.
@@ -1166,94 +1241,11 @@ app.post("/v1/snippets", { config: AUTHED_RL }, async (req, reply) => {
   return reply.send({ ok: true });
 });
 
-// --- Per-tone refine (REST): one endpoint per tone --------------------------
-//
-// One dedicated endpoint per tone so the LLM only ever sees a single,
-// hand-tuned prompt with no dynamic composition — the fewer moving pieces
-// in the system message, the less chance of drift or hallucination on
-// borderline inputs. The client picks the endpoint based on the user's
-// active tone; the /v1/refine catch-all above still works for legacy
-// callers.
-//
-// Shape:
-//   POST /v1/refine/<tone>
-//   body:  { text: string; language?: string }
-//   200:   { refinedText: string; usage: {...} }
-//
-// The "none" tone doesn't touch the LLM — it returns the input after
-// snippet expansion so "brb" still becomes "be right back" without a
-// server round-trip on the refine layer.
-
-// All tone routes now share one brain: assist(). The route path only carries
-// which tone to write in; the assistant separates message from instruction,
-// applies that tone, and uses body.context (the existing draft) when present.
-const runToneRefine = (toneId: string) =>
-  async (req: FastifyRequest, reply: FastifyReply) => {
-    const user = await resolveUser(req.headers["authorization"]);
-    if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-    const body = (req.body ?? {}) as {
-      text?: string; language?: string; context?: string; tonePrompt?: string; alternative?: string; targetApp?: string;
-    };
-    if (!body.text || !body.text.trim()) return reply.code(400).send({ code: "bad_request", message: "Missing 'text'" });
-    // Same cap discipline as /v1/refine: every prompt-bound field counts.
-    const over = tooLong(body.text) ?? tooLong(body.context) ?? tooLong(body.tonePrompt) ?? tooLong(body.alternative);
-    if (over) return reply.code(413).send({ code: "bad_request", message: over });
-    const quota = await enforceQuota(user);
-    if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
-    const t0 = Date.now();
-    try {
-      const personality = await getPersonality(user);
-      const lang = await effectiveLanguage(user, body.language, personality);
-      const refinedText = await assist(body.text, {
-        tone: toneId,
-        // Inline prompt still wins even on the per-tone route, so a custom tone
-        // can reuse this path and the route's toneId is just the label/default.
-        tonePrompt: body.tonePrompt,
-        context: body.context,
-        // The same two things /v1/refine takes. This route dropped both, so a
-        // live dictation refined here lost the second engine's reading and
-        // the field it was going into.
-        alternative: body.alternative,
-        targetApp: body.targetApp,
-        language: lang,
-        personality,
-        variables: { email: user.email, phone: user.phone },
-      });
-      const usage = { audioSeconds: 0, words: countWords(refinedText), model: cfg.CLEANUP_MODEL };
-      await recordUsage({ user, source: "rest", ...usage });
-      await appendHistoryEntry(user, personality, {
-        kind: "typing",
-        targetApp: body.targetApp || "Generic",
-        language: body.language,
-        input: body.text,
-        output: refinedText,
-        durationMs: Date.now() - t0,
-        wordsIn: countWords(body.text),
-        wordsOut: usage.words,
-        // The route IS the tone here.
-        tone: toneId,
-        presetId: personality.activePresetId,
-      });
-      learnFromUsage(user, personality);
-      return reply.send({ refinedText, usage });
-    } catch (err) {
-      req.log.error(err);
-      return reply.code(500).send({ code: "cleanup_failed", message: "Refine failed" });
-    }
-  };
-
-app.post("/v1/refine/none", { config: AUTHED_RL }, runToneRefine("none"));
-for (const toneId of LLM_TONES) {
-  app.post(`/v1/refine/${toneId}`, { config: AUTHED_RL }, runToneRefine(toneId));
-}
-
 // --- Screen (REST): draft a personalized reply ------------------------------
 
 app.post("/v1/draft", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
 
   const body = (req.body ?? {}) as DraftRequest;
   if (!body.intent || !body.intent.trim()) {
@@ -1261,6 +1253,8 @@ app.post("/v1/draft", { config: AUTHED_RL }, async (req, reply) => {
   }
   const tooBig = tooLong(body.intent) ?? tooLong(body.screenContent) ?? tooLong(body.recipient);
   if (tooBig) return reply.code(413).send({ code: "bad_request", message: tooBig });
+  const badPersonality = personalityProblem(body.personality);
+  if (badPersonality) return reply.code(badPersonality.status).send({ code: "bad_request", message: badPersonality.message });
 
   const quota = await enforceQuota(user);
   if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
@@ -1310,9 +1304,7 @@ app.post("/v1/draft", { config: AUTHED_RL }, async (req, reply) => {
 
 app.post("/v1/speak", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
 
   const body = (req.body ?? {}) as SpeakRequest;
   if (!body.text || !body.text.trim()) {
@@ -1349,9 +1341,7 @@ app.post("/v1/speak", { config: AUTHED_RL }, async (req, reply) => {
 
 app.get("/v1/personality", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
   const personality = await getPersonality(user);
   const res: PersonalityResponse = { personality };
   return reply.send(res);
@@ -1359,30 +1349,10 @@ app.get("/v1/personality", { config: AUTHED_RL }, async (req, reply) => {
 
 app.put("/v1/personality", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
   const personality = (req.body ?? {}) as Personality;
-  // Prompt-bound and user-supplied: every selected language becomes an
-  // exemplar in the recognizer's prompt, so an unbounded array is unbounded
-  // prompt. Twenty is far past any real answer and still cheap.
-  if (personality.languages !== undefined) {
-    if (!Array.isArray(personality.languages)) {
-      return reply.code(400).send({ code: "bad_request", message: "languages must be an array" });
-    }
-    personality.languages = personality.languages
-      .filter((l): l is string => typeof l === "string")
-      .map((l) => l.trim().toLowerCase().slice(0, 16))
-      .filter(Boolean)
-      .slice(0, 20);
-  }
-  const over =
-    tooLong(personality.tone) ??
-    tooLong(personality.signature) ??
-    tooLong(personality.customInstructions) ??
-    tooLong(personality.vocabulary) ??
-    tooLong(personality.snippets);
-  if (over) return reply.code(413).send({ code: "bad_request", message: over });
+  const bad = personalityProblem(personality);
+  if (bad) return reply.code(bad.status).send({ code: "bad_request", message: bad.message });
   // activePresetId must reference a real preset — built-in or one of the
   // user's custom tones — or it silently poisons the keyboard config
   // (kb.personality.activeId) and the voices screen's active highlight.
@@ -1423,9 +1393,7 @@ const hapticsToggleSchema = z.object({
 
 app.post("/v1/personality/haptics", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
   const parsed = hapticsToggleSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     return reply.code(400).send({ code: "bad_request", message: "key or all required" });
@@ -1456,11 +1424,6 @@ app.post("/v1/personality/haptics", { config: AUTHED_RL }, async (req, reply) =>
   }
 });
 
-// Create / edit / delete a single tone (personality preset) — the two-field
-// tone editor on the Voice screen. Read-modify-writes ONE presetOverrides entry
-// under the per-user lock so it can't clobber the user's other tones (the PUT
-// above shallow-merges the whole map). id present = edit; absent = new custom
-// tone; remove=true = delete/reset. On save the tone becomes the active voice.
 /**
  * The saved dictionary as a list of terms.
  *
@@ -1477,6 +1440,11 @@ function savedWords(personality: { vocabulary?: string } | undefined): string[] 
     .slice(0, 500);
 }
 
+// Create / edit / delete a single tone (personality preset) — the two-field
+// tone editor on the Voice screen. Read-modify-writes ONE presetOverrides entry
+// under the per-user lock so it can't clobber the user's other tones (the PUT
+// above shallow-merges the whole map). id present = edit; absent = new custom
+// tone; remove=true = delete/reset. On save the tone becomes the active voice.
 const toneUpsertSchema = z.object({
   id: z.string().max(120).optional(),
   name: z.string().max(80).optional(),
@@ -1488,9 +1456,7 @@ const toneUpsertSchema = z.object({
 });
 app.post("/v1/personality/tone", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
   const parsed = toneUpsertSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     return reply.code(400).send({ code: "bad_request", message: "Invalid tone payload" });
@@ -1516,11 +1482,11 @@ app.post("/v1/personality/tone", { config: AUTHED_RL }, async (req, reply) => {
 const MAX_PINNED = 6;
 app.post("/v1/personality/pin", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
   const body = (req.body ?? {}) as { presetId?: string; pinned?: boolean };
-  const presetId = String(body.presetId ?? "").trim();
+  // Bounded like every preset id (tone ids are ≤ 120): it is stored, and
+  // sent back in every keyboard config.
+  const presetId = String(body.presetId ?? "").trim().slice(0, 120);
   if (!presetId) return reply.code(400).send({ code: "bad_request", message: "Missing presetId" });
   try {
     // Read-modify-write under the per-user lock so a concurrent PUT / tone /
@@ -1559,7 +1525,7 @@ const pushRegisterSchema = z.object({
 });
 app.post("/v1/push/register", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+  if (!user) return unauthorized(reply);
   const parsed = pushRegisterSchema.safeParse(req.body ?? {});
   if (!parsed.success) {
     return reply.code(400).send({ code: "bad_request", message: parsed.error.issues[0]?.message ?? "invalid body" });
@@ -1596,9 +1562,7 @@ app.post("/v1/push/register", { config: AUTHED_RL }, async (req, reply) => {
 // their saved personality, and return the result.
 app.post("/v1/personality/learn", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
   const body = (req.body ?? {}) as { sample?: string };
   if (!body.sample || !body.sample.trim()) {
     return reply.code(400).send({ code: "bad_request", message: "Missing 'sample'" });
@@ -1622,119 +1586,6 @@ app.post("/v1/personality/learn", { config: AUTHED_RL }, async (req, reply) => {
   }
 });
 
-// Auto-learn: when the user corrects a produced spelling (deletes what the
-// cleaner wrote and re-dictates / retypes it), the client posts the (from, to)
-// pairs here so future STT + cleanup calls know the right spelling. Only the
-// "to" side is stored in the personal vocabulary — see personality/store.ts.
-const vocabularyLearnSchema = z.object({
-  corrections: z
-    .array(
-      z.object({
-        from: z.string().trim().min(1).max(60),
-        to: z.string().trim().min(1).max(60),
-      }),
-    )
-    .min(1)
-    .max(20),
-});
-
-app.post(
-  "/v1/personality/vocabulary/learn",
-  { config: AUTHED_RL },
-  async (req, reply) => {
-    const user = await resolveUser(req.headers["authorization"]);
-    if (!user) {
-      return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-    }
-    const parsed = vocabularyLearnSchema.safeParse(req.body ?? {});
-    if (!parsed.success) {
-      return reply
-        .code(400)
-        .send({ code: "bad_request", message: parsed.error.issues[0]?.message ?? "invalid body" });
-    }
-
-    const quota = await enforceQuota(user);
-    if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
-
-    try {
-      const body = parsed.data as LearnVocabularyRequest;
-      const personality = await learnVocabularyCorrections(user, body.corrections);
-      const res: PersonalityResponse = { personality };
-      return reply.send(res);
-    } catch (err) {
-      req.log.error(err);
-      return reply.code(500).send({ code: "internal", message: "Failed to learn vocabulary" });
-    }
-  },
-);
-
-// --- Voice preview (REST): sample a voice in the caller's own style ---------
-//
-// Same wire shape as /v1/speak but every field is optional — text defaults to
-// a short English sample, instructions default to a derivation of the user's
-// personality (tone + formality), and voice defaults to the server's TTS_VOICE.
-
-const voicePreviewSchema = z.object({
-  voice: z.string().trim().min(1).max(60).optional(),
-  text: z.string().trim().min(1).max(cfg.MAX_TEXT_LENGTH).optional(),
-  instructions: z.string().trim().min(1).max(cfg.MAX_TEXT_LENGTH).optional(),
-});
-
-const DEFAULT_PREVIEW_TEXT = "Hi, this is what I sound like.";
-
-/** Build a small style steer from the user's personality — tone + formality. */
-function deriveTtsInstructions(p: Personality | undefined): string | undefined {
-  if (!p) return undefined;
-  const bits: string[] = [];
-  if (p.tone?.trim()) bits.push(p.tone.trim());
-  if (p.formality === "formal") bits.push("speak more formally");
-  else if (p.formality === "casual") bits.push("speak casually and friendly");
-  return bits.length ? bits.join("; ") : undefined;
-}
-
-app.post("/v1/voice/preview", { config: AUTHED_RL }, async (req, reply) => {
-  const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
-  const parsed = voicePreviewSchema.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    return reply
-      .code(400)
-      .send({ code: "bad_request", message: parsed.error.issues[0]?.message ?? "invalid body" });
-  }
-
-  const quota = await enforceQuota(user);
-  if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
-
-  try {
-    const body = parsed.data as VoicePreviewRequest;
-    const text = body.text?.trim() || DEFAULT_PREVIEW_TEXT;
-    let instructions = body.instructions?.trim();
-    if (!instructions) {
-      const personality = await getPersonality(user);
-      instructions = deriveTtsInstructions(personality);
-    }
-
-    const { audio, contentType } = await synthesize({
-      text,
-      voice: body.voice,
-      instructions,
-    });
-    await recordUsage({
-      user,
-      source: "rest",
-      audioSeconds: 0,
-      words: countWords(text),
-      model: cfg.OPENAI_TTS_MODEL,
-    });
-    return reply.header("content-type", contentType).send(audio);
-  } catch (err) {
-    req.log.error(err);
-    return reply.code(500).send({ code: "internal", message: "Voice preview failed" });
-  }
-});
-
 // --- Experience (SDUI): the backend drives the app's UI ---------------------
 //
 // The app is a generic renderer; these endpoints decide what it draws. Auth is
@@ -1749,12 +1600,6 @@ function noStoreSdui(reply: import("fastify").FastifyReply): void {
   reply.header("X-Cache-Version", currentCacheVersion());
 }
 
-// SDUI endpoints intentionally use the AUTHED_RL tier even though the routes
-// themselves are auth-optional. Reason: a normal launch fires bootstrap +
-// several screens back-to-back (4–6 requests). The keyGenerator keys by the
-// LOCALLY-verified user id when a valid JWT is present, so a real authed user
-// gets their own bucket (even sharing a NAT egress IP with many others);
-// anonymous callers fall back to per-IP (real IP now, thanks to trustProxy).
 /**
  * RevenueCat's webhook — the only thing that may grant a subscription.
  *
@@ -1766,15 +1611,22 @@ function noStoreSdui(reply: import("fastify").FastifyReply): void {
  * Always answers 200 once authorised, even when an event is unusable.
  * RevenueCat retries non-2xx for hours, and a malformed event will never
  * become valid — retrying it forever buries the real ones.
+ *
+ * Throttled per address, far above anything RevenueCat sends (a 429 is only
+ * retried later), so the secret cannot be guessed at line rate.
  */
-app.post("/v1/billing/revenuecat", async (req, reply) => {
+app.post("/v1/billing/revenuecat", { config: { rateLimit: { max: 600, timeWindow: 60_000 } } }, async (req, reply) => {
   const expected = cfg.REVENUECAT_WEBHOOK_SECRET ?? "";
   if (!expected) {
     req.log.error("[billing] webhook hit with no REVENUECAT_WEBHOOK_SECRET set");
     return reply.code(503).send({ code: "not_configured" });
   }
+  // Timing-safe, both spellings always compared: RevenueCat sends the value
+  // verbatim, and a proxy or a dashboard edit may have put "Bearer " before it.
   const got = String(req.headers["authorization"] ?? "");
-  if (got !== expected && got !== `Bearer ${expected}`) {
+  const bare = sameSecret(got, expected);
+  const bearer = sameSecret(got, `Bearer ${expected}`);
+  if (!bare && !bearer) {
     return reply.code(401).send({ code: "unauthorized" });
   }
   const body = (req.body ?? {}) as { event?: Record<string, unknown> };
@@ -1786,13 +1638,6 @@ app.post("/v1/billing/revenuecat", async (req, reply) => {
   return reply.send(res);
 });
 
-/**
- * The caller's OS, narrowed to what the catalog is allowed to branch on.
- *
- * Anything unrecognised becomes "ios" rather than throwing or spreading an
- * unknown string through the catalog: a screen must render for a client we do
- * not recognise, and the iOS tree is the fuller of the two.
- */
 /**
  * The window the client says it has, or nothing.
  *
@@ -1809,10 +1654,23 @@ function viewportOf(
   return { width: Math.round(w), height: Math.round(h) };
 }
 
+/**
+ * The caller's OS, narrowed to what the catalog is allowed to branch on.
+ *
+ * Anything unrecognised becomes "ios" rather than throwing or spreading an
+ * unknown string through the catalog: a screen must render for a client we do
+ * not recognise, and the iOS tree is the fuller of the two.
+ */
 function platformOf(raw: unknown): "ios" | "android" {
   return String(raw ?? "").toLowerCase() === "android" ? "android" : "ios";
 }
 
+// SDUI endpoints intentionally use the AUTHED_RL tier even though the routes
+// themselves are auth-optional. Reason: a normal launch fires bootstrap +
+// several screens back-to-back (4–6 requests). The keyGenerator keys by the
+// LOCALLY-verified user id when a valid JWT is present, so a real authed user
+// gets their own bucket (even sharing a NAT egress IP with many others);
+// anonymous callers fall back to per-IP (real IP now, thanks to trustProxy).
 app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   noStoreSdui(reply);
   // Auth is optional here so the shell can boot; when present, the user's
@@ -1859,13 +1717,14 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   // One line, on the one request every launch makes.
   req.log.info(
     {
-      bundle: reqBody.capabilities?.bundle ?? "unknown",
-      appVersion: reqBody.capabilities?.appVersion ?? "unknown",
-      launchCount: reqBody.launchCount ?? 0,
-      platform: reqBody.capabilities?.platform ?? "unknown",
+      // Clipped: every field is the client's, and this line is on every launch.
+      bundle: clip(reqBody.capabilities?.bundle, 40) || "unknown",
+      appVersion: clip(reqBody.capabilities?.appVersion, 40) || "unknown",
+      launchCount: Number(reqBody.launchCount) || 0,
+      platform: clip(reqBody.capabilities?.platform, 20) || "unknown",
       // How the PREVIOUS launch ended. A boot that hangs cannot report on
       // itself, so the app leaves a breadcrumb and the next launch carries it.
-      lastBoot: reqBody.capabilities?.lastBoot ?? "unknown",
+      lastBoot: clip(reqBody.capabilities?.lastBoot, 80) || "unknown",
       googleWeb: reqBody.capabilities?.googleWeb === true,
     },
     "[boot] client bundle",
@@ -2253,17 +2112,13 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
 
 app.get("/v1/profile", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
   return reply.send(await getProfile(user));
 });
 
 app.put("/v1/profile", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
   const body = (req.body ?? {}) as {
     dictionary?: unknown[];
     language?: string;
@@ -2272,7 +2127,9 @@ app.put("/v1/profile", { config: AUTHED_RL }, async (req, reply) => {
     gender?: string;
   };
   const patch: Partial<Profile> = {};
-  if (typeof body.language === "string") patch.language = body.language;
+  // A language code ("en", "zh-Hant-TW"), bounded: it is stored, and read back
+  // as the locale and the prompt's fallback language on every request.
+  if (typeof body.language === "string") patch.language = body.language.trim().slice(0, 35);
   if (typeof body.onboarded === "boolean") patch.onboarded = body.onboarded;
   // The name + gender card has been sending these since it shipped; until now
   // they were parsed off the body and dropped, so the card's answers lived only
@@ -2309,56 +2166,6 @@ app.put("/v1/profile", { config: AUTHED_RL }, async (req, reply) => {
   }
 });
 
-// --- Privacy audit (receipts screen) ----------------------------------------
-//
-// Feeds the in-app "Data & Privacy" screen. Nothing new is stored — this is
-// just a projection of usage_events + the user's stated consent flags.
-// Purpose: give users a concrete, honest answer to "what have you done with
-// my stuff". Auditability, not marketing copy.
-
-app.get("/v1/privacy/audit", { config: AUTHED_RL }, async (req, reply) => {
-  const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
-  const [windows, personality] = await Promise.all([
-    usageWindows(user),
-    getPersonality(user),
-  ]);
-  const res: PrivacyAuditResponse = {
-    windows,
-    // Backend today deletes audio after the STT call regardless of the flag,
-    // so this reports the flag's *stated intent* honestly (false unless the
-    // user has opted in). Do not toggle to true until server-side retention
-    // is actually implemented — a mislabelled "false" is safer than a false "true".
-    audioRetained: personality.retainAudio === true,
-    learningFromRuns: personality.learnFromSent === true,
-    upstreamProviders: computeUpstreamProviders(),
-    links: [
-      { label: "Read policy", url: "https://tailzu.space/privacy" },
-      { label: "Contact support", url: "mailto:support@tailzu.space" },
-      { label: "Delete my data", url: "mailto:privacy@tailzu.space?subject=Delete%20my%20data" },
-    ],
-  };
-  return reply.send(res);
-});
-
-/**
- * Which SaaS providers your text/audio may have gone to under the current
- * server configuration. Derived from env — the "delete provider X" toggle
- * (env change) automatically drops it from this list, so the audit stays
- * honest without a code push.
- */
-function computeUpstreamProviders(): string[] {
-  const out = new Set<string>();
-  if (cfg.STT_PROVIDER === "openai" || cfg.OPENAI_API_KEY) out.add("OpenAI");
-  if (cfg.STT_PROVIDER === "groq" || cfg.GROQ_API_KEY) out.add("Groq");
-  if (cfg.DEEPGRAM_API_KEY) out.add("Deepgram");
-  if (cfg.OPENROUTER_API_KEY) out.add("OpenRouter (cleanup LLM)");
-  if (cfg.SUPABASE_URL) out.add("Supabase (auth + metering only)");
-  return [...out];
-}
-
 // --- Account: delete everything we hold about a user ------------------------
 //
 // The Settings screen's "Delete account" button fires this. We remove the
@@ -2372,15 +2179,9 @@ function computeUpstreamProviders(): string[] {
 
 app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
 
   const admin = supabase();
-  const summary = {
-    personality: false, profile: false, usageEvents: 0,
-    history: false, pushTokens: false, authAccount: false,
-  };
 
   // NO SERVICE KEY, NO DELETION, AND SAY SO.
   //
@@ -2401,49 +2202,36 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
     });
   }
 
-  {
-    // Delete usage rows and application-level tables. Errors are logged but
-    // don't abort the sequence — the user still gets a partial receipt.
+  // Every table holding this user's rows. Each also cascades from auth.users,
+  // but they are cleared first and one at a time, so a table whose foreign key
+  // was never given ON DELETE CASCADE cannot make the auth delete below fail.
+  // cleanup_history is the verbatim dictated input + output — the most
+  // sensitive per-user data, and once silently left behind. Errors are logged
+  // and do not abort the sequence.
+  const summary = {
+    personality: false, profile: false, usageEvents: 0,
+    history: false, pushTokens: false, authAccount: false,
+  };
+  const tables: Array<[string, keyof typeof summary | null]> = [
+    ["usage_events", "usageEvents"], ["personalities", "personality"], ["profiles", "profile"],
+    ["cleanup_history", "history"], ["push_tokens", "pushTokens"],
+    ["keyboard_telemetry", null], ["push_log", null], ["entitlements", null],
+  ];
+  for (const [table, key] of tables) {
     try {
-      const { count } = await admin
-        .from("usage_events")
-        .delete({ count: "exact" })
-        .eq("user_id", user.id);
-      summary.usageEvents = count ?? 0;
-    } catch (err) { req.log.error({ err }, "delete usage_events"); }
+      const { error, count } = await admin.from(table).delete({ count: "exact" }).eq("user_id", user.id);
+      if (error) req.log.error({ err: error }, `delete ${table}`);
+      if (key === "usageEvents") summary.usageEvents = count ?? 0;
+      else if (key) summary[key] = !error;
+    } catch (err) { req.log.error({ err }, `delete ${table}`); }
+  }
 
-    try {
-      const { error } = await admin.from("personalities").delete().eq("user_id", user.id);
-      summary.personality = !error;
-    } catch (err) { req.log.error({ err }, "delete personalities"); }
-
-    try {
-      const { error } = await admin.from("profiles").delete().eq("user_id", user.id);
-      summary.profile = !error;
-    } catch (err) { req.log.error({ err }, "delete profiles"); }
-
-    // Verbatim dictated input + output — the most sensitive per-user data. The
-    // endpoint claims "all associated data" is deleted, so this MUST be cleared
-    // (it was silently left behind before).
-    try {
-      const { error } = await admin.from("cleanup_history").delete().eq("user_id", user.id);
-      summary.history = !error;
-    } catch (err) { req.log.error({ err }, "delete cleanup_history"); }
-
-    // Push tokens (device targeting) — also user-identifying; clear them too.
-    try {
-      const { error } = await admin.from("push_tokens").delete().eq("user_id", user.id);
-      summary.pushTokens = !error;
-    } catch (err) { req.log.error({ err }, "delete push_tokens"); }
-
-    // Auth deletion requires the service-role key. When it fails we return a
-    // partial-success message rather than pretending the account is gone.
-    try {
-      const { error } = await admin.auth.admin.deleteUser(user.id);
-      summary.authAccount = !error;
-    } catch (err) {
-      req.log.error({ err }, "delete auth user");
-    }
+  // Deleting the auth user takes anything missed above with it (cascade).
+  try {
+    const { error } = await admin.auth.admin.deleteUser(user.id);
+    summary.authAccount = !error;
+  } catch (err) {
+    req.log.error({ err }, "delete auth user");
   }
 
   // The auth record IS the account. Everything above is data the account
@@ -2587,9 +2375,7 @@ const TELEMETRY_MAX = 1_000_000;
 
 app.post("/v1/keyboard/telemetry", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
   const body = (req.body ?? {}) as {
     build?: unknown;
     appVersion?: unknown;
@@ -2649,18 +2435,8 @@ app.post("/v1/keyboard/telemetry", { config: AUTHED_RL }, async (req, reply) => 
 // secret isn't set the endpoint refuses every request — no accidental exposure.
 
 app.post("/v1/admin/cache/bump", { config: AUTHED_RL }, async (req, reply) => {
-  const provided = req.headers["x-admin-secret"];
-  const expected = cfg.ADMIN_SECRET;
-  if (!expected) {
-    return reply
-      .code(503)
-      .send({ code: "not_configured", message: "ADMIN_SECRET is not set on the server" });
-  }
-  if (typeof provided !== "string" || provided.length === 0 || !safeStrEqual(provided, expected)) {
-    return reply.code(401).send({ code: "unauthorized", message: "Bad or missing admin secret" });
-  }
-  const next = bumpCacheVersion();
-  return reply.send({ ok: true, cacheVersion: next });
+  if (!requireAdmin(req, reply)) return;
+  return reply.send({ ok: true, cacheVersion: bumpCacheVersion() });
 });
 
 app.get("/v1/admin/cache/version", async (_req, reply) => {
@@ -2668,12 +2444,11 @@ app.get("/v1/admin/cache/version", async (_req, reply) => {
   return reply.send({ cacheVersion: currentCacheVersion() });
 });
 
-// --- History + Stats (REST) -------------------------------------------------
+// --- History (REST) ---------------------------------------------------------
 //
-// Opt-in per-user history log + a lightweight aggregation for the stats screen.
-// Storage is gated by personality.learnFromSent / personality.retainHistory;
-// the read endpoints here always return the caller's own rows (scoped via RLS
-// when Supabase is configured, or an in-memory map under DEV_SKIP_AUTH).
+// Opt-in per-user history log. Storage is gated by personality.learnFromSent /
+// personality.retainHistory; these endpoints only ever touch the caller's own
+// rows (listHistory/deleteHistoryEntry filter by the authenticated user id).
 
 const historyListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(HISTORY_MAX_LIMIT).optional(),
@@ -2687,15 +2462,9 @@ const historyIdParamsSchema = z.object({
   id: z.string().uuid(),
 });
 
-const statsQuerySchema = z.object({
-  window: z.enum(["week", "month", "all"]).default("week"),
-});
-
 app.get("/v1/history", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
 
   const parsed = historyListQuerySchema.safeParse(req.query ?? {});
   if (!parsed.success) {
@@ -2716,9 +2485,7 @@ app.get("/v1/history", { config: AUTHED_RL }, async (req, reply) => {
 
 app.delete("/v1/history/:id", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
+  if (!user) return unauthorized(reply);
 
   const parsed = historyIdParamsSchema.safeParse(req.params ?? {});
   if (!parsed.success) {
@@ -2733,214 +2500,6 @@ app.delete("/v1/history/:id", { config: AUTHED_RL }, async (req, reply) => {
     req.log.error(err);
     return reply.code(500).send({ code: "internal", message: "Failed to delete entry" });
   }
-});
-
-app.get("/v1/stats", { config: AUTHED_RL }, async (req, reply) => {
-  const user = await resolveUser(req.headers["authorization"]);
-  if (!user) {
-    return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  }
-
-  const parsed = statsQuerySchema.safeParse(req.query ?? {});
-  if (!parsed.success) {
-    return reply.code(400).send({ code: "bad_request", message: parsed.error.issues[0]?.message ?? "invalid query" });
-  }
-
-  try {
-    const stats = await statsForUser(
-      user, parsed.data.window, 0,
-      savedWords(await getPersonality(user).catch(() => undefined)),
-    );
-    const res: StatsResponse = stats;
-    return reply.send(res);
-  } catch (err) {
-    req.log.error(err);
-    return reply.code(500).send({ code: "internal", message: "Failed to compute stats" });
-  }
-});
-
-// --- Voice (WebSocket): live streaming --------------------------------------
-
-app.register(async (instance) => {
-  // Same audio ceiling as /v1/transcribe-stream, in bytes. This WS collects
-  // the whole clip in memory before running the batched pipeline, so an
-  // unbounded chunks[] is a real OOM risk.
-  const MAX_STREAM_BYTES = 30 * 1024 * 1024;
-  const IDLE_TIMEOUT_MS = 60_000;
-
-  // Rate-limited like every other authed route: the limit applies to the HTTP
-  // upgrade request, so an anonymous connect flood can't amplify per-connection
-  // resolveUser calls into the Supabase auth API.
-  instance.get(WS_PATH, { websocket: true, config: AUTHED_RL }, (socket, req) => {
-    const send = (msg: ServerMessage) => {
-      if (socket.readyState === 1) socket.send(JSON.stringify(msg));
-    };
-
-    let started = false;
-    let format: AudioFormat = "webm";
-    let targetApp: TargetAppHint | undefined;
-    let language: LanguageHint | undefined;
-    let personalityOverride: Personality | undefined;
-    const chunks: Buffer[] = [];
-    let totalBytes = 0;
-    let authedUser: AuthedUser | null = null;
-    let authReady = false;
-    let closed = false;
-    let ended = false; // one-shot guard: a second `end` frame must not re-run the pipeline
-    let idleTimer: NodeJS.Timeout | null = null;
-
-    const armIdle = () => {
-      if (idleTimer) clearTimeout(idleTimer);
-      idleTimer = setTimeout(() => {
-        send({ type: "error", code: "bad_request", message: "idle timeout" });
-        safeClose();
-      }, IDLE_TIMEOUT_MS);
-    };
-
-    const safeClose = () => {
-      closed = true;
-      if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-      try { socket.close(); } catch { /* ignore */ }
-    };
-
-    // Handshake/idle guard: arm the idle timer immediately on open so a socket
-    // that connects (even with a valid token) but never sends `start`/audio is
-    // torn down instead of lingering forever holding a socket + user ref.
-    // Subsequent `start`/chunks re-arm it.
-    armIdle();
-
-    // Verify auth on connect (header carried through the upgrade request).
-    // We DO NOT accept any binary frame until authReady = true — silent-drop
-    // is safer than buffering unbounded audio for an unauthenticated caller.
-    resolveUser(req.headers["authorization"]).then(async (user) => {
-      if (!user) {
-        send({ type: "error", code: "unauthorized", message: "Missing or invalid token" });
-        safeClose();
-        return;
-      }
-      const over = await enforceQuota(user);
-      if (over) {
-        send({ type: "error", code: "quota_exceeded", message: over });
-        safeClose();
-        return;
-      }
-      authedUser = user;
-      authReady = true;
-    }).catch((err) => {
-      // A transient Supabase/quota failure here is a DETACHED rejection — with
-      // no catch it becomes an unhandledRejection and (Node ≥20 default) kills
-      // the whole process, dropping every connected user. Fail this socket only.
-      app.log.error({ err }, "stream auth failed");
-      try { send({ type: "error", code: "unauthorized", message: "Could not verify session" }); } catch { /* socket already gone */ }
-      safeClose();
-    });
-
-    socket.on("message", async (data: Buffer, isBinary: boolean) => {
-      if (closed) return;
-
-      // Binary frame → audio chunk. Refuse until auth resolved AND client
-      // sent "start"; cap total bytes; reset idle window.
-      if (isBinary) {
-        if (!authReady || !started) return; // silent drop
-        totalBytes += data.length;
-        if (totalBytes > MAX_STREAM_BYTES) {
-          send({ type: "error", code: "audio_too_long", message: "stream size cap reached" });
-          safeClose();
-          return;
-        }
-        chunks.push(data);
-        armIdle();
-        return;
-      }
-
-      // Text frame → control message.
-      let msg: ClientMessage;
-      try {
-        msg = JSON.parse(data.toString());
-      } catch {
-        send({ type: "error", code: "bad_request", message: "Invalid JSON control frame" });
-        return;
-      }
-
-      if (msg.type === "start") {
-        started = true;
-        format = msg.format;
-        targetApp = msg.targetApp;
-        language = msg.language;
-        personalityOverride = msg.personality;
-        send({ type: "ready" });
-        armIdle();
-        return;
-      }
-
-      if (msg.type === "end") {
-        // One-shot: a second "end" (double-tap, client retry) would otherwise
-        // run STT + cleanup again → double metering, duplicate history, and
-        // duplicate client events. Flip the guard synchronously, BEFORE the
-        // first await, so the re-entrant call can't slip through.
-        if (ended) return;
-        ended = true;
-        if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
-        const user = authedUser;
-        if (!user) {
-          send({ type: "error", code: "unauthorized", message: "Not authenticated" });
-          safeClose();
-          return;
-        }
-        if (chunks.length === 0) {
-          send({ type: "error", code: "bad_request", message: "No audio received" });
-          safeClose();
-          return;
-        }
-        const audio = Buffer.concat(chunks);
-        const t0 = Date.now();
-        try {
-          const personality = await resolvePersonality(user, personalityOverride);
-          const lang = await effectiveLanguage(user, language, personality);
-          // Capture transcript + final cleaned text for the (opt-in) history
-          // write we do after the pipeline completes.
-          let capturedTranscript = "";
-          for await (const ev of runPipelineStream({
-            audio,
-            format,
-            targetApp,
-            language: lang,
-            personality,
-            variables: { email: user.email, phone: user.phone },
-          })) {
-            send(ev);
-            if (ev.type === "transcript") capturedTranscript = ev.text;
-            if (ev.type === "done") {
-              await recordUsage({ user, source: "stream", ...ev.usage });
-              await appendHistoryEntry(
-                user,
-                personality,
-                {
-                  kind: "voice",
-                  targetApp,
-                  language,
-                  input: capturedTranscript,
-                  output: ev.cleanedText,
-                  durationMs: Date.now() - t0,
-                  wordsIn: countWords(capturedTranscript),
-                  wordsOut: ev.usage.words,
-                },
-                ev.usage.audioSeconds,
-              );
-            }
-          }
-        } catch (err) {
-          req.log.error(err);
-          send({ type: "error", code: "internal", message: "Pipeline failed" });
-        } finally {
-          safeClose();
-        }
-      }
-    });
-
-    socket.on("close", () => { closed = true; if (idleTimer) clearTimeout(idleTimer); });
-    socket.on("error", () => { closed = true; if (idleTimer) clearTimeout(idleTimer); });
-  });
 });
 
   return app;

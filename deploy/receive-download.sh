@@ -33,13 +33,23 @@ dir="$(dirname "$(readlink -f "$0")")/../downloads"
 mkdir -p "$dir"
 tmp="$(mktemp "$dir/.incoming.XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
-head -c 2000000000 > "$tmp"
+# One byte past the cap, so an oversized upload is REFUSED: `head -c` at the
+# cap alone cut it short in silence, and the truncated installer went out with
+# a checksum that matched it.
+head -c 2000000001 > "$tmp"
 size=$(stat -c %s "$tmp")
+[ "$size" -le 2000000000 ] || { echo "refused: $name is over 2 GB" >&2; exit 3; }
 [ "$size" -ge 5000000 ] || { echo "refused: $name is only $size bytes" >&2; exit 3; }
 chmod 644 "$tmp"
+# The checksum is of the bytes being published, taken before they are, and
+# the rename, checksum and version go out under one lock: two uploads of one
+# name at once could otherwise leave one build's checksum beside the other's
+# installer, and the updater would refuse it.
+sha="$(sha512sum "$tmp" | cut -d' ' -f1)"
+exec 9>"$dir/.publish.lock"
+flock 9
 mv -f "$tmp" "$dir/$name"
 trap - EXIT
-sha="$(sha512sum "$dir/$name" | cut -d' ' -f1)"
 printf '%s\n' "$sha" > "$dir/.$name.sha512.tmp"
 chmod 644 "$dir/.$name.sha512.tmp"
 mv -f "$dir/.$name.sha512.tmp" "$dir/$name.sha512"

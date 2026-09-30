@@ -59,14 +59,13 @@ export function registerPushRoutes(app: FastifyInstance, opts: { rateLimit?: Rec
     }
     return engine;
   };
-  const candidate = (e: PushEngine, userId: string, now: number) => e.candidate(userId, now);
 
   app.get("/v1/admin/push/plan", cfg, async (req, reply) => {
     const e = ready(req, reply);
     if (!e) return;
     const userId = String((req.query as { userId?: string })?.userId ?? "");
     const now = Date.now();
-    const c = await candidate(e, userId, now);
+    const c = await e.candidate(userId, now);
     if (!c) return reply.code(404).send({ code: "not_found", message: "No push token for that user" });
     const { decision, facts, payload } = await e.decide(c, now);
     const k = knobsOf(payload);
@@ -90,7 +89,7 @@ export function registerPushRoutes(app: FastifyInstance, opts: { rateLimit?: Rec
     if (!e) return;
     const b = (req.body ?? {}) as { userId?: string; kind?: string };
     const now = Date.now();
-    const c = b.userId ? await candidate(e, b.userId, now) : null;
+    const c = b.userId ? await e.candidate(b.userId, now) : null;
     if (!c) return reply.code(404).send({ code: "not_found", message: "No push token for that user" });
     const kind = (PUSH_KINDS as readonly string[]).includes(b.kind ?? "") ? (b.kind as PushKind) : "winback";
     const payload = e.configFor(c, now);

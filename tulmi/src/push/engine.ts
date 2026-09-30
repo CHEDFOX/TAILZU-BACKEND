@@ -240,9 +240,9 @@ export class PushEngine {
   }
 
   /** Claim, send to every phone, record. Null when someone else claimed it. */
-  async deliver(c: Candidate, d: Deliverable, payload: PushPayload, now: number, periodKey = d.periodKey):
+  async deliver(c: Candidate, d: Deliverable, payload: PushPayload, now: number):
     Promise<{ sent: boolean; dropped: number; id: string } | null> {
-    const id = await this.store.claim({ userId: c.userId, kind: d.kind, periodKey, plannedAt: d.sendAt });
+    const id = await this.store.claim({ userId: c.userId, kind: d.kind, periodKey: d.periodKey, plannedAt: d.sendAt });
     if (!id) return null;
     const k = knobsOf(payload);
     const messages: PushMessage[] = c.tokens.map((t) => ({
