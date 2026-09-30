@@ -849,6 +849,7 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "desktop.pill.lowHz": 90,
   "desktop.pill.pale": "#F3E2C6",
   "desktop.pill.raiseEveryMs": 1200,
+  "desktop.pill.replaceMs": 300,
   "desktop.pill.rest": true,
   "desktop.pill.restAlpha": 0.78,
   "desktop.pill.restFill": "#2A2522",
@@ -862,6 +863,7 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "desktop.pill.writeGap": 6,
   "desktop.pill.writeHeight": 30,
   "desktop.pill.writeWidth": 124,
+  "desktop.pill.writingMaxMs": 120000,
   "desktop.progress.height": 6,
   "desktop.progressBar.height": 3,
   "desktop.recorder.errorBodyChars": 120,
@@ -878,8 +880,18 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "desktop.recorder.contextChars": 600,
   "desktop.recorder.meterPollMs": 120,
   "desktop.recorder.minSegmentMs": 700,
-  "desktop.recorder.minSpeechMs": 400,
   "desktop.recorder.speechLevel": 0.012,
+  // 0.2.2+: a pause writes only after this much voice and this long a pause,
+  // so short dictations are written whole at the stop; `voicing` is how
+  // periodic a frame must be to count as voice (0 = the old level-only
+  // meter); the stop's gentler check lets quiet real speech through.
+  // (fftSize, flushSilenceMs and llmTones above are read by 0.2.1 installs.)
+  "desktop.recorder.flushPauseMs": 2000,
+  "desktop.recorder.flushSpeechMs": 4000,
+  "desktop.recorder.voicing": 0.5,
+  "desktop.recorder.finalSpeechLevel": 0.003,
+  "desktop.recorder.minFinalSpeechMs": 120,
+  "desktop.recorder.uploadTimeoutMs": 60000,
   "desktop.row.chevronSize": 20,
   "desktop.row.fontSize": 16,
   "desktop.row.paddingV": 17,
