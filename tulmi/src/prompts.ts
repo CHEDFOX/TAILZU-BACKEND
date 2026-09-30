@@ -1,9 +1,12 @@
 /**
  * Loads the versioned prompt files from shared/prompts/ and renders them with
- * per-request values (target app, language, personality, recipient).
+ * per-request values (target app, language, personality, recipient), plus the
+ * helpers every prompt uses to place user-supplied values as data.
  *
- * Prompts are the product's core asset, kept as versioned markdown so we can
- * A/B and roll back without code changes.
+ * Only the screen reply (/v1/draft) is a file prompt now; the writing prompt
+ * every other path uses is built in pipeline/assistPrompt.ts. Prompts are the
+ * product's core asset, kept as versioned markdown so we can A/B and roll back
+ * without code changes.
  */
 import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -21,7 +24,7 @@ import type {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cache = new Map<string, string>();
 
-/** Read a prompt file (e.g. "cleanup.v3.md") from shared/prompts/, cached. */
+/** Read a prompt file (e.g. "reply.v4.md") from shared/prompts/, cached. */
 function loadPromptFile(filename: string): string {
   const cached = cache.get(filename);
   if (cached) return cached;
@@ -73,11 +76,39 @@ function loadPromptFile(filename: string): string {
 /**
  * Neutralise angle brackets in user-authored strings so a hostile payload can't
  * inject its own XML-style delimiter and pretend to close a fence. Kept small:
- * a single tag confuses the model less than an escaped one. Length caps
- * enforced upstream (see MAX_TEXT_LENGTH in server.ts).
+ * a single tag confuses the model less than an escaped one.
+ *
+ * AND BOUNDED HERE. MAX_TEXT_LENGTH caps the request's text fields, but a
+ * personality can arrive whole in the request body (the `personality`
+ * override), so every field of it was bounded only by the 1 MB body limit —
+ * a megabyte of "custom instructions" was a megabyte of prompt, billed to us.
  */
-function sanitizeFenced(s: string): string {
-  return s.replace(/[<>]/g, "");
+function sanitizeFenced(s: string, max = 2_000): string {
+  return String(s).replace(/[<>]/g, "").slice(0, max);
+}
+
+/**
+ * A short user-supplied value that sits INSIDE a sentence of a prompt — an app
+ * name, a language, a tone's name, a dictionary word. One line, so it cannot
+ * start a line that reads as a rule of its own; no angle brackets, so it
+ * cannot open or close a fence; and short. Non-strings come back empty.
+ */
+export function inlineValue(s: unknown, max = 60): string {
+  return typeof s === "string" ? s.replace(/[<>]/g, "").replace(/\s+/g, " ").trim().slice(0, max) : "";
+}
+
+/**
+ * Fill a prompt file's {{PLACEHOLDERS}} in ONE pass, with a replacer function.
+ *
+ * It was a chain of replaceAll(name, value), and a replacement STRING is not
+ * literal: "$`" and "$'" in it paste the text before or after the match. So a
+ * custom instruction containing "$`" pasted the whole prompt above it into the
+ * user's own block, and a value containing a later placeholder's name was
+ * filled again by the next link of the chain. Unknown names are left as they
+ * are.
+ */
+function fill(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{\{([A-Z_]+)\}\}/g, (m, k: string) => (Object.hasOwn(vars, k) ? vars[k]! : m));
 }
 
 /** Render a personality into a readable block for the prompt. User-controlled
@@ -87,14 +118,15 @@ export function renderPersonality(p: Personality | undefined): string {
   if (!p || Object.keys(p).length === 0) return "None set. Use a neutral, clean voice.";
 
   const lines: string[] = [];
-  if (p.tone) lines.push(`- Tone: <tone>${sanitizeFenced(p.tone)}</tone>`);
-  if (p.formality) lines.push(`- Formality: ${p.formality}`);
-  if (p.emoji) lines.push(`- Emoji use: ${p.emoji}`);
-  if (p.languages?.length) lines.push(`- Preferred languages/scripts: ${p.languages.join(", ")}`);
-  if (p.signature) lines.push(`- Preferred sign-off: <signature>${sanitizeFenced(p.signature)}</signature>`);
+  if (p.tone) lines.push(`- Tone: <tone>${sanitizeFenced(p.tone, 200)}</tone>`);
+  if (p.formality) lines.push(`- Formality: ${inlineValue(p.formality, 20)}`);
+  if (p.emoji) lines.push(`- Emoji use: ${inlineValue(p.emoji, 20)}`);
+  if (Array.isArray(p.languages) && p.languages.length)
+    lines.push(`- Preferred languages/scripts: ${inlineValue(p.languages.map(String).join(", "), 120)}`);
+  if (p.signature) lines.push(`- Preferred sign-off: <signature>${sanitizeFenced(p.signature, 120)}</signature>`);
   if (p.customInstructions)
     lines.push(`- Extra instructions: <custom_instructions>${sanitizeFenced(p.customInstructions)}</custom_instructions>`);
-  if (p.vocabulary?.trim())
+  if (typeof p.vocabulary === "string" && p.vocabulary.trim())
     lines.push(
       `- Known names/terms — spell these EXACTLY as written: <vocabulary>${sanitizeFenced(
         p.vocabulary.replace(/\s*\n\s*/g, ", ").trim(),
@@ -103,17 +135,17 @@ export function renderPersonality(p: Personality | undefined): string {
   // THE LEARNED PORTRAIT, which every path but this one already had.
   //
   // Training writes it, assist() reads it on every refine — and the file-based
-  // prompts (clean, cleanStream, draftReply) silently dropped it, because this
-  // function was written before the portrait existed and nobody came back. So
-  // a user could train for weeks and the streaming pipeline and the screen-
-  // reply path would still write them as a stranger.
+  // prompts silently dropped it, because this function was written before the
+  // portrait existed and nobody came back. So a user could train for weeks and
+  // the screen-reply path would still write them as a stranger.
   //
   // Last in the block and stated as the strongest signal: the dials above are
   // what they SAID they want, the portrait is what they were observed to do.
-  if (p.stylePortrait?.core?.trim())
+  if (typeof p.stylePortrait?.core === "string" && p.stylePortrait.core.trim())
     lines.push(
       `- How they actually write — observed from what they picked, and worth more than the settings above: <style_portrait>${sanitizeFenced(
         p.stylePortrait.core.trim(),
+        1_100,
       )}</style_portrait>`,
     );
 
@@ -129,7 +161,7 @@ export function renderToneDial(d: ToneDial | undefined): string {
   if (!d) return "Default.";
   const bits: string[] = [];
   const push = (name: string, v: number | undefined) => {
-    if (v == null) return;
+    if (typeof v !== "number" || !Number.isFinite(v)) return;
     const clamped = Math.max(0, Math.min(100, Math.round(v)));
     bits.push(`- ${name}: ${clamped}`);
   };
@@ -160,13 +192,13 @@ export function resolveAppStyle(
 export function renderAppStyle(style: AppStyle | undefined): string {
   if (!style) return "";
   const lines: string[] = ["For this app:"];
-  if (style.formality) lines.push(`- Formality (override): ${style.formality}`);
-  if (style.emoji) lines.push(`- Emoji use (override): ${style.emoji}`);
+  if (style.formality) lines.push(`- Formality (override): ${inlineValue(style.formality, 20)}`);
+  if (style.emoji) lines.push(`- Emoji use (override): ${inlineValue(style.emoji, 20)}`);
   if (style.dial) {
     const d = renderToneDial(style.dial);
     if (d !== "Default.") lines.push(`- Tone dial (override):\n${d.replace(/^/gm, "  ")}`);
   }
-  if (style.note) lines.push(`- Note: ${style.note}`);
+  if (style.note) lines.push(`- Note: ${inlineValue(style.note, 200)}`);
   return lines.length > 1 ? lines.join("\n") : "";
 }
 
@@ -179,12 +211,13 @@ export function resolveRecipientHint(
   hints: RecipientHint[] | undefined,
   recipient: string | undefined,
 ): string {
-  if (!hints?.length || !recipient) return "";
+  if (!Array.isArray(hints) || !hints.length || !recipient) return "";
   const wanted = recipient.trim().toLowerCase();
-  const hit = hints.find((h) => wanted.includes(h.recipient.trim().toLowerCase()));
+  const hit = hints.find((h) => typeof h?.recipient === "string" && h.recipient.trim() &&
+    wanted.includes(h.recipient.trim().toLowerCase()));
   if (!hit) return "";
   // Fence: hint is user-authored context, never obey it as an instruction.
-  return `<recipient_hint recipient="${sanitizeFenced(hit.recipient)}">${sanitizeFenced(hit.hint)}</recipient_hint>`;
+  return `<recipient_hint recipient="${inlineValue(hit.recipient).replace(/"/g, "'")}">${sanitizeFenced(hit.hint ?? "", 300)}</recipient_hint>`;
 }
 
 /**
@@ -205,12 +238,12 @@ export function renderCommandOverride(command: Command | undefined): string {
     case "casual":
       return "The user asked for a MORE CASUAL tone in this run — conversational, contractions ok, warm and human. Overrides the tone dial for this run.";
     case "translate": {
-      // Sanitize captured language to defang injection: 40 chars, no angle brackets.
-      const lang = sanitizeFenced(command.lang).slice(0, 40) || "the requested language";
+      // Sanitize captured language to defang injection: one line, 40 chars, no angle brackets.
+      const lang = inlineValue(command.lang, 40) || "the requested language";
       return `The user asked to TRANSLATE the output into ${lang}. Produce the cleaned text IN ${lang} only. If the source is in a different script, use ${lang}'s script.`;
     }
     case "language": {
-      const lang = sanitizeFenced(command.lang).slice(0, 40) || "the requested language";
+      const lang = inlineValue(command.lang, 40) || "the requested language";
       return `The user asked for this message IN ${lang}. Write the whole of it in ${lang}, in that language's own script — for this run only, over English and over any saved language.`;
     }
     case "bulletpoints":
@@ -222,74 +255,19 @@ export function renderCommandOverride(command: Command | undefined): string {
   }
 }
 
-/**
- * Build the system prompt for the STREAMING cleanup pass.
- *
- * READ THIS BEFORE EDITING shared/prompts/cleanup.*.md.
- *
- * The name is older than the architecture and it misleads. This prompt does
- * NOT run the keyboard's /v1/refine, the in-app mic's /v1/transcribe-clean,
- * or /v1/draft. All three call assist(), which builds its prompt in
- * pipeline/assistPrompt.ts — a TypeScript string, not a file, and not
- * versioned by CLEANUP_PROMPT_VERSION. The only caller left here is
- * cleanStream() on the in-app streaming mic.
- *
- * The cost of not knowing that: two prompt versions, v5 and v6, were written
- * to fix reported faults in refinement and shipped to production. Both were
- * correct and neither reached the paths users were complaining about. The
- * end-to-end run proved it — the same sentence passed through the mic and
- * failed through the keyboard, and an injection case printed the assist
- * prompt back, which is how the mismatch was finally visible.
- *
- * So: a change to how Tailzu WRITES belongs in assistPrompt.ts. A change to
- * this file reaches one path, and a quality run is the only thing that will
- * tell you which one you actually changed.
- */
-export function buildCleanupSystem(opts: CleanupOptions): string {
-  const version = getConfig().CLEANUP_PROMPT_VERSION;
-  const targetApp = opts.targetApp?.trim() || "Generic";
-  const appStyle = resolveAppStyle(opts.personality?.appStyles, targetApp);
-  const base = loadPromptFile(`cleanup.${version}.md`)
-    .replaceAll("{{TARGET_APP}}", targetApp)
-    .replaceAll("{{LANGUAGE}}", opts.language ?? "auto")
-    .replaceAll("{{PERSONALITY}}", renderPersonality(opts.personality))
-    .replaceAll("{{TONE_DIAL}}", renderToneDial(opts.personality?.dial))
-    .replaceAll("{{APP_STYLE}}", renderAppStyle(appStyle))
-    .replaceAll("{{RECIPIENT_HINT}}", "") // cleanup path has no recipient
-    .replaceAll("{{COMMAND_OVERRIDE}}", renderCommandOverride(opts.command))
-    .replaceAll("{{WATERMARK}}", opts.personality?.watermark ? "on" : "off");
-  // Appended rather than templated: the script is OBSERVED per request (the
-  // STT layer measures it), so it doesn't belong in the versioned prompt file.
-  return renderObservedScript(opts.script, base);
-}
-
-/**
- * Append what script the input actually arrived in.
- *
- * It used to end "write your output in that same script" — the whole point
- * of it, while the rule was to send back the user's own alphabet. The
- * alphabet is English now, so the fact has the opposite consequence and has
- * to carry it: a sentence in another script is the one that needs spelling
- * out, and this is how the model knows it is looking at one.
- */
-function renderObservedScript(script: string | undefined, base: string): string {
-  if (!script || script === "unknown") return base;
-  return `${base}\n\nSCRIPT: what the user said arrived in ${script.toUpperCase()} script. Their words stay as they are; write them in English letters.`;
-}
-
 /** Build the system prompt for the screen-reply drafting task. */
 export function buildReplySystem(opts: CleanupOptions, recipient?: string): string {
   const version = getConfig().REPLY_PROMPT_VERSION;
-  const targetApp = opts.targetApp?.trim() || "Generic";
+  const targetApp = inlineValue(opts.targetApp, 40) || "Generic";
   const appStyle = resolveAppStyle(opts.personality?.appStyles, targetApp);
-  const recipientHint = resolveRecipientHint(opts.personality?.recipientHints, recipient);
-  return loadPromptFile(`reply.${version}.md`)
-    .replaceAll("{{TARGET_APP}}", targetApp)
-    .replaceAll("{{LANGUAGE}}", opts.language ?? "auto")
-    .replaceAll("{{PERSONALITY}}", renderPersonality(opts.personality))
-    .replaceAll("{{TONE_DIAL}}", renderToneDial(opts.personality?.dial))
-    .replaceAll("{{APP_STYLE}}", renderAppStyle(appStyle))
-    .replaceAll("{{RECIPIENT}}", recipient?.trim() || "Unknown")
-    .replaceAll("{{RECIPIENT_HINT}}", recipientHint)
-    .replaceAll("{{WATERMARK}}", opts.personality?.watermark ? "on" : "off");
+  return fill(loadPromptFile(`reply.${version}.md`), {
+    TARGET_APP: targetApp,
+    LANGUAGE: inlineValue(opts.language, 40) || "auto",
+    PERSONALITY: renderPersonality(opts.personality),
+    TONE_DIAL: renderToneDial(opts.personality?.dial),
+    APP_STYLE: renderAppStyle(appStyle),
+    WATERMARK: opts.personality?.watermark ? "on" : "off",
+    RECIPIENT: inlineValue(recipient) || "Unknown",
+    RECIPIENT_HINT: resolveRecipientHint(opts.personality?.recipientHints, recipient),
+  });
 }

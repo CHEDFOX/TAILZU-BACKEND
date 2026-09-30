@@ -1,23 +1,24 @@
 /**
- * The cleanup "brain": OpenRouter chat calls that
- *  - clean()/cleanStream()  : polish raw transcript OR typed text (voice + typing)
- *  - draftReply()           : draft a personalized reply from screen content + intent
+ * The writing "brain": OpenRouter chat calls that
+ *  - assist()        : write what was said or typed (voice + typing), prompt
+ *                      from ./assistPrompt.ts
+ *  - draftReply()    : draft a reply from screen content + intent, prompt from
+ *                      ../prompts.ts (shared/prompts/reply.*.md)
+ *  - the Training and portrait writers
  *
- * Default model: anthropic/claude-haiku-4.5, swappable via CLEANUP_MODEL.
- * System prompts are built in ../prompts.ts from the versioned shared/prompts/.
+ * The model is CLEANUP_MODEL (config.ts).
  */
 import OpenAI from "openai";
 import { getConfig } from "../config.js";
-import { buildCleanupSystem, buildReplySystem } from "../prompts.js";
 import type { CleanupOptions, Personality } from "../../../shared/types/api.js";
 import { LLM_TONES } from "./tonePrompts.js";
 import {
   PORTRAIT_DIMENSIONS, PORTRAIT_BOUNDS, portraitJsonContract, portraitProvenance,
   parsePortraitDraft, type PortraitDraft,
 } from "./portraitDimensions.js";
-import { buildAssistSystem, portraitBlock } from "./assistPrompt.js";
+import { buildAssistSystem, fenceTags, stripFenceTags } from "./assistPrompt.js";
 import { splitInstruction } from "./commands.js";
-import { renderCommandOverride } from "../prompts.js";
+import { buildReplySystem, inlineValue, renderCommandOverride } from "../prompts.js";
 import { detectScript, INDIC_SCRIPTS, mixesEnglishAndRomanHindi, readsAsRomanHindi, romanHindiHits, transliterated } from "./stt.js";
 
 /**
@@ -30,7 +31,7 @@ export function scriptOf(text: string): string | undefined {
   const s = detectScript(text);
   return s && s !== "unknown" ? s : undefined;
 }
-export { portraitBlock };
+export { stripFenceTags };
 
 let client: OpenAI | null = null;
 function openrouter(): OpenAI {
@@ -56,7 +57,7 @@ function openrouter(): OpenAI {
 /**
  * Reasoning effort for every LLM call.
  *
- * CLEANUP_MODEL defaults to a GPT-5-class model, and those REASON before they
+ * CLEANUP_MODEL defaults to a reasoning model, and those REASON before they
  * answer. Nothing here passed a reasoning parameter, so every refine ran at the
  * provider's default effort — spending tokens deliberating before emitting a
  * single word of output. That is the latency, and it buys nothing: rewriting a
@@ -330,7 +331,9 @@ export function stripAddedClosing(out: string, said: string): string {
  */
 const FILLER = "(?:h+m+|u+m+|u+h+|e+r+m+|হু+ম+|হুঁ+|উ+ম+|হ্ম+|हु?म्म+|हुँ+|उम्म+|ह्म+)";
 const LEADING_FILLER = new RegExp(`^(?:${FILLER}(?![\\p{L}\\p{M}])[\\s,.…!?—–-]*)+`, "iu");
-const TRAILING_FILLER = new RegExp(`(?:[\\s,.…—–-]+${FILLER})+[\\s.…!?]*$`, "iu");
+// (?<!…): a match starts only where a run of separators does — the leftmost
+// one always did — so a long run is scanned once, not once per character.
+const TRAILING_FILLER = new RegExp(`(?<![\\s,.…—–-])(?:[\\s,.…—–-]+${FILLER})+[\\s.…!?]*$`, "iu");
 export function stripEdgeFiller(out: string): string {
   const t = out.trim();
   const cut = t.replace(LEADING_FILLER, "").replace(TRAILING_FILLER, (m) => (/[.!?]\s*$/.test(m) ? "." : "")).trim();
@@ -339,19 +342,8 @@ export function stripEdgeFiller(out: string): string {
   return cut === t ? out : cut.charAt(0).toUpperCase() + cut.slice(1);
 }
 
-/**
- * The tags the writer's input arrives in (see assist()). A dictation that
- * contains one could close the fence early and pass the rest off as ours, so
- * they are taken out of what the user said before it is fenced, and out of
- * what the model wrote before it reaches the field.
- */
-const FENCE_TAGS = /<\/?\s*(?:said|before)\b[^>]*>/gi;
-export function stripFenceTags(s: string): string {
-  return s.replace(FENCE_TAGS, "");
-}
-
 /** Words, as the meter counts them. */
-function wordCount(s: string): number {
+function countWords(s: string): number {
   const t = s.trim();
   return t ? t.split(/\s+/).length : 0;
 }
@@ -367,7 +359,7 @@ function wordCount(s: string): number {
  * longer" needs, and far less than an essay.
  */
 export function runaway(out: string, input: string): boolean {
-  return wordCount(out) > wordCount(input) * 8 + 120;
+  return countWords(out) > countWords(input) * 8 + 120;
 }
 
 /**
@@ -401,14 +393,20 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Parse "trigger = expansion" lines into pairs (first '=' splits the line). */
+/**
+ * Parse "trigger = expansion" lines into pairs (first '=' splits the line).
+ * Bounded: each one is a regex compiled and run over every completion, and a
+ * personality can arrive whole in a request body.
+ */
+const MAX_SNIPPETS = 500;
 function parseSnippets(text: string): Array<{ trigger: string; expansion: string }> {
   const out: Array<{ trigger: string; expansion: string }> = [];
   for (const line of text.split(/\r?\n/)) {
     const i = line.indexOf("=");
     if (i < 0) continue;
     const trigger = line.slice(0, i).trim();
-    if (trigger) out.push({ trigger, expansion: line.slice(i + 1).trim() });
+    if (trigger && trigger.length <= 100) out.push({ trigger, expansion: line.slice(i + 1).trim() });
+    if (out.length >= MAX_SNIPPETS) break;
   }
   return out;
 }
@@ -490,7 +488,7 @@ export function expandSnippets(
   snippets?: string,
   ctx?: SnippetContext,
 ): string {
-  if (!snippets?.trim() || !text) return text;
+  if (typeof snippets !== "string" || !snippets.trim() || !text) return text;
   const context = ctx ?? {};
   let out = text;
   for (const { trigger, expansion } of parseSnippets(snippets)) {
@@ -514,69 +512,30 @@ function ctxFromOpts(opts: CleanupOptions, recipient?: string): SnippetContext {
 // --- Cleanup / refine (voice + typing) -------------------------------------
 
 /**
- * Basic cleanup — this is what the "None" tone now does. Removes filler and
- * false starts and gives the text sentence structure (capitalization,
- * punctuation, sentence/paragraph breaks) WITHOUT changing the user's words,
- * tone, meaning, or language. It's the floor every other tone builds on:
- * "None" is exactly this and nothing more — faithful, not a rewrite.
+ * What the writer is handed, built once for assist() and refineVariants() so
+ * the Training variants get exactly the separation, script fact and fence the
+ * keyboard does.
  */
-const BASIC_CLEAN_PROMPT = [
-  "You lightly clean up dictated or typed text so it reads well, WITHOUT changing the person's voice, wording, or meaning.",
-  "Output ONLY the cleaned text — no preamble, no quotes, no explanation.",
-  "",
-  "DO:",
-  "- Remove filler and false starts: 'um', 'uh', 'er', 'like', 'you know', repeated words, and self-corrections (keep the corrected version).",
-  "- Fix capitalization and punctuation; add sentence and paragraph breaks where the meaning calls for them.",
-  "- Keep every other word the user said, including slang and casual phrasing.",
-  "",
-  "DON'T:",
-  "- Don't rephrase, formalize, shorten, or expand. Don't add greetings, sign-offs, or facts.",
-  "- Don't change the tone or the language. Preserve mixed-language / code-switched text exactly.",
-].join("\n");
-
-/**
- * The "None" tone: a light, faithful cleanup (filler + structure) with no
- * personality rewrite. Exported so both the voice pipeline and the typing
- * /v1/refine/none route share the exact same behavior.
- */
-export async function cleanBasic(input: string): Promise<string> {
-  if (!input.trim()) return "";
-  const res = await openrouter().chat.completions.create({
-    ...common(),
-    model: getConfig().CLEANUP_MODEL,
-    temperature: 0.1, // very low — faithful, not creative
-    max_tokens: MAX_TOKENS_CLEANUP,
-    messages: [
-      { role: "system", content: BASIC_CLEAN_PROMPT },
-      { role: "user", content: input },
-    ],
-  });
-  return (res.choices[0]?.message?.content ?? "").trim();
+interface WriterRequest {
+  /** What they said, with any trailing instruction taken off. */
+  message: string;
+  context?: string;
+  askedLanguage?: string;
+  system: string;
+  userContent: string;
 }
 
-/**
- * The unified writing-assistant call — Tailzu's single brain for voice + typing.
- * Takes the user's MESSAGE (spoken or typed, possibly with an embedded
- * instruction like "…make it short and in bullet points"), optional CONTEXT
- * (what's already in the field), and the active tone, and returns the finished
- * text. The model separates message from instruction, applies the tone, and
- * continues/answers the context when present.
- */
-export async function assist(
-  message: string,
-  opts: CleanupOptions = {},
-): Promise<string> {
-  if (!message.trim()) return "";
+function writerRequest(input: string, opts: CleanupOptions): WriterRequest {
   // THE INSTRUCTION COMES OFF FIRST (commands.splitInstruction). The writer is
   // handed the message alone and told what was asked, so no word of the
   // request can be written into it — and every fallback below returns the
   // message without it, never the raw sentence with the instruction inside.
-  const split = splitInstruction(message);
+  const split = splitInstruction(input);
   const asked = split.command;
   const askedLanguage = asked && (asked.kind === "language" || asked.kind === "translate")
     ? asked.lang.replace(/\b\w/g, (c) => c.toUpperCase())
     : undefined;
-  message = split.message;
+  const message = split.message;
   const context = opts.context?.trim();
   // A second recognizer's reading, when it disagreed with the first. Kept as
   // USER content (never spliced into the system prompt) so recognizer output
@@ -638,6 +597,23 @@ export async function assist(
     : said;
   const userContent = (context ? `<before>\n${stripFenceTags(context)}\n</before>\n` : "")
     + `<said>\n${messageBlock}\n</said>`;
+  return { message, context, askedLanguage, system, userContent };
+}
+
+/**
+ * The unified writing-assistant call — Tailzu's single brain for voice + typing.
+ * Takes the user's MESSAGE (spoken or typed, possibly with an embedded
+ * instruction like "…make it short and in bullet points"), optional CONTEXT
+ * (what's already in the field), and the active tone, and returns the finished
+ * text. The model separates message from instruction, applies the tone, and
+ * continues/answers the context when present.
+ */
+export async function assist(
+  input: string,
+  opts: CleanupOptions = {},
+): Promise<string> {
+  if (!input.trim()) return "";
+  const { message, context, askedLanguage, system, userContent } = writerRequest(input, opts);
   const res = await openrouter().chat.completions.create({
     ...common(),
     model: getConfig().CLEANUP_MODEL,
@@ -675,88 +651,12 @@ export async function assist(
   return finalizeCompletion(trimmed, message.trim());
 }
 
-/** Non-streaming cleanup of a transcript or typed text. */
-export async function clean(
-  input: string,
-  opts: CleanupOptions = {},
-): Promise<string> {
-  if (!input.trim()) return "";
-  // "None" tone → basic cleanup only (filler removal + structure), NOT a
-  // personality rewrite. resolvePersonality sets passThrough when the user's
-  // active tone resolves to "none". Snippet expansion still runs after.
-  if (opts.personality?.passThrough) {
-    const cleaned = await cleanBasic(input);
-    return expandSnippets(cleaned, opts.personality?.snippets, ctxFromOpts(opts));
-  }
-  const res = await openrouter().chat.completions.create({
-    ...common(),
-    model: getConfig().CLEANUP_MODEL,
-    temperature: TEMPERATURE,
-    max_tokens: MAX_TOKENS_CLEANUP,
-    messages: [
-      { role: "system", content: buildCleanupSystem(opts) },
-      { role: "user", content: input },
-    ],
-  });
-  const out = expandSnippets(
-    (res.choices[0]?.message?.content ?? "").trim(),
-    opts.personality?.snippets,
-    ctxFromOpts(opts),
-  );
-  // Never return empty for real input — the refine clients replace the field
-  // with this, so an empty completion would delete the user's text. Fall back
-  // to the original so a failed cleanup is a no-op, not data loss. A meta/
-  // refusal reply is discarded (→ "") so it never lands on the typepad.
-  return finalizeCompletion(out, input.trim());
-}
-
 export { LLM_TONES };
 
-/** Streaming cleanup — yields cleaned text deltas as they arrive. */
-export async function* cleanStream(
-  input: string,
-  opts: CleanupOptions = {},
-): AsyncGenerator<string, void, unknown> {
-  if (!input.trim()) return;
-  // "None" tone → basic cleanup, emitted as one chunk. (Short + fast enough
-  // that a separate streaming variant of the basic pass isn't worth it.)
-  if (opts.personality?.passThrough) {
-    const cleaned = await cleanBasic(input);
-    yield expandSnippets(cleaned, opts.personality?.snippets, ctxFromOpts(opts));
-    return;
-  }
-  const stream = await openrouter().chat.completions.create({
-    ...common(),
-    model: getConfig().CLEANUP_MODEL,
-    temperature: TEMPERATURE,
-    max_tokens: MAX_TOKENS_CLEANUP,
-    stream: true,
-    messages: [
-      { role: "system", content: buildCleanupSystem(opts) },
-      { role: "user", content: input },
-    ],
-  });
-  // Accumulate the whole completion, THEN apply the same guards the non-stream
-  // clean() applies: snippet expansion + the meta/refusal filter. We can't
-  // un-yield a delta once it's on the cursor, so streaming raw deltas would let
-  // "Sorry, say that again" reach the typepad and would skip snippet expansion.
-  // Buffering trades per-word streaming on THIS path for correctness (the
-  // in-app streaming mic; the keyboard's live path is Deepgram, not this).
-  let buf = "";
-  for await (const chunk of stream) {
-    const delta = chunk.choices[0]?.delta?.content;
-    if (delta) buf += delta;
-  }
-  // The same bound as assist(): nothing far longer than they could have asked for.
-  const written = runaway(buf, input) ? input.trim() : buf.trim();
-  const cleaned = finalizeCompletion(
-    expandSnippets(written, opts.personality?.snippets, ctxFromOpts(opts)),
-    input,
-  );
-  if (cleaned) yield cleaned;
-}
-
 // --- Screen-reply drafting --------------------------------------------------
+
+/** The fences a draft's two inputs arrive in; see draftReply. */
+const SCREEN_TAGS = fenceTags("screen|intent");
 
 /** Draft a personalized reply from on-screen content + the user's intent. */
 export async function draftReply(
@@ -766,22 +666,31 @@ export async function draftReply(
   recipient?: string,
 ): Promise<string> {
   if (!intent.trim()) return "";
+  // FENCED. The screen is the one input here that someone ELSE wrote — the
+  // message being replied to — and it used to sit under a heading, where a
+  // line of it could pass for the end of the data. Its tags come out of both
+  // halves so neither can close the other's fence.
+  const fence = (tag: string, s: string) => `<${tag}>\n${stripFenceTags(s, SCREEN_TAGS)}\n</${tag}>`;
   const userMsg =
-    `SCREEN CONTENT (what I'm replying to):\n${screenContent.trim() || "(none)"}\n\n` +
-    `MY INTENT (what I want to say back):\n${intent.trim()}`;
+    `SCREEN CONTENT (what I'm replying to):\n${fence("screen", screenContent.trim() || "(none)")}\n\n` +
+    `MY INTENT (what I want to say back):\n${fence("intent", intent.trim())}`;
 
+  const system = buildReplySystem(opts, recipient);
   const res = await openrouter().chat.completions.create({
     ...common(),
     model: getConfig().CLEANUP_MODEL,
     temperature: REPLY_TEMPERATURE,
     max_tokens: MAX_TOKENS_REPLY,
     messages: [
-      { role: "system", content: buildReplySystem(opts, recipient) },
+      { role: "system", content: system },
       { role: "user", content: userMsg },
     ],
   });
+  const out = stripFenceTags((res.choices[0]?.message?.content ?? "").trim(), SCREEN_TAGS);
+  // A draft that quotes its instructions is not a reply: what they said they
+  // wanted to say goes out instead, the same policy as assist().
   return expandSnippets(
-    (res.choices[0]?.message?.content ?? "").trim(),
+    quotesPrompt(out, system) ? intent.trim() : out,
     opts.personality?.snippets,
     ctxFromOpts(opts, recipient),
   );
@@ -825,15 +734,11 @@ export async function refineVariants(
   opts: CleanupOptions = {},
 ): Promise<Array<{ text: string; angle: string }>> {
   if (!message.trim()) return [];
-  const base = buildAssistSystem({
-    tone: opts.tone,
-    tonePrompt: opts.tonePrompt,
-    personality: opts.personality,
-    language: opts.language,
-    targetApp: opts.targetApp,
-    script: opts.script,
-    hasContext: false,
-  });
+  // The same request the keyboard sends: instruction off, script stated, what
+  // they said fenced in <said>. It used to go as a bare user turn under a
+  // prompt that says it arrives in <said>, with none of assist()'s checks on
+  // the way out.
+  const req = writerRequest(message, opts);
 
   const settled = await Promise.allSettled(
     VARIANT_ANGLES.map(async ({ angle, brief }) => {
@@ -841,23 +746,26 @@ export async function refineVariants(
       // shapes HOW. Stated in that order so a spoken instruction is still
       // executed rather than treated as content to restyle.
       const system =
-        base +
+        req.system +
         "\n\nTRAINING VARIANT: after applying the rules above to work out what the user wants written, " +
         "write that message in this specific direction:\n" + brief +
         "\nSay the same thing the other versions would say — only the style differs. " +
         "Output ONLY the message, exactly as the rules above require.";
       const res = await openrouter().chat.completions.create({
-    ...common(),
+        ...common(),
         model: getConfig().CLEANUP_MODEL,
         temperature: 0.6, // higher than cleanup: the variants must actually differ
         max_tokens: MAX_TOKENS_CLEANUP,
         messages: [
           { role: "system", content: system },
-          { role: "user", content: message.trim() },
+          { role: "user", content: req.userContent },
         ],
       });
-      const text = (res.choices[0]?.message?.content ?? "").trim();
-      return { angle, text };
+      const text = stripFenceTags(res.choices[0]?.message?.content ?? "").trim();
+      // A variant that leaks the prompt, runs away or is a placeholder is not
+      // one to choose between: it is dropped, like a refusal.
+      const bad = quotesPrompt(text, system) || runaway(text, req.message) || looksLikeEmptyEcho(text);
+      return { angle, text: bad ? "" : text };
     }),
   );
 
@@ -1039,7 +947,8 @@ export function spokenLanguage(text: string): { name: string; locale?: string } 
 }
 
 export function converseSystem(language?: string, heard?: string): string {
-  const name = languageName(language);
+  // A code from the request, spoken back inside a sentence of the prompt.
+  const name = inlineValue(languageName(language), 80);
   const now = heard ? spokenLanguage(heard) : null;
   return [
     "You are talking with someone, out loud, and your only job is to keep them talking easily about themselves. Be curious, warm and brief.",

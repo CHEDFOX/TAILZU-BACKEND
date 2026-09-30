@@ -77,6 +77,7 @@ export const APP_KNOB_LABELS: Record<string, string> = {
   "desktop.mic.transcribeFailed": "Couldn't turn that into text. Try again.",
   "desktop.notify.accessibilityBody": "Text was copied. To auto-paste, enable Tailzu under System Settings → Privacy & Security → Accessibility.",
   "desktop.notify.accessibilityTitle": "Tailzu needs Accessibility",
+  "desktop.notify.baseUrlRefused": "baseUrl must be https (or http to localhost): {url} was ignored.",
   "desktop.notify.configInvalid": "config.json is invalid JSON: {error}",
   "desktop.notify.configTitle": "Tailzu — config problem",
   "desktop.notify.segmentLost": "segment lost — still listening",

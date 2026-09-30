@@ -449,3 +449,15 @@ describe("words and snippets, one at a time", () => {
     expect(res.json().look).toBe("desk");
   });
 });
+
+describe("a length of time, as a person says it", () => {
+  it("rounds once, so no hour ever has sixty minutes", async () => {
+    const { span } = await import("../src/experience/phoneLook.js");
+    expect(span(119.7)).toBe("2 h");
+    expect(span(59.7)).toBe("1 h");
+    expect(span(0.995)).toBe("1 min");
+    expect(span(0.2)).toBe("12 sec");
+    expect(span(65)).toBe("1 h 05");
+    expect(span(9.4)).toBe("9 min");
+  });
+});

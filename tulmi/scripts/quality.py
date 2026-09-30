@@ -3,7 +3,7 @@
 End-to-end quality harness: dictation in, finished text out.
 
 Asks the DEPLOYED backend to do the whole job, over HTTP, as the app does.
-Nothing is mocked — real prompt version, real recognisers, real language
+Nothing is mocked — the deployed prompt, real recognisers, real language
 rules, real personality handling.
 
     cd ~/tulmi && ./tulmi/scripts/quality.sh                  # everything
@@ -377,8 +377,6 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--api", default=os.environ.get("API", "http://127.0.0.1:8770"))
     ap.add_argument("--token", default=os.environ.get("TOKEN", ""))
-    ap.add_argument("--version", default=os.environ.get("PROMPT_VERSION", "unknown"),
-                    help="CLEANUP_PROMPT_VERSION — the STREAMING path only")
     ap.add_argument("--assist", default="unknown",
                     help="fingerprint of the assist prompt, which serves everything else")
     ap.add_argument("--pipeline", default="unknown",
@@ -412,12 +410,9 @@ def main():
     spoken = sum(1 for c in cases if c.get("endpoint") == "dictate")
     print("Asking the deployed backend to do the whole job. Every line is real work.")
     # The assist fingerprint comes first because it is the prompt nearly every
-    # case exercises. The cleanup version is labelled with the one path it
-    # governs, so nobody again reads a green run as a verdict on the file they
-    # just edited.
-    print("assist prompt:  %s   (refine, transcribe-clean, draft)" % args.assist)
+    # case exercises.
+    print("assist prompt:  %s   (refine, transcribe-clean, live)" % args.assist)
     print("writing path:   %s   (everything else that shapes the output)" % args.pipeline)
-    print("cleanup prompt: %s   (the streaming mic only)" % args.version)
     print("cases: %d   spoken aloud: %d%s"
           % (len(cases), spoken,
              "   x%d runs each" % args.repeat if args.repeat > 1 else ""))
@@ -602,7 +597,7 @@ def main():
               % len(errored))
 
     doc = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-           "promptVersion": args.version, "assistPrompt": args.assist,
+           "assistPrompt": args.assist,
            "writingPath": args.pipeline,
            "repeat": args.repeat, "passed": len(passed),
            "failed": len(failed), "errored": len(errored),

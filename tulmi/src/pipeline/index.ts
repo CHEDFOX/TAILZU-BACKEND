@@ -1,13 +1,10 @@
 /**
- * Pipeline orchestration: audio → transcript → cleaned text, plus usage.
- *
- * Two entry points:
- *  - runPipeline()        : one-shot (REST + test script)
- *  - runPipelineStream()  : streaming (WebSocket) — emits events as they happen
+ * Pipeline orchestration: audio → transcript → written text, plus usage.
+ * runPipeline() is the one-shot path (/v1/transcribe-clean, the demo, the
+ * test scripts); live dictation streams through routes/transcribe-stream.ts.
  */
 import { transcribe } from "./stt.js";
-import { assist, cleanStream } from "./cleanup.js";
-import { detectCommand } from "./commands.js";
+import { assist } from "./cleanup.js";
 import type {
   AudioFormat,
   CleanupOptions,
@@ -18,6 +15,11 @@ import { getConfig } from "../config.js";
 export interface PipelineInput extends CleanupOptions {
   audio: Buffer;
   format: AudioFormat;
+}
+
+function countWords(text: string): number {
+  const t = text.trim();
+  return t ? t.split(/\s+/).length : 0;
 }
 
 export interface PipelineResult {
@@ -31,11 +33,6 @@ export interface PipelineResult {
   transcript: string;
   cleanedText: string;
   usage: UsageRecord;
-}
-
-function countWords(text: string): number {
-  const t = text.trim();
-  return t ? t.split(/\s+/).length : 0;
 }
 
 /** One-shot: transcribe, then run the writing assistant. */
@@ -105,70 +102,6 @@ export async function runPipeline(
     // is otherwise invisible, because the fallback makes everything look fine.
     sttEngine: stt.engine,
     detectedLanguage: stt.detectedLanguage,
-    cleanedText,
-    usage: {
-      audioSeconds: stt.durationSeconds,
-      words: countWords(cleanedText),
-      model: getConfig().CLEANUP_MODEL,
-    },
-  };
-}
-
-/** Events emitted by the streaming pipeline. */
-export type PipelineEvent =
-  | { type: "transcript"; text: string }
-  | { type: "cleaned_delta"; text: string }
-  | { type: "done"; cleanedText: string; usage: UsageRecord };
-
-/**
- * Streaming: emit the transcript once, then cleaned deltas, then a final done
- * event with usage. Note: STT itself isn't incremental here — we transcribe the
- * full clip, then stream the *cleanup*, which is where most of the latency and
- * the visible "typing" effect lives.
- */
-export async function* runPipelineStream(
-  input: PipelineInput,
-): AsyncGenerator<PipelineEvent, void, unknown> {
-  const { audio, format, ...opts } = input;
-
-  const stt = await transcribe({
-    audio, format,
-    language: opts.language,
-    vocabulary: opts.personality?.vocabulary,
-    // The learned portrait, for its QUOTED WORDS only (see portraitTerms).
-    // The recognizer gets the terms this speaker actually uses; the prose
-    // never reaches it, because Whisper reads its prompt as preceding speech.
-    portraitCore: opts.personality?.stylePortrait?.core,
-    portraitWords: opts.personality?.stylePortrait?.words,
-    // The Languages card, when the user has answered it.
-    languages: opts.personality?.languages?.map(String),
-  });
-  const { transcript, command } = detectCommand(stt.text);
-  yield { type: "transcript", text: transcript };
-
-  // Same gate as the one-shot path: silence in, silence out, no model call.
-  if (!transcript.trim()) {
-    yield {
-      type: "done",
-      cleanedText: "",
-      usage: { audioSeconds: stt.durationSeconds, words: 0, model: getConfig().CLEANUP_MODEL },
-    };
-    return;
-  }
-
-  let cleanedText = "";
-  for await (const delta of cleanStream(transcript, {
-    ...opts,
-    command: command ?? opts.command,
-    script: stt.script, // observed script — same fidelity guarantee as the one-shot path
-  })) {
-    cleanedText += delta;
-    yield { type: "cleaned_delta", text: delta };
-  }
-  cleanedText = cleanedText.trim();
-
-  yield {
-    type: "done",
     cleanedText,
     usage: {
       audioSeconds: stt.durationSeconds,

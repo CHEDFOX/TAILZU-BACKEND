@@ -256,15 +256,9 @@ const EnvSchema = z.object({
   // ever under NODE_ENV=development or test — see the boot-time refusal.
   DEV_SKIP_AUTH: bool(false),
 
-  // Prompt versions to load from shared/prompts/. v3 (cleanup) / v2 (reply)
-  // add the tone dial + per-app overrides + watermark. Roll back by exporting
-  // CLEANUP_PROMPT_VERSION=v2 / REPLY_PROMPT_VERSION=v1 without a code change.
-  // v6 scopes the language rule to LANGUAGES, not just scripts: v5's switching
-  // sentence named romanized Hindi and Devanagari, so a sentence that opens in
-  // English and finishes in Hindi matched no rule and came back translated.
-  // v5 is still on disk — set this to v5 to compare the two against
-  // scripts/quality.sh without a deploy.
-  CLEANUP_PROMPT_VERSION: z.string().default("v7"),
+  // The reply prompt to load from shared/prompts/ (reply.v<N>.md). Roll back
+  // by exporting REPLY_PROMPT_VERSION=v3 without a code change. (Cleanup has
+  // no file any more: the writer's prompt is built in assistPrompt.ts.)
   REPLY_PROMPT_VERSION: z.string().default("v4"),
 
   // Sentry (backend). Optional — the observability layer no-ops when unset,

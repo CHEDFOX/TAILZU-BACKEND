@@ -33,14 +33,11 @@ for (const [k, v] of Object.entries({
 
 const { SITE_UI } = await import("../src/experience/catalog.js");
 const { HOME, appLd, faqLd, homeFaq, orgLd, pageLd, websiteLd } = await import("../src/seo/facts.js");
-const { headTags } = await import("../src/seo/head.js");
+const { esc, headTags } = await import("../src/seo/head.js");
 
 const file = process.argv[2];
 const check = process.argv.includes("--check");
 if (!file) { console.error("usage: sync-site.mts <index.html> [--check]"); process.exit(2); }
-
-const esc = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 // The same markup the page's own script builds (paintBelow), so the swap to
 // the live copy changes nothing a reader can see.

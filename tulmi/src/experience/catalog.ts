@@ -2261,8 +2261,11 @@ export function buildBootstrap(
       "history.title": "History",
       "history.subtitle":
         "Every cleanup you've kept, newest first. Tap to copy, long-press to remove.",
+      // History is kept by default (history/store.ts HISTORY_DEFAULT_ON) and
+      // the phone has no switch for it, so an empty list means nothing has
+      // been written yet — not a setting to go and find.
       "history.empty":
-        "No history yet. Turn on 'Keep history' in your personality to start collecting your cleanups.",
+        "Nothing here yet. What you write with Tailzu shows up here.",
       "history.delete.error": "Couldn't reach history. Try again.",
 
       // FOR APP BUILDS THAT STILL FRAME A RAW ERROR. Those builds fill
@@ -6559,7 +6562,7 @@ const LIVE_GREETING_BY_LANGUAGE: Record<string, string> = {
 
 function liveGreeting(ctx: ScreenContext): string {
   const lang = String(ctx.language ?? "").trim().toLowerCase();
-  if (lang && lang !== "auto" && lang !== "en") return LIVE_GREETING_BY_LANGUAGE[lang] ?? "";
+  if (lang && lang !== "auto" && lang !== "en") return Object.hasOwn(LIVE_GREETING_BY_LANGUAGE, lang) ? LIVE_GREETING_BY_LANGUAGE[lang]! : "";
   const g = TRAINING_UI.chat.live.greeting;
   const sp = ctx.personality?.stylePortrait;
   const sessions = sp?.sessions ?? 0;
@@ -8820,12 +8823,9 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         // two doors to one room. Dictionary is reached from the You tab.
         //
         // History and "Keep my history" are gone from Settings by owner
-        // decision. NOTE the consequence, because it is not cosmetic: the
-        // retainHistory consent flag now has NO switch anywhere in the app, so
-        // it stays at its default of OFF, nothing is ever written to
-        // cleanup_history, and the History screen — still reachable from Stats
-        // — will always be empty. The screen and its endpoint are left intact
-        // so restoring the toggle is a backend edit if that is wanted later.
+        // decision. History is therefore kept by DEFAULT (history/store.ts,
+        // HISTORY_DEFAULT_ON) — the phone has no switch; the desktop's
+        // Settings page still carries "Keep history" (desk.ts).
 
         // THE WAY IN. Until this row existed there was none.
         //

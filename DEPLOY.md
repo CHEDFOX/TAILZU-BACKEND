@@ -109,7 +109,7 @@ server {
     location / {
         proxy_pass http://127.0.0.1:8770;
         proxy_http_version 1.1;
-        # WebSocket upgrade for the live /v1/stream endpoint:
+        # WebSocket upgrade for the live /v1/transcribe-stream endpoint:
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
@@ -144,7 +144,7 @@ automatically. WebSockets work with no extra config.
 `Upgrade=websocket` to `ws://127.0.0.1:8770/` — ask me and I'll write it out.
 
 → Backend is live at `https://flow.yourdomain.com`; the app uses
-`wss://flow.yourdomain.com/v1/stream`.
+`wss://flow.yourdomain.com/v1/transcribe-stream`.
 
 ### Option B — Quick public port (testing only, no HTTPS)
 

@@ -19,7 +19,7 @@
  * No ratings, no user counts, no competitor facts: a number an engine quotes
  * has to be one we can stand behind.
  */
-import { SITE_UI, SITE_SHAPE, PAYWALL_CONFIG, POLICY } from "../experience/catalog.js";
+import { SITE_UI, SITE_SHAPE, PAYWALL_CONFIG } from "../experience/catalog.js";
 import { getConfig } from "../config.js";
 import { ID, ORIGIN, OG_IMAGE, abs } from "./head.js";
 
@@ -271,4 +271,3 @@ export function faqLd(items: QA[], path: string) {
   };
 }
 
-export const LEGAL = POLICY;

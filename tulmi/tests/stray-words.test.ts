@@ -7,6 +7,10 @@
  * whose length cannot be read from a header, so it was always trusted.
  */
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { AudioFormat } from "../../shared/types/api.js";
 import { describe, expect, it } from "vitest";
 import { stripAddedClosing, stripEdgeFiller } from "../src/pipeline/cleanup.js";
 import { isAmbiguousPhrase, speechSeconds } from "../src/pipeline/stt.js";
@@ -49,6 +53,17 @@ describe("a clip that is only a breath", () => {
 
   it("says unknown, not silent, when it cannot read the clip", async () => {
     expect(await speechSeconds(Buffer.from("not audio"), "webm")).toBe(-1);
+  });
+
+  it("never takes a path from the format, and measures only a format it knows", async () => {
+    // The format is request data (the stream's start frame). It used to be the
+    // temp file's extension, so "../" in it wrote the upload outside tmp.
+    const escaped = path.join(os.tmpdir(), `tz-escape-${process.pid}`);
+    const bytes = Buffer.alloc(4096, 1);
+    for (const format of [`x/../../${path.basename(escaped)}`, "constructor", "m3u8"]) {
+      expect(await speechSeconds(bytes, format as AudioFormat), format).toBe(-1);
+    }
+    expect(existsSync(escaped)).toBe(false);
   });
 });
 

@@ -2385,3 +2385,11 @@ describe("training lives on You, as a card", () => {
     expect(buildBootstrap({ onboarded: true }).initialScreenId).toBe("personality");
   });
 });
+
+describe("the motion language", () => {
+  it("calls nothing for a name that is only an Object member", () => {
+    const { funcs } = compile({ funcs: {} });
+    expect(evaluate({ k: "call", name: "constructor", args: [] }, {}, funcs)).toBe(0);
+    expect(evaluate({ k: "call", name: "toString", args: [] }, {}, funcs)).toBe(0);
+  });
+});

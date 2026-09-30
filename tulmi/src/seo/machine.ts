@@ -15,7 +15,7 @@
  */
 import { PRIVACY_POLICY_EFFECTIVE } from "../routes/policies/privacy.js";
 import { TERMS_EFFECTIVE } from "../routes/policies/terms.js";
-import { ORIGIN, abs } from "./head.js";
+import { ORIGIN, abs, esc } from "./head.js";
 import {
   DEFINITION, INDIA, LANGS, PAGED, STORES, WORLD,
   examplesFor, faqGroups, plans, sampleFor,
@@ -49,7 +49,7 @@ export function sitePages(): Array<{ path: string; lastmod: string; priority: st
 
 export function sitemapXml(): string {
   const urls = sitePages().map((p) =>
-    `  <url><loc>${abs(p.path)}</loc><lastmod>${p.lastmod}</lastmod><priority>${p.priority}</priority></url>`);
+    `  <url><loc>${esc(abs(p.path))}</loc><lastmod>${p.lastmod}</lastmod><priority>${p.priority}</priority></url>`);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls.join("\n")}

@@ -50,6 +50,14 @@ describe("what counts as an instruction", () => {
       .toEqual({ kind: "shorter" });
   });
 
+  it("takes the whole connector, and counts a line break as a boundary", () => {
+    // "and then" used to leave its "and" behind, at the end of the message.
+    expect(splitInstruction("ok so, and then make it shorter"))
+      .toEqual({ message: "ok so", command: { kind: "shorter" } });
+    expect(splitInstruction("the plan is ready\nmake it shorter"))
+      .toEqual({ message: "the plan is ready", command: { kind: "shorter" } });
+  });
+
   it("leaves a sentence that only ends like a request", () => {
     // No boundary: the words run straight on from the message.
     expect(splitInstruction("tell him I will reply in Spanish").command).toBeNull();

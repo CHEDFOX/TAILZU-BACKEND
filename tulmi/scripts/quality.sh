@@ -35,44 +35,28 @@ MSG
 
 dex(){ docker compose exec -T backend "$@" 2>/dev/null | tr -d '\r'; }
 
-# WHICH PROMPT PRODUCED THE SCORE. Ask the container's own node for the
-# resolved value — not printenv, which is blank whenever the default is in
-# force, and not the checkout, which `git pull` has already changed while the
-# image is still whatever it was until a rebuild finishes.
-VER=$(dex node -e \
-  'import("file:///app/tulmi/dist/tulmi/src/config.js").then(m=>console.log(m.getConfig().CLEANUP_PROMPT_VERSION))')
-if [ -z "$VER" ]; then
-  echo "Could not read the prompt version from the container. Is it running?" >&2
-  echo "  docker compose ps" >&2
-  exit 1
-fi
-# And the file has to be IN the image, or the version is a label on nothing:
-# a missing file falls back to an older prompt and the run measures that one.
-dex sh -c "test -f /app/shared/prompts/cleanup.$VER.md && echo yes" | grep -q yes || {
-  echo "The container resolves cleanup prompt $VER, but" >&2
-  echo "/app/shared/prompts/cleanup.$VER.md is not in the image — it was not" >&2
-  echo "rebuilt after the pull. Nothing below would measure what you changed:" >&2
-  echo "  docker compose up -d --build backend" >&2
-  exit 1; }
-
-# THE VERSION ABOVE IS NOT THE PROMPT MOST OF THIS MEASURES.
+# WHICH PROMPT PRODUCED THE SCORE. /v1/refine, /v1/transcribe-clean and the
+# live path build their prompt in pipeline/assistPrompt.ts, which has no
+# version — so hash what the container actually builds. The fingerprint
+# changes when the prompt changes and does not when it does not, which is the
+# entire job of a version. Asked of the container's own node, not the
+# checkout, which `git pull` has already changed while the image is still
+# whatever it was until a rebuild finishes.
 #
-# CLEANUP_PROMPT_VERSION governs shared/prompts/cleanup.*.md, which serves one
-# caller: cleanStream, on the in-app streaming mic. /v1/refine,
-# /v1/transcribe-clean and /v1/draft all build their prompt in
-# pipeline/assistPrompt.ts, which has no version at all — so a header reading
-# "cleanup prompt: v6" was reporting a true fact about the wrong file while
-# every case below exercised the other one.
-#
-# A prompt with no version can still have an identity: hash what the container
-# actually builds. The fingerprint changes when the prompt changes and does not
-# when it does not, which is the entire job of a version.
+# (It used to print CLEANUP_PROMPT_VERSION as well: the version of
+# shared/prompts/cleanup.*.md, whose one caller was the in-app streaming mic.
+# That path and those files are gone.)
 ASSIST=$(dex node -e '
 import("file:///app/tulmi/dist/tulmi/src/pipeline/assistPrompt.js").then(async (m) => {
   const { createHash } = await import("node:crypto");
   const s = m.buildAssistSystem({ hasContext: false });
   console.log(createHash("sha256").update(s).digest("hex").slice(0, 12));
 })')
+if [ -z "$ASSIST" ]; then
+  echo "Could not read the writing prompt from the container. Is it running?" >&2
+  echo "  docker compose ps" >&2
+  exit 1
+fi
 
 # THE PROMPT IS NOT THE ONLY THING THAT DECIDES THE OUTPUT.
 #
@@ -93,5 +77,5 @@ Promise.all([import("node:crypto"), import("node:fs")]).then(([c, fs]) => {
 })')
 
 exec python3 tulmi/scripts/quality.py \
-  --api "$API" --token "$TOKEN" --version "$VER" \
-  --assist "${ASSIST:-unreadable}" --pipeline "${PIPE:-unreadable}" "$@"
+  --api "$API" --token "$TOKEN" \
+  --assist "$ASSIST" --pipeline "${PIPE:-unreadable}" "$@"

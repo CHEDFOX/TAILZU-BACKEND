@@ -72,11 +72,6 @@ export function publishedRelease(os: DesktopOs, now = Date.now()): { version: st
   return { version, sha512 };
 }
 
-/** The published version for this OS, or "" when none was recorded. */
-export function publishedVersion(os: DesktopOs, now = Date.now()): string {
-  return publishedRelease(os, now).version;
-}
-
 /** Forget what was read, so a test (or a publish) is seen at once. */
 export function resetPublishedVersions(): void {
   cache.clear();

@@ -46,10 +46,28 @@ const KEEP = new Set(["Tailzu"]);
 
 const BRAND_NOTE = "Never translate the brand name 'Tailzu' — keep it exactly.";
 
+/**
+ * The language to translate into, or null for English.
+ *
+ * THE CODE IS A USER'S OWN STRING — the profile stores whatever the app sent,
+ * up to 35 characters — and it names the cache FILE and is spoken into the
+ * translation prompt. "../../x" wrote a .json wherever the process could
+ * write; a sentence in its place was an instruction to the translator; and
+ * every distinct string was a fresh paid translation of the whole UI. So only
+ * a language code a runtime can name gets through; anything else is English.
+ * English in any region ("en-US") is English too, not a translation job.
+ */
 function langInfo(language: string | undefined): { code: string; name: string } | null {
   const code = (language || "").trim().toLowerCase();
-  if (!code || code === "en" || code === "auto") return null;
-  return { code, name: LANGUAGE_NAMES[code] ?? code };
+  if (!code || code === "auto" || code.split("-")[0] === "en") return null;
+  if (Object.hasOwn(LANGUAGE_NAMES, code)) return { code, name: LANGUAGE_NAMES[code]! };
+  if (!/^[a-z]{2,3}(?:-[a-z0-9]{2,8}){0,2}$/.test(code)) return null;
+  try {
+    const name = new Intl.DisplayNames(["en"], { type: "language" }).of(code);
+    return name && name.toLowerCase() !== code ? { code, name } : null;
+  } catch {
+    return null;
+  }
 }
 
 function isTranslatable(s: string): boolean {
@@ -307,6 +325,12 @@ function client(): OpenAI {
     _client = new OpenAI({
       apiKey: cfg.OPENROUTER_API_KEY,
       baseURL: "https://openrouter.ai/api/v1",
+      // Bounded like every other client here. The call runs under the
+      // language's lock, so the SDK default (~10 min, retried twice) held
+      // every bootstrap in that language for up to half an hour on one hung
+      // upstream.
+      timeout: 60_000,
+      maxRetries: 1,
       defaultHeaders: {
         "HTTP-Referer": cfg.OPENROUTER_APP_URL,
         "X-Title": cfg.OPENROUTER_APP_NAME,
@@ -426,7 +450,7 @@ export async function localize<T extends AnyResponse>(
   });
 
   // RTL languages: tell the app to flip layout (bootstrap only).
-  if (RTL.has(info.code) && "navigation" in (localized as unknown as Record<string, unknown>)) {
+  if (RTL.has(info.code.split("-")[0]!) && "navigation" in (localized as unknown as Record<string, unknown>)) {
     const b = localized as BootstrapResponse;
     b.flags = { ...(b.flags ?? {}), textDirection: "rtl" };
   }

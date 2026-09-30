@@ -48,7 +48,7 @@ export interface UsageRecord {
   audioSeconds: number;
   /** Word count of the cleaned output (secondary meter). */
   words: number;
-  /** Cleanup model that produced the output, e.g. "anthropic/claude-haiku-4.5". */
+  /** Cleanup model that produced the output (CLEANUP_MODEL). */
   model: string;
 }
 
@@ -304,13 +304,6 @@ export interface Personality {
     promptStyle?: string;
   }>;
 
-  /**
-   * Transient flag set by resolvePersonality when the effective tone is
-   * "none" — signals downstream cleanup/refine composers to skip the LLM
-   * step and pass the raw transcript through unchanged. Never persisted;
-   * lives only on the in-request resolved copy of the profile.
-   */
-  passThrough?: boolean;
 }
 
 /**
@@ -431,46 +424,6 @@ export interface TranscribeCleanResponse {
 }
 
 // ---------------------------------------------------------------------------
-// WebSocket: live streaming  (wss://host/v1/stream)
-// ---------------------------------------------------------------------------
-//
-// Sequence:
-//   1. client → { type: "start", ... }
-//   2. client → binary audio frames (raw bytes of the chosen format)
-//   3. client → { type: "end" }
-//   4. server → "transcript" (once), then "cleaned_delta" (many), then "done"
-//   Any time → server may send "error".
-
-export const WS_PATH = "/v1/stream";
-
-/** Control messages the client sends (JSON). Audio itself is sent as binary frames. */
-export type ClientMessage =
-  | ({
-      type: "start";
-      format: AudioFormat;
-      /** Sample rate of the audio being streamed, e.g. 16000. */
-      sampleRate: number;
-    } & CleanupOptions)
-  | { type: "end" };
-
-/** Messages the server sends back (JSON). */
-export type ServerMessage =
-  | { type: "ready" } // server accepted "start", client may begin sending audio
-  | { type: "transcript"; text: string } // raw STT result
-  | { type: "cleaned_delta"; text: string } // incremental cleaned tokens
-  | { type: "done"; cleanedText: string; usage: UsageRecord }
-  | { type: "error"; code: ErrorCode; message: string };
-
-export type ErrorCode =
-  | "unauthorized"
-  | "quota_exceeded"
-  | "bad_request"
-  | "audio_too_long"
-  | "stt_failed"
-  | "cleanup_failed"
-  | "internal";
-
-// ---------------------------------------------------------------------------
 // REST: typing-refine  (POST /v1/refine)
 // ---------------------------------------------------------------------------
 //
@@ -536,24 +489,6 @@ export interface SpeakRequest {
   /** Output container. Defaults to the server's TTS_FORMAT (mp3). */
   format?: TtsFormat;
   /** Optional style steer, e.g. "calm and friendly" (can come from personality). */
-  instructions?: string;
-}
-
-// ---------------------------------------------------------------------------
-// REST: voice preview  (POST /v1/voice/preview)
-// ---------------------------------------------------------------------------
-//
-// Play a short sample so the user can hear what a voice sounds like BEFORE
-// they pick it in Settings. Same shape/output as /v1/speak (binary audio) —
-// text and instructions default sensibly when omitted so the caller can just
-// pass { voice: "nova" } and get a preview.
-
-export interface VoicePreviewRequest {
-  /** Voice name to preview. Defaults to the server's TTS_VOICE. */
-  voice?: string;
-  /** Text to speak. Defaults to a short English sample. */
-  text?: string;
-  /** Style steer. Defaults to a derivation from the user's personality. */
   instructions?: string;
 }
 
@@ -661,29 +596,6 @@ export interface PaywallConfig {
 }
 
 // ---------------------------------------------------------------------------
-// REST: auto-learn vocabulary  (POST /v1/personality/vocabulary/learn)
-// ---------------------------------------------------------------------------
-//
-// The keyboard/app calls this when it detects the user has corrected an
-// output (deleted a produced word/phrase and typed a different spelling for
-// the same term). The server appends the corrected "to" spelling to the
-// personal vocabulary so future STT + cleanup runs bias toward it.
-//
-// Body is a small array of corrections. Anything over a per-request cap is
-// rejected — this is a helper, not an import path.
-
-export interface VocabularyCorrection {
-  /** What the cleaner produced (or the wrong spelling to REPLACE from). */
-  from: string;
-  /** What the user meant (the CORRECT spelling to LEARN). */
-  to: string;
-}
-
-export interface LearnVocabularyRequest {
-  corrections: VocabularyCorrection[];
-}
-
-// ---------------------------------------------------------------------------
 // Health
 // ---------------------------------------------------------------------------
 
@@ -691,40 +603,6 @@ export interface HealthResponse {
   status: "ok";
   service: "tulmi-backend";
   version: string;
-}
-
-// ---------------------------------------------------------------------------
-// REST: privacy audit  (GET /v1/privacy/audit)
-// ---------------------------------------------------------------------------
-//
-// The "receipts" endpoint — feeds the in-app Privacy screen so a user can see
-// exactly what happened with their data over a window. Nothing new is stored;
-// this is a projection of the existing metering.
-
-export interface PrivacyAuditWindow {
-  /** ISO window label ("last24h", "last7d", "last30d", "allTime"). */
-  window: string;
-  /** Total number of requests we processed for this user in this window. */
-  requests: number;
-  /** Seconds of audio processed. Deleted after transcription (retentionSeconds=0). */
-  audioSeconds: number;
-  /** Word count of cleaned output shown to the user. */
-  words: number;
-}
-
-export interface PrivacyAuditResponse {
-  /** Per-window usage counts. */
-  windows: PrivacyAuditWindow[];
-  /** True if long-term audio retention is on for this account. Default false. */
-  audioRetained: boolean;
-  /** True if the backend uses the user's runs to improve their style. */
-  learningFromRuns: boolean;
-  /** SaaS providers your text/audio has been sent to in this window. */
-  upstreamProviders: string[];
-  /**
-   * Freeform links the app renders as chips ("Read policy", "Delete my data").
-   */
-  links: Array<{ label: string; url: string }>;
 }
 
 // ---------------------------------------------------------------------------

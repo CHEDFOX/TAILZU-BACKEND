@@ -10,7 +10,7 @@
  *      the same OpenAI key you already use for STT; a single TTS run is
  *      roughly a tenth of a cent.
  *   2. Feeds that audio into the same pipeline the app uses:
- *      STT (OpenAI gpt-4o-transcribe or Groq Whisper, per STT_PROVIDER)
+ *      STT (OpenAI or Groq, per STT_PROVIDER)
  *      → cleanup (OpenRouter LLM).
  *   3. Prints the raw transcript and the cleaned text so you can eyeball
  *      whether the whole chain is healthy.

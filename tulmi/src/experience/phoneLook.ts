@@ -132,7 +132,7 @@ export function sentence(
 
 /** A thin bar: `pct` of a track. */
 export function bar(pct: number, color: string = PHONE_LOOK.ink, height = 3, style: Style = {}): Node {
-  const w = Math.max(0, Math.min(100, pct));
+  const w = Math.max(0, Math.min(100, pct || 0)); // NaN (0 of 0) is an empty bar, not "NaN%"
   return {
     type: "Stack",
     style: { height, backgroundColor: PHONE_LOOK.track, overflow: "hidden", ...style },
@@ -140,11 +140,20 @@ export function bar(pct: number, color: string = PHONE_LOOK.ink, height = 3, sty
   };
 }
 
-/** Minutes as a person says them: "38 sec", "15 min", "1 h 45". */
+/**
+ * Minutes as a person says them: "38 sec", "15 min", "1 h 45". The phone and
+ * the desk both read this one.
+ *
+ * Rounded ONCE, before it is split. Rounding the remainder after taking the
+ * hours read 119.7 minutes as "1 h 60", 59.7 as "60 min" and 0.995 as
+ * "60 sec".
+ */
 export function span(minutes: number): string {
-  if (minutes < 1) return `${Math.max(1, Math.round(minutes * 60))} sec`;
-  if (minutes < 60) return `${Math.round(minutes)} min`;
-  const h = Math.floor(minutes / 60), m = Math.round(minutes % 60);
+  const sec = Math.round(minutes * 60);
+  if (sec < 60) return `${Math.max(1, sec)} sec`;
+  const total = Math.round(minutes);
+  if (total < 60) return `${total} min`;
+  const h = Math.floor(total / 60), m = total % 60;
   return m ? `${h} h ${String(m).padStart(2, "0")}` : `${h} h`;
 }
 

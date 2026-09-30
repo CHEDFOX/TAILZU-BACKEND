@@ -22,9 +22,7 @@ import {
   type Example, type Lang, type QA,
 } from "./facts.js";
 import { ID } from "./facts.js";
-
-const esc = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+import { esc } from "./head.js";
 /**
  * Escaped, with the names capitalising would break held as they are spelled.
  * The site capitalises every word, and "iPhone" is the one word that rule
@@ -89,7 +87,7 @@ const CSS = `
 function crumbs(trail: Array<[string, string]>): string {
   return `<nav class="crumbs" aria-label="Breadcrumb">${trail.map(([name, href], i) =>
     (i ? '<span aria-hidden="true">/</span>' : "") +
-    (i === trail.length - 1 ? `<span aria-current="page">${esc(name)}</span>` : `<a href="${href}">${esc(name)}</a>`)).join("")}</nav>`;
+    (i === trail.length - 1 ? `<span aria-current="page">${esc(name)}</span>` : `<a href="${esc(href)}">${esc(name)}</a>`)).join("")}</nav>`;
 }
 
 function exampleCard(e: Example, lang?: Lang): string {
@@ -218,7 +216,7 @@ ${crumbs([["Tailzu", "/"], ["Languages", "/languages"], [l.name, path]])}
 <div class="exs">${exs.map((e) => exampleCard(e, l)).join("")}</div>
 
 <h2 class="label">How it writes ${esc(l.name)}</h2>
-<div class="facts2">${facts.map(([h, p]) => `<div><h3>${h}</h3><p>${p.replace(/\biPhone\b/g, '<span class="nc">iPhone</span>')}</p></div>`).join("")}</div>
+<div class="facts2">${facts.map(([h, p]) => `<div><h3>${esc(h)}</h3><p>${p.replace(/\biPhone\b/g, '<span class="nc">iPhone</span>')}</p></div>`).join("")}</div>
 
 <h2 class="label">Asked, answered</h2>
 ${qaList(faq)}

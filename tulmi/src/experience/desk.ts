@@ -26,6 +26,7 @@ import type { Allowance } from "../usage/allowance.js";
 import { LANGUAGE_NAMES } from "../history/writtenIn.js";
 import { applyPresetOverrides } from "./personalityPresets.js";
 import { DESK_CONTEXTS, DESK_ROOMS, DESK_SAMPLES } from "./deskSamples.js";
+import { span } from "./phoneLook.js";
 
 /** Words a minute a person types on a keyboard — the same figure the stats
  *  screen's "minutes saved" has always used (history/store.ts). */
@@ -167,15 +168,9 @@ function clock(d: Date): string {
   return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 }
 const n = (v: number) => Math.round(v).toLocaleString("en-US");
-/** "40 sec", "9 min", "1 h 43" — the way a person says a length of time. */
-function span(minutes: number): string {
-  if (minutes < 1) return `${Math.max(1, Math.round(minutes * 60))} sec`;
-  if (minutes < 60) return `${Math.round(minutes)} min`;
-  const h = Math.floor(minutes / 60), m = Math.round(minutes - h * 60);
-  return m ? `${h} h ${m}` : `${h} h`;
-}
 const APP_NAMES: Record<string, string> = { Desktop: "Computer", Generic: "" };
-const appName = (a?: string) => (a && a in APP_NAMES ? APP_NAMES[a]! : a || "");
+// Own keys only: an app is whatever the client named, "constructor" included.
+const appName = (a?: string) => (a && Object.hasOwn(APP_NAMES, a) ? APP_NAMES[a]! : a || "");
 
 // ---- the race: said against typed --------------------------------------------------
 
@@ -620,7 +615,7 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
     ], { marginBottom: 40 }),
     stack([
       text("Languages", "d-h2", { marginBottom: 8 }),
-      defRow("You speak", langs.length ? langs.map((l) => LANGUAGE_NAMES[l] ?? l).join(", ") : "Found on its own, as you talk",
+      defRow("You speak", langs.length ? langs.map((l) => (Object.hasOwn(LANGUAGE_NAMES, l) ? LANGUAGE_NAMES[l] : l)).join(", ") : "Found on its own, as you talk",
         link("Change", { kind: "navigate", screenId: "languages" })),
     ], { marginBottom: 40 }),
     stack([

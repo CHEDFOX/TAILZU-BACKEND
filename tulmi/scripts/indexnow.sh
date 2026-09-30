@@ -22,11 +22,14 @@ URLS=$(curl -fsS "$API/sitemap.xml" 2>/dev/null | locs || true)
 [ -n "$URLS" ] || { echo "no sitemap at $API/sitemap.xml or $SITE/sitemap.xml"; exit 1; }
 # Still worth knowing if the public copy is not the sitemap: Search Console
 # reads that one.
-PUB=$(curl -sS -A 'Mozilla/5.0 (compatible; Googlebot/2.1)' -o /tmp/tz-sitemap.$$ -w '%{http_code} %{content_type}' "$SITE/sitemap.xml" 2>&1 || true)
-if ! grep -q '<loc>' /tmp/tz-sitemap.$$ 2>/dev/null; then
-  echo "note: $SITE/sitemap.xml answered '$PUB' without the sitemap: $(head -c 120 /tmp/tz-sitemap.$$ 2>/dev/null | tr -d '\n')"
+# mktemp, not /tmp/<name>.$$: a guessable name in a shared /tmp can be a
+# symlink someone else planted.
+PUBF=$(mktemp)
+PUB=$(curl -sS -A 'Mozilla/5.0 (compatible; Googlebot/2.1)' -o "$PUBF" -w '%{http_code} %{content_type}' "$SITE/sitemap.xml" 2>&1 || true)
+if ! grep -q '<loc>' "$PUBF" 2>/dev/null; then
+  echo "note: $SITE/sitemap.xml answered '$PUB' without the sitemap: $(head -c 120 "$PUBF" 2>/dev/null | tr -d '\n')"
 fi
-rm -f /tmp/tz-sitemap.$$
+rm -f "$PUBF"
 BODY=$(printf '%s\n' "$URLS" | python3 -c '
 import json, sys
 urls = [u.strip() for u in sys.stdin if u.strip()]

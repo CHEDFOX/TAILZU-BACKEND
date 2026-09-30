@@ -28,20 +28,22 @@ export const OG_IMAGE = {
 /** The App Store id, for Safari's install banner. */
 export const APP_STORE_ID = "6784811357";
 
-const esc = (s: string) =>
+/** Text or a double-quoted attribute value, safe in HTML and in XML. */
+export const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 /** A path on the site as its absolute, canonical URL. */
 export const abs = (path: string) => (/^https?:/.test(path) ? path : `${ORIGIN}${path === "/" ? "/" : path.replace(/\/+$/, "")}`);
 
 /**
- * JSON-LD as one @graph. `</` is escaped so no string in the data can close
- * the script element it sits in.
+ * JSON-LD as one @graph. Every "<" is written as \u003c — the same string to
+ * a JSON parser — so nothing in the data can close the script element
+ * ("</script") or open a comment that changes how it is parsed ("<!--").
  */
 export function ldScript(graph: object[]): string {
   if (!graph.length) return "";
   const json = JSON.stringify({ "@context": "https://schema.org", "@graph": graph })
-    .replace(/<\//g, "<\\/");
+    .replace(/</g, "\\u003c");
   return `<script type="application/ld+json">${json}</script>`;
 }
 
@@ -63,7 +65,7 @@ export interface HeadOpts {
  * robots, the link card, the icons and the structured data.
  */
 export function headTags(o: HeadOpts): string {
-  const url = abs(o.path);
+  const url = esc(abs(o.path));
   const ogTitle = o.ogTitle ?? o.title;
   const ogDescription = o.ogDescription ?? o.description;
   return [

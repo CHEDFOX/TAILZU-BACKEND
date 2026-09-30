@@ -86,14 +86,16 @@ export function evaluate(n: Ast, ctx: Ctx, funcs: Funcs, depth = 0): number {
     case "?": return evaluate(n.c, ctx, funcs, depth) ? evaluate(n.a, ctx, funcs, depth) : evaluate(n.b, ctx, funcs, depth);
     case "call": {
       const { name, args } = n;
-      const f = funcs[name];
+      // Own keys only: a program calling "constructor" or "toString" is
+      // calling nothing, not Object's members.
+      const f = Object.hasOwn(funcs, name) ? funcs[name] : undefined;
       if (f) {
         if (depth > 8) return 0;
         const c2: Ctx = Object.create(ctx);
         f.args.forEach((a, i) => { c2[a] = i < args.length ? evaluate(args[i]!, ctx, funcs, depth) : 0; });
         return fin(evaluate(f.ast, c2, funcs, depth + 1));
       }
-      const b = builtins[name];
+      const b = Object.hasOwn(builtins, name) ? builtins[name] : undefined;
       if (b) return fin(b(...args.map((a) => evaluate(a, ctx, funcs, depth))));
       const lent = ctx[`fn:${name}`];
       if (typeof lent === "function") return fin(lent(...args.map((a) => evaluate(a, ctx, funcs, depth))));

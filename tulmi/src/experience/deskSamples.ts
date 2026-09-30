@@ -19,7 +19,9 @@ export const DESK_CONTEXTS: Array<{ id: DeskContext; label: string; said: string
   { id: "other", label: "Other", said: "send the file tonight its urgent" },
 ];
 
-export const DESK_SAMPLES: Record<string, Record<DeskContext, string>> = {
+/** Keyed by voice id, which is the user's for a custom voice: no prototype,
+ *  so "toString" finds nothing rather than Object's method. Same below. */
+export const DESK_SAMPLES: Record<string, Record<DeskContext, string>> = Object.assign(Object.create(null), {
   signature: {
     chats: "Haan bhai, kal milte hain paanch baje.",
     work: "The deck is done. It just needs one more pass on the numbers.",
@@ -116,14 +118,14 @@ export const DESK_SAMPLES: Record<string, Record<DeskContext, string>> = {
     email: "Priya,\n\nWe talked. It was good. The next one will be better.",
     other: "The file. Tonight. In this town, urgent means yesterday.",
   },
-};
+});
 
 /** Each voice's room: the colour world its card is drawn in (app.html d-w-*). */
-export const DESK_ROOMS: Record<string, string> = {
+export const DESK_ROOMS: Record<string, string> = Object.assign(Object.create(null), {
   signature: "d-w-zu", concise: "d-w-zu", explainer: "d-w-zu", gentle: "d-w-zu",
   professional: "d-w-indigo", "concise-boss": "d-w-indigo",
   friendly: "d-w-saffron", excited: "d-w-saffron",
   playful: "d-w-teal", witty: "d-w-teal", pirate: "d-w-teal",
   romantic: "d-w-rose", poetic: "d-w-rose",
   bard: "d-w-paper", noir: "d-w-noir", trailer: "d-w-night",
-};
+});

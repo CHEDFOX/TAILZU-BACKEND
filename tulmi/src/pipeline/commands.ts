@@ -29,6 +29,22 @@ const MAKE_IT =
 const TAIL = "[\\s.!?…,\"'\\)\\]]*";
 
 /**
+ * The optional connector a command may open with: ",", "and", "then", space —
+ * up to two of the words, so "…, and then make it shorter" leaves no "and"
+ * behind in the message. Two, not any number: an unbounded run would be
+ * re-tried from every word of "and and and…", which is the same quadratic
+ * scan this prefix exists to prevent.
+ *
+ * `(?<!\\s)` IS THE LOAD-BEARING PART. Every pattern is tail-anchored but the
+ * search is not, so without it the engine tried a match at every space of a
+ * long run, and each try re-scanned the rest of the run: 10,000 spaces took
+ * over a second per request, on the event loop. A match can only begin where
+ * a run of spaces begins — the leftmost match already did — so this changes
+ * no result, only how many starts are tried.
+ */
+const LEAD = "(?<!\\s)[,;\\-—…]?\\s*(?:(?:and|then)\\s+){0,2}";
+
+/**
  * Ordered list of (regex, factory) pairs. Every regex is anchored to $ so it
  * only matches at the tail. We accept a small optional leading connector
  * (",", "and", "then", "…", filler space) so the stripped transcript comes
@@ -38,14 +54,14 @@ const PATTERNS: Array<{ re: RegExp; make: (m: RegExpMatchArray) => Command }> = 
   // shorter / longer
   {
     re: new RegExp(
-      `[,;\\-—…]?\\s*(?:and\\s+|then\\s+)?${MAKE_IT}\\s+(?:a\\s+bit\\s+|much\\s+|way\\s+|more\\s+)?shorter${TAIL}$`,
+      `${LEAD}${MAKE_IT}\\s+(?:a\\s+bit\\s+|much\\s+|way\\s+|more\\s+)?shorter${TAIL}$`,
       "i",
     ),
     make: () => ({ kind: "shorter" }),
   },
   {
     re: new RegExp(
-      `[,;\\-—…]?\\s*(?:and\\s+|then\\s+)?${MAKE_IT}\\s+(?:a\\s+bit\\s+|much\\s+|way\\s+|more\\s+)?longer${TAIL}$`,
+      `${LEAD}${MAKE_IT}\\s+(?:a\\s+bit\\s+|much\\s+|way\\s+|more\\s+)?longer${TAIL}$`,
       "i",
     ),
     make: () => ({ kind: "longer" }),
@@ -54,14 +70,14 @@ const PATTERNS: Array<{ re: RegExp; make: (m: RegExpMatchArray) => Command }> = 
   // formal / casual — "make it formal" or "make it more formal"
   {
     re: new RegExp(
-      `[,;\\-—…]?\\s*(?:and\\s+|then\\s+)?${MAKE_IT}\\s+(?:more\\s+)?formal${TAIL}$`,
+      `${LEAD}${MAKE_IT}\\s+(?:more\\s+)?formal${TAIL}$`,
       "i",
     ),
     make: () => ({ kind: "formal" }),
   },
   {
     re: new RegExp(
-      `[,;\\-—…]?\\s*(?:and\\s+|then\\s+)?${MAKE_IT}\\s+(?:more\\s+)?casual${TAIL}$`,
+      `${LEAD}${MAKE_IT}\\s+(?:more\\s+)?casual${TAIL}$`,
       "i",
     ),
     make: () => ({ kind: "casual" }),
@@ -70,14 +86,14 @@ const PATTERNS: Array<{ re: RegExp; make: (m: RegExpMatchArray) => Command }> = 
   // bullet points — "in bullet points", "as bullets", "as a bulleted list"
   {
     re: new RegExp(
-      `[,;\\-—…]?\\s*(?:and\\s+|then\\s+)?(?:in|as|to)\\s+(?:a\\s+)?bullet(?:ed)?\\s?points?${TAIL}$`,
+      `${LEAD}(?:in|as|to)\\s+(?:a\\s+)?bullet(?:ed)?\\s?points?${TAIL}$`,
       "i",
     ),
     make: () => ({ kind: "bulletpoints" }),
   },
   {
     re: new RegExp(
-      `[,;\\-—…]?\\s*(?:and\\s+|then\\s+)?(?:in|as|to)\\s+(?:a\\s+)?bullet(?:ed)?\\s+list${TAIL}$`,
+      `${LEAD}(?:in|as|to)\\s+(?:a\\s+)?bullet(?:ed)?\\s+list${TAIL}$`,
       "i",
     ),
     make: () => ({ kind: "bulletpoints" }),
@@ -85,7 +101,7 @@ const PATTERNS: Array<{ re: RegExp; make: (m: RegExpMatchArray) => Command }> = 
   {
     // Standalone "as bullets" / "as bullet" — no explicit "points"/"list".
     re: new RegExp(
-      `[,;\\-—…]?\\s*(?:and\\s+|then\\s+)?(?:in|as)\\s+bullets${TAIL}$`,
+      `${LEAD}(?:in|as)\\s+bullets${TAIL}$`,
       "i",
     ),
     make: () => ({ kind: "bulletpoints" }),
@@ -96,7 +112,7 @@ const PATTERNS: Array<{ re: RegExp; make: (m: RegExpMatchArray) => Command }> = 
   // captured span loose; the LLM does the actual language mapping.
   {
     re: new RegExp(
-      `[,;\\-—…]?\\s*(?:and\\s+|then\\s+)?translate\\s+(?:this|it|that)?\\s*(?:to|into|in)\\s+([A-Za-z][A-Za-z\\-]*(?:\\s+[A-Za-z][A-Za-z\\-]*)?)${TAIL}$`,
+      `${LEAD}translate\\s+(?:(?:this|it|that)\\s+)?(?:to|into|in)\\s+([A-Za-z][A-Za-z\\-]*(?:\\s+[A-Za-z][A-Za-z\\-]*)?)${TAIL}$`,
       "i",
     ),
     make: (m) => ({ kind: "translate", lang: (m[1] ?? "").trim().toLowerCase() }),
@@ -114,7 +130,7 @@ const PATTERNS: Array<{ re: RegExp; make: (m: RegExpMatchArray) => Command }> = 
   // the lookahead it would win the earliest-match rule.
   {
     re: new RegExp(
-      `[,;\\-—…]?\\s*(?:and\\s+|then\\s+)?(?:write|say|send|reply|put|make|give\\s+(?:it|this|me))\\s+(?:it|this|that)?\\s*(?:in|into)\\s+` +
+      `${LEAD}(?:write|say|send|reply|put|make|give\\s+(?:it|this|me))\\s+(?:(?:it|this|that)\\s+)?(?:in|into)\\s+` +
         `(?!bullets?\\b|bullet\\s|points?\\b|caps\\b|capitals?\\b|short\\b|brief\\b|full\\b|detail)` +
         `([A-Za-z][A-Za-z\\-]*(?:\\s+[A-Za-z][A-Za-z\\-]*)?)${TAIL}$`,
       "i",
@@ -125,7 +141,7 @@ const PATTERNS: Array<{ re: RegExp; make: (m: RegExpMatchArray) => Command }> = 
   // emoji off — "no emoji", "no emojis", "without emojis", "less emoji"
   {
     re: new RegExp(
-      `[,;\\-—…]?\\s*(?:and\\s+|then\\s+)?(?:no|without|less|fewer)\\s+emojis?${TAIL}$`,
+      `${LEAD}(?:no|without|less|fewer)\\s+emojis?${TAIL}$`,
       "i",
     ),
     make: () => ({ kind: "emojiOff" }),
@@ -134,7 +150,7 @@ const PATTERNS: Array<{ re: RegExp; make: (m: RegExpMatchArray) => Command }> = 
   // emoji on — "add emoji", "with emoji", "more emojis"
   {
     re: new RegExp(
-      `[,;\\-—…]?\\s*(?:and\\s+|then\\s+)?(?:add|with|more|use)\\s+emojis?${TAIL}$`,
+      `${LEAD}(?:add|with|more|use)\\s+emojis?${TAIL}$`,
       "i",
     ),
     make: () => ({ kind: "emojiOn" }),
@@ -181,7 +197,7 @@ export function detectCommand(rawTranscript: string): {
     const hit = matchTail(text);
     if (!hit) break;
     if (head === null) head = hit.command;
-    text = text.slice(0, hit.start).replace(/[\s,;:.\-—…]+$/g, "").trim();
+    text = text.slice(0, hit.start).replace(/(?<![\s,;:.\-—…])[\s,;:.\-—…]+$/, "").trim();
     if (!text) break;
   }
 
@@ -245,6 +261,7 @@ export function splitInstruction(text: string): { message: string; command: Comm
   const message = cut + stop;
   const tail = raw.slice(message.length);
   const bounded = /[.!?…]$/.test(message)
+    || /^[^\S\n]*\n/.test(tail) // a line break ends a sentence as surely as a full stop
     || /^\s*(?:[,;:—–…-]|(?:and|then|also|please|now)\b)/i.test(tail);
   if (!bounded) return none;
   if (command.kind === "language" || command.kind === "translate") {

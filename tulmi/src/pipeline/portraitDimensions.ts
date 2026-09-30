@@ -30,6 +30,8 @@
  * profiling rather than portraiture.
  */
 
+import { inlineValue } from "../prompts.js";
+
 /** The observable dimensions of one person's writing, in prompt form. */
 export const PORTRAIT_DIMENSIONS = [
   "REGISTER — where they sit between formal and casual, and how far they move when the audience changes.",
@@ -89,9 +91,11 @@ export function portraitJsonContract(opts: {
       '"rhythms": [{"when": "a part of their day", "vibe": "how their writing differs then"}]',
     );
   }
-  if (opts.trainingTone) {
+  // A voice's name is the user's own, placed inside a quoted field spec.
+  const tone = inlineValue(opts.trainingTone, 40).replace(/["']/g, "");
+  if (tone) {
     fields.push(
-      `"toneNote": "≤40 words, only what is specific to their '${opts.trainingTone}' voice"`,
+      `"toneNote": "≤40 words, only what is specific to their '${tone}' voice"`,
     );
   }
   return [

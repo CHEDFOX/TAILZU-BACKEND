@@ -8,21 +8,14 @@
 import { randomUUID } from "node:crypto";
 import { dataClientFor, type AuthedUser } from "../auth/supabase.js";
 import { applyPresetOverrides, MAX_PINNED_PRESETS } from "../experience/personalityPresets.js";
-import type {
-  Personality,
-  VocabularyCorrection,
-} from "../../../shared/types/api.js";
-
-/** Vocabulary size ceiling — keep the STT bias prompt short and cheap. */
-export const VOCAB_MAX_LINES = 200;
+import type { Personality } from "../../../shared/types/api.js";
 
 const memory = new Map<string, Personality>();
 
-// Serialize per-user vocabulary writes. learnVocabularyCorrections is a
-// read-modify-write of the whole personality doc, so two concurrent calls — or
-// one racing a PUT /v1/personality — could each read the old doc and clobber
-// the other's appended lines. Chain the work per userId (same lock pattern as
-// i18n.ts) so those writes run one-at-a-time instead of interleaving.
+// Serialize per-user read-modify-writes of the whole personality doc
+// (updatePersonality, upsertPresetTone): two concurrent ones could each read
+// the old doc and clobber the other's change. Chain the work per userId so
+// those writes run one-at-a-time instead of interleaving.
 const userLocks = new Map<string, Promise<unknown>>();
 
 async function withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
@@ -45,8 +38,8 @@ async function withUserLock<T>(userId: string, fn: () => Promise<T>): Promise<T>
 /**
  * Locked read-modify-write of the whole personality doc. `mutate` gets the
  * current doc and returns the next one; the get→save cycle runs under the
- * per-user lock so a PUT / pin update can't clobber a concurrent tone or
- * vocabulary write (which take the same lock). Routes that used to do an
+ * per-user lock so a PUT / pin update can't clobber a concurrent tone write
+ * (which takes the same lock). Routes that used to do an
  * un-serialized getPersonality()→savePersonality() must go through this.
  */
 export async function updatePersonality(
@@ -115,7 +108,11 @@ export async function upsertPresetTone(
       return { personality: next, toneId: opts.id };
     }
 
-    const toneId = opts.id?.trim() || `custom_${randomUUID()}`;
+    // An id that names an Object member ("__proto__", "constructor") is not a
+    // key this map can hold honestly — it would set the map's prototype or
+    // shadow a builtin — so it is minted fresh like an absent one.
+    const asked = opts.id?.trim();
+    const toneId = asked && !(asked in Object.prototype) ? asked : `custom_${randomUUID()}`;
     overrides[toneId] = {
       ...(overrides[toneId] ?? {}),
       name: (opts.name ?? "").trim(),
@@ -184,10 +181,8 @@ export async function resolvePersonality(
 /**
  * Overlay the selected preset's promptStyle + tone hint into the profile.
  *
- * "none" tone skips the personality overlay — downstream, `passThrough`
- * routes the text through a BASIC cleanup only (filler removal + sentence
- * structure), NOT a voice rewrite. This is the default for new users: their
- * own words, just cleaned up and readable — not restyled.
+ * "none" tone skips the overlay: their own words, just cleaned up and
+ * readable — not restyled. This is the default for new users.
  */
 function applyPresetOverlay(p: Personality): Personality {
   if (!p.activePresetId) return p;
@@ -199,12 +194,7 @@ function applyPresetOverlay(p: Personality): Personality {
   if (!preset) return p;
 
   const effectiveTone = p.activeTone ?? preset.defaultTone;
-  // Basic-clean mode: no personality overlay. The pipeline inspects
-  // `passThrough` and runs cleanBasic() (filler + structure) instead of the
-  // full personality rewrite.
-  if (effectiveTone === "none") {
-    return { ...p, passThrough: true };
-  }
+  if (effectiveTone === "none") return p;
 
   const overlay = `[Voice: ${preset.name}] ${preset.promptStyle} Preferred tone: ${effectiveTone}.`.trim();
   const existing = (p.customInstructions ?? "").trim();
@@ -213,7 +203,6 @@ function applyPresetOverlay(p: Personality): Personality {
     : overlay;
   return {
     ...p,
-    passThrough: false,
     customInstructions: merged,
     // Also normalize formality + emojiUse to the preset defaults so
     // downstream dial-based composers pick sane values when the user
@@ -221,54 +210,4 @@ function applyPresetOverlay(p: Personality): Personality {
     formality: p.formality ?? preset.formality,
     emoji: p.emoji ?? preset.emojiUse,
   };
-}
-
-/**
- * Merge auto-learned corrections into the user's `vocabulary`. Only the
- * corrected ("to") spellings are added — the buggy "from" spelling is
- * incidental context, and adding both would just confuse the STT bias
- * prompt. Existing lines are preserved, duplicates (case-insensitive) are
- * skipped, and the total is capped at VOCAB_MAX_LINES (drop-oldest FIFO)
- * so a chatty client can't blow up the personality doc.
- *
- * Returns the updated personality so the caller can respond with a receipt.
- */
-export async function learnVocabularyCorrections(
-  user: AuthedUser,
-  corrections: VocabularyCorrection[],
-): Promise<Personality> {
-  // Serialize the read-modify-write so concurrent corrections (or a racing PUT)
-  // can't lose each other's appends.
-  return withUserLock(user.id, async () => {
-    const current = await getPersonality(user);
-
-    const existing = (current.vocabulary ?? "")
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    // Case-insensitive dedupe set primed with what the user already has, so
-    // repeated corrections of the same term don't stack duplicates.
-    const seen = new Set(existing.map((s) => s.toLowerCase()));
-    const additions: string[] = [];
-    for (const { to } of corrections) {
-      const term = (to ?? "").trim();
-      if (!term) continue;
-      const key = term.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      additions.push(term);
-    }
-
-    // FIFO cap: keep the tail (newest entries), drop the oldest.
-    const combined = [...existing, ...additions];
-    const capped =
-      combined.length > VOCAB_MAX_LINES
-        ? combined.slice(combined.length - VOCAB_MAX_LINES)
-        : combined;
-
-    const next: Personality = { ...current, vocabulary: capped.join("\n") };
-    await savePersonality(user, next);
-    return next;
-  });
 }

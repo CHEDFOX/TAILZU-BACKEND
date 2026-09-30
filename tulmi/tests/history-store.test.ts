@@ -112,6 +112,13 @@ describe("coalescing", () => {
     expect(entries[0]?.output).toBe("First part. Second part.");
   });
 
+  it("folds in a refined text with $ in it exactly as written", () => {
+    // String.replace read "$$" and "$&" in the refined text as patterns.
+    const prev = { kind: "voice", input: "x", output: "Pay me back. it was 50 bucks", createdAt: new Date().toISOString() };
+    const c = coalesce(prev, { kind: "typing", input: "it was 50 bucks", output: "It was $$50 ($& change)." });
+    expect(c).toEqual({ action: "merge", output: "Pay me back. It was $$50 ($& change).", wordsOut: 8 });
+  });
+
   it("holds against concurrent appends — one dictation, one card", async () => {
     // The real failure: a dictation fires several refines within a second, all
     // of them read the same "previous row" before any has inserted, and every

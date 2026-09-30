@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildCleanupSystem,
+  buildReplySystem,
   renderPersonality,
   renderToneDial,
   renderAppStyle,
@@ -10,7 +10,7 @@ import {
 import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
 import { CASES } from "../evals/cases.js";
 
-// buildCleanupSystem reads the config for the prompt version, and the config
+// buildReplySystem reads the config for the prompt version, and the config
 // refuses to resolve without these. Set at module scope rather than in a hook:
 // getConfig() memoises on first call, so it has to be right before the first
 // test that reaches it, not before each one.
@@ -201,10 +201,10 @@ describe("the keyboard never answers what was dictated", () => {
 
 describe("the portrait reaches the file-based prompts too", () => {
   // Training writes the portrait and assist() reads it on every refine. The
-  // file prompts — clean, cleanStream (the streaming pipeline) and draftReply
-  // (screen replies) — silently dropped it, because renderPersonality was
-  // written before the portrait existed and nobody came back. A user could
-  // train for weeks and those paths would still write them as a stranger.
+  // file prompt (draftReply, screen replies) silently dropped it, because
+  // renderPersonality was written before the portrait existed and nobody came
+  // back. A user could train for weeks and that path would still write them
+  // as a stranger.
   const P = {
     tone: "friendly",
     stylePortrait: { core: "Short sentences. Says 'yaar'. Rarely uses commas." },
@@ -245,71 +245,37 @@ describe("the portrait reaches the file-based prompts too", () => {
 });
 
 /**
- * THE THINGS THAT WERE NOT WORDING PROBLEMS.
- *
- * Two of the three reported faults — the model translating instead of
- * repairing, and the model padding a terse dictation — traced to the prompt
- * not saying anything about either, which is a different bug from saying it
- * badly. These pin the shape rather than the prose, so a future version can
- * rewrite every sentence and still be caught dropping a rule.
+ * What reaches the model from a prompt FILE (the screen reply's), pinned by
+ * shape rather than prose so a new version can rewrite every sentence and
+ * still be caught dropping a rule.
  */
 describe("what reaches the model", () => {
   it("does not carry the editor's notes", () => {
     // Every prompt file opens with an HTML comment explaining what the last
-    // version got wrong. None of it was stripped, so all of it was sent: on
-    // v4 that was half the request, including the sentence explaining that
-    // the prompt is deliberately short.
-    const sys = buildCleanupSystem({ targetApp: "WhatsApp", language: "hi" });
-    expect(sys.startsWith("You are the writing assistant")).toBe(true);
+    // version got wrong. None of it was stripped, so all of it was sent,
+    // including the sentence explaining that the prompt is deliberately short.
+    const sys = buildReplySystem({ targetApp: "WhatsApp", language: "hi" });
+    expect(sys.startsWith("You are writing a reply")).toBe(true);
     expect(sys).not.toContain("Placeholders, substituted by the backend");
     expect(sys).not.toContain("Versioning: never edit a shipped prompt");
   });
 
   it("states the user's language as a rule", () => {
-    // v4 dropped {{LANGUAGE}} from the body — v1, v2 and v3 all had it — so
-    // the setting was substituted into a placeholder table inside a comment
-    // and reached the model as documentation rather than instruction. With
-    // nothing else holding it, romanized Hindi drifted into English.
-    const sys = buildCleanupSystem({ targetApp: "WhatsApp", language: "hi" });
+    // A setting substituted into a placeholder table inside that comment
+    // reached the model as documentation rather than instruction.
+    const sys = buildReplySystem({ targetApp: "WhatsApp", language: "hi" });
     expect(sys).toContain("Their setting is hi");
-    expect(sys).not.toContain("{{LANGUAGE}}");
-    // From v7 it is a TARGET. Until then a setting read as "convert to this"
-    // was the bug wearing the opposite sign, and a sentence in the file said
-    // so; now that reading IS the rule, so that sentence has to be gone
-    // rather than merely outvoted by a newer one.
-    // Whitespace-tolerant: the file is hard-wrapped, so a rule can break
-    // across a line. These pin what the prompt SAYS, not how it is set.
-    expect(sys).not.toMatch(/never\s+as\s+an\s+instruction\s+to\s+convert/i);
-    expect(sys).toMatch(/"auto"\s+means\s+their\s+words\s+in\s+English\s+letters/i);
+    expect(sys).not.toMatch(/\{\{[A-Z_]+\}\}/);
   });
 
   it("separates the alphabet from the language, and names both failures", () => {
-    // The distinction v7 exists for, and the one "write it in English" hides:
-    // the ALPHABET is English, the WORDS are theirs. Each failure is what the
+    // The ALPHABET is English, the WORDS are theirs. Each failure is what the
     // other rule looks like from the inside, so a prompt that states only one
     // of them reads as permission for the other.
-    const sys = buildCleanupSystem({ targetApp: "Generic", language: "auto" });
+    const sys = buildReplySystem({ targetApp: "Generic", language: "auto" });
     expect(sys).toMatch(/ENGLISH\s+LETTERS/);
     expect(sys).toMatch(/never\s+translate/i);
     expect(sys).toMatch(/never\s+reach\s+for\s+an\s+English\s+word/i);
-  });
-
-  it("keeps the sentence that holds more than one language in scope", () => {
-    // The case every version has had to describe in its own way: one that
-    // opens in English and finishes in Hindi. v5's rule was scoped to scripts
-    // and did not describe it at all, so it came back wholly in English —
-    // which is the answer v7 must not give either, for a different reason.
-    const sys = buildCleanupSystem({ targetApp: "WhatsApp", language: "auto" });
-    expect(sys).toMatch(/more\s+than\s+one\s+language/i);
-    expect(sys).toMatch(/stays\s+in\s+the\s+language\s+it\s+arrived\s+in/i);
-  });
-
-  it("leaves a name and an untranslatable word alone", () => {
-    // The half of the old language section that was never about which
-    // language: writing in English is not licence to find the nearest English
-    // thing for a name, a dish or a festival.
-    const sys = buildCleanupSystem({ targetApp: "Generic", language: "auto" });
-    expect(sys).toMatch(/a\s+name\s+stays\s+a\s+name/i);
   });
 
   it("never names the cases it is measured on", () => {
@@ -317,32 +283,13 @@ describe("what reaches the model", () => {
     // behind them moving, and the harness stops measuring anything. This is
     // the cheapest moment to catch that: the temptation is strongest right
     // after a case fails, which is exactly when a version gets written.
-    const sys = buildCleanupSystem({ targetApp: "Generic", language: "auto" });
-    const hay = sys.toLowerCase();
-    for (const c of CASES) {
-      const input = c.input.trim().toLowerCase();
-      if (input.length < 12) continue; // too short to be a smoking gun
-      expect(hay, `prompt quotes the eval case ${c.id}`).not.toContain(input);
+    for (const sys of [buildReplySystem({}), buildAssistSystem({ hasContext: true })]) {
+      const hay = sys.toLowerCase();
+      for (const c of CASES) {
+        const input = c.input.trim().toLowerCase();
+        if (input.length < 12) continue; // too short to be a smoking gun
+        expect(hay, `prompt quotes the eval case ${c.id}`).not.toContain(input);
+      }
     }
-  });
-
-  it("says that a short message stays short", () => {
-    // "Say only what they gave you" did not cover it: finishing four terse
-    // words adds no fact, so it never read as a violation.
-    const sys = buildCleanupSystem({ targetApp: "Generic", language: "auto" });
-    expect(sys).toMatch(/length\s+is\s+theirs/i);
-    expect(sys).toMatch(/if\s+you\s+are\s+adding,\s+you\s+are\s+wrong/i);
-  });
-
-  it("states the observed script, with the consequence it now has", () => {
-    // The script fact is appended per request because it is MEASURED, not
-    // declared. Its consequence inverted with v7: it used to end "write your
-    // output in that same script", and a sentence in another script is now
-    // precisely the one that needs spelling out.
-    const sys = buildCleanupSystem({ targetApp: "Generic", language: "hi", script: "latin" });
-    expect(sys).toContain("LATIN");
-    expect(sys).toContain("Their setting is hi");
-    expect(sys).toMatch(/write them in English letters/i);
-    expect(sys).not.toMatch(/write your output in that same script/i);
   });
 });

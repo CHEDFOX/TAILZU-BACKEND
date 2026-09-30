@@ -172,7 +172,7 @@ Built on the existing Fastify server (`tulmi/src/server.ts`). New surfaces:
   Owns the screen catalog, themes, flags, A/B assignment. Screens authored as
   data (DB/JSON), not code.
 - **Brain service** — existing `/v1/transcribe-clean`, `/v1/refine`, `/v1/draft`,
-  `/v1/speak`, `/v1/stream`, `/v1/personality`.
+  `/v1/speak`, `/v1/transcribe-stream`, `/v1/personality`.
 - **Config service** — `GET /v1/keyboard/config`.
 - **Personalization** — style-profile store feeding the brain's prompts.
 - **Identity / accounts** — auth (Supabase scaffolding exists), entitlements,
@@ -194,7 +194,7 @@ Big vision, shipped in disciplined slices. Each phase is independently testable.
 - **Phase 3 — Keyboard config.** ✅ done. `/v1/keyboard/config`; both keyboards
   fetch + cache it and apply theme/labels/feature-flags. Inline voice + refine
   work on both OSes. (Per-keystroke layout stays native by design.)
-- **Phase 4 — Smart depth.** ⏳ next. Live streaming dictation (`/v1/stream`
+- **Phase 4 — Smart depth.** ⏳ next. Live streaming dictation (`/v1/transcribe-stream`
   exists; wire clients), deeper app-aware tone. Needs on-device tuning.
 - **Phase 5 — Personalization.** ⏳ Per-user style profile that learns over time
   (needs persistence / accounts).

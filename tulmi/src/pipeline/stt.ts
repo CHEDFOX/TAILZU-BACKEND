@@ -1,7 +1,7 @@
 /**
  * Speech-to-text. Provider-pluggable so we can serve a global audience:
- *  - "openai" (default): gpt-4o-transcribe — ~100 languages, strong multilingual.
- *  - "groq": whisper-large-v3-turbo — fast + cheap fallback.
+ *  - "openai" (default): OPENAI_STT_MODEL — ~100 languages, strong multilingual.
+ *  - "groq": GROQ_STT_MODEL — fast + cheap fallback.
  *
  * Hindi/Hinglish remains the flagship, but language is open-ended: any
  * ISO-639-1 code is passed through; "auto"/"hinglish" let the model detect (best
@@ -84,20 +84,10 @@ export interface SttResult {
    * the one thing that separates "they said this" from "this is my best
    * guess at what they said", and the writing step, which knows the language
    * and could repair a mishearing, never saw it.
+   *   "high"    — provider confidence says this is real speech (keep it).
+   *   "low"     — provider flagged it as non-speech/silence (safe to strip).
+   *   "unknown" — no per-segment confidence (OpenAI path); fall back to duration.
    */
-  speechConfidence?: "high" | "low" | "unknown";
-}
-
-/**
- * Internal provider result — carries a `speechConfidence` signal alongside the
- * public fields so `transcribe()` can decide whether to trust short filler
- * ("thank you"/"you") as a real one-word dictation or strip it as a silence
- * hallucination. Not exposed on the public SttResult.
- *   "high"    — provider confidence says this is real speech (keep it).
- *   "low"     — provider flagged it as non-speech/silence (safe to strip).
- *   "unknown" — no per-segment confidence (OpenAI path); fall back to duration.
- */
-interface RawSttResult extends SttResult {
   speechConfidence?: "high" | "low" | "unknown";
 }
 
@@ -302,7 +292,7 @@ export function isUsableAlternative(primary: string, other: string): boolean {
   return true;
 }
 
-function isIndicResult(r: RawSttResult): boolean {
+function isIndicResult(r: SttResult): boolean {
   const base = (r.detectedLanguage ?? "").toLowerCase().split(/[-_]/)[0];
   if (base && INDIC_LANGUAGES.has(base)) return true;
   // Native-script output is decisive even when no language code came back.
@@ -338,7 +328,7 @@ export function leadsOnScript(mine: string, theirs: string): boolean {
 }
 
 /** The generalist (Whisper family) — strong across ~100 languages. */
-function transcribeGeneralist(input: SttInput): Promise<RawSttResult> {
+function transcribeGeneralist(input: SttInput): Promise<SttResult> {
   const cfg = getConfig();
   return cfg.STT_PROVIDER === "openai" || !cfg.GROQ_API_KEY
     ? transcribeOpenAI(input)
@@ -367,7 +357,7 @@ function transcribeGeneralist(input: SttInput): Promise<RawSttResult> {
  * sum, because they run in parallel. Pin STT_PROVIDER to a single provider if
  * you'd rather trade quality for that cost.
  */
-async function transcribeWithProvider(input: SttInput): Promise<RawSttResult> {
+async function transcribeWithProvider(input: SttInput): Promise<SttResult> {
   const cfg = getConfig();
 
   if (cfg.STT_PROVIDER === "auto" && cfg.SARVAM_API_KEY) {
@@ -380,7 +370,7 @@ async function transcribeWithProvider(input: SttInput): Promise<RawSttResult> {
     // actually ran. (In "auto" the configured provider is "auto", so the
     // generalist is Groq whenever its key exists.)
     const legNames: string[] = ["sarvam", cfg.GROQ_API_KEY ? "groq" : "openai"];
-    const legs: Array<Promise<RawSttResult>> = [
+    const legs: Array<Promise<SttResult>> = [
       transcribeSarvam(input),
       transcribeGeneralist(input),
     ];
@@ -400,7 +390,7 @@ async function transcribeWithProvider(input: SttInput): Promise<RawSttResult> {
       }
     });
     const ok = settled
-      .filter((s): s is PromiseFulfilledResult<RawSttResult> => s.status === "fulfilled")
+      .filter((s): s is PromiseFulfilledResult<SttResult> => s.status === "fulfilled")
       .map((s) => s.value)
       .filter((r) => r.text.trim());
 
@@ -440,7 +430,7 @@ async function transcribeWithProvider(input: SttInput): Promise<RawSttResult> {
       // All succeeded but every transcript was empty — a genuinely silent
       // clip. Return one so the existing silence handling applies.
       const anyResult = settled.find((s) => s.status === "fulfilled") as
-        | PromiseFulfilledResult<RawSttResult>
+        | PromiseFulfilledResult<SttResult>
         | undefined;
       return anyResult?.value ?? { text: "", durationSeconds: 0, speechConfidence: "low" };
     }
@@ -626,7 +616,8 @@ export function sttPrompt(
   const seen = new Set<string>();
   const parts: string[] = [];
   for (const k of keys) {
-    const ex = SCRIPT_EXEMPLARS[k];
+    // Own keys only: a language called "constructor" is not an exemplar.
+    const ex = Object.hasOwn(SCRIPT_EXEMPLARS, k) ? SCRIPT_EXEMPLARS[k] : undefined;
     if (!ex || seen.has(k)) continue;
     seen.add(k);
     parts.push(ex);
@@ -781,7 +772,7 @@ export async function transcribe(input: SttInput): Promise<SttResult> {
     };
   }
   // Provider selection (and its fallback) lives in transcribeWithProvider.
-  const raw: RawSttResult = await transcribeWithProvider(input);
+  const raw: SttResult = await transcribeWithProvider(input);
 
   // Resolve duration first: the provider's own number, else a header probe of
   // the buffer (WAV/MP3/m4a) so metering isn't zeroed out for every voice
@@ -792,7 +783,7 @@ export async function transcribe(input: SttInput): Promise<SttResult> {
       ? raw.durationSeconds
       : estimateDurationSeconds(input.audio, input.format);
 
-  // Silence-hallucination scrub on EVERY provider path. gpt-4o-transcribe (the
+  // Silence-hallucination scrub on EVERY provider path. The OpenAI model (the
   // default) shares Whisper's "silent audio → 'Thank you.'" failure mode, so
   // this flat-text pass is the only defense there.
   //
@@ -1009,11 +1000,11 @@ function probeWavDuration(buf: Buffer): number {
   return byteRate > 0 ? dataSize / byteRate : 0;
 }
 
-async function transcribeOpenAI(input: SttInput): Promise<RawSttResult> {
+async function transcribeOpenAI(input: SttInput): Promise<SttResult> {
   const cfg = getConfig();
   const file = await toOpenAIFile(input.audio, `audio.${input.format}`);
 
-  // gpt-4o-transcribe returns { text } (no duration). Audio-seconds for metering
+  // The OpenAI model returns { text } (no duration). Audio-seconds for metering
   // is reported by the client recorder; words are the reliable meter here.
   const res = await openai().audio.transcriptions.create({
     file,
@@ -1047,7 +1038,7 @@ async function transcribeOpenAI(input: SttInput): Promise<RawSttResult> {
  * No per-segment confidence is returned, so transcribe() falls back to clip
  * duration for the silence-hallucination decision (same as the OpenAI path).
  */
-async function transcribeSarvam(input: SttInput): Promise<RawSttResult> {
+async function transcribeSarvam(input: SttInput): Promise<SttResult> {
   const cfg = getConfig();
   const form = new FormData();
   form.append(
@@ -1106,10 +1097,12 @@ async function transcribeSarvam(input: SttInput): Promise<RawSttResult> {
  * the speech. Deepgram reports what it detected, which feeds the same
  * Indic-vs-generalist routing the other providers use.
  */
-async function transcribeDeepgram(input: SttInput): Promise<RawSttResult> {
+async function transcribeDeepgram(input: SttInput): Promise<SttResult> {
   const cfg = getConfig();
+  // The model comes from config (which defaults it); an empty one is left to
+  // Deepgram's own default rather than sent as "model=".
   const params = new URLSearchParams({
-    model: cfg.DEEPGRAM_STT_MODEL || "nova-2",
+    ...(cfg.DEEPGRAM_STT_MODEL ? { model: cfg.DEEPGRAM_STT_MODEL } : {}),
     smart_format: "true",
     punctuate: "true",
     numerals: "true",
@@ -1152,7 +1145,7 @@ async function transcribeDeepgram(input: SttInput): Promise<RawSttResult> {
   };
 }
 
-async function transcribeGroq(input: SttInput): Promise<RawSttResult> {
+async function transcribeGroq(input: SttInput): Promise<SttResult> {
   const cfg = getConfig();
   const file = await toGroqFile(input.audio, `audio.${input.format}`);
 
@@ -1266,7 +1259,7 @@ export function sanitizePlainTranscript(
 }
 
 /**
- * Multi-word boilerplate Whisper / gpt-4o-transcribe lift from their video
+ * Multi-word boilerplate the Whisper-family models lift from their video
  * training data on near-silent clips ("thanks for watching", "please
  * subscribe", "[music]"). Nobody dictates these standalone into a keyboard, so
  * we strip them on ANY path regardless of confidence. Anchored ^…$ so we only
@@ -1309,17 +1302,41 @@ export function isAmbiguousPhrase(text: string): boolean {
 const SPOKEN_WORD_MIN_S = 0.3;
 
 /**
+ * The demuxer ffmpeg is told to read each accepted container with.
+ *
+ * NAMED, NEVER PROBED, AND NEVER PART OF A PATH. `format` is request data,
+ * and it used to become the temp file's extension — `clip.${format}` — so a
+ * "format" carrying "../" wrote the upload wherever the process could write
+ * (the old WebSocket route passed its start frame's value straight through).
+ * And a probing ffmpeg reads whatever the bytes say they are, including a
+ * playlist naming other files or URLs to fetch. This writes a file and runs a
+ * program, so it does not lean on the routes' own checks: a fixed file name,
+ * a demuxer chosen from this list and file-only protocols close all three.
+ */
+const DEMUXERS = new Map<AudioFormat, string>([
+  ["wav", "wav"], ["mp3", "mp3"], ["m4a", "mov"], ["ogg", "ogg"], ["webm", "matroska"], ["flac", "flac"],
+]);
+/** Only a breath-length clip is ever measured; nothing larger goes to disk. */
+const SPEECH_PROBE_MAX_BYTES = 4 * 1024 * 1024;
+
+/**
  * Seconds of the clip that are louder than the room, measured by ffmpeg's
  * silencedetect. -1 when it cannot be measured (no ffmpeg, a clip it cannot
- * read), which callers treat as "unknown" and leave the transcript alone.
+ * read, a format it is not given), which callers treat as "unknown" and leave
+ * the transcript alone.
  */
 export async function speechSeconds(audio: Buffer, format: AudioFormat): Promise<number> {
-  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), "tz-speech-"));
-  const file = path.join(dir, `clip.${format}`);
+  const demuxer = DEMUXERS.get(format);
+  if (!demuxer || !audio?.length || audio.length > SPEECH_PROBE_MAX_BYTES) return -1;
+  let dir = "";
   try {
+    // Inside the try: a full disk is "cannot measure", not a failed dictation.
+    dir = await fsp.mkdtemp(path.join(os.tmpdir(), "tz-speech-"));
+    const file = path.join(dir, "clip");
     await fsp.writeFile(file, audio);
     const { stderr } = await promisify(execFile)("ffmpeg", [
-      "-hide_banner", "-nostats", "-i", file,
+      "-hide_banner", "-nostats", "-nostdin", "-protocol_whitelist", "file",
+      "-f", demuxer, "-i", file,
       "-af", "silencedetect=noise=-38dB:d=0.2", "-f", "null", "-",
     ], { timeout: 4000 });
     const times = [...stderr.matchAll(/time=(\d+):(\d+):([\d.]+)/g)];
@@ -1336,7 +1353,7 @@ export async function speechSeconds(audio: Buffer, format: AudioFormat): Promise
   } catch {
     return -1;
   } finally {
-    await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
+    if (dir) await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
@@ -1355,8 +1372,10 @@ function stripHallucinationPhrases(text: string, trustSpeech: boolean): string {
   }
   // Trim a hallucinated outro tail off an otherwise-real transcript (safe:
   // only strips a known outro appended to real text, never the whole thing).
+  // (?<!\s): a match may only start where a run of spaces does, so a long run
+  // is scanned once rather than once per space.
   return t
-    .replace(/\s*(thanks? for watching|thank you for watching|please subscribe|don'?t forget to (like and )?subscribe|see you next time)[!.\s]*$/i, "")
+    .replace(/(?<!\s)\s*(thanks? for watching|thank you for watching|please subscribe|don'?t forget to (like and )?subscribe|see you next time)[!.\s]*$/i, "")
     .trim();
 }
 

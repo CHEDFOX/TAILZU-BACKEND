@@ -303,17 +303,24 @@ export function applyPresetOverrides(
   const validTones: PresetTone[] = ["none", "formal", "casual", "very-casual", "excited"];
   const coerceTone = (t: unknown, fallback: PresetTone): PresetTone =>
     typeof t === "string" && validTones.includes(t as PresetTone) ? (t as PresetTone) : fallback;
+  // Overrides can arrive in a client-sent personality, so a field that is not
+  // a string reads as unset rather than failing .trim() on every refine.
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const entry = (id: string) => {
+    const o = Object.hasOwn(overrides, id) ? overrides[id] : undefined;
+    return o && typeof o === "object" ? o : undefined;
+  };
 
   const builtins = PERSONALITY_PRESETS.map((p) => {
-    const o = overrides[p.id];
+    const o = entry(p.id);
     if (!o) return p;
     return {
       ...p,
-      name: (o.name ?? p.name).trim() || p.name,
-      tagline: (o.tagline ?? p.tagline).trim() || p.tagline,
-      description: (o.description ?? p.description).trim() || p.description,
+      name: str(o.name) || p.name,
+      tagline: str(o.tagline) || p.tagline,
+      description: str(o.description) || p.description,
       defaultTone: coerceTone(o.defaultTone, p.defaultTone),
-      promptStyle: (o.promptStyle ?? p.promptStyle).trim() || p.promptStyle,
+      promptStyle: str(o.promptStyle) || p.promptStyle,
     };
   });
 
@@ -323,16 +330,17 @@ export function applyPresetOverrides(
   // refine pipeline exactly like a built-in.
   const builtinIds = new Set(PERSONALITY_PRESETS.map((p) => p.id));
   const customs: PersonalityPreset[] = [];
-  for (const [id, o] of Object.entries(overrides)) {
-    if (builtinIds.has(id)) continue;
-    const name = (o.name ?? "").trim();
-    const promptStyle = (o.promptStyle ?? "").trim();
+  for (const id of Object.keys(overrides)) {
+    const o = entry(id);
+    if (!o || builtinIds.has(id)) continue;
+    const name = str(o.name);
+    const promptStyle = str(o.promptStyle);
     if (!name && !promptStyle) continue; // ignore empty stubs
     customs.push({
       id,
       name: name || "Custom voice",
-      tagline: (o.tagline ?? "").trim(),
-      description: (o.description ?? "").trim(),
+      tagline: str(o.tagline),
+      description: str(o.description),
       formality: "neutral",
       emojiUse: "minimal",
       defaultTone: coerceTone(o.defaultTone, "none"),
@@ -340,19 +348,6 @@ export function applyPresetOverrides(
     });
   }
   return customs.length ? [...builtins, ...customs] : builtins;
-}
-
-/** Every preset with `pin: true` when the id appears in `pinnedIds`. */
-export function decoratePresets(
-  activeId: string | undefined,
-  pinnedIds: string[] | undefined,
-): Array<PersonalityPreset & { active: boolean; pinned: boolean }> {
-  const pins = new Set(pinnedIds ?? []);
-  return PERSONALITY_PRESETS.map((p) => ({
-    ...p,
-    active: p.id === (activeId ?? "signature"),
-    pinned: pins.has(p.id),
-  }));
 }
 
 /** Tone → segmented-toggle label mapping shown on the personality screen.

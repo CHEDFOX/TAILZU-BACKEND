@@ -261,8 +261,11 @@ export function coalesce(
     const from = entry.input.trim();
     if (from.length > 0 && prev.output.includes(from)) {
       // The keyboard replaced exactly this text at the cursor with the refined
-      // version; do the same to the row so it shows what the user has.
-      const output = prev.output.replace(from, entry.output.trim());
+      // version; do the same to the row so it shows what the user has. A
+      // replacer, not a string: "$&", "$'" and "$$" in the refined text are
+      // what they wrote, not replacement patterns.
+      const to = entry.output.trim();
+      const output = prev.output.replace(from, () => to);
       return { action: "merge", output, wordsOut: countWordsLocal(output) };
     }
   }
@@ -864,22 +867,36 @@ interface StatRow {
   output?: string;
 }
 
+const STATS_PAGE = 1000;
+const STATS_MAX_ROWS = 20_000;
+
 async function fetchStatRowsSupabase(
   sb: NonNullable<ReturnType<typeof dataClientFor>>,
   userId: string,
   sinceIso: string | undefined,
 ): Promise<StatRow[]> {
-  let q = sb
-    .from("cleanup_history")
-    .select("created_at, words_out, duration_ms, kind, target_app, language, tone, preset_id, output")
-    .eq("user_id", userId)
-    .is("deleted_at", null);
-  if (sinceIso) q = q.gte("created_at", sinceIso);
-
-  const { data, error } = await q;
-  if (error || !data) {
-    if (error) console.error(`[history] stats failed for ${userId}:`, error.message);
-    return [];
+  // PAGED, newest first. PostgREST caps an unpaged select at its max-rows
+  // (1000 on Supabase), so "all" — and a busy month — silently summed an
+  // arbitrary thousand rows. Bounded at STATS_MAX_ROWS so one account cannot
+  // pull an unbounded amount of text into memory.
+  const data: Array<Record<string, unknown>> = [];
+  for (let from = 0; from < STATS_MAX_ROWS; from += STATS_PAGE) {
+    let q = sb
+      .from("cleanup_history")
+      .select("created_at, words_out, duration_ms, kind, target_app, language, tone, preset_id, output")
+      .eq("user_id", userId)
+      .is("deleted_at", null);
+    if (sinceIso) q = q.gte("created_at", sinceIso);
+    const { data: page, error } = await q
+      .order("created_at", { ascending: false })
+      .range(from, from + STATS_PAGE - 1);
+    if (error || !page) {
+      if (error) console.error(`[history] stats failed for ${userId}:`, error.message);
+      if (!data.length) return [];
+      break;
+    }
+    data.push(...page);
+    if (page.length < STATS_PAGE) break;
   }
   return (data as Array<{
     created_at?: string;
@@ -936,6 +953,19 @@ function rowToEntry(r: Record<string, unknown>): HistoryEntry {
     wordsOut: (r.words_out as number | null) ?? undefined,
     tone: (r.tone as string | null) ?? undefined,
     presetId: (r.preset_id as string | null) ?? undefined,
-    createdAt: (r.created_at as string) ?? new Date(0).toISOString(),
+    createdAt: cursorTime(r.created_at),
   };
+}
+
+/**
+ * A row's timestamp as the list's paging cursor will be handed back.
+ *
+ * PostgREST writes timestamptz as "…T10:00:00.123456+00:00", and the route
+ * validates `before` with z.string().datetime(), which accepts only "Z". So
+ * every nextBefore this returned was refused as the next page's cursor. The
+ * same instant with "Z" is accepted and keeps its microseconds, which the
+ * compound (created_at, id) cursor needs to not skip a row.
+ */
+function cursorTime(v: unknown): string {
+  return typeof v === "string" && v ? v.replace(/\+00(?::?00)?$/, "Z") : new Date(0).toISOString();
 }

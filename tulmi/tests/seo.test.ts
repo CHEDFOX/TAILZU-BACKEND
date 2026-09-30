@@ -134,3 +134,22 @@ describe("what the pages claim is what the product says", () => {
     expect(r).toMatch(/^Allow: \/\.well-known\/$/m);
   });
 });
+
+describe("nothing interpolated can break the markup", () => {
+  it("keeps every '<' in structured data out of the HTML parser's sight", async () => {
+    const { ldScript } = await import("../src/seo/head.js");
+    const hostile = "</script><script>alert(1)</script><!--";
+    const tag = ldScript([{ "@type": "Thing", name: hostile }]);
+    const body = tag.slice(tag.indexOf(">") + 1, tag.lastIndexOf("</script>"));
+    expect(body).not.toContain("<");
+    expect(JSON.parse(body)["@graph"][0].name).toBe(hostile);
+  });
+
+  it("puts only URL-safe slugs and codes where they go unescaped", () => {
+    for (const l of LANGS) {
+      expect(l.slug, l.name).toMatch(/^[a-z0-9-]+$/);
+      expect(l.code, l.name).toMatch(/^[A-Za-z0-9-]+$/);
+    }
+    for (const p of sitePages()) expect(p.path).toMatch(/^\/[a-z0-9/-]*$/);
+  });
+});

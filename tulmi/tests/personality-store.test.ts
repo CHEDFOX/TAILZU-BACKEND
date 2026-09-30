@@ -13,9 +13,7 @@ import {
   getPersonality,
   savePersonality,
   resolvePersonality,
-  learnVocabularyCorrections,
   upsertPresetTone,
-  VOCAB_MAX_LINES,
 } from "../src/personality/store.js";
 // eslint-disable-next-line import/first
 import { applyPresetOverrides, PERSONALITY_PRESETS } from "../src/experience/personalityPresets.js";
@@ -70,6 +68,28 @@ describe("tone editor — custom + edited tones", () => {
   });
 });
 
+describe("tone editor — hostile or malformed input", () => {
+  it("reads a malformed override (non-string fields, null entries) as unset instead of throwing", () => {
+    const list = applyPresetOverrides({
+      friendly: { name: 42, promptStyle: null } as never,
+      custom_x: null as never,
+      custom_y: { name: ["x"], promptStyle: "Be brief." } as never,
+    });
+    expect(list.find((p) => p.id === "friendly")?.name).toBe(PERSONALITY_PRESETS.find((p) => p.id === "friendly")?.name);
+    expect(list.find((p) => p.id === "custom_y")?.promptStyle).toBe("Be brief.");
+    expect(list.some((p) => p.id === "custom_x")).toBe(false);
+  });
+
+  it("mints a fresh id for one that names an Object member", async () => {
+    const user = makeUser("ps-proto");
+    for (const id of ["__proto__", "constructor"]) {
+      const { toneId, personality } = await upsertPresetTone(user, { id, name: "X", promptStyle: "Y" });
+      expect(toneId).toMatch(/^custom_/);
+      expect(Object.hasOwn(personality.presetOverrides!, toneId)).toBe(true);
+    }
+  });
+});
+
 describe("personality store — save/get", () => {
   it("round-trips savePersonality → getPersonality", async () => {
     const user = makeUser("ps-round");
@@ -114,37 +134,18 @@ describe("resolvePersonality", () => {
     expect(resolved).toEqual({ tone: "SAVED", formality: "formal" });
   });
 
+  it("leaves a 'none' voice untouched, and layers any other onto the instructions", async () => {
+    const user = makeUser("ps-overlay");
+    const plain = { activePresetId: "signature", activeTone: "none", customInstructions: "mine" } as const;
+    expect(await resolvePersonality(user, { ...plain })).toEqual(plain);
+    const styled = await resolvePersonality(user, { ...plain, activeTone: "casual" });
+    expect(styled.customInstructions).toMatch(/^\[Voice: .+\] .*Preferred tone: casual\.\n\nmine$/s);
+  });
+
   it("falls back when override is present but empty ({})", async () => {
     const user = makeUser("ps-empty-override");
     await savePersonality(user, { tone: "SAVED" });
     const resolved = await resolvePersonality(user, {});
     expect(resolved).toEqual({ tone: "SAVED" });
-  });
-});
-
-describe("learnVocabularyCorrections — edge cases", () => {
-  it("caps the total at VOCAB_MAX_LINES (drop-oldest FIFO)", async () => {
-    const user = makeUser("ps-vocab-cap");
-    const seeded = Array.from({ length: VOCAB_MAX_LINES }, (_, i) => `t${i}`);
-    await savePersonality(user, { vocabulary: seeded.join("\n") });
-    const next = await learnVocabularyCorrections(user, [
-      { from: "x", to: "brandnew" },
-    ]);
-    const lines = (next.vocabulary ?? "").split("\n");
-    expect(lines.length).toBe(VOCAB_MAX_LINES);
-    expect(lines).toContain("brandnew");
-    // Oldest one dropped.
-    expect(lines).not.toContain("t0");
-  });
-
-  it("skips corrections whose 'to' is empty or whitespace", async () => {
-    const user = makeUser("ps-vocab-empty");
-    const next = await learnVocabularyCorrections(user, [
-      { from: "a", to: "" },
-      { from: "b", to: "   " },
-      { from: "c", to: "KeepMe" },
-    ]);
-    const lines = (next.vocabulary ?? "").split("\n").filter(Boolean);
-    expect(lines).toEqual(["KeepMe"]);
   });
 });
