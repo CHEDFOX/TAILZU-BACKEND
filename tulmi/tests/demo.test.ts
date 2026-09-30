@@ -47,7 +47,7 @@ vi.mock("../src/pipeline/stt.js", async (importOriginal) => {
 // eslint-disable-next-line import/first
 import { buildApp } from "../src/server.js";
 // eslint-disable-next-line import/first
-import { sitePage } from "../src/routes/demo.js";
+import { sitePage, spendDemo } from "../src/routes/demo.js";
 
 let app: FastifyInstance;
 beforeAll(async () => { app = await buildApp(); await app.ready(); });
@@ -75,7 +75,7 @@ function multipart(blob: Buffer, filename: string): { payload: Buffer; headers: 
   const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
   return {
     payload: Buffer.concat([head, blob, tail]),
-    headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+    headers: { "content-type": `multipart/form-data; boundary=${boundary}`, origin: "https://tailzu.space" },
   };
 }
 
@@ -326,9 +326,48 @@ describe("the live demo", () => {
     const res = await app.inject({
       method: "POST", url: "/v1/demo/transcribe",
       payload: `--${boundary}\r\nContent-Disposition: form-data; name="note"\r\n\r\nhi\r\n--${boundary}--\r\n`,
-      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}`, origin: "https://tailzu.space" },
     });
     expect(res.statusCode).toBe(400);
+  });
+
+  it("is spent only from our own pages", async () => {
+    // A form POST needs no CORS permission: without this any site could
+    // embed the demo and spend it.
+    for (const [i, origin] of [undefined, "https://evil.example", "https://tailzu.space.evil.example"].entries()) {
+      const { payload, headers } = multipart(wav(4), "clip.wav");
+      // Each from its own visitor, so the per-minute rate is not what refuses it.
+      const h: Record<string, string> = { ...headers, "x-vercel-forwarded-for": `192.0.2.${i + 1}` };
+      if (origin) h.origin = origin; else delete h.origin;
+      const res = await app.inject({ method: "POST", url: "/v1/demo/transcribe", payload, headers: h });
+      expect(res.statusCode, String(origin)).toBe(403);
+    }
+    // The API's own copy of the page counts as ours.
+    const { payload, headers } = multipart(wav(4), "clip.wav");
+    const res = await app.inject({ method: "POST", url: "/v1/demo/transcribe", payload,
+      headers: { ...headers, origin: "https://api.test.tailzu", "x-vercel-forwarded-for": "198.51.100.9" } });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("rates each visitor behind the site, not the site", async () => {
+    // Through Vercel every call comes from Vercel's address; one visitor's
+    // calls must not use up everyone's.
+    const call = (visitor: string) => {
+      const { payload, headers } = multipart(wav(2), "clip.wav");
+      return app.inject({ method: "POST", url: "/v1/demo/transcribe", payload,
+        headers: { ...headers, "x-vercel-forwarded-for": visitor } });
+    };
+    const codes: number[] = [];
+    for (let i = 0; i < 8; i++) codes.push((await call("203.0.113.7")).statusCode);
+    expect(codes).toContain(429);
+    expect((await call("203.0.113.8")).statusCode).toBe(200);
+  });
+
+  it("stops for the day at the budget, and starts again the next", () => {
+    // The ceiling that bounds the bill whatever the per-visitor key says.
+    const day = new Date("2031-01-01T12:00:00Z"), next = new Date("2031-01-02T00:00:01Z");
+    expect([spendDemo(2, day), spendDemo(2, day), spendDemo(2, day)]).toEqual([true, true, false]);
+    expect(spendDemo(2, next)).toBe(true);
   });
 });
 

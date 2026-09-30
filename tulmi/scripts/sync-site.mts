@@ -21,10 +21,15 @@
  *   npx tsx scripts/sync-site.mts ../../tailzu-web/index.html           write
  *   npx tsx scripts/sync-site.mts ../../tailzu-web/index.html --check   exit 1 if stale
  *
+ * Either way it then runs the site's csp.mjs, so the page's CSP hashes follow
+ * the script this rewrites.
+ *
  * The free allowance comes from FREE_MONTHLY_WORDS, as on the server: set it
  * to production's value when syncing if production changed it.
  */
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 
 // Config validation wants the server's keys; none of them are used here.
 for (const [k, v] of Object.entries({
@@ -91,3 +96,10 @@ if (check) {
   fs.writeFileSync(file, html);
   console.log(html === before ? "site already in sync" : `synced ${file}`);
 }
+
+// The page's CSP (vercel.json) allows its inline script and style by hash,
+// and the FAQ copy above lives inside that script: a sync that changed it
+// changed the hash, and a stale one stops the page's script from running.
+// csp.mjs beside the page writes (or, with --check, checks) the hashes.
+const csp = path.join(path.dirname(path.resolve(file)), "csp.mjs");
+if (fs.existsSync(csp)) execFileSync(process.execPath, [csp, ...(check ? ["--check"] : [])], { stdio: "inherit" });

@@ -411,8 +411,18 @@ const EnvSchema = z.object({
   AUTH_GOOGLE_WEB: bool(false),
   /** Longest clip the demo will accept, in seconds. A pitch, not a dictation. */
   DEMO_MAX_SECONDS: z.coerce.number().default(15),
-  /** Demo calls one address may make per minute. */
+  /** Demo calls one visitor may make per minute. */
   DEMO_PER_MINUTE: z.coerce.number().default(6),
+  /**
+   * Demo calls the whole server makes in a UTC day. The per-visitor rate is
+   * not the ceiling: behind the site every visitor arrives from Vercel, so
+   * the visitor is read from Vercel's header — which anyone calling the API
+   * directly can also send. This is the number that bounds the bill.
+   */
+  DEMO_PER_DAY: z.coerce.number().default(500),
+  /** Pages that may spend a demo call, by Origin (comma-separated). The
+   *  API's own PUBLIC_ORIGIN, which serves a copy of the page, is added. */
+  DEMO_ORIGINS: z.string().default("https://tailzu.space,https://www.tailzu.space"),
   /**
    * Where the landing page lives. `index.html` here is served at `/`; absent,
    * `/` sends people to /download so the apex is never a blank page. Bind

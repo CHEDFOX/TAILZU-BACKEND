@@ -25,8 +25,9 @@
  * nothing behind.
  */
 import { withControl } from "../control/index.js";
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import fs from "node:fs";
+import { isIP } from "node:net";
 import path from "node:path";
 import type { AudioFormat } from "../../../shared/types/api.js";
 import { getConfig } from "../config.js";
@@ -35,6 +36,29 @@ import { estimateDurationSeconds } from "../pipeline/stt.js";
 import { SITE_UI, SITE_MIC, SITE_SHAPE } from "../experience/catalog.js";
 
 const FORMATS: AudioFormat[] = ["wav", "m4a", "webm", "mp3", "ogg", "flac"];
+
+/**
+ * WHO IS ASKING, for the demo's per-minute rate. Through the site every
+ * request arrives from Vercel, so req.ip is Vercel for everyone and one
+ * visitor's six calls were everyone's. Vercel names the visitor; a caller
+ * that forges the header only mints itself buckets, which the day's budget
+ * (DEMO_PER_DAY) still bounds.
+ */
+export function demoVisitor(req: FastifyRequest): string {
+  const v = req.headers["x-vercel-forwarded-for"];
+  const first = (Array.isArray(v) ? v[0] : v)?.split(",")[0]?.trim();
+  return "demo:" + (first && isIP(first) ? first : req.ip);
+}
+
+/** The day's demo calls (UTC), counted in this process — there is one. */
+const budget = { day: "", spent: 0 };
+export function spendDemo(max: number, now = new Date()): boolean {
+  const day = now.toISOString().slice(0, 10);
+  if (day !== budget.day) { budget.day = day; budget.spent = 0; }
+  if (budget.spent >= max) return false;
+  budget.spent++;
+  return true;
+}
 
 /** Fifteen seconds of anything a browser records, with room to spare. A cap
  *  in bytes as well as seconds, because the seconds cannot be read from every
@@ -224,11 +248,21 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
 
   // --- The demo ------------------------------------------------------------
   const cfg = getConfig();
+  const origins = new Set(
+    [...cfg.DEMO_ORIGINS.split(","), process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"].map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean),
+  );
   app.post("/v1/demo/transcribe", {
-    config: { rateLimit: { max: Math.max(1, cfg.DEMO_PER_MINUTE), timeWindow: 60_000 } },
+    config: { rateLimit: { max: Math.max(1, cfg.DEMO_PER_MINUTE), timeWindow: 60_000, keyGenerator: demoVisitor } },
   }, async (req, reply) => {
     if (!getConfig().DEMO_ENABLED) {
       return reply.code(404).send({ code: "demo_off", message: "The live demo is off." });
+    }
+    // ONLY OUR PAGES SPEND A DEMO CALL. A form POST needs no CORS permission,
+    // so without this any site could embed the demo and spend it; a browser
+    // always sends Origin on a POST, and a script that forges one is held by
+    // the rate and the day's budget.
+    if (!origins.has(String(req.headers.origin ?? ""))) {
+      return reply.code(403).send({ code: "forbidden", message: "The demo runs on tailzu.space." });
     }
 
     let audio: Buffer | null = null;
@@ -254,6 +288,10 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
     const seconds = estimateDurationSeconds(audio, format);
     if (seconds > getConfig().DEMO_MAX_SECONDS) {
       return reply.code(413).send({ code: "too_long", message: "Keep it under fifteen seconds." });
+    }
+
+    if (!spendDemo(getConfig().DEMO_PER_DAY)) {
+      return reply.code(429).send({ code: "resting", message: "The demo is resting until tomorrow. The app is not." });
     }
 
     const t0 = Date.now();
