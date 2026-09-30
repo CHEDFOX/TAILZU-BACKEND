@@ -20,6 +20,8 @@ import { buildAssistSystem, fenceTags, stripFenceTags } from "./assistPrompt.js"
 import { splitInstruction } from "./commands.js";
 import { buildReplySystem, inlineValue, renderCommandOverride } from "../prompts.js";
 import { detectScript, INDIC_SCRIPTS, mixesEnglishAndRomanHindi, readsAsRomanHindi, romanHindiHits, transliterated } from "./stt.js";
+import { isKnownHallucination, phraseKey } from "./speechGate.js";
+import { continuesSentence, shapeForJoin } from "./join.js";
 
 /**
  * The script a piece of text is written in, or undefined when there is no
@@ -307,15 +309,35 @@ export function stripEchoedContext(out: string, context: string | undefined): st
  * ending "Thank you." or "Okay." that nobody said. A last sentence that is
  * only a thanks or an okay, with no such word anywhere in what they said, is
  * the model's and comes off. One they said stays, however it was written.
+ *
+ * IN EVERY LANGUAGE THEY SPEAK, AND IN THE ALPHABET IT COMES BACK IN. A
+ * closing is recognised by what it MEANS: "धन्यवाद" said and "Dhanyavaad."
+ * written back (the English-letters rule) is theirs; a "Thank you." after a
+ * sentence with no thanks in any language is not.
  */
-const CLOSING = /^(?:thank\s*you|thanks|okay|ok|cheers|bye)(?:\s+(?:so\s+much|a\s+lot|very\s+much))?[.!]*$/i;
+const CLOSING = /^(?:thank\s*you|thanks|okay|ok|cheers|bye|dhanyava+d|dhanyawa+d|shukriya|धन्यवाद|शुक्रिया)(?:\s+(?:so\s+much|a\s+lot|very\s+much|ji|जी))?[.!।]*$/iu;
+/** Each closing's words by meaning, in the spellings a recogniser or the writer uses. */
+const CLOSING_MEANINGS: string[][] = [
+  ["thank", "thanx", "thx", "dhanyav", "dhanyaw", "shukri", "धन्यवाद", "शुक्रिया", "ধন্যবাদ", "شکریہ", "gracias", "merci", "danke", "obrigad"],
+  ["ok", "okay", "ओके", "ठीक", "theek", "thik"],
+  ["bye", "बाय", "alvida", "अलविदा"],
+  ["cheers"],
+];
+function saidClosing(closing: string, said: string): boolean {
+  const first = phraseKey(closing).split(" ")[0] ?? "";
+  const heard = phraseKey(said).split(" ");
+  const group = CLOSING_MEANINGS.find((g) => g.some((w) => first.startsWith(phraseKey(w)))) ?? [first];
+  return heard.some((h) => group.some((w) => h.startsWith(phraseKey(w))));
+}
 export function stripAddedClosing(out: string, said: string): string {
-  const m = /^([\s\S]*?[.!?])\s+([^\n.!?]+[.!]*)\s*$/.exec(out.trim());
+  const t = out.trim();
+  // THE WHOLE OUTPUT can be the addition: a stretch the recogniser heard as a
+  // syllable ("Jhal") written back as "Thank you." Their words go out
+  // instead, the same policy as every other guard here.
+  if (isKnownHallucination(t) && CLOSING.test(t.replace(/\s+/g, " ")) && !saidClosing(t, said)) return said.trim() || out;
+  const m = /^([\s\S]*?[.!?।])\s+([^\n.!?।]+[.!।]*)\s*$/u.exec(t);
   if (!m || !CLOSING.test(m[2]!.trim())) return out;
-  const heard = said.toLowerCase();
-  const word = m[2]!.trim().toLowerCase().replace(/[^a-z\s]/g, "").split(/\s+/)[0]!;
-  const key = word.startsWith("thank") ? "thank" : word;
-  if (new RegExp(`\\b${key}`).test(heard)) return out;
+  if (saidClosing(m[2]!, said)) return out;
   return m[1]!;
 }
 
@@ -334,12 +356,15 @@ const LEADING_FILLER = new RegExp(`^(?:${FILLER}(?![\\p{L}\\p{M}])[\\s,.…!?—
 // (?<!…): a match starts only where a run of separators does — the leftmost
 // one always did — so a long run is scanned once, not once per character.
 const TRAILING_FILLER = new RegExp(`(?<![\\s,.…—–-])(?:[\\s,.…—–-]+${FILLER})+[\\s.…!?]*$`, "iu");
-export function stripEdgeFiller(out: string): string {
+export function stripEdgeFiller(out: string, continuesSentence = false): string {
   const t = out.trim();
   const cut = t.replace(LEADING_FILLER, "").replace(TRAILING_FILLER, (m) => (/[.!?]\s*$/.test(m) ? "." : "")).trim();
   if (!cut) return out;
-  // The sentence now starts where the filler did: give it its capital back.
-  return cut === t ? out : cut.charAt(0).toUpperCase() + cut.slice(1);
+  if (cut === t) return out;
+  // The sentence now starts where the filler did: give it its capital back —
+  // unless this stretch carries on a sentence already in the field ("…I went
+  // to the" + "um, market"), where a capital is exactly the seam to avoid.
+  return continuesSentence ? cut : cut.charAt(0).toUpperCase() + cut.slice(1);
 }
 
 /** Words, as the meter counts them. */
@@ -629,26 +654,31 @@ export async function assist(
     opts.personality?.snippets,
     ctxFromOpts(opts),
   );
+  // Whatever goes out is pasted AFTER their own text (`context`), so every
+  // return below is shaped to join it: single spaces, no capital on a word
+  // that only continues an unfinished sentence, no full stop after a word no
+  // sentence ends on. See join.ts.
+  const joined = (s: string) => shapeForJoin(s, context);
   // Something far longer than they could have asked for goes out as what they
   // said, the same policy as a leaked prompt: never an essay in their field.
-  if (runaway(out, message)) return message.trim();
+  if (runaway(out, message)) return joined(message.trim());
   // The instructions are never the message. Falling back to what they said is
   // the same policy as a refusal: a request that happened to address the model
   // goes out as the message it always was.
-  if (quotesPrompt(out, system)) return message.trim();
+  if (quotesPrompt(out, system)) return joined(message.trim());
   // Their words, re-spelled in another alphabet. Four wordings of the rule
   // across four deployed runs held sometimes and not others; at temperature 0
   // it now fails every time, which makes it a decision rather than a wobble.
   // Checked here for the same reason the prompt leak is: an instruction the
   // model keeps losing is not an instruction, it is a hope.
   // Not when they asked for a language: then another script is the request.
-  if (!askedLanguage && transliterated(message, out)) return message.trim();
+  if (!askedLanguage && transliterated(message, out)) return joined(message.trim());
   // Their own prior text stays in the field either way, so an echo of it here
   // is a second copy on screen.
-  const trimmed = stripEdgeFiller(stripAddedClosing(stripEchoedContext(out, context), message));
+  const trimmed = stripEdgeFiller(stripAddedClosing(stripEchoedContext(out, context), message), continuesSentence(context));
   // Discard a meta/refusal reply ("speak again"…); else keep the completion,
   // falling back to the input on an empty one so we never wipe the field.
-  return finalizeCompletion(trimmed, message.trim());
+  return joined(finalizeCompletion(trimmed, message.trim()));
 }
 
 export { LLM_TONES };

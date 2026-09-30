@@ -79,10 +79,45 @@ While you are there, **Authentication → Providers → Email → Email OTP Expi
 should be an hour or less; the default of 24 hours is a long time for a code
 sitting in an inbox.
 
-If a link goes out anyway, the app now redeems it instead of dead-ending
-(`app/src/deeplinks/router.ts`). That is a safety net, not the fix — a user who
-has to leave the app and come back has still had a worse time than one who read
-six digits off a notification.
+If a link goes out anyway, the app redeems it instead of dead-ending — but only
+on the phone that asked for it (next section). That is a safety net, not the
+fix — a user who has to leave the app and come back has still had a worse time
+than one who read six digits off a notification.
+
+### 3b. Links that sign in: the redirect URL must accept a `state`
+
+Anything that signs in by coming back through a link — Google on Android by way
+of Supabase's page (`AUTH_GOOGLE_WEB`), or a mailed link when a template sends
+one — returns to the backend's `/auth/callback`, which hands it to the app on
+`tulmi://`. Any web page can open `tulmi://`, so a link carrying a session
+minted for someone else's account would sign the phone into THAT account
+(login CSRF). Three things stop it:
+
+- the app runs Supabase's PKCE flow (`flowType: "pkce"`): a code is exchanged
+  with a verifier that never leaves the phone that started the flow;
+- the app sends a random `state` in the redirect (`…/auth/callback?state=…`)
+  and redeems a link only if it brings back the state it is waiting for,
+  within 15 minutes, once (`app/src/auth/linkState.ts`);
+- `/auth/callback` refuses a return without a state
+  (`AUTH_CALLBACK_REQUIRE_STATE`, on by default).
+
+**Dashboard → Authentication → URL Configuration → Redirect URLs** must
+therefore match the callback WITH a query. Add:
+
+```
+https://api.tailzu.space/auth/callback**
+```
+
+(the host is `PUBLIC_ORIGIN`'s). An exact `…/auth/callback` entry no longer
+matches, and Supabase then silently sends the user to the Site URL instead —
+Google on Android would land on the wrong page. Add the entry **before** the
+app update and the server that send the state go out.
+
+Rollout order: (1) the Redirect URL above; (2) the app update (it works against
+the old server too — the old page forwards the query); (3) this server. If the
+server has to ship before the update has reached people, deploy it with
+`AUTH_CALLBACK_REQUIRE_STATE=false` and flip it back once it has: a bundle from
+before the state sends none, and its Google sign-in would be refused.
 
 ## 4. Keys
 

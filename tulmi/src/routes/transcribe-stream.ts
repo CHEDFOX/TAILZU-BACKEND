@@ -41,13 +41,15 @@ import {
   openShadowEngine,
   liveEngineConfigured,
   type LiveEngine,
+  type SegmentTiming,
 } from "./live-engines.js";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { enforceQuota, recordUsage } from "../usage/metering.js";
 import {
   sanitizePlainTranscript, transcriptsAgree, isUsableAlternative, readsAsRomanHindi,
-  detectScript, INDIC_SCRIPTS, leadsOnScript,
+  detectScript, INDIC_SCRIPTS, leadsOnScript, scrubAndGate,
 } from "../pipeline/stt.js";
+import { LiveSpeechMeter } from "../pipeline/speechPresence.js";
 
 interface StartMessage {
   type: "start";
@@ -209,6 +211,43 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
       // Set when the stream ended in an error/abnormal close, so we don't mask
       // a failure as a successful "done".
       let errored = false;
+      // The voice in the audio this socket has received, frame by frame —
+      // the live half of the no-speech gate (see judgeFinal).
+      let meter: LiveSpeechMeter | null = null;
+      // Where each engine's last committed segment ended, for an engine that
+      // does not say where its segments lie.
+      const lastEnd = { primary: 0, shadow: 0 };
+
+      /**
+       * NO SPEECH IN, NO TEXT OUT — ON THE LIVE STREAM TOO.
+       *
+       * Finals used to be trusted outright, on the theory that the engine's
+       * own voice detection had already gated them. It gates on sound, not on
+       * voice: a cough or a chair between two sentences committed as "Okay."
+       * or "Thank you." and went straight to the cursor. Each final is now
+       * judged against the voice measured in its own stretch of the stream —
+       * Deepgram says where that is; for an engine that does not, it is
+       * everything since that engine's last final, which can only find MORE
+       * voice, never less. With no audio to measure (nothing received yet),
+       * it is trusted as before.
+       */
+      const judgeFinal = (raw: string, who: "primary" | "shadow", timing?: SegmentTiming): string => {
+        const to = timing ? timing.start + timing.duration : meter?.seconds ?? 0;
+        // An untimed engine commits late: a short phrase spoken while its
+        // previous final was still on the way sits BEFORE that final's end,
+        // so the window reaches back two seconds. Wider only finds more voice.
+        const from = timing ? timing.start : lastEnd[who] - 2;
+        lastEnd[who] = Math.max(lastEnd[who], to);
+        // Slack either side: an engine's segment edges are not frame-exact.
+        const measure = meter?.measure(from - 0.25, to + 0.25) ?? null;
+        if (!measure) return sanitizePlainTranscript(raw, { trustSpeech: true });
+        const gate = scrubAndGate(raw, { measure });
+        if (gate.dropped) {
+          // The reason and the size, never the words.
+          req.log.info({ engine: who, dropped: gate.dropped, voicedSeconds: measure.voicedSeconds }, "live final withheld");
+        }
+        return gate.text;
+      };
 
       const send = (obj: unknown) => {
         if (!closed && socket.readyState === 1) socket.send(JSON.stringify(obj));
@@ -372,6 +411,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           return;
         }
         format = audioFormat(start);
+        meter = new LiveSpeechMeter(format.sampleRate, format.channels);
 
         // WHICH engine (Deepgram / Sarvam) is decided server-side in
         // live-engines.ts. Neither is pinned to a language — the backend
@@ -394,15 +434,15 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
               // the flicker this design exists to avoid.
               if (lead === "primary") send({ type: "partial", text });
             },
-            onFinal: (raw) => {
-              // Sanitize the finalized segment before it reaches the cursor:
-              // strip STT hallucinations / boilerplate. The engine's VAD
-              // already gated on speech, so trust it (don't nuke ambiguous
-              // one-word fillers). We ALWAYS send a final — an empty one tells
-              // the client to clear whatever provisional partial it was
-              // showing, so a noise partial can't get stranded at the cursor.
-              // The meta guard belongs on LLM refine output, not raw STT.
-              const text = sanitizePlainTranscript(raw, { trustSpeech: true });
+            onFinal: (raw, timing) => {
+              // Judge the finalized segment before it reaches the cursor:
+              // boilerplate goes, and words the measured voice in its window
+              // cannot account for go (judgeFinal). We ALWAYS send a final —
+              // an empty one tells the client to clear whatever provisional
+              // partial it was showing, so a noise partial can't get stranded
+              // at the cursor. The meta guard belongs on LLM refine output,
+              // not raw STT.
+              const text = judgeFinal(raw, "primary", timing);
               // Sum words from finalized segments only (partials are supersets
               // that get replaced) so word-based quotas meter the real transcript.
               if (text) {
@@ -451,8 +491,8 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
             onPartial: (text) => {
               if (lead === "shadow") send({ type: "partial", text });
             },
-            onFinal: (raw) => {
-              const text = sanitizePlainTranscript(raw, { trustSpeech: true });
+            onFinal: (raw, timing) => {
+              const text = judgeFinal(raw, "shadow", timing);
               if (text) shadowFinals.push(text);
               considerLead("shadow", text);
               // Words are metered off whatever the user actually receives, so
@@ -494,6 +534,9 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           // The shadow hears the same audio; a failure there must never
           // disturb the stream the user is actually watching.
           try { shadow?.send(raw); } catch { /* shadow is best-effort */ }
+          // Measured as it arrives, so a final can be judged the moment it
+          // commits. push() never throws.
+          meter?.push(raw);
           armIdle();
           return;
         }

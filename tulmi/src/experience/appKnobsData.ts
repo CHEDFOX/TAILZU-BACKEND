@@ -1305,7 +1305,6 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "needsLanguagePick": false,
   "net.draftPath": "/v1/draft",
   "net.healthPath": "/healthz",
-  "net.personalityPath": "/v1/personality",
   "net.profilePath": "/v1/profile",
   "net.pushRegisterPath": "/v1/push/register",
   "net.refine.llmTones": [
@@ -1952,10 +1951,6 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "ui.PieChart.size": 104,
   "ui.PieChart.startAngle": -90,
   "ui.PieChart.thickness": 14,
-  "ui.Placeholder.background": "#1c1c25",
-  "ui.Placeholder.color": "#aaa",
-  "ui.Placeholder.padding": 16,
-  "ui.Placeholder.radius": 12,
   "ui.Popover.background": "#1a1a1f",
   "ui.Popover.padding": 14,
   "ui.Popover.radius": 12,

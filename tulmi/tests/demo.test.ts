@@ -48,6 +48,8 @@ vi.mock("../src/pipeline/stt.js", async (importOriginal) => {
 import { buildApp } from "../src/server.js";
 // eslint-disable-next-line import/first
 import { sitePage, spendDemo } from "../src/routes/demo.js";
+// eslint-disable-next-line import/first
+import { logUrl } from "../src/observability.js";
 
 let app: FastifyInstance;
 beforeAll(async () => { app = await buildApp(); await app.ready(); });
@@ -212,15 +214,51 @@ describe("the landing page", () => {
 });
 
 describe("Google sign-in's way back", () => {
+  // What the app mints: 32 random bytes, base64url.
+  const STATE = "q3Vh0tJx_9aZ-4bC7dE1fG2hI5jK6lM8nO0pQrStUvW";
+
   it("hands the session to the app on the scheme every build has claimed", async () => {
-    const res = await app.inject({ method: "GET", url: "/auth/callback" });
+    const res = await app.inject({ method: "GET", url: `/auth/callback?state=${STATE}` });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toMatch(/text\/html/);
     // A session is in the URL, so nothing about this page may be cached.
     expect(res.headers["cache-control"]).toBe("no-store");
     expect(res.body).toContain("tulmi://auth/callback");
-    // It forwards the FRAGMENT, which is where Supabase puts the tokens.
-    expect(res.body).toContain("location.hash");
+    // It forwards the query (the state, and the PKCE code beside it) and the
+    // FRAGMENT, which is where the implicit flow puts the tokens.
+    expect(res.body).toContain("location.search + location.hash");
+  });
+
+  it("refuses a return that carries no state of a sign-in the app started", async () => {
+    // A link to this page carrying a session minted for the SENDER's account
+    // would otherwise bounce straight into the app from a trusted address.
+    for (const url of [
+      "/auth/callback",
+      "/auth/callback?code=attacker-code",
+      "/auth/callback?state=short&code=x",
+      "/auth/callback?state=has%20space%20and%20is%20long%20enough%20to%20pass",
+      `/auth/callback?state=${STATE}&state=${STATE}`,
+    ]) {
+      const res = await app.inject({ method: "GET", url });
+      expect(res.statusCode, url).toBe(400);
+      expect(res.body, url).not.toContain("tulmi://");
+      expect(res.body, url).not.toContain("location");
+      expect(res.headers["cache-control"], url).toBe("no-store");
+      expect(res.headers["referrer-policy"], url).toBe("no-referrer");
+    }
+  });
+
+  it("gives the store bundle's link a state of its own, so it still comes back", async () => {
+    const res = await app.inject({ method: "POST", url: "/v1/app/bootstrap", payload: { capabilities: { platform: "android" } } });
+    const screen = JSON.stringify(res.json().flags["auth.screen"]);
+    const m = /redirect_to=([^&"]+)/.exec(screen);
+    expect(m).not.toBeNull();
+    const redirect = new URL(decodeURIComponent(m![1]!));
+    expect(`${redirect.origin}${redirect.pathname}`).toBe("https://api.test.tailzu/auth/callback");
+    const state = redirect.searchParams.get("state")!;
+    expect(state).toMatch(/^[A-Za-z0-9_-]{32,128}$/);
+    // …and the page lets that return through.
+    expect((await app.inject({ method: "GET", url: `/auth/callback?state=${state}` })).statusCode).toBe(200);
   });
 
   it("tells the app where to go and where to come back, when switched on", async () => {
@@ -282,10 +320,21 @@ describe("Google sign-in's way back", () => {
     // The tokens travel in the fragment and never reach the server, but the
     // query does — and a page that echoed it would be a page that could leak
     // a code. The page is a static string; the request must not change it.
-    const res = await app.inject({ method: "GET", url: "/auth/callback?access_token=LEAK-ME&code=LEAK-TOO" });
+    const res = await app.inject({ method: "GET", url: `/auth/callback?state=${STATE}&access_token=LEAK-ME&code=LEAK-TOO` });
     expect(res.statusCode).toBe(200);
     expect(res.body).not.toContain("LEAK-ME");
     expect(res.body).not.toContain("LEAK-TOO");
+    expect(res.body).not.toContain(STATE);
+    const refused = await app.inject({ method: "GET", url: "/auth/callback?access_token=LEAK-ME&code=LEAK-TOO" });
+    expect(refused.body).not.toContain("LEAK-ME");
+    expect(refused.body).not.toContain("LEAK-TOO");
+  });
+
+  it("keeps the callback's query out of the request log", () => {
+    expect(logUrl(`/auth/callback?state=${STATE}&code=secret`)).toBe("/auth/callback");
+    expect(logUrl("/auth/callback")).toBe("/auth/callback");
+    expect(logUrl("/auth/callbackish?x=1")).toBe("/auth/callbackish?x=1");
+    expect(logUrl("/v1/site?x=1")).toBe("/v1/site?x=1");
   });
 });
 

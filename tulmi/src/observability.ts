@@ -26,6 +26,15 @@ let sentry: any = null;
  * Fastify({ logger }) so every log line the server emits is JSON with
  * secrets scrubbed.
  */
+/**
+ * The URL as it may be logged. The sign-in callback's query carries a PKCE
+ * code (and, from the store bundle, can carry more) — worthless without the
+ * phone's verifier, but a log line is no place for any part of a sign-in.
+ */
+export function logUrl(url: string): string {
+  return /^\/auth\/callback(?:[?#]|$)/.test(url) ? "/auth/callback" : url;
+}
+
 export function fastifyLoggerOptions() {
   return {
     level: process.env.LOG_LEVEL ?? "info",
@@ -56,7 +65,7 @@ export function fastifyLoggerOptions() {
     // req/res which can accidentally serialize a huge JSON body).
     serializers: {
       req(req: { method: string; url: string; ip?: string; id?: string }) {
-        return { id: req.id, method: req.method, url: req.url, ip: req.ip };
+        return { id: req.id, method: req.method, url: logUrl(req.url), ip: req.ip };
       },
     },
   };

@@ -105,12 +105,15 @@ export const AUTH_RESUME_SCHEME_URL = "tulmi://auth/callback";
 /**
  * THE LANDING PAGE FOR GOOGLE SIGN-IN ON ANDROID.
  *
- * Supabase finishes Google and redirects here with the session in the URL
- * FRAGMENT. A fragment never leaves the browser: this server does not receive
- * it, does not log it, and cannot — the page is a static string with nothing
- * of the request interpolated into it, which a test holds it to. The script
- * reads the fragment on the device and hands it to the app on tulmi://, where
- * the deep-link router already knows how to adopt a session.
+ * Supabase finishes Google and redirects here with the app's `state` in the
+ * query and either a PKCE code beside it (current app) or the session in the
+ * URL FRAGMENT (the store bundle's link, below). A fragment never leaves the
+ * browser: this server does not receive it, does not log it, and cannot — the
+ * page is a static string with nothing of the request interpolated into it,
+ * which a test holds it to. (The query does arrive, and is kept out of the
+ * request log — see observability.ts.) The script hands query and fragment to
+ * the app on tulmi://, where auth/linkSignIn redeems them only for the
+ * sign-in that phone started.
  *
  * It bounces by script AND offers a button, because a custom-scheme
  * navigation without a tap is the one thing some browsers refuse; the tap is
@@ -153,6 +156,44 @@ export const AUTH_CALLBACK_HTML = `<!doctype html>
 </html>
 `;
 
+/**
+ * The state a sign-in carries out and back: what the app mints (32 random
+ * bytes, base64url) or the server mints for the legacy link below. A shape,
+ * not a lookup — the page cannot know which phone is holding which state, and
+ * does not need to: the app redeems only the one it is waiting for.
+ */
+export const AUTH_STATE_RE = /^[A-Za-z0-9_-]{32,128}$/;
+
+/**
+ * What a callback WITHOUT a state gets: no bounce, nothing of the request in
+ * it, and a way forward that is true. A sign-in the app started always
+ * carries one, so a return without one is somebody else's — typically a link
+ * built to sign this phone into the sender's account.
+ */
+export const AUTH_CALLBACK_REFUSED_HTML = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Tailzu</title>
+<style>
+  html { background: #0F0D0B; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color: #F3E2C6; background: #0F0D0B; }
+  .w { text-align: center; padding: 24px; max-width: 420px; }
+  p { margin: 0; color: rgba(243,226,198,.62); }
+</style>
+</head>
+<body>
+<div class="w">
+  <p>This sign-in didn't start on this device. Open Tailzu and sign in from there.</p>
+</div>
+</body>
+</html>
+`;
+
 export function registerDemoRoutes(app: FastifyInstance, opts: {
   downloadsDir: string;
   siteDir: string;
@@ -164,10 +205,22 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
   // the app is SENT here, and a page that is reachable a minute before the
   // switch is flipped costs nothing. no-store, because whatever is in the
   // URL is a session and must not sit in a cache.
-  app.get("/auth/callback", async (_req, reply) => {
+  //
+  // ONLY A RETURN THAT CARRIES A STATE IS HANDED ON. This page is a
+  // trampoline from a trusted https address into tulmi://, and without the
+  // check anyone could mail a link to it carrying a session minted for their
+  // own account. The app is what decides (it redeems only the state it is
+  // waiting for, and PKCE binds the code to its verifier); this makes sure no
+  // flow can come back without the thing it checks. AUTH_CALLBACK_REQUIRE_STATE
+  // exists only to roll this out ahead of the app update that sends the state.
+  app.get("/auth/callback", async (req, reply) => {
     reply.type("text/html; charset=utf-8");
     reply.header("Cache-Control", "no-store");
     reply.header("Referrer-Policy", "no-referrer");
+    const state = (req.query as { state?: unknown } | undefined)?.state;
+    if (getConfig().AUTH_CALLBACK_REQUIRE_STATE && !(typeof state === "string" && AUTH_STATE_RE.test(state))) {
+      return reply.code(400).send(AUTH_CALLBACK_REFUSED_HTML);
+    }
     return AUTH_CALLBACK_HTML;
   });
 

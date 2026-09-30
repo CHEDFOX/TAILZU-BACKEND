@@ -25,12 +25,14 @@
 /**
  * The tones the user can pick per preset.
  *
- * "none" is the default: the transcript arrives EXACTLY as Whisper heard
- * it — no LLM cleanup, no rewriting, no filler removal. Fastest, most
- * faithful to what the user said, best for people who trust their own
- * dictation. The other four tones layer an LLM refine on top of the
- * transcript and the refined text is what the user sees at the cursor —
- * the raw is never inserted.
+ * "none" is the default, and it means NO TONE ON TOP OF THE VOICE — not no
+ * refinement. Every tone, "none" included, is written by the same refine
+ * pass (assistPrompt.buildAssistSystem) in the active preset's voice; the
+ * other four tones add a register (formal, casual…) over that voice. With Zu
+ * active, "none" is the user's own voice, repaired. (This comment used to say
+ * "none" inserted the raw transcript with no LLM pass; the server has not
+ * worked that way for a long time, and reading it that way is how a client
+ * ends up expecting raw text.)
  */
 export type PresetTone = "none" | "formal" | "casual" | "very-casual" | "excited";
 

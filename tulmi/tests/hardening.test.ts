@@ -68,7 +68,10 @@ describe("what a failure tells the caller", () => {
 
 describe("HTML pages", () => {
   it("cannot be framed or content-sniffed", async () => {
-    for (const url of ["/privacy", "/terms", "/pay", "/faq", "/auth/callback", "/admin"]) {
+    // The callback page with the state a sign-in the app started carries —
+    // without one it refuses (tests/demo.test.ts), headers and all.
+    const callback = `/auth/callback?state=${"s".repeat(43)}`;
+    for (const url of ["/privacy", "/terms", "/pay", "/faq", callback, "/admin"]) {
       const res = await app.inject({ method: "GET", url });
       expect(res.statusCode, url).toBe(200);
       expect(res.headers["x-frame-options"], url).toBe("DENY");

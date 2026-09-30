@@ -15,6 +15,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { randomBytes } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from "fastify";
 import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
@@ -31,6 +32,7 @@ import { registerSeoRoutes } from "./routes/seo.js";
 import { registerDemoRoutes, sitePage, AUTH_RESUME_SCHEME_URL } from "./routes/demo.js";
 import { initControl, registerControlRoutes, requireAdmin, withControl } from "./control/index.js";
 import { initPush, pushEngine, registerPushRoutes } from "./push/index.js";
+import { registerPushTokenRoutes, SupabasePushTokens } from "./push/tokens.js";
 import { registerReviewCodeRoute } from "./routes/reviewCode.js";
 import { getConfig, VERSION } from "./config.js";
 import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
@@ -43,6 +45,7 @@ import { captureException, fastifyLoggerOptions, initSentry } from "./observabil
 import { getProfile, updateProfile, touchLastSeen, type Profile } from "./profile/store.js";
 import { applyRevenueCatEvent, getEntitlement, isEntitled } from "./billing/entitlements.js";
 import { runPipeline } from "./pipeline/index.js";
+import { joinWithSpace } from "./pipeline/join.js";
 import { estimateDurationSeconds } from "./pipeline/stt.js";
 import {
   assist, draftReply, inferStyle, refineVariants, updateStylePortrait, LLM_TONES,
@@ -921,7 +924,9 @@ const refineRoute = (routeTone?: string) =>
         presetId: personality.activePresetId,
       });
       learnFromUsage(user, personality);
-      const res: RefineResponse = { refinedText, usage };
+      // The same join hint /v1/transcribe-clean gives: the live path pastes
+      // this after what the field already holds (`context`).
+      const res: RefineResponse = { refinedText, usage, joinWithSpace: joinWithSpace(body.context, refinedText) };
       return reply.send(res);
     } catch (err) {
       req.log.error(err);
@@ -1514,48 +1519,17 @@ app.post("/v1/personality/pin", { config: AUTHED_RL }, async (req, reply) => {
   }
 });
 
-// Register (or refresh) an Expo push token for the current user. The client
-// sends this on every launch — we upsert on (user, platform) so old tokens
-// naturally roll over when the device gets a new one. The whole flow is
-// best-effort from the client's perspective; the app never blocks on it.
-const pushRegisterSchema = z.object({
-  token: z.string().min(4).max(256),
-  platform: z.enum(["ios", "android"]),
-  appVersion: z.string().max(40).optional(),
-});
-app.post("/v1/push/register", { config: AUTHED_RL }, async (req, reply) => {
-  const user = await resolveUser(req.headers["authorization"]);
-  if (!user) return unauthorized(reply);
-  const parsed = pushRegisterSchema.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    return reply.code(400).send({ code: "bad_request", message: parsed.error.issues[0]?.message ?? "invalid body" });
-  }
-  const { token, platform, appVersion } = parsed.data;
-  try {
-    // Best-effort upsert. Table shape: (user_id, platform, token, app_version,
-    // updated_at) with PK (user_id, platform) so re-registration overwrites
-    // the same row. If the table doesn't exist yet, we log and no-op; the
-    // schema migration is a follow-up SQL step. Never surfaces to the user.
+// Register an Expo push token for the current user (every launch and every
+// sign-in), and give it up on sign-out. A token belongs to the PHONE, so
+// registering it takes it from any other account that held it — see
+// src/push/tokens.ts. Best-effort from the client's side either way.
+registerPushTokenRoutes(app, {
+  resolveUser,
+  tokens: () => {
     const sb = supabase();
-    if (sb) {
-      const { error } = await sb.from("push_tokens").upsert(
-        {
-          user_id: user.id,
-          platform,
-          token,
-          app_version: appVersion ?? null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id,platform" },
-      );
-      if (error) req.log.warn({ err: error }, "push_tokens upsert failed");
-    }
-    return reply.send({ ok: true });
-  } catch (err) {
-    req.log.warn({ err }, "push_tokens exception");
-    // Silent success — client retries on next launch.
-    return reply.send({ ok: true });
-  }
+    return sb ? new SupabasePushTokens(sb, (msg, err) => app.log.warn({ err }, msg)) : null;
+  },
+  rateLimit: AUTHED_RL,
 });
 
 // Learn a style profile from a sample of the user's own writing, merge it into
@@ -1845,9 +1819,15 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     // link, returning on the callback page above. Same switch as the web
     // path, because it needs the same dashboard work — the callback on
     // Supabase's redirect list, and the Google provider given its secret.
+    //
+    // The state is minted HERE because that bundle cannot mint one — and it
+    // cannot check one either: it adopts any session link while signed out,
+    // which only its update (the one that declares googleWeb) fixes. The state
+    // is what gets this link past the callback page's refusal of stateless
+    // returns; the protection itself lives in the updated app.
     googleLink: cfg.AUTH_GOOGLE_WEB && cfg.SUPABASE_URL
       ? `${cfg.SUPABASE_URL.replace(/\/$/, "")}/auth/v1/authorize?provider=google`
-        + `&redirect_to=${encodeURIComponent(`${process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"}/auth/callback`)}`
+        + `&redirect_to=${encodeURIComponent(`${process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"}/auth/callback?state=${randomBytes(24).toString("base64url")}`)}`
         + `&prompt=select_account`
       : null,
     micGranted,

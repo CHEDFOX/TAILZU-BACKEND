@@ -32,8 +32,10 @@ export interface EngineHandlers {
   onReady(): void;
   /** Provisional text — replaced by the next partial or final. */
   onPartial(text: string): void;
-  /** A committed segment. Empty string is meaningful: it clears a stale partial. */
-  onFinal(text: string): void;
+  /** A committed segment. Empty string is meaningful: it clears a stale partial.
+   *  `timing` is where in the stream the segment lies (seconds), when the
+   *  engine says — the route measures the voice in exactly that window. */
+  onFinal(text: string, timing?: SegmentTiming): void;
   onError(message: string): void;
   /** Engine closed. `abnormalCode` is set only when the close was NOT clean. */
   onClose(abnormalCode?: number): void;
@@ -42,6 +44,12 @@ export interface EngineHandlers {
 export interface EngineOptions {
   sampleRate: number;
   channels: number;
+}
+
+/** A committed segment's place in the audio stream, in seconds. */
+export interface SegmentTiming {
+  start: number;
+  duration: number;
 }
 
 /** Which live engine the server is configured to use. */
@@ -118,7 +126,11 @@ function openDeepgram(opts: EngineOptions, h: EngineHandlers): LiveEngine {
   dg.on(LiveTranscriptionEvents.Transcript, (data: any) => {
     const raw = data?.channel?.alternatives?.[0]?.transcript ?? "";
     if (!raw) return;
-    if (data.is_final) h.onFinal(raw);
+    // Deepgram says where the segment sits in the stream; the route measures
+    // the voice in that window before the words reach the cursor.
+    const timing = typeof data.start === "number" && typeof data.duration === "number"
+      ? { start: data.start, duration: data.duration } : undefined;
+    if (data.is_final) h.onFinal(raw, timing);
     else h.onPartial(raw);
   });
   dg.on(LiveTranscriptionEvents.Error, (e: any) => h.onError(String(e?.message ?? e)));

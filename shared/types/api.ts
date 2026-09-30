@@ -418,9 +418,25 @@ export interface CleanupOptions {
 export interface TranscribeCleanResponse {
   /** The polished, insert-ready text. */
   cleanedText: string;
-  /** The raw STT output, before cleanup (useful for debugging/QA). */
+  /** The raw STT output, before cleanup (useful for debugging/QA). Empty when
+   *  the clip held no speech: never paste it in place of an empty cleanedText
+   *  when `noSpeech` is set. */
   transcript: string;
   usage: UsageRecord;
+  /**
+   * Put ONE space before `cleanedText` when appending it after the `context`
+   * you sent. Computed from the two strings: false when there is no context,
+   * when context already ends in whitespace, when cleanedText opens with
+   * punctuation (",", ".", "?"…), or for Chinese/Japanese/Thai on both sides.
+   * Older servers omit it; then join with a space unless one of those holds.
+   */
+  joinWithSpace?: boolean;
+  /** The clip held no speech (silence, a breath, noise, or only words a
+   *  recogniser invents on quiet). Paste nothing; a pause stretch shows nothing. */
+  noSpeech?: boolean;
+  /** Diagnostic: seconds of voice measured in the clip (null when it could not
+   *  be measured) and, when text was withheld, why. */
+  speech?: { voicedSeconds: number | null; dropped?: string };
 }
 
 // ---------------------------------------------------------------------------
@@ -439,6 +455,9 @@ export interface RefineRequest extends CleanupOptions {
 export interface RefineResponse {
   refinedText: string;
   usage: UsageRecord; // audioSeconds is 0 here
+  /** Put ONE space before `refinedText` when appending it after `context`
+   *  (see TranscribeCleanResponse.joinWithSpace). */
+  joinWithSpace?: boolean;
 }
 
 // ---------------------------------------------------------------------------

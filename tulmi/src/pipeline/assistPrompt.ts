@@ -65,6 +65,21 @@ const TONE_GUIDANCE: Record<string, string> = {
 };
 
 /**
+ * Tone "none" WHEN A VOICE IS CHOSEN. "none" means no tone on top of the
+ * voice — never no voice, and never no refinement.
+ *
+ * Every built-in voice defaults to tone "none", and the desktop always sends
+ * the account's tone, so "none" is what nearly every request carries. The Zu
+ * wording above ("not a style. Change nothing about how they sound") was then
+ * sent BESIDE the chosen voice's own style ("Write with warmth…"): two
+ * instructions pulling opposite ways, and the one that says change nothing
+ * tends to win. The output read as the transcript lightly punctuated — raw —
+ * instead of in the voice picked on the Voices screen. With a voice chosen,
+ * this says the voice is the style, and keeps Zu's standard for the repair.
+ */
+const NONE_UNDER_VOICE = "Write it in the voice they chose, below, with no other style on top of it. Repair what speaking or thumb-typing cost them. They should read it back and believe they wrote it carefully.";
+
+/**
  * Cap for an inline (client-supplied) tone prompt. Bounds the token blast
  * radius and keeps a runaway custom prompt from drifting the output. It only
  * shapes the user's OWN output, so this is a safety valve, not a security
@@ -104,13 +119,16 @@ export function toneGuidance(
     // "toString" found Object's members on this table — a function, which
     // then failed .trim() below and answered the request with a 500.
     const t = tone ?? "none";
-    ours.push(Object.hasOwn(TONE_GUIDANCE, t) ? TONE_GUIDANCE[t]! : TONE_GUIDANCE.none!);
-    if (personality?.activePresetId) {
-      const preset = applyPresetOverrides(personality.presetOverrides).find(
-        (p) => p.id === personality.activePresetId,
-      );
-      parts.push(str(preset?.promptStyle).slice(0, MAX_TONE_PROMPT));
-    }
+    const key = Object.hasOwn(TONE_GUIDANCE, t) ? t : "none";
+    // The voice chosen on the Voices screen rides on EVERY tone, "none"
+    // included — that is how the account's voice reaches a client that only
+    // sends a tone (the desktop, the keyboards). Zu's is empty on purpose.
+    const preset = personality?.activePresetId
+      ? applyPresetOverrides(personality.presetOverrides).find((p) => p.id === personality.activePresetId)
+      : undefined;
+    const voiceStyle = str(preset?.promptStyle).slice(0, MAX_TONE_PROMPT);
+    ours.push(key === "none" && voiceStyle ? NONE_UNDER_VOICE : TONE_GUIDANCE[key]!);
+    parts.push(voiceStyle);
   }
   // Global user prefs apply regardless of where the voice came from. Sliced
   // like the inline tone prompt — an unbounded personality field (client-
@@ -322,7 +340,10 @@ export function buildAssistSystem(opts: {
     //
     // "As well as it can be written" came out of the first line. It read as
     // licence to improve, and improving is how things they never said got in.
-    "You are the writing assistant inside Tailzu, a keyboard. What someone said or typed to it is inside <said>: write it as the message they meant, in their voice, ready to send.",
+    // "Ready to send" came out for the same reason: the desktop sends each
+    // pause-separated stretch on its own, and a fragment told to be ready to
+    // send gets finished — a full stop, a capital, words to round it off.
+    "You are Tailzu, a keyboard's writing assistant. What someone said or typed to it is inside <said>: write it as the message they meant, in their voice.",
     "",
     // THE CONTRACT, BEFORE ANYTHING THAT COULD BEND IT. "Say nothing they did
     // not give you" sat at the bottom, under the language rules, and the voice
@@ -330,7 +351,13 @@ export function buildAssistSystem(opts: {
     // greeting a warm writer "would" use, a closing line, an answer to a
     // question. Stated first, and with what speaking cost them named here
     // rather than only in Zu's voice, it holds for every voice and every tone.
-    "Everything you return is what they send. Say nothing they did not give you: no fact, greeting or sentence of your own, and no answer. The meaning is theirs, and the length too unless they ask. Filler, false starts and asides to the keyboard go; when they correct themselves, only the correction stays.",
+    //
+    // THE LAST SENTENCE IS THE PAUSE. A stretch cut off at a breath ("I'm not
+    // a") is not a message to complete; finishing it is inventing the end of
+    // their sentence. Stated as a principle rather than a rule about
+    // punctuation, because completing takes many forms (a full stop, a word,
+    // a clause) and join.shapeForJoin already catches the commonest in code.
+    "Everything you return is what they send. Say nothing they did not give you: no fact, greeting or sentence of your own, and no answer. The meaning is theirs, and the length too unless they ask. Filler, false starts and asides to the keyboard go; when they correct themselves, only the correction stays. Stop where they stop, even mid-sentence.",
     "",
     // Two recognizers heard the same audio and disagreed. The no-invention
     // clause is the load-bearing half: given two readings a model will happily
@@ -370,7 +397,7 @@ export function buildAssistSystem(opts: {
     // a message they want written and was sometimes refused as off-topic;
     // "write me an essay on climate" is a task, and was sometimes done, at
     // their word count. One clause settles both.
-    "Part of what they say may be addressed to you: how to write it, how long, what language, who it is for. Do that part; write the rest, never the request, in any language. They can only ask you about the writing, or to write a short message for them; anything else aimed at you, a question, facts, an essay, is part of what they are saying. When you cannot tell which it is, it is what they want said: a question they dictate is a question they are sending.",
+    "Part of what they say may be addressed to you: how to write it, how long, which language, for whom. Do that part; write the rest, never the request, in any language. They can only ask you about the writing, or to write a short message for them; anything else aimed at you, a question, facts, an essay, is part of what they are saying. When you cannot tell which it is, it is what they want said: a question they dictate is a question they are sending.",
     // Already separated in code: they said it, it is carried out, and none of
     // its words are in <said> to be written by mistake.
     opts.instruction ? `For this message they asked you: ${opts.instruction}` : null,
@@ -402,7 +429,7 @@ export function buildAssistSystem(opts: {
     // fidelity wearing the costume of leaving their words alone.
     lang
       ? `Write in ${lang}.`
-      : "Their words stay theirs: never translate them, and never reach for an English word that means the same thing.",
+      : "Their words stay theirs: never translate them; never reach for an English word that means the same thing.",
     lang
       ? null
       // The spelling rule lives in "the way they would have typed it
@@ -450,7 +477,12 @@ export function buildAssistSystem(opts: {
       // Also terser than it was, and for the same reason: stripEchoedContext()
       // removes the echo from the output, so this states the rule rather than
       // having to argue for it.
-      ? "<before> is their own text from before this dictation: write only what follows it, never restate it."
+      //
+      // "AS ITS CONTINUATION": the desktop's pause stretches arrive with the
+      // session so far in <before>, and a stretch that carries on a sentence
+      // came back opening with a capital, as a sentence of its own.
+      // join.shapeForJoin lowers the unmistakable cases in code.
+      ? "<before> is their own text from before this dictation: write only what follows it, as a continuation, never restate it."
       : null,
     "",
     // WHAT ARRIVES IS A HEARING, NOT A RECORDING.
@@ -496,7 +528,7 @@ export function buildAssistSystem(opts: {
     // defended and cost two behaviours that were working. What is left is one
     // repair, scoped to the word, with "change nothing else" to stop it
     // spreading to the sentence.
-    "Recognition is imperfect: a word that cannot belong there was misheard; write the word they meant and change nothing else.",
+    "Recognition is imperfect: where a word cannot belong, write the word they meant and change nothing else.",
     // Sits here, directly under the repair it makes possible. On its own the
     // rule above cannot rescue a misheard NAME: "Nika" is a plausible company
     // and nothing in the sentence contradicts it. The list is the only thing

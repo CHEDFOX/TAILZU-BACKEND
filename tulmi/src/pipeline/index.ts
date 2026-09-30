@@ -5,6 +5,8 @@
  */
 import { transcribe } from "./stt.js";
 import { assist } from "./cleanup.js";
+import { joinWithSpace } from "./join.js";
+import type { GateReason } from "./speechGate.js";
 import type {
   AudioFormat,
   CleanupOptions,
@@ -33,6 +35,18 @@ export interface PipelineResult {
   transcript: string;
   cleanedText: string;
   usage: UsageRecord;
+  /**
+   * Whether the client should put ONE space before `cleanedText` when it
+   * appends it after `context` (the text it sent as already written). False
+   * when there is nothing to join, when `context` already ends in whitespace,
+   * when the text opens with punctuation, or for scripts written without
+   * spaces. Additive; see join.joinWithSpace.
+   */
+  joinWithSpace: boolean;
+  /** True when nothing was said: paste nothing, and for a pause stretch show nothing. */
+  noSpeech?: boolean;
+  /** Diagnostic: seconds of voice measured (null when unmeasured) and why text was withheld. */
+  speech?: { voicedSeconds: number | null; dropped?: GateReason };
 }
 
 /** One-shot: transcribe, then run the writing assistant. */
@@ -61,14 +75,21 @@ export async function runPipeline(
   // a writing model handed nothing still writes something, and that something
   // arrived on the user's screen as a refinement of a sentence they never
   // spoke. It is also a paid round trip to produce it.
+  const speech = { voicedSeconds: stt.voicedSeconds ?? null, ...(stt.dropped ? { dropped: stt.dropped } : {}) };
   if (!stt.text.trim()) {
     return {
+      // Empty, and it must be: the desktop pastes `transcript` whenever
+      // `cleanedText` is empty, so a withheld hallucination left here would
+      // be pasted anyway.
       transcript: "",
       sttEngine: stt.engine,
       detectedLanguage: stt.detectedLanguage,
       cleanedText: "",
       // No words, so silence never counts against an allowance.
       usage: { audioSeconds: stt.durationSeconds, words: 0, model: getConfig().CLEANUP_MODEL },
+      joinWithSpace: false,
+      noSpeech: true,
+      speech,
     };
   }
 
@@ -108,5 +129,7 @@ export async function runPipeline(
       words: countWords(cleanedText),
       model: getConfig().CLEANUP_MODEL,
     },
+    joinWithSpace: joinWithSpace(opts.context, cleanedText),
+    speech,
   };
 }

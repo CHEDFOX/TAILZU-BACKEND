@@ -147,6 +147,16 @@ const EnvSchema = z.object({
   STT_LIVE_DUAL: bool(true),
 
   /**
+   * Judge each transcript against the voice measured in its audio
+   * (pipeline/speechPresence.ts, speechGate.ts): no voice, no text. Its
+   * thresholds were tuned on generated audio; if real quiet speech is ever
+   * lost to it, SPEECH_MEASURE=false in .env turns the measurement off at
+   * once — the phrase lists and the second engine still guard — while the
+   * thresholds are retuned.
+   */
+  SPEECH_MEASURE: bool(true),
+
+  /**
    * How many ordinary refines pass before the portrait is rewritten from them.
    *
    * The portrait used to move only on deliberate training, which most people
@@ -405,10 +415,26 @@ const EnvSchema = z.object({
    * app on tulmi://, a scheme every build has always claimed.
    *
    * Off by default because it needs two things done first: the callback URL
-   * in Supabase → Auth → URL Configuration → Redirect URLs, and the Google
-   * provider there configured with the web client id AND secret.
+   * in Supabase → Auth → URL Configuration → Redirect URLs — as
+   * `https://<host>/auth/callback**`, because the return now carries a
+   * `?state=` (AUTH_CALLBACK_REQUIRE_STATE) — and the Google provider there
+   * configured with the web client id AND secret.
    */
   AUTH_GOOGLE_WEB: bool(false),
+  /**
+   * /auth/callback hands a sign-in to the app only when the return carries a
+   * `state` — the one the app minted when it started that sign-in, and the
+   * only thing that lets the app tell its own flow from a link minted for
+   * someone else's account (login CSRF; see routes/demo.ts).
+   *
+   * On by default. Off is a rollout valve and nothing else: an app bundle
+   * from before the state existed sends none, so its Google-on-Android
+   * sign-in would be refused. Set false only if this server ships before the
+   * app update that sends the state has reached people, and back to true once
+   * it has. It also needs Supabase's Redirect URLs to accept the query (see
+   * docs/SUPABASE.md): `https://<PUBLIC_ORIGIN host>/auth/callback**`.
+   */
+  AUTH_CALLBACK_REQUIRE_STATE: bool(true),
   /** Longest clip the demo will accept, in seconds. A pitch, not a dictation. */
   DEMO_MAX_SECONDS: z.coerce.number().default(15),
   /** Demo calls one visitor may make per minute. */

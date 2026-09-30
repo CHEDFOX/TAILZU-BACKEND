@@ -9,13 +9,13 @@
  */
 import OpenAI, { toFile as toOpenAIFile } from "openai";
 import Groq, { toFile as toGroqFile } from "groq-sdk";
-import { execFile } from "node:child_process";
-import { promises as fsp } from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { promisify } from "node:util";
 import { getConfig } from "../config.js";
 import type { AudioFormat, LanguageHint } from "../../../shared/types/api.js";
+import { measureSpeech } from "./speechPresence.js";
+import {
+  gateTranscript, isFillerOnly, isKnownHallucination, spokenWords,
+  type GateReason, type GateResult, type SpeechEvidence,
+} from "./speechGate.js";
 
 let openaiClient: OpenAI | null = null;
 function openai(): OpenAI {
@@ -89,6 +89,16 @@ export interface SttResult {
    *   "unknown" — no per-segment confidence (OpenAI path); fall back to duration.
    */
   speechConfidence?: "high" | "low" | "unknown";
+  /**
+   * What the OTHER engines heard, in auto mode ("" = ran and heard nothing).
+   * Evidence for the no-speech gate: text only one engine hears, on a quiet
+   * clip where another heard silence, is not trusted.
+   */
+  otherReadings?: string[];
+  /** Seconds of voice measured in the clip; absent when it could not be measured. */
+  voicedSeconds?: number;
+  /** Set when the recogniser's text was withheld, and why (see speechGate). */
+  dropped?: GateReason;
 }
 
 /** Languages Sarvam is purpose-built for. A detection landing anywhere in this
@@ -389,10 +399,10 @@ async function transcribeWithProvider(input: SttInput): Promise<SttResult> {
         console.error(`[stt] ${legNames[i]} leg failed:`, (r.reason as Error)?.message);
       }
     });
-    const ok = settled
+    const heard = settled
       .filter((s): s is PromiseFulfilledResult<SttResult> => s.status === "fulfilled")
-      .map((s) => s.value)
-      .filter((r) => r.text.trim());
+      .map((s) => s.value);
+    const ok = heard.filter((r) => r.text.trim());
 
     if (!ok.length) {
       const rejected = settled.filter(
@@ -440,14 +450,26 @@ async function transcribeWithProvider(input: SttInput): Promise<SttResult> {
     // as a second opinion so the writing model can reconcile a disagreement
     // (see SttResult.alternative). Engines fail in different places, so each
     // usually holds part of the truth.
-    const primary = ok.find((r) => isIndicResult(r)) ?? ok[0]!;
-    const other = ok.find(
+    //
+    // A READING THAT IS ONLY WHAT RECOGNISERS SAY TO SILENCE NEVER LEADS.
+    // Script used to decide alone, so a generalist that answered a breath
+    // with "जिंदगी में." beat the engine that heard the real words, purely
+    // for being in Devanagari. When another engine heard something that is
+    // not one of those phrases, that reading is the candidate pool.
+    const real = ok.filter((r) => !isKnownHallucination(r.text) && !isFillerOnly(r.text));
+    const pool = real.length ? real : ok;
+    const primary = pool.find((r) => isIndicResult(r)) ?? pool[0]!;
+    const other = pool.find(
       (r) =>
         r !== primary &&
         !transcriptsAgree(primary.text, r.text) &&
         isUsableAlternative(primary.text, r.text),
     );
-    return other ? { ...primary, alternative: other.text } : primary;
+    // Every other engine's reading — including the ones that heard NOTHING —
+    // goes to the gate in transcribe(): silence from one engine is evidence
+    // against a short clip's words from another.
+    const otherReadings = heard.filter((r) => r !== primary).map((r) => r.text.trim());
+    return other ? { ...primary, alternative: other.text, otherReadings } : { ...primary, otherReadings };
   }
 
   if (cfg.STT_PROVIDER === "sarvam") {
@@ -462,14 +484,6 @@ async function transcribeWithProvider(input: SttInput): Promise<SttResult> {
   }
   return cfg.STT_PROVIDER === "groq" ? transcribeGroq(input) : transcribeOpenAI(input);
 }
-
-/**
- * A clip at least this long is assumed to contain a real word, so we DON'T
- * strip a standalone "thank you"/"you" from it (that would be nuking a
- * legitimate one-word dictation). Only shorter/near-empty captures — the
- * actual silence-hallucination case — fall through to the short-phrase nuke.
- */
-const SPEECH_MIN_DURATION_S = 0.45;
 
 export interface SttInput {
   audio: Buffer;
@@ -771,50 +785,56 @@ export async function transcribe(input: SttInput): Promise<SttResult> {
       alternative: undefined,
     };
   }
+  // THE AUDIO IS MEASURED ON EVERY CLIP, WHILE THE RECOGNISERS RUN.
+  //
+  // It used to be measured only when the transcript was one of a handful of
+  // ENGLISH phrases and the clip's length was unknown, so a breath the
+  // recogniser wrote as "जिंदगी में." or "Jhal" was never measured at all.
+  // Started before the provider call and awaited after it, so it adds no
+  // time; it never rejects (null = could not measure).
+  const measuring = measureSpeech(input.audio, input.format);
   // Provider selection (and its fallback) lives in transcribeWithProvider.
   const raw: SttResult = await transcribeWithProvider(input);
+  const measure = await measuring;
 
   // Resolve duration first: the provider's own number, else a header probe of
   // the buffer (WAV/MP3/m4a) so metering isn't zeroed out for every voice
-  // request — AND so the transcript scrub below has a real length to reason
-  // about.
+  // request — AND so the gate below has a length to reason about when the
+  // audio could not be measured.
   const duration =
     raw.durationSeconds > 0
       ? raw.durationSeconds
       : estimateDurationSeconds(input.audio, input.format);
 
-  // Silence-hallucination scrub on EVERY provider path. The OpenAI model (the
-  // default) shares Whisper's "silent audio → 'Thank you.'" failure mode, so
-  // this flat-text pass is the only defense there.
+  // NO SPEECH IN, NO TEXT OUT — on every provider path (speechGate.ts).
   //
-  // BUT: a bare "thank you"/"you" is ALSO a legitimate one-word dictation.
-  // Nuking it unconditionally swallowed real short utterances (the reported
-  // bug). So we only apply the aggressive short-phrase nuke when the clip is
-  // actually silence — either the provider flagged it low-confidence, or it's
-  // too short to hold a real word. A confident or long-enough clip is trusted
-  // and its "thank you" survives. Multi-word YouTube boilerplate ("thanks for
-  // watching") is stripped regardless — nobody dictates that into a keyboard.
-  // Only strip the ambiguous short-phrase set when we have a POSITIVE silence
-  // signal: low provider confidence, OR a KNOWN-and-too-short duration. When the
-  // duration is UNKNOWN (0 — e.g. webm/ogg we can't probe) we must NOT treat it
-  // as "short/silence", or a genuine one-word dictation from Android gets nuked.
-  // (Multi-word YouTube boilerplate is still stripped regardless.)
-  const durationKnown = duration > 0;
-  let trustSpeech =
-    raw.speechConfidence === "high" ||
-    (raw.speechConfidence !== "low" &&
-      (!durationKnown || duration >= SPEECH_MIN_DURATION_S));
-  // UNKNOWN IS NOT THE SAME AS LONG ENOUGH. The desktop sends webm, whose
-  // length cannot be read from a header, so every clip it sent was trusted —
-  // including the breath between two sentences that its pause-flush uploads
-  // on its own, which came back "Thank you." or "Okay." and was pasted. Only
-  // when the whole clip is one of those phrases, the audio is measured: under
-  // a word's worth of sound above the room, it was not said.
-  if (trustSpeech && raw.speechConfidence !== "high" && !durationKnown && isAmbiguousPhrase(raw.text)) {
-    const spoken = await speechSeconds(input.audio, input.format);
-    if (spoken >= 0 && spoken < SPOKEN_WORD_MIN_S) trustSpeech = false;
+  // The recogniser's confidence used to decide this, and on the clips that
+  // matter it is wrong: Whisper answers a breath with "Thank you." and calls
+  // it confident, and "high" skipped every check. The measured voice decides
+  // now; the recognisers' own signals and each other's readings are what is
+  // left when the audio cannot be measured.
+  const evidence: SpeechEvidence = {
+    measure,
+    clipSeconds: duration,
+    clipBytes: input.audio.length,
+    confidence: raw.speechConfidence,
+    others: raw.otherReadings,
+  };
+  const gate = scrubAndGate(raw.text, evidence);
+  const text = gate.text;
+  if (gate.dropped) {
+    // The reason and the size, never the words: this is somebody's dictation.
+    console.info(`[stt] withheld ${spokenWords(raw.text)} word(s) from ${raw.engine ?? "stt"}: ${gate.dropped}`
+      + ` (voice ${measure ? `${measure.voicedSeconds}s of ${measure.totalSeconds}s` : "not measured"})`);
   }
-  const text = sanitizePlainTranscript(raw.text, { trustSpeech });
+  // The second opinion passes the same gate. A hallucinated candidate handed
+  // to the writer as "candidate 2" is how an invented phrase gets merged
+  // into a real sentence.
+  let alternative: string | undefined;
+  if (text && raw.alternative) {
+    const alt = scrubAndGate(raw.alternative, evidence).text;
+    if (alt && !transcriptsAgree(text, alt) && isUsableAlternative(text, alt)) alternative = alt;
+  }
 
   return {
     text,
@@ -823,15 +843,30 @@ export async function transcribe(input: SttInput): Promise<SttResult> {
     detectedLanguage: raw.detectedLanguage,
     engine: raw.engine ?? getConfig().STT_PROVIDER,
     // Only forward a second opinion when the chosen transcript survived the
-    // silence scrub — offering an alternative to an empty result would
-    // resurrect text we just decided was a hallucination.
-    alternative: text ? raw.alternative : undefined,
+    // gate — offering an alternative to an empty result would resurrect text
+    // we just decided was a hallucination.
+    alternative,
     // Forwarded now rather than discarded. A low reading here does not mean
     // silence — that was already handled above — it means the words that came
     // back are a guess, which is exactly what the writing step needs to know
     // before deciding how hard to repair them.
     speechConfidence: raw.speechConfidence,
+    voicedSeconds: measure?.voicedSeconds,
+    dropped: gate.dropped,
   };
+}
+
+/**
+ * The flat-text scrub (outros, repetition loops) and then the no-speech gate.
+ * Exported for the live socket, which judges each committed segment the same
+ * way against its own measured window.
+ */
+export function scrubAndGate(text: string, evidence: SpeechEvidence): GateResult {
+  const scrubbed = sanitizePlainTranscript(text, { trustSpeech: true });
+  if (!scrubbed) return text.trim() ? { text: "", dropped: "boilerplate" } : { text: "" };
+  // The operator's valve (SPEECH_MEASURE): without the measure the gate still
+  // runs on the phrase lists and the other engine's reading.
+  return gateTranscript(scrubbed, getConfig().SPEECH_MEASURE ? evidence : { ...evidence, measure: undefined });
 }
 
 /**
@@ -1183,6 +1218,8 @@ interface GroqSegment {
   text: string;
   no_speech_prob?: number;
   avg_logprob?: number;
+  /** gzip ratio of the segment's text: Whisper's own sign of a repetition loop. */
+  compression_ratio?: number;
 }
 interface GroqVerboseResponse {
   text: string;
@@ -1214,23 +1251,35 @@ export function sanitizeWhisperText(res: GroqVerboseResponse): string {
 /**
  * Drop Whisper segments that read as silence/non-speech and report how
  * confident we are that what's left is real speech:
- *   1. no_speech_prob > ceiling  → silence/non-speech Whisper invented.
- *   2. avg_logprob   < floor     → model wasn't confident enough.
+ *   1. no_speech_prob > ceiling    → silence/non-speech Whisper invented.
+ *   2. avg_logprob   < floor       → model wasn't confident enough.
+ *   3. compression_ratio > ceiling → a repetition loop (Whisper's own test).
+ *   4. a phrase recognisers invent on silence ("Thank you.", "जिंदगी में.")
+ *      with even a moderate no-speech or low-probability reading. Whisper
+ *      emits those on a quiet tail with no_speech_prob well under 0.6, which
+ *      is why rule 1 alone let them through as "high" confidence.
  * `speechConfidence` is "high" when confident segments survived, "low" when
  * segments existed but all were dropped (a silence signal), "unknown" when the
  * response carried no segments to judge.
  */
-function filterConfidentSegments(res: GroqVerboseResponse): {
+export function filterConfidentSegments(res: GroqVerboseResponse): {
   text: string;
   speechConfidence: "high" | "low" | "unknown";
 } {
   const NO_SPEECH_CEIL = 0.6;
   const AVG_LOGPROB_FLOOR = -1.0; // ln(p) — anything below this = coin flip
+  const COMPRESSION_CEIL = 2.4;   // Whisper's own threshold for a looping decode
+  const KNOWN_NO_SPEECH_CEIL = 0.3;
+  const KNOWN_LOGPROB_FLOOR = -0.7;
 
   if (Array.isArray(res.segments) && res.segments.length > 0) {
     const kept = res.segments.filter((s) => {
       if (typeof s.no_speech_prob === "number" && s.no_speech_prob > NO_SPEECH_CEIL) return false;
       if (typeof s.avg_logprob === "number" && s.avg_logprob < AVG_LOGPROB_FLOOR) return false;
+      if (typeof s.compression_ratio === "number" && s.compression_ratio > COMPRESSION_CEIL) return false;
+      if (isKnownHallucination(s.text ?? "") && (
+        (typeof s.no_speech_prob === "number" && s.no_speech_prob > KNOWN_NO_SPEECH_CEIL) ||
+        (typeof s.avg_logprob === "number" && s.avg_logprob < KNOWN_LOGPROB_FLOOR))) return false;
       return true;
     });
     const text = kept.map((s) => (s.text ?? "").trim()).filter(Boolean).join(" ");
@@ -1298,63 +1347,18 @@ export function isAmbiguousPhrase(text: string): boolean {
   return !!t && AMBIGUOUS_SILENCE_PATTERNS.some((p) => p.test(t));
 }
 
-/** Less sound than this above the room, and no word was said. */
-const SPOKEN_WORD_MIN_S = 0.3;
-
 /**
- * The demuxer ffmpeg is told to read each accepted container with.
+ * Seconds of VOICE in the clip (speechPresence.measureSpeech: louder than the
+ * room and pitched). -1 when it cannot be measured (no ffmpeg for a
+ * compressed clip, a clip it cannot read, a format it is not given), which
+ * callers treat as "unknown", never as silent.
  *
- * NAMED, NEVER PROBED, AND NEVER PART OF A PATH. `format` is request data,
- * and it used to become the temp file's extension — `clip.${format}` — so a
- * "format" carrying "../" wrote the upload wherever the process could write
- * (the old WebSocket route passed its start frame's value straight through).
- * And a probing ffmpeg reads whatever the bytes say they are, including a
- * playlist naming other files or URLs to fetch. This writes a file and runs a
- * program, so it does not lean on the routes' own checks: a fixed file name,
- * a demuxer chosen from this list and file-only protocols close all three.
- */
-const DEMUXERS = new Map<AudioFormat, string>([
-  ["wav", "wav"], ["mp3", "mp3"], ["m4a", "mov"], ["ogg", "ogg"], ["webm", "matroska"], ["flac", "flac"],
-]);
-/** Only a breath-length clip is ever measured; nothing larger goes to disk. */
-const SPEECH_PROBE_MAX_BYTES = 4 * 1024 * 1024;
-
-/**
- * Seconds of the clip that are louder than the room, measured by ffmpeg's
- * silencedetect. -1 when it cannot be measured (no ffmpeg, a clip it cannot
- * read, a format it is not given), which callers treat as "unknown" and leave
- * the transcript alone.
+ * It used to count everything louder than -38 dB, so a breath or a knock
+ * right at the mic measured as speech. Voicing is what separates the two.
  */
 export async function speechSeconds(audio: Buffer, format: AudioFormat): Promise<number> {
-  const demuxer = DEMUXERS.get(format);
-  if (!demuxer || !audio?.length || audio.length > SPEECH_PROBE_MAX_BYTES) return -1;
-  let dir = "";
-  try {
-    // Inside the try: a full disk is "cannot measure", not a failed dictation.
-    dir = await fsp.mkdtemp(path.join(os.tmpdir(), "tz-speech-"));
-    const file = path.join(dir, "clip");
-    await fsp.writeFile(file, audio);
-    const { stderr } = await promisify(execFile)("ffmpeg", [
-      "-hide_banner", "-nostats", "-nostdin", "-protocol_whitelist", "file",
-      "-f", demuxer, "-i", file,
-      "-af", "silencedetect=noise=-38dB:d=0.2", "-f", "null", "-",
-    ], { timeout: 4000 });
-    const times = [...stderr.matchAll(/time=(\d+):(\d+):([\d.]+)/g)];
-    const last = times[times.length - 1];
-    const total = last ? Number(last[1]) * 3600 + Number(last[2]) * 60 + Number(last[3]) : 0;
-    if (!(total > 0)) return -1;
-    let silent = 0;
-    for (const m of stderr.matchAll(/silence_duration: ([\d.]+)/g)) silent += Number(m[1]);
-    // A silence still open at the end has a start and no duration.
-    const starts = [...stderr.matchAll(/silence_start: ([\d.]+)/g)].map((m) => Number(m[1]));
-    const ends = [...stderr.matchAll(/silence_end: ([\d.]+)/g)].length;
-    if (starts.length > ends) silent += Math.max(0, total - starts[starts.length - 1]!);
-    return Math.max(0, total - silent);
-  } catch {
-    return -1;
-  } finally {
-    if (dir) await fsp.rm(dir, { recursive: true, force: true }).catch(() => {});
-  }
+  const m = await measureSpeech(audio, format);
+  return m ? m.voicedSeconds : -1;
 }
 
 function stripHallucinationPhrases(text: string, trustSpeech: boolean): string {
