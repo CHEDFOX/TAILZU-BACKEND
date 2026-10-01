@@ -7,7 +7,7 @@
  */
 import { siteShell } from "./shell.js";
 import { crumbsLd, pageLd } from "../../seo/head.js";
-export const TERMS_EFFECTIVE = "September 27, 2026";
+export const TERMS_EFFECTIVE = "October 1, 2026";
 
 const TERMS_BODY = `
 <h1>Terms of Service</h1>
@@ -35,7 +35,7 @@ const TERMS_BODY = `
 <h2>3. Subscriptions and billing</h2>
 
 <h3>3.1 Purchase</h3>
-<p>Certain Tailzu features are available only through a paid subscription. In the app, subscriptions are billed through the Apple App Store or Google Play, and you agree to the terms of those stores in addition to these Terms. On the web, subscriptions are bought at checkout on xooteq.com and sold by <strong>Paddle.com</strong>, our authorised reseller and Merchant of Record, whose <a href="https://www.paddle.com/legal/checkout-buyer-terms">Buyer Terms</a> also apply to that purchase.</p>
+<p>Certain Tailzu features are available only through a paid subscription. In the app, subscriptions are billed through the Apple App Store or Google Play, and you agree to the terms of those stores in addition to these Terms. On the web, subscriptions are bought at <a href="https://tailzu.space/pay">tailzu.space/pay</a>, and payment is processed by <strong>Razorpay</strong>. Web subscriptions bought earlier through Paddle.com remain subject to Paddle's <a href="https://www.paddle.com/legal/checkout-buyer-terms">Buyer Terms</a>.</p>
 
 <h3>3.2 Auto-renewal (App Store / Google Play required disclosures)</h3>
 <ul>
@@ -54,7 +54,7 @@ const TERMS_BODY = `
 <p>If we offer a free trial, you will not be charged during the trial period. If you do not cancel before the trial ends, you will be automatically billed for the subscription.</p>
 
 <h3>3.4 Refunds</h3>
-<p>Purchases are non-refundable, except where the law requires a refund. App Store and Google Play purchases are refunded, if at all, by Apple or Google under their own policies; we do not process refunds for them. Web purchases follow our <a href="https://xooteq.com/refunds">Refund Policy</a>, and any refund the law requires is handled by Paddle. Web subscriptions can be cancelled from your Paddle receipt or at <a href="https://paddle.net">paddle.net</a>.</p>
+<p>Purchases are non-refundable, except where the law requires a refund. App Store and Google Play purchases are refunded, if at all, by Apple or Google under their own policies; we do not process refunds for them. Web purchases follow our <a href="https://xooteq.com/refunds">Refund Policy</a>. Web subscriptions can be cancelled in Tailzu, under Settings, then Manage; one bought earlier through Paddle is cancelled from your Paddle receipt or at <a href="https://paddle.net">paddle.net</a>. A cancelled subscription stays active until the end of the period already paid for.</p>
 
 <h3>3.5 Price changes</h3>
 <p>We may adjust subscription prices from time to time. You will be notified of any material change before it takes effect. Continued use after the change constitutes acceptance.</p>

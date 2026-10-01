@@ -3,7 +3,7 @@
  *
  * Its own page under a link, not a section of the landing page: the landing
  * page sells the product, this one states the terms of buying it. It is also
- * one of the pages Paddle's reviewers read before approving checkout.
+ * one of the pages a payment provider's reviewers read before approving checkout.
  *
  * Built from the paywall's own plan list and the allowance the server
  * enforces, so the site, the app and the meter cannot quote three different
@@ -120,15 +120,15 @@ export function pricingHtml(opts: {
 <div class="facts">
   <section>
     <h2>Currency and tax</h2>
-    <p>Prices are in US dollars. Tax is added at checkout where it applies. In the app, the App Store or Google Play shows the price in your currency.</p>
+    <p>App prices are in US dollars; the App Store or Google Play shows the price in your currency. On the web, <a href="https://tailzu.space/pay">tailzu.space/pay</a> shows the price in the currency you are charged in.</p>
   </section>
   <section>
     <h2>How you pay</h2>
-    <p>In the app, through the Apple App Store or Google Play. On the web, at <a href="https://tailzu.space/pay">tailzu.space/pay</a>: web orders are sold by <strong>Paddle.com</strong>, our authorised reseller and Merchant of Record, on behalf of ${SELLER}, which makes Tailzu.</p>
+    <p>In the app, through the Apple App Store or Google Play. On the web, at <a href="https://tailzu.space/pay">tailzu.space/pay</a>: payments are processed by <strong>Razorpay</strong> for ${SELLER}, which makes Tailzu.</p>
   </section>
   <section>
     <h2>Renewal and cancelling</h2>
-    <p>Plans renew automatically at the end of each period until you cancel. Cancel an app purchase in your App Store or Google Play subscriptions, and a web purchase from your Paddle receipt or at <a href="https://paddle.net">paddle.net</a>. You keep access until the end of the period already paid for.</p>
+    <p>Plans renew automatically at the end of each period until you cancel. Cancel an app purchase in your App Store or Google Play subscriptions, and a web purchase in Tailzu: Settings, then Manage. You keep access until the end of the period already paid for.</p>
   </section>
   <section>
     <h2>Refunds</h2>

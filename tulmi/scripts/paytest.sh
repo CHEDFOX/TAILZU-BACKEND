@@ -39,7 +39,7 @@ echo "webhook secret: ${#SEC} chars"
 
 send(){ curl -s -X POST $API/v1/billing/revenuecat -H "Authorization: ${2:-$SEC}" \
         -H 'Content-Type: application/json' -d "$1"; }
-evt(){ printf '{"event":{"type":"%s","app_user_id":"%s","entitlement_ids":["%s"],"environment":"PRODUCTION","store":"paddle"}}' "$1" "$2" "$3"; }
+evt(){ printf '{"event":{"type":"%s","app_user_id":"%s","entitlement_ids":["%s"],"environment":"PRODUCTION","store":"app_store"}}' "$1" "$2" "$3"; }
 boot(){ curl -s -X POST $API/v1/app/bootstrap -H 'Content-Type: application/json' \
   -d "{\"launchCount\":1,\"capabilities\":{\"platform\":\"ios\",\"components\":[],\"device\":{\"formFactor\":\"$1\",\"width\":1120,\"height\":780}}}"; }
 
@@ -101,49 +101,67 @@ case "$W" in
   *) no "unexpected: $W" ;;
 esac
 
-echo; echo "4. the checkout the desktop opens"
+echo; echo "4. the checkout the desktop opens (Razorpay)"
 URL=$(printf '%s' "$D" | grep -o '"paywall.web.url":"[^"]*"' | cut -d'"' -f4)
 echo "  link: ${URL:-none}"
 case "$URL" in
-  https://tailzu.space/pay*) ok "the link is tailzu.space/pay, the domain Paddle approved";;
-  *api.tailzu.space*) no "the link is on api.tailzu.space — Paddle approved tailzu.space; set REVENUECAT_WEB_PAYWALL_URL=https://tailzu.space/pay";;
+  https://tailzu.space/pay*) ok "the link is tailzu.space/pay";;
   "") no "no link at all — set REVENUECAT_WEB_PAYWALL_URL=https://tailzu.space/pay in $ENVF, then: docker compose up -d backend";;
   *) echo "  NOTE  not our pay page; checks below cover tailzu.space/pay only";;
 esac
-PAGE=$(curl -s "$API/pay")
-case "$PAGE" in *'data-state="loading"'*) ok "the pay page is open for checkout";;
-  *'data-state="off"'*) no "the pay page says checkout is not open — PADDLE_CLIENT_TOKEN or both price ids are missing or malformed";;
-  *) no "the pay page did not render";; esac
-N=$(printf '%s' "$PAGE" | grep -o 'data-price="pri_[a-z0-9]*"' | sort -u | wc -l | tr -d ' ')
-[ "$N" = 2 ] && ok "both plans have a price id" || no "$N of 2 plans have a price id"
-TOK=$(printf '%s' "$PAGE" | grep -o '"token":"[a-z]*_' | cut -d'"' -f4)
-case "$TOK" in live_) ok "live client token (public by design)";; test_) no "a SANDBOX token — live prices will not open with it";; *) no "no client token";; esac
-# What a buyer's browser reported, in Paddle's words (the pay page sends it).
-# (Logs go with the container: a deploy starts this count again from zero.)
-LINES=$(docker compose logs --since 72h backend 2>/dev/null | grep 'pay: checkout failed')
-SEEN=$(printf '%s\n' "$LINES" | grep -o '"code":"[^"]*","detail":"[^"]\{0,80\}' | sort | uniq -c | sort -rn | head -5)
-if [ -n "$SEEN" ]; then
-  echo "  Paddle refused a checkout in the last 3 days:"; printf '%s\n' "$SEEN" | sed 's/^/    /'
-  LAST=$(docker compose logs --since 72h backend 2>/dev/null | grep 'pay: checkout failed' | tail -1 | grep -o '"detail":"[^"]*"' | cut -d'"' -f4-)
-  [ -n "$LAST" ] && echo "    latest, in Paddle's words: $LAST"
-  case "$SEEN" in
-    *checkout_not_enabled*) echo "    FIX  Paddle has not switched checkout on for this account: finish onboarding at vendors.paddle.com (every step green), or write to sellers@paddle.com";;
-    *default_checkout_url*) echo "    FIX  Paddle > Checkout > Checkout settings > Default payment link = https://tailzu.space/pay";;
-    *domain_is_not_approved*) echo "    FIX  Paddle > Checkout > Website approval: tailzu.space must show Approved";;
-    *not_found*|*price*) echo "    FIX  the price ids are not in the same Paddle environment as the token (live vs sandbox)";;
-  esac
+CODE=$(curl -s -o /dev/null -w '%{http_code}' "$API/pay")
+if [ "$CODE" = 302 ]; then
+  echo "  NOTE  Tailzu is free (FREE_FOR_ALL): /pay sends people to /pricing, and nothing is sold."
+  echo "        The checks below still prove the webhook, so it is ready the day that is switched off."
 else
-  echo "  no checkout failure reported by a browser in the last 3 days"
+  PAGE=$(curl -s "$API/pay")
+  case "$PAGE" in *'data-state="loading"'*) ok "the pay page is open for checkout";;
+    *'data-state="off"'*) no "the pay page says checkout is not open — RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET missing, or no plan price could be read";;
+    *) no "the pay page did not render";; esac
+  N=$(printf '%s' "$PAGE" | grep -o 'data-plan="[a-z]*"' | sort -u | wc -l | tr -d ' ')
+  [ "$N" = 2 ] && ok "both plans are on sale" || no "$N of 2 plans are on sale — check RAZORPAY_PLAN_MONTHLY / RAZORPAY_PLAN_YEARLY are plan ids from the same mode as the key"
+  KEY=$(printf '%s' "$PAGE" | grep -o '"key":"rzp_[a-z]*_' | cut -d'"' -f4)
+  case "$KEY" in rzp_live_) ok "live key id (public by design)";; rzp_test_) no "a TEST key — test cards only, nobody is charged";; *) no "no key id on the page";; esac
+fi
+
+RSEC=$(val RAZORPAY_WEBHOOK_SECRET)
+RPLAN=$(val RAZORPAY_PLAN_MONTHLY)
+rsend(){ curl -s -o /tmp/rz.out -w '%{http_code}' -X POST $API/v1/billing/razorpay \
+         -H 'Content-Type: application/json' -H "X-Razorpay-Signature: $2" -d "$1"; }
+RBODY=$(printf '{"event":"subscription.charged","payload":{"subscription":{"entity":{"id":"sub_paytest","plan_id":"%s","status":"active","current_end":%s,"notes":{"app_user_id":"%s"}}}}}' \
+        "${RPLAN:-plan_none}" "$(( $(date +%s) + 86400 ))" "$GHOST")
+if [ -z "$RSEC" ]; then
+  no "no RAZORPAY_WEBHOOK_SECRET — Razorpay's webhook refuses everything"
+else
+  [ "$(rsend "$RBODY" 0000)" = 401 ] && ok "a webhook with a bad signature is rejected" || no "a forged Razorpay webhook was not rejected: $(cat /tmp/rz.out)"
+  SIG=$(printf '%s' "$RBODY" | openssl dgst -sha256 -hmac "$RSEC" | sed 's/^.*= //')
+  RC=$(rsend "$RBODY" "$SIG"); RB=$(cat /tmp/rz.out)
+  case "$RC:$RB" in
+    401:*) no "the real webhook secret is rejected — the container holds a different RAZORPAY_WEBHOOK_SECRET; restart it";;
+    *subscription_id*) no "the entitlements table has no subscription_id column — run supabase/migrations/0015_razorpay.sql";;
+    *foreign*key*|*violates*) ok "signature passed, Supabase reached, row refused by the foreign key — exactly right";;
+    *'not a Tailzu plan'*) no "RAZORPAY_PLAN_MONTHLY is not set to a plan id";;
+    *) no "unexpected: $RC $RB";;
+  esac
+fi
+rm -f /tmp/rz.out
+
+# What a buyer's browser reported, in Razorpay's words (the pay page sends it).
+# (Logs go with the container: a deploy starts this count again from zero.)
+SEEN=$(docker compose logs --since 72h backend 2>/dev/null | grep 'pay: ' | grep -o '"code":"[^"]*","detail":"[^"]\{0,80\}' | sort | uniq -c | sort -rn | head -5)
+if [ -n "$SEEN" ]; then
+  echo "  checkout or Razorpay failures in the last 3 days:"; printf '%s\n' "$SEEN" | sed 's/^/    /'
+else
+  echo "  no checkout failure reported in the last 3 days"
 fi
 cat <<'TXT'
   Settings this script cannot see (each one stops a desktop purchase):
-    Paddle      Onboarding complete at vendors.paddle.com (without it: transaction_checkout_not_enabled)
-    Paddle      Checkout > Checkout settings > Default payment link = https://tailzu.space/pay
-    RevenueCat  Web > Paddle config: API key set, Webhook Configuration > Apply in Paddle
-    RevenueCat  Track new purchases from server-to-server notifications = ON
-    RevenueCat  Metadata field key = app_user_id
+    Razorpay  Subscriptions switched on for the account (Dashboard > Subscriptions)
+    Razorpay  Two plans, monthly and yearly, in the same mode (live/test) as the key
+    Razorpay  Webhook https://api.tailzu.space/v1/billing/razorpay, all subscription.* events,
+              secret = RAZORPAY_WEBHOOK_SECRET
+    Razorpay  International cards switched on, to take payments from outside India
 TXT
-echo "    RevenueCat  both Paddle products attached to the entitlement '$WANT'"
 
 echo; echo "$pass passed, $fail failed  (no account touched)"
 [ "$fail" -eq 0 ] || exit 1

@@ -884,7 +884,7 @@ export function deskPlan(ctx: DeskContext): ScreenResponse {
       : `${n(q.used)} of ${n(q.of)} free words used this month. They come back on the 1st.`, "d-lede", { marginTop: 8 }),
     ...(q.paid ? [] : [
       row(cards, { gap: 16, marginTop: 36, flexWrap: "wrap" }),
-      text("One subscription covers your phone and your computer. Checkout opens in your browser; payments by Paddle.", "d-lede", { marginTop: 18 }),
+      text("One subscription covers your phone and your computer. Checkout opens in your browser; payments by Razorpay.", "d-lede", { marginTop: 18 }),
     ]),
   ], { maxWidth: 820 })]);
 }

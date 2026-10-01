@@ -417,6 +417,10 @@ create table if not exists public.entitlements (
   updated_at   timestamptz not null default now()
 );
 
+-- 0015: the Razorpay subscription a web or desktop purchase is about.
+alter table public.entitlements
+  add column if not exists subscription_id text;
+
 alter table public.entitlements enable row level security;
 
 -- Read your own. No insert or update policy exists on purpose: writes come

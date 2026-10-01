@@ -400,23 +400,34 @@ const EnvSchema = z.object({
   REVENUECAT_WEB_PAYWALL_URL: z.string().url().optional(),
   /**
    * TAILZU'S OWN PAY PAGE (GET /pay, served as tailzu.space/pay): both plans,
-   * and Paddle's checkout over them with the buyer's account id on the
-   * transaction (customData.app_user_id). Point REVENUECAT_WEB_PAYWALL_URL at
+   * and Razorpay's checkout over them. Point REVENUECAT_WEB_PAYWALL_URL at
    * https://tailzu.space/pay and the desktop's Subscribe opens it.
    *
-   * The client-side token is public by design (it is in every page that runs
-   * Paddle.js); `test_…` runs Paddle's sandbox. The price ids come from
-   * Paddle → Catalog → the Tailzu product → Prices. A plan with no price id is
-   * not offered. The Paddle API key is a different thing and never goes here.
+   * Razorpay has no RevenueCat integration, so this server is the whole
+   * integration: it creates the subscription with the buyer's account id in
+   * its notes, checks the checkout's signature, and keeps the entitlement row
+   * current from Razorpay's webhook (src/billing/razorpay.ts).
    *
-   * Checked by the page, not here: a mistyped price id should take one plan
-   * off the pay page, not stop the whole server from booting.
+   *   RAZORPAY_KEY_ID          rzp_live_… (rzp_test_… is test mode). Public:
+   *                            it is in every page that opens the checkout.
+   *   RAZORPAY_KEY_SECRET      Dashboard → Account & Settings → API keys.
+   *                            SECRET: .env only.
+   *   RAZORPAY_WEBHOOK_SECRET  the secret typed when adding the webhook
+   *                            (https://api.tailzu.space/v1/billing/razorpay).
+   *                            SECRET: .env only.
+   *   RAZORPAY_PLAN_MONTHLY    plan_… from Subscriptions → Plans: the monthly
+   *   RAZORPAY_PLAN_YEARLY     and yearly plans. Public ids. The price shown on
+   *                            the pay page is read from the plan itself.
+   *
+   * A plan with no id is not offered, and with no key nothing is: the page
+   * says checkout is not open. Checked by the page, not here, so a mistyped
+   * id takes one plan off the page rather than stopping the server booting.
    */
-  PADDLE_CLIENT_TOKEN: z.string().default("live_a3920a3a08ac449c692844c6d09"),
-  // Paddle → Catalog → Tailzu: Elite is the yearly price, Lite the monthly.
-  // Public ids, not credentials. The env overrides them.
-  PADDLE_PRICE_ELITE: z.string().default("pri_01m2qch0nwws80p705cd8we3vt"),
-  PADDLE_PRICE_LITE: z.string().default("pri_01m2qcg1t6amqa9hcxd15zkhd7"),
+  RAZORPAY_KEY_ID: z.string().default(""),
+  RAZORPAY_KEY_SECRET: z.string().optional(),
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  RAZORPAY_PLAN_MONTHLY: z.string().default(""),
+  RAZORPAY_PLAN_YEARLY: z.string().default(""),
   /**
    * THE LANDING PAGE'S LIVE DEMO. Off by default, on purpose.
    *

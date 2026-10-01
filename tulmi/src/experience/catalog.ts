@@ -1823,6 +1823,8 @@ export function buildBootstrap(
      * one, which bills them twice for the same entitlement.
      */
     billingStore?: string;
+    /** The subscriber's own manage page, when it is ours (Razorpay). */
+    billingManageUrl?: string;
     /**
      * "phone" (the default, and every mobile client) or "desktop".
      *
@@ -2006,7 +2008,7 @@ export function buildBootstrap(
         // set, so every launch waited out the first-run splash.
         "boot.firstRun": opts.onboarded !== true,
         ...(opts.billingStore ? { "billing.store": opts.billingStore } : {}),
-        ...(opts.entitled === true ? manageFlags(opts.billingStore) : {}),
+        ...(opts.entitled === true ? manageFlags(opts.billingStore, opts.billingManageUrl) : {}),
         "quota.wordsUsed": Math.max(0, Math.round(opts.wordsUsed ?? 0)),
         // The CEILING, earned words included. `quota.wordsFree` keeps its name
         // because every existing client reads it; what changed is that it is no
@@ -4427,7 +4429,7 @@ export interface ScreenContext {
    * page: a screen that hid the plans because a lookup failed would be a
    * screen nobody could buy from.
    */
-  entitlement?: { store?: string; expiresAt?: string } | null;
+  entitlement?: { store?: string; expiresAt?: string; manageUrl?: string } | null;
   language: string;
   email?: string;
   /** Set instead of `email` for an SMS-only account. */
@@ -4609,7 +4611,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       name: ctx.name,
       tzOffsetMinutes: ctx.tzOffsetMinutes,
       plans: PAYWALL_CONFIG.plans,
-      manageUrl: ctx.entitlement ? String(manageFlags(ctx.entitlement.store)["billing.manage.url"] ?? "") || undefined : undefined,
+      manageUrl: ctx.entitlement ? String(manageFlags(ctx.entitlement.store, ctx.entitlement.manageUrl)["billing.manage.url"] ?? "") || undefined : undefined,
       // Dimmed to sit behind the Train page's words, as on the phone's card.
       update: updateFor(ctx.appVersion, ctx.os, DESKTOP_LATEST),
       selfUpdate: ctx.can?.has("DeskSelfUpdate") === true,
@@ -8914,7 +8916,8 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         // cancelled anywhere else. At most one of these is visible, and none
         // is for a store nothing here can send them to.
         ...MANAGE_AT.map(([key, , label, url]) => ({
-          ...row(label, { kind: "openUrl", url }, { props: { label } }),
+          // A Razorpay subscriber's own page, signed for them, where one exists.
+          ...row(label, { kind: "openUrl", url: (key === "web" && ctx.entitlement?.manageUrl) || url }, { props: { label } }),
           visibleIf: { all: [{ flag: "billing.entitled" }, { flag: `billing.manage.${key}` }] },
         })),
 
@@ -8961,8 +8964,9 @@ const MANAGE_AT: [string, string[], string, string, string][] = [
   ["google", ["play_store"], "Change or cancel · Google Play", "https://play.google.com/store/account/subscriptions", "Google Play"],
   // Paddle and Stripe each mail a management link on purchase, to a
   // per-customer URL this server never holds. Support is the one address that
-  // is true for every one of them.
-  ["web", ["paddle", "stripe", "rc_billing"], "Change or cancel · billed on the web", "mailto:support@tailzu.space", "the web"],
+  // is true for every one of them. Razorpay has no customer page at all; its
+  // subscribers get Tailzu's own (/pay/manage), passed in as `url` below.
+  ["web", ["paddle", "stripe", "rc_billing", "razorpay"], "Change or cancel · billed on the web", "mailto:support@tailzu.space", "the web"],
 ];
 
 /**
@@ -8991,11 +8995,11 @@ function renewLine(biller: string | undefined, expiresAt: string | undefined): s
  * address here, the tap can simply arrive at the place that can change the
  * plan — and when the destination moves, it moves once, here.
  */
-export function manageFlags(store: string | undefined): Record<string, string | boolean> {
+export function manageFlags(store: string | undefined, url?: string): Record<string, string | boolean> {
   const s = String(store ?? "").trim().toLowerCase();
   if (!s) return {};
   const hit = MANAGE_AT.find(([, stores]) => stores.includes(s));
-  return hit ? { [`billing.manage.${hit[0]}`]: true, "billing.manage.url": hit[3] } : {};
+  return hit ? { [`billing.manage.${hit[0]}`]: true, "billing.manage.url": url || hit[3] } : {};
 }
 
 

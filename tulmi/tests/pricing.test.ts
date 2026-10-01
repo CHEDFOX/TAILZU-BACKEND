@@ -26,8 +26,8 @@ describe("the pricing page", () => {
   });
 
   it("says who sells it, how, and what happens about refunds", () => {
-    expect(html).toContain("Paddle.com");
-    expect(html).toContain("Merchant of Record");
+    expect(html).toContain("Razorpay");
+    expect(html).not.toContain("Paddle");
     expect(html).toContain("XOOTEQ LAB PRIVATE LIMITED");
     expect(html).toMatch(/non-refundable, except where the law requires a refund/);
     expect(html).toContain("https://xooteq.com/refunds");
@@ -44,6 +44,8 @@ describe("the terms", () => {
   });
   it("name the company, the web seller and the refund rule", () => {
     expect(TERMS_HTML).toContain("XOOTEQ LAB PRIVATE LIMITED");
+    expect(TERMS_HTML).toContain("Razorpay");
+    // Earlier web subscriptions were sold by Paddle, and still are theirs.
     expect(TERMS_HTML).toContain("Paddle.com");
     expect(TERMS_HTML).toContain("tailzu.space/pricing");
     expect(TERMS_HTML).toMatch(/non-refundable, except where the law requires a refund/);
