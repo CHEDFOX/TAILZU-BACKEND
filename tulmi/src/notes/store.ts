@@ -24,17 +24,11 @@ export class NotesNeedAccount extends Error {
 export interface NoteBody {
   title: string;
   summary: string;
-  sections: Note["sections"];
-  decisions: string[];
-  actions: Note["actions"];
-  questions: string[];
-  tags: string[];
+  highlights: Note["highlights"];
   people: Note["people"];
 }
 
-export const EMPTY_BODY: NoteBody = {
-  title: "", summary: "", sections: [], decisions: [], actions: [], questions: [], tags: [], people: [],
-};
+export const EMPTY_BODY: NoteBody = { title: "", summary: "", highlights: [], people: [] };
 
 interface Row {
   id: string;
@@ -46,8 +40,7 @@ interface Row {
   words: number;
   title: string;
   summary: string;
-  body: Partial<Pick<NoteBody, "sections" | "decisions" | "actions" | "questions" | "people">> | null;
-  tags: string[] | null;
+  body: Partial<Pick<NoteBody, "highlights" | "people">> | null;
   transcript: NoteSegment[] | null;
   organised: boolean;
   deleted_at: string | null;
@@ -67,12 +60,8 @@ function fromRow(r: Row): Note {
     words: r.words ?? 0,
     title: r.title ?? "",
     summary: r.summary ?? "",
-    sections: arr(body.sections),
-    decisions: arr(body.decisions),
-    actions: arr(body.actions),
-    questions: arr(body.questions),
+    highlights: arr(body.highlights),
     people: arr(body.people),
-    tags: arr(r.tags),
     transcript: arr(r.transcript),
     organised: !!r.organised,
   };
@@ -85,7 +74,7 @@ function summaryOf(n: Note): NoteSummary {
   return {
     id: n.id, status: n.status, startedAt: n.startedAt, endedAt: n.endedAt,
     durationSeconds: n.durationSeconds, words: n.words, title: n.title,
-    summary: n.summary, tags: n.tags, people: n.people, organised: n.organised,
+    summary: n.summary, people: n.people, organised: n.organised,
   };
 }
 
@@ -141,7 +130,7 @@ export async function listNotes(user: AuthedUser, limit = 100): Promise<NoteSumm
   const cap = Math.max(1, Math.min(500, Math.floor(limit)));
   if (!sb) return mem(user.id).slice(0, cap).map(summaryOf);
   const { data, error } = await sb.from("notes")
-    .select("id,user_id,status,started_at,ended_at,duration_seconds,words,title,summary,body,tags,organised,deleted_at,updated_at")
+    .select("id,user_id,status,started_at,ended_at,duration_seconds,words,title,summary,body,organised,deleted_at,updated_at")
     .eq("user_id", user.id).is("deleted_at", null)
     .order("started_at", { ascending: false }).limit(cap);
   if (error) throw new Error(`notes list failed: ${error.message}`);
@@ -201,11 +190,7 @@ export async function updateNote(
         words: next.words,
         title: next.title,
         summary: next.summary,
-        body: {
-          sections: next.sections, decisions: next.decisions, actions: next.actions,
-          questions: next.questions, people: next.people,
-        },
-        tags: next.tags,
+        body: { highlights: next.highlights, people: next.people },
         transcript: next.transcript,
         organised: next.organised,
         updated_at: new Date().toISOString(),

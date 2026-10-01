@@ -657,7 +657,7 @@ export function deskNotes(ctx: DeskContext): ScreenResponse {
   if (!all.length) {
     body.push(stack([
       text("No notes yet.", "d-written", { fontSize: 19, lineHeight: "27px" }),
-      text("Start it in a meeting, a lecture, or on a walk around your own ideas. Tailzu listens to your microphone and to your computer's sound, tells the voices apart, and writes it up here: what came up, what was decided, who will do what, and what is still open.", "d-lede", { marginTop: 8, maxWidth: 560 }),
+      text("Start it in a meeting, a lecture, or on a walk around your own ideas. Tailzu listens to your microphone and to your computer's sound, tells the voices apart, and keeps it short here: what the meeting was, a paragraph on the whole conversation, and the few things people said that mattered, with who said them.", "d-lede", { marginTop: 8, maxWidth: 560 }),
       ...(ctx.notesHotkey ? [row([link("Start taking notes", startNotes, "d-btn")], { marginTop: 16 })] : []),
     ], { paddingBottom: 26 }));
   }
@@ -689,29 +689,23 @@ export function deskNotes(ctx: DeskContext): ScreenResponse {
   return screen("desk_notes", "Notes", [room, page([stack(body, { maxWidth: 760 })])]);
 }
 
-/** The whole note as plain text, for Copy. */
+/** The note as plain text, for Copy: the meeting, the paragraph, the lines. */
 function noteText(ctx: DeskContext, nt: Note): string {
   const named = new Map(nt.people.map((p) => [p.label, p.name]));
-  const out = [noteTitle(ctx, nt)];
+  const d = local(ctx, Date.parse(nt.startedAt));
+  const out = [noteTitle(ctx, nt), `${dateLine(d)}, ${clock(d)}`];
   const who = peopleLine(nt.people, nt.transcript);
-  if (who) out.push(`People: ${who}`);
+  if (who) out.push(`With: ${who}`);
   if (nt.summary) out.push("", nt.summary);
-  for (const s of nt.sections) out.push("", s.heading, ...s.points.map((p) => `- ${p}`));
-  if (nt.decisions.length) out.push("", "Decided", ...nt.decisions.map((p) => `- ${p}`));
-  if (nt.actions.length) {
-    out.push("", "To do", ...nt.actions.map((a) =>
-      `- ${a.text}${a.owner ? ` (${named.get(a.owner) || a.owner}${a.due ? `, ${a.due}` : ""})` : a.due ? ` (${a.due})` : ""}`));
-  }
-  if (nt.questions.length) out.push("", "Still open", ...nt.questions.map((p) => `- ${p}`));
+  if (nt.highlights.length) out.push("", ...nt.highlights.map((h) => `${named.get(h.speaker) || h.speaker}: ${h.text}`));
   return out.join("\n");
 }
 
-const block = (heading: string, items: Node[], first = false): Node => stack([
-  text(heading, "d-h2", { marginBottom: 10 }),
-  ...items,
-], { marginTop: first ? 0 : 34 });
-const point = (t: string): Node => text(t, "d-v", { paddingTop: 6, paddingBottom: 6 });
-
+/**
+ * One note: the meeting, one paragraph on the whole conversation, and the
+ * few things people said that matter — each with who said it, in their own
+ * voice, worded the best way. Nothing else: no transcript, no lists.
+ */
 export function deskNote(ctx: DeskContext): ScreenResponse {
   const nt = ctx.note;
   if (!nt) {
@@ -730,13 +724,14 @@ export function deskNote(ctx: DeskContext): ScreenResponse {
 
   const head = stack([
     row([link("All notes", { kind: "switchTab", tabId: "desk_notes" })], { marginBottom: 18 }),
-    text("Note", "d-eyebrow"),
+    text("Meeting", "d-eyebrow"),
     text(noteTitle(ctx, nt), "d-h1", { marginTop: 6 }),
     text(meta, "d-count", { marginTop: 10 }),
-    ...(who ? [text(who, "d-margin", { marginTop: 4 })] : []),
+    ...(who ? [text(`With ${who}`, "d-margin", { marginTop: 4 })] : []),
     ...(nt.status !== "ready" ? [text(NOTE_STATUS[nt.status] ?? "", "d-lede", { marginTop: 12 })] : []),
+    ...(nt.status === "ready" && !nt.organised ? [text("Nobody spoke in this one.", "d-lede", { marginTop: 12 })] : []),
     row([
-      ...(nt.organised ? [link("Copy notes", { kind: "copyText", text: noteText(ctx, nt), message: "Copied" })] : []),
+      ...(nt.organised ? [link("Copy", { kind: "copyText", text: noteText(ctx, nt), message: "Copied" })] : []),
       ...(busy ? [link("Refresh", { kind: "refresh" })] : []),
       ...(canOrganise ? [link(nt.status === "recording" ? "Organise now" : "Organise again", {
         kind: "callEndpoint", method: "POST", path: `/v1/notes/${nt.id}/organise`,
@@ -756,42 +751,17 @@ export function deskNote(ctx: DeskContext): ScreenResponse {
 
   const body: Node[] = [];
   if (nt.summary) body.push(text(nt.summary, "d-written", { fontSize: 18, lineHeight: "28px", maxWidth: 680 }));
-  nt.sections.forEach((s, i) => body.push(block(s.heading || "Notes", s.points.map(point), i === 0 && !nt.summary)));
-  if (nt.decisions.length) body.push(block("Decided", nt.decisions.map(point)));
-  if (nt.actions.length) {
-    body.push(block("To do", nt.actions.map((a) => row([
-      text(a.text, "d-v", { flex: 1, minWidth: 0 }),
-      text([a.owner ? named.get(a.owner) || a.owner : "", a.due ?? ""].filter(Boolean).join(" · "), "d-margin-strong", { flex: "none", maxWidth: 220, textAlign: "right" }),
-    ], { gap: 20, paddingTop: 8, paddingBottom: 8, align: "start" }, "d-entry"))));
-  }
-  if (nt.questions.length) body.push(block("Still open", nt.questions.map(point)));
-
-  if (nt.transcript.length) {
+  if (nt.highlights.length) {
     body.push(stack([
-      row([
-        text("What was said", "d-h2"),
-        { ...link("Show", { kind: "toggleState", path: "noteTx" }), visibleIf: { falsy: "noteTx" } },
-        { ...link("Hide", { kind: "toggleState", path: "noteTx" }), visibleIf: { truthy: "noteTx" } },
-      ], { gap: 16, align: "baseline" }),
-      stack(nt.transcript.map((sg) => row([
-        stack([
-          text(named.get(sg.speaker ?? "") || sg.speaker || "", "d-margin-strong"),
-          text(clockOf(sg.at), "d-margin"),
-        ], { width: 120, flex: "none", paddingTop: 3 }),
-        text(sg.text, /[ऀ-ॿ]/.test(sg.text) ? "d-said d-deva" : "d-said", { flex: 1, minWidth: 0 }),
-      ], { gap: 20, paddingTop: 12, paddingBottom: 12 }, "d-entry")), { marginTop: 10 }, undefined, { visibleIf: { truthy: "noteTx" } }),
-    ], { marginTop: body.length ? 44 : 0 }));
+      text("What mattered", "d-eyebrow", { marginBottom: 6 }),
+      ...nt.highlights.map((h) => row([
+        text(named.get(h.speaker) || h.speaker, "d-margin-strong", { width: 120, flex: "none", paddingTop: 4 }),
+        text(h.text, /[ऀ-ॿ]/.test(h.text) ? "d-said d-deva" : "d-said", { flex: 1, minWidth: 0 }),
+      ], { gap: 20, paddingTop: 16, paddingBottom: 16 }, "d-entry")),
+    ], { marginTop: nt.summary ? 40 : 0, maxWidth: 760 }));
   }
 
-  return screen("desk_note", noteTitle(ctx, nt), [page([head, stack(body, { maxWidth: 760 })])],
-    { noteDel: false, noteTx: !nt.organised });
-}
-
-/** "4:05", "1:02:09" — where in the note a line was said. */
-function clockOf(sec: number): string {
-  const t = Math.max(0, Math.round(sec));
-  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
-  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+  return screen("desk_note", noteTitle(ctx, nt), [page([head, stack(body, { maxWidth: 760 })])], { noteDel: false });
 }
 
 // ---- SETTINGS and PLAN ----------------------------------------------------------------

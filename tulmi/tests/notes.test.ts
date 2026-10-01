@@ -21,8 +21,8 @@ vi.mock("../src/notes/organise.js", async (orig) => ({
   organise: vi.fn(async (note: { transcript: unknown[] }) => {
     organiseCalls.push(note.transcript);
     return {
-      title: "Launch plan", summary: "Ship Friday.", sections: [{ heading: "Timeline", points: ["Ship Friday."] }],
-      decisions: ["Ship Friday."], actions: [{ text: "Send notes", owner: "Speaker 1" }], questions: [], tags: ["launch"],
+      title: "Launch plan", summary: "Ship Friday.",
+      highlights: [{ speaker: "Speaker 1", text: "We ship Friday." }],
       people: [{ label: "Speaker 1", name: "Priya" }],
     };
   }),
@@ -107,15 +107,24 @@ describe("who said what", () => {
 describe("the writer's answer", () => {
   const labels = new Set(["You", "Speaker 1"]);
 
-  it("is cut to shape, and names only speakers that exist and never You", () => {
-    const b = parseBody(`Here: {"title":"  Plan  ","summary":"S","people":[{"label":"Speaker 1","name":"Priya"},{"label":"You","name":"Me"},{"label":"Speaker 9","name":"X"}],
-      "sections":[{"heading":"T","points":["a","",3]}],"actions":["Call Ravi",{"text":"Send","owner":"Speaker 1"}],"tags":["Launch","Q3","a","b","c","d"]}`, labels)!;
+  it("is the meeting, a paragraph and a few lines; names only speakers that exist and never You", () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({ speaker: "You", text: `point ${i}` }));
+    const b = parseBody(`Here: ${JSON.stringify({
+      title: "  Plan  ", summary: "S",
+      people: [{ label: "Speaker 1", name: "Priya" }, { label: "You", name: "Me" }, { label: "Speaker 9", name: "X" }],
+      highlights: [
+        { speaker: "Speaker 1", text: "“We ship Friday.”" },
+        { speaker: "Speaker 9", text: "Nobody by this label spoke." },
+        { speaker: "You", text: "" },
+        ...many,
+      ],
+    })}`, labels)!;
     expect(b.title).toBe("Plan");
     expect(b.people).toEqual([{ label: "Speaker 1", name: "Priya" }]);
-    expect(b.sections).toEqual([{ heading: "T", points: ["a"] }]);
-    expect(b.actions).toEqual([{ text: "Call Ravi" }, { text: "Send", owner: "Speaker 1" }]);
-    expect(b.tags).toEqual(["launch", "q3", "a", "b", "c"]);
-    expect(b.decisions).toEqual([]);
+    // Quotes stripped, an unknown speaker's line dropped, at most seven kept.
+    expect(b.highlights[0]).toEqual({ speaker: "Speaker 1", text: "We ship Friday." });
+    expect(b.highlights).toHaveLength(7);
+    expect(b.highlights.some((h) => h.speaker === "Speaker 9")).toBe(false);
   });
 
   it("is refused when it is not a note", () => {

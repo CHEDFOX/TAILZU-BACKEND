@@ -107,19 +107,19 @@ const sampleCtx = {
   tzOffsetMinutes: 330,
   notes: [
     { id: "11111111-1111-4111-8111-111111111111", status: "ready", startedAt: iso(3_600_000), durationSeconds: 1800, words: 2400,
-      title: "Launch plan with Priya", summary: "Agreed to ship on Friday.", tags: ["launch"],
+      title: "Launch plan with Priya", summary: "Agreed to ship on Friday.",
       people: [{ label: "Speaker 1", name: "Priya" }], organised: true },
     { id: "22222222-2222-4222-8222-222222222222", status: "failed", startedAt: iso(2 * 86_400_000), durationSeconds: 300, words: 200,
-      title: "", summary: "", tags: [], people: [], organised: false },
+      title: "", summary: "", people: [], organised: false },
   ],
   note: {
     id: "11111111-1111-4111-8111-111111111111", status: "ready", startedAt: iso(3_600_000), durationSeconds: 1800, words: 2400,
-    title: "Launch plan with Priya", summary: "Agreed to ship on Friday.", tags: ["launch"], organised: true,
+    title: "Launch plan with Priya", summary: "You and Priya agreed to ship on Friday, after a day of testing.", organised: true,
     people: [{ label: "Speaker 1", name: "Priya" }],
-    sections: [{ heading: "Timeline", points: ["You: the build is ready Thursday.", "Priya: wants a day of testing."] }],
-    decisions: ["Ship on Friday."],
-    actions: [{ text: "Send the release notes", owner: "Speaker 1", due: "Thursday" }, { text: "Book the demo", owner: "You" }],
-    questions: ["Who tells support?"],
+    highlights: [
+      { speaker: "You", text: "The build will be ready on Thursday." },
+      { speaker: "Speaker 1", text: "I want a full day of testing before we ship, so Friday." },
+    ],
     transcript: [
       { at: 0, speaker: "You", text: "The build is ready Thursday." },
       { at: 6, speaker: "Speaker 1", text: "Then I want a day of testing, so Friday." },
@@ -505,19 +505,24 @@ describe("the desk's notes", () => {
     expect(s).toContain("Notes, ");
   });
 
-  it("a note keeps people apart: owners by name, You as You, and Copy carries all of it", () => {
+  it("a note is the meeting, one paragraph, and what mattered, each line with who said it", () => {
     const s = buildScreen("desk_note", sampleCtx) as any;
     const j = JSON.stringify(s);
-    expect(j).toContain("Priya · Thursday");
+    expect(j).toContain("Launch plan with Priya");
+    expect(j).toContain("You and Priya agreed to ship on Friday, after a day of testing.");
+    expect(j).toContain('"content":"Priya"');
     expect(j).toContain('"content":"You"');
+    expect(j).toContain("I want a full day of testing before we ship, so Friday.");
+    // The transcript is kept to organise again, never shown.
+    expect(j).not.toContain("Then I want a day of testing, so Friday.");
     const copy = [] as string[];
     walk(s.root, (n) => {
       const a = (n as any).on?.onPress;
       if (a?.kind === "copyText") copy.push(a.text);
     });
-    expect(copy[0]).toContain("Send the release notes (Priya, Thursday)");
-    expect(copy[0]).toContain("Decided\n- Ship on Friday.");
-    expect(copy[0]).toContain("People: You, Priya");
+    expect(copy[0]).toContain("With: You, Priya");
+    expect(copy[0]).toContain("Priya: I want a full day of testing before we ship, so Friday.");
+    expect(copy[0]).toContain("You: The build will be ready on Thursday.");
   });
 
   it("a gone note says so; the Notes page has a start button only where the hotkey exists", () => {

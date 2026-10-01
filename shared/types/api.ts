@@ -689,7 +689,12 @@ export interface NoteSegment {
   speaker?: string;
 }
 
-/** A note, organised. Everything but the transcript is the writer's. */
+/**
+ * A note: one meeting (or lecture, or thought said aloud), kept short. What
+ * it was, one paragraph on the whole conversation, and the few things people
+ * said that matter, each in the speaker's own voice, cleanly worded. The
+ * transcript is kept to organise it again, never shown.
+ */
 export interface Note {
   id: string;
   status: NoteStatus;
@@ -700,26 +705,23 @@ export interface Note {
   durationSeconds: number;
   /** Words heard, as counted against the allowance. */
   words: number;
+  /** The meeting: what it was, in a few words. */
   title: string;
-  /** Two or three sentences: what this was and what came of it. */
+  /** One short paragraph about the whole conversation. */
   summary: string;
-  /** The body, by topic, in the order it came up. */
-  sections: Array<{ heading: string; points: string[] }>;
-  decisions: string[];
-  actions: Array<{ text: string; owner?: string; due?: string }>;
-  /** Questions raised and left open. */
-  questions: string[];
-  tags: string[];
+  /** The few important things people said, in the order they were said:
+   *  who (a speaker label, see `people`), and the words, refined. */
+  highlights: Array<{ speaker: string; text: string }>;
   /** The speakers, by label, with a name where the conversation made it
    *  plain ("Thanks, Priya"). */
   people: Array<{ label: string; name?: string }>;
   transcript: NoteSegment[];
-  /** True once the writer has organised it; false shows the transcript alone. */
+  /** True once the writer has organised it. */
   organised: boolean;
 }
 
 /** A note as a list shows it. */
-export type NoteSummary = Pick<Note, "id" | "status" | "startedAt" | "endedAt" | "durationSeconds" | "words" | "title" | "summary" | "tags" | "people" | "organised">;
+export type NoteSummary = Pick<Note, "id" | "status" | "startedAt" | "endedAt" | "durationSeconds" | "words" | "title" | "summary" | "people" | "organised">;
 
 
 /** GET /v1/history response. */

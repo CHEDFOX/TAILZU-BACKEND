@@ -669,9 +669,8 @@ create table if not exists public.notes (
   words             integer not null default 0,
   title             text not null default '',
   summary           text not null default '',
-  -- { sections: [{heading, points[]}], decisions[], actions: [{text, owner?, due?}], questions[] }
+  -- { highlights: [{speaker, text}], people: [{label, name?}] }
   body              jsonb not null default '{}'::jsonb,
-  tags              text[] not null default '{}',
   -- [{ at: seconds from start, text }], in order
   transcript        jsonb not null default '[]'::jsonb,
   organised         boolean not null default false,

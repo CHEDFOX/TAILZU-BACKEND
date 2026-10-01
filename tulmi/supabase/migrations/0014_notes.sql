@@ -2,9 +2,11 @@
 -- microphone and the computer's own sound), and what was said kept here,
 -- organised. Nothing is ever typed into another app from it.
 --
--- One row per note. The transcript arrives a stretch at a time while it
--- records (transcript, appended); the organised body is written once when it
--- stops (title, summary, body). The audio itself is never stored.
+-- One row per note: the meeting (title), one paragraph on the whole
+-- conversation (summary), and the few important things people said (body).
+-- The transcript arrives a stretch at a time while it records, and is kept
+-- only to organise the note again; the app never shows it. The audio itself
+-- is never stored.
 --
 -- Run in your Supabase SQL editor after 0001–0013 (or use full_schema.sql).
 
@@ -19,9 +21,8 @@ create table if not exists public.notes (
   words             integer not null default 0,
   title             text not null default '',
   summary           text not null default '',
-  -- { sections: [{heading, points[]}], decisions[], actions: [{text, owner?, due?}], questions[] }
+  -- { highlights: [{speaker, text}], people: [{label, name?}] }
   body              jsonb not null default '{}'::jsonb,
-  tags              text[] not null default '{}',
   -- [{ at: seconds from start, text }], in order
   transcript        jsonb not null default '[]'::jsonb,
   organised         boolean not null default false,
