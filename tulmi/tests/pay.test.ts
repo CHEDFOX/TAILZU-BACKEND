@@ -8,24 +8,24 @@ process.env.NODE_ENV = "test";
 process.env.MEDIA_DIR = "/tmp/tailzu-test-media";
 
 // eslint-disable-next-line import/first
-import { manageHtml, payHtml, type PayOffer } from "../src/routes/pay.js";
+import { payCsp, payHtml, type PayOffer } from "../src/routes/pay.js";
 import { POLICY } from "../src/experience/catalog.js";
 
 const OFFERS: PayOffer[] = [
-  { key: "monthly", label: "Lite", price: "₹199", per: "a month", buyable: true },
-  { key: "annual", label: "Elite", price: "₹1,499", per: "a year", badge: "Save 35%", lead: true, buyable: true },
+  { market: "IN", period: "monthly", label: "Lite", price: "₹199", per: "a month", buyable: true },
+  { market: "IN", period: "annual", label: "Elite", price: "₹1,499", per: "a year", badge: "Save 35%", lead: true, buyable: true },
+  { market: "world", period: "monthly", label: "Lite", price: "$9.99", per: "a month", buyable: true },
+  { market: "world", period: "annual", label: "Elite", price: "$59.99", per: "a year", badge: "Save 50%", lead: true, buyable: true },
 ];
 const LINKS = { pricing: "https://tailzu.space/pricing", terms: POLICY.terms, privacy: POLICY.privacy };
-const page = (offers = OFFERS, keyId = "rzp_live_abc123") => payHtml({ keyId, offers, ...LINKS });
+const page = (offers = OFFERS, keyId = "rzp_live_abc123") => payHtml({ keyId, offers, nonce: "n0nce", ...LINKS });
 
 describe("the pay page", () => {
-  it("offers each plan at Razorpay's own price, and opens Razorpay's checkout", () => {
+  it("carries both markets at Razorpay's own prices, and opens Razorpay's checkout", () => {
     const html = page();
-    expect(html).toContain('data-plan="monthly"');
-    expect(html).toContain('data-plan="annual"');
-    expect(html).toContain("₹199");
-    expect(html).toContain("₹1,499");
-    expect(html).toContain("Save 35%");
+    expect(html).toContain('data-market="IN" data-period="monthly"');
+    expect(html).toContain('data-market="world" data-period="annual"');
+    for (const p of ["₹199", "₹1,499", "$9.99", "$59.99", "Save 35%"]) expect(html).toContain(p);
     expect(html).toContain('data-state="loading"');
     expect(html).toContain("https://checkout.razorpay.com/v1/checkout.js");
     expect(html).toContain('"/v1/pay/razorpay/subscription"');
@@ -34,10 +34,33 @@ describe("the pay page", () => {
     expect(html).toContain('"key":"rzp_live_abc123"');
   });
 
+  it("lets the browser's time zone choose the market: India sees rupees, everyone else dollars", () => {
+    const html = page();
+    expect(html).toContain('tz === "Asia/Kolkata" || tz === "Asia/Calcutta"');
+    expect(html).toContain('#pay[data-market="IN"] .plan[data-market="world"]');
+    expect(html).toContain('#pay[data-market="world"] .plan[data-market="IN"]');
+  });
+
+  it("names its caller by the signed link, and sends nothing but a market and a period", () => {
+    const html = page();
+    expect(html).toContain('u: q.get("u")');
+    expect(html).toContain("{ market: market, period: b.getAttribute(\"data-period\") }");
+    expect(html).not.toContain("plan_");
+  });
+
+  it("runs its own script by nonce, under a policy that allows Razorpay and nothing else that runs", () => {
+    expect(page()).toContain('<script nonce="n0nce">');
+    const csp = payCsp("n0nce");
+    expect(csp).toContain("script-src 'nonce-n0nce' https://*.razorpay.com");
+    expect(csp).toContain("frame-src https://*.razorpay.com");
+    expect(csp).not.toContain("unsafe-eval");
+    expect(csp).not.toMatch(/script-src[^;]*unsafe-inline/);
+  });
+
   it("shows a plan whose price could not be read, with no button", () => {
-    const html = page([OFFERS[0]!, { key: "annual", label: "Elite", price: "—", per: "Not available right now", buyable: false }]);
-    expect(html).toContain('data-plan="monthly"');
-    expect(html).not.toContain('data-plan="annual"');
+    const html = page([OFFERS[0]!, { ...OFFERS[1]!, price: "—", per: "Not available right now", buyable: false }]);
+    expect(html).toContain('data-market="IN" data-period="monthly"');
+    expect(html).not.toContain('data-market="IN" data-period="annual"');
   });
 
   it("with no key, or nothing buyable, it says checkout is not open and offers nothing", () => {
@@ -53,7 +76,7 @@ describe("the pay page", () => {
     expect(html).not.toContain("Paddle");
     expect(html).toContain("XOOTEQ LAB PRIVATE LIMITED");
     expect(html).toMatch(/non-refundable, except where the law requires a refund/);
-    expect(html).toContain("Settings, then Manage");
+    expect(html).toContain("Settings, then Cancel subscription");
     expect(html).not.toMatch(/undefined|NaN/);
   });
 
@@ -84,22 +107,5 @@ describe("when a payment fails", () => {
       const junk = await app.inject({ method: "POST", url: "/v1/pay/report", payload: "not json", headers: { "content-type": "text/plain" } });
       expect([204, 400, 415]).toContain(junk.statusCode);
     } finally { await app.close(); }
-  });
-});
-
-describe("the manage page", () => {
-  const link = { u: "11111111-2222-3333-4444-555555555555", e: "1", t: "abc" };
-  it("lets a renewing subscriber cancel, and says what happens", () => {
-    const html = manageHtml({ ...LINKS, state: "renewing", until: "12 Oct 2026", plan: "Elite, yearly", link });
-    expect(html).toContain("Renews on 12 Oct 2026");
-    expect(html).toContain('id="cancel"');
-    expect(html).toContain('"/v1/pay/razorpay/cancel"');
-    expect(html).toContain("stays on until the end of the period you paid for");
-  });
-  it("offers nothing to cancel once it is ending, or when the link is old", () => {
-    expect(manageHtml({ ...LINKS, state: "ending", until: "12 Oct 2026" })).not.toContain('id="cancel"');
-    expect(manageHtml({ ...LINKS, state: "ending", until: "12 Oct 2026" })).toContain("stays on until 12 Oct 2026");
-    expect(manageHtml({ ...LINKS, state: "expired" })).toContain("This link has expired");
-    expect(manageHtml({ ...LINKS, state: "expired" })).not.toContain('id="cancel"');
   });
 });

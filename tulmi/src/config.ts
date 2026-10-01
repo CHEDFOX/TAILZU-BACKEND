@@ -399,35 +399,38 @@ const EnvSchema = z.object({
    */
   REVENUECAT_WEB_PAYWALL_URL: z.string().url().optional(),
   /**
-   * TAILZU'S OWN PAY PAGE (GET /pay, served as tailzu.space/pay): both plans,
-   * and Razorpay's checkout over them. Point REVENUECAT_WEB_PAYWALL_URL at
-   * https://tailzu.space/pay and the desktop's Subscribe opens it.
+   * TAILZU'S OWN PAY PAGE (GET /pay, served as tailzu.space/pay): the plans
+   * for the buyer's market, and Razorpay's checkout over them. The desktop's
+   * Subscribe opens it, by a link the server signs for the account
+   * (razorpay.payLink), when REVENUECAT_WEB_PAYWALL_URL is
+   * https://tailzu.space/pay.
    *
    * Razorpay has no RevenueCat integration, so this server is the whole
-   * integration: it creates the subscription with the buyer's account id in
-   * its notes, checks the checkout's signature, and keeps the entitlement row
-   * current from Razorpay's webhook (src/billing/razorpay.ts).
+   * integration (src/billing/razorpay.ts): it creates every subscription,
+   * checks the checkout's signature, and keeps its own table of Razorpay
+   * subscriptions current from Razorpay's webhook.
    *
-   *   RAZORPAY_KEY_ID          rzp_live_… (rzp_test_… is test mode). Public:
-   *                            it is in every page that opens the checkout.
-   *   RAZORPAY_KEY_SECRET      Dashboard → Account & Settings → API keys.
-   *                            SECRET: .env only.
+   *   RAZORPAY_KEY_ID          rzp_test_… first, rzp_live_… once proven.
+   *                            Public: it is in the page that opens checkout.
+   *   RAZORPAY_KEY_SECRET      SECRET: .env only.
    *   RAZORPAY_WEBHOOK_SECRET  the secret typed when adding the webhook
    *                            (https://api.tailzu.space/v1/billing/razorpay).
    *                            SECRET: .env only.
-   *   RAZORPAY_PLAN_MONTHLY    plan_… from Subscriptions → Plans: the monthly
-   *   RAZORPAY_PLAN_YEARLY     and yearly plans. Public ids. The price shown on
-   *                            the pay page is read from the plan itself.
+   *   RAZORPAY_PLANS           the plans on sale, each tagged with its market
+   *                            and period — exactly what
+   *                            scripts/razorpay-plans.mjs prints:
+   *                              IN:monthly:plan_…,IN:annual:plan_…,
+   *                              world:monthly:plan_…,world:annual:plan_…
+   *                            IN is shown to a browser in India's time zone,
+   *                            world to every other. Public ids.
    *
-   * A plan with no id is not offered, and with no key nothing is: the page
-   * says checkout is not open. Checked by the page, not here, so a mistyped
-   * id takes one plan off the page rather than stopping the server booting.
+   * Checked by the code that reads it, not here: a malformed entry takes that
+   * plan off sale, it does not stop the server booting.
    */
   RAZORPAY_KEY_ID: z.string().default(""),
   RAZORPAY_KEY_SECRET: z.string().optional(),
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
-  RAZORPAY_PLAN_MONTHLY: z.string().default(""),
-  RAZORPAY_PLAN_YEARLY: z.string().default(""),
+  RAZORPAY_PLANS: z.string().default(""),
   /**
    * THE LANDING PAGE'S LIVE DEMO. Off by default, on purpose.
    *

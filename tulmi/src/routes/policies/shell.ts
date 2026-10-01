@@ -105,6 +105,9 @@ export function siteShell(o: {
   css?: string;
   /** An inline script, placed before </body>. */
   script?: string;
+  /** The CSP nonce the inline script carries, when the page is served with
+   *  a policy that names one (the pay page). */
+  nonce?: string;
   noindex?: boolean;
 }): string {
   const here = (href: string) => o.path === href || (o.path ?? "").startsWith(`${href}/`);
@@ -134,6 +137,6 @@ ${headTags({
 ${o.main}
 </div></main>
 <footer><div class="wrap"><div class="in"><span>© 2026 Tailzu</span><nav>${nav}</nav></div></div></footer>
-${o.script ? `<script>${o.script}</script>\n` : ""}</body>
+${o.script ? `<script${o.nonce ? ` nonce="${o.nonce}"` : ""}>${o.script}</script>\n` : ""}</body>
 </html>`;
 }

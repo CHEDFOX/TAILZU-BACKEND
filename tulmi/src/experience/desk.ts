@@ -64,7 +64,7 @@ export interface DeskContext {
   usage?: UsageSummary;
   stats?: StatsForUser;
   allowance?: Allowance | null;
-  entitlement?: { store?: string; expiresAt?: string } | null;
+  entitlement?: { store?: string; expiresAt?: string; renews?: boolean } | null;
   email?: string;
   phone?: string;
   name?: string;
@@ -155,6 +155,20 @@ const link = (label: string, onPress: ActionRef, cls = "d-link", style?: Style):
   const st = styled(cls, style);
   return { type: "Button", props: { label, cls }, on: { onPress }, ...(st ? { style: st } : {}) };
 };
+
+/**
+ * A Razorpay subscription's end of the Plan row: it is cancelled here in the
+ * app, and once it has been, the row says when Unlimited ends instead.
+ * Undefined for any other store, which keeps its Manage link.
+ */
+function razorpayPlan(ctx: DeskContext): Node | undefined {
+  if (String(ctx.entitlement?.store ?? "").toLowerCase() !== "razorpay") return undefined;
+  if (ctx.entitlement?.renews !== false) return link("Cancel", { kind: "navigate", screenId: "cancel_subscription" });
+  const end = ctx.entitlement?.expiresAt ? Date.parse(ctx.entitlement.expiresAt) : NaN;
+  return text(Number.isFinite(end)
+    ? `Ends ${new Date(end).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
+    : "Cancelled", "d-margin");
+}
 const keys = (source: "tap" | "hotkey" | "notes", small = false): Node => ({ type: "Keys", props: { source, cls: small ? "d-keys-small" : "" }, ...(small ? { style: {} } : {}) });
 const sw = (key: string, labelText: string): Node => ({
   type: "Switch", props: { cls: "d-switch", accessibilityLabel: labelText },
@@ -833,7 +847,7 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
       text("Plan", "d-h2", { marginBottom: 8 }),
       defRow(q.paid ? "Unlimited" : "Free", q.paid ? "Every word, on every device" : `${n(q.used)} of ${n(q.of)} words this month`,
         q.paid
-          ? (ctx.manageUrl ? link("Manage", { kind: "openUrl", url: ctx.manageUrl }) : undefined)
+          ? razorpayPlan(ctx) ?? (ctx.manageUrl ? link("Manage", { kind: "openUrl", url: ctx.manageUrl }) : undefined)
           : link("See plans", { kind: "navigate", screenId: "desk_plan" })),
     ], { marginBottom: 40 }),
     stack([

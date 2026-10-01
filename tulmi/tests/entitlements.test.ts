@@ -306,13 +306,14 @@ describe("where a subscription is managed", () => {
     const manage = screen.root.children.filter((c) =>
       JSON.stringify(c.visibleIf ?? "").includes("billing.manage."),
     );
-    expect(manage.length).toBe(3);
+    // Apple, Google, the web stores — and Razorpay, cancelled in the app.
+    expect(manage.length).toBe(4);
     for (const r of manage) {
       expect(JSON.stringify(r.visibleIf)).toContain('"billing.entitled"');
     }
     // Every flag a row waits for is one manageFlags() can actually produce.
     const waited = manage.map((r) => JSON.stringify(r.visibleIf).match(/billing\.manage\.\w+/)![0]);
-    const produced = ["app_store", "play_store", "paddle"]
+    const produced = ["app_store", "play_store", "paddle", "razorpay"]
       .flatMap((s) => Object.keys(manageFlags(s)))
       .filter((k) => k !== "billing.manage.url");
     expect([...waited].sort()).toEqual([...produced].sort());

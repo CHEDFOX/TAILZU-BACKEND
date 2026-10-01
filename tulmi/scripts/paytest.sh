@@ -118,18 +118,23 @@ else
   case "$PAGE" in *'data-state="loading"'*) ok "the pay page is open for checkout";;
     *'data-state="off"'*) no "the pay page says checkout is not open — RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET missing, or no plan price could be read";;
     *) no "the pay page did not render";; esac
-  N=$(printf '%s' "$PAGE" | grep -o 'data-plan="[a-z]*"' | sort -u | wc -l | tr -d ' ')
-  [ "$N" = 2 ] && ok "both plans are on sale" || no "$N of 2 plans are on sale — check RAZORPAY_PLAN_MONTHLY / RAZORPAY_PLAN_YEARLY are plan ids from the same mode as the key"
+  N=$(printf '%s' "$PAGE" | grep -o '<button[^>]*data-market="[A-Za-z]*" data-period="[a-z]*"' | sort -u | wc -l | tr -d ' ')
+  [ "$N" = 4 ] && ok "four plans on sale (IN and world, monthly and annual)" \
+    || no "$N of 4 plans on sale — check RAZORPAY_PLANS lists IN and world, monthly and annual, from the same mode as the key"
   KEY=$(printf '%s' "$PAGE" | grep -o '"key":"rzp_[a-z]*_' | cut -d'"' -f4)
-  case "$KEY" in rzp_live_) ok "live key id (public by design)";; rzp_test_) no "a TEST key — test cards only, nobody is charged";; *) no "no key id on the page";; esac
+  case "$KEY" in rzp_live_) ok "live key id (public by design)";; rzp_test_) echo "  NOTE  TEST key — test cards only, nobody is charged. Switch to live keys once proven.";; *) no "no key id on the page";; esac
+  case "$(curl -sI "$API/pay" | tr -d '\r' | grep -i '^content-security-policy:')" in
+    *razorpay.com*) ok "the pay page's security policy allows Razorpay";;
+    *) no "the pay page has no security policy naming Razorpay";; esac
 fi
 
 RSEC=$(val RAZORPAY_WEBHOOK_SECRET)
-RPLAN=$(val RAZORPAY_PLAN_MONTHLY)
 rsend(){ curl -s -o /tmp/rz.out -w '%{http_code}' -X POST $API/v1/billing/razorpay \
          -H 'Content-Type: application/json' -H "X-Razorpay-Signature: $2" -d "$1"; }
-RBODY=$(printf '{"event":"subscription.charged","payload":{"subscription":{"entity":{"id":"sub_paytest","plan_id":"%s","status":"active","current_end":%s,"notes":{"app_user_id":"%s"}}}}}' \
-        "${RPLAN:-plan_none}" "$(( $(date +%s) + 86400 ))" "$GHOST")
+# A subscription id Razorpay has never issued: the webhook must accept the
+# signature, then ask Razorpay, which says the id does not exist. That answer
+# proves the secret, the raw-body check and the API keys in one go.
+RBODY='{"event":"subscription.charged","payload":{"subscription":{"entity":{"id":"sub_paytest000000"}}}}'
 if [ -z "$RSEC" ]; then
   no "no RAZORPAY_WEBHOOK_SECRET — Razorpay's webhook refuses everything"
 else
@@ -138,13 +143,16 @@ else
   RC=$(rsend "$RBODY" "$SIG"); RB=$(cat /tmp/rz.out)
   case "$RC:$RB" in
     401:*) no "the real webhook secret is rejected — the container holds a different RAZORPAY_WEBHOOK_SECRET; restart it";;
-    *subscription_id*) no "the entitlements table has no subscription_id column — run supabase/migrations/0015_razorpay.sql";;
-    *foreign*key*|*violates*) ok "signature passed, Supabase reached, row refused by the foreign key — exactly right";;
-    *'not a Tailzu plan'*) no "RAZORPAY_PLAN_MONTHLY is not set to a plan id";;
+    500:*'does not exist'*) ok "signature accepted, and Razorpay answered with these keys (the test id does not exist, as intended)";;
+    500:*uthentication*) no "signature accepted, but Razorpay refused the API keys — check RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET";;
+    503:*) no "RAZORPAY_WEBHOOK_SECRET is not in the running container — restart it";;
     *) no "unexpected: $RC $RB";;
   esac
 fi
 rm -f /tmp/rz.out
+if docker compose logs --since 72h backend 2>/dev/null | grep -q 'subscriptions unreadable'; then
+  no "the razorpay_subscriptions table cannot be read — run supabase/migrations/0015_razorpay.sql"
+fi
 
 # What a buyer's browser reported, in Razorpay's words (the pay page sends it).
 # (Logs go with the container: a deploy starts this count again from zero.)
@@ -157,7 +165,7 @@ fi
 cat <<'TXT'
   Settings this script cannot see (each one stops a desktop purchase):
     Razorpay  Subscriptions switched on for the account (Dashboard > Subscriptions)
-    Razorpay  Two plans, monthly and yearly, in the same mode (live/test) as the key
+    Razorpay  The plans, made by tulmi/scripts/razorpay-plans.mjs in the same mode (test/live) as the key
     Razorpay  Webhook https://api.tailzu.space/v1/billing/razorpay, all subscription.* events,
               secret = RAZORPAY_WEBHOOK_SECRET
     Razorpay  International cards switched on, to take payments from outside India

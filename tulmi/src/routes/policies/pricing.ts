@@ -128,7 +128,7 @@ export function pricingHtml(opts: {
   </section>
   <section>
     <h2>Renewal and cancelling</h2>
-    <p>Plans renew automatically at the end of each period until you cancel. Cancel an app purchase in your App Store or Google Play subscriptions, and a web purchase in Tailzu: Settings, then Manage. You keep access until the end of the period already paid for.</p>
+    <p>Plans renew automatically at the end of each period until you cancel. Cancel an app purchase in your App Store or Google Play subscriptions, and a web purchase in Tailzu: Settings, then Cancel subscription. You keep access until the end of the period already paid for.</p>
   </section>
   <section>
     <h2>Refunds</h2>

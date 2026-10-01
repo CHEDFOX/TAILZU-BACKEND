@@ -19,16 +19,16 @@
 import type { AuthedUser } from "../auth/supabase.js";
 import { getConfig } from "../config.js";
 import { supabase } from "../auth/supabase.js";
-import { applyRazorpaySubscription, fetchSubscription, GRACE_MS, manageLink, razorpayReady, SUB_ID } from "./razorpay.js";
+import { razorpayEntitlement } from "./razorpay.js";
 
 export type Entitlement = {
   entitlement: string;
   active: boolean;
   expiresAt?: string;
   store?: string;
-  /** Where this account can change or cancel it, when that place is ours to
-   *  link to (a Razorpay subscription; see razorpay.manageLink). */
-  manageUrl?: string;
+  /** False once a subscription has been cancelled and runs only to its end.
+   *  Known for Razorpay subscriptions; absent for the stores'. */
+  renews?: boolean;
 };
 
 /** Cache, so quota checks on the hot path do not each cost a round trip. */
@@ -37,6 +37,12 @@ const CACHE_MS = 60_000;
 
 /**
  * The user's live entitlement, or null.
+ *
+ * TWO SOURCES, NEITHER ABLE TO OVERWRITE THE OTHER. RevenueCat's webhook
+ * writes public.entitlements (the phones); Razorpay's subscriptions live in
+ * their own table (billing/razorpay.ts). Either one live is enough. Razorpay
+ * is asked first, because it is the one a subscriber can cancel from inside
+ * the app, and the app should be pointing there when both are live.
  *
  * Read through a short cache because this is consulted on every dictation and
  * every refine. Sixty seconds is the most a just-subscribed user waits for
@@ -52,12 +58,18 @@ export async function getEntitlement(user: AuthedUser): Promise<Entitlement | nu
   const sb = supabase();
   if (!sb || !UUID.test(user.id)) return null;
 
-  // "*", not a column list: subscription_id arrived with migration 0015, and
-  // naming a column the database does not have yet fails the whole read —
-  // which would meter every paying customer as free until it was run.
+  const rz = await razorpayEntitlement(user.id).catch((err) => {
+    console.error(`[entitlements] razorpay read failed for ${user.id}:`, (err as Error).message);
+    return null;
+  });
+  if (rz) {
+    cache.set(user.id, { at: Date.now(), value: rz });
+    return rz;
+  }
+
   const { data, error } = await sb
     .from("entitlements")
-    .select("*")
+    .select("entitlement, active, expires_at, store")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -67,29 +79,6 @@ export async function getEntitlement(user: AuthedUser): Promise<Entitlement | nu
     // entitlement means, and it retries immediately.
     console.error(`[entitlements] read failed for ${user.id}:`, error.message);
     return null;
-  }
-  // A RAZORPAY ROW THAT HAS LAPSED IS ASKED ABOUT BEFORE IT IS BELIEVED.
-  // Its renewals arrive only by webhook, and a missed one would otherwise end
-  // access at the end of a period that Razorpay has in fact renewed.
-  // Its period also runs a short grace past the end date, while a renewal is
-  // being retried (razorpay.GRACE_MS).
-  const grace = String(data?.store ?? "") === "razorpay" ? GRACE_MS : 0;
-  const lapsed = !data?.active || (data?.expires_at && Date.parse(String(data.expires_at)) + grace < Date.now());
-  if (data && lapsed && grace && SUB_ID.test(String(data.subscription_id ?? "")) && razorpayReady()) {
-    const healed = await fetchSubscription(String(data.subscription_id))
-      .then((sub) => applyRazorpaySubscription(sub, "read"))
-      .catch(() => null);
-    if (healed?.active && (!healed.expiresAt || Date.parse(healed.expiresAt) + GRACE_MS > Date.now())) {
-      const value: Entitlement = {
-        entitlement: String(data.entitlement),
-        active: true,
-        expiresAt: healed.expiresAt ?? undefined,
-        store: "razorpay",
-        manageUrl: manageLink(user.id),
-      };
-      cache.set(user.id, { at: Date.now(), value });
-      return value;
-    }
   }
   if (!data || !data.active) {
     // No row, or an inactive one. Before believing that, ASK RevenueCat.
@@ -104,7 +93,7 @@ export async function getEntitlement(user: AuthedUser): Promise<Entitlement | nu
   }
   // Expiry is belt and braces. `active` should already be false by the time a
   // subscription lapses, but a missed webhook must not grant free months.
-  if (data.expires_at && Date.parse(String(data.expires_at)) + grace < Date.now()) {
+  if (data.expires_at && Date.parse(String(data.expires_at)) < Date.now()) {
     cache.set(user.id, { at: Date.now(), value: null });
     return null;
   }
@@ -113,7 +102,6 @@ export async function getEntitlement(user: AuthedUser): Promise<Entitlement | nu
     active: true,
     expiresAt: data.expires_at ? String(data.expires_at) : undefined,
     store: data.store ? String(data.store) : undefined,
-    ...(String(data.store ?? "") === "razorpay" ? { manageUrl: manageLink(user.id) } : {}),
   };
   cache.set(user.id, { at: Date.now(), value });
   return value;
@@ -419,16 +407,6 @@ export async function applyRevenueCatEvent(
     beforeExpiry > ev.expiration_at_ms
   ) {
     return { ok: true, reason: `stale EXPIRATION ignored: access already runs to ${new Date(beforeExpiry).toISOString()}`, userId };
-  }
-
-  // RAZORPAY IS NOT REVENUECAT'S TO END. Both write this one row, and an
-  // expiry for an App Store subscription someone let lapse must not switch
-  // off the Razorpay one they pay for now. Razorpay's own webhook ends it.
-  if (
-    revokes && String(before?.store ?? "").toLowerCase() === "razorpay" && before?.active === true &&
-    (!before?.expires_at || beforeExpiry + GRACE_MS > Date.now())
-  ) {
-    return { ok: true, reason: `${type} ignored: access comes from a live Razorpay subscription`, userId };
   }
 
   if (grants) {

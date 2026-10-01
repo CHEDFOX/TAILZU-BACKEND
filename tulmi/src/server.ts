@@ -26,7 +26,7 @@ import { registerMediaRoutes, loadMediaRegistry, getMediaRegistry } from "./rout
 import { PRIVACY_POLICY_HTML, PRIVACY_POLICY_EFFECTIVE } from "./routes/policies/privacy.js";
 import { TERMS_HTML, TERMS_EFFECTIVE } from "./routes/policies/terms.js";
 import { pricingHtml } from "./routes/policies/pricing.js";
-import { manageHtml, payHtml, type PayOffer } from "./routes/pay.js";
+import { payCsp, payHtml, type PayOffer } from "./routes/pay.js";
 import { DOWNLOAD_PAGE_HTML } from "./routes/download.js";
 import { registerSeoRoutes } from "./routes/seo.js";
 import { registerNotesRoutes } from "./routes/notes.js";
@@ -47,9 +47,9 @@ import { captureException, fastifyLoggerOptions, initSentry } from "./observabil
 import { getProfile, updateProfile, touchLastSeen, type Profile } from "./profile/store.js";
 import { applyRevenueCatEvent, getEntitlement, isEntitled } from "./billing/entitlements.js";
 import {
-  RazorpayError, applyRazorpaySubscription, cancelSubscription, checkoutSignatureOk, createSubscription,
-  fetchPlan, fetchSubscription, formatPeriod, formatPrice, manageLinkUser, ourPlans, razorpayReady,
-  SUB_ID, webhookSignatureOk, type RzPlan, type RzSubscription,
+  RazorpayError, cancelForUser, checkoutSignatureOk, createSubscription, fetchPlan, fetchSubscription,
+  formatPeriod, formatPrice, ownerOf, payLink, payLinkUser, planFor, razorpayReady, SUB_ID,
+  syncSubscription, webhookSignatureOk, type Market, type Period, type RzPlan,
 } from "./billing/razorpay.js";
 import { runPipeline } from "./pipeline/index.js";
 import { joinWithSpace } from "./pipeline/join.js";
@@ -534,16 +534,19 @@ app.get("/pricing", async (_req, reply) => {
 });
 
 // Tailzu's pay page (tailzu.space/pay): where the desktop's Subscribe
-// goes. Both plans at Razorpay's prices, and Razorpay's checkout.
+// goes. Both markets' plans at Razorpay's prices; the browser picks one.
 app.get("/pay", async (_req, reply) => {
   // Nothing is sold while Tailzu is free: the page that would take a
   // payment sends people to the one that says so.
   if (cfg.FREE_FOR_ALL) return reply.redirect("/pricing", 302);
+  const nonce = randomBytes(16).toString("base64");
   reply.type("text/html; charset=utf-8");
-  reply.header("Cache-Control", "public, max-age=300");
+  reply.header("Cache-Control", "no-store");
+  reply.header("Content-Security-Policy", payCsp(nonce));
   return payHtml({
     keyId: razorpayReady() ? cfg.RAZORPAY_KEY_ID : "",
     offers: await payOffers(),
+    nonce,
     pricing: "https://tailzu.space/pricing",
     terms: POLICY.terms,
     privacy: POLICY.privacy,
@@ -551,29 +554,32 @@ app.get("/pay", async (_req, reply) => {
 });
 
 /**
- * The plans the pay page shows: each paywall plan with a Razorpay plan id,
- * named as the app names it (Elite, Lite) and priced as Razorpay holds it.
- * The saving is worked out from those prices, never carried over from the
- * store prices, which are in another currency and may not match.
+ * The plans the pay page shows, for both markets: each plan on sale, named
+ * as the app names it (Elite yearly, Lite monthly) and priced as Razorpay
+ * holds it. The saving is worked out per market from those prices, never
+ * carried over from the store prices, which may not match.
  */
 async function payOffers(): Promise<PayOffer[]> {
-  const ids = ourPlans();
-  const read = async (key: "monthly" | "annual") => (ids[key] ? fetchPlan(ids[key]!) : null);
-  const [monthly, annual] = await Promise.all([read("monthly"), read("annual")]);
-  const label = (key: string) => PAYWALL_CONFIG.plans.find((p) => p.id === key)?.label ?? key;
-  const yearly = (p: RzPlan | null) => (p ? (p.period === "yearly" ? 1 : p.period === "monthly" ? 12 : 0) / Math.max(1, p.interval) : 0);
-  let badge: string | undefined;
-  if (monthly && annual && monthly.item.currency === annual.item.currency && yearly(monthly) && yearly(annual)) {
-    const save = 1 - (annual.item.amount * yearly(annual)) / (monthly.item.amount * yearly(monthly));
-    if (save >= 0.1) badge = `Save ${Math.floor(save * 100 / 5) * 5}%`;
-  }
+  const label = (period: Period) => PAYWALL_CONFIG.plans.find((p) => p.id === period)?.label ?? period;
+  const perYear = (p: RzPlan | null) =>
+    p ? (p.period === "yearly" ? 1 : p.period === "monthly" ? 12 : 0) / Math.max(1, p.interval) : 0;
   const offers: PayOffer[] = [];
-  for (const [key, plan] of [["monthly", monthly], ["annual", annual]] as const) {
-    if (!ids[key]) continue;
-    offers.push(plan
-      ? { key, label: label(key), price: formatPrice(plan), per: formatPeriod(plan), buyable: true,
-          ...(key === "annual" ? { badge, lead: true } : {}) }
-      : { key, label: label(key), price: "—", per: "Not available right now", buyable: false });
+  for (const market of ["IN", "world"] as Market[]) {
+    const m = planFor(market, "monthly");
+    const a = planFor(market, "annual");
+    const [monthly, annual] = await Promise.all([m ? fetchPlan(m.id) : null, a ? fetchPlan(a.id) : null]);
+    let badge: string | undefined;
+    if (monthly && annual && monthly.item.currency === annual.item.currency && perYear(monthly) && perYear(annual)) {
+      const save = 1 - (annual.item.amount * perYear(annual)) / (monthly.item.amount * perYear(monthly));
+      if (save >= 0.1) badge = `Save ${Math.floor((save * 100) / 5) * 5}%`;
+    }
+    for (const [period, configured, plan] of [["monthly", m, monthly], ["annual", a, annual]] as const) {
+      if (!configured) continue;
+      offers.push(plan
+        ? { market, period, label: label(period), price: formatPrice(plan), per: formatPeriod(plan), buyable: true,
+            ...(period === "annual" ? { badge, lead: true } : {}) }
+        : { market, period, label: label(period), price: "—", per: "Not available right now", buyable: false });
+    }
   }
   return offers;
 }
@@ -583,32 +589,32 @@ async function payOffers(): Promise<PayOffer[]> {
  *  buyers share. */
 const PAY_RL = { config: { rateLimit: { max: 30, timeWindow: 60_000 } } };
 
+/** The caller of a pay-page call: the account its signed link names. */
+function payCaller(b: Record<string, unknown>): string | null {
+  return payLinkUser(b.u, b.e, b.t);
+}
+
 /**
- * A subscription for the account the pay page was opened for, made here so
- * the account id is in it whatever the page sends. Refused for an account
- * that does not exist, and for one that already pays: a second subscription
- * on top of a live one bills them twice for the same thing.
+ * A subscription for the caller, made here and never by hand: the plan is
+ * one on sale for the market and period asked for, and the account goes in
+ * its notes. Refused for an account that already pays — a second
+ * subscription on top of a live one bills them twice for the same thing.
  */
 app.post("/v1/pay/razorpay/subscription", PAY_RL, async (req, reply) => {
   if (cfg.FREE_FOR_ALL) return reply.code(409).send({ code: "free" });
   if (!razorpayReady()) return reply.code(503).send({ code: "not_configured" });
   const b = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
-  const userId = String(b.user ?? "").trim();
-  const key = b.plan === "annual" ? "annual" : b.plan === "monthly" ? "monthly" : null;
-  const planId = key ? ourPlans()[key] : null;
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId) || !planId) {
-    return reply.code(400).send({ code: "bad_request" });
-  }
-  const sb = supabase();
-  if (sb) {
-    const { data, error } = await sb.auth.admin.getUserById(userId);
-    if (error || !data?.user) return reply.code(404).send({ code: "no_account" });
-  }
+  const userId = payCaller(b);
+  if (!userId) return reply.code(401).send({ code: "link_expired" });
+  const market: Market | null = b.market === "IN" ? "IN" : b.market === "world" ? "world" : null;
+  const period: Period | null = b.period === "monthly" ? "monthly" : b.period === "annual" ? "annual" : null;
+  const plan = market && period ? planFor(market, period) : undefined;
+  if (!plan) return reply.code(400).send({ code: "no_such_plan" });
   if (await isEntitled({ id: userId } as AuthedUser).catch(() => false)) {
     return reply.code(409).send({ code: "already_subscribed" });
   }
   try {
-    const sub = await createSubscription(userId, planId);
+    const sub = await createSubscription(userId, plan);
     return reply.send({ subscriptionId: sub.id });
   } catch (err) {
     const e = err as RazorpayError;
@@ -618,23 +624,28 @@ app.post("/v1/pay/razorpay/subscription", PAY_RL, async (req, reply) => {
 });
 
 /**
- * The checkout's success, from the buyer's browser. Signed by Razorpay with
- * the key secret over the payment and subscription ids, so it cannot be made
- * up; the subscription's state is then read from Razorpay, not taken from the
- * page. The webhook writes the same thing moments later — this is so the app
- * unlocks while the buyer is still looking at it.
+ * The checkout's success, from the buyer's browser: unlocks at once.
+ *
+ * Two checks. Razorpay's signature, HMAC_SHA256(payment_id|subscription_id)
+ * with the key secret, says the payment is real; the subscription's own
+ * notes, read back from Razorpay, must name the caller, or the payment is
+ * someone else's being replayed. Then its current state is saved.
  */
 app.post("/v1/pay/razorpay/verify", PAY_RL, async (req, reply) => {
   const b = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+  const userId = payCaller(b);
+  if (!userId) return reply.code(401).send({ ok: false, code: "link_expired" });
   const paymentId = String(b.razorpay_payment_id ?? "");
   const subId = String(b.razorpay_subscription_id ?? "");
   if (!SUB_ID.test(subId) || !checkoutSignatureOk(paymentId, subId, String(b.razorpay_signature ?? ""))) {
     return reply.code(400).send({ ok: false, code: "bad_signature" });
   }
   try {
-    const res = await applyRazorpaySubscription(await fetchSubscription(subId), "checkout");
+    const sub = await fetchSubscription(subId);
+    if (ownerOf(sub) !== userId) return reply.code(403).send({ ok: false, code: "not_yours" });
+    const res = await syncSubscription(sub, "checkout");
     req.log.info({ rz: res }, "[billing] razorpay checkout");
-    return reply.send({ ok: res.ok, active: res.active === true });
+    return reply.code(res.ok ? 200 : 500).send({ ok: res.ok, entitled: !!res.entitledUntil && res.entitledUntil > Date.now() });
   } catch (err) {
     req.log.error({ detail: (err as Error).message }, "pay: razorpay verify failed");
     return reply.code(502).send({ ok: false, code: "razorpay" });
@@ -642,64 +653,30 @@ app.post("/v1/pay/razorpay/verify", PAY_RL, async (req, reply) => {
 });
 
 /**
- * GET /pay/manage — a Razorpay subscriber's plan, and a way to stop it
- * renewing. The link is signed for one account (razorpay.manageLink).
+ * Cancel from inside the app: signed in, for the caller's own subscription.
+ * Razorpay is told to stop at the end of the period (cancel_at_cycle_end);
+ * access runs to that end.
  */
-app.get("/pay/manage", async (req, reply) => {
-  const q = (req.query ?? {}) as Record<string, string>;
-  const userId = manageLinkUser(q.u, q.e, q.t);
-  reply.type("text/html; charset=utf-8");
-  reply.header("Cache-Control", "no-store");
-  const page = { pricing: "https://tailzu.space/pricing", terms: POLICY.terms, privacy: POLICY.privacy };
-  if (!userId) return manageHtml({ ...page, state: "expired" });
-  const found = await razorpaySubOf(userId);
-  if (!found) return manageHtml({ ...page, state: "none" });
-  const { sub, cancelAsked } = found;
-  const end = sub.current_end ? new Date(sub.current_end * 1000) : null;
-  const until = end ? end.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : undefined;
-  const plan = sub.plan_id === ourPlans().annual ? "Elite, yearly" : sub.plan_id === ourPlans().monthly ? "Lite, monthly" : undefined;
-  // Cancelled at the end of its cycle, a subscription stays "active" until
-  // that end, so the request is remembered on the row (see the cancel route).
-  const ending = sub.status === "cancelled" || sub.status === "completed" || !!sub.ended_at || cancelAsked;
-  if (!["active", "pending", "authenticated"].includes(String(sub.status)) && !ending) return manageHtml({ ...page, state: "none" });
-  return manageHtml({ ...page, state: ending ? "ending" : "renewing", until, plan, link: { u: q.u!, e: q.e!, t: q.t! } });
-});
-
-/** Stop a Razorpay subscription renewing, from a signed manage link. */
-app.post("/v1/pay/razorpay/cancel", PAY_RL, async (req, reply) => {
-  const b = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
-  const userId = manageLinkUser(b.u, b.e, b.t);
-  if (!userId) return reply.code(401).send({ ok: false, code: "link_expired" });
-  const found = await razorpaySubOf(userId);
-  if (!found) return reply.code(404).send({ ok: false, code: "no_subscription" });
-  const { sub } = found;
+app.post("/v1/billing/razorpay/cancel", { config: { rateLimit: { max: 10, timeWindow: 60_000 } } }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) return unauthorized(reply);
   try {
-    const after = await cancelSubscription(sub.id);
-    // Access is not touched: it runs to the end of the period paid for, and
-    // Razorpay's webhook ends it then. Only the request is noted, so the
-    // manage page can say it will not renew.
-    await supabase()?.from("entitlements")
-      .update({ last_event: "cancel_requested", updated_at: new Date().toISOString() })
-      .eq("user_id", userId);
-    req.log.info({ userId, sub: sub.id, status: after.status }, "[billing] razorpay cancel requested");
-    return reply.send({ ok: true });
+    const res = await cancelForUser(user.id);
+    if (!res.ok) return reply.code(404).send({ code: res.code ?? "no_subscription" });
+    const until = res.until ? new Date(res.until) : null;
+    return reply.send({
+      ok: true,
+      until: until?.toISOString() ?? null,
+      message: until
+        ? `Cancelled. Unlimited stays on until ${until.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}.`
+        : "Cancelled. Unlimited stays on until the end of the period you paid for.",
+    });
   } catch (err) {
     const e = err as RazorpayError;
     req.log.error({ code: e.code, detail: e.message }, "pay: razorpay refused a cancel");
-    return reply.code(502).send({ ok: false, code: e.code ?? "razorpay", description: e.message });
+    return reply.code(502).send({ code: e.code ?? "razorpay" });
   }
 });
-
-/** The account's Razorpay subscription, as Razorpay holds it, or null. */
-async function razorpaySubOf(userId: string): Promise<{ sub: RzSubscription; cancelAsked: boolean } | null> {
-  const sb = supabase();
-  if (!sb || !razorpayReady()) return null;
-  const { data } = await sb.from("entitlements").select("*").eq("user_id", userId).maybeSingle();
-  const id = String(data?.subscription_id ?? "");
-  if (String(data?.store ?? "") !== "razorpay" || !SUB_ID.test(id)) return null;
-  const sub = await fetchSubscription(id).catch(() => null);
-  return sub ? { sub, cancelAsked: data?.last_event === "cancel_requested" } : null;
-}
 
 // What went wrong in a buyer's checkout, in the checkout's own words. The pay
 // page sends Razorpay's error code here when a payment or the checkout fails,
@@ -1782,12 +1759,18 @@ app.post("/v1/billing/revenuecat", { config: { rateLimit: { max: 600, timeWindow
 /**
  * Razorpay's webhook: every renewal, failed charge, pause and cancellation.
  *
- * Signed with RAZORPAY_WEBHOOK_SECRET over the raw body (X-Razorpay-Signature).
- * With no secret it refuses everything, as the RevenueCat one does: an open
- * endpoint that grants access is a free subscription for anyone who finds it.
+ * No user auth — Razorpay is the caller — and authenticated instead by
+ * HMAC_SHA256 of the raw body with RAZORPAY_WEBHOOK_SECRET
+ * (X-Razorpay-Signature). With no secret it refuses everything, as the
+ * RevenueCat one does: an open endpoint that grants access is a free
+ * subscription for anyone who finds it.
  *
- * 200 for anything authentic, even an event with nothing to do. A write that
- * failed is the exception: that answers 500, so Razorpay sends it again.
+ * ONLY A SIGNAL. The event says which subscription changed; what is saved is
+ * that subscription as Razorpay reports it now. Webhooks arrive late, twice
+ * and out of order, and an old event can then never write an old state.
+ *
+ * 200 for anything authentic, even with nothing to do. A failed read or
+ * write answers 500, so Razorpay sends it again.
  */
 app.post("/v1/billing/razorpay", { config: { rateLimit: { max: 600, timeWindow: 60_000 } } }, async (req, reply) => {
   if (!cfg.RAZORPAY_WEBHOOK_SECRET) {
@@ -1798,13 +1781,23 @@ app.post("/v1/billing/razorpay", { config: { rateLimit: { max: 600, timeWindow: 
   if (!webhookSignatureOk(raw, String(req.headers["x-razorpay-signature"] ?? ""))) {
     return reply.code(401).send({ code: "unauthorized" });
   }
-  const body = (req.body ?? {}) as { event?: string; payload?: { subscription?: { entity?: RzSubscription } } };
+  const body = (req.body ?? {}) as {
+    event?: string;
+    payload?: { subscription?: { entity?: { id?: string } }; payment?: { entity?: { subscription_id?: string } } };
+  };
   const event = String(body.event ?? "");
-  const sub = body.payload?.subscription?.entity;
-  if (!event.startsWith("subscription.") || !sub?.id) return reply.send({ ok: true, reason: `ignored ${event}` });
-  const res = await applyRazorpaySubscription(sub, event);
-  req.log.info({ rz: res, event }, "[billing] razorpay event");
-  return reply.code(res.ok ? 200 : 500).send(res);
+  const subId = String(body.payload?.subscription?.entity?.id ?? body.payload?.payment?.entity?.subscription_id ?? "");
+  if (!SUB_ID.test(subId)) return reply.send({ ok: true, reason: `ignored ${event}` });
+  try {
+    const res = await syncSubscription(await fetchSubscription(subId), event);
+    req.log.info({ rz: res, event }, "[billing] razorpay event");
+    return reply.code(res.ok ? 200 : 500).send(res);
+  } catch (err) {
+    // Razorpay's own words go back with the 500: "The id provided does not
+    // exist" means the keys work, "Authentication failed" means they do not.
+    req.log.error({ event, subId, detail: (err as Error).message }, "[billing] razorpay event: could not read the subscription");
+    return reply.code(500).send({ ok: false, reason: "could not read the subscription", detail: (err as Error).message.slice(0, 200) });
+  }
 });
 
 /**
@@ -1971,7 +1964,13 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     // not ask them to buy it.
     entitled: entitled || isReviewer,
     billingStore: ent?.store,
-    billingManageUrl: ent?.manageUrl,
+    // Known for a Razorpay subscription: false once it has been cancelled.
+    billingRenews: ent?.renews,
+    // The pay page, signed for this account so its calls can name their
+    // caller (razorpay.payLink). Only when it IS our pay page; any other
+    // link goes out as configured.
+    payUrl: user && cfg.REVENUECAT_WEB_PAYWALL_URL?.startsWith("https://tailzu.space/pay")
+      ? payLink(cfg.REVENUECAT_WEB_PAYWALL_URL, user.id) : undefined,
     wordsUsed: usage?.month?.words ?? 0,
     // Setup's Live Activity: its first step is an account, its last a word.
     // A reviewer is shown none of it.

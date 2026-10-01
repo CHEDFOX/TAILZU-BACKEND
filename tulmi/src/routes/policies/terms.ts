@@ -54,7 +54,7 @@ const TERMS_BODY = `
 <p>If we offer a free trial, you will not be charged during the trial period. If you do not cancel before the trial ends, you will be automatically billed for the subscription.</p>
 
 <h3>3.4 Refunds</h3>
-<p>Purchases are non-refundable, except where the law requires a refund. App Store and Google Play purchases are refunded, if at all, by Apple or Google under their own policies; we do not process refunds for them. Web purchases follow our <a href="https://xooteq.com/refunds">Refund Policy</a>. Web subscriptions can be cancelled in Tailzu, under Settings, then Manage; one bought earlier through Paddle is cancelled from your Paddle receipt or at <a href="https://paddle.net">paddle.net</a>. A cancelled subscription stays active until the end of the period already paid for.</p>
+<p>Purchases are non-refundable, except where the law requires a refund. App Store and Google Play purchases are refunded, if at all, by Apple or Google under their own policies; we do not process refunds for them. Web purchases follow our <a href="https://xooteq.com/refunds">Refund Policy</a>. Web subscriptions can be cancelled in Tailzu, under Settings, then Cancel subscription; one bought earlier through Paddle is cancelled from your Paddle receipt or at <a href="https://paddle.net">paddle.net</a>. A cancelled subscription stays active until the end of the period already paid for.</p>
 
 <h3>3.5 Price changes</h3>
 <p>We may adjust subscription prices from time to time. You will be notified of any material change before it takes effect. Continued use after the change constitutes acceptance.</p>

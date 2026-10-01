@@ -1,8 +1,7 @@
 /**
- * Razorpay: the desktop's way to pay, written to the same entitlement row a
- * phone purchase writes. Razorpay and the database are both stood in for:
- * Razorpay by a fake fetch that answers its REST routes, the database by an
- * in-memory entitlements table behind the Supabase client.
+ * Razorpay web subscriptions, driven from the server. Razorpay and the
+ * database are both stood in for: Razorpay by a fake fetch answering its REST
+ * routes, the database by in-memory tables behind the Supabase client.
  */
 import { createHmac } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -17,38 +16,60 @@ process.env.MEDIA_DIR = "/tmp/tailzu-test-media";
 process.env.RAZORPAY_KEY_ID = "rzp_test_abc123";
 process.env.RAZORPAY_KEY_SECRET = "key-secret";
 process.env.RAZORPAY_WEBHOOK_SECRET = "hook-secret";
-process.env.RAZORPAY_PLAN_MONTHLY = "plan_Month1";
-process.env.RAZORPAY_PLAN_YEARLY = "plan_Year1";
+process.env.RAZORPAY_PLANS = "IN:monthly:plan_InM,IN:annual:plan_InY,world:monthly:plan_WoM,world:annual:plan_WoY,bad:entry,IN:weekly:plan_X";
 process.env.REVENUECAT_ENTITLEMENT = "TAILZU AIR";
 
+const USER = "11111111-2222-3333-4444-555555555555";
+const OTHER = "66666666-7777-8888-9999-000000000000";
+
+/** Two tables, keyed as the real ones are. */
 const db = vi.hoisted(() => ({
-  rows: new Map<string, Record<string, unknown>>(),
-  accounts: new Set<string>(),
+  entitlements: new Map<string, Record<string, unknown>>(),        // by user_id
+  razorpay_subscriptions: new Map<string, Record<string, unknown>>(), // by subscription_id
+  user: "",
 }));
 vi.mock("../src/auth/supabase.js", async (orig) => {
   const real = (await orig()) as Record<string, unknown>;
-  const table = {
-    select: () => ({
-      eq: (_c: string, id: string) => ({ maybeSingle: async () => ({ data: db.rows.get(id) ?? null, error: null }) }),
-    }),
-    upsert: async (row: Record<string, unknown>) => {
-      db.rows.set(String(row.user_id), { ...(db.rows.get(String(row.user_id)) ?? {}), ...row });
-      return { error: null };
-    },
-    update: (patch: Record<string, unknown>) => ({
-      eq: async (_c: string, id: string) => {
-        if (db.rows.has(id)) db.rows.set(id, { ...db.rows.get(id)!, ...patch });
+  const key = (t: string) => (t === "entitlements" ? "user_id" : "subscription_id");
+  const table = (t: "entitlements" | "razorpay_subscriptions") => {
+    const rows = db[t];
+    const where = (col: string, val: unknown) => [...rows.values()].filter((r) => r[col] === val);
+    return {
+      select: () => ({
+        eq: (col: string, val: unknown) => ({
+          maybeSingle: async () => ({ data: where(col, val)[0] ?? null, error: null }),
+          order: (by: string, o: { ascending: boolean }) => ({
+            limit: async (n: number) => ({
+              data: where(col, val).sort((a, b) => String(a[by] ?? "").localeCompare(String(b[by] ?? "")) * (o.ascending ? 1 : -1)).slice(0, n),
+              error: null,
+            }),
+          }),
+        }),
+      }),
+      insert: async (row: Record<string, unknown>) => {
+        rows.set(String(row[key(t)]), { created_at: new Date().toISOString(), cancel_at_period_end: false, ...row });
         return { error: null };
       },
-    }),
+      upsert: async (row: Record<string, unknown>) => {
+        const k = String(row[key(t)]);
+        rows.set(k, { created_at: new Date().toISOString(), ...(rows.get(k) ?? {}), ...row });
+        return { error: null };
+      },
+      update: (patch: Record<string, unknown>) => ({
+        eq: async (col: string, val: unknown) => {
+          for (const r of where(col, val)) rows.set(String(r[key(t)]), { ...r, ...patch });
+          return { error: null };
+        },
+      }),
+    };
   };
-  const fake = {
-    from: () => table,
-    auth: { admin: { getUserById: async (id: string) => (db.accounts.has(id)
-      ? { data: { user: { id } }, error: null }
-      : { data: { user: null }, error: { message: "User not found" } }) } },
+  const fake = { from: (t: "entitlements" | "razorpay_subscriptions") => table(t) };
+  return {
+    ...real,
+    supabase: () => fake,
+    // The in-app cancel is signed in: whoever the test says is calling.
+    resolveUser: async (h: string | undefined) => (h === "Bearer good" ? { id: db.user, token: "t" } : null),
   };
-  return { ...real, supabase: () => fake };
 });
 
 /** Razorpay's REST API, as far as this server uses it. */
@@ -57,8 +78,10 @@ const rz = vi.hoisted(() => ({
   created: [] as Array<Record<string, unknown>>,
   cancelled: [] as string[],
   plans: {
-    plan_Month1: { id: "plan_Month1", period: "monthly", interval: 1, item: { name: "Lite", amount: 19900, currency: "INR" } },
-    plan_Year1: { id: "plan_Year1", period: "yearly", interval: 1, item: { name: "Elite", amount: 149900, currency: "INR" } },
+    plan_InM: { id: "plan_InM", period: "monthly", interval: 1, item: { amount: 19900, currency: "INR" } },
+    plan_InY: { id: "plan_InY", period: "yearly", interval: 1, item: { amount: 149900, currency: "INR" } },
+    plan_WoM: { id: "plan_WoM", period: "monthly", interval: 1, item: { amount: 999, currency: "USD" } },
+    plan_WoY: { id: "plan_WoY", period: "yearly", interval: 1, item: { amount: 5999, currency: "USD" } },
   } as Record<string, unknown>,
 }));
 const realFetch = globalThis.fetch;
@@ -69,8 +92,9 @@ beforeAll(() => {
     expect(init?.headers?.Authorization).toBe(`Basic ${Buffer.from("rzp_test_abc123:key-secret").toString("base64")}`);
     const path = u.slice("https://api.razorpay.com/v1".length);
     const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
+    const missing = () => json(400, { error: { code: "BAD_REQUEST_ERROR", description: "The id provided does not exist" } });
     let m: RegExpMatchArray | null;
-    if ((m = path.match(/^\/plans\/(\w+)$/))) return rz.plans[m[1]!] ? json(200, rz.plans[m[1]!]) : json(400, { error: { code: "BAD_REQUEST_ERROR", description: "The id provided does not exist" } });
+    if ((m = path.match(/^\/plans\/(\w+)$/))) return rz.plans[m[1]!] ? json(200, rz.plans[m[1]!]) : missing();
     if (path === "/subscriptions" && init?.method === "POST") {
       const body = JSON.parse(String(init.body));
       rz.created.push(body);
@@ -80,9 +104,10 @@ beforeAll(() => {
     }
     if ((m = path.match(/^\/subscriptions\/(\w+)\/cancel$/))) {
       rz.cancelled.push(m[1]!);
-      return json(200, { ...rz.subs.get(m[1]!), status: "active" });
+      expect(JSON.parse(String(init?.body))).toEqual({ cancel_at_cycle_end: 1 });
+      return json(200, rz.subs.get(m[1]!));   // still "active" until the period ends
     }
-    if ((m = path.match(/^\/subscriptions\/(\w+)$/))) return rz.subs.has(m[1]!) ? json(200, rz.subs.get(m[1]!)) : json(400, { error: { code: "BAD_REQUEST_ERROR", description: "no such id" } });
+    if ((m = path.match(/^\/subscriptions\/(\w+)$/))) return rz.subs.has(m[1]!) ? json(200, rz.subs.get(m[1]!)) : missing();
     return json(404, {});
   }) as never;
 });
@@ -91,129 +116,129 @@ afterAll(() => { globalThis.fetch = realFetch; });
 const rzp = await import("../src/billing/razorpay.js");
 const { getEntitlement, applyRevenueCatEvent, forgetEntitlement } = await import("../src/billing/entitlements.js");
 
-const USER = "11111111-2222-3333-4444-555555555555";
-const OTHER = "66666666-7777-8888-9999-000000000000";
-const day = 86_400;
+const DAY = 86_400;
 const now = () => Math.floor(Date.now() / 1000);
 const sub = (over: Record<string, unknown> = {}) => ({
-  id: "sub_A", plan_id: "plan_Month1", status: "active",
-  current_start: now() - 5 * day, current_end: now() + 25 * day, notes: { app_user_id: USER }, ...over,
+  id: "sub_A", plan_id: "plan_InM", status: "active",
+  current_start: now() - 5 * DAY, current_end: now() + 25 * DAY, notes: { user_id: USER }, ...over,
 });
 const sign = (secret: string, data: string) => createHmac("sha256", secret).update(data).digest("hex");
+const callerOf = (userId: string) => Object.fromEntries(new URL(rzp.payLink("https://tailzu.space/pay", userId)!).searchParams);
+const row = (id = "sub_A") => db.razorpay_subscriptions.get(id)!;
+const ent = () => { forgetEntitlement(USER); return getEntitlement({ id: USER } as never); };
 
 beforeEach(() => {
-  db.rows.clear(); db.accounts.clear(); db.accounts.add(USER);
+  db.entitlements.clear(); db.razorpay_subscriptions.clear(); db.user = USER;
   rz.subs.clear(); rz.created.length = 0; rz.cancelled.length = 0;
-  forgetEntitlement(USER);
+  forgetEntitlement(USER); forgetEntitlement(OTHER);
   rzp.forgetPlans();
 });
 
+describe("the plans on sale", () => {
+  it("are the configured ones, tagged by market, and nothing malformed", () => {
+    expect(rzp.sellablePlans()).toEqual([
+      { market: "IN", period: "monthly", id: "plan_InM" },
+      { market: "IN", period: "annual", id: "plan_InY" },
+      { market: "world", period: "monthly", id: "plan_WoM" },
+      { market: "world", period: "annual", id: "plan_WoY" },
+    ]);
+    expect(rzp.planFor("world", "annual")?.id).toBe("plan_WoY");
+  });
+
+  it("read like prices", async () => {
+    expect(rzp.formatPrice((await rzp.fetchPlan("plan_InY"))!)).toBe("₹1,499");
+    expect(rzp.formatPrice((await rzp.fetchPlan("plan_WoM"))!)).toBe("$9.99");
+    expect(rzp.formatPeriod((await rzp.fetchPlan("plan_WoY"))!)).toBe("a year");
+  });
+});
+
 describe("signatures", () => {
-  it("a checkout is genuine only with Razorpay's signature over payment|subscription", () => {
+  it("a checkout: HMAC_SHA256(payment_id|subscription_id) with the key secret", () => {
     const good = sign("key-secret", "pay_1|sub_A");
     expect(rzp.checkoutSignatureOk("pay_1", "sub_A", good)).toBe(true);
     expect(rzp.checkoutSignatureOk("pay_1", "sub_B", good)).toBe(false);
-    expect(rzp.checkoutSignatureOk("pay_1", "sub_A", "0".repeat(64))).toBe(false);
     expect(rzp.checkoutSignatureOk("pay_1", "sub_A", "")).toBe(false);
   });
 
-  it("a webhook is genuine only with the webhook secret over the exact body", () => {
+  it("a webhook: HMAC of the exact raw body with the webhook secret", () => {
     const raw = '{"event":"subscription.charged"}';
     expect(rzp.webhookSignatureOk(raw, sign("hook-secret", raw))).toBe(true);
-    expect(rzp.webhookSignatureOk(raw + " ", sign("hook-secret", raw))).toBe(false);
+    expect(rzp.webhookSignatureOk(`${raw} `, sign("hook-secret", raw))).toBe(false);
     expect(rzp.webhookSignatureOk(raw, sign("key-secret", raw))).toBe(false);
   });
 
-  it("a manage link opens one account's plan, and only until it expires", () => {
-    const link = new URL(rzp.manageLink(USER)!);
-    expect(link.origin + link.pathname).toBe("https://tailzu.space/pay/manage");
-    const [u, e, t] = ["u", "e", "t"].map((k) => link.searchParams.get(k));
-    expect(rzp.manageLinkUser(u, e, t)).toBe(USER);
-    expect(rzp.manageLinkUser(OTHER, e, t)).toBeNull();
-    expect(rzp.manageLinkUser(u, String(Number(e) + day), t)).toBeNull();
-    const old = new URL(rzp.manageLink(USER, Date.now() - 30 * day * 1000)!);
-    expect(rzp.manageLinkUser(old.searchParams.get("u"), old.searchParams.get("e"), old.searchParams.get("t"))).toBeNull();
+  it("the pay link names one caller, and only until it expires", () => {
+    const c = callerOf(USER);
+    expect(rzp.payLinkUser(c.u, c.e, c.t)).toBe(USER);
+    expect(rzp.payLinkUser(OTHER, c.e, c.t)).toBeNull();
+    expect(rzp.payLinkUser(c.u, String(Number(c.e) + DAY), c.t)).toBeNull();
+    const old = Object.fromEntries(new URL(rzp.payLink("https://tailzu.space/pay", USER, Date.now() - 30 * DAY * 1000)!).searchParams);
+    expect(rzp.payLinkUser(old.u, old.e, old.t)).toBeNull();
   });
 });
 
-describe("prices, as Razorpay holds them", () => {
-  it("reads like a price", async () => {
-    expect(rzp.formatPrice((await rzp.fetchPlan("plan_Month1"))!)).toBe("₹199");
-    expect(rzp.formatPrice((await rzp.fetchPlan("plan_Year1"))!)).toBe("₹1,499");
-    expect(rzp.formatPeriod((await rzp.fetchPlan("plan_Year1"))!)).toBe("a year");
-    expect(rzp.formatPrice({ id: "p", period: "monthly", interval: 1, item: { amount: 999, currency: "USD" } })).toBe("$9.99");
-    expect(await rzp.fetchPlan("plan_Missing")).toBeNull();
+describe("what a status entitles", () => {
+  const end = (now() + 10 * DAY) * 1000;
+  const at = Date.now();
+  const w = (status: string, cancel = false) => rzp.entitlementWindow({ status, current_end: end / 1000 }, cancel, at);
+  it("active and authenticated: to the period's end plus 24 hours", () => {
+    expect(w("active").until).toBe(end + 24 * 3600_000);
+    expect(w("authenticated").until).toBe(end + 24 * 3600_000);
+  });
+  it("pending: a grace while Razorpay retries the renewal", () => {
+    expect(w("pending").until!).toBeGreaterThan(end + 24 * 3600_000);
+  });
+  it("cancelled, or cancelled in the app: to the period's end, no slack", () => {
+    expect(w("cancelled").until).toBe(end);
+    expect(w("active", true).until).toBe(end);
+  });
+  it("halted, completed, expired, paused: locked; created: nothing paid", () => {
+    for (const s of ["halted", "completed", "expired", "paused", "created"]) expect(w(s).until, s).toBeNull();
   });
 });
 
-describe("a subscription's state becomes the entitlement row", () => {
-  it("an active subscription grants, to the account in its notes, until its period ends", async () => {
-    const res = await rzp.applyRazorpaySubscription(sub(), "subscription.charged");
-    expect(res).toMatchObject({ ok: true, userId: USER, active: true });
-    const row = db.rows.get(USER)!;
-    expect(row).toMatchObject({ active: true, store: "razorpay", subscription_id: "sub_A", entitlement: "TAILZU AIR", environment: "SANDBOX" });
-    expect(Date.parse(String(row.expires_at))).toBe(sub().current_end * 1000);
-    const ent = await getEntitlement({ id: USER } as never);
-    expect(ent).toMatchObject({ active: true, store: "razorpay" });
-    expect(ent!.manageUrl).toMatch(/^https:\/\/tailzu\.space\/pay\/manage\?u=/);
+describe("saving a subscription's state", () => {
+  it("entitles the account in its notes, in Razorpay's own table", async () => {
+    const res = await rzp.syncSubscription(sub(), "subscription.charged");
+    expect(res).toMatchObject({ ok: true, userId: USER });
+    expect(row()).toMatchObject({ user_id: USER, plan_id: "plan_InM", market: "IN", status: "active", environment: "TEST", cancel_at_period_end: false });
+    expect(db.entitlements.size).toBe(0);   // RevenueCat's table is not touched
+    expect(await ent()).toMatchObject({ active: true, store: "razorpay", renews: true });
   });
 
-  it("is not about Tailzu when the plan is not ours, and is about nobody with no account id", async () => {
-    expect((await rzp.applyRazorpaySubscription(sub({ plan_id: "plan_Other" }), "subscription.charged")).reason).toContain("not a Tailzu plan");
-    expect((await rzp.applyRazorpaySubscription(sub({ notes: [] }), "subscription.charged")).ok).toBe(false);
-    expect(db.rows.size).toBe(0);
+  it("refuses a plan not on sale, a subscription with no user_id, and one that changed hands", async () => {
+    expect((await rzp.syncSubscription(sub({ plan_id: "plan_Other" }), "x")).reason).toContain("not a Tailzu plan");
+    expect((await rzp.syncSubscription(sub({ notes: [] }), "x")).ok).toBe(false);
+    await rzp.syncSubscription(sub(), "x");
+    expect((await rzp.syncSubscription(sub({ notes: { user_id: OTHER } }), "x")).ok).toBe(false);
+    expect(row().user_id).toBe(USER);
   });
 
-  it("grants nothing before anything is charged", async () => {
-    await rzp.applyRazorpaySubscription(sub({ status: "authenticated" }), "subscription.authenticated");
-    expect(db.rows.size).toBe(0);
+  it("halted locks at once", async () => {
+    await rzp.syncSubscription(sub(), "x");
+    await rzp.syncSubscription(sub({ status: "halted" }), "x");
+    rz.subs.set("sub_A", sub({ status: "halted" }));
+    expect(await ent()).toBeNull();
   });
 
-  it("cancelled keeps what was paid for; halted ends it now", async () => {
-    await rzp.applyRazorpaySubscription(sub(), "subscription.charged");
-    await rzp.applyRazorpaySubscription(sub({ status: "cancelled" }), "subscription.cancelled");
-    expect(db.rows.get(USER)!.active).toBe(true);
-    await rzp.applyRazorpaySubscription(sub({ status: "halted" }), "subscription.halted");
-    expect(db.rows.get(USER)!.active).toBe(false);
+  it("RevenueCat cannot overwrite it, and it cannot overwrite RevenueCat", async () => {
+    await rzp.syncSubscription(sub(), "x");
+    await applyRevenueCatEvent({ type: "EXPIRATION", app_user_id: USER, entitlement_ids: ["TAILZU AIR"] }, "TAILZU AIR");
+    expect(row().status).toBe("active");
+    expect(await ent()).toMatchObject({ store: "razorpay" });
+
+    db.razorpay_subscriptions.clear();
+    db.entitlements.set(USER, { user_id: USER, entitlement: "TAILZU AIR", active: true, store: "app_store", expires_at: new Date(Date.now() + 9e8).toISOString() });
+    await rzp.syncSubscription(sub({ status: "halted" }), "x");
+    expect(db.entitlements.get(USER)!.store).toBe("app_store");
+    expect(await ent()).toMatchObject({ store: "app_store" });
   });
 
-  it("a late charge for an earlier period does not pull the end date back", async () => {
-    await rzp.applyRazorpaySubscription(sub({ current_end: now() + 60 * day }), "subscription.charged");
-    await rzp.applyRazorpaySubscription(sub({ current_end: now() + 25 * day }), "subscription.charged");
-    expect(Date.parse(String(db.rows.get(USER)!.expires_at))).toBe((now() + 60 * day) * 1000);
-  });
-
-  it("an old subscription ending does not end the new one, nor one from the App Store", async () => {
-    await rzp.applyRazorpaySubscription(sub({ id: "sub_New" }), "subscription.charged");
-    const old = await rzp.applyRazorpaySubscription(sub({ id: "sub_Old", status: "halted" }), "subscription.halted");
-    expect(old.reason).toContain("ignored");
-    expect(db.rows.get(USER)!.active).toBe(true);
-
-    db.rows.set(USER, { user_id: USER, active: true, store: "app_store", expires_at: new Date(Date.now() + 9e8).toISOString() });
-    await rzp.applyRazorpaySubscription(sub({ status: "halted" }), "subscription.halted");
-    expect(db.rows.get(USER)!.store).toBe("app_store");
-  });
-
-  it("RevenueCat's expiry for another store does not switch off a live Razorpay subscription", async () => {
-    await rzp.applyRazorpaySubscription(sub(), "subscription.charged");
-    const res = await applyRevenueCatEvent({ type: "EXPIRATION", app_user_id: USER, entitlement_ids: ["TAILZU AIR"], store: "APP_STORE" }, "TAILZU AIR");
-    expect(res.reason).toContain("live Razorpay subscription");
-    expect(db.rows.get(USER)!.active).toBe(true);
-  });
-
-  it("a lapsed row is asked about before it is believed: a missed renewal does not end access", async () => {
-    db.rows.set(USER, { user_id: USER, entitlement: "TAILZU AIR", active: true, store: "razorpay", subscription_id: "sub_A",
-      expires_at: new Date(Date.now() - 5 * day * 1000).toISOString() });
-    rz.subs.set("sub_A", sub({ current_end: now() + 20 * day }));
-    const ent = await getEntitlement({ id: USER } as never);
-    expect(ent).toMatchObject({ active: true, store: "razorpay" });
-    expect(Date.parse(String(db.rows.get(USER)!.expires_at))).toBe((now() + 20 * day) * 1000);
-  });
-
-  it("a renewal still being retried keeps access through the grace", async () => {
-    db.rows.set(USER, { user_id: USER, entitlement: "TAILZU AIR", active: true, store: "razorpay", subscription_id: "sub_A",
-      expires_at: new Date(Date.now() - 3600_000).toISOString() });
-    expect(await getEntitlement({ id: USER } as never)).not.toBeNull();
+  it("a row that ran out is read back from Razorpay before it is believed", async () => {
+    await rzp.syncSubscription(sub({ current_end: now() - 3 * DAY }), "x");
+    rz.subs.set("sub_A", sub({ current_end: now() + 27 * DAY }));   // renewed; the webhook never came
+    expect(await ent()).toMatchObject({ active: true, store: "razorpay" });
+    expect(Date.parse(String(row().period_end))).toBe((now() + 27 * DAY) * 1000);
   });
 });
 
@@ -225,76 +250,108 @@ describe("the routes", () => {
   });
   afterAll(async () => { await app.close(); });
 
-  it("the pay page shows Razorpay's prices and the saving between them", async () => {
+  it("the pay page carries both markets at Razorpay's prices, under a policy that allows Razorpay", async () => {
     const r = await app.inject({ method: "GET", url: "/pay" });
     expect(r.statusCode).toBe(200);
-    expect(r.body).toContain("₹199");
-    expect(r.body).toContain("₹1,499");
-    expect(r.body).toContain("Save 35%");
-    expect(r.body).toContain('"key":"rzp_test_abc123"');
+    for (const p of ["₹199", "₹1,499", "$9.99", "$59.99"]) expect(r.body).toContain(p);
+    expect(r.body).toContain('data-market="IN" data-period="annual"');
+    expect(r.body).toContain('tz === "Asia/Kolkata"');
+    const csp = String(r.headers["content-security-policy"]);
+    expect(csp).toContain("https://*.razorpay.com");
+    const nonce = /'nonce-([^']+)'/.exec(csp)![1];
+    expect(r.body).toContain(`<script nonce="${nonce}">`);
     expect(r.body).not.toContain("key-secret");
   });
 
-  it("makes a subscription carrying the account id, for an account that exists and does not already pay", async () => {
-    const r = await app.inject({ method: "POST", url: "/v1/pay/razorpay/subscription", payload: { user: USER, plan: "annual" } });
+  it("makes the subscription itself, for the signed caller, from a plan on sale", async () => {
+    const c = callerOf(USER);
+    const r = await app.inject({ method: "POST", url: "/v1/pay/razorpay/subscription", payload: { ...c, market: "world", period: "annual" } });
     expect(r.statusCode).toBe(200);
-    expect(r.json().subscriptionId).toMatch(/^sub_/);
-    expect(rz.created[0]).toMatchObject({ plan_id: "plan_Year1", notes: { app_user_id: USER }, total_count: 10 });
+    expect(rz.created[0]).toMatchObject({ plan_id: "plan_WoY", notes: { user_id: USER }, total_count: 10 });
+    expect(row(r.json().subscriptionId)).toMatchObject({ user_id: USER, status: "created", market: "world" });
 
-    expect((await app.inject({ method: "POST", url: "/v1/pay/razorpay/subscription", payload: { user: OTHER, plan: "annual" } })).statusCode).toBe(404);
-    expect((await app.inject({ method: "POST", url: "/v1/pay/razorpay/subscription", payload: { user: USER, plan: "lifetime" } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: "/v1/pay/razorpay/subscription", payload: { u: USER, e: c.e, t: "forged", market: "IN", period: "monthly" } })).statusCode).toBe(401);
+    expect((await app.inject({ method: "POST", url: "/v1/pay/razorpay/subscription", payload: { ...c, market: "IN", period: "weekly" } })).statusCode).toBe(400);
 
-    await rzp.applyRazorpaySubscription(sub(), "subscription.charged");
-    const again = await app.inject({ method: "POST", url: "/v1/pay/razorpay/subscription", payload: { user: USER, plan: "monthly" } });
+    await rzp.syncSubscription(sub(), "x");
+    const again = await app.inject({ method: "POST", url: "/v1/pay/razorpay/subscription", payload: { ...c, market: "IN", period: "monthly" } });
     expect(again.statusCode).toBe(409);
     expect(again.json().code).toBe("already_subscribed");
   });
 
-  it("a checkout's success unlocks at once, and only with Razorpay's signature", async () => {
+  it("verify unlocks at once, only with Razorpay's signature, and only for the caller's own subscription", async () => {
     rz.subs.set("sub_A", sub());
-    const bad = await app.inject({ method: "POST", url: "/v1/pay/razorpay/verify",
-      payload: { razorpay_payment_id: "pay_1", razorpay_subscription_id: "sub_A", razorpay_signature: "f".repeat(64) } });
-    expect(bad.statusCode).toBe(400);
-    expect(db.rows.size).toBe(0);
-    const ok = await app.inject({ method: "POST", url: "/v1/pay/razorpay/verify",
-      payload: { razorpay_payment_id: "pay_1", razorpay_subscription_id: "sub_A", razorpay_signature: sign("key-secret", "pay_1|sub_A") } });
-    expect(ok.json()).toEqual({ ok: true, active: true });
-    expect(db.rows.get(USER)!.active).toBe(true);
+    const proof = { razorpay_payment_id: "pay_1", razorpay_subscription_id: "sub_A", razorpay_signature: sign("key-secret", "pay_1|sub_A") };
+    expect((await app.inject({ method: "POST", url: "/v1/pay/razorpay/verify", payload: { ...callerOf(USER), ...proof, razorpay_signature: "f".repeat(64) } })).statusCode).toBe(400);
+    const theirs = await app.inject({ method: "POST", url: "/v1/pay/razorpay/verify", payload: { ...callerOf(OTHER), ...proof } });
+    expect(theirs.statusCode).toBe(403);
+    expect(db.razorpay_subscriptions.size).toBe(0);
+    const ok = await app.inject({ method: "POST", url: "/v1/pay/razorpay/verify", payload: { ...callerOf(USER), ...proof } });
+    expect(ok.json()).toEqual({ ok: true, entitled: true });
+    expect(await ent()).toMatchObject({ store: "razorpay" });
   });
 
-  it("the webhook checks the signature over the raw body, then writes the row", async () => {
-    const payload = JSON.stringify({ event: "subscription.charged", payload: { subscription: { entity: sub() } } });
-    const forged = await app.inject({ method: "POST", url: "/v1/billing/razorpay", payload,
-      headers: { "content-type": "application/json", "x-razorpay-signature": sign("wrong", payload) } });
+  it("the webhook needs no user, checks the raw body's signature, and saves what Razorpay says now", async () => {
+    rz.subs.set("sub_A", sub({ status: "halted" }));   // what Razorpay says NOW
+    const stale = JSON.stringify({ event: "subscription.charged", payload: { subscription: { entity: sub() } } });
+    const forged = await app.inject({ method: "POST", url: "/v1/billing/razorpay", payload: stale,
+      headers: { "content-type": "application/json", "x-razorpay-signature": sign("wrong", stale) } });
     expect(forged.statusCode).toBe(401);
-    expect(db.rows.size).toBe(0);
-    const real = await app.inject({ method: "POST", url: "/v1/billing/razorpay", payload,
-      headers: { "content-type": "application/json", "x-razorpay-signature": sign("hook-secret", payload) } });
+    const real = await app.inject({ method: "POST", url: "/v1/billing/razorpay", payload: stale,
+      headers: { "content-type": "application/json", "x-razorpay-signature": sign("hook-secret", stale) } });
     expect(real.statusCode).toBe(200);
-    expect(db.rows.get(USER)).toMatchObject({ active: true, store: "razorpay", last_event: "subscription.charged" });
-    const other = JSON.stringify({ event: "payment.captured", payload: {} });
-    const ignored = await app.inject({ method: "POST", url: "/v1/billing/razorpay", payload: other,
-      headers: { "content-type": "application/json", "x-razorpay-signature": sign("hook-secret", other) } });
-    expect(ignored.statusCode).toBe(200);
+    // The event said "charged"; Razorpay said "halted". Razorpay wins.
+    expect(row().status).toBe("halted");
+    expect(row().entitled_until).toBeNull();
+
+    const unknown = JSON.stringify({ event: "subscription.charged", payload: { subscription: { entity: { id: "sub_Nope" } } } });
+    const r = await app.inject({ method: "POST", url: "/v1/billing/razorpay", payload: unknown,
+      headers: { "content-type": "application/json", "x-razorpay-signature": sign("hook-secret", unknown) } });
+    expect(r.statusCode).toBe(500);   // Razorpay retries
+    expect(r.json().detail).toContain("does not exist");
   });
 
-  it("the manage link shows the plan and cancels at the end of the period", async () => {
-    rz.subs.set("sub_A", sub({ plan_id: "plan_Year1" }));
-    await rzp.applyRazorpaySubscription(rz.subs.get("sub_A") as never, "subscription.charged");
-    const link = new URL(rzp.manageLink(USER)!);
-    const page = await app.inject({ method: "GET", url: `/pay/manage${link.search}` });
-    expect(page.body).toContain("Elite, yearly");
-    expect(page.body).toContain('id="cancel"');
+  it("cancel in the app: at the period's end, access kept, and a later 'active' does not bring renewal back", async () => {
+    rz.subs.set("sub_A", sub({ plan_id: "plan_InY" }));
+    await rzp.syncSubscription(rz.subs.get("sub_A") as never, "x");
+    expect((await app.inject({ method: "POST", url: "/v1/billing/razorpay/cancel" })).statusCode).toBe(401);
 
-    const q = Object.fromEntries(link.searchParams);
-    expect((await app.inject({ method: "POST", url: "/v1/pay/razorpay/cancel", payload: { ...q, t: "nope" } })).statusCode).toBe(401);
-    const c = await app.inject({ method: "POST", url: "/v1/pay/razorpay/cancel", payload: q });
-    expect(c.json()).toEqual({ ok: true });
+    const c = await app.inject({ method: "POST", url: "/v1/billing/razorpay/cancel", headers: { authorization: "Bearer good" } });
+    expect(c.statusCode).toBe(200);
+    expect(c.json().ok).toBe(true);
+    expect(c.json().message).toMatch(/^Cancelled\. Unlimited stays on until /);
     expect(rz.cancelled).toEqual(["sub_A"]);
-    // Still paid up, and the page now says it will not renew.
-    expect(db.rows.get(USER)!.active).toBe(true);
-    expect((await app.inject({ method: "GET", url: `/pay/manage${link.search}` })).body).toContain("will not renew");
+    expect(row().cancel_at_period_end).toBe(true);
+    expect(await ent()).toMatchObject({ active: true, renews: false });
 
-    expect((await app.inject({ method: "GET", url: "/pay/manage?u=x&e=1&t=y" })).body).toContain("This link has expired");
+    // Razorpay still says "active" until the period ends, and says so in a webhook.
+    const hook = JSON.stringify({ event: "subscription.charged", payload: { subscription: { entity: { id: "sub_A" } } } });
+    await app.inject({ method: "POST", url: "/v1/billing/razorpay", payload: hook,
+      headers: { "content-type": "application/json", "x-razorpay-signature": sign("hook-secret", hook) } });
+    expect(row().cancel_at_period_end).toBe(true);
+    expect(Date.parse(String(row().entitled_until))).toBe(Number(sub().current_end) * 1000);
+    expect(await ent()).toMatchObject({ renews: false });
+
+    // Cancelling twice is not a second call to Razorpay.
+    await app.inject({ method: "POST", url: "/v1/billing/razorpay/cancel", headers: { authorization: "Bearer good" } });
+    expect(rz.cancelled).toEqual(["sub_A"]);
+  });
+
+  it("the cancel screen says what happens, and the bootstrap hands the desktop a signed pay link", async () => {
+    const { buildScreen, buildBootstrap } = await import("../src/experience/catalog.js");
+    const until = new Date(Date.now() + 20 * DAY * 1000).toISOString();
+    const live = JSON.stringify(buildScreen("cancel_subscription", { personality: {}, language: "en", entitlement: { store: "razorpay", expiresAt: until, renews: true } } as never));
+    expect(live).toContain("/v1/billing/razorpay/cancel");
+    expect(live).toContain("You will not be charged again");
+    const ending = JSON.stringify(buildScreen("cancel_subscription", { personality: {}, language: "en", entitlement: { store: "razorpay", expiresAt: until, renews: false } } as never));
+    expect(ending).toContain("Already cancelled");
+    expect(ending).not.toContain("/v1/billing/razorpay/cancel");
+    const store = JSON.stringify(buildScreen("cancel_subscription", { personality: {}, language: "en", entitlement: { store: "app_store" } } as never));
+    expect(store).toContain("Nothing to cancel here");
+
+    const b = buildBootstrap({ entitled: true, billingStore: "razorpay", billingRenews: false, formFactor: "desktop",
+      payUrl: rzp.payLink("https://tailzu.space/pay", USER) } as never) as { flags: Record<string, unknown> };
+    expect(b.flags["billing.manage.razorpay"]).toBe(true);
+    expect(b.flags["billing.ending"]).toBe(true);
   });
 });

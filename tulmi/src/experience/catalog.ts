@@ -1823,8 +1823,12 @@ export function buildBootstrap(
      * one, which bills them twice for the same entitlement.
      */
     billingStore?: string;
-    /** The subscriber's own manage page, when it is ours (Razorpay). */
-    billingManageUrl?: string;
+    /** False once a Razorpay subscription has been cancelled (it then runs
+     *  only to its period's end). Unknown for the stores'. */
+    billingRenews?: boolean;
+    /** The pay page signed for this account (razorpay.payLink), sent to a
+     *  desktop in place of the configured link. */
+    payUrl?: string;
     /**
      * "phone" (the default, and every mobile client) or "desktop".
      *
@@ -1969,7 +1973,7 @@ export function buildBootstrap(
         // sending an external purchase link to an iOS build is the
         // anti-steering rule Apple rejects for, and the surest way to get one.
         ...(opts.formFactor === "desktop" && getConfig().REVENUECAT_WEB_PAYWALL_URL
-          ? { "paywall.web.url": getConfig().REVENUECAT_WEB_PAYWALL_URL }
+          ? { "paywall.web.url": opts.payUrl ?? getConfig().REVENUECAT_WEB_PAYWALL_URL }
           : {}),
 
         // Post-splash intro — max duration + background. `intro.media` is
@@ -2008,7 +2012,10 @@ export function buildBootstrap(
         // set, so every launch waited out the first-run splash.
         "boot.firstRun": opts.onboarded !== true,
         ...(opts.billingStore ? { "billing.store": opts.billingStore } : {}),
-        ...(opts.entitled === true ? manageFlags(opts.billingStore, opts.billingManageUrl) : {}),
+        ...(opts.entitled === true ? manageFlags(opts.billingStore) : {}),
+        // A Razorpay subscription is cancelled in the app; once it has been,
+        // the row offering that turns into the date it ends.
+        ...(opts.entitled === true && opts.billingRenews === false ? { "billing.ending": true } : {}),
         "quota.wordsUsed": Math.max(0, Math.round(opts.wordsUsed ?? 0)),
         // The CEILING, earned words included. `quota.wordsFree` keeps its name
         // because every existing client reads it; what changed is that it is no
@@ -3984,8 +3991,9 @@ export const PAYWALL_CONFIG: PaywallConfig = {
  * that guesses "Monthly" at somebody on the annual plan is worse than one
  * that says nothing about it.
  */
-function subscribedScreen(store?: string, expiresAt?: string): ScreenResponse {
+function subscribedScreen(store?: string, expiresAt?: string, renewing?: boolean): ScreenResponse {
   const where = MANAGE_AT.find(([, stores]) => stores.includes(String(store ?? "").toLowerCase()));
+  const razorpay = String(store ?? "").toLowerCase() === "razorpay";
   // WHO IS CHARGING, AND WHEN NEXT. The one thing the big subscriptions put on
   // this screen that we did not, and the pair of facts somebody actually came
   // for: a subscription with no date on it reads as something you have rather
@@ -3994,7 +4002,7 @@ function subscribedScreen(store?: string, expiresAt?: string): ScreenResponse {
   //
   // Said only when both are known. "Renews soon", or a date with no biller
   // against it, is the shape of a number nobody can check.
-  const renews = renewLine(where?.[4], expiresAt);
+  const renews = razorpay ? renewLine("Razorpay", expiresAt, renewing !== false) : renewLine(where?.[4], expiresAt);
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId: "paywall",
@@ -4033,6 +4041,14 @@ function subscribedScreen(store?: string, expiresAt?: string): ScreenResponse {
               on: { onPress: { kind: "openUrl", url: where[3] } as ActionRef },
             } as Node]
           : []),
+        // Razorpay has no page of its own for this: it is cancelled here.
+        ...(razorpay && renewing !== false
+          ? [{
+              type: "Row",
+              props: { label: "Cancel subscription" },
+              on: { onPress: { kind: "navigate", screenId: "cancel_subscription" } as ActionRef },
+            } as Node]
+          : []),
         {
           type: "Button",
           props: { label: "Done", variant: "primary" },
@@ -4060,7 +4076,7 @@ function subscribedScreen(store?: string, expiresAt?: string): ScreenResponse {
  */
 function paywallScreen(
   isDesktop = false,
-  live?: { store?: string; expiresAt?: string } | null,
+  live?: { store?: string; expiresAt?: string; renews?: boolean } | null,
   // Where a purchase lands: the phone's Stats, or the desk's Today.
   landing: ActionSpec = { kind: "navigate", screenId: "stats" },
 ): ScreenResponse {
@@ -4077,7 +4093,7 @@ function paywallScreen(
   // has one looks like. Nothing to choose, nothing to refuse, and the store
   // named exactly once — in the one place somebody would look for it, which
   // is when they want to stop or change it.
-  if (live) return subscribedScreen(live.store, live.expiresAt);
+  if (live) return subscribedScreen(live.store, live.expiresAt, live.renews);
   const cfg = PAYWALL_CONFIG;
   const pw = PAYWALL_UI;
   const dk = pw.desktop;
@@ -4429,7 +4445,7 @@ export interface ScreenContext {
    * page: a screen that hid the plans because a lookup failed would be a
    * screen nobody could buy from.
    */
-  entitlement?: { store?: string; expiresAt?: string; manageUrl?: string } | null;
+  entitlement?: { store?: string; expiresAt?: string; renews?: boolean } | null;
   language: string;
   email?: string;
   /** Set instead of `email` for an SMS-only account. */
@@ -4611,7 +4627,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       name: ctx.name,
       tzOffsetMinutes: ctx.tzOffsetMinutes,
       plans: PAYWALL_CONFIG.plans,
-      manageUrl: ctx.entitlement ? String(manageFlags(ctx.entitlement.store, ctx.entitlement.manageUrl)["billing.manage.url"] ?? "") || undefined : undefined,
+      manageUrl: ctx.entitlement ? String(manageFlags(ctx.entitlement.store)["billing.manage.url"] ?? "") || undefined : undefined,
       // Dimmed to sit behind the Train page's words, as on the phone's card.
       update: updateFor(ctx.appVersion, ctx.os, DESKTOP_LATEST),
       selfUpdate: ctx.can?.has("DeskSelfUpdate") === true,
@@ -4637,6 +4653,8 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       return languagesScreen(ctx);
     case "delete_account":
       return deleteAccountScreen();
+    case "cancel_subscription":
+      return cancelSubscriptionScreen(ctx);
     case WORDS_GATE.outScreenId:
       return freeForAll() ? freeNowScreen(WORDS_GATE.outScreenId) : wordsOutScreen(ctx);
     case "reply":
@@ -8916,10 +8934,15 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         // cancelled anywhere else. At most one of these is visible, and none
         // is for a store nothing here can send them to.
         ...MANAGE_AT.map(([key, , label, url]) => ({
-          // A Razorpay subscriber's own page, signed for them, where one exists.
-          ...row(label, { kind: "openUrl", url: (key === "web" && ctx.entitlement?.manageUrl) || url }, { props: { label } }),
+          ...row(label, { kind: "openUrl", url }, { props: { label } }),
           visibleIf: { all: [{ flag: "billing.entitled" }, { flag: `billing.manage.${key}` }] },
         })),
+        // Razorpay, billed on the web, is cancelled here in the app.
+        {
+          ...row("Cancel subscription · billed on the web", { kind: "navigate", screenId: "cancel_subscription" },
+            { props: { label: "Cancel subscription · billed on the web" } }),
+          visibleIf: { all: [{ flag: "billing.entitled" }, { flag: "billing.manage.razorpay" }, { not: { flag: "billing.ending" } }] },
+        },
 
         // Preferences
 
@@ -8964,9 +8987,9 @@ const MANAGE_AT: [string, string[], string, string, string][] = [
   ["google", ["play_store"], "Change or cancel · Google Play", "https://play.google.com/store/account/subscriptions", "Google Play"],
   // Paddle and Stripe each mail a management link on purchase, to a
   // per-customer URL this server never holds. Support is the one address that
-  // is true for every one of them. Razorpay has no customer page at all; its
-  // subscribers get Tailzu's own (/pay/manage), passed in as `url` below.
-  ["web", ["paddle", "stripe", "rc_billing", "razorpay"], "Change or cancel · billed on the web", "mailto:support@tailzu.space", "the web"],
+  // is true for every one of them. (Razorpay is not here: it is cancelled in
+  // the app — see manageFlags and cancelSubscriptionScreen.)
+  ["web", ["paddle", "stripe", "rc_billing"], "Change or cancel · billed on the web", "mailto:support@tailzu.space", "the web"],
 ];
 
 /**
@@ -8977,12 +9000,65 @@ const MANAGE_AT: [string, string[], string, string, string][] = [
  * nobody can check against their bank. A lifetime grant has no expiry and gets
  * no line, which is correct — it never renews.
  */
-function renewLine(biller: string | undefined, expiresAt: string | undefined): string | null {
+function renewLine(biller: string | undefined, expiresAt: string | undefined, renews = true): string | null {
   if (!biller || !expiresAt) return null;
   const t = Date.parse(expiresAt);
   if (!Number.isFinite(t) || t <= Date.now()) return null;
-  const on = new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-  return `Billed through ${biller} · renews ${on}`;
+  const on = shortDate(t);
+  return renews ? `Billed through ${biller} · renews ${on}` : `Cancelled · Unlimited until ${on}`;
+}
+
+const shortDate = (t: number) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+
+/**
+ * Cancel a Razorpay subscription, from inside the app.
+ *
+ * A screen of its own rather than a one-tap row, as Delete account is: it is
+ * hard to undo, and it is the one place to say what happens next — the
+ * period already paid for runs out, nothing is charged again.
+ */
+function cancelSubscriptionScreen(ctx: ScreenContext): ScreenResponse {
+  const ent = ctx.entitlement;
+  const ours = String(ent?.store ?? "").toLowerCase() === "razorpay";
+  const end = ent?.expiresAt ? Date.parse(ent.expiresAt) : NaN;
+  const until = Number.isFinite(end) && end > Date.now() ? shortDate(end) : null;
+  const done = `Cancelled. Unlimited stays on until ${until ?? "the end of the period you paid for"}.`;
+  // The cancel call is on the screen only when there is something to cancel.
+  const say = (heading: string, body: string, buttons: Node[], offersCancel = false): ScreenResponse => ({
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "cancel_subscription",
+    title: "",
+    state: {},
+    actions: offersCancel ? {
+      confirm: { kind: "callEndpoint", method: "POST", path: "/v1/billing/razorpay/cancel", onSuccess: "cancelled", onError: "err" },
+      cancelled: { kind: "sequence", actions: [
+        { kind: "toast", message: done, tone: "success" },
+        { kind: "navigateBack" },
+      ] },
+      err: { kind: "toast", message: "Couldn't cancel. Try again.", tone: "error" },
+    } : {},
+    root: { type: "Screen", children: [
+      { type: "Heading", props: { content: heading }, style: { fontSize: 28, fontWeight: "800", color: "$color.text", marginBottom: 14 } },
+      { type: "Paragraph", props: { content: body }, style: { marginBottom: 32 } },
+      ...buttons,
+    ] },
+    cacheTtlSeconds: 0,
+  });
+  const back = (label: string, variant = "secondary"): Node =>
+    ({ type: "Button", props: { label, variant }, on: { onPress: { kind: "navigateBack" } } });
+  if (!ours) {
+    return say("Nothing to cancel here",
+      "There is no web subscription on this account. A subscription bought in the App Store or Google Play is cancelled there.",
+      [back("Done", "primary")]);
+  }
+  if (ent?.renews === false) return say("Already cancelled", done, [back("Done", "primary")]);
+  return say("Cancel subscription",
+    `Unlimited stays on until ${until ?? "the end of the period you paid for"}, then this account goes back to the free plan. You will not be charged again.`,
+    [
+      { type: "Button", props: { label: "Cancel subscription", variant: "danger" }, on: { onPress: "confirm" } },
+      { type: "Spacer", style: { height: 10 } },
+      back("Keep it"),
+    ], true);
 }
 
 /**
@@ -8995,11 +9071,14 @@ function renewLine(biller: string | undefined, expiresAt: string | undefined): s
  * address here, the tap can simply arrive at the place that can change the
  * plan — and when the destination moves, it moves once, here.
  */
-export function manageFlags(store: string | undefined, url?: string): Record<string, string | boolean> {
+export function manageFlags(store: string | undefined): Record<string, string | boolean> {
   const s = String(store ?? "").trim().toLowerCase();
   if (!s) return {};
+  // Razorpay is managed IN the app (the cancel_subscription screen), so it
+  // has a flag of its own and no address to send anybody to.
+  if (s === "razorpay") return { "billing.manage.razorpay": true };
   const hit = MANAGE_AT.find(([, stores]) => stores.includes(s));
-  return hit ? { [`billing.manage.${hit[0]}`]: true, "billing.manage.url": url || hit[3] } : {};
+  return hit ? { [`billing.manage.${hit[0]}`]: true, "billing.manage.url": hit[3] } : {};
 }
 
 

@@ -417,10 +417,6 @@ create table if not exists public.entitlements (
   updated_at   timestamptz not null default now()
 );
 
--- 0015: the Razorpay subscription a web or desktop purchase is about.
-alter table public.entitlements
-  add column if not exists subscription_id text;
-
 alter table public.entitlements enable row level security;
 
 -- Read your own. No insert or update policy exists on purpose: writes come
@@ -706,3 +702,37 @@ create policy "users update own notes"
   on public.notes for update
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+-- 0015: Razorpay subscriptions (web and desktop), kept apart from RevenueCat's rows.
+create table if not exists public.razorpay_subscriptions (
+  subscription_id      text primary key,
+  user_id              uuid not null references auth.users(id) on delete cascade,
+  plan_id              text not null,
+  -- "IN" or "world": which of the configured plans it was sold from.
+  market               text,
+  -- Razorpay's own status: created, authenticated, active, pending, halted,
+  -- cancelled, completed, expired, paused.
+  status               text not null,
+  -- The end of the period paid for (Razorpay's current_end).
+  period_end           timestamptz,
+  -- Access runs to here: the period end plus slack while it renews, the
+  -- period end once cancelled, nothing once halted. Computed from status.
+  entitled_until       timestamptz,
+  -- Set by Tailzu's own cancel, and never cleared by a later event: a
+  -- subscription someone cancelled stays cancelled.
+  cancel_at_period_end boolean not null default false,
+  -- TEST (rzp_test_ keys) or LIVE.
+  environment          text,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+
+create index if not exists razorpay_subscriptions_user_idx
+  on public.razorpay_subscriptions (user_id, entitled_until desc);
+
+alter table public.razorpay_subscriptions enable row level security;
+
+-- Read your own. Writes come only from the service-role key.
+drop policy if exists "read own razorpay subscriptions" on public.razorpay_subscriptions;
+create policy "read own razorpay subscriptions" on public.razorpay_subscriptions
+  for select using (auth.uid() = user_id);
