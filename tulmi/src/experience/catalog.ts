@@ -8,7 +8,7 @@
  * See ../../../shared/types/sdui.ts for the contract.
  */
 import { withAppKnobs, withKeyboardKnobs } from "./appKnobs.js";
-import { DESK_NAV, DESK_SCREENS, buildDeskScreen } from "./desk.js";
+import { DESK_SCREENS, buildDeskScreen, deskNav } from "./desk.js";
 import { PHONE_FONT, PHONE_LOOK, PHONE_ROOMS, caption, label, lineFor, phoneStatsBody, proofMark, t } from "./phoneLook.js";
 import { DESK_CONTEXTS, DESK_ROOMS, DESK_SAMPLES } from "./deskSamples.js";
 import { LANGS as ALL_LANGS } from "./languages.js";
@@ -31,7 +31,7 @@ import type {
 } from "../../../shared/types/sdui.js";
 import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
 import { applyRollouts, activeRollouts } from "./rollout.js";
-import type { HistoryEntry, PaywallConfig, PaywallPlan, Personality, StatsResponse, UsageSummary } from "../../../shared/types/api.js";
+import type { HistoryEntry, Note, NoteSummary, PaywallConfig, PaywallPlan, Personality, StatsResponse, UsageSummary } from "../../../shared/types/api.js";
 import { getConfig } from "../config.js";
 import type { Allowance } from "../usage/allowance.js";
 import { desktopOs, installerUrl, publishedRelease, updateFor } from "./desktopRelease.js";
@@ -1824,6 +1824,9 @@ export function buildBootstrap(
      * rail and the phone's screens.
      */
     desk?: boolean;
+    /** The desk's window can take notes (it said "DeskNotes"): it gets the
+     *  Notes tab. An older one has no hotkey for it and does not. */
+    deskNotes?: boolean;
     /** Signed in at all — setup's first step. */
     signedIn?: boolean;
     /** Words ever written, for setup's last step: a first sentence said. */
@@ -1834,7 +1837,7 @@ export function buildBootstrap(
 ): BootstrapResponse {
   const desk = opts.desk === true && opts.formFactor === "desktop";
   const setup = setupActivity(opts);
-  const nav = desk ? DESK_NAV : navigationFor(!!opts.landedBefore);
+  const nav = desk ? deskNav(opts.deskNotes === true) : navigationFor(!!opts.landedBefore);
   return withAppKnobs({
     schemaVersion: SDUI_SCHEMA_VERSION,
     // Opaque cache token — clients invalidate any cached screens when this
@@ -4420,6 +4423,10 @@ export interface ScreenContext {
   /** Pre-fetched history for the "history" screen (optional; the screen also
    * refetches via callEndpoint on mount for freshness). */
   history?: HistoryEntry[];
+  /** The desk's Notes page: the person's notes, newest first. */
+  notes?: NoteSummary[];
+  /** The desk's note page: the one asked for (params.noteId), null if gone. */
+  note?: Note | null;
   name?: string;
   /** Whether the user has completed onboarding — routes the intro's `done`
    * action to onboarding (new user) vs home, so the intro never skips it. */
@@ -4565,6 +4572,9 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
     return buildDeskScreen(screenId, {
       personality: ctx.personality,
       history: ctx.history,
+      notes: ctx.notes,
+      note: ctx.note,
+      notesHotkey: ctx.can?.has("DeskNotes") === true,
       usage: ctx.usage,
       stats: ctx.stats as unknown as StatsForUser | undefined,
       allowance: ctx.allowance,

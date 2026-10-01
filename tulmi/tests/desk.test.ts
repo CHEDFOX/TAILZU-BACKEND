@@ -21,7 +21,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 // eslint-disable-next-line import/first
-import { DESK_NAV, DESK_SCREENS } from "../src/experience/desk.js";
+import { DESK_NAV, DESK_SCREENS, deskNav } from "../src/experience/desk.js";
 // eslint-disable-next-line import/first
 import { writtenIn } from "../src/history/writtenIn.js";
 // eslint-disable-next-line import/first
@@ -50,6 +50,8 @@ const DESKTOP_ACTIONS = new Set([
   "delay", "reloadScreen", "navigateBack", "dismiss", "clearState", "appendState",
   "condition", "iap.subscribe", "iap.showPaywall", "iap.restore",
   "copyText", "desktop.config", "dictate", "signOut",
+  // Sent only to a window that declared DeskNotes (sdui.js runs it).
+  "notes.toggle",
 ]);
 
 type AnyNode = { type?: string; props?: Record<string, unknown>; children?: AnyNode[]; on?: Record<string, unknown> };
@@ -103,6 +105,27 @@ const sampleCtx = {
   allowance: { base: 800, earned: 0, total: 800, used: 120, remaining: 680, streakDays: 0, grants: [] },
   email: "someone@example.com",
   tzOffsetMinutes: 330,
+  notes: [
+    { id: "11111111-1111-4111-8111-111111111111", status: "ready", startedAt: iso(3_600_000), durationSeconds: 1800, words: 2400,
+      title: "Launch plan with Priya", summary: "Agreed to ship on Friday.", tags: ["launch"],
+      people: [{ label: "Speaker 1", name: "Priya" }], organised: true },
+    { id: "22222222-2222-4222-8222-222222222222", status: "failed", startedAt: iso(2 * 86_400_000), durationSeconds: 300, words: 200,
+      title: "", summary: "", tags: [], people: [], organised: false },
+  ],
+  note: {
+    id: "11111111-1111-4111-8111-111111111111", status: "ready", startedAt: iso(3_600_000), durationSeconds: 1800, words: 2400,
+    title: "Launch plan with Priya", summary: "Agreed to ship on Friday.", tags: ["launch"], organised: true,
+    people: [{ label: "Speaker 1", name: "Priya" }],
+    sections: [{ heading: "Timeline", points: ["You: the build is ready Thursday.", "Priya: wants a day of testing."] }],
+    decisions: ["Ship on Friday."],
+    actions: [{ text: "Send the release notes", owner: "Speaker 1", due: "Thursday" }, { text: "Book the demo", owner: "You" }],
+    questions: ["Who tells support?"],
+    transcript: [
+      { at: 0, speaker: "You", text: "The build is ready Thursday." },
+      { at: 6, speaker: "Speaker 1", text: "Then I want a day of testing, so Friday." },
+    ],
+  },
+  can: new Set(["DeskNotes"]),
 } as never;
 
 describe("the desk is for a window that can draw it", () => {
@@ -459,5 +482,48 @@ describe("a length of time, as a person says it", () => {
     expect(span(0.2)).toBe("12 sec");
     expect(span(65)).toBe("1 h 05");
     expect(span(9.4)).toBe("9 min");
+  });
+});
+
+describe("the desk's notes", () => {
+  it("a window that can take notes gets the Notes tab after Today; one that cannot does not", () => {
+    const withNotes = buildBootstrap({ formFactor: "desktop", desk: true, deskNotes: true } as never) as any;
+    expect(withNotes.navigation.tabs.map((t: { id: string }) => t.id)).toEqual(
+      ["desk_today", "desk_notes", ...DESK_NAV.tabs.slice(1).map((t) => t.id)]);
+    expect(deskNav(false)).toBe(DESK_NAV);
+    const older = buildBootstrap({ formFactor: "desktop", desk: true } as never) as any;
+    expect(older.navigation.tabs.some((t: { id: string }) => t.id === "desk_notes")).toBe(false);
+  });
+
+  it("the list goes by day, opens each note, and names people the writer named", () => {
+    const s = JSON.stringify(buildScreen("desk_notes", sampleCtx));
+    expect(s).toContain("Launch plan with Priya");
+    expect(s).toContain("Priya");
+    expect(s).toContain('"screenId":"desk_note","params":{"noteId":"11111111-1111-4111-8111-111111111111"}');
+    // A note the writer could not organise says so, and still has a title.
+    expect(s).toContain("Couldn't organise this one");
+    expect(s).toContain("Notes, ");
+  });
+
+  it("a note keeps people apart: owners by name, You as You, and Copy carries all of it", () => {
+    const s = buildScreen("desk_note", sampleCtx) as any;
+    const j = JSON.stringify(s);
+    expect(j).toContain("Priya · Thursday");
+    expect(j).toContain('"content":"You"');
+    const copy = [] as string[];
+    walk(s.root, (n) => {
+      const a = (n as any).on?.onPress;
+      if (a?.kind === "copyText") copy.push(a.text);
+    });
+    expect(copy[0]).toContain("Send the release notes (Priya, Thursday)");
+    expect(copy[0]).toContain("Decided\n- Ship on Friday.");
+    expect(copy[0]).toContain("People: You, Priya");
+  });
+
+  it("a gone note says so; the Notes page has a start button only where the hotkey exists", () => {
+    expect(JSON.stringify(buildScreen("desk_note", { personality: {}, language: "en", note: null } as never))).toContain("This note is gone.");
+    const empty = (can: string[]) => JSON.stringify(buildScreen("desk_notes", { personality: {}, language: "en", notes: [], can: new Set(can) } as never));
+    expect(empty(["DeskNotes"])).toContain('"kind":"notes.toggle"');
+    expect(empty([])).not.toContain("notes.toggle");
   });
 });

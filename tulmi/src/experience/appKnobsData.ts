@@ -291,7 +291,20 @@ export const APP_KNOB_LABELS: Record<string, string> = {
   "widget.month.thisMonth": "THIS MONTH",
   "widget.month.wordsLeft": "WORDS LEFT",
   "widget.month.wordsLeftTitle": "Words left",
-  "widget.month.wordsThisMonth": "Words this month"
+  "widget.month.wordsThisMonth": "Words this month",
+  // The note-taker (0.3.0+): its notifications and tray rows.
+  "desktop.notes.cantStart": "Couldn't start notes. Check the connection and try again.",
+  "desktop.notes.crashed": "Notes stopped unexpectedly. What was heard is kept in Notes.",
+  "desktop.notes.failed": "Couldn't organise those notes. What was said is kept in Notes.",
+  "desktop.notes.macPermission": "To include the computer's sound, allow Tailzu under System Settings → Privacy & Security → Screen & System Audio Recording. Your microphone is still being noted.",
+  "desktop.notes.micOnly": "Noting your microphone only: the computer's sound isn't available here.",
+  "desktop.notes.noMic": "Couldn't open the microphone, so notes did not start.",
+  "desktop.notes.nothingHeard": "No one spoke in that note, so there is nothing to organise.",
+  "desktop.notes.saving": "Notes saved. Organising them now.",
+  "desktop.notes.untitled": "Your notes",
+  "desktop.tray.notesSaving": "Saving notes…",
+  "desktop.tray.notesStart": "Take notes",
+  "desktop.tray.notesStarting": "Starting notes…",
 };
 
 export const APP_KNOB_FLAGS: Record<string, unknown> = {
@@ -2486,7 +2499,32 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "widget.month.paidSpan": 120000,
   "widget.month.refreshSec": 3600,
   "widget.month.streak": false,
-  "widget.month.url": "tulmi://screen/stats"
+  "widget.month.url": "tulmi://screen/stats",
+  // The note-taker (0.3.0+): its hotkey, stretches, levels and uploads.
+  "desktop.notes.chunkMs": 30000,
+  "desktop.notes.hotkey": "CommandOrControl+Alt+N",
+  "desktop.notes.hotkey.fallbacks": [
+    "CommandOrControl+Alt+Shift+N"
+  ],
+  "desktop.notes.maxTrackBytes": 47185920,
+  "desktop.notes.meterPollMs": 150,
+  "desktop.notes.micSpeechLevel": 0.006,
+  "desktop.notes.mimeTypes": [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus"
+  ],
+  "desktop.notes.minVoicedMs": 400,
+  "desktop.notes.monitorPattern": "monitor",
+  "desktop.notes.retryMs": 1500,
+  "desktop.notes.systemAudio": true,
+  "desktop.notes.systemSpeechLevel": 0.004,
+  "desktop.notes.trackBitrate": 24000,
+  "desktop.notes.trackTimeoutMs": 600000,
+  "desktop.notes.uploadTimeoutMs": 90000,
+  "desktop.notes.uploadTries": 5,
+  "desktop.notes.watchEveryMs": 5000,
+  "desktop.notes.watchMs": 600000,
 };
 
 /** Knobs whose app-side default comes from other inputs; sent only if set. */

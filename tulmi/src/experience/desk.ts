@@ -20,7 +20,7 @@
  */
 import type { ActionRef, Node, NavigationShell, ScreenResponse } from "../../../shared/types/sdui.js";
 import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
-import type { HistoryEntry, PaywallPlan, Personality, UsageSummary } from "../../../shared/types/api.js";
+import type { HistoryEntry, Note, NoteSummary, PaywallPlan, Personality, UsageSummary } from "../../../shared/types/api.js";
 import type { StatsForUser } from "../history/store.js";
 import type { Allowance } from "../usage/allowance.js";
 import { LANGUAGE_NAMES } from "../history/writtenIn.js";
@@ -32,7 +32,7 @@ import { span } from "./phoneLook.js";
  *  screen's "minutes saved" has always used (history/store.ts). */
 const TYPING_WPM = 40;
 
-export const DESK_SCREENS = new Set(["desk_today", "desk_insights", "desk_words", "desk_voices", "desk_train", "desk_settings", "desk_plan"]);
+export const DESK_SCREENS = new Set(["desk_today", "desk_notes", "desk_note", "desk_insights", "desk_words", "desk_voices", "desk_train", "desk_settings", "desk_plan"]);
 
 /** The desk's tabs, in the masthead. Settings and Plan are reached from its
  *  right-hand side, not from a tab. */
@@ -47,6 +47,14 @@ export const DESK_NAV: NavigationShell = {
   ],
   initialTabId: "desk_today",
 };
+
+/** The tabs for a window, with Notes after Today for one that can take them
+ *  (it declared "DeskNotes" and has the hotkey). */
+export function deskNav(notes: boolean): NavigationShell {
+  if (!notes || DESK_NAV.kind !== "tabs") return DESK_NAV;
+  const [today, ...rest] = DESK_NAV.tabs;
+  return { ...DESK_NAV, tabs: [today!, { id: "desk_notes", title: "Notes", screenId: "desk_notes" }, ...rest] };
+}
 
 /** What a desk page is built from. A subset of the catalog's ScreenContext,
  *  named here so this module does not import the catalog it is imported by. */
@@ -72,6 +80,12 @@ export interface DeskContext {
   update?: { version: string; url: string; sha512?: string } | null;
   /** This build installs its own update in place (it said "DeskSelfUpdate"). */
   selfUpdate?: boolean;
+  /** The Notes page's list, newest first. */
+  notes?: NoteSummary[];
+  /** The note page's note; null when it is gone. */
+  note?: Note | null;
+  /** This window has the notes hotkey (it said "DeskNotes"). */
+  notesHotkey?: boolean;
 }
 
 // ---- nodes ---------------------------------------------------------------------
@@ -136,7 +150,7 @@ const link = (label: string, onPress: ActionRef, cls = "d-link", style?: Style):
   const st = styled(cls, style);
   return { type: "Button", props: { label, cls }, on: { onPress }, ...(st ? { style: st } : {}) };
 };
-const keys = (source: "tap" | "hotkey", small = false): Node => ({ type: "Keys", props: { source, cls: small ? "d-keys-small" : "" }, ...(small ? { style: {} } : {}) });
+const keys = (source: "tap" | "hotkey" | "notes", small = false): Node => ({ type: "Keys", props: { source, cls: small ? "d-keys-small" : "" }, ...(small ? { style: {} } : {}) });
 const sw = (key: string, labelText: string): Node => ({
   type: "Switch", props: { cls: "d-switch", accessibilityLabel: labelText },
   bind: { value: "desktop." + key }, on: { onChange: { kind: "desktop.config", key, value: "$toggle" } },
@@ -269,7 +283,7 @@ export function deskToday(ctx: DeskContext): ScreenResponse {
   const typedMin = wordsToday / TYPING_WPM;
   const back = Math.max(0, typedMin - saidMin);
   const count = todays.length
-    ? `${todays.length} ${todays.length === 1 ? "note" : "notes"} · ${n(wordsToday)} words`
+    ? `${todays.length} ${todays.length === 1 ? "dictation" : "dictations"} · ${n(wordsToday)} words`
     : "Nothing written yet today";
 
   const room = stack([
@@ -579,6 +593,207 @@ export function deskTrain(ctx: DeskContext): ScreenResponse {
   ], ctx.field ? { paddingTop: 28 } : {})]);
 }
 
+// ---- NOTES ---------------------------------------------------------------------------
+//
+// The note-taker's pages: every note, by day, and one note in full. A note is
+// what the window heard while the hotkey was on — a meeting, a lecture, a
+// thought said aloud — organised by the writer (src/notes/organise.ts) into
+// what came up, what was decided, who will do what, and what is still open.
+// People stay apart: every point that belongs to someone says whose it is.
+
+const NOTE_STATUS: Record<string, string> = {
+  recording: "Still recording, or stopped before it finished",
+  organising: "Organising. This takes a minute",
+  failed: "Couldn't organise this one. What was heard is kept",
+};
+
+/** "You, Priya, Speaker 3" — names where the writer found them. */
+function peopleLine(people: NoteSummary["people"], transcript?: Note["transcript"]): string {
+  const named = new Map((people ?? []).map((p) => [p.label, p.name]));
+  const labels = transcript?.length
+    ? [...new Set(transcript.map((s) => s.speaker ?? "").filter(Boolean))]
+    : (people ?? []).map((p) => p.label);
+  return labels.map((l) => named.get(l) || l).join(", ");
+}
+
+function noteTitle(ctx: DeskContext, nt: Pick<NoteSummary, "title" | "startedAt">): string {
+  if (nt.title) return nt.title;
+  const d = local(ctx, Date.parse(nt.startedAt));
+  return `Notes, ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]!.slice(0, 3)} at ${clock(d)}`;
+}
+
+function dayHeading(ctx: DeskContext, iso: string): string {
+  const d = local(ctx, Date.parse(iso)), now = local(ctx, Date.now());
+  const k = dayKey(d);
+  if (k === dayKey(now)) return "Today";
+  if (k === dayKey(new Date(now.getTime() - 86_400_000))) return "Yesterday";
+  return dateLine(d);
+}
+
+const startNotes: ActionRef = { kind: "notes.toggle" };
+
+export function deskNotes(ctx: DeskContext): ScreenResponse {
+  const all = ctx.notes ?? [];
+  const minutes = all.reduce((s, x) => s + (x.durationSeconds || 0), 0) / 60;
+  const count = all.length
+    ? `${all.length} ${all.length === 1 ? "note" : "notes"} · ${span(minutes)} heard`
+    : "Nothing yet";
+
+  const room = stack([
+    row([
+      stack([
+        text("Notes", "d-eyebrow"),
+        text("Meetings, lectures, thoughts", "d-h1", { marginTop: 6 }),
+        text(count, "d-count d-on-room", { marginTop: 12 }),
+      ], { minWidth: 0 }),
+      ...(ctx.notesHotkey ? [row([
+        keys("notes", true),
+        text("to start or stop. Nothing is typed anywhere.", "d-count d-on-room", { maxWidth: 170, marginLeft: 6 }),
+      ], { align: "center", gap: 0 })] : []),
+    ], { justify: "between", align: "end", gap: 24, flexWrap: "wrap" }, "d-room-inner"),
+  ], {}, "d-room");
+
+  const body: Node[] = [];
+  if (!all.length) {
+    body.push(stack([
+      text("No notes yet.", "d-written", { fontSize: 19, lineHeight: "27px" }),
+      text("Start it in a meeting, a lecture, or on a walk around your own ideas. Tailzu listens to your microphone and to your computer's sound, tells the voices apart, and writes it up here: what came up, what was decided, who will do what, and what is still open.", "d-lede", { marginTop: 8, maxWidth: 560 }),
+      ...(ctx.notesHotkey ? [row([link("Start taking notes", startNotes, "d-btn")], { marginTop: 16 })] : []),
+    ], { paddingBottom: 26 }));
+  }
+  let lastDay = "";
+  for (const nt of all) {
+    const day = dayHeading(ctx, nt.startedAt);
+    if (day !== lastDay) {
+      body.push(text(day, "d-eyebrow", { marginTop: lastDay ? 34 : 0, marginBottom: 4 }));
+      lastDay = day;
+    }
+    const d = local(ctx, Date.parse(nt.startedAt));
+    const who = peopleLine(nt.people);
+    const status = nt.status !== "ready" ? NOTE_STATUS[nt.status] : !nt.organised ? "Nothing was heard" : "";
+    body.push(row([
+      stack([
+        text(clock(d), "d-margin-strong"),
+        ...(nt.durationSeconds ? [text(span(nt.durationSeconds / 60), "d-margin")] : []),
+      ], { width: 96, flex: "none", paddingTop: 3 }),
+      stack([
+        text(noteTitle(ctx, nt), "d-written"),
+        ...(nt.summary ? [text(nt.summary, "d-lede")] : []),
+        ...(who || status ? [text([who, status].filter(Boolean).join(" · "), "d-margin", { marginTop: 4 })] : []),
+      ], { flex: 1, minWidth: 0, gap: 4 }),
+    ], { gap: 24, paddingTop: 22, paddingBottom: 22 }, "d-entry", {
+      on: { onPress: { kind: "navigate", screenId: "desk_note", params: { noteId: nt.id } } },
+    }));
+  }
+
+  return screen("desk_notes", "Notes", [room, page([stack(body, { maxWidth: 760 })])]);
+}
+
+/** The whole note as plain text, for Copy. */
+function noteText(ctx: DeskContext, nt: Note): string {
+  const named = new Map(nt.people.map((p) => [p.label, p.name]));
+  const out = [noteTitle(ctx, nt)];
+  const who = peopleLine(nt.people, nt.transcript);
+  if (who) out.push(`People: ${who}`);
+  if (nt.summary) out.push("", nt.summary);
+  for (const s of nt.sections) out.push("", s.heading, ...s.points.map((p) => `- ${p}`));
+  if (nt.decisions.length) out.push("", "Decided", ...nt.decisions.map((p) => `- ${p}`));
+  if (nt.actions.length) {
+    out.push("", "To do", ...nt.actions.map((a) =>
+      `- ${a.text}${a.owner ? ` (${named.get(a.owner) || a.owner}${a.due ? `, ${a.due}` : ""})` : a.due ? ` (${a.due})` : ""}`));
+  }
+  if (nt.questions.length) out.push("", "Still open", ...nt.questions.map((p) => `- ${p}`));
+  return out.join("\n");
+}
+
+const block = (heading: string, items: Node[], first = false): Node => stack([
+  text(heading, "d-h2", { marginBottom: 10 }),
+  ...items,
+], { marginTop: first ? 0 : 34 });
+const point = (t: string): Node => text(t, "d-v", { paddingTop: 6, paddingBottom: 6 });
+
+export function deskNote(ctx: DeskContext): ScreenResponse {
+  const nt = ctx.note;
+  if (!nt) {
+    return screen("desk_note", "Note", [page([
+      text("Notes", "d-eyebrow"),
+      text("This note is gone.", "d-h1", { marginTop: 6 }),
+      row([link("All notes", { kind: "switchTab", tabId: "desk_notes" })], { marginTop: 18 }),
+    ])]);
+  }
+  const d = local(ctx, Date.parse(nt.startedAt));
+  const named = new Map(nt.people.map((p) => [p.label, p.name]));
+  const who = peopleLine(nt.people, nt.transcript);
+  const meta = [dateLine(d), clock(d), nt.durationSeconds ? span(nt.durationSeconds / 60) : ""].filter(Boolean).join(" · ");
+  const busy = nt.status === "organising";
+  const canOrganise = nt.status === "failed" || nt.status === "recording" || (nt.status === "ready" && !nt.organised && nt.transcript.length > 0);
+
+  const head = stack([
+    row([link("All notes", { kind: "switchTab", tabId: "desk_notes" })], { marginBottom: 18 }),
+    text("Note", "d-eyebrow"),
+    text(noteTitle(ctx, nt), "d-h1", { marginTop: 6 }),
+    text(meta, "d-count", { marginTop: 10 }),
+    ...(who ? [text(who, "d-margin", { marginTop: 4 })] : []),
+    ...(nt.status !== "ready" ? [text(NOTE_STATUS[nt.status] ?? "", "d-lede", { marginTop: 12 })] : []),
+    row([
+      ...(nt.organised ? [link("Copy notes", { kind: "copyText", text: noteText(ctx, nt), message: "Copied" })] : []),
+      ...(busy ? [link("Refresh", { kind: "refresh" })] : []),
+      ...(canOrganise ? [link(nt.status === "recording" ? "Organise now" : "Organise again", {
+        kind: "callEndpoint", method: "POST", path: `/v1/notes/${nt.id}/organise`,
+        onSuccess: { kind: "toast", message: "Organising. Give it a minute." },
+      } as ActionRef)] : []),
+      { ...link("Delete", { kind: "setState", path: "noteDel", value: true }), visibleIf: { falsy: "noteDel" } },
+      { ...row([
+        text("Delete this note?", "d-margin-strong"),
+        link("Delete", {
+          kind: "callEndpoint", method: "DELETE", path: `/v1/notes/${nt.id}`,
+          onSuccess: { kind: "switchTab", tabId: "desk_notes" },
+        } as ActionRef),
+        link("Keep", { kind: "setState", path: "noteDel", value: false }),
+      ], { gap: 14, align: "center" }), visibleIf: { truthy: "noteDel" } },
+    ], { gap: 22, marginTop: 18, align: "center", flexWrap: "wrap" }),
+  ], { marginBottom: 34 });
+
+  const body: Node[] = [];
+  if (nt.summary) body.push(text(nt.summary, "d-written", { fontSize: 18, lineHeight: "28px", maxWidth: 680 }));
+  nt.sections.forEach((s, i) => body.push(block(s.heading || "Notes", s.points.map(point), i === 0 && !nt.summary)));
+  if (nt.decisions.length) body.push(block("Decided", nt.decisions.map(point)));
+  if (nt.actions.length) {
+    body.push(block("To do", nt.actions.map((a) => row([
+      text(a.text, "d-v", { flex: 1, minWidth: 0 }),
+      text([a.owner ? named.get(a.owner) || a.owner : "", a.due ?? ""].filter(Boolean).join(" · "), "d-margin-strong", { flex: "none", maxWidth: 220, textAlign: "right" }),
+    ], { gap: 20, paddingTop: 8, paddingBottom: 8, align: "start" }, "d-entry"))));
+  }
+  if (nt.questions.length) body.push(block("Still open", nt.questions.map(point)));
+
+  if (nt.transcript.length) {
+    body.push(stack([
+      row([
+        text("What was said", "d-h2"),
+        { ...link("Show", { kind: "toggleState", path: "noteTx" }), visibleIf: { falsy: "noteTx" } },
+        { ...link("Hide", { kind: "toggleState", path: "noteTx" }), visibleIf: { truthy: "noteTx" } },
+      ], { gap: 16, align: "baseline" }),
+      stack(nt.transcript.map((sg) => row([
+        stack([
+          text(named.get(sg.speaker ?? "") || sg.speaker || "", "d-margin-strong"),
+          text(clockOf(sg.at), "d-margin"),
+        ], { width: 120, flex: "none", paddingTop: 3 }),
+        text(sg.text, /[ऀ-ॿ]/.test(sg.text) ? "d-said d-deva" : "d-said", { flex: 1, minWidth: 0 }),
+      ], { gap: 20, paddingTop: 12, paddingBottom: 12 }, "d-entry")), { marginTop: 10 }, undefined, { visibleIf: { truthy: "noteTx" } }),
+    ], { marginTop: body.length ? 44 : 0 }));
+  }
+
+  return screen("desk_note", noteTitle(ctx, nt), [page([head, stack(body, { maxWidth: 760 })])],
+    { noteDel: false, noteTx: !nt.organised });
+}
+
+/** "4:05", "1:02:09" — where in the note a line was said. */
+function clockOf(sec: number): string {
+  const t = Math.max(0, Math.round(sec));
+  const h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+}
+
 // ---- SETTINGS and PLAN ----------------------------------------------------------------
 
 const defRow = (k: string, v: Node | string, right?: Node): Node => row([
@@ -727,6 +942,8 @@ function updateCard(u: { version: string; url: string; sha512?: string }, selfUp
 function deskPage(screenId: string, ctx: DeskContext): ScreenResponse | null {
   switch (screenId) {
     case "desk_today": return deskToday(ctx);
+    case "desk_notes": return deskNotes(ctx);
+    case "desk_note": return deskNote(ctx);
     case "desk_insights": return deskInsights(ctx);
     case "desk_words": return deskWords(ctx);
     case "desk_voices": return deskVoices(ctx);

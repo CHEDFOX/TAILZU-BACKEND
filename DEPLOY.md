@@ -289,3 +289,8 @@ git pull && docker compose up -d --build       # deploy a new version
   `docker compose up -d --build`.
 - For real users: set `DEV_SKIP_AUTH=false`, add `SUPABASE_*`, and run the
   migrations in `tulmi/supabase/migrations/`.
+- The desktop's note-taker needs `0014_notes.sql`: paste it into the Supabase
+  SQL editor once (it only creates the `notes` table). Speakers are told apart
+  with the same `DEEPGRAM_API_KEY` the live dictation uses; without it, notes
+  still work and label voices "You" and "Others". `NOTES_MODEL` picks the model
+  that organises them (defaults to `CLEANUP_MODEL`).

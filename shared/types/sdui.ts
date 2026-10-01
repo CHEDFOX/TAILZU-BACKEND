@@ -835,6 +835,8 @@ export type ActionSpec =
   | { kind: "desktop.config"; key: string; value: unknown }
   /** Start (or stop) dictation, as the hotkey does. */
   | { kind: "dictate" }
+  /** Start (or stop) taking notes, as the notes hotkey does (desktop). */
+  | { kind: "notes.toggle" }
   /** Download, check and install a newer build in place of this one, then
    *  restart on it (desktop/updater.js). `words` are the card's line for each
    *  step; "{pct}" in `downloading` is filled in by the window. */
@@ -1533,6 +1535,8 @@ export type KeyboardActionSpec =
   | { kind: "desktop.config"; key: string; value: unknown }
   /** Start (or stop) dictation, as the hotkey does. */
   | { kind: "dictate" }
+  /** Start (or stop) taking notes, as the notes hotkey does (desktop). */
+  | { kind: "notes.toggle" }
   /** Download, check and install a newer build in place of this one, then
    *  restart on it (desktop/updater.js). `words` are the card's line for each
    *  step; "{pct}" in `downloading` is filled in by the window. */

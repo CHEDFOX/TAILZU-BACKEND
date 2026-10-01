@@ -671,6 +671,57 @@ export interface HistoryEntry {
   createdAt: string;
 }
 
+// --- Notes (desktop: a hotkey, the room's audio, notes kept in the app) -----
+
+/** Where a note is in its life. "recording" while audio arrives, "organising"
+ *  while the writer works, "ready" when it has, "failed" when it could not
+ *  (the transcript is kept either way). */
+export type NoteStatus = "recording" | "organising" | "ready" | "failed";
+
+/** One stretch of what was heard, at its offset from the start. */
+export interface NoteSegment {
+  /** Seconds from the note's start. */
+  at: number;
+  text: string;
+  /** Who said it: "You", "Others" (the computer's sound, before speakers are
+   *  told apart), "Speaker 1"… after. A person the writer could name is in
+   *  Note.people, keyed by this label. */
+  speaker?: string;
+}
+
+/** A note, organised. Everything but the transcript is the writer's. */
+export interface Note {
+  id: string;
+  status: NoteStatus;
+  /** ISO-8601. */
+  startedAt: string;
+  endedAt?: string;
+  /** Seconds of audio heard. */
+  durationSeconds: number;
+  /** Words heard, as counted against the allowance. */
+  words: number;
+  title: string;
+  /** Two or three sentences: what this was and what came of it. */
+  summary: string;
+  /** The body, by topic, in the order it came up. */
+  sections: Array<{ heading: string; points: string[] }>;
+  decisions: string[];
+  actions: Array<{ text: string; owner?: string; due?: string }>;
+  /** Questions raised and left open. */
+  questions: string[];
+  tags: string[];
+  /** The speakers, by label, with a name where the conversation made it
+   *  plain ("Thanks, Priya"). */
+  people: Array<{ label: string; name?: string }>;
+  transcript: NoteSegment[];
+  /** True once the writer has organised it; false shows the transcript alone. */
+  organised: boolean;
+}
+
+/** A note as a list shows it. */
+export type NoteSummary = Pick<Note, "id" | "status" | "startedAt" | "endedAt" | "durationSeconds" | "words" | "title" | "summary" | "tags" | "people" | "organised">;
+
+
 /** GET /v1/history response. */
 export interface HistoryListResponse {
   entries: HistoryEntry[];

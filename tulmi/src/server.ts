@@ -29,6 +29,8 @@ import { pricingHtml } from "./routes/policies/pricing.js";
 import { payHtml } from "./routes/pay.js";
 import { DOWNLOAD_PAGE_HTML } from "./routes/download.js";
 import { registerSeoRoutes } from "./routes/seo.js";
+import { registerNotesRoutes } from "./routes/notes.js";
+import { getNote, listNotes } from "./notes/store.js";
 import { registerDemoRoutes, sitePage, AUTH_RESUME_SCHEME_URL } from "./routes/demo.js";
 import { initControl, registerControlRoutes, requireAdmin, withControl } from "./control/index.js";
 import { initPush, pushEngine, registerPushRoutes } from "./push/index.js";
@@ -725,6 +727,8 @@ registerControlRoutes(app, { bumpCache: bumpCacheVersion, rateLimit: AUTHED_RL }
 // main() once the server listens.
 if (cfg.PUSH_ENGINE) initPush({ accessToken: cfg.EXPO_ACCESS_TOKEN });
 registerPushRoutes(app, { rateLimit: AUTHED_RL });
+// The desktop's note-taker: a hotkey, the room's audio, notes kept in the app.
+registerNotesRoutes(app, { rateLimit: AUTHED_RL, effectiveLanguage });
 // UNAUTH_RL removed — every previously-unauth route was gated on
 // per-user hashed tokens anyway, so AUTHED_RL is the right cap and
 // avoids the 429-storm we saw on /v1/keyboard/config launch traffic.
@@ -1787,6 +1791,8 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     // The desk: Tailzu's own pages for a desktop window that can draw them.
     desk: Array.isArray(reqBody.capabilities?.components)
       && reqBody.capabilities!.components!.includes("DeskShell"),
+    deskNotes: Array.isArray(reqBody.capabilities?.components)
+      && reqBody.capabilities!.components!.includes("DeskNotes"),
     isReviewer,
     // The address the app should offer a password field for. Sent to everyone
     // because knowing it grants nothing — the password is the credential and it
@@ -1989,6 +1995,14 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     user && (screenId === "history" || screenId === "desk_today")
       ? (await listHistory(user, { limit: 50 })).entries
       : undefined;
+  // The desk's Notes page and one note. A failed read draws the page empty
+  // rather than failing it; a desktop on a static token has none to read.
+  const notes = user && screenId === "desk_notes"
+    ? await listNotes(user).catch(() => [])
+    : undefined;
+  const note = user && screenId === "desk_note" && typeof body.params?.noteId === "string"
+    ? await getNote(user, body.params.noteId).catch(() => null)
+    : undefined;
   // THE ONE SCREEN THAT MUST NOT SELL TO A SUBSCRIBER, so the one screen that
   // pays for this read. The row rather than the boolean: which store sold it
   // decides where it can be changed, and nothing else can answer that.
@@ -2052,6 +2066,8 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
     allowance,
     stats,
     history,
+    notes,
+    note,
     params: body.params,
     // The client has always sent this and the catalog has never been able to
     // read it, so every per-OS difference had to ship as BOTH variants with a

@@ -236,6 +236,14 @@ const EnvSchema = z.object({
    * Defaults to CLEANUP_MODEL so nothing changes until it is set.
    */
   PORTRAIT_MODEL: z.string().default(""),
+  /**
+   * Model that organises a desktop note (src/notes/organise.ts). A note is
+   * written once, after the meeting, and read for weeks, so it can afford a
+   * stronger model than the refiner. Defaults to CLEANUP_MODEL.
+   */
+  NOTES_MODEL: z.string().default(""),
+  /** Deepgram model for telling a note's speakers apart (src/notes/speakers.ts). */
+  NOTES_DIARIZE_MODEL: z.string().default("nova-3"),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 
