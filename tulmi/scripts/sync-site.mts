@@ -36,7 +36,7 @@ for (const [k, v] of Object.entries({
   OPENROUTER_API_KEY: "unused", OPENAI_API_KEY: "unused", STT_PROVIDER: "openai", DEV_SKIP_AUTH: "true", NODE_ENV: "development",
 })) process.env[k] ??= v;
 
-const { SITE_UI } = await import("../src/experience/catalog.js");
+const { SITE_UI, siteCopy } = await import("../src/experience/catalog.js");
 const { HOME, appLd, faqLd, homeFaq, orgLd, pageLd, websiteLd } = await import("../src/seo/facts.js");
 const { esc, headTags } = await import("../src/seo/head.js");
 
@@ -56,7 +56,7 @@ const faqCopy = [
   "    faq: {",
   `      title: ${JSON.stringify(SITE_UI.faq.title)},`,
   "      items: [",
-  SITE_UI.faq.items.map((it) => `        { q: ${JSON.stringify(it.q)}, a: ${JSON.stringify(it.a)} }`).join(",\n"),
+  siteCopy().faq.items.map((it) => `        { q: ${JSON.stringify(it.q)}, a: ${JSON.stringify(it.a)} }`).join(",\n"),
   "      ]",
   "    },",
 ].join("\n");

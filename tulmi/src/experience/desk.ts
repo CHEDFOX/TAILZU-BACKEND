@@ -86,6 +86,8 @@ export interface DeskContext {
   note?: Note | null;
   /** This window has the notes hotkey (it said "DeskNotes"). */
   notesHotkey?: boolean;
+  /** Tailzu is free for everyone right now (FREE_FOR_ALL): no plan, no price. */
+  free?: boolean;
   /** This window can open the Mac's permission for the computer's sound
    *  (it said "DeskSystemAudio"). */
   allowSystemAudio?: boolean;
@@ -824,7 +826,10 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
       defRow("You speak", langs.length ? langs.map((l) => (Object.hasOwn(LANGUAGE_NAMES, l) ? LANGUAGE_NAMES[l] : l)).join(", ") : "Found on its own, as you talk",
         link("Change", { kind: "navigate", screenId: "languages" })),
     ], { marginBottom: 40 }),
-    stack([
+    ctx.free && !q.paid ? stack([
+      text("Plan", "d-h2", { marginBottom: 8 }),
+      defRow("Free", "Every word, on every device. Nothing to pay.", text("No limit", "d-margin")),
+    ], { marginBottom: 40 }) : stack([
       text("Plan", "d-h2", { marginBottom: 8 }),
       defRow(q.paid ? "Unlimited" : "Free", q.paid ? "Every word, on every device" : `${n(q.used)} of ${n(q.of)} words this month`,
         q.paid
@@ -851,6 +856,15 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
 }
 
 export function deskPlan(ctx: DeskContext): ScreenResponse {
+  // Free for everyone: nothing to choose, nothing to buy.
+  if (ctx.free) {
+    return screen("desk_plan", "Plan", [page([
+      text("Plan", "d-eyebrow"),
+      text("Tailzu is free.", "d-h1", { marginTop: 6 }),
+      text("Every word, on your phone and this computer. There is no plan to pick and nothing to pay.", "d-lede", { marginTop: 8 }),
+      row([link("Back to Today", { kind: "switchTab", tabId: "desk_today" })], { marginTop: 18 }),
+    ], { maxWidth: 820 })]);
+  }
   const q = planWords(ctx);
   const out = !q.paid && q.of > 0 && q.used >= q.of;
   const plans = (ctx.plans ?? []).filter((p) => !p.free && p.price);

@@ -25,3 +25,8 @@ import { clearAppEnv } from "./env-surface.js";
  * module scope, the assignments at the top of each test file still win.
  */
 clearAppEnv(process.env);
+
+// The suite tests the paid product: limits, paywall, plans. Tailzu ships with
+// FREE_FOR_ALL on for now, and tests/free-for-all.test.ts turns it on to test
+// that; every other file sees the limits it was written against.
+process.env.FREE_FOR_ALL = "false";

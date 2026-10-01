@@ -407,7 +407,7 @@ export const SITE_UI = {
       { q: "Which languages?", a: "22 Indian languages, Hinglish, English and 20+ more." },
       { q: "Hinglish?", a: "Native. Two languages stay two." },
       { q: "Does it change what I said?", a: "It cleans. It never rewrites. Names and amounts stay." },
-      { q: "Is it free?", a: "{n} words a month, free. Then upgrade." },
+      { q: "Is it free?", a: "{n} words a month, free. Then upgrade.", aFree: "Yes. Every word, free. No limit." },
       { q: "Is my voice stored?", a: "Not by default. Audio is deleted once it's written." },
       { q: "Offline?", a: "No. It needs a connection to hear you." },
     ],
@@ -471,6 +471,17 @@ const FILL_STYLE = {
   top: 0, left: 0, right: 0, bottom: 0,
   borderRadius: 0,
 };
+
+/**
+ * The site's copy as it should read right now. While Tailzu is free
+ * (FREE_FOR_ALL), an answer with a free version (`aFree`) says that instead,
+ * so the page, its FAQ data and the served copy never quote a price.
+ */
+export function siteCopy(): Omit<typeof SITE_UI, "faq"> & { faq: { title: string; items: Array<{ q: string; a: string }> } } {
+  const items = SITE_UI.faq.items.map((it) =>
+    (freeForAll() && "aFree" in it && typeof it.aFree === "string" ? { q: it.q, a: it.aFree } : { q: it.q, a: it.a }));
+  return { ...SITE_UI, faq: { title: SITE_UI.faq.title, items } };
+}
 
 /**
  * State key a delayed hero clip is bound to.
@@ -1248,6 +1259,12 @@ function freeMonthlyWords(): number {
   return Math.max(0, getConfig().FREE_MONTHLY_WORDS);
 }
 
+/** Tailzu is free for everyone right now (FREE_FOR_ALL): no limit, and
+ *  nothing anywhere that sells. Exported for the desk and the routes. */
+export function freeForAll(): boolean {
+  return getConfig().FREE_FOR_ALL === true;
+}
+
 /**
  * Where the app opens.
  *
@@ -2018,12 +2035,16 @@ export function buildBootstrap(
          * quota check on the server reads. The client remains not-evidence —
          * this flag only decides what is SHOWN.
          */
-        "quota.entitled": opts.entitled === true,
+        // Free for everyone counts as "no limit" here: every client already
+        // draws that state — the meter as the month's count, no paywall, no
+        // words-left. `billing.entitled` stays the truth about paying.
+        "quota.entitled": opts.entitled === true || freeForAll(),
+        "billing.free": freeForAll(),
         "quota.streakDays": opts.allowance?.streakDays ?? 0,
         "quota.earnMaxed": opts.allowance?.maxed === true,
         // The one flag every gate reads: out of words and not paying.
         "quota.exceeded":
-          opts.entitled !== true
+          !freeForAll() && opts.entitled !== true
           && (opts.wordsUsed ?? 0) >= (opts.allowance?.total ?? freeMonthlyWords()),
         // DISABLED for now: the paywall was auto-showing on every open (user
         // lacks `pro`) and its purchase fails with "could not complete purchase"
@@ -2039,14 +2060,14 @@ export function buildBootstrap(
         // configured a hard block is a locked door with no handle — the app
         // demands a subscription and offers no way to buy one. The day this
         // flips to true, that is the shape of the bug it would otherwise ship.
-        "paywall.blockUntilEntitled": PAYWALL_BLOCK &&
+        "paywall.blockUntilEntitled": PAYWALL_BLOCK && !freeForAll() &&
           !(opts.formFactor === "desktop" && !getConfig().REVENUECAT_WEB_PAYWALL_URL),
         // The free tier, in WORDS REFINED per month. The app reads this to show
         // progress and to know when to put the paywall in front of someone —
         // without it the client has to guess the number, and a guess that
         // disagrees with the server means a user hitting a wall the UI never
         // warned them about. 0 = unlimited.
-        "quota.freeMonthlyWords": freeMonthlyWords(),
+        "quota.freeMonthlyWords": freeForAll() ? 0 : freeMonthlyWords(),
         "paywall.showAfterOnboarding": false,
         "paywall.config": PAYWALL_CONFIG as unknown as Record<string, unknown>,
 
@@ -2241,6 +2262,8 @@ export function buildBootstrap(
     // Central copy — every screen can reference these with "@key".
     labels: {
       "app.name": "Tailzu",
+      // The desktop masthead's chip for "no limit": free, not paid, right now.
+      ...(freeForAll() ? { "desktop.mast.unlimited": "Free" } : {}),
       "settings.privacyPolicy": "Privacy Policy",
       "settings.termsOfService": "Terms of Service",
       "settings.support": "Contact Support",
@@ -2482,7 +2505,7 @@ function wordsMilestoneCard(opts: {
   wordsUsed?: number;
   allowance?: Allowance | null;
 }): LaunchCard | null {
-  if (opts.entitled === true || opts.isReviewer) return null;
+  if (opts.entitled === true || opts.isReviewer || freeForAll()) return null;
   const used = Math.max(0, Math.round(opts.wordsUsed ?? 0));
   const total = opts.allowance?.total ?? freeMonthlyWords();
   // Past the ceiling there is a different card with a different job — see the
@@ -4575,6 +4598,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       notes: ctx.notes,
       note: ctx.note,
       notesHotkey: ctx.can?.has("DeskNotes") === true,
+      free: freeForAll(),
       allowSystemAudio: ctx.can?.has("DeskSystemAudio") === true,
       usage: ctx.usage,
       stats: ctx.stats as unknown as StatsForUser | undefined,
@@ -4612,7 +4636,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
     case "delete_account":
       return deleteAccountScreen();
     case WORDS_GATE.outScreenId:
-      return wordsOutScreen(ctx);
+      return freeForAll() ? freeNowScreen(WORDS_GATE.outScreenId) : wordsOutScreen(ctx);
     case "reply":
       return replyScreen();
     case "personality":
@@ -4655,11 +4679,36 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
     case "intro":
       return introScreen(ctx);
     case "paywall":
+      // A link to it can still exist (an old push, a cached screen): it says
+      // Tailzu is free and goes back, and sells nothing.
+      if (freeForAll()) return freeNowScreen("paywall");
       return paywallScreen(ctx.formFactor === "desktop", ctx.entitlement,
         onDesk(ctx) ? { kind: "switchTab", tabId: "desk_today" } : undefined);
     default:
       return null;
   }
+}
+
+/** What the paywall and the out-of-words screen say while Tailzu is free. */
+function freeNowScreen(screenId: string): ScreenResponse {
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId,
+    title: "Tailzu",
+    root: {
+      type: "Screen",
+      children: [{
+        type: "Stack",
+        style: { flex: 1, justifyContent: "center", alignItems: "center", gap: 14, padding: 32 },
+        children: [
+          { type: "Text", props: { content: "Tailzu is free" }, style: { fontSize: 26, fontWeight: "600", textAlign: "center" } },
+          { type: "Text", props: { content: "Every word, on every device. There is no plan to pick and nothing to pay." }, style: { fontSize: 15, textAlign: "center", opacity: 0.75 } },
+          { type: "Button", props: { label: "Back" }, on: { onPress: { kind: "navigateBack" } }, style: { marginTop: 10 } },
+        ],
+      }],
+    },
+    cacheTtlSeconds: 0,
+  };
 }
 
 /** Languages offered in onboarding + settings. */
@@ -8852,10 +8901,11 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         // updates on the next foreground. `not` + `flag` are both understood by
         // every shipped bundle, and visibleIf is evaluated before the fallback,
         // so an old client renders nothing rather than a row it cannot hide.
-        {
+        // Not while Tailzu is free: there is nothing to upgrade to.
+        ...(freeForAll() ? [] : [{
           ...row("Upgrade", { kind: "navigate", screenId: "paywall" }, { props: { label: "Upgrade" } }),
           visibleIf: { not: { flag: "billing.entitled" } },
-        },
+        }]),
         // AND ITS OPPOSITE, for the people the row above hides itself from.
         //
         // Someone who had paid was shown nothing at all: no plan, no renewal,
@@ -9058,7 +9108,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
    * span no month reaches, so the line fills very slowly and never runs out.
    * Nothing about earning appears either — there is nothing to earn.
    */
-  const paid = !!ctx.entitlement;
+  const paid = !!ctx.entitlement || freeForAll();
   const PAID_METER_SPAN = 120_000;
   const paidPct = allow ? Math.min(100, (Math.max(0, allow.used) / PAID_METER_SPAN) * 100) : 0;
   const spokenMinutes = st?.speakingMinutes
@@ -9419,7 +9469,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
             // Where the allowance came from. The meter above opens this.
             ...(allow ? [paid ? panel("words", "Words this month", n(allow.used), "", [
               secLab("This month"),
-              row("Plan", "No limit"),
+              row("Plan", ctx.entitlement ? "No limit" : "Free, no limit"),
               row("Used", n(allow.used)),
               ...(allow.streakDays ? [row("Day streak", `${n(allow.streakDays)} days`)] : []),
             ]) : panel("words", "Words left", n(allow.remaining), "", [
@@ -13253,12 +13303,12 @@ export function buildKeyboardConfig(
           ? {
               "kb.quota.remaining": Math.max(0, Math.round(opts.quota.remaining)),
               "kb.quota.total": Math.max(0, Math.round(opts.quota.total)),
-              "kb.quota.exhausted": !opts.quota.entitled && opts.quota.remaining <= 0,
+              "kb.quota.exhausted": !freeForAll() && !opts.quota.entitled && opts.quota.remaining <= 0,
               // A share of the ceiling with a fixed floor, both tunable in
               // WORDS_GATE — see the note there on why "nearly out" needs to
               // be worth about one message rather than a flat percentage.
               "kb.quota.low":
-                !opts.quota.entitled
+                !freeForAll() && !opts.quota.entitled
                 && opts.quota.remaining > 0
                 && opts.quota.remaining <= Math.max(
                   WORDS_GATE.lowFloor,

@@ -59,6 +59,7 @@ ${urls.join("\n")}
 
 function priceLines(): string[] {
   const p = plans();
+  if (p.free) return ["- Free: every word, every language, every app, with no word limit and nothing to pay."];
   return [
     `- Free: ${p.freeWords.toLocaleString("en-US")} words a month${p.earnWords ? `, plus up to ${p.earnWords.toLocaleString("en-US")} more earned by writing on consecutive days` : ""}.`,
     ...(p.monthly ? [`- ${p.monthly.name}: ${p.monthly.price} a month, unlimited words, cancel any time.`] : []),
@@ -78,7 +79,7 @@ Tailzu is a keyboard on iPhone and Android, so it works in every app: WhatsApp, 
 - [Home](${ORIGIN}/): the product, shown working
 - [Languages](${ORIGIN}/languages): all ${INDIA.length + WORLD.length + 1} languages, with real examples of what it writes
 - [FAQ](${ORIGIN}/faq): what it is, languages, apps, privacy and price
-- [Pricing](${ORIGIN}/pricing): free allowance and paid plans
+- [Pricing](${ORIGIN}/pricing): ${plans().free ? "Tailzu is free" : "free allowance and paid plans"}
 - [Download](${ORIGIN}/download): Windows and Mac apps
 
 ## Languages

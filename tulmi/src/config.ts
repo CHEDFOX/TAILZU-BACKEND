@@ -598,6 +598,14 @@ const EnvSchema = z.object({
    * at the same time.
    */
   QUOTA_EXEMPT_USER_IDS: z.string().optional(),
+  /**
+   * TAILZU IS FREE, FOR NOW: no word limit for anyone, and nothing anywhere
+   * that sells — no paywall, no plans, no "upgrade", no out-of-words or
+   * low-words prompts, no prices on the site. The meters still count, so the
+   * day this goes back to false every limit and screen returns as it was,
+   * with no app build: set FREE_FOR_ALL=false in .env and deploy.
+   */
+  FREE_FOR_ALL: bool(true),
   FREE_MONTHLY_AUDIO_SECONDS: z.coerce.number().default(0),
   FREE_MONTHLY_WORDS: z.coerce.number().default(800),
 

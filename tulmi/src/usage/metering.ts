@@ -196,6 +196,8 @@ export function isQuotaExempt(id: string, configured: string | undefined): boole
  * request, cached at Supabase.
  */
 export async function enforceQuota(user: AuthedUser): Promise<string | null> {
+  // Free for everyone (FREE_FOR_ALL): nothing to check, and no read to pay for.
+  if (getConfig().FREE_FOR_ALL) return null;
   // Paying users are not metered. This check did not exist, so a subscriber
   // was counted against the free monthly cap like everyone else and cut off
   // at 2,500 words — they had paid for unlimited and got the free tier, which

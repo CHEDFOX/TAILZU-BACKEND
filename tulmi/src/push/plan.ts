@@ -17,6 +17,7 @@
  *   lowWords — a free account near the end of its month's words (off)
  */
 import { computeAllowance } from "../usage/allowance.js";
+import { getConfig } from "../config.js";
 import type { PushPayload, PushKind } from "./defaults.js";
 import { PUSH_KINDS } from "./defaults.js";
 import { busiestWeekday, pickTime, rhythm, type Moment, type Rhythm, type TimingKnobs } from "./timing.js";
@@ -198,7 +199,8 @@ export function plan(f: Facts, k: Knobs): Decision {
       if (unanswered >= k.flag("push.winback.maxUnanswered", 3)) continue;
       periodKey = `winback:${today}`;
     } else if (kind === "lowWords") {
-      if (f.entitled) continue;
+      // Nobody runs low while Tailzu is free.
+      if (f.entitled || getConfig().FREE_FOR_ALL) continue;
       const a = computeAllowance(thisMonth, now, f.userId);
       if (!(a.total > 0) || a.remaining <= 0 || a.remaining / a.total > k.flag("push.lowWords.fraction", 0.1)) continue;
       periodKey = `lowWords:${monthKey(now)}`;

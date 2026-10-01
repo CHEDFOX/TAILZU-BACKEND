@@ -53,12 +53,15 @@ const CSS = `${PLAN_CSS}
 `;
 
 export function pricingHtml(opts: {
+  /** Tailzu is free for everyone right now: the page says so and sells nothing. */
+  free?: boolean;
   plans: PaywallConfig["plans"];
   freeWords: number;
   earnMaxWords: number;
   terms: string;
   privacy: string;
 }): string {
+  if (opts.free) return freePricingHtml(opts);
   const paid = (opts.plans ?? []).filter((p) => !p.free && p.price)
     .sort((a, b) => amount(a.price) - amount(b.price));
   const card = (name: string, price: string, per: string, lines: string[], lead = false, badge = "") => `
@@ -134,6 +137,50 @@ export function pricingHtml(opts: {
 </div>
 
 <p class="made"><a href="${esc(opts.terms)}">Terms</a> · <a href="${esc(opts.privacy)}">Privacy</a> · <a href="https://xooteq.com/refunds">Refunds</a> · <a href="mailto:support@tailzu.space">support@tailzu.space</a></p>
+<p class="made">Tailzu is made by ${SELLER}.</p>`,
+  });
+}
+
+/**
+ * The pricing page while Tailzu is free: one card, no plans, nothing to buy.
+ * Someone who subscribed before is told how to stop paying.
+ */
+function freePricingHtml(opts: { terms: string; privacy: string }): string {
+  const description = "Tailzu is free: every word, every language, every app, on iPhone, Android, Windows and Mac. There is no plan to pick and nothing to pay.";
+  return siteShell({
+    title: "Pricing",
+    headTitle: "Tailzu Pricing — Free",
+    path: "/pricing",
+    description,
+    ld: [
+      pageLd("/pricing", "Tailzu pricing", description),
+      crumbsLd([["Tailzu", "/"], ["Pricing", "/pricing"]]),
+      appLd(),
+    ],
+    css: CSS,
+    main: `
+<p class="eye">Pricing</p>
+<h1>Free. Every word.</h1>
+<p class="lede">Every voice, every language, every app, on your phone and your computer. There is no plan to pick and nothing to pay.</p>
+
+<div class="field"><div class="plans">
+    <section class="plan lead">
+      <div class="top"><h2>Tailzu</h2></div>
+      <p class="price">$0</p>
+      <p class="per">No word limit</p>
+      <ul><li>Every voice, every language, every app.</li><li>iPhone, Android, Windows and Mac.</li><li>Meeting notes on the computer.</li></ul>
+      <a class="btn" href="/download">Get Tailzu</a>
+    </section>
+</div></div>
+
+<div class="facts">
+  <section>
+    <h2>Subscribed before?</h2>
+    <p>You no longer need to pay. Cancel an app subscription in your App Store or Google Play subscriptions, and a web one from your Paddle receipt or at <a href="https://paddle.net">paddle.net</a>.</p>
+  </section>
+</div>
+
+<p class="made"><a href="${esc(opts.terms)}">Terms</a> · <a href="${esc(opts.privacy)}">Privacy</a> · <a href="mailto:support@tailzu.space">support@tailzu.space</a></p>
 <p class="made">Tailzu is made by ${SELLER}.</p>`,
   });
 }

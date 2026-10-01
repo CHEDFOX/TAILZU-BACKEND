@@ -19,7 +19,7 @@
  * No ratings, no user counts, no competitor facts: a number an engine quotes
  * has to be one we can stand behind.
  */
-import { SITE_UI, SITE_SHAPE, PAYWALL_CONFIG } from "../experience/catalog.js";
+import { SITE_UI, SITE_SHAPE, PAYWALL_CONFIG, siteCopy } from "../experience/catalog.js";
 import { getConfig } from "../config.js";
 import { ID, ORIGIN, OG_IMAGE, abs } from "./head.js";
 
@@ -84,11 +84,14 @@ export const sampleFor = (l: Lang) => examplesFor(l)[0];
 const amount = (price: string | undefined) => Number(String(price ?? "").replace(/[^0-9.]/g, "")) || 0;
 
 export function plans() {
+  const cfg = getConfig();
+  // Free for everyone (FREE_FOR_ALL): no allowance, no paid plans to quote.
+  if (cfg.FREE_FOR_ALL) return { free: true as const, freeWords: 0, earnWords: 0, monthly: undefined, yearly: undefined };
   const paid = (PAYWALL_CONFIG.plans ?? []).filter((p) => !p.free && p.price);
   const yearly = paid.find((p) => /year/i.test(p.period ?? "") || /annual/i.test(p.id ?? ""));
   const monthly = paid.find((p) => p !== yearly);
-  const cfg = getConfig();
   return {
+    free: false as const,
     freeWords: Math.max(0, cfg.FREE_MONTHLY_WORDS),
     earnWords: Math.max(0, cfg.EARN_MAX_WORDS),
     monthly: monthly ? { name: monthly.label ?? "Lite", price: monthly.price ?? "", amount: amount(monthly.price) } : undefined,
@@ -161,7 +164,10 @@ export function faqGroups(): QAGroup[] {
     },
     {
       title: "Price",
-      items: [
+      items: p.free ? [
+        { q: "Is Tailzu free?", a: "Yes. Every word, in every language, on iPhone, Android, Windows and Mac, with no word limit and nothing to pay." },
+        { q: "How much does Tailzu cost?", a: "Nothing. Tailzu is free, and there is no paid plan to pick." },
+      ] : [
         { q: "Is Tailzu free?", a: `Yes, to start: ${num(p.freeWords)} words a month, free${p.earnWords ? `, and up to ${num(p.earnWords)} more earned by writing on consecutive days` : ""}.` },
         { q: "How much does Tailzu cost?", a: `${prices}. Both remove the word limit.` },
         { q: "Can I cancel any time?", a: "Yes. Cancel from the App Store, Google Play or your receipt email; the plan runs to the end of the period you paid for." },
@@ -173,7 +179,7 @@ export function faqGroups(): QAGroup[] {
 /** The home page's questions, as the page shows them: SITE_UI.faq, filled. */
 export function homeFaq(): QA[] {
   const n = String(Math.max(0, getConfig().FREE_MONTHLY_WORDS));
-  return SITE_UI.faq.items.map((it) => ({ q: it.q, a: it.a.replace(/\{n\}/g, n) }));
+  return siteCopy().faq.items.map((it) => ({ q: it.q, a: it.a.replace(/\{n\}/g, n) }));
 }
 
 /** Three answers a page about one language owes its reader. */
@@ -187,7 +193,9 @@ export function langFaq(l: Lang): QA[] {
   return [
     { q: `Can I voice type in ${l.name} on WhatsApp?`, a: `Yes. Tailzu is a keyboard, so ${l.name} voice typing works in WhatsApp, Gmail, Instagram, ChatGPT and every other app you type in.` },
     script,
-    { q: `Is ${l.name} voice typing free?`, a: `Yes, to start: ${num(p.freeWords)} words a month, free. ${[p.monthly?.name, p.yearly?.name].filter(Boolean).join(" and ")} remove the limit.` },
+    p.free
+      ? { q: `Is ${l.name} voice typing free?`, a: `Yes. ${l.name} voice typing in Tailzu is free, with no word limit.` }
+      : { q: `Is ${l.name} voice typing free?`, a: `Yes, to start: ${num(p.freeWords)} words a month, free. ${[p.monthly?.name, p.yearly?.name].filter(Boolean).join(" and ")} remove the limit.` },
   ];
 }
 
@@ -216,7 +224,7 @@ export function websiteLd() {
 export function appLd() {
   const p = plans();
   const offers: object[] = [
-    { "@type": "Offer", name: "Free", price: "0", priceCurrency: "USD", description: `${num(p.freeWords)} words a month.` },
+    { "@type": "Offer", name: "Free", price: "0", priceCurrency: "USD", description: p.free ? "No word limit." : `${num(p.freeWords)} words a month.` },
   ];
   if (p.monthly) offers.push({
     "@type": "Offer", name: p.monthly.name, price: p.monthly.amount.toFixed(2), priceCurrency: "USD",

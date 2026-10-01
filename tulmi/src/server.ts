@@ -515,6 +515,7 @@ app.get("/pricing", async (_req, reply) => {
   reply.type("text/html; charset=utf-8");
   reply.header("Cache-Control", "public, max-age=300");
   return published ?? pricingHtml({
+    free: cfg.FREE_FOR_ALL,
     plans: PAYWALL_CONFIG.plans,
     freeWords: cfg.FREE_MONTHLY_WORDS,
     earnMaxWords: cfg.EARN_MAX_WORDS,
@@ -526,6 +527,9 @@ app.get("/pricing", async (_req, reply) => {
 // Tailzu's pay page (tailzu.space/pay): where the desktop's Subscribe
 // goes. Both plans, and Paddle's checkout with the account id on it.
 app.get("/pay", async (_req, reply) => {
+  // Nothing is sold while Tailzu is free: the page that would take a
+  // payment sends people to the one that says so.
+  if (cfg.FREE_FOR_ALL) return reply.redirect("/pricing", 302);
   reply.type("text/html; charset=utf-8");
   reply.header("Cache-Control", "public, max-age=300");
   return payHtml({
@@ -2024,7 +2028,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
   //
   // Only for flow_arm: every other screen stays reachable when the words run
   // out. Being out of quota is not a reason to lose your settings.
-  if (screenId === "flow_arm" && user) {
+  if (screenId === "flow_arm" && user && !cfg.FREE_FOR_ALL) {
     const [entitled, allowance] = await Promise.all([
       isEntitled(user).catch(() => true),        // unknown → let them through
       // The EARNED ceiling, not the flat one. Reading FREE_MONTHLY_WORDS
@@ -2294,7 +2298,7 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL }, async (req, reply) => {
       ]);
       personality = p;
       if (allowance) {
-        quota = { remaining: allowance.remaining, total: allowance.total, entitled };
+        quota = { remaining: allowance.remaining, total: allowance.total, entitled: entitled || cfg.FREE_FOR_ALL };
       }
     }
   } catch { /* keyboard should never fail on personality lookup */ }
