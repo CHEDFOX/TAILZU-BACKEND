@@ -149,13 +149,52 @@ export function labelSpeakers(
 }
 
 /**
- * One track, whole, through Deepgram with diarization: each speaker's turns.
- * Null when Deepgram is not configured or the call fails — the live labels
- * stand then, which is a worse note but never a lost one.
+ * One track, whole, with each speaker's turns: Deepgram first, and OpenAI's
+ * diarizing model when Deepgram is not configured or fails (an expired key).
+ * Null when neither can — the live labels stand then, which is a worse note
+ * but never a lost one.
  */
 export async function diarize(audio: Buffer, format: AudioFormat): Promise<Utterance[] | null> {
+  if (audio.length < 1024) return null;
+  return (await diarizeDeepgram(audio, format)) ?? (await diarizeOpenAI(audio, format));
+}
+
+/** OpenAI's diarizing transcription. Its speakers are letters ("A", "B"),
+ *  numbered here in the order they first speak. Files over 25 MB are refused
+ *  by OpenAI, which reads as null. */
+export async function diarizeOpenAI(audio: Buffer, format: AudioFormat): Promise<Utterance[] | null> {
   const cfg = getConfig();
-  if (!cfg.DEEPGRAM_API_KEY || audio.length < 1024) return null;
+  if (!cfg.OPENAI_API_KEY || !cfg.NOTES_DIARIZE_OPENAI_MODEL) return null;
+  try {
+    const form = new FormData();
+    form.append("file", new Blob([new Uint8Array(audio)], { type: `audio/${format}` }), `track.${format}`);
+    form.append("model", cfg.NOTES_DIARIZE_OPENAI_MODEL);
+    form.append("response_format", "diarized_json");
+    form.append("chunking_strategy", "auto");
+    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${cfg.OPENAI_API_KEY}` },
+      body: form,
+      signal: AbortSignal.timeout(300_000),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { segments?: Array<{ speaker?: string; start?: number; end?: number; text?: string }> };
+    const ids = new Map<string, number>();
+    return (json.segments ?? [])
+      .map((s) => {
+        const who = String(s.speaker ?? "A");
+        if (!ids.has(who)) ids.set(who, ids.size);
+        return { speaker: ids.get(who)!, start: s.start ?? 0, end: s.end ?? s.start ?? 0, text: (s.text ?? "").trim() };
+      })
+      .filter((u) => u.text);
+  } catch {
+    return null;
+  }
+}
+
+async function diarizeDeepgram(audio: Buffer, format: AudioFormat): Promise<Utterance[] | null> {
+  const cfg = getConfig();
+  if (!cfg.DEEPGRAM_API_KEY) return null;
   const params = new URLSearchParams({
     model: cfg.NOTES_DIARIZE_MODEL,
     language: cfg.DEEPGRAM_LANGUAGE || "multi",

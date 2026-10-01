@@ -122,7 +122,9 @@ const EnvSchema = z.object({
   //
   // So this is a latency and cost choice, not a quality one. Leave it unless
   // you have a reason about the partials specifically.
-  STT_LIVE_PROVIDER: z.enum(["deepgram", "sarvam"]).default("deepgram"),
+  // "openai" streams through OpenAI's realtime transcription with
+  // OPENAI_API_KEY, the same key the one-shot path uses (see OPENAI_LIVE_*).
+  STT_LIVE_PROVIDER: z.enum(["deepgram", "sarvam", "openai"]).default("deepgram"),
 
   // Run BOTH live engines: the one named above streams to the user, the other
   // listens silently, and the two transcripts are reconciled at stop.
@@ -194,10 +196,22 @@ const EnvSchema = z.object({
   // widens the failure surface. Turn on to A/B it.
   STT_AUTO_INCLUDE_DEEPGRAM: bool(false),
 
-  // OpenAI STT (used when STT_PROVIDER=openai). gpt-4o-transcribe is the
-  // current best; gpt-4o-mini-transcribe is cheaper; whisper-1 is the legacy.
+  // OpenAI STT (used when STT_PROVIDER=openai). gpt-4o-mini-transcribe is the
+  // efficient default; gpt-4o-transcribe is the most accurate, at about twice
+  // the price; whisper-1 is the legacy.
   OPENAI_API_KEY: z.string().optional(),
-  OPENAI_STT_MODEL: z.string().default("gpt-4o-transcribe"),
+  OPENAI_STT_MODEL: z.string().default("gpt-4o-mini-transcribe"),
+  // Live dictation through OpenAI (STT_LIVE_PROVIDER=openai): the realtime
+  // API in transcription mode. The mini model is the efficient one: about
+  // half the price of gpt-4o-transcribe and faster to each word.
+  OPENAI_LIVE_STT_MODEL: z.string().default("gpt-4o-mini-transcribe"),
+  OPENAI_REALTIME_URL: z.string().default("wss://api.openai.com/v1/realtime?intent=transcription"),
+  // The realtime API's message shapes: "ga" (current) or "beta" (the older
+  // transcription_session.update, sent with the OpenAI-Beta header). Switch
+  // only if OpenAI refuses the session with the other.
+  OPENAI_REALTIME_PROTOCOL: z.enum(["ga", "beta"]).default("ga"),
+  // How long a stopped live session waits for its last words before closing.
+  OPENAI_LIVE_FLUSH_MS: z.coerce.number().default(4000),
 
   // Groq STT (used when STT_PROVIDER=groq).
   GROQ_API_KEY: z.string().optional(),
@@ -244,6 +258,9 @@ const EnvSchema = z.object({
   NOTES_MODEL: z.string().default(""),
   /** Deepgram model for telling a note's speakers apart (src/notes/speakers.ts). */
   NOTES_DIARIZE_MODEL: z.string().default("nova-3"),
+  /** OpenAI's model for the same, used when Deepgram is not configured or
+   *  fails. Empty = do not use OpenAI for it. */
+  NOTES_DIARIZE_OPENAI_MODEL: z.string().default("gpt-4o-transcribe-diarize"),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 

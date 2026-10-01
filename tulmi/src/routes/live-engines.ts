@@ -10,6 +10,8 @@
  *   • Deepgram — strong English/European, mature streaming, VAD endpointing.
  *   • Sarvam   — purpose-built for Indian languages and code-mixed speech,
  *                which is where Deepgram is weakest.
+ *   • OpenAI   — the realtime API in transcription mode, on the same key as
+ *                the one-shot path (gpt-4o-mini-transcribe by default).
  *
  * Neither is pinned to a language: the backend identifies the speech (the
  * product rule), so both are opened in their multilingual/auto-detect mode.
@@ -52,21 +54,32 @@ export interface SegmentTiming {
   duration: number;
 }
 
+type LiveName = "deepgram" | "sarvam" | "openai";
+
 /** Which live engine the server is configured to use. */
-export function liveProvider(): "deepgram" | "sarvam" {
+export function liveProvider(): LiveName {
   const cfg = getConfig();
   if (cfg.STT_LIVE_PROVIDER === "sarvam" && cfg.SARVAM_API_KEY) return "sarvam";
+  if (cfg.STT_LIVE_PROVIDER === "openai" && cfg.OPENAI_API_KEY) return "openai";
   return "deepgram";
+}
+
+function keyFor(name: LiveName): boolean {
+  const cfg = getConfig();
+  return name === "sarvam" ? !!cfg.SARVAM_API_KEY : name === "openai" ? !!cfg.OPENAI_API_KEY : !!cfg.DEEPGRAM_API_KEY;
+}
+
+function open(name: LiveName, opts: EngineOptions, h: EngineHandlers): LiveEngine {
+  return name === "sarvam" ? openSarvam(opts, h) : name === "openai" ? openOpenAI(opts, h) : openDeepgram(opts, h);
 }
 
 /** True when the configured engine actually has credentials to run. */
 export function liveEngineConfigured(): boolean {
-  const cfg = getConfig();
-  return liveProvider() === "sarvam" ? !!cfg.SARVAM_API_KEY : !!cfg.DEEPGRAM_API_KEY;
+  return keyFor(liveProvider());
 }
 
 export function openLiveEngine(opts: EngineOptions, h: EngineHandlers): LiveEngine {
-  return liveProvider() === "sarvam" ? openSarvam(opts, h) : openDeepgram(opts, h);
+  return open(liveProvider(), opts, h);
 }
 
 /**
@@ -86,11 +99,11 @@ export function openLiveEngine(opts: EngineOptions, h: EngineHandlers): LiveEngi
 export function openShadowEngine(opts: EngineOptions, h: EngineHandlers): LiveEngine | null {
   const cfg = getConfig();
   if (!cfg.STT_LIVE_DUAL) return null;
-  const other = liveProvider() === "sarvam" ? "deepgram" : "sarvam";
-  if (other === "sarvam" && !cfg.SARVAM_API_KEY) return null;
-  if (other === "deepgram" && !cfg.DEEPGRAM_API_KEY) return null;
+  // Sarvam listens beside Deepgram or OpenAI; beside Sarvam, Deepgram.
+  const other: LiveName = liveProvider() === "sarvam" ? "deepgram" : "sarvam";
+  if (!keyFor(other)) return null;
   try {
-    return other === "sarvam" ? openSarvam(opts, h) : openDeepgram(opts, h);
+    return open(other, opts, h);
   } catch {
     // A shadow that won't open must never take the session down — the user
     // still gets the primary engine's live dictation.
@@ -239,6 +252,243 @@ function openSarvam(opts: EngineOptions, h: EngineHandlers): LiveEngine {
       // Give the engine a beat to flush its tail before tearing the socket
       // down, then close regardless so a silent engine can't strand the route.
       setTimeout(() => { try { ws.close(); } catch { /* ignore */ } }, 300);
+    },
+  };
+}
+
+// --- OpenAI -----------------------------------------------------------------
+
+/** OpenAI's realtime API takes 16-bit mono PCM at 24 kHz, and nothing else
+ *  that is lossless. */
+export const OPENAI_RATE = 24_000;
+
+/**
+ * 16-bit PCM at any rate and channel count, to mono at another rate, a chunk
+ * at a time. Linear interpolation, carried across chunks so a frame boundary
+ * makes no click: the last sample and the read position survive the call.
+ */
+export function createResampler(inRate: number, outRate: number, channels: number): (chunk: Buffer) => Buffer {
+  const step = inRate / outRate;
+  const frameBytes = 2 * Math.max(1, channels);
+  let pos = 0;
+  let prev: number | null = null;
+  let carry: Buffer = Buffer.alloc(0);
+  return (chunk: Buffer): Buffer => {
+    const buf = carry.length ? Buffer.concat([carry, chunk]) : chunk;
+    const frames = Math.floor(buf.length / frameBytes);
+    carry = Buffer.from(buf.subarray(frames * frameBytes));
+    if (!frames) return Buffer.alloc(0);
+    const head = prev === null ? 0 : 1;
+    const x = new Float32Array(frames + head);
+    if (prev !== null) x[0] = prev;
+    for (let f = 0; f < frames; f++) {
+      let sum = 0;
+      for (let c = 0; c < channels; c++) sum += buf.readInt16LE(f * frameBytes + c * 2);
+      x[f + head] = sum / Math.max(1, channels);
+    }
+    if (inRate === outRate) {
+      prev = null;
+      const same = Buffer.alloc(frames * 2);
+      for (let f = 0; f < frames; f++) same.writeInt16LE(Math.round(x[f + head]!), f * 2);
+      return same;
+    }
+    const out: number[] = [];
+    // Every point before the last sample: what lies past it needs the next chunk.
+    while (pos < x.length - 1) {
+      const i = Math.floor(pos), t = pos - i;
+      out.push(x[i]! + (x[i + 1]! - x[i]!) * t);
+      pos += step;
+    }
+    prev = x[x.length - 1]!;
+    pos -= x.length - 1;
+    const o = Buffer.alloc(out.length * 2);
+    out.forEach((v, k) => o.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(v))), k * 2));
+    return o;
+  };
+}
+
+/**
+ * OpenAI realtime transcription.
+ *
+ * A transcription session over the realtime WebSocket: audio goes up as
+ * base64 PCM (`input_audio_buffer.append`), the server's own voice-activity
+ * detection cuts it into turns, and each turn comes back as deltas and then a
+ * completed transcript. Turns can complete out of order, so they are released
+ * in the order they were committed. No language is pinned: the model hears it.
+ *
+ * Audio arriving before the session is configured is held (a few seconds at
+ * most) rather than dropped: the first words are usually in it.
+ */
+export function openOpenAI(opts: EngineOptions, h: EngineHandlers, socket?: (url: string, headers: Record<string, string>) => WebSocket): LiveEngine {
+  const cfg = getConfig();
+  const model = cfg.OPENAI_LIVE_STT_MODEL;
+  const beta = cfg.OPENAI_REALTIME_PROTOCOL === "beta";
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${cfg.OPENAI_API_KEY ?? ""}`,
+    ...(beta ? { "OpenAI-Beta": "realtime=v1" } : {}),
+  };
+  const ws = socket ? socket(cfg.OPENAI_REALTIME_URL, headers) : new WebSocket(cfg.OPENAI_REALTIME_URL, { headers });
+  const resample = createResampler(opts.sampleRate, OPENAI_RATE, opts.channels);
+
+  let ready = false;
+  let closing = false;
+  let closed = false;
+  let sentSinceCommit = false;
+  const held: Buffer[] = [];
+  let heldBytes = 0;
+  const HOLD_MAX = OPENAI_RATE * 2 * 5;    // five seconds of 24 kHz audio
+
+  /** Turns, in the order the server committed them. */
+  const order: string[] = [];
+  const text = new Map<string, string>();     // deltas so far, per turn
+  const done = new Map<string, string>();     // completed transcripts
+  const span = new Map<string, { start?: number; end?: number }>();
+
+  const put = (pcm: Buffer) => {
+    if (!pcm.length || ws.readyState !== WebSocket.OPEN) return;
+    try {
+      ws.send(JSON.stringify({ type: "input_audio_buffer.append", audio: pcm.toString("base64") }));
+      sentSinceCommit = true;
+    } catch { /* engine window closed */ }
+  };
+
+  const partial = () => {
+    const p = order.filter((id) => !done.has(id)).map((id) => text.get(id) ?? "").join(" ").replace(/\s+/g, " ").trim();
+    if (p) h.onPartial(p);
+  };
+
+  /** Release completed turns from the front of the queue, in order. */
+  const release = () => {
+    while (order.length && done.has(order[0]!)) {
+      const id = order.shift()!;
+      const t = done.get(id)!;
+      done.delete(id); text.delete(id);
+      const s = span.get(id); span.delete(id);
+      const timing = s && typeof s.start === "number" && typeof s.end === "number" && s.end > s.start
+        ? { start: s.start / 1000, duration: (s.end - s.start) / 1000 } : undefined;
+      h.onFinal(t.trim(), timing);
+    }
+    partial();
+    if (closing && !order.length) shut();
+  };
+
+  const shut = () => {
+    if (closed) return;
+    closed = true;
+    try { ws.close(1000); } catch { /* already gone */ }
+  };
+
+  const vad = { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500 };
+  ws.on("open", () => {
+    try {
+      ws.send(JSON.stringify(beta
+        ? {
+            type: "transcription_session.update",
+            session: {
+              input_audio_format: "pcm16",
+              input_audio_transcription: { model },
+              input_audio_noise_reduction: { type: "near_field" },
+              turn_detection: vad,
+            },
+          }
+        : {
+            type: "session.update",
+            session: {
+              type: "transcription",
+              audio: {
+                input: {
+                  format: { type: "audio/pcm", rate: OPENAI_RATE },
+                  noise_reduction: { type: "near_field" },
+                  transcription: { model },
+                  turn_detection: vad,
+                },
+              },
+            },
+          }));
+    } catch { /* the close handler reports it */ }
+  });
+
+  ws.on("message", (raw: Buffer) => {
+    let m: any;
+    try { m = JSON.parse(raw.toString("utf8")); } catch { return; }
+    switch (m?.type) {
+      case "session.updated":
+      case "transcription_session.updated":
+        if (ready) return;
+        ready = true;
+        h.onReady();
+        for (const b of held.splice(0)) put(b);
+        heldBytes = 0;
+        return;
+      case "input_audio_buffer.speech_started":
+        if (m.item_id) span.set(m.item_id, { ...span.get(m.item_id), start: m.audio_start_ms });
+        return;
+      case "input_audio_buffer.speech_stopped":
+        if (m.item_id) span.set(m.item_id, { ...span.get(m.item_id), end: m.audio_end_ms });
+        return;
+      case "input_audio_buffer.committed":
+        sentSinceCommit = false;
+        if (m.item_id && !order.includes(m.item_id)) order.push(m.item_id);
+        return;
+      case "conversation.item.input_audio_transcription.delta":
+        if (!m.item_id) return;
+        if (!order.includes(m.item_id)) order.push(m.item_id);
+        text.set(m.item_id, (text.get(m.item_id) ?? "") + String(m.delta ?? ""));
+        partial();
+        return;
+      case "conversation.item.input_audio_transcription.completed":
+        if (!m.item_id) return;
+        if (!order.includes(m.item_id)) order.push(m.item_id);
+        done.set(m.item_id, String(m.transcript ?? ""));
+        release();
+        return;
+      case "conversation.item.input_audio_transcription.failed":
+        // One turn the model could not transcribe: it leaves nothing, and the
+        // turns after it still arrive.
+        if (!m.item_id) return;
+        done.set(m.item_id, "");
+        release();
+        return;
+      case "error": {
+        const code = String(m.error?.code ?? "");
+        // Committing an empty buffer at the end is not a failure.
+        if (code === "input_audio_buffer_commit_empty") { if (closing && !order.length) shut(); return; }
+        h.onError(String(m.error?.message ?? "openai realtime error"));
+        return;
+      }
+      default:
+        return;
+    }
+  });
+
+  ws.on("error", (e: Error) => h.onError(e.message));
+  ws.on("close", (code: number) => {
+    closed = true;
+    h.onClose(code !== 1000 && code !== 1005 ? code : undefined);
+  });
+
+  return {
+    label: `openai:${model}`,
+    send(chunk) {
+      const pcm = resample(chunk);
+      if (ready) { put(pcm); return; }
+      if (heldBytes + pcm.length > HOLD_MAX) return;
+      held.push(pcm);
+      heldBytes += pcm.length;
+    },
+    close() {
+      if (closing) return;
+      closing = true;
+      // The words after the last pause are still in the buffer: commit them,
+      // then close once every turn has come back, or after a deadline so a
+      // silent engine cannot strand the route.
+      if (ready && sentSinceCommit && ws.readyState === WebSocket.OPEN) {
+        try { ws.send(JSON.stringify({ type: "input_audio_buffer.commit" })); } catch { /* closing anyway */ }
+      } else if (!order.length) {
+        shut();
+        return;
+      }
+      setTimeout(shut, getConfig().OPENAI_LIVE_FLUSH_MS);
     },
   };
 }
