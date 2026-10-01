@@ -194,6 +194,14 @@ const ENGLISH_FUNCTION = new Set([
  * the cost of a false positive is telling someone writing plain English that
  * they are writing two languages.
  */
+/** How much of this is English function words, 0..1. Several of them mean the
+ *  sentence's grammar is English, whatever nouns it borrows. */
+export function englishShare(text: string): number {
+  const words = text.toLowerCase().match(/[a-z']+/g);
+  if (!words?.length) return 0;
+  return words.filter((w) => ENGLISH_FUNCTION.has(w)).length / words.length;
+}
+
 export function mixesEnglishAndRomanHindi(text: string): boolean {
   const words = text.toLowerCase().match(/[a-z']+/g);
   if (!words || words.length < 4) return false;

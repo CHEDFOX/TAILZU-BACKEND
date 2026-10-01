@@ -177,7 +177,7 @@ describe("assist path — instruction separation", () => {
     expect(buildAssistSystem({ hasContext: false })).not.toMatch(/already in the field/i);
   });
 
-  it("keeps those rules when a saved language is set", () => {
+  it("keeps those rules when a language is asked for", () => {
     // The language line has two forms and only one of them was ever read in
     // testing. A rule that exists in the "auto" branch and not the other is
     // a rule that vanishes as soon as someone sets their language.

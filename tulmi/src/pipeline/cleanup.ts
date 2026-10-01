@@ -19,7 +19,7 @@ import {
 import { buildAssistSystem, fenceTags, stripFenceTags } from "./assistPrompt.js";
 import { splitInstruction } from "./commands.js";
 import { buildReplySystem, inlineValue, renderCommandOverride } from "../prompts.js";
-import { detectScript, INDIC_SCRIPTS, mixesEnglishAndRomanHindi, readsAsRomanHindi, romanHindiHits, transliterated } from "./stt.js";
+import { detectScript, englishShare, INDIC_SCRIPTS, mixesEnglishAndRomanHindi, readsAsRomanHindi, romanHindiHits, transliterated } from "./stt.js";
 import { isKnownHallucination, phraseKey } from "./speechGate.js";
 import { continuesSentence, shapeForJoin } from "./join.js";
 
@@ -546,6 +546,8 @@ interface WriterRequest {
   message: string;
   context?: string;
   askedLanguage?: string;
+  /** They asked for something about the writing (shorter, formal, a language). */
+  instructed: boolean;
   system: string;
   userContent: string;
 }
@@ -581,8 +583,14 @@ function writerRequest(input: string, opts: CleanupOptions): WriterRequest {
     tone: opts.tone,
     tonePrompt: opts.tonePrompt,
     personality: opts.personality,
-    // A language asked for in this dictation takes the saved one's place.
-    language: askedLanguage ?? opts.language,
+    // ONLY A LANGUAGE ASKED FOR IN THIS DICTATION. The saved one is the
+    // language they SPEAK (the Languages card, the keyboard's mic language):
+    // a hint for the recognizer, never a language to write in. Passed here it
+    // became "Write in en." and "Write in hi.", which took the never-translate
+    // rule out of the prompt: Hinglish came back as English for anyone whose
+    // first language was English, and as Devanagari, which the alphabet guard
+    // then threw away for the raw transcript, for anyone whose first was Hindi.
+    language: askedLanguage,
     instruction: asked && !askedLanguage ? renderCommandOverride(asked) : undefined,
     targetApp: opts.targetApp,
     // THE SCRIPT IS OBSERVABLE HERE, AND WAS ONLY EVER OBSERVED UPSTREAM.
@@ -622,8 +630,77 @@ function writerRequest(input: string, opts: CleanupOptions): WriterRequest {
     : said;
   const userContent = (context ? `<before>\n${stripFenceTags(context)}\n</before>\n` : "")
     + `<said>\n${messageBlock}\n</said>`;
-  return { message, context, askedLanguage, system, userContent };
+  return { message, context, askedLanguage, instructed: !!asked, system, userContent };
 }
+
+/**
+ * WHAT A FIRST ANSWER GETS WRONG THAT CODE CAN SEE.
+ *
+ * Each principle in the prompt holds most of the time, and "most" is the
+ * complaint: Hindi came back in English, a correction kept both halves, a
+ * filler stayed, a sentence grew, Devanagari came back where English letters
+ * were asked for — each now and then, and on every client, because they all
+ * share this one call. Restating a principle more loudly has been tried in
+ * this file many times. What works is checking the answer and, when it broke
+ * a rule that can be checked, asking once more with the rule named.
+ *
+ * Only what can be measured is checked, and each check is narrow, because a
+ * false alarm costs a second call and a wrong one could undo a good answer:
+ *
+ *   alphabet    no language was asked for, and letters other than English
+ *               ones came back
+ *   translated  no language was asked for, they spoke Hindi or Hinglish (or
+ *               in another script), and what came back has none of it and
+ *               reads as English
+ *   added       far longer than what they said, with nothing asked of it
+ *   correction  "no wait…" kept, where only the correction should be
+ *   filler      "um", "uh" kept
+ */
+export type Slip = "alphabet" | "translated" | "added" | "correction" | "filler";
+
+const CORRECTION = /\b(?:no,? wait|wait,? no|scratch that|sorry,? i meant?|i meant?,? no)\b/i;
+const FILLER_WORD = /(?:^|[^\p{L}])(?:u+m+|u+h+|uhm+|erm+)(?=$|[^\p{L}])/iu;
+const OTHER_LETTERS = /(?=\p{L})[^\p{Script=Latin}]/u;
+/** A language or an alphabet named anywhere in what they said. The code only
+ *  recognises a request made in English at the end ("…write it in Hindi");
+ *  "isko Hindi mein likho" is left to the model, and checking its answer
+ *  against English letters would undo the very thing they asked for. */
+const NAMES_A_LANGUAGE = /\b(?:hindi|english|angrezi|urdu|marathi|tamil|telugu|bengali|bangla|gujarati|punjabi|kannada|malayalam|spanish|french|german|arabic|devanagari|script|alphabet|translat\w*|lipi)\b|हिंदी|हिन्दी|अंग्रेज/i;
+const wordCount = (s: string): number => (s.trim().match(/\S+/g) ?? []).length;
+
+export function slipIn(
+  message: string,
+  out: string,
+  o: { askedLanguage?: string; instructed?: boolean } = {},
+): Slip | null {
+  const said = message.trim();
+  const wrote = out.trim();
+  if (!said || !wrote) return null;
+  if (!o.askedLanguage && !NAMES_A_LANGUAGE.test(said)) {
+    if (OTHER_LETTERS.test(wrote)) return "alphabet";
+    const saidScript = detectScript(said);
+    // Romanized Hindi in, none of it out: every one of those words was
+    // replaced, which is what translating is.
+    if (saidScript === "latin" && romanHindiHits(said) >= 2 && romanHindiHits(wrote) === 0) return "translated";
+    // From another alphabet, their words spelled in English letters carry no
+    // English grammar ("Naan konjam late-aa varuven"); a translation does.
+    if (INDIC_SCRIPTS.has(saidScript) && wordCount(said) >= 4
+      && romanHindiHits(wrote) === 0 && englishShare(wrote) >= 0.1) return "translated";
+  }
+  if (!o.instructed && wordCount(wrote) > wordCount(said) * 1.6 + 6) return "added";
+  if (CORRECTION.test(wrote) && CORRECTION.test(said)) return "correction";
+  if (FILLER_WORD.test(wrote) && FILLER_WORD.test(said)) return "filler";
+  return null;
+}
+
+/** What the second ask says. Ours, so it is a plain turn, not fenced. */
+const REDO: Record<Slip, string> = {
+  alphabet: "That is in another alphabet. Write their same words in English letters, the way they would type them: spell each word, never translate it.",
+  translated: "That translated their words into English. Write their own words, in the language they spoke, only cleaned up, in English letters.",
+  added: "That added words they did not say. Write only what they said.",
+  correction: "They corrected themselves there. Keep only the correction, without what it replaced or the words that made it.",
+  filler: "Filler sounds went through. Leave them out.",
+};
 
 /**
  * The unified writing-assistant call — Tailzu's single brain for voice + typing.
@@ -638,22 +715,45 @@ export async function assist(
   opts: CleanupOptions = {},
 ): Promise<string> {
   if (!input.trim()) return "";
-  const { message, context, askedLanguage, system, userContent } = writerRequest(input, opts);
-  const res = await openrouter().chat.completions.create({
-    ...common(),
-    model: getConfig().CLEANUP_MODEL,
-    temperature: TEMPERATURE,
-    max_tokens: MAX_TOKENS_CLEANUP,
-    messages: [
-      { role: "system", content: system },
-      { role: "user", content: userContent },
-    ],
-  });
-  const out = expandSnippets(
-    stripFenceTags(res.choices[0]?.message?.content ?? "").trim(),
-    opts.personality?.snippets,
-    ctxFromOpts(opts),
-  );
+  const { message, context, askedLanguage, instructed, system, userContent } = writerRequest(input, opts);
+  const write = async (after: Array<{ role: "assistant" | "user"; content: string }> = []) => {
+    const res = await openrouter().chat.completions.create({
+      ...common(),
+      model: getConfig().CLEANUP_MODEL,
+      temperature: TEMPERATURE,
+      max_tokens: MAX_TOKENS_CLEANUP,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: userContent },
+        ...after,
+      ],
+    });
+    return stripFenceTags(res.choices[0]?.message?.content ?? "").trim();
+  };
+  let wrote = await write();
+  // CHECKED, AND ASKED ONCE MORE WHEN IT BROKE A RULE (see slipIn). Once: a
+  // rule the model breaks twice in a row is not won by a third ask, and every
+  // ask is time someone is waiting at the cursor. A second ask that fails
+  // leaves the guards below to decide, as they always have.
+  const slip = slipIn(message, wrote, { askedLanguage, instructed });
+  if (slip) {
+    try {
+      const again = await write([
+        { role: "assistant", content: wrote },
+        { role: "user", content: `${REDO[slip]} Return only the text.` },
+      ]);
+      const still = again ? slipIn(message, again, { askedLanguage, instructed }) : slip;
+      // Kept when it is clean, or, for an addition, when it at least added
+      // less. A second answer that swapped one slip for another is not kept.
+      if (again && (still === null || (slip === "added" && still === "added" && wordCount(again) < wordCount(wrote)))) wrote = again;
+      // Still in English after being told it was a translation: their own
+      // words, unwritten, are closer to what they said than someone else's.
+      else if (slip === "translated" && detectScript(message) === "latin") wrote = message.trim();
+    } catch {
+      // The first answer stands; the guards below still apply to it.
+    }
+  }
+  const out = expandSnippets(wrote, opts.personality?.snippets, ctxFromOpts(opts));
   // Whatever goes out is pasted AFTER their own text (`context`), so every
   // return below is shaped to join it: single spaces, no capital on a word
   // that only continues an unfinished sentence, no full stop after a word no

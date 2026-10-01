@@ -141,13 +141,24 @@ export const CASES: EvalCase[] = [
     mustNotContain: ["testing is still pending"],
   },
   {
-    id: "lang/setting-is-the-target",
+    id: "lang/setting-is-not-the-target",
     intent:
-      "A saved language is a choice, and the one case where the alphabet is not " +
-      "English: Hindi on the account means the message comes back in Hindi, in its own script.",
+      "A saved language is what they SPEAK, not a language to write in. Hindi on the " +
+      "account does not turn their Hinglish into Devanagari, and English on it does not " +
+      "translate it.",
     input: "kal subah nikalna hai, alarm laga dena",
     language: "hi",
-    mustBeScript: "devanagari",
+    mustBeScript: "latin",
+    mustContain: ["kal", "alarm"],
+  },
+  {
+    id: "lang/setting-en-does-not-translate",
+    intent: "The same rule from the other side: English saved, Hinglish spoken, Hinglish written.",
+    input: "kal subah nikalna hai, alarm laga dena",
+    language: "en",
+    mustBeScript: "latin",
+    mustContain: ["kal"],
+    mustNotContain: ["tomorrow morning", "set an alarm"],
   },
   {
     id: "lang/asked-for-another",

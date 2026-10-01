@@ -54,11 +54,11 @@ Mic-only checks
   keep_transcript_script    the writer may not change the script it was handed
   transcript_<check>        any check above, aimed at the transcript instead
 
-WHY THERE IS NO script= ON A SPOKEN CASE. Speech has no script. Someone who
-SAYS a Hindi sentence did not choose Devanagari or romanised — the recogniser
-did, and either is a fair reading. Asserting one would fail the pipeline for
-a decision the user never made. keep_transcript_script asserts the thing that
-IS a fault: the writer changing what it was given.
+A SPOKEN CASE ASSERTS script= ON THE WRITING, NEVER ON THE TRANSCRIPT. Speech
+has no script: someone who SAYS a Hindi sentence did not choose Devanagari or
+romanised — the recogniser did, and either is a fair reading. The writer then
+spells whatever it was given in English letters (unless they asked for another
+alphabet), so the finished text is Latin either way.
 """
 
 HINGLISH = "yaar kal ka plan cancel ho gaya hai, ab agle hafte milte hain"
@@ -154,9 +154,10 @@ CASES = [
          why="the reported bug: refinement came back in English",
          text=HINGLISH,
          forbid=["the plan", "next week", "got cancelled", "let's meet"]),
-    dict(id="lang/devanagari-stays-devanagari", smoke=True,
-         why="and the same in the other script",
-         text="मैं थोड़ा लेट पहुँचूँगा, मीटिंग शुरू कर देना", script="devanagari"),
+    dict(id="lang/devanagari-spelled-out", smoke=True,
+         why="another alphabet comes back in English letters, the same words, not translated",
+         text="मैं थोड़ा लेट पहुँचूँगा, मीटिंग शुरू कर देना", script="latin",
+         require=["meeting"], forbid=["i will be", "i'll be", "start the meeting"]),
     dict(id="lang/mixed-english-then-hindi", smoke=True,
          why="v5 scoped its switching rule to scripts, so this came back all English",
          text="the deploy is done but abhi testing baaki hai",
@@ -167,34 +168,50 @@ CASES = [
          text="kal ka meeting cancel ho gaya so please inform the team",
          forbid=["yesterday's meeting", "the meeting was cancelled"]),
     dict(id="lang/mixed-devanagari-and-latin",
-         why="a sentence that changes script mid-way keeps both",
+         why="a sentence that changes script mid-way comes back in one, English letters",
          text="मैंने deploy कर दिया है, अब testing बाकी है",
-         has_scripts=["devanagari"]),
+         script="latin", require=["deploy", "testing"],
+         forbid=["testing is still pending", "testing is pending"]),
     dict(id="lang/setting-en-does-not-translate", smoke=True,
-         why="a saved language is a bias for spelling, never a target to convert to",
+         why="a saved language is what they speak, never a language to convert to",
          text="kal subah nikalna hai, alarm laga dena", language="en",
          forbid=["tomorrow morning", "set an alarm", "we have to leave"]),
     dict(id="lang/setting-hi-does-not-translate",
          why="the same rule pointed the other way",
          text="please send me the invoice before friday", language="hi",
          script="latin", forbid=["कृपया", "भेज"]),
-    dict(id="lang/tamil-survives",
-         why="Indic is not only Hindi; Sarvam covers 22 languages",
+    dict(id="lang/tamil-spelled-out",
+         why="Indic is not only Hindi: Tamil comes back as Tamil, in English letters",
          text="நான் கொஞ்சம் தாமதமாக வருவேன், மீட்டிங்கை ஆரம்பியுங்கள்",
-         script="tamil"),
-    dict(id="lang/bengali-survives",
+         script="latin", forbid=["i will be late", "start the meeting"]),
+    dict(id="lang/bengali-spelled-out",
          why="as above",
-         text="আমি একটু দেরি করে আসব, মিটিং শুরু করে দিও", script="bengali"),
-    dict(id="lang/marathi-survives",
-         why="Devanagari that is not Hindi must not be 'corrected' into Hindi",
-         text="मी थोडा उशिरा येईन, मीटिंग सुरू करा", script="devanagari"),
+         text="আমি একটু দেরি করে আসব, মিটিং শুরু করে দিও", script="latin",
+         forbid=["i will be late", "start the meeting"]),
+    dict(id="lang/marathi-spelled-out",
+         why="Devanagari that is not Hindi must not be 'corrected' into Hindi or English",
+         text="मी थोडा उशिरा येईन, मीटिंग सुरू करा", script="latin",
+         forbid=["i will be late", "start the meeting"]),
     dict(id="lang/spanish-survives",
          why="the audience is worldwide, not only Indian",
          text="oye voy a llegar tarde, empiecen sin mi", script="latin",
          forbid=["i'll be late", "start without me"]),
-    dict(id="lang/arabic-survives",
-         why="a right-to-left script is not a transcription error",
-         text="سوف أتأخر قليلاً، ابدأوا الاجتماع من فضلكم", script="arabic"),
+    dict(id="lang/arabic-spelled-out",
+         why="a right-to-left script is not a transcription error, and not English either",
+         text="سوف أتأخر قليلاً، ابدأوا الاجتماع من فضلكم", script="latin",
+         forbid=["i will be late", "start the meeting"]),
+    dict(id="lang/asked-for-hindi-script",
+         why="their own alphabet is one sentence away",
+         text="tell priya the deploy is done, write it in hindi",
+         script="devanagari", forbid=["write it in hindi"]),
+    dict(id="fix/correction-keeps-only-the-correction", smoke=True,
+         why="'no wait' means the first half is gone",
+         text="lets meet at five no wait six thirty",
+         require=["six thirty"], forbid=["five", "no wait"]),
+    dict(id="fix/fillers-go",
+         why="um and uh are the sound of thinking, not words",
+         text="so um i think uh we should push the launch to monday",
+         require=["monday"], forbid_regex=r"\b(?:um+|uh+)\b"),
     dict(id="lang/romanised-not-transliterated",
          why="transliterating is the same fault as translating, wearing a different hat",
          text="mujhe kal subah jaldi uthna hai", script="latin"),
@@ -435,9 +452,9 @@ CASES = [
     # stage: `transcript_*` keys and max_wer judge the recogniser, the plain
     # keys judge the writer.
     #
-    # keep_transcript_script is the mic path's version of the script rule.
-    # Speech has no script — the recogniser picks one — so what matters is
-    # that the writer did not then change it.
+    # Speech has no script — the recogniser picks one — and the writer spells
+    # whatever it picked in English letters, so the finished text is Latin
+    # whichever alphabet the transcript came in.
     dict(id="dictation/english-is-repaired", smoke=True,
          why="the whole product in one case: speech in, clean text out",
          endpoint="dictate",
@@ -449,13 +466,13 @@ CASES = [
          why="the reported bug, from the microphone rather than the keyboard",
          endpoint="dictate",
          say="मैं थोड़ा लेट पहुँचूँगा, मीटिंग शुरू कर देना",
-         max_wer=0.6, keep_transcript_script=True,
+         max_wer=0.6, script="latin",
          forbid=["i will be late", "start the meeting", "i'll be a little late"]),
     dict(id="dictation/hinglish-is-not-translated", smoke=True,
          why="code-mixed speech is the most common way this app is used",
          endpoint="dictate",
          say="yaar kal ka plan cancel ho gaya hai, ab agle hafte milte hain",
-         max_wer=0.7, keep_transcript_script=True,
+         max_wer=0.7, script="latin",
          forbid=["the plan was cancelled", "let's meet next week",
                  "got cancelled", "see you next week"]),
     dict(id="dictation/mixed-sentence-keeps-both",
@@ -475,7 +492,7 @@ CASES = [
          # suite. Clearer delivery narrows the synthesis noise without lowering
          # what is being asked of the pipeline.
          speak_as="clear and unhurried, natural pace",
-         max_wer=0.75, keep_transcript_script=True,
+         max_wer=0.75, script="latin",
          forbid=["i will be late", "start the meeting"]),
     dict(id="dictation/spanish-is-recognised",
          why="promoting an Indic recogniser must not cost the rest of the world",

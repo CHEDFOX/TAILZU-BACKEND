@@ -414,8 +414,10 @@ export function buildAssistSystem(opts: {
     // average of two rules instead of one of them.
     //
     // It is a DEFAULT and not a claim about the person: a language asked for
-    // in this dictation, or saved on their account, arrives here as `lang`
-    // and simply takes its place.
+    // in this dictation arrives here as `lang` and simply takes its place.
+    // The language saved on their account does NOT: that is what they speak,
+    // and as `lang` it turned every Hinglish sentence into English for
+    // anyone whose first language was English (see writerRequest).
     // ENGLISH IS THE ALPHABET, NOT THE LANGUAGE. The two are one word in
     // ordinary speech — "write it in English" — and the difference is the
     // whole rule: "mera matlab samajh gaye" comes back as itself, spelled in
