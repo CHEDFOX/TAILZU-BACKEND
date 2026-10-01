@@ -718,10 +718,17 @@ export interface Note {
   transcript: NoteSegment[];
   /** True once the writer has organised it. */
   organised: boolean;
+  /**
+   * Whether the computer's own sound (the other people on a call) was heard:
+   * "ok"; "denied" when the Mac's Screen & System Audio Recording permission
+   * is off, so only the microphone was noted; "unavailable" when this
+   * computer could not provide it. Absent on notes from before this was kept.
+   */
+  systemAudio?: "ok" | "denied" | "unavailable";
 }
 
 /** A note as a list shows it. */
-export type NoteSummary = Pick<Note, "id" | "status" | "startedAt" | "endedAt" | "durationSeconds" | "words" | "title" | "summary" | "people" | "organised">;
+export type NoteSummary = Pick<Note, "id" | "status" | "startedAt" | "endedAt" | "durationSeconds" | "words" | "title" | "summary" | "people" | "organised" | "systemAudio">;
 
 
 /** GET /v1/history response. */

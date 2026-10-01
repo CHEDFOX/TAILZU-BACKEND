@@ -40,7 +40,7 @@ interface Row {
   words: number;
   title: string;
   summary: string;
-  body: Partial<Pick<NoteBody, "highlights" | "people">> | null;
+  body: (Partial<Pick<NoteBody, "highlights" | "people">> & { systemAudio?: Note["systemAudio"] }) | null;
   transcript: NoteSegment[] | null;
   organised: boolean;
   deleted_at: string | null;
@@ -62,6 +62,7 @@ function fromRow(r: Row): Note {
     summary: r.summary ?? "",
     highlights: arr(body.highlights),
     people: arr(body.people),
+    ...(body.systemAudio ? { systemAudio: body.systemAudio } : {}),
     transcript: arr(r.transcript),
     organised: !!r.organised,
   };
@@ -75,6 +76,7 @@ function summaryOf(n: Note): NoteSummary {
     id: n.id, status: n.status, startedAt: n.startedAt, endedAt: n.endedAt,
     durationSeconds: n.durationSeconds, words: n.words, title: n.title,
     summary: n.summary, people: n.people, organised: n.organised,
+    ...(n.systemAudio ? { systemAudio: n.systemAudio } : {}),
   };
 }
 
@@ -190,7 +192,7 @@ export async function updateNote(
         words: next.words,
         title: next.title,
         summary: next.summary,
-        body: { highlights: next.highlights, people: next.people },
+        body: { highlights: next.highlights, people: next.people, ...(next.systemAudio ? { systemAudio: next.systemAudio } : {}) },
         transcript: next.transcript,
         organised: next.organised,
         updated_at: new Date().toISOString(),

@@ -837,6 +837,9 @@ export type ActionSpec =
   | { kind: "dictate" }
   /** Start (or stop) taking notes, as the notes hotkey does (desktop). */
   | { kind: "notes.toggle" }
+  /** Open the Mac's Screen & System Audio Recording settings, so notes can
+   *  hear the computer's sound (desktop, macOS). */
+  | { kind: "notes.allowSystemAudio" }
   /** Download, check and install a newer build in place of this one, then
    *  restart on it (desktop/updater.js). `words` are the card's line for each
    *  step; "{pct}" in `downloading` is filled in by the window. */
@@ -1537,6 +1540,9 @@ export type KeyboardActionSpec =
   | { kind: "dictate" }
   /** Start (or stop) taking notes, as the notes hotkey does (desktop). */
   | { kind: "notes.toggle" }
+  /** Open the Mac's Screen & System Audio Recording settings, so notes can
+   *  hear the computer's sound (desktop, macOS). */
+  | { kind: "notes.allowSystemAudio" }
   /** Download, check and install a newer build in place of this one, then
    *  restart on it (desktop/updater.js). `words` are the card's line for each
    *  step; "{pct}" in `downloading` is filled in by the window. */

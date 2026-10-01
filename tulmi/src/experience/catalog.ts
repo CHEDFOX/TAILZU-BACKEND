@@ -4575,6 +4575,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       notes: ctx.notes,
       note: ctx.note,
       notesHotkey: ctx.can?.has("DeskNotes") === true,
+      allowSystemAudio: ctx.can?.has("DeskSystemAudio") === true,
       usage: ctx.usage,
       stats: ctx.stats as unknown as StatsForUser | undefined,
       allowance: ctx.allowance,

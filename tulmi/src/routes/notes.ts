@@ -20,7 +20,7 @@
  * a time, so running out stops the note where it is and keeps what it has.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { AudioFormat, Personality } from "../../../shared/types/api.js";
+import type { AudioFormat, Note, Personality } from "../../../shared/types/api.js";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { appendHeard, diarize, labelSpeakers, type Track, type Utterance } from "../notes/speakers.js";
 import { organise } from "../notes/organise.js";
@@ -55,6 +55,8 @@ const DIARIZED_TTL_MS = 2 * 60 * 60_000;
 function sweep(now = Date.now()) {
   for (const [k, v] of diarized) if (now - v.t > DIARIZED_TTL_MS) diarized.delete(k);
 }
+
+const SYSTEM_AUDIO = new Set(["ok", "denied", "unavailable"]);
 
 /** A recording note written to this recently is still being recorded. */
 const STILL_RECORDING_MS = 3 * 60_000;
@@ -190,8 +192,10 @@ export function registerNotesRoutes(app: FastifyInstance, deps: NotesRouteDeps):
   const finish = (again: boolean) => async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-    const body = (req.body ?? {}) as { durationSeconds?: unknown };
+    const body = (req.body ?? {}) as { durationSeconds?: unknown; systemAudio?: unknown };
     const dur = Number(body.durationSeconds);
+    // Whether the computer's sound was heard, as the desktop saw it.
+    const systemAudio = SYSTEM_AUDIO.has(body.systemAudio as string) ? (body.systemAudio as Note["systemAudio"]) : undefined;
     try {
       // Only the request that moves the note to "organising" starts the
       // writer: two finishes at once (a retry, a double press) start one.
@@ -212,6 +216,7 @@ export function registerNotesRoutes(app: FastifyInstance, deps: NotesRouteDeps):
           status: "organising",
           endedAt: n.endedAt ?? new Date().toISOString(),
           durationSeconds: Number.isFinite(dur) && dur > 0 ? Math.max(n.durationSeconds, dur) : n.durationSeconds,
+          ...(systemAudio && !again ? { systemAudio } : {}),
         };
       });
       if (!note) return reply.code(404).send({ code: "not_found", message: "No such note" });

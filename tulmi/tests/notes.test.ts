@@ -16,10 +16,12 @@ vi.mock("../src/pipeline/stt.js", () => ({
 }));
 
 const organiseCalls: unknown[] = [];
+const organiseNotes: unknown[] = [];
 vi.mock("../src/notes/organise.js", async (orig) => ({
   ...(await orig<typeof import("../src/notes/organise.js")>()),
-  organise: vi.fn(async (note: { transcript: unknown[] }) => {
+  organise: vi.fn(async (note: { transcript: unknown[]; systemAudio?: string }) => {
     organiseCalls.push(note.transcript);
+    organiseNotes.push(note.systemAudio);
     return {
       title: "Launch plan", summary: "Ship Friday.",
       highlights: [{ speaker: "Speaker 1", text: "We ship Friday." }],
@@ -143,7 +145,7 @@ describe("the notes routes", () => {
   let app: FastifyInstance;
   beforeAll(async () => { app = await buildApp(); await app.ready(); });
   afterAll(async () => { await app.close(); });
-  beforeEach(() => { resetNotesForTests(); resetNotesRoutesForTests(); organiseCalls.length = 0; for (const k of Object.keys(diarized)) delete diarized[k]; });
+  beforeEach(() => { resetNotesForTests(); resetNotesRoutesForTests(); organiseCalls.length = 0; organiseNotes.length = 0; for (const k of Object.keys(diarized)) delete diarized[k]; });
 
   const upload = (id: string, track: string, at: number, bytes = "audio-" + track, path = "audio") => {
     const b = "----notes";
@@ -209,6 +211,24 @@ describe("the notes routes", () => {
     expect(note.transcript.map((s: { speaker: string }) => s.speaker)).toEqual(["You", "Speaker 1", "Speaker 2"]);
     // The writer read the labelled transcript, not the live one.
     expect(JSON.stringify(organiseCalls[0])).toContain("Speaker 2");
+  });
+
+  it("keeps whether the computer's sound was heard, and the writer is told", async () => {
+    const id = (await app.inject({ method: "POST", url: "/v1/notes" })).json().note.id as string;
+    heard.text = "My update is the build";
+    await upload(id, "mic", 0);
+    await app.inject({ method: "POST", url: `/v1/notes/${id}/finish`, payload: { systemAudio: "denied" } });
+    await notesWork(id);
+    const note = (await app.inject({ method: "GET", url: `/v1/notes/${id}` })).json().note;
+    expect(note.systemAudio).toBe("denied");
+    expect((await app.inject({ method: "GET", url: "/v1/notes" })).json().notes[0].systemAudio).toBe("denied");
+    expect(organiseNotes[0]).toBe("denied");
+    // Anything else is not kept.
+    const id2 = (await app.inject({ method: "POST", url: "/v1/notes" })).json().note.id as string;
+    await upload(id2, "mic", 0);
+    await app.inject({ method: "POST", url: `/v1/notes/${id2}/finish`, payload: { systemAudio: "maybe" } });
+    await notesWork(id2);
+    expect((await app.inject({ method: "GET", url: `/v1/notes/${id2}` })).json().note.systemAudio).toBeUndefined();
   });
 
   it("a finish never starts the writer twice, and a note that is not there is a 404", async () => {

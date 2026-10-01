@@ -148,15 +148,20 @@ const fence = (tag: string, body: string) =>
  * The note's organised body, or null when the writer could not produce one
  * (the transcript stays, and the note can be organised again).
  */
-export async function organise(note: Pick<Note, "transcript" | "startedAt">): Promise<NoteBody | null> {
+export async function organise(note: Pick<Note, "transcript" | "startedAt" | "systemAudio">): Promise<NoteBody | null> {
   const segs = note.transcript.filter((s) => s.text.trim());
   if (!segs.length) return null;
   const labels = new Set(segs.map((s) => s.speaker ?? "Speaker"));
   const chunks = parts(transcriptLines(segs));
+  // The computer's sound was not heard: on a call, only one side is here,
+  // and the paragraph must not pretend to know the other.
+  const onlyYou = note.systemAudio === "denied" || note.systemAudio === "unavailable"
+    ? "Only the note-taker's microphone was recorded. If this was a call, the other people were not heard: write about what was heard, and never guess what they said.\n\n"
+    : "";
   try {
     const bodies: NoteBody[] = [];
     for (const c of chunks) {
-      const b = parseBody(await ask(SYSTEM, fence("transcript", c.join("\n"))), labels);
+      const b = parseBody(await ask(SYSTEM, onlyYou + fence("transcript", c.join("\n"))), labels);
       if (b) bodies.push(b);
     }
     if (!bodies.length) return null;

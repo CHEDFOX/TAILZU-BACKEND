@@ -296,7 +296,6 @@ export const APP_KNOB_LABELS: Record<string, string> = {
   "desktop.notes.cantStart": "Couldn't start notes. Check the connection and try again.",
   "desktop.notes.crashed": "Notes stopped unexpectedly. What was heard is kept in Notes.",
   "desktop.notes.failed": "Couldn't organise those notes. What was said is kept in Notes.",
-  "desktop.notes.macPermission": "To include the computer's sound, allow Tailzu under System Settings → Privacy & Security → Screen & System Audio Recording. Your microphone is still being noted.",
   "desktop.notes.micOnly": "Noting your microphone only: the computer's sound isn't available here.",
   "desktop.notes.noMic": "Couldn't open the microphone, so notes did not start.",
   "desktop.notes.nothingHeard": "No one spoke in that note, so there is nothing to organise.",

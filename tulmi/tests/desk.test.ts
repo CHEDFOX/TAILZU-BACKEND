@@ -52,6 +52,8 @@ const DESKTOP_ACTIONS = new Set([
   "copyText", "desktop.config", "dictate", "signOut",
   // Sent only to a window that declared DeskNotes (sdui.js runs it).
   "notes.toggle",
+  // Sent only to a window that declared DeskSystemAudio (a Mac).
+  "notes.allowSystemAudio",
 ]);
 
 type AnyNode = { type?: string; props?: Record<string, unknown>; children?: AnyNode[]; on?: Record<string, unknown> };
@@ -530,5 +532,37 @@ describe("the desk's notes", () => {
     const empty = (can: string[]) => JSON.stringify(buildScreen("desk_notes", { personality: {}, language: "en", notes: [], can: new Set(can) } as never));
     expect(empty(["DeskNotes"])).toContain('"kind":"notes.toggle"');
     expect(empty([])).not.toContain("notes.toggle");
+  });
+});
+
+describe("a note with only your side", () => {
+  const note = (systemAudio?: string) => ({
+    id: "33333333-3333-4333-8333-333333333333", status: "ready", startedAt: new Date().toISOString(), durationSeconds: 600, words: 300,
+    title: "Standup", summary: "You went through your updates.", organised: true, people: [],
+    highlights: [{ speaker: "You", text: "The build is ready." }], transcript: [{ at: 0, speaker: "You", text: "The build is ready." }],
+    ...(systemAudio ? { systemAudio } : {}),
+  });
+  const page = (systemAudio: string | undefined, can: string[]) =>
+    JSON.stringify(buildScreen("desk_note", { personality: {}, language: "en", note: note(systemAudio), can: new Set(can) } as never));
+
+  it("says so, with an Allow button where the window can open the setting", () => {
+    const j = page("denied", ["DeskNotes", "DeskSystemAudio"]);
+    expect(j).toContain("Only your side");
+    expect(j).toContain('"kind":"notes.allowSystemAudio"');
+  });
+
+  it("an older window is told where the setting is instead", () => {
+    const j = page("denied", ["DeskNotes"]);
+    expect(j).toContain("Screen & System Audio Recording");
+    expect(j).not.toContain("notes.allowSystemAudio");
+  });
+
+  it("a note that heard everything, or one from before this was kept, says nothing about it", () => {
+    for (const v of ["ok", "unavailable", undefined]) expect(page(v, ["DeskNotes", "DeskSystemAudio"])).not.toContain("Only your side");
+  });
+
+  it("the list marks it", () => {
+    const list = JSON.stringify(buildScreen("desk_notes", { personality: {}, language: "en", notes: [note("denied")] } as never));
+    expect(list).toContain("Your side only");
   });
 });

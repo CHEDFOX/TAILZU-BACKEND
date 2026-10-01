@@ -86,6 +86,9 @@ export interface DeskContext {
   note?: Note | null;
   /** This window has the notes hotkey (it said "DeskNotes"). */
   notesHotkey?: boolean;
+  /** This window can open the Mac's permission for the computer's sound
+   *  (it said "DeskSystemAudio"). */
+  allowSystemAudio?: boolean;
 }
 
 // ---- nodes ---------------------------------------------------------------------
@@ -670,7 +673,8 @@ export function deskNotes(ctx: DeskContext): ScreenResponse {
     }
     const d = local(ctx, Date.parse(nt.startedAt));
     const who = peopleLine(nt.people);
-    const status = nt.status !== "ready" ? NOTE_STATUS[nt.status] : !nt.organised ? "Nothing was heard" : "";
+    const status = nt.status !== "ready" ? NOTE_STATUS[nt.status] : !nt.organised ? "Nothing was heard"
+      : nt.systemAudio === "denied" ? "Your side only" : "";
     body.push(row([
       stack([
         text(clock(d), "d-margin-strong"),
@@ -687,6 +691,20 @@ export function deskNotes(ctx: DeskContext): ScreenResponse {
   }
 
   return screen("desk_notes", "Notes", [room, page([stack(body, { maxWidth: 760 })])]);
+}
+
+/** The Mac did not let Tailzu hear the computer's sound: only the
+ *  microphone is in this note. A window that can open the setting gets a
+ *  button for it; an older one, where to find it. */
+function onlyYourSide(canOpen: boolean): Node {
+  return stack([
+    text("Only your side", "d-eyebrow"),
+    text("Tailzu couldn't hear your computer's sound, so this note has only what your microphone heard.", "d-written", { marginTop: 6, maxWidth: 620 }),
+    text("Allow it once, and your next note includes everyone on the call.", "d-lede", { marginTop: 4 }),
+    canOpen
+      ? row([link("Allow", { kind: "notes.allowSystemAudio" }, "d-btn")], { marginTop: 14 })
+      : text("System Settings → Privacy & Security → Screen & System Audio Recording → turn on Tailzu.", "d-margin", { marginTop: 10 }),
+  ], { paddingTop: 18, paddingBottom: 20, marginBottom: 34, borderTop: "1px solid var(--d-rule)", borderBottom: "1px solid var(--d-rule)", maxWidth: 760 });
 }
 
 /** The note as plain text, for Copy: the meeting, the paragraph, the lines. */
@@ -750,6 +768,9 @@ export function deskNote(ctx: DeskContext): ScreenResponse {
   ], { marginBottom: 34 });
 
   const body: Node[] = [];
+  // THE COMPUTER'S SOUND WAS OFF. The note is still made, from the
+  // microphone; this says so, and how to have everyone in the next one.
+  if (nt.systemAudio === "denied") body.push(onlyYourSide(!!ctx.allowSystemAudio));
   if (nt.summary) body.push(text(nt.summary, "d-written", { fontSize: 18, lineHeight: "28px", maxWidth: 680 }));
   if (nt.highlights.length) {
     body.push(stack([
