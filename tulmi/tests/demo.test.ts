@@ -155,6 +155,11 @@ describe("the landing page", () => {
     expect(c.llm.targets.length).toBeGreaterThanOrEqual(2);
     expect(c.llm.targets.length).toBeLessThanOrEqual(4);
     expect(c.llm.more.split(/\s+/).length).toBeLessThanOrEqual(2);
+    // Each machine its own prompt, said one way and written another, and
+    // no two the same.
+    expect(c.llm.prompts.length).toBe(c.llm.targets.length);
+    for (const p of c.llm.prompts) expect(p.wrote).not.toBe(p.said);
+    expect(new Set(c.llm.prompts.map((p: { wrote: string }) => p.wrote)).size).toBe(c.llm.prompts.length);
     expect(typeof body.perMinute).toBe("number");
     // Readable from a page hosted anywhere, so a preview shows the real
     // copy rather than falling back to the one baked into the file.

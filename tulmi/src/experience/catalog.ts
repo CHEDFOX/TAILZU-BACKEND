@@ -372,8 +372,17 @@ export const SITE_UI = {
     targets: ["ChatGPT", "Claude", "Grok"],
     more: "and more",
     tag: "New chat",
-    said: "okay so um help me think through pricing for the team plan like per seat or usage or maybe both and what could go wrong with each",
-    wrote: "Help me think through pricing for the team plan: per seat, usage-based, or a hybrid of the two. For each, give the price point, the target customer and the biggest risk.",
+    // One prompt per machine, in the order of `targets`: what was said
+    // roughly, and the prompt that lands in that machine's box. The page
+    // plays one, then moves to the next tab. `said`/`wrote` are the first,
+    // for a page that only knows one.
+    prompts: [
+      { said: "okay so um explain black holes but like to a golden retriever", wrote: "Explain black holes to a golden retriever." },
+      { said: "uh write a breakup letter from my alarm clock to me, dramatic but polite", wrote: "Write a dramatic but polite breakup letter from my alarm clock to me." },
+      { said: "so um if cats ran the stock market what would crash first and why", wrote: "If cats ran the stock market, what would crash first, and why?" },
+    ],
+    said: "okay so um explain black holes but like to a golden retriever",
+    wrote: "Explain black holes to a golden retriever.",
   },
   /*
    * FOR DEVELOPERS. The same picture in an editor: something said, and the
