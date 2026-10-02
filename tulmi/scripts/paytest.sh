@@ -113,8 +113,8 @@ CODE=$(curl -s -o /dev/null -w '%{http_code}' "$API/pay")
 if [ "$CODE" = 302 ]; then
   echo "  NOTE  Tailzu is free (FREE_FOR_ALL): /pay sends people to /pricing, and nothing is sold."
   echo "        The checks below still prove the webhook, so it is ready the day that is switched off."
-  echo "        To prove a live payment meanwhile: put your account id in PAY_TESTERS, then"
-  echo "        ./tulmi/scripts/paylink.sh <account id> prints the page that only you can buy on."
+  echo "        To prove a live payment meanwhile: ./tulmi/scripts/paylink.sh you@example.com"
+  echo "        prints a one-day test link that opens the pay page for your account only."
 else
   PAGE=$(curl -s "$API/pay")
   case "$PAGE" in *'data-state="loading"'*) ok "the pay page is open for checkout";;

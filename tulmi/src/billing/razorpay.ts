@@ -61,13 +61,6 @@ export function razorpayReady(): boolean {
   return KEY_ID.test(c.RAZORPAY_KEY_ID) && !!c.RAZORPAY_KEY_SECRET;
 }
 
-/** An account allowed to buy while Tailzu is free (PAY_TESTERS): exact
- *  ids only, so a prefix or a stray space can never let anyone else in. */
-export function payTester(userId: string | null | undefined): boolean {
-  if (!userId || !UUID.test(userId)) return false;
-  return getConfig().PAY_TESTERS.split(",").map((s) => s.trim().toLowerCase()).includes(userId.toLowerCase());
-}
-
 /** Test mode: rzp_test_ keys take test cards and charge nobody. */
 export function testMode(): boolean {
   return getConfig().RAZORPAY_KEY_ID.startsWith("rzp_test_");
@@ -469,28 +462,65 @@ export async function cancelForUser(userId: string): Promise<{ ok: boolean; code
  * with the key secret and good for about a week. It is what lets the page's
  * calls name their caller — a bare account id in a URL could be anyone's.
  * Rebuilt on every bootstrap, in whole days so it stays the same all day.
+ *
+ * A TEST link (`test`) is the same, plus one thing: it opens the page while
+ * Tailzu is free, so a live payment can be proven before launch without
+ * switching limits on for anybody. Only scripts/paylink.sh makes one, so only
+ * someone on the server can; it lasts a day and is signed differently, so an
+ * ordinary link cannot be turned into one.
  */
-export function payLink(base: string, userId: string, now = Date.now()): string | undefined {
+export function payLink(base: string, userId: string, now = Date.now(), test = false): string | undefined {
   const secret = getConfig().RAZORPAY_KEY_SECRET;
   if (!secret || !UUID.test(userId)) return undefined;
   const day = 86_400;
-  const exp = (Math.floor(now / 1000 / day) + 8) * day;
+  const exp = test ? Math.floor(now / 1000) + day : (Math.floor(now / 1000 / day) + 8) * day;
   const url = new URL(base.startsWith("http") ? base : `${SITE}/pay`);
   url.searchParams.set("u", userId);
   url.searchParams.set("e", String(exp));
-  url.searchParams.set("t", payToken(userId, exp));
+  if (test) url.searchParams.set("x", "1");
+  url.searchParams.set("t", payToken(userId, exp, test));
   return url.toString();
 }
 
-function payToken(userId: string, exp: number): string {
-  return hmacHex(String(getConfig().RAZORPAY_KEY_SECRET), `pay:${userId}:${exp}`).slice(0, 32);
+function payToken(userId: string, exp: number, test: boolean): string {
+  return hmacHex(String(getConfig().RAZORPAY_KEY_SECRET), `${test ? "paytest" : "pay"}:${userId}:${exp}`).slice(0, 32);
 }
 
-/** The account a pay link was signed for, when it is genuine and current. */
-export function payLinkUser(u: unknown, e: unknown, t: unknown, now = Date.now()): string | null {
-  const userId = String(u ?? "");
-  const exp = Number(e);
+/** Who a pay link was signed for, and whether it is a test link, when it is
+ *  genuine and current; otherwise null. */
+export function payCaller(
+  q: { u?: unknown; e?: unknown; t?: unknown; x?: unknown },
+  now = Date.now(),
+): { userId: string; test: boolean } | null {
+  const userId = String(q.u ?? "");
+  const exp = Number(q.e);
+  const test = String(q.x ?? "") === "1";
   if (!getConfig().RAZORPAY_KEY_SECRET || !UUID.test(userId) || !Number.isFinite(exp)) return null;
   if (exp * 1000 < now) return null;
-  return sameHex(payToken(userId, exp), String(t ?? "")) ? userId : null;
+  return sameHex(payToken(userId, exp, test), String(q.t ?? "")) ? { userId, test } : null;
+}
+
+/** The account a pay link was signed for, or null. */
+export function payLinkUser(u: unknown, e: unknown, t: unknown, now = Date.now()): string | null {
+  return payCaller({ u, e, t }, now)?.userId ?? null;
+}
+
+/**
+ * An account id from an email address (or an id, given as one), for
+ * scripts/paylink.sh. Reads the accounts page by page through the admin API;
+ * null when there is no such account.
+ */
+export async function accountIdFor(emailOrId: string): Promise<string | null> {
+  const want = emailOrId.trim().toLowerCase();
+  if (UUID.test(want)) return want;
+  const sb = supabase();
+  if (!sb || !want.includes("@")) return null;
+  for (let page = 1; page <= 100; page++) {
+    const { data, error } = await sb.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) throw new Error(error.message);
+    const hit = data.users.find((u) => String(u.email ?? "").toLowerCase() === want);
+    if (hit) return hit.id;
+    if (data.users.length < 1000) return null;
+  }
+  return null;
 }

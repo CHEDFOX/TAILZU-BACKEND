@@ -432,14 +432,6 @@ const EnvSchema = z.object({
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
   RAZORPAY_PLANS: z.string().default(""),
   /**
-   * Accounts that may use the pay page while Tailzu is free (FREE_FOR_ALL),
-   * so a live payment can be proven end to end without switching limits on
-   * for everybody. Exact account ids, comma-separated. Grants nothing: they
-   * pay real money like anyone else, and are free like everyone else.
-   * Their signed pay link comes from scripts/paylink.sh.
-   */
-  PAY_TESTERS: z.string().default(""),
-  /**
    * THE LANDING PAGE'S LIVE DEMO. Off by default, on purpose.
    *
    * tailzu.space lets a visitor press a mic, talk for a few seconds, and see

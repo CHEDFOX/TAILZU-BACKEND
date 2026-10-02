@@ -133,7 +133,7 @@ export function payHtml(opts: {
 
   // WHO IS PAYING: the link the server signed for this account.
   var q = new URLSearchParams(location.search);
-  var caller = { u: q.get("u") || "", e: q.get("e") || "", t: q.get("t") || "" };
+  var caller = { u: q.get("u") || "", e: q.get("e") || "", t: q.get("t") || "", x: q.get("x") || "" };
   if (!caller.u || !caller.e || !caller.t) { set("nouser"); return; }
 
   var report = function (where, err) {
@@ -155,7 +155,7 @@ export function payHtml(opts: {
     set("failed");
   };
   var post = function (path, body) {
-    var all = { u: caller.u, e: caller.e, t: caller.t };
+    var all = { u: caller.u, e: caller.e, t: caller.t, x: caller.x };
     for (var k in body) all[k] = body[k];
     return fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(all) })
       .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { j.status = r.status; return j; }); });
