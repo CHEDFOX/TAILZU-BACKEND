@@ -573,7 +573,9 @@ async function payOffers(): Promise<PayOffer[]> {
     let badge: string | undefined;
     if (monthly && annual && monthly.item.currency === annual.item.currency && perYear(monthly) && perYear(annual)) {
       const save = 1 - (annual.item.amount * perYear(annual)) / (monthly.item.amount * perYear(monthly));
-      if (save >= 0.1) badge = `Save ${Math.floor((save * 100) / 5) * 5}%`;
+      // To the nearest whole percent: ₹5,999 against twelve of ₹999 is 49.96%,
+      // which is "Save 50%", not the 45% that rounding down to fives said.
+      if (save >= 0.1) badge = `Save ${Math.round(save * 100)}%`;
     }
     for (const [period, configured, plan] of [["monthly", m, monthly], ["annual", a, annual]] as const) {
       if (!configured) continue;

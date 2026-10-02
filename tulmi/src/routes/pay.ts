@@ -16,7 +16,7 @@
  * Served with a Content-Security-Policy that allows Razorpay (*.razorpay.com)
  * and the page's own script by nonce, and nothing else that runs.
  */
-import { PLAN_CSS, SELLER, esc } from "./policies/pricing.js";
+import { SELLER, esc } from "./policies/pricing.js";
 import { siteShell } from "./policies/shell.js";
 
 /** One plan as the page shows it. `buyable` is false when its price could
@@ -53,18 +53,66 @@ export function payCsp(nonce: string): string {
   ].join("; ");
 }
 
-const CSS = `${PLAN_CSS}
-  .note { display: none; margin: 20px 0 0; padding: 16px 20px; border-radius: 16px; background: var(--card); color: var(--white); }
+/**
+ * THE PRICE'S ROOM, AS THE LANDING PAGE BUILDS IT. On tailzu.space the price
+ * is a field of sun, edge to edge and a screen tall, with ink on it: a mono
+ * kicker, a serif title, a sans line, and the things to choose as flat
+ * blocks of colour, as the tone cards are. This page is that field, so going
+ * from the site to paying is not a change of room. The mark turns ink on
+ * the light field as the site's header does, and the footer stays the
+ * site's dark one below it.
+ */
+const CSS = `
+  :root { --paper: #FBF8F2; --paper-soft: rgba(251,248,242,.72); --wash: rgba(27,23,18,.07); }
+  body { background: var(--sun); color: var(--ink2); }
+  .mast .mark rect { fill: var(--ink2); }
+  .mast .mark line:first-child { stroke: var(--ink2); }
+  main { min-height: calc(100vh - 72px); min-height: calc(100svh - 72px); display: flex; align-items: center; padding: 40px 0 72px; }
+  main > .wrap { width: 100%; }
+  footer { background: var(--ink); }
+  #pay .eye { color: var(--ink2-soft); }
+  #pay h1 { color: var(--ink2); font-weight: 400; }
+  #pay .lede { color: var(--ink2-soft); }
+
+  .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; max-width: 820px; margin: 44px 0 0; }
+  .plan { display: flex; flex-direction: column; min-height: 248px; padding: 24px 24px 22px; border-radius: 18px; background: var(--paper); color: var(--ink2); transition: transform .25s cubic-bezier(.2,.8,.2,1); }
+  .plan:hover { transform: translateY(-4px); }
+  .plan.lead { background: var(--ink2); color: var(--paper); }
+  .plan .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .plan h2 { margin: 0; font-family: var(--mono); font-weight: 400; font-size: 12px; letter-spacing: .2em; text-transform: uppercase; }
+  .badge { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; border: 1px solid currentColor; border-radius: 999px; padding: 3px 10px; }
+  .plan.lead .badge { color: var(--sun); }
+  .price { margin: 26px 0 2px; font-family: var(--serif); font-weight: 400; font-size: 58px; line-height: 1; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+  .plan.lead .price { color: var(--sun); }
+  .per { margin: 0 0 22px; color: var(--ink2-soft); font-size: 15px; }
+  .plan.lead .per { color: var(--paper-soft); }
+  .plan .btn { margin-top: auto; min-height: 46px; background: var(--ink2); color: var(--sun); }
+  .plan.lead .btn { background: var(--sun); color: var(--ink2); }
+  .plan .btn:hover { opacity: .86; }
+
+  .note { display: none; max-width: 820px; margin: 18px 0 0; padding: 16px 20px; border-radius: 16px; background: var(--ink2); color: var(--paper); }
   #pay[data-state="nouser"] .note.nouser, #pay[data-state="done"] .note.done,
   #pay[data-state="error"] .note.error, #pay[data-state="off"] .note.off, #pay[data-state="opening"] .note.opening,
   #pay[data-state="failed"] .note.failed, #pay[data-state="subscribed"] .note.subscribed { display: block; }
-  .note code { font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; opacity: .8; text-transform: none; }
+  .note code { font: 13px/1.4 var(--mono); opacity: .75; text-transform: none; }
   #pay[data-state="nouser"] .plan .btn, #pay[data-state="off"] .plan .btn, #pay[data-state="subscribed"] .plan .btn { display: none; }
-  #pay[data-state="done"] .field, #pay[data-state="opening"] .field { opacity: .45; pointer-events: none; }
+  #pay[data-state="done"] .plans, #pay[data-state="opening"] .plans { opacity: .5; pointer-events: none; }
   #pay[data-market="IN"] .plan[data-market="world"], #pay[data-market="world"] .plan[data-market="IN"] { display: none; }
-  .fine { margin: 56px 0 0; max-width: 720px; }
-  .fine p { color: var(--dim); font-size: 14px; margin: 0 0 12px; text-transform: none; }
-  .fine a { text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+
+  .fine { margin: 48px 0 0; max-width: 680px; }
+  .fine p { color: var(--ink2-soft); font-size: 14px; margin: 0 0 10px; text-transform: none; }
+  .fine strong { color: var(--ink2); font-weight: 500; }
+  .fine a { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+  .fine a:hover { text-decoration-color: var(--ink2); }
+  :focus-visible { outline-color: var(--ink2); }
+
+  @media (max-width: 640px) {
+    main { align-items: flex-start; padding: 28px 0 56px; }
+    .plans { margin-top: 32px; }
+    .plan { min-height: 0; }
+    .price { font-size: 50px; margin-top: 20px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .plan:hover { transform: none; } }
 `;
 
 export function payHtml(opts: {
@@ -100,8 +148,7 @@ export function payHtml(opts: {
 <h1>Choose your plan.</h1>
 <p class="lede">Unlimited words on every device you sign in to.</p>
 
-<div class="field"><div class="plans">${cards}
-</div></div>
+${cards ? `<div class="plans">${cards}\n</div>` : ""}
 
 <p class="note nouser">Open this page from Tailzu: Settings, then Subscribe. That is how your payment reaches your account.</p>
 <p class="note opening">Opening checkout…</p>
