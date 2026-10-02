@@ -54,65 +54,64 @@ export function payCsp(nonce: string): string {
 }
 
 /**
- * THE PRICE'S ROOM, AS THE LANDING PAGE BUILDS IT. On tailzu.space the price
- * is a field of sun, edge to edge and a screen tall, with ink on it: a mono
- * kicker, a serif title, a sans line, and the things to choose as flat
- * blocks of colour, as the tone cards are. This page is that field, so going
- * from the site to paying is not a change of room. The mark turns ink on
- * the light field as the site's header does, and the footer stays the
- * site's dark one below it.
+ * QUIET, ON THE SITE'S OWN DARK. The hero's ground and its pale, and nothing
+ * else: no field of colour, no accent. What makes it read as considered is
+ * restraint — one column, hairlines instead of fills, the prices set large
+ * in the serif, and a single filled button, on the plan most people should
+ * take. Everything else is the same pale at a lower weight, as in the app.
+ * (The amber stays out: on the site it means the microphone is open.)
  */
 const CSS = `
-  :root { --paper: #FBF8F2; --paper-soft: rgba(251,248,242,.72); --wash: rgba(27,23,18,.07); }
-  body { background: var(--sun); color: var(--ink2); }
-  .mast .mark rect { fill: var(--ink2); }
-  .mast .mark line:first-child { stroke: var(--ink2); }
-  main { min-height: calc(100vh - 72px); min-height: calc(100svh - 72px); display: flex; align-items: center; padding: 40px 0 72px; }
+  :root {
+    --hair: rgba(243,226,198,.10); --hair-strong: rgba(243,226,198,.24);
+    --surface: rgba(243,226,198,.028); --surface-lead: rgba(243,226,198,.055);
+  }
+  main { min-height: calc(100vh - 72px); min-height: calc(100svh - 72px); display: flex; align-items: center; padding: 48px 0 88px; }
   main > .wrap { width: 100%; }
-  footer { background: var(--ink); }
-  #pay .eye { color: var(--ink2-soft); }
-  #pay h1 { color: var(--ink2); font-weight: 400; }
-  #pay .lede { color: var(--ink2-soft); }
+  #pay { max-width: 760px; margin: 0 auto; text-align: center; }
+  #pay .eye { margin-bottom: 20px; }
+  #pay h1 { font-weight: 300; font-size: clamp(40px, 5.6vw, 60px); margin-bottom: 14px; }
+  #pay .lede { margin: 0 auto; font-size: 17px; }
+  .perks { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 22px; margin: 26px 0 0; padding: 0; list-style: none; font-family: var(--mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); }
 
-  .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; max-width: 820px; margin: 44px 0 0; }
-  .plan { display: flex; flex-direction: column; min-height: 248px; padding: 24px 24px 22px; border-radius: 18px; background: var(--paper); color: var(--ink2); transition: transform .25s cubic-bezier(.2,.8,.2,1); }
-  .plan:hover { transform: translateY(-4px); }
-  .plan.lead { background: var(--ink2); color: var(--paper); }
-  .plan .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .plan h2 { margin: 0; font-family: var(--mono); font-weight: 400; font-size: 12px; letter-spacing: .2em; text-transform: uppercase; }
-  .badge { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; border: 1px solid currentColor; border-radius: 999px; padding: 3px 10px; }
-  .plan.lead .badge { color: var(--sun); }
-  .price { margin: 26px 0 2px; font-family: var(--serif); font-weight: 400; font-size: 58px; line-height: 1; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
-  .plan.lead .price { color: var(--sun); }
-  .per { margin: 0 0 22px; color: var(--ink2-soft); font-size: 15px; }
-  .plan.lead .per { color: var(--paper-soft); }
-  .plan .btn { margin-top: auto; min-height: 46px; background: var(--ink2); color: var(--sun); }
-  .plan.lead .btn { background: var(--sun); color: var(--ink2); }
-  .plan .btn:hover { opacity: .86; }
+  .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin: 52px 0 0; text-align: left; }
+  .plan { display: flex; flex-direction: column; padding: 28px 28px 26px; border-radius: 20px; background: var(--surface); border: 1px solid var(--hair); box-shadow: inset 0 1px 0 rgba(243,226,198,.04); transition: border-color .3s, background .3s; }
+  .plan:hover { border-color: var(--hair-strong); }
+  .plan.lead { background: var(--surface-lead); border-color: var(--hair-strong); }
+  .plan .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
+  .plan h2 { margin: 0; font-family: var(--mono); font-weight: 400; font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--grey); }
+  .badge { font-family: var(--mono); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--grey); border: 1px solid var(--hair-strong); border-radius: 999px; padding: 3px 10px; }
+  .price { margin: 30px 0 4px; font-family: var(--serif); font-weight: 300; font-size: 56px; line-height: 1; letter-spacing: -.03em; color: var(--white); font-variant-numeric: tabular-nums lining-nums; }
+  .per { margin: 0 0 30px; color: var(--dim); font-size: 14px; }
+  .plan .btn { margin-top: auto; width: 100%; min-height: 48px; font-size: 14px; background: transparent; color: var(--white); border: 1px solid var(--hair-strong); transition: background .2s, border-color .2s, opacity .2s; }
+  .plan .btn:hover { opacity: 1; background: rgba(243,226,198,.06); border-color: rgba(243,226,198,.4); }
+  .plan.lead .btn { background: linear-gradient(180deg, #F8EBD3, var(--white) 55%); border-color: var(--white); color: var(--ink); box-shadow: inset 0 1px 0 rgba(255,255,255,.5); }
+  .plan.lead .btn:hover { opacity: .9; }
 
-  .note { display: none; max-width: 820px; margin: 18px 0 0; padding: 16px 20px; border-radius: 16px; background: var(--ink2); color: var(--paper); }
+  .note { display: none; margin: 20px 0 0; padding: 15px 20px; border-radius: 14px; border: 1px solid var(--hair); background: var(--surface); color: var(--grey); font-size: 15px; text-align: left; }
   #pay[data-state="nouser"] .note.nouser, #pay[data-state="done"] .note.done,
   #pay[data-state="error"] .note.error, #pay[data-state="off"] .note.off, #pay[data-state="opening"] .note.opening,
   #pay[data-state="failed"] .note.failed, #pay[data-state="subscribed"] .note.subscribed { display: block; }
-  .note code { font: 13px/1.4 var(--mono); opacity: .75; text-transform: none; }
+  #pay[data-state="done"] .note.done { color: var(--white); border-color: var(--hair-strong); }
+  .note code { font: 12px/1.4 var(--mono); color: var(--dim); text-transform: none; }
   #pay[data-state="nouser"] .plan .btn, #pay[data-state="off"] .plan .btn, #pay[data-state="subscribed"] .plan .btn { display: none; }
-  #pay[data-state="done"] .plans, #pay[data-state="opening"] .plans { opacity: .5; pointer-events: none; }
+  #pay[data-state="nouser"] .per, #pay[data-state="off"] .per, #pay[data-state="subscribed"] .per { margin-bottom: 0; }
+  #pay[data-state="done"] .plans, #pay[data-state="opening"] .plans { opacity: .4; pointer-events: none; transition: opacity .3s; }
   #pay[data-market="IN"] .plan[data-market="world"], #pay[data-market="world"] .plan[data-market="IN"] { display: none; }
 
-  .fine { margin: 48px 0 0; max-width: 680px; }
-  .fine p { color: var(--ink2-soft); font-size: 14px; margin: 0 0 10px; text-transform: none; }
-  .fine strong { color: var(--ink2); font-weight: 500; }
-  .fine a { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
-  .fine a:hover { text-decoration-color: var(--ink2); }
-  :focus-visible { outline-color: var(--ink2); }
+  .fine { margin: 56px auto 0; padding-top: 26px; border-top: 1px solid var(--hair); max-width: 620px; }
+  .fine p { color: var(--dim); font-size: 13px; line-height: 1.7; margin: 0 0 10px; text-transform: none; }
+  .fine strong { color: var(--grey); font-weight: 500; }
+  .fine a { text-decoration: underline; text-decoration-color: var(--hair-strong); text-underline-offset: 3px; transition: color .2s; }
+  .fine a:hover { color: var(--white); }
 
   @media (max-width: 640px) {
-    main { align-items: flex-start; padding: 28px 0 56px; }
-    .plans { margin-top: 32px; }
-    .plan { min-height: 0; }
-    .price { font-size: 50px; margin-top: 20px; }
+    main { align-items: flex-start; padding: 32px 0 64px; }
+    .plans { margin-top: 36px; gap: 12px; }
+    .plan { padding: 24px 22px 22px; }
+    .price { font-size: 48px; margin-top: 22px; }
+    .per { margin-bottom: 24px; }
   }
-  @media (prefers-reduced-motion: reduce) { .plan:hover { transform: none; } }
 `;
 
 export function payHtml(opts: {
@@ -147,6 +146,7 @@ export function payHtml(opts: {
 <p class="eye">Subscribe</p>
 <h1>Choose your plan.</h1>
 <p class="lede">Unlimited words on every device you sign in to.</p>
+<ul class="perks"><li>Unlimited words</li><li>Phone and computer</li><li>Cancel any time</li></ul>
 
 ${cards ? `<div class="plans">${cards}\n</div>` : ""}
 
