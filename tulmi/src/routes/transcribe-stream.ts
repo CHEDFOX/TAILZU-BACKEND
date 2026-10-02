@@ -44,6 +44,8 @@ import {
   type SegmentTiming,
 } from "./live-engines.js";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
+import { getPersonality } from "../personality/store.js";
+import { sttPrompt } from "../pipeline/stt.js";
 import { enforceQuota, recordUsage } from "../usage/metering.js";
 import {
   sanitizePlainTranscript, transcriptsAgree, isUsableAlternative, readsAsRomanHindi,
@@ -61,6 +63,31 @@ interface StartMessage {
   sampleRate?: number;
   encoding?: string;
   channels?: number;
+}
+
+/**
+ * THE LIVE RECOGNIZER IS TOLD WHO IS TALKING, AS THE ONE-SHOT ONE ALWAYS WAS.
+ *
+ * The in-app mic's clip goes to Whisper with a run-up: a line in each
+ * language on the person's Languages card, their dictionary, their own words
+ * (stt.sttPrompt). The live socket sent none, so the keyboard's recognizer
+ * met every sentence cold: "kem cho bhai" from a Gujarati speaker came back
+ * "kemchobi", one word it had never heard of, where the in-app mic got it
+ * right. Same run-up here — a hint, never a pinned language.
+ *
+ * Read while the session opens, and given up on quickly: the audio is held
+ * meanwhile (see `early`), and a slow read must cost the hint, not the start.
+ */
+async function liveHint(user: AuthedUser): Promise<string | undefined> {
+  const read = getPersonality(user).then((p) => sttPrompt(
+    p.vocabulary,
+    undefined,
+    p.languages?.map(String),
+    p.stylePortrait?.core,
+    p.stylePortrait?.words,
+  ));
+  const late = new Promise<undefined>((r) => setTimeout(() => r(undefined), 800));
+  return Promise.race([read, late]).catch(() => undefined);
 }
 
 /** Count whitespace-delimited words in a transcript segment. */
@@ -424,7 +451,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         }, IDLE_TIMEOUT_MS);
       };
 
-      const openEngine = (start: StartMessage) => {
+      const openEngine = (start: StartMessage, prompt?: string) => {
         if (!liveEngineConfigured()) {
           req.log.error("live dictation refused: no streaming speech engine is configured");
           send({ type: "error", code: "internal", message: STREAM_ERROR_TEXT.unavailable });
@@ -442,7 +469,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         // and honoring it locked the recognizer to that single language,
         // breaking code-switching.
         engine = openLiveEngine(
-          format,
+          prompt ? { ...format, prompt } : format,
           {
             onReady: () => {
               send({ type: "ready" });
@@ -612,10 +639,11 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
             safeClose();
             return;
           }
+          const hint = await liveHint(user);
           // The socket may have gone while auth was in flight.
           if (closed) return;
           if (handshakeTimer) { clearTimeout(handshakeTimer); handshakeTimer = null; }
-          openEngine(msg as StartMessage);
+          openEngine(msg as StartMessage, hint);
           // What was said while the sign-in was checked, in the order it was
           // said. The engines hold it until they are connected.
           const backlog = early.splice(0);

@@ -93,6 +93,18 @@ describe("OpenAI live dictation", () => {
     expect(sock.sent.filter((m) => m.type === "input_audio_buffer.append")).toHaveLength(1);
   });
 
+  it("carries the speaker's run-up when it has one, and none when it does not", () => {
+    const sock = new FakeSocket();
+    openOpenAI({ sampleRate: 16000, channels: 1, prompt: "હા, કાલે સવારે મળીએ." }, {
+      onReady() {}, onPartial() {}, onFinal() {}, onError() {}, onClose() {},
+    }, () => sock as never);
+    sock.emit("open");
+    expect(sock.sent[0].session.audio.input.transcription).toEqual({ model: "gpt-4o-mini-transcribe", prompt: "હા, કાલે સવારે મળીએ." });
+    const { sock: plain } = harness();
+    plain.emit("open");
+    expect(plain.sent[0].session.audio.input.transcription).toEqual({ model: "gpt-4o-mini-transcribe" });
+  });
+
   it("shows partials, and releases turns in the order they were said, with where they lie", () => {
     const { sock, log } = harness();
     sock.emit("open");

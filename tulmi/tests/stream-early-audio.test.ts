@@ -19,10 +19,12 @@ process.env.NODE_ENV = "test";
 
 type H = { onReady(): void; onClose(c?: number): void };
 const heard: string[] = [];
+const opened: Array<{ sampleRate: number; channels: number; prompt?: string }> = [];
 
 vi.mock("../src/routes/live-engines.js", () => ({
   liveEngineConfigured: () => true,
-  openLiveEngine: (_o: unknown, h: H) => {
+  openLiveEngine: (o: { sampleRate: number; channels: number; prompt?: string }, h: H) => {
+    opened.push(o);
     setTimeout(() => h.onReady(), 0);
     return { label: "test:primary", send: (b: Buffer) => heard.push(b.toString()), close: () => setTimeout(() => h.onClose(), 0) };
   },
@@ -41,6 +43,12 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
   };
 });
 
+// A Gujarati speaker, with a word of their own.
+vi.mock("../src/personality/store.js", async (orig) => {
+  const real = (await orig()) as Record<string, unknown>;
+  return { ...real, getPersonality: async () => ({ languages: ["gu", "en"], vocabulary: "Tailzu" }) };
+});
+
 const { buildApp } = await import("../src/server.js");
 
 let app: FastifyInstance;
@@ -52,7 +60,7 @@ beforeAll(async () => {
   port = (app.server.address() as AddressInfo).port;
 });
 afterAll(async () => { await app.close(); });
-beforeEach(() => { heard.length = 0; });
+beforeEach(() => { heard.length = 0; opened.length = 0; });
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function open(): Promise<{ ws: WebSocket; got: Array<Record<string, unknown>> }> {
@@ -86,6 +94,15 @@ describe("audio sent while the session is being verified", () => {
     ws.send(Buffer.from("after"));
     await wait(50);
     expect(heard).toEqual(["after"]);
+    ws.close();
+  });
+
+  it("tells the recognizer who is talking: their languages and their words", async () => {
+    const { ws } = await open();
+    ws.send(JSON.stringify({ type: "start", token: "t", sampleRate: 16000 }));
+    await wait(250);
+    expect(opened[0]!.prompt).toContain("હા, કાલે સવારે મળીએ.");
+    expect(opened[0]!.prompt).toContain("Tailzu");
     ws.close();
   });
 });

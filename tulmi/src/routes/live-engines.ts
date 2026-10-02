@@ -46,6 +46,13 @@ export interface EngineHandlers {
 export interface EngineOptions {
   sampleRate: number;
   channels: number;
+  /**
+   * What the recognizer is told before it listens: a line in each language
+   * this person speaks, and their own words (stt.sttPrompt — the same run-up
+   * the one-shot path gives Whisper). Never a pinned language. Used by the
+   * OpenAI engine; the others take no such hint.
+   */
+  prompt?: string;
 }
 
 /** A committed segment's place in the audio stream, in seconds. */
@@ -409,7 +416,7 @@ export function openOpenAI(opts: EngineOptions, h: EngineHandlers, socket?: (url
             type: "transcription_session.update",
             session: {
               input_audio_format: "pcm16",
-              input_audio_transcription: { model },
+              input_audio_transcription: { model, ...(opts.prompt ? { prompt: opts.prompt } : {}) },
               input_audio_noise_reduction: { type: "near_field" },
               turn_detection: vad,
             },
@@ -422,7 +429,7 @@ export function openOpenAI(opts: EngineOptions, h: EngineHandlers, socket?: (url
                 input: {
                   format: { type: "audio/pcm", rate: OPENAI_RATE },
                   noise_reduction: { type: "near_field" },
-                  transcription: { model },
+                  transcription: { model, ...(opts.prompt ? { prompt: opts.prompt } : {}) },
                   turn_detection: vad,
                 },
               },
