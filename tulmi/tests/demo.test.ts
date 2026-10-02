@@ -118,9 +118,14 @@ describe("the landing page", () => {
     for (const sec of [c.how, c.tone, c.llm, c.apps, c.desk, c.dev, c.faq]) expect(sec.kick).toBeUndefined();
     expect(c.how.steps.length).toBe(3);
     for (const s of c.how.steps) expect(s.title.trim().split(/\s+/).length).toBeLessThanOrEqual(5);
-    // The correction: the cut word is in the title, and the fix is one word.
-    expect(c.apps.title.toLowerCase()).toContain(c.apps.cut.toLowerCase());
-    expect(c.apps.fix.trim().split(/\s+/).length).toBe(1);
+    // The correction, when there is one: the cut word is in the title, and
+    // the fix is one word. A title with nothing to strike sets neither.
+    if (c.apps.cut) {
+      expect(c.apps.title.toLowerCase()).toContain(c.apps.cut.toLowerCase());
+      expect(c.apps.fix.trim().split(/\s+/).length).toBe(1);
+    } else {
+      expect(c.apps.fix).toBe("");
+    }
     expect(c.apps.fields.length).toBeGreaterThanOrEqual(3);
     for (const f of c.apps.fields) {
       expect(["message", "mail", "memo", "search"]).toContain(f.kind);
@@ -133,8 +138,8 @@ describe("the landing page", () => {
     expect(spoken.length).toBeGreaterThanOrEqual(3);
     expect(spoken.some((f) => /[^\u0000-\u024F\s\p{P}]/u.test(f.say))).toBe(true);
     // The gesture on the page is the tray app's default way in: Ctrl, twice.
+    // The keys drawn beside the title show it; the title no longer names it.
     expect(c.desk.keys).toEqual(["Ctrl", "Ctrl"]);
-    expect(c.desk.title.toLowerCase()).toContain("ctrl");
     expect(c.free.title.length).toBeGreaterThan(0);
     // The price screen is a title, a button and the three marks. Nothing
     // under the title tells the reader what upgrading is for.

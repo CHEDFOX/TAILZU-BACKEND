@@ -300,37 +300,36 @@ export const SITE_UI = {
    * full stop where a comma would have kept going.
    */
   how: {
-    title: "Talk. It writes.",
+    title: "Talk. Tailzu writes.",
     // Three steps, a title each and nothing under it.
     steps: [
-      { title: "You speak." },
-      { title: "It hears what you mean." },
-      { title: "Written." },
+      { title: "You talk." },
+      { title: "Just your voice, understood." },
+      { title: "Tailzu writes." },
     ],
   },
   tone: {
-    title: "Same words. Your tone.",
-    lede: "Pick once. Every message wears it.",
+    title: "Same thought. Any voice.",
+    lede: "Say what you mean. Then choose how you want it to sound.",
     said: "hey can u send the file tonight its kinda urgent",
     tones: [
-      { name: "Neutral", text: "Can you send the file tonight? It's fairly urgent." },
+      // Six, by the brief. Casual and Excited are tones in the app,
+      // Professional and Friendly are voices (personalityPresets.ts);
+      // Confident and Short are the page's names for the Executive and
+      // Concise voices.
       { name: "Casual", text: "Hey, can you send the file tonight? Kinda urgent." },
-      { name: "Formal", text: "Could you please send the file this evening? It is time-sensitive." },
+      { name: "Professional", text: "Could you send the file this evening? It's time-sensitive." },
+      { name: "Friendly", text: "Hi! Could you send the file tonight? It's a bit urgent." },
+      { name: "Confident", text: "Please send the file tonight. It's urgent." },
       { name: "Excited", text: "Can you send the file tonight? Can't wait to dig in!" },
-      // The four nobody expects a keyboard to have. All four are real voices
-      // in the app (personalityPresets.ts), so the page promises nothing the
-      // picker does not already offer.
-      { name: "Shakespeare", text: "Prithee, send the file ere night doth fall. 'Tis most urgent." },
-      { name: "Pirate", text: "Arr, send the file tonight, matey. It be urgent." },
-      { name: "Movie Trailer", text: "One file. One night. And time is running out." },
-      { name: "Noir", text: "The file. Tonight. In this town, urgent means yesterday." },
+      { name: "Short", text: "File tonight, please. Urgent." },
     ],
   },
   apps: {
-    title: "It's a keyboard.",
-    // The correction the page draws: this word is struck through and this
-    // one written above it by hand. It's a keyless board.
-    cut: "key", fix: "keyless",
+    title: "You have a faster way to say it.",
+    // The correction the page can draw: a word struck through and another
+    // written above it by hand. This title has none, so nothing is struck.
+    cut: "", fix: "",
     // `kind` picks the drawing: a chat bubble, a mail, a note, a search bar.
     fields: [
       { kind: "message", app: "Message", text: "Can we push the call to four?" },
@@ -348,8 +347,8 @@ export const SITE_UI = {
     ],
   },
   desk: {
-    title: "Touch Ctrl. Take control.",
-    lede: "Mac and Windows.",
+    title: "Your keyboard just learned another trick.",
+    lede: "Your words appear at the cursor. No copy. No paste.",
     // The tray app's way in (desktop/main.js, `tap` on by default): a
     // double-tap on Ctrl, or on Alt. The chord and F9 are fallbacks and are
     // not what the page shows. Two keys drawn is the gesture; `join` is
@@ -358,7 +357,7 @@ export const SITE_UI = {
     join: "",
   },
   free: {
-    title: "Free to start.",
+    title: "Why type it? Say it.",
   },
   /*
    * THE MACHINES. Say it rough, and a clean prompt lands in the box of
@@ -368,8 +367,8 @@ export const SITE_UI = {
    * The two lines are a real cleanup — structure restored, nothing added.
    */
   llm: {
-    title: "Talk to the machine.",
-    lede: "Say it rough. A clean prompt lands in the box.",
+    title: "AI is already conversational.",
+    lede: "Your computer should be too. Say it once.",
     targets: ["ChatGPT", "Claude", "Grok"],
     more: "and more",
     tag: "New chat",
@@ -383,13 +382,13 @@ export const SITE_UI = {
    * promise. The file, the app and the language are set dressing.
    */
   dev: {
-    title: "Talk to your editor.",
-    lede: "Say the change. It lands where the cursor is.",
+    title: "Your hands don't have to be the bottleneck.",
+    lede: "Tailzu puts the instruction where it belongs.",
     app: "Cursor",
-    file: "upload.ts",
+    file: "auth.ts",
     lang: "TypeScript",
-    said: "um add a retry to the upload thing like three attempts with backoff and log every failure",
-    wrote: "// Add a retry to the upload: three attempts with exponential backoff. Log each failure.",
+    said: "um find the auth bug but like keep the API the same and add tests for when it fails",
+    wrote: "// Find the authentication bug, keep the API unchanged, and add tests for the failure case.",
   },
   faq: {
     title: "Asked, answered.",
@@ -456,7 +455,9 @@ export const SITE_UI = {
   // installer (or to /download while there is none), so the only word on
   // it is this one. The store links live here so they can change without a
   // site deploy — the App Store id and the package name are the app's.
-  download: { get: "Download" },
+  // Every download button says `get`; the hero's and the code screen's say
+  // their own (index.html reads a button's data-dl as the key).
+  download: { get: "Get Tailzu", hero: "Try Tailzu", dev: "Try it in your workflow" },
   stores: {
     ios: "https://apps.apple.com/app/id6784811357",
     android: "https://play.google.com/store/apps/details?id=com.tulmi.app",
@@ -12091,7 +12092,7 @@ export const SITE_SHAPE = {
   // written from the same two lines (scripts/sync-site.mts).
   "meta": {
     "title": "Tailzu — AI Voice Typing for Hindi, Hinglish & 22 Indian Languages",
-    "description": "Talk. It writes. Speak Hindi, Hinglish or any of 22 Indian languages and clean, ready-to-send text lands in any app. iPhone, Android, Windows and Mac."
+    "description": "Talk. Tailzu writes. Speak Hindi, Hinglish or any of 22 Indian languages and clean, ready-to-send text lands in any app. iPhone, Android, Windows and Mac."
   }
 };
 

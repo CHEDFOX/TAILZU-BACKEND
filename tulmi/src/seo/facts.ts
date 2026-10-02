@@ -38,7 +38,7 @@ export const HOME = {
   title: SITE_SHAPE.meta.title,
   description: SITE_SHAPE.meta.description,
   ogTitle: "Tailzu — say it badly, send it perfect",
-  ogDescription: "Talk. It writes. Your words, spelled the way you type — not translated, not in an alphabet you don't type.",
+  ogDescription: "Talk. Tailzu writes. Your words, spelled the way you type — not translated, not in an alphabet you don't type.",
 };
 
 // ---------------------------------------------------------------- languages

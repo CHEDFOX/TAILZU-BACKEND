@@ -22,7 +22,7 @@ export const OG_IMAGE = {
   url: `${ORIGIN}/og.png`,
   width: 1200,
   height: 630,
-  alt: "Tailzu. Talk. It writes. A sentence said roughly, written clean.",
+  alt: "Talk. Tailzu writes. A sentence said roughly, written clean.",
 };
 
 /** The App Store id, for Safari's install banner. */
