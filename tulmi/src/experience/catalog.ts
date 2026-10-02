@@ -4639,7 +4639,9 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       plans: PAYWALL_CONFIG.plans,
       manageUrl: ctx.entitlement ? String(manageFlags(ctx.entitlement.store)["billing.manage.url"] ?? "") || undefined : undefined,
       // Dimmed to sit behind the Train page's words, as on the phone's card.
-      update: updateFor(ctx.appVersion, ctx.os, DESKTOP_LATEST),
+      // A Microsoft Store install (DeskStore) is updated by the Store; the
+      // website's installer offered here would put a second copy beside it.
+      update: ctx.can?.has("DeskStore") ? undefined : updateFor(ctx.appVersion, ctx.os, DESKTOP_LATEST),
       selfUpdate: ctx.can?.has("DeskSelfUpdate") === true,
       field: screenId === "desk_train" && ctx.can?.has("DeskField")
         ? neuralField(0.5, fieldGrowth(ctx.personality), undefined, FIELD_SIGNAL_AT_REST)
