@@ -61,6 +61,13 @@ export function razorpayReady(): boolean {
   return KEY_ID.test(c.RAZORPAY_KEY_ID) && !!c.RAZORPAY_KEY_SECRET;
 }
 
+/** An account allowed to buy while Tailzu is free (PAY_TESTERS): exact
+ *  ids only, so a prefix or a stray space can never let anyone else in. */
+export function payTester(userId: string | null | undefined): boolean {
+  if (!userId || !UUID.test(userId)) return false;
+  return getConfig().PAY_TESTERS.split(",").map((s) => s.trim().toLowerCase()).includes(userId.toLowerCase());
+}
+
 /** Test mode: rzp_test_ keys take test cards and charge nobody. */
 export function testMode(): boolean {
   return getConfig().RAZORPAY_KEY_ID.startsWith("rzp_test_");

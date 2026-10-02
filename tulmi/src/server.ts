@@ -48,7 +48,7 @@ import { getProfile, updateProfile, touchLastSeen, type Profile } from "./profil
 import { applyRevenueCatEvent, getEntitlement, isEntitled } from "./billing/entitlements.js";
 import {
   RazorpayError, cancelForUser, checkoutSignatureOk, createSubscription, fetchPlan, fetchSubscription,
-  formatPeriod, formatPrice, ownerOf, payLink, payLinkUser, planFor, razorpayReady, SUB_ID,
+  formatPeriod, formatPrice, ownerOf, payLink, payLinkUser, payTester, planFor, razorpayReady, SUB_ID,
   syncSubscription, webhookSignatureOk, type Market, type Period, type RzPlan,
 } from "./billing/razorpay.js";
 import { runPipeline } from "./pipeline/index.js";
@@ -535,10 +535,12 @@ app.get("/pricing", async (_req, reply) => {
 
 // Tailzu's pay page (tailzu.space/pay): where the desktop's Subscribe
 // goes. Both markets' plans at Razorpay's prices; the browser picks one.
-app.get("/pay", async (_req, reply) => {
+app.get("/pay", async (req, reply) => {
   // Nothing is sold while Tailzu is free: the page that would take a
-  // payment sends people to the one that says so.
-  if (cfg.FREE_FOR_ALL) return reply.redirect("/pricing", 302);
+  // payment sends people to the one that says so — unless the link is signed
+  // for a tester (PAY_TESTERS), proving the live checkout before launch.
+  const q = (req.query ?? {}) as Record<string, string>;
+  if (cfg.FREE_FOR_ALL && !payTester(payLinkUser(q.u, q.e, q.t))) return reply.redirect("/pricing", 302);
   const nonce = randomBytes(16).toString("base64");
   reply.type("text/html; charset=utf-8");
   reply.header("Cache-Control", "no-store");
@@ -601,11 +603,11 @@ function payCaller(b: Record<string, unknown>): string | null {
  * subscription on top of a live one bills them twice for the same thing.
  */
 app.post("/v1/pay/razorpay/subscription", PAY_RL, async (req, reply) => {
-  if (cfg.FREE_FOR_ALL) return reply.code(409).send({ code: "free" });
   if (!razorpayReady()) return reply.code(503).send({ code: "not_configured" });
   const b = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
   const userId = payCaller(b);
   if (!userId) return reply.code(401).send({ code: "link_expired" });
+  if (cfg.FREE_FOR_ALL && !payTester(userId)) return reply.code(409).send({ code: "free" });
   const market: Market | null = b.market === "IN" ? "IN" : b.market === "world" ? "world" : null;
   const period: Period | null = b.period === "monthly" ? "monthly" : b.period === "annual" ? "annual" : null;
   const plan = market && period ? planFor(market, period) : undefined;
