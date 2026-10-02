@@ -73,6 +73,11 @@ function countWords(text: string): number {
  *  30 MB of 16 kHz mono PCM is ~15 minutes of dictation — far beyond a real
  *  session; anything past that is either buggy or hostile. */
 const MAX_STREAM_BYTES = 30 * 1024 * 1024;
+/**
+ * Audio held while a session is being verified, before the engine exists.
+ * Ten seconds of 48 kHz mono; far more than a sign-in check ever takes.
+ */
+const EARLY_MAX_BYTES = 48_000 * 2 * 10;
 
 /** Close the socket if no audio arrives for this long after `ready`. */
 const IDLE_TIMEOUT_MS = 60_000;
@@ -191,6 +196,22 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
       let started = false;
       let user: AuthedUser | null = null;
       let bytes = 0;
+      // THE FIRST WORDS ARRIVE BEFORE THE SESSION IS READY, AND WERE DROPPED.
+      //
+      // The clients send audio the moment the socket opens, right behind
+      // `start` — the Android keyboard does not wait for "ready". Checking the
+      // sign-in is a round trip to Supabase, and every frame that landed
+      // during it was thrown away. That trip is slowest on the first dictation
+      // after a pause, so the first dictation lost its opening words and the
+      // same sentence said again a moment later came through whole: a
+      // non-English sentence missing its start is easily heard as something
+      // else, and the writer then repairs what was never said.
+      //
+      // So once a `start` has arrived, audio is held — bounded — until the
+      // engine exists, then handed over in order. Before any `start` it is
+      // still refused: nothing is kept for a socket that has not asked.
+      const early: Buffer[] = [];
+      let earlyBytes = 0;
       let format = { sampleRate: 16000, channels: 1 };
       let handshakeTimer: NodeJS.Timeout | null = setTimeout(() => {
         send({ type: "error", code: "bad_request", message: STREAM_ERROR_TEXT.noStart });
@@ -517,27 +538,40 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         );
       };
 
+      /** One frame of audio, to the engines, once the session is live. */
+      const acceptAudio = (raw: Buffer) => {
+        if (closed || !engine) return;
+        bytes += raw.length;
+        if (bytes > MAX_STREAM_BYTES) {
+          send({ type: "error", code: "audio_too_long", message: STREAM_ERROR_TEXT.tooLong });
+          safeClose();
+          return;
+        }
+        engine.send(raw);
+        // The shadow hears the same audio; a failure there must never
+        // disturb the stream the user is actually watching.
+        try { shadow?.send(raw); } catch { /* shadow is best-effort */ }
+        // Measured as it arrives, so a final can be judged the moment it
+        // commits. push() never throws.
+        meter?.push(raw);
+        armIdle();
+      };
+
       socket.on("message", async (raw: Buffer, isBinary: boolean) => {
         if (closed) return;
 
         if (isBinary) {
-          // Never accept audio before auth + start. Silent drop is safer than
-          // opening a Deepgram session behind the caller's back.
-          if (!user || !engine) return;
-          bytes += raw.length;
-          if (bytes > MAX_STREAM_BYTES) {
-            send({ type: "error", code: "audio_too_long", message: STREAM_ERROR_TEXT.tooLong });
-            safeClose();
+          // Never before a `start`: no engine is opened behind the caller's
+          // back. Between `start` and the engine, held (see `early`).
+          if (!started) return;
+          if (!user || !engine) {
+            if (earlyBytes + raw.length <= EARLY_MAX_BYTES) {
+              early.push(raw);
+              earlyBytes += raw.length;
+            }
             return;
           }
-          engine.send(raw);
-          // The shadow hears the same audio; a failure there must never
-          // disturb the stream the user is actually watching.
-          try { shadow?.send(raw); } catch { /* shadow is best-effort */ }
-          // Measured as it arrives, so a final can be judged the moment it
-          // commits. push() never throws.
-          meter?.push(raw);
-          armIdle();
+          acceptAudio(raw);
           return;
         }
 
@@ -582,6 +616,11 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           if (closed) return;
           if (handshakeTimer) { clearTimeout(handshakeTimer); handshakeTimer = null; }
           openEngine(msg as StartMessage);
+          // What was said while the sign-in was checked, in the order it was
+          // said. The engines hold it until they are connected.
+          const backlog = early.splice(0);
+          earlyBytes = 0;
+          if (engine && !closed) for (const b of backlog) acceptAudio(b);
           // Until the engine says ready, the idle window covers the wait: an
           // engine that never opens must not strand the socket.
           if (!closed) armIdle();

@@ -197,6 +197,28 @@ function openSarvam(opts: EngineOptions, h: EngineHandlers): LiveEngine {
   const ws = new WebSocket(url, { headers: { "api-subscription-key": cfg.SARVAM_API_KEY! } });
 
   let ready = false;
+  // AUDIO BEFORE THE SOCKET IS OPEN IS HELD, NOT DROPPED. It is the first
+  // words of the sentence, and this engine is the one that reads Indian
+  // languages: dropping them is how a first dictation came back wrong and the
+  // same sentence said again came back right. Deepgram's client and the
+  // OpenAI engine already hold theirs. Bounded at ten seconds.
+  const held: Buffer[] = [];
+  let heldBytes = 0;
+  const HOLD_MAX = opts.sampleRate * 2 * Math.max(1, opts.channels) * 10;
+  let stopAsked = false;
+  const sendAudio = (chunk: Buffer) => {
+    try {
+      ws.send(JSON.stringify({ event: "audio", audio: { data: chunk.toString("base64") } }));
+    } catch { /* engine window closed */ }
+  };
+  const stop = () => {
+    try {
+      if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ event: "stop" }));
+    } catch { /* ignore */ }
+    // Give the engine a beat to flush its tail before tearing the socket
+    // down, then close regardless so a silent engine can't strand the route.
+    setTimeout(() => { try { ws.close(); } catch { /* ignore */ } }, 300);
+  };
 
   ws.on("open", () => {
     // Announce the audio format. Sarvam infers most of it, but sending the
@@ -208,7 +230,11 @@ function openSarvam(opts: EngineOptions, h: EngineHandlers): LiveEngine {
       }));
     } catch { /* the message handler will surface a real failure */ }
     ready = true;
+    for (const b of held.splice(0)) sendAudio(b);
+    heldBytes = 0;
     h.onReady();
+    // Stopped before it ever connected: what was held has gone, now finish.
+    if (stopAsked) stop();
   });
 
   ws.on("message", (raw: Buffer) => {
@@ -237,21 +263,18 @@ function openSarvam(opts: EngineOptions, h: EngineHandlers): LiveEngine {
   return {
     label: `sarvam:${model}`,
     send(chunk) {
-      if (!ready || ws.readyState !== WebSocket.OPEN) return;
-      try {
-        ws.send(JSON.stringify({
-          event: "audio",
-          audio: { data: chunk.toString("base64") },
-        }));
-      } catch { /* engine window closed */ }
+      if (!ready) {
+        if (heldBytes + chunk.length <= HOLD_MAX) { held.push(Buffer.from(chunk)); heldBytes += chunk.length; }
+        return;
+      }
+      if (ws.readyState === WebSocket.OPEN) sendAudio(chunk);
     },
     close() {
-      try {
-        if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ event: "stop" }));
-      } catch { /* ignore */ }
-      // Give the engine a beat to flush its tail before tearing the socket
-      // down, then close regardless so a silent engine can't strand the route.
-      setTimeout(() => { try { ws.close(); } catch { /* ignore */ } }, 300);
+      if (ready) { stop(); return; }
+      // Not connected yet: send what is held when it opens, then stop. One
+      // that never opens is closed anyway, so it cannot strand the route.
+      stopAsked = true;
+      setTimeout(() => { try { ws.close(); } catch { /* ignore */ } }, 5000);
     },
   };
 }
