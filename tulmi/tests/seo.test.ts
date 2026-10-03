@@ -11,6 +11,7 @@ process.env.NODE_ENV = "test";
 import { registerSeoRoutes } from "../src/routes/seo.js";
 // eslint-disable-next-line import/first
 import { PAGED, LANGS, examplesFor, faqGroups, homeFaq, plans } from "../src/seo/facts.js";
+import { LANDING_PATHS, landings } from "../src/seo/landing.js";
 // eslint-disable-next-line import/first
 import { sitePages } from "../src/seo/machine.js";
 // eslint-disable-next-line import/first
@@ -42,7 +43,7 @@ describe("every page a search engine can reach", () => {
     const res = await get("/sitemap.xml");
     expect(res.headers["content-type"]).toMatch(/xml/);
     for (const p of sitePages()) expect(res.body).toContain(`<loc>https://tailzu.space${p.path === "/" ? "/" : p.path}</loc>`);
-    for (const path of ["/languages", "/faq", ...PAGED.map((l) => `/languages/${l.slug}`)]) {
+    for (const path of ["/languages", "/faq", ...LANDING_PATHS(), ...PAGED.map((l) => `/languages/${l.slug}`)]) {
       const page = await get(path);
       expect(page.statusCode).toBe(200);
       expect(page.body).toContain(`<link rel="canonical" href="https://tailzu.space${path}">`);
@@ -59,13 +60,35 @@ describe("every page a search engine can reach", () => {
     }
   });
 
-  it("one footer link in: the FAQ, and every language page is a tap from it", async () => {
+  it("one footer link in: the FAQ, and every language page two taps from it", async () => {
+    // Every language has a page now (74 of them), so the FAQ links the list
+    // and the best-known, and the list links every one.
     const faq = (await get("/faq")).body;
     const footer = faq.slice(faq.indexOf("<footer"));
     expect(footer).toContain('href="/faq"');
     expect(footer).not.toContain('href="/languages"');
     expect(faq).toContain('href="/languages"');
-    for (const l of PAGED) expect(faq).toContain(`href="/languages/${l.slug}"`);
+    const hub = (await get("/languages")).body;
+    for (const l of PAGED) expect(hub).toContain(`href="/languages/${l.slug}"`);
+    // And the search pages are a tap from it.
+    for (const p of LANDING_PATHS()) expect(faq).toContain(`href="${p}"`);
+  });
+
+  it("the search pages answer their search: their words in the title, the heading and the questions", async () => {
+    for (const p of landings()) {
+      const body = (await get(p.path)).body;
+      expect(body).toContain(`<title>${p.headTitle.replace(/&/g, "&amp;")}</title>`);
+      expect(p.headTitle.length, p.path).toBeLessThanOrEqual(70);
+      expect(graphOf(body).some((n: any) => n["@type"] === "FAQPage")).toBe(true);
+      // Every example is a sentence the site already shows.
+      for (const e of p.examples) {
+        const real = SITE_UI.cases.some((c) => c.wrote === e.wrote) || SITE_UI.apps.fields.some((f) => f.text === e.wrote)
+          || SITE_UI.llm.prompts.some((x) => x.wrote === e.wrote) || SITE_UI.dev.wrote === e.wrote;
+        expect(real, e.wrote).toBe(true);
+      }
+    }
+    expect((await get("/ai-keyboard")).body).toMatch(/AI keyboard/i);
+    expect((await get("/voice-typing")).body).toMatch(/speech to text/i);
   });
 
   it("a language nobody wrote a page for goes to the list, not a 404", async () => {
@@ -89,9 +112,12 @@ describe("what the pages claim is what the product says", () => {
   });
 
   it("every language page shows the site's own sentences for it, and only real ones", async () => {
+    // Every language has a page; the ones the site has sentences for show
+    // them, and none shows a sentence the site does not.
+    expect(PAGED).toHaveLength(LANGS.length);
+    expect(PAGED.filter((l) => examplesFor(l).length > 0).length).toBeGreaterThan(30);
     for (const l of PAGED) {
       const ex = examplesFor(l);
-      expect(ex.length, l.name).toBeGreaterThan(0);
       const body = text((await get(`/languages/${l.slug}`)).body);
       for (const e of ex) {
         expect(body).toContain(e.wrote);
@@ -117,6 +143,10 @@ describe("what the pages claim is what the product says", () => {
 
   it("the home page's title is a search title, and its questions are the page's own", () => {
     expect(SITE_SHAPE.meta.title).toMatch(/Hindi/);
+    expect(SITE_SHAPE.meta.title).toMatch(/AI Keyboard/);
+    // The count it states is the count there is.
+    const stated = Number(SITE_SHAPE.meta.description.match(/any of (\d+) languages/)?.[1]);
+    expect(stated).toBe(LANGS.filter((l) => l.slug !== "hinglish").length);
     expect(SITE_SHAPE.meta.title.length).toBeLessThanOrEqual(70);
     expect(homeFaq().map((q) => q.q)).toEqual(SITE_UI.faq.items.map((q) => q.q));
     expect(homeFaq().every((q) => !q.a.includes("{n}"))).toBe(true);

@@ -1027,7 +1027,13 @@ function probeWavDuration(buf: Buffer): number {
       sampleRate = buf.readUInt32LE(bodyStart + 4);
       bitsPerSample = buf.readUInt16LE(bodyStart + 14);
     } else if (id === "data") {
-      dataSize = size;
+      // NEVER MORE THAN ARRIVED. A WAV written as it is streamed (OpenAI's
+      // speech, any encoder that does not seek back) cannot know its length
+      // when it writes the header, so it writes the largest one there is:
+      // 0xFFFFFFFF bytes, 27 hours at 22 kHz. Read as true, a three-second
+      // clip was refused as "longer than 15 minutes". The bytes after the
+      // header are the audio; there is no more of it than that.
+      dataSize = Math.min(size, buf.length - bodyStart);
       break; // stop at data — later chunks are metadata
     }
 

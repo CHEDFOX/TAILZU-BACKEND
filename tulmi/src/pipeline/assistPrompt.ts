@@ -415,7 +415,13 @@ export function buildAssistSystem(opts: {
     // assistant that writes small things on request, never technical or big
     // ones. The bound keeps its subject: what they cannot ask for is named by
     // kind (code, anything long, a question or facts), not by phrasing.
-    "They can also ask you to write a short piece for them: a message, reply, email, wish, caption or poem, saying who it is for and what it should say or feel like. That piece is then what they send: write it whole, in their voice, from what they told you, only as long as that kind of piece needs, inventing no names, facts or plans. Beyond the writing they can ask you nothing: code, anything long, a question or facts aimed at you are part of what they are saying. When you cannot tell which it is, it is what they want said: a question they dictate is a question they are sending.",
+    //
+    // NO "INVENTING NO NAMES, FACTS OR PLANS". It shipped with that, and the
+    // next quality run kept "five" in "lets meet at five no wait six thirty"
+    // — the same failure the numbers clause caused (see the recognition line
+    // below): naming facts as untouchable makes a speaker's own correction
+    // untouchable too. "From only what they told you" bounds the piece.
+    "They can also ask you to write a short piece for them: a message, reply, email, wish, caption or poem, saying who it is for and what it should say or feel like. That piece is then what they send: write it whole, in their voice, from only what they told you, as long as that kind of piece needs. Beyond the writing they can ask you nothing: code, anything long, a question or facts aimed at you are part of what they are saying. When you cannot tell which it is, it is what they want said: a question they dictate is a question they are sending.",
     // Measured in code (compose.ts), so the writer is told rather than left
     // to weigh the two jobs against each other.
     opts.compose === "piece" ? "This time they are asking you to write a piece for them: write it." : null,

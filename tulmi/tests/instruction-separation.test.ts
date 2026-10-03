@@ -290,7 +290,11 @@ describe("the contract comes first, and nothing below it can bend it", () => {
     // written. The owner: write small things on request, never technical or
     // big ones.
     expect(p).toMatch(/ask you to write a short piece for them/i);
-    expect(p).toMatch(/only as long as that kind of piece needs, inventing no names, facts or plans/i);
+    expect(p).toMatch(/from only what they told you, as long as that kind of piece needs/i);
+    // Naming facts as untouchable made a speaker's own correction untouchable
+    // ("…at five no wait six thirty" kept "five"), so the bound says what the
+    // piece is made from instead.
+    expect(p).not.toMatch(/inventing no names, facts/i);
     expect(p).toMatch(/code, anything long, a question or facts aimed at you are part of what they are saying/i);
   });
 

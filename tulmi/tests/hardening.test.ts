@@ -178,13 +178,15 @@ describe("every model route sits behind the quota", () => {
 
 describe("a one-shot clip", () => {
   it("is refused past the live route's fifteen minutes, before any recogniser runs", async () => {
-    // A WAV header claiming sixteen minutes of 16 kHz mono in front of a few
-    // bytes: the header is what the duration is read from.
-    const b = Buffer.alloc(64);
-    const dataSize = 16 * 60 * 32_000;
+    // Sixteen real minutes of 8 kHz 8-bit mono (7.7 MB). It used to be a
+    // header CLAIMING sixteen minutes over a few bytes — but a header's length
+    // is not believed past the bytes that arrived any more (a streamed WAV
+    // writes the largest length there is), so the minutes have to be there.
+    const dataSize = 16 * 60 * 8_000;
+    const b = Buffer.alloc(44 + dataSize, 0x80);
     b.write("RIFF", 0, "ascii"); b.writeUInt32LE(36 + dataSize, 4); b.write("WAVE", 8, "ascii");
     b.write("fmt ", 12, "ascii"); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22);
-    b.writeUInt32LE(16000, 24); b.writeUInt32LE(32_000, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34);
+    b.writeUInt32LE(8000, 24); b.writeUInt32LE(8_000, 28); b.writeUInt16LE(1, 32); b.writeUInt16LE(8, 34);
     b.write("data", 36, "ascii"); b.writeUInt32LE(dataSize, 40);
     const boundary = "----tailzu-clip";
     const payload = Buffer.concat([

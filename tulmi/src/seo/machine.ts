@@ -20,13 +20,14 @@ import {
   DEFINITION, INDIA, LANGS, PAGED, STORES, WORLD,
   examplesFor, faqGroups, plans, sampleFor,
 } from "./facts.js";
+import { landings } from "./landing.js";
 
 /**
  * When the words on the content pages last changed. A sitemap date is only
  * worth anything while it is honest: bump this when the pages say something
  * new, not on every deploy.
  */
-export const CONTENT_UPDATED = "2026-09-28";
+export const CONTENT_UPDATED = "2026-10-03";
 
 const iso = (d: string) => {
   const t = Date.parse(d);
@@ -37,6 +38,7 @@ const iso = (d: string) => {
 export function sitePages(): Array<{ path: string; lastmod: string; priority: string }> {
   return [
     { path: "/", lastmod: CONTENT_UPDATED, priority: "1.0" },
+    ...landings().map((l) => ({ path: l.path, lastmod: CONTENT_UPDATED, priority: l.parents ? "0.8" : "0.9" })),
     { path: "/languages", lastmod: CONTENT_UPDATED, priority: "0.9" },
     ...PAGED.map((l) => ({ path: `/languages/${l.slug}`, lastmod: CONTENT_UPDATED, priority: "0.8" })),
     { path: "/faq", lastmod: CONTENT_UPDATED, priority: "0.8" },
@@ -77,7 +79,8 @@ Tailzu is a keyboard on iPhone and Android, so it works in every app: WhatsApp, 
 ## Pages
 
 - [Home](${ORIGIN}/): the product, shown working
-- [Languages](${ORIGIN}/languages): all ${INDIA.length + WORLD.length + 1} languages, with real examples of what it writes
+${landings().map((l) => `- [${l.parents ? `${l.parents[0]![0]} for ${l.name}` : l.name}](${ORIGIN}${l.path}): ${l.description}`).join("\n")}
+- [Languages](${ORIGIN}/languages): all ${INDIA.length + WORLD.length} languages, with real examples of what it writes
 - [FAQ](${ORIGIN}/faq): what it is, languages, apps, privacy and price
 - [Pricing](${ORIGIN}/pricing): ${plans().free ? "Tailzu is free" : "free allowance and paid plans"}
 - [Download](${ORIGIN}/download): Windows and Mac apps

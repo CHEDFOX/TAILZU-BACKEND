@@ -28,12 +28,12 @@ import { esc } from "./head.js";
  * The site capitalises every word, and "iPhone" is the one word that rule
  * turns into a misspelling.
  */
-const words = (s: string) => esc(s).replace(/\biPhone\b/g, '<span class="nc">iPhone</span>');
+export const words = (s: string) => esc(s).replace(/\b(iPhone|iMessage)\b/g, '<span class="nc">$1</span>');
 
 /** The handwriting the site's river is written in, for the "said" side. */
-const HAND = "family=Caveat:wght@400..600&family=Kalam:wght@300;400";
+export const HAND = "family=Caveat:wght@400..600&family=Kalam:wght@300;400";
 
-const CSS = `
+export const CSS = `
   .crumbs { font-family: var(--mono); font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); margin: 0 0 22px; display: flex; flex-wrap: wrap; gap: 10px; }
   .crumbs a { text-decoration: none; }
   .crumbs a:hover { color: var(--white); }
@@ -84,29 +84,35 @@ const CSS = `
   }
 `;
 
-function crumbs(trail: Array<[string, string]>): string {
+export function crumbs(trail: Array<[string, string]>): string {
   return `<nav class="crumbs" aria-label="Breadcrumb">${trail.map(([name, href], i) =>
     (i ? '<span aria-hidden="true">/</span>' : "") +
     (i === trail.length - 1 ? `<span aria-current="page">${esc(name)}</span>` : `<a href="${esc(href)}">${esc(name)}</a>`)).join("")}</nav>`;
 }
 
-function exampleCard(e: Example, lang?: Lang): string {
+/** "ta", or "ta-Latn" for Tamil written in English letters, which is how it is written back. */
+const tagFor = (lang: Lang | undefined, text: string) => {
+  if (!lang || lang.slug === "hinglish") return "";
+  const latinText = lang.script !== "Latin" && !/[^\p{Script=Latin}\p{P}\p{N}\s]/u.test(text);
+  return ` lang="${lang.code}${latinText ? "-Latn" : ""}"`;
+};
+
+export function exampleCard(e: Example, lang?: Lang): string {
   const dir = ' dir="auto"';
-  const code = lang && lang.slug !== "hinglish" ? ` lang="${lang.code}"` : "";
   return `<figure class="ex">
     ${e.app ? `<p class="app">${esc(e.app)}</p>` : ""}
-    <p class="s"${code}${dir}>${esc(e.said)}</p>
+    <p class="s"${tagFor(lang, e.said)}${dir}>${esc(e.said)}</p>
     <span class="arrow" aria-hidden="true">Written</span>
-    <p class="w"${code}${dir}>${esc(e.wrote)}</p>
+    <p class="w"${tagFor(lang, e.wrote)}${dir}>${esc(e.wrote)}</p>
   </figure>`;
 }
 
-function qaList(items: QA[]): string {
+export function qaList(items: QA[]): string {
   return `<div class="qas">${items.map((it) =>
     `<div class="qa"><h3>${words(it.q)}</h3><p>${words(it.a)}</p></div>`).join("")}</div>`;
 }
 
-const GETS = `<div class="gets">
+export const GETS = `<div class="gets">
   <a class="btn" href="${STORES.ios}">App Store</a>
   <a class="btn" href="${STORES.android}">Google Play</a>
   <a class="btn ghost" href="/download">Windows and Mac</a>
@@ -120,15 +126,16 @@ export function languagesHubHtml(): string {
     const ex = sampleFor(l);
     const inner = `<span class="nm">${esc(l.name)}</span>` +
       (l.native !== l.name ? `<span class="nt" lang="${l.code}" dir="auto">${esc(l.native)}</span>` : "") +
-      (ex ? `<span class="wr" lang="${l.code}" dir="auto">${esc(ex.wrote)}</span>` : "") +
+      (ex ? `<span class="wr"${tagFor(l, ex.wrote)} dir="auto">${esc(ex.wrote)}</span>` : "") +
       `<span class="sc">${esc(l.script)}</span>` +
       (l.page ? `<span class="go">Read more</span>` : "");
     return l.page ? `<a class="lang" href="/languages/${l.slug}">${inner}</a>` : `<div class="lang">${inner}</div>`;
   };
   const hinglish = LANGS.find((l) => l.slug === "hinglish")!;
   const india = [INDIA[0], hinglish, ...INDIA.slice(1)];
-  const title = `Voice Typing in 22 Indian Languages and ${WORLD.length - 1} More — Tailzu`;
-  const description = `Voice typing in all 22 scheduled languages of India, Hinglish, English and ${WORLD.length - 1} more. Speak, and clean text lands in any app, in your script or English letters.`;
+  const total = INDIA.length + WORLD.length;
+  const title = `Voice Typing in ${total} Languages, All 22 Indian Languages — Tailzu`;
+  const description = `AI keyboard and voice typing in ${total} languages: all 22 of India, Hinglish, English and ${WORLD.length - 1} more. Speak, and clean text lands in any app.`;
   return siteShell({
     title: "Languages",
     headTitle: title,
@@ -154,6 +161,7 @@ ${crumbs([["Tailzu", "/"], ["Languages", path]])}
 <p class="eye">Voice typing</p>
 <h1>Every language you speak.</h1>
 <p class="lede">All 22 languages of India, Hinglish, English and ${WORLD.length - 1} more. It writes the way you type.</p>
+<p class="lede" style="margin-top:14px"><a href="/ai-keyboard">What the AI keyboard does</a> · <a href="/voice-typing">How voice typing works</a></p>
 
 <h2 class="label">India · ${india.length}</h2>
 <div class="langs">${india.map(card).join("")}</div>
@@ -174,14 +182,21 @@ export function languagePageHtml(slug: string): string | null {
   const exs = examplesFor(l);
   const faq = langFaq(l);
   const hinglish = l.slug === "hinglish";
-  const title = `${l.name} Voice Typing Keyboard for Every App — Tailzu`;
+  // THE NATIVE NAME IN THE TITLE: someone searching in their own language
+  // types "தமிழ்", not "Tamil", and a title is the strongest thing a page says.
+  const latin = l.script === "Latin";
+  const title = `${l.name} Voice Typing & AI Keyboard${l.native !== l.name && !hinglish ? ` (${l.native})` : ""} — Tailzu`;
   const description = hinglish
     ? "Hinglish voice typing that keeps both languages. Speak Hindi and English in one breath; clean text lands in WhatsApp, Gmail or any app, spelled your way."
-    : `${l.name} voice typing that writes what you meant. Speak ${l.name}${l.mix ? ` or ${l.mix}` : ""}, and clean text lands in WhatsApp, Gmail or any app, in ${l.script} or English letters.`;
+    : `${l.name} voice typing that writes what you meant. Speak ${l.name}${l.mix ? ` or ${l.mix}` : ""}, and clean text lands in WhatsApp, Gmail or any app${latin ? "." : `, in ${l.script} or English letters.`}`;
   const lede = hinglish
     ? "Hindi and English in one breath. Both stay as you said them."
     : `Speak ${l.name}. Clean text lands in any app.`;
-  const siblings = PAGED.filter((o) => o.slug !== l.slug);
+  // Its own side of the list first (India or the world), then the other's
+  // best-known, so every page links on without a wall of 74 chips.
+  const near = PAGED.filter((o) => o.slug !== l.slug && o.india === l.india);
+  const far = PAGED.filter((o) => o.india !== l.india).slice(0, 8);
+  const siblings = [...near, ...far];
 
   const facts = hinglish ? [
     ["Two stay two", "Hindi words stay Hindi and English words stay English. Nothing is forced into one of them."],
@@ -189,7 +204,12 @@ export function languagePageHtml(slug: string): string | null {
     ["Filler out, facts in", "Ums and repeats go. Names, amounts and times stay exactly as you said them."],
     ["Every app", "A keyboard on iPhone and Android. On Windows and Mac, tap Ctrl twice and talk."],
   ] : [
-    ["Script", `<span class="native" lang="${l.code}" dir="auto">${esc(l.native)}</span> is written in ${esc(l.script)}. Tailzu writes it that way, or in English letters, the way you type.`],
+    // AS IT IS TODAY: the writer spells every language in English letters
+    // unless the sentence asks for its own script (assistPrompt), and a page
+    // that promised the script would be the first thing a reader caught out.
+    ["Script", latin
+      ? `<span class="native" lang="${l.code}" dir="auto">${esc(l.native)}</span> is written in Latin letters, and Tailzu writes it that way.`
+      : `<span class="native" lang="${l.code}" dir="auto">${esc(l.native)}</span> is written in ${esc(l.script)}. Tailzu writes it in English letters, the way you would type it, and in ${esc(l.script)} when you say so.`],
     [l.mix ? l.mix : "With English", `${l.mix ? `${esc(l.mix)} stays ${esc(l.mix)}.` : `${esc(l.name)} and English in one sentence stay as you said them.`} Two languages stay two.`],
     ["Filler out, facts in", "Filler goes and punctuation arrives. Names, amounts and times stay exactly as you said them."],
     ["Every app", "A keyboard on iPhone and Android. On Windows and Mac, tap Ctrl twice and talk."],
@@ -223,8 +243,10 @@ ${qaList(faq)}
 
 ${GETS}
 
+<p class="lede" style="margin-top:28px"><a href="/ai-keyboard">${esc(l.name)} AI keyboard</a> · <a href="/voice-typing">Voice typing in every app</a></p>
+
 <h2 class="label">More languages</h2>
-<div class="chips">${siblings.map((o) => `<a class="chip" href="/languages/${o.slug}">${esc(o.name)}</a>`).join("")}<a class="chip" href="/languages">All ${INDIA.length + WORLD.length + 1}</a></div>`,
+<div class="chips">${siblings.map((o) => `<a class="chip" href="/languages/${o.slug}">${esc(o.name)}</a>`).join("")}<a class="chip" href="/languages">All ${INDIA.length + WORLD.length}</a></div>`,
   });
 }
 
@@ -236,8 +258,17 @@ ${GETS}
  * one a tap from there, and from the sitemap.
  */
 const LANG_LINKS = `<div class="chips" style="margin-top:34px">${
-  PAGED.map((l) => `<a class="chip" href="/languages/${l.slug}">${esc(l.name)}</a>`).join("")
-}<a class="chip" href="/languages">All ${INDIA.length + WORLD.length + 1} languages</a></div>`;
+  PAGED.filter((l) => l.india).concat(PAGED.filter((l) => !l.india).slice(0, 10))
+    .map((l) => `<a class="chip" href="/languages/${l.slug}">${esc(l.name)}</a>`).join("")
+}<a class="chip" href="/languages">All ${INDIA.length + WORLD.length} languages</a></div>`;
+
+/** The search pages, one tap from the FAQ the footer links to. */
+const DEVICE_LINKS = `<div class="chips" style="margin-top:34px">${[
+  ["/ai-keyboard", "AI keyboard"], ["/voice-typing", "Voice typing"],
+  ["/ai-keyboard/android", "Android"], ["/ai-keyboard/iphone", "iPhone"],
+  ["/voice-typing/windows", "Windows"], ["/voice-typing/mac", "Mac"],
+  ["/voice-typing/chatgpt", "ChatGPT, Claude and Grok"],
+].map(([href, name]) => `<a class="chip" href="${href}">${words(name!)}</a>`).join("")}</div>`;
 
 export function faqHtml(): string {
   const path = "/faq";
@@ -260,7 +291,7 @@ ${crumbs([["Tailzu", "/"], ["FAQ", path]])}
 <p class="eye">Questions</p>
 <h1>Asked, answered.</h1>
 <p class="lede">Everything people ask before they talk to it, answered in a breath.</p>
-${groups.map((g) => `<h2 class="label">${esc(g.title)}</h2>\n${qaList(g.items)}${g.title === "Languages" ? LANG_LINKS : ""}`).join("\n")}
+${groups.map((g) => `<h2 class="label">${esc(g.title)}</h2>\n${qaList(g.items)}${g.title === "Languages" ? LANG_LINKS : ""}${g.title === "Apps and devices" ? DEVICE_LINKS : ""}`).join("\n")}
 
 ${GETS}`,
   });

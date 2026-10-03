@@ -29,10 +29,10 @@ export const STORES = SITE_UI.stores;
 
 /** The sentence every engine should be able to lift whole. */
 export const DEFINITION =
-  "Tailzu is an AI voice keyboard for iPhone, Android, Windows and Mac. " +
-  "You speak in Hindi, Hinglish, any of India's 22 scheduled languages, English or dozens more, " +
+  "Tailzu is an AI keyboard for iPhone, Android, Windows and Mac. " +
+  "You speak in Hindi, Hinglish, any of India's 22 scheduled languages, English or 50+ more, " +
   "and clean, ready-to-send text lands in any app: filler gone, punctuation in, " +
-  "names and numbers kept exactly as you said them.";
+  "names and numbers kept exactly as you said them. Ask, and it writes a short message, reply or email for you.";
 
 export const HOME = {
   title: SITE_SHAPE.meta.title,
@@ -130,6 +130,8 @@ export function faqGroups(): QAGroup[] {
       title: "The basics",
       items: [
         { q: "What is Tailzu?", a: DEFINITION },
+        { q: "What is an AI keyboard?", a: "A keyboard that understands what you mean, not only what it hears. Tailzu takes your voice and types clean, ready-to-send text into whatever app you are in, and writes a short message for you when you ask." },
+        { q: "Can Tailzu write a message for me?", a: "Yes. Say what you want and who it is for, like a birthday wish for your sister or a kind reply to your landlord, and it writes it in your voice. It keeps to short pieces: no essays and no code, and in ChatGPT or Claude it writes your prompt, never the answer." },
         { q: "How is it different from Gboard voice typing or iPhone dictation?", a: "Built-in dictation types what it hears, ums and all. Tailzu writes what you meant: filler gone, punctuation in, misheard words repaired, and your names, numbers and amounts kept exactly. It can also set the tone of the message." },
         { q: "Does Tailzu change what I said?", a: "No. It cleans; it never rewrites. Filler words go and punctuation arrives, but your meaning, names and amounts stay as you said them." },
         { q: "Can I change the tone of my messages?", a: "Yes. Pick one of 16 voices once, from Professional and Friendly to Executive, Shakespeare or Pirate, and every message you speak is written in it." },
@@ -140,7 +142,7 @@ export function faqGroups(): QAGroup[] {
       items: [
         { q: "Which languages does Tailzu support?", a: `All 22 scheduled languages of India, Hinglish, English and ${others} more, including Spanish, French, Arabic, Japanese, Chinese and Korean.` },
         { q: "Does Tailzu understand Hinglish?", a: "Natively. Speak Hindi and English in the same sentence and both stay as you said them. Nothing is forced into one language or the other." },
-        { q: "Can it write Hindi in English letters?", a: "Yes. It writes the way you type: Devanagari or English letters. Want the other one? Say so in the sentence, like \"Hindi mein likho\"." },
+        { q: "Can it write Hindi in English letters?", a: "Yes, and it does by default: Hindi, like every language, comes back in English letters, the way you would type it. Want Devanagari? Say so in the sentence, like \"Hindi mein likho\"." },
         { q: "Can Tailzu translate while I talk?", a: "Yes, when you ask. Say \"translate to English\" or \"Spanish mein likho\" and the message lands in that language." },
       ],
     },
@@ -188,8 +190,10 @@ export function langFaq(l: Lang): QA[] {
   const script = l.slug === "hinglish"
     ? { q: "Does Tailzu turn Hinglish into pure Hindi or pure English?", a: "No. Two languages stay two: Hindi words stay Hindi and English words stay English, spelled the way you type." }
     : l.india
-      ? { q: `Can it write ${l.name} in English letters?`, a: `Yes. It writes the way you type, in ${l.script} or English letters. Want the other one? Say so in the sentence.` }
-      : { q: `Does it keep ${l.name} as ${l.name}?`, a: `Yes. Say it in ${l.name} and it is written in ${l.name}. It translates only when you ask.` };
+      ? { q: `Can it write ${l.name} in English letters?`, a: `Yes, and it does by default: ${l.name} comes back in English letters, the way you would type it. Want ${l.script}? Say so in the sentence.` }
+      : l.script === "Latin"
+        ? { q: `Does it keep ${l.name} as ${l.name}?`, a: `Yes. Say it in ${l.name} and it is written in ${l.name}. It translates only when you ask.` }
+        : { q: `Can it write ${l.name} in ${l.script}?`, a: `Yes, when you say so in the sentence. Otherwise it writes your ${l.name} in English letters, the way it is typed on any keyboard. It translates only when you ask.` };
   return [
     { q: `Can I voice type in ${l.name} on WhatsApp?`, a: `Yes. Tailzu is a keyboard, so ${l.name} voice typing works in WhatsApp, Gmail, Instagram, ChatGPT and every other app you type in.` },
     script,
@@ -240,11 +244,11 @@ export function appLd() {
     "@type": "SoftwareApplication",
     "@id": ID.app,
     name: "Tailzu",
-    alternateName: "Tailzu Voice Keyboard",
+    alternateName: ["Tailzu AI Keyboard", "Tailzu Voice Keyboard"],
     description: DEFINITION,
     url: `${ORIGIN}/`,
     applicationCategory: "UtilitiesApplication",
-    applicationSubCategory: "Voice keyboard",
+    applicationSubCategory: "AI keyboard",
     operatingSystem: "iOS, Android, Windows, macOS",
     downloadUrl: [STORES.ios, STORES.android, abs("/download")],
     installUrl: [STORES.ios, STORES.android],
@@ -257,8 +261,9 @@ export function appLd() {
       `Voice typing in ${WORLD.length - 1} more languages, including Spanish, Arabic and Japanese`,
       "Removes filler words and adds punctuation; keeps names, numbers and amounts exactly",
       "Keeps mixed languages mixed: Hinglish stays Hinglish",
-      "Writes in the native script or in English letters",
+      "Writes in English letters by default, or in the language's own script when asked",
       "16 voices that set the tone of every message",
+      "Writes a short message, reply, email, wish or caption on request; never essays or code",
       "Works as a keyboard in every app on iPhone and Android",
       "Desktop app for Windows and Mac: tap Ctrl twice, talk, and the text is pasted at the cursor",
     ],

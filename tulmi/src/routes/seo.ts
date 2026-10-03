@@ -5,11 +5,13 @@
  * (seo/facts.ts).
  *
  *   /languages, /languages/:slug, /faq   pages, in the site's own room
+ *   /ai-keyboard…, /voice-typing…         the search pages (seo/landing.ts)
  *   /sitemap.xml, /llms.txt, /llms-full.txt
  *   /robots.txt                           this host only (api.tailzu.space)
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { faqHtml, languagePageHtml, languagesHubHtml } from "../seo/pages.js";
+import { LANDING_PATHS, landingHtml } from "../seo/landing.js";
 import { API_ROBOTS, llmsFullTxt, llmsTxt, sitemapXml } from "../seo/machine.js";
 
 /** Pages change with a deploy or a price; an hour at the edge is plenty. */
@@ -36,6 +38,8 @@ export function registerSeoRoutes(app: FastifyInstance): void {
     return html(reply, page);
   });
   app.get("/faq", async (_req, reply) => html(reply, faqHtml()));
+  // The pages for what people search: AI keyboard, voice typing, and each device.
+  for (const path of LANDING_PATHS()) app.get(path, async (_req, reply) => html(reply, landingHtml(path)!));
 
   app.get("/sitemap.xml", async (_req, reply) => text(reply, "application/xml", sitemapXml()));
   app.get("/llms.txt", async (_req, reply) => text(reply, "text/plain", llmsTxt()));

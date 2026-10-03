@@ -64,6 +64,15 @@ function makeWav(opts: {
 }
 
 describe("estimateDurationSeconds", () => {
+  it("a WAV streamed with a placeholder length is as long as the audio that arrived", () => {
+    // OpenAI's speech and other streaming encoders write 0xFFFFFFFF as the
+    // data length. Read as true, a 3 s clip was refused as over 15 minutes.
+    const wav = makeWav({ sampleRate: 24000, channels: 1, bitsPerSample: 16, dataSize: 3 * 48000 });
+    wav.writeUInt32LE(0xffffffff, 4);
+    wav.writeUInt32LE(0xffffffff, 40);
+    expect(estimateDurationSeconds(wav, "wav")).toBeCloseTo(3, 5);
+  });
+
   it("computes seconds from a well-formed WAV header", () => {
     // 1 s of 16 kHz mono 16-bit → 32_000 bytes of samples.
     const wav = makeWav({

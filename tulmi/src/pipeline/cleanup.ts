@@ -738,7 +738,7 @@ const REDO: Record<Slip, string> = {
   alphabet: "That is in another alphabet. Write their same words in English letters, the way they would type them: spell each word, never translate it.",
   translated: "That translated their words into English. Write their own words, in the language they spoke, only cleaned up, in English letters.",
   added: "That added words they did not say. Write only what they said.",
-  correction: "They corrected themselves there. Keep only the correction, without what it replaced or the words that made it.",
+  correction: "They corrected themselves there: what came after \"no wait\" (or \"I mean\", \"scratch that\") replaces what came before it. Write the sentence once, with only the corrected version, and leave out the words that made the correction.",
   filler: "Filler sounds went through. Leave them out.",
   long: "That is too long for what they asked. Write it much shorter, the length that kind of message really is.",
 };
