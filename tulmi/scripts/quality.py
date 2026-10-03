@@ -390,6 +390,8 @@ def main():
     ap.add_argument("--jobs", type=int, default=5)
     ap.add_argument("--compare", default="", help="a previous run's JSON")
     ap.add_argument("--out", default="")
+    ap.add_argument("--show", action="store_true",
+                    help="print every case's input and output, passes too")
     args = ap.parse_args()
 
     if not args.token:
@@ -549,6 +551,15 @@ def main():
                 for note in r.get("recovered", []):
                     print("   ok    %s" % r["id"])
                     print("         %s — the writer recovered it" % note)
+                # --show: the refinement itself, for reading rather than scoring.
+                if args.show:
+                    print("   ok    %s" % r["id"])
+                    if r["said"]:
+                        print("         said   %s" % r["said"])
+                        print("         heard  %s" % (r["transcript"] or "(nothing)"))
+                    else:
+                        print("         in     %s" % r["input"])
+                    print("         out    %s" % (r["output"] or "(nothing)").replace("\n", "\n                "))
                 continue
             flaky = r.get("runs", 1) > 1 and 0 < r["failedRuns"] < r["runs"]
             print("   %s  %s%s" % (
