@@ -246,7 +246,9 @@ describe("what the prompt is told about a mixed sentence", () => {
       hasContext: true, targetApp: "WhatsApp", script: "latin",
       mixedLanguages: true, hasAlternative: true,
     });
-    expect(t.length).toBeLessThan(2400);
+    // 2400 until the second job (a short piece written on request) was named;
+    // see assist-tone's guard.
+    expect(t.length).toBeLessThan(3000);
   });
 });
 

@@ -18,6 +18,8 @@ import {
 } from "./portraitDimensions.js";
 import { buildAssistSystem, fenceTags, stripFenceTags } from "./assistPrompt.js";
 import { splitInstruction } from "./commands.js";
+import { composeAsk, mentionsAPiece, promptsAnAi } from "./compose.js";
+import { earlierBlock, type RecentDictation } from "./session.js";
 import { buildReplySystem, inlineValue, renderCommandOverride } from "../prompts.js";
 import { detectScript, englishShare, INDIC_SCRIPTS, mixesEnglishAndRomanHindi, readsAsRomanHindi, romanHindiHits, transliterated } from "./stt.js";
 import { isKnownHallucination, phraseKey } from "./speechGate.js";
@@ -383,6 +385,10 @@ function countWords(s: string): number {
  * plus a paragraph's grace, is more than any apology, reply or "make it
  * longer" needs, and far less than an essay.
  */
+/** The longest a piece written on request should be: a short email or a few
+ *  verses. Past it the writer is asked once for a shorter one. */
+export const PIECE_WORDS = 220;
+
 export function runaway(out: string, input: string): boolean {
   return countWords(out) > countWords(input) * 8 + 120;
 }
@@ -548,11 +554,26 @@ interface WriterRequest {
   askedLanguage?: string;
   /** They asked for something about the writing (shorter, formal, a language). */
   instructed: boolean;
+  /** They asked for a piece to be written for them, unmistakably or in so many
+   *  words (compose.ts): what comes back is meant to be longer than what they
+   *  said, and in words they did not say. */
+  piece: boolean;
   system: string;
   userContent: string;
 }
 
-function writerRequest(input: string, opts: CleanupOptions): WriterRequest {
+/**
+ * What the writer is given beyond a request's own fields. Server-side only:
+ * nothing here is read from a request body.
+ */
+export interface WriterExtras {
+  /** Their dictations from the last few minutes (session.recentDictations). */
+  recent?: RecentDictation[];
+  /** Their clock, so the session can say when, in their time. */
+  tzOffsetMinutes?: number;
+}
+
+function writerRequest(input: string, opts: CleanupOptions & WriterExtras): WriterRequest {
   // THE INSTRUCTION COMES OFF FIRST (commands.splitInstruction). The writer is
   // handed the message alone and told what was asked, so no word of the
   // request can be written into it — and every fallback below returns the
@@ -564,6 +585,13 @@ function writerRequest(input: string, opts: CleanupOptions): WriterRequest {
     : undefined;
   const message = split.message;
   const context = opts.context?.trim();
+  // A PROMPT FOR ANOTHER AI IS NEVER A JOB FOR THIS ONE, and otherwise: is
+  // this an ask to write a piece for them, or for more than a keyboard
+  // writes? Measured on the message, after any "make it sweet" is off it.
+  const toAnAi = promptsAnAi(opts.targetApp);
+  const ask = composeAsk(message, opts.targetApp);
+  const piece = ask?.kind === "piece" || (!toAnAi && ask?.kind !== "tooBig" && mentionsAPiece(message));
+  const earlier = earlierBlock(opts.recent, { tzOffsetMinutes: opts.tzOffsetMinutes, context });
   // A second recognizer's reading, when it disagreed with the first. Kept as
   // USER content (never spliced into the system prompt) so recognizer output
   // can't act as instructions.
@@ -617,6 +645,9 @@ function writerRequest(input: string, opts: CleanupOptions): WriterRequest {
     uncertain: opts.speechConfidence === "low",
     hasContext: !!context,
     hasAlternative,
+    compose: ask?.kind,
+    promptsAnAi: toAnAi,
+    hasEarlier: !!earlier,
   });
   // FENCED, NOT HANDED OVER AS A TURN. The dictation used to be the whole
   // user message, and a user message is what a chat model replies to: a
@@ -628,9 +659,10 @@ function writerRequest(input: string, opts: CleanupOptions): WriterRequest {
   const messageBlock = hasAlternative
     ? `CANDIDATE 1 (more reliable):\n${altLeads ? other : said}\n\nCANDIDATE 2:\n${altLeads ? said : other}`
     : said;
-  const userContent = (context ? `<before>\n${stripFenceTags(context)}\n</before>\n` : "")
+  const userContent = earlier
+    + (context ? `<before>\n${stripFenceTags(context)}\n</before>\n` : "")
     + `<said>\n${messageBlock}\n</said>`;
-  return { message, context, askedLanguage, instructed: !!asked, system, userContent };
+  return { message, context, askedLanguage, instructed: !!asked, piece, system, userContent };
 }
 
 /**
@@ -656,7 +688,7 @@ function writerRequest(input: string, opts: CleanupOptions): WriterRequest {
  *   correction  "no wait…" kept, where only the correction should be
  *   filler      "um", "uh" kept
  */
-export type Slip = "alphabet" | "translated" | "added" | "correction" | "filler";
+export type Slip = "alphabet" | "translated" | "added" | "correction" | "filler" | "long";
 
 const CORRECTION = /\b(?:no,? wait|wait,? no|scratch that|sorry,? i meant?|i meant?,? no)\b/i;
 const FILLER_WORD = /(?:^|[^\p{L}])(?:u+m+|u+h+|uhm+|erm+)(?=$|[^\p{L}])/iu;
@@ -671,13 +703,18 @@ const wordCount = (s: string): number => (s.trim().match(/\S+/g) ?? []).length;
 export function slipIn(
   message: string,
   out: string,
-  o: { askedLanguage?: string; instructed?: boolean } = {},
+  o: { askedLanguage?: string; instructed?: boolean; piece?: boolean } = {},
 ): Slip | null {
   const said = message.trim();
   const wrote = out.trim();
   if (!said || !wrote) return null;
   if (!o.askedLanguage && !NAMES_A_LANGUAGE.test(said)) {
     if (OTHER_LETTERS.test(wrote)) return "alphabet";
+    // A PIECE THEY ASKED FOR IS NOT THEIR WORDS, so it cannot have translated
+    // them: an email asked for in Hinglish is rightly written in English.
+    // The alphabet still holds: a shayari asked for in English letters comes
+    // back in them.
+    if (o.piece) return null;
     const saidScript = detectScript(said);
     // Romanized Hindi in, none of it out: every one of those words was
     // replaced, which is what translating is.
@@ -687,7 +724,10 @@ export function slipIn(
     if (INDIC_SCRIPTS.has(saidScript) && wordCount(said) >= 4
       && romanHindiHits(wrote) === 0 && englishShare(wrote) >= 0.1) return "translated";
   }
-  if (!o.instructed && wordCount(wrote) > wordCount(said) * 1.6 + 6) return "added";
+  // The piece they asked for is MEANT to be longer than the asking. This line
+  // read a finished poem as words nobody said, asked for it again, and kept
+  // the shorter answer: the request, cleaned up, instead of the poem.
+  if (!o.instructed && !o.piece && wordCount(wrote) > wordCount(said) * 1.6 + 6) return "added";
   if (CORRECTION.test(wrote) && CORRECTION.test(said)) return "correction";
   if (FILLER_WORD.test(wrote) && FILLER_WORD.test(said)) return "filler";
   return null;
@@ -700,6 +740,7 @@ const REDO: Record<Slip, string> = {
   added: "That added words they did not say. Write only what they said.",
   correction: "They corrected themselves there. Keep only the correction, without what it replaced or the words that made it.",
   filler: "Filler sounds went through. Leave them out.",
+  long: "That is too long for what they asked. Write it much shorter, the length that kind of message really is.",
 };
 
 /**
@@ -712,10 +753,10 @@ const REDO: Record<Slip, string> = {
  */
 export async function assist(
   input: string,
-  opts: CleanupOptions = {},
+  opts: CleanupOptions & WriterExtras = {},
 ): Promise<string> {
   if (!input.trim()) return "";
-  const { message, context, askedLanguage, instructed, system, userContent } = writerRequest(input, opts);
+  const { message, context, askedLanguage, instructed, piece, system, userContent } = writerRequest(input, opts);
   const write = async (after: Array<{ role: "assistant" | "user"; content: string }> = []) => {
     const res = await openrouter().chat.completions.create({
       ...common(),
@@ -735,17 +776,22 @@ export async function assist(
   // rule the model breaks twice in a row is not won by a third ask, and every
   // ask is time someone is waiting at the cursor. A second ask that fails
   // leaves the guards below to decide, as they always have.
-  const slip = slipIn(message, wrote, { askedLanguage, instructed });
+  // A piece has no words of theirs to compare against, only a size: a short
+  // piece, written long, is asked for once more, shorter.
+  const slip = piece && countWords(wrote) > PIECE_WORDS ? "long" : slipIn(message, wrote, { askedLanguage, instructed, piece });
   if (slip) {
     try {
       const again = await write([
         { role: "assistant", content: wrote },
         { role: "user", content: `${REDO[slip]} Return only the text.` },
       ]);
-      const still = again ? slipIn(message, again, { askedLanguage, instructed }) : slip;
-      // Kept when it is clean, or, for an addition, when it at least added
-      // less. A second answer that swapped one slip for another is not kept.
-      if (again && (still === null || (slip === "added" && still === "added" && wordCount(again) < wordCount(wrote)))) wrote = again;
+      const still = again ? slipIn(message, again, { askedLanguage, instructed, piece }) : slip;
+      // Kept when it is clean, or, for an addition or a long piece, when it at
+      // least added less. A second answer that swapped one slip for another is
+      // not kept.
+      const shorter = !!again && wordCount(again) < wordCount(wrote);
+      if (again && slip === "long" && still === null && shorter) wrote = again;
+      else if (again && slip !== "long" && (still === null || (slip === "added" && still === "added" && shorter))) wrote = again;
       // Still in English after being told it was a translation: their own
       // words, unwritten, are closer to what they said than someone else's.
       else if (slip === "translated" && detectScript(message) === "latin") wrote = message.trim();
@@ -761,7 +807,9 @@ export async function assist(
   const joined = (s: string) => shapeForJoin(s, context);
   // Something far longer than they could have asked for goes out as what they
   // said, the same policy as a leaked prompt: never an essay in their field.
-  if (runaway(out, message)) return joined(message.trim());
+  // Not for a piece they asked for: its length was bounded above, and their
+  // request is the one thing that must not be pasted in its place.
+  if (!piece && runaway(out, message)) return joined(message.trim());
   // The instructions are never the message. Falling back to what they said is
   // the same policy as a refusal: a request that happened to address the model
   // goes out as the message it always was.
@@ -775,7 +823,10 @@ export async function assist(
   if (!askedLanguage && transliterated(message, out)) return joined(message.trim());
   // Their own prior text stays in the field either way, so an echo of it here
   // is a second copy on screen.
-  const trimmed = stripEdgeFiller(stripAddedClosing(stripEchoedContext(out, context), message), continuesSentence(context));
+  // A closing line is theirs to have in a piece they asked for ("Thanks!" at
+  // the end of an email); only in dictation is it one they never said.
+  const unechoed = stripEchoedContext(out, context);
+  const trimmed = stripEdgeFiller(piece ? unechoed : stripAddedClosing(unechoed, message), continuesSentence(context));
   // Discard a meta/refusal reply ("speak again"…); else keep the completion,
   // falling back to the input on an empty one so we never wipe the field.
   return joined(finalizeCompletion(trimmed, message.trim()));

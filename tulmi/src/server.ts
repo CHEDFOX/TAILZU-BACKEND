@@ -52,6 +52,7 @@ import {
   syncSubscription, webhookSignatureOk, type Market, type Period, type RzPlan,
 } from "./billing/razorpay.js";
 import { runPipeline } from "./pipeline/index.js";
+import { recentDictations } from "./pipeline/session.js";
 import { joinWithSpace } from "./pipeline/join.js";
 import { estimateDurationSeconds } from "./pipeline/stt.js";
 import {
@@ -961,6 +962,8 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
 
   const t0 = Date.now();
   try {
+    // The session is read while everything else is: it waits on nothing.
+    const recentRead = recentDictations(user);
     const personality = personalityOverride ?? await getPersonality(user);
     const lang = await effectiveLanguage(user, language, personality);
     const result = await runPipeline({
@@ -973,6 +976,8 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       tonePrompt,
       context,
       variables: { email: user.email, phone: user.phone },
+      recent: await recentRead,
+      tzOffsetMinutes: personality.stylePortrait?.tzOffsetMinutes,
     });
     await recordUsage({ user, source: "rest", ...result.usage });
     await appendHistoryEntry(
@@ -1042,6 +1047,7 @@ const refineRoute = (routeTone?: string) =>
 
     const t0 = Date.now();
     try {
+      const recentRead = recentDictations(user);
       const personality = override ?? await getPersonality(user);
       const tone = routeTone ?? body.tone ?? personality.activeTone;
       const lang = await effectiveLanguage(user, body.language, personality);
@@ -1056,6 +1062,10 @@ const refineRoute = (routeTone?: string) =>
         alternative: body.alternative,
         personality,
         variables: { email: user.email, phone: user.phone },
+        // What they dictated in the last few minutes, read by the server
+        // (never sent by a client), with where and when.
+        recent: await recentRead,
+        tzOffsetMinutes: personality.stylePortrait?.tzOffsetMinutes,
       });
       const usage = { audioSeconds: 0, words: countWords(refinedText), model: cfg.CLEANUP_MODEL };
       await recordUsage({ user, source: "rest", ...usage });

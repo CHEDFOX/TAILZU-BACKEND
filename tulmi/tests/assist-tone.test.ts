@@ -99,8 +99,13 @@ describe("what the refiner is told it is", () => {
     // characters of enumerated rules; each addition dimmed the lines above it.
     // If this assertion starts failing, the fix is to find which principle
     // failed to cover the new case — not to raise the number.
+    //
+    // Raised once, from 2000, for a second JOB rather than another rule: the
+    // owner asked for a writing assistant that also writes small pieces on
+    // request, and for a prompt that says plainly what job it is doing. That
+    // took one sentence naming the job and its bound.
     const t = buildAssistSystem({ hasContext: true, targetApp: "WhatsApp", script: "latin" });
-    expect(t.length).toBeLessThan(2000);
+    expect(t.length).toBeLessThan(2600);
     expect(t.split("\n").filter((l) => l.trim()).length).toBeLessThan(20);
   });
 

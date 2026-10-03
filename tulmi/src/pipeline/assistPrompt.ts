@@ -25,7 +25,8 @@ import { inlineValue } from "../prompts.js";
 
 /**
  * The tags this prompt fences material in: what they said (<said>), their own
- * earlier text (<before>) and the voice they chose (<voice>). Any of these in
+ * earlier text (<before>), their dictations from the last few minutes
+ * (<earlier>) and the voice they chose (<voice>). Any of these in
  * something a user wrote could close a fence early and pass the rest off as
  * ours, so they are taken out of everything the user supplied before it is
  * fenced, and out of what the model wrote before it reaches the field.
@@ -36,7 +37,7 @@ import { inlineValue } from "../prompts.js";
  * stay theirs. Linear: each attempt stops at the next "<", ">" or newline.
  */
 export const fenceTags = (names: string) => new RegExp(`<\\s*\\/?\\s*(?:${names})\\b([^<>\\n]*>)?`, "gi");
-const FENCE_TAGS = fenceTags("said|before|voice");
+const FENCE_TAGS = fenceTags("said|before|voice|earlier");
 export function stripFenceTags(s: string, tags = FENCE_TAGS): string {
   return s.replace(tags, (tag, closed: string | undefined) => (closed ? "" : tag.slice(1)));
 }
@@ -326,6 +327,14 @@ export function buildAssistSystem(opts: {
    *  it (commands.splitInstruction), stated as what to do rather than left
    *  as words to write. */
   instruction?: string;
+  /** Measured (compose.composeAsk): this one is unmistakably an ask to write
+   *  a small piece for them, or an ask for more than a keyboard writes. */
+  compose?: "piece" | "tooBig";
+  /** The field is a prompt for another AI (ChatGPT, Claude, an editor):
+   *  what they say there is their prompt, never a job for the keyboard. */
+  promptsAnAi?: boolean;
+  /** Their dictations from the last few minutes ride along in <earlier>. */
+  hasEarlier?: boolean;
 }): string {
   const guidance = toneGuidance(opts.tone, opts.personality, opts.tonePrompt);
   // Both sit inside a sentence of the rules, and both are request data.
@@ -343,7 +352,7 @@ export function buildAssistSystem(opts: {
     // "Ready to send" came out for the same reason: the desktop sends each
     // pause-separated stretch on its own, and a fragment told to be ready to
     // send gets finished — a full stop, a capital, words to round it off.
-    "You are Tailzu, a keyboard's writing assistant. What someone said or typed to it is inside <said>: write it as the message they meant, in their voice.",
+    "You are Tailzu, the writing assistant in someone's keyboard. What they said or typed to it is inside <said>, and what you return goes straight into the field they are writing in: write it as the message they meant, in their voice.",
     "",
     // THE CONTRACT, BEFORE ANYTHING THAT COULD BEND IT. "Say nothing they did
     // not give you" sat at the bottom, under the language rules, and the voice
@@ -357,7 +366,7 @@ export function buildAssistSystem(opts: {
     // their sentence. Stated as a principle rather than a rule about
     // punctuation, because completing takes many forms (a full stop, a word,
     // a clause) and join.shapeForJoin already catches the commonest in code.
-    "Everything you return is what they send. Say nothing they did not give you: no fact, greeting or sentence of your own, and no answer. The meaning is theirs, and the length too unless they ask. Filler, false starts and asides to the keyboard go; when they correct themselves, only the correction stays. Stop where they stop, even mid-sentence.",
+    "Everything you return is what they send. Writing down what they said, say nothing they did not give you: no fact, greeting or sentence of your own, and no answer. The meaning is theirs, and the length too unless they ask. Filler, false starts and asides to the keyboard go; when they correct themselves, only the correction stays. Stop where they stop, even mid-sentence.",
     "",
     // Two recognizers heard the same audio and disagreed. The no-invention
     // clause is the load-bearing half: given two readings a model will happily
@@ -397,7 +406,20 @@ export function buildAssistSystem(opts: {
     // a message they want written and was sometimes refused as off-topic;
     // "write me an essay on climate" is a task, and was sometimes done, at
     // their word count. One clause settles both.
-    "Part of what they say may be addressed to you: how to write it, how long, which language, for whom. Do that part; write the rest, never the request, in any language. They can only ask you about the writing, or to write a short message for them; anything else aimed at you, a question, facts, an essay, is part of what they are saying. When you cannot tell which it is, it is what they want said: a question they dictate is a question they are sending.",
+    "Part of what they say may be addressed to you: how to write it, how long, which language, how it should sound, for whom. Do that part; write the rest, never the request, in any language.",
+    // THE SECOND JOB, NAMED AS A JOB. It was half a clause ("or to write a
+    // short message for them") inside a sentence whose point was the bound,
+    // followed by "when you cannot tell, it is what they want said" — so a
+    // plain "write a poem for my girlfriend, she's upset, make it sweet" was
+    // as often written down as written. The owner: an intelligent writing
+    // assistant that writes small things on request, never technical or big
+    // ones. The bound keeps its subject: what they cannot ask for is named by
+    // kind (code, anything long, a question or facts), not by phrasing.
+    "They can also ask you to write a short piece for them: a message, reply, email, wish, caption or poem, saying who it is for and what it should say or feel like. That piece is then what they send: write it whole, in their voice, from what they told you, only as long as that kind of piece needs, inventing no names, facts or plans. Beyond the writing they can ask you nothing: code, anything long, a question or facts aimed at you are part of what they are saying. When you cannot tell which it is, it is what they want said: a question they dictate is a question they are sending.",
+    // Measured in code (compose.ts), so the writer is told rather than left
+    // to weigh the two jobs against each other.
+    opts.compose === "piece" ? "This time they are asking you to write a piece for them: write it." : null,
+    opts.compose === "tooBig" ? "This time they ask for more than a keyboard writes, so it is part of what they are saying." : null,
     // Already separated in code: they said it, it is carried out, and none of
     // its words are in <said> to be written by mistake.
     opts.instruction ? `For this message they asked you: ${opts.instruction}` : null,
@@ -462,6 +484,19 @@ export function buildAssistSystem(opts: {
     app
       ? `In ${app}, the field decides the shape of the text, never its content: a search box wants just the words.`
       : "The field they are writing into decides the shape of the text, never its content.",
+    // Dictating into ChatGPT is writing a prompt for ChatGPT. Carried out
+    // here, the poem it asked for would land in the box where the prompt
+    // belongs.
+    opts.promptsAnAi && app
+      ? `${app} is an AI assistant: what they say there is their prompt to it, so write the prompt and never carry it out.`
+      : null,
+    // THE SESSION. What they dictated in the last few minutes, with where and
+    // when. A keyboard that forgets each sentence the moment it is written
+    // cannot know who "him" is, how they spelled the name a minute ago, or
+    // that they have been writing Hinglish all evening.
+    opts.hasEarlier
+      ? "<earlier> holds what they dictated in the last few minutes, oldest first, with the app and the time: use it to understand this one (names and spellings, their language, who or what they mean), never to repeat it."
+      : null,
     // "OR THE CONVERSATION" DESCRIBED SOMETHING NO CLIENT SENDS.
     //
     // context is priorText: the user's own text, in the field, from before

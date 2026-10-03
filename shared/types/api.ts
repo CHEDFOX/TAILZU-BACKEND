@@ -326,7 +326,10 @@ export type Command =
   | { kind: "language"; lang: string }
   | { kind: "bulletpoints" }
   | { kind: "emojiOff" }
-  | { kind: "emojiOn" };
+  | { kind: "emojiOn" }
+  /** "…make it sweet", "…say it politely", "…in a funny way": how it should
+   *  sound, for this message only. The word they used, as they said it. */
+  | { kind: "style"; style: string };
 
 /** Options that shape a request (shared by voice, typing, and screen modes). */
 export interface CleanupOptions {

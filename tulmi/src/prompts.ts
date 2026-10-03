@@ -252,6 +252,10 @@ export function renderCommandOverride(command: Command | undefined): string {
       return "The user asked for NO EMOJI in this run — override any personality/app-style emoji setting and produce zero emoji.";
     case "emojiOn":
       return "The user asked to ADD EMOJI in this run — sprinkle a couple of tasteful emojis where they fit the meaning naturally. Don't overdo it.";
+    case "style": {
+      const style = inlineValue(command.style, 40) || "better";
+      return `The user asked for it to sound ${style} in this run — keep what they mean; change only how it sounds.`;
+    }
   }
 }
 

@@ -140,6 +140,26 @@ export const CASES: EvalCase[] = [
     mustContain: ["deploy", "abhi"],
     mustNotContain: ["testing is still pending"],
   },
+  // --- Writing for them ----------------------------------------------------
+  {
+    id: "compose/piece-is-written",
+    intent: "Asked for a small piece for someone, it writes the piece rather than cleaning up the ask.",
+    input: "write a short poem for my girlfriend, she is upset with me because I forgot our dinner, make it sweet",
+    mustNotContain: ["write a short poem", "write a poem"],
+  },
+  {
+    id: "compose/essay-is-not-written",
+    intent: "Big things are not a keyboard's to write: the ask is what they are saying.",
+    input: "write me an essay on climate change",
+    maxChars: 80,
+  },
+  {
+    id: "style/said-at-the-end-is-done",
+    intent: "\"…make it sweet\" is how it should sound, done and not written into the message.",
+    input: "tell priya I'll be late tonight, make it sweet",
+    mustContain: ["late"],
+    mustNotContain: ["make it sweet"],
+  },
   {
     id: "lang/setting-is-not-the-target",
     intent:

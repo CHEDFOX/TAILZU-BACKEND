@@ -44,6 +44,12 @@ const TAIL = "[\\s.!?…,\"'\\)\\]]*";
  */
 const LEAD = "(?<!\\s)[,;\\-—…]?\\s*(?:(?:and|then)\\s+){0,2}";
 
+/** Words for how something should feel, as people ask for it. */
+const STYLE = "(?:polite|nicer|nice|sweeter|sweet|cuter|cute|funnier|funny|witty|warmer|warm|friendlier|friendly|kinder|kind|gentler|gentle|softer|soft|respectful|professional|confident|assertive|firm|direct|humble|apologetic|romantic|flirty|cheesy|dramatic|poetic|grateful|thankful|enthusiastic|excited|happier|happy|cheerful|serious|sincere|heartfelt|emotional|loving|caring|sarcastic|savage|cooler|cool|chill|simpler|simple|clearer|clear|concise|punchy|catchy|persuasive|urgent|positive|encouraging|motivational|classy|elegant|smooth|natural|personal|lighter|light|playful|sassy|cute)";
+const STYLE_ADVERB = "(?:nicely|politely|sweetly|kindly|gently|softly|warmly|professionally|respectfully|romantically|confidently|firmly|humbly|playfully|sarcastically|seriously|sincerely|simply|clearly|briefly)";
+/** "a bit", "much more", "less", "very"… before the word. */
+const DEGREE = "(?:(?:a\\s+)?(?:bit|little|lot|touch)\\s+(?:more\\s+)?|(?:much|way)\\s+more\\s+|more\\s+|less\\s+|very\\s+|super\\s+|really\\s+|extra\\s+|quite\\s+)?";
+
 /**
  * Ordered list of (regex, factory) pairs. Every regex is anchored to $ so it
  * only matches at the tail. We accept a small optional leading connector
@@ -54,7 +60,7 @@ const PATTERNS: Array<{ re: RegExp; make: (m: RegExpMatchArray) => Command }> = 
   // shorter / longer
   {
     re: new RegExp(
-      `${LEAD}${MAKE_IT}\\s+(?:a\\s+bit\\s+|much\\s+|way\\s+|more\\s+)?shorter${TAIL}$`,
+      `${LEAD}(?:${MAKE_IT}|keep\\s+(?:it|this|that))\\s+(?:a\\s+bit\\s+|much\\s+|way\\s+|more\\s+|really\\s+|very\\s+)?(?:shorter|short|brief|crisp)${TAIL}$`,
       "i",
     ),
     make: () => ({ kind: "shorter" }),
@@ -136,6 +142,26 @@ const PATTERNS: Array<{ re: RegExp; make: (m: RegExpMatchArray) => Command }> = 
       "i",
     ),
     make: (m) => ({ kind: "language", lang: (m[1] ?? "").trim().toLowerCase() }),
+  },
+
+  // HOW IT SHOULD SOUND — "make it sweet", "make it sound more confident",
+  // "keep it polite", "say it nicely", "in a funny way". Only the words people
+  // use for a feel; "make it to the party" names none, so it stays a message.
+  // Formal and casual have their own commands above and are not repeated.
+  {
+    re: new RegExp(
+      `${LEAD}(?:${MAKE_IT}|keep\\s+(?:it|this|that))\\s+(?:sound\\s+|look\\s+|feel\\s+)?${DEGREE}(${STYLE}(?:\\s+(?:and|but)\\s+${DEGREE}${STYLE})?)${TAIL}$`,
+      "i",
+    ),
+    make: (m) => ({ kind: "style", style: (m[1] ?? "").trim().toLowerCase() }),
+  },
+  {
+    re: new RegExp(`${LEAD}(?:say|write|put|tell)\\s+(?:it|this|that|him|her|them)\\s+(${STYLE_ADVERB})${TAIL}$`, "i"),
+    make: (m) => ({ kind: "style", style: (m[1] ?? "").trim().toLowerCase() }),
+  },
+  {
+    re: new RegExp(`${LEAD}(?:in|with)\\s+(?:a|an)\\s+${DEGREE}(${STYLE})\\s+(?:way|tone|vibe|manner|style|voice)${TAIL}$`, "i"),
+    make: (m) => ({ kind: "style", style: (m[1] ?? "").trim().toLowerCase() }),
   },
 
   // emoji off — "no emoji", "no emojis", "without emojis", "less emoji"

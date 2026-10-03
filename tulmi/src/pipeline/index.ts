@@ -4,7 +4,7 @@
  * test scripts); live dictation streams through routes/transcribe-stream.ts.
  */
 import { transcribe } from "./stt.js";
-import { assist } from "./cleanup.js";
+import { assist, type WriterExtras } from "./cleanup.js";
 import { joinWithSpace } from "./join.js";
 import type { GateReason } from "./speechGate.js";
 import type {
@@ -14,7 +14,7 @@ import type {
 } from "../../../shared/types/api.js";
 import { getConfig } from "../config.js";
 
-export interface PipelineInput extends CleanupOptions {
+export interface PipelineInput extends CleanupOptions, WriterExtras {
   audio: Buffer;
   format: AudioFormat;
 }
