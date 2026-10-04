@@ -74,6 +74,46 @@ export async function recordUsage(input: MeterInput): Promise<void> {
 }
 
 /** Aggregate a user's usage into this-month + all-time totals (for the stats screen). */
+type UsageRow = { audio_seconds?: number | null; word_count?: number | null; created_at?: string };
+
+const USAGE_PAGE = 1000;
+/** A ceiling on one read, so one account cannot pull an unbounded table. */
+const USAGE_MAX_ROWS = 200_000;
+
+/**
+ * EVERY usage row since `sinceIso`, a page at a time.
+ *
+ * PostgREST answers an unpaged select with at most its max-rows (1,000 on
+ * Supabase). usageSummary read the whole table that way, so for anyone past
+ * a thousand requests "this month" was summed from whichever thousand came
+ * back — and the Stats tab's month said one number while "Words this month",
+ * read for the month alone, said another. Ordered by id, which never ties,
+ * so no row is read twice or skipped between pages. An error only when the
+ * first page cannot be read; a later page failing keeps what was read.
+ */
+async function readUsageRows(
+  sb: NonNullable<ReturnType<typeof dataClientFor>>,
+  userId: string,
+  sinceIso?: string,
+): Promise<{ rows: UsageRow[] } | { error: string }> {
+  const rows: UsageRow[] = [];
+  for (let from = 0; from < USAGE_MAX_ROWS; from += USAGE_PAGE) {
+    let q = sb
+      .from("usage_events")
+      .select("audio_seconds, word_count, created_at")
+      .eq("user_id", userId);
+    if (sinceIso) q = q.gte("created_at", sinceIso);
+    const { data, error } = await q.order("id", { ascending: true }).range(from, from + USAGE_PAGE - 1);
+    if (error || !data) {
+      if (!rows.length) return { error: error?.message ?? "no data" };
+      break;
+    }
+    rows.push(...(data as UsageRow[]));
+    if (data.length < USAGE_PAGE) break;
+  }
+  return { rows };
+}
+
 export async function usageSummary(user: AuthedUser, tzOffsetMinutes?: number): Promise<UsageSummary> {
   const empty = () => ({ words: 0, audioSeconds: 0, requests: 0 });
   const out: UsageSummary = { month: empty(), total: empty() };
@@ -101,15 +141,12 @@ export async function usageSummary(user: AuthedUser, tzOffsetMinutes?: number): 
   const sb = dataClientFor(user);
   if (!sb) return out;
 
-  const { data, error } = await sb
-    .from("usage_events")
-    .select("audio_seconds, word_count, created_at")
-    .eq("user_id", user.id);
-  if (error || !data) return out;
+  const read = await readUsageRows(sb, user.id);
+  if ("error" in read) return out;
 
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
-  for (const r of data as Array<{ audio_seconds?: number; word_count?: number; created_at?: string }>) {
+  for (const r of read.rows) {
     const a = r.audio_seconds ?? 0;
     const w = r.word_count ?? 0;
     out.total.words += w; out.total.audioSeconds += a; out.total.requests += 1;
@@ -155,17 +192,12 @@ export async function usageEventsSince(
   }
   const sb = dataClientFor(user);
   if (!sb) return [];
-  let q = sb
-    .from("usage_events")
-    .select("audio_seconds, word_count, created_at")
-    .eq("user_id", user.id);
-  if (sinceIso) q = q.gte("created_at", sinceIso);
-  const { data, error } = await q;
-  if (error || !data) {
-    if (error) console.error(`[usage] stats read failed for ${user.id}:`, error.message);
+  const read = await readUsageRows(sb, user.id, sinceIso);
+  if ("error" in read) {
+    console.error(`[usage] stats read failed for ${user.id}:`, read.error);
     return [];
   }
-  return (data as Array<{ created_at?: string; audio_seconds?: number | null; word_count?: number | null }>)
+  return read.rows
     .map((r) => ({
       createdAt: r.created_at ?? new Date(0).toISOString(),
       audioSeconds: r.audio_seconds ?? 0,
@@ -293,15 +325,10 @@ export async function usageMomentsSince(
   const sb = dataClientFor(user);
   if (!sb) return null;
 
-  const { data, error } = await sb
-    .from("usage_events")
-    .select("audio_seconds, word_count, created_at")
-    .eq("user_id", user.id)
-    .gte("created_at", sinceIso);
+  const read = await readUsageRows(sb, user.id, sinceIso);
+  if ("error" in read) return null;
 
-  if (error || !data) return null;
-
-  return data.map((row) => ({
+  return read.rows.map((row) => ({
     at: Date.parse(String(row.created_at)) || 0,
     audioSeconds: row.audio_seconds ?? 0,
     words: row.word_count ?? 0,

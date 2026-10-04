@@ -353,13 +353,27 @@ export interface PhoneStatsInput {
   topVoiceShare: string;
   dictShare: string;
   langCount: number;
+  /** The active voice's colours, for the card that leads to the You tab. */
+  room?: { bg: string; ink: string; dim: string; edge?: string };
 }
 
-/** The words of the calendar month, and its speech in minutes, as the meter counted them. */
-export function monthFigures(ctx: { usage?: UsageSummary }, s: { wordsMonth: number; spokenMinutes: number }) {
-  return ctx.usage
-    ? { words: ctx.usage.month.words, saidMin: ctx.usage.month.audioSeconds / 60 }
-    : { words: s.wordsMonth, saidMin: s.spokenMinutes };
+/**
+ * The words of the calendar month, and its speech in minutes, as the meter
+ * counted them.
+ *
+ * The words are the allowance's own count when there is one: the same number
+ * "Words this month" shows further down, so the two can never disagree.
+ * They did — the line under the month was summed from a read that stopped at
+ * a thousand rows (usage/metering.ts readUsageRows), the meter from the month
+ * alone.
+ */
+export function monthFigures(
+  ctx: { usage?: UsageSummary },
+  s: { wordsMonth: number; spokenMinutes: number; allow?: Allowance | null },
+) {
+  const words = s.allow?.used ?? ctx.usage?.month.words ?? s.wordsMonth;
+  const saidMin = ctx.usage ? ctx.usage.month.audioSeconds / 60 : s.spokenMinutes;
+  return { words, saidMin };
 }
 
 /**
@@ -642,8 +656,47 @@ export function phoneStatsBody(
       style: { marginTop: 56, alignSelf: "flex-start", paddingVertical: 12 },
       children: [label("Full history", { color: L.ink, textDecorationLine: "underline" })],
     },
+    makeItYours(s.room),
   );
   return out;
+}
+
+/**
+ * THE WAY FROM WHAT YOU DID TO HOW IT IS DONE. The page ends on the one
+ * thing here that is not a record: the You tab, where the voice, the words,
+ * the languages and the keys are set. In the active voice's own colour, the
+ * same card that tab opens with, so it reads as a door to that room.
+ */
+function makeItYours(room: { bg: string; ink: string; dim: string; edge?: string } = PHONE_ROOMS["d-w-zu"]!): Node {
+  const go: ActionRef = { kind: "sequence", actions: [
+    { kind: "haptic", style: "selection" },
+    { kind: "switchTab", tabId: "personality" },
+  ] };
+  return {
+    type: "Stack",
+    on: { onPress: go },
+    props: { pressOpacity: 0.85 },
+    style: {
+      marginTop: STATS_SECTION - 40, borderRadius: 22, padding: 22, backgroundColor: room.bg,
+      ...(room.edge ? { borderWidth: 1, borderColor: room.edge } : {}),
+    },
+    children: [
+      label("Make it yours", { color: room.dim }),
+      t("Personalise your experience", "writtenLight", 24, { color: room.ink, marginTop: 10, letterSpacing: -0.4 }),
+      caption("Your voice, the words you use, the languages you speak and how every key feels.",
+        { color: room.dim, marginTop: 8, maxWidth: 320 }),
+      {
+        type: "Button",
+        props: {
+          label: "OPEN YOU", variant: "primary",
+          labelColor: room.bg, fontSize: 10, fontWeight: "600", tracking: 1.6,
+          paddingVertical: 0, paddingHorizontal: 22, radius: 12,
+        },
+        on: { onPress: go },
+        style: { backgroundColor: room.ink, height: 44, alignSelf: "flex-start", marginTop: 20 },
+      },
+    ],
+  };
 }
 
 /**

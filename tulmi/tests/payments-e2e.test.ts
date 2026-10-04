@@ -89,7 +89,10 @@ function fakeSupabase() {
       const chain: Record<string, unknown> = {
         select: () => chain,
         eq: () => chain,
-        gte: async () => ({ data: usage, error: null }),
+        // Usage is read a page at a time now (metering.ts readUsageRows):
+        // the filter chains, and the page is the answer.
+        gte: () => chain,
+        range: async () => ({ data: usage, error: null }),
         order: () => chain,
         limit: () => chain,
         maybeSingle: async () => ({ data: isEnt ? row : null, error: null }),
@@ -101,7 +104,7 @@ function fakeSupabase() {
         insert: async () => ({ error: null }),
         update: () => chain,
         delete: () => chain,
-        then: (resolve: (v: unknown) => unknown) => resolve({ data: [], error: null }),
+        then: (resolve: (v: unknown) => unknown) => resolve({ data: usage, error: null }),
       };
       return chain;
     },

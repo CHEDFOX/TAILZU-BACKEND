@@ -479,7 +479,7 @@ export const SITE_UI = {
 } as const;
 
 /** The You tab's three small cards (see settingCard). */
-export const YOU_CARD_FILL = { dictionary: "#16463D", languages: "#4B2240", haptics: "#253A5C" } as const;
+export const YOU_CARD_FILL = { dictionary: "#16463D", languages: "#4B2240", haptics: "#253A5C", stats: "#3A2B1C" } as const;
 /** Between the You tab's cards, top to bottom: three times the 14 it was, so
  *  each card is a place of its own rather than a row in a list. */
 const YOU_CARD_GAP = 42;
@@ -7774,6 +7774,43 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
   });
 
   /**
+   * THE LAST CARD: what all of this has added up to. Opens the Stats tab. The
+   * month's words as a curve when there are any — a glimpse, not the numbers,
+   * which are the other tab's to tell.
+   */
+  const statsCard = (): Node => {
+    const perDay = ctx.stats?.wordsPerDay ?? [];
+    const go: ActionRef = { kind: "sequence", actions: [
+      { kind: "haptic", style: "selection" },
+      { kind: "switchTab", tabId: "stats" },
+    ] };
+    return {
+      type: "Stack",
+      on: { onPress: go },
+      props: { pressOpacity: 0.7 },
+      style: { borderRadius: 20, padding: 20, backgroundColor: YOU_CARD_FILL.stats, marginTop: YOU_CARD_GAP },
+      children: [
+        label("Stats", { color: "rgba(243,226,198,0.62)" }),
+        t("See what you have experienced so far", "writtenLight", 20, { lineHeight: 28, marginTop: 12 }),
+        ...(perDay.some((v) => v > 0)
+          ? [{ type: "Stack", style: { marginTop: 18 }, children: [curve(perDay, { aspect: 5, markLast: true })] } as Node]
+          : []),
+        {
+          type: "Button",
+          props: {
+            label: "OPEN STATS", variant: "secondary",
+            labelColor: PHONE_LOOK.ink, fontSize: 10, fontWeight: "600", tracking: 1.6,
+            paddingVertical: 0, paddingHorizontal: 22, radius: 12,
+          },
+          on: { onPress: go },
+          style: { height: 44, alignSelf: "flex-start", marginTop: 18, backgroundColor: "transparent",
+                   borderWidth: 1, borderColor: "rgba(243,226,198,0.32)" },
+        },
+      ],
+    };
+  };
+
+  /**
    * THE TRAINING CARD. What the Train tab was, at card size: the network it
    * grows, the two lines, what it has learned, and the same drag in. A tap
    * where the drag cannot be held (a bundle whose scroll steals it) falls
@@ -8064,6 +8101,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
                       "haptics", YOU_CARD_FILL.haptics, { flex: 1, minHeight: 104 }),
                   ],
                 },
+                statsCard(),
               ],
             },
           ],
@@ -9449,7 +9487,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
   const dd = st?.days ?? [];
   const dayNames = statsDays(perDay.length || 30, ctx.tzOffsetMinutes ?? 0);
   const axis30 = [dayNames[0]?.short ?? "", dayNames[Math.floor(dayNames.length / 2)]?.short ?? "", "Today"];
-  const month = monthFigures(ctx, { wordsMonth, spokenMinutes });
+  const month = monthFigures(ctx, { wordsMonth, spokenMinutes, allow });
   const todayD = dd[dd.length - 1];
   const todayWords = ctx.usage?.today?.words ?? perDay[perDay.length - 1] ?? 0;
   const todaySec = ctx.usage?.today?.audioSeconds ?? todayD?.saidSeconds ?? 0;
@@ -9587,6 +9625,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
               wordsMonth, sessions, perDay, days, daysActive, streak, streakLive,
               avgPerSession, spokenMinutes, empty, allow: allow ?? null, paid, paidPct,
               topVoiceShare, dictShare, langCount: langRows.length,
+              room: PHONE_ROOMS[DESK_ROOMS[ctx.personality?.activePresetId ?? "signature"] ?? "d-w-zu"],
             }),
           ],
         },

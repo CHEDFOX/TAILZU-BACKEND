@@ -85,6 +85,30 @@ describe("the Stats screen", () => {
     expect(s).not.toContain('"1,100 "');
   });
 
+  it("says the same month's words under the month as Words this month does", () => {
+    // The two were read differently and disagreed: the line under the month
+    // from a read capped at a thousand rows, the meter from the month alone.
+    const withAllow = {
+      ...ctx,
+      allowance: { base: 800, earned: 0, total: 800, used: 312, remaining: 488, streakDays: 1, grants: [], maxed: false, perVisit: [] },
+    };
+    const s = JSON.stringify(buildScreen("stats", withAllow as never));
+    expect(s).toContain('"312 "');
+    expect(s).not.toContain('"250 "');
+  });
+
+  it("ends on a way to the You tab, in the voice's own colour", () => {
+    const s = screen();
+    const page = s.root.children[0];
+    const last = page.children[page.children.length - 1];
+    expect(JSON.stringify(last)).toContain("Personalise your experience");
+    expect(JSON.stringify(last.on.onPress)).toContain('"kind":"switchTab","tabId":"personality"');
+    expect(last.style.backgroundColor).toBe("#F3EDE2");
+    const pirate = buildScreen("stats", { ...ctx, personality: { activePresetId: "pirate" } } as never) as any;
+    const pp = pirate.root.children[0];
+    expect(pp.children[pp.children.length - 1].style.backgroundColor).toBe("#106A60");
+  });
+
   it("starts the page under the settings gear", () => {
     const page = screen().root.children[0];
     expect(page.style.paddingTop).toBeGreaterThanOrEqual(58 + 34 + 24);
@@ -146,5 +170,22 @@ describe("a curve", () => {
     const ys = [...p.line.matchAll(/(-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?)/g)].map((m) => Number(m[2]));
     expect(Math.max(...ys)).toBeLessThanOrEqual(100);
     expect(p.area.endsWith("Z")).toBe(true);
+  });
+});
+
+describe("the You tab", () => {
+  it("ends on a Stats card that opens the Stats tab", () => {
+    const you = buildScreen("personality", {
+      personality: {}, language: "en",
+      stats: { wordsPerDay: Array.from({ length: 30 }, (_, i) => i % 2) },
+    } as never) as any;
+    const column = you.root.children[0].children[0].children;
+    const last = column[column.length - 1];
+    const json = JSON.stringify(last);
+    expect(json).toContain("See what you have experienced so far");
+    expect(json).toContain("OPEN STATS");
+    expect(JSON.stringify(last.on.onPress)).toContain('"kind":"switchTab","tabId":"stats"');
+    // A glimpse of the month as a curve, when there is one.
+    expect(json).toContain('"type":"SVG"');
   });
 });
