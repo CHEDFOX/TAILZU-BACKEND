@@ -781,14 +781,22 @@ describe("buildScreen", () => {
       const screen = buildScreen("stats", ctx as never);
       const cards: string[] = [];
       const panels: string[] = [];
+      // A card opens its panel directly or as one step of a sequence (a tap
+      // and then the panel). Several cards may open one panel — today's
+      // block and the Today section, every quiet day — but each panel is
+      // drawn once.
+      const opens = (a: any): string[] =>
+        !a || typeof a !== "object" ? []
+        : a.kind === "setState" && a.path === "openCard" ? [String(a.value)]
+        : a.kind === "sequence" ? (a.actions ?? []).flatMap(opens)
+        : [];
       walk(screen!.root, (n) => {
-        if (n.on?.onPress?.kind === "setState" && n.on.onPress.path === "openCard") {
-          cards.push(String(n.on.onPress.value));
-        }
+        cards.push(...opens(n.on?.onPress));
         if (n.visibleIf?.eq?.[0] === "openCard") panels.push(String(n.visibleIf.eq[1]));
       });
       expect(cards.length, `${label}: no tappable cards`).toBeGreaterThan(0);
-      expect([...cards].sort(), `${label}: cards and panels disagree`).toEqual([...panels].sort());
+      expect(new Set(panels).size, `${label}: a panel drawn twice`).toBe(panels.length);
+      expect([...new Set(cards)].sort(), `${label}: cards and panels disagree`).toEqual([...panels].sort());
     }
   });
 
@@ -966,16 +974,15 @@ describe("buildScreen", () => {
     expect(json).toContain('"playing":"refining"');
   });
 
-  it("You tab is a portrait: one sentence, then every setting on the surface", () => {
+  it("You tab is the greeting, then every setting on the surface", () => {
     const s: any = buildScreen("personality", { personality: {}, language: "en" } as never);
     const json = JSON.stringify(s);
     // The deck showed one card and hid three, and what each card was ABOUT
-    // was behind a tap. This tab is about a person, and a person is read at a
-    // glance — so the sentence says the whole setup and the four lines each
-    // carry their own current value.
+    // was behind a tap. Each card carries its own current value. The sentence
+    // under the name ("Writes as Zu. Auto.") is gone: it repeated the cards.
     expect(json).not.toContain('"Coverflow"');
-    expect(json).toContain('"portraitText"');
-    expect(json).toContain('"portraitLive"');
+    expect(json).not.toContain('"portraitText"');
+    expect(json).not.toContain("Writes as ");
     // Every domain is still one tap from its screen.
     for (const c of ["voices", "dictionary", "languages", "haptics"]) {
       expect(json).toContain(`"${c}"`);
@@ -1357,27 +1364,64 @@ describe("the You tab reads like a face", () => {
       .toContain(zu.tagline);
   });
 
-  it("says the setup in one sentence, with the voice as the live word", () => {
-    // The sentence is the headline of the tab. The voice is the one thing on
-    // it that is actually writing, so the voice is the only word in the
-    // accent — see the sacred-amber rule.
-    const s = you({ personality: { activePresetId: "signature", languages: ["en", "hi"] },
+  it("lists every language chosen on its card, however many", () => {
+    // "Hindi +3" hid the three. The card grows instead.
+    const s = you({ personality: { activePresetId: "signature", languages: ["en", "hi", "ta", "bn"] },
                     language: "en", dictionary: [{ word: "a", replacement: "b" }] } as never);
     const json = JSON.stringify(s);
-    expect(json).toContain("Writes as ");
-    expect(json).toContain('"variant":"portraitLive"');
-    expect(json).toContain("English, Hindi");
-    expect(json).toContain("1 words of yours.");
+    expect(json).toContain("English, Hindi, Tamil, Bengali");
+    expect(json).not.toContain(" +3");
   });
 
-  it("never shows a zero where the honest answer is 'not yet'", () => {
-    // "0 words" and "you have not added any" are different facts, and only
-    // one of them is true of someone who has never opened the screen.
+  it("says nothing on an empty card rather than a zero or a placeholder", () => {
+    // "0 words" and "None yet" both said less than the card's own name. An
+    // empty Dictionary or Languages card is just its name.
     const json = JSON.stringify(you());
-    expect(json).toContain("None yet");
+    expect(json).not.toContain("None yet");
     expect(json).not.toContain('"0 words"');
-    // No language picked is Auto, not an empty line.
-    expect(json).toContain("Auto");
+    expect(json).not.toContain('"Auto"');
+  });
+
+  const findIn = (n: unknown, pred: (o: Record<string, unknown>) => boolean): Record<string, unknown>[] => {
+    const out: Record<string, unknown>[] = [];
+    const walk = (x: unknown) => {
+      if (!x || typeof x !== "object") return;
+      if (Array.isArray(x)) { x.forEach(walk); return; }
+      const o = x as Record<string, unknown>;
+      if (pred(o)) out.push(o);
+      Object.values(o).forEach(walk);
+    };
+    walk(n);
+    return out;
+  };
+
+  it("puts a switch on the Haptics card, and asks first only when keys were picked by hand", () => {
+    const plain = you({ personality: { hapticsAll: true } });
+    const sw = findIn(plain.root, (o) => o.type === "Switch");
+    expect(sw).toHaveLength(1);
+    expect((sw[0] as any).bind.value).toBe("hapticsOn");
+    expect(plain.state.hapticsOn).toBe(true);
+    // Nothing picked by hand: off is simply off.
+    const off = JSON.stringify((sw[0] as any).on.onChange);
+    expect(off).toContain('"all":false');
+    expect(off).not.toContain("askHapticsOff");
+
+    const picked = you({ personality: { hapticKeys: ["a", "s"] } });
+    expect(picked.state.hapticsOn).toBe(true);
+    const change = JSON.stringify((findIn(picked.root, (o) => o.type === "Switch")[0] as any).on.onChange);
+    expect(change).toContain('"path":"askHapticsOff","value":true');
+    const ask = findIn(picked.root, (o) => o.type === "Modal" && (o.bind as any)?.open === "askHapticsOff");
+    expect(ask).toHaveLength(1);
+    const askJson = JSON.stringify(ask[0]);
+    expect(askJson).toContain("I KNOW");
+    expect(askJson).toContain("LEAVE IT");
+    expect(askJson).toContain('"clear":true');
+  });
+
+  it("spaces the cards three times as far apart as before", () => {
+    const s = you();
+    const cards = findIn(s.root, (o) => (o.style as any)?.marginBottom === 42);
+    expect(cards.length).toBeGreaterThanOrEqual(3);
   });
 
   it("gives nothing on the tab the amber — the voice's dot is in its card's ink", () => {
@@ -2348,10 +2392,10 @@ describe("training lives on You, as a card", () => {
     const s = you();
     expect(find(s.root, (o) => o.type === "NeuralField").length).toBe(1);
     const texts = find(s.root, (o) => o.type === "Text").map((o) => (o.props as { content?: string })?.content);
-    expect(texts).toContain("Just talk.");
-    expect(texts).toContain("IT LEARNS YOU");
-    // Before anything is learned it says what will happen, not a row of zeros.
-    expect(texts).toContain("Talk once and it starts learning you.");
+    // One odd line and the button. No kicker, no counts.
+    expect(texts).toContain("Talk weird. It learns weird.");
+    expect(texts).not.toContain("IT LEARNS YOU");
+    expect(texts).not.toContain("Talk once and it starts learning you.");
   });
 
   it("enters training exactly as the Train tab did", () => {
@@ -2362,10 +2406,11 @@ describe("training lives on You, as a card", () => {
     expect(enter).toContain('"train.realtime"');
   });
 
-  it("says what it has learned once it has", () => {
+  it("keeps its counts off the card once it has learned", () => {
+    // "42 learned, 27 sittings" read as a report card (owner's call).
     const s = you({ personality: { stylePortrait: { words: [{ term: "jugaad", means: "a fix" }], sessions: 3 } } });
     const texts = find(s.root, (o) => o.type === "Text").map((o) => (o.props as { content?: string })?.content);
-    expect(texts).toContain("1 learned, 3 sittings");
+    expect(texts).not.toContain("1 learned, 3 sittings");
   });
 
   it("is a tap, so the tab scrolls from anywhere", () => {

@@ -149,6 +149,48 @@ describe("coalescing", () => {
                     { kind: "voice", input: "a", output: "a" })).toBeNull();
   });
 
+  it("keeps a dictation written pause by pause as one card", async () => {
+    // The desktop sends each stretch with what the session already wrote as
+    // context; the phone's late tail comes with the field. Three cards was
+    // one dictation.
+    const user = makeUser("hs-stretches");
+    await appendHistoryEntry(user, CONSENT_HISTORY, {
+      kind: "voice", targetApp: "Slack", input: "so I was thinking", output: "So I was thinking", wordsIn: 4,
+    });
+    await appendHistoryEntry(user, CONSENT_HISTORY, {
+      kind: "voice", targetApp: "Slack", context: "So I was thinking",
+      input: "we could ship it friday", output: "we could ship it Friday.", wordsIn: 5,
+    });
+    await appendHistoryEntry(user, CONSENT_HISTORY, {
+      kind: "voice", targetApp: "Slack", context: "Hey team!\nSo I was thinking we could ship it Friday. ",
+      input: "if QA is done", output: "If QA is done by then.", wordsIn: 4,
+    });
+    const { entries } = await listHistory(user);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.output).toBe("So I was thinking we could ship it Friday. If QA is done by then.");
+    expect(entries[0]?.input).toBe("so I was thinking we could ship it friday if QA is done");
+    expect(entries[0]?.wordsIn).toBe(13);
+  });
+
+  it("starts a new card for another app, or a field that does not end with the last one", () => {
+    const prev = { kind: "voice", input: "a", output: "Call me back.", createdAt: new Date().toISOString(), targetApp: "WhatsApp" };
+    expect(coalesce(prev, { kind: "voice", input: "b", output: "Later.", context: "Call me back.", targetApp: "Gmail" })).toBeNull();
+    expect(coalesce(prev, { kind: "voice", input: "b", output: "Later.", context: "Something else." })).toBeNull();
+    // A draft is its own thing, even in the same field.
+    expect(coalesce(prev, { kind: "draft", input: "b", output: "Sure.", context: "Call me back." })).toBeNull();
+    expect(coalesce(prev, { kind: "typing", input: "tomorrow", output: "Tomorrow.", context: "Call me back. " }))
+      .toEqual({ action: "continue", input: "a tomorrow", output: "Call me back. Tomorrow.", wordsOut: 4 });
+  });
+
+  it("continues a long dictation by when the card was last written, not when it began", () => {
+    const began = new Date(Date.now() - 10 * 60_000).toISOString();
+    const prev = { kind: "voice", input: "a", output: "Part one.", createdAt: began };
+    expect(coalesce(prev, { kind: "voice", input: "b", output: "Part two.", context: "Part one." })).toBeNull();
+    expect(coalesce({ ...prev, touchedAt: Date.now() - 20_000 },
+                    { kind: "voice", input: "b", output: "Part two.", context: "Part one." }))
+      .toMatchObject({ action: "continue", output: "Part one. Part two." });
+  });
+
   it("is off when the window is 0", () => {
     const prevEnv = process.env.HISTORY_COALESCE_MS;
     process.env.HISTORY_COALESCE_MS = "0";

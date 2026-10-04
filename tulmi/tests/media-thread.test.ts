@@ -31,14 +31,15 @@ const screen = (id: string, ctx: Record<string, unknown> = {}) =>
 const withUrl = (root: any, url: string) => find(root, (o) => (o.type === "Image" || o.type === "Video") && o.props?.source?.url === url);
 
 describe("the You tab's posters", () => {
-  it("the voice card is the voice's own colour, writing a real sentence, not a poster", () => {
-    // The refresh (phoneLook.ts): each voice wears its room's colour and shows
-    // what it does to a said line. An uploaded poster no longer covers it.
+  it("the voice card is the voice's own colour, its name and nothing else, not a poster", () => {
+    // The refresh (phoneLook.ts): each voice wears its room's colour. The
+    // sample said/written lines under the name were taken off at the
+    // owner's request, and an uploaded poster no longer covers it.
     reg({ "you.voice.signature": entry("https://m/zu.png", "image/png"), "you.voice": entry("https://m/any.png", "image/png") });
     const voiceOf = (root: any) => find(root, (o) => o.type === "Stack" && JSON.stringify(o.on ?? {}).includes('"voices"'))[0];
     const zu = voiceOf(screen("personality").root);
     expect(zu.style.backgroundColor).toBe("#F3EDE2");
-    expect(JSON.stringify(zu)).toContain("Haan bhai, kal milte hain paanch baje.");
+    expect(JSON.stringify(zu)).not.toContain("Haan bhai, kal milte hain paanch baje.");
     expect(withUrl(zu, "https://m/zu.png").length).toBe(0);
     const pirate = voiceOf(screen("personality", { personality: { activePresetId: "pirate" } }).root);
     expect(pirate.style.backgroundColor).toBe("#106A60");

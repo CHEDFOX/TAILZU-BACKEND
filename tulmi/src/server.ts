@@ -16,6 +16,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
+import { promisify } from "node:util";
+import { gzip } from "node:zlib";
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from "fastify";
 import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
@@ -288,6 +290,23 @@ app.addHook("onSend", async (_req, reply, payload) => {
   }
   return payload;
 });
+
+/**
+ * A SCREEN IS JSON THAT REPEATS ITSELF — every text names its face, size and
+ * colour — so it packs down hard: the Stats tab, with a month of days behind
+ * it, is ~250 KB as text and ~12 KB gzipped. The phone and the desktop both
+ * ask for gzip and undo it themselves. Small replies go as they are.
+ */
+const gzipped = promisify(gzip);
+async function gzipLargeJson(req: FastifyRequest, reply: FastifyReply, payload: unknown): Promise<unknown> {
+  if (typeof payload !== "string" || payload.length < 8_192) return payload;
+  if (!/\bgzip\b/i.test(String(req.headers["accept-encoding"] ?? ""))) return payload;
+  if (reply.hasHeader("content-encoding")) return payload;
+  reply.header("content-encoding", "gzip");
+  reply.header("vary", "accept-encoding");
+  reply.removeHeader("content-length");
+  return gzipped(payload);
+}
 
 // AN EMPTY JSON BODY IS NOT A MALFORMED ONE.
 //
@@ -996,6 +1015,9 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
         // show the tone currently selected, which is a setting, not a habit.
         tone: tone ?? personality.activeTone,
         presetId: personality.activePresetId,
+        // Read only to tell the next stretch of this dictation from a new
+        // one, so a dictation written pause by pause is one History card.
+        context,
       },
       result.usage.audioSeconds,
     );
@@ -1080,6 +1102,9 @@ const refineRoute = (routeTone?: string) =>
         wordsOut: usage.words,
         tone,
         presetId: personality.activePresetId,
+        // A late tail of a dictation already written arrives with that text
+        // as its context; it joins the same History card (see coalesce).
+        context: body.context,
       });
       learnFromUsage(user, personality);
       // The same join hint /v1/transcribe-clean gives: the live path pastes
@@ -1552,6 +1577,8 @@ app.put("/v1/personality", { config: AUTHED_RL }, async (req, reply) => {
 const hapticsToggleSchema = z.object({
   key: z.string().min(1).max(24).optional(),
   all: z.boolean().optional(),
+  /** With all:false, the keys picked by hand go too (the You tab's switch). */
+  clear: z.boolean().optional(),
 });
 
 app.post("/v1/personality/haptics", { config: AUTHED_RL }, async (req, reply) => {
@@ -1561,7 +1588,7 @@ app.post("/v1/personality/haptics", { config: AUTHED_RL }, async (req, reply) =>
   if (!parsed.success) {
     return reply.code(400).send({ code: "bad_request", message: "key or all required" });
   }
-  const { key, all } = parsed.data;
+  const { key, all, clear } = parsed.data;
   if (key === undefined && all === undefined) {
     return reply.code(400).send({ code: "bad_request", message: "key or all required" });
   }
@@ -1569,6 +1596,8 @@ app.post("/v1/personality/haptics", { config: AUTHED_RL }, async (req, reply) =>
     const merged = await updatePersonality(user, (existing) => {
       const next = { ...existing };
       if (all !== undefined) next.hapticsAll = all;
+      // "I know" on the You tab's switch: every key off, the hand-picked ones too.
+      if (clear === true) next.hapticKeys = [];
       if (key !== undefined) {
         const id = key.toLowerCase();
         const cur = new Set(existing?.hapticKeys ?? []);
@@ -2087,7 +2116,7 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   return reply.send(await localize(controlled, profile?.language ?? "en"));
 });
 
-app.post("/v1/app/screen", { config: AUTHED_RL }, async (req, reply) => {
+app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (req, reply) => {
   noStoreSdui(reply);
   const body = (req.body ?? {}) as {
     screenId?: string;
@@ -2662,6 +2691,15 @@ const historyListQuerySchema = z.object({
 const historyIdParamsSchema = z.object({
   id: z.string().uuid(),
 });
+/**
+ * Why a card was removed from History, when the app says: "it doesn't sound
+ * like me" or "just a clean-up". Either way it is deleted; the reason is
+ * logged so the first can be counted apart from tidying up. Anything else is
+ * ignored rather than refused — a delete never fails over its reason.
+ */
+const historyDeleteQuerySchema = z.object({
+  reason: z.enum(["not_me", "cleanup"]).optional(),
+});
 
 app.get("/v1/history", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
@@ -2693,10 +2731,14 @@ app.delete("/v1/history/:id", { config: AUTHED_RL }, async (req, reply) => {
     return reply.code(400).send({ code: "bad_request", message: "invalid id" });
   }
 
+  const why = historyDeleteQuerySchema.safeParse(req.query ?? {});
+  const reason = why.success ? why.data.reason : undefined;
+
   try {
     const ok = await deleteHistoryEntry(user, parsed.data.id);
     if (!ok) return reply.code(404).send({ code: "bad_request", message: "not found" });
-    return reply.send({ ok: true });
+    if (reason) req.log.info({ event: "history.delete", reason }, "history entry removed");
+    return reply.send({ ok: true, ...(reason ? { reason } : {}) });
   } catch (err) {
     req.log.error(err);
     return reply.code(500).send({ code: "internal", message: "Failed to delete entry" });

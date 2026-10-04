@@ -834,4 +834,37 @@ export interface StatsResponse {
   toneWords?: Array<{ tone: string; words: number }>;
   /** Minutes of speech processed, rounded to one decimal. */
   speakingMinutes?: number;
+  /** Words by the language the text is written in (writtenIn keys), biggest first. */
+  writtenIn?: Array<{ key: string; words: number }>;
+  /** The detail behind each day's square, same buckets/order as wordsPerDay. */
+  days?: Array<{
+    words: number;
+    sessions: number;
+    saidSeconds: number;
+    apps: Array<{ app: string; words: number }>;
+    hours: number[];
+    kinds: { voice: number; typing: number; draft: number };
+    languages: Array<{ key: string; words: number }>;
+    first?: string;
+    last?: string;
+  }>;
+  /** Today's sessions, newest first: local "HH:MM", app, words. */
+  todaySessions?: Array<{ at: string; app?: string; words: number; kind?: string }>;
+  /** Each app the words went to, biggest first. */
+  appDetail?: Array<{
+    app: string;
+    words: number;
+    sessions: number;
+    kinds: { voice: number; typing: number; draft: number };
+    dayparts: { morning: number; afternoon: number; evening: number; night: number };
+    avgWords: number;
+    lastAt: string;
+    voices: Array<{ id: string; words: number }>;
+  }>;
+  /** Sessions by length in words: 1–5, 6–15, 16–40, 41–100, more. */
+  sessionLengths?: number[];
+  /** Words by local hour, 24 buckets. */
+  hourWords?: number[];
+  /** Seconds of speech per day, same buckets as wordsPerDay. */
+  saidSecondsPerDay?: number[];
 }

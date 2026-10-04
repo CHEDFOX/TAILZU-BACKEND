@@ -898,8 +898,13 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   // periodic a frame must be to count as voice (0 = the old level-only
   // meter); the stop's gentler check lets quiet real speech through.
   // (fftSize, flushSilenceMs and llmTones above are read by 0.2.1 installs.)
-  "desktop.recorder.flushPauseMs": 2000,
-  "desktop.recorder.flushSpeechMs": 4000,
+  // A pause writes what was said only after a long breath and a good run of
+  // voice: at 2 s and 4 s a mid-sentence pause ("I was thinking that maybe
+  // we … could go tomorrow") was written as two sentences, the first with a
+  // full stop the speaker never reached. Each stretch still goes out with the
+  // last as context and joins its History card (history/store.ts coalesce).
+  "desktop.recorder.flushPauseMs": 2800,
+  "desktop.recorder.flushSpeechMs": 8000,
   "desktop.recorder.voicing": 0.5,
   "desktop.recorder.finalSpeechLevel": 0.003,
   "desktop.recorder.minFinalSpeechMs": 120,

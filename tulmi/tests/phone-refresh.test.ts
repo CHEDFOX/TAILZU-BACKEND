@@ -71,17 +71,25 @@ describe("the phone refresh", () => {
     }
   });
 
-  it("keeps the Stats type small: nothing on the page above 26", () => {
-    walk(buildScreen("stats", screens[0]![1] as never)!.root, (n) => {
+  it("keeps the Stats type small: only the month's name and Today are large", () => {
+    // The page, not the cards behind it: the Modal's headline figures are
+    // the one thing on their card.
+    const page = (buildScreen("stats", screens[0]![1] as never)!.root as any).children[0];
+    const big: string[] = [];
+    walk(page, (n) => {
       if (n.type === "Text" && n.style?.fontFamily && String(n.style.fontFamily).startsWith("Tailzu")) {
-        expect(Number(n.style.fontSize), String(n.props?.content)).toBeLessThanOrEqual(26);
+        if (Number(n.style.fontSize) > 26) big.push(String(n.props?.content));
       }
     });
+    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    expect(big.length).toBe(2);
+    expect(months).toContain(big[0]);
+    expect(big[1]).toBe("Today");
   });
 
-  it("says the month as a sentence, with typing in its colour", () => {
+  it("names the month, then its words under it, with typing in its colour", () => {
     const s = JSON.stringify(buildScreen("stats", screens[0]![1] as never));
-    for (const w of ["You ", "said ", "612 ", "words ", "15 ", "min"]) expect(s).toContain(`"${w}`);
+    for (const w of ["612 ", "words ", "this ", "month.", "Typed, ", "15 ", "min", "Said, "]) expect(s).toContain(`"${w}`);
     expect(s).toContain(PHONE_LOOK.typedInk);
     expect(s).toContain('"42 "');
     expect(s).toContain('"seconds."');

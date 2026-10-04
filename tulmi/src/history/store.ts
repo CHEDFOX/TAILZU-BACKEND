@@ -19,6 +19,7 @@ import { writtenIn } from "./writtenIn.js";
 import { randomUUID } from "node:crypto";
 import { dataClientFor, type AuthedUser } from "../auth/supabase.js";
 import { usageEventsSince } from "../usage/metering.js";
+import { joinWithSpace } from "../pipeline/join.js";
 import type {
   HistoryEntry,
   LanguageHint,
@@ -52,6 +53,12 @@ export interface HistoryInput {
   tone?: string;
   /** Voice that was active — built-in preset id or a custom one. */
   presetId?: string;
+  /**
+   * What the field already held, as the request sent it. Never stored: it is
+   * only read to tell a stretch that carries on the dictation just written
+   * from a new one (see coalesce).
+   */
+  context?: string;
 }
 
 /** Filters accepted by listHistory. */
@@ -159,6 +166,51 @@ export interface StatsForUser {
    * history off, or nothing written yet.
    */
   writtenIn?: Array<{ key: string; words: number }>;
+  /**
+   * THE DETAIL BEHIND A DAY'S SQUARE, one per day bucket (same order as
+   * wordsPerDay, today last): how much, how long it was said for, where it
+   * went, when in the day, how it was written and in what.
+   */
+  days?: DayDetail[];
+  /** Today's sessions, newest first (at most 40): local time, app, words. */
+  todaySessions?: Array<{ at: string; app?: string; words: number; kind?: string }>;
+  /** Each app the words went to: how much, how, when, how long a piece. */
+  appDetail?: AppDetail[];
+  /** Sessions by length in words: 1–5, 6–15, 16–40, 41–100, more. */
+  sessionLengths?: number[];
+  /** Words by local hour across the window, 24 buckets. */
+  hourWords?: number[];
+  /** Seconds of speech per day, from the meter, same buckets as wordsPerDay. */
+  saidSecondsPerDay?: number[];
+}
+
+export interface DayDetail {
+  words: number;
+  sessions: number;
+  /** Seconds of speech that day, from the meter. */
+  saidSeconds: number;
+  apps: Array<{ app: string; words: number }>;
+  /** Words by local hour, 24 buckets. */
+  hours: number[];
+  kinds: { voice: number; typing: number; draft: number };
+  /** Written-in keys (writtenIn.ts), biggest first. */
+  languages: Array<{ key: string; words: number }>;
+  /** First and last session, local "HH:MM". */
+  first?: string;
+  last?: string;
+}
+
+export interface AppDetail {
+  app: string;
+  words: number;
+  sessions: number;
+  kinds: { voice: number; typing: number; draft: number };
+  dayparts: { morning: number; afternoon: number; evening: number; night: number };
+  avgWords: number;
+  /** ISO time of the newest session there. */
+  lastAt: string;
+  /** The voices written in there, by words, biggest first (at most 3). */
+  voices: Array<{ id: string; words: number }>;
 }
 
 /**
@@ -233,20 +285,78 @@ function coalesceWindowMs(): number {
 }
 
 /**
+ * How long after a row was last written to a stretch that carries it on still
+ * belongs to it. Longer than the coalesce window: a dictation written pause by
+ * pause sends its next stretch only once that stretch has been said, which
+ * can be a minute or more of talking. The evidence is strong (the field ends
+ * with exactly what the row holds), so the window can be generous.
+ */
+function continueWindowMs(): number {
+  const n = Number(process.env.HISTORY_CONTINUE_MS ?? 180_000);
+  return Number.isFinite(n) && n >= 0 ? n : 180_000;
+}
+
+/** When each row was last appended to, for continueWindowMs. Process-local. */
+const touchedAt = new Map<string, number>();
+function touch(id: string, at = Date.now()): void {
+  touchedAt.set(id, at);
+  if (touchedAt.size > 5000) {
+    const cutoff = at - continueWindowMs();
+    for (const [k, v] of touchedAt) if (v < cutoff) touchedAt.delete(k);
+  }
+}
+
+/** The last characters of a row's text that a continuing field must end with. */
+const SEAM_CHARS = 80;
+
+/**
  * Decide whether `entry` is really a continuation of `prev`, and if so what
  * `prev` should become. Pure, so both storage backends and the tests share
  * exactly one definition of "the same thing".
  *
- *   drop   — an exact repeat (a retried request); keep prev as it is
- *   merge  — a refine of text prev already holds; prev's output becomes the
- *            text the user actually ended up with
- *   null   — a new entry
+ *   drop     — an exact repeat (a retried request); keep prev as it is
+ *   merge    — a refine of text prev already holds; prev's output becomes the
+ *              text the user actually ended up with
+ *   continue — the next stretch of the same dictation: the field it was
+ *              written into ends with what prev holds. Appended, so one
+ *              dictation is one block however many pauses it had.
+ *   null     — a new entry
  */
 export function coalesce(
-  prev: { kind: string; input: string; output: string; createdAt: string },
+  prev: { kind: string; input: string; output: string; createdAt: string; targetApp?: string; touchedAt?: number },
   entry: HistoryInput,
   now = Date.now(),
-): { action: "drop" } | { action: "merge"; output: string; wordsOut: number } | null {
+):
+  | { action: "drop" }
+  | { action: "merge"; output: string; wordsOut: number }
+  | { action: "continue"; input: string; output: string; wordsOut: number }
+  | null {
+  // ONE DICTATION, ONE BLOCK. The desktop writes a dictation pause by pause,
+  // each stretch sent with what the session already wrote as `context`; a
+  // phone whose last words land after it has written the rest sends them on
+  // their own with the field as `context`. Each was a new card. When the
+  // field ends with exactly what the last card holds, in the same app and
+  // moments later, this is that dictation going on.
+  const field = (entry.context ?? "").trimEnd();
+  const held = prev.output.trim();
+  const since = now - (prev.touchedAt ?? Date.parse(prev.createdAt));
+  const sameApp = !prev.targetApp || !entry.targetApp || prev.targetApp === entry.targetApp;
+  if (
+    field && held && entry.kind !== "draft" && prev.kind !== "draft" && sameApp &&
+    since >= -5000 && since <= continueWindowMs() &&
+    field.endsWith(held.slice(-SEAM_CHARS))
+  ) {
+    const add = entry.output.trim();
+    if (!add) return { action: "drop" };
+    const output = held + (joinWithSpace(held, add) ? " " : "") + add;
+    return {
+      action: "continue",
+      input: [prev.input.trim(), entry.input.trim()].filter(Boolean).join(" "),
+      output,
+      wordsOut: countWordsLocal(output),
+    };
+  }
+
   const window = coalesceWindowMs();
   if (window <= 0) return null;
   const age = now - Date.parse(prev.createdAt);
@@ -341,16 +451,28 @@ async function appendHistoryEntryLocked(
     const rows = memoryRows(user.id);
     const prev = rows.find((r) => !r.deletedAt);
     if (prev) {
-      const c = coalesce(prev, entry);
+      const c = coalesce({ ...prev, touchedAt: touchedAt.get(prev.id) }, entry);
       if (c?.action === "drop") return;
       if (c?.action === "merge") {
         prev.output = c.output;
         prev.wordsOut = c.wordsOut;
         return;
       }
+      if (c?.action === "continue") {
+        prev.input = c.input;
+        prev.output = c.output;
+        prev.wordsOut = c.wordsOut;
+        prev.wordsIn = (prev.wordsIn ?? 0) + (entry.wordsIn ?? 0);
+        prev.durationMs = (prev.durationMs ?? 0) + (entry.durationMs ?? 0);
+        if (audioSeconds) prev.audioSeconds = (prev.audioSeconds ?? 0) + audioSeconds;
+        touch(prev.id);
+        return;
+      }
     }
+    const id = randomUUID();
+    touch(id);
     rows.unshift({
-      id: randomUUID(),
+      id,
       kind: entry.kind,
       targetApp: entry.targetApp,
       language: entry.language,
@@ -372,7 +494,7 @@ async function appendHistoryEntryLocked(
   // insert — a duplicate is the lesser harm.
   const { data: last } = await sb
     .from("cleanup_history")
-    .select("id, kind, input, output, created_at")
+    .select("id, kind, input, output, created_at, target_app, words_in, duration_ms")
     .eq("user_id", user.id)
     .is("deleted_at", null)
     .order("created_at", { ascending: false })
@@ -386,10 +508,27 @@ async function appendHistoryEntryLocked(
         input: String(prev.input ?? ""),
         output: String(prev.output ?? ""),
         createdAt: String(prev.created_at),
+        targetApp: prev.target_app ? String(prev.target_app) : undefined,
+        touchedAt: touchedAt.get(String(prev.id)),
       },
       entry,
     );
     if (c?.action === "drop") return;
+    if (c?.action === "continue") {
+      const { error: upErr } = await sb
+        .from("cleanup_history")
+        .update({
+          input: c.input,
+          output: c.output,
+          words_out: c.wordsOut,
+          words_in: (Number(prev.words_in) || 0) + (entry.wordsIn ?? 0),
+          duration_ms: (Number(prev.duration_ms) || 0) + (entry.durationMs ?? 0),
+        })
+        .eq("id", prev.id)
+        .eq("user_id", user.id);
+      if (!upErr) { touch(String(prev.id)); return; }
+      console.error(`[history] continue failed for ${user.id}, inserting instead:`, upErr.message);
+    }
     if (c?.action === "merge") {
       const { error: upErr } = await sb
         .from("cleanup_history")
@@ -401,7 +540,7 @@ async function appendHistoryEntryLocked(
     }
   }
 
-  const { error } = await sb.from("cleanup_history").insert({
+  const { data: inserted, error } = await sb.from("cleanup_history").insert({
     user_id: user.id,
     kind: entry.kind,
     target_app: entry.targetApp ?? null,
@@ -413,7 +552,9 @@ async function appendHistoryEntryLocked(
     words_out: entry.wordsOut ?? null,
     tone: entry.tone ?? null,
     preset_id: entry.presetId ?? null,
-  });
+  }).select("id");
+  const newId = inserted?.[0]?.id;
+  if (newId) touch(String(newId));
   if (error) {
     // Never fail the user's request because history logging failed.
     console.error(`[history] failed to append for ${user.id}:`, error.message);
@@ -573,8 +714,11 @@ export async function statsForUser(
   // `audioSeconds > 0` is the voice/typing discriminator; targetApp is the
   // one thing it can't provide, so the "where you write" breakdown stays
   // history-only.
+  // The meter, for seconds of speech: history does not keep a recording's
+  // length (a live dictation lands as a refine of text), and every request is
+  // metered with its audio. Read once, used for the fallback below too.
+  const events = await usageEventsSince(user, sinceIso).catch(() => []);
   if (!rows.length) {
-    const events = await usageEventsSince(user, sinceIso);
     rows = events.map((e) => ({
       createdAt: e.createdAt,
       wordsOut: e.words,
@@ -606,6 +750,21 @@ export async function statsForUser(
   const outputs: string[] = [];
   const writtenWords = new Map<string, number>();
   const todayMidnight = localMidnight(Date.now());
+  const clock = (ms: number) => {
+    const d = new Date(ms + tz);
+    return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+  };
+  const emptyKinds = () => ({ voice: 0, typing: 0, draft: 0 });
+  const dayAcc = Array.from({ length: days }, () => ({
+    words: 0, sessions: 0, saidSeconds: 0, apps: new Map<string, number>(),
+    hours: new Array<number>(24).fill(0), kinds: emptyKinds(), langs: new Map<string, number>(),
+    firstMs: Infinity, lastMs: -Infinity,
+  }));
+  const apps = new Map<string, AppDetail>();
+  const appVoices = new Map<string, Map<string, number>>();
+  const sessionLengths = [0, 0, 0, 0, 0];
+  const hourWords = new Array<number>(24).fill(0);
+  const todaySessions: Array<{ ms: number; app?: string; words: number; kind?: string }> = [];
 
   for (const r of rows) {
     requests += 1;
@@ -629,27 +788,73 @@ export async function statsForUser(
     // voice above, for the same reason.
     const tid = (r.tone ?? "none").trim() || "none";
     toneWordsMap.set(tid, (toneWordsMap.get(tid) ?? 0) + words);
+    let langKey: string | undefined;
     if (r.output) {
       outputs.push(r.output);
-      const key = writtenIn(r.output, languages);
-      if (key) writtenWords.set(key, (writtenWords.get(key) ?? 0) + words);
+      langKey = writtenIn(r.output, languages) || undefined;
+      if (langKey) writtenWords.set(langKey, (writtenWords.get(langKey) ?? 0) + words);
     }
+    const kindKey = r.kind === "voice" ? "voice" : r.kind === "draft" ? "draft" : "typing";
+    sessionLengths[words <= 5 ? 0 : words <= 15 ? 1 : words <= 40 ? 2 : words <= 100 ? 3 : 4]! += 1;
 
     const created = Date.parse(r.createdAt);
     if (!Number.isFinite(created)) continue;
     const dayOffset = Math.floor((todayMidnight - localMidnight(created)) / MS_PER_DAY);
     // Newest bucket is the last element in the array.
     const idx = days - 1 - dayOffset;
+    const hour = new Date(created + tz).getUTCHours();
+    const part = hour >= 5 && hour < 12 ? "morning" : hour >= 12 && hour < 17 ? "afternoon" : hour >= 17 && hour < 22 ? "evening" : "night";
+    hourWords[hour]! += words;
     if (idx >= 0 && idx < days) {
       spark[idx]! += 1;
       wordsPerDay[idx]! += words;
+      const d = dayAcc[idx]!;
+      d.words += words; d.sessions += 1; d.hours[hour]! += words; d.kinds[kindKey] += words;
+      if (r.targetApp) d.apps.set(r.targetApp, (d.apps.get(r.targetApp) ?? 0) + words);
+      if (langKey) d.langs.set(langKey, (d.langs.get(langKey) ?? 0) + words);
+      d.firstMs = Math.min(d.firstMs, created); d.lastMs = Math.max(d.lastMs, created);
+      if (idx === days - 1 && todaySessions.length < 200) todaySessions.push({ ms: created, app: r.targetApp, words, kind: r.kind });
     }
-    const hour = new Date(created + tz).getUTCHours();
-    if (hour >= 5 && hour < 12) daypartSessions.morning += 1;
-    else if (hour >= 12 && hour < 17) daypartSessions.afternoon += 1;
-    else if (hour >= 17 && hour < 22) daypartSessions.evening += 1;
-    else daypartSessions.night += 1;
+    if (r.targetApp) {
+      const a = apps.get(r.targetApp) ?? {
+        app: r.targetApp, words: 0, sessions: 0, kinds: emptyKinds(),
+        dayparts: { morning: 0, afternoon: 0, evening: 0, night: 0 }, avgWords: 0, lastAt: r.createdAt, voices: [],
+      };
+      a.words += words; a.sessions += 1; a.kinds[kindKey] += words; a.dayparts[part] += 1;
+      if (created > Date.parse(a.lastAt)) a.lastAt = r.createdAt;
+      apps.set(r.targetApp, a);
+      const av = appVoices.get(r.targetApp) ?? new Map<string, number>();
+      av.set(vid, (av.get(vid) ?? 0) + words);
+      appVoices.set(r.targetApp, av);
+    }
+    daypartSessions[part] += 1;
   }
+
+  // Seconds of speech per day, from the meter (see above).
+  const saidSecondsPerDay = new Array<number>(days).fill(0);
+  for (const e of events) {
+    const at = Date.parse(e.createdAt);
+    if (!Number.isFinite(at) || !(e.audioSeconds > 0)) continue;
+    const idx = days - 1 - Math.floor((todayMidnight - localMidnight(at)) / MS_PER_DAY);
+    if (idx >= 0 && idx < days) { saidSecondsPerDay[idx]! += e.audioSeconds; dayAcc[idx]!.saidSeconds += e.audioSeconds; }
+  }
+  const top = (m: Map<string, number>, n: number) =>
+    [...m.entries()].filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).slice(0, n);
+  const dayDetails: DayDetail[] = dayAcc.map((d) => ({
+    words: d.words, sessions: d.sessions, saidSeconds: Math.round(d.saidSeconds),
+    apps: top(d.apps, 4).map(([app, words]) => ({ app, words })),
+    hours: d.hours, kinds: d.kinds,
+    languages: top(d.langs, 4).map(([key, words]) => ({ key, words })),
+    ...(d.sessions ? { first: clock(d.firstMs), last: clock(d.lastMs) } : {}),
+  }));
+  const appDetail = [...apps.values()]
+    .sort((a, b) => b.words - a.words)
+    .slice(0, 6)
+    .map((a) => ({
+      ...a,
+      avgWords: a.sessions ? Math.round(a.words / a.sessions) : 0,
+      voices: top(appVoices.get(a.app) ?? new Map(), 3).map(([id, words]) => ({ id, words })),
+    }));
 
   // Streaks over the day buckets. The current streak may start at today OR
   // yesterday — a day that isn't over yet must not read as a broken streak.
@@ -725,6 +930,15 @@ export async function statsForUser(
     writtenIn: writtenWords.size
       ? [...writtenWords.entries()].filter(([, w]) => w > 0).sort((a, b) => b[1] - a[1]).map(([key, words]) => ({ key, words }))
       : undefined,
+    days: dayDetails,
+    todaySessions: todaySessions
+      .sort((a, b) => b.ms - a.ms)
+      .slice(0, 40)
+      .map((t) => ({ at: clock(t.ms), ...(t.app ? { app: t.app } : {}), words: t.words, ...(t.kind ? { kind: t.kind } : {}) })),
+    appDetail: appDetail.length ? appDetail : undefined,
+    sessionLengths,
+    hourWords,
+    saidSecondsPerDay,
   };
 }
 
