@@ -13323,7 +13323,16 @@ export function buildKeyboardConfig(
         // The tint stays a whisper. The blur carries this on its own; the
         // tint only has to keep it from disappearing on a pale ground, and
         // anything more is the grey sheet again.
-        "kb.dictation.dim.enabled": true,
+        //
+        // OFF ON iPHONE. The iOS keyboard builds the frost by photographing
+        // every key (~38 synchronous snapshots, each forcing the screen to
+        // render first) and blurring each one — on the mic tap, before the
+        // microphone can start, and again on every redraw while dictating.
+        // That was the mic feeling slow to start and stop. Even "blur off"
+        // still takes the photographs; only this switch skips them. The keys
+        // simply stay as they are while you dictate. Android's blur is a
+        // RenderEffect on the rows, which costs nothing like it.
+        "kb.dictation.dim.enabled": opts.platform === "android",
         /**
          * ON FOR THE BUILDS THAT CARRY THE RAISE (K37 and later, which say so
          * in a header), OFF for the rest — see veilBlurs. This flag was the
@@ -13458,11 +13467,11 @@ export function buildKeyboardConfig(
         "kb.accentTray.chipWidth": 40,
         "kb.accentTray.gap": 4,
         "kb.accentTray.height": 48,
-        // 350: Gboard holds about 300, iOS a little longer. A tap is under
-        // 120 ms, so nothing deliberate is caught by it.
-        "kb.accentTray.longPressMs": 350,
+        // 300, Gboard's own hold. A tap is under 120 ms, so nothing
+        // deliberate is caught by it.
+        "kb.accentTray.longPressMs": 300,
         // Any other hold (a key's alternates), on the same clock.
-        "kb.longPress.ms": 350,
+        "kb.longPress.ms": 300,
         // How often an open may refetch this config. Every 3 s was a refetch
         // on almost every open; both keyboards now drop identical bytes
         // before parsing, and a setting changed in the app still arrives
@@ -13497,11 +13506,11 @@ export function buildKeyboardConfig(
         "kb.confetti.spin": 3,
         "kb.confetti.teardownMs": 3500,
         "kb.confetti.velocity": 200,
-        // delete — the native keyboards' cadence: a short wait, then fast.
-        // 500/90 was slower than either; and 20 characters before whole
+        // delete — Gboard's cadence: a short wait, then fast. 500/90 was
+        // slower than either native keyboard; and 20 characters before whole
         // words go, at 90 ms a word, was a machine gun after two seconds.
-        "kb.delete.initialDelayMs": 400,
-        "kb.delete.repeatIntervalMs": 60,
+        "kb.delete.initialDelayMs": 320,
+        "kb.delete.repeatIntervalMs": 45,
         "kb.delete.wordAfterChars": 30,
         // dictation
         "kb.dictation.dim.fadeMs": 250,
