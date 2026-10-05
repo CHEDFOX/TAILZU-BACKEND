@@ -20,13 +20,16 @@ process.env.DEV_SKIP_AUTH ??= "true";
 const { buildKeyboardConfig } = await import("../src/experience/catalog.js");
 const app = process.argv[2];
 if (!app) { console.error("usage: export-keyboard-snapshots.ts <frontend app dir>"); process.exit(2); }
-const BUILD = Number(process.env.KB_BUILD ?? 42);
+// The builds these snapshots ship inside: the bundled config is the one the
+// NEW binary opens with, so it must be what the server sends that binary.
+const BUILD = Number(process.env.KB_BUILD ?? 43);
+const ANDROID_BUILD = Number(process.env.KB_ANDROID_BUILD ?? 4);
 const targets: Array<[string, "ios" | "android"]> = [
   ["targets/keyboard/default-config.json", "ios"],
   ["modules/tulmi-keyboard/android/res/raw/tailzu_default_config.json", "android"],
 ];
 for (const [rel, platform] of targets) {
-  const cfg = buildKeyboardConfig(undefined, undefined, { platform, kbBuild: BUILD });
+  const cfg = buildKeyboardConfig(undefined, undefined, { platform, kbBuild: BUILD, androidBuild: ANDROID_BUILD });
   const file = path.join(app, rel);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(cfg));

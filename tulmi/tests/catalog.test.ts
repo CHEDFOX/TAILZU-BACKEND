@@ -2280,9 +2280,29 @@ describe("the mic key's mark comes from the server", () => {
     !n || typeof n !== "object" ? [] :
       (n.type === "MicKey" ? [n] : []).concat(...(n.children ?? []).map(micKeys));
 
+  it("sends an older keyboard a still mark: no program, no idle motion, the dispersal kept", () => {
+    // Before K43 / A4 the mark's idle animation ran under every keystroke for
+    // as long as the keyboard was up; those builds are sent a still mark.
+    for (const platform of ["ios", "android"] as const) {
+      const old = buildKeyboardConfig(undefined, undefined, { platform, kbBuild: 42, androidBuild: 3 }) as any;
+      for (const k of micKeys(old.root)) {
+        expect(k.props.program, platform).toBeUndefined();
+        expect(k.props.motion.idle, platform).toBeUndefined();
+        expect(k.props.motion.recording.kind, platform).toBe("disperse");
+      }
+      const now = buildKeyboardConfig(undefined, undefined, { platform, kbBuild: 43, androidBuild: 4 }) as any;
+      for (const k of micKeys(now.root)) expect(k.props.program, platform).toBeDefined();
+    }
+    // And an older iPhone keyboard draws its keys flat.
+    const oldIos = buildKeyboardConfig(undefined, undefined, { platform: "ios", kbBuild: 42 }) as any;
+    expect([oldIos.theme.keyShadow, oldIos.themeDark.keyShadow, oldIos.themeLight.keyShadow]).toEqual([false, false, false]);
+    const newIos = buildKeyboardConfig(undefined, undefined, { platform: "ios", kbBuild: 43 }) as any;
+    expect(newIos.theme.keyShadow).toBe(true);
+  });
+
   it("is geometry with motion, on both platforms", () => {
     for (const platform of ["ios", "android"] as const) {
-      const kb = buildKeyboardConfig(undefined, undefined, { platform }) as any;
+      const kb = buildKeyboardConfig(undefined, undefined, { platform, kbBuild: 43, androidBuild: 4 }) as any;
       const keys = micKeys(kb.root);
       expect(keys.length, platform).toBeGreaterThan(0);
       for (const k of keys) {
