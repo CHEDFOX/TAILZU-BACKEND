@@ -12051,8 +12051,6 @@ const makeToolsRow = (opts: {
   toneFg: string;
   toneBorderColor: string;
   visibleIf: any;
-  /** The mic mark and its motion (see lightOld in buildKeyboardConfig). */
-  micProps?: Record<string, unknown>;
 }): KeyboardNode => ({
   type: "Row",
   // Compact 44pt row — the two toggles read as accents, not "here's the tools
@@ -12095,7 +12093,7 @@ const makeToolsRow = (opts: {
       visibleIf: { falsy: "state.secured" },
       // The mark and its motion, as data. A build that understands them draws
       // the mark from here; one that does not draws its bundled asset.
-      props: opts.micProps ?? { mark: BRAND_MARK, motion: MIC_MOTION, program: MIC_PROGRAM },
+      props: { mark: BRAND_MARK, motion: MIC_MOTION, program: MIC_PROGRAM },
       style: {
         flex: 0,
         width: 42,
@@ -12678,26 +12676,8 @@ export function buildKeyboardConfig(
      *  header `X-Tulmi-Keyboard-Build`. Absent from builds before K37, which
      *  never sent one — and which must not be given the veil's blur. */
     kbBuild?: number;
-    /** The Android keyboard's build number (the A-stamp), from the same
-     *  header. Absent from builds before the stamp existed. */
-    androidBuild?: number;
   } = {},
 ): KeyboardConfigResponse {
-  /**
-   * WHAT AN OLDER KEYBOARD IS SENT TO STAY LIGHT.
-   *
-   * K43 / A4 stop the mic mark's animation at rest by themselves. A build
-   * before that runs it for as long as the keyboard is up, on the thread that
-   * takes every keystroke — so it is sent a still mark instead: no program,
-   * no idle motion, only the recording dispersal. The same build on iOS draws
-   * each key's shadow from its pixels on every frame, so it gets flat keys.
-   * Both change what is already installed, with no build.
-   */
-  const lightOld = (opts.platform === "android" ? (opts.androidBuild ?? 0) < 4 : (opts.kbBuild ?? 0) < 43);
-  const micProps = lightOld
-    ? { mark: BRAND_MARK, motion: { recording: MIC_MOTION.recording } }
-    : { mark: BRAND_MARK, motion: MIC_MOTION, program: MIC_PROGRAM };
-  const keyShadow = !(lightOld && opts.platform !== "android");
   /** K37 is the first build that raises the recording veil above the keys and
    *  lets the mic through it. Only such a build may wear the blur: on an older
    *  one the veil sits buried behind the tree, where a material paints as a
@@ -12830,7 +12810,6 @@ export function buildKeyboardConfig(
         toneBg: "#2C2C2E",         // Apple systemGray5 dark — solid, no melt into blur
         toneFg: "#FFFFFF",
         toneBorderColor: "#FFFFFF29",  // 16% white — barely-there border for shape definition
-        micProps,
         visibleIf: { neq: ["state.appearance", "light"] },
       }),
       // Light-mode tools row. Mic at rest = the same strong neutral, inverted
@@ -12842,7 +12821,6 @@ export function buildKeyboardConfig(
         toneBg: "#FFFFFF",
         toneFg: "#000000",
         toneBorderColor: "#00000029",   // 16% black — subtle border on light
-        micProps,
         visibleIf: { eq: ["state.appearance", "light"] },
       }),
 
@@ -13162,7 +13140,7 @@ export function buildKeyboardConfig(
       // is truly transparent and iOS's own region backdrop is the only
       // thing behind the keys.
       keyRadius: 5,     // Apple's letter-key radius on dark mode is 5, not 6
-      keyShadow,  // hard 1pt drop shadow — matches Apple's key depth (off on old iOS builds: see lightOld)
+      keyShadow: true,  // hard 1pt drop shadow — matches Apple's key depth
     },
     // v3 adaptive palettes — the SDUI-renderer build picks between these
     // based on the current userInterfaceStyle and re-renders on trait change.
@@ -13173,7 +13151,7 @@ export function buildKeyboardConfig(
       accent: "#8E8E93",
       keyPressed: KEY_PRESSED,
       keyRadius: 5,
-      keyShadow,
+      keyShadow: true,
     },
     themeLight: {
       // Fully transparent — no our-backdrop. Keys sit directly on whatever
@@ -13189,7 +13167,7 @@ export function buildKeyboardConfig(
       // The dark rows' neutral press, in ink for a light backdrop.
       keyPressed: LIGHT_KEY_PRESSED,
       keyRadius: 5,
-      keyShadow,
+      keyShadow: true,
     },
     // Layouts array stays populated for the legacy path. Adding a new language
     // here + shipping a matching { type: "LetterKey" } tree gets the new SDUI

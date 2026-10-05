@@ -2557,7 +2557,6 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL, onSend: gzipLargeJson }, asy
     platform: kbPlatform,
     quota,
     ...(isIosStamp ? { kbBuild: Number(stamp![2]) } : {}),
-    ...(stamp && !isIosStamp ? { androidBuild: Number(stamp[2]) } : {}),
   });
   return reply.send(withControl(req, reply, kbConfig, {
     surface: "keyboard",
