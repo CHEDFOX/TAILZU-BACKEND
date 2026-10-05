@@ -294,8 +294,9 @@ app.addHook("onSend", async (_req, reply, payload) => {
 /**
  * A SCREEN IS JSON THAT REPEATS ITSELF — every text names its face, size and
  * colour — so it packs down hard: the Stats tab, with a month of days behind
- * it, is ~250 KB as text and ~12 KB gzipped. The phone and the desktop both
- * ask for gzip and undo it themselves. Small replies go as they are.
+ * it, is ~250 KB as text and ~12 KB gzipped; the keyboard's config is 42 KB
+ * and 9 KB. The phone, the keyboards and the desktop all ask for gzip and
+ * undo it themselves. Small replies go as they are.
  */
 const gzipped = promisify(gzip);
 async function gzipLargeJson(req: FastifyRequest, reply: FastifyReply, payload: unknown): Promise<unknown> {
@@ -2499,7 +2500,7 @@ function keyboardPlatform(userAgent: unknown): KeyboardPlatform {
   return /okhttp|dalvik|android/.test(ua) ? "android" : "ios";
 }
 
-app.get("/v1/keyboard/config", { config: AUTHED_RL }, async (req, reply) => {
+app.get("/v1/keyboard/config", { config: AUTHED_RL, onSend: gzipLargeJson }, async (req, reply) => {
   // Personality is per-user — the keyboard uses it to render the quick-swap
   // chip row (pinned presets) + honor the active preset's default tone.
   // Missing/failed auth just returns the config without pins; the keyboard
