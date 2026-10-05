@@ -2,10 +2,10 @@ Fonts served to the phone app at /fonts/. Each is a static, Latin-only instance 
 open font under the SIL Open Font License 1.1, renamed as the licence requires of a
 modified version:
 
-  written*.ttf  <- Newsreader (Production Type)
+  written*.ttf  <- Newsreader (Production Type); written-bold.ttf at weight 700, opsz 16
   said.ttf      <- Caveat
   label.ttf     <- IBM Plex Mono Medium (Reserved Font Name "Plex")
-  ui*.ttf       <- Instrument Sans
+  ui*.ttf       <- Instrument Sans; ui-bold.ttf at weight 700, width 100
 
 =================== newsreader ===================
 Copyright 2020 The Newsreader Project Authors (http://github.com/productiontype/Newsreader)

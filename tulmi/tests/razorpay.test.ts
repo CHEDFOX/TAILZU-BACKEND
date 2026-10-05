@@ -342,12 +342,12 @@ describe("the routes", () => {
     const until = new Date(Date.now() + 20 * DAY * 1000).toISOString();
     const live = JSON.stringify(buildScreen("cancel_subscription", { personality: {}, language: "en", entitlement: { store: "razorpay", expiresAt: until, renews: true } } as never));
     expect(live).toContain("/v1/billing/razorpay/cancel");
-    expect(live).toContain("You will not be charged again");
+    expect(live).toContain("You Will Not Be Charged Again");
     const ending = JSON.stringify(buildScreen("cancel_subscription", { personality: {}, language: "en", entitlement: { store: "razorpay", expiresAt: until, renews: false } } as never));
-    expect(ending).toContain("Already cancelled");
+    expect(ending).toContain("Already Cancelled");
     expect(ending).not.toContain("/v1/billing/razorpay/cancel");
     const store = JSON.stringify(buildScreen("cancel_subscription", { personality: {}, language: "en", entitlement: { store: "app_store" } } as never));
-    expect(store).toContain("Nothing to cancel here");
+    expect(store).toContain("Nothing To Cancel Here");
 
     const b = buildBootstrap({ entitled: true, billingStore: "razorpay", billingRenews: false, formFactor: "desktop",
       payUrl: rzp.payLink("https://tailzu.space/pay", USER) } as never) as { flags: Record<string, unknown> };

@@ -33,6 +33,10 @@ export const PHONE_FONT = {
   label: "Tailzu Label",
   ui: "Tailzu UI",
   uiMedium: "Tailzu UI Medium",
+  /** Titles: a card's name, in capitals. */
+  uiBold: "Tailzu UI Bold",
+  /** Titles in the book face: the month, Today, a section's name. */
+  writtenBold: "Tailzu Written Bold",
 } as const;
 
 export const PHONE_LOOK = {
@@ -70,7 +74,7 @@ type Style = Record<string, unknown>;
 // card's title, among others. 1.45 gives every glyph its room.
 const MIN_LINE: Record<keyof typeof PHONE_FONT, number> = {
   writtenLight: 1.45, writtenLightItalic: 1.45, written: 1.45, writtenItalic: 1.45,
-  said: 1.34, label: 1.45, ui: 1.4, uiMedium: 1.4,
+  said: 1.34, label: 1.45, ui: 1.4, uiMedium: 1.4, uiBold: 1.4, writtenBold: 1.45,
 };
 export const lineFor = (face: keyof typeof PHONE_FONT, size: number, asked?: unknown): number =>
   Math.max(typeof asked === "number" ? asked : 0, Math.ceil(size * MIN_LINE[face]));
@@ -190,7 +194,7 @@ function figure(id: string, name: string, value: string, unit = "", live = false
 
 /** A section's name on the Stats tab. */
 const sectionTitle = (content: string, style: Style = {}): Node =>
-  t(content, "writtenLight", 24, { letterSpacing: -0.4, ...style });
+  t(content, "writtenBold", 24, { letterSpacing: -0.4, ...style });
 
 /** "How you speak" with nothing to set to size yet — still the way in. */
 function howYouSpeakNote(count: number): Node {
@@ -377,6 +381,33 @@ export function monthFigures(
 }
 
 /**
+ * WORDS THIS MONTH (or words left, on the free plan) — a line and a thread,
+ * under the month's name. Opens where the words came from.
+ */
+function wordsMeter(a: Allowance, paid: boolean, paidPct: number): Node {
+  const L = PHONE_LOOK;
+  return {
+    type: "Stack",
+    on: { onPress: open("words") },
+    props: { pressOpacity: 0.6 },
+    style: { marginTop: 14, paddingVertical: 4 },
+    children: [
+      label(paid ? "Words this month" : "Words left"),
+      paid
+        ? t(`${n(a.used)}. No limit on your plan.`, "writtenLight", 20, { marginTop: 8 })
+        : t(`${n(a.remaining)} of ${n(a.total)}, back on the 1st.`, "writtenLight", 20, { marginTop: 8 }),
+      paid
+        ? bar(paidPct, L.ink, 3, { marginTop: 12 })
+        : bar(a.total ? (a.remaining / a.total) * 100 : 0, L.ink, 3, { marginTop: 12 }),
+      ...(!paid && a.earned > 0 ? [caption(
+        a.maxed ? `${n(a.earned)} earned, the most there is this month.` : `${n(a.earned)} of these you earned by turning up.`,
+        { marginTop: 10 },
+      )] : []),
+    ],
+  };
+}
+
+/**
  * The Stats tab's page. The month by name, large, and what it held; then
  * today, where the words went, the allowance, how you speak, the days as a
  * calendar, and six figures. Everything that has more behind it opens its
@@ -403,17 +434,22 @@ export function phoneStatsBody(
   // THE MONTH — its name, large, and under it what it held. The calendar
   // month, as the meter counted it: "this month" under "October" means
   // October, not the thirty days the figures further down are about.
-  const out: Node[] = [t(MONTHS[now.getUTCMonth()]!, "writtenLight", 46, { letterSpacing: -1.4 })];
+  const out: Node[] = [t(MONTHS[now.getUTCMonth()]!, "writtenBold", 46, { letterSpacing: -1.2 })];
 
+  // UNDER THE MONTH, ITS WORDS: the meter, which is the month's count and
+  // what is left of it. It used to sit further down, under a line of its own
+  // that said the month's words a second time.
+  const meter = s.allow ? wordsMeter(s.allow, s.paid, s.paidPct) : null;
   if (s.empty && month.words === 0) {
     out.push(
       t("Nothing here yet.", "writtenLight", 20, { marginTop: 6, color: L.ink2 }),
       caption("Say a few things in any app and this fills in: how much you said, where it went, the days you talked.", { marginTop: 10, maxWidth: 300 }),
+      ...(meter ? [meter] : []),
     );
   } else if (month.words === 0) {
-    out.push(t("Nothing yet this month.", "writtenLight", 20, { marginTop: 6, color: L.ink2 }));
+    out.push(meter ?? t("Nothing yet this month.", "writtenLight", 20, { marginTop: 6, color: L.ink2 }));
   } else {
-    out.push(sentence(
+    out.push(meter ?? sentence(
       [`${n(month.words)} `, { text: `${month.words === 1 ? "word" : "words"} this month.`, style: { color: L.ink2 } }],
       "writtenLight", 22, { letterSpacing: -0.2 }, { marginTop: 4 },
     ));
@@ -466,7 +502,7 @@ export function phoneStatsBody(
           type: "Stack",
           style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
           children: [
-            t("Today", "writtenLight", 34, { letterSpacing: -0.8 }),
+            t("Today", "writtenBold", 34, { letterSpacing: -0.8 }),
             {
               type: "Stack",
               style: { flexDirection: "row", gap: 5 },
@@ -518,30 +554,6 @@ export function phoneStatsBody(
         ],
       });
     }
-  }
-
-  // WORDS LEFT — a line and a thread. Opens where the words came from.
-  if (s.allow) {
-    const a = s.allow;
-    out.push({
-      type: "Stack",
-      on: { onPress: open("words") },
-      props: { pressOpacity: 0.6 },
-      style: { marginTop: GAP },
-      children: [
-        label(s.paid ? "Words this month" : "Words left"),
-        s.paid
-          ? t(`${n(a.used)}. No limit on your plan.`, "writtenLight", 16, { marginTop: 10 })
-          : t(`${n(a.remaining)} of ${n(a.total)}, back on the 1st.`, "writtenLight", 16, { marginTop: 10 }),
-        s.paid
-          ? bar(s.paidPct, L.ink, 3, { marginTop: 12 })
-          : bar(a.total ? (a.remaining / a.total) * 100 : 0, L.ink, 3, { marginTop: 12 }),
-        ...(!s.paid && a.earned > 0 ? [caption(
-          a.maxed ? `${n(a.earned)} earned, the most there is this month.` : `${n(a.earned)} of these you earned by turning up.`,
-          { marginTop: 10 },
-        )] : []),
-      ],
-    });
   }
 
   if (!s.empty) {
@@ -665,7 +677,8 @@ export function phoneStatsBody(
  * THE WAY FROM WHAT YOU DID TO HOW IT IS DONE. The page ends on the one
  * thing here that is not a record: the You tab, where the voice, the words,
  * the languages and the keys are set. In the active voice's own colour, the
- * same card that tab opens with, so it reads as a door to that room.
+ * same card that tab opens with, so it reads as a door to that room. A title
+ * and a button, nothing else.
  */
 function makeItYours(room: { bg: string; ink: string; dim: string; edge?: string } = PHONE_ROOMS["d-w-zu"]!): Node {
   const go: ActionRef = { kind: "sequence", actions: [
@@ -681,19 +694,16 @@ function makeItYours(room: { bg: string; ink: string; dim: string; edge?: string
       ...(room.edge ? { borderWidth: 1, borderColor: room.edge } : {}),
     },
     children: [
-      label("Make it yours", { color: room.dim }),
-      t("Personalise your experience", "writtenLight", 24, { color: room.ink, marginTop: 10, letterSpacing: -0.4 }),
-      caption("Your voice, the words you use, the languages you speak and how every key feels.",
-        { color: room.dim, marginTop: 8, maxWidth: 320 }),
+      t("Personalise your experience", "writtenBold", 26, { color: room.ink, letterSpacing: -0.4 }),
       {
         type: "Button",
         props: {
-          label: "OPEN YOU", variant: "primary",
-          labelColor: room.bg, fontSize: 10, fontWeight: "600", tracking: 1.6,
-          paddingVertical: 0, paddingHorizontal: 22, radius: 12,
+          label: "Les go", variant: "primary",
+          labelColor: room.bg, fontSize: 13, fontWeight: "600", tracking: 0.4,
+          paddingVertical: 0, paddingHorizontal: 26, radius: 12,
         },
         on: { onPress: go },
-        style: { backgroundColor: room.ink, height: 44, alignSelf: "flex-start", marginTop: 20 },
+        style: { backgroundColor: room.ink, height: 46, alignSelf: "flex-start", marginTop: 22 },
       },
     ],
   };
@@ -722,6 +732,8 @@ export const PHONE_ROOMS: Record<string, { bg: string; ink: string; dim: string;
 export function proofMark(was: string, word: string, size = 18): Node {
   return {
     type: "Stack",
+    // Their words, as they spelled them: no capital added (titleCase.ts).
+    props: { keepCase: true },
     style: { alignItems: "flex-start" },
     children: [
       ...(was ? [{

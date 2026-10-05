@@ -56,7 +56,8 @@ describe("the phone refresh", () => {
     // The training card's "IT LEARNS YOU" lost the tops of its capitals:
     // the mono was set at 1.26 of its size and its line box is 1.30.
     const MIN: Record<string, number> = {
-      "Tailzu Label": 1.45, "Tailzu Said": 1.34, "Tailzu UI": 1.4, "Tailzu UI Medium": 1.4,
+      "Tailzu Label": 1.45, "Tailzu Said": 1.34, "Tailzu UI": 1.4, "Tailzu UI Medium": 1.4, "Tailzu UI Bold": 1.4,
+      "Tailzu Written Bold": 1.45,
       // Newsreader draws to 0.9em (0.925 italic) above a 0.735em ascender:
       // at 1.3 the training card's title lost the tops of its letters.
       "Tailzu Written": 1.45, "Tailzu Written Italic": 1.45, "Tailzu Written Light": 1.45, "Tailzu Written Light Italic": 1.45,
@@ -88,12 +89,16 @@ describe("the phone refresh", () => {
   });
 
   it("names the month, then its words under it, with typing in its colour", () => {
-    const s = JSON.stringify(buildScreen("stats", screens[0]![1] as never));
-    for (const w of ["612 ", "words ", "this ", "month.", "Typed, ", "15 ", "min", "Said, "]) expect(s).toContain(`"${w}`);
+    const screen = buildScreen("stats", screens[0]![1] as never)! as any;
+    // Under the month's name, the meter: the month's words and what is left.
+    const page = screen.root.children[0].children;
+    expect(JSON.stringify(page[1])).toContain("248 Of 860, Back On The 1st.");
+    const s = JSON.stringify(screen);
+    for (const w of ["Typed, ", "15 ", "min", "Said, "]) expect(s).toContain(`"${w}`);
     expect(s).toContain(PHONE_LOOK.typedInk);
     expect(s).toContain('"42 "');
-    expect(s).toContain('"seconds."');
-    expect(s).toContain("248 of 860, back on the 1st.");
+    expect(s).toContain('"Seconds."');
+    expect(s).toContain("248 Of 860, Back On The 1st.");
     expect(s).toContain("Hinglish");
   });
 
@@ -140,7 +145,7 @@ describe("the phone refresh", () => {
       expect(json, l.name).toContain(`"value":"${value}"`);
     }
     // Grouped: India, then the world.
-    expect(json.indexOf('"India"')).toBeLessThan(json.indexOf('"The world"'));
+    expect(json.indexOf('"India"')).toBeLessThan(json.indexOf('"The World"'));
     // A newly offered code reads as its name on the You card, never as a code.
     const you = JSON.stringify(buildScreen("personality", { personality: { languages: ["doi", "sat"] }, language: "en" } as never));
     expect(you).toContain("Dogri, Santali");
@@ -197,12 +202,11 @@ describe("the phone refresh", () => {
       expect(json, id).not.toContain(PHONE_LOOK.accent.toUpperCase());
       expect(json, id).not.toContain("232,162,60");
     }
-    // The dot beside the writing voice is still drawn — in the card's ink.
+    // The voice card is its name and a line now — no dot beside it at all.
     const dots: Array<Record<string, any>> = [];
     walk(buildScreen("personality", screens[1]![1] as never)!.root, (n) => {
       if (n.style?.width === 5 && n.style?.height === 5 && n.style?.borderRadius === 2.5) dots.push(n);
     });
-    expect(dots).toHaveLength(1);
-    expect(dots[0]!.style.backgroundColor).toBeTruthy();
+    expect(dots).toHaveLength(0);
   });
 });

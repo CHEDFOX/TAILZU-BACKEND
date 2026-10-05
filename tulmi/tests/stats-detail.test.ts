@@ -78,9 +78,10 @@ describe("the Stats screen", () => {
 
   it("names the calendar month and its own words, not the thirty days'", () => {
     const s = JSON.stringify(screen());
-    // A sentence is a row of words, each with the space after it.
+    // With no meter to read, the line says the month's words itself: a
+    // sentence is a row of words, each with the space after it.
     expect(s).toContain('"250 "');
-    for (const w of ['"words "', '"this "', '"month."']) expect(s).toContain(w);
+    for (const w of ['"Words "', '"This "', '"Month."']) expect(s).toContain(w);
     // 1,100 is the thirty days' figure; it belongs to the cards, not the month.
     expect(s).not.toContain('"1,100 "');
   });
@@ -92,16 +93,20 @@ describe("the Stats screen", () => {
       ...ctx,
       allowance: { base: 800, earned: 0, total: 800, used: 312, remaining: 488, streakDays: 1, grants: [], maxed: false, perVisit: [] },
     };
-    const s = JSON.stringify(buildScreen("stats", withAllow as never));
-    expect(s).toContain('"312 "');
-    expect(s).not.toContain('"250 "');
+    const screen = buildScreen("stats", withAllow as never) as any;
+    // The meter IS the line under the month now: one count, said once.
+    const under = JSON.stringify(screen.root.children[0].children[1]);
+    expect(under).toMatch(/312\. No Limit On Your Plan\.|488 Of 800, Back On The 1st\./);
+    expect(JSON.stringify(screen)).not.toContain('"250 "');
   });
 
   it("ends on a way to the You tab, in the voice's own colour", () => {
     const s = screen();
     const page = s.root.children[0];
     const last = page.children[page.children.length - 1];
-    expect(JSON.stringify(last)).toContain("Personalise your experience");
+    expect(JSON.stringify(last)).toContain("Personalise Your Experience");
+    expect(JSON.stringify(last)).toContain('"label":"Les Go"');
+    expect(JSON.stringify(last)).not.toContain("Make it yours");
     expect(JSON.stringify(last.on.onPress)).toContain('"kind":"switchTab","tabId":"personality"');
     expect(last.style.backgroundColor).toBe("#F3EDE2");
     const pirate = buildScreen("stats", { ...ctx, personality: { activePresetId: "pirate" } } as never) as any;
@@ -139,7 +144,7 @@ describe("the Stats screen", () => {
   it("lists today's sessions with their times on the Today card", () => {
     const s = JSON.stringify(screen());
     expect(s).toContain("10:40   WhatsApp");
-    expect(s).toContain("30 words, said");
+    expect(s).toContain("30 Words, Said");
   });
 
   it("draws real charts: pies, curves and columns", () => {
@@ -160,7 +165,7 @@ describe("the Stats screen", () => {
     expect(rings.length).toBeGreaterThan(0);
     expect(rings[0].props.legend).toBe(false);
     const json = JSON.stringify(s);
-    expect(json).toContain("1,100 words, 100%");
+    expect(json).toContain("1,100 Words, 100%");
   });
 });
 
@@ -182,10 +187,14 @@ describe("the You tab", () => {
     const column = you.root.children[0].children[0].children;
     const last = column[column.length - 1];
     const json = JSON.stringify(last);
-    expect(json).toContain("See what you have experienced so far");
-    expect(json).toContain("OPEN STATS");
+    expect(json).toContain("See What You Have Experienced So Far");
+    expect(json).toContain('"label":"Stats"');
+    // No title: the chart, the line in the hand, and the button.
+    expect(json).not.toContain('"content":"Stats"');
     expect(JSON.stringify(last.on.onPress)).toContain('"kind":"switchTab","tabId":"stats"');
-    // A glimpse of the month as a curve, when there is one.
-    expect(json).toContain('"type":"SVG"');
+    // The month as a waveform: a bar a day, mirrored about the line.
+    const wave = last.children[0];
+    expect(wave.style.alignItems).toBe("center");
+    expect(wave.children).toHaveLength(30);
   });
 });

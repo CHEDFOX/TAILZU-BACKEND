@@ -303,7 +303,9 @@ export function boundTiles(items: Array<{ path: string; name: string }>): Node {
 
 /** A sub-heading inside a card. */
 export function part(name: string): Node {
-  return label(name, { marginTop: 26, marginBottom: 10, color: "rgba(243,226,198,0.5)" });
+  return t(name, "uiBold", 10.5, {
+    marginTop: 26, marginBottom: 10, letterSpacing: 1.3, textTransform: "uppercase", color: "rgba(243,226,198,0.6)",
+  });
 }
 
 /** 24 hours as a curve, labelled at midnight, six, noon and six. */
@@ -326,4 +328,34 @@ export function said(seconds: number): string {
   const m = Math.round(s / 60);
   if (m < 60) return `${m} min`;
   return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`;
+}
+
+/**
+ * A MONTH AS A VOICE: one rounded bar a day, as tall as what was said that
+ * day, mirrored about a centre line the way a recording is drawn. Quiet days
+ * are a dot on the line; today is amber, because today is not over — except
+ * where nothing may be amber (the You tab), which passes markToday: false.
+ */
+export function waveform(values: number[], opts: { height?: number; markToday?: boolean } = {}): Node {
+  const height = opts.height ?? 72;
+  const mark = opts.markToday !== false;
+  const max = Math.max(1, ...values);
+  return {
+    type: "Stack",
+    style: { flexDirection: "row", alignItems: "center", gap: 3, height },
+    children: values.map((v, i) => {
+      const share = v > 0 ? Math.max(0.12, v / max) : 0;
+      const today = mark && i === values.length - 1;
+      return {
+        type: "Stack",
+        style: {
+          flex: 1,
+          height: v > 0 ? Math.round(share * height) : 4,
+          borderRadius: 3,
+          backgroundColor: today ? AMBER : v > 0 ? INK : "rgba(243,226,198,0.22)",
+          opacity: today || v <= 0 ? 1 : 0.4 + 0.6 * share,
+        },
+      } as Node;
+    }),
+  };
 }

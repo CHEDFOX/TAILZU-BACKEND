@@ -188,7 +188,7 @@ describe("the gate is one editable block", () => {
       allowance: { ...(allow(800) as any), streakDays: 4 },
     } as never);
     expect(JSON.stringify(s)).not.toMatch(/\{(used|left|total|streak)\}/);
-    expect(JSON.stringify(s)).toContain("4 days running");
+    expect(JSON.stringify(s)).toContain("4 Days Running");
   });
 
   it("names one destination that everything routes through", () => {

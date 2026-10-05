@@ -9,13 +9,14 @@
  */
 import { withAppKnobs, withKeyboardKnobs } from "./appKnobs.js";
 import { DESK_SCREENS, buildDeskScreen, deskNav } from "./desk.js";
-import { PHONE_FONT, PHONE_LOOK, PHONE_ROOMS, STATS_TOP, caption, label, lineFor, monthFigures, phoneStatsBody, proofMark, span, statsDays, t } from "./phoneLook.js";
+import { PHONE_FONT, PHONE_LOOK, PHONE_ROOMS, STATS_TOP, caption, label, monthFigures, phoneStatsBody, proofMark, span, statsDays, t } from "./phoneLook.js";
 import {
   DAY_ASPECT, HOUR_LABELS, SHARE_INKS, TYPED_INK, axis, boundCurve, boundLine, boundTiles, columns, curve, curvePaths,
-  dayCurve, kindSlices, line, meters, part, pie, said, shareSlices, tiles,
+  dayCurve, kindSlices, line, meters, part, pie, said, shareSlices, tiles, waveform,
 } from "./statsCharts.js";
 import { LANGUAGE_NAMES as WRITTEN_NAMES } from "../history/writtenIn.js";
 import { DESK_CONTEXTS, DESK_ROOMS, DESK_SAMPLES } from "./deskSamples.js";
+import { titleCaseLabels, titleCaseScreen } from "./titleCase.js";
 import { LANGS as ALL_LANGS } from "./languages.js";
 import type { StatsForUser } from "../history/store.js";
 import type {
@@ -1203,6 +1204,9 @@ export const FONTS: Record<string, string> = {
   [PHONE_FONT.label]: `${FONT_BASE}label.ttf?v=1`,
   [PHONE_FONT.ui]: `${FONT_BASE}ui.ttf?v=1`,
   [PHONE_FONT.uiMedium]: `${FONT_BASE}ui-medium.ttf?v=1`,
+  // The titles: Instrument Sans and Newsreader at 700, cut the same way.
+  [PHONE_FONT.uiBold]: `${FONT_BASE}ui-bold.ttf?v=1`,
+  [PHONE_FONT.writtenBold]: `${FONT_BASE}written-bold.ttf?v=1`,
 };
 
 /**
@@ -2286,8 +2290,9 @@ export function buildBootstrap(
 
       return applyPlatformFlags(flags, opts.platform ?? "ios");
     })(),
-    // Central copy — every screen can reference these with "@key".
-    labels: {
+    // Central copy — every screen can reference these with "@key". On the
+    // phone every word starts with a capital (titleCase.ts), like the screens.
+    labels: (opts.formFactor === "desktop" ? (l: Record<string, string>) => l : titleCaseLabels)({
       "app.name": "Tailzu",
       // The desktop masthead's chip for "no limit": free, not paid, right now.
       ...(freeForAll() ? { "desktop.mast.unlimited": "Free" } : {}),
@@ -2329,7 +2334,7 @@ export function buildBootstrap(
       // these keys (they say ui.VoiceToggle.errorMic / errorTranscribe).
       "ui.VoiceToggle.errorMicTemplate": "Couldn't start the microphone. Try again.",
       "ui.VoiceToggle.errorVoiceTemplate": "Couldn't turn that into text. Try again.",
-    },
+    }),
     languages: [
       { code: "en", name: "English", greeting: "Hello", regions: ["US","GB","CA","AU","IN"] },
       { code: "hi", name: "हिन्दी", greeting: "नमस्ते", regions: ["IN"] },
@@ -4656,6 +4661,13 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
         : undefined,
     });
   }
+  // The phone's screens: every word of the app's own starts with a capital
+  // (titleCase.ts). The desk keeps its sentence case.
+  const built = phoneScreen(screenId, ctx);
+  return built && titleCaseScreen(built);
+}
+
+function phoneScreen(screenId: string, ctx: ScreenContext): ScreenResponse | null {
   switch (screenId) {
     case "home":
       return homeScreen(ctx);
@@ -5867,6 +5879,8 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
   /** Their own word, as it was learned. The most specific thing on the tab. */
   const chip = (term: string): Node => ({
     type: "Stack",
+    // A word they use, as they use it: no capital added (titleCase.ts).
+    props: { keepCase: true },
     style: {
       backgroundColor: st.chip, borderRadius: st.chipRadius,
       paddingHorizontal: 11, paddingVertical: 6,
@@ -7186,7 +7200,9 @@ export const YOU_UI = {
     kicker: "",
     kickerSize: 8,
     kickerTracking: 2.4,
-    title: "Talk weird. It learns weird.",
+    // The card's name, in bold capitals, and what it says to you in the hand.
+    title: "BIRZU",
+    subtitle: "Hey Master, Make Me Like You",
     titleSize: 26,
     titleColor: "#FFFFFF",
     /** "{n} learned, {s} sittings"; "" hides the line. Hidden. */
@@ -7198,7 +7214,7 @@ export const YOU_UI = {
     ctaGap: 14,
     /** The button's word when the card is a tap. "SLIDE TO BEGIN" belongs to
      *  the drag; on a button it names a gesture that is not there. */
-    tapLabel: "BEGIN",
+    tapLabel: "Begin",
     marginBottom: 20,
     /**
      * A TAP, NOT A DRAG. The drag needs the screen to hold its touches, and
@@ -7711,7 +7727,19 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
    * does to their words. The dot beside WRITING AS is in the card's own ink:
    * a chosen voice is a setting, not something live, so no amber here.
    */
-  const voiceCard = (name: string, tagline: string, voiceId: string): Node => {
+  /**
+   * EVERY CARD: ITS NAME IN BOLD AT THE TOP, A LINE IN THE HAND AT THE FOOT.
+   * The name is the thing (ZU, BIRZU, BOOK, BUZZ); the line is what it says
+   * to you. Between them, whatever the card shows.
+   */
+  const cardTitle = (text: string, color: string = PHONE_LOOK.ink): Node =>
+    t(text, "uiBold", 22, { letterSpacing: 1.4, textTransform: "uppercase", color });
+  const cardSub = (text: string, color = "rgba(243,226,198,0.8)"): Node =>
+    t(text, "said", 19, { color, marginTop: 16 });
+  /** Tallest first: the voice, then training, then the rest. */
+  const CARD_MIN = { voice: 260, train: 210, small: 170, pair: 190 };
+
+  const voiceCard = (name: string, _tagline: string, voiceId: string): Node => {
     const room = PHONE_ROOMS[DESK_ROOMS[voiceId] ?? "d-w-zu"] ?? PHONE_ROOMS["d-w-zu"]!;
     return {
       type: "Stack",
@@ -7721,30 +7749,21 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
       ] } },
       props: { pressOpacity: 0.85 },
       style: {
-        borderRadius: 20, padding: 20, marginBottom: YOU_CARD_GAP, backgroundColor: room.bg,
+        borderRadius: 20, padding: 22, marginBottom: YOU_CARD_GAP, backgroundColor: room.bg,
+        minHeight: CARD_MIN.voice, justifyContent: "space-between",
         ...(room.edge ? { borderWidth: 1, borderColor: room.edge } : {}),
       },
       children: [
         {
           type: "Stack",
-          style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+          style: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
           children: [
-            {
-              type: "Stack",
-              style: { flexDirection: "row", alignItems: "center", gap: 7 },
-              children: [
-                { type: "Stack", style: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: room.ink } },
-                label("WRITING AS", { color: room.dim }),
-              ],
-            },
-            label("Change", { color: room.ink }),
+            // The voice's own name: ZU, unless another voice is writing.
+            { ...cardTitle(name, room.ink), props: { content: name, variant: "voiceName" } } as Node,
+            label("Change", { color: room.dim, marginTop: 6 }),
           ],
         },
-        { type: "Text", props: { content: name, variant: "voiceName" },
-          style: { marginTop: 12, fontFamily: PHONE_FONT.writtenLight, fontWeight: "normal",
-                   fontSize: 22, lineHeight: lineFor("writtenLight", 22), letterSpacing: -0.3, color: room.ink } },
-        // The sample sentence is gone: the name and what it does say it.
-        ...(tagline ? [label(tagline, { color: room.dim, marginTop: 8, letterSpacing: 1.2 })] : []),
+        cardSub("Write Thoughts Your Way", room.dim),
       ],
     };
   };
@@ -7762,21 +7781,62 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
    *   Languages   plum
    *   Haptics     lapis
    */
-  const settingCard = (kicker: string, body: Node[], screen: string, fill: string, style: Record<string, unknown> = {}): Node => ({
+  const settingCard = (
+    title: string | Node, body: Node[], sub: string, screen: string, fill: string,
+    style: Record<string, unknown> = {}, aside?: Node,
+  ): Node => ({
     type: "Stack",
     on: { onPress: { kind: "sequence", actions: [
       { kind: "haptic", style: "selection" },
       { kind: "navigate", screenId: screen },
     ] } },
     props: { pressOpacity: 0.7 },
-    style: { borderRadius: 20, padding: 20, backgroundColor: fill, ...style },
-    children: [label(kicker, { color: "rgba(243,226,198,0.62)" }), ...body],
+    style: { borderRadius: 20, padding: 20, backgroundColor: fill, justifyContent: "space-between", ...style },
+    children: [
+      {
+        type: "Stack",
+        children: [
+          {
+            type: "Stack",
+            style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+            children: [typeof title === "string" ? cardTitle(title) : title, ...(aside ? [aside] : [])],
+          },
+          ...body,
+        ],
+      },
+      cardSub(sub),
+    ],
   });
 
   /**
+   * "LANGUAGE", IN LANGUAGE AFTER LANGUAGE, each written in its own script:
+   * English first, then the ones this person chose, then a turn round the
+   * world. It turns over in 3D, where the greeting above crossfades, so the
+   * two never move alike. The system's bold, because a word in Devanagari or
+   * Tamil has no glyphs in the app's own faces.
+   */
+  const LANGUAGE_WORD: Record<string, string> = {
+    en: "LANGUAGE", hi: "भाषा", bn: "ভাষা", ta: "மொழி", te: "భాష", gu: "ભાષા", kn: "ಭಾಷೆ",
+    ml: "ഭാഷ", pa: "ਭਾਸ਼ਾ", mr: "भाषा", ur: "زبان", or: "ଭାଷା", as: "ভাষা", es: "IDIOMA",
+    fr: "LANGUE", de: "SPRACHE", it: "LINGUA", pt: "IDIOMA", ru: "ЯЗЫК", ar: "لغة",
+    ja: "言語", zh: "语言", ko: "언어", tr: "DİL", id: "BAHASA", sw: "LUGHA", nl: "TAAL",
+  };
+  const languageTitle = (codes: string[]): Node => {
+    const order = ["en", ...codes, "hi", "es", "ta", "fr", "ja", "bn", "de", "ar", "ko", "te", "ru"];
+    const words = [...new Set(order.map((c) => LANGUAGE_WORD[c]).filter((w): w is string => !!w))].slice(0, 12);
+    return {
+      type: "FlipText",
+      props: { words, intervalMs: 2300, flipMs: 760, flip: "turn", perspective: 320, turnDegrees: 90 },
+      style: { fontSize: 22, lineHeight: 30, height: 30, fontWeight: "800", letterSpacing: 1.2, color: PHONE_LOOK.ink },
+      fallback: cardTitle("Language"),
+    };
+  };
+
+  /**
    * THE LAST CARD: what all of this has added up to. Opens the Stats tab. The
-   * month's words as a curve when there are any — a glimpse, not the numbers,
-   * which are the other tab's to tell.
+   * month as a voice — a bar for each day, as tall as what was said that
+   * day, mirrored about a line the way a recording looks — a glimpse, not
+   * the numbers, which are the other tab's to tell.
    */
   const statsCard = (): Node => {
     const perDay = ctx.stats?.wordsPerDay ?? [];
@@ -7790,21 +7850,24 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
       props: { pressOpacity: 0.7 },
       style: { borderRadius: 20, padding: 20, backgroundColor: YOU_CARD_FILL.stats, marginTop: YOU_CARD_GAP },
       children: [
-        label("Stats", { color: "rgba(243,226,198,0.62)" }),
-        t("See what you have experienced so far", "writtenLight", 20, { lineHeight: 28, marginTop: 12 }),
-        ...(perDay.some((v) => v > 0)
-          ? [{ type: "Stack", style: { marginTop: 18 }, children: [curve(perDay, { aspect: 5, markLast: true })] } as Node]
-          : []),
+        // No amber on You: today is drawn like any other day here.
+        waveform(perDay.length ? perDay : new Array(30).fill(0), { height: 72, markToday: false }),
         {
-          type: "Button",
-          props: {
-            label: "OPEN STATS", variant: "secondary",
-            labelColor: PHONE_LOOK.ink, fontSize: 10, fontWeight: "600", tracking: 1.6,
-            paddingVertical: 0, paddingHorizontal: 22, radius: 12,
-          },
-          on: { onPress: go },
-          style: { height: 44, alignSelf: "flex-start", marginTop: 18, backgroundColor: "transparent",
-                   borderWidth: 1, borderColor: "rgba(243,226,198,0.32)" },
+          type: "Stack",
+          style: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 16, marginTop: 4 },
+          children: [
+            { type: "Stack", style: { flex: 1 }, children: [cardSub("See What You Have Experienced So Far")] },
+            {
+              type: "Button",
+              props: {
+                label: "Stats", variant: "primary",
+                labelColor: YOU_CARD_FILL.stats, fontSize: 13, fontWeight: "600", tracking: 0.4,
+                paddingVertical: 0, paddingHorizontal: 22, radius: 12,
+              },
+              on: { onPress: go },
+              style: { height: 44, backgroundColor: PHONE_LOOK.ink },
+            },
+          ],
         },
       ],
     };
@@ -7830,7 +7893,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
       type: "Button",
       props: {
         label: T.tapLabel, variant: "primary",
-        labelColor: "#1C1640", fontSize: 10, fontWeight: "600", tracking: 1.6,
+        labelColor: "#1C1640", fontSize: 13, fontWeight: "600", tracking: 0.4,
         paddingVertical: 0, paddingHorizontal: 18, radius: 12,
       },
       on: { onPress: "enterTraining" },
@@ -7843,6 +7906,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
       style: {
         borderRadius: 20, overflow: "hidden", marginBottom: YOU_CARD_GAP,
         padding: 20, backgroundColor: "#1E1946",
+        minHeight: CARD_MIN.train, justifyContent: "space-between",
       },
       children: [
         // The network it grows, faint: a texture under the words, not a picture.
@@ -7853,17 +7917,17 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
           // the card's real text. The field has no words, and it is theirs:
           // it grows with what has been learned.
           children: [neuralField(T.fieldDim, fieldGrowth(ctx.personality), undefined, FIELD_SIGNAL_AT_REST)] },
-        ...(T.kicker ? [label(T.kicker, { color: "rgba(243,226,198,0.62)" })] : []),
+        cardTitle(T.title),
         {
           type: "Stack",
-          style: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 16, marginTop: 12 },
+          style: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 16 },
           children: [
             {
               type: "Stack",
               style: { flex: 1 },
               children: [
-                t(T.title, "writtenLight", 22, { letterSpacing: -0.3 }),
-                ...(learned ? [caption(learned, { marginTop: 8, color: "rgba(243,226,198,0.72)" })] : []),
+                ...(learned ? [caption(learned, { marginBottom: 4, color: "rgba(243,226,198,0.72)" })] : []),
+                cardSub(T.subtitle),
               ],
             },
             button,
@@ -7917,12 +7981,16 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
   const hapticsSave = (body: Record<string, unknown>): ActionRef => ({
     kind: "callEndpoint", method: "POST", path: "/v1/personality/haptics", body, onError: "hapticsErr",
   });
+  /** Keys picked by hand: the switch goes back on and asks first. */
+  const askFirst: ActionSpec = { kind: "sequence", actions: [
+    { kind: "setState", path: "hapticsOn", value: true },
+    { kind: "setState", path: "askHapticsOff", value: true },
+  ] };
   const hapticsSwitch: Node = {
     // Its own touch: a tap on the switch flips it, and never also opens the
     // Haptics screen the rest of the card leads to.
     type: "Stack",
     on: { onPress: { kind: "haptic", style: "selection" } },
-    style: { position: "absolute", right: 16, bottom: 16 },
     children: [{
       type: "Switch",
       bind: { value: "hapticsOn" },
@@ -7933,13 +8001,21 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
           kind: "condition",
           if: { truthy: "hapticsOn" },
           then: hapticsSave({ all: true }),
-          // Off. With keys picked by hand, the switch stays on until they say so.
-          else: manualKeys > 0
-            ? { kind: "sequence", actions: [
-                { kind: "setState", path: "hapticsOn", value: true },
-                { kind: "setState", path: "askHapticsOff", value: true },
-              ] }
-            : hapticsSave({ all: false }),
+          // OFF. Asked EVERY time there are keys picked by hand — read from
+          // the server at the moment of turning off, not from when this tab
+          // was drawn: keys picked on the Haptics screen a minute ago, with
+          // this tab still on the stack underneath, used to slip past it.
+          else: {
+            kind: "callEndpoint", method: "GET", path: "/v1/personality", assignTo: "_hapticsNow",
+            onSuccess: {
+              kind: "condition",
+              if: { truthy: "_hapticsNow.personality.hapticKeys.0" },
+              then: askFirst,
+              else: hapticsSave({ all: false }),
+            },
+            // Unreadable: decide on what this tab knew when it was drawn.
+            onError: manualKeys > 0 ? askFirst : hapticsSave({ all: false }),
+          },
         },
       ] } },
       fallback: t(hapticsOn ? "On" : "Off", "writtenLight", 17, { lineHeight: 24 }),
@@ -7950,7 +8026,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
     type: "Button",
     props: {
       label: labelText, variant: primary ? "primary" : "secondary",
-      labelColor: primary ? "#1C1640" : PHONE_LOOK.ink, fontSize: 10, fontWeight: "600", tracking: 1.6,
+      labelColor: primary ? "#1C1640" : PHONE_LOOK.ink, fontSize: 12, fontWeight: "600", tracking: 0.3,
       paddingVertical: 0, paddingHorizontal: 18, radius: 12,
     },
     on: { onPress: action },
@@ -7972,12 +8048,12 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
         type: "Stack",
         style: { flexDirection: "row", gap: 10, marginTop: 22 },
         children: [
-          smallButton("I KNOW", { kind: "sequence", actions: [
+          smallButton("I Know", { kind: "sequence", actions: [
             { kind: "setState", path: "askHapticsOff", value: false },
             { kind: "setState", path: "hapticsOn", value: false },
             hapticsSave({ all: false, clear: true }),
           ] }, false),
-          smallButton("LEAVE IT", { kind: "setState", path: "askHapticsOff", value: false }, true),
+          smallButton("Leave It", { kind: "setState", path: "askHapticsOff", value: false }, true),
         ],
       },
     ],
@@ -8080,7 +8156,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
                 underGreeting,
                 voiceCard(voiceName, voiceLine, activeId),
                 trainCard(),
-                settingCard("Dictionary", [
+                settingCard("Book", [
                   {
                     type: "Stack",
                     style: { flexDirection: "row", flexWrap: "wrap", alignItems: "flex-end", gap: 22, marginTop: 14 },
@@ -8088,17 +8164,19 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
                     // says what it is, and "None yet" said nothing more.
                     children: fixes.map((f) => proofMark(f.was, f.word)),
                   },
-                  ...(wordCount > 0 ? [label(`${wordCount} words`, { marginTop: 14 })] : []),
-                ], "dictionary", YOU_CARD_FILL.dictionary, { marginBottom: YOU_CARD_GAP, minHeight: 104 }),
+                ], "Create Your Signs And Give A Meaning", "dictionary", YOU_CARD_FILL.dictionary,
+                  { marginBottom: YOU_CARD_GAP, minHeight: CARD_MIN.small },
+                  wordCount > 0 ? label(`${wordCount} words`, { color: "rgba(243,226,198,0.62)" }) : undefined),
                 {
                   type: "Stack",
                   style: { flexDirection: "row", gap: 14 },
                   children: [
-                    settingCard("Languages", langLabel ? [
-                      t(langLabel, "writtenLight", 17, { lineHeight: 24, marginTop: 14 }),
-                    ] : [], "languages", YOU_CARD_FILL.languages, { flex: 1, minHeight: 104 }),
-                    settingCard("Haptics", [hapticsSwitch],
-                      "haptics", YOU_CARD_FILL.haptics, { flex: 1, minHeight: 104 }),
+                    settingCard(languageTitle(langCodes), langLabel ? [
+                      t(langLabel, "writtenLight", 15, { lineHeight: 22, marginTop: 12 }),
+                    ] : [], "Do You Speak More Than One Tongue?", "languages", YOU_CARD_FILL.languages,
+                      { flex: 1, minHeight: CARD_MIN.pair }),
+                    settingCard("Buzz", [], "Your Touch Makes Them Shiver", "haptics", YOU_CARD_FILL.haptics,
+                      { flex: 1, minHeight: CARD_MIN.pair }, hapticsSwitch),
                   ],
                 },
                 statsCard(),
@@ -8231,10 +8309,11 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     const set = DESK_SAMPLES[id];
     if (!set) return [];
     const f = faceFor(roomId);
-    return DESK_CONTEXTS.map((c) => ({
-      ...t(set[c.id], f.face, f.size, { lineHeight: Math.round(f.size * 1.45), color: ink, marginTop: 12, ...(f.style ?? {}) }),
-      visibleIf: { eq: ["vctx", c.id] },
-    }) as Node);
+    // keepCase: a sample shows writing exactly as the voice writes it.
+    return DESK_CONTEXTS.map((c) => {
+      const n = t(set[c.id], f.face, f.size, { lineHeight: Math.round(f.size * 1.45), color: ink, marginTop: 12, ...(f.style ?? {}) });
+      return { ...n, props: { ...n.props, keepCase: true }, visibleIf: { eq: ["vctx", c.id] } } as Node;
+    });
   };
   const voiceCardOf = (preset: (typeof effective)[number], opts: {
     onPress: ActionRef; kicker?: Node; sign?: (ink: string) => Node; live?: boolean;
@@ -8267,7 +8346,9 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
         },
         ...(opts.kicker ? [t(preset.name, "writtenLight", 20, { color: ink, marginTop: 10 })] : []),
         ...(shown.length ? shown
-          : own ? [t(own.length > 140 ? `${own.slice(0, 137)}…` : own, "written", 15, { lineHeight: 22, color: ink, marginTop: 10 })]
+          // A custom voice's own instructions, as its owner wrote them.
+          : own ? [{ ...t(own.length > 140 ? `${own.slice(0, 137)}…` : own, "written", 15, { lineHeight: 22, color: ink, marginTop: 10 }),
+                     props: { content: own.length > 140 ? `${own.slice(0, 137)}…` : own, keepCase: true } } as Node]
           : []),
         ...(tagline ? [label(tagline, { color: dim, marginTop: 12, letterSpacing: 1.2 })] : []),
       ],
@@ -8331,7 +8412,10 @@ function voicesScreen(ctx: ScreenContext): ScreenResponse {
     type: "Stack",
     visibleIf: { eq: ["vctx", c.id] },
     style: { marginTop: 28, marginBottom: 16 },
-    children: [label("You said"), t(c.said, "said", 19, { lineHeight: 24, color: PHONE_LOOK.ink2, marginTop: 8 })],
+    children: [label("You said"), {
+      type: "Stack", props: { keepCase: true },
+      children: [t(c.said, "said", 19, { lineHeight: 24, color: PHONE_LOOK.ink2, marginTop: 8 })],
+    }],
   }) as Node);
 
   return {
@@ -8614,7 +8698,8 @@ function personalityDetailScreen(p: Personality, presetId: string | undefined): 
         // A voice's own instruction is what describes it — except Zu's, which
         // is deliberately empty, because Zu asserts nothing and lets the
         // portrait describe the voice. Its description says so in words.
-        { type: "Text", props: { content: preset.promptStyle || preset.description }, style: { fontSize: 16, color: "$color.text", lineHeight: 24 } },
+        // The voice's own instructions, as written: keepCase (titleCase.ts).
+        { type: "Text", props: { content: preset.promptStyle || preset.description, keepCase: true }, style: { fontSize: 16, color: "$color.text", lineHeight: 24 } },
         gap(28),
         { type: "Button", props: { label: "Use this voice", variant: "primary" }, on: { onPress: "use" } },
         gap(10),
@@ -9430,7 +9515,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
    * One card's worth of detail: what it is, its number, a way out, and
    * everything behind the number, scrolling inside itself.
    */
-  const panel = (id: string, title: string | Node, value: string | Node, unit: string, inner: Node[]): Node => ({
+  const panel = (id: string, title: string | Node, value: string | Node, unit: string, inner: Node[], footer?: Node): Node => ({
     type: "Stack",
     visibleIf: { eq: ["openCard", id] },
     style: { flex: 1 },
@@ -9443,7 +9528,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
             type: "Stack",
             style: { flex: 1 },
             children: [
-              typeof title === "string" ? label(title) : title,
+              typeof title === "string" ? t(title, "uiBold", 12, { letterSpacing: 1.4, textTransform: "uppercase", color: u.onCardDim }) : title,
               typeof value === "string"
                 ? t(unit ? `${value} ${unit}` : value, "writtenLight", 30, { letterSpacing: -0.8, marginTop: 6 })
                 : value,
@@ -9466,9 +9551,27 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
           },
         ],
       },
-      { type: "Screen", style: { backgroundColor: "transparent", paddingHorizontal: 0, paddingTop: 4 },
-        children: [...inner, { type: "Spacer", style: { height: 28 } }] },
+      // The detail scrolls inside the card, all of it: the card is a fixed
+      // height and this is the part that takes the rest.
+      { type: "Screen", props: { paddingBottom: 28 }, style: { backgroundColor: "transparent", paddingHorizontal: 0, paddingTop: 4 },
+        children: inner },
+      ...(footer ? [footer] : []),
     ],
+  });
+  /** A card's way on to the screen where its list is edited. Stays in view. */
+  const editButton = (text: string, screenId: string): Node => ({
+    type: "Button",
+    props: {
+      label: text, variant: "primary",
+      labelColor: u.card, fontSize: 13, fontWeight: "600", tracking: 0.4,
+      paddingVertical: 0, paddingHorizontal: 22, radius: 12,
+    },
+    on: { onPress: { kind: "sequence", actions: [
+      { kind: "haptic", style: "selection" },
+      { kind: "clearState", path: "openCard" },
+      { kind: "navigate", screenId },
+    ] } },
+    style: { backgroundColor: u.onCard, height: 46, marginTop: 12 },
   });
 
   const weeks = bucket(perDay, 4);
@@ -9635,17 +9738,33 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
         // was amber) all but vanished on it.
         settingsGear("dark"),
 
-        // THE DETAIL. One Modal, one `openCard`, a panel for each thing that
-        // opens — rather than a Modal each, which would be things that can be
-        // open at once and one bug away from being.
+        // THE DETAIL. One overlay, one `openCard`, a panel for each thing
+        // that opens. An overlay rather than a Modal: the Modal set its card
+        // inside a pressable frame, and a long card (every language, the whole
+        // dictionary) was cut at the bottom instead of scrolling. Here nothing
+        // pressable holds the card; the frosted page behind it closes it.
         {
-          type: "Modal",
-          bind: { open: "openCard" },
-          props: { blur: true, blurIntensity: 40, blurTint: "light" },
-          on: { onDismiss: "closeCard" },
+          type: "Stack",
+          visibleIf: { truthy: "openCard" },
           style: {
-            backgroundColor: u.card, borderRadius: 18,
-            padding: 18, width: "92%", height: "80%",
+            position: "absolute", left: 0, top: 0, right: 0, bottom: 0,
+            alignItems: "center", justifyContent: "center",
+            paddingHorizontal: 14, paddingTop: 56, paddingBottom: 20,
+          },
+          children: [
+            { type: "BlurBackground", props: { intensity: 40, tint: "dark" },
+              style: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0 } },
+            {
+              type: "Stack",
+              on: { onPress: "closeCard" },
+              props: { pressOpacity: 1 },
+              style: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0, backgroundColor: "rgba(10,8,7,0.6)" },
+            },
+            {
+          type: "Stack",
+          style: {
+            backgroundColor: u.card, borderRadius: 18, overflow: "hidden",
+            padding: 18, width: "100%", maxWidth: 460, height: "100%",
           },
           children: [
             // Opened from the said-and-typed race, which an empty month does
@@ -9738,7 +9857,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
                 secLab("Pace"),
                 line("Words a minute, said", wpm, true),
                 line("Spoken, last 30 days", spokenMinutes ? span(spokenMinutes) : "—", true),
-              ]);
+              ], editButton("Add languages", "languages"));
             })(),
 
             dayPanel,
@@ -9837,7 +9956,7 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
                 secLab("Never turned up"),
                 ...st.dictionary.unusedWords.map((w) => line(w, "—", true)),
               ] : []),
-            ]),
+            ], editButton("Add words", "dictionary")),
 
             panel("voices", "Voices", topVoiceShare, topVoiceShare === "—" ? "" : "top", [
               secLab("Who writes for you"),
@@ -9911,6 +10030,8 @@ function statsScreen(ctx: ScreenContext): ScreenResponse {
                 : []),
             ])] : []),
           ],
+            },
+          ],
         },
       ],
     },
@@ -9968,7 +10089,7 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
     type: "Button",
     props: {
       label: text, variant: keep ? "primary" : "secondary",
-      labelColor: keep ? u.ground : u.onCard, fontSize: 10, fontWeight: "600", tracking: 1.6,
+      labelColor: keep ? u.ground : u.onCard, fontSize: 12, fontWeight: "600", tracking: 0.3,
       paddingVertical: 0, paddingHorizontal: 18, radius: 12,
     },
     on: { onPress: action },
@@ -9991,9 +10112,9 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
         type: "Stack",
         style: { gap: 10, marginTop: 22 },
         children: [
-          choice("IT DOESN'T SOUND LIKE ME", "deleteNotMe"),
-          choice("JUST A CLEAN-UP", "deleteCleanup"),
-          choice("LEAVE IT", "keepEntry", true),
+          choice("It Doesn't Sound Like Me", "deleteNotMe"),
+          choice("Just A Clean-Up", "deleteCleanup"),
+          choice("Leave It", "keepEntry", true),
         ],
       },
     ],

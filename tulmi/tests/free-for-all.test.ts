@@ -50,7 +50,7 @@ describe("Tailzu is free for everyone", () => {
   it("the paywall and the out-of-words screen say it is free, and sell nothing", () => {
     for (const id of ["paywall", "words_out"]) {
       const j = JSON.stringify(buildScreen(id, { personality: {}, language: "en" } as never));
-      expect(j).toContain("Tailzu is free");
+      expect(j).toContain("Tailzu Is Free");
       expect(j).not.toMatch(/iap\./);
     }
   });

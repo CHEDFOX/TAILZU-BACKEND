@@ -54,7 +54,7 @@ describe("the You tab's posters", () => {
     // Three colours, not one stamped three times, and none of them amber.
     expect(new Set(cards.map((c: any) => c.style.backgroundColor)).size).toBe(3);
     expect(JSON.stringify(cards)).not.toMatch(/E8A23C|232,\s*162,\s*60/i);
-    for (const [name, id] of [["Dictionary", "dictionary"], ["Languages", "languages"], ["Haptics", "haptics"]]) {
+    for (const [name, id] of [["Book", "dictionary"], ["LANGUAGE", "languages"], ["Buzz", "haptics"]]) {
       const card = cards.find((c: any) => JSON.stringify(c).includes(`"${name}"`));
       expect(JSON.stringify(card.on), name).toContain(`"screenId":"${id}"`);
     }
@@ -82,7 +82,7 @@ describe("the You tab's posters", () => {
     expect(card.style.backgroundColor).toBe("#1E1946");
     const button = find(card, (o) => o.type === "Button")[0];
     expect(button.on).toEqual({ onPress: "enterTraining" });
-    expect(button.props.label).toBe("BEGIN");
+    expect(button.props.label).toBe("Begin");
   });
 
   it("the training card always draws the live field, whatever is uploaded at you.train", () => {
@@ -100,7 +100,7 @@ describe("the You tab's posters", () => {
 
 describe("the onboarding films", () => {
   it("the keyboard film carries the title: the heading steps aside only where there is a film", () => {
-    const heading = (root: any) => find(root, (o) => o.type === "Heading" && o.props?.content === "Bring it everywhere.");
+    const heading = (root: any) => find(root, (o) => o.type === "Heading" && o.props?.content === "Bring It Everywhere.");
     expect(heading(screen("onboarding_keyboard").root)[0].visibleIf).toBeUndefined();
     reg({ "hero.onboarding_keyboard.card": entry("https://m/keys-ios.mp4", "video/mp4") });
     expect(heading(screen("onboarding_keyboard").root)[0].visibleIf).toEqual({ platform: "android" });

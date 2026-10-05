@@ -253,9 +253,9 @@ describe("payments, end to end", () => {
     // --- and stops selling --------------------------------------------------
     const screen = JSON.stringify((await paywall()).json());
     expect(screen).not.toContain("iap.");
-    expect(screen).toContain("covers this account");
+    expect(screen).toContain("Covers This Account");
     expect(screen).toContain("apps.apple.com");
-    expect(screen).toContain("Billed through Apple");
+    expect(screen).toContain("Billed Through Apple");
   });
 
   it("sends a desktop buyer to the web, and a phone buyer never", async () => {
@@ -341,6 +341,6 @@ describe("payments, end to end", () => {
     const play = (await bootstrap()).json();
     expect(play.flags["billing.manage.google"]).toBe(true);
     expect(play.flags["billing.manage.url"]).toContain("play.google.com");
-    expect(JSON.stringify((await paywall()).json())).toContain("Billed through Google Play");
+    expect(JSON.stringify((await paywall()).json())).toContain("Billed Through Google Play");
   });
 });

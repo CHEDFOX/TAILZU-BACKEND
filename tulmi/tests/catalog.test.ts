@@ -25,6 +25,7 @@ import {
 } from "../src/experience/catalog.js";
 import { getConfig, resetConfigForTests } from "../src/config.js";
 import { PERSONALITY_PRESETS } from "../src/experience/personalityPresets.js";
+import { titleCase } from "../src/experience/titleCase.js";
 
 describe("the arrival prompt", () => {
   const flags = (o: Parameters<typeof buildBootstrap>[0]) =>
@@ -87,7 +88,7 @@ describe("the mic step asks with one control, not two offers", () => {
     const [dismiss, accept] = pill().children;
     expect(dismiss.on.onPress).toBe("goKeyboard");
     expect(accept.on.onPress).toBe("allowMic");
-    expect(accept.children[0].props.content).toBe("Allow access");
+    expect(accept.children[0].props.content).toBe("Allow Access");
   });
 
   it("gives the answer the room and the dismiss a fixed corner", () => {
@@ -166,7 +167,7 @@ describe("the paywall shows the free tier without selling it", () => {
     expect(shown).toMatch(/cancel/i);
     // And the three controls a store checks for are still on it.
     for (const label of ["Restore purchases", "Terms", "Privacy"]) {
-      expect(shown).toContain(label);
+      expect(shown).toContain(titleCase(label));
     }
   });
 
@@ -191,11 +192,11 @@ describe("the paywall shows the free tier without selling it", () => {
     // 2500 while config defaults to 800, so the app promised 2,500 words and
     // the meter cut users off at 800. One reader now, through getConfig.
     const { rows } = plans();
-    const shown = textsOf(rows[rows.length - 1]).find((s) => /words a month$/.test(s));
+    const shown = textsOf(rows[rows.length - 1]).find((s) => /words a month$/i.test(s));
     const flags = (buildBootstrap({}).flags ?? {}) as Record<string, unknown>;
-    expect(shown).toBe(
+    expect(shown).toBe(titleCase(
       `${Number(flags["quota.freeMonthlyWords"]).toLocaleString()} words a month`,
-    );
+    ));
   });
 });
 
@@ -240,11 +241,11 @@ describe("the keyboard step speaks each platform's language", () => {
     // Android; following them there is a dead end, not a detour.
     const t = screen();
     expect(t).toContain("Allow Full Access");
-    expect(t).toContain("keyboard list");
+    expect(t).toContain("Keyboard List");
   });
 
   it("names the warning that actually stops Android users", () => {
-    expect(screen()).toContain("read what you type");
+    expect(screen()).toContain("Read What You Type");
   });
 
   it("gives Android a button that deep-links instead of an iOS URL scheme", () => {
@@ -830,17 +831,17 @@ describe("buildScreen", () => {
     const paid = buildScreen("stats", { personality: {}, language: "en", allowance, entitlement: { store: "app_store" } } as never)!;
     const free = buildScreen("stats", { personality: {}, language: "en", allowance } as never)!;
     expect(texts(paid.root)).not.toContain("Words left");
-    expect(texts(paid.root)).toContain("Words this month");
+    expect(texts(paid.root)).toContain("Words This Month");
     expect(texts(paid.root).some((c) => /earned/i.test(c))).toBe(false);
     expect(types(paid.root)).not.toContain("WordMeter");
     // 742 of 120,000: the line has barely begun.
     expect(types(paid.root)).toContain("Stack:0.6%");
-    expect(texts(free.root)).toContain("Words left");
+    expect(texts(free.root)).toContain("Words Left");
     // The free plan's meter is a thin line of what is left (318 of 1,060),
     // with what was earned said in words beneath it — not the old block meter.
     expect(types(free.root)).not.toContain("WordMeter");
     expect(types(free.root)).toContain("Stack:30.0%");
-    expect(texts(free.root)).toContain("260 of these you earned by turning up.");
+    expect(texts(free.root)).toContain("260 Of These You Earned By Turning Up.");
   });
 
   it("Settings is reachable — the tab roots hide the header the gear lived in", () => {
@@ -885,8 +886,8 @@ describe("buildScreen", () => {
     // nothing at all still fails.
     const entry = TRAINING_UI.entry;
     expect(entry.title.trim().length).toBeGreaterThan(0);
-    expect(json).toContain(entry.title);
-    expect(json).toContain(entry.cta.label);
+    expect(json).toContain(titleCase(entry.title));
+    expect(json).toContain(titleCase(entry.cta.label));
   });
 
   it("Training live is a real conversation: a session, the field, and one read at the end", () => {
@@ -958,7 +959,7 @@ describe("buildScreen", () => {
     // out of things to ask.
     expect(json).toContain('"$state._pick.next"');
     // A bundle without ChatThread must say so rather than render a hole.
-    expect(json).toContain("Update the app");
+    expect(json).toContain("Update The App");
     // Blurred voice sheet: Core style + the whole voice library.
     expect(json).toContain('"blur":true');
     expect(json).toContain('"open":"toneSheetOpen"');
@@ -1008,7 +1009,7 @@ describe("buildScreen", () => {
     const json = JSON.stringify(screen);
     expect(json).toContain("professional restraint"); // from the preset promptStyle
     // Not pinned yet → the action offers to add it to the keyboard toggle.
-    expect(json).toContain("Add to keyboard");
+    expect(json).toContain("Add To Keyboard");
 
     // When already pinned, the same screen offers to remove it.
     const pinnedScreen = buildScreen("personality_detail", {
@@ -1017,7 +1018,7 @@ describe("buildScreen", () => {
       language: "en",
       params: { presetId: "professional" },
     });
-    expect(JSON.stringify(pinnedScreen)).toContain("Remove from keyboard");
+    expect(JSON.stringify(pinnedScreen)).toContain("Remove From Keyboard");
   });
 
   it("unknown tone id falls back to the first preset instead of erroring", () => {
@@ -1152,7 +1153,7 @@ describe("buildKeyboardConfig", () => {
         // A tile is the pressable whose first child is its label and whose
         // second is the value row. The panels behind them repeat the same
         // words, so match on the shape and not on the words alone.
-        if (!hit && n?.on?.onPress && n?.children?.[0]?.props?.content === label
+        if (!hit && n?.on?.onPress && [label, titleCase(label)].includes(n?.children?.[0]?.props?.content)
             && n?.children?.[1]?.children?.[0]?.props?.content != null) hit = n;
         for (const c of n?.children ?? []) walk(c);
       };
@@ -1342,26 +1343,26 @@ describe("the You tab reads like a face", () => {
     for (const m of ["card.dictionary", "card.languages", "card.haptics"]) {
       expect(json, `${m} should not be behind a row`).not.toContain(m);
     }
-    // Still every setting visible without a tap, with its value on it.
-    for (const l of ["Dictionary", "Languages", "Haptics"]) expect(json).toContain(`"${l}"`);
+    // Still every setting visible without a tap, each card under its name:
+    // Book, the word "language" turning through languages, and Buzz.
+    for (const l of ["Book", "LANGUAGE", "Buzz"]) expect(json).toContain(`"${l}"`);
     // And every one still one tap from its screen.
     for (const c of ["voices", "dictionary", "languages", "haptics"]) expect(json).toContain(`"${c}"`);
   });
 
-  it("says how the voice writes, not just which one is on", () => {
-    // Every voice carries a tagline and it has never been on this screen. The
-    // name tells you which voice is on; the line tells you what that MEANS,
-    // which is the thing anybody opening this tab wanted to know.
+  it("names the voice in bold, and says what it is for in the hand", () => {
+    // The owner's card: the voice's own name as the title (ZU when Zu is on)
+    // and one line in the hand at the foot. Nothing between.
     const s = you({ personality: { activePresetId: "signature" }, language: "en" } as never);
     const json = JSON.stringify(s);
     expect(json).toContain('"voiceName"');
-    expect(json).toContain("WRITING AS");
-    // The line itself comes from the preset, so read it from there — retuning
-    // a voice must never mean editing this file.
     const zu = PERSONALITY_PRESETS.find((p) => p.id === "signature")!;
-    expect(json).toContain(zu.name);
-    expect(json, "the card says which voice is on, not how it writes")
-      .toContain(zu.tagline);
+    expect(json).toContain(`"content":"${zu.name}"`);
+    expect(json).toContain('"textTransform":"uppercase"');
+    expect(json).toContain("Write Thoughts Your Way");
+    expect(json).not.toContain("WRITING AS");
+    const pirate = JSON.stringify(you({ personality: { activePresetId: "pirate" }, language: "en" } as never));
+    expect(pirate).toContain("Write Thoughts Your Way");
   });
 
   it("lists every language chosen on its card, however many", () => {
@@ -1395,26 +1396,31 @@ describe("the You tab reads like a face", () => {
     return out;
   };
 
-  it("puts a switch on the Haptics card, and asks first only when keys were picked by hand", () => {
+  it("puts a switch on the Haptics card, and asks every time keys were picked by hand", () => {
     const plain = you({ personality: { hapticsAll: true } });
     const sw = findIn(plain.root, (o) => o.type === "Switch");
     expect(sw).toHaveLength(1);
     expect((sw[0] as any).bind.value).toBe("hapticsOn");
     expect(plain.state.hapticsOn).toBe(true);
-    // Nothing picked by hand: off is simply off.
-    const off = JSON.stringify((sw[0] as any).on.onChange);
-    expect(off).toContain('"all":false');
-    expect(off).not.toContain("askHapticsOff");
+    // Turning off reads the keys from the server at that moment — not from
+    // when the tab was drawn — and asks only when some were picked by hand.
+    const off = (sw[0] as any).on.onChange.actions[1].else;
+    expect(off).toMatchObject({ kind: "callEndpoint", method: "GET", path: "/v1/personality" });
+    expect(off.onSuccess.if).toEqual({ truthy: "_hapticsNow.personality.hapticKeys.0" });
+    expect(JSON.stringify(off.onSuccess.then)).toContain('"path":"askHapticsOff","value":true');
+    expect(JSON.stringify(off.onSuccess.else)).toContain('"all":false');
+    // Unreadable: what the tab knew. Nothing picked, so off is simply off.
+    expect(JSON.stringify(off.onError)).not.toContain("askHapticsOff");
 
     const picked = you({ personality: { hapticKeys: ["a", "s"] } });
     expect(picked.state.hapticsOn).toBe(true);
-    const change = JSON.stringify((findIn(picked.root, (o) => o.type === "Switch")[0] as any).on.onChange);
-    expect(change).toContain('"path":"askHapticsOff","value":true');
+    const pickedOff = (findIn(picked.root, (o) => o.type === "Switch")[0] as any).on.onChange.actions[1].else;
+    expect(JSON.stringify(pickedOff.onError)).toContain('"path":"askHapticsOff","value":true');
     const ask = findIn(picked.root, (o) => o.type === "Modal" && (o.bind as any)?.open === "askHapticsOff");
     expect(ask).toHaveLength(1);
     const askJson = JSON.stringify(ask[0]);
-    expect(askJson).toContain("I KNOW");
-    expect(askJson).toContain("LEAVE IT");
+    expect(askJson).toContain("I Know");
+    expect(askJson).toContain("Leave It");
     expect(askJson).toContain('"clear":true');
   });
 
@@ -1426,24 +1432,17 @@ describe("the You tab reads like a face", () => {
 
   it("gives nothing on the tab the amber — the voice's dot is in its card's ink", () => {
     // Amber marks what is live right now (recording, listening, a live voice
-    // session). The voice that writes is a setting, not a live thing, so the
-    // dot beside WRITING AS wears its card's own ink, and the tab carries the
-    // accent nowhere.
-    const s = you();
+    // session). Everything on this tab is a setting, so the accent is
+    // nowhere — not even today's bar on the Stats card.
+    const s = you({ personality: {}, language: "en", stats: { wordsPerDay: [3, 0, 9, 4] } } as never);
     let amber = 0;
-    const dots: any[] = [];
     const walk = (n: any) => {
       const st = n?.style ?? {};
       if (st.backgroundColor === YOU_UI.accent || st.color === YOU_UI.accent || st.borderColor === YOU_UI.accent) amber++;
-      if (st.width === 5 && st.height === 5 && st.borderRadius === 2.5) dots.push(n);
       for (const c of n?.children ?? []) walk(c);
     };
     walk(s.root);
     expect(amber).toBe(0);
-    // The dot is still there — one, beside the voice — just not amber.
-    expect(dots).toHaveLength(1);
-    expect(dots[0].style.backgroundColor).toBeTruthy();
-    expect(dots[0].style.backgroundColor).not.toBe(YOU_UI.accent);
     const json = JSON.stringify(s).toUpperCase();
     expect(json).not.toContain(YOU_UI.accent.toUpperCase());
     expect(json).not.toContain("232,162,60");
@@ -1546,11 +1545,13 @@ describe("the charts show measured things, or nothing", () => {
 });
 
 describe("the You tab greets you by name", () => {
+  // The greeting's FlipText, not the Language card's (which turns its own
+  // word, "LANGUAGE", through the languages).
   const find = (ctx: Record<string, unknown>, type: string) => {
     const s = buildScreen("personality", ctx as never);
     let found: Record<string, any> | null = null;
     const walk = (n: any): void => {
-      if (n?.type === type && !found) found = n;
+      if (n?.type === type && !found && (type !== "FlipText" || n.props?.variant === "greetHello")) found = n;
       for (const c of n?.children ?? []) walk(c);
     };
     walk((s as any).root);
@@ -1836,11 +1837,11 @@ describe("Android is never shown an empty step", () => {
     const json = JSON.stringify(buildScreen("onboarding_keyboard", {
       personality: {}, language: "en", platform: "android",
     } as never));
-    expect(json).toContain("Manage keyboards");
-    expect(json).toContain("On-screen keyboard");
+    expect(json).toContain("Manage Keyboards");
+    expect(json).toContain("On-Screen Keyboard");
     // The notice that actually stops people, named rather than left as a
     // surprise — the same fact step 3 states in words.
-    expect(json).toContain("collect all the text you type");
+    expect(json).toContain("Collect All The Text You Type");
     expect(json).toContain('"platform":"android"');
   });
 });
@@ -1992,7 +1993,7 @@ describe("the training tab shows what it has learned", () => {
       can: new Set(["ScreenHoldTouches"]),
       stats: { wordsPerDay: [0, 40, 0, 120, 60, 0, 220] },
     } as never));
-    expect(json).toContain("What it learns from");
+    expect(json).toContain("What It Learns From");
   });
 
   it("draws no feed when there are no days to draw", () => {
@@ -2009,7 +2010,7 @@ describe("the training tab shows what it has learned", () => {
     // A ring with no slices and three tiles of 0 reads as a broken screen on
     // the one day it has to read as an invitation.
     const json = home();
-    expect(json).toContain("Nothing learned yet.");
+    expect(json).toContain("Nothing Learned Yet.");
     expect(json).not.toContain('"PieChart"');
   });
 });
@@ -2025,7 +2026,7 @@ describe("a voice is opened, not switched under your finger", () => {
     // of you when you decide.
     const json = voices();
     expect(json).toContain('"vcOpen"');
-    expect(json).toContain("Write as this voice");
+    expect(json).toContain("Write As This Voice");
     // EVERY style row, not one of them. This was wrong once: the edit action
     // landed on Zu's block and the rows kept switching voices under the
     // finger, which looks from the outside exactly like a change that never
@@ -2090,7 +2091,7 @@ describe("Zu is not a voice in the list", () => {
     const zu = PERSONALITY_PRESETS.find((p) => p.id === "signature")!;
     const json = voices();
     expect(json).toContain(zu.name);
-    expect(json).toContain(zu.tagline);
+    expect(json).toContain(titleCase(zu.tagline));
   });
 
   it("marks Zu while it is the voice writing — in its ink, never amber", () => {
@@ -2392,8 +2393,9 @@ describe("training lives on You, as a card", () => {
     const s = you();
     expect(find(s.root, (o) => o.type === "NeuralField").length).toBe(1);
     const texts = find(s.root, (o) => o.type === "Text").map((o) => (o.props as { content?: string })?.content);
-    // One odd line and the button. No kicker, no counts.
-    expect(texts).toContain("Talk weird. It learns weird.");
+    // Its name, BIRZU, a line in the hand, and the button. No kicker, no counts.
+    expect(texts).toContain("BIRZU");
+    expect(texts).toContain("Hey Master, Make Me Like You");
     expect(texts).not.toContain("IT LEARNS YOU");
     expect(texts).not.toContain("Talk once and it starts learning you.");
   });
@@ -2436,5 +2438,23 @@ describe("the motion language", () => {
     const { funcs } = compile({ funcs: {} });
     expect(evaluate({ k: "call", name: "constructor", args: [] }, {}, funcs)).toBe(0);
     expect(evaluate({ k: "call", name: "toString", args: [] }, {}, funcs)).toBe(0);
+  });
+});
+
+describe("the You tab's Language card", () => {
+  it("turns the word LANGUAGE through languages, in their own scripts, unlike the greeting", () => {
+    const s = buildScreen("personality", { personality: { languages: ["ta", "hi"] }, language: "en" } as never) as any;
+    const flips: any[] = [];
+    const walk = (n: any) => { if (n?.type === "FlipText") flips.push(n); for (const c of n?.children ?? []) walk(c); };
+    walk(s.root);
+    const lang = flips.find((f) => f.props.words[0] === "LANGUAGE")!;
+    const greet = flips.find((f) => f.props.variant === "greetHello")!;
+    // The person's own languages come right after English.
+    expect(lang.props.words.slice(0, 3)).toEqual(["LANGUAGE", "மொழி", "भाषा"]);
+    expect(new Set(lang.props.words).size).toBe(lang.props.words.length);
+    // A different movement from the greeting's.
+    expect(lang.props.flip).toBe("turn");
+    expect(greet.props.flip).not.toBe(lang.props.flip);
+    expect(JSON.stringify(s)).toContain("Do You Speak More Than One Tongue?");
   });
 });

@@ -66,7 +66,7 @@ describe("the screen route and History", () => {
     const tpl = JSON.stringify(s.root);
     expect(tpl).toContain('"onPress":"askDelete"');
     expect(tpl).toContain('"onLongPress":"askDelete"');
-    for (const b of ["IT DOESN'T SOUND LIKE ME", "JUST A CLEAN-UP", "LEAVE IT"]) expect(tpl).toContain(b);
+    for (const b of ["It Doesn't Sound Like Me", "Just A Clean-Up", "Leave It"]) expect(tpl).toContain(b);
     expect(JSON.stringify(s.actions.deleteNotMe)).toContain("/v1/history/$state.item.id?reason=not_me");
     expect(JSON.stringify(s.actions.deleteCleanup)).toContain("?reason=cleanup");
     expect(s.actions.keepEntry).toEqual({ kind: "setState", path: "askDelete", value: false });

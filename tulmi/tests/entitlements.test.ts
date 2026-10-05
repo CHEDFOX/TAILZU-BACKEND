@@ -357,10 +357,10 @@ describe("the paywall, for somebody who already pays", () => {
       if (plan.price) expect(json).not.toContain(plan.price);
       expect(json).not.toContain(plan.id);
     }
-    expect(json).toContain("covers this account");
+    expect(json).toContain("Covers This Account");
     // The store, named exactly once, where somebody would look for it.
     expect(json).toContain("apps.apple.com");
-    expect(json).toContain("Change or cancel");
+    expect(json).toContain("Change Or Cancel");
   });
 
   it("names the right store, and no store it cannot place", () => {
@@ -374,7 +374,7 @@ describe("the paywall, for somebody who already pays", () => {
     const promo = JSON.stringify(buildScreen("paywall", {
       personality: {}, language: "en", entitlement: { store: "promotional" },
     } as never));
-    expect(promo).toContain("covers this account");
+    expect(promo).toContain("Covers This Account");
     expect(promo).not.toContain("Change or cancel");
   });
 });
@@ -391,8 +391,8 @@ describe("who is charging, and when next", () => {
 
   it("names the biller and the date together", () => {
     const json = paywall({ store: "app_store", expiresAt: inAMonth });
-    expect(json).toContain("Billed through Apple");
-    expect(json).toContain("renews");
+    expect(json).toContain("Billed Through Apple");
+    expect(json).toContain("Renews");
   });
 
   it("says nothing when either half is missing", () => {
@@ -415,7 +415,7 @@ describe("who is charging, and when next", () => {
     // The line is an addition, never a precondition: somebody whose expiry we
     // cannot read is still a subscriber and must not be sold to.
     const json = paywall({ store: "app_store" });
-    expect(json).toContain("covers this account");
+    expect(json).toContain("Covers This Account");
     expect(json).not.toContain("iap.");
   });
 });

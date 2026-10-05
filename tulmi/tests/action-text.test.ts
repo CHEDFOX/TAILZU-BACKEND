@@ -68,7 +68,7 @@ describe("words an action shows", () => {
     expect(tap([])).toEqual({ kind: "haptic", style: "selection" });
     const sub = (can: string[]) => JSON.stringify(build("history", can).root);
     expect(sub(["ActionText"])).toContain("@history.subtitle");
-    expect(sub([])).toContain("× to remove.");
+    expect(sub([])).toContain("× To Remove.");
     expect(sub([])).not.toContain("@history.subtitle");
   });
 
