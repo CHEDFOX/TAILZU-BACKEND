@@ -13461,6 +13461,13 @@ export function buildKeyboardConfig(
         // 350: Gboard holds about 300, iOS a little longer. A tap is under
         // 120 ms, so nothing deliberate is caught by it.
         "kb.accentTray.longPressMs": 350,
+        // Any other hold (a key's alternates), on the same clock.
+        "kb.longPress.ms": 350,
+        // How often an open may refetch this config. Every 3 s was a refetch
+        // on almost every open; both keyboards now drop identical bytes
+        // before parsing, and a setting changed in the app still arrives
+        // within half a minute.
+        "kb.config.minRefetchMs": 30000,
         // Which backend errors the keyboard explains, and with which label.
         // 5xx is left out on purpose: those stay silent until voice_unavailable
         // says something users should read.
