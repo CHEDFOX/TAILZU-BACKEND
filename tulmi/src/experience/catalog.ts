@@ -12315,13 +12315,14 @@ const BRAND_MARK = {
  */
 const MIC_PROGRAM = {
   "version": 1,
-  // At rest the mark only breathes, slowly, and both keyboards run the
-  // program on the UI thread for as long as the keyboard is up: at 24 fps
-  // that was a constant quarter of a frame budget spent under every
-  // keystroke. 12 keeps the breath smooth and halves the cost. Recording
-  // stays at 60, the dispersal needs it.
+  // 24 at rest. It was cut to 12 to save work under every keystroke, but
+  // builds before K43 also run the throw home — the mark coming back
+  // together after the microphone closes — at the idle rate, and at 12 it
+  // visibly stuttered. K43 / A4 run the throw home at the recording rate
+  // and stop the program at rest (kb.mic.idleStill), so the idle rate only
+  // matters to the builds already installed, which it must not make worse.
   "fps": {
-    "idle": 12,
+    "idle": 24,
     "rec": 60
   },
   "colors": {
