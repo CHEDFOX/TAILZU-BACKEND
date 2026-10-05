@@ -2543,6 +2543,15 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL, onSend: gzipLargeJson }, asy
   // number lets a control rule target a build range on its own platform.
   const stamp = String(req.headers["x-tulmi-keyboard-build"] ?? "").match(/^([KA])(\d{1,5})$/i);
   const kbPlatform = keyboardPlatform(req.headers["user-agent"]);
+  // WHICH KEYBOARD IS ON THE PHONE, every time one opens. The telemetry
+  // upload says it too, but only every half hour; this says it the moment the
+  // keyboard asks for its settings — and if no line appears when a keyboard
+  // opens, that keyboard is not reaching the server at all.
+  //   docker compose logs backend | grep "keyboard config"
+  req.log.info(
+    { build: stamp ? stamp[0]!.toUpperCase() : "none", platform: kbPlatform, signedIn: !!userId },
+    "keyboard config",
+  );
   const isIosStamp = !!stamp && stamp[1]!.toUpperCase() === "K";
   const kbConfig = buildKeyboardConfig(personality, userId, {
     platform: kbPlatform,
