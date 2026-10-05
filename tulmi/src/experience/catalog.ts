@@ -12315,8 +12315,13 @@ const BRAND_MARK = {
  */
 const MIC_PROGRAM = {
   "version": 1,
+  // At rest the mark only breathes, slowly, and both keyboards run the
+  // program on the UI thread for as long as the keyboard is up: at 24 fps
+  // that was a constant quarter of a frame budget spent under every
+  // keystroke. 12 keeps the breath smooth and halves the cost. Recording
+  // stays at 60, the dispersal needs it.
   "fps": {
-    "idle": 24,
+    "idle": 12,
     "rec": 60
   },
   "colors": {
@@ -13453,7 +13458,9 @@ export function buildKeyboardConfig(
         "kb.accentTray.chipWidth": 40,
         "kb.accentTray.gap": 4,
         "kb.accentTray.height": 48,
-        "kb.accentTray.longPressMs": 500,
+        // 350: Gboard holds about 300, iOS a little longer. A tap is under
+        // 120 ms, so nothing deliberate is caught by it.
+        "kb.accentTray.longPressMs": 350,
         // Which backend errors the keyboard explains, and with which label.
         // 5xx is left out on purpose: those stay silent until voice_unavailable
         // says something users should read.
@@ -13483,10 +13490,12 @@ export function buildKeyboardConfig(
         "kb.confetti.spin": 3,
         "kb.confetti.teardownMs": 3500,
         "kb.confetti.velocity": 200,
-        // delete
-        "kb.delete.initialDelayMs": 500,
-        "kb.delete.repeatIntervalMs": 90,
-        "kb.delete.wordAfterChars": 20,
+        // delete — the native keyboards' cadence: a short wait, then fast.
+        // 500/90 was slower than either; and 20 characters before whole
+        // words go, at 90 ms a word, was a machine gun after two seconds.
+        "kb.delete.initialDelayMs": 400,
+        "kb.delete.repeatIntervalMs": 60,
+        "kb.delete.wordAfterChars": 30,
         // dictation
         "kb.dictation.dim.fadeMs": 250,
         "kb.dictation.dots.alphaSpeed": -0.55,
@@ -13907,8 +13916,15 @@ export function buildKeyboardConfig(
         // `low` is for a quieter mark on the key — a warning, not a stop.
         ...(opts.quota
           ? {
-              "kb.quota.remaining": Math.max(0, Math.round(opts.quota.remaining)),
-              "kb.quota.total": Math.max(0, Math.round(opts.quota.total)),
+              // The numbers only while they mean something. While Tailzu is
+              // free, nothing reads them — and they changed after every
+              // dictation, so the config's bytes changed, and both keyboards
+              // tore themselves down and rebuilt on the next open, often as
+              // the first key went down.
+              ...(freeForAll() ? {} : {
+                "kb.quota.remaining": Math.max(0, Math.round(opts.quota.remaining)),
+                "kb.quota.total": Math.max(0, Math.round(opts.quota.total)),
+              }),
               "kb.quota.exhausted": !freeForAll() && !opts.quota.entitled && opts.quota.remaining <= 0,
               // A share of the ceiling with a fixed floor, both tunable in
               // WORDS_GATE — see the note there on why "nearly out" needs to
