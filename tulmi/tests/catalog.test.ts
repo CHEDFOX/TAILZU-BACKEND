@@ -26,6 +26,8 @@ import {
 import { getConfig, resetConfigForTests } from "../src/config.js";
 import { PERSONALITY_PRESETS } from "../src/experience/personalityPresets.js";
 import { titleCase } from "../src/experience/titleCase.js";
+import { SITE_MIC } from "../src/experience/catalog.js";
+import { parse } from "../src/experience/motionLang";
 
 describe("the arrival prompt", () => {
   const flags = (o: Parameters<typeof buildBootstrap>[0]) =>
@@ -2456,5 +2458,41 @@ describe("the You tab's Language card", () => {
     expect(lang.props.flip).toBe("turn");
     expect(greet.props.flip).not.toBe(lang.props.flip);
     expect(JSON.stringify(s)).toContain("Do You Speak More Than One Tongue?");
+  });
+});
+
+describe("the mic mark's program computes nothing it does not show", () => {
+  const pg = (SITE_MIC as any).program;
+  const { funcs } = compile(pg);
+  const G = (o: Record<string, number>): Ctx => ({ ...pg.vars, R: 10, tau: Math.PI * 2, pi: Math.PI, cols: 6, thick: 1.5, "fn:height": () => 20, ...o });
+  const ev = (src: string, ctx: Ctx) => evaluate(parse(src), ctx, funcs);
+
+  it("draws no sea at rest, and the whole sea once it shows", () => {
+    const rep = pg.emit[0].repeat[0];
+    expect(ev(rep, G({ q: 0 }))).toBe(0);
+    expect(ev(rep, G({ q: 0.0004 }))).toBe(0);
+    expect(ev(rep, G({ q: 0.01 }))).toBe(pg.vars.nt);
+    expect(ev(rep, G({ q: 1 }))).toBe(pg.vars.nt);
+    // A line skipped is a line that could not be seen: its opacity is q times
+    // at most ~0.92.
+    expect(0.0005 * 0.92).toBeLessThan(0.001);
+  });
+
+  it("draws the link's bars and the parts exactly as the full sums would", () => {
+    const fullRise = "max(q*clamp(0.2*cr(i*6) + 1.1*lv*(0.6 + 0.4*sin(t*9 + i*1.7)), 0, 1), run(f, t % period, 1.33, 0.95, 0.3)*(1 - q))";
+    const fullTurbs = "rec ? 0 : bturb*R*abs(p)*(0.6*sin(t*11 + k*2.1) + 0.4*sin(t*17 + k*0.7))";
+    let worst = 0;
+    for (const q of [0, 0.0001, 0.0004, 0.0006, 0.3, 1]) for (const t of [0, 0.7, 1.4, 2.9, 3.5]) for (let i = 0; i < 6; i++) {
+      const c = G({ q, t, i, f: i / 6, lv: 0.3, rec: q > 0.5 ? 1 : 0 });
+      worst = Math.max(worst, Math.abs(ev(pg.shapes.link.rise, c) - ev(fullRise, c)));
+    }
+    expect(worst).toBeLessThan(0.001);
+    let worstT = 0;
+    for (const p of [0, 0.0005, 0.0019, 0.01, 0.5, 1]) for (const t of [0, 1.1, 2.2]) for (const k of [0, 1, 4]) {
+      const c = G({ p, t, k, rec: 0 });
+      worstT = Math.max(worstT, Math.abs(evaluate(funcs.turbs!.ast, c, funcs) - ev(fullTurbs, c)));
+    }
+    // A part within 0.002 of home moved at most bturb*R*0.002 by turbulence.
+    expect(worstT).toBeLessThanOrEqual(pg.vars.bturb * 10 * 0.002 + 1e-9);
   });
 });

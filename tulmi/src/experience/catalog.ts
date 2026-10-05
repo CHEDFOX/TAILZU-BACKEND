@@ -12313,16 +12313,27 @@ const BRAND_MARK = {
  * is a deploy, not a build; `motion` below stays for builds that predate
  * the program. Checked by tests/catalog.test.ts with the same evaluator.
  */
+/*
+ * NOTHING COMPUTED THAT IS NOT SEEN. At rest the 42 lines of the sea are
+ * invisible (their opacity is q, and q is 0), yet every frame worked out
+ * every one of them — ~1,500 function calls and ~29,000 steps a frame, the
+ * same at rest as while recording, under every keystroke. Now the sea is
+ * counted only while it shows (q > 0.0005), the link's bars skip the sea's
+ * crest when there is no sea, and the parts' turbulence is skipped when a
+ * part is home. The picture is the same to well under a thousandth of the
+ * mark (tests/catalog.test.ts compares the two frame by frame).
+ */
 const MIC_PROGRAM = {
   "version": 1,
-  // 24 at rest. It was cut to 12 to save work under every keystroke, but
-  // builds before K43 also run the throw home — the mark coming back
-  // together after the microphone closes — at the idle rate, and at 12 it
-  // visibly stuttered. K43 / A4 run the throw home at the recording rate
-  // and stop the program at rest (kb.mic.idleStill), so the idle rate only
-  // matters to the builds already installed, which it must not make worse.
+  // 60 at rest, the same as recording. Builds before K43 run the throw home
+  // — the mark coming back together after the microphone closes — at the
+  // idle rate, so the idle rate IS that animation's smoothness (at 12 it
+  // stuttered). A frame at rest now costs about 3% of what it did (see
+  // NOTHING COMPUTED THAT IS NOT SEEN, above), so 60 frames a second is
+  // still around a thirteenth of the work 24 used to be. K43 / A4 stop the
+  // program at rest altogether (kb.mic.idleStill).
   "fps": {
-    "idle": 24,
+    "idle": 60,
     "rec": 60
   },
   "colors": {
@@ -12360,11 +12371,11 @@ const MIC_PROGRAM = {
   "funcs": {
     "turbs": {
       "args": [],
-      "expr": "rec ? 0 : bturb*R*abs(p)*(0.6*sin(t*11 + k*2.1) + 0.4*sin(t*17 + k*0.7))"
+      "expr": "rec ? 0 : (abs(p) < 0.002 ? 0 : bturb*R*abs(p)*(0.6*sin(t*11 + k*2.1) + 0.4*sin(t*17 + k*0.7)))"
     },
     "turbr": {
       "args": [],
-      "expr": "rec ? 0 : bturb*R*0.5*abs(p)*sin(t*13 + k*1.3)"
+      "expr": "rec ? 0 : (abs(p) < 0.002 ? 0 : bturb*R*0.5*abs(p)*sin(t*13 + k*1.3))"
     },
     "side": {
       "args": [],
@@ -12512,7 +12523,7 @@ const MIC_PROGRAM = {
       "dy": "(cy - home.y)*q",
       "rot": "(180 - atan2(y2 - y1, x2 - x1)*180/pi)*q",
       "scale": "1 + (lift - 1)*q",
-      "rise": "max(q*clamp(0.2*cr(i*6) + 1.1*lv*(0.6 + 0.4*sin(t*9 + i*1.7)), 0, 1), run(f, t % period, 1.33, 0.95, 0.3)*(1 - q))",
+      "rise": "q > 0.0005 ? max(q*clamp(0.2*cr(i*6) + 1.1*lv*(0.6 + 0.4*sin(t*9 + i*1.7)), 0, 1), run(f, t % period, 1.33, 0.95, 0.3)*(1 - q)) : run(f, t % period, 1.33, 0.95, 0.3)",
       "lean": "0"
     }
   },
@@ -12521,7 +12532,7 @@ const MIC_PROGRAM = {
       "attach": "link",
       "kind": "line",
       "repeat": [
-        "nt"
+        "q > 0.0005 ? nt : 0"
       ],
       "as": [
         "k"
