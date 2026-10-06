@@ -13,3 +13,6 @@ backend/
 # the model output of a paid run, and they accumulate per run.
 tulmi/.quality/
 __pycache__/
+
+# The mail platform's own secrets (mail/README.md).
+mail/.env
