@@ -1,0 +1,19 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appIDs": ["6552H8HYA4.com.tulmi.app"],
+        "components": [
+          { "/": "/s/*", "comment": "SDUI screens: https://tailzu.space/s/<screenId>" },
+          { "/": "/screen/*", "comment": "Alias for /s/" },
+          { "/": "/paywall*", "comment": "Marketing paywall link" },
+          { "/": "/invite/*", "comment": "Referral / invite links" }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": ["6552H8HYA4.com.tulmi.app"]
+  }
+}

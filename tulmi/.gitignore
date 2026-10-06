@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.log
+.env
+.env.*
+*.env
+!.env.example
+test-assets/*
+!test-assets/README.md
+
+# Bench output — a measurement of one machine on one day, not a fact about
+# the repo. Keep the ones you care about somewhere else.
+bench-*.json
