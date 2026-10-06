@@ -10,7 +10,7 @@ are the receivers' (Gmail, Outlook), which is what the DNS and warm-up below are
 about.
 
 One domain hosts the platform (the **platform domain**, `MAIL_DOMAIN` in `.env`,
-e.g. `mail.xooteqlab.com`). Apps keep sending from their own domains
+e.g. `mail.xooteq.online`). Apps keep sending from their own domains
 (`hello@tailzu.space`); the platform domain only appears in the plumbing
 (return-path, DKIM identifier, the dashboard's address).
 
@@ -47,23 +47,23 @@ Also in hPanel → VPS → **Firewall**: allow inbound TCP **25** and **587**
 
 ## 1. DNS for the platform domain
 
-With `MAIL_DOMAIN=mail.xooteqlab.com` and the VPS at `91.108.104.168`, add at the
-DNS host of `xooteqlab.com`:
+With `MAIL_DOMAIN=mail.xooteq.online` and the VPS at `91.108.104.168`, add at the
+DNS host of `xooteq.online`:
 
 | Type | Name | Value |
 |---|---|---|
 | A | `postal.mail` | `91.108.104.168` — the dashboard |
 | A | `smtp.mail` | `91.108.104.168` — what apps and Supabase connect to |
 | A | `mx.mail` | `91.108.104.168` — receives bounces |
-| MX | `rp.mail` | `10 mx.mail.xooteqlab.com` |
-| TXT | `rp.mail` | `v=spf1 a mx include:spf.mail.xooteqlab.com ~all` |
+| MX | `rp.mail` | `10 mx.mail.xooteq.online` |
+| TXT | `rp.mail` | `v=spf1 a mx include:spf.mail.xooteq.online ~all` |
 | TXT | `spf.mail` | `v=spf1 ip4:91.108.104.168 ~all` |
 | TXT | `postal._domainkey.mail` | *printed by setup.sh, step 3* |
-| CNAME | `track.mail` | `postal.mail.xooteqlab.com` (optional, click tracking) |
-| TXT | `_dmarc.mail` | `v=DMARC1; p=quarantine; rua=mailto:dmarc@xooteqlab.com` |
+| CNAME | `track.mail` | `postal.mail.xooteq.online` (optional, click tracking) |
+| TXT | `_dmarc.mail` | `v=DMARC1; p=quarantine; rua=mailto:dmarc@xooteq.online` |
 
 (`mail` is the subdomain label; most panels want the name without the domain.
-If the panel wants the full name, it is `postal.mail.xooteqlab.com` and so on.)
+If the panel wants the full name, it is `postal.mail.xooteq.online` and so on.)
 
 ## 2. Install
 
