@@ -127,6 +127,17 @@ export function cleanPresent(raw: unknown): MediaPresent | null {
 /** Refuse keys that would pollute Object.prototype or produce a poisoned entry. */
 const RESERVED_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
+/**
+ * Art that ships with the code (tulmi/brand, copied into the image), for keys
+ * named by something that cannot wait for an upload: the sign-in email names
+ * `email.mark` in HTML pasted into Supabase, and a key nobody has uploaded to
+ * would show every new user a broken tile. An upload under the key still wins.
+ */
+const BRAND_DIR = process.env.BRAND_DIR || path.join(process.cwd(), "brand");
+const BUNDLED_KEYED: Readonly<Record<string, { file: string; contentType: string }>> = Object.freeze({
+  "email.mark": { file: "email-mark.png", contentType: "image/png" },
+});
+
 // Inside MEDIA_DIR (see registryPath), so it is also reachable at
 // /media/_registry_v1.json. That is not a leak: the same mapping goes out in
 // every bootstrap (bootstrap.media).
@@ -639,13 +650,19 @@ export function registerMediaRoutes(app: FastifyInstance, opts: {
   app.get<{ Params: { key: string } }>("/media/k/:key", async (req, reply) => {
     const key = String(req.params.key ?? "").trim();
     if (!key || RESERVED_KEYS.has(key)) return reply.code(404).send({ code: "not_found" });
-    if (!Object.prototype.hasOwnProperty.call(cachedRegistry, key)) {
-      return reply.code(404).send({ code: "not_found" });
-    }
-    const url = cachedRegistry[key]?.url;
-    if (!url) return reply.code(404).send({ code: "not_found" });
+    const url = Object.prototype.hasOwnProperty.call(cachedRegistry, key) ? cachedRegistry[key]?.url : undefined;
     // Short, so swapping the art shows up the same day, and long enough that a
     // mail client opened twice does not fetch twice.
-    return reply.header("cache-control", "public, max-age=3600").redirect(url, 302);
+    if (url) return reply.header("cache-control", "public, max-age=3600").redirect(url, 302);
+    // Nothing uploaded under the key: the copy that ships with the code, so a
+    // template never shows a broken tile for want of an upload nobody ran.
+    const bundled = Object.prototype.hasOwnProperty.call(BUNDLED_KEYED, key) ? BUNDLED_KEYED[key] : undefined;
+    if (bundled) {
+      try {
+        const bytes = await fs.readFile(path.join(BRAND_DIR, bundled.file));
+        return reply.header("cache-control", "public, max-age=3600").type(bundled.contentType).send(bytes);
+      } catch { /* not in this build: answer as for any unknown key */ }
+    }
+    return reply.code(404).send({ code: "not_found" });
   });
 }
