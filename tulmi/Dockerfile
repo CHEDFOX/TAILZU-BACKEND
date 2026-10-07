@@ -44,6 +44,9 @@ RUN npm ci --omit=dev --no-audit --no-fund \
 COPY --from=build /app/tulmi/dist ./dist
 # The phone app's typefaces, served at /fonts/ (see server.ts).
 COPY --from=build /app/tulmi/fonts ./fonts
+# Art for keys nothing has been uploaded to yet: the sign-in email's mark
+# (/media/k/email.mark, see routes/media.ts).
+COPY --from=build /app/tulmi/brand ./brand
 # Prompts (.md) are read at runtime and are not emitted by tsc.
 COPY --from=build /app/shared /app/shared
 

@@ -17,21 +17,26 @@ person signing in again gets a link.
 
 ## The icon
 
-The `<img>` points at `/media/k/email.mark`, a redirect keyed by NAME rather
-than by content hash. This HTML is pasted into Supabase by hand and then sits
-there for months, so a hash in it would break the day anyone re-uploads the
-icon — silently, in mail nobody on the team receives. Upload to the key and the
-template follows:
+The `<img>` points at `https://api.tailzu.space/media/k/email.mark`, keyed by
+NAME rather than by content hash. This HTML is pasted into Supabase by hand and
+then sits there for months, so a hash in it would break the day anyone
+re-uploads the icon.
+
+The mark ships with the backend (`tulmi/brand/email-mark.png`: the app icon
+cropped to its mark, rounded, 128 px for a 32 px slot), so the URL answers from
+the first deploy with no upload. To change it, upload under the key, and that
+copy wins from then on:
 
 ```bash
 curl -X POST "https://api.tailzu.space/v1/media/upload?key=email.mark" \
-  -H "x-admin-secret: $ADMIN_SECRET" -F "file=@app/assets/icon.png"
+  -H "x-admin-secret: $ADMIN_SECRET" -F "file=@new-mark.png"
 ```
 
-The word "TAILZU" sits under it and is not decoration. Most clients block remote
-images until the reader allows them, and a mail whose only identification is a
-broken image tile looks like phishing at the exact moment it is asking for
-trust. The word carries the identity; the icon makes it feel like the app.
+The word "TAILZU" sits beside it and is not decoration. Most clients block
+remote images until the reader allows them, and a mail whose only
+identification is a broken image tile looks like phishing at the exact moment
+it is asking for trust. The word carries the identity; the icon makes it feel
+like the app.
 
 ## The look
 
