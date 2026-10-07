@@ -32,20 +32,18 @@ curl -X POST "https://api.tailzu.space/v1/media/upload?key=email.mark" \
   -H "x-admin-secret: $ADMIN_SECRET" -F "file=@new-mark.png"
 ```
 
-The word "TAILZU" sits beside it and is not decoration. Most clients block
-remote images until the reader allows them, and a mail whose only
-identification is a broken image tile looks like phishing at the exact moment
-it is asking for trust. The word carries the identity; the icon makes it feel
-like the app.
+The mark stands alone, with `alt="Tailzu"`: most clients block remote images
+until the reader allows them, and those draw the alt text in the image's place,
+so the mail still says who it is from at the moment it asks for trust.
 
 ## The look
 
 The phone app's look (`PHONE_LOOK` in `src/experience/phoneLook.ts`), and as
-little as a code needs: the mark and the name, the code, one label under it,
+little as a code needs: the mark, the code, one label under it,
 and one line at the foot. Amber only on the code, which is what is still in
 play for the next hour; everything else in cream stepped down. Two of the
-app's faces: the label face (IBM Plex Mono) for the name, the code and its
-label, the UI face (Instrument Sans) for the foot.
+app's faces: the label face (IBM Plex Mono) for the code and its label, the
+UI face (Instrument Sans) for the foot.
 
 | Role | App token | In the mail |
 | --- | --- | --- |
