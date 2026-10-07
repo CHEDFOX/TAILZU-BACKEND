@@ -30,6 +30,8 @@
       [data-ogsb] .tz-ground { background-color: #0F0D0B !important; }
       [data-ogsc] .tz-ink3 { color: #817869 !important; }
       [data-ogsc] .tz-live { color: #E8A23C !important; }
+      @media (min-width: 601px) { .tz-floor { height: 1240px !important; } }
+      @media (min-width: 1600px) { .tz-floor { height: 1500px !important; } }
       @media (max-width: 480px) {
         .tz-pad { padding-left: 24px !important; padding-right: 24px !important; padding-top: 40px !important; }
         .tz-code { font-size: 44px !important; line-height: 52px !important; letter-spacing: 10px !important; }
@@ -54,13 +56,22 @@
       &#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;
     </div>
 
-    <!-- Full width, and at least a screen tall: the height attribute for the
-         clients that ignore viewport units, 100vh for the ones that size the
-         mail to the window. Whatever the content does not fill stays ground. -->
-    <table role="presentation" class="tz-ground" width="100%" height="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0F0D0B"
-           style="width:100%;height:100%;min-height:100vh;background-color:#0F0D0B;border-collapse:collapse;margin:0;padding:0;">
+    <!-- AT LEAST A SCREEN TALL, ON EVERY SCREEN. Two holds, so that losing one
+         never shows white:
+         - the block: 100vh, in a div because a minimum height is ignored on
+           tables and their cells. Most clients know viewport units, and in a
+           webmail 100vh is the browser's window, taller than the pane the
+           mail sits in, so the first screen is always covered;
+         - the cell's height, for the clients that do not know viewport units
+           or resolve them to nothing: 960 px, raised by width in the style
+           block (1240 from tablet width, 1500 from wide desktops), since a
+           taller screen is a wider one.
+         Whatever the content does not fill stays ground. -->
+    <div class="tz-ground" style="margin:0;padding:0;width:100%;min-height:100vh;background-color:#0F0D0B;">
+    <table role="presentation" class="tz-ground" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0F0D0B"
+           style="width:100%;background-color:#0F0D0B;border-collapse:collapse;margin:0;padding:0;">
       <tr>
-        <td class="tz-ground" align="center" valign="top" height="760" bgcolor="#0F0D0B" style="background-color:#0F0D0B;padding:0;min-height:100vh;">
+        <td class="tz-ground tz-floor" align="center" valign="top" height="960" bgcolor="#0F0D0B" style="background-color:#0F0D0B;padding:0;">
 
           <!--[if mso]><table role="presentation" width="480" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;width:100%;margin:0 auto;">
@@ -128,5 +139,6 @@
         </td>
       </tr>
     </table>
+    </div>
   </body>
 </html>

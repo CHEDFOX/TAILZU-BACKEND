@@ -71,11 +71,19 @@ mono, the system sans for the UI face).
 A mail is drawn inside the client's own page, and each client honours a
 different place for a background, so the ground is painted in all of them: the
 `html` and `body` (Apple Mail and iOS Mail, including the overscroll), the
-`bgcolor` attributes (Gmail drops the body's style), a wrapper table at full
-width and at least a screen tall (`height="100%"`, `min-height:100vh`, and a
-760 px floor for the clients that ignore viewport units), and VML for Outlook
-on Windows, whose Word engine paints nothing else. Nothing white is left around
-or under the mail.
+`bgcolor` attributes (Gmail drops the body's style), a block around the mail
+that is at least a screen tall, and VML for Outlook on Windows, whose Word
+engine paints nothing else.
+
+Two holds keep it at least a screen tall, so losing one never shows white.
+The block is a `div` at `min-height: 100vh` (a minimum height is ignored on
+tables and their cells). Most clients know viewport units, and in a webmail
+`100vh` is the browser's window, taller than the pane the mail sits in, so the
+first screen is always covered. For the clients that do not know viewport
+units, or resolve them to nothing, the table cell has a height that grows with
+the screen's width: 960 px, 1240 px from tablet width, 1500 px from wide
+desktops, since a taller screen is a wider one. Checked at ten sizes from a
+375 x 667 phone to a 2560 x 1440 desktop, with and without viewport units.
 
 ## Dark by design
 
