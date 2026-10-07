@@ -33,27 +33,67 @@ images until the reader allows them, and a mail whose only identification is a
 broken image tile looks like phishing at the exact moment it is asking for
 trust. The word carries the identity; the icon makes it feel like the app.
 
+## The look
+
+The phone app's look (`PHONE_LOOK` in `src/experience/phoneLook.ts`), carried
+into the inbox: the dark warm ground, cream ink stepped down for what matters
+less, one hairline instead of boxes, and amber only on what is still in play,
+which for the next hour is the code. The four faces are the app's four voices:
+the code and the small print's labels in the label face (IBM Plex Mono), the
+sentence in the book face (Newsreader), the details in the UI face (Instrument
+Sans), and the sign-off in both voices the app compares, *said* in the hand
+(Caveat) and *written* in the book face's italic.
+
+| Role | App token | In the mail |
+| --- | --- | --- |
+| Ground | `ground` | `#0F0D0B` |
+| Ink | `ink` | `#F3E2C6` |
+| Secondary | `ink2`, cream at 66% | `#A69A86` |
+| Labels, small print | `ink3`, cream at 50% | `#817869` |
+| Hairline | `rule`, cream at 7% | `#1F1C18` |
+| The code | `accent` | `#E8A23C` |
+
 ## Why the HTML looks like 2005
 
 Email is not the web. There is no flexbox, no grid, no external stylesheet worth
 relying on, and no webfont that loads everywhere. Layout is nested tables,
-styling is inline attributes, and every colour is a flat hex — `rgba()` renders
-as black or as nothing across enough clients to be unusable, so the theme's
-translucent inks are pre-flattened against their own backgrounds:
+styling is inline attributes, and every colour is a flat hex: `rgba()` renders
+as black or as nothing across enough clients to be unusable, so the app's
+translucent inks are pre-flattened against the ground (the table above).
 
-    inkDim   rgba(11,11,13,0.62) on amber  ->  #5F441F
-    inkFaint rgba(11,11,13,0.42) on amber  ->  #8B6328
+The fonts come from Google Fonts. Apple Mail, iOS Mail, Samsung Mail and
+Outlook for Mac load them; Gmail and Outlook on Windows do not, and every stack
+ends in a system face that keeps the same voice (Georgia for the book face,
+Menlo or Consolas for the mono, the system sans for the UI face).
 
-## Why it forces light mode
+## The ground covers the whole screen
 
-The design is amber and black by choice, not a light theme with a dark twin. Gmail
-and Outlook will invert an email they think is light, which turns the brand ground
-into a muddy blue-grey and the code into something unreadable. `color-scheme:
-light` plus `supported-color-schemes` tells the ones that honour it to leave the
-palette alone; the rest are why every colour is also stated explicitly on the
-element rather than inherited.
+A mail is drawn inside the client's own page, and each client honours a
+different place for a background, so the ground is painted in all of them: the
+`html` and `body` (Apple Mail and iOS Mail, including the overscroll), the
+`bgcolor` attributes (Gmail drops the body's style), a wrapper table at full
+width and at least a screen tall (`height="100%"`, `min-height:100vh`, and a
+760 px floor for the clients that ignore viewport units), and VML for Outlook
+on Windows, whose Word engine paints nothing else. Nothing white is left around
+or under the mail.
+
+## Dark by design
+
+The design is dark in light mode and in dark mode, and says so
+(`color-scheme: light dark`), which tells Apple Mail and Outlook that the
+palette is handled and they leave it alone. Outlook.com's dark mode is held by
+the `[data-ogsc]` / `[data-ogsb]` rules. Every colour is also restated on its
+element, because inherited colour is the first thing a dark-mode pass throws
+away.
+
+One client cannot be held: the Gmail app on iPhone in dark mode inverts every
+mail, dark ones included, so there it shows light with dark text. It stays
+readable, which is the point; the tricks that fight it (background images, blend
+modes) leave the text unreadable whenever they half-work.
 
 ## After editing
 
 Test with an address that has **never** signed in, then with one that has.
-Testing one proves nothing about the other — that is the whole bug this replaces.
+Testing one proves nothing about the other: that is the whole bug the two
+identical templates exist to prevent. `test.py` in CHEDFOX/xooteq-mail sends a
+real code through Supabase and the mail server and reports Gmail's answer.
