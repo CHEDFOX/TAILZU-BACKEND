@@ -35,20 +35,17 @@ trust. The word carries the identity; the icon makes it feel like the app.
 
 ## The look
 
-The phone app's look (`PHONE_LOOK` in `src/experience/phoneLook.ts`), carried
-into the inbox: the dark warm ground, cream ink stepped down for what matters
-less, one hairline instead of boxes, and amber only on what is still in play,
-which for the next hour is the code. The four faces are the app's four voices:
-the code and the small print's labels in the label face (IBM Plex Mono), the
-sentence in the book face (Newsreader), the details in the UI face (Instrument
-Sans), and the sign-off in both voices the app compares, *said* in the hand
-(Caveat) and *written* in the book face's italic.
+The phone app's look (`PHONE_LOOK` in `src/experience/phoneLook.ts`), and as
+little as a code needs: the mark and the name, the code, one label under it,
+and one line at the foot. Amber only on the code, which is what is still in
+play for the next hour; everything else in cream stepped down. Two of the
+app's faces: the label face (IBM Plex Mono) for the name, the code and its
+label, the UI face (Instrument Sans) for the foot.
 
 | Role | App token | In the mail |
 | --- | --- | --- |
 | Ground | `ground` | `#0F0D0B` |
 | Ink | `ink` | `#F3E2C6` |
-| Secondary | `ink2`, cream at 66% | `#A69A86` |
 | Labels, small print | `ink3`, cream at 50% | `#817869` |
 | Hairline | `rule`, cream at 7% | `#1F1C18` |
 | The code | `accent` | `#E8A23C` |
@@ -62,9 +59,9 @@ as black or as nothing across enough clients to be unusable, so the app's
 translucent inks are pre-flattened against the ground (the table above).
 
 The fonts come from Google Fonts. Apple Mail, iOS Mail, Samsung Mail and
-Outlook for Mac load them; Gmail and Outlook on Windows do not, and every stack
-ends in a system face that keeps the same voice (Georgia for the book face,
-Menlo or Consolas for the mono, the system sans for the UI face).
+Outlook for Mac load them; Gmail and Outlook on Windows do not, and each stack
+ends in a system face that keeps the same voice (Menlo or Consolas for the
+mono, the system sans for the UI face).
 
 ## The ground covers the whole screen
 

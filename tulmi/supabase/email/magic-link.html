@@ -15,10 +15,10 @@
     <meta name="color-scheme" content="light dark">
     <meta name="supported-color-schemes" content="light dark">
     <title>Your Tailzu code</title>
-    <!-- The app's four faces. Apple Mail, iOS Mail, Samsung and Outlook for
-         Mac load them; Gmail does not, and every stack below ends in a system
-         face chosen to keep the same voice. -->
-    <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400&family=Newsreader:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+    <!-- The app's label and UI faces. Apple Mail, iOS Mail, Samsung and
+         Outlook for Mac load them; Gmail does not, and each stack ends in a
+         system face that keeps the same voice. -->
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400&display=swap" rel="stylesheet">
     <!--[if gte mso 9]><xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
     <style>
       :root { color-scheme: light dark; supported-color-schemes: light dark; }
@@ -29,12 +29,11 @@
       /* Outlook.com's dark mode repaints by these attributes: keep the drawing. */
       [data-ogsb] .tz-ground { background-color: #0F0D0B !important; }
       [data-ogsc] .tz-ink { color: #F3E2C6 !important; }
-      [data-ogsc] .tz-ink2 { color: #A69A86 !important; }
       [data-ogsc] .tz-ink3 { color: #817869 !important; }
       [data-ogsc] .tz-live { color: #E8A23C !important; }
       @media (max-width: 480px) {
         .tz-pad { padding-left: 24px !important; padding-right: 24px !important; padding-top: 40px !important; }
-        .tz-code { font-size: 40px !important; line-height: 48px !important; letter-spacing: 9px !important; }
+        .tz-code { font-size: 44px !important; line-height: 52px !important; letter-spacing: 10px !important; }
       }
     </style>
   </head>
@@ -52,7 +51,7 @@
          zero-width characters after it stops the client filling the rest of
          that line with the first words of the mail. -->
     <div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;color:#0F0D0B;">
-      Your Tailzu code is {{ .Token }}. It works once and expires in an hour.
+      Your Tailzu code is {{ .Token }}
       &#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;
     </div>
 
@@ -86,7 +85,7 @@
                             <img src="https://api.tailzu.space/media/k/email.mark" width="28" height="28" alt=""
                                  style="display:block;width:28px;height:28px;border:0;outline:none;text-decoration:none;border-radius:7px;background-color:#1F1C18;">
                           </td>
-                          <td valign="middle" class="tz-ink2" style="font-family:'IBM Plex Mono','SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace;font-size:11px;line-height:16px;letter-spacing:3px;text-transform:uppercase;color:#A69A86;">
+                          <td valign="middle" class="tz-ink" style="font-family:'IBM Plex Mono','SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace;font-size:11px;line-height:16px;letter-spacing:3.5px;text-transform:uppercase;color:#F3E2C6;">
                             Tailzu
                           </td>
                         </tr>
@@ -94,73 +93,39 @@
                     </td>
                   </tr>
 
-                  <!-- A section's worth of air: the app's 56. -->
-                  <tr><td style="height:56px;line-height:56px;font-size:1px;">&nbsp;</td></tr>
+                  <tr><td style="height:88px;line-height:88px;font-size:1px;">&nbsp;</td></tr>
 
-                  <!-- The label, in the app's label voice: small, mono, tracked. -->
+                  <!-- THE CODE, and almost nothing else. Amber, because amber in
+                       the app is kept for what is still in play, and for the next
+                       hour this is. Mono, so digits read back one at a time have
+                       equal widths and a zero nobody takes for an O. One plain
+                       run of digits, never one per cell: a copied code must paste
+                       as the code, and iOS offers it from Mail only when it can
+                       read it as one. -->
                   <tr>
-                    <td class="tz-ink3" style="padding:0 0 12px 0;font-family:'IBM Plex Mono','SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace;font-size:10px;line-height:14px;letter-spacing:2px;text-transform:uppercase;color:#817869;">
-                      Sign-in code
-                    </td>
-                  </tr>
-
-                  <!-- THE CODE. Amber, because amber in the app is kept for what
-                       is still in play, and for the next hour this is. Mono,
-                       because digits read back one at a time want equal widths
-                       and a zero nobody takes for an O; tracked wide for the
-                       same reason. One plain run of digits, never one per cell:
-                       a copied code must paste as the code, and iOS offers it
-                       from Mail only when it can read it as one. -->
-                  <tr>
-                    <td class="tz-code tz-live" style="padding:0;font-family:'IBM Plex Mono','SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace;font-size:46px;line-height:54px;font-weight:500;letter-spacing:11px;color:#E8A23C;">
+                    <td class="tz-code tz-live" style="padding:0;font-family:'IBM Plex Mono','SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace;font-size:52px;line-height:60px;font-weight:500;letter-spacing:12px;color:#E8A23C;">
                       {{ .Token }}
                     </td>
                   </tr>
 
-                  <!-- What to do with it: one sentence in the book face, the
-                       voice the app gives to what is written. -->
                   <tr>
-                    <td class="tz-ink" style="padding:22px 0 0 0;font-family:'Newsreader',Georgia,'Times New Roman',serif;font-size:21px;line-height:30px;font-weight:400;color:#F3E2C6;">
-                      Type it into Tailzu, and you&rsquo;re in.
-                    </td>
-                  </tr>
-                  <tr>
-                    <td class="tz-ink2" style="padding:6px 0 0 0;font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:14px;line-height:21px;color:#A69A86;">
-                      It works once and expires in an hour.
+                    <td class="tz-ink3" style="padding:14px 0 0 2px;font-family:'IBM Plex Mono','SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace;font-size:10px;line-height:14px;letter-spacing:2px;text-transform:uppercase;color:#817869;">
+                      Sign-in code &middot; one hour
                     </td>
                   </tr>
 
-                  <!-- A hairline, not a box: the app's rule, flattened. -->
+                  <tr><td style="height:104px;line-height:104px;font-size:1px;">&nbsp;</td></tr>
+
                   <tr>
-                    <td style="padding:40px 0 0 0;">
+                    <td style="padding:0;">
                       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                         <tr><td height="1" bgcolor="#1F1C18" style="height:1px;line-height:1px;font-size:1px;background-color:#1F1C18;">&nbsp;</td></tr>
                       </table>
                     </td>
                   </tr>
-
                   <tr>
-                    <td class="tz-ink3" style="padding:22px 0 0 0;font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12.5px;line-height:19px;color:#817869;">
-                      Didn&rsquo;t ask for it? Someone may have typed your address by mistake.
-                      Nothing has changed on your account, and you can let this go.
-                    </td>
-                  </tr>
-
-                  <tr><td style="height:56px;line-height:56px;font-size:1px;">&nbsp;</td></tr>
-
-                  <!-- THE LINE, IN BOTH VOICES. What is said, in the hand; what is
-                       written, in the book face's italic. The app sets the two
-                       side by side wherever it compares them. -->
-                  <tr>
-                    <td style="padding:0;">
-                      <span class="tz-ink" style="font-family:'Caveat','Segoe Print','Bradley Hand',cursive;font-size:30px;line-height:34px;font-weight:500;color:#F3E2C6;">Talk.</span>
-                      <span class="tz-ink2" style="font-family:'Newsreader',Georgia,'Times New Roman',serif;font-size:19px;line-height:34px;font-style:italic;color:#A69A86;">&nbsp;Tailzu writes.</span>
-                    </td>
-                  </tr>
-
-                  <tr>
-                    <td class="tz-ink3" style="padding:14px 0 0 0;font-family:'IBM Plex Mono','SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace;font-size:10.5px;line-height:16px;letter-spacing:0.3px;color:#817869;">
-                      Sent to {{ .Email }} &middot; <a href="https://tailzu.space" class="tz-ink3" style="color:#817869;text-decoration:none;">tailzu.space</a>
+                    <td class="tz-ink3" style="padding:18px 0 0 0;font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:18px;color:#817869;">
+                      Didn&rsquo;t ask for it? Ignore this.
                     </td>
                   </tr>
 
