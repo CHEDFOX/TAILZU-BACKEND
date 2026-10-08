@@ -134,8 +134,10 @@ describe("assist path — instruction separation", () => {
     // "Change nothing else" held that, and also held every pause-made full
     // stop and every broken sentence in place, so the refinement read like
     // the transcript. The bound is now the case itself.
+    // And what it keeps is the shape, not the slips: "stays a note" was read
+    // as "stays as typed", lowercase and open.
     expect(system).not.toMatch(/change nothing else/i);
-    expect(system).toMatch(/A note meant as a note stays a note/);
+    expect(system).toMatch(/A note keeps its shape, not its slips/);
   });
 
   it("says the punctuation it is handed marks pauses, and the grammar is its job", () => {

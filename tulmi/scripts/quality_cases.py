@@ -178,7 +178,9 @@ CASES = [
     dict(id="lang/setting-en-does-not-translate", smoke=True,
          why="a saved language is what they speak, never a language to convert to",
          text="kal subah nikalna hai, alarm laga dena", language="en",
-         forbid=["tomorrow morning", "set an alarm", "we have to leave"]),
+         forbid=["tomorrow morning", "set an alarm", "we have to leave"],
+         # Passed as it went in, lowercase and open: written starts with a capital.
+         require_regex=r"(?-i:^[A-Z])"),
     dict(id="lang/setting-hi-does-not-translate",
          why="the same rule pointed the other way",
          text="please send me the invoice before friday", language="hi",
@@ -210,7 +212,8 @@ CASES = [
     dict(id="fix/correction-keeps-only-the-correction", smoke=True,
          why="'no wait' means the first half is gone",
          text="lets meet at five no wait six thirty",
-         require=["six thirty"], forbid=["five", "no wait"]),
+         # "6:30" is the same time in figures; it failed as "lost 'six thirty'".
+         require_any=[["six thirty", "6:30"]], forbid=["five", "no wait"]),
     dict(id="fix/fillers-go",
          why="um and uh are the sound of thinking, not words",
          text="so um i think uh we should push the launch to monday",
@@ -251,7 +254,8 @@ CASES = [
          require=["late"], forbid=["make it sweet"], max_words=40),
     dict(id="lang/romanised-not-transliterated",
          why="transliterating is the same fault as translating, wearing a different hat",
-         text="mujhe kal subah jaldi uthna hai", script="latin"),
+         text="mujhe kal subah jaldi uthna hai", script="latin",
+         require_regex=r"(?-i:^[A-Z])"),
 
     # --- FACTS -------------------------------------------------------------
     # Everything here is a message that becomes actively harmful if a digit or
@@ -284,7 +288,8 @@ CASES = [
          text="order 4471-AB is delayed again", require=["4471"]),
     dict(id="facts/units-survive",
          why="a recipe or a dose is a number with a unit",
-         text="add 250 ml water and 2 spoons sugar", keep_digits="250"),
+         text="add 250 ml water and 2 spoons sugar", keep_digits="250",
+         require_regex=r"(?-i:^[A-Z])"),
     dict(id="facts/count-survives",
          why="headcount decides a booking",
          # Not keep_digits: "Twelve people are coming on Sunday" is correct
