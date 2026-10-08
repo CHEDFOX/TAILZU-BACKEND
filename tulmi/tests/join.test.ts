@@ -77,6 +77,15 @@ describe("a full stop a pause put inside a sentence", () => {
     expect(hasPauseStop("I was thinking and... then it hit me.")).toBe(false);
   });
 
+  it("is found as an ellipsis after an article, as OpenAI writes a breath there", () => {
+    // Measured on the deployed server: two turns, "So I was going to the..."
+    // and "Market tomorrow, and then maybe the pharmacy."
+    const said = "So I was going to the... Market tomorrow, and then maybe the pharmacy.";
+    expect(hasPauseStop(said)).toBe(true);
+    expect(joinPauseStops(said)).toBe("So I was going to the market tomorrow, and then maybe the pharmacy.");
+    expect(joinPauseStops("Pick up a… Cake on the way.")).toBe("Pick up a cake on the way.");
+  });
+
   it("is joined across, lowering the word after unless it is a name", () => {
     expect(joinPauseStops("I'm going to the. Market tomorrow.")).toBe("I'm going to the market tomorrow.");
     expect(joinPauseStops("I'll call you and. Then we decide.")).toBe("I'll call you and then we decide.");
