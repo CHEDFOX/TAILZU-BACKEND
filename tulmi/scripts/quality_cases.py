@@ -441,7 +441,11 @@ CASES = [
     dict(id="intent/out-of-order-put-in-order",
          why="the second point said first, and a correction at the end, read as one clear ask",
          text="can you send me the report by friday, the sales one i mean not the hr one",
-         require=["sales", "friday"], forbid=["hr one", "i mean", "not the hr"], max_growth=1.1),
+         # "Not the HR one" is theirs: a contrast that helps whoever reads it,
+         # not a correction of something said before. The first version of
+         # this case forbade it and failed "Can you send me the sales report
+         # by Friday, not the HR one?", which is the message.
+         require=["sales", "friday"], forbid=["i mean"], max_growth=1.1),
     dict(id="intent/hinglish-ramble-stays-hinglish",
          why="understanding what they meant never means translating it",
          text=("yaar woh kal wala plan na, matlab dinner wala, woh cancel karna padega "

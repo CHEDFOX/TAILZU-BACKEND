@@ -42,7 +42,7 @@ describe("the prompt states the shape as a principle", () => {
     // draft listed the shapes as rules; this is the principle they follow.
     expect(p).toMatch(/Give it the shape a careful writer would give it there, found in what they said rather than added to it/);
     // Its illustrations, which are the shapes the owner named.
-    expect(p).toMatch(/what they listed reads as a list, what they quoted reads as a quote, what runs long reads in paragraphs/);
+    expect(p).toMatch(/what they listed reads as a list, what they quoted reads as a quote, an amount reads in figures, what runs long reads in paragraphs/);
   });
 
   it("no rules standing in for it", () => {
