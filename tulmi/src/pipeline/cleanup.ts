@@ -387,7 +387,7 @@ export function stripAddedGreeting(out: string, said: string): string {
  * Devanagari spellings — and only at the very start or end, where hesitation
  * sits. Hindi "हम" ("we") is a word and is not among them.
  */
-const FILLER = "(?:h+m+|u+m+|u+h+|e+r+m+|হু+ম+|হুঁ+|উ+ম+|হ্ম+|हु?म्म+|हुँ+|उम्म+|ह्म+)";
+const FILLER = "(?:h+m+|u+m+|u+h+|e+r+m+|হু+ম+|হুঁ+|উ+ম+|হ্ম+|हु?म्म+|हुँ+|उम्म+|ह्म+|음+|嗯+)";
 const LEADING_FILLER = new RegExp(`^(?:${FILLER}(?![\\p{L}\\p{M}])[\\s,.…!?—–-]*)+`, "iu");
 // (?<!…): a match starts only where a run of separators does — the leftmost
 // one always did — so a long run is scanned once, not once per character.
@@ -603,6 +603,8 @@ interface WriterRequest {
    *  words (compose.ts): what comes back is meant to be longer than what they
    *  said, and in words they did not say. */
   piece: boolean;
+  /** The field is a prompt for another AI (compose.promptsAnAi). */
+  toAnAi: boolean;
   system: string;
   userContent: string;
 }
@@ -707,7 +709,7 @@ function writerRequest(input: string, opts: CleanupOptions & WriterExtras): Writ
   const userContent = earlier
     + (context ? `<before>\n${stripFenceTags(context)}\n</before>\n` : "")
     + `<said>\n${messageBlock}\n</said>`;
-  return { message, context, askedLanguage, instructed: !!asked, piece, system, userContent };
+  return { message, context, askedLanguage, instructed: !!asked, piece, toAnAi, system, userContent };
 }
 
 /**
@@ -734,8 +736,20 @@ function writerRequest(input: string, opts: CleanupOptions & WriterExtras): Writ
  *   filler      "um", "uh" kept
  *   pause       a full stop a pause put inside a sentence ("going to the.
  *               Market") kept — see join.hasPauseStop
+ *   empty       nothing written for words they really said (assist() checks
+ *               it: slipIn is only handed an answer)
+ *   carried     in an AI app, a request ("write a birthday message for my
+ *               mom") carried out instead of written as their prompt
  */
-export type Slip = "alphabet" | "translated" | "added" | "correction" | "filler" | "long" | "pause";
+export type Slip = "alphabet" | "translated" | "added" | "correction" | "filler" | "long" | "pause" | "empty" | "carried";
+
+/**
+ * A request to an AI, by its verb: "write …", "can you make …", "please
+ * explain …". In ChatGPT that sentence IS the prompt. Carried out, the verb
+ * is the first thing to go ("Happy birthday, Mom!" has no "write" in it), and
+ * a prompt written well keeps it, so its absence is the measure.
+ */
+const ASKS_AN_AI = /^(?:(?:please|pls|hey|ok|okay)[\s,]+)?(?:(?:can|could|would)\s+you\s+)?(write|draft|create|make|generate|give|list|compose|summari[sz]e|explain|translate|plan|suggest|describe|rewrite)\b/i;
 
 const CORRECTION = /\b(?:no,? wait|wait,? no|scratch that|sorry,? i meant?|i meant?,? no)\b/i;
 const FILLER_WORD = /(?:^|[^\p{L}])(?:u+m+|u+h+|uhm+|erm+)(?=$|[^\p{L}])/iu;
@@ -750,11 +764,15 @@ const wordCount = (s: string): number => (unlisted(s).trim().match(/\S+/g) ?? []
 export function slipIn(
   message: string,
   out: string,
-  o: { askedLanguage?: string; instructed?: boolean; piece?: boolean } = {},
+  o: { askedLanguage?: string; instructed?: boolean; piece?: boolean; toAnAi?: boolean } = {},
 ): Slip | null {
   const said = message.trim();
   const wrote = out.trim();
   if (!said || !wrote) return null;
+  if (o.toAnAi) {
+    const verb = ASKS_AN_AI.exec(said)?.[1];
+    if (verb && !new RegExp(`\\b${verb.slice(0, 5)}`, "i").test(wrote)) return "carried";
+  }
   if (!o.askedLanguage && !NAMES_A_LANGUAGE.test(said)) {
     if (OTHER_LETTERS.test(wrote)) return "alphabet";
     // A PIECE THEY ASKED FOR IS NOT THEIR WORDS, so it cannot have translated
@@ -790,7 +808,46 @@ const REDO: Record<Slip, string> = {
   filler: "Filler sounds went through. Leave them out.",
   long: "That is too long for what they asked. Write it much shorter, the length that kind of message really is.",
   pause: "A full stop is still where they only paused, in the middle of a sentence. Join that sentence across the pause, and end sentences only where they really end.",
+  empty: "That wrote nothing, but they did say something. Write what they said, as the message they meant.",
+  carried: "That did what they asked. Here what they say is their prompt to an AI assistant: write the prompt itself, cleaned up, and do not carry it out.",
 };
+
+/**
+ * Their own words, when they go out as they were said: a capital to start
+ * and an end mark, as anyone typing would give them.
+ *
+ * Every fallback below sends what they SAID — a writer that translated twice,
+ * a leaked prompt, a request carried out in an AI app, an empty answer — and
+ * it arrived exactly as typed into the keyboard: "what time does the movie
+ * start", lowercase and open-ended, which is what "it is not doing anything
+ * at all" looks like from the field. Only English letters, only three words
+ * or more, and no capital where it carries on a sentence already there. A
+ * question mark only where it opens as a question, in English or Hinglish.
+ */
+const OPENS_A_QUESTION = /^(?:what|whats|what's|when|where|why|how|who|whom|whose|which|kya|kab|kahan|kahaan|kaun|kyun|kyon|kaise|kitna|kitne|kitni|(?:can|could|would|will|should|shall)\s+(?:you|u|we|i)|(?:is|are|was|were)\s+(?:it|this|that|there|you|they|we|he|she)|(?:does|did|do)\s+(?:you|u|it|he|she|they|we))\b/i;
+export function tidyRaw(s: string, continuing = false): string {
+  let t = s.trim();
+  if (!t || detectScript(t) !== "latin" || countWords(t) < 3) return t;
+  if (!continuing && /^\p{Ll}/u.test(t)) t = t.charAt(0).toUpperCase() + t.slice(1);
+  if (/[\p{L}\p{N}]$/u.test(t)) t += OPENS_A_QUESTION.test(t) ? "?" : ".";
+  return t;
+}
+
+/**
+ * A blank the writer left for something they never gave: "Hi [Boss's
+ * Name]," in a message written for them. A placeholder is a form to fill,
+ * and this is going straight into a field to be sent. It comes out, with the
+ * space before it, unless they typed brackets themselves.
+ */
+export function stripPlaceholders(out: string, said: string): string {
+  if (!out.includes("[") || said.includes("[")) return out;
+  return out
+    .replace(/[ \t]*\[[^\]\n]{1,40}\]/g, "")
+    .replace(/[ \t]+([,.!?;:])/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 /**
  * The unified writing-assistant call — Tailzu's single brain for voice + typing.
@@ -805,7 +862,7 @@ export async function assist(
   opts: CleanupOptions & WriterExtras = {},
 ): Promise<string> {
   if (!input.trim()) return "";
-  const { message, context, askedLanguage, instructed, piece, system, userContent } = writerRequest(input, opts);
+  const { message, context, askedLanguage, instructed, piece, toAnAi, system, userContent } = writerRequest(input, opts);
   const write = async (after: Array<{ role: "assistant" | "user"; content: string }> = []) => {
     const res = await openrouter().chat.completions.create({
       ...common(),
@@ -829,14 +886,19 @@ export async function assist(
   // leaves the guards below to decide, as they always have.
   // A piece has no words of theirs to compare against, only a size: a short
   // piece, written long, is asked for once more, shorter.
-  const slip = piece && countWords(wrote) > PIECE_WORDS ? "long" : slipIn(message, wrote, { askedLanguage, instructed, piece });
+  //
+  // Nothing written for words they really said is a slip too: the writer took
+  // a question or an order as aimed at itself and wrote nothing.
+  const slip: Slip | null = !wrote && wordCount(message) >= 2 ? "empty"
+    : piece && countWords(wrote) > PIECE_WORDS ? "long"
+    : slipIn(message, wrote, { askedLanguage, instructed, piece, toAnAi });
   if (slip) {
     try {
       const again = await write([
         { role: "assistant", content: wrote },
         { role: "user", content: `${REDO[slip]} Return only the text.` },
       ]);
-      const still = again ? slipIn(message, again, { askedLanguage, instructed, piece }) : slip;
+      const still = again ? slipIn(message, again, { askedLanguage, instructed, piece, toAnAi }) : slip;
       // Kept when it is clean, or, for an addition or a long piece, when it at
       // least added less. A second answer that swapped one slip for another is
       // not kept.
@@ -845,12 +907,16 @@ export async function assist(
       else if (again && slip !== "long" && (still === null || (slip === "added" && still === "added" && shorter))) wrote = again;
       // Still in English after being told it was a translation: their own
       // words, unwritten, are closer to what they said than someone else's.
-      else if (slip === "translated" && detectScript(message) === "latin") wrote = message.trim();
+      else if (slip === "translated" && detectScript(message) === "latin") wrote = tidyRaw(message, continuesSentence(context));
+      // Carried out twice in an AI app: what they said IS the prompt.
+      else if (slip === "carried") wrote = tidyRaw(message, continuesSentence(context));
     } catch {
       // The first answer stands; the guards below still apply to it.
     }
   }
-  const out = expandSnippets(wrote, opts.personality?.snippets, ctxFromOpts(opts));
+  const out = expandSnippets(stripPlaceholders(wrote, message), opts.personality?.snippets, ctxFromOpts(opts));
+  // What they said, as it goes out when the writer's answer cannot (below).
+  const theirs = tidyRaw(message, continuesSentence(context));
   // Whatever goes out is pasted AFTER their own text (`context`), so every
   // return below is shaped to join it: single spaces, no capital on a word
   // that only continues an unfinished sentence, no full stop after a word no
@@ -873,18 +939,18 @@ export async function assist(
   // said, the same policy as a leaked prompt: never an essay in their field.
   // Not for a piece they asked for: its length was bounded above, and their
   // request is the one thing that must not be pasted in its place.
-  if (!piece && runaway(out, message)) return joined(message.trim());
+  if (!piece && runaway(out, message)) return joined(theirs);
   // The instructions are never the message. Falling back to what they said is
   // the same policy as a refusal: a request that happened to address the model
   // goes out as the message it always was.
-  if (quotesPrompt(out, system)) return joined(message.trim());
+  if (quotesPrompt(out, system)) return joined(theirs);
   // Their words, re-spelled in another alphabet. Four wordings of the rule
   // across four deployed runs held sometimes and not others; at temperature 0
   // it now fails every time, which makes it a decision rather than a wobble.
   // Checked here for the same reason the prompt leak is: an instruction the
   // model keeps losing is not an instruction, it is a hope.
   // Not when they asked for a language: then another script is the request.
-  if (!askedLanguage && transliterated(message, out)) return joined(message.trim());
+  if (!askedLanguage && transliterated(message, out)) return joined(theirs);
   // Their own prior text stays in the field either way, so an echo of it here
   // is a second copy on screen.
   // A closing line is theirs to have in a piece they asked for ("Thanks!" at
@@ -894,7 +960,7 @@ export async function assist(
   const trimmed = stripEdgeFiller(piece ? unechoed : stripAddedGreeting(stripAddedClosing(unechoed, message), message), continuesSentence(context));
   // Discard a meta/refusal reply ("speak again"…); else keep the completion,
   // falling back to the input on an empty one so we never wipe the field.
-  return joined(finalizeCompletion(trimmed, message.trim()));
+  return joined(finalizeCompletion(trimmed, theirs));
 }
 
 export { LLM_TONES };

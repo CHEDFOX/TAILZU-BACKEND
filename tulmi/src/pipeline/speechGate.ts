@@ -94,8 +94,10 @@ const BOILERPLATE_PHRASES: string[] = [
 const NOISE = new Set(NOISE_PHRASES.map(phraseKey));
 const BOILERPLATE = new Set(BOILERPLATE_PHRASES.map(phraseKey));
 
-/** The sounds that are never words, in the alphabets they get written in. */
-const FILLER_WORD = /^(?:h+m+|m+h*m+|u+m+|u+h+|e+r+m*|a+h+|हु?म्म+|हुं+|उम्म+|ह्म+|হু+ম+|হুঁ+|উ+ম+|হ্ম+)$/u;
+/** The sounds that are never words, in the alphabets they get written in.
+ *  음 and 嗯 too: the quality run's "mm" came back from the recogniser as a
+ *  Korean "음." and went into the field as that. */
+const FILLER_WORD = /^(?:h+m+|m+h*m+|u+m+|u+h+|e+r+m*|a+h+|हु?म्म+|हुं+|उम्म+|ह्म+|হু+ম+|হুঁ+|উ+ম+|হ্ম+|음+|嗯+)$/u;
 
 /** Sentences, split after their closing mark (any script). */
 function sentences(text: string): string[] {
