@@ -37,6 +37,12 @@ Thumbs.db
 # Test fixtures and one-off scripts the runtime doesn't need.
 tulmi/test-assets/
 tulmi/scripts/
+# Except the two checks DEPLOY.md runs inside the container
+# (docker compose exec backend node dist/tulmi/scripts/<name>.js): left out,
+# they were never built, and both documented commands answered "Cannot find
+# module". They need nothing the server does not already have.
+!tulmi/scripts/live-check.ts
+!tulmi/scripts/speech-check.ts
 # Supabase SQL ships out-of-band via the SQL editor, not in the image.
 tulmi/supabase/
 
