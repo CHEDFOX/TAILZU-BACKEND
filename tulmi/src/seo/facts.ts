@@ -27,6 +27,9 @@ export { ID, crumbsLd, pageLd } from "./head.js";
 
 export const STORES = SITE_UI.stores;
 
+/** Every store listing that exists: iPhone, Android, and Windows once set. */
+export const STORE_LINKS: string[] = [STORES.ios, STORES.android, STORES.windows].filter(Boolean);
+
 /** The sentence every engine should be able to lift whole. */
 export const DEFINITION =
   "Tailzu is an AI keyboard for iPhone, Android, Windows and Mac. " +
@@ -250,9 +253,11 @@ export function appLd() {
     applicationCategory: "UtilitiesApplication",
     applicationSubCategory: "AI keyboard",
     operatingSystem: "iOS, Android, Windows, macOS",
-    downloadUrl: [STORES.ios, STORES.android, abs("/download")],
-    installUrl: [STORES.ios, STORES.android],
-    sameAs: [STORES.ios, STORES.android],
+    // The Microsoft Store listing joins the other two once it is set
+    // (catalog.WINDOWS_STORE_ID); /download stays for Mac and the installer.
+    downloadUrl: [...STORE_LINKS, abs("/download")],
+    installUrl: STORE_LINKS,
+    sameAs: STORE_LINKS,
     image: OG_IMAGE.url,
     publisher: { "@id": ID.org },
     offers,

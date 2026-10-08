@@ -13,6 +13,12 @@
  *
  * The page HEAD-checks each file and marks missing ones "coming soon", so it
  * can ship before every platform's installer exists.
+ *
+ * WINDOWS GOES TO THE MICROSOFT STORE FIRST, once its listing is set
+ * (catalog.WINDOWS_STORE_ID). The installer is unsigned and Windows warns
+ * about it; the Store copy is signed by Microsoft, installs without a warning
+ * and updates itself. The installer stays one small link below, for a PC
+ * without the Store, and the SmartScreen note goes with it.
  */
 import { siteShell } from "./policies/shell.js";
 import { crumbsLd, pageLd } from "../seo/head.js";
@@ -30,19 +36,29 @@ const CSS = `
   .other:hover { border-color: var(--white); }
   .other.disabled { opacity: .4; pointer-events: none; }
   .foot { margin: 56px 0 0; color: var(--dim); font-size: 14px; max-width: 60ch; text-transform: none; }
+  .alt { margin: 14px 0 0; font-size: 14px; color: var(--dim); text-transform: none; }
+  .alt a { color: var(--white); }
+  .alt[hidden] { display: none; }
 `;
 
-export const DOWNLOAD_PAGE_HTML = siteShell({
-  title: "Download for desktop",
-  headTitle: "Download Tailzu for Windows and Mac — Voice Typing at Your Cursor",
-  path: "/download",
-  description: DESCRIPTION,
-  ld: [
-    pageLd("/download", "Download Tailzu", DESCRIPTION),
-    crumbsLd([["Tailzu", "/"], ["Download", "/download"]]),
-  ],
-  css: CSS,
-  main: `
+/** What the page says about Windows trust, by whether a Store listing exists. */
+const windowsNote = (winStore: string) => winStore
+  ? "On Windows, get Tailzu from the Microsoft Store: Microsoft checks and signs it, it installs without a warning, and it updates itself. The installer link is for a PC without the Store; Windows may show a SmartScreen prompt for it on first run (“More info”, then “Run anyway”)."
+  : "Windows may show a SmartScreen prompt on first run: choose “More info”, then “Run anyway”.";
+
+/** The page, for a Windows Store listing ("" while there is none). */
+export function downloadPageHtml(winStore: string): string {
+  return siteShell({
+    title: "Download for desktop",
+    headTitle: "Download Tailzu for Windows and Mac — Voice Typing at Your Cursor",
+    path: "/download",
+    description: DESCRIPTION,
+    ld: [
+      pageLd("/download", "Download Tailzu", DESCRIPTION),
+      crumbsLd([["Tailzu", "/"], ["Download", "/download"]]),
+    ],
+    css: CSS,
+    main: `
 <p class="eye">Desktop</p>
 <h1>Tailzu for your computer.</h1>
 <p class="lede">Press a hotkey, talk, and clean, polished text lands wherever your cursor is. Works in every app.</p>
@@ -50,18 +66,21 @@ export const DOWNLOAD_PAGE_HTML = siteShell({
 <div class="get">
   <a id="main" class="btn disabled" href="#">Detecting your system…</a>
   <div id="hint" class="hint"></div>
+  <p id="alt" class="alt" hidden>Or <a id="altLink" href="/downloads/Tailzu-Setup.exe">download the installer</a> instead.</p>
 </div>
 
 <div class="others" id="others"></div>
 
-<p class="foot">Windows may show a SmartScreen prompt on first run: choose “More info”, then “Run anyway”.</p>
+<p class="foot">${windowsNote(winStore)}</p>
 <p class="foot">On your phone: <a href="${SITE_UI.stores.ios}">App Store</a> · <a href="${SITE_UI.stores.android}">Google Play</a></p>`,
-  script: `
+    script: `
   var FILES = {
     win:   { label: "Download for Windows", file: "/downloads/Tailzu-Setup.exe" },
     mac:   { label: "Download for macOS",   file: "/downloads/Tailzu.dmg" },
     linux: { label: "Download for Linux",   file: "/downloads/Tailzu.AppImage" },
   };
+  // The Microsoft Store listing, when there is one: Windows goes there first.
+  var WIN_STORE = ${JSON.stringify(winStore)};
 
   function detectOS() {
     var ua = navigator.userAgent;
@@ -80,8 +99,29 @@ export const DOWNLOAD_PAGE_HTML = siteShell({
   var hint = document.getElementById("hint");
   var others = document.getElementById("others");
 
+  // Windows with a Store listing: the Store is the button, signed and
+  // updated by Microsoft; the installer is the small link under it, shown
+  // only once it is known to exist. Every other system lists Windows by its
+  // Store link too.
+  if (WIN_STORE) {
+    if (os === "win") {
+      main.textContent = "Get it from Microsoft Store";
+      main.href = WIN_STORE;
+      main.classList.remove("disabled");
+      hint.textContent = "Signed by Microsoft. Installs without warnings and keeps itself up to date.";
+      head(FILES.win.file).then(function (ok) { if (ok) document.getElementById("alt").hidden = false; });
+    } else {
+      var w = document.createElement("a");
+      w.className = "other";
+      w.textContent = "Windows (Microsoft Store)";
+      w.href = WIN_STORE;
+      others.appendChild(w);
+    }
+  }
+
   Object.keys(FILES).forEach(function (key) {
     var f = FILES[key];
+    if (key === "win" && WIN_STORE) return;
     head(f.file).then(function (ok) {
       if (key === os) {
         main.textContent = f.label;
@@ -103,4 +143,7 @@ export const DOWNLOAD_PAGE_HTML = siteShell({
     });
   });
 `,
-});
+  });
+}
+
+export const DOWNLOAD_PAGE_HTML = downloadPageHtml(SITE_UI.stores.windows);
