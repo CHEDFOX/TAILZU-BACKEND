@@ -16,7 +16,7 @@ import {
   PORTRAIT_DIMENSIONS, PORTRAIT_BOUNDS, portraitJsonContract, portraitProvenance,
   parsePortraitDraft, type PortraitDraft,
 } from "./portraitDimensions.js";
-import { buildAssistSystem, fenceTags, stripFenceTags } from "./assistPrompt.js";
+import { buildAssistSystem, fenceTags, readSend, stripFenceTags } from "./assistPrompt.js";
 import { splitInstruction } from "./commands.js";
 import { composeAsk, mentionsAPiece, promptsAnAi } from "./compose.js";
 import { earlierBlock, type RecentDictation } from "./session.js";
@@ -776,7 +776,9 @@ export async function assist(
         ...after,
       ],
     });
-    return stripFenceTags(res.choices[0]?.message?.content ?? "").trim();
+    // The intent line is the writer's thinking, never the message: only
+    // what it put in <send> goes on (assistPrompt.readSend).
+    return stripFenceTags(readSend(res.choices[0]?.message?.content ?? "")).trim();
   };
   let wrote = await write();
   // CHECKED, AND ASKED ONCE MORE WHEN IT BROKE A RULE (see slipIn). Once: a
@@ -953,7 +955,7 @@ export async function refineVariants(
           { role: "user", content: req.userContent },
         ],
       });
-      const text = stripFenceTags(res.choices[0]?.message?.content ?? "").trim();
+      const text = stripFenceTags(readSend(res.choices[0]?.message?.content ?? "")).trim();
       // A variant that leaks the prompt, runs away or is a placeholder is not
       // one to choose between: it is dropped, like a refusal.
       const bad = quotesPrompt(text, system) || runaway(text, req.message) || looksLikeEmptyEcho(text);

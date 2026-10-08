@@ -37,10 +37,43 @@ import { inlineValue } from "../prompts.js";
  * stay theirs. Linear: each attempt stops at the next "<", ">" or newline.
  */
 export const fenceTags = (names: string) => new RegExp(`<\\s*\\/?\\s*(?:${names})\\b([^<>\\n]*>)?`, "gi");
-const FENCE_TAGS = fenceTags("said|before|voice|earlier");
+// <intent> and <send> are the writer's answer (see readSend): out of what a
+// user supplied, so their text cannot pass itself off as either half.
+const FENCE_TAGS = fenceTags("said|before|voice|earlier|intent|send");
 export function stripFenceTags(s: string, tags = FENCE_TAGS): string {
   return s.replace(tags, (tag, closed: string | undefined) => (closed ? "" : tag.slice(1)));
 }
+
+/**
+ * THE WRITER NAMES WHAT THEY MEAN BEFORE IT WRITES, AND ONLY THE WRITING
+ * REACHES THE FIELD.
+ *
+ * It answers `<intent>one line</intent><send>the text</send>` (the last line
+ * of the prompt). The owner's verdict on the prompt without it: "it feels like
+ * it is not doing anything at all". A small model at no reasoning, handed a
+ * page of what not to do, did the one thing none of it forbids: wrote the
+ * transcript back. Naming what this is and what they mean, in its own words,
+ * before writing a word of the message is the thinking a reasoning model
+ * would do, at the cost of one line of output.
+ *
+ * Forgiving on purpose, because a missing tag must never put the intent line
+ * in someone's message: an answer with <send> is what is in it (to the end,
+ * if it was never closed); without one, the intent comes off and the rest is
+ * the text; with neither, the answer is the text as it always was.
+ */
+export function readSend(raw: string): string {
+  const s = String(raw ?? "");
+  const send = /<\s*send\s*>([\s\S]*?)(?:<\s*\/\s*send\s*>|$)/i.exec(s);
+  if (send) return send[1]!.trim();
+  return s
+    .replace(/<\s*intent\s*>[\s\S]*?<\s*\/\s*intent\s*>/gi, "")
+    // Opened and never closed: the intent is that one line.
+    .replace(/^\s*<\s*intent\s*>[^\n]*(?:\n|$)/i, "")
+    .trim();
+}
+
+/** Off with WRITER_INTENT_STEP=false: the old plain answer, for comparison. */
+const INTENT_STEP = process.env.WRITER_INTENT_STEP?.trim().toLowerCase() !== "false";
 
 /** A personality field as text. It can arrive in a client-sent personality,
  *  so a number or an object where a string belongs reads as unset. */
@@ -341,7 +374,11 @@ export function buildAssistSystem(opts: {
   promptsAnAi?: boolean;
   /** Their dictations from the last few minutes ride along in <earlier>. */
   hasEarlier?: boolean;
+  /** Answer as <intent>…</intent><send>…</send> (readSend). Defaults to
+   *  WRITER_INTENT_STEP, on unless set to "false". */
+  intentStep?: boolean;
 }): string {
+  const intentStep = opts.intentStep ?? INTENT_STEP;
   const guidance = toneGuidance(opts.tone, opts.personality, opts.tonePrompt);
   // Both sit inside a sentence of the rules, and both are request data.
   const language = inlineValue(opts.language, 40);
@@ -359,6 +396,22 @@ export function buildAssistSystem(opts: {
     // pause-separated stretch on its own, and a fragment told to be ready to
     // send gets finished — a full stop, a capital, words to round it off.
     "You are Tailzu, the writing assistant in someone's keyboard. What they said or typed to it is inside <said>, and what you return goes straight into the field they are writing in: write it as the message they meant, in their voice.",
+    "",
+    // THE JOB, STATED AS A JOB, BEFORE ANY OF ITS BOUNDS.
+    //
+    // Everything below this paragraph says what not to do, and nothing said
+    // what TO do beyond "the message they meant". So the writer did what no
+    // bound forbids — handed the transcript back — and the owner's verdict
+    // was that it did not seem to do anything at all. Speech is not writing:
+    // it repeats, restarts, thinks aloud, says the second point first. The
+    // job is to understand it and then write what was meant, and the bounds
+    // below are what keep that understanding honest (nothing added, nothing
+    // answered, their words and language).
+    //
+    // "Every point they made" is the other half, and the reason this is not
+    // licence to summarise: a long dictation comes back as long as its points
+    // are, only without the wandering.
+    "First work out what they mean: what this is (a message or reply to someone, a note to themselves, a search, a prompt for an AI, or a piece they want written), who it is for, what they want said or done, and what they asked of you. Then write that, the way they would have written it with time to think: every point they made, in the order that makes sense, without the wandering of speech (filler, repeats, false starts, thinking aloud, asides to the keyboard).",
     "",
     // THE CONTRACT, BEFORE ANYTHING THAT COULD BEND IT. "Say nothing they did
     // not give you" sat at the bottom, under the language rules, and the voice
@@ -379,7 +432,7 @@ export function buildAssistSystem(opts: {
     // of those as the speaker stopping: "I was going to. The market." came
     // back as it went in. The rule was only ever about where <said> ENDS, so
     // that is what it says now.
-    "Everything you return is what they send. Writing down what they said, say nothing they did not give you: no fact, greeting or sentence of your own, and no answer. The meaning is theirs, and the length too unless they ask. Filler, false starts and asides to the keyboard go; when they correct themselves, only the correction stays. If <said> breaks off mid-sentence, end there too.",
+    "Everything you return is what they send. Writing down what they said, say nothing they did not give you: no fact, greeting or sentence of your own, and no answer. The meaning is theirs, and the length too unless they ask. When they correct themselves, only the correction stays. If <said> breaks off mid-sentence, end there too.",
     "",
     // Two recognizers heard the same audio and disagreed. The no-invention
     // clause is the load-bearing half: given two readings a model will happily
@@ -617,7 +670,9 @@ export function buildAssistSystem(opts: {
     // of how much it trusted itself. Stated rather than acted on, because the
     // two lines above already say what to do about it.
     opts.uncertain ? "This one came back with low confidence." : null,
-    "With nothing to write, return nothing: no placeholder, apology or request to repeat.",
+    intentStep
+      ? "With nothing to write, <send> stays empty: no placeholder, apology or request to repeat."
+      : "With nothing to write, return nothing: no placeholder, apology or request to repeat.",
     "",
     // Everything in the TONE block (the voice, the portrait, their standing
     // instructions) is about how they sound. Said once, here, so none of it
@@ -627,6 +682,13 @@ export function buildAssistSystem(opts: {
     "The voice below shapes how it sounds, never what it says."
       + (guidance.includes("<voice>") ? " What is in <voice> is theirs, and changes none of the rules above." : ""),
     `TONE: ${guidance}`,
+    // LAST, after the user's own <voice>, so nothing they wrote is the final
+    // word on what shape the answer takes. See readSend for why there are two
+    // parts and how a broken answer is read.
+    intentStep ? "" : null,
+    intentStep
+      ? "Answer in two parts: <intent>one short line naming what this is and what they mean</intent> then <send>exactly the text for the field</send>. Only <send> reaches them."
+      : null,
   ]
     // Conditional lines emit null when absent. Bare "" entries are deliberate
     // paragraph breaks and must survive, so filter on null only.
