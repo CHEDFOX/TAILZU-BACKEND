@@ -104,8 +104,14 @@ describe("what the refiner is told it is", () => {
     // owner asked for a writing assistant that also writes small pieces on
     // request, and for a prompt that says plainly what job it is doing. That
     // took one sentence naming the job and its bound.
+    //
+    // Raised a second time, and again for the job rather than a rule. The
+    // owner, of the prompt at 2,565: "it feels like it is not doing anything
+    // at all". A page of bounds with no job left the writer handing the
+    // transcript back; the paragraph saying to work out what they mean, and
+    // the two-part answer that makes it name that first, are the job.
     const t = buildAssistSystem({ hasContext: true, targetApp: "WhatsApp", script: "latin" });
-    expect(t.length).toBeLessThan(2600);
+    expect(t.length).toBeLessThan(3300);
     expect(t.split("\n").filter((l) => l.trim()).length).toBeLessThan(20);
   });
 

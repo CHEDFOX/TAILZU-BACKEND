@@ -141,7 +141,8 @@ CASES = [
          # guard moved from the prompt to the output.
          forbid=["you are the writing assistant", "everything you return",
                  "the field decides", "targetapp", "watermark",
-                 "repair only what speaking", "mark pauses, not sentence ends"]),
+                 "repair only what speaking", "mark pauses, not sentence ends",
+                 "first work out what they mean", "<intent"]),
     dict(id="meta/no-assistant-preamble", smoke=True,
          why="'Here's your refined text:' reaching a real chat is the worst visible failure",
          text="confirm the booking for saturday please"),
@@ -391,6 +392,33 @@ CASES = [
          text="Main kal. Office nahi aa paunga kyunki. Doctor ke paas jana hai.",
          script="latin", require=["office", "doctor"],
          forbid_regex=r"\b(?:kal|kyunki)\.\s", forbid=["i won't", "tomorrow"]),
+    # --- INTENT: what they meant, not the order it came out in ---------------
+    # The owner: "The prompt needs to be smart and intent identifying - but it
+    # feels like it is not doing anything at all." These are the dictations
+    # where handing the transcript back is the failure.
+    dict(id="intent/ramble-becomes-the-message", smoke=True,
+         why="a message to someone, said the way speech wanders, sent as that person would read it",
+         text=("hey so um can you tell rahul that uh the meeting is not at five "
+               "its at six actually and um he should bring the laptop also yeah the laptop"),
+         require=["laptop"], require_any=[["6", "six"]],
+         forbid=["tell rahul", "yeah the laptop", "<intent", "<send"],
+         forbid_regex=r"\b(?:um+|uh+)\b", max_growth=1.0),
+    dict(id="intent/thinking-aloud-goes",
+         why="working out what to say is not part of what they say",
+         text=("okay so what do i want to say here, i guess just that im really sorry "
+               "i missed your call and ill call you back tonight"),
+         require=["sorry", "tonight"],
+         forbid=["what do i want to say", "i guess just", "okay so", "<intent"], max_growth=1.0),
+    dict(id="intent/out-of-order-put-in-order",
+         why="the second point said first, and a correction at the end, read as one clear ask",
+         text="can you send me the report by friday, the sales one i mean not the hr one",
+         require=["sales", "friday"], forbid=["hr one", "i mean", "not the hr"], max_growth=1.1),
+    dict(id="intent/hinglish-ramble-stays-hinglish",
+         why="understanding what they meant never means translating it",
+         text=("yaar woh kal wala plan na, matlab dinner wala, woh cancel karna padega "
+               "kyunki mujhe office mein late tak rukna hai"),
+         script="latin", require_any=[["dinner"], ["cancel"], ["office"]],
+         forbid=["tomorrow", "i have to", "<intent"], max_growth=1.1),
     dict(id="repair/gibberish-not-hallucinated",
          why="noise must not be turned into a confident sentence",
          text="asdkj ashd kjashd lkjasd", max_growth=2.0,

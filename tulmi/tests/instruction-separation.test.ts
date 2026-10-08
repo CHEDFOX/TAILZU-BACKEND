@@ -268,7 +268,8 @@ describe("a selected tone goes through the SAME prompt", () => {
     // specified — the bullets were an attempt to pin down by enumeration
     // something the model already knows how to hear.
     for (const tone of tones) {
-      const voice = buildAssistSystem({ tone, hasContext: false }).split("TONE:")[1] ?? "";
+      // The tone alone: the answer format, which follows it, is not the voice.
+      const voice = buildAssistSystem({ tone, hasContext: false, intentStep: false }).split("TONE:")[1] ?? "";
       expect(voice.trim().length, tone).toBeLessThan(320);
     }
   });
@@ -277,7 +278,7 @@ describe("a selected tone goes through the SAME prompt", () => {
     // ZU was a hundred words of "don't" — don't make it friendlier, more
     // formal, more upbeat, more polished. The default is the tone most people
     // never change, so it was the longest thing in the prompt by far.
-    const zu = buildAssistSystem({ hasContext: false }).split("TONE:")[1] ?? "";
+    const zu = buildAssistSystem({ hasContext: false, intentStep: false }).split("TONE:")[1] ?? "";
     expect(zu.trim().length).toBeLessThan(320);
     expect(zu).toMatch(/Their own voice, not a style/);
   });
