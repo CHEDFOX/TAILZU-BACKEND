@@ -2591,6 +2591,17 @@ const TELEMETRY_COUNTERS = new Set([
   "remounts",
   "keyMs",
   "slowKeys",
+  // The keystroke budget and what a rebuild costs (iOS): over a 60 Hz frame
+  // (16 ms), and the key tree's build time summed, with how many missed it.
+  "keysOverFrame",
+  "remountMs",
+  "slowRemounts",
+  // How close the iOS extension runs to its memory ceiling: one sample per
+  // open, and how many of those were at or over each band.
+  "memSampled",
+  "memOver30MB",
+  "memOver40MB",
+  "memOver50MB",
   "autocorrectApplied",
   "autocorrectReverted",
   "suggestionAccepted",
