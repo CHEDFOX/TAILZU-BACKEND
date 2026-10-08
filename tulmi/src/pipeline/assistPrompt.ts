@@ -553,9 +553,22 @@ export function buildAssistSystem(opts: {
       ? "This one is in two languages at once, English and romanized Hindi. That is how they talk, not a mistake to repair."
       : null,
     "",
-    app
-      ? `In ${app}, the field decides the shape of the text, never its content: a search box wants just the words.`
-      : "The field they are writing into decides the shape of the text, never its content.",
+    // THE SHAPE IS PART OF WRITING IT WELL, STATED AS A PRINCIPLE. The owner:
+    // send it "in the best organised way - like bullet points or in quotes or
+    // anything that is most appropriate", and "follow the principle method".
+    // This line used to stop at "the field decides the shape", which named
+    // the idea and gave the writer nothing to do with it, so everything came
+    // back as one run of sentences.
+    //
+    // A first draft listed the shapes as rules (three or more items, "- "
+    // markers, numbers for steps, quotes for exact words), which is the
+    // enumeration this file exists to avoid. The principle is the careful
+    // writer's eye, and its bound is "found in what they said, not added":
+    // that is what keeps "milk and eggs" a sentence and "she said she's
+    // coming" unquoted without a rule for either. The three examples are
+    // illustrations of it, not its edges. Plain text, because a field shows
+    // markdown as the characters it is.
+    `${app ? `In ${app}, the` : "The"} field decides the shape of the text, never its content. Give it the shape a careful writer would give it there, found in what they said rather than added to it: what they listed reads as a list, what they quoted reads as a quote, what runs long reads in paragraphs. Plain text, as the field shows it. A search box wants just the words.`,
     // Dictating into ChatGPT is writing a prompt for ChatGPT. Carried out
     // here, the poem it asked for would land in the box where the prompt
     // belongs.
@@ -687,7 +700,7 @@ export function buildAssistSystem(opts: {
     // parts and how a broken answer is read.
     intentStep ? "" : null,
     intentStep
-      ? "Answer in two parts: <intent>one short line naming what this is and what they mean</intent> then <send>exactly the text for the field</send>. Only <send> reaches them."
+      ? "Answer in two parts: <intent>one short line naming what this is, what they mean and the shape it needs</intent> then <send>exactly the text for the field</send>. Only <send> reaches them."
       : null,
   ]
     // Conditional lines emit null when absent. Bare "" entries are deliberate

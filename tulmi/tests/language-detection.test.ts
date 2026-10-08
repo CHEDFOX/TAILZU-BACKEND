@@ -247,9 +247,10 @@ describe("what the prompt is told about a mixed sentence", () => {
       mixedLanguages: true, hasAlternative: true,
     });
     // 2400 until the second job (a short piece written on request) was named,
-    // 3000 until the writer was told to work out what they mean first; see
+    // 3000 until the writer was told to work out what they mean first, 3700
+    // until it was told the shapes (lists, quotes, paragraphs); see
     // assist-tone's guard.
-    expect(t.length).toBeLessThan(3700);
+    expect(t.length).toBeLessThan(3900);
   });
 });
 

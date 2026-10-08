@@ -110,8 +110,13 @@ describe("what the refiner is told it is", () => {
     // at all". A page of bounds with no job left the writer handing the
     // transcript back; the paragraph saying to work out what they mean, and
     // the two-part answer that makes it name that first, are the job.
+    //
+    // And a third time, for the shape: the owner asked for the text sent "in
+    // the best organised way - like bullet points or in quotes", by "the
+    // principle method". One principle (the careful writer's shape, found in
+    // what they said) replaced the line that only said the field decides it.
     const t = buildAssistSystem({ hasContext: true, targetApp: "WhatsApp", script: "latin" });
-    expect(t.length).toBeLessThan(3300);
+    expect(t.length).toBeLessThan(3500);
     expect(t.split("\n").filter((l) => l.trim()).length).toBeLessThan(20);
   });
 

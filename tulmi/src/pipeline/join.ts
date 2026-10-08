@@ -139,6 +139,9 @@ export function joinWithSpace(context: string | undefined, text: string): boolea
   const t = (text ?? "").trim();
   if (!c.trim() || !t) return false;
   if (/\s$/.test(c)) return false;
+  // Text that opens on a new line (a list after a sentence) brings its own
+  // separation; a space before it would end the line above with one.
+  if (/^[^\S\r\n]*[\r\n]/.test(text ?? "")) return false;
   if (/^[,.;:!?…%)\]}»”’。！？、，।॥]/u.test(t)) return false;
   if (/[(\[{«“‘¿¡]$/u.test(c)) return false;
   const last = [...c].pop() ?? "";
