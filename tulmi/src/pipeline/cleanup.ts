@@ -347,6 +347,37 @@ export function stripAddedClosing(out: string, said: string): string {
 }
 
 /**
+ * A greeting the writer added that the speaker never said: the other end of
+ * the same failure.
+ *
+ * Measured on the deployed server: with a learned portrait in the voice,
+ * "running late be there in ten" came back "Hey! Running late, be there in
+ * ten." one run in two. The prompt forbids a greeting of the model's own in
+ * as many words, and the portrait still read as licence. A greeting that
+ * stands on its own at the very start ("Hey!", "Hi,", "Hello.") with none in
+ * what they said, in any language, is the model's and comes off.
+ *
+ * Only standing alone, with its own punctuation: "Hey Priya, …" addresses
+ * someone, and taking the "Hey" would leave a sentence nobody wrote.
+ */
+const GREETING = /^(?:hey+|hi+|hello|hiya|heya|yo|namaste|namaskar|नमस्ते|नमस्कार)(?:\s+there)?\s*[!,.…]+\s+(?=\S)/iu;
+const GREETING_MEANINGS = ["hey", "hi", "hello", "hiya", "heya", "yo", "namaste", "namaskar", "नमस्ते", "नमस्कार",
+  "salaam", "salam", "assalam", "hola", "bonjour", "vanakkam", "sat sri akal", "kem cho", "helo", "hai"];
+/** Whole words only: "hi" is not in "him", and "hiii" is still hi. */
+function saidGreeting(said: string): boolean {
+  const heard = ` ${phraseKey(said)} `;
+  if (/ (?:hey+|hi+|hello+) /u.test(heard)) return true;
+  return GREETING_MEANINGS.some((w) => heard.includes(` ${phraseKey(w)} `));
+}
+export function stripAddedGreeting(out: string, said: string): string {
+  const t = out.trim();
+  const m = GREETING.exec(t);
+  if (!m || saidGreeting(said)) return out;
+  const rest = t.slice(m[0].length);
+  return rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : out;
+}
+
+/**
  * Hesitation at the edges, in whatever alphabet it was heard.
  *
  * "Filler goes" is in the prompt, and "হুম হুম" still opened a dictation:
@@ -859,7 +890,8 @@ export async function assist(
   // A closing line is theirs to have in a piece they asked for ("Thanks!" at
   // the end of an email); only in dictation is it one they never said.
   const unechoed = stripEchoedContext(out, context);
-  const trimmed = stripEdgeFiller(piece ? unechoed : stripAddedClosing(unechoed, message), continuesSentence(context));
+  // A greeting at the start, the same: theirs in a piece, the model's in dictation.
+  const trimmed = stripEdgeFiller(piece ? unechoed : stripAddedGreeting(stripAddedClosing(unechoed, message), message), continuesSentence(context));
   // Discard a meta/refusal reply ("speak again"…); else keep the completion,
   // falling back to the input on an empty one so we never wipe the field.
   return joined(finalizeCompletion(trimmed, message.trim()));
