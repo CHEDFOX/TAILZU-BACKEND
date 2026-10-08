@@ -170,6 +170,13 @@ const META_PATTERNS: RegExp[] = [
   // INSTRUCTIONS — never about a printer.
   /\bi (?:cannot|can'?t|am unable to|'?m unable to) (?:fulfill|fulfil|comply with|assist with|complete)\b[^.]{0,40}\brequest\b/i,
   /\bi (?:cannot|can'?t|am unable to|'?m unable to) (?:ignore|override|bypass|reveal|disclose|share|print|provide)\b[^.]{0,40}\b(?:instructions?|system prompt)\b/i,
+  // THE WRITER EXPLAINING WHAT IT WRITES. Asked for an essay, it answered the
+  // way an assistant does: "I cannot write an essay of that length for you. I
+  // can help you write shorter messages or notes." Into the field, as their
+  // message. The object again makes it a refusal: writing, for you. Anyone
+  // who really says either sentence said it in their input too, and keeps it.
+  /\bi can (?:only )?help (?:you )?(?:write|with writing|draft)\b/i,
+  /\bi (?:cannot|can'?t|am unable to|'?m unable to|won'?t be able to) (?:write|draft|compose)\b[^.]{0,40}\bfor you\b/i,
 ];
 
 /**
@@ -605,6 +612,11 @@ interface WriterRequest {
   piece: boolean;
   /** The field is a prompt for another AI (compose.promptsAnAi). */
   toAnAi: boolean;
+  /** They asked for more than a keyboard writes (compose: tooBig), so the
+   *  request itself is what they are saying. */
+  tooBig: boolean;
+  /** The field is not for sentences: a search box, a number (fieldShapesIt). */
+  field: boolean;
   system: string;
   userContent: string;
 }
@@ -709,7 +721,35 @@ function writerRequest(input: string, opts: CleanupOptions & WriterExtras): Writ
   const userContent = earlier
     + (context ? `<before>\n${stripFenceTags(context)}\n</before>\n` : "")
     + `<said>\n${messageBlock}\n</said>`;
-  return { message, context, askedLanguage, instructed: !!asked, piece, toAnAi, system, userContent };
+  return {
+    message, context, askedLanguage, instructed: !!asked, piece, toAnAi,
+    tooBig: ask?.kind === "tooBig", field: fieldShapesIt(opts.targetApp), system, userContent,
+  };
+}
+
+/**
+ * A FIELD THAT IS NOT FOR SENTENCES: a search box, a number, a PIN. There the
+ * field decides the shape (assistPrompt's shape line): "best biryani place
+ * near Andheri" is the right answer to a question and "4128" to a sentence,
+ * so the checks below that hold a message to its sentence (its question, its
+ * words, its capital and full stop) stand back. Read from the app hint, the
+ * only word the writer has for the field.
+ */
+const FIELD_NOT_FOR_SENTENCES = /\b(?:search|number|numeric|digits?|pin|otp|passcode|url|address bar|spotlight|launcher)\b/i;
+export function fieldShapesIt(targetApp?: string): boolean {
+  return !!targetApp && FIELD_NOT_FOR_SENTENCES.test(targetApp);
+}
+
+/**
+ * THEY WRITE IN LOWERCASE ON PURPOSE: the group-chat voice says so, or their
+ * own instructions or portrait do. Then an answer that starts on a small
+ * letter is their style, not a sentence left unwritten (finishUnwritten).
+ */
+const LOWERCASE_STYLE = /\blower[\s-]?case\b|\bno (?:capitals?|caps|full stops?|periods?|punctuation)\b/i;
+function writesLowercase(opts: CleanupOptions): boolean {
+  if (opts.tone === "very-casual" || opts.personality?.tone === "very-casual") return true;
+  const p = opts.personality;
+  return LOWERCASE_STYLE.test([opts.tonePrompt, p?.customInstructions, p?.stylePortrait?.core].filter(Boolean).join("\n"));
 }
 
 /**
@@ -740,8 +780,16 @@ function writerRequest(input: string, opts: CleanupOptions & WriterExtras): Writ
  *               it: slipIn is only handed an answer)
  *   carried     in an AI app, a request ("write a birthday message for my
  *               mom") carried out instead of written as their prompt
+ *   question    they asked someone something, and what came back is neither
+ *               a question nor opens as one ("whats the population of india
+ *               right now" → "population of India right now")
+ *   dropped     under a quarter of their words came back: "mail it to
+ *               priya@example.com please" → "priya@example.com"
+ *
+ * The last two only where the field is for sentences (fieldShapesIt): in a
+ * search box or a number field, both are the right answer.
  */
-export type Slip = "alphabet" | "translated" | "added" | "correction" | "filler" | "long" | "pause" | "empty" | "carried";
+export type Slip = "alphabet" | "translated" | "added" | "correction" | "filler" | "long" | "pause" | "empty" | "carried" | "question" | "dropped";
 
 /**
  * A request to an AI, by its verb: "write …", "can you make …", "please
@@ -764,7 +812,7 @@ const wordCount = (s: string): number => (unlisted(s).trim().match(/\S+/g) ?? []
 export function slipIn(
   message: string,
   out: string,
-  o: { askedLanguage?: string; instructed?: boolean; piece?: boolean; toAnAi?: boolean } = {},
+  o: { askedLanguage?: string; instructed?: boolean; piece?: boolean; toAnAi?: boolean; field?: boolean } = {},
 ): Slip | null {
   const said = message.trim();
   const wrote = out.trim();
@@ -795,6 +843,15 @@ export function slipIn(
   if (!o.instructed && !o.piece && wordCount(wrote) > wordCount(said) * 1.6 + 6) return "added";
   if (CORRECTION.test(wrote) && CORRECTION.test(said)) return "correction";
   if (FILLER_WORD.test(wrote) && FILLER_WORD.test(said)) return "filler";
+  if (!o.field && !o.instructed && !o.piece && !o.toAnAi) {
+    // A question they are sending stays one: a question mark, or at least
+    // the words that open it. The prompt says so ("a question they dictate
+    // is a question they are sending") and lost three runs of three.
+    if (OPENS_A_QUESTION.test(said) && !/[?？]/.test(wrote) && !OPENS_A_QUESTION.test(wrote)) return "question";
+    // Thinking aloud can halve a dictation; a quarter left is the message
+    // gone. Asked again, and kept only if the second answer is clean.
+    if (wordCount(said) >= 4 && wordCount(wrote) * 4 < wordCount(said)) return "dropped";
+  }
   if (hasPauseStop(wrote)) return "pause";
   return null;
 }
@@ -810,6 +867,8 @@ const REDO: Record<Slip, string> = {
   pause: "A full stop is still where they only paused, in the middle of a sentence. Join that sentence across the pause, and end sentences only where they really end.",
   empty: "That wrote nothing, but they did say something. Write what they said, as the message they meant.",
   carried: "That did what they asked. Here what they say is their prompt to an AI assistant: write the prompt itself, cleaned up, and do not carry it out.",
+  question: "That turned their question into something else. They are asking someone this: write it as their question.",
+  dropped: "That kept almost none of what they said. Only filler and thinking aloud go: the rest is their message, written whole.",
 };
 
 /**
@@ -823,14 +882,77 @@ const REDO: Record<Slip, string> = {
  * at all" looks like from the field. Only English letters, only three words
  * or more, and no capital where it carries on a sentence already there. A
  * question mark only where it opens as a question, in English or Hinglish.
+ *
+ * "When", "where" and "how" open a question only with a verb after them:
+ * "when is the meeting" asks, "when you get home call me" does not. "What a
+ * day" is not a question either. The capital goes only on a plain lowercase
+ * word ("iPhone", an address or a link keep theirs), and no full stop is put
+ * on the end of an address or a link.
  */
-const OPENS_A_QUESTION = /^(?:what|whats|what's|when|where|why|how|who|whom|whose|which|kya|kab|kahan|kahaan|kaun|kyun|kyon|kaise|kitna|kitne|kitni|(?:can|could|would|will|should|shall)\s+(?:you|u|we|i)|(?:is|are|was|were)\s+(?:it|this|that|there|you|they|we|he|she)|(?:does|did|do)\s+(?:you|u|it|he|she|they|we))\b/i;
+const QUESTION_VERBS = "is|are|was|were|am|do|does|did|can|could|would|will|should|shall|has|have|had";
+const OPENS_A_QUESTION = new RegExp(
+  "^(?:what(?!\\s+an?\\b)|whats|what's|why|who|whom|whose|which|kya|kab|kahan|kahaan|kaun|kyun|kyon|kaise|kitna|kitne|kitni"
+  + `|(?:when|where)\\s+(?:${QUESTION_VERBS})|how\\s+(?:${QUESTION_VERBS}|much|many|long|far|old|often|come|about)`
+  + "|(?:can|could|would|will|should|shall)\\s+(?:you|u|we|i)|(?:is|are|was|were)\\s+(?:it|this|that|there|you|they|we|he|she)"
+  + "|(?:does|did|do)\\s+(?:you|u|it|he|she|they|we))\\b",
+  "i",
+);
+const PLAIN_FIRST_WORD = /^\p{Ll}[\p{Ll}'’]*(?=[\s,;!?…]|[.:](?!\S)|$)/u;
 export function tidyRaw(s: string, continuing = false): string {
   let t = s.trim();
   if (!t || detectScript(t) !== "latin" || countWords(t) < 3) return t;
-  if (!continuing && /^\p{Ll}/u.test(t)) t = t.charAt(0).toUpperCase() + t.slice(1);
-  if (/[\p{L}\p{N}]$/u.test(t)) t += OPENS_A_QUESTION.test(t) ? "?" : ".";
+  if (!continuing && PLAIN_FIRST_WORD.test(t)) t = t.charAt(0).toUpperCase() + t.slice(1);
+  if (/[\p{L}\p{N}]$/u.test(t) && !/[@/]\S*$/.test(t)) t += OPENS_A_QUESTION.test(t) ? "?" : ".";
   return t;
+}
+
+/**
+ * NOTHING GOES OUT LOOKING UNWRITTEN.
+ *
+ * The run the owner read line by line had a dozen answers that were what went
+ * in, letter for letter: "mujhe kal subah jaldi uthna hai", "what time does
+ * the movie start", "add 250 ml water and 2 spoons sugar", lowercase and open.
+ * The writer took them for notes or searches or already done, and from the
+ * field that is "it is not doing anything at all". An answer that starts on a
+ * small letter, with nothing of theirs before it to carry on, was not
+ * written: it gets what tidyRaw gives a fallback, a capital and an end mark.
+ *
+ * Only that signature. A capital the writer gave with the end mark left off
+ * is a choice ("Tomorrow 6pm gym"), and a live chunk that stops mid-sentence
+ * comes capitalised from the recogniser, so it is never closed here into a
+ * sentence it is not (and shapeForJoin takes a stop back off a word no
+ * sentence ends on). assist() does not ask it of a field that is not for
+ * sentences, or of anyone who writes in lowercase on purpose.
+ */
+export function finishUnwritten(out: string, continuing: boolean): string {
+  const t = out.trim();
+  if (continuing || t.includes("\n") || !PLAIN_FIRST_WORD.test(t)) return out;
+  return tidyRaw(t);
+}
+
+/**
+ * A PLEASE THEY SAID GOES OUT. "Please transfer 2500 rupees to Ramesh today"
+ * came back "Transfer ₹2500 to Ramesh today" one run in three: every point
+ * kept and the tone gone, after the prompt named the tone as theirs. Put back
+ * where it stood, and only where that is plain: at the start, before the same
+ * word they said it before, or at the end. An answer that asks in another
+ * way ("Could you transfer…") already kept it.
+ */
+const POLITE = /\b(?:please|pls|plz|kindly)\b/i;
+export function keepPlease(out: string, said: string): string {
+  const t = out.trim();
+  const s = said.trim();
+  if (!t || t.includes("\n") || POLITE.test(t)) return out;
+  const lead = /^(?:please|pls|plz)[\s,]+([\p{L}']+)/iu.exec(s);
+  if (lead) {
+    const first = /^[\p{L}']+/u.exec(t)?.[0];
+    if (!first || first.toLowerCase() !== lead[1]!.toLowerCase()) return out;
+    const word = first === "I" || first === first.toUpperCase() ? first : first.charAt(0).toLowerCase() + first.slice(1);
+    return `Please ${word}${t.slice(first.length)}`;
+  }
+  if (!/\b(?:please|pls|plz)[\s.!?]*$/i.test(s)) return out;
+  const end = /^(.*?)([.!?]*)$/su.exec(t)!;
+  return /[\p{L}\p{N}]$/u.test(end[1]!) ? `${end[1]}, please${end[2]}` : out;
 }
 
 /**
@@ -862,7 +984,8 @@ export async function assist(
   opts: CleanupOptions & WriterExtras = {},
 ): Promise<string> {
   if (!input.trim()) return "";
-  const { message, context, askedLanguage, instructed, piece, toAnAi, system, userContent } = writerRequest(input, opts);
+  const { message, context, askedLanguage, instructed, piece, toAnAi, tooBig, field, system, userContent } = writerRequest(input, opts);
+  const checks = { askedLanguage, instructed, piece, toAnAi, field };
   const write = async (after: Array<{ role: "assistant" | "user"; content: string }> = []) => {
     const res = await openrouter().chat.completions.create({
       ...common(),
@@ -891,14 +1014,14 @@ export async function assist(
   // a question or an order as aimed at itself and wrote nothing.
   const slip: Slip | null = !wrote && wordCount(message) >= 2 ? "empty"
     : piece && countWords(wrote) > PIECE_WORDS ? "long"
-    : slipIn(message, wrote, { askedLanguage, instructed, piece, toAnAi });
+    : slipIn(message, wrote, checks);
   if (slip) {
     try {
       const again = await write([
         { role: "assistant", content: wrote },
         { role: "user", content: `${REDO[slip]} Return only the text.` },
       ]);
-      const still = again ? slipIn(message, again, { askedLanguage, instructed, piece, toAnAi }) : slip;
+      const still = again ? slipIn(message, again, checks) : slip;
       // Kept when it is clean, or, for an addition or a long piece, when it at
       // least added less. A second answer that swapped one slip for another is
       // not kept.
@@ -908,8 +1031,10 @@ export async function assist(
       // Still in English after being told it was a translation: their own
       // words, unwritten, are closer to what they said than someone else's.
       else if (slip === "translated" && detectScript(message) === "latin") wrote = tidyRaw(message, continuesSentence(context));
-      // Carried out twice in an AI app: what they said IS the prompt.
-      else if (slip === "carried") wrote = tidyRaw(message, continuesSentence(context));
+      // Carried out twice in an AI app: what they said IS the prompt. A
+      // question lost twice: their question, as they asked it, is closer
+      // than search words or an answer.
+      else if (slip === "carried" || slip === "question") wrote = tidyRaw(message, continuesSentence(context));
     } catch {
       // The first answer stands; the guards below still apply to it.
     }
@@ -940,6 +1065,13 @@ export async function assist(
   // Not for a piece they asked for: its length was bounded above, and their
   // request is the one thing that must not be pasted in its place.
   if (!piece && runaway(out, message)) return joined(theirs);
+  // MORE THAN A KEYBOARD WRITES IS WHAT THEY ARE SAYING, so the request goes
+  // out as the request, and that has a size: theirs. Asked for an essay, the
+  // writer explained itself instead, 39 words of "I can help you write
+  // messages… you would need to provide me with more specific details", too
+  // long for a refusal pattern to be trusted with and every word of it the
+  // writer's. Anything past their own words and a few more is not theirs.
+  if (tooBig && wordCount(out) > wordCount(message) + 4) return joined(theirs);
   // The instructions are never the message. Falling back to what they said is
   // the same policy as a refusal: a request that happened to address the model
   // goes out as the message it always was.
@@ -960,7 +1092,14 @@ export async function assist(
   const trimmed = stripEdgeFiller(piece ? unechoed : stripAddedGreeting(stripAddedClosing(unechoed, message), message), continuesSentence(context));
   // Discard a meta/refusal reply ("speak again"…); else keep the completion,
   // falling back to the input on an empty one so we never wipe the field.
-  return joined(finalizeCompletion(trimmed, theirs));
+  const final = finalizeCompletion(trimmed, theirs);
+  // Never out looking unwritten (finishUnwritten), and never without the
+  // please they said (keepPlease). Neither where they asked for something
+  // about the writing ("make it lowercase", "keep it short"), or asked for a
+  // piece: then the shape and the tone are the request's.
+  if (instructed || piece) return joined(final);
+  const finished = field || writesLowercase(opts) ? final : finishUnwritten(final, continuesSentence(context));
+  return joined(keepPlease(finished, message));
 }
 
 export { LLM_TONES };

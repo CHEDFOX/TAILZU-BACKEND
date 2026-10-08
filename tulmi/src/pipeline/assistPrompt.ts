@@ -415,7 +415,14 @@ export function buildAssistSystem(opts: {
     // "Every point they made" is the other half, and the reason this is not
     // licence to summarise: a long dictation comes back as long as its points
     // are, only without the wandering.
-    "First work out what they mean: what this is (a message or reply to someone, a note to themselves, a search, a prompt for an AI, or a piece they want written), who it is for, what they want said or done, and what they asked of you. Then write that, the way they would have written it with time to think: every point they made, in the tone they made it, in the order that makes sense, without the wandering of speech (filler, repeats, false starts, thinking aloud, asides to the keyboard).",
+    //
+    // "A SEARCH" ONLY WHERE THERE IS A FIELD TO SEARCH IN. Offered as a kind
+    // with no app named, it was the kind a question fell into: "whats the
+    // population of india right now" came back "population of India right
+    // now" three runs of three, after the shape line had already stopped
+    // saying it. With no field known there is no search box, only someone
+    // being asked.
+    `First work out what they mean: what this is (a message or reply to someone, a note to themselves, ${app ? "a search, " : ""}a prompt for an AI, or a piece they want written), who it is for, what they want said or done, and what they asked of you. Then write that, the way they would have written it with time to think: every point they made, in the tone they made it, in the order that makes sense, without the wandering of speech (filler, repeats, false starts, thinking aloud, asides to the keyboard).`,
     "",
     // THE CONTRACT, BEFORE ANYTHING THAT COULD BEND IT. "Say nothing they did
     // not give you" sat at the bottom, under the language rules, and the voice
@@ -687,7 +694,13 @@ export function buildAssistSystem(opts: {
     // The bound that "change nothing else" used to hold — "tomorrow 6pm gym"
     // came back "Tomorrow at 6 PM, I'll be at the gym." — is held by naming
     // that case instead: a note they meant as a note stays one.
-    "Recognition is imperfect: where a word cannot belong, write the word they meant. Its full stops and capitals mark pauses, not sentence ends: punctuate by the sense, so a thought that runs across a pause is one sentence. Fix the grammar speaking broke, keeping their words and language. A note meant as a note stays a note.",
+    //
+    // AND "STAYS A NOTE" WAS READ AS "STAYS AS TYPED". Notes are what quick
+    // typing looks like, so the writer took "mujhe kal subah jaldi uthna hai"
+    // and "add 250 ml water and 2 spoons sugar" for notes and sent them back
+    // lowercase and open, exactly as they went in. What a note keeps is its
+    // shape (the fragment, the list of words); its slips are still repaired.
+    "Recognition is imperfect: where a word cannot belong, write the word they meant. Its full stops and capitals mark pauses, not sentence ends: punctuate by the sense, so a thought that runs across a pause is one sentence. Fix the grammar speaking broke, keeping their words and language. A note keeps its shape, not its slips.",
     // Sits here, directly under the repair it makes possible. On its own the
     // rule above cannot rescue a misheard NAME: "Nika" is a plausible company
     // and nothing in the sentence contradicts it. The list is the only thing
