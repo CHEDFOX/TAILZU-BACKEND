@@ -141,7 +141,7 @@ CASES = [
          # guard moved from the prompt to the output.
          forbid=["you are the writing assistant", "everything you return",
                  "the field decides", "targetapp", "watermark",
-                 "repair only what speaking"]),
+                 "repair only what speaking", "mark pauses, not sentence ends"]),
     dict(id="meta/no-assistant-preamble", smoke=True,
          why="'Here's your refined text:' reaching a real chat is the worst visible failure",
          text="confirm the booking for saturday please"),
@@ -369,6 +369,28 @@ CASES = [
          text=("i reached the office early today then the client called and "
                "asked to move the review so i pushed it to thursday"),
          require_regex=r"[.!?]"),
+    # The live recognizer writes every pause as a full stop and the keyboards
+    # join the pieces, so this is the shape a spoken sentence actually reaches
+    # /v1/refine in. The owner: "pauses are creating full stops between a
+    # continuous thing", and the refinement "arriving as what is dictated".
+    dict(id="repair/pause-stops-joined", smoke=True,
+         why="a breath in the middle of a sentence is not the end of it",
+         text="So I was going to the. Market tomorrow. And then maybe. The pharmacy.",
+         forbid_regex=r"\b(?:the|and|a)\.\s", require=["market", "pharmacy"], max_growth=1.4),
+    dict(id="repair/one-thought-one-sentence",
+         why="fragments cut at pauses read as broken writing",
+         text="I was thinking. That we could move the meeting. To Thursday. Because the deck is not ready.",
+         forbid_regex=r"\.\s+(?:that|to) ", require=["thursday", "deck"], max_growth=1.4),
+    dict(id="repair/grammar-fixed", smoke=True,
+         why="the grammar speaking broke is the writer's to fix",
+         text="he don't know where the files is, can you sent it to him",
+         forbid=["he don't", "files is", "sent it"],
+         require_any=[["doesn't", "does not"], ["send"]], max_growth=1.4),
+    dict(id="repair/hinglish-pauses-joined",
+         why="the same pauses in Hinglish, joined without translating a word",
+         text="Main kal. Office nahi aa paunga kyunki. Doctor ke paas jana hai.",
+         script="latin", require=["office", "doctor"],
+         forbid_regex=r"\b(?:kal|kyunki)\.\s", forbid=["i won't", "tomorrow"]),
     dict(id="repair/gibberish-not-hallucinated",
          why="noise must not be turned into a confident sentence",
          text="asdkj ashd kjashd lkjasd", max_growth=2.0,

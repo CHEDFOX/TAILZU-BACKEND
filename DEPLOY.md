@@ -181,6 +181,30 @@ Each run saves its results, so the next one can be compared to it:
 which prints FIXED and REGRESSED per case. That is the only honest way to say
 a prompt change helped.
 
+Whether the live engine sends text while someone talks, or only after they
+pause, is a separate question with its own check. It speaks a sentence with a
+pause in the middle (OpenAI TTS) and streams it through the real live engine,
+printing each event at the second it arrived:
+
+```
+docker compose exec backend node dist/tulmi/scripts/live-check.js
+docker compose exec backend node dist/tulmi/scripts/live-check.js --say "I was going to the" --say "market tomorrow" --gap 1.5
+```
+
+Every real dictation also leaves one `live session` line in the log, with no
+words in it: how many partials and finals reached the phone, and how long after
+the first audio the first of each came. `partials: 0` with finals above it
+means text only arrived when a turn ended.
+
+```
+docker compose logs backend | grep '"live session"' | tail
+```
+
+A turn ends after `OPENAI_LIVE_SILENCE_MS` of quiet (800 by default) and comes
+back as a sentence of its own, full stop included. Lower it for quicker
+captions and more pause-made full stops for the writer to remove, raise it for
+the opposite.
+
 The unit tests read nothing off the machine they run on — not `tulmi/.env`, and
 not what a shell exported. They used to, and it mattered: the stores fall back
 to an in-memory map when Supabase is off, so a real service key in the

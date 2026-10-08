@@ -93,6 +93,14 @@ describe("OpenAI live dictation", () => {
     expect(sock.sent.filter((m) => m.type === "input_audio_buffer.append")).toHaveLength(1);
   });
 
+  it("lets a speaker think mid-sentence before a turn ends", () => {
+    // Each turn comes back as its own sentence, full stop included, so at
+    // 500 ms every breath was a full stop inside what they were saying.
+    const { sock } = harness();
+    sock.emit("open");
+    expect(sock.sent[0].session.audio.input.turn_detection).toMatchObject({ type: "server_vad", silence_duration_ms: 800 });
+  });
+
   it("carries the speaker's run-up when it has one, and none when it does not", () => {
     const sock = new FakeSocket();
     openOpenAI({ sampleRate: 16000, channels: 1, prompt: "હા, કાલે સવારે મળીએ." }, {

@@ -408,7 +408,11 @@ export function openOpenAI(opts: EngineOptions, h: EngineHandlers, socket?: (url
     try { ws.close(1000); } catch { /* already gone */ }
   };
 
-  const vad = { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 500 };
+  // A turn ends after this much silence, and only then is it transcribed: as
+  // OpenAI documents it, the deltas below start once a turn is committed, not
+  // while someone is still talking (scripts/live-check.ts measures it on the
+  // real API). See OPENAI_LIVE_SILENCE_MS for why it is not 500.
+  const vad = { type: "server_vad", threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: cfg.OPENAI_LIVE_SILENCE_MS };
   ws.on("open", () => {
     try {
       ws.send(JSON.stringify(beta

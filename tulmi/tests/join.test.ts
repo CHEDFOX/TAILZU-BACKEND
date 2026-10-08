@@ -8,7 +8,7 @@
  * full stop at a pause the speaker never reached.
  */
 import { describe, expect, it } from "vitest";
-import { continuesSentence, joinWithSpace, shapeForJoin } from "../src/pipeline/join.js";
+import { continuesSentence, hasPauseStop, joinPauseStops, joinWithSpace, shapeForJoin } from "../src/pipeline/join.js";
 import { stripAddedClosing, stripEdgeFiller } from "../src/pipeline/cleanup.js";
 
 describe("does the text before stop mid-sentence?", () => {
@@ -59,6 +59,35 @@ describe("a stretch is shaped to carry the sentence on", () => {
   it("tidies spacing without touching line breaks", () => {
     expect(shapeForJoin("  hello   there \t friend  ", undefined)).toBe("hello there friend");
     expect(shapeForJoin("- one  \n-  two", undefined)).toBe("- one\n- two");
+  });
+});
+
+describe("a full stop a pause put inside a sentence", () => {
+  // The live recognizer writes every pause as a full stop, and the keyboards
+  // join the pieces with a space. After a word no sentence ends on, the stop
+  // is certainly the pause's.
+  it("is found after a word no sentence ends on, and only there", () => {
+    expect(hasPauseStop("I'm going to the. Market tomorrow.")).toBe(true);
+    expect(hasPauseStop("I'll call you and. Then we decide.")).toBe(true);
+    expect(hasPauseStop("Main kal aaunga aur. Phir baat karte hain.")).toBe(true);
+    // A real sentence end, a letter, the end of the text, an ellipsis.
+    expect(hasPauseStop("I went to the market. Then I came home.")).toBe(false);
+    expect(hasPauseStop("We go with Plan A. Then we see.")).toBe(false);
+    expect(hasPauseStop("I'm not a.")).toBe(false);
+    expect(hasPauseStop("I was thinking and... then it hit me.")).toBe(false);
+  });
+
+  it("is joined across, lowering the word after unless it is a name", () => {
+    expect(joinPauseStops("I'm going to the. Market tomorrow.")).toBe("I'm going to the market tomorrow.");
+    expect(joinPauseStops("I'll call you and. Then we decide.")).toBe("I'll call you and then we decide.");
+    // "I" and acronyms keep their capitals; so does a word written as a name
+    // in the middle of a sentence elsewhere.
+    expect(joinPauseStops("She said that and. I agreed.")).toBe("She said that and I agreed.");
+    expect(joinPauseStops("Send it to the. HR team today.")).toBe("Send it to the HR team today.");
+    expect(joinPauseStops("Ask Priya, she knows my. Priya will sort it.")).toBe("Ask Priya, she knows my Priya will sort it.");
+    // Nothing to join: untouched.
+    const plain = "I went to the market. Then I came home.";
+    expect(joinPauseStops(plain)).toBe(plain);
   });
 });
 

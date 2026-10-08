@@ -212,6 +212,13 @@ const EnvSchema = z.object({
   OPENAI_REALTIME_PROTOCOL: z.enum(["ga", "beta"]).default("ga"),
   // How long a stopped live session waits for its last words before closing.
   OPENAI_LIVE_FLUSH_MS: z.coerce.number().default(4000),
+  // The silence that ends a turn on OpenAI's live recognizer. Each turn is
+  // transcribed on its own and comes back as a sentence, capital and full
+  // stop included, so every breath longer than this became a full stop in
+  // the middle of what they were saying. It was 500 ms; 800 lets a speaker
+  // think mid-sentence. Its text only arrives when a turn ends, so a longer
+  // one also means the live captions come in fewer, larger pieces.
+  OPENAI_LIVE_SILENCE_MS: z.coerce.number().int().min(200).max(3000).default(800),
 
   // Groq STT (used when STT_PROVIDER=groq).
   GROQ_API_KEY: z.string().optional(),

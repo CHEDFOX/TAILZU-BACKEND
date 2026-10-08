@@ -80,6 +80,13 @@ describe("what counts as a slip", () => {
     // Not theirs to begin with is not a slip of theirs kept: "umbrella" is a word.
     expect(slipIn("bring the umbrella", "Bring the umbrella.")).toBeNull();
   });
+
+  it("a full stop left where they only paused", () => {
+    // What the live recognizer hands over: one sentence, cut at each breath.
+    const said = "So I was going to the. Market tomorrow. And maybe. The pharmacy.";
+    expect(slipIn(said, said)).toBe("pause");
+    expect(slipIn(said, "So I was going to the market tomorrow, and maybe the pharmacy.")).toBeNull();
+  });
 });
 
 describe("asking once more", () => {
@@ -122,6 +129,23 @@ describe("asking once more", () => {
   it("a kept correction is asked again", async () => {
     llm.answers = ["Let's meet at five, no wait, six thirty.", "Let's meet at six thirty."];
     expect(await assist("lets meet at five no wait six thirty")).toBe("Let's meet at six thirty.");
+  });
+
+  it("pause stops are asked again, and joined in code when they survive", async () => {
+    const said = "So I was going to the. Market tomorrow.";
+    llm.answers = ["So I was going to the market tomorrow."];
+    // Nothing to ask: the first answer already joined it.
+    expect(await assist(said)).toBe("So I was going to the market tomorrow.");
+    expect(llm.calls).toHaveLength(1);
+
+    llm.answers = [said, "So I was going to the market tomorrow."];
+    llm.calls = [];
+    expect(await assist(said)).toBe("So I was going to the market tomorrow.");
+    expect(llm.calls[1]![3]!.content).toMatch(/where they only paused/);
+
+    // Both answers kept the stop: the code joins it.
+    llm.answers = [said, said];
+    expect(await assist(said)).toBe("So I was going to the market tomorrow.");
   });
 
   it("a failed second ask leaves the first answer", async () => {

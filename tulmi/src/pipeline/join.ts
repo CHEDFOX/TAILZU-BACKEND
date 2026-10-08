@@ -84,6 +84,46 @@ export function shapeForJoin(text: string, context?: string): string {
   return t;
 }
 
+/**
+ * A FULL STOP INSIDE A SENTENCE, LEFT BY A PAUSE.
+ *
+ * The live recognizer cuts speech at every pause and writes each piece as a
+ * sentence of its own, and the keyboards join the pieces with a space: "I'm
+ * going to the. Market tomorrow." The writer is told those stops are pauses
+ * (assistPrompt.ts), but the one kind that is certainly wrong can be checked:
+ * a full stop after a word no sentence ends on (DANGLING), followed by more
+ * words. Lowercase only, as shapeForJoin reads it: "Plan A. Then" is a letter.
+ */
+const PAUSE_STOP = new RegExp(
+  `(^|[\\s,;:—–-])(${[...DANGLING].join("|")})[.।]\\s+(\\p{L}[\\p{L}\\p{M}'’]*)`,
+  "gu",
+);
+
+/** True when `text` has a full stop a pause put inside a sentence. */
+export function hasPauseStop(text: string): boolean {
+  PAUSE_STOP.lastIndex = 0;
+  const hit = PAUSE_STOP.test(text ?? "");
+  PAUSE_STOP.lastIndex = 0;
+  return hit;
+}
+
+/**
+ * Join a sentence across the pause stops in it: "going to the. Market" →
+ * "going to the market". The word after keeps its capital when it is "I", an
+ * acronym, or written capitalised elsewhere in the middle of a sentence —
+ * then it is a name, and lowering "Priya" would be worse than the stop.
+ */
+export function joinPauseStops(text: string): string {
+  if (!text || !hasPauseStop(text)) return text;
+  return text.replace(PAUSE_STOP, (_m, sep: string, word: string, next: string) => {
+    const keep = !/^\p{Lu}/u.test(next)
+      || /^I(?:$|['’])/u.test(next)
+      || (next.length > 1 && next === next.toUpperCase())
+      || new RegExp(`[\\p{Ll},]\\s+${next.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{M}])`, "u").test(text);
+    return `${sep}${word} ${keep ? next : next.charAt(0).toLowerCase() + next.slice(1)}`;
+  });
+}
+
 /** Scripts written without spaces between words. */
 const UNSPACED_CHAR = /[぀-ヿ㐀-鿿가-힯฀-๿　-〿＀-￯]/u;
 
