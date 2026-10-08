@@ -152,15 +152,18 @@ describe("what the pages claim is what the product says", () => {
     expect(homeFaq().every((q) => !q.a.includes("{n}"))).toBe(true);
   });
 
-  it("Windows is the Microsoft Store listing wherever the stores are named", async () => {
-    // The signed, self-updating copy, beside the App Store and Google Play.
-    const store = SITE_UI.stores.windows;
-    expect(store).toMatch(/^https:\/\/apps\.microsoft\.com\/detail\/9[0-9a-z]{11}$/);
-    expect((await get("/llms.txt")).body).toContain(`[Windows (Microsoft Store)](${store})`);
-    expect((await get("/llms-full.txt")).body).toContain(`Windows: ${store}`);
+  it("Windows is the Microsoft-certified build wherever the downloads are named", async () => {
+    // The signed, self-updating copy: its direct download is what a link
+    // gives, and the Store listing is what identifies the app.
+    const dl = SITE_UI.stores.windowsInstaller, listing = SITE_UI.stores.windows;
+    expect(dl).toMatch(/^https:\/\/get\.microsoft\.com\/installer\/download\/9[0-9A-Z]{11}\?/);
+    expect(listing).toMatch(/^https:\/\/apps\.microsoft\.com\/detail\/9[0-9a-z]{11}$/);
+    expect((await get("/llms.txt")).body).toContain(`[Windows (Microsoft-certified download)](${dl})`);
+    expect((await get("/llms-full.txt")).body).toContain(`Windows: ${dl}`);
     const pricing = pricingHtml({ plans: PAYWALL_CONFIG.plans, freeWords: 0, earnMaxWords: 0, terms: "t", privacy: "p" });
     const app = graphOf(pricing).find((n: any) => n["@type"] === "SoftwareApplication");
-    for (const k of ["downloadUrl", "installUrl", "sameAs"]) expect(app[k], k).toContain(store);
+    expect(app.downloadUrl).toContain(dl);
+    for (const k of ["installUrl", "sameAs"]) expect(app[k], k).toContain(listing);
   });
 
   it("llms-full.txt carries every question and the privacy lines", async () => {
