@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { continuesSentence, hasPauseStop, joinPauseStops, joinWithSpace, shapeForJoin } from "../src/pipeline/join.js";
-import { stripAddedClosing, stripEdgeFiller } from "../src/pipeline/cleanup.js";
+import { stripAddedClosing, stripAddedGreeting, stripEdgeFiller } from "../src/pipeline/cleanup.js";
 
 describe("does the text before stop mid-sentence?", () => {
   it("yes after a word, a comma or a dash", () => {
@@ -149,6 +149,31 @@ describe("a closing nobody said comes off, in any language it comes back in", ()
     expect(stripAddedClosing("Thank you.", "Jhal")).toBe("Jhal");
     expect(stripAddedClosing("Thank you.", "thank you")).toBe("Thank you.");
     expect(stripAddedClosing("Okay.", "okay")).toBe("Okay.");
+  });
+});
+
+describe("a greeting nobody said comes off", () => {
+  // Measured on the deployed server: with a portrait in the voice, "running
+  // late be there in ten" came back "Hey! Running late, be there in ten."
+  it("standing alone at the start, with none in what they said", () => {
+    expect(stripAddedGreeting("Hey! Running late, be there in ten.", "running late be there in ten"))
+      .toBe("Running late, be there in ten.");
+    expect(stripAddedGreeting("Hi, the meeting moved to four.", "the meeting moved to four")).toBe("The meeting moved to four.");
+    expect(stripAddedGreeting("Namaste! Kal milte hain.", "kal milte hain")).toBe("Kal milte hain.");
+    // "him" is not "hi": the greeting is still the model's.
+    expect(stripAddedGreeting("Hi! Tell him I'm late.", "tell him im late")).toBe("Tell him I'm late.");
+  });
+
+  it("stays when they said one, in any language or spelling", () => {
+    for (const said of ["hey running late be there in ten", "hiii running late", "namaste running late", "नमस्ते running late"]) {
+      expect(stripAddedGreeting("Hey! Running late.", said), said).toBe("Hey! Running late.");
+    }
+  });
+
+  it("stays when it addresses someone, or is the whole message", () => {
+    expect(stripAddedGreeting("Hey Priya, running late.", "running late")).toBe("Hey Priya, running late.");
+    expect(stripAddedGreeting("Hello.", "hello")).toBe("Hello.");
+    expect(stripAddedGreeting("Hi!", "")).toBe("Hi!");
   });
 });
 
