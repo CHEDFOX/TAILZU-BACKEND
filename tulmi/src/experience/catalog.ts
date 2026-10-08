@@ -187,8 +187,8 @@ export const POLICY = {
  * a careful person should not do. The Store copy is checked and signed by
  * Microsoft, installs without a warning and keeps itself up to date (the
  * desktop app already skips its own update card there). So wherever the site
- * offers Windows, the Store listing goes first and the installer becomes the
- * fallback.
+ * offers a Windows download, it is the certified build (windowsInstallerUrl),
+ * downloaded right there, and our own installer is only the fallback.
  *
  * The ID is the 12 characters in Partner Center > the app > Product identity
  * > Store ID (or at the end of the listing's own link), starting with 9. ""
@@ -197,10 +197,32 @@ export const POLICY = {
  */
 export const WINDOWS_STORE_ID = "9N3GX0XHQ7MX";
 
-/** The listing's web address, which opens the Store app on Windows; "" for no listing. */
-export function windowsStoreUrl(id: string): string {
+const storeId = (id: string) => {
   const s = String(id ?? "").trim().toUpperCase();
-  return /^9[0-9A-Z]{11}$/.test(s) ? `https://apps.microsoft.com/detail/${s.toLowerCase()}` : "";
+  return /^9[0-9A-Z]{11}$/.test(s) ? s : "";
+};
+
+/** The listing's web address, for search engines and anyone who asks; "" for no listing. */
+export function windowsStoreUrl(id: string): string {
+  const s = storeId(id);
+  return s ? `https://apps.microsoft.com/detail/${s.toLowerCase()}` : "";
+}
+
+/**
+ * THE CERTIFIED BUILD, DOWNLOADED STRAIGHT FROM THE BUTTON.
+ *
+ * Not a trip to the Store: the owner wanted the download button to give the
+ * certified copy directly. This is Microsoft's own "direct" install (the
+ * address their official badge fetches, microsoft/app-store-badge): one
+ * click downloads "Tailzu Installer.exe", a small installer signed by
+ * Microsoft, which installs the Store-certified Tailzu without opening the
+ * Store, works where the Store app is old or missing, and leaves an install
+ * that updates itself. No SmartScreen warning, because nothing in it is ours
+ * to vouch for. "" for no listing.
+ */
+export function windowsInstallerUrl(id: string): string {
+  const s = storeId(id);
+  return s ? `https://get.microsoft.com/installer/download/${s}?referrer=appbadge&source=tailzu.space` : "";
 }
 
 /**
@@ -501,7 +523,10 @@ export const SITE_UI = {
     ios: "https://apps.apple.com/app/id6784811357",
     android: "https://play.google.com/store/apps/details?id=com.tulmi.app",
     // "" until WINDOWS_STORE_ID is set; every reader treats "" as no listing.
+    // The listing is what search engines and llms.txt cite; every download
+    // BUTTON uses windowsInstaller, the certified build's direct download.
     windows: windowsStoreUrl(WINDOWS_STORE_ID),
+    windowsInstaller: windowsInstallerUrl(WINDOWS_STORE_ID),
   },
 } as const;
 

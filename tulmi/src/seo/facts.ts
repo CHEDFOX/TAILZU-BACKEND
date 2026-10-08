@@ -254,8 +254,10 @@ export function appLd() {
     applicationSubCategory: "AI keyboard",
     operatingSystem: "iOS, Android, Windows, macOS",
     // The Microsoft Store listing joins the other two once it is set
-    // (catalog.WINDOWS_STORE_ID); /download stays for Mac and the installer.
-    downloadUrl: [...STORE_LINKS, abs("/download")],
+    // (catalog.WINDOWS_STORE_ID). downloadUrl is a binary's own address, so
+    // for Windows it is the certified build's direct download; /download
+    // stays for Mac.
+    downloadUrl: [STORES.ios, STORES.android, STORES.windowsInstaller, abs("/download")].filter(Boolean),
     installUrl: STORE_LINKS,
     sameAs: STORE_LINKS,
     image: OG_IMAGE.url,

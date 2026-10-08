@@ -115,8 +115,8 @@ export function qaList(items: QA[]): string {
 export const GETS = `<div class="gets">
   <a class="btn" href="${STORES.ios}">App Store</a>
   <a class="btn" href="${STORES.android}">Google Play</a>
-  ${STORES.windows
-    ? `<a class="btn" href="${STORES.windows}">Microsoft Store</a>
+  ${STORES.windowsInstaller
+    ? `<a class="btn" href="${STORES.windowsInstaller}">Windows</a>
   <a class="btn ghost" href="/download">Mac</a>`
     : `<a class="btn ghost" href="/download">Windows and Mac</a>`}
 </div>`;
