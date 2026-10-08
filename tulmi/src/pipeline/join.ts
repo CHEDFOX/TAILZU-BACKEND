@@ -93,9 +93,15 @@ export function shapeForJoin(text: string, context?: string): string {
  * (assistPrompt.ts), but the one kind that is certainly wrong can be checked:
  * a full stop after a word no sentence ends on (DANGLING), followed by more
  * words. Lowercase only, as shapeForJoin reads it: "Plan A. Then" is a letter.
+ *
+ * AND AN ELLIPSIS AFTER AN ARTICLE. Measured on the deployed server
+ * (scripts/live-check.ts): a breath after "So I was going to the" came back
+ * from OpenAI as "So I was going to the..." and the next turn as "Market
+ * tomorrow". Only after a, an and the: nobody trails off on an article on
+ * purpose, but "I was thinking and... then it hit me" is writing.
  */
 const PAUSE_STOP = new RegExp(
-  `(^|[\\s,;:—–-])(${[...DANGLING].join("|")})[.।]\\s+(\\p{L}[\\p{L}\\p{M}'’]*)`,
+  `(^|[\\s,;:—–-])(?:(${[...DANGLING].join("|")})[.।]|(a|an|the)(?:\\.{2,}|…))\\s+(\\p{L}[\\p{L}\\p{M}'’]*)`,
   "gu",
 );
 
@@ -115,7 +121,8 @@ export function hasPauseStop(text: string): boolean {
  */
 export function joinPauseStops(text: string): string {
   if (!text || !hasPauseStop(text)) return text;
-  return text.replace(PAUSE_STOP, (_m, sep: string, word: string, next: string) => {
+  return text.replace(PAUSE_STOP, (_m, sep: string, stopped: string | undefined, trailed: string | undefined, next: string) => {
+    const word = stopped ?? trailed ?? "";
     const keep = !/^\p{Lu}/u.test(next)
       || /^I(?:$|['’])/u.test(next)
       || (next.length > 1 && next === next.toUpperCase())
