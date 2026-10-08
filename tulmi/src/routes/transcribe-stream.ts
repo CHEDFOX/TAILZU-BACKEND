@@ -297,8 +297,42 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         return gate.text;
       };
 
+      // WHAT THE ENGINE ACTUALLY STREAMED, for the log line at the end.
+      // "Is the live engine sending text while they talk?" was a question
+      // nothing could answer: the words are never logged, and neither was
+      // whether any arrived. These are counts and times, never text.
+      const trace = { firstAudioAt: 0, partials: 0, finals: 0, firstPartialMs: -1, firstFinalMs: -1, summarised: false };
+      const since = () => (trace.firstAudioAt ? Date.now() - trace.firstAudioAt : -1);
+
       const send = (obj: unknown) => {
-        if (!closed && socket.readyState === 1) socket.send(JSON.stringify(obj));
+        if (closed || socket.readyState !== 1) return;
+        socket.send(JSON.stringify(obj));
+        const m = obj as { type?: string; text?: string };
+        if (m.type === "partial") {
+          trace.partials++;
+          if (trace.firstPartialMs < 0) trace.firstPartialMs = since();
+        } else if (m.type === "final" && m.text) {
+          trace.finals++;
+          if (trace.firstFinalMs < 0) trace.firstFinalMs = since();
+        }
+      };
+
+      /**
+       * One line per session: which engine, how much audio, how many partials
+       * and finals reached the client, and how long after the first audio the
+       * first of each arrived. Partials at 0 with finals above it means the
+       * engine sent text only when a turn ended, never live.
+       */
+      const summarise = () => {
+        if (trace.summarised || !started || !user) return;
+        trace.summarised = true;
+        req.log.info({
+          engine: engine?.label, shadow: shadow?.label ?? null,
+          audioSeconds: Number((bytes / (format.sampleRate * 2 * format.channels)).toFixed(1)),
+          partials: trace.partials, finals: trace.finals,
+          firstPartialMs: trace.firstPartialMs, firstFinalMs: trace.firstFinalMs,
+          errored,
+        }, "live session");
       };
 
       const closeEngine = () => {
@@ -331,6 +365,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
         if (doneFallback) { clearTimeout(doneFallback); doneFallback = null; }
         meterOnce(); // bill on EVERY teardown, not just graceful stop
+        summarise();
         closeEngine();
         try { socket.close(); } catch { /* ignore */ }
       };
@@ -568,6 +603,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
       /** One frame of audio, to the engines, once the session is live. */
       const acceptAudio = (raw: Buffer) => {
         if (closed || !engine) return;
+        if (!trace.firstAudioAt) trace.firstAudioAt = Date.now();
         bytes += raw.length;
         if (bytes > MAX_STREAM_BYTES) {
           send({ type: "error", code: "audio_too_long", message: STREAM_ERROR_TEXT.tooLong });

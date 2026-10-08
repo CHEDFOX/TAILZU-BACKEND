@@ -128,13 +128,30 @@ describe("assist path — instruction separation", () => {
     expect(system).toMatch(/write the word they meant/i);
   });
 
-  it("scopes that repair to the WORD and nowhere else", () => {
-    // Without "change nothing else" the licence spread to the sentence:
-    // "tomorrow 6pm gym" came back "Tomorrow at 6 PM, I'll be at the gym."
-    // three runs of three. One misheard word is a repair; a note turned into
-    // a sentence is the invention this prompt spends four other lines
-    // forbidding.
-    expect(system).toMatch(/change nothing else/i);
+  it("keeps a note a note, now that the grammar is the writer's", () => {
+    // Without a bound the licence spread to the sentence: "tomorrow 6pm gym"
+    // came back "Tomorrow at 6 PM, I'll be at the gym." three runs of three.
+    // "Change nothing else" held that, and also held every pause-made full
+    // stop and every broken sentence in place, so the refinement read like
+    // the transcript. The bound is now the case itself.
+    expect(system).not.toMatch(/change nothing else/i);
+    expect(system).toMatch(/A note meant as a note stays a note/);
+  });
+
+  it("says the punctuation it is handed marks pauses, and the grammar is its job", () => {
+    // The live recognizer writes a full stop at every pause, and the
+    // keyboards join the pieces: "I was going to. The market." The writer
+    // was never told, so it kept them — and the grammar speaking broke.
+    expect(system).toMatch(/full stops and capitals mark pauses, not sentence ends/i);
+    expect(system).toMatch(/a thought that runs across a pause is one sentence/i);
+    expect(system).toMatch(/Fix the grammar speaking broke/i);
+  });
+
+  it("only stops mid-sentence where what they said stops", () => {
+    // "Stop where they stop, even mid-sentence" read every pause stop as the
+    // speaker stopping. It was only ever about the end of <said>.
+    expect(system).not.toMatch(/Stop where they stop/i);
+    expect(system).toMatch(/If <said> breaks off mid-sentence, end there too/);
   });
 
   it("names no protected category of fact, because one already exists", () => {

@@ -47,7 +47,9 @@ const { toneGuidance } = await import("../src/pipeline/assistPrompt.js");
 const { buildApp } = await import("../src/server.js");
 
 const WARMTH = "Write with warmth";
-const ZU_NONE = /Change nothing about how they sound/;
+// Zu's own wording. It said "Change nothing about how they sound" until that
+// read as change nothing, grammar and pause-made full stops included.
+const ZU_NONE = /Their own voice, not a style: their words and the way they put things/;
 
 describe("the voice rides on tone none", () => {
   it("writes in the chosen voice, with no other style on top", () => {

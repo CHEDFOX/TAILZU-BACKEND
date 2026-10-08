@@ -23,7 +23,7 @@ import { earlierBlock, type RecentDictation } from "./session.js";
 import { buildReplySystem, inlineValue, renderCommandOverride } from "../prompts.js";
 import { detectScript, englishShare, INDIC_SCRIPTS, mixesEnglishAndRomanHindi, readsAsRomanHindi, romanHindiHits, transliterated } from "./stt.js";
 import { isKnownHallucination, phraseKey } from "./speechGate.js";
-import { continuesSentence, shapeForJoin } from "./join.js";
+import { continuesSentence, hasPauseStop, joinPauseStops, shapeForJoin } from "./join.js";
 
 /**
  * The script a piece of text is written in, or undefined when there is no
@@ -245,7 +245,10 @@ export function looksLikeMeta(text: string): boolean {
  * a model reflows what it quotes.
  */
 export function quotesPrompt(out: string, system: string): boolean {
-  const norm = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
+  // The fence tags come out of every completion before it reaches the field,
+  // so they come out of both sides here: a leaked line that names <said>
+  // otherwise arrives one tag short and matches nothing.
+  const norm = (s: string) => stripFenceTags(s).replace(/\s+/g, " ").trim().toLowerCase();
   const o = norm(out);
   if (o.length < 40) return false;
   for (const line of system.split("\n")) {
@@ -687,8 +690,10 @@ function writerRequest(input: string, opts: CleanupOptions & WriterExtras): Writ
  *   added       far longer than what they said, with nothing asked of it
  *   correction  "no wait…" kept, where only the correction should be
  *   filler      "um", "uh" kept
+ *   pause       a full stop a pause put inside a sentence ("going to the.
+ *               Market") kept — see join.hasPauseStop
  */
-export type Slip = "alphabet" | "translated" | "added" | "correction" | "filler" | "long";
+export type Slip = "alphabet" | "translated" | "added" | "correction" | "filler" | "long" | "pause";
 
 const CORRECTION = /\b(?:no,? wait|wait,? no|scratch that|sorry,? i meant?|i meant?,? no)\b/i;
 const FILLER_WORD = /(?:^|[^\p{L}])(?:u+m+|u+h+|uhm+|erm+)(?=$|[^\p{L}])/iu;
@@ -730,6 +735,7 @@ export function slipIn(
   if (!o.instructed && !o.piece && wordCount(wrote) > wordCount(said) * 1.6 + 6) return "added";
   if (CORRECTION.test(wrote) && CORRECTION.test(said)) return "correction";
   if (FILLER_WORD.test(wrote) && FILLER_WORD.test(said)) return "filler";
+  if (hasPauseStop(wrote)) return "pause";
   return null;
 }
 
@@ -741,6 +747,7 @@ const REDO: Record<Slip, string> = {
   correction: "They corrected themselves there: what came after \"no wait\" (or \"I mean\", \"scratch that\") replaces what came before it. Write the sentence once, with only the corrected version, and leave out the words that made the correction.",
   filler: "Filler sounds went through. Leave them out.",
   long: "That is too long for what they asked. Write it much shorter, the length that kind of message really is.",
+  pause: "A full stop is still where they only paused, in the middle of a sentence. Join that sentence across the pause, and end sentences only where they really end.",
 };
 
 /**
@@ -804,7 +811,11 @@ export async function assist(
   // return below is shaped to join it: single spaces, no capital on a word
   // that only continues an unfinished sentence, no full stop after a word no
   // sentence ends on. See join.ts.
-  const joined = (s: string) => shapeForJoin(s, context);
+  //
+  // And no full stop a pause left inside a sentence, on every return,
+  // because the fallbacks below hand back what they SAID: the transcript
+  // itself, which is where those stops come from.
+  const joined = (s: string) => shapeForJoin(joinPauseStops(s), context);
   // Something far longer than they could have asked for goes out as what they
   // said, the same policy as a leaked prompt: never an essay in their field.
   // Not for a piece they asked for: its length was bounded above, and their

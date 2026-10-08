@@ -58,7 +58,13 @@ const TONE_GUIDANCE: Record<string, string> = {
   // formal, more upbeat, more polished. One sentence says the same and says it
   // positively, which is the difference between a rule to check against and a
   // voice to write in.
-  none: "Their own voice, not a style. Change nothing about how they sound; repair only what speaking or thumb-typing cost them. They should read it back and believe they wrote it carefully.",
+  //
+  // "CHANGE NOTHING ABOUT HOW THEY SOUND" read as change nothing. With it, the
+  // default voice sent back the transcript with its pause-made full stops and
+  // its broken grammar intact, which is how they spoke, not how they write.
+  // Their sound is their words and the way they put things; grammar and
+  // punctuation are the repair, and the rules above already say so.
+  none: "Their own voice, not a style: their words and the way they put things. They should read it back and believe they wrote it carefully.",
   formal: "Formal. Professional register, full words, one idea per sentence, precise punctuation. No slang, no emoji, and no exclamation mark the input did not earn.",
   casual: "The way they would talk to a friend — warm, contracted, unhurried. Never formalize someone who said 'yo'.",
   "very-casual": "Group-chat energy. Punchy, fragments welcome, lowercase fine. Keep every piece of their slang exactly as they wrote it.",
@@ -78,7 +84,7 @@ const TONE_GUIDANCE: Record<string, string> = {
  * instead of in the voice picked on the Voices screen. With a voice chosen,
  * this says the voice is the style, and keeps Zu's standard for the repair.
  */
-const NONE_UNDER_VOICE = "Write it in the voice they chose, below, with no other style on top of it. Repair what speaking or thumb-typing cost them. They should read it back and believe they wrote it carefully.";
+const NONE_UNDER_VOICE = "Write it in the voice they chose, below, with no other style on top of it. Repair what speaking or thumb-typing cost them, grammar and punctuation included. They should read it back and believe they wrote it carefully.";
 
 /**
  * Cap for an inline (client-supplied) tone prompt. Bounds the token blast
@@ -366,7 +372,14 @@ export function buildAssistSystem(opts: {
     // their sentence. Stated as a principle rather than a rule about
     // punctuation, because completing takes many forms (a full stop, a word,
     // a clause) and join.shapeForJoin already catches the commonest in code.
-    "Everything you return is what they send. Writing down what they said, say nothing they did not give you: no fact, greeting or sentence of your own, and no answer. The meaning is theirs, and the length too unless they ask. Filler, false starts and asides to the keyboard go; when they correct themselves, only the correction stays. Stop where they stop, even mid-sentence.",
+    //
+    // "STOP WHERE THEY STOP" SAID TOO MUCH. Every pause inside a live
+    // dictation arrives as a full stop (see the punctuation line below), and
+    // a writer told to stop where they stop, "even mid-sentence", read each
+    // of those as the speaker stopping: "I was going to. The market." came
+    // back as it went in. The rule was only ever about where <said> ENDS, so
+    // that is what it says now.
+    "Everything you return is what they send. Writing down what they said, say nothing they did not give you: no fact, greeting or sentence of your own, and no answer. The meaning is theirs, and the length too unless they ask. Filler, false starts and asides to the keyboard go; when they correct themselves, only the correction stays. If <said> breaks off mid-sentence, end there too.",
     "",
     // Two recognizers heard the same audio and disagreed. The no-invention
     // clause is the load-bearing half: given two readings a model will happily
@@ -571,7 +584,30 @@ export function buildAssistSystem(opts: {
     // defended and cost two behaviours that were working. What is left is one
     // repair, scoped to the word, with "change nothing else" to stop it
     // spreading to the sentence.
-    "Recognition is imperfect: where a word cannot belong, write the word they meant and change nothing else.",
+    //
+    // AND THEN THE OUTPUT CAME BACK AS THE INPUT. "Change nothing else", the
+    // Zu voice's "change nothing about how they sound", and "stop where they
+    // stop" all pulled the same way, and nothing anywhere said the writing
+    // itself was the job: the owner's verdict was that the refinement read
+    // like what was dictated in the first place, and sometimes worse.
+    //
+    // Two facts were missing, and they are stated here:
+    //
+    //   THE PUNCTUATION IS NOT THEIRS. The live recognizer cuts speech at
+    //   every half-second pause and writes each piece as its own sentence;
+    //   the keyboards join the pieces with a space. So "I was going to. The
+    //   market. Tomorrow." is one sentence with two breaths in it, and a
+    //   writer that respects the punctuation it was handed respects the
+    //   microphone, not the speaker.
+    //
+    //   THE GRAMMAR IS THE WRITER'S. Their words, meaning and language stay;
+    //   agreement, tense, word order and the small words speech drops are
+    //   what a careful typist fixes without thinking, and so is this.
+    //
+    // The bound that "change nothing else" used to hold — "tomorrow 6pm gym"
+    // came back "Tomorrow at 6 PM, I'll be at the gym." — is held by naming
+    // that case instead: a note they meant as a note stays one.
+    "Recognition is imperfect: where a word cannot belong, write the word they meant. Its full stops and capitals mark pauses, not sentence ends: punctuate by the sense, so a thought that runs across a pause is one sentence. Fix the grammar speaking broke, keeping their words and language. A note meant as a note stays a note.",
     // Sits here, directly under the repair it makes possible. On its own the
     // rule above cannot rescue a misheard NAME: "Nika" is a plausible company
     // and nothing in the sentence contradicts it. The list is the only thing
