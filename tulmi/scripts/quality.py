@@ -106,8 +106,12 @@ def dominant_script(text):
     return max(found.items(), key=lambda kv: kv[1])[0] if found else "none"
 
 
+# A list's bullets and numbers are its shape, not words (as cleanup.ts counts).
+LIST_MARK = re.compile(r"^[ \t]*(?:[-*\u2022\u2013]|\d{1,2}[.)])[ \t]+", re.M)
+
+
 def words(text):
-    return re.findall(r"\S+", text)
+    return re.findall(r"\S+", LIST_MARK.sub("", text))
 
 
 def digits(text):

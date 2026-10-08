@@ -372,9 +372,20 @@ export function stripEdgeFiller(out: string, continuesSentence = false): string 
   return continuesSentence ? cut : cut.charAt(0).toUpperCase() + cut.slice(1);
 }
 
+/**
+ * A list's bullets and numbers are its shape, not words. The writer now puts
+ * three things they listed one per line after "- ", and counted as words the
+ * dashes doubled a shopping list: the "added" check read "- Milk / - Eggs /
+ * - Bread" as twice what was said and asked for it again as a sentence.
+ */
+const LIST_MARK = /^[ \t]*(?:[-*•–]|\d{1,2}[.)])[ \t]+/gm;
+const unlisted = (s: string): string => s.replace(LIST_MARK, "");
+/** True when the text opens with a list line ("- milk", "1. call Priya"). */
+const opensList = (s: string): boolean => /^(?:[-*•–]|\d{1,2}[.)])[ \t]+\S/.test(s);
+
 /** Words, as the meter counts them. */
 function countWords(s: string): number {
-  const t = s.trim();
+  const t = unlisted(s).trim();
   return t ? t.split(/\s+/).length : 0;
 }
 
@@ -703,7 +714,7 @@ const OTHER_LETTERS = /(?=\p{L})[^\p{Script=Latin}]/u;
  *  "isko Hindi mein likho" is left to the model, and checking its answer
  *  against English letters would undo the very thing they asked for. */
 const NAMES_A_LANGUAGE = /\b(?:hindi|english|angrezi|urdu|marathi|tamil|telugu|bengali|bangla|gujarati|punjabi|kannada|malayalam|spanish|french|german|arabic|devanagari|script|alphabet|translat\w*|lipi)\b|हिंदी|हिन्दी|अंग्रेज/i;
-const wordCount = (s: string): number => (s.trim().match(/\S+/g) ?? []).length;
+const wordCount = (s: string): number => (unlisted(s).trim().match(/\S+/g) ?? []).length;
 
 export function slipIn(
   message: string,
@@ -817,7 +828,16 @@ export async function assist(
   // And no full stop a pause left inside a sentence, on every return,
   // because the fallbacks below hand back what they SAID: the transcript
   // itself, which is where those stops come from.
-  const joined = (s: string) => shapeForJoin(joinPauseStops(s), context);
+  //
+  // A list starts on a line of its own: pasted after "Things for the trip:"
+  // its first item would otherwise sit on the end of that line. The leading
+  // newline also tells joinWithSpace that no space goes in front.
+  const joined = (s: string) => {
+    const t = shapeForJoin(joinPauseStops(s), context);
+    // The field as sent, not trimmed: a trailing newline there already starts the line.
+    const field = opts.context ?? "";
+    return field.trim() && !/\n[^\S\n]*$/.test(field) && opensList(t) ? `\n${t}` : t;
+  };
   // Something far longer than they could have asked for goes out as what they
   // said, the same policy as a leaked prompt: never an essay in their field.
   // Not for a piece they asked for: its length was bounded above, and their

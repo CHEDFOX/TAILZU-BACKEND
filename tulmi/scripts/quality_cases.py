@@ -392,6 +392,35 @@ CASES = [
          text="Main kal. Office nahi aa paunga kyunki. Doctor ke paas jana hai.",
          script="latin", require=["office", "doctor"],
          forbid_regex=r"\b(?:kal|kyunki)\.\s", forbid=["i won't", "tomorrow"]),
+    # --- SHAPE: the careful writer's, found in what they said ----------------
+    # The owner: send it "in the best organised way - like bullet points or in
+    # quotes or anything that is most appropriate". Each shape has a case that
+    # wants it and a case that must not get it, because the principle is
+    # "found in what they said rather than added to it".
+    dict(id="shape/spoken-list-becomes-a-list", smoke=True,
+         why="things listed out loud read better as a list",
+         text="for the trip we need tickets passports the hotel booking and some cash",
+         require_regex=r"(?m)^[ \t]*(?:[-*\u2022]|\d+[.)])[ \t]+\S",
+         require=["tickets", "passports", "cash"], forbid_regex=r"(?m)\*\*|^#"),
+    dict(id="shape/two-things-stay-a-sentence",
+         why="a list nobody made is shape added, not found",
+         text="can you bring milk and eggs on your way home",
+         forbid_regex=r"(?m)^[ \t]*(?:[-*\u2022]|\d+[.)])[ \t]+\S", require=["milk", "eggs"]),
+    dict(id="shape/steps-stay-in-order",
+         why="steps said in order are steps, and the order is the content",
+         text="first switch off the router then wait thirty seconds then switch it back on",
+         require_regex=r"(?s)off.*(?:thirty|30).*back on", max_growth=1.4),
+    dict(id="shape/exact-words-quoted",
+         why="someone's exact words read as a quote",
+         text="he literally said i will never work here again and walked out",
+         require_regex=r"[\"\u201c][^\"\u201d]*never work here again[^\"\u201d]*[\"\u201d]"),
+    dict(id="shape/reported-speech-not-quoted",
+         why="what someone said, reported, is not a quotation",
+         text="she said she's coming tomorrow", forbid_regex=r"[\"\u201c\u201d]"),
+    dict(id="shape/chat-line-stays-a-line", smoke=True,
+         why="a short message has no shape to find",
+         text="running late, start without me", forbid_regex=r"\n"),
+
     # --- INTENT: what they meant, not the order it came out in ---------------
     # The owner: "The prompt needs to be smart and intent identifying - but it
     # feels like it is not doing anything at all." These are the dictations
