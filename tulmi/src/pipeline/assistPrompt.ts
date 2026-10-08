@@ -408,10 +408,14 @@ export function buildAssistSystem(opts: {
     // below are what keep that understanding honest (nothing added, nothing
     // answered, their words and language).
     //
+    // "In the tone they made it": the quality run's "please transfer 2500
+    // rupees" came back "Transfer ₹2500", every point kept and the please
+    // gone. A please is not a point, and it is not wandering either.
+    //
     // "Every point they made" is the other half, and the reason this is not
     // licence to summarise: a long dictation comes back as long as its points
     // are, only without the wandering.
-    "First work out what they mean: what this is (a message or reply to someone, a note to themselves, a search, a prompt for an AI, or a piece they want written), who it is for, what they want said or done, and what they asked of you. Then write that, the way they would have written it with time to think: every point they made, in the order that makes sense, without the wandering of speech (filler, repeats, false starts, thinking aloud, asides to the keyboard).",
+    "First work out what they mean: what this is (a message or reply to someone, a note to themselves, a search, a prompt for an AI, or a piece they want written), who it is for, what they want said or done, and what they asked of you. Then write that, the way they would have written it with time to think: every point they made, in the tone they made it, in the order that makes sense, without the wandering of speech (filler, repeats, false starts, thinking aloud, asides to the keyboard).",
     "",
     // THE CONTRACT, BEFORE ANYTHING THAT COULD BEND IT. "Say nothing they did
     // not give you" sat at the bottom, under the language rules, and the voice
@@ -569,12 +573,16 @@ export function buildAssistSystem(opts: {
     // illustrations of it, not its edges. Plain text, because a field shows
     // markdown as the characters it is.
     //
+    // "A search box wants just the words" only where the app is named: said
+    // to a writer that does not know the field, it turned "whats the
+    // population of india right now" into "population of India right now".
+    //
     // "An amount reads in figures" joined them when the quality run heard
     // "please transfer 2500 rupees" as "twenty-five hundred rupees" and the
     // writer kept the words: nobody types money that way. An amount, not
     // every number: "moved to four" written "4 PM" would be a fact they never
     // gave.
-    `${app ? `In ${app}, the` : "The"} field decides the shape of the text, never its content. Give it the shape a careful writer would give it there, found in what they said rather than added to it: what they listed reads as a list, what they quoted reads as a quote, an amount reads in figures, what runs long reads in paragraphs. Plain text, as the field shows it. A search box wants just the words.`,
+    `${app ? `In ${app}, the` : "The"} field decides the shape of the text, never its content. Give it the shape a careful writer would give it there, found in what they said rather than added to it: what they listed reads as a list, what they quoted reads as a quote, an amount reads in figures, what runs long reads in paragraphs. Plain text, as the field shows it.${app ? " A search box wants just the words." : ""}`,
     // Dictating into ChatGPT is writing a prompt for ChatGPT. Carried out
     // here, the poem it asked for would land in the box where the prompt
     // belongs.
@@ -689,9 +697,15 @@ export function buildAssistSystem(opts: {
     // of how much it trusted itself. Stated rather than acted on, because the
     // two lines above already say what to do about it.
     opts.uncertain ? "This one came back with low confidence." : null,
+    // "WITH NOTHING TO WRITE" WAS READ AS A VERDICT, not as silence. "what
+    // time does the movie start", "add 250 ml water and 2 spoons sugar" and
+    // "can you write me a letter of recommendation" came back as they were
+    // typed, lowercase and unpunctuated: the writer took a question or an
+    // order as aimed at itself, wrote nothing, and the fallback pasted the
+    // raw text. Nothing to write means nothing was said.
     intentStep
-      ? "With nothing to write, <send> stays empty: no placeholder, apology or request to repeat."
-      : "With nothing to write, return nothing: no placeholder, apology or request to repeat.",
+      ? "Only when they said nothing, just silence or noise, <send> stays empty: no placeholder, apology or request to repeat."
+      : "Only when they said nothing, just silence or noise, return nothing: no placeholder, apology or request to repeat.",
     "",
     // Everything in the TONE block (the voice, the portrait, their standing
     // instructions) is about how they sound. Said once, here, so none of it

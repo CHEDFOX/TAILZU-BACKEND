@@ -49,7 +49,7 @@ describe("the prompt asks for the meaning first", () => {
     const job = p.indexOf("First work out what they mean");
     expect(job).toBeGreaterThan(0);
     expect(job).toBeLessThan(p.indexOf("Everything you return is what they send"));
-    expect(p).toMatch(/every point they made, in the order that makes sense/);
+    expect(p).toMatch(/every point they made, in the tone they made it, in the order that makes sense/);
   });
 
   it("asks for the intent and the text as two parts, last of all", () => {
@@ -60,7 +60,7 @@ describe("the prompt asks for the meaning first", () => {
   it("can be switched off, back to the plain answer", () => {
     const plain = buildAssistSystem({ hasContext: false, intentStep: false });
     expect(plain).not.toMatch(/<send>|<intent>/);
-    expect(plain).toMatch(/With nothing to write, return nothing/);
+    expect(plain).toMatch(/Only when they said nothing, just silence or noise, return nothing/);
   });
 });
 

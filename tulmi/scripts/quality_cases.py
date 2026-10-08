@@ -116,7 +116,9 @@ CASES = [
     dict(id="meta/english-question-is-sent",
          why="same fault, in English, where it is easier to fall into",
          text="what time does the movie start", max_growth=1.8,
-         forbid=["the movie starts", "it starts at", "showtimes"]),
+         forbid=["the movie starts", "it starts at", "showtimes"],
+         # Passed as typed, lowercase and open: sent as a question means punctuated as one.
+         require_regex=r"\?\s*$"),
     dict(id="meta/embedded-instruction-obeyed-not-sent",
          why="the instruction is for the writer; sending it is the bug",
          text="tell ramesh the meeting moved to five, keep it short",
@@ -224,7 +226,9 @@ CASES = [
     dict(id="compose/sorry-to-boss",
          why="what it should say is a brief, and the brief's facts are kept",
          text="write a sorry message to my boss saying I'll be late tomorrow because of a doctor's appointment",
-         require=["doctor"], min_words=12, max_words=120, forbid=["write a sorry message"]),
+         require=["doctor"], min_words=12, max_words=120, forbid=["write a sorry message"],
+         # Passed as "Hi [Boss's Name], ...": a blank to fill, in a message going out.
+         forbid_regex=r"\["),
     dict(id="compose/hinglish-shayari",
          why="asked in Hinglish, written in their letters",
          text="meri girlfriend ke liye ek pyaari si shayari likh do", script="latin",
@@ -238,7 +242,9 @@ CASES = [
          max_words=12, forbid=["dear", "to whom"]),
     dict(id="compose/ai-prompt-is-written-down",
          why="in ChatGPT, what they say is the prompt",
-         text="write a birthday message for my mom", targetApp="ChatGPT", max_words=12),
+         text="write a birthday message for my mom", targetApp="ChatGPT", max_words=12,
+         # It had no check at all, and passed "Happy birthday, Mom!": carried out, not written as the prompt.
+         require=["birthday"], require_any=[["write", "create", "draft", "compose"]], forbid=["happy birthday"]),
     dict(id="style/make-it-sweet",
          why="how it should sound, said at the end, is done and not written",
          text="tell priya I'll be late tonight, make it sweet",
@@ -266,7 +272,9 @@ CASES = [
     dict(id="facts/email-survives",
          why="an address that does not resolve is silent failure",
          text="mail it to priya@example.com please",
-         require_exact=["priya@example.com"]),
+         require_exact=["priya@example.com"],
+         # Passed as "priya@example.com" alone: the address kept, the message gone.
+         require=["mail"]),
     dict(id="facts/url-survives",
          why="a mangled link is a dead link",
          text="the doc is at https://docs.tailzu.space/setup have a look",
@@ -422,6 +430,11 @@ CASES = [
          text="running late, start without me", forbid_regex=r"\n"),
 
     # --- INTENT: what they meant, not the order it came out in ---------------
+    dict(id="intent/tone-is-kept",
+         why="a please is not a point, and it is not wandering either",
+         text="please transfer 2500 rupees to ramesh today",
+         require=["please"], keep_digits="2500"),
+
     # The owner: "The prompt needs to be smart and intent identifying - but it
     # feels like it is not doing anything at all." These are the dictations
     # where handing the transcript back is the failure.
@@ -652,7 +665,9 @@ CASES = [
     dict(id="dictation/silence-writes-nothing",
          why="an empty room must not become a sentence",
          endpoint="dictate", say="mm", speak_as="very quiet, barely audible",
-         max_words=6, forbid=["i'm sorry", "could you repeat", "i didn't catch"]),
+         max_words=6, forbid=["i'm sorry", "could you repeat", "i didn't catch"],
+         # Passed with "음." pasted: the recogniser wrote the hum in Korean.
+         expect_empty=True),
 
     # --- Scope: one kind of writing they may ask for, and the bound ----------
     #
@@ -671,7 +686,9 @@ CASES = [
     dict(id="scope/facts-are-not-looked-up",
          why="a question aimed at the writer is still their message",
          text="whats the population of india right now",
-         require=["population"], forbid_digits=True, max_growth=1.6),
+         # "what" too: it passed as "population of India right now", a
+         # question made into search words with no search box.
+         require=["population", "what"], forbid_digits=True, max_growth=1.6),
     # --- Direction: long input with a question and an instruction inside -----
     dict(id="direction/question-inside-a-ramble-is-not-answered", smoke=True,
          why="a long message with a question in it is sent, not answered",

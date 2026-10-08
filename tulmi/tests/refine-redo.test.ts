@@ -111,7 +111,8 @@ describe("asking once more", () => {
 
   it("translated twice: their own words go out, not someone else's", async () => {
     llm.answers = ["The plan for tomorrow got cancelled.", "Tomorrow's plan is cancelled; we'll meet next week."];
-    expect(await assist(HINGLISH)).toBe(HINGLISH);
+    // As typed, with the capital and full stop anyone typing would give them.
+    expect(await assist(HINGLISH)).toBe("Yaar kal ka plan cancel ho gaya hai ab agle hafte milte hain.");
   });
 
   it("Devanagari comes back in English letters on the second ask", async () => {
@@ -123,7 +124,7 @@ describe("asking once more", () => {
   it("a second ask that swaps one slip for another is not kept", async () => {
     llm.answers = ["मुझे कल सुबह जल्दी उठना है।", "I have to wake up early tomorrow morning."];
     // Kept the first, and the alphabet guard then sends what they said.
-    expect(await assist("mujhe kal subah jaldi uthna hai")).toBe("mujhe kal subah jaldi uthna hai");
+    expect(await assist("mujhe kal subah jaldi uthna hai")).toBe("Mujhe kal subah jaldi uthna hai.");
   });
 
   it("a kept correction is asked again", async () => {
