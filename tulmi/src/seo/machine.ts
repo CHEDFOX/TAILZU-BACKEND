@@ -97,7 +97,7 @@ ${priceLines().join("\n")}
 
 - [iPhone (App Store)](${STORES.ios})
 - [Android (Google Play)](${STORES.android})
-- [Windows and Mac](${ORIGIN}/download)
+${STORES.windows ? `- [Windows (Microsoft Store)](${STORES.windows})\n- [Mac, or the Windows installer](${ORIGIN}/download)` : `- [Windows and Mac](${ORIGIN}/download)`}
 
 ## Optional
 
@@ -120,7 +120,7 @@ export function llmsFullTxt(): string {
 Website: ${ORIGIN}/
 iPhone: ${STORES.ios}
 Android: ${STORES.android}
-Windows and Mac: ${ORIGIN}/download
+${STORES.windows ? `Windows: ${STORES.windows}\nMac: ${ORIGIN}/download` : `Windows and Mac: ${ORIGIN}/download`}
 Made by Xooteq Lab Private Limited.
 
 ## What it does
