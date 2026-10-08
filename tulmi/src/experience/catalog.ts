@@ -195,7 +195,7 @@ export const POLICY = {
  * until it is set, and anything that is not a Store ID is treated the same:
  * every reader then falls back to the installer, as before.
  */
-export const WINDOWS_STORE_ID = "";
+export const WINDOWS_STORE_ID = "9N3GX0XHQ7MX";
 
 /** The listing's web address, which opens the Store app on Windows; "" for no listing. */
 export function windowsStoreUrl(id: string): string {
