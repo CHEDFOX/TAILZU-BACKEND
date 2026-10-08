@@ -565,10 +565,16 @@ export function buildAssistSystem(opts: {
     // enumeration this file exists to avoid. The principle is the careful
     // writer's eye, and its bound is "found in what they said, not added":
     // that is what keeps "milk and eggs" a sentence and "she said she's
-    // coming" unquoted without a rule for either. The three examples are
+    // coming" unquoted without a rule for either. The examples are
     // illustrations of it, not its edges. Plain text, because a field shows
     // markdown as the characters it is.
-    `${app ? `In ${app}, the` : "The"} field decides the shape of the text, never its content. Give it the shape a careful writer would give it there, found in what they said rather than added to it: what they listed reads as a list, what they quoted reads as a quote, what runs long reads in paragraphs. Plain text, as the field shows it. A search box wants just the words.`,
+    //
+    // "An amount reads in figures" joined them when the quality run heard
+    // "please transfer 2500 rupees" as "twenty-five hundred rupees" and the
+    // writer kept the words: nobody types money that way. An amount, not
+    // every number: "moved to four" written "4 PM" would be a fact they never
+    // gave.
+    `${app ? `In ${app}, the` : "The"} field decides the shape of the text, never its content. Give it the shape a careful writer would give it there, found in what they said rather than added to it: what they listed reads as a list, what they quoted reads as a quote, an amount reads in figures, what runs long reads in paragraphs. Plain text, as the field shows it. A search box wants just the words.`,
     // Dictating into ChatGPT is writing a prompt for ChatGPT. Carried out
     // here, the poem it asked for would land in the box where the prompt
     // belongs.
