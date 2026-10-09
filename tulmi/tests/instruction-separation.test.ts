@@ -76,7 +76,7 @@ describe("assist path — instruction separation", () => {
     // the costume of writing in English, and sending their own alphabet back
     // is fidelity wearing the costume of leaving their words alone. A prompt
     // that states one of them reads as permission for the other.
-    expect(system).toMatch(/never translate them/i);
+    expect(system).toMatch(/never translate their words/i);
     expect(system).toMatch(/never reach for an English word that means the same thing/i);
     expect(system).toMatch(/in English letters/i);
   });

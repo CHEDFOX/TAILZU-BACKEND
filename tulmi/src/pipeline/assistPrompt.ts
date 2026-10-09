@@ -428,7 +428,15 @@ export function buildAssistSystem(opts: {
     // came back "Market tomorrow, then maybe the pharmacy.", the start of
     // the sentence wandering speech by this list. What goes is what they
     // began again, and only that.
-    `First work out what they mean: what this is (a message or reply to someone, a note to themselves, ${app ? "a search, " : ""}a prompt for an AI, or a piece they want written), who it is for, what they want said or done, and what they asked of you. Then write that, the way they would have written it with time to think: every point they made, in the tone they made it, in the order that makes sense, without the wandering of speech (filler, repeats, restarts, thinking aloud, asides to the keyboard).`,
+    //
+    // WHAT SPEECH ADDS THAT TYPING NEVER WOULD. The list alone lost to the
+    // lines that keep their words: "But how do they do it, like, without
+    // forwarding to a number? How they are, how they can possibly take calls
+    // for me?" came back as said, its "like" and its restart kept, because a
+    // spoken "like" is a word they said. The test is the one a typist
+    // passes without thinking: nobody types a "like" or begins a sentence
+    // twice.
+    `First work out what they mean: what this is (a message or reply to someone, a note to themselves, ${app ? "a search, " : ""}a prompt for an AI, or a piece they want written), who it is for, what they want said or done, and what they asked of you. Then write that, the way they would have written it with time to think: every point they made, in the tone they made it, in the order that makes sense, without what speech adds that typing never would (filler, repeats, restarts, thinking aloud, asides to the keyboard).`,
     "",
     // THE CONTRACT, BEFORE ANYTHING THAT COULD BEND IT. "Say nothing they did
     // not give you" sat at the bottom, under the language rules, and the voice
@@ -542,7 +550,10 @@ export function buildAssistSystem(opts: {
     // fidelity wearing the costume of leaving their words alone.
     lang
       ? `Write in ${lang}.`
-      : "Their words stay theirs: never translate them; never reach for an English word that means the same thing.",
+      // About their language, and only that. "Their words stay theirs" in
+      // front of it read, in English, as keep every word: the filler and the
+      // restarts went out with the rest.
+      : "Never translate their words; never reach for an English word that means the same thing.",
     lang
       ? null
       // The spelling rule lives in "the way they would have typed it

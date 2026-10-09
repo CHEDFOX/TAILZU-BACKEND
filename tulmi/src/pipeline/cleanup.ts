@@ -785,7 +785,9 @@ function writesLowercase(opts: CleanupOptions): boolean {
  *               reads as English
  *   added       far longer than what they said, with nothing asked of it
  *   correction  "no wait…" kept, where only the correction should be
- *   filler      "um", "uh" kept
+ *   filler      "um", "uh" kept, or a spoken "like" between commas
+ *   restart     a sentence begun again with both starts kept ("how they
+ *               are, how they can …"), where only the second should be
  *   pause       a full stop a pause put inside a sentence ("going to the.
  *               Market") kept — see join.hasPauseStop
  *   cut         the words a pause cut short left out with the stop, as if
@@ -804,7 +806,7 @@ function writesLowercase(opts: CleanupOptions): boolean {
  * The last two only where the field is for sentences (fieldShapesIt): in a
  * search box or a number field, both are the right answer.
  */
-export type Slip = "alphabet" | "translated" | "added" | "correction" | "filler" | "long" | "pause" | "cut" | "empty" | "carried" | "question" | "dropped";
+export type Slip = "alphabet" | "translated" | "added" | "correction" | "filler" | "restart" | "long" | "pause" | "cut" | "empty" | "carried" | "question" | "dropped";
 
 /**
  * A request to an AI, by its verb: "write …", "can you make …", "please
@@ -816,6 +818,14 @@ const ASKS_AN_AI = /^(?:(?:please|pls|hey|ok|okay)[\s,]+)?(?:(?:can|could|would)
 
 const CORRECTION = /\b(?:no,? wait|wait,? no|scratch that|sorry,? i meant?|i meant?,? no)\b/i;
 const FILLER_WORD = /(?:^|[^\p{L}])(?:u+m+|u+h+|uhm+|erm+)(?=$|[^\p{L}])/iu;
+/** Speech's filler that is a word: "how do they do it, like, without …". Set
+ *  off by commas it is never the word they mean, and nobody types it. */
+const SPOKEN_FILLER = /,\s*(?:like|you know)\s*,/i;
+/** A sentence begun again with both goes kept: "how they are, how they can
+ *  possibly …", "I was going to, I was going to call". The same two words
+ *  open both, a few words apart. "Thank you, thank you" is said twice, not
+ *  begun again, and is left alone. */
+const RESTART = /(?<![\p{L}'])(\p{L}+)\s+(\p{L}+)(?:\s+[\p{L}']+){1,3},\s*\1\s+\2(?![\p{L}])/iu;
 const OTHER_LETTERS = /(?=\p{L})[^\p{Script=Latin}]/u;
 /** A language or an alphabet named anywhere in what they said. The code only
  *  recognises a request made in English at the end ("…write it in Hindi");
@@ -858,6 +868,11 @@ export function slipIn(
   if (!o.instructed && !o.piece && wordCount(wrote) > wordCount(said) * 1.6 + 6) return "added";
   if (CORRECTION.test(wrote) && CORRECTION.test(said)) return "correction";
   if (FILLER_WORD.test(wrote) && FILLER_WORD.test(said)) return "filler";
+  // A piece they asked for may use either on purpose.
+  if (!o.piece && !o.instructed) {
+    if (SPOKEN_FILLER.test(wrote)) return "filler";
+    if (RESTART.test(wrote) && RESTART.test(said)) return "restart";
+  }
   if (!o.field && !o.instructed && !o.piece && !o.toAnAi) {
     // A question they are sending stays one: a question mark, or at least
     // the words that open it. The prompt says so ("a question they dictate
@@ -884,7 +899,8 @@ const REDO: Record<Slip, string> = {
   translated: "That translated their words into English. Write their own words, in the language they spoke, only cleaned up, in English letters.",
   added: "That added words they did not say. Write only what they said.",
   correction: "They corrected themselves there: what came after \"no wait\" (or \"I mean\", \"scratch that\") replaces what came before it. Write the sentence once, with only the corrected version, and leave out the words that made the correction.",
-  filler: "Filler sounds went through. Leave them out.",
+  filler: "Filler went through (an \"um\", a spoken \"like\"). Leave it out.",
+  restart: "A sentence they began again went through with both starts. Keep only the start they went on with, and write that sentence once.",
   long: "That is too long for what they asked. Write it much shorter, the length that kind of message really is.",
   pause: "A full stop is still where they only paused, in the middle of a sentence. Join that sentence across the pause, and end sentences only where they really end.",
   cut: "Words they said went missing where they paused. That full stop was a breath, not a false start: it is one sentence with what follows. Write it whole, joined across the pause.",

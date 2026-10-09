@@ -354,6 +354,14 @@ CASES = [
          why="speech restarts; writing does not",
          text="can you send the - actually send me the invoice instead",
          require=["invoice"], max_growth=1.4),
+    # The owner's own dictation, handed back as said with its "like" and its
+    # restart: a spoken "like" is a word they said, and the lines that keep
+    # their words kept it.
+    dict(id="repair/spoken-like-and-restart-removed", smoke=True,
+         why="nobody types a spoken 'like' or begins a sentence twice",
+         text="But how do they do it, like, without forwarding to a number? How they are, how they can possibly take calls for me?",
+         require=["forwarding", "take calls", "?"], forbid=[", like", "how they are"],
+         forbid_regex=r"(?i)\bhow they can\b"),
     dict(id="repair/repetition-removed",
          why="a stammer is not emphasis",
          text="i i i will call you in the evening", forbid=["i i"]),
