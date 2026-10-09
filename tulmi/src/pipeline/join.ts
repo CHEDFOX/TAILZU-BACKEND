@@ -114,6 +114,34 @@ export function hasPauseStop(text: string): boolean {
 }
 
 /**
+ * THE STRETCHES A PAUSE CUT SHORT: from the last real sentence end before
+ * each pause stop up to the word it stopped on. "So I was going to the.
+ * Market tomorrow." gives "So I was going to the". The writer read exactly
+ * that stretch as a false start and left it out ("Market tomorrow, then maybe
+ * the pharmacy."), which no check on the answer's stops could see: the stop
+ * went with the words. assist() checks that some of each one survives.
+ */
+export function pauseCutClauses(text: string): string[] {
+  const out: string[] = [];
+  let from = 0;
+  for (const m of (text ?? "").matchAll(PAUSE_STOP)) {
+    const end = m.index! + m[1]!.length + (m[2] ?? m[3] ?? "").length;
+    const stretch = text.slice(from, end);
+    // Back to the last full stop that ends a sentence of its own.
+    const start = stretch.search(/[^.!?।]*$/u);
+    out.push(stretch.slice(start).trim());
+    from = end + 1;
+  }
+  return out.filter(Boolean);
+}
+
+/** Words that carry a stretch's meaning: not the small ones every sentence has. */
+export function contentWords(text: string): string[] {
+  return ((text ?? "").toLowerCase().match(/[\p{L}\p{M}'’]+/gu) ?? [])
+    .filter((w) => w.length >= 3 && !CONTINUATION_WORDS.has(w));
+}
+
+/**
  * Join a sentence across the pause stops in it: "going to the. Market" →
  * "going to the market". The word after keeps its capital when it is "I", an
  * acronym, or written capitalised elsewhere in the middle of a sentence —

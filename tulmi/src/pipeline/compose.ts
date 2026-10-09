@@ -53,8 +53,10 @@ const OPENER = "(?:^|[.!?\\n]\\s*|[,;:]\\s*|\\b(?:so|and|then|now|please|pls|plz
 /** Spoken filler between the opening and the ask: "so um write…", "okay please write…". */
 const FILL = "(?:(?:u+m+|u+h+|h+m+|so|like|okay|ok|please|pls)\\s+){0,3}";
 const ASKING = "(?:(?:can|could|would|will)\\s+(?:you|u)\\s+(?:please\\s+)?)";
-/** Up to six words between the verb and the piece: "a short and sweet good morning message". */
-const BETWEEN = "(?:\\s+(?:me|us|her|him|them|my\\s+\\w+))?(?:\\s+[\\p{L}'’-]+){0,6}?\\s+";
+/** Up to six words between the verb and the piece: "a short and sweet good morning message".
+ *  Numbers too: "write me a 500 word essay" was not an essay to this, and the
+ *  writer explained itself for 48 words into the field. */
+const BETWEEN = "(?:\\s+(?:me|us|her|him|them|my\\s+\\w+))?(?:\\s+[\\p{L}\\p{N}'’-]+){0,6}?\\s+";
 
 const objectAfter = (objects: string) =>
   new RegExp(`${OPENER}${FILL}${ASKING}?${VERB}${BETWEEN}(?:${objects})(?![\\p{L}])`, "iu");

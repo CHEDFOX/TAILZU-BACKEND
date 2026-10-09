@@ -422,7 +422,13 @@ export function buildAssistSystem(opts: {
     // now" three runs of three, after the shape line had already stopped
     // saying it. With no field known there is no search box, only someone
     // being asked.
-    `First work out what they mean: what this is (a message or reply to someone, a note to themselves, ${app ? "a search, " : ""}a prompt for an AI, or a piece they want written), who it is for, what they want said or done, and what they asked of you. Then write that, the way they would have written it with time to think: every point they made, in the tone they made it, in the order that makes sense, without the wandering of speech (filler, repeats, false starts, thinking aloud, asides to the keyboard).`,
+    //
+    // "RESTARTS", NOT "FALSE STARTS". A sentence a breath cut short looks
+    // exactly like a false start: "So I was going to the. Market tomorrow."
+    // came back "Market tomorrow, then maybe the pharmacy.", the start of
+    // the sentence wandering speech by this list. What goes is what they
+    // began again, and only that.
+    `First work out what they mean: what this is (a message or reply to someone, a note to themselves, ${app ? "a search, " : ""}a prompt for an AI, or a piece they want written), who it is for, what they want said or done, and what they asked of you. Then write that, the way they would have written it with time to think: every point they made, in the tone they made it, in the order that makes sense, without the wandering of speech (filler, repeats, restarts, thinking aloud, asides to the keyboard).`,
     "",
     // THE CONTRACT, BEFORE ANYTHING THAT COULD BEND IT. "Say nothing they did
     // not give you" sat at the bottom, under the language rules, and the voice
