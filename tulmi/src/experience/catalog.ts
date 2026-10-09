@@ -12144,7 +12144,7 @@ const makeToolsRow = (opts: {
       visibleIf: { falsy: "state.secured" },
       // The mark and its motion, as data. A build that understands them draws
       // the mark from here; one that does not draws its bundled asset.
-      props: { mark: BRAND_MARK, motion: MIC_MOTION, program: MIC_PROGRAM },
+      props: { mark: MIC_MARK, motion: MIC_MOTION, program: MIC_PROGRAM },
       style: {
         flex: 0,
         width: 42,
@@ -12299,6 +12299,23 @@ const BRAND_MARK = {
     { id: "b", kind: "rect", x: 558, y: 478, w: 132, h: 132, rx: 28, color: "#F4F1EA" },
     { id: "c", kind: "rect", x: 178, y: 598, w: 132, h: 132, rx: 28, color: "#F4F1EA" },
   ],
+};
+
+/**
+ * THE MARK ON THE MIC KEY: the three blocks and the wave between them.
+ *
+ * The owner: "we will be using 3 blocks and the wave between, not the last
+ * line on the 3rd block". The long line up from the third block, and the dot
+ * it ends in, stay on the brand mark (the icon, the site's header) and come
+ * off the key. The view is cut to what is left, the blocks' own extent and
+ * the same margin, so the blocks fill the key rather than leave a corner of
+ * it empty where the line used to reach. The motion below names `line2` and
+ * `dot` still; motion on a shape the mark lacks is ignored.
+ */
+const MIC_MARK = {
+  ...BRAND_MARK,
+  viewBox: [170, 261, 528, 477],
+  shapes: BRAND_MARK.shapes.filter((s) => s.id !== "line2" && s.id !== "dot"),
 };
 
 /**
@@ -12535,20 +12552,9 @@ const MIC_PROGRAM = {
       "scale": "1 - shrink*clamp(p, 0, 1)",
       "opacity": "1 - smooth(0.55, 1, clamp(p, 0, 1))"
     },
-    "line2": {
-      "vars": {
-        "k": 3,
-        "sign": -1
-      },
-      "dx": "dir.x*along() - dir.y*side()",
-      "dy": "dir.y*along() + dir.x*side()",
-      "rot": "(spin + (rec ? 0 : btumble*360))*p*sign",
-      "scale": "1 - shrink*clamp(p, 0, 1)",
-      "opacity": "1 - smooth(0.55, 1, clamp(p, 0, 1))"
-    },
     "c": {
       "vars": {
-        "k": 4,
+        "k": 3,
         "sign": 1
       },
       "dx": "dir.x*along() - dir.y*side()",
@@ -12557,17 +12563,6 @@ const MIC_PROGRAM = {
       "scale": "1 - shrink*clamp(p, 0, 1)",
       "opacity": "1 - smooth(0.55, 1, clamp(p, 0, 1))",
       "mix": "rec ? 0 : ramp(t % period, 0.33, 0.42)"
-    },
-    "dot": {
-      "vars": {
-        "k": 5,
-        "sign": -1
-      },
-      "dx": "dir.x*along() - dir.y*side()",
-      "dy": "dir.y*along() + dir.x*side()",
-      "rot": "(spin + (rec ? 0 : btumble*360))*p*sign",
-      "scale": "1 - shrink*clamp(p, 0, 1)",
-      "opacity": "1 - smooth(0.55, 1, clamp(p, 0, 1))"
     },
     "link": {
       "dx": "(cx - home.x)*q",
@@ -12607,7 +12602,7 @@ const MIC_PROGRAM = {
  *  with the renderer the phones run, from this same mark and program, so
  *  what the site shows is what the key does. `inset` is the key's idle
  *  icon inset, as the keyboard flag `kb.mic.idleIconInset` has it. */
-export const SITE_MIC = { mark: BRAND_MARK, program: MIC_PROGRAM, inset: 7 };
+export const SITE_MIC = { mark: MIC_MARK, program: MIC_PROGRAM, inset: 7 };
 
 /**
  * The landing page's look and order, sent with its copy (/v1/site): every

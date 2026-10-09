@@ -2290,8 +2290,17 @@ describe("the mic key's mark comes from the server", () => {
       for (const k of keys) {
         const mark = k.props?.mark;
         expect(mark?.viewBox, platform).toHaveLength(4);
-        // Three squares, the hatched link, two lines and the dot.
-        expect(mark.shapes, platform).toHaveLength(7);
+        // Three squares, the hatched link and the line between the blocks.
+        // The line up from the third block and its dot are the brand mark's,
+        // not the key's: "3 blocks and the wave between".
+        expect(mark.shapes, platform).toHaveLength(5);
+        expect(mark.shapes.map((s: any) => s.id), platform).not.toContain("line2");
+        expect(mark.shapes.map((s: any) => s.id), platform).not.toContain("dot");
+        // The view holds every block whole: none is cut at its edge.
+        const [vx, vy, vw, vh] = mark.viewBox;
+        for (const s of mark.shapes.filter((sh: any) => sh.kind === "rect")) {
+          expect(s.x >= vx && s.y >= vy && s.x + s.w <= vx + vw && s.y + s.h <= vy + vh, `${platform} ${s.id} inside the view`).toBe(true);
+        }
         // Geometry only. A picture can never stand where the mark stands.
         for (const s of mark.shapes) {
           expect(["rect", "line", "circle", "bars"], platform).toContain(s.kind);
