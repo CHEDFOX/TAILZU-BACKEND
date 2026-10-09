@@ -12,6 +12,7 @@ import OpenAI from "openai";
 import { getConfig } from "../config.js";
 import type { CleanupOptions, Personality } from "../../../shared/types/api.js";
 import { cleanLabel, describeField, fieldKindOf, takesAValue } from "./field.js";
+import { screenIsOffLimits } from "./sensitive.js";
 import { LLM_TONES } from "./tonePrompts.js";
 import {
   PORTRAIT_DIMENSIONS, PORTRAIT_BOUNDS, portraitJsonContract, portraitProvenance,
@@ -656,7 +657,13 @@ function writerRequest(input: string, opts: CleanupOptions & WriterExtras): Writ
     ? asked.lang.replace(/\b\w/g, (c) => c.toUpperCase())
     : undefined;
   const message = split.message;
-  const context = opts.context?.trim();
+  // THE SCREEN IS OFF LIMITS in a private window or a money/health app: not
+  // the text around the field, and not even their own prior text, which in
+  // those apps is a balance or a card number. Everywhere else, both ride.
+  const offLimits = screenIsOffLimits(opts);
+  const context = offLimits ? undefined : opts.context?.trim();
+  const around = offLimits ? undefined
+    : (typeof opts.surroundings === "string" ? opts.surroundings : "").replace(/\s+\n/g, "\n").trim() || undefined;
   // A PROMPT FOR ANOTHER AI IS NEVER A JOB FOR THIS ONE, and otherwise: is
   // this an ask to write a piece for them, or for more than a keyboard
   // writes? Measured on the message, after any "make it sweet" is off it.
@@ -721,6 +728,7 @@ function writerRequest(input: string, opts: CleanupOptions & WriterExtras): Writ
     compose: ask?.kind,
     promptsAnAi: toAnAi,
     hasEarlier: !!earlier,
+    hasAround: !!around,
   });
   // FENCED, NOT HANDED OVER AS A TURN. The dictation used to be the whole
   // user message, and a user message is what a chat model replies to: a
@@ -733,6 +741,7 @@ function writerRequest(input: string, opts: CleanupOptions & WriterExtras): Writ
     ? `CANDIDATE 1 (more reliable):\n${altLeads ? other : said}\n\nCANDIDATE 2:\n${altLeads ? said : other}`
     : said;
   const userContent = earlier
+    + (around ? `<around>\n${stripFenceTags(around)}\n</around>\n` : "")
     + (context ? `<before>\n${stripFenceTags(context)}\n</before>\n` : "")
     + `<said>\n${messageBlock}\n</said>`;
   return {

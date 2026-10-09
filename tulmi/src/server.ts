@@ -105,6 +105,7 @@ import type {
   FieldKind,
 } from "../../shared/types/api.js";
 import { cleanLabel, fieldKindOf } from "./pipeline/field.js";
+import { capSurroundings } from "./pipeline/sensitive.js";
 
 /**
  * Learn from ordinary use, ONCE PER SESSION, off the user's path.
@@ -931,6 +932,8 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
   let context: string | undefined; // whatever's already in the field, if any
   let fieldKind: FieldKind | undefined; // what kind of field, when the client read it
   let fieldLabel: string | undefined; // its label or placeholder, cleaned
+  let surroundings: string | undefined; // what is on the screen around the field
+  let privateField = false; // a private window or a sensitive app: screen off limits
   let tone: string | undefined; // active tone override from the client
   let tonePrompt: string | undefined; // the active tone's inline prompt text
 
@@ -949,6 +952,10 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       fieldKind = fieldKindOf(part.value);
     } else if (part.fieldname === "fieldLabel") {
       fieldLabel = cleanLabel(part.value, 60);
+    } else if (part.fieldname === "surroundings") {
+      surroundings = capSurroundings(part.value);
+    } else if (part.fieldname === "privateField") {
+      privateField = part.value === "true" || part.value === "1";
     } else if (part.fieldname === "tone") {
       tone = String(part.value);
     } else if (part.fieldname === "tonePrompt") {
@@ -1000,6 +1007,8 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       targetApp,
       fieldKind,
       fieldLabel,
+      surroundings,
+      privateField,
       language: lang,
       personality,
       tone: tone ?? personality.activeTone,
@@ -1091,6 +1100,8 @@ const refineRoute = (routeTone?: string) =>
         targetApp: body.targetApp,
         fieldKind: fieldKindOf(body.fieldKind),
         fieldLabel: cleanLabel(body.fieldLabel, 60),
+        surroundings: capSurroundings(body.surroundings),
+        privateField: body.privateField === true,
         language: lang,
         // A second engine's reading of the same speech, when the live path saw
         // the two disagree — reconciled before the writing task.
