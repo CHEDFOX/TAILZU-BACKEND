@@ -161,7 +161,7 @@ describe("the saved language is what they speak, not what to write in", () => {
     await assist(HINGLISH, { language: "en" });
     const system = llm.calls[0]![0]!.content;
     expect(system).not.toMatch(/Write in en/);
-    expect(system).toMatch(/never translate them/);
+    expect(system).toMatch(/never translate their words/i);
   });
 
   it("Hindi saved does not either", async () => {
