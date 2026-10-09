@@ -349,6 +349,9 @@ export function buildAssistSystem(opts: {
   personality?: Personality;
   language?: string;
   targetApp?: string;
+  /** The field itself, when the client read it (field.describeField):
+   *  "a text field labelled “Subject”". */
+  field?: string;
   hasContext: boolean;
   /** Script the transcript actually arrived in (observed by the STT layer).
    *  Stated as a fact so the model can't drift the user's script. */
@@ -384,6 +387,8 @@ export function buildAssistSystem(opts: {
   const language = inlineValue(opts.language, 40);
   const lang = language && language !== "auto" ? language : "";
   const app = inlineValue(opts.targetApp, 40);
+  // Where the text goes: the app, and the field in it when it is known.
+  const where = [app, inlineValue(opts.field, 90)].filter(Boolean).join(", ");
   return [
     // WHAT THEY SAID ARRIVES FENCED. It used to be the bare user turn, and a
     // bare user turn is what a chat model answers: a dictated question read
@@ -436,7 +441,7 @@ export function buildAssistSystem(opts: {
     // spoken "like" is a word they said. The test is the one a typist
     // passes without thinking: nobody types a "like" or begins a sentence
     // twice.
-    `First work out what they mean: what this is (a message or reply to someone, a note to themselves, ${app ? "a search, " : ""}a prompt for an AI, or a piece they want written), who it is for, what they want said or done, and what they asked of you. Then write that, the way they would have written it with time to think: every point they made, in the tone they made it, in the order that makes sense, without what speech adds that typing never would (filler, repeats, restarts, thinking aloud, asides to the keyboard).`,
+    `First work out what they mean: what this is (a message or reply to someone, a note to themselves, ${where ? "a search, " : ""}a prompt for an AI, or a piece they want written), who it is for, what they want said or done, and what they asked of you. Then write that, the way they would have written it with time to think: every point they made, in the tone they made it, in the order that makes sense, without what speech adds that typing never would (filler, repeats, restarts, thinking aloud, asides to the keyboard).`,
     "",
     // THE CONTRACT, BEFORE ANYTHING THAT COULD BEND IT. "Say nothing they did
     // not give you" sat at the bottom, under the language rules, and the voice
@@ -606,7 +611,7 @@ export function buildAssistSystem(opts: {
     // writer kept the words: nobody types money that way. An amount, not
     // every number: "moved to four" written "4 PM" would be a fact they never
     // gave.
-    `${app ? `In ${app}, the` : "The"} field decides the shape of the text, never its content. Give it the shape a careful writer would give it there, found in what they said rather than added to it: what they listed reads as a list, what they quoted reads as a quote, an amount reads in figures, what runs long reads in paragraphs. Plain text, as the field shows it.${app ? " A search box wants just the words." : ""}`,
+    `${where ? `In ${where}, the` : "The"} field decides the shape of the text, never its content. Give it the shape a careful writer would give it there, found in what they said rather than added to it: what they listed reads as a list, what they quoted reads as a quote, an amount reads in figures, what runs long reads in paragraphs. Plain text, as the field shows it.${where ? " A search box wants just the words." : ""}`,
     // Dictating into ChatGPT is writing a prompt for ChatGPT. Carried out
     // here, the poem it asked for would land in the box where the prompt
     // belongs.

@@ -11,6 +11,7 @@
 import OpenAI from "openai";
 import { getConfig } from "../config.js";
 import type { CleanupOptions, Personality } from "../../../shared/types/api.js";
+import { cleanLabel, describeField, fieldKindOf, takesAValue } from "./field.js";
 import { LLM_TONES } from "./tonePrompts.js";
 import {
   PORTRAIT_DIMENSIONS, PORTRAIT_BOUNDS, portraitJsonContract, portraitProvenance,
@@ -692,6 +693,7 @@ function writerRequest(input: string, opts: CleanupOptions & WriterExtras): Writ
     language: askedLanguage,
     instruction: asked && !askedLanguage ? renderCommandOverride(asked) : undefined,
     targetApp: opts.targetApp,
+    field: describeField(opts.fieldKind, opts.fieldLabel),
     // THE SCRIPT IS OBSERVABLE HERE, AND WAS ONLY EVER OBSERVED UPSTREAM.
     //
     // assistPrompt states the script as a measured fact — "Theirs was latin."
@@ -735,7 +737,7 @@ function writerRequest(input: string, opts: CleanupOptions & WriterExtras): Writ
     + `<said>\n${messageBlock}\n</said>`;
   return {
     message, context, askedLanguage, instructed: !!asked, piece, toAnAi,
-    tooBig: ask?.kind === "tooBig", field: fieldShapesIt(opts.targetApp), system, userContent,
+    tooBig: ask?.kind === "tooBig", field: fieldShapesIt(opts.targetApp, opts.fieldKind, opts.fieldLabel), system, userContent,
   };
 }
 
@@ -747,9 +749,16 @@ function writerRequest(input: string, opts: CleanupOptions & WriterExtras): Writ
  * words, its capital and full stop) stand back. Read from the app hint, the
  * only word the writer has for the field.
  */
-const FIELD_NOT_FOR_SENTENCES = /\b(?:search|number|numeric|digits?|pin|otp|passcode|url|address bar|spotlight|launcher)\b/i;
-export function fieldShapesIt(targetApp?: string): boolean {
-  return !!targetApp && FIELD_NOT_FOR_SENTENCES.test(targetApp);
+const FIELD_NOT_FOR_SENTENCES = /\b(?:search|number|numeric|digits?|pin|otp|passcode|url|address bar|email address|spotlight|launcher)\b/i;
+/** A field that takes a value (search, address, number…) says so; a message
+ *  box or a text area takes sentences whatever its app is called; a plain
+ *  text field is read by its label and app ("Search mail", "Chrome: Google
+ *  Search"), because a web page's search box is often only that. */
+export function fieldShapesIt(targetApp?: string, fieldKind?: string, fieldLabel?: string): boolean {
+  const kind = fieldKindOf(fieldKind);
+  if (takesAValue(kind)) return true;
+  if (kind === "message" || kind === "longtext") return false;
+  return [targetApp, cleanLabel(fieldLabel)].some((s) => !!s && FIELD_NOT_FOR_SENTENCES.test(s));
 }
 
 /**
