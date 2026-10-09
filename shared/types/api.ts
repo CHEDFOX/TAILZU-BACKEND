@@ -364,6 +364,14 @@ export interface CleanupOptions {
    * from what they said alone — no surroundings, no prior text kept.
    */
   privateField?: boolean;
+  /**
+   * The device's current UTC offset in minutes (e.g. 330 for IST, -480 for
+   * PST), when the client sends it. Used for the "this morning / 2 min ago"
+   * timing of the recent-dictations context, so a keyboard-only user whose
+   * stored offset is stale still gets the right time of day. Overrides the
+   * stored one for this request.
+   */
+  tzOffsetMinutes?: number;
   /** Language hint. Default "auto". */
   language?: LanguageHint;
   /**

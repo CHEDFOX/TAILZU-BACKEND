@@ -475,6 +475,13 @@ function countWords(text: string): number {
   return t ? t.split(/\s+/).length : 0;
 }
 
+/** A client-sent UTC offset in minutes, clamped to the real range, or
+ *  undefined when absent or out of range. Prefer it over the stored one. */
+function reqTz(v: unknown, stored?: number): number | undefined {
+  if (typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= 14 * 60) return Math.round(v);
+  return stored;
+}
+
 /** Refuse strings whose length exceeds the config-defined MAX_TEXT_LENGTH.
  *  Returns an error message when over-cap; null when ok. */
 function tooLong(text: string | undefined): string | null {
@@ -934,6 +941,7 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
   let fieldLabel: string | undefined; // its label or placeholder, cleaned
   let surroundings: string | undefined; // what is on the screen around the field
   let privateField = false; // a private window or a sensitive app: screen off limits
+  let tzOffsetMinutes: number | undefined; // the device's current UTC offset
   let tone: string | undefined; // active tone override from the client
   let tonePrompt: string | undefined; // the active tone's inline prompt text
 
@@ -956,6 +964,8 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       surroundings = capSurroundings(part.value);
     } else if (part.fieldname === "privateField") {
       privateField = part.value === "true" || part.value === "1";
+    } else if (part.fieldname === "tzOffsetMinutes") {
+      const n = Number(part.value); if (Number.isFinite(n)) tzOffsetMinutes = n;
     } else if (part.fieldname === "tone") {
       tone = String(part.value);
     } else if (part.fieldname === "tonePrompt") {
@@ -1016,7 +1026,7 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       context,
       variables: { email: user.email, phone: user.phone },
       recent: await recentRead,
-      tzOffsetMinutes: personality.stylePortrait?.tzOffsetMinutes,
+      tzOffsetMinutes: reqTz(tzOffsetMinutes, personality.stylePortrait?.tzOffsetMinutes),
     });
     await recordUsage({ user, source: "rest", ...result.usage });
     await appendHistoryEntry(
@@ -1111,7 +1121,7 @@ const refineRoute = (routeTone?: string) =>
         // What they dictated in the last few minutes, read by the server
         // (never sent by a client), with where and when.
         recent: await recentRead,
-        tzOffsetMinutes: personality.stylePortrait?.tzOffsetMinutes,
+        tzOffsetMinutes: reqTz(body.tzOffsetMinutes, personality.stylePortrait?.tzOffsetMinutes),
       });
       const usage = { audioSeconds: 0, words: countWords(refinedText), model: cfg.CLEANUP_MODEL };
       await recordUsage({ user, source: "rest", ...usage });
