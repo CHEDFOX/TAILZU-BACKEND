@@ -350,6 +350,20 @@ export interface CleanupOptions {
    *  "Subject", "Message #design". Text off their screen, so the server
    *  cleans and caps it (field.cleanLabel) before the writer sees it. */
   fieldLabel?: string;
+  /**
+   * What is on the screen AROUND the field, when the client can read it: the
+   * conversation being replied to, the recipient, the subject, the page.
+   * Other people's words. Reference only — the writer uses it to understand
+   * this message (who "he" is, how a name is spelled, what is being replied
+   * to) and never copies it or replies to it. The server fences and caps it.
+   */
+  surroundings?: string;
+  /**
+   * The field, or the window, is private: an incognito/private browser
+   * window, or an app the client treats as sensitive. The server then writes
+   * from what they said alone — no surroundings, no prior text kept.
+   */
+  privateField?: boolean;
   /** Language hint. Default "auto". */
   language?: LanguageHint;
   /**
