@@ -990,6 +990,11 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
       "label": "excited"
     }
   ],
+  "desktop.ocr.cacheMs": 15000,
+  "desktop.ocr.maxSide": 1600,
+  "desktop.ocr.minChars": 80,
+  "desktop.ocr.read": true,
+  "desktop.ocr.timeoutMs": 3000,
   "desktop.surroundings.chars": 2000,
   "desktop.surroundings.read": true,
   "desktop.surroundings.timeoutMs": 1400,
