@@ -990,6 +990,9 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
       "label": "excited"
     }
   ],
+  "desktop.surroundings.chars": 2000,
+  "desktop.surroundings.read": true,
+  "desktop.surroundings.timeoutMs": 1400,
   "desktop.tray.iconSize": 18,
   "desktop.type.scale": 1.08,
   "desktop.update": {
