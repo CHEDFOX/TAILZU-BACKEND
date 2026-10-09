@@ -390,7 +390,9 @@ CASES = [
     dict(id="repair/pause-stops-joined", smoke=True,
          why="a breath in the middle of a sentence is not the end of it",
          text="So I was going to the. Market tomorrow. And then maybe. The pharmacy.",
-         forbid_regex=r"\b(?:the|and|a)\.\s", require=["market", "pharmacy"], max_growth=1.4),
+         # "going" too: it passed as "Market tomorrow, then maybe the
+         # pharmacy.", the words before the breath dropped as a false start.
+         forbid_regex=r"\b(?:the|and|a)\.\s", require=["going", "market", "pharmacy"], max_growth=1.4),
     dict(id="repair/one-thought-one-sentence",
          why="fragments cut at pauses read as broken writing",
          text="I was thinking. That we could move the meeting. To Thursday. Because the deck is not ready.",

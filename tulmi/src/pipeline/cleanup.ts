@@ -23,7 +23,7 @@ import { earlierBlock, type RecentDictation } from "./session.js";
 import { buildReplySystem, inlineValue, renderCommandOverride } from "../prompts.js";
 import { detectScript, englishShare, INDIC_SCRIPTS, mixesEnglishAndRomanHindi, readsAsRomanHindi, romanHindiHits, transliterated } from "./stt.js";
 import { isKnownHallucination, phraseKey } from "./speechGate.js";
-import { continuesSentence, hasPauseStop, joinPauseStops, shapeForJoin } from "./join.js";
+import { contentWords, continuesSentence, hasPauseStop, joinPauseStops, pauseCutClauses, shapeForJoin } from "./join.js";
 
 /**
  * The script a piece of text is written in, or undefined when there is no
@@ -176,6 +176,11 @@ const META_PATTERNS: RegExp[] = [
   // message. The object again makes it a refusal: writing, for you. Anyone
   // who really says either sentence said it in their input too, and keeps it.
   /\bi can (?:only )?help (?:you )?(?:write|with writing|draft)\b/i,
+  // And offering to: "I can write a letter of recommendation. Who is it for,
+  // and what should I highlight?" for "can you write me a letter of
+  // recommendation", a question they were sending to a person. Only at the
+  // very start, where the writer speaks for itself.
+  /^i (?:can|could|would be happy to|'d be happy to|am happy to|'m happy to) (?:help (?:you )?)?(?:write|draft|compose) (?:a|an|the|that|this|your|you)\b/i,
   /\bi (?:cannot|can'?t|am unable to|'?m unable to|won'?t be able to) (?:write|draft|compose)\b[^.]{0,40}\bfor you\b/i,
 ];
 
@@ -466,7 +471,14 @@ function finalizeCompletion(out: string, input: string): string {
   // the model correctly decided was unintelligible. On a silent clip `inp` is
   // already "" and both paths agree; on a noisy one only this path is right.
   if (out && looksLikeEmptyEcho(out)) return "";
-  if (out && looksLikeMeta(out) && !looksLikeMeta(inp)) return inp;
+  // A REFUSAL THAT KEEPS TALKING IS STILL A REFUSAL. "I cannot fulfill this
+  // request. I am designed to help you write your own messages…" ran to 48
+  // words, past the bound that keeps a long rewrite from being misread, so
+  // its opening sentence is read on its own. Their input is read whole: any
+  // of these phrases in what they said, at any length, and it is theirs.
+  const opening = out.trim().split(/(?<=[.!?])\s+/u)[0] ?? "";
+  const refuses = looksLikeMeta(out) || looksLikeMeta(opening);
+  if (out && refuses && !META_PATTERNS.some((re) => re.test(inp))) return inp;
   return out || inp;
 }
 
@@ -776,7 +788,10 @@ function writesLowercase(opts: CleanupOptions): boolean {
  *   filler      "um", "uh" kept
  *   pause       a full stop a pause put inside a sentence ("going to the.
  *               Market") kept — see join.hasPauseStop
- *   empty       nothing written for words they really said (assist() checks
+ *   cut         the words a pause cut short left out with the stop, as if
+ *               they were a false start: "So I was going to the. Market
+ *               tomorrow." → "Market tomorrow." See join.pauseCutClauses
+ *   empty      nothing written for words they really said (assist() checks
  *               it: slipIn is only handed an answer)
  *   carried     in an AI app, a request ("write a birthday message for my
  *               mom") carried out instead of written as their prompt
@@ -789,7 +804,7 @@ function writesLowercase(opts: CleanupOptions): boolean {
  * The last two only where the field is for sentences (fieldShapesIt): in a
  * search box or a number field, both are the right answer.
  */
-export type Slip = "alphabet" | "translated" | "added" | "correction" | "filler" | "long" | "pause" | "empty" | "carried" | "question" | "dropped";
+export type Slip = "alphabet" | "translated" | "added" | "correction" | "filler" | "long" | "pause" | "cut" | "empty" | "carried" | "question" | "dropped";
 
 /**
  * A request to an AI, by its verb: "write …", "can you make …", "please
@@ -853,6 +868,13 @@ export function slipIn(
     if (wordCount(said) >= 4 && wordCount(wrote) * 4 < wordCount(said)) return "dropped";
   }
   if (hasPauseStop(wrote)) return "pause";
+  // Every word that carried a stretch a pause cut short, gone from the
+  // answer. A stem is enough to count as kept: "go" for "going" is the
+  // writer's grammar, not a lost thought.
+  if (!o.field) {
+    const kept = (w: string) => new RegExp(`(?<![\\p{L}])${w.slice(0, 4)}`, "iu").test(wrote);
+    if (pauseCutClauses(said).some((c) => { const ws = contentWords(c); return ws.length > 0 && !ws.some(kept); })) return "cut";
+  }
   return null;
 }
 
@@ -865,6 +887,7 @@ const REDO: Record<Slip, string> = {
   filler: "Filler sounds went through. Leave them out.",
   long: "That is too long for what they asked. Write it much shorter, the length that kind of message really is.",
   pause: "A full stop is still where they only paused, in the middle of a sentence. Join that sentence across the pause, and end sentences only where they really end.",
+  cut: "Words they said went missing where they paused. That full stop was a breath, not a false start: it is one sentence with what follows. Write it whole, joined across the pause.",
   empty: "That wrote nothing, but they did say something. Write what they said, as the message they meant.",
   carried: "That did what they asked. Here what they say is their prompt to an AI assistant: write the prompt itself, cleaned up, and do not carry it out.",
   question: "That turned their question into something else. They are asking someone this: write it as their question.",
@@ -1026,15 +1049,24 @@ export async function assist(
       // least added less. A second answer that swapped one slip for another is
       // not kept.
       const shorter = !!again && wordCount(again) < wordCount(wrote);
+      const asSaid = tidyRaw(message, continuesSentence(context));
       if (again && slip === "long" && still === null && shorter) wrote = again;
-      else if (again && slip !== "long" && (still === null || (slip === "added" && still === "added" && shorter))) wrote = again;
+      else if (again && slip !== "long" && still === null) wrote = again;
       // Still in English after being told it was a translation: their own
       // words, unwritten, are closer to what they said than someone else's.
-      else if (slip === "translated" && detectScript(message) === "latin") wrote = tidyRaw(message, continuesSentence(context));
+      else if (slip === "translated" && detectScript(message) === "latin") wrote = asSaid;
       // Carried out twice in an AI app: what they said IS the prompt. A
       // question lost twice: their question, as they asked it, is closer
-      // than search words or an answer.
-      else if (slip === "carried" || slip === "question") wrote = tidyRaw(message, continuesSentence(context));
+      // than search words or an answer. Words added twice, nothing asked:
+      // the writer is answering or offering ("I can write a letter of
+      // recommendation. Who is it for…?"), and none of it is theirs. Words a
+      // pause cut, left out twice: their sentence with the stop joined
+      // (joinPauseStops, below) keeps what the answer lost.
+      else if (slip === "carried" || slip === "question" || slip === "added" || slip === "cut") wrote = asSaid;
+      // Almost nothing kept, twice, and what is left is a lone address or
+      // number: the message it was in goes out. Anything longer is the
+      // writer's reading of a long ramble, and stays.
+      else if (slip === "dropped" && countWords(wrote) <= 2) wrote = asSaid;
     } catch {
       // The first answer stands; the guards below still apply to it.
     }

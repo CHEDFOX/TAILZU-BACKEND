@@ -172,3 +172,68 @@ describe("a please they said goes out", () => {
     expect(keepPlease("Send me the file.", "send me the file")).toBe("Send me the file.");
   });
 });
+
+// The third run (115 of 118): one passing case was the worst output in it.
+describe("a sentence a pause cut short is not a false start", () => {
+  const said = "So I was going to the. Market tomorrow. And then maybe. The pharmacy.";
+
+  it("its words gone from the answer is a slip", () => {
+    expect(slipIn(said, "Market tomorrow, then maybe the pharmacy.")).toBe("cut");
+    expect(slipIn(said, "I was going to the market tomorrow and then maybe the pharmacy.")).toBeNull();
+    // The writer's grammar is not a lost thought: a stem is enough.
+    expect(slipIn("Main kal. Office nahi aa paunga kyunki. Doctor ke paas jana hai.",
+      "Main kal office nahi aa paunga kyunki doctor ke paas jana hai.")).toBeNull();
+  });
+
+  it("is asked again, and failing that their sentence goes out joined", async () => {
+    llm.answers = ["<send>Market tomorrow, then maybe the pharmacy.</send>", "<send>So I was going to the market tomorrow, and then maybe the pharmacy.</send>"];
+    expect(await assist(said)).toBe("So I was going to the market tomorrow, and then maybe the pharmacy.");
+    expect(llm.calls[1]![3]!.content).toMatch(/a breath, not a false start/);
+
+    llm.answers = ["<send>Market tomorrow, then maybe the pharmacy.</send>", "<send>Market tomorrow and the pharmacy.</send>"];
+    expect(await assist(said)).toMatch(/^So I was going to the market tomorrow\./);
+  });
+
+  it("the prompt cuts what they began again, not what a breath cut", () => {
+    const p = buildAssistSystem({ hasContext: false, intentStep: true });
+    expect(p).toMatch(/repeats, restarts, thinking aloud/);
+    expect(p).not.toMatch(/false starts/);
+  });
+});
+
+describe("the writer offering, or refusing at length, never reaches the field", () => {
+  it("a refusal that keeps talking is still a refusal", async () => {
+    llm.answers = ["<send>I cannot fulfill this request. I am designed to help you write your own messages and texts, not to generate long-form content like essays on complex topics. My purpose is to assist you in crafting your thoughts into clear and coherent writing, using your own words and ideas.</send>"];
+    expect(await assist("write me a 500 word essay on climate change")).toBe("Write me a 500 word essay on climate change.");
+  });
+
+  it("a question to a person, answered with an offer, goes out as the question", async () => {
+    const offer = "<send>I can write a letter of recommendation. Who is it for, what is it for, and what should I highlight?</send>";
+    llm.answers = [offer, offer];
+    expect(await assist("can you write me a letter of recommendation", { targetApp: "Gmail" }))
+      .toBe("Can you write me a letter of recommendation?");
+    // Theirs, when they said it: "I can write the report tonight" is a message.
+    expect(looksLikeMeta("I can write the report tonight.")).toBe(true);
+    llm.answers = ["<send>I can write the report tonight.</send>"];
+    expect(await assist("i can write the report tonight")).toBe("I can write the report tonight.");
+  });
+
+  it("words added twice, with nothing asked, are not theirs", async () => {
+    const long = "<send>Reaching in ten minutes. Sorry for the delay, traffic is terrible today and I left later than I meant to. See you soon!</send>";
+    llm.answers = [long, long];
+    expect(await assist("reaching in ten")).toBe("Reaching in ten.");
+  });
+});
+
+describe("an address alone, twice, is the message lost", () => {
+  it("their message goes out with it", async () => {
+    llm.answers = ["<send>priya@example.com</send>", "<send>priya@example.com</send>"];
+    expect(await assist("mail it to priya@example.com please")).toBe("Mail it to priya@example.com please.");
+  });
+
+  it("a ramble read down to its point stays the writer's reading", async () => {
+    const ramble = "um so yeah basically what i'm trying to say is like you know the thing is um i'm running really late";
+    llm.answers = ["<send>I'm running really late.</send>", "<send>I'm running really late.</send>"];
+    expect(await assist(ramble)).toBe("I'm running really late.");
+  });
+});
