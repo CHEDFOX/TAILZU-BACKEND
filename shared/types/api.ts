@@ -331,10 +331,25 @@ export type Command =
    *  sound, for this message only. The word they used, as they said it. */
   | { kind: "style"; style: string };
 
+/**
+ * The kind of field they are writing in, as the client reads it: Android's
+ * input type and IME action, iOS's keyboard traits, the desktop's
+ * accessibility role. Never sent for a password field.
+ */
+export type FieldKind =
+  | "search" | "url" | "email" | "number" | "phone" | "name" | "address"
+  | "message" | "text" | "longtext";
+
 /** Options that shape a request (shared by voice, typing, and screen modes). */
 export interface CleanupOptions {
   /** App the user is typing into; drives tone + formatting. Default "Generic". */
   targetApp?: TargetAppHint;
+  /** What kind of field it is, when the client can read it (see FieldKind). */
+  fieldKind?: FieldKind;
+  /** The field's own label or placeholder as they see it: "Search mail",
+   *  "Subject", "Message #design". Text off their screen, so the server
+   *  cleans and caps it (field.cleanLabel) before the writer sees it. */
+  fieldLabel?: string;
   /** Language hint. Default "auto". */
   language?: LanguageHint;
   /**

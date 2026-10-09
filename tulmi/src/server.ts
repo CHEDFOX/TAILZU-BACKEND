@@ -102,7 +102,9 @@ import type {
   RefineResponse,
   SpeakRequest,
   TargetAppHint,
+  FieldKind,
 } from "../../shared/types/api.js";
+import { cleanLabel, fieldKindOf } from "./pipeline/field.js";
 
 /**
  * Learn from ordinary use, ONCE PER SESSION, off the user's path.
@@ -927,6 +929,8 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
   let language: LanguageHint | undefined;
   let personalityOverride: Personality | undefined;
   let context: string | undefined; // whatever's already in the field, if any
+  let fieldKind: FieldKind | undefined; // what kind of field, when the client read it
+  let fieldLabel: string | undefined; // its label or placeholder, cleaned
   let tone: string | undefined; // active tone override from the client
   let tonePrompt: string | undefined; // the active tone's inline prompt text
 
@@ -941,6 +945,10 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       language = String(part.value) as LanguageHint;
     } else if (part.fieldname === "context") {
       context = String(part.value);
+    } else if (part.fieldname === "fieldKind") {
+      fieldKind = fieldKindOf(part.value);
+    } else if (part.fieldname === "fieldLabel") {
+      fieldLabel = cleanLabel(part.value, 60);
     } else if (part.fieldname === "tone") {
       tone = String(part.value);
     } else if (part.fieldname === "tonePrompt") {
@@ -990,6 +998,8 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       audio,
       format,
       targetApp,
+      fieldKind,
+      fieldLabel,
       language: lang,
       personality,
       tone: tone ?? personality.activeTone,
@@ -1079,6 +1089,8 @@ const refineRoute = (routeTone?: string) =>
         tonePrompt: body.tonePrompt,
         context: body.context,
         targetApp: body.targetApp,
+        fieldKind: fieldKindOf(body.fieldKind),
+        fieldLabel: cleanLabel(body.fieldLabel, 60),
         language: lang,
         // A second engine's reading of the same speech, when the live path saw
         // the two disagree — reconciled before the writing task.
