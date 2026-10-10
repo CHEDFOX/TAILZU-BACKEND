@@ -72,6 +72,7 @@ import {
   updatePersonality,
 } from "./personality/store.js";
 import { PERSONALITY_PRESETS, applyPresetOverrides } from "./experience/personalityPresets.js";
+import { DEFAULT_TTS_VOICE, isValidTtsVoice } from "./experience/ttsVoices.js";
 import {
   type KeyboardPlatform,
   buildBootstrap,
@@ -518,6 +519,14 @@ function personalityProblem(p: Personality | undefined): { status: 400 | 413; me
       .map((l) => l.trim().toLowerCase().slice(0, 16))
       .filter(Boolean)
       .slice(0, 20);
+  }
+  // The read-aloud voice is forwarded to OpenAI verbatim, so only an id from
+  // the curated set is ever let through. An invalid one is dropped in place
+  // (like a bad language above) rather than rejected — a PUT that also changed
+  // other fields still saves them, and the stored/default voice is kept — but
+  // it is never stored, so arbitrary input can never reach the synthesis call.
+  if (p.ttsVoice !== undefined && !isValidTtsVoice(p.ttsVoice)) {
+    delete p.ttsVoice;
   }
   const over = tooLong(p.tone) ?? tooLong(p.signature) ?? tooLong(p.customInstructions)
     ?? tooLong(p.vocabulary) ?? tooLong(p.snippets);
@@ -1648,7 +1657,12 @@ app.post("/v1/ask", { config: AUTHED_RL }, async (req, reply) => {
     // read aloud by an English voice is not the answer. Older clients ignore
     // the field and keep the screen's voice.
     const speak = spokenLanguage(answer)?.locale;
-    const res: AskResponse = speak ? { answer, speak } : { answer };
+    // AND THE VOICE TO READ IT IN. The locale decides the language; this
+    // decides whose voice — the one the user picked (personality.ttsVoice), or
+    // the default when they have not. Sent so the desktop's ask feature can
+    // hand it straight to /v1/speak. Only ever a voice from the curated set.
+    const voice = isValidTtsVoice(personality.ttsVoice) ? personality.ttsVoice : DEFAULT_TTS_VOICE;
+    const res: AskResponse = { answer, ...(speak ? { speak } : {}), voice };
     return reply.send(res);
   } catch (err) {
     req.log.error(err);
@@ -1672,10 +1686,24 @@ app.post("/v1/speak", { config: AUTHED_RL }, async (req, reply) => {
   const quota = await enforceQuota(user);
   if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
 
+  // Which voice to speak in. A voice the client sent is honoured only if it is
+  // one of the curated set; anything else (a typo, an unknown OpenAI voice, or
+  // nothing at all) falls back to the user's stored voice, then the default.
+  // An unknown id is NEVER forwarded to OpenAI — that would 400 mid-sentence.
+  // The personality is only read when it is actually needed (no valid body
+  // voice), so an ordinary speak with a good voice stays a single call.
+  let voice: string;
+  if (isValidTtsVoice(body.voice)) {
+    voice = body.voice;
+  } else {
+    const personality = await getPersonality(user);
+    voice = isValidTtsVoice(personality.ttsVoice) ? personality.ttsVoice : DEFAULT_TTS_VOICE;
+  }
+
   try {
     const { audio, contentType } = await synthesize({
       text: body.text,
-      voice: body.voice,
+      voice,
       format: body.format,
       instructions: body.instructions,
     });

@@ -701,6 +701,7 @@ describe("buildScreen", () => {
     "history",
     "dictionary",
     "language_select",
+    "voice_read",
     "delete_account",
     "onboarding",
     "onboarding_keyboard",

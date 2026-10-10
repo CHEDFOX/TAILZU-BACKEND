@@ -27,12 +27,13 @@ import { LANGUAGE_NAMES } from "../history/writtenIn.js";
 import { applyPresetOverrides, TONE_LABELS } from "./personalityPresets.js";
 import { DESK_CONTEXTS, DESK_ROOMS, DESK_SAMPLES } from "./deskSamples.js";
 import { span } from "./phoneLook.js";
+import { DEFAULT_TTS_VOICE, TTS_VOICES, isValidTtsVoice, ttsVoiceById } from "./ttsVoices.js";
 
 /** Words a minute a person types on a keyboard — the same figure the stats
  *  screen's "minutes saved" has always used (history/store.ts). */
 const TYPING_WPM = 40;
 
-export const DESK_SCREENS = new Set(["desk_today", "desk_history", "desk_notes", "desk_note", "desk_insights", "desk_day", "desk_app", "desk_words", "desk_voices", "desk_train", "desk_settings", "desk_plan"]);
+export const DESK_SCREENS = new Set(["desk_today", "desk_history", "desk_notes", "desk_note", "desk_insights", "desk_day", "desk_app", "desk_words", "desk_voices", "desk_train", "desk_settings", "desk_voice_read", "desk_plan"]);
 
 /** The desk's tabs, in the masthead. Settings and Plan are reached from its
  *  right-hand side, not from a tab. */
@@ -1326,6 +1327,9 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
   const q = planWords(ctx);
   const langs = (ctx.personality.languages ?? []).filter((l) => l && l !== "auto");
   const who = ctx.email || ctx.phone || "";
+  // The read-aloud voice, as a friendly label — the stored one, or the default.
+  const readVoice = isValidTtsVoice(ctx.personality.ttsVoice) ? ctx.personality.ttsVoice : DEFAULT_TTS_VOICE;
+  const readVoiceLabel = ttsVoiceById(readVoice)?.label ?? readVoice;
   return screen("desk_settings", "Settings", [page([
     text("Settings", "d-eyebrow"),
     text("How Tailzu works on this computer", "d-h1", { marginTop: 6, marginBottom: 26 }),
@@ -1344,6 +1348,11 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
       text("Languages", "d-h2", { marginBottom: 8 }),
       defRow("You speak", langs.length ? langs.map((l) => (Object.hasOwn(LANGUAGE_NAMES, l) ? LANGUAGE_NAMES[l] : l)).join(", ") : "Found on its own, as you talk",
         link("Change", { kind: "navigate", screenId: "languages" })),
+    ], { marginBottom: 40 }),
+    stack([
+      text("Reading aloud", "d-h2", { marginBottom: 8 }),
+      defRow("Voice", readVoiceLabel,
+        link("Change", { kind: "navigate", screenId: "desk_voice_read" })),
     ], { marginBottom: 40 }),
     ctx.free && !q.paid ? stack([
       text("Plan", "d-h2", { marginBottom: 8 }),
@@ -1372,6 +1381,38 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
       defRow("Signed in as", who || "This account", link("Sign out", { kind: "signOut" })),
     ]),
   ], { maxWidth: 820 })], { retainHistory: ctx.personality.retainHistory !== false });
+}
+
+/**
+ * READ-ALOUD VOICE — the desk's picker for the voice /v1/speak reads in.
+ *
+ * The same curated set the phone offers (experience/ttsVoices.ts), one row
+ * each: the name, how it sounds, and — for every voice but the one in use — a
+ * link that writes it to personality.ttsVoice and refreshes. The active voice
+ * carries "In use" instead of a link, the way the Voices page marks the voice
+ * that is writing. No preview: nothing in the window plays audio from an
+ * endpoint, and the voice is heard where it is used.
+ */
+export function deskVoiceRead(ctx: DeskContext): ScreenResponse {
+  const current = isValidTtsVoice(ctx.personality.ttsVoice) ? ctx.personality.ttsVoice : DEFAULT_TTS_VOICE;
+  const rows = TTS_VOICES.map((v) => defRow(
+    v.label,
+    v.blurb,
+    v.id === current
+      ? text("In use", "d-margin")
+      : link("Use", {
+          kind: "callEndpoint", method: "PUT", path: "/v1/personality",
+          body: { ttsVoice: v.id },
+          onSuccess: { kind: "refresh" },
+          onError: { kind: "toast", message: "Couldn't save that voice. Try again." },
+        }),
+  ));
+  return screen("desk_voice_read", "Read-aloud voice", [page([
+    text("Read-aloud voice", "d-eyebrow"),
+    text("The voice that reads answers back to you.", "d-h1", { marginTop: 6, marginBottom: 26 }),
+    stack(rows),
+    row([link("Back to Settings", { kind: "navigate", screenId: "desk_settings" })], { marginTop: 28 }, "d-tools"),
+  ], { maxWidth: 820 })]);
 }
 
 export function deskPlan(ctx: DeskContext): ScreenResponse {
@@ -1476,6 +1517,7 @@ function deskPage(screenId: string, ctx: DeskContext): ScreenResponse | null {
     case "desk_voices": return deskVoices(ctx);
     case "desk_train": return deskTrain(ctx);
     case "desk_settings": return deskSettings(ctx);
+    case "desk_voice_read": return deskVoiceRead(ctx);
     case "desk_plan": return deskPlan(ctx);
     default: return null;
   }
