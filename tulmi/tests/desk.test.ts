@@ -227,6 +227,77 @@ describe("the desk pages", () => {
     const s = JSON.stringify(buildScreen("desk_voices", sampleCtx));
     expect(s).toContain("/v1/personality");
     expect(s).toContain("Haan bhai, kal milte hain paanch baje.");
+    // Tapping a room still switches the voice: the activate PUT is kept.
+    expect(s).toContain('"method":"PUT","path":"/v1/personality"');
+  });
+
+  it("Voices offers an Add-voice affordance that reveals a new-voice editor", () => {
+    const s = JSON.stringify(buildScreen("desk_voices", sampleCtx));
+    // The one non-card affordance: a link that opens the inline add editor,
+    // which hides itself once open (same reveal as Words / History).
+    expect(s).toContain('"label":"Add voice"');
+    expect(s).toContain('"kind":"setState","path":"edit.add","value":true');
+    expect(s).toContain('"falsy":"edit.add"');
+    expect(s).toContain('"truthy":"edit.add"');
+    // Its two fields, bound to the add slot, and the phone's own wording.
+    expect(s).toContain('"content":"New voice"');
+    expect(s).toContain('"content":"How it writes"');
+    expect(s).toContain('"bind":{"value":"vc.add.name"}');
+    expect(s).toContain('"bind":{"value":"vc.add.prompt"}');
+    // Save POSTs a new tone (no id ⇒ the server mints a custom one), refreshes.
+    expect(s).toContain('"method":"POST","path":"/v1/personality/tone","body":{"name":"$state.vc.add.name","promptStyle":"$state.vc.add.prompt"}');
+    expect(s).toContain('"onSuccess":{"kind":"refresh"}');
+    expect(s).toContain('"onError":{"kind":"toast","message":"Couldn\'t save that voice. Try again."}');
+    // The add editor's fields start empty.
+    expect(s).toContain('"add":{"name":"","prompt":""}');
+  });
+
+  it("Voices gives each voice but Zu an Edit that opens a pre-filled editor keyed by its id", () => {
+    const s = JSON.stringify(buildScreen("desk_voices", sampleCtx));
+    // Per-voice toggle + reveal, keyed by the voice id like History's del.<id>.
+    expect(s).toContain('"label":"Edit"');
+    expect(s).toContain('"kind":"setState","path":"edit.professional","value":true');
+    expect(s).toContain('"falsy":"edit.professional"');
+    expect(s).toContain('"truthy":"edit.professional"');
+    // The editor's fields are bound to that voice's slot and seeded from it.
+    expect(s).toContain('"bind":{"value":"vc.professional.name"}');
+    expect(s).toContain('"bind":{"value":"vc.professional.prompt"}');
+    expect(s).toContain('"professional":{"name":"Professional","prompt":');
+    // Save POSTs with that voice's id (an edit, not a new tone).
+    expect(s).toContain('"path":"/v1/personality/tone","body":{"id":"professional","name":"$state.vc.professional.name","promptStyle":"$state.vc.professional.prompt"}');
+    expect(s).toContain('"content":"Edit voice"');
+    // Zu is the person's own voice — never editable, exactly as the phone does.
+    expect(s).not.toContain('"path":"edit.signature"');
+    expect(s).not.toContain('"id":"signature","name":"$state.vc.signature.name"');
+    expect(s).not.toContain('"bind":{"value":"vc.signature.name"}');
+  });
+
+  it("Voices edits a custom voice in place, and is drawable with or without one", () => {
+    const customCtx = {
+      personality: {
+        activePresetId: "signature",
+        presetOverrides: { custom_abc: { name: "My Voice", promptStyle: "Terse and kind." } },
+      },
+      language: "en",
+    } as never;
+    const built = buildScreen("desk_voices", customCtx)!;
+    // A custom tone present: only nodes/actions the window can draw and run.
+    walk(built.root, (n) => {
+      if (n.type) expect(DESKTOP_COMPONENTS.has(n.type), `component ${n.type}`).toBe(true);
+    });
+    for (const k of actionKinds(built.root)) expect(DESKTOP_ACTIONS.has(k), `action ${k}`).toBe(true);
+    const s = JSON.stringify(built);
+    // The custom voice shows its own prompt (it has no hand-written sample),
+    // and its editor is keyed and seeded by its id; Save POSTs with that id.
+    expect(s).toContain("Terse and kind.");
+    expect(s).toContain('"kind":"setState","path":"edit.custom_abc","value":true');
+    expect(s).toContain('"bind":{"value":"vc.custom_abc.name"}');
+    expect(s).toContain('"custom_abc":{"name":"My Voice","prompt":"Terse and kind."}');
+    expect(s).toContain('"path":"/v1/personality/tone","body":{"id":"custom_abc","name":"$state.vc.custom_abc.name","promptStyle":"$state.vc.custom_abc.prompt"}');
+    // With no tone list at all (built-ins only), the add editor still renders.
+    const bare = JSON.stringify(buildScreen("desk_voices", { personality: {}, language: "en" } as never));
+    expect(bare).toContain('"label":"Add voice"');
+    expect(bare).toContain('"bind":{"value":"vc.add.prompt"}');
   });
 
   // The month-level breakdowns the phone's Stats screen carries, drawn as the
