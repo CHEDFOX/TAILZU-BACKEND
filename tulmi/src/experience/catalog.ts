@@ -4700,6 +4700,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       phone: ctx.phone,
       name: ctx.name,
       tzOffsetMinutes: ctx.tzOffsetMinutes,
+      params: ctx.params,
       plans: PAYWALL_CONFIG.plans,
       manageUrl: ctx.entitlement ? String(manageFlags(ctx.entitlement.store)["billing.manage.url"] ?? "") || undefined : undefined,
       // Dimmed to sit behind the Train page's words, as on the phone's card.

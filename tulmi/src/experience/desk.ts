@@ -32,7 +32,7 @@ import { span } from "./phoneLook.js";
  *  screen's "minutes saved" has always used (history/store.ts). */
 const TYPING_WPM = 40;
 
-export const DESK_SCREENS = new Set(["desk_today", "desk_notes", "desk_note", "desk_insights", "desk_words", "desk_voices", "desk_train", "desk_settings", "desk_plan"]);
+export const DESK_SCREENS = new Set(["desk_today", "desk_notes", "desk_note", "desk_insights", "desk_day", "desk_app", "desk_words", "desk_voices", "desk_train", "desk_settings", "desk_plan"]);
 
 /** The desk's tabs, in the masthead. Settings and Plan are reached from its
  *  right-hand side, not from a tab. */
@@ -69,6 +69,9 @@ export interface DeskContext {
   phone?: string;
   name?: string;
   tzOffsetMinutes?: number;
+  /** Navigation params from the window (fetchScreen sends cur.params): which
+   *  day square or app row a detail page was opened from. */
+  params?: Record<string, string | number | boolean | undefined>;
   /** The paywall's plans, passed in for the same reason. */
   plans?: PaywallPlan[];
   /** The billing flags the bootstrap would send (manage URL etc.). */
@@ -396,19 +399,32 @@ export function deskInsights(ctx: DeskContext): ScreenResponse {
       })
     : [text("Talk for a few days and this fills in, read from what Tailzu wrote.", "d-lede")];
 
-  const apps = (st?.topApps ?? []).map((a) => ({ ...a, app: appName(a.app) || "Other" }));
+  // The raw key is kept beside the display name: a row drills into its app's
+  // page (desk_app), which looks the app up by the key the client sent, not by
+  // what it reads as. The "Other" bucket is an aggregate with no page.
+  const hasApp = new Set((st?.appDetail ?? []).map((a) => a.app));
+  const apps = (st?.topApps ?? []).map((a) => ({ raw: a.app, app: appName(a.app) || "Other", words: a.words }));
   const appTotal = apps.reduce((s, a) => s + a.words, 0) || 1;
   const appRows: Node[] = apps.length > 1
-    ? apps.map((a) => row([
-        text(a.app, "d-lane-label", { width: 100, flex: "none" }),
-        stack([stack([], { width: `${Math.round((a.words / appTotal) * 100)}%` }, "d-bar1-fill")], { flex: 1, minWidth: 0 }, "d-bar1"),
-        text(`${Math.round((a.words / appTotal) * 100)}%`, "d-num", { width: 40, textAlign: "right" }),
-      ], { align: "center", gap: 12, paddingTop: 9, paddingBottom: 9 }))
+    ? apps.map((a) => {
+        const pct = Math.round((a.words / appTotal) * 100);
+        const r = row([
+          text(a.app, "d-lane-label", { width: 100, flex: "none" }),
+          stack([stack([], { width: `${pct}%` }, "d-bar1-fill")], { flex: 1, minWidth: 0 }, "d-bar1"),
+          text(`${pct}%`, "d-num", { width: 40, textAlign: "right" }),
+        ], { align: "center", gap: 12, paddingTop: 9, paddingBottom: 9 });
+        return hasApp.has(a.raw)
+          ? { ...r, on: { onPress: { kind: "navigate", screenId: "desk_app", params: { app: a.raw } } as ActionRef } }
+          : r;
+      })
     : [];
 
   const spark = st?.sparklinePerDay ?? [];
   const days = spark.length;
-  const squares = spark.map((v, i) => stack([], {}, `d-sq${v > 0 ? " d-sq-on" : ""}${i === days - 1 ? " d-sq-now" : ""}`));
+  // A day with words opens its own page (desk_day), keyed by its place in the
+  // run so the page can name the date and read that bucket's detail.
+  const squares = spark.map((v, i) => stack([], {}, `d-sq${v > 0 ? " d-sq-on" : ""}${i === days - 1 ? " d-sq-now" : ""}`,
+    v > 0 ? { on: { onPress: { kind: "navigate", screenId: "desk_day", params: { day: i } } as ActionRef } } : {}));
 
   return screen("desk_insights", "Insights", [page([
     text(`Insights · ${MONTHS[now.getUTCMonth()]}`, "d-eyebrow"),
@@ -421,13 +437,201 @@ export function deskInsights(ctx: DeskContext): ScreenResponse {
         ...specimens,
       ], { flex: 1, minWidth: 0 }),
       stack([
-        ...(appRows.length ? [text("Where the words went", "d-h2"), stack(appRows, { marginTop: 10, marginBottom: 30 })] : []),
+        ...(appRows.length ? [
+          text("Where the words went", "d-h2"),
+          ...(hasApp.size ? [text("Open an app to see its own.", "d-lede", { marginTop: 6 })] : []),
+          stack(appRows, { marginTop: 10, marginBottom: 30 }),
+        ] : []),
         text("Days you talked", "d-h2"),
         row(squares, { gap: 6, flexWrap: "wrap", marginTop: 14, maxWidth: 330 }),
-        text(days ? `${st?.daysActive ?? 0} of the last ${days} days. The longest run was ${st?.bestStreak ?? 0}.` : "Your days show here once you have talked.",
+        text(days ? `${st?.daysActive ?? 0} of the last ${days} days. The longest run was ${st?.bestStreak ?? 0}. Open a day to see it.` : "Your days show here once you have talked.",
           "d-lede", { marginTop: 10 }),
       ], { flex: 1, minWidth: 0 }),
     ], { gap: 72, marginTop: 64, paddingTop: 40, align: "start" }, "d-rule-top d-wrap-narrow"),
+  ])]);
+}
+
+// ---- INSIGHTS: a day, and an app ------------------------------------------------------
+
+/** A small back cue over a detail page — the window's own chevron pops the
+ *  stack, this says where back goes and reads the same on every page. */
+const backToInsights = () =>
+  row([link("← Insights", { kind: "switchTab", tabId: "desk_insights" })], { marginBottom: 20 });
+
+/**
+ * When in the day the words happened — one slim column an hour, tallest at the
+ * busiest hour, nothing where nothing was said. Drawn from the renderer's plain
+ * nodes (no canvas on the desk): a bottom-aligned fill in a fixed-height track,
+ * its height the hour's share of the busiest. Noon and the two sixes are named
+ * underneath so the shape has a clock to read against.
+ */
+function hourChart(hours: number[]): Node {
+  const h = hours.length === 24 ? hours : new Array(24).fill(0);
+  const max = Math.max(1, ...h);
+  const H = 72;
+  const cols = h.map((w) => {
+    const ph = w > 0 ? Math.max(3, Math.round((w / max) * H)) : 0;
+    return stack(ph ? [stack([], { background: "var(--d-ink)", width: "100%", height: ph, radius: 2 })] : [],
+      { flex: 1, minWidth: 0, height: H, justify: "end" });
+  });
+  return stack([
+    row(cols, { gap: 3, align: "end", height: H }),
+    row(["12a", "6a", "12p", "6p", "12a"].map((l) => text(l, "d-margin")), { justify: "between", marginTop: 8 }),
+  ], { maxWidth: 520 });
+}
+
+/** A ranked set of horizontal bars — the same lane the apps use on Insights,
+ *  reused for a day's apps, a split by how it was written, its languages, an
+ *  app's time of day. A row carries its own tap when one is handed in. */
+function barList(rows: Array<{ label: string; words: number; press?: ActionRef }>): Node {
+  const total = rows.reduce((s, r) => s + r.words, 0) || 1;
+  return stack(rows.map((r) => {
+    const pct = Math.round((r.words / total) * 100);
+    const line = row([
+      text(r.label, "d-lane-label", { width: 100, flex: "none" }),
+      stack([stack([], { width: `${Math.max(2, pct)}%` }, "d-bar1-fill")], { flex: 1, minWidth: 0 }, "d-bar1"),
+      text(`${pct}%`, "d-num", { width: 40, textAlign: "right" }),
+    ], { align: "center", gap: 12, paddingTop: 9, paddingBottom: 9 });
+    return r.press ? { ...line, on: { onPress: r.press } } : line;
+  }), { marginTop: 10 });
+}
+
+/** The voice / typed / draft split as bar rows, only the ones that happened. */
+function kindRows(k: { voice: number; typing: number; draft: number }): Array<{ label: string; words: number }> {
+  return [
+    { label: "Spoken", words: k.voice },
+    { label: "Typed", words: k.typing },
+    { label: "Draft", words: k.draft },
+  ].filter((x) => x.words > 0);
+}
+
+/** A detail section: a small heading over its bars, with the air above it the
+ *  earlier sections have earned. */
+function detailBlock(title: string, rows: Array<{ label: string; words: number; press?: ActionRef }>, first: boolean): Node {
+  return stack([text(title, "d-h2"), barList(rows)], { marginTop: first ? 0 : 40 });
+}
+
+/**
+ * ONE DAY, on its own page — reached from a filled square on Insights. The
+ * square sent its place in the run (params.day); the date is read back from
+ * that, and the bucket's detail is the stats read the window already made for
+ * Insights, so this costs no extra work. Said against typed at the top, when in
+ * the day under it, and down the side where the words went, how they were
+ * written, and in what.
+ */
+export function deskDay(ctx: DeskContext): ScreenResponse {
+  const st = ctx.stats;
+  const list = st?.days ?? [];
+  const idx = Math.trunc(Number(ctx.params?.day));
+  const d = Number.isInteger(idx) && idx >= 0 && idx < list.length ? list[idx] : undefined;
+  if (!st || !d) {
+    return screen("desk_day", "Day", [page([
+      backToInsights(),
+      text("Insights", "d-eyebrow"),
+      text("That day isn't here.", "d-h1", { marginTop: 6 }),
+      text("Open it again from a filled square on Insights.", "d-lede", { marginTop: 8 }),
+    ])]);
+  }
+  const now = local(ctx, Date.now());
+  const date = new Date(now.getTime() - (list.length - 1 - idx) * 86_400_000);
+  const saidMin = d.saidSeconds / 60;
+  const typedMin = d.words / TYPING_WPM;
+  const saved = Math.max(0, typedMin - saidMin);
+  const times = d.first && d.last && d.first !== d.last ? `${d.first}–${d.last}` : (d.first || "");
+  const count = [
+    `${d.sessions} ${d.sessions === 1 ? "dictation" : "dictations"}`,
+    `${n(d.words)} words`,
+    ...(times ? [times] : []),
+  ].join(" · ");
+
+  const head = stack([
+    backToInsights(),
+    text("Insights", "d-eyebrow"),
+    text(dateLine(date), "d-h1", { marginTop: 6 }),
+    text(count, "d-count", { marginTop: 12 }),
+  ], { marginBottom: 40 });
+
+  const left = stack([
+    ...(d.words > 0 ? [stack([
+      text("Said and typed", "d-eyebrow", { marginBottom: 12 }),
+      race(saidMin, typedMin, true),
+      ...(saved >= 1 ? [inline([text(span(saved), "d-em"), text(" back on the day.", "d-inherit")], "d-written", { fontSize: 18, lineHeight: "26px", marginTop: 16 })] : []),
+      text(`Typed at ${TYPING_WPM} words a minute.`, "d-margin", { marginTop: 8 }),
+    ])] : []),
+    stack([
+      text("When", "d-eyebrow", { marginBottom: 14 }),
+      hourChart(d.hours),
+    ], { marginTop: d.words > 0 ? 44 : 0 }),
+  ], { flex: 1, minWidth: 0 });
+
+  const apps = (d.apps ?? []).map((a) => ({ label: appName(a.app) || "Other", words: a.words }));
+  const kinds = kindRows(d.kinds);
+  const langs = (d.languages ?? []).slice(0, 6).map((l) => ({ label: LANGUAGE_NAMES[l.key] ?? l.key, words: l.words }));
+  const sections: Node[] = [];
+  if (apps.length) sections.push(detailBlock("Where the words went", apps, sections.length === 0));
+  if (kinds.length > 1) sections.push(detailBlock("How", kinds, sections.length === 0));
+  if (langs.length) sections.push(detailBlock("In", langs, sections.length === 0));
+  const right = stack(sections, { flex: 1, minWidth: 0 });
+
+  return screen("desk_day", dateLine(date), [page([
+    head,
+    row([left, right], { gap: 72, align: "start" }, "d-wrap-narrow"),
+  ])]);
+}
+
+/**
+ * ONE APP, on its own page — reached from a bar on Insights. The bar sent the
+ * key the client wrote the words into (params.app); its detail is matched out
+ * of the same stats read. How much went there and in how many pieces, the time
+ * of day it happens, and how it was written.
+ */
+export function deskApp(ctx: DeskContext): ScreenResponse {
+  const st = ctx.stats;
+  const key = String(ctx.params?.app ?? "");
+  const a = (st?.appDetail ?? []).find((x) => x.app === key);
+  if (!st || !a) {
+    return screen("desk_app", "App", [page([
+      backToInsights(),
+      text("Insights", "d-eyebrow"),
+      text("Nothing for that app.", "d-h1", { marginTop: 6 }),
+      text("Open it again from a bar on Insights.", "d-lede", { marginTop: 8 }),
+    ])]);
+  }
+  const disp = appName(a.app) || "Other";
+  const lastAt = Date.parse(a.lastAt);
+  const lastLine = Number.isFinite(lastAt) ? `Last used ${dateLine(local(ctx, lastAt))}` : "";
+  const count = [
+    `${n(a.words)} words`,
+    `${a.sessions} ${a.sessions === 1 ? "dictation" : "dictations"}`,
+    ...(a.avgWords > 0 ? [`~${n(a.avgWords)} words each`] : []),
+  ].join(" · ");
+
+  const head = stack([
+    backToInsights(),
+    text("Where the words went", "d-eyebrow"),
+    text(disp, "d-h1", { marginTop: 6 }),
+    text(count, "d-count", { marginTop: 12 }),
+    ...(lastLine ? [text(lastLine, "d-margin", { marginTop: 6 })] : []),
+  ], { marginBottom: 40 });
+
+  const dayparts = [
+    { label: "Morning", words: a.dayparts.morning },
+    { label: "Afternoon", words: a.dayparts.afternoon },
+    { label: "Evening", words: a.dayparts.evening },
+    { label: "Night", words: a.dayparts.night },
+  ].filter((x) => x.words > 0);
+  const kinds = kindRows(a.kinds);
+  const voices = (a.voices ?? []).map((v) => ({ label: v.id || "Zu", words: v.words }));
+  const sections: Node[] = [];
+  if (dayparts.length) sections.push(detailBlock("When", dayparts, sections.length === 0));
+  if (kinds.length > 1) sections.push(detailBlock("How", kinds, sections.length === 0));
+  if (voices.length > 1) sections.push(detailBlock("In which voice", voices, sections.length === 0));
+
+  return screen("desk_app", disp, [page([
+    head,
+    ...(sections.length ? [row([stack(sections, { flex: 1, minWidth: 0, maxWidth: 520 })], { align: "start" })] : [
+      text("Talk into this app for a few days and its shape fills in here.", "d-lede"),
+    ]),
   ])]);
 }
 
@@ -964,6 +1168,8 @@ function deskPage(screenId: string, ctx: DeskContext): ScreenResponse | null {
     case "desk_notes": return deskNotes(ctx);
     case "desk_note": return deskNote(ctx);
     case "desk_insights": return deskInsights(ctx);
+    case "desk_day": return deskDay(ctx);
+    case "desk_app": return deskApp(ctx);
     case "desk_words": return deskWords(ctx);
     case "desk_voices": return deskVoices(ctx);
     case "desk_train": return deskTrain(ctx);

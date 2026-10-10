@@ -230,6 +230,84 @@ describe("the desk pages", () => {
   });
 });
 
+describe("Insights opens a day and an app for their own detail", () => {
+  const withDetail = {
+    ...sampleCtx,
+    formFactor: "desktop",
+    can: new Set(["DeskShell", "Keys"]),
+    stats: {
+      ...(sampleCtx as { stats: Record<string, unknown> }).stats,
+      days: Array.from({ length: 30 }, (_, i) => ({
+        words: i === 29 ? 120 : (i % 3) * 10,
+        sessions: i === 29 ? 4 : i % 3,
+        saidSeconds: i === 29 ? 180 : 0,
+        apps: i === 29 ? [{ app: "whatsapp", words: 80 }, { app: "gmail", words: 40 }] : [],
+        hours: Array.from({ length: 24 }, (_, h) => (i === 29 && (h === 9 || h === 14) ? 60 : 0)),
+        kinds: { voice: i === 29 ? 100 : 0, typing: i === 29 ? 20 : 0, draft: 0 },
+        languages: i === 29 ? [{ key: "hinglish", words: 80 }, { key: "en", words: 40 }] : [],
+        first: i === 29 ? "09:10" : undefined,
+        last: i === 29 ? "18:40" : undefined,
+      })),
+      appDetail: [
+        { app: "whatsapp", words: 700, sessions: 40, kinds: { voice: 600, typing: 100, draft: 0 },
+          dayparts: { morning: 300, afternoon: 200, evening: 150, night: 50 }, avgWords: 18,
+          lastAt: iso(60_000), voices: [{ id: "Zu", words: 500 }, { id: "Work", words: 200 }] },
+        { app: "gmail", words: 500, sessions: 20, kinds: { voice: 500, typing: 0, draft: 0 },
+          dayparts: { morning: 100, afternoon: 300, evening: 100, night: 0 }, avgWords: 25,
+          lastAt: iso(3 * 86_400_000), voices: [{ id: "Zu", words: 500 }] },
+      ],
+    },
+  } as never;
+
+  // Every detail page the window is handed must only name nodes and actions
+  // the renderer can draw and run — the same bar the screen loop holds the
+  // tabs to, applied here to the full (not the empty) path.
+  const drawable = (s: { root: unknown }) => {
+    walk(s.root, (node) => {
+      if (node.type) expect(DESKTOP_COMPONENTS.has(node.type), `component ${node.type}`).toBe(true);
+    });
+    for (const k of actionKinds((s as { root: unknown }).root)) expect(DESKTOP_ACTIONS.has(k), `action ${k}`).toBe(true);
+  };
+
+  it("a filled day square and a known app bar carry a tap into their page", () => {
+    const s = JSON.stringify(buildScreen("desk_insights", withDetail));
+    expect(s).toContain('"screenId":"desk_day"');
+    expect(s).toContain('"screenId":"desk_app"');
+    expect(s).toContain('"app":"whatsapp"');
+  });
+
+  it("a day opens on its own page with that day's numbers", () => {
+    const built = buildScreen("desk_day", { ...(withDetail as object), params: { day: 29 } } as never)!;
+    drawable(built);
+    const s = JSON.stringify(built);
+    expect(s).toContain("120 words");
+    expect(s).toContain("4 dictations");
+    expect(s).toContain("09:10–18:40");
+    expect(s).toContain("whatsapp");   // where the words went that day
+    expect(s).toContain("Hinglish");   // and in what
+    expect(s).toContain('"tabId":"desk_insights"'); // the way back
+  });
+
+  it("an app opens on its own page with how and when it is used", () => {
+    const built = buildScreen("desk_app", { ...(withDetail as object), params: { app: "whatsapp" } } as never)!;
+    drawable(built);
+    const s = JSON.stringify(built);
+    expect(s).toContain("700 words");
+    expect(s).toContain("40 dictations");
+    expect(s).toContain("Morning");
+    expect(s).toContain("Work");       // a second voice, so the split shows
+  });
+
+  it("a day out of range and an unknown app fall back to a way home, not a crash", () => {
+    const day = JSON.stringify(buildScreen("desk_day", { ...(withDetail as object), params: { day: 999 } } as never));
+    expect(day).toContain("isn't here");
+    expect(day).toContain('"tabId":"desk_insights"');
+    const app = JSON.stringify(buildScreen("desk_app", { ...(withDetail as object), params: { app: "nope" } } as never));
+    expect(app).toContain("Nothing for that app");
+    expect(app).toContain('"tabId":"desk_insights"');
+  });
+});
+
 describe("leaving a shared screen lands on the desk, not a phone tab", () => {
   const desk = { ...sampleCtx, formFactor: "desktop", can: new Set(["DeskShell", "Keys"]) } as never;
   const phone = { ...sampleCtx } as never;

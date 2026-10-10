@@ -2219,7 +2219,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
   // The training tab charts what the app has been learning FROM — the days
   // the person actually wrote — under the numbers for what it has learned.
   // Same read, one more screen.
-  const STATS_SCREENS = new Set(["stats", "personality", "home", "desk_today", "desk_insights"]);
+  const STATS_SCREENS = new Set(["stats", "personality", "home", "desk_today", "desk_insights", "desk_day", "desk_app"]);
   /**
    * AN AGGREGATE MUST NOT GATE THE TAB SOMEONE LANDS ON.
    *
@@ -2235,7 +2235,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
    * without them — the feed is simply not drawn, which is already what a user
    * with no history sees — and the next fetch, with the read warm, has them.
    */
-  const STATS_BLOCKING = new Set(["stats", "desk_insights"]);
+  const STATS_BLOCKING = new Set(["stats", "desk_insights", "desk_day", "desk_app"]);
   const STATS_DEADLINE_MS = 700;
   const statsRead = user && STATS_SCREENS.has(screenId)
     ? statsForUser(user, "month", Number(body.tzOffsetMinutes) || 0,
