@@ -883,9 +883,15 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "desktop.pill.spanDb": 150,
   "desktop.pill.split": true,
   "desktop.pill.splitDelayMs": 0,
+  // The separation spring (pillSplit.js): coming apart eases out taut
+  // (out*, well damped), going home is a stiffer, lighter-damped pull that
+  // overshoots the join (in*). Replaced the old constant-pace splitMs.
+  "desktop.pill.splitInDamp": 16,
+  "desktop.pill.splitInStiff": 240,
   "desktop.pill.splitInset": 22,
   "desktop.pill.splitMaxWidth": 0,
-  "desktop.pill.splitMs": 700,
+  "desktop.pill.splitOutDamp": 24,
+  "desktop.pill.splitOutStiff": 120,
   "desktop.pill.spring": 16,
   "desktop.pill.threadAmp": 16,
   "desktop.pill.threadHz": 5.5,
