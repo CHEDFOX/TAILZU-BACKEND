@@ -2260,8 +2260,8 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
       ? await allowanceFor(user).catch(() => null)
       : undefined;
   const history =
-    user && (screenId === "history" || screenId === "desk_today")
-      ? (await listHistory(user, { limit: 50 })).entries
+    user && (screenId === "history" || screenId === "desk_today" || screenId === "desk_history")
+      ? (await listHistory(user, { limit: screenId === "desk_history" ? HISTORY_MAX_LIMIT : 50 })).entries
       : undefined;
   // The desk's Notes page and one note. A failed read draws the page empty
   // rather than failing it; a desktop on a static token has none to read.

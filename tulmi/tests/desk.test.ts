@@ -228,6 +228,93 @@ describe("the desk pages", () => {
     expect(s).toContain("/v1/personality");
     expect(s).toContain("Haan bhai, kal milte hain paanch baje.");
   });
+
+  // The month-level breakdowns the phone's Stats screen carries, drawn as the
+  // desk's own bars — their titles, their labels, and the figures up top.
+  const withStats = {
+    ...sampleCtx,
+    stats: {
+      ...(sampleCtx as { stats: Record<string, unknown> }).stats,
+      kindWords: { voice: 900, typing: 300, draft: 0 },
+      daypartSessions: { morning: 5, afternoon: 8, evening: 3, night: 1 },
+      sessionLengths: [2, 5, 10, 3, 1],
+      hourWords: Array.from({ length: 24 }, (_, h) => (h === 9 ? 200 : h === 14 ? 150 : 0)),
+      wordsPerDay: Array.from({ length: 30 }, (_, i) => (i % 3) * 20),
+      voiceWords: [{ id: "signature", words: 800 }, { id: "professional", words: 400 }],
+      toneWords: [{ tone: "none", words: 700 }, { tone: "formal", words: 300 }],
+      avgWordsPerSession: 40,
+      minutesSaved: 30,
+      bestDay: { date: "Oct 3", words: 240 },
+      dictionary: {
+        saved: 5, used: 3, unused: 2, scanned: 40,
+        top: [{ word: "Tailzu", uses: 12 }, { word: "Kubernetes", uses: 4 }],
+        unusedWords: ["Foo", "Bar"],
+      },
+    },
+  } as never;
+
+  it("Insights carries the month's breakdowns, their titles and their values", () => {
+    const s = JSON.stringify(buildScreen("desk_insights", withStats));
+    for (const title of ["How the words came", "When you write", "Hour by hour", "How long, in words",
+                         "Who writes for you", "In which register", "What earns its place", "Words a day"]) {
+      expect(s, title).toContain(title);
+    }
+    // the kind, daypart and session-length labels
+    expect(s).toContain("Spoken");
+    expect(s).toContain("Morning");
+    expect(s).toContain("Afternoon");
+    expect(s).toContain("1–5");   // 1–5
+    expect(s).toContain("100+");
+    // voices named id→name; a register read via TONE_LABELS, none as Zu
+    expect(s).toContain("Zu");
+    expect(s).toContain("Professional");
+    expect(s).toContain("Formal");
+    // the dictionary line, its most-used count, and the names that never turned up
+    expect(s).toContain("3 of 5 words earn their place.");
+    expect(s).toContain("Most used");
+    expect(s).toContain("12×");   // 12×
+    expect(s).toContain("Never turned up");
+    // the figures up top
+    for (const f of ["Day streak", "Per session", "Best day", "Minutes saved"]) expect(s, f).toContain(f);
+  });
+
+  it("Today and Insights both offer a way into the full history", () => {
+    expect(JSON.stringify(buildScreen("desk_today", sampleCtx))).toContain('"screenId":"desk_history"');
+    expect(JSON.stringify(buildScreen("desk_insights", sampleCtx))).toContain('"screenId":"desk_history"');
+  });
+
+  it("History lists every kept cleanup, with a per-row reason card and both delete reasons", () => {
+    const s = JSON.stringify(buildScreen("desk_history", sampleCtx));
+    // the rows, newest first
+    expect(s).toContain("Haan bhai, kal milte hain.");
+    expect(s).toContain("Send the deck tonight.");
+    // the Copy that entryNode carries is kept per row
+    expect(s).toContain('"kind":"copyText","text":"Haan bhai, kal milte hain.","message":"Copied"');
+    // the exact reason copy
+    expect(s).toContain("Remove from history");
+    expect(s).toContain("Why should it go?");
+    expect(s).toContain("Either way it's gone for good, and Tailzu stops learning from it.");
+    expect(s).toContain("It doesn't sound like me");
+    expect(s).toContain("Just a clean-up");
+    expect(s).toContain("Leave it");
+    // per-row confirm state, keyed by the entry id
+    expect(s).toContain('"path":"del.a1","value":true');
+    expect(s).toContain('"path":"del.a1","value":false');
+    expect(s).toContain('"truthy":"del.a1"');
+    expect(s).toContain('"falsy":"del.a1"');
+    // the DELETE endpoint, both reasons, scoped to the row's id
+    expect(s).toContain('"method":"DELETE","path":"/v1/history/a1?reason=not_me"');
+    expect(s).toContain('"method":"DELETE","path":"/v1/history/a1?reason=cleanup"');
+    expect(s).toContain('"onSuccess":{"kind":"refresh"}');
+    // a way back to Today
+    expect(s).toContain('"tabId":"desk_today"');
+  });
+
+  it("History is empty-safe", () => {
+    const s = JSON.stringify(buildScreen("desk_history", { personality: {}, language: "en", history: [] } as never));
+    expect(s).toContain("Nothing here yet.");
+    expect(s).toContain("What you write with Tailzu shows up here.");
+  });
 });
 
 describe("Insights opens a day and an app for their own detail", () => {

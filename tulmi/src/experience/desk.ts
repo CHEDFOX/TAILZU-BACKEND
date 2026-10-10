@@ -24,7 +24,7 @@ import type { HistoryEntry, Note, NoteSummary, PaywallPlan, Personality, UsageSu
 import type { StatsForUser } from "../history/store.js";
 import type { Allowance } from "../usage/allowance.js";
 import { LANGUAGE_NAMES } from "../history/writtenIn.js";
-import { applyPresetOverrides } from "./personalityPresets.js";
+import { applyPresetOverrides, TONE_LABELS } from "./personalityPresets.js";
 import { DESK_CONTEXTS, DESK_ROOMS, DESK_SAMPLES } from "./deskSamples.js";
 import { span } from "./phoneLook.js";
 
@@ -32,7 +32,7 @@ import { span } from "./phoneLook.js";
  *  screen's "minutes saved" has always used (history/store.ts). */
 const TYPING_WPM = 40;
 
-export const DESK_SCREENS = new Set(["desk_today", "desk_notes", "desk_note", "desk_insights", "desk_day", "desk_app", "desk_words", "desk_voices", "desk_train", "desk_settings", "desk_plan"]);
+export const DESK_SCREENS = new Set(["desk_today", "desk_history", "desk_notes", "desk_note", "desk_insights", "desk_day", "desk_app", "desk_words", "desk_voices", "desk_train", "desk_settings", "desk_plan"]);
 
 /** The desk's tabs, in the masthead. Settings and Plan are reached from its
  *  right-hand side, not from a tab. */
@@ -339,6 +339,8 @@ export function deskToday(ctx: DeskContext): ScreenResponse {
           ...entryItems(ctx, earlier, true).map(entryNode),
         ] : []),
       ];
+  // A way into the whole record, once there is one to browse.
+  if (all.length) notes.push(row([link("All history", { kind: "navigate", screenId: "desk_history" })], { marginTop: 20 }, "d-tools"));
 
   const aside = stack([
     ...(wordsToday > 0 ? [stack([
@@ -365,6 +367,94 @@ function trainLine(p: Personality): string {
   const ex = p.stylePortrait?.examples ?? 0;
   if (ex <= 0) return "A few minutes of talking, and Tailzu writes more like you.";
   return `${ex} ${ex === 1 ? "round" : "rounds"} so far. A few more and it knows how you punctuate.`;
+}
+
+// ---- HISTORY -------------------------------------------------------------------------
+//
+// Every cleanup the person has kept, newest first, by day — the window's answer
+// to the phone's History screen. A row keeps its Copy, and can be removed; and
+// removing one asks why, the way the phone does: it doesn't sound like them, or
+// it was just a clean-up. Either reason deletes it, so it stops being learned
+// from; the reason is sent on the delete so the first can be told from tidying.
+
+/**
+ * ONE ROW, with its own remove-and-reason.
+ *
+ * PER-ROW STATE, KEYED BY THE ENTRY'S ID. The id goes into a boolean state
+ * path, `del.<id>` — the desktop renderer walks a dotted path (sdui.js
+ * setStatePath/stateAt) and a history id carries no dots, so each row toggles
+ * its own flag and opens its own card, one at a time. Its text and id are
+ * written into each action the way the notes on Today carry theirs — a list's
+ * item is gone by the time a click is read, so nothing is left to `$state`.
+ */
+function historyRow(it: EntryItem): Node {
+  const id = it.id;
+  const flag = "del." + id;
+  const remove = (reason: string): ActionRef => ({
+    kind: "callEndpoint", method: "DELETE", path: "/v1/history/" + id + "?reason=" + reason,
+    onSuccess: { kind: "refresh" },
+    onError: { kind: "toast", message: "Couldn't reach history. Try again." },
+  });
+  return row([
+    stack([
+      text(it.time, "d-margin-strong"),
+      ...(it.app ? [text(it.app, "d-margin")] : []),
+    ], { width: 96, flex: "none", paddingTop: 3 }),
+    stack([
+      ...(it.said ? [text(it.said, "d-said")] : []),
+      text(it.written, it.deva ? "d-written d-deva" : "d-written"),
+      {
+        ...row([
+          link("Copy", { kind: "copyText", text: it.written, message: "Copied" }),
+          link("Remove", { kind: "setState", path: flag, value: true }),
+        ], { gap: 18, marginTop: 10 }, "d-tools"),
+        visibleIf: { falsy: flag },
+      },
+      {
+        ...stack([
+          text("Remove from history", "d-eyebrow"),
+          text("Why should it go?", "d-written", { fontSize: 16, lineHeight: "22px", marginTop: 4 }),
+          text("Either way it's gone for good, and Tailzu stops learning from it.", "d-lede", { marginTop: 4 }),
+          row([
+            link("It doesn't sound like me", remove("not_me")),
+            link("Just a clean-up", remove("cleanup")),
+            link("Leave it", { kind: "setState", path: flag, value: false }),
+          ], { gap: 20, marginTop: 14, align: "center", flexWrap: "wrap" }, "d-tools"),
+        ], { marginTop: 12, paddingTop: 16, paddingBottom: 16, paddingLeft: 18, paddingRight: 18, borderRadius: 10, border: "1px solid var(--d-rule)", maxWidth: 520 }),
+        visibleIf: { truthy: flag },
+      },
+    ], { flex: 1, minWidth: 0, gap: 4 }),
+  ], { gap: 24, paddingTop: 24, paddingBottom: 24 }, "d-entry");
+}
+
+export function deskHistory(ctx: DeskContext): ScreenResponse {
+  const all = ctx.history ?? [];
+  const items = entryItems(ctx, all, false);
+
+  const body: Node[] = [];
+  if (!all.length) {
+    body.push(stack([
+      text("Nothing here yet.", "d-written", { fontSize: 19, lineHeight: "27px" }),
+      text("What you write with Tailzu shows up here.", "d-lede", { marginTop: 8 }),
+    ], { paddingBottom: 26 }));
+  }
+  let lastDay = "";
+  all.forEach((e, i) => {
+    const day = dayHeading(ctx, e.createdAt);
+    if (day !== lastDay) {
+      body.push(text(day, "d-eyebrow", { marginTop: lastDay ? 34 : 0, marginBottom: 4 }));
+      lastDay = day;
+    }
+    body.push(historyRow(items[i]!));
+  });
+
+  return screen("desk_history", "History", [page([
+    row([link("← Today", { kind: "switchTab", tabId: "desk_today" })], { marginBottom: 20 }),
+    text("History", "d-eyebrow"),
+    text("Everything you've kept", "d-h1", { marginTop: 6 }),
+    text("Every cleanup you've kept, newest first.", "d-lede", { marginTop: 8 }),
+    stack(body, { maxWidth: 760, marginTop: 24 }),
+  ])], { del: {} });
 }
 
 // ---- INSIGHTS ------------------------------------------------------------------------
@@ -426,10 +516,122 @@ export function deskInsights(ctx: DeskContext): ScreenResponse {
   const squares = spark.map((v, i) => stack([], {}, `d-sq${v > 0 ? " d-sq-on" : ""}${i === days - 1 ? " d-sq-now" : ""}`,
     v > 0 ? { on: { onPress: { kind: "navigate", screenId: "desk_day", params: { day: i } } as ActionRef } } : {}));
 
+  // THE FIGURES — the few numbers worth reading before the breakdowns: the
+  // streak running now, the words a session, the biggest day, the time saved.
+  // Each only where the month actually has it.
+  const figure = (label: string, value: string, sub?: string): Node => stack([
+    text(label, "d-eyebrow"),
+    text(value, "d-written", { fontSize: 23, lineHeight: "27px", marginTop: 6 }),
+    ...(sub ? [text(sub, "d-margin", { marginTop: 2 })] : []),
+  ], { minWidth: 110 });
+  const figures: Node[] = [];
+  if (st) {
+    if ((st.currentStreak ?? 0) > 0) figures.push(figure("Day streak", n(st.currentStreak!), st.currentStreak === 1 ? "day" : "days"));
+    if ((st.avgWordsPerSession ?? 0) > 0) figures.push(figure("Per session", n(st.avgWordsPerSession!), "words"));
+    if (st.bestDay) figures.push(figure("Best day", `${n(st.bestDay.words)} words`, st.bestDay.date));
+    if ((st.minutesSaved ?? 0) > 0) figures.push(figure("Minutes saved", span(st.minutesSaved!)));
+  }
+
+  // THE MONTH'S BREAKDOWNS, the same ones the phone's Stats screen carries,
+  // drawn as the desk's own bars rather than its cards. A voice is named the
+  // way the person renamed it; a register reads ZU's own as Zu.
+  const named = applyPresetOverrides(ctx.personality?.presetOverrides);
+  const voiceName = (id: string) => {
+    const key = (id || "").trim();
+    if (!key || key === "none" || key === "signature") return "Zu";
+    return named.find((p) => p.id === key)?.name ?? key;
+  };
+  const toneName = (t: string) => {
+    const key = (t || "").trim() || "none";
+    return key === "none" ? "Zu" : (TONE_LABELS[key as keyof typeof TONE_LABELS] ?? key);
+  };
+
+  const kinds = st ? kindRows(st.kindWords ?? { voice: 0, typing: 0, draft: 0 }) : [];
+  const dp = st?.daypartSessions;
+  const dayparts = dp
+    ? [
+        { label: "Morning", words: dp.morning },
+        { label: "Afternoon", words: dp.afternoon },
+        { label: "Evening", words: dp.evening },
+        { label: "Night", words: dp.night },
+      ].filter((x) => x.words > 0)
+    : [];
+  const LENGTH_NAMES = ["1–5", "6–15", "16–40", "41–100", "100+"];
+  const sl = st?.sessionLengths;
+  const lengths = sl && sl.length === 5
+    ? LENGTH_NAMES.map((label, i) => ({ label, words: sl[i] ?? 0 })).filter((x) => x.words > 0)
+    : [];
+  const voices = (st?.voiceWords ?? []).map((v) => ({ label: voiceName(v.id), words: v.words }));
+  const tones = (st?.toneWords ?? []).map((t) => ({ label: toneName(t.tone), words: t.words }));
+  const dict = st?.dictionary;
+  const wordsPerDay = st?.wordsPerDay ?? [];
+  const hours = st?.hourWords ?? [];
+
+  // Each breakdown is a column; they sit two-up where the width lets them, so
+  // the page favours showing the detail over hiding it behind a tap.
+  const col = (title: string, body: Node[], caption?: string): Node => stack([
+    text(title, "d-h2"),
+    ...(caption ? [text(caption, "d-lede", { marginTop: 6 })] : []),
+    ...body,
+  ], { flex: 1, minWidth: 0 });
+  const pair = (a: Node | null, b: Node | null): Node[] => {
+    const cols = [a, b].filter((x): x is Node => !!x);
+    return cols.length ? [row(cols, { gap: 72, marginTop: 48, align: "start", flexWrap: "wrap" }, "d-wrap-narrow")] : [];
+  };
+
+  const kindCol = kinds.length ? col("How the words came", [barList(kinds)]) : null;
+  const daypartCol = dayparts.length ? col("When you write", [barList(dayparts)]) : null;
+  const lengthCol = lengths.length ? col("How long, in words", [barList(lengths)]) : null;
+  const voiceCol = voices.length ? col("Who writes for you", [barList(voices)]) : null;
+  const toneCol = tones.length ? col("In which register", [barList(tones)]) : null;
+  const dictCol = dict
+    ? col("What earns its place", [
+        ...(dict.top?.length
+          ? [text("Most used", "d-eyebrow", { marginTop: 16, marginBottom: 2 }),
+             barList(dict.top.map((w) => ({ label: w.word, words: w.uses, value: `${n(w.uses)}×` })))]
+          : []),
+        ...(dict.unusedWords?.length
+          ? [text("Never turned up", "d-eyebrow", { marginTop: 18, marginBottom: 4 }),
+             text(dict.unusedWords.join(", "), "d-lede")]
+          : []),
+      ], `${n(dict.used)} of ${n(dict.saved)} words earn their place.`)
+    : null;
+
+  const hourSection: Node[] = hours.some((v) => v > 0)
+    ? [stack([text("Hour by hour", "d-h2"), stack([hourChart(hours)], { marginTop: 14 })], { marginTop: 48 })]
+    : [];
+  const wordsDaySection: Node[] = wordsPerDay.some((v) => v > 0)
+    ? [stack([
+        text("Words a day", "d-h2"),
+        text(`The last ${wordsPerDay.length} days, newest on the right.`, "d-lede", { marginTop: 6 }),
+        stack([columnChart(wordsPerDay)], { marginTop: 14 }),
+      ], { marginTop: 48 })]
+    : [];
+
+  // THE ALLOWANCE METER, only when the window was handed the allowance —
+  // Insights is not one of the screens the server reads it for, so this stays
+  // dark there and shows only where the context carries it.
+  const allowanceSection: Node[] = ctx.allowance
+    ? (() => {
+        const used = ctx.allowance!.used ?? 0;
+        const total = ctx.allowance!.total ?? 0;
+        const pct = total > 0 ? Math.max(2, Math.min(100, Math.round((used / total) * 100))) : 0;
+        return [stack([
+          text("This month's words", "d-h2"),
+          text(`${n(used)} of ${n(total)} words this month.`, "d-lede", { marginTop: 6 }),
+          stack([stack([stack([], { width: `${pct}%` }, "d-bar1-fill")], {}, "d-bar1")], { marginTop: 14, maxWidth: 520 }),
+        ], { marginTop: 48 })];
+      })()
+    : [];
+
   return screen("desk_insights", "Insights", [page([
-    text(`Insights · ${MONTHS[now.getUTCMonth()]}`, "d-eyebrow"),
+    row([
+      text(`Insights · ${MONTHS[now.getUTCMonth()]}`, "d-eyebrow"),
+      link("Full history", { kind: "navigate", screenId: "desk_history" }),
+    ], { justify: "between", align: "center" }),
     statement,
     ...(words > 0 ? [race(saidMin, typedMin, true), text(`Typed at ${TYPING_WPM} words a minute. Said is the time you spent talking.`, "d-margin", { marginTop: 10 })] : []),
+    ...(figures.length ? [row(figures, { gap: 40, marginTop: 28, flexWrap: "wrap" })] : []),
     row([
       stack([
         text("How you speak", "d-h2"),
@@ -448,6 +650,12 @@ export function deskInsights(ctx: DeskContext): ScreenResponse {
           "d-lede", { marginTop: 10 }),
       ], { flex: 1, minWidth: 0 }),
     ], { gap: 72, marginTop: 64, paddingTop: 40, align: "start" }, "d-rule-top d-wrap-narrow"),
+    ...pair(kindCol, daypartCol),
+    ...hourSection,
+    ...pair(lengthCol, voiceCol),
+    ...pair(toneCol, dictCol),
+    ...wordsDaySection,
+    ...allowanceSection,
   ])]);
 }
 
@@ -483,17 +691,39 @@ function hourChart(hours: number[]): Node {
 /** A ranked set of horizontal bars — the same lane the apps use on Insights,
  *  reused for a day's apps, a split by how it was written, its languages, an
  *  app's time of day. A row carries its own tap when one is handed in. */
-function barList(rows: Array<{ label: string; words: number; press?: ActionRef }>): Node {
+function barList(rows: Array<{ label: string; words: number; press?: ActionRef; value?: string }>): Node {
   const total = rows.reduce((s, r) => s + r.words, 0) || 1;
   return stack(rows.map((r) => {
     const pct = Math.round((r.words / total) * 100);
+    // The right-hand number is the share by default — but a count ("12×") is
+    // what reads where the bar is a ranking (the dictionary's most-used words),
+    // so a row may name its own.
     const line = row([
       text(r.label, "d-lane-label", { width: 100, flex: "none" }),
       stack([stack([], { width: `${Math.max(2, pct)}%` }, "d-bar1-fill")], { flex: 1, minWidth: 0 }, "d-bar1"),
-      text(`${pct}%`, "d-num", { width: 40, textAlign: "right" }),
+      text(r.value ?? `${pct}%`, "d-num", { width: 48, textAlign: "right" }),
     ], { align: "center", gap: 12, paddingTop: 9, paddingBottom: 9 });
     return r.press ? { ...line, on: { onPress: r.press } } : line;
   }), { marginTop: 10 });
+}
+
+/**
+ * A SPAN OF DAYS AS COLUMNS — one slim column a day, tallest on the busiest.
+ * The month's words a day on Insights; built like hourChart (no canvas on the
+ * desk), generalised to any number of columns: a bottom-aligned fill in a
+ * fixed-height track, its height the day's share of the biggest. Newest on the
+ * right, the way the stats read hands them over (today last).
+ */
+function columnChart(values: number[]): Node {
+  const vals = values.slice();
+  const max = Math.max(1, ...vals);
+  const H = 84;
+  const cols = vals.map((w) => {
+    const ph = w > 0 ? Math.max(3, Math.round((w / max) * H)) : 0;
+    return stack(ph ? [stack([], { background: "var(--d-ink)", width: "100%", height: ph, radius: 2 })] : [],
+      { flex: 1, minWidth: 0, height: H, justify: "end" });
+  });
+  return stack([row(cols, { gap: 2, align: "end", height: H })], { maxWidth: 680 });
 }
 
 /** The voice / typed / draft split as bar rows, only the ones that happened. */
@@ -1165,6 +1395,7 @@ function updateCard(u: { version: string; url: string; sha512?: string }, selfUp
 function deskPage(screenId: string, ctx: DeskContext): ScreenResponse | null {
   switch (screenId) {
     case "desk_today": return deskToday(ctx);
+    case "desk_history": return deskHistory(ctx);
     case "desk_notes": return deskNotes(ctx);
     case "desk_note": return deskNote(ctx);
     case "desk_insights": return deskInsights(ctx);
