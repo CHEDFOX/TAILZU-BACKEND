@@ -32,6 +32,15 @@ vi.mock("../src/pipeline/cleanup.js", () => ({
     async (screenContent: string, intent: string) =>
       `drafted:${intent}::${screenContent}`,
   ),
+  editSelection: vi.fn(
+    async (text: string, instruction: string) => `edited:${instruction}::${text}`,
+  ),
+  answerAbout: vi.fn(
+    async (screenContent: string, question: string) => `answered:${question}::${screenContent}`,
+  ),
+  // The route reads a read-aloud locale off the answer; stub it so a Hindi-ish
+  // answer gets one and the rest don't.
+  spokenLanguage: vi.fn((text: string) => (/[ऀ-ॿ]/.test(text) ? { name: "Hindi", locale: "hi-IN" } : null)),
   inferStyle: vi.fn(async () => ({ tone: "learned" })),
   refineWithTone: vi.fn(async (input: string) => `refined:${input}`),
   LLM_TONES: ["formal", "casual", "very-casual", "excited"],
@@ -199,6 +208,56 @@ describe("POST /v1/draft", () => {
       url: "/v1/draft",
       payload: { screenContent: "hi" },
     });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+describe("POST /v1/edit", () => {
+  it("returns 200 with editedText when text + instruction are present", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/edit",
+      payload: { text: "running late", instruction: "make it formal" },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.editedText).toBe("edited:make it formal::running late");
+    expect(body.usage.audioSeconds).toBe(0);
+  });
+
+  it("returns 400 when text is missing", async () => {
+    const res = await app.inject({ method: "POST", url: "/v1/edit", payload: { instruction: "shorten" } });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("returns 400 when instruction is missing", async () => {
+    const res = await app.inject({ method: "POST", url: "/v1/edit", payload: { text: "hello" } });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+describe("POST /v1/ask", () => {
+  it("returns 200 with an answer, and a speak locale for a non-English answer", async () => {
+    const roman = await app.inject({
+      method: "POST",
+      url: "/v1/ask",
+      payload: { question: "when?", screenContent: "3pm" },
+    });
+    expect(roman.statusCode).toBe(200);
+    expect(roman.json().answer).toBe("answered:when?::3pm");
+    expect(roman.json().speak).toBeUndefined();
+
+    const hindi = await app.inject({
+      method: "POST",
+      url: "/v1/ask",
+      payload: { question: "कब?", screenContent: "तीन बजे" },
+    });
+    expect(hindi.statusCode).toBe(200);
+    expect(hindi.json().speak).toBe("hi-IN");
+  });
+
+  it("returns 400 when the question is missing", async () => {
+    const res = await app.inject({ method: "POST", url: "/v1/ask", payload: { screenContent: "hi" } });
     expect(res.statusCode).toBe(400);
   });
 });
