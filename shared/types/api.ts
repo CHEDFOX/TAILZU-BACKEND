@@ -133,6 +133,15 @@ export interface Personality {
   /** Text-expansion shortcuts, one per line as "trigger = expansion". The
    * cleanup step expands each trigger into its full text. */
   snippets?: string;
+  /**
+   * The read-aloud (TTS) voice the user picked — an OpenAI gpt-4o-mini-tts
+   * voice id from the curated set (experience/ttsVoices.ts), e.g. "nova". Used
+   * by /v1/speak when the client sends no voice of its own, and returned by
+   * /v1/ask so the client knows which voice to request. Only an id that passes
+   * `isValidTtsVoice` is ever stored; anything else is ignored, so an unknown
+   * value can never reach OpenAI. Unset → the default voice ("nova").
+   */
+  ttsVoice?: string;
 
   /**
    * The evolving style portrait — a compact, LLM-maintained description of how
@@ -579,6 +588,13 @@ export interface AskResponse {
    * the screen opened with. Mirrors /v1/train/converse's `speak`.
    */
   speak?: string;
+  /**
+   * The user's chosen read-aloud (TTS) voice id (see Personality.ttsVoice) —
+   * an OpenAI gpt-4o-mini-tts voice from the curated set, or the default when
+   * unset. The desktop's ask feature passes this to /v1/speak so the answer is
+   * read in the voice the user picked. Older clients ignore it.
+   */
+  voice?: string;
 }
 
 // ---------------------------------------------------------------------------
