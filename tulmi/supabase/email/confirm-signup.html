@@ -1,0 +1,144 @@
+<!-- Supabase -> Authentication -> Email Templates -> CONFIRM SIGNUP
+     Sent when the address is NEW to the project. Keep byte-identical to
+     magic-link.html apart from this comment: the user asked for a code and
+     does not care which of GoTrue's paths answered. -->
+<!doctype html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" style="margin:0;padding:0;height:100%;background-color:#0F0D0B;">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <meta name="x-apple-disable-message-reformatting">
+    <meta name="format-detection" content="telephone=no,date=no,address=no,email=no,url=no">
+    <!-- Dark by design, in light mode and dark: saying both tells Apple Mail
+         and Outlook the palette is handled, so they leave it alone. -->
+    <meta name="color-scheme" content="light dark">
+    <meta name="supported-color-schemes" content="light dark">
+    <title>Your Tailzu code</title>
+    <!-- The app's label and UI faces. Apple Mail, iOS Mail, Samsung and
+         Outlook for Mac load them; Gmail does not, and each stack ends in a
+         system face that keeps the same voice. -->
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:wght@400&display=swap" rel="stylesheet">
+    <!--[if gte mso 9]><xml><o:OfficeDocumentSettings><o:AllowPNG/><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
+    <style>
+      :root { color-scheme: light dark; supported-color-schemes: light dark; }
+      html, body { margin: 0 !important; padding: 0 !important; width: 100% !important; height: 100% !important; background-color: #0F0D0B !important; }
+      * { -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
+      table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+      a[x-apple-data-detectors] { color: inherit !important; text-decoration: none !important; }
+      /* Outlook.com's dark mode repaints by these attributes: keep the drawing. */
+      [data-ogsb] .tz-ground { background-color: #0F0D0B !important; }
+      [data-ogsc] .tz-ink3 { color: #817869 !important; }
+      [data-ogsc] .tz-live { color: #E8A23C !important; }
+      @media (min-width: 601px) { .tz-floor { height: 1240px !important; } }
+      @media (min-width: 1600px) { .tz-floor { height: 1500px !important; } }
+      @media (max-width: 480px) {
+        .tz-pad { padding-left: 24px !important; padding-right: 24px !important; padding-top: 40px !important; }
+        .tz-code { font-size: 44px !important; line-height: 52px !important; letter-spacing: 10px !important; }
+      }
+    </style>
+  </head>
+  <!-- The ground is painted five times over, because each client honours a
+       different one: the html and body (Apple Mail, iOS Mail, and the overscroll
+       above and below the mail), the bgcolor attributes (Gmail, which drops
+       the body's style), the full-width, full-height wrapper (everything else),
+       and VML for Outlook on Windows, whose Word engine paints only that.
+       Every colour is also restated on its element: inherited colour is the
+       first thing a client's dark-mode pass throws away. -->
+  <body class="tz-ground" bgcolor="#0F0D0B" style="margin:0;padding:0;width:100%;height:100%;background-color:#0F0D0B;">
+    <!--[if gte mso 9]><v:background xmlns:v="urn:schemas-microsoft-com:vml" fill="t"><v:fill type="tile" color="#0F0D0B"/></v:background><![endif]-->
+
+    <!-- Preheader: the grey line the inbox shows beside the subject. The run of
+         zero-width characters after it stops the client filling the rest of
+         that line with the first words of the mail. -->
+    <div style="display:none;font-size:1px;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;mso-hide:all;color:#0F0D0B;">
+      Your Tailzu code is {{ .Token }}
+      &#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;
+    </div>
+
+    <!-- AT LEAST A SCREEN TALL, ON EVERY SCREEN. Two holds, so that losing one
+         never shows white:
+         - the block: 100vh, in a div because a minimum height is ignored on
+           tables and their cells. Most clients know viewport units, and in a
+           webmail 100vh is the browser's window, taller than the pane the
+           mail sits in, so the first screen is always covered;
+         - the cell's height, for the clients that do not know viewport units
+           or resolve them to nothing: 960 px, raised by width in the style
+           block (1240 from tablet width, 1500 from wide desktops), since a
+           taller screen is a wider one.
+         Whatever the content does not fill stays ground. -->
+    <div class="tz-ground" style="margin:0;padding:0;width:100%;min-height:100vh;background-color:#0F0D0B;">
+    <table role="presentation" class="tz-ground" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0F0D0B"
+           style="width:100%;background-color:#0F0D0B;border-collapse:collapse;margin:0;padding:0;">
+      <tr>
+        <td class="tz-ground tz-floor" align="center" valign="top" height="960" bgcolor="#0F0D0B" style="background-color:#0F0D0B;padding:0;">
+
+          <!--[if mso]><table role="presentation" width="480" align="center" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;width:100%;margin:0 auto;">
+            <tr>
+              <td class="tz-pad" align="left" style="padding:56px 32px 72px 32px;">
+
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+
+                  <!-- THE MARK, alone. The alt text names it for the clients that
+                       block remote images until the reader allows them: they draw
+                       "Tailzu" in the image's place, in the face and ink set on
+                       the img below. The src is keyed by name, not by content
+                       hash: the backend serves the mark it ships with, or whatever
+                       is uploaded under `email.mark` (see _README.md). -->
+                  <tr>
+                    <td style="padding:0;">
+                      <img src="https://api.tailzu.space/media/k/email.mark" width="32" height="32" alt="Tailzu"
+                           style="display:block;width:32px;height:32px;border:0;outline:none;text-decoration:none;border-radius:8px;background-color:#1F1C18;font-family:'IBM Plex Mono','SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace;font-size:8px;line-height:32px;letter-spacing:0;text-align:center;color:#F3E2C6;">
+                    </td>
+                  </tr>
+
+                  <tr><td style="height:88px;line-height:88px;font-size:1px;">&nbsp;</td></tr>
+
+                  <!-- THE CODE, and almost nothing else. Amber, because amber in
+                       the app is kept for what is still in play, and for the next
+                       hour this is. Mono, so digits read back one at a time have
+                       equal widths and a zero nobody takes for an O. One plain
+                       run of digits, never one per cell: a copied code must paste
+                       as the code, and iOS offers it from Mail only when it can
+                       read it as one. -->
+                  <tr>
+                    <td class="tz-code tz-live" style="padding:0;font-family:'IBM Plex Mono','SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace;font-size:52px;line-height:60px;font-weight:500;letter-spacing:12px;color:#E8A23C;">
+                      {{ .Token }}
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td class="tz-ink3" style="padding:14px 0 0 2px;font-family:'IBM Plex Mono','SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace;font-size:10px;line-height:14px;letter-spacing:2px;text-transform:uppercase;color:#817869;">
+                      Sign-in code &middot; one hour
+                    </td>
+                  </tr>
+
+                  <tr><td style="height:104px;line-height:104px;font-size:1px;">&nbsp;</td></tr>
+
+                  <tr>
+                    <td style="padding:0;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                        <tr><td height="1" bgcolor="#1F1C18" style="height:1px;line-height:1px;font-size:1px;background-color:#1F1C18;">&nbsp;</td></tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="tz-ink3" style="padding:18px 0 0 0;font-family:'Instrument Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:12px;line-height:18px;color:#817869;">
+                      Didn&rsquo;t ask for it? Ignore this.
+                    </td>
+                  </tr>
+
+                </table>
+
+              </td>
+            </tr>
+          </table>
+          <!--[if mso]></td></tr></table><![endif]-->
+
+        </td>
+      </tr>
+    </table>
+    </div>
+  </body>
+</html>

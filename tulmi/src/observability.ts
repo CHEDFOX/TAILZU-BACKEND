@@ -26,6 +26,15 @@ let sentry: any = null;
  * Fastify({ logger }) so every log line the server emits is JSON with
  * secrets scrubbed.
  */
+/**
+ * The URL as it may be logged. The sign-in callback's query carries a PKCE
+ * code (and, from the store bundle, can carry more) — worthless without the
+ * phone's verifier, but a log line is no place for any part of a sign-in.
+ */
+export function logUrl(url: string): string {
+  return /^\/auth\/callback(?:[?#]|$)/.test(url) ? "/auth/callback" : url;
+}
+
 export function fastifyLoggerOptions() {
   return {
     level: process.env.LOG_LEVEL ?? "info",
@@ -37,6 +46,7 @@ export function fastifyLoggerOptions() {
         'req.headers.cookie',
         'req.headers["x-api-key"]',
         'req.headers["x-supabase-auth"]',
+        'req.headers["x-admin-secret"]',
         'headers.authorization',
         'headers.cookie',
         // Fastify's own request/reply serializer paths.
@@ -55,7 +65,7 @@ export function fastifyLoggerOptions() {
     // req/res which can accidentally serialize a huge JSON body).
     serializers: {
       req(req: { method: string; url: string; ip?: string; id?: string }) {
-        return { id: req.id, method: req.method, url: req.url, ip: req.ip };
+        return { id: req.id, method: req.method, url: logUrl(req.url), ip: req.ip };
       },
     },
   };
@@ -79,16 +89,23 @@ export async function initSentry(): Promise<void> {
       dsn,
       environment: cfg.SENTRY_ENVIRONMENT,
       tracesSampleRate: cfg.SENTRY_TRACES_SAMPLE_RATE,
-      // Don't ship the JWT-carrying Authorization header up to Sentry either.
+      // No credential leaves for Sentry: the user's JWT (or, on the billing
+      // webhook, RevenueCat's shared secret) in Authorization, cookies, the
+      // admin secret, and the review/preview headers that carry them. Nor the
+      // body or the query string: a body is dictated text, audio or a
+      // personality, and none of it is Sentry's business.
       beforeSend(event: unknown) {
         try {
-          const e = event as { request?: { headers?: Record<string, string> } };
-          if (e.request?.headers) {
-            for (const k of Object.keys(e.request.headers)) {
-              if (k.toLowerCase() === "authorization" || k.toLowerCase() === "cookie") {
-                e.request.headers[k] = "[redacted]";
+          const e = event as { request?: { headers?: Record<string, string>; data?: unknown; query_string?: unknown; cookies?: unknown } };
+          if (e.request) {
+            for (const k of Object.keys(e.request.headers ?? {})) {
+              if (/^(authorization|cookie|x-admin-secret|x-control-.*|x-api-key)$/i.test(k)) {
+                e.request.headers![k] = "[redacted]";
               }
             }
+            delete e.request.data;
+            delete e.request.query_string;
+            delete e.request.cookies;
           }
         } catch {
           /* best-effort */

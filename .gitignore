@@ -8,3 +8,8 @@ dist/
 app/
 apply-*.js
 backend/
+
+# Quality-harness run records. Local evidence, not source — each one holds
+# the model output of a paid run, and they accumulate per run.
+tulmi/.quality/
+__pycache__/
