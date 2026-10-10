@@ -6,6 +6,8 @@
  *   WS   /v1/transcribe-stream    → voice (live): PCM up, partials/finals down
  *   POST /v1/refine               → typing: text → polished text (autocorrect)
  *   POST /v1/draft                → screen: screen content + intent → reply
+ *   POST /v1/edit                 → selection: text + spoken instruction → rewrite
+ *   POST /v1/ask                  → screen: screen content + question → answer
  *   POST /v1/speak                → voice out: text → spoken audio (TTS)
  *   GET  /v1/personality          → read the user's saved style profile
  *   PUT  /v1/personality          → save the user's style profile
@@ -58,7 +60,7 @@ import { recentDictations } from "./pipeline/session.js";
 import { joinWithSpace } from "./pipeline/join.js";
 import { estimateDurationSeconds } from "./pipeline/stt.js";
 import {
-  assist, draftReply, inferStyle, refineVariants, updateStylePortrait, LLM_TONES,
+  assist, draftReply, editSelection, answerAbout, inferStyle, refineVariants, updateStylePortrait, LLM_TONES,
   portraitFromUsage, converseTurn, portraitFromTranscript, spokenLanguage, type ConverseTurn,
 } from "./pipeline/cleanup.js";
 import { mergePortraitWords } from "./pipeline/portraitDimensions.js";
@@ -91,8 +93,12 @@ import {
 import { z } from "zod";
 import type {
   AudioFormat,
+  AskRequest,
+  AskResponse,
   DraftRequest,
   DraftResponse,
+  EditRequest,
+  EditResponse,
   HealthResponse,
   HistoryListResponse,
   LanguageHint,
@@ -1519,6 +1525,134 @@ app.post("/v1/draft", { config: AUTHED_RL }, async (req, reply) => {
   } catch (err) {
     req.log.error(err);
     return reply.code(500).send({ code: "cleanup_failed", message: "Draft failed" });
+  }
+});
+
+// --- Selection (REST): voice-edit the selected text -------------------------
+//
+// The desktop's "edit the selection out loud": the user highlights some text
+// and says what to do with it. editSelection() rewrites the TEXT to follow the
+// INSTRUCTION and returns only the rewritten text, to replace the selection in
+// place. It produces user-facing written text, so — like /v1/refine — it meters
+// the output words, writes a typing-history row (the instruction as input, the
+// original selection as context) and learns from the use.
+app.post("/v1/edit", { config: AUTHED_RL }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) return unauthorized(reply);
+
+  const body = (req.body ?? {}) as EditRequest;
+  // BOTH are required: nothing to rewrite, or nothing to do, is a bad request.
+  if (!body.text || !body.text.trim() || !body.instruction || !body.instruction.trim()) {
+    return reply.code(400).send({ code: "bad_request", message: "Missing 'text' and 'instruction'" });
+  }
+  // Cap every prompt-bound field, same as /v1/refine: text + instruction +
+  // context + surroundings + tonePrompt all reach the prompt, and uncapped
+  // they would smuggle up to the 1 MB bodyLimit of unmetered input tokens.
+  const over = tooLong(body.text) ?? tooLong(body.instruction) ?? tooLong(body.context)
+    ?? tooLong(body.surroundings) ?? tooLong(body.tonePrompt);
+  if (over) return reply.code(413).send({ code: "bad_request", message: over });
+  const override = body.personality;
+  const badPersonality = personalityProblem(override);
+  if (badPersonality) return reply.code(badPersonality.status).send({ code: "bad_request", message: badPersonality.message });
+
+  const quota = await enforceQuota(user);
+  if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+
+  const t0 = Date.now();
+  try {
+    const personality = override ?? await getPersonality(user);
+    const tone = body.tone ?? personality.activeTone;
+    const lang = await effectiveLanguage(user, body.language, personality);
+    const editedText = await editSelection(body.text, body.instruction, {
+      tone,
+      tonePrompt: body.tonePrompt,
+      context: body.context,
+      targetApp: body.targetApp,
+      fieldKind: fieldKindOf(body.fieldKind),
+      fieldLabel: cleanLabel(body.fieldLabel, 60),
+      surroundings: capSurroundings(body.surroundings),
+      privateField: body.privateField === true,
+      language: lang,
+      personality,
+      variables: { email: user.email, phone: user.phone },
+    });
+    // The rewritten text is user-facing written words, like a refine — so it
+    // is metered by its word count and recorded.
+    const usage = { audioSeconds: 0, words: countWords(editedText), model: cfg.CLEANUP_MODEL };
+    await recordUsage({ user, source: "rest", ...usage });
+    await appendHistoryEntry(user, personality, {
+      kind: "typing",
+      targetApp: body.targetApp,
+      language: body.language,
+      // The instruction is what they said; the rewritten text is what they get;
+      // the original selection is the context it carried on from.
+      input: body.instruction,
+      output: editedText,
+      durationMs: Date.now() - t0,
+      wordsIn: countWords(body.instruction),
+      wordsOut: usage.words,
+      tone,
+      presetId: personality.activePresetId,
+      context: body.text,
+    });
+    learnFromUsage(user, personality);
+    const res: EditResponse = { editedText, usage };
+    return reply.send(res);
+  } catch (err) {
+    req.log.error(err);
+    return reply.code(500).send({ code: "cleanup_failed", message: "Edit failed" });
+  }
+});
+
+// --- Screen (REST): answer a question about what is on screen ---------------
+//
+// The desktop's "ask about the screen": the app captured the visible text on
+// device (`screenContent`, reference only) and the user asks a question about
+// it. answerAbout() answers concisely in the question's language. The answer is
+// the MODEL's words, not the user's dictation — so, exactly like
+// /v1/train/converse, it is metered at zero words and written to NO dictation
+// history. `speak` is the read-aloud locale, derived from the answer the same
+// way converse derives it.
+app.post("/v1/ask", { config: AUTHED_RL }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) return unauthorized(reply);
+
+  const body = (req.body ?? {}) as AskRequest;
+  if (!body.question || !body.question.trim()) {
+    return reply.code(400).send({ code: "bad_request", message: "Missing 'question'" });
+  }
+  // Every prompt-bound field capped: the question, the captured screen, and any
+  // surroundings a client sends along with it.
+  const over = tooLong(body.question) ?? tooLong(body.screenContent) ?? tooLong(body.surroundings);
+  if (over) return reply.code(413).send({ code: "bad_request", message: over });
+  const badPersonality = personalityProblem(body.personality);
+  if (badPersonality) return reply.code(badPersonality.status).send({ code: "bad_request", message: badPersonality.message });
+
+  const quota = await enforceQuota(user);
+  if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+
+  try {
+    const personality = body.personality ?? await getPersonality(user);
+    const lang = await effectiveLanguage(user, body.language, personality);
+    const answer = await answerAbout(body.screenContent ?? "", body.question, {
+      targetApp: body.targetApp,
+      language: lang,
+      personality,
+    });
+    // The MODEL's words are not the person's: nothing they dictated is in this
+    // answer, so none of it comes off their allowance. Recorded at zero words
+    // (and zero seconds) so the call still shows in usage — exactly like
+    // /v1/train/converse — and NO dictation-history row is appended.
+    await recordUsage({ user, source: "rest", audioSeconds: 0, words: 0, model: cfg.CLEANUP_MODEL });
+    // The voice to read it in, derived from the answer itself: a Hindi answer
+    // read aloud by an English voice is not the answer. Older clients ignore
+    // the field and keep the screen's voice.
+    const speak = spokenLanguage(answer)?.locale;
+    const res: AskResponse = speak ? { answer, speak } : { answer };
+    return reply.send(res);
+  } catch (err) {
+    req.log.error(err);
+    return reply.code(500).send({ code: "cleanup_failed", message: "Couldn't answer that" });
   }
 });
 

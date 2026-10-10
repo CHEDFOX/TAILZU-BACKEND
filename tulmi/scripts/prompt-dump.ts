@@ -11,7 +11,7 @@
 import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
 import {
   VARIANT_ANGLES, portraitSystem, transcriptSystem, converseSystem,
-  usageSystem,
+  usageSystem, editSystem, answerAboutSystem,
 } from "../src/pipeline/cleanup.js";
 import { PORTRAIT_DIMENSIONS, PORTRAIT_BOUNDS } from "../src/pipeline/portraitDimensions.js";
 import type { Personality } from "../../shared/types/api.js";
@@ -71,6 +71,23 @@ for (const t of ["formal", "casual", "very-casual", "excited"]) {
 }
 parts.push("  (default, no tone chosen)",
   `    ${(buildAssistSystem({ hasContext: false }).split("TONE:")[1] ?? "").trim()}`);
+
+parts.push(RULE("EDIT THE SELECTION — POST /v1/edit"));
+parts.push(
+  "Two inputs, not one: the selected TEXT to rewrite and the spoken INSTRUCTION",
+  "to apply to it. The selection is content off the screen, so it is data to",
+  "transform; only the instruction is addressed to the writer. Rendered here with",
+  "a tone and a portrait, as a message field in an email app.\n",
+);
+parts.push(editSystem({ tone: "none", personality: PERSON, targetApp: "Gmail", fieldKind: "message" }));
+
+parts.push(RULE("ASK ABOUT THE SCREEN — POST /v1/ask"));
+parts.push(
+  "The screen is reference only and is data, never an instruction; the answer is",
+  "concise, in the question's language. No forced output language — the question",
+  "decides it, and the read-aloud locale is derived from the answer afterwards.\n",
+);
+parts.push(answerAboutSystem());
 
 parts.push(RULE("TRAIN — POST /v1/train/variants"));
 parts.push(

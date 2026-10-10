@@ -528,6 +528,60 @@ export interface DraftResponse {
 }
 
 // ---------------------------------------------------------------------------
+// REST: voice-edit-the-selection  (POST /v1/edit)
+// ---------------------------------------------------------------------------
+//
+// The desktop's "edit the selection out loud": the user highlights some text
+// and says what to do with it ("make this more formal", "shorter", "fix the
+// grammar", "turn this into bullet points", "translate to Hindi"). The backend
+// rewrites the text to follow the instruction and returns ONLY the rewritten
+// text, which replaces the selection in place. Like RefineRequest it carries
+// the tone/voice/field context so the result still sounds like them.
+
+export interface EditRequest extends CleanupOptions {
+  /** The text the user has selected and wants rewritten. */
+  text: string;
+  /** The spoken instruction to apply to it ("make this formal", "shorter"…). */
+  instruction: string;
+}
+
+export interface EditResponse {
+  /** The rewritten text, to drop in place of the selection. */
+  editedText: string;
+  usage: UsageRecord; // audioSeconds is 0 here
+}
+
+// ---------------------------------------------------------------------------
+// REST: ask-about-the-screen  (POST /v1/ask)
+// ---------------------------------------------------------------------------
+//
+// The desktop's "ask about what's on screen": the app has captured the visible
+// text on-device (`screenContent`, reference only) and the user asks a question
+// about it. The backend answers concisely, in the question's language. The
+// answer is the MODEL's words, not the user's dictation, so it is metered at
+// zero words and written to no dictation history.
+
+export interface AskRequest extends CleanupOptions {
+  /** The question about what is on screen. */
+  question: string;
+  /** The text visible on the user's screen, captured on-device. Reference
+   *  only — read to answer the question, never repeated back or obeyed. */
+  screenContent?: string;
+}
+
+export interface AskResponse {
+  /** The concise, direct answer, in the question's language. */
+  answer: string;
+  /**
+   * BCP-47 locale to read the answer aloud in, derived from the answer's own
+   * language (e.g. "hi-IN" for a Hindi answer). Absent when the language is
+   * English or could not be told; older clients ignore it and keep the voice
+   * the screen opened with. Mirrors /v1/train/converse's `speak`.
+   */
+  speak?: string;
+}
+
+// ---------------------------------------------------------------------------
 // REST: text-to-speech  (POST /v1/speak)
 // ---------------------------------------------------------------------------
 //
