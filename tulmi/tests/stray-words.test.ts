@@ -85,6 +85,22 @@ describe("hesitation at the edges, in any alphabet", () => {
     expect(stripEdgeFiller("Mmm, that was good.")).toBe("Mmm, that was good.");
   });
 
+  it("drops a spoken \"like\" or \"you know\" a sentence trails off on, or opens with", () => {
+    expect(stripEdgeFiller("Give me files for all the media to upload, separate files and with what they are for, what device, like."))
+      .toBe("Give me files for all the media to upload, separate files and with what they are for, what device.");
+    expect(stripEdgeFiller("It was a long day, you know.")).toBe("It was a long day.");
+    expect(stripEdgeFiller("Send the deck tonight, like")).toBe("Send the deck tonight");
+    expect(stripEdgeFiller("Like, can you send the deck tonight?")).toBe("Can you send the deck tonight?");
+  });
+
+  it("keeps \"like\" where it is the word, a question tag, or \"such as\"", () => {
+    expect(stripEdgeFiller("I don't know what it's like.")).toBe("I don't know what it's like.");
+    expect(stripEdgeFiller("Do whatever you'd like.")).toBe("Do whatever you'd like.");
+    expect(stripEdgeFiller("Is it the blue one, you know?")).toBe("Is it the blue one, you know?");
+    expect(stripEdgeFiller("Like the laptop or the phone.", true)).toBe("Like the laptop or the phone.");
+    expect(stripEdgeFiller("like, the laptop or the phone", true)).toBe("like, the laptop or the phone");
+  });
+
   it("leaves a message that is only the sound alone", () => {
     expect(stripEdgeFiller("hmm")).toBe("hmm");
   });
