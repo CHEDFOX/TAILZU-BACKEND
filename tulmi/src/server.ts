@@ -2387,7 +2387,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
   // The training tab charts what the app has been learning FROM — the days
   // the person actually wrote — under the numbers for what it has learned.
   // Same read, one more screen.
-  const STATS_SCREENS = new Set(["stats", "personality", "home", "desk_today", "desk_insights", "desk_day", "desk_app"]);
+  const STATS_SCREENS = new Set(["stats", "personality", "home", "desk_today", "desk_insights", "desk_day", "desk_app", "desk_train"]);
   /**
    * AN AGGREGATE MUST NOT GATE THE TAB SOMEONE LANDS ON.
    *

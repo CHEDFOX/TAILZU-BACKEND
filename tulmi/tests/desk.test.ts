@@ -498,6 +498,38 @@ describe("Insights opens a day and an app for their own detail", () => {
   });
 });
 
+describe("the Train page shows what it has learned, as figures and charts", () => {
+  const ctx = {
+    ...(sampleCtx as object),
+    personality: {
+      stylePortrait: {
+        examples: 4, sessions: 5, observed: 12, firstSeenAt: new Date(Date.now() - 20 * 86_400_000).toISOString(),
+        core: "Writes short and warm.",
+        words: [{ term: "jugaad", means: "a quick workaround" }],
+        styles: [{ name: "Quick replies", when: "WhatsApp, all day" }],
+        rhythms: [{ when: "Mornings", vibe: "Brisk lists." }],
+        tones: { professional: "Drops the slang." },
+      },
+    },
+    stats: { ...(sampleCtx as { stats: object }).stats, wordsPerDay: Array.from({ length: 30 }, (_, i) => i % 4) },
+  } as never;
+  it("carries the figures, the stage, the portrait and what it learns from", () => {
+    const s = JSON.stringify(buildScreen("desk_train", ctx));
+    for (const f of ["Training rounds", "Sittings learned from", "Words it knows", "Learning for", "How well it knows you",
+                     "Getting to know you", "Writes short and warm.", "jugaad", "a quick workaround", "Quick replies",
+                     "Through the day", "Brisk lists.", "Per voice", "Drops the slang.", "What it learns from"]) {
+      expect(s, f).toContain(f);
+    }
+    expect(s).toContain('"screenId":"training_live"');
+    expect(s).not.toContain("--d-violet");   // the band is the desk's warm room now
+  });
+  it("a first visit says what will fill in, and still offers to start", () => {
+    const s = JSON.stringify(buildScreen("desk_train", { personality: {}, language: "en" } as never));
+    expect(s).toContain("Start training");
+    expect(s).toContain("Nothing yet.");
+  });
+});
+
 describe("spoken training on the desk", () => {
   const session = (ctx: object) => {
     let found: AnyNode | undefined;
