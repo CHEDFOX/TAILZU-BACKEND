@@ -226,6 +226,302 @@ function race(saidMin: number, typedMin: number, big = false): Node {
   ], { gap: big ? 14 : 10, maxWidth: big ? 720 : undefined });
 }
 
+// ---- CHARTS ------------------------------------------------------------------------
+//
+// THE DESK'S CHARTS, FROM THE RENDERER'S PLAIN NODES — no installer, no canvas.
+//
+// A donut is a circle whose `backgroundImage` is a conic gradient: the renderer
+// turns any camelCase style key into its CSS property (desktop sdui.js css()),
+// so the gradient passes straight through, where `background` alone would land
+// on background-color. A line or an area is the renderer's one-path `SVG` node,
+// layered in one box; bars and columns are stacks.
+//
+// COLOUR, COMPUTED RATHER THAN CHOSEN. One categorical order, run through the
+// data-viz validator against BOTH desk surfaces (#FFFFFF and the dark sheet
+// #151210): every check passes in both, so the same four hexes serve both
+// themes and nothing waits on a build. A donut wraps — its last slice touches
+// its first — and with a fifth colour the wrap pair failed, so a part-to-whole
+// carries at most four colours and folds the rest into Other. Other is a
+// neutral mixed from the theme's own ink and sheet, never a slot. Text never
+// wears a series colour: the swatch beside it carries the identity, and every
+// part's value is written in its legend (the renderer has no hover layer, so
+// the legend is the table).
+
+const SERIES = ["#C97A12", "#00977F", "#4B5BD0", "#D6456E"] as const;
+const OTHER = "color-mix(in srgb, var(--d-ink) 22%, var(--d-sheet))";
+/** The one point that matters in a single series — today, this hour. */
+const ACCENT = SERIES[0];
+/** The figures' face: data reads in the UI sans, proportional at size. */
+const NUMBER: Style = { fontFamily: "var(--f-ui)", fontWeight: 500, letterSpacing: "-.02em", color: "var(--d-ink)" };
+
+interface Part { label: string; value: number; color?: string; press?: ActionRef; value2?: string }
+
+/** At most four coloured parts, biggest first; the rest become Other. A part
+ *  that already names its colour (an app's slot across the desk) keeps it. */
+function foldParts(rows: Part[], max = 4): Part[] {
+  const sorted = rows.filter((r) => r.value > 0).sort((a, b) => b.value - a.value);
+  const head = sorted.slice(0, max).map((r, i) => ({ ...r, color: r.color ?? SERIES[i] }));
+  const tail = sorted.slice(max);
+  const rest = tail.reduce((s, r) => s + r.value, 0);
+  return rest > 0 ? [...head, { label: "Other", value: rest, color: OTHER }] : head;
+}
+
+const pct = (v: number, total: number) => (total > 0 ? Math.round((v / total) * 100) : 0);
+const swatch = (color: string, size = 10): Node => stack([], { width: size, height: size, radius: 3, background: color, flex: "none" });
+
+/**
+ * A DONUT: part-to-whole at a glance, four colours and Other at most. A 2px gap
+ * in the sheet's colour separates neighbouring slices (no borders), and the
+ * hole carries the whole's figure, so the chart says its total without a key.
+ */
+function donut(ps: Part[], o: { size?: number; center?: { value: string; label: string } } = {}): Node {
+  const size = o.size ?? 152;
+  const total = ps.reduce((s, x) => s + x.value, 0) || 1;
+  const gap = ps.length > 1 ? (2 / (Math.PI * size)) * 100 : 0;   // 2px of the circumference
+  let acc = 0;
+  const stops: string[] = [];
+  for (const p of ps) {
+    const a = (acc / total) * 100;
+    acc += p.value;
+    const b = (acc / total) * 100;
+    const end = Math.max(a, b - gap);
+    stops.push(`${p.color ?? OTHER} ${a.toFixed(2)}% ${end.toFixed(2)}%`);
+    if (gap) stops.push(`var(--d-sheet) ${end.toFixed(2)}% ${b.toFixed(2)}%`);
+  }
+  const hole = Math.round(size * 0.66);
+  return stack([
+    stack(o.center ? [
+      text(o.center.value, "d-k", { ...NUMBER, fontSize: Math.round(size * 0.16), lineHeight: "1" }),
+      text(o.center.label, "d-margin", { marginTop: 4, textAlign: "center" }),
+    ] : [], { width: hole, height: hole, radius: "50%", background: "var(--d-sheet)", align: "center", justify: "center" }),
+  ], {
+    width: size, height: size, radius: "50%", flex: "none", align: "center", justify: "center",
+    backgroundImage: `conic-gradient(${stops.join(", ")})`,
+  });
+}
+
+/** The legend as a table: swatch, name, share, and the count itself. A part
+ *  that opens a page carries its own tap. */
+function legend(ps: Part[], unit = ""): Node {
+  const total = ps.reduce((s, x) => s + x.value, 0) || 1;
+  return stack(ps.map((p) => {
+    const line = row([
+      swatch(p.color ?? OTHER),
+      text(p.label, "d-k", { fontWeight: 500, fontSize: 13, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }),
+      text(`${pct(p.value, total)}%`, "d-num", { width: 40, textAlign: "right", color: "var(--d-ink)" }),
+      text(p.value2 ?? `${n(p.value)}${unit ? ` ${unit}` : ""}`, "d-num", { minWidth: 48, textAlign: "right", flex: "none", whiteSpace: "nowrap" }),
+    ], { align: "center", gap: 8, paddingTop: 8, paddingBottom: 8 }, "d-rule-bottom");
+    return p.press ? { ...line, on: { onPress: p.press } } : line;
+  }), { flex: 1, minWidth: 168 });
+}
+
+/** Donut beside its legend — the desk's part-to-whole block. Sized to sit
+ *  beside its key in half the page; it stacks only in a narrow window. */
+function donutWithLegend(ps: Part[], center: { value: string; label: string }, unit = ""): Node {
+  return row([donut(ps, { center, size: 128 }), legend(ps, unit)], { gap: 24, align: "center", marginTop: 20, flexWrap: "wrap" });
+}
+
+/** One 100% bar split into its parts — for a split of two or three, where a
+ *  donut would be a fuss. Each part's share is written under its swatch. */
+function splitBar(ps: Part[]): Node {
+  const total = ps.reduce((s, x) => s + x.value, 0) || 1;
+  const segs = ps.map((p, i) => stack([], {
+    flex: Math.max(0.0001, p.value / total), height: 10, background: p.color ?? OTHER,
+    borderTopLeftRadius: i === 0 ? 4 : 0, borderBottomLeftRadius: i === 0 ? 4 : 0,
+    borderTopRightRadius: i === ps.length - 1 ? 4 : 0, borderBottomRightRadius: i === ps.length - 1 ? 4 : 0,
+  }));
+  return stack([
+    row(segs, { gap: 2, marginTop: 16 }),
+    row(ps.map((p) => row([swatch(p.color ?? OTHER, 9), text(`${p.label} · ${pct(p.value, total)}%`, "d-num", { color: "var(--d-ink)" })], { gap: 7, align: "center" })),
+      { gap: 20, marginTop: 12, flexWrap: "wrap" }),
+  ]);
+}
+
+// SVG geometry. The one-path SVG node draws in its own viewBox; a chart is a
+// stack of them in one box, the first in flow (its width sets the box, its
+// viewBox's aspect its height), the rest laid exactly over it.
+const f1 = (v: number) => (Math.round(v * 10) / 10).toString();
+function svgLayer(d: string, vb: string, o: { stroke?: string; fill?: string; width?: number; color: string; over?: boolean; opacity?: number }): Node {
+  return {
+    type: "SVG",
+    props: { d, viewBox: vb, stroke: o.stroke ?? "none", fill: o.fill ?? "none", strokeWidth: o.width ?? 2 },
+    style: {
+      color: o.color, width: "100%",
+      ...(o.over ? { position: "absolute", left: 0, top: 0, height: "100%" } : {}),
+      ...(o.opacity != null ? { opacity: o.opacity } : {}),
+    },
+  };
+}
+const dot = (cx: number, cy: number, r: number) =>
+  `M${f1(cx - r)},${f1(cy)}a${f1(r)},${f1(r)} 0 1,0 ${f1(2 * r)},0a${f1(r)},${f1(r)} 0 1,0 ${f1(-2 * r)},0`;
+
+/** A monotone curve through the points (Fritsch–Carlson): it never swings
+ *  past a point, so a quiet day never dips below zero on the way to a busy one. */
+function smoothPath(pts: Array<[number, number]>): string {
+  const N = pts.length;
+  if (N === 0) return "";
+  if (N === 1) return `M${f1(pts[0]![0])},${f1(pts[0]![1])}`;
+  const x = pts.map((p) => p[0]), y = pts.map((p) => p[1]);
+  const dx: number[] = [], m: number[] = [];
+  for (let i = 0; i < N - 1; i++) { dx[i] = x[i + 1]! - x[i]!; m[i] = (y[i + 1]! - y[i]!) / (dx[i] || 1); }
+  const t: number[] = new Array(N).fill(0);
+  t[0] = m[0]!; t[N - 1] = m[N - 2]!;
+  for (let i = 1; i < N - 1; i++) t[i] = m[i - 1]! * m[i]! <= 0 ? 0 : (m[i - 1]! + m[i]!) / 2;
+  for (let i = 0; i < N - 1; i++) {
+    if (m[i] === 0) { t[i] = 0; t[i + 1] = 0; continue; }
+    const a = t[i]! / m[i]!, b = t[i + 1]! / m[i]!, s = a * a + b * b;
+    if (s > 9) { const k = 3 / Math.sqrt(s); t[i] = k * a * m[i]!; t[i + 1] = k * b * m[i]!; }
+  }
+  let d = `M${f1(x[0]!)},${f1(y[0]!)}`;
+  for (let i = 0; i < N - 1; i++) {
+    const h = dx[i]! / 3;
+    d += `C${f1(x[i]! + h)},${f1(y[i]! + t[i]! * h)} ${f1(x[i + 1]! - h)},${f1(y[i + 1]! - t[i + 1]! * h)} ${f1(x[i + 1]!)},${f1(y[i + 1]!)}`;
+  }
+  return d;
+}
+
+/**
+ * A TREND: one series as a 2px line over a 10% wash, solid hairline guides,
+ * the average as a labelled reference, and the point that matters (today) as
+ * an 8px dot in the accent with a ring of the sheet around it. Labelled
+ * selectively — the peak, the average, the end — never a number on every day.
+ * Ticks under it name the first, middle and last days.
+ */
+function trend(values: number[], o: { ticks?: string[]; mark?: number; unit?: string; height?: number; avg?: boolean } = {}): Node {
+  const W = 760, H = o.height ?? 170, top = 18, bottom = 8, inset = 8;   // room for the end dot and its ring
+  const vals = values.length ? values : [0];
+  const max = Math.max(1, ...vals);
+  const span = Math.max(1, vals.length - 1);
+  const X = (i: number) => (vals.length === 1 ? W / 2 : inset + (i / span) * (W - 2 * inset));
+  const Y = (v: number) => top + (1 - v / max) * (H - top - bottom);
+  const pts = vals.map((v, i) => [X(i), Y(v)] as [number, number]);
+  const line = smoothPath(pts);
+  const area = `${line}L${f1(X(vals.length - 1))},${f1(H - bottom)}L${f1(X(0))},${f1(H - bottom)}Z`;
+  const vb = `0 0 ${W} ${H}`;
+  const grid = [0, 0.5, 1].map((q) => `M0,${f1(top + q * (H - top - bottom))}H${W}`).join("");
+  const active = vals.filter((v) => v > 0);
+  const avg = active.length ? active.reduce((s, v) => s + v, 0) / active.length : 0;
+  const mark = o.mark ?? vals.length - 1;
+  const [mx, my] = pts[Math.max(0, Math.min(pts.length - 1, mark))]!;
+  const peak = vals.indexOf(max);
+  const layers: Node[] = [
+    svgLayer(grid, vb, { stroke: "currentColor", width: 1, color: "var(--d-rule)" }),
+    svgLayer(area, vb, { fill: "currentColor", color: "var(--d-ink)", over: true, opacity: 0.08 }),
+    ...(o.avg !== false && avg > 0 ? [svgLayer(`M0,${f1(Y(avg))}H${W}`, vb, { stroke: "currentColor", width: 1, color: "var(--d-ink3)", over: true })] : []),
+    svgLayer(line, vb, { stroke: "currentColor", width: 2, color: "var(--d-ink)", over: true }),
+    svgLayer(dot(mx, my, 6), vb, { fill: "currentColor", color: "var(--d-sheet)", over: true }),
+    svgLayer(dot(mx, my, 4), vb, { fill: "currentColor", color: ACCENT, over: true }),
+  ];
+  // Direct labels, placed by percentage over the box so they ride the drawing.
+  const lbl = (s: string, x: number, y: number, right = false): Node => text(s, "d-margin", {
+    position: "absolute", top: `${((y / H) * 100).toFixed(1)}%`, transform: "translateY(-120%)",
+    ...(right ? { right: `${(100 - (x / W) * 100).toFixed(1)}%` } : { left: `${((x / W) * 100).toFixed(1)}%` }),
+    whiteSpace: "nowrap", color: "var(--d-ink2)", background: "var(--d-sheet)", paddingLeft: 3, paddingRight: 3,
+  });
+  const unit = o.unit ?? "words";
+  const labels: Node[] = [];
+  if (max > 1) labels.push(lbl(`Peak ${n(max)} ${unit}`, Math.min(X(peak), W * 0.78), Y(max)));
+  if (o.avg !== false && avg > 0) labels.push(lbl(`Average ${n(avg)}`, W, Y(avg), true));
+  const ticks = o.ticks ?? [];
+  return stack([
+    stack([...layers, ...labels], { position: "relative", width: "100%" }),
+    ...(ticks.length ? [row(ticks.map((t) => text(t, "d-margin")), { justify: "between", marginTop: 8 })] : []),
+  ], { width: "100%", maxWidth: W, marginTop: 18 });
+}
+
+/**
+ * COLUMNS: one per bucket, grown from one baseline, ≤ 24px wide with a 4px
+ * rounded end and a square foot. One series in ink; the buckets that matter
+ * (now, today) in the accent. Ticks under it name a few buckets, not all.
+ */
+function columns(values: number[], o: { height?: number; highlight?: number[]; ticks?: string[]; labels?: string[]; press?: (i: number) => ActionRef | undefined } = {}): Node {
+  const H = o.height ?? 96;
+  const max = Math.max(1, ...values);
+  const hi = new Set(o.highlight ?? []);
+  const cols = values.map((v, i) => {
+    const h = v > 0 ? Math.max(3, Math.round((v / max) * H)) : 0;
+    const press = o.press?.(i);
+    const col = stack(h ? [stack([], {
+      height: h, width: "100%", maxWidth: 24, background: hi.has(i) ? ACCENT : "var(--d-ink)",
+      borderTopLeftRadius: 4, borderTopRightRadius: 4,
+    })] : [], { flex: 1, minWidth: 0, height: H, justify: "end", align: "center" });
+    return press && v > 0 ? { ...col, on: { onPress: press } } : col;
+  });
+  return stack([
+    row(cols, { gap: 3, align: "end", height: H }),
+    stack([], { height: 1, background: "var(--d-rule)" }),
+    ...(o.labels?.length
+      ? [row(o.labels.map((t) => text(t, "d-margin", { flex: 1, minWidth: 0, textAlign: "center", whiteSpace: "nowrap" })), { gap: 3, marginTop: 8 })]
+      : o.ticks?.length ? [row(o.ticks.map((t) => text(t, "d-margin")), { justify: "between", marginTop: 8 })] : []),
+  ], { width: "100%", marginTop: 18 });
+}
+
+/**
+ * A STAT TILE: the figure in the UI sans at size (proportional), a label over
+ * it, and a line under it that says what it is against. On the room the ink
+ * is the room's cream.
+ */
+function statTile(label: string, value: string, sub?: string, onRoom = false, big = false): Node {
+  return stack([
+    text(label, "d-eyebrow", onRoom ? { color: "rgba(243,226,198,.62)" } : {}),
+    text(value, "d-k", { ...NUMBER, fontSize: big ? 44 : 30, lineHeight: big ? "48px" : "34px", marginTop: 8, ...(onRoom ? { color: "#F6EBD9" } : {}) }),
+    ...(sub ? [text(sub, "d-margin", { marginTop: 6, ...(onRoom ? { color: "rgba(243,226,198,.55)" } : {}) })] : []),
+  ], { minWidth: 120, flex: 1 });
+}
+
+/** A 30-day run laid out as a calendar — weekdays down, weeks across — each
+ *  day's ink deepening with its words (one hue, light to dark). An empty day
+ *  is an outline; today wears a dashed ring; a day with words opens its page. */
+function heatmap(values: number[], endDate: Date, o: { press?: (i: number) => ActionRef | undefined } = {}): Node {
+  const N = values.length;
+  const max = Math.max(1, ...values);
+  const start = new Date(endDate.getTime() - (N - 1) * 86_400_000);
+  const lead = (start.getUTCDay() + 6) % 7;                     // Monday first
+  const weeks = Math.ceil((lead + N) / 7);
+  const STEPS = [0.16, 0.34, 0.56, 0.8, 1];
+  const cells: Node[][] = Array.from({ length: 7 }, () => []);
+  for (let w = 0; w < weeks; w++) {
+    for (let d = 0; d < 7; d++) {
+      const i = w * 7 + d - lead;
+      if (i < 0 || i >= N) { cells[d]!.push(stack([], { width: 18, height: 18, flex: "none" })); continue; }
+      const v = values[i] ?? 0;
+      const lvl = v > 0 ? STEPS[Math.min(4, Math.floor((v / max) * 5))]! : 0;
+      const today = i === N - 1;
+      const cell = stack([], {
+        width: 18, height: 18, flex: "none", radius: 4,
+        ...(v > 0 ? { background: `color-mix(in srgb, var(--d-ink) ${Math.round(lvl * 100)}%, var(--d-sheet))` } : { border: "1.5px solid var(--d-rule)" }),
+        ...(today ? { outline: "1.5px dashed var(--d-ink)", outlineOffset: 2 } : {}),
+      });
+      const press = o.press?.(i);
+      cells[d]!.push(press && v > 0 ? { ...cell, on: { onPress: press } } : cell);
+    }
+  }
+  const DAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
+  return stack([
+    ...cells.map((c, d) => row([text(DAY_LETTERS[d]!, "d-margin", { width: 14, flex: "none" }), ...c], { gap: 5, align: "center" })),
+    row([
+      text("Less", "d-margin"),
+      ...STEPS.map((s) => stack([], { width: 12, height: 12, radius: 3, background: `color-mix(in srgb, var(--d-ink) ${Math.round(s * 100)}%, var(--d-sheet))` })),
+      text("More", "d-margin"),
+    ], { gap: 5, align: "center", marginTop: 10, marginLeft: 19 }),
+  ], { gap: 5, marginTop: 16 });
+}
+
+/** A section of a desk page: a heading in the written face, a line of what it
+ *  shows, then the chart. */
+function section(title: string, caption: string | undefined, body: Node[], style: Style = {}): Node {
+  return stack([
+    text(title, "d-h2"),
+    ...(caption ? [text(caption, "d-lede", { marginTop: 6 })] : []),
+    ...body,
+  ], { flex: 1, minWidth: 0, ...style });
+}
+/** Two sections side by side where the window is wide, stacked where not. */
+const twoUp = (a: Node | null, b: Node | null, style: Style = {}): Node[] => {
+  const cols = [a, b].filter((x): x is Node => !!x);
+  return cols.length ? [row(cols, { gap: 64, marginTop: 52, align: "start", flexWrap: "wrap", ...style }, "d-wrap-narrow")] : [];
+};
+
 // ---- TODAY -------------------------------------------------------------------------
 
 interface EntryItem { id: string; time: string; app: string; said: string; written: string; deva: boolean; typed: boolean }
@@ -247,35 +543,7 @@ function entryItems(ctx: DeskContext, entries: HistoryEntry[], withDate = false)
   });
 }
 
-/**
- * One note: when and where in the margin; said above written; Copy on hover.
- *
- * WRITTEN OUT PER NOTE, NOT AS A LIST TEMPLATE. A template's `$state.item` is
- * only there while the row is drawn; an action reads its values when it is
- * CLICKED, by which time the row's item is gone. So Copy put an empty string
- * on the clipboard and still said "Copied", and Delete asked to delete
- * "/v1/history/" — nothing. Each note now carries its own text in its action.
- *
- * No Delete. A note is the record of what was said; removing one belongs with
- * the history settings, not one stray click away under the pointer.
- */
-function entryNode(it: EntryItem): Node {
-  return row([
-    stack([
-      text(it.time, "d-margin-strong"),
-      ...(it.app ? [text(it.app, "d-margin")] : []),
-    ], { width: 96, flex: "none", paddingTop: 3 }),
-    stack([
-      ...(it.said ? [text(it.said, "d-said")] : []),
-      text(it.written, it.deva ? "d-written d-deva" : "d-written"),
-      row([
-        link("Copy", { kind: "copyText", text: it.written, message: "Copied" }),
-      ], { gap: 18, marginTop: 10 }, "d-tools"),
-    ], { flex: 1, minWidth: 0, gap: 4 }),
-  ], { gap: 24, paddingTop: 24, paddingBottom: 24 }, "d-entry");
-}
-
-function weekSquares(ctx: DeskContext): Node {
+function weekSquares(ctx: DeskContext, titled = true): Node {
   const now = local(ctx, Date.now());
   // The stats read has thirty days, newest last. Without it (it can miss its
   // deadline), the history in hand says which days had a note.
@@ -289,79 +557,241 @@ function weekSquares(ctx: DeskContext): Node {
     letters.push(text(DAYS[d.getUTCDay()]!.slice(0, 1), "d-margin", { width: 16, textAlign: "center" }));
   }
   return stack([
-    text("This week", "d-eyebrow"),
-    row(cells, { gap: 6, marginTop: 10 }),
+    ...(titled ? [text("This week", "d-eyebrow")] : []),
+    row(cells, { gap: 6, marginTop: titled ? 10 : 0 }),
     row(letters, { gap: 6, marginTop: 6 }),
   ]);
 }
 
+/**
+ * THE ROOM — the band under the tabs. It was a violet gradient, the one colour
+ * on the desk that belonged to nothing else in it. It is the brand's own now:
+ * a warm espresso ink, lit from the top right by the amber the product uses
+ * for whatever is live, with a breath of the typed rose low on the left. The
+ * room's cream type (.d-on-room) reads on it unchanged. Inline, so it wins over
+ * app.html's .d-room on every installed build.
+ */
+const ROOM: Style = {
+  background: "#17120E",
+  backgroundImage: "radial-gradient(70% 160% at 94% -30%, rgba(232,162,60,.34), rgba(232,162,60,0) 62%), radial-gradient(50% 130% at -6% 135%, rgba(214,69,110,.12), rgba(214,69,110,0) 60%), linear-gradient(180deg, #221A13 0%, #14100C 100%)",
+  color: "#F3E2C6",
+  borderBottom: "1px solid rgba(243,226,198,.08)",
+};
+const room = (inner: Node[], style: Style = {}): Node =>
+  stack([row(inner, { justify: "between", align: "end", gap: 24, flexWrap: "wrap", ...style }, "d-room-inner")], ROOM, "d-room");
+
+/** The keys that start a dictation, as the room shows them. */
+const talkKeys = (): Node[] => [
+  row([keys("tap", true), text("tap twice, in any app, and talk", "d-count d-on-room", { maxWidth: 150, marginLeft: 6 })],
+    { align: "center", gap: 0 }, undefined, { visibleIf: { truthy: "desktop.tap" } }),
+  row([keys("hotkey", true), text("in any app, and talk", "d-count d-on-room", { maxWidth: 150, marginLeft: 6 })],
+    { align: "center", gap: 0 }, undefined, { visibleIf: { falsy: "desktop.tap" } }),
+];
+
+/**
+ * An app's share as donut parts: the four biggest in the validated order, the
+ * rest (and the client's own "Other") as Other.
+ *
+ * WHY BY POSITION, NOT BY APP. A donut's neighbours are what the eye compares,
+ * and the order was validated as a ring: teal and rose are only safe apart
+ * (under deuteranopia they measure 4.2, far under the floor), and in this ring
+ * they always sit across from each other. Pinning each app to a colour across
+ * pages would put them side by side whenever the day's ranking differs from
+ * the month's. The legend names every app, so nothing rides on the colour.
+ */
+function appParts(rows: Array<{ app: string; words: number }>, press?: (app: string) => ActionRef | undefined): Part[] {
+  const known = rows.filter((x) => x.words > 0 && x.app && x.app !== "Other");
+  const other = rows.filter((x) => x.words > 0 && (!x.app || x.app === "Other")).reduce((s, x) => s + x.words, 0);
+  const ps = foldParts(known.map((r) => ({ label: appName(r.app) || r.app, value: r.words, press: press?.(r.app) })));
+  if (!other) return ps;
+  const last = ps[ps.length - 1];
+  return last && last.label === "Other" && last.color === OTHER
+    ? [...ps.slice(0, -1), { ...last, value: last.value + other }]
+    : [...ps, { label: "Other", value: other, color: OTHER }];
+}
+
+const HOUR_TICKS = ["12a", "6a", "12p", "6p", "12a"];
+const hourName = (h: number) => `${((h + 11) % 12) + 1} ${h < 12 ? "AM" : "PM"}`;
+
+/**
+ * TODAY — the day as numbers, not as a list.
+ *
+ * The room carries the day's four figures; the page under it says where they
+ * came from: the day by the hour, said against typed, where the words went and
+ * how they came, the last two weeks, the week's squares, training. The notes
+ * themselves are one link away, in History, where each can be copied or
+ * removed with its reason — a page that listed them here as well was two lists
+ * of the same thing, the second without its delete. And there is no "Talk now":
+ * the keys in the room are how anyone talks, from wherever they already are.
+ *
+ * On a day with nothing said yet the page still has its month to show — the
+ * usual hours, the usual apps — and says so in each heading.
+ */
 export function deskToday(ctx: DeskContext): ScreenResponse {
   const now = local(ctx, Date.now());
   const today = dayKey(now);
   const all = ctx.history ?? [];
-  const todays = all.filter((e) => dayKey(local(ctx, Date.parse(e.createdAt))) === today);
-  const earlier = todays.length ? [] : all.slice(0, 8);
+  const st = ctx.stats;
+  const at = (e: HistoryEntry) => local(ctx, Date.parse(e.createdAt));
+  const todays = all.filter((e) => dayKey(at(e)) === today);
   const wordsToday = ctx.usage?.today?.words ?? todays.reduce((s, e) => s + (e.wordsOut ?? 0), 0);
+  // The history read stops at fifty; on a day past that, the meter counts.
+  const dictations = todays.length >= 50 ? Math.max(todays.length, ctx.usage?.today?.requests ?? 0) : todays.length;
   const saidMin = (ctx.usage?.today?.audioSeconds ?? 0) / 60;
   const typedMin = wordsToday / TYPING_WPM;
   const back = Math.max(0, typedMin - saidMin);
-  const count = todays.length
-    ? `${todays.length} ${todays.length === 1 ? "dictation" : "dictations"} · ${n(wordsToday)} words`
-    : "Nothing written yet today";
 
-  const room = stack([
-    row([
-      stack([
-        text("Today", "d-eyebrow"),
-        text(dateLine(now), "d-h1", { marginTop: 6 }),
-        text(count, "d-count d-on-room", { marginTop: 12 }),
-      ], { minWidth: 0 }),
-      row([
-        keys("tap", true),
-        text("tap twice, in any app, and talk", "d-count d-on-room", { maxWidth: 150, marginLeft: 6 }),
-      ], { align: "center", gap: 0 }, undefined, { visibleIf: { truthy: "desktop.tap" } }),
-      row([
-        keys("hotkey", true),
-        text("in any app, and talk", "d-count d-on-room", { maxWidth: 150, marginLeft: 6 }),
-      ], { align: "center", gap: 0 }, undefined, { visibleIf: { falsy: "desktop.tap" } }),
-    ], { justify: "between", align: "end", gap: 24, flexWrap: "wrap" }, "d-room-inner"),
-  ], {}, "d-room");
+  // The month's days, today last (the stats read); without it, the history in hand.
+  const perDay = st?.wordsPerDay?.length ? st.wordsPerDay : (() => {
+    const out = new Array(14).fill(0) as number[];
+    for (const e of all) {
+      const ago = Math.floor((Date.parse(today) - Date.parse(dayKey(at(e)))) / 86_400_000);
+      if (ago >= 0 && ago < 14) out[13 - ago] += e.wordsOut ?? 0;
+    }
+    return out;
+  })();
+  const before = perDay.slice(0, -1).filter((v) => v > 0);
+  const avgDay = before.length ? before.reduce((s, v) => s + v, 0) / before.length : 0;
+  // A MORNING IS NOT A DAY. Set against a whole day's average, every morning
+  // reads as a bad day. With the month's hours in hand, today is set against
+  // where a usual day stands BY THIS MINUTE; without them, against a day.
+  const hw = st?.hourWords?.length === 24 ? st.hourWords : null;
+  const hwTotal = hw ? hw.reduce((s, v) => s + v, 0) : 0;
+  const h = now.getUTCHours();
+  const shareNow = hw && hwTotal > 0
+    ? (hw.slice(0, h).reduce((s, v) => s + v, 0) + (hw[h] ?? 0) * (now.getUTCMinutes() / 60)) / hwTotal
+    : 1;
+  const expected = avgDay * shareNow;
+  const delta = expected >= 15 && wordsToday > 0 ? Math.round((wordsToday / expected - 1) * 100) : null;
+  const paceLabel = hw ? "Against your pace" : "Against your day";
+  const paceSub = !avgDay ? "an average needs a few days"
+    : expected < 15 ? "too early in your day to say"
+    : hw ? `by now you usually have ${n(expected)}` : `your average is ${n(avgDay)} words`;
 
-  const notes: Node[] = todays.length
-    ? entryItems(ctx, todays).map(entryNode)
-    : [
-        stack([
-          text("Nothing yet today.", "d-written", { fontSize: 19, lineHeight: "27px" }),
-          text("Tap twice in any app and say something. It shows up here, what you said above what Tailzu wrote.", "d-lede", { marginTop: 8 }),
-          row([link("Talk now", { kind: "dictate" }, "d-btn")], { marginTop: 16 }),
-        ], { paddingBottom: 26 }),
-        ...(earlier.length ? [
-          text("Earlier", "d-eyebrow", { marginTop: 10, marginBottom: 6 }),
-          ...entryItems(ctx, earlier, true).map(entryNode),
-        ] : []),
-      ];
-  // A way into the whole record, once there is one to browse.
-  if (all.length) notes.push(row([link("All history", { kind: "navigate", screenId: "desk_history" })], { marginTop: 20 }, "d-tools"));
+  // ---- the room: the day's four figures --------------------------------------------
+  const figures = row([
+    statTile("Words today", n(wordsToday), wordsToday ? `${dictations} ${dictations === 1 ? "dictation" : "dictations"}` : "Nothing yet today", true, true),
+    statTile("Time back", wordsToday ? span(back) : "—", `against typing at ${TYPING_WPM} wpm`, true),
+    statTile(paceLabel, delta == null ? "—" : `${delta > 0 ? "+" : ""}${delta}%`, paceSub, true),
+    statTile("Day streak", n(st?.currentStreak ?? 0), st?.bestStreak ? `best run ${st.bestStreak} days` : "days in a row", true),
+  ], { gap: 36, flexWrap: "wrap", marginTop: 26, paddingTop: 22, borderTop: "1px solid rgba(243,226,198,.12)", width: "100%" });
 
-  const aside = stack([
-    ...(wordsToday > 0 ? [stack([
-      text("Today, said and typed", "d-eyebrow", { marginBottom: 12 }),
-      race(saidMin, typedMin),
-      ...(back >= 1 ? [inline([text(span(back), "d-em"), text(" back today.", "d-inherit")], "d-written", { fontSize: 18, lineHeight: "26px", marginTop: 16 })] : []),
-      text(`Typed at ${TYPING_WPM} words a minute.`, "d-margin", { marginTop: 8 }),
-    ])] : []),
-    weekSquares(ctx),
+  const band = room([
     stack([
-      text("Train", "d-eyebrow"),
-      text(trainLine(ctx.personality), "d-written", { fontSize: 15, lineHeight: "23px", marginTop: 10, marginBottom: 14 }),
-      row([link("Train Tailzu", { kind: "switchTab", tabId: "desk_train" })]),
-    ]),
-  ], { width: 230, flex: "none", gap: 44 }, "d-sticky");
-
-  return screen("desk_today", "Today", [
-    room,
-    page([row([stack(notes, { flex: 1, minWidth: 0 }), aside], { gap: 72, align: "start" }, "d-wrap-narrow")]),
+      text("Today", "d-eyebrow"),
+      text(dateLine(now), "d-h1", { marginTop: 6 }),
+    ], { minWidth: 0 }),
+    ...talkKeys(),
+    figures,
   ]);
+
+  // ---- the day by the hour ----------------------------------------------------------
+  const hoursToday = new Array(24).fill(0) as number[];
+  for (const e of todays) hoursToday[at(e).getUTCHours()] += e.wordsOut ?? 0;
+  const hasToday = hoursToday.some((v) => v > 0);
+  const usualHours = st?.hourWords?.length === 24 ? st.hourWords : [];
+  const hourVals = hasToday ? hoursToday : usualHours;
+  const busiest = hourVals.indexOf(Math.max(...hourVals));
+  const hourBlock = hourVals.some((v) => v > 0)
+    ? section(hasToday ? "Today, hour by hour" : "Your usual day",
+        hasToday ? `Busiest at ${hourName(busiest)}. Now is the amber hour.` : `Nothing yet today — this is your month, by the hour. Busiest at ${hourName(busiest)}.`,
+        [columns(hourVals, { highlight: hasToday ? [now.getUTCHours()] : [busiest], ticks: HOUR_TICKS })])
+    : null;
+
+  const raceBlock = wordsToday > 0
+    ? section("Said against typed", "The time it took you to say today's words, and the time typing them would have.", [
+        stack([race(saidMin, typedMin, true)], { marginTop: 20 }),
+        ...(back >= 1 ? [inline([text(span(back), "d-em"), text(" back today.", "d-inherit")], "d-written", { fontSize: 20, lineHeight: "28px", marginTop: 18 })] : []),
+        text(`Typed at ${TYPING_WPM} words a minute. Said is the time you spent talking.`, "d-margin", { marginTop: 8 }),
+      ])
+    : null;
+
+  // ---- where the words went, and how they came ----------------------------------------
+  const todayApps = new Map<string, number>();
+  for (const e of todays) { const a = e.targetApp || "Other"; todayApps.set(a, (todayApps.get(a) ?? 0) + (e.wordsOut ?? 0)); }
+  const appRows = hasToday
+    ? [...todayApps].map(([app, words]) => ({ app, words }))
+    : (st?.topApps ?? []).map((a) => ({ app: a.app, words: a.words }));
+  const ap = appParts(appRows);
+  const appTotal = ap.reduce((s, p) => s + p.value, 0);
+  const appsBlock = ap.length > 1
+    ? section(hasToday ? "Where today's words went" : "Where your words go",
+        hasToday ? "By the app you were in when you talked." : "Your month, by app — today fills this in.",
+        [donutWithLegend(ap, { value: n(appTotal), label: "words" })])
+    : ap.length === 1
+      ? section(hasToday ? "Where today's words went" : "Where your words go", undefined,
+          [statTile(ap[0]!.label, `${n(ap[0]!.value)} words`, hasToday ? "every word today, one app" : "this month")], { marginTop: 0 })
+      : null;
+
+  const kindsToday = { voice: 0, typing: 0, draft: 0 };
+  for (const e of todays) kindsToday[(e.kind ?? "voice") as keyof typeof kindsToday] += e.wordsOut ?? 0;
+  const kindSrc = hasToday ? kindsToday : (st?.kindWords ?? kindsToday);
+  const kindParts: Part[] = [
+    { label: "Spoken", value: kindSrc.voice, color: SERIES[0] },
+    { label: "Typed", value: kindSrc.typing, color: SERIES[3] },
+    { label: "Draft", value: kindSrc.draft, color: SERIES[2] },
+  ].filter((p) => p.value > 0);
+  const perSession = dictations ? Math.round(wordsToday / dictations) : 0;
+  const monthPerSession = st?.avgWordsPerSession ?? 0;
+  const kindsBlock = kindParts.length || perSession
+    ? section(hasToday ? "How today's words came" : "How your words come", "Spoken, typed into the keyboard, or written for you as a draft.", [
+        ...(kindParts.length > 1 ? [splitBar(kindParts)]
+          : kindParts.length === 1 ? [text(`All ${kindParts[0]!.label.toLowerCase()}.`, "d-written", { fontSize: 17, marginTop: 14 })] : []),
+        ...(perSession ? [row([
+          statTile("Per dictation", `${n(perSession)}`, "words today"),
+          ...(monthPerSession ? [statTile("Your usual", `${n(monthPerSession)}`, "words, this month")] : []),
+        ], { gap: 32, marginTop: 30 })] : []),
+      ])
+    : null;
+
+  // ---- the last two weeks --------------------------------------------------------------
+  const last14 = perDay.slice(-14);
+  const daysAgoLabel = (k: number) => { const d = new Date(now.getTime() - k * 86_400_000); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]!.slice(0, 3)}`; };
+  const sum14 = last14.reduce((s, v) => s + v, 0);
+  const active14 = last14.filter((v) => v > 0).length;
+  const trendBlock = sum14 > 0
+    ? section("The last two weeks", `${n(sum14)} words over ${active14} of the last 14 days. Today is the amber point.`,
+        [trend(last14, { ticks: [daysAgoLabel(last14.length - 1), daysAgoLabel(Math.floor((last14.length - 1) / 2)), "Today"] })],
+        { marginTop: 52, flex: "none", width: "100%" })
+    : null;
+
+  // ---- the week, training, and the notes themselves ------------------------------------
+  const weekBlock = section("This week", undefined, [
+    stack([weekSquares(ctx, false)], { marginTop: 16 }),
+    text(st?.currentStreak ? `${st.currentStreak} ${st.currentStreak === 1 ? "day" : "days"} in a row${st.bestStreak ? ` · your longest run is ${st.bestStreak}` : ""}.` : "Talk today to start a run.",
+      "d-lede", { marginTop: 14 }),
+  ]);
+  const trainBlock = section("Train", undefined, [
+    text(trainLine(ctx.personality), "d-written", { fontSize: 16, lineHeight: "25px", marginTop: 12, marginBottom: 14, maxWidth: 360 }),
+    row([link("Train Tailzu", { kind: "switchTab", tabId: "desk_train" })]),
+  ]);
+
+  // THE TALKING HISTORY, ONE LINK AWAY. What was said today and before lives
+  // in History, where every note can be copied and removed with its reason.
+  const recent = all.filter((e) => Date.now() - Date.parse(e.createdAt) < 14 * 86_400_000).length;
+  const historyBlock: Node = {
+    ...row([
+      stack([
+        text("Your dictations", "d-eyebrow"),
+        text(dictations
+          ? `${dictations} today${recent > dictations ? `, ${recent} in the last two weeks` : ""} — what you said above what Tailzu wrote.`
+          : all.length ? `Nothing today yet. ${recent || all.length} in the last two weeks, said above written.` : "Everything you say shows up here, said above written.",
+          "d-written", { fontSize: 17, lineHeight: "25px", marginTop: 8, maxWidth: 560 }),
+      ], { flex: 1, minWidth: 0 }),
+      link("Open history  →", { kind: "navigate", screenId: "desk_history" }, "d-btn"),
+    ], { align: "center", gap: 28, flexWrap: "wrap", marginTop: 56, paddingTop: 28, paddingBottom: 28, paddingLeft: 26, paddingRight: 26,
+      borderRadius: 14, border: "1px solid var(--d-rule)", cursor: "pointer" }),
+    on: { onPress: { kind: "navigate", screenId: "desk_history" } },
+  };
+
+  const body: Node[] = [
+    ...twoUp(hourBlock, raceBlock, { marginTop: 0 }),
+    ...twoUp(appsBlock, kindsBlock),
+    ...(trendBlock ? [trendBlock] : []),
+    ...twoUp(weekBlock, trainBlock),
+    historyBlock,
+  ];
+  return screen("desk_today", "Today", [band, page(body)]);
 }
 
 function trainLine(p: Personality): string {
@@ -396,6 +826,19 @@ function historyRow(it: EntryItem): Node {
     onSuccess: { kind: "refresh" },
     onError: { kind: "toast", message: "Couldn't reach history. Try again." },
   });
+  // THE CROSS. Always there, quiet until it is wanted — the hover-only
+  // "Remove" was a delete nobody found. It opens the same reason card.
+  const cross: Node = {
+    type: "Button",
+    props: { label: "✕", cls: "d-x" },
+    on: { onPress: { kind: "setState", path: flag, value: true } },
+    style: {
+      border: 0, background: "transparent", cursor: "pointer", padding: 0, flexShrink: 0,
+      width: 30, height: 30, radius: 15, marginTop: -4,
+      font: "400 15px/30px var(--f-ui)", color: "var(--d-ink3)", textAlign: "center",
+    },
+    visibleIf: { falsy: flag },
+  };
   return row([
     stack([
       text(it.time, "d-margin-strong"),
@@ -407,7 +850,6 @@ function historyRow(it: EntryItem): Node {
       {
         ...row([
           link("Copy", { kind: "copyText", text: it.written, message: "Copied" }),
-          link("Remove", { kind: "setState", path: flag, value: true }),
         ], { gap: 18, marginTop: 10 }, "d-tools"),
         visibleIf: { falsy: flag },
       },
@@ -425,6 +867,7 @@ function historyRow(it: EntryItem): Node {
         visibleIf: { truthy: flag },
       },
     ], { flex: 1, minWidth: 0, gap: 4 }),
+    cross,
   ], { gap: 24, paddingTop: 24, paddingBottom: 24 }, "d-entry");
 }
 
@@ -460,12 +903,25 @@ export function deskHistory(ctx: DeskContext): ScreenResponse {
 
 // ---- INSIGHTS ------------------------------------------------------------------------
 
+/**
+ * INSIGHTS — the month, read every way it can honestly be read.
+ *
+ * The statement and the race say the one thing first: what was said, what
+ * typing it would have cost. Then the figures, then the month as a line (day
+ * by day) and as a running total with where it is heading, and then each
+ * breakdown in the form its data wants: parts of a whole as donuts (apps, how
+ * the words came, which voice), a split of a few as one bar (register), an
+ * order as columns (hours, weekdays, lengths), days as a calendar, languages as
+ * type specimens, the dictionary as a ranking. An app opens its own page, a
+ * day opens its own; nothing is hidden behind a tap that a page has room for.
+ */
 export function deskInsights(ctx: DeskContext): ScreenResponse {
   const now = local(ctx, Date.now());
   const words = ctx.usage?.month.words ?? ctx.stats?.wordsOut ?? 0;
   const saidMin = (ctx.usage?.month.audioSeconds ?? 0) / 60;
   const typedMin = words / TYPING_WPM;
   const st = ctx.stats;
+  const month = MONTHS[now.getUTCMonth()]!;
 
   const statement: Node = words > 0
     ? inline([
@@ -476,186 +932,179 @@ export function deskInsights(ctx: DeskContext): ScreenResponse {
       ], "d-statement", { marginTop: 20, marginBottom: 32 })
     : text("Nothing said yet this month. Tap twice in any app, and this page starts counting.", "d-statement", { marginTop: 20, marginBottom: 32 });
 
-  // The languages as type specimens, each set at a size that is its share.
-  const langs = (st?.writtenIn ?? []).slice(0, 5);
-  const total = langs.reduce((s, l) => s + l.words, 0) || 1;
-  const specimens: Node[] = langs.length
-    ? langs.map((l) => {
-        const pct = Math.round((l.words / total) * 100);
-        const size = Math.round(16 + 26 * Math.sqrt(l.words / total));
-        return row([
-          text(LANGUAGE_NAMES[l.key] ?? l.key, "d-spec", { fontSize: size, ...(/[^\u0000-ɏ]/.test(LANGUAGE_NAMES[l.key] ?? "") ? { fontFamily: "var(--f-deva)", fontWeight: 400 } : {}) }),
-          text(`${pct}%`, "d-num"),
-        ], { justify: "between", align: "end", gap: 16, paddingTop: 10, paddingBottom: 10 }, "d-rule-bottom");
-      })
-    : [text("Talk for a few days and this fills in, read from what Tailzu wrote.", "d-lede")];
-
-  // The raw key is kept beside the display name: a row drills into its app's
-  // page (desk_app), which looks the app up by the key the client sent, not by
-  // what it reads as. The "Other" bucket is an aggregate with no page.
-  const hasApp = new Set((st?.appDetail ?? []).map((a) => a.app));
-  const apps = (st?.topApps ?? []).map((a) => ({ raw: a.app, app: appName(a.app) || "Other", words: a.words }));
-  const appTotal = apps.reduce((s, a) => s + a.words, 0) || 1;
-  const appRows: Node[] = apps.length > 1
-    ? apps.map((a) => {
-        const pct = Math.round((a.words / appTotal) * 100);
-        const r = row([
-          text(a.app, "d-lane-label", { width: 100, flex: "none" }),
-          stack([stack([], { width: `${pct}%` }, "d-bar1-fill")], { flex: 1, minWidth: 0 }, "d-bar1"),
-          text(`${pct}%`, "d-num", { width: 40, textAlign: "right" }),
-        ], { align: "center", gap: 12, paddingTop: 9, paddingBottom: 9 });
-        return hasApp.has(a.raw)
-          ? { ...r, on: { onPress: { kind: "navigate", screenId: "desk_app", params: { app: a.raw } } as ActionRef } }
-          : r;
-      })
+  // ---- the figures ------------------------------------------------------------------
+  const wpd = st?.wordsPerDay ?? st?.days?.map((d) => d.words) ?? [];
+  const tiles: Node[] = [];
+  if (words > 0) tiles.push(statTile("Words this month", n(words), `${n(ctx.usage?.month.requests ?? st?.requests ?? 0)} dictations`));
+  if ((st?.minutesSaved ?? 0) > 0) tiles.push(statTile("Time back", span(st!.minutesSaved), `against typing at ${TYPING_WPM} wpm`));
+  if (st?.daysActive != null && wpd.length) tiles.push(statTile("Days you talked", `${st.daysActive}`, `of the last ${wpd.length}`));
+  if ((st?.currentStreak ?? 0) > 0) tiles.push(statTile("Day streak", n(st!.currentStreak!), `longest run ${st!.bestStreak ?? st!.currentStreak}`));
+  if ((st?.avgWordsPerSession ?? 0) > 0) tiles.push(statTile("Per dictation", n(st!.avgWordsPerSession!), "words, on average"));
+  if (st?.bestDay) tiles.push(statTile("Best day", n(st.bestDay.words), `words · ${st.bestDay.date}`));
+  const tilesRow: Node[] = tiles.length
+    ? [row(tiles.map((t) => ({ ...t, style: { ...(t.style ?? {}), minWidth: 200 } })), { gap: 32, flexWrap: "wrap", marginTop: 36, paddingTop: 28 }, "d-rule-top")]
     : [];
 
-  const spark = st?.sparklinePerDay ?? [];
-  const days = spark.length;
-  // A day with words opens its own page (desk_day), keyed by its place in the
-  // run so the page can name the date and read that bucket's detail.
-  const squares = spark.map((v, i) => stack([], {}, `d-sq${v > 0 ? " d-sq-on" : ""}${i === days - 1 ? " d-sq-now" : ""}`,
-    v > 0 ? { on: { onPress: { kind: "navigate", screenId: "desk_day", params: { day: i } } as ActionRef } } : {}));
+  // ---- the month as a line, and as a running total ------------------------------------
+  const dayLabel = (k: number) => { const d = new Date(now.getTime() - k * 86_400_000); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]!.slice(0, 3)}`; };
+  const sumW = wpd.reduce((s, v) => s + v, 0);
+  const activeW = wpd.filter((v) => v > 0).length;
+  const lineTicks = wpd.length > 2 ? [dayLabel(wpd.length - 1), dayLabel(Math.floor((wpd.length - 1) / 2)), "Today"] : [];
+  const trendBlock: Node | null = sumW > 0
+    ? section("Day by day", `${n(sumW)} words over ${activeW} of the last ${wpd.length} days. The amber point is today.`,
+        [trend(wpd, { ticks: lineTicks })], { flex: "none", width: "100%", marginTop: 56 })
+    : null;
+  const cum: number[] = [];
+  wpd.reduce((s, v) => { cum.push(s + v); return s + v; }, 0);
+  const dom = now.getUTCDate();
+  const dim = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
+  const projected = words > 0 && dom > 0 ? Math.round((words / dom) * dim) : 0;
+  const cumBlock: Node | null = sumW > 0
+    ? section("Running total", projected && dom < dim
+        ? `${n(words)} words so far in ${month}. At this pace, about ${n(projected)} by the end of it.`
+        : `${n(sumW)} words across the last ${wpd.length} days, added up day by day.`,
+        [trend(cum, { ticks: lineTicks, avg: false, height: 150 })], { flex: "none", width: "100%", marginTop: 56 })
+    : null;
 
-  // THE FIGURES — the few numbers worth reading before the breakdowns: the
-  // streak running now, the words a session, the biggest day, the time saved.
-  // Each only where the month actually has it.
-  const figure = (label: string, value: string, sub?: string): Node => stack([
-    text(label, "d-eyebrow"),
-    text(value, "d-written", { fontSize: 23, lineHeight: "27px", marginTop: 6 }),
-    ...(sub ? [text(sub, "d-margin", { marginTop: 2 })] : []),
-  ], { minWidth: 110 });
-  const figures: Node[] = [];
-  if (st) {
-    if ((st.currentStreak ?? 0) > 0) figures.push(figure("Day streak", n(st.currentStreak!), st.currentStreak === 1 ? "day" : "days"));
-    if ((st.avgWordsPerSession ?? 0) > 0) figures.push(figure("Per session", n(st.avgWordsPerSession!), "words"));
-    if (st.bestDay) figures.push(figure("Best day", `${n(st.bestDay.words)} words`, st.bestDay.date));
-    if ((st.minutesSaved ?? 0) > 0) figures.push(figure("Minutes saved", span(st.minutesSaved!)));
-  }
+  // ---- where the words went, and how they came -----------------------------------------
+  // An app opens its own page (desk_app), looked up by the key the client
+  // sent; the "Other" bucket is an aggregate with no page.
+  const hasApp = new Set((st?.appDetail ?? []).map((a) => a.app));
+  const ap = appParts((st?.topApps ?? []).map((a) => ({ app: a.app, words: a.words })),
+    (app) => (hasApp.has(app) ? { kind: "navigate", screenId: "desk_app", params: { app } } as ActionRef : undefined));
+  const apTotal = ap.reduce((s, p) => s + p.value, 0);
+  const appsBlock = ap.length > 1
+    ? section("Where the words went", hasApp.size ? "By the app you were in. Open one to see its own page." : "By the app you were in.",
+        [donutWithLegend(ap, { value: n(apTotal), label: "words" })])
+    : null;
 
-  // THE MONTH'S BREAKDOWNS, the same ones the phone's Stats screen carries,
-  // drawn as the desk's own bars rather than its cards. A voice is named the
-  // way the person renamed it; a register reads ZU's own as Zu.
-  const named = applyPresetOverrides(ctx.personality?.presetOverrides);
-  const voiceName = (id: string) => {
-    const key = (id || "").trim();
-    if (!key || key === "none" || key === "signature") return "Zu";
-    return named.find((p) => p.id === key)?.name ?? key;
-  };
+  const kw = st?.kindWords;
+  const kindParts: Part[] = kw ? [
+    { label: "Spoken", value: kw.voice, color: SERIES[0] },
+    { label: "Typed", value: kw.typing, color: SERIES[3] },
+    { label: "Draft", value: kw.draft, color: SERIES[2] },
+  ].filter((p) => p.value > 0) : [];
+  const kindsBlock = kindParts.length > 1
+    ? section("How the words came", "Spoken, typed into the keyboard, or written for you as a draft.",
+        [donutWithLegend(kindParts, { value: `${pct(kindParts[0]!.value, kindParts.reduce((s, p) => s + p.value, 0))}%`, label: kindParts[0]!.label.toLowerCase() })])
+    : null;
+
+  // ---- languages, and the days -----------------------------------------------------------
+  // The languages as type specimens, each set at a size that is its share.
+  const langs = (st?.writtenIn ?? []).slice(0, 5);
+  const ltotal = langs.reduce((s, l) => s + l.words, 0) || 1;
+  const langBlock = section("How you speak", "Your words this month, by language, each set at its share.", langs.length
+    ? [stack(langs.map((l) => {
+        const size = Math.round(16 + 26 * Math.sqrt(l.words / ltotal));
+        return row([
+          text(LANGUAGE_NAMES[l.key] ?? l.key, "d-spec", { fontSize: size, ...(/[^\u0000-ɏ]/.test(LANGUAGE_NAMES[l.key] ?? "") ? { fontFamily: "var(--f-deva)", fontWeight: 400 } : {}) }),
+          text(`${pct(l.words, ltotal)}%`, "d-num"),
+        ], { justify: "between", align: "end", gap: 16, paddingTop: 10, paddingBottom: 10 }, "d-rule-bottom");
+      }), { marginTop: 12 })]
+    : [text("Talk for a few days and this fills in, read from what Tailzu wrote.", "d-lede", { marginTop: 12 })]);
+
+  const heatBlock = wpd.length
+    ? section("Days you talked", `${st?.daysActive ?? activeW} of the last ${wpd.length} days. The longest run was ${st?.bestStreak ?? 0}. Open a day to see it.`,
+        [heatmap(wpd, now, { press: (i) => (st?.days?.[i] ? { kind: "navigate", screenId: "desk_day", params: { day: i } } : undefined) })])
+    : section("Days you talked", "Your days show here once you have talked.", []);
+
+  // ---- when: the hour, and the day of the week ------------------------------------------
+  const hours = st?.hourWords ?? [];
+  const peakHour = hours.indexOf(Math.max(...hours));
+  const dp = st?.daypartSessions;
+  const dpTotal = dp ? dp.morning + dp.afternoon + dp.evening + dp.night : 0;
+  const dpTop = dp && dpTotal ? ([["morning", dp.morning], ["afternoon", dp.afternoon], ["evening", dp.evening], ["night", dp.night]] as Array<[string, number]>)
+    .sort((a, b) => b[1] - a[1])[0] : undefined;
+  const hourBlock = hours.some((v) => v > 0)
+    ? section("Hour by hour", `Busiest at ${hourName(peakHour)}.${dpTop ? ` Mostly in the ${dpTop[0]} — ${pct(dpTop[1], dpTotal)}% of your dictations.` : ""}`,
+        [columns(hours, { highlight: [peakHour], ticks: HOUR_TICKS })])
+    : null;
+
+  const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const wdSum = new Array(7).fill(0) as number[], wdCount = new Array(7).fill(0) as number[];
+  wpd.forEach((v, i) => {
+    const d = new Date(now.getTime() - (wpd.length - 1 - i) * 86_400_000);
+    const k = (d.getUTCDay() + 6) % 7;
+    wdSum[k] += v; wdCount[k] += 1;
+  });
+  const wdAvg = wdSum.map((s, k) => (wdCount[k] ? s / wdCount[k]! : 0));
+  const wdPeak = wdAvg.indexOf(Math.max(...wdAvg));
+  const weekdayBlock = wdAvg.some((v) => v > 0)
+    ? section("Day of the week", `${["Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"][wdPeak]} are your biggest — about ${n(wdAvg[wdPeak]!)} words.`,
+        [columns(wdAvg, { highlight: [wdPeak], labels: WD })])
+    : null;
+
+  // ---- voice, register, length ---------------------------------------------------------
+  // A voice is named the way the person renamed it; a register reads ZU's own as Zu.
+  const voiceName = voiceNamer(ctx);
   const toneName = (t: string) => {
     const key = (t || "").trim() || "none";
     return key === "none" ? "Zu" : (TONE_LABELS[key as keyof typeof TONE_LABELS] ?? key);
   };
+  const vp = foldParts((st?.voiceWords ?? []).map((v) => ({ label: voiceName(v.id), value: v.words })));
+  const voiceBlock = vp.length > 1
+    ? section("Who writes for you", "Your words this month, by the voice that wrote them.",
+        [donutWithLegend(vp, { value: `${vp.length}`, label: vp.length === 1 ? "voice" : "voices" })])
+    : null;
+  const tp = foldParts((st?.toneWords ?? []).map((t) => ({ label: toneName(t.tone), value: t.words })));
+  const toneBlock = tp.length > 1
+    ? section("In which register", "How formal the writing came out.", [splitBar(tp)])
+    : null;
 
-  const kinds = st ? kindRows(st.kindWords ?? { voice: 0, typing: 0, draft: 0 }) : [];
-  const dp = st?.daypartSessions;
-  const dayparts = dp
-    ? [
-        { label: "Morning", words: dp.morning },
-        { label: "Afternoon", words: dp.afternoon },
-        { label: "Evening", words: dp.evening },
-        { label: "Night", words: dp.night },
-      ].filter((x) => x.words > 0)
-    : [];
   const LENGTH_NAMES = ["1–5", "6–15", "16–40", "41–100", "100+"];
-  const sl = st?.sessionLengths;
-  const lengths = sl && sl.length === 5
-    ? LENGTH_NAMES.map((label, i) => ({ label, words: sl[i] ?? 0 })).filter((x) => x.words > 0)
-    : [];
-  const voices = (st?.voiceWords ?? []).map((v) => ({ label: voiceName(v.id), words: v.words }));
-  const tones = (st?.toneWords ?? []).map((t) => ({ label: toneName(t.tone), words: t.words }));
+  const sl = st?.sessionLengths?.length === 5 ? st.sessionLengths : [];
+  const slPeak = sl.indexOf(Math.max(...sl));
+  const lengthBlock = sl.some((v) => v > 0)
+    ? section("How long, in words", `Most dictations run ${LENGTH_NAMES[slPeak]} words.`,
+        [columns(sl, { highlight: [slPeak], labels: LENGTH_NAMES })])
+    : null;
+
   const dict = st?.dictionary;
-  const wordsPerDay = st?.wordsPerDay ?? [];
-  const hours = st?.hourWords ?? [];
-
-  // Each breakdown is a column; they sit two-up where the width lets them, so
-  // the page favours showing the detail over hiding it behind a tap.
-  const col = (title: string, body: Node[], caption?: string): Node => stack([
-    text(title, "d-h2"),
-    ...(caption ? [text(caption, "d-lede", { marginTop: 6 })] : []),
-    ...body,
-  ], { flex: 1, minWidth: 0 });
-  const pair = (a: Node | null, b: Node | null): Node[] => {
-    const cols = [a, b].filter((x): x is Node => !!x);
-    return cols.length ? [row(cols, { gap: 72, marginTop: 48, align: "start", flexWrap: "wrap" }, "d-wrap-narrow")] : [];
-  };
-
-  const kindCol = kinds.length ? col("How the words came", [barList(kinds)]) : null;
-  const daypartCol = dayparts.length ? col("When you write", [barList(dayparts)]) : null;
-  const lengthCol = lengths.length ? col("How long, in words", [barList(lengths)]) : null;
-  const voiceCol = voices.length ? col("Who writes for you", [barList(voices)]) : null;
-  const toneCol = tones.length ? col("In which register", [barList(tones)]) : null;
-  const dictCol = dict
-    ? col("What earns its place", [
+  const dictBlock = dict
+    ? section("What earns its place", `${n(dict.used)} of ${n(dict.saved)} saved words turned up this month.`, [
+        ...(dict.saved > 0 ? [splitBar([
+          { label: "Used", value: dict.used, color: SERIES[1] },
+          { label: "Not yet", value: Math.max(0, dict.saved - dict.used), color: OTHER },
+        ].filter((p) => p.value > 0))] : []),
         ...(dict.top?.length
-          ? [text("Most used", "d-eyebrow", { marginTop: 16, marginBottom: 2 }),
+          ? [text("Most used", "d-eyebrow", { marginTop: 22, marginBottom: 2 }),
              barList(dict.top.map((w) => ({ label: w.word, words: w.uses, value: `${n(w.uses)}×` })))]
           : []),
         ...(dict.unusedWords?.length
           ? [text("Never turned up", "d-eyebrow", { marginTop: 18, marginBottom: 4 }),
              text(dict.unusedWords.join(", "), "d-lede")]
           : []),
-      ], `${n(dict.used)} of ${n(dict.saved)} words earn their place.`)
+      ])
     : null;
 
-  const hourSection: Node[] = hours.some((v) => v > 0)
-    ? [stack([text("Hour by hour", "d-h2"), stack([hourChart(hours)], { marginTop: 14 })], { marginTop: 48 })]
-    : [];
-  const wordsDaySection: Node[] = wordsPerDay.some((v) => v > 0)
-    ? [stack([
-        text("Words a day", "d-h2"),
-        text(`The last ${wordsPerDay.length} days, newest on the right.`, "d-lede", { marginTop: 6 }),
-        stack([columnChart(wordsPerDay)], { marginTop: 14 }),
-      ], { marginTop: 48 })]
-    : [];
-
-  // THE ALLOWANCE METER, only when the window was handed the allowance —
-  // Insights is not one of the screens the server reads it for, so this stays
-  // dark there and shows only where the context carries it.
-  const allowanceSection: Node[] = ctx.allowance
+  // THE ALLOWANCE METER, only when the window was handed the allowance.
+  const allowanceSection: Node[] = ctx.allowance && (ctx.allowance.total ?? 0) > 0
     ? (() => {
         const used = ctx.allowance!.used ?? 0;
         const total = ctx.allowance!.total ?? 0;
-        const pct = total > 0 ? Math.max(2, Math.min(100, Math.round((used / total) * 100))) : 0;
-        return [stack([
-          text("This month's words", "d-h2"),
-          text(`${n(used)} of ${n(total)} words this month.`, "d-lede", { marginTop: 6 }),
-          stack([stack([stack([], { width: `${pct}%` }, "d-bar1-fill")], {}, "d-bar1")], { marginTop: 14, maxWidth: 520 }),
-        ], { marginTop: 48 })];
+        const p = Math.max(2, Math.min(100, Math.round((used / total) * 100)));
+        return [section("This month's words", `${n(used)} of ${n(total)} words this month.`, [
+          stack([stack([], { width: `${p}%`, height: 8, radius: 4, background: "var(--d-ink)" })],
+            { height: 8, radius: 4, background: "var(--d-press)", marginTop: 16, maxWidth: 520 }),
+        ], { flex: "none", width: "100%", marginTop: 56 })];
       })()
     : [];
 
   return screen("desk_insights", "Insights", [page([
     row([
-      text(`Insights · ${MONTHS[now.getUTCMonth()]}`, "d-eyebrow"),
+      text(`Insights · ${month}`, "d-eyebrow"),
       link("Full history", { kind: "navigate", screenId: "desk_history" }),
     ], { justify: "between", align: "center" }),
     statement,
     ...(words > 0 ? [race(saidMin, typedMin, true), text(`Typed at ${TYPING_WPM} words a minute. Said is the time you spent talking.`, "d-margin", { marginTop: 10 })] : []),
-    ...(figures.length ? [row(figures, { gap: 40, marginTop: 28, flexWrap: "wrap" })] : []),
-    row([
-      stack([
-        text("How you speak", "d-h2"),
-        text("Your words this month, by language, each set at its share.", "d-lede", { marginTop: 6, marginBottom: 12 }),
-        ...specimens,
-      ], { flex: 1, minWidth: 0 }),
-      stack([
-        ...(appRows.length ? [
-          text("Where the words went", "d-h2"),
-          ...(hasApp.size ? [text("Open an app to see its own.", "d-lede", { marginTop: 6 })] : []),
-          stack(appRows, { marginTop: 10, marginBottom: 30 }),
-        ] : []),
-        text("Days you talked", "d-h2"),
-        row(squares, { gap: 6, flexWrap: "wrap", marginTop: 14, maxWidth: 330 }),
-        text(days ? `${st?.daysActive ?? 0} of the last ${days} days. The longest run was ${st?.bestStreak ?? 0}. Open a day to see it.` : "Your days show here once you have talked.",
-          "d-lede", { marginTop: 10 }),
-      ], { flex: 1, minWidth: 0 }),
-    ], { gap: 72, marginTop: 64, paddingTop: 40, align: "start" }, "d-rule-top d-wrap-narrow"),
-    ...pair(kindCol, daypartCol),
-    ...hourSection,
-    ...pair(lengthCol, voiceCol),
-    ...pair(toneCol, dictCol),
-    ...wordsDaySection,
+    ...tilesRow,
+    ...(trendBlock ? [trendBlock] : []),
+    ...twoUp(appsBlock, kindsBlock),
+    ...twoUp(langBlock, heatBlock),
+    ...twoUp(hourBlock, weekdayBlock),
+    ...twoUp(voiceBlock, toneBlock),
+    ...twoUp(lengthBlock, dictBlock),
+    ...(cumBlock ? [cumBlock] : []),
     ...allowanceSection,
   ])]);
 }
@@ -667,26 +1116,14 @@ export function deskInsights(ctx: DeskContext): ScreenResponse {
 const backToInsights = () =>
   row([link("← Insights", { kind: "switchTab", tabId: "desk_insights" })], { marginBottom: 20 });
 
-/**
- * When in the day the words happened — one slim column an hour, tallest at the
- * busiest hour, nothing where nothing was said. Drawn from the renderer's plain
- * nodes (no canvas on the desk): a bottom-aligned fill in a fixed-height track,
- * its height the hour's share of the busiest. Noon and the two sixes are named
- * underneath so the shape has a clock to read against.
- */
-function hourChart(hours: number[]): Node {
-  const h = hours.length === 24 ? hours : new Array(24).fill(0);
-  const max = Math.max(1, ...h);
-  const H = 72;
-  const cols = h.map((w) => {
-    const ph = w > 0 ? Math.max(3, Math.round((w / max) * H)) : 0;
-    return stack(ph ? [stack([], { background: "var(--d-ink)", width: "100%", height: ph, radius: 2 })] : [],
-      { flex: 1, minWidth: 0, height: H, justify: "end" });
-  });
-  return stack([
-    row(cols, { gap: 3, align: "end", height: H }),
-    row(["12a", "6a", "12p", "6p", "12a"].map((l) => text(l, "d-margin")), { justify: "between", marginTop: 8 }),
-  ], { maxWidth: 520 });
+/** A voice's name the way the person renamed it; Zu's own signature reads as Zu. */
+function voiceNamer(ctx: DeskContext): (id: string) => string {
+  const named = applyPresetOverrides(ctx.personality?.presetOverrides);
+  return (id: string) => {
+    const key = (id || "").trim();
+    if (!key || key === "none" || key === "signature") return "Zu";
+    return named.find((p) => p.id === key)?.name ?? key;
+  };
 }
 
 /** A ranked set of horizontal bars — the same lane the apps use on Insights,
@@ -702,44 +1139,10 @@ function barList(rows: Array<{ label: string; words: number; press?: ActionRef; 
     const line = row([
       text(r.label, "d-lane-label", { width: 100, flex: "none" }),
       stack([stack([], { width: `${Math.max(2, pct)}%` }, "d-bar1-fill")], { flex: 1, minWidth: 0 }, "d-bar1"),
-      text(r.value ?? `${pct}%`, "d-num", { width: 48, textAlign: "right" }),
+      text(r.value ?? `${pct}%`, "d-num", { minWidth: 48, textAlign: "right", whiteSpace: "nowrap", flex: "none" }),
     ], { align: "center", gap: 12, paddingTop: 9, paddingBottom: 9 });
     return r.press ? { ...line, on: { onPress: r.press } } : line;
   }), { marginTop: 10 });
-}
-
-/**
- * A SPAN OF DAYS AS COLUMNS — one slim column a day, tallest on the busiest.
- * The month's words a day on Insights; built like hourChart (no canvas on the
- * desk), generalised to any number of columns: a bottom-aligned fill in a
- * fixed-height track, its height the day's share of the biggest. Newest on the
- * right, the way the stats read hands them over (today last).
- */
-function columnChart(values: number[]): Node {
-  const vals = values.slice();
-  const max = Math.max(1, ...vals);
-  const H = 84;
-  const cols = vals.map((w) => {
-    const ph = w > 0 ? Math.max(3, Math.round((w / max) * H)) : 0;
-    return stack(ph ? [stack([], { background: "var(--d-ink)", width: "100%", height: ph, radius: 2 })] : [],
-      { flex: 1, minWidth: 0, height: H, justify: "end" });
-  });
-  return stack([row(cols, { gap: 2, align: "end", height: H })], { maxWidth: 680 });
-}
-
-/** The voice / typed / draft split as bar rows, only the ones that happened. */
-function kindRows(k: { voice: number; typing: number; draft: number }): Array<{ label: string; words: number }> {
-  return [
-    { label: "Spoken", words: k.voice },
-    { label: "Typed", words: k.typing },
-    { label: "Draft", words: k.draft },
-  ].filter((x) => x.words > 0);
-}
-
-/** A detail section: a small heading over its bars, with the air above it the
- *  earlier sections have earned. */
-function detailBlock(title: string, rows: Array<{ label: string; words: number; press?: ActionRef }>, first: boolean): Node {
-  return stack([text(title, "d-h2"), barList(rows)], { marginTop: first ? 0 : 40 });
 }
 
 /**
@@ -769,44 +1172,55 @@ export function deskDay(ctx: DeskContext): ScreenResponse {
   const typedMin = d.words / TYPING_WPM;
   const saved = Math.max(0, typedMin - saidMin);
   const times = d.first && d.last && d.first !== d.last ? `${d.first}–${d.last}` : (d.first || "");
-  const count = [
-    `${d.sessions} ${d.sessions === 1 ? "dictation" : "dictations"}`,
-    `${n(d.words)} words`,
-    ...(times ? [times] : []),
-  ].join(" · ");
 
   const head = stack([
     backToInsights(),
     text("Insights", "d-eyebrow"),
     text(dateLine(date), "d-h1", { marginTop: 6 }),
-    text(count, "d-count", { marginTop: 12 }),
-  ], { marginBottom: 40 });
+  ], { marginBottom: 32 });
 
-  const left = stack([
-    ...(d.words > 0 ? [stack([
-      text("Said and typed", "d-eyebrow", { marginBottom: 12 }),
-      race(saidMin, typedMin, true),
-      ...(saved >= 1 ? [inline([text(span(saved), "d-em"), text(" back on the day.", "d-inherit")], "d-written", { fontSize: 18, lineHeight: "26px", marginTop: 16 })] : []),
-      text(`Typed at ${TYPING_WPM} words a minute.`, "d-margin", { marginTop: 8 }),
-    ])] : []),
-    stack([
-      text("When", "d-eyebrow", { marginBottom: 14 }),
-      hourChart(d.hours),
-    ], { marginTop: d.words > 0 ? 44 : 0 }),
-  ], { flex: 1, minWidth: 0 });
+  const tiles = row([
+    statTile("Words", n(d.words), `${d.sessions} ${d.sessions === 1 ? "dictation" : "dictations"}`),
+    statTile("Time back", d.words ? span(saved) : "—", `against typing at ${TYPING_WPM} wpm`),
+    statTile("Per dictation", d.sessions ? n(Math.round(d.words / d.sessions)) : "—", "words, on average"),
+    ...(times ? [statTile("From first to last", times, "your talking hours")] : []),
+  ], { gap: 32, flexWrap: "wrap", paddingTop: 26, marginBottom: 8 }, "d-rule-top");
 
-  const apps = (d.apps ?? []).map((a) => ({ label: appName(a.app) || "Other", words: a.words }));
-  const kinds = kindRows(d.kinds);
-  const langs = (d.languages ?? []).slice(0, 6).map((l) => ({ label: LANGUAGE_NAMES[l.key] ?? l.key, words: l.words }));
-  const sections: Node[] = [];
-  if (apps.length) sections.push(detailBlock("Where the words went", apps, sections.length === 0));
-  if (kinds.length > 1) sections.push(detailBlock("How", kinds, sections.length === 0));
-  if (langs.length) sections.push(detailBlock("In", langs, sections.length === 0));
-  const right = stack(sections, { flex: 1, minWidth: 0 });
+  const raceBlock = d.words > 0
+    ? section("Said against typed", undefined, [
+        stack([race(saidMin, typedMin, true)], { marginTop: 18 }),
+        ...(saved >= 1 ? [inline([text(span(saved), "d-em"), text(" back on the day.", "d-inherit")], "d-written", { fontSize: 18, lineHeight: "26px", marginTop: 16 })] : []),
+        text(`Typed at ${TYPING_WPM} words a minute.`, "d-margin", { marginTop: 8 }),
+      ])
+    : null;
+  const hours = d.hours?.length === 24 ? d.hours : new Array(24).fill(0) as number[];
+  const peak = hours.indexOf(Math.max(...hours));
+  const hourBlock = hours.some((v) => v > 0)
+    ? section("Hour by hour", `Busiest at ${hourName(peak)}.`, [columns(hours, { highlight: [peak], ticks: HOUR_TICKS })])
+    : null;
+
+  const ap = appParts((d.apps ?? []).map((a) => ({ app: a.app, words: a.words })));
+  const appsBlock = ap.length > 1
+    ? section("Where the words went", "By the app you were in.", [donutWithLegend(ap, { value: n(d.words), label: "words" })])
+    : ap.length === 1 ? section("Where the words went", `Every word in ${ap[0]!.label}.`, []) : null;
+  const kp: Part[] = [
+    { label: "Spoken", value: d.kinds.voice, color: SERIES[0] },
+    { label: "Typed", value: d.kinds.typing, color: SERIES[3] },
+    { label: "Draft", value: d.kinds.draft, color: SERIES[2] },
+  ].filter((p) => p.value > 0);
+  const lp = foldParts((d.languages ?? []).map((l) => ({ label: LANGUAGE_NAMES[l.key] ?? l.key, value: l.words })));
+  const howBlock = kp.length > 1 || lp.length > 1
+    ? section("How, and in what", undefined, [
+        ...(kp.length > 1 ? [text("How the words came", "d-eyebrow", { marginTop: 18 }), splitBar(kp)] : []),
+        ...(lp.length > 1 ? [text("Languages", "d-eyebrow", { marginTop: 30 }), splitBar(lp)] : []),
+      ])
+    : null;
 
   return screen("desk_day", dateLine(date), [page([
     head,
-    row([left, right], { gap: 72, align: "start" }, "d-wrap-narrow"),
+    tiles,
+    ...twoUp(raceBlock, hourBlock),
+    ...twoUp(appsBlock, howBlock),
   ])]);
 }
 
@@ -829,40 +1243,68 @@ export function deskApp(ctx: DeskContext): ScreenResponse {
     ])]);
   }
   const disp = appName(a.app) || "Other";
+  const now = local(ctx, Date.now());
   const lastAt = Date.parse(a.lastAt);
   const lastLine = Number.isFinite(lastAt) ? `Last used ${dateLine(local(ctx, lastAt))}` : "";
-  const count = [
-    `${n(a.words)} words`,
-    `${a.sessions} ${a.sessions === 1 ? "dictation" : "dictations"}`,
-    ...(a.avgWords > 0 ? [`~${n(a.avgWords)} words each`] : []),
-  ].join(" · ");
 
   const head = stack([
     backToInsights(),
     text("Where the words went", "d-eyebrow"),
     text(disp, "d-h1", { marginTop: 6 }),
-    text(count, "d-count", { marginTop: 12 }),
-    ...(lastLine ? [text(lastLine, "d-margin", { marginTop: 6 })] : []),
-  ], { marginBottom: 40 });
+    ...(lastLine ? [text(lastLine, "d-margin", { marginTop: 10 })] : []),
+  ], { marginBottom: 32 });
 
-  const dayparts = [
-    { label: "Morning", words: a.dayparts.morning },
-    { label: "Afternoon", words: a.dayparts.afternoon },
-    { label: "Evening", words: a.dayparts.evening },
-    { label: "Night", words: a.dayparts.night },
-  ].filter((x) => x.words > 0);
-  const kinds = kindRows(a.kinds);
-  const voices = (a.voices ?? []).map((v) => ({ label: v.id || "Zu", words: v.words }));
-  const sections: Node[] = [];
-  if (dayparts.length) sections.push(detailBlock("When", dayparts, sections.length === 0));
-  if (kinds.length > 1) sections.push(detailBlock("How", kinds, sections.length === 0));
-  if (voices.length > 1) sections.push(detailBlock("In which voice", voices, sections.length === 0));
+  // Its place among the others: the share of every word that went to an app,
+  // and where it ranks — the same read Insights draws its donut from.
+  const all = [...(st.appDetail ?? [])].sort((x, y) => y.words - x.words);
+  const allWords = all.reduce((s, x) => s + x.words, 0) || 1;
+  const rank = all.findIndex((x) => x.app === a.app) + 1;
+  const overallAvg = st.avgWordsPerSession ?? 0;
+  const perDay = (st.days ?? []).map((d) => d.apps.find((x) => x.app === a.app)?.words ?? 0);
+  const daysUsed = perDay.filter((v) => v > 0).length;
+  const avgDelta = overallAvg > 0 && a.avgWords > 0 ? Math.round(((a.avgWords - overallAvg) / overallAvg) * 100) : null;
 
+  const tiles = row([
+    statTile("Words", n(a.words), `${pct(a.words, allWords)}% of all your words`),
+    statTile("Dictations", n(a.sessions), rank > 0 ? (rank === 1 ? "your most-used app" : `number ${rank} of ${all.length} apps`) : undefined),
+    statTile("Per dictation", a.avgWords > 0 ? n(a.avgWords) : "—",
+      avgDelta == null ? "words, on average" : avgDelta === 0 ? "the same as everywhere else" : `${Math.abs(avgDelta)}% ${avgDelta > 0 ? "longer" : "shorter"} than your usual`),
+    ...(perDay.length ? [statTile("Days used", `${daysUsed}`, `of the last ${perDay.length}`)] : []),
+  ], { gap: 32, flexWrap: "wrap", paddingTop: 26 }, "d-rule-top");
+
+  const dayLabel = (k: number) => { const d = new Date(now.getTime() - k * 86_400_000); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]!.slice(0, 3)}`; };
+  const dayBlock = daysUsed > 1
+    ? section("Day by day", `${disp}, every day of the last ${perDay.length}. The amber column is the biggest.`,
+        [columns(perDay, { highlight: [perDay.indexOf(Math.max(...perDay))], ticks: [dayLabel(perDay.length - 1), dayLabel(Math.floor((perDay.length - 1) / 2)), "Today"] })],
+        { flex: "none", width: "100%", marginTop: 52 })
+    : null;
+
+  const dp =[a.dayparts.morning, a.dayparts.afternoon, a.dayparts.evening, a.dayparts.night];
+  const dpPeak = dp.indexOf(Math.max(...dp));
+  const whenBlock = dp.some((v) => v > 0)
+    ? section("When in the day", `Mostly in the ${DAYPARTS[dpPeak]!.toLowerCase()}${dpPeak === 3 ? "" : "s"}. Dictations by time of day.`,
+        [stack([columns(dp, { highlight: [dpPeak], labels: [...DAYPARTS], height: 110 })], { maxWidth: 360, marginTop: 18 })])
+    : null;
+
+  const kp: Part[] = [
+    { label: "Spoken", value: a.kinds.voice, color: SERIES[0] },
+    { label: "Typed", value: a.kinds.typing, color: SERIES[3] },
+    { label: "Draft", value: a.kinds.draft, color: SERIES[2] },
+  ].filter((p) => p.value > 0);
+  const voiceName = voiceNamer(ctx);
+  const vp = foldParts((a.voices ?? []).map((v) => ({ label: voiceName(v.id), value: v.words })));
+  const howBlock = kp.length > 1 || vp.length > 1
+    ? section("How it was written", undefined, [
+        ...(kp.length > 1 ? [text("Spoken, typed, drafted", "d-eyebrow", { marginTop: 18 }), splitBar(kp)] : []),
+        ...(vp.length > 1 ? [text("In which voice", "d-eyebrow", { marginTop: 30 }), splitBar(vp)] : []),
+      ])
+    : kp.length === 1 ? section("How it was written", `All ${kp[0]!.label.toLowerCase()}.`, []) : null;
+
+  const blocks = [...(dayBlock ? [dayBlock] : []), ...twoUp(whenBlock, howBlock)];
   return screen("desk_app", disp, [page([
     head,
-    ...(sections.length ? [row([stack(sections, { flex: 1, minWidth: 0, maxWidth: 520 })], { align: "start" })] : [
-      text("Talk into this app for a few days and its shape fills in here.", "d-lede"),
-    ]),
+    tiles,
+    ...(blocks.length ? blocks : [text("Talk into this app for a few days and its shape fills in here.", "d-lede", { marginTop: 32 })]),
   ])]);
 }
 
@@ -1157,26 +1599,95 @@ function dayHeading(ctx: DeskContext, iso: string): string {
 
 const startNotes: ActionRef = { kind: "notes.toggle" };
 
+const DAYPARTS = ["Morning", "Afternoon", "Evening", "Night"] as const;
+/** Morning from five, afternoon from noon, evening from five, night from nine. */
+const daypart = (h: number) => (h >= 5 && h < 12 ? 0 : h >= 12 && h < 17 ? 1 : h >= 17 && h < 21 ? 2 : 3);
+
+/**
+ * NOTES — the room carries the four figures (how many, how long, how many
+ * words, who), then the notes as numbers: the last two weeks, how long they
+ * run, when in the day, who is in them. Every note follows, newest first.
+ * The charts only come once there are two notes to compare.
+ */
 export function deskNotes(ctx: DeskContext): ScreenResponse {
   const all = ctx.notes ?? [];
-  const minutes = all.reduce((s, x) => s + (x.durationSeconds || 0), 0) / 60;
-  const count = all.length
-    ? `${all.length} ${all.length === 1 ? "note" : "notes"} · ${span(minutes)} heard`
-    : "Nothing yet";
+  const now = local(ctx, Date.now());
+  const secs = all.reduce((s, x) => s + (x.durationSeconds || 0), 0);
+  const heard = all.reduce((s, x) => s + (x.words || 0), 0);
+  const weekAgo = Date.now() - 7 * 86_400_000;
+  const thisWeek = all.filter((x) => Date.parse(x.startedAt) >= weekAgo).length;
+  // The people the writer could name, each counted once per note they were in.
+  const met = new Map<string, number>();
+  for (const nt of all) {
+    for (const name of new Set((nt.people ?? []).filter((p) => p.name && p.label !== "You").map((p) => p.name!))) {
+      met.set(name, (met.get(name) ?? 0) + 1);
+    }
+  }
 
-  const room = stack([
-    row([
-      stack([
-        text("Notes", "d-eyebrow"),
-        text("Meetings, lectures, thoughts", "d-h1", { marginTop: 6 }),
-        text(count, "d-count d-on-room", { marginTop: 12 }),
-      ], { minWidth: 0 }),
-      ...(ctx.notesHotkey ? [row([
-        keys("notes", true),
-        text("to start or stop. Nothing is typed anywhere.", "d-count d-on-room", { maxWidth: 170, marginLeft: 6 }),
-      ], { align: "center", gap: 0 })] : []),
-    ], { justify: "between", align: "end", gap: 24, flexWrap: "wrap" }, "d-room-inner"),
-  ], {}, "d-room");
+  const figures = all.length ? row([
+    statTile("Notes", n(all.length), `${thisWeek} in the last 7 days`, true, true),
+    statTile("Time heard", span(secs / 60), `about ${span(secs / all.length / 60)} each`, true),
+    statTile("Words heard", n(heard), secs >= 60 ? `${n(heard / (secs / 60))} a minute` : "across every note", true),
+    statTile("People met", n(met.size), met.size ? "named in your notes" : "no names heard yet", true),
+  ], { gap: 36, flexWrap: "wrap", marginTop: 26, paddingTop: 22, borderTop: "1px solid rgba(243,226,198,.12)", width: "100%" }) : null;
+
+  const band = room([
+    stack([
+      text("Notes", "d-eyebrow"),
+      text("Meetings, lectures, thoughts", "d-h1", { marginTop: 6 }),
+      ...(all.length ? [] : [text("Nothing yet", "d-count d-on-room", { marginTop: 12 })]),
+    ], { minWidth: 0 }),
+    ...(ctx.notesHotkey ? [row([
+      keys("notes", true),
+      text("to start or stop. Nothing is typed anywhere.", "d-count d-on-room", { maxWidth: 170, marginLeft: 6 }),
+    ], { align: "center", gap: 0 })] : []),
+    ...(figures ? [figures] : []),
+  ]);
+
+  // ---- the notes as numbers -------------------------------------------------------------
+  const charts: Node[] = [];
+  if (all.length >= 2) {
+    const today = dayKey(now);
+    const perDay = new Array(14).fill(0) as number[];
+    const lengths = [0, 0, 0, 0, 0];
+    const parts = [0, 0, 0, 0];
+    let together = 0, alone = 0;
+    for (const nt of all) {
+      const d = local(ctx, Date.parse(nt.startedAt));
+      const ago = Math.round((Date.parse(today) - Date.parse(dayKey(d))) / 86_400_000);
+      const min = (nt.durationSeconds || 0) / 60;
+      if (ago >= 0 && ago < 14) perDay[13 - ago] += min;
+      lengths[min < 5 ? 0 : min < 15 ? 1 : min < 30 ? 2 : min < 60 ? 3 : 4]! += 1;
+      parts[daypart(d.getUTCHours())]! += 1;
+      if ((nt.people ?? []).length > 1) together += 1; else alone += 1;
+    }
+    const dayLabel = (k: number) => { const d = new Date(now.getTime() - k * 86_400_000); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]!.slice(0, 3)}`; };
+    const activeDays = perDay.filter((v) => v > 0).length;
+    const daysBlock = activeDays
+      ? section("The last two weeks", `Minutes heard each day. ${activeDays} of the 14 days had a note.`,
+          [columns(perDay, { highlight: [13], ticks: [dayLabel(13), dayLabel(7), "Today"] })])
+      : null;
+    const lPeak = lengths.indexOf(Math.max(...lengths));
+    const lengthBlock = section("How long they run", `Most notes run ${["under 5 minutes", "5 to 15 minutes", "15 to 30 minutes", "half an hour to an hour", "over an hour"][lPeak]}.`,
+      [columns(lengths, { highlight: [lPeak], labels: ["<5 min", "5–15", "15–30", "30–60", "60+"] })]);
+    const pPeak = parts.indexOf(Math.max(...parts));
+    const whenBlock = section("When you take them", `Mostly in the ${DAYPARTS[pPeak]!.toLowerCase()}${pPeak === 3 ? "" : "s"}.`,
+      [columns(parts, { highlight: [pPeak], labels: [...DAYPARTS] })]);
+    const people = [...met.entries()].sort((x, y) => y[1] - x[1]).slice(0, 5);
+    const whoBlock = section("Who's in them", together && alone
+        ? `${pct(together, all.length)}% are conversations; the rest, you on your own.`
+        : together ? "Every note is a conversation." : "Every note is you on your own.", [
+      ...(together && alone ? [splitBar([
+        { label: "With others", value: together, color: SERIES[1] },
+        { label: "On your own", value: alone, color: SERIES[0] },
+      ])] : []),
+      ...(people.length ? [
+        text("Who comes up most", "d-eyebrow", { marginTop: 28 }),
+        barList(people.map(([name, k]) => ({ label: name, words: k, value: `${k} ${k === 1 ? "note" : "notes"}` }))),
+      ] : []),
+    ]);
+    charts.push(...twoUp(daysBlock, lengthBlock, { marginTop: 0 }), ...twoUp(whenBlock, whoBlock));
+  }
 
   const body: Node[] = [];
   if (!all.length) {
@@ -1185,6 +1696,8 @@ export function deskNotes(ctx: DeskContext): ScreenResponse {
       text("Start it in a meeting, a lecture, or on a walk around your own ideas. Tailzu listens to your microphone and to your computer's sound, tells the voices apart, and keeps it short here: what the meeting was, a paragraph on the whole conversation, and the few things people said that mattered, with who said them.", "d-lede", { marginTop: 8, maxWidth: 560 }),
       ...(ctx.notesHotkey ? [row([link("Start taking notes", startNotes, "d-btn")], { marginTop: 16 })] : []),
     ], { paddingBottom: 26 }));
+  } else if (charts.length) {
+    body.push(text("Every note", "d-h2", { marginTop: 60, marginBottom: 18 }));
   }
   let lastDay = "";
   for (const nt of all) {
@@ -1212,7 +1725,7 @@ export function deskNotes(ctx: DeskContext): ScreenResponse {
     }));
   }
 
-  return screen("desk_notes", "Notes", [room, page([stack(body, { maxWidth: 760 })])]);
+  return screen("desk_notes", "Notes", [band, page([...charts, stack(body, { maxWidth: 760 })])]);
 }
 
 /** The Mac did not let Tailzu hear the computer's sound: only the
@@ -1241,10 +1754,147 @@ function noteText(ctx: DeskContext, nt: Note): string {
   return out.join("\n");
 }
 
+interface Voice { label: string; name: string; seconds: number; words: number; turns: number; longest: number; questions: number }
+
+/**
+ * The conversation as numbers, read off the kept transcript: for each voice,
+ * how long it talked, how many words, how many turns, its longest unbroken
+ * stretch, how many questions. A stretch runs to the next one's start, but no
+ * longer than its words could take at a slow two a second, so a silence after
+ * someone stops is not counted as their talking.
+ */
+function talkStats(nt: Note): { voices: Voice[]; spans: Array<{ label: string; at: number; end: number }>; words: number; turns: number; questions: number } {
+  const named = new Map(nt.people.map((p) => [p.label, p.name]));
+  const segs = [...nt.transcript].filter((x) => x.text?.trim()).sort((x, y) => x.at - y.at);
+  const by = new Map<string, Voice>();
+  const spans: Array<{ label: string; at: number; end: number }> = [];
+  let prev = "", run = 0, words = 0, turns = 0, questions = 0;
+  segs.forEach((g, i) => {
+    const label = g.speaker || "Others";
+    const w = g.text.trim().split(/\s+/).length;
+    const next = segs[i + 1]?.at ?? Math.max(nt.durationSeconds || 0, g.at + w / 2.5);
+    const secs = Math.max(0.5, Math.min(next - g.at, w / 2));
+    const q = (g.text.match(/\?/g) ?? []).length;
+    const v = by.get(label) ?? { label, name: named.get(label) || label, seconds: 0, words: 0, turns: 0, longest: 0, questions: 0 };
+    v.seconds += secs; v.words += w; v.questions += q;
+    if (label !== prev) { v.turns += 1; turns += 1; run = 0; prev = label; }
+    run += secs; v.longest = Math.max(v.longest, run);
+    by.set(label, v);
+    spans.push({ label, at: g.at, end: g.at + secs });
+    words += w; questions += q;
+  });
+  return { voices: [...by.values()].sort((x, y) => y.seconds - x.seconds), spans, words, turns, questions };
+}
+
+/** m:ss, or h:mm:ss past the hour — a place in a recording. */
+const stamp = (secs: number) => {
+  const t = Math.max(0, Math.round(secs)), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s2 = t % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(s2).padStart(2, "0")}` : `${m}:${String(s2).padStart(2, "0")}`;
+};
+
+/** Seconds as the page says them: "45 sec", "3 min", "1 h 05". */
+const secsLine = (secs: number) => (secs < 60 ? `${Math.max(1, Math.round(secs))} sec` : span(secs / 60));
+
+/**
+ * The conversation in numbers: who talked (a donut of the talking time), who
+ * said what (a small table), and who spoke when — every stretch of talk on
+ * one line per voice, under the words-a-minute of the meeting as it went.
+ */
+function noteNumbers(nt: Note): Node[] {
+  const t = talkStats(nt);
+  if (!t.spans.length) return [];
+  const length = Math.max(nt.durationSeconds || 0, ...t.spans.map((x) => x.end), 1);
+  // One colour per voice for the whole section: the four who talked most in
+  // the validated order, anyone past them as Other.
+  const parts = foldParts(t.voices.map((v) => ({ label: v.name, value: v.seconds, value2: secsLine(v.seconds) })));
+  const colorOf = new Map(t.voices.map((v, i) => [v.label, i < 4 ? SERIES[i]! : OTHER]));
+  if (t.voices.length > 4) {
+    const rest = t.voices.slice(4).reduce((s, v) => s + v.seconds, 0);
+    parts[parts.length - 1] = { label: "Others", value: rest, color: OTHER, value2: secsLine(rest) };
+  }
+
+  const tiles = row([
+    statTile("Pace", n(t.words / (length / 60)), "words a minute"),
+    statTile("Voices", n(t.voices.length), t.voices.length === 1 ? "just one" : "told apart"),
+    statTile("Turns", n(t.turns), "changes of speaker"),
+    statTile("Questions", n(t.questions), "asked out loud"),
+  ].map((x) => ({ ...x, style: { ...(x.style ?? {}), minWidth: 150 } })), { gap: 32, flexWrap: "wrap", paddingTop: 26 }, "d-rule-top");
+
+  const share = t.voices.length > 1
+    ? section("Who talked", "Each voice's share of the talking time.",
+        [donutWithLegend(parts, { value: secsLine(t.voices.reduce((s, v) => s + v.seconds, 0)), label: "talking" })])
+    : section("Who talked", `Only ${t.voices[0]!.name === "You" ? "you" : t.voices[0]!.name}, for ${secsLine(t.voices[0]!.seconds)}.`, []);
+
+  const cell = (v: string, w: number, strong = false): Node =>
+    text(v, strong ? "d-margin-strong" : "d-num", { width: w, flex: "none", textAlign: "right" });
+  const table = section("Who said what", undefined, [stack([
+    row([text("", "d-margin", { flex: 1 }), cell("Words", 60, true), cell("Turns", 52, true), cell("Longest", 64, true), cell("Asked", 48, true)],
+      { gap: 10, paddingBottom: 10 }, "d-rule-bottom"),
+    ...t.voices.slice(0, 8).map((v) => row([
+      row([swatch(colorOf.get(v.label) ?? OTHER), text(v.name, "d-k", { fontWeight: 500, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 })],
+        { gap: 8, align: "center", flex: 1, minWidth: 0 }),
+      cell(n(v.words), 60), cell(n(v.turns), 52), cell(secsLine(v.longest), 64), cell(n(v.questions), 48),
+    ], { gap: 10, align: "center", paddingTop: 10, paddingBottom: 10 }, "d-rule-bottom")),
+  ], { marginTop: 20 })]);
+
+  // Words a minute through the meeting: about a column a minute, at most 40.
+  const B = Math.max(6, Math.min(40, Math.round(length / 60)));
+  const flow = new Array(B).fill(0) as number[];
+  for (const g of nt.transcript) {
+    if (!g.text?.trim()) continue;
+    flow[Math.min(B - 1, Math.floor((g.at / length) * B))]! += g.text.trim().split(/\s+/).length * (B / (length / 60));
+  }
+  const fPeak = flow.indexOf(Math.max(...flow));
+  // Each lane is read at 300 steps and drawn as its runs, so an hour of short
+  // turns is a few dozen marks on the page, not a thousand.
+  const STEPS = 300;
+  const lanes = t.voices.slice(0, 6).map((v) => {
+    const on = new Array(STEPS).fill(false) as boolean[];
+    for (const x of t.spans) {
+      if (x.label !== v.label) continue;
+      const a = Math.floor((x.at / length) * STEPS), b = Math.max(a, Math.ceil((x.end / length) * STEPS) - 1);
+      for (let k = a; k <= Math.min(STEPS - 1, b); k++) on[k] = true;
+    }
+    const marks: Node[] = [];
+    for (let k = 0; k < STEPS; k++) {
+      if (!on[k]) continue;
+      let e = k;
+      while (e + 1 < STEPS && on[e + 1]) e++;
+      marks.push(stack([], {
+        position: "absolute", top: 0, bottom: 0,
+        left: `${((k / STEPS) * 100).toFixed(2)}%`, width: `${(((e - k + 1) / STEPS) * 100).toFixed(2)}%`,
+        background: colorOf.get(v.label) ?? OTHER, radius: 2,
+      }));
+      k = e;
+    }
+    return row([
+      text(v.name, "d-margin-strong", { width: 110, flex: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }),
+      stack(marks, { position: "relative", flex: 1, minWidth: 0, height: 14, radius: 3, background: "color-mix(in srgb, var(--d-ink) 5%, var(--d-sheet))" }),
+    ], { gap: 14, align: "center" });
+  });
+  const timeline = section("Who spoke when", `Every stretch of talk across the ${secsLine(length)}, under how fast the words came.`, [
+    stack([
+      row([stack([], { width: 110, flex: "none" }), stack([columns(flow, { highlight: [fPeak], height: 64 })], { flex: 1, minWidth: 0 })], { gap: 14 }),
+      stack(lanes, { gap: 10, marginTop: 16 }),
+      row([stack([], { width: 110, flex: "none" }),
+        row([stamp(0), stamp(length / 2), stamp(length)].map((l) => text(l, "d-margin")), { justify: "between", flex: 1, minWidth: 0 })],
+        { gap: 14, marginTop: 10 }),
+    ], { marginTop: 20 }),
+  ], { flex: "none", width: "100%", marginTop: 52 });
+
+  return [
+    text("The conversation in numbers", "d-h2", { marginTop: 60, marginBottom: 18, fontSize: 24 }),
+    tiles,
+    ...twoUp(share, table, { marginTop: 44 }),
+    timeline,
+  ];
+}
+
 /**
  * One note: the meeting, one paragraph on the whole conversation, and the
  * few things people said that matter — each with who said it, in their own
- * voice, worded the best way. Nothing else: no transcript, no lists.
+ * voice, worded the best way. Under them, the conversation in numbers (see
+ * noteNumbers); the transcript itself is never shown.
  */
 export function deskNote(ctx: DeskContext): ScreenResponse {
   const nt = ctx.note;
@@ -1304,7 +1954,7 @@ export function deskNote(ctx: DeskContext): ScreenResponse {
     ], { marginTop: nt.summary ? 40 : 0, maxWidth: 760 }));
   }
 
-  return screen("desk_note", noteTitle(ctx, nt), [page([head, stack(body, { maxWidth: 760 })])], { noteDel: false });
+  return screen("desk_note", noteTitle(ctx, nt), [page([head, stack(body, { maxWidth: 760 }), ...noteNumbers(nt)])], { noteDel: false });
 }
 
 // ---- SETTINGS and PLAN ----------------------------------------------------------------
