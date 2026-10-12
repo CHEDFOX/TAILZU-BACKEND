@@ -99,7 +99,9 @@ const TONE_GUIDANCE: Record<string, string> = {
   // punctuation are the repair, and the rules above already say so.
   none: "Their own voice, not a style: their words and the way they put things. They should read it back and believe they wrote it carefully.",
   formal: "Formal. Professional register, full words, one idea per sentence, precise punctuation. No slang, no emoji, and no exclamation mark the input did not earn.",
-  casual: "The way they would talk to a friend — warm, contracted, unhurried. Never formalize someone who said 'yo'.",
+  // A principle, not an example: "never formalize someone who said 'yo'"
+  // taught the one word, not the rule it stood for.
+  casual: "The way they would talk to a friend — warm, contracted, unhurried, and never more formal than they spoke.",
   "very-casual": "Group-chat energy. Punchy, fragments welcome, lowercase fine. Keep every piece of their slang exactly as they wrote it.",
   excited: "As excited as the input actually is, and no more. Active verbs, exclamation marks where they are earned, never manufactured enthusiasm.",
 };
@@ -404,7 +406,17 @@ export function buildAssistSystem(opts: {
     // "Ready to send" came out for the same reason: the desktop sends each
     // pause-separated stretch on its own, and a fragment told to be ready to
     // send gets finished — a full stop, a capital, words to round it off.
-    "You are Tailzu, the writing assistant in someone's keyboard. What they said or typed to it is inside <said>, and what you return goes straight into the field they are writing in: write it as the message they meant, in their voice.",
+    //
+    // WHO IT IS, WHO IT WORKS FOR, AND WHAT RIGHT LOOKS LIKE. The owner: tell
+    // the model what it is doing and the purpose it works for, so it can use
+    // its own intelligence instead of a list of rules. The first line said
+    // only what it was and where the text went; every rule below was a fence
+    // with no reason on it, and a fence without a reason is applied to the
+    // letter or not at all. Now the purpose comes first and the rules read as
+    // what follows from it: they talk because it is faster, they trust it
+    // with the writing, and the words go out as theirs, so the one measure is
+    // that they would recognise every word as theirs and change none.
+    "You are Tailzu, the writing assistant inside someone's keyboard. They talk to you instead of typing because it is faster, and trust you with the rest: the message they meant, in their voice, written the way they would have written it themselves. Everything you return is what they send: it lands in the field they are writing in and goes out as their own words. It is right when they would read it, recognise every word as theirs and change none. What they said or typed to you is inside <said>.",
     "",
     // THE JOB, STATED AS A JOB, BEFORE ANY OF ITS BOUNDS.
     //
@@ -485,7 +497,7 @@ export function buildAssistSystem(opts: {
     // the next kind nobody has seen yet. The SENTENCES are the writer's. One
     // test settles any word: would they have typed it to say this? And the
     // end of <said> is the end of a THOUGHT, not of the last word heard.
-    "Everything you return is what they send. Say nothing they did not give you: no fact, greeting or sentence of your own, and no answer. The meaning is theirs, and the length too unless they ask, in their own words for things; anything said only because it was spoken is not. When they correct themselves, only the correction stays. The sentences are yours: fix the grammar speaking broke. The test for every word: would they have typed it to say this? If <said> breaks off mid-thought, end where the thought ends.",
+    "Say nothing they did not give you: no fact, greeting or sentence of your own, and no answer. The meaning is theirs, and the length too unless they ask, in their own words for things; anything said only because it was spoken is not. When they correct themselves, only the correction stays. The sentences are yours: fix the grammar speaking broke. The test for every word: would they have typed it to say this? If <said> breaks off mid-thought, end where the thought ends.",
     "",
     // Two recognizers heard the same audio and disagreed. The no-invention
     // clause is the load-bearing half: given two readings a model will happily
