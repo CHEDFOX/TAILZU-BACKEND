@@ -410,9 +410,24 @@ const LEADING_FILLER = new RegExp(`^(?:${FILLER}(?![\\p{L}\\p{M}])[\\s,.…!?—
 // (?<!…): a match starts only where a run of separators does — the leftmost
 // one always did — so a long run is scanned once, not once per character.
 const TRAILING_FILLER = new RegExp(`(?<![\\s,.…—–-])(?:[\\s,.…—–-]+${FILLER})+[\\s.…!?]*$`, "iu");
+/**
+ * SPEECH'S WORD FILLERS AT THE EDGE, set off by a comma: "…with what they are
+ * for, what device, like." and "Like, can you send it". In the middle of a
+ * sentence the second ask catches them (SPOKEN_FILLER); at the end the writer
+ * read a trailing "like" as a sentence left open — "if <said> breaks off
+ * mid-sentence, end there too" — and kept it, with a full stop after it, which
+ * nobody types. Only after a comma and before a full stop, an ellipsis, a "!"
+ * or nothing: "what it's like." has no comma and is the word, and "the blue
+ * one, you know?" is a question. Not at the start of a stretch that carries on
+ * a sentence ("…which device" + "like, the laptop"), where it is "such as".
+ */
+const TRAILING_SPOKEN = /\s*,\s*(?:like|you know)\s*([.…!]*)\s*$/i;
+const LEADING_SPOKEN = /^(?:so\s+)?like,\s*/i;
 export function stripEdgeFiller(out: string, continuesSentence = false): string {
   const t = out.trim();
-  const cut = t.replace(LEADING_FILLER, "").replace(TRAILING_FILLER, (m) => (/[.!?]\s*$/.test(m) ? "." : "")).trim();
+  let cut = t.replace(LEADING_FILLER, "").replace(TRAILING_FILLER, (m) => (/[.!?]\s*$/.test(m) ? "." : "")).trim();
+  cut = cut.replace(TRAILING_SPOKEN, (_m, end: string) => (end ? (end.includes("!") ? "!" : ".") : "")).trim();
+  if (!continuesSentence) cut = cut.replace(LEADING_SPOKEN, "").trim();
   if (!cut) return out;
   if (cut === t) return out;
   // The sentence now starts where the filler did: give it its capital back —
