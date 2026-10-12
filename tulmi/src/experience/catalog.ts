@@ -6768,13 +6768,16 @@ function trainingLiveScreen(ctx: ScreenContext): ScreenResponse {
   // earned — and it sprouts new fibres while the session runs, so the growth
   // it opens at is the floor for the conversation, not a decoration.
   const growth = fieldGrowth(ctx.personality);
-  // NO SPOKEN OPENER. It was said while the microphone was still opening, and
-  // the audio session switching over to listen cut it off mid-sentence — "I
-  // don't know how you sound yet. Just talk, and I'll…". The session opens by
-  // listening, with the field already moving; the lines stay in TRAINING_UI
-  // for the day a greeting can be said whole.
-  const greeting = "";
-  void liveGreeting;
+  // NO SPOKEN OPENER ON A PHONE. It was said while the microphone was still
+  // opening, and the audio session switching over to listen cut it off
+  // mid-sentence — "I don't know how you sound yet. Just talk, and I'll…". The
+  // phone opens by listening, with the field already moving.
+  //
+  // THE DESK SAYS IT. A window has no audio session to switch: it opens the
+  // microphone underneath the sentence and hands over when it ends (sdui.js
+  // startSession), so the line is said whole. Without it the desk's Train
+  // screen opened on silence, which read as a session with no voice at all.
+  const greeting = onDesk(ctx) ? liveGreeting(ctx) : "";
   // Back where it was opened: the You tab on a phone, the Train page on the
   // desk. switchTab, not navigate, so the page is drawn fresh with the new
   // round counted and the desk's stack starts clean.

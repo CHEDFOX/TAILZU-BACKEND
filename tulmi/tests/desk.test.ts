@@ -498,6 +498,26 @@ describe("Insights opens a day and an app for their own detail", () => {
   });
 });
 
+describe("spoken training on the desk", () => {
+  const session = (ctx: object) => {
+    let found: AnyNode | undefined;
+    walk((buildScreen("training_live", ctx as never) as { root: unknown }).root, (n) => { if (n.type === "VoiceSession") found = n; });
+    return found!;
+  };
+  it("the desk opens by saying something; the phone still opens by listening", () => {
+    const desk = session({ personality: {}, language: "en", formFactor: "desktop", can: new Set(["DeskShell", "Keys"]), name: "Asha Rao" });
+    expect(String(desk.props?.greeting ?? "")).not.toBe("");
+    expect(String(desk.props?.greeting)).toContain("Asha");
+    const phone = session({ personality: {}, language: "en" });
+    expect(phone.props?.greeting).toBeUndefined();
+  });
+  it("a Hinglish session gives the desk a real locale to speak in", () => {
+    const desk = session({ personality: {}, language: "hinglish", formFactor: "desktop", can: new Set(["DeskShell", "Keys"]) });
+    expect(desk.props?.speakLanguage).toBe("en-IN");
+    expect(String(desk.props?.greeting)).toContain("baat karte hain");
+  });
+});
+
 describe("leaving a shared screen lands on the desk, not a phone tab", () => {
   const desk = { ...sampleCtx, formFactor: "desktop", can: new Set(["DeskShell", "Keys"]) } as never;
   const phone = { ...sampleCtx } as never;
