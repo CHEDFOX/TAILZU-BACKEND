@@ -28,12 +28,13 @@ import { applyPresetOverrides, TONE_LABELS } from "./personalityPresets.js";
 import { DESK_CONTEXTS, DESK_ROOMS, DESK_SAMPLES } from "./deskSamples.js";
 import { span } from "./phoneLook.js";
 import { DEFAULT_TTS_VOICE, TTS_VOICES, isValidTtsVoice, ttsVoiceById } from "./ttsVoices.js";
+import { nicknameOf } from "./assistantName.js";
 
 /** Words a minute a person types on a keyboard — the same figure the stats
  *  screen's "minutes saved" has always used (history/store.ts). */
 const TYPING_WPM = 40;
 
-export const DESK_SCREENS = new Set(["desk_today", "desk_history", "desk_notes", "desk_note", "desk_insights", "desk_day", "desk_app", "desk_words", "desk_voices", "desk_train", "desk_settings", "desk_voice_read", "desk_plan"]);
+export const DESK_SCREENS = new Set(["desk_today", "desk_history", "desk_notes", "desk_note", "desk_insights", "desk_day", "desk_app", "desk_words", "desk_voices", "desk_train", "desk_settings", "desk_voice_read", "desk_assistant_name", "desk_plan"]);
 
 /** The desk's tabs, in the masthead. Settings and Plan are reached from its
  *  right-hand side, not from a tab. */
@@ -2108,6 +2109,11 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
         link("Change", { kind: "navigate", screenId: "languages" })),
     ], { marginBottom: 40 }),
     stack([
+      text("Its name", "d-h2", { marginBottom: 8 }),
+      defRow("You call it", nicknameOf(ctx.personality) ? `Tailzu, or ${nicknameOf(ctx.personality)}` : "Tailzu",
+        link(nicknameOf(ctx.personality) ? "Change" : "Give it a name", { kind: "navigate", screenId: "desk_assistant_name" })),
+    ], { marginBottom: 40 }),
+    stack([
       text("Reading aloud", "d-h2", { marginBottom: 8 }),
       defRow("Voice", readVoiceLabel,
         link("Change", { kind: "navigate", screenId: "desk_voice_read" })),
@@ -2171,6 +2177,33 @@ export function deskVoiceRead(ctx: DeskContext): ScreenResponse {
     stack(rows),
     row([link("Back to Settings", { kind: "navigate", screenId: "desk_settings" })], { marginTop: 28 }, "d-tools"),
   ], { maxWidth: 820 })]);
+}
+
+/**
+ * ITS NAME, on the desk. Tailzu always answers; a name of their own beside it
+ * is saved to personality.assistantName, which the writer and the recognizer
+ * both read (experience/assistantName). One field, Save, and "Tailzu only".
+ */
+export function deskAssistantName(ctx: DeskContext): ScreenResponse {
+  const nick = nicknameOf(ctx.personality);
+  const put = (assistantName: string): ActionRef => ({
+    kind: "callEndpoint", method: "PUT", path: "/v1/personality",
+    body: { assistantName },
+    onSuccess: { kind: "sequence", actions: [{ kind: "toast", message: "Saved." }, { kind: "refresh" }] },
+    onError: { kind: "toast", message: "A name is letters, spaces, ' and -, up to 24 characters." },
+  } as ActionRef);
+  return screen("desk_assistant_name", "Its name", [page([
+    text("Its name", "d-eyebrow"),
+    text(nick ? `Tailzu, or ${nick}` : "Tailzu", "d-h1", { marginTop: 6 }),
+    text("Tailzu is its name, and always works. Give it a name of your own too, and call it either while you talk: \u201cZara, make it formal.\u201d",
+      "d-lede", { marginTop: 10, maxWidth: "52ch" }),
+    row([
+      { type: "TextField", props: { cls: "d-input", placeholder: "A name of your own", maxLength: 24 }, bind: { value: "nick" }, on: { onSubmit: put("$state.nick") } } as Node,
+      link("Save", put("$state.nick"), "d-btn"),
+    ], { gap: 12, align: "center", marginTop: 26, maxWidth: 520 }),
+    ...(nick ? [row([link("Tailzu only", put(""))], { marginTop: 14 })] : []),
+    row([link("Back to Settings", { kind: "navigate", screenId: "desk_settings" })], { marginTop: 28 }, "d-tools"),
+  ], { maxWidth: 820 })], { nick: nick ?? "" });
 }
 
 export function deskPlan(ctx: DeskContext): ScreenResponse {
@@ -2276,6 +2309,7 @@ function deskPage(screenId: string, ctx: DeskContext): ScreenResponse | null {
     case "desk_train": return deskTrain(ctx);
     case "desk_settings": return deskSettings(ctx);
     case "desk_voice_read": return deskVoiceRead(ctx);
+    case "desk_assistant_name": return deskAssistantName(ctx);
     case "desk_plan": return deskPlan(ctx);
     default: return null;
   }

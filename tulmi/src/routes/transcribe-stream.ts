@@ -46,6 +46,7 @@ import {
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { getPersonality } from "../personality/store.js";
 import { sttPrompt } from "../pipeline/stt.js";
+import { vocabularyWithNames } from "../experience/assistantName.js";
 import { enforceQuota, recordUsage } from "../usage/metering.js";
 import {
   sanitizePlainTranscript, transcriptsAgree, isUsableAlternative, readsAsRomanHindi,
@@ -80,7 +81,7 @@ interface StartMessage {
  */
 async function liveHint(user: AuthedUser): Promise<string | undefined> {
   const read = getPersonality(user).then((p) => sttPrompt(
-    p.vocabulary,
+    vocabularyWithNames(p),
     undefined,
     p.languages?.map(String),
     p.stylePortrait?.core,
