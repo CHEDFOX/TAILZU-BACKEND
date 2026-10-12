@@ -943,7 +943,8 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "desktop.row.paddingV": 17,
   "desktop.row.valueGap": 8,
   "desktop.row.valueSize": 15,
-  "desktop.screen.slowMs": 700,
+  "desktop.screen.slowMs": 60000,
+  "desktop.screen.waitMs": 700,
   "desktop.spacer.height": 8,
   "desktop.svg.strokeWidth": 2,
   "desktop.swipeAction": {
