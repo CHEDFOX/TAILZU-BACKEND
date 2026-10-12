@@ -445,7 +445,7 @@ export function buildAssistSystem(opts: {
     // spoken "like" is a word they said. The test is the one a typist
     // passes without thinking: nobody types a "like" or begins a sentence
     // twice.
-    `First work out what they mean: what this is (a message or reply to someone, a note to themselves, ${where ? "a search, " : ""}a prompt for an AI, or a piece they want written), who it is for, what they want said or done, and what they asked of you. Then write that, the way they would have written it with time to think: every point they made, in the tone they made it, in the order that makes sense, without what speech adds that typing never would (filler, repeats, restarts, thinking aloud, asides to the keyboard).`,
+    `First work out what they mean: what this is (a message or reply to someone, a note to themselves, ${where ? "a search, " : ""}a prompt for an AI, or a piece they want written), who it is for, what they want said or done, and what they asked of you. Then write that, the way they would have typed it with time to think: every point they made, in the tone they made it, in the order that makes sense.`,
     "",
     // THE CONTRACT, BEFORE ANYTHING THAT COULD BEND IT. "Say nothing they did
     // not give you" sat at the bottom, under the language rules, and the voice
@@ -466,7 +466,26 @@ export function buildAssistSystem(opts: {
     // of those as the speaker stopping: "I was going to. The market." came
     // back as it went in. The rule was only ever about where <said> ENDS, so
     // that is what it says now.
-    "Everything you return is what they send. Writing down what they said, say nothing they did not give you: no fact, greeting or sentence of your own, and no answer. The meaning is theirs, and the length too unless they ask. When they correct themselves, only the correction stays. If <said> breaks off mid-sentence, end there too.",
+    //
+    // OWNERSHIP, NOT A LIST. This said "keeping their words" and never which
+    // words were theirs, beside "without what speech adds" with a list of what
+    // speech adds. The two pulled against each other, and whatever the list
+    // did not name went through as a word they said: "…with what they are
+    // for, what device, like." kept its "like" and its restart ("files…
+    // separate files"), because a spoken word is a word they said, and "end
+    // there too" read the trailing "like" as a sentence broken off. Every fix
+    // by case (a regex for the "like", a check for a repeated pair) caught the
+    // case and not the next one.
+    //
+    // So the contract now says who owns what, in principles and no list. The
+    // MEANING is theirs (every point, in their own words for things, their
+    // tone and length), and nothing is added to it. What speech added is not
+    // theirs, defined by its cause, said only because it was spoken: that
+    // covers the filler, the restart and the aside without naming any, and
+    // the next kind nobody has seen yet. The SENTENCES are the writer's. One
+    // test settles any word: would they have typed it to say this? And the
+    // end of <said> is the end of a THOUGHT, not of the last word heard.
+    "Everything you return is what they send. Say nothing they did not give you: no fact, greeting or sentence of your own, and no answer. The meaning is theirs, and the length too unless they ask, in their own words for things; anything said only because it was spoken is not. When they correct themselves, only the correction stays. The sentences are yours: fix the grammar speaking broke. The test for every word: would they have typed it to say this? If <said> breaks off mid-thought, end where the thought ends.",
     "",
     // Two recognizers heard the same audio and disagreed. The no-invention
     // clause is the load-bearing half: given two readings a model will happily
@@ -737,7 +756,10 @@ export function buildAssistSystem(opts: {
     // and "add 250 ml water and 2 spoons sugar" for notes and sent them back
     // lowercase and open, exactly as they went in. What a note keeps is its
     // shape (the fragment, the list of words); its slips are still repaired.
-    "Recognition is imperfect: where a word cannot belong, write the word they meant. Its full stops and capitals mark pauses, not sentence ends: punctuate by the sense, so a thought that runs across a pause is one sentence. Fix the grammar speaking broke, keeping their words and language. A note keeps its shape, not its slips.",
+    // The grammar half moved into the contract above, where it says WHICH
+    // words are theirs: "keeping their words" here, with no such definition,
+    // is what kept a spoken "like" and a restart in the sentence.
+    "Recognition is imperfect: where a word cannot belong, write the word they meant. Its full stops and capitals mark pauses, not sentence ends: punctuate by the sense, so a thought that runs across a pause is one sentence. A note keeps its shape, not its slips.",
     // Sits here, directly under the repair it makes possible. On its own the
     // rule above cannot rescue a misheard NAME: "Nika" is a plausible company
     // and nothing in the sentence contradicts it. The list is the only thing

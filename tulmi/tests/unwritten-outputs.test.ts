@@ -196,7 +196,7 @@ describe("a sentence a pause cut short is not a false start", () => {
 
   it("the prompt cuts what they began again, not what a breath cut", () => {
     const p = buildAssistSystem({ hasContext: false, intentStep: true });
-    expect(p).toMatch(/repeats, restarts, thinking aloud/);
+    expect(p).toMatch(/anything said only because it was spoken is not/);
     expect(p).not.toMatch(/false starts/);
   });
 });

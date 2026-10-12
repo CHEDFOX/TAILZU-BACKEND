@@ -149,11 +149,23 @@ describe("assist path — instruction separation", () => {
     expect(system).toMatch(/Fix the grammar speaking broke/i);
   });
 
-  it("only stops mid-sentence where what they said stops", () => {
+  it("only stops mid-sentence where what they said stops, and at a thought, not a word", () => {
     // "Stop where they stop, even mid-sentence" read every pause stop as the
-    // speaker stopping. It was only ever about the end of <said>.
+    // speaker stopping. It was only ever about the end of <said>. And "end
+    // there too" read a trailing spoken "like" as the sentence breaking off.
     expect(system).not.toMatch(/Stop where they stop/i);
-    expect(system).toMatch(/If <said> breaks off mid-sentence, end there too/);
+    expect(system).toMatch(/If <said> breaks off mid-thought, end where the thought ends/);
+  });
+
+  it("says who owns what instead of listing what to drop", () => {
+    // "Keeping their words" beside a list of what speech adds kept whatever
+    // the list missed. The meaning is theirs; what speech added is not,
+    // defined by its cause; the sentences are the writer's; one test decides.
+    expect(system).toMatch(/The meaning is theirs, and the length too unless they ask, in their own words for things/);
+    expect(system).toMatch(/anything said only because it was spoken is not/);
+    expect(system).toMatch(/The sentences are yours: fix the grammar speaking broke/);
+    expect(system).toMatch(/would they have typed it to say this\?/);
+    expect(system).not.toMatch(/keeping their words/i);
   });
 
   it("names no protected category of fact, because one already exists", () => {
