@@ -7,6 +7,7 @@
  *
  * See ../../../shared/types/sdui.ts for the contract.
  */
+import { nicknameOf } from "./assistantName.js";
 import { withAppKnobs, withKeyboardKnobs } from "./appKnobs.js";
 import { DESK_SCREENS, buildDeskScreen, deskNav } from "./desk.js";
 import { PHONE_FONT, PHONE_LOOK, PHONE_ROOMS, STATS_TOP, caption, label, monthFigures, phoneStatsBody, proofMark, span, statsDays, t } from "./phoneLook.js";
@@ -4738,6 +4739,8 @@ function phoneScreen(screenId: string, ctx: ScreenContext): ScreenResponse | nul
       return languagesScreen(ctx);
     case "voice_read":
       return voiceReadScreen(ctx);
+    case "assistant_name":
+      return assistantNameScreen(ctx);
     case "delete_account":
       return deleteAccountScreen();
     case "cancel_subscription":
@@ -9208,6 +9211,9 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         // set, saved to personality.ttsVoice and used by /v1/speak.
         row("Read-aloud voice", { kind: "navigate", screenId: "voice_read" },
           { props: { label: "Read-aloud voice" } }),
+        // Its name: Tailzu always, and a name of their own beside it.
+        row("Its name", { kind: "navigate", screenId: "assistant_name" },
+          { props: { label: "Its name", value: nicknameOf(ctx.personality) ? `Tailzu, ${nicknameOf(ctx.personality)}` : "Tailzu" } }),
 
         // Legal + account
         label("About", { marginTop: 36, marginBottom: 4 }),
@@ -12047,6 +12053,60 @@ function voiceReadScreen(ctx: ScreenContext): ScreenResponse {
             paddingHorizontal: PHONE_LOOK.side, paddingTop: 8, paddingBottom: 40,
           },
           children: TTS_VOICES.map(row),
+        },
+      ],
+    },
+    cacheTtlSeconds: 0,
+  };
+}
+
+/**
+ * ITS NAME. Tailzu is the keyboard's name for everyone and always answers.
+ * Beside it a person can give it a name of their own and call it either while
+ * they talk ("Zara, make it formal"): saved to personality.assistantName,
+ * which the writer and the recognizer both read (experience/assistantName).
+ * One field and Save; "Tailzu only" clears it.
+ */
+function assistantNameScreen(ctx: ScreenContext): ScreenResponse {
+  const nick = nicknameOf(ctx.personality);
+  const gap = (h: number): Node => ({ type: "Spacer", style: { height: h } });
+  const put = (body: Record<string, unknown>): ActionSpec => ({ kind: "sequence", actions: [
+    { kind: "haptic", style: "selection" },
+    { kind: "callEndpoint", method: "PUT", path: "/v1/personality", body, onSuccess: "saved", onError: "err" },
+  ] });
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId: "assistant_name",
+    title: "",
+    state: { name: nick ?? "" },
+    actions: {
+      save: put({ assistantName: "$state.name" }),
+      ...(nick ? { clear: put({ assistantName: "" }) } : {}),
+      saved: { kind: "sequence", actions: [
+        { kind: "haptic", style: "success" },
+        { kind: "toast", message: "Saved.", tone: "success" },
+        { kind: "refresh" },
+      ] },
+      err: { kind: "toast", message: "A name is letters, spaces, ' and -, up to 24 characters.", tone: "error" },
+    },
+    hideHeader: true,
+    root: {
+      type: "Stack",
+      style: { flex: 1, backgroundColor: YOU_UI.ground },
+      children: [
+        youHead("Its name", nick ? `Tailzu, or ${nick}` : "Tailzu"),
+        {
+          type: "Screen",
+          style: { backgroundColor: "transparent", paddingHorizontal: PHONE_LOOK.side, paddingTop: 8, paddingBottom: 40 },
+          children: [
+            { type: "Text", props: { content: "Tailzu is its name, and always works. Give it a name of your own too, and call it either while you talk: \u201cZara, make it formal.\u201d" },
+              style: { fontSize: 15, lineHeight: 23, color: PHONE_LOOK.ink2 } },
+            gap(20),
+            { type: "TextField", bind: { value: "name" }, props: { placeholder: "A name of your own", maxLength: 24, autoCapitalize: "words" } },
+            gap(16),
+            { type: "Button", props: { label: "Save", variant: "primary" }, on: { onPress: "save" } },
+            ...(nick ? [gap(10), { type: "Button", props: { label: "Tailzu only", variant: "secondary" }, on: { onPress: "clear" } } as Node] : []),
+          ],
         },
       ],
     },

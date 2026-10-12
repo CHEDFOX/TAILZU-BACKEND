@@ -3,6 +3,7 @@
  * runPipeline() is the one-shot path (/v1/transcribe-clean, the demo, the
  * test scripts); live dictation streams through routes/transcribe-stream.ts.
  */
+import { vocabularyWithNames } from "../experience/assistantName.js";
 import { transcribe } from "./stt.js";
 import { assist, type WriterExtras } from "./cleanup.js";
 import { joinWithSpace } from "./join.js";
@@ -58,7 +59,9 @@ export async function runPipeline(
   const stt = await transcribe({
     audio, format,
     language: opts.language,
-    vocabulary: opts.personality?.vocabulary,
+    // Their words, and the keyboard's names: an unusual name they gave it
+    // ("Zara, make it formal") is heard as the name, not as a near word.
+    vocabulary: vocabularyWithNames(opts.personality),
     // The learned portrait, for its QUOTED WORDS only (see portraitTerms).
     // The recognizer gets the terms this speaker actually uses; the prose
     // never reaches it, because Whisper reads its prompt as preceding speech.

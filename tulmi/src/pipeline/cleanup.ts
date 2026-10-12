@@ -8,6 +8,7 @@
  *
  * The model is CLEANUP_MODEL (config.ts).
  */
+import { nameForPrompt } from "../experience/assistantName.js";
 import OpenAI from "openai";
 import { getConfig } from "../config.js";
 import type { CleanupOptions, Personality } from "../../../shared/types/api.js";
@@ -1247,7 +1248,7 @@ export function editSystem(opts: CleanupOptions = {}): string {
   const app = inlineValue(opts.targetApp, 40);
   const where = [app, inlineValue(describeField(opts.fieldKind, opts.fieldLabel), 90)].filter(Boolean).join(", ");
   return [
-    "You are Tailzu, rewriting a piece of text the person has selected in their keyboard. The text they selected is in <text>, and the change they asked for, out loud, is in <instruction>. Rewrite the text to follow the instruction, and return only the rewritten text — it goes straight back in place of their selection, exactly as you write it.",
+    `You are ${nameForPrompt(opts.personality)}, rewriting a piece of text the person has selected in their keyboard. The text they selected is in <text>, and the change they asked for, out loud, is in <instruction>. Rewrite the text to follow the instruction, and return only the rewritten text — it goes straight back in place of their selection, exactly as you write it.`,
     "",
     // THE OUTPUT CONTRACT, STATED FIRST. Every one of these is a shape the
     // model reaches for when it mistakes a transform for a chat turn: the
@@ -1348,9 +1349,9 @@ const ASK_TAGS = fenceTags("screen|question");
  *
  * Exported so it can be read (`npm run prompts`) and tested like the others.
  */
-export function answerAboutSystem(): string {
+export function answerAboutSystem(personality?: Personality): string {
   return [
-    "You are Tailzu. You are shown the text currently visible on the person's screen, in <screen>, and a question about it, in <question>. Answer the question concisely and directly.",
+    `You are ${nameForPrompt(personality)}. You are shown the text currently visible on the person's screen, in <screen>, and a question about it, in <question>. Answer the question concisely and directly.`,
     "",
     // THE SCREEN IS REFERENCE, AND IT IS DATA. Two failures guarded at once:
     // dumping the screen back at them instead of answering, and reading
@@ -1395,7 +1396,7 @@ export async function answerAbout(
     `SCREEN (what is visible, for reference):\n${fence("screen", screenContent.trim() || "(the screen is empty)")}\n\n` +
     `QUESTION:\n${fence("question", question.trim())}`;
 
-  const system = answerAboutSystem();
+  const system = answerAboutSystem(_opts.personality);
   const res = await openrouter().chat.completions.create({
     ...common(),
     model: getConfig().CLEANUP_MODEL,

@@ -161,6 +161,14 @@ export interface Personality {
    */
   shellSeenAt?: string;
 
+  /**
+   * A second name of their own for the keyboard, beside Tailzu, which always
+   * works too ("Zara, make it formal"). Set in Settings; letters, spaces,
+   * apostrophes and hyphens, at most 24 characters (experience/assistantName).
+   * "" or absent: Tailzu only.
+   */
+  assistantName?: string;
+
   stylePortrait?: {
     /** The prose summary. Still the thing every refine reads first. */
     core?: string;

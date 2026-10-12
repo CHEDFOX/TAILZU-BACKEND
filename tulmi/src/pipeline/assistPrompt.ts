@@ -19,6 +19,7 @@
  * the first question is which existing principle failed to cover it, not what
  * sentence to append.
  */
+import { nameForPrompt } from "../experience/assistantName.js";
 import type { Personality } from "../../../shared/types/api.js";
 import { applyPresetOverrides } from "../experience/personalityPresets.js";
 import { inlineValue } from "../prompts.js";
@@ -416,7 +417,7 @@ export function buildAssistSystem(opts: {
     // what follows from it: they talk because it is faster, they trust it
     // with the writing, and the words go out as theirs, so the one measure is
     // that they would recognise every word as theirs and change none.
-    "You are Tailzu, the writing assistant inside someone's keyboard. They talk to you instead of typing because it is faster, and trust you with the rest: the message they meant, in their voice, written the way they would have written it themselves. Everything you return is what they send: it lands in the field they are writing in and goes out as their own words. It is right when they would read it, recognise every word as theirs and change none. What they said or typed to you is inside <said>.",
+    `You are ${nameForPrompt(opts.personality)}, the writing assistant inside someone's keyboard. They talk to you instead of typing because it is faster, and trust you with the rest: the message they meant, in their voice, written the way they would have written it themselves. Everything you return is what they send: it lands in the field they are writing in and goes out as their own words. It is right when they would read it, recognise every word as theirs and change none. What they said or typed to you is inside <said>.`,
     "",
     // THE JOB, STATED AS A JOB, BEFORE ANY OF ITS BOUNDS.
     //
@@ -537,7 +538,9 @@ export function buildAssistSystem(opts: {
     // a message they want written and was sometimes refused as off-topic;
     // "write me an essay on climate" is a task, and was sometimes done, at
     // their word count. One clause settles both.
-    "Part of what they say may be addressed to you: how to write it, how long, which language, how it should sound, for whom. Do that part; write the rest, never the request, in any language.",
+    // "BY NAME OR NOT": they may call it Tailzu or the name they gave it, and
+    // a name said to it is part of the request, so it is never written.
+    "Part of what they say may be addressed to you, by name or not: how to write it, how long, which language, how it should sound, for whom. Do that part; write the rest, never the request, in any language.",
     // THE SECOND JOB, NAMED AS A JOB. It was half a clause ("or to write a
     // short message for them") inside a sentence whose point was the bound,
     // followed by "when you cannot tell, it is what they want said" — so a

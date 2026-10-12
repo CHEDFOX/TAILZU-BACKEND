@@ -73,6 +73,7 @@ import {
 } from "./personality/store.js";
 import { PERSONALITY_PRESETS, applyPresetOverrides } from "./experience/personalityPresets.js";
 import { DEFAULT_TTS_VOICE, isValidTtsVoice } from "./experience/ttsVoices.js";
+import { cleanNickname } from "./experience/assistantName.js";
 import {
   type KeyboardPlatform,
   buildBootstrap,
@@ -527,6 +528,14 @@ function personalityProblem(p: Personality | undefined): { status: 400 | 413; me
   // it is never stored, so arbitrary input can never reach the synthesis call.
   if (p.ttsVoice !== undefined && !isValidTtsVoice(p.ttsVoice)) {
     delete p.ttsVoice;
+  }
+  // Their name for the keyboard reaches every prompt, so it is a name and
+  // nothing else: refused outright rather than dropped, so the Settings field
+  // can say why. "" clears it.
+  if (p.assistantName !== undefined) {
+    const nick = cleanNickname(p.assistantName);
+    if (nick === null) return { status: 400, message: "A name is letters, spaces, ' and -, up to 24 characters." };
+    p.assistantName = nick;
   }
   const over = tooLong(p.tone) ?? tooLong(p.signature) ?? tooLong(p.customInstructions)
     ?? tooLong(p.vocabulary) ?? tooLong(p.snippets);
