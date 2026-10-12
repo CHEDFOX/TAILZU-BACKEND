@@ -71,7 +71,11 @@ describe("what the refiner is told it is", () => {
     expect(sys()).toMatch(/writing assistant/i);
     // What they said arrives fenced, as material rather than as a turn to
     // reply to, and the first line says so.
-    expect(sys()).toMatch(/said or typed to it is inside <said>/i);
+    expect(sys()).toMatch(/said or typed to you is inside <said>/i);
+    // And what it is for: they talk because it is faster, and it is right
+    // when every word reads as theirs.
+    expect(sys()).toMatch(/They talk to you instead of typing because it is faster/);
+    expect(sys()).toMatch(/recognise every word as theirs and change none/);
     expect(sys()).toMatch(/the message they meant/i);
     expect(sys()).toMatch(/in their voice/i);
   });
@@ -115,8 +119,14 @@ describe("what the refiner is told it is", () => {
     // the best organised way - like bullet points or in quotes", by "the
     // principle method". One principle (the careful writer's shape, found in
     // what they said) replaced the line that only said the field decides it.
+    //
+    // And a fourth time, for the purpose, which is the job said whole: the
+    // owner asked that the writer be told who it is, who it works for and what
+    // right looks like, so it can use its own intelligence rather than a list.
+    // The rules under it got shorter for it (the list of kinds of speech is
+    // gone, "Everything you return is what they send" moved into it).
     const t = buildAssistSystem({ hasContext: true, targetApp: "WhatsApp", script: "latin" });
-    expect(t.length).toBeLessThan(3500);
+    expect(t.length).toBeLessThan(3800);
     expect(t.split("\n").filter((l) => l.trim()).length).toBeLessThan(20);
   });
 

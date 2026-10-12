@@ -248,9 +248,9 @@ describe("what the prompt is told about a mixed sentence", () => {
     });
     // 2400 until the second job (a short piece written on request) was named,
     // 3000 until the writer was told to work out what they mean first, 3700
-    // until it was told the shapes (lists, quotes, paragraphs); see
-    // assist-tone's guard.
-    expect(t.length).toBeLessThan(3900);
+    // until it was told the shapes (lists, quotes, paragraphs), 3900 until it
+    // was told its purpose; see assist-tone's guard.
+    expect(t.length).toBeLessThan(4200);
   });
 });
 

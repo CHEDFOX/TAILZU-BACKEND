@@ -48,7 +48,9 @@ describe("the prompt asks for the meaning first", () => {
   it("states the job before its bounds", () => {
     const job = p.indexOf("First work out what they mean");
     expect(job).toBeGreaterThan(0);
-    expect(job).toBeLessThan(p.indexOf("Everything you return is what they send"));
+    // The purpose (who it is, what it is for) opens; the job; then the bounds.
+    expect(p.indexOf("Everything you return is what they send")).toBeLessThan(job);
+    expect(job).toBeLessThan(p.indexOf("Say nothing they did not give you"));
     expect(p).toMatch(/every point they made, in the tone they made it, in the order that makes sense/);
   });
 
