@@ -81,7 +81,7 @@ describe("what speech adds that typing never would", () => {
 
   it("the prompt says what goes by what typing never would, and keeps language its own line", () => {
     const t = buildAssistSystem({ hasContext: true, targetApp: "WhatsApp", script: "latin" });
-    expect(t).toMatch(/without what speech adds that typing never would/);
+    expect(t).toMatch(/anything said only because it was spoken is not/);
     expect(t).not.toMatch(/Their words stay theirs/);
     expect(t).toMatch(/Never translate their words/);
   });

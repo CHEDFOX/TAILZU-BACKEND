@@ -118,7 +118,8 @@ describe("the principle, stated once", () => {
   it("says the request is done, never written, in any language", () => {
     const t = buildAssistSystem({ hasContext: false });
     expect(t).toMatch(/Do that part; write the rest, never the request, in any language/);
-    // Named now among the wandering of speech the writer leaves out.
-    expect(t).toMatch(/without what speech adds that typing never would \([^)]*asides to the keyboard\)/);
+    // Among what speech adds and the writer leaves out, by its cause.
+    expect(t).toMatch(/anything said only because it was spoken is not/);
+    expect(t).toMatch(/would they have typed it to say this\?/);
   });
 });
