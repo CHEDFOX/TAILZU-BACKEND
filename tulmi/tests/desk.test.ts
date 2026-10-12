@@ -182,20 +182,13 @@ describe("the desk pages", () => {
     }
   }
 
-  it("Today shows today's note, said above written, and not an older one", () => {
+  it("Today counts the day and keeps the dictations one link away, in History", () => {
     const s = JSON.stringify(buildScreen("desk_today", sampleCtx));
-    expect(s).toContain("haan bhai kal milte hain");
-    expect(s).toContain("Haan bhai, kal milte hain.");
+    for (const f of ["Words today", "Time back", "Day streak", "Your dictations", "Open history"]) expect(s, f).toContain(f);
+    expect(s).toContain('"screenId":"desk_history"');
+    // the notes themselves are not listed here — History has them, with their delete
+    expect(s).not.toContain("Haan bhai, kal milte hain.");
     expect(s).not.toContain("send the deck tonight");
-  });
-
-  it("Today's Copy carries the note's own text, and there is no Delete", () => {
-    // An action reads its values when clicked, when a list row's item is gone:
-    // Copy put "" on the clipboard. Each note's action holds its text now.
-    const s = JSON.stringify(buildScreen("desk_today", sampleCtx));
-    expect(s).toContain('"kind":"copyText","text":"Haan bhai, kal milte hain.","message":"Copied"');
-    expect(s).not.toContain("$state.item");
-    expect(s).not.toContain('"label":"Delete"');
     expect(s).not.toContain("/v1/history/");
   });
 
@@ -205,9 +198,11 @@ describe("the desk pages", () => {
     expect(s).toContain('"body":{"remove":"Kubernetes","kind":"word"}');
   });
 
-  it("Today with nothing written offers to start talking", () => {
+  it("Today has no Talk Now: the keys in the room are how anyone talks", () => {
     const s = buildScreen("desk_today", { personality: {}, language: "en", history: [] } as never);
-    expect(actionKinds(s!.root).has("dictate")).toBe(true);
+    expect(actionKinds(s!.root).has("dictate")).toBe(false);
+    expect(JSON.stringify(s)).not.toContain("Talk now");
+    expect(JSON.stringify(s)).toContain("tap twice, in any app, and talk");
   });
 
   it("Insights names the languages as their speakers write them", () => {
@@ -326,14 +321,17 @@ describe("the desk pages", () => {
 
   it("Insights carries the month's breakdowns, their titles and their values", () => {
     const s = JSON.stringify(buildScreen("desk_insights", withStats));
-    for (const title of ["How the words came", "When you write", "Hour by hour", "How long, in words",
-                         "Who writes for you", "In which register", "What earns its place", "Words a day"]) {
+    for (const title of ["Where the words went", "How the words came", "Day by day", "Hour by hour", "Day of the week",
+                         "How long, in words", "Who writes for you", "In which register", "What earns its place",
+                         "Days you talked", "Running total"]) {
       expect(s, title).toContain(title);
     }
+    // drawn as charts: a donut, a line, columns
+    expect(s).toContain("conic-gradient(");
+    expect(s).toContain('"type":"SVG"');
     // the kind, daypart and session-length labels
     expect(s).toContain("Spoken");
-    expect(s).toContain("Morning");
-    expect(s).toContain("Afternoon");
+    expect(s).toContain("Mostly in the afternoon");
     expect(s).toContain("1–5");   // 1–5
     expect(s).toContain("100+");
     // voices named id→name; a register read via TONE_LABELS, none as Zu
@@ -341,12 +339,12 @@ describe("the desk pages", () => {
     expect(s).toContain("Professional");
     expect(s).toContain("Formal");
     // the dictionary line, its most-used count, and the names that never turned up
-    expect(s).toContain("3 of 5 words earn their place.");
+    expect(s).toContain("3 of 5 saved words turned up this month.");
     expect(s).toContain("Most used");
     expect(s).toContain("12×");   // 12×
     expect(s).toContain("Never turned up");
     // the figures up top
-    for (const f of ["Day streak", "Per session", "Best day", "Minutes saved"]) expect(s, f).toContain(f);
+    for (const f of ["Day streak", "Per dictation", "Best day", "Time back"]) expect(s, f).toContain(f);
   });
 
   it("Today and Insights both offer a way into the full history", () => {
@@ -379,6 +377,35 @@ describe("the desk pages", () => {
     expect(s).toContain('"onSuccess":{"kind":"refresh"}');
     // a way back to Today
     expect(s).toContain('"tabId":"desk_today"');
+  });
+
+  it("History puts a ✕ on every row, and the ✕ opens that row's reason card", () => {
+    const s = JSON.stringify(buildScreen("desk_history", sampleCtx));
+    expect(s).toContain('"label":"✕","cls":"d-x"},"on":{"onPress":{"kind":"setState","path":"del.a1","value":true}}');
+    expect(s).toContain('"path":"del.a2","value":true');
+    // the cross hides while its card is open
+    expect(s).toContain('"visibleIf":{"falsy":"del.a1"}');
+  });
+
+  it("Notes carries its figures in the room and the notes as charts", () => {
+    const s = JSON.stringify(buildScreen("desk_notes", sampleCtx));
+    for (const f of ["Time heard", "Words heard", "People met", "The last two weeks", "How long they run",
+                     "When you take them", "Who's in them", "Every note"]) expect(s, f).toContain(f);
+    expect(s).toContain("Priya");
+    // one note is not something to chart
+    const one = JSON.stringify(buildScreen("desk_notes", { ...(sampleCtx as object), notes: [(sampleCtx as { notes: unknown[] }).notes[0]] } as never));
+    expect(one).not.toContain("How long they run");
+  });
+
+  it("A note shows the conversation in numbers, read off its transcript", () => {
+    const s = JSON.stringify(buildScreen("desk_note", sampleCtx));
+    for (const f of ["The conversation in numbers", "Who talked", "Who said what", "Who spoke when", "Turns", "Questions"]) {
+      expect(s, f).toContain(f);
+    }
+    expect(s).toContain("conic-gradient(");   // who talked, as a donut
+    expect(s).toContain('"content":"Priya"'); // named, not "Speaker 1"
+    // the transcript itself is still never shown
+    expect(s).not.toContain("Then I want a day of testing");
   });
 
   it("History is empty-safe", () => {
@@ -438,11 +465,14 @@ describe("Insights opens a day and an app for their own detail", () => {
     const built = buildScreen("desk_day", { ...(withDetail as object), params: { day: 29 } } as never)!;
     drawable(built);
     const s = JSON.stringify(built);
-    expect(s).toContain("120 words");
+    expect(s).toContain('"content":"Words"');
+    expect(s).toContain('"content":"120"');
     expect(s).toContain("4 dictations");
     expect(s).toContain("09:10–18:40");
-    expect(s).toContain("whatsapp");   // where the words went that day
-    expect(s).toContain("Hinglish");   // and in what
+    expect(s.toLowerCase()).toContain("whatsapp");   // where the words went that day
+    expect(s).toContain("conic-gradient(");          // as a donut
+    expect(s).toContain("Hinglish");                 // and in what
+    expect(s).toContain("Busiest at 9 AM.");         // the hours, as columns
     expect(s).toContain('"tabId":"desk_insights"'); // the way back
   });
 
@@ -450,8 +480,10 @@ describe("Insights opens a day and an app for their own detail", () => {
     const built = buildScreen("desk_app", { ...(withDetail as object), params: { app: "whatsapp" } } as never)!;
     drawable(built);
     const s = JSON.stringify(built);
-    expect(s).toContain("700 words");
-    expect(s).toContain("40 dictations");
+    expect(s).toContain('"content":"700"');
+    expect(s).toContain("58% of all your words");
+    expect(s).toContain('"content":"40"');
+    expect(s).toContain("your most-used app");
     expect(s).toContain("Morning");
     expect(s).toContain("Work");       // a second voice, so the split shows
   });

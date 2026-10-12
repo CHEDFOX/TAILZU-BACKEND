@@ -2358,8 +2358,14 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
   // The desk's pages that show today's or this month's numbers read the
   // meter in the caller's own day.
   const USAGE_SCREENS = new Set(["stats", "desk_today", "desk_insights", "desk_settings"]);
-  const usage = user && USAGE_SCREENS.has(screenId)
-    ? await usageSummary(user, typeof body.tzOffsetMinutes === "number" ? body.tzOffsetMinutes : undefined)
+  //
+  // EVERY READ BELOW STARTS AT ONCE and the screen waits for them together.
+  // They were awaited one after another — usage, then stats, then the meter,
+  // then history, notes, the plan — so a page paid the sum of its reads, and on
+  // the desk a slow sum is the "Loading…" a person sees between two pages.
+  // Each read keeps its own failure rule; only the waiting changed.
+  const usageRead = user && USAGE_SCREENS.has(screenId)
+    ? usageSummary(user, typeof body.tzOffsetMinutes === "number" ? body.tzOffsetMinutes : undefined)
     : undefined;
   // "month" window: the Stats tab charts 14-day bars + 30-day streaks, which
   // a 7-day projection can't feed. tzOffsetMinutes keeps "today"/"evening"
@@ -2403,10 +2409,10 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
     ? statsForUser(user, "month", Number(body.tzOffsetMinutes) || 0,
                    savedWords(personality), personality?.languages ?? []).catch(() => undefined)
     : undefined;
-  const stats = statsRead
+  const statsWait = statsRead
     ? (STATS_BLOCKING.has(screenId)
-        ? await statsRead
-        : await Promise.race([
+        ? statsRead
+        : Promise.race([
             statsRead,
             new Promise<undefined>((r) => setTimeout(() => r(undefined), STATS_DEADLINE_MS)),
           ]))
@@ -2417,21 +2423,21 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
   // too — a screen that says "out of words" without knowing how many is a
   // guess with a button on it.
   const ALLOWANCE_SCREENS = new Set(["stats", "words_out", "desk_settings", "desk_plan"]);
-  const allowance =
+  const allowanceRead =
     user && ALLOWANCE_SCREENS.has(screenId)
-      ? await allowanceFor(user).catch(() => null)
+      ? allowanceFor(user).catch(() => null)
       : undefined;
-  const history =
+  const historyRead =
     user && (screenId === "history" || screenId === "desk_today" || screenId === "desk_history")
-      ? (await listHistory(user, { limit: screenId === "desk_history" ? HISTORY_MAX_LIMIT : 50 })).entries
+      ? listHistory(user, { limit: screenId === "desk_history" ? HISTORY_MAX_LIMIT : 50 }).then((r) => r.entries)
       : undefined;
   // The desk's Notes page and one note. A failed read draws the page empty
   // rather than failing it; a desktop on a static token has none to read.
-  const notes = user && screenId === "desk_notes"
-    ? await listNotes(user).catch(() => [])
+  const notesRead = user && screenId === "desk_notes"
+    ? listNotes(user).catch(() => [])
     : undefined;
-  const note = user && screenId === "desk_note" && typeof body.params?.noteId === "string"
-    ? await getNote(user, body.params.noteId).catch(() => null)
+  const noteRead = user && screenId === "desk_note" && typeof body.params?.noteId === "string"
+    ? getNote(user, body.params.noteId).catch(() => null)
     : undefined;
   // THE ONE SCREEN THAT MUST NOT SELL TO A SUBSCRIBER, so the one screen that
   // pays for this read. The row rather than the boolean: which store sold it
@@ -2444,10 +2450,13 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
   // subscribers included, because it was never told who had paid. And the
   // desk's settings and plan pages say which plan this is.
   const ENTITLEMENT_SCREENS = new Set(["paywall", "stats", "desk_settings", "desk_plan"]);
-  const entitlement =
+  const entitlementRead =
     user && ENTITLEMENT_SCREENS.has(screenId)
-      ? await getEntitlement(user).catch(() => null)
+      ? getEntitlement(user).catch(() => null)
       : undefined;
+  const [usage, stats, allowance, history, notes, note, entitlement] = await Promise.all([
+    usageRead, statsWait, allowanceRead, historyRead, notesRead, noteRead, entitlementRead,
+  ]);
   // THE GATE. On iOS the keyboard's mic opens the app on `flow_arm`, so this
   // route is where an out-of-words user is stopped — before a session arms,
   // and without needing a keyboard build to enforce it.
