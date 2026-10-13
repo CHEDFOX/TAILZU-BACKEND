@@ -185,6 +185,8 @@ export interface RzSubscription {
   current_end?: number | null;
   charge_at?: number | null;
   ended_at?: number | null;
+  /** Charges that have gone through so far: 1 on the first. */
+  paid_count?: number;
   /** Razorpay sends an empty array when there are no notes. */
   notes?: Record<string, string> | unknown[];
 }
