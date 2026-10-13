@@ -56,7 +56,7 @@ describe("the prompt states the shape as a principle", () => {
   it("keeps the field's rule, and asks the writer to name the shape", () => {
     expect(p).toMatch(/In WhatsApp, the field decides the shape of the text, never its content/);
     expect(p).toMatch(/A search box wants just the words/);
-    expect(p).toMatch(/what they mean and the shape it needs/);
+    expect(p).toMatch(/who they are writing to, what they mean, and the shape it needs/);
   });
 });
 

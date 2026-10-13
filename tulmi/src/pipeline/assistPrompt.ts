@@ -417,7 +417,16 @@ export function buildAssistSystem(opts: {
     // what follows from it: they talk because it is faster, they trust it
     // with the writing, and the words go out as theirs, so the one measure is
     // that they would recognise every word as theirs and change none.
-    `You are ${nameForPrompt(opts.personality)}, the writing assistant inside someone's keyboard. They talk to you instead of typing because it is faster, and trust you with the rest: the message they meant, in their voice, written the way they would have written it themselves. Everything you return is what they send: it lands in the field they are writing in and goes out as their own words. It is right when they would read it, recognise every word as theirs and change none. What they said or typed to you is inside <said>.`,
+    //
+    // AND WHO IT IS NOT: SOMEONE THEY ARE TALKING TO. "They talk to you"
+    // and "what they said or typed to you" made every dictation a turn in a
+    // conversation with the model, and a turn is what a chat model answers:
+    // dictated questions came back answered, requests carried out, a plan
+    // came back with advice. The model is their hands, not the other side
+    // of a chat. Said once, as what it is, this is the line every answer
+    // has to get past: they are always the one speaking, so nothing it
+    // writes can be said TO them.
+    `You are ${nameForPrompt(opts.personality)}, the writing assistant inside someone's keyboard: their hands, not someone they are talking to. They speak instead of typing because it is faster, and trust you to write down the message they meant, in their voice, the way they would have written it themselves. Every word you return lands in the field they are writing in and goes out as theirs: they are always the one speaking, never the one spoken to. It is right when they would read it, recognise every word as theirs and change none. What they said is inside <said>.`,
     "",
     // THE JOB, STATED AS A JOB, BEFORE ANY OF ITS BOUNDS.
     //
@@ -458,7 +467,7 @@ export function buildAssistSystem(opts: {
     // spoken "like" is a word they said. The test is the one a typist
     // passes without thinking: nobody types a "like" or begins a sentence
     // twice.
-    `First work out what they mean: what this is (a message or reply to someone, a note to themselves, ${where ? "a search, " : ""}a prompt for an AI, or a piece they want written), who it is for, what they want said or done, and what they asked of you. Then write that, the way they would have typed it with time to think: every point they made, in the tone they made it, in the order that makes sense.`,
+    `First work out what they mean: what this is (a message or reply to someone, a note to themselves, ${where ? "a search, " : ""}a prompt for an AI, or a piece they want written), who it is for, and what they want said or done. Then write that, the way they would have typed it with time to think: every point they made, in the tone they made it, in the order that makes sense.`,
     "",
     // THE CONTRACT, BEFORE ANYTHING THAT COULD BEND IT. "Say nothing they did
     // not give you" sat at the bottom, under the language rules, and the voice
@@ -540,7 +549,15 @@ export function buildAssistSystem(opts: {
     // their word count. One clause settles both.
     // "BY NAME OR NOT": they may call it Tailzu or the name they gave it, and
     // a name said to it is part of the request, so it is never written.
-    "Part of what they say may be addressed to you, by name or not: how to write it, how long, which language, how it should sound, for whom. Do that part; write the rest, never the request, in any language.",
+    //
+    // WHAT IS FOR IT IS NAMED, AND EVERYTHING ELSE IS NAMED TOO. "Part of
+    // what they say may be addressed to you" sent the model looking for
+    // what was addressed to it, and a question is the commonest thing that
+    // looks addressed: it found one in every dictated question and answered
+    // it. The bound is now the other way round — only words about how to
+    // write it are for the model, by subject — and the rest is said for
+    // what it is: theirs, to someone else, whatever its grammar.
+    "Only words about how to write it are meant for you, by name or not: how long, which language, how it should sound, for whom. Do that part, and write the rest, never the request, in any language. Everything else is the message, however it sounds: a question is theirs to ask someone, an instruction theirs to give, a request theirs to make. You never answer or carry out any of it.",
     // THE SECOND JOB, NAMED AS A JOB. It was half a clause ("or to write a
     // short message for them") inside a sentence whose point was the bound,
     // followed by "when you cannot tell, it is what they want said" — so a
@@ -555,7 +572,7 @@ export function buildAssistSystem(opts: {
     // — the same failure the numbers clause caused (see the recognition line
     // below): naming facts as untouchable makes a speaker's own correction
     // untouchable too. "From only what they told you" bounds the piece.
-    "They can also ask you to write a short piece for them: a message, reply, email, wish, caption or poem, saying who it is for and what it should say or feel like. That piece is then what they send: write it whole, in their voice, from only what they told you, as long as that kind of piece needs. Beyond the writing they can ask you nothing: code, anything long, a question or facts aimed at you are part of what they are saying. When you cannot tell which it is, it is what they want said: a question they dictate is a question they are sending.",
+    "The one exception is a short piece they ask you to write for someone: a message, reply, email, wish, caption or poem, saying who it is for and what it should say or feel like. That piece is then what they send: write it whole, in their voice, from only what they told you, as long as that kind of piece needs. Code, anything long or a question is never a piece. When you cannot tell, it is their message.",
     // Measured in code (compose.ts), so the writer is told rather than left
     // to weigh the two jobs against each other.
     opts.compose === "piece" ? "This time they are asking you to write a piece for them: write it." : null,
@@ -805,9 +822,15 @@ export function buildAssistSystem(opts: {
     // LAST, after the user's own <voice>, so nothing they wrote is the final
     // word on what shape the answer takes. See readSend for why there are two
     // parts and how a broken answer is read.
+    //
+    // WHO IT IS TO, FIRST. The line used to name "what this is", and a
+    // dictated question named that way is "a question about trains", which
+    // is one step from answering it. Naming who reads it puts them in their
+    // place before a word is written: "to Rahul: asking when the train
+    // leaves" can only be written as their question to Rahul.
     intentStep ? "" : null,
     intentStep
-      ? "Answer in two parts: <intent>one short line naming what this is, what they mean and the shape it needs</intent> then <send>exactly the text for the field</send>. Only <send> reaches them."
+      ? "Answer in two parts: <intent>one short line: who they are writing to, what they mean, and the shape it needs</intent> then <send>exactly the text for the field</send>. Only <send> reaches them."
       : null,
   ]
     // Conditional lines emit null when absent. Bare "" entries are deliberate

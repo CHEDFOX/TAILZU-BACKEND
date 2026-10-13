@@ -86,7 +86,7 @@ describe("assist prompt — reconciliation block", () => {
     // Reconciliation is a pre-step. Placed after the writing contract it reads
     // as an afterthought about output rather than a decision about input.
     const s = withAlt();
-    expect(s.indexOf("two candidates")).toBeLessThan(s.indexOf("Part of what they say"));
+    expect(s.indexOf("two candidates")).toBeLessThan(s.indexOf("Only words about how to write it"));
   });
 
   it("never leaks the mechanism into the user's text", () => {
@@ -97,7 +97,7 @@ describe("assist prompt — reconciliation block", () => {
     // Fusion is a pre-step, not a replacement — the separation principle and
     // the observed script must survive it.
     const s = buildAssistSystem({ hasContext: false, hasAlternative: true, script: "latin" });
-    expect(s).toMatch(/When you cannot tell which it is, it is what they want said/i);
+    expect(s).toMatch(/When you cannot tell, it is their message/i);
     expect(s).toContain("arrived in latin script");
   });
 });

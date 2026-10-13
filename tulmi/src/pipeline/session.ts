@@ -70,6 +70,27 @@ function clock(ms: number, tzOffsetMinutes: number): string {
 }
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+/**
+ * WHAT WENT OUT RIDES ONLY WHEN IT WAS THEIRS. Each line here is shown to the
+ * writer as what they said and what was written for it, which is exactly the
+ * shape of an example to follow. When the writer once answered a dictated
+ * question instead of writing it, that answer sat here as the example for
+ * every dictation of the next half hour, and one slip became a habit. What
+ * they SAID is always theirs and always goes; what was written goes only
+ * when most of its words are theirs — a written-up message is, an answer or
+ * a piece they asked for is not, and neither is needed to know who "him" is.
+ */
+const WORD = /[\p{L}\p{N}]{4,}/gu;
+export function keptTheirWords(said: string, wrote: string): boolean {
+  // Nothing to compare against, or said in another alphabet and written in
+  // English letters as it should be: no word could match, so it stays.
+  if (!said.trim() || !/\p{Script=Latin}/u.test(said)) return true;
+  const theirs = new Set((said.toLowerCase().match(WORD) ?? []).map((w) => w.slice(0, 4)));
+  const words = (wrote.toLowerCase().match(WORD) ?? []).map((w) => w.slice(0, 4));
+  if (!words.length) return true;
+  return words.filter((w) => theirs.has(w)).length / words.length >= 0.5;
+}
+
 /** One app name, as a label: a client-named app or field, kept short and on one line. */
 const appLabel = (app?: string) => (app ?? "").replace(/[\r\n<>]+/g, " ").trim().slice(0, 40);
 
@@ -92,7 +113,8 @@ export function earlierBlock(
       const ago = mins < 1 ? "just now" : `${mins} min ago`;
       const when = tz === undefined ? ago : `${ago} (${clock(at, tz)})`;
       const app = appLabel(r.app);
-      return `${when}${app ? `, in ${app}` : ""}\nsaid: ${clip(r.said)}\nwrote: ${clip(r.wrote)}`;
+      const wrote = keptTheirWords(r.said, r.wrote) ? `\nwrote: ${clip(r.wrote)}` : "";
+      return `${when}${app ? `, in ${app}` : ""}\nsaid: ${clip(r.said)}${wrote}`;
     });
   if (!items.length) return "";
   const today = tz === undefined ? "" : `Now: ${DAYS[new Date(now + tz * 60_000).getUTCDay()]}, ${clock(now, tz)}.\n\n`;

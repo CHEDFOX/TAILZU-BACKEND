@@ -40,7 +40,7 @@ vi.mock("openai", () => ({
 const { composeAsk, mentionsAPiece, promptsAnAi } = await import("../src/pipeline/compose.js");
 const { splitInstruction } = await import("../src/pipeline/commands.js");
 const { assist, slipIn, PIECE_WORDS } = await import("../src/pipeline/cleanup.js");
-const { earlierBlock, recentDictations, SESSION_WINDOW_MS } = await import("../src/pipeline/session.js");
+const { earlierBlock, keptTheirWords, recentDictations, SESSION_WINDOW_MS } = await import("../src/pipeline/session.js");
 const { appendHistoryEntry } = await import("../src/history/store.js");
 
 beforeEach(() => { llm.answers = []; llm.calls = []; });
@@ -206,6 +206,22 @@ describe("the session: the last few minutes ride along", () => {
     const recent = [{ at: at(1), app: "Desktop", said: "first part", wrote: "First part of it." }];
     expect(earlierBlock(recent, { now, context: "First part of it." })).toBe("");
     expect(earlierBlock([], { now })).toBe("");
+  });
+
+  it("carries what was written only when it kept their words, so one answer never becomes the example", () => {
+    // Written up from what they said: their words, so it rides.
+    expect(keptTheirWords("haan so the deck is done sending it to priya now", "The deck is done, sending it to Priya now.")).toBe(true);
+    // An answer to what they asked: none of it theirs, so only what they said goes.
+    expect(keptTheirWords("whats the fastest way to get to the airport from andheri", "Take the metro to Ghatkopar, then a cab; about forty minutes.")).toBe(false);
+    const block = earlierBlock([
+      { at: at(5), app: "WhatsApp", said: "whats the fastest way to get to the airport from andheri", wrote: "Take the metro to Ghatkopar, then a cab; about forty minutes." },
+      { at: at(2), app: "WhatsApp", said: "deck is done sending it to priya now", wrote: "The deck is done, sending it to Priya now." },
+    ], { now });
+    expect(block).toContain("said: whats the fastest way to get to the airport from andheri");
+    expect(block).not.toContain("Ghatkopar");
+    expect(block).toContain("wrote: The deck is done, sending it to Priya now.");
+    // Said in another alphabet and written in English letters: nothing to compare, so it stays.
+    expect(keptTheirWords("मैं कल आऊंगा", "Main kal aaunga.")).toBe(true);
   });
 
   it("cannot be closed early by what they said", () => {
