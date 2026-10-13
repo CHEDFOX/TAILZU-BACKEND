@@ -137,6 +137,7 @@ export function payHtml(opts: {
   const config = JSON.stringify({ key }).replace(/</g, "\\u003c");
 
   return siteShell({
+    pixel: false,
     title: "Subscribe",
     noindex: true,
     css: CSS,

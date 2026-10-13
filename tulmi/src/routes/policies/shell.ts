@@ -109,6 +109,10 @@ export function siteShell(o: {
    *  a policy that names one (the pay page). */
   nonce?: string;
   noindex?: boolean;
+  /** Load the site's Meta pixel (/site-events.js, src/ads/meta.ts). Every
+   *  page does but the pay page: no third party's script runs beside a
+   *  checkout, and the server reports what is bought there. */
+  pixel?: boolean;
 }): string {
   const here = (href: string) => o.path === href || (o.path ?? "").startsWith(`${href}/`);
   const nav = NAV.map(([href, label]) =>
@@ -130,7 +134,7 @@ ${headTags({
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,300..500&family=Instrument+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400${o.fonts ? `&${o.fonts}` : ""}&display=swap">
 <style>${CSS}${o.css ?? ""}</style>
-</head>
+${o.pixel === false ? "" : `<script src="/site-events.js" async></script>\n`}</head>
 <body>
 <header class="mast"><div class="wrap"><a class="mark" href="/" aria-label="Tailzu">${MARK}</a></div></header>
 <main><div class="wrap">

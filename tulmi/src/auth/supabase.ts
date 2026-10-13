@@ -52,6 +52,9 @@ export interface AuthedUser {
   phone?: string;
   /** The raw Supabase JWT, used to build a RLS-scoped data client. */
   token?: string;
+  /** When the account was made (ISO), as Supabase has it. Absent for a
+   *  static token, which is no one's sign-up. */
+  createdAt?: string;
 }
 
 /**
@@ -118,6 +121,7 @@ export async function resolveUser(
     email: data.user.email ?? undefined,
     phone: data.user.phone ?? undefined,
     token,
+    createdAt: data.user.created_at ?? undefined,
   };
 }
 
