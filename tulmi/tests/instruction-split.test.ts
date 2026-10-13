@@ -117,7 +117,7 @@ describe("the writer never sees the request", () => {
 describe("the principle, stated once", () => {
   it("says the request is done, never written, in any language", () => {
     const t = buildAssistSystem({ hasContext: false });
-    expect(t).toMatch(/Do that part; write the rest, never the request, in any language/);
+    expect(t).toMatch(/Do that part, and write the rest, never the request, in any language/);
     // Among what speech adds and the writer leaves out, by its cause.
     expect(t).toMatch(/anything said only because it was spoken is not/);
     expect(t).toMatch(/would they have typed it to say this\?/);

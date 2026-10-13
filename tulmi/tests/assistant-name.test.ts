@@ -87,7 +87,7 @@ describe("a name of their own", () => {
   it("the writer knows both names, and that a name said to it is part of the request", () => {
     const p = buildAssistSystem({ hasContext: false, personality: { assistantName: "Zara" } as never });
     expect(p).toMatch(/^You are Tailzu \(they also call you Zara\), the writing assistant/);
-    expect(p).toMatch(/Part of what they say may be addressed to you, by name or not/);
+    expect(p).toMatch(/Only words about how to write it are meant for you, by name or not/);
     expect(buildAssistSystem({ hasContext: false })).toMatch(/^You are Tailzu, the writing assistant/);
   });
 });

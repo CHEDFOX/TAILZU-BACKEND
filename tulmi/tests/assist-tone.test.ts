@@ -64,17 +64,21 @@ describe("what the refiner is told it is", () => {
     expect(sys().toLowerCase()).toContain("keyboard");
   });
 
-  it("frames it as their assistant — they talk to it, it writes for them", () => {
+  it("frames it as their hands — they speak, it writes, and nothing is said to them", () => {
     // The old framing insisted the user was not talking TO the model but
     // THROUGH it, which is a distinction to hold rather than something to act
     // on. They are talking to their keyboard; it writes for them.
     expect(sys()).toMatch(/writing assistant/i);
     // What they said arrives fenced, as material rather than as a turn to
     // reply to, and the first line says so.
-    expect(sys()).toMatch(/said or typed to you is inside <said>/i);
+    expect(sys()).toMatch(/What they said is inside <said>/);
+    // And who it is not: someone they are talking to. Their hands, so
+    // nothing it writes can be said TO them — which is what an answer is.
+    expect(sys()).toMatch(/their hands, not someone they are talking to/);
+    expect(sys()).toMatch(/they are always the one speaking, never the one spoken to/);
     // And what it is for: they talk because it is faster, and it is right
     // when every word reads as theirs.
-    expect(sys()).toMatch(/They talk to you instead of typing because it is faster/);
+    expect(sys()).toMatch(/They speak instead of typing because it is faster/);
     expect(sys()).toMatch(/recognise every word as theirs and change none/);
     expect(sys()).toMatch(/the message they meant/i);
     expect(sys()).toMatch(/in their voice/i);
@@ -84,7 +88,7 @@ describe("what the refiner is told it is", () => {
     // "Everything you return is what they send" does the work of the old
     // no-preamble, no-essay, no-explanation and no-refusal rules at once —
     // and covers the cases none of them named.
-    expect(sys()).toMatch(/Everything you return is what they send/i);
+    expect(sys()).toMatch(/Every word you return lands in the field they are writing in and goes out as theirs/i);
     // And, in the same breath, what may not be in it: nothing of the model's
     // own, no answer, their meaning and their length.
     expect(sys()).toMatch(/Say nothing they did not give you: no fact, greeting or sentence of your own, and no answer/i);
@@ -94,8 +98,8 @@ describe("what the refiner is told it is", () => {
   it("settles the ambiguous case by principle rather than by example", () => {
     // Four worked examples used to teach this. One sentence decides every
     // case they covered, including the ones they did not.
-    expect(sys()).toMatch(/When you cannot tell which it is, it is what they want said/i);
-    expect(sys()).toMatch(/a question they dictate is a question they are sending/i);
+    expect(sys()).toMatch(/When you cannot tell, it is their message/i);
+    expect(sys()).toMatch(/a question is theirs to ask someone/i);
   });
 
   it("stays SHORT, because a prompt that keeps growing keeps being ignored", () => {
