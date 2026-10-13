@@ -53,8 +53,11 @@ import { applyRevenueCatEvent, getEntitlement, isEntitled } from "./billing/enti
 import {
   RazorpayError, cancelForUser, checkoutSignatureOk, createSubscription, fetchPlan, fetchSubscription,
   formatPeriod, formatPrice, ownerOf, payCaller as payLinkCaller, payLink, planFor, razorpayReady, SUB_ID,
-  syncSubscription, webhookSignatureOk, type Market, type Period, type RzPlan,
+  syncSubscription, testMode as razorpayTestMode, webhookSignatureOk, type Market, type Period, type RzPlan,
 } from "./billing/razorpay.js";
+import {
+  isDesktopAgent, reportMilestones, reportSubscribe, siteEvent, siteEventsScript, userAgentOf,
+} from "./ads/meta.js";
 import { runPipeline } from "./pipeline/index.js";
 import { recentDictations } from "./pipeline/session.js";
 import { joinWithSpace } from "./pipeline/join.js";
@@ -695,6 +698,7 @@ app.post("/v1/pay/razorpay/verify", PAY_RL, async (req, reply) => {
     if (ownerOf(sub) !== userId) return reply.code(403).send({ ok: false, code: "not_yours" });
     const res = await syncSubscription(sub, "checkout");
     req.log.info({ rz: res }, "[billing] razorpay checkout");
+    if (res.ok && res.entitledUntil && res.entitledUntil > Date.now()) void subscribedToMeta(sub, userId, req);
     return reply.code(res.ok ? 200 : 500).send({ ok: res.ok, entitled: !!res.entitledUntil && res.entitledUntil > Date.now() });
   } catch (err) {
     req.log.error({ detail: (err as Error).message }, "pay: razorpay verify failed");
@@ -755,6 +759,22 @@ app.get("/download", async (_req, reply) => {
 // sitemap and llms.txt. Served through the site's proxy, canonical at
 // tailzu.space, built from seo/facts.ts like every other page's facts.
 registerSeoRoutes(app);
+
+// META: the pixel every page of the site loads (tailzu.space/site-events.js,
+// through the site's proxy), and the server's copy of what it reports
+// (src/ads/meta.ts). The script is empty while there is no dataset id, so
+// the pages can carry its tag before Meta is set up.
+app.get("/site-events.js", async (_req, reply) => {
+  reply.type("application/javascript; charset=utf-8");
+  reply.header("Cache-Control", "public, max-age=300");
+  return siteEventsScript();
+});
+app.post("/v1/site/event", { config: { rateLimit: { max: 30, timeWindow: 60_000 } } }, async (req, reply) => {
+  // A beacon: the page is already on its way to the store or the installer,
+  // and nothing waits for this answer.
+  siteEvent(req, req.body);
+  return reply.code(204).send();
+});
 
 // The landing page at /, its copy at /v1/site, and the live demo — a visitor's
 // own voice written clean, no account. See routes/demo.ts for why the demo is
@@ -1067,12 +1087,23 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       result.usage.audioSeconds,
     );
     learnFromUsage(user, personality);
+    desktopDictated(req, user, personality);
     return reply.send(result);
   } catch (err) {
     req.log.error(err);
     return reply.code(500).send({ code: "internal", message: "Pipeline failed" });
   }
 });
+
+/**
+ * A desktop's first dictation is a milestone for Meta (src/ads/meta.ts),
+ * reported the moment it happens rather than at the next launch, which on a
+ * desktop can be days away. Every later dictation costs one property read.
+ */
+function desktopDictated(req: FastifyRequest, user: AuthedUser, personality: Personality): void {
+  if (personality.adsReported?.firstDictation || !isDesktopAgent(userAgentOf(req))) return;
+  void reportMilestones({ req, user, personality, desktop: true, wordsEver: 1 });
+}
 
 // --- Typing (REST): refine typed text ---------------------------------------
 //
@@ -1156,6 +1187,7 @@ const refineRoute = (routeTone?: string) =>
         context: body.context,
       });
       learnFromUsage(user, personality);
+      desktopDictated(req, user, personality);
       // The same join hint /v1/transcribe-clean gives: the live path pastes
       // this after what the field already holds (`context`).
       const res: RefineResponse = { refinedText, usage, joinWithSpace: joinWithSpace(body.context, refinedText) };
@@ -1755,7 +1787,10 @@ app.put("/v1/personality", { config: AUTHED_RL }, async (req, reply) => {
     // { activePresetId } doesn't blow away the user's vocabulary, sign-off,
     // and pinned list. Under the per-user lock (updatePersonality) so this
     // shallow-merge can't clobber a concurrent tone / vocab / pin write.
-    const merged = await updatePersonality(user, (existing) => ({ ...existing, ...personality }));
+    // What has been reported to Meta is the server's record, not a setting:
+    // a client that sends it back (or sends it empty) changes nothing.
+    const { adsReported: _serverOwned, ...theirs } = personality;
+    const merged = await updatePersonality(user, (existing) => ({ ...existing, ...theirs }));
     const res: PersonalityResponse = { personality: merged };
     return reply.send(res);
   } catch (err) {
@@ -1996,6 +2031,23 @@ app.post("/v1/billing/revenuecat", { config: { rateLimit: { max: 600, timeWindow
 });
 
 /**
+ * A subscription's first payment, to Meta as Subscribe with its price.
+ * Not for Razorpay's test keys, unless Meta is in its own test mode too:
+ * a test payment is not a subscriber, and would teach the ads one.
+ */
+async function subscribedToMeta(sub: { id: string; plan_id?: string }, userId: string, req?: FastifyRequest): Promise<void> {
+  if (razorpayTestMode() && !cfg.META_TEST_EVENT_CODE) return;
+  const plan = sub.plan_id ? await fetchPlan(sub.plan_id).catch(() => null) : null;
+  reportSubscribe({
+    subscriptionId: sub.id,
+    userId,
+    value: plan ? plan.item.amount / 100 : undefined,
+    currency: plan?.item.currency,
+    req,
+  });
+}
+
+/**
  * Razorpay's webhook: every renewal, failed charge, pause and cancellation.
  *
  * No user auth — Razorpay is the caller — and authenticated instead by
@@ -2028,8 +2080,13 @@ app.post("/v1/billing/razorpay", { config: { rateLimit: { max: 600, timeWindow: 
   const subId = String(body.payload?.subscription?.entity?.id ?? body.payload?.payment?.entity?.subscription_id ?? "");
   if (!SUB_ID.test(subId)) return reply.send({ ok: true, reason: `ignored ${event}` });
   try {
-    const res = await syncSubscription(await fetchSubscription(subId), event);
+    const sub = await fetchSubscription(subId);
+    const res = await syncSubscription(sub, event);
     req.log.info({ rz: res, event }, "[billing] razorpay event");
+    // Its first charge, when the buyer's browser did not report it already.
+    if (res.ok && res.userId && event === "subscription.charged" && sub.paid_count === 1) {
+      void subscribedToMeta(sub, res.userId);
+    }
     return reply.code(res.ok ? 200 : 500).send(res);
   } catch (err) {
     // Razorpay's own words go back with the 500: "The id provided does not
@@ -2299,6 +2356,21 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   // "onboarding.hero.png"); each entry has { url, contentType, size,
   // uploadedAt }. Missing key → clients fall back to bundled default.
   (bootstrap as unknown as { media?: Record<string, unknown> }).media = getMediaRegistry();
+  // META: what a new account has reached since it was made, once each
+  // (src/ads/meta.ts): signed up, switched the keyboard on, dictated. A
+  // desktop reports it from here; a phone is handed it to log through Meta's
+  // SDK, which ties it to the install and the ad behind it. Not a reviewer's.
+  if (user && !isReviewer) {
+    const metaEvents = await reportMilestones({
+      req,
+      user,
+      personality,
+      desktop: isDesktop,
+      keyboardOn: keyboardReady || reqBody.capabilities?.device?.keyboardEnabled === true,
+      wordsEver: usage?.total?.words ?? 0,
+    });
+    if (metaEvents.length) (bootstrap as unknown as { metaEvents?: unknown }).metaEvents = metaEvents;
+  }
   const controlled = withControl(req, reply, bootstrap, {
     surface: "bootstrap",
     platform: isDesktop ? "desktop" : platformOf(reqBody.capabilities?.platform),

@@ -10,13 +10,13 @@
  */
 import { siteShell } from "./shell.js";
 import { crumbsLd, pageLd } from "../../seo/head.js";
-export const PRIVACY_POLICY_EFFECTIVE = "July 7, 2026";
+export const PRIVACY_POLICY_EFFECTIVE = "October 13, 2026";
 
 const PRIVACY_POLICY_BODY = `
 <h1>Privacy Policy</h1>
 <p class="effective">Effective: ${PRIVACY_POLICY_EFFECTIVE}</p>
 
-<p>Tailzu (also referred to as "we", "our", "us") builds a voice-and-text keyboard that transcribes your speech, refines your writing, and helps you communicate. This Privacy Policy explains what personal information we collect through the Tailzu iOS and Android apps and keyboard extension, how we use it, and the choices you have.</p>
+<p>Tailzu (also referred to as "we", "our", "us") builds a voice-and-text keyboard that transcribes your speech, refines your writing, and helps you communicate. This Privacy Policy explains what personal information we collect through the Tailzu iOS, Android and desktop apps, the keyboard extension and our website (tailzu.space), how we use it, and the choices you have.</p>
 
 <p>By using Tailzu, you agree to this Privacy Policy. If you do not agree, please do not use the app.</p>
 
@@ -47,7 +47,7 @@ const PRIVACY_POLICY_BODY = `
 <ul>
   <li><strong>Device model, OS version, app version, language, timezone</strong></li>
   <li><strong>Push notification tokens</strong> (via Apple Push Notification service / Firebase Cloud Messaging) — used to deliver notifications you have opted into</li>
-  <li><strong>Advertising identifier (IDFA on iOS)</strong> — accessed only if you tap "Allow" on the App Tracking Transparency prompt. Never collected without your explicit opt-in.</li>
+  <li><strong>Advertising identifier</strong> — on Android, the device's advertising ID is read by Meta's SDK to tell whether an install came from one of our ads (see 1.7). You can reset or delete it in Android's settings. On iPhone, Tailzu never asks for or reads the advertising identifier (IDFA), and shows no tracking prompt.</li>
   <li><strong>Crash reports and error logs</strong> (via Sentry, only if enabled) — used to diagnose and fix bugs</li>
   <li><strong>Usage events</strong> (via PostHog, only if enabled) — anonymous aggregate metrics about which features are used, to guide product improvements</li>
 </ul>
@@ -70,14 +70,23 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>Speech recognition</strong> — on-device recognition; audio processed locally by iOS.</li>
 </ul>
 
-<h3>1.6 Non-collection notice</h3>
+<h3>1.6 Advertising measurement (Meta)</h3>
+<p>We advertise on Facebook and Instagram, and we tell Meta when someone gets and starts using Tailzu, so we can see which ads work and show them to people likely to find Tailzu useful. What Meta receives:</p>
+<ul>
+  <li><strong>On our website</strong> (Meta's pixel): the pages you visit on tailzu.space, and a click on a download or app-store link, with your IP address, browser, and Meta's cookies (_fbp, _fbc). The pixel does not load if your browser sends Global Privacy Control or Do Not Track, or if your device's clock is set to a European time zone. It never loads on the payment page.</li>
+  <li><strong>From the phone apps</strong> (Meta's SDK): that the app was installed and opened, and three milestones — that you created an account, switched the keyboard on, and made your first dictation.</li>
+  <li><strong>From our servers</strong> (Meta's Conversions API): for the desktop app, that you created an account and made your first dictation; for any subscription bought on tailzu.space, that it started and its price. These carry your email address and phone number only as one-way SHA-256 hashes, and your account ID hashed the same way, which is how Meta matches them to someone its ads reached.</li>
+</ul>
+<p>Each milestone is reported once, and only for accounts in their first week. <strong>Meta never receives anything you say, type or dictate</strong>, nor your history, settings or vocabulary. You can control how Meta uses this in your Facebook or Instagram ad settings, and you can ask us to stop reporting your account at <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a>.</p>
+
+<h3>1.7 Non-collection notice</h3>
 <ul>
   <li>We do NOT collect your typing outside of when you actively invoke the mic or refine actions.</li>
   <li>The keyboard extension respects Apple's and Google's sandboxing — we do not read passwords, PINs, or content from secure text fields.</li>
   <li>We do not sell personal information to third parties.</li>
   <li>We do not share your content with third parties for their independent marketing.</li>
   <li>We do not use your data to train third-party AI models.</li>
-  <li><strong>CCPA notice:</strong> in the preceding 12 months we have NOT sold or shared any category of personal information for value.</li>
+  <li><strong>CCPA notice:</strong> we do not sell personal information. The advertising measurement in 1.6 may count as "sharing" for cross-context behavioural advertising under California law; we honour Global Privacy Control as an opt-out of it on our website, and you can opt out for your account by emailing us.</li>
 </ul>
 
 <hr>
@@ -88,6 +97,7 @@ const PRIVACY_POLICY_BODY = `
   <li>To authenticate your account and secure your data</li>
   <li>To process subscriptions and manage entitlements</li>
   <li>To improve the app through anonymous, aggregated usage analytics</li>
+  <li>To measure and improve our advertising on Facebook and Instagram (see 1.6)</li>
   <li>To diagnose and fix crashes and bugs</li>
   <li>To comply with legal obligations</li>
 </ul>
@@ -121,6 +131,11 @@ const PRIVACY_POLICY_BODY = `
 <ul>
   <li><strong>RevenueCat</strong> (revenuecat.com/privacy) — manages subscriptions.</li>
   <li><strong>Apple App Store / Google Play</strong> — process the actual payment.</li>
+</ul>
+
+<h3>Advertising measurement</h3>
+<ul>
+  <li><strong>Meta Platforms</strong> (facebook.com/privacy/policy) — measures our Facebook and Instagram ads, from the events described in 1.6.</li>
 </ul>
 
 <h3>Diagnostics (optional)</h3>

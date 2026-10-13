@@ -309,6 +309,7 @@ export const APP_KNOB_LABELS: Record<string, string> = {
 };
 
 export const APP_KNOB_FLAGS: Record<string, unknown> = {
+  "ads.meta.enabled": true,
   "analytics.enabled": true,
   "analytics.posthogHost": "https://us.i.posthog.com",
   "app.boot.breadcrumbMs": 6000,
