@@ -439,6 +439,29 @@ const EnvSchema = z.object({
   RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
   RAZORPAY_PLANS: z.string().default(""),
   /**
+   * META (Facebook/Instagram ads): the dataset the site's pixel and this
+   * server's Conversions API both report to (src/ads/meta.ts).
+   *
+   *   META_PIXEL_ID          the dataset's id (Events Manager → the dataset →
+   *                          Settings). Public: it is in every page's pixel.
+   *                          Empty = no pixel on the site, nothing sent.
+   *   META_CAPI_TOKEN        Conversions API access token (same Settings tab →
+   *                          Conversions API → Generate access token).
+   *                          SECRET: .env only. Empty = the pixel alone.
+   *   META_TEST_EVENT_CODE   Events Manager → Test events, while checking
+   *                          that events arrive. Remove once they do: events
+   *                          sent with it are test events, not conversions.
+   *   META_GRAPH_VERSION     the Graph API version the events go to.
+   *   META_SKIP_EUROPE       the site loads no pixel for a visitor whose clock
+   *                          is in Europe: there is no consent banner, and
+   *                          there the pixel needs one.
+   */
+  META_PIXEL_ID: z.string().regex(/^\d*$/, "META_PIXEL_ID is the dataset's number").default(""),
+  META_CAPI_TOKEN: z.string().default(""),
+  META_TEST_EVENT_CODE: z.string().default(""),
+  META_GRAPH_VERSION: z.string().regex(/^v\d+\.\d+$/).default("v26.0"),
+  META_SKIP_EUROPE: bool(true),
+  /**
    * THE LANDING PAGE'S LIVE DEMO. Off by default, on purpose.
    *
    * tailzu.space lets a visitor press a mic, talk for a few seconds, and see

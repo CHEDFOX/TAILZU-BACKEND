@@ -161,6 +161,17 @@ export interface Personality {
    */
   shellSeenAt?: string;
 
+  /**
+   * Which of this account's milestones have been reported to Meta (src/ads/
+   * meta.ts), each with when: so each is reported once, ever. Server-owned:
+   * a client's save never writes it (PUT /v1/personality drops it).
+   */
+  adsReported?: {
+    registration?: string;
+    keyboard?: string;
+    firstDictation?: string;
+  };
+
   stylePortrait?: {
     /** The prose summary. Still the thing every refine reads first. */
     core?: string;
