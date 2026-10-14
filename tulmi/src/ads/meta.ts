@@ -5,9 +5,10 @@
  * to be told when it worked. One dataset (META_PIXEL_ID) hears it three ways:
  *
  *   the site's pixel       PageView, ViewContent and Lead, from the browser
- *                          (/site-events.js, siteEventsScript below)
- *   this server            the same Lead again, so a blocked pixel still
- *                          counts, and what only the server sees: a desktop
+ *                          (/site-events.js, served by Vercel on tailzu.space
+ *                          with the id from Vercel's settings; siteEventsScript
+ *                          below is this server's copy)
+ *   this server            what only the server sees: a desktop
  *                          account made, its first dictation, a subscription
  *                          paid for (Conversions API, sendMetaEvent)
  *   the phone apps         install and open on their own, and the account's
@@ -406,10 +407,11 @@ export function siteEvent(req: FastifyRequest, body: unknown): boolean {
 }
 
 /**
- * The pixel, as the site loads it (/site-events.js). Served from here so the
- * dataset id lives in one place (.env), and so a page this server renders
- * (/download, /pricing, /faq…) and the landing page on Vercel load the same
- * file. Empty when there is no dataset: the pages carry the tag either way.
+ * The pixel, as a page loads it (/site-events.js). On tailzu.space, every page,
+ * this server's included, gets it from Vercel instead (tailzu-web,
+ * api/_meta.js), with the dataset id from Vercel's settings; this copy serves
+ * api.tailzu.space and must stay the same script: change one, change both.
+ * Empty when there is no dataset: the pages carry the tag either way.
  *
  * HELD BACK, with no banner to ask: for a visitor whose browser says not to
  * track (Global Privacy Control, Do Not Track), and — META_SKIP_EUROPE — for
