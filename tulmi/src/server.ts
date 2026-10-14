@@ -769,10 +769,11 @@ app.get("/download", async (_req, reply) => {
 // tailzu.space, built from seo/facts.ts like every other page's facts.
 registerSeoRoutes(app);
 
-// META: the pixel every page of the site loads (tailzu.space/site-events.js,
-// through the site's proxy), and the server's copy of what it reports
-// (src/ads/meta.ts). The script is empty while there is no dataset id, so
-// the pages can carry its tag before Meta is set up.
+// META: the pixel and the server's copy of what it reports (src/ads/meta.ts),
+// for pages opened on api.tailzu.space. On tailzu.space Vercel answers both
+// itself (tailzu-web/api), with the dataset id from Vercel's settings. The
+// script is empty while there is no dataset id, so the pages can carry its
+// tag before Meta is set up.
 app.get("/site-events.js", async (_req, reply) => {
   reply.type("application/javascript; charset=utf-8");
   reply.header("Cache-Control", "public, max-age=300");
