@@ -49,7 +49,7 @@ token is accepted and mapped to a dev user.
 | Mode    | Endpoint | In → Out |
 |---------|----------|----------|
 | Voice (one-shot) | `POST /v1/transcribe-clean` | multipart `audio` + `targetApp?`, `language?`, `personality?` → `{ cleanedText, transcript, usage }` |
-| Voice (live) | `WS /v1/stream` | `start` frame → binary audio → `end`; receive `ready` → `transcript` → `cleaned_delta`* → `done` |
+| Voice (live) | `WS /v1/transcribe-stream` | `start` frame (token) → 16 kHz PCM frames → `stop`; receive `ready` → `partial`* / `final`* → `done` (see STREAMING.md) |
 | Typing | `POST /v1/refine` | `{ text, targetApp?, language?, personality? }` → `{ refinedText, usage }` |
 | Screen | `POST /v1/draft` | `{ screenContent, intent, recipient?, targetApp?, language?, personality? }` → `{ draftText, usage }` |
 | Voice out | `POST /v1/speak` | `{ text, voice?, format?, instructions? }` → **binary audio** (TTS) |

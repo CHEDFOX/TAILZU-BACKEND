@@ -3,7 +3,7 @@
  * features like the screen-bubble reading content aloud, or reading a draft
  * back to the user.
  *
- * Provider: OpenAI gpt-4o-mini-tts — multilingual, cheap, and *steerable*
+ * Provider: OpenAI's OPENAI_TTS_MODEL — multilingual, cheap, and *steerable*
  * (the `instructions` field lets the user's personality shape how it speaks).
  */
 import OpenAI from "openai";
@@ -11,7 +11,7 @@ import { getConfig } from "../config.js";
 
 let client: OpenAI | null = null;
 function openai(): OpenAI {
-  if (!client) client = new OpenAI({ apiKey: getConfig().OPENAI_API_KEY });
+  if (!client) client = new OpenAI({ apiKey: getConfig().OPENAI_API_KEY, timeout: 30_000, maxRetries: 1 });
   return client;
 }
 
