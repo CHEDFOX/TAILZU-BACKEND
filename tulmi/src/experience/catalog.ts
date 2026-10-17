@@ -5419,6 +5419,13 @@ function neuralField(dim: number, growth: number, bind?: Record<string, string>,
  * a custom keyboard only where it has painted something (see the theme).
  */
 const KEYBOARD_GROUND = "#00000005";
+/**
+ * The same 2%, in white, for a light keyboard. Black there was a grey sheet:
+ * with the key plane's tint on top it darkened the whole key area by 9 levels
+ * against the strips iOS paints itself above and below it. White moves a
+ * light backdrop by half a level. Same alpha, so touches land the same.
+ */
+const LIGHT_KEYBOARD_GROUND = "#FFFFFF05";
 
 /**
  * THE CONVERSATION GETS THE MICROPHONE TO ITSELF.
@@ -13397,8 +13404,9 @@ export function buildKeyboardConfig(
       // system chrome). This is the "no sheet, keys on the base surface"
       // pattern — same as themeDark. Removed backgroundEffect so we don't
       // paint our own blur that would double-tint the light system chrome.
-      // Not quite clear, for the same reason as the dark one (see theme).
-      background: KEYBOARD_GROUND,
+      // Not quite clear, for the same reason as the dark one (see theme),
+      // and white, not black: see LIGHT_KEYBOARD_GROUND.
+      background: LIGHT_KEYBOARD_GROUND,
       key: LIGHT_KEY_FILL_LETTER,
       keyText: LIGHT_KEY_TEXT,
       accent: "#8E8E93",
@@ -14242,6 +14250,13 @@ export function buildKeyboardConfig(
         "kb.keyPlane.sheet": false,
         // The same on K42+, under its own key (the plane there is tinted too).
         "kb.keyPlane.redrawOnTouch": false,
+        // That tint, on the builds that read one colour for light and dark
+        // (newer ones read touchColorLight / touchColorDark, white and black).
+        // Their own default, 2% black, stacked on the ground and showed as a
+        // grey sheet on a light keyboard. 2% of a middle grey moves either
+        // backdrop by about one level, light or dark: no one sees it, and the
+        // alpha is the same, so the gaps still get their touches.
+        "kb.keyPlane.touchColor": "#8A8A8A05",
         // Accent long-press trays routed through the multi-touch plane (the
         // v1 plane dropped them; K4 restores them plane-side).
         "kb.keyPlane.accentTrays": true,
