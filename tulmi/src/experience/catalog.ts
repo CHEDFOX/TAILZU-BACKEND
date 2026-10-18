@@ -13042,16 +13042,17 @@ export function buildKeyboardConfig(
       // is initialized to "dark" in Swift, so the eq check handles the default
       // case; no need for a redundant `falsy` OR (which forced two evaluations
       // per remount for zero real benefit and added latency to every keystroke).
-      // Dark-mode tools row. Mic at rest = a dark malt brown, two shades up
-      // from the app's page (PHONE_LOOK.ground, #0F0D0B, which read as a hole
-      // in the keyboard), with the mark in malt, the colour the tab icons
-      // rest in (TAB_MALT). The keyboard's one solid key is a piece of the
-      // app, not a cream blank. Amber is only for what is live (the dictation
-      // dots while listening), never the resting key. Tone pill = solid dark
-      // gray with a 1pt subtle border for definition.
+      // Dark-mode tools row. Mic at rest = the brand's pale (TAB_PALE, the
+      // app's ink) as a solid key, with the mark in the app's ink-black
+      // (#1B1712): the light-mode key, inverted. On the dark keyboard it is
+      // the one bright key, so it reads as the keyboard's purpose at a
+      // glance, and the mark sits on it at full contrast. (A malt-brown key
+      // was tried and read as muddy.) Amber is only for what is live (the
+      // dictation dots while listening), never the resting key. Tone pill =
+      // solid dark gray with a 1pt subtle border for definition.
       makeToolsRow({
-        micBg: "#33291F",
-        micFg: TAB_MALT,
+        micBg: TAB_PALE,
+        micFg: "#1B1712",
         toneBg: "#2C2C2E",         // Apple systemGray5 dark — solid, no melt into blur
         toneFg: "#FFFFFF",
         toneBorderColor: "#FFFFFF29",  // 16% white — barely-there border for shape definition
