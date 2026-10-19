@@ -234,4 +234,15 @@ describe("through the server", () => {
     expect(siteShell({ title: "Subscribe", main: "", pixel: false })).not.toContain("site-events.js");
     expect((await app.inject({ method: "GET", url: "/privacy" })).body).toContain("Meta Platforms");
   });
+
+  it("the same pages carry Google Tag Manager, high in the head and first in the body; the pay page does not", async () => {
+    const page = (await app.inject({ method: "GET", url: "/download" })).body;
+    const head = page.indexOf("<!-- Google Tag Manager -->"), body = page.indexOf("<!-- Google Tag Manager (noscript) -->");
+    expect(head).toBeGreaterThan(page.indexOf('<meta charset="utf-8">'));
+    expect(head).toBeLessThan(page.indexOf("<title>"));
+    expect(page).toContain("'dataLayer','GTM-KH975V6M'");
+    expect(body).toBe(page.indexOf("<body>") + "<body>\n".length);
+    expect(page).toContain("https://www.googletagmanager.com/ns.html?id=GTM-KH975V6M");
+    expect(siteShell({ title: "Subscribe", main: "", pixel: false })).not.toContain("googletagmanager");
+  });
 });
