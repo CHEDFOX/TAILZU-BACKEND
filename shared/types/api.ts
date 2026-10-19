@@ -505,6 +505,11 @@ export interface TranscribeCleanResponse {
   /** Diagnostic: seconds of voice measured in the clip (null when it could not
    *  be measured) and, when text was withheld, why. */
   speech?: { voicedSeconds: number | null; dropped?: string };
+  /** The request carried a `selection` (the text selected in the field when
+   *  they started talking), and `cleanedText` is that selection rewritten as
+   *  they asked, or the new words they said in its place. Paste it over the
+   *  selection, with no space before it. */
+  replacedSelection?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -518,6 +523,10 @@ export interface TranscribeCleanResponse {
 export interface RefineRequest extends CleanupOptions {
   /** The raw text the user typed. */
   text: string;
+  /** The text selected in the field when they started, if any. `text` is then
+   *  what they said about it ("make this bullet points"), and the answer is
+   *  the selection rewritten (see RefineResponse.replacedSelection). */
+  selection?: string;
 }
 
 export interface RefineResponse {
@@ -526,6 +535,9 @@ export interface RefineResponse {
   /** Put ONE space before `refinedText` when appending it after `context`
    *  (see TranscribeCleanResponse.joinWithSpace). */
   joinWithSpace?: boolean;
+  /** `refinedText` replaces the selection the request carried: paste it over
+   *  the selection, with no space before it. */
+  replacedSelection?: boolean;
 }
 
 // ---------------------------------------------------------------------------
