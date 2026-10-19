@@ -753,6 +753,7 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "desktop.divider.margin": 12,
   "desktop.field.chars": 1000,
   "desktop.field.read": true,
+  "desktop.field.selection": true,
   "desktop.field.timeoutMs": 1200,
   "desktop.flip.fadeMs": 250,
   "desktop.flip.intervalMs": 2600,

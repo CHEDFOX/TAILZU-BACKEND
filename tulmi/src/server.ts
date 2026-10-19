@@ -989,6 +989,7 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
   let tzOffsetMinutes: number | undefined; // the device's current UTC offset
   let tone: string | undefined; // active tone override from the client
   let tonePrompt: string | undefined; // the active tone's inline prompt text
+  let selection: string | undefined; // the text selected in the field: what they say is about it
 
   // Iterate multipart parts: one file ("audio") + optional text fields.
   for await (const part of req.parts()) {
@@ -1015,6 +1016,8 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       tone = String(part.value);
     } else if (part.fieldname === "tonePrompt") {
       tonePrompt = String(part.value);
+    } else if (part.fieldname === "selection") {
+      selection = String(part.value);
     } else if (part.fieldname === "personality") {
       try {
         personalityOverride = JSON.parse(String(part.value)) as Personality;
@@ -1042,7 +1045,7 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
   // The multipart text fields feed the LLM prompt exactly like /v1/refine's
   // JSON body does — cap them the same way (multipart's own fieldSize limit is
   // ~1 MiB, far above MAX_TEXT_LENGTH).
-  const fieldOver = tooLong(context) ?? tooLong(tonePrompt);
+  const fieldOver = tooLong(context) ?? tooLong(tonePrompt) ?? tooLong(selection);
   if (fieldOver) return reply.code(413).send({ code: "bad_request", message: fieldOver });
   const badPersonality = personalityProblem(personalityOverride);
   if (badPersonality) return reply.code(badPersonality.status).send({ code: "bad_request", message: badPersonality.message });
@@ -1069,6 +1072,9 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       tone: tone ?? personality.activeTone,
       tonePrompt,
       context,
+      // Nothing off a private window or a sensitive app is read, and the
+      // client sends no selection from one; a stray one is not used either.
+      selection: privateField ? undefined : selection,
       variables: { email: user.email, phone: user.phone },
       recent: await recentRead,
       tzOffsetMinutes: reqTz(tzOffsetMinutes, personality.stylePortrait?.tzOffsetMinutes),
@@ -1092,7 +1098,8 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
         presetId: personality.activePresetId,
         // Read only to tell the next stretch of this dictation from a new
         // one, so a dictation written pause by pause is one History card.
-        context,
+        // A rewrite carries on from the selection it rewrote, as /v1/edit's do.
+        context: result.replacedSelection ? selection : context,
       },
       result.usage.audioSeconds,
     );
@@ -1144,7 +1151,7 @@ const refineRoute = (routeTone?: string) =>
     // path) reach the prompt too, and uncapped they let one request smuggle up
     // to the 1 MB bodyLimit of unmetered input tokens past MAX_TEXT_LENGTH.
     const over =
-      tooLong(body.text) ?? tooLong(body.context) ?? tooLong(body.tonePrompt) ?? tooLong(body.alternative);
+      tooLong(body.text) ?? tooLong(body.context) ?? tooLong(body.tonePrompt) ?? tooLong(body.alternative) ?? tooLong(body.selection);
     if (over) return reply.code(413).send({ code: "bad_request", message: over });
     const override = routeTone ? undefined : body.personality;
     const badPersonality = personalityProblem(override);
@@ -1159,7 +1166,7 @@ const refineRoute = (routeTone?: string) =>
       const personality = override ?? await getPersonality(user);
       const tone = routeTone ?? body.tone ?? personality.activeTone;
       const lang = await effectiveLanguage(user, body.language, personality);
-      const refinedText = await assist(body.text, {
+      const writerOpts = {
         tone,
         tonePrompt: body.tonePrompt,
         context: body.context,
@@ -1169,16 +1176,25 @@ const refineRoute = (routeTone?: string) =>
         surroundings: capSurroundings(body.surroundings),
         privateField: body.privateField === true,
         language: lang,
-        // A second engine's reading of the same speech, when the live path saw
-        // the two disagree — reconciled before the writing task.
-        alternative: body.alternative,
         personality,
         variables: { email: user.email, phone: user.phone },
-        // What they dictated in the last few minutes, read by the server
-        // (never sent by a client), with where and when.
-        recent: await recentRead,
         tzOffsetMinutes: reqTz(body.tzOffsetMinutes, personality.stylePortrait?.tzOffsetMinutes),
-      });
+      };
+      // TEXT WAS SELECTED (the live path's dictation, said with a selection):
+      // what they said is about it, so the selection is rewritten, the same
+      // as /v1/transcribe-clean does with one. Never from a private window.
+      const selection = body.privateField !== true && typeof body.selection === "string" && body.selection.trim() ? body.selection : "";
+      const refinedText = selection
+        ? await editSelection(selection, body.text, writerOpts, { spoken: true })
+        : await assist(body.text, {
+          ...writerOpts,
+          // A second engine's reading of the same speech, when the live path saw
+          // the two disagree — reconciled before the writing task.
+          alternative: body.alternative,
+          // What they dictated in the last few minutes, read by the server
+          // (never sent by a client), with where and when.
+          recent: await recentRead,
+        });
       const usage = { audioSeconds: 0, words: countWords(refinedText), model: cfg.CLEANUP_MODEL };
       await recordUsage({ user, source: "rest", ...usage });
       await appendHistoryEntry(user, personality, {
@@ -1193,14 +1209,18 @@ const refineRoute = (routeTone?: string) =>
         tone,
         presetId: personality.activePresetId,
         // A late tail of a dictation already written arrives with that text
-        // as its context; it joins the same History card (see coalesce).
-        context: body.context,
+        // as its context; it joins the same History card (see coalesce). A
+        // rewrite carries on from the selection it rewrote.
+        context: selection || body.context,
       });
       learnFromUsage(user, personality);
       desktopDictated(req, user, personality);
       // The same join hint /v1/transcribe-clean gives: the live path pastes
-      // this after what the field already holds (`context`).
-      const res: RefineResponse = { refinedText, usage, joinWithSpace: joinWithSpace(body.context, refinedText) };
+      // this after what the field already holds (`context`). A rewrite takes
+      // the selection's place, so nothing joins it.
+      const res: RefineResponse = selection
+        ? { refinedText, usage, joinWithSpace: false, replacedSelection: true }
+        : { refinedText, usage, joinWithSpace: joinWithSpace(body.context, refinedText) };
       return reply.send(res);
     } catch (err) {
       req.log.error(err);

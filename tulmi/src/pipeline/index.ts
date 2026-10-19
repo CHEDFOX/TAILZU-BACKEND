@@ -5,7 +5,7 @@
  */
 import { vocabularyWithNames } from "../experience/assistantName.js";
 import { transcribe } from "./stt.js";
-import { assist, type WriterExtras } from "./cleanup.js";
+import { assist, editSelection, type WriterExtras } from "./cleanup.js";
 import { joinWithSpace } from "./join.js";
 import type { GateReason } from "./speechGate.js";
 import type {
@@ -18,6 +18,9 @@ import { getConfig } from "../config.js";
 export interface PipelineInput extends CleanupOptions, WriterExtras {
   audio: Buffer;
   format: AudioFormat;
+  /** The text selected in the field when they started talking. What they say
+   *  is then about it, and the answer replaces it (editSelection). */
+  selection?: string;
 }
 
 function countWords(text: string): number {
@@ -48,13 +51,15 @@ export interface PipelineResult {
   noSpeech?: boolean;
   /** Diagnostic: seconds of voice measured (null when unmeasured) and why text was withheld. */
   speech?: { voicedSeconds: number | null; dropped?: GateReason };
+  /** `cleanedText` replaces the selection that was sent: paste it over it. */
+  replacedSelection?: boolean;
 }
 
 /** One-shot: transcribe, then run the writing assistant. */
 export async function runPipeline(
   input: PipelineInput,
 ): Promise<PipelineResult> {
-  const { audio, format, ...opts } = input;
+  const { audio, format, selection, ...opts } = input;
 
   const stt = await transcribe({
     audio, format,
@@ -92,6 +97,25 @@ export async function runPipeline(
       usage: { audioSeconds: stt.durationSeconds, words: 0, model: getConfig().CLEANUP_MODEL },
       joinWithSpace: false,
       noSpeech: true,
+      speech,
+    };
+  }
+
+  // TEXT WAS SELECTED: what they said is about it ("make this bullet points",
+  // "shorter", "in Hindi"), so the selection is rewritten to follow it, in the
+  // same request, and the answer goes back over the selection. Said words that
+  // are not an instruction become the selection's replacement (EditMode.spoken).
+  if (selection && selection.trim()) {
+    const rewritten = await editSelection(selection, stt.text, opts, { spoken: true });
+    return {
+      transcript: stt.text,
+      sttEngine: stt.engine,
+      detectedLanguage: stt.detectedLanguage,
+      cleanedText: rewritten,
+      usage: { audioSeconds: stt.durationSeconds, words: countWords(rewritten), model: getConfig().CLEANUP_MODEL },
+      // It takes the selection's place exactly; nothing joins it to what is before.
+      joinWithSpace: false,
+      replacedSelection: true,
       speech,
     };
   }
