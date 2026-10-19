@@ -14,6 +14,7 @@
  * The amber stays out: on the site it means "the microphone is open".
  */
 import { headTags } from "../../seo/head.js";
+import { gtmBody, gtmHead } from "../../ads/gtm.js";
 
 const MARK = `<svg viewBox="170 228 680 512" aria-hidden="true"> <line x1="346" y1="402" x2="270" y2="598" stroke="#E9CBA2" stroke-width="9" stroke-linecap="round"/> <line x1="444" y1="394" x2="554" y2="486" stroke="#E8A23C" stroke-width="30" stroke-dasharray="9 11"/> <line x1="668" y1="478" x2="828" y2="243" stroke="#C77A3A" stroke-width="9" stroke-linecap="round"/> <circle cx="828" cy="243" r="11" fill="#B06240"/> <rect x="308" y="269" width="132" height="132" rx="28" fill="#F4F1EA"/> <rect x="558" y="478" width="132" height="132" rx="28" fill="#F4F1EA"/> <rect x="178" y="598" width="132" height="132" rx="28" fill="#F4F1EA"/> </svg>`;
 
@@ -109,9 +110,10 @@ export function siteShell(o: {
    *  a policy that names one (the pay page). */
   nonce?: string;
   noindex?: boolean;
-  /** Load the site's Meta pixel (/site-events.js, src/ads/meta.ts). Every
-   *  page does but the pay page: no third party's script runs beside a
-   *  checkout, and the server reports what is bought there. */
+  /** Load the site's Meta pixel (/site-events.js, src/ads/meta.ts) and
+   *  Google Tag Manager (src/ads/gtm.ts). Every page does but the pay page:
+   *  no third party's script runs beside a checkout, and the server reports
+   *  what is bought there. */
   pixel?: boolean;
 }): string {
   const here = (href: string) => o.path === href || (o.path ?? "").startsWith(`${href}/`);
@@ -121,7 +123,7 @@ export function siteShell(o: {
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+${o.pixel === false ? "" : gtmHead()}<meta name="viewport" content="width=device-width, initial-scale=1">
 ${headTags({
   path: o.path ?? "/",
   title: o.headTitle ?? `${o.title} — Tailzu`,
@@ -136,7 +138,7 @@ ${headTags({
 <style>${CSS}${o.css ?? ""}</style>
 ${o.pixel === false ? "" : `<script src="/site-events.js" async></script>\n`}</head>
 <body>
-<header class="mast"><div class="wrap"><a class="mark" href="/" aria-label="Tailzu">${MARK}</a></div></header>
+${o.pixel === false ? "" : gtmBody()}<header class="mast"><div class="wrap"><a class="mark" href="/" aria-label="Tailzu">${MARK}</a></div></header>
 <main><div class="wrap">
 ${o.main}
 </div></main>
