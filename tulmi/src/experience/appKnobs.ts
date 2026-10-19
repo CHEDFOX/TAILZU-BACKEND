@@ -16,7 +16,14 @@ import { KEYBOARD_KNOBS } from "./keyboardKnobsData.js";
  * would say "ask" or "wait 9s" when it meant nothing at all. A control rule
  * can still set them.
  */
-const CATALOG_CONDITIONAL = new Set(["promptScreenId", "promptAfterMs"]);
+export const CATALOG_CONDITIONAL: ReadonlySet<string> = new Set([
+  "promptScreenId", "promptAfterMs",
+  // Only the desk's own window is told it is the desk; an older desktop, and
+  // every phone, must not be told it is not.
+  "desktop.desk",
+  // Setup's Live Activity: present while setup is unfinished, absent once done.
+  "liveActivity.setup",
+]);
 
 export function withAppKnobs<T extends Pick<BootstrapResponse, "labels" | "flags">>(boot: T): T {
   const fill: Record<string, unknown> = {};

@@ -10,15 +10,14 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 process.env.NODE_ENV = "test";
 import { buildBootstrap } from "../src/experience/catalog.js";
-import { withAppKnobs } from "../src/experience/appKnobs.js";
+import { CATALOG_CONDITIONAL, withAppKnobs } from "../src/experience/appKnobs.js";
 import { APP_KNOB_FLAGS, APP_KNOB_LABELS } from "../src/experience/appKnobsData.js";
 
 describe("app knobs", () => {
   it("the bootstrap carries every knob label and flag", () => {
     const b = buildBootstrap({});
     for (const k of Object.keys(APP_KNOB_LABELS)) expect(b.labels?.[k], k).toBeTypeOf("string");
-    const conditional = new Set(["promptScreenId", "promptAfterMs"]);
-    for (const k of Object.keys(APP_KNOB_FLAGS)) if (!conditional.has(k)) expect(b.flags?.[k], k).toBeDefined();
+    for (const k of Object.keys(APP_KNOB_FLAGS)) if (!CATALOG_CONDITIONAL.has(k)) expect(b.flags?.[k], k).toBeDefined();
     expect(Object.keys(APP_KNOB_LABELS).length).toBeGreaterThan(0);
   });
   it("catalog values win over knob defaults", () => {
