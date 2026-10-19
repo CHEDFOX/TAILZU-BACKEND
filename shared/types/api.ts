@@ -629,6 +629,114 @@ export interface AskResponse {
 }
 
 // ---------------------------------------------------------------------------
+// REST: Ask, the on-screen agent  (POST /v1/agent)
+// ---------------------------------------------------------------------------
+//
+// One request per step of a run the DEVICE owns: it reads the front app's
+// accessibility tree into a short list of elements with ids, posts them with
+// what the user said, and gets back an NDJSON stream of events that point at,
+// explain, or do one small thing to those ids. Only roles, labels, short
+// values and a coarse region leave the machine: never frames, pixels or
+// window titles. The server is a stateless planner, and the device decides
+// what needs confirming (it takes the higher of its own risk and `risk`).
+//
+// Sent either as multipart/form-data, a `request` field holding the JSON
+// below and an `audio` file (the server transcribes it as the utterance), or
+// as application/json with `utterance` set. Answered `200
+// application/x-ndjson`, one AgentEvent per line, ending in exactly one
+// terminal event (action, ask, done or error). Problems found before the
+// stream starts are ordinary JSON errors (400/401/413/429).
+
+/** Where an element sits in its window, by thirds. Never a frame. */
+export type AgentRegion = "tl" | "t" | "tr" | "l" | "c" | "r" | "bl" | "b" | "br";
+
+/** One element of the front window, as the device's driver read it. */
+export interface AgentElement {
+  /** "e1".."eN" in walk order, valid until the next snapshot. */
+  id: string;
+  /** button link field area check radio switch tab menu menuitem item combo
+   *  slider image heading text cell row window. */
+  role: string;
+  label?: string;
+  /** Fields, areas, combos, sliders, checks only. Never a password's. */
+  value?: string;
+  region?: AgentRegion;
+  focused?: boolean;
+  disabled?: boolean;
+  selected?: boolean;
+  checked?: boolean;
+}
+
+/** What happened at an earlier step of this run. */
+export interface AgentTurn {
+  /** The user's words for that step. */
+  said?: string;
+  /** The action line that was run: "PRESS e12", "KEY cmd+k", "TYPE design". */
+  did?: string;
+  result?: "ok" | "failed" | "declined" | "nochange";
+  /** What changed, as the device saw it: "a new window opened: Export". */
+  note?: string;
+}
+
+export interface AgentStepRequest {
+  /** Made by the device: [A-Za-z0-9_-]{6,64}. */
+  runId: string;
+  /** 0, 1, …; past the server's AGENT_MAX_STEPS the answer is "too_many_steps". */
+  step: number;
+  /** What they said or typed, ≤ 1000. With audio it is replaced by what was
+   *  heard; audio on a later step is their answer to an ASK. */
+  utterance?: string;
+  platform: "mac" | "win";
+  /** The front app's short label, ≤ 60. */
+  app: string;
+  /** A private window or a sensitive app: refused ("private"). The device
+   *  refuses first; this is the second lock. */
+  privateField?: boolean;
+  language?: string;
+  tzOffsetMinutes?: number;
+  screen: {
+    /** ≤ AGENT_MAX_ELEMENTS (250); more is a 413. */
+    elements: AgentElement[];
+    /** The selected text in the focused element, ≤ 8000. */
+    selection?: string;
+    /** The focused field, when there is one. */
+    field?: { kind: string; label?: string };
+    /** Window text from OCR when the tree is thin, ≤ 4000. */
+    text?: string;
+  };
+  /** ≤ 16, oldest first. */
+  history?: AgentTurn[];
+}
+
+export type AgentActionKind = "press" | "set" | "type" | "key" | "scroll" | "focus" | "open";
+export type AgentRisk = "free" | "confirm" | "always";
+
+export type AgentEvent =
+  /** First in every stream that gets past the refusals: what was heard, and
+   *  whether the run shows ("where/how/what/why…") or does (a command). */
+  | { t: "heard"; text: string; mode: "show" | "do" }
+  /** ≤ 240 chars, captioned and spoken. */
+  | { t: "say"; text: string; locale?: string }
+  /** `id` is always one of this request's elements. */
+  | { t: "point"; id: string; caption?: string }
+  /** A do-run's plan, ≤ 6 short lines. */
+  | { t: "steps"; items: string[] }
+  /** TERMINAL. Never sent in show mode. `confirm` is the sentence to show
+   *  when the risk is not "free". */
+  | {
+      t: "action"; kind: AgentActionKind;
+      id?: string; text?: string; keys?: string; dir?: string; app?: string;
+      risk: AgentRisk; confirm?: string;
+    }
+  /** TERMINAL: a question for the user; their answer is the next step. */
+  | { t: "ask"; text: string }
+  /** TERMINAL. */
+  | { t: "done"; text?: string }
+  /** TERMINAL. Codes: private, too_many_steps, no_speech, bad_target,
+   *  model_unavailable, internal. */
+  | { t: "error"; code: string; message: string };
+
+// ---------------------------------------------------------------------------
 // REST: text-to-speech  (POST /v1/speak)
 // ---------------------------------------------------------------------------
 //

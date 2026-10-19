@@ -268,6 +268,40 @@ const EnvSchema = z.object({
   /** OpenAI's model for the same, used when Deepgram is not configured or
    *  fails. Empty = do not use OpenAI for it. */
   NOTES_DIARIZE_OPENAI_MODEL: z.string().default("gpt-4o-transcribe-diarize"),
+  /**
+   * ASK, THE ON-SCREEN AGENT (POST /v1/agent, src/agent).
+   *
+   * The model plans one step at a time over a list of the front window's
+   * elements, and someone is watching the guide wait for its first line, so
+   * this is the fastest model that follows a line protocol, with reasoning
+   * off. Measured on the first chunk, a non-reasoning model answers in under
+   * a second where a thinking one took seven.
+   *
+   * The fallbacks are tried in order, then CLEANUP_MODEL, and only when a
+   * call fails before it has written anything (an HTTP error or the timeout):
+   * once a line has gone to the device the step belongs to that model.
+   */
+  AGENT_MODEL: z.string().default("openai/gpt-6-luna"),
+  /** Comma-separated. */
+  AGENT_FALLBACK_MODELS: z.string().default("anthropic/claude-haiku-5.5"),
+  /** Per model call, the whole stream included. */
+  AGENT_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(6000),
+  /** Steps in one run, counted from 0. Past it a step is refused. */
+  AGENT_MAX_STEPS: z.coerce.number().int().min(1).max(50).default(8),
+  /** Elements one step may send. The device stops its walk at the same number. */
+  AGENT_MAX_ELEMENTS: z.coerce.number().int().min(10).max(1000).default(250),
+  /**
+   * The screen as it reaches the prompt (element lines plus window text), in
+   * characters. 250 elements with their labels and values come to about 12k;
+   * past twice that a client is sending something other than a window.
+   */
+  AGENT_SCREEN_MAX_CHARS: z.coerce.number().int().min(1000).default(24_000),
+  /**
+   * Ask's own bucket, apart from the app's: a run is several requests a few
+   * seconds apart, and it must never be the reason dictation gets a 429.
+   */
+  AGENT_RATE_LIMIT_MAX: z.coerce.number().default(60),
+  AGENT_RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 

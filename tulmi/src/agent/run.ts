@@ -1,0 +1,273 @@
+/**
+ * ONE STEP OF AN ASK RUN, END TO END.
+ *
+ * In order, cheapest first, and each stage only when the one before it did
+ * not answer:
+ *
+ *   0. refusals   a private window or a sensitive app, a run past its steps
+ *   1. heard      what they said: their words, or the recording transcribed
+ *   2. grammar    "scroll down", "go back", "undo", "open Slack": free
+ *   3. selection  text selected and they said something about it: the writer
+ *                 rewrites it, and it is pasted over the selection
+ *   4. resolver   "where's Export?", "click Export" against the labels: free
+ *   5. model      one streamed call, read a line at a time
+ *
+ * The free paths answer a FRESH request only. Once this run has acted, the
+ * device comes back with the same goal and what happened; a one-shot command
+ * that has now been carried out is finished ("done", still free), and
+ * anything else is the model's to judge from the history. Without that, "scroll
+ * down" would scroll on every step until the run ran out of them.
+ *
+ * Everything goes out through the EventSink, which keeps "exactly one terminal
+ * event" true however a path ends.
+ */
+import type { AgentStepRequest } from "../../../shared/types/api.js";
+import { aboutTheText, commandText, grammar, grammarLine, modeOf, type GrammarAction } from "./grammar.js";
+import { LineReader, LineSplitter, parseLine, type ActionLine } from "./lines.js";
+import { PlannerUnavailable, type PlanChunk } from "./llm.js";
+import { AGENT_SYSTEM, agentUserMessage } from "./prompt.js";
+import type { EventSink } from "./protocol.js";
+import { resolve, resolverAsk } from "./resolver.js";
+import { isBrowser, isTextEntry, withRisk, type PlannedAction, type Scene } from "./risk.js";
+import { sensitiveApp } from "../pipeline/sensitive.js";
+
+export interface StepContext {
+  req: AgentStepRequest;
+  /** AGENT_MAX_STEPS: steps are counted from 0, and one past this is refused. */
+  maxSteps: number;
+  /** The names it answers to, taken off the front of a command. */
+  names?: string[];
+}
+
+export interface StepDeps {
+  /** The recording, transcribed. Present only when audio came with the step. */
+  hear?: () => Promise<{ text: string; seconds: number }>;
+  /** Their writer, composing at the cursor (assist). `context` is what the
+   *  focused field already holds. */
+  write: (instruction: string, context?: string) => Promise<string>;
+  /** Their selected text rewritten to follow an instruction (editSelection). */
+  rewrite: (selection: string, instruction: string) => Promise<string>;
+  /** The planner's streamed answer (llm.planStream). */
+  plan: (system: string, user: string, signal?: AbortSignal) => AsyncIterable<PlanChunk>;
+  /** Aborted when the device goes away. */
+  signal?: AbortSignal;
+}
+
+export type StepPath = "refused" | "unheard" | "grammar" | "selection" | "resolver" | "followup" | "model";
+
+/** What the step did, for metering and the log. Never any of its text. */
+export interface StepResult {
+  path: StepPath;
+  mode?: "show" | "do";
+  /** The model that answered, when one did. */
+  model?: string;
+  /** Words their writer wrote for them (WRITE, REWRITE, a selection rewrite). */
+  words: number;
+  audioSeconds: number;
+  code?: string;
+}
+
+const countWords = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0);
+const NOT_FOUND = "I couldn't find that here.";
+
+/** Every turn's words and this one's, for the risk checks. */
+function everythingSaid(req: AgentStepRequest, said: string): string {
+  return [...(req.history ?? []).map((t) => t.said ?? ""), said].join("\n");
+}
+
+const verbOf = (line: string) => line.trim().split(/\s+/)[0]?.toUpperCase() ?? "";
+
+export async function runStep(ctx: StepContext, deps: StepDeps, sink: EventSink): Promise<StepResult> {
+  const { req } = ctx;
+  const names = ctx.names ?? [];
+  const history = req.history ?? [];
+
+  // 0. The second lock: the device refuses these first.
+  if (req.privateField || sensitiveApp(req.app)) {
+    sink.emit({ t: "error", code: "private", message: "Ask doesn't read private windows or sensitive apps." });
+    return { path: "refused", words: 0, audioSeconds: 0, code: "private" };
+  }
+  if (req.step > ctx.maxSteps) {
+    sink.emit({ t: "error", code: "too_many_steps", message: "That took too many steps, so I stopped." });
+    return { path: "refused", words: 0, audioSeconds: 0, code: "too_many_steps" };
+  }
+
+  // 1. What they said. A later step may carry no words of its own: the goal
+  // is then the last thing they said in this run.
+  let said = req.utterance ?? "";
+  let audioSeconds = 0;
+  if (deps.hear) {
+    const heard = await deps.hear();
+    said = heard.text.trim();
+    audioSeconds = heard.seconds;
+  } else if (!said && req.step > 0) {
+    said = [...history].reverse().find((t) => t.said)?.said ?? "";
+  }
+  if (!said) {
+    sink.emit({ t: "error", code: "no_speech", message: "I didn't catch that." });
+    return { path: "unheard", words: 0, audioSeconds, code: "no_speech" };
+  }
+  // The run's mode is its first request's: an answer to a question it asked
+  // ("the second one") does not turn a show run into a do run.
+  const mode = modeOf(history.find((t) => t.said)?.said ?? said, names);
+  sink.emit({ t: "heard", text: said, mode });
+
+  const scene: Scene = { req, said: everythingSaid(req, said) };
+  const clean = commandText(said, names);
+  const acted = history.some((t) => t.did);
+  const done = (path: StepPath, extra: Partial<StepResult> = {}): StepResult =>
+    ({ path, mode, words: 0, audioSeconds, ...extra });
+
+  // 2–4. The free paths, and what each would have done, as a line.
+  const g: GrammarAction | null = mode === "do" ? grammar(clean, req.platform, req.screen.elements) : null;
+  const ask = resolverAsk(clean);
+  const hit = ask && (ask.verb === "press") === (mode === "do") ? resolve(ask, req.screen.elements) : null;
+  // A browser's labels are written by the page, so there the resolver may
+  // show a control but never press one on its own say-so.
+  const resolvedPress = hit && mode === "do" && !isBrowser(req.app) ? hit : null;
+  const resolvedPoint = hit && mode === "show" ? hit : null;
+
+  if (acted) {
+    // The device is back after running something. When that something was
+    // this same one-shot command, and it worked, the run is finished.
+    const last = history.at(-1);
+    const expected = g ? verbOf(grammarLine(g))
+      : mode === "do" && aboutTheText(clean) ? "TYPE"
+      : resolvedPress ? "PRESS" : "";
+    if (expected && last?.did && verbOf(last.did) === expected && last.result === "ok") {
+      sink.emit({ t: "done" });
+      return done("followup");
+    }
+  } else {
+    if (g) {
+      sink.emit(withRisk(g as PlannedAction, scene));
+      return done("grammar");
+    }
+    const selection = req.screen.selection?.trim();
+    if (mode === "do" && selection && aboutTheText(clean)) {
+      const text = await deps.rewrite(selection, said);
+      sink.emit(withRisk({ kind: "type", text }, scene, true));
+      return done("selection", { words: countWords(text) });
+    }
+    if (resolvedPoint) {
+      const label = resolvedPoint.element.label!;
+      sink.emit({ t: "say", text: `Here's ${label.replace(/[\s.…:]+$/u, "")}.` });
+      sink.emit({ t: "point", id: resolvedPoint.element.id, caption: label });
+      sink.emit({ t: "done" });
+      return done("resolver");
+    }
+    if (resolvedPress) {
+      sink.emit(withRisk({ kind: "press", id: resolvedPress.element.id }, scene));
+      return done("resolver");
+    }
+  }
+
+  // 5. The model.
+  return planWithModel(ctx, deps, sink, { said, mode, scene, audioSeconds });
+}
+
+async function planWithModel(
+  ctx: StepContext,
+  deps: StepDeps,
+  sink: EventSink,
+  s: { said: string; mode: "show" | "do"; scene: Scene; audioSeconds: number },
+): Promise<StepResult> {
+  const { req } = ctx;
+  const user = agentUserMessage(req, s.said, s.mode, ctx.maxSteps);
+  const reader = new LineReader(new Set(req.screen.elements.map((e) => e.id)), s.mode);
+  const splitter = new LineSplitter();
+  const result: StepResult = { path: "model", mode: s.mode, words: 0, audioSeconds: s.audioSeconds };
+
+  const take = async (raw: string) => {
+    const line = parseLine(raw, req.platform);
+    if (!line) return;
+    for (const out of reader.read(line)) {
+      if ("emit" in out) sink.emit(out.emit);
+      else result.words += await act(out.act, req, deps, sink, s.scene);
+    }
+  };
+
+  const stream = deps.plan(AGENT_SYSTEM, user, deps.signal)[Symbol.asyncIterator]();
+  try {
+    for (let next = await stream.next(); !next.done; next = await stream.next()) {
+      result.model ??= next.value.model;
+      for (const raw of splitter.push(next.value.delta)) {
+        await take(raw);
+        if (reader.ended) break;
+      }
+      if (reader.ended) {
+        drain(stream);
+        break;
+      }
+    }
+    if (!reader.ended) for (const raw of splitter.flush()) await take(raw);
+  } catch (err) {
+    if (!(err instanceof PlannerUnavailable)) throw err;
+    if (!reader.produced) {
+      sink.emit({ t: "error", code: "model_unavailable", message: "Ask can't think right now. Try again in a moment." });
+      return { ...result, code: "model_unavailable" };
+    }
+  }
+
+  // A stream that ended without an ending: whatever it said stands, and
+  // nothing usable at all is said plainly rather than left hanging.
+  if (!sink.ended) {
+    if (!reader.produced) sink.emit({ t: "say", text: NOT_FOUND });
+    sink.emit({ t: "done" });
+  }
+  return result;
+}
+
+/**
+ * The rest of a planner stream, read in the background once the step has its
+ * ending. Nothing in it is used: the model was told to stop at its action, so
+ * there is rarely anything left, but the call's token counts arrive only in
+ * its last chunk, and without them its cost could not be measured. Bounded by
+ * the call's own timeout, and cut short if the device hangs up.
+ */
+function drain(stream: AsyncIterator<PlanChunk>): void {
+  void (async () => {
+    try {
+      while (!(await stream.next()).done) { /* read to the end */ }
+    } catch {
+      // A call cut off after its answer has gone changes nothing for anyone.
+    }
+  })();
+}
+
+/** One action line made into the step's action event. Returns the words
+ *  their writer wrote for it. */
+async function act(line: ActionLine, req: AgentStepRequest, deps: StepDeps, sink: EventSink, scene: Scene): Promise<number> {
+  switch (line.verb) {
+    case "PRESS": sink.emit(withRisk({ kind: "press", id: line.id }, scene)); return 0;
+    case "FOCUS": sink.emit(withRisk({ kind: "focus", id: line.id }, scene)); return 0;
+    case "SET": sink.emit(withRisk({ kind: "set", id: line.id, text: line.text }, scene)); return 0;
+    case "TYPE": sink.emit(withRisk({ kind: "type", text: line.text }, scene)); return 0;
+    case "KEY": sink.emit(withRisk({ kind: "key", keys: line.keys }, scene)); return 0;
+    case "SCROLL": sink.emit(withRisk({ kind: "scroll", dir: line.dir, ...(line.id ? { id: line.id } : {}) }, scene)); return 0;
+    case "OPEN": sink.emit(withRisk({ kind: "open", app: line.app }, scene)); return 0;
+    case "WRITE": {
+      const focused = req.screen.elements.find((e) => e.focused);
+      const context = isTextEntry(focused) ? focused?.value : undefined;
+      const text = (await deps.write(line.text, context)).trim();
+      if (!text) {
+        sink.emit({ t: "say", text: "I couldn't write that." });
+        sink.emit({ t: "done" });
+        return 0;
+      }
+      sink.emit(withRisk({ kind: "type", text }, scene));
+      return countWords(text);
+    }
+    case "REWRITE": {
+      const selection = req.screen.selection?.trim();
+      if (!selection) {
+        sink.emit({ t: "say", text: "Select the text first, then ask me again." });
+        sink.emit({ t: "done" });
+        return 0;
+      }
+      const text = (await deps.rewrite(selection, line.text)).trim();
+      sink.emit(withRisk({ kind: "type", text: text || selection }, scene, true));
+      return countWords(text);
+    }
+  }
+}

@@ -736,3 +736,12 @@ alter table public.razorpay_subscriptions enable row level security;
 drop policy if exists "read own razorpay subscriptions" on public.razorpay_subscriptions;
 create policy "read own razorpay subscriptions" on public.razorpay_subscriptions
   for select using (auth.uid() = user_id);
+
+-- ############################################################################
+-- 0016_usage_agent_source.sql
+-- ############################################################################
+
+-- Ask's steps are metered with source 'agent'; 0001's check refused them.
+alter table public.usage_events drop constraint if exists usage_events_source_check;
+alter table public.usage_events
+  add constraint usage_events_source_check check (source in ('rest', 'stream', 'agent'));

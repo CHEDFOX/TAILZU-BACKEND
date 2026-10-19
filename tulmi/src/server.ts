@@ -8,6 +8,7 @@
  *   POST /v1/draft                → screen: screen content + intent → reply
  *   POST /v1/edit                 → selection: text + spoken instruction → rewrite
  *   POST /v1/ask                  → screen: screen content + question → answer
+ *   POST /v1/agent                → Ask: one step of the on-screen agent (NDJSON)
  *   POST /v1/speak                → voice out: text → spoken audio (TTS)
  *   GET  /v1/personality          → read the user's saved style profile
  *   PUT  /v1/personality          → save the user's style profile
@@ -61,7 +62,7 @@ import {
 import { runPipeline } from "./pipeline/index.js";
 import { recentDictations } from "./pipeline/session.js";
 import { joinWithSpace } from "./pipeline/join.js";
-import { estimateDurationSeconds } from "./pipeline/stt.js";
+import { estimateDurationSeconds, transcribe } from "./pipeline/stt.js";
 import {
   assist, draftReply, editSelection, answerAbout, inferStyle, refineVariants, updateStylePortrait, LLM_TONES,
   portraitFromUsage, converseTurn, portraitFromTranscript, spokenLanguage, type ConverseTurn,
@@ -76,7 +77,7 @@ import {
 } from "./personality/store.js";
 import { PERSONALITY_PRESETS, applyPresetOverrides } from "./experience/personalityPresets.js";
 import { DEFAULT_TTS_VOICE, isValidTtsVoice } from "./experience/ttsVoices.js";
-import { cleanNickname } from "./experience/assistantName.js";
+import { ASSISTANT_NAME, cleanNickname, nicknameOf, vocabularyWithNames } from "./experience/assistantName.js";
 import {
   type KeyboardPlatform,
   buildBootstrap,
@@ -117,6 +118,9 @@ import type {
 } from "../../shared/types/api.js";
 import { cleanLabel, fieldKindOf } from "./pipeline/field.js";
 import { capSurroundings } from "./pipeline/sensitive.js";
+import { EventSink, audioFormatOf, readStepRequest } from "./agent/protocol.js";
+import { planStream } from "./agent/llm.js";
+import { runStep, type StepResult } from "./agent/run.js";
 
 /**
  * Learn from ordinary use, ONCE PER SESSION, off the user's path.
@@ -1730,6 +1734,156 @@ app.post("/v1/ask", { config: AUTHED_RL }, async (req, reply) => {
     req.log.error(err);
     return reply.code(500).send({ code: "cleanup_failed", message: "Couldn't answer that" });
   }
+});
+
+// --- Ask (REST, streamed): the on-screen agent, one step at a time ---------
+//
+// The device owns the run: it reads the front window into a list of elements
+// with ids, posts one step at a time, and acts on what comes back. Each step
+// answers with NDJSON, one event per line, written the moment it is known, so
+// the guide points and talks while the planner is still writing. See
+// src/agent for the planner; this is the door to it.
+//
+// Before the stream starts, a bad request is an ordinary JSON 400/401/413/429.
+// After it starts there is no status left to set, so everything (a refusal,
+// a failed model, a thrown error) ends the stream as one terminal event, and
+// the stream always ends.
+//
+// What is written for the user (WRITE, REWRITE, a selection rewrite) counts
+// its words, like an edit; the planner's own words do not, like an answer.
+// No step writes a History entry: a run is a handful of clicks, not writing.
+const AGENT_RL = {
+  rateLimit: { max: cfg.AGENT_RATE_LIMIT_MAX, timeWindow: cfg.AGENT_RATE_LIMIT_WINDOW_MS },
+};
+/** A spoken request, or an answer to a question. Two minutes is far past
+ *  either, and well inside what a recogniser accepts. */
+const AGENT_AUDIO_MAX_SECONDS = 120;
+
+app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) return unauthorized(reply);
+
+  let raw: unknown;
+  let audio: Buffer | null = null;
+  let format: AudioFormat = "webm";
+  let unreadable = false;
+  if (req.isMultipart()) {
+    // Every part is read to the end, even after a bad one: a multipart stream
+    // left half-read never finishes the request.
+    for await (const part of req.parts()) {
+      if (part.type === "file") {
+        const buf = await part.toBuffer();
+        if (part.fieldname === "audio") { audio = buf; format = audioFormatOf(part.filename, part.mimetype); }
+      } else if (part.fieldname === "request") {
+        try { raw = JSON.parse(String(part.value)); } catch { unreadable = true; }
+      }
+    }
+  } else {
+    raw = req.body;
+  }
+  if (unreadable) return reply.code(400).send({ code: "bad_request", message: "'request' is not JSON" });
+
+  const read = readStepRequest(
+    raw,
+    { maxElements: cfg.AGENT_MAX_ELEMENTS, screenMaxChars: cfg.AGENT_SCREEN_MAX_CHARS },
+    !!audio,
+  );
+  if ("refusal" in read) return reply.code(read.refusal.status).send({ code: read.refusal.code, message: read.refusal.message });
+  const step = read.req;
+  if (audio && estimateDurationSeconds(audio, format) > AGENT_AUDIO_MAX_SECONDS) {
+    return reply.code(413).send({ code: "audio_too_long", message: "That recording is too long for Ask." });
+  }
+
+  const quota = await enforceQuota(user);
+  if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+
+  // From here the reply is ours to write by hand.
+  reply.hijack();
+  const res = reply.raw;
+  res.writeHead(200, {
+    "content-type": "application/x-ndjson; charset=utf-8",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+  });
+  // The device hanging up (Esc, a new tap) stops the model mid-answer, so its
+  // tokens are not paid for. A response this side finished is not a hang-up:
+  // the planner's last chunk, with its token counts, may still be on its way.
+  const gone = new AbortController();
+  res.on("close", () => { if (!res.writableFinished) gone.abort(); });
+  const sink = new EventSink((line) => {
+    if (!res.writableEnded && !res.destroyed) res.write(line);
+  });
+
+  const t0 = Date.now();
+  let result: StepResult | undefined;
+  try {
+    const personality = await getPersonality(user);
+    const lang = await effectiveLanguage(user, step.language, personality);
+    const writer = {
+      targetApp: step.app,
+      fieldKind: fieldKindOf(step.screen.field?.kind),
+      fieldLabel: cleanLabel(step.screen.field?.label, 60),
+      language: lang,
+      personality,
+      tone: personality.activeTone,
+      variables: { email: user.email, phone: user.phone },
+    };
+    const nick = nicknameOf(personality);
+    result = await runStep(
+      { req: step, maxSteps: cfg.AGENT_MAX_STEPS, names: [ASSISTANT_NAME, "Blip", ...(nick ? [nick] : [])] },
+      {
+        hear: audio
+          ? async () => {
+              const stt = await transcribe({
+                audio: audio!, format, language: lang,
+                vocabulary: vocabularyWithNames(personality),
+                portraitCore: personality.stylePortrait?.core,
+                portraitWords: personality.stylePortrait?.words,
+                languages: personality.languages?.map(String),
+              });
+              return { text: stt.text, seconds: stt.durationSeconds || estimateDurationSeconds(audio!, format) };
+            }
+          : undefined,
+        write: (instruction, context) => assist(instruction, { ...writer, context }),
+        rewrite: (selection, instruction) => editSelection(selection, instruction, writer, { spoken: true }),
+        plan: (system, userMessage, signal) => planStream(system, userMessage, {
+          signal,
+          // One line per model call: which model, how soon it started, what it
+          // cost. Never the prompt or the answer.
+          log: (call) => req.log.info({ agent: { runId: step.runId, step: step.step, ...call } }, "agent model call"),
+        }),
+        signal: gone.signal,
+      },
+      sink,
+    );
+  } catch (err) {
+    req.log.error({ err, runId: step.runId, step: step.step }, "agent step failed");
+    sink.emit({ t: "error", code: "internal", message: "Something went wrong. Try again in a moment." });
+  } finally {
+    if (!sink.ended) sink.emit({ t: "error", code: "internal", message: "Something went wrong. Try again in a moment." });
+    res.end();
+  }
+
+  // After the stream has closed: the device already has its answer, and a
+  // slow metering write must not hold it open.
+  if (result && result.path !== "refused") {
+    await recordUsage({
+      user,
+      source: "agent",
+      audioSeconds: result.audioSeconds,
+      words: result.words,
+      model: result.model ?? (result.path === "selection" ? cfg.CLEANUP_MODEL : "rules"),
+    }).catch((err) => req.log.error({ err }, "agent usage not recorded"));
+  }
+  // One line per step, with no screen text and none of what was said in it.
+  req.log.info({
+    agent: {
+      runId: step.runId, step: step.step, platform: step.platform,
+      path: result?.path ?? "failed", mode: result?.mode, model: result?.model, ending: sink.ending,
+      events: sink.count, elements: step.screen.elements.length, words: result?.words ?? 0,
+      audioSeconds: result?.audioSeconds ?? 0, ms: Date.now() - t0,
+    },
+  }, "agent step");
 });
 
 // --- Text-to-speech (REST): text → spoken audio -----------------------------

@@ -14,7 +14,7 @@ create table if not exists public.usage_events (
   audio_seconds double precision not null default 0,
   word_count    integer not null default 0,
   model         text,
-  source        text check (source in ('rest', 'stream')),
+  source        text check (source in ('rest', 'stream', 'agent')),
   created_at    timestamptz not null default now()
 );
 

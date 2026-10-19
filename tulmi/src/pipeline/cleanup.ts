@@ -41,7 +41,9 @@ export function scriptOf(text: string): string | undefined {
 export { stripFenceTags };
 
 let client: OpenAI | null = null;
-function openrouter(): OpenAI {
+/** The one OpenRouter client. Exported for Ask's planner (agent/llm.ts), which
+ *  shares the connection but sets its own timeout and retries per call. */
+export function openrouter(): OpenAI {
   if (!client) {
     const cfg = getConfig();
     client = new OpenAI({

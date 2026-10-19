@@ -14,8 +14,8 @@ import type { UsageRecord, UsageSummary } from "../../../shared/types/api.js";
 
 export interface MeterInput extends UsageRecord {
   user: AuthedUser;
-  /** Which surface produced this: "rest" | "stream". */
-  source: "rest" | "stream";
+  /** Which surface produced this: "rest" | "stream" | "agent" (one Ask step). */
+  source: "rest" | "stream" | "agent";
 }
 
 // ---------------------------------------------------------------------------
