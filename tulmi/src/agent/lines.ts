@@ -29,6 +29,14 @@
  * o3" for the same thing, and checked strictly: an id from this screen, and
  * a place in the picture only on a step that has one. A mark that fails is
  * dropped, never guessed at, and counted for the log.
+ *
+ * A place in the picture is read in the order the model was taught to write
+ * it. Gemini models are trained on their own: a box as [ymin, xmin, ymax,
+ * xmax] and a point as [y, x], and asked for [x, y, w, h] they place marks
+ * less exactly, so they are taught that order (prompt.ts) and their answer is
+ * read in it ("yx"). Every other model writes [x, y, w, h] and (x, y) ("xy").
+ * Either way the event is the same [x, y, w, h] and [x, y], so the device
+ * never knows which model drew.
  */
 import type { AgentDraw, AgentDrawKind, AgentEvent, AgentSpot } from "../../../shared/types/api.js";
 import type { Platform } from "./grammar.js";
@@ -63,6 +71,15 @@ export type ActionLine =
   | { verb: "KEY"; keys: string }
   | { verb: "SCROLL"; dir: "up" | "down" | "left" | "right"; id?: string }
   | { verb: "OPEN"; app: string };
+
+/** How a model writes a place in the picture: x first, as [x,y,w,h] and
+ *  (x,y), or y first, as Gemini's [ymin,xmin,ymax,xmax] and [y,x]. */
+export type SpotOrder = "xy" | "yx";
+
+/** How an answer's lines are read: in the order its model was taught. */
+export interface ParseOptions {
+  order?: SpotOrder;
+}
 
 export type Line =
   | { verb: "SAY"; text: string }
@@ -144,8 +161,9 @@ export function normalizeChord(raw: string, platform: Platform): string | null {
 /** A tree element's id, or an OCR line's. */
 const ID = /^([eo]\d{1,5})\b\s*/i;
 
-/** One line of the protocol, or null when the line is not one. */
-export function parseLine(raw: string, platform: Platform): Line | null {
+/** One line of the protocol, or null when the line is not one. `order` is
+ *  how its model writes a place in the picture ("xy" unless told). */
+export function parseLine(raw: string, platform: Platform, opts: ParseOptions = {}): Line | null {
   let s = raw.trim();
   if (!s || s.startsWith("```")) return null;
   // Bullets, numbering and bold a model adds out of habit.
@@ -223,7 +241,7 @@ export function parseLine(raw: string, platform: Platform): Line | null {
       return app ? { verb, app } : null;
     }
     case "DRAW":
-      return { verb, draw: parseDraw(arg) };
+      return { verb, draw: parseDraw(arg, opts) };
     default:
       return null;
   }
@@ -287,20 +305,36 @@ function fitBox(x: number, y: number, w: number, h: number): [number, number, nu
   return [bx, by, bw, bh];
 }
 
+/**
+ * A box from Gemini's corners, [ymin, xmin, ymax, xmax], as the [x, y, w, h]
+ * the device draws. Corners written the wrong way round ("[600,400,200,100]")
+ * are put right rather than dropped: which corner is which is plain from the
+ * numbers, and the box they enclose is the same.
+ */
+function cornerBox(ymin: number, xmin: number, ymax: number, xmax: number): [number, number, number, number] {
+  const [x0, x1] = xmin <= xmax ? [xmin, xmax] : [xmax, xmin];
+  const [y0, y1] = ymin <= ymax ? [ymin, ymax] : [ymax, ymin];
+  return fitBox(x0, y0, x1 - x0, y1 - y0);
+}
+
+/** A point as [x, y], from two numbers written in `order`. */
+const pointOf = (a: string, b: string, order: SpotOrder): [number, number] =>
+  order === "yx" ? [unit(b), unit(a)] : [unit(a), unit(b)];
+
 /** The spot at the start of `s`, and what follows it. */
-function readSpot(s: string): { spot: AgentSpot; rest: string } | null {
+function readSpot(s: string, order: SpotOrder): { spot: AgentSpot; rest: string } | null {
   const t = s.trimStart();
   const id = ID_SPOT.exec(t);
   if (id) return { spot: { id: id[1]!.toLowerCase() }, rest: t.slice(id[0].length) };
   const box = BOX_SPOT.exec(t);
   if (box) {
     if (fractional(box.slice(1, 5) as string[])) return null;
-    const [x, y, w, h] = box.slice(1, 5).map((v) => unit(v!)) as [number, number, number, number];
-    return { spot: { box: fitBox(x, y, w, h) }, rest: t.slice(box[0].length) };
+    const [a, b, c, d] = box.slice(1, 5).map((v) => unit(v!)) as [number, number, number, number];
+    return { spot: { box: order === "yx" ? cornerBox(a, b, c, d) : fitBox(a, b, c, d) }, rest: t.slice(box[0].length) };
   }
   const pt = POINT_SPOT.exec(t);
   if (pt && fractional([pt[1]!, pt[2]!])) return null;
-  if (pt) return { spot: { pt: [unit(pt[1]!), unit(pt[2]!)] }, rest: t.slice(pt[0].length) };
+  if (pt) return { spot: { pt: pointOf(pt[1]!, pt[2]!, order) }, rest: t.slice(pt[0].length) };
   return null;
 }
 
@@ -346,8 +380,13 @@ const sameSpot = (a: AgentSpot, b: AgentSpot) => JSON.stringify(a) === JSON.stri
  * starts, picture numbers that are all fractions of 1. Picture numbers are
  * rounded and kept inside the picture here; whether an id or a picture spot
  * is allowed on this step is the reader's to say.
+ *
+ * `order` "yx" reads the picture's places as Gemini writes them: four numbers
+ * are [ymin, xmin, ymax, xmax] and two are [y, x], in either kind of bracket.
+ * What comes out is [x, y, w, h] and [x, y] whatever the order.
  */
-export function parseDraw(arg: string): AgentDraw | null {
+export function parseDraw(arg: string, opts: ParseOptions = {}): AgentDraw | null {
+  const order = opts.order ?? "xy";
   const m = /^([A-Za-z]+)\b\s*:?\s*([\s\S]*)$/.exec(arg.trim());
   const name = m ? m[1]!.toLowerCase() : "";
   const kind = Object.hasOwn(DRAW_KINDS, name) ? DRAW_KINDS[name] : undefined;
@@ -362,7 +401,7 @@ export function parseDraw(arg: string): AgentDraw | null {
       const t = rest.replace(PATH_JOIN, "");
       const pt = POINT_SPOT.exec(t);
       if (!pt) break;
-      points.push([unit(pt[1]!), unit(pt[2]!)]);
+      points.push(pointOf(pt[1]!, pt[2]!, order));
       raw.push(pt[1]!, pt[2]!);
       rest = t.slice(pt[0].length);
     }
@@ -374,9 +413,9 @@ export function parseDraw(arg: string): AgentDraw | null {
   }
 
   if (kind === "arrow") {
-    const from = readSpot(rest.replace(/^\s*from\s+/i, ""));
+    const from = readSpot(rest.replace(/^\s*from\s+/i, ""), order);
     if (!from) return null;
-    const to = readSpot(from.rest.replace(ARROW_JOIN, ""));
+    const to = readSpot(from.rest.replace(ARROW_JOIN, ""), order);
     if (!to || sameSpot(from.spot, to.spot)) return null;
     // "e5 -> e9 -> e10" is a chain, not a label of "> e10": the first link is
     // drawn and the rest is not written on the screen.
@@ -389,7 +428,7 @@ export function parseDraw(arg: string): AgentDraw | null {
     // model writing "NUMBER 2 e5" means it.
     const before = /^\s*#?(\d{1,3})\s+(?=[eo]\d|[[(])/i.exec(rest);
     if (before) rest = rest.slice(before[0].length);
-    const at = readSpot(rest);
+    const at = readSpot(rest, order);
     if (!at) return null;
     let n = before ? Number(before[1]) : NaN;
     let tail = at.rest;
@@ -404,7 +443,7 @@ export function parseDraw(arg: string): AgentDraw | null {
     return { kind, target: at.spot, n, ...(text ? { text } : {}) };
   }
 
-  const at = readSpot(rest);
+  const at = readSpot(rest, order);
   if (!at) return null;
   const text = readLabel(at.rest);
   if (kind === "label" && !text) return null;

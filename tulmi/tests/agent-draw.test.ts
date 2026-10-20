@@ -26,6 +26,8 @@ process.env.AGENT_RATE_LIMIT_MAX = "1000";
 const llm = vi.hoisted(() => ({
   calls: [] as Array<{ body: Record<string, any> }>,
   plan: ["DONE"] as Array<string | number>,
+  /** Models that fail before writing, so the ladder moves on. */
+  failing: new Set<string>(),
 }));
 
 vi.mock("openai", () => ({
@@ -36,6 +38,7 @@ vi.mock("openai", () => ({
         create: async (body: Record<string, any>, opts?: Record<string, any>) => {
           llm.calls.push({ body });
           if (!body.stream) return { choices: [{ message: { content: "written" } }] };
+          if (llm.failing.has(body.model)) throw Object.assign(new Error("upstream 503"), { status: 503 });
           const signal: AbortSignal | undefined = opts?.signal;
           return (async function* () {
             for (const c of llm.plan) {
@@ -59,7 +62,7 @@ vi.mock("groq-sdk", () => ({
 }));
 
 const { LineReader, LABEL_MAX, PATH_MAX, parseDraw, parseLine } = await import("../src/agent/lines.js");
-const { AGENT_SYSTEM, AGENT_VISION_SYSTEM } = await import("../src/agent/prompt.js");
+const { AGENT_SYSTEM, AGENT_VISION_SYSTEM, AGENT_VISION_SYSTEM_GEMINI } = await import("../src/agent/prompt.js");
 const { EventSink } = await import("../src/agent/protocol.js");
 const { runStep } = await import("../src/agent/run.js");
 const { getConfig } = await import("../src/config.js");
@@ -383,6 +386,7 @@ afterAll(async () => { await app.close(); });
 beforeEach(() => {
   llm.calls.length = 0;
   llm.plan = ["DONE"];
+  llm.failing.clear();
   logged.length = 0;
 });
 
@@ -457,25 +461,49 @@ describe("the step's log line", () => {
 });
 
 describe("the picture path draws in the picture", () => {
+  // The primary is a Gemini model, taught to write y first: a box as [ymin,
+  // xmin, ymax, xmax] and a point as [y, x]. The device gets [x, y, w, h] and
+  // [x, y] all the same.
+  const GEMINI = [
+    "SAY The long side is 5.\nDRAW ARROW [450,640] -> [620,450] \"c, what we want\"\n",
+    "SAY In a right triangle, a² + b² = c².\nDRAW CIRCLE [790,160,840,210] \"90°\"\nDRAW UNDERLINE [600 135 640 165]\n",
+    "DRAW LABEL [900,450] \"$\\sqrt{25}$\"\nDRAW BOX e9\nDRAW PATH [820,180] [420,180] [820,720] CLOSED\nSAY So c = √25 = 5.\nDONE\n",
+  ];
+  // The fallback is taught x first, and is read x first.
+  const GENERIC = [
+    "SAY The long side is 5.\nDRAW ARROW (640,450) -> (450,620) \"c, what we want\"\n",
+    "SAY In a right triangle, a² + b² = c².\nDRAW CIRCLE [160,790,50,50] \"90°\"\nDRAW UNDERLINE [135 600 30 40]\n",
+    "DRAW LABEL (450,900) \"$\\sqrt{25}$\"\nDRAW BOX e9\nDRAW PATH (180,820) (180,420) (720,820) CLOSED\nSAY So c = √25 = 5.\nDONE\n",
+  ];
+
+  // What the device gets from either.
+  const TRIANGLE = [
+    { t: "heard", text: "how long is the long side?", mode: "show" },
+    { t: "say", text: "The long side is 5." },
+    { t: "draw", kind: "arrow", from: { pt: [640, 450] }, to: { pt: [450, 620] }, text: "c, what we want" },
+    { t: "say", text: "In a right triangle, a² + b² = c².", append: true },
+    { t: "draw", kind: "circle", target: { box: [160, 790, 50, 50] }, text: "90°" },
+    { t: "draw", kind: "underline", target: { box: [135, 600, 30, 40] } },
+    { t: "draw", kind: "label", target: { pt: [450, 900] }, text: "√25" },
+    { t: "draw", kind: "path", points: [[180, 820], [180, 420], [720, 820]], closed: true },
+    { t: "say", text: "So c = √25 = 5.", append: true },
+    { t: "done" },
+  ];
+
   it("places in the picture and ids alike, in order with the sentences, labels as plain maths", async () => {
-    llm.plan = [
-      "SAY The long side is 5.\nDRAW ARROW (640,450) -> (450,620) \"c, what we want\"\n",
-      "SAY In a right triangle, a² + b² = c².\nDRAW CIRCLE [160,790,50,50] \"90°\"\nDRAW UNDERLINE [135 600 30 40]\n",
-      "DRAW LABEL (450,900) \"$\\sqrt{25}$\"\nDRAW BOX e9\nDRAW PATH (180,820) (180,420) (720,820) CLOSED\nSAY So c = √25 = 5.\nDONE\n",
-    ];
+    llm.plan = GEMINI;
     const evs = await postPicture({ utterance: "how long is the long side?" });
-    expect(evs).toEqual([
-      { t: "heard", text: "how long is the long side?", mode: "show" },
-      { t: "say", text: "The long side is 5." },
-      { t: "draw", kind: "arrow", from: { pt: [640, 450] }, to: { pt: [450, 620] }, text: "c, what we want" },
-      { t: "say", text: "In a right triangle, a² + b² = c².", append: true },
-      { t: "draw", kind: "circle", target: { box: [160, 790, 50, 50] }, text: "90°" },
-      { t: "draw", kind: "underline", target: { box: [135, 600, 30, 40] } },
-      { t: "draw", kind: "label", target: { pt: [450, 900] }, text: "√25" },
-      { t: "draw", kind: "path", points: [[180, 820], [180, 420], [720, 820]], closed: true },
-      { t: "say", text: "So c = √25 = 5.", append: true },
-      { t: "done" },
-    ]);
+    expect(streamCalls().map((c) => c.body.model)).toEqual(["google/gemini-2.5-flash"]);
+    expect(evs).toEqual(TRIANGLE);
+  });
+
+  it("an answer from the fallback, after the Gemini model failed before writing, is read x first, into the same marks", async () => {
+    llm.failing.add("google/gemini-2.5-flash");
+    llm.plan = GENERIC;
+    const evs = await postPicture({ utterance: "how long is the long side?" });
+    expect(streamCalls().map((c) => c.body.model)).toEqual(["google/gemini-2.5-flash", "anthropic/claude-haiku-5.5"]);
+    expect(systemText(1)).toBe(AGENT_VISION_SYSTEM);
+    expect(evs).toEqual(TRIANGLE);
   });
 });
 
@@ -501,17 +529,33 @@ describe("the prompts teach DRAW, and stay the same bytes", () => {
     await postPicture({ utterance: "how long is the long side?" });
     await postPicture({ utterance: "walk me through this step by step", app: "Preview", platform: "win" });
     expect(streamCalls()).toHaveLength(2);
-    expect(systemText(0)).toBe(AGENT_VISION_SYSTEM);
-    expect(systemText(1)).toBe(AGENT_VISION_SYSTEM);
+    expect(systemText(0)).toBe(AGENT_VISION_SYSTEM_GEMINI);
+    expect(systemText(1)).toBe(AGENT_VISION_SYSTEM_GEMINI);
     for (const must of ["DRAW marks the screen while you explain, like a teacher's pen.", "DRAW ARROW <spot> -> <spot>", "DRAW PATH (x,y) (x,y) … CLOSED",
       "from 0 to 1000 across from its left edge and down from its top", "answer with SAY, POINT, DRAW and DONE only"]) {
       expect(AGENT_VISION_SYSTEM, must).toContain(must);
     }
     expect(AGENT_VISION_SYSTEM).toMatch(/^DRAW CIRCLE \[160,790,50,50\] "90°"$/m);
-    // Every example line it is taught parses, and is kept on a picture step.
-    const r = new LineReader(new Set(), "show", { picture: true });
-    const examples = AGENT_VISION_SYSTEM.split("\n").filter((l) => /^DRAW [A-Z]+ /.test(l) && /\d/.test(l) && !/[<—…]/.test(l));
-    expect(examples.length).toBeGreaterThan(3);
-    for (const l of examples) expect(r.read(parseLine(l, "mac")!), l).toHaveLength(1);
+    // Gemini's: the same pen, with places in the picture y first.
+    for (const must of ["DRAW marks the screen while you explain, like a teacher's pen.", "DRAW ARROW <spot> -> <spot>", "DRAW PATH [y,x] [y,x] … CLOSED",
+      "a box [ymin,xmin,ymax,xmax] or a point [y,x]", "DRAW BOX [ymin,xmin,ymax,xmax], DRAW CIRCLE [ymin,xmin,ymax,xmax], DRAW ARROW [y,x] -> [y,x], DRAW NUMBER [y,x] 2, DRAW PATH [y,x] [y,x] …, DRAW LABEL [y,x] \"…\"",
+      "answer with SAY, POINT, DRAW and DONE only"]) {
+      expect(AGENT_VISION_SYSTEM_GEMINI, must).toContain(must);
+    }
+    expect(AGENT_VISION_SYSTEM_GEMINI).toMatch(/^DRAW CIRCLE \[790,160,840,210\] "90°"$/m);
+    expect(AGENT_VISION_SYSTEM_GEMINI).not.toContain("(x,y)");
+    // Every example line each is taught parses in its own order, is kept on a
+    // picture step, and the two come to the same marks.
+    const taught = (prompt: string, order: "xy" | "yx") => {
+      const r = new LineReader(new Set(), "show", { picture: true });
+      const examples = prompt.split("\n").filter((l) => /^DRAW [A-Z]+ /.test(l) && /\d/.test(l) && !/[<—…]/.test(l));
+      expect(examples.length).toBeGreaterThan(3);
+      return examples.map((l) => {
+        const out = r.read(parseLine(l, "mac", { order })!);
+        expect(out, l).toHaveLength(1);
+        return out[0];
+      });
+    };
+    expect(taught(AGENT_VISION_SYSTEM_GEMINI, "yx")).toEqual(taught(AGENT_VISION_SYSTEM, "xy"));
   });
 });

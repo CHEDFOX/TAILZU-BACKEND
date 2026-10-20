@@ -302,17 +302,38 @@ const EnvSchema = z.object({
    * is answered by a model that can see, sentence by sentence as it writes.
    * Its own ladder, by the text path's rules: the fallbacks in order, then
    * CLEANUP_MODEL, each only when the one before failed before writing
-   * anything. Every model on it must take an image.
+   * anything, and no model twice. Every model on it must take an image.
+   *
+   * Chosen on speed, measured on the VPS with one picture question asked of
+   * each model in turn (scripts/time-vision.ts asks it again): with latency
+   * routing this one reached its first sentence in 2.1 s and never took more
+   * than 2.4 s in 8 runs, about twice as fast as the fallback (4.6 s, 6.1 s
+   * at worst), and drew more marks. One that reads pictures better took
+   * 4.2 s, and 15 s at worst. It can turn its thinking off, so it starts
+   * writing at once.
    */
-  AGENT_VISION_MODEL: z.string().default("openai/gpt-6-luna"),
+  AGENT_VISION_MODEL: z.string().default("google/gemini-2.5-flash"),
   /** Comma-separated. */
-  AGENT_VISION_FALLBACK_MODELS: z.string().default("google/gemini-3.1-flash-lite,anthropic/claude-haiku-5.5"),
+  AGENT_VISION_FALLBACK_MODELS: z.string().default("anthropic/claude-haiku-5.5"),
   /**
-   * Asked to go step by step, in detail, or to walk them through it: a
-   * stronger model with room for a longer answer, tried first, with the
-   * ordinary vision ladder under it.
+   * Asked to go step by step, in detail, or to walk them through it: room
+   * for a longer answer, tried first, with the ordinary vision ladder under
+   * it. The same model as AGENT_VISION_MODEL, given more to write: a worked
+   * answer is still read as it arrives, and a slower model would make its
+   * first sentence wait.
    */
-  AGENT_VISION_DEEP_MODEL: z.string().default("anthropic/claude-sonnet-5.5"),
+  AGENT_VISION_DEEP_MODEL: z.string().default("google/gemini-2.5-flash"),
+  /**
+   * OpenRouter's provider routing for picture questions: among the providers
+   * serving the model, ask the one that sorts first. "latency" is the one
+   * soonest to its first token, and measured it cut the primary's worst first
+   * sentence from 4.6 s to 2.4 s, at no extra cost. "throughput" and "price"
+   * are OpenRouter's other two; "" sends no preference, and OpenRouter
+   * balances the load as it likes. Any other value is sent as no preference
+   * too (llm.providerSortOf), since a field OpenRouter cannot read would be
+   * refused on every picture question.
+   */
+  AGENT_VISION_PROVIDER_SORT: z.string().default("latency"),
   /**
    * Per vision call: to its first written character, and then between one
    * chunk and the next. Not the whole stream, as the text path's is: a

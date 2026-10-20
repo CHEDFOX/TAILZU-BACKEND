@@ -31,10 +31,22 @@
  * and joined into each, so the two cannot drift apart. They differ in one
  * sentence: places in a picture mean something only to the model that is
  * shown the picture, so the text path is told to mark by id.
+ *
+ * The picture path has two system prompts, each one constant, and the model
+ * decides which it is sent. Gemini models are trained to give a place in a
+ * picture as [ymin, xmin, ymax, xmax] and [y, x], on the same 0–1000 scale
+ * the drawing uses, and asked for [x, y, w, h] and (x, y) they place marks
+ * less exactly: the marks are what the person sees. So
+ * AGENT_VISION_SYSTEM_GEMINI is AGENT_VISION_SYSTEM with its places written
+ * in Gemini's order, in the syntax and in the examples, and nothing else
+ * changed; lines.ts reads the answer back in the same order (drawOrderFor).
+ * The text path is not given one: places in the picture are only for a
+ * picture, and it has none.
  */
 import type { AgentElement, AgentStepRequest } from "../../../shared/types/api.js";
 import { fenceTags, stripFenceTags } from "../pipeline/assistPrompt.js";
-import type { UserPart } from "./llm.js";
+import type { SpotOrder } from "./lines.js";
+import { isGemini, type UserPart } from "./llm.js";
 import type { AgentImage } from "./protocol.js";
 
 const AGENT_TAG_NAMES = "screen|said|history";
@@ -68,8 +80,9 @@ export function fenced(s: string): string {
 /** What DRAW is for, word for word in both prompts. */
 const DRAW_WHY = "DRAW marks the screen while you explain, like a teacher's pen. Use it when a mark makes the answer clearer: on a picture (a diagram, an equation, a chart, a map, a photo) to show which part you mean; NUMBER the places for 2–4 steps in order; ARROW from a thing to what it affects; UNDERLINE or HIGHLIGHT the words you explain. Do not draw for a plain \"where is X\" (POINT rings it). At most 6 marks. Put each DRAW right after the SAY it belongs to. Prefer a listed id when the thing has one; use picture numbers only for what has no id.";
 
-/** The marks, one line each, and what a spot is. */
-const DRAW_SYNTAX = [
+/** The marks, one line each, and what a spot is, with the picture's places
+ *  written in `order`: x first, or y first as Gemini writes them. */
+const drawSyntax = (order: SpotOrder) => [
   "DRAW BOX <spot> \"label\"",
   "DRAW CIRCLE <spot> \"label\"",
   "DRAW UNDERLINE <spot> \"label\"",
@@ -77,9 +90,13 @@ const DRAW_SYNTAX = [
   "DRAW ARROW <spot> -> <spot> \"label\" — from the first to the second",
   "DRAW NUMBER <spot> <1-9>",
   "DRAW LABEL <spot> \"text\" — words on their own, beside it",
-  "DRAW PATH (x,y) (x,y) … CLOSED \"label\" — a line through points in the picture; CLOSED joins the last to the first",
+  order === "yx"
+    ? "DRAW PATH [y,x] [y,x] … CLOSED \"label\" — a line through points in the picture; CLOSED joins the last to the first"
+    : "DRAW PATH (x,y) (x,y) … CLOSED \"label\" — a line through points in the picture; CLOSED joins the last to the first",
   "DRAW CLEAR — takes your marks away",
-  "A <spot> is an id from the list (e12, o3), or a place in the picture: a box [x,y,w,h] or a point (x,y), in numbers from 0 to 1000 across from its left edge and down from its top, whatever its shape. A label is optional, except on LABEL: a few words in quotes.",
+  order === "yx"
+    ? "A <spot> is an id from the list (e12, o3), or a place in the picture: a box [ymin,xmin,ymax,xmax] or a point [y,x], in numbers from 0 to 1000 down from its top edge (y) and across from its left edge (x), y first, whatever its shape. So in the picture: DRAW BOX [ymin,xmin,ymax,xmax], DRAW CIRCLE [ymin,xmin,ymax,xmax], DRAW ARROW [y,x] -> [y,x], DRAW NUMBER [y,x] 2, DRAW PATH [y,x] [y,x] …, DRAW LABEL [y,x] \"…\". A label is optional, except on LABEL: a few words in quotes."
+    : "A <spot> is an id from the list (e12, o3), or a place in the picture: a box [x,y,w,h] or a point (x,y), in numbers from 0 to 1000 across from its left edge and down from its top, whatever its shape. A label is optional, except on LABEL: a few words in quotes.",
 ];
 
 export const AGENT_SYSTEM = [
@@ -117,7 +134,7 @@ export const AGENT_SYSTEM = [
   "",
   "Drawing:",
   DRAW_WHY,
-  ...DRAW_SYNTAX,
+  ...drawSyntax("xy"),
   "Boxes, points and PATH are places in a picture, only for a question answered from a picture you are shown. Here you are shown none, so mark things by their ids.",
   "",
   "The screen list has one control per line: its id, its role, its \"label\", and @region, where tl t tr l c r bl b br are the thirds of the window. Then =\"value\" and the flags focused, disabled, selected, checked or unchecked. An id that starts with o is a line of text read off the window's pixels: you may POINT at it, but it is not a control, so never act on it.",
@@ -200,7 +217,40 @@ export function elementLine(e: AgentElement): string {
   return line;
 }
 
-export const AGENT_VISION_SYSTEM = [
+/**
+ * The worked triangle, the one example that draws in the picture, with its
+ * places written in `order`. The same marks either way: lines.ts reads both
+ * to the same events.
+ */
+const triangleExample = (order: SpotOrder) => order === "yx"
+  ? [
+    "They said: how long is the long side? The picture is a right triangle: the right angle at about [820,180], a side marked 3 up the left to [420,180], a side marked 4 along the bottom to [820,720], and the long side between their ends marked ?. The 3 is written at about [620,150], the 4 at about [870,450].",
+    "SAY The long side is 5.",
+    "DRAW ARROW [450,640] -> [620,450] \"c, what we want\"",
+    "SAY In a right triangle, a² + b² = c², where c is the side across from the right angle.",
+    "DRAW CIRCLE [790,160,840,210] \"90°\"",
+    "SAY Here a = 3 and b = 4, so c² = 9 + 16 = 25.",
+    "DRAW UNDERLINE [600,135,640,165]",
+    "DRAW UNDERLINE [850,435,890,465]",
+    "SAY So c = √25 = 5.",
+    "DONE",
+  ]
+  : [
+    "They said: how long is the long side? The picture is a right triangle: the right angle at about (180,820), a side marked 3 up the left to (180,420), a side marked 4 along the bottom to (720,820), and the long side between their ends marked ?. The 3 is written at about (150,620), the 4 at about (450,870).",
+    "SAY The long side is 5.",
+    "DRAW ARROW (640,450) -> (450,620) \"c, what we want\"",
+    "SAY In a right triangle, a² + b² = c², where c is the side across from the right angle.",
+    "DRAW CIRCLE [160,790,50,50] \"90°\"",
+    "SAY Here a = 3 and b = 4, so c² = 9 + 16 = 25.",
+    "DRAW UNDERLINE [135,600,30,40]",
+    "DRAW UNDERLINE [435,850,30,40]",
+    "SAY So c = √25 = 5.",
+    "DONE",
+  ];
+
+/** The picture path's system prompt, with places in the picture written in
+ *  `order`. Built once for each order, below, and never per request. */
+const visionSystem = (order: SpotOrder) => [
   "You are Blip, a small guide on someone's computer screen. They asked about something they can see, and you are shown a picture of it: one image from the window in front of them, or the whole window. You are also shown the list of things on that screen, and what they said. You answer their question about the picture, out loud, a sentence at a time.",
   "",
   "Answer in lines only, one command per line. No prose outside the lines, no markdown, no code fences, no numbering.",
@@ -225,7 +275,7 @@ export const AGENT_VISION_SYSTEM = [
   "",
   "Drawing:",
   DRAW_WHY,
-  ...DRAW_SYNTAX,
+  ...drawSyntax(order),
   "",
   "The screen list has one thing per line: its id, its role, its \"label\", and @region, where tl t tr l c r bl b br are the thirds of the window. An id that starts with o is a line of text read off the window. <history>, when there is one, is what happened earlier in this run.",
   "",
@@ -257,16 +307,7 @@ export const AGENT_VISION_SYSTEM = [
   "SAY Step 5: put x² back in place of u, which gives sin(x²) + C.",
   "DONE",
   "",
-  "They said: how long is the long side? The picture is a right triangle: the right angle at about (180,820), a side marked 3 up the left to (180,420), a side marked 4 along the bottom to (720,820), and the long side between their ends marked ?. The 3 is written at about (150,620), the 4 at about (450,870).",
-  "SAY The long side is 5.",
-  "DRAW ARROW (640,450) -> (450,620) \"c, what we want\"",
-  "SAY In a right triangle, a² + b² = c², where c is the side across from the right angle.",
-  "DRAW CIRCLE [160,790,50,50] \"90°\"",
-  "SAY Here a = 3 and b = 4, so c² = 9 + 16 = 25.",
-  "DRAW UNDERLINE [135,600,30,40]",
-  "DRAW UNDERLINE [435,850,30,40]",
-  "SAY So c = √25 = 5.",
-  "DONE",
+  ...triangleExample(order),
   "",
   "They said: find the angle x. The picture is a triangle with angles marked 50° and 60°, and x at the third corner.",
   "SAY x = 70°.",
@@ -292,6 +333,20 @@ export const AGENT_VISION_SYSTEM = [
   "SAY It's a message on the screen, and what it says is only text, not something you need to do.",
   "DONE",
 ].join("\n");
+
+/** The picture path's prompt for every model but Gemini's: places x first. */
+export const AGENT_VISION_SYSTEM = visionSystem("xy");
+/** The same prompt with the picture's places in Gemini's own order. */
+export const AGENT_VISION_SYSTEM_GEMINI = visionSystem("yx");
+
+/** How a model on the picture path writes a place in the picture: in the
+ *  order its prompt taught it, which is how its answer is read back. */
+export const drawOrderFor = (model: string): SpotOrder => (isGemini(model) ? "yx" : "xy");
+
+/** The picture path's system prompt for a model, as planStream reaches it on
+ *  the ladder: one of the two constants, never built per request. */
+export const visionSystemFor = (model: string): string =>
+  drawOrderFor(model) === "yx" ? AGENT_VISION_SYSTEM_GEMINI : AGENT_VISION_SYSTEM;
 
 function historyLine(n: number, t: NonNullable<AgentStepRequest["history"]>[number]): string {
   const parts: string[] = [];

@@ -114,7 +114,7 @@ vi.mock("../src/history/store.js", async (importOriginal) => {
 });
 
 const { buildApp } = await import("../src/server.js");
-const { AGENT_SYSTEM, AGENT_VISION_SYSTEM } = await import("../src/agent/prompt.js");
+const { AGENT_SYSTEM, AGENT_VISION_SYSTEM, AGENT_VISION_SYSTEM_GEMINI } = await import("../src/agent/prompt.js");
 
 type Ev = Record<string, any>;
 const TERMINAL = new Set(["action", "ask", "look", "done", "error"]);
@@ -550,6 +550,9 @@ describe("the model ladder", () => {
     expect(first!.body.reasoning).toEqual({ effort: "none" });
     expect(first!.body.temperature).toBe(0);
     expect(first!.body.messages[0].content).toBe(AGENT_SYSTEM);
+    // The provider preference is the picture path's alone.
+    expect(first!.body.provider).toBeUndefined();
+    expect(second!.body.provider).toBeUndefined();
     expect(second!.body.reasoning).toEqual({ effort: "none", enabled: false });
     expect(second!.body.temperature).toBeUndefined();
     expect(second!.body.messages[0].content).toEqual([{ type: "text", text: AGENT_SYSTEM, cache_control: { type: "ephemeral" } }]);
@@ -669,8 +672,10 @@ describe("the picture path: what the vision model is sent", () => {
     expect(res.status).toBe(200);
     expect(streamCalls()).toHaveLength(1);
     const call = streamCalls()[0]!;
-    expect(call.body.model).toBe("openai/gpt-6-luna");
-    expect(call.body.messages[0].content).toBe(AGENT_VISION_SYSTEM);
+    // The primary is a Gemini model, so it is taught Gemini's own order for
+    // places in the picture.
+    expect(call.body.model).toBe("google/gemini-2.5-flash");
+    expect(call.body.messages[0].content).toBe(AGENT_VISION_SYSTEM_GEMINI);
     const parts = userParts();
     expect(parts).toHaveLength(2);
     expect(parts[0]).toEqual({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${data.toString("base64")}` } });
@@ -680,11 +685,13 @@ describe("the picture path: what the vision model is sent", () => {
     expect(text).toContain('<screen>\ne1 button "Search" @t\n');
     expect(text).toContain('e3 button "Export…" @tr');
     expect(text.endsWith("<said>explain this equation</said>")).toBe(true);
-    // Streamed, bounded, unretried, unreasoned, with the picture path's budget.
+    // Streamed, bounded, unretried, unreasoned, with the picture path's budget,
+    // and routed to the provider soonest to answer.
     expect(call.body.stream).toBe(true);
     expect(call.body.max_tokens).toBe(450);
     expect(call.body.reasoning).toEqual({ effort: "none" });
     expect(call.body.temperature).toBe(0);
+    expect(call.body.provider).toEqual({ sort: "latency" });
     expect(call.opts).toMatchObject({ maxRetries: 0, timeout: 500 });
   });
 
@@ -702,13 +709,27 @@ describe("the picture path: what the vision model is sent", () => {
     }, { files: [picturePart(jpeg(9000, 1))] });
     await postPicture({ utterance: "walk me through this step by step", app: "Preview" });
     expect(streamCalls()).toHaveLength(3);
-    expect(systemText(0)).toBe(AGENT_VISION_SYSTEM);
-    expect(systemText(1)).toBe(AGENT_VISION_SYSTEM);
-    expect(systemText(2)).toBe(AGENT_VISION_SYSTEM);
-    expect(AGENT_VISION_SYSTEM).not.toMatch(/Slack|Microsoft Edge|Preview|qué|Figure 3/);
+    expect(systemText(0)).toBe(AGENT_VISION_SYSTEM_GEMINI);
+    expect(systemText(1)).toBe(AGENT_VISION_SYSTEM_GEMINI);
+    expect(systemText(2)).toBe(AGENT_VISION_SYSTEM_GEMINI);
+    for (const prompt of [AGENT_VISION_SYSTEM, AGENT_VISION_SYSTEM_GEMINI]) {
+      expect(prompt).not.toMatch(/Slack|Microsoft Edge|Preview|qué|Figure 3/);
+    }
     expect(String(userParts(1)[1]!.text).split("\n")[0]).toBe("App: Microsoft Edge. The picture is the whole window. Their language: es.");
-    // anthropic's is marked for caching, the others cache a repeated prefix on their own.
-    expect(streamCalls()[2]!.body.messages[0].content).toEqual([{ type: "text", text: AGENT_VISION_SYSTEM, cache_control: { type: "ephemeral" } }]);
+    // Gemini caches a repeated prefix on its own: no mark.
+    expect(streamCalls()[2]!.body.messages[0].content).toBe(AGENT_VISION_SYSTEM_GEMINI);
+  });
+
+  it("the fallback's prompt is the same bytes every time too, and anthropic's is marked for caching", async () => {
+    llm.plans.set("google/gemini-2.5-flash", "throw");
+    llm.plan = ["SAY A chart.\nDONE"];
+    await postPicture({ utterance: "what does this chart show?" });
+    await postPicture({ utterance: "¿qué es esto?", app: "Microsoft Edge", language: "es" });
+    const haiku = streamCalls().filter((c) => c.body.model === "anthropic/claude-haiku-5.5");
+    expect(haiku).toHaveLength(2);
+    for (const c of haiku) {
+      expect(c.body.messages[0].content).toEqual([{ type: "text", text: AGENT_VISION_SYSTEM, cache_control: { type: "ephemeral" } }]);
+    }
   });
 
   it("a recording and a picture together: the recording is heard, the picture is looked at", async () => {
@@ -819,7 +840,7 @@ describe("the picture path: what it answers", () => {
       { t: "say", text: "The left bar is March, at about 20,000." },
       { t: "done" },
     ]);
-    expect(systemText()).toBe(AGENT_VISION_SYSTEM);
+    expect(systemText()).toBe(AGENT_VISION_SYSTEM_GEMINI);
     const text = String(userParts()[1]!.text);
     expect(text).toContain("<history>\n1. said: what does this bar show?\n</history>");
     expect(text).toContain("e9 window\n");
@@ -829,51 +850,74 @@ describe("the picture path: what it answers", () => {
 });
 
 describe("the picture path: its ladders", () => {
-  it("climbs the vision ladder only on a failure before any output", async () => {
-    llm.plans.set("openai/gpt-6-luna", "throw");
-    llm.plans.set("google/gemini-3.1-flash-lite", "throw");
+  it("climbs the vision ladder only on a failure before any output, each rung with its own family's prompt", async () => {
+    llm.plans.set("google/gemini-2.5-flash", "throw");
     llm.plan = ["SAY A diagram.\nDONE"];
     const res = await postPicture({ utterance: "what's this?" });
     expect(res.evs.map((e) => e.t)).toEqual(["heard", "say", "done"]);
-    expect(streamCalls().map((c) => c.body.model)).toEqual(["openai/gpt-6-luna", "google/gemini-3.1-flash-lite", "anthropic/claude-haiku-5.5"]);
-    // Every rung gets the picture, and anthropic's the cache mark and its own reasoning switch.
-    for (const c of streamCalls()) expect(c.body.messages[1].content[0].type).toBe("image_url");
-    const haiku = streamCalls()[2]!;
-    expect(haiku.body.messages[0].content).toEqual([{ type: "text", text: AGENT_VISION_SYSTEM, cache_control: { type: "ephemeral" } }]);
-    expect(haiku.body.reasoning).toEqual({ effort: "none", enabled: false });
-    expect(haiku.body.temperature).toBeUndefined();
+    expect(streamCalls().map((c) => c.body.model)).toEqual(["google/gemini-2.5-flash", "anthropic/claude-haiku-5.5"]);
+    // Every rung gets the picture and the provider preference; Gemini its own
+    // order for places in the picture, anthropic the generic prompt with the
+    // cache mark and its own reasoning switch.
+    for (const c of streamCalls()) {
+      expect(c.body.messages[1].content[0].type).toBe("image_url");
+      expect(c.body.provider).toEqual({ sort: "latency" });
+    }
+    const [gemini, haiku] = streamCalls();
+    expect(gemini!.body.messages[0].content).toBe(AGENT_VISION_SYSTEM_GEMINI);
+    expect(gemini!.body.reasoning).toEqual({ effort: "none" });
+    expect(gemini!.body.temperature).toBe(0);
+    expect(haiku!.body.messages[0].content).toEqual([{ type: "text", text: AGENT_VISION_SYSTEM, cache_control: { type: "ephemeral" } }]);
+    expect(haiku!.body.reasoning).toEqual({ effort: "none", enabled: false });
+    expect(haiku!.body.temperature).toBeUndefined();
+  });
+
+  it("the answer's places are read in the order its own model was taught: Gemini's y first, the fallback's x first", async () => {
+    llm.plan = ["SAY The right angle.\nDRAW CIRCLE [790,160,840,210] \"90°\"\nDRAW ARROW [450,640] -> [620,450]\nDONE"];
+    const gemini = await postPicture({ utterance: "what's this?" });
+    llm.calls.length = 0;
+    llm.plans.set("google/gemini-2.5-flash", "throw");
+    llm.plan = ["SAY The right angle.\nDRAW CIRCLE [160,790,50,50] \"90°\"\nDRAW ARROW (640,450) -> (450,620)\nDONE"];
+    const haiku = await postPicture({ utterance: "what's this?" });
+    expect(streamCalls().map((c) => c.body.model)).toEqual(["google/gemini-2.5-flash", "anthropic/claude-haiku-5.5"]);
+    const marks = [
+      { t: "draw", kind: "circle", target: { box: [160, 790, 50, 50] }, text: "90°" },
+      { t: "draw", kind: "arrow", from: { pt: [640, 450] }, to: { pt: [450, 620] } },
+    ];
+    expect(gemini.evs.filter((e) => e.t === "draw")).toEqual(marks);
+    expect(haiku.evs.filter((e) => e.t === "draw")).toEqual(marks);
   });
 
   it("a vision model that answers with nothing (a filtered picture) is passed over too", async () => {
-    llm.plans.set("openai/gpt-6-luna", []);
+    llm.plans.set("google/gemini-2.5-flash", []);
     llm.plan = ["SAY A right triangle.\nDONE"];
     const res = await postPicture({ utterance: "what's this?" });
     expect(res.evs.slice(1)).toEqual([{ t: "say", text: "A right triangle." }, { t: "done" }]);
-    expect(streamCalls().map((c) => c.body.model)).toEqual(["openai/gpt-6-luna", "google/gemini-3.1-flash-lite"]);
+    expect(streamCalls().map((c) => c.body.model)).toEqual(["google/gemini-2.5-flash", "anthropic/claude-haiku-5.5"]);
   });
 
   it("every vision model answering with nothing is said plainly, after CLEANUP_MODEL", async () => {
     llm.plan = [];
     const res = await postPicture({ utterance: "what's this?" });
     expect(res.evs.slice(1)).toEqual([{ t: "say", text: "I couldn't make that out in the picture." }, { t: "done" }]);
-    expect(streamCalls().map((c) => c.body.model)).toEqual(["openai/gpt-6-luna", "google/gemini-3.1-flash-lite", "anthropic/claude-haiku-5.5", "openai/gpt-5.4-mini"]);
+    expect(streamCalls().map((c) => c.body.model)).toEqual(["google/gemini-2.5-flash", "anthropic/claude-haiku-5.5", "openai/gpt-5.4-mini"]);
   });
 
   it("every vision model failing is model_unavailable, after CLEANUP_MODEL", async () => {
     llm.plan = "throw";
     const res = await postPicture({ utterance: "what's this?" });
     expect(res.evs.at(-1)).toMatchObject({ t: "error", code: "model_unavailable" });
-    expect(streamCalls().map((c) => c.body.model)).toEqual(["openai/gpt-6-luna", "google/gemini-3.1-flash-lite", "anthropic/claude-haiku-5.5", "openai/gpt-5.4-mini"]);
+    expect(streamCalls().map((c) => c.body.model)).toEqual(["google/gemini-2.5-flash", "anthropic/claude-haiku-5.5", "openai/gpt-5.4-mini"]);
   });
 
   it("a vision model silent past AGENT_VISION_TIMEOUT_MS is passed over", async () => {
-    llm.plans.set("openai/gpt-6-luna", "hang");
+    llm.plans.set("google/gemini-2.5-flash", "hang");
     llm.plan = ["SAY A chart.\nDONE"];
     const t0 = Date.now();
     const res = await postPicture({ utterance: "what's this?" });
     expect(Date.now() - t0).toBeGreaterThanOrEqual(450);
     expect(res.evs.map((e) => e.t)).toEqual(["heard", "say", "done"]);
-    expect(streamCalls().map((c) => c.body.model)).toEqual(["openai/gpt-6-luna", "google/gemini-3.1-flash-lite"]);
+    expect(streamCalls().map((c) => c.body.model)).toEqual(["google/gemini-2.5-flash", "anthropic/claude-haiku-5.5"]);
   });
 
   it("an answer still arriving is not cut off by the timeout, which runs from chunk to chunk", async () => {
@@ -890,23 +934,23 @@ describe("the picture path: its ladders", () => {
     expect(streamCalls()).toHaveLength(1);
   });
 
-  it("step by step goes to the deep model first, with room to write, and the vision ladder under it", async () => {
-    llm.plans.set("anthropic/claude-sonnet-5.5", "throw");
+  it("step by step goes to the deep model, the same model with room to write, never twice, and the vision ladder under it", async () => {
+    llm.plans.set("google/gemini-2.5-flash", "throw");
     llm.plan = ["SAY The answer is sin(x²) + C.\nDONE"];
     const res = await postPicture({ utterance: "walk me through this step by step" });
     expect(res.evs.map((e) => e.t)).toEqual(["heard", "say", "done"]);
+    expect(streamCalls().map((c) => c.body.model)).toEqual(["google/gemini-2.5-flash", "anthropic/claude-haiku-5.5"]);
     const [deep, next] = streamCalls();
-    expect(deep!.body.model).toBe("anthropic/claude-sonnet-5.5");
-    expect(next!.body.model).toBe("openai/gpt-6-luna");
     expect(deep!.body.max_tokens).toBe(1000);
     expect(next!.body.max_tokens).toBe(1000);
-    expect(deep!.body.reasoning).toEqual({ effort: "none", enabled: false });
+    expect(deep!.body.reasoning).toEqual({ effort: "none" });
+    expect(deep!.body.messages[0].content).toBe(AGENT_VISION_SYSTEM_GEMINI);
   });
 
   it("asked for earlier in the run, it still goes deep when the step's own words are only a reply", async () => {
     llm.plan = ["SAY The answer is 12.\nDONE"];
     await postPicture({ step: 1, utterance: "the second one", history: [{ said: "walk me through this sum step by step" }] });
-    expect(streamCalls()[0]!.body.model).toBe("anthropic/claude-sonnet-5.5");
+    expect(streamCalls()[0]!.body.model).toBe("google/gemini-2.5-flash");
     expect(streamCalls()[0]!.body.max_tokens).toBe(1000);
   });
 
@@ -932,7 +976,7 @@ describe("the picture path: its ladders", () => {
     await postPicture({ utterance: "what does this chart show?" }, { files: [picturePart(data)] });
     await vi.waitFor(() => expect(logged.some((l) => l.msg === "agent step")).toBe(true));
     const call = logged.find((l) => l.msg === "agent model call")!.obj.agent;
-    expect(call).toMatchObject({ model: "openai/gpt-6-luna", outcome: "ok", picture: true, promptTokens: 1400, cachedTokens: 1100, completionTokens: 12 });
+    expect(call).toMatchObject({ model: "google/gemini-2.5-flash", outcome: "ok", picture: true, promptTokens: 1400, cachedTokens: 1100, completionTokens: 12 });
     expect(call.firstMs).toEqual(expect.any(Number));
     const stepLine = logged.find((l) => l.msg === "agent step")!.obj.agent;
     expect(stepLine).toMatchObject({ path: "picture", mode: "show", picture: true, pictureBytes: 3000, region: "element", ending: "done" });

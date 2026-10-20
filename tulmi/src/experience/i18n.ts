@@ -185,6 +185,20 @@ const NODE_TEXT_PROPS = [
 // element the same as a scalar copy prop.
 const NODE_TEXT_ARRAY_PROPS = ["chips", "options", "choices", "items"] as const;
 
+// A node type whose copy is in props of its own: Ask's one-time setup card
+// (desk.ts askSetupCard). Its prop names are the window's to read
+// (permissions-spec §4) and cannot become the ones above, so they are named
+// here, for that type only: a generic "on" or "allow" elsewhere may be an
+// identifier. Without this only its `title` was translated, and a German
+// profile read "Lass Ask sehen what you see." over rows and buttons that were
+// all English. Its rows' `key` is an identifier and stays as it is.
+const NODE_TYPE_TEXT_PROPS: Record<string, { props: readonly string[]; rows?: { key: string; fields: readonly string[] } }> = {
+  DeskAskSetup: {
+    props: ["eyebrow", "titleEm", "lede", "on", "allow", "turnOff", "restart", "restartButton", "foot", "policyLabel"],
+    rows: { key: "rows", fields: ["title", "sub"] },
+  },
+};
+
 function transformNode(node: Node, fn: StrFn): Node {
   const out: Node = { ...node };
   if (node.props) {
@@ -210,6 +224,22 @@ function transformNode(node: Node, fn: StrFn): Node {
                 }
               : item,
         );
+      }
+    }
+    const own = typeof node.type === "string" && Object.hasOwn(NODE_TYPE_TEXT_PROPS, node.type) ? NODE_TYPE_TEXT_PROPS[node.type] : undefined;
+    if (own) {
+      for (const key of own.props) {
+        if (typeof p[key] === "string") p[key] = fn(p[key] as string);
+      }
+      const rows = own.rows ? p[own.rows.key] : undefined;
+      if (own.rows && Array.isArray(rows)) {
+        const fields = own.rows.fields;
+        p[own.rows.key] = rows.map((row) => {
+          if (!row || typeof row !== "object") return row;
+          const r: Record<string, unknown> = { ...(row as Record<string, unknown>) };
+          for (const f of fields) if (typeof r[f] === "string") r[f] = fn(r[f] as string);
+          return r;
+        });
       }
     }
     out.props = p;

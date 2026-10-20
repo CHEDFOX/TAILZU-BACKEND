@@ -734,14 +734,14 @@ describe("the long answer", () => {
 });
 
 describe("the vision ladder and request", () => {
-  it("climbs from AGENT_VISION_MODEL through its fallbacks to CLEANUP_MODEL, the deep model first when asked", () => {
-    expect(visionLadder()).toEqual(["openai/gpt-6-luna", "google/gemini-3.1-flash-lite", "anthropic/claude-haiku-5.5", "openai/gpt-5.4-mini"]);
-    expect(visionLadder(true)).toEqual(["anthropic/claude-sonnet-5.5", "openai/gpt-6-luna", "google/gemini-3.1-flash-lite", "anthropic/claude-haiku-5.5", "openai/gpt-5.4-mini"]);
+  it("climbs from AGENT_VISION_MODEL through its fallbacks to CLEANUP_MODEL; the deep model is the same model, so it is there once", () => {
+    expect(visionLadder()).toEqual(["google/gemini-2.5-flash", "anthropic/claude-haiku-5.5", "openai/gpt-5.4-mini"]);
+    expect(visionLadder(true)).toEqual(["google/gemini-2.5-flash", "anthropic/claude-haiku-5.5", "openai/gpt-5.4-mini"]);
   });
 
   it("carries the picture as a part, with its own token budget", () => {
     const parts = [{ type: "image_url" as const, image_url: { url: "data:image/jpeg;base64,AAAA" } }, { type: "text" as const, text: "u" }];
-    const body = plannerRequest("anthropic/claude-sonnet-5.5", AGENT_VISION_SYSTEM, parts, 1000) as Record<string, any>;
+    const body = plannerRequest("anthropic/claude-haiku-5.5", AGENT_VISION_SYSTEM, parts, 1000) as Record<string, any>;
     expect(body.max_tokens).toBe(1000);
     expect(body.messages[0].content).toEqual([{ type: "text", text: AGENT_VISION_SYSTEM, cache_control: { type: "ephemeral" } }]);
     expect(body.messages[1]).toEqual({ role: "user", content: parts });

@@ -205,6 +205,35 @@ back as a sentence of its own, full stop included. Lower it for quicker
 captions and more pause-made full stops for the writer to remove, raise it for
 the opposite.
 
+How fast Ask answers a question about a picture, model by model, has a check
+of the same kind. It asks each model the same question the way the picture
+path asks it, through the server's own code and with the server's own key
+(nothing to type): the vision prompt for that model's family, a worksheet
+photo of a right triangle carried inside the script, a short chat screen and
+"explain this triangle". Runs go one at a time, never at once:
+
+```
+docker compose exec backend node dist/tulmi/scripts/time-vision.js
+docker compose exec backend node dist/tulmi/scripts/time-vision.js --runs 8 --models google/gemini-3.8-flash,anthropic/claude-haiku-5.5
+```
+
+With no `--models` it measures the server's own vision models
+(`AGENT_VISION_MODEL`, then `AGENT_VISION_FALLBACK_MODELS`) and two others for
+comparison, 3 runs each. `--route none` turns off the lowest-latency provider
+routing the server asks for (`--route latency` turns it back on), to see what
+it is worth. Each model gets a table: one row per run with the time to the
+first byte, to the first sentence and to the end, its tokens, its cost and the
+marks it drew, then the median and the worst. The first sentence is the
+column that matters, since it is when the person sees and hears an answer
+begin: under about 1.5 s feels instant, and a model whose worst is far above
+its median will sometimes feel broken. Under the table is that model's first
+sentence, so you can see it read the triangle (the long side is 5). The last
+two lines name the fastest model to its first sentence and the cost of 1,000
+picture questions on each. Each question costs well under a cent (the cost
+column says exactly what), so the default dozen comes to a cent or two. It
+writes nothing and prints no key, no picture and no answer past that first
+sentence.
+
 The unit tests read nothing off the machine they run on — not `tulmi/.env`, and
 not what a shell exported. They used to, and it mattered: the stores fall back
 to an in-memory map when Supabase is off, so a real service key in the
