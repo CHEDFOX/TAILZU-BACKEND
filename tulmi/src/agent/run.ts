@@ -6,6 +6,8 @@
  *
  *   0. refusals   a private window or a sensitive app, a run past its steps
  *   1. heard      what they said: their words, or the recording transcribed
+ *   P. picture    a step that came with a picture goes straight to a model
+ *                 that can see, and is answered about it, in show mode
  *   2. grammar    "scroll down", "go back", "undo", "open Slack": free
  *   3. selection  text selected and they said something about it: the writer
  *                 rewrites it, and it is pasted over the selection
@@ -18,15 +20,21 @@
  * anything else is the model's to judge from the history. Without that, "scroll
  * down" would scroll on every step until the run ran out of them.
  *
+ * The picture path skips the free paths because they read labels, and the
+ * question is about something no label says: "explain this equation" is
+ * about the equation, and "scroll down" said over a chart is a question
+ * about the chart that happens to sound like a command. It only ever shows,
+ * whatever the run is: the picture is how it sees, not something to act on.
+ *
  * Everything goes out through the EventSink, which keeps "exactly one terminal
  * event" true however a path ends.
  */
 import type { AgentStepRequest } from "../../../shared/types/api.js";
-import { aboutTheText, commandText, grammar, grammarLine, modeOf, type GrammarAction } from "./grammar.js";
+import { aboutTheText, commandText, grammar, grammarLine, modeOf, wantsDetail, type GrammarAction } from "./grammar.js";
 import { LineReader, LineSplitter, parseLine, type ActionLine } from "./lines.js";
-import { PlannerUnavailable, type PlanChunk } from "./llm.js";
-import { AGENT_SYSTEM, agentUserMessage } from "./prompt.js";
-import type { EventSink } from "./protocol.js";
+import { PlannerUnavailable, type PictureCall, type PlanChunk, type UserContent } from "./llm.js";
+import { AGENT_SYSTEM, AGENT_VISION_SYSTEM, agentPictureContent, agentUserMessage } from "./prompt.js";
+import type { AgentImage, EventSink } from "./protocol.js";
 import { resolve, resolverAsk } from "./resolver.js";
 import { isBrowser, isTextEntry, withRisk, type PlannedAction, type Scene } from "./risk.js";
 import { sensitiveApp } from "../pipeline/sensitive.js";
@@ -37,6 +45,8 @@ export interface StepContext {
   maxSteps: number;
   /** The names it answers to, taken off the front of a command. */
   names?: string[];
+  /** The one picture that came with the step: the picture path. */
+  image?: AgentImage;
 }
 
 export interface StepDeps {
@@ -47,13 +57,14 @@ export interface StepDeps {
   write: (instruction: string, context?: string) => Promise<string>;
   /** Their selected text rewritten to follow an instruction (editSelection). */
   rewrite: (selection: string, instruction: string) => Promise<string>;
-  /** The planner's streamed answer (llm.planStream). */
-  plan: (system: string, user: string, signal?: AbortSignal) => AsyncIterable<PlanChunk>;
+  /** The planner's streamed answer (llm.planStream). `picture` on the
+   *  picture path, whose user message then carries the picture as a part. */
+  plan: (system: string, user: UserContent, signal?: AbortSignal, picture?: PictureCall) => AsyncIterable<PlanChunk>;
   /** Aborted when the device goes away. */
   signal?: AbortSignal;
 }
 
-export type StepPath = "refused" | "unheard" | "grammar" | "selection" | "resolver" | "followup" | "model";
+export type StepPath = "refused" | "unheard" | "grammar" | "selection" | "resolver" | "followup" | "model" | "picture";
 
 /** What the step did, for metering and the log. Never any of its text. */
 export interface StepResult {
@@ -65,10 +76,17 @@ export interface StepResult {
   words: number;
   audioSeconds: number;
   code?: string;
+  /** The deep ladder answered a picture question asked for in detail. */
+  deep?: boolean;
 }
 
 const countWords = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0);
 const NOT_FOUND = "I couldn't find that here.";
+const NOT_SEEN = "I couldn't make that out in the picture.";
+/** Sentences a picture answer may run to: about 90 words, or 250 for the
+ *  worked one, with room over for short ones. */
+const PICTURE_SAYS = 10;
+const DEEP_SAYS = 24;
 
 /** Every turn's words and this one's, for the risk checks. */
 function everythingSaid(req: AgentStepRequest, said: string): string {
@@ -117,9 +135,11 @@ export async function runStep(ctx: StepContext, deps: StepDeps, sink: EventSink)
     return { path: "unheard", words: 0, audioSeconds, code: "no_speech" };
   }
   // The run's mode is its first request's: an answer to a question it asked
-  // ("the second one") does not turn a show run into a do run.
-  const mode = modeOf(history.find((t) => t.said)?.said ?? said, names);
+  // ("the second one") does not turn a show run into a do run. A picture is
+  // only ever shown.
+  const mode = ctx.image ? "show" : modeOf(history.find((t) => t.said)?.said ?? said, names);
   sink.emit({ t: "heard", text: said, mode });
+  if (ctx.image) return answerPicture(ctx, deps, sink, { said, image: ctx.image, audioSeconds });
 
   const scene: Scene = { req, said: everythingSaid(req, said) };
   const clean = commandText(said, names);
@@ -189,20 +209,67 @@ async function planWithModel(
 ): Promise<StepResult> {
   const { req } = ctx;
   const user = agentUserMessage(req, s.said, s.mode, ctx.maxSteps);
-  const reader = new LineReader(new Set(req.screen.elements.map((e) => e.id)), s.mode);
+  return follow(ctx, deps, sink, {
+    reader: new LineReader(new Set(req.screen.elements.map((e) => e.id)), s.mode),
+    stream: deps.plan(AGENT_SYSTEM, user, deps.signal),
+    scene: s.scene,
+    nothing: NOT_FOUND,
+    result: { path: "model", mode: s.mode, words: 0, audioSeconds: s.audioSeconds },
+  });
+}
+
+/**
+ * The picture path: the picture and the question to a model that can see,
+ * its sentences sent on as it writes them. "Step by step", "in detail" and
+ * the like go to the deep ladder, with room for a worked answer.
+ */
+async function answerPicture(
+  ctx: StepContext,
+  deps: StepDeps,
+  sink: EventSink,
+  s: { said: string; image: AgentImage; audioSeconds: number },
+): Promise<StepResult> {
+  const { req } = ctx;
+  // The whole run's words: sent again after an ASK, this step's own are only
+  // the reply ("the second one"), and the ask for detail came before it.
+  const all = everythingSaid(req, s.said);
+  const deep = wantsDetail(all);
+  const user = agentPictureContent(req, s.said, s.image);
+  const result: StepResult = { path: "picture", mode: "show", words: 0, audioSeconds: s.audioSeconds };
+  if (deep) result.deep = true;
+  return follow(ctx, deps, sink, {
+    reader: new LineReader(new Set(req.screen.elements.map((e) => e.id)), "show", { picture: true, says: deep ? DEEP_SAYS : PICTURE_SAYS }),
+    stream: deps.plan(AGENT_VISION_SYSTEM, user, deps.signal, { deep }),
+    scene: { req, said: all },
+    nothing: NOT_SEEN,
+    result,
+  });
+}
+
+/**
+ * One planner stream, read a line at a time into the step's events, until
+ * the reader has its ending or the stream runs out.
+ */
+async function follow(
+  ctx: StepContext,
+  deps: StepDeps,
+  sink: EventSink,
+  f: { reader: LineReader; stream: AsyncIterable<PlanChunk>; scene: Scene; nothing: string; result: StepResult },
+): Promise<StepResult> {
+  const { req } = ctx;
+  const { reader, result } = f;
   const splitter = new LineSplitter();
-  const result: StepResult = { path: "model", mode: s.mode, words: 0, audioSeconds: s.audioSeconds };
 
   const take = async (raw: string) => {
     const line = parseLine(raw, req.platform);
     if (!line) return;
     for (const out of reader.read(line)) {
       if ("emit" in out) sink.emit(out.emit);
-      else result.words += await act(out.act, req, deps, sink, s.scene);
+      else result.words += await act(out.act, req, deps, sink, f.scene);
     }
   };
 
-  const stream = deps.plan(AGENT_SYSTEM, user, deps.signal)[Symbol.asyncIterator]();
+  const stream = f.stream[Symbol.asyncIterator]();
   try {
     for (let next = await stream.next(); !next.done; next = await stream.next()) {
       result.model ??= next.value.model;
@@ -227,7 +294,7 @@ async function planWithModel(
   // A stream that ended without an ending: whatever it said stands, and
   // nothing usable at all is said plainly rather than left hanging.
   if (!sink.ended) {
-    if (!reader.produced) sink.emit({ t: "say", text: NOT_FOUND });
+    if (!reader.produced) sink.emit({ t: "say", text: f.nothing });
     sink.emit({ t: "done" });
   }
   return result;

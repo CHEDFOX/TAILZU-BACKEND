@@ -644,18 +644,30 @@ export interface AskResponse {
 // below and an `audio` file (the server transcribes it as the utterance), or
 // as application/json with `utterance` set. Answered `200
 // application/x-ndjson`, one AgentEvent per line, ending in exactly one
-// terminal event (action, ask, done or error). Problems found before the
-// stream starts are ordinary JSON errors (400/401/413/429).
+// terminal event (action, ask, look, done or error). Problems found before
+// the stream starts are ordinary JSON errors (400/401/413/429).
+//
+// The picture path: a multipart step may also carry ONE `image` part
+// (image/jpeg, image/png or image/webp, at most AGENT_IMAGE_MAX_BYTES: 413
+// above it, 400 for another type or a second picture), a crop of what they
+// asked about. A JSON body never carries one. With it the step skips the
+// free paths and is answered about the picture by a model that can see, in
+// show mode: it says and points, and never acts. The picture is the one
+// thing from the screen that leaves the machine as pixels, and only when the
+// person has allowed it for that app.
 
 /** Where an element sits in its window, by thirds. Never a frame. */
 export type AgentRegion = "tl" | "t" | "tr" | "l" | "c" | "r" | "bl" | "b" | "br";
 
 /** One element of the front window, as the device's driver read it. */
 export interface AgentElement {
-  /** "e1".."eN" in walk order, valid until the next snapshot. */
+  /** "e1".."eN" in walk order, valid until the next snapshot; "o1".."oN" for
+   *  a line of text the device read off the window's pixels (OCR), which is
+   *  something to point at and never a control to act on. `^[eo]\d{1,5}$`. */
   id: string;
   /** button link field area check radio switch tab menu menuitem item combo
-   *  slider image heading text cell row window. */
+   *  slider image heading text cell row window. An OCR line is always text,
+   *  with its words as the label and no value or flags. */
   role: string;
   label?: string;
   /** Fields, areas, combos, sliders, checks only. Never a password's. */
@@ -706,6 +718,14 @@ export interface AgentStepRequest {
   };
   /** ≤ 16, oldest first. */
   history?: AgentTurn[];
+  /** Only with an `image` part: what the picture is a crop of. One image on
+   *  the screen ("element"), or the whole window. Where it is on the screen
+   *  never leaves the device. */
+  picture?: AgentPicture;
+}
+
+export interface AgentPicture {
+  region: "element" | "window";
 }
 
 export type AgentActionKind = "press" | "set" | "type" | "key" | "scroll" | "focus" | "open";
@@ -715,8 +735,10 @@ export type AgentEvent =
   /** First in every stream that gets past the refusals: what was heard, and
    *  whether the run shows ("where/how/what/why…") or does (a command). */
   | { t: "heard"; text: string; mode: "show" | "do" }
-  /** ≤ 240 chars, captioned and spoken. */
-  | { t: "say"; text: string; locale?: string }
+  /** ≤ 240 chars, captioned and spoken. Every say after a step's first
+   *  comes with `append: true`: it is the next sentence of the same answer,
+   *  added to the card and spoken after the last, not a new answer. */
+  | { t: "say"; text: string; locale?: string; append?: boolean }
   /** `id` is always one of this request's elements. */
   | { t: "point"; id: string; caption?: string }
   /** A do-run's plan, ≤ 6 short lines. */
@@ -730,6 +752,11 @@ export type AgentEvent =
     }
   /** TERMINAL: a question for the user; their answer is the next step. */
   | { t: "ask"; text: string }
+  /** TERMINAL, only on a step without a picture: the answer needs to see
+   *  something drawn rather than written. The device may send the SAME step
+   *  again with the picture (once a run, with permission), or say it can't.
+   *  `why` is the model's few words on what it needs to see, for the log. */
+  | { t: "look"; why: string }
   /** TERMINAL. */
   | { t: "done"; text?: string }
   /** TERMINAL. Codes: private, too_many_steps, no_speech, bad_target,

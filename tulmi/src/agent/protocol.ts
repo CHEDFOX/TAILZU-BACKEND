@@ -14,9 +14,14 @@
  * address bar, or with such a URL in it, is dropped whole, since a rewrite of
  * it is pasted back. The desktop does the same before sending; this is the
  * second lock.
+ *
+ * A step may also carry one picture, read here too: its type is taken from
+ * its bytes as well as its label, since the label is only the client's word
+ * for it, and the model it goes to refuses a picture that is not what it is
+ * called.
  */
 import type {
-  AgentElement, AgentEvent, AgentRegion, AgentStepRequest, AgentTurn, AudioFormat,
+  AgentElement, AgentEvent, AgentPicture, AgentRegion, AgentStepRequest, AgentTurn, AudioFormat,
 } from "../../../shared/types/api.js";
 import { elementLine } from "./prompt.js";
 
@@ -51,7 +56,9 @@ export interface Refusal {
 }
 
 const RUN_ID = /^[A-Za-z0-9_-]{6,64}$/;
-const ELEMENT_ID = /^e\d{1,6}$/;
+/** e for the tree's elements, o for a line of text read off the window's
+ *  pixels. Five digits is forty times the most elements a step may carry. */
+const ELEMENT_ID = /^[eo]\d{1,5}$/;
 const REGIONS = new Set<AgentRegion>(["tl", "t", "tr", "l", "c", "r", "bl", "b", "br"]);
 const RESULTS = new Set<NonNullable<AgentTurn["result"]>>(["ok", "failed", "declined", "nochange"]);
 
@@ -113,18 +120,37 @@ function readElement(v: unknown): AgentElement | null {
   if (!v || typeof v !== "object") return null;
   const o = v as Record<string, unknown>;
   if (typeof o.id !== "string" || !ELEMENT_ID.test(o.id)) return null;
+  if (o.id.startsWith("o")) return readOcrLine(o.id, o);
   const role = oneLine(o.role, LIMITS.role).toLowerCase().replace(/[^a-z]/g, "");
   if (!role) return null;
   const el: AgentElement = { id: o.id, role };
-  const label = withoutUrlSecrets(oneLine(o.label, LIMITS.label));
+  // A window's label is its title, and its value the file it has open: both
+  // name what the person is working on, which never leaves their computer.
+  // The desktop sends a window bare; this is the second lock.
+  const aWindow = role === "window";
+  const label = aWindow ? "" : withoutUrlSecrets(oneLine(o.label, LIMITS.label));
   if (label) el.label = label;
-  const value = withoutUrlSecrets(oneLine(o.value, LIMITS.value));
+  const value = aWindow ? "" : withoutUrlSecrets(oneLine(o.value, LIMITS.value));
   if (value && !isAddressBar(label)) el.value = value;
   if (typeof o.region === "string" && REGIONS.has(o.region as AgentRegion)) el.region = o.region as AgentRegion;
   if (o.focused === true) el.focused = true;
   if (o.disabled === true) el.disabled = true;
   if (o.selected === true) el.selected = true;
   if (typeof o.checked === "boolean") el.checked = o.checked;
+  return el;
+}
+
+/**
+ * A line the device read off the window's picture: its words and where it
+ * is, and nothing else. It is text whatever the client called it, and it has
+ * no value or state, because OCR sees neither; a line with no words in it is
+ * nothing to point at.
+ */
+function readOcrLine(id: string, o: Record<string, unknown>): AgentElement | null {
+  const label = withoutUrlSecrets(oneLine(o.label, LIMITS.label));
+  if (!label) return null;
+  const el: AgentElement = { id, role: "text", label };
+  if (typeof o.region === "string" && REGIONS.has(o.region as AgentRegion)) el.region = o.region as AgentRegion;
   return el;
 }
 
@@ -151,11 +177,14 @@ const tooBig = (message: string): { refusal: Refusal } => ({ refusal: { status: 
 /**
  * A step request as the planner may use it, or the reason it is refused.
  * `hasAudio`: an audio file came with it, which is then the utterance.
+ * `hasImage`: a picture came with it, which `picture` then describes; without
+ * one, `picture` describes nothing and is dropped.
  */
 export function readStepRequest(
   raw: unknown,
   caps: Caps,
   hasAudio = false,
+  hasImage = false,
 ): { req: AgentStepRequest } | { refusal: Refusal } {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return bad("Missing the step request");
   const o = raw as Record<string, unknown>;
@@ -232,7 +261,54 @@ export function readStepRequest(
     req.tzOffsetMinutes = Math.round(o.tzOffsetMinutes);
   }
   if (history.length) req.history = history;
+  if (hasImage) req.picture = readPictureInfo(o.picture);
   return { req };
+}
+
+/** What the picture is a crop of. Anything but one image on the screen is
+ *  taken to be the window, which is the larger claim and the safer one. */
+function readPictureInfo(v: unknown): AgentPicture {
+  const region = v && typeof v === "object" ? (v as Record<string, unknown>).region : undefined;
+  return { region: region === "element" ? "element" : "window" };
+}
+
+export const PICTURE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+export type PictureType = (typeof PICTURE_TYPES)[number];
+
+/** The one picture a step carries, as read: its type is its bytes'. */
+export interface AgentImage {
+  mime: PictureType;
+  data: Buffer;
+}
+
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** A picture's type by its first bytes, or null when it is none of the three. */
+export function sniffPicture(b: Buffer): PictureType | null {
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "image/jpeg";
+  if (b.length >= 8 && b.subarray(0, 8).equals(PNG_MAGIC)) return "image/png";
+  if (b.length >= 12 && b.toString("latin1", 0, 4) === "RIFF" && b.toString("latin1", 8, 12) === "WEBP") return "image/webp";
+  return null;
+}
+
+/**
+ * The `image` part as the picture path may use it, or why it is refused.
+ * `data` is null when the part ran past `maxBytes` (it was read to its end
+ * and dropped, never held whole). Its declared type must be one of the three,
+ * and its bytes must be a picture of one of them; the bytes' type is the one
+ * the model is told, so a PNG labelled JPEG still arrives as what it is.
+ */
+export function readPicture(
+  declared: string | undefined,
+  data: Buffer | null,
+  maxBytes: number,
+): { image: AgentImage } | { refusal: Refusal } {
+  if (!data) return tooBig(`the picture is over ${maxBytes} bytes`);
+  const type = (declared ?? "").split(";")[0]!.trim().toLowerCase();
+  if (!(PICTURE_TYPES as readonly string[]).includes(type)) return bad("the picture is a JPEG, PNG or WebP");
+  const mime = sniffPicture(data);
+  if (!mime) return bad("the picture is not a JPEG, PNG or WebP image");
+  return { image: { mime, data } };
 }
 
 /** The recording's container, from its file name, else its MIME type. The
@@ -250,17 +326,24 @@ export function audioFormatOf(filename: string | undefined, mime: string | undef
   return "webm";
 }
 
-const TERMINAL = new Set<AgentEvent["t"]>(["action", "ask", "done", "error"]);
+const TERMINAL = new Set<AgentEvent["t"]>(["action", "ask", "look", "done", "error"]);
 
 /**
  * The one way events leave a step: in order, one JSON object per line, and
  * never anything after the first terminal event. The route closes the stream
  * once a step has finished; this makes "exactly one terminal" true of every
  * path through the planner rather than a property each path must remember.
+ *
+ * The same goes for a step's sentences: the first say is the answer, and
+ * every say after it is marked `append`, the next sentence of that answer,
+ * so the card grows as the model writes instead of each sentence replacing
+ * the last. Marked here, on the way out, so a sentence the server adds of its
+ * own after the model's is marked like the model's.
  */
 export class EventSink {
   private finished = false;
   private sent = 0;
+  private says = 0;
   /** How the step ended, for the log: "action", "done", "error:private"… */
   ending: string | undefined;
   /** The run's mode, from its heard event: in show mode nothing acts. */
@@ -278,6 +361,10 @@ export class EventSink {
     // The planner never builds an action in show mode; this is what makes that
     // a guarantee and not a habit.
     if (e.t === "action" && this.mode === "show") e = { t: "done" };
+    if (e.t === "say") {
+      e = { t: "say", text: e.text, ...(e.locale ? { locale: e.locale } : {}), ...(this.says > 0 ? { append: true } : {}) };
+      this.says += 1;
+    }
     if (TERMINAL.has(e.t)) {
       this.finished = true;
       this.ending = e.t === "error" ? `error:${e.code}` : e.t === "action" ? `action:${e.kind}` : e.t;
