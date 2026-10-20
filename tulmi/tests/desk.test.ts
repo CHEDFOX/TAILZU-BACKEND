@@ -43,6 +43,8 @@ const DESKTOP_COMPONENTS = new Set([
   "SVG", "Gradient", "BlurBackground", "FlipText", "Modal", "ProgressBar",
   "SwipeAction", "NeuralField", "ChatThread", "VoiceToggle", "VoiceButton",
   "VoiceSession", "DeskShell", "Keys",
+  // Sent only to a window that declared DeskAskSetup (Ask is on there).
+  "DeskAskSetup",
 ]);
 const DESKTOP_ACTIONS = new Set([
   "navigate", "back", "switchTab", "callEndpoint", "setState", "toggleState",
@@ -158,7 +160,12 @@ describe("the desk is for a window that can draw it", () => {
 });
 
 describe("the desk pages", () => {
-  const ctxs = { sample: sampleCtx, empty: { personality: {}, language: "en" } as never };
+  const ctxs = {
+    sample: sampleCtx,
+    empty: { personality: {}, language: "en" } as never,
+    // A window where Ask is on: Today and Settings carry its setup card too.
+    ask: { ...(sampleCtx as object), os: "mac", can: new Set(["DeskNotes", "DeskSystemAudio", "DeskAskSetup"]) } as never,
+  };
 
   for (const id of DESK_SCREENS) {
     for (const [name, ctx] of Object.entries(ctxs)) {

@@ -4694,6 +4694,12 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       notesHotkey: ctx.can?.has("DeskNotes") === true,
       free: freeForAll(),
       allowSystemAudio: ctx.can?.has("DeskSystemAudio") === true,
+      // Ask's one-time setup card, for a window that draws it (it says so
+      // only while Ask is on there). Its policy link is the one every
+      // surface uses.
+      askSetup: ctx.can?.has("DeskAskSetup") === true
+        ? { privacyUrl: POLICY.privacy, os: desktopOs(ctx.os) ?? undefined }
+        : undefined,
       usage: ctx.usage,
       stats: ctx.stats as unknown as StatsForUser | undefined,
       allowance: ctx.allowance,

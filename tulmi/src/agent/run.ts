@@ -30,15 +30,20 @@
  * out among the sentences, in the order they were written, at most
  * AGENT_DRAW_MAX a step. Places in the picture are honoured only on the
  * picture path, the one step that has a picture for them to be places in.
+ * There each model is sent the prompt for its family, and its answer's places
+ * are read in the order that prompt taught: Gemini writes y first. The
+ * order is the model's that wrote the answer, read off its chunks, and one
+ * answer is always one model's, since the ladder moves on only before any
+ * of it is written.
  *
  * Everything goes out through the EventSink, which keeps "exactly one terminal
  * event" true however a path ends.
  */
 import type { AgentStepRequest } from "../../../shared/types/api.js";
 import { aboutTheText, commandText, grammar, grammarLine, modeOf, wantsDetail, type GrammarAction } from "./grammar.js";
-import { LineReader, LineSplitter, parseLine, type ActionLine } from "./lines.js";
-import { PlannerUnavailable, type PictureCall, type PlanChunk, type UserContent } from "./llm.js";
-import { AGENT_SYSTEM, AGENT_VISION_SYSTEM, agentPictureContent, agentUserMessage } from "./prompt.js";
+import { LineReader, LineSplitter, parseLine, type ActionLine, type SpotOrder } from "./lines.js";
+import { PlannerUnavailable, type PictureCall, type PlanChunk, type SystemPrompt, type UserContent } from "./llm.js";
+import { AGENT_SYSTEM, agentPictureContent, agentUserMessage, drawOrderFor, visionSystemFor } from "./prompt.js";
 import type { AgentImage, EventSink } from "./protocol.js";
 import { resolve, resolverAsk } from "./resolver.js";
 import { isBrowser, isTextEntry, withRisk, type PlannedAction, type Scene } from "./risk.js";
@@ -66,8 +71,9 @@ export interface StepDeps {
   /** Their selected text rewritten to follow an instruction (editSelection). */
   rewrite: (selection: string, instruction: string) => Promise<string>;
   /** The planner's streamed answer (llm.planStream). `picture` on the
-   *  picture path, whose user message then carries the picture as a part. */
-  plan: (system: string, user: UserContent, signal?: AbortSignal, picture?: PictureCall) => AsyncIterable<PlanChunk>;
+   *  picture path, whose user message then carries the picture as a part,
+   *  and whose system prompt is chosen per model (visionSystemFor). */
+  plan: (system: SystemPrompt, user: UserContent, signal?: AbortSignal, picture?: PictureCall) => AsyncIterable<PlanChunk>;
   /** Aborted when the device goes away. */
   signal?: AbortSignal;
 }
@@ -224,6 +230,9 @@ async function planWithModel(
   return follow(ctx, deps, sink, {
     reader: new LineReader(new Set(req.screen.elements.map((e) => e.id)), s.mode, { draws: drawMax(ctx) }),
     stream: deps.plan(AGENT_SYSTEM, user, deps.signal),
+    // The text prompt teaches every model the one order, and its places in
+    // a picture are dropped anyway: it has no picture.
+    order: () => "xy",
     scene: s.scene,
     nothing: NOT_FOUND,
     result: { path: "model", mode: s.mode, words: 0, audioSeconds: s.audioSeconds },
@@ -253,7 +262,8 @@ async function answerPicture(
     reader: new LineReader(new Set(req.screen.elements.map((e) => e.id)), "show", {
       picture: true, says: deep ? DEEP_SAYS : PICTURE_SAYS, draws: drawMax(ctx),
     }),
-    stream: deps.plan(AGENT_VISION_SYSTEM, user, deps.signal, { deep }),
+    stream: deps.plan(visionSystemFor, user, deps.signal, { deep }),
+    order: drawOrderFor,
     scene: { req, said: all },
     nothing: NOT_SEEN,
     result,
@@ -268,14 +278,22 @@ async function follow(
   ctx: StepContext,
   deps: StepDeps,
   sink: EventSink,
-  f: { reader: LineReader; stream: AsyncIterable<PlanChunk>; scene: Scene; nothing: string; result: StepResult },
+  f: {
+    reader: LineReader;
+    stream: AsyncIterable<PlanChunk>;
+    /** How the model that wrote a line places things in the picture. */
+    order: (model: string) => SpotOrder;
+    scene: Scene;
+    nothing: string;
+    result: StepResult;
+  },
 ): Promise<StepResult> {
   const { req } = ctx;
   const { reader, result } = f;
   const splitter = new LineSplitter();
 
-  const take = async (raw: string) => {
-    const line = parseLine(raw, req.platform);
+  const take = async (raw: string, model: string) => {
+    const line = parseLine(raw, req.platform, { order: f.order(model) });
     if (!line) return;
     for (const out of reader.read(line)) {
       if ("emit" in out) sink.emit(out.emit);
@@ -288,7 +306,7 @@ async function follow(
     for (let next = await stream.next(); !next.done; next = await stream.next()) {
       result.model ??= next.value.model;
       for (const raw of splitter.push(next.value.delta)) {
-        await take(raw);
+        await take(raw, next.value.model);
         if (reader.ended) break;
       }
       if (reader.ended) {
@@ -296,7 +314,7 @@ async function follow(
         break;
       }
     }
-    if (!reader.ended) for (const raw of splitter.flush()) await take(raw);
+    if (!reader.ended && result.model) for (const raw of splitter.flush()) await take(raw, result.model);
   } catch (err) {
     if (!(err instanceof PlannerUnavailable)) throw err;
     if (!reader.produced) {

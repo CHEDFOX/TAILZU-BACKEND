@@ -96,6 +96,10 @@ export interface DeskContext {
   /** This window can open the Mac's permission for the computer's sound
    *  (it said "DeskSystemAudio"). */
   allowSystemAudio?: boolean;
+  /** This window draws Ask's one-time setup card (it said "DeskAskSetup",
+   *  which it says only while Ask is on there): where the card's privacy
+   *  link goes, and the computer it is on ("mac", "windows"), when known. */
+  askSetup?: { privacyUrl: string; os?: string };
 }
 
 // ---- nodes ---------------------------------------------------------------------
@@ -792,7 +796,10 @@ export function deskToday(ctx: DeskContext): ScreenResponse {
     ...twoUp(weekBlock, trainBlock),
     historyBlock,
   ];
-  return screen("desk_today", "Today", [band, page(body)]);
+  // Ask's one-time setup, above the room: the first thing on the page until
+  // every row is on, when the window stops drawing it.
+  const setup = ctx.askSetup ? [askSetupCard(ctx.askSetup, "home")] : [];
+  return screen("desk_today", "Today", [...setup, band, page(body)]);
 }
 
 function trainLine(p: Personality): string {
@@ -2082,6 +2089,62 @@ function planWords(ctx: DeskContext): { used: number; of: number; paid: boolean 
   };
 }
 
+/**
+ * LET ASK SEE WHAT YOU SEE: Ask's one-time setup, in the app (the window's
+ * sdui.js askSetupNode draws it). The owner: "if the user accepts there, we
+ * don't have to ask every time on the working screens." Three rows, each a
+ * permission with its own button: read the screen (the Mac's
+ * Accessibility), see it (Screen Recording), and look when it's needed
+ * without stopping to ask (a yes for every app, kept on that computer).
+ *
+ * Only the words come from here. Whether a row is on is the computer's to
+ * say, and none of it comes to the server: the window asks its main process
+ * and draws each row's state and button from that answer. The home card
+ * puts itself away once every row is on; the one in Settings always shows.
+ *
+ * NOT ONE WORD ABOUT SENDING. The owner: "dont use the send the pic words
+ * while asking permissions". The card says Ask sees or looks at the screen
+ * when it is needed. That a picture of part of it goes with a question that
+ * needs one, and where, is the privacy policy's to say (its Ask section,
+ * routes/policies/privacy.ts), and the card links to it.
+ */
+function askSetupCard(a: NonNullable<DeskContext["askSetup"]>, place: "home" | "settings"): Node {
+  const home = place === "home";
+  // Windows asks for neither system permission, so there the row is simply
+  // on, and a line about opening the Mac's setting would be about another
+  // computer. A window that did not say which it is gets the Mac's line.
+  const mac = a.os !== "windows" && a.os !== "linux";
+  return {
+    type: "DeskAskSetup",
+    props: {
+      place,
+      // On the home page the card is a page of its own above the room, on the
+      // page's measure; in Settings it sits in its section's column.
+      ...(home ? { cls: "d-page" } : {}),
+      eyebrow: "Ask · one-time setup",
+      title: "Let Ask see",
+      titleEm: "what you see.",
+      lede: "Allow these once and Ask answers straight away on any screen, without stopping to ask.",
+      rows: [
+        { key: "read", title: "Read the screen", sub: "Buttons, fields and text, so it can point at things and do small jobs." },
+        { key: "see", title: "See the screen", sub: mac ? "Text in pictures, charts and diagrams. Opens the Mac's Screen Recording setting." : "Text in pictures, charts and diagrams." },
+        { key: "pictures", title: "Look at the screen when it's needed", sub: "When a question is about something on your screen, Ask looks without stopping to ask." },
+      ],
+      on: "On",
+      allow: "Allow",
+      turnOff: "Turn off",
+      restart: "Restart Tailzu to finish",
+      restartButton: "Restart",
+      // "Change these any time in Settings" is the home card's to say: read
+      // on the Settings page, it sent you to the page you were on.
+      foot: home ? "Change these any time in Settings. How Ask uses what it sees:" : "How Ask uses what it sees:",
+      policyLabel: "Privacy policy",
+      policyUrl: a.privacyUrl,
+    },
+    ...(home ? { style: { ...typeFor("d-page"), paddingTop: 44, paddingBottom: 44 } } : {}),
+  };
+}
+
 export function deskSettings(ctx: DeskContext): ScreenResponse {
   const q = planWords(ctx);
   const langs = (ctx.personality.languages ?? []).filter((l) => l && l !== "auto");
@@ -2103,6 +2166,12 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
       defRow("Live words", "Words appear above the pill as you speak", sw("live", "Live words")),
       defRow("Start with the computer", "Ready when you sign in", sw("autoStart", "Start with the computer")),
     ], { marginBottom: 40 }),
+    // Ask's three permissions, always here with their states, so a yes given
+    // once on the home card can be seen and taken back.
+    ...(ctx.askSetup ? [stack([
+      text("Ask", "d-h2", { marginBottom: 14 }),
+      askSetupCard(ctx.askSetup, "settings"),
+    ], { marginBottom: 40 })] : []),
     stack([
       text("Languages", "d-h2", { marginBottom: 8 }),
       defRow("You speak", langs.length ? langs.map((l) => (Object.hasOwn(LANGUAGE_NAMES, l) ? LANGUAGE_NAMES[l] : l)).join(", ") : "Found on its own, as you talk",

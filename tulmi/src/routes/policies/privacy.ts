@@ -10,7 +10,7 @@
  */
 import { siteShell } from "./shell.js";
 import { crumbsLd, pageLd } from "../../seo/head.js";
-export const PRIVACY_POLICY_EFFECTIVE = "October 13, 2026";
+export const PRIVACY_POLICY_EFFECTIVE = "October 20, 2026";
 
 const PRIVACY_POLICY_BODY = `
 <h1>Privacy Policy</h1>
@@ -47,7 +47,7 @@ const PRIVACY_POLICY_BODY = `
 <ul>
   <li><strong>Device model, OS version, app version, language, timezone</strong></li>
   <li><strong>Push notification tokens</strong> (via Apple Push Notification service / Firebase Cloud Messaging) — used to deliver notifications you have opted into</li>
-  <li><strong>Advertising identifier</strong> — on Android, the device's advertising ID is read by Meta's SDK to tell whether an install came from one of our ads (see 1.7). You can reset or delete it in Android's settings. On iPhone, Tailzu never asks for or reads the advertising identifier (IDFA), and shows no tracking prompt.</li>
+  <li><strong>Advertising identifier</strong> — on Android, the device's advertising ID is read by Meta's SDK to tell whether an install came from one of our ads (see 1.6). You can reset or delete it in Android's settings. On iPhone, Tailzu never asks for or reads the advertising identifier (IDFA), and shows no tracking prompt.</li>
   <li><strong>Crash reports and error logs</strong> (via Sentry, only if enabled) — used to diagnose and fix bugs</li>
   <li><strong>Usage events</strong> (via PostHog, only if enabled) — anonymous aggregate metrics about which features are used, to guide product improvements</li>
 </ul>
@@ -121,6 +121,15 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>Anthropic</strong> (anthropic.com/legal/privacy) — used through OpenRouter for premium refinement.</li>
 </ul>
 
+<h3>Ask, on the desktop app (see Section 10)</h3>
+<ul>
+  <li><strong>OpenRouter</strong> (openrouter.ai/privacy) — passes Ask's questions to the AI model that answers them. OpenRouter chooses which provider serves that model: the company that made it, or a cloud service that hosts it.</li>
+  <li><strong>OpenAI</strong> (openai.com/policies/privacy-policy) — answers questions about the text on your screen.</li>
+  <li><strong>Google</strong> (policies.google.com/privacy) — Gemini answers a question that comes with a picture of part of your screen.</li>
+  <li><strong>Anthropic</strong> (anthropic.com/legal/privacy) — Claude answers either kind when the first model cannot.</li>
+  <li>The models under <em>Language refinement</em> above write and rewrite text for Ask (a message it types into a field, a selection it rewrites), and answer a question when none of the models before them could.</li>
+</ul>
+
 <h3>Authentication and database</h3>
 <ul>
   <li><strong>Supabase</strong> (supabase.com/privacy) — hosts your account, profile, and (if opted in) session history in secure managed Postgres.</li>
@@ -152,6 +161,7 @@ const PRIVACY_POLICY_BODY = `
 <ul>
   <li><strong>Voice recordings:</strong> transient. Deleted immediately after transcription.</li>
   <li><strong>Session history:</strong> only if you opt in. Stored until you delete it or your account.</li>
+  <li><strong>Ask:</strong> what it reads off your screen, and any picture it sends, is not stored. See Section 10.</li>
   <li><strong>Account:</strong> retained until you request deletion.</li>
   <li><strong>Diagnostic logs:</strong> retained by Sentry / PostHog for up to 90 days per their standard retention.</li>
 </ul>
@@ -210,12 +220,55 @@ const PRIVACY_POLICY_BODY = `
 
 <hr>
 
-<h2>10. Changes to this policy</h2>
+<h2>10. Ask, on the desktop app</h2>
+<p>Ask is the helper in the Tailzu desktop app for Mac and Windows. Tap its key twice and say something about the app in front of you ("where's Export?", "explain this chart"), and it points at the thing, explains it, or does a small job for you. It reads the screen when you call it up, and again after each thing it does for you, to see what changed.</p>
+
+<h3>10.1 What Ask reads on your computer</h3>
+<ul>
+  <li><strong>The app in front of you</strong>, through the system's accessibility interface: its buttons, fields and the text in them. On a Mac this needs the Accessibility permission.</li>
+  <li><strong>The window's pixels</strong>, read into lines of text by your computer's own text recognition (Apple's Vision on a Mac, Windows' own OCR on Windows), on your computer. On a Mac this needs the Screen Recording permission (Screen &amp; System Audio Recording on newer versions of macOS).</li>
+  <li><strong>Where your text cursor is</strong>, while you dictate, so Ask's character can sit above it. That position never leaves your computer.</li>
+</ul>
+<p>Some questions, like "where's Export?", are answered on your computer from what it read: your words still go to be turned into text (see 10.2), but nothing from your screen is sent.</p>
+
+<h3>10.2 What Ask sends to our servers</h3>
+<ul>
+  <li><strong>A text list of what is on the screen:</strong> for each button, field or piece of text, what kind it is, its label, a short value, whether it is checked, selected or greyed out, and a rough position (top left, centre, bottom right and so on), together with the lines of text read off the window's pixels, each with its rough position. Also the app's name (for a browser, with the site's name, taken from the end of the tab's title, as in "Chrome: Gmail"), which field your cursor is in, and the text you have selected, if any.</li>
+  <li><strong>What you said:</strong> your spoken question, turned into text by the same speech-to-text providers as dictation and handled the same way (see 1.2); and, while Ask is working on a question, what it has done for it so far. With it go your language setting and your time zone (as its offset from UTC).</li>
+  <li><strong>One picture, only when a question needs it and you have allowed it:</strong> a picture of the part of the screen your question is about (the image or chart, or else the window), cut on your computer to below the window's title bar and a browser's tabs and address bar, where it finds them, and no more than 1,024 pixels on its longer side by default. Before one is sent, Ask asks: Allow once, Always for that app (where the app can be named), or Not now. It does not ask again for an app you said Always to, nor at all once you have said yes for every app in the Tailzu app's Ask setup (see 10.5). Ask's card shows a note when a picture goes with a question.</li>
+</ul>
+
+<h3>10.3 What Ask never sends</h3>
+<ul>
+  <li><strong>The window's title</strong>, beyond a browser's site name (above). The tabs, headings and other text on the screen are listed as they are shown, even where one of them repeats the title.</li>
+  <li><strong>Exact positions</strong> of anything on your screen. Only the rough position above leaves your computer.</li>
+  <li><strong>Passwords and addresses:</strong> nothing in a password field; nothing in a browser's address bar, where Ask finds one; and never the part of a web address after "?" or "#", where links carry their one-time codes. Text you have selected is not sent at all if it contains such an address.</li>
+  <li><strong>Anything from a private window or a sensitive app.</strong> Ask stops, and sends nothing from the screen, in a private (incognito) browser window, or in an app or page whose name marks it as banking, payments, investing or crypto, tax, health, insurance, a wallet or a password manager; and our servers refuse a request that comes from such an app.</li>
+</ul>
+
+<h3>10.4 Where a picture goes, and what is kept</h3>
+<ul>
+  <li>A picture goes from our server through <strong>OpenRouter</strong> to the AI model that answers the question: <strong>Google's Gemini</strong>; only if that fails, <strong>Anthropic's Claude</strong>; and if that fails too, the model that refines your dictation (see Section 3), when it is a different one. It goes with the question and the text list above. OpenRouter and the model's provider handle it under their own privacy policies.</li>
+  <li><strong>Tailzu does not store the picture and does not log it.</strong> It is held in memory only while your question is answered. Our logs record that a picture went with a question, its size in bytes, whether it was of one image or the whole window, and which model and provider answered; never the picture or the text on your screen.</li>
+  <li>Ask writes nothing to your History. As with dictation, your usage counts the words Ask writes for you and the seconds you spoke, and we keep a count, in memory, of the pictures sent in the past day, for the daily limit.</li>
+</ul>
+
+<h3>10.5 How to turn it off</h3>
+<ul>
+  <li><strong>Each time:</strong> answer Not now when Ask asks to look, and no picture is sent.</li>
+  <li><strong>For one app:</strong> an app you said Always to is listed in the Tailzu menu (the menu bar on a Mac, the system tray on Windows), where you can have Ask ask again for it, or for all of them.</li>
+  <li><strong>For every app:</strong> in the Tailzu app, "Look at the screen when it's needed" (on the home page until it is set up, and always in Settings under Ask) lets Ask look without asking each time. Turn it off there, and Ask goes back to asking first, except in the apps you said Always to. Signing out turns it off and forgets every Always.</li>
+  <li><strong>Altogether, on a Mac:</strong> without the Accessibility permission Ask cannot read an app's buttons, fields and text, and without Screen Recording it cannot see the window's pixels or take a picture of them; with both off, it reads nothing on your screen. You can turn either off at any time in System Settings &rarr; Privacy &amp; Security.</li>
+</ul>
+
+<hr>
+
+<h2>11. Changes to this policy</h2>
 <p>We will update this policy when our practices change. We will bump the "Effective" date at the top and, for material changes, notify you in the app or by email.</p>
 
 <hr>
 
-<h2>11. Contact</h2>
+<h2>12. Contact</h2>
 <p>Questions or requests: <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a></p>
 
 <p style="color:#6b6b6b; font-size:13px; margin-top:40px;">This policy is available at <code>https://tailzu.space/privacy</code>. The version served by the app matches the version linked in App Store Connect.</p>
