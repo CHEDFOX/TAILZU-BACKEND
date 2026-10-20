@@ -325,6 +325,12 @@ const EnvSchema = z.object({
    *  1024-pixel JPEG of a window is 100–300 KB, so this is far past fair. */
   AGENT_IMAGE_MAX_BYTES: z.coerce.number().int().min(10_000).max(20_000_000).default(2_000_000),
   /**
+   * Marks one step may draw on the screen (DRAW lines: a box, an arrow, a
+   * numbered place). The model is asked for six at most; past this it is
+   * scribbling, and the rest are dropped. 0 turns drawing off.
+   */
+  AGENT_DRAW_MAX: z.coerce.number().int().min(0).max(50).default(12),
+  /**
    * Ask's own bucket, apart from the app's: a run is several requests a few
    * seconds apart, and it must never be the reason dictation gets a 429.
    */

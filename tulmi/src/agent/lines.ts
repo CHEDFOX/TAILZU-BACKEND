@@ -20,8 +20,17 @@
  * more sentences, a worked answer being one sentence per step; and those
  * sentences are maths read aloud, so any TeX a model slips into is turned
  * into the plain symbols it stands for.
+ *
+ * Both paths may DRAW: a mark on the screen (a box, an arrow, a numbered
+ * place) sent between the sentences it belongs to, the way a teacher talks
+ * with a pen in hand. A mark is display only, so it never ends the step and
+ * never counts as its action. Its spots are read leniently, because a small
+ * model writes "(120, 300)" and "[120 300 40 20]" and "e5 → o3" and "e5 to
+ * o3" for the same thing, and checked strictly: an id from this screen, and
+ * a place in the picture only on a step that has one. A mark that fails is
+ * dropped, never guessed at, and counted for the log.
  */
-import type { AgentEvent } from "../../../shared/types/api.js";
+import type { AgentDraw, AgentDrawKind, AgentEvent, AgentSpot } from "../../../shared/types/api.js";
 import type { Platform } from "./grammar.js";
 
 export const SAY_MAX = 240;
@@ -34,6 +43,17 @@ const INSTRUCTION_MAX = 500;
 const SAYS_MAX = 3;
 const POINTS_MAX = 6;
 const WHY_MAX = 120;
+/** Marks honoured in a step when the reader is not told (AGENT_DRAW_MAX). */
+const DRAWS_MAX = 12;
+/** A mark's label sits beside what it marks, in handwriting: a few words. */
+export const LABEL_MAX = 48;
+/** Picture units run from 0 to this, across the picture and down it. */
+export const PICTURE_UNITS = 1000;
+/** A box thinner than this is a line, and nobody can see what it holds. */
+const BOX_MIN = 4;
+/** A path is a line through at least two points; past this it is a scribble. */
+const PATH_MIN = 2;
+export const PATH_MAX = 32;
 
 export type ActionLine =
   | { verb: "PRESS" | "FOCUS"; id: string }
@@ -51,6 +71,9 @@ export type Line =
   | { verb: "ASK"; text: string }
   | { verb: "LOOK"; why?: string }
   | { verb: "DONE"; text?: string }
+  /** `draw` is null for a DRAW line that could not be read: it is still a
+   *  mark the model meant, so the reader counts it as dropped. */
+  | { verb: "DRAW"; draw: AgentDraw | null }
   | ActionLine;
 
 /** Whole lines out of a stream of chunks. */
@@ -103,14 +126,15 @@ export function normalizeChord(raw: string, platform: Platform): string | null {
   if (!tokens.length || tokens.length > 4) return null;
   const mods: string[] = [];
   for (const t of tokens.slice(0, -1)) {
-    let m = MODS[t];
+    // Own keys only: "constructor+k" is no chord, not Object's constructor.
+    let m = Object.hasOwn(MODS, t) ? MODS[t] : undefined;
     if (!m) return null;
     if (m === "cmd" && platform === "win") m = "ctrl";
     if (m === "win" && platform === "mac") m = "cmd";
     if (!mods.includes(m)) mods.push(m);
   }
   const last = tokens.at(-1)!;
-  const key = NAMED_KEYS[last]
+  const key = (Object.hasOwn(NAMED_KEYS, last) ? NAMED_KEYS[last] : null)
     ?? (/^f(?:[1-9]|1\d|2[0-4])$/.test(last) ? last : null)
     ?? ([...last].length === 1 && /[\p{L}\p{N}\p{P}\p{S}]/u.test(last) ? last : null);
   if (!key) return null;
@@ -195,9 +219,182 @@ export function parseLine(raw: string, platform: Platform): Line | null {
       const app = clip(unquote(arg), 60);
       return app ? { verb, app } : null;
     }
+    case "DRAW":
+      return { verb, draw: parseDraw(arg) };
     default:
       return null;
   }
+}
+
+// ---- DRAW ---------------------------------------------------------------------
+
+/** The kinds by the names a model writes them, its near misses included.
+ *  Looked up as own keys only: "DRAW constructor e5" is no kind at all. */
+const DRAW_KINDS: Record<string, AgentDrawKind> = {
+  box: "box", rect: "box", rectangle: "box", square: "box",
+  circle: "circle", ellipse: "circle", oval: "circle", ring: "circle",
+  underline: "underline",
+  highlight: "highlight",
+  arrow: "arrow",
+  number: "number",
+  label: "label", text: "label",
+  path: "path", line: "path", polyline: "path",
+  clear: "clear",
+};
+
+/** One picture number, with a name in front of it if the model wrote one
+ *  ("x=120", "w: 40"). */
+const NUM = String.raw`(?:[a-z]\s*[=:]\s*)?(-?\d+(?:\.\d+)?)`;
+/** Between two numbers: a comma, a semicolon or spaces, but something, or
+ *  "(12)" would be read as the point (1, 2). */
+const GAP = String.raw`(?:\s*[,;]\s*|\s+)`;
+const BOX_SPOT = new RegExp(String.raw`^[[(]\s*${NUM}${GAP}${NUM}${GAP}${NUM}${GAP}${NUM}\s*[\])]`, "i");
+const POINT_SPOT = new RegExp(String.raw`^[([]\s*${NUM}${GAP}${NUM}\s*[)\]]`, "i");
+const ID_SPOT = /^([eo]\d{1,5})(?![\p{L}\p{N}_])/iu;
+/** What joins an arrow's two ends: an arrow in any of its spellings, "to",
+ *  or a comma. */
+const ARROW_JOIN = /^\s*(?:-+>?|=+>|[→⟶➔➜➝⇒]|[–—]+>?|to\b|,)\s*/i;
+/** Another arrow after an arrow's second end: the line goes on to a third. */
+const ARROW_ON = /^\s*(?:-+>|=+>|[→⟶➔➜➝⇒]|[–—]+>|to\s+(?:[eo]\d|[[(]))/i;
+/** What may sit between a path's points. */
+const PATH_JOIN = /^\s*(?:-+>?|[→⟶➔➜➝⇒]|[–—]+>?|to\b|,)?\s*/i;
+
+/** A picture number as sent: whole, and inside the picture. */
+const unit = (v: string) => Math.min(PICTURE_UNITS, Math.max(0, Math.round(Number(v))));
+
+/**
+ * A box in picture units, kept inside the picture: at least BOX_MIN across
+ * and down, and one that runs past the right or bottom edge is cut there
+ * rather than moved, since its left and top are where the model saw it start.
+ */
+function fitBox(x: number, y: number, w: number, h: number): [number, number, number, number] {
+  const fit = (at: number, size: number): [number, number] => {
+    const s = Math.max(BOX_MIN, Math.min(size, PICTURE_UNITS - at));
+    return [Math.min(at, PICTURE_UNITS - s), s];
+  };
+  const [bx, bw] = fit(x, w);
+  const [by, bh] = fit(y, h);
+  return [bx, by, bw, bh];
+}
+
+/** The spot at the start of `s`, and what follows it. */
+function readSpot(s: string): { spot: AgentSpot; rest: string } | null {
+  const t = s.trimStart();
+  const id = ID_SPOT.exec(t);
+  if (id) return { spot: { id: id[1]!.toLowerCase() }, rest: t.slice(id[0].length) };
+  const box = BOX_SPOT.exec(t);
+  if (box) {
+    const [x, y, w, h] = box.slice(1, 5).map((v) => unit(v!)) as [number, number, number, number];
+    return { spot: { box: fitBox(x, y, w, h) }, rest: t.slice(box[0].length) };
+  }
+  const pt = POINT_SPOT.exec(t);
+  if (pt) return { spot: { pt: [unit(pt[1]!), unit(pt[2]!)] }, rest: t.slice(pt[0].length) };
+  return null;
+}
+
+/** Quotes a label may come in, straight or curly, and what may close each. */
+const CLOSERS: Record<string, string> = {
+  '"': '"”“', "“": "”“\"", "”": "”\"", "„": "“”\"", "«": "»", "'": "'’", "‘": "’'", "’": "’'",
+};
+
+/** A label as it is drawn: one line, no control characters, no markdown, at
+ *  most LABEL_MAX characters, cut at a word when it has to be cut. */
+export function labelText(s: string): string {
+  const t = unmark(s.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ")).replace(/\s+/g, " ").trim();
+  if (t.length <= LABEL_MAX) return t;
+  let cut = t.slice(0, LABEL_MAX - 1);
+  // A cut through an emoji leaves half of it, which is no character at all
+  // and is drawn as a box with a question mark in it.
+  if (/[\uD800-\uDBFF]$/.test(cut)) cut = cut.slice(0, -1);
+  const space = cut.lastIndexOf(" ");
+  return (space >= LABEL_MAX / 2 ? cut.slice(0, space) : cut).trimEnd() + "…";
+}
+
+/** The label after a mark's spots: quoted or not, from its opening quote to
+ *  the last quote that closes it, so an apostrophe inside ("what's") is
+ *  kept. A separator in front of it ("| 90°", ": 90°") is not part of it. */
+function readLabel(rest: string): string {
+  const s = rest.trim().replace(/^(?:[|:,]|[–—-](?!\d))\s*/, "");
+  const open = s[0];
+  if (open && CLOSERS[open]) {
+    const body = s.slice(1);
+    let end = -1;
+    for (let i = body.length - 1; i >= 0; i--) if (CLOSERS[open]!.includes(body[i]!)) { end = i; break; }
+    return labelText(end >= 0 ? body.slice(0, end) : body);
+  }
+  return labelText(s);
+}
+
+const sameSpot = (a: AgentSpot, b: AgentSpot) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * One DRAW line's mark, or null when it cannot be read as one: an unknown
+ * kind, a spot missing, a number that is not 1 to 9, a path of fewer than 2
+ * or more than PATH_MAX points, a label with no text, an arrow to where it
+ * starts. Picture numbers are rounded and kept inside the picture here;
+ * whether an id or a picture spot is allowed on this step is the reader's to
+ * say.
+ */
+export function parseDraw(arg: string): AgentDraw | null {
+  const m = /^([A-Za-z]+)\b\s*:?\s*([\s\S]*)$/.exec(arg.trim());
+  const name = m ? m[1]!.toLowerCase() : "";
+  const kind = Object.hasOwn(DRAW_KINDS, name) ? DRAW_KINDS[name] : undefined;
+  if (!kind) return null;
+  let rest = m![2]!;
+  if (kind === "clear") return { kind };
+
+  if (kind === "path") {
+    const points: Array<[number, number]> = [];
+    for (;;) {
+      const t = rest.replace(PATH_JOIN, "");
+      const pt = POINT_SPOT.exec(t);
+      if (!pt) break;
+      points.push([unit(pt[1]!), unit(pt[2]!)]);
+      rest = t.slice(pt[0].length);
+    }
+    if (points.length < PATH_MIN || points.length > PATH_MAX) return null;
+    const closed = /^\s*,?\s*closed?\b/i.exec(rest);
+    if (closed) rest = rest.slice(closed[0].length);
+    const text = readLabel(rest);
+    return { kind, points, ...(closed ? { closed: true } : {}), ...(text ? { text } : {}) };
+  }
+
+  if (kind === "arrow") {
+    const from = readSpot(rest.replace(/^\s*from\s+/i, ""));
+    if (!from) return null;
+    const to = readSpot(from.rest.replace(ARROW_JOIN, ""));
+    if (!to || sameSpot(from.spot, to.spot)) return null;
+    // "e5 -> e9 -> e10" is a chain, not a label of "> e10": the first link is
+    // drawn and the rest is not written on the screen.
+    const text = ARROW_ON.test(to.rest) ? "" : readLabel(to.rest);
+    return { kind, from: from.spot, to: to.spot, ...(text ? { text } : {}) };
+  }
+
+  if (kind === "number") {
+    // The numeral after the spot, as the syntax has it, or before it, as a
+    // model writing "NUMBER 2 e5" means it.
+    const before = /^\s*#?(\d{1,3})\s+(?=[eo]\d|[[(])/i.exec(rest);
+    if (before) rest = rest.slice(before[0].length);
+    const at = readSpot(rest);
+    if (!at) return null;
+    let n = before ? Number(before[1]) : NaN;
+    let tail = at.rest;
+    if (!before) {
+      const after = /^\s*(?:#|n\s*[=:]?\s*|no\.?\s*)?(\d{1,3})(?![\d.])/i.exec(tail);
+      if (!after) return null;
+      n = Number(after[1]);
+      tail = tail.slice(after[0].length);
+    }
+    if (!Number.isInteger(n) || n < 1 || n > 9) return null;
+    const text = readLabel(tail);
+    return { kind, target: at.spot, n, ...(text ? { text } : {}) };
+  }
+
+  const at = readSpot(rest);
+  if (!at) return null;
+  const text = readLabel(at.rest);
+  if (kind === "label" && !text) return null;
+  return { kind, target: at.spot, ...(text ? { text } : {}) };
 }
 
 /** What one line comes to: an event to send now, or the step's action. */
@@ -208,6 +405,8 @@ export interface ReaderRules {
   picture?: boolean;
   /** SAY lines honoured in the step. */
   says?: number;
+  /** DRAW lines honoured in the step (AGENT_DRAW_MAX). */
+  draws?: number;
 }
 
 /** The text's TeX, as the symbols it stands for. */
@@ -286,6 +485,13 @@ export function plainMaths(text: string): string {
  * control is pointed at instead, which is what a show run was for. The same
  * goes in any mode for a line read off the window's picture (an o id): it is
  * text, and the device has nothing behind it to press or fill.
+ *
+ * A DRAW is honoured in either mode and never ends anything. Its ids must be
+ * on this screen, as a point's must; a place in the picture is honoured only
+ * on a step that has the picture, since on any other the model is making the
+ * place up; and past the step's cap the rest are dropped. A mark that fails
+ * any of that is dropped whole, not drawn somewhere near: a circle in the
+ * wrong place teaches the wrong thing.
  */
 export class LineReader {
   private done = false;
@@ -293,12 +499,18 @@ export class LineReader {
   private readonly pointed = new Set<string>();
   private readonly picture: boolean;
   private readonly saysMax: number;
+  private readonly drawsMax: number;
   /** Events this reader has produced. */
   produced = 0;
+  /** Marks sent, and DRAW lines dropped (unreadable, a spot not allowed
+   *  here, or past the cap), for the step's log line. */
+  draws = 0;
+  drawsDropped = 0;
 
   constructor(private readonly ids: Set<string>, private readonly mode: "show" | "do", rules: ReaderRules = {}) {
     this.picture = rules.picture === true;
     this.saysMax = rules.says ?? SAYS_MAX;
+    this.drawsMax = Math.max(0, rules.draws ?? DRAWS_MAX);
   }
 
   get ended(): boolean { return this.done; }
@@ -312,6 +524,8 @@ export class LineReader {
         return this.point(line.id, line.caption);
       case "STEPS":
         return this.out({ t: "steps", items: line.items });
+      case "DRAW":
+        return this.draw(line.draw);
       case "ASK":
         // The picture goes once: a question back would be answered on a step
         // without it. So it is said, as part of the answer.
@@ -337,6 +551,32 @@ export class LineReader {
     if (!said) return [];
     this.says += 1;
     return this.out({ t: "say", text: said });
+  }
+
+  private draw(mark: AgentDraw | null): ReaderOut[] {
+    if (!mark || this.draws >= this.drawsMax || !this.placeable(mark)) {
+      this.drawsDropped += 1;
+      return [];
+    }
+    const e: AgentDraw = { ...mark };
+    // A picture's labels are maths written by hand, like its sentences.
+    if (e.text !== undefined && this.picture) {
+      const text = labelText(plainMaths(e.text));
+      if (text) e.text = text;
+      else delete e.text;
+    }
+    if (e.kind === "label" && !e.text) {
+      this.drawsDropped += 1;
+      return [];
+    }
+    this.draws += 1;
+    return this.out({ t: "draw", ...e });
+  }
+
+  /** Every spot of the mark is one this step may draw at. */
+  private placeable(mark: AgentDraw): boolean {
+    if (mark.points && !this.picture) return false;
+    return [mark.target, mark.from, mark.to].every((s) => !s || ("id" in s ? this.ids.has(s.id) : this.picture));
   }
 
   private point(id: string, caption?: string): ReaderOut[] {

@@ -26,6 +26,11 @@
  * about the chart that happens to sound like a command. It only ever shows,
  * whatever the run is: the picture is how it sees, not something to act on.
  *
+ * Either model may draw on the screen as it explains (DRAW lines): marks go
+ * out among the sentences, in the order they were written, at most
+ * AGENT_DRAW_MAX a step. Places in the picture are honoured only on the
+ * picture path, the one step that has a picture for them to be places in.
+ *
  * Everything goes out through the EventSink, which keeps "exactly one terminal
  * event" true however a path ends.
  */
@@ -37,6 +42,7 @@ import { AGENT_SYSTEM, AGENT_VISION_SYSTEM, agentPictureContent, agentUserMessag
 import type { AgentImage, EventSink } from "./protocol.js";
 import { resolve, resolverAsk } from "./resolver.js";
 import { isBrowser, isTextEntry, withRisk, type PlannedAction, type Scene } from "./risk.js";
+import { getConfig } from "../config.js";
 import { sensitiveApp } from "../pipeline/sensitive.js";
 
 export interface StepContext {
@@ -47,6 +53,8 @@ export interface StepContext {
   names?: string[];
   /** The one picture that came with the step: the picture path. */
   image?: AgentImage;
+  /** Marks a step may draw; AGENT_DRAW_MAX when not given. */
+  drawMax?: number;
 }
 
 export interface StepDeps {
@@ -78,6 +86,10 @@ export interface StepResult {
   code?: string;
   /** The deep ladder answered a picture question asked for in detail. */
   deep?: boolean;
+  /** Marks drawn, and DRAW lines dropped (unreadable, at an id not on this
+   *  screen, at a picture place on a step with no picture, past the cap). */
+  draws?: number;
+  drawsDropped?: number;
 }
 
 const countWords = (s: string) => (s.trim() ? s.trim().split(/\s+/).length : 0);
@@ -210,7 +222,7 @@ async function planWithModel(
   const { req } = ctx;
   const user = agentUserMessage(req, s.said, s.mode, ctx.maxSteps);
   return follow(ctx, deps, sink, {
-    reader: new LineReader(new Set(req.screen.elements.map((e) => e.id)), s.mode),
+    reader: new LineReader(new Set(req.screen.elements.map((e) => e.id)), s.mode, { draws: drawMax(ctx) }),
     stream: deps.plan(AGENT_SYSTEM, user, deps.signal),
     scene: s.scene,
     nothing: NOT_FOUND,
@@ -238,7 +250,9 @@ async function answerPicture(
   const result: StepResult = { path: "picture", mode: "show", words: 0, audioSeconds: s.audioSeconds };
   if (deep) result.deep = true;
   return follow(ctx, deps, sink, {
-    reader: new LineReader(new Set(req.screen.elements.map((e) => e.id)), "show", { picture: true, says: deep ? DEEP_SAYS : PICTURE_SAYS }),
+    reader: new LineReader(new Set(req.screen.elements.map((e) => e.id)), "show", {
+      picture: true, says: deep ? DEEP_SAYS : PICTURE_SAYS, draws: drawMax(ctx),
+    }),
     stream: deps.plan(AGENT_VISION_SYSTEM, user, deps.signal, { deep }),
     scene: { req, said: all },
     nothing: NOT_SEEN,
@@ -287,7 +301,7 @@ async function follow(
     if (!(err instanceof PlannerUnavailable)) throw err;
     if (!reader.produced) {
       sink.emit({ t: "error", code: "model_unavailable", message: "Ask can't think right now. Try again in a moment." });
-      return { ...result, code: "model_unavailable" };
+      return withDraws({ ...result, code: "model_unavailable" }, reader);
     }
   }
 
@@ -297,6 +311,15 @@ async function follow(
     if (!reader.produced) sink.emit({ t: "say", text: f.nothing });
     sink.emit({ t: "done" });
   }
+  return withDraws(result, reader);
+}
+
+const drawMax = (ctx: StepContext) => ctx.drawMax ?? getConfig().AGENT_DRAW_MAX;
+
+/** The step's marks, counted for its log line when there were any. */
+function withDraws(result: StepResult, reader: LineReader): StepResult {
+  if (reader.draws) result.draws = reader.draws;
+  if (reader.drawsDropped) result.drawsDropped = reader.drawsDropped;
   return result;
 }
 
