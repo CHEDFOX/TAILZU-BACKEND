@@ -38,6 +38,8 @@ const llm = vi.hoisted(() => ({
 }));
 const stt = vi.hoisted(() => ({ text: "um, go back", calls: 0 }));
 const hist = vi.hoisted(() => ({ appended: 0 }));
+/** The options each quota check was asked with, and the picture steps counted. */
+const quota = vi.hoisted(() => ({ asked: [] as Array<{ agentAudio?: boolean; picture?: boolean } | undefined>, pictures: 0 }));
 
 vi.mock("openai", () => ({
   default: class {
@@ -86,6 +88,20 @@ vi.mock("groq-sdk", () => ({
   },
   toFile: async (b: Buffer, name: string) => ({ b, name }),
 }));
+vi.mock("../src/usage/metering.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/usage/metering.js")>();
+  return {
+    ...real,
+    enforceQuota: async (...args: Parameters<typeof real.enforceQuota>) => {
+      quota.asked.push(args[1]);
+      return real.enforceQuota(...args);
+    },
+    recordPicture: (...args: Parameters<typeof real.recordPicture>) => {
+      quota.pictures += 1;
+      return real.recordPicture(...args);
+    },
+  };
+});
 vi.mock("../src/history/store.js", async (importOriginal) => {
   const orig = await importOriginal<typeof import("../src/history/store.js")>();
   return {
@@ -214,6 +230,13 @@ describe("refused before the stream starts", () => {
     const res = await post(step({ utterance: "scroll down", ...over }));
     expect(res.status).toBe(413);
     expect(llm.calls).toHaveLength(0);
+  });
+
+  it("a recording is a question spoken to Ask, checked against Ask's own seconds; a typed step is not", async () => {
+    quota.asked.length = 0;
+    await app.inject({ method: "POST", url: "/v1/agent", ...form(JSON.stringify(step())) });
+    await post(step({ utterance: "scroll down" }));
+    expect(quota.asked).toEqual([{ agentAudio: true, picture: false }, { agentAudio: false, picture: false }]);
   });
 
   it("413 measures the screen as the prompt carries it, so a large but fair one passes", async () => {
@@ -486,6 +509,25 @@ describe("the model ladder", () => {
     expect(Date.now() - t0).toBeGreaterThanOrEqual(450);
     expect(res.evs.at(-1)).toEqual({ t: "done", text: "All set." });
     expect(streamCalls().map((c) => c.body.model)).toEqual(["openai/gpt-6-luna", "anthropic/claude-haiku-5.5"]);
+  });
+
+  it("a first model whose answer ends with nothing in it hands the step to the next", async () => {
+    // A stream that finishes cleanly and empty (a content filter's stop) is a
+    // failure before any output, not an answer of nothing.
+    llm.plans.set("openai/gpt-6-luna", []);
+    llm.plan = ["SAY Here.\nDONE"];
+    const res = await post(step({ utterance: "what does this button do?" }));
+    expect(res.evs.map((e) => e.t)).toEqual(["heard", "say", "done"]);
+    expect(streamCalls().map((c) => c.body.model)).toEqual(["openai/gpt-6-luna", "anthropic/claude-haiku-5.5"]);
+    await vi.waitFor(() => expect(logged.filter((l) => l.msg === "agent model call")).toHaveLength(2));
+    expect(logged.filter((l) => l.msg === "agent model call").map((l) => l.obj.agent.outcome)).toEqual(["empty", "ok"]);
+  });
+
+  it("every model answering with nothing is said plainly, not model_unavailable", async () => {
+    llm.plan = [];
+    const res = await post(step({ utterance: "what does this button do?" }));
+    expect(res.evs.slice(1)).toEqual([{ t: "say", text: "I couldn't find that here." }, { t: "done" }]);
+    expect(streamCalls().map((c) => c.body.model)).toEqual(["openai/gpt-6-luna", "anthropic/claude-haiku-5.5", "openai/gpt-5.4-mini"]);
   });
 
   it("every model failing is model_unavailable", async () => {
@@ -802,6 +844,21 @@ describe("the picture path: its ladders", () => {
     expect(haiku.body.temperature).toBeUndefined();
   });
 
+  it("a vision model that answers with nothing (a filtered picture) is passed over too", async () => {
+    llm.plans.set("openai/gpt-6-luna", []);
+    llm.plan = ["SAY A right triangle.\nDONE"];
+    const res = await postPicture({ utterance: "what's this?" });
+    expect(res.evs.slice(1)).toEqual([{ t: "say", text: "A right triangle." }, { t: "done" }]);
+    expect(streamCalls().map((c) => c.body.model)).toEqual(["openai/gpt-6-luna", "google/gemini-3.1-flash-lite"]);
+  });
+
+  it("every vision model answering with nothing is said plainly, after CLEANUP_MODEL", async () => {
+    llm.plan = [];
+    const res = await postPicture({ utterance: "what's this?" });
+    expect(res.evs.slice(1)).toEqual([{ t: "say", text: "I couldn't make that out in the picture." }, { t: "done" }]);
+    expect(streamCalls().map((c) => c.body.model)).toEqual(["openai/gpt-6-luna", "google/gemini-3.1-flash-lite", "anthropic/claude-haiku-5.5", "openai/gpt-5.4-mini"]);
+  });
+
   it("every vision model failing is model_unavailable, after CLEANUP_MODEL", async () => {
     llm.plan = "throw";
     const res = await postPicture({ utterance: "what's this?" });
@@ -857,6 +914,16 @@ describe("the picture path: its ladders", () => {
     llm.plan = [Array.from({ length: 30 }, (_, i) => `SAY Step ${i + 1}.`).join("\n") + "\nDONE"];
     const res = await postPicture({ utterance: "explain this in detail" });
     expect(res.evs.filter((e) => e.t === "say")).toHaveLength(24);
+  });
+
+  it("is checked against the day's pictures, and counted once answered", async () => {
+    quota.asked.length = 0;
+    quota.pictures = 0;
+    llm.plan = ["SAY A chart.\nDONE"];
+    await postPicture({ utterance: "what's this?" });
+    await post(step({ utterance: "what does this button do?" }));
+    expect(quota.asked).toEqual([{ agentAudio: false, picture: true }, { agentAudio: false, picture: false }]);
+    expect(quota.pictures).toBe(1);
   });
 
   it("logs each call with picture: true, and never the picture or the screen", async () => {

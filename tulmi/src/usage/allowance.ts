@@ -92,8 +92,9 @@ export type Allowance = {
   maxed: boolean;
 };
 
-/** A usage row, reduced to what earning cares about. */
-export type UsageMoment = { at: number; words: number };
+/** A usage row, reduced to what earning cares about. `source` is the meter's
+ *  ("rest", "stream", "agent"); absent is a dictation. */
+export type UsageMoment = { at: number; words: number; source?: string };
 
 /** UTC day key. Days are UTC so the enforced number and the shown one agree
  *  wherever the user travels; a streak that changes with a flight is worse
@@ -179,11 +180,14 @@ export function computeAllowance(
   const used = moments.reduce((n, m) => n + (m.words || 0), 0);
 
   // Sessions per day. A day is the unit of reward; a session is only used to
-  // tell a day of real use from a day someone opened the app once.
+  // tell a day of real use from a day someone opened the app once. A question
+  // to Ask makes it a day of use, but is not a dictation: one question writes
+  // a row for the stream it was spoken on and one for each step answering
+  // it, and counted, two questions were "5 dictations in a day".
   const perDay = new Map<string, number>();
   for (const m of moments) {
     const k = dayKey(m.at);
-    perDay.set(k, (perDay.get(k) ?? 0) + 1);
+    perDay.set(k, (perDay.get(k) ?? 0) + (m.source === "agent" ? 0 : 1));
   }
   const days = Array.from(perDay.keys()).sort();
 

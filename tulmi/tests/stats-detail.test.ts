@@ -11,6 +11,8 @@ import { appendHistoryEntry, statsForUser } from "../src/history/store.js";
 import { buildScreen } from "../src/experience/catalog.js";
 // eslint-disable-next-line import/first
 import { curvePaths } from "../src/experience/statsCharts.js";
+// eslint-disable-next-line import/first
+import { recordUsage } from "../src/usage/metering.js";
 
 const keep = { retainHistory: true } as never;
 
@@ -45,6 +47,20 @@ describe("the detail behind each Stats card", () => {
     expect(Date.parse(slack.lastAt)).toBeGreaterThan(Date.now() - 60_000);
     const parts = slack.dayparts;
     expect(parts.morning + parts.afternoon + parts.evening + parts.night).toBe(2);
+  });
+
+  it("read from the meter alone, a question to Ask is not a session, though its speech is counted", async () => {
+    // No history kept, so the tab falls back to the meter's rows.
+    const user = { id: "static-stats-ask", token: "t" } as never;
+    const meter = (source: "stream" | "agent", audioSeconds: number, words: number) =>
+      recordUsage({ user, source, audioSeconds, words, model: "live" });
+    await meter("agent", 4, 0);
+    await meter("agent", 0, 0);
+    await meter("stream", 10, 20);
+    const s = await statsForUser(user, "month");
+    expect(s.requests).toBe(1);
+    expect(s.wordsOut).toBe(20);
+    expect(s.days!.at(-1)).toMatchObject({ sessions: 1, saidSeconds: 14 });
   });
 });
 

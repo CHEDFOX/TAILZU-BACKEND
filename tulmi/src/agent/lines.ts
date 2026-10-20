@@ -182,8 +182,11 @@ export function parseLine(raw: string, platform: Platform): Line | null {
       return why ? { verb, why } : { verb };
     }
     case "DONE": {
+      // "DONE." is the bare verb with a full stop, not a word to say: text
+      // with no letter or digit in it is none. Said, it took the place of the
+      // whole answer on the card with a "." (desktop agent.js drops it too).
       const text = clip(unmark(unquote(arg)), SAY_MAX);
-      return text ? { verb, text } : { verb };
+      return text && /[\p{L}\p{N}]/u.test(text) ? { verb, text } : { verb };
     }
     // An action on something that is not an id is still an action: it is
     // kept with an empty id so the reader can refuse it as a bad target,
@@ -261,6 +264,13 @@ const PATH_JOIN = /^\s*(?:-+>?|[→⟶➔➜➝⇒]|[–—]+>?|to\b|,)?\s*/i;
 
 /** A picture number as sent: whole, and inside the picture. */
 const unit = (v: string) => Math.min(PICTURE_UNITS, Math.max(0, Math.round(Number(v))));
+/**
+ * Numbers that are fractions of the picture, 0 to 1, where thousandths were
+ * asked for: "(0.42, 0.61)" is a model that slipped into its own habit, and
+ * rounded it is the picture's top-left corner. Its meaning is a guess, so the
+ * mark is dropped, not scaled. A real spot that small has no decimal point.
+ */
+const fractional = (vals: string[]) => vals.every((v) => Number(v) <= 1) && vals.some((v) => v.includes("."));
 
 /**
  * A box in picture units, kept inside the picture: at least BOX_MIN across
@@ -284,10 +294,12 @@ function readSpot(s: string): { spot: AgentSpot; rest: string } | null {
   if (id) return { spot: { id: id[1]!.toLowerCase() }, rest: t.slice(id[0].length) };
   const box = BOX_SPOT.exec(t);
   if (box) {
+    if (fractional(box.slice(1, 5) as string[])) return null;
     const [x, y, w, h] = box.slice(1, 5).map((v) => unit(v!)) as [number, number, number, number];
     return { spot: { box: fitBox(x, y, w, h) }, rest: t.slice(box[0].length) };
   }
   const pt = POINT_SPOT.exec(t);
+  if (pt && fractional([pt[1]!, pt[2]!])) return null;
   if (pt) return { spot: { pt: [unit(pt[1]!), unit(pt[2]!)] }, rest: t.slice(pt[0].length) };
   return null;
 }
@@ -331,9 +343,9 @@ const sameSpot = (a: AgentSpot, b: AgentSpot) => JSON.stringify(a) === JSON.stri
  * One DRAW line's mark, or null when it cannot be read as one: an unknown
  * kind, a spot missing, a number that is not 1 to 9, a path of fewer than 2
  * or more than PATH_MAX points, a label with no text, an arrow to where it
- * starts. Picture numbers are rounded and kept inside the picture here;
- * whether an id or a picture spot is allowed on this step is the reader's to
- * say.
+ * starts, picture numbers that are all fractions of 1. Picture numbers are
+ * rounded and kept inside the picture here; whether an id or a picture spot
+ * is allowed on this step is the reader's to say.
  */
 export function parseDraw(arg: string): AgentDraw | null {
   const m = /^([A-Za-z]+)\b\s*:?\s*([\s\S]*)$/.exec(arg.trim());
@@ -345,14 +357,16 @@ export function parseDraw(arg: string): AgentDraw | null {
 
   if (kind === "path") {
     const points: Array<[number, number]> = [];
+    const raw: string[] = [];
     for (;;) {
       const t = rest.replace(PATH_JOIN, "");
       const pt = POINT_SPOT.exec(t);
       if (!pt) break;
       points.push([unit(pt[1]!), unit(pt[2]!)]);
+      raw.push(pt[1]!, pt[2]!);
       rest = t.slice(pt[0].length);
     }
-    if (points.length < PATH_MIN || points.length > PATH_MAX) return null;
+    if (points.length < PATH_MIN || points.length > PATH_MAX || fractional(raw)) return null;
     const closed = /^\s*,?\s*closed?\b/i.exec(rest);
     if (closed) rest = rest.slice(closed[0].length);
     const text = readLabel(rest);
@@ -427,6 +441,10 @@ const SUPERSCRIPT: Record<string, string> = {
 const SUBSCRIPT: Record<string, string> = {
   0: "₀", 1: "₁", 2: "₂", 3: "₃", 4: "₄", 5: "₅", 6: "₆", 7: "₇", 8: "₈", 9: "₉",
 };
+/** A word that is a Windows path: from a drive, a share, here or a variable
+ *  (C:\, \\server, .\, %APPDATA%\), or one that names a file in a folder
+ *  (src\app\main.ts). */
+const WINDOWS_PATH = /^[("'“‘[]*(?:[A-Za-z]:\\|\\\\|\.{1,2}\\|~\\|%\w+%\\)|\\[\w-]+\.[A-Za-z]/;
 const scripted = (s: string, map: Record<string, string>) =>
   [...s].every((c) => map[c]) ? [...s].map((c) => map[c]).join("") : null;
 /** A numerator, a denominator or a root's contents: bracketed unless it is
@@ -443,10 +461,16 @@ const term = (s: string) => {
  * path's prompt asks for plain Unicode, and small models still write TeX for
  * maths out of habit; shown raw it is noise and spoken it is gibberish. A
  * "$" around plain words ("costs $5") is money, and is left alone.
+ *
+ * Code is left alone too, since the picture may be code: a Windows path
+ * ("C:\Users\me\to") is put back as it was written, and an escape of one
+ * letter that is not TeX ("\n", "\t", "\d+") keeps its backslash.
  */
 export function plainMaths(text: string): string {
   if (!/[\\^_$]/.test(text)) return text;
+  const paths: string[] = [];
   let s = text
+    .replace(/\S*\\\S*/g, (word) => (WINDOWS_PATH.test(word) ? `\uE000${paths.push(word) - 1}\uE001` : word))
     .replace(/\\[()[\]]/g, "")
     .replace(/\$\$/g, "")
     .replace(/\$([^$\n]*[\\^_{}][^$\n]*)\$/g, "$1");
@@ -469,11 +493,12 @@ export function plainMaths(text: string): string {
     .replace(/\\lim\s*_\s*\{([^{}]+)\}/g, "lim as $1")
     .replace(/\\(?:left|right|displaystyle)\b/g, "")
     .replace(/\\[,;:! ]|\\q?quad\b/g, " ")
-    .replace(/\\([A-Za-z]+)/g, (_m, name: string) => (Object.hasOwn(TEX, name) ? TEX[name]! : name))
+    .replace(/\\([A-Za-z]+)/g, (m, name: string) => (Object.hasOwn(TEX, name) ? TEX[name]! : name.length === 1 ? m : name))
     .replace(/(?<=[\p{L}\p{N})\]])\^\{([^{}]+)\}/gu, (_m, a: string) => scripted(a, SUPERSCRIPT) ?? `^(${a})`)
     .replace(/(?<=[\p{L}\p{N})\]])\^(\d+|[ni](?![\p{L}]))/gu, (m, a: string) => scripted(a, SUPERSCRIPT) ?? m)
     .replace(/(?<![\p{L}])(\p{L})_\{?(\d+)\}?/gu, (_m, v: string, n: string) => v + scripted(n, SUBSCRIPT))
     .replace(/[ \t]{2,}/g, " ")
+    .replace(/\uE000(\d+)\uE001/g, (m, i: string) => paths[Number(i)] ?? m)
     .trim();
 }
 

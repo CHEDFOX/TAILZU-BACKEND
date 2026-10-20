@@ -336,6 +336,13 @@ const EnvSchema = z.object({
    */
   AGENT_RATE_LIMIT_MAX: z.coerce.number().default(60),
   AGENT_RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
+  /**
+   * A question to Ask spoken on the live stream (its start message says
+   * purpose "ask"), in seconds of audio. The desktop stops listening for one
+   * at desktop.agent.listenMaxMs, 15 s; past twice that it is not a question,
+   * and the stream ends there with what it heard.
+   */
+  AGENT_STREAM_MAX_SECONDS: z.coerce.number().int().min(1).max(900).default(30),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 
@@ -737,6 +744,22 @@ const EnvSchema = z.object({
   FREE_FOR_ALL: bool(true),
   FREE_MONTHLY_AUDIO_SECONDS: z.coerce.number().default(0),
   FREE_MONTHLY_WORDS: z.coerce.number().default(800),
+  /**
+   * Seconds of questions spoken to Ask a free account may send in a month,
+   * on the live stream or as an Ask step's recording. Their words are never
+   * written anywhere, so they do not spend the words above; without a
+   * ceiling of their own, a stream that called itself a question was
+   * transcription without end. Half an hour is several hundred questions.
+   * 0 = no ceiling.
+   */
+  FREE_MONTHLY_AGENT_AUDIO_SECONDS: z.coerce.number().default(1800),
+  /**
+   * Questions about a picture a free account may ask Ask in a day. Each is a
+   * vision call carrying an image, metered as no words and no seconds, so no
+   * ceiling above ever reached it: 60 a minute, around the clock, was free.
+   * Counted in memory, as the rate limits are. 0 = no ceiling.
+   */
+  FREE_DAILY_AGENT_PICTURES: z.coerce.number().int().min(0).default(100),
 
   // --- Earned words -------------------------------------------------------
   // The free plan grows when it is used. See src/usage/allowance.ts for why
