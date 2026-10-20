@@ -12,7 +12,9 @@
  *   docker compose cp /tmp/time-vision-quick.mjs backend:/tmp/time-vision-quick.mjs
  *   docker compose exec backend node /tmp/time-vision-quick.mjs
  *
- * Options: --runs 3 (per model), --models a,b,c (OpenRouter ids).
+ * Options: --runs 3 (per model), --models a,b,c (OpenRouter ids),
+ * --route latency (ask OpenRouter for its lowest-latency provider of each
+ * model; without it, OpenRouter's default routing).
  *
  * Every run sends what the server sends for a picture question today
  * (AGENT_VISION_SYSTEM and agentPictureMessage, copied below as they were
@@ -293,11 +295,12 @@ const TIMEOUT_MS = 30000;        // generous: this measures, it does not fall ba
 
 function args() {
   const a = process.argv.slice(2);
-  const out = { runs: 3, models: DEFAULT_MODELS };
+  const out = { runs: 3, models: DEFAULT_MODELS, route: "" };
   for (let i = 0; i < a.length; i++) {
     if (a[i] === "--runs" && a[i + 1]) out.runs = Math.max(1, Math.min(20, Number(a[++i]) || 3));
     else if (a[i] === "--models" && a[i + 1]) out.models = a[++i].split(",").map((s) => s.trim()).filter(Boolean);
-    else if (a[i] === "--help" || a[i] === "-h") { console.log("node time-vision-quick.mjs [--runs 3] [--models a,b,c]"); process.exit(0); }
+    else if (a[i] === "--route" && a[i + 1]) out.route = a[++i] === "none" ? "" : a[i];
+    else if (a[i] === "--help" || a[i] === "-h") { console.log("node time-vision-quick.mjs [--runs 3] [--models a,b,c] [--route latency]"); process.exit(0); }
     else { console.error("unknown option: " + a[i]); process.exit(2); }
   }
   return out;
@@ -309,6 +312,8 @@ const mustThink = (m) => /^google\/gemini-(?:[3-9]|2\.5-pro)/.test(m);
 function body(model) {
   return {
     model,
+    // OpenRouter's provider preference: the model's lowest-latency provider.
+    ...(opt.route ? { provider: { sort: opt.route } } : {}),
     stream: true,
     stream_options: { include_usage: true },
     usage: { include: true },
@@ -396,7 +401,7 @@ const opt = args();
 const key = process.env.OPENROUTER_API_KEY;
 if (!key) { console.error("No OPENROUTER_API_KEY here. Run it inside the backend container (docker compose exec backend ...)."); process.exit(2); }
 
-console.log(`Picture question timing: ${opt.runs} run(s) each, one at a time.\n`);
+console.log(`Picture question timing: ${opt.runs} run(s) each, one at a time${opt.route ? `, providers sorted by ${opt.route}` : ""}.\n`);
 const all = {};
 for (const model of opt.models) {
   all[model] = [];
