@@ -118,7 +118,7 @@ import type {
 } from "../../shared/types/api.js";
 import { cleanLabel, fieldKindOf } from "./pipeline/field.js";
 import { capSurroundings } from "./pipeline/sensitive.js";
-import { EventSink, audioFormatOf, readStepRequest } from "./agent/protocol.js";
+import { EventSink, audioFormatOf, readPicture, readStepRequest, type AgentImage, type Refusal } from "./agent/protocol.js";
 import { planStream } from "./agent/llm.js";
 import { runStep, type StepResult } from "./agent/run.js";
 
@@ -1752,12 +1752,31 @@ app.post("/v1/ask", { config: AUTHED_RL }, async (req, reply) => {
 // What is written for the user (WRITE, REWRITE, a selection rewrite) counts
 // its words, like an edit; the planner's own words do not, like an answer.
 // No step writes a History entry: a run is a handful of clicks, not writing.
+//
+// A multipart step may carry one picture as well, an `image` part, which
+// sends it down the picture path. It is read up to AGENT_IMAGE_MAX_BYTES and
+// no further: past that the rest is read and thrown away, so a huge part
+// costs a refusal and not the memory to hold it. The picture is never logged,
+// and is gone with the request.
 const AGENT_RL = {
   rateLimit: { max: cfg.AGENT_RATE_LIMIT_MAX, timeWindow: cfg.AGENT_RATE_LIMIT_WINDOW_MS },
 };
 /** A spoken request, or an answer to a question. Two minutes is far past
  *  either, and well inside what a recogniser accepts. */
 const AGENT_AUDIO_MAX_SECONDS = 120;
+
+/** A file part, read to its end, kept only while it is within `max` bytes:
+ *  null when it went past. */
+async function readUpTo(file: AsyncIterable<Buffer>, max: number): Promise<Buffer | null> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of file) {
+    size += chunk.length;
+    if (size <= max) chunks.push(chunk);
+    else chunks.length = 0;
+  }
+  return size <= max ? Buffer.concat(chunks) : null;
+}
 
 app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
@@ -1766,14 +1785,29 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
   let raw: unknown;
   let audio: Buffer | null = null;
   let format: AudioFormat = "webm";
+  let image: AgentImage | null = null;
   let unreadable = false;
+  let refused: Refusal | null = null;
   if (req.isMultipart()) {
     // Every part is read to the end, even after a bad one: a multipart stream
-    // left half-read never finishes the request.
-    for await (const part of req.parts()) {
+    // left half-read never finishes the request. Two files at most, the
+    // recording and the picture; a third is the plugin's 413.
+    for await (const part of req.parts({ limits: { files: 2 } })) {
       if (part.type === "file") {
+        if (part.fieldname === "image") {
+          const data = await readUpTo(part.file, cfg.AGENT_IMAGE_MAX_BYTES);
+          const pic = readPicture(part.mimetype, data, cfg.AGENT_IMAGE_MAX_BYTES);
+          if (image) refused ??= { status: 400, code: "bad_request", message: "One picture per step" };
+          else if ("refusal" in pic) refused ??= pic.refusal;
+          else image = pic.image;
+          continue;
+        }
         const buf = await part.toBuffer();
-        if (part.fieldname === "audio") { audio = buf; format = audioFormatOf(part.filename, part.mimetype); }
+        if (part.fieldname === "audio") {
+          if (audio) refused ??= { status: 400, code: "bad_request", message: "One recording per step" };
+          audio = buf;
+          format = audioFormatOf(part.filename, part.mimetype);
+        }
       } else if (part.fieldname === "request") {
         try { raw = JSON.parse(String(part.value)); } catch { unreadable = true; }
       }
@@ -1782,11 +1816,13 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
     raw = req.body;
   }
   if (unreadable) return reply.code(400).send({ code: "bad_request", message: "'request' is not JSON" });
+  if (refused) return reply.code(refused.status).send({ code: refused.code, message: refused.message });
 
   const read = readStepRequest(
     raw,
     { maxElements: cfg.AGENT_MAX_ELEMENTS, screenMaxChars: cfg.AGENT_SCREEN_MAX_CHARS },
     !!audio,
+    !!image,
   );
   if ("refusal" in read) return reply.code(read.refusal.status).send({ code: read.refusal.code, message: read.refusal.message });
   const step = read.req;
@@ -1830,7 +1866,10 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
     };
     const nick = nicknameOf(personality);
     result = await runStep(
-      { req: step, maxSteps: cfg.AGENT_MAX_STEPS, names: [ASSISTANT_NAME, "Blip", ...(nick ? [nick] : [])] },
+      {
+        req: step, maxSteps: cfg.AGENT_MAX_STEPS, names: [ASSISTANT_NAME, "Blip", ...(nick ? [nick] : [])],
+        ...(image ? { image } : {}),
+      },
       {
         hear: audio
           ? async () => {
@@ -1846,10 +1885,12 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
           : undefined,
         write: (instruction, context) => assist(instruction, { ...writer, context }),
         rewrite: (selection, instruction) => editSelection(selection, instruction, writer, { spoken: true }),
-        plan: (system, userMessage, signal) => planStream(system, userMessage, {
+        plan: (system, userMessage, signal, picture) => planStream(system, userMessage, {
           signal,
+          picture,
           // One line per model call: which model, how soon it started, what it
-          // cost. Never the prompt or the answer.
+          // cost, and whether a picture went with it. Never the prompt, the
+          // picture or the answer.
           log: (call) => req.log.info({ agent: { runId: step.runId, step: step.step, ...call } }, "agent model call"),
         }),
         signal: gone.signal,
@@ -1882,6 +1923,8 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
       path: result?.path ?? "failed", mode: result?.mode, model: result?.model, ending: sink.ending,
       events: sink.count, elements: step.screen.elements.length, words: result?.words ?? 0,
       audioSeconds: result?.audioSeconds ?? 0, ms: Date.now() - t0,
+      ...(image ? { picture: true, pictureBytes: image.data.length, region: step.picture?.region } : {}),
+      ...(result?.deep ? { deep: true } : {}),
     },
   }, "agent step");
 });

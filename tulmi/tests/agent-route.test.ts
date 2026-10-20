@@ -5,7 +5,9 @@
  * so what is checked is everything around the model: the refusals before the
  * stream, the free paths that never reach it, the line protocol read as it
  * arrives, the ladder when a model fails, what the model is shown, and that
- * every stream ends in exactly one terminal event.
+ * every stream ends in exactly one terminal event. Then the picture path:
+ * the picture's part and its caps, the vision ladders, what the vision model
+ * is shown, appended sentences, and LOOK.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
@@ -20,8 +22,13 @@ process.env.MEDIA_DIR = "/tmp/tailzu-test-media";
 process.env.NODE_ENV = "test";
 process.env.AGENT_TIMEOUT_MS = "500";
 process.env.AGENT_SCREEN_MAX_CHARS = "6000";
+process.env.AGENT_VISION_TIMEOUT_MS = "500";
+process.env.AGENT_IMAGE_MAX_BYTES = "50000";
+// Ask's own bucket is 60 a minute; this file sends more than that.
+process.env.AGENT_RATE_LIMIT_MAX = "1000";
 
-type Plan = string[] | "throw" | "hang";
+/** Chunks to stream; a number is a pause of that many ms before the next. */
+type Plan = Array<string | number> | "throw" | "hang";
 const llm = vi.hoisted(() => ({
   calls: [] as Array<{ body: Record<string, any>; opts: Record<string, any> | undefined }>,
   plans: new Map<string, Plan>(),
@@ -54,6 +61,7 @@ vi.mock("openai", () => ({
           }
           return (async function* () {
             for (const c of plan) {
+              if (typeof c === "number") { await new Promise((r) => setTimeout(r, c)); continue; }
               if (signal?.aborted) throw new Error("aborted");
               yield { choices: [{ delta: { content: c } }] };
             }
@@ -90,10 +98,10 @@ vi.mock("../src/history/store.js", async (importOriginal) => {
 });
 
 const { buildApp } = await import("../src/server.js");
-const { AGENT_SYSTEM } = await import("../src/agent/prompt.js");
+const { AGENT_SYSTEM, AGENT_VISION_SYSTEM } = await import("../src/agent/prompt.js");
 
 type Ev = Record<string, any>;
-const TERMINAL = new Set(["action", "ask", "done", "error"]);
+const TERMINAL = new Set(["action", "ask", "look", "done", "error"]);
 
 const ELEMENTS = [
   { id: "e1", role: "button", label: "Search", region: "t" },
@@ -108,8 +116,18 @@ function step(over: Record<string, unknown> = {}): Record<string, unknown> {
 }
 
 let app: FastifyInstance;
+/** What the route logged with req.log.info, for the checks on what a log
+ *  line may carry. */
+const logged: Array<{ obj: Record<string, any>; msg: string }> = [];
 beforeAll(async () => {
   app = await buildApp();
+  app.addHook("onRequest", async (req) => {
+    const info = req.log.info.bind(req.log);
+    req.log.info = ((obj: unknown, msg?: string) => {
+      if (obj && typeof obj === "object") logged.push({ obj: obj as Record<string, any>, msg: String(msg ?? "") });
+      return (info as (o: unknown, m?: string) => void)(obj, msg);
+    }) as typeof req.log.info;
+  });
   await app.ready();
 });
 afterAll(async () => { await app.close(); });
@@ -122,6 +140,7 @@ beforeEach(() => {
   stt.text = "um, go back";
   stt.calls = 0;
   hist.appended = 0;
+  logged.length = 0;
 });
 
 /** The stream's events, checked for the one rule every stream keeps:
@@ -146,13 +165,16 @@ const systemText = (i = 0) => {
   return typeof c === "string" ? c : c[0].text;
 };
 
-function form(request: string, withAudio = true): { payload: Buffer; headers: Record<string, string> } {
+interface FilePart { name: string; filename: string; type: string; data: Buffer }
+
+function form(request: string, withAudio = true, files: FilePart[] = []): { payload: Buffer; headers: Record<string, string> } {
   const b = "----agent";
   const parts = [Buffer.from(`--${b}\r\nContent-Disposition: form-data; name="request"\r\n\r\n${request}\r\n`)];
-  if (withAudio) {
+  if (withAudio) files = [{ name: "audio", filename: "ask.wav", type: "audio/wav", data: wav(speechClip()) }, ...files];
+  for (const f of files) {
     parts.push(
-      Buffer.from(`--${b}\r\nContent-Disposition: form-data; name="audio"; filename="ask.wav"\r\nContent-Type: audio/wav\r\n\r\n`),
-      wav(speechClip()),
+      Buffer.from(`--${b}\r\nContent-Disposition: form-data; name="${f.name}"; filename="${f.filename}"\r\nContent-Type: ${f.type}\r\n\r\n`),
+      f.data,
       Buffer.from("\r\n"),
     );
   }
@@ -575,5 +597,374 @@ describe("what a step leaves behind", () => {
     llm.plan = ["WRITE say hi\n"];
     await post(step({ utterance: "say hi to them" }));
     expect(hist.appended).toBe(0);
+  });
+});
+
+// ---- v2: the picture path ----------------------------------------------------
+
+/** A picture's bytes as the device sends them: a JPEG header, then filler.
+ *  Nothing decodes it; the model is a fake. */
+const jpeg = (size = 3000, fill = 7) => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(size - 4, fill)]);
+const picturePart = (data = jpeg(), type = "image/jpeg", filename = "picture.jpg"): FilePart => ({ name: "image", filename, type, data });
+
+/** A step with a picture, as the desktop's makePost sends it: the request,
+ *  the recording when there is one, then the picture. */
+async function postPicture(over: Record<string, unknown> = {}, opts: { audio?: boolean; files?: FilePart[] } = {}) {
+  const res = await app.inject({
+    method: "POST", url: "/v1/agent",
+    ...form(JSON.stringify(step({ picture: { region: "element" }, ...over })), opts.audio ?? false, opts.files ?? [picturePart()]),
+  });
+  return { status: res.statusCode, payload: res.payload, evs: res.statusCode === 200 ? events(res.payload) : [] };
+}
+
+const userParts = (i = 0) => streamCalls()[i]!.body.messages[1].content as Array<Record<string, any>>;
+
+describe("the picture path: what the vision model is sent", () => {
+  it("the picture as an image_url data URL, then the fenced screen and what they said, as text", async () => {
+    llm.plan = ["SAY It says energy equals mass times c squared.\nSAY c is the speed of light.\nDONE"];
+    const data = jpeg(4000, 9);
+    const res = await postPicture({ utterance: "explain this equation" }, { files: [picturePart(data)] });
+    expect(res.status).toBe(200);
+    expect(streamCalls()).toHaveLength(1);
+    const call = streamCalls()[0]!;
+    expect(call.body.model).toBe("openai/gpt-6-luna");
+    expect(call.body.messages[0].content).toBe(AGENT_VISION_SYSTEM);
+    const parts = userParts();
+    expect(parts).toHaveLength(2);
+    expect(parts[0]).toEqual({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${data.toString("base64")}` } });
+    expect(parts[1]!.type).toBe("text");
+    const text = String(parts[1]!.text);
+    expect(text.split("\n")[0]).toBe("App: Slack. The picture is one image from the window.");
+    expect(text).toContain('<screen>\ne1 button "Search" @t\n');
+    expect(text).toContain('e3 button "Export…" @tr');
+    expect(text.endsWith("<said>explain this equation</said>")).toBe(true);
+    // Streamed, bounded, unretried, unreasoned, with the picture path's budget.
+    expect(call.body.stream).toBe(true);
+    expect(call.body.max_tokens).toBe(450);
+    expect(call.body.reasoning).toEqual({ effort: "none" });
+    expect(call.body.temperature).toBe(0);
+    expect(call.opts).toMatchObject({ maxRetries: 0, timeout: 500 });
+  });
+
+  it("a PNG or WebP keeps its own type, whatever the part was called", async () => {
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(100, 3)]);
+    await postPicture({ utterance: "what's this?" }, { files: [picturePart(png, "image/jpeg", "picture.jpg")] });
+    expect(userParts()[0]!.image_url.url.startsWith("data:image/png;base64,")).toBe(true);
+  });
+
+  it("the vision prompt is the same bytes for every request: other apps, languages, pictures and the deep ladder", async () => {
+    await postPicture({ utterance: "what does this chart show?" });
+    await postPicture({
+      utterance: "¿qué dice esta ecuación?", platform: "win", app: "Microsoft Edge", language: "es", picture: { region: "window" },
+      screen: { elements: [{ id: "o1", role: "text", label: "Figure 3", region: "c" }] },
+    }, { files: [picturePart(jpeg(9000, 1))] });
+    await postPicture({ utterance: "walk me through this step by step", app: "Preview" });
+    expect(streamCalls()).toHaveLength(3);
+    expect(systemText(0)).toBe(AGENT_VISION_SYSTEM);
+    expect(systemText(1)).toBe(AGENT_VISION_SYSTEM);
+    expect(systemText(2)).toBe(AGENT_VISION_SYSTEM);
+    expect(AGENT_VISION_SYSTEM).not.toMatch(/Slack|Microsoft Edge|Preview|qué|Figure 3/);
+    expect(String(userParts(1)[1]!.text).split("\n")[0]).toBe("App: Microsoft Edge. The picture is the whole window. Their language: es.");
+    // anthropic's is marked for caching, the others cache a repeated prefix on their own.
+    expect(streamCalls()[2]!.body.messages[0].content).toEqual([{ type: "text", text: AGENT_VISION_SYSTEM, cache_control: { type: "ephemeral" } }]);
+  });
+
+  it("a recording and a picture together: the recording is heard, the picture is looked at", async () => {
+    stt.text = "what does this graph show";
+    llm.plan = ["SAY Sales went up.\nDONE"];
+    const res = await postPicture({ utterance: undefined }, { audio: true });
+    expect(stt.calls).toBe(1);
+    expect(res.evs).toEqual([
+      { t: "heard", text: "what does this graph show", mode: "show" },
+      { t: "say", text: "Sales went up." },
+      { t: "done" },
+    ]);
+    expect(String(userParts()[1]!.text).endsWith("<said>what does this graph show</said>")).toBe(true);
+  });
+
+  it("a JSON body never carries a picture: one in it is ignored, and the step is the text path's", async () => {
+    const res = await post(step({ utterance: "where's export?", image: `data:image/jpeg;base64,${jpeg().toString("base64")}`, picture: { region: "element" } }));
+    expect(res.evs.map((e) => e.t)).toEqual(["heard", "say", "point", "done"]);
+    expect(llm.calls).toHaveLength(0);
+  });
+});
+
+describe("the picture path: what it answers", () => {
+  it("skips the free paths: a question that sounds like a command or names a label goes to the vision model", async () => {
+    llm.plan = ["SAY That's the export button.\nPOINT e3 | Export\nDONE"];
+    const res = await postPicture({ utterance: "where's export?" });
+    expect(streamCalls()).toHaveLength(1);
+    expect(res.evs).toEqual([
+      { t: "heard", text: "where's export?", mode: "show" },
+      { t: "say", text: "That's the export button." },
+      { t: "point", id: "e3", caption: "Export" },
+      { t: "done" },
+    ]);
+
+    llm.calls.length = 0;
+    llm.plan = ["SAY The chart goes down toward the bottom.\nDONE"];
+    const scroll = await postPicture({ utterance: "scroll down" });
+    expect(streamCalls()).toHaveLength(1);
+    expect(scroll.evs[0]).toEqual({ t: "heard", text: "scroll down", mode: "show" });
+    expect(scroll.evs.some((e) => e.t === "action")).toBe(false);
+  });
+
+  it("never acts: an action line points at its control, and the rest is ignored", async () => {
+    llm.plan = ["SAY It's the export button.\nPRESS e3\nKEY enter\nTYPE hello\nDONE"];
+    const res = await postPicture({ utterance: "click export" });
+    expect(res.evs).toEqual([
+      { t: "heard", text: "click export", mode: "show" },
+      { t: "say", text: "It's the export button." },
+      { t: "point", id: "e3" },
+      { t: "done" },
+    ]);
+  });
+
+  it("every sentence after the first is appended, as the model writes it", async () => {
+    llm.plan = ["SAY x = 4.\nSAY Take 6 from", " both sides.\n", "SAY Then divide by 2.\nDONE"];
+    const res = await postPicture({ utterance: "solve this" });
+    expect(res.evs.slice(1)).toEqual([
+      { t: "say", text: "x = 4." },
+      { t: "say", text: "Take 6 from both sides.", append: true },
+      { t: "say", text: "Then divide by 2.", append: true },
+      { t: "done" },
+    ]);
+  });
+
+  it("up to ten sentences, and TeX written as symbols", async () => {
+    llm.plan = [Array.from({ length: 14 }, (_, i) => `SAY Sentence ${i + 1} is $x^${i % 10}$.`).join("\n") + "\nDONE"];
+    const res = await postPicture({ utterance: "what's this?" });
+    const says = res.evs.filter((e) => e.t === "say");
+    expect(says).toHaveLength(10);
+    expect(says[0]).toEqual({ t: "say", text: "Sentence 1 is x⁰." });
+    expect(says[2]).toEqual({ t: "say", text: "Sentence 3 is x².", append: true });
+    expect(res.evs.at(-1)).toEqual({ t: "done" });
+  });
+
+  it("LOOK means nothing with the picture there, and a question back is said", async () => {
+    llm.plan = ["LOOK the chart\nSAY It's a bar chart.\nASK Which bar do you mean?\n"];
+    const res = await postPicture({ utterance: "what's this?" });
+    expect(res.evs.slice(1)).toEqual([
+      { t: "say", text: "It's a bar chart." },
+      { t: "say", text: "Which bar do you mean?", append: true },
+      { t: "done" },
+    ]);
+  });
+
+  it("nothing usable is said plainly, and ends", async () => {
+    llm.plan = ["I can see a chart here.\n"];
+    const res = await postPicture({ utterance: "what's this?" });
+    expect(res.evs.slice(1)).toEqual([{ t: "say", text: "I couldn't make that out in the picture." }, { t: "done" }]);
+  });
+
+  it("is still refused in a private window or a sensitive app, before anything is read", async () => {
+    const res = await postPicture({ privateField: true, utterance: "what's this?" });
+    expect(res.evs).toEqual([{ t: "error", code: "private", message: expect.any(String) }]);
+    const bank = await postPicture({ app: "Chase Bank", utterance: "what's this?" });
+    expect(bank.evs).toEqual([{ t: "error", code: "private", message: expect.any(String) }]);
+    expect(llm.calls).toHaveLength(0);
+  });
+
+  it("a later step sent again with the picture after a LOOK: shown, with the run so far, and a window's title dropped", async () => {
+    llm.plan = ["SAY The left bar is March, at about 20,000.\nDONE"];
+    const res = await postPicture({
+      step: 1, utterance: "the left one",
+      history: [{ said: "what does this bar show?" }],
+      screen: { elements: [...ELEMENTS, { id: "e9", role: "window", label: "Q3 budget — Confidential.xlsx" }] },
+    });
+    expect(res.evs).toEqual([
+      { t: "heard", text: "the left one", mode: "show" },
+      { t: "say", text: "The left bar is March, at about 20,000." },
+      { t: "done" },
+    ]);
+    expect(systemText()).toBe(AGENT_VISION_SYSTEM);
+    const text = String(userParts()[1]!.text);
+    expect(text).toContain("<history>\n1. said: what does this bar show?\n</history>");
+    expect(text).toContain("e9 window\n");
+    expect(text).not.toContain("Confidential");
+    expect(text.endsWith("<said>the left one</said>")).toBe(true);
+  });
+});
+
+describe("the picture path: its ladders", () => {
+  it("climbs the vision ladder only on a failure before any output", async () => {
+    llm.plans.set("openai/gpt-6-luna", "throw");
+    llm.plans.set("google/gemini-3.1-flash-lite", "throw");
+    llm.plan = ["SAY A diagram.\nDONE"];
+    const res = await postPicture({ utterance: "what's this?" });
+    expect(res.evs.map((e) => e.t)).toEqual(["heard", "say", "done"]);
+    expect(streamCalls().map((c) => c.body.model)).toEqual(["openai/gpt-6-luna", "google/gemini-3.1-flash-lite", "anthropic/claude-haiku-5.5"]);
+    // Every rung gets the picture, and anthropic's the cache mark and its own reasoning switch.
+    for (const c of streamCalls()) expect(c.body.messages[1].content[0].type).toBe("image_url");
+    const haiku = streamCalls()[2]!;
+    expect(haiku.body.messages[0].content).toEqual([{ type: "text", text: AGENT_VISION_SYSTEM, cache_control: { type: "ephemeral" } }]);
+    expect(haiku.body.reasoning).toEqual({ effort: "none", enabled: false });
+    expect(haiku.body.temperature).toBeUndefined();
+  });
+
+  it("every vision model failing is model_unavailable, after CLEANUP_MODEL", async () => {
+    llm.plan = "throw";
+    const res = await postPicture({ utterance: "what's this?" });
+    expect(res.evs.at(-1)).toMatchObject({ t: "error", code: "model_unavailable" });
+    expect(streamCalls().map((c) => c.body.model)).toEqual(["openai/gpt-6-luna", "google/gemini-3.1-flash-lite", "anthropic/claude-haiku-5.5", "openai/gpt-5.4-mini"]);
+  });
+
+  it("a vision model silent past AGENT_VISION_TIMEOUT_MS is passed over", async () => {
+    llm.plans.set("openai/gpt-6-luna", "hang");
+    llm.plan = ["SAY A chart.\nDONE"];
+    const t0 = Date.now();
+    const res = await postPicture({ utterance: "what's this?" });
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(450);
+    expect(res.evs.map((e) => e.t)).toEqual(["heard", "say", "done"]);
+    expect(streamCalls().map((c) => c.body.model)).toEqual(["openai/gpt-6-luna", "google/gemini-3.1-flash-lite"]);
+  });
+
+  it("an answer still arriving is not cut off by the timeout, which runs from chunk to chunk", async () => {
+    // 3 × 300 ms of writing is past the 500 ms timeout in all, and never
+    // 500 ms between two chunks.
+    llm.plan = ["SAY One.\n", 300, "SAY Two.\n", 300, "SAY Three.\n", 300, "DONE"];
+    const res = await postPicture({ utterance: "what's this?" });
+    expect(res.evs.slice(1)).toEqual([
+      { t: "say", text: "One." },
+      { t: "say", text: "Two.", append: true },
+      { t: "say", text: "Three.", append: true },
+      { t: "done" },
+    ]);
+    expect(streamCalls()).toHaveLength(1);
+  });
+
+  it("step by step goes to the deep model first, with room to write, and the vision ladder under it", async () => {
+    llm.plans.set("anthropic/claude-sonnet-5.5", "throw");
+    llm.plan = ["SAY The answer is sin(x²) + C.\nDONE"];
+    const res = await postPicture({ utterance: "walk me through this step by step" });
+    expect(res.evs.map((e) => e.t)).toEqual(["heard", "say", "done"]);
+    const [deep, next] = streamCalls();
+    expect(deep!.body.model).toBe("anthropic/claude-sonnet-5.5");
+    expect(next!.body.model).toBe("openai/gpt-6-luna");
+    expect(deep!.body.max_tokens).toBe(1000);
+    expect(next!.body.max_tokens).toBe(1000);
+    expect(deep!.body.reasoning).toEqual({ effort: "none", enabled: false });
+  });
+
+  it("asked for earlier in the run, it still goes deep when the step's own words are only a reply", async () => {
+    llm.plan = ["SAY The answer is 12.\nDONE"];
+    await postPicture({ step: 1, utterance: "the second one", history: [{ said: "walk me through this sum step by step" }] });
+    expect(streamCalls()[0]!.body.model).toBe("anthropic/claude-sonnet-5.5");
+    expect(streamCalls()[0]!.body.max_tokens).toBe(1000);
+  });
+
+  it("and has room for a worked answer of up to 24 sentences", async () => {
+    llm.plan = [Array.from({ length: 30 }, (_, i) => `SAY Step ${i + 1}.`).join("\n") + "\nDONE"];
+    const res = await postPicture({ utterance: "explain this in detail" });
+    expect(res.evs.filter((e) => e.t === "say")).toHaveLength(24);
+  });
+
+  it("logs each call with picture: true, and never the picture or the screen", async () => {
+    llm.plan = ["SAY A chart.\nDONE"];
+    const data = jpeg(3000, 5);
+    await postPicture({ utterance: "what does this chart show?" }, { files: [picturePart(data)] });
+    await vi.waitFor(() => expect(logged.some((l) => l.msg === "agent step")).toBe(true));
+    const call = logged.find((l) => l.msg === "agent model call")!.obj.agent;
+    expect(call).toMatchObject({ model: "openai/gpt-6-luna", outcome: "ok", picture: true, promptTokens: 1400, cachedTokens: 1100, completionTokens: 12 });
+    expect(call.firstMs).toEqual(expect.any(Number));
+    const stepLine = logged.find((l) => l.msg === "agent step")!.obj.agent;
+    expect(stepLine).toMatchObject({ path: "picture", mode: "show", picture: true, pictureBytes: 3000, region: "element", ending: "done" });
+    const all = JSON.stringify(logged);
+    expect(all).not.toContain(data.toString("base64").slice(0, 40));
+    expect(all).not.toMatch(/Export…|what does this chart show/);
+  });
+});
+
+describe("the picture part's caps", () => {
+  it("413 above AGENT_IMAGE_MAX_BYTES, and nothing is heard or asked", async () => {
+    const res = await postPicture({ utterance: "what's this?" }, { audio: true, files: [picturePart(jpeg(50_001))] });
+    expect(res.status).toBe(413);
+    expect(JSON.parse(res.payload)).toMatchObject({ code: "too_large" });
+    expect(stt.calls).toBe(0);
+    expect(llm.calls).toHaveLength(0);
+  });
+
+  it("a picture right at the cap is fine", async () => {
+    const res = await postPicture({ utterance: "what's this?" }, { files: [picturePart(jpeg(50_000))] });
+    expect(res.status).toBe(200);
+  });
+
+  it.each([
+    ["a GIF", picturePart(Buffer.from("GIF89a" + "x".repeat(200)), "image/gif", "picture.gif")],
+    ["text called a JPEG", picturePart(Buffer.from("x".repeat(200)), "image/jpeg", "picture.jpg")],
+    ["an empty part", picturePart(Buffer.alloc(0), "image/jpeg", "picture.jpg")],
+    ["no type at all", picturePart(jpeg(), "application/octet-stream", "picture")],
+  ])("400 for %s", async (_name, part) => {
+    const res = await postPicture({ utterance: "what's this?" }, { files: [part] });
+    expect(res.status).toBe(400);
+    expect(llm.calls).toHaveLength(0);
+  });
+
+  it("400 for a second picture: one picture per step", async () => {
+    const res = await postPicture({ utterance: "what's this?" }, { files: [picturePart(), picturePart()] });
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.payload).message).toMatch(/one picture/i);
+    expect(llm.calls).toHaveLength(0);
+  });
+
+  it("a third file is refused by the multipart limit", async () => {
+    const res = await postPicture({ utterance: "what's this?" }, { audio: true, files: [picturePart(), picturePart()] });
+    expect(res.status).toBe(413);
+    expect(llm.calls).toHaveLength(0);
+  });
+});
+
+describe("the text path, v2", () => {
+  it("every SAY after the first is appended, here too", async () => {
+    llm.plan = ["SAY Your disk is full.\nSAY Free up some space.\nSAY Then save again.\nSAY A fourth is too many.\nDONE"];
+    const res = await post(step({ utterance: "what does this error mean?" }));
+    expect(res.evs.slice(1)).toEqual([
+      { t: "say", text: "Your disk is full." },
+      { t: "say", text: "Free up some space.", append: true },
+      { t: "say", text: "Then save again.", append: true },
+      { t: "done" },
+    ]);
+  });
+
+  it("LOOK ends the step with a look, in either mode, and nothing after it is read", async () => {
+    llm.plan = ["LOOK the equation\nSAY ignored\nDONE"];
+    const show = await post(step({ utterance: "explain this equation" }));
+    expect(show.evs).toEqual([{ t: "heard", text: "explain this equation", mode: "show" }, { t: "look", why: "the equation" }]);
+
+    llm.plan = ["SAY Let me see it.\nLOOK\nPRESS e3\n"];
+    const run = await post(step({ utterance: "solve the sum in this picture" }));
+    expect(run.evs).toEqual([
+      { t: "heard", text: "solve the sum in this picture", mode: "do" },
+      { t: "say", text: "Let me see it." },
+      { t: "look", why: "the picture" },
+    ]);
+  });
+
+  it("o ids reach the model as text lines, and an action on one only points", async () => {
+    llm.plan = ["SAY It's here.\nPRESS o1\n"];
+    const elements = [...ELEMENTS, { id: "o1", role: "text", label: "Export as PDF", region: "c" }];
+    const res = await post(step({ utterance: "export it as a pdf", screen: { elements } }));
+    expect(userMessage()).toContain('o1 text "Export as PDF" @c');
+    expect(res.evs).toEqual([
+      { t: "heard", text: "export it as a pdf", mode: "do" },
+      { t: "say", text: "It's here." },
+      { t: "point", id: "o1" },
+      { t: "done" },
+    ]);
+  });
+
+  it("the resolver points at an o line for free, and never presses one", async () => {
+    const elements = [...ELEMENTS, { id: "o1", role: "text", label: "Quarterly revenue", region: "c" }];
+    const show = await post(step({ utterance: "where's quarterly revenue?", screen: { elements } }));
+    expect(show.evs).toEqual([
+      { t: "heard", text: "where's quarterly revenue?", mode: "show" },
+      { t: "say", text: "Here's Quarterly revenue." },
+      { t: "point", id: "o1", caption: "Quarterly revenue" },
+      { t: "done" },
+    ]);
+    expect(llm.calls).toHaveLength(0);
+    llm.plan = ["DONE"];
+    await post(step({ utterance: "click quarterly revenue", screen: { elements } }));
+    expect(streamCalls()).toHaveLength(1);
   });
 });

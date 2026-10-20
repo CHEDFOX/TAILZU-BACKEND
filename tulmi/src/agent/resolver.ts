@@ -49,7 +49,9 @@ export function resolverAsk(clean: string): ResolverAsk | null {
     .replace(/\s+(?:on|in) (?:the|this) (?:screen|page|window|app)$/, "")
     .replace(/^(?:the|a|an|my|this|that)\s+/, "");
   const last = /\s(\w+)$/.exec(t);
-  if (last && ROLE_WORDS[last[1]!]) { roleHint = last[1]; t = t.slice(0, last.index); }
+  // Its own words only: "the build constructor" is a control's name, not a
+  // role word inherited from Object.
+  if (last && Object.hasOwn(ROLE_WORDS, last[1]!)) { roleHint = last[1]; t = t.slice(0, last.index); }
   t = t.replace(/^(?:the|a|an|my|this|that)\s+/, "").trim();
   if (!t || t.split(" ").length > 6) return null;
   return { verb, target: t, roleHint };

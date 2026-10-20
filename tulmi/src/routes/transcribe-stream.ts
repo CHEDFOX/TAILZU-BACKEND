@@ -64,6 +64,10 @@ interface StartMessage {
   sampleRate?: number;
   encoding?: string;
   channels?: number;
+  /** "ask": a question to Ask, not dictation. Its audio is metered as an
+   *  Ask step's is (source "agent", no words): the words are the question,
+   *  never written anywhere, and must not spend the dictation allowance. */
+  purpose?: string;
 }
 
 /**
@@ -255,6 +259,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
       // idle, engine close). Without this, only a graceful "stop" billed and a
       // user who always exits by switching apps streamed paid STT for free.
       let metered = false;
+      let asking = false;   // a question to Ask (StartMessage.purpose)
       // Real word count for word-based quotas (was hardcoded 0 → never tripped).
       let totalWords = 0;
       // Set when the stream ended in an error/abnormal close, so we don't mask
@@ -353,9 +358,9 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         const seconds = bytes / (format.sampleRate * 2 * format.channels);
         recordUsage({
           user,
-          source: "stream",
+          source: asking ? "agent" : "stream",
           audioSeconds: Number(seconds.toFixed(2)),
-          words: totalWords,
+          words: asking ? 0 : totalWords,
           model: engine?.label ?? "live:unknown",
         }).catch(() => { /* metering must never break the close path */ });
       };
@@ -647,6 +652,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
         if (msg.type === "start") {
           if (started) return;
           started = true; // before the first await, so a second start can't slip in
+          asking = msg.purpose === "ask";
           try {
             // Extract JWT: prefer header, fall back to inline token.
             const headerAuth = req.headers["authorization"];

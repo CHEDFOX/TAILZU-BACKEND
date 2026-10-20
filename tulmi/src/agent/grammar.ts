@@ -9,8 +9,9 @@
  * down" and "scroll down to the comments and reply" out of it; anything with
  * more in it than the command goes on to the resolver or the model.
  *
- * Also here: whether a run SHOWS or DOES, decided from its first words, and
- * whether what they said with text selected is about that text.
+ * Also here: whether a run SHOWS or DOES, decided from its first words,
+ * whether what they said with text selected is about that text, and whether
+ * a question about a picture asks for the long answer.
  */
 import type { AgentElement } from "../../../shared/types/api.js";
 
@@ -186,4 +187,19 @@ export function grammarLine(a: GrammarAction): string {
 const ABOUT_THE_TEXT = /\b(?:make (?:this|it|that|them)|rewrite|re-write|reword|rephrase|shorter|longer|shorten|lengthen|condense|expand (?:this|it|on)|bullet(?:ed)?(?: points?| list)?|numbered list|translate|fix (?:the |my |this |its |any )?(?:grammar|spelling|typos?|punctuation|wording)|proofread|correct (?:this|it|the grammar|the spelling)|more (?:formal|casual|polite|friendly|professional|concise|direct)|less (?:formal|casual|harsh|wordy)|summari[sz]e|simplify|turn (?:this|it|that) into|in (?:hindi|english|hinglish|spanish|french|german|marathi|tamil|telugu|bengali|gujarati|punjabi|urdu|arabic|japanese|chinese|portuguese))\b/;
 export function aboutTheText(clean: string): boolean {
   return ABOUT_THE_TEXT.test(clean);
+}
+
+/**
+ * Asked about a picture, do they want the long answer? "Step by step", "in
+ * detail", "walk me through it", "explain this equation properly", "show
+ * your working". Then the picture path's deep ladder answers, with room for
+ * a worked answer; otherwise it is the short one, a few sentences.
+ *
+ * "Explain … properly" may have the thing and a few words between ("explain
+ * this graph to me fully"); "explain more" may not, so "explain the more
+ * common case" is the short answer it reads as.
+ */
+const IN_DETAIL = /\b(?:step[- ]by[- ]step|(?:in|with) (?:more |full |great |a lot of |all the )?(?:details?|depth)|(?:more|full) details?|detailed|in depth|(?:walk|talk|take) (?:me |us )?through|break (?:it|this|that) down|explain (?:[\p{L}\p{N}'-]+ ){0,4}?(?:fully|properly|in full|thoroughly|completely)|explain (?:(?:it|this|that|them) )?more\b(?! than)|explain (?:each|every) step|full explanation|show (?:me )?(?:the |your |all the )?(?:working|work|steps))\b/iu;
+export function wantsDetail(said: string): boolean {
+  return IN_DETAIL.test(plainWords(said));
 }

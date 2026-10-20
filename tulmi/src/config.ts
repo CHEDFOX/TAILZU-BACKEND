@@ -297,6 +297,34 @@ const EnvSchema = z.object({
    */
   AGENT_SCREEN_MAX_CHARS: z.coerce.number().int().min(1000).default(24_000),
   /**
+   * The picture path: a question about something drawn ("explain this
+   * equation", "what does this chart show") comes with ONE picture of it, and
+   * is answered by a model that can see, sentence by sentence as it writes.
+   * Its own ladder, by the text path's rules: the fallbacks in order, then
+   * CLEANUP_MODEL, each only when the one before failed before writing
+   * anything. Every model on it must take an image.
+   */
+  AGENT_VISION_MODEL: z.string().default("openai/gpt-6-luna"),
+  /** Comma-separated. */
+  AGENT_VISION_FALLBACK_MODELS: z.string().default("google/gemini-3.1-flash-lite,anthropic/claude-haiku-5.5"),
+  /**
+   * Asked to go step by step, in detail, or to walk them through it: a
+   * stronger model with room for a longer answer, tried first, with the
+   * ordinary vision ladder under it.
+   */
+  AGENT_VISION_DEEP_MODEL: z.string().default("anthropic/claude-sonnet-5.5"),
+  /**
+   * Per vision call: to its first written character, and then between one
+   * chunk and the next. Not the whole stream, as the text path's is: a
+   * worked answer takes longer than this to write, and cutting it at a fixed
+   * time would end it mid-step. A picture takes longer to read than a list,
+   * so this is longer than AGENT_TIMEOUT_MS.
+   */
+  AGENT_VISION_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(9000),
+  /** The one picture a step may carry, in bytes; above it is a 413. A
+   *  1024-pixel JPEG of a window is 100–300 KB, so this is far past fair. */
+  AGENT_IMAGE_MAX_BYTES: z.coerce.number().int().min(10_000).max(20_000_000).default(2_000_000),
+  /**
    * Ask's own bucket, apart from the app's: a run is several requests a few
    * seconds apart, and it must never be the reason dictation gets a 429.
    */
