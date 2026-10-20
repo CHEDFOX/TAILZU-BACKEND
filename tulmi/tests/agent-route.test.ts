@@ -329,6 +329,52 @@ describe("the free paths", () => {
     expect(streamCalls()).toHaveLength(1);
     expect(res.evs.map((e) => e.t)).toEqual(["heard", "say", "done"]);
   });
+
+  it("a text edit that is the whole goal is finished once its text is typed, for free", async () => {
+    const goal = "make this more formal";
+    const res = await post(step({ step: 1, utterance: goal, history: [{ said: goal, did: "TYPE We will ship on Friday.", result: "ok" }] }));
+    expect(res.evs).toEqual([{ t: "heard", text: goal, mode: "do" }, { t: "done" }]);
+    expect(llm.calls).toHaveLength(0);
+  });
+
+  it("but a goal with a later step goes on to the model, which sends it", async () => {
+    // The selection was rewritten at step 0; "and send it" is still to do.
+    llm.plan = ["KEY enter\n"];
+    const goal = "make this more formal and send it";
+    const res = await post(step({ step: 1, utterance: goal, history: [{ said: goal, did: "TYPE We will ship on Friday.", result: "ok" }] }));
+    expect(streamCalls()).toHaveLength(1);
+    expect(res.evs.at(-1)).toMatchObject({ t: "action", kind: "key", keys: "enter" });
+
+    // The channel was opened, then the message written: two acts, so the
+    // model judges, and the history it is shown says the text is in.
+    llm.calls.length = 0;
+    llm.plan = ["PRESS e3\n"];
+    const long = "message #design in hindi that the mockups are ready and send it";
+    const history = [{ said: long, did: "PRESS e4", result: "ok" }, { did: "TYPE मॉकअप तैयार हैं", result: "ok" }];
+    const two = await post(step({ step: 2, utterance: long, history }));
+    expect(streamCalls()).toHaveLength(1);
+    expect(two.evs.at(-1)).toMatchObject({ t: "action", kind: "press", id: "e3" });
+    expect(userMessage()).toContain("2. did: TYPE मॉकअप तैयार हैं | ok");
+  });
+
+  it("a text edit after another act, or with more to do in a later turn, is the model's to judge", async () => {
+    llm.plan = ["SAY Done.\nDONE"];
+    const goal = "translate this into hindi";
+    await post(step({ step: 2, utterance: goal, history: [{ said: goal, did: "FOCUS e5", result: "ok" }, { did: "TYPE नमस्ते", result: "ok" }] }));
+    expect(streamCalls()).toHaveLength(1);
+
+    llm.calls.length = 0;
+    const answered = [{ said: goal, did: "TYPE नमस्ते", result: "ok" as const }, { said: "then post it in #design" }];
+    await post(step({ step: 2, utterance: goal, history: answered }));
+    expect(streamCalls()).toHaveLength(1);
+
+    // The TYPE is the only act and the last turn, and the goal sent again says
+    // nothing more; a turn before it asked for more, so it is still the model's.
+    llm.calls.length = 0;
+    const later = [{ said: goal }, { said: "and then post it in #design", did: "TYPE नमस्ते", result: "ok" as const }];
+    await post(step({ step: 1, utterance: goal, history: later }));
+    expect(streamCalls()).toHaveLength(1);
+  });
 });
 
 describe("the model, read a line at a time", () => {
@@ -505,6 +551,21 @@ describe("what the model is shown", () => {
     expect(msg).toContain("https://x.example/login");
     expect(msg).toContain("https://docs.example/a/b ok");
     expect(msg).toContain("www.example.com/p now");
+  });
+
+  it("a selection in an address bar, or with a URL's query in it, is dropped whole: never shown, never rewritten", async () => {
+    const bar = [{ id: "e1", role: "combo", label: "Address and search bar", region: "t", focused: true }];
+    await post(step({ utterance: "what is this?", screen: { elements: bar, selection: "bank.example/account/statements" } }));
+    expect(userMessage()).not.toContain("Selected text:");
+    expect(userMessage()).not.toContain("statements");
+
+    llm.calls.length = 0;
+    llm.plan = ["SAY Select the text first.\nDONE"];
+    const res = await post(step({ utterance: "make this shorter", screen: { elements: ELEMENTS, selection: "Reset it at https://bank.example/reset?token=SECRET5 soon." } }));
+    // Not the selection path: nothing was rewritten, and the model never saw it.
+    expect(llm.calls.filter((c) => !c.body.stream)).toHaveLength(0);
+    expect(res.evs.map((e) => e.t)).toEqual(["heard", "say", "done"]);
+    expect(userMessage()).not.toMatch(/SECRET|Selected text:/);
   });
 });
 

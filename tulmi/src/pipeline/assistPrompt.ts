@@ -41,8 +41,22 @@ export const fenceTags = (names: string) => new RegExp(`<\\s*\\/?\\s*(?:${names}
 // <intent> and <send> are the writer's answer (see readSend): out of what a
 // user supplied, so their text cannot pass itself off as either half.
 const FENCE_TAGS = fenceTags("said|before|around|voice|earlier|intent|send");
+/**
+ * Taken out again until none is left: one pass over "<sa<said>id>" removes the
+ * inner tag and the outer one is whole again, so text a user supplied (a
+ * selection is anyone's words) could still close a fence. Real nesting is two
+ * or three deep; past a few passes the "<" of any tag still there becomes "‹"
+ * instead, which joins nothing up, so the cost stays linear however the text
+ * is built.
+ */
+const STRIP_PASSES = 8;
 export function stripFenceTags(s: string, tags = FENCE_TAGS): string {
-  return s.replace(tags, (tag, closed: string | undefined) => (closed ? "" : tag.slice(1)));
+  for (let pass = 0, prev = ""; prev !== s; pass++) {
+    if (pass === STRIP_PASSES) return s.replace(tags, (tag) => "‹" + tag.slice(1));
+    prev = s;
+    s = s.replace(tags, (tag, closed: string | undefined) => (closed ? "" : tag.slice(1)));
+  }
+  return s;
 }
 
 /**
