@@ -655,6 +655,14 @@ export interface AskResponse {
 // show mode: it says and points, and never acts. The picture is the one
 // thing from the screen that leaves the machine as pixels, and only when the
 // person has allowed it for that app.
+//
+// Drawing: on either path the answer may mark the screen while it explains
+// (a box, a circle, an arrow, numbered places), as `draw` events in the order
+// the model wrote them among its sentences. A mark names what it is on by an
+// element's id, or, on a step that carried a picture, by a place in that
+// picture in picture units (0–1000 across and down it). The device turns
+// both into screen positions itself; nothing about where things are goes
+// the other way for it.
 
 /** Where an element sits in its window, by thirds. Never a frame. */
 export type AgentRegion = "tl" | "t" | "tr" | "l" | "c" | "r" | "bl" | "b" | "br";
@@ -731,6 +739,41 @@ export interface AgentPicture {
 export type AgentActionKind = "press" | "set" | "type" | "key" | "scroll" | "focus" | "open";
 export type AgentRisk = "free" | "confirm" | "always";
 
+/** What a mark is: box, circle, underline and highlight go around or under
+ *  their target; an arrow runs from one spot to another; a number is a
+ *  numbered disc (the card's step of that number); a label is text alone; a
+ *  path is a line through picture points; clear takes every mark away. */
+export type AgentDrawKind = "box" | "circle" | "underline" | "highlight" | "arrow" | "number" | "label" | "path" | "clear";
+
+/**
+ * Where a mark goes: one of the request's elements by id, or, only on a step
+ * that carried a picture, a point or a box in that picture's units: 0 to 1000
+ * from its left edge across, and from its top edge down, whole numbers. A
+ * box's width and height are at least 4.
+ */
+export type AgentSpot =
+  | { id: string }
+  | { pt: [number, number] }
+  | { box: [number, number, number, number] };
+
+/** One mark on the screen, as the `draw` event carries it. */
+export interface AgentDraw {
+  kind: AgentDrawKind;
+  /** box, circle, underline, highlight, number and label. */
+  target?: AgentSpot;
+  /** arrow: from the first spot to the second. */
+  from?: AgentSpot;
+  to?: AgentSpot;
+  /** path: 2 to 32 picture points, [x, y] each. */
+  points?: Array<[number, number]>;
+  /** path: the last point joins the first. */
+  closed?: boolean;
+  /** number: 1 to 9. */
+  n?: number;
+  /** The mark's label, ≤ 48 chars, one line; required for a label. */
+  text?: string;
+}
+
 export type AgentEvent =
   /** First in every stream that gets past the refusals: what was heard, and
    *  whether the run shows ("where/how/what/why…") or does (a command). */
@@ -743,6 +786,11 @@ export type AgentEvent =
   | { t: "point"; id: string; caption?: string }
   /** A do-run's plan, ≤ 6 short lines. */
   | { t: "steps"; items: string[] }
+  /** A mark on the screen, drawn as the answer explains; display only, in
+   *  show and do runs alike, and never a reason to confirm anything. At most
+   *  AGENT_DRAW_MAX a step. Its ids are this request's elements; picture
+   *  spots come only on a step that carried a picture. */
+  | ({ t: "draw" } & AgentDraw)
   /** TERMINAL. Never sent in show mode. `confirm` is the sentence to show
    *  when the risk is not "free". */
   | {

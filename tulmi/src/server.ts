@@ -1925,6 +1925,11 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
       audioSeconds: result?.audioSeconds ?? 0, ms: Date.now() - t0,
       ...(image ? { picture: true, pictureBytes: image.data.length, region: step.picture?.region } : {}),
       ...(result?.deep ? { deep: true } : {}),
+      // The marks drawn, and the DRAW lines dropped (unreadable, at an id not
+      // on this screen, at a picture place with no picture, past the cap): a
+      // model that keeps missing is seen here, and nowhere else.
+      ...(result?.draws ? { draws: result.draws } : {}),
+      ...(result?.drawsDropped ? { drawsDropped: result.drawsDropped } : {}),
     },
   }, "agent step");
 });

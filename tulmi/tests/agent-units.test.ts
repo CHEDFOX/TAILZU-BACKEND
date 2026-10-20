@@ -176,6 +176,10 @@ describe("the line protocol", () => {
     expect(parseLine("```", "mac")).toBeNull();
     expect(parseLine("KEY not a chord at all", "mac")).toBeNull();
     expect(normalizeChord("option+shift+Return", "mac")).toBe("alt+shift+enter");
+    // Words only Object has are not keys or modifiers.
+    expect(normalizeChord("constructor", "mac")).toBeNull();
+    expect(normalizeChord("toString+k", "mac")).toBeNull();
+    expect(parseLine("KEY valueOf", "mac")).toBeNull();
   });
 
   const read = (lines: string[], mode: "show" | "do", ids = ["e1", "e2"]) => {
@@ -382,10 +386,10 @@ describe("the event sink", () => {
 describe("the prompt", () => {
   it("is static and compact", () => {
     expect(AGENT_SYSTEM).not.toMatch(/\{\{|\$\{|undefined/);
-    // About 1,200 tokens: over the providers' smallest cacheable prefix, and
-    // well under the ceiling a cheap step can carry.
+    // About 1,600 tokens with the pen's section: over the providers' smallest
+    // cacheable prefix, and well under the ceiling a cheap step can carry.
     expect(AGENT_SYSTEM.length).toBeGreaterThan(4200);
-    expect(AGENT_SYSTEM.length).toBeLessThan(6000);
+    expect(AGENT_SYSTEM.length).toBeLessThan(7500);
   });
 
   it("puts the screen in its fence and what they said last", () => {
@@ -729,9 +733,9 @@ describe("the vision prompt", () => {
   it("is static, long enough to be cached, and says what the contract asks", () => {
     expect(AGENT_VISION_SYSTEM).not.toMatch(/\{\{|\$\{|undefined/);
     // Over 1,024 tokens, the smallest prefix the providers cache, and still a
-    // fraction of a cent.
+    // fraction of a cent with the pen's section and its worked example.
     expect(AGENT_VISION_SYSTEM.length).toBeGreaterThan(4600);
-    expect(AGENT_VISION_SYSTEM.length).toBeLessThan(7000);
+    expect(AGENT_VISION_SYSTEM.length).toBeLessThan(8000);
     for (const must of ["first SAY answers it directly", "x²", "√", "π", "∫", "≤", "a/b", "Never LaTeX", "never markdown", "about 90 words", "about 250 words", "One sentence per SAY", "Never act", "POINT", "the notes of <history>", "the said: parts of <history>"]) {
       expect(AGENT_VISION_SYSTEM, must).toContain(must);
     }
