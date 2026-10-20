@@ -10,8 +10,10 @@
  *
  * Two kinds of value never reach the prompt as sent. An address bar's value is
  * dropped, and every URL loses its query string and fragment, because that is
- * where reset links, session ids and one-time tokens live. The desktop does
- * the same before sending; this is the second lock.
+ * where reset links, session ids and one-time tokens live. A selection in an
+ * address bar, or with such a URL in it, is dropped whole, since a rewrite of
+ * it is pasted back. The desktop does the same before sending; this is the
+ * second lock.
  */
 import type {
   AgentElement, AgentEvent, AgentRegion, AgentStepRequest, AgentTurn, AudioFormat,
@@ -80,6 +82,31 @@ export function withoutUrlSecrets(s: string): string {
 const ADDRESS_BAR = /\b(?:address|url|location bar|smart search|omnibox|web address)\b|\bsearch or (?:type|enter)\b/i;
 export function isAddressBar(label: string | undefined): boolean {
   return !!label && ADDRESS_BAR.test(label);
+}
+
+/**
+ * Some URL in the text has a query or a fragment with something in it. A
+ * scheme or "www." is enough to call it a URL; a bare host needs a path, or a
+ * query that reads key=value, so "Did you get report.pdf?" and "Done.Ok?Sure"
+ * are not taken for one.
+ */
+const URL_WITH_TAIL = /(?:\b[a-z][a-z0-9+.-]*:\/\/|\bwww\.)[^\s?#<>"']*[?#][^\s<>"']|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}(?::\d+)?(?:\/[^\s?#<>"']*[?#][^\s<>"']|[?#][^\s<>"'=&]+=)/i;
+
+/**
+ * The selected text as the planner may see it, or "" when it must not.
+ * A browser selects the whole address when its address bar takes focus, so a
+ * selection there is the page's URL with its tokens. Any other selection with
+ * a URL's query or fragment in it goes too. Neither is cut down instead: a
+ * rewrite is pasted over the whole selection, and a copy with the query taken
+ * off would paste the link back broken. The desktop drops both before
+ * sending; this is the second lock.
+ */
+function readSelection(selection: string, field: AgentStepRequest["screen"]["field"], elements: AgentElement[]): string {
+  const focused = elements.find((e) => e.focused);
+  const inAddressBar = field?.kind === "url" || isAddressBar(field?.label)
+    || (!!focused && (focused.role === "field" || focused.role === "combo") && isAddressBar(focused.label));
+  if (inAddressBar || URL_WITH_TAIL.test(selection)) return "";
+  return selection;
 }
 
 function readElement(v: unknown): AgentElement | null {
@@ -164,13 +191,17 @@ export function readStepRequest(
     if (el && !seen.has(el.id)) { seen.add(el.id); elements.push(el); }
   }
   const screen: AgentStepRequest["screen"] = { elements };
-  if (typeof s.selection === "string" && s.selection.trim()) screen.selection = block(s.selection);
   if (typeof s.text === "string" && s.text.trim()) screen.text = withoutUrlSecrets(block(s.text));
   const f = s.field as Record<string, unknown> | undefined;
   if (f && typeof f === "object") {
     const kind = oneLine(f.kind, 16).toLowerCase();
     const label = withoutUrlSecrets(oneLine(f.label, LIMITS.fieldLabel));
     if (kind) screen.field = label ? { kind, label } : { kind };
+  }
+  // After the field, which says whether the selection is an address bar's.
+  if (typeof s.selection === "string" && s.selection.trim()) {
+    const selection = readSelection(block(s.selection), screen.field, elements);
+    if (selection) screen.selection = selection;
   }
 
   // The whole screen, measured as the prompt will carry it, so the cap is on

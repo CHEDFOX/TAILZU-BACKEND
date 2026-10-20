@@ -77,6 +77,15 @@ function everythingSaid(req: AgentStepRequest, said: string): string {
 
 const verbOf = (line: string) => line.trim().split(/\s+/)[0]?.toUpperCase() ?? "";
 
+/**
+ * A goal that goes on past its text: "translate this into hindi and send it",
+ * "make it more formal, then post it". Typing the new text is only its first
+ * half, so the run is not finished when the text is in. Wide on purpose: a
+ * word caught here that was only a noun ("make this post shorter") costs one
+ * model call, and one missed ends the run with the message unsent.
+ */
+const MORE_TO_DO = /\b(?:send|post|submit|reply|respond|share|publish|forward|press|click|tap|hit|enter|save|open|close|attach|upload|schedule|paste|then|after that|afterwards)\b|(?:^|\b(?:and|then)\s+)(?:message|text|e-?mail|mail|dm|ping|tell|answer)\b/im;
+
 export async function runStep(ctx: StepContext, deps: StepDeps, sink: EventSink): Promise<StepResult> {
   const { req } = ctx;
   const names = ctx.names ?? [];
@@ -129,10 +138,16 @@ export async function runStep(ctx: StepContext, deps: StepDeps, sink: EventSink)
 
   if (acted) {
     // The device is back after running something. When that something was
-    // this same one-shot command, and it worked, the run is finished.
+    // this same one-shot command, and it worked, the run is finished. A text
+    // edit is one only when it is the whole goal and the whole run so far:
+    // the TYPE is the run's only act, and nothing they said in the run asks
+    // for more after it. Otherwise the model reads the history, sees the text
+    // is in, and presses Send or says DONE.
     const last = history.at(-1);
+    const wholeEdit = mode === "do" && aboutTheText(clean)
+      && history.filter((t) => t.did).length === 1 && !MORE_TO_DO.test(clean) && !MORE_TO_DO.test(scene.said);
     const expected = g ? verbOf(grammarLine(g))
-      : mode === "do" && aboutTheText(clean) ? "TYPE"
+      : wholeEdit ? "TYPE"
       : resolvedPress ? "PRESS" : "";
     if (expected && last?.did && verbOf(last.did) === expected && last.result === "ok") {
       sink.emit({ t: "done" });
