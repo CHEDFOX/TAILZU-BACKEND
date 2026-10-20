@@ -8,7 +8,7 @@ process.env.NODE_ENV = "test";
 
 // eslint-disable-next-line import/first
 import { computeAllowance, type UsageMoment } from "../src/usage/allowance.js";
-import { isQuotaExempt } from "../src/usage/metering.js";
+import { allowanceFor, enforceQuota, isQuotaExempt, recordPicture, recordUsage, usageSummary } from "../src/usage/metering.js";
 
 const DAY = 86_400_000;
 const NOW = Date.parse("2026-03-20T12:00:00Z");
@@ -128,6 +128,18 @@ describe("earned words", () => {
     expect(a.remaining).toBe(a.total - 350);
   });
 
+  it("counts a question to Ask as a day of use, never as a dictation", () => {
+    // One spoken question writes two rows or more: the stream it was said on
+    // and each step that answered it. Six of them are not "6 dictations".
+    const asks = day(0, 6, 0).map((m) => ({ ...m, source: "agent" }));
+    const a = at(asks);
+    expect(a.grants.map((g) => g.kind)).toEqual(["streak"]);
+    expect(a.earned).toBe(at(day(0)).earned);
+    expect(a.perVisit[0].sessions).toBe(0);
+    // Beside four dictations they still do not make a day of five.
+    expect(at([...asks, ...day(0, 4)]).earned).toBe(at(day(0, 4)).earned);
+  });
+
   it("reports each visit for the chart, oldest first", () => {
     const a = at([...day(1), ...day(0, 5)]);
     expect(a.perVisit).toHaveLength(2);
@@ -162,5 +174,60 @@ describe("the operator exemption", () => {
     expect(isQuotaExempt("static-abc123", "*")).toBe(false);
     expect(isQuotaExempt("static-abc1234", "static-abc123")).toBe(false);
     expect(isQuotaExempt("", "static-abc123")).toBe(false);
+  });
+});
+
+describe("Ask's rows", () => {
+  const user = (id: string) => ({ id: `static-${id}`, token: "t" }) as never;
+  const ask = (u: never, audioSeconds: number) => recordUsage({ user: u, source: "agent", audioSeconds, words: 0, model: "live" });
+  const dictate = (u: never, audioSeconds: number, words: number) => recordUsage({ user: u, source: "stream", audioSeconds, words, model: "live" });
+
+  it("count their words and seconds, but are not requests: the desk says \"N dictations\"", async () => {
+    const u = user("ask-summary");
+    await ask(u, 4);
+    await ask(u, 0);
+    await dictate(u, 10, 25);
+    const s = await usageSummary(u);
+    expect(s.month).toEqual({ words: 25, audioSeconds: 14, requests: 1 });
+    expect(s.total.requests).toBe(1);
+  });
+
+  it("earn no burst read back from the meter", async () => {
+    const u = user("ask-burst");
+    for (let i = 0; i < 6; i++) await ask(u, 3);
+    const a = (await allowanceFor(u))!;
+    expect(a.grants.map((g) => g.kind)).toEqual(["streak"]);
+  });
+
+  it("have their own monthly seconds, checked only where a question is about to be heard", async () => {
+    const u = user("ask-cap");
+    await ask(u, 1000);
+    await dictate(u, 900, 10);
+    // Dictation's seconds are not Ask's.
+    expect(await enforceQuota(u, { agentAudio: true })).toBeNull();
+    await ask(u, 800);
+    expect(await enforceQuota(u, { agentAudio: true })).toMatch(/^You've used this month's 30 minutes of questions to Ask\. Upgrade for unlimited, or wait until \d{4}-\d{2}-\d{2}\.$/);
+    // Dictation and typed steps are not held to it.
+    expect(await enforceQuota(u)).toBeNull();
+    expect(await enforceQuota(u, { agentAudio: false })).toBeNull();
+  });
+
+  it("a picture step is held to the day's pictures; a step without one is not", async () => {
+    const u = user("ask-pictures");
+    const now = Date.now();
+    for (let i = 0; i < 99; i++) recordPicture(u, now);
+    expect(await enforceQuota(u, { picture: true })).toBeNull();
+    recordPicture(u, now);
+    expect(await enforceQuota(u, { picture: true })).toBe("You've asked about 100 pictures today. Upgrade for unlimited, or ask again tomorrow.");
+    expect(await enforceQuota(u)).toBeNull();
+    // Someone else's day is their own.
+    expect(await enforceQuota(user("ask-pictures-2"), { picture: true })).toBeNull();
+  });
+
+  it("a day of pictures is the last 24 hours, not the calendar", async () => {
+    const u = user("ask-pictures-yesterday");
+    const yesterday = Date.now() - 24 * 60 * 60 * 1000 - 1000;
+    for (let i = 0; i < 100; i++) recordPicture(u, yesterday);
+    expect(await enforceQuota(u, { picture: true })).toBeNull();
   });
 });

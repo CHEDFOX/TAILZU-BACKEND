@@ -170,6 +170,12 @@ describe("the line protocol", () => {
     expect(parseLine("SCROLL down e4", "mac")).toEqual({ verb: "SCROLL", dir: "down", id: "e4" });
     expect(parseLine("OPEN Slack", "mac")).toEqual({ verb: "OPEN", app: "Slack" });
     expect(parseLine("DONE", "mac")).toEqual({ verb: "DONE" });
+    // Punctuation after the verb is no words: "DONE." used to end the answer
+    // with "." in place of all it had said.
+    for (const l of ["DONE.", "DONE …", "DONE -", "DONE ✓", "**DONE**."]) expect(parseLine(l, "mac")).toEqual({ verb: "DONE" });
+    expect(parseLine("DONE All set.", "mac")).toEqual({ verb: "DONE", text: "All set." });
+    expect(parseLine("DONE: 42", "mac")).toEqual({ verb: "DONE", text: "42" });
+    expect(parseLine("DONE Готово.", "mac")).toEqual({ verb: "DONE", text: "Готово." });
     expect(parseLine("PRESS Export", "mac")).toEqual({ verb: "PRESS", id: "" });
     expect(parseLine("Sure, here you go:", "mac")).toBeNull();
     expect(parseLine("Press the button, then type your name.", "mac")).toBeNull();
@@ -656,6 +662,21 @@ describe("plainMaths", () => {
     for (const s of ["It costs $5 and $10.", "snake_case_names and file_2", "E = mc², already plain.", "\\constructor and \\toString"]) {
       expect(plainMaths(s)).toBe(s.startsWith("\\") ? "constructor and toString" : s);
     }
+  });
+
+  it("leaves code alone: escapes of one letter, regexes and Windows paths keep their backslashes", () => {
+    for (const s of [
+      "Use \\n for a new line and \\t for a tab.",
+      "The regex \\d+ matches digits, and \\s* any spaces.",
+      "Line 3 writes '\\r\\n' but line 5 reads '\\n'.",
+      "It is saved in C:\\Users\\name\\to\\notes.txt now.",
+      "Open \\\\server\\share\\in or %APPDATA%\\Code\\User.",
+      "The bug is in src\\utils\\times.ts, line 4.",
+    ]) {
+      expect(plainMaths(s), s).toBe(s);
+    }
+    // TeX beside a path is still read as TeX.
+    expect(plainMaths("C:\\temp\\sum holds x^2 \\times \\pi")).toBe("C:\\temp\\sum holds x² × π");
   });
 });
 

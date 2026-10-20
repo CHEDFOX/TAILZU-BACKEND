@@ -27,7 +27,7 @@ export interface MeterInput extends UsageRecord {
 // a single-container deployment (the only deployment shape), resets on restart
 // (acceptable for a hand-minted token set), bounded by monthly pruning.
 // ---------------------------------------------------------------------------
-interface MemEvent { at: number; audioSeconds: number; words: number }
+interface MemEvent { at: number; audioSeconds: number; words: number; source: MeterInput["source"] }
 const memUsage = new Map<string, MemEvent[]>();
 const MEM_RETENTION_MS = 35 * 24 * 60 * 60 * 1000; // > 1 month, quota window
 
@@ -35,16 +35,34 @@ function isStaticUser(user: AuthedUser): boolean {
   return user.id.startsWith("static-");
 }
 
-function memRecord(user: AuthedUser, audioSeconds: number, words: number): void {
+function memRecord(user: AuthedUser, audioSeconds: number, words: number, source: MeterInput["source"]): void {
   const now = Date.now();
   const list = (memUsage.get(user.id) ?? []).filter((e) => now - e.at < MEM_RETENTION_MS);
-  list.push({ at: now, audioSeconds, words });
+  list.push({ at: now, audioSeconds, words, source });
   memUsage.set(user.id, list);
+}
+
+/**
+ * Ask's picture steps per user: when the last of them were answered, at most
+ * FREE_DAILY_AGENT_PICTURES of them. A picture step is a vision call with an
+ * image, and is metered as no words and no seconds, so the monthly caps never
+ * reach it. Kept in memory, as the rate limits are: a restart forgets a day
+ * at most, and a ceiling against running up the bill needs no more.
+ */
+const pictures = new Map<string, number[]>();
+const PICTURE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** One picture step answered for this user. */
+export function recordPicture(user: AuthedUser, now = Date.now()): void {
+  const keep = Math.max(1, getConfig().FREE_DAILY_AGENT_PICTURES);
+  const list = (pictures.get(user.id) ?? []).filter((at) => now - at < PICTURE_WINDOW_MS);
+  list.push(now);
+  pictures.set(user.id, list.slice(-keep));
 }
 
 export async function recordUsage(input: MeterInput): Promise<void> {
   if (isStaticUser(input.user)) {
-    memRecord(input.user, input.audioSeconds, input.words);
+    memRecord(input.user, input.audioSeconds, input.words, input.source);
     return;
   }
   const sb = dataClientFor(input.user);
@@ -74,7 +92,14 @@ export async function recordUsage(input: MeterInput): Promise<void> {
 }
 
 /** Aggregate a user's usage into this-month + all-time totals (for the stats screen). */
-type UsageRow = { audio_seconds?: number | null; word_count?: number | null; created_at?: string };
+type UsageRow = { audio_seconds?: number | null; word_count?: number | null; created_at?: string; source?: string | null };
+
+/**
+ * A row of Ask's: a step, or a question spoken on the live stream. It counts
+ * its words and its seconds like any other, but it is not a dictation, and is
+ * never shown or rewarded as one.
+ */
+const asked = (source: string | null | undefined) => source === "agent";
 
 const USAGE_PAGE = 1000;
 /** A ceiling on one read, so one account cannot pull an unbounded table. */
@@ -100,7 +125,7 @@ async function readUsageRows(
   for (let from = 0; from < USAGE_MAX_ROWS; from += USAGE_PAGE) {
     let q = sb
       .from("usage_events")
-      .select("audio_seconds, word_count, created_at")
+      .select("audio_seconds, word_count, created_at, source")
       .eq("user_id", userId);
     if (sinceIso) q = q.gte("created_at", sinceIso);
     const { data, error } = await q.order("id", { ascending: true }).range(from, from + USAGE_PAGE - 1);
@@ -128,12 +153,13 @@ export async function usageSummary(user: AuthedUser, tzOffsetMinutes?: number): 
     const now = new Date();
     const monthStartMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
     for (const e of memUsage.get(user.id) ?? []) {
-      out.total.words += e.words; out.total.audioSeconds += e.audioSeconds; out.total.requests += 1;
+      const n = asked(e.source) ? 0 : 1;
+      out.total.words += e.words; out.total.audioSeconds += e.audioSeconds; out.total.requests += n;
       if (e.at >= monthStartMs) {
-        out.month.words += e.words; out.month.audioSeconds += e.audioSeconds; out.month.requests += 1;
+        out.month.words += e.words; out.month.audioSeconds += e.audioSeconds; out.month.requests += n;
       }
       if (out.today && e.at >= todayStartMs) {
-        out.today.words += e.words; out.today.audioSeconds += e.audioSeconds; out.today.requests += 1;
+        out.today.words += e.words; out.today.audioSeconds += e.audioSeconds; out.today.requests += n;
       }
     }
     return out;
@@ -149,12 +175,13 @@ export async function usageSummary(user: AuthedUser, tzOffsetMinutes?: number): 
   for (const r of read.rows) {
     const a = r.audio_seconds ?? 0;
     const w = r.word_count ?? 0;
-    out.total.words += w; out.total.audioSeconds += a; out.total.requests += 1;
+    const n = asked(r.source) ? 0 : 1;
+    out.total.words += w; out.total.audioSeconds += a; out.total.requests += n;
     if ((r.created_at ?? "") >= monthStart) {
-      out.month.words += w; out.month.audioSeconds += a; out.month.requests += 1;
+      out.month.words += w; out.month.audioSeconds += a; out.month.requests += n;
     }
     if (out.today && Date.parse(r.created_at ?? "") >= todayStartMs) {
-      out.today.words += w; out.today.audioSeconds += a; out.today.requests += 1;
+      out.today.words += w; out.today.audioSeconds += a; out.today.requests += n;
     }
   }
   return out;
@@ -174,12 +201,12 @@ export async function usageSummary(user: AuthedUser, tzOffsetMinutes?: number): 
  * (which app you wrote in) still require history.
  *
  * `audioSeconds > 0` is the voice/typing discriminator: a metered event with
- * audio behind it was dictation.
+ * audio behind it was dictation, unless its source is Ask's ("agent").
  */
 export async function usageEventsSince(
   user: AuthedUser,
   sinceIso: string | undefined,
-): Promise<Array<{ createdAt: string; audioSeconds: number; words: number }>> {
+): Promise<Array<{ createdAt: string; audioSeconds: number; words: number; source?: string }>> {
   if (isStaticUser(user)) {
     const sinceMs = sinceIso ? Date.parse(sinceIso) : 0;
     return (memUsage.get(user.id) ?? [])
@@ -188,6 +215,7 @@ export async function usageEventsSince(
         createdAt: new Date(e.at).toISOString(),
         audioSeconds: e.audioSeconds,
         words: e.words,
+        source: e.source,
       }));
   }
   const sb = dataClientFor(user);
@@ -202,6 +230,7 @@ export async function usageEventsSince(
       createdAt: r.created_at ?? new Date(0).toISOString(),
       audioSeconds: r.audio_seconds ?? 0,
       words: r.word_count ?? 0,
+      ...(r.source ? { source: r.source } : {}),
     }));
 }
 
@@ -226,8 +255,17 @@ export function isQuotaExempt(id: string, configured: string | undefined): boole
  *
  * Cheap enough to call on every request path: one indexed query per user per
  * request, cached at Supabase.
+ *
+ * `agentAudio` is set where a question to Ask is about to be heard (a live
+ * stream marked purpose "ask", an Ask step with a recording): those seconds
+ * have their own monthly allowance, FREE_MONTHLY_AGENT_AUDIO_SECONDS.
+ * `picture` is set on an Ask step that carries a picture, held to
+ * FREE_DAILY_AGENT_PICTURES a day.
  */
-export async function enforceQuota(user: AuthedUser): Promise<string | null> {
+export async function enforceQuota(
+  user: AuthedUser,
+  opts: { agentAudio?: boolean; picture?: boolean } = {},
+): Promise<string | null> {
   // Free for everyone (FREE_FOR_ALL): nothing to check, and no read to pay for.
   if (getConfig().FREE_FOR_ALL) return null;
   // Paying users are not metered. This check did not exist, so a subscriber
@@ -250,7 +288,16 @@ export async function enforceQuota(user: AuthedUser): Promise<string | null> {
   if (isQuotaExempt(user.id, cfg.QUOTA_EXEMPT_USER_IDS)) return null;
   const capAudio = cfg.FREE_MONTHLY_AUDIO_SECONDS;
   const capWords = cfg.FREE_MONTHLY_WORDS;
-  if (capAudio <= 0 && capWords <= 0) return null; // no limit configured
+  const capAsk = opts.agentAudio ? cfg.FREE_MONTHLY_AGENT_AUDIO_SECONDS : 0;
+  const capPictures = opts.picture ? cfg.FREE_DAILY_AGENT_PICTURES : 0;
+  if (capAudio <= 0 && capWords <= 0 && capAsk <= 0 && capPictures <= 0) return null; // no limit configured
+  if (capPictures > 0) {
+    const now = Date.now();
+    const today = (pictures.get(user.id) ?? []).filter((at) => now - at < PICTURE_WINDOW_MS).length;
+    if (today >= capPictures) {
+      return `You've asked about ${capPictures} pictures today. Upgrade for unlimited, or ask again tomorrow.`;
+    }
+  }
 
   const moments = await usageMomentsSince(user, monthStartIso());
   if (!moments) {
@@ -290,6 +337,15 @@ export async function enforceQuota(user: AuthedUser): Promise<string | null> {
         `Upgrade for unlimited, or wait until ${monthResetDate()}.`;
     }
   }
+  if (capAsk > 0) {
+    // A question's words are never written, so they spend nothing above; its
+    // seconds are what it costs, and they are counted here, Ask's rows only.
+    const askedSeconds = moments.reduce((n, m) => n + (asked(m.source) ? m.audioSeconds : 0), 0);
+    if (askedSeconds >= capAsk) {
+      return `You've used this month's ${Math.round(capAsk / 60)} minutes of questions to Ask. ` +
+        `Upgrade for unlimited, or wait until ${monthResetDate()}.`;
+    }
+  }
   return null;
 }
 
@@ -315,12 +371,12 @@ function monthResetDate(): string {
 export async function usageMomentsSince(
   user: AuthedUser,
   sinceIso: string,
-): Promise<Array<{ at: number; audioSeconds: number; words: number }> | null> {
+): Promise<Array<{ at: number; audioSeconds: number; words: number; source?: string }> | null> {
   const sinceMs = Date.parse(sinceIso) || 0;
   if (isStaticUser(user)) {
     return (memUsage.get(user.id) ?? [])
       .filter((e) => e.at >= sinceMs)
-      .map((e) => ({ at: e.at, audioSeconds: e.audioSeconds, words: e.words }));
+      .map((e) => ({ at: e.at, audioSeconds: e.audioSeconds, words: e.words, source: e.source }));
   }
   const sb = dataClientFor(user);
   if (!sb) return null;
@@ -332,6 +388,7 @@ export async function usageMomentsSince(
     at: Date.parse(String(row.created_at)) || 0,
     audioSeconds: row.audio_seconds ?? 0,
     words: row.word_count ?? 0,
+    ...(row.source ? { source: row.source } : {}),
   }));
 }
 

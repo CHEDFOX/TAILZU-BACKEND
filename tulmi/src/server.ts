@@ -45,7 +45,7 @@ import { getConfig, VERSION } from "./config.js";
 import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
 import { sameSecret } from "./auth/secret.js";
 import { localUserId } from "./auth/jwt.js";
-import { allowanceFor, enforceQuota, recordUsage, usageSummary } from "./usage/metering.js";
+import { allowanceFor, enforceQuota, recordPicture, recordUsage, usageSummary } from "./usage/metering.js";
 import { recordKeyboardTelemetry } from "./usage/telemetry.js";
 import { activeRollouts, bucketFor } from "./experience/rollout.js";
 import { captureException, fastifyLoggerOptions, initSentry } from "./observability.js";
@@ -1830,7 +1830,9 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
     return reply.code(413).send({ code: "audio_too_long", message: "That recording is too long for Ask." });
   }
 
-  const quota = await enforceQuota(user);
+  // A recording is a question spoken to Ask, held to Ask's own seconds too,
+  // and a picture to the day's pictures.
+  const quota = await enforceQuota(user, { agentAudio: !!audio, picture: !!image });
   if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
 
   // From here the reply is ours to write by hand.
@@ -1908,6 +1910,7 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
   // After the stream has closed: the device already has its answer, and a
   // slow metering write must not hold it open.
   if (result && result.path !== "refused") {
+    if (result.path === "picture") recordPicture(user);
     await recordUsage({
       user,
       source: "agent",

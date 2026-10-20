@@ -3,8 +3,8 @@
  *
  * The models are AGENT_MODEL, then each of AGENT_FALLBACK_MODELS, then
  * CLEANUP_MODEL. The next is tried only when a call fails before it has
- * written anything: an HTTP error, a refused parameter, or AGENT_TIMEOUT_MS
- * passing in silence. Once a model has written a line, that line may already
+ * written anything: an HTTP error, a refused parameter, AGENT_TIMEOUT_MS
+ * passing in silence, or an answer that ends with nothing in it. Once a model has written a line, that line may already
  * be on the user's screen, and a second model starting over would contradict
  * it; so from then on the step belongs to that model, and a failure or the
  * timeout just ends its answer where it is.
@@ -62,7 +62,7 @@ export interface PictureCall {
 /** What one model call did, for the log. Never any of the prompt. */
 export interface CallRecord {
   model: string;
-  outcome: "ok" | "stopped" | "failed" | "timeout";
+  outcome: "ok" | "stopped" | "failed" | "timeout" | "empty";
   ms: number;
   /** Time to the first written character. */
   firstMs?: number;
@@ -167,6 +167,9 @@ export async function* planStream(system: string, user: UserContent, opts: PlanO
   const timeoutMs = opts.timeoutMs ?? (picture ? cfg.AGENT_VISION_TIMEOUT_MS : cfg.AGENT_TIMEOUT_MS);
   const maxTokens = !picture ? AGENT_MAX_TOKENS : picture.deep ? VISION_DEEP_MAX_TOKENS : VISION_MAX_TOKENS;
   let lastError: unknown = new Error("no agent model configured");
+  // A model answered, with nothing. When the ladder runs out after that, the
+  // step had nothing to say, which is not the same as no model being there.
+  let answeredEmpty = false;
 
   for (const model of models) {
     if (opts.signal?.aborted) return;
@@ -206,8 +209,17 @@ export async function* planStream(system: string, user: UserContent, opts: PlanO
           yield { model, delta };
         }
       }
-      call.outcome = "ok";
-      return;
+      if (wrote) {
+        call.outcome = "ok";
+        return;
+      }
+      // An answer that ended cleanly with nothing in it (a content filter's
+      // stop, or every token spent somewhere else) is a failure before any
+      // output: the next model may well answer what this one would not.
+      call.outcome = "empty";
+      if (opts.signal?.aborted) return;
+      answeredEmpty = true;
+      lastError = new Error(`${model} wrote nothing`);
     } catch (err) {
       call.outcome = timedOut ? "timeout" : "failed";
       const status = (err as { status?: unknown })?.status;
@@ -224,5 +236,6 @@ export async function* planStream(system: string, user: UserContent, opts: PlanO
       opts.log?.(call);
     }
   }
+  if (answeredEmpty) return;
   throw new PlannerUnavailable(lastError);
 }

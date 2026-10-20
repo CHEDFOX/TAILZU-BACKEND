@@ -66,7 +66,9 @@ interface StartMessage {
   channels?: number;
   /** "ask": a question to Ask, not dictation. Its audio is metered as an
    *  Ask step's is (source "agent", no words): the words are the question,
-   *  never written anywhere, and must not spend the dictation allowance. */
+   *  never written anywhere, and must not spend the dictation allowance.
+   *  So it is held to what a question is instead: Ask's own monthly seconds
+   *  (FREE_MONTHLY_AGENT_AUDIO_SECONDS) and AGENT_STREAM_MAX_SECONDS long. */
   purpose?: string;
 }
 
@@ -260,6 +262,9 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
       // user who always exits by switching apps streamed paid STT for free.
       let metered = false;
       let asking = false;   // a question to Ask (StartMessage.purpose)
+      // An ask socket that reached AGENT_STREAM_MAX_SECONDS: nothing more is
+      // heard, and it ends as a stop does.
+      let cut = false;
       // Real word count for word-based quotas (was hardcoded 0 → never tripped).
       let totalWords = 0;
       // Set when the stream ended in an error/abnormal close, so we don't mask
@@ -344,6 +349,15 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
       const closeEngine = () => {
         try { engine?.close(); } catch { /* ignore */ }
         try { shadow?.close(); } catch { /* ignore */ }
+      };
+
+      // Ask the engines for their last words. Their Close then drives "done"
+      // (finishDone), with a fallback timer for one that never closes.
+      const stop = () => {
+        closeEngine();
+        if (!doneFallback && !doneSent) {
+          doneFallback = setTimeout(finishDone, 1500);
+        }
       };
 
       // Bill the audio + words processed so far — EXACTLY once, guarded, and
@@ -608,8 +622,20 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
 
       /** One frame of audio, to the engines, once the session is live. */
       const acceptAudio = (raw: Buffer) => {
-        if (closed || !engine) return;
+        if (closed || !engine || cut) return;
         if (!trace.firstAudioAt) trace.firstAudioAt = Date.now();
+        // A QUESTION IS SHORT. Its words are metered as Ask's and never as
+        // dictation's, so an ask socket that ran on was dictation under
+        // another name, transcribed for free for up to MAX_STREAM_BYTES. The
+        // desktop stops listening for a question at 15 s; past
+        // AGENT_STREAM_MAX_SECONDS nothing more is heard or metered, and the
+        // socket ends as a stop does, with its finals and then done.
+        if (asking && bytes + raw.length > cfg.AGENT_STREAM_MAX_SECONDS * format.sampleRate * 2 * format.channels) {
+          cut = true;
+          req.log.info({ seconds: cfg.AGENT_STREAM_MAX_SECONDS }, "ask stream cut at its length");
+          stop();
+          return;
+        }
         bytes += raw.length;
         if (bytes > MAX_STREAM_BYTES) {
           send({ type: "error", code: "audio_too_long", message: STREAM_ERROR_TEXT.tooLong });
@@ -665,7 +691,8 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
               return;
             }
             // Pre-flight quota check — refuse before we bill Deepgram anything.
-            const over = await enforceQuota(user);
+            // A question is checked against Ask's own seconds as well.
+            const over = await enforceQuota(user, { agentAudio: asking });
             if (over) {
               // Already written for the person (metering.enforceQuota): the
               // number, the reset date and the way out.
@@ -706,10 +733,7 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           // dropped whatever Deepgram hadn't flushed yet → every dictation's
           // tail got truncated. The fallback timer only fires if the engine's
           // Close never arrives (wedged/dropped), so we don't hang.
-          closeEngine();
-          if (!doneFallback && !doneSent) {
-            doneFallback = setTimeout(finishDone, 1500);
-          }
+          stop();
         }
       });
 

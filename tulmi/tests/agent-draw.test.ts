@@ -173,6 +173,21 @@ describe("a DRAW line, read", () => {
     expect(draw("DRAW PATH (-1,-1) (1001,1001)")).toMatchObject({ points: [[0, 0], [1000, 1000]] });
   });
 
+  it("numbers that are fractions of the picture (0..1) are no spot at all, not its corner", () => {
+    // A model that slipped into its own habit: rounded, every one of these
+    // would be drawn at the picture's top-left corner.
+    for (const line of ['DRAW CIRCLE (0.42, 0.61) "vertex"', "DRAW BOX [0.1,0.2,0.3,0.1]", "DRAW LABEL (0.5, 0.5) \"middle\"",
+      "DRAW ARROW (0.1, 0.2) -> (0.8, 0.9)", "DRAW ARROW e5 -> (0.8, 0.9)", "DRAW PATH (0.1,0.2) (0.5,0.9) (0.9,0.2) closed", "DRAW NUMBER (0.3, 0.4) 1"]) {
+      expect(draw(line), line).toBeNull();
+    }
+    // Whole numbers that small are a real spot, and a decimal past 1 is a
+    // thousandth that was rounded.
+    expect(draw("DRAW CIRCLE (0, 1)")).toMatchObject({ target: { pt: [0, 1] } });
+    expect(draw("DRAW BOX [0,0,10,10]")).toMatchObject({ target: { box: [0, 0, 10, 10] } });
+    expect(draw("DRAW CIRCLE (0.5, 250.4)")).toMatchObject({ target: { pt: [1, 250] } });
+    expect(draw("DRAW PATH (0.2,0.4) (500,600)")).toMatchObject({ points: [[0, 0], [500, 600]] });
+  });
+
   it("a path has 2 to 32 points", () => {
     const pts = (n: number) => Array.from({ length: n }, (_, i) => `(${i * 10},${i * 20})`).join(" ");
     expect(draw(`DRAW PATH ${pts(PATH_MAX)}`)).toMatchObject({ kind: "path" });
@@ -222,6 +237,11 @@ describe("a DRAW line, kept or dropped", () => {
     const picture = read(lines, new LineReader(ids, "show", { picture: true, says: 10 }));
     expect(picture.out.map((o) => ("emit" in o ? o.emit.t : "act"))).toEqual(["draw", "draw", "draw", "draw", "draw"]);
     expect(picture.r.drawsDropped).toBe(0);
+    // A place written as fractions of the picture is counted as dropped, even
+    // on a step with the picture: it was never drawn.
+    const fractions = read(['DRAW CIRCLE (0.42, 0.61) "vertex"', "DRAW CIRCLE (420, 610)"], new LineReader(ids, "show", { picture: true, says: 10 }));
+    expect(fractions.out).toEqual([{ emit: { t: "draw", kind: "circle", target: { pt: [420, 610] } } }]);
+    expect([fractions.r.draws, fractions.r.drawsDropped]).toEqual([1, 1]);
   });
 
   it("at most AGENT_DRAW_MAX a step: the rest are dropped and counted; a CLEAR is a mark like any other", () => {

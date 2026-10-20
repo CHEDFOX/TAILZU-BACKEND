@@ -719,7 +719,9 @@ export async function statsForUser(
   // metered with its audio. Read once, used for the fallback below too.
   const events = await usageEventsSince(user, sinceIso).catch(() => []);
   if (!rows.length) {
-    rows = events.map((e) => ({
+    // Ask's rows are questions and steps, not dictations: their seconds of
+    // speech still count below, but they are not sessions here.
+    rows = events.filter((e) => e.source !== "agent").map((e) => ({
       createdAt: e.createdAt,
       wordsOut: e.words,
       audioSeconds: e.audioSeconds,
