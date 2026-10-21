@@ -32,7 +32,7 @@ export const STORE_LINKS: string[] = [STORES.ios, STORES.android, STORES.windows
 
 /** The sentence every engine should be able to lift whole. */
 export const DEFINITION =
-  "Tailzu is an AI keyboard for iPhone, Android, Windows and Mac. " +
+  "Tailzu is an AI keyboard for iPhone, Android, Windows, Mac and Linux. " +
   "You speak in Hindi, Hinglish, any of India's 22 scheduled languages, English or 50+ more, " +
   "and clean, ready-to-send text lands in any app: filler gone, punctuation in, " +
   "names and numbers kept exactly as you said them. Ask, and it writes a short message, reply or email for you.";
@@ -40,7 +40,9 @@ export const DEFINITION =
 export const HOME = {
   title: SITE_SHAPE.meta.title,
   description: SITE_SHAPE.meta.description,
-  ogTitle: "Tailzu — say it badly, send it perfect",
+  // The link card says the page's own h1 (SITE_UI.apps.title), as the card
+  // image does.
+  ogTitle: "Tailzu — talk instead of type",
   ogDescription: "Talk. Tailzu writes. Your words, spelled the way you type — not translated, not in an alphabet you don't type.",
 };
 
@@ -252,11 +254,11 @@ export function appLd() {
     url: `${ORIGIN}/`,
     applicationCategory: "UtilitiesApplication",
     applicationSubCategory: "AI keyboard",
-    operatingSystem: "iOS, Android, Windows, macOS",
+    operatingSystem: "iOS, Android, Windows, macOS, Linux",
     // The Microsoft Store listing joins the other two once it is set
     // (catalog.WINDOWS_STORE_ID). downloadUrl is a binary's own address, so
     // for Windows it is the certified build's direct download; /download
-    // stays for Mac.
+    // stays for Mac and Linux.
     downloadUrl: [STORES.ios, STORES.android, STORES.windowsInstaller, abs("/download")].filter(Boolean),
     installUrl: STORE_LINKS,
     sameAs: STORE_LINKS,
@@ -272,10 +274,10 @@ export function appLd() {
       "16 voices that set the tone of every message",
       "Writes a short message, reply, email, wish or caption on request; never essays or code",
       "Works as a keyboard in every app on iPhone and Android",
-      "Desktop app for Windows and Mac: tap Ctrl twice, talk, and the text is pasted at the cursor",
+      "Desktop app for Windows, Mac and Linux: tap Ctrl twice, talk, and the text is pasted at the cursor",
     ],
     inLanguage: "en",
-    availableOnDevice: "iPhone, Android phone, Windows PC, Mac",
+    availableOnDevice: "iPhone, Android phone, Windows PC, Mac, Linux PC",
   };
 }
 
@@ -291,3 +293,55 @@ export function faqLd(items: QA[], path: string) {
   };
 }
 
+
+// ---------------------------------------------------------------- films
+
+/**
+ * THE FILMS THE HOME PAGE PLAYS, as a search engine's video results want
+ * them: the reel's five (SITE_UI.films.items) and Typed vs said, which #how
+ * plays. Each is a web cut of a film drawn by social.html (no third-party
+ * imagery), published by the site under /media/: `file` is its name there,
+ * `seconds` the length of the cut as published (media/manifest.json's
+ * `dur`: a looped cut is shorter than its span by the cross-dissolve that
+ * joins its ends), `rendered` the day the source film was rendered (its
+ * commit in TAILZU-FRONTEND/tools/media/promo). Written into the home page's
+ * head by scripts/sync-site.mts, and only into the redesigned page — the
+ * page that has the films; the sync checks these against the manifest
+ * beside the page, so a re-cut film cannot leave a wrong length here.
+ */
+export const FILM_MEDIA: Record<string, { file: string; seconds: number; rendered: string }> = {
+  "typed-vs-said": { file: "typed-vs-said", seconds: 9.1, rendered: "2026-09-29" },
+  keyless: { file: "keyless", seconds: 11.3, rendered: "2026-09-29" },
+  "said-written": { file: "said-written", seconds: 12.5, rendered: "2026-09-29" },
+  spanish: { file: "spanish", seconds: 8.9, rendered: "2026-09-29" },
+  "to-him": { file: "to-him", seconds: 12, rendered: "2026-10-18" },
+  tones: { file: "tones-1x1", seconds: 10.9, rendered: "2026-09-29" },
+};
+
+/** Typed vs said is not in the reel, so its words are films.json's own. */
+const TYPED_VS_SAID = { id: "typed-vs-said", title: "Typed vs said", line: "The same message, a thumb against a voice, each on a clock." };
+
+/** The home page's films, in the order the page shows them. */
+export function homeFilms(): Array<{ id: string; title: string; line: string; file: string; seconds: number; rendered: string }> {
+  return [TYPED_VS_SAID, ...SITE_UI.films.items]
+    .filter((f) => FILM_MEDIA[f.id])
+    .map((f) => ({ id: f.id, title: f.title, line: f.line, ...FILM_MEDIA[f.id]! }));
+}
+
+/** ISO 8601, as structured data wants a length: 9.6 → "PT9.6S". */
+export const isoDuration = (seconds: number) => `PT${Number(seconds.toFixed(1))}S`;
+
+export function filmLd(f: ReturnType<typeof homeFilms>[number]) {
+  return {
+    "@type": "VideoObject",
+    "@id": `${ORIGIN}/#film-${f.id}`,
+    name: f.title,
+    description: f.line,
+    thumbnailUrl: [`${ORIGIN}/media/${f.file}.webp`],
+    contentUrl: `${ORIGIN}/media/${f.file}.mp4`,
+    uploadDate: f.rendered,
+    duration: isoDuration(f.seconds),
+    about: { "@id": ID.app },
+    publisher: { "@id": ID.org },
+  };
+}

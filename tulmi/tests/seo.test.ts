@@ -10,12 +10,14 @@ process.env.NODE_ENV = "test";
 // eslint-disable-next-line import/first
 import { registerSeoRoutes } from "../src/routes/seo.js";
 // eslint-disable-next-line import/first
-import { PAGED, LANGS, examplesFor, faqGroups, homeFaq, plans } from "../src/seo/facts.js";
+import { PAGED, LANGS, DEFINITION, appLd, examplesFor, faqGroups, filmLd, homeFaq, homeFilms, plans } from "../src/seo/facts.js";
 import { LANDING_PATHS, landings } from "../src/seo/landing.js";
 // eslint-disable-next-line import/first
-import { sitePages } from "../src/seo/machine.js";
+import { llmsFullTxt, llmsTxt, sitePages } from "../src/seo/machine.js";
 // eslint-disable-next-line import/first
-import { SITE_SHAPE, SITE_UI, PAYWALL_CONFIG } from "../src/experience/catalog.js";
+import { SITE_LAYOUT_REDESIGN, SITE_SHAPE, SITE_UI, PAYWALL_CONFIG, siteCopy } from "../src/experience/catalog.js";
+// eslint-disable-next-line import/first
+import { filmProblems, headHtml, langsLines, lineLang, siteCopyLines, syncHome, titleHtml } from "../src/seo/home.js";
 // eslint-disable-next-line import/first
 import { pricingHtml } from "../src/routes/policies/pricing.js";
 // eslint-disable-next-line import/first
@@ -195,5 +197,191 @@ describe("nothing interpolated can break the markup", () => {
       expect(l.code, l.name).toMatch(/^[A-Za-z0-9-]+$/);
     }
     for (const p of sitePages()) expect(p.path).toMatch(/^\/[a-z0-9/-]*$/);
+  });
+});
+
+describe("the redesigned home page, as a crawler reads it", () => {
+  // A page shaped like the redesign's: the six markers it always had, and
+  // the four that came with it, holding whatever a builder left there.
+  const page = (extra = true) => [
+    "<!doctype html><html><head>",
+    "<!-- SEO:HEAD — written by sync-site -->",
+    "<title>by hand</title>",
+    "<!-- /SEO:HEAD -->",
+    "</head><body><main>",
+    ...(extra ? [
+      "  <div class=\"copy\">",
+      "    <!-- SEO:hero -->",
+      "    <h1 id=\"appsTitle\">by hand</h1>",
+      "    <!-- /SEO:hero -->",
+      "    <!-- SEO:line --><p>by hand</p><!-- /SEO:line -->",
+      "  </div>",
+      "  <nav id=\"langs\">",
+      "    <!-- SEO:langs -->",
+      "    <!-- /SEO:langs -->",
+      "  </nav>",
+    ] : []),
+    "<div id=\"steps\"><!-- SEO:steps --><!-- /SEO:steps --></div>",
+    "<p id=\"toneSaid\"><!-- SEO:toneSaid -->x<!-- /SEO:toneSaid --></p>",
+    "<div id=\"toneGrid\"><!-- SEO:toneGrid --><!-- /SEO:toneGrid --></div>",
+    "<div id=\"faq\"><!-- SEO:faq --><!-- /SEO:faq --></div>",
+    "</main><script>",
+    "  var C = {",
+    ...(extra ? ["    // SEO:siteCopy — every SITE_UI key but faq", "    apps: { title: \"by hand\" },", "    // /SEO:siteCopy"] : []),
+    "    // SEO:faqCopy — written by sync-site",
+    "    // /SEO:faqCopy",
+    "  };",
+    "</script></body></html>",
+  ].join("\n");
+  const graph = (html: string) => graphOf(html.replace(/\\u003c/g, "<"));
+
+  it("names Linux wherever the facts name the platforms", async () => {
+    expect(DEFINITION).toContain("Windows, Mac and Linux");
+    const app = appLd() as { operatingSystem: string; availableOnDevice: string; featureList: string[] };
+    expect(app.operatingSystem).toBe("iOS, Android, Windows, macOS, Linux");
+    expect(app.availableOnDevice).toContain("Linux");
+    expect(app.featureList.some((f) => f.startsWith("Desktop app for Windows, Mac and Linux"))).toBe(true);
+    expect(llmsTxt()).toContain("On Windows, Mac and Linux, tap Ctrl twice");
+    expect(llmsTxt()).toContain("Windows, Mac and Linux apps");
+    expect(llmsTxt()).toContain("- [Linux](https://tailzu.space/download)");
+    expect(llmsFullTxt()).toContain("Linux: https://tailzu.space/download");
+    expect(llmsFullTxt()).toContain("A desktop app for Windows, Mac and Linux");
+  });
+
+  it("describes each film the page plays as a VideoObject a search engine can show", () => {
+    const films = homeFilms();
+    // Typed vs said (#how) and the reel, in the page's order.
+    expect(films.map((f) => f.id)).toEqual(["typed-vs-said", ...SITE_UI.films.items.map((f) => f.id)]);
+    for (const f of films) {
+      const v = filmLd(f) as Record<string, any>;
+      expect(v["@type"]).toBe("VideoObject");
+      expect(v.name.length, f.id).toBeGreaterThan(0);
+      expect(v.description.length, f.id).toBeGreaterThan(0);
+      expect(v.contentUrl).toMatch(/^https:\/\/tailzu\.space\/media\/[a-z0-9-]+\.mp4$/);
+      expect(v.thumbnailUrl).toEqual([v.contentUrl.replace(/\.mp4$/, ".webp")]);
+      expect(v.uploadDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(v.duration).toMatch(/^PT\d+(\.\d)?S$/);
+      expect(v.publisher).toEqual({ "@id": "https://tailzu.space/#org" });
+    }
+    // The reel's words are the page's: one source for both.
+    for (const it of SITE_UI.films.items) expect(films.find((f) => f.id === it.id)?.line).toBe(it.line);
+    // Only a page that has the films says it has them.
+    expect(graph(headHtml(true)).filter((n: any) => n["@type"] === "VideoObject")).toHaveLength(films.length);
+    expect(graph(headHtml(false)).some((n: any) => n["@type"] === "VideoObject")).toBe(false);
+  });
+
+  it("holds each film's data to the file the site publishes", () => {
+    const films = homeFilms();
+    const cuts = Object.fromEntries(films.map((f) => [f.id, { file: `${f.file}.mp4`, dur: f.seconds }]));
+    const all = () => true;
+    expect(filmProblems({ media: cuts }, all)).toEqual([]);
+    // No manifest: only the files are checked.
+    expect(filmProblems(null, all)).toEqual([]);
+    // A missing poster, a cut the manifest lacks, a re-cut of another length.
+    const [a, b, c] = films;
+    expect(filmProblems(null, (f) => f !== `${a!.file}.webp`)).toEqual([`media/${a!.file}.webp is missing`]);
+    const { [b!.id]: _gone, ...fewer } = cuts;
+    expect(filmProblems({ media: fewer }, all)).toEqual([`media/manifest.json has no ${b!.file}.mp4`]);
+    const longer = { ...cuts, [c!.id]: { file: `${c!.file}.mp4`, dur: c!.seconds + 1 } };
+    expect(filmProblems({ media: longer }, all)).toHaveLength(1);
+    expect(filmProblems({ media: longer }, all)[0]).toMatch(new RegExp(`^${c!.id}: `));
+  });
+
+  it("links every language page from the home page, in the list's order", () => {
+    const links = langsLines();
+    const slugs = links.map((l) => /href="\/languages\/([a-z0-9-]+)"/.exec(l)?.[1]);
+    expect(slugs).toEqual(LANGS.map((l) => l.slug));
+    expect(links).toHaveLength(75);
+    for (const [i, l] of LANGS.entries()) {
+      expect(links[i]).toContain(`lang="${l.code}"`);
+      expect(links[i]).toContain(`<span class="ln">${l.native}</span>`);
+    }
+    expect(links[0]).toBe('<a class="lang" href="/languages/hindi" lang="hi"><span class="ln">हिन्दी</span> <span class="le" lang="en">Hindi</span></a>');
+  });
+
+  it("describes the link card by the line it shows", async () => {
+    // og.png (both the card before the redesign and its own) draws the
+    // hero's first line said and written; its alt quotes that pair, so a
+    // new first line means a new card and a new alt, together.
+    const { OG_IMAGE } = await import("../src/seo/head.js");
+    expect(OG_IMAGE.alt).toContain(`“${SITE_UI.lines[0].said}”`);
+    expect(OG_IMAGE.alt).toContain(`“${SITE_UI.lines[0].wrote}”`);
+    expect(headHtml(true)).toContain(`<meta property="og:image:alt" content="${OG_IMAGE.alt}">`);
+  });
+
+  it("writes the h1 as the page builds it", () => {
+    expect(titleHtml("Talk instead of type.", "Talk")).toBe('<em>Talk</em> instead of <span class="kw">type</span>.');
+    expect(titleHtml("Talk instead of type.")).toBe('Talk instead of <span class="kw">type</span>.');
+    expect(titleHtml("A <b> & type?", "")).toBe('A &lt;b&gt; &amp; <span class="kw">type</span>?');
+    expect(titleHtml("Talk.", "Talk.")).toBe("<em>Talk.</em>");
+    expect(lineLang(SITE_UI.lines[0].said)).toBe("en");
+    expect(lineLang(SITE_UI.lines[1].said)).toBe("hi");
+    expect(lineLang(SITE_UI.lines[4].said)).toBe("ta");
+  });
+
+  it("fills every marker of the redesigned page, and a second run changes nothing", () => {
+    const { html, redesigned } = syncHome(page());
+    expect(redesigned).toBe(true);
+    expect(html).not.toContain("by hand");
+    expect(html).toContain(`    <!-- SEO:hero -->\n    <p class="kind" id="appsKind">${SITE_UI.apps.kind}</p>\n    <h1 id="appsTitle"><em>Talk</em> instead of <span class="kw">type</span>.</h1>\n`);
+    expect(html).toContain(`<p class="said" id="lineSaid" lang="en">${SITE_UI.lines[0].said}</p>`);
+    expect(html).toContain(`<p class="note" id="lineNote">${SITE_UI.lines[0].note}</p>`);
+    expect(html.match(/<a class="lang" /g)).toHaveLength(75);
+    expect(html).toContain("    <!-- /SEO:langs -->");
+    expect(syncHome(html).html).toBe(html);
+    // The script's fallback is the server's copy, every key of it, and
+    // nothing in it can end the script it sits in.
+    const at = html.indexOf("<script>") + 8;
+    const script = html.slice(at, html.indexOf("</script>", at));
+    expect(script).not.toMatch(/<\/script|<!--/i);
+    // eslint-disable-next-line no-new-func
+    const C = new Function(`${script}; return C;`)();
+    expect(C).toEqual(JSON.parse(JSON.stringify(siteCopy())));
+    expect(siteCopyLines()).toHaveLength(Object.keys(siteCopy()).length - 1);
+    // Its films are in its head.
+    expect(graph(html).filter((n: any) => n["@type"] === "VideoObject")).toHaveLength(homeFilms().length);
+  });
+
+  it("fills the page from before the redesign exactly as it always did", () => {
+    const { html, redesigned } = syncHome(page(false));
+    expect(redesigned).toBe(false);
+    expect(html).toContain('<div class="step"><p class="n">01</p><h3>You talk.</h3></div>');
+    expect(html).not.toContain("appsKind");
+    expect(html).not.toContain("SEO:siteCopy");
+    expect(graph(html).some((n: any) => n["@type"] === "VideoObject")).toBe(false);
+    expect(syncHome(html).html).toBe(html);
+  });
+
+  it("stops at a page that has only some of the redesign's markers", () => {
+    expect(() => syncHome(page().replace("<!-- SEO:langs -->", ""))).toThrow(/marker not found: <!-- SEO:langs -->/);
+    expect(() => syncHome(page().replace(/ *\/\/ SEO:siteCopy[^\n]*\n/, ""))).toThrow(/SEO:siteCopy/);
+  });
+
+  it("says nothing about Ask where crawlers read until it ships", async () => {
+    const claims = [SITE_UI.ask.title, SITE_UI.ask.lede, SITE_UI.ask.soon];
+    for (const surface of [headHtml(true), llmsTxt(), llmsFullTxt(), JSON.stringify(faqGroups()), JSON.stringify(homeFaq())]) {
+      for (const claim of claims) expect(surface).not.toContain(claim);
+    }
+    // The static markup holds no Ask words; only the script's fallback does,
+    // for the page to paint once the flag says so.
+    const synced = syncHome(page()).html;
+    expect(synced.slice(0, synced.indexOf("<script>"))).not.toContain(SITE_UI.ask.title);
+  });
+
+  it("has the redesign's order and grounds ready for when the page is live", () => {
+    // Today's layout stays until the page that knows these bands is live.
+    expect(SITE_SHAPE.layout.order).toContain("river");
+    const L = SITE_LAYOUT_REDESIGN;
+    expect(L.order).toEqual(["how", "river", "apps", "films", "tone", "desk", "llm", "dev", "ask", "questions", "free"]);
+    expect(L.order).not.toContain("hero");
+    expect(L.hidden).toEqual([]);
+    expect(Object.keys(L.bands).sort()).toEqual([...L.order].sort());
+    for (const b of Object.values(L.bands)) expect(["on-ink", "on-violet", "on-indigo", "on-cream"]).toContain(b);
+    // The theme gained new names and changed none of the old ones.
+    expect(SITE_SHAPE.theme).toMatchObject({
+      "field-hi": "#241C52", "field-lo": "#0F0B24", beige: "#CFC7BB", "rose-deep": "#A62B4B",
+      ink: "#0F0D0B", white: "#F3E2C6", amber: "#E8A23C", violet: "#1C1640", indigo: "#2A2878",
+    });
+    expect(SITE_SHAPE.theme.code).toMatch(/^ui-monospace/);
   });
 });
