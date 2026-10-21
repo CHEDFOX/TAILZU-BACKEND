@@ -347,3 +347,37 @@ git pull && docker compose up -d --build       # deploy a new version
   with the same `DEEPGRAM_API_KEY` the live dictation uses; without it, notes
   still work and label voices "You" and "Others". `NOTES_MODEL` picks the model
   that organises them (defaults to `CLEANUP_MODEL`).
+
+## Connected apps (Ask acting in Notion, Linear, Jira and so on)
+
+Off by default. While `CONNECTORS` is false nothing changes: Ask's planner gets
+exactly the prompt it always did and `/v1/connectors` answers `{"enabled":false}`.
+
+To switch it on:
+
+1. **Migration.** Paste `tulmi/supabase/migrations/0017_connectors.sql` into the
+   Supabase SQL editor (or re-run `full_schema.sql`). It creates
+   `connector_connections`, `assistant_tasks` and `assistant_audit`. The server
+   needs `SUPABASE_SERVICE_KEY` for them; without it connections live in memory
+   and are lost on restart.
+2. **The key.** `openssl rand -base64 32` into `CONNECTOR_TOKEN_KEY` in
+   `tulmi/.env`. It encrypts every stored token and signs the sign-in link; with
+   no key the server refuses to store a token. Changing it later disconnects
+   everyone (stored tokens no longer open), so keep it with the other secrets.
+3. **The redirect.** `CONNECTOR_REDIRECT_URL` defaults to
+   `https://api.tailzu.space/v1/connectors/callback`. It must be this server's
+   `GET /v1/connectors/callback`, reachable from the person's browser.
+4. **Which apps.** `CONNECTORS_ENABLED_IDS=notion,linear` (ids from
+   `src/connectors/catalog.ts`). **Every catalog entry ships unverified and
+   disabled.** Before an id goes in this list, verify that app's endpoint end to
+   end against the live service: the MCP URL still answers, it accepts dynamic
+   client registration (or, for a per-user URL like Zapier, the pasted link
+   works), a real sign-in comes back to the callback, `tools/list` returns
+   tools, and one read and one write behave. Then set that entry's `verified`.
+5. `CONNECTORS=true`, then `docker compose up -d --build`.
+
+Anything that changes, sends, deletes or pays is confirmed by the person first
+(the Ask run ends with an `approve` event, the device shows the card, and
+`POST /v1/tasks/:id/approve` runs it); a waiting task also pushes to their phone
+(`push.approval.*` in the control plane). What ran is in `assistant_audit`, with
+no message text.

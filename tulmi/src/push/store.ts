@@ -29,7 +29,8 @@ export interface Candidate {
 export interface TicketRecord { platform: string; tokenHash: string; ticketId?: string; status: string; error?: string }
 
 export interface PushStore {
-  candidates(now: number): Promise<Candidate[]>;
+  /** Everyone with a phone, or just `onlyUser`. */
+  candidates(now: number, onlyUser?: string): Promise<Candidate[]>;
   moments(userId: string, sinceMs: number): Promise<Moment[]>;
   log(userId: string, sinceMs: number): Promise<LogEntry[]>;
   /** The new row's id, or null when this period is already claimed. */
@@ -58,12 +59,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export class SupabasePushStore implements PushStore {
   constructor(private readonly sb: SupabaseClient, private readonly warn: (msg: string) => void = console.warn) {}
 
-  async candidates(now: number): Promise<Candidate[]> {
+  async candidates(now: number, onlyUser?: string): Promise<Candidate[]> {
     const byUser = new Map<string, Candidate>();
     for (let from = 0; ; from += 1000) {
-      const { data, error } = await this.sb
+      let q = this.sb
         .from("push_tokens")
-        .select("user_id, platform, token, updated_at")
+        .select("user_id, platform, token, updated_at");
+      if (onlyUser) q = q.eq("user_id", onlyUser);
+      const { data, error } = await q
         .order("user_id")
         .range(from, from + 999);
       if (error) { this.warn(`[push] push_tokens read failed: ${error.message}`); break; }

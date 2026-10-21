@@ -49,6 +49,13 @@ export function initPush(opts: { accessToken?: string; store?: PushStore; sender
 
 export function pushEngine(): PushEngine | null { return engine; }
 
+/** Tell a person's phones an assistant task is waiting for their yes. Never throws; says nothing about the task. */
+export async function notifyApproval(userId: string, taskId: string, app: string): Promise<void> {
+  try {
+    await engine?.notify(userId, { kind: "approval", key: taskId, vars: { app } });
+  } catch { /* a missed push is not a failed task: the card is still in the app */ }
+}
+
 export function registerPushRoutes(app: FastifyInstance, opts: { rateLimit?: Record<string, unknown> } = {}): void {
   const cfg = opts.rateLimit ? { config: opts.rateLimit } : {};
   const ready = (req: FastifyRequest, reply: FastifyReply): PushEngine | null => {

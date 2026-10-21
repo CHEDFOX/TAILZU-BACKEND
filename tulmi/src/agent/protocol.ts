@@ -326,7 +326,7 @@ export function audioFormatOf(filename: string | undefined, mime: string | undef
   return "webm";
 }
 
-const TERMINAL = new Set<AgentEvent["t"]>(["action", "ask", "look", "done", "error"]);
+const TERMINAL = new Set<AgentEvent["t"]>(["action", "ask", "look", "approve", "done", "error"]);
 
 /**
  * The one way events leave a step: in order, one JSON object per line, and

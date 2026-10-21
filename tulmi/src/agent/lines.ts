@@ -51,6 +51,8 @@ const INSTRUCTION_MAX = 500;
 const SAYS_MAX = 3;
 const POINTS_MAX = 6;
 const WHY_MAX = 120;
+/** A USE line's arguments, as written: past this it is not an argument list. */
+const USE_ARGS_MAX = 4000;
 /** Marks honoured in a step when the reader is not told (AGENT_DRAW_MAX). */
 const DRAWS_MAX = 12;
 /** A mark's label sits beside what it marks, in handwriting: a few words. */
@@ -81,7 +83,16 @@ export interface ParseOptions {
   order?: SpotOrder;
 }
 
+/** USE notion.search_pages {"query":"launch"}: a tool of a connected app. */
+export interface UseLine {
+  verb: "USE";
+  connector: string;
+  tool: string;
+  args: Record<string, unknown>;
+}
+
 export type Line =
+  | UseLine
   | { verb: "SAY"; text: string }
   | { verb: "POINT"; id: string; caption?: string }
   | { verb: "STEPS"; items: string[] }
@@ -242,9 +253,27 @@ export function parseLine(raw: string, platform: Platform, opts: ParseOptions = 
     }
     case "DRAW":
       return { verb, draw: parseDraw(arg, opts) };
+    case "USE":
+      return parseUse(arg);
     default:
       return null;
   }
+}
+
+/** `connector.tool {json}`; the connector is a catalog id, the tool is the app's own name for it. */
+const USE_HEAD = /^([a-z][a-z0-9-]{1,30})\.([A-Za-z0-9][A-Za-z0-9_.:-]{0,79})\b\s*([\s\S]*)$/;
+function parseUse(arg: string): UseLine | null {
+  const m = USE_HEAD.exec(arg.replace(/^`|`$/g, "").trim());
+  if (!m) return null;
+  const raw = m[3]!.trim().replace(/^```(?:json)?|```$/g, "").trim();
+  if (raw.length > USE_ARGS_MAX) return null;
+  let args: unknown = {};
+  if (raw) {
+    try { args = JSON.parse(raw); } catch { return null; }
+  }
+  // An unreadable argument list is no call at all: a guess at what to send is worse than asking.
+  if (!args || typeof args !== "object" || Array.isArray(args)) return null;
+  return { verb: "USE", connector: m[1]!, tool: m[2]!, args: args as Record<string, unknown> };
 }
 
 // ---- DRAW ---------------------------------------------------------------------
@@ -451,7 +480,7 @@ export function parseDraw(arg: string, opts: ParseOptions = {}): AgentDraw | nul
 }
 
 /** What one line comes to: an event to send now, or the step's action. */
-export type ReaderOut = { emit: AgentEvent } | { act: ActionLine };
+export type ReaderOut = { emit: AgentEvent } | { act: ActionLine } | { use: UseLine };
 
 export interface ReaderRules {
   /** The step came with a picture and is answered about it. */
@@ -460,6 +489,9 @@ export interface ReaderRules {
   says?: number;
   /** DRAW lines honoured in the step (AGENT_DRAW_MAX). */
   draws?: number;
+  /** USE lines honoured: the planner was shown a connected app's tools.
+   *  Without it a USE line is read and ignored, as any other prose is. */
+  connectors?: boolean;
 }
 
 /** The text's TeX, as the symbols it stands for. */
@@ -562,6 +594,7 @@ export class LineReader {
   private says = 0;
   private readonly pointed = new Set<string>();
   private readonly picture: boolean;
+  private readonly connectors: boolean;
   private readonly saysMax: number;
   private readonly drawsMax: number;
   /** Events this reader has produced. */
@@ -573,6 +606,7 @@ export class LineReader {
 
   constructor(private readonly ids: Set<string>, private readonly mode: "show" | "do", rules: ReaderRules = {}) {
     this.picture = rules.picture === true;
+    this.connectors = rules.connectors === true && !this.picture;
     this.saysMax = rules.says ?? SAYS_MAX;
     this.drawsMax = Math.max(0, rules.draws ?? DRAWS_MAX);
   }
@@ -604,6 +638,11 @@ export class LineReader {
       case "DONE":
         this.done = true;
         return this.out(line.text ? { t: "done", text: line.text } : { t: "done" });
+      case "USE":
+        // Like an action, it is the step's last word; the run decides what it means.
+        if (!this.connectors) return [];
+        this.done = true;
+        return [{ use: line }];
       default:
         return this.action(line);
     }

@@ -14,7 +14,7 @@
  * out of the loop, and nothing here runs under a request.
  */
 import type { ControlCtx } from "../control/rules.js";
-import type { PushPayload } from "./defaults.js";
+import type { EventPushKind, PushPayload } from "./defaults.js";
 import type { PushMessage, PushSender, Ticket } from "./expo.js";
 import { knobsOf, plan, timingKnobs, type Decision, type Facts } from "./plan.js";
 import { isQuiet } from "./timing.js";
@@ -77,7 +77,7 @@ export class PushEngine {
 
   /** One person, as the engine sees them; null without a registered phone. */
   async candidate(userId: string, now: number): Promise<Candidate | null> {
-    return (await this.store.candidates(now)).find((c) => c.userId === userId) ?? null;
+    return (await this.store.candidates(now, userId)).find((c) => c.userId === userId) ?? null;
   }
 
   /** The config one person gets, with the control plane's rules applied. */
@@ -237,6 +237,34 @@ export class PushEngine {
     }
     this.log.info(report, "[push] broadcast");
     return report;
+  }
+
+  /**
+   * One push to one person because something just happened (an assistant
+   * task is waiting for their yes). Text, screen and on/off all come from the
+   * control plane's "push" surface like the planned reasons. Claimed under
+   * "<kind>:<key>", so the same event never pushes twice. Null when the person
+   * has no phone registered, it is switched off, or it was already sent.
+   */
+  async notify(
+    userId: string,
+    msg: { kind: EventPushKind; key: string; vars?: Record<string, string | number> },
+    now = Date.now(),
+  ): Promise<{ sent: boolean; dropped: number } | null> {
+    const c = await this.candidate(userId, now);
+    if (!c?.tokens.length) return null;
+    const payload = this.configFor(c, now);
+    const k = knobsOf(payload);
+    if (!k.flag(`push.${msg.kind}.enabled`, true)) return null;
+    const d = {
+      kind: msg.kind, periodKey: `${msg.kind}:${msg.key}`, sendAt: now,
+      title: k.label(`push.${msg.kind}.title`, "", msg.vars),
+      body: k.label(`push.${msg.kind}.body`, "", msg.vars),
+      screenId: k.flag(`push.${msg.kind}.screenId`, "home"),
+      ttlSec: Math.max(60, Math.round(k.flag("push.smart.ttlMin", 180) * 60)),
+    };
+    const res = await this.deliver(c, d, payload, now);
+    return res ? { sent: res.sent, dropped: res.dropped } : null;
   }
 
   /** Claim, send to every phone, record. Null when someone else claimed it. */

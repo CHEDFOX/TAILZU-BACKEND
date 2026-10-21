@@ -19,7 +19,7 @@
 import { computeAllowance } from "../usage/allowance.js";
 import { getConfig } from "../config.js";
 import type { PushPayload, PushKind } from "./defaults.js";
-import { PUSH_KINDS } from "./defaults.js";
+import { EVENT_PUSH_KINDS, PUSH_KINDS } from "./defaults.js";
 import { busiestWeekday, pickTime, rhythm, type Moment, type Rhythm, type TimingKnobs } from "./timing.js";
 
 const MIN = 60_000;
@@ -124,7 +124,7 @@ export function plan(f: Facts, k: Knobs): Decision {
   }
 
   const sent = f.log
-    .filter((e) => e.sentAt !== null && e.status === "sent")
+    .filter((e) => e.sentAt !== null && e.status === "sent" && !(EVENT_PUSH_KINDS as readonly string[]).includes(e.kind))
     .sort((a, b) => (b.sentAt! - a.sentAt!));
   if (sent.filter((e) => now - e.sentAt! < DAY).length >= k.flag("push.smart.maxPerDay", 1)) return { skip: "daily cap" };
   if (sent.filter((e) => now - e.sentAt! < 7 * DAY).length >= k.flag("push.smart.maxPerWeek", 3)) return { skip: "weekly cap" };

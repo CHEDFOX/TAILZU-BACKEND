@@ -86,6 +86,12 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.winback.maxUnanswered": 3,
     "push.winback.screenId": "personality",
 
+    // Event pushes: sent when something happens, never planned (see
+    // PushEngine.notify). They skip the daily and weekly caps, the quiet
+    // hours and the fatigue count, because a person is waiting on them.
+    "push.approval.enabled": true,
+    "push.approval.screenId": "assistant",
+
     "push.lowWords.enabled": false,
     "push.lowWords.fraction": 0.1,
     "push.lowWords.screenId": "paywall",
@@ -99,6 +105,8 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.weekly.body": "{words} words written by voice this week.",
     "push.winback.title": "Say it, don't type it",
     "push.winback.body": "Tailzu writes it for you.",
+    "push.approval.title": "Waiting for your OK",
+    "push.approval.body": "Tailzu needs a yes from you to carry on in {app}.",
     "push.lowWords.title": "{n} words left",
     "push.lowWords.body": "Enough for today. More any time.",
   },
@@ -107,3 +115,7 @@ export const PUSH_DEFAULTS: PushPayload = {
 /** Every reason the planner knows. */
 export const PUSH_KINDS = ["streak", "refill", "weekly", "winback", "lowWords"] as const;
 export type PushKind = (typeof PUSH_KINDS)[number];
+
+/** Reasons that are sent when something happens, not planned by the engine. */
+export const EVENT_PUSH_KINDS = ["approval"] as const;
+export type EventPushKind = (typeof EVENT_PUSH_KINDS)[number];
