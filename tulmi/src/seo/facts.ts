@@ -175,7 +175,7 @@ export function faqGroups(): QAGroup[] {
         { q: "Is Tailzu free?", a: "Yes. Every word, in every language, on iPhone, Android, Windows and Mac, with no word limit and nothing to pay." },
         { q: "How much does Tailzu cost?", a: "Nothing. Tailzu is free, and there is no paid plan to pick." },
       ] : [
-        { q: "Is Tailzu free?", a: `Yes, to start: ${num(p.freeWords)} words a month, free${p.earnWords ? `, and up to ${num(p.earnWords)} more earned by writing on consecutive days` : ""}.` },
+        { q: "Is Tailzu free?", a: `Yes, to start: ${num(p.freeWords)} words a month, free.` },
         { q: "How much does Tailzu cost?", a: `${prices}. Both remove the word limit.` },
         { q: "Can I cancel any time?", a: "Yes. Cancel from the App Store, Google Play or your receipt email; the plan runs to the end of the period you paid for." },
       ],

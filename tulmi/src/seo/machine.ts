@@ -63,7 +63,8 @@ function priceLines(): string[] {
   const p = plans();
   if (p.free) return ["- Free: every word, every language, every app, with no word limit and nothing to pay."];
   return [
-    `- Free: ${p.freeWords.toLocaleString("en-US")} words a month${p.earnWords ? `, plus up to ${p.earnWords.toLocaleString("en-US")} more earned by writing on consecutive days` : ""}.`,
+    // The words earned by coming back stay a surprise (see routes/policies/pricing.ts).
+    `- Free: ${p.freeWords.toLocaleString("en-US")} words a month.`,
     ...(p.monthly ? [`- ${p.monthly.name}: ${p.monthly.price} a month, unlimited words, cancel any time.`] : []),
     ...(p.yearly ? [`- ${p.yearly.name}: ${p.yearly.price} a year${p.yearly.perMonth ? ` (${p.yearly.perMonth} a month)` : ""}, unlimited words${p.yearly.trialDays ? `, first ${p.yearly.trialDays} days free in the app` : ""}.`] : []),
   ];

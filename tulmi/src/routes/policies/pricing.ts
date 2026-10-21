@@ -73,7 +73,8 @@ export function pricingHtml(opts: {
     </section>`;
   const free = card("Free", "$0", "Free to start", [
     `${n(opts.freeWords)} words a month.`,
-    ...(opts.earnMaxWords > 0 ? [`Up to ${n(opts.earnMaxWords)} more, earned by writing on consecutive days.`] : []),
+    // Words earned by coming back are a surprise in the app, never a promise
+    // on a page: the reward only works if it is not a known price.
     "Every voice, every language, every app.",
   ]);
   const paidCards = paid.map((p) => {
