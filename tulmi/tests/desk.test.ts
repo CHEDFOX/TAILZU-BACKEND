@@ -21,7 +21,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 // eslint-disable-next-line import/first
-import { DESK_NAV, DESK_SCREENS, deskNav } from "../src/experience/desk.js";
+import { DESK_NAV, DESK_SCREENS, SPEAKER_COLORS, deskNav, speakerColor } from "../src/experience/desk.js";
 // eslint-disable-next-line import/first
 import { writtenIn } from "../src/history/writtenIn.js";
 // eslint-disable-next-line import/first
@@ -859,6 +859,103 @@ describe("the desk's notes", () => {
     const empty = (can: string[]) => JSON.stringify(buildScreen("desk_notes", { personality: {}, language: "en", notes: [], can: new Set(can) } as never));
     expect(empty(["DeskNotes"])).toContain('"kind":"notes.toggle"');
     expect(empty([])).not.toContain("notes.toggle");
+  });
+});
+
+describe("a note's speakers each have a colour, and the page has room", () => {
+  const meeting = {
+    id: "44444444-4444-4444-8444-444444444444", status: "ready", startedAt: new Date().toISOString(), durationSeconds: 120, words: 60,
+    title: "Pricing", summary: "Priya and you set the price.", organised: true,
+    people: [{ label: "Speaker 1", name: "Priya" }],
+    highlights: [
+      { speaker: "You", text: "Twenty five euros." },
+      { speaker: "You", text: "And twelve fifty to make." },
+      { speaker: "Speaker 1", text: "Wholesale or shelf?" },
+      { speaker: "Speaker 2", text: "Production cost comes first." },
+      { speaker: "You", text: "Shelf." },
+    ],
+    transcript: [
+      { at: 0, speaker: "You", text: "Twenty five euros and twelve fifty to make." },
+      { at: 20, speaker: "Speaker 1", text: "Wholesale or shelf?" },
+      { at: 40, speaker: "Speaker 2", text: "Production cost comes first." },
+      { at: 60, speaker: "You", text: "Shelf." },
+    ],
+  };
+  const screenOf = (nt = meeting) => buildScreen("desk_note", { personality: {}, language: "en", note: nt, can: new Set(["DeskNotes"]) } as never) as any;
+  const tintOf = (c: string, pct: number) => `color-mix(in srgb, ${c} ${pct}%, var(--d-sheet))`;
+  const boxes = (s: any) => {
+    const out: any[] = [];
+    walk(s.root, (n) => { if ((n as any).props?.cls === "d-speaker") out.push(n); });
+    return out;
+  };
+  const texts = (n: any) => { const t: string[] = []; walk(n, (x) => { if ((x as any).type === "Text") t.push((x as any).props.content); }); return t; };
+
+  it("You is always the desk's accent; Speaker n takes slot n, the same on every note", () => {
+    expect(speakerColor("You")).toBe("#C97A12");
+    const six = [1, 2, 3, 4, 5, 6].map((i) => speakerColor(`Speaker ${i}`));
+    expect(six).toEqual([...SPEAKER_COLORS]);
+    expect(new Set([...six, speakerColor("You")]).size).toBe(7);   // six others and You, all apart
+    expect(speakerColor("Speaker 7")).toBe(speakerColor("Speaker 1")); // past six it repeats
+    expect(speakerColor("Speaker 12")).toBe(speakerColor("Speaker 6"));
+    expect(speakerColor("Speaker 2")).toBe(speakerColor("Speaker 2"));
+    // voices not told apart are a neutral, not somebody's colour
+    expect(SPEAKER_COLORS).not.toContain(speakerColor("Others"));
+    expect(speakerColor("Others")).toContain("var(--d-ink)");
+    // any other label keeps one colour from the palette
+    expect(SPEAKER_COLORS).toContain(speakerColor("Guest"));
+    expect(speakerColor("Guest")).toBe(speakerColor("Guest"));
+  });
+
+  it("each turn in What mattered is one soft box in its speaker's colour, with their name", () => {
+    const b = boxes(screenOf());
+    // You twice in a row is one turn; then Priya, Speaker 2, and You again
+    expect(b.map((x) => texts(x)[0])).toEqual(["You", "Priya", "Speaker 2", "You"]);
+    expect(texts(b[0]).slice(1)).toEqual(["Twenty five euros.", "And twelve fifty to make."]);
+    const you = speakerColor("You"), priya = speakerColor("Speaker 1");
+    expect(b[0].style.background).toBe(tintOf(you, 9));
+    expect(b[1].style.background).toBe(tintOf(priya, 9));
+    expect(b[3].style.background).toBe(b[0].style.background);
+    for (const x of b) {
+      expect(x.style.radius).toBeGreaterThan(0);
+      expect(x.style.paddingLeft).toBeGreaterThan(0);
+      expect(String(x.style.border)).toContain("color-mix(");
+      // the words stay in the ink; the colour is the wash and the dot
+      walk(x, (n) => { if ((n as any).type === "Text") expect((n as any).style.color).toBe("var(--d-ink)"); });
+    }
+    // the boxes have a little room between them
+    let list: any;
+    walk(screenOf().root, (n) => { if ((n as any).children?.some((c: any) => c.props?.cls === "d-speaker")) list = n; });
+    expect(list.style.gap).toBeGreaterThan(0);
+  });
+
+  it("a speaker wears the same colour everywhere on the page", () => {
+    const j = JSON.stringify(screenOf());
+    const priya = speakerColor("Speaker 1");
+    expect(j).toContain(tintOf(priya, 11));             // the chip at the top
+    expect(j).toContain(tintOf(priya, 9));              // the box
+    expect(j).toContain(`"background":"${priya}"`);     // dot, swatch and lane
+    expect(j).toContain(`${priya} `);                   // a slice of the donut
+    // by who they are, not how much they talked: Speaker 2 talked least and is still slot 2
+    expect(j).toContain(`"background":"${speakerColor("Speaker 2")}"`);
+  });
+
+  it("sections are set apart: the head ruled off, headings close to what they head", () => {
+    const s = screenOf();
+    let head: any, mattered: any, numbers: any;
+    walk(s.root, (n) => {
+      const x = n as any;
+      if (x.type === "Stack" && x.props?.cls === "d-rule-bottom" && x.children?.some((c: any) => c.props?.cls === "d-h1")) head = x;
+      if (x.type === "Text" && x.props.content === "What mattered") mattered = x;
+      if (x.type === "Text" && x.props.content === "The conversation in numbers") numbers = x;
+    });
+    expect(head.style.marginBottom).toBeGreaterThanOrEqual(40);
+    expect(mattered.props.cls).toBe("d-h2");
+    expect(numbers.style.marginTop).toBeGreaterThan(mattered.style.marginBottom * 2);
+    expect(mattered.style.marginBottom).toBe(numbers.style.marginBottom);
+    // with the "With" chips naming everyone in the order they first spoke
+    const chips: string[] = [];
+    walk(head, (n) => { const x = n as any; if (x.type === "Stack" && x.style?.radius === 999) chips.push(texts(x)[0]!); });
+    expect(chips).toEqual(["You", "Priya", "Speaker 2"]);
   });
 });
 

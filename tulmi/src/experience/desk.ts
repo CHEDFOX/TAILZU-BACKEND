@@ -275,6 +275,47 @@ const pct = (v: number, total: number) => (total > 0 ? Math.round((v / total) * 
 const swatch = (color: string, size = 10): Node => stack([], { width: size, height: size, radius: 3, background: color, flex: "none" });
 
 /**
+ * THE SPEAKERS' COLOURS. A note's page gives every voice one colour, the same
+ * wherever it appears: the dot by its name at the top, its box in "What
+ * mattered", its swatch, slice and lane in the numbers. The colour follows
+ * the speaker, never their rank, so a quiet voice keeps its colour whoever
+ * talked most.
+ *
+ * "You" is always the desk's accent. "Speaker n" takes slot n of six, so
+ * Speaker 1 is teal on every note, and Speaker 7 is teal again: past six the
+ * palette repeats, and the name written beside every colour tells them apart.
+ * "Others" (call voices the diarizer could not split) is a neutral, not a
+ * person's colour. A label of any other shape is placed by its letters, so it
+ * too keeps one colour.
+ *
+ * You and Speakers 1–3 are the four validated SERIES hues, so the common
+ * meeting (four voices or fewer) is the donut's validated set exactly. The
+ * three after them were picked by the data-viz validator against both desk
+ * surfaces (#FFFFFF, #151210): lightness, chroma and 3:1 contrast pass in
+ * both, and the closest pair across all seven is ΔE 13 under normal vision,
+ * which is why a colour is never the only thing that says who.
+ *
+ * A box is a TINT, mixed from the speaker's colour into the theme's own sheet
+ * (`color-mix`, as the charts already do), so one value is a soft wash on the
+ * light sheet and a quiet glow on the dark one, and nothing waits on a build.
+ */
+const YOU_COLOR = SERIES[0];
+export const SPEAKER_COLORS = ["#00977F", "#4B5BD0", "#D6456E", "#A06DBE", "#248FCC", "#A34D16"] as const;
+const UNSPLIT = "color-mix(in srgb, var(--d-ink) 40%, var(--d-sheet))";
+export function speakerColor(label: string): string {
+  if (label === "You") return YOU_COLOR;
+  if (!label || label === "Others") return UNSPLIT;
+  const m = /^Speaker (\d+)$/.exec(label);
+  let i = m ? Number(m[1]) - 1 : 0;
+  if (!m) for (const ch of label) i = (i * 31 + ch.charCodeAt(0)) % 9973;
+  return SPEAKER_COLORS[((i % SPEAKER_COLORS.length) + SPEAKER_COLORS.length) % SPEAKER_COLORS.length]!;
+}
+/** A colour washed into the sheet: `pct` of it, the rest the theme's paper. */
+const tint = (color: string, pctOf: number) => `color-mix(in srgb, ${color} ${pctOf}%, var(--d-sheet))`;
+/** A round dot of a speaker's colour, for beside their name. */
+const speakerDot = (color: string, size = 8): Node => stack([], { width: size, height: size, radius: "50%", background: color, flex: "none" });
+
+/**
  * A DONUT: part-to-whole at a glance, four colours and Other at most. A 2px gap
  * in the sheet's colour separates neighbouring slices (no borders), and the
  * hole carries the whole's figure, so the chart says its total without a key.
@@ -1690,13 +1731,53 @@ const NOTE_STATUS: Record<string, string> = {
   failed: "Couldn't organise this one. What was heard is kept",
 };
 
+/**
+ * THE NOTE PAGE'S AIR. One rhythm for the whole page, so it reads as a few
+ * calm sections and not one long list: the most room between sections, less
+ * between the parts of one, and a heading always closer to what it heads than
+ * to what came before it.
+ */
+const NOTE_AIR = { section: 72, part: 56, head: 20, box: 12 } as const;
+/** A note section's heading: the desk's h2, a step up, set apart from its body. */
+const NOTE_HEAD: Style = { fontSize: 24, lineHeight: "30px", marginBottom: NOTE_AIR.head };
+/** The text column: summary and boxes keep a comfortable line length. */
+const NOTE_MEASURE = 720;
+
+/** A speaker as a small chip: a dot of their colour and their name. */
+function speakerChip(name: string, color: string): Node {
+  return row([speakerDot(color, 7), text(name, "d-margin-strong", { color: "var(--d-ink)", whiteSpace: "nowrap" })], {
+    gap: 7, align: "center", paddingTop: 4, paddingBottom: 4, paddingLeft: 9, paddingRight: 11,
+    radius: 999, background: tint(color, 11), border: `1px solid ${tint(color, 24)}`,
+  });
+}
+
+/**
+ * One turn in "What mattered": what a speaker said in a row, in a soft box
+ * of their colour, their dot and name at the top. Text stays in the ink; the
+ * colour is only the wash, the hairline and the dot.
+ */
+function speakerBox(name: string, color: string, points: string[]): Node {
+  return stack([
+    row([speakerDot(color), text(name, "d-margin-strong", { color: "var(--d-ink)" })], { gap: 8, align: "center" }),
+    ...points.map((p, i) => /[ऀ-ॿ]/.test(p)
+      ? text(p, "d-said d-deva", { fontSize: 16, lineHeight: "25px", color: "var(--d-ink)", marginTop: i ? 12 : 10 })
+      : text(p, "d-said", { fontSize: 20, lineHeight: "27px", color: "var(--d-ink)", marginTop: i ? 12 : 8 })),
+  ], {
+    background: tint(color, 9), border: `1px solid ${tint(color, 22)}`, radius: 12,
+    paddingTop: 14, paddingBottom: 18, paddingLeft: 20, paddingRight: 22,
+  }, "d-speaker");
+}
+
 /** "You, Priya, Speaker 3" — names where the writer found them. */
 function peopleLine(people: NoteSummary["people"], transcript?: Note["transcript"]): string {
   const named = new Map((people ?? []).map((p) => [p.label, p.name]));
-  const labels = transcript?.length
+  return peopleLabels(people, transcript).map((l) => named.get(l) || l).join(", ");
+}
+/** Who is in a note, by label, in the order they first spoke. */
+function peopleLabels(people: NoteSummary["people"], transcript?: Note["transcript"]): string[] {
+  return transcript?.length
     ? [...new Set(transcript.map((s) => s.speaker ?? "").filter(Boolean))]
     : (people ?? []).map((p) => p.label);
-  return labels.map((l) => named.get(l) || l).join(", ");
 }
 
 function noteTitle(ctx: DeskContext, nt: Pick<NoteSummary, "title" | "startedAt">): string {
@@ -1855,7 +1936,7 @@ function onlyYourSide(canOpen: boolean): Node {
     canOpen
       ? row([link("Allow", { kind: "notes.allowSystemAudio" }, "d-btn")], { marginTop: 14 })
       : text("System Settings → Privacy & Security → Screen & System Audio Recording → turn on Tailzu.", "d-margin", { marginTop: 10 }),
-  ], { paddingTop: 18, paddingBottom: 20, marginBottom: 34, borderTop: "1px solid var(--d-rule)", borderBottom: "1px solid var(--d-rule)", maxWidth: 760 });
+  ], { paddingTop: 18, paddingBottom: 20, paddingLeft: 22, paddingRight: 22, marginBottom: 44, radius: 12, background: "var(--d-press)", border: "1px solid var(--d-rule)", maxWidth: NOTE_MEASURE });
 }
 
 /** The note as plain text, for Copy: the meeting, the paragraph, the lines. */
@@ -1920,10 +2001,11 @@ function noteNumbers(nt: Note): Node[] {
   const t = talkStats(nt);
   if (!t.spans.length) return [];
   const length = Math.max(nt.durationSeconds || 0, ...t.spans.map((x) => x.end), 1);
-  // One colour per voice for the whole section: the four who talked most in
-  // the validated order, anyone past them as Other.
-  const parts = foldParts(t.voices.map((v) => ({ label: v.name, value: v.seconds, value2: secsLine(v.seconds) })));
-  const colorOf = new Map(t.voices.map((v, i) => [v.label, i < 4 ? SERIES[i]! : OTHER]));
+  // One colour per voice for the whole page (speakerColor): the same as its
+  // box in "What mattered". The donut shows the four who talked most, anyone
+  // past them as Others.
+  const colorOf = new Map(t.voices.map((v) => [v.label, speakerColor(v.label)]));
+  const parts = foldParts(t.voices.map((v) => ({ label: v.name, value: v.seconds, value2: secsLine(v.seconds), color: colorOf.get(v.label) })));
   if (t.voices.length > 4) {
     const rest = t.voices.slice(4).reduce((s, v) => s + v.seconds, 0);
     parts[parts.length - 1] = { label: "Others", value: rest, color: OTHER, value2: secsLine(rest) };
@@ -1934,7 +2016,7 @@ function noteNumbers(nt: Note): Node[] {
     statTile("Voices", n(t.voices.length), t.voices.length === 1 ? "just one" : "told apart"),
     statTile("Turns", n(t.turns), "changes of speaker"),
     statTile("Questions", n(t.questions), "asked out loud"),
-  ].map((x) => ({ ...x, style: { ...(x.style ?? {}), minWidth: 150 } })), { gap: 32, flexWrap: "wrap", paddingTop: 26 }, "d-rule-top");
+  ].map((x) => ({ ...x, style: { ...(x.style ?? {}), minWidth: 150 } })), { gap: 32, flexWrap: "wrap", paddingTop: 28 }, "d-rule-top");
 
   const share = t.voices.length > 1
     ? section("Who talked", "Each voice's share of the talking time.",
@@ -1996,12 +2078,12 @@ function noteNumbers(nt: Note): Node[] {
         row([stamp(0), stamp(length / 2), stamp(length)].map((l) => text(l, "d-margin")), { justify: "between", flex: 1, minWidth: 0 })],
         { gap: 14, marginTop: 10 }),
     ], { marginTop: 20 }),
-  ], { flex: "none", width: "100%", marginTop: 52 });
+  ], { flex: "none", width: "100%", marginTop: NOTE_AIR.part });
 
   return [
-    text("The conversation in numbers", "d-h2", { marginTop: 60, marginBottom: 18, fontSize: 24 }),
+    text("The conversation in numbers", "d-h2", { ...NOTE_HEAD, marginTop: NOTE_AIR.section }),
     tiles,
-    ...twoUp(share, table, { marginTop: 44 }),
+    ...twoUp(share, table, { marginTop: NOTE_AIR.part }),
     timeline,
   ];
 }
@@ -2023,7 +2105,8 @@ export function deskNote(ctx: DeskContext): ScreenResponse {
   }
   const d = local(ctx, Date.parse(nt.startedAt));
   const named = new Map(nt.people.map((p) => [p.label, p.name]));
-  const who = peopleLine(nt.people, nt.transcript);
+  const nameOf = (label: string) => named.get(label) || label;
+  const who = peopleLabels(nt.people, nt.transcript);
   const meta = [dateLine(d), clock(d), nt.durationSeconds ? span(nt.durationSeconds / 60) : ""].filter(Boolean).join(" · ");
   const busy = nt.status === "organising";
   const canOrganise = nt.status === "failed" || nt.status === "recording" || (nt.status === "ready" && !nt.organised && nt.transcript.length > 0);
@@ -2032,8 +2115,12 @@ export function deskNote(ctx: DeskContext): ScreenResponse {
     row([link("All notes", { kind: "switchTab", tabId: "desk_notes" })], { marginBottom: 18 }),
     text("Meeting", "d-eyebrow"),
     text(noteTitle(ctx, nt), "d-h1", { marginTop: 6 }),
-    text(meta, "d-count", { marginTop: 10 }),
-    ...(who ? [text(`With ${who}`, "d-margin", { marginTop: 4 })] : []),
+    text(meta, "d-count", { marginTop: 12 }),
+    // Who was in it, each in their colour: the page's key to the boxes below.
+    ...(who.length ? [row([
+      text("With", "d-margin", { marginRight: 2 }),
+      ...who.map((l) => speakerChip(nameOf(l), speakerColor(l))),
+    ], { gap: 8, align: "center", flexWrap: "wrap", marginTop: 16 })] : []),
     ...(nt.status !== "ready" ? [text(NOTE_STATUS[nt.status] ?? "", "d-lede", { marginTop: 12 })] : []),
     ...(nt.status === "ready" && !nt.organised ? [text("Nobody spoke in this one.", "d-lede", { marginTop: 12 })] : []),
     row([
@@ -2052,25 +2139,29 @@ export function deskNote(ctx: DeskContext): ScreenResponse {
         } as ActionRef),
         link("Keep", { kind: "setState", path: "noteDel", value: false }),
       ], { gap: 14, align: "center" }), visibleIf: { truthy: "noteDel" } },
-    ], { gap: 22, marginTop: 18, align: "center", flexWrap: "wrap" }),
-  ], { marginBottom: 34 });
+    ], { gap: 22, marginTop: 22, align: "center", flexWrap: "wrap" }),
+  ], { paddingBottom: 30, marginBottom: 44 }, "d-rule-bottom");
 
   const body: Node[] = [];
   // THE COMPUTER'S SOUND WAS OFF. The note is still made, from the
   // microphone; this says so, and how to have everyone in the next one.
   if (nt.systemAudio === "denied") body.push(onlyYourSide(!!ctx.allowSystemAudio));
-  if (nt.summary) body.push(text(nt.summary, "d-written", { fontSize: 18, lineHeight: "28px", maxWidth: 680 }));
+  if (nt.summary) body.push(text(nt.summary, "d-written", { fontSize: 19, lineHeight: "31px", maxWidth: 680 }));
   if (nt.highlights.length) {
+    // A turn is what one speaker said in a row: one box, their colour.
+    const turns: Array<{ speaker: string; points: string[] }> = [];
+    for (const h of nt.highlights) {
+      const last = turns[turns.length - 1];
+      if (last && last.speaker === h.speaker) last.points.push(h.text);
+      else turns.push({ speaker: h.speaker, points: [h.text] });
+    }
     body.push(stack([
-      text("What mattered", "d-eyebrow", { marginBottom: 6 }),
-      ...nt.highlights.map((h) => row([
-        text(named.get(h.speaker) || h.speaker, "d-margin-strong", { width: 120, flex: "none", paddingTop: 4 }),
-        text(h.text, /[ऀ-ॿ]/.test(h.text) ? "d-said d-deva" : "d-said", { flex: 1, minWidth: 0 }),
-      ], { gap: 20, paddingTop: 16, paddingBottom: 16 }, "d-entry")),
-    ], { marginTop: nt.summary ? 40 : 0, maxWidth: 760 }));
+      text("What mattered", "d-h2", NOTE_HEAD),
+      stack(turns.map((t) => speakerBox(nameOf(t.speaker), speakerColor(t.speaker), t.points)), { gap: NOTE_AIR.box }),
+    ], { marginTop: nt.summary ? NOTE_AIR.section - 8 : 0 }));
   }
 
-  return screen("desk_note", noteTitle(ctx, nt), [page([head, stack(body, { maxWidth: 760 }), ...noteNumbers(nt)])], { noteDel: false });
+  return screen("desk_note", noteTitle(ctx, nt), [page([head, stack(body, { maxWidth: NOTE_MEASURE }), ...noteNumbers(nt)])], { noteDel: false });
 }
 
 // ---- SETTINGS and PLAN ----------------------------------------------------------------
