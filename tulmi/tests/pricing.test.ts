@@ -33,6 +33,10 @@ describe("the pricing page", () => {
     expect(html).toContain("https://xooteq.com/refunds");
   });
 
+  it("keeps the words earned by coming back a surprise: no amount, no rule", () => {
+    expect(html).not.toMatch(/1,700|consecutive|earned/i);
+  });
+
   it("carries nothing unfilled", () => {
     expect(html).not.toMatch(/undefined|null|NaN|\{\w+\}/);
   });
