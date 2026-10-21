@@ -980,7 +980,11 @@ describe("the picture path: its ladders", () => {
     expect(call.firstMs).toEqual(expect.any(Number));
     const stepLine = logged.find((l) => l.msg === "agent step")!.obj.agent;
     expect(stepLine).toMatchObject({ path: "picture", mode: "show", picture: true, pictureBytes: 3000, region: "element", ending: "done" });
-    const all = JSON.stringify(logged);
+    // Fastify's own "request completed" line carries the live reply (a
+    // circular object; its serializer cuts it to a status code when it is
+    // written). On Node 20 that line lands in `logged` before this runs, so
+    // only the route's own lines are checked here: they are what it writes.
+    const all = JSON.stringify(logged.filter((l) => l.msg !== "incoming request" && l.msg !== "request completed"));
     expect(all).not.toContain(data.toString("base64").slice(0, 40));
     expect(all).not.toMatch(/Export…|what does this chart show/);
   });
