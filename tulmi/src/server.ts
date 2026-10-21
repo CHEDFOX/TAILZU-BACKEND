@@ -9,6 +9,7 @@
  *   POST /v1/edit                 → selection: text + spoken instruction → rewrite
  *   POST /v1/ask                  → screen: screen content + question → answer
  *   POST /v1/agent                → Ask: one step of the on-screen agent (NDJSON)
+ *   /v1/connectors, /v1/tasks     → connected apps and the assistant's tasks (CONNECTORS)
  *   POST /v1/speak                → voice out: text → spoken audio (TTS)
  *   GET  /v1/personality          → read the user's saved style profile
  *   PUT  /v1/personality          → save the user's style profile
@@ -35,10 +36,12 @@ import { payCsp, payHtml, type PayOffer } from "./routes/pay.js";
 import { DOWNLOAD_PAGE_HTML } from "./routes/download.js";
 import { registerSeoRoutes } from "./routes/seo.js";
 import { registerNotesRoutes } from "./routes/notes.js";
+import { createConnectors, type Connectors } from "./connectors/index.js";
+import { registerConnectorRoutes } from "./routes/connectors.js";
 import { getNote, listNotes } from "./notes/store.js";
 import { registerDemoRoutes, sitePage, AUTH_RESUME_SCHEME_URL } from "./routes/demo.js";
 import { initControl, registerControlRoutes, requireAdmin, withControl } from "./control/index.js";
-import { initPush, pushEngine, registerPushRoutes } from "./push/index.js";
+import { initPush, notifyApproval, pushEngine, registerPushRoutes } from "./push/index.js";
 import { registerPushTokenRoutes, SupabasePushTokens } from "./push/tokens.js";
 import { registerReviewCodeRoute } from "./routes/reviewCode.js";
 import { getConfig, VERSION } from "./config.js";
@@ -953,6 +956,15 @@ if (cfg.PUSH_ENGINE) initPush({ accessToken: cfg.EXPO_ACCESS_TOKEN });
 registerPushRoutes(app, { rateLimit: AUTHED_RL });
 // The desktop's note-taker: a hotkey, the room's audio, notes kept in the app.
 registerNotesRoutes(app, { rateLimit: AUTHED_RL, effectiveLanguage });
+// Connected apps: Ask acting in the person's own apps through MCP. Off unless
+// CONNECTORS is true; the routes then say so and the agent's planner is untouched.
+const connectors: Connectors | null = cfg.CONNECTORS
+  ? createConnectors({
+      notify: (userId, task, a) => notifyApproval(userId, task.id, connectors?.hub.def(a.connector)?.name ?? "an app"),
+    })
+  : null;
+if (connectors) app.addHook("onClose", async () => { await connectors.hub.close(); });
+registerConnectorRoutes(app, { rateLimit: AUTHED_RL, connectors });
 // UNAUTH_RL removed — every previously-unauth route was gated on
 // per-user hashed tokens anyway, so AUTHED_RL is the right cap and
 // avoids the 429-storm we saw on /v1/keyboard/config launch traffic.
@@ -1896,6 +1908,7 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
           log: (call) => req.log.info({ agent: { runId: step.runId, step: step.step, ...call } }, "agent model call"),
         }),
         signal: gone.signal,
+        ...(connectors ? { connectors: connectors.runtimeFor(user.id) } : {}),
       },
       sink,
     );

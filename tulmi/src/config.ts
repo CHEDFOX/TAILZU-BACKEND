@@ -370,6 +370,35 @@ const EnvSchema = z.object({
    * and the stream ends there with what it heard.
    */
   AGENT_STREAM_MAX_SECONDS: z.coerce.number().int().min(1).max(900).default(30),
+
+  // --- Connected apps (src/connectors): Ask acts in the person's own apps ---
+  /**
+   * The whole feature. Off by default, and while it is off nothing changes:
+   * Ask's planner gets exactly the prompt it always did and the /v1/connectors
+   * and /v1/tasks routes answer "off". Turning it on also needs
+   * CONNECTOR_TOKEN_KEY, migration 0017 and at least one id below.
+   */
+  CONNECTORS: bool(false),
+  /**
+   * Which catalog apps (src/connectors/catalog.ts) people may connect, comma
+   * separated ("notion,linear"). Every catalog entry ships disabled because its
+   * vendor endpoint has to be tried against the live service first; naming an
+   * id here is the statement that this was done. An unknown id does nothing.
+   */
+  CONNECTORS_ENABLED_IDS: z.string().default(""),
+  /**
+   * 32 random bytes, base64 (openssl rand -base64 32). Encrypts every stored
+   * token (AES-256-GCM) and signs the sign-in state. Without it the server
+   * refuses to store a token, so connecting fails instead of saving a secret
+   * in the clear. Changing it disconnects everyone: stored tokens no longer open.
+   */
+  CONNECTOR_TOKEN_KEY: z.string().optional(),
+  /**
+   * Where an app sends the person back after they sign in. Must be the address
+   * of this server's GET /v1/connectors/callback, and must be reachable from
+   * their browser; it is what is registered with each vendor.
+   */
+  CONNECTOR_REDIRECT_URL: z.string().default("https://api.tailzu.space/v1/connectors/callback"),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 
@@ -968,6 +997,12 @@ export function getConfig(): AppConfig {
       "STT_PROVIDER=groq but GROQ_API_KEY is missing. Add GROQ_API_KEY, " +
         "or set STT_PROVIDER=openai and add OPENAI_API_KEY.",
     );
+  }
+
+  // Connected apps with no usable key can list apps but never connect one.
+  // Warned, not refused: the rest of the server is unaffected.
+  if (env.CONNECTORS && Buffer.from(env.CONNECTOR_TOKEN_KEY ?? "", "base64").length !== 32) {
+    console.warn("[config] CONNECTORS=true but CONNECTOR_TOKEN_KEY is not 32 bytes of base64 (openssl rand -base64 32): no app can be connected.");
   }
 
   const supabaseEnabled = Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY);

@@ -41,13 +41,14 @@
  */
 import type { AgentStepRequest } from "../../../shared/types/api.js";
 import { aboutTheText, commandText, grammar, grammarLine, modeOf, wantsDetail, type GrammarAction } from "./grammar.js";
-import { LineReader, LineSplitter, parseLine, type ActionLine, type SpotOrder } from "./lines.js";
+import { LineReader, LineSplitter, parseLine, type ActionLine, type SpotOrder, type UseLine } from "./lines.js";
 import { PlannerUnavailable, type PictureCall, type PlanChunk, type SystemPrompt, type UserContent } from "./llm.js";
 import { AGENT_SYSTEM, agentPictureContent, agentUserMessage, drawOrderFor, visionSystemFor } from "./prompt.js";
 import type { AgentImage, EventSink } from "./protocol.js";
 import { resolve, resolverAsk } from "./resolver.js";
 import { isBrowser, isTextEntry, withRisk, type PlannedAction, type Scene } from "./risk.js";
 import { getConfig } from "../config.js";
+import type { UseOutcome } from "../connectors/tasks.js";
 import { sensitiveApp } from "../pipeline/sensitive.js";
 
 export interface StepContext {
@@ -76,7 +77,30 @@ export interface StepDeps {
   plan: (system: SystemPrompt, user: UserContent, signal?: AbortSignal, picture?: PictureCall) => AsyncIterable<PlanChunk>;
   /** Aborted when the device goes away. */
   signal?: AbortSignal;
+  /** The person's connected apps (src/connectors). Absent when the feature is
+   *  off, and then nothing about the planner's request differs from before. */
+  connectors?: ConnectorsRuntime;
 }
+
+/** What the planner is sent on a step where it may use a connected app. */
+export interface ConnectorPlan {
+  /** AGENT_SYSTEM plus the one line that teaches USE. */
+  system: string;
+  /** The step's user message with the apps' tool cards, and any results so far, in it. */
+  message(base: string, results: string[]): string;
+}
+
+/** The run's door to connected apps, already bound to the person. */
+export interface ConnectorsRuntime {
+  /** The cards for this step, or null when no connected app is relevant. */
+  cards(req: AgentStepRequest, said: string): Promise<ConnectorPlan | null>;
+  use(runId: string, said: string, line: UseLine, opts: { allowWrite: boolean }): Promise<UseOutcome>;
+  /** The run's step ended; close its task if that ends it. */
+  settle(runId: string, ending: string | undefined): Promise<void>;
+}
+
+/** Tool calls in one step before the planner must answer: each is a model call. */
+const MAX_USE_ROUNDS = 3;
 
 export type StepPath = "refused" | "unheard" | "grammar" | "selection" | "resolver" | "followup" | "model" | "picture";
 
@@ -227,16 +251,55 @@ async function planWithModel(
 ): Promise<StepResult> {
   const { req } = ctx;
   const user = agentUserMessage(req, s.said, s.mode, ctx.maxSteps);
-  return follow(ctx, deps, sink, {
-    reader: new LineReader(new Set(req.screen.elements.map((e) => e.id)), s.mode, { draws: drawMax(ctx) }),
-    stream: deps.plan(AGENT_SYSTEM, user, deps.signal),
-    // The text prompt teaches every model the one order, and its places in
-    // a picture are dropped anyway: it has no picture.
-    order: () => "xy",
-    scene: s.scene,
-    nothing: NOT_FOUND,
-    result: { path: "model", mode: s.mode, words: 0, audioSeconds: s.audioSeconds },
-  });
+  const ids = new Set(req.screen.elements.map((e) => e.id));
+  const result: StepResult = { path: "model", mode: s.mode, words: 0, audioSeconds: s.audioSeconds };
+
+  // Connected apps: only when the feature is on AND some connected app looks
+  // relevant to what was said. Everything else is the request it always was.
+  const apps = deps.connectors ? await deps.connectors.cards(req, s.said) : null;
+  if (!apps || !deps.connectors) {
+    return follow(ctx, deps, sink, {
+      reader: new LineReader(ids, s.mode, { draws: drawMax(ctx) }),
+      stream: deps.plan(AGENT_SYSTEM, user, deps.signal),
+      // The text prompt teaches every model the one order, and its places in
+      // a picture are dropped anyway: it has no picture.
+      order: () => "xy",
+      scene: s.scene,
+      nothing: NOT_FOUND,
+      result,
+    });
+  }
+
+  // A tool the planner calls to look something up comes back as a result and
+  // the planner is asked again, with it, up to MAX_USE_ROUNDS times; the last
+  // round does not read USE lines, so the step always ends.
+  const use: UseHold = { said: s.said, allowWrite: s.mode === "do", results: [], again: false };
+  for (let round = 0; round <= MAX_USE_ROUNDS; round++) {
+    use.again = false;
+    const last = round === MAX_USE_ROUNDS;
+    await follow(ctx, deps, sink, {
+      reader: new LineReader(ids, s.mode, { draws: drawMax(ctx), connectors: !last }),
+      stream: deps.plan(apps.system, apps.message(user, use.results), deps.signal),
+      order: () => "xy",
+      scene: s.scene,
+      nothing: NOT_FOUND,
+      result,
+      use,
+    });
+    if (!use.again || sink.ended) break;
+  }
+  await deps.connectors.settle(req.runId, sink.ending).catch(() => {});
+  return result;
+}
+
+/** What a step that may use connected apps carries between its planner calls. */
+interface UseHold {
+  said: string;
+  allowWrite: boolean;
+  /** Results so far, "connector.tool: text", fed back to the next call. */
+  results: string[];
+  /** The last call ended on a tool that ran and gave a result: ask again. */
+  again: boolean;
 }
 
 /**
@@ -286,6 +349,7 @@ async function follow(
     scene: Scene;
     nothing: string;
     result: StepResult;
+    use?: UseHold;
   },
 ): Promise<StepResult> {
   const { req } = ctx;
@@ -297,6 +361,7 @@ async function follow(
     if (!line) return;
     for (const out of reader.read(line)) {
       if ("emit" in out) sink.emit(out.emit);
+      else if ("use" in out) await useTool(out.use, req.runId, f.use, deps, sink);
       else result.words += await act(out.act, req, deps, sink, f.scene);
     }
   };
@@ -322,6 +387,9 @@ async function follow(
       return withDraws({ ...result, code: "model_unavailable" }, reader);
     }
   }
+
+  // A tool gave its result and the step goes on: the caller asks again.
+  if (f.use?.again && !sink.ended) return withDraws(result, reader);
 
   // A stream that ended without an ending: whatever it said stands, and
   // nothing usable at all is said plainly rather than left hanging.
@@ -356,6 +424,25 @@ function drain(stream: AsyncIterator<PlanChunk>): void {
       // A call cut off after its answer has gone changes nothing for anyone.
     }
   })();
+}
+
+/**
+ * One USE line. A read runs and its result goes back into the step; a change
+ * becomes an approval the device must confirm (nothing has happened yet); and
+ * anything the person's settings do not allow is said to them, as it is.
+ */
+async function useTool(line: UseLine, runId: string, hold: UseHold | undefined, deps: StepDeps, sink: EventSink): Promise<void> {
+  if (!hold || !deps.connectors) return;
+  const o = await deps.connectors.use(runId, hold.said, line, { allowWrite: hold.allowWrite });
+  if (o.kind === "result") {
+    hold.results.push(`${line.connector}.${line.tool}: ${o.text}`);
+    hold.again = true;
+  } else if (o.kind === "approval") {
+    sink.emit({ t: "approve", taskId: o.taskId, approval: o.approval });
+  } else {
+    sink.emit({ t: "say", text: o.message });
+    sink.emit({ t: "done" });
+  }
 }
 
 /** One action line made into the step's action event. Returns the words

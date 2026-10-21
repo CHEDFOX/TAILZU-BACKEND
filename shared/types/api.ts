@@ -644,7 +644,7 @@ export interface AskResponse {
 // below and an `audio` file (the server transcribes it as the utterance), or
 // as application/json with `utterance` set. Answered `200
 // application/x-ndjson`, one AgentEvent per line, ending in exactly one
-// terminal event (action, ask, look, done or error). Problems found before
+// terminal event (action, ask, look, approve, done or error). Problems found before
 // the stream starts are ordinary JSON errors (400/401/413/429).
 //
 // The picture path: a multipart step may also carry ONE `image` part
@@ -774,6 +774,43 @@ export interface AgentDraw {
   text?: string;
 }
 
+/** What a connected-app action will do, in words, for the confirm card. */
+export interface AgentApproval {
+  id: string;
+  /** The app's catalog id ("notion"). */
+  connector: string;
+  tool: string;
+  risk: "write" | "send" | "destructive" | "pay";
+  /** The exact text, recipient or target, in plain words. */
+  preview: string;
+}
+
+/** One app in GET /v1/connectors. */
+export interface ConnectorInfo {
+  id: string;
+  name: string;
+  category: string;
+  oneLine: string;
+  /** "oauth": POST .../connect returns a sign-in URL. "url": the person pastes one. */
+  auth: "oauth" | "url";
+  connected: boolean;
+  /** look = reads only, draft = may prepare changes (each asked), send = may send (asked, unless turned on per tool). */
+  level: "look" | "draft" | "send";
+  /** Tools the person lets it do without asking. */
+  auto: string[];
+}
+
+/** One assistant task in GET /v1/tasks (a run that used connected apps). */
+export interface AssistantTask {
+  id: string;
+  state: "running" | "waiting" | "done" | "failed" | "cancelled";
+  title: string;
+  steps: Array<{ at: number; text: string }>;
+  approval: AgentApproval | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export type AgentEvent =
   /** First in every stream that gets past the refusals: what was heard, and
    *  whether the run shows ("where/how/what/why…") or does (a command). */
@@ -805,6 +842,11 @@ export type AgentEvent =
    *  again with the picture (once a run, with permission), or say it can't.
    *  `why` is the model's few words on what it needs to see, for the log. */
   | { t: "look"; why: string }
+  /** TERMINAL, only when the person has connected apps (CONNECTORS): the
+   *  planner wants to do something in one of them that needs their yes. The
+   *  device shows `approval.preview` on its confirm card and calls
+   *  POST /v1/tasks/:taskId/approve or /deny; nothing has been done yet. */
+  | { t: "approve"; taskId: string; approval: AgentApproval }
   /** TERMINAL. */
   | { t: "done"; text?: string }
   /** TERMINAL. Codes: private, too_many_steps, no_speech, bad_target,
