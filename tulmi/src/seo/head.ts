@@ -17,12 +17,15 @@ export const ORIGIN = "https://tailzu.space";
 
 /** The card a shared link unfurls into, and the picture answer engines show
  *  beside a citation. Rendered once (tools/media/og.html) and served by the
- *  site as a static file. */
+ *  site as a static file. The alt says what is on it: the hero's first line,
+ *  said and then written — on the 2026 card under "Talk instead of type.",
+ *  on the one before it under "Talk. It writes." — so it stays true while
+ *  the backend's pages and the site's card change on different days. */
 export const OG_IMAGE = {
   url: `${ORIGIN}/og.png`,
   width: 1200,
   height: 630,
-  alt: "Talk. Tailzu writes. A sentence said roughly, written clean.",
+  alt: "Tailzu: “trensfer 2500 rupeez to ramesh tomorow”, said roughly, written clean as “Transfer 2500 rupees to Ramesh tomorrow.”",
 };
 
 /** The App Store id, for Safari's install banner. */

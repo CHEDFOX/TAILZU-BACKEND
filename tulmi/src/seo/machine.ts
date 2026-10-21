@@ -74,7 +74,7 @@ export function llmsTxt(): string {
 
 > ${DEFINITION}
 
-Tailzu is a keyboard on iPhone and Android, so it works in every app: WhatsApp, Gmail, Instagram, Slack, ChatGPT. On Windows and Mac, tap Ctrl twice, talk, and the text is pasted at the cursor. It removes filler and adds punctuation but never rewrites: names, numbers and amounts stay exactly as said, and mixed languages stay mixed (Hinglish stays Hinglish). It writes in the native script or in English letters, the way the user types.
+Tailzu is a keyboard on iPhone and Android, so it works in every app: WhatsApp, Gmail, Instagram, Slack, ChatGPT. On Windows, Mac and Linux, tap Ctrl twice, talk, and the text is pasted at the cursor. It removes filler and adds punctuation but never rewrites: names, numbers and amounts stay exactly as said, and mixed languages stay mixed (Hinglish stays Hinglish). It writes in the native script or in English letters, the way the user types.
 
 ## Pages
 
@@ -83,7 +83,7 @@ ${landings().map((l) => `- [${l.parents ? `${l.parents[0]![0]} for ${l.name}` : 
 - [Languages](${ORIGIN}/languages): all ${INDIA.length + WORLD.length} languages, with real examples of what it writes
 - [FAQ](${ORIGIN}/faq): what it is, languages, apps, privacy and price
 - [Pricing](${ORIGIN}/pricing): ${plans().free ? "Tailzu is free" : "free allowance and paid plans"}
-- [Download](${ORIGIN}/download): Windows and Mac apps
+- [Download](${ORIGIN}/download): Windows, Mac and Linux apps
 
 ## Languages
 
@@ -97,7 +97,7 @@ ${priceLines().join("\n")}
 
 - [iPhone (App Store)](${STORES.ios})
 - [Android (Google Play)](${STORES.android})
-${STORES.windowsInstaller ? `- [Windows (Microsoft-certified download)](${STORES.windowsInstaller}), also [in the Microsoft Store](${STORES.windows})\n- [Mac](${ORIGIN}/download)` : `- [Windows and Mac](${ORIGIN}/download)`}
+${STORES.windowsInstaller ? `- [Windows (Microsoft-certified download)](${STORES.windowsInstaller}), also [in the Microsoft Store](${STORES.windows})\n- [Mac](${ORIGIN}/download)\n- [Linux](${ORIGIN}/download)` : `- [Windows, Mac and Linux](${ORIGIN}/download)`}
 
 ## Optional
 
@@ -120,13 +120,13 @@ export function llmsFullTxt(): string {
 Website: ${ORIGIN}/
 iPhone: ${STORES.ios}
 Android: ${STORES.android}
-${STORES.windowsInstaller ? `Windows: ${STORES.windowsInstaller} (Microsoft-certified download; listing: ${STORES.windows})\nMac: ${ORIGIN}/download` : `Windows and Mac: ${ORIGIN}/download`}
+${STORES.windowsInstaller ? `Windows: ${STORES.windowsInstaller} (Microsoft-certified download; listing: ${STORES.windows})\nMac: ${ORIGIN}/download\nLinux: ${ORIGIN}/download` : `Windows, Mac and Linux: ${ORIGIN}/download`}
 Made by Xooteq Lab Private Limited.
 
 ## What it does
 
 - A keyboard on iPhone and Android: press the mic, talk, and clean text is typed into whatever app is open.
-- A desktop app for Windows and Mac: tap Ctrl twice (or Alt twice), talk, tap twice again; the text is pasted at the cursor, in any window, code editors included.
+- A desktop app for Windows, Mac and Linux: tap Ctrl twice (or Alt twice), talk, tap twice again; the text is pasted at the cursor, in any window, code editors included.
 - Cleans without rewriting: filler words go, punctuation arrives, misheard words are repaired; names, numbers and amounts are kept exactly.
 - Keeps languages as spoken: Hindi and English in one sentence stay Hindi and English.
 - Writes the way the user types: native script or English letters. Saying "Hindi mein likho" writes Devanagari; saying "translate to English" translates.

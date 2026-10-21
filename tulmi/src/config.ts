@@ -65,6 +65,12 @@ const bool = (def: boolean) =>
     .optional()
     .transform((v) => (v == null ? def : v.toLowerCase() === "true"));
 
+/** ASK_SITE as the site reads it: "soon" or "live", and "off" for anything else. */
+export function askSite(v: unknown): "off" | "soon" | "live" {
+  const s = String(v ?? "").trim().toLowerCase();
+  return s === "soon" || s === "live" ? s : "off";
+}
+
 const EnvSchema = z.object({
   // --- Speech-to-text provider ---
   // "groq" (default) runs whisper-large-v3-turbo — fast, cheap, and returns
@@ -621,6 +627,20 @@ const EnvSchema = z.object({
    * scp — the same shape as /downloads.
    */
   SITE_DIR: z.string().default("/data/site"),
+  /**
+   * WHETHER tailzu.space SHOWS ASK, served as /v1/site's top-level `ask`.
+   *
+   *   off   (default) the page keeps an empty #ask shell, no nav entry, no
+   *         Alt-twice egg: nothing about an unreleased feature is shown
+   *   soon  the section, as "Coming to the desktop app", with no download
+   *         button beside it
+   *   live  "New in the desktop app", with the desktop downloads
+   *
+   * A console rule on /ask ("soon") flips it with no deploy; this is the
+   * value with no rule. Anything else reads as "off" rather than stopping
+   * the server, because a typo here should hide a section, not the API.
+   */
+  ASK_SITE: z.string().optional().transform(askSite),
   /**
    * RevenueCat REST secret key (sk_…), for asking about a user directly.
    *

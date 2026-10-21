@@ -23,6 +23,9 @@ import { llmsTxt } from "../src/seo/machine.js";
 import { buildApp } from "../src/server.js";
 
 const PRICE = /\$\d|Lite|Elite|upgrade|See plans|per month|a year/i;
+// The same words, as words: over the whole of the site's copy, "polite" in
+// a prompt is not "Lite".
+const PRICE_WORDS = /\$|\bLite\b|\bElite\b|\bupgrade\b|See plans|per month|\ba year\b/i;
 
 describe("Tailzu is free for everyone", () => {
   it("nobody is limited", async () => {
@@ -79,6 +82,20 @@ describe("Tailzu is free for everyone", () => {
     expect(offers.map((o) => o.price)).toEqual(["0"]);
     expect(llmsTxt()).not.toMatch(/\$\d|Lite|Elite/);
   });
+
+  it("no word the site's copy serves quotes a price", () => {
+    // Every key, not only the FAQ: the redesign added a hero, films, Blip's
+    // lines and a finale, and none of them may name a plan or a sum.
+    const copy = JSON.stringify(siteCopy());
+    expect(copy).not.toMatch(PRICE_WORDS);
+    expect(copy.toLowerCase()).not.toMatch(/no sign[- ]?up/);
+    // "Free" under every button is the FAQ's own answer, in brief — the
+    // free one, with the allowance's line left out of what is served.
+    const c = siteCopy();
+    expect(c.faq.items.find((q) => q.q === "Is it free?")?.a).toContain(c.download.free);
+    expect(c.download.free).toBe("Every word, free.");
+    expect("freeCapped" in c.download).toBe(false);
+  });
 });
 
 describe("the site's price pages, while free", () => {
@@ -99,5 +116,8 @@ describe("the site's price pages, while free", () => {
     const r = await app.inject({ method: "GET", url: "/v1/site" });
     expect(r.body).toContain("Yes. Every word, free. No limit.");
     expect(r.body).not.toContain("Then upgrade.");
+    const c = r.json().copy;
+    expect(JSON.stringify(c)).not.toMatch(PRICE_WORDS);
+    expect(c.faq.items.find((q: { q: string }) => q.q === "Is it free?").a).toContain(c.download.free);
   });
 });

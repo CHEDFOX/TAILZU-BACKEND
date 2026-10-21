@@ -10,7 +10,8 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 process.env.NODE_ENV = "test";
 process.env.MEDIA_DIR = "/tmp/tailzu-test-media";
-// A site dir that does not exist, so / has nothing to serve and must redirect.
+// A site dir that does not exist: the published pages fall back to the
+// built-in ones, and / goes to the site whatever is here.
 process.env.SITE_DIR = "/tmp/tailzu-test-site-that-is-not-there";
 process.env.DEMO_ENABLED = "true";
 process.env.DEMO_MAX_SECONDS = "15";
@@ -49,6 +50,10 @@ import { buildApp } from "../src/server.js";
 // eslint-disable-next-line import/first
 import { sitePage, spendDemo } from "../src/routes/demo.js";
 // eslint-disable-next-line import/first
+import { askSite } from "../src/config.js";
+// eslint-disable-next-line import/first
+import { SITE_UI } from "../src/experience/catalog.js";
+// eslint-disable-next-line import/first
 import { logUrl } from "../src/observability.js";
 
 let app: FastifyInstance;
@@ -82,12 +87,13 @@ function multipart(blob: Buffer, filename: string): { payload: Buffer; headers: 
 }
 
 describe("the landing page", () => {
-  it("sends / to /download until a site is published", async () => {
-    // The apex must never be a blank page or a 404 — the one page that
-    // already exists is the right answer until the site lands.
+  it("sends the API's / to the site, for good", async () => {
+    // The page lives on tailzu.space with its /js, /media and /demo files
+    // beside it; a copy served from here would 404 every one of them. A
+    // 308, so a crawler folds the two addresses into the real one.
     const res = await app.inject({ method: "GET", url: "/" });
-    expect(res.statusCode).toBe(302);
-    expect(res.headers.location).toBe("/download");
+    expect(res.statusCode).toBe(308);
+    expect(res.headers.location).toBe("https://tailzu.space/");
   });
 
   it("hands the page every word it will show", async () => {
@@ -206,6 +212,11 @@ describe("the landing page", () => {
       expect(w).not.toMatch(/[<>]/);
     }
     expect(body.copy.identity).toBeUndefined();
+    // The old hero's words went with it: a string here is a string on the
+    // page, and these render nowhere now.
+    for (const gone of ["cta", "ctaHeld", "writing", "again"]) expect(c[gone], gone).toBeUndefined();
+    expect(c.download.hero).toBeUndefined();
+    expect(c.download.dev).toBeUndefined();
     // The tones are the keyboard's own, distinct in name and in sentence,
     // and none of them is the line as it was said.
     const tones: { name: string; text: string }[] = body.copy.tone.tones;
@@ -220,6 +231,154 @@ describe("the landing page", () => {
     // "soon" rather than a dead link.
     expect(Object.keys(body.downloads).sort()).toEqual(["linux", "mac", "win"]);
     for (const v of Object.values(body.downloads)) expect(typeof v).toBe("boolean");
+    // Ask is not shown until someone says so (ASK_SITE, or a console rule).
+    expect(body.ask).toBe("off");
+  });
+
+  it("gives the redesigned page only true, real, short words", async () => {
+    const body = (await app.inject({ method: "GET", url: "/v1/site" })).json();
+    const c = body.copy;
+    // A word has a letter or a digit in it: the receipt's "·" is not one.
+    const words = (s: string) => s.trim().split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+    // A said → written pair the page shows is one the product really
+    // wrote: a case, or a keyboard scene's instruction and what landed.
+    const real = (said: string, wrote: string) =>
+      c.cases.some((x: { said: string; wrote: string }) => x.said === said && x.wrote === wrote)
+      || c.apps.fields.some((f: { say?: string; text: string }) => f.say === said && f.text === wrote);
+    expect(c.lines.length).toBeGreaterThanOrEqual(3);
+    expect(c.lines.length).toBeLessThanOrEqual(6);
+    for (const l of c.lines) {
+      expect(real(l.said, l.wrote), l.said).toBe(true);
+      // The receipt is served, never computed, and short enough to read
+      // in the time the line takes to land.
+      expect(l.note.length).toBeGreaterThan(0);
+      expect(words(l.note), l.note).toBeLessThanOrEqual(8);
+    }
+    // The first line is a case, so its language is known, and the page is
+    // the same for every reader of it.
+    expect(c.cases.some((x: { said: string }) => x.said === c.lines[0].said)).toBe(true);
+    // The comb cleans a real sentence, and the race is typed against what
+    // it was written as.
+    const comb = c.cases.find((x: { said: string }) => x.said === c.comb.said);
+    expect(comb, c.comb.said).toBeDefined();
+    expect(c.race.line).toBe(comb.wrote);
+
+    // Every italic half is part of the title it sits in.
+    const humans: Array<[string, string, string]> = [];
+    const walk = (o: unknown, at: string) => {
+      if (!o || typeof o !== "object") return;
+      const r = o as Record<string, unknown>;
+      if (typeof r.human === "string") humans.push([at, r.human, String(r.title)]);
+      for (const [k, v] of Object.entries(r)) walk(v, `${at}.${k}`);
+    };
+    walk(c, "copy");
+    expect(humans.map(([at]) => at).sort()).toEqual(
+      ["apps", "ask", "desk", "films", "free", "how", "phone", "river", "tone"].map((k) => `copy.${k}`).sort());
+    for (const [at, human, title] of humans) {
+      expect(human.length, at).toBeGreaterThan(0);
+      expect(title, at).toContain(human);
+    }
+    // The h1 is the owner's product line, and the category is named over it.
+    expect(c.apps.title).toBe("Talk instead of type.");
+    expect(c.apps.kind.length).toBeGreaterThan(0);
+
+    // "Free" on the page is the FAQ's own answer, whichever it is right now.
+    // FREE_FOR_ALL is off in this suite's setup, so the served line is the
+    // allowance, never "Every word" while words are counted
+    // (free-for-all.test holds the free one).
+    const served = c.faq.items.find((q: { q: string }) => q.q === "Is it free?");
+    expect(served.a).toContain(c.download.free);
+    expect(c.download.free).not.toMatch(/every word/i);
+    expect(c.download.freeCapped).toBeUndefined();
+    const free = SITE_UI.faq.items.find((q) => q.q === "Is it free?") as { aFree?: string } | undefined;
+    expect(free?.aFree).toContain(SITE_UI.download.free);
+    expect(free && "a" in free ? (free as { a: string }).a : "").toContain(SITE_UI.download.freeCapped);
+    // Every button label fits on a button. (startedNote is the sentence
+    // read out once a download starts, with the file's name put in; `free`
+    // is the line under the button, a short sentence.)
+    for (const [k, v] of Object.entries(c.download as Record<string, string>)) {
+      if (k === "startedNote" || k === "free") continue;
+      expect(words(v), k).toBeLessThanOrEqual(4);
+    }
+    expect(words(SITE_UI.download.free)).toBeLessThanOrEqual(4);
+    expect(words(c.download.free)).toBeLessThanOrEqual(6);
+    expect(c.download.startedNote).toContain("{file}");
+    for (const k of ["get", "ios", "android", "win", "mac", "linux", "short", "free", "other", "starting", "started"]) {
+      expect(typeof c.download[k], k).toBe("string");
+    }
+    expect(c.ui.platforms).toEqual(["iPhone", "Android", "Windows", "Mac", "Linux"]);
+
+    // The saboteur's "fixes" are words it really typed, and saying it
+    // instead gives something else.
+    const sab = c.phone.saboteur;
+    const typed = sab.typed.toLowerCase().split(/[^\p{L}]+/u);
+    for (const w of Object.keys(sab.fixes)) expect(typed, w).toContain(w);
+    expect(sab.wrote).not.toBe(sab.typed);
+
+    // The polish round's keys: the page's own placeholders stay out of fill()'s way ({n} is the free
+    // words), the typed secret says it was typed, every section has a name on the spine, and the
+    // Full Access ask carries its reason and what happens to the audio (both in the facts and the FAQ).
+    expect(c.river.more).toContain("{count}");
+    expect(JSON.stringify([c.river, c.desk.share, c.desk.copied, c.ui.android, c.ui.spine, c.race.placeholder])).not.toContain("{n}");
+    expect(c.free.typed.toLowerCase()).toContain("typed hi");
+    for (const id of ["how", "river", "apps", "films", "tone", "desk", "llm", "dev", "ask", "questions", "free"]) expect(typeof c.ui.spine[id], id).toBe("string");
+    expect(c.phone.lede).toContain("Full Access");
+    expect(c.phone.lede).toContain("Audio is deleted once it's written.");
+    expect(words(c.desk.share)).toBeLessThanOrEqual(5);
+
+    // Ask's preview plays scenes the stand-in app has.
+    expect(c.ask.runs.length).toBeGreaterThanOrEqual(1);
+    expect(c.ask.runs.length).toBeLessThanOrEqual(4);
+    for (const r of c.ask.runs) {
+      expect(["export", "picture", "steps", "error", "send", "delete", "private", "dictate"]).toContain(r.id);
+      expect(r.label.length).toBeGreaterThan(0);
+    }
+    // Films are named by their media file, and each has its line.
+    const media = ["keyless", "said-written", "spanish", "to-him", "tones", "typed-vs-said", "languages", "autocorrect", "boss", "bleeped"];
+    expect(new Set(c.films.items.map((f: { id: string }) => f.id)).size).toBe(c.films.items.length);
+    for (const f of c.films.items) {
+      expect(media).toContain(f.id);
+      expect(f.title.length).toBeGreaterThan(0);
+      expect(f.line.length).toBeGreaterThan(0);
+    }
+    // The meeting's audio is CC BY: its credit is a condition of using it.
+    expect(c.desk.credit).toMatch(/AMI/);
+    expect(c.desk.credit).toMatch(/CC BY 4\.0/);
+    expect(c.desk.meeting.length).toBeGreaterThan(2);
+
+    // Blip says little: every line of his is twelve words at most. The
+    // pirate lede is the hero's lede in a pirate's voice, not his line,
+    // and it lands in the same apps the real one names.
+    const blip: string[] = [];
+    const lines = (o: unknown, at: string) => {
+      if (at === "pirate.lede") return;
+      if (typeof o === "string") blip.push(o);
+      else if (Array.isArray(o)) o.forEach((v) => lines(v, at));
+      else if (o && typeof o === "object") for (const [k, v] of Object.entries(o)) lines(v, at ? `${at}.${k}` : k);
+    };
+    lines(c.blip, "");
+    expect(blip.length).toBeGreaterThan(20);
+    for (const l of blip) expect(words(l), l).toBeLessThanOrEqual(12);
+    const tail = (s: string) => s.slice(s.lastIndexOf(":") + 1).trim();
+    expect(tail(c.blip.pirate.lede)).toBe(tail(c.apps.lede));
+
+    // Nothing new quotes a price or claims sign-up is optional.
+    const fresh = JSON.stringify([c.apps.kind, c.apps.lede, c.lines, c.listen, c.comb, c.river, c.phone, c.films,
+      c.race, c.tone.more, c.tone.pirate, c.desk, c.llm.note, c.ask, c.free, c.download, c.blip, c.ui]);
+    expect(fresh).not.toMatch(/\$|\bLite\b|\bElite\b|\bupgrade\b|per month|\ba year\b/i);
+    expect(fresh.toLowerCase()).not.toMatch(/no sign[- ]?up/);
+  });
+
+  it("reads ASK_SITE as off, soon or live, and anything else as off", () => {
+    // A typo in .env hides a section; it never stops the server.
+    expect(askSite(undefined)).toBe("off");
+    expect(askSite("")).toBe("off");
+    expect(askSite("soon")).toBe("soon");
+    expect(askSite(" LIVE ")).toBe("live");
+    expect(askSite("yes")).toBe("off");
+    // Served as-is, and served whatever the flag: the page decides whether
+    // to paint it, so a console rule needs no copy deploy.
+    expect(SITE_UI.ask.title.length).toBeGreaterThan(0);
   });
 });
 

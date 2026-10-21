@@ -253,6 +253,20 @@ describe("through the real routes", () => {
     expect(home.controlProbe).toBe("home only");
   });
 
+  it("a console rule launches Ask on the site, with no deploy", async () => {
+    // ASK_SITE is unset here, so the page is told "off" until a rule says
+    // otherwise — the owner's switch, flipped from the console.
+    const site = async () => JSON.parse((await app.inject({ method: "GET", url: "/v1/site" })).body);
+    expect((await site()).ask).toBe("off");
+    const res = await put({ id: "ask-soon", surface: "site", ops: [{ op: "set", path: "/ask", value: "soon" }] });
+    expect(res.statusCode).toBe(200);
+    expect((await site()).ask).toBe("soon");
+    // The words were there all along; the page paints them now.
+    expect((await site()).copy.ask.soon).toBe("Coming to the desktop app");
+    await app.inject({ method: "DELETE", url: "/v1/admin/control/rules/ask-soon", headers: admin });
+    expect((await site()).ask).toBe("off");
+  });
+
   it("preview shows before, after and what applied, and tries a draft without saving it", async () => {
     const r = await app.inject({ method: "POST", url: "/v1/admin/control/preview", headers: admin, payload: {
       surface: "keyboard", ctx: { platform: "ios", build: 40 },

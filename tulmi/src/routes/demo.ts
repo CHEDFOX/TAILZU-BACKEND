@@ -1,8 +1,9 @@
 /**
- * The landing page, and the one thing on it that is not a page.
+ * The landing page's words, and the one thing on it that is not a page.
  *
- *   GET  /            → SITE_DIR/index.html, or /download until one exists
+ *   GET  /            → 308 to https://tailzu.space/, where the page lives
  *   GET  /v1/site     → every word on the page, plus what can be downloaded
+ *                       and whether Ask is shown
  *   POST /v1/demo/transcribe → a visitor's own voice, written clean
  *
  * WHY THE DEMO EXISTS. A dictation product's hardest job is explaining
@@ -34,6 +35,7 @@ import { getConfig } from "../config.js";
 import { runPipeline } from "../pipeline/index.js";
 import { estimateDurationSeconds } from "../pipeline/stt.js";
 import { siteCopy, SITE_MIC, SITE_SHAPE } from "../experience/catalog.js";
+import { ORIGIN } from "../seo/head.js";
 
 const FORMATS: AudioFormat[] = ["wav", "m4a", "webm", "mp3", "ogg", "flac"];
 
@@ -225,21 +227,14 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
   });
 
   // --- The page ----------------------------------------------------------
-  app.get("/", async (_req, reply) => {
-    const file = path.join(siteDir, "index.html");
-    let html: string | null = null;
-    try { html = fs.readFileSync(file, "utf8"); } catch { html = null; }
-    if (html === null) {
-      // Until a site is published the apex is not a blank page and not a
-      // 404; it is the one page that already exists.
-      return reply.redirect("/download", 302);
-    }
-    reply.type("text/html; charset=utf-8");
-    // Short, so a republished page is live within a minute without anyone
-    // having to remember a cache bump for a static file.
-    reply.header("Cache-Control", "public, max-age=60");
-    return html;
-  });
+  // THE PAGE LIVES ON tailzu.space, NOT HERE. This used to serve a copy of
+  // index.html scp'd into SITE_DIR. The page is now a page and its files —
+  // /js/*, /media/*, /demo/* beside it on Vercel — and a copy served from
+  // this host would 404 every one of them: a page with no script and no
+  // films, at an address that still looks like Tailzu. So the API's root
+  // sends people to the real one, permanently (308 keeps the method, and
+  // lets a crawler fold the two addresses into one).
+  app.get("/", async (_req, reply) => reply.redirect(`${ORIGIN}/`, 308));
 
   // The one stylesheet the published pages share. Served by hand rather than
   // through a static mount at "/" so it cannot shadow an API route.
@@ -292,6 +287,10 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
       freeWords: Math.max(0, cfg.FREE_MONTHLY_WORDS),
       downloads,
       demo: cfg.DEMO_ENABLED,
+      // Whether the page shows Ask: "off" | "soon" | "live" (ASK_SITE).
+      // Through withControl like everything here, so a console rule on /ask
+      // launches it with no deploy.
+      ask: cfg.ASK_SITE,
       maxSeconds: cfg.DEMO_MAX_SECONDS,
       // The rate the demo route enforces, so the developers' card can say
       // it rather than guess it.

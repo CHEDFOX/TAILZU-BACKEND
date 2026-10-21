@@ -8,18 +8,18 @@
  * empty steps. This writes the backend's own words into the page's HTML, so
  * the first read is the real one; the script still takes over as before.
  *
- * Only what sits between the page's SEO markers is touched:
+ * Only what sits between the page's SEO markers is touched (src/seo/home.ts
+ * builds every line of it, and says what each marker holds):
  *
- *   SEO:HEAD          title, summary, canonical, link card, icons, JSON-LD
- *   SEO:steps         the three steps           (SITE_UI.how)
- *   SEO:toneSaid      the tones' sentence       (SITE_UI.tone.said)
- *   SEO:toneGrid      the tones                 (SITE_UI.tone.tones)
- *   SEO:faq           the questions             (SITE_UI.faq, filled)
- *   SEO:faqCopy       the script's own fallback questions, so a page whose
- *                     /v1/site call fails still says the same thing
+ *   SEO:HEAD  SEO:steps  SEO:toneSaid  SEO:toneGrid  SEO:faq  SEO:faqCopy
+ *   and on the redesigned page, all four together:
+ *   SEO:hero  SEO:line  SEO:langs  SEO:siteCopy
  *
- *   npx tsx scripts/sync-site.mts ../../tailzu-web/index.html           write
- *   npx tsx scripts/sync-site.mts ../../tailzu-web/index.html --check   exit 1 if stale
+ * A page without the redesign's four (the page from before it) gets its six
+ * filled exactly as it always did; a page with some of them stops the sync.
+ *
+ *   npx tsx scripts/sync-site.mts /home/user/TAILZU-WEB/index.html           write
+ *   npx tsx scripts/sync-site.mts /home/user/TAILZU-WEB/index.html --check   exit 1 if stale
  *
  * Either way it then runs the site's csp.mjs, so the page's CSP hashes follow
  * the script this rewrites.
@@ -36,58 +36,35 @@ for (const [k, v] of Object.entries({
   OPENROUTER_API_KEY: "unused", OPENAI_API_KEY: "unused", STT_PROVIDER: "openai", DEV_SKIP_AUTH: "true", NODE_ENV: "development",
 })) process.env[k] ??= v;
 
-const { SITE_UI, siteCopy } = await import("../src/experience/catalog.js");
-const { HOME, appLd, faqLd, homeFaq, orgLd, pageLd, websiteLd } = await import("../src/seo/facts.js");
-const { esc, headTags } = await import("../src/seo/head.js");
+const { filmProblems, syncHome } = await import("../src/seo/home.js");
 
 const file = process.argv[2];
 const check = process.argv.includes("--check");
 if (!file) { console.error("usage: sync-site.mts <index.html> [--check]"); process.exit(2); }
 
-// The same markup the page's own script builds (paintBelow), so the swap to
-// the live copy changes nothing a reader can see.
-const steps = SITE_UI.how.steps
-  .map((s, i) => `<div class="step"><p class="n">0${i + 1}</p><h3>${esc(s.title)}</h3></div>`).join("");
-const toneGrid = SITE_UI.tone.tones
-  .map((t, i) => `<div class="tcard t${i % 8}"><span class="tn">${esc(t.name)}</span><p>${esc(t.text)}</p></div>`).join("");
-const faq = homeFaq()
-  .map((it) => `<div class="qa"><h3>${esc(it.q)}</h3><p>${esc(it.a)}</p></div>`).join("");
-const faqCopy = [
-  "    faq: {",
-  `      title: ${JSON.stringify(SITE_UI.faq.title)},`,
-  "      items: [",
-  siteCopy().faq.items.map((it) => `        { q: ${JSON.stringify(it.q)}, a: ${JSON.stringify(it.a)} }`).join(",\n"),
-  "      ]",
-  "    },",
-].join("\n");
-const head = headTags({
-  path: "/",
-  title: HOME.title,
-  description: HOME.description,
-  ogTitle: HOME.ogTitle,
-  ogDescription: HOME.ogDescription,
-  ld: [orgLd(), websiteLd(), appLd(), pageLd("/", "Tailzu", HOME.description), faqLd(homeFaq(), "/")],
-});
-
-/** Replace what lies between an opening marker (to the end of its own
- *  comment or line) and its closing marker. */
-function fill(src: string, open: RegExp, close: string, body: string): string {
-  const m = open.exec(src);
-  if (!m) throw new Error(`marker not found: ${open}`);
-  const from = m.index + m[0].length;
-  const to = src.indexOf(close, from);
-  if (to < 0) throw new Error(`closing marker not found: ${close}`);
-  return src.slice(0, from) + body + src.slice(to);
-}
-
 const before = fs.readFileSync(file, "utf8");
-let html = before;
-html = fill(html, /<!-- SEO:HEAD[\s\S]*?-->\n/, "<!-- /SEO:HEAD -->", `${head}\n`);
-html = fill(html, /<!-- SEO:steps -->/, "<!-- /SEO:steps -->", steps);
-html = fill(html, /<!-- SEO:toneSaid -->/, "<!-- /SEO:toneSaid -->", esc(SITE_UI.tone.said));
-html = fill(html, /<!-- SEO:toneGrid -->/, "<!-- /SEO:toneGrid -->", toneGrid);
-html = fill(html, /<!-- SEO:faq -->/, "<!-- /SEO:faq -->", faq);
-html = fill(html, /\/\/ SEO:faqCopy[^\n]*\n/, "    // /SEO:faqCopy", `${faqCopy}\n`);
+const { html, redesigned } = syncHome(before);
+if (!redesigned) {
+  console.log("note: no SEO:hero, SEO:line, SEO:langs or SEO:siteCopy in this page (the page from before the redesign): filled its six markers");
+} else {
+  // The redesigned head names its films as VideoObjects: hold them to the
+  // files beside the page before writing a word, so the head never points
+  // a search engine at a video the site does not have.
+  const media = path.join(path.dirname(path.resolve(file)), "media");
+  if (!fs.existsSync(media)) {
+    console.log("note: no media/ beside this page, so the films' structured data was not checked against the files");
+  } else {
+    const at = path.join(media, "manifest.json");
+    const manifest = fs.existsSync(at) ? JSON.parse(fs.readFileSync(at, "utf8")) : null;
+    if (!manifest) console.log("note: no media/manifest.json, so the films' lengths were not checked");
+    const problems = filmProblems(manifest, (f) => fs.existsSync(path.join(media, f)));
+    if (problems.length) {
+      for (const p of problems) console.error(`film: ${p}`);
+      console.error("fix src/seo/facts.ts FILM_MEDIA (or the media), then sync again");
+      process.exit(1);
+    }
+  }
+}
 
 if (check) {
   if (html !== before) { console.error(`${file} is stale: run scripts/sync-site.mts`); process.exit(1); }
@@ -98,7 +75,7 @@ if (check) {
 }
 
 // The page's CSP (vercel.json) allows its inline script and style by hash,
-// and the FAQ copy above lives inside that script: a sync that changed it
+// and the copy above lives inside that script: a sync that changed it
 // changed the hash, and a stale one stops the page's script from running.
 // csp.mjs beside the page writes (or, with --check, checks) the hashes.
 const csp = path.join(path.dirname(path.resolve(file)), "csp.mjs");
