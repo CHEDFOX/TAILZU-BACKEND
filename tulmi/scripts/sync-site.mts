@@ -17,6 +17,7 @@
  *
  * A page without the redesign's four (the page from before it) gets its six
  * filled exactly as it always did; a page with some of them stops the sync.
+ * A page with SEO:HEAD and no other marker gets its head alone.
  *
  *   npx tsx scripts/sync-site.mts /home/user/TAILZU-WEB/index.html           write
  *   npx tsx scripts/sync-site.mts /home/user/TAILZU-WEB/index.html --check   exit 1 if stale
@@ -43,8 +44,10 @@ const check = process.argv.includes("--check");
 if (!file) { console.error("usage: sync-site.mts <index.html> [--check]"); process.exit(2); }
 
 const before = fs.readFileSync(file, "utf8");
-const { html, redesigned } = syncHome(before);
-if (!redesigned) {
+const { html, redesigned, headOnly } = syncHome(before);
+if (headOnly) {
+  console.log("note: only SEO:HEAD in this page (the head-only page): filled its head");
+} else if (!redesigned) {
   console.log("note: no SEO:hero, SEO:line, SEO:langs or SEO:siteCopy in this page (the page from before the redesign): filled its six markers");
 } else {
   // The redesigned head names its films as VideoObjects: hold them to the

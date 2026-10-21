@@ -352,6 +352,29 @@ describe("the redesigned home page, as a crawler reads it", () => {
     expect(syncHome(html).html).toBe(html);
   });
 
+  it("fills only the head of a page that has no other marker", () => {
+    const bare = page(false)
+      .replace(/<div id="(steps|toneSaid|toneGrid|faq)">.*<\/div>\n/g, "")
+      .replace(/<p id="toneSaid">.*<\/p>\n/, "")
+      .replace(/ *\/\/ (\/)?SEO:faqCopy[^\n]*\n/g, "");
+    expect(bare).not.toMatch(/SEO:(?!HEAD)/);
+    const { html, redesigned, headOnly } = syncHome(bare);
+    expect([redesigned, headOnly]).toEqual([false, true]);
+    expect(html).not.toContain("by hand");
+    expect(html.slice(html.indexOf("<!-- /SEO:HEAD -->"))).toBe(bare.slice(bare.indexOf("<!-- /SEO:HEAD -->")));
+    // Its head names the app, and no film or question the page does not show.
+    const types = graph(html).map((n: any) => n["@type"]);
+    expect(types).toContain("SoftwareApplication");
+    expect(types).not.toContain("VideoObject");
+    expect(types).not.toContain("FAQPage");
+    expect(syncHome(html).html).toBe(html);
+    // The other shapes are untouched by it.
+    expect(syncHome(page(false)).headOnly).toBe(false);
+    expect(graph(syncHome(page(false)).html).map((n: any) => n["@type"])).toContain("FAQPage");
+    // One of the six back is a half-built page, and stops as before.
+    expect(() => syncHome(bare.replace("<main>", "<main><div id=\"faq\"><!-- SEO:faq --><!-- /SEO:faq --></div>"))).toThrow(/marker not found/);
+  });
+
   it("stops at a page that has only some of the redesign's markers", () => {
     expect(() => syncHome(page().replace("<!-- SEO:langs -->", ""))).toThrow(/marker not found: <!-- SEO:langs -->/);
     expect(() => syncHome(page().replace(/ *\/\/ SEO:siteCopy[^\n]*\n/, ""))).toThrow(/SEO:siteCopy/);

@@ -30,6 +30,10 @@
  * A page with none of the four is the page from before the redesign: its
  * six markers are filled as they always were and nothing else is touched.
  * A page with some but not all of them is half-built, and stops the sync.
+ *
+ * A page with SEO:HEAD alone (the paper page, 2026: its words are its own)
+ * gets its head and nothing else, and that head names no films and no
+ * questions, since the page shows neither.
  */
 import { SITE_UI, siteCopy } from "../experience/catalog.js";
 import {
@@ -75,8 +79,9 @@ export const faqCopyJs = () => [
 
 /** The home page's head. The films' structured data goes only into a page
  *  that has the films, so the page from before the redesign never points a
- *  search engine at a video it does not have. */
-export function headHtml(withFilms: boolean): string {
+ *  search engine at a video it does not have; and the questions only into a
+ *  page that shows them (the head-only page does not). */
+export function headHtml(withFilms: boolean, withFaq = true): string {
   return headTags({
     path: "/",
     title: HOME.title,
@@ -84,7 +89,7 @@ export function headHtml(withFilms: boolean): string {
     ogTitle: HOME.ogTitle,
     ogDescription: HOME.ogDescription,
     ld: [
-      orgLd(), websiteLd(), appLd(), pageLd("/", "Tailzu", HOME.description), faqLd(homeFaq(), "/"),
+      orgLd(), websiteLd(), appLd(), pageLd("/", "Tailzu", HOME.description), ...(withFaq ? [faqLd(homeFaq(), "/")] : []),
       ...(withFilms ? homeFilms().map(filmLd) : []),
     ],
   });
@@ -215,7 +220,13 @@ export interface SyncResult {
   html: string;
   /** The page carries the redesign's markers (all four). */
   redesigned: boolean;
+  /** The page carries SEO:HEAD and no other marker (the 2026 paper page):
+   *  only its head is written. */
+  headOnly: boolean;
 }
+
+/** The page's own markers beside SEO:HEAD, from before the redesign. */
+export const BODY_MARKERS = ["<!-- SEO:steps -->", "<!-- SEO:toneSaid -->", "<!-- SEO:toneGrid -->", "<!-- SEO:faq -->", "// SEO:faqCopy"] as const;
 
 /** Write every marker the page has. Pure: the CLI reads and writes files. */
 export function syncHome(src: string): SyncResult {
@@ -225,9 +236,11 @@ export function syncHome(src: string): SyncResult {
     throw new Error(`marker not found: ${missing.join(", ")} (the page has ${present.join(", ")}; the redesign's markers come together)`);
   }
   const redesigned = present.length > 0;
+  const headOnly = !redesigned && !BODY_MARKERS.some((m) => src.includes(m));
 
   let html = src;
-  html = fill(html, /<!-- SEO:HEAD[\s\S]*?-->\n/, "<!-- /SEO:HEAD -->", `${headHtml(redesigned)}\n`);
+  html = fill(html, /<!-- SEO:HEAD[\s\S]*?-->\n/, "<!-- /SEO:HEAD -->", `${headHtml(redesigned, !headOnly)}\n`);
+  if (headOnly) return { html, redesigned, headOnly };
   html = fill(html, /<!-- SEO:steps -->/, "<!-- /SEO:steps -->", stepsHtml());
   html = fill(html, /<!-- SEO:toneSaid -->/, "<!-- /SEO:toneSaid -->", esc(SITE_UI.tone.said));
   html = fill(html, /<!-- SEO:toneGrid -->/, "<!-- /SEO:toneGrid -->", toneGridHtml());
@@ -239,5 +252,5 @@ export function syncHome(src: string): SyncResult {
     html = fillLines(html, REDESIGN_MARKERS.langs, "<!-- /SEO:langs -->", langsLines());
     html = fill(html, /\/\/ SEO:siteCopy[^\n]*\n/, "    // /SEO:siteCopy", `${siteCopyLines().join("\n")}\n`);
   }
-  return { html, redesigned };
+  return { html, redesigned, headOnly };
 }
