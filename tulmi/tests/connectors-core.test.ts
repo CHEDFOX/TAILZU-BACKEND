@@ -142,7 +142,10 @@ describe("tokens at rest", () => {
     expect(a.startsWith("v1.")).toBe(true);
     expect(a).not.toContain("secret-token");
     expect(decrypt(a, KEY)).toBe("secret-token");
-    expect(() => decrypt(a.slice(0, -2) + "AA", KEY)).toThrow();
+    // Flip one bit of the ciphertext itself: swapping base64 characters can land on the same byte.
+    const raw = Buffer.from(a.slice(3), "base64url");
+    raw[raw.length - 1] ^= 1;
+    expect(() => decrypt("v1." + raw.toString("base64url"), KEY)).toThrow();
     expect(() => decrypt(a, randomBytes(32))).toThrow();
   });
 
@@ -209,8 +212,8 @@ describe("the USE line", () => {
 
 describe("the catalog", () => {
   it("marks only the apps whose official docs confirm URL, transport and sign-in, and nothing is on until it is named", () => {
-    expect(CATALOG.map((c) => c.id)).toEqual(["notion", "linear", "github", "atlassian", "asana", "zapier"]);
-    expect(CATALOG.filter((c) => c.verified).map((c) => c.id)).toEqual(["notion", "linear", "zapier"]);
+    expect(CATALOG.map((c) => c.id)).toEqual(["notion", "linear", "github", "atlassian", "asana", "zapier", "google-calendar", "google-docs"]);
+    expect(CATALOG.filter((c) => c.verified).map((c) => c.id)).toEqual(["notion", "linear", "zapier", "google-calendar", "google-docs"]);
     expect(CATALOG.every((c) => c.docs?.startsWith("https://") && c.notes)).toBe(true);
     expect(CATALOG.every((c) => new URL(c.url).protocol === "https:")).toBe(true);
     expect(CATALOG.find((c) => c.id === "zapier")!.auth).toBe("url");

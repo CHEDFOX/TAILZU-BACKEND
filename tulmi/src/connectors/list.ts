@@ -8,11 +8,12 @@ import type { Connectors } from "./index.js";
 
 export async function connectorList(c: Connectors, userId: string): Promise<ConnectorInfo[]> {
   const mine = new Map((await c.store.listConnections(userId)).map((x) => [x.connectorId, x]));
-  return c.hub.catalog.map((d) => {
+  // A hidden app (the email hand-off) has nothing to connect, so the screens never see it.
+  return c.hub.catalog.filter((d) => !d.hidden).map((d) => {
     const m = mine.get(d.id);
     const connected = !!m?.tokensEnc;
     return {
-      id: d.id, name: d.name, category: d.category, oneLine: d.oneLine, auth: d.auth,
+      id: d.id, name: d.name, category: d.category, oneLine: d.oneLine, auth: d.auth === "url" ? "url" : "oauth",
       connected, ...(connected && c.hub.needsSignIn(userId, d.id) ? { needsSignIn: true } : {}),
       level: m?.level ?? "look", auto: m?.autoOk ?? [],
     };

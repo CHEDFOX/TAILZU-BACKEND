@@ -399,6 +399,23 @@ const EnvSchema = z.object({
    * their browser; it is what is registered with each vendor.
    */
   CONNECTOR_REDIRECT_URL: z.string().default("https://api.tailzu.space/v1/connectors/callback"),
+  /**
+   * The Google apps in Connected apps (google-calendar, google-docs) sign in
+   * with the WEB OAuth client of the same Google Cloud project the Google
+   * sign-in already uses, so there is one consent screen to keep and nothing
+   * new to verify as a company. This is that client's id. Google has no
+   * dynamic client registration (unlike the MCP apps), so our own client is
+   * the only way in. The client must list CONNECTOR_REDIRECT_URL as an
+   * authorized redirect URI. Sign-in itself never asks for these scopes: they
+   * are asked only when someone taps Connect on a Google app.
+   */
+  GOOGLE_CONNECT_CLIENT_ID: z.string().optional(),
+  /**
+   * That client's secret. Google's token endpoint wants it even with PKCE on a
+   * web client. Server-side only: it is never sent to a device, a log or an
+   * error message. Without both values the Google apps list but cannot connect.
+   */
+  GOOGLE_CONNECT_CLIENT_SECRET: z.string().optional(),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 
@@ -1003,6 +1020,11 @@ export function getConfig(): AppConfig {
   // Warned, not refused: the rest of the server is unaffected.
   if (env.CONNECTORS && Buffer.from(env.CONNECTOR_TOKEN_KEY ?? "", "base64").length !== 32) {
     console.warn("[config] CONNECTORS=true but CONNECTOR_TOKEN_KEY is not 32 bytes of base64 (openssl rand -base64 32): no app can be connected.");
+  }
+
+  // Google apps switched on with no OAuth client can be listed but never connected.
+  if (env.CONNECTORS && /google-(calendar|docs)/i.test(env.CONNECTORS_ENABLED_IDS) && !(env.GOOGLE_CONNECT_CLIENT_ID && env.GOOGLE_CONNECT_CLIENT_SECRET)) {
+    console.warn("[config] A Google app is in CONNECTORS_ENABLED_IDS but GOOGLE_CONNECT_CLIENT_ID / GOOGLE_CONNECT_CLIENT_SECRET are not both set: it cannot be connected.");
   }
 
   const supabaseEnabled = Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_KEY);
