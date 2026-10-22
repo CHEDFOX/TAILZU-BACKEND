@@ -11,7 +11,8 @@
  *     the person wrote is theirs, and its casing is part of it;
  *   - a node marked `props.keepCase` and everything under it: the writing
  *     samples on Voices and the dictionary's words show text exactly as it
- *     would be written, which is the point of showing them;
+ *     would be written, which is the point of showing them. On a screen's
+ *     root it spares the screen's actions too;
  *   - a label key ("@history.title") or a state reference ("$state.x"),
  *     which are not words yet;
  *   - links, emails and file names (tailzu.space, a@b.c);
@@ -110,7 +111,12 @@ export function titleCaseScreen(screen: ScreenResponse): ScreenResponse {
   if (typeof screen.title === "string") screen.title = titleCase(screen.title);
   lastWasNumber = false;
   walkNode(screen.root);
-  for (const a of Object.values(screen.actions ?? {})) walkAction(a);
+  // A screen whose root is marked keepCase opts out whole: the toasts in its
+  // action table are as exact as its nodes (the new onboarding keeps its lines
+  // letter for letter, and the Hinglish seeds match them that way).
+  if (screen.root?.props?.keepCase !== true) {
+    for (const a of Object.values(screen.actions ?? {})) walkAction(a);
+  }
   return screen;
 }
 

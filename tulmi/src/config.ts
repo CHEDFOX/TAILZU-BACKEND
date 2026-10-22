@@ -1005,6 +1005,7 @@ export const ENV_KEYS: readonly string[] = [
   "LOG_LEVEL",
   "MEDIA_DIR",
   "MEDIA_PUBLIC_URL",
+  "ONBOARD_V2",
   "PUBLIC_ORIGIN",
   "TULMI_SHARED_DIR",
   "WEBP_MAX_SECONDS",

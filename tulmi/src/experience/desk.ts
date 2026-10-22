@@ -1597,7 +1597,6 @@ export function deskTrain(ctx: DeskContext): ScreenResponse {
   const now = local(ctx, Date.now());
   const rounds = portrait?.examples ?? 0;
   const sittings = portrait?.sessions ?? 0;
-  const words = (portrait?.words ?? []).filter((w) => w?.term);
   const styles = (portrait?.styles ?? []).filter((x) => x?.name);
   const rhythms = (portrait?.rhythms ?? []).filter((x) => x?.when && x?.vibe);
   const voiceName = voiceNamer(ctx);
@@ -1614,7 +1613,6 @@ export function deskTrain(ctx: DeskContext): ScreenResponse {
   const figures = row([
     statTile("Training rounds", n(rounds), rounds ? "spoken sessions and picks" : "none yet", true, true),
     statTile("Sittings learned from", n(sittings), since, true),
-    statTile("Words it knows", n(words.length), words.length ? "with what they mean to you" : "it learns them as you talk", true),
     statTile("Learning for", ageText, (portrait?.observed ?? 0) > 0 ? `${n(portrait!.observed!)} dictations read since the last rewrite` : "every dictation teaches it", true),
   ], { gap: 36, flexWrap: "wrap", marginTop: 30, paddingTop: 22, borderTop: "1px solid rgba(243,226,198,.12)", width: "100%" });
   const head: Node[] = [
@@ -1662,15 +1660,7 @@ export function deskTrain(ctx: DeskContext): ScreenResponse {
       ], { flex: "none", width: "100%", marginTop: 52 })
     : null;
 
-  // ---- their words, and how they write -------------------------------------------------
-  const wordsBlock = section("Your words", words.length
-      ? `${n(words.length)} ${words.length === 1 ? "word" : "words"} it keeps, with what each means to you.`
-      : "Names, slang and words you use your own way show up here as it hears them.",
-    words.length ? [stack(words.slice(0, 14).map((w) => row([
-      text(w.term, "d-k", { fontWeight: 600, fontSize: 14, width: 130, flex: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }),
-      text(String(w.means ?? ""), "d-lede", { flex: 1, minWidth: 0, fontSize: 13.5, lineHeight: "20px" }),
-    ], { gap: 14, paddingTop: 10, paddingBottom: 10, align: "start" }, "d-rule-bottom")), { marginTop: 14 }),
-      ...(words.length > 14 ? [text(`and ${n(words.length - 14)} more`, "d-margin", { marginTop: 10 })] : [])] : []);
+  // ---- how they write --------------------------------------------------------------------
   const stylesBlock = section("How you write", styles.length
       ? "The modes you actually write in, and when each one shows up."
       : "Short or long, formal or not, and when. It fills in as it reads more of you.",
@@ -1723,7 +1713,7 @@ export function deskTrain(ctx: DeskContext): ScreenResponse {
   return screen("desk_train", "Train", [band, page([
     stageBlock,
     ...(coreBlock ? [coreBlock] : []),
-    ...twoUp(wordsBlock, stylesBlock),
+    ...twoUp(stylesBlock, null),
     ...twoUp(rhythmBlock, toneBlock),
     ...(fromBlock ? [fromBlock] : []),
     ...twoUp(voicesBlock, langBlock),

@@ -717,7 +717,8 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "boot.failure.titleSize": 19,
   "boot.firstRunGateIds": [
     "onboarding",
-    "onboarding_keyboard"
+    "onboarding_keyboard",
+    "onboard"
   ],
   "boot.introScreenId": "intro",
   "boot.postIntroScreenId": "onboarding",
@@ -1521,6 +1522,7 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "net.telemetryPath": "/v1/keyboard/telemetry",
   "net.transcribeCleanPath": "/v1/transcribe-clean",
   "net.transcribeStreamPath": "/v1/transcribe-stream",
+  "onboard.fontWaitMs": 600,
   "paywall.blockUntilEntitled": false,
   "paywall.entitlement": "",
   "paywall.screenId": "paywall",

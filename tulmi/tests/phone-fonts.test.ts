@@ -35,4 +35,13 @@ describe("the phone's typefaces", () => {
     const b = buildBootstrap({} as never) as any;
     expect(b.fonts).toEqual(FONTS);
   });
+
+  it("the new onboarding's two are named as the screens and the desktop's stylesheet name them", () => {
+    // The desktop bundles the same two faces under these family names, so the
+    // server's fontFamily values work on both clients unchanged.
+    expect(PHONE_FONT.grotesk).toBe("Tailzu Grotesk");
+    expect(PHONE_FONT.hand).toBe("Tailzu Hand");
+    expect(FONTS["Tailzu Grotesk"]).toMatch(/\/fonts\/grotesk\.ttf\?v=1$/);
+    expect(FONTS["Tailzu Hand"]).toMatch(/\/fonts\/hand\.ttf\?v=1$/);
+  });
 });
