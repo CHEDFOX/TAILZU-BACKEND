@@ -28,7 +28,7 @@ import { resolveUser } from "../auth/supabase.js";
 import { NoTokenKey, encrypt } from "../connectors/crypto.js";
 import { authlessMark, probeMcp } from "../connectors/client.js";
 import { checkSecretUrl, type Connectors } from "../connectors/index.js";
-import { connectorList } from "../connectors/list.js";
+import { connectorList, mayConnect } from "../connectors/list.js";
 import { plainSignInError } from "./connectorsCustom.js";
 import { beginGoogleOAuth, completeGoogleOAuth, otherGoogleApps, revokeGoogleAccess } from "../connectors/google/index.js";
 import { beginOAuth, completeOAuth, ConnectorError, verifyState } from "../connectors/oauth.js";
@@ -78,7 +78,7 @@ export function registerConnectorRoutes(app: FastifyInstance, deps: ConnectorRou
     if (!user) return noSession(reply);
     if (!c) return reply.send({ enabled: false, connectors: [] });
     try {
-      const connectors = await connectorList(c, user.id);
+      const connectors = await connectorList(c, user.id, user.email);
       return reply.send({ enabled: true, connectors });
     } catch (err) { return fail(reply, err); }
   });
@@ -89,8 +89,8 @@ export function registerConnectorRoutes(app: FastifyInstance, deps: ConnectorRou
     if (!c) return off(reply);
     try {
       const def = await c.hub.resolve(user.id, req.params.id);
-      // A hidden app (the email hand-off) has nothing to connect.
-      if (!def || def.hidden) return reply.code(404).send({ code: "not_found", message: "No such app" });
+      // A hidden app (the email hand-off) has nothing to connect; one held back for testers, nothing yet for anyone else.
+      if (!def || def.hidden || !mayConnect(def.id, user.email)) return reply.code(404).send({ code: "not_found", message: "No such app" });
       if (def.custom?.authless) {
         // Nothing to sign in to: ask it again, and it is connected if it still answers without one.
         if (await probeMcp(new URL(def.url), def.name) !== "none") {

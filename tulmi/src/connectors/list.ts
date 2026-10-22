@@ -10,6 +10,7 @@
  * that sheet, so a tool reads the same in both.
  */
 import type { AssistantTask, ConnectorInfo, ConnectorTool } from "../../../shared/types/api.js";
+import { getConfig } from "../config.js";
 import type { ConnectorDef } from "./catalog.js";
 import type { ToolInfo } from "./client.js";
 import { policyOf, stripInvisible } from "./hygiene.js";
@@ -22,11 +23,23 @@ const DESCRIPTION_MAX = 1000;
 /** How long a screen waits for an app to list its tools before it says it couldn't. */
 export const TOOLS_SCREEN_WAIT_MS = 8000;
 
-export async function connectorList(c: Connectors, userId: string): Promise<ConnectorInfo[]> {
+export async function connectorList(c: Connectors, userId: string, email?: string): Promise<ConnectorInfo[]> {
   const [conns, own] = await Promise.all([c.store.listConnections(userId), c.hub.customApps(userId)]);
   const mine = new Map(conns.map((x) => [x.connectorId, x]));
-  // A hidden app (the email hand-off) has nothing to connect, so the screens never see it.
-  return [...c.hub.catalog.filter((d) => !d.hidden), ...own].map((d) => infoOf(c, userId, d, mine.get(d.id)));
+  // A hidden app (the email hand-off) has nothing to connect, so the screens
+  // never see it; one held back for testers shows only to them.
+  return [...c.hub.catalog.filter((d) => !d.hidden && mayConnect(d.id, email)), ...own].map((d) => infoOf(c, userId, d, mine.get(d.id)));
+}
+
+/**
+ * Whether this person may see and connect an app: false only for an app named
+ * in CONNECTORS_TESTER_ONLY_IDS when their sign-in email is not in
+ * CONNECTORS_TESTERS (compared without case).
+ */
+export function mayConnect(id: string, email: string | undefined, cfg = getConfig()): boolean {
+  const list = (s: string) => s.split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
+  if (!list(cfg.CONNECTORS_TESTER_ONLY_IDS).includes(id.toLowerCase())) return true;
+  return !!email && list(cfg.CONNECTORS_TESTERS).includes(email.trim().toLowerCase());
 }
 
 function infoOf(c: Connectors, userId: string, d: ConnectorDef, m: Connection | undefined): ConnectorInfo {
@@ -105,9 +118,9 @@ export interface AssistantView {
   app?: AppTools;
 }
 
-export async function assistantView(c: Connectors, userId: string, want: { apps?: boolean; tasks?: boolean; tools?: string }): Promise<AssistantView> {
+export async function assistantView(c: Connectors, userId: string, want: { apps?: boolean; tasks?: boolean; tools?: string }, email?: string): Promise<AssistantView> {
   const [apps, tasks, own, app] = await Promise.all([
-    want.apps ? connectorList(c, userId) : undefined,
+    want.apps ? connectorList(c, userId, email) : undefined,
     want.tasks ? c.tasks.list(userId) : undefined,
     c.hub.customApps(userId).catch(() => [] as ConnectorDef[]),
     want.tools ? appTools(c, userId, want.tools) : undefined,

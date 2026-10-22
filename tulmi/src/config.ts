@@ -418,6 +418,17 @@ const EnvSchema = z.object({
    */
   CONNECTORS_ENABLED_IDS: z.string().default(""),
   /**
+   * Enabled apps shown only to testers (CONNECTORS_TESTERS) while their vendor
+   * reviews them. Google asks that scopes it has not verified stay off
+   * production traffic: anyone else tapping Connect would meet Google's
+   * unverified-app screen and use up the 100-user allowance. So, while Google
+   * reviews: google-calendar,google-tasks. Empty once approved: every enabled
+   * app is then shown to everyone.
+   */
+  CONNECTORS_TESTER_ONLY_IDS: z.string().default(""),
+  /** The sign-in emails that see those apps, comma-separated. */
+  CONNECTORS_TESTERS: z.string().default(""),
+  /**
    * 32 random bytes, base64 (openssl rand -base64 32). Encrypts every stored
    * token (AES-256-GCM) and signs the sign-in state. Without it the server
    * refuses to store a token, so connecting fails instead of saving a secret
