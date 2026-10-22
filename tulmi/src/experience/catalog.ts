@@ -5038,7 +5038,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       // only while Ask is on there). Its policy link is the one every
       // surface uses.
       askSetup: ctx.can?.has("DeskAskSetup") === true
-        ? { privacyUrl: POLICY.privacy, os: desktopOs(ctx.os) ?? undefined }
+        ? { privacyUrl: POLICY.privacy, os: desktopOs(ctx.os) ?? undefined, folders: ctx.can?.has("DeskFolders") === true }
         : undefined,
       usage: ctx.usage,
       stats: ctx.stats as unknown as StatsForUser | undefined,

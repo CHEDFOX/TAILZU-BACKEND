@@ -39,6 +39,7 @@
  * Everything goes out through the EventSink, which keeps "exactly one terminal
  * event" true however a path ends.
  */
+import { randomUUID } from "node:crypto";
 import type { AgentStepRequest, AgentTurn } from "../../../shared/types/api.js";
 import { aboutTheText, commandText, grammar, grammarLine, modeOf, wantsDetail, type GrammarAction } from "./grammar.js";
 import { LineReader, LineSplitter, parseLine, type ActionLine, type SpotOrder, type UseLine } from "./lines.js";
@@ -98,7 +99,7 @@ export interface ConnectorsRuntime {
    * `read`: a tool's result has been read in this step, so the planner has
    * seen another app's text. `words`: everything the person said in the run.
    */
-  use(runId: string, said: string, line: UseLine, opts: { allowWrite: boolean; language?: string; platform?: AgentStepRequest["platform"]; read?: boolean; words?: string }): Promise<UseOutcome>;
+  use(runId: string, said: string, line: UseLine, opts: { allowWrite: boolean; language?: string; platform?: AgentStepRequest["platform"]; capabilities?: string[]; read?: boolean; words?: string }): Promise<UseOutcome>;
   /** The run's step ended; close its task if that ends it. */
   settle(runId: string, ending: string | undefined): Promise<void>;
 }
@@ -490,12 +491,15 @@ function drain(stream: AsyncIterator<PlanChunk>): void {
 async function useTool(line: UseLine, req: AgentStepRequest, hold: UseHold | undefined, deps: StepDeps, sink: EventSink): Promise<void> {
   if (!hold || !deps.connectors) return;
   const o = await deps.connectors.use(req.runId, hold.said, line, {
-    allowWrite: hold.allowWrite, language: req.language, platform: req.platform,
+    allowWrite: hold.allowWrite, language: req.language, platform: req.platform, capabilities: req.capabilities,
     read: hold.results.length > 0, words: everythingSaid(req, hold.said),
   });
   if (o.kind === "result") {
     hold.results.push(`${line.connector}.${line.tool}: ${o.text}`);
     hold.again = true;
+  } else if (o.kind === "device") {
+    // The person's own computer does it, on their own files; the step ends here and its outcome comes back on the next one.
+    sink.emit({ t: "device", id: randomUUID().slice(0, 12), tool: o.tool, args: o.args, risk: o.risk, words: o.words });
   } else if (o.kind === "open") {
     // The hand-off: say the one line, have the device open the link (the
     // other app with everything written, for them to finish), and finish.

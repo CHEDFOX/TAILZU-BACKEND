@@ -13,6 +13,7 @@
  * message beside the screen, fenced as data like the screen is.
  */
 import { AGENT_SYSTEM } from "../agent/prompt.js";
+import type { AgentStepRequest } from "../../../shared/types/api.js";
 import type { ConnectorPlan, ConnectorsRuntime } from "../agent/run.js";
 import { fenceTags, stripFenceTags } from "../pipeline/assistPrompt.js";
 import { connectorOAuthClients, getConfig } from "../config.js";
@@ -20,9 +21,10 @@ import { getNote, listNotes } from "../notes/store.js";
 import { approvalCard } from "./card.js";
 import { ALWAYS_ON, enabledCatalog, enabledIds, type ConnectorDef } from "./catalog.js";
 import { ConnectorHub } from "./client.js";
+import { DEVICE_ADDENDUM, DEVICE_DEF, DEVICE_ID, deviceRisk, deviceWords, offersDevice, readDeviceArgs } from "./device.js";
 import { buildNatives, type GoogleOAuth, type NotesSource } from "./google/index.js";
 import { linkKind, onPhone } from "./handoffs/index.js";
-import { pickConnectors, pickTools, type Card } from "./router.js";
+import { MAX_CONNECTORS, pickConnectors, pickTools, type Card } from "./router.js";
 import type { SignInConfig } from "./oauth.js";
 import { directoryStore, type DirectoryStore } from "./registry.js";
 import { connectorStore, type ConnectorStore } from "./store.js";
@@ -121,7 +123,7 @@ export interface Connectors {
 export function createConnectors(o: ConnectorsOptions = {}): Connectors {
   const cfg = getConfig();
   const store = o.store ?? connectorStore();
-  const catalog = o.catalog ?? [...enabledCatalog(enabledIds(cfg.CONNECTORS_ENABLED_IDS)), ...ALWAYS_ON];
+  const catalog = o.catalog ?? [...enabledCatalog(enabledIds(cfg.CONNECTORS_ENABLED_IDS)), ...ALWAYS_ON, DEVICE_DEF];
   const redirectUrl = o.redirectUrl ?? cfg.CONNECTOR_REDIRECT_URL;
   const signIn: SignInConfig = o.signIn ?? {
     clientMetadataUrl: cfg.CONNECTOR_CLIENT_METADATA_URL,
@@ -145,10 +147,17 @@ export function createConnectors(o: ConnectorsOptions = {}): Connectors {
         const def = await hub.resolve(userId, c.connectorId);
         if (def) have.push({ def, lastUsedAt: c.lastUsedAt });
       }
-      // An app that needs no permission is always among them.
-      for (const def of hub.catalog) if (def.auth === "none") have.push({ def, lastUsedAt: null });
+      // An app that needs no permission is always among them; "This computer"
+      // only on a request that carries its capability.
+      for (const def of hub.catalog) if (def.auth === "none" && (def.kind !== "device" || offersDevice(def, req))) have.push({ def, lastUsedAt: null });
       if (!have.length) return null;
-      const picks = pickConnectors(said, req.app, have);
+      let picks = pickConnectors(said, req.app, have);
+      // A run that has begun on this computer's files goes on with them,
+      // whatever the next step's words happen to be.
+      const device = have.find((h) => h.def.kind === "device");
+      if (device && (req.history ?? []).some((t) => t.did?.startsWith("DEVICE ")) && !picks.some((p) => p.id === device.def.id)) {
+        picks = [{ id: device.def.id, score: 99 }, ...picks].slice(0, MAX_CONNECTORS);
+      }
       if (!picks.length) return null;
       const load = Promise.all(picks.map(async (p) => {
         const def = have.find((h) => h.def.id === p.id)!.def;
@@ -162,9 +171,16 @@ export function createConnectors(o: ConnectorsOptions = {}): Connectors {
       clearTimeout(timer);
       const cards = pickTools(said, (loaded ?? []).filter((x): x is NonNullable<typeof x> => !!x));
       if (!cards.length) return null;
-      return { system: AGENT_SYSTEM_CONNECTORS, message: (base, results) => withConnectorContext(base, cards, results) };
+      // What this computer gave back on earlier steps of the run is another
+      // app's result like any other: data, in the same fence.
+      const earlier = deviceResults(req.history);
+      return {
+        system: cards.some((c) => c.connector === DEVICE_ID) ? AGENT_SYSTEM_CONNECTORS + DEVICE_ADDENDUM : AGENT_SYSTEM_CONNECTORS,
+        message: (base, results) => withConnectorContext(base, cards, [...earlier, ...results]),
+      };
     },
     async use(runId, said, line, opts) {
+      if (line.connector === DEVICE_ID) return deviceUse(line, opts, async () => (isHinglish(opts.language) ? opts.language : await profileLanguage?.().catch(() => undefined)) ?? opts.language);
       // Worded for the person: a Hinglish profile reads Hinglish whatever
       // language the device asked in.
       const voice = async () => (isHinglish(opts.language) ? opts.language : await profileLanguage?.().catch(() => undefined)) ?? opts.language;
@@ -188,6 +204,37 @@ export function createConnectors(o: ConnectorsOptions = {}): Connectors {
   });
 
   return { store, hub, tasks, redirectUrl, signIn, google: withFetch, custom, directory: o.directory ?? directoryStore(), runtimeFor };
+}
+
+/** The last two results this computer gave the run, as the planner reads results: "this-computer.find_files: ...". */
+export function deviceResults(history: AgentStepRequest["history"]): string[] {
+  const out: string[] = [];
+  for (const t of history ?? []) {
+    const tool = /^DEVICE (\w+)/.exec(t.did ?? "")?.[1];
+    if (tool && t.data) out.push(`${DEVICE_ID}.${tool}: ${t.data}`);
+  }
+  return out.slice(-2);
+}
+
+/**
+ * A USE line for "This computer": nothing runs here. The tool and arguments
+ * are read (device.ts) and handed back for the run to send to the person's
+ * desktop as a `device` event. Only on a Mac or Windows run that carries the
+ * capability, and only a look in a show run: changing a file is a command.
+ */
+async function deviceUse(
+  line: { tool: string; args: Record<string, unknown> },
+  opts: { allowWrite: boolean; platform?: string; capabilities?: string[]; language?: string },
+  language: () => Promise<string | undefined>,
+): Promise<UseOutcome> {
+  const w = wordsFor(await language());
+  if (!offersDevice(DEVICE_DEF, opts)) return { kind: "stopped", message: w("dv.off") };
+  const risk = deviceRisk(line.tool);
+  if (!risk) return { kind: "stopped", message: `${DEVICE_DEF.name} doesn't have an action called ${line.tool.slice(0, 40)}.` };
+  if (risk !== "read" && !opts.allowWrite) return { kind: "stopped", message: w("dv.show") };
+  const read = readDeviceArgs(line.tool, line.args);
+  if ("why" in read) return { kind: "stopped", message: `I couldn't use that: ${read.why}.` };
+  return { kind: "device", tool: line.tool, args: read.args, risk, words: deviceWords(await language()) };
 }
 
 /**

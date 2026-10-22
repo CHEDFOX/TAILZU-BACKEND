@@ -67,8 +67,10 @@ export interface ConnectorDef {
   /** The vendor's remote MCP endpoint (for "url" auth: the host the pasted URL must be on; for a native app: the REST API it calls). */
   url: string;
   auth: "oauth" | "url" | "none";
-  /** "mcp" unless said otherwise. */
-  kind?: "mcp" | "native";
+  /** "mcp" unless said otherwise. "device": run by the person's own computer, never here, and offered only to a request that carries `capability` (device.ts). */
+  kind?: "mcp" | "native" | "device";
+  /** Device apps only: the capability a request must carry for the planner to be offered this app. */
+  capability?: string;
   /** Native only: whose OAuth it is. */
   provider?: "google";
   /** Native OAuth only: the scopes asked, only when the person taps Connect on this app. All must be granted. */

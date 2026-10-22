@@ -32,6 +32,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { ErrorCode, LATEST_PROTOCOL_VERSION, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { customDef, type ConnectorDef } from "./catalog.js";
 import { decrypt, encrypt } from "./crypto.js";
+import { deviceToolInfos } from "./device.js";
 import { EgressRefused, mcpFetch, oauthFetch, type FetchLike } from "./egress.js";
 import { acceptPatch, cleanTools, pinList, reviewTools, visibleTools } from "./hygiene.js";
 import { ConnectorError, providerOptions, UserOAuthProvider, type SignInConfig } from "./oauth.js";
@@ -311,6 +312,7 @@ export class ConnectorHub {
   async tools(userId: string, connectorId: string): Promise<ToolInfo[]> {
     const def = await this.resolve(userId, connectorId);
     if (!def) throw new ConnectorError("not_connected", "That app isn't available.");
+    if (def.kind === "device") return deviceToolInfos();
     const native = this.native(def);
     if (native) return native.tools().map(({ risk: _risk, phoneOnly: _phone, ...tool }) => tool);
     const listed = await this.listed(userId, def);

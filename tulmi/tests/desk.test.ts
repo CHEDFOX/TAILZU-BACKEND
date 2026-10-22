@@ -45,6 +45,8 @@ const DESKTOP_COMPONENTS = new Set([
   "VoiceSession", "DeskShell", "Keys",
   // Sent only to a window that declared DeskAskSetup (Ask is on there).
   "DeskAskSetup",
+  // Sent only to a window that declared DeskFolders (the allowed-folders row under Ask).
+  "DeskFolders",
 ]);
 const DESKTOP_ACTIONS = new Set([
   "navigate", "back", "switchTab", "callEndpoint", "setState", "toggleState",
