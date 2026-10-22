@@ -2835,7 +2835,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
     ? assistantView(connectors, user.id, {
         apps: screenId === "desk_settings", tasks: screenId === "desk_tasks",
         tools: screenId === "desk_connector" ? toolsOf : undefined,
-      }).catch(() => undefined)
+      }, user.email).catch(() => undefined)
     // The phone's own: Connected apps, Tasks, the confirm sheet and an added
     // app's tools (experience/assistant.ts). No capability to ask for: they
     // are made of pieces every build draws. Ask (assistant_ask) reads
@@ -2844,7 +2844,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
       ? assistantView(connectors, user.id, {
           apps: screenId === "assistant_apps", tasks: screenId === "assistant_tasks" || screenId === "assistant_approve",
           tools: screenId === "assistant_app_tools" ? toolsOf : undefined,
-        }).catch(() => undefined)
+        }, user.email).catch(() => undefined)
       : undefined;
   const [usage, stats, allowance, history, notes, note, entitlement, assistant] = await Promise.all([
     usageRead, statsWait, allowanceRead, historyRead, notesRead, noteRead, entitlementRead, assistantRead,
