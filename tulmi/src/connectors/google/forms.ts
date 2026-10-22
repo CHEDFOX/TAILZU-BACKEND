@@ -39,7 +39,7 @@ interface GResponse { lastSubmittedTime?: string; createTime?: string; answers?:
 
 const TOOLS: NativeTool[] = [
   {
-    name: "create_form", risk: "write",
+    name: "create_form", risk: "write", verb: "create",
     description: "Create a new Google Form (a survey, a quiz, a poll, a sign-up) with its questions, open for answers, and give its link to share. Nothing is sent to anyone.",
     inputSchema: {
       type: "object",
@@ -57,7 +57,7 @@ const TOOLS: NativeTool[] = [
     annotations: {},
   },
   {
-    name: "list_responses", risk: "read",
+    name: "list_responses", risk: "read", verb: "read",
     description: "See the answers to a Google Form Tailzu made: how many answered, each choice added up, and the latest answers.",
     inputSchema: {
       type: "object",

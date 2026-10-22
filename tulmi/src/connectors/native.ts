@@ -13,6 +13,7 @@
  * hub turns into the same { code, message } failure.
  */
 import type { CallOutcome, ToolInfo } from "./client.js";
+import type { Verb } from "./intent.js";
 import type { Risk } from "./risk.js";
 import type { WordKey } from "./words.js";
 
@@ -23,6 +24,13 @@ export interface NativeTool extends ToolInfo {
   risk: Risk;
   /** Its link opens only on a phone (a call, a text, a UPI payment): asked for on a computer, it is one line and nothing runs. */
   phoneOnly?: boolean;
+  /**
+   * What it does to the person's things (read, free, create, move, delete,
+   * complete, append, send): the router puts it first when that is what was
+   * asked (router.ts). Left out, it is read from the tool's name; a hand-off
+   * with several tools (a call or a text) is chosen by the words instead.
+   */
+  verb?: Verb;
 }
 
 /** Something to open on the person's own device: a hand-off (handoffs/). */

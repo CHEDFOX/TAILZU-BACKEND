@@ -277,13 +277,15 @@ describe("the catalog", () => {
   it("routes to a new app by its name, and never by an id that is an everyday word", () => {
     const have = [...CATALOG, ...ALWAYS_ON].map((d) => ({ def: d, lastUsedAt: null as number | null }));
     const picks = (said: string) => pickConnectors(said, "Safari", have).map((p) => p.id);
-    expect(picks("remind me on monday to water the plants")[0]).toBe("google-tasks");
+    // With every app connected, a reminder goes to Todoist before Google Tasks (it keeps the time), never to Monday.com.
+    expect(picks("remind me on monday to water the plants")[0]).toBe("todoist");
     expect(picks("remind me on monday to water the plants")).not.toContain("monday");
     expect(picks("make a quiz on fractions")[0]).toBe("google-forms");
     expect(picks("make a quiz on fractions")).not.toContain("make");
     expect(picks("add water the plants to todoist")[0]).toBe("todoist");
     expect(picks("what did we decide in granola yesterday")[0]).toBe("granola");
-    expect(picks("read me the transcript from the demo")).toEqual(expect.arrayContaining(["granola", "otter", "fireflies"]));
+    // One meeting-notes app, by the fixed order (router.ts JOB_APPS), not all three.
+    expect(picks("read me the transcript from the demo")).toEqual(["granola"]);
     expect(picks("share my calendly scheduling link")[0]).toBe("calendly");
     expect(picks("cancel my cal.com booking on friday")[0]).toBe("calcom");
     expect(picks("move the launch card to done in trello")[0]).toBe("trello");

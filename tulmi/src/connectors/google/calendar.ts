@@ -60,7 +60,7 @@ interface GEvent {
 
 const TOOLS: NativeTool[] = [
   {
-    name: "list_events", risk: "read",
+    name: "list_events", risk: "read", verb: "read",
     description: "List the events on the person's Google Calendar in a time range. With no range it is today. Each event comes back with its id.",
     inputSchema: {
       type: "object",
@@ -74,7 +74,7 @@ const TOOLS: NativeTool[] = [
     annotations: { readOnlyHint: true },
   },
   {
-    name: "find_free_time", risk: "read",
+    name: "find_free_time", risk: "read", verb: "free",
     description: "Find free slots in the person's Google Calendar, inside their working day. With no range it is the rest of today.",
     inputSchema: {
       type: "object",
@@ -90,7 +90,7 @@ const TOOLS: NativeTool[] = [
     annotations: { readOnlyHint: true },
   },
   {
-    name: "create_event", risk: "write",
+    name: "create_event", risk: "write", verb: "create",
     description: "Add an event to the person's Google Calendar. With attendees, Google emails each of them an invite. Make a short title from their words when they gave none; a day without a time makes an all-day event. Invite only people whose email addresses they gave.",
     inputSchema: {
       type: "object",
@@ -108,7 +108,7 @@ const TOOLS: NativeTool[] = [
     annotations: {},
   },
   {
-    name: "move_event", risk: "write",
+    name: "move_event", risk: "write", verb: "move",
     description: "Move an existing Google Calendar event to a new time, keeping its length unless an end is given. If it has attendees, Google tells them.",
     inputSchema: {
       type: "object",
@@ -123,7 +123,7 @@ const TOOLS: NativeTool[] = [
     annotations: {},
   },
   {
-    name: "delete_event", risk: "destructive",
+    name: "delete_event", risk: "destructive", verb: "delete",
     description: "Delete an event from the person's Google Calendar. If it has attendees, Google tells them it is cancelled.",
     inputSchema: { type: "object", properties: { event_id: { type: "string", description: "The id from list_events." } }, required: ["event_id"] },
     annotations: { destructiveHint: true },

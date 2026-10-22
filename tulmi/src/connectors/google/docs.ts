@@ -23,7 +23,7 @@ const BODY_MAX = 30_000;
 
 const TOOLS: NativeTool[] = [
   {
-    name: "create_doc", risk: "write",
+    name: "create_doc", risk: "write", verb: "create",
     description: "Create a new Google Doc with a title and some text. It makes a new Doc; it never changes one that exists.",
     inputSchema: {
       type: "object",
@@ -33,7 +33,7 @@ const TOOLS: NativeTool[] = [
     annotations: {},
   },
   {
-    name: "save_note", risk: "write",
+    name: "save_note", risk: "write", verb: "create",
     description: "Save one of the person's Tailzu meeting notes as a new Google Doc: its summary, key points and people. With no note_id it is their most recent note.",
     inputSchema: {
       type: "object",

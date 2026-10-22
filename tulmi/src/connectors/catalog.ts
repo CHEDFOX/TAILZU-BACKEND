@@ -21,9 +21,13 @@
  * client ID metadata documents (CIMD); oauth.ts does not use them yet (it sets
  * no clientMetadataUrl), so for us dynamic client registration is the way in.
  *
- * `oneLine` and `aliases` are what the router matches an utterance against, so
- * aliases are the words people actually say ("calendar", "jira", "tickets"),
- * not product names alone.
+ * `aliases` are the words people actually say for an app ("calendar", "jira",
+ * "tickets"), not product names alone: the app search on the screens matches
+ * them (registry.ts). The router does not pick a catalog app by them: which
+ * app does a job (JOB_APPS, with the order among apps that share one) and the
+ * names that pick an app outright (PRODUCTS) are in intent.ts, and a new
+ * entry goes there too (tests/connector-routing.test.ts fails until it does).
+ * `oneLine` and `aliases` still route an app the job tables do not know.
  *
  * kind:
  *   "mcp"     (default) a remote MCP server the client in client.ts talks to.
