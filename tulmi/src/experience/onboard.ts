@@ -46,6 +46,7 @@ import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
 import type { ConnectorInfo } from "../../../shared/types/api.js";
 import { CATALOG } from "../connectors/catalog.js";
 import { en } from "../connectors/words.js";
+import { appIconNode } from "./appIcons.js";
 import { AUTH_UI, DAILY_LANGUAGES, GOOGLE_PATHS } from "./catalog.js";
 import type { ScreenContext } from "./catalog.js";
 
@@ -1105,8 +1106,10 @@ export function yoursStep(p: Plan): Node {
   ], { on: { onAppear: "checkPerms" } });
 }
 
-/** An app's first letter on a rounded square (no logos to carry). It is the app's, so it comes from state. */
-function appMark(id: string, size: number): Node {
+/** An app's mark: its logo, or its first letter on a rounded square (the letter is the app's, so it comes from state). */
+function appMark(id: string, size: number, custom?: boolean): Node {
+  const logo = appIconNode(id, size, custom);
+  if (logo) return logo;
   return {
     type: "Stack",
     style: {
@@ -1141,7 +1144,7 @@ function appTile(a: ConnectorInfo, p: Plan): Node {
       backgroundColor: OB.surf, borderWidth: 1.5, borderColor: connected ? OB.ink : OB.hair,
     },
     children: [
-      appMark(a.id, 42),
+      appMark(a.id, 42, a.custom),
       FROM(`n.${a.id}`, { fontSize: 14, fontWeight: "700", color: OB.ink, textAlign: "center" }),
       connected
         ? appPill(
@@ -1186,7 +1189,7 @@ function connectSheet(a: ConnectorInfo): Node {
         type: "Stack",
         style: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 },
         children: [
-          appMark(a.id, 46),
+          appMark(a.id, 46, a.custom),
           {
             type: "Stack",
             style: { flex: 1, gap: 2 },

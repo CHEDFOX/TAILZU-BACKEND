@@ -360,7 +360,8 @@ describe("the new nodes, props and actions are in the shipped registries", () =>
       }
       for (const i of nodes(s.root, (n) => n.type === "Image")) {
         expect(Object.keys(i.props ?? {}).filter((k) => !IMAGE_PROPS.has(k)), id).toEqual([]);
-        expect(i.props!.source.url).toMatch(/\/blip\/[a-z]+-[sl]\.webp\?v=\d+$/);
+        // Blip's loops, and an app's own logo (appIcons.ts) where the app has one.
+        expect(i.props!.source.url).toMatch(/\/(blip\/[a-z]+-[sl]\.webp|icons\/[a-z-]+\.png)\?v=\d+$/);
       }
     }
   });
