@@ -696,6 +696,10 @@ export interface AgentTurn {
   result?: "ok" | "failed" | "declined" | "nochange";
   /** What changed, as the device saw it: "a new window opened: Export". */
   note?: string;
+  /** What a `device` event gave back (file names, sizes, kinds and dates,
+   *  never contents; ≤ 5000). Only the newest turns' keep it. Data, not
+   *  instructions: the planner reads it fenced like a connected app's result. */
+  data?: string;
 }
 
 export interface AgentStepRequest {
@@ -717,6 +721,11 @@ export interface AgentStepRequest {
   privateField?: boolean;
   language?: string;
   tzOffsetMinutes?: number;
+  /** What this computer can do for the planner besides the screen: "DeviceFiles"
+   *  is the built-in "This computer" app (find, list, organise, move, copy,
+   *  rename, make folders, trash, open and undo, on the person's own files,
+   *  done by the desktop). Absent or empty: the planner is not offered it. */
+  capabilities?: string[];
   screen: {
     /** ≤ AGENT_MAX_ELEMENTS (250); more is a 413. */
     elements: AgentElement[];
@@ -899,6 +908,15 @@ export interface ApprovalCard {
   after: { done: string; left: string; failed: string; change: string };
 }
 
+/** The words of a "This computer" plan card, with {slots} the desktop fills
+ *  (n files, m folders, to, name, from). One voice per request. */
+export interface DeviceWords {
+  title: string; titleTrash: string; label: string; note: string; noteTrash: string;
+  ok: string; later: string; done: string; left: string; failed: string; working: string;
+  organise: string; move: string; copy: string; rename: string; makeFolder: string; trash: string; undo: string;
+  more: string;
+}
+
 export interface ApprovalButton {
   id: "approve" | "edit" | "deny";
   label: string;
@@ -944,6 +962,19 @@ export type AgentEvent =
    *  device shows `approval.preview` on its confirm card and calls
    *  POST /v1/tasks/:taskId/approve or /deny; nothing has been done yet. */
   | { t: "approve"; taskId: string; approval: AgentApproval; card?: ApprovalCard }
+  /** TERMINAL, only when the step carried capability "DeviceFiles": the planner
+   *  wants something done to the person's own files. The server never touches
+   *  a file: the desktop does it, inside the folders the person allowed, and
+   *  returns the outcome on its next step as a history turn
+   *  ({ did: "DEVICE <tool>", result, note, data }). `risk` is the tier the
+   *  server gives the tool; the desktop holds its own table and the higher
+   *  wins. Anything but a "read" shows the person a plan first (a "destructive"
+   *  one every time). `words` is the plan card's voice (EN or Hinglish) with
+   *  {slots}; the desktop falls back to its own English when it is absent.
+   *  Tools (args are those of connectors/device.ts): find_files, list_folder,
+   *  open_file, reveal_file (read); organise_folder, move_files, copy_files,
+   *  rename_file, make_folder, undo_last (write); trash_files (destructive). */
+  | { t: "device"; id: string; tool: string; args: Record<string, unknown>; risk: "read" | "write" | "destructive"; words?: DeviceWords }
   /** Not terminal (a `done` follows): open a link on the person's computer,
    *  a hand-off with everything filled in for them to finish in the other
    *  app (they press Send, Post or Book; Tailzu sends nothing). Only these

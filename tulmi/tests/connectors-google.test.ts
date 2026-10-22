@@ -157,7 +157,7 @@ describe("the catalog", () => {
 
   it("is always there by default (CONNECTORS on), whatever CONNECTORS_ENABLED_IDS says", () => {
     const c = createConnectors({ store: new MemoryConnectorStore(), redirectUrl: REDIRECT });
-    expect(c.hub.catalog.map((d) => d.id)).toEqual(["email-handoff", ...HANDOFF_IDS, "youtube"]);
+    expect(c.hub.catalog.map((d) => d.id)).toEqual(["email-handoff", ...HANDOFF_IDS, "youtube", "this-computer"]);
   });
 });
 

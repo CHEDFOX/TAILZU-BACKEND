@@ -218,6 +218,10 @@ const NODE_TYPE_TEXT_PROPS: Record<string, { props: readonly string[]; rows?: { 
   SwipePill: { props: ["submitLabel"] },
   // The mic button's words while it listens and while it writes (its idle one is a `label`).
   VoiceButton: { props: ["stopLabel", "transcribingLabel"] },
+  // The allowed-folders row under Ask (desk.ts askFoldersCard).
+  DeskFolders: {
+    props: ["lede", "usual", "add", "remove", "reset", "none", "refused", "foot", "policyLabel"],
+  },
 };
 
 function transformNode(node: Node, fn: StrFn): Node {

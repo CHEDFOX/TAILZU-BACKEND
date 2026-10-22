@@ -26,7 +26,7 @@
  * sitting since yesterday is not a yes to what it says now.
  */
 import { randomUUID } from "node:crypto";
-import type { ApprovalCard } from "../../../shared/types/api.js";
+import type { ApprovalCard, DeviceWords } from "../../../shared/types/api.js";
 import type { ConnectorHub, Fail } from "./client.js";
 import type { ConnectorDef } from "./catalog.js";
 import type { HandoffWords } from "./native.js";
@@ -51,6 +51,8 @@ export type UseOutcome =
    * their next words answer it.
    */
   | { kind: "stopped"; message: string; ask?: boolean }
+  /** A tool of "This computer" (device.ts): nothing ran here; the run sends it to the person's desktop, which does it on their own files. */
+  | { kind: "device"; tool: string; args: Record<string, unknown>; risk: "read" | "write" | "destructive"; words: DeviceWords }
   /** Something for the person's own device to open (a hand-off): the run says `say`, opens it and ends. `words` is the app's own line, worded for the person before the run sees it. */
   | { kind: "open"; url: string; label: string; fallback?: string; say?: string; words?: HandoffWords };
 

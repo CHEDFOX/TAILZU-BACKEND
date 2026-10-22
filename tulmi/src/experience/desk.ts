@@ -108,7 +108,7 @@ export interface DeskContext {
   /** This window draws Ask's one-time setup card (it said "DeskAskSetup",
    *  which it says only while Ask is on there): where the card's privacy
    *  link goes, and the computer it is on ("mac", "windows"), when known. */
-  askSetup?: { privacyUrl: string; os?: string };
+  askSetup?: { privacyUrl: string; os?: string; folders?: boolean };
   /** The assistant's connected apps and tasks (CONNECTORS is on, and this
    *  window said "DeskConnectors"): the apps for Settings, the tasks for the
    *  Tasks page. Absent, and neither is drawn. */
@@ -2239,6 +2239,35 @@ function askSetupCard(a: NonNullable<DeskContext["askSetup"]>, place: "home" | "
   };
 }
 
+/**
+ * THE FOLDERS ASK MAY USE (Settings, under Ask): the allowed-folders row of
+ * "This computer" (connectors/device.ts). Only the words come from here; which
+ * folders are allowed is this computer's own list, kept on it (Downloads,
+ * Desktop and Documents until the person changes it), and the window draws it
+ * from what its main process says (sdui.js DeskFolders, sent only to a window
+ * that declared it). Ask never goes into
+ * system, app or hidden folders, whatever is added.
+ */
+function askFoldersCard(a: NonNullable<DeskContext["askSetup"]>): Node {
+  return {
+    type: "DeskFolders",
+    props: {
+      title: "Folders Ask can use",
+      lede: "When you ask Ask to find, sort or tidy your files, it only works inside these folders, and never in system, app or hidden ones. Only file names, sizes, kinds and dates are used to answer you, never what is inside a file.",
+      usual: "The usual three",
+      add: "Add a folder",
+      remove: "Remove",
+      reset: "Back to the usual three",
+      none: "No folders yet. Add one, or go back to the usual three.",
+      refused: "Ask can't use that folder.",
+      foot: "How Ask uses your files:",
+      policyLabel: "Privacy policy",
+      policyUrl: a.privacyUrl,
+    },
+    style: { marginTop: 14 },
+  };
+}
+
 export function deskSettings(ctx: DeskContext): ScreenResponse {
   const q = planWords(ctx);
   const langs = (ctx.personality.languages ?? []).filter((l) => l && l !== "auto");
@@ -2265,6 +2294,7 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
     ...(ctx.askSetup ? [stack([
       text("Ask", "d-h2", { marginBottom: 14 }),
       askSetupCard(ctx.askSetup, "settings"),
+      ...(ctx.askSetup.folders ? [askFoldersCard(ctx.askSetup)] : []),
     ], { marginBottom: 40 })] : []),
     ...(ctx.assistant?.apps && (ctx.assistant.apps.length || ctx.assistant.custom) ? [connectedApps(ctx.assistant)] : []),
     stack([

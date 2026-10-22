@@ -42,6 +42,8 @@ export const LIMITS = {
   said: 1000,
   did: 160,
   note: 200,
+  data: 5000,
+  capabilities: 8,
 } as const;
 
 export interface Caps {
@@ -168,6 +170,8 @@ function readTurn(v: unknown): AgentTurn | null {
   // A note says what changed on the screen, so it is screen text like any other.
   const note = withoutUrlSecrets(oneLine(o.note, LIMITS.note));
   if (note) turn.note = note;
+  // What "This computer" gave back: file names, sizes, kinds and dates, lines kept.
+  if (typeof o.data === "string" && o.data.trim()) turn.data = block(o.data).slice(0, LIMITS.data).trim();
   return turn.said || turn.did || turn.note ? turn : null;
 }
 
@@ -260,7 +264,16 @@ export function readStepRequest(
   if (typeof o.tzOffsetMinutes === "number" && Number.isFinite(o.tzOffsetMinutes) && Math.abs(o.tzOffsetMinutes) <= 14 * 60) {
     req.tzOffsetMinutes = Math.round(o.tzOffsetMinutes);
   }
-  if (history.length) req.history = history;
+  if (history.length) {
+    // A result is prompt the person pays for at every later step: only the newest two are kept.
+    let kept = 0;
+    for (let i = history.length - 1; i >= 0; i--) if (history[i]!.data && ++kept > 2) delete history[i]!.data;
+    req.history = history;
+  }
+  const capabilities = Array.isArray(o.capabilities)
+    ? [...new Set(o.capabilities.filter((c): c is string => typeof c === "string" && /^[A-Za-z][A-Za-z0-9]{0,31}$/.test(c)))].slice(0, LIMITS.capabilities)
+    : [];
+  if (capabilities.length) req.capabilities = capabilities;
   if (hasImage) req.picture = readPictureInfo(o.picture);
   return { req };
 }
@@ -326,7 +339,7 @@ export function audioFormatOf(filename: string | undefined, mime: string | undef
   return "webm";
 }
 
-const TERMINAL = new Set<AgentEvent["t"]>(["action", "ask", "look", "approve", "done", "error"]);
+const TERMINAL = new Set<AgentEvent["t"]>(["action", "ask", "look", "approve", "device", "done", "error"]);
 
 /**
  * The one way events leave a step: in order, one JSON object per line, and
@@ -361,13 +374,15 @@ export class EventSink {
     // The planner never builds an action in show mode; this is what makes that
     // a guarantee and not a habit.
     if (e.t === "action" && this.mode === "show") e = { t: "done" };
+    // Nor does the person's computer change a file in one: a look, only.
+    if (e.t === "device" && this.mode === "show" && e.risk !== "read") e = { t: "done" };
     if (e.t === "say") {
       e = { t: "say", text: e.text, ...(e.locale ? { locale: e.locale } : {}), ...(this.says > 0 ? { append: true } : {}) };
       this.says += 1;
     }
     if (TERMINAL.has(e.t)) {
       this.finished = true;
-      this.ending = e.t === "error" ? `error:${e.code}` : e.t === "action" ? `action:${e.kind}` : e.t;
+      this.ending = e.t === "error" ? `error:${e.code}` : e.t === "action" ? `action:${e.kind}` : e.t === "device" ? `device:${e.tool}` : e.t;
     }
     this.sent += 1;
     this.write(JSON.stringify(e) + "\n");
