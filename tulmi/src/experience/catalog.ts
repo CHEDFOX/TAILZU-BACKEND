@@ -47,6 +47,7 @@ import { getConfig } from "../config.js";
 import type { Allowance } from "../usage/allowance.js";
 import { desktopOs, installerUrl, publishedRelease, updateFor } from "./desktopRelease.js";
 import { canOnboard, onboardAppsOn, onboardAuthTree, onboardScreen } from "./onboard.js";
+import { canOnboardStore, onboardStoreScreen } from "./onboardStore.js";
 
 /** The desktop release every OS has at least, for an OS whose installer was
  *  published before versions were recorded beside it. */
@@ -2206,6 +2207,13 @@ export function buildBootstrap(
      * itself ends at Done. Absent, a client gets exactly what it always did.
      */
     onboardV2?: boolean;
+    /**
+     * THE ASKING BUILD IS A STORE BUILD (onboardStore.ts: it cannot draw the
+     * stage, but draws everything the store variant is made of). It is routed
+     * as onboardV2 is (the first screen, no intro film, no mark from device
+     * signals) and keeps the sign-in it has always had.
+     */
+    onboardStore?: boolean;
     /** Connected apps are switched on (CONNECTORS). With onboardV2 it decides
      *  whether the flow has its two apps steps, and so how long its bar is. */
     connectorsOn?: boolean;
@@ -2213,6 +2221,8 @@ export function buildBootstrap(
 ): BootstrapResponse {
   const desk = opts.desk === true && opts.formFactor === "desktop";
   const onboardV2 = opts.onboardV2 === true;
+  // The one flow either way: which build draws it is only the screen's business.
+  const newFlow = onboardV2 || opts.onboardStore === true;
   const setup = setupActivity(opts);
   const nav = desk ? deskNav(opts.deskNotes === true, opts.deskTasks === true) : navigationFor(!!opts.landedBefore);
   return withAppKnobs({
@@ -2263,7 +2273,7 @@ export function buildBootstrap(
         keyboardReady: !!opts.keyboardReady,
         formFactor: opts.formFactor,
       },
-      onboardV2,
+      newFlow,
       opts.isReviewer === true,
     )),
     flags: ((): BootstrapResponse["flags"] => {
@@ -2589,7 +2599,7 @@ export function buildBootstrap(
         // A keyboard mic tap mid-flow is held exactly as it is on the old
         // steps. (Also the default in appKnobsData.ts; set here so a knob
         // sync that forgets it cannot let a tap past the new flow.)
-        if (onboardV2) flags["boot.firstRunGateIds"] = ["onboarding", "onboarding_keyboard", "onboard"];
+        if (newFlow) flags["boot.firstRunGateIds"] = ["onboarding", "onboarding_keyboard", "onboard"];
       }
 
       /**
@@ -5130,7 +5140,11 @@ function phoneScreen(screenId: string, ctx: ScreenContext): ScreenResponse | nul
     case "onboard":
       return canOnboard(ctx.can)
         ? onboardScreen(ctx, NAV.kind === "tabs" ? NAV.tabs[0]?.id : undefined)
-        : onboardingVoice(ctx);
+        // The same onboarding for the builds in the stores (onboardStore.ts):
+        // what they run on a first launch cannot draw the stage.
+        : canOnboardStore(ctx.can, ctx.formFactor)
+          ? onboardStoreScreen(ctx)
+          : onboardingVoice(ctx);
     // "onboarding_language" removed — the language pick is the client's native
     // post-auth screen now (needsLanguagePick bootstrap flag). Unknown ids fall
     // through to null → 404, which the client surfaces gracefully.
