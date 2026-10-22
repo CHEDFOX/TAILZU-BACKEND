@@ -794,6 +794,8 @@ export interface ConnectorInfo {
   /** "oauth": POST .../connect returns a sign-in URL. "url": the person pastes one. */
   auth: "oauth" | "url";
   connected: boolean;
+  /** Connected, but the app asked for a new sign-in the last time it was tried. */
+  needsSignIn?: boolean;
   /** look = reads only, draft = may prepare changes (each asked), send = may send (asked, unless turned on per tool). */
   level: "look" | "draft" | "send";
   /** Tools the person lets it do without asking. */
@@ -809,6 +811,38 @@ export interface AssistantTask {
   approval: AgentApproval | null;
   createdAt: number;
   updatedAt: number;
+}
+
+/**
+ * The confirm card of an `approve` event, built and worded by the server: the
+ * device draws it as it is, and each button names the route it calls. Nothing
+ * on it is the device's own wording, so it reads the same in every language
+ * the server speaks and changes with a deploy.
+ */
+export interface ApprovalCard {
+  /** "Ready to send?" */
+  title: string;
+  /** The app, in a word: "Slack". */
+  app: string;
+  /** What the preview is: "The exact message". */
+  label: string;
+  /** The exact words, recipient or target (the approval's preview). */
+  preview: string;
+  /** What it will do and what it won't. */
+  note: string;
+  /** In order: yes, change it, no. */
+  buttons: ApprovalButton[];
+  /** What the card says once the answer is known. */
+  after: { done: string; left: string; failed: string; change: string };
+}
+
+export interface ApprovalButton {
+  id: "approve" | "edit" | "deny";
+  label: string;
+  /** The server route this button calls, with the account's token. */
+  call: { method: "POST"; path: string; body?: Record<string, string> };
+  /** After a good answer: "listen" waits for what to change, said aloud; otherwise the card shows the outcome. */
+  then?: "listen";
 }
 
 export type AgentEvent =
@@ -846,7 +880,7 @@ export type AgentEvent =
    *  planner wants to do something in one of them that needs their yes. The
    *  device shows `approval.preview` on its confirm card and calls
    *  POST /v1/tasks/:taskId/approve or /deny; nothing has been done yet. */
-  | { t: "approve"; taskId: string; approval: AgentApproval }
+  | { t: "approve"; taskId: string; approval: AgentApproval; card?: ApprovalCard }
   /** TERMINAL. */
   | { t: "done"; text?: string }
   /** TERMINAL. Codes: private, too_many_steps, no_speech, bad_target,

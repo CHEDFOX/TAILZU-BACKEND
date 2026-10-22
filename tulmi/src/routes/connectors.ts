@@ -16,10 +16,11 @@
  * else answers 404, so a client can ask once and stop.
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
-import type { AssistantTask, ConnectorInfo } from "../../../shared/types/api.js";
+import type { AssistantTask } from "../../../shared/types/api.js";
 import { resolveUser } from "../auth/supabase.js";
 import { NoTokenKey, encrypt } from "../connectors/crypto.js";
 import { checkSecretUrl, type Connectors } from "../connectors/index.js";
+import { connectorList } from "../connectors/list.js";
 import { beginOAuth, completeOAuth, ConnectorError } from "../connectors/oauth.js";
 import type { Level } from "../connectors/risk.js";
 import { ConnectorsNeedAccount } from "../connectors/store.js";
@@ -35,11 +36,15 @@ const LEVELS: readonly Level[] = ["look", "draft", "send"];
 const AUTO_MAX = 100;
 
 const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'";
-const page = (title: string, line: string) =>
+/** Where the phone's app is opened from this page: its Connected apps screen (it refreshes itself on the way in). */
+const OPEN_APP = "tulmi://screen/assistant_apps?entry=link";
+const page = (title: string, line: string, openApp = true) =>
   `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>` +
   `<style>body{font:18px/1.5 system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:24px;text-align:center;color:#1b1b1f;background:#faf8f5}` +
-  `@media(prefers-color-scheme:dark){body{color:#f2f0ed;background:#16161a}}h1{font-size:22px;margin:0 0 8px}p{margin:0;opacity:.7}</style>` +
-  `<main><h1>${title}</h1><p>${line}</p></main>`;
+  `@media(prefers-color-scheme:dark){body{color:#f2f0ed;background:#16161a}}h1{font-size:22px;margin:0 0 8px}p{margin:0;opacity:.7}` +
+  `a{display:inline-block;margin-top:22px;padding:12px 26px;border-radius:999px;background:#1b1b1f;color:#faf8f5;font-weight:600;text-decoration:none}` +
+  `@media(prefers-color-scheme:dark){a{background:#f2f0ed;color:#16161a}}</style>` +
+  `<main><h1>${title}</h1><p>${line}</p>${openApp ? `<a href="${OPEN_APP}">Open Tailzu</a>` : ""}</main>`;
 
 /** A task as the API sends it: its approval is the plain-words card, never the call's arguments. */
 const taskOut = (t: TaskView): AssistantTask => t as AssistantTask;
@@ -63,14 +68,7 @@ export function registerConnectorRoutes(app: FastifyInstance, deps: ConnectorRou
     if (!user) return noSession(reply);
     if (!c) return reply.send({ enabled: false, connectors: [] });
     try {
-      const mine = new Map((await c.store.listConnections(user.id)).map((x) => [x.connectorId, x]));
-      const connectors: ConnectorInfo[] = c.hub.catalog.map((d) => {
-        const m = mine.get(d.id);
-        return {
-          id: d.id, name: d.name, category: d.category, oneLine: d.oneLine, auth: d.auth,
-          connected: !!m?.tokensEnc, level: m?.level ?? "look", auto: m?.autoOk ?? [],
-        };
-      });
+      const connectors = await connectorList(c, user.id);
       return reply.send({ enabled: true, connectors });
     } catch (err) { return fail(reply, err); }
   });
@@ -108,7 +106,7 @@ export function registerConnectorRoutes(app: FastifyInstance, deps: ConnectorRou
   app.get<{ Querystring: { code?: string; state?: string; error?: string } }>("/v1/connectors/callback", RL, async (req, reply) => {
     reply.header("cache-control", "no-store").header("referrer-policy", "no-referrer")
       .header("content-security-policy", PAGE_CSP).header("content-type", "text/html; charset=utf-8");
-    if (!c) return reply.code(404).send(page("Not available", "Connected apps are not switched on."));
+    if (!c) return reply.code(404).send(page("Not available", "Connected apps are not switched on.", false));
     const { code, state, error } = req.query ?? {};
     if (error) return reply.code(400).send(page("Nothing was connected", "You can go back to Tailzu and try again any time."));
     if (typeof code !== "string" || typeof state !== "string" || !code || code.length > 4096 || state.length > 4096) {

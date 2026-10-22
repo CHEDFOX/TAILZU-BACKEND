@@ -56,6 +56,8 @@ const DESKTOP_ACTIONS = new Set([
   "notes.toggle",
   // Sent only to a window that declared DeskSystemAudio (a Mac).
   "notes.allowSystemAudio",
+  // Sent only to a window that declared DeskConnectors (sdui.js runs it).
+  "connector.connect",
 ]);
 
 type AnyNode = { type?: string; props?: Record<string, unknown>; children?: AnyNode[]; on?: Record<string, unknown> };
@@ -165,6 +167,21 @@ describe("the desk pages", () => {
     empty: { personality: {}, language: "en" } as never,
     // A window where Ask is on: Today and Settings carry its setup card too.
     ask: { ...(sampleCtx as object), os: "mac", can: new Set(["DeskNotes", "DeskSystemAudio", "DeskAskSetup"]) } as never,
+    // A window that shows the assistant: Settings has its apps, Tasks its list.
+    assistant: {
+      ...(sampleCtx as object), can: new Set(["DeskConnectors"]),
+      assistant: {
+        names: { notion: "Notion", zapier: "Zapier" },
+        apps: [
+          { id: "notion", name: "Notion", category: "Docs", oneLine: "Pages.", auth: "oauth", connected: true, level: "draft", auto: [] },
+          { id: "zapier", name: "Zapier", category: "Automation", oneLine: "Actions.", auth: "url", connected: false, level: "look", auto: [] },
+        ],
+        tasks: [
+          { id: "w", state: "waiting", title: "Post", steps: [], approval: { id: "a", connector: "notion", tool: "t", risk: "send", preview: "p" }, createdAt: 1, updatedAt: 1 },
+          { id: "d", state: "done", title: "Reply", steps: [{ at: 1, text: "Done" }], approval: null, createdAt: 1, updatedAt: 1 },
+        ],
+      },
+    } as never,
   };
 
   for (const id of DESK_SCREENS) {

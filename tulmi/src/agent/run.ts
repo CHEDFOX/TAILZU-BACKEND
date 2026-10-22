@@ -94,7 +94,7 @@ export interface ConnectorPlan {
 export interface ConnectorsRuntime {
   /** The cards for this step, or null when no connected app is relevant. */
   cards(req: AgentStepRequest, said: string): Promise<ConnectorPlan | null>;
-  use(runId: string, said: string, line: UseLine, opts: { allowWrite: boolean }): Promise<UseOutcome>;
+  use(runId: string, said: string, line: UseLine, opts: { allowWrite: boolean; language?: string }): Promise<UseOutcome>;
   /** The run's step ended; close its task if that ends it. */
   settle(runId: string, ending: string | undefined): Promise<void>;
 }
@@ -361,7 +361,7 @@ async function follow(
     if (!line) return;
     for (const out of reader.read(line)) {
       if ("emit" in out) sink.emit(out.emit);
-      else if ("use" in out) await useTool(out.use, req.runId, f.use, deps, sink);
+      else if ("use" in out) await useTool(out.use, req.runId, f.use, deps, sink, req.language);
       else result.words += await act(out.act, req, deps, sink, f.scene);
     }
   };
@@ -431,14 +431,15 @@ function drain(stream: AsyncIterator<PlanChunk>): void {
  * becomes an approval the device must confirm (nothing has happened yet); and
  * anything the person's settings do not allow is said to them, as it is.
  */
-async function useTool(line: UseLine, runId: string, hold: UseHold | undefined, deps: StepDeps, sink: EventSink): Promise<void> {
+async function useTool(line: UseLine, runId: string, hold: UseHold | undefined, deps: StepDeps, sink: EventSink, language?: string): Promise<void> {
   if (!hold || !deps.connectors) return;
-  const o = await deps.connectors.use(runId, hold.said, line, { allowWrite: hold.allowWrite });
+  const o = await deps.connectors.use(runId, hold.said, line, { allowWrite: hold.allowWrite, language });
   if (o.kind === "result") {
     hold.results.push(`${line.connector}.${line.tool}: ${o.text}`);
     hold.again = true;
   } else if (o.kind === "approval") {
-    sink.emit({ t: "approve", taskId: o.taskId, approval: o.approval });
+    // The card is the server's: its words, its buttons, the routes they call.
+    sink.emit({ t: "approve", taskId: o.taskId, approval: o.approval, ...(o.card ? { card: o.card } : {}) });
   } else {
     sink.emit({ t: "say", text: o.message });
     sink.emit({ t: "done" });

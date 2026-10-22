@@ -90,7 +90,8 @@ export const PUSH_DEFAULTS: PushPayload = {
     // PushEngine.notify). They skip the daily and weekly caps, the quiet
     // hours and the fatigue count, because a person is waiting on them.
     "push.approval.enabled": true,
-    "push.approval.screenId": "assistant",
+    // The confirm sheet (experience/assistant.ts); the push carries data.taskId.
+    "push.approval.screenId": "assistant_approve",
 
     "push.lowWords.enabled": false,
     "push.lowWords.fraction": 0.1,

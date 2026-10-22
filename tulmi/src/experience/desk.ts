@@ -29,12 +29,15 @@ import { DESK_CONTEXTS, DESK_ROOMS, DESK_SAMPLES } from "./deskSamples.js";
 import { span } from "./phoneLook.js";
 import { DEFAULT_TTS_VOICE, TTS_VOICES, isValidTtsVoice, ttsVoiceById } from "./ttsVoices.js";
 import { nicknameOf } from "./assistantName.js";
+import type { AssistantTask, ConnectorInfo } from "../../../shared/types/api.js";
+import type { AssistantView } from "../connectors/list.js";
+import { en as w } from "../connectors/words.js";
 
 /** Words a minute a person types on a keyboard — the same figure the stats
  *  screen's "minutes saved" has always used (history/store.ts). */
 const TYPING_WPM = 40;
 
-export const DESK_SCREENS = new Set(["desk_today", "desk_history", "desk_notes", "desk_note", "desk_insights", "desk_day", "desk_app", "desk_words", "desk_voices", "desk_train", "desk_settings", "desk_voice_read", "desk_assistant_name", "desk_plan"]);
+export const DESK_SCREENS = new Set(["desk_today", "desk_history", "desk_notes", "desk_note", "desk_insights", "desk_day", "desk_app", "desk_words", "desk_voices", "desk_train", "desk_settings", "desk_voice_read", "desk_assistant_name", "desk_plan", "desk_tasks"]);
 
 /** The desk's tabs, in the masthead. Settings and Plan are reached from its
  *  right-hand side, not from a tab. */
@@ -51,11 +54,17 @@ export const DESK_NAV: NavigationShell = {
 };
 
 /** The tabs for a window, with Notes after Today for one that can take them
- *  (it declared "DeskNotes" and has the hotkey). */
-export function deskNav(notes: boolean): NavigationShell {
-  if (!notes || DESK_NAV.kind !== "tabs") return DESK_NAV;
+ *  (it declared "DeskNotes" and has the hotkey), and Tasks after that for one
+ *  that can show the assistant's (it declared "DeskConnectors"). */
+export function deskNav(notes: boolean, tasks = false): NavigationShell {
+  if ((!notes && !tasks) || DESK_NAV.kind !== "tabs") return DESK_NAV;
   const [today, ...rest] = DESK_NAV.tabs;
-  return { ...DESK_NAV, tabs: [today!, { id: "desk_notes", title: "Notes", screenId: "desk_notes" }, ...rest] };
+  return { ...DESK_NAV, tabs: [
+    today!,
+    ...(notes ? [{ id: "desk_notes", title: "Notes", screenId: "desk_notes" }] : []),
+    ...(tasks ? [{ id: "desk_tasks", title: w("a4.h"), screenId: "desk_tasks" }] : []),
+    ...rest,
+  ] };
 }
 
 /** What a desk page is built from. A subset of the catalog's ScreenContext,
@@ -100,6 +109,10 @@ export interface DeskContext {
    *  which it says only while Ask is on there): where the card's privacy
    *  link goes, and the computer it is on ("mac", "windows"), when known. */
   askSetup?: { privacyUrl: string; os?: string };
+  /** The assistant's connected apps and tasks (CONNECTORS is on, and this
+   *  window said "DeskConnectors"): the apps for Settings, the tasks for the
+   *  Tasks page. Absent, and neither is drawn. */
+  assistant?: AssistantView;
 }
 
 // ---- nodes ---------------------------------------------------------------------
@@ -2263,6 +2276,7 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
       text("Ask", "d-h2", { marginBottom: 14 }),
       askSetupCard(ctx.askSetup, "settings"),
     ], { marginBottom: 40 })] : []),
+    ...(ctx.assistant?.apps?.length ? [connectedApps(ctx.assistant.apps)] : []),
     stack([
       text("Languages", "d-h2", { marginBottom: 8 }),
       defRow("You speak", langs.length ? langs.map((l) => (Object.hasOwn(LANGUAGE_NAMES, l) ? LANGUAGE_NAMES[l] : l)).join(", ") : "Found on its own, as you talk",
@@ -2305,6 +2319,111 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
       defRow("Signed in as", who || "This account", link("Sign out", { kind: "signOut" })),
     ]),
   ], { maxWidth: 820 })], { retainHistory: ctx.personality.retainHistory !== false });
+}
+
+// ---- CONNECTED APPS and TASKS ---------------------------------------------------------
+//
+// The assistant's side of the desk, built here and only drawn by the window:
+// the words are connectors/words.ts (the approved design's, in English; the
+// translator has the design's Hinglish for them), the rows are the plain nodes
+// above, and every button is an action the window already has (callEndpoint to
+// the routes in routes/connectors.ts) plus "connector.connect", which opens the
+// sign-in page that route answers with. Nothing here is decided on the device.
+
+const LEVELS = ["look", "draft", "send"] as const;
+const failToast = (key: "err.level" | "err.connect" | "err.generic"): ActionRef => ({ kind: "toast", message: w(key) });
+
+/** One app: its state, how far the assistant may go in it, and the way out. */
+function appRow(c: ConnectorInfo): Node {
+  const again = c.connected && c.needsSignIn === true;
+  const on = c.connected && !again;
+  const detail: Node[] = [text(c.oneLine, "d-v")];
+  // An app that takes a pasted link (Zapier) asks for it before the button.
+  if (c.auth === "url" && !on) {
+    detail.push({
+      type: "TextField", props: { cls: "d-input", placeholder: w("link.ph", { app: c.name }) },
+      bind: { value: `link.${c.id}` }, style: { marginTop: 6, maxWidth: 420 },
+    } as Node);
+  }
+  if (c.connected) {
+    const level = LEVELS.includes(c.level) ? c.level : "look";
+    detail.push(
+      text(w("a2.q", { app: c.name }), "d-margin", { marginTop: 10 }),
+      row(LEVELS.map((l) => l === level
+        ? ({ type: "Button", props: { label: w(`lv.${l}`), cls: "d-seg-item d-seg-on" } } as Node)
+        : link(w(`lv.${l}`), {
+            kind: "callEndpoint", method: "POST", path: `/v1/connectors/${c.id}/level`, body: { level: l },
+            onError: failToast("err.level"),
+          } as ActionRef, "d-seg-item")), { alignSelf: "flex-start" }, "d-seg"),
+      text(w(`lv.${level}.d`), "d-lede", { marginTop: 2 }),
+      text(w("a2.foot"), "d-margin", { marginTop: 6 }),
+      row([link(w("a2.dis", { app: c.name }), {
+        kind: "callEndpoint", method: "DELETE", path: `/v1/connectors/${c.id}`, onError: failToast("err.generic"),
+      } as ActionRef)], { marginTop: 4 }),
+    );
+  }
+  const state = on ? w("st.ok") : again ? w("st.re") : w("st.no");
+  const right = on
+    ? text(state, "d-margin")
+    : row([
+        text(state, "d-margin"),
+        link(w("connect"), {
+          kind: "connector.connect", id: c.id, ...(c.auth === "url" ? { urlPath: `link.${c.id}` } : {}),
+          onError: failToast("err.connect"),
+        } as ActionRef, "d-btn"),
+      ], { gap: 14, align: "center" });
+  return defRow(c.name, stack(detail, { gap: 2, flex: 1, minWidth: 0 }), right);
+}
+
+/** Settings > Connected apps: every app switched on, with its state, its level and its button. */
+function connectedApps(apps: ConnectorInfo[]): Node {
+  return stack([
+    text(w("apps.h"), "d-h2", { marginBottom: 4 }),
+    text(w("apps.p"), "d-lede", { marginBottom: 8 }),
+    ...apps.map(appRow),
+  ], { marginBottom: 40 });
+}
+
+/** The newest step, in the words the server wrote it in. */
+const lastStep = (t: AssistantTask): string => t.steps[t.steps.length - 1]?.text ?? "";
+
+/**
+ * TASKS: what the assistant is doing in the person's apps, grouped Waiting for
+ * you, Running and Done, each with what happened in plain words. A waiting one
+ * shows the exact words and answers to Approve or Not now, the same two the
+ * confirm card gives (routes/connectors.ts approve and deny).
+ */
+export function deskTasks(ctx: DeskContext): ScreenResponse {
+  const tasks = ctx.assistant?.tasks ?? [];
+  const names = ctx.assistant?.names ?? {};
+  const waiting = tasks.filter((t) => t.state === "waiting" && t.approval);
+  const running = tasks.filter((t) => t.state === "running");
+  const done = tasks.filter((t) => t.state === "done" || t.state === "failed" || t.state === "cancelled");
+  const item = (t: AssistantTask, body: Node[], right?: Node): Node => row([
+    stack([text(t.title, "d-v"), ...body], { flex: 1, minWidth: 0, gap: 4 }),
+    ...(right ? [right] : []),
+  ], { align: "center", gap: 28, paddingTop: 18, paddingBottom: 18, flexWrap: "wrap" }, "d-entry");
+  const answer = (t: AssistantTask, route: "approve" | "deny"): ActionRef => ({
+    kind: "callEndpoint", method: "POST", path: `/v1/tasks/${t.id}/${route}`,
+    ...(route === "approve" ? { body: { approvalId: t.approval!.id } } : {}),
+    // An answer that came too late is gone; the list says so by redrawing.
+    onError: { kind: "sequence", actions: [failToast("err.generic"), { kind: "refresh" }] },
+  } as ActionRef);
+  const group = (title: string, rows: Node[]): Node[] => rows.length
+    ? [stack([text(title, "d-h2", { marginBottom: 8 }), ...rows], { marginBottom: 40 })]
+    : [];
+  return screen("desk_tasks", w("a4.h"), [page([
+    text(w("a4.h"), "d-eyebrow"),
+    text(w("tasks.h"), "d-h1", { marginTop: 6, marginBottom: 26 }),
+    ...group(w("a4.w"), waiting.map((t) => item(
+      t,
+      [text(w("a4.wm", { app: names[t.approval!.connector] ?? t.approval!.connector }), "d-margin"), text(t.approval!.preview, "d-written")],
+      row([link(w("a3.ok"), answer(t, "approve"), "d-btn"), link(w("a3.later"), answer(t, "deny"))], { gap: 14, align: "center" }),
+    ))),
+    ...group(w("a4.r"), running.map((t) => item(t, lastStep(t) ? [text(lastStep(t), "d-margin")] : []))),
+    ...group(w("a4.d"), done.map((t) => item(t, lastStep(t) ? [text(t.state === "done" ? `${w("a3.done")} ${lastStep(t)}` : lastStep(t), "d-margin")] : []))),
+    tasks.length ? text(w("a4.end"), "d-margin") : text(w("tasks.empty"), "d-lede", { maxWidth: "52ch" }),
+  ], { maxWidth: 820 })]);
 }
 
 /**
@@ -2471,6 +2590,7 @@ function deskPage(screenId: string, ctx: DeskContext): ScreenResponse | null {
     case "desk_voice_read": return deskVoiceRead(ctx);
     case "desk_assistant_name": return deskAssistantName(ctx);
     case "desk_plan": return deskPlan(ctx);
+    case "desk_tasks": return deskTasks(ctx);
     default: return null;
   }
 }

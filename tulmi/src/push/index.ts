@@ -52,7 +52,7 @@ export function pushEngine(): PushEngine | null { return engine; }
 /** Tell a person's phones an assistant task is waiting for their yes. Never throws; says nothing about the task. */
 export async function notifyApproval(userId: string, taskId: string, app: string): Promise<void> {
   try {
-    await engine?.notify(userId, { kind: "approval", key: taskId, vars: { app } });
+    await engine?.notify(userId, { kind: "approval", key: taskId, vars: { app }, data: { taskId } });
   } catch { /* a missed push is not a failed task: the card is still in the app */ }
 }
 

@@ -20,6 +20,7 @@
  * sitting since yesterday is not a yes to what it says now.
  */
 import { randomUUID } from "node:crypto";
+import type { ApprovalCard } from "../../../shared/types/api.js";
 import type { ConnectorHub, Fail } from "./client.js";
 import type { ConnectorDef } from "./catalog.js";
 import { ConnectorError } from "./oauth.js";
@@ -33,7 +34,7 @@ const PREVIEW_MAX = 400;
 /** What the run is told about a USE line. */
 export type UseOutcome =
   | { kind: "result"; text: string }
-  | { kind: "approval"; taskId: string; approval: ApprovalView }
+  | { kind: "approval"; taskId: string; approval: ApprovalView; card?: ApprovalCard }
   /** Nothing ran; `message` is said to the person as it is. */
   | { kind: "stopped"; message: string };
 

@@ -359,6 +359,19 @@ describe("a run that uses a connected app", () => {
     expect(r.events.at(-1)!.t).toBe("done");
   });
 
+  it("words the confirm card in Hinglish for a Hinglish profile, and in English otherwise", async () => {
+    const { connectors, user } = await setup();
+    const use = ['USE testapp.post_message {"channel":"#team","text":"The demo moved to 4pm"}\n'];
+    const hinglish = (await runWith(use, req(), connectors.runtimeFor(user, async () => "hinglish"))).events.at(-1)!;
+    expect(hinglish.card.title).toBe("Bhejne ke liye taiyaar?");
+    expect(hinglish.card.buttons.map((b: { label: string }) => b.label)).toEqual(["Approve karo", "Badlo", "Abhi nahi"]);
+    // The device asking in Hinglish is enough too; another language reads English.
+    const asked = (await runWith(use, req({ language: "hinglish" }), connectors.runtimeFor(user))).events.at(-1)!;
+    expect(asked.card.title).toBe("Bhejne ke liye taiyaar?");
+    const german = (await runWith(use, req(), connectors.runtimeFor(user, async () => "de"))).events.at(-1)!;
+    expect(german.card.title).toBe("Ready to send?");
+  });
+
   it("ends a change with an approval card and does nothing until it is approved", async () => {
     const { connectors, user, store, pushes } = await setup();
     const r = await runWith(
@@ -372,6 +385,14 @@ describe("a run that uses a connected app", () => {
     expect(last.approval.preview).toContain("The demo moved to 4pm");
     expect(last.approval.preview).toContain("#team");
     expect(last.approval).not.toHaveProperty("args");
+    // The card is the server's: words, buttons and the route each one calls.
+    expect(last.card).toMatchObject({ title: "Ready to send?", app: "Test App", preview: last.approval.preview });
+    expect(last.card.buttons.map((b: { id: string; label: string; call: { path: string } }) => [b.id, b.label, b.call.path])).toEqual([
+      ["approve", "Approve", `/v1/tasks/${last.taskId}/approve`],
+      ["edit", "Edit", `/v1/tasks/${last.taskId}/deny`],
+      ["deny", "Not now", `/v1/tasks/${last.taskId}/deny`],
+    ]);
+    expect(JSON.stringify(last.card)).not.toContain("args");
     expect(seen.calls).toEqual([]);
 
     const task = (await store.getTask(user, last.taskId))!;
