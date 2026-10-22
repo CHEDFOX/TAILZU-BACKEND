@@ -22,7 +22,10 @@
  *
  * OLD BUILDS KEEP WORKING. Nothing here is sent unless the asking build
  * declared both `OnboardStage` and `BlipSpot` (canOnboard). Any other build is
- * served exactly what it was served before. ONBOARD_V2=0 turns it off for
+ * served exactly what it was served before, except a phone build in a store,
+ * which runs this on its first launch without either: it is given the same
+ * steps, drawn with what it does have (onboardStore.ts, which builds them from
+ * the step builders exported below). ONBOARD_V2=0 turns it all off for
  * everyone without a deploy of the apps.
  *
  * THE WORDS are written in English below and looked up in Hinglish from the
@@ -46,7 +49,7 @@ import { en } from "../connectors/words.js";
 import { AUTH_UI, DAILY_LANGUAGES, GOOGLE_PATHS } from "./catalog.js";
 import type { ScreenContext } from "./catalog.js";
 
-type Style = Record<string, unknown>;
+export type Style = Record<string, unknown>;
 
 // ---------------------------------------------------------------------------
 // The look
@@ -320,15 +323,35 @@ export const OB_HG: Record<ObKey, string> = {
   "ob.err.finish": "Abhi finish nahi kar paya. Connection check karke dobara dabao.",
 };
 
+/**
+ * The few lines only the STORE variant says (onboardStore.ts). A build that
+ * draws the new onboarding itself holds the microphone to speak; the store
+ * build's mic button is one you tap to start and tap to stop, so the lines
+ * that say how are different. Everything else the variant says is OB_EN's.
+ */
+export const OB_STORE_EN = {
+  "st.p": "Tap the button, say it the way you’d tell a friend, then tap again.",
+  "st.tap": "Tap to speak",
+  "st.live": "Listening… tap to stop",
+  "st.again": "Tap to try again",
+} as const;
+
+export const OB_STORE_HG: Record<keyof typeof OB_STORE_EN, string> = {
+  "st.p": "Button dabao, waise bolo jaise dost ko bolte ho, phir dobara dabao.",
+  "st.tap": "Tap karke bolo",
+  "st.live": "Sun raha hoon… rukne ke liye dabao",
+  "st.again": "Tap karke dobara bolo",
+};
+
 /** The languages this step shows as chips: India's, and English. */
-const shownChip = (l: (typeof DAILY_LANGUAGES)[number]): boolean => l.india || l.value === "en";
+export const shownChip = (l: (typeof DAILY_LANGUAGES)[number]): boolean => l.india || l.value === "en";
 
 /** What "+ N more" counts: every language the Languages screen has that this step does not show. */
-function moreLanguages(): number {
+export function moreLanguages(): number {
   return DAILY_LANGUAGES.length - DAILY_LANGUAGES.filter(shownChip).length;
 }
 
-const fillSlots = (s: string, vars: Record<string, string | number>): string =>
+export const fillSlots = (s: string, vars: Record<string, string | number>): string =>
   s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 
 /**
@@ -343,6 +366,7 @@ const fillSlots = (s: string, vars: Record<string, string | number>): string =>
  */
 export function onboardHinglishSeeds(): Map<string, string> {
   const seeds = new Map<string, string>();
+  for (const key of Object.keys(OB_STORE_EN) as Array<keyof typeof OB_STORE_EN>) seeds.set(OB_STORE_EN[key], OB_STORE_HG[key]);
   for (const key of Object.keys(OB_EN) as ObKey[]) {
     const from: string = OB_EN[key];
     const to = OB_HG[key];
@@ -399,7 +423,7 @@ export function onboardTotal(desktop: boolean, appsOn: boolean): number {
   return 3 + postAuthSteps(desktop, appsOn).length;
 }
 
-function postAuthSteps(desktop: boolean, appsOn: boolean): string[] {
+export function postAuthSteps(desktop: boolean, appsOn: boolean): string[] {
   const apps = appsOn ? ["apps", "careful"] : [];
   return desktop
     ? ["languages", "try", ...apps, "done"]
@@ -447,30 +471,30 @@ export function onboardLanguage(profileLanguage: string | undefined, chosen: rea
 // Shorthands
 // ---------------------------------------------------------------------------
 
-const EN = OB_EN;
-const words = en;
+export const EN = OB_EN;
+export const words = en;
 
 /** The stage moves only through setState: the desktop has no incrementState. */
-const SET = (i: number): ActionSpec => ({ kind: "setState", path: "step", value: i });
-const seq = (...actions: ActionRef[]): ActionSpec => ({ kind: "sequence", actions });
-const haptic = (style: "selection" | "success"): ActionSpec => ({ kind: "haptic", style });
-const toast = (message: string, tone: "info" | "error" = "info"): ActionSpec => ({ kind: "toast", message, tone });
-const setState = (path: string, value: unknown): ActionSpec => ({ kind: "setState", path, value });
-const when = (cond: Condition, then: ActionRef, otherwise?: ActionRef): ActionSpec =>
+export const SET = (i: number): ActionSpec => ({ kind: "setState", path: "step", value: i });
+export const seq = (...actions: ActionRef[]): ActionSpec => ({ kind: "sequence", actions });
+export const haptic = (style: "selection" | "success"): ActionSpec => ({ kind: "haptic", style });
+export const toast = (message: string, tone: "info" | "error" = "info"): ActionSpec => ({ kind: "toast", message, tone });
+export const setState = (path: string, value: unknown): ActionSpec => ({ kind: "setState", path, value });
+export const when = (cond: Condition, then: ActionRef, otherwise?: ActionRef): ActionSpec =>
   ({ kind: "condition", if: cond, then, ...(otherwise !== undefined ? { else: otherwise } : {}) });
-const bothPerms: Condition = { all: [{ truthy: "perm.n" }, { truthy: "perm.m" }] };
+export const bothPerms: Condition = { all: [{ truthy: "perm.n" }, { truthy: "perm.m" }] };
 
-const nodes = (kids: Array<Node | null | false | undefined>): Node[] => kids.filter((k): k is Node => !!k);
+export const nodes = (kids: Array<Node | null | false | undefined>): Node[] => kids.filter((k): k is Node => !!k);
 
 /**
  * A style value that follows state: the app resolves `{<condition>, then, else}`
  * live, on every redraw. Typed as the string it stands for, because that is the
  * slot it fills.
  */
-const IF = (cond: Condition, then: string, otherwise: string): string => ({ ...cond, then, else: otherwise }) as unknown as string;
+export const IF = (cond: Condition, then: string, otherwise: string): string => ({ ...cond, then, else: otherwise }) as unknown as string;
 
 /** A step: what the stage shows one at a time. */
-const STEP = (id: string, kids: Array<Node | null>, extra: Partial<Node> = {}): Node => ({
+export const STEP = (id: string, kids: Array<Node | null>, extra: Partial<Node> = {}): Node => ({
   type: "Stack",
   props: { stepId: id },
   style: { flexGrow: 1, paddingHorizontal: OB.side, paddingBottom: 30 },
@@ -479,19 +503,19 @@ const STEP = (id: string, kids: Array<Node | null>, extra: Partial<Node> = {}): 
 });
 
 /** Where Blip stands, in which pose, saying what. An empty box the host measures. */
-const SPOT = (pose: string, h: number, say: ObKey, bubble: "side" | "corner" = "side", x: Style = {}): Node => ({
+export const SPOT = (pose: string, h: number, say: ObKey, bubble: "side" | "corner" = "side", x: Style = {}): Node => ({
   type: "BlipSpot",
   props: { pose, h, say: EN[say], bubble, ...x },
   style: bubble === "side" ? { marginLeft: -Math.round(0.24 * h), marginRight: -Math.round(0.16 * h) } : {},
 });
 /** A step's head: Blip, with his bubble beside him. */
-const HD = (...spots: Node[]): Node =>
+export const HD = (...spots: Node[]): Node =>
   ({ type: "Stack", style: { flexDirection: "row", alignItems: "flex-start" }, children: spots });
 /** Welcome's and Done's head: Blip big, centred, his bubble in the corner. */
-const C1 = (...spots: Node[]): Node =>
+export const C1 = (...spots: Node[]): Node =>
   ({ type: "Stack", style: { alignItems: "center", marginTop: 10 }, children: spots });
 
-const H = (k: ObKey, xl = false): Node => ({
+export const H = (k: ObKey, xl = false): Node => ({
   type: "Heading",
   props: { content: EN[k] },
   // No fontWeight: a custom face's weight is its file.
@@ -512,32 +536,32 @@ const H = (k: ObKey, xl = false): Node => ({
  * A line with a face of its own is left without a weight, as the headings are:
  * a custom face's weight is its file.
  */
-const plain = (style: Style): Style => ({
+export const plain = (style: Style): Style => ({
   ...(style.fontFamily ? {} : { fontWeight: "400" }),
   lineHeight: Math.round((Number(style.fontSize) || 15) * 1.3),
   ...style,
 });
-const P = (k: ObKey, s: Style = {}): Node => ({
+export const P = (k: ObKey, s: Style = {}): Node => ({
   type: "Paragraph", props: { content: EN[k] },
   style: plain({ fontSize: 15, lineHeight: 21, color: OB.ink2, marginBottom: 12, ...s }),
 });
 /** The small capitals over a group: Suggested, You said, I wrote. */
-const LABEL = (content: string): Node => ({
+export const LABEL = (content: string): Node => ({
   type: "Text", props: { content },
   style: plain({ fontSize: 12, lineHeight: 14, fontWeight: "700", letterSpacing: 1.2, textTransform: "uppercase", color: OB.ink2, marginTop: 6, marginBottom: 8 }),
 });
-const LAB = (k: ObKey): Node => LABEL(EN[k]);
-const FINE = (k: ObKey, center = false): Node => ({
+export const LAB = (k: ObKey): Node => LABEL(EN[k]);
+export const FINE = (k: ObKey, center = false): Node => ({
   type: "Text", props: { content: EN[k] },
   style: plain({ fontSize: 13, lineHeight: 18, color: OB.ink2, ...(center ? { textAlign: "center", marginTop: 6 } : { marginVertical: 2 }) }),
 });
 /** A line of ours in the system face. */
-const TXT = (content: string, style: Style): Node => ({ type: "Text", props: { content }, style: plain(style) });
+export const TXT = (content: string, style: Style): Node => ({ type: "Text", props: { content }, style: plain(style) });
 /** A line drawn from the screen's state: an app's name, a language: never translated. */
-const FROM = (path: string, style: Style): Node => ({ type: "Text", props: { content: "" }, bind: { content: path }, style: plain(style) });
+export const FROM = (path: string, style: Style): Node => ({ type: "Text", props: { content: "" }, bind: { content: path }, style: plain(style) });
 
 /** The ink button. `label` is the line itself (ours from OB_EN, or the shared table's). Dimmed it cannot be pressed. */
-const BTN = (label: string, action: ActionRef, dim = false): Node => ({
+export const BTN = (label: string, action: ActionRef, dim = false): Node => ({
   type: "Stack",
   ...(dim ? {} : { on: { onPress: action } }),
   props: { pressOpacity: 0.7 },
@@ -548,7 +572,7 @@ const BTN = (label: string, action: ActionRef, dim = false): Node => ({
   children: [TXT(label, { fontSize: 16, fontWeight: "600", color: OB.surf })],
 });
 /** The quiet one under it. */
-const BTN2 = (label: string, action: ActionRef): Node => ({
+export const BTN2 = (label: string, action: ActionRef): Node => ({
   type: "Stack",
   on: { onPress: action },
   props: { pressOpacity: 0.7 },
@@ -558,7 +582,7 @@ const BTN2 = (label: string, action: ActionRef): Node => ({
 
 const hairline = (): Node => ({ type: "Stack", style: { flex: 1, height: 1, backgroundColor: OB.hair } });
 /** A line with "or" in the middle. */
-const OR = (): Node => ({
+export const OR = (): Node => ({
   type: "Stack",
   style: { flexDirection: "row", alignItems: "center", gap: 10 },
   children: [
@@ -568,9 +592,9 @@ const OR = (): Node => ({
   ],
 });
 /** Pushes what follows to the bottom of the window. */
-const PUSH = (): Node => ({ type: "Spacer", style: { flex: 1, minHeight: 12 } });
+export const PUSH = (): Node => ({ type: "Spacer", style: { flex: 1, minHeight: 12 } });
 
-const ICON = (name: keyof typeof IC, size: number, color: string): Node => ({
+export const ICON = (name: keyof typeof IC, size: number, color: string): Node => ({
   type: "SVG",
   props: { viewBox: "0 0 24 24", d: IC[name], fill: "none", stroke: color, strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" },
   style: { width: size, height: size },
@@ -585,7 +609,7 @@ const ICON = (name: keyof typeof IC, size: number, color: string): Node => ({
  * of sign-in, so he does not change at the boundary. (Reduced motion is the
  * app's to apply to `glide`.)
  */
-function stageProps(id: "onboard.auth" | "onboard", first: number, of: number): Style {
+export function stageProps(id: "onboard.auth" | "onboard", first: number, of: number): Style {
   return {
     id, first, of,
     // Opts the tree out of the capitalising pass (titleCase.ts): these are
@@ -790,7 +814,7 @@ export function onboardAuthTree(opts: OnboardAuthOpts = {}): Record<string, unkn
 // ---------------------------------------------------------------------------
 
 /** Everything a step needs to know about this person and this build. */
-interface Plan {
+export interface Plan {
   desktop: boolean;
   ios: boolean;
   appsOn: boolean;
@@ -801,9 +825,16 @@ interface Plan {
   /** Every app the person can see, and the five the tiles show. */
   apps: ConnectorInfo[];
   five: ConnectorInfo[];
+  /**
+   * HOW A STEP AND BLIP ARE DRAWN. Here they are a stage's step and a BlipSpot;
+   * the store variant (onboardStore.ts) builds the same steps out of what every
+   * build draws, and hands these two its own.
+   */
+  step: typeof STEP;
+  spot: typeof SPOT;
 }
 
-function languageChip(l: (typeof DAILY_LANGUAGES)[number]): Node {
+export function languageChip(l: (typeof DAILY_LANGUAGES)[number]): Node {
   const picked: Condition = { contains: ["langs", l.value] };
   const save = (): ActionSpec => ({ kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: { languages: "$state.langs" } });
   return {
@@ -823,7 +854,7 @@ function languageChip(l: (typeof DAILY_LANGUAGES)[number]): Node {
   };
 }
 
-function languagesStep(p: Plan): Node {
+export function languagesStep(p: Plan): Node {
   const rest = moreLanguages();
   const more: Node = {
     type: "Stack",
@@ -835,8 +866,8 @@ function languagesStep(p: Plan): Node {
     },
     children: [TXT(fillSlots(EN["s2.more"], { n: rest }), { fontSize: 14.5, fontWeight: "600", color: OB.ink })],
   };
-  return STEP("languages", [
-    HD(SPOT("listen", 104, "s2.say")),
+  return p.step("languages", [
+    HD(p.spot("listen", 104, "s2.say")),
     H("s2.h"),
     P("s2.p"),
     {
@@ -862,7 +893,7 @@ function languagesStep(p: Plan): Node {
 }
 
 /** The little keyboard in a row of Keyboard's steps: three bars, one lit, and the thing to tap or flip on it. */
-function miniKeyboard(lit: number, kind: "point" | "toggle"): Node {
+export function miniKeyboard(lit: number, kind: "point" | "toggle"): Node {
   const marker: Node = kind === "point"
     ? { type: "Stack", style: { position: "absolute", right: -3, top: 2, width: 9, height: 9, borderRadius: 5, backgroundColor: OB.neon, borderWidth: 1.5, borderColor: OB.ink } }
     : { type: "Stack", style: { position: "absolute", right: 2, top: -1, width: 9, height: 6, borderRadius: 3, backgroundColor: OB.ink } };
@@ -878,7 +909,7 @@ function miniKeyboard(lit: number, kind: "point" | "toggle"): Node {
   };
 }
 
-function keyboardStep(p: Plan): Node {
+export function keyboardStep(p: Plan): Node {
   const row = (n: number, k: ObKey, mini: Node): Node => ({
     type: "Stack",
     style: {
@@ -911,8 +942,8 @@ function keyboardStep(p: Plan): Node {
       TXT(EN["s3.wp"], { fontSize: 14, lineHeight: 19, color: OB.ink2 }),
     ],
   };
-  return STEP("keyboard", [
-    HD(SPOT("tap", 84, "s3.say")),
+  return p.step("keyboard", [
+    HD(p.spot("tap", 84, "s3.say")),
     H("s3.h"),
     P("s3.p"),
     row(1, p.ios ? "s3.1" : "s3.1a", miniKeyboard(0, "point")),
@@ -944,11 +975,11 @@ function tryStep(p: Plan): Node {
     ({ ...TXT(EN[k], { fontSize: 14.5, fontWeight: "600", color: OB.ink2, textAlign: "center" }), visibleIf: show });
   const untried: Condition = { falsy: "tried" };
   const tried: Condition = { truthy: "tried" };
-  return STEP("try", [
+  return p.step("try", [
     HD(
-      { ...SPOT("present", 96, "s4.say"), visibleIf: { all: [idle, untried] } },
-      { ...SPOT("listen", 96, "s4.say1"), visibleIf: { in: ["mic", ["recording", "busy"]] } },
-      { ...SPOT("tada", 96, "s4.say2", "side", { burst: true }), visibleIf: { all: [idle, tried] } },
+      { ...p.spot("present", 96, "s4.say"), visibleIf: { all: [idle, untried] } },
+      { ...p.spot("listen", 96, "s4.say1"), visibleIf: { in: ["mic", ["recording", "busy"]] } },
+      { ...p.spot("tada", 96, "s4.say2", "side", { burst: true }), visibleIf: { all: [idle, tried] } },
     ),
     H("s4.h"),
     P("s4.p"),
@@ -1018,7 +1049,7 @@ function tryStep(p: Plan): Node {
 }
 
 /** One row of Make me yours: the glyph, what it is for, and a switch. */
-function permRow(icon: keyof typeof IC, title: string, why: string, path: string, action: string, extra: Style = {}): Node {
+export function permRow(icon: keyof typeof IC, title: string, why: string, path: string, action: string, extra: Style = {}): Node {
   return {
     type: "Stack",
     style: { flexDirection: "row", gap: 12, alignItems: "center", paddingVertical: 10, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: OB.hair, ...extra },
@@ -1048,14 +1079,14 @@ function permRow(icon: keyof typeof IC, title: string, why: string, path: string
  * nothing in the product uses either, so asking would be a promise with nothing
  * behind it. A row comes back as a deploy once a feature needs it.
  */
-function yoursStep(p: Plan): Node {
+export function yoursStep(p: Plan): Node {
   const both = bothPerms;
   const foot = FINE("s5.foot");
   foot.style = { ...foot.style, marginTop: 8 };
-  return STEP("yours", [
+  return p.step("yours", [
     HD(
-      { ...SPOT("pointd", 100, "s5.say"), visibleIf: { not: both } },
-      { ...SPOT("thumbs", 100, "s5.say"), visibleIf: both },
+      { ...p.spot("pointd", 100, "s5.say"), visibleIf: { not: both } },
+      { ...p.spot("thumbs", 100, "s5.say"), visibleIf: both },
     ),
     H("s5.h"),
     P("s5.p"),
@@ -1183,11 +1214,11 @@ function connectSheet(a: ConnectorInfo): Node {
   };
 }
 
-function appsStep(p: Plan): Node {
+export function appsStep(p: Plan): Node {
   const five = p.five;
   const anyConnected = p.apps.some((a) => a.connected);
-  return STEP("apps", [
-    HD(SPOT("carry", 100, "s6.say")),
+  return p.step("apps", [
+    HD(p.spot("carry", 100, "s6.say")),
     H("s6.h"),
     P("s6.p"),
     LABEL(words("s6.sug")),
@@ -1250,9 +1281,9 @@ function careCard(icon: keyof typeof IC, h: ObKey, body: ObKey, f: ObKey, strong
   };
 }
 
-function carefulStep(p: Plan): Node {
-  return STEP("careful", [
-    HD(SPOT("think", 100, "s7.say")),
+export function carefulStep(p: Plan): Node {
+  return p.step("careful", [
+    HD(p.spot("think", 100, "s7.say")),
     H("s7.h"),
     P("s7.p"),
     careCard("eye", "c1.h", "c1.p", "c1.f", false),
@@ -1264,9 +1295,9 @@ function carefulStep(p: Plan): Node {
   ]);
 }
 
-function doneStep(p: Plan): Node {
-  return STEP("done", [
-    C1(SPOT("tada", 190, "s8.say", "corner", { burst: true })),
+export function doneStep(p: Plan): Node {
+  return p.step("done", [
+    C1(p.spot("tada", 190, "s8.say", "corner", { burst: true })),
     H("s8.h", true),
     P(p.desktop ? "s8.p.d" : "s8.p", { textAlign: "center", paddingHorizontal: 6 }),
     {
@@ -1284,7 +1315,7 @@ function doneStep(p: Plan): Node {
 }
 
 /** What Make me yours does with its three switches (phone). A yes cannot be taken back in the app: only Settings can. */
-function permActions(): Record<string, ActionSpec> {
+export function permActions(): Record<string, ActionSpec> {
   const blocked = toast(EN["s5.blocked"]);
   return {
     checkPerms: seq(
@@ -1343,6 +1374,7 @@ export function onboardScreen(ctx: ScreenContext, firstTabId = "home"): ScreenRe
     desktop, ios, appsOn, I,
     next: (id) => I[ids[ids.indexOf(id) + 1]!]!,
     apps, five,
+    step: STEP, spot: SPOT,
   };
 
   const build: Record<string, () => Node> = {

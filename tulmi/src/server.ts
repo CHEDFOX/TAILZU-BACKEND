@@ -100,6 +100,8 @@ import {
   PAYWALL_CONFIG, POLICY,
 } from "./experience/catalog.js";
 import { canOnboard, onboardLanguage } from "./experience/onboard.js";
+import { canOnboardStore, onboardMode } from "./experience/onboardStore.js";
+import { hasAlreadyDictated } from "./experience/onboardGuard.js";
 import { localize } from "./experience/i18n.js";
 import {
   appendHistoryEntry,
@@ -481,6 +483,24 @@ if (fs.existsSync(FONTS_DIR)) {
   await app.register(fastifyStatic, {
     root: FONTS_DIR,
     prefix: "/fonts/",
+    decorateReply: false,
+    cacheControl: true,
+    maxAge: "365d",
+    immutable: true,
+  });
+}
+
+// --- Blip's animated pictures for the store builds ----------------------------
+// The new onboarding draws Blip with an overlay the builds in the stores do not
+// have, and every build has an Image that animates a WebP: one short loop per
+// pose (experience/blipLoops.ts; cut by scripts/make-blip-loops.ts). Served the
+// way the typefaces are: shipped in the image (tulmi/blip), immutable, and the
+// URLs carry a ?v= so a changed picture is a new file to the app's cache.
+const BLIP_DIR = process.env.BLIP_DIR || path.join(process.cwd(), "blip");
+if (fs.existsSync(BLIP_DIR)) {
+  await app.register(fastifyStatic, {
+    root: BLIP_DIR,
+    prefix: "/blip/",
     decorateReply: false,
     cacheControl: true,
     maxAge: "365d",
@@ -2535,7 +2555,27 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   // Not for the new onboarding: there the flow itself ends at Done, which is
   // what marks it, so nothing about the device may mark it first.
   const onboardV2 = canOnboard(reqBody.capabilities?.components);
-  if (user && profile && !profile.onboarded && micGranted && keyboardReady && !onboardV2) {
+  // The same flow for a store build, which cannot draw the stage (onboardStore.ts).
+  const onboardStore = canOnboardStore(reqBody.capabilities?.components, isDesktop ? "desktop" : "phone");
+  const newOnboarding = onboardV2 || onboardStore;
+
+  // SOMEONE WHO HAS ALREADY DICTATED IS ONBOARDED, WHATEVER THE PROFILE SAYS.
+  //
+  // The new flow's only mark is its Done. An account made before it, and above
+  // all one that only ever used the desktop app (which had no onboarding), never
+  // had the mark, and would be walked through it once as if new. Words or
+  // history is "has dictated" (onboardGuard.ts). Written once, so the profile
+  // says what is true from here on, and used now for this answer; the write
+  // failing costs the same check next launch, never the boot. Not for the old
+  // flow, which has always decided this its own way.
+  const dictatedBefore = newOnboarding && !!user && !!profile && !profile.onboarded && !isReviewer
+    && await hasAlreadyDictated(user, usage?.total?.words ?? 0);
+  if (dictatedBefore && user) {
+    updateProfile(user, { onboarded: true }).catch((e) => {
+      req.log.warn({ err: e }, "[boot] could not mark an account that has already dictated as onboarded");
+    });
+  }
+  if (user && profile && !profile.onboarded && micGranted && keyboardReady && !newOnboarding) {
     updateProfile(user, { onboarded: true }).catch((e) => {
       // Losing this write costs a repeat of the same skip next launch, not a
       // broken app — so it must never fail the bootstrap.
@@ -2544,7 +2584,7 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   }
 
   const bootstrap = buildBootstrap({
-    onboarded: isReviewer || (!onboardV2 && micGranted && keyboardReady) || (profile?.onboarded ?? false),
+    onboarded: isReviewer || (!newOnboarding && micGranted && keyboardReady) || dictatedBefore || (profile?.onboarded ?? false),
     // Have they ever been inside the app before? A reviewer always has — a
     // fresh account walked into You on every submission otherwise, which is
     // not the screen you want a reviewer to open on.
@@ -2631,6 +2671,7 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     // with; and whether it has its connected-apps steps (their count sets the
     // progress bar's length, which both stages must agree on).
     onboardV2,
+    onboardStore,
     connectorsOn: !!connectors,
     formFactor: isDesktop ? "desktop" : "phone",
     // Which desktop. Sign in with Apple is offered on a Mac and not on the
@@ -2843,7 +2884,11 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
   // An app added by link has a page of its own (what it can do, tool by
   // tool): the app it is about comes in the params, and is asked for its tools.
   const toolsOf = typeof body.params?.id === "string" && body.params.id.length <= 64 ? body.params.id : undefined;
-  const assistantRead = user && connectors && screenId === "onboard" && canOnboard(body.capabilities?.components)
+  const assistantRead = user && connectors && screenId === "onboard"
+    && (canOnboard(body.capabilities?.components)
+      // The store variant has the apps steps only when its build can open what Connect leads to.
+      || (onboardMode(body.capabilities?.components, screenFormFactor) === "store"
+        && body.capabilities?.components?.includes("ActionUrl") === true))
     // The new onboarding's Connect your apps step, for a phone and a window
     // alike: the apps and where each stands, read fresh on every fetch so a
     // connected tile and the Continue button follow the refresh.

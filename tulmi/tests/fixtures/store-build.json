@@ -1,0 +1,1478 @@
+{
+ "from": "/home/user/TAILZU-FRONTEND origin/main 622c76e",
+ "declared": [
+  "ActionSheet",
+  "ActionText",
+  "AppleSignIn",
+  "AuroraOrb",
+  "AuthPhase",
+  "Avatar",
+  "AvatarStack",
+  "Badge",
+  "BarChart",
+  "BinaryReveal",
+  "BlurBackground",
+  "BottomSheet",
+  "Button",
+  "Card",
+  "ChatThread",
+  "Chip",
+  "CodeEntry",
+  "Collapsible",
+  "Confetti",
+  "Countdown",
+  "Coverflow",
+  "DatePicker",
+  "DictionaryEditor",
+  "Divider",
+  "DonutChart",
+  "DraftButton",
+  "EmptyState",
+  "FlipText",
+  "ForEach",
+  "Gauge",
+  "GoogleSignIn",
+  "Gradient",
+  "Grid",
+  "Heading",
+  "Hero",
+  "Icon",
+  "IfElse",
+  "Image",
+  "ImagePickerButton",
+  "KeyValue",
+  "KeyboardPreview",
+  "LanguageGreetingGrid",
+  "LineChart",
+  "List",
+  "LoadingSkeleton",
+  "MasonryGrid",
+  "Modal",
+  "MorphOut",
+  "NeuralField",
+  "Overline",
+  "Pager",
+  "Paragraph",
+  "ParticleMark",
+  "Picker",
+  "PieChart",
+  "Popover",
+  "Portal",
+  "ProgressBar",
+  "ProgressRing",
+  "PullToRefresh",
+  "QRCode",
+  "Quote",
+  "Rating",
+  "Reels",
+  "RefineButton",
+  "Rise",
+  "Row",
+  "SVG",
+  "SafeArea",
+  "Screen",
+  "ScreenHoldTouches",
+  "SearchField",
+  "SegmentedControl",
+  "Slider",
+  "Slideshow",
+  "Snackbar",
+  "Spacer",
+  "Sparkline",
+  "Stack",
+  "StatCard",
+  "Stepper",
+  "StickyHeader",
+  "SwipeAction",
+  "SwipePill",
+  "Switch",
+  "Text",
+  "TextField",
+  "Toast",
+  "Tooltip",
+  "Video",
+  "VoiceBubble",
+  "VoiceButton",
+  "VoiceSession",
+  "VoiceToggle",
+  "Waveform",
+  "WebView",
+  "WordChips",
+  "WordMeter"
+ ],
+ "drawn": [
+  "ActionSheet",
+  "AppleSignIn",
+  "AuroraOrb",
+  "AuthPhase",
+  "Avatar",
+  "AvatarStack",
+  "Badge",
+  "BarChart",
+  "BinaryReveal",
+  "BlurBackground",
+  "BottomSheet",
+  "Button",
+  "Card",
+  "ChatThread",
+  "Chip",
+  "CodeEntry",
+  "Collapsible",
+  "Confetti",
+  "Countdown",
+  "Coverflow",
+  "DatePicker",
+  "DictionaryEditor",
+  "Divider",
+  "DonutChart",
+  "DraftButton",
+  "EmptyState",
+  "FlipText",
+  "ForEach",
+  "Gauge",
+  "GoogleSignIn",
+  "Gradient",
+  "Grid",
+  "Heading",
+  "Hero",
+  "Icon",
+  "IfElse",
+  "Image",
+  "ImagePickerButton",
+  "KeyValue",
+  "KeyboardPreview",
+  "LanguageGreetingGrid",
+  "LineChart",
+  "List",
+  "LoadingSkeleton",
+  "LottieAnimation",
+  "MasonryGrid",
+  "Modal",
+  "MorphOut",
+  "NeuralField",
+  "Overline",
+  "Pager",
+  "Paragraph",
+  "ParticleMark",
+  "Picker",
+  "PieChart",
+  "Popover",
+  "Portal",
+  "ProgressBar",
+  "ProgressRing",
+  "PullToRefresh",
+  "QRCode",
+  "Quote",
+  "Rating",
+  "Reels",
+  "RefineButton",
+  "Rise",
+  "Row",
+  "SVG",
+  "SafeArea",
+  "Screen",
+  "SearchField",
+  "SegmentedControl",
+  "Slider",
+  "Slideshow",
+  "Snackbar",
+  "Spacer",
+  "Sparkline",
+  "Stack",
+  "StatCard",
+  "Stepper",
+  "StickyHeader",
+  "SwipeAction",
+  "SwipePill",
+  "SwipeableRow",
+  "Switch",
+  "Tabs",
+  "Text",
+  "TextField",
+  "Toast",
+  "Tooltip",
+  "Video",
+  "VoiceBubble",
+  "VoiceButton",
+  "VoiceSession",
+  "VoiceToggle",
+  "Waveform",
+  "WebView",
+  "WordChips",
+  "WordMeter"
+ ],
+ "props": {
+  "Grid": [
+   "columns",
+   "gap"
+  ],
+  "MasonryGrid": [
+   "columns",
+   "gap"
+  ],
+  "Modal": [
+   "animation",
+   "blur",
+   "blurIntensity",
+   "blurTint",
+   "cardBackground",
+   "dismissable",
+   "maxWidth",
+   "minWidth",
+   "open",
+   "padding",
+   "radius",
+   "scrimPadding"
+  ],
+  "BottomSheet": [
+   "background",
+   "handleColor",
+   "handleHeight",
+   "handleWidth",
+   "open",
+   "padding",
+   "paddingBottom",
+   "radius",
+   "scrimColor"
+  ],
+  "ActionSheet": [
+   "actions",
+   "background",
+   "destructiveColor",
+   "dividerColor",
+   "fontSize",
+   "open",
+   "paddingBottom",
+   "radius",
+   "rowPadding",
+   "scrimColor",
+   "textColor"
+  ],
+  "Popover": [
+   "background",
+   "padding",
+   "radius",
+   "title",
+   "titleColor",
+   "titleWeight"
+  ],
+  "Tooltip": [
+   "background",
+   "color",
+   "content",
+   "fontSize",
+   "offset",
+   "radius"
+  ],
+  "Collapsible": [
+   "bodyPadding",
+   "chevronColor",
+   "chevronSize",
+   "closedGlyph",
+   "defaultOpen",
+   "headerPadding",
+   "openGlyph",
+   "title",
+   "titleColor",
+   "titleSize",
+   "titleWeight"
+  ],
+  "StickyHeader": [],
+  "SwipeableRow": [],
+  "PullToRefresh": [],
+  "SafeArea": [],
+  "Tabs": [
+   "activeColor",
+   "activeWeight",
+   "color",
+   "dividerColor",
+   "tabs"
+  ],
+  "Switch": [
+   "look",
+   "offColor",
+   "onColor",
+   "thumbColor",
+   "value"
+  ],
+  "Slider": [
+   "default",
+   "max",
+   "maxTrackColor",
+   "min",
+   "minTrackColor",
+   "step",
+   "thumbColor",
+   "value"
+  ],
+  "Stepper": [
+   "buttonBackground",
+   "buttonColor",
+   "buttonFontSize",
+   "buttonRadius",
+   "buttonSize",
+   "buttonWeight",
+   "gap",
+   "max",
+   "min",
+   "minusGlyph",
+   "plusGlyph",
+   "step",
+   "value",
+   "valueColor",
+   "valueMinWidth",
+   "valueSize"
+  ],
+  "SegmentedControl": [
+   "activeBackground",
+   "activeColor",
+   "background",
+   "color",
+   "fontSize",
+   "fontWeight",
+   "itemRadius",
+   "options",
+   "padding",
+   "radius",
+   "value"
+  ],
+  "SearchField": [
+   "background",
+   "color",
+   "fontSize",
+   "icon",
+   "iconColor",
+   "paddingHorizontal",
+   "paddingVertical",
+   "placeholder",
+   "placeholderColor",
+   "radius",
+   "value"
+  ],
+  "Picker": [
+   "background",
+   "chevronColor",
+   "chevronGlyph",
+   "color",
+   "dividerColor",
+   "fontSize",
+   "options",
+   "paddingHorizontal",
+   "paddingVertical",
+   "placeholder",
+   "radius",
+   "scrimColor",
+   "sheetBackground",
+   "sheetRadius",
+   "sheetWidth",
+   "value"
+  ],
+  "DatePicker": [
+   "background",
+   "color",
+   "paddingHorizontal",
+   "paddingVertical",
+   "placeholder",
+   "placeholderColor",
+   "radius",
+   "value"
+  ],
+  "LineChart": [
+   "aspectHeight",
+   "color",
+   "series",
+   "strokeWidth"
+  ],
+  "BarChart": [
+   "barRadius",
+   "barWidth",
+   "color",
+   "gap",
+   "height",
+   "labelColor",
+   "labelSize",
+   "series"
+  ],
+  "Sparkline": [
+   "aspectHeight",
+   "color",
+   "data",
+   "strokeWidth"
+  ],
+  "ProgressRing": [
+   "color",
+   "label",
+   "labelColor",
+   "labelWeight",
+   "linecap",
+   "progress",
+   "size",
+   "stroke",
+   "trackColor"
+  ],
+  "Gauge": [
+   "color",
+   "height",
+   "labelColor",
+   "labelWeight",
+   "max",
+   "min",
+   "radius",
+   "trackColor",
+   "value"
+  ],
+  "StatCard": [
+   "background",
+   "delta",
+   "deltaSize",
+   "downColor",
+   "downGlyph",
+   "gap",
+   "label",
+   "labelColor",
+   "labelSize",
+   "labelTracking",
+   "padding",
+   "radius",
+   "upColor",
+   "upGlyph",
+   "value",
+   "valueColor",
+   "valueSize",
+   "valueWeight"
+  ],
+  "Waveform": [
+   "bars",
+   "color",
+   "level",
+   "look"
+  ],
+  "DonutChart": [
+   "centerColor",
+   "centerLabel",
+   "centerLabelColor",
+   "centerLabelSize",
+   "centerSize",
+   "centerValue",
+   "centerWeight",
+   "data",
+   "donut",
+   "dotRadius",
+   "dotSize",
+   "emptyColor",
+   "emptyStroke",
+   "gap",
+   "legend",
+   "legendColor",
+   "legendGap",
+   "legendSize",
+   "legendValueColor",
+   "legendValueWeight",
+   "palette",
+   "size",
+   "thickness"
+  ],
+  "Video": [
+   "autoplay",
+   "contentFit",
+   "loop",
+   "muted",
+   "playing",
+   "source",
+   "speed"
+  ],
+  "ImagePickerButton": [
+   "background",
+   "color",
+   "fontWeight",
+   "label",
+   "paddingHorizontal",
+   "paddingVertical",
+   "radius"
+  ],
+  "Avatar": [
+   "background",
+   "color",
+   "fontScale",
+   "fontWeight",
+   "name",
+   "size",
+   "source"
+  ],
+  "AvatarStack": [
+   "avatars",
+   "max",
+   "overlap",
+   "ringColor",
+   "ringWidth",
+   "size"
+  ],
+  "Toast": [
+   "background",
+   "color",
+   "message",
+   "padding",
+   "radius"
+  ],
+  "Snackbar": [
+   "actionColor",
+   "actionLabel",
+   "actionWeight",
+   "background",
+   "color",
+   "gap",
+   "message",
+   "padding",
+   "radius"
+  ],
+  "LoadingSkeleton": [
+   "color",
+   "durationMs",
+   "height",
+   "radius",
+   "width"
+  ],
+  "Confetti": [],
+  "Rating": [
+   "glyph",
+   "max",
+   "offColor",
+   "onColor",
+   "size",
+   "value"
+  ],
+  "EmptyState": [
+   "icon",
+   "iconSize",
+   "padding",
+   "subtitle",
+   "subtitleColor",
+   "title",
+   "titleColor",
+   "titleSize",
+   "titleWeight"
+  ],
+  "Countdown": [
+   "color",
+   "fontFamily",
+   "fontSize",
+   "tickMs",
+   "until"
+  ],
+  "LottieAnimation": [
+   "autoplay",
+   "contentFit",
+   "fallback",
+   "height",
+   "loop",
+   "playing",
+   "preset",
+   "source",
+   "speed",
+   "url"
+  ],
+  "WebView": [
+   "minHeight",
+   "url"
+  ],
+  "SVG": [
+   "d",
+   "fill",
+   "stroke",
+   "strokeLinecap",
+   "strokeLinejoin",
+   "strokeWidth",
+   "viewBox"
+  ],
+  "Gradient": [
+   "colors",
+   "direction",
+   "end",
+   "locations",
+   "start"
+  ],
+  "BlurBackground": [
+   "intensity",
+   "padding",
+   "radius",
+   "tint"
+  ],
+  "QRCode": [
+   "background",
+   "color",
+   "size",
+   "value"
+  ],
+  "IfElse": [
+   "if"
+  ],
+  "ForEach": [
+   "items"
+  ],
+  "Portal": [],
+  "Screen": [
+   "holdTouches",
+   "paddingBottom"
+  ],
+  "Stack": [
+   "fillViewport",
+   "hitSlop",
+   "pressBorderColor",
+   "pressBorderWidth",
+   "pressOpacity"
+  ],
+  "Spacer": [],
+  "Text": [
+   "content",
+   "dateStyle",
+   "format",
+   "numberOfLines",
+   "timeStyle",
+   "variant"
+  ],
+  "Image": [
+   "aspectRatio",
+   "contentFit",
+   "radius",
+   "source"
+  ],
+  "Icon": [
+   "name"
+  ],
+  "Button": [
+   "background",
+   "borderColor",
+   "borderWidth",
+   "disabled",
+   "disabledOpacity",
+   "flashColor",
+   "fontSize",
+   "fontWeight",
+   "label",
+   "labelColor",
+   "paddingHorizontal",
+   "paddingVertical",
+   "pressScale",
+   "radius",
+   "tracking",
+   "variant"
+  ],
+  "TextField": [
+   "autoCapitalize",
+   "autoCorrect",
+   "background",
+   "borderColor",
+   "borderWidth",
+   "color",
+   "minHeight",
+   "minHeightMultiline",
+   "multiline",
+   "paddingHorizontal",
+   "paddingVertical",
+   "placeholder",
+   "placeholderColor",
+   "radius",
+   "value"
+  ],
+  "Chip": [
+   "borderWidth",
+   "flashColor",
+   "group",
+   "label",
+   "paddingHorizontal",
+   "paddingVertical",
+   "pressScale",
+   "radius",
+   "selected",
+   "value"
+  ],
+  "Card": [
+   "background",
+   "borderColor",
+   "borderWidth",
+   "padding",
+   "pressScale",
+   "radius"
+  ],
+  "Divider": [
+   "color",
+   "marginVertical",
+   "thickness"
+  ],
+  "ProgressBar": [],
+  "List": [],
+  "VoiceButton": [
+   "background",
+   "busyOpacity",
+   "errorMic",
+   "errorNoAudio",
+   "errorPermission",
+   "errorTranscribe",
+   "label",
+   "language",
+   "live",
+   "paddingVertical",
+   "radius",
+   "recordingBackground",
+   "recordingColor",
+   "stopLabel",
+   "targetApp",
+   "transcribingLabel",
+   "value"
+  ],
+  "Overline": [
+   "content"
+  ],
+  "Heading": [
+   "content"
+  ],
+  "Paragraph": [
+   "content"
+  ],
+  "Quote": [
+   "content"
+  ],
+  "Badge": [
+   "borderWidth",
+   "label",
+   "marginBottom",
+   "paddingHorizontal",
+   "paddingVertical",
+   "radius",
+   "text",
+   "tone"
+  ],
+  "KeyValue": [
+   "dividerColor",
+   "dividerWidth",
+   "label",
+   "paddingVertical",
+   "value"
+  ],
+  "Hero": [
+   "background",
+   "borderColor",
+   "borderWidth",
+   "image",
+   "imageHeight",
+   "marginBottom",
+   "padding",
+   "radius",
+   "subtitle",
+   "title"
+  ],
+  "LanguageGreetingGrid": [
+   "color",
+   "enterMs",
+   "fallbackGreeting",
+   "intervalMs",
+   "items",
+   "paddingVertical",
+   "pill",
+   "pillBorderColor",
+   "swapMs",
+   "value"
+  ],
+  "FlipText": [
+   "flip",
+   "flipMs",
+   "intervalMs",
+   "perspective",
+   "turnDegrees",
+   "variant",
+   "words"
+  ],
+  "VoiceToggle": null,
+  "RefineButton": null,
+  "DraftButton": null,
+  "Pager": [
+   "dots",
+   "height",
+   "hint",
+   "nudge",
+   "peek"
+  ],
+  "Row": [
+   "chevron",
+   "chevronGlyph",
+   "chevronOffset",
+   "danger",
+   "divider",
+   "dividerColor",
+   "dividerWidth",
+   "label",
+   "longPressMs",
+   "paddingVertical",
+   "pressedOpacity",
+   "value",
+   "valueGap"
+  ],
+  "DictionaryEditor": null,
+  "WordChips": null,
+  "Slideshow": null,
+  "ParticleMark": null,
+  "BinaryReveal": null,
+  "ChatThread": null,
+  "VoiceBubble": null,
+  "VoiceSession": null,
+  "SwipeAction": null,
+  "Coverflow": null,
+  "Reels": null,
+  "AuroraOrb": null,
+  "SwipePill": null,
+  "AppleSignIn": null,
+  "GoogleSignIn": null,
+  "CodeEntry": null,
+  "AuthPhase": null,
+  "Rise": [
+   "damping",
+   "delayMs",
+   "fromY",
+   "mass",
+   "scaleFrom",
+   "stiffness"
+  ],
+  "KeyboardPreview": null,
+  "MorphOut": null,
+  "WordMeter": null,
+  "PieChart": null,
+  "NeuralField": null
+ },
+ "events": {
+  "Grid": [],
+  "MasonryGrid": [],
+  "Modal": [
+   "onDismiss"
+  ],
+  "BottomSheet": [
+   "onDismiss"
+  ],
+  "ActionSheet": [
+   "onDismiss",
+   "onSelect"
+  ],
+  "Popover": [],
+  "Tooltip": [],
+  "Collapsible": [],
+  "StickyHeader": [],
+  "SwipeableRow": [],
+  "PullToRefresh": [
+   "onRefresh"
+  ],
+  "SafeArea": [],
+  "Tabs": [],
+  "Switch": [
+   "onChange"
+  ],
+  "Slider": [
+   "onChange"
+  ],
+  "Stepper": [
+   "onChange"
+  ],
+  "SegmentedControl": [
+   "onChange"
+  ],
+  "SearchField": [
+   "onChange",
+   "onSubmit"
+  ],
+  "Picker": [
+   "onChange"
+  ],
+  "DatePicker": [
+   "onChange"
+  ],
+  "LineChart": [],
+  "BarChart": [],
+  "Sparkline": [],
+  "ProgressRing": [],
+  "Gauge": [],
+  "StatCard": [],
+  "Waveform": [],
+  "DonutChart": [],
+  "Video": [],
+  "ImagePickerButton": [
+   "onPress"
+  ],
+  "Avatar": [],
+  "AvatarStack": [],
+  "Toast": [],
+  "Snackbar": [
+   "onPress"
+  ],
+  "LoadingSkeleton": [],
+  "Confetti": [],
+  "Rating": [
+   "onChange"
+  ],
+  "EmptyState": [],
+  "Countdown": [
+   "onComplete"
+  ],
+  "LottieAnimation": [],
+  "WebView": [],
+  "SVG": [],
+  "Gradient": [],
+  "BlurBackground": [],
+  "QRCode": [],
+  "IfElse": [],
+  "ForEach": [],
+  "Portal": [],
+  "Screen": [],
+  "Stack": [
+   "onLongPress",
+   "onPress"
+  ],
+  "Spacer": [],
+  "Text": [],
+  "Image": [],
+  "Icon": [],
+  "Button": [
+   "onPress"
+  ],
+  "TextField": [
+   "onChange"
+  ],
+  "Chip": [
+   "onPress"
+  ],
+  "Card": [
+   "onLongPress",
+   "onPress"
+  ],
+  "Divider": [],
+  "ProgressBar": [],
+  "List": [],
+  "VoiceButton": [
+   "onChange",
+   "onError"
+  ],
+  "Overline": [],
+  "Heading": [],
+  "Paragraph": [],
+  "Quote": [],
+  "Badge": [],
+  "KeyValue": [],
+  "Hero": [],
+  "LanguageGreetingGrid": [
+   "onChange",
+   "onSubmit"
+  ],
+  "FlipText": [],
+  "VoiceToggle": [],
+  "RefineButton": [],
+  "DraftButton": [],
+  "Pager": [],
+  "Row": [
+   "onLongPress",
+   "onPress"
+  ],
+  "DictionaryEditor": [],
+  "WordChips": [],
+  "Slideshow": [],
+  "ParticleMark": [],
+  "BinaryReveal": [],
+  "ChatThread": [],
+  "VoiceBubble": [],
+  "VoiceSession": [],
+  "SwipeAction": [],
+  "Coverflow": [],
+  "Reels": [],
+  "AuroraOrb": [],
+  "SwipePill": [],
+  "AppleSignIn": [],
+  "GoogleSignIn": [],
+  "CodeEntry": [],
+  "AuthPhase": [],
+  "Rise": [],
+  "KeyboardPreview": [],
+  "MorphOut": [],
+  "WordMeter": [],
+  "PieChart": [],
+  "NeuralField": []
+ },
+ "actions": [
+  "analytics.identify",
+  "analytics.reset",
+  "analytics.track",
+  "appendState",
+  "armFlowSession",
+  "biometricPrompt",
+  "calendar.addEvent",
+  "callEndpoint",
+  "cancelKeyboardHandoff",
+  "cancelNotification",
+  "checkPermission",
+  "clearCache",
+  "clearState",
+  "completeKeyboardHandoff",
+  "condition",
+  "confetti",
+  "copyToClipboard",
+  "delay",
+  "dismiss",
+  "download",
+  "email",
+  "endFlowSession",
+  "haptic",
+  "iap.checkEntitlement",
+  "iap.restore",
+  "iap.showPaywall",
+  "iap.subscribe",
+  "incrementState",
+  "log",
+  "navigate",
+  "navigateBack",
+  "openInAppBrowser",
+  "openSettings",
+  "openUrl",
+  "parallel",
+  "phone",
+  "pickDocument",
+  "pickImage",
+  "readClipboard",
+  "refresh",
+  "reloadApp",
+  "requestPermission",
+  "requestPushPermission",
+  "requestReview",
+  "saveToPhotos",
+  "scanQR",
+  "scheduleNotification",
+  "sequence",
+  "setState",
+  "share",
+  "shareFile",
+  "signOut",
+  "sms",
+  "snackbar",
+  "speak",
+  "stopMedia",
+  "switchTab",
+  "toast",
+  "toggleInArray",
+  "toggleState"
+ ],
+ "actionFields": {
+  "navigate": [
+   "kind",
+   "params",
+   "replace",
+   "screenId"
+  ],
+  "navigateBack": [
+   "kind"
+  ],
+  "dismiss": [
+   "kind"
+  ],
+  "switchTab": [
+   "kind",
+   "tabId"
+  ],
+  "openUrl": [
+   "kind",
+   "url"
+  ],
+  "openInAppBrowser": [
+   "kind",
+   "url"
+  ],
+  "openSettings": [
+   "kind",
+   "target"
+  ],
+  "refresh": [
+   "kind"
+  ],
+  "callEndpoint": [
+   "assignTo",
+   "body",
+   "kind",
+   "language",
+   "method",
+   "onError",
+   "onSuccess",
+   "path"
+  ],
+  "setState": [
+   "kind",
+   "path",
+   "value"
+  ],
+  "toggleState": [
+   "kind",
+   "path"
+  ],
+  "toggleInArray": [
+   "kind",
+   "min",
+   "path",
+   "value"
+  ],
+  "appendState": [
+   "kind",
+   "max",
+   "path",
+   "value"
+  ],
+  "incrementState": [
+   "by",
+   "kind",
+   "path"
+  ],
+  "clearState": [
+   "kind",
+   "path"
+  ],
+  "haptic": [
+   "kind",
+   "style"
+  ],
+  "toast": [
+   "kind",
+   "message",
+   "tone"
+  ],
+  "snackbar": [
+   "kind",
+   "message"
+  ],
+  "speak": [
+   "kind",
+   "text",
+   "voice"
+  ],
+  "stopMedia": [
+   "kind"
+  ],
+  "confetti": [
+   "kind"
+  ],
+  "share": [
+   "kind",
+   "text",
+   "title",
+   "url"
+  ],
+  "shareFile": [
+   "kind",
+   "mimeType",
+   "path"
+  ],
+  "copyToClipboard": [
+   "kind",
+   "text",
+   "toastMessage"
+  ],
+  "readClipboard": [
+   "assignTo",
+   "kind"
+  ],
+  "sms": [
+   "body",
+   "kind",
+   "number"
+  ],
+  "email": [
+   "body",
+   "kind",
+   "subject",
+   "to"
+  ],
+  "phone": [
+   "kind",
+   "number"
+  ],
+  "download": [
+   "filename",
+   "kind",
+   "onError",
+   "onSuccess",
+   "url"
+  ],
+  "saveToPhotos": [
+   "kind",
+   "path"
+  ],
+  "pickImage": [
+   "assignTo",
+   "kind",
+   "onError",
+   "onSuccess",
+   "source"
+  ],
+  "pickDocument": [
+   "assignTo",
+   "kind",
+   "onError",
+   "onSuccess",
+   "types"
+  ],
+  "scanQR": [
+   "kind",
+   "onError"
+  ],
+  "requestPermission": [
+   "kind",
+   "onBlocked",
+   "onDenied",
+   "onGranted",
+   "permission"
+  ],
+  "checkPermission": [
+   "assignTo",
+   "kind",
+   "onDenied",
+   "onGranted",
+   "permission"
+  ],
+  "biometricPrompt": [
+   "kind",
+   "onError",
+   "onSuccess",
+   "reason"
+  ],
+  "signOut": [
+   "kind"
+  ],
+  "iap.showPaywall": [
+   "kind",
+   "offeringId",
+   "onError",
+   "onSuccess"
+  ],
+  "iap.subscribe": [
+   "kind",
+   "onError",
+   "onSuccess",
+   "productId"
+  ],
+  "iap.restore": [
+   "kind",
+   "onError",
+   "onSuccess"
+  ],
+  "iap.checkEntitlement": [
+   "assignTo",
+   "entitlement",
+   "kind"
+  ],
+  "scheduleNotification": [
+   "afterSeconds",
+   "atIso",
+   "body",
+   "identifier",
+   "kind",
+   "payload",
+   "title"
+  ],
+  "cancelNotification": [
+   "identifier",
+   "kind"
+  ],
+  "requestPushPermission": [
+   "kind",
+   "onDenied",
+   "onGranted"
+  ],
+  "analytics.track": [
+   "event",
+   "kind",
+   "props"
+  ],
+  "analytics.identify": [
+   "kind",
+   "traits",
+   "userId"
+  ],
+  "analytics.reset": [
+   "kind"
+  ],
+  "calendar.addEvent": [
+   "endsAtIso",
+   "kind",
+   "location",
+   "notes",
+   "startsAtIso",
+   "title"
+  ],
+  "requestReview": [
+   "kind"
+  ],
+  "completeKeyboardHandoff": [
+   "kind",
+   "onSuccess",
+   "sessionId",
+   "text",
+   "textPath"
+  ],
+  "cancelKeyboardHandoff": [
+   "kind",
+   "onSuccess",
+   "sessionId"
+  ],
+  "armFlowSession": [
+   "idleTimeoutMs",
+   "kind",
+   "onSuccess",
+   "oneShot"
+  ],
+  "endFlowSession": [
+   "kind",
+   "onSuccess"
+  ],
+  "clearCache": [
+   "kind"
+  ],
+  "reloadApp": [
+   "kind"
+  ],
+  "sequence": [
+   "actions",
+   "kind"
+  ],
+  "parallel": [
+   "actions",
+   "kind"
+  ],
+  "condition": [
+   "else",
+   "if",
+   "kind",
+   "then"
+  ],
+  "delay": [
+   "kind",
+   "ms"
+  ],
+  "log": [
+   "kind",
+   "level",
+   "message"
+  ]
+ },
+ "conditions": [
+  "all",
+  "any",
+  "contains",
+  "endsWith",
+  "entitled",
+  "eq",
+  "falsy",
+  "flag",
+  "gt",
+  "gte",
+  "in",
+  "lt",
+  "lte",
+  "neq",
+  "not",
+  "platform",
+  "startsWith",
+  "truthy"
+ ],
+ "styleConditions": [
+  "all",
+  "any",
+  "contains",
+  "endsWith",
+  "entitled",
+  "eq",
+  "falsy",
+  "flag",
+  "gt",
+  "gte",
+  "in",
+  "lt",
+  "lte",
+  "neq",
+  "not",
+  "platform",
+  "startsWith",
+  "truthy"
+ ],
+ "styleKeys": [
+  "align",
+  "alignContent",
+  "alignItems",
+  "alignSelf",
+  "aspectRatio",
+  "background",
+  "backgroundColor",
+  "borderBottomColor",
+  "borderBottomLeftRadius",
+  "borderBottomRightRadius",
+  "borderBottomWidth",
+  "borderColor",
+  "borderLeftColor",
+  "borderLeftWidth",
+  "borderRadius",
+  "borderRightColor",
+  "borderRightWidth",
+  "borderStyle",
+  "borderTopColor",
+  "borderTopLeftRadius",
+  "borderTopRightRadius",
+  "borderTopWidth",
+  "borderWidth",
+  "bottom",
+  "color",
+  "columnGap",
+  "direction",
+  "elevation",
+  "flex",
+  "flexBasis",
+  "flexDirection",
+  "flexGrow",
+  "flexShrink",
+  "flexWrap",
+  "fontFamily",
+  "fontSize",
+  "fontStyle",
+  "fontWeight",
+  "gap",
+  "height",
+  "justify",
+  "justifyContent",
+  "left",
+  "letterSpacing",
+  "lineHeight",
+  "margin",
+  "marginBottom",
+  "marginHorizontal",
+  "marginLeft",
+  "marginRight",
+  "marginTop",
+  "marginVertical",
+  "maxHeight",
+  "maxWidth",
+  "minHeight",
+  "minWidth",
+  "opacity",
+  "overflow",
+  "padding",
+  "paddingBottom",
+  "paddingHorizontal",
+  "paddingLeft",
+  "paddingRight",
+  "paddingTop",
+  "paddingVertical",
+  "position",
+  "radius",
+  "right",
+  "rowGap",
+  "shadowColor",
+  "shadowOffset",
+  "shadowOpacity",
+  "shadowRadius",
+  "textAlign",
+  "textDecorationLine",
+  "textTransform",
+  "top",
+  "width",
+  "wrap",
+  "zIndex"
+ ]
+}

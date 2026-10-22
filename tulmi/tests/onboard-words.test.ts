@@ -44,7 +44,8 @@ process.env.DEV_SKIP_AUTH = "true";
 
 const { localize } = await import("../src/experience/i18n.js");
 const { buildScreen, DAILY_LANGUAGES } = await import("../src/experience/catalog.js");
-const { OB_EN, OB_HG, onboardAuthTree, onboardHinglishSeeds } = await import("../src/experience/onboard.js");
+const { OB_EN, OB_HG, OB_STORE_EN, OB_STORE_HG, onboardAuthTree, onboardHinglishSeeds } = await import("../src/experience/onboard.js");
+const { STORE_NEEDS } = await import("../src/experience/onboardStore.js");
 const { EN, hinglishSeeds } = await import("../src/connectors/words.js");
 const { CATALOG } = await import("../src/connectors/catalog.js");
 
@@ -193,5 +194,46 @@ describe("a Hinglish profile reads the design's words and the model is not asked
     expect(seen.items).not.toContain("Google Calendar");
     expect(seen.items).not.toContain("G");
     expect(seen.items).not.toContain("Hinglish");
+  });
+});
+
+describe("the store variant reads the same Hinglish, and the model is not asked", () => {
+  const store = (extra: Record<string, unknown> = {}) => screen({ can: new Set([...STORE_NEEDS, "ActionUrl"]), ...extra });
+
+  it("every step, with the apps and without", async () => {
+    for (const extra of [{}, { platform: "android" }, { connectorsOn: false }, { can: new Set(STORE_NEEDS) }]) {
+      seen.items.length = 0;
+      const built = store(extra);
+      expect(JSON.stringify(built)).not.toContain("OnboardStage");
+      const json = JSON.stringify(await localize(built, "hinglish"));
+      expect(seen.items, JSON.stringify(Object.keys(extra))).toEqual([]);
+      for (const k of ["s1.h", "s1.cta", "s1.say", "s2.h", "s3.h", "s4.h", "s4.say2", "s5.h", "s5.blocked", "s8.h", "s8.cta", "ob.cont", "ob.err.finish", "s4.err", "s4.busy"] as const) {
+        expect(json, k).toContain(JSON.stringify(OB_HG[k]).slice(1, -1));
+      }
+      expect(json).not.toContain("MODEL");
+    }
+  });
+
+  it("the four lines only it says: the mic button's own words (stopLabel and transcribingLabel are translated for it), and the how", async () => {
+    const json = JSON.stringify(await localize(store(), "hinglish"));
+    for (const k of Object.keys(OB_STORE_EN) as Array<keyof typeof OB_STORE_EN>) {
+      expect(json, k).toContain(JSON.stringify(OB_STORE_HG[k]).slice(1, -1));
+      expect(json, k).not.toContain(JSON.stringify(OB_STORE_EN[k]).slice(1, -1));
+    }
+    expect(onboardHinglishSeeds().get(OB_STORE_EN["st.live"])).toBe(OB_STORE_HG["st.live"]);
+    // The slots in them are the same in both voices.
+    for (const k of Object.keys(OB_STORE_EN) as Array<keyof typeof OB_STORE_EN>) {
+      expect(OB_STORE_HG[k].match(/\{\w+\}/g)?.sort(), k).toEqual(OB_STORE_EN[k].match(/\{\w+\}/g)?.sort());
+    }
+  });
+
+  it("English reads as written, and another language goes to the translator with the mic button's words", async () => {
+    const en = JSON.stringify(await localize(store(), "en"));
+    expect(en).toContain(OB_STORE_EN["st.tap"]);
+    seen.items.length = 0;
+    await localize(store(), "hi");
+    // (Writing it… was asked for already, by the stage's own Try it: the translator remembers.)
+    expect(seen.items).toContain(OB_STORE_EN["st.live"]);
+    expect(seen.items).toContain(OB_STORE_EN["st.again"]);
   });
 });

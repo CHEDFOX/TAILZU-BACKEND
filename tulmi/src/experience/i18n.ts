@@ -216,6 +216,8 @@ const NODE_TYPE_TEXT_PROPS: Record<string, { props: readonly string[]; rows?: { 
   BlipSpot: { props: ["say"] },
   CodeEntry: { props: ["sentTo", "waitLabel", "okLabel", "failLabel", "resendLabel", "wrongLabel", "wrongEmailLabel", "changeLabel"] },
   SwipePill: { props: ["submitLabel"] },
+  // The mic button's words while it listens and while it writes (its idle one is a `label`).
+  VoiceButton: { props: ["stopLabel", "transcribingLabel"] },
 };
 
 function transformNode(node: Node, fn: StrFn): Node {
