@@ -369,6 +369,7 @@ export function agentUserMessage(
 ): string {
   const head = [
     `Platform: ${req.platform}. App: ${fenced(req.app) || "unknown"}. Mode: ${mode}. Step ${req.step + 1} of at most ${maxSteps + 1}.`,
+    nowLine(req.tzOffsetMinutes),
   ];
   if (req.language && req.language !== "auto") head.push(`Their language: ${req.language}.`);
 
@@ -377,6 +378,23 @@ export function agentUserMessage(
   if (history.length) parts.push(`<history>\n${history.map((t, i) => historyLine(i + 1, t)).join("\n")}\n</history>`);
   parts.push(`<said>${fenced(said)}</said>`);
   return parts.join("\n");
+}
+
+/** When the device sends no offset: India's, where most people using Tailzu are. */
+export const DEFAULT_TZ_OFFSET_MINUTES = 330;
+
+/**
+ * The person's date and time, so "tomorrow", "tonight" and "next Friday" mean
+ * something: "Now: Thursday 22 October 2026, 19:45 (UTC+05:30)." To the minute.
+ */
+export function nowLine(tzOffsetMinutes: number | undefined, nowMs = Date.now()): string {
+  const off = typeof tzOffsetMinutes === "number" && Number.isFinite(tzOffsetMinutes) && Math.abs(tzOffsetMinutes) <= 14 * 60
+    ? Math.round(tzOffsetMinutes) : DEFAULT_TZ_OFFSET_MINUTES;
+  const d = new Date(nowMs + off * 60_000);
+  const day = new Intl.DateTimeFormat("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(d).replace(",", "");
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const a = Math.abs(off);
+  return `Now: ${day}, ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} (UTC${off < 0 ? "-" : "+"}${pad(Math.floor(a / 60))}:${pad(a % 60)}).`;
 }
 
 /** The screen as the list both paths fence: the field, the elements, the

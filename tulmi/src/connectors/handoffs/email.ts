@@ -26,7 +26,7 @@ const RECIPIENTS_MAX = 10;
 const TOOLS: NativeTool[] = [
   {
     name: "compose_email", risk: "write",
-    description: "Write an email in the person's Gmail for them to check and send. Nothing is sent: Gmail opens with the email filled in. Use only the recipient and words they gave; ask for a missing recipient.",
+    description: "Write an email in the person's Gmail for them to check and send. Nothing is sent: Gmail opens with the email filled in. Use only an email address they gave; without one Gmail opens with To empty for them to fill in.",
     inputSchema: {
       type: "object",
       properties: {
@@ -34,7 +34,7 @@ const TOOLS: NativeTool[] = [
         subject: { type: "string" },
         body: { type: "string", description: "The email text, plain text with line breaks." },
       },
-      required: ["to", "subject", "body"],
+      required: ["subject", "body"],
     },
     annotations: {},
   },
@@ -58,7 +58,6 @@ export function emailHandoff(): NativeConnector {
       if (tool !== "compose_email") throw new ConnectorError("rejected", `Gmail doesn't have an action called ${tool.slice(0, 40)}.`);
       const list = (typeof args.to === "string" ? args.to : Array.isArray(args.to) ? args.to.join(",") : "")
         .split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean);
-      if (!list.length) throw new ConnectorError("rejected", "Who should the email go to?");
       const bad = list.find((a) => !EMAIL.test(a));
       if (bad) throw new ConnectorError("rejected", `"${bad.slice(0, 60)}" doesn't look like an email address. Who should it go to?`);
       if (list.length > RECIPIENTS_MAX) throw new ConnectorError("rejected", "That's more people than I can put on one email.");
@@ -69,10 +68,11 @@ export function emailHandoff(): NativeConnector {
       const links = handoffLinks(list, subject, body);
       // Encoded, a body in Hindi is up to nine times its length: the Gmail link (the longer of the two) must still open.
       if (links.gmail.length > LINK_MAX) throw tooLong();
-      const open: Handoff = { url: links.gmail, label: "Open in Gmail", fallback: links.mailto, words: { say: "mail.done", open: "mail.open" } };
+      // No address: Gmail opens with To empty; a mailto: with no address is no fallback.
+      const open: Handoff = { url: links.gmail, label: "Open in Gmail", ...(list.length ? { fallback: links.mailto } : {}), words: { say: "mail.done", open: "mail.open" } };
       return {
         ok: true, open,
-        text: `Gmail is open with the email to ${list.join(", ")} written. Nothing is sent until they press Send.`,
+        text: `Gmail is open with the email${list.length ? ` to ${list.join(", ")}` : ""} written. Nothing is sent until they press Send.`,
       };
     },
   };

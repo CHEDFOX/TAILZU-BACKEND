@@ -94,7 +94,7 @@ export function registerAssistantRoutes(app: FastifyInstance, deps: AssistantRou
   /** user id -> the run so far: what they said, and each question asked back. */
   const followUps = new Map<string, { turns: AgentTurn[]; at: number }>();
 
-  app.post<{ Body: { text?: unknown; lang?: unknown; platform?: unknown } }>("/v1/assistant/ask", { config: deps.rateLimit }, async (req, reply) => {
+  app.post<{ Body: { text?: unknown; lang?: unknown; platform?: unknown; tzOffsetMinutes?: unknown } }>("/v1/assistant/ask", { config: deps.rateLimit }, async (req, reply) => {
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
     if (!c) return reply.code(404).send({ code: "connectors_off", message: "Connected apps are not switched on." });
@@ -123,6 +123,8 @@ export function registerAssistantRoutes(app: FastifyInstance, deps: AssistantRou
         {
           runId: `ask_${randomUUID().replace(/-/g, "")}`, said: text, platform: phoneOf(body.platform, req.headers["user-agent"]),
           ...(lang && lang !== "auto" ? { language: lang } : {}), history, nothing: w("ask.none"),
+          ...(typeof body.tzOffsetMinutes === "number" && Number.isFinite(body.tzOffsetMinutes) && Math.abs(body.tzOffsetMinutes) <= 14 * 60
+            ? { tzOffsetMinutes: Math.round(body.tzOffsetMinutes) } : {}),
         },
         {
           plan: deps.plan,
