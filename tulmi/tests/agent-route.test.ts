@@ -550,9 +550,9 @@ describe("the model ladder", () => {
     expect(first!.body.reasoning).toEqual({ effort: "none" });
     expect(first!.body.temperature).toBe(0);
     expect(first!.body.messages[0].content).toBe(AGENT_SYSTEM);
-    // The provider preference is the picture path's alone.
-    expect(first!.body.provider).toBeUndefined();
-    expect(second!.body.provider).toBeUndefined();
+    // The provider sort is the picture path's alone; every call refuses providers that keep or train on data.
+    expect(first!.body.provider).toEqual({ data_collection: "deny" });
+    expect(second!.body.provider).toEqual({ data_collection: "deny" });
     expect(second!.body.reasoning).toEqual({ effort: "none", enabled: false });
     expect(second!.body.temperature).toBeUndefined();
     expect(second!.body.messages[0].content).toEqual([{ type: "text", text: AGENT_SYSTEM, cache_control: { type: "ephemeral" } }]);
@@ -691,7 +691,7 @@ describe("the picture path: what the vision model is sent", () => {
     expect(call.body.max_tokens).toBe(450);
     expect(call.body.reasoning).toEqual({ effort: "none" });
     expect(call.body.temperature).toBe(0);
-    expect(call.body.provider).toEqual({ sort: "latency" });
+    expect(call.body.provider).toEqual({ data_collection: "deny", sort: "latency" });
     expect(call.opts).toMatchObject({ maxRetries: 0, timeout: 500 });
   });
 
@@ -861,7 +861,7 @@ describe("the picture path: its ladders", () => {
     // cache mark and its own reasoning switch.
     for (const c of streamCalls()) {
       expect(c.body.messages[1].content[0].type).toBe("image_url");
-      expect(c.body.provider).toEqual({ sort: "latency" });
+      expect(c.body.provider).toEqual({ data_collection: "deny", sort: "latency" });
     }
     const [gemini, haiku] = streamCalls();
     expect(gemini!.body.messages[0].content).toBe(AGENT_VISION_SYSTEM_GEMINI);

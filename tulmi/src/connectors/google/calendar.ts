@@ -2,7 +2,7 @@
  * GOOGLE CALENDAR, as a native connector: plain fetch to Calendar API v3.
  *
  *   list_events      read         events in a time range (default today)
- *   find_free_time   read         gaps in the working day, from free/busy
+ *   find_free_time   read         gaps in the working day, around their own events
  *   create_event     write, or send when it has guests (Google emails them)
  *   move_event       write, or send when the event has guests
  *   delete_event     destructive
@@ -12,13 +12,22 @@
  * the zone set on their Google calendar. Results are sentences ("Friday
  * 10:00–10:30, Design sync, with Rahul"), each event with its id so a later
  * move or delete can name it.
+ *
+ * One scope does all five: calendar.events. Free time is worked out here from
+ * the events themselves (events.list), and the calendar's zone is the one
+ * events.list says it is in (zone.ts), so neither freeBusy.query nor the
+ * zone's own setting is called, and calendar.readonly, which those two would
+ * need, is not asked. Someone who connected while it still was has
+ * calendar.readonly in their grant as well (include_granted_scopes); nothing
+ * here needs it or minds it, and it ends with the grant (oauth.ts).
  */
 import { RESULT_MAX, type CallOutcome } from "../client.js";
 import type { Args, NativeConnector, NativeTool } from "../native.js";
 import { ConnectorError } from "../oauth.js";
 import type { Risk } from "../risk.js";
 import type { GoogleSession } from "./oauth.js";
-import { DAY, MIN, allDayWords, atWall, dateOf, dayStart, dayWord, parseWhen, rangeWords, rfc3339, validZone, wallOf, type When } from "./time.js";
+import { DAY, MIN, allDayWords, atWall, clock, dateOf, dayStart, dayWord, parseWhen, rangeWords, rfc3339, validZone, wallOf, type When } from "./time.js";
+import { calendarZone } from "./zone.js";
 
 const API = "https://www.googleapis.com/calendar/v3";
 const PRIMARY = `${API}/calendars/primary`;
@@ -29,11 +38,22 @@ const EVENT_ID = /^[A-Za-z0-9_-]{1,1024}$/;
 const MAX_RANGE_DAYS = 62;
 const MAX_FREE_DAYS = 14;
 const ZONE_CACHE_MS = 60 * MIN;
+/**
+ * Events read for free time, a page at a time, and at most this many pages:
+ * up to 2,500 an answer (events.list's most). Google may send a page short,
+ * or empty, and still have more ("Incomplete pages can be detected by a
+ * non-empty nextPageToken"), so running out of pages is not taken to mean
+ * running out of events (busyBetween).
+ */
+const BUSY_PAGE = 2500;
+const BUSY_PAGES = 4;
 
-interface Attendee { email?: string; displayName?: string; self?: boolean; resource?: boolean }
+interface Attendee { email?: string; displayName?: string; self?: boolean; resource?: boolean; responseStatus?: string }
 interface EventTime { date?: string; dateTime?: string; timeZone?: string }
 interface GEvent {
   id: string; summary?: string; status?: string;
+  /** "transparent" is Show me as Available: the event does not block time. Default "opaque". */
+  transparency?: string;
   start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string };
   attendees?: Attendee[];
 }
@@ -148,8 +168,7 @@ export function googleCalendar(o: CalendarOptions): NativeConnector {
     if (asked) return asked;
     const hit = zones.get(userId);
     if (hit && now() - hit.at < ZONE_CACHE_MS) return hit.tz;
-    const s = await get<{ value?: string }>(userId, `${API}/users/me/settings/timezone`);
-    const tz = validZone(s.value) ?? "UTC";
+    const tz = (await calendarZone(o.session, userId)) ?? "UTC";
     zones.set(userId, { tz, at: now() });
     return tz;
   }
@@ -183,6 +202,12 @@ export function googleCalendar(o: CalendarOptions): NativeConnector {
   /** "Friday 10:00–10:30", or "Friday, all day". */
   const atWords = (start: When, endMs: number, tz: string) =>
     start.dateOnly ? `${dayWord(start.ms, tz, now())}, all day` : rangeWords(start.ms, endMs, tz, now());
+
+  /** "tomorrow 10:00", "Friday 10:00", "Fri 30 Oct 10:00". */
+  const atClock = (ms: number, tz: string) => {
+    const d = dayWord(ms, tz, now());
+    return `${/^(Today|Tomorrow|Yesterday)$/.test(d) ? d.toLowerCase() : d} ${clock(ms, tz)}`;
+  };
 
   /** start/end fields for a write: all-day when only days were given, else timed in `tz`. */
   function timeFields(start: When, endMs: number, endIsDay: boolean, tz: string): { start: EventTime; end: EventTime } {
@@ -264,20 +289,18 @@ export function googleCalendar(o: CalendarOptions): NativeConnector {
     const open = hm(args.earliest, 9 * 60), close = hm(args.latest, 18 * 60);
     if (close - open < minutes) throw reject("The working day is shorter than the slot you asked for.");
 
-    const fb = await o.session.json<{ calendars?: Record<string, { busy?: Array<{ start: string; end: string }> }> }>(userId, ID, APP, `${API}/freeBusy`, {
-      method: "POST",
-      body: { timeMin: new Date(startMs).toISOString(), timeMax: new Date(endMs).toISOString(), timeZone: tz, items: [{ id: "primary" }] },
-    });
-    const busy = (fb.calendars?.primary?.busy ?? [])
-      .map((b) => [Date.parse(b.start), Date.parse(b.end)] as const)
-      .filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b))
-      .sort((a, b) => a[0] - b[0]);
+    const { busy, readTo } = await busyBetween(userId, startMs, endMs, tz);
+    // Google had more pages than were read: what comes after the last event
+    // read is not known, so it is not offered as free, and the answer says so.
+    const until = Math.min(endMs, readTo);
+    if (until <= startMs) throw reject("Your calendar has more events in that stretch than I can read at once. Try a shorter one.");
+    const partly = until < endMs ? `\nI could read your calendar only as far as ${atClock(until, tz)}, as it has more events than I can read at once. Ask again for after that.` : "";
 
     const slots: Array<[number, number]> = [];
-    for (let day = dayStart(startMs, tz); day < endMs && slots.length < 5; day = dayStart(day, tz, 1)) {
+    for (let day = dayStart(startMs, tz); day < until && slots.length < 5; day = dayStart(day, tz, 1)) {
       const w = wallOf(day, tz);
       const lo = Math.max(atWall(w.y, w.mo, w.d, 0, open, tz), startMs);
-      const hi = Math.min(atWall(w.y, w.mo, w.d, 0, close, tz), endMs);
+      const hi = Math.min(atWall(w.y, w.mo, w.d, 0, close, tz), until);
       let cursor = lo;
       for (const [bs, be] of busy) {
         if (be <= cursor) continue;
@@ -288,9 +311,59 @@ export function googleCalendar(o: CalendarOptions): NativeConnector {
       if (hi - cursor >= minutes * MIN) slots.push([cursor, hi]);
     }
     const label = spanWords(startMs, endMs, tz);
-    if (!slots.length) return ok(`You have no free ${minutes}-minute slot ${label}, between ${clockHm(open)} and ${clockHm(close)}.`);
+    if (!slots.length) return ok(`You have no free ${minutes}-minute slot ${label}, between ${clockHm(open)} and ${clockHm(close)}.${partly}`);
     const lines = slots.slice(0, 5).map(([a, b]) => `- ${rangeWords(round5(a), b, tz, now())}`);
-    return ok(cut(`Free for ${minutes} minutes or more ${label}:\n${lines.join("\n")}`));
+    return ok(cut(`Free for ${minutes} minutes or more ${label}:\n${lines.join("\n")}${partly}`));
+  }
+
+  /**
+   * When the person is busy between two instants, from their own events: what
+   * freeBusy.query would answer, worked out here so that calendar.events is
+   * the one scope Calendar needs. An event blocks its time unless it is
+   * marked free (transparency "transparent", Show me as Available, as working
+   * locations are made), was cancelled, or they declined it; an all-day event
+   * blocks its whole days on the same terms. maxAttendees=1 means Google
+   * sends back only the person's own answer on an event with guests ("If
+   * there are more than the specified number of attendees, only the
+   * participant is returned"), which is all a decline needs: the guest list
+   * is not read for this.
+   *
+   * An all-day event is a day on the calendar's own clock, whatever zone the
+   * person named for this question: a holiday on 23 Oct in Kolkata runs from
+   * 14:30 on the 22nd in New York. So its days are placed in the zone
+   * Google says the calendar is in, as free/busy placed them: the answer's
+   * timeZone, which is the calendar's as long as this request passes no
+   * timeZone of its own (so it passes none).
+   *
+   * `readTo` is how far the answer is complete: the end, or, when the pages
+   * ran out before Google's did, the start of the latest event read. Events
+   * come in order of their start, so every one that starts before it has been
+   * read; past it nothing is known.
+   */
+  async function busyBetween(userId: string, startMs: number, endMs: number, tz: string): Promise<{ busy: Array<[number, number]>; readTo: number }> {
+    const spans: Array<[number, number]> = [];
+    let pageToken: string | undefined;
+    let dayZone = tz;
+    let latest = startMs;
+    for (let page = 0; page < BUSY_PAGES; page++) {
+      const q = new URLSearchParams({
+        singleEvents: "true", orderBy: "startTime", maxResults: String(BUSY_PAGE), maxAttendees: "1",
+        timeMin: new Date(startMs).toISOString(), timeMax: new Date(endMs).toISOString(),
+        fields: "timeZone,items(status,transparency,start,end,attendees(self,responseStatus)),nextPageToken",
+        ...(pageToken ? { pageToken } : {}),
+      });
+      const res = await get<{ timeZone?: string; items?: GEvent[]; nextPageToken?: string }>(userId, `${PRIMARY}/events?${q}`);
+      dayZone = validZone(res.timeZone) ?? dayZone;
+      for (const e of res.items ?? []) {
+        const s = span(e, dayZone);
+        if (Number.isFinite(s.start)) latest = Math.max(latest, s.start);
+        if (!blocksTime(e)) continue;
+        if (Number.isFinite(s.start) && Number.isFinite(s.end)) spans.push([s.start, s.end]);
+      }
+      pageToken = res.nextPageToken;
+      if (!pageToken) return { busy: mergeSpans(spans), readTo: endMs };
+    }
+    return { busy: mergeSpans(spans), readTo: latest };
   }
 
   async function createEvent(userId: string, args: Args): Promise<CallOutcome> {
@@ -389,6 +462,23 @@ export function googleCalendar(o: CalendarOptions): NativeConnector {
 }
 
 const ok = (text: string): CallOutcome => ({ ok: true, text });
+
+/** Whether an event makes the person busy: not marked free, not cancelled, not declined by them. */
+export function blocksTime(e: Pick<GEvent, "status" | "transparency" | "attendees">): boolean {
+  if (e.status === "cancelled" || e.transparency === "transparent") return false;
+  return !(e.attendees ?? []).some((a) => a.self && a.responseStatus === "declined");
+}
+
+/** Busy spans in order, with any that overlap or touch made one. An empty or backwards span blocks nothing. */
+export function mergeSpans(spans: ReadonlyArray<readonly [number, number]>): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  for (const [a, b] of spans.filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0])) {
+    const last = out.at(-1);
+    if (last && a <= last[1]) last[1] = Math.max(last[1], b);
+    else out.push([a, b]);
+  }
+  return out;
+}
 
 /** "09:00" / "9am" -> minutes after midnight; `dflt` when it is not a time. */
 function hm(v: unknown, dflt: number): number {

@@ -39,6 +39,8 @@ const { beginGoogleOAuth, completeGoogleOAuth } = await import("../src/connector
 const { handoffLinks } = await import("../src/connectors/handoffs/email.js");
 const { HANDOFF_IDS } = await import("../src/connectors/handoffs/index.js");
 const { noteText } = await import("../src/connectors/google/docs.js");
+const { blocksTime, mergeSpans } = await import("../src/connectors/google/calendar.js");
+const { CALENDAR_ZONE_URL } = await import("../src/connectors/google/zone.js");
 const { parseWhen, wallOf } = await import("../src/connectors/google/time.js");
 const { MemoryConnectorStore } = await import("../src/connectors/store.js");
 const { registerConnectorRoutes } = await import("../src/routes/connectors.js");
@@ -48,19 +50,26 @@ type Note = import("../../shared/types/api.js").Note;
 // Thursday 22 Oct 2026, 13:30 in India (UTC+5:30).
 const NOW = Date.parse("2026-10-22T08:00:00Z");
 const REDIRECT = "https://api.example.com/v1/connectors/callback";
-const CAL_SCOPES = ["https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/calendar.readonly"];
+const CAL_SCOPES = ["https://www.googleapis.com/auth/calendar.events"];
+/** What someone who connected Calendar before 2026-10-22 granted: calendar.readonly as well. */
+const OLD_CAL_SCOPES = ["https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/calendar.readonly"];
 const DOCS_SCOPE = "https://www.googleapis.com/auth/drive.file";
 const GOOGLE = { clientId: "cid.apps.googleusercontent.com", clientSecret: "csecret" };
-const TZ_URL = "https://www.googleapis.com/calendar/v3/users/me/settings/timezone";
+const EVENTS_PATH = "/calendar/v3/calendars/primary/events";
 
 // ------------------------------------------------------------- a scripted Google
 
 interface Call { url: URL; method: string; auth: string | null; body: any; form: Record<string, string> | null }
 type Reply = { status?: number; json?: unknown; empty?: boolean };
 
+/** The read of the calendar's zone: events.list on the primary calendar, for its timeZone alone. */
+const isZone = (c: Call) => c.url.pathname === EVENTS_PATH && c.url.searchParams.get("fields") === "timeZone";
+
 function fakeGoogle() {
   const calls: Call[] = [];
   const routes: Array<{ match: (c: Call) => boolean; reply: Reply | ((c: Call) => Reply) }> = [];
+  /** Answered before any route: the zone read shares events.list's path with list_events. */
+  const pinned: typeof routes = [];
   const fetchFn = (async (input: string | URL, init?: RequestInit) => {
     const raw = typeof init?.body === "string" ? init.body : null;
     const isForm = (init?.headers as Record<string, string> | undefined)?.["content-type"]?.includes("x-www-form-urlencoded");
@@ -71,7 +80,7 @@ function fakeGoogle() {
       form: raw && isForm ? Object.fromEntries(new URLSearchParams(raw)) : null,
     };
     calls.push(c);
-    const hit = routes.find((r) => r.match(c));
+    const hit = pinned.find((r) => r.match(c)) ?? routes.find((r) => r.match(c));
     if (!hit) return new Response(JSON.stringify({ error: { message: "no route", status: "NOT_FOUND" } }), { status: 404 });
     const r = typeof hit.reply === "function" ? hit.reply(c) : hit.reply;
     return r.empty ? new Response(null, { status: r.status ?? 204 }) : new Response(JSON.stringify(r.json ?? {}), { status: r.status ?? 200 });
@@ -79,11 +88,13 @@ function fakeGoogle() {
   return {
     calls, fetchFn,
     on(match: (c: Call) => boolean, reply: Reply | ((c: Call) => Reply)) { routes.unshift({ match, reply }); },
+    pin(match: (c: Call) => boolean, reply: Reply | ((c: Call) => Reply)) { pinned.unshift({ match, reply }); },
     to(method: string, path: RegExp | string, reply: Reply | ((c: Call) => Reply)) {
       this.on((c) => c.method === method && (typeof path === "string" ? c.url.pathname === path : path.test(c.url.pathname)), reply);
     },
     token(reply: Reply | ((c: Call) => Reply)) { this.on((c) => c.url.href === "https://oauth2.googleapis.com/token", reply); },
     only(pred: (c: Call) => boolean) { return calls.filter(pred); },
+    last(pred: (c: Call) => boolean) { return calls.filter(pred).at(-1)!; },
   };
 }
 
@@ -94,9 +105,9 @@ const note = (over: Partial<Note> = {}): Note => ({
   people: [{ label: "Speaker 1", name: "Priya" }, { label: "You" }], transcript: [], organised: true, ...over,
 });
 
-async function setup(o: { connect?: Array<"google-calendar" | "google-docs">; level?: "look" | "draft" | "send"; google?: typeof GOOGLE | null } = {}) {
+async function setup(o: { connect?: Array<"google-calendar" | "google-docs">; level?: "look" | "draft" | "send"; google?: typeof GOOGLE | null; calScopes?: string[] } = {}) {
   const g = fakeGoogle();
-  g.to("GET", "/calendar/v3/users/me/settings/timezone", { json: { value: "Asia/Kolkata" } });
+  g.pin(isZone, { json: { timeZone: "Asia/Kolkata" } });
   const store = new MemoryConnectorStore();
   const connectors = createConnectors({
     store, redirectUrl: REDIRECT, now: () => NOW, fetchFn: g.fetchFn, google: o.google === undefined ? GOOGLE : o.google,
@@ -107,7 +118,7 @@ async function setup(o: { connect?: Array<"google-calendar" | "google-docs">; le
   for (const id of o.connect ?? ["google-calendar", "google-docs"]) {
     await store.upsertConnection(user, id, {
       level: o.level ?? "send",
-      tokensEnc: encrypt(JSON.stringify({ access_token: "at-1", refresh_token: "rt-1", expires_at: NOW + 3_600_000, scope: id === "google-docs" ? DOCS_SCOPE : CAL_SCOPES.join(" ") })),
+      tokensEnc: encrypt(JSON.stringify({ access_token: "at-1", refresh_token: "rt-1", expires_at: NOW + 3_600_000, scope: id === "google-docs" ? DOCS_SCOPE : (o.calScopes ?? CAL_SCOPES).join(" ") })),
     });
   }
   const call = (connector: string, tool: string, args: Record<string, unknown> = {}) => connectors.hub.call(user, connector, tool, args);
@@ -138,7 +149,7 @@ describe("the catalog", () => {
 
   it("keeps the email hand-off out of the catalog and out of the list of apps to connect", async () => {
     expect(CATALOG.some((c) => c.id === "email-handoff")).toBe(false);
-    expect(ALWAYS_ON.map((c) => c.id)).toEqual(["email-handoff", ...HANDOFF_IDS]);
+    expect(ALWAYS_ON.map((c) => c.id)).toEqual(["email-handoff", ...HANDOFF_IDS, "youtube"]);
     const { connectors, user } = await setup();
     expect((await connectorList(connectors, user)).map((c) => c.id)).toEqual(CATALOG.filter((c) => c.provider === "google").map((c) => c.id));
     expect(connectors.hub.def("email-handoff")).toBeTruthy();
@@ -146,7 +157,7 @@ describe("the catalog", () => {
 
   it("is always there by default (CONNECTORS on), whatever CONNECTORS_ENABLED_IDS says", () => {
     const c = createConnectors({ store: new MemoryConnectorStore(), redirectUrl: REDIRECT });
-    expect(c.hub.catalog.map((d) => d.id)).toEqual(["email-handoff", ...HANDOFF_IDS]);
+    expect(c.hub.catalog.map((d) => d.id)).toEqual(["email-handoff", ...HANDOFF_IDS, "youtube"]);
   });
 });
 
@@ -160,7 +171,7 @@ describe("signing in to Google", () => {
     return { store, def, url, p: url.searchParams };
   };
 
-  it("asks Calendar for calendar.events and calendar.readonly, offline, with PKCE", async () => {
+  it("asks Calendar for calendar.events and nothing else, offline, with PKCE", async () => {
     const { store, url, p } = await begin("google-calendar");
     expect(`${url.origin}${url.pathname}`).toBe("https://accounts.google.com/o/oauth2/v2/auth");
     expect(p.get("scope")!.split(" ")).toEqual(CAL_SCOPES);
@@ -221,8 +232,17 @@ describe("signing in to Google", () => {
       await expect(run()).rejects.toMatchObject({ code: "bad_state" });
     });
 
+    it("takes a Calendar grant that has calendar.events, with calendar.readonly beside it or not", async () => {
+      // include_granted_scopes: someone who connected before still has calendar.readonly in the grant Google returns.
+      for (const scope of [OLD_CAL_SCOPES.join(" "), CAL_SCOPES.join(" "), `${DOCS_SCOPE} ${OLD_CAL_SCOPES.join(" ")}`]) {
+        const { store, run } = await comeBack("google-calendar", good(scope));
+        expect(await run(), scope).toMatchObject({ def: { id: "google-calendar" } });
+        expect(JSON.parse(decrypt((await store.getConnection("u1", "google-calendar"))!.tokensEnc!)).scope).toBe(scope);
+      }
+    });
+
     it("refuses a grant with a scope unticked, or with no refresh token, and a bad state", async () => {
-      const part = await comeBack("google-calendar", good(CAL_SCOPES[0]!));
+      const part = await comeBack("google-calendar", good("https://www.googleapis.com/auth/calendar.readonly"));
       await expect(part.run()).rejects.toMatchObject({ code: "failed", message: expect.stringContaining("every box ticked") });
       expect((await part.store.getConnection("u1", "google-calendar"))!.tokensEnc).toBeNull();
 
@@ -299,7 +319,7 @@ describe("calling Google as the person", () => {
     g.token({ json: { access_token: "at-2", expires_in: 3600 } });
     const out = await call("google-calendar", "list_events");
     expect(out).toMatchObject({ ok: true, text: "Nothing on your calendar today." });
-    const cal = g.only((c) => c.url.pathname.endsWith("/events"));
+    const cal = g.only((c) => c.url.pathname.endsWith("/events") && !isZone(c));
     expect(cal.map((c) => c.auth)).toEqual(["Bearer at-1", "Bearer at-2"]);
     const tok = g.only((c) => c.url.hostname === "oauth2.googleapis.com");
     expect(tok).toHaveLength(1);
@@ -319,7 +339,7 @@ describe("calling Google as the person", () => {
     const out = await call("google-calendar", "list_events");
     expect(out.ok).toBe(false);
     expect(out.error).toEqual({ code: "needs_reconnect", message: "Google Calendar needs you to sign in again." });
-    expect(g.only((c) => c.url.pathname.endsWith("/events"))).toHaveLength(2);
+    expect(g.only((c) => c.url.pathname.endsWith("/events") && !isZone(c))).toHaveLength(2);
     expect(connectors.hub.needsSignIn(user, "google-calendar")).toBe(true);
   });
 
@@ -360,7 +380,7 @@ describe("Google Calendar tools", () => {
       ] },
     });
     const out = await call("google-calendar", "list_events", {});
-    const req = g.only((c) => c.url.pathname === "/calendar/v3/calendars/primary/events")[0]!;
+    const req = g.only((c) => c.url.pathname === EVENTS_PATH && !isZone(c))[0]!;
     expect(req.method).toBe("GET");
     expect(req.url.searchParams.get("timeMin")).toBe("2026-10-21T18:30:00.000Z");
     expect(req.url.searchParams.get("timeMax")).toBe("2026-10-22T18:30:00.000Z");
@@ -384,30 +404,150 @@ describe("Google Calendar tools", () => {
     expect(req.url.searchParams.get("timeMin")).toBe("2026-10-23T04:00:00.000Z");
     expect(req.url.searchParams.get("timeMax")).toBe("2026-10-24T04:00:00.000Z");
     expect(req.url.searchParams.get("maxResults")).toBe("25");
-    expect(g.only((c) => c.url.pathname.includes("settings"))).toHaveLength(0);
+    // A zone they named is used as it is: the calendar's is not read.
+    expect(g.only(isZone)).toHaveLength(0);
     expect(out.text).toBe("Nothing on your calendar tomorrow.");
     expect((await call("google-calendar", "list_events", { from: "whenever" })).error?.message).toContain("couldn't read the start");
   });
 
-  it("finds free time inside the working day from free/busy", async () => {
+  it("reads the calendar's zone from events.list, once, and never calls settings or freeBusy", async () => {
     const { g, call } = await setup();
-    g.to("POST", "/calendar/v3/freeBusy", {
-      json: { calendars: { primary: { busy: [
-        { start: "2026-10-23T04:30:00Z", end: "2026-10-23T05:30:00Z" }, // 10:00-11:00 IST
-        { start: "2026-10-23T07:30:00Z", end: "2026-10-23T09:00:00Z" }, // 13:00-14:30 IST
-      ] } } },
-    });
+    g.to("GET", EVENTS_PATH, { json: { items: [] } });
+    g.to("POST", EVENTS_PATH, { json: { id: "new1" } });
+    await call("google-calendar", "list_events");
+    await call("google-calendar", "find_free_time", { from: "friday" });
+    await call("google-calendar", "create_event", { title: "Lunch", start: "friday 13:00" });
+    const zone = g.only(isZone);
+    expect(zone).toHaveLength(1);
+    expect(zone[0]!.url.href).toBe(CALENDAR_ZONE_URL);
+    expect(Object.fromEntries(zone[0]!.url.searchParams)).toEqual({ maxResults: "1", fields: "timeZone" });
+    expect(zone[0]!.auth).toBe("Bearer at-1");
+    // Every Calendar request is events.list, get, insert, patch or delete, all under calendar.events.
+    expect(g.calls.filter((c) => /settings|freeBusy/i.test(c.url.pathname))).toEqual([]);
+    expect(g.calls.every((c) => c.url.pathname.startsWith(EVENTS_PATH))).toBe(true);
+    // The times were read in the zone the calendar said.
+    expect(g.last((c) => c.method === "POST").body.start).toEqual({ dateTime: "2026-10-23T13:00:00+05:30", timeZone: "Asia/Kolkata" });
+  });
+
+  it("falls back to UTC when Google gives the calendar no zone it knows", async () => {
+    const { g, call } = await setup();
+    g.pin(isZone, { json: { timeZone: "Mars/Olympus_Mons" } });
+    g.to("GET", EVENTS_PATH, { json: { items: [] } });
+    await call("google-calendar", "list_events");
+    expect(g.last((c) => c.url.pathname === EVENTS_PATH && !isZone(c)).url.searchParams.get("timeZone")).toBe("UTC");
+  });
+
+  it("finds free time inside the working day from the events: free-marked, declined and cancelled ones don't count, overlaps merge", async () => {
+    const { g, call } = await setup();
+    const self = (responseStatus: string) => [{ self: true, responseStatus }];
+    g.to("GET", EVENTS_PATH, { json: { items: [
+      { status: "confirmed", start: { dateTime: "2026-10-23T10:00:00+05:30" }, end: { dateTime: "2026-10-23T11:00:00+05:30" } },
+      // Overlaps the one before: 10:00-11:30 is one busy stretch.
+      { status: "confirmed", start: { dateTime: "2026-10-23T10:30:00+05:30" }, end: { dateTime: "2026-10-23T11:30:00+05:30" }, attendees: self("accepted") },
+      // Show me as Available.
+      { status: "confirmed", transparency: "transparent", start: { dateTime: "2026-10-23T13:00:00+05:30" }, end: { dateTime: "2026-10-23T14:30:00+05:30" } },
+      // They said no.
+      { status: "confirmed", start: { dateTime: "2026-10-23T15:00:00+05:30" }, end: { dateTime: "2026-10-23T16:00:00+05:30" }, attendees: self("declined") },
+      // Not answered yet, or maybe: still busy, as free/busy has it.
+      { status: "tentative", start: { dateTime: "2026-10-23T16:30:00+05:30" }, end: { dateTime: "2026-10-23T17:00:00+05:30" }, attendees: self("needsAction") },
+      { status: "cancelled", start: { dateTime: "2026-10-23T09:00:00+05:30" }, end: { dateTime: "2026-10-23T18:00:00+05:30" } },
+      // An all-day event marked free (a holiday on the calendar, a working location) leaves the day open.
+      { status: "confirmed", transparency: "transparent", start: { date: "2026-10-23" }, end: { date: "2026-10-24" } },
+    ] } });
     const out = await call("google-calendar", "find_free_time", { from: "friday", duration_minutes: 60 });
-    const req = g.only((c) => c.url.pathname.endsWith("/freeBusy"))[0]!;
-    expect(req.body).toEqual({ timeMin: "2026-10-22T18:30:00.000Z", timeMax: "2026-10-23T18:30:00.000Z", timeZone: "Asia/Kolkata", items: [{ id: "primary" }] });
+    const req = g.only((c) => c.url.pathname === EVENTS_PATH && !isZone(c))[0]!;
+    expect(req.method).toBe("GET");
+    expect(Object.fromEntries(req.url.searchParams)).toEqual({
+      singleEvents: "true", orderBy: "startTime", maxResults: "2500", maxAttendees: "1",
+      timeMin: "2026-10-22T18:30:00.000Z", timeMax: "2026-10-23T18:30:00.000Z",
+      fields: "timeZone,items(status,transparency,start,end,attendees(self,responseStatus)),nextPageToken",
+    });
     expect(out.text).toBe([
       "Free for 60 minutes or more tomorrow:",
       "- Tomorrow 09:00–10:00",
-      "- Tomorrow 11:00–13:00",
-      "- Tomorrow 14:30–18:00",
+      "- Tomorrow 11:30–16:30",
+      "- Tomorrow 17:00–18:00",
     ].join("\n"));
-    g.to("POST", "/calendar/v3/freeBusy", { json: { calendars: { primary: { busy: [{ start: "2026-10-23T03:00:00Z", end: "2026-10-23T13:00:00Z" }] } } } });
+  });
+
+  it("counts an all-day event as busy all day unless it is marked free, and reads every page", async () => {
+    const { g, call } = await setup();
+    g.to("GET", EVENTS_PATH, { json: { items: [{ status: "confirmed", start: { date: "2026-10-23" }, end: { date: "2026-10-24" } }] } });
     expect((await call("google-calendar", "find_free_time", { from: "friday" })).text).toBe("You have no free 30-minute slot tomorrow, between 09:00 and 18:00.");
+
+    // Busy 09:00-12:00 on the first page, 12:00-18:00 on the second: nothing free.
+    g.to("GET", EVENTS_PATH, (c) => c.url.searchParams.get("pageToken") === "p2"
+      ? { json: { items: [{ start: { dateTime: "2026-10-23T12:00:00+05:30" }, end: { dateTime: "2026-10-23T18:00:00+05:30" } }] } }
+      : { json: { items: [{ start: { dateTime: "2026-10-23T09:00:00+05:30" }, end: { dateTime: "2026-10-23T12:00:00+05:30" } }], nextPageToken: "p2" } });
+    expect((await call("google-calendar", "find_free_time", { from: "friday" })).text).toBe("You have no free 30-minute slot tomorrow, between 09:00 and 18:00.");
+    const pages = g.only((c) => c.url.pathname === EVENTS_PATH && !isZone(c)).slice(-2);
+    expect(pages.map((c) => c.url.searchParams.get("pageToken"))).toEqual([null, "p2"]);
+  });
+
+  it("places an all-day event on the calendar's own days when the person names another zone", async () => {
+    const { g, call } = await setup();
+    // A Kolkata calendar's holiday on Fri 23 Oct runs 14:30 Thursday to 14:30 Friday in New York.
+    g.to("GET", EVENTS_PATH, { json: { timeZone: "Asia/Kolkata", items: [{ status: "confirmed", start: { date: "2026-10-23" }, end: { date: "2026-10-24" } }] } });
+    expect((await call("google-calendar", "find_free_time", { from: "friday", timezone: "America/New_York" })).text)
+      .toBe("Free for 30 minutes or more tomorrow:\n- Tomorrow 14:30–18:00");
+    expect((await call("google-calendar", "find_free_time", { from: "thursday", timezone: "America/New_York" })).text)
+      .toBe("Free for 30 minutes or more today:\n- Today 09:00–14:30");
+    // In the calendar's own zone it is the whole of Friday, as before.
+    expect((await call("google-calendar", "find_free_time", { from: "friday" })).text).toBe("You have no free 30-minute slot tomorrow, between 09:00 and 18:00.");
+  });
+
+  it("offers no free time past what it could read when Google has more pages than it reads", async () => {
+    const { g, call } = await setup();
+    const busyReads = () => g.only((c) => c.url.pathname === EVENTS_PATH && !isZone(c));
+    // Google may send pages short, or empty, with more to come. Here the
+    // busy day is on page 5, past the four read: never "free all day".
+    g.to("GET", EVENTS_PATH, (c) => {
+      const page = Number(c.url.searchParams.get("pageToken")?.slice(1) ?? 1);
+      return page < 5
+        ? { json: { timeZone: "Asia/Kolkata", items: [], nextPageToken: `p${page + 1}` } }
+        : { json: { timeZone: "Asia/Kolkata", items: [{ start: { dateTime: "2026-10-23T09:00:00+05:30" }, end: { dateTime: "2026-10-23T18:00:00+05:30" } }] } };
+    });
+    expect((await call("google-calendar", "find_free_time", { from: "friday" })).error)
+      .toEqual({ code: "rejected", message: "Your calendar has more events in that stretch than I can read at once. Try a shorter one." });
+    expect(busyReads()).toHaveLength(4);
+
+    // Events up to Saturday 12:00 read, then pages with nothing: free time
+    // up to there, and the answer says where it stopped.
+    g.to("GET", EVENTS_PATH, (c) => c.url.searchParams.get("pageToken")
+      ? { json: { items: [], nextPageToken: "more" } }
+      : { json: { timeZone: "Asia/Kolkata", nextPageToken: "more", items: [
+        { start: { dateTime: "2026-10-23T10:00:00+05:30" }, end: { dateTime: "2026-10-23T11:00:00+05:30" } },
+        { start: { dateTime: "2026-10-24T12:00:00+05:30" }, end: { dateTime: "2026-10-24T13:00:00+05:30" } },
+      ] } });
+    expect((await call("google-calendar", "find_free_time", { from: "friday", to: "sunday" })).text).toBe([
+      "Free for 30 minutes or more from Tomorrow to Sunday:",
+      "- Tomorrow 09:00–10:00",
+      "- Tomorrow 11:00–18:00",
+      "- Saturday 09:00–12:00",
+      "I could read your calendar only as far as Saturday 12:00, as it has more events than I can read at once. Ask again for after that.",
+    ].join("\n"));
+  });
+
+  it("decides what is busy the way free/busy does", () => {
+    expect(blocksTime({})).toBe(true);
+    expect(blocksTime({ status: "tentative", attendees: [{ self: true, responseStatus: "tentative" }] })).toBe(true);
+    expect(blocksTime({ transparency: "opaque" })).toBe(true);
+    expect(blocksTime({ transparency: "transparent" })).toBe(false);
+    expect(blocksTime({ status: "cancelled" })).toBe(false);
+    expect(blocksTime({ attendees: [{ self: true, responseStatus: "declined" }] })).toBe(false);
+    // Someone else declining is not the person declining.
+    expect(blocksTime({ attendees: [{ email: "rahul@example.com", responseStatus: "declined" }] })).toBe(true);
+    expect(mergeSpans([[5, 10], [1, 3], [3, 4], [8, 12], [20, 20], [30, 25]])).toEqual([[1, 4], [5, 12]]);
+  });
+
+  it("keeps working for someone who connected before, with calendar.readonly still in their grant", async () => {
+    const { g, call, use } = await setup({ calScopes: OLD_CAL_SCOPES });
+    g.to("GET", EVENTS_PATH, { json: { items: [EVENT()] } });
+    expect((await call("google-calendar", "list_events", { from: "saturday" })).text).toBe("1 event on Saturday:\n- Saturday 10:00–10:30, Design sync with Rahul (id: ev1)");
+    expect((await call("google-calendar", "find_free_time", { from: "saturday", duration_minutes: 60 })).text)
+      .toBe("Free for 60 minutes or more on Saturday:\n- Saturday 09:00–10:00\n- Saturday 10:30–18:00");
+    expect(await use("google-calendar", "create_event", { title: "Solo", start: "friday 16:00" })).toMatchObject({ kind: "approval", approval: { risk: "write" } });
+    expect(g.calls.filter((c) => /settings|freeBusy/i.test(c.url.pathname))).toEqual([]);
   });
 
   it("adds an event with no guests as a write, and none are emailed", async () => {

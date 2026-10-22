@@ -125,7 +125,9 @@ export async function completeGoogleOAuth(
   }
   const granted = typeof r.json.scope === "string" ? r.json.scope : "";
   // Google lets the person untick scopes on the consent page: without all of
-  // them the tools would fail one by one, so say so now.
+  // them the tools would fail one by one, so say so now. More than this app
+  // asks is fine (include_granted_scopes brings back what other apps were
+  // given, and Calendar's calendar.readonly from before it stopped asking).
   if (def.scopes.some((s) => !granted.split(/\s+/).includes(s))) {
     throw new ConnectorError("failed", `${def.name} needs every box ticked on Google's page. Try connecting again and leave them all on.`);
   }
@@ -253,7 +255,7 @@ export function apiError(status: number, body: any, app: string, notFound?: stri
   const reason = String(body?.error?.errors?.[0]?.reason ?? body?.error?.status ?? "");
   if (status === 401) return new ConnectorError("needs_reconnect", `${app} needs you to sign in again.`);
   if (status === 404 || status === 410) return new ConnectorError("rejected", notFound ?? `I couldn't find that in ${app}.`);
-  // The project's allowance for the day is spent (YouTube's 100 searches): a minute will not help.
+  // The project's allowance for the day is spent: a minute will not help.
   if (/quotaExceeded|dailyLimitExceeded/.test(reason)) {
     return new ConnectorError("failed", `${app} has done all it can for today. Try again tomorrow.`);
   }

@@ -63,7 +63,10 @@ export function pickConnectors(utterance: string, frontApp: string, have: Candid
       continue;
     }
     let signal = 0;
-    for (const a of def.aliases) if (said.includes(` ${wordsOf(a).join(" ")} `)) signal += 10;
+    // Each alias once as it reads after stemming: "video" and "videos" (or
+    // "meeting" and "meetings") are one word said, worth one hit, not two.
+    const aliases = new Set(def.aliases.map((a) => ` ${wordsOf(a).join(" ")} `));
+    for (const a of aliases) if (a.trim() && said.includes(a)) signal += 10;
     if (names.some((n) => said.includes(n)) && signal === 0) signal += 10;
     // An app that is always there (a hand-off) has to be named, or one of
     // its words said: a word shared with its description, or its app in

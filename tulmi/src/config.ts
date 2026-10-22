@@ -486,6 +486,18 @@ const EnvSchema = z.object({
    * error message. Without both values the Google apps list but cannot connect.
    */
   GOOGLE_CONNECT_CLIENT_SECRET: z.string().optional(),
+  /**
+   * YouTube's search in Connected apps (the always-on "youtube" app,
+   * connectors/google/youtube.ts) reads YouTube's public search results with
+   * this key, so it asks nobody for a Google permission: an API key from the
+   * same Google Cloud project, restricted to YouTube Data API v3 (and to this
+   * server's address). Each search costs 100 of the project's 10,000 quota
+   * units a day, shared by everyone, so about 100 searches a day until Google
+   * raises it. Without it, or once the day's are spent, a search opens
+   * YouTube's own search for the same words instead (the play hand-off), so
+   * nothing breaks. Server-side only: never sent to a device, a log or a reply.
+   */
+  YOUTUBE_API_KEY: z.string().optional(),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 

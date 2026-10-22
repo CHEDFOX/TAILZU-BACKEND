@@ -272,7 +272,7 @@ describe("a whole run, through the server's own planStream", () => {
     for (const c of llm.calls) {
       expect(c.stream).toBe(true);
       expect(c.max_tokens).toBe(450);
-      expect(c.provider).toEqual({ sort: "latency" });
+      expect(c.provider).toEqual({ data_collection: "deny", sort: "latency" });
       expect(c.messages[1].content[0]).toEqual({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${PICTURE_BASE64}` } });
       expect(c.messages[1].content[1].text.split("\n")[0]).toBe("App: Slack. The picture is one image from the window.");
       expect(c.messages[1].content[1].text).toContain('o1 text "a² + b² = c²" @c');
@@ -324,10 +324,10 @@ describe("a whole run, through the server's own planStream", () => {
 
   it("--route none sends no provider preference; by default it is the server's", async () => {
     await run(["--runs", "1", "--models", "google/gemini-2.5-flash", "--route", "none"]);
-    expect("provider" in llm.calls[0]!).toBe(false);
+    expect(llm.calls[0]!.provider).toEqual({ data_collection: "deny" });
     llm.calls.length = 0;
     const { out } = await run(["--runs", "1", "--models", "google/gemini-2.5-flash"]);
-    expect(llm.calls[0]!.provider).toEqual({ sort: "latency" });
+    expect(llm.calls[0]!.provider).toEqual({ data_collection: "deny", sort: "latency" });
     expect(out).toContain("google/gemini-2.5-flash, providers sorted by latency");
   });
 
@@ -336,7 +336,7 @@ describe("a whole run, through the server's own planStream", () => {
     resetConfigForTests();
     try {
       const { out } = await run(["--runs", "1", "--models", "google/gemini-2.5-flash"]);
-      expect("provider" in llm.calls[0]!).toBe(false);
+      expect(llm.calls[0]!.provider).toEqual({ data_collection: "deny" });
       expect(out).toContain("google/gemini-2.5-flash, OpenRouter's default routing");
     } finally {
       delete process.env.AGENT_VISION_PROVIDER_SORT;

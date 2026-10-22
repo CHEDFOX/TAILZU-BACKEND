@@ -10,7 +10,7 @@
  */
 import { siteShell } from "./shell.js";
 import { crumbsLd, pageLd } from "../../seo/head.js";
-export const PRIVACY_POLICY_EFFECTIVE = "October 20, 2026";
+export const PRIVACY_POLICY_EFFECTIVE = "October 22, 2026";
 
 const PRIVACY_POLICY_BODY = `
 <h1>Privacy Policy</h1>
@@ -94,6 +94,7 @@ const PRIVACY_POLICY_BODY = `
 <h2>2. How we use your information</h2>
 <ul>
   <li>To provide the core features (transcription, refinement, keyboard, personality)</li>
+  <li>To do what you ask in the Google apps you connect, and nothing more (see Section 11)</li>
   <li>To authenticate your account and secure your data</li>
   <li>To process subscriptions and manage entitlements</li>
   <li>To improve the app through anonymous, aggregated usage analytics</li>
@@ -130,6 +131,12 @@ const PRIVACY_POLICY_BODY = `
   <li>The models under <em>Language refinement</em> above write and rewrite text for Ask (a message it types into a field, a selection it rewrites), and answer a question when none of the models before them could.</li>
 </ul>
 
+<h3>Google apps you connect (see Section 11)</h3>
+<ul>
+  <li><strong>Google</strong> (policies.google.com/privacy) — Google Calendar, Docs, Tasks, Sheets, Forms and Classroom, for the ones you connect, and YouTube's search (see 11.1).</li>
+  <li><strong>OpenRouter</strong>, <strong>OpenAI</strong> and <strong>Anthropic</strong> — the same models that answer Ask's questions about the text on your screen work out what to do in the apps you connect, on your phone and on your computer.</li>
+</ul>
+
 <h3>Authentication and database</h3>
 <ul>
   <li><strong>Supabase</strong> (supabase.com/privacy) — hosts your account, profile, and (if opted in) session history in secure managed Postgres.</li>
@@ -162,6 +169,7 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>Voice recordings:</strong> transient. Deleted immediately after transcription.</li>
   <li><strong>Session history:</strong> only if you opt in. Stored until you delete it or your account.</li>
   <li><strong>Ask:</strong> what it reads off your screen, and any picture it sends, is not stored. See Section 10.</li>
+  <li><strong>Google apps you connect:</strong> what Tailzu reads in them is not stored, except the details of a change waiting for your OK. Your access to an app is kept until you disconnect it or delete your account; your Tasks list and its record of actions, until you delete your account. See Section 11.</li>
   <li><strong>Account:</strong> retained until you request deletion.</li>
   <li><strong>Diagnostic logs:</strong> retained by Sentry / PostHog for up to 90 days per their standard retention.</li>
 </ul>
@@ -263,12 +271,73 @@ const PRIVACY_POLICY_BODY = `
 
 <hr>
 
-<h2>11. Changes to this policy</h2>
+<h2 id="google-user-data">11. Google apps you connect</h2>
+<p>You can connect Google apps to Tailzu: Google Calendar, Google Docs, Google Tasks, Google Sheets, Google Forms and Google Classroom. Then you can ask Tailzu, on your phone or with Ask on your computer, to do things in them for you. You connect each app yourself, in Connected apps in Tailzu: tap Connect, and Google asks whether to allow it. This section says what Tailzu reads and changes in those apps, where that goes, what we keep, and how to end it.</p>
+
+<h3>11.1 What Tailzu does in each app</h3>
+<p>Google asks you for an app's permissions only when you tap Connect on it, and Tailzu connects only if you allow all of them. Signing in to Tailzu with Google never asks for them. Connecting does not give Tailzu your Google account's name or email address.</p>
+<ul>
+  <li><strong>Google Calendar</strong> — reads your events (their titles, times, and guests' names and email addresses), when you are free or busy, and your calendar's time zone. It adds, moves or cancels an event when you ask. If the event has guests, Google emails them the invite, the new time or the cancellation.</li>
+  <li><strong>Google Docs</strong> — makes a new Doc from your words, or from one of your Tailzu meeting notes (its summary, key points and people, or its transcript if it has no summary). It does not read your Docs. Google lets it reach only the files Tailzu made, never the rest of your Drive.</li>
+  <li><strong>Google Tasks</strong> — reads your task lists and tasks. It adds a task, ticks one off or deletes one when you ask.</li>
+  <li><strong>Google Sheets</strong> — makes a sheet, adds rows to one, or reads one back. Google lets it reach only the sheets Tailzu made.</li>
+  <li><strong>Google Forms</strong> — makes a form with your questions and publishes it, and reads the answers people send: the totals for each choice and the latest three answers. Google lets it reach only the forms Tailzu made. Those answers are other people's, and everything in this section applies to them too.</li>
+  <li><strong>Google Classroom</strong> — only reads: your classes, the classwork that is due and whether you turned it in (with your grade, once it is returned), and your classes' latest announcements. It never changes anything in Classroom.</li>
+</ul>
+<p><strong>Gmail and Google Maps are not connected apps.</strong> When you ask Tailzu to write an email, it opens Gmail's own compose window with the email written, for you to check and send yourself. When you ask for directions, it opens Google Maps. Tailzu has no access to either, and it reads none of your email.</p>
+<p><strong>YouTube is not a connected app either.</strong> When you ask Tailzu to find a video, it sends only the words to search for to Google's YouTube Data API, with Tailzu's own key (or, when it can't, opens YouTube's own search on your device). There is no sign-in, and nothing from your Google account is read or changed.</p>
+
+<h3>11.2 Only when you ask</h3>
+<ul>
+  <li>Tailzu reaches into a Google app only to do what you just asked for. It never looks around in your apps on its own, in the background or on a schedule.</li>
+  <li><strong>Looking something up</strong> (your calendar, your tasks, a sheet, a form's answers, your classes) happens right away.</li>
+  <li><strong>Changes wait for your OK.</strong> Before Tailzu adds, changes or deletes anything, it shows you a card with the exact change, and nothing happens until you tap Approve. Tap Not now, and nothing is done. You choose how far Tailzu can go in each app (Can look, Can draft or Can send); at Can send, you can let a kind of change go ahead without asking. Deleting always asks.</li>
+</ul>
+
+<h3>11.3 Where your Google data goes</h3>
+<ul>
+  <li><strong>To the AI model that works out the next step.</strong> What Tailzu reads in a Google app, at most 1,500 characters at a time, goes from our server with your request through <strong>OpenRouter</strong> to the AI model that answers you: <strong>OpenAI's</strong> model first; <strong>Anthropic's Claude</strong> if that fails; and if that fails too, the model that refines your dictation (see Section 3). With Ask on your computer, the text list of your screen goes with it (see 10.2). Tailzu tells OpenRouter to use only providers that do not collect it to train models (OpenRouter's data-collection setting is off for every one of these requests). OpenRouter and the model's provider handle it under their own privacy policies, which may let them keep it for a short time after Tailzu has dropped it.</li>
+  <li><strong>To you.</strong> Tailzu's answer, and the card asking for your OK, are shown in Tailzu on your phone or computer.</li>
+  <li><strong>To Google.</strong> What you asked Tailzu to write there: an event and its guests' email addresses, a Doc with your words or your meeting note, a task, rows in a sheet, a form's questions; and the words of a YouTube search (see 11.1). When you connect, Tailzu also sends Google your Tailzu account ID, which Google sends straight back so we know the sign-in is yours.</li>
+  <li><strong>Nowhere else.</strong> When a change is waiting for your OK, the notification on your phone names only the app. Apart from Supabase, which stores what 11.4 lists, no one else receives your Google data.</li>
+</ul>
+
+<h3>11.4 What we keep</h3>
+<ul>
+  <li><strong>Your access to each app.</strong> The keys Google gives Tailzu for an app ("tokens") are encrypted (AES-256-GCM) before they are stored, and kept until you disconnect that app or delete your account. If Tailzu stops offering an app you connected, its keys are no longer used, and they are deleted when you delete your account, or sooner if you email <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a>.</li>
+  <li><strong>Your Tasks list.</strong> For each request that used an app: the first 80 characters of what you asked, and short steps like "Google Calendar: list events", so you can see what Tailzu did. Only you can see it in Tailzu.</li>
+  <li><strong>A change waiting for your OK</strong> keeps its details, which can include what Tailzu read in Google to show it to you (an event's title, time and guests, or the name of a task, task list or sheet), until you tap Approve or Not now. Then they are deleted. If you never answer, they stay until you delete your account.</li>
+  <li><strong>A record of each action:</strong> which app and action, whether it ran, failed or you said no, and when. It holds nothing that was read or written.</li>
+  <li><strong>Nothing else.</strong> Apart from a change waiting for your OK, what Tailzu reads in your Google apps is used for that one request and not stored, and we do not write it into our logs. On your phone, a question Tailzu asks you back is held in our server's memory with your request until your next request, and used with it only if that comes within five minutes, so your answer makes sense. Your calendar's time zone is held in memory too, and read from Google again at most once an hour.</li>
+</ul>
+
+<h3>11.5 Limited Use</h3>
+<p>Tailzu's use and transfer of information received from Google APIs to any other app will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. In plain words:</p>
+<ul>
+  <li>Tailzu uses your Google data only to do what you asked, when you ask.</li>
+  <li>We never sell it.</li>
+  <li>We never use it for advertising, and it is not part of the advertising measurement in 1.6.</li>
+  <li>Tailzu does not use it to create, train or improve AI or machine-learning models.</li>
+  <li>No one at Tailzu reads it, unless you ask us to (for example, to look into a problem you report), it is needed for security (such as looking into abuse), or the law requires it.</li>
+</ul>
+
+<h3>11.6 Disconnecting, and deleting what we keep</h3>
+<ul>
+  <li><strong>Disconnect an app</strong> in Connected apps in Tailzu. Tailzu deletes its stored access to that app right away and stops using it.</li>
+  <li><strong>At Google's end:</strong> Google keeps one permission for all the Google apps you connect to Tailzu. When you disconnect the last of them, Tailzu also asks Google to revoke it. Until then, Google keeps Tailzu's permission for every Google app you connected, including the one you just disconnected, though Tailzu no longer uses it for that app. You can also remove Tailzu yourself at any time in your Google Account (myaccount.google.com/connections), for example if Google could not be reached when you disconnected.</li>
+  <li><strong>What stays after you disconnect:</strong> your Tasks list, the record of actions, and any change still waiting for your OK (see 11.4). They are kept until you delete your account. To have them deleted sooner, email <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a>.</li>
+  <li><strong>Deleting your account</strong> deletes all of it: your access to your Google apps, your Tasks list and the record. It does not tell Google, so disconnect your Google apps first, or remove Tailzu in your Google Account afterwards.</li>
+  <li>What Tailzu made or changed in your Google apps (events, Docs, tasks, sheets, forms) is yours. It stays there until you change it in Google.</li>
+</ul>
+
+<hr>
+
+<h2>12. Changes to this policy</h2>
 <p>We will update this policy when our practices change. We will bump the "Effective" date at the top and, for material changes, notify you in the app or by email.</p>
 
 <hr>
 
-<h2>12. Contact</h2>
+<h2>13. Contact</h2>
 <p>Questions or requests: <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a></p>
 
 <p style="color:#6b6b6b; font-size:13px; margin-top:40px;">This policy is available at <code>https://tailzu.space/privacy</code>. The version served by the app matches the version linked in App Store Connect.</p>

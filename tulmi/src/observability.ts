@@ -72,6 +72,37 @@ export function fastifyLoggerOptions() {
 }
 
 /**
+ * An outgoing call as Sentry may keep it: without its query string. Sentry
+ * records every call the server makes, as a breadcrumb that rides on the
+ * next error and as a span on a sampled trace, with the query in its own
+ * fields ("http.query", "url.query") and in the full address. A query can
+ * carry what the person said (a YouTube search's words) or a key; the host
+ * and path say which call it was, and that is all a report needs.
+ */
+const noQuery = (v: unknown) => (typeof v === "string" ? v.replace(/[?#][\s\S]*$/, "") : v);
+const QUERY_KEYS = ["http.query", "http.fragment", "url.query", "url.fragment"];
+const ADDRESS_KEYS = ["url", "url.full", "http.url", "http.target"];
+
+function scrubData(data: Record<string, unknown> | undefined): void {
+  if (!data) return;
+  for (const k of QUERY_KEYS) delete data[k];
+  for (const k of ADDRESS_KEYS) if (k in data) data[k] = noQuery(data[k]);
+}
+
+/** Sentry's beforeBreadcrumb: an http breadcrumb keeps its method, host, path and status, never its query. */
+export function scrubBreadcrumb<B extends { type?: string; category?: string; data?: Record<string, unknown> }>(b: B): B {
+  if (b.type === "http" || b.category === "http") scrubData(b.data);
+  return b;
+}
+
+/** Sentry's beforeSendSpan: a call's span keeps where it went and how long it took, never its query. */
+export function scrubSpan<S extends { op?: string; description?: string; data?: Record<string, unknown> }>(s: S): S {
+  scrubData(s.data);
+  if (s.op?.startsWith("http") && typeof s.description === "string") s.description = noQuery(s.description) as string;
+  return s;
+}
+
+/**
  * Initialise Sentry if SENTRY_DSN is set. Safe to call more than once; the
  * second call is a no-op.
  */
@@ -94,6 +125,9 @@ export async function initSentry(): Promise<void> {
       // admin secret, and the review/preview headers that carry them. Nor the
       // body or the query string: a body is dictated text, audio or a
       // personality, and none of it is Sentry's business.
+      // Nor the query of a call the server makes (scrubBreadcrumb above).
+      beforeBreadcrumb: scrubBreadcrumb,
+      beforeSendSpan: scrubSpan,
       beforeSend(event: unknown) {
         try {
           const e = event as { request?: { headers?: Record<string, string>; data?: unknown; query_string?: unknown; cookies?: unknown } };

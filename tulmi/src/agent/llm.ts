@@ -207,8 +207,11 @@ export function plannerRequest(
   return {
     model,
     // OpenRouter's provider routing: among the providers serving this model,
-    // the one that sorts first ("latency": soonest to its first token).
-    ...(sort ? { provider: { sort } } : {}),
+    // the one that sorts first ("latency": soonest to its first token). And
+    // only providers that neither keep nor train on what they are sent: a
+    // step can carry what a connected app returned, and Google's user data
+    // policy forbids it being used to train models.
+    provider: { data_collection: "deny", ...(sort ? { sort } : {}) },
     stream: true,
     stream_options: { include_usage: true },
     max_tokens: maxTokens,

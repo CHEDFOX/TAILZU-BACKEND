@@ -81,6 +81,8 @@ export interface ConnectorsOptions {
   google?: GoogleOAuth | null;
   /** Where save_note reads the person's notes. Default: src/notes/store. */
   notes?: NotesSource;
+  /** YouTube's search key. Default: YOUTUBE_API_KEY; without one, a search opens YouTube's own instead. */
+  youtubeKey?: string | null;
   /** The fetch the native apps and Google sign-in use. Tests hand in a fake. */
   fetchFn?: typeof fetch;
   redirectUrl?: string;
@@ -130,7 +132,8 @@ export function createConnectors(o: ConnectorsOptions = {}): Connectors {
       : null;
   const withFetch = google && o.fetchFn ? { ...google, fetchFn: o.fetchFn } : google;
   const custom: CustomSettings = o.custom ?? { enabled: cfg.CUSTOM_CONNECTORS, max: cfg.CUSTOM_CONNECTORS_MAX };
-  const natives = buildNatives(catalog, { store, google: withFetch, notes: o.notes ?? storedNotes(), now: o.now });
+  const youtubeKey = o.youtubeKey !== undefined ? o.youtubeKey : cfg.YOUTUBE_API_KEY || null;
+  const natives = buildNatives(catalog, { store, google: withFetch, notes: o.notes ?? storedNotes(), youtubeKey, fetchFn: o.fetchFn, now: o.now });
   const hub = new ConnectorHub({ store, catalog, natives, redirectUrl, signIn, custom: custom.enabled, callTimeoutMs: o.callTimeoutMs, now: o.now });
   const tasks = new TaskService({ store, hub, now: o.now, notify: o.notify });
 
