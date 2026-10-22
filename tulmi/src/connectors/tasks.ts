@@ -11,6 +11,12 @@
  *            are pushed, and nothing is called until POST .../approve
  *   block    the app's level does not allow this at all; the run is told so
  *
+ * An app the person added by link has no level: each of its tools has the
+ * policy they set (Allow, Ask, Off; risk.ts gateTool). And once another app's
+ * answer is in the run, every call to an app added by link needs a yes,
+ * reads included: its arguments are written by a planner that has just read
+ * the other app's data, and arguments are how data walks out.
+ *
  * Every tool that actually runs, and every refusal by the person, writes an
  * audit row: the tool, its risk, how it ended, a few words. Never arguments,
  * message text or results. The pending call's arguments live on the task only
@@ -24,7 +30,8 @@ import type { ApprovalCard } from "../../../shared/types/api.js";
 import type { ConnectorHub, Fail } from "./client.js";
 import type { ConnectorDef } from "./catalog.js";
 import { ConnectorError } from "./oauth.js";
-import { gate, type Level, type Risk } from "./risk.js";
+import { policyOf } from "./hygiene.js";
+import { gate, gateTool, type Gate, type Level, type Risk } from "./risk.js";
 import type { Approval, ConnectorStore, Task } from "./store.js";
 
 export const APPROVAL_TTL_MS = 60 * 60_000;
@@ -40,8 +47,8 @@ export type UseOutcome =
   /** Something for the person's own computer to open (the email hand-off): the run says `say`, opens it and ends. */
   | { kind: "open"; url: string; label: string; fallback?: string; say?: string };
 
-/** An approval as the device sees it: no arguments. */
-export interface ApprovalView { id: string; connector: string; tool: string; risk: Exclude<Risk, "read">; preview: string }
+/** An approval as the device sees it: no arguments. "read" only for an app added by link (see the top of this file). */
+export interface ApprovalView { id: string; connector: string; tool: string; risk: Risk; preview: string }
 
 export interface TaskView {
   id: string;
@@ -54,7 +61,7 @@ export interface TaskView {
 }
 
 export const viewOfApproval = (a: Approval): ApprovalView =>
-  ({ id: a.id, connector: a.connector, tool: a.tool, risk: a.risk as ApprovalView["risk"], preview: a.preview });
+  ({ id: a.id, connector: a.connector, tool: a.tool, risk: a.risk, preview: a.preview });
 
 export const viewOfTask = (t: Task): TaskView => ({
   id: t.id, state: t.state, title: t.title, steps: t.steps, approval: t.approval ? viewOfApproval(t.approval) : null,
@@ -117,6 +124,14 @@ export class TaskService {
     return made;
   }
 
+  /** Whether an app other than this one has already answered in this run (an "ok" in its task's audit trail). */
+  private async otherAppAnswered(userId: string, runId: string, connectorId: string): Promise<boolean> {
+    const known = this.runs.get(`${userId}|${runId}`);
+    const task = (known ? await this.o.store.getTask(userId, known) : null) ?? (await this.o.store.openTaskForRun(userId, runId));
+    if (!task) return false;
+    return (await this.o.store.listAudit(userId, task.id)).some((a) => a.outcome === "ok" && a.connectorId !== connectorId);
+  }
+
   private audit(userId: string, task: Task, connectorId: string, tool: string, risk: Risk, outcome: "ok" | "failed" | "denied", fail?: Fail) {
     return this.o.store.addAudit({
       taskId: task.id, userId, connectorId, tool, risk, outcome, at: this.now(),
@@ -130,7 +145,7 @@ export class TaskService {
     line: { connector: string; tool: string; args: Record<string, unknown> },
     opts: { allowWrite: boolean },
   ): Promise<UseOutcome> {
-    const def = this.o.hub.def(line.connector);
+    const def = await this.o.hub.resolve(userId, line.connector);
     // An app that needs no permission (the email hand-off) has no connection to look for.
     const free = def?.auth === "none";
     const conn = def && !free ? await this.o.store.getConnection(userId, line.connector) : null;
@@ -144,7 +159,16 @@ export class TaskService {
       return { kind: "stopped", message: e instanceof ConnectorError ? e.message : `${def.name} ran into a problem.` };
     }
     const info = tools.find((t) => t.name === line.tool);
-    if (!info) return { kind: "stopped", message: `${def.name} doesn't have an action called ${clip(line.tool, 40)}.` };
+    if (!info) {
+      // An app added by link hides a tool that changed since the person approved it, and one they switched off.
+      const now = def.custom ? await this.o.store.getConnection(userId, def.id) : null;
+      return {
+        kind: "stopped",
+        message: now?.toolsChanged.includes(line.tool) ? `${human(line.tool)} changed in ${def.name} since you approved it. Have a look in Tailzu first.`
+          : now?.toolPolicy[line.tool] === "off" ? `${human(line.tool)} is switched off for ${def.name}. You can change that in Tailzu.`
+            : `${def.name} doesn't have an action called ${clip(line.tool, 40)}.`,
+      };
+    }
 
     let risk: Risk;
     try {
@@ -152,13 +176,23 @@ export class TaskService {
     } catch (e) {
       return { kind: "stopped", message: e instanceof ConnectorError ? e.message : `${def.name} ran into a problem.` };
     }
+    let verdict: Gate;
     // The hand-off only opens a draft the person sends themselves, so it runs without asking; but only on a command.
-    const verdict = free ? (opts.allowWrite || risk === "read" ? "run" : "approve") : gate(risk, conn!.level, conn!.autoOk.includes(info.name));
+    if (free) verdict = opts.allowWrite || risk === "read" ? "run" : "approve";
+    else if (def.custom) {
+      verdict = gateTool(risk, policyOf(info, conn!));
+      if (verdict === "run" && await this.otherAppAnswered(userId, runId, def.id)) verdict = "approve";
+    } else verdict = gate(risk, conn!.level, conn!.autoOk.includes(info.name));
     if (verdict === "block") {
-      return { kind: "stopped", message: blockedMessage(def.name, conn!.level, risk) };
+      return { kind: "stopped", message: def.custom ? `${human(info.name)} is switched off for ${def.name}. You can change that in Tailzu.` : blockedMessage(def.name, conn!.level, risk) };
     }
     if (verdict === "approve" && !opts.allowWrite) {
-      return { kind: "stopped", message: free ? `Ask me as a command and I'll open it in ${def.name}.` : `That would change something in ${def.name}. Ask me as a command and I'll check with you first.` };
+      return {
+        kind: "stopped",
+        message: free ? `Ask me as a command and I'll open it in ${def.name}.`
+          : risk === "read" ? `I check with you before using ${def.name}. Ask me as a command and I'll ask you first.`
+            : `That would change something in ${def.name}. Ask me as a command and I'll check with you first.`,
+      };
     }
 
     let task = await this.taskFor(userId, runId, said);
@@ -204,7 +238,7 @@ export class TaskService {
     const task = await this.o.store.claimWaiting(userId, taskId);
     if (!task?.approval) return { status: "not_waiting", task: peek ? viewOfTask(peek) : undefined };
     const a = task.approval;
-    const def = this.o.hub.def(a.connector);
+    const def = await this.o.hub.resolve(userId, a.connector).catch(() => undefined);
 
     if (this.now() - a.at > APPROVAL_TTL_MS) {
       const t = await this.step(userId, task, "That request expired before you answered", { state: "cancelled", approval: null });
@@ -213,6 +247,12 @@ export class TaskService {
     const conn = def ? await this.o.store.getConnection(userId, a.connector) : null;
     if (!def || !conn?.tokensEnc) {
       const error = { code: "not_connected", message: `${def?.name ?? "That app"} isn't connected any more.` };
+      const t = await this.step(userId, task, error.message, { state: "failed", approval: null });
+      return { status: "failed", error, task: viewOfTask(t) };
+    }
+    // Switched off, or changed and not looked at, while the card was waiting: a yes to the card is not a yes to that.
+    if (def.custom && (conn.toolPolicy[a.tool] === "off" || conn.toolsChanged.includes(a.tool))) {
+      const error = { code: "blocked", message: `${human(a.tool)} isn't available in ${def.name} any more.` };
       const t = await this.step(userId, task, error.message, { state: "failed", approval: null });
       return { status: "failed", error, task: viewOfTask(t) };
     }

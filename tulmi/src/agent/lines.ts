@@ -260,8 +260,12 @@ export function parseLine(raw: string, platform: Platform, opts: ParseOptions = 
   }
 }
 
-/** `connector.tool {json}`; the connector is a catalog id, the tool is the app's own name for it. */
-const USE_HEAD = /^([a-z][a-z0-9-]{1,30})\.([A-Za-z0-9][A-Za-z0-9_.:-]{0,79})\b\s*([\s\S]*)$/;
+/**
+ * `connector.tool {json}`; the connector is a catalog id or, for an app the
+ * person added by link, "c_" and its UUID; the tool is the app's own name for
+ * it (an added app's names are held to [A-Za-z0-9_.-], up to 128).
+ */
+const USE_HEAD = /^([a-z][a-z0-9-]{1,30}|c_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([A-Za-z0-9_][A-Za-z0-9_.:-]{0,127})\b\s*([\s\S]*)$/;
 function parseUse(arg: string): UseLine | null {
   const m = USE_HEAD.exec(arg.replace(/^`|`$/g, "").trim());
   if (!m) return null;

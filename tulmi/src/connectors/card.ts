@@ -13,7 +13,10 @@ import { wordsFor, type WordKey } from "./words.js";
 
 const TITLE: Record<ApprovalView["risk"], WordKey> = {
   send: "a3.h.send", write: "a3.h.write", destructive: "a3.h.destructive", pay: "a3.h.pay",
+  // A look in an app added by link, after another app answered: what is asked is what it is sent.
+  read: "a3.h.read",
 };
+const LABEL: Partial<Record<ApprovalView["risk"], WordKey>> = { send: "a3.lab.send", read: "a3.lab.read" };
 
 /** Ids in a route are the server's own (a task id is a UUID); anything else is not put in a path. */
 const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -25,7 +28,7 @@ export function approvalCard(taskId: string, approval: ApprovalView, app: string
   return {
     title: w(TITLE[approval.risk] ?? "a3.h.write"),
     app,
-    label: w(approval.risk === "send" ? "a3.lab.send" : "a3.lab.other"),
+    label: w(LABEL[approval.risk] ?? "a3.lab.other"),
     preview: approval.preview,
     note: w("a3.wwl", { app }),
     buttons: [

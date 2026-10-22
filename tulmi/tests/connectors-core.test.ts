@@ -217,6 +217,12 @@ describe("the catalog", () => {
     expect(CATALOG.every((c) => c.docs?.startsWith("https://") && c.notes)).toBe(true);
     expect(CATALOG.every((c) => new URL(c.url).protocol === "https:")).toBe(true);
     expect(CATALOG.find((c) => c.id === "zapier")!.auth).toBe("url");
+    // The vendors that register no client themselves wait for one of ours, and stay unverified until it has been tried.
+    expect(CATALOG.filter((c) => c.preRegistered).map((c) => c.id)).toEqual(["github", "asana"]);
+    // Atlassian's auth server takes our client document (or registers us) and no console-made client, so it is not waited on.
+    expect(CATALOG.find((c) => c.id === "atlassian")).toMatchObject({ auth: "oauth", verified: false });
+    expect(CATALOG.find((c) => c.id === "atlassian")!.preRegistered).toBeUndefined();
+    expect(CATALOG.filter((c) => c.preRegistered).every((c) => !c.verified && c.auth === "oauth")).toBe(true);
     expect(enabledCatalog(enabledIds(undefined))).toEqual([]);
     expect(enabledCatalog(enabledIds(" Notion , nope,linear")).map((c) => c.id)).toEqual(["notion", "linear"]);
   });
@@ -227,6 +233,15 @@ describe("the catalog", () => {
     for (const bad of ["http://mcp.zapier.com/x", "https://evil.example.com/x", "https://user:pw@mcp.zapier.com/x", "ftp://mcp.zapier.com", "nope", 5, "https://mcp.zapier.com.evil.com/"]) {
       expect(checkSecretUrl(z, bad), String(bad)).toBeNull();
     }
+  });
+
+  it("takes plain http to this machine only in development and tests, never in production", () => {
+    const dev: ConnectorDef = { ...CATALOG.find((c) => c.id === "zapier")!, url: "http://127.0.0.1:3000/mcp" };
+    expect(checkSecretUrl(dev, "http://127.0.0.1:3000/mcp", "test")?.port).toBe("3000");
+    expect(checkSecretUrl(dev, "http://127.0.0.1:3000/mcp", "Development")?.port).toBe("3000");
+    for (const env of ["production", "prod", ""]) expect(checkSecretUrl(dev, "http://127.0.0.1:3000/mcp", env), String(env)).toBeNull();
+    const localhost: ConnectorDef = { ...dev, url: "http://localhost/mcp" };
+    expect(checkSecretUrl(localhost, "http://localhost/mcp", "production")).toBeNull();
   });
 });
 

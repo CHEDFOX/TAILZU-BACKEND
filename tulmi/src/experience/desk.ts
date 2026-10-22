@@ -29,7 +29,7 @@ import { DESK_CONTEXTS, DESK_ROOMS, DESK_SAMPLES } from "./deskSamples.js";
 import { span } from "./phoneLook.js";
 import { DEFAULT_TTS_VOICE, TTS_VOICES, isValidTtsVoice, ttsVoiceById } from "./ttsVoices.js";
 import { nicknameOf } from "./assistantName.js";
-import type { AssistantTask, ConnectorInfo } from "../../../shared/types/api.js";
+import type { AssistantTask, ConnectorInfo, ConnectorTool } from "../../../shared/types/api.js";
 import type { AssistantView } from "../connectors/list.js";
 import { en as w } from "../connectors/words.js";
 
@@ -37,7 +37,7 @@ import { en as w } from "../connectors/words.js";
  *  screen's "minutes saved" has always used (history/store.ts). */
 const TYPING_WPM = 40;
 
-export const DESK_SCREENS = new Set(["desk_today", "desk_history", "desk_notes", "desk_note", "desk_insights", "desk_day", "desk_app", "desk_words", "desk_voices", "desk_train", "desk_settings", "desk_voice_read", "desk_assistant_name", "desk_plan", "desk_tasks"]);
+export const DESK_SCREENS = new Set(["desk_today", "desk_history", "desk_notes", "desk_note", "desk_insights", "desk_day", "desk_app", "desk_words", "desk_voices", "desk_train", "desk_settings", "desk_voice_read", "desk_assistant_name", "desk_plan", "desk_tasks", "desk_connector"]);
 
 /** The desk's tabs, in the masthead. Settings and Plan are reached from its
  *  right-hand side, not from a tab. */
@@ -2276,7 +2276,7 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
       text("Ask", "d-h2", { marginBottom: 14 }),
       askSetupCard(ctx.askSetup, "settings"),
     ], { marginBottom: 40 })] : []),
-    ...(ctx.assistant?.apps?.length ? [connectedApps(ctx.assistant.apps)] : []),
+    ...(ctx.assistant?.apps && (ctx.assistant.apps.length || ctx.assistant.custom) ? [connectedApps(ctx.assistant)] : []),
     stack([
       text("Languages", "d-h2", { marginBottom: 8 }),
       defRow("You speak", langs.length ? langs.map((l) => (Object.hasOwn(LANGUAGE_NAMES, l) ? LANGUAGE_NAMES[l] : l)).join(", ") : "Found on its own, as you talk",
@@ -2318,7 +2318,7 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
       text("Account", "d-h2", { marginBottom: 8 }),
       defRow("Signed in as", who || "This account", link("Sign out", { kind: "signOut" })),
     ]),
-  ], { maxWidth: 820 })], { retainHistory: ctx.personality.retainHistory !== false });
+  ], { maxWidth: 820 })], { retainHistory: ctx.personality.retainHistory !== false, ...appsState(ctx.assistant) });
 }
 
 // ---- CONNECTED APPS and TASKS ---------------------------------------------------------
@@ -2331,7 +2331,7 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
 // sign-in page that route answers with. Nothing here is decided on the device.
 
 const LEVELS = ["look", "draft", "send"] as const;
-const failToast = (key: "err.level" | "err.connect" | "err.generic"): ActionRef => ({ kind: "toast", message: w(key) });
+const failToast = (key: "err.level" | "err.connect" | "err.generic" | "err.add" | "dir.err"): ActionRef => ({ kind: "toast", message: w(key) });
 
 /** One app: its state, how far the assistant may go in it, and the way out. */
 function appRow(c: ConnectorInfo): Node {
@@ -2375,13 +2375,231 @@ function appRow(c: ConnectorInfo): Node {
   return defRow(c.name, stack(detail, { gap: 2, flex: 1, minWidth: 0 }), right);
 }
 
-/** Settings > Connected apps: every app switched on, with its state, its level and its button. */
-function connectedApps(apps: ConnectorInfo[]): Node {
+/**
+ * Settings > Connected apps: every app switched on, with its state, its level
+ * and its button; then, while apps can be added by link, the ones this person
+ * added, Add an app by link, and More apps.
+ */
+function connectedApps(view: AssistantView): Node {
+  const apps = view.apps ?? [];
   return stack([
     text(w("apps.h"), "d-h2", { marginBottom: 4 }),
     text(w("apps.p"), "d-lede", { marginBottom: 8 }),
-    ...apps.map(appRow),
+    ...apps.map((c) => (c.custom ? customRow(c) : appRow(c))),
+    ...(view.custom ? [addByLink(), moreApps()] : []),
   ], { marginBottom: 40 });
+}
+
+// ---- APPS ADDED BY LINK (only while CUSTOM_CONNECTORS is on) ----------------------------
+//
+// An app a person added is nobody's we checked, so its row says Unverified and
+// its host, and has no level: what it may do is set tool by tool on its own
+// page (desk_connector). Its name and host are the person's own text and stay
+// in the page's state, drawn from there, so the translator never sees them.
+// Before Connect, the row says where they'll sign in; the route refuses a
+// sign-in that has moved since, and the page redrawn says the new place.
+//
+// Every write repaints the page from the server (the window does that after
+// any POST or DELETE), so a new app simply appears in the list above, and the
+// add form and the search start empty again. A search is a GET, which the
+// window keeps in state and draws into twenty rows already on the page.
+
+const DIR_SLOTS = 20;
+/** Text drawn from the page's state: the person's or an app's words, never ours to translate. */
+const bound = (path: string, cls: string, style?: Style): Node => ({ ...text("", cls, style), bind: { content: path } });
+const field = (path: string, placeholder: string, extra: Partial<Node> = {}): Node =>
+  ({ type: "TextField", props: { cls: "d-input", placeholder }, bind: { value: path }, style: { maxWidth: 420 }, ...extra } as Node);
+
+/** What the rows and forms below read: each added app's name and hosts, the add form, the search. */
+function appsState(view: AssistantView | undefined): Record<string, unknown> {
+  if (!view?.apps) return {};
+  const mine = view.apps.filter((c) => c.custom);
+  return {
+    n: Object.fromEntries(mine.map((c) => [c.id, c.name])),
+    host: Object.fromEntries(mine.map((c) => [c.id, c.host ?? ""])),
+    si: Object.fromEntries(mine.map((c) => [c.id, c.signInHost ?? ""])),
+    ...(view.custom ? { addOpen: false, add: { name: "", url: "", clientId: "", clientSecret: "", adv: false }, q: "", dir: {} } : {}),
+  };
+}
+
+/** "Unverified · host", the host from state. */
+const unverified = (hostPath: string): Node =>
+  row([text(w("custom.tag"), "d-margin-strong"), text("·", "d-margin"), bound(hostPath, "d-margin")], { gap: 6, align: "center", flexWrap: "wrap" });
+
+/** One app the person added: where it signs in, what it can do, and Remove. */
+function customRow(c: ConnectorInfo): Node {
+  const again = c.connected && c.needsSignIn === true;
+  const on = c.connected && !again;
+  const page: ActionRef = { kind: "navigate", screenId: "desk_connector", params: { id: c.id } };
+  const remove = link(w("custom.remove"), {
+    kind: "callEndpoint", method: "DELETE", path: `/v1/connectors/custom/${c.id}`, onError: failToast("err.generic"),
+  } as ActionRef);
+  const detail: Node[] = [unverified(`host.${c.id}`), text(w("custom.note"), "d-lede", { marginTop: 2 })];
+  if (!on && c.signInHost) {
+    detail.push(row([text(w("add.at"), "d-margin"), bound(`si.${c.id}`, "d-margin-strong")], { gap: 6, align: "center", marginTop: 6 }));
+  }
+  if (on && c.toolsChanged) {
+    detail.push(row([text(w("changed.h"), "d-v"), link(w("changed.look"), page)], { gap: 14, align: "center", marginTop: 8, flexWrap: "wrap" }));
+  }
+  detail.push(row(on ? [link(w("tools.h"), page), remove] : [remove], { gap: 18, marginTop: 6 }));
+  const right = on
+    ? text(w("st.ok"), "d-margin")
+    : row([
+        text(again ? w("st.re") : w("st.no"), "d-margin"),
+        link(w("connect"), {
+          kind: "connector.connect", id: c.id,
+          // A refusal (a sign-in that moved) is shown by the page drawn again.
+          onError: { kind: "sequence", actions: [failToast("err.connect"), { kind: "refresh" }] },
+        } as ActionRef, "d-btn"),
+      ], { gap: 14, align: "center" });
+  return row([
+    bound(`n.${c.id}`, "d-k", { width: 220, flex: "none" }),
+    stack(detail, { gap: 2, flex: 1, minWidth: 0 }),
+    right,
+  ], { align: "center", gap: 28, paddingTop: 20, paddingBottom: 20, flexWrap: "wrap" }, "d-entry");
+}
+
+/**
+ * What an add answered. A no comes back 200 with the server's reason in
+ * `refused` (routes/connectorsCustom.ts), since a failed call's onError has
+ * nothing from the answer to say: that reason is the toast. failToast("err.add")
+ * is left for an answer with no reason in it (no connection, a server error).
+ */
+const afterAdd: ActionRef = {
+  kind: "condition", if: { truthy: "added.refused" },
+  then: { kind: "toast", message: "$state.added.refused.message" },
+  else: { kind: "toast", message: w("add.done") },
+} as ActionRef;
+
+/** Add an app by link: folded until asked for, then Name, Link, a folded Advanced, the trust line and Add app. */
+function addByLink(): Node {
+  const add: ActionRef = {
+    kind: "callEndpoint", method: "POST", path: "/v1/connectors/custom",
+    body: { name: "$state.add.name", url: "$state.add.url", clientId: "$state.add.clientId", clientSecret: "$state.add.clientSecret" },
+    assignTo: "added", onSuccess: afterAdd, onError: failToast("err.add"),
+  } as ActionRef;
+  return stack([
+    row([text(w("add.h"), "d-v"), link(w("add.tile"), { kind: "toggleState", path: "addOpen" } as ActionRef, "d-btn")],
+      { justify: "between", align: "center", gap: 14, flexWrap: "wrap" }),
+    stack([
+      text(w("add.p"), "d-lede"),
+      text(w("add.name"), "d-margin", { marginTop: 12 }),
+      field("add.name", w("add.name.ph")),
+      text(w("add.link"), "d-margin", { marginTop: 10 }),
+      field("add.url", w("add.link.ph")),
+      row([link(w("add.adv"), { kind: "toggleState", path: "add.adv" } as ActionRef)], { marginTop: 12 }),
+      stack([
+        text(w("add.adv.d"), "d-margin"),
+        field("add.clientId", w("add.cid")),
+        field("add.clientSecret", w("add.csec")),
+      ], { gap: 6, marginTop: 6 }, undefined, { visibleIf: { truthy: "add.adv" } }),
+      text(w("add.trust"), "d-lede", { marginTop: 14 }),
+      row([link(w("add.go"), add, "d-btn")], { marginTop: 12 }),
+    ], { gap: 4, marginTop: 8, maxWidth: 520 }, undefined, { visibleIf: { truthy: "addOpen" } }),
+  ], { paddingTop: 20, paddingBottom: 20 }, "d-entry");
+}
+
+/** More apps: search ours and the MCP Registry; the answer fills the rows below. */
+function moreApps(): Node {
+  const search: ActionRef = {
+    kind: "callEndpoint", method: "GET", path: "/v1/connectors/directory?q=$state.q", assignTo: "dir", onError: failToast("dir.err"),
+  } as ActionRef;
+  const slot = (i: number): Node => {
+    const at = `dir.apps.${i}`;
+    const addIt: ActionRef = {
+      kind: "callEndpoint", method: "POST", path: "/v1/connectors/custom",
+      body: { name: `$state.${at}.name`, url: `$state.${at}.url`, from: `$state.${at}.id` },
+      assignTo: "added", onSuccess: afterAdd, onError: failToast("err.add"),
+    } as ActionRef;
+    return row([
+      stack([
+        bound(`${at}.name`, "d-v"),
+        { ...unverified(`${at}.host`), visibleIf: { truthy: `${at}.unverified` } },
+        { ...text(w("dir.ours"), "d-margin-strong"), visibleIf: { eq: [`${at}.source`, "catalog"] } },
+        bound(`${at}.description`, "d-margin"),
+      ], { flex: 1, minWidth: 0, gap: 3 }),
+      { ...link(w("dir.add"), addIt, "d-btn"), visibleIf: { truthy: `${at}.unverified` } },
+      { ...text(w("dir.ours.d"), "d-margin"), visibleIf: { eq: [`${at}.source`, "catalog"] } },
+    ], { align: "center", gap: 24, paddingTop: 14, paddingBottom: 14, flexWrap: "wrap" }, "d-entry", { visibleIf: { truthy: `${at}.id` } });
+  };
+  return stack([
+    text(w("s6.more"), "d-v"),
+    text(w("dir.p"), "d-lede", { marginTop: 2 }),
+    row([
+      field("q", w("dir.ph"), { on: { onSubmit: search } }),
+      link(w("dir.go"), search, "d-btn"),
+    ], { gap: 12, align: "center", marginTop: 12, marginBottom: 6 }),
+    ...Array.from({ length: DIR_SLOTS }, (_, i) => slot(i)),
+    { ...text(w("dir.none"), "d-margin", { marginTop: 8 }), visibleIf: { eq: ["dir.count", 0] } },
+  ], { paddingTop: 20 });
+}
+
+const POLICY_WORD = { allow: "pol.allow", ask: "pol.ask", off: "pol.off" } as const;
+
+/** One tool: its name and words from state, then its choices of Allow / Ask first / Off. */
+function toolRow(id: string, t: ConnectorTool, i: number): Node {
+  const seg = row((t.choices ?? [t.policy]).map((p) => p === t.policy
+    ? ({ type: "Button", props: { label: w(POLICY_WORD[p]), cls: "d-seg-item d-seg-on" } } as Node)
+    : link(w(POLICY_WORD[p]), {
+        kind: "callEndpoint", method: "POST", path: `/v1/connectors/${id}/tools/policy`, body: { tool: t.name, policy: p },
+        onError: failToast("err.level"),
+      } as ActionRef, "d-seg-item")), { alignSelf: "flex-start", flex: "none" }, "d-seg");
+  return row([
+    stack([
+      row([bound(`tools.${i}.label`, "d-v"), ...(t.changed ? [text(w("changed.tag"), "d-margin-strong")] : [])], { gap: 10, align: "center" }),
+      bound(`tools.${i}.description`, "d-margin"),
+    ], { flex: 1, minWidth: 0, gap: 3 }),
+    seg,
+  ], { align: "center", gap: 28, paddingTop: 16, paddingBottom: 16, flexWrap: "wrap" }, "d-entry");
+}
+
+/**
+ * AN APP ADDED BY LINK, ITS OWN PAGE: what it can do, tool by tool, each
+ * Allow / Ask first / Off (a delete or a payment only Ask first or Off), and,
+ * when its server changed its tools since the person last looked, "This app
+ * changed. Have a look." with Looks right. The tools are the app's own words:
+ * from state, never translated.
+ */
+export function deskConnector(ctx: DeskContext): ScreenResponse {
+  const app = ctx.assistant?.custom ? ctx.assistant.app : undefined;
+  const back = row([link(w("tools.back"), { kind: "navigate", screenId: "desk_settings" })], { marginTop: 28 }, "d-tools");
+  if (!app) {
+    return screen("desk_connector", w("tools.h"), [page([
+      text(w("tools.h"), "d-eyebrow"),
+      text(w("apps.off"), "d-lede", { marginTop: 8 }),
+      back,
+    ], { maxWidth: 820 })]);
+  }
+  const a = app.info;
+  const tools = app.tools ?? [];
+  const body: Node[] = [
+    text(w("tools.h"), "d-eyebrow"),
+    bound(`n.${a.id}`, "d-h1", { marginTop: 6 }),
+    row([unverified(`host.${a.id}`)], { marginTop: 8 }),
+    text(w("tools.p"), "d-lede", { marginTop: 10, marginBottom: 18, maxWidth: "52ch" }),
+  ];
+  if (!a.connected) body.push(text(w("st.no"), "d-lede"));
+  else if (!app.tools) body.push(text(w("tools.err"), "d-lede"));
+  else {
+    if (a.toolsChanged) {
+      body.push(stack([
+        text(w("changed.h"), "d-h2"),
+        text(w("changed.p"), "d-lede", { marginTop: 4 }),
+        row([link(w("changed.ok"), {
+          kind: "callEndpoint", method: "POST", path: `/v1/connectors/${a.id}/tools/accept`,
+          body: app.version ? { version: app.version } : {}, onError: failToast("err.generic"),
+        } as ActionRef, "d-btn")], { marginTop: 12 }),
+      ], { padding: 20, marginBottom: 18, border: "1px solid var(--d-rule)", radius: 12 }));
+    }
+    if (!tools.length) body.push(text(w("tools.none"), "d-lede"));
+    body.push(...tools.map((t, i) => toolRow(a.id, t, i)));
+    if (tools.some((t) => t.risk === "destructive" || t.risk === "pay")) body.push(text(w("tools.always"), "d-margin", { marginTop: 14 }));
+  }
+  body.push(back);
+  return screen("desk_connector", w("tools.h"), [page(body, { maxWidth: 820 })], {
+    n: { [a.id]: a.name }, host: { [a.id]: a.host ?? "" },
+    tools: tools.map((t) => ({ label: t.title || t.name, description: t.description })),
+  });
 }
 
 /** The newest step, in the words the server wrote it in. */
@@ -2591,6 +2809,7 @@ function deskPage(screenId: string, ctx: DeskContext): ScreenResponse | null {
     case "desk_assistant_name": return deskAssistantName(ctx);
     case "desk_plan": return deskPlan(ctx);
     case "desk_tasks": return deskTasks(ctx);
+    case "desk_connector": return deskConnector(ctx);
     default: return null;
   }
 }

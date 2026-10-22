@@ -3,6 +3,10 @@
  *
  *   GET    /v1/connectors              the apps that are switched on, with this person's state
  *   POST   /v1/connectors/:id/connect  oauth: -> { authorizeUrl } (MCP sign-in, or Google's for the native Google apps).  url: body { url } -> { connected }
+ *                                      an app that needs a client registered in advance, with none set up: 503 not_configured
+ *                                      an app added by link: -> { authorizeUrl, signInHost }, or { connected } when its server needs no sign-in;
+ *                                      409 sign_in_moved when its sign-in now sends people somewhere other than the
+ *                                      host the screens showed them (the new one is kept, so the next look says it)
  *   GET    /v1/connectors/callback     the vendor sends the browser back here; no session, the signed state says who
  *   POST   /v1/connectors/:id/level    { level: look | draft | send }
  *   POST   /v1/connectors/:id/auto     { tool, on }  let it do this tool without asking (or stop)
@@ -10,6 +14,9 @@
  *   GET    /v1/tasks                   the assistant's recent tasks, newest first
  *   POST   /v1/tasks/:id/approve       yes: run the waiting call once -> { ok, result | error, task }
  *   POST   /v1/tasks/:id/deny          no: nothing is called
+ *
+ * The apps a person added by link have their own routes (connectorsCustom.ts);
+ * every route here takes them too, found by id for that person (hub.resolve).
  *
  * Every route but the callback authenticates exactly like the rest of /v1.
  * With CONNECTORS off the list says so ({ enabled: false }) and everything
@@ -19,8 +26,10 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import type { AssistantTask } from "../../../shared/types/api.js";
 import { resolveUser } from "../auth/supabase.js";
 import { NoTokenKey, encrypt } from "../connectors/crypto.js";
+import { authlessMark, probeMcp } from "../connectors/client.js";
 import { checkSecretUrl, type Connectors } from "../connectors/index.js";
 import { connectorList } from "../connectors/list.js";
+import { plainSignInError } from "./connectorsCustom.js";
 import { beginGoogleOAuth, completeGoogleOAuth, revokeGoogleAccess } from "../connectors/google/index.js";
 import { beginOAuth, completeOAuth, ConnectorError, verifyState } from "../connectors/oauth.js";
 import type { Level } from "../connectors/risk.js";
@@ -78,15 +87,42 @@ export function registerConnectorRoutes(app: FastifyInstance, deps: ConnectorRou
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) return noSession(reply);
     if (!c) return off(reply);
-    const def = c.hub.def(req.params.id);
-    // A hidden app (the email hand-off) has nothing to connect.
-    if (!def || def.hidden) return reply.code(404).send({ code: "not_found", message: "No such app" });
     try {
+      const def = await c.hub.resolve(user.id, req.params.id);
+      // A hidden app (the email hand-off) has nothing to connect.
+      if (!def || def.hidden) return reply.code(404).send({ code: "not_found", message: "No such app" });
+      if (def.custom?.authless) {
+        // Nothing to sign in to: ask it again, and it is connected if it still answers without one.
+        if (await probeMcp(new URL(def.url), def.name) !== "none") {
+          return reply.code(409).send({ code: "needs_sign_in", message: `${def.name} asks for a sign-in now. Remove it and add it again.` });
+        }
+        await c.hub.forget(user.id, def.id);
+        await c.store.upsertConnection(user.id, def.id, { tokensEnc: authlessMark() });
+        return reply.send({ connected: true });
+      }
+      if (def.custom) {
+        const authorizeUrl = await beginOAuth({ store: c.store, redirectUrl: c.redirectUrl, ...c.signIn }, user.id, def)
+          .catch((err) => { throw plainSignInError(err, `${def.name}'s sign-in didn't work. If it moved, remove it and add it again.`); });
+        const signInHost = new URL(authorizeUrl).host;
+        if (signInHost !== def.custom.signInHost) {
+          await c.store.setCustomSignInHost(user.id, def.id, signInHost);
+          c.hub.forgetCustom(user.id);
+          // The screens said "You'll sign in at" the old host. Nobody is sent
+          // anywhere else without being told first: say it, and let them choose again.
+          if (def.custom.signInHost) {
+            return reply.code(409).send({
+              code: "sign_in_moved", signInHost,
+              message: `${def.name} now signs you in at ${signInHost}. If that looks right, connect again.`,
+            });
+          }
+        }
+        return reply.send({ authorizeUrl, signInHost });
+      }
       if (def.auth === "oauth") {
         // Google's own apps sign in with our OAuth client; every other app through MCP.
         const authorizeUrl = def.kind === "native"
           ? await beginGoogleOAuth({ store: c.store, redirectUrl: c.redirectUrl, google: c.google }, user.id, def)
-          : await beginOAuth({ store: c.store, redirectUrl: c.redirectUrl }, user.id, def);
+          : await beginOAuth({ store: c.store, redirectUrl: c.redirectUrl, ...c.signIn }, user.id, def);
         return reply.send({ authorizeUrl });
       }
       const url = checkSecretUrl(def, (req.body ?? {}).url);
@@ -108,22 +144,24 @@ export function registerConnectorRoutes(app: FastifyInstance, deps: ConnectorRou
   });
 
   // The vendor's redirect. A browser, no session: who this is for is in the signed state.
-  app.get<{ Querystring: { code?: string; state?: string; error?: string } }>("/v1/connectors/callback", RL, async (req, reply) => {
+  app.get<{ Querystring: { code?: string; state?: string; error?: string; iss?: string } }>("/v1/connectors/callback", RL, async (req, reply) => {
     reply.header("cache-control", "no-store").header("referrer-policy", "no-referrer")
       .header("content-security-policy", PAGE_CSP).header("content-type", "text/html; charset=utf-8");
     if (!c) return reply.code(404).send(page("Not available", "Connected apps are not switched on.", false));
-    const { code, state, error } = req.query ?? {};
+    const { code, state, error, iss } = req.query ?? {};
     if (error) return reply.code(400).send(page("Nothing was connected", "You can go back to Tailzu and try again any time."));
-    if (typeof code !== "string" || typeof state !== "string" || !code || code.length > 4096 || state.length > 4096) {
+    if (typeof code !== "string" || typeof state !== "string" || !code || code.length > 4096 || state.length > 4096 || (iss !== undefined && (typeof iss !== "string" || iss.length > 2048))) {
       return reply.code(400).send(page("That link didn't work", "Go back to Tailzu and start connecting again."));
     }
     try {
-      // The signed state says which app this is, and so which sign-in finishes it.
-      const native = c.hub.def((await verifyState(state)).connectorId)?.kind === "native";
+      // The signed state says whose sign-in and which app this is, and so which sign-in finishes it.
+      const st = await verifyState(state);
+      const native = (await c.hub.resolve(st.userId, st.connectorId))?.kind === "native";
       const deps = { store: c.store, redirectUrl: c.redirectUrl };
+      // An MCP app's sign-in is held to the auth server it started at (RFC 9207): `iss` goes along.
       const { userId, def } = native
         ? await completeGoogleOAuth({ ...deps, google: c.google }, (id) => c.hub.def(id), code, state)
-        : await completeOAuth(deps, (id) => c.hub.def(id), code, state);
+        : await completeOAuth({ ...deps, ...c.signIn }, (id, uid) => c.hub.resolve(uid, id), code, state, iss);
       await c.hub.forget(userId, def.id);
       return reply.send(page("You're connected", `${def.name} is ready. You can go back to Tailzu.`));
     } catch (err) {
@@ -171,7 +209,7 @@ export function registerConnectorRoutes(app: FastifyInstance, deps: ConnectorRou
     if (!c) return off(reply);
     try {
       // A Google app's access is ended at Google too, once it is the last of theirs connected.
-      const def = c.hub.def(req.params.id);
+      const def = await c.hub.resolve(user.id, req.params.id);
       if (def?.provider === "google") {
         const others = c.hub.catalog.filter((d) => d.provider === "google" && d.id !== def.id).map((d) => d.id);
         await revokeGoogleAccess({ store: c.store, redirectUrl: c.redirectUrl, google: c.google }, user.id, def, others);

@@ -780,7 +780,12 @@ export interface AgentApproval {
   /** The app's catalog id ("notion"). */
   connector: string;
   tool: string;
-  risk: "write" | "send" | "destructive" | "pay";
+  /**
+   * "read" only for an app the person added by link: once another app's
+   * answer is in the run, even a look in it is asked first, since what it is
+   * sent can carry that answer out.
+   */
+  risk: "read" | "write" | "send" | "destructive" | "pay";
   /** The exact text, recipient or target, in plain words. */
   preview: string;
 }
@@ -800,6 +805,61 @@ export interface ConnectorInfo {
   level: "look" | "draft" | "send";
   /** Tools the person lets it do without asking. */
   auto: string[];
+  /** An app the person added by link: no level (each tool has its own Allow / Ask / Off), and a Remove. */
+  custom?: true;
+  /** Where an app added by link lives ("mcp.example.com"), shown beside it since nobody vetted it. */
+  host?: string;
+  /** An app added by link whose tools changed since the person approved them: how many wait for a look. */
+  toolsChanged?: number;
+  /**
+   * An app added by link: where its last sign-in sent the person ("auth.example.com"),
+   * said before the browser opens ("You'll sign in at ..."). Connect refuses (409
+   * sign_in_moved) when it would now go anywhere else, so this is never stale when it matters.
+   */
+  signInHost?: string;
+}
+
+/** One app in GET /v1/connectors/directory: More apps, searched. */
+export interface DirectoryApp {
+  /** A catalog app's id, or the MCP Registry name it would be added from ("com.example/mcp"). */
+  id: string;
+  /** "catalog": one of Tailzu's own apps, connected from its own tile. "registry": anybody's, added by link. */
+  source: "catalog" | "registry";
+  /** Its name, cut to fit an app's (40 letters): what Add sends. */
+  name: string;
+  /** The first letter, for the mark beside it (no icon is fetched). */
+  initial: string;
+  /** The registry's words for it, cleaned and cut short: theirs, not ours. */
+  description: string;
+  host: string;
+  /** Registry only: the MCP address Add sends, with `from: id`. */
+  url?: string;
+  /** Every registry entry: nobody here has checked it. */
+  unverified?: true;
+  /** Its registry name is its own server's domain, reversed. Shown as a fact, not as trust. */
+  domainVerified?: true;
+  /** On DIRECTORY_FEATURED: tried live, so shown early. Still unverified. */
+  featured?: true;
+}
+
+/** One tool in GET /v1/connectors/:id/tools, for the per-tool sheet. */
+export interface ConnectorTool {
+  name: string;
+  /** The server's display name for it, when it gives one. */
+  title?: string;
+  /** Cleaned of hidden characters and cut short; the server's words, not ours. */
+  description: string;
+  risk: "read" | "write" | "send" | "destructive" | "pay";
+  /**
+   * What happens when the assistant wants it. An app added by link: the
+   * person's choice (Allow / Ask / Off; a delete or a payment cannot be
+   * Allow). A catalog app: what its level and auto list come to.
+   */
+  policy: "allow" | "ask" | "off";
+  /** The policies this tool may be set to. Absent for a catalog app, which is set by its level. */
+  choices?: Array<"allow" | "ask" | "off">;
+  /** New or changed since the person approved the list: hidden from the assistant until they accept it. */
+  changed?: true;
 }
 
 /** One assistant task in GET /v1/tasks (a run that used connected apps). */

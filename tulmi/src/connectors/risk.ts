@@ -22,10 +22,18 @@
  *          deletes or pays is available
  *   send   writes and sends run after a yes, or on their own when the person
  *          turned that tool on ("auto"); deletes and payments ALWAYS need a yes
+ *
+ * An app the person added by link has no level: its server is nobody we have
+ * read, so each of its tools has a POLICY instead, set per tool (gateTool):
+ *   allow  runs without asking, except deletes and payments, which still ask
+ *   ask    a yes every time (the default for anything not plainly a read)
+ *   off    never runs
  */
 export type Risk = "read" | "write" | "send" | "destructive" | "pay";
 export type Level = "look" | "draft" | "send";
 export type Gate = "run" | "approve" | "block";
+export type Policy = "allow" | "ask" | "off";
+export const POLICIES: readonly Policy[] = ["allow", "ask", "off"];
 
 export interface ToolLike {
   name: string;
@@ -87,4 +95,28 @@ export function gate(risk: Risk, level: Level, autoOk: boolean): Gate {
   if (level === "draft") return risk === "write" ? "approve" : "block";
   if (risk === "destructive" || risk === "pay") return "approve";
   return autoOk ? "run" : "approve";
+}
+
+/**
+ * Where a tool of an app the person added starts. Only a tool that says it is
+ * read-only AND reads as one by its name and description runs without a yes;
+ * the server's say-so alone is not enough (the MCP spec: annotations from a
+ * server you do not trust are untrusted).
+ */
+export function defaultPolicy(tool: ToolLike): Policy {
+  return tool.annotations?.readOnlyHint === true && riskOf(tool) === "read" ? "allow" : "ask";
+}
+
+/** What happens to a tool of an app the person added, by its risk and the policy they set. */
+export function gateTool(risk: Risk, policy: Policy): Gate {
+  if (policy === "off") return "block";
+  // Only a plain "allow" runs without asking; anything that is not one of the three asks.
+  if (policy !== "allow") return "approve";
+  // "Allow" never covers a delete or a payment: those are asked, every app, every time.
+  return risk === "destructive" || risk === "pay" ? "approve" : "run";
+}
+
+/** The policies a tool of this risk may be set to: a delete or a payment cannot be allowed outright. */
+export function policiesFor(risk: Risk): readonly Policy[] {
+  return risk === "destructive" || risk === "pay" ? ["ask", "off"] : POLICIES;
 }

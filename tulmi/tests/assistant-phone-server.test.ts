@@ -38,6 +38,9 @@ describe("the phone's assistant screens, through the server", () => {
     expect(body).toContain('"path":"/v1/connectors/notion/connect"');
     expect(body).toContain('"url":"$state.link.authorizeUrl"');
     expect(body).not.toContain("I can’t reach your apps just yet.");
+    // Apps added by link are off here (CUSTOM_CONNECTORS): none of their parts are sent.
+    expect(body).not.toContain("Add by link");
+    expect(body).not.toContain("/v1/connectors/directory");
   });
 
   it("Tasks and the confirm sheet answer, with nothing waiting yet", async () => {
