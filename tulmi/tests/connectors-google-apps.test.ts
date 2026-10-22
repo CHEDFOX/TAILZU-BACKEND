@@ -314,6 +314,38 @@ describe("the risk of each tool", () => {
     const plan = await runtime.cards({ app: "Safari" } as any, "remind me to call mom tomorrow");
     expect(plan!.message("<said>x</said>", [])).toContain("google-tasks.add_task");
   });
+
+  it("are the only app the planner sees for their job, with the tool for it named first", async () => {
+    const { connectors, user } = await setup({ connect: ["google-tasks", "google-calendar"] });
+    const runtime = connectors.runtimeFor(user);
+    // The lines inside <tools>.
+    const tools = async (said: string) => /<tools>\n([\s\S]*)\n<\/tools>/.exec((await runtime.cards({ app: "Safari" } as any, said))!.message("<said>x</said>", []))![1]!.split("\n");
+    // A reminder about a call is a task: no calendar and no phone beside it.
+    const remind = await tools("remind me to call mom tomorrow");
+    expect(remind[0]).toBe("pick: google-tasks.add_task");
+    expect(remind[1]).toMatch(/^google-tasks\.add_task — /);
+    expect(remind.every((l) => l.startsWith("pick:") || l.startsWith("google-tasks."))).toBe(true);
+    // A change that needs an id: the change tool first, then the list tool that finds the id.
+    const move = await tools("move my 3pm meeting to 5");
+    expect(move.slice(0, 3)).toEqual(["pick: google-calendar.move_event (get its id with google-calendar.list_events first)", expect.stringMatching(/^google-calendar\.move_event — /), expect.stringMatching(/^google-calendar\.list_events — /)]);
+    expect(move.every((l) => l.startsWith("pick:") || l.startsWith("google-calendar."))).toBe(true);
+  });
+
+  it("are never stood in for an app they named and have not connected: the planner is told to say so", async () => {
+    const { connectors, user } = await setup();
+    const runtime = connectors.runtimeFor(user);
+    const tools = async (said: string) => (await runtime.cards({ app: "Safari" } as any, said))?.message("<said>x</said>", []);
+    // On offer here, not connected: no tools at all, only the line.
+    expect(await tools("write up the launch plan in google docs")).toContain("<tools>\nnot connected: Google Docs\n</tools>");
+    // Not on offer here (Todoist, and Slack through Zapier), or no app of Tailzu's (Swiggy).
+    expect(await tools("add buy shoes to todoist")).toContain("<tools>\nnot in Tailzu: Todoist\n</tools>");
+    expect(await tools("message the team on Slack that standup is cancelled")).toContain("<tools>\nnot in Tailzu: Slack\n</tools>");
+    expect(await tools("order biryani from swiggy")).toContain("<tools>\nnot in Tailzu: Swiggy\n</tools>");
+    // The app in front of them is theirs to use on the screen: no line for it.
+    expect(await runtime.cards({ app: "Slack" } as any, "post this in slack")).toBeNull();
+    // A question that needs no app is the plain prompt.
+    expect(await runtime.cards({ app: "Safari" } as any, "what's the capital of Australia")).toBeNull();
+  });
 });
 
 // ------------------------------------------------------------------ the zone
@@ -721,8 +753,8 @@ describe("YouTube's search", () => {
     expect(picks("find me some youtube videos about black holes")).toContain("youtube");
     expect(picks("youtube pe lofi dhoondo")[0]).toBe("youtube");
     expect(picks("koi accha video dikhao")).toContain("youtube");
-    expect(picks("play kesariya on youtube")[0]).toBe("play");
-    expect(picks("play kesariya on youtube")).toContain("youtube");
+    // Playing it is the play hand-off alone: the search, which spends the day's shared quota, is not shown beside it.
+    expect(picks("play kesariya on youtube")).toEqual(["play"]);
     expect(picks("youtube pe kesariya chalao")[0]).toBe("play");
     // Not by a word its description happens to share, nor by YouTube being in front.
     expect(picks("find my launch notes")).not.toContain("youtube");
@@ -742,8 +774,8 @@ describe("YouTube's search", () => {
     const have = [...CATALOG.filter((c) => c.id === "google-calendar" || c.id === "google-tasks"), ...ALWAYS_ON].map((def) => ({ def, lastUsedAt: null }));
     const picks = (said: string) => pickConnectors(said, "Safari", have, NOW).map((p) => p.id);
     expect(picks("add a task to edit the video by friday and block it on my calendar")).toEqual(expect.arrayContaining(["google-tasks", "google-calendar"]));
-    expect(picks("add a task to send the video to rahul on whatsapp")).toEqual(expect.arrayContaining(["google-tasks", "whatsapp"]));
-    expect(picks("add a task to send the video to rahul on whatsapp")).not.toContain("youtube");
+    // The task is the job; sending on WhatsApp is what the task says, not something to do now.
+    expect(picks("add a task to send the video to rahul on whatsapp")).toEqual(["google-tasks"]);
   });
 
   it("opens YouTube's own search, not \"no videos\", when a 200's answer is cut off, too slow to finish or holds no list", async () => {

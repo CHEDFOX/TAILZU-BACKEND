@@ -45,13 +45,13 @@ const ROWS = {
 
 const TOOLS: NativeTool[] = [
   {
-    name: "create_sheet", risk: "write",
+    name: "create_sheet", risk: "write", verb: "create",
     description: "Create a new Google Sheet with a title, and rows in it if the person gave some (a header row first is good). It makes a new sheet; it never changes one that exists.",
     inputSchema: { type: "object", properties: { title: { type: "string" }, rows: ROWS }, required: ["title"] },
     annotations: {},
   },
   {
-    name: "append_rows", risk: "write",
+    name: "append_rows", risk: "write", verb: "append",
     description: "Add rows under the last row of a Google Sheet Tailzu made (an expenses sheet, a list).",
     inputSchema: {
       type: "object",
@@ -61,7 +61,7 @@ const TOOLS: NativeTool[] = [
     annotations: {},
   },
   {
-    name: "read_sheet", risk: "read",
+    name: "read_sheet", risk: "read", verb: "read",
     description: "Read a Google Sheet Tailzu made, row by row: to answer what is in it or add it up.",
     inputSchema: { type: "object", properties: { sheet: { type: "string", description: "The sheet's name or link." } }, required: ["sheet"] },
     annotations: { readOnlyHint: true },

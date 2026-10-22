@@ -37,7 +37,7 @@ interface GList { id: string; title?: string }
 
 const TOOLS: NativeTool[] = [
   {
-    name: "list_tasks", risk: "read",
+    name: "list_tasks", risk: "read", verb: "read",
     description: "List the person's open Google Tasks: all of them, or only those due on a day, this week, or overdue. Each comes back with its id.",
     inputSchema: {
       type: "object",
@@ -50,7 +50,7 @@ const TOOLS: NativeTool[] = [
     annotations: { readOnlyHint: true },
   },
   {
-    name: "add_task", risk: "write",
+    name: "add_task", risk: "write", verb: "create",
     description: "Add a task (a to-do or a reminder) to Google Tasks, due on a day if they gave one. Google Tasks keeps the day, not the time; a time they said goes in its notes.",
     inputSchema: {
       type: "object",
@@ -66,7 +66,7 @@ const TOOLS: NativeTool[] = [
     annotations: {},
   },
   {
-    name: "complete_task", risk: "write",
+    name: "complete_task", risk: "write", verb: "complete",
     description: "Mark one of the person's Google Tasks as done.",
     inputSchema: {
       type: "object",
@@ -76,7 +76,7 @@ const TOOLS: NativeTool[] = [
     annotations: {},
   },
   {
-    name: "delete_task", risk: "destructive",
+    name: "delete_task", risk: "destructive", verb: "delete",
     description: "Delete one of the person's Google Tasks.",
     inputSchema: {
       type: "object",

@@ -49,7 +49,7 @@ interface SearchBody { items?: Found[]; error?: { errors?: Array<{ reason?: stri
 
 const TOOLS: NativeTool[] = [
   {
-    name: "search_videos", risk: "read",
+    name: "search_videos", risk: "read", verb: "read",
     description: "Find YouTube videos for some words: their titles, channels and links. To just play something, use the play hand-off instead.",
     inputSchema: {
       type: "object",

@@ -40,13 +40,13 @@ interface Post { text?: string; updateTime?: string; creationTime?: string }
 
 const TOOLS: NativeTool[] = [
   {
-    name: "my_classes", risk: "read",
+    name: "my_classes", risk: "read", verb: "read",
     description: "List the person's active Google Classroom classes.",
     inputSchema: { type: "object", properties: {} },
     annotations: { readOnlyHint: true },
   },
   {
-    name: "whats_due", risk: "read",
+    name: "whats_due", risk: "read", verb: "read",
     description: "What classwork (assignments, homework, questions) is due in the person's Google Classroom classes in the next days, and anything still not turned in, with whether they turned each in.",
     inputSchema: {
       type: "object",
@@ -59,7 +59,7 @@ const TOOLS: NativeTool[] = [
     annotations: { readOnlyHint: true },
   },
   {
-    name: "announcements", risk: "read",
+    name: "announcements", risk: "read", verb: "read",
     description: "The latest announcements (posts) in the person's Google Classroom classes, or in one class.",
     inputSchema: {
       type: "object",
