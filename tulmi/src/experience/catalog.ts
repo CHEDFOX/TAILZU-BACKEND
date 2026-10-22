@@ -5022,6 +5022,7 @@ function phoneScreen(screenId: string, ctx: ScreenContext): ScreenResponse | nul
     case "assistant_apps":
     case "assistant_tasks":
     case "assistant_approve":
+    case "assistant_app_tools":
       return buildAssistantScreen(screenId, { assistant: ctx.assistant, params: ctx.params, can: ctx.can }, YOU_UI);
     case "delete_account":
       return deleteAccountScreen();

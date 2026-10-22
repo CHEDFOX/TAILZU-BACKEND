@@ -1,7 +1,8 @@
 /**
  * Connected apps against a real MCP server, in process: the SDK's own McpServer
  * on a local port over Streamable HTTP, with a read-only tool, tools that send,
- * create and delete, a slow one and a broken one. No network beyond 127.0.0.1.
+ * create and delete, a slow one and a broken one. No network beyond 127.0.0.1,
+ * which egress.ts would refuse: the test seam lets that one address through.
  *
  * Covers the hub (tool cache, calls, timeout, the one error shape), the OAuth
  * flow (against a small fake authorization server), the run (a USE line for a
@@ -44,6 +45,7 @@ const { beginOAuth, completeOAuth, ConnectorError } = await import("../src/conne
 const { MemoryConnectorStore } = await import("../src/connectors/store.js");
 const { ConnectorHub } = await import("../src/connectors/client.js");
 const { registerConnectorRoutes } = await import("../src/routes/connectors.js");
+const { setEgressTestHooks } = await import("../src/connectors/egress.js");
 type ConnectorDef = import("../src/connectors/catalog.js").ConnectorDef;
 type Task = import("../src/connectors/store.js").Task;
 
@@ -51,7 +53,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ------------------------------------------------------------- the test server
 
-const seen = { lists: 0, calls: [] as Array<{ tool: string; args: Record<string, unknown> }> };
+const seen = { lists: 0, calls: [] as Array<{ tool: string; args: Record<string, unknown> }>, mcp: [] as Array<{ url: string; authorization?: string }> };
 const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
 
 function buildMcp(): McpServer {
@@ -121,6 +123,7 @@ beforeAll(async () => {
       return json(res, 200, { access_token: "access-1", token_type: "Bearer", refresh_token: "refresh-1", expires_in: 3600 });
     }
     if (path === "/mcp") {
+      seen.mcp.push({ url: req.url ?? "", authorization: req.headers.authorization });
       if (wantBearer && req.headers.authorization !== `Bearer ${wantBearer}`) {
         return json(res, 401, { error: "unauthorized" }, { "www-authenticate": `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource/mcp"` });
       }
@@ -137,9 +140,10 @@ beforeAll(async () => {
   });
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  setEgressTestHooks({ allow: ["127.0.0.1"] });
 });
-afterAll(async () => { server.closeAllConnections(); await new Promise((r) => server.close(r)); });
-beforeEach(() => { seen.lists = 0; seen.calls = []; wantBearer = null; oauth.registered = 0; oauth.tokenRequests = []; });
+afterAll(async () => { setEgressTestHooks(null); server.closeAllConnections(); await new Promise((r) => server.close(r)); });
+beforeEach(() => { seen.lists = 0; seen.calls = []; seen.mcp = []; wantBearer = null; oauth.registered = 0; oauth.tokenRequests = []; });
 
 const def = (over: Partial<ConnectorDef> = {}): ConnectorDef => ({
   id: "testapp", name: "Test App", category: "Test",
@@ -181,6 +185,19 @@ describe("the hub", () => {
     t += 2 * 60_000;
     await hub.tools("u1", "testapp");
     expect(seen.lists).toBe(2);
+    await hub.close();
+  });
+
+  it("sends a pasted link's ?token= as a bearer header, never in the query, and keeps the link as pasted", async () => {
+    const { store } = await setup();
+    const pasted = `${base}/mcp?token=zap-secret&v=2`;
+    await store.upsertConnection("u1", "testapp", { tokensEnc: encrypt(JSON.stringify({ url: pasted })) });
+    wantBearer = "zap-secret";
+    const hub = new ConnectorHub({ store, catalog: [def()], redirectUrl: "x" });
+    expect((await hub.call("u1", "testapp", "search_notes", { query: "x" })).ok).toBe(true);
+    expect(seen.mcp.length).toBeGreaterThan(0);
+    expect(seen.mcp.every((r) => r.url === "/mcp?v=2" && r.authorization === "Bearer zap-secret")).toBe(true);
+    expect(JSON.parse(decrypt((await store.getConnection("u1", "testapp"))!.tokensEnc!))).toEqual({ url: pasted });
     await hub.close();
   });
 
@@ -282,6 +299,61 @@ describe("signing in (OAuth with dynamic client registration)", () => {
     const hub = new ConnectorHub({ store, catalog: [oa], redirectUrl });
     await expect(hub.tools("u1", "oapp")).rejects.toMatchObject({ code: "needs_reconnect", message: "OAuth App needs you to sign in again." });
     await hub.close();
+  });
+
+  it("refreshes a token from inside a call with the sign-in's fetch, and only the app's endpoint with the app's", async () => {
+    wantBearer = "access-1";
+    const store = new MemoryConnectorStore();
+    const oa = def({ id: "oapp", name: "OAuth App", auth: "oauth" });
+    await store.upsertConnection("u1", "oapp", {
+      tokensEnc: encrypt(JSON.stringify({ access_token: "stale", token_type: "Bearer", refresh_token: "refresh-0" })), clientInfo: { client_id: "client-1" },
+    });
+    const sent = { mcp: [] as string[], signIn: [] as string[] };
+    const { mcpFetch, oauthFetch } = await import("../src/connectors/egress.js");
+    const hub = new ConnectorHub({
+      store, catalog: [oa], redirectUrl,
+      fetch: (u, i) => { sent.mcp.push(String(u)); return mcpFetch(u, i); },
+      signInFetch: (u, i) => { sent.signIn.push(String(u)); return oauthFetch(u, i); },
+    });
+    expect((await hub.tools("u1", "oapp")).map((t) => t.name)).toContain("search_notes");
+    expect(oauth.tokenRequests).toEqual([expect.objectContaining({ grant_type: "refresh_token", refresh_token: "refresh-0" })]);
+    expect(sent.mcp.length).toBeGreaterThan(0);
+    expect(new Set(sent.mcp)).toEqual(new Set([`${base}/mcp`]));
+    expect(sent.signIn).toEqual(expect.arrayContaining([`${base}/.well-known/oauth-protected-resource/mcp`, `${base}/token`]));
+    expect(sent.signIn.some((u) => u.startsWith(`${base}/.well-known/oauth-authorization-server`))).toBe(true);
+    await hub.close();
+  });
+});
+
+describe("the fetch an OAuth app's transport is given", () => {
+  const answer = (status: number, headers: Record<string, string> = {}) => new Response(status === 204 ? null : "{}", { status, headers });
+
+  it("sends the endpoint, and the same-origin redirects it answers with, one way and everything else the other", async () => {
+    const seenBy: Array<[string, string]> = [];
+    const mcp = async (u: string | URL) => {
+      seenBy.push(["mcp", String(u)]);
+      const path = new URL(String(u)).pathname;
+      return path === "/mcp" ? answer(307, { location: "/mcp/" }) : path === "/mcp/" ? answer(307, { location: "https://elsewhere.example/mcp" }) : answer(200);
+    };
+    const signIn = async (u: string | URL) => { seenBy.push(["signIn", String(u)]); return answer(200); };
+    const { endpointFetch } = await import("../src/connectors/client.js");
+    const f = endpointFetch(new URL("https://app.example/mcp"), mcp, signIn);
+
+    expect((await f("https://app.example/mcp", { method: "POST" })).status).toBe(307);
+    await f("https://app.example/mcp/", { method: "POST" });
+    await f("https://elsewhere.example/mcp");
+    await f("https://app.example/.well-known/oauth-protected-resource/mcp");
+    await f("https://app.example/token", { method: "POST" });
+    await f(new URL("https://auth.example/.well-known/oauth-authorization-server"));
+    expect(seenBy).toEqual([
+      ["mcp", "https://app.example/mcp"],
+      ["mcp", "https://app.example/mcp/"],
+      // A redirect to another origin is not the app's endpoint: the SDK does not follow it, and it is not let in by one.
+      ["signIn", "https://elsewhere.example/mcp"],
+      ["signIn", "https://app.example/.well-known/oauth-protected-resource/mcp"],
+      ["signIn", "https://app.example/token"],
+      ["signIn", "https://auth.example/.well-known/oauth-authorization-server"],
+    ]);
   });
 });
 

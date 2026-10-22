@@ -367,13 +367,37 @@ To switch it on:
 3. **The redirect.** `CONNECTOR_REDIRECT_URL` defaults to
    `https://api.tailzu.space/v1/connectors/callback`. It must be this server's
    `GET /v1/connectors/callback`, reachable from the person's browser.
+   **Who Tailzu is to the apps.** `CONNECTOR_CLIENT_METADATA_URL` defaults to
+   `https://api.tailzu.space/oauth/client-metadata.json`, which this server
+   serves (built from the redirect above). An app whose auth server reads client
+   documents (Notion and Linear say they do) signs people in with that instead
+   of registering a new client each time. A staging server sets its own host
+   here, or `""` to turn it off: the vendor only sends people back to the
+   redirect the document lists.
+   **It must be reachable from the public internet**, because the vendors'
+   auth servers fetch it themselves: https, a `200` straight away (no
+   redirect, no login page, no bot challenge in front of it), served as
+   `application/json`. It is only served while `CONNECTORS=true`. Check it from
+   a machine outside the VPS:
+   `curl -si https://api.tailzu.space/oauth/client-metadata.json | head -5`
+   should show `200`, `content-type: application/json` and
+   `cache-control: public, max-age=86400`, and the body lists
+   `CONNECTOR_REDIRECT_URL` exactly in `redirect_uris`. If a CDN or firewall
+   sits in front of the API (Cloudflare's bot fight or "under attack" mode,
+   for example), exempt `/oauth/client-metadata.json` and
+   `/v1/connectors/callback`.
 4. **Which apps.** `CONNECTORS_ENABLED_IDS=notion,linear` (ids from
    `src/connectors/catalog.ts`). **Every catalog entry ships unverified and
    disabled.** Before an id goes in this list, verify that app's endpoint end to
-   end against the live service: the MCP URL still answers, it accepts dynamic
-   client registration (or, for a per-user URL like Zapier, the pasted link
-   works), a real sign-in comes back to the callback, `tools/list` returns
-   tools, and one read and one write behave. Then set that entry's `verified`.
+   end against the live service: the MCP URL still answers, it signs in (our
+   client document, dynamic client registration, or for a per-user URL like
+   Zapier, the pasted link works), a real sign-in comes back to the callback,
+   `tools/list` returns tools, and one read and one write behave. Then set that
+   entry's `verified`. GitHub and Asana are `preRegistered`: register Tailzu
+   with the vendor first (below, "Registering Tailzu with a vendor"). Until
+   then Connect answers "not set up yet" (503). Jira and Confluence
+   (`atlassian`) is not: it signs in with our client document, so there is
+   nothing to register, but see the Atlassian note below before trying it.
 5. `CONNECTORS=true`, then `docker compose up -d --build`.
 
 Anything that changes, sends, deletes or pays is confirmed by the person first
@@ -381,6 +405,160 @@ Anything that changes, sends, deletes or pays is confirmed by the person first
 `POST /v1/tasks/:id/approve` runs it); a waiting task also pushes to their phone
 (`push.approval.*` in the control plane). What ran is in `assistant_audit`, with
 no message text.
+
+### Apps people add by link
+
+Off by default (`CUSTOM_CONNECTORS=false`). When on, a person can paste any
+remote MCP server's address and connect it for themselves
+(`POST /v1/connectors/custom`), like Claude's custom connectors. Nobody has
+vetted those servers, so they get the strict treatment in `src/connectors/`:
+public https addresses only (`egress.ts`), the strict sign-in checks and no
+sign-in at one of the catalog's vendors from another site (`oauth.ts`), a
+cleaned tool list pinned by hash so a changed tool is held back until the
+person looks again (`hygiene.ts`), a per-tool Allow / Ask / Off instead of a
+level, a yes for every call once another app's answer is in the run, and the
+assistant only sees the app when the person names it.
+
+1. **Migration.** Paste `tulmi/supabase/migrations/0018_custom_connectors.sql`
+   into the Supabase SQL editor (or re-run `full_schema.sql`), after 0017. It
+   creates `connector_custom` (one row per app a person added, with where its
+   sign-in last sent them, `sign_in_host`), adds `tool_policy`, `tools_pin` and
+   `tools_changed` to `connector_connections`, and creates `mcp_directory` and
+   `mcp_directory_sync` for More apps (below). Every table is written with the
+   service key only; a person's own token can read their own
+   `connector_custom` rows and nothing else.
+2. `CUSTOM_CONNECTORS=true` (with `CONNECTORS=true`), and
+   `CUSTOM_CONNECTORS_MAX` if 10 apps each is not the number (0 to 100). Each
+   person may try adding ten an hour.
+3. Restart. The phone's Connected apps and the desk's Settings then show
+   **Add by link**, a **More apps** search, and, for each added app, Unverified
+   with its host, "You'll sign in at {host}" before any sign-in opens, and a
+   page of what it can do with Allow / Ask first / Off per tool (a delete or a
+   payment only Ask first or Off). A server that changes its tools later shows
+   "This app changed. Have a look." until the person accepts the new list.
+
+Switching it off again hides everyone's added apps and More apps (their rows
+stay, and can still be removed).
+
+**More apps** is a search over the official MCP Registry
+(`registry.modelcontextprotocol.io`), copied into `mcp_directory` by the server
+itself (`src/connectors/registry.ts`). It runs only while
+`CUSTOM_CONNECTORS=true`: a minute after the server starts, then every 12 hours.
+The first run reads the whole registry (about 480 pages of 100 in October 2026,
+a few minutes); after that it asks only for what changed since the last run that
+finished, so a restart does not crawl again. It keeps only servers this code can
+connect to (Streamable HTTP on public https, no URL templates, no required
+headers, not deleted). The VPS needs outbound https to that host; the log says
+`mcp directory synced` or `mcp directory sync failed` (it then waits for the
+next turn). Without `SUPABASE_SERVICE_KEY` the copy lives in memory and is made
+again at every start. Search shows our own catalog's apps first, then
+`DIRECTORY_FEATURED` in `registry.ts` (empty; see its comment for when a
+registry name may go in), then entries whose registry name is their own
+server's domain, then the rest, every one outside the catalog marked
+Unverified. No icon is ever fetched. Adding one is the same add as a pasted
+link, recording which entry it came from.
+
+### Registering Tailzu with a vendor (`CONNECTOR_OAUTH_CLIENTS`)
+
+Some vendors' MCP servers accept no client they have not issued themselves: no
+client document (CIMD), no dynamic registration. For those, register Tailzu as
+an OAuth app in the vendor's own console and give the server the result:
+
+```
+CONNECTOR_OAUTH_CLIENTS={"github":{"client_id":"...","client_secret":"...","issuer":"https://github.com/login/oauth"},"asana":{"client_id":"...","client_secret":"...","issuer":"https://app.asana.com"}}
+```
+
+One line of JSON in `tulmi/.env`, keyed by the **catalog id** (a client is only
+ever used for the catalog app of that id, never for an app someone added by
+link). The secret lives there and nowhere else. A bad line is warned about at
+start and ignored, so those apps answer "not set up yet" rather than the server
+not starting.
+
+What every vendor asks for, the same everywhere:
+
+- **Redirect / callback URL:** exactly `CONNECTOR_REDIRECT_URL`, by default
+  `https://api.tailzu.space/v1/connectors/callback`. Vendors compare it as a
+  string: no trailing slash, same scheme and host. Staging registers its own.
+- **Name, homepage, logo:** Tailzu, `https://tailzu.space`, the app icon.
+- **`issuer`:** the vendor's auth server, the first entry of
+  `authorization_servers` in its MCP server's metadata:
+  `curl -s https://<mcp host>/.well-known/oauth-protected-resource/<mcp path>`
+  (or without the path). A client is held to that issuer and never shown to
+  another; if the vendor moves its auth server, sign-ins stop with an error
+  until this is updated.
+- **Scopes:** whatever the vendor's MCP docs list for its server. At sign-in
+  Tailzu asks for what the MCP server itself names (the scope in its 401, else
+  its `scopes_supported`), so a console that fixes scopes per app has to
+  allow those.
+
+Before registering anything for a vendor not yet in the catalog, try its MCP
+server once through **Add by link** with nothing in Advanced: if it signs in
+with our client document or by registering itself, nothing needs to be made.
+
+- **GitHub** (catalog `github`, `preRegistered`). github.com → Settings →
+  Developer settings → OAuth Apps → New OAuth App (under the organisation's
+  settings to own it as Tailzu). Asks for an application name, a homepage URL
+  and **one** authorization callback URL. Then copy the Client ID and generate
+  a client secret. Leave device flow off. Issuer
+  `https://github.com/login/oauth`. (A GitHub App works too and its user
+  tokens expire and refresh; its callback list takes several URLs.)
+- **Asana** (catalog `asana`, `preRegistered`; Asana says outright that it does
+  not support dynamic registration). app.asana.com/0/my-apps → Create new app
+  (name, what it is for). Under OAuth, add the redirect URL; copy the Client
+  ID and Client secret. Under distribution, allow any workspace, or only your
+  own while testing. Follow Asana's "Integrating with Asana's MCP server" page
+  (the catalog's `docs` link) for the app type and scopes its MCP server
+  needs. Issuer `https://app.asana.com`.
+- **Jira and Confluence** (catalog `atlassian`, **not** `preRegistered`:
+  nothing to register). Atlassian says its MCP server signs clients in by
+  registering them (OAuth 2.1 with dynamic registration), and taking an
+  OAuth 2.0 (3LO) app made at developer.atlassian.com is still an open request
+  (jira.atlassian.com/browse/ROVO-870), so there is no console app to make.
+  Its auth server (`https://auth.atlassian.com/<tenant>`, the issuer its
+  resource metadata names) takes client documents and lets a client with no secret in, so
+  Connect signs in with `CONNECTOR_CLIENT_METADATA_URL` (step 3 above), or
+  registers itself where that is off. Check before trying it:
+  `curl -s https://mcp.atlassian.com/.well-known/oauth-protected-resource/v2/mcp`
+  names the auth server, and that server's
+  `/.well-known/oauth-authorization-server/<tenant>` should still say
+  `"client_id_metadata_document_supported":true` and list `"none"` in
+  `token_endpoint_auth_methods_supported` (both true on 2026-10-22). Each
+  Atlassian organisation's admin decides which domains may connect to its
+  sites (Atlassian Administration → Rovo → Rovo MCP server → Domains;
+  Atlassian's "Control Atlassian MCP server settings"), so try it with an
+  organisation that allows Tailzu's domain, and expect a person whose admin
+  has not allowed it to be refused on Atlassian's page. Leave `atlassian` out
+  of `CONNECTOR_OAUTH_CLIENTS`.
+- **Slack** (no catalog entry yet; it would be `slack`). api.slack.com/apps →
+  Create New App → From scratch (a name and a workspace to build it in).
+  OAuth & Permissions → Redirect URLs → add it and Save; choose User Token
+  Scopes (the assistant acts as the person). Basic Information → App
+  Credentials has the Client ID and Client Secret. To let other workspaces
+  connect, Manage Distribution → activate public distribution. Turn on token
+  rotation if you want tokens that expire and refresh. Slack decides which
+  apps its MCP server accepts: check Slack's MCP docs before relying on it.
+- **Canva** (no catalog entry yet; `canva`). canva.com/developers → Your
+  integrations → Create an integration (public, to reach people outside your
+  team). Configuration has the Client ID and Generate secret; Scopes is where
+  the permissions are picked; Authentication → add the redirect URL. A public
+  integration is reviewed by Canva before anyone else can use it.
+- **Dropbox** (no catalog entry yet; `dropbox`). dropbox.com/developers/apps →
+  Create app → Scoped access, then App folder or Full Dropbox, and a name.
+  Settings: the App key is the client ID, App secret the secret, and OAuth 2 →
+  Redirect URIs → add it. Permissions: tick the scopes and Submit (scopes are
+  fixed per token, so set them before anyone connects). A new app links up to
+  50 people until you Apply for production.
+- **Zoom** (no catalog entry yet; `zoom`). marketplace.zoom.us → Develop →
+  Build App → General App (user-managed). Basic Information: Client ID and
+  Client Secret (development and production have separate pairs; use
+  production for real people), the OAuth Redirect URL, and the same URL in the
+  OAuth Allow List. Scopes: add what its MCP server needs. Development
+  credentials work only in your own Zoom account until the app is published
+  through Zoom's review.
+
+Then restart, and try the app once end to end (Connect, sign in, one read, one
+write) before its id goes in `CONNECTORS_ENABLED_IDS` and its entry becomes
+`verified: true`.
 
 ### Google Calendar, Google Docs and the email hand-off
 

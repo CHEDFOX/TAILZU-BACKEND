@@ -10,6 +10,7 @@
  *   POST /v1/ask                  → screen: screen content + question → answer
  *   POST /v1/agent                → Ask: one step of the on-screen agent (NDJSON)
  *   /v1/connectors, /v1/tasks     → connected apps and the assistant's tasks (CONNECTORS)
+ *   GET  /oauth/client-metadata.json → Tailzu's published OAuth client, for the apps' sign-in (CIMD)
  *   POST /v1/speak                → voice out: text → spoken audio (TTS)
  *   GET  /v1/personality          → read the user's saved style profile
  *   PUT  /v1/personality          → save the user's style profile
@@ -38,6 +39,9 @@ import { registerSeoRoutes } from "./routes/seo.js";
 import { registerNotesRoutes } from "./routes/notes.js";
 import { createConnectors, type Connectors } from "./connectors/index.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
+import { registerCustomConnectorRoutes } from "./routes/connectorsCustom.js";
+import { registerOAuthClientMetadataRoute } from "./routes/oauthClientMetadata.js";
+import { startDirectorySync } from "./connectors/registry.js";
 import { assistantView } from "./connectors/list.js";
 import { ASSISTANT_SCREENS } from "./experience/assistant.js";
 import { getNote, listNotes } from "./notes/store.js";
@@ -962,11 +966,31 @@ registerNotesRoutes(app, { rateLimit: AUTHED_RL, effectiveLanguage });
 // CONNECTORS is true; the routes then say so and the agent's planner is untouched.
 const connectors: Connectors | null = cfg.CONNECTORS
   ? createConnectors({
-      notify: (userId, task, a) => notifyApproval(userId, task.id, connectors?.hub.def(a.connector)?.name ?? "an app"),
+      notify: async (userId, task, a) => notifyApproval(
+        userId, task.id, (await connectors?.hub.resolve(userId, a.connector).catch(() => undefined))?.name ?? "an app",
+      ),
     })
   : null;
 if (connectors) app.addHook("onClose", async () => { await connectors.hub.close(); });
+// More apps: the MCP Registry's remote servers, copied in every 12 hours, only
+// while people may add apps by link (connectors/registry.ts). Never in a
+// request's way; a failed run waits for the next one. The first run waits a
+// minute, so a server that is only starting and stopping (a test) never crawls.
+if (connectors?.custom.enabled) {
+  const stop = startDirectorySync({ store: connectors.directory, log: app.log });
+  app.addHook("onClose", async () => { stop(); });
+}
 registerConnectorRoutes(app, { rateLimit: AUTHED_RL, connectors });
+// Apps a person adds by link (CUSTOM_CONNECTORS): adding, removing, and their tools one by one.
+registerCustomConnectorRoutes(app, { rateLimit: AUTHED_RL, connectors });
+// The page an app's auth server reads to learn who Tailzu is (oauth.ts). Only
+// worth serving while connected apps are on; built from the same config the
+// sign-in sends, so the two cannot disagree.
+if (connectors) {
+  registerOAuthClientMetadataRoute(app, {
+    clientMetadataUrl: connectors.signIn.clientMetadataUrl ?? "", redirectUrl: connectors.redirectUrl, rateLimit: AUTHED_RL,
+  });
+}
 // UNAUTH_RL removed — every previously-unauth route was gated on
 // per-user hashed tokens anyway, so AUTHED_RL is the right cap and
 // avoids the 429-storm we saw on /v1/keyboard/config launch traffic.
@@ -2783,15 +2807,24 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
   // The assistant's side of the desk: Connected apps in Settings and the Tasks
   // page. Only for a window that said it can show them ("DeskConnectors"),
   // and only while CONNECTORS is on; a failed read draws the page without.
+  // An app added by link has a page of its own (what it can do, tool by
+  // tool): the app it is about comes in the params, and is asked for its tools.
+  const toolsOf = typeof body.params?.id === "string" && body.params.id.length <= 64 ? body.params.id : undefined;
   const assistantRead = user && connectors && screenFormFactor === "desktop"
     && Array.isArray(body.capabilities?.components) && body.capabilities!.components!.includes("DeskConnectors")
-    && (screenId === "desk_settings" || screenId === "desk_tasks")
-    ? assistantView(connectors, user.id, { apps: screenId === "desk_settings", tasks: screenId === "desk_tasks" }).catch(() => undefined)
-    // The phone's own: Connected apps, Tasks and the confirm sheet
-    // (experience/assistant.ts). No capability to ask for: they are made of
-    // pieces every build draws.
+    && (screenId === "desk_settings" || screenId === "desk_tasks" || screenId === "desk_connector")
+    ? assistantView(connectors, user.id, {
+        apps: screenId === "desk_settings", tasks: screenId === "desk_tasks",
+        tools: screenId === "desk_connector" ? toolsOf : undefined,
+      }).catch(() => undefined)
+    // The phone's own: Connected apps, Tasks, the confirm sheet and an added
+    // app's tools (experience/assistant.ts). No capability to ask for: they
+    // are made of pieces every build draws.
     : user && connectors && screenFormFactor !== "desktop" && ASSISTANT_SCREENS.has(screenId)
-      ? assistantView(connectors, user.id, { apps: screenId === "assistant_apps", tasks: screenId !== "assistant_apps" }).catch(() => undefined)
+      ? assistantView(connectors, user.id, {
+          apps: screenId === "assistant_apps", tasks: screenId === "assistant_tasks" || screenId === "assistant_approve",
+          tools: screenId === "assistant_app_tools" ? toolsOf : undefined,
+        }).catch(() => undefined)
       : undefined;
   const [usage, stats, allowance, history, notes, note, entitlement, assistant] = await Promise.all([
     usageRead, statsWait, allowanceRead, historyRead, notesRead, noteRead, entitlementRead, assistantRead,

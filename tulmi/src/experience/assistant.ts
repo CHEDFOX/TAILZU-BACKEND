@@ -14,6 +14,20 @@
  *   assistant_tasks     Waiting for you / Running / Done, in plain words
  *   assistant_approve   the confirm card as a bottom sheet; where the
  *                       "approval" push lands (push.approval.screenId)
+ *   assistant_app_tools an app the person added by link: what it can do,
+ *                       tool by tool, as Allow / Ask first / Off, and the
+ *                       "This app changed" banner (params.id)
+ *
+ * APPS ADDED BY LINK (only while CUSTOM_CONNECTORS is on: assistant.custom).
+ * Connected apps then also has an "Add by link" tile and its sheet (Name,
+ * Link, a folded Advanced with the person's own client ID and secret, and the
+ * trust line), and under More apps a search over the MCP Registry
+ * (connectors/registry.ts), every result outside our catalog marked
+ * Unverified with its host. Nobody is sent to sign in without first reading
+ * "You'll sign in at {host}": after Add, the sheet turns to that line and a
+ * Continue; an added app's own sheet says it above its Connect. Search
+ * results arrive by a GET into state (`dir`) and are drawn into twenty slots
+ * already on the screen, since a screen cannot grow nodes of its own.
  *
  * WORDS. One table with the desk and the agent's confirm card
  * (connectors/words.ts), in English; a Hinglish profile gets the design's own
@@ -38,7 +52,7 @@
  */
 import type { ActionRef, ActionSpec, Node, ScreenResponse } from "../../../shared/types/sdui.js";
 import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
-import type { AgentApproval, ApprovalCard, AssistantTask, ConnectorInfo } from "../../../shared/types/api.js";
+import type { AgentApproval, ApprovalCard, AssistantTask, ConnectorInfo, ConnectorTool } from "../../../shared/types/api.js";
 import { approvalCard } from "../connectors/card.js";
 import type { AssistantView } from "../connectors/list.js";
 import { en, type WordKey } from "../connectors/words.js";
@@ -49,7 +63,7 @@ type Style = Record<string, unknown>;
 type Face = Parameters<typeof t>[1];
 type CallEndpoint = Extract<ActionSpec, { kind: "callEndpoint" }>;
 
-export const ASSISTANT_SCREENS: ReadonlySet<string> = new Set(["assistant_apps", "assistant_tasks", "assistant_approve"]);
+export const ASSISTANT_SCREENS: ReadonlySet<string> = new Set(["assistant_apps", "assistant_tasks", "assistant_approve", "assistant_app_tools"]);
 
 export interface AssistantScreenCtx {
   /** The apps and tasks, read for this screen. Absent: off, or the read failed. */
@@ -88,6 +102,7 @@ export function buildAssistantScreen(screenId: string, ctx: AssistantScreenCtx, 
     case "assistant_apps": return appsScreen(c, ui);
     case "assistant_tasks": return tasksScreen(c, ui);
     case "assistant_approve": return approveScreen(c, ui);
+    case "assistant_app_tools": return toolsScreen(c, ui);
     default: return null;
   }
 }
@@ -195,6 +210,7 @@ const ink = (ui: You, dim = false): Style => ({ color: dim ? ui.textDim : ui.tex
 function appsScreen(ctx: Ctx, ui: You): ScreenResponse {
   const apps = ctx.assistant?.apps;
   const canOpen = ctx.can?.has("ActionUrl") === true;
+  const custom = ctx.assistant?.custom === true;
   const body: Node[] = [];
 
   if (!apps) {
@@ -202,36 +218,46 @@ function appsScreen(ctx: Ctx, ui: You): ScreenResponse {
     return page(ctx, "assistant_apps", ui, en("apps.h"), en("apps.p"), body, { state: {} });
   }
 
-  const state: Record<string, unknown> = { sheet: {}, lvl: {}, paste: {}, n: {}, ini: {}, link: {}, res: {} };
+  const state: Record<string, unknown> = { sheet: {}, lvl: {}, paste: {}, n: {}, ini: {}, link: {}, res: {}, host: {}, si: {} };
   const set = (k: string, id: string, v: unknown) => { (state[k] as Record<string, unknown>)[id] = v; };
   for (const a of apps) {
     set("sheet", a.id, false); set("lvl", a.id, a.level); set("n", a.id, a.name);
     set("ini", a.id, a.name.trim().charAt(0).toUpperCase() || "?"); set("paste", a.id, "");
+    // Where an added app lives and where it signs you in: the person's own text, so from state.
+    if (a.custom) { set("host", a.id, a.host ?? ""); set("si", a.id, a.signInHost ?? ""); }
   }
+  if (custom) Object.assign(state, addState(), { q: "", dir: {} });
 
-  // Not connected first, as the apps to start with; then what is connected;
-  // then the rest. (Suggested = the first few not yet connected, in the
-  // catalog's order, which is its order of usefulness.)
-  const todo = apps.filter((a) => !a.connected);
-  const done = apps.filter((a) => a.connected);
+  // Not connected first, as the apps to start with; then what is connected
+  // (and every app the person added, connected yet or not: theirs either
+  // way); then the rest. (Suggested = the first few of the catalog not yet
+  // connected, in its order, which is its order of usefulness.)
+  const todo = apps.filter((a) => !a.connected && !a.custom);
+  const done = apps.filter((a) => a.connected || a.custom);
   const suggested = todo.slice(0, 4);
   const more = todo.slice(4);
 
   const sections: Array<[WordKey, ConnectorInfo[]]> = [["s6.sug", suggested], ["apps.h", done], ["s6.more", more]];
   for (const [key, list] of sections) {
-    if (!list.length) continue;
+    // More apps is always there while apps can be added by link: it holds the Add tile and the search.
+    if (!list.length && !(key === "s6.more" && custom)) continue;
     body.push(label(en(key), { marginTop: 28, marginBottom: 12 }));
-    body.push({ type: "Grid", props: { columns: 3, gap: 8 }, children: list.map((a) => tile(a, ui, canOpen)) });
+    const tiles = list.map((a) => tile(a, ui, canOpen));
+    if (key === "s6.more" && custom) tiles.push(addTile(ui, canOpen));
+    body.push({ type: "Grid", props: { columns: 3, gap: 8 }, children: tiles });
+    if (key === "s6.more" && custom) body.push(GAP(18), ...directoryBlock(ui, canOpen));
   }
   // A bundle that cannot open a sign-in page is told so, once, in our words.
-  if (!canOpen && todo.some((a) => a.auth === "oauth")) {
+  if (!canOpen && (todo.some((a) => a.auth === "oauth") || custom)) {
     body.push(GAP(18), word(en("apps.update"), "ui", 13.5, { lineHeight: 20, color: ui.textDim }));
   }
   // One sheet per app that has something to show.
   for (const a of apps) {
-    if (a.connected) body.push(levelSheet(a, ui, canOpen));
+    if (a.custom) body.push(customSheet(a, ui, canOpen));
+    else if (a.connected) body.push(levelSheet(a, ui, canOpen));
     else if (a.auth === "url") body.push(pasteSheet(a, ui));
   }
+  if (custom && canOpen) body.push(addSheet(ui));
 
   return page(ctx, "assistant_apps", ui, en("apps.h"), en("apps.p"), body, { state });
 }
@@ -247,8 +273,9 @@ function connectFlow(a: ConnectorInfo): ActionSpec {
 
 function tile(a: ConnectorInfo, ui: You, canOpen: boolean): Node {
   const open = seq(haptic("selection"), setState(`sheet.${a.id}`, true));
+  // An app the person added always opens its sheet first: where it signs in is said there, before anything opens.
   const press: ActionRef =
-    a.connected || a.auth === "url" ? open
+    a.connected || a.auth === "url" || a.custom ? open
       : canOpen ? connectFlow(a)
         : toast(en("apps.update"), "info");
   const state: WordKey = !a.connected ? "connect" : a.needsSignIn ? "st.re" : "st.ok";
@@ -275,10 +302,13 @@ function tile(a: ConnectorInfo, ui: You, canOpen: boolean): Node {
       },
       // How far it may go, under a connected app's name. Three lines, one
       // shown, so a change made in its sheet shows here without a reload.
-      ...(a.connected ? LEVELS.map((l): Node => ({
-        ...word(en(`lv.${l}` as WordKey), "ui", 11.5, { color: ui.textDim }),
-        visibleIf: { eq: [`lvl.${a.id}`, l] },
-      })) : []),
+      // An added app has no level: it says it is unverified, or that it changed.
+      ...(a.custom
+        ? [word(en(a.toolsChanged ? "changed.tag" : "custom.tag"), "ui", 11.5, { color: ui.textDim })]
+        : a.connected ? LEVELS.map((l): Node => ({
+          ...word(en(`lv.${l}` as WordKey), "ui", 11.5, { color: ui.textDim }),
+          visibleIf: { eq: [`lvl.${a.id}`, l] },
+        })) : []),
     ],
   };
 }
@@ -368,6 +398,365 @@ function pasteSheet(a: ConnectorInfo, ui: You): Node {
         onSuccess: seq(haptic("success"), setState(`sheet.${a.id}`, false), { kind: "refresh" }),
         onError: toast(en("err.connect"), "error"),
       })), "primary"),
+    ],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Apps added by link (only while CUSTOM_CONNECTORS is on)
+// ---------------------------------------------------------------------------
+
+const TOOLS_SCREEN = "assistant_app_tools";
+/** Search results drawn at once: one page of the directory (registry.ts SEARCH_LIMIT). */
+const DIR_SLOTS = 20;
+
+/** The add sheet's fields, empty, and what the last Add answered. */
+const addState = (): Record<string, unknown> => ({
+  addOpen: false, added: {}, add: { name: "", url: "", clientId: "", clientSecret: "", adv: false },
+});
+
+/** The mark, read from any state path. */
+function markAt(ui: You, path: string, size = 42): Node {
+  return { ...mark(ui, "", size), children: [fromState(path, "uiBold", Math.round(size * 0.42), { color: ui.text })] };
+}
+
+/** The Add mark: a plus where an app's letter would be. */
+function plusMark(ui: You, size = 42): Node {
+  return { ...mark(ui, "", size), children: [t("+", "uiBold", Math.round(size * 0.48), { color: ui.text })] };
+}
+
+/** "Unverified · host": our word, then the host from state. */
+function unverifiedLine(ui: You, hostPath: string): Node {
+  return {
+    type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 5, flexWrap: "wrap" },
+    children: [
+      word(en("custom.tag"), "uiBold", 11.5, { color: ui.textDim, letterSpacing: 0.3 }),
+      t("·", "ui", 12, { color: ui.textDim }),
+      fromState(hostPath, "ui", 12.5, { color: ui.textDim }),
+    ],
+  };
+}
+
+/** "You'll sign in at" over the host it names, from state. */
+function signInAt(ui: You, hostPath: string): Node {
+  return {
+    type: "Stack", style: { gap: 2, padding: 12, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.05)", marginBottom: 12 },
+    children: [word(en("add.at"), "ui", 13, { color: ui.textDim }), fromState(hostPath, "uiBold", 16, ink(ui))],
+  };
+}
+
+/**
+ * The add sheet's answer: not added, and the server's reason (already added,
+ * too many, a link it won't take...: the route answers those 200, as
+ * `refused`, so they can be read here); added and connected (no sign-in); or
+ * on to "You'll sign in at".
+ */
+const afterAdd = (): ActionSpec => ({
+  kind: "condition", if: { truthy: "added.refused" },
+  // The server's own words, from state: the form stays as it was typed.
+  then: seq(haptic("error"), toast("$state.added.refused.message", "error")),
+  else: {
+    kind: "condition", if: { truthy: "added.connected" },
+    then: seq(haptic("success"), toast(en("add.done"), "success"), setState("addOpen", false), setState("added", {}), { kind: "refresh" }),
+    // The sheet turns to its sign-in step by itself: added.authorizeUrl is set.
+    else: seq(haptic("selection"), setState("addOpen", true)),
+  },
+});
+
+const addCall = (body: Record<string, string>): ActionSpec => call("POST", "/v1/connectors/custom", {
+  // onError is only for an answer with no reason in it: no connection, or the server fell over.
+  body, assignTo: "added", onSuccess: afterAdd(), onError: seq(haptic("error"), toast(en("err.add"), "error")),
+});
+
+/** The tile that opens the add sheet. */
+function addTile(ui: You, canOpen: boolean): Node {
+  return {
+    type: "Stack",
+    on: { onPress: canOpen ? seq(haptic("selection"), setState("addOpen", true)) : toast(en("apps.update"), "info") },
+    props: { pressOpacity: 0.7 },
+    style: {
+      minHeight: 132, alignItems: "center", justifyContent: "center", gap: 9, paddingVertical: 12, paddingHorizontal: 6, borderRadius: 16,
+      borderWidth: 1, borderColor: ui.rule, borderStyle: "dashed",
+    },
+    children: [
+      plusMark(ui),
+      word(en("add.tile"), "uiMedium", 13.5, { ...ink(ui), textAlign: "center", lineHeight: 18 }),
+    ],
+  };
+}
+
+const field = (path: string, placeholder: string, extra: Record<string, unknown> = {}): Node => ({
+  type: "TextField", bind: { value: path }, props: { placeholder, autoCapitalize: "none", autoCorrect: false, ...extra },
+});
+
+/** Add an app by link: the form, then, once the server has it, where they'll sign in. */
+function addSheet(ui: You): Node {
+  const dim = (size = 13): Style => ({ lineHeight: Math.round(size * 1.45), color: ui.textDim });
+  const form: Node = {
+    type: "Stack", visibleIf: { falsy: "added.authorizeUrl" },
+    children: [
+      label(en("add.name"), { marginBottom: 6 }), field("add.name", en("add.name.ph"), { autoCapitalize: "words" }), GAP(12),
+      label(en("add.link"), { marginBottom: 6 }), field("add.url", en("add.link.ph")), GAP(12),
+      {
+        type: "Stack", on: { onPress: { kind: "toggleState", path: "add.adv" } }, props: { pressOpacity: 0.6 },
+        style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8 },
+        children: [
+          word(en("add.adv"), "uiMedium", 14, ink(ui)),
+          { ...t("+", "uiBold", 16, { color: ui.textDim }), visibleIf: { falsy: "add.adv" } },
+          { ...t("–", "uiBold", 16, { color: ui.textDim }), visibleIf: { truthy: "add.adv" } },
+        ],
+      },
+      {
+        type: "Stack", visibleIf: { truthy: "add.adv" }, style: { gap: 8, marginBottom: 6 },
+        children: [
+          word(en("add.adv.d"), "ui", 12.5, dim(12.5)),
+          field("add.clientId", en("add.cid")),
+          field("add.clientSecret", en("add.csec")),
+        ],
+      },
+      GAP(10),
+      word(en("add.trust"), "ui", 13, dim()),
+      GAP(14),
+      pill(ui, en("add.go"), seq(haptic("selection"), addCall({
+        name: "$state.add.name", url: "$state.add.url", clientId: "$state.add.clientId", clientSecret: "$state.add.clientSecret",
+      })), "primary"),
+    ],
+  };
+  const signIn: Node = {
+    type: "Stack", visibleIf: { truthy: "added.authorizeUrl" },
+    children: [
+      signInAt(ui, "added.signInHost"),
+      word(en("add.trust"), "ui", 13, dim()),
+      GAP(14),
+      pill(ui, en("add.cont"), seq(
+        haptic("selection"), { kind: "openUrl", url: "$state.added.authorizeUrl" },
+        setState("addOpen", false), setState("added", {}), { kind: "refresh" },
+      ), "primary"),
+      GAP(8),
+      // Not now: it stays in their apps, waiting to be connected.
+      pill(ui, en("a3.later"), seq(setState("addOpen", false), setState("added", {}), { kind: "refresh" }), "quiet"),
+    ],
+  };
+  return {
+    type: "BottomSheet",
+    bind: { open: "addOpen" },
+    props: sheetProps(ui),
+    children: [
+      {
+        type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 16 },
+        children: [
+          plusMark(ui, 46),
+          { type: "Stack", style: { flex: 1, gap: 2 }, children: [
+            word(en("add.h"), "uiBold", 19, ink(ui)),
+            word(en("add.p"), "ui", 13, { color: ui.textDim }),
+          ] },
+        ],
+      },
+      form,
+      signIn,
+    ],
+  };
+}
+
+/** An app the person added: where it signs in, what it can do, and Remove. */
+function customSheet(a: ConnectorInfo, ui: You, canOpen: boolean): Node {
+  const close = setState(`sheet.${a.id}`, false);
+  const toTools: ActionSpec = seq(haptic("selection"), close, { kind: "navigate", screenId: TOOLS_SCREEN, params: { id: a.id } });
+  const signIn = !a.connected || a.needsSignIn === true;
+  // Connect, here, is the sign-in the sheet just named. A server that moved
+  // its sign-in is refused by the route; the refreshed sheet names the new one.
+  const connect = seq(haptic("selection"), call("POST", `/v1/connectors/${a.id}/connect`, {
+    assignTo: "link",
+    onSuccess: {
+      kind: "condition", if: { truthy: "link.connected" },
+      then: seq(haptic("success"), close, { kind: "refresh" }),
+      else: { kind: "openUrl", url: "$state.link.authorizeUrl" },
+    },
+    onError: seq(toast(en("err.connect"), "error"), { kind: "refresh" }),
+  }));
+  const banner: Node = {
+    type: "Stack", style: { gap: 4, padding: 14, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: "rgba(255,255,255,0.3)" },
+    children: [
+      word(en("changed.h"), "uiBold", 15, ink(ui)),
+      word(en("changed.p"), "ui", 13, { lineHeight: 19, color: ui.textDim }),
+    ],
+  };
+  return {
+    type: "BottomSheet",
+    bind: { open: `sheet.${a.id}` },
+    props: sheetProps(ui),
+    children: [
+      {
+        type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
+        children: [
+          mark(ui, a.id, 46),
+          { type: "Stack", style: { flex: 1, gap: 3 }, children: [fromState(`n.${a.id}`, "uiBold", 19, ink(ui)), unverifiedLine(ui, `host.${a.id}`)] },
+        ],
+      },
+      word(en("custom.note"), "ui", 13, { lineHeight: 19, color: ui.textDim, marginBottom: 14 }),
+      ...(signIn
+        ? [
+          ...(a.signInHost ? [signInAt(ui, `si.${a.id}`)] : []),
+          canOpen ? pill(ui, en(a.connected ? "st.re" : "connect"), connect, "primary") : word(en("apps.update"), "ui", 13, { color: ui.textDim }),
+        ]
+        : [
+          ...(a.toolsChanged ? [banner, pill(ui, en("changed.look"), toTools, "primary"), GAP(8)] : []),
+          pill(ui, en("tools.h"), toTools, a.toolsChanged ? "outline" : "primary"),
+        ]),
+      GAP(10),
+      pill(ui, en("custom.remove"), call("DELETE", `/v1/connectors/custom/${a.id}`, {
+        onSuccess: seq(close, { kind: "refresh" }),
+        onError: toast(en("err.generic"), "error"),
+      }), "quiet"),
+    ],
+  };
+}
+
+/**
+ * More apps, searched: the field, then twenty slots that fill from the
+ * answer (`dir.apps.<i>`). Ours say so and point to their tile; the rest are
+ * Unverified, with their host, and Add sends them through the same add as a
+ * pasted link, named by the registry entry they came from.
+ */
+function directoryBlock(ui: You, canOpen: boolean): Node[] {
+  const search = seq(haptic("selection"), call("GET", "/v1/connectors/directory?q=$state.q", {
+    assignTo: "dir", onError: toast(en("dir.err"), "error"),
+  }));
+  const slot = (i: number): Node => {
+    const at = `dir.apps.${i}`;
+    return {
+      type: "Stack", visibleIf: { truthy: `${at}.id` },
+      style: { gap: 8, padding: 14, borderRadius: 18, marginBottom: 8, backgroundColor: ui.pill.background },
+      children: [
+        {
+          type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 12 },
+          children: [
+            markAt(ui, `${at}.initial`, 38),
+            { type: "Stack", style: { flex: 1, gap: 3 }, children: [
+              fromState(`${at}.name`, "uiMedium", 15, ink(ui)),
+              { ...unverifiedLine(ui, `${at}.host`), visibleIf: { truthy: `${at}.unverified` } },
+              { ...word(en("dir.ours"), "uiBold", 11.5, { color: ui.text, letterSpacing: 0.3 }), visibleIf: { eq: [`${at}.source`, "catalog"] } },
+            ] },
+            ...(canOpen ? [{
+              ...pill(ui, en("dir.add"), seq(haptic("selection"), addCall({ name: `$state.${at}.name`, url: `$state.${at}.url`, from: `$state.${at}.id` }))),
+              visibleIf: { truthy: `${at}.unverified` },
+            } as Node] : []),
+          ],
+        },
+        fromState(`${at}.description`, "ui", 13, { lineHeight: 19, color: ui.textDim }),
+        { ...word(en("dir.ours.d"), "ui", 12.5, { color: ui.textDim }), visibleIf: { eq: [`${at}.source`, "catalog"] } },
+      ],
+    };
+  };
+  return [
+    word(en("dir.p"), "ui", 13, { lineHeight: 19, color: ui.textDim, marginBottom: 10 }),
+    {
+      type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
+      children: [
+        { ...field("q", en("dir.ph")), style: { flex: 1 } },
+        pill(ui, en("dir.go"), search),
+      ],
+    },
+    ...Array.from({ length: DIR_SLOTS }, (_, i) => slot(i)),
+    { ...word(en("dir.none"), "ui", 13.5, { color: ui.textDim }), visibleIf: { eq: ["dir.count", 0] } },
+  ];
+}
+
+/** One choice of Allow / Ask first / Off: filled when it is the one set. */
+function choice(ui: You, text: string, selected: boolean, on?: ActionRef): Node {
+  return {
+    type: "Stack",
+    ...(on ? { on: { onPress: on } } : {}),
+    props: { pressOpacity: 0.7 },
+    style: {
+      minHeight: 36, borderRadius: 999, alignItems: "center", justifyContent: "center", paddingHorizontal: 14,
+      backgroundColor: selected ? ui.text : "transparent", ...(selected ? {} : { borderWidth: 1, borderColor: "rgba(255,255,255,0.22)" }),
+    },
+    children: [word(text, "uiMedium", 13, { color: selected ? ui.onAccent : ui.text })],
+  };
+}
+
+const POLICY_WORD = { allow: "pol.allow", ask: "pol.ask", off: "pol.off" } as const;
+
+function toolsScreen(ctx: Ctx, ui: You): ScreenResponse {
+  const app = ctx.assistant?.custom ? ctx.assistant.app : undefined;
+  if (!app) {
+    return page(ctx, TOOLS_SCREEN, ui, en("tools.h"), en("tools.p"), [word(en("apps.off"), "ui", 15, { lineHeight: 23, color: ui.text })], { state: {} });
+  }
+  const a = app.info;
+  const tools = app.tools ?? [];
+  // The app's words (a tool's name and description) live in state, never in a node.
+  const state: Record<string, unknown> = {
+    n: { [a.id]: a.name }, ini: { [a.id]: a.name.trim().charAt(0).toUpperCase() || "?" }, host: { [a.id]: a.host ?? "" },
+    tools: tools.map((x) => ({ label: x.title || x.name, description: x.description })),
+    pol: Object.fromEntries(tools.map((x, i) => [i, x.policy])),
+  };
+  const body: Node[] = [{
+    type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 18, marginBottom: 6 },
+    children: [
+      mark(ui, a.id, 46),
+      { type: "Stack", style: { flex: 1, gap: 3 }, children: [fromState(`n.${a.id}`, "uiBold", 19, ink(ui)), unverifiedLine(ui, `host.${a.id}`)] },
+    ],
+  }];
+  const say = (key: WordKey) => body.push(GAP(14), word(en(key), "ui", 15, { lineHeight: 23, color: ui.textDim }));
+  if (!a.connected) say("st.no");
+  else if (!app.tools) say("tools.err");
+  else {
+    if (a.toolsChanged) {
+      body.push(GAP(14), {
+        type: "Stack", style: { gap: 6, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: "rgba(255,255,255,0.3)" },
+        children: [
+          word(en("changed.h"), "uiBold", 15.5, ink(ui)),
+          word(en("changed.p"), "ui", 13, { lineHeight: 19, color: ui.textDim }),
+          GAP(4),
+          pill(ui, en("changed.ok"), seq(haptic("selection"), call("POST", `/v1/connectors/${a.id}/tools/accept`, {
+            body: app.version ? { version: app.version } : {},
+            onSuccess: seq(haptic("success"), { kind: "refresh" }),
+            onError: seq(toast(en("err.generic"), "error"), { kind: "refresh" }),
+          })), "primary"),
+        ],
+      });
+    }
+    if (!tools.length) say("tools.none");
+    tools.forEach((x, i) => body.push(toolCard(ui, a.id, x, i)));
+    if (tools.some((x) => x.risk === "destructive" || x.risk === "pay")) {
+      body.push(GAP(6), word(en("tools.always"), "ui", 12.5, { lineHeight: 18, color: ui.textDim }));
+    }
+  }
+  return page(ctx, TOOLS_SCREEN, ui, en("tools.h"), en("tools.p"), body, { state });
+}
+
+/** One tool: its name and words from state, and the choices it may have. */
+function toolCard(ui: You, id: string, x: ConnectorTool, i: number): Node {
+  const set = (p: ConnectorTool["policy"]): ActionSpec => seq(
+    haptic("selection"),
+    setState(`pol.${i}`, p),
+    call("POST", `/v1/connectors/${id}/tools/policy`, {
+      body: { tool: x.name, policy: p },
+      // Whatever went wrong, the screen shows what the server holds.
+      onError: seq(toast(en("err.level"), "error"), { kind: "refresh" }),
+    }),
+  );
+  const choices = (x.choices ?? [x.policy]).map((p): Node => ({
+    type: "Stack",
+    children: [
+      { ...choice(ui, en(POLICY_WORD[p]), true), visibleIf: { eq: [`pol.${i}`, p] } },
+      { ...choice(ui, en(POLICY_WORD[p]), false, set(p)), visibleIf: { neq: [`pol.${i}`, p] } },
+    ],
+  }));
+  return {
+    type: "Stack",
+    style: { gap: 6, padding: 14, borderRadius: 18, marginTop: 8, backgroundColor: ui.pill.background },
+    children: [
+      {
+        type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 8 },
+        children: [
+          fromState(`tools.${i}.label`, "uiMedium", 15, { ...ink(ui), flex: 1 }),
+          ...(x.changed ? [word(en("changed.tag"), "uiBold", 11, { color: ui.text })] : []),
+        ],
+      },
+      fromState(`tools.${i}.description`, "ui", 13, { lineHeight: 19, color: ui.textDim }),
+      { type: "Stack", style: { flexDirection: "row", gap: 8, marginTop: 4, flexWrap: "wrap" }, children: choices },
     ],
   };
 }

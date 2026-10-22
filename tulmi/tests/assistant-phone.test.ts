@@ -93,7 +93,7 @@ describe("Connected apps", () => {
   const s = build("assistant_apps", { assistant: { apps, names } });
 
   it("is the phone's own set of ids, and opts out of the capitalising pass so the words stay the table's", () => {
-    expect([...ASSISTANT_SCREENS].sort()).toEqual(["assistant_approve", "assistant_apps", "assistant_tasks"]);
+    expect([...ASSISTANT_SCREENS].sort()).toEqual(["assistant_app_tools", "assistant_approve", "assistant_apps", "assistant_tasks"]);
     expect((s.root as AnyNode).props!.keepCase).toBe(true);
     expect(s.hideHeader).toBe(true);
     const all = texts(s.root);

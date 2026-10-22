@@ -71,6 +71,37 @@ export function askSite(v: unknown): "off" | "soon" | "live" {
   return s === "soon" || s === "live" ? s : "off";
 }
 
+/** One OAuth client registered with a vendor in advance (CONNECTOR_OAUTH_CLIENTS). */
+export interface ConnectorOAuthClient { client_id: string; client_secret?: string; issuer: string }
+
+const OAuthClientSchema = z.object({
+  client_id: z.string().min(1),
+  client_secret: z.string().min(1).optional(),
+  issuer: z.string().url().refine((u) => u.startsWith("https://"), "https only"),
+});
+
+/**
+ * CONNECTOR_OAUTH_CLIENTS, read. Bad JSON is ignored whole and an entry that
+ * is not {client_id, client_secret?, issuer} is ignored alone, each with a
+ * warning that names the id and never the value (it holds a secret).
+ */
+export function connectorOAuthClients(raw: string | undefined, warn: (line: string) => void = (l) => console.warn(l)): Record<string, ConnectorOAuthClient> {
+  if (!raw?.trim()) return {};
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { parsed = null; }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    warn("[config] CONNECTOR_OAUTH_CLIENTS is not a JSON object of {id: {client_id, client_secret?, issuer}}: it is ignored, so no app has a pre-registered client.");
+    return {};
+  }
+  const out: Record<string, ConnectorOAuthClient> = {};
+  for (const [id, value] of Object.entries(parsed)) {
+    const ok = OAuthClientSchema.safeParse(value);
+    if (ok.success) out[id.trim().toLowerCase()] = ok.data;
+    else warn(`[config] CONNECTOR_OAUTH_CLIENTS["${id.slice(0, 40)}"] needs client_id and an https issuer (client_secret is optional): that entry is ignored.`);
+  }
+  return out;
+}
+
 const EnvSchema = z.object({
   // --- Speech-to-text provider ---
   // "groq" (default) runs whisper-large-v3-turbo — fast, cheap, and returns
@@ -399,6 +430,43 @@ const EnvSchema = z.object({
    * their browser; it is what is registered with each vendor.
    */
   CONNECTOR_REDIRECT_URL: z.string().default("https://api.tailzu.space/v1/connectors/callback"),
+  /**
+   * Tailzu's published identity for signing in to MCP apps (a client ID
+   * metadata document, "CIMD"): the URL is itself the client id, and an auth
+   * server that supports it reads who we are and where we may send people
+   * back from the document there, instead of us registering a fresh client
+   * with every app. This server serves that document at
+   * /oauth/client-metadata.json, built from CONNECTOR_REDIRECT_URL, so the
+   * default is right for production. A staging server needs its own URL (its
+   * own host) or "" to switch it off: an auth server only sends people back to
+   * a redirect the document lists, exactly.
+   */
+  CONNECTOR_CLIENT_METADATA_URL: z.string().default("https://api.tailzu.space/oauth/client-metadata.json"),
+  /**
+   * OAuth clients registered with a vendor in advance, for the apps that
+   * offer no other way in (GitHub, Asana: catalog entries marked
+   * preRegistered). JSON, by catalog id:
+   *   {"github":{"client_id":"...","client_secret":"...","issuer":"https://github.com/login/oauth"}}
+   * `issuer` is the auth server the client belongs to; the client is never
+   * shown to any other. The secret lives here and nowhere else: never in the
+   * catalog, a log or a reply. Bad JSON is warned about and ignored, so those
+   * apps answer "not set up" instead of the server not starting.
+   */
+  CONNECTOR_OAUTH_CLIENTS: z.string().optional(),
+  /**
+   * Apps a person adds themselves, by pasting an MCP server's address
+   * (POST /v1/connectors/custom, migration 0018). Off by default: they are
+   * servers nobody here has read, so they get the strict sign-in, cleaned and
+   * pinned tool lists and a yes for anything not plainly a read (see
+   * src/connectors/hygiene.ts). Off means their rows are not read at all; on
+   * needs CONNECTORS too. One switch for everyone for now, so it can later
+   * become a paid-plan perk in one place (routes/connectorsCustom.ts). While
+   * on, the server also keeps More apps, its copy of the official MCP
+   * Registry, synced every 12 hours (connectors/registry.ts).
+   */
+  CUSTOM_CONNECTORS: bool(false),
+  /** How many apps one person may add by link. */
+  CUSTOM_CONNECTORS_MAX: z.coerce.number().int().min(0).max(100).default(10),
   /**
    * The Google apps in Connected apps (google-calendar, google-docs) sign in
    * with the WEB OAuth client of the same Google Cloud project the Google
@@ -1020,6 +1088,25 @@ export function getConfig(): AppConfig {
   // Warned, not refused: the rest of the server is unaffected.
   if (env.CONNECTORS && Buffer.from(env.CONNECTOR_TOKEN_KEY ?? "", "base64").length !== 32) {
     console.warn("[config] CONNECTORS=true but CONNECTOR_TOKEN_KEY is not 32 bytes of base64 (openssl rand -base64 32): no app can be connected.");
+  }
+  if (env.CUSTOM_CONNECTORS && !env.CONNECTORS) {
+    console.warn("[config] CUSTOM_CONNECTORS=true does nothing while CONNECTORS is off: nobody can add an app by link.");
+  }
+
+  // Our published client document only works for sign-ins that come back to the
+  // redirect it lists, and this server lists its own. Pointing the URL anywhere
+  // else is allowed (a document hosted elsewhere), but then that document has to
+  // list CONNECTOR_REDIRECT_URL, or every sign-in through it fails at the vendor.
+  if (env.CONNECTORS && env.CONNECTOR_CLIENT_METADATA_URL) {
+    let own = "";
+    try { own = `${new URL(env.CONNECTOR_REDIRECT_URL).origin}/oauth/client-metadata.json`; } catch { /* the redirect is checked where it is used */ }
+    let usable = false;
+    try { const u = new URL(env.CONNECTOR_CLIENT_METADATA_URL); usable = u.protocol === "https:" && u.pathname !== "/"; } catch { /* warned below */ }
+    if (!usable) {
+      console.warn("[config] CONNECTOR_CLIENT_METADATA_URL must be an https URL with a path (it is our client id): it is ignored, and apps register a client instead.");
+    } else if (env.CONNECTOR_CLIENT_METADATA_URL !== own) {
+      console.warn(`[config] CONNECTOR_CLIENT_METADATA_URL is not where this server serves its client document (${own || "no valid CONNECTOR_REDIRECT_URL"}). Sign-ins through it work only if the document there lists CONNECTOR_REDIRECT_URL; set it to "" to turn it off.`);
+    }
   }
 
   // Google apps switched on with no OAuth client can be listed but never connected.

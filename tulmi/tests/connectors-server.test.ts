@@ -74,6 +74,18 @@ describe("connected apps, switched on", () => {
     expect((await app.inject({ method: "POST", url: "/v1/connectors/notion/level", headers: auth, payload: { level: "send" } })).statusCode).toBe(404);
   });
 
+  it("publishes Tailzu's OAuth client document, with no session, built from the config", async () => {
+    const res = await app.inject({ method: "GET", url: "/oauth/client-metadata.json" });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toContain("application/json");
+    expect(res.headers["cache-control"]).toBe("public, max-age=86400");
+    expect(res.json()).toMatchObject({
+      client_id: "https://api.tailzu.space/oauth/client-metadata.json",
+      redirect_uris: ["https://api.tailzu.space/v1/connectors/callback"],
+      token_endpoint_auth_method: "none",
+    });
+  });
+
   it("sends Ask's planner exactly the prompt it always did when nothing is connected", async () => {
     const res = await app.inject({
       method: "POST", url: "/v1/agent", headers: auth,

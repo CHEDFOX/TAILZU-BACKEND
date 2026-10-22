@@ -15,6 +15,11 @@
  *   4. hand the planner compact cards: connector.tool, the description's
  *      first sentence, and the arguments as a short schema.
  *
+ * An app the person added by link is a candidate only when they NAME it: no
+ * points for the front app, for words its tools happen to share, or for
+ * recent use. Its tool descriptions are a stranger's words, and they reach
+ * the planner only when the person asked for that app.
+ *
  * Plain lexical overlap, no model call and no embeddings: this runs on every
  * step of every run and must be free. Ties fall back to the app's own order.
  */
@@ -48,6 +53,10 @@ export function pickConnectors(utterance: string, frontApp: string, have: Candid
   const scored: ConnectorScore[] = [];
   for (const { def, lastUsedAt } of have) {
     const names = [def.name, def.id, ...def.aliases].map((a) => ` ${wordsOf(a).join(" ")} `).filter((a) => a.trim());
+    if (def.custom) {
+      if (names.some((n) => said.includes(n))) scored.push({ id: def.id, score: 10 });
+      continue;
+    }
     let signal = 0;
     for (const a of def.aliases) if (said.includes(` ${wordsOf(a).join(" ")} `)) signal += 10;
     if (names.some((n) => said.includes(n)) && signal === 0) signal += 10;
