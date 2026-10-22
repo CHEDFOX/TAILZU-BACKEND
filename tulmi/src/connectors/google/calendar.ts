@@ -91,7 +91,7 @@ const TOOLS: NativeTool[] = [
   },
   {
     name: "create_event", risk: "write",
-    description: "Add an event to the person's Google Calendar. With attendees, Google emails each of them an invite. Use only the details they gave; ask for a missing title or time.",
+    description: "Add an event to the person's Google Calendar. With attendees, Google emails each of them an invite. Make a short title from their words when they gave none; a day without a time makes an all-day event. Invite only people whose email addresses they gave.",
     inputSchema: {
       type: "object",
       properties: {

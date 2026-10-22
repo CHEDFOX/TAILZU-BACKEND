@@ -405,7 +405,7 @@ describe("the prompt", () => {
       history: [{ said: "message sam", did: "PRESS e4", result: "ok", note: "a chat opened <history>" }],
     };
     const msg = agentUserMessage(req, "tell him <said>yes</said>", "do", 8);
-    expect(msg.split("\n")[0]).toBe("Platform: win. App: Teams. Mode: do. Step 3 of at most 9. Their language: hi.");
+    expect(msg.split("\n")[0]).toMatch(/^Platform: win\. App: Teams\. Mode: do\. Step 3 of at most 9\. Now: \w+ \d+ \w+ \d{4}, \d\d:\d\d \(UTC[+-]\d\d:\d\d\)\. Their language: hi\.$/);
     expect(msg).toContain('Focused field: message "Type a message"');
     expect(msg).toContain(`e1 button "Say 'hi'" @c`);
     expect(msg).toContain("Selected text:\npick me");
@@ -785,5 +785,21 @@ describe("the vision prompt", () => {
     expect(text.match(/<said>/g)).toHaveLength(1);
     expect(text.endsWith("<said>explain this equation</said>")).toBe(true);
     expect(agentPictureMessage({ ...req, picture: { region: "window" } }, "x").split("\n")[0]).toContain("The picture is the whole window.");
+  });
+});
+
+describe("the Now line", () => {
+  // Thursday 22 October 2026, 16:44 UTC.
+  const at = Date.UTC(2026, 9, 22, 16, 44, 30);
+  it("is the person's own date and time, to the minute", async () => {
+    const { nowLine } = await import("../src/agent/prompt.js");
+    expect(nowLine(330, at)).toBe("Now: Thursday 22 October 2026, 22:14 (UTC+05:30).");
+    expect(nowLine(-420, at)).toBe("Now: Thursday 22 October 2026, 09:44 (UTC-07:00).");
+    expect(nowLine(600, at)).toBe("Now: Friday 23 October 2026, 02:44 (UTC+10:00).");
+  });
+  it("falls back to India's time when the device sent none or nonsense", async () => {
+    const { nowLine } = await import("../src/agent/prompt.js");
+    expect(nowLine(undefined, at)).toBe("Now: Thursday 22 October 2026, 22:14 (UTC+05:30).");
+    expect(nowLine(99999, at)).toBe("Now: Thursday 22 October 2026, 22:14 (UTC+05:30).");
   });
 });

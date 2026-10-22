@@ -254,6 +254,8 @@ export interface CommandContext {
   said: string;
   platform: "ios" | "android";
   language?: string;
+  /** The phone's UTC offset, for the planner's Now line. */
+  tzOffsetMinutes?: number;
   /** The question it asked last and what they had said, when this is their answer. */
   history?: AgentTurn[];
   /** Said when the planner gives nothing the phone can use. */
@@ -275,6 +277,7 @@ export async function runCommand(c: CommandContext, deps: StepDeps, sink: EventS
   const req: AgentStepRequest = {
     runId: c.runId, step: history.length, utterance: c.said, platform: c.platform, app: "Tailzu",
     screen: { elements: [] }, ...(c.language ? { language: c.language } : {}), ...(history.length ? { history } : {}),
+    ...(typeof c.tzOffsetMinutes === "number" ? { tzOffsetMinutes: c.tzOffsetMinutes } : {}),
   };
   sink.emit({ t: "heard", text: c.said, mode: "do" });
   // "rahul@okhdfcbank" names no app; with the request it answers ("pay rahul 500 on upi") it does.

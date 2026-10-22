@@ -767,7 +767,10 @@ describe("the email hand-off", () => {
     expect(out.open!.fallback).toBe(handoffLinks(["rahul@example.com"], subject, body).mailto);
     expect(out.text).toContain("Nothing is sent until they press Send");
     expect(g.calls.filter((c) => c.url.hostname !== "www.googleapis.com")).toHaveLength(0);
-    expect((await call("email-handoff", "compose_email", { to: "", subject, body })).error?.message).toBe("Who should the email go to?");
+    // No address: Gmail opens with To empty for them to fill in, and no mailto: fallback.
+    const noTo = await call("email-handoff", "compose_email", { to: "", subject, body });
+    expect(noTo.open?.url).toMatch(/^https:\/\/mail\.google\.com\/mail\/\?view=cm&fs=1&to=&su=/);
+    expect(noTo.open?.fallback).toBeUndefined();
     expect((await call("email-handoff", "compose_email", { to: "rahul", subject, body })).error?.code).toBe("rejected");
     expect((await call("email-handoff", "compose_email", { to: "a@example.com", subject, body: "x".repeat(3001) })).error?.code).toBe("rejected");
     // A subject is one line.

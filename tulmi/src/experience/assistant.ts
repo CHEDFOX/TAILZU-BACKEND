@@ -83,6 +83,8 @@ export interface AssistantScreenCtx {
   language?: string;
   /** The phone asking, sent on with each ask. */
   platform?: "ios" | "android";
+  /** The phone's UTC offset when the screen was asked for, sent on with each ask so "tomorrow" is its tomorrow. */
+  tzOffsetMinutes?: number;
 }
 
 /** The ctx each builder gets: `lone` = the stack under this screen is empty (a push or a link opened it), so a back arrow would go nowhere. */
@@ -1022,7 +1024,10 @@ function askAction(ctx: Ctx): ActionSpec {
     then: seq(
       haptic("selection"), setState("ask.busy", true), setState("ask.res", {}),
       call("POST", "/v1/assistant/ask", {
-        body: { text: "$state.ask.text", ...(ctx.platform ? { platform: ctx.platform } : {}) },
+        body: {
+          text: "$state.ask.text", ...(ctx.platform ? { platform: ctx.platform } : {}),
+          ...(typeof ctx.tzOffsetMinutes === "number" ? { tzOffsetMinutes: ctx.tzOffsetMinutes } : {}),
+        },
         assignTo: "ask.res",
         onSuccess: seq(
           setState("ask.busy", false),
