@@ -1,12 +1,14 @@
 /**
- * The rest of the Google family: Tasks, Sheets, Forms, Classroom and YouTube,
- * with no network: Google is a scripted fake `fetch`, as in
+ * The rest of the Google family: Tasks, Sheets, Forms and Classroom, and
+ * YouTube's search, with no network: Google is a scripted fake `fetch`, as in
  * connectors-google.test.ts.
  *
  * Covers each entry in the catalog (scopes, aliases, off until named), the
- * scopes each sign-in asks, the revoke-when-last rule across every Google
- * app, each tool's request and its plain-words result in the person's zone,
- * the risk tiers and the confirm card's words, and the Hinglish one-liners.
+ * scopes each sign-in asks (and that none is YouTube's), the revoke-when-last
+ * rule across every Google app, each tool's request and its plain-words
+ * result in the person's zone, the risk tiers and the confirm card's words,
+ * the Hinglish one-liners, and YouTube's search with the server's key, without
+ * one, and once the day's searches are spent.
  */
 import { describe, expect, it, vi } from "vitest";
 import Fastify from "fastify";
@@ -32,7 +34,11 @@ const { ALWAYS_ON, CATALOG, enabledCatalog, enabledIds } = await import("../src/
 const { encrypt } = await import("../src/connectors/crypto.js");
 const { createConnectors } = await import("../src/connectors/index.js");
 const { beginGoogleOAuth, buildNatives, otherGoogleApps } = await import("../src/connectors/google/index.js");
-const { videoIdOf } = await import("../src/connectors/google/youtube.js");
+const { SEARCH_URL, youtubeSearch } = await import("../src/connectors/google/youtube.js");
+const { handoffApp } = await import("../src/connectors/handoffs/apps.js");
+const { connectorList } = await import("../src/connectors/list.js");
+const { resetConfigForTests } = await import("../src/config.js");
+const { scrubBreadcrumb, scrubSpan } = await import("../src/observability.js");
 const { pickConnectors } = await import("../src/connectors/router.js");
 const { MemoryConnectorStore } = await import("../src/connectors/store.js");
 const { registerConnectorRoutes } = await import("../src/routes/connectors.js");
@@ -43,38 +49,43 @@ const NOW = Date.parse("2026-10-22T08:00:00Z");
 const REDIRECT = "https://api.example.com/v1/connectors/callback";
 const GOOGLE = { clientId: "cid.apps.googleusercontent.com", clientSecret: "csecret" };
 const S = (s: string) => `https://www.googleapis.com/auth/${s}`;
-const NEW_APPS = ["google-tasks", "google-sheets", "google-forms", "google-classroom", "google-youtube"] as const;
+const NEW_APPS = ["google-tasks", "google-sheets", "google-forms", "google-classroom"] as const;
 type AppId = (typeof NEW_APPS)[number] | "google-calendar" | "google-docs";
 const SHEET_ID = "1SheetIdBBBBBBBBBBBBBBBBBBBBBBBB";
 const FORM_ID = "1FormIdAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 // ------------------------------------------------------------- a scripted Google
 
-interface Call { url: URL; method: string; auth: string | null; body: any; form: Record<string, string> | null }
+interface Call { url: URL; method: string; auth: string | null; headers: Record<string, string>; body: any; form: Record<string, string> | null }
 type Reply = { status?: number; json?: unknown; empty?: boolean };
+
+/** The read of the calendar's zone: events.list on the primary calendar, for its timeZone alone (zone.ts). */
+const isZone = (c: Call) => c.url.pathname === "/calendar/v3/calendars/primary/events" && c.url.searchParams.get("fields") === "timeZone";
 
 function fakeGoogle() {
   const calls: Call[] = [];
-  const routes: Array<{ match: (c: Call) => boolean; reply: Reply | ((c: Call) => Reply) }> = [];
+  const routes: Array<{ match: (c: Call) => boolean; reply: Reply | ((c: Call) => Reply) | "throw" }> = [];
   const fetchFn = (async (input: string | URL, init?: RequestInit) => {
     const raw = typeof init?.body === "string" ? init.body : null;
     const isForm = (init?.headers as Record<string, string> | undefined)?.["content-type"]?.includes("x-www-form-urlencoded");
     const c: Call = {
       url: new URL(String(input)), method: init?.method ?? "GET",
       auth: (init?.headers as Record<string, string> | undefined)?.authorization ?? null,
+      headers: Object.fromEntries(new Headers(init?.headers)),
       body: raw && !isForm ? JSON.parse(raw) : null,
       form: raw && isForm ? Object.fromEntries(new URLSearchParams(raw)) : null,
     };
     calls.push(c);
     const hit = routes.find((r) => r.match(c));
     if (!hit) return new Response(JSON.stringify({ error: { message: "no route", status: "NOT_FOUND" } }), { status: 404 });
+    if (hit.reply === "throw") throw new TypeError("fetch failed");
     const r = typeof hit.reply === "function" ? hit.reply(c) : hit.reply;
     return r.empty ? new Response(null, { status: r.status ?? 204 }) : new Response(JSON.stringify(r.json ?? {}), { status: r.status ?? 200 });
   }) as typeof fetch;
   return {
     calls, fetchFn,
-    on(match: (c: Call) => boolean, reply: Reply | ((c: Call) => Reply)) { routes.unshift({ match, reply }); },
-    to(method: string, path: RegExp | string, reply: Reply | ((c: Call) => Reply)) {
+    on(match: (c: Call) => boolean, reply: Reply | ((c: Call) => Reply) | "throw") { routes.unshift({ match, reply }); },
+    to(method: string, path: RegExp | string, reply: Reply | ((c: Call) => Reply) | "throw") {
       this.on((c) => c.method === method && (typeof path === "string" ? c.url.pathname === path : path.test(c.url.pathname)), reply);
     },
     only(pred: (c: Call) => boolean) { return calls.filter(pred); },
@@ -82,14 +93,12 @@ function fakeGoogle() {
   };
 }
 
-const ZONE_PATH = "/calendar/v3/users/me/settings/timezone";
-
-async function setup(o: { connect?: AppId[]; level?: "look" | "draft" | "send"; calendarZone?: string; now?: number } = {}) {
+async function setup(o: { connect?: AppId[]; level?: "look" | "draft" | "send"; calendarZone?: string; now?: number; youtubeKey?: string | null } = {}) {
   const g = fakeGoogle();
-  g.to("GET", ZONE_PATH, { json: { value: o.calendarZone ?? "America/New_York" } });
+  g.on(isZone, { json: { timeZone: o.calendarZone ?? "America/New_York" } });
   const store = new MemoryConnectorStore();
   const connectors = createConnectors({
-    store, redirectUrl: REDIRECT, now: () => o.now ?? NOW, fetchFn: g.fetchFn, google: GOOGLE,
+    store, redirectUrl: REDIRECT, now: () => o.now ?? NOW, fetchFn: g.fetchFn, google: GOOGLE, youtubeKey: o.youtubeKey ?? null,
     catalog: [...CATALOG.filter((c) => c.provider === "google"), ...ALWAYS_ON],
     notes: { find: async () => null },
   });
@@ -122,7 +131,6 @@ describe("the Google family in the catalog", () => {
       name: "Google Classroom",
       scopes: [S("classroom.courses.readonly"), S("classroom.coursework.me.readonly"), S("classroom.announcements.readonly")],
     });
-    expect(def("google-youtube")).toMatchObject({ name: "YouTube", scopes: [S("youtube")] });
     for (const id of NEW_APPS) {
       expect(def(id), id).toMatchObject({ kind: "native", provider: "google", auth: "oauth", verified: true });
       expect(def(id).docs).toMatch(/^https:\/\/developers\.google\.com\//);
@@ -133,9 +141,50 @@ describe("the Google family in the catalog", () => {
 
   it("is off until named in CONNECTORS_ENABLED_IDS", () => {
     expect(enabledCatalog(enabledIds("notion")).some((c) => c.provider === "google")).toBe(false);
-    expect(enabledCatalog(enabledIds("google-tasks, google-youtube")).map((c) => c.id)).toEqual(["google-tasks", "google-youtube"]);
+    expect(enabledCatalog(enabledIds("google-tasks, google-classroom")).map((c) => c.id)).toEqual(["google-tasks", "google-classroom"]);
     const c = createConnectors({ store: new MemoryConnectorStore(), redirectUrl: REDIRECT });
     expect(c.hub.catalog.some((d) => d.provider === "google")).toBe(false);
+  });
+
+  it("ignores an old google-youtube left in CONNECTORS_ENABLED_IDS, without an error", () => {
+    expect(enabledCatalog(enabledIds("google-youtube"))).toEqual([]);
+    expect(enabledCatalog(enabledIds("google-calendar,google-youtube")).map((c) => c.id)).toEqual(["google-calendar"]);
+    const was = process.env.CONNECTORS_ENABLED_IDS;
+    process.env.CONNECTORS_ENABLED_IDS = "google-youtube, google-tasks";
+    resetConfigForTests();
+    try {
+      const c = createConnectors({ store: new MemoryConnectorStore(), redirectUrl: REDIRECT });
+      const ids = c.hub.catalog.map((d) => d.id);
+      expect(ids).toContain("google-tasks");
+      expect(ids).toContain("youtube");
+      expect(ids).not.toContain("google-youtube");
+      expect(c.hub.def("google-youtube")).toBeUndefined();
+    } finally {
+      if (was === undefined) delete process.env.CONNECTORS_ENABLED_IDS; else process.env.CONNECTORS_ENABLED_IDS = was;
+      resetConfigForTests();
+    }
+  });
+
+  it("asks each Google app for its own scopes, Calendar for calendar.events alone, and nobody for a YouTube scope", () => {
+    const want: Record<string, string[]> = {
+      "google-calendar": [S("calendar.events")],
+      "google-docs": [S("drive.file")],
+      "google-tasks": [S("tasks")],
+      "google-sheets": [S("drive.file")],
+      "google-forms": [S("drive.file")],
+      "google-classroom": [S("classroom.courses.readonly"), S("classroom.coursework.me.readonly"), S("classroom.announcements.readonly")],
+    };
+    expect(Object.fromEntries(CATALOG.filter((c) => c.provider === "google").map((c) => [c.id, c.scopes]))).toEqual(want);
+    const every = [...CATALOG, ...ALWAYS_ON].flatMap((c) => c.scopes ?? []);
+    expect(every.filter((s) => /youtube/i.test(s))).toEqual([]);
+    expect(every).not.toContain(S("calendar.readonly"));
+    expect(CATALOG.some((c) => c.id === "google-youtube")).toBe(false);
+    // YouTube is now an always-on app with nothing to connect: no OAuth, no scopes, not Google's grant.
+    expect(ALWAYS_ON.find((c) => c.id === "youtube")).toMatchObject({ name: "YouTube", kind: "native", auth: "none", hidden: true, verified: true });
+    const yt = ALWAYS_ON.find((c) => c.id === "youtube")!;
+    expect(yt.scopes).toBeUndefined();
+    expect(yt.provider).toBeUndefined();
+    expect(yt.docs).toBe("https://developers.google.com/youtube/v3/docs/search/list");
   });
 
   it("answers to the words people say, in English and Hinglish", () => {
@@ -144,7 +193,6 @@ describe("the Google family in the catalog", () => {
       "google-sheets": ["spreadsheet", "expenses", "hisaab"],
       "google-forms": ["form", "quiz", "survey"],
       "google-classroom": ["class", "assignment", "homework", "due"],
-      "google-youtube": ["video", "playlist"],
     };
     for (const [id, words] of Object.entries(want)) for (const w of words) expect(def(id).aliases, `${id}: ${w}`).toContain(w);
     const have = NEW_APPS.map((id) => ({ def: def(id), lastUsedAt: null }));
@@ -155,7 +203,6 @@ describe("the Google family in the catalog", () => {
     expect(top("hisaab mein 200 likho")).toBe("google-sheets");
     expect(top("make a quiz on fractions")).toBe("google-forms");
     expect(top("what homework is due this week")).toBe("google-classroom");
-    expect(top("add this video to my workout playlist")).toBe("google-youtube");
   });
 
   it("has a Hinglish one-liner for every Google app, seeded for the translator", () => {
@@ -187,6 +234,9 @@ describe("signing in to each Google app", () => {
   it("revokes the one Google grant only with the last Google app, counting apps switched off since", async () => {
     const cal = CATALOG.find((c) => c.id === "google-calendar")!;
     expect(otherGoogleApps(cal, [cal])).toEqual(["google-docs", ...NEW_APPS]);
+    // YouTube's search holds no grant, and google-youtube is gone: neither is waited for.
+    expect(otherGoogleApps(cal, [cal, ...ALWAYS_ON])).toEqual(["google-docs", ...NEW_APPS]);
+    expect(otherGoogleApps(cal, [cal, ...ALWAYS_ON])).not.toContain("youtube");
 
     const g = fakeGoogle();
     g.to("POST", "/revoke", { json: {} });
@@ -204,10 +254,18 @@ describe("signing in to each Google app", () => {
     expect(g.only((c) => c.url.pathname === "/revoke")).toHaveLength(0);
     expect(await store.getConnection("ann", "google-calendar")).toBeNull();
 
+    // A token still held from the old google-youtube, which nothing uses, does not keep the grant alive.
     await store.deleteConnection("ann", "google-tasks");
+    await store.upsertConnection("ann", "google-youtube", { tokensEnc: token("rt-old-yt") });
     await store.upsertConnection("ann", "google-calendar", { tokensEnc: token("rt-cal-2") });
     expect((await app.inject({ method: "DELETE", url: "/v1/connectors/google-calendar", headers: as })).statusCode).toBe(200);
     expect(g.only((c) => c.url.pathname === "/revoke").map((c) => c.form)).toEqual([{ token: "rt-cal-2" }]);
+    // Nothing to connect, and nothing to revoke, for YouTube now: neither id is a Google app.
+    expect((await app.inject({ method: "POST", url: "/v1/connectors/youtube/connect", headers: as, payload: {} })).statusCode).toBe(404);
+    expect((await app.inject({ method: "POST", url: "/v1/connectors/google-youtube/connect", headers: as, payload: {} })).statusCode).toBe(404);
+    expect((await app.inject({ method: "DELETE", url: "/v1/connectors/google-youtube", headers: as })).statusCode).toBe(200);
+    expect(g.only((c) => c.url.pathname === "/revoke")).toHaveLength(1);
+    expect(await store.getConnection("ann", "google-youtube")).toBeNull();
   });
 });
 
@@ -215,15 +273,15 @@ describe("signing in to each Google app", () => {
 
 describe("the risk of each tool", () => {
   it("reads run, writes ask, a delete always asks, and a lower level blocks", async () => {
-    const { g, risk, use, store, user } = await setup({ connect: ["google-tasks", "google-youtube", "google-classroom"] });
+    const { g, risk, use, store, user } = await setup({ connect: ["google-tasks", "google-classroom"] });
     const tiers: Record<string, Record<string, string>> = {
       "google-tasks": { list_tasks: "read", add_task: "write", complete_task: "write", delete_task: "destructive" },
       "google-sheets": { create_sheet: "write", append_rows: "write", read_sheet: "read" },
       "google-forms": { create_form: "write", list_responses: "read" },
       "google-classroom": { my_classes: "read", whats_due: "read", announcements: "read" },
-      "google-youtube": { search_videos: "read", my_playlists: "read", add_to_playlist: "write" },
+      youtube: { search_videos: "read" },
     };
-    const natives = buildNatives(CATALOG, { store, google: null, notes: { find: async () => null } });
+    const natives = buildNatives([...CATALOG, ...ALWAYS_ON], { store, google: null, notes: { find: async () => null } });
     for (const [app, tools] of Object.entries(tiers)) {
       expect(Object.fromEntries(natives[app]!.tools().map((t) => [t.name, t.risk])), app).toEqual(tools);
     }
@@ -240,8 +298,8 @@ describe("the risk of each tool", () => {
     expect(await use("google-tasks", "delete_task", { task: "gym" })).toMatchObject({ kind: "approval", approval: { risk: "destructive", preview: 'Delete the task "Gym" from Google Tasks' } });
     await store.upsertConnection(user, "google-tasks", { level: "draft", autoOk: [] });
     expect(await use("google-tasks", "delete_task", { task: "gym" })).toMatchObject({ kind: "stopped", message: expect.stringContaining("drafts only") });
-    await store.upsertConnection(user, "google-youtube", { level: "look" });
-    expect(await use("google-youtube", "add_to_playlist", { video: "dQw4w9WgXcQ", playlist: "x" })).toMatchObject({ kind: "stopped", message: expect.stringContaining("look only") });
+    await store.upsertConnection(user, "google-tasks", { level: "look" });
+    expect(await use("google-tasks", "add_task", { title: "Gym" })).toMatchObject({ kind: "stopped", message: expect.stringContaining("look only") });
     // A write that can't be done is said at once, with no card to approve.
     await store.upsertConnection(user, "google-tasks", { level: "send" });
     expect(await use("google-tasks", "complete_task", { task: "laundry" })).toEqual({ kind: "stopped", message: 'I couldn\'t find a task called "laundry" on your list.' });
@@ -271,8 +329,9 @@ describe("the person's time zone", () => {
     due(g);
     expect((await call("google-tasks", "list_tasks")).text).toBe("1 task on your list:\n- Gym, due Tomorrow (id: t1)");
     await call("google-tasks", "list_tasks");
-    const zone = g.only((c) => c.url.pathname === ZONE_PATH);
+    const zone = g.only(isZone);
     expect(zone).toHaveLength(1);
+    expect(Object.fromEntries(zone[0]!.url.searchParams)).toEqual({ maxResults: "1", fields: "timeZone" });
     expect(zone[0]!.auth).toBe("Bearer at-google-calendar");
     expect(g.last((c) => c.url.pathname.startsWith("/tasks/")).auth).toBe("Bearer at-google-tasks");
   });
@@ -574,63 +633,150 @@ describe("Google Classroom", () => {
 
 // ------------------------------------------------------------------ YouTube
 
-describe("YouTube", () => {
+describe("YouTube's search", () => {
   const VIDEO = "dQw4w9WgXcQ";
-  const PLAYLISTS = { json: { items: [
-    { id: "PLaaaaaaaaaaaa", snippet: { title: "Workout" }, contentDetails: { itemCount: 12 } },
-    { id: "PLbbbbbbbbbbbb", snippet: { title: "Work focus" }, contentDetails: { itemCount: 1 } },
+  const FOUND = { json: { items: [
+    { id: { kind: "youtube#video", videoId: VIDEO }, snippet: { title: "Rock &amp; Roll Don&#39;t Stop", channelTitle: "The Band" } },
+    { id: { kind: "youtube#channel", channelId: "UCx" }, snippet: { title: "A channel" } },
   ] } };
+  const QUOTA = { status: 403, json: { error: { code: 403, errors: [{ reason: "quotaExceeded", domain: "youtube.quota" }], message: "The request cannot be completed because you have exceeded your quota." } } };
+  /** What "play X on YouTube" opens: the play hand-off's own outcome. */
+  const played = (query: string) => handoffApp("play", { now: () => NOW })!.call("u1", "youtube", { query });
 
-  it("searches for videos and gives titles, channels and links", async () => {
-    const { g, call } = await setup({ connect: ["google-youtube"] });
-    g.to("GET", "/youtube/v3/search", { json: { items: [
-      { id: { kind: "youtube#video", videoId: VIDEO }, snippet: { title: "Rock &amp; Roll Don&#39;t Stop", channelTitle: "The Band" } },
-      { id: { kind: "youtube#channel", channelId: "UCx" }, snippet: { title: "A channel" } },
-    ] } });
-    const out = await call("google-youtube", "search_videos", { query: "rock songs", max: 50 });
+  it("searches with the server's key, as nobody: no sign-in, no token, and gives titles, channels and links", async () => {
+    const { g, call, store, user } = await setup({ connect: [], youtubeKey: "yt-key" });
+    g.to("GET", "/youtube/v3/search", FOUND);
+    const out = await call("youtube", "search_videos", { query: "  rock   songs " });
     const req = g.last(() => true);
-    expect(Object.fromEntries(req.url.searchParams)).toEqual({ part: "snippet", type: "video", q: "rock songs", maxResults: "10", safeSearch: "moderate" });
-    expect(req.auth).toBe("Bearer at-google-youtube");
-    expect(out.text).toBe(`1 video for "rock songs":\n- Rock & Roll Don't Stop (The Band) https://www.youtube.com/watch?v=${VIDEO}`);
+    expect(`${req.url.origin}${req.url.pathname}`).toBe(SEARCH_URL);
+    expect(Object.fromEntries(req.url.searchParams)).toEqual({ part: "snippet", type: "video", maxResults: "5", q: "rock songs" });
+    // The key goes in Google's header, never in the address.
+    expect(req.headers["x-goog-api-key"]).toBe("yt-key");
+    expect(req.url.href).not.toContain("yt-key");
+    expect(req.auth).toBeNull();
+    expect(out).toEqual({ ok: true, text: `1 video for "rock songs":\n- Rock & Roll Don't Stop (The Band) https://www.youtube.com/watch?v=${VIDEO}` });
+    expect(await store.listConnections(user)).toEqual([]);
+    g.to("GET", "/youtube/v3/search", { json: { items: [] } });
+    expect((await call("youtube", "search_videos", { query: "zzqx" })).text).toBe('No YouTube videos for "zzqx".');
+    expect((await call("youtube", "search_videos", { query: " " })).error).toEqual({ code: "rejected", message: "What should I look for on YouTube?" });
+    // The key is never in what is said or shown.
+    expect(JSON.stringify(out)).not.toContain("yt-key");
   });
 
-  it("lists the person's playlists", async () => {
-    const { g, call } = await setup({ connect: ["google-youtube"] });
-    g.to("GET", "/youtube/v3/playlists", PLAYLISTS);
-    const out = await call("google-youtube", "my_playlists");
-    expect(Object.fromEntries(g.last(() => true).url.searchParams)).toEqual({ part: "snippet,contentDetails", mine: "true", maxResults: "50" });
-    expect(out.text).toBe("2 playlists:\n- Workout, 12 videos (id: PLaaaaaaaaaaaa)\n- Work focus, 1 video (id: PLbbbbbbbbbbbb)");
+  it("without a key, opens YouTube's own search through the play hand-off, with its line, and calls nothing", async () => {
+    const { g, call } = await setup({ connect: [], youtubeKey: null });
+    const out = await call("youtube", "search_videos", { query: "lofi beats" });
+    expect(g.calls).toHaveLength(0);
+    expect(out).toEqual(await played("lofi beats"));
+    expect(out.open).toMatchObject({ url: "https://www.youtube.com/results?search_query=lofi%20beats", label: "Open YouTube", words: { say: "play.yt", open: "play.open.yt", vars: { query: "lofi beats" } } });
   });
 
-  it("adds a video to a playlist named by the person, after a yes", async () => {
-    const { g, call, use } = await setup({ connect: ["google-youtube"] });
-    g.to("GET", "/youtube/v3/playlists", PLAYLISTS);
-    g.to("GET", "/youtube/v3/videos", (c) => ({ json: { items: c.url.searchParams.get("id") === VIDEO ? [{ id: VIDEO, snippet: { title: "Never Gonna" } }] : [] } }));
-    g.to("POST", "/youtube/v3/playlistItems", { json: { id: "item1" } });
-    const asked = await use("google-youtube", "add_to_playlist", { video: `https://youtu.be/${VIDEO}`, playlist: "workout" });
-    expect(asked).toMatchObject({ kind: "approval", approval: { risk: "write", preview: 'Add "Never Gonna" to your YouTube playlist "Workout"' } });
-    expect(g.only((c) => c.method === "POST")).toHaveLength(0);
-    const out = await call("google-youtube", "add_to_playlist", { video: `https://www.youtube.com/watch?v=${VIDEO}&t=10`, playlist: "PLaaaaaaaaaaaa" });
-    const post = g.last((c) => c.method === "POST");
-    expect(post.url.searchParams.get("part")).toBe("snippet");
-    expect(post.body).toEqual({ snippet: { playlistId: "PLaaaaaaaaaaaa", resourceId: { kind: "youtube#video", videoId: VIDEO } } });
-    expect(out.text).toBe(`Added "Never Gonna" to your playlist "Workout". https://www.youtube.com/watch?v=${VIDEO}`);
-    expect((await call("google-youtube", "add_to_playlist", { video: VIDEO, playlist: "work" })).error?.message)
-      .toBe('I found more than one playlist like that: "Workout" and "Work focus". Which one?');
-    expect((await call("google-youtube", "add_to_playlist", { video: "AAAAAAAAAAA", playlist: "workout" })).error?.message).toBe("I couldn't find that video on YouTube.");
-    expect((await call("google-youtube", "add_to_playlist", { video: "never gonna", playlist: "workout" })).error?.message).toBe("I need the video's YouTube link or id. Search for it first.");
+  it("once the day's searches are spent (403 quotaExceeded), opens YouTube's own search instead of failing", async () => {
+    const warned: string[] = [];
+    const g = fakeGoogle();
+    g.to("GET", "/youtube/v3/search", QUOTA);
+    const yt = youtubeSearch({ apiKey: "yt-key", fetchFn: g.fetchFn, now: () => NOW, warn: (l) => warned.push(l) });
+    const out = await yt.call("u1", "search_videos", { query: "lofi" });
+    expect(g.calls).toHaveLength(1);
+    expect(out).toEqual(await played("lofi"));
+    // Spent for the day is nothing for us to fix: not a warning.
+    expect(warned).toEqual([]);
   });
 
-  it("reads a video id from any YouTube link, and nothing else", () => {
-    for (const s of [VIDEO, `https://youtu.be/${VIDEO}?t=3`, `https://m.youtube.com/watch?v=${VIDEO}`, `https://www.youtube.com/shorts/${VIDEO}`, `https://music.youtube.com/watch?v=${VIDEO}`]) {
-      expect(videoIdOf(s), s).toBe(VIDEO);
+  it("opens YouTube's own search too when Google refuses the key or can't be reached, and says a refused key where we will see it", async () => {
+    const warned: string[] = [];
+    const g = fakeGoogle();
+    const yt = youtubeSearch({ apiKey: "yt-secret-key", fetchFn: g.fetchFn, now: () => NOW, warn: (l) => warned.push(l) });
+    g.to("GET", "/youtube/v3/search", { status: 400, json: { error: { code: 400, errors: [{ reason: "badRequest" }], status: "INVALID_ARGUMENT", message: "API key not valid." } } });
+    expect(await yt.call("u1", "search_videos", { query: "my private words" })).toEqual(await played("my private words"));
+    expect(warned).toHaveLength(1);
+    expect(warned[0]).toContain("youtube");
+    expect(warned[0]).toContain("400 badRequest");
+    // Never the key, never the person's words.
+    expect(warned[0]).not.toContain("yt-secret-key");
+    expect(warned[0]).not.toContain("private");
+    g.to("GET", "/youtube/v3/search", { status: 503, json: {} });
+    expect((await yt.call("u1", "search_videos", { query: "lofi" })).open?.url).toBe("https://www.youtube.com/results?search_query=lofi");
+    g.to("GET", "/youtube/v3/search", "throw");
+    expect((await yt.call("u1", "search_videos", { query: "lofi" })).open?.url).toBe("https://www.youtube.com/results?search_query=lofi");
+    expect(warned).toHaveLength(1);
+  });
+
+  it("runs as a read, with nothing connected, on a question as well as a command, and opens through the run when it falls back", async () => {
+    const withKey = await setup({ connect: [], youtubeKey: "yt-key" });
+    withKey.g.to("GET", "/youtube/v3/search", FOUND);
+    expect(await withKey.use("youtube", "search_videos", { query: "rock" }, false)).toMatchObject({ kind: "result", text: expect.stringContaining(VIDEO) });
+    const spent = await setup({ connect: [], youtubeKey: "yt-key" });
+    spent.g.to("GET", "/youtube/v3/search", QUOTA);
+    expect(await spent.use("youtube", "search_videos", { query: "rock" }, false)).toMatchObject({ kind: "open", url: "https://www.youtube.com/results?search_query=rock" });
+    expect(await withKey.risk("youtube", "search_videos")).toBe("read");
+    // Not an app on the screens: nothing to connect.
+    expect((await connectorList(withKey.connectors, withKey.user)).map((c) => c.id)).not.toContain("youtube");
+  });
+
+  it("is picked only when YouTube or its words are said, and \"play\" stays the play hand-off's", async () => {
+    const have = ALWAYS_ON.map((def) => ({ def, lastUsedAt: null }));
+    const picks = (said: string, front = "Safari") => pickConnectors(said, front, have, NOW).map((p) => p.id);
+    expect(picks("search youtube for a sourdough recipe")[0]).toBe("youtube");
+    expect(picks("find me some youtube videos about black holes")).toContain("youtube");
+    expect(picks("youtube pe lofi dhoondo")[0]).toBe("youtube");
+    expect(picks("koi accha video dikhao")).toContain("youtube");
+    expect(picks("play kesariya on youtube")[0]).toBe("play");
+    expect(picks("play kesariya on youtube")).toContain("youtube");
+    expect(picks("youtube pe kesariya chalao")[0]).toBe("play");
+    // Not by a word its description happens to share, nor by YouTube being in front.
+    expect(picks("find my launch notes")).not.toContain("youtube");
+    expect(picks("scroll down", "YouTube")).toEqual([]);
+    // Nor by "video" alone, which is everywhere and rarely a search: that is
+    // the play hand-off's, which opens YouTube's own search for nothing.
+    for (const said of ["upload my video", "record a video", "find me some videos about black holes"]) {
+      expect(picks(said), said).not.toContain("youtube");
     }
-    for (const s of ["", "hello", `https://evil.example/watch?v=${VIDEO}`, "https://youtu.be/short"]) expect(videoIdOf(s), s).toBeNull();
+    expect(picks("find me some videos about black holes")).toContain("play");
+    const { connectors, user } = await setup({ connect: [], youtubeKey: "yt-key" });
+    const plan = await connectors.runtimeFor(user).cards({ app: "Safari" } as any, "search youtube for a sourdough recipe");
+    expect(plan!.message("<said>x</said>", [])).toContain("youtube.search_videos");
   });
 
-  it("says the day's searches are used up, not to try in a minute", async () => {
-    const { g, call } = await setup({ connect: ["google-youtube"] });
-    g.to("GET", "/youtube/v3/search", { status: 403, json: { error: { errors: [{ reason: "quotaExceeded" }], message: "The request cannot be completed because you have exceeded your quota." } } });
-    expect((await call("google-youtube", "search_videos", { query: "lofi" })).error).toEqual({ code: "failed", message: "YouTube has done all it can for today. Try again tomorrow." });
+  it("leaves the person's other app in the top three when they say \"video\" beside it", () => {
+    const have = [...CATALOG.filter((c) => c.id === "google-calendar" || c.id === "google-tasks"), ...ALWAYS_ON].map((def) => ({ def, lastUsedAt: null }));
+    const picks = (said: string) => pickConnectors(said, "Safari", have, NOW).map((p) => p.id);
+    expect(picks("add a task to edit the video by friday and block it on my calendar")).toEqual(expect.arrayContaining(["google-tasks", "google-calendar"]));
+    expect(picks("add a task to send the video to rahul on whatsapp")).toEqual(expect.arrayContaining(["google-tasks", "whatsapp"]));
+    expect(picks("add a task to send the video to rahul on whatsapp")).not.toContain("youtube");
+  });
+
+  it("opens YouTube's own search, not \"no videos\", when a 200's answer is cut off, too slow to finish or holds no list", async () => {
+    const answers: Array<() => Response> = [
+      // Cut off partway.
+      () => new Response('{"items":[{"id":{"videoId":"dQw4w', { status: 200 }),
+      // The time ran out while the body was still coming.
+      () => new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{"items":[')); c.error(new DOMException("The operation was aborted due to timeout", "TimeoutError")); } }), { status: 200 }),
+      // Read, but with no list in it.
+      () => new Response("{}", { status: 200 }),
+    ];
+    for (const [i, answer] of answers.entries()) {
+      const warned: string[] = [];
+      const yt = youtubeSearch({ apiKey: "yt-key", fetchFn: (async () => answer()) as typeof fetch, now: () => NOW, warn: (l) => warned.push(l) });
+      expect(await yt.call("u1", "search_videos", { query: "lofi" }), `answer ${i}`).toEqual(await played("lofi"));
+      expect(warned).toEqual([]);
+    }
+  });
+
+  it("gives Sentry no query of the search: neither the key nor the person's words", async () => {
+    const { g, call } = await setup({ connect: [], youtubeKey: "yt-secret-key" });
+    g.to("GET", "/youtube/v3/search", FOUND);
+    await call("youtube", "search_videos", { query: "my private words" });
+    const address = g.last(() => true).url;
+    // What Sentry 8 keeps of an outgoing fetch: a breadcrumb (integrations/node-fetch.js) and a span (instrumentation-undici).
+    const crumb = scrubBreadcrumb({ category: "http", type: "http", data: { url: `${address.origin}${address.pathname}`, "http.method": "GET", "http.query": address.search, status_code: 200 } });
+    const span = scrubSpan({ op: "http.client", description: `GET ${address.origin}${address.pathname}`, data: { "url.full": address.href, "url.query": address.search, "url.path": address.pathname, "http.request.method": "GET" } });
+    const kept = JSON.stringify([crumb, span]);
+    expect(kept).not.toContain("yt-secret-key");
+    expect(kept).not.toMatch(/private/);
+    expect(crumb.data).toEqual({ url: SEARCH_URL, "http.method": "GET", status_code: 200 });
+    expect(span.data).toEqual({ "url.full": SEARCH_URL, "url.path": "/youtube/v3/search", "http.request.method": "GET" });
+    // A breadcrumb that is not a call is left as it is.
+    expect(scrubBreadcrumb({ category: "console", data: { "http.query": "?x" } }).data).toEqual({ "http.query": "?x" });
   });
 });

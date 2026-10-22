@@ -25,6 +25,10 @@ import { readStepRequest } from "../src/agent/protocol.js";
 import { sensitiveApp } from "../src/pipeline/sensitive.js";
 // eslint-disable-next-line import/first
 import { buildApp } from "../src/server.js";
+// eslint-disable-next-line import/first
+import { ALWAYS_ON, CATALOG } from "../src/connectors/catalog.js";
+// eslint-disable-next-line import/first
+import { RESULT_MAX } from "../src/connectors/client.js";
 
 /**
  * THE PRIVACY POLICY'S ASK SECTION (permissions-spec §3).
@@ -38,19 +42,22 @@ import { buildApp } from "../src/server.js";
 
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&rarr;/g, "→").replace(/\s+/g, " ").replace(/ ([,.;:)])/g, "$1");
 const policy = text(PRIVACY_POLICY_HTML);
-const ask = policy.slice(policy.indexOf("10. Ask, on the desktop app"), policy.indexOf("11. Changes to this policy"));
+const ask = policy.slice(policy.indexOf("10. Ask, on the desktop app"), policy.indexOf("11. Google apps you connect"));
+const google = policy.slice(policy.indexOf("11. Google apps you connect"), policy.indexOf("12. Changes to this policy"));
 
 describe("the policy's date and shape", () => {
-  it("is effective from the day the Ask section was added", () => {
-    expect(PRIVACY_POLICY_EFFECTIVE).toBe("October 20, 2026");
-    expect(PRIVACY_POLICY_HTML).toContain("Effective: October 20, 2026");
+  it("is effective from the day the Google section was added", () => {
+    expect(PRIVACY_POLICY_EFFECTIVE).toBe("October 22, 2026");
+    expect(PRIVACY_POLICY_HTML).toContain("Effective: October 22, 2026");
   });
 
-  it("numbers its sections 1 to 12, once each, in order", () => {
-    const nums = [...PRIVACY_POLICY_HTML.matchAll(/<h2>(\d+)\. /g)].map((m) => Number(m[1]));
-    expect(nums).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  it("numbers its sections 1 to 13, once each, in order", () => {
+    const nums = [...PRIVACY_POLICY_HTML.matchAll(/<h2(?: id="[a-z-]+")?>(\d+)\. /g)].map((m) => Number(m[1]));
+    expect(nums).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
     const subs = [...PRIVACY_POLICY_HTML.matchAll(/<h3>10\.(\d) /g)].map((m) => Number(m[1]));
     expect(subs).toEqual([1, 2, 3, 4, 5]);
+    const google = [...PRIVACY_POLICY_HTML.matchAll(/<h3>11\.(\d) /g)].map((m) => Number(m[1]));
+    expect(google).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
   it("points the advertising identifier at the advertising section", () => {
@@ -182,17 +189,103 @@ describe("where a picture goes, and what is kept", () => {
   });
 });
 
+/**
+ * THE GOOGLE SECTION (Google API Services User Data Policy, Limited Use).
+ *
+ * Google's review reads the policy linked on the consent screen: it must say
+ * what Google data is read, how it is used, kept, shared and deleted, and
+ * carry the Limited Use statement. The claims that rest on the catalog and the
+ * planner are checked against them here.
+ */
+describe("the Google apps section", () => {
+  const googleApps = CATALOG.filter((c) => c.provider === "google");
+
+  it("carries the Limited Use statement, with its link", () => {
+    expect(google).toContain("Tailzu's use and transfer of information received from Google APIs to any other app will adhere to the Google API Services User Data Policy, including the Limited Use requirements.");
+    expect(PRIVACY_POLICY_HTML).toContain(`<a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>`);
+    expect(google).toContain("Tailzu uses your Google data only to do what you asked, when you ask.");
+    expect(google).toContain("We never sell it.");
+    expect(google).toContain("We never use it for advertising");
+    expect(google).toContain("Tailzu does not use it to create, train or improve AI or machine-learning models.");
+    expect(google).toContain("No one at Tailzu reads it, unless you ask us to");
+  });
+
+  it("names every Google app the catalog can connect, and no other", () => {
+    expect(googleApps.map((c) => c.id).sort()).toEqual([
+      "google-calendar", "google-classroom", "google-docs", "google-forms", "google-sheets", "google-tasks",
+    ]);
+    for (const c of googleApps) expect(google, c.id).toContain(`${c.name} —`);
+  });
+
+  it("says Classroom only reads, and Docs, Sheets and Forms reach only Tailzu's own files, as their scopes allow", () => {
+    const scopes = (id: string) => CATALOG.find((c) => c.id === id)!.scopes!;
+    expect(scopes("google-classroom").every((s) => s.endsWith(".readonly"))).toBe(true);
+    expect(google).toContain("Google Classroom — only reads");
+    for (const id of ["google-docs", "google-sheets", "google-forms"]) {
+      expect(scopes(id), id).toEqual(["https://www.googleapis.com/auth/drive.file"]);
+    }
+    expect(google).toContain("Google lets it reach only the files Tailzu made, never the rest of your Drive.");
+    expect(google).toContain("Google lets it reach only the sheets Tailzu made.");
+    expect(google).toContain("Google lets it reach only the forms Tailzu made.");
+  });
+
+  it("says YouTube's search is no connected app: no sign-in and no scope, as the catalog has it", () => {
+    const yt = ALWAYS_ON.find((c) => c.id === "youtube")!;
+    expect(yt.auth).toBe("none");
+    expect(yt.scopes).toBeUndefined();
+    expect(CATALOG.some((c) => c.id === "google-youtube")).toBe(false);
+    expect(google).toContain("YouTube is not a connected app either.");
+    expect(google).toContain("it sends only the words to search for to Google's YouTube Data API, with Tailzu's own key");
+    expect(google).not.toMatch(/playlist/i);
+  });
+
+  it("says Gmail and Maps are hand-offs with no access, as the catalog has them", () => {
+    for (const id of ["email-handoff", "maps"]) {
+      const h = ALWAYS_ON.find((c) => c.id === id)!;
+      expect(h.auth, id).toBe("none");
+      expect(h.scopes, id).toBeUndefined();
+    }
+    expect(google).toContain("it opens Gmail's own compose window with the email written");
+    expect(google).toContain("Tailzu has no access to either, and it reads none of your email.");
+  });
+
+  it("names the planner's models as the config sends to them, and the cut on what is read", () => {
+    expect(modelLadder()[0]).toMatch(/^openai\//);
+    expect(modelLadder()[1]).toMatch(/^anthropic\//);
+    expect(modelLadder().at(-1)).toBe(getConfig().CLEANUP_MODEL);
+    expect(google).toContain("through OpenRouter to the AI model that answers you: OpenAI's model first; Anthropic's Claude if that fails; and if that fails too, the model that refines your dictation (see Section 3).");
+    expect(RESULT_MAX).toBe(1500);
+    expect(google).toContain("at most 1,500 characters at a time");
+    const s3 = policy.slice(policy.indexOf("3. Third parties we use"), policy.indexOf("4. Data retention"));
+    expect(s3).toContain("Google apps you connect (see Section 11)");
+  });
+
+  it("says how to disconnect, the last-Google-app rule, and what stays", () => {
+    expect(google).toContain("Tailzu deletes its stored access to that app right away and stops using it.");
+    expect(google).toContain("When you disconnect the last of them, Tailzu also asks Google to revoke it.");
+    expect(google).toContain("Until then, Google keeps Tailzu's permission for every Google app you connected, including the one you just disconnected");
+    expect(google).toContain("myaccount.google.com/connections");
+    expect(google).toContain("What stays after you disconnect: your Tasks list, the record of actions, and any change still waiting for your OK");
+    expect(google).toContain("It does not tell Google, so disconnect your Google apps first");
+    expect(policy).toContain("Google apps you connect: what Tailzu reads in them is not stored, except the details of a change waiting for your OK.");
+    expect(google).toContain("Apart from a change waiting for your OK, what Tailzu reads in your Google apps is used for that one request and not stored");
+  });
+});
+
 describe("served at /privacy", () => {
   let app: FastifyInstance;
   beforeAll(async () => { app = await buildApp(); });
   afterAll(async () => { await app.close(); });
 
-  it("with the Ask section and the new date", async () => {
+  it("with the Ask and Google sections and the new date", async () => {
     const res = await app.inject({ method: "GET", url: "/privacy" });
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain("<h2>10. Ask, on the desktop app</h2>");
-    expect(res.body).toContain("Effective: October 20, 2026");
+    // The anchor the Google verification pack links to (docs/google-verification.md).
+    expect(res.body).toContain(`<h2 id="google-user-data">11. Google apps you connect</h2>`);
+    expect(res.body).toContain("including the Limited Use requirements.");
+    expect(res.body).toContain("Effective: October 22, 2026");
     const meta = await app.inject({ method: "GET", url: "/policies.json" });
-    expect(meta.json().privacy).toEqual({ url: "https://tailzu.space/privacy", effective: "October 20, 2026" });
+    expect(meta.json().privacy).toEqual({ url: "https://tailzu.space/privacy", effective: "October 22, 2026" });
   });
 });

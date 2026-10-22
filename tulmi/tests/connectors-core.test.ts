@@ -109,6 +109,17 @@ describe("the router", () => {
     expect(pickConnectors("check my notes and my issue list", "Safari", tied, now).map((s) => s.id)[0]).toBe("notion");
   });
 
+  it("counts an alias and its plural, the same word once stemmed, as one hit", () => {
+    const one = def("videoapp", "Clips", ["video", "videos"]);
+    const other = def("other", "Other", ["meeting", "calendar"]);
+    const both = [one, other].map((d) => ({ def: d, lastUsedAt: null as number | null }));
+    expect(pickConnectors("a video", "Safari", both)).toEqual([{ id: "videoapp", score: 10 }]);
+    // Two different words of one app still add up.
+    expect(pickConnectors("a meeting on my calendar", "Safari", both)).toEqual([{ id: "other", score: 20 }]);
+    // So one word said for one app does not outrank two said for another.
+    expect(pickConnectors("a video meeting on my calendar", "Safari", both).map((s) => s.id)).toEqual(["other", "videoapp"]);
+  });
+
   it("is quiet when nothing matches, and keeps three apps at most", () => {
     expect(pickConnectors("scroll down please", "Finder", have)).toEqual([]);
     const many = Array.from({ length: 8 }, (_, i) => ({ def: def(`app${i}`, `App${i}`, ["tickets"]), lastUsedAt: null }));
@@ -211,7 +222,7 @@ describe("the USE line", () => {
 });
 
 describe("the catalog", () => {
-  const google = ["google-calendar", "google-docs", "google-tasks", "google-sheets", "google-forms", "google-classroom", "google-youtube"];
+  const google = ["google-calendar", "google-docs", "google-tasks", "google-sheets", "google-forms", "google-classroom"];
   /** The MCP apps read on 2026-10-22, in the catalog's order (its order of usefulness). */
   const more = ["todoist", "calendly", "granola", "otter", "fireflies", "evernote", "clickup", "trello", "calcom", "airtable", "monday", "make", "composio", "pipedream"];
   const byId = (id: string) => CATALOG.find((c) => c.id === id)!;

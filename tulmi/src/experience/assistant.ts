@@ -272,6 +272,7 @@ function appsScreen(ctx: Ctx, ui: You): ScreenResponse {
     if (a.custom) body.push(customSheet(a, ui, canOpen));
     else if (a.connected) body.push(levelSheet(a, ui, canOpen));
     else if (a.auth === "url") body.push(pasteSheet(a, ui));
+    else if (canOpen) body.push(connectSheet(a, ui));
   }
   if (custom && canOpen) body.push(addSheet(ui));
 
@@ -292,7 +293,8 @@ function tile(a: ConnectorInfo, ui: You, canOpen: boolean): Node {
   // An app the person added always opens its sheet first: where it signs in is said there, before anything opens.
   const press: ActionRef =
     a.connected || a.auth === "url" || a.custom ? open
-      : canOpen ? connectFlow(a)
+      // The sheet first: what Tailzu does with the app is said before its sign-in page opens.
+      : canOpen ? open
         : toast(en("apps.update"), "info");
   const state: WordKey = !a.connected ? "connect" : a.needsSignIn ? "st.re" : "st.ok";
   const on = a.connected && !a.needsSignIn;
@@ -395,6 +397,21 @@ function levelSheet(a: ConnectorInfo, ui: You, canOpen: boolean): Node {
         onSuccess: seq(setState(`sheet.${a.id}`, false), { kind: "refresh" }),
         onError: toast(en("err.generic"), "error"),
       }), "quiet"),
+    ],
+  };
+}
+
+/** Before an app's sign-in page opens: what it is, what Tailzu does with it, and Connect. */
+function connectSheet(a: ConnectorInfo, ui: You): Node {
+  return {
+    type: "BottomSheet",
+    bind: { open: `sheet.${a.id}` },
+    props: sheetProps(ui),
+    children: [
+      sheetHead(a, ui, en("st.no")),
+      word(a.oneLine, "ui", 14, { lineHeight: 20, ...ink(ui), marginBottom: 10 }),
+      word(en("a2.ai", { app: a.name }), "ui", 12.5, { lineHeight: 19, color: ui.textDim, marginBottom: 14 }),
+      pill(ui, en("connect"), seq(setState(`sheet.${a.id}`, false), connectFlow(a)), "primary"),
     ],
   };
 }

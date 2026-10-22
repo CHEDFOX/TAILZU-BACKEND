@@ -157,25 +157,25 @@ describe("provider routing", () => {
   it("picture requests ask for the lowest-latency provider by default", async () => {
     llm.plan = ["SAY Five.\nDONE"];
     await pictureStep();
-    expect(llm.calls[0]!.provider).toEqual({ sort: "latency" });
+    expect(llm.calls[0]!.provider).toEqual({ data_collection: "deny", sort: "latency" });
   });
 
-  it("an empty AGENT_VISION_PROVIDER_SORT sends no provider field at all", async () => {
+  it("an empty AGENT_VISION_PROVIDER_SORT sends no sort, only the no-training rule", async () => {
     withEnv({ AGENT_VISION_PROVIDER_SORT: "" });
     llm.plan = ["SAY Five.\nDONE"];
     await pictureStep();
-    expect("provider" in llm.calls[0]!).toBe(false);
+    expect(llm.calls[0]!.provider).toEqual({ data_collection: "deny" });
   });
 
   it("another sort is passed as it is; the text path never sends one", async () => {
     withEnv({ AGENT_VISION_PROVIDER_SORT: "throughput" });
     llm.plan = ["SAY Five.\nDONE"];
     await pictureStep();
-    expect(llm.calls[0]!.provider).toEqual({ sort: "throughput" });
+    expect(llm.calls[0]!.provider).toEqual({ data_collection: "deny", sort: "throughput" });
     llm.calls.length = 0;
     for await (const _ of planStream(AGENT_SYSTEM, "u")) { /* read it */ }
-    expect("provider" in llm.calls[0]!).toBe(false);
-    expect(plannerRequest("openai/gpt-6-luna", AGENT_SYSTEM, "u")).not.toHaveProperty("provider");
+    expect(llm.calls[0]!.provider).toEqual({ data_collection: "deny" });
+    expect(plannerRequest("openai/gpt-6-luna", AGENT_SYSTEM, "u")).toHaveProperty("provider", { data_collection: "deny" });
   });
 
   it("a setting OpenRouter would not understand is sent as no preference, so it cannot fail every picture question", async () => {
@@ -184,17 +184,17 @@ describe("provider routing", () => {
       llm.calls.length = 0;
       llm.plan = ["SAY Five.\nDONE"];
       const { sent } = await pictureStep();
-      expect("provider" in llm.calls[0]!, bad).toBe(false);
+      expect(llm.calls[0]!.provider, bad).toEqual({ data_collection: "deny" });
       expect(sent.at(-1)).toEqual({ t: "done" });
     }
     // Written in another case or with spaces round it, a real sort is still that sort.
     withEnv({ AGENT_VISION_PROVIDER_SORT: " Latency " });
     llm.calls.length = 0;
     await pictureStep();
-    expect(llm.calls[0]!.provider).toEqual({ sort: "latency" });
+    expect(llm.calls[0]!.provider).toEqual({ data_collection: "deny", sort: "latency" });
     expect(providerSortOf("price")).toBe("price");
     expect(providerSortOf(undefined)).toBe("");
-    expect(plannerRequest("google/gemini-2.5-flash", AGENT_VISION_SYSTEM, "u", 450, { providerSort: "none" })).not.toHaveProperty("provider");
+    expect(plannerRequest("google/gemini-2.5-flash", AGENT_VISION_SYSTEM, "u", 450, { providerSort: "none" })).toHaveProperty("provider", { data_collection: "deny" });
   });
 
   it("the call's log line says who served it and what it spent thinking", async () => {

@@ -595,10 +595,13 @@ Connected apps list and use the same asks, approvals and audit.
 sign-in): the Calendar, Drive and Docs APIs are enabled, the web OAuth client
 lists `https://api.tailzu.space/v1/connectors/callback` as an authorized redirect
 URI (it must be exactly `CONNECTOR_REDIRECT_URL`), and the consent screen lists
-the scopes `calendar.events`, `calendar.readonly` and `drive.file`. Sign-in is
-untouched and never asks for them: they are asked only when someone taps
-**Connect** on Google Calendar (calendar.events + calendar.readonly) or Google
-Docs (drive.file). Gmail comes later.
+the scopes `calendar.events`, `calendar.readonly` and `drive.file`. Calendar
+now asks for `calendar.events` only, so take `calendar.readonly` off Data
+Access before Google's review (`docs/google-verification.md` also recommends
+`calendar.events.owned` in place of `calendar.events`). Sign-in is untouched
+and never asks for them: they are asked only when someone taps **Connect** on
+Google Calendar (calendar.events) or Google Docs (drive.file). Gmail comes
+later.
 
 1. **The two keys**, in `tulmi/.env`: the id and secret of a web OAuth client
    in that same project. Make one of its own: APIs & Services, Credentials,
@@ -630,32 +633,37 @@ Docs (drive.file). Gmail comes later.
    `open` event first: an older desktop speaks "I've written it in Gmail" and
    opens nothing. The other hand-offs are below.
 
-**While Google reviews the Calendar scopes.** `calendar.events` and
-`calendar.readonly` are *sensitive* scopes (`drive.file` is not), so until
-Google approves them:
+**While Google reviews the Calendar scope.** `calendar.events` is a
+*sensitive* scope (`drive.file` is not). The consent
+screen is already **In production** with verified branding, because Google
+sign-in uses it. Until Google approves the sensitive scopes:
 
-- Keep the consent screen in **Testing** and add each person who will use it
-  under Audience, Test users (up to 100, by Google account email). Anyone else
-  sees "Access blocked".
-- In Testing, Google expires a refresh token after **7 days**: a test user is
-  asked to "Sign in again" on the Google Calendar row about weekly. That
-  stops once the app is published and verified.
-- Publishing to Production before review works, with Google's "unverified app"
-  warning and a 100-user cap on the sensitive scopes.
+- **Never switch the consent screen back to Testing.** Testing lets only
+  listed test users through, so it would stop Google sign-in for everyone
+  else.
+- Connect works for anyone, but Google first shows its unverified-app screen
+  ("Google hasn't verified this app"): the person taps **Advanced**, then
+  **Go to Tailzu (unsafe)**, then sees the normal consent page.
+- The unverified sensitive scopes are capped at **100 users** until Google
+  approves them.
+- Sign-in is unaffected: it asks only Google's basic sign-in scopes, never
+  these.
 - The privacy policy linked on the consent screen must say what is read and
   that Google data is not used to train models or shown to anyone else
-  (Google API Services User Data Policy, Limited Use).
+  (Google API Services User Data Policy, Limited Use). It does, in Section 11
+  ("Google apps you connect") of `tulmi/src/routes/policies/privacy.ts`,
+  served at tailzu.space/privacy.
 
 **What to show in Google's review video** (one take, screen recording, English
 narration; show the browser address bar on Google's consent page so the
 client id is readable):
 
 1. Open Tailzu, Connected apps, tap **Connect** on Google Calendar.
-2. Google's consent page: the app name, the two Calendar permissions listed,
+2. Google's consent page: the app name, the one Calendar permission listed,
    **Continue**; the "You're connected" page; back in Tailzu the row shows
-   Connected. Say why each scope is needed (calendar.events: add, move and
-   delete events the person asks for; calendar.readonly: read the schedule and
-   free/busy to find a time).
+   Connected. Say why the scope is needed (calendar.events: read the schedule
+   and find a free time, and add, move and delete events the person asks
+   for).
 3. Ask aloud "what's on my calendar today": it answers from the real calendar.
 4. Ask "put a call with <a test email> tomorrow at 4": the confirm card shows the
    exact invite and that Google will email the guest. Tap **Approve**; open
@@ -666,12 +674,14 @@ client id is readable):
    Tailzu made (drive.file).
 6. Back in Tailzu, **Disconnect** each app; show the row go to Not connected,
    and in the Google account's "Third-party apps with account access" page that
-   Tailzu is gone (the grant is revoked when the last Google app is
-   disconnected). The other Google apps are below.
+   Tailzu is gone (the grant is revoked only when the last Google app is
+   disconnected; until then it still covers every app they connected). The
+   other Google apps are below.
 
-### Google Tasks, Sheets, Forms, Classroom and YouTube
+### Google Tasks, Sheets, Forms and Classroom, and YouTube's search
 
-Built the same way as Calendar and Docs (`src/connectors/google/`): the same
+Tasks, Sheets, Forms and Classroom are built the same way as Calendar and
+Docs (`src/connectors/google/`): the same
 web OAuth client and keys, the same **Connect** flow, the same asks,
 approvals and audit. Each one is off until its id is in
 `CONNECTORS_ENABLED_IDS`, and each asks for its own scopes only when someone
@@ -681,9 +691,9 @@ does the job.
 
 1. **Turn on the APIs** in the same Google Cloud project (APIs & Services,
    Library): **Google Tasks API**, **Google Sheets API**, **Google Forms API**,
-   **Google Classroom API** and **YouTube Data API v3**. The Drive API is
-   already on for Docs; Sheets and Forms use it too, to find their own files
-   by name.
+   **Google Classroom API**, and **YouTube Data API v3** for YouTube's search
+   (step 5). The Drive API is already on for Docs; Sheets and Forms use it
+   too, to find their own files by name.
 2. **Add the scopes to the consent screen** (Google Auth Platform, Data
    Access):
 
@@ -693,11 +703,10 @@ does the job.
    | Google Sheets | `google-sheets` | `.../auth/drive.file` (already there for Docs) | non-sensitive |
    | Google Forms | `google-forms` | `.../auth/drive.file` (already there) | non-sensitive |
    | Google Classroom | `google-classroom` | `.../auth/classroom.courses.readonly`, `.../auth/classroom.coursework.me.readonly`, `.../auth/classroom.announcements.readonly` | sensitive |
-   | YouTube | `google-youtube` | `.../auth/youtube` | sensitive |
 
    `drive.file` is documented as non-sensitive (Sheets scopes page, Drive
-   scope guide). Google's API pages print no class for the Tasks, Classroom
-   and YouTube scopes; Google counts scopes like these as sensitive, and the
+   scope guide). Google's API pages print no class for the Tasks and Classroom
+   scopes; Google counts scopes like these as sensitive, and the
    console marks each one when it is added: check "Your sensitive scopes"
    there. None of them is restricted.
    - **Sheets** needs only `drive.file`: spreadsheets.create,
@@ -707,32 +716,38 @@ does the job.
      setPublishSettings, get and responses.list all accept it, so neither
      `forms.body` nor `forms.responses.readonly` (both sensitive) is asked.
      Tailzu sees only the forms it made, and their answers.
-   - **YouTube** asks `youtube`, not `youtube.readonly`: adding to a playlist
-     (playlistItems.insert) accepts only `youtube`, `youtube.force-ssl` or
-     `youtubepartner`, and `youtube` covers the searches and playlists too.
    - **Classroom** is read only: one read-only scope per call it makes
      (courses.list, courseWork.list with the person's own
      studentSubmissions.list, announcements.list).
 3. **Switch them on**: add the ids to `CONNECTORS_ENABLED_IDS`, any of them
    alone, e.g.
-   `CONNECTORS_ENABLED_IDS=notion,linear,google-calendar,google-docs,google-tasks,google-sheets,google-forms,google-classroom,google-youtube`,
-   then `docker compose up -d --build`.
-4. **Google's review.** The sensitive ones (Tasks, Classroom, YouTube) live
-   under the same rules as Calendar's until Google approves them: Testing
-   mode, listed test users, a "Sign in again" about weekly. Add them to the
+   `CONNECTORS_ENABLED_IDS=notion,linear,google-calendar,google-docs,google-tasks,google-sheets,google-forms,google-classroom`,
+   then `docker compose up -d --build`. `google-youtube` is gone (2026-10-22):
+   an old one left in the list is ignored.
+4. **Google's review.** The sensitive ones (Tasks, Classroom) live
+   under the same rules as Calendar's until Google approves them: the consent
+   screen stays In production (never Testing), Connect shows Google's
+   unverified-app screen (**Advanced**, **Go to Tailzu (unsafe)**), and the
+   sensitive scopes are capped at 100 users. Sign-in is unaffected. Add them to the
    same verification request and the same video: for each, **Connect**, the
    consent page with its scopes (say why each is needed), one read, and for
-   Tasks and YouTube one write through the confirm card and **Approve**
-   ("remind me tomorrow to call the bank" then the task in Google Tasks;
-   "add this video to my workout playlist" then the playlist), then
-   **Disconnect**. Sheets and Forms ask nothing new.
-5. **YouTube's quota.** search.list has its own bucket of **100 calls a day
-   for the whole project** (not per person; it resets at midnight Pacific).
-   After that a search answers "YouTube has done all it can for today. Try
-   again tomorrow." playlistItems.insert costs 50 of the project's 10,000
-   units a day, a playlist or video read 1. Ask Google for more (YouTube API
-   quota extension form, which comes with a compliance audit) before telling
-   many people. "Play X" never uses it: that is the play hand-off below.
+   Tasks one write through the confirm card and **Approve** ("remind me
+   tomorrow to call the bank" then the task in Google Tasks), then
+   **Disconnect**. Sheets and Forms ask nothing new. The full script is in
+   `docs/google-verification.md`.
+5. **YouTube's search** (`youtube`, `src/connectors/google/youtube.ts`) is
+   always on with `CONNECTORS=true` and is not a connected app: no sign-in,
+   no Google scope, nothing in `CONNECTORS_ENABLED_IDS`, and nothing for
+   Google's review. It sends Google only the words to search for, with
+   Tailzu's own key: set `YOUTUBE_API_KEY` in `tulmi/.env` to an API key from
+   the same project (APIs & Services, Credentials, Create credentials, API
+   key), restricted to YouTube Data API v3 and to this server's IP. A search
+   costs 100 of the project's 10,000 units a day, so about **100 searches a
+   day for everyone** (it resets at midnight Pacific). Without the key, or
+   once they are spent, a search opens YouTube's own search on the device
+   instead. Ask Google for more (YouTube API quota extension form, which
+   comes with a compliance audit) before telling many people. "Play X" never
+   uses it: that is the play hand-off below.
 
 | id | tools |
 | --- | --- |
@@ -740,7 +755,6 @@ does the job.
 | `google-sheets` | `create_sheet(title, rows?)` write; `append_rows(sheet, rows)` write; `read_sheet(sheet)` read |
 | `google-forms` | `create_form(title, questions[], description?)` write; `list_responses(form)` read |
 | `google-classroom` | `my_classes()`, `whats_due(days?, class?)`, `announcements(class?)`, all read |
-| `google-youtube` | `search_videos(query, max?)` read; `my_playlists()` read; `add_to_playlist(video, playlist)` write |
 
 - **Days in the person's zone.** Tasks, Classroom and Forms say days and
   times in the zone the person names, else the zone set on their Google
@@ -762,7 +776,12 @@ does the job.
   accounts work.
 - **Disconnect** forgets the token, and the one Google grant is revoked at
   Google only when no Google app of theirs still holds a token, counting
-  apps switched off on the server since they connected them.
+  apps switched off on the server since they connected them. Until then the
+  grant still covers the app just disconnected. A `google-youtube`
+  connection from before 2026-10-22 does not count, and is not listed, so
+  its owner cannot disconnect it: its token stays stored and unused until it
+  is deleted by hand or with the account (see the known gaps in
+  `docs/google-verification.md`).
 
 ### The hand-offs: WhatsApp, calls, UPI, Maps and the rest
 

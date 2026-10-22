@@ -2338,6 +2338,8 @@ function appRow(c: ConnectorInfo): Node {
   const again = c.connected && c.needsSignIn === true;
   const on = c.connected && !again;
   const detail: Node[] = [text(c.oneLine, "d-v")];
+  // What Tailzu does with the app, said before its sign-in page opens.
+  if (!c.connected && c.auth === "oauth") detail.push(text(w("a2.ai", { app: c.name }), "d-margin", { marginTop: 4 }));
   // An app that takes a pasted link (Zapier) asks for it before the button.
   if (c.auth === "url" && !on) {
     detail.push({

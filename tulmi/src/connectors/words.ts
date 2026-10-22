@@ -36,6 +36,9 @@ export const EN = {
   "lv.send.d": "I can send for you, the way you’ve approved.",
   "a2.q": "How far can I go in {app}?",
   "a2.foot": "Change this any time. If you disconnect, my access ends right away.",
+  // Said before the sign-in page opens (Google's rule: the use is told in the
+  // app, right before the ask, not only in the privacy policy).
+  "a2.ai": "I only use {app} when you ask. What I read there goes to an AI model (OpenAI or Anthropic, through OpenRouter) just to answer you, never for ads or training.",
   "a2.dis": "Disconnect {app}",
   "link.ph": "Paste the link {app} gave you",
   "err.level": "I couldn’t change that. Try again.",
@@ -198,6 +201,7 @@ export const HG: Record<WordKey, string> = {
   "lv.send.d": "Aapke approve kiye tareeke se main bhej sakta hoon.",
   "a2.q": "{app} mein main kitna kar sakta hoon?",
   "a2.foot": "Kabhi bhi badlo. Disconnect karte hi meri pahunch turant band.",
+  "a2.ai": "Main {app} tabhi use karta hoon jab aap kaho. Wahan jo padhta hoon, woh sirf aapko jawab dene ke liye ek AI model (OpenAI ya Anthropic, OpenRouter ke through) ke paas jaata hai, kabhi ads ya training ke liye nahi.",
   "a2.dis": "{app} hatao",
   "link.ph": "{app} ne jo link diya hai, woh paste karo",
   "err.level": "Yeh nahi badal paaya. Dobara try karo.",
@@ -345,7 +349,6 @@ export const HG_APP_LINES: Readonly<Record<string, string>> = {
   "google-sheets": "Google Sheet shuru karo, usme rows jodo ya padhwao: kharche ka hisaab, list, table.",
   "google-forms": "Google Form banao (survey, quiz, poll) sawaalon ke saath, aur dekho kisne kya jawab diya.",
   "google-classroom": "Google Classroom mein apni classes dekho, kaunsa classwork aur homework due hai aur jama kiya ya nahi, aur naye announcements.",
-  "google-youtube": "YouTube pe videos dhoondho, apni playlists dekho, aur kisi video ko playlist mein daalo.",
 };
 
 /** Hinglish is the one voice with its own table; every other language reads English. */

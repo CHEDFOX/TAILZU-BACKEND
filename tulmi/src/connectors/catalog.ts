@@ -158,10 +158,10 @@ export const CATALOG: readonly ConnectorDef[] = [
     id: "google-calendar", name: "Google Calendar", category: "Calendar", kind: "native", provider: "google",
     oneLine: "See your schedule, find free time, and add, move or cancel events in Google Calendar.",
     aliases: ["calendar", "google calendar", "meeting", "meetings", "schedule", "invite", "event", "events", "appointment", "free time", "availability", "busy"],
-    scopes: ["https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/calendar.readonly"],
+    scopes: ["https://www.googleapis.com/auth/calendar.events"],
     url: "https://www.googleapis.com/calendar/v3", auth: "oauth", verified: true,
     docs: "https://developers.google.com/workspace/calendar/api/v3/reference",
-    notes: "Our own code against Calendar API v3 (events.list/insert/patch/delete, freeBusy.query, settings.get). OAuth 2.0 authorization code with PKCE, access_type=offline, tokens at oauth2.googleapis.com/token. calendar.events lets it change events, calendar.readonly lets it read the calendar's settings and free/busy; both are asked together. While Google reviews these (sensitive) scopes only listed test users can connect.",
+    notes: "Our own code against Calendar API v3, events.list/get/insert/patch/delete only, each of which lists calendar.events among its scopes (read 2026-10-22), so that is the one scope asked. The calendar's time zone is the timeZone field of an events.list answer on the primary calendar (\"The time zone of the calendar\", read with fields=timeZone, so no event comes with it), and free time is worked out from events.list over the window (singleEvents, orderBy startTime, maxAttendees=1): events marked transparent (Show me as Available) or declined by the person do not count, overlaps are merged. So neither settings.get nor freeBusy.query is called, and calendar.readonly, which they need, is not asked. Someone who connected before 2026-10-22 also granted calendar.readonly; with include_granted_scopes it stays in their grant, unused, until they disconnect the last Google app, and the callback accepts a grant with or without it. OAuth 2.0 authorization code with PKCE, access_type=offline, tokens at oauth2.googleapis.com/token. calendar.events is sensitive: while Google reviews it only listed test users can connect.",
   },
   {
     id: "google-docs", name: "Google Docs", category: "Docs", kind: "native", provider: "google",
@@ -211,15 +211,6 @@ export const CATALOG: readonly ConnectorDef[] = [
     url: "https://classroom.googleapis.com/v1", auth: "oauth", verified: true,
     docs: "https://developers.google.com/workspace/classroom/reference/rest",
     notes: "Our own code against Classroom API v1, read only: courses.list (classroom.courses.readonly), courses.courseWork.list and courses.courseWork.studentSubmissions.list with userId=me (classroom.coursework.me.readonly), courses.announcements.list (classroom.announcements.readonly). All three sensitive. Due dates and times come in UTC. A school's Google Workspace admin can block third-party apps from Classroom data; then sign-in fails for that school's accounts.",
-  },
-  {
-    id: "google-youtube", name: "YouTube", category: "Music and video", kind: "native", provider: "google",
-    oneLine: "Search YouTube for videos, see your playlists, and add a video to one of them.",
-    aliases: ["youtube", "yt", "video", "videos", "playlist", "playlists", "my playlist", "youtube playlist"],
-    scopes: ["https://www.googleapis.com/auth/youtube"],
-    url: "https://www.googleapis.com/youtube/v3", auth: "oauth", verified: true,
-    docs: "https://developers.google.com/youtube/v3/docs",
-    notes: "Our own code against YouTube Data API v3 (search.list, playlists.list mine=true, videos.list, playlistItems.insert). playlistItems.insert takes youtube, youtube.force-ssl or youtubepartner, nothing smaller; `youtube` also covers the reads, so youtube.readonly is not asked beside it. Sensitive. Quota: search.list has its own bucket of 100 calls a day per Google project, playlistItems.insert costs 50 units of the 10,000 a day. Playing a video is the play hand-off, not this.",
   },
   // More MCP apps, read 2026-10-22. Each offers dynamic client registration,
   // in its docs or only in its live metadata (then `verified: false`).
@@ -344,17 +335,23 @@ export const CATALOG: readonly ConnectorDef[] = [
 
 /**
  * Apps that are simply there when CONNECTORS is on, with nothing to connect:
- * the hand-offs (src/connectors/handoffs). Not in CATALOG, so
- * CONNECTORS_ENABLED_IDS neither turns them on nor off, and not listed on the
- * screens (`hidden`).
+ * the hand-offs (src/connectors/handoffs), and YouTube's search. Not in
+ * CATALOG, so CONNECTORS_ENABLED_IDS neither turns them on nor off (an old
+ * "google-youtube" left there is an id the catalog no longer has, ignored
+ * like any other), and not listed on the screens (`hidden`).
  *
- * Each opens another app on the person's own device with everything filled
- * in (an email in Gmail, a message in WhatsApp, a payment in their UPI app, a
- * route in Maps) for them to finish there. Tailzu never sees the account,
- * never sends and never pays, so they ask for no permission and need no key.
- * `url` is the link each one opens; `verified: true` means the vendor
+ * Each hand-off opens another app on the person's own device with everything
+ * filled in (an email in Gmail, a message in WhatsApp, a payment in their UPI
+ * app, a route in Maps) for them to finish there. Tailzu never sees the
+ * account, never sends and never pays, so they ask for no permission and need
+ * no key. `url` is the link each one opens; `verified: true` means the vendor
  * documents that link, `false` that it is the vendor's own search address,
  * long-standing but undocumented (see `notes`).
+ *
+ * YouTube's search asks for no permission either: it reads YouTube's public
+ * search results with Tailzu's own API key (YOUTUBE_API_KEY), never anyone's
+ * account, and without the key it opens YouTube's own search instead, as the
+ * play hand-off does. Its `url` is the API it calls.
  */
 const handoff = (o: Pick<ConnectorDef, "id" | "name" | "category" | "oneLine" | "aliases" | "url" | "verified" | "notes" | "docs">): ConnectorDef =>
   ({ ...o, kind: "native", hidden: true, auth: "none" });
@@ -444,6 +441,19 @@ export const ALWAYS_ON: readonly ConnectorDef[] = [
     aliases: ["hotel", "hotels", "booking", "booking com", "stay", "room", "rooms"],
     url: "https://www.booking.com/searchresults.html", verified: false,
     notes: "https://www.booking.com/searchresults.html?ss=<place>&checkin=YYYY-MM-DD&checkout=YYYY-MM-DD&group_adults=<n>&no_rooms=1 is what Booking.com's own search form sends. It is not documented publicly.",
+  }),
+  // Last, so a hand-off wins a tie: "play X on YouTube" is the play hand-off's.
+  handoff({
+    id: "youtube", name: "YouTube", category: "Music and video",
+    oneLine: "Find YouTube videos for some words, with their titles, channels and links.",
+    // Not "video" alone: it is on for everyone, a search spends the day's
+    // shared 100, and "edit the video" or "send the video on WhatsApp" are
+    // not searches. A video with no YouTube said is the play hand-off's,
+    // which opens YouTube's own search for nothing.
+    aliases: ["youtube", "you tube", "yt", "youtube search", "search youtube", "youtube pe", "youtube par", "video dhoondo", "video dikhao"],
+    url: "https://www.googleapis.com/youtube/v3/search", verified: true,
+    docs: "https://developers.google.com/youtube/v3/docs/search/list",
+    notes: "Our own code against YouTube Data API v3 search.list (part=snippet, type=video, maxResults=5), called with the server's API key (YOUTUBE_API_KEY, from the same Google Cloud project, restricted to YouTube Data API v3; sent in the x-goog-api-key header, never in the address) and no OAuth: search results are public, so there is no sign-in and no Google scope. Quota: a search costs 100 of the project's 10,000 units a day (search.list's page now says it is a bucket of its own, 100 calls a day), shared by everyone, so about 100 searches a day until Google raises it. Without the key, on 403 quotaExceeded, or when Google can't be reached, it opens https://www.youtube.com/results?search_query=.. through the play hand-off instead. Playing a video is the play hand-off, not this. It replaces google-youtube (OAuth, the youtube scope, playlists), dropped 2026-10-22.",
   }),
 ];
 
