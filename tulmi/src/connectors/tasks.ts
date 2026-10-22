@@ -24,7 +24,7 @@ import type { ApprovalCard } from "../../../shared/types/api.js";
 import type { ConnectorHub, Fail } from "./client.js";
 import type { ConnectorDef } from "./catalog.js";
 import { ConnectorError } from "./oauth.js";
-import { gate, riskOf, type Level, type Risk } from "./risk.js";
+import { gate, type Level, type Risk } from "./risk.js";
 import type { Approval, ConnectorStore, Task } from "./store.js";
 
 export const APPROVAL_TTL_MS = 60 * 60_000;
@@ -36,7 +36,9 @@ export type UseOutcome =
   | { kind: "result"; text: string }
   | { kind: "approval"; taskId: string; approval: ApprovalView; card?: ApprovalCard }
   /** Nothing ran; `message` is said to the person as it is. */
-  | { kind: "stopped"; message: string };
+  | { kind: "stopped"; message: string }
+  /** Something for the person's own computer to open (the email hand-off): the run says `say`, opens it and ends. */
+  | { kind: "open"; url: string; label: string; fallback?: string; say?: string };
 
 /** An approval as the device sees it: no arguments. */
 export interface ApprovalView { id: string; connector: string; tool: string; risk: Exclude<Risk, "read">; preview: string }
@@ -129,8 +131,10 @@ export class TaskService {
     opts: { allowWrite: boolean },
   ): Promise<UseOutcome> {
     const def = this.o.hub.def(line.connector);
-    const conn = def ? await this.o.store.getConnection(userId, line.connector) : null;
-    if (!def || !conn?.tokensEnc) {
+    // An app that needs no permission (the email hand-off) has no connection to look for.
+    const free = def?.auth === "none";
+    const conn = def && !free ? await this.o.store.getConnection(userId, line.connector) : null;
+    if (!def || (!free && !conn?.tokensEnc)) {
       return { kind: "stopped", message: `${def?.name ?? "That app"} isn't connected. You can connect it in Tailzu.` };
     }
     let tools;
@@ -142,13 +146,19 @@ export class TaskService {
     const info = tools.find((t) => t.name === line.tool);
     if (!info) return { kind: "stopped", message: `${def.name} doesn't have an action called ${clip(line.tool, 40)}.` };
 
-    const risk = riskOf(info);
-    const verdict = gate(risk, conn.level, conn.autoOk.includes(info.name));
+    let risk: Risk;
+    try {
+      risk = await this.o.hub.riskFor(userId, def, info, line.args);
+    } catch (e) {
+      return { kind: "stopped", message: e instanceof ConnectorError ? e.message : `${def.name} ran into a problem.` };
+    }
+    // The hand-off only opens a draft the person sends themselves, so it runs without asking; but only on a command.
+    const verdict = free ? (opts.allowWrite || risk === "read" ? "run" : "approve") : gate(risk, conn!.level, conn!.autoOk.includes(info.name));
     if (verdict === "block") {
-      return { kind: "stopped", message: blockedMessage(def.name, conn.level, risk) };
+      return { kind: "stopped", message: blockedMessage(def.name, conn!.level, risk) };
     }
     if (verdict === "approve" && !opts.allowWrite) {
-      return { kind: "stopped", message: `That would change something in ${def.name}. Ask me as a command and I'll check with you first.` };
+      return { kind: "stopped", message: free ? `Ask me as a command and I'll open it in ${def.name}.` : `That would change something in ${def.name}. Ask me as a command and I'll check with you first.` };
     }
 
     let task = await this.taskFor(userId, runId, said);
@@ -156,12 +166,13 @@ export class TaskService {
       const out = await this.o.hub.call(userId, def.id, info.name, line.args);
       await this.audit(userId, task, def.id, info.name, risk, out.ok ? "ok" : "failed", out.error);
       task = await this.step(userId, task, out.ok ? `${def.name}: ${human(info.name)}` : `${def.name}: ${human(info.name)} failed`);
+      if (out.ok && out.open) return { kind: "open", ...out.open };
       return out.ok ? { kind: "result", text: out.text } : { kind: "stopped", message: out.error!.message };
     }
 
     const approval: Approval = {
       id: randomUUID(), connector: def.id, tool: info.name, risk, args: line.args,
-      preview: previewOf(def, info.name, line.args), at: this.now(),
+      preview: clip(await this.o.hub.previewFor(userId, def, info.name, line.args) ?? previewOf(def, info.name, line.args), PREVIEW_MAX), at: this.now(),
     };
     task = await this.step(userId, task, `Waiting for you: ${human(info.name)} in ${def.name}`, { state: "waiting", approval });
     void Promise.resolve().then(() => this.o.notify?.(userId, task, approval)).catch(() => {});

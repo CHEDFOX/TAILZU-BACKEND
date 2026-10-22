@@ -381,3 +381,80 @@ Anything that changes, sends, deletes or pays is confirmed by the person first
 `POST /v1/tasks/:id/approve` runs it); a waiting task also pushes to their phone
 (`push.approval.*` in the control plane). What ran is in `assistant_audit`, with
 no message text.
+
+### Google Calendar, Google Docs and the email hand-off
+
+These three are built into the server (`src/connectors/google/`), not MCP
+servers, so there is nothing to try against a vendor's MCP endpoint: Google
+Calendar and Google Docs call Google's REST APIs directly. They sit in the same
+Connected apps list and use the same asks, approvals and audit.
+
+**What the owner has already done** (same Google Cloud project as the Google
+sign-in): the Calendar, Drive and Docs APIs are enabled, the web OAuth client
+lists `https://api.tailzu.space/v1/connectors/callback` as an authorized redirect
+URI (it must be exactly `CONNECTOR_REDIRECT_URL`), and the consent screen lists
+the scopes `calendar.events`, `calendar.readonly` and `drive.file`. Sign-in is
+untouched and never asks for them: they are asked only when someone taps
+**Connect** on Google Calendar (calendar.events + calendar.readonly) or Google
+Docs (drive.file). Gmail comes later.
+
+1. **The two keys**, in `tulmi/.env`: the id and secret of that same web OAuth
+   client, the one the Google sign-in uses.
+
+   ```
+   GOOGLE_CONNECT_CLIENT_ID=...apps.googleusercontent.com
+   GOOGLE_CONNECT_CLIENT_SECRET=...
+   ```
+
+   Without both, the apps list but Connect answers "not set up" (503), and the
+   server warns at start-up.
+2. **Switch the apps on**: add them to `CONNECTORS_ENABLED_IDS`, e.g.
+   `CONNECTORS_ENABLED_IDS=notion,linear,google-calendar,google-docs`, with
+   `CONNECTORS=true` and the key/migration steps above. Then
+   `docker compose up -d --build`. They are off until named here. Each can be
+   switched on alone.
+3. **The email hand-off needs nothing.** `email-handoff` is there whenever
+   `CONNECTORS=true`, is not listed as an app, asks for no permission and sends
+   nothing: it only has the desktop open Gmail's compose window with the email
+   written, and the person presses Send. Ship the desktop build that handles the
+   `open` event first: an older desktop speaks "I've written it in Gmail" and
+   opens nothing.
+
+**While Google reviews the Calendar scopes.** `calendar.events` and
+`calendar.readonly` are *sensitive* scopes (`drive.file` is not), so until
+Google approves them:
+
+- Keep the consent screen in **Testing** and add each person who will use it
+  under Audience, Test users (up to 100, by Google account email). Anyone else
+  sees "Access blocked".
+- In Testing, Google expires a refresh token after **7 days**: a test user is
+  asked to "Sign in again" on the Google Calendar row about weekly. That
+  stops once the app is published and verified.
+- Publishing to Production before review works, with Google's "unverified app"
+  warning and a 100-user cap on the sensitive scopes.
+- The privacy policy linked on the consent screen must say what is read and
+  that Google data is not used to train models or shown to anyone else
+  (Google API Services User Data Policy, Limited Use).
+
+**What to show in Google's review video** (one take, screen recording, English
+narration; show the browser address bar on Google's consent page so the
+client id is readable):
+
+1. Open Tailzu, Connected apps, tap **Connect** on Google Calendar.
+2. Google's consent page: the app name, the two Calendar permissions listed,
+   **Continue**; the "You're connected" page; back in Tailzu the row shows
+   Connected. Say why each scope is needed (calendar.events: add, move and
+   delete events the person asks for; calendar.readonly: read the schedule and
+   free/busy to find a time).
+3. Ask aloud "what's on my calendar today": it answers from the real calendar.
+4. Ask "put a call with <a test email> tomorrow at 4": the confirm card shows the
+   exact invite and that Google will email the guest. Tap **Approve**; open
+   Google Calendar to show the event, and the invite email in the guest's inbox.
+   (Show **Not now** on a second request: nothing is created.)
+5. Do the same for Google Docs ("save my last meeting note as a doc"): the card,
+   Approve, the new Doc opened from the link; say it can only ever touch Docs
+   Tailzu made (drive.file).
+6. Back in Tailzu, **Disconnect** each app; show the row go to Not connected,
+   and in the Google account's "Third-party apps with account access" page that
+   Tailzu is gone (the grant is revoked when the last Google app is
+   disconnected).

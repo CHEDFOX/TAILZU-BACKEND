@@ -881,6 +881,12 @@ export type AgentEvent =
    *  device shows `approval.preview` on its confirm card and calls
    *  POST /v1/tasks/:taskId/approve or /deny; nothing has been done yet. */
   | { t: "approve"; taskId: string; approval: AgentApproval; card?: ApprovalCard }
+  /** Not terminal (a `done` follows): open a link on the person's computer.
+   *  Only the email hand-off sends it, with a Gmail compose link
+   *  (https://mail.google.com/mail/?view=cm&fs=1&to=..&su=..&body=..) and a
+   *  mailto: `fallback`. The desktop opens those two kinds of link and nothing
+   *  else; the person reads the email and presses Send themselves. */
+  | { t: "open"; url: string; label: string; fallback?: string }
   /** TERMINAL. */
   | { t: "done"; text?: string }
   /** TERMINAL. Codes: private, too_many_steps, no_speech, bad_target,

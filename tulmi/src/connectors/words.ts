@@ -73,6 +73,9 @@ export const EN = {
   "a3.none": "Nothing is waiting for you right now.",
   "a3.reason": "Approve this in {app}",
   "a3.nobio": "No Face ID or fingerprint is set up on this phone, so I’ll just ask once more.",
+  // The email hand-off: Gmail opened with the email written; the person sends it.
+  "mail.done": "I've written it in Gmail. Check it and hit Send.",
+  "mail.open": "Open in Gmail",
 } as const;
 
 export const HG: Record<WordKey, string> = {
@@ -124,6 +127,8 @@ export const HG: Record<WordKey, string> = {
   "a3.none": "Abhi aapka intezaar karne wala kuch nahi hai.",
   "a3.reason": "Ise {app} mein approve karo",
   "a3.nobio": "Is phone mein Face ID ya fingerprint set nahi hai, isliye main ek baar aur poochhunga.",
+  "mail.done": "Maine Gmail mein likh diya hai. Check karo aur Send dabao.",
+  "mail.open": "Gmail mein kholo",
 };
 
 /** Hinglish is the one voice with its own table; every other language reads English. */

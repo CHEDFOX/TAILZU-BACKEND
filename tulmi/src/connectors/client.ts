@@ -21,6 +21,8 @@ import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import type { ConnectorDef } from "./catalog.js";
 import { decrypt } from "./crypto.js";
 import { ConnectorError, UserOAuthProvider } from "./oauth.js";
+import type { Args, Handoff, NativeConnector, NativeSet } from "./native.js";
+import { riskOf as riskByName, type Risk } from "./risk.js";
 import type { ConnectorStore } from "./store.js";
 
 export interface Fail { code: string; message: string }
@@ -32,7 +34,7 @@ export interface ToolInfo {
   annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean } & Record<string, unknown>;
 }
 
-export interface CallOutcome { ok: boolean; text: string; error?: Fail }
+export interface CallOutcome { ok: boolean; text: string; error?: Fail; open?: Handoff }
 
 export const TOOLS_CACHE_MS = 5 * 60_000;
 export const CALL_TIMEOUT_MS = 20_000;
@@ -74,6 +76,8 @@ export interface HubOptions {
   store: ConnectorStore;
   /** The enabled catalog. */
   catalog: readonly ConnectorDef[];
+  /** The native connectors (src/connectors/google), by catalog id. A catalog entry with no MCP endpoint to open is served from here. */
+  natives?: NativeSet;
   redirectUrl: string;
   callTimeoutMs?: number;
   cacheMs?: number;
@@ -99,6 +103,28 @@ export class ConnectorHub {
 
   get catalog(): readonly ConnectorDef[] { return this.o.catalog; }
   def(id: string): ConnectorDef | undefined { return this.o.catalog.find((c) => c.id === id); }
+  /** The native connector behind a catalog entry, when it is one. */
+  private native(def: ConnectorDef): NativeConnector | undefined {
+    return def.kind === "native" ? this.o.natives?.[def.id] : undefined;
+  }
+
+  /**
+   * The risk of THIS call. An MCP tool is judged by its annotations and name
+   * (risk.ts); a native tool carries the risk we gave it, and may look at the
+   * arguments (and the event they point at) to say more. Throws a ConnectorError
+   * when it has to look and cannot.
+   */
+  async riskFor(userId: string, def: ConnectorDef, info: ToolInfo, args: Args): Promise<Risk> {
+    const n = this.native(def);
+    if (!n) return riskByName(info);
+    const own = n.tools().find((t) => t.name === info.name)?.risk ?? "write";
+    return (await n.riskOf?.(userId, info.name, args)) ?? own;
+  }
+
+  /** The confirm card's words for this call, when the app has better ones than the generic preview. */
+  async previewFor(userId: string, def: ConnectorDef, tool: string, args: Args): Promise<string | undefined> {
+    try { return await this.native(def)?.preview?.(userId, tool, args); } catch { return undefined; }
+  }
 
   /** Whether this person's last try in the app needed them to sign in again. */
   needsSignIn(userId: string, connectorId: string): boolean { return this.signIn.has(`${userId}|${connectorId}`); }
@@ -147,6 +173,8 @@ export class ConnectorHub {
   async tools(userId: string, connectorId: string): Promise<ToolInfo[]> {
     const def = this.def(connectorId);
     if (!def) throw new ConnectorError("not_connected", "That app isn't available.");
+    const native = this.native(def);
+    if (native) return native.tools().map(({ risk: _risk, ...tool }) => tool);
     const key = `${userId}|${connectorId}`;
     const hit = this.toolCache.get(key);
     if (hit && this.now() - hit.at < this.cacheMs) return hit.tools;
@@ -175,6 +203,8 @@ export class ConnectorHub {
   async call(userId: string, connectorId: string, tool: string, args: Record<string, unknown>): Promise<CallOutcome> {
     const def = this.def(connectorId);
     if (!def) return fail({ code: "not_connected", message: "That app isn't available." });
+    const native = this.native(def);
+    if (native) return this.callNative(userId, def, native, tool, args);
     try {
       const client = await this.open(userId, def);
       const res = await client.callTool({ name: tool, arguments: args }, undefined, { timeout: this.callMs });
@@ -194,6 +224,33 @@ export class ConnectorHub {
         return fail({ code: "rejected", message: `${def.name} didn't accept that. ${err.message.replace(/^MCP error -?\d+:\s*/, "").slice(0, 200)}` });
       }
       return fail(f);
+    }
+  }
+
+  /** A native tool, held to the same twenty seconds and the same failure shape as an MCP one. */
+  private async callNative(userId: string, def: ConnectorDef, native: NativeConnector, tool: string, args: Args): Promise<CallOutcome> {
+    if (!native.tools().some((t) => t.name === tool)) {
+      return fail({ code: "unknown_tool", message: `${def.name} doesn't have an action called ${tool.slice(0, 40)}.` });
+    }
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const out = await Promise.race([
+        native.call(userId, tool, args),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new ConnectorError("timeout", `${def.name} took too long to answer.`)), this.callMs);
+          timer.unref?.();
+        }),
+      ]);
+      const key = `${userId}|${def.id}`;
+      this.signIn.delete(key);
+      if (out.ok && def.auth !== "none") void this.o.store.upsertConnection(userId, def.id, { lastUsedAt: this.now() }).catch(() => {});
+      return out;
+    } catch (err) {
+      const f = toFail(err, def.name);
+      if (f.code === "needs_reconnect") this.signIn.add(`${userId}|${def.id}`);
+      return fail(f);
+    } finally {
+      clearTimeout(timer);
     }
   }
 

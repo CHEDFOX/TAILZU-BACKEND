@@ -16,13 +16,15 @@ import { AGENT_SYSTEM } from "../agent/prompt.js";
 import type { ConnectorPlan, ConnectorsRuntime } from "../agent/run.js";
 import { fenceTags, stripFenceTags } from "../pipeline/assistPrompt.js";
 import { getConfig } from "../config.js";
+import { getNote, listNotes } from "../notes/store.js";
 import { approvalCard } from "./card.js";
-import { enabledCatalog, enabledIds, type ConnectorDef } from "./catalog.js";
+import { ALWAYS_ON, enabledCatalog, enabledIds, type ConnectorDef } from "./catalog.js";
 import { ConnectorHub } from "./client.js";
+import { buildNatives, type GoogleOAuth, type NotesSource } from "./google/index.js";
 import { pickConnectors, pickTools, type Card } from "./router.js";
 import { connectorStore, type ConnectorStore } from "./store.js";
 import { TaskService, type TasksOptions } from "./tasks.js";
-import { isHinglish } from "./words.js";
+import { isHinglish, wordsFor } from "./words.js";
 
 export const CONNECTOR_ADDENDUM = [
   "",
@@ -64,7 +66,14 @@ const CARDS_WAIT_MS = 5000;
 
 export interface ConnectorsOptions {
   store?: ConnectorStore;
+  /** The apps on offer. Default: the ones named in CONNECTORS_ENABLED_IDS, plus the always-on ones (the email hand-off). */
   catalog?: ConnectorDef[];
+  /** Google's OAuth client for the native Google apps. Default: GOOGLE_CONNECT_CLIENT_ID / _SECRET; null when unset. */
+  google?: GoogleOAuth | null;
+  /** Where save_note reads the person's notes. Default: src/notes/store. */
+  notes?: NotesSource;
+  /** The fetch the native apps and Google sign-in use. Tests hand in a fake. */
+  fetchFn?: typeof fetch;
   redirectUrl?: string;
   callTimeoutMs?: number;
   notify?: TasksOptions["notify"];
@@ -76,6 +85,8 @@ export interface Connectors {
   hub: ConnectorHub;
   tasks: TaskService;
   redirectUrl: string;
+  /** The OAuth client the native Google apps sign in with; null when the server has none. */
+  google: GoogleOAuth | null;
   /** `profileLanguage` is the person's chosen app language, asked only when a confirm card is worded. */
   runtimeFor(userId: string, profileLanguage?: () => Promise<string | undefined>): ConnectorsRuntime;
 }
@@ -83,9 +94,15 @@ export interface Connectors {
 export function createConnectors(o: ConnectorsOptions = {}): Connectors {
   const cfg = getConfig();
   const store = o.store ?? connectorStore();
-  const catalog = o.catalog ?? enabledCatalog(enabledIds(cfg.CONNECTORS_ENABLED_IDS));
+  const catalog = o.catalog ?? [...enabledCatalog(enabledIds(cfg.CONNECTORS_ENABLED_IDS)), ...ALWAYS_ON];
   const redirectUrl = o.redirectUrl ?? cfg.CONNECTOR_REDIRECT_URL;
-  const hub = new ConnectorHub({ store, catalog, redirectUrl, callTimeoutMs: o.callTimeoutMs, now: o.now });
+  const google: GoogleOAuth | null = o.google !== undefined ? o.google
+    : cfg.GOOGLE_CONNECT_CLIENT_ID && cfg.GOOGLE_CONNECT_CLIENT_SECRET
+      ? { clientId: cfg.GOOGLE_CONNECT_CLIENT_ID, clientSecret: cfg.GOOGLE_CONNECT_CLIENT_SECRET }
+      : null;
+  const withFetch = google && o.fetchFn ? { ...google, fetchFn: o.fetchFn } : google;
+  const natives = buildNatives(catalog, { store, google: withFetch, notes: o.notes ?? storedNotes(), now: o.now });
+  const hub = new ConnectorHub({ store, catalog, natives, redirectUrl, callTimeoutMs: o.callTimeoutMs, now: o.now });
   const tasks = new TaskService({ store, hub, now: o.now, notify: o.notify });
 
   const runtimeFor = (userId: string, profileLanguage?: () => Promise<string | undefined>): ConnectorsRuntime => ({
@@ -93,6 +110,8 @@ export function createConnectors(o: ConnectorsOptions = {}): Connectors {
       const have = (await store.listConnections(userId))
         .filter((c) => c.tokensEnc)
         .flatMap((c) => { const def = hub.def(c.connectorId); return def ? [{ def, lastUsedAt: c.lastUsedAt }] : []; });
+      // An app that needs no permission is always among them.
+      for (const def of hub.catalog) if (def.auth === "none") have.push({ def, lastUsedAt: null });
       if (!have.length) return null;
       const picks = pickConnectors(said, req.app, have);
       if (!picks.length) return null;
@@ -112,6 +131,12 @@ export function createConnectors(o: ConnectorsOptions = {}): Connectors {
     },
     async use(runId, said, line, opts) {
       const o = await tasks.use(userId, runId, said, line, opts);
+      if (o.kind === "open") {
+        // The hand-off: the run says one line, in their voice, and opens the link.
+        const lang = isHinglish(opts.language) ? opts.language : await profileLanguage?.().catch(() => undefined);
+        const w = wordsFor(lang ?? opts.language);
+        return { ...o, label: w("mail.open"), say: w("mail.done") };
+      }
       if (o.kind !== "approval") return o;
       // The confirm card, worded for the person: a Hinglish profile reads
       // Hinglish whatever language the device asked in.
@@ -121,5 +146,17 @@ export function createConnectors(o: ConnectorsOptions = {}): Connectors {
     settle: (runId, ending) => tasks.settle(userId, runId, ending),
   });
 
-  return { store, hub, tasks, redirectUrl, runtimeFor };
+  return { store, hub, tasks, redirectUrl, google: withFetch, runtimeFor };
+}
+
+/** Tailzu's own notes, for save_note: one by id, or the latest. Read as the person, by id, with the server's data client. */
+function storedNotes(): NotesSource {
+  return {
+    async find(userId, id) {
+      const user = { id: userId };
+      if (id) return getNote(user, id);
+      const [latest] = await listNotes(user, 1);
+      return latest ? getNote(user, latest.id) : null;
+    },
+  };
 }

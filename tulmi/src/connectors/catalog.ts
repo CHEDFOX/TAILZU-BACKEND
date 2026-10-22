@@ -17,12 +17,25 @@
  * aliases are the words people actually say ("calendar", "jira", "tickets"),
  * not product names alone.
  *
+ * kind:
+ *   "mcp"     (default) a remote MCP server the client in client.ts talks to.
+ *   "native"  our own code against the vendor's documented REST API
+ *             (src/connectors/google/), behind the same interface the engine
+ *             uses: tools with names, descriptions, schemas and annotations,
+ *             and call(tool, args). Router, risk gate, approvals, audit, cards
+ *             and screens cannot tell the two apart. For these `verified: true`
+ *             means the code was written against the vendor's documented API.
+ *
  * auth:
- *   "oauth"  the vendor's MCP OAuth, with dynamic client registration; the
- *            person signs in on the vendor's page (oauth.ts).
+ *   "oauth"  the vendor's OAuth. For an MCP app: MCP dynamic client
+ *            registration, signed in on the vendor's page (oauth.ts). For a
+ *            native Google app: authorization code + PKCE with our own
+ *            registered client (google/oauth.ts). The screens treat both alike.
  *   "url"    a per-user secret URL the person pastes (Zapier MCP). It is the
  *            credential, so it is stored encrypted like a token, and it must
  *            be on the host of `url` below, over https.
+ *   "none"   needs no permission at all (the email hand-off): there is nothing
+ *            to connect, so it is `hidden` from the list of apps.
  */
 export interface ConnectorDef {
   id: string;
@@ -32,9 +45,17 @@ export interface ConnectorDef {
   oneLine: string;
   /** Words people say when they mean this app. */
   aliases: string[];
-  /** The vendor's remote MCP endpoint (for "url" auth: the host the pasted URL must be on). */
+  /** The vendor's remote MCP endpoint (for "url" auth: the host the pasted URL must be on; for a native app: the REST API it calls). */
   url: string;
-  auth: "oauth" | "url";
+  auth: "oauth" | "url" | "none";
+  /** "mcp" unless said otherwise. */
+  kind?: "mcp" | "native";
+  /** Native only: whose OAuth it is. */
+  provider?: "google";
+  /** Native OAuth only: the scopes asked, only when the person taps Connect on this app. All must be granted. */
+  scopes?: string[];
+  /** Not listed as an app to connect (the screens never see it); its tools are simply there. */
+  hidden?: boolean;
   /** The vendor's official docs confirm the URL, the transport and a sign-in route this code can drive. */
   verified: boolean;
   /** What the docs say about transport and sign-in, and what is still missing. For us, never shown. */
@@ -91,6 +112,44 @@ export const CATALOG: readonly ConnectorDef[] = [
     url: "https://mcp.zapier.com/api/v1/connect", auth: "url", verified: true,
     docs: "https://docs.zapier.com/mcp/overview/how-connections-work",
     notes: "Streamable HTTP only, no SSE. Sign-in is OAuth through the MCP client, or a connection token made at mcp.zapier.com and sent as Authorization: Bearer or as ?token= on the URL; the person pastes that URL here. The docs do not say whether dynamic client registration is supported, and this entry does not use it. The docs prefer the header to a URL token.",
+  },
+  {
+    id: "google-calendar", name: "Google Calendar", category: "Calendar", kind: "native", provider: "google",
+    oneLine: "See your schedule, find free time, and add, move or cancel events in Google Calendar.",
+    aliases: ["calendar", "google calendar", "meeting", "meetings", "schedule", "invite", "event", "events", "appointment", "free time", "availability", "busy"],
+    scopes: ["https://www.googleapis.com/auth/calendar.events", "https://www.googleapis.com/auth/calendar.readonly"],
+    url: "https://www.googleapis.com/calendar/v3", auth: "oauth", verified: true,
+    docs: "https://developers.google.com/workspace/calendar/api/v3/reference",
+    notes: "Our own code against Calendar API v3 (events.list/insert/patch/delete, freeBusy.query, settings.get). OAuth 2.0 authorization code with PKCE, access_type=offline, tokens at oauth2.googleapis.com/token. calendar.events lets it change events, calendar.readonly lets it read the calendar's settings and free/busy; both are asked together. While Google reviews these (sensitive) scopes only listed test users can connect.",
+  },
+  {
+    id: "google-docs", name: "Google Docs", category: "Docs", kind: "native", provider: "google",
+    oneLine: "Write a new Google Doc from your words, or turn a meeting note into a Doc.",
+    aliases: ["doc", "docs", "document", "google doc", "google docs", "write up", "meeting note", "minutes"],
+    scopes: ["https://www.googleapis.com/auth/drive.file"],
+    url: "https://docs.googleapis.com/v1", auth: "oauth", verified: true,
+    docs: "https://developers.google.com/workspace/docs/api/reference/rest/v1/documents",
+    notes: "Our own code against Docs API v1 (documents.create and documents:batchUpdate), both of which accept the drive.file scope: Tailzu can only touch the Docs it makes itself, never the rest of the Drive. Same OAuth as Calendar.",
+  },
+];
+
+/**
+ * Apps that are simply there when CONNECTORS is on, with nothing to connect.
+ * Not in CATALOG, so CONNECTORS_ENABLED_IDS neither turns them on nor off, and
+ * not listed on the screens (`hidden`).
+ *
+ * The email hand-off writes an email in Gmail's compose window for the person
+ * to check and send themselves. Tailzu never sees their mailbox and never
+ * sends anything, so it asks for no permission at all.
+ */
+export const ALWAYS_ON: readonly ConnectorDef[] = [
+  {
+    id: "email-handoff", name: "Gmail", category: "Email", kind: "native", hidden: true,
+    oneLine: "Write an email in Gmail for you to check and send yourself.",
+    aliases: ["email", "e-mail", "mail", "gmail", "compose", "draft an email", "write an email", "send an email"],
+    url: "https://mail.google.com/mail/", auth: "none", verified: true,
+    docs: "https://www.rfc-editor.org/rfc/rfc6068",
+    notes: "No API and no sign-in: a Gmail compose link (https://mail.google.com/mail/?view=cm&fs=1&to=&su=&body=) opened in the person's own browser, with a mailto: link (RFC 6068) as the fallback. Gmail does not document its compose link; it is long-standing and widely used, and if it ever stops working the mailto: still does. The person presses Send.",
   },
 ];
 

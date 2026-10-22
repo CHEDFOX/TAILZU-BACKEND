@@ -437,6 +437,12 @@ async function useTool(line: UseLine, runId: string, hold: UseHold | undefined, 
   if (o.kind === "result") {
     hold.results.push(`${line.connector}.${line.tool}: ${o.text}`);
     hold.again = true;
+  } else if (o.kind === "open") {
+    // The hand-off: say the one line, have the device open the link (Gmail's
+    // compose window, written for them to check and send), and finish.
+    sink.emit({ t: "say", text: o.say ?? "I've written it in Gmail. Check it and hit Send." });
+    sink.emit({ t: "open", url: o.url, label: o.label, ...(o.fallback ? { fallback: o.fallback } : {}) });
+    sink.emit({ t: "done" });
   } else if (o.kind === "approval") {
     // The card is the server's: its words, its buttons, the routes they call.
     sink.emit({ t: "approve", taskId: o.taskId, approval: o.approval, ...(o.card ? { card: o.card } : {}) });
