@@ -706,7 +706,10 @@ export interface AgentStepRequest {
   /** What they said or typed, ≤ 1000. With audio it is replaced by what was
    *  heard; audio on a later step is their answer to an ASK. */
   utterance?: string;
-  platform: "mac" | "win";
+  /** mac or win on POST /v1/agent (anything else is a 400). ios and android
+   *  come only from the phone's POST /v1/assistant/ask, which builds its own
+   *  step with no screen; nothing is ever pressed or typed on a phone. */
+  platform: "mac" | "win" | "ios" | "android";
   /** The front app's short label, ≤ 60. */
   app: string;
   /** A private window or a sensitive app: refused ("private"). The device
@@ -941,17 +944,58 @@ export type AgentEvent =
    *  device shows `approval.preview` on its confirm card and calls
    *  POST /v1/tasks/:taskId/approve or /deny; nothing has been done yet. */
   | { t: "approve"; taskId: string; approval: AgentApproval; card?: ApprovalCard }
-  /** Not terminal (a `done` follows): open a link on the person's computer.
-   *  Only the email hand-off sends it, with a Gmail compose link
-   *  (https://mail.google.com/mail/?view=cm&fs=1&to=..&su=..&body=..) and a
-   *  mailto: `fallback`. The desktop opens those two kinds of link and nothing
-   *  else; the person reads the email and presses Send themselves. */
+  /** Not terminal (a `done` follows): open a link on the person's computer,
+   *  a hand-off with everything filled in for them to finish in the other
+   *  app (they press Send, Post or Book; Tailzu sends nothing). Only these
+   *  links are ever sent, every argument percent-encoded (the backend's
+   *  connectors/handoffs/links.ts is the list):
+   *    https://mail.google.com/mail/?view=cm&fs=1&to=..&su=..&body=.. with a
+   *      mailto: `fallback` (the email hand-off)
+   *    https://wa.me/<digits>?text=..  https://wa.me/?text=..  https://api.whatsapp.com/send?..
+   *    https://t.me/share/url?url=..  https://t.me/<username>?text=..
+   *    https://www.google.com/maps/dir/?api=1&..  https://www.google.com/maps/search/?api=1&..
+   *    https://m.uber.com/ul/?..  https://www.amazon.in/s?k=..  https://www.flipkart.com/search?q=..
+   *    https://www.youtube.com/results?search_query=..  https://music.youtube.com/search?q=..
+   *    https://open.spotify.com/search/..  https://www.threads.com/intent/post?text=..
+   *    https://www.booking.com/searchresults.html?..
+   *  A phone's own links (tel:, sms:, upi://pay?..) never come to a computer:
+   *  there the run says one line ("That one's for your phone. Ask me there.")
+   *  and opens nothing. A desktop opens only links on this list. */
   | { t: "open"; url: string; label: string; fallback?: string }
   /** TERMINAL. */
   | { t: "done"; text?: string }
   /** TERMINAL. Codes: private, too_many_steps, no_speech, bad_target,
    *  model_unavailable, internal. */
   | { t: "error"; code: string; message: string };
+
+// ---------------------------------------------------------------------------
+// REST: the phone's Ask  (POST /v1/assistant/ask)
+// ---------------------------------------------------------------------------
+//
+// One command typed or said into Tailzu on the phone, run by the same planner
+// and connected apps as the desktop's Ask, with no screen behind it. Answered
+// with one JSON object the phone's screen acts on with the actions it already
+// has: it shows `say`, opens `open.url` when there is one, and goes to the
+// confirm sheet (assistant_approve) when there is a `taskId`. 404 while
+// CONNECTORS is off; 400 for no text; 401 and 429 as everywhere.
+
+export interface AssistantAskRequest {
+  /** What they typed or said, ≤ 1000. */
+  text: string;
+  /** Their language, when the phone knows it; otherwise X-App-Language, then the profile's. */
+  lang?: string;
+  /** "ios" or "android". Optional: the server screen sends it; without it the User-Agent decides, iOS when unsure. */
+  platform?: "ios" | "android";
+}
+
+export interface AssistantAskResponse {
+  /** One line to show (and say): the answer, the hand-off's line, or a question back. */
+  say: string;
+  /** A hand-off to open, already checked: a link on the list in the `open` agent event above, tel:, sms: or upi://pay?.. */
+  open?: { url: string; label: string; fallback?: string };
+  /** Something waits for their yes: the task to show on the confirm sheet. */
+  taskId?: string;
+}
 
 // ---------------------------------------------------------------------------
 // REST: text-to-speech  (POST /v1/speak)

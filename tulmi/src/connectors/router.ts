@@ -8,7 +8,9 @@
  *      the app's name in their words is the strongest signal; the app in front
  *      of them, a word shared with the app's one-line description, and use in
  *      the last week add to it. An app with no signal from the words or the
- *      front app is not a candidate, however recently it was used.
+ *      front app is not a candidate, however recently it was used. An app
+ *      that is always on (the hand-offs) is one only when it is named or an
+ *      alias is said.
  *   2. keep the top three.
  *   3. rank THEIR tools by words shared with what was said (a name hit counts
  *      more than a description hit) and keep twelve across all three.
@@ -52,7 +54,10 @@ export function pickConnectors(utterance: string, frontApp: string, have: Candid
   const saidWords = new Set(keywords(utterance));
   const scored: ConnectorScore[] = [];
   for (const { def, lastUsedAt } of have) {
-    const names = [def.name, def.id, ...def.aliases].map((a) => ` ${wordsOf(a).join(" ")} `).filter((a) => a.trim());
+    // The name and the aliases, never the id: an id is a key, and some are
+    // everyday words ("make", "monday") that would pick the app on "make a
+    // quiz" or "remind me on monday".
+    const names = [def.name, ...def.aliases].map((a) => ` ${wordsOf(a).join(" ")} `).filter((a) => a.trim());
     if (def.custom) {
       if (names.some((n) => said.includes(n))) scored.push({ id: def.id, score: 10 });
       continue;
@@ -60,6 +65,11 @@ export function pickConnectors(utterance: string, frontApp: string, have: Candid
     let signal = 0;
     for (const a of def.aliases) if (said.includes(` ${wordsOf(a).join(" ")} `)) signal += 10;
     if (names.some((n) => said.includes(n)) && signal === 0) signal += 10;
+    // An app that is always there (a hand-off) has to be named, or one of
+    // its words said: a word shared with its description, or its app in
+    // front, would put its tools in front of the planner on half of every
+    // request.
+    if (def.auth === "none" && signal === 0) continue;
     if (names.some((n) => front.includes(n))) signal += 4;
     const desc = new Set(keywords(def.oneLine));
     for (const w of saidWords) if (desc.has(w)) signal += 2;

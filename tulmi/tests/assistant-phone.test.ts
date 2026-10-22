@@ -93,7 +93,7 @@ describe("Connected apps", () => {
   const s = build("assistant_apps", { assistant: { apps, names } });
 
   it("is the phone's own set of ids, and opts out of the capitalising pass so the words stay the table's", () => {
-    expect([...ASSISTANT_SCREENS].sort()).toEqual(["assistant_app_tools", "assistant_approve", "assistant_apps", "assistant_tasks"]);
+    expect([...ASSISTANT_SCREENS].sort()).toEqual(["assistant_app_tools", "assistant_approve", "assistant_apps", "assistant_ask", "assistant_tasks"]);
     expect((s.root as AnyNode).props!.keepCase).toBe(true);
     expect(s.hideHeader).toBe(true);
     const all = texts(s.root);
@@ -267,12 +267,73 @@ describe("opened by a push or a link", () => {
   });
 });
 
+describe("Ask", () => {
+  const s = build("assistant_ask", { connectorsOn: true, platform: "android" });
+  const ask = () => {
+    const pill = pressing(s.root, EN["ask.go"])!;
+    return pill.on!.onPress;
+  };
+
+  it("has the field, the mic writing into it, and Do it", () => {
+    expect((s.root as AnyNode).props!.keepCase).toBe(true);
+    const field = nodes(s.root, (n) => n.type === "TextField")[0]!;
+    expect(field.bind).toEqual({ value: "ask.text" });
+    expect(field.props!.placeholder).toBe(EN["ask.ph"]);
+    const mic = nodes(s.root, (n) => n.type === "VoiceButton")[0]!;
+    expect(mic.bind).toEqual({ value: "ask.text" });
+    expect(mic.props!.label).toBe(EN["ask.mic"]);
+    expect(s.state).toMatchObject({ ask: { text: "", busy: false, res: {} } });
+  });
+
+  it("Do it asks the server, and acts on the answer only with actions every build runs", () => {
+    const on = ask();
+    expect(on).toMatchObject({ kind: "condition", if: { truthy: "ask.text" }, else: { kind: "toast", message: EN["ask.empty"] } });
+    const call = actions(on).find((a) => a.kind === "callEndpoint");
+    expect(call).toMatchObject({ method: "POST", path: "/v1/assistant/ask", body: { text: "$state.ask.text", platform: "android" }, assignTo: "ask.res" });
+    const after = actions(call.onSuccess);
+    expect(new Set(after.map((a) => a.kind))).toEqual(new Set(["sequence", "setState", "condition", "openUrl", "navigate"]));
+    expect(after).toContainEqual({ kind: "condition", if: { truthy: "ask.res.open.url" }, then: { kind: "openUrl", url: "$state.ask.res.open.url", handoff: true } });
+    expect(after).toContainEqual({ kind: "condition", if: { truthy: "ask.res.taskId" }, then: { kind: "navigate", screenId: "assistant_approve" } });
+    expect(actions(call.onError).map((a) => a.kind)).toContain("toast");
+  });
+
+  it("shows the answer from state, never from a node a translator could reword", () => {
+    const answer = nodes(s.root, (n) => n.type === "Text" && n.bind?.content === "ask.res.say");
+    expect(answer).toHaveLength(1);
+    expect(nodes(s.root, (n) => n.visibleIf !== undefined && JSON.stringify(n.visibleIf) === JSON.stringify({ truthy: "ask.res.say" }))).toHaveLength(1);
+  });
+
+  it("has examples to tap, in their voice, each filling in what it shows", () => {
+    const ex = [EN["ask.ex1"], EN["ask.ex2"], EN["ask.ex3"]];
+    expect(ex).toEqual(["Tell Mom I’m on my way on WhatsApp", "Kal 9 baje gym ka reminder", "Directions to the airport"]);
+    expect((s.state as any).ask.ex).toEqual(ex);
+    const fills = actions(s.root).filter((a) => a.kind === "setState" && a.path === "ask.text" && a.value !== "").map((a) => a.value);
+    expect(fills).toEqual(ex);
+    for (let i = 0; i < 3; i++) expect(nodes(s.root, (n) => n.bind?.content === `ask.ex.${i}`)).toHaveLength(1);
+    const hg = build("assistant_ask", { connectorsOn: true, language: "hinglish" });
+    expect((hg.state as any).ask.ex).toEqual([HG["ask.ex1"], HG["ask.ex2"], HG["ask.ex3"]]);
+  });
+
+  it("says so, and asks nothing, while connected apps are off", () => {
+    const off = build("assistant_ask", {});
+    expect(texts(off.root)).toContain(EN["apps.off"]);
+    expect(actions(off.root).some((a) => a.kind === "callEndpoint")).toBe(false);
+  });
+});
+
 describe("where they are reached", () => {
-  it("Settings offers Connected apps and Tasks only while connected apps are on", () => {
+  it("Settings offers Ask, Connected apps and Tasks only while connected apps are on", () => {
     const row = (s: any, id: string) => actions(s.root).find((a) => a.kind === "navigate" && a.screenId === id);
+    expect(row(build("settings", { connectorsOn: true }), "assistant_ask")).toBeTruthy();
     expect(row(build("settings", { connectorsOn: true }), "assistant_apps")).toBeTruthy();
     expect(row(build("settings", { connectorsOn: true }), "assistant_tasks")).toBeTruthy();
     expect(row(build("settings", {}), "assistant_apps")).toBeFalsy();
+    expect(row(build("settings", {}), "assistant_ask")).toBeFalsy();
+  });
+
+  it("Connected apps leads to Ask", () => {
+    const s = build("assistant_apps", { assistant: { apps, names } });
+    expect(pressing(s.root, EN["ask.h"])!.on!.onPress).toMatchObject({ kind: "sequence", actions: [{ kind: "haptic" }, { kind: "navigate", screenId: "assistant_ask" }] });
   });
 });
 
@@ -283,6 +344,7 @@ describe("in Hinglish", () => {
       await localize(build("assistant_apps", { assistant: { apps, names } }), "hinglish"),
       await localize(build("assistant_tasks", { assistant: { tasks, names } }), "hinglish"),
       await localize(build("assistant_approve", { assistant: { tasks, names }, params: { taskId: "w1" } }), "hinglish"),
+      await localize(build("assistant_ask", { connectorsOn: true, language: "hinglish" }), "hinglish"),
     ];
     const json = JSON.stringify(done);
     const want = [
@@ -291,6 +353,7 @@ describe("in Hinglish", () => {
       HG["a4.w"], HG["a4.r"], HG["a4.d"], HG["a4.wm"].replace("{app}", "Notion"), HG["a4.end"],
       HG["a3.h.send"], HG["a3.lab.send"], HG["a3.wwl"].replace("{app}", "Notion"), HG["a3.ok"], HG["a3.edit"], HG["a3.later"],
       HG["a3.reason"].replace("{app}", "Notion"), HG["a3.nobio"], HG["a3.left"], HG["a3.change"],
+      HG["ask.h"], HG["ask.p"], HG["ask.ph"], HG["ask.go"], HG["ask.mic"], HG["ask.try"], HG["ask.busy"], HG["ask.empty"], HG["ask.ex1"],
     ];
     for (const w of want) expect(json, w).toContain(w);
     // The model is asked for nothing that is ours, and for nothing that is theirs.

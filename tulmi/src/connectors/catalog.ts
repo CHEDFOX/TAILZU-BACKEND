@@ -14,6 +14,13 @@
  * to be made in the vendor's console and put in CONNECTOR_OAUTH_CLIENTS first.
  * Vendors move these; read the page again when one stops working.
  *
+ * Only the docs count. A sign-in seen only in the vendor's live OAuth metadata
+ * (its /.well-known documents) is `verified: false`, with notes that say to try
+ * it once live; so is a transport the docs show only as a client setting
+ * (`--transport http`, `"type": "http"`) and never name. Some vendors also take
+ * client ID metadata documents (CIMD); oauth.ts does not use them yet (it sets
+ * no clientMetadataUrl), so for us dynamic client registration is the way in.
+ *
  * `oneLine` and `aliases` are what the router matches an utterance against, so
  * aliases are the words people actually say ("calendar", "jira", "tickets"),
  * not product names alone.
@@ -129,7 +136,7 @@ export const CATALOG: readonly ConnectorDef[] = [
     aliases: ["jira", "confluence", "atlassian", "ticket", "tickets", "issue", "issues", "epic", "backlog"],
     url: "https://mcp.atlassian.com/v2/mcp", auth: "oauth", verified: false,
     docs: "https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/",
-    notes: "v2 is the current endpoint; the older /v1/mcp moves to v2 on 2027-03-01 and clients may need to clear cached client ids. The docs show type http but do not name Streamable HTTP or mention /sse. OAuth 2.1 is the primary sign-in; an API token is optional (admins control it). Not preRegistered: its live auth server metadata (issuer auth.atlassian.com/<tenant>, read 2026-10-22) lists client_id_metadata_document_supported, a registration endpoint, S256 and \"none\", so Tailzu signs in with its client document (CIMD), else registers itself; and Atlassian's MCP server does not take a client made in its developer console (an OAuth 2.0 / 3LO app: jira.atlassian.com/browse/ROVO-870, \"exclusively uses OAuth 2.1 with Dynamic Client Registration\", open as of 2026-07). Each Atlassian organisation's admin decides which domains may connect (Atlassian Administration, Rovo MCP server, Domains; support.atlassian.com/security-and-access-policies/docs/control-atlassian-mcp-server-settings/), so the live try is what tells.",
+    notes: "v2 is the current endpoint (github.com/atlassian/atlassian-mcp-server: new setups should use /v2/mcp); the older /v1/mcp moves to v2 on 2027-03-01 and clients may need to clear cached client ids; /v1/sse ended 2026-06-30. The docs show type http but do not name Streamable HTTP. They say OAuth 2.1 (or an API token, if an admin allows it) but not how a client registers. The v2 authorization server (auth.atlassian.com, named by the 401's resource_metadata) offers both dynamic client registration and CIMD in its live metadata, but sign-in only works from an allowed domain: the default list is Atlassian's own (claude.ai, chatgpt.com, vscode.dev, localhost and others), so until Atlassian puts Tailzu's callback domain on it, each org's admin must add it (support.atlassian.com/security-and-access-policies/docs/available-atlassian-rovo-mcp-server-domains/). Jira Service Management tools take an API token only. Not preRegistered: Atlassian's MCP server does not take a client made in its developer console (jira.atlassian.com/browse/ROVO-870, open as of 2026-07), so Tailzu signs in with its client document (CIMD), else registers itself; the live try is what tells.",
   },
   {
     id: "asana", name: "Asana", category: "Projects",
@@ -165,26 +172,279 @@ export const CATALOG: readonly ConnectorDef[] = [
     docs: "https://developers.google.com/workspace/docs/api/reference/rest/v1/documents",
     notes: "Our own code against Docs API v1 (documents.create and documents:batchUpdate), both of which accept the drive.file scope: Tailzu can only touch the Docs it makes itself, never the rest of the Drive. Same OAuth as Calendar.",
   },
+  {
+    id: "google-tasks", name: "Google Tasks", category: "Tasks", kind: "native", provider: "google",
+    oneLine: "See your to-do list, add a task or a reminder for a day, tick one off or delete it in Google Tasks.",
+    aliases: ["google tasks", "tasks", "task", "to-do", "todo", "to-do list", "to do list", "remind me", "reminder", "reminders", "list", "kaam", "yaad dilana", "yaad dila do"],
+    scopes: ["https://www.googleapis.com/auth/tasks"],
+    url: "https://tasks.googleapis.com/tasks/v1", auth: "oauth", verified: true,
+    docs: "https://developers.google.com/workspace/tasks/reference/rest",
+    notes: "Our own code against Tasks API v1 (tasklists.list, tasks.list/insert/patch/delete). `tasks` is the one scope that writes (tasks.readonly only reads); Google treats it as sensitive. A task's due is a day only: the API records no time (\"It isn't possible to read or write the time that a task is scheduled for\"), so a time the person says goes in its notes. Same OAuth as Calendar.",
+  },
+  {
+    id: "google-sheets", name: "Google Sheets", category: "Docs", kind: "native", provider: "google",
+    oneLine: "Start a Google Sheet, add rows to one, or read one back: an expenses sheet, a list, a table.",
+    aliases: ["google sheets", "google sheet", "sheet", "sheets", "spreadsheet", "expenses", "expense", "hisaab", "hisab", "kharcha", "budget", "table"],
+    scopes: ["https://www.googleapis.com/auth/drive.file"],
+    url: "https://sheets.googleapis.com/v4", auth: "oauth", verified: true,
+    docs: "https://developers.google.com/workspace/sheets/api/reference/rest",
+    notes: "Our own code against Sheets API v4 (spreadsheets.create, spreadsheets.values.append and .get), each of which lists drive.file among its scopes, and Drive API v3 files.list/get to find a sheet by name (drive.file lists only the files Tailzu made). drive.file is non-sensitive. Tailzu can only touch the sheets it made itself. Values go in RAW, never as formulas.",
+  },
+  {
+    id: "google-forms", name: "Google Forms", category: "Docs", kind: "native", provider: "google",
+    oneLine: "Make a Google Form (a survey, a quiz, a poll) with its questions, and see who answered what.",
+    aliases: ["google forms", "google form", "form", "forms", "quiz", "survey", "poll", "questionnaire", "responses", "sign-up form"],
+    scopes: ["https://www.googleapis.com/auth/drive.file"],
+    url: "https://forms.googleapis.com/v1", auth: "oauth", verified: true,
+    docs: "https://developers.google.com/workspace/forms/api/reference/rest",
+    notes: "Our own code against Forms API v1 (forms.create, forms.batchUpdate, forms.setPublishSettings, forms.get, forms.responses.list), every one of which lists drive.file among its scopes, so no Forms scope (forms.body, forms.responses.readonly, both sensitive) is asked. Forms made through the API after 2026-06-30 start unpublished; Tailzu creates with unpublished=true, adds the questions, then publishes. Same Drive lookup as Sheets.",
+  },
+  {
+    id: "google-classroom", name: "Google Classroom", category: "School", kind: "native", provider: "google",
+    oneLine: "See your classes, what classwork and homework is due and whether you turned it in, and the latest announcements in Google Classroom.",
+    aliases: ["google classroom", "classroom", "class", "classes", "assignment", "assignments", "homework", "due", "classwork", "coursework", "announcement", "announcements", "padhai"],
+    scopes: [
+      "https://www.googleapis.com/auth/classroom.courses.readonly",
+      "https://www.googleapis.com/auth/classroom.coursework.me.readonly",
+      "https://www.googleapis.com/auth/classroom.announcements.readonly",
+    ],
+    url: "https://classroom.googleapis.com/v1", auth: "oauth", verified: true,
+    docs: "https://developers.google.com/workspace/classroom/reference/rest",
+    notes: "Our own code against Classroom API v1, read only: courses.list (classroom.courses.readonly), courses.courseWork.list and courses.courseWork.studentSubmissions.list with userId=me (classroom.coursework.me.readonly), courses.announcements.list (classroom.announcements.readonly). All three sensitive. Due dates and times come in UTC. A school's Google Workspace admin can block third-party apps from Classroom data; then sign-in fails for that school's accounts.",
+  },
+  {
+    id: "google-youtube", name: "YouTube", category: "Music and video", kind: "native", provider: "google",
+    oneLine: "Search YouTube for videos, see your playlists, and add a video to one of them.",
+    aliases: ["youtube", "yt", "video", "videos", "playlist", "playlists", "my playlist", "youtube playlist"],
+    scopes: ["https://www.googleapis.com/auth/youtube"],
+    url: "https://www.googleapis.com/youtube/v3", auth: "oauth", verified: true,
+    docs: "https://developers.google.com/youtube/v3/docs",
+    notes: "Our own code against YouTube Data API v3 (search.list, playlists.list mine=true, videos.list, playlistItems.insert). playlistItems.insert takes youtube, youtube.force-ssl or youtubepartner, nothing smaller; `youtube` also covers the reads, so youtube.readonly is not asked beside it. Sensitive. Quota: search.list has its own bucket of 100 calls a day per Google project, playlistItems.insert costs 50 units of the 10,000 a day. Playing a video is the play hand-off, not this.",
+  },
+  // More MCP apps, read 2026-10-22. Each offers dynamic client registration,
+  // in its docs or only in its live metadata (then `verified: false`).
+  // Their aliases are the product's name, and a job word only where no Google
+  // app or hand-off says it: "tasks", "meeting" and "booking" are already
+  // theirs. An app with no alias in the words still gets a little from a word
+  // shared with its oneLine, so a oneLine leaves out a name that is an
+  // everyday word ("monday", or the "com" of a .com).
+  {
+    id: "todoist", name: "Todoist", category: "Tasks",
+    oneLine: "See, add, reschedule and complete tasks and projects in your Todoist to-do list.",
+    aliases: ["todoist", "to doist"],
+    url: "https://ai.todoist.net/mcp", auth: "oauth", verified: true,
+    docs: "https://developer.todoist.com/api/v1/",
+    notes: "\"Primary URL (Streamable HTTP): https://ai.todoist.net/mcp\". Dynamic client registration is documented (POST https://api.todoist.com/oauth/register, no auth, rate-limited, HTTPS redirect URIs, no review step); the live metadata points at todoist.com/oauth/register, which also exists, and the SDK uses the one it discovers. Registration defaults to client_secret_post, so ask for token_endpoint_auth_method none, as oauth.ts does. Scope data:read_write (deletes are data:delete, not asked). CIMD is documented too. On 2026-10-22 a registration with Tailzu's details came back 201 and /authorize kept our redirect URI; the redirect after a real login was not tried.",
+  },
+  {
+    id: "calendly", name: "Calendly", category: "Calendar",
+    oneLine: "See your Calendly event types, open times and booked meetings, and book or cancel one.",
+    aliases: ["calendly", "scheduling link"],
+    url: "https://mcp.calendly.com", auth: "oauth", verified: false,
+    docs: "https://developer.calendly.com/calendly-mcp-server",
+    notes: "The docs give the URL (hosted at https://mcp.calendly.com, no path) and the sign-in: OAuth 2.1 with dynamic client registration (RFC 7591, https://calendly.com/oauth/register), PKCE S256, token_endpoint_auth_method none; no pre-registered app, no personal tokens. Scopes mcp:scheduling:read and mcp:scheduling:write. The docs never name the transport; live, a POST answers 401 with resource_metadata and an Mcp-Session-Id header, which is Streamable HTTP. Try once live. Registration is rate-limited; oauth.ts registers once per person and app and keeps it.",
+  },
+  {
+    id: "granola", name: "Granola", category: "Meeting notes",
+    oneLine: "Ask about your meetings in Granola: their notes, transcripts and what was decided.",
+    aliases: ["granola", "transcript"],
+    url: "https://mcp.granola.ai/mcp", auth: "oauth", verified: true,
+    docs: "https://docs.granola.ai/help-center/sharing/integrations/mcp",
+    notes: "Streamable HTTP at /mcp, OAuth found by metadata discovery, and \"Granola MCP uses Dynamic Client Registration\": no client id or secret to enter, no API key route. CIMD is documented only for Enterprise clients (private_key_jwt); the live metadata offers it generally. Nine tools, almost all reads (query_granola_meetings, list_meetings, get_meeting_transcript...). A free plan sees only the last 30 days and some tools are paid-only; an Enterprise admin must switch MCP on.",
+  },
+  {
+    id: "otter", name: "Otter", category: "Meeting notes",
+    oneLine: "Search your Otter meetings and read their transcripts and summaries.",
+    aliases: ["otter", "transcript"],
+    url: "https://mcp.otter.ai/mcp", auth: "oauth", verified: false,
+    docs: "https://help.otter.ai/hc/en-us/articles/35287607569687-Otter-MCP-Server",
+    notes: "The help article (refuses scripted reads; its text is at help.otter.ai/api/v2/help_center/en-us/articles/35287607569687.json, updated 2026-10-15) gives the URL and \"All access is OAuth-authenticated\", and states no plan requirement. It names neither the transport nor how a client registers: the docs don't state it; live metadata offers dynamic client registration (https://otter.ai/oauth/register) and the server answers as Streamable HTTP; try once live. Three tools, all reads (search, fetch, user info); scopes profile:read and conversations:read. Otter has no public API key.",
+  },
+  {
+    id: "fireflies", name: "Fireflies", category: "Meeting notes",
+    oneLine: "Search your Fireflies meetings, read their transcripts and summaries, and share one.",
+    aliases: ["fireflies", "fire flies", "transcript"],
+    url: "https://api.fireflies.ai/mcp", auth: "oauth", verified: false,
+    docs: "https://docs.fireflies.ai/getting-started/mcp-configuration",
+    notes: "Streamable HTTP only, at POST https://api.fireflies.ai/mcp (not docs.fireflies.ai/mcp, which only searches the docs). Sign-in is OAuth with the Fireflies account, or an API key as a bearer. How a client registers: the docs don't state it; live metadata offers dynamic client registration (https://api.fireflies.ai/register) and CIMD; try once live. fireflies_share_meeting sends a transcript to email addresses, but no word in its name reads as a send to risk.ts, so check on the live try that its annotations make it more than a write.",
+  },
+  {
+    id: "evernote", name: "Evernote", category: "Notes",
+    oneLine: "Search, read and create notes, notebooks and tags in Evernote.",
+    aliases: ["evernote", "ever note"],
+    url: "https://mcp.evernote.com/mcp", auth: "oauth", verified: true,
+    docs: "https://dev.evernote.com/mcp/clients/any",
+    notes: "\"A standard remote MCP server over Streamable HTTP with OAuth. Any compliant client can connect\", and clients with OAuth dynamic client registration \"connect with no manual setup\" (live: https://accounts.evernote.com/auth/register, token auth none, scopes read, create, write, delete). In beta, and only for paid personal, Business and Teams plans: a free (Basic) account is refused, which looks like a broken Connect.",
+  },
+  {
+    id: "clickup", name: "ClickUp", category: "Projects",
+    oneLine: "Find, create and update tasks, lists and docs in ClickUp.",
+    aliases: ["clickup"],
+    url: "https://mcp.clickup.com/mcp", auth: "oauth", verified: false,
+    docs: "https://developer.clickup.com/docs/connect-an-ai-assistant-to-clickups-mcp-server",
+    notes: "The docs give the URL, \"We only support OAuth\" (OAuth 2.1 with PKCE, no API keys) and, on the setup page (…-mcp-server-1), \"Dynamic Discovery (DCR)\". The transport appears only as --transport http and \"Transport Type: HTTP\", never named. ClickUp's blog says it \"maintains an allowlist of vetted MCP clients\" and says nowhere how to get on it, so whether our hosted redirect is accepted is untried. The live metadata grants authorization_code only, no refresh_token: expect \"Sign in again\" whenever a token runs out. Try once live.",
+  },
+  {
+    id: "trello", name: "Trello", category: "Projects",
+    oneLine: "See, add and move cards and lists on your Trello boards.",
+    aliases: ["trello"],
+    url: "https://mcp.trello.com/v1", auth: "oauth", verified: false,
+    docs: "https://support.atlassian.com/trello/docs/connect-trello-to-ai-assistants-with-trello-mcp/",
+    notes: "The docs give the URL, \"Trello MCP uses OAuth 2.0\" and no API tokens for MCP; the transport only as type http in a Cursor link. How a client registers: the docs don't state it; live metadata offers dynamic client registration and CIMD, on the same Atlassian authorization server as Jira (auth.atlassian.com); try once live. The same allowlist applies: \"Access to the domain is restricted\" means an org admin must allow Tailzu's callback domain (Atlassian Administration, Connectors, Atlassian MCP server) until Atlassian adds it for everyone, and a Trello user with no admin cannot. Cards and lists are archived, never deleted.",
+  },
+  {
+    id: "calcom", name: "Cal.com", category: "Calendar",
+    oneLine: "See, book, reschedule or cancel your bookings, and check your availability.",
+    aliases: ["cal.com", "calcom", "cal dot com"],
+    url: "https://mcp.cal.com/mcp", auth: "oauth", verified: false,
+    docs: "https://cal.com/docs/mcp-server",
+    notes: "\"The hosted server uses Streamable HTTP transport with OAuth 2.1 authentication\", at https://mcp.cal.com/mcp, no API key. How a client registers: the docs don't state it; live metadata offers dynamic client registration (https://mcp.cal.com/oauth/register, PKCE S256, token auth none); try once live. The npx @calcom/cal-mcp server takes an API key and runs locally: not this.",
+  },
+  {
+    id: "airtable", name: "Airtable", category: "Docs",
+    oneLine: "Find, add and update records in your Airtable bases.",
+    aliases: ["airtable"],
+    url: "https://mcp.airtable.com/mcp", auth: "oauth", verified: false,
+    docs: "https://airtable.com/developers/agents/mcp/getting-started",
+    notes: "The docs give the URL and \"Our server supports Dynamic Client Registration (DCR)\" (also an admin-approved pre-registered app, and personal access tokens for scripts). No page names the transport: only claude mcp add --transport http in the support article. CIMD is in the live metadata only. Scopes include data.records:read/write and schema.bases:read/write. Try once live.",
+  },
+  {
+    id: "monday", name: "Monday.com", category: "Projects",
+    oneLine: "Find, create and update items on your boards.",
+    aliases: ["monday.com", "monday dot com"],
+    url: "https://mcp.monday.com/mcp", auth: "oauth", verified: true,
+    docs: "https://developer.monday.com/api-reference/docs/mcp-dynamic-client-registration",
+    notes: "\"Supports Streamable HTTP only at https://mcp.monday.com/mcp\" (developer.monday.com/api-reference/docs/integrate-with-monday-mcp; SSE is not supported). CIMD is recommended and dynamic client registration is the documented alternative: \"Any developer can use this path\". The docs name https://mcp.monday.com/register, but discovery gives https://auth.monday.com/oauth_ms/oauth/register, which the SDK uses. Until monday pre-approves Tailzu (its MCP integration form), the consent screen says \"Admin approval required\" and an account admin must approve it and its redirect URI once: a person who is not their account's admin cannot connect before that. A personal API token as a bearer is the other route.",
+  },
+  {
+    id: "make", name: "Make.com", category: "Automation",
+    oneLine: "Run the on-demand scenarios you built in Make.",
+    aliases: ["make.com", "make dot com", "make scenario", "integromat"],
+    url: "https://mcp.make.com", auth: "oauth", verified: false,
+    docs: "https://developers.make.com/mcp-server/make-mcp-server",
+    notes: "OAuth at the universal URL https://mcp.make.com over \"stateless Streamable HTTP\"; the person picks the organization and the scopes (\"Run your scenarios\"). How a client registers: the docs don't state it; live metadata offers dynamic client registration (https://www.make.com/oauth/v2/register/mcp); try once live. Its token endpoint takes client_secret_post only, so registration may refuse a public client or hand back a client secret, which the store would keep beside the client id, not encrypted. Only on-demand scenarios are exposed, but one can send, post or change data in any app it touches. The token URL (https://<zone>/mcp/u/<token>) changes host by zone, so the pasted-URL route cannot take it.",
+  },
+  {
+    id: "composio", name: "Composio", category: "Automation",
+    oneLine: "Act in the many apps you linked to Composio.",
+    aliases: ["composio"],
+    url: "https://connect.composio.dev/mcp", auth: "oauth", verified: false,
+    docs: "https://connect.composio.dev/api/onboarding/setup",
+    notes: "\"Transport: HTTP (streamable HTTP)\" at https://connect.composio.dev/mcp, with an OAuth sign-in prompt; a consumer API key (ck_...) in x-consumer-api-key is the other route. How a client registers: the docs don't state it; live metadata offers dynamic client registration (https://login.composio.dev/oauth2/register, token auth none); try once live. Never the developer URLs (backend.composio.dev/v3/mcp/...), and docs.composio.dev/mcp describes an old SSE host. Its tools act in 1000+ apps, each judged by risk.ts.",
+  },
+  {
+    id: "pipedream", name: "Pipedream", category: "Automation",
+    oneLine: "Act in the many apps you linked to Pipedream.",
+    aliases: ["pipedream", "pipe dream"],
+    url: "https://mcp.pipedream.net/v2", auth: "oauth", verified: false,
+    docs: "https://pipedream.com/docs/connect/mcp/users",
+    notes: "The docs and the 2025-10-01 changelog give https://mcp.pipedream.net/v2 and \"OAuth authentication with a static URL\", but neither the transport nor how a client registers: the docs don't state it; live metadata offers dynamic client registration; try once live. The 401 names no resource_metadata and /.well-known/oauth-protected-resource/v2 is a 404; the root one names https://mcp.pipedream.com (register at /api/oauth/register, token auth none), and the SDK falls back to the root on that 404. An app not yet linked in Pipedream answers a tool call with a link to connect it, which reaches the planner only as text. remote.mcp.pipedream.net is the developer server: not this.",
+  },
 ];
 
 /**
- * Apps that are simply there when CONNECTORS is on, with nothing to connect.
- * Not in CATALOG, so CONNECTORS_ENABLED_IDS neither turns them on nor off, and
- * not listed on the screens (`hidden`).
+ * Apps that are simply there when CONNECTORS is on, with nothing to connect:
+ * the hand-offs (src/connectors/handoffs). Not in CATALOG, so
+ * CONNECTORS_ENABLED_IDS neither turns them on nor off, and not listed on the
+ * screens (`hidden`).
  *
- * The email hand-off writes an email in Gmail's compose window for the person
- * to check and send themselves. Tailzu never sees their mailbox and never
- * sends anything, so it asks for no permission at all.
+ * Each opens another app on the person's own device with everything filled
+ * in (an email in Gmail, a message in WhatsApp, a payment in their UPI app, a
+ * route in Maps) for them to finish there. Tailzu never sees the account,
+ * never sends and never pays, so they ask for no permission and need no key.
+ * `url` is the link each one opens; `verified: true` means the vendor
+ * documents that link, `false` that it is the vendor's own search address,
+ * long-standing but undocumented (see `notes`).
  */
+const handoff = (o: Pick<ConnectorDef, "id" | "name" | "category" | "oneLine" | "aliases" | "url" | "verified" | "notes" | "docs">): ConnectorDef =>
+  ({ ...o, kind: "native", hidden: true, auth: "none" });
+
 export const ALWAYS_ON: readonly ConnectorDef[] = [
-  {
-    id: "email-handoff", name: "Gmail", category: "Email", kind: "native", hidden: true,
+  handoff({
+    id: "email-handoff", name: "Gmail", category: "Email",
     oneLine: "Write an email in Gmail for you to check and send yourself.",
     aliases: ["email", "e-mail", "mail", "gmail", "compose", "draft an email", "write an email", "send an email"],
-    url: "https://mail.google.com/mail/", auth: "none", verified: true,
+    url: "https://mail.google.com/mail/", verified: true,
     docs: "https://www.rfc-editor.org/rfc/rfc6068",
     notes: "No API and no sign-in: a Gmail compose link (https://mail.google.com/mail/?view=cm&fs=1&to=&su=&body=) opened in the person's own browser, with a mailto: link (RFC 6068) as the fallback. Gmail does not document its compose link; it is long-standing and widely used, and if it ever stops working the mailto: still does. The person presses Send.",
-  },
+  }),
+  handoff({
+    id: "whatsapp", name: "WhatsApp", category: "Messages",
+    oneLine: "Write a WhatsApp message to someone for you to send yourself.",
+    aliases: ["whatsapp", "whats app", "message", "tell", "text", "msg", "chat", "message karo", "bata do", "bol do"],
+    url: "https://wa.me/", verified: true,
+    docs: "https://faq.whatsapp.com/5913398998672934",
+    notes: "WhatsApp's click to chat: https://wa.me/<number>?text=<message> opens that chat with the message written; https://wa.me/?text=<message> lets the person pick the chat. The number is digits only with the country code (no +, zeros, brackets or dashes). The Help Center page draws itself with a script, so on 2026-10-22 its text was read from copies of it; the format is long-standing.",
+  }),
+  handoff({
+    id: "telegram", name: "Telegram", category: "Messages",
+    oneLine: "Write a Telegram message for you to send yourself.",
+    aliases: ["telegram", "tg", "telegram message"],
+    url: "https://t.me/", verified: true,
+    docs: "https://core.telegram.org/api/links",
+    notes: "Public username links t.me/<username>?text=<draft> put the draft in that chat's text box; share links t.me/share/url?url=<url>&text=<text> ask which chat. The share link's url is its one required field and goes first in the text box, so a message with no link of its own is sent as the url.",
+  }),
+  handoff({
+    id: "phone", name: "Phone", category: "Calls",
+    oneLine: "Call a number, or write a text message, on your phone for you to tap Call or Send.",
+    aliases: ["call", "phone", "ring", "dial", "sms", "text message", "call karo", "phone karo"],
+    url: "tel:", verified: true,
+    docs: "https://www.rfc-editor.org/rfc/rfc5724",
+    notes: "tel: (RFC 3966) opens the dialer; sms:<number>?body=<text> (RFC 5724) opens Messages with the text written, the same link the phone app's own sms action writes. Phone only: a computer is told to ask on the phone.",
+  }),
+  handoff({
+    id: "upi", name: "UPI", category: "Payments",
+    oneLine: "Fill in a UPI payment in your UPI app for you to check and pay with your PIN.",
+    aliases: ["pay", "upi", "gpay", "google pay", "phonepe", "phone pe", "paytm", "bhim", "send money", "transfer money", "paise bhejo", "pay karo", "payment"],
+    url: "upi://pay", verified: true,
+    docs: "https://www.npci.org.in/PDF/npci/upi/circular/2017/Circular%20on%20Non-compliance%20of%20UPI%20apps%20to%20Deeplinking%20specs%20Circular%2037-%201.11.2017.pdf",
+    notes: "NPCI's UPI Linking Specification (deep linking; NPCI circular 37 of 2017 holds every UPI app to it): upi://pay?pa=<vpa>&pn=<name>&am=<amount>&cu=INR&tn=<note>, pa and pn required, INR the only currency. The specification is not on a public NPCI page (npci.org.in refuses scripted reads); a copy of its v1.6 draft was read on 2026-10-22. Phone only. Some UPI apps decline a prefilled payment to a personal UPI ID (one that is not a merchant's); the PIN is always the person's own, typed in their UPI app. Tailzu pays nothing.",
+  }),
+  handoff({
+    id: "maps", name: "Google Maps", category: "Travel",
+    oneLine: "Open directions to a place, or find a place, in Google Maps.",
+    aliases: ["directions", "direction", "navigate", "navigation", "map", "maps", "google maps", "route", "raasta", "rasta", "near me", "nearby"],
+    url: "https://www.google.com/maps/", verified: true,
+    docs: "https://developers.google.com/maps/documentation/urls/get-started",
+    notes: "Maps URLs: https://www.google.com/maps/dir/?api=1&destination=..&travelmode=driving|walking|bicycling|two-wheeler|transit and https://www.google.com/maps/search/?api=1&query=..; at most 2,048 characters. They open the Maps app on a phone.",
+  }),
+  handoff({
+    id: "uber", name: "Uber", category: "Travel",
+    oneLine: "Open Uber with a ride to a place for you to book.",
+    aliases: ["uber", "cab", "taxi", "ride", "book a cab", "book a ride"],
+    url: "https://m.uber.com/ul/", verified: false,
+    docs: "https://developer.uber.com/docs/riders/ride-requests/tutorials/deep-links/introduction",
+    notes: "https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff[formatted_address]=.. is Uber's older universal link, still widely used. Uber's page now documents uber://?action=setPickup&pickup=my_location&dropoff[..] and https://m.uber.com/looking?drop[0]=<Location JSON>, both with coordinates; a drop given only as an address is not documented. Try it on a phone before relying on it.",
+  }),
+  handoff({
+    id: "shopping", name: "Shopping", category: "Shopping",
+    oneLine: "Search Amazon or Flipkart for something to buy.",
+    aliases: ["buy", "order", "shop", "shopping", "amazon", "flipkart", "kharido", "mangao", "mangwa do"],
+    url: "https://www.amazon.in/s", verified: false,
+    notes: "https://www.amazon.in/s?k=.. and https://www.flipkart.com/search?q=.. are the addresses each site's own search box goes to. Neither is documented as a link format.",
+  }),
+  handoff({
+    id: "play", name: "Play", category: "Music and video",
+    oneLine: "Find a song or a video on YouTube, YouTube Music or Spotify to play.",
+    aliases: ["play", "song", "songs", "music", "video", "videos", "youtube", "yt", "youtube music", "spotify", "listen", "gaana", "gana", "bajao", "chalao"],
+    url: "https://www.youtube.com/results", verified: false,
+    notes: "https://www.youtube.com/results?search_query=.., https://music.youtube.com/search?q=.. and https://open.spotify.com/search/.. are each service's own search address, opened in its app on a phone. None is documented as a link format.",
+  }),
+  handoff({
+    id: "threads", name: "Threads", category: "Social",
+    oneLine: "Write a Threads post for you to check and post yourself.",
+    aliases: ["threads", "post on threads", "thread post", "post"],
+    url: "https://www.threads.com/intent/post", verified: true,
+    docs: "https://developers.facebook.com/docs/threads/threads-web-intents",
+    notes: "Threads Web Intents: https://www.threads.com/intent/post?text=.. (Meta's page names threads.com; threads.net links still redirect). On a phone it opens the Threads app. A post is at most 500 characters.",
+  }),
+  handoff({
+    id: "booking", name: "Booking.com", category: "Travel",
+    oneLine: "Find hotels in a place on Booking.com for you to pick and book.",
+    aliases: ["hotel", "hotels", "booking", "booking com", "stay", "room", "rooms"],
+    url: "https://www.booking.com/searchresults.html", verified: false,
+    notes: "https://www.booking.com/searchresults.html?ss=<place>&checkin=YYYY-MM-DD&checkout=YYYY-MM-DD&group_adults=<n>&no_rooms=1 is what Booking.com's own search form sends. It is not documented publicly.",
+  }),
 ];
 
 /** The ids named in CONNECTORS_ENABLED_IDS ("notion, linear"), cleaned. */

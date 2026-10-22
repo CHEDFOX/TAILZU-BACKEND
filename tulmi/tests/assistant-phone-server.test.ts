@@ -50,9 +50,21 @@ describe("the phone's assistant screens, through the server", () => {
     expect(sheet.body).toContain("Nothing is waiting for you right now.");
   });
 
+  it("Ask: the screen, reading nothing, and the route it calls", async () => {
+    const r = await screen("assistant_ask");
+    expect(r.statusCode).toBe(200);
+    expect(r.body).toContain('"path":"/v1/assistant/ask"');
+    expect(r.body).toContain('"platform":"ios"');
+    expect(r.body).toContain("Type or say what you need");
+    const empty = await server.inject({ method: "POST", url: "/v1/assistant/ask", headers: auth, payload: { text: "" } });
+    expect(empty.statusCode).toBe(400);
+    expect((await server.inject({ method: "POST", url: "/v1/assistant/ask", payload: { text: "hi" } })).statusCode).toBe(401);
+  });
+
   it("Settings offers them while connected apps are on", async () => {
     const r = await screen("settings");
     expect(r.body).toContain('"screenId":"assistant_apps"');
     expect(r.body).toContain('"screenId":"assistant_tasks"');
+    expect(r.body).toContain('"screenId":"assistant_ask"');
   });
 });

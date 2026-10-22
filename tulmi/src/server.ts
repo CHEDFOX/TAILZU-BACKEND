@@ -11,6 +11,7 @@
  *   POST /v1/agent                → Ask: one step of the on-screen agent (NDJSON)
  *   /v1/connectors, /v1/tasks     → connected apps and the assistant's tasks (CONNECTORS)
  *   GET  /oauth/client-metadata.json → Tailzu's published OAuth client, for the apps' sign-in (CIMD)
+ *   POST /v1/assistant/ask        → the phone's Ask: one command, one JSON answer (CONNECTORS)
  *   POST /v1/speak                → voice out: text → spoken audio (TTS)
  *   GET  /v1/personality          → read the user's saved style profile
  *   PUT  /v1/personality          → save the user's style profile
@@ -42,6 +43,7 @@ import { registerConnectorRoutes } from "./routes/connectors.js";
 import { registerCustomConnectorRoutes } from "./routes/connectorsCustom.js";
 import { registerOAuthClientMetadataRoute } from "./routes/oauthClientMetadata.js";
 import { startDirectorySync } from "./connectors/registry.js";
+import { registerAssistantRoutes } from "./routes/assistant.js";
 import { assistantView } from "./connectors/list.js";
 import { ASSISTANT_SCREENS } from "./experience/assistant.js";
 import { getNote, listNotes } from "./notes/store.js";
@@ -1976,6 +1978,23 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
   }, "agent step");
 });
 
+// --- The phone's Ask (REST): one command, no screen ------------------------
+//
+// The same planner and connected apps as /v1/agent, for Tailzu on the phone:
+// one JSON answer ({ say, open?, taskId? }) instead of a stream, since there
+// is no screen to act on step by step. See src/routes/assistant.ts.
+registerAssistantRoutes(app, {
+  rateLimit: AGENT_RL,
+  connectors,
+  plan: (system, userMessage, signal, picture) => planStream(system, userMessage, {
+    signal, picture,
+    log: (call) => app.log.info({ ask: call }, "assistant ask model call"),
+  }),
+  profileLanguage: (user) => getProfile(user).then((p) => p?.language),
+  quota: (user) => enforceQuota(user),
+  record: (user, result) => recordUsage({ user, source: "agent", audioSeconds: 0, words: result.words, model: result.model ?? "rules" }),
+});
+
 // --- Text-to-speech (REST): text → spoken audio -----------------------------
 
 app.post("/v1/speak", { config: AUTHED_RL }, async (req, reply) => {
@@ -2819,8 +2838,9 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
       }).catch(() => undefined)
     // The phone's own: Connected apps, Tasks, the confirm sheet and an added
     // app's tools (experience/assistant.ts). No capability to ask for: they
-    // are made of pieces every build draws.
-    : user && connectors && screenFormFactor !== "desktop" && ASSISTANT_SCREENS.has(screenId)
+    // are made of pieces every build draws. Ask (assistant_ask) reads
+    // nothing: its answer comes when they ask.
+    : user && connectors && screenFormFactor !== "desktop" && ASSISTANT_SCREENS.has(screenId) && screenId !== "assistant_ask"
       ? assistantView(connectors, user.id, {
           apps: screenId === "assistant_apps", tasks: screenId === "assistant_tasks" || screenId === "assistant_approve",
           tools: screenId === "assistant_app_tools" ? toolsOf : undefined,

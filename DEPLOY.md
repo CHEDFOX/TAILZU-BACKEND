@@ -387,17 +387,18 @@ To switch it on:
    for example), exempt `/oauth/client-metadata.json` and
    `/v1/connectors/callback`.
 4. **Which apps.** `CONNECTORS_ENABLED_IDS=notion,linear` (ids from
-   `src/connectors/catalog.ts`). **Every catalog entry ships unverified and
-   disabled.** Before an id goes in this list, verify that app's endpoint end to
-   end against the live service: the MCP URL still answers, it signs in (our
-   client document, dynamic client registration, or for a per-user URL like
-   Zapier, the pasted link works), a real sign-in comes back to the callback,
-   `tools/list` returns tools, and one read and one write behave. Then set that
-   entry's `verified`. GitHub and Asana are `preRegistered`: register Tailzu
-   with the vendor first (below, "Registering Tailzu with a vendor"). Until
-   then Connect answers "not set up yet" (503). Jira and Confluence
-   (`atlassian`) is not: it signs in with our client document, so there is
-   nothing to register, but see the Atlassian note below before trying it.
+   `src/connectors/catalog.ts`). **Every catalog entry ships disabled.** Unless
+   the table under "More MCP apps" says it can go in now, try an app end to end
+   against the live service before its id goes in this list: the MCP URL still
+   answers, it signs in (our client document, dynamic client registration, or
+   for a per-user URL like Zapier, the pasted link works), a real sign-in comes
+   back to the callback, `tools/list` returns tools, and one read and one write
+   behave. Then set that entry's `verified`. GitHub and Asana are
+   `preRegistered`: register Tailzu with the vendor first (below, "Registering
+   Tailzu with a vendor"). Until then Connect answers "not set up yet" (503).
+   Jira and Confluence (`atlassian`) is not: it signs in with our client
+   document, so there is nothing to register, but see the Atlassian note below
+   before trying it.
 5. `CONNECTORS=true`, then `docker compose up -d --build`.
 
 Anything that changes, sends, deletes or pays is confirmed by the person first
@@ -559,6 +560,29 @@ with our client document or by registering itself, nothing needs to be made.
 Then restart, and try the app once end to end (Connect, sign in, one read, one
 write) before its id goes in `CONNECTORS_ENABLED_IDS` and its entry becomes
 `verified: true`.
+### More MCP apps: which to switch on
+
+Vendors' own remote MCP servers, read 2026-10-22 (`catalog.ts` has each one's
+docs page and what it says). Each signs in with the vendor's OAuth through
+Tailzu's client document or dynamic client registration, which `oauth.ts`
+already does: no keys, nothing to
+register with the vendor. Each is off until its id is in
+`CONNECTORS_ENABLED_IDS`.
+
+| id | switch on | why |
+| --- | --- | --- |
+| `todoist` | now | The docs confirm the URL, Streamable HTTP and registration; a registration with Tailzu's details was accepted on 2026-10-22. |
+| `granola` | now | The docs confirm all three. A free Granola plan sees only its last 30 days. |
+| `evernote` | now | The docs confirm all three. In beta, and paid plans only: a free account is refused. |
+| `monday` | live try first | The docs confirm all three, but until monday pre-approves Tailzu (its MCP integration form) each account's admin must approve it once; nobody else in that account can connect before that. |
+| `clickup` | live try first | The docs give the URL and registration, not the transport; ClickUp's blog mentions an allowlist of vetted clients. No refresh token: "Sign in again" whenever one runs out. |
+| `airtable`, `calendly` | live try first | The docs give the URL and registration, not the transport. |
+| `calcom`, `fireflies`, `make`, `composio` | live try first | The docs don't say how a client registers; the live metadata offers registration. Make may hand back a client secret, which would be stored unencrypted with the client id. |
+| `otter`, `pipedream` | live try first | Same, and the docs don't name the transport either. |
+| `atlassian`, `trello` | live try first, likely refused | Atlassian's sign-in offers registration, but only from an allowed domain. Until Atlassian adds `api.tailzu.space` to its own list, each org's admin must add it (Atlassian Administration, Connectors, Atlassian MCP server); a person with no admin cannot connect. |
+
+A try that passes means the id can go in. One that fails leaves it out; the
+entry's `notes` say what to look at.
 
 ### Google Calendar, Google Docs and the email hand-off
 
@@ -596,7 +620,7 @@ Docs (drive.file). Gmail comes later.
    nothing: it only has the desktop open Gmail's compose window with the email
    written, and the person presses Send. Ship the desktop build that handles the
    `open` event first: an older desktop speaks "I've written it in Gmail" and
-   opens nothing.
+   opens nothing. The other hand-offs are below.
 
 **While Google reviews the Calendar scopes.** `calendar.events` and
 `calendar.readonly` are *sensitive* scopes (`drive.file` is not), so until
@@ -635,4 +659,182 @@ client id is readable):
 6. Back in Tailzu, **Disconnect** each app; show the row go to Not connected,
    and in the Google account's "Third-party apps with account access" page that
    Tailzu is gone (the grant is revoked when the last Google app is
-   disconnected).
+   disconnected). The other Google apps are below.
+
+### Google Tasks, Sheets, Forms, Classroom and YouTube
+
+Built the same way as Calendar and Docs (`src/connectors/google/`): the same
+web OAuth client and keys, the same **Connect** flow, the same asks,
+approvals and audit. Each one is off until its id is in
+`CONNECTORS_ENABLED_IDS`, and each asks for its own scopes only when someone
+taps **Connect** on it. The scopes come from each method's own "Authorization
+scopes" list in Google's API reference (read 2026-10-22), the smallest that
+does the job.
+
+1. **Turn on the APIs** in the same Google Cloud project (APIs & Services,
+   Library): **Google Tasks API**, **Google Sheets API**, **Google Forms API**,
+   **Google Classroom API** and **YouTube Data API v3**. The Drive API is
+   already on for Docs; Sheets and Forms use it too, to find their own files
+   by name.
+2. **Add the scopes to the consent screen** (Google Auth Platform, Data
+   Access):
+
+   | app | id | scopes asked at Connect | Google's class |
+   | --- | --- | --- | --- |
+   | Google Tasks | `google-tasks` | `.../auth/tasks` | sensitive |
+   | Google Sheets | `google-sheets` | `.../auth/drive.file` (already there for Docs) | non-sensitive |
+   | Google Forms | `google-forms` | `.../auth/drive.file` (already there) | non-sensitive |
+   | Google Classroom | `google-classroom` | `.../auth/classroom.courses.readonly`, `.../auth/classroom.coursework.me.readonly`, `.../auth/classroom.announcements.readonly` | sensitive |
+   | YouTube | `google-youtube` | `.../auth/youtube` | sensitive |
+
+   `drive.file` is documented as non-sensitive (Sheets scopes page, Drive
+   scope guide). Google's API pages print no class for the Tasks, Classroom
+   and YouTube scopes; Google counts scopes like these as sensitive, and the
+   console marks each one when it is added: check "Your sensitive scopes"
+   there. None of them is restricted.
+   - **Sheets** needs only `drive.file`: spreadsheets.create,
+     spreadsheets.values.append and .get all accept it. Tailzu can reach only
+     the sheets it made.
+   - **Forms** needs only `drive.file` too: forms.create, batchUpdate,
+     setPublishSettings, get and responses.list all accept it, so neither
+     `forms.body` nor `forms.responses.readonly` (both sensitive) is asked.
+     Tailzu sees only the forms it made, and their answers.
+   - **YouTube** asks `youtube`, not `youtube.readonly`: adding to a playlist
+     (playlistItems.insert) accepts only `youtube`, `youtube.force-ssl` or
+     `youtubepartner`, and `youtube` covers the searches and playlists too.
+   - **Classroom** is read only: one read-only scope per call it makes
+     (courses.list, courseWork.list with the person's own
+     studentSubmissions.list, announcements.list).
+3. **Switch them on**: add the ids to `CONNECTORS_ENABLED_IDS`, any of them
+   alone, e.g.
+   `CONNECTORS_ENABLED_IDS=notion,linear,google-calendar,google-docs,google-tasks,google-sheets,google-forms,google-classroom,google-youtube`,
+   then `docker compose up -d --build`.
+4. **Google's review.** The sensitive ones (Tasks, Classroom, YouTube) live
+   under the same rules as Calendar's until Google approves them: Testing
+   mode, listed test users, a "Sign in again" about weekly. Add them to the
+   same verification request and the same video: for each, **Connect**, the
+   consent page with its scopes (say why each is needed), one read, and for
+   Tasks and YouTube one write through the confirm card and **Approve**
+   ("remind me tomorrow to call the bank" then the task in Google Tasks;
+   "add this video to my workout playlist" then the playlist), then
+   **Disconnect**. Sheets and Forms ask nothing new.
+5. **YouTube's quota.** search.list has its own bucket of **100 calls a day
+   for the whole project** (not per person; it resets at midnight Pacific).
+   After that a search answers "YouTube has done all it can for today. Try
+   again tomorrow." playlistItems.insert costs 50 of the project's 10,000
+   units a day, a playlist or video read 1. Ask Google for more (YouTube API
+   quota extension form, which comes with a compliance audit) before telling
+   many people. "Play X" never uses it: that is the play hand-off below.
+
+| id | tools |
+| --- | --- |
+| `google-tasks` | `list_tasks(list?, due?)` read; `add_task(title, due?, notes?, list?)` write; `complete_task(task, list?)` write; `delete_task(task, list?)` destructive |
+| `google-sheets` | `create_sheet(title, rows?)` write; `append_rows(sheet, rows)` write; `read_sheet(sheet)` read |
+| `google-forms` | `create_form(title, questions[], description?)` write; `list_responses(form)` read |
+| `google-classroom` | `my_classes()`, `whats_due(days?, class?)`, `announcements(class?)`, all read |
+| `google-youtube` | `search_videos(query, max?)` read; `my_playlists()` read; `add_to_playlist(video, playlist)` write |
+
+- **Days in the person's zone.** Tasks, Classroom and Forms say days and
+  times in the zone the person names, else the zone set on their Google
+  calendar when Google Calendar is switched on and connected (read once an
+  hour with Calendar's own connection), else India's.
+- **Google Tasks keeps the day, never the time** (the API cannot store one):
+  "remind me tomorrow at 9" is a task due tomorrow with "At 09:00" in its
+  notes, and Ask says so. Google Tasks will not ring at 9.
+- **Sheets and Forms by name.** "my expenses sheet" is matched among the
+  sheets Tailzu made (the 50 changed last); a link to anyone else's is "not
+  one I made". Rows go in as typed values, never as formulas.
+- **Forms** are made unpublished, get their questions, then are opened for
+  answers (Google makes API forms unpublished by default since 2026-06-30).
+  A choice question is single-choice, a text one short-answer. Nothing is
+  sent to anyone: Ask gives the link to share.
+- **Classroom** reports what is due only in classes the person is a student
+  in. A school's Google Workspace admin can block third-party apps from
+  Classroom data; then that school's accounts cannot connect. Personal Google
+  accounts work.
+- **Disconnect** forgets the token, and the one Google grant is revoked at
+  Google only when no Google app of theirs still holds a token, counting
+  apps switched off on the server since they connected them.
+
+### The hand-offs: WhatsApp, calls, UPI, Maps and the rest
+
+Built into the server (`src/connectors/handoffs/`), always on with
+`CONNECTORS=true`, never listed as apps. **They need no keys, no sign-in and
+no migration**, and nothing in `CONNECTORS_ENABLED_IDS`. Each one only writes a
+link and has the person's own device open it with everything filled in; the
+person presses Send, Call, Pay, Post or Book in the other app. Tailzu never
+sends, calls or pays. They run only on a command ("tell Mom I'm on my way on
+WhatsApp", not "how do I message Mom?") and never ask for an approval, since
+nothing happens until the person finishes it there. Each one says one line as
+it opens ("Rahul's chat is open with your message. Just hit Send.", in
+Hinglish for a Hinglish profile).
+
+| id | tools | link |
+| --- | --- | --- |
+| `whatsapp` | `send_message(text, phone?, name?)` | `https://wa.me/<digits>?text=` or, with no number, `https://wa.me/?text=` (WhatsApp's own chat picker). 10 digits are taken as +91. |
+| `telegram` | `send_message(text, username?, name?)` | `https://t.me/<username>?text=` or `https://t.me/share/url?url=<message>` |
+| `phone` | `call(number)`, `text(body, number?)` | `tel:`, `sms:<number>?body=` **phone only** |
+| `upi` | `pay(vpa, amount, name?, note?)` | `upi://pay?pa=&pn=&am=&cu=INR&tn=` **phone only** |
+| `maps` | `directions(destination, mode?)`, `search(query)` | `https://www.google.com/maps/dir/?api=1&destination=`, `https://www.google.com/maps/search/?api=1&query=` |
+| `uber` | `ride(destination)` | `https://m.uber.com/ul/?action=setPickup&pickup=my_location&dropoff[formatted_address]=` |
+| `shopping` | `amazon_search(query)`, `flipkart_search(query)` | `https://www.amazon.in/s?k=`, `https://www.flipkart.com/search?q=` |
+| `play` | `youtube(query)`, `youtube_music(query)`, `spotify(query)` | `https://www.youtube.com/results?search_query=`, `https://music.youtube.com/search?q=`, `https://open.spotify.com/search/` |
+| `threads` | `post(text)` | `https://www.threads.com/intent/post?text=` (500 characters at most) |
+| `booking` | `hotels(city, checkin?, checkout?, guests?)` | `https://www.booking.com/searchresults.html?ss=&checkin=&checkout=&group_adults=&no_rooms=1` |
+
+Every argument is percent-encoded and cut to a length the app takes, and every
+link is checked against one list (`handoffs/links.ts`) before it leaves the
+server: anything else is never sent. A link is at most 8000 characters (what
+the desktop opens), a Google Maps one 2048 (Google's limit); a message, post or
+email too long for its link once encoded (a long one in Hindi, whose letters
+are nine characters each) is refused with "Ask me for a shorter one."
+
+- **Phone only.** `tel:`, `sms:` and `upi:` links go only to a phone. Asked for
+  on the desktop, Ask says "That one's for your phone. Ask me there." and opens
+  nothing.
+- **Never from another app's words.** Once a step has read another app
+  (Classroom, YouTube, Notion), a hand-off that names a number, a Telegram
+  username or a UPI ID opens only when the person said it themselves; one that
+  appears only in what the app returned is refused ("I only fill in a number,
+  username or UPI ID you give me... Who should it go to?"). Email recipients
+  are not held to this.
+- **UPI.** The person must give the payee's UPI ID (name@bank); with none, Ask
+  asks for it. Some UPI apps decline a prefilled payment to a personal UPI ID
+  (one that is not a merchant's), so a person-to-person payment may have to be
+  finished by hand in the app. The PIN is always the person's, typed in their
+  own UPI app; Tailzu fills in at most ₹1,00,000 and pays nothing.
+- **What the vendors document** (read 2026-10-22): WhatsApp click to chat,
+  Telegram's t.me links, Google Maps URLs, Threads Web Intents, `tel:`
+  (RFC 3966), `sms:` (RFC 5724) and NPCI's UPI linking specification. **Not
+  documented**, only each site's own search address: Amazon, Flipkart,
+  YouTube, YouTube Music, Spotify and Booking.com. **Uber**: its page now
+  documents `uber://?action=setPickup...` and `https://m.uber.com/looking?drop[0]=`
+  with coordinates; the `m.uber.com/ul/` link with only an address is the older
+  form. Try each hand-off once on a real Android phone and a real iPhone before
+  telling anyone about it.
+- **The desktop** opens only the Gmail and mailto: links today (agent.js
+  `safeOpenUrl`): until a desktop build accepts the links above it says the
+  line and logs "open skipped". Ship that build with or before this.
+- **The phone** opens links through `openUrl`, which today allows https:,
+  mailto:, tel: and sms: but not `upi:` (`app/src/security.ts`, `OPENABLE`):
+  until a phone build adds it, a UPI hand-off says its line and then "Couldn't
+  open link".
+
+### Ask on the phone
+
+`POST /v1/assistant/ask` `{ text, lang?, platform? }` answers
+`{ say, open?: { url, label, fallback? }, taskId? }`: the same planner and
+connected apps as the desktop's Ask, as a command, with no screen. The phone's
+**Ask me** screen (`assistant_ask`, from Settings and from Connected apps) is
+sent by the server like the rest: a field, the mic, **Do it**, and three
+examples to tap. It shows `say`, opens `open.url`, and goes to the confirm
+sheet when there is a `taskId`. It is there only while `CONNECTORS=true`
+(otherwise the route answers 404 and the screen says Ask can't reach the
+apps). It is held to Ask's rate limit (`AGENT_RATE_LIMIT_MAX` /
+`AGENT_RATE_LIMIT_WINDOW_MS`) and the free plan's allowance, and metered like
+an Ask step. A question back (the planner's, or a tool's, say for a UPI ID) is
+kept for five minutes in the server's memory, so the person's next ask is read
+as its answer, up to three questions in a row; a restart forgets it. The phone
+opens an answer's link only if it is on the hand-off list (`openUrl` with
+`handoff: true`, `isHandoffUrl` in `app/src/security.ts`); an older build
+holds it to its general `openUrl` check.

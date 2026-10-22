@@ -5,12 +5,12 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { createHash, randomBytes } from "node:crypto";
-import { CATALOG, enabledCatalog, enabledIds, type ConnectorDef } from "../src/connectors/catalog.js";
+import { ALWAYS_ON, CATALOG, enabledCatalog, enabledIds, type ConnectorDef } from "../src/connectors/catalog.js";
 import { NoTokenKey, decrypt, encrypt, stateKey, tokenKey } from "../src/connectors/crypto.js";
 import { ConnectorError, STATE_TTL_SEC, signState, verifyState } from "../src/connectors/oauth.js";
 import { checkSecretUrl, withConnectorContext } from "../src/connectors/index.js";
 import { gate, riskOf, type Level, type Risk } from "../src/connectors/risk.js";
-import { MAX_CONNECTORS, MAX_TOOLS, pickConnectors, pickTools } from "../src/connectors/router.js";
+import { MAX_CONNECTORS, MAX_TOOLS, pickConnectors, pickTools, wordsOf } from "../src/connectors/router.js";
 import { previewOf } from "../src/connectors/tasks.js";
 import { LineReader, parseLine } from "../src/agent/lines.js";
 import { AGENT_SYSTEM } from "../src/agent/prompt.js";
@@ -211,9 +211,15 @@ describe("the USE line", () => {
 });
 
 describe("the catalog", () => {
+  const google = ["google-calendar", "google-docs", "google-tasks", "google-sheets", "google-forms", "google-classroom", "google-youtube"];
+  /** The MCP apps read on 2026-10-22, in the catalog's order (its order of usefulness). */
+  const more = ["todoist", "calendly", "granola", "otter", "fireflies", "evernote", "clickup", "trello", "calcom", "airtable", "monday", "make", "composio", "pipedream"];
+  const byId = (id: string) => CATALOG.find((c) => c.id === id)!;
+
   it("marks only the apps whose official docs confirm URL, transport and sign-in, and nothing is on until it is named", () => {
-    expect(CATALOG.map((c) => c.id)).toEqual(["notion", "linear", "github", "atlassian", "asana", "zapier", "google-calendar", "google-docs"]);
-    expect(CATALOG.filter((c) => c.verified).map((c) => c.id)).toEqual(["notion", "linear", "zapier", "google-calendar", "google-docs"]);
+    expect(CATALOG.map((c) => c.id)).toEqual(["notion", "linear", "github", "atlassian", "asana", "zapier", ...google, ...more]);
+    expect(CATALOG.filter((c) => c.verified).map((c) => c.id)).toEqual(["notion", "linear", "zapier", ...google, "todoist", "granola", "evernote", "monday"]);
+    expect(new Set(CATALOG.map((c) => c.id)).size).toBe(CATALOG.length);
     expect(CATALOG.every((c) => c.docs?.startsWith("https://") && c.notes)).toBe(true);
     expect(CATALOG.every((c) => new URL(c.url).protocol === "https:")).toBe(true);
     expect(CATALOG.find((c) => c.id === "zapier")!.auth).toBe("url");
@@ -225,6 +231,53 @@ describe("the catalog", () => {
     expect(CATALOG.filter((c) => c.preRegistered).every((c) => !c.verified && c.auth === "oauth")).toBe(true);
     expect(enabledCatalog(enabledIds(undefined))).toEqual([]);
     expect(enabledCatalog(enabledIds(" Notion , nope,linear")).map((c) => c.id)).toEqual(["notion", "linear"]);
+  });
+
+  it("signs in to each new MCP app with OAuth, and says to try it once live where only the live metadata offers the sign-in", () => {
+    for (const id of more) {
+      expect(byId(id), id).toMatchObject({ auth: "oauth" });
+      expect(byId(id).kind, id).toBeUndefined();
+      expect(byId(id).hidden, id).toBeUndefined();
+    }
+    for (const id of more.filter((i) => !byId(i).verified)) expect(byId(id).notes, id).toMatch(/try once live/i);
+    for (const id of ["otter", "fireflies", "trello", "calcom", "make", "composio", "pipedream"]) {
+      expect(byId(id).notes, id).toContain("the docs don't state it; live metadata offers");
+    }
+    // Jira and Trello share Atlassian's sign-in, and its allowlist.
+    for (const id of ["atlassian", "trello"]) {
+      expect(byId(id)).toMatchObject({ verified: false });
+      expect(byId(id).notes, id).toMatch(/dynamic client registration and CIMD/);
+      expect(byId(id).notes, id).toMatch(/admin must (add|allow)/);
+    }
+    expect(byId("trello").url).toBe("https://mcp.trello.com/v1");
+    expect(enabledCatalog(enabledIds("monday, Todoist,trello")).map((c) => c.id)).toEqual(["todoist", "trello", "monday"]);
+  });
+
+  it("gives a new app no word a Google app or a hand-off already answers to", () => {
+    const phrase = (s: string) => ` ${wordsOf(s).join(" ")} `;
+    const theirs = [...CATALOG.filter((c) => c.provider === "google"), ...ALWAYS_ON].flatMap((c) => [c.name, ...c.aliases]).map(phrase);
+    for (const id of more) {
+      for (const w of [byId(id).name, ...byId(id).aliases].map(phrase)) {
+        for (const t of theirs) expect(t.includes(w) || w.includes(t), `${id}:${w}/${t}`).toBe(false);
+      }
+    }
+  });
+
+  it("routes to a new app by its name, and never by an id that is an everyday word", () => {
+    const have = [...CATALOG, ...ALWAYS_ON].map((d) => ({ def: d, lastUsedAt: null as number | null }));
+    const picks = (said: string) => pickConnectors(said, "Safari", have).map((p) => p.id);
+    expect(picks("remind me on monday to water the plants")[0]).toBe("google-tasks");
+    expect(picks("remind me on monday to water the plants")).not.toContain("monday");
+    expect(picks("make a quiz on fractions")[0]).toBe("google-forms");
+    expect(picks("make a quiz on fractions")).not.toContain("make");
+    expect(picks("add water the plants to todoist")[0]).toBe("todoist");
+    expect(picks("what did we decide in granola yesterday")[0]).toBe("granola");
+    expect(picks("read me the transcript from the demo")).toEqual(expect.arrayContaining(["granola", "otter", "fireflies"]));
+    expect(picks("share my calendly scheduling link")[0]).toBe("calendly");
+    expect(picks("cancel my cal.com booking on friday")[0]).toBe("calcom");
+    expect(picks("move the launch card to done in trello")[0]).toBe("trello");
+    expect(picks("run my make.com scenario for invoices")[0]).toBe("make");
+    expect(picks("add a lead to my sales board on monday.com")[0]).toBe("monday");
   });
 
   it("takes a pasted URL only on the app's own host, over https (or localhost)", () => {

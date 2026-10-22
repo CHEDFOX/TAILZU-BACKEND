@@ -253,6 +253,10 @@ export function apiError(status: number, body: any, app: string, notFound?: stri
   const reason = String(body?.error?.errors?.[0]?.reason ?? body?.error?.status ?? "");
   if (status === 401) return new ConnectorError("needs_reconnect", `${app} needs you to sign in again.`);
   if (status === 404 || status === 410) return new ConnectorError("rejected", notFound ?? `I couldn't find that in ${app}.`);
+  // The project's allowance for the day is spent (YouTube's 100 searches): a minute will not help.
+  if (/quotaExceeded|dailyLimitExceeded/.test(reason)) {
+    return new ConnectorError("failed", `${app} has done all it can for today. Try again tomorrow.`);
+  }
   if (status === 429 || /rateLimit|quota|RESOURCE_EXHAUSTED/i.test(reason)) {
     return new ConnectorError("failed", `${app} is busy right now. Try again in a minute.`);
   }

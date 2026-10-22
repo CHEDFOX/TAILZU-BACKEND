@@ -30,7 +30,7 @@ import { authlessMark, probeMcp } from "../connectors/client.js";
 import { checkSecretUrl, type Connectors } from "../connectors/index.js";
 import { connectorList } from "../connectors/list.js";
 import { plainSignInError } from "./connectorsCustom.js";
-import { beginGoogleOAuth, completeGoogleOAuth, revokeGoogleAccess } from "../connectors/google/index.js";
+import { beginGoogleOAuth, completeGoogleOAuth, otherGoogleApps, revokeGoogleAccess } from "../connectors/google/index.js";
 import { beginOAuth, completeOAuth, ConnectorError, verifyState } from "../connectors/oauth.js";
 import type { Level } from "../connectors/risk.js";
 import { ConnectorsNeedAccount } from "../connectors/store.js";
@@ -211,8 +211,7 @@ export function registerConnectorRoutes(app: FastifyInstance, deps: ConnectorRou
       // A Google app's access is ended at Google too, once it is the last of theirs connected.
       const def = await c.hub.resolve(user.id, req.params.id);
       if (def?.provider === "google") {
-        const others = c.hub.catalog.filter((d) => d.provider === "google" && d.id !== def.id).map((d) => d.id);
-        await revokeGoogleAccess({ store: c.store, redirectUrl: c.redirectUrl, google: c.google }, user.id, def, others);
+        await revokeGoogleAccess({ store: c.store, redirectUrl: c.redirectUrl, google: c.google }, user.id, def, otherGoogleApps(def, c.hub.catalog));
       }
       await c.store.deleteConnection(user.id, req.params.id);
       await c.hub.forget(user.id, req.params.id);

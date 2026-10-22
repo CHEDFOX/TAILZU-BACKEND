@@ -29,6 +29,7 @@ import { randomUUID } from "node:crypto";
 import type { ApprovalCard } from "../../../shared/types/api.js";
 import type { ConnectorHub, Fail } from "./client.js";
 import type { ConnectorDef } from "./catalog.js";
+import type { HandoffWords } from "./native.js";
 import { ConnectorError } from "./oauth.js";
 import { policyOf } from "./hygiene.js";
 import { gate, gateTool, type Gate, type Level, type Risk } from "./risk.js";
@@ -42,10 +43,14 @@ const PREVIEW_MAX = 400;
 export type UseOutcome =
   | { kind: "result"; text: string }
   | { kind: "approval"; taskId: string; approval: ApprovalView; card?: ApprovalCard }
-  /** Nothing ran; `message` is said to the person as it is. */
-  | { kind: "stopped"; message: string }
-  /** Something for the person's own computer to open (the email hand-off): the run says `say`, opens it and ends. */
-  | { kind: "open"; url: string; label: string; fallback?: string; say?: string };
+  /**
+   * Nothing ran; `message` is said to the person as it is. `ask` when it is
+   * a hand-off asking for what it was not given ("What's their UPI ID?"):
+   * their next words answer it.
+   */
+  | { kind: "stopped"; message: string; ask?: boolean }
+  /** Something for the person's own device to open (a hand-off): the run says `say`, opens it and ends. `words` is the app's own line, worded for the person before the run sees it. */
+  | { kind: "open"; url: string; label: string; fallback?: string; say?: string; words?: HandoffWords };
 
 /** An approval as the device sees it: no arguments. "read" only for an app added by link (see the top of this file). */
 export interface ApprovalView { id: string; connector: string; tool: string; risk: Risk; preview: string }
@@ -195,18 +200,31 @@ export class TaskService {
       };
     }
 
+    // The card's words first: a call the app finds cannot be done is said now, with no task left behind.
+    let preview: string | undefined;
+    if (verdict === "approve") {
+      try {
+        preview = await this.o.hub.previewFor(userId, def, info.name, line.args);
+      } catch (e) {
+        return { kind: "stopped", message: e instanceof ConnectorError ? e.message : `${def.name} ran into a problem.` };
+      }
+    }
+
     let task = await this.taskFor(userId, runId, said);
     if (verdict === "run") {
       const out = await this.o.hub.call(userId, def.id, info.name, line.args);
       await this.audit(userId, task, def.id, info.name, risk, out.ok ? "ok" : "failed", out.error);
       task = await this.step(userId, task, out.ok ? `${def.name}: ${human(info.name)}` : `${def.name}: ${human(info.name)} failed`);
       if (out.ok && out.open) return { kind: "open", ...out.open };
-      return out.ok ? { kind: "result", text: out.text } : { kind: "stopped", message: out.error!.message };
+      if (out.ok) return { kind: "result", text: out.text };
+      // A hand-off refuses over what it was given ("What's their UPI ID?"), so their next words answer it.
+      const asks = free && out.error!.code === "rejected";
+      return { kind: "stopped", message: out.error!.message, ...(asks ? { ask: true } : {}) };
     }
 
     const approval: Approval = {
       id: randomUUID(), connector: def.id, tool: info.name, risk, args: line.args,
-      preview: clip(await this.o.hub.previewFor(userId, def, info.name, line.args) ?? previewOf(def, info.name, line.args), PREVIEW_MAX), at: this.now(),
+      preview: clip(preview ?? previewOf(def, info.name, line.args), PREVIEW_MAX), at: this.now(),
     };
     task = await this.step(userId, task, `Waiting for you: ${human(info.name)} in ${def.name}`, { state: "waiting", approval });
     void Promise.resolve().then(() => this.o.notify?.(userId, task, approval)).catch(() => {});

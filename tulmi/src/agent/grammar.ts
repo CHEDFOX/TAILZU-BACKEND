@@ -13,9 +13,11 @@
  * whether what they said with text selected is about that text, and whether
  * a question about a picture asks for the long answer.
  */
-import type { AgentElement } from "../../../shared/types/api.js";
+import type { AgentElement, AgentStepRequest } from "../../../shared/types/api.js";
 
-export type Platform = "mac" | "win";
+/** The phone's two only reach the planner from its own Ask, which has no keys
+ *  to press: every shortcut here is a computer's. */
+export type Platform = AgentStepRequest["platform"];
 
 /** An action the grammar settled, before risk is added. */
 export interface GrammarAction {

@@ -36,7 +36,8 @@ const { createConnectors } = await import("../src/connectors/index.js");
 const { connectorList } = await import("../src/connectors/list.js");
 const { signState, verifyState } = await import("../src/connectors/oauth.js");
 const { beginGoogleOAuth, completeGoogleOAuth } = await import("../src/connectors/google/index.js");
-const { handoffLinks } = await import("../src/connectors/google/handoff.js");
+const { handoffLinks } = await import("../src/connectors/handoffs/email.js");
+const { HANDOFF_IDS } = await import("../src/connectors/handoffs/index.js");
 const { noteText } = await import("../src/connectors/google/docs.js");
 const { parseWhen, wallOf } = await import("../src/connectors/google/time.js");
 const { MemoryConnectorStore } = await import("../src/connectors/store.js");
@@ -137,15 +138,15 @@ describe("the catalog", () => {
 
   it("keeps the email hand-off out of the catalog and out of the list of apps to connect", async () => {
     expect(CATALOG.some((c) => c.id === "email-handoff")).toBe(false);
-    expect(ALWAYS_ON.map((c) => c.id)).toEqual(["email-handoff"]);
+    expect(ALWAYS_ON.map((c) => c.id)).toEqual(["email-handoff", ...HANDOFF_IDS]);
     const { connectors, user } = await setup();
-    expect((await connectorList(connectors, user)).map((c) => c.id)).toEqual(["google-calendar", "google-docs"]);
+    expect((await connectorList(connectors, user)).map((c) => c.id)).toEqual(CATALOG.filter((c) => c.provider === "google").map((c) => c.id));
     expect(connectors.hub.def("email-handoff")).toBeTruthy();
   });
 
   it("is always there by default (CONNECTORS on), whatever CONNECTORS_ENABLED_IDS says", () => {
     const c = createConnectors({ store: new MemoryConnectorStore(), redirectUrl: REDIRECT });
-    expect(c.hub.catalog.map((d) => d.id)).toEqual(["email-handoff"]);
+    expect(c.hub.catalog.map((d) => d.id)).toEqual(["email-handoff", ...HANDOFF_IDS]);
   });
 });
 
@@ -265,7 +266,7 @@ describe("signing in to Google", () => {
     expect(back.body).toContain("Google Calendar is ready");
     expect((await store.getConnection("ann", "google-calendar"))!.tokensEnc).toMatch(/^v1\./);
     const list = (await app.inject({ method: "GET", url: "/v1/connectors", headers: as })).json();
-    expect(list.connectors.map((c: { id: string; connected: boolean }) => [c.id, c.connected])).toEqual([["google-calendar", true], ["google-docs", false]]);
+    expect(list.connectors.slice(0, 2).map((c: { id: string; connected: boolean }) => [c.id, c.connected])).toEqual([["google-calendar", true], ["google-docs", false]]);
 
     // Disconnecting forgets the token; the grant is revoked at Google only with the last Google app.
     g.to("POST", "/revoke", { json: {} });

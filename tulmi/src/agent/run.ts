@@ -39,7 +39,7 @@
  * Everything goes out through the EventSink, which keeps "exactly one terminal
  * event" true however a path ends.
  */
-import type { AgentStepRequest } from "../../../shared/types/api.js";
+import type { AgentStepRequest, AgentTurn } from "../../../shared/types/api.js";
 import { aboutTheText, commandText, grammar, grammarLine, modeOf, wantsDetail, type GrammarAction } from "./grammar.js";
 import { LineReader, LineSplitter, parseLine, type ActionLine, type SpotOrder, type UseLine } from "./lines.js";
 import { PlannerUnavailable, type PictureCall, type PlanChunk, type SystemPrompt, type UserContent } from "./llm.js";
@@ -94,7 +94,11 @@ export interface ConnectorPlan {
 export interface ConnectorsRuntime {
   /** The cards for this step, or null when no connected app is relevant. */
   cards(req: AgentStepRequest, said: string): Promise<ConnectorPlan | null>;
-  use(runId: string, said: string, line: UseLine, opts: { allowWrite: boolean; language?: string }): Promise<UseOutcome>;
+  /**
+   * `read`: a tool's result has been read in this step, so the planner has
+   * seen another app's text. `words`: everything the person said in the run.
+   */
+  use(runId: string, said: string, line: UseLine, opts: { allowWrite: boolean; language?: string; platform?: AgentStepRequest["platform"]; read?: boolean; words?: string }): Promise<UseOutcome>;
   /** The run's step ended; close its task if that ends it. */
   settle(runId: string, ending: string | undefined): Promise<void>;
 }
@@ -243,29 +247,76 @@ export async function runStep(ctx: StepContext, deps: StepDeps, sink: EventSink)
   return planWithModel(ctx, deps, sink, { said, mode, scene, audioSeconds });
 }
 
+/** The phone's one command (POST /v1/assistant/ask). */
+export interface CommandContext {
+  /** Made by the server: [A-Za-z0-9_-]{6,64}. */
+  runId: string;
+  said: string;
+  platform: "ios" | "android";
+  language?: string;
+  /** The question it asked last and what they had said, when this is their answer. */
+  history?: AgentTurn[];
+  /** Said when the planner gives nothing the phone can use. */
+  nothing?: string;
+}
+
+/**
+ * THE PHONE'S ASK: one command typed or said into Tailzu on the phone. There
+ * is no screen behind it to read or press, so the free paths, the selection
+ * and the picture have nothing to work on: it goes straight to the planner,
+ * as a command, with the person's apps. The planner is told it is a do-run on
+ * an empty screen; the reader reads like a show-run's, so a line that would
+ * press, type or scroll on a computer is dropped, never sent to a phone that
+ * cannot do it. What is left is what a phone can use: what to say, a question
+ * back, a hand-off to open, and an approval to show.
+ */
+export async function runCommand(c: CommandContext, deps: StepDeps, sink: EventSink): Promise<StepResult> {
+  const history = c.history ?? [];
+  const req: AgentStepRequest = {
+    runId: c.runId, step: history.length, utterance: c.said, platform: c.platform, app: "Tailzu",
+    screen: { elements: [] }, ...(c.language ? { language: c.language } : {}), ...(history.length ? { history } : {}),
+  };
+  sink.emit({ t: "heard", text: c.said, mode: "do" });
+  // "rahul@okhdfcbank" names no app; with the request it answers ("pay rahul 500 on upi") it does.
+  const all = everythingSaid(req, c.said);
+  return planWithModel({ req, maxSteps: req.step }, deps, sink, {
+    said: c.said, mode: "do", scene: { req, said: all }, audioSeconds: 0, act: false, nothing: c.nothing, routeBy: all,
+  });
+}
+
 async function planWithModel(
   ctx: StepContext,
   deps: StepDeps,
   sink: EventSink,
-  s: { said: string; mode: "show" | "do"; scene: Scene; audioSeconds: number },
+  s: {
+    said: string; mode: "show" | "do"; scene: Scene; audioSeconds: number;
+    /** false on the phone: nothing on a screen is pressed or typed, whatever the mode. */
+    act?: boolean;
+    /** Said when the planner gives nothing usable. */
+    nothing?: string;
+    /** The words the apps are picked by, when not just this step's: an answer to a question is read with the question's request. */
+    routeBy?: string;
+  },
 ): Promise<StepResult> {
   const { req } = ctx;
   const user = agentUserMessage(req, s.said, s.mode, ctx.maxSteps);
   const ids = new Set(req.screen.elements.map((e) => e.id));
   const result: StepResult = { path: "model", mode: s.mode, words: 0, audioSeconds: s.audioSeconds };
+  const reads = s.act === false ? "show" : s.mode;
+  const nothing = s.nothing ?? NOT_FOUND;
 
   // Connected apps: only when the feature is on AND some connected app looks
   // relevant to what was said. Everything else is the request it always was.
-  const apps = deps.connectors ? await deps.connectors.cards(req, s.said) : null;
+  const apps = deps.connectors ? await deps.connectors.cards(req, s.routeBy ?? s.said) : null;
   if (!apps || !deps.connectors) {
     return follow(ctx, deps, sink, {
-      reader: new LineReader(ids, s.mode, { draws: drawMax(ctx) }),
+      reader: new LineReader(ids, reads, { draws: drawMax(ctx) }),
       stream: deps.plan(AGENT_SYSTEM, user, deps.signal),
       // The text prompt teaches every model the one order, and its places in
       // a picture are dropped anyway: it has no picture.
       order: () => "xy",
       scene: s.scene,
-      nothing: NOT_FOUND,
+      nothing,
       result,
     });
   }
@@ -278,17 +329,19 @@ async function planWithModel(
     use.again = false;
     const last = round === MAX_USE_ROUNDS;
     await follow(ctx, deps, sink, {
-      reader: new LineReader(ids, s.mode, { draws: drawMax(ctx), connectors: !last }),
+      reader: new LineReader(ids, reads, { draws: drawMax(ctx), connectors: !last }),
       stream: deps.plan(apps.system, apps.message(user, use.results), deps.signal),
       order: () => "xy",
       scene: s.scene,
-      nothing: NOT_FOUND,
+      nothing,
       result,
       use,
     });
     if (!use.again || sink.ended) break;
   }
-  await deps.connectors.settle(req.runId, sink.ending).catch(() => {});
+  // On the phone each ask is a run of its own, and the next has a new id: a
+  // question back ends this one's task as an answer would.
+  await deps.connectors.settle(req.runId, s.act === false && sink.ending === "ask" ? "done" : sink.ending).catch(() => {});
   return result;
 }
 
@@ -361,7 +414,7 @@ async function follow(
     if (!line) return;
     for (const out of reader.read(line)) {
       if ("emit" in out) sink.emit(out.emit);
-      else if ("use" in out) await useTool(out.use, req.runId, f.use, deps, sink, req.language);
+      else if ("use" in out) await useTool(out.use, req, f.use, deps, sink);
       else result.words += await act(out.act, req, deps, sink, f.scene);
     }
   };
@@ -431,21 +484,28 @@ function drain(stream: AsyncIterator<PlanChunk>): void {
  * becomes an approval the device must confirm (nothing has happened yet); and
  * anything the person's settings do not allow is said to them, as it is.
  */
-async function useTool(line: UseLine, runId: string, hold: UseHold | undefined, deps: StepDeps, sink: EventSink, language?: string): Promise<void> {
+async function useTool(line: UseLine, req: AgentStepRequest, hold: UseHold | undefined, deps: StepDeps, sink: EventSink): Promise<void> {
   if (!hold || !deps.connectors) return;
-  const o = await deps.connectors.use(runId, hold.said, line, { allowWrite: hold.allowWrite, language });
+  const o = await deps.connectors.use(req.runId, hold.said, line, {
+    allowWrite: hold.allowWrite, language: req.language, platform: req.platform,
+    read: hold.results.length > 0, words: everythingSaid(req, hold.said),
+  });
   if (o.kind === "result") {
     hold.results.push(`${line.connector}.${line.tool}: ${o.text}`);
     hold.again = true;
   } else if (o.kind === "open") {
-    // The hand-off: say the one line, have the device open the link (Gmail's
-    // compose window, written for them to check and send), and finish.
-    sink.emit({ t: "say", text: o.say ?? "I've written it in Gmail. Check it and hit Send." });
+    // The hand-off: say the one line, have the device open the link (the
+    // other app with everything written, for them to finish), and finish.
+    sink.emit({ t: "say", text: o.say ?? "It's open and ready. Check it and finish it there." });
     sink.emit({ t: "open", url: o.url, label: o.label, ...(o.fallback ? { fallback: o.fallback } : {}) });
     sink.emit({ t: "done" });
   } else if (o.kind === "approval") {
     // The card is the server's: its words, its buttons, the routes they call.
     sink.emit({ t: "approve", taskId: o.taskId, approval: o.approval, ...(o.card ? { card: o.card } : {}) });
+  } else if (o.ask && (req.platform === "ios" || req.platform === "android")) {
+    // On the phone a tool's question back ("What's their UPI ID?") is asked
+    // like the planner's own ASK, so their answer is read with this request.
+    sink.emit({ t: "ask", text: o.message });
   } else {
     sink.emit({ t: "say", text: o.message });
     sink.emit({ t: "done" });
