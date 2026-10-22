@@ -17,6 +17,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import OpenAI from "openai";
 import { getConfig } from "../config.js";
+import { CATALOG } from "../connectors/catalog.js";
+import { hinglishSeeds } from "../connectors/words.js";
 import type {
   ActionRef,
   ActionSpec,
@@ -126,6 +128,15 @@ function transformActionSpec(a: ActionSpec, fn: StrFn): ActionSpec {
     case "cancelKeyboardHandoff":
       // Carry only an onSuccess callback ref.
       return { ...a, onSuccess: a.onSuccess ? transformActionRef(a.onSuccess, fn) : a.onSuccess };
+    case "biometricPrompt":
+      // Its reason is what the system dialog says; the three branches carry theirs.
+      return {
+        ...a,
+        reason: a.reason ? fn(a.reason) : a.reason,
+        onSuccess: a.onSuccess ? transformActionRef(a.onSuccess, fn) : a.onSuccess,
+        onError: a.onError ? transformActionRef(a.onError, fn) : a.onError,
+        onUnavailable: a.onUnavailable ? transformActionRef(a.onUnavailable, fn) : a.onUnavailable,
+      };
     case "condition":
       return {
         ...a,
@@ -133,11 +144,11 @@ function transformActionSpec(a: ActionSpec, fn: StrFn): ActionSpec {
         else: a.else ? transformActionRef(a.else, fn) : a.else,
       };
     case "callEndpoint":
+    case "connector.connect":
     case "download":
     case "pickImage":
     case "pickDocument":
     case "scanQR":
-    case "biometricPrompt":
     case "iap.showPaywall":
     case "iap.subscribe":
     case "iap.restore":
@@ -416,6 +427,8 @@ async function translateViaLLM(languageName: string, items: string[]): Promise<s
   }
 }
 
+let hinglishSeedsOnce: Map<string, string> | undefined;
+
 async function ensureTranslations(
   code: string,
   name: string,
@@ -426,6 +439,12 @@ async function ensureTranslations(
     if (!cache) {
       cache = await loadDisk(code);
       memory.set(code, cache);
+    }
+    // The design's own Hinglish for the assistant's words is used as written,
+    // not guessed at by the model (connectors/words.ts).
+    if (code === "hinglish") {
+      hinglishSeedsOnce ??= hinglishSeeds(CATALOG.map((c) => c.name));
+      for (const [from, to] of hinglishSeedsOnce) if (!cache.has(from)) cache.set(from, to);
     }
     const missing = strings.filter((s) => !cache!.has(s));
     if (missing.length > 0) {

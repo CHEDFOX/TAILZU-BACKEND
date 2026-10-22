@@ -36,6 +36,7 @@ export const APP_KNOB_LABELS: Record<string, string> = {
   "billing.elsewhere.web.name": "the web",
   "boot.failure.body": "Something failed before the app could draw anything. The detail below says what.",
   "boot.failure.title": "Tailzu couldn't start",
+  "desktop.agent.approveElsewhere": "I need your OK in Tailzu first.",
   "desktop.agent.notHeard": "I didn't catch that. Tap {key} twice and ask again.",
   "desktop.agent.permitText": "To answer that I need to see it.",
   "desktop.agent.permitWindowText": "To answer that I need to see it.",
@@ -735,6 +736,7 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
     "s",
     "screen"
   ],
+  "desktop.agent.approveCallMs": 25000,
   "desktop.agent.clipWaitMs": 8000,
   "desktop.agent.confirmAll": false,
   "desktop.agent.confirmMs": 30000,

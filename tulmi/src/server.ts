@@ -38,6 +38,8 @@ import { registerSeoRoutes } from "./routes/seo.js";
 import { registerNotesRoutes } from "./routes/notes.js";
 import { createConnectors, type Connectors } from "./connectors/index.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
+import { assistantView } from "./connectors/list.js";
+import { ASSISTANT_SCREENS } from "./experience/assistant.js";
 import { getNote, listNotes } from "./notes/store.js";
 import { registerDemoRoutes, sitePage, AUTH_RESUME_SCHEME_URL } from "./routes/demo.js";
 import { initControl, registerControlRoutes, requireAdmin, withControl } from "./control/index.js";
@@ -1908,7 +1910,7 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
           log: (call) => req.log.info({ agent: { runId: step.runId, step: step.step, ...call } }, "agent model call"),
         }),
         signal: gone.signal,
-        ...(connectors ? { connectors: connectors.runtimeFor(user.id) } : {}),
+        ...(connectors ? { connectors: connectors.runtimeFor(user.id, () => getProfile(user).then((p) => p?.language)) } : {}),
       },
       sink,
     );
@@ -2528,6 +2530,10 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
       && reqBody.capabilities!.components!.includes("DeskShell"),
     deskNotes: Array.isArray(reqBody.capabilities?.components)
       && reqBody.capabilities!.components!.includes("DeskNotes"),
+    // The Tasks tab: the window can show it ("DeskConnectors") and the
+    // assistant's connected apps are switched on.
+    deskTasks: !!connectors && Array.isArray(reqBody.capabilities?.components)
+      && reqBody.capabilities!.components!.includes("DeskConnectors"),
     isReviewer,
     // The address the app should offer a password field for. Sent to everyone
     // because knowing it grants nothing — the password is the credential and it
@@ -2774,8 +2780,21 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
     user && ENTITLEMENT_SCREENS.has(screenId)
       ? getEntitlement(user).catch(() => null)
       : undefined;
-  const [usage, stats, allowance, history, notes, note, entitlement] = await Promise.all([
-    usageRead, statsWait, allowanceRead, historyRead, notesRead, noteRead, entitlementRead,
+  // The assistant's side of the desk: Connected apps in Settings and the Tasks
+  // page. Only for a window that said it can show them ("DeskConnectors"),
+  // and only while CONNECTORS is on; a failed read draws the page without.
+  const assistantRead = user && connectors && screenFormFactor === "desktop"
+    && Array.isArray(body.capabilities?.components) && body.capabilities!.components!.includes("DeskConnectors")
+    && (screenId === "desk_settings" || screenId === "desk_tasks")
+    ? assistantView(connectors, user.id, { apps: screenId === "desk_settings", tasks: screenId === "desk_tasks" }).catch(() => undefined)
+    // The phone's own: Connected apps, Tasks and the confirm sheet
+    // (experience/assistant.ts). No capability to ask for: they are made of
+    // pieces every build draws.
+    : user && connectors && screenFormFactor !== "desktop" && ASSISTANT_SCREENS.has(screenId)
+      ? assistantView(connectors, user.id, { apps: screenId === "assistant_apps", tasks: screenId !== "assistant_apps" }).catch(() => undefined)
+      : undefined;
+  const [usage, stats, allowance, history, notes, note, entitlement, assistant] = await Promise.all([
+    usageRead, statsWait, allowanceRead, historyRead, notesRead, noteRead, entitlementRead, assistantRead,
   ]);
   // THE GATE. On iOS the keyboard's mic opens the app on `flow_arm`, so this
   // route is where an out-of-words user is stopped — before a session arms,
@@ -2827,6 +2846,8 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
     history,
     notes,
     note,
+    assistant,
+    connectorsOn: !!connectors,
     params: body.params,
     // The client has always sent this and the catalog has never been able to
     // read it, so every per-OS difference had to ship as BOTH variants with a

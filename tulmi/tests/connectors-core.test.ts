@@ -208,9 +208,11 @@ describe("the USE line", () => {
 });
 
 describe("the catalog", () => {
-  it("ships every entry unverified, and nothing is on until it is named", () => {
+  it("marks only the apps whose official docs confirm URL, transport and sign-in, and nothing is on until it is named", () => {
     expect(CATALOG.map((c) => c.id)).toEqual(["notion", "linear", "github", "atlassian", "asana", "zapier"]);
-    expect(CATALOG.every((c) => c.verified === false)).toBe(true);
+    expect(CATALOG.filter((c) => c.verified).map((c) => c.id)).toEqual(["notion", "linear", "zapier"]);
+    expect(CATALOG.every((c) => c.docs?.startsWith("https://") && c.notes)).toBe(true);
+    expect(CATALOG.every((c) => new URL(c.url).protocol === "https:")).toBe(true);
     expect(CATALOG.find((c) => c.id === "zapier")!.auth).toBe("url");
     expect(enabledCatalog(enabledIds(undefined))).toEqual([]);
     expect(enabledCatalog(enabledIds(" Notion , nope,linear")).map((c) => c.id)).toEqual(["notion", "linear"]);
@@ -271,9 +273,10 @@ describe("the push for a task that is waiting", async () => {
 
   it("says what it needs in plain words, once per task, and opens the assistant screen", async () => {
     const { sent, engine } = setup();
-    expect(await engine.notify("user-a", { kind: "approval", key: "task-1", vars: { app: "Slack" } })).toMatchObject({ sent: true });
+    // data.taskId is what the confirm sheet opens on; it can never replace the three keys the app reads.
+    expect(await engine.notify("user-a", { kind: "approval", key: "task-1", vars: { app: "Slack" }, data: { taskId: "task-1", screenId: "elsewhere", kind: "x" } })).toMatchObject({ sent: true });
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({ title: "Waiting for your OK", body: "Tailzu needs a yes from you to carry on in Slack.", data: { screenId: "assistant", kind: "approval" } });
+    expect(sent[0]).toMatchObject({ title: "Waiting for your OK", body: "Tailzu needs a yes from you to carry on in Slack.", data: { screenId: "assistant_approve", kind: "approval", taskId: "task-1" } });
     expect(await engine.notify("user-a", { kind: "approval", key: "task-1", vars: { app: "Slack" } })).toBeNull();
     expect(sent).toHaveLength(1);
     expect(await engine.notify("nobody", { kind: "approval", key: "task-2" })).toBeNull();

@@ -29,6 +29,8 @@ export type ConfigFor = (ctx: Partial<ControlCtx>) => PushPayload;
 type Deliverable = Pick<Extract<Decision, { sendAt: number }>, "sendAt" | "title" | "body" | "screenId" | "ttlSec"> & {
   kind: string;
   periodKey: string;
+  /** Extra data for the screen it opens (an approval's task id). Never screenId, pushId or kind. */
+  data?: Record<string, string>;
 };
 
 export interface TickReport {
@@ -248,7 +250,7 @@ export class PushEngine {
    */
   async notify(
     userId: string,
-    msg: { kind: EventPushKind; key: string; vars?: Record<string, string | number> },
+    msg: { kind: EventPushKind; key: string; vars?: Record<string, string | number>; data?: Record<string, string> },
     now = Date.now(),
   ): Promise<{ sent: boolean; dropped: number } | null> {
     const c = await this.candidate(userId, now);
@@ -262,6 +264,7 @@ export class PushEngine {
       body: k.label(`push.${msg.kind}.body`, "", msg.vars),
       screenId: k.flag(`push.${msg.kind}.screenId`, "home"),
       ttlSec: Math.max(60, Math.round(k.flag("push.smart.ttlMin", 180) * 60)),
+      ...(msg.data ? { data: msg.data } : {}),
     };
     const res = await this.deliver(c, d, payload, now);
     return res ? { sent: res.sent, dropped: res.dropped } : null;
@@ -283,7 +286,7 @@ export class PushEngine {
       priority: "default",
       // The app opens data.screenId and hands the rest to the screen as its
       // params, so pushId comes back to us with the tap (see markOpened).
-      data: { screenId: d.screenId, pushId: id, kind: d.kind },
+      data: { ...d.data, screenId: d.screenId, pushId: id, kind: d.kind },
     }));
     let tickets: Ticket[];
     try {

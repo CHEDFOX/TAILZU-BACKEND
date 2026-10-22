@@ -840,6 +840,11 @@ export type ActionSpec =
   /** Open the Mac's Screen & System Audio Recording settings, so notes can
    *  hear the computer's sound (desktop, macOS). */
   | { kind: "notes.allowSystemAudio" }
+  /** Connect an app (desktop): POST /v1/connectors/:id/connect, then open the
+   *  sign-in page the answer names in the browser. For an app that takes a
+   *  pasted link, `urlPath` is the state path that holds it. Only that route;
+   *  the window builds the path and checks the page it opens. */
+  | { kind: "connector.connect"; id: string; urlPath?: string; onSuccess?: ActionRef; onError?: ActionRef }
   /** Download, check and install a newer build in place of this one, then
    *  restart on it (desktop/updater.js). `words` are the card's line for each
    *  step; "{pct}" in `downloading` is filled in by the window. */
@@ -893,7 +898,9 @@ export type ActionSpec =
       assignTo?: string;
     }
   // --- auth ---
-  | { kind: "biometricPrompt"; reason?: string; onSuccess?: ActionRef; onError?: ActionRef }
+  /** `onUnavailable` runs when the phone has no Face ID, fingerprint or
+   *  passcode to check against (a cancel is onError). */
+  | { kind: "biometricPrompt"; reason?: string; onSuccess?: ActionRef; onError?: ActionRef; onUnavailable?: ActionRef }
   | { kind: "signOut" }
   // --- app-level chrome ---
   // Switch the home-screen app icon to one of the alternates declared in the

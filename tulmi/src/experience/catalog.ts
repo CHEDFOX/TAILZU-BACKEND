@@ -10,6 +10,9 @@
 import { nicknameOf } from "./assistantName.js";
 import { withAppKnobs, withKeyboardKnobs } from "./appKnobs.js";
 import { DESK_SCREENS, buildDeskScreen, deskNav } from "./desk.js";
+import type { AssistantView } from "../connectors/list.js";
+import { buildAssistantScreen } from "./assistant.js";
+import { en as assistantWords } from "../connectors/words.js";
 import { PHONE_FONT, PHONE_LOOK, PHONE_ROOMS, STATS_TOP, caption, label, monthFigures, phoneStatsBody, proofMark, span, statsDays, t } from "./phoneLook.js";
 import {
   DAY_ASPECT, HOUR_LABELS, SHARE_INKS, TYPED_INK, axis, boundCurve, boundLine, boundTiles, columns, curve, curvePaths,
@@ -2180,6 +2183,9 @@ export function buildBootstrap(
     /** The desk's window can take notes (it said "DeskNotes"): it gets the
      *  Notes tab. An older one has no hotkey for it and does not. */
     deskNotes?: boolean;
+    /** The desk's window can show the assistant's Tasks (it said
+     *  "DeskConnectors") and connected apps are on: it gets the Tasks tab. */
+    deskTasks?: boolean;
     /** Signed in at all — setup's first step. */
     signedIn?: boolean;
     /** Words ever written, for setup's last step: a first sentence said. */
@@ -2190,7 +2196,7 @@ export function buildBootstrap(
 ): BootstrapResponse {
   const desk = opts.desk === true && opts.formFactor === "desktop";
   const setup = setupActivity(opts);
-  const nav = desk ? deskNav(opts.deskNotes === true) : navigationFor(!!opts.landedBefore);
+  const nav = desk ? deskNav(opts.deskNotes === true, opts.deskTasks === true) : navigationFor(!!opts.landedBefore);
   return withAppKnobs({
     schemaVersion: SDUI_SCHEMA_VERSION,
     // Opaque cache token — clients invalidate any cached screens when this
@@ -4799,6 +4805,13 @@ export interface ScreenContext {
   notes?: NoteSummary[];
   /** The desk's note page: the one asked for (params.noteId), null if gone. */
   note?: Note | null;
+  /** The assistant's connected apps and tasks, for the desk's Settings and
+   *  Tasks page (only for a window that said "DeskConnectors", with
+   *  CONNECTORS on). */
+  assistant?: AssistantView;
+  /** Connected apps are switched on (CONNECTORS): the phone's Settings offers
+   *  Connected apps and Tasks. Off, neither row is drawn. */
+  connectorsOn?: boolean;
   name?: string;
   /** Whether the user has completed onboarding — routes the intro's `done`
    * action to onboarding (new user) vs home, so the intro never skips it. */
@@ -4946,6 +4959,7 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       history: ctx.history,
       notes: ctx.notes,
       note: ctx.note,
+      assistant: ctx.assistant,
       notesHotkey: ctx.can?.has("DeskNotes") === true,
       free: freeForAll(),
       allowSystemAudio: ctx.can?.has("DeskSystemAudio") === true,
@@ -5002,6 +5016,13 @@ function phoneScreen(screenId: string, ctx: ScreenContext): ScreenResponse | nul
       return voiceReadScreen(ctx);
     case "assistant_name":
       return assistantNameScreen(ctx);
+    // The assistant on the phone: Connected apps, Tasks, the confirm sheet
+    // (experience/assistant.ts). The words are the shared table's, so these
+    // opt out of the capitalising pass below the way assistant.ts explains.
+    case "assistant_apps":
+    case "assistant_tasks":
+    case "assistant_approve":
+      return buildAssistantScreen(screenId, { assistant: ctx.assistant, params: ctx.params, can: ctx.can }, YOU_UI);
     case "delete_account":
       return deleteAccountScreen();
     case "cancel_subscription":
@@ -9482,6 +9503,12 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         // Its name: Tailzu always, and a name of their own beside it.
         row("Its name", { kind: "navigate", screenId: "assistant_name" },
           { props: { label: "Its name", value: nicknameOf(ctx.personality) ? `Tailzu, ${nicknameOf(ctx.personality)}` : "Tailzu" } }),
+        // What it can reach in the person's apps, and what it is doing there.
+        // Only while connected apps are on; the words are the assistant's own.
+        ...(ctx.connectorsOn ? [
+          row(assistantWords("apps.h"), { kind: "navigate", screenId: "assistant_apps" }, { props: { label: assistantWords("apps.h") } }),
+          row(assistantWords("a4.h"), { kind: "navigate", screenId: "assistant_tasks" }, { props: { label: assistantWords("a4.h") } }),
+        ] : []),
 
         // Legal + account
         label("About", { marginTop: 36, marginBottom: 4 }),

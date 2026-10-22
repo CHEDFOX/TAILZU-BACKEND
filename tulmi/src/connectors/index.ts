@@ -16,11 +16,13 @@ import { AGENT_SYSTEM } from "../agent/prompt.js";
 import type { ConnectorPlan, ConnectorsRuntime } from "../agent/run.js";
 import { fenceTags, stripFenceTags } from "../pipeline/assistPrompt.js";
 import { getConfig } from "../config.js";
+import { approvalCard } from "./card.js";
 import { enabledCatalog, enabledIds, type ConnectorDef } from "./catalog.js";
 import { ConnectorHub } from "./client.js";
 import { pickConnectors, pickTools, type Card } from "./router.js";
 import { connectorStore, type ConnectorStore } from "./store.js";
 import { TaskService, type TasksOptions } from "./tasks.js";
+import { isHinglish } from "./words.js";
 
 export const CONNECTOR_ADDENDUM = [
   "",
@@ -74,7 +76,8 @@ export interface Connectors {
   hub: ConnectorHub;
   tasks: TaskService;
   redirectUrl: string;
-  runtimeFor(userId: string): ConnectorsRuntime;
+  /** `profileLanguage` is the person's chosen app language, asked only when a confirm card is worded. */
+  runtimeFor(userId: string, profileLanguage?: () => Promise<string | undefined>): ConnectorsRuntime;
 }
 
 export function createConnectors(o: ConnectorsOptions = {}): Connectors {
@@ -85,7 +88,7 @@ export function createConnectors(o: ConnectorsOptions = {}): Connectors {
   const hub = new ConnectorHub({ store, catalog, redirectUrl, callTimeoutMs: o.callTimeoutMs, now: o.now });
   const tasks = new TaskService({ store, hub, now: o.now, notify: o.notify });
 
-  const runtimeFor = (userId: string): ConnectorsRuntime => ({
+  const runtimeFor = (userId: string, profileLanguage?: () => Promise<string | undefined>): ConnectorsRuntime => ({
     async cards(req, said): Promise<ConnectorPlan | null> {
       const have = (await store.listConnections(userId))
         .filter((c) => c.tokensEnc)
@@ -107,7 +110,14 @@ export function createConnectors(o: ConnectorsOptions = {}): Connectors {
       if (!cards.length) return null;
       return { system: AGENT_SYSTEM_CONNECTORS, message: (base, results) => withConnectorContext(base, cards, results) };
     },
-    use: (runId, said, line, opts) => tasks.use(userId, runId, said, line, opts),
+    async use(runId, said, line, opts) {
+      const o = await tasks.use(userId, runId, said, line, opts);
+      if (o.kind !== "approval") return o;
+      // The confirm card, worded for the person: a Hinglish profile reads
+      // Hinglish whatever language the device asked in.
+      const lang = isHinglish(opts.language) ? opts.language : await profileLanguage?.().catch(() => undefined);
+      return { ...o, card: approvalCard(o.taskId, o.approval, hub.def(o.approval.connector)?.name ?? o.approval.connector, lang ?? opts.language) };
+    },
     settle: (runId, ending) => tasks.settle(userId, runId, ending),
   });
 

@@ -85,6 +85,8 @@ interface Held { client: Promise<Client>; used: number }
 export class ConnectorHub {
   private readonly clients = new Map<string, Held>();
   private readonly toolCache = new Map<string, { at: number; tools: ToolInfo[] }>();
+  /** "user|app" pairs whose last try was refused for want of a new sign-in. In memory: it clears with a restart or the next good try. */
+  private readonly signIn = new Set<string>();
   private readonly callMs: number;
   private readonly cacheMs: number;
   private readonly now: () => number;
@@ -97,6 +99,9 @@ export class ConnectorHub {
 
   get catalog(): readonly ConnectorDef[] { return this.o.catalog; }
   def(id: string): ConnectorDef | undefined { return this.o.catalog.find((c) => c.id === id); }
+
+  /** Whether this person's last try in the app needed them to sign in again. */
+  needsSignIn(userId: string, connectorId: string): boolean { return this.signIn.has(`${userId}|${connectorId}`); }
 
   private open(userId: string, def: ConnectorDef): Promise<Client> {
     const key = `${userId}|${def.id}`;
@@ -132,6 +137,7 @@ export class ConnectorHub {
   async forget(userId: string, connectorId: string): Promise<void> {
     const key = `${userId}|${connectorId}`;
     this.toolCache.delete(key);
+    this.signIn.delete(key);
     const held = this.clients.get(key);
     this.clients.delete(key);
     await held?.client.then((c) => c.close()).catch(() => {});
@@ -155,10 +161,12 @@ export class ConnectorHub {
         if (!cursor) break;
       }
       this.toolCache.set(key, { at: this.now(), tools });
+      this.signIn.delete(key);
       return tools;
     } catch (err) {
       await this.forget(userId, connectorId);
       const f = toFail(err, def.name);
+      if (f.code === "needs_reconnect") this.signIn.add(key);
       throw new ConnectorError(f.code, f.message);
     }
   }
@@ -171,6 +179,7 @@ export class ConnectorHub {
       const client = await this.open(userId, def);
       const res = await client.callTool({ name: tool, arguments: args }, undefined, { timeout: this.callMs });
       const text = resultText((res as { content?: unknown }).content).replace(/^MCP error -?\d+:\s*/, "");
+      this.signIn.delete(`${userId}|${connectorId}`);
       void this.o.store.upsertConnection(userId, connectorId, { lastUsedAt: this.now() }).catch(() => {});
       if ((res as { isError?: boolean }).isError) {
         return fail({ code: "tool_error", message: text ? `${def.name} said: ${text.slice(0, 300)}` : `${def.name} couldn't do that.` });
@@ -180,6 +189,7 @@ export class ConnectorHub {
       const f = toFail(err, def.name);
       // A dead connection is dropped; a refused tool name or arguments is the tool's answer.
       if (!(err instanceof McpError) || err.code === ErrorCode.RequestTimeout) await this.forget(userId, connectorId);
+      if (f.code === "needs_reconnect") this.signIn.add(`${userId}|${connectorId}`);
       if (err instanceof McpError && (err.code === ErrorCode.InvalidParams || err.code === ErrorCode.MethodNotFound)) {
         return fail({ code: "rejected", message: `${def.name} didn't accept that. ${err.message.replace(/^MCP error -?\d+:\s*/, "").slice(0, 200)}` });
       }
