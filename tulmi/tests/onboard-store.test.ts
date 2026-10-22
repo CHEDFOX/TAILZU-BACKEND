@@ -60,7 +60,7 @@ const { BLIP_LOOPS, BLIP_HEIGHT, BLIP_LOOP_MS, blipSize, blipUrl } = await impor
 const { BLIP_BUILD } = await import("../src/experience/blipData.js");
 const { recordUsage } = await import("../src/usage/metering.js");
 const { appendHistoryEntry } = await import("../src/history/store.js");
-const { STORE_FILES, parseStoreBuild } = await import("../scripts/storeBuild.js");
+const { STORE_COMMIT, STORE_FILES, parseStoreBuild } = await import("../scripts/storeBuild.js");
 type StoreBuild = import("../scripts/storeBuild.js").StoreBuild;
 const { CATALOG } = await import("../src/connectors/catalog.js");
 
@@ -70,12 +70,12 @@ const { CATALOG } = await import("../src/connectors/catalog.js");
 
 const FIXTURE = fixtureJson as unknown as StoreBuild;
 
-/** The phone repo's origin/main as it is now, when the repo is at hand; null where it is not (CI). */
+/** The phone build in the stores, read from the phone repo at STORE_COMMIT when the repo is at hand; null where it is not (CI). */
 function liveStoreBuild(): StoreBuild | null {
   const repo = process.env.TAILZU_FRONTEND ?? "/home/user/TAILZU-FRONTEND";
   try {
     const src = Object.fromEntries(
-      Object.entries(STORE_FILES).map(([k, file]) => [k, execFileSync("git", ["-C", repo, "show", `origin/main:${file}`], { encoding: "utf8", maxBuffer: 32 << 20, stdio: ["ignore", "pipe", "ignore"] })]),
+      Object.entries(STORE_FILES).map(([k, file]) => [k, execFileSync("git", ["-C", repo, "show", `${STORE_COMMIT}:${file}`], { encoding: "utf8", maxBuffer: 32 << 20, stdio: ["ignore", "pipe", "ignore"] })]),
     ) as unknown as import("../scripts/storeBuild.js").StoreSources;
     return parseStoreBuild(src);
   } catch {
@@ -83,7 +83,7 @@ function liveStoreBuild(): StoreBuild | null {
   }
 }
 const LIVE = liveStoreBuild();
-const BUILDS: Array<[string, StoreBuild]> = [["the fixture", FIXTURE], ...(LIVE ? [["the phone repo's origin/main", LIVE] as [string, StoreBuild]] : [])];
+const BUILDS: Array<[string, StoreBuild]> = [["the fixture", FIXTURE], ...(LIVE ? [[`the phone repo at ${STORE_COMMIT}`, LIVE] as [string, StoreBuild]] : [])];
 
 type N = {
   type: string; id?: string; props?: Record<string, any>; style?: Record<string, any>; children?: N[];

@@ -17,6 +17,8 @@
  *   assistant_app_tools an app the person added by link: what it can do,
  *                       tool by tool, as Allow / Ask first / Off, and the
  *                       "This app changed" banner (params.id)
+ *   (You tab)           youCard: "Hand it to me", the same Ask in a card on
+ *                       the You tab, with the next three tasks and the apps
  *   assistant_ask       Ask on the phone: a field, the mic, Do it, and a few
  *                       examples to tap. The answer comes from
  *                       POST /v1/assistant/ask and is acted on with the
@@ -62,7 +64,7 @@ import { approvalCard } from "../connectors/card.js";
 import type { AssistantView } from "../connectors/list.js";
 import { en, wordsFor, type WordKey } from "../connectors/words.js";
 import { PHONE_LOOK, label, t } from "./phoneLook.js";
-import { blipBox, blipPicture, neonDot } from "./touches.js";
+import { NEON, blipBox, blipPicture, neonDot } from "./touches.js";
 import type { BlipLoop } from "./blipLoops.js";
 import { sw } from "./settingsWords.js";
 import { appIconNode } from "./appIcons.js";
@@ -892,7 +894,7 @@ const withLogo = (logo: Node | undefined, line: Node): Node => logo
   : line;
 
 /** Is this connector id an app a person added by link? (Then it never gets a logo.) */
-const customApp = (ctx: Ctx, id: string): boolean => ctx.assistant?.apps?.find((x) => x.id === id)?.custom === true;
+const customApp = (ctx: AssistantScreenCtx, id: string): boolean => ctx.assistant?.apps?.find((x) => x.id === id)?.custom === true;
 
 function tasksScreen(ctx: Ctx, ui: You): ScreenResponse {
   const tasks = ctx.assistant?.tasks;
@@ -1077,7 +1079,7 @@ function approveScreen(ctx: Ctx, ui: You): ScreenResponse {
  * into its params: with none it shows the newest waiting task, which is the
  * one this ask just made.
  */
-function askAction(ctx: Ctx): ActionSpec {
+export function askAction(ctx: Pick<AssistantScreenCtx, "platform" | "tzOffsetMinutes">): ActionSpec {
   return {
     kind: "condition", if: { truthy: "ask.text" },
     then: seq(
@@ -1101,36 +1103,60 @@ function askAction(ctx: Ctx): ActionSpec {
   };
 }
 
-function askScreen(ctx: Ctx, ui: You): ScreenResponse {
-  if (!ctx.connectorsOn) {
-    return page(ctx, ASK, ui, en("ask.h"), en("ask.p"), [cannotReach(ui)], { state: {} });
-  }
-  // The examples are in their voice and live in state, so a chip shows
-  // exactly what it fills in: a translated node would not match its value.
-  const w = wordsFor(ctx.language);
-  const examples = [w("ask.ex1"), w("ask.ex2"), w("ask.ex3")];
-  const chip = (i: number): Node => ({
+/** The three examples, in their voice. They live in state (ask.ex), so a chip shows exactly what it fills in: a translated node would not match its value. */
+export function askExamples(language?: string): string[] {
+  const w = wordsFor(language);
+  return [w("ask.ex1"), w("ask.ex2"), w("ask.ex3")];
+}
+
+/** One example to tap: it fills the field with the very words it shows. */
+function askChip(ui: You, examples: readonly string[], i: number): Node {
+  return {
     type: "Stack",
     on: { onPress: seq(haptic("selection"), setState("ask.text", examples[i])) },
     props: { pressOpacity: 0.7 },
     style: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1, borderColor: "rgba(255,255,255,0.22)" },
     children: [fromState(`ask.ex.${i}`, "ui", 13.5, { color: ui.text })],
-  });
+  };
+}
+
+/** What Ask is made of, for the Ask screen and for the You tab's card: one builder, so the two cannot drift apart. */
+const askParts = {
+  field: (): Node => ({ type: "TextField", bind: { value: "ask.text" }, props: { placeholder: en("ask.ph"), multiline: true } }),
+  /** The mic that writes into the field, and Do it. */
+  controls: (ctx: Pick<AssistantScreenCtx, "platform" | "tzOffsetMinutes">, ui: You): Node => ({
+    type: "Stack", style: { flexDirection: "row", gap: 8, alignItems: "center" },
+    children: [
+      {
+        type: "VoiceButton", bind: { value: "ask.text" },
+        props: { targetApp: "Tailzu", language: "auto", label: en("ask.mic"), background: ui.pill.background, radius: 999, paddingVertical: 14 },
+        style: { flex: 1 },
+      },
+      pill(ui, en("ask.go"), askAction(ctx), "primary", true),
+    ],
+  }),
+  /** The answer: its words are the server's and theirs, from state, never reworded. */
+  answer: (ui: You, fill: string, top: number): Node => ({
+    type: "Stack",
+    visibleIf: { truthy: "ask.res.say" },
+    style: { padding: 14, borderRadius: 16, marginTop: top, backgroundColor: fill },
+    children: [fromState("ask.res.say", "ui", 15.5, { lineHeight: 23, color: ui.text })],
+  }),
+  chips: (ui: You, examples: readonly string[]): Node =>
+    ({ type: "Stack", style: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, children: examples.map((_, i) => askChip(ui, examples, i)) }),
+  state: (examples: readonly string[]) => ({ ask: { text: "", busy: false, res: {}, ex: examples } }),
+};
+
+function askScreen(ctx: Ctx, ui: You): ScreenResponse {
+  if (!ctx.connectorsOn) {
+    return page(ctx, ASK, ui, en("ask.h"), en("ask.p"), [cannotReach(ui)], { state: {} });
+  }
+  const examples = askExamples(ctx.language);
   const body: Node[] = [
     GAP(18),
-    { type: "TextField", bind: { value: "ask.text" }, props: { placeholder: en("ask.ph"), multiline: true } },
+    askParts.field(),
     GAP(12),
-    {
-      type: "Stack", style: { flexDirection: "row", gap: 8, alignItems: "center" },
-      children: [
-        {
-          type: "VoiceButton", bind: { value: "ask.text" },
-          props: { targetApp: "Tailzu", language: "auto", label: en("ask.mic"), background: ui.pill.background, radius: 999, paddingVertical: 14 },
-          style: { flex: 1 },
-        },
-        pill(ui, en("ask.go"), askAction(ctx), "primary", true),
-      ],
-    },
+    askParts.controls(ctx, ui),
     // WORKING: Blip thinking, beside the line that was always here. The one Blip here.
     {
       type: "Stack",
@@ -1138,17 +1164,195 @@ function askScreen(ctx: Ctx, ui: You): ScreenResponse {
       style: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 14 },
       children: [blipBox("think-s", 0.5), word(en("ask.busy"), "ui", 13.5, { color: ui.textDim, flex: 1 })],
     },
-    // The answer: its words are the server's and theirs, from state, never reworded.
-    {
-      type: "Stack",
-      visibleIf: { truthy: "ask.res.say" },
-      style: { padding: 14, borderRadius: 16, marginTop: 16, backgroundColor: ui.pill.background },
-      children: [fromState("ask.res.say", "ui", 15.5, { lineHeight: 23, color: ui.text })],
-    },
+    askParts.answer(ui, ui.pill.background, 16),
     label(en("ask.try"), { marginTop: 28, marginBottom: 12 }),
-    { type: "Stack", style: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, children: examples.map((_, i) => chip(i)) },
+    askParts.chips(ui, examples),
   ];
-  return page(ctx, ASK, ui, en("ask.h"), en("ask.p"), body, {
-    state: { ask: { text: "", busy: false, res: {}, ex: examples } },
-  });
+  return page(ctx, ASK, ui, en("ask.h"), en("ask.p"), body, { state: askParts.state(examples) });
+}
+
+// ---------------------------------------------------------------------------
+// The You tab's card: hand a task over, and see what is coming up
+// ---------------------------------------------------------------------------
+
+/** Rows in "Coming up", and logos in the card's foot. */
+const UP_ROWS = 3;
+const UP_APPS = 5;
+
+/**
+ * The next tasks, as the You tab shows them: what waits for the person's OK
+ * first, then what is running, then the latest one done. At most three.
+ */
+export function comingUp(tasks: readonly AssistantTask[]): AssistantTask[] {
+  const waiting = tasks.filter((x) => x.state === "waiting" && x.approval);
+  const running = tasks.filter((x) => x.state === "running");
+  const done = tasks.filter((x) => x.state === "done").sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  return [...waiting, ...running, ...(done ? [done] : [])].slice(0, UP_ROWS);
+}
+
+/** The assistant's pages, in the cream ink the You tab's cards are set in. */
+const cream = (ui: You): You => ({
+  ...ui, text: PHONE_LOOK.ink, textDim: PHONE_LOOK.ink2, textFaint: PHONE_LOOK.ink3,
+  pill: { ...ui.pill, background: PHONE_LOOK.track },
+});
+
+/** A small arrow that says a line goes somewhere. */
+const goes = (ui: You): Node => ({
+  type: "SVG",
+  props: { viewBox: "0 0 24 24", d: "M9 5 L16 12 L9 19", fill: "none", stroke: ui.textDim, strokeWidth: 2.4, strokeLinecap: "round", strokeLinejoin: "round" },
+  style: { width: 11, height: 11 },
+});
+
+/** A line you press that goes to another page, with the arrow after it. */
+const link = (ui: You, text: string, screenId: string, style: Style = {}): Node => ({
+  type: "Stack",
+  on: { onPress: seq(haptic("selection"), { kind: "navigate", screenId }) },
+  props: { pressOpacity: 0.6, hitSlop: 10 },
+  style: { flexDirection: "row", alignItems: "center", gap: 6, ...style },
+  children: [word(text, "uiMedium", 13, { color: ui.text }), goes(ui)],
+});
+
+/**
+ * HAND IT TO ME: a card on the You tab, only while connected apps are on.
+ *
+ * It does what Ask does, from the tab: a field, the mic, Do it (the very
+ * actions assistant_ask runs, built by the same code), and a few examples
+ * to tap. Under them, Coming up, the person's next three tasks (the same
+ * data as Tasks), and in the foot the apps that are connected and a way to
+ * add more. No Blip: the greeting above has the one this tab gets.
+ *
+ * Everything the person or an app wrote (a task's title, its step, an app's
+ * letter) is drawn from this card's state, never from a node, as on Tasks.
+ * A read of the assistant that failed leaves the card without Coming up (it
+ * would say "Nothing" about a list that was never read), and the rest works.
+ */
+export function youCard(
+  ctx: AssistantScreenCtx, base: You, o: { marginBottom?: number } = {},
+): { node: Node; state: Record<string, unknown> } | null {
+  if (!ctx.connectorsOn) return null;
+  const ui = cream(base);
+  const names = ctx.assistant?.names ?? {};
+  const apps = ctx.assistant?.apps;
+  const tasks = ctx.assistant?.tasks;
+  const examples = askExamples(ctx.language);
+  const rows: Array<{ title: string; sub: string }> = [];
+  const ini: Record<string, string> = {};
+  const letter = (name: string): string => name.trim().charAt(0).toUpperCase() || "?";
+
+  const toTasks: ActionSpec = { kind: "navigate", screenId: TASKS };
+  const open = (x: AssistantTask): ActionSpec => ({ kind: "navigate", screenId: "assistant_approve", params: { taskId: x.id } });
+
+  const status = (x: AssistantTask): Node => {
+    if (x.state === "waiting") {
+      const id = x.approval!.connector;
+      ini[id] = letter(names[id] ?? id);
+      return mark(ui, id, 34, customApp(ctx, id));
+    }
+    const box: Style = { width: 34, height: 34, alignItems: "center", justifyContent: "center" };
+    // Done: a neon tick, which is what neon is for here.
+    if (x.state === "done") {
+      return {
+        type: "Stack", style: box,
+        children: [{
+          type: "SVG",
+          props: { viewBox: "0 0 24 24", d: "M5 12.5 L10 17.5 L19 7", fill: "none", stroke: NEON, strokeWidth: 2.8, strokeLinecap: "round", strokeLinejoin: "round" },
+          style: { width: 20, height: 20 },
+        }],
+      };
+    }
+    // Running: the dot Tasks draws for it.
+    return {
+      type: "Stack", style: box,
+      children: [{ type: "Stack", style: { width: 10, height: 10, borderRadius: 5, backgroundColor: ui.textDim } }],
+    };
+  };
+
+  const rowOf = (x: AssistantTask, i: number): Node => {
+    const waits = x.state === "waiting";
+    rows.push({ title: x.title, sub: waits ? names[x.approval!.connector] ?? x.approval!.connector : lastStep(x) });
+    const line = (n: Node): Node => ({ ...n, props: { ...n.props, numberOfLines: 1 } });
+    return {
+      type: "Stack",
+      on: { onPress: seq(haptic("selection"), waits ? open(x) : toTasks) },
+      props: { pressOpacity: 0.7 },
+      style: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, paddingLeft: 10, paddingRight: 12, borderRadius: 16, backgroundColor: PHONE_LOOK.track },
+      children: [
+        status(x),
+        { type: "Stack", style: { flex: 1, gap: 2 }, children: [
+          line(fromState(`up.${i}.title`, "uiMedium", 14.5, { color: ui.text })),
+          line(fromState(`up.${i}.sub`, "ui", 12, { color: ui.textDim })),
+        ] },
+        ...(waits ? [{
+          type: "Stack",
+          on: { onPress: seq(haptic("selection"), open(x)) },
+          props: { pressOpacity: 0.7 },
+          style: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7, borderWidth: 1, borderColor: "rgba(243,226,198,0.5)" },
+          children: [word(sw("y.ok"), "uiMedium", 12, { color: ui.text })],
+        } as Node] : []),
+      ],
+    };
+  };
+
+  const next = tasks ? comingUp(tasks) : undefined;
+  const comingSection: Node[] = next ? [
+    {
+      type: "Stack", style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 26, marginBottom: 12 },
+      children: [label(sw("y.up")), link(ui, sw("y.all"), TASKS)],
+    },
+    next.length
+      ? { type: "Stack", style: { gap: 8 }, children: next.map(rowOf) }
+      : {
+          type: "Stack", style: { padding: 14, borderRadius: 16, backgroundColor: PHONE_LOOK.track },
+          children: [t(sw("y.none"), "ui", 14.5, { lineHeight: 21, color: ui.textDim })],
+        },
+  ] : [];
+
+  // The foot: the apps that are connected (their logos or letters), and the way to more.
+  const shown = (apps ?? []).filter((a) => a.connected).slice(0, UP_APPS);
+  for (const a of shown) ini[a.id] = letter(a.name);
+  const foot: Node = {
+    type: "Stack",
+    style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 14 },
+    children: [
+      {
+        type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 },
+        children: shown.length ? [
+          // Connected: neon, once, before the logos.
+          { type: "Stack", style: { marginRight: 4 }, children: [neonDot(7)] },
+          ...shown.map((a) => mark(ui, a.id, 28, a.custom)),
+        ] : [],
+      },
+      link(ui, sw("y.more"), "assistant_apps"),
+    ],
+  };
+
+  const node: Node = {
+    type: "Stack",
+    // keepCase: the words are set as written; the phone capitalises its own (word).
+    props: { keepCase: true },
+    style: {
+      borderRadius: 20, padding: 20, backgroundColor: "#1A1611", borderWidth: 1, borderColor: "rgba(243,226,198,0.12)",
+      ...(o.marginBottom !== undefined ? { marginBottom: o.marginBottom } : {}),
+    },
+    children: [
+      // The onboarding's heading face, and one warm line.
+      word(sw("y.h"), "grotesk", 26, { letterSpacing: -0.6 }),
+      t(sw("y.p"), "ui", 14.5, { lineHeight: 21, color: ui.textDim, marginTop: 6 }),
+      GAP(16),
+      askParts.field(),
+      GAP(10),
+      askParts.controls(ctx, ui),
+      {
+        type: "Stack", visibleIf: { truthy: "ask.busy" },
+        style: { marginTop: 12 },
+        children: [word(en("ask.busy"), "ui", 13.5, { color: ui.textDim })],
+      },
+      askParts.answer(ui, PHONE_LOOK.track, 12),
+      { type: "Stack", style: { marginTop: 16 }, children: [askParts.chips(ui, examples)] },
+      ...comingSection,
+      { type: "Stack", style: { height: 1, backgroundColor: PHONE_LOOK.rule, marginTop: 22 } },
+      foot,
+    ],
+  };
+  return { node, state: { ...askParts.state(examples), up: rows, ini } };
 }

@@ -76,6 +76,15 @@ export const SW = {
   "g.evening": sentence("Good evening. Anything to write up before the day ends?", "Good evening. Din khatam hone se pehle kuch likhwana hai?"),
   "g.night": sentence("Still up? I’m here, and I’ll keep it quiet.", "Abhi tak jaag rahe ho? Main yahin hoon, chupchaap."),
 
+  // ---- the You tab's "Hand it to me" card (assistant.ts youCard), only while connected apps are on ----
+  "y.h": label("Hand it to me", "Mujhe de do"),
+  "y.p": sentence("Tell me what to do, and I’ll do it in your apps.", "Bolo kya karna hai, main aapke apps mein kar dunga."),
+  "y.up": label("Coming up", "Aane wale kaam"),
+  "y.ok": label("Needs your OK", "Aapki haan chahiye"),
+  "y.none": sentence("Nothing on my list yet.", "Meri list mein abhi kuch nahi."),
+  "y.all": label("See all", "Sab dekho"),
+  "y.more": label("Add more apps", "Aur apps jodo"),
+
   // ---- the fix, in one line, under an error a screen already shows ------------
   "x.apps": sentence("Open this again in a little while, and I’ll try once more.", "Thodi der baad ise phir kholo, main ek baar aur koshish karunga."),
   "x.note": sentence("Tap Organise again, and I’ll have another go.", "Organise phir se dabao, main ek baar aur koshish karta hoon."),
