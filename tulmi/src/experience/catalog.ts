@@ -11,7 +11,7 @@ import { nicknameOf } from "./assistantName.js";
 import { withAppKnobs, withKeyboardKnobs } from "./appKnobs.js";
 import { DESK_SCREENS, buildDeskScreen, deskNav } from "./desk.js";
 import type { AssistantView } from "../connectors/list.js";
-import { buildAssistantScreen } from "./assistant.js";
+import { buildAssistantScreen, youCard } from "./assistant.js";
 import { en as assistantWords } from "../connectors/words.js";
 import { PHONE_FONT, PHONE_LOOK, PHONE_ROOMS, STATS_TOP, caption, label, monthFigures, phoneStatsBody, proofMark, span, statsDays, t } from "./phoneLook.js";
 import {
@@ -8411,6 +8411,17 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
   };
 
   /**
+   * HAND IT TO ME, only while connected apps are on (CONNECTORS): the Ask
+   * field with the mic and Do it, a few examples, the next three tasks and
+   * the apps (assistant.ts youCard). It sits right under the greeting. No
+   * Blip of its own: the greeting has the one this tab gets.
+   */
+  const handIt = youCard({
+    assistant: ctx.assistant, can: ctx.can, connectorsOn: ctx.connectorsOn,
+    language: ctx.language, platform: ctx.platform, tzOffsetMinutes: ctx.tzOffsetMinutes,
+  }, u, { marginBottom: YOU_CARD_GAP });
+
+  /**
    * HAPTICS, ON THE CARD ITSELF. The switch turns every key on. Keys picked
    * one by one on the Haptics screen count as on too, and switching those
    * off loses the picking — so that, and only that, asks first.
@@ -8512,7 +8523,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
      * the Image nodes below still read it, and because the day a screen
      * wants to change the mood it writes one path.
      */
-    state: { deck: 0, hapticsOn, askHapticsOff: false },
+    state: { deck: 0, hapticsOn, askHapticsOff: false, ...(handIt?.state ?? {}) },
     actions: {
       // The button that fired this is gone from the tab by owner decision.
       // The ACTION stays defined on purpose.
@@ -8592,6 +8603,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
               style: { ...readable(ctx) },
               children: [
                 underGreeting,
+                ...(handIt ? [handIt.node] : []),
                 voiceCard(voiceName, voiceLine, activeId),
                 trainCard(),
                 settingCard("Book", [
@@ -8639,7 +8651,12 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
     //
     // 45s matches the Stats tab, which charts the same rows. Fresh on any
     // return that was not a bounce, and still cached across the bounce.
-    cacheTtlSeconds: 45,
+    //
+    // With the Hand it to me card on, shorter: its Coming up is tasks that
+    // move while the person is elsewhere (an OK given from a push, a run that
+    // finished), and a row that says "Needs your OK" for a minute after it
+    // was given reads as broken.
+    cacheTtlSeconds: handIt ? 15 : 45,
   };
 }
 

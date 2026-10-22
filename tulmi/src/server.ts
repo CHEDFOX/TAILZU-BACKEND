@@ -2920,6 +2920,10 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
         apps: screenId === "desk_settings", tasks: screenId === "desk_tasks",
         tools: screenId === "desk_connector" ? toolsOf : undefined,
       }, user.email).catch(() => undefined)
+    // The phone's You tab: its Hand it to me card shows the connected apps and
+    // the next tasks. A failed read leaves the card without them; the tab never fails for it.
+    : user && connectors && screenFormFactor !== "desktop" && screenId === "personality"
+      ? assistantView(connectors, user.id, { apps: true, tasks: true }, user.email).catch(() => undefined)
     // The phone's own: Connected apps, Tasks, the confirm sheet and an added
     // app's tools (experience/assistant.ts). No capability to ask for: they
     // are made of pieces every build draws. Ask (assistant_ask) reads

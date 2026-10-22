@@ -11,7 +11,7 @@
  * are resolved. tests/onboard-store.test.ts holds the store variant's JSON to
  * it, against tests/fixtures/store-build.json (written by
  * scripts/store-build-fixture.ts) and, when the phone repo is at hand, against
- * its origin/main as it is today.
+ * the phone repo at STORE_COMMIT.
  *
  * It reads source with regular expressions, not a parser: the files are ours
  * and consistently written, and a shape it does not understand is a missing
@@ -215,7 +215,14 @@ function definitionBody(src: string, fn: string): string {
   return body;
 }
 
-/** The files, as the phone repo's origin/main has them. */
+/**
+ * The phone repo commit the store binaries were built from. main has moved on
+ * since (OTA updates carry newer renderers), so the store build is pinned here.
+ * Move it when a new store build ships, then re-run store-build-fixture.ts.
+ */
+export const STORE_COMMIT = "622c76e";
+
+/** The files, as the phone repo has them at STORE_COMMIT. */
 export const STORE_FILES: Record<keyof StoreSources, string> = {
   registry: "app/src/sdui/registry.ts",
   components: "app/src/sdui/components.tsx",
