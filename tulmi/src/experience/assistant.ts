@@ -17,6 +17,11 @@
  *   assistant_app_tools an app the person added by link: what it can do,
  *                       tool by tool, as Allow / Ask first / Off, and the
  *                       "This app changed" banner (params.id)
+ *   assistant_ask       Ask on the phone: a field, the mic, Do it, and a few
+ *                       examples to tap. The answer comes from
+ *                       POST /v1/assistant/ask and is acted on with the
+ *                       actions every build runs: its line is shown, a
+ *                       hand-off is opened, an approval goes to the sheet
  *
  * APPS ADDED BY LINK (only while CUSTOM_CONNECTORS is on: assistant.custom).
  * Connected apps then also has an "Add by link" tile and its sheet (Name,
@@ -55,7 +60,7 @@ import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
 import type { AgentApproval, ApprovalCard, AssistantTask, ConnectorInfo, ConnectorTool } from "../../../shared/types/api.js";
 import { approvalCard } from "../connectors/card.js";
 import type { AssistantView } from "../connectors/list.js";
-import { en, type WordKey } from "../connectors/words.js";
+import { en, wordsFor, type WordKey } from "../connectors/words.js";
 import { PHONE_LOOK, label, t } from "./phoneLook.js";
 
 type You = typeof import("./catalog.js").YOU_UI;
@@ -63,7 +68,8 @@ type Style = Record<string, unknown>;
 type Face = Parameters<typeof t>[1];
 type CallEndpoint = Extract<ActionSpec, { kind: "callEndpoint" }>;
 
-export const ASSISTANT_SCREENS: ReadonlySet<string> = new Set(["assistant_apps", "assistant_tasks", "assistant_approve", "assistant_app_tools"]);
+export const ASSISTANT_SCREENS: ReadonlySet<string> = new Set(["assistant_apps", "assistant_tasks", "assistant_approve", "assistant_app_tools", "assistant_ask"]);
+const ASK = "assistant_ask";
 
 export interface AssistantScreenCtx {
   /** The apps and tasks, read for this screen. Absent: off, or the read failed. */
@@ -71,6 +77,12 @@ export interface AssistantScreenCtx {
   params?: Record<string, unknown>;
   /** What this build of the app says it can draw and do. */
   can?: ReadonlySet<string>;
+  /** Connected apps are switched on (CONNECTORS): Ask has something to answer with. */
+  connectorsOn?: boolean;
+  /** Their app language: Ask's examples are in their voice. */
+  language?: string;
+  /** The phone asking, sent on with each ask. */
+  platform?: "ios" | "android";
 }
 
 /** The ctx each builder gets: `lone` = the stack under this screen is empty (a push or a link opened it), so a back arrow would go nowhere. */
@@ -103,6 +115,7 @@ export function buildAssistantScreen(screenId: string, ctx: AssistantScreenCtx, 
     case "assistant_tasks": return tasksScreen(c, ui);
     case "assistant_approve": return approveScreen(c, ui);
     case "assistant_app_tools": return toolsScreen(c, ui);
+    case ASK: return askScreen(c, ui);
     default: return null;
   }
 }
@@ -236,6 +249,9 @@ function appsScreen(ctx: Ctx, ui: You): ScreenResponse {
   const done = apps.filter((a) => a.connected || a.custom);
   const suggested = todo.slice(0, 4);
   const more = todo.slice(4);
+
+  // Ask is where these apps are used from the phone.
+  body.push(GAP(14), pill(ui, en("ask.h"), seq(haptic("selection"), { kind: "navigate", screenId: ASK }), "outline"));
 
   const sections: Array<[WordKey, ConnectorInfo[]]> = [["s6.sug", suggested], ["apps.h", done], ["s6.more", more]];
   for (const [key, list] of sections) {
@@ -966,5 +982,86 @@ function approveScreen(ctx: Ctx, ui: You): ScreenResponse {
       open: true, plain: false, res: {},
       app: card.app, ini: card.app.trim().charAt(0).toUpperCase() || "?", preview: card.preview,
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Ask
+// ---------------------------------------------------------------------------
+
+/**
+ * What one tap of Do it runs, from actions every build has: the ask, then its
+ * answer acted on. The line is drawn from state (ask.res.say); a hand-off is
+ * opened (openUrl resolves the state reference and, with `handoff`, holds it
+ * to the phone's own copy of the hand-off list; a build without that list
+ * holds it to the links it opens at all); an approval goes to the confirm sheet. The
+ * sheet is opened without the task's id, since `navigate` does not fill state
+ * into its params: with none it shows the newest waiting task, which is the
+ * one this ask just made.
+ */
+function askAction(ctx: Ctx): ActionSpec {
+  return {
+    kind: "condition", if: { truthy: "ask.text" },
+    then: seq(
+      haptic("selection"), setState("ask.busy", true), setState("ask.res", {}),
+      call("POST", "/v1/assistant/ask", {
+        body: { text: "$state.ask.text", ...(ctx.platform ? { platform: ctx.platform } : {}) },
+        assignTo: "ask.res",
+        onSuccess: seq(
+          setState("ask.busy", false),
+          setState("ask.text", ""),
+          { kind: "condition", if: { truthy: "ask.res.open.url" }, then: { kind: "openUrl", url: "$state.ask.res.open.url", handoff: true } },
+          { kind: "condition", if: { truthy: "ask.res.taskId" }, then: { kind: "navigate", screenId: "assistant_approve" } },
+        ),
+        onError: seq(setState("ask.busy", false), toast(en("err.generic"), "error")),
+      }),
+    ),
+    else: toast(en("ask.empty")),
+  };
+}
+
+function askScreen(ctx: Ctx, ui: You): ScreenResponse {
+  if (!ctx.connectorsOn) {
+    return page(ctx, ASK, ui, en("ask.h"), en("ask.p"), [word(en("apps.off"), "ui", 15, { lineHeight: 23, color: ui.text })], { state: {} });
+  }
+  // The examples are in their voice and live in state, so a chip shows
+  // exactly what it fills in: a translated node would not match its value.
+  const w = wordsFor(ctx.language);
+  const examples = [w("ask.ex1"), w("ask.ex2"), w("ask.ex3")];
+  const chip = (i: number): Node => ({
+    type: "Stack",
+    on: { onPress: seq(haptic("selection"), setState("ask.text", examples[i])) },
+    props: { pressOpacity: 0.7 },
+    style: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1, borderColor: "rgba(255,255,255,0.22)" },
+    children: [fromState(`ask.ex.${i}`, "ui", 13.5, { color: ui.text })],
+  });
+  const body: Node[] = [
+    GAP(18),
+    { type: "TextField", bind: { value: "ask.text" }, props: { placeholder: en("ask.ph"), multiline: true } },
+    GAP(12),
+    {
+      type: "Stack", style: { flexDirection: "row", gap: 8, alignItems: "center" },
+      children: [
+        {
+          type: "VoiceButton", bind: { value: "ask.text" },
+          props: { targetApp: "Tailzu", language: "auto", label: en("ask.mic"), background: ui.pill.background, radius: 999, paddingVertical: 14 },
+          style: { flex: 1 },
+        },
+        pill(ui, en("ask.go"), askAction(ctx), "primary", true),
+      ],
+    },
+    { ...word(en("ask.busy"), "ui", 13.5, { color: ui.textDim, marginTop: 14 }), visibleIf: { truthy: "ask.busy" } },
+    // The answer: its words are the server's and theirs, from state, never reworded.
+    {
+      type: "Stack",
+      visibleIf: { truthy: "ask.res.say" },
+      style: { padding: 14, borderRadius: 16, marginTop: 16, backgroundColor: ui.pill.background },
+      children: [fromState("ask.res.say", "ui", 15.5, { lineHeight: 23, color: ui.text })],
+    },
+    label(en("ask.try"), { marginTop: 28, marginBottom: 12 }),
+    { type: "Stack", style: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, children: examples.map((_, i) => chip(i)) },
+  ];
+  return page(ctx, ASK, ui, en("ask.h"), en("ask.p"), body, {
+    state: { ask: { text: "", busy: false, res: {}, ex: examples } },
   });
 }

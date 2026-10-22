@@ -5,7 +5,8 @@
  * https://mail.google.com compose link opened on their computer) for them to
  * read and send. The mailto: link is the fallback for a computer whose browser
  * does not do Gmail. The agent turns the hand-off into an `open` event and the
- * desktop opens it, only if it is one of those two kinds of link.
+ * desktop opens it, only if it is on the hand-off list (links.ts). The other
+ * hand-offs (WhatsApp, Maps, UPI and the rest) are in apps.ts.
  *
  * Its tier is "write": it prepares a draft and nothing leaves. It needs no yes
  * of its own, since the person sees the whole email before anything is sent
@@ -14,6 +15,7 @@
 import type { CallOutcome } from "../client.js";
 import type { Args, Handoff, NativeConnector, NativeTool } from "../native.js";
 import { ConnectorError } from "../oauth.js";
+import { LINK_MAX } from "./links.js";
 
 const EMAIL = /^[^\s@<>,;"]{1,64}@[A-Za-z0-9.-]{1,190}\.[A-Za-z]{2,}$/;
 const SUBJECT_MAX = 200;
@@ -62,9 +64,12 @@ export function emailHandoff(): NativeConnector {
       if (list.length > RECIPIENTS_MAX) throw new ConnectorError("rejected", "That's more people than I can put on one email.");
       const subject = (typeof args.subject === "string" ? args.subject : "").replace(/[\r\n]+/g, " ").trim().slice(0, SUBJECT_MAX);
       const body = (typeof args.body === "string" ? args.body : "").replace(/\r\n?/g, "\n").trim();
-      if (body.length > BODY_MAX) throw new ConnectorError("rejected", "That email is too long for me to open in Gmail. Ask me for a shorter one.");
+      const tooLong = () => new ConnectorError("rejected", "That email is too long for me to open in Gmail. Ask me for a shorter one.");
+      if (body.length > BODY_MAX) throw tooLong();
       const links = handoffLinks(list, subject, body);
-      const open: Handoff = { url: links.gmail, label: "Open in Gmail", fallback: links.mailto };
+      // Encoded, a body in Hindi is up to nine times its length: the Gmail link (the longer of the two) must still open.
+      if (links.gmail.length > LINK_MAX) throw tooLong();
+      const open: Handoff = { url: links.gmail, label: "Open in Gmail", fallback: links.mailto, words: { say: "mail.done", open: "mail.open" } };
       return {
         ok: true, open,
         text: `Gmail is open with the email to ${list.join(", ")} written. Nothing is sent until they press Send.`,

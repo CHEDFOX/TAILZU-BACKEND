@@ -225,9 +225,33 @@ export class ConnectorHub {
     return (await n.riskOf?.(userId, info.name, args)) ?? own;
   }
 
-  /** The confirm card's words for this call, when the app has better ones than the generic preview. */
+  /**
+   * The confirm card's words for this call, when the app has better ones than
+   * the generic preview. Throws when the app finds the call cannot be done (a
+   * "rejected" ConnectorError: no such task, no title), so that is said now
+   * and not after a yes; any other failure falls back to the generic preview.
+   */
   async previewFor(userId: string, def: ConnectorDef, tool: string, args: Args): Promise<string | undefined> {
-    try { return await this.native(def)?.preview?.(userId, tool, args); } catch { return undefined; }
+    try {
+      return await this.native(def)?.preview?.(userId, tool, args);
+    } catch (e) {
+      if (e instanceof ConnectorError && e.code === "rejected") throw e;
+      return undefined;
+    }
+  }
+
+  /** A tool whose link opens only on a phone (a call, a text, a UPI payment). */
+  phoneOnly(connectorId: string, tool: string): boolean {
+    const def = this.def(connectorId);
+    const n = def && this.native(def);
+    return !!n?.tools().find((t) => t.name === tool)?.phoneOnly;
+  }
+
+  /** Whether a hand-off's recipient, when the call names one, is in the person's own words (NativeConnector.recipientSaid). */
+  recipientSaid(connectorId: string, tool: string, args: Args, words: string): boolean {
+    const def = this.def(connectorId);
+    const n = def && this.native(def);
+    return n?.recipientSaid?.(tool, args, words) ?? true;
   }
 
   /** Whether this person's last try in the app needed them to sign in again. */
@@ -288,7 +312,7 @@ export class ConnectorHub {
     const def = await this.resolve(userId, connectorId);
     if (!def) throw new ConnectorError("not_connected", "That app isn't available.");
     const native = this.native(def);
-    if (native) return native.tools().map(({ risk: _risk, ...tool }) => tool);
+    if (native) return native.tools().map(({ risk: _risk, phoneOnly: _phone, ...tool }) => tool);
     const listed = await this.listed(userId, def);
     if (!def.custom) return listed.tools;
     return visibleTools(listed.tools, await this.reviewed(userId, def, listed));
@@ -303,7 +327,7 @@ export class ConnectorHub {
    */
   async toolSheet(userId: string, def: ConnectorDef, o: { fresh?: boolean } = {}): Promise<{ tools: ToolInfo[]; conn: Connection | null; version?: string }> {
     const native = this.native(def);
-    if (native) return { tools: native.tools().map(({ risk: _risk, ...tool }) => tool), conn: await this.o.store.getConnection(userId, def.id) };
+    if (native) return { tools: native.tools().map(({ risk: _risk, phoneOnly: _phone, ...tool }) => tool), conn: await this.o.store.getConnection(userId, def.id) };
     const listed = await this.listed(userId, def, o.fresh);
     if (!def.custom) return { tools: listed.tools, conn: await this.o.store.getConnection(userId, def.id) };
     return { tools: listed.tools, conn: await this.reviewed(userId, def, listed), version: listed.pins!.list };

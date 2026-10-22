@@ -125,6 +125,62 @@ export const EN = {
   "dir.none": "Nothing by that name. Try another word.",
   "dir.add": "Add",
   "dir.err": "I couldn’t search just now. Try again.",
+  // The other hand-offs (handoffs/): the app opened with everything filled
+  // in, one line said, and the person finishes it there. {name}, {place},
+  // {query} and {amount} are their own words.
+  "ho.phone": "That one's for your phone. Ask me there.",
+  "ho.failed": "I couldn't open that one. Try asking another way.",
+  "ho.read": "I only fill in a number, username or UPI ID you give me, not one I read in another app. Who should it go to?",
+  "wa.done": "WhatsApp is open with your message. Just hit Send.",
+  "wa.done.to": "{name}'s chat is open with your message. Just hit Send.",
+  "wa.pick": "WhatsApp is open with your message. Pick the chat and hit Send.",
+  "wa.pick.to": "WhatsApp is open with your message for {name}. Pick their chat and hit Send.",
+  "wa.open": "Open WhatsApp",
+  "tg.done.to": "{name}'s chat is open in Telegram with your message. Just hit Send.",
+  "tg.pick": "Telegram is open with your message. Pick the chat and hit Send.",
+  "tg.pick.to": "Telegram is open with your message for {name}. Pick their chat and hit Send.",
+  "tg.open": "Open Telegram",
+  "call.done": "Ready to call {name}. Just tap Call.",
+  "call.open": "Call now",
+  "sms.done.to": "Your text to {name} is written. Just hit Send.",
+  "sms.pick": "Your text is written. Pick who it's for and hit Send.",
+  "sms.open": "Open Messages",
+  "upi.done": "Your UPI app is open: ₹{amount} to {name}. Check it, then enter your PIN.",
+  "upi.open": "Pay with UPI",
+  "maps.dir": "Directions to {place} are open in Google Maps.",
+  "maps.find": "{place} is open in Google Maps.",
+  "maps.open": "Open Google Maps",
+  "uber.done": "Uber is open with {place} as your drop. Check the ride and book it.",
+  "uber.open": "Open Uber",
+  "shop.amazon": "Here's {query} on Amazon. Pick the one you like.",
+  "shop.flipkart": "Here's {query} on Flipkart. Pick the one you like.",
+  "shop.open.amazon": "Open Amazon",
+  "shop.open.flipkart": "Open Flipkart",
+  "play.yt": "Here's {query} on YouTube. Tap the one you want.",
+  "play.ytm": "Here's {query} on YouTube Music. Just tap play.",
+  "play.spotify": "Here's {query} on Spotify. Just tap play.",
+  "play.open.yt": "Open YouTube",
+  "play.open.ytm": "Open YouTube Music",
+  "play.open.spotify": "Open Spotify",
+  "threads.done": "Your post is written in Threads. Check it and hit Post.",
+  "threads.open": "Open Threads",
+  "booking.done": "Hotels in {place} are open on Booking.com. Pick one you like.",
+  "booking.open": "Open Booking.com",
+  // The phone's Ask (assistant_ask, POST /v1/assistant/ask)
+  "ask.h": "Ask me",
+  "ask.p": "Tell me what to do, and I’ll open the right app with it ready.",
+  "ask.ph": "Type or say what you need",
+  "ask.go": "Do it",
+  "ask.mic": "Speak",
+  "ask.try": "Try saying",
+  "ask.busy": "On it…",
+  "ask.empty": "Tell me what to do first.",
+  "ask.approve": "It’s ready. Check it and tap Approve.",
+  "ask.desk": "That one needs your computer’s screen. Ask me there.",
+  "ask.none": "I couldn’t do that from here.",
+  "ask.ex1": "Tell Mom I’m on my way on WhatsApp",
+  "ask.ex2": "Kal 9 baje gym ka reminder",
+  "ask.ex3": "Directions to the airport",
 } as const;
 
 export const HG: Record<WordKey, string> = {
@@ -222,6 +278,74 @@ export const HG: Record<WordKey, string> = {
   "dir.none": "Is naam se kuch nahi mila. Koi aur shabd try karo.",
   "dir.add": "Jodo",
   "dir.err": "Abhi dhoondh nahi paaya. Dobara try karo.",
+  "ho.phone": "Yeh kaam phone pe hota hai. Mujhse wahan poochho.",
+  "ho.failed": "Yeh khul nahi paaya. Kisi aur tareeke se poochho.",
+  "ho.read": "Main wahi number, username ya UPI ID bharta hoon jo tum khud batao, kisi aur app mein padha hua nahi. Kisko bhejna hai?",
+  "wa.done": "WhatsApp khol diya, message likha hai. Bas Send dabao.",
+  "wa.done.to": "{name} ki chat khul gayi, message likha hai. Bas Send dabao.",
+  "wa.pick": "WhatsApp khol diya, message likha hai. Chat chuno aur Send dabao.",
+  "wa.pick.to": "WhatsApp khol diya, {name} ke liye message likha hai. Unki chat chuno aur Send dabao.",
+  "wa.open": "WhatsApp kholo",
+  "tg.done.to": "Telegram mein {name} ki chat khul gayi, message likha hai. Bas Send dabao.",
+  "tg.pick": "Telegram khol diya, message likha hai. Chat chuno aur Send dabao.",
+  "tg.pick.to": "Telegram khol diya, {name} ke liye message likha hai. Unki chat chuno aur Send dabao.",
+  "tg.open": "Telegram kholo",
+  "call.done": "{name} ko call karne ke liye taiyaar. Bas Call dabao.",
+  "call.open": "Abhi call karo",
+  "sms.done.to": "{name} ke liye message likh diya hai. Bas Send dabao.",
+  "sms.pick": "Message likh diya hai. Kisko bhejna hai chuno aur Send dabao.",
+  "sms.open": "Messages kholo",
+  "upi.done": "UPI app khul gaya: {name} ko ₹{amount}. Check karo, phir apna PIN daalo.",
+  "upi.open": "UPI se pay karo",
+  "maps.dir": "{place} ka raasta Google Maps mein khul gaya.",
+  "maps.find": "Google Maps mein {place} khul gaya.",
+  "maps.open": "Google Maps kholo",
+  "uber.done": "Uber khul gaya, drop {place} pe set hai. Ride dekho aur book karo.",
+  "uber.open": "Uber kholo",
+  "shop.amazon": "Amazon pe {query} khol diya. Jo pasand aaye, chuno.",
+  "shop.flipkart": "Flipkart pe {query} khol diya. Jo pasand aaye, chuno.",
+  "shop.open.amazon": "Amazon kholo",
+  "shop.open.flipkart": "Flipkart kholo",
+  "play.yt": "YouTube pe {query} khol diya. Jo chahiye, tap karo.",
+  "play.ytm": "YouTube Music pe {query} khol diya. Bas play dabao.",
+  "play.spotify": "Spotify pe {query} khol diya. Bas play dabao.",
+  "play.open.yt": "YouTube kholo",
+  "play.open.ytm": "YouTube Music kholo",
+  "play.open.spotify": "Spotify kholo",
+  "threads.done": "Threads mein post likh diya hai. Check karo aur Post dabao.",
+  "threads.open": "Threads kholo",
+  "booking.done": "Booking.com pe {place} ke hotels khul gaye. Jo pasand aaye, chuno.",
+  "booking.open": "Booking.com kholo",
+  "ask.h": "Mujhse poochho",
+  "ask.p": "Bolo kya karna hai, main sahi app taiyaar karke khol dunga.",
+  "ask.ph": "Likho ya bolo, kya chahiye",
+  "ask.go": "Kar do",
+  "ask.mic": "Bolo",
+  "ask.try": "Aise bolke dekho",
+  "ask.busy": "Kar raha hoon…",
+  "ask.empty": "Pehle batao kya karna hai.",
+  "ask.approve": "Taiyaar hai. Check karo aur Approve dabao.",
+  "ask.desk": "Iske liye computer ki screen chahiye. Mujhse wahan poochho.",
+  "ask.none": "Yeh main yahan se nahi kar paaya.",
+  "ask.ex1": "Mom ko WhatsApp pe bolo main raaste mein hoon",
+  "ask.ex2": "Kal 9 baje gym ka reminder",
+  "ask.ex3": "Airport ka raasta dikhao",
+};
+
+/**
+ * The Google apps' one-liners (catalog.ts `oneLine`, which stays English for
+ * the router) in the design's Hinglish, by catalog id: handed to the
+ * translator like the table above, so a Hinglish desk reads these and not a
+ * model's guess.
+ */
+export const HG_APP_LINES: Readonly<Record<string, string>> = {
+  "google-calendar": "Apna schedule dekho, free time dhoondho, aur Google Calendar mein events add, move ya cancel karo.",
+  "google-docs": "Apne shabdon se nayi Google Doc likhwao, ya meeting note ko Doc bana do.",
+  "google-tasks": "Apni to-do list dekho, kisi din ke liye kaam ya reminder add karo, Google Tasks mein tick karo ya hatao.",
+  "google-sheets": "Google Sheet shuru karo, usme rows jodo ya padhwao: kharche ka hisaab, list, table.",
+  "google-forms": "Google Form banao (survey, quiz, poll) sawaalon ke saath, aur dekho kisne kya jawab diya.",
+  "google-classroom": "Google Classroom mein apni classes dekho, kaunsa classwork aur homework due hai aur jama kiya ya nahi, aur naye announcements.",
+  "google-youtube": "YouTube pe videos dhoondho, apni playlists dekho, aur kisi video ko playlist mein daalo.",
 };
 
 /** Hinglish is the one voice with its own table; every other language reads English. */
@@ -243,10 +367,12 @@ function fill(s: string, vars?: Record<string, string>): string {
 /**
  * English line -> the design's Hinglish line, for the translator to use as it
  * is. A line with an {app} slot is written out for each app named, since the
- * translator is asked about whole strings.
+ * translator is asked about whole strings; an app's one-liner is seeded when
+ * HG_APP_LINES has it.
  */
-export function hinglishSeeds(appNames: readonly string[]): Map<string, string> {
+export function hinglishSeeds(appNames: readonly string[], apps: ReadonlyArray<{ id: string; oneLine: string }> = []): Map<string, string> {
   const seeds = new Map<string, string>();
+  for (const a of apps) if (HG_APP_LINES[a.id]) seeds.set(a.oneLine, HG_APP_LINES[a.id]!);
   for (const key of Object.keys(EN) as WordKey[]) {
     const from = EN[key] as string;
     if (from.includes("{app}")) {

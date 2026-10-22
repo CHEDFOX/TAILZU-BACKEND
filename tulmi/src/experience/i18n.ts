@@ -443,7 +443,7 @@ async function ensureTranslations(
     // The design's own Hinglish for the assistant's words is used as written,
     // not guessed at by the model (connectors/words.ts).
     if (code === "hinglish") {
-      hinglishSeedsOnce ??= hinglishSeeds(CATALOG.map((c) => c.name));
+      hinglishSeedsOnce ??= hinglishSeeds(CATALOG.map((c) => c.name), CATALOG);
       for (const [from, to] of hinglishSeedsOnce) if (!cache.has(from)) cache.set(from, to);
     }
     const missing = strings.filter((s) => !cache!.has(s));

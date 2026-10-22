@@ -5024,6 +5024,11 @@ function phoneScreen(screenId: string, ctx: ScreenContext): ScreenResponse | nul
     case "assistant_approve":
     case "assistant_app_tools":
       return buildAssistantScreen(screenId, { assistant: ctx.assistant, params: ctx.params, can: ctx.can }, YOU_UI);
+    case "assistant_ask":
+      return buildAssistantScreen(screenId, {
+        assistant: ctx.assistant, params: ctx.params, can: ctx.can,
+        connectorsOn: ctx.connectorsOn, language: ctx.language, platform: ctx.platform,
+      }, YOU_UI);
     case "delete_account":
       return deleteAccountScreen();
     case "cancel_subscription":
@@ -9507,6 +9512,7 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         // What it can reach in the person's apps, and what it is doing there.
         // Only while connected apps are on; the words are the assistant's own.
         ...(ctx.connectorsOn ? [
+          row(assistantWords("ask.h"), { kind: "navigate", screenId: "assistant_ask" }, { props: { label: assistantWords("ask.h") } }),
           row(assistantWords("apps.h"), { kind: "navigate", screenId: "assistant_apps" }, { props: { label: assistantWords("apps.h") } }),
           row(assistantWords("a4.h"), { kind: "navigate", screenId: "assistant_tasks" }, { props: { label: assistantWords("a4.h") } }),
         ] : []),

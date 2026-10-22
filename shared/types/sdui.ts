@@ -790,7 +790,8 @@ export type ActionSpec =
   | { kind: "navigate"; screenId: string; params?: Record<string, unknown>; replace?: boolean }
   | { kind: "navigateBack" }
   | { kind: "switchTab"; tabId: string }
-  | { kind: "openUrl"; url: string; external?: boolean }
+  /** `handoff: true` holds the link to the assistant's hand-off list (the phone's isHandoffUrl), not every link openUrl takes. A build without it ignores it. */
+  | { kind: "openUrl"; url: string; external?: boolean; handoff?: boolean }
   | { kind: "openSettings"; target?: "app" | "keyboard" }
   | { kind: "openInAppBrowser"; url: string }
   | { kind: "dismiss" }
