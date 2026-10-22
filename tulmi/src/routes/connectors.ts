@@ -54,7 +54,9 @@ const page = (title: string, line: string, openApp = true) =>
   `@media(prefers-color-scheme:dark){body{color:#f2f0ed;background:#16161a}}h1{font-size:22px;margin:0 0 8px}p{margin:0;opacity:.7}` +
   `a{display:inline-block;margin-top:22px;padding:12px 26px;border-radius:999px;background:#1b1b1f;color:#faf8f5;font-weight:600;text-decoration:none}` +
   `@media(prefers-color-scheme:dark){a{background:#f2f0ed;color:#16161a}}</style>` +
-  `<main><h1>${title}</h1><p>${line}</p>${openApp ? `<a href="${OPEN_APP}">Open Tailzu</a>` : ""}</main>`;
+  `<main><h1>${title}</h1><p>${line}</p>${openApp ? `<a href="${OPEN_APP}">Open Tailzu</a>` +
+    // An older desktop app, or a browser that won't hand the link on, does nothing on a tap.
+    `<p style="margin-top:14px;font-size:14px">Nothing opened? Close this tab and go back to Tailzu.</p>` : ""}</main>`;
 
 /** A task as the API sends it: its approval is the plain-words card, never the call's arguments. */
 const taskOut = (t: TaskView): AssistantTask => t as AssistantTask;
