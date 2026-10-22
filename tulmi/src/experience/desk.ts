@@ -35,6 +35,7 @@ import { en as w } from "../connectors/words.js";
 import { HEADING_FACE, blipPicture, dayPart, neonDot } from "./touches.js";
 import type { BlipLoop } from "./blipLoops.js";
 import { sw as say } from "./settingsWords.js";
+import { appIconNode } from "./appIcons.js";
 
 /** Words a minute a person types on a keyboard — the same figure the stats
  *  screen's "minutes saved" has always used (history/store.ts). */
@@ -2209,8 +2210,8 @@ export function deskNote(ctx: DeskContext): ScreenResponse {
 
 // ---- SETTINGS and PLAN ----------------------------------------------------------------
 
-const defRow = (k: string, v: Node | string, right?: Node): Node => row([
-  text(k, "d-k", { width: 220, flex: "none" }),
+const defRow = (k: string | Node, v: Node | string, right?: Node): Node => row([
+  typeof k === "string" ? text(k, "d-k", { width: 220, flex: "none" }) : k,
   typeof v === "string" ? text(v, "d-v", { flex: 1, minWidth: 0 }) : stack([v], { flex: 1, minWidth: 0 }),
   ...(right ? [right] : []),
 ], { align: "center", gap: 28, paddingTop: 20, paddingBottom: 20, flexWrap: "wrap" }, "d-entry");
@@ -2461,7 +2462,12 @@ function appRow(c: ConnectorInfo): Node {
           onError: failToast("err.connect"),
         } as ActionRef, "d-btn"),
       ], { gap: 14, align: "center" });
-  return defRow(c.name, stack(detail, { gap: 2, flex: 1, minWidth: 0 }), right);
+  // Its company's logo beside its name, when it has one (appIcons.ts); else the name alone, as before.
+  const logo = appIconNode(c.id, 32, c.custom);
+  const name: string | Node = logo
+    ? row([logo, text(c.name, "d-k", { flex: 1, minWidth: 0 })], { width: 220, flex: "none", gap: 12, align: "center" })
+    : c.name;
+  return defRow(name, stack(detail, { gap: 2, flex: 1, minWidth: 0 }), right);
 }
 
 /**
@@ -2710,6 +2716,13 @@ export function deskTasks(ctx: DeskContext): ScreenResponse {
     stack([text(t.title, "d-v"), ...body], { flex: 1, minWidth: 0, gap: 4 }),
     ...(right ? [right] : []),
   ], { align: "center", gap: 28, paddingTop: 18, paddingBottom: 18, flexWrap: "wrap" }, "d-entry");
+  // "Waiting in Notion", with Notion's logo beside it when it has one (never for an app added by link).
+  const named = (t: AssistantTask): Node => {
+    const id = t.approval!.connector;
+    const line = text(w("a4.wm", { app: names[id] ?? id }), "d-margin");
+    const logo = appIconNode(id, 20, ctx.assistant?.apps?.find((x) => x.id === id)?.custom);
+    return logo ? row([logo, line], { gap: 8, align: "center" }) : line;
+  };
   const answer = (t: AssistantTask, route: "approve" | "deny"): ActionRef => ({
     kind: "callEndpoint", method: "POST", path: `/v1/tasks/${t.id}/${route}`,
     ...(route === "approve" ? { body: { approvalId: t.approval!.id } } : {}),
@@ -2735,7 +2748,7 @@ export function deskTasks(ctx: DeskContext): ScreenResponse {
     text(w("tasks.h"), "d-h1", { marginTop: 6, marginBottom: 26 }),
     ...group(w("a4.w"), waiting.map((t) => item(
       t,
-      [text(w("a4.wm", { app: names[t.approval!.connector] ?? t.approval!.connector }), "d-margin"), text(t.approval!.preview, "d-written")],
+      [named(t), text(t.approval!.preview, "d-written")],
       row([link(w("a3.ok"), answer(t, "approve"), "d-btn"), link(w("a3.later"), answer(t, "deny"))], { gap: 14, align: "center" }),
     ))),
     ...group(w("a4.r"), running.map((t) => item(t, lastStep(t) ? [text(lastStep(t), "d-margin")] : []))),

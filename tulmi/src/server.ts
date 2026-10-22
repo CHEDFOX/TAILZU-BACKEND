@@ -508,6 +508,26 @@ if (fs.existsSync(BLIP_DIR)) {
   });
 }
 
+// --- The connected apps' logos ---------------------------------------------
+// Each app in Connected apps, Tasks and the onboarding is shown with its own
+// logo, through the Image node every build already has. 128-point tiles cut
+// from the Simple Icons set by scripts/make-app-icons.ts (tulmi/icons, with the
+// NOTICE that they are their owners' trademarks, used only to name the apps).
+// Served the way the typefaces and Blip are: shipped in the image, immutable,
+// and the URLs carry a ?v= (experience/appIcons.ts). An app a person added by
+// link has no logo here, and none is ever fetched from anywhere else.
+const ICONS_DIR = process.env.ICONS_DIR || path.join(process.cwd(), "icons");
+if (fs.existsSync(ICONS_DIR)) {
+  await app.register(fastifyStatic, {
+    root: ICONS_DIR,
+    prefix: "/icons/",
+    decorateReply: false,
+    cacheControl: true,
+    maxAge: "365d",
+    immutable: true,
+  });
+}
+
 await app.register(transcribeStream);
 
 /** The one answer to a request with no valid session. */

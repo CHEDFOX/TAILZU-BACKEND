@@ -46,6 +46,8 @@ COPY --from=build /app/tulmi/dist ./dist
 COPY --from=build /app/tulmi/fonts ./fonts
 # Blip's animated pictures for the store builds, served at /blip/ (see server.ts).
 COPY --from=build /app/tulmi/blip ./blip
+# The connected apps' logos, served at /icons/ (see server.ts).
+COPY --from=build /app/tulmi/icons ./icons
 # Art for keys nothing has been uploaded to yet: the sign-in email's mark
 # (/media/k/email.mark, see routes/media.ts).
 COPY --from=build /app/tulmi/brand ./brand

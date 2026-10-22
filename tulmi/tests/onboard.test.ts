@@ -825,8 +825,12 @@ describe("Connect your apps", () => {
     const step = (s.root.children as N[])[STEPS.ios.indexOf("apps")]!;
     expect(JSON.stringify(step)).not.toContain('"Notion"');
     expect(find(step, (n) => n.bind?.content === "n.notion").length).toBeGreaterThan(0);
-    expect(find(step, (n) => n.bind?.content === "ini.notion").length).toBeGreaterThan(0);
+    // An app with its company's logo wears that (appIcons.ts); the one without keeps its letter, from state.
+    expect(find(step, (n) => n.bind?.content === "ini.notion")).toHaveLength(0);
+    expect(find(step, (n) => n.type === "Image" && String(n.props?.source?.url).includes("/icons/notion.png")).length).toBeGreaterThan(0);
     expect(s.state.ini.notion).toBe("N");
+    const bare = screen({ assistant: { apps: [notion("granola", "Granola")], names: {} } });
+    expect(find((bare.root.children as N[])[STEPS.ios.indexOf("apps")]!, (n) => n.bind?.content === "ini.granola").length).toBeGreaterThan(0);
     expect(s.state.n.atlassian).toBe("Jira and Confluence");
   });
 

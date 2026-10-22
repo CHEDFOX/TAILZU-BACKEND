@@ -65,6 +65,7 @@ import { PHONE_LOOK, label, t } from "./phoneLook.js";
 import { blipBox, blipPicture, neonDot } from "./touches.js";
 import type { BlipLoop } from "./blipLoops.js";
 import { sw } from "./settingsWords.js";
+import { appIconNode } from "./appIcons.js";
 
 type You = typeof import("./catalog.js").YOU_UI;
 type Style = Record<string, unknown>;
@@ -230,8 +231,13 @@ function pill(ui: You, text: string, on: ActionRef, kind: "primary" | "outline" 
   };
 }
 
-/** The app's mark: its first letter on a rounded square (no logos to carry). */
-function mark(ui: You, id: string, size = 42): Node {
+/**
+ * The app's mark: its company's logo when it has one (appIcons.ts), else its
+ * first letter on a rounded square. An app added by link keeps the letter.
+ */
+function mark(ui: You, id: string, size = 42, custom?: boolean): Node {
+  const logo = appIconNode(id, size, custom);
+  if (logo) return logo;
   return {
     type: "Stack",
     style: { width: size, height: size, borderRadius: size * 0.29, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.08)" },
@@ -335,7 +341,7 @@ function tile(a: ConnectorInfo, ui: You, canOpen: boolean): Node {
       backgroundColor: ui.pill.background, borderWidth: 1, borderColor: on ? "rgba(255,255,255,0.3)" : ui.rule,
     },
     children: [
-      mark(ui, a.id),
+      mark(ui, a.id, 42, a.custom),
       fromState(`n.${a.id}`, "uiMedium", 13.5, { ...ink(ui), textAlign: "center", lineHeight: 18 }),
       {
         type: "Stack",
@@ -372,7 +378,7 @@ function sheetHead(a: ConnectorInfo, ui: You, line: string): Node {
     type: "Stack",
     style: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 16 },
     children: [
-      mark(ui, a.id, 46),
+      mark(ui, a.id, 46, a.custom),
       { type: "Stack", style: { flex: 1, gap: 2 }, children: [
         fromState(`n.${a.id}`, "uiBold", 19, ink(ui)),
         word(line, "ui", 13, { color: ui.textDim }),
@@ -653,7 +659,7 @@ function customSheet(a: ConnectorInfo, ui: You, canOpen: boolean): Node {
       {
         type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
         children: [
-          mark(ui, a.id, 46),
+          mark(ui, a.id, 46, true),
           { type: "Stack", style: { flex: 1, gap: 3 }, children: [fromState(`n.${a.id}`, "uiBold", 19, ink(ui)), unverifiedLine(ui, `host.${a.id}`)] },
         ],
       },
@@ -758,7 +764,7 @@ function toolsScreen(ctx: Ctx, ui: You): ScreenResponse {
   const body: Node[] = [{
     type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 18, marginBottom: 6 },
     children: [
-      mark(ui, a.id, 46),
+      mark(ui, a.id, 46, a.custom),
       { type: "Stack", style: { flex: 1, gap: 3 }, children: [fromState(`n.${a.id}`, "uiBold", 19, ink(ui)), unverifiedLine(ui, `host.${a.id}`)] },
     ],
   }];
@@ -880,6 +886,14 @@ function denyCall(card: ApprovalCard, id: "edit" | "deny", said: string, then: A
 
 const lastStep = (task: AssistantTask): string => task.steps[task.steps.length - 1]?.text ?? "";
 
+/** An app's logo beside the line that names it (just the line when the app keeps its badge). */
+const withLogo = (logo: Node | undefined, line: Node): Node => logo
+  ? { type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 8 }, children: [logo, { ...line, style: { ...line.style, flex: 1 } }] }
+  : line;
+
+/** Is this connector id an app a person added by link? (Then it never gets a logo.) */
+const customApp = (ctx: Ctx, id: string): boolean => ctx.assistant?.apps?.find((x) => x.id === id)?.custom === true;
+
 function tasksScreen(ctx: Ctx, ui: You): ScreenResponse {
   const tasks = ctx.assistant?.tasks;
   const names = ctx.assistant?.names ?? {};
@@ -938,7 +952,10 @@ function tasksScreen(ctx: Ctx, ui: You): ScreenResponse {
       lead(dot(false)),
       { type: "Stack", style: { flex: 1, gap: 6 }, children: [
         fromState(`t.${i}.title`, "uiMedium", 15, ink(ui)),
-        word(en("a4.wm", { app: names[x.approval!.connector] ?? x.approval!.connector }), "ui", 12.5, { color: ui.textDim }),
+        withLogo(
+          appIconNode(x.approval!.connector, 20, customApp(ctx, x.approval!.connector)),
+          word(en("a4.wm", { app: names[x.approval!.connector] ?? x.approval!.connector }), "ui", 12.5, { color: ui.textDim }),
+        ),
         // The exact words, as they will go: from state, so nothing rewords them.
         { type: "Stack", style: { padding: 10, borderRadius: 12, backgroundColor: "rgba(255,255,255,0.05)" }, children: [
           fromState(`t.${i}.preview`, "ui", 14, { lineHeight: 20, color: ui.text }),
@@ -1006,7 +1023,7 @@ function approveScreen(ctx: Ctx, ui: You): ScreenResponse {
         type: "Stack",
         style: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 16 },
         children: [
-          {
+          appIconNode(task.approval!.connector, 46, customApp(ctx, task.approval!.connector)) ?? {
             type: "Stack",
             style: { width: 46, height: 46, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.08)" },
             children: [fromState("ini", "uiBold", 19, ink(ui))],

@@ -697,7 +697,8 @@ describe("Blip's pictures", () => {
 
   it("the screen draws each at that size, from the URL the server serves, with the version in it", () => {
     for (const [, s] of SCREENS) {
-      for (const img of find(s.root, (n) => n.type === "Image")) {
+      // The apps' logos are the other Images here (appIcons.ts; app-icons.test.ts holds them down).
+      for (const img of find(s.root, (n) => n.type === "Image" && !String(n.props?.source?.url).includes("/icons/"))) {
         const url = String(img.props!.source.url);
         const loop = /\/blip\/([\w-]+)\.webp\?v=(\d+)$/.exec(url);
         expect(loop, url).not.toBeNull();
