@@ -600,8 +600,16 @@ untouched and never asks for them: they are asked only when someone taps
 **Connect** on Google Calendar (calendar.events + calendar.readonly) or Google
 Docs (drive.file). Gmail comes later.
 
-1. **The two keys**, in `tulmi/.env`: the id and secret of that same web OAuth
-   client, the one the Google sign-in uses.
+1. **The two keys**, in `tulmi/.env`: the id and secret of a web OAuth client
+   in that same project. Make one of its own: APIs & Services, Credentials,
+   Create credentials, OAuth client ID, Web application, named "Tailzu
+   Connected apps", with `https://api.tailzu.space/v1/connectors/callback` as
+   its authorized redirect URI. Google shows the secret once, at creation:
+   copy it (or download the JSON) then. Do not reset or delete the sign-in
+   client's secret: Supabase's Google provider (Authentication, Sign In /
+   Providers, Google) holds it, and the desktop, the website and Android's
+   fallback sign in through it. The consent screen, its scopes and Google's
+   review belong to the project, so they cover the new client too.
 
    ```
    GOOGLE_CONNECT_CLIENT_ID=...apps.googleusercontent.com

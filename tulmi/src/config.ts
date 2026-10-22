@@ -469,9 +469,11 @@ const EnvSchema = z.object({
   CUSTOM_CONNECTORS_MAX: z.coerce.number().int().min(0).max(100).default(10),
   /**
    * The Google apps in Connected apps (google-calendar, google-docs and the
-   * rest) sign in with the WEB OAuth client of the same Google Cloud project
-   * the Google sign-in already uses, so there is one consent screen to keep
-   * and nothing new to verify as a company. This is that client's id. Google has no
+   * rest) sign in with a WEB OAuth client in the same Google Cloud project the
+   * Google sign-in already uses, so there is one consent screen to keep and
+   * nothing new to verify as a company. A client of its own ("Tailzu Connected
+   * apps") is best: the sign-in client's secret lives in Supabase's Google
+   * provider, and resetting it there would break sign-in. This is that client's id. Google has no
    * dynamic client registration (unlike the MCP apps), so our own client is
    * the only way in. The client must list CONNECTOR_REDIRECT_URL as an
    * authorized redirect URI. Sign-in itself never asks for these scopes: they
