@@ -30,7 +30,8 @@ export function approvalCard(taskId: string, approval: ApprovalView, app: string
     app,
     label: w(LABEL[approval.risk] ?? "a3.lab.other"),
     preview: approval.preview,
-    note: w("a3.wwl", { app }),
+    // A change that is asked once says so; a delete, a payment or an app added by link is asked every time.
+    note: (approval.risk === "write" || approval.risk === "send") && !approval.connector.startsWith("c_") ? w("a3.once", { app }) : w("a3.wwl", { app }),
     buttons: [
       { id: "approve", label: w("a3.ok"), call: { method: "POST", path: `/v1/tasks/${taskId}/approve`, body } },
       // Changing it is saying no to this one and being asked what to change.

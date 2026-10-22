@@ -36,6 +36,8 @@ import { gate, gateTool, type Gate, type Level, type Risk } from "./risk.js";
 import type { Approval, ConnectorStore, Task } from "./store.js";
 
 export const APPROVAL_TTL_MS = 60 * 60_000;
+/** How many approved kinds of change one app remembers (the newest kept). */
+const REMEMBER_MAX = 100;
 const STEPS_MAX = 30;
 const PREVIEW_MAX = 400;
 
@@ -281,6 +283,13 @@ export class TaskService {
       out.ok ? `${def.name}: ${human(a.tool)} (you approved)` : `${def.name}: ${human(a.tool)} failed`,
       { state: out.ok ? "done" : "failed", approval: null },
     );
+    // A yes is the one-time permission for this kind of change in this app:
+    // from now on it runs without asking. A delete or a payment is asked every
+    // time, and an app added by link keeps its own per-tool choices.
+    if (out.ok && !def.custom && (a.risk === "write" || a.risk === "send")) {
+      const autoOk = conn.autoOk.includes(a.tool) ? conn.autoOk : [...conn.autoOk, a.tool].slice(-REMEMBER_MAX);
+      await this.o.store.upsertConnection(userId, a.connector, { autoOk, ...(conn.level !== "send" ? { level: "send" as Level } : {}) }).catch(() => {});
+    }
     return out.ok ? { status: "ok", result: out.text, task: viewOfTask(t) } : { status: "failed", error: out.error, task: viewOfTask(t) };
   }
 

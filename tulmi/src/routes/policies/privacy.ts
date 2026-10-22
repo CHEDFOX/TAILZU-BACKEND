@@ -291,7 +291,7 @@ const PRIVACY_POLICY_BODY = `
 <ul>
   <li>Tailzu reaches into a Google app only to do what you just asked for. It never looks around in your apps on its own, in the background or on a schedule.</li>
   <li><strong>Looking something up</strong> (your calendar, your tasks, a sheet, a form's answers, your classes) happens right away.</li>
-  <li><strong>Changes wait for your OK.</strong> Before Tailzu adds, changes or deletes anything, it shows you a card with the exact change, and nothing happens until you tap Approve. Tap Not now, and nothing is done. You choose how far Tailzu can go in each app (Can look, Can draft or Can send); at Can send, you can let a kind of change go ahead without asking. Deleting always asks.</li>
+  <li><strong>Changes wait for your OK.</strong> The first time Tailzu makes a kind of change in an app (adding an event, adding a task), it shows you a card with the exact change, and nothing happens until you tap Approve; tap Not now, and nothing is done. Once you approve, Tailzu makes that kind of change in that app without asking again. Deleting always asks, every time. You choose how far Tailzu can go in each app (Can look, Can draft or Can send): at Can draft every change asks, and at Can look Tailzu changes nothing.</li>
 </ul>
 
 <h3>11.3 Where your Google data goes</h3>

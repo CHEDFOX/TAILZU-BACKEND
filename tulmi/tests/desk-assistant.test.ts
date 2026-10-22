@@ -170,7 +170,7 @@ describe("the confirm card", () => {
     const c = approvalCard("task-1", approval, "Slack")!;
     expect(c).toMatchObject({
       title: "Ready to send?", app: "Slack", label: "The exact message", preview: approval.preview,
-      note: "I’ll do this in Slack, as you. I won’t do anything else.",
+      note: "Approve once, and I’ll do this in Slack without asking again. Deleting always asks.",
       after: { done: "Done ✓", left: "Okay, I left it.", failed: "That didn’t go through.", change: "What should I change?" },
     });
     expect(c.buttons).toEqual([

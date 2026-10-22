@@ -653,10 +653,11 @@ describe("the routes", () => {
     const row = (await store.getConnection("ann", "testapp"))!;
     expect(row.tokensEnc).toMatch(/^v1\./);
     expect(row.tokensEnc).not.toContain("127.0.0.1");
-    expect(row.level).toBe("look");
+    // A first connection starts at Can send: each kind of change is still asked once.
+    expect(row.level).toBe("send");
 
     res = await app.inject({ method: "GET", url: "/v1/connectors", headers: as("ann") });
-    expect(res.json().connectors[0]).toMatchObject({ id: "testapp", connected: true, level: "look" });
+    expect(res.json().connectors[0]).toMatchObject({ id: "testapp", connected: true, level: "send" });
     // Bob sees none of Ann's.
     expect((await app.inject({ method: "GET", url: "/v1/connectors", headers: as("bob") })).json().connectors[0].connected).toBe(false);
   });
@@ -700,7 +701,9 @@ describe("the routes", () => {
 
     expect((await app.inject({ method: "POST", url: `/v1/tasks/${t1}/approve`, headers: as("bob"), payload: {} })).statusCode).toBe(404);
     const yes = await app.inject({ method: "POST", url: `/v1/tasks/${t1}/approve`, headers: as("ann"), payload: {} });
-    expect(yes.json()).toMatchObject({ ok: true, result: "Note created.", task: { id: t1, state: "done" } });
+    expect(yes.json()).toMatchObject({ ok: true, task: { id: t1, state: "done" } });
+    // The app's own answer stays on the server: the card says Done, nothing more.
+    expect(yes.json()).not.toHaveProperty("result");
     expect(seen.calls).toEqual([{ tool: "create_note", args: { title: "Plan" } }]);
     expect((await app.inject({ method: "POST", url: `/v1/tasks/${t1}/approve`, headers: as("ann"), payload: {} })).statusCode).toBe(409);
 
