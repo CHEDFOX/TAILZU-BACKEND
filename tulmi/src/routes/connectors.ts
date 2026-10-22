@@ -118,6 +118,11 @@ export function registerConnectorRoutes(app: FastifyInstance, deps: ConnectorRou
         }
         return reply.send({ authorizeUrl, signInHost });
       }
+      // A first connection starts at Can send: the person has just said yes on
+      // the app's own sign-in page, and each kind of change is still asked once
+      // (a delete or a payment every time). A reconnect keeps their choice.
+      const before = await c.store.getConnection(user.id, def.id);
+      if (!before?.tokensEnc) await c.store.upsertConnection(user.id, def.id, { level: "send" });
       if (def.auth === "oauth") {
         // Google's own apps sign in with our OAuth client; every other app through MCP.
         const authorizeUrl = def.kind === "native"
@@ -238,7 +243,8 @@ export function registerConnectorRoutes(app: FastifyInstance, deps: ConnectorRou
       if (r.status === "not_found") return reply.code(404).send({ code: "not_found", message: "No such task" });
       if (r.status === "not_waiting") return reply.code(409).send({ code: "not_waiting", message: "That isn't waiting for an answer any more." });
       if (r.status === "expired") return reply.code(410).send({ code: "expired", message: "That request expired. Ask me again.", task: taskOut(r.task!) });
-      return reply.send({ ok: r.status === "ok", ...(r.result !== undefined ? { result: r.result } : {}), ...(r.error ? { error: r.error } : {}), task: taskOut(r.task!) });
+      // The app's own answer (ids, links, its raw words) stays here: the card says Done, nothing more.
+      return reply.send({ ok: r.status === "ok", ...(r.error ? { error: r.error } : {}), task: taskOut(r.task!) });
     } catch (err) { return fail(reply, err); }
   });
 

@@ -215,7 +215,7 @@ describe("The confirm sheet", () => {
     expect(sheet.bind).toEqual({ open: "open" });
     expect(s.state).toMatchObject({ open: true, plain: false, preview: PREVIEW, app: "Notion" });
     const t = texts(sheet);
-    for (const w of [EN["a3.h.send"], EN["a3.lab.send"], EN["a3.wwl"].replace("{app}", "Notion"), EN["a3.ok"], EN["a3.edit"], EN["a3.later"]]) expect(t, w).toContain(w);
+    for (const w of [EN["a3.h.send"], EN["a3.lab.send"], EN["a3.once"].replace("{app}", "Notion"), EN["a3.ok"], EN["a3.edit"], EN["a3.later"]]) expect(t, w).toContain(w);
     expect(JSON.stringify(sheet)).not.toContain("Standup: shipped");
     expect(nodes(sheet, (n) => n.bind?.content === "preview")).toHaveLength(1);
   });
@@ -351,7 +351,7 @@ describe("in Hinglish", () => {
       HG["s6.sug"], HG["apps.h"], HG["lv.look"], HG["lv.draft"], HG["lv.send"], HG["st.ok"], HG.connect,
       HG["a2.q"].replace("{app}", "Linear"), HG["a2.dis"].replace("{app}", "Linear"),
       HG["a4.w"], HG["a4.r"], HG["a4.d"], HG["a4.wm"].replace("{app}", "Notion"), HG["a4.end"],
-      HG["a3.h.send"], HG["a3.lab.send"], HG["a3.wwl"].replace("{app}", "Notion"), HG["a3.ok"], HG["a3.edit"], HG["a3.later"],
+      HG["a3.h.send"], HG["a3.lab.send"], HG["a3.once"].replace("{app}", "Notion"), HG["a3.ok"], HG["a3.edit"], HG["a3.later"],
       HG["a3.reason"].replace("{app}", "Notion"), HG["a3.nobio"], HG["a3.left"], HG["a3.change"],
       HG["ask.h"], HG["ask.p"], HG["ask.ph"], HG["ask.go"], HG["ask.mic"], HG["ask.try"], HG["ask.busy"], HG["ask.empty"], HG["ask.ex1"],
     ];
