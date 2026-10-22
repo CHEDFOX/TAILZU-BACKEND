@@ -62,6 +62,9 @@ import { approvalCard } from "../connectors/card.js";
 import type { AssistantView } from "../connectors/list.js";
 import { en, wordsFor, type WordKey } from "../connectors/words.js";
 import { PHONE_LOOK, label, t } from "./phoneLook.js";
+import { blipBox, blipPicture, neonDot } from "./touches.js";
+import type { BlipLoop } from "./blipLoops.js";
+import { sw } from "./settingsWords.js";
 
 type You = typeof import("./catalog.js").YOU_UI;
 type Style = Record<string, unknown>;
@@ -98,6 +101,25 @@ const TASKS = "assistant_tasks";
 /** Words of ours, capitalised by the phone (see WORDS above). */
 const word = (content: string, face: Face, size: number, style: Style = {}): Node =>
   t(content, face, size, { textTransform: "capitalize", ...style });
+
+/**
+ * Blip, centred, with the lines under him: an empty state's one warm line, or
+ * an error's words and then its fix. The lines are sentences, set as written.
+ * One of these a screen, never in a list or a row (touches.ts).
+ */
+const empty = (loop: BlipLoop, lines: string[], ui: You, first: Style = {}): Node => ({
+  type: "Stack",
+  style: { alignItems: "center", marginTop: 28 },
+  children: [
+    blipPicture(loop, 0.9),
+    ...lines.map((line, i) => t(line, "ui", 15, {
+      lineHeight: 23, color: i === 0 ? ui.text : ui.textDim, textAlign: "center", marginTop: i === 0 ? 14 : 6, maxWidth: 300, ...(i === 0 ? first : {}),
+    })),
+  ],
+});
+
+/** A screen that cannot reach the apps: Blip, what is so, and the fix in one line. */
+const cannotReach = (ui: You): Node => empty("think-s", [en("apps.off"), sw("x.apps")], ui);
 
 /** Text drawn from the screen's state: never translated, never recased. */
 const fromState = (path: string, face: Face, size: number, style: Style = {}): Node =>
@@ -159,7 +181,8 @@ function head(ui: You, kicker: string, title: string, lone: boolean): Node {
     children: [
       { type: "Stack", style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, children: lone ? [] : [back(ui)] },
       label(kicker, { marginTop: 18 }),
-      word(title, "writtenLight", 22, { letterSpacing: -0.3, marginTop: 8 }),
+      // The page title in the onboarding's heading face (touches.ts).
+      word(title, "grotesk", 26, { letterSpacing: -0.6, marginTop: 8 }),
     ],
   };
 }
@@ -229,7 +252,7 @@ function appsScreen(ctx: Ctx, ui: You): ScreenResponse {
   const body: Node[] = [];
 
   if (!apps) {
-    body.push(word(en("apps.off"), "ui", 15, { lineHeight: 23, color: ui.text }));
+    body.push(cannotReach(ui));
     return page(ctx, "assistant_apps", ui, en("apps.h"), en("apps.p"), body, { state: {} });
   }
 
@@ -252,6 +275,9 @@ function appsScreen(ctx: Ctx, ui: You): ScreenResponse {
   const suggested = todo.slice(0, 4);
   const more = todo.slice(4);
 
+  // BLIP AT THE TOP, presenting the apps. While none is connected he has one
+  // warm line to say; once one is, he stands there quietly. The one Blip here.
+  body.push(empty("present-s", done.some((a) => a.connected) ? [] : [sw("e.apps")], ui));
   // Ask is where these apps are used from the phone.
   body.push(GAP(14), pill(ui, en("ask.h"), seq(haptic("selection"), { kind: "navigate", screenId: ASK }), "outline"));
 
@@ -315,10 +341,13 @@ function tile(a: ConnectorInfo, ui: You, canOpen: boolean): Node {
         type: "Stack",
         style: {
           borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5,
+          flexDirection: "row", alignItems: "center", gap: 6,
           backgroundColor: a.connected ? "transparent" : ui.text,
           ...(a.connected ? { borderWidth: 1, borderColor: "rgba(255,255,255,0.3)" } : {}),
         },
-        children: [word(en(state), "uiBold", 11, { color: a.connected ? ui.text : ui.onAccent })],
+        // Connected is a state that is on: the onboarding's neon dot, here and
+        // nowhere else on this screen (touches.ts).
+        children: [...(on ? [neonDot(6)] : []), word(en(state), "uiBold", 11, { color: a.connected ? ui.text : ui.onAccent })],
       },
       // How far it may go, under a connected app's name. Three lines, one
       // shown, so a change made in its sheet shows here without a reload.
@@ -856,11 +885,11 @@ function tasksScreen(ctx: Ctx, ui: You): ScreenResponse {
   const names = ctx.assistant?.names ?? {};
   const body: Node[] = [];
   if (!tasks) {
-    body.push(word(en("apps.off"), "ui", 15, { lineHeight: 23, color: ui.text }));
+    body.push(cannotReach(ui));
     return page(ctx, TASKS, ui, en("a4.h"), en("tasks.h"), body, { state: {} });
   }
   if (!tasks.length) {
-    body.push(word(en("tasks.empty"), "ui", 15, { lineHeight: 23, color: ui.textDim }));
+    body.push(empty("think-s", [en("tasks.empty")], ui));
     return page(ctx, TASKS, ui, en("a4.h"), en("tasks.h"), body, { state: {} });
   }
 
@@ -884,9 +913,21 @@ function tasksScreen(ctx: Ctx, ui: You): ScreenResponse {
     style: { flexDirection: "row", gap: 10, padding: 14, borderRadius: 18, marginBottom: 8, backgroundColor: ui.pill.background },
     children: kids,
   });
+  // THE ONE BLIP, beside the heading of what matters most: pointing at what
+  // waits for an OK, else carrying what is running, else thumbs-up on what is
+  // done. Never in a card.
+  const pose: [WordKey, BlipLoop] | undefined = waiting.length ? ["a4.w", "pointd-s"]
+    : running.length ? ["a4.r", "carry-s"]
+    : tasks.some((x) => x.state === "done") ? ["a4.d", "thumbs-s"] : undefined;
   const section = (key: WordKey, list: AssistantTask[], draw: (x: AssistantTask, i: number) => Node) => {
     if (!list.length) return;
-    body.push(label(en(key), { marginTop: 28, marginBottom: 12 }));
+    body.push(pose?.[0] === key
+      ? {
+          type: "Stack",
+          style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 20, marginBottom: 8 },
+          children: [label(en(key)), blipBox(pose[1], 0.55)],
+        } as Node
+      : label(en(key), { marginTop: 28, marginBottom: 12 }));
     for (const x of list) body.push(draw(x, slot(x)));
   };
 
@@ -947,7 +988,8 @@ function approveScreen(ctx: Ctx, ui: You): ScreenResponse {
 
   if (!task || !card) {
     return page(ctx, "assistant_approve", ui, en("a4.h"), en("a4.w"), [
-      word(en("a3.none"), "ui", 15, { lineHeight: 23, color: ui.textDim }),
+      // All answered: Blip with a thumbs-up, and the line that was always here.
+      empty("thumbs-s", [en("a3.none")], ui),
       GAP(18),
       pill(ui, en("a4.h"), toTasks),
     ], { state: {} });
@@ -1044,7 +1086,7 @@ function askAction(ctx: Ctx): ActionSpec {
 
 function askScreen(ctx: Ctx, ui: You): ScreenResponse {
   if (!ctx.connectorsOn) {
-    return page(ctx, ASK, ui, en("ask.h"), en("ask.p"), [word(en("apps.off"), "ui", 15, { lineHeight: 23, color: ui.text })], { state: {} });
+    return page(ctx, ASK, ui, en("ask.h"), en("ask.p"), [cannotReach(ui)], { state: {} });
   }
   // The examples are in their voice and live in state, so a chip shows
   // exactly what it fills in: a translated node would not match its value.
@@ -1072,7 +1114,13 @@ function askScreen(ctx: Ctx, ui: You): ScreenResponse {
         pill(ui, en("ask.go"), askAction(ctx), "primary", true),
       ],
     },
-    { ...word(en("ask.busy"), "ui", 13.5, { color: ui.textDim, marginTop: 14 }), visibleIf: { truthy: "ask.busy" } },
+    // WORKING: Blip thinking, beside the line that was always here. The one Blip here.
+    {
+      type: "Stack",
+      visibleIf: { truthy: "ask.busy" },
+      style: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 14 },
+      children: [blipBox("think-s", 0.5), word(en("ask.busy"), "ui", 13.5, { color: ui.textDim, flex: 1 })],
+    },
     // The answer: its words are the server's and theirs, from state, never reworded.
     {
       type: "Stack",
