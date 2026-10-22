@@ -539,12 +539,14 @@ describe("the Train page shows what it has learned, as figures and charts", () =
   } as never;
   it("carries the figures, the stage, the portrait and what it learns from", () => {
     const s = JSON.stringify(buildScreen("desk_train", ctx));
-    for (const f of ["Training rounds", "Sittings learned from", "Words it knows", "Learning for", "How well it knows you",
-                     "Getting to know you", "Writes short and warm.", "jugaad", "a quick workaround", "Quick replies",
+    for (const f of ["Training rounds", "Sittings learned from", "Learning for", "How well it knows you",
+                     "Getting to know you", "Writes short and warm.", "Quick replies",
                      "Through the day", "Brisk lists.", "Per voice", "Drops the slang.", "What it learns from"]) {
       expect(s, f).toContain(f);
     }
     expect(s).toContain('"screenId":"training_live"');
+    // "Your words" is not shown, on the desk or the phone.
+    for (const gone of ["Your words", "Words it knows", "jugaad"]) expect(s, gone).not.toContain(gone);
     expect(s).not.toContain("--d-violet");   // the band is the desk's warm room now
   });
   it("a first visit says what will fill in, and still offers to start", () => {

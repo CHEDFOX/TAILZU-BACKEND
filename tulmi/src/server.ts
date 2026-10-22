@@ -99,6 +99,7 @@ import {
   setMediaRegistryAccessor,
   PAYWALL_CONFIG, POLICY,
 } from "./experience/catalog.js";
+import { canOnboard, onboardLanguage } from "./experience/onboard.js";
 import { localize } from "./experience/i18n.js";
 import {
   appendHistoryEntry,
@@ -2530,7 +2531,11 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   // Guarded on !onboarded, so this is a single write for such a user and a
   // no-op on every launch after. A reviewer is already forced onboarded and
   // never reaches this.
-  if (user && profile && !profile.onboarded && micGranted && keyboardReady) {
+  //
+  // Not for the new onboarding: there the flow itself ends at Done, which is
+  // what marks it, so nothing about the device may mark it first.
+  const onboardV2 = canOnboard(reqBody.capabilities?.components);
+  if (user && profile && !profile.onboarded && micGranted && keyboardReady && !onboardV2) {
     updateProfile(user, { onboarded: true }).catch((e) => {
       // Losing this write costs a repeat of the same skip next launch, not a
       // broken app — so it must never fail the bootstrap.
@@ -2539,7 +2544,7 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   }
 
   const bootstrap = buildBootstrap({
-    onboarded: isReviewer || micGranted && keyboardReady || (profile?.onboarded ?? false),
+    onboarded: isReviewer || (!onboardV2 && micGranted && keyboardReady) || (profile?.onboarded ?? false),
     // Have they ever been inside the app before? A reviewer always has — a
     // fresh account walked into You on every submission otherwise, which is
     // not the screen you want a reviewer to open on.
@@ -2622,6 +2627,11 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
       : null,
     micGranted,
     keyboardReady,
+    // The new onboarding, for a build that declared the pieces it is drawn
+    // with; and whether it has its connected-apps steps (their count sets the
+    // progress bar's length, which both stages must agree on).
+    onboardV2,
+    connectorsOn: !!connectors,
     formFactor: isDesktop ? "desktop" : "phone",
     // Which desktop. Sign in with Apple is offered on a Mac and not on the
     // others: it works there in the sense that a browser flow works, and it
@@ -2691,7 +2701,11 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
     tzOffsetMinutes?: number;
     capabilities?: {
       platform?: string;
-      device?: { width?: number; height?: number; formFactor?: string; os?: string };
+      device?: {
+        width?: number; height?: number; formFactor?: string; os?: string;
+        /** The new onboarding starts past the steps these two make unnecessary. */
+        keyboardReady?: boolean; locale?: string;
+      };
       appVersion?: string;
       /** What this bundle can render. Absence is the only honest signal that a
        *  screen needing something new must not be sent to it. */
@@ -2829,7 +2843,12 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
   // An app added by link has a page of its own (what it can do, tool by
   // tool): the app it is about comes in the params, and is asked for its tools.
   const toolsOf = typeof body.params?.id === "string" && body.params.id.length <= 64 ? body.params.id : undefined;
-  const assistantRead = user && connectors && screenFormFactor === "desktop"
+  const assistantRead = user && connectors && screenId === "onboard" && canOnboard(body.capabilities?.components)
+    // The new onboarding's Connect your apps step, for a phone and a window
+    // alike: the apps and where each stands, read fresh on every fetch so a
+    // connected tile and the Continue button follow the refresh.
+    ? assistantView(connectors, user.id, { apps: true }, user.email).catch(() => undefined)
+    : user && connectors && screenFormFactor === "desktop"
     && Array.isArray(body.capabilities?.components) && body.capabilities!.components!.includes("DeskConnectors")
     && (screenId === "desk_settings" || screenId === "desk_tasks" || screenId === "desk_connector")
     ? assistantView(connectors, user.id, {
@@ -2924,6 +2943,8 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
     tzOffsetMinutes: typeof body.tzOffsetMinutes === "number" ? body.tzOffsetMinutes : undefined,
     appVersion: typeof body.capabilities?.appVersion === "string" ? body.capabilities.appVersion : undefined,
     os: typeof body.capabilities?.device?.os === "string" ? body.capabilities.device.os : undefined,
+    keyboardReady: body.capabilities?.device?.keyboardReady === true,
+    locale: typeof body.capabilities?.device?.locale === "string" ? body.capabilities.device.locale.slice(0, 35) : undefined,
     can: new Set(
       Array.isArray(body.capabilities?.components)
         ? body.capabilities!.components!.map(String)
@@ -2934,7 +2955,11 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
     return reply.code(404).send({ code: "bad_request", message: `Unknown screen '${screenId}'` });
   }
   return reply.send(await localize(withControl(req, reply, screen, screenCtx(screenId)),
-    profile?.language ?? "auto"));
+    // The onboarding speaks the first language its Languages step saved, until
+    // the profile says one (see onboardLanguage). Every other screen: the profile's.
+    screenId === "onboard"
+      ? onboardLanguage(profile?.language, personality?.languages)
+      : profile?.language ?? "auto"));
 });
 
 // --- Profile (REST): language + onboarding state ----------------------------

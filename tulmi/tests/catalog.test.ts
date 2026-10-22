@@ -1984,8 +1984,9 @@ describe("the training tab shows what it has learned", () => {
     expect(json).toContain('"centerValue":"5"');
     expect(json).toContain("Sittings");
     expect(json).toContain("214");
-    // Their own words, as they were learned.
-    expect(json).toContain("jugaad");
+    // "Your words" is not shown on the phone.
+    expect(json).not.toContain("jugaad");
+    expect(json).not.toContain("Your words");
   });
 
   it("charts the days it has been learning from", () => {

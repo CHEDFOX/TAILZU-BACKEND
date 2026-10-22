@@ -19,6 +19,7 @@ import OpenAI from "openai";
 import { getConfig } from "../config.js";
 import { CATALOG } from "../connectors/catalog.js";
 import { hinglishSeeds } from "../connectors/words.js";
+import { onboardHinglishSeeds } from "./onboard.js";
 import type {
   ActionRef,
   ActionSpec,
@@ -122,6 +123,8 @@ function transformActionSpec(a: ActionSpec, fn: StrFn): ActionSpec {
         ...a,
         onGranted: a.onGranted ? transformActionRef(a.onGranted, fn) : a.onGranted,
         onDenied: a.onDenied ? transformActionRef(a.onDenied, fn) : a.onDenied,
+        // "Turn it on in Settings" is said here, so it is translated too.
+        ...("onBlocked" in a && a.onBlocked ? { onBlocked: transformActionRef(a.onBlocked, fn) } : {}),
       };
     case "armFlowSession":
     case "completeKeyboardHandoff":
@@ -208,6 +211,11 @@ const NODE_TYPE_TEXT_PROPS: Record<string, { props: readonly string[]; rows?: { 
     props: ["eyebrow", "titleEm", "lede", "on", "allow", "turnOff", "restart", "restartButton", "foot", "policyLabel"],
     rows: { key: "rows", fields: ["title", "sub"] },
   },
+  // The new onboarding (experience/onboard.ts): what Blip says, and the sign-in
+  // controls' own lines. Their {len}, {to} are filled by the app afterwards.
+  BlipSpot: { props: ["say"] },
+  CodeEntry: { props: ["sentTo", "waitLabel", "okLabel", "failLabel", "resendLabel", "wrongLabel", "wrongEmailLabel", "changeLabel"] },
+  SwipePill: { props: ["submitLabel"] },
 };
 
 function transformNode(node: Node, fn: StrFn): Node {
@@ -388,6 +396,7 @@ function buildPrompt(languageName: string, items: string[]): string {
     "- Natural, concise, in a clean and friendly product tone.",
     "- Preserve emoji, leading/trailing spaces, and line breaks exactly where they are.",
     "- Keep short labels short; keep ALL-CAPS words emphatic if the script supports caps.",
+    "- Keep {placeholders} in braces exactly as they are.",
     `- ${BRAND_NOTE}`,
     "- No quotes, numbering, or commentary.",
     'Return ONLY a JSON object {"items": ["...", ...]} whose array has EXACTLY the same length and order as the input.',
@@ -428,6 +437,22 @@ async function translateViaLLM(languageName: string, items: string[]): Promise<s
 }
 
 let hinglishSeedsOnce: Map<string, string> | undefined;
+let onboardSeedsOnce: Map<string, string> | undefined;
+
+/**
+ * The new onboarding's Hinglish, which belongs to ITS screen and to nothing
+ * else. Seeds are keyed by the English line, and a few of the onboarding's are
+ * the same English as a line another screen already has in a different Hinglish
+ * ("Try saying" on Ask, "Continue" on Add by link). Merged into the shared
+ * seeds, one would win everywhere and silently reword a screen nobody touched;
+ * applied on top of the screen it is for, each keeps its own. They also win
+ * over the cache here: a short word like "Continue" is likely in it already as
+ * the model's guess from some other screen.
+ */
+function onboardingLines(resp: AnyResponse, code: string): Map<string, string> | undefined {
+  if (code !== "hinglish" || (resp as { screenId?: unknown }).screenId !== "onboard") return undefined;
+  return (onboardSeedsOnce ??= onboardHinglishSeeds());
+}
 
 async function ensureTranslations(
   code: string,
@@ -479,21 +504,27 @@ export async function localize<T extends AnyResponse>(
   const info = langInfo(language);
   if (!info) return resp;
 
+  // The lines a screen owns outright (the new onboarding's Hinglish) are not
+  // the translator's to look up at all.
+  const own = onboardingLines(resp, info.code);
+
   // Pass 1 — collect translatable strings.
   const found = new Set<string>();
   transformResponse(resp, (s) => {
-    if (isTranslatable(s)) found.add(s);
+    if (isTranslatable(s) && !own?.has(s)) found.add(s);
     return s;
   });
-  if (found.size === 0) return resp;
+  if (found.size === 0 && !own) return resp;
 
   // Translate (cached) then Pass 2 — substitute.
-  const map = await ensureTranslations(info.code, info.name, [...found]);
+  const map = found.size > 0 ? await ensureTranslations(info.code, info.name, [...found]) : new Map<string, string>();
   // An empty translation is a missing one, not a blank label. `??` treated ""
   // as an answer, so any string the model returned empty for — short button
   // words were the ones it dropped — rendered as nothing on every screen for
   // every non-English user. The source text is always the better fallback.
   const localized = transformResponse(resp, (s) => {
+    const mine = own?.get(s);
+    if (mine !== undefined) return mine;
     const t = map.get(s);
     return typeof t === "string" && t.trim() ? t : s;
   });

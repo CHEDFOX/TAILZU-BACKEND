@@ -46,6 +46,7 @@ import type { HistoryEntry, Note, NoteSummary, PaywallConfig, PaywallPlan, Perso
 import { getConfig } from "../config.js";
 import type { Allowance } from "../usage/allowance.js";
 import { desktopOs, installerUrl, publishedRelease, updateFor } from "./desktopRelease.js";
+import { canOnboard, onboardAppsOn, onboardAuthTree, onboardScreen } from "./onboard.js";
 
 /** The desktop release every OS has at least, for an OS whose installer was
  *  published before versions were recorded beside it. */
@@ -1518,6 +1519,10 @@ export const FONTS: Record<string, string> = {
   // The titles: Instrument Sans and Newsreader at 700, cut the same way.
   [PHONE_FONT.uiBold]: `${FONT_BASE}ui-bold.ttf?v=1`,
   [PHONE_FONT.writtenBold]: `${FONT_BASE}written-bold.ttf?v=1`,
+  // The new onboarding's two: Bricolage Grotesque at 800 for its headings and
+  // the code's digits, Kalam for what Blip says.
+  [PHONE_FONT.grotesk]: `${FONT_BASE}grotesk.ttf?v=1`,
+  [PHONE_FONT.hand]: `${FONT_BASE}hand.ttf?v=1`,
 };
 
 /**
@@ -2192,9 +2197,22 @@ export function buildBootstrap(
     wordsEver?: number;
     /** Nothing to set up (an App Review account). */
     setupDone?: boolean;
+    /**
+     * THE ASKING BUILD DRAWS THE NEW ONBOARDING (canOnboard: it declared both
+     * OnboardStage and BlipSpot, and ONBOARD_V2 is on). Everything new is sent
+     * only on this: the stage tree as the sign-in screen, "onboard" as the
+     * first screen of a person who is not onboarded yet (a window included),
+     * and no automatic "onboarded" mark from device signals, because the flow
+     * itself ends at Done. Absent, a client gets exactly what it always did.
+     */
+    onboardV2?: boolean;
+    /** Connected apps are switched on (CONNECTORS). With onboardV2 it decides
+     *  whether the flow has its two apps steps, and so how long its bar is. */
+    connectorsOn?: boolean;
   } = {},
 ): BootstrapResponse {
   const desk = opts.desk === true && opts.formFactor === "desktop";
+  const onboardV2 = opts.onboardV2 === true;
   const setup = setupActivity(opts);
   const nav = desk ? deskNav(opts.deskNotes === true, opts.deskTasks === true) : navigationFor(!!opts.landedBefore);
   return withAppKnobs({
@@ -2227,7 +2245,10 @@ export function buildBootstrap(
     // The desk opens on Today. A window has no setup steps to walk (no
     // keyboard to add, the OS asks for the microphone), so there is nothing to
     // come before it.
-    initialScreenId: desk ? "desk_today" : landingScreenId(nav, pickInitialScreenId(
+    //
+    // A window that is not onboarded yet starts the new flow first, with the
+    // desk behind it; onboarded, it opens on Today as ever.
+    initialScreenId: desk && !(onboardV2 && !opts.onboarded) ? "desk_today" : landingScreenId(nav, pickInitialScreenId(
       !!opts.onboarded,
       // Uploaded media OR the built-in mark. The intro used to require a file,
       // so out of the box it silently never played — which reads as a broken
@@ -2242,6 +2263,8 @@ export function buildBootstrap(
         keyboardReady: !!opts.keyboardReady,
         formFactor: opts.formFactor,
       },
+      onboardV2,
+      opts.isReviewer === true,
     )),
     flags: ((): BootstrapResponse["flags"] => {
       const flags: BootstrapResponse["flags"] = {
@@ -2547,12 +2570,26 @@ export function buildBootstrap(
       if (flags) {
         flags["auth.sdui"] = AUTH_SDUI;
         flags["auth.scrim"] = AUTH_UI.scrim;
-        flags["auth.screen"] = authScreenTree(opts.formFactor === "desktop", {
+        const authOpts = {
           googleHidden: opts.googleHidden === true,
           googleLink: opts.googleHidden === true ? (opts.googleLink ?? null) : null,
           appleHidden: opts.formFactor === "desktop" && opts.os !== "mac",
-        });
+        };
+        // The new onboarding's Welcome, Sign in and Code, for a build that
+        // draws them; every other build keeps the screen it has always had.
+        // (AUTH_SDUI off still sends everyone to the native sign-in.)
+        flags["auth.screen"] = onboardV2
+          ? onboardAuthTree({
+              ...authOpts,
+              desktop: opts.formFactor === "desktop",
+              connectorsOn: onboardAppsOn(opts.connectorsOn === true),
+            })
+          : authScreenTree(opts.formFactor === "desktop", authOpts);
         flags["auth.suction"] = AUTH_UI.entry.suction;
+        // A keyboard mic tap mid-flow is held exactly as it is on the old
+        // steps. (Also the default in appKnobsData.ts; set here so a knob
+        // sync that forgets it cannot let a tap past the new flow.)
+        if (onboardV2) flags["boot.firstRunGateIds"] = ["onboarding", "onboarding_keyboard", "onboard"];
       }
 
       /**
@@ -3095,6 +3132,8 @@ function pickInitialScreenId(
   introReady: boolean,
   launchCount: number,
   device: { micGranted?: boolean; keyboardReady?: boolean; formFactor?: string } = {},
+  onboardV2 = false,
+  reviewer = false,
 ): string {
   const firstEver = launchCount === 1;
   // NEITHER STEP HAS ANYTHING TO ASK A WINDOW.
@@ -3110,11 +3149,25 @@ function pickInitialScreenId(
   // was correcting the server rather than telling it something it did not
   // know. It reports its form factor now, and the answer comes back right.
   const askDevice = device.formFactor !== "desktop";
-  const play = introReady && (
+  // The new onboarding opens on Welcome, which is the opening: for someone not
+  // onboarded yet the intro film would be a second one.
+  const play = introReady && !(onboardV2 && !onboarded) && (
     INTRO_PLAY_WHEN === "everyLaunch" ||
     (INTRO_PLAY_WHEN === "firstRun" && firstEver && !onboarded)
   );
   if (play) return "intro";
+  // ONE FLOW IN PLACE OF THE TWO STEPS. The new onboarding asks for the
+  // microphone and the keyboard itself, and only for what is still missing
+  // (onboardStart picks where it begins), so there is nothing left to route by
+  // device: a person who is not onboarded gets it, a window included (it never
+  // had onboarding before), and the first launch of an install gets it on a
+  // device that has not granted both even if the account is done.
+  if (onboardV2) {
+    // A reviewer goes straight in, even on the first launch of a fresh install.
+    if (reviewer) return "home";
+    const missing = askDevice && !(device.micGranted && device.keyboardReady);
+    return !onboarded || (launchCount === 1 && missing) ? "onboard" : "home";
+  }
   // THE FLAG IS ABOUT THE ACCOUNT. THE MICROPHONE AND THE KEYBOARD ARE ABOUT
   // THE PHONE.
   //
@@ -4864,6 +4917,14 @@ export interface ScreenContext {
    *  newer build when one has been published for that OS. */
   appVersion?: string;
   os?: string;
+  /**
+   * What the phone says about itself on every screen fetch, for the new
+   * onboarding (experience/onboard.ts): whether the keyboard already has Full
+   * Access (a cold start lands past the Keyboard step) and the device's
+   * locale ("en-IN" starts the language chips on Hinglish, Hindi and English).
+   */
+  keyboardReady?: boolean;
+  locale?: string;
 }
 
 /**
@@ -5063,6 +5124,13 @@ function phoneScreen(screenId: string, ctx: ScreenContext): ScreenResponse | nul
       return historyScreen(ctx);
     case "onboarding":
       return onboardingVoice(ctx);
+    // The new onboarding after sign-in, for a build that can draw it. Any other
+    // build that asks (a stale link, a cached id) is given today's first step,
+    // so the request never comes back empty.
+    case "onboard":
+      return canOnboard(ctx.can)
+        ? onboardScreen(ctx, NAV.kind === "tabs" ? NAV.tabs[0]?.id : undefined)
+        : onboardingVoice(ctx);
     // "onboarding_language" removed — the language pick is the client's native
     // post-auth screen now (needsLanguagePick bootstrap flag). Unknown ids fall
     // through to null → 404, which the client surfaces gracefully.
@@ -5128,7 +5196,7 @@ function freeNowScreen(screenId: string): ScreenResponse {
  * (English first). A value is what the pipeline reads: Hinglish is
  * "hinglish", the rest their language code.
  */
-const DAILY_LANGUAGES: Array<{ value: string; label: string; native: string; india: boolean }> = [
+export const DAILY_LANGUAGES: Array<{ value: string; label: string; native: string; india: boolean }> = [
   ...ALL_LANGS.filter((l) => l.india),
   ...ALL_LANGS.filter((l) => !l.india && l.code === "en"),
   ...ALL_LANGS.filter((l) => !l.india && l.code !== "en"),
@@ -5385,6 +5453,14 @@ export const AUTH_UI = {
  * the tap, reloads the app so boot finds that session. Google on a fresh
  * install's first open, with one extra tap, and no new binary.
  */
+/** Google's "G": its four coloured paths on a 48 grid, as the sign-in buttons draw it. */
+export const GOOGLE_PATHS: ReadonlyArray<readonly [string, string]> = [
+  ["#EA4335", "M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"],
+  ["#4285F4", "M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"],
+  ["#FBBC05", "M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"],
+  ["#34A853", "M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"],
+];
+
 /**
  * Google's "G", in its four colours, as four SVG nodes over one another — the
  * shipped bundle has an SVG node that takes one path, and has had since June.
@@ -5394,12 +5470,7 @@ export const AUTH_UI = {
  */
 function googleLinkButton(url: string, size: number): Record<string, unknown> {
   const G = 20, inset = (size - G) / 2;
-  const paths: Array<[string, string]> = [
-    ["#EA4335", "M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"],
-    ["#4285F4", "M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"],
-    ["#FBBC05", "M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"],
-    ["#34A853", "M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"],
-  ];
+  const paths = GOOGLE_PATHS;
   return {
     type: "Stack",
     on: { onPress: { kind: "sequence", actions: [
@@ -6229,18 +6300,6 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
     };
   };
 
-  /** Their own word, as it was learned. The most specific thing on the tab. */
-  const chip = (term: string): Node => ({
-    type: "Stack",
-    // A word they use, as they use it: no capital added (titleCase.ts).
-    props: { keepCase: true },
-    style: {
-      backgroundColor: st.chip, borderRadius: st.chipRadius,
-      paddingHorizontal: 11, paddingVertical: 6,
-    },
-    children: [{ type: "Text", props: { content: term },
-                 style: { fontSize: 12, fontWeight: "600", color: st.text } }],
-  });
 
   const label = (content: string, top: number): Node => ({
     type: "Text", props: { content },
@@ -6282,16 +6341,6 @@ function homeScreen(ctx: ScreenContext): ScreenResponse {
           ? [
               label("What it learns from", 22),
               feed(perDay.slice(-21)) as Node,
-            ]
-          : []),
-        ...(words.length
-          ? [
-              label("Your words", 22),
-              {
-                type: "Stack",
-                style: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-                children: words.slice(0, st.chipLimit).map((w) => chip(w.term)),
-              } as Node,
             ]
           : []),
       ];

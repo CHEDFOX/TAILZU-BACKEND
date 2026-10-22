@@ -37,6 +37,10 @@ export const PHONE_FONT = {
   uiBold: "Tailzu UI Bold",
   /** Titles in the book face: the month, Today, a section's name. */
   writtenBold: "Tailzu Written Bold",
+  /** The new onboarding's headings and code digits: Bricolage Grotesque, cut to 800. */
+  grotesk: "Tailzu Grotesk",
+  /** What Blip says in the new onboarding: Kalam, a handwriting. */
+  hand: "Tailzu Hand",
 } as const;
 
 export const PHONE_LOOK = {
@@ -75,6 +79,9 @@ type Style = Record<string, unknown>;
 const MIN_LINE: Record<keyof typeof PHONE_FONT, number> = {
   writtenLight: 1.45, writtenLightItalic: 1.45, written: 1.45, writtenItalic: 1.45,
   said: 1.34, label: 1.45, ui: 1.4, uiMedium: 1.4, uiBold: 1.4, writtenBold: 1.45,
+  // The new onboarding sets its own line heights (26/29 headings, 19/22 bubble);
+  // these only keep t() from drawing either face tighter than its glyphs.
+  grotesk: 1.1, hand: 1.15,
 };
 export const lineFor = (face: keyof typeof PHONE_FONT, size: number, asked?: unknown): number =>
   Math.max(typeof asked === "number" ? asked : 0, Math.ceil(size * MIN_LINE[face]));
