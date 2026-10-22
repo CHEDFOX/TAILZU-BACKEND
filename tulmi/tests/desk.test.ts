@@ -436,8 +436,9 @@ describe("the desk pages", () => {
 
   it("History is empty-safe", () => {
     const s = JSON.stringify(buildScreen("desk_history", { personality: {}, language: "en", history: [] } as never));
-    expect(s).toContain("Nothing here yet.");
-    expect(s).toContain("What you write with Tailzu shows up here.");
+    // Blip and one warm line, in Tailzu's voice (settingsWords.ts).
+    expect(s).toContain("Nothing here yet. Say something in any app, and I’ll keep it here.");
+    expect(s).toContain("/blip/listen-s.webp");
   });
 });
 

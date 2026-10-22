@@ -32,6 +32,9 @@ import { nicknameOf } from "./assistantName.js";
 import type { AssistantTask, ConnectorInfo, ConnectorTool } from "../../../shared/types/api.js";
 import type { AssistantView } from "../connectors/list.js";
 import { en as w } from "../connectors/words.js";
+import { HEADING_FACE, blipPicture, dayPart, neonDot } from "./touches.js";
+import type { BlipLoop } from "./blipLoops.js";
+import { sw as say } from "./settingsWords.js";
 
 /** Words a minute a person types on a keyboard — the same figure the stats
  *  screen's "minutes saved" has always used (history/store.ts). */
@@ -48,7 +51,7 @@ export const DESK_NAV: NavigationShell = {
     { id: "desk_insights", title: "Insights", screenId: "desk_insights" },
     { id: "desk_words", title: "Words", screenId: "desk_words" },
     { id: "desk_voices", title: "Voices", screenId: "desk_voices" },
-    { id: "desk_train", title: "Train", screenId: "desk_train" },
+    { id: "desk_train", title: say("tab.train"), screenId: "desk_train" },
   ],
   initialTabId: "desk_today",
 };
@@ -100,6 +103,12 @@ export interface DeskContext {
   note?: Note | null;
   /** This window has the notes hotkey (it said "DeskNotes"). */
   notesHotkey?: boolean;
+  /** This window draws the new onboarding (it said "OnboardStage" and "BlipSpot",
+   *  and ONBOARD_V2 is on). It then has the onboarding's typefaces, so the page
+   *  titles are set in its heading face. Absent, the desk is drawn as it was. */
+  onboard?: boolean;
+  /** Where the privacy policy and the terms are (the one every surface uses). */
+  legal?: { privacy: string; terms: string };
   /** Tailzu is free for everyone right now (FREE_FOR_ALL): no plan, no price. */
   free?: boolean;
   /** This window can open the Mac's permission for the computer's sound
@@ -325,6 +334,22 @@ export function speakerColor(label: string): string {
 }
 /** A colour washed into the sheet: `pct` of it, the rest the theme's paper. */
 const tint = (color: string, pctOf: number) => `color-mix(in srgb, ${color} ${pctOf}%, var(--d-sheet))`;
+/**
+ * Blip, for an empty state: his loop in a box exactly his size. The Image node
+ * centres itself with auto margins, which in a row would push him away from the
+ * line beside him; in a box of his own width there is nothing to centre in.
+ */
+const blip = (loop: BlipLoop, scale = 0.8): Node => {
+  const pic = blipPicture(loop, scale);
+  return stack([pic], { width: (pic.style as Style).width, flexShrink: 0 });
+};
+/** An empty state: Blip, and one warm line beside him. */
+const emptyState = (loop: BlipLoop, line: string, rest: Node[] = []): Node =>
+  row([
+    blip(loop),
+    stack([text(line, "d-written", { fontSize: 19, lineHeight: "27px", maxWidth: "34ch" }), ...rest], { flex: 1, minWidth: 0 }),
+  ], { align: "center", gap: 22, paddingBottom: 26 });
+
 /** A round dot of a speaker's colour, for beside their name. */
 const speakerDot = (color: string, size = 8): Node => stack([], { width: size, height: size, radius: "50%", background: color, flex: "none" });
 
@@ -735,11 +760,17 @@ export function deskToday(ctx: DeskContext): ScreenResponse {
     statTile("Day streak", n(st?.currentStreak ?? 0), st?.bestStreak ? `best run ${st.bestStreak} days` : "days in a row", true),
   ], { gap: 36, flexWrap: "wrap", marginTop: 26, paddingTop: 22, borderTop: "1px solid rgba(243,226,198,.12)", width: "100%" });
 
+  // BLIP'S GREETING, by the person's own time of day: a small Blip waving
+  // beside the date, with one line. The only Blip on this page.
   const band = room([
-    stack([
-      text("Today", "d-eyebrow"),
-      text(dateLine(now), "d-h1", { marginTop: 6 }),
-    ], { minWidth: 0 }),
+    row([
+      blip("wave-l", 0.5),
+      stack([
+        text("Today", "d-eyebrow"),
+        text(dateLine(now), "d-h1", { marginTop: 6 }),
+        text(say(`g.${dayPart(ctx.tzOffsetMinutes)}`), "d-count d-on-room", { marginTop: 10 }),
+      ], { minWidth: 0 }),
+    ], { align: "center", gap: 22, minWidth: 0 }),
     ...talkKeys(),
     figures,
   ]);
@@ -820,7 +851,7 @@ export function deskToday(ctx: DeskContext): ScreenResponse {
     text(st?.currentStreak ? `${st.currentStreak} ${st.currentStreak === 1 ? "day" : "days"} in a row${st.bestStreak ? ` · your longest run is ${st.bestStreak}` : ""}.` : "Talk today to start a run.",
       "d-lede", { marginTop: 14 }),
   ]);
-  const trainBlock = section("Train", undefined, [
+  const trainBlock = section(say("tab.train"), undefined, [
     text(trainLine(ctx.personality), "d-written", { fontSize: 16, lineHeight: "25px", marginTop: 12, marginBottom: 14, maxWidth: 360 }),
     row([link("Train Tailzu", { kind: "switchTab", tabId: "desk_train" })]),
   ]);
@@ -939,10 +970,7 @@ export function deskHistory(ctx: DeskContext): ScreenResponse {
 
   const body: Node[] = [];
   if (!all.length) {
-    body.push(stack([
-      text("Nothing here yet.", "d-written", { fontSize: 19, lineHeight: "27px" }),
-      text("What you write with Tailzu shows up here.", "d-lede", { marginTop: 8 }),
-    ], { paddingBottom: 26 }));
+    body.push(emptyState("listen-s", say("e.hist")));
   }
   let lastDay = "";
   all.forEach((e, i) => {
@@ -1453,7 +1481,7 @@ export function deskWords(ctx: DeskContext): ScreenResponse {
           ? snips.map(snipRow)
           : [text("No snippets yet. An address, a UPI id, a sign-off you type every day.", "d-lede", { marginTop: 8 })]),
       ], { flex: 1, minWidth: 0 }),
-    ], { gap: 72, marginTop: 48, align: "start" }, "d-wrap-narrow"),
+    ], { gap: 64, marginTop: 52, align: "start" }, "d-wrap-narrow"),
   ])], { form: { word: "", say: "", get: "" } });
 }
 
@@ -1617,7 +1645,7 @@ export function deskTrain(ctx: DeskContext): ScreenResponse {
   ], { gap: 36, flexWrap: "wrap", marginTop: 30, paddingTop: 22, borderTop: "1px solid rgba(243,226,198,.12)", width: "100%" });
   const head: Node[] = [
     stack([
-      text("Train", "d-eyebrow"),
+      text(say("tab.train"), "d-eyebrow"),
       text("A few minutes of talking, and it writes like you.", "d-h1", { marginTop: 6, maxWidth: "22ch" }),
       text("Tailzu asks a few questions and listens to how you answer. What it learns stays with your account, on every device.",
         "d-lede", { marginTop: 10, maxWidth: "46ch", color: "rgba(243,226,198,.72)" }),
@@ -1710,7 +1738,7 @@ export function deskTrain(ctx: DeskContext): ScreenResponse {
       ])
     : null;
 
-  return screen("desk_train", "Train", [band, page([
+  return screen("desk_train", say("tab.train"), [band, page([
     stageBlock,
     ...(coreBlock ? [coreBlock] : []),
     ...twoUp(stylesBlock, null),
@@ -1892,8 +1920,8 @@ export function deskNotes(ctx: DeskContext): ScreenResponse {
   const body: Node[] = [];
   if (!all.length) {
     body.push(stack([
-      text("No notes yet.", "d-written", { fontSize: 19, lineHeight: "27px" }),
-      text("Start it in a meeting, a lecture, or on a walk around your own ideas. Tailzu listens to your microphone and to your computer's sound, tells the voices apart, and keeps it short here: what the meeting was, a paragraph on the whole conversation, and the few things people said that mattered, with who said them.", "d-lede", { marginTop: 8, maxWidth: 560 }),
+      emptyState("tap-s", say("e.notes")),
+      text("Start it in a meeting, a lecture, or on a walk around your own ideas. Tailzu listens to your microphone and to your computer's sound, tells the voices apart, and keeps it short here: what the meeting was, a paragraph on the whole conversation, and the few things people said that mattered, with who said them.", "d-lede", { marginTop: 0, maxWidth: 560 }),
       ...(ctx.notesHotkey ? [row([link("Start taking notes", startNotes, "d-btn")], { marginTop: 16 })] : []),
     ], { paddingBottom: 26 }));
   } else if (charts.length) {
@@ -2124,7 +2152,19 @@ export function deskNote(ctx: DeskContext): ScreenResponse {
       text("With", "d-margin", { marginRight: 2 }),
       ...who.map((l) => speakerChip(nameOf(l), speakerColor(l))),
     ], { gap: 8, align: "center", flexWrap: "wrap", marginTop: 16 })] : []),
-    ...(nt.status !== "ready" ? [text(NOTE_STATUS[nt.status] ?? "", "d-lede", { marginTop: 12 })] : []),
+    // WHAT THE PAGE SAYS IS GOING ON, with Blip beside it when it is a working
+    // or an error state: carrying the pieces while the note is written, and
+    // thinking it over, with the fix in a line, when it could not be. The one
+    // Blip here; a note that is ready has none.
+    ...(nt.status === "organising" || nt.status === "failed"
+      ? [row([
+          blip(nt.status === "organising" ? "carry-s" : "think-s", 0.6),
+          stack([
+            text(NOTE_STATUS[nt.status] ?? "", "d-lede"),
+            ...(nt.status === "failed" ? [text(say("x.note"), "d-margin", { marginTop: 6 })] : []),
+          ], { flex: 1, minWidth: 0 }),
+        ], { align: "center", gap: 16, marginTop: 14 })]
+      : nt.status !== "ready" ? [text(NOTE_STATUS[nt.status] ?? "", "d-lede", { marginTop: 12 })] : []),
     ...(nt.status === "ready" && !nt.organised ? [text("Nobody spoke in this one.", "d-lede", { marginTop: 12 })] : []),
     row([
       ...(nt.organised ? [link("Copy", { kind: "copyText", text: noteText(ctx, nt), message: "Copied" })] : []),
@@ -2268,6 +2308,18 @@ function askFoldersCard(a: NonNullable<DeskContext["askSetup"]>): Node {
   };
 }
 
+/**
+ * SETTINGS — FIVE SECTIONS, in this order, each with a short heading and one
+ * line under it (the words are settingsWords.ts, in the onboarding's voice):
+ *   You               the plan, the account and Sign out
+ *   Writing           languages, voice and tone, the read-aloud voice, its name
+ *   Connected apps    the assistant's apps (only while they are switched on here)
+ *   This computer     the shortcut, the pill, Ask's permissions
+ *   Privacy and data  what is kept, the privacy policy
+ *   Help and about    write to us, the terms
+ * Every section is spaced the same (a heading, a line, its rows) and every row
+ * is a defRow, so no row is taller than its neighbours.
+ */
 export function deskSettings(ctx: DeskContext): ScreenResponse {
   const q = planWords(ctx);
   const langs = (ctx.personality.languages ?? []).filter((l) => l && l !== "auto");
@@ -2275,57 +2327,67 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
   // The read-aloud voice, as a friendly label — the stored one, or the default.
   const readVoice = isValidTtsVoice(ctx.personality.ttsVoice) ? ctx.personality.ttsVoice : DEFAULT_TTS_VOICE;
   const readVoiceLabel = ttsVoiceById(readVoice)?.label ?? readVoice;
+  const nick = nicknameOf(ctx.personality);
+  /** A section: its heading, its one line, its rows. */
+  const part = (heading: string, line: string, rows: Node[], last = false): Node =>
+    stack([
+      text(heading, "d-h2", { marginBottom: 4 }),
+      text(line, "d-lede", { marginBottom: 8 }),
+      ...rows,
+    ], last ? {} : { marginBottom: 40 });
+  const legal = ctx.legal;
   return screen("desk_settings", "Settings", [page([
     text("Settings", "d-eyebrow"),
-    text("How Tailzu works on this computer", "d-h1", { marginTop: 6, marginBottom: 26 }),
-    stack([
-      text("Talking", "d-h2", { marginBottom: 8 }),
+    text(say("d.h1"), "d-h1", { marginTop: 6, marginBottom: 26 }),
+
+    // ---- You ---------------------------------------------------------------
+    part(say("you.h"), say("you.p"), [
+      ctx.free && !q.paid
+        ? defRow("Free", "Every word, on every device. Nothing to pay.", text("No limit", "d-margin"))
+        : defRow(q.paid ? "Unlimited" : "Free", q.paid ? "Every word, on every device" : `${n(q.used)} of ${n(q.of)} words this month`,
+            q.paid
+              ? razorpayPlan(ctx) ?? (ctx.manageUrl ? link("Manage", { kind: "openUrl", url: ctx.manageUrl }) : undefined)
+              : link("See plans", { kind: "navigate", screenId: "desk_plan" })),
+      defRow("Signed in as", who || "This account", link("Sign out", { kind: "signOut" })),
+    ]),
+
+    // ---- Writing -----------------------------------------------------------
+    part(say("write.h"), say("write.p"), [
+      defRow("You speak", langs.length ? langs.map((l) => (Object.hasOwn(LANGUAGE_NAMES, l) ? LANGUAGE_NAMES[l] : l)).join(", ") : say("r.lang.none"),
+        link("Change", { kind: "navigate", screenId: "languages" })),
+      defRow(say("r.tone"), say("r.tone.d"), link(say("d.tone.go"), { kind: "switchTab", tabId: "desk_voices" })),
+      defRow(say("r.read"), readVoiceLabel, link("Change", { kind: "navigate", screenId: "desk_voice_read" })),
+      defRow(say("r.name"), nick ? `Tailzu, or ${nick}` : "Tailzu",
+        link(nick ? "Change" : say("d.name.give"), { kind: "navigate", screenId: "desk_assistant_name" })),
+    ]),
+
+    // ---- Connected apps ----------------------------------------------------
+    // Its own heading and line (connectedApps), only while the apps are on here.
+    ...(ctx.assistant?.apps && (ctx.assistant.apps.length || ctx.assistant.custom) ? [connectedApps(ctx.assistant)] : []),
+
+    // ---- This computer -----------------------------------------------------
+    part(say("comp.h"), say("comp.p"), [
       defRow("Shortcut", row([
         text("Tap", "d-v"), keys("tap", true), text("twice, or press", "d-v"), keys("hotkey", true),
       ], { gap: 8, align: "center", flexWrap: "wrap" }), text("Change it from the tray", "d-margin")),
       defRow("Tap to talk", "Tap the key twice to start, twice again to finish", sw("tap", "Tap to talk")),
-      defRow("The pill", "Shown at the foot of the screen while you talk", sw("pill", "Show the pill")),
-      defRow("Write on a pause", "Each pause writes what you said, and it keeps listening", sw("pauseFlush", "Write on a pause")),
-      defRow("Live words", "Words appear above the pill as you speak", sw("live", "Live words")),
-      defRow("Start with the computer", "Ready when you sign in", sw("autoStart", "Start with the computer")),
-    ], { marginBottom: 40 }),
-    // Ask's three permissions, always here with their states, so a yes given
-    // once on the home card can be seen and taken back.
-    ...(ctx.askSetup ? [stack([
-      text("Ask", "d-h2", { marginBottom: 14 }),
-      askSetupCard(ctx.askSetup, "settings"),
-      ...(ctx.askSetup.folders ? [askFoldersCard(ctx.askSetup)] : []),
-    ], { marginBottom: 40 })] : []),
-    ...(ctx.assistant?.apps && (ctx.assistant.apps.length || ctx.assistant.custom) ? [connectedApps(ctx.assistant)] : []),
-    stack([
-      text("Languages", "d-h2", { marginBottom: 8 }),
-      defRow("You speak", langs.length ? langs.map((l) => (Object.hasOwn(LANGUAGE_NAMES, l) ? LANGUAGE_NAMES[l] : l)).join(", ") : "Found on its own, as you talk",
-        link("Change", { kind: "navigate", screenId: "languages" })),
-    ], { marginBottom: 40 }),
-    stack([
-      text("Its name", "d-h2", { marginBottom: 8 }),
-      defRow("You call it", nicknameOf(ctx.personality) ? `Tailzu, or ${nicknameOf(ctx.personality)}` : "Tailzu",
-        link(nicknameOf(ctx.personality) ? "Change" : "Give it a name", { kind: "navigate", screenId: "desk_assistant_name" })),
-    ], { marginBottom: 40 }),
-    stack([
-      text("Reading aloud", "d-h2", { marginBottom: 8 }),
-      defRow("Voice", readVoiceLabel,
-        link("Change", { kind: "navigate", screenId: "desk_voice_read" })),
-    ], { marginBottom: 40 }),
-    ctx.free && !q.paid ? stack([
-      text("Plan", "d-h2", { marginBottom: 8 }),
-      defRow("Free", "Every word, on every device. Nothing to pay.", text("No limit", "d-margin")),
-    ], { marginBottom: 40 }) : stack([
-      text("Plan", "d-h2", { marginBottom: 8 }),
-      defRow(q.paid ? "Unlimited" : "Free", q.paid ? "Every word, on every device" : `${n(q.used)} of ${n(q.of)} words this month`,
-        q.paid
-          ? razorpayPlan(ctx) ?? (ctx.manageUrl ? link("Manage", { kind: "openUrl", url: ctx.manageUrl }) : undefined)
-          : link("See plans", { kind: "navigate", screenId: "desk_plan" })),
-    ], { marginBottom: 40 }),
-    stack([
-      text("Privacy", "d-h2", { marginBottom: 8 }),
-      defRow("Your audio", "Deleted as soon as it is written", text("Always", "d-margin")),
-      defRow("History", "Kept so you can copy a note again", {
+      defRow("The pill", say("d.pill"), sw("pill", "Show the pill")),
+      defRow("Write on a pause", say("d.pause"), sw("pauseFlush", "Write on a pause")),
+      defRow("Live words", say("d.live"), sw("live", "Live words")),
+      defRow("Start with the computer", say("d.auto"), sw("autoStart", "Start with the computer")),
+      // Ask's three permissions, always here with their states, so a yes given
+      // once on the home card can be seen and taken back.
+      ...(ctx.askSetup ? [
+        text("Ask", "d-k", { marginTop: 28, marginBottom: 12 }),
+        askSetupCard(ctx.askSetup, "settings"),
+        ...(ctx.askSetup.folders ? [askFoldersCard(ctx.askSetup)] : []),
+      ] : []),
+    ]),
+
+    // ---- Privacy and data --------------------------------------------------
+    part(say("priv.h"), say("priv.p"), [
+      defRow("Your audio", say("d.audio"), text("Always", "d-margin")),
+      defRow("History", say("d.history"), {
         type: "Switch", props: { cls: "d-switch", accessibilityLabel: "Keep history" },
         bind: { value: "retainHistory" },
         on: { onChange: { kind: "sequence", actions: [
@@ -2333,11 +2395,14 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
           { kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: { retainHistory: "$state.retainHistory" } },
         ] } },
       }),
-    ], { marginBottom: 40 }),
-    stack([
-      text("Account", "d-h2", { marginBottom: 8 }),
-      defRow("Signed in as", who || "This account", link("Sign out", { kind: "signOut" })),
+      ...(legal ? [defRow(say("r.privacy"), "What I keep, and why", link("Read it", { kind: "openUrl", url: legal.privacy }))] : []),
     ]),
+
+    // ---- Help and about ----------------------------------------------------
+    part(say("help.h"), say("help.p"), [
+      defRow("Questions", "support@tailzu.space", link(say("r.mail"), { kind: "openUrl", url: "mailto:support@tailzu.space" })),
+      ...(legal ? [defRow(say("r.terms"), "The rules of using me", link("Read them", { kind: "openUrl", url: legal.terms }))] : []),
+    ], true),
   ], { maxWidth: 820 })], { retainHistory: ctx.personality.retainHistory !== false, ...appsState(ctx.assistant) });
 }
 
@@ -2385,8 +2450,10 @@ function appRow(c: ConnectorInfo): Node {
     );
   }
   const state = on ? w("st.ok") : again ? w("st.re") : w("st.no");
+  // CONNECTED is a state that is on: it wears the onboarding's neon dot, and
+  // nothing else here does.
   const right = on
-    ? text(state, "d-margin")
+    ? row([neonDot(), text(state, "d-margin")], { gap: 8, align: "center" })
     : row([
         text(state, "d-margin"),
         link(w("connect"), {
@@ -2649,8 +2716,19 @@ export function deskTasks(ctx: DeskContext): ScreenResponse {
     // An answer that came too late is gone; the list says so by redrawing.
     onError: { kind: "sequence", actions: [failToast("err.generic"), { kind: "refresh" }] },
   } as ActionRef);
+  // THE ONE BLIP, beside the heading of what matters most: pointing at what
+  // waits for an OK, else carrying what is running, else thumbs-up on what is
+  // done. Never inside a row of the list.
+  const pose: [string, BlipLoop] | undefined = waiting.length ? [w("a4.w"), "pointd-s"]
+    : running.length ? [w("a4.r"), "carry-s"]
+    : tasks.some((t) => t.state === "done") ? [w("a4.d"), "thumbs-s"] : undefined;
   const group = (title: string, rows: Node[]): Node[] => rows.length
-    ? [stack([text(title, "d-h2", { marginBottom: 8 }), ...rows], { marginBottom: 40 })]
+    ? [stack([
+        pose?.[0] === title
+          ? row([text(title, "d-h2"), blip(pose[1], 0.55)], { align: "center", justify: "between", marginBottom: 8 })
+          : text(title, "d-h2", { marginBottom: 8 }),
+        ...rows,
+      ], { marginBottom: 40 })]
     : [];
   return screen("desk_tasks", w("a4.h"), [page([
     text(w("a4.h"), "d-eyebrow"),
@@ -2662,7 +2740,7 @@ export function deskTasks(ctx: DeskContext): ScreenResponse {
     ))),
     ...group(w("a4.r"), running.map((t) => item(t, lastStep(t) ? [text(lastStep(t), "d-margin")] : []))),
     ...group(w("a4.d"), done.map((t) => item(t, lastStep(t) ? [text(t.state === "done" ? `${w("a3.done")} ${lastStep(t)}` : lastStep(t), "d-margin")] : []))),
-    tasks.length ? text(w("a4.end"), "d-margin") : text(w("tasks.empty"), "d-lede", { maxWidth: "52ch" }),
+    tasks.length ? text(w("a4.end"), "d-margin") : emptyState("think-s", w("tasks.empty")),
   ], { maxWidth: 820 })]);
 }
 
@@ -2836,8 +2914,28 @@ function deskPage(screenId: string, ctx: DeskContext): ScreenResponse | null {
   }
 }
 
+/**
+ * THE PAGE TITLES IN THE ONBOARDING'S HEADING FACE. Every page's big title is a
+ * d-h1; for a window that draws the new onboarding (and so has its typefaces)
+ * they are set in Bricolage Grotesque at 800, a step smaller to carry its
+ * weight. The Devanagari face follows for a title in Hindi. A window that does
+ * not say it draws the onboarding keeps the book face it has always had.
+ */
+function headingFace(node: Node | undefined): void {
+  if (!node) return;
+  if (node.type === "Text" && String(node.props?.cls ?? "").split(/\s+/).includes("d-h1")) {
+    node.style = {
+      ...(node.style ?? {}),
+      fontFamily: `'${HEADING_FACE}',var(--f-deva),var(--f-written),serif`,
+      fontWeight: 800, fontSize: 28, lineHeight: "34px", letterSpacing: "-.02em",
+    };
+  }
+  for (const c of node.children ?? []) headingFace(c);
+}
+
 export function buildDeskScreen(screenId: string, ctx: DeskContext): ScreenResponse | null {
   const s = deskPage(screenId, ctx);
+  if (s && ctx.onboard) headingFace(s.root);
   if (s?.root && ctx.update) s.root.children = [updateCard(ctx.update, !!ctx.selfUpdate), ...(s.root.children ?? [])];
   return s;
 }

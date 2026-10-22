@@ -110,7 +110,7 @@ describe("Ask's one-time setup card on the desk home", () => {
 });
 
 describe("Ask's section in desk Settings", () => {
-  it("is the same card, placed in Settings, under its own heading after Talking", () => {
+  it("is the same card, placed in Settings, inside This computer after the shortcut rows", () => {
     const s = buildScreen("desk_settings", ctx(ASK, { os: "mac" })) as any;
     const cards = nodesOf(s.root, "DeskAskSetup");
     expect(cards).toHaveLength(1);
@@ -128,8 +128,14 @@ describe("Ask's section in desk Settings", () => {
     const page = s.root.children.find((c: AnyNode) => c.props?.cls === "d-page") as AnyNode;
     const sections = page.children!.filter((c) => c.type === "Stack");
     const headings = sections.map((sec) => (sec.children?.[0] as AnyNode | undefined)?.props?.content);
-    expect(headings.slice(0, 3)).toEqual(["Talking", "Ask", "Languages"]);
-    expect(sections[1]!.children![1]).toBe(card);
+    // The five sections, in order; Connected apps joins them only while the
+    // assistant's apps are on in this window (none here).
+    expect(headings).toEqual(["You", "Writing", "This computer", "Privacy and data", "Help and about"]);
+    const computer = sections[2]!.children!;
+    const at = computer.indexOf(card);
+    expect(at).toBeGreaterThan(1);
+    // Under its own small label, "Ask", after the shortcut and the switches.
+    expect((computer[at - 1] as AnyNode).props?.content).toBe("Ask");
   });
 
   it("shows in Settings whatever the rows' states: the window, not the server, hides only the home card", () => {

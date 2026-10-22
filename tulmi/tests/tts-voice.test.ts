@@ -255,7 +255,7 @@ describe("the phone read-aloud voice picker", () => {
   it("Settings has a way into the picker", () => {
     const json = JSON.stringify(buildScreen("settings", { personality: {}, language: "en" } as never));
     expect(json).toContain('"screenId":"voice_read"');
-    expect(json).toContain("Read-Aloud Voice");
+    expect(json).toContain("The Voice I Read In");
   });
 });
 
@@ -291,6 +291,6 @@ describe("the desk read-aloud voice picker", () => {
     const json = JSON.stringify(buildScreen("desk_settings", { personality: { ttsVoice: "onyx" }, language: "en" } as never));
     expect(json).toContain('"screenId":"desk_voice_read"');
     expect(json).toContain("Onyx");          // the friendly label of the stored voice
-    expect(json).toContain("Reading aloud"); // the section
+    expect(json).toContain("The voice I read in"); // the row, under Writing
   });
 });

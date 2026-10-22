@@ -28,6 +28,7 @@ import type {
   ActionRef,
   ActionSpec,
   BootstrapResponse,
+  Condition,
   KeyboardActionSpec,
   KeyboardConfigResponse,
   KeyboardNode,
@@ -48,6 +49,8 @@ import type { Allowance } from "../usage/allowance.js";
 import { desktopOs, installerUrl, publishedRelease, updateFor } from "./desktopRelease.js";
 import { canOnboard, onboardAppsOn, onboardAuthTree, onboardScreen } from "./onboard.js";
 import { canOnboardStore, onboardStoreScreen } from "./onboardStore.js";
+import { blipBox, blipPicture, dayPart } from "./touches.js";
+import { sw } from "./settingsWords.js";
 
 /** The desktop release every OS has at least, for an OS whose installer was
  *  published before versions were recorded beside it. */
@@ -2683,8 +2686,7 @@ export function buildBootstrap(
       // History is kept by default (history/store.ts HISTORY_DEFAULT_ON) and
       // the phone has no switch for it, so an empty list means nothing has
       // been written yet — not a setting to go and find.
-      "history.empty":
-        "Nothing here yet. What you write with Tailzu shows up here.",
+      "history.empty": sw("e.hist"),
       "history.delete.error": "Couldn't reach history. Try again.",
 
       // FOR APP BUILDS THAT STILL FRAME A RAW ERROR. Those builds fill
@@ -4413,6 +4415,8 @@ function subscribedScreen(store?: string, expiresAt?: string, renewing?: boolean
       type: "Screen",
       style: { padding: 24, justifyContent: "center", flex: 1 },
       children: [
+        // DONE: Blip with a tada, small and above the words. The one Blip here.
+        (() => { const b = blipBox("tada-s", 0.9); return { ...b, style: { ...b.style, marginBottom: 14 } } as Node; })(),
         {
           type: "Text",
           props: { content: "You're on Tailzu." },
@@ -5032,6 +5036,10 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       note: ctx.note,
       assistant: ctx.assistant,
       notesHotkey: ctx.can?.has("DeskNotes") === true,
+      // The window draws the new onboarding, so it has that onboarding's
+      // typefaces: the page titles are set in the heading face. Absent, not.
+      onboard: canOnboard(ctx.can),
+      legal: { privacy: POLICY.privacy, terms: POLICY.terms },
       free: freeForAll(),
       allowSystemAudio: ctx.can?.has("DeskSystemAudio") === true,
       // Ask's one-time setup card, for a window that draws it (it says so
@@ -8078,9 +8086,10 @@ function youHead(kicker: string, title: string, right?: Node): Node {
         style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
         children: [youBack(), ...(right ? [right] : [])],
       },
-      // The refresh: a small mono kicker and the title in the written face.
+      // The refresh: a small mono kicker and the title (below).
       label(kicker, { marginTop: 18 }),
-      t(title, "writtenLight", 22, { letterSpacing: -0.3, marginTop: 8 }),
+      // The page title in the onboarding's heading face (touches.ts).
+      t(title, "grotesk", 26, { letterSpacing: -0.6, marginTop: 8 }),
     ],
   };
 }
@@ -8385,11 +8394,21 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
     || (ctx.personality?.hapticKeys ?? []).length > 0;
 
   /**
-   * NO SENTENCE UNDER THE NAME. "Writes as Zu. Auto." said again what the
-   * voice card and the language card already say, one line apart (owner's
-   * call). The room it took stays, so the first card clears the greeting.
+   * BLIP'S GREETING, under the name: a small Blip waving, and one line that
+   * follows the person's time of day (morning, afternoon, evening, night, in
+   * their time zone). It sits in the room the old spacer left, so the first
+   * card clears it; it is the only Blip on this tab. The line is a sentence
+   * as written (keepCase), not a label.
    */
-  const underGreeting: Node = { type: "Spacer", style: { height: u.portrait.marginTop } };
+  const dayLine = sw(`g.${dayPart(ctx.tzOffsetMinutes)}`);
+  const underGreeting: Node = {
+    type: "Stack",
+    style: { marginTop: u.portrait.marginTop - 66, marginBottom: 24, flexDirection: "row", alignItems: "center", gap: 14 },
+    children: [
+      blipBox("wave-l", 0.4),
+      { ...t(dayLine, "ui", 15, { lineHeight: 22, color: PHONE_LOOK.ink2, flex: 1 }), props: { content: dayLine, keepCase: true } },
+    ],
+  };
 
   /**
    * HAPTICS, ON THE CARD ITSELF. The switch turns every key on. Keys picked
@@ -9449,29 +9468,55 @@ function replyScreen(): ScreenResponse {
   };
 }
 
-/** Settings — server-driven app info, account, and links. */
+/** The languages the person writes in, as a short value for a row: two names, then how many more. */
+function languageValue(languages: readonly string[] | undefined): string {
+  const named = (languages ?? [])
+    .filter((l) => l && l !== "auto")
+    .map((l) => (Object.hasOwn(LANGUAGE_NAMES, l) ? LANGUAGE_NAMES[l]! : l));
+  if (!named.length) return sw("r.lang.none");
+  return named.length > 2 ? `${named.slice(0, 2).join(", ")} +${named.length - 2}` : named.join(", ");
+}
+
+/**
+ * Settings — server-driven app info, account, and links.
+ *
+ * FIVE SECTIONS, IN THIS ORDER, each with a short heading and one line under it:
+ *   You               the plan (Upgrade, or where to change it), Sign out
+ *   Writing           languages, voice and tone, keyboard, the read-aloud voice, its name
+ *   Connected apps    Ask me, the apps, their tasks (only while connected apps are on)
+ *   Privacy and data  the privacy policy, deleting the account
+ *   Help and about    write to us, terms
+ *
+ * Every row is a direct child of the screen so a row is found by its label,
+ * and every action keeps its route and its id (signOut, privacy, terms, err).
+ * The words are settingsWords.ts: the onboarding's voice, "I" for Tailzu.
+ */
 function settingsScreen(ctx: ScreenContext): ScreenResponse {
-  // Language is NOT here. It lives on the You tab, with the rest of what the
-  // app knows about the person — voices, dictionary, haptics. Two doors to one
-  // setting is how the two get out of step in someone's head, and Settings is
-  // the wrong one: it is where the account and the legal links live, not where
-  // the product is shaped.
   // Row helper attaches a Button-styled-as-row fallback so old bundles that
   // lack the "Row" component still render each Settings item as a full-width
   // tappable strip, not a pill. Uses only v1 primitives (Button + style
   // overrides) which the shipped bundle understands.
-  const row = (label: string, action: ActionRef, extra: Partial<Node> = {}): Node => {
-    const extraProps = (extra.props as Record<string, unknown> | undefined) ?? {};
-    const danger = extraProps.danger === true;
-    const value = extraProps.value as string | undefined;
+  //
+  // ONE HEIGHT FOR EVERY ROW: the same vertical padding on the Row and on its
+  // fallback, so a section never has a tall row among short ones.
+  const ROW_PAD = 17;
+  const row = (
+    label: string,
+    action: ActionRef,
+    opts: { value?: string; danger?: boolean; chevron?: boolean; visibleIf?: Condition } = {},
+  ): Node => {
+    const { value, danger, chevron, visibleIf } = opts;
     // Use the value in the label if present (v1 Button only shows props.label,
     // not a separate value slot). Wraps the label to avoid missing context.
     const rowLabel = value ? `${label}    ${value}` : label;
     return {
       type: "Row",
-      props: { label },
+      props: {
+        label, paddingVertical: ROW_PAD,
+        ...(value ? { value } : {}), ...(danger ? { danger: true } : {}), ...(chevron === false ? { chevron: false } : {}),
+      },
       on: { onPress: action },
-      ...extra,
+      ...(visibleIf ? { visibleIf } : {}),
       fallback: {
         type: "Button",
         props: {
@@ -9484,7 +9529,7 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         style: {
           width: "100%",
           borderRadius: 0,
-          paddingVertical: 16,
+          paddingVertical: ROW_PAD,
           paddingHorizontal: 8,
           borderBottomWidth: 1,
           borderColor: "rgba(255,255,255,0.06)",
@@ -9493,6 +9538,12 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
       },
     };
   };
+
+  /** A section's heading and its one line. The line is a sentence, so it keeps its case. */
+  const section = (heading: string, line: string, first = false): Node[] => [
+    label(heading, { marginTop: first ? 28 : 44, marginBottom: 6 }),
+    { ...caption(line, { marginBottom: 4 }), props: { content: line, keepCase: true } },
+  ];
 
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
@@ -9514,9 +9565,12 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
       style: { backgroundColor: PHONE_LOOK.ground, paddingHorizontal: PHONE_LOOK.side },
       children: [
         ...screenHero("settings"),
-        // The title in the written face; the groups under small mono labels.
-        t("Settings", "writtenLight", 24, { letterSpacing: -0.3, marginBottom: 12 }),
-        label("Plan", { marginTop: 20, marginBottom: 4 }),
+        // The page title in the onboarding's heading face (touches.ts); the
+        // sections under small mono labels, each with one line of its own.
+        t("Settings", "grotesk", 30, { letterSpacing: -0.8, marginBottom: 2 }),
+
+        // ---- You ------------------------------------------------------------
+        ...section(sw("you.h"), sw("you.p"), true),
 
         // Personality and Stats are BOTTOM TABS — listing them here too was
         // two doors to one room. Dictionary is reached from the You tab.
@@ -9531,8 +9585,8 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         // The paywall could only be reached by running out of words: the
         // post-onboarding prompt is off, the hard gate is off, and nothing else
         // navigated there. So a user who wanted to pay had to first be stopped,
-        // and an App Review tester — who will never dictate eight hundred words
-        // — would have reported the in-app purchases as unlocatable and had
+        // and an App Review tester — who will never dictate eight hundred words —
+        // would have reported the in-app purchases as unlocatable and had
         // them rejected. Two auto-renewing products, submitted with no door.
         //
         // Hidden from anyone who has already paid, by the flag the client
@@ -9541,10 +9595,9 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         // every shipped bundle, and visibleIf is evaluated before the fallback,
         // so an old client renders nothing rather than a row it cannot hide.
         // Not while Tailzu is free: there is nothing to upgrade to.
-        ...(freeForAll() ? [] : [{
-          ...row("Upgrade", { kind: "navigate", screenId: "paywall" }, { props: { label: "Upgrade" } }),
-          visibleIf: { not: { flag: "billing.entitled" } },
-        }]),
+        ...(freeForAll() ? [] : [
+          row("Upgrade", { kind: "navigate", screenId: "paywall" }, { visibleIf: { not: { flag: "billing.entitled" } } }),
+        ]),
         // AND ITS OPPOSITE, for the people the row above hides itself from.
         //
         // Someone who had paid was shown nothing at all: no plan, no renewal,
@@ -9552,41 +9605,44 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         // where they bought it, and a subscription bought on a phone cannot be
         // cancelled anywhere else. At most one of these is visible, and none
         // is for a store nothing here can send them to.
-        ...MANAGE_AT.map(([key, , label, url]) => ({
-          ...row(label, { kind: "openUrl", url }, { props: { label } }),
-          visibleIf: { all: [{ flag: "billing.entitled" }, { flag: `billing.manage.${key}` }] },
-        })),
+        ...MANAGE_AT.map(([key, , label, url]) =>
+          row(label, { kind: "openUrl", url }, { visibleIf: { all: [{ flag: "billing.entitled" }, { flag: `billing.manage.${key}` }] } })),
         // Razorpay, billed on the web, is cancelled here in the app.
-        {
-          ...row("Cancel subscription · billed on the web", { kind: "navigate", screenId: "cancel_subscription" },
-            { props: { label: "Cancel subscription · billed on the web" } }),
-          visibleIf: { all: [{ flag: "billing.entitled" }, { flag: "billing.manage.razorpay" }, { not: { flag: "billing.ending" } }] },
-        },
+        row("Cancel subscription · billed on the web", { kind: "navigate", screenId: "cancel_subscription" },
+          { visibleIf: { all: [{ flag: "billing.entitled" }, { flag: "billing.manage.razorpay" }, { not: { flag: "billing.ending" } }] } }),
+        row("Sign out", "signOut", { chevron: false }),
 
-        // Preferences
-        label("Preferences", { marginTop: 36, marginBottom: 4 }),
+        // ---- Writing --------------------------------------------------------
+        ...section(sw("write.h"), sw("write.p")),
+        row(sw("r.lang"), { kind: "navigate", screenId: "languages" }, { value: languageValue(ctx.personality?.languages) }),
+        row(sw("r.tone"), { kind: "navigate", screenId: "voices" }),
+        row(sw("r.kb"), { kind: "navigate", screenId: "haptics" }),
         // The voice the app reads answers back in. A pick from the curated
         // set, saved to personality.ttsVoice and used by /v1/speak.
-        row("Read-aloud voice", { kind: "navigate", screenId: "voice_read" },
-          { props: { label: "Read-aloud voice" } }),
+        row(sw("r.read"), { kind: "navigate", screenId: "voice_read" }),
         // Its name: Tailzu always, and a name of their own beside it.
-        row("Its name", { kind: "navigate", screenId: "assistant_name" },
-          { props: { label: "Its name", value: nicknameOf(ctx.personality) ? `Tailzu, ${nicknameOf(ctx.personality)}` : "Tailzu" } }),
+        row(sw("r.name"), { kind: "navigate", screenId: "assistant_name" },
+          { value: nicknameOf(ctx.personality) ? `Tailzu, ${nicknameOf(ctx.personality)}` : "Tailzu" }),
+
+        // ---- Connected apps -------------------------------------------------
         // What it can reach in the person's apps, and what it is doing there.
         // Only while connected apps are on; the words are the assistant's own.
         ...(ctx.connectorsOn ? [
-          row(assistantWords("ask.h"), { kind: "navigate", screenId: "assistant_ask" }, { props: { label: assistantWords("ask.h") } }),
-          row(assistantWords("apps.h"), { kind: "navigate", screenId: "assistant_apps" }, { props: { label: assistantWords("apps.h") } }),
-          row(assistantWords("a4.h"), { kind: "navigate", screenId: "assistant_tasks" }, { props: { label: assistantWords("a4.h") } }),
+          ...section(assistantWords("apps.h"), assistantWords("apps.p")),
+          row(assistantWords("ask.h"), { kind: "navigate", screenId: "assistant_ask" }),
+          row(sw("r.apps"), { kind: "navigate", screenId: "assistant_apps" }),
+          row(assistantWords("a4.h"), { kind: "navigate", screenId: "assistant_tasks" }),
         ] : []),
 
-        // Legal + account
-        label("About", { marginTop: 36, marginBottom: 4 }),
-        row("Privacy Policy", "privacy", { props: { label: "Privacy Policy" } }),
-        row("Terms of Use", "terms", { props: { label: "Terms of Use" } }),
-        label("Account", { marginTop: 36, marginBottom: 4 }),
-        row("Sign out", "signOut", { props: { label: "Sign out", chevron: false } }),
-        row("Delete account", { kind: "navigate", screenId: "delete_account" }, { props: { label: "Delete account", danger: true, chevron: false } }),
+        // ---- Privacy and data -----------------------------------------------
+        ...section(sw("priv.h"), sw("priv.p")),
+        row(sw("r.privacy"), "privacy"),
+        row(sw("r.delete"), { kind: "navigate", screenId: "delete_account" }, { danger: true, chevron: false }),
+
+        // ---- Help and about -------------------------------------------------
+        ...section(sw("help.h"), sw("help.p")),
+        row(sw("r.mail"), { kind: "openUrl", url: "mailto:support@tailzu.space" }, { chevron: false }),
+        row(sw("r.terms"), "terms"),
       ],
     },
     cacheTtlSeconds: 300,
@@ -10675,15 +10731,16 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
                 style: { width: 15, height: 15 },
               }],
             },
-            { type: "Text", props: { content: "@history.title" },
-              style: { fontSize: 34, fontWeight: "800", letterSpacing: -1.2,
-                       color: u.ink } },
+            // The page title in the onboarding's heading face (touches.ts),
+            // the subtitle and every label below in the app's own tokens:
+            // this screen drew its type at 9, 11.5, 13, 14 and 34 in the
+            // system face, which is what made it read as a different app.
+            { ...t("", "grotesk", 32, { color: u.ink, letterSpacing: -0.8 }), props: { content: "@history.title" } },
             // A tap only copies where the build can; elsewhere it says so.
-            { type: "Text", props: { content: ctx.can?.has("ActionText")
+            { ...caption("", { color: u.inkDim, marginTop: 8, marginBottom: 20 }),
+              props: { content: ctx.can?.has("ActionText")
                 ? "@history.subtitle"
-                : "Every cleanup you've kept, newest first. × to remove." },
-              style: { fontSize: 11.5, lineHeight: 17, color: u.inkDim,
-                       marginTop: 6, marginBottom: 18 } },
+                : "Every cleanup you've kept, newest first. × to remove." } },
             { type: "ProgressBar", visibleIf: { truthy: "loading" } },
 
             // THE EASE, at the top. Words spoken against words written across
@@ -10697,12 +10754,10 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
               visibleIf: { truthy: "entries" },
               style: {
                 backgroundColor: u.card, borderRadius: u.cardRadius,
-                paddingVertical: 16, paddingHorizontal: 16, marginBottom: 18,
+                paddingVertical: 16, paddingHorizontal: 16, marginBottom: 20,
               },
               children: [
-                { type: "Text", props: { content: "The ease" },
-                  style: { fontSize: 9, letterSpacing: 2.2, textTransform: "uppercase",
-                           color: u.onCardDim, marginBottom: 10 } },
+                label("The ease", { color: u.onCardDim, marginBottom: 12 }),
                 {
                   type: "DonutChart",
                   bind: { data: "historyBreakdown" },
@@ -10718,19 +10773,33 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
                 },
               ],
             },
+            // NO HISTORY YET: Blip, and one warm line. Shown only when the list
+            // is empty and nothing is loading, so it never flashes in front of
+            // entries that are on their way. The List's own empty label is
+            // left blank below, so the two never say it twice.
+            {
+              type: "Stack",
+              visibleIf: { all: [{ eq: ["entries.length", 0] }, { eq: ["loading", false] }] },
+              style: { alignItems: "center", marginTop: 28, marginBottom: 12 },
+              children: [
+                blipPicture("listen-s", 0.9),
+                { ...caption("", { color: u.inkDim, textAlign: "center", marginTop: 14, maxWidth: 280 }),
+                  props: { content: sw("e.hist"), keepCase: true } },
+              ],
+            },
             {
               type: "List",
               bind: { items: "entries" },
               on: { onAppear: "refresh", onRefresh: "refresh" },
               props: {
-                emptyLabel: "@history.empty",
+                emptyLabel: "",
                 itemTemplate: {
                   type: "Stack",
                   on: { onPress: "openDetail", onLongPress: "askDelete" },
                   props: { pressOpacity: 0.85 },
                   style: {
                     backgroundColor: u.card, borderRadius: u.cardRadius,
-                    padding: 14, marginBottom: u.gap,
+                    padding: 16, marginBottom: u.gap,
                   },
                   children: [
                     {
@@ -10743,31 +10812,24 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
                       // the instant but not the timezone, and a list that says
                       // 08:30 to someone who dictated at 14:00 is worse than
                       // no time at all.
-                      type: "Text",
+                      ...label("", { color: u.onCardFaint }),
                       bind: { content: "item.createdAt" },
                       props: { format: "relative" },
-                      style: { fontSize: 9, letterSpacing: 1.6,
-                               textTransform: "uppercase", color: u.onCardFaint },
                     },
                     // What was heard, then what was written. Labelled and in
                     // that order: the whole point of the pair is the
                     // difference between them, and unlabelled the raw
                     // transcript reads as a mistake rather than as the input.
-                    { type: "Text", props: { content: "You said" },
-                      style: { fontSize: 9, letterSpacing: 1.6, textTransform: "uppercase",
-                               color: u.onCardFaint, marginTop: 12 } },
-                    { type: "Text", bind: { content: "item.input" },
-                      props: { numberOfLines: 3 },
-                      style: { fontSize: 13, lineHeight: 19, color: u.onCardDim, marginTop: 4 } },
+                    // Said in the hand, written in the book face: the app's own
+                    // rule for the pair (phoneLook.ts), as the Voices cards draw it.
+                    label("You said", { color: u.onCardFaint, marginTop: 14 }),
+                    { ...t("", "said", 17, { color: u.onCardDim, marginTop: 6 }),
+                      bind: { content: "item.input" }, props: { numberOfLines: 3 } },
                     // What the app wrote — marked by weight below, not by
                     // colour: no amber inside History.
-                    { type: "Text", props: { content: "Tailzu wrote" },
-                      style: { fontSize: 9, letterSpacing: 1.6, textTransform: "uppercase",
-                               color: u.onCardFaint, marginTop: 12 } },
-                    { type: "Text", bind: { content: "item.output" },
-                      props: { numberOfLines: 6 },
-                      style: { fontSize: 14, lineHeight: 20, fontWeight: "600",
-                               color: u.onCard, marginTop: 4 } },
+                    label("Tailzu wrote", { color: u.onCardFaint, marginTop: 14 }),
+                    { ...t("", "written", 16, { color: u.onCard, marginTop: 6 }),
+                      bind: { content: "item.output" }, props: { numberOfLines: 6 } },
                     cross,
                     askWhy,
                   ],
