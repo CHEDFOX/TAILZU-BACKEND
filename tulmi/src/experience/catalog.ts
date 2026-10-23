@@ -8404,10 +8404,11 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
 
   /**
    * HAND IT TO ME, only while connected apps are on (CONNECTORS): the task
-   * card on the onboarding's paper, with Blip and his bubble, the field, the
-   * mic and Do it; then a card of the next three tasks and the apps
-   * (assistant.ts youCard). It sits right under the greeting, and while it is
-   * there Blip is in it: the tab's one Blip.
+   * card on the onboarding's paper (his line, the field, the mic and Do it),
+   * then a card of the next three tasks and the apps (assistant.ts youCard).
+   * It sits right under the greeting. From a bundle that has BlipRoam, Blip
+   * leaves the greeting and walks the card's top edge instead: still the
+   * tab's one Blip.
    */
   const handIt = youCard({
     assistant: ctx.assistant, can: ctx.can, connectorsOn: ctx.connectorsOn,
@@ -8417,7 +8418,7 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
     type: "Stack",
     style: { marginTop: u.portrait.marginTop - 66, marginBottom: 24, flexDirection: "row", alignItems: "center", gap: 14 },
     children: [
-      ...(handIt ? [] : [blipBox("wave-l", 0.4)]),
+      ...(handIt?.roams ? [] : [blipBox("wave-l", 0.4)]),
       { ...t(dayLine, "ui", 15, { lineHeight: 22, color: PHONE_LOOK.ink2, flex: 1 }), props: { content: dayLine, keepCase: true } },
     ],
   };

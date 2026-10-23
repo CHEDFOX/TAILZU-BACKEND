@@ -1285,7 +1285,7 @@ const link = (ui: You, text: string, screenId: string, style: Style = {}): Node 
  */
 export function youCard(
   ctx: AssistantScreenCtx, base: You, o: { marginBottom?: number } = {},
-): { node: Node; state: Record<string, unknown> } | null {
+): { node: Node; state: Record<string, unknown>; roams: boolean } | null {
   if (!ctx.connectorsOn) return null;
   const ui = cream(base);
   const names = ctx.assistant?.names ?? {};
@@ -1384,43 +1384,23 @@ export function youCard(
   };
 
   // ---- the task, handed over: on the onboarding's paper ----------------------------
-  // Blip stands at the top with what he says in his bubble, as he does in the
-  // onboarding: the line, and "On it…" while it works. He is the tab's one
-  // Blip (one a screen, settings-touches.test): the greeting above gives him
-  // up while this card is here.
+  // Blip is not in the card: he walks its top edge (BlipRoam: sneaking,
+  // peeking over it, jumping in), from a bundle that has him; an older one
+  // keeps the waving picture by the greeting. The card says his line under
+  // its heading, in his hand, and "On it…" while it works.
   const p = paperUi(base);
+  const roams = ctx.can?.has("BlipRoam") === true;
   const says = (text: string, when: Condition): Node => ({
-    ...t(text, "hand", 19, { lineHeight: 23, color: PAPER.ink }), props: { content: text, keepCase: true }, visibleIf: when,
+    ...t(text, "hand", 19, { lineHeight: 23, color: PAPER.ink2 }), props: { content: text, keepCase: true }, visibleIf: when,
   });
-  const speaks: Node = {
-    type: "Stack",
-    style: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginLeft: -4 },
-    children: [
-      blipBox("present-s", 0.36),
-      {
-        type: "Stack",
-        style: { flex: 1, marginTop: 6, paddingVertical: 9, paddingHorizontal: 13, borderRadius: 18, borderWidth: 1.5, borderColor: PAPER.ink, backgroundColor: PAPER.surf },
-        children: [
-          // Its tail, pointing at him, over the bubble's own edge.
-          {
-            type: "SVG",
-            props: { viewBox: "0 0 10 16", d: "M10 0.8 L1 8 L10 15.2", fill: PAPER.surf, stroke: PAPER.ink, strokeWidth: 1.5, strokeLinejoin: "round" },
-            style: { position: "absolute", left: -9.5, top: 14, width: 10, height: 16 },
-          },
-          says(sw("y.p"), { falsy: "ask.busy" }),
-          says(en("ask.busy"), { truthy: "ask.busy" }),
-        ],
-      },
-    ],
-  };
   const handCard: Node = {
     type: "Stack",
     // keepCase: the words are set as written; the phone capitalises its own (word).
     props: { keepCase: true },
     style: { borderRadius: 24, paddingTop: 16, paddingHorizontal: 18, paddingBottom: 18, backgroundColor: PAPER.ground },
     children: [
-      speaks,
-      word(sw("y.h"), "grotesk", 26, { letterSpacing: -0.6, color: PAPER.ink, marginTop: 14, marginBottom: 12 }),
+      word(sw("y.h"), "grotesk", 26, { letterSpacing: -0.6, color: PAPER.ink, marginTop: 4 }),
+      { type: "Stack", style: { marginTop: 4, marginBottom: 14 }, children: [says(sw("y.p"), { falsy: "ask.busy" }), says(en("ask.busy"), { truthy: "ask.busy" })] },
       askParts.field(true),
       GAP(10),
       askParts.controls(ctx, p, true),
@@ -1444,8 +1424,14 @@ export function youCard(
   const node: Node = {
     type: "Stack",
     props: { keepCase: true },
-    style: { gap: YOU_CARDS_GAP, ...(o.marginBottom !== undefined ? { marginBottom: o.marginBottom } : {}) },
-    children: [handCard, insightCard],
+    style: o.marginBottom !== undefined ? { marginBottom: o.marginBottom } : {},
+    children: [
+      // His feet on the card's top edge: the strip sits right on it.
+      ...(roams ? [{ type: "BlipRoam", props: { h: 60, thinkWhile: "ask.busy" } } as Node] : []),
+      handCard,
+      GAP(YOU_CARDS_GAP),
+      insightCard,
+    ],
   };
-  return { node, state: { ...askParts.state(examples), up: rows, ini } };
+  return { node, state: { ...askParts.state(examples), up: rows, ini }, roams };
 }
