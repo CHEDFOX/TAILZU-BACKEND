@@ -57,7 +57,7 @@
  * bundle too old to know that case ends the prompt as an error and nothing is
  * sent.
  */
-import type { ActionRef, ActionSpec, Node, ScreenResponse } from "../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, Condition, Node, ScreenResponse } from "../../../shared/types/sdui.js";
 import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
 import type { AgentApproval, ApprovalCard, AssistantTask, ConnectorInfo, ConnectorTool } from "../../../shared/types/api.js";
 import { approvalCard } from "../connectors/card.js";
@@ -237,12 +237,12 @@ function pill(ui: You, text: string, on: ActionRef, kind: "primary" | "outline" 
  * The app's mark: its company's logo when it has one (appIcons.ts), else its
  * first letter on a rounded square. An app added by link keeps the letter.
  */
-function mark(ui: You, id: string, size = 42, custom?: boolean): Node {
+function mark(ui: You, id: string, size = 42, custom?: boolean, tile = "rgba(255,255,255,0.08)"): Node {
   const logo = appIconNode(id, size, custom);
   if (logo) return logo;
   return {
     type: "Stack",
-    style: { width: size, height: size, borderRadius: size * 0.29, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.08)" },
+    style: { width: size, height: size, borderRadius: size * 0.29, alignItems: "center", justifyContent: "center", backgroundColor: tile },
     children: [fromState(`ini.${id}`, "uiBold", Math.round(size * 0.42), { color: ui.text })],
   };
 }
@@ -1110,24 +1110,56 @@ export function askExamples(language?: string): string[] {
 }
 
 /** One example to tap: it fills the field with the very words it shows. */
-function askChip(ui: You, examples: readonly string[], i: number): Node {
+function askChip(ui: You, examples: readonly string[], i: number, paper = false): Node {
   return {
     type: "Stack",
     on: { onPress: seq(haptic("selection"), setState("ask.text", examples[i])) },
     props: { pressOpacity: 0.7 },
-    style: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1, borderColor: "rgba(255,255,255,0.22)" },
+    style: { borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1, borderColor: paper ? PAPER.line : "rgba(255,255,255,0.22)" },
     children: [fromState(`ask.ex.${i}`, "ui", 13.5, { color: ui.text })],
   };
 }
 
-/** What Ask is made of, for the Ask screen and for the You tab's card: one builder, so the two cannot drift apart. */
+/**
+ * THE ONBOARDING'S PAPER (onboard.ts OB), for the You tab's card. The tab is
+ * dark and the card was a darker box on it, in the tab's own words and
+ * colours, which read as one more setting. The onboarding is where the app
+ * shows what it can do, so the card takes its look: paper, ink, the heading
+ * face, solid ink buttons, Blip with a handwritten bubble. Copied, not
+ * imported: onboard.ts reads catalog.ts, which reads this file.
+ */
+const PAPER = {
+  ground: "#EFEDE8", surf: "#FCFBF8", ink: "#1C1A17", ink2: "rgba(28,26,23,0.7)", muted: "rgba(28,26,23,0.56)",
+  hair: "rgba(28,26,23,0.13)", line: "rgba(28,26,23,0.2)", tile: "rgba(28,26,23,0.08)",
+} as const;
+
+/** What Ask is made of, for the Ask screen and for the You tab's card: one builder, so the two cannot drift apart. `paper` sets them on the card's paper. */
 const askParts = {
-  field: (): Node => ({ type: "TextField", bind: { value: "ask.text" }, props: { placeholder: en("ask.ph"), multiline: true } }),
+  field: (paper = false): Node => ({
+    type: "TextField", bind: { value: "ask.text" },
+    props: {
+      placeholder: en("ask.ph"), multiline: true,
+      ...(paper ? {
+        background: PAPER.surf, borderColor: PAPER.hair, borderWidth: 1, color: PAPER.ink, placeholderColor: PAPER.muted,
+        radius: 16, paddingHorizontal: 16, paddingVertical: 14, minHeightMultiline: 52,
+      } : {}),
+    },
+  }),
   /** The mic that writes into the field, and Do it. */
-  controls: (ctx: Pick<AssistantScreenCtx, "platform" | "tzOffsetMinutes">, ui: You): Node => ({
+  controls: (ctx: Pick<AssistantScreenCtx, "platform" | "tzOffsetMinutes">, ui: You, paper = false): Node => ({
     type: "Stack", style: { flexDirection: "row", gap: 8, alignItems: "center" },
     children: [
-      {
+      paper ? {
+        // On paper: an ink outline beside the solid ink Do it, the
+        // onboarding's two buttons.
+        type: "VoiceButton", bind: { value: "ask.text" },
+        props: {
+          targetApp: "Tailzu", language: "auto", label: en("ask.mic"), stopLabel: en("ask.stop"),
+          background: PAPER.surf, recordingColor: "#FFFFFF",
+          fontFamily: PHONE_FONT.uiMedium, fontSize: 16, color: PAPER.ink, radius: 16, paddingVertical: 15,
+        },
+        style: { flex: 1, borderWidth: 1.5, borderColor: PAPER.ink },
+      } : {
         type: "VoiceButton", bind: { value: "ask.text" },
         // Set like the pill beside it: its face and size, on one line, the
         // same height. While it listens it says "■ Stop": the app's own "■ Stop
@@ -1142,7 +1174,13 @@ const askParts = {
         },
         style: { flex: 1 },
       },
-      pill(ui, en("ask.go"), askAction(ctx), "primary", true),
+      paper ? {
+        type: "Stack",
+        on: { onPress: askAction(ctx) },
+        props: { pressOpacity: 0.7 },
+        style: { height: 52, borderRadius: 16, paddingHorizontal: 26, alignItems: "center", justifyContent: "center", backgroundColor: PAPER.ink },
+        children: [word(en("ask.go"), "uiMedium", 16, { color: PAPER.surf })],
+      } : pill(ui, en("ask.go"), askAction(ctx), "primary", true),
     ],
   }),
   /** The answer: its words are the server's and theirs, from state, never reworded. */
@@ -1152,8 +1190,8 @@ const askParts = {
     style: { padding: 14, borderRadius: 16, marginTop: top, backgroundColor: fill },
     children: [fromState("ask.res.say", "ui", 15.5, { lineHeight: 23, color: ui.text })],
   }),
-  chips: (ui: You, examples: readonly string[]): Node =>
-    ({ type: "Stack", style: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, children: examples.map((_, i) => askChip(ui, examples, i)) }),
+  chips: (ui: You, examples: readonly string[], paper = false): Node =>
+    ({ type: "Stack", style: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, children: examples.map((_, i) => askChip(ui, examples, i, paper)) }),
   state: (examples: readonly string[]) => ({ ask: { text: "", busy: false, res: {}, ex: examples } }),
 };
 
@@ -1201,6 +1239,15 @@ export function comingUp(tasks: readonly AssistantTask[]): AssistantTask[] {
 }
 
 /** The assistant's pages, in the cream ink the You tab's cards are set in. */
+/** The assistant's pages on the card's paper, in its ink. */
+const paperUi = (ui: You): You => ({
+  ...ui, text: PAPER.ink, textDim: PAPER.ink2, textFaint: PAPER.muted, onAccent: PAPER.surf,
+  pill: { ...ui.pill, background: PAPER.surf },
+});
+
+/** The gap between the task card and the card of what is coming up. */
+const YOU_CARDS_GAP = 14;
+
 const cream = (ui: You): You => ({
   ...ui, text: PHONE_LOOK.ink, textDim: PHONE_LOOK.ink2, textFaint: PHONE_LOOK.ink3,
   pill: { ...ui.pill, background: PHONE_LOOK.track },
@@ -1306,7 +1353,7 @@ export function youCard(
   const next = tasks ? comingUp(tasks) : undefined;
   const comingSection: Node[] = next ? [
     {
-      type: "Stack", style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 26, marginBottom: 12 },
+      type: "Stack", style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
       children: [label(sw("y.up")), link(ui, sw("y.all"), TASKS)],
     },
     next.length
@@ -1322,7 +1369,7 @@ export function youCard(
   for (const a of shown) ini[a.id] = letter(a.name);
   const foot: Node = {
     type: "Stack",
-    style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 14 },
+    style: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
     children: [
       {
         type: "Stack", style: { flexDirection: "row", alignItems: "center", gap: 6, flexShrink: 1 },
@@ -1336,33 +1383,69 @@ export function youCard(
     ],
   };
 
-  const node: Node = {
+  // ---- the task, handed over: on the onboarding's paper ----------------------------
+  // Blip stands at the top with what he says in his bubble, as he does in the
+  // onboarding: the line, and "On it…" while it works. He is the tab's one
+  // Blip (one a screen, settings-touches.test): the greeting above gives him
+  // up while this card is here.
+  const p = paperUi(base);
+  const says = (text: string, when: Condition): Node => ({
+    ...t(text, "hand", 19, { lineHeight: 23, color: PAPER.ink }), props: { content: text, keepCase: true }, visibleIf: when,
+  });
+  const speaks: Node = {
+    type: "Stack",
+    style: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginLeft: -4 },
+    children: [
+      blipBox("present-s", 0.36),
+      {
+        type: "Stack",
+        style: { flex: 1, marginTop: 6, paddingVertical: 9, paddingHorizontal: 13, borderRadius: 18, borderWidth: 1.5, borderColor: PAPER.ink, backgroundColor: PAPER.surf },
+        children: [
+          // Its tail, pointing at him, over the bubble's own edge.
+          {
+            type: "SVG",
+            props: { viewBox: "0 0 10 16", d: "M10 0.8 L1 8 L10 15.2", fill: PAPER.surf, stroke: PAPER.ink, strokeWidth: 1.5, strokeLinejoin: "round" },
+            style: { position: "absolute", left: -9.5, top: 14, width: 10, height: 16 },
+          },
+          says(sw("y.p"), { falsy: "ask.busy" }),
+          says(en("ask.busy"), { truthy: "ask.busy" }),
+        ],
+      },
+    ],
+  };
+  const handCard: Node = {
     type: "Stack",
     // keepCase: the words are set as written; the phone capitalises its own (word).
     props: { keepCase: true },
-    style: {
-      borderRadius: 20, padding: 20, backgroundColor: "#1A1611", borderWidth: 1, borderColor: "rgba(243,226,198,0.12)",
-      ...(o.marginBottom !== undefined ? { marginBottom: o.marginBottom } : {}),
-    },
+    style: { borderRadius: 24, paddingTop: 16, paddingHorizontal: 18, paddingBottom: 18, backgroundColor: PAPER.ground },
     children: [
-      // The onboarding's heading face, and one warm line.
-      word(sw("y.h"), "grotesk", 26, { letterSpacing: -0.6 }),
-      t(sw("y.p"), "ui", 14.5, { lineHeight: 21, color: ui.textDim, marginTop: 6 }),
-      GAP(16),
-      askParts.field(),
+      speaks,
+      word(sw("y.h"), "grotesk", 26, { letterSpacing: -0.6, color: PAPER.ink, marginTop: 14, marginBottom: 12 }),
+      askParts.field(true),
       GAP(10),
-      askParts.controls(ctx, ui),
-      {
-        type: "Stack", visibleIf: { truthy: "ask.busy" },
-        style: { marginTop: 12 },
-        children: [word(en("ask.busy"), "ui", 13.5, { color: ui.textDim })],
-      },
-      askParts.answer(ui, PHONE_LOOK.track, 12),
-      { type: "Stack", style: { marginTop: 16 }, children: [askParts.chips(ui, examples)] },
+      askParts.controls(ctx, p, true),
+      askParts.answer(p, PAPER.surf, 12),
+      { type: "Stack", style: { marginTop: 14 }, children: [askParts.chips(p, examples, true)] },
+    ],
+  };
+
+  // ---- what is coming up, and the apps it works in: the tab's own card ---------------
+  const insightCard: Node = {
+    type: "Stack",
+    props: { keepCase: true },
+    style: { borderRadius: 20, padding: 20, backgroundColor: "#1A1611", borderWidth: 1, borderColor: "rgba(243,226,198,0.12)" },
+    children: [
       ...comingSection,
-      { type: "Stack", style: { height: 1, backgroundColor: PHONE_LOOK.rule, marginTop: 22 } },
+      ...(comingSection.length ? [{ type: "Stack", style: { height: 1, backgroundColor: PHONE_LOOK.rule, marginTop: 20, marginBottom: 14 } } as Node] : []),
       foot,
     ],
+  };
+
+  const node: Node = {
+    type: "Stack",
+    props: { keepCase: true },
+    style: { gap: YOU_CARDS_GAP, ...(o.marginBottom !== undefined ? { marginBottom: o.marginBottom } : {}) },
+    children: [handCard, insightCard],
   };
   return { node, state: { ...askParts.state(examples), up: rows, ini } };
 }

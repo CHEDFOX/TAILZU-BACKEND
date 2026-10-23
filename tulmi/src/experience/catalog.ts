@@ -8401,25 +8401,26 @@ function personalityScreen(ctx: ScreenContext): ScreenResponse {
    * as written (keepCase), not a label.
    */
   const dayLine = sw(`g.${dayPart(ctx.tzOffsetMinutes)}`);
-  const underGreeting: Node = {
-    type: "Stack",
-    style: { marginTop: u.portrait.marginTop - 66, marginBottom: 24, flexDirection: "row", alignItems: "center", gap: 14 },
-    children: [
-      blipBox("wave-l", 0.4),
-      { ...t(dayLine, "ui", 15, { lineHeight: 22, color: PHONE_LOOK.ink2, flex: 1 }), props: { content: dayLine, keepCase: true } },
-    ],
-  };
 
   /**
-   * HAND IT TO ME, only while connected apps are on (CONNECTORS): the Ask
-   * field with the mic and Do it, a few examples, the next three tasks and
-   * the apps (assistant.ts youCard). It sits right under the greeting. No
-   * Blip of its own: the greeting has the one this tab gets.
+   * HAND IT TO ME, only while connected apps are on (CONNECTORS): the task
+   * card on the onboarding's paper, with Blip and his bubble, the field, the
+   * mic and Do it; then a card of the next three tasks and the apps
+   * (assistant.ts youCard). It sits right under the greeting, and while it is
+   * there Blip is in it: the tab's one Blip.
    */
   const handIt = youCard({
     assistant: ctx.assistant, can: ctx.can, connectorsOn: ctx.connectorsOn,
     language: ctx.language, platform: ctx.platform, tzOffsetMinutes: ctx.tzOffsetMinutes,
   }, u, { marginBottom: YOU_CARD_GAP });
+  const underGreeting: Node = {
+    type: "Stack",
+    style: { marginTop: u.portrait.marginTop - 66, marginBottom: 24, flexDirection: "row", alignItems: "center", gap: 14 },
+    children: [
+      ...(handIt ? [] : [blipBox("wave-l", 0.4)]),
+      { ...t(dayLine, "ui", 15, { lineHeight: 22, color: PHONE_LOOK.ink2, flex: 1 }), props: { content: dayLine, keepCase: true } },
+    ],
+  };
 
   /**
    * HAPTICS, ON THE CARD ITSELF. The switch turns every key on. Keys picked
