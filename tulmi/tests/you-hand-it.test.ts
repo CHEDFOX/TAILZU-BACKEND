@@ -88,10 +88,8 @@ const ask = (extra: Record<string, unknown> = {}) =>
     assistant: { apps: [], names, tasks: [] }, ...extra,
   } as never) as any;
 
-/** The card: the one node that carries its heading. */
-const cardOf = (s: any): AnyNode =>
-  nodes(s.root, (n) => n.type === "Stack" && n.props?.keepCase === true && texts(n).includes(SW["y.h"].en))
-    .sort((a, b) => nodes(a).length - nodes(b).length)[0]!;
+/** The card: the two cards (the task, on paper; what is coming up and the apps), as the tab's column holds them. */
+const cardOf = (s: any): AnyNode => columnOf(s).find((n) => texts(n).includes(SW["y.h"].en))!;
 /** The tab's one column of cards: the greeting line first, then the cards in order. */
 const columnOf = (s: any): AnyNode[] => s.root.children[0].children[0].children as AnyNode[];
 /** The node (a pill) that says `label` and does something when pressed. */
@@ -121,21 +119,29 @@ describe("You: Hand it to me", () => {
     }
     // It sits under the greeting, before the voice card.
     const kids = columnOf(on);
-    expect(poses(kids[0])).toEqual(["wave-l"]);
+    // The greeting gives Blip up to the card.
+    expect(poses(kids[0])).toEqual([]);
     expect(kids[1]).toBe(cardOf(on));
     expect(columnOf(you({ connectorsOn: false })).length).toBe(kids.length - 1);
     expect(on.cacheTtlSeconds).toBe(15);
   });
 
-  it("opens with the heading in the onboarding's heading face and one warm line", () => {
+  it("opens as the onboarding does: Blip, his line in his hand, then the heading in its face, on paper", () => {
     const card = cardOf(you());
     const head = nodes(card, (n) => n.type === "Text" && n.props?.content === SW["y.h"].en)[0]!;
     expect(head.style!.fontFamily).toBe(PHONE_FONT.grotesk);
     expect(SW["y.h"].en).toBe("Hand it to me");
     expect(SW["y.p"].en).toBe("Tell me what to do, and I’ll do it in your apps.");
     const line = nodes(card, (n) => n.type === "Text" && n.props?.content === SW["y.p"].en)[0]!;
-    expect(line.style!.fontFamily).toBe(PHONE_FONT.ui);
-    expect(texts(card).indexOf(SW["y.p"].en)).toBe(texts(card).indexOf(SW["y.h"].en) + 1);
+    expect(line.style!.fontFamily).toBe(PHONE_FONT.hand);
+    expect(texts(card).indexOf(SW["y.p"].en)).toBeLessThan(texts(card).indexOf(SW["y.h"].en));
+    // Two cards: the task on the onboarding's paper, then what is coming up on the tab's own.
+    const [hand, insight] = card.children!;
+    expect(hand!.style!.backgroundColor).toBe("#EFEDE8");
+    expect(texts(hand!)).toContain(SW["y.h"].en);
+    expect(texts(hand!)).not.toContain(SW["y.up"].en);
+    expect(texts(insight!)).toContain(SW["y.up"].en);
+    expect(texts(insight!)).toContain(SW["y.more"].en);
   });
 
   it("the words are set as written: the card is kept out of the capitalising pass", () => {
@@ -155,13 +161,16 @@ describe("You: Hand it to me", () => {
     expect(field.bind).toEqual({ value: "ask.text" });
     expect(mic.bind).toEqual({ value: "ask.text" });
     expect(field.props!.placeholder).toBe("Type or say what you need");
-    // The same field and mic as the Ask screen's, node for node.
+    // The same field and mic as the Ask screen's, set on the card's paper.
     const a = ask();
-    expect(field).toEqual(nodes(a.root, (n) => n.type === "TextField")[0]);
+    const theirs = nodes(a.root, (n) => n.type === "TextField")[0]!;
+    expect(field.bind).toEqual(theirs.bind);
+    expect([field.props!.placeholder, field.props!.multiline]).toEqual([theirs.props!.placeholder, theirs.props!.multiline]);
     // (its fill is a shade of the card's cream, not the Ask page's grey)
     const askMic = nodes(a.root, (n) => n.type === "VoiceButton")[0]!;
-    // The same mic, painted in each screen's own ground and ink.
-    expect({ ...mic.props, background: 0, color: 0 }).toEqual({ ...askMic.props, background: 0, color: 0 });
+    // The same mic, set in each screen's own look.
+    const same = (m: AnyNode) => ({ bind: m.bind, targetApp: m.props!.targetApp, language: m.props!.language, label: m.props!.label, stopLabel: m.props!.stopLabel });
+    expect(same(mic)).toEqual(same(askMic));
     // Examples: state holds them, the chips show and fill exactly that.
     expect(s.state.ask).toEqual({ text: "", busy: false, res: {}, ex: askExamples("en") });
     expect(s.state.ask).toEqual(a.state.ask);
@@ -196,11 +205,12 @@ describe("You: Hand it to me", () => {
     expect(s.state.ask.ex[0]).toBe("Mom ko WhatsApp pe bolo main raaste mein hoon");
   });
 
-  it("working shows a plain line, with no Blip", () => {
+  it("Blip presents the card; his bubble says his line, and On it… while it works", () => {
     const card = cardOf(you());
-    const busy = nodes(card, (n) => JSON.stringify(n.visibleIf) === JSON.stringify({ truthy: "ask.busy" }))[0]!;
-    expect(texts(busy)).toEqual(["On it…"]);
-    expect(poses(card)).toEqual([]);
+    const when = (c: object) => nodes(card, (n) => JSON.stringify(n.visibleIf) === JSON.stringify(c));
+    expect(when({ truthy: "ask.busy" }).flatMap((n) => texts(n))).toEqual(["On it…"]);
+    expect(when({ falsy: "ask.busy" }).flatMap((n) => texts(n))).toEqual([SW["y.p"].en]);
+    expect(poses(card)).toEqual(["present-s"]);
   });
 
   // ---- Coming up -------------------------------------------------------------------
@@ -309,7 +319,7 @@ describe("You: Hand it to me", () => {
     expect(nodes(cardOf(none), (n) => n.style?.backgroundColor === NEON || n.props?.stroke === NEON)).toEqual([]);
     // An app added by link never gets a logo, only its letter.
     const custom = you({ assistant: { apps: [app("c_1234", "Mine", { custom: true, auth: "url" })], names, tasks: [] } });
-    expect(nodes(cardOf(custom), (n) => n.type === "Image")).toEqual([]);
+    expect(nodes(cardOf(custom), (n) => n.type === "Image" && !/\/blip\//.test(String(n.props?.source?.url)))).toEqual([]);
   });
 
   it("neon is only for done and connected", () => {
@@ -326,16 +336,20 @@ describe("You: Hand it to me", () => {
 
   // ---- the tab keeps its rules ------------------------------------------------------
 
-  it("still one Blip on You: the greeting's", () => {
+  it("still one Blip on You: the card's while it is there, else the greeting's", () => {
     for (const assistant of [undefined, { apps: [], names, tasks: [] }, { apps: [app("notion", "Notion")], names, tasks: [waiting("w1"), task("r1", "running"), task("d1", "done")] }]) {
-      expect(poses(you({ assistant }).root)).toEqual(["wave-l"]);
+      expect(poses(you({ assistant }).root)).toEqual(["present-s"]);
     }
     expect(poses(you({ connectorsOn: false }).root)).toEqual(["wave-l"]);
   });
 
   it("the tab's other cards are where they were", () => {
     const on = you();
-    expect(columnOf(on).filter((n) => n !== cardOf(on))).toEqual(columnOf(you({ connectorsOn: false })));
+    const off = columnOf(you({ connectorsOn: false }));
+    const rest = columnOf(on).filter((n) => n !== cardOf(on));
+    // The greeting keeps its line and only gives Blip up; every card after it is as it was.
+    expect(texts(rest[0]!)).toEqual(texts(off[0]!));
+    expect(rest.slice(1)).toEqual(off.slice(1));
   });
 });
 
@@ -349,7 +363,7 @@ const SHIPPED_PROPS: Record<string, Set<string>> = {
   Stack: new Set(["pressOpacity", "hitSlop", "keepCase"]),
   Text: new Set(["content", "numberOfLines", "keepCase"]),
   Image: new Set(["source", "contentFit"]),
-  TextField: new Set(["placeholder", "multiline"]),
+  TextField: new Set(["placeholder", "multiline", "background", "borderColor", "borderWidth", "color", "placeholderColor", "radius", "paddingHorizontal", "paddingVertical", "minHeightMultiline"]),
   // stopLabel and recordingColor are read by the shipped VoiceButton; its face
   // (fontFamily, fontSize, color) only by builds from the keyboard-fix update
   // on, and a shipped build that ignores them draws its own, as before.
