@@ -63,7 +63,7 @@ import type { AgentApproval, ApprovalCard, AssistantTask, ConnectorInfo, Connect
 import { approvalCard } from "../connectors/card.js";
 import type { AssistantView } from "../connectors/list.js";
 import { en, wordsFor, type WordKey } from "../connectors/words.js";
-import { PHONE_LOOK, label, t } from "./phoneLook.js";
+import { PHONE_FONT, PHONE_LOOK, label, t } from "./phoneLook.js";
 import { NEON, blipBox, blipPicture, neonDot } from "./touches.js";
 import type { BlipLoop } from "./blipLoops.js";
 import { sw } from "./settingsWords.js";
@@ -1129,7 +1129,17 @@ const askParts = {
     children: [
       {
         type: "VoiceButton", bind: { value: "ask.text" },
-        props: { targetApp: "Tailzu", language: "auto", label: en("ask.mic"), background: ui.pill.background, radius: 999, paddingVertical: 14 },
+        // Set like the pill beside it: its face and size, on one line, the
+        // same height. While it listens it says "■ Stop": the app's own "■ Stop
+        // & transcribe" wrapped to two lines in half a row and stood taller
+        // than Do it. Listening stays the app's red; amber is a streak's.
+        // (fontFamily, fontSize and color are drawn by builds from the
+        // keyboard-fix update on; an older build keeps its own face.)
+        props: {
+          targetApp: "Tailzu", language: "auto", label: en("ask.mic"), stopLabel: en("ask.stop"),
+          background: ui.pill.background, recordingColor: "#FFFFFF",
+          fontFamily: PHONE_FONT.uiMedium, fontSize: 15, color: ui.text, radius: 999, paddingVertical: 14,
+        },
         style: { flex: 1 },
       },
       pill(ui, en("ask.go"), askAction(ctx), "primary", true),

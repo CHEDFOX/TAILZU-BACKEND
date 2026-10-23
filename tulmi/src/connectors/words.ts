@@ -198,6 +198,8 @@ export const EN = {
   "ask.ph": "Type or say what you need",
   "ask.go": "Do it",
   "ask.mic": "Speak",
+  // While it listens: short enough for one line beside Do it.
+  "ask.stop": "■ Stop",
   "ask.try": "Try saying",
   "ask.busy": "On it…",
   "ask.empty": "Tell me what to do first.",
@@ -370,6 +372,7 @@ export const HG: Record<WordKey, string> = {
   "ask.ph": "Likho ya bolo, kya chahiye",
   "ask.go": "Kar do",
   "ask.mic": "Bolo",
+  "ask.stop": "■ Roko",
   "ask.try": "Aise bolke dekho",
   "ask.busy": "Kar raha hoon…",
   "ask.empty": "Pehle batao kya karna hai.",

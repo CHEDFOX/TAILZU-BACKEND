@@ -160,7 +160,8 @@ describe("You: Hand it to me", () => {
     expect(field).toEqual(nodes(a.root, (n) => n.type === "TextField")[0]);
     // (its fill is a shade of the card's cream, not the Ask page's grey)
     const askMic = nodes(a.root, (n) => n.type === "VoiceButton")[0]!;
-    expect({ ...mic.props, background: 0 }).toEqual({ ...askMic.props, background: 0 });
+    // The same mic, painted in each screen's own ground and ink.
+    expect({ ...mic.props, background: 0, color: 0 }).toEqual({ ...askMic.props, background: 0, color: 0 });
     // Examples: state holds them, the chips show and fill exactly that.
     expect(s.state.ask).toEqual({ text: "", busy: false, res: {}, ex: askExamples("en") });
     expect(s.state.ask).toEqual(a.state.ask);
@@ -349,7 +350,10 @@ const SHIPPED_PROPS: Record<string, Set<string>> = {
   Text: new Set(["content", "numberOfLines", "keepCase"]),
   Image: new Set(["source", "contentFit"]),
   TextField: new Set(["placeholder", "multiline"]),
-  VoiceButton: new Set(["targetApp", "language", "label", "background", "radius", "paddingVertical"]),
+  // stopLabel and recordingColor are read by the shipped VoiceButton; its face
+  // (fontFamily, fontSize, color) only by builds from the keyboard-fix update
+  // on, and a shipped build that ignores them draws its own, as before.
+  VoiceButton: new Set(["targetApp", "language", "label", "stopLabel", "background", "recordingColor", "radius", "paddingVertical", "fontFamily", "fontSize", "color"]),
   SVG: new Set(["viewBox", "d", "fill", "stroke", "strokeWidth", "strokeLinecap", "strokeLinejoin"]),
   Spacer: new Set([]),
 };
