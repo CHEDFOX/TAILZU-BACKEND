@@ -370,6 +370,8 @@ export function buildAssistSystem(opts: {
    *  "a text field labelled “Subject”". */
   field?: string;
   hasContext: boolean;
+  /** <before> ends at a pause with its full stop held back (the desktop's pause stretches). */
+  heldStop?: boolean;
   /** Script the transcript actually arrived in (observed by the STT layer).
    *  Stated as a fact so the model can't drift the user's script. */
   script?: string;
@@ -728,6 +730,17 @@ export function buildAssistSystem(opts: {
       // came back opening with a capital, as a sentence of its own.
       // join.shapeForJoin lowers the unmistakable cases in code.
       ? "<before> is their own text from before this dictation: write only what follows it, as a continuation, never restate it."
+      : null,
+    // A FULL STOP HELD AT A PAUSE. The desktop pastes each stretch as they
+    // pause, before anyone can know whether the sentence goes on, and the
+    // writer, handed a fragment, ended it: "…arriving in." Then the next
+    // stretch, after that stop, came back as a sentence of its own: "Breaks
+    // and a single sentence…". So the desktop holds the stop back and sends
+    // <before> without it, and this stretch decides: opening with the stop
+    // closes the last sentence; anything else carries it on, and the stop
+    // never appears.
+    opts.heldStop
+      ? "<before> stops where they paused, and the full stop that would end it is not written yet. If what they say now begins a new sentence, open your answer with that full stop (\". Then we…\"); if it carries on the sentence <before> stopped in, write the continuation, with no full stop before it."
       : null,
     "",
     // WHAT ARRIVES IS A HEARING, NOT A RECORDING.

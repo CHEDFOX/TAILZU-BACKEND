@@ -1075,6 +1075,7 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
   let tone: string | undefined; // active tone override from the client
   let tonePrompt: string | undefined; // the active tone's inline prompt text
   let selection: string | undefined; // the text selected in the field: what they say is about it
+  let heldStop = false; // the desktop held back the full stop that ended `context` (a pause stretch)
 
   // Iterate multipart parts: one file ("audio") + optional text fields.
   for await (const part of req.parts()) {
@@ -1103,6 +1104,8 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       tonePrompt = String(part.value);
     } else if (part.fieldname === "selection") {
       selection = String(part.value);
+    } else if (part.fieldname === "heldStop") {
+      heldStop = part.value === "true" || part.value === "1";
     } else if (part.fieldname === "personality") {
       try {
         personalityOverride = JSON.parse(String(part.value)) as Personality;
@@ -1163,6 +1166,7 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
       variables: { email: user.email, phone: user.phone },
       recent: await recentRead,
       tzOffsetMinutes: reqTz(tzOffsetMinutes, personality.stylePortrait?.tzOffsetMinutes),
+      heldStop,
     });
     await recordUsage({ user, source: "rest", ...result.usage });
     await appendHistoryEntry(
@@ -1190,7 +1194,10 @@ app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
     );
     learnFromUsage(user, personality);
     desktopDictated(req, user, personality);
-    return reply.send(result);
+    // holdsStops: this server understands heldStop, so a desktop may hold back
+    // the full stop that ends a pause stretch and let the next stretch decide
+    // (assistPrompt's held stop). A desktop that is not told so holds nothing.
+    return reply.send({ ...result, holdsStops: true });
   } catch (err) {
     req.log.error(err);
     return reply.code(500).send({ code: "internal", message: "Pipeline failed" });
