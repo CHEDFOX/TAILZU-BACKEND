@@ -651,6 +651,9 @@ export interface WriterExtras {
   recent?: RecentDictation[];
   /** Their clock, so the session can say when, in their time. */
   tzOffsetMinutes?: number;
+  /** The desktop held back the full stop that ended `context` at a pause (its
+   *  pause stretches, see assistPrompt): this stretch decides whether it goes in. */
+  heldStop?: boolean;
 }
 
 function writerRequest(input: string, opts: CleanupOptions & WriterExtras): WriterRequest {
@@ -731,6 +734,7 @@ function writerRequest(input: string, opts: CleanupOptions & WriterExtras): Writ
     // tell the model every transcript from that engine is a guess.
     uncertain: opts.speechConfidence === "low",
     hasContext: !!context,
+    heldStop: !!context && opts.heldStop === true,
     hasAlternative,
     compose: ask?.kind,
     promptsAnAi: toAnAi,
