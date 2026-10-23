@@ -67,6 +67,9 @@ const poses = (root: unknown) => nodes(root, (n) => n.type === "Image" && /\/bli
 
 // ---- fixtures -------------------------------------------------------------------
 
+/** A bundle that has Blip walking a card's edge (the phone's onboard/BlipRoam). */
+const ROAMS = new Set(["BlipRoam"]);
+
 const app = (id: string, name: string, o: Record<string, unknown> = {}) => ({
   id, name, category: "Docs", oneLine: "Search, read and write pages.", auth: "oauth", connected: true, level: "look", auto: [], ...o,
 });
@@ -119,14 +122,15 @@ describe("You: Hand it to me", () => {
     }
     // It sits under the greeting, before the voice card.
     const kids = columnOf(on);
-    // The greeting gives Blip up to the card.
-    expect(poses(kids[0])).toEqual([]);
+    // The greeting keeps Blip, unless the bundle can have him walk the card's edge.
+    expect(poses(kids[0])).toEqual(["wave-l"]);
+    expect(poses(columnOf(you({ can: ROAMS }))[0])).toEqual([]);
     expect(kids[1]).toBe(cardOf(on));
     expect(columnOf(you({ connectorsOn: false })).length).toBe(kids.length - 1);
     expect(on.cacheTtlSeconds).toBe(15);
   });
 
-  it("opens as the onboarding does: Blip, his line in his hand, then the heading in its face, on paper", () => {
+  it("opens as the onboarding does: the heading in its face, then Blip's line in his hand, on paper", () => {
     const card = cardOf(you());
     const head = nodes(card, (n) => n.type === "Text" && n.props?.content === SW["y.h"].en)[0]!;
     expect(head.style!.fontFamily).toBe(PHONE_FONT.grotesk);
@@ -134,9 +138,9 @@ describe("You: Hand it to me", () => {
     expect(SW["y.p"].en).toBe("Tell me what to do, and I’ll do it in your apps.");
     const line = nodes(card, (n) => n.type === "Text" && n.props?.content === SW["y.p"].en)[0]!;
     expect(line.style!.fontFamily).toBe(PHONE_FONT.hand);
-    expect(texts(card).indexOf(SW["y.p"].en)).toBeLessThan(texts(card).indexOf(SW["y.h"].en));
+    expect(texts(card).indexOf(SW["y.p"].en)).toBe(texts(card).indexOf(SW["y.h"].en) + 1);
     // Two cards: the task on the onboarding's paper, then what is coming up on the tab's own.
-    const [hand, insight] = card.children!;
+    const [hand, , insight] = card.children!;
     expect(hand!.style!.backgroundColor).toBe("#EFEDE8");
     expect(texts(hand!)).toContain(SW["y.h"].en);
     expect(texts(hand!)).not.toContain(SW["y.up"].en);
@@ -205,12 +209,23 @@ describe("You: Hand it to me", () => {
     expect(s.state.ask.ex[0]).toBe("Mom ko WhatsApp pe bolo main raaste mein hoon");
   });
 
-  it("Blip presents the card; his bubble says his line, and On it… while it works", () => {
+  it("the card says his line, and On it… while it works; Blip is never inside it", () => {
     const card = cardOf(you());
     const when = (c: object) => nodes(card, (n) => JSON.stringify(n.visibleIf) === JSON.stringify(c));
     expect(when({ truthy: "ask.busy" }).flatMap((n) => texts(n))).toEqual(["On it…"]);
     expect(when({ falsy: "ask.busy" }).flatMap((n) => texts(n))).toEqual([SW["y.p"].en]);
-    expect(poses(card)).toEqual(["present-s"]);
+    expect(poses(card)).toEqual([]);
+    expect(poses(cardOf(you({ can: ROAMS })))).toEqual([]);
+  });
+
+  it("from a bundle with BlipRoam, Blip walks the task card's top edge, and thinks while it works", () => {
+    const card = cardOf(you({ can: ROAMS }));
+    const [roam, hand] = card.children!;
+    expect(roam).toEqual({ type: "BlipRoam", props: { h: 60, thinkWhile: "ask.busy" } });
+    expect(hand!.style!.backgroundColor).toBe("#EFEDE8");
+    // Not to a bundle that cannot draw him.
+    expect(nodes(cardOf(you()), (n) => n.type === "BlipRoam")).toEqual([]);
+    expect(nodes(cardOf(you({ can: new Set(["OnboardStage", "BlipSpot"]) })), (n) => n.type === "BlipRoam")).toEqual([]);
   });
 
   // ---- Coming up -------------------------------------------------------------------
@@ -336,9 +351,12 @@ describe("You: Hand it to me", () => {
 
   // ---- the tab keeps its rules ------------------------------------------------------
 
-  it("still one Blip on You: the card's while it is there, else the greeting's", () => {
+  it("still one Blip on You: the greeting's, or the one walking the card's edge", () => {
     for (const assistant of [undefined, { apps: [], names, tasks: [] }, { apps: [app("notion", "Notion")], names, tasks: [waiting("w1"), task("r1", "running"), task("d1", "done")] }]) {
-      expect(poses(you({ assistant }).root)).toEqual(["present-s"]);
+      expect(poses(you({ assistant }).root)).toEqual(["wave-l"]);
+      const roaming = you({ assistant, can: ROAMS });
+      expect(poses(roaming.root)).toEqual([]);
+      expect(nodes(roaming.root, (n) => n.type === "BlipRoam").length).toBe(1);
     }
     expect(poses(you({ connectorsOn: false }).root)).toEqual(["wave-l"]);
   });
