@@ -43,7 +43,7 @@ Pick one of the two ways.
 | SSL verification | Enable |
 | Repository permissions | **Contents: Read and write.** **Pull requests: Read and write.** **Metadata: Read-only** (GitHub sets this one itself). Nothing else, and in particular not Workflows |
 | Account and organization permissions | None |
-| Subscribe to events | None to tick. `installation` and `installation_repositories` are sent to every App without being asked for, and they are the only two this server reads |
+| Subscribe to events | Tick **Pull request** and **Pull request review** (they only appear once Pull requests is given). `installation` and `installation_repositories` are sent to every App without being asked for, and this server reads those too |
 | Where can this GitHub App be installed? | **Any account.** With "Only on this account" nobody but you could install it |
 
 Create it, then on the App's page:
@@ -89,14 +89,15 @@ name if it is taken, and the origin if the API is not at `api.tailzu.space`):
     "pull_requests": "write",
     "metadata": "read"
   },
-  "default_events": []
+  "default_events": ["pull_request", "pull_request_review"]
 }
 ```
 
-`default_events` is empty on purpose: GitHub sends `installation` and
-`installation_repositories` to every App and does not let you subscribe to
-them, and a manifest that lists them can be refused. There is no `workflows`
-permission, no `issues`, nothing else.
+`default_events` lists the two events the server follows a pull request's life
+with (closed, reopened, ready for review; a review submitted). GitHub sends
+`installation` and `installation_repositories` to every App and does not let
+you subscribe to them, and a manifest that lists them can be refused, so they
+are not here. There is no `workflows` permission, no `issues`, nothing else.
 
 GitHub then sends you to `redirect_url` with a one-time `code` in the address.
 That page says "That didn't work" (it is the install callback, and this is not
@@ -160,6 +161,32 @@ editor (or re-run `full_schema.sql`), and restart the server.
 5. They pick a repo as a project, and Tailzu makes a work branch
    `tailzu/<words-from-the-task>-<4 hex>` from the default branch's head.
 
+A repo that doesn't exist yet: Tailzu gives the person a link that opens GitHub's
+"new repository" page with the name filled in and Private chosen
+(`GET /v1/code/new-repo-link?name=`); the person creates it themselves, so the
+App never needs the Administration permission. A repo with no commits can be
+added as a project but has nothing to branch from: Tailzu says so
+(`repo_empty`), and `POST /v1/code/projects/:id/init` writes one `README.md`
+with the project's title as its first commit (below, the first of two
+exceptions to "never the default branch").
+
+After the branch is made, the work goes on through these (all under
+`/v1/code/projects/:id/branches/:branch`, with the branch URL-encoded):
+
+| | |
+| --- | --- |
+| `POST .../sync` | merges the default branch **into** the work branch to keep it current. A conflict is never resolved or forced: the branch is marked `conflict` and the person is told |
+| `GET .../diff` | what the branch changes: commits (first line), files with status and line counts, 300 files at most. Never file contents |
+| `GET .../pr`, `.../pr/comments` | where the pull request is (state, draft, mergeable, head, review decision, review comments), and what reviewers wrote, 100 comments at most. That text is other people's: it is data for the bot to read, never instructions |
+| `POST .../pr/ready`, `.../pr/close` | take it out of draft (GitHub's GraphQL `markPullRequestReadyForReview`; REST has no way), or close it without merging |
+| `POST .../pr/merge` | two steps. With no body it merges nothing and returns an approval id and a summary (title, base, files, additions, deletions, head commit). With `{approvalId}` it squash-merges exactly that commit; if the branch moved, `changed_since_approval`. An approval is single use, kept in the server's memory for ten minutes, and bound to the person, project, branch and head commit. The phone will put Face ID in front of the second step |
+| `DELETE .../branches/:branch` | once the pull request is merged or closed, deletes the branch from GitHub (only `tailzu/` branches); the record stays, with the state `deleted` |
+
+A branch's state is `active`, `pr_open`, `conflict`, `merged`, `closed` or
+`deleted`, kept up as these happen and by GitHub's `pull_request` and
+`pull_request_review` webhooks (matched by repo and branch name, and only for a
+branch in that same repo, not a fork's).
+
 Removing Tailzu in Tailzu forgets the link and the projects on Tailzu's side
 and gives the person the GitHub page where the install can really be removed.
 Removing it on GitHub (or suspending it) reaches Tailzu through the webhook.
@@ -184,24 +211,37 @@ Removing it on GitHub (or suspending it) reaches Tailzu through the webhook.
 **Can**, in the repos the person gave the App access to and can write to themselves, and nowhere else:
 
 * list those repos (300 per install; it says when there are more);
-* make a branch named `tailzu/...` from the default branch;
+* make a branch named `tailzu/...` from the default branch, and keep it current
+  by merging the default branch into it;
 * read the file tree and the text files (1 MB at most) on its own branches;
 * commit text files to its own branches: add, change, delete, many in one
   commit, never forced;
-* open a **draft** pull request from its branch into the default branch, and
-  find it again if it is already open.
+* open a **draft** pull request from its branch into the default branch, find
+  it again if it is already open, show where it is and what reviewers wrote,
+  take it out of draft, or close it;
+* squash-merge it, but only after a person approved that exact commit (see the
+  exceptions below);
+* delete a finished `tailzu/` branch;
+* hand a sandbox a token for one repo (no route yet): `contents:read` to clone,
+  `contents:write` to push, nothing else, made when asked and kept nowhere.
 
 **Cannot**:
 
 * write to the default branch, or to any branch that does not start with
-  `tailzu/`. One function, `assertWorkBranch`, is checked before every
-  write; a branch must match `tailzu/[a-z0-9][a-z0-9-]{0,48}`, differ from the
-  default branch and contain no `..`;
+  `tailzu/`, with **two exceptions**, each its own function with its own guard:
+  the first `README.md` of a repo with **no commits at all** (checked first;
+  a repo with commits is refused), and the squash-merge of a work branch's pull
+  request that a person approved at that head commit. Everything else goes
+  through `assertWorkBranch`, checked before every write; a branch must match
+  `tailzu/[a-z0-9][a-z0-9-]{0,48}`, differ from the default branch and contain
+  no `..`;
+* resolve a merge conflict, force-push, or rewrite history;
 * change anything under `.github/workflows/` (the App has no Workflows
   permission, and Tailzu says so before GitHub does);
-* merge, approve or close a pull request, delete a branch or a repo, change
-  settings, or read issues, Actions, secrets or anything else: the App's
-  permissions are Contents, Pull requests and Metadata, and nothing more;
+* merge without that approval, approve a pull request, delete a repo or any
+  branch that is not a finished `tailzu/` one, change settings, or read issues,
+  Actions, secrets or anything else: the App's permissions are Contents, Pull
+  requests and Metadata, and nothing more;
 * reach a repo the person did not give the App, or any repo through a token made
   for another: each token is for one repo;
 * work in a repo the person cannot themselves write to (next section);
@@ -231,7 +271,8 @@ Removing it on GitHub (or suspending it) reaches Tailzu through the webhook.
   * the answer is kept for ten minutes for each install, repo and login, and
     at most eight questions are out at once when listing. The rule is applied
     when listing repos, when adding a project, and again before every write (a
-    branch, a commit, a pull request), which asks GitHub afresh: access taken
+    branch, a commit, a pull request, a sync, a ready, a close, a merge, a
+    delete, the first README, a runner's token), which asks GitHub afresh: access taken
     away is felt at once by writes, and within ten minutes by reads;
   * a link made before the login was kept has no way to tell, so it counts for
     nothing and the person is asked to connect again (`needs_reconnect`).
@@ -257,7 +298,14 @@ Removing it on GitHub (or suspending it) reaches Tailzu through the webhook.
 | The install page says "That install isn't yours" | The GitHub account that installed is not one that can reach that install |
 | Connect works but the repo list is empty | The install has no repos selected, is suspended, the person is looking at the wrong GitHub account, or (in an organisation or somebody else's account) they have only read access to its repos |
 | 403 `needs_reconnect` | The link was made before the person's GitHub login was kept, or they renamed themselves on GitHub: connect GitHub again |
-| 403 `no_access` on a branch, commit or pull request | The person's access to that repo was taken away on GitHub since they added the project |
+| 403 `no_access` on a branch, commit, pull request, sync, merge or delete | The person's access to that repo was taken away on GitHub since they added the project |
+| 409 `repo_empty` | The repo has no commits, so there is nothing to branch from. Start it with `POST /v1/code/projects/:id/init` (or add a first file on GitHub) |
+| 409 `repo_not_empty` on init | The repo already has commits. Tailzu only ever writes a first README to an empty one |
+| 409 `conflict` on sync | The default branch changed lines this branch also changed. Tailzu never resolves it: resolve it on GitHub, or start a new branch |
+| 409 `changed_since_approval` | The branch moved after the person looked at the merge. Nothing was merged; look again |
+| 409 `approval_invalid` or `approval_expired` | The approval id is unknown, for another branch or person, already used, or older than ten minutes |
+| 409 `pr_draft`, `not_mergeable`, `branch_in_use` | The pull request is still a draft, GitHub says it can't be merged (conflicts, or a required check or review), or the branch's pull request is still open |
+| A pull request or review on GitHub doesn't show in Tailzu | The App isn't subscribed to Pull request and Pull request review events, or the webhook is failing (the App's Advanced tab) |
 | 502 `github_auth` for everything | The private key does not belong to this App (or was revoked). Generate a new key on the App's page and replace it |
 | `branch_moved` on a commit | Someone pushed to the work branch while Tailzu was committing. Nothing was overwritten; read the branch again and retry |
 | Webhook deliveries fail with 401 | `GITHUB_APP_WEBHOOK_SECRET` is not the secret on the App's page |

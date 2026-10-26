@@ -15,7 +15,12 @@
  * /user/installations and nowhere else, and git/trees takes a TREE sha (a
  * branch name there is a 404, as a name with a "/" in it is on the real one).
  * What a login may do in a repo is `setPermission`; the collaborator
- * permission endpoint answers from it. Every request is recorded in `calls`.
+ * permission endpoint answers from it. A repo can be empty (no commits: git
+ * data answers 409 "Git Repository is empty", the contents API's first PUT
+ * makes the first commit), branches merge (a real three-way merge of flat
+ * trees, with conflicts), compare says what a branch changes, and pull
+ * requests have a life: draft, comments, reviews, close, squash-merge, and
+ * GraphQL for taking one out of draft. Every request is recorded in `calls`.
  */
 import { createHash, generateKeyPairSync } from "node:crypto";
 import { jwtVerify, importSPKI } from "jose";
@@ -37,7 +42,18 @@ interface RepoGit {
   commits: Map<string, Commit>;
   /** "heads/main" -> commit sha. */
   refs: Map<string, string>;
-  pulls: Array<{ number: number; head: string; base: string; title: string; body: string; draft: boolean; state: "open" }>;
+  pulls: FakePull[];
+}
+
+export interface FakePull {
+  number: number; head: string; base: string; title: string; body: string; draft: boolean;
+  state: "open" | "closed"; merged: boolean;
+  /** What GitHub says about whether it merges: undefined works it out from the branches; null is "not worked out yet". */
+  mergeable?: boolean | null;
+  /** "APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED", or null. */
+  reviewDecision?: string | null;
+  reviewComments: Array<{ user: string; body: string; path: string; line: number; at: string }>;
+  issueComments: Array<{ user: string; body: string; at: string }>;
 }
 
 export type FakePermission = "admin" | "write" | "read" | "none";
@@ -96,7 +112,7 @@ export class FakeGithub {
   }
 
   /** A repo with a default branch holding `files`. */
-  addRepo(installationId: number, fullName: string, o: { id?: number; private?: boolean; defaultBranch?: string; archived?: boolean; files?: Record<string, string> } = {}): FakeRepo {
+  addRepo(installationId: number, fullName: string, o: { id?: number; private?: boolean; defaultBranch?: string; archived?: boolean; files?: Record<string, string>; empty?: boolean } = {}): FakeRepo {
     const repo: FakeRepo = {
       id: o.id ?? 1000 + this.repos.length + 1, fullName, private: o.private ?? true, defaultBranch: o.defaultBranch ?? "main",
       archived: o.archived ?? false, installationId,
@@ -104,6 +120,7 @@ export class FakeGithub {
     this.repos.push(repo);
     const g: RepoGit = { blobs: new Map(), trees: new Map(), commits: new Map(), refs: new Map(), pulls: [] };
     this.git.set(repo.id, g);
+    if (o.empty) return repo;
     const tree = new Map<string, string>();
     for (const [path, text] of Object.entries(o.files ?? { "README.md": "# hello\n" })) {
       const b = sha("blob:" + text);
@@ -142,6 +159,12 @@ export class FakeGithub {
   head(repo: FakeRepo, branch: string): string | undefined { return this.git.get(repo.id)!.refs.get(`heads/${branch}`); }
   branches(repo: FakeRepo): string[] { return [...this.git.get(repo.id)!.refs.keys()].map((r) => r.slice(6)); }
   pulls(repo: FakeRepo) { return this.git.get(repo.id)!.pulls; }
+  /** The number of commits a repo has. */
+  commitCount(repo: FakeRepo): number { return this.git.get(repo.id)!.commits.size; }
+  /** Someone else changes a pull request: `patch` is applied to it. */
+  editPull(repo: FakeRepo, number: number, patch: Partial<FakePull>) { Object.assign(this.git.get(repo.id)!.pulls.find((x) => x.number === number)!, patch); }
+  /** A tool token's permissions, by the token. */
+  tokenPermissions(token: string) { return this.tokens.get(token)?.permissions; }
   /** The files on a branch as {path: text}. */
   files(repo: FakeRepo, branch: string): Record<string, string> {
     const g = this.git.get(repo.id)!;
@@ -163,8 +186,78 @@ export class FakeGithub {
     return c;
   }
   /** Writes (anything but GET) the code made to a repo's git data. */
-  writes(): Call[] { return this.calls.filter((c) => c.method !== "GET" && !c.url.pathname.includes("/access_tokens") && c.url.hostname === "api.github.com"); }
+  writes(): Call[] {
+    return this.calls.filter((c) => c.method !== "GET" && !c.url.pathname.includes("/access_tokens") && c.url.hostname === "api.github.com"
+      && !(c.url.pathname === "/graphql" && !/\bmutation\b/.test(String(c.body?.query ?? ""))));
+  }
   count(method: string, re: RegExp): number { return this.calls.filter((c) => c.method === method && re.test(c.url.pathname + c.url.search)).length; }
+
+  // ----------------------------------------------------- git, enough of it
+
+  private ancestors(g: RepoGit, from: string): Set<string> {
+    const seen = new Set<string>();
+    const stack = [from];
+    while (stack.length) {
+      const s = stack.pop()!;
+      if (seen.has(s)) continue;
+      seen.add(s);
+      stack.push(...(g.commits.get(s)?.parents ?? []));
+    }
+    return seen;
+  }
+  /** The nearest commit both are built on, or undefined. */
+  private mergeBase(g: RepoGit, a: string, b: string): string | undefined {
+    const ofA = this.ancestors(g, a);
+    const queue = [b];
+    const seen = new Set<string>();
+    while (queue.length) {
+      const s = queue.shift()!;
+      if (seen.has(s)) continue;
+      seen.add(s);
+      if (ofA.has(s)) return s;
+      queue.push(...(g.commits.get(s)?.parents ?? []));
+    }
+    return undefined;
+  }
+  private flat(g: RepoGit, commit: string | undefined): Map<string, string> {
+    return commit ? new Map(g.trees.get(g.commits.get(commit)!.tree)!) : new Map();
+  }
+  /** A three-way merge of flat trees: `ours` takes `theirs`' changes. A path both changed differently is a conflict. */
+  private threeWay(g: RepoGit, base: string | undefined, ours: string, theirs: string): { tree: Map<string, string>; conflict: boolean } {
+    const b = this.flat(g, base), o = this.flat(g, ours), t = this.flat(g, theirs);
+    const out = new Map(o);
+    let conflict = false;
+    for (const path of new Set([...b.keys(), ...o.keys(), ...t.keys()])) {
+      const bv = b.get(path), ov = o.get(path), tv = t.get(path);
+      if (ov === tv || tv === bv) continue; // nothing of theirs to take
+      if (ov === bv) { if (tv === undefined) out.delete(path); else out.set(path, tv); continue; }
+      conflict = true;
+    }
+    return { tree: out, conflict };
+  }
+  private lines(g: RepoGit, blob: string | undefined): string[] { return blob === undefined ? [] : g.blobs.get(blob)!.split("\n").filter((l) => l !== ""); }
+  /** How a branch differs from where it left the default branch: files, with line counts. */
+  private diffFiles(g: RepoGit, from: Map<string, string>, to: Map<string, string>) {
+    const files: Array<{ filename: string; status: string; additions: number; deletions: number }> = [];
+    for (const path of [...new Set([...from.keys(), ...to.keys()])].sort()) {
+      const a = from.get(path), b = to.get(path);
+      if (a === b) continue;
+      const before = this.lines(g, a), after = this.lines(g, b);
+      const kept = after.filter((l) => before.includes(l)).length;
+      files.push({ filename: path, status: a === undefined ? "added" : b === undefined ? "removed" : "modified", additions: after.length - kept, deletions: before.length - before.filter((l) => after.includes(l)).length });
+    }
+    return files;
+  }
+  private addCommit(g: RepoGit, commit: Commit): string {
+    const s = this.commitSha(commit);
+    g.commits.set(s, commit);
+    return s;
+  }
+  private addTree(g: RepoGit, tree: Map<string, string>): string {
+    const t = this.treeSha(tree);
+    g.trees.set(t, tree);
+    return t;
+  }
 
   private treeSha(t: Map<string, string>) { return sha("tree:" + JSON.stringify([...t].sort())); }
   private commitSha(c: Commit) { this.seq += 1; return sha("commit:" + JSON.stringify(c) + this.seq); }
@@ -322,6 +415,8 @@ export class FakeGithub {
       });
     }
 
+    if (c.method === "POST" && p === "/graphql") return this.graphql(c);
+
     // Everything below is one repo's git data.
     if (!(m = p.match(/^\/repos\/([^/]+)\/([^/]+)(\/.*)$/))) return this.reply(404, { message: "Not Found" });
     const rest = decodeURIComponent(m[3]!).replace(/%2F/gi, "/");
@@ -331,6 +426,7 @@ export class FakeGithub {
     const wanted = (re: RegExp) => rest.match(re);
     let r: RegExpMatchArray | null;
 
+    if (git.commits.size === 0 && /^\/git\//.test(rest)) return this.reply(409, { message: "Git Repository is empty." });
     if (c.method === "GET" && (r = wanted(/^\/git\/ref\/(heads\/.+)$/))) {
       const s = git.refs.get(r[1]!);
       return s ? this.reply(200, { ref: `refs/${r[1]}`, object: { sha: s, type: "commit" } }) : this.reply(404, { message: "Not Found" });
@@ -423,7 +519,7 @@ export class FakeGithub {
         return this.reply(422, { message: "Validation Failed", errors: [{ resource: "PullRequest", code: "custom", message: `No commits between ${base} and ${head}` }] });
       }
       const number = git.pulls.length + 1;
-      git.pulls.push({ number, head, base, title, body, draft: draft === true, state: "open" });
+      git.pulls.push({ number, head, base, title, body, draft: draft === true, state: "open", merged: false, reviewComments: [], issueComments: [] });
       return this.reply(201, { number, html_url: `https://github.com/${repo.fullName}/pull/${number}`, draft: draft === true });
     }
     if (c.method === "GET" && rest === "/pulls") {
@@ -431,6 +527,147 @@ export class FakeGithub {
       const open = git.pulls.filter((x) => x.head === head && x.state === "open");
       return this.reply(200, open.map((x) => ({ number: x.number, html_url: `https://github.com/${repo.fullName}/pull/${x.number}`, head: { ref: x.head } })));
     }
+
+    // --- the first commit of an empty repo, and any later file through the contents API
+    if (c.method === "GET" && rest === "/commits") {
+      const head = git.refs.get(`heads/${repo.defaultBranch}`);
+      if (git.commits.size === 0 || !head) return this.reply(409, { message: "Git Repository is empty." });
+      return this.reply(200, [{ sha: head, commit: { message: git.commits.get(head)!.message } }]);
+    }
+    if (c.method === "PUT" && (r = wanted(/^\/contents\/(.+)$/))) {
+      this.mustWrite(token, "contents");
+      const path = r[1]!;
+      const branch = String(c.body?.branch ?? repo.defaultBranch);
+      if (typeof c.body?.message !== "string" || typeof c.body?.content !== "string") return this.reply(422, { message: "Invalid request." });
+      const text = Buffer.from(c.body.content, "base64").toString("utf8");
+      const blob = sha("blob:" + text);
+      git.blobs.set(blob, text);
+      const parent = git.refs.get(`heads/${branch}`);
+      const tree = this.flat(git, parent);
+      if (parent && tree.has(path) && c.body.sha !== tree.get(path)) return this.reply(422, { message: `Invalid request.\n\n"sha" wasn't supplied.` });
+      tree.set(path, blob);
+      const commit = this.addCommit(git, { tree: this.addTree(git, tree), parents: parent ? [parent] : [], message: c.body.message });
+      git.refs.set(`heads/${branch}`, commit);
+      return this.reply(201, { content: { path, sha: blob }, commit: { sha: commit } });
+    }
+
+    // --- merging the default branch into a branch
+    if (c.method === "POST" && rest === "/merges") {
+      this.mustWrite(token, "contents");
+      const { base, head } = c.body ?? {};
+      const baseSha = git.refs.get(`heads/${base}`), headSha = git.refs.get(`heads/${head}`);
+      if (!baseSha || !headSha) return this.reply(404, { message: !baseSha ? "Base does not exist" : "Head does not exist" });
+      if (this.ancestors(git, baseSha).has(headSha)) return new Response(null, { status: 204 });
+      const merged = this.threeWay(git, this.mergeBase(git, baseSha, headSha), baseSha, headSha);
+      if (merged.conflict) return this.reply(409, { message: "Merge conflict" });
+      const commit = this.addCommit(git, { tree: this.addTree(git, merged.tree), parents: [baseSha, headSha], message: String(c.body?.commit_message ?? `Merge ${head} into ${base}`) });
+      git.refs.set(`heads/${base}`, commit);
+      return this.reply(201, { sha: commit });
+    }
+
+    // --- what a branch changes
+    if (c.method === "GET" && (r = wanted(/^\/compare\/(.+)\.\.\.(.+)$/))) {
+      const baseSha = git.refs.get(`heads/${r[1]}`), headSha = git.refs.get(`heads/${r[2]}`);
+      if (!baseSha || !headSha) return this.reply(404, { message: "Not Found" });
+      const ofBase = this.ancestors(git, baseSha), ofHead = this.ancestors(git, headSha);
+      const ahead = [...ofHead].filter((x) => !ofBase.has(x)), behind = [...ofBase].filter((x) => !ofHead.has(x));
+      const files = this.diffFiles(git, this.flat(git, this.mergeBase(git, baseSha, headSha)), this.flat(git, headSha));
+      return this.reply(200, {
+        ahead_by: ahead.length, behind_by: behind.length, total_commits: ahead.length,
+        commits: ahead.reverse().map((x) => ({ sha: x, commit: { message: git.commits.get(x)!.message } })),
+        files: files.slice(0, 300),
+      });
+    }
+
+    // --- one pull request
+    if ((r = wanted(/^\/pulls\/(\d+)$/))) {
+      const pr = git.pulls.find((x) => x.number === Number(r![1]));
+      if (!pr) return this.reply(404, { message: "Not Found" });
+      if (c.method === "GET") return this.reply(200, this.pullJson(repo, git, pr));
+      if (c.method === "PATCH") {
+        this.mustWrite(token, "pull_requests");
+        if (pr.merged) return this.reply(422, { message: "Validation Failed" });
+        if (c.body?.state === "closed") pr.state = "closed";
+        return this.reply(200, this.pullJson(repo, git, pr));
+      }
+    }
+    if (c.method === "PUT" && (r = wanted(/^\/pulls\/(\d+)\/merge$/))) {
+      this.mustWrite(token, "pull_requests");
+      this.mustWrite(token, "contents");
+      const pr = git.pulls.find((x) => x.number === Number(r![1]));
+      if (!pr) return this.reply(404, { message: "Not Found" });
+      const j = this.pullJson(repo, git, pr);
+      if (pr.state !== "open") return this.reply(405, { message: "Pull Request is not open" });
+      if (pr.draft) return this.reply(405, { message: "Pull Request is still a draft" });
+      if (j.mergeable === false) return this.reply(405, { message: "Pull Request is not mergeable" });
+      if (c.body?.sha !== j.head.sha) return this.reply(409, { message: "Head branch was modified. Review and try the merge again." });
+      if (c.body?.merge_method !== "squash") return this.reply(405, { message: "Merge method not allowed" });
+      const baseSha = git.refs.get(`heads/${pr.base}`)!, headSha = git.refs.get(`heads/${pr.head}`)!;
+      const merged = this.threeWay(git, this.mergeBase(git, baseSha, headSha), baseSha, headSha);
+      // A squash: one commit on the base with the branch's changes; the branch's own commits are not parents.
+      const commit = this.addCommit(git, { tree: this.addTree(git, merged.tree), parents: [baseSha], message: `${pr.title} (#${pr.number})` });
+      git.refs.set(`heads/${pr.base}`, commit);
+      pr.state = "closed";
+      pr.merged = true;
+      return this.reply(200, { sha: commit, merged: true, message: "Pull Request successfully merged" });
+    }
+    if (c.method === "GET" && (r = wanted(/^\/pulls\/(\d+)\/comments$/))) {
+      const pr = git.pulls.find((x) => x.number === Number(r![1]));
+      if (!pr) return this.reply(404, { message: "Not Found" });
+      return this.reply(200, pr.reviewComments.slice(0, Number(c.url.searchParams.get("per_page") ?? 30)).map((x) => ({
+        user: { login: x.user }, body: x.body, path: x.path, line: x.line, created_at: x.at,
+      })));
+    }
+    if (c.method === "GET" && (r = wanted(/^\/issues\/(\d+)\/comments$/))) {
+      const pr = git.pulls.find((x) => x.number === Number(r![1]));
+      if (!pr) return this.reply(404, { message: "Not Found" });
+      return this.reply(200, pr.issueComments.slice(0, Number(c.url.searchParams.get("per_page") ?? 30)).map((x) => ({ user: { login: x.user }, body: x.body, created_at: x.at })));
+    }
+
+    // --- deleting a branch
+    if (c.method === "DELETE" && (r = wanted(/^\/git\/refs\/(heads\/.+)$/))) {
+      this.mustWrite(token, "contents");
+      return git.refs.delete(r[1]!) ? new Response(null, { status: 204 }) : this.reply(422, { message: "Reference does not exist" });
+    }
     return this.reply(404, { message: "Not Found" });
   };
+
+  /** A pull request as GitHub's REST API shows it. */
+  private pullJson(repo: FakeRepo, git: RepoGit, pr: FakePull) {
+    const baseSha = git.refs.get(`heads/${pr.base}`), headSha = git.refs.get(`heads/${pr.head}`)!;
+    const clash = baseSha ? this.threeWay(git, this.mergeBase(git, baseSha, headSha), baseSha, headSha).conflict : false;
+    const mergeable = pr.mergeable !== undefined ? pr.mergeable : !clash;
+    const files = baseSha ? this.diffFiles(git, this.flat(git, this.mergeBase(git, baseSha, headSha)), this.flat(git, headSha)) : [];
+    return {
+      number: pr.number, html_url: `https://github.com/${repo.fullName}/pull/${pr.number}`, title: pr.title,
+      state: pr.state, merged: pr.merged, draft: pr.draft, mergeable,
+      mergeable_state: pr.draft ? "draft" : mergeable === false ? "dirty" : mergeable === null ? "unknown" : "clean",
+      node_id: `PR_${repo.id}_${pr.number}`,
+      head: { sha: headSha, ref: pr.head, repo: { id: repo.id } }, base: { ref: pr.base },
+      review_comments: pr.reviewComments.length, changed_files: files.length,
+      additions: files.reduce((n, f) => n + f.additions, 0), deletions: files.reduce((n, f) => n + f.deletions, 0),
+    };
+  }
+
+  /** The two GraphQL operations the code uses. */
+  private graphql(c: Call): Response {
+    const token = this.tokens.get(this.bearer(c));
+    if (!token || token.expiresAt <= this.clock.t) return this.reply(401, { message: "Bad credentials" });
+    const id = String(c.body?.variables?.id ?? "");
+    const m = /^PR_(\d+)_(\d+)$/.exec(id);
+    const repo = m && this.repos.find((x) => x.id === Number(m[1]));
+    const pr = repo && this.git.get(repo.id)!.pulls.find((x) => x.number === Number(m![2]));
+    if (!repo || !pr || repo.installationId !== token.installationId || (token.repositoryIds && !token.repositoryIds.includes(repo.id))) {
+      return this.reply(200, { data: null, errors: [{ type: "NOT_FOUND", message: "Could not resolve to a node" }] });
+    }
+    const query = String(c.body?.query ?? "");
+    if (/markPullRequestReadyForReview/.test(query)) {
+      if (token.permissions.pull_requests !== "write") return this.reply(200, { data: null, errors: [{ type: "FORBIDDEN", message: "Resource not accessible by integration" }] });
+      if (pr.state !== "open") return this.reply(200, { data: null, errors: [{ message: "Pull request is not open" }] });
+      pr.draft = false;
+      return this.reply(200, { data: { markPullRequestReadyForReview: { pullRequest: { isDraft: false } } } });
+    }
+    if (/reviewDecision/.test(query)) return this.reply(200, { data: { node: { reviewDecision: pr.reviewDecision ?? null } } });
+    return this.reply(200, { data: null, errors: [{ message: "unknown query" }] });
+  }
 }
