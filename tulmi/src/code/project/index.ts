@@ -22,7 +22,7 @@
  *   getProjectBrain     the status, progress, welcome, structure and features
  *   openProjectBrain    a handle over one project's brain with the questions
  *                       layer 5 asks: findSymbols, findTexts, findFiles,
- *                       neighbors, testsFor, feature, hotspots
+ *                       neighbors, testsFor, feature, hotspots, file, paths
  *   ensureFresh         before a job starts: is the default branch where the
  *                       brain was built? if not, update it first
  *   BrainSync           GitHub's push webhook: mark the brain stale at once and
@@ -38,6 +38,7 @@ import type { CodeProject } from "../store.js";
 import { baselinePlan } from "./baseline.js";
 import { runBuild, type BuildMode, type ProjectBrainDeps } from "./build.js";
 import { aggregateHistory, coChanged, rankHotspots } from "./hotspots.js";
+import { declaredDeps, type DeclaredDep } from "./registry.js";
 import { queryWords, scoreFile, symbolScore } from "./search.js";
 import { projectBrainStore, type ProjectBrainStore } from "./store.js";
 import {
@@ -49,6 +50,7 @@ export { memoryMarkdown, withBaseline } from "./memory.js";
 export { baselinePlan, recordBaseline } from "./baseline.js";
 export { diffSnapshots } from "./merkle.js";
 export type { BuildMode, ProjectBrainDeps } from "./build.js";
+export type { DeclaredDep } from "./registry.js";
 export type { BaselineResult, BrainView, Feature, Hotspot, StoredFile, StoredText, SymbolInfo } from "./types.js";
 export { MemoryProjectBrainStore, SupabaseProjectBrainStore, projectBrainStore, resetProjectBrainStoreForTests } from "./store.js";
 export type { ProjectBrainStore } from "./store.js";
@@ -269,6 +271,10 @@ export interface BrainHandle {
   neighbors(path: string): Promise<{ imports: string[]; importedBy: string[] }>;
   /** The test files that cover a file. */
   testsFor(path: string): Promise<string[]>;
+  /** One analysed file's row (symbols, imports, rank, hotness, tests, summary), or null when the brain holds no such file. */
+  file(path: string): Promise<StoredFile | null>;
+  /** The paths of the analysed files, in order, at most `limit` (5,000 unless told otherwise). */
+  paths(limit?: number): Promise<string[]>;
   feature(name: string): Promise<Feature | null>;
   features(): Promise<Feature[]>;
   /** The files changed most, carrying TODOs, central and untested: where to be careful. */
@@ -277,6 +283,8 @@ export interface BrainHandle {
   coChanged(path: string): Promise<Array<{ path: string; count: number }>>;
   /** The TAILZU.md text. */
   memory(): Promise<string>;
+  /** What the manifests declare (name, ecosystem and the version range as written): runtime dependencies first, then the dev ones. No workspace-internal names, no @types. */
+  deps(): Promise<DeclaredDep[]>;
   /** The checks to run before the first edit. */
   baselinePlan(): Promise<BaselineStep[]>;
 }
@@ -331,6 +339,8 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
       return { imports: f?.imports ?? [], importedBy: f ? await store.importersOf(id, path, 100) : [] };
     },
     async testsFor(path) { return (await store.getFile(id, path))?.tests ?? []; },
+    async file(path) { return typeof path === "string" && path ? store.getFile(id, path) : null; },
+    async paths(limit = 5000) { return (await store.listFiles(id)).slice(0, Math.max(0, limit)).map((f) => f.path); },
     async features() { return (await row())?.features ?? []; },
     async feature(name) {
       const all = (await row())?.features ?? [];
@@ -355,6 +365,7 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
       return b ? coChanged(aggregateHistory(b.history).pairs, path) : [];
     },
     async memory() { return (await row())?.memory ?? ""; },
+    async deps() { const b = await row(); return b ? declaredDeps(b.structure.core) : []; },
     async baselinePlan() { const b = await row(); return b?.baseline?.plan ?? (b ? baselinePlan(b.structure.commands) : []); },
   };
 }

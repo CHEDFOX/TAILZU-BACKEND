@@ -853,6 +853,8 @@ export class FakeGithub {
         this.mustWrite(token, "pull_requests");
         if (pr.merged) return this.reply(422, { message: "Validation Failed" });
         if (c.body?.state === "closed") pr.state = "closed";
+        if (typeof c.body?.title === "string") pr.title = c.body.title;
+        if (typeof c.body?.body === "string") pr.body = c.body.body;
         return this.reply(200, this.pullJson(repo, git, pr));
       }
     }

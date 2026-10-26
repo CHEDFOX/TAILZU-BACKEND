@@ -29,6 +29,23 @@
  *                                                  summaries: none | partial | complete, welcome, structure, features, conventions,
  *                                                  baseline, spentPaise, error }  404 for a project that isn't the person's, 404
  *                                                  brain_off while CODE_PROJECT_BRAIN is off
+ *   POST   /v1/code/projects/:id/locate { task }
+ *                                             -> { targets: [{ path, lines?, why, signals, score }], related, tests, confidence, question?, used }
+ *                                                  where in the repo the bot would work for that task (code/work/locate.ts): searches the brain,
+ *                                                  asks a cheap model only when unsure, and answers with a question and 2 or 3 labelled options when
+ *                                                  it cannot tell. Changes nothing. 404 brain_off while CODE_PROJECT_BRAIN is off; 409 brain_not_ready
+ *                                                  for a project whose brain was never built
+ *   POST   /v1/code/projects/:id/resources { need }
+ *                                             -> { need, ecosystem, candidates: [{ name, version, score, licence, maintenance, security, size,
+ *                                                  popularity, fit, avoid, line }], pick, pickReason, notes }  a library for "a date picker for React",
+ *                                                  ranked, with licence, maintenance, OSV vulnerabilities, size, downloads and fit with the project's stack
+ *                                                  (code/resources/finder.ts)
+ *   POST   /v1/code/projects/:id/audit        -> { source, approximate, checked, scanned, vulnerable: [{ name, version, severity, vulns, fixedIn? }], counts, notes }
+ *                                                  the project's lockfiles (or its manifests, approximately) through OSV (code/resources/audit.ts)
+ *   POST   /v1/code/projects/:id/intake { request?, answers?, reply?, proceed? }
+ *                                             -> { state: "asking", questions: [{ id, ask, why }], answered, repo } until nothing is left to ask, then
+ *                                                  { state: "done", spec, stack, plan (the PLAN.md text), milestones, degraded, repo }  the new-project planner
+ *                                                  (code/newproject): at most five questions, none the person's words already answer
  *   POST   /v1/code/projects/:id/branches { task, from? }
  *                                             -> { branch, baseSha, url }  `tailzu/<slug>-<4 hex>` from the head of `from` (a branch,
  *                                                  tag or commit; the default branch when left out)
@@ -130,7 +147,16 @@ import { ConnectorError } from "../connectors/oauth.js";
 import type { Code } from "../code/index.js";
 import { beginConnect, completeCallback, forgetInstallation, linkStatus } from "../code/link.js";
 import { GRANTS_MAX, PolicyError, actionCatalog, parseGrant, type GateOptions } from "../code/policy.js";
-import { addProject, createWorkBranch, initEmptyRepo, listBranches, listRepos, newRepoLink, openPr, ownProject } from "../code/projects.js";
+import { addProject, createWorkBranch, initEmptyRepo, listBranches, listRepos, newRepoLink, openPr, ownProject, workspace } from "../code/projects.js";
+import { emptyRepoVerdict } from "../code/newproject/detect.js";
+import { advanceIntake } from "../code/newproject/intake.js";
+import { milestoneBranch } from "../code/newproject/milestones.js";
+import { planMilestones } from "../code/newproject/planDoc.js";
+import { auditDeps } from "../code/resources/audit.js";
+import { findResources } from "../code/resources/finder.js";
+import { manifestReader } from "../code/resources/read.js";
+import { locate } from "../code/work/locate.js";
+import type { ModelCtx } from "../code/work/model.js";
 import { branchDiff, closePr, deleteWorkBranch, markReady, mergePr, prComments, prStatus, syncBranch } from "../code/pulls.js";
 import { CodeNeedsAccount } from "../code/store.js";
 import { handleWebhook, signatureOk } from "../code/webhook.js";
@@ -145,6 +171,16 @@ export interface CodeRoutesDeps {
 /** Where the phone's app is opened from the done page. The Code screen comes with the phone's side; for now, the app. */
 const OPEN_APP = "tulmi://";
 
+/** What the work core's routes accept and spend (no job is behind them, so each model call is held to its own cap, in paise). */
+const LOCATE_TASK_MAX = 4000;
+const NEED_MAX = 300;
+const INTAKE_REQUEST_MAX = 4000;
+const INTAKE_ANSWER_MAX = 1500;
+/** Locate asks the cheap tier at most twice; about 40 paise each in the worst case. */
+const LOCATE_PAISE = 100;
+/** The spec is one call to the strong tier; about 600 paise in the worst case. */
+const SPEC_PAISE = 800;
+
 /** The HTTP status of a ConnectorError, by its code. Anything not listed (GitHub failing, mostly) is a 502. */
 export const STATUS: Record<string, number> = {
   bad_state: 400, bad_request: 400, bad_branch: 400, bad_path: 400, binary_file: 400, too_large: 400, not_a_file: 400,
@@ -154,7 +190,7 @@ export const STATUS: Record<string, number> = {
   approval_invalid: 409, pr_draft: 409, pr_not_open: 409, pr_merged: 409, not_mergeable: 409, use_server_commit: 409,
   protected_branch: 409, not_fast_forward: 409, not_grantable: 400,
   needs_you: 403, policy_denied: 403, never: 403, needs_workflow_scope: 403,
-  oauth_off: 404, brain_off: 404, needs_signin: 403, not_allowed: 403, org_blocked: 403, scope_too_broad: 403, scope_missing: 403,
+  oauth_off: 404, brain_off: 404, brain_not_ready: 409, needs_signin: 403, not_allowed: 403, org_blocked: 403, scope_too_broad: 403, scope_missing: 403,
   not_configured: 503, busy: 503,
   // The jobs and the runner protocol (routes/codeJobs.ts): a lease someone else holds now, a step still out, a job that is over,
   // a job that isn't waiting for what was said yes to, a PC that hasn't said hello, paid compute that is off or absent.
@@ -428,6 +464,82 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     if (!s) return reply;
     try {
       return reply.send(await s.brain.get(s.user.id, req.params.id));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // --- the work core (code/work, code/resources, code/newproject): thin doors, for the agent loop's own use first. Off while the brain is.
+  /** The model door the brain was built with, held to what one call may cost (no job is behind these routes). */
+  const modelFor = (brain: NonNullable<typeof k>["brain"], userId: string, maxPaise: number): ModelCtx => ({
+    ...(brain!.runtime.call ? { call: brain!.runtime.call } : {}), ...(brain!.runtime.gateway ? { gateway: brain!.runtime.gateway } : {}), userId, budget: { maxPaise },
+  });
+  const bodyOf = (b: unknown): Record<string, unknown> => (b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, unknown>) : {});
+  const text = (v: unknown, min: number, max: number): string | null => (typeof v === "string" && v.trim().length >= min && v.trim().length <= max ? v.trim() : null);
+
+  app.post<{ Params: { id: string }; Body: { task?: unknown } | undefined }>("/v1/code/projects/:id/locate", RL, async (req, reply) => {
+    const s = await beginBrain(req.headers["authorization"], reply);
+    if (!s) return reply;
+    const task = text(bodyOf(req.body).task, 3, LOCATE_TASK_MAX);
+    if (task === null) return reply.code(400).send({ code: "bad_request", message: `task is what you want done, ${LOCATE_TASK_MAX} characters at most.` });
+    try {
+      const brain = await s.brain.open(s.user.id, req.params.id);
+      if ((await brain.status()).status === "none") return reply.code(409).send({ code: "brain_not_ready", message: "Tailzu hasn't read this project yet. Start its brain first." });
+      const project = await ownProject(s.d, s.user.id, req.params.id);
+      let ws: Awaited<ReturnType<typeof workspace>> | null = null;
+      // Files are read from the default branch, and only when the search was unsure.
+      const read = async (path: string): Promise<string | null> => {
+        try { ws ??= await workspace(s.d, s.user.id, req.params.id, project.defaultBranch); return (await ws.read(path)).text; } catch { return null; }
+      };
+      return reply.send(await locate(task, brain, { model: modelFor(s.brain, s.user.id, LOCATE_PAISE), read }));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.post<{ Params: { id: string }; Body: { need?: unknown } | undefined }>("/v1/code/projects/:id/resources", RL, async (req, reply) => {
+    const s = await beginBrain(req.headers["authorization"], reply);
+    if (!s) return reply;
+    const need = text(bodyOf(req.body).need, 3, NEED_MAX);
+    if (need === null) return reply.code(400).send({ code: "bad_request", message: `need is what you are looking for, like "a date picker for React", ${NEED_MAX} characters at most.` });
+    try {
+      const brain = await s.brain.open(s.user.id, req.params.id);
+      const project = await ownProject(s.d, s.user.id, req.params.id);
+      // A private repo is taken for a closed-source project: GPL and AGPL then warn strongly.
+      return reply.send(await findResources(need, brain, { ...(s.brain.runtime.fetchFn ? { fetchFn: s.brain.runtime.fetchFn } : {}), closedSource: project.private }));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.post<{ Params: { id: string } }>("/v1/code/projects/:id/audit", RL, async (req, reply) => {
+    const s = await beginBrain(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      const brain = await s.brain.open(s.user.id, req.params.id);
+      if ((await brain.status()).status === "none") return reply.code(409).send({ code: "brain_not_ready", message: "Tailzu hasn't read this project yet. Start its brain first." });
+      const read = await manifestReader(s.d, s.user.id, req.params.id);
+      return reply.send(await auditDeps(brain, read, { ...(s.brain.runtime.fetchFn ? { fetchFn: s.brain.runtime.fetchFn } : {}) }));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.post<{ Params: { id: string }; Body: Record<string, unknown> | undefined }>("/v1/code/projects/:id/intake", RL, async (req, reply) => {
+    const s = await beginBrain(req.headers["authorization"], reply);
+    if (!s) return reply;
+    const b = bodyOf(req.body);
+    const request = b.request === undefined ? undefined : text(b.request, 1, INTAKE_REQUEST_MAX);
+    const replyText = b.reply === undefined ? undefined : text(b.reply, 1, INTAKE_ANSWER_MAX);
+    // The answers are an object of text by question id; a string or a list in their place is a 400, not an empty object.
+    const answersOk = b.answers === undefined || (typeof b.answers === "object" && b.answers !== null && !Array.isArray(b.answers));
+    const answers = b.answers !== undefined && answersOk ? bodyOf(b.answers) : undefined;
+    if (request === null || replyText === null || !answersOk || (answers && (Object.keys(answers).length > 10 || Object.values(answers).some((v) => typeof v !== "string" || v.length > INTAKE_ANSWER_MAX))) || (b.proceed !== undefined && typeof b.proceed !== "boolean")) {
+      return reply.code(400).send({ code: "bad_request", message: "Send request (your first message), answers (by question id), reply (a free-text answer) or proceed (true to let Tailzu decide the rest), as text." });
+    }
+    try {
+      const brain = await s.brain.open(s.user.id, req.params.id);
+      const repo = await emptyRepoVerdict(brain);
+      const out = await advanceIntake(s.user.id, req.params.id, {
+        ...(request !== undefined ? { request } : {}), ...(replyText !== undefined ? { reply: replyText } : {}), ...(answers ? { answers } : {}), ...(b.proceed === true ? { proceed: true } : {}),
+      }, { model: modelFor(s.brain, s.user.id, SPEC_PAISE) });
+      if (out.state === "asking") return reply.send({ ...out, repo: { empty: repo.empty, reason: repo.reason } });
+      return reply.send({
+        ...out, repo: { empty: repo.empty, reason: repo.reason },
+        milestones: planMilestones(out.spec, out.stack).map((m) => ({ k: m.k, title: m.title, branch: milestoneBranch(m.k, m.title) })),
+      });
     } catch (err) { return fail(reply, err); }
   });
 

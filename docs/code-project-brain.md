@@ -131,6 +131,8 @@ Subscribe the GitHub App to **Push** (`docs/github-app.md`). The webhook answers
 
 ## 8. For layer 5 (the planner): what to call
 
+What layers 5 to 7 do with these calls (locate, plan, the work log, the library finder and audit, the research brief, the new-project planner) is `docs/code-work.md`.
+
 ```ts
 const brain = code.brain!;                                   // null when CODE_PROJECT_BRAIN is off
 await brain.ensureFresh(userId, projectId);                  // before a job
@@ -141,6 +143,8 @@ await b.findTexts("Sign up");                                // visible strings,
 await b.neighbors("src/lib/api.ts");                         // { imports, importedBy }
 await b.testsFor("src/lib/api.ts");                          // tests that cover it
 await b.feature("checkout"); await b.features();
+await b.file("src/lib/api.ts"); await b.paths();             // one file's row; every path (5,000 at most)
+await b.deps();                                              // what the manifests declare: name, ecosystem, range
 await b.hotspots(); await b.coChanged("src/lib/api.ts");
 await b.memory();                                            // the TAILZU.md text
 await b.baselinePlan();                                      // [{ kind, cwd, cmd }]
