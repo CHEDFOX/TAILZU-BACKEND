@@ -41,13 +41,21 @@
  * for it yet): the same checks, then a handle with four verbs over one work
  * branch: tree, read, commit and openDraftPr. The handle can't be pointed at
  * any other branch, and the GitHub calls under it check the branch again.
+ *
+ * Also here: a link to make a new repo on GitHub (newRepoLink: the person
+ * makes it, so Tailzu needs no permission to), the first README of a repo that
+ * has no commits (initEmptyRepo, one of exactly two writes to a default
+ * branch), and runnerAccess, the repo-scoped token a sandbox will clone with.
+ * Keeping a branch current, reading what changed, and the pull request's life
+ * (ready, close, the two-step merge, deleting the branch) are in pulls.ts.
  */
 import { randomBytes } from "node:crypto";
 import { ConnectorError } from "../connectors/oauth.js";
-import type { CommitFile, GithubApp, RepoPermission, RepoRef, TreeEntry } from "./github.js";
+import { assertWorkBranch, type CommitFile, type GithubApp, type RepoPermission, type RepoRef, type TreeEntry } from "./github.js";
+import type { ApprovalBook } from "./approvals.js";
 import type { CodeBranch, CodeInstallation, CodeProject, CodeStore } from "./store.js";
 
-export interface ProjectDeps { store: CodeStore; github: GithubApp }
+export interface ProjectDeps { store: CodeStore; github: GithubApp; approvals: ApprovalBook }
 
 /** Projects one person may have. */
 export const PROJECTS_MAX = 50;
@@ -71,7 +79,7 @@ export function branchSlug(task: string): string {
 /** "tailzu/<slug>-<4 hex>". */
 export const newBranchName = (task: string): string => `tailzu/${branchSlug(task)}-${randomBytes(2).toString("hex")}`;
 
-const notFound = (what: string) => new ConnectorError("not_found", `I couldn't find ${what}.`);
+export const notFound = (what: string) => new ConnectorError("not_found", `I couldn't find ${what}.`);
 
 /** `fn` over `items`, never more than `limit` of them running at once, in order. */
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -162,7 +170,7 @@ export async function addProject(d: ProjectDeps, userId: string, repoId: number)
 }
 
 /** The person's own project, or "not found". */
-async function ownProject(d: ProjectDeps, userId: string, projectId: string): Promise<CodeProject> {
+export async function ownProject(d: ProjectDeps, userId: string, projectId: string): Promise<CodeProject> {
   const p = await d.store.getProject(userId, projectId);
   if (!p) throw notFound("that project");
   return p;
@@ -173,7 +181,7 @@ async function ownProject(d: ProjectDeps, userId: string, projectId: string): Pr
  * every call down otherwise), and the person may still use the repo. A write
  * passes `fresh`, so access taken away since is felt at once.
  */
-async function assertAccess(d: ProjectDeps, userId: string, p: CodeProject, fresh = false): Promise<void> {
+export async function assertAccess(d: ProjectDeps, userId: string, p: CodeProject, fresh = false): Promise<void> {
   const link = await d.store.getInstallation(userId, p.installationId);
   if (!link) throw notFound("that project's GitHub install");
   if (link.suspendedAt !== null) throw new ConnectorError("suspended", "GitHub has suspended Tailzu's access to this account. Unsuspend it on GitHub first.");
@@ -182,7 +190,62 @@ async function assertAccess(d: ProjectDeps, userId: string, p: CodeProject, fres
   }
 }
 
-const repoRef = (p: CodeProject): RepoRef => ({ installationId: p.installationId, repoId: p.repoId, fullName: p.fullName, defaultBranch: p.defaultBranch });
+export const repoRef = (p: CodeProject): RepoRef => ({ installationId: p.installationId, repoId: p.repoId, fullName: p.fullName, defaultBranch: p.defaultBranch });
+
+/** A branch Tailzu recorded in this project, or "not found". */
+export async function recordedBranch(d: ProjectDeps, project: CodeProject, branch: unknown): Promise<CodeBranch> {
+  const rec = typeof branch === "string" && branch ? await d.store.getBranch(project.id, branch) : null;
+  if (!rec) throw notFound("that branch in this project");
+  return rec;
+}
+
+/**
+ * A link that opens GitHub's "new repository" page with the name and
+ * "private" filled in. The person makes the repo themselves, so Tailzu never
+ * needs the Administration permission to. The name is made into what a repo
+ * can be called: ASCII words joined by "-", 100 characters at most, "my-project"
+ * when none are left.
+ */
+export function newRepoLink(name: unknown): { url: string; name: string } {
+  const slug = (String(typeof name === "string" ? name.slice(0, 500) : "").match(/[A-Za-z0-9]+/g) ?? []).join("-").toLowerCase().slice(0, 100).replace(/-+$/, "") || "my-project";
+  return { url: `https://github.com/new?${new URLSearchParams({ name: slug, visibility: "private" })}`, name: slug };
+}
+
+/**
+ * THE FIRST OF TWO WRITES TO A DEFAULT BRANCH (github.ts initEmptyRepo): one
+ * README.md with the project's title, in a repo that has no commits. A repo
+ * with commits is refused ("repo_not_empty"), however it got here, so this
+ * can never add to or replace anything. After it a work branch can be made as
+ * usual; before it, createWorkBranch says "repo_empty".
+ */
+export async function initEmptyRepo(d: ProjectDeps, userId: string, projectId: string, title?: unknown): Promise<{ commitSha: string }> {
+  const project = await ownProject(d, userId, projectId);
+  await assertAccess(d, userId, project, true);
+  const heading = typeof title === "string" && title.trim() ? title : project.fullName.split("/")[1]!;
+  return { commitSha: (await d.github.initEmptyRepo(repoRef(project), heading)).sha };
+}
+
+/**
+ * What a sandbox needs to clone a work branch (and push to it): the repo's
+ * address and a token for THAT REPO ONLY: contents:read for "read",
+ * contents:write for "push", nothing else. There is no route for it yet. It
+ * is given once and kept nowhere: not in the store, not in the token cache,
+ * not in a log. The branch has to be one Tailzu recorded; the person has to
+ * be allowed in the repo right now (a fresh check, read or push alike, since
+ * the token is the repo's contents).
+ */
+export async function runnerAccess(
+  d: ProjectDeps, userId: string, projectId: string, branch: string, mode: "read" | "push",
+): Promise<{ cloneUrl: string; token: string; expiresAt: number }> {
+  if (mode !== "read" && mode !== "push") throw new ConnectorError("bad_request", "Say whether the runner reads or pushes.");
+  const project = await ownProject(d, userId, projectId);
+  const rec = await recordedBranch(d, project, branch);
+  assertWorkBranch(rec.branch, project.defaultBranch);
+  if (rec.state === "deleted") throw new ConnectorError("branch_deleted", "That branch has been deleted from GitHub.");
+  await assertAccess(d, userId, project, true);
+  const t = await d.github.runnerToken(repoRef(project), mode);
+  return { cloneUrl: `https://github.com/${project.fullName}.git`, token: t.token, expiresAt: t.expiresAt };
+}
 
 /** A work branch for a task, from the default branch's head. */
 export async function createWorkBranch(d: ProjectDeps, userId: string, projectId: string, task: unknown): Promise<{ branch: string; baseSha: string; url: string }> {

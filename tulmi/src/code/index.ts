@@ -12,6 +12,7 @@
  * reads the environment or reaches GitHub unless it is asked to.
  */
 import { getConfig } from "../config.js";
+import { ApprovalBook } from "./approvals.js";
 import { GithubApp, type GithubAppConfig } from "./github.js";
 import { codeStore, type CodeStore } from "./store.js";
 
@@ -21,6 +22,8 @@ export interface Code {
   github: GithubApp | null;
   /** Null: no webhook secret, so the webhook refuses everything. */
   webhookSecret: string | null;
+  /** The merges waiting for a yes (approvals.ts): in memory, ten minutes each. */
+  approvals: ApprovalBook;
 }
 
 export interface CreateCodeOptions {
@@ -55,5 +58,5 @@ export function createCode(o: CreateCodeOptions = {}): Code {
     }
   }
   const secret = o.webhookSecret !== undefined ? o.webhookSecret : getConfig().GITHUB_APP_WEBHOOK_SECRET ?? null;
-  return { store: o.store ?? codeStore(), github, webhookSecret: secret || null };
+  return { store: o.store ?? codeStore(), github, webhookSecret: secret || null, approvals: new ApprovalBook({ now: o.now }) };
 }

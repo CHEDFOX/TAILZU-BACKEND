@@ -82,6 +82,16 @@ const ALL_ROUTES: Array<["GET" | "POST" | "DELETE", string]> = [
   ["POST", "/v1/code/projects/00000000-0000-4000-8000-000000000000/branches"],
   ["GET", "/v1/code/projects/00000000-0000-4000-8000-000000000000/branches"],
   ["POST", "/v1/code/projects/00000000-0000-4000-8000-000000000000/branches/tailzu%2Fx-1234/pr"],
+  ["GET", "/v1/code/new-repo-link?name=my-app"],
+  ["POST", "/v1/code/projects/00000000-0000-4000-8000-000000000000/init"],
+  ["POST", "/v1/code/projects/00000000-0000-4000-8000-000000000000/branches/tailzu%2Fx-1234/sync"],
+  ["GET", "/v1/code/projects/00000000-0000-4000-8000-000000000000/branches/tailzu%2Fx-1234/diff"],
+  ["GET", "/v1/code/projects/00000000-0000-4000-8000-000000000000/branches/tailzu%2Fx-1234/pr"],
+  ["GET", "/v1/code/projects/00000000-0000-4000-8000-000000000000/branches/tailzu%2Fx-1234/pr/comments"],
+  ["POST", "/v1/code/projects/00000000-0000-4000-8000-000000000000/branches/tailzu%2Fx-1234/pr/ready"],
+  ["POST", "/v1/code/projects/00000000-0000-4000-8000-000000000000/branches/tailzu%2Fx-1234/pr/close"],
+  ["POST", "/v1/code/projects/00000000-0000-4000-8000-000000000000/branches/tailzu%2Fx-1234/pr/merge"],
+  ["DELETE", "/v1/code/projects/00000000-0000-4000-8000-000000000000/branches/tailzu%2Fx-1234"],
 ];
 
 // ------------------------------------------------------------ off, not set up
@@ -490,6 +500,203 @@ describe("work branches and draft PRs", () => {
   });
 });
 
+// ------------------------------------------------------------ the rest of the git logic
+
+describe("new repos, and a work branch's life", () => {
+  const B = (id: string, branch: string) => `/v1/code/projects/${id}/branches/${encodeURIComponent(branch)}`;
+
+  /** Alice's project with a work branch that has a commit and a draft pull request. */
+  async function withPr(o: { files?: Record<string, string> } = {}) {
+    const r = await rig();
+    const [repo] = await linked(r, [["alice/app", { files: o.files ?? { "README.md": "# app\n" } }]]);
+    const id = (await r.call("alice", "POST", "/v1/code/projects", { repoId: repo!.id })).json().project.id as string;
+    const { branch } = (await r.call("alice", "POST", `/v1/code/projects/${id}/branches`, { task: "ship it" })).json();
+    r.fake.push(repo!, branch, { "feature.txt": "one\ntwo\n" }, "Add the feature");
+    const pr = (await r.call("alice", "POST", `${B(id, branch)}/pr`, { title: "Add feature", body: "Does it." })).json();
+    return { ...r, repo: repo!, id, branch, pr };
+  }
+
+  it("makes a link to GitHub's new-repo page, for a signed-in person", async () => {
+    const r = await rig();
+    expect((await r.call("alice", "GET", "/v1/code/new-repo-link?name=My%20Cool%20App")).json()).toEqual({
+      url: "https://github.com/new?name=my-cool-app&visibility=private", name: "my-cool-app",
+    });
+    expect((await r.call("alice", "GET", "/v1/code/new-repo-link")).json().name).toBe("my-project");
+    expect((await r.call(null, "GET", "/v1/code/new-repo-link?name=x")).statusCode).toBe(401);
+    await r.app.close();
+  });
+
+  it("starts an empty repo with a README, and says 'repo_empty' to a branch before that", async () => {
+    const r = await rig();
+    r.fake.addInstall(101, "alice");
+    const repo = r.fake.addRepo(101, "alice/idea", { empty: true });
+    await r.store.upsertInstallation("alice", { installationId: 101, accountLogin: "alice", accountType: "User", repositorySelection: "all", githubUserId: 77, githubLogin: "alice" });
+    const id = (await r.call("alice", "POST", "/v1/code/projects", { repoId: repo.id })).json().project.id as string;
+
+    const early = await r.call("alice", "POST", `/v1/code/projects/${id}/branches`, { task: "first" });
+    expect(early.statusCode).toBe(409);
+    expect(early.json().code).toBe("repo_empty");
+    expect(early.json().message).toMatch(/README/);
+
+    const init = await r.call("alice", "POST", `/v1/code/projects/${id}/init`, { title: "Idea" });
+    expect(init.statusCode).toBe(200);
+    expect(init.json().commitSha).toBe(r.fake.head(repo, "main"));
+    expect(r.fake.files(repo, "main")).toEqual({ "README.md": "# Idea\n" });
+    expect((await r.call("alice", "POST", `/v1/code/projects/${id}/branches`, { task: "first" })).statusCode).toBe(200);
+
+    // Not twice, and not in a repo with commits.
+    const again = await r.call("alice", "POST", `/v1/code/projects/${id}/init`, {});
+    expect(again.statusCode).toBe(409);
+    expect(again.json().code).toBe("repo_not_empty");
+    expect((await r.call("bob", "POST", `/v1/code/projects/${id}/init`, {})).statusCode).toBe(404);
+    expect(r.fake.files(repo, "main")).toEqual({ "README.md": "# Idea\n" });
+    await r.app.close();
+  });
+
+  it("keeps a branch current, and answers a conflict with 409 'conflict' and the state 'conflict'", async () => {
+    const r = await withPr();
+    r.fake.push(r.repo, "main", { "from-main.txt": "hi" });
+    const ok = await r.call("alice", "POST", `${B(r.id, r.branch)}/sync`);
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().status).toBe("merged");
+    expect((await r.call("alice", "POST", `${B(r.id, r.branch)}/sync`)).json()).toEqual({ status: "up_to_date" });
+
+    r.fake.push(r.repo, r.branch, { "README.md": "# mine\n" });
+    r.fake.push(r.repo, "main", { "README.md": "# theirs\n" });
+    const head = r.fake.head(r.repo, r.branch);
+    const clash = await r.call("alice", "POST", `${B(r.id, r.branch)}/sync`);
+    expect(clash.statusCode).toBe(409);
+    expect(clash.json().code).toBe("conflict");
+    expect(r.fake.head(r.repo, r.branch)).toBe(head);
+    const rec = (await r.call("alice", "GET", `/v1/code/projects/${r.id}/branches`)).json().branches.find((b: { branch: string }) => b.branch === r.branch);
+    expect(rec.state).toBe("conflict");
+    expect((await r.call("bob", "POST", `${B(r.id, r.branch)}/sync`)).statusCode).toBe(404);
+    await r.app.close();
+  });
+
+  it("shows what changed, the pull request, and its comments", async () => {
+    const r = await withPr();
+    r.fake.editPull(r.repo, r.pr.prNumber, {
+      reviewDecision: "APPROVED", reviewComments: [{ user: "rev", body: "ok", path: "feature.txt", line: 1, at: "2026-10-26T12:30:00Z" }],
+      issueComments: [{ user: "bot[bot]", body: "hello", at: "2026-10-26T12:40:00Z" }],
+    });
+    const diff = (await r.call("alice", "GET", `${B(r.id, r.branch)}/diff`)).json();
+    expect(diff).toMatchObject({ aheadBy: 1, behindBy: 0, truncated: false, totals: { files: 1, additions: 2, deletions: 0 } });
+    expect(diff.files).toEqual([{ path: "feature.txt", status: "added", additions: 2, deletions: 0 }]);
+    expect(diff.commits).toEqual([{ sha: expect.any(String), message: "Add the feature" }]);
+
+    const status = (await r.call("alice", "GET", `${B(r.id, r.branch)}/pr`)).json();
+    expect(status).toMatchObject({ number: r.pr.prNumber, state: "open", draft: true, mergeable: true, reviewDecision: "approved", reviewComments: 1, headSha: r.fake.head(r.repo, r.branch) });
+    const comments = (await r.call("alice", "GET", `${B(r.id, r.branch)}/pr/comments`)).json();
+    expect(comments.comments).toEqual([
+      { author: "rev", body: "ok", path: "feature.txt", line: 1, createdAt: Date.parse("2026-10-26T12:30:00Z") },
+      { author: "bot[bot]", body: "hello", createdAt: Date.parse("2026-10-26T12:40:00Z") },
+    ]);
+    expect(comments.truncated).toBe(false);
+    for (const suffix of ["/diff", "/pr", "/pr/comments"]) expect((await r.call("bob", "GET", `${B(r.id, r.branch)}${suffix}`)).statusCode, suffix).toBe(404);
+    await r.app.close();
+  });
+
+  it("takes a pull request out of draft, and closes one", async () => {
+    const r = await withPr();
+    expect((await r.call("alice", "POST", `${B(r.id, r.branch)}/pr/ready`)).json()).toEqual({ draft: false });
+    expect(r.fake.pulls(r.repo)[0]!.draft).toBe(false);
+    expect((await r.call("alice", "POST", `${B(r.id, r.branch)}/pr/close`)).json()).toEqual({ state: "closed" });
+    expect(r.fake.pulls(r.repo)[0]).toMatchObject({ state: "closed", merged: false });
+    const closed = await r.call("alice", "POST", `${B(r.id, r.branch)}/pr/ready`);
+    expect(closed.statusCode).toBe(409);
+    expect(closed.json().code).toBe("pr_not_open");
+    await r.app.close();
+  });
+
+  it("merges in two steps: no body asks, an approval id says yes", async () => {
+    const r = await withPr();
+    await r.call("alice", "POST", `${B(r.id, r.branch)}/pr/ready`);
+    const mainHead = r.fake.head(r.repo, "main");
+
+    const ask = await r.call("alice", "POST", `${B(r.id, r.branch)}/pr/merge`);
+    expect(ask.statusCode).toBe(200);
+    const body = ask.json();
+    expect(body).toMatchObject({
+      needsApproval: true, approvalId: expect.any(String),
+      summary: { title: "Add feature", into: "main", files: 1, additions: 2, deletions: 0, headSha: r.fake.head(r.repo, r.branch) },
+    });
+    expect(r.fake.head(r.repo, "main")).toBe(mainHead); // nothing merged yet
+    expect(r.fake.pulls(r.repo)[0]!.merged).toBe(false);
+
+    // Wrong person, wrong id, and a body that isn't an id: nothing merged.
+    const notBobs = await r.call("bob", "POST", `${B(r.id, r.branch)}/pr/merge`, { approvalId: body.approvalId });
+    expect(notBobs.statusCode).toBe(409);
+    expect(notBobs.json().code).toBe("approval_invalid");
+    const stranger = await r.call("alice", "POST", `${B(r.id, r.branch)}/pr/merge`, { approvalId: "made-up" });
+    expect(stranger.statusCode).toBe(409);
+    expect(stranger.json().code).toBe("approval_invalid");
+    expect((await r.call("alice", "POST", `${B(r.id, r.branch)}/pr/merge`, { approvalId: 5 })).statusCode).toBe(400);
+    expect((await r.call("alice", "POST", `${B(r.id, r.branch)}/pr/merge`, { approvalId: "" })).statusCode).toBe(400);
+    expect(r.fake.pulls(r.repo)[0]!.merged).toBe(false);
+
+    const yes = await r.call("alice", "POST", `${B(r.id, r.branch)}/pr/merge`, { approvalId: body.approvalId });
+    expect(yes.statusCode).toBe(200);
+    expect(yes.json()).toEqual({ merged: true, sha: r.fake.head(r.repo, "main") });
+    expect(r.fake.files(r.repo, "main")).toMatchObject({ "feature.txt": "one\ntwo\n" });
+    const used = await r.call("alice", "POST", `${B(r.id, r.branch)}/pr/merge`, { approvalId: body.approvalId });
+    expect(used.statusCode).toBe(409);
+    expect(used.json().code).toBe("approval_invalid");
+    await r.app.close();
+  });
+
+  it("refuses the second step with 409 'changed_since_approval' when the branch has moved", async () => {
+    const r = await withPr();
+    await r.call("alice", "POST", `${B(r.id, r.branch)}/pr/ready`);
+    const { approvalId } = (await r.call("alice", "POST", `${B(r.id, r.branch)}/pr/merge`)).json();
+    r.fake.push(r.repo, r.branch, { "late.txt": "x" });
+    const res = await r.call("alice", "POST", `${B(r.id, r.branch)}/pr/merge`, { approvalId });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe("changed_since_approval");
+    expect(r.fake.pulls(r.repo)[0]!.merged).toBe(false);
+    await r.app.close();
+  });
+
+  it("deletes the branch after the merge, and keeps the record", async () => {
+    const r = await withPr();
+    const early = await r.call("alice", "DELETE", B(r.id, r.branch));
+    expect(early.statusCode).toBe(409);
+    expect(early.json().code).toBe("branch_in_use");
+    await r.call("alice", "POST", `${B(r.id, r.branch)}/pr/ready`);
+    const { approvalId } = (await r.call("alice", "POST", `${B(r.id, r.branch)}/pr/merge`)).json();
+    await r.call("alice", "POST", `${B(r.id, r.branch)}/pr/merge`, { approvalId });
+
+    expect((await r.call("bob", "DELETE", B(r.id, r.branch))).statusCode).toBe(404);
+    const done = await r.call("alice", "DELETE", B(r.id, r.branch));
+    expect(done.statusCode).toBe(200);
+    expect(done.json()).toEqual({ state: "deleted" });
+    expect(r.fake.branches(r.repo)).not.toContain(r.branch);
+    const list = (await r.call("alice", "GET", `/v1/code/projects/${r.id}/branches`)).json().branches;
+    expect(list.find((b: { branch: string }) => b.branch === r.branch)).toMatchObject({ state: "deleted", prNumber: r.pr.prNumber });
+    expect((await r.call("alice", "POST", `${B(r.id, r.branch)}/sync`)).json().code).toBe("branch_deleted");
+    await r.app.close();
+  });
+
+  it("turns a write away with 403 'no_access' once the person's access is gone", async () => {
+    const r = await rig();
+    r.fake.addInstall(300, "acme", { type: "Organization", selection: "all" });
+    const api = r.fake.addRepo(300, "acme/api");
+    await r.store.upsertInstallation("alice", { installationId: 300, accountLogin: "acme", accountType: "Organization", repositorySelection: "all", githubUserId: 1, githubLogin: "alice" });
+    r.fake.setPermission(api, "alice", "write");
+    const id = (await r.call("alice", "POST", "/v1/code/projects", { repoId: api.id })).json().project.id as string;
+    const { branch } = (await r.call("alice", "POST", `/v1/code/projects/${id}/branches`, { task: "x" })).json();
+    r.fake.setPermission(api, "alice", "read");
+    for (const [method, suffix] of [["POST", "/sync"], ["POST", "/pr/ready"], ["POST", "/pr/close"], ["POST", "/pr/merge"], ["DELETE", ""]] as const) {
+      const res = await r.call("alice", method, `${B(id, branch)}${suffix}`, method === "POST" ? {} : undefined);
+      expect(res.statusCode, `${method} ${suffix}`).toBe(403);
+      expect(res.json().code).toBe("no_access");
+    }
+    expect((await r.call("alice", "POST", `/v1/code/projects/${id}/init`, {})).json().code).toBe("no_access");
+    expect(r.fake.writes().filter((c) => !c.url.pathname.endsWith("/git/refs"))).toEqual([]);
+    await r.app.close();
+  });
+});
+
 // ------------------------------------------------------------ whose repos
 
 describe("an install is not access to every repo in it", () => {
@@ -693,6 +900,36 @@ describe("GitHub's webhook, through the server", () => {
       expect(await store().getInstallation(u, 101)).not.toBeNull();
     }
     await reset();
+  });
+
+  it("follows a work branch's pull request: closed, merged, reopened, and a review coming in", async () => {
+    const s = store();
+    const p = await s.createProject("alice", { installationId: 101, repoId: 4242, fullName: "acme/app", defaultBranch: "main", private: true });
+    await s.addBranch({ projectId: p.id, branch: "tailzu/fix-0001", task: "t", baseSha: "a".repeat(40) });
+    await s.setBranchPr(p.id, "tailzu/fix-0001", 3, "https://github.com/acme/app/pull/3");
+    const event = (name: string, action: string, extra: Record<string, unknown> = {}) => hook(name, {
+      action, repository: { id: 4242 }, installation: { id: 101 }, ...extra,
+      pull_request: { number: 3, merged: extra.merged === true, head: { ref: "tailzu/fix-0001", repo: { id: 4242 } } },
+    });
+    const state = async () => (await s.getBranch(p.id, "tailzu/fix-0001"))!;
+
+    expect((await event("pull_request", "closed")).statusCode).toBe(200);
+    expect((await state()).state).toBe("closed");
+    expect((await event("pull_request", "reopened")).statusCode).toBe(200);
+    expect((await state()).state).toBe("pr_open");
+    expect((await event("pull_request", "closed", { merged: true })).statusCode).toBe(200);
+    expect((await state()).state).toBe("merged");
+    const review = await event("pull_request_review", "submitted", { review: { submitted_at: "2026-10-26T14:00:00Z" } });
+    expect(review.statusCode).toBe(200);
+    expect((await state()).lastReviewAt).toBe(Date.parse("2026-10-26T14:00:00Z"));
+    // Not signed: not believed.
+    const raw = JSON.stringify({ action: "reopened", repository: { id: 4242 }, pull_request: { head: { ref: "tailzu/fix-0001", repo: { id: 4242 } } } });
+    expect((await hook("pull_request", null, { raw, signature: "sha256=" + "0".repeat(64) })).statusCode).toBe(401);
+    expect((await state()).state).toBe("merged");
+    // A pull request from a fork that names the same branch moves nothing.
+    expect((await hook("pull_request", { action: "reopened", repository: { id: 4242 }, pull_request: { head: { ref: "tailzu/fix-0001", repo: { id: 9 } } } })).statusCode).toBe(202);
+    expect((await state()).state).toBe("merged");
+    await s.deleteProject("alice", p.id);
   });
 
   it("answers 202 and does nothing for any other event, signed or not malformed", async () => {

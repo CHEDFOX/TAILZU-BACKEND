@@ -35,10 +35,18 @@
  *
  * THE GUARD. Tailzu never writes to a default branch, or to any branch outside
  * `tailzu/`. assertWorkBranch is the one function that says so, and every
- * write goes through it: making a branch, committing, opening the PR. The
- * paths of a commit are held to the same standard (assertRepoPath): relative,
- * no `..`, and nothing under .github/workflows (the App has no permission to
- * change workflows anyway; this gives a clear error instead of GitHub's).
+ * write goes through it: making a branch, committing, merging the default
+ * branch into the work branch, opening, closing or deleting. The paths of a
+ * commit are held to the same standard (assertRepoPath): relative, no `..`,
+ * and nothing under .github/workflows (the App has no permission to change
+ * workflows anyway; this gives a clear error instead of GitHub's).
+ *
+ * There are exactly TWO writes to a default branch, each its own method with
+ * its own guard, neither one reachable by a bug in the rest:
+ *   - initEmptyRepo: the first README.md of a repo with no commits at all,
+ *     checked first, so it can't overwrite anything;
+ *   - mergePull: squash-merging a work branch's pull request, after a person
+ *     approved exactly that head commit (approvals.ts).
  */
 import { createPrivateKey, type KeyObject } from "node:crypto";
 import { SignJWT } from "jose";
@@ -56,6 +64,10 @@ const TOKEN_SKEW_MS = 5 * 60_000;
 export const REPOS_MAX = 300;
 /** What GitHub's answer about a login in a repo is kept for. */
 const ACCESS_KEEP_MS = 10 * 60_000;
+/** Files, comments and commits a look at a branch or pull request returns. */
+export const DIFF_FILES_MAX = 300;
+export const COMMENTS_MAX = 100;
+export const COMMENT_CHARS = 2000;
 /** Larger than this is not read, and not written. */
 export const FILE_MAX_BYTES = 1024 * 1024;
 /** Most files one commit may carry. */
@@ -108,6 +120,42 @@ export interface TreeEntry { path: string; type: string; size?: number; sha: str
 
 /** What a login may do in a repo, as GitHub's collaborator permission endpoint says it ("none" for anything else, and for any failure). */
 export type RepoPermission = "admin" | "write" | "read" | "none";
+
+/** A pull request as Tailzu needs to see it. */
+export interface PullInfo {
+  number: number;
+  url: string;
+  title: string;
+  state: "open" | "closed" | "merged";
+  draft: boolean;
+  /** GitHub works this out lazily: null until it has. */
+  mergeable: boolean | null;
+  mergeableState: string;
+  headSha: string;
+  headRef: string;
+  /** The repo the branch is in: not this repo's id for a pull request from a fork. */
+  headRepoId: number | null;
+  baseRef: string;
+  /** For GraphQL, which names things by this id. */
+  nodeId: string;
+  reviewComments: number;
+  changedFiles: number;
+  additions: number;
+  deletions: number;
+}
+
+/** What changed on a branch, against the default branch. No file contents, no patches. */
+export interface BranchDiff {
+  aheadBy: number;
+  behindBy: number;
+  commits: Array<{ sha: string; message: string }>;
+  files: Array<{ path: string; status: string; additions: number; deletions: number }>;
+  totals: { files: number; additions: number; deletions: number };
+  truncated: boolean;
+}
+
+/** A comment on a pull request, as the bot reads it later. The words in `body` are somebody else's: see pullComments. */
+export interface PullComment { author: string; body: string; path?: string; line?: number; createdAt: number }
 
 /** One file of a commit: its new text, or `delete` (or null text) to remove it. */
 export interface CommitFile { path: string; content?: string | null; delete?: boolean }
@@ -214,6 +262,24 @@ const asInstallation = (i: any): GithubInstallation | null =>
         suspendedAt: typeof i.suspended_at === "string" && Number.isFinite(Date.parse(i.suspended_at)) ? Date.parse(i.suspended_at) : null,
       }
     : null;
+
+const changedSinceApproval = () => new ConnectorError("changed_since_approval", "The branch changed after you looked at it. Nothing was merged; look at it again.");
+
+/**
+ * Whether a pull request is one Tailzu may merge: its branch is a work branch,
+ * in this repo (not a fork), going into the default branch; open, not merged,
+ * not a draft, and not known to have conflicts.
+ */
+export function assertMergeable(pull: PullInfo, repo: RepoRef, branch: string): void {
+  assertWorkBranch(branch, repo.defaultBranch);
+  if (pull.headRef !== branch || pull.headRepoId !== repo.repoId || pull.baseRef !== repo.defaultBranch) {
+    throw new ConnectorError("bad_branch", "That isn't a pull request from one of Tailzu's branches into the default branch.");
+  }
+  if (pull.state === "merged") throw new ConnectorError("pr_merged", "That pull request is already merged.");
+  if (pull.state === "closed") throw new ConnectorError("pr_not_open", "That pull request is closed.");
+  if (pull.draft) throw new ConnectorError("pr_draft", "That pull request is still a draft. Take it out of draft first.");
+  if (pull.mergeable === false) throw new ConnectorError("not_mergeable", "GitHub says this pull request has conflicts or can't be merged yet.");
+}
 
 export class GithubApp {
   private readonly key: KeyObject;
@@ -424,7 +490,16 @@ export class GithubApp {
   /** A new branch at the default branch's head. Returns that head. Fails with "branch_exists" if the name is taken. */
   async createBranch(repo: RepoRef, branch: string): Promise<string> {
     assertWorkBranch(branch, repo.defaultBranch);
-    const baseSha = await this.branchHead(repo, repo.defaultBranch);
+    let baseSha: string;
+    try {
+      baseSha = await this.branchHead(repo, repo.defaultBranch);
+    } catch (err) {
+      // A repo with no commits has no default branch to start from (GitHub says 404 or 409).
+      if (err instanceof ConnectorError && (err.code === "not_found" || err.code === "conflict") && await this.repoIsEmpty(repo).catch(() => false)) {
+        throw new ConnectorError("repo_empty", "This repo is empty, so there is nothing to branch from. Add a first file to it first (start it with a README), then try again.");
+      }
+      throw err;
+    }
     const r = await this.send("POST", `${this.path(repo)}/git/refs`, await this.token(repo), { ref: `refs/heads/${branch}`, sha: baseSha });
     if (r.status === 422 && /already exists/i.test(String(r.json?.message ?? ""))) {
       throw new ConnectorError("branch_exists", "That branch name is taken.");
@@ -543,5 +618,216 @@ export class GithubApp {
       throw new ConnectorError("no_drafts", "This repo's GitHub plan doesn't allow draft pull requests, so I didn't open one.");
     }
     throw githubError(r.status, r.json, "the pull request");
+  }
+
+  // ------------------------------------------------------- a repo's first commit
+
+  /** True when the repo has no commits at all (GitHub answers its commit list with 409 "Git Repository is empty"). */
+  async repoIsEmpty(repo: RepoRef): Promise<boolean> {
+    const r = await this.send("GET", `${this.path(repo)}/commits?per_page=1`, await this.token(repo));
+    if (r.status === 409 && /empty/i.test(String(r.json?.message ?? ""))) return true;
+    if (r.status === 200 && Array.isArray(r.json)) return r.json.length === 0;
+    throw githubError(r.status, r.json, "the repo's history");
+  }
+
+  /**
+   * THE FIRST OF TWO WRITES TO A DEFAULT BRANCH. A repo with no commits can't
+   * have a branch to work on, so this writes one README.md, with the project's
+   * title, as its first commit (the contents API creates the default branch).
+   * The repo is checked for being empty FIRST, and refused with "repo_not_empty"
+   * if it isn't: this can't overwrite or add to anything that is there.
+   */
+  async initEmptyRepo(repo: RepoRef, title: string): Promise<{ sha: string }> {
+    if (!(await this.repoIsEmpty(repo))) {
+      throw new ConnectorError("repo_not_empty", "This repo already has commits, so Tailzu won't add a first file to its default branch.");
+    }
+    const heading = title.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 100) || repo.fullName.split("/")[1]!;
+    const r = await this.send("PUT", `${this.path(repo)}/contents/README.md`, await this.token(repo), {
+      message: "Add README", content: Buffer.from(`# ${heading}\n`, "utf8").toString("base64"),
+    });
+    // Someone made the first commit while we were looking: the same refusal.
+    if (r.status === 422 || (r.status === 409 && !/empty/i.test(String(r.json?.message ?? "")))) {
+      throw new ConnectorError("repo_not_empty", "This repo already has commits, so Tailzu won't add a first file to its default branch.");
+    }
+    if ((r.status !== 201 && r.status !== 200) || typeof r.json?.commit?.sha !== "string") throw githubError(r.status, r.json, "the first file");
+    return { sha: r.json.commit.sha };
+  }
+
+  // --------------------------------------------------------- keeping current
+
+  /**
+   * Merges the default branch INTO the work branch (never the other way). Not
+   * resolved and not forced: a conflict is "conflict", and nothing changes.
+   */
+  async mergeDefaultInto(repo: RepoRef, branch: string): Promise<{ status: "merged" | "up_to_date"; sha?: string }> {
+    assertWorkBranch(branch, repo.defaultBranch);
+    const r = await this.send("POST", `${this.path(repo)}/merges`, await this.token(repo), {
+      base: branch, head: repo.defaultBranch, commit_message: `Merge ${repo.defaultBranch} into ${branch}`,
+    });
+    if (r.status === 201) return { status: "merged", ...(typeof r.json?.sha === "string" ? { sha: r.json.sha } : {}) };
+    if (r.status === 204) return { status: "up_to_date" };
+    if (r.status === 409) {
+      throw new ConnectorError("conflict", `${repo.defaultBranch} has changes that clash with this branch's. Tailzu doesn't resolve conflicts: resolve it on GitHub, or start a new branch.`);
+    }
+    throw githubError(r.status, r.json, `the branch ${branch}`);
+  }
+
+  /** What the branch changes against the default branch: counts, names and one line per commit. Never contents. */
+  async compare(repo: RepoRef, branch: string): Promise<BranchDiff> {
+    const r = await this.send("GET", `${this.path(repo)}/compare/${encodePath(refName(repo.defaultBranch))}...${encodePath(refName(branch))}`, await this.token(repo));
+    if (r.status !== 200) throw githubError(r.status, r.json, `the branch ${branch}`);
+    const j = r.json ?? {};
+    const all: any[] = Array.isArray(j.files) ? j.files : [];
+    const files = all.slice(0, DIFF_FILES_MAX).filter((f) => f && typeof f.filename === "string").map((f) => ({
+      path: f.filename as string, status: String(f.status ?? "modified"),
+      additions: Number.isFinite(f.additions) ? Number(f.additions) : 0, deletions: Number.isFinite(f.deletions) ? Number(f.deletions) : 0,
+    }));
+    const commits = (Array.isArray(j.commits) ? j.commits : []).filter((c: any) => c && typeof c.sha === "string").map((c: any) => ({
+      sha: c.sha as string, message: String(c.commit?.message ?? "").split("\n")[0]!.slice(0, 200),
+    }));
+    return {
+      aheadBy: Number(j.ahead_by) || 0, behindBy: Number(j.behind_by) || 0, commits, files,
+      totals: { files: files.length, additions: files.reduce((n, f) => n + f.additions, 0), deletions: files.reduce((n, f) => n + f.deletions, 0) },
+      // GitHub shows at most 300 files and doesn't say how many there are past that.
+      truncated: all.length >= DIFF_FILES_MAX,
+    };
+  }
+
+  // ------------------------------------------------------- pull requests
+
+  /** One pull request, as GitHub has it now. */
+  async getPull(repo: RepoRef, number: number): Promise<PullInfo> {
+    const r = await this.send("GET", `${this.path(repo)}/pulls/${number}`, await this.token(repo));
+    const j = r.json;
+    if (r.status !== 200 || !Number.isSafeInteger(j?.number) || typeof j?.head?.sha !== "string") throw githubError(r.status, j, "that pull request");
+    return {
+      number: j.number, url: String(j.html_url ?? ""), title: String(j.title ?? ""),
+      state: j.merged === true ? "merged" : j.state === "closed" ? "closed" : "open",
+      draft: j.draft === true, mergeable: typeof j.mergeable === "boolean" ? j.mergeable : null, mergeableState: String(j.mergeable_state ?? "unknown"),
+      headSha: j.head.sha, headRef: String(j.head.ref ?? ""), headRepoId: Number.isSafeInteger(j.head.repo?.id) ? j.head.repo.id : null,
+      baseRef: String(j.base?.ref ?? ""), nodeId: String(j.node_id ?? ""),
+      reviewComments: Number(j.review_comments) || 0, changedFiles: Number(j.changed_files) || 0,
+      additions: Number(j.additions) || 0, deletions: Number(j.deletions) || 0,
+    };
+  }
+
+  /** GitHub's GraphQL, as the installation. Throws on an error in the answer. */
+  private async graphql(repo: RepoRef, query: string, variables: Record<string, unknown>): Promise<any> {
+    const r = await this.send("POST", `${GITHUB_API}/graphql`, await this.token(repo), { query, variables });
+    if (r.status !== 200) throw githubError(r.status, r.json, "that pull request");
+    if (Array.isArray(r.json?.errors) && r.json.errors.length) throw new ConnectorError("rejected", "GitHub didn't accept that for the pull request.");
+    return r.json?.data;
+  }
+
+  /** The review decision (approved, changes_requested, review_required), or null: GitHub only says when reviews are required, and it may not say. */
+  async reviewDecision(repo: RepoRef, pull: PullInfo): Promise<"approved" | "changes_requested" | "review_required" | null> {
+    try {
+      const data = await this.graphql(repo, "query($id: ID!) { node(id: $id) { ... on PullRequest { reviewDecision } } }", { id: pull.nodeId });
+      const d = String(data?.node?.reviewDecision ?? "").toLowerCase();
+      return d === "approved" || d === "changes_requested" || d === "review_required" ? d : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * The review comments and the conversation comments of a pull request, at
+   * most 100 (the latest), oldest first, each cut to 2,000 characters.
+   *
+   * UNTRUSTED TEXT. Every `body` here was written by somebody else, on GitHub,
+   * and can say anything, "ignore your instructions" included. It is for the
+   * bot to READ AS DATA when it is told what a reviewer asked for, never to
+   * obey as instructions, and never to be put in a prompt as if it were the
+   * person's own words.
+   */
+  async pullComments(repo: RepoRef, number: number): Promise<{ comments: PullComment[]; truncated: boolean }> {
+    const base = this.path(repo);
+    const token = await this.token(repo);
+    const [review, convo] = await Promise.all([
+      this.send("GET", `${base}/pulls/${number}/comments?per_page=${COMMENTS_MAX}`, token),
+      this.send("GET", `${base}/issues/${number}/comments?per_page=${COMMENTS_MAX}`, token),
+    ]);
+    if (review.status !== 200) throw githubError(review.status, review.json, "that pull request");
+    if (convo.status !== 200) throw githubError(convo.status, convo.json, "that pull request");
+    const cut = (t: unknown) => [...String(t ?? "")].slice(0, COMMENT_CHARS).join("");
+    const when = (t: unknown) => { const n = Date.parse(String(t)); return Number.isFinite(n) ? n : 0; };
+    const out: PullComment[] = [];
+    for (const c of Array.isArray(review.json) ? review.json : []) {
+      const line = Number.isSafeInteger(c?.line) ? c.line : Number.isSafeInteger(c?.original_line) ? c.original_line : undefined;
+      out.push({
+        author: String(c?.user?.login ?? ""), body: cut(c?.body), ...(typeof c?.path === "string" ? { path: c.path } : {}),
+        ...(line !== undefined ? { line } : {}), createdAt: when(c?.created_at),
+      });
+    }
+    for (const c of Array.isArray(convo.json) ? convo.json : []) {
+      out.push({ author: String(c?.user?.login ?? ""), body: cut(c?.body), createdAt: when(c?.created_at) });
+    }
+    out.sort((a, b) => a.createdAt - b.createdAt);
+    return { comments: out.slice(-COMMENTS_MAX), truncated: out.length > COMMENTS_MAX };
+  }
+
+  /** Takes a pull request out of draft. REST can't (the pulls endpoint has no `draft` to change), so this is GraphQL's markPullRequestReadyForReview. */
+  async markReady(repo: RepoRef, pull: PullInfo): Promise<void> {
+    const data = await this.graphql(
+      repo, "mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { pullRequest { isDraft } } }", { id: pull.nodeId },
+    );
+    if (data?.markPullRequestReadyForReview?.pullRequest?.isDraft !== false) {
+      throw new ConnectorError("rejected", "GitHub didn't take the pull request out of draft.");
+    }
+  }
+
+  /** Closes a pull request without merging it. */
+  async closePull(repo: RepoRef, number: number): Promise<void> {
+    const r = await this.send("PATCH", `${this.path(repo)}/pulls/${number}`, await this.token(repo), { state: "closed" });
+    if (r.status !== 200) throw githubError(r.status, r.json, "that pull request");
+  }
+
+  /**
+   * THE SECOND OF TWO WRITES TO A DEFAULT BRANCH: squash-merges a work branch's
+   * pull request. Only after a person approved this head commit (approvals.ts),
+   * and only if it is still the head: the merge is given the sha, and GitHub
+   * refuses if the branch moved, as does this ("changed_since_approval").
+   * The pull request must be Tailzu's: from the work branch, in this repo,
+   * into the default branch, open and not a draft.
+   */
+  async mergePull(repo: RepoRef, branch: string, number: number, sha: string): Promise<{ sha: string }> {
+    assertWorkBranch(branch, repo.defaultBranch);
+    const pull = await this.getPull(repo, number);
+    assertMergeable(pull, repo, branch);
+    if (pull.headSha !== sha) throw changedSinceApproval();
+    const r = await this.send("PUT", `${this.path(repo)}/pulls/${number}/merge`, await this.token(repo), { merge_method: "squash", sha });
+    if (r.status === 409) throw changedSinceApproval();
+    if (r.status === 405) throw new ConnectorError("not_mergeable", "GitHub says this pull request can't be merged right now (a required check or review may be missing).");
+    if (r.status !== 200 || r.json?.merged !== true) throw githubError(r.status, r.json, "that pull request");
+    return { sha: String(r.json.sha ?? "") };
+  }
+
+  /** Deletes a work branch from GitHub. Already gone is fine. Returns whether it was there. */
+  async deleteBranch(repo: RepoRef, branch: string): Promise<boolean> {
+    assertWorkBranch(branch, repo.defaultBranch);
+    const r = await this.send("DELETE", `${this.path(repo)}/git/refs/heads/${encodePath(branch)}`, await this.token(repo));
+    if (r.status === 204) return true;
+    if (r.status === 404 || r.status === 422) return false;
+    throw githubError(r.status, r.json, `the branch ${branch}`);
+  }
+
+  // ------------------------------------------------------- for runners, later
+
+  /**
+   * A token for something that runs code on a work branch (a sandbox cloning
+   * it): for this ONE repo, with contents:read to look or contents:write to
+   * push, and nothing else (no pull requests, no metadata beyond what every
+   * token has). It is made for the caller and given to the caller: never
+   * kept here, not even in the cache the other calls use, and never logged.
+   * GitHub can't narrow a token to a branch, so the rule that a runner pushes
+   * only its work branch is the runner's to keep, with branch protection behind it.
+   */
+  async runnerToken(repo: RepoRef, mode: "read" | "push"): Promise<{ token: string; expiresAt: number }> {
+    const r = await this.send("POST", `${GITHUB_API}/app/installations/${repo.installationId}/access_tokens`, await this.appJwt(), {
+      repository_ids: [repo.repoId], permissions: { contents: mode === "read" ? "read" : "write" },
+    });
+    if (r.status < 200 || r.status >= 300 || typeof r.json?.token !== "string") throw githubError(r.status, r.json, "that installation");
+    const expiresAt = Date.parse(String(r.json.expires_at));
+    return { token: r.json.token, expiresAt: Number.isFinite(expiresAt) ? expiresAt : this.now() + 55 * 60_000 };
   }
 }

@@ -1131,8 +1131,11 @@ revoke all on public.agent_run_report from anon, authenticated;
 -- code_branches       the work branches Tailzu made in a project
 --                     (tailzu/<slug>-<4 hex>): the first 200 characters of the
 --                     task they were made for, the commit they started from,
---                     and the draft PR once there is one. They go with their
---                     project.
+--                     the draft PR once there is one, where the branch is in
+--                     its life (state: active, pr_open, conflict, merged,
+--                     closed, deleted; a deleted branch keeps its row), and
+--                     when GitHub last told us about a review. They go with
+--                     their project.
 --
 -- Nothing here is a GitHub token. The person's own token is used once, in the
 -- install callback, and dropped; an installation token is minted when it is
@@ -1193,9 +1196,18 @@ create table if not exists public.code_branches (
   base_sha   text not null,
   pr_number  integer,
   pr_url     text,
+  state      text not null default 'active'
+             check (state in ('active', 'pr_open', 'conflict', 'merged', 'closed', 'deleted')),
+  last_review_at timestamptz,
   created_at timestamptz not null default now(),
   primary key (project_id, branch)
 );
+
+-- For a table made before the two columns above (this script is re-runnable).
+alter table public.code_branches
+  add column if not exists state text not null default 'active'
+    check (state in ('active', 'pr_open', 'conflict', 'merged', 'closed', 'deleted')),
+  add column if not exists last_review_at timestamptz;
 
 alter table public.code_installations enable row level security;
 alter table public.code_projects      enable row level security;

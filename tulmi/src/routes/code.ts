@@ -18,6 +18,33 @@
  *   POST   /v1/code/projects/:id/branches/:branch/pr { title, body }
  *                                             -> { prNumber, prUrl, existing }  a draft PR; :branch is URL-encoded
  *                                                  (tailzu%2Ffix-login-1a2b), since the branch has a "/" in it
+ *   GET    /v1/code/new-repo-link?name=       -> { url, name }  GitHub's "new repository" page with the name and private filled
+ *                                                  in; the person makes the repo, so Tailzu needs no permission to
+ *   POST   /v1/code/projects/:id/init { title? }
+ *                                             -> { commitSha }  one README.md as the first commit of a repo with NO commits
+ *                                                  (409 repo_not_empty otherwise). createWorkBranch on an empty repo: 409 repo_empty
+ *
+ * and, for a work branch the project recorded (":branch" always URL-encoded), code/pulls.ts:
+ *
+ *   POST   .../branches/:branch/sync          -> { status: merged | up_to_date, sha? }  the default branch merged INTO
+ *                                                  the work branch; a conflict is 409 conflict and the branch's state
+ *                                                  `conflict`: never resolved, never forced
+ *   GET    .../branches/:branch/diff          -> { aheadBy, behindBy, commits: [{ sha, message }], files: [{ path, status,
+ *                                                  additions, deletions }], totals, truncated }  300 files at most, no contents
+ *   GET    .../branches/:branch/pr            -> { number, url, title, state: open | closed | merged, draft, mergeable,
+ *                                                  mergeableState, headSha, reviewDecision, reviewComments, lastReviewAt }
+ *   GET    .../branches/:branch/pr/comments   -> { comments: [{ author, body, path?, line?, createdAt }], truncated }
+ *                                                  100 at most; the words are other people's (untrusted text)
+ *   POST   .../branches/:branch/pr/ready      -> { draft: false }
+ *   POST   .../branches/:branch/pr/close      -> { state: closed }  without merging
+ *   POST   .../branches/:branch/pr/merge      no body: -> { needsApproval, approvalId, expiresAt, summary: { title, into,
+ *                                                  files, additions, deletions, headSha } }, and nothing is merged;
+ *                                                  { approvalId }: -> { merged, sha }, a squash merge of exactly the commit
+ *                                                  the approval was for (409 changed_since_approval if the branch moved).
+ *                                                  An approval is single-use and lasts ten minutes
+ *   DELETE .../branches/:branch               -> { state: deleted }  removes the branch from GitHub once its pull request
+ *                                                  is merged or closed; the record stays
+ *
  *   POST   /v1/code/github/webhook            GitHub's own deliveries (code/webhook.ts); authenticated by signature
  *
  * Every route but the callback and the webhook authenticates exactly like the
@@ -32,6 +59,8 @@
  * What a person's mistake looks like: a project or branch that isn't theirs is
  * 404 (it doesn't say it exists), a bad body 400, a branch that moved under a
  * commit 409. A GitHub that fails is 502 with plain words, never its own.
+ * Every write above asks GitHub afresh whether the person can still write to
+ * the repo (403 no_access if not).
  *
  * Linking an install is not access to every repo in it (code/projects.ts): a
  * repo is the person's to use if the install is on their own GitHub account,
@@ -46,7 +75,8 @@ import { NoTokenKey, tokenKey } from "../connectors/crypto.js";
 import { ConnectorError } from "../connectors/oauth.js";
 import type { Code } from "../code/index.js";
 import { beginConnect, completeCallback, forgetInstallation, linkStatus } from "../code/link.js";
-import { addProject, createWorkBranch, listBranches, listRepos, openPr } from "../code/projects.js";
+import { addProject, createWorkBranch, initEmptyRepo, listBranches, listRepos, newRepoLink, openPr } from "../code/projects.js";
+import { branchDiff, closePr, confirmMerge, deleteWorkBranch, markReady, prComments, prStatus, requestMerge, syncBranch } from "../code/pulls.js";
 import { CodeNeedsAccount } from "../code/store.js";
 import { handleWebhook, signatureOk } from "../code/webhook.js";
 import { PAGE_CSP, page } from "./connectors.js";
@@ -65,6 +95,8 @@ const STATUS: Record<string, number> = {
   bad_state: 400, bad_request: 400, bad_branch: 400, bad_path: 400, binary_file: 400, too_large: 400, not_a_file: 400,
   not_yours: 403, no_access: 403, needs_reconnect: 403, not_found: 404,
   branch_moved: 409, branch_exists: 409, conflict: 409, too_many: 409, suspended: 409, nothing_to_review: 409, no_drafts: 409,
+  repo_empty: 409, repo_not_empty: 409, branch_deleted: 409, branch_in_use: 409, changed_since_approval: 409, approval_expired: 409,
+  approval_invalid: 409, pr_draft: 409, pr_not_open: 409, pr_merged: 409, not_mergeable: 409,
   not_configured: 503, busy: 503,
 };
 
@@ -97,7 +129,7 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
   const ready = (reply: FastifyReply) => {
     if (!k) { off(reply); return null; }
     if (!k.github || !stateKeyOk()) { notConfigured(reply); return null; }
-    return { store: k.store, github: k.github };
+    return { store: k.store, github: k.github, approvals: k.approvals };
   };
   /** `ready`, then the session. Null once the answer has been sent. */
   const begin = async (authorization: string | undefined, reply: FastifyReply) => {
@@ -235,6 +267,55 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
         return reply.send(await openPr(s.d, s.user.id, req.params.id, branch, title, body));
       } catch (err) { return fail(reply, err); }
     });
+
+  app.get<{ Querystring: { name?: unknown } }>("/v1/code/new-repo-link", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    return reply.send(newRepoLink((req.query ?? {}).name));
+  });
+
+  app.post<{ Params: { id: string }; Body: { title?: unknown } }>("/v1/code/projects/:id/init", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      return reply.send(await initEmptyRepo(s.d, s.user.id, req.params.id, (req.body ?? {}).title));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  /** A route on a work branch of a project: the session, the branch decoded, and the answer or the failure. */
+  const onBranch = (
+    method: "GET" | "POST" | "DELETE", url: string,
+    run: (s: NonNullable<Awaited<ReturnType<typeof begin>>>, projectId: string, branch: string, body: Record<string, unknown>) => Promise<unknown>,
+  ) => app.route<{ Params: { id: string; branch: string }; Body: Record<string, unknown> | undefined }>({
+    method, url, ...RL,
+    handler: async (req, reply) => {
+      const s = await begin(req.headers["authorization"], reply);
+      if (!s) return reply;
+      let branch: string;
+      try { branch = decodeURIComponent(req.params.branch); } catch {
+        return reply.code(404).send({ code: "not_found", message: "I couldn't find that branch in this project." });
+      }
+      try {
+        return reply.send(await run(s, req.params.id, branch, (req.body && typeof req.body === "object" ? req.body : {})));
+      } catch (err) { return fail(reply, err); }
+    },
+  });
+  const B = "/v1/code/projects/:id/branches/:branch";
+  onBranch("POST", `${B}/sync`, (s, id, branch) => syncBranch(s.d, s.user.id, id, branch));
+  onBranch("GET", `${B}/diff`, (s, id, branch) => branchDiff(s.d, s.user.id, id, branch));
+  onBranch("GET", `${B}/pr`, (s, id, branch) => prStatus(s.d, s.user.id, id, branch));
+  onBranch("GET", `${B}/pr/comments`, (s, id, branch) => prComments(s.d, s.user.id, id, branch));
+  onBranch("POST", `${B}/pr/ready`, (s, id, branch) => markReady(s.d, s.user.id, id, branch));
+  onBranch("POST", `${B}/pr/close`, (s, id, branch) => closePr(s.d, s.user.id, id, branch));
+  onBranch("POST", `${B}/pr/merge`, (s, id, branch, body) => {
+    // No approval: step one, which merges nothing. With one: step two.
+    if (body.approvalId === undefined) return requestMerge(s.d, s.user.id, id, branch);
+    if (typeof body.approvalId !== "string" || !body.approvalId || body.approvalId.length > 200) {
+      throw new ConnectorError("bad_request", "approvalId is the id step one gave.");
+    }
+    return confirmMerge(s.d, s.user.id, id, branch, body.approvalId);
+  });
+  onBranch("DELETE", B, (s, id, branch) => deleteWorkBranch(s.d, s.user.id, id, branch));
 
   // GitHub is the caller: no session, a signature over the raw body instead (code/webhook.ts).
   app.post("/v1/code/github/webhook", { config: { rateLimit: { max: 600, timeWindow: 60_000 } } }, async (req, reply) => {

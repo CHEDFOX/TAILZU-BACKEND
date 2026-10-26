@@ -17,7 +17,9 @@
  *   code_projects       a repo the person picked to work on
  *   code_branches       the work branches Tailzu made in a project, the words
  *                       of the task they were made for (200 characters), the
- *                       commit they started from, and the draft PR once open
+ *                       commit they started from, the draft PR once open, and
+ *                       where the branch is in its life (state), when the last
+ *                       review came in
  *
  * What is NOT kept: any GitHub token. The person's own token is used once, in
  * the callback, and dropped; an installation token is minted when it is needed
@@ -78,6 +80,14 @@ export interface CodeProject {
 
 export type NewCodeProject = Omit<CodeProject, "id" | "userId" | "createdAt">;
 
+/**
+ * Where a work branch is in its life. `conflict`: merging the default branch
+ * into it hit a conflict, which Tailzu never resolves. `merged` and `closed`
+ * follow its pull request. `deleted`: the branch is gone from GitHub and the
+ * record stays.
+ */
+export type BranchState = "active" | "pr_open" | "conflict" | "merged" | "closed" | "deleted";
+
 export interface CodeBranch {
   projectId: string;
   /** "tailzu/<slug>-<4 hex>". */
@@ -88,6 +98,9 @@ export interface CodeBranch {
   baseSha: string;
   prNumber: number | null;
   prUrl: string | null;
+  state: BranchState;
+  /** Epoch ms of the last review GitHub told us about (pull_request_review), or null. */
+  lastReviewAt: number | null;
   createdAt: number;
 }
 
@@ -130,7 +143,18 @@ export interface CodeStore {
   getBranch(projectId: string, branch: string): Promise<CodeBranch | null>;
   /** Newest first. */
   listBranches(projectId: string): Promise<CodeBranch[]>;
+  /** Records the PR, and the branch is `pr_open`. */
   setBranchPr(projectId: string, branch: string, prNumber: number, prUrl: string): Promise<CodeBranch | null>;
+  setBranchState(projectId: string, branch: string, state: BranchState): Promise<CodeBranch | null>;
+  /**
+   * GitHub's webhook names a repo and a branch, not a person: this changes
+   * that branch in every project on the repo. A `deleted` branch keeps its
+   * state, and `onlyIn` (when given) limits which current states may change.
+   * Returns how many branches it touched.
+   */
+  updateBranchesByHead(
+    repoId: number, branch: string, patch: { state?: BranchState; lastReviewAt?: number }, o?: { onlyIn?: BranchState[] },
+  ): Promise<number>;
 }
 
 // -------------------------------------------------------------------- memory
@@ -225,7 +249,7 @@ export class MemoryCodeStore implements CodeStore {
   }
 
   async addBranch(n: NewCodeBranch) {
-    const b: CodeBranch = { ...n, prNumber: null, prUrl: null, createdAt: Date.now() };
+    const b: CodeBranch = { ...n, prNumber: null, prUrl: null, state: "active", lastReviewAt: null, createdAt: Date.now() };
     this.branches.set(`${b.projectId}|${b.branch}`, b);
     return { ...b };
   }
@@ -241,8 +265,26 @@ export class MemoryCodeStore implements CodeStore {
   async setBranchPr(projectId: string, branch: string, prNumber: number, prUrl: string) {
     const b = this.branches.get(`${projectId}|${branch}`);
     if (!b) return null;
-    Object.assign(b, { prNumber, prUrl });
+    Object.assign(b, { prNumber, prUrl, state: "pr_open" });
     return { ...b };
+  }
+  async setBranchState(projectId: string, branch: string, state: BranchState) {
+    const b = this.branches.get(`${projectId}|${branch}`);
+    if (!b) return null;
+    b.state = state;
+    return { ...b };
+  }
+  async updateBranchesByHead(repoId: number, branch: string, patch: { state?: BranchState; lastReviewAt?: number }, o: { onlyIn?: BranchState[] } = {}) {
+    const projects = new Set([...this.projects.values()].filter((p) => p.repoId === repoId).map((p) => p.id));
+    let n = 0;
+    for (const b of this.branches.values()) {
+      if (b.branch !== branch || !projects.has(b.projectId)) continue;
+      if (patch.state !== undefined && (b.state === "deleted" || (o.onlyIn && !o.onlyIn.includes(b.state)))) continue;
+      if (patch.state !== undefined) b.state = patch.state;
+      if (patch.lastReviewAt !== undefined) b.lastReviewAt = patch.lastReviewAt;
+      n += 1;
+    }
+    return n;
   }
 }
 
@@ -265,7 +307,8 @@ interface ProjectRow {
   default_branch: string; private: boolean; created_at: string;
 }
 interface BranchRow {
-  project_id: string; branch: string; task: string; base_sha: string; pr_number: number | null; pr_url: string | null; created_at: string;
+  project_id: string; branch: string; task: string; base_sha: string; pr_number: number | null; pr_url: string | null;
+  state: BranchState | null; last_review_at: string | null; created_at: string;
 }
 
 const installOf = (r: InstallRow): CodeInstallation => ({
@@ -281,7 +324,8 @@ const projectOf = (r: ProjectRow): CodeProject => ({
 });
 const branchOf = (r: BranchRow): CodeBranch => ({
   projectId: r.project_id, branch: r.branch, task: r.task, baseSha: r.base_sha,
-  prNumber: r.pr_number ?? null, prUrl: r.pr_url ?? null, createdAt: ms(r.created_at) ?? 0,
+  prNumber: r.pr_number ?? null, prUrl: r.pr_url ?? null, state: r.state ?? "active", lastReviewAt: ms(r.last_review_at),
+  createdAt: ms(r.created_at) ?? 0,
 });
 
 function ok<T>(res: { data: T | null; error: { message: string } | null }): T | null {
@@ -395,9 +439,31 @@ export class SupabaseCodeStore implements CodeStore {
   }
   async setBranchPr(projectId: string, branch: string, prNumber: number, prUrl: string) {
     if (!UUID.test(projectId)) return null;
-    const r = ok(await this.sb.from("code_branches").update({ pr_number: prNumber, pr_url: prUrl })
+    const r = ok(await this.sb.from("code_branches").update({ pr_number: prNumber, pr_url: prUrl, state: "pr_open" })
       .eq("project_id", projectId).eq("branch", branch).select("*").maybeSingle<BranchRow>());
     return r ? branchOf(r) : null;
+  }
+  async setBranchState(projectId: string, branch: string, state: BranchState) {
+    if (!UUID.test(projectId)) return null;
+    const r = ok(await this.sb.from("code_branches").update({ state })
+      .eq("project_id", projectId).eq("branch", branch).select("*").maybeSingle<BranchRow>());
+    return r ? branchOf(r) : null;
+  }
+  async updateBranchesByHead(repoId: number, branch: string, patch: { state?: BranchState; lastReviewAt?: number }, o: { onlyIn?: BranchState[] } = {}) {
+    const projects = ok(await this.sb.from("code_projects").select("id").eq("repo_id", repoId).returns<Array<{ id: string }>>());
+    const ids = (projects ?? []).map((p) => p.id);
+    if (!ids.length) return 0;
+    const row: Record<string, unknown> = {};
+    if (patch.state !== undefined) row.state = patch.state;
+    if (patch.lastReviewAt !== undefined) row.last_review_at = iso(patch.lastReviewAt);
+    if (!Object.keys(row).length) return 0;
+    let q = this.sb.from("code_branches").update(row).in("project_id", ids).eq("branch", branch);
+    if (patch.state !== undefined) {
+      q = q.neq("state", "deleted");
+      if (o.onlyIn) q = q.in("state", o.onlyIn);
+    }
+    const rows = ok(await q.select("project_id").returns<Array<{ project_id: string }>>());
+    return (rows ?? []).length;
   }
 }
 

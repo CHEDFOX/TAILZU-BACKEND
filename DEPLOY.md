@@ -911,16 +911,22 @@ whole answer and reads only `say`, `open` and `taskId`).
 Off by default: while `CODE_GITHUB` is false every `/v1/code/*` route answers
 `404 {"code":"code_off"}`. On, a person connects GitHub through a GitHub App
 Tailzu owns, picks a repo as a project, and Tailzu works on `tailzu/<task>-<4 hex>`
-branches made from its default branch and opens draft pull requests. It never
-writes to a default branch or to any branch outside `tailzu/`.
+branches made from its default branch, keeps them current, opens draft pull
+requests and, after a person approves exactly that commit, squash-merges them.
+It never writes to a default branch or to any branch outside `tailzu/`, with
+two named exceptions: the first README of a repo that has no commits, and that
+approved merge.
 
 1. **Migration.** Paste `tulmi/supabase/migrations/0020_code_github.sql` into the
    Supabase SQL editor (or re-run `full_schema.sql`), after 0019: it creates
    `code_installations`, `code_projects` and `code_branches`. Without
-   `SUPABASE_SERVICE_KEY` they live in memory and are lost on restart.
+   `SUPABASE_SERVICE_KEY` they live in memory and are lost on restart. 0020
+   can be run again at any time (it adds `code_branches.state` and
+   `last_review_at` to a table made without them).
 2. **The App.** Make it as `docs/github-app.md` says (by hand, or from the
    manifest there): Contents and Pull requests read/write, Metadata read, no
-   Workflows, installable by any account, OAuth during installation on, callback
+   Workflows, events Pull request and Pull request review, installable by any
+   account, OAuth during installation on, callback
    `https://api.tailzu.space/v1/code/github/callback`, webhook
    `https://api.tailzu.space/v1/code/github/webhook`.
 3. **The keys.** In `tulmi/.env`: `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`,
