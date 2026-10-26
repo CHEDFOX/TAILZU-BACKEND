@@ -207,6 +207,28 @@ export class RunLedger {
   }
 }
 
+/**
+ * A planner call as the ledger keeps it: the CallRecord's numbers under the
+ * run, step and time it belongs to. The one place a CallRecord becomes a
+ * CallRow, shared by a step's watch and by the Code bot's model gateway
+ * (code/brain/gateway.ts), which writes its calls to the same table. Never any
+ * of what was asked or answered: a CallRecord has none.
+ */
+export function callRowOf(c: CallRecord, at: { runId: string; step: number; surface: Surface; at: number }): CallRow {
+  return {
+    runId: at.runId, step: at.step, surface: at.surface, at: at.at, model: c.model, outcome: c.outcome, ms: c.ms,
+    ...(c.provider ? { provider: c.provider } : {}), ...(c.served ? { served: c.served } : {}),
+    ...(typeof c.firstMs === "number" ? { firstMs: c.firstMs } : {}),
+    ...(typeof c.promptTokens === "number" ? { promptTokens: c.promptTokens } : {}),
+    ...(typeof c.cachedTokens === "number" ? { cachedTokens: c.cachedTokens } : {}),
+    ...(typeof c.completionTokens === "number" ? { completionTokens: c.completionTokens } : {}),
+    ...(typeof c.reasoningTokens === "number" ? { reasoningTokens: c.reasoningTokens } : {}),
+    ...(typeof c.costUsd === "number" ? { costUsd: c.costUsd } : {}),
+    ...(typeof c.status === "number" ? { status: c.status } : {}),
+    ...(c.picture ? { picture: true } : {}), ...(c.deep ? { deep: true } : {}),
+  };
+}
+
 /** What a step's watch needs of its ledger. */
 interface Keeper {
   now: () => number;
@@ -258,18 +280,7 @@ class Step implements StepWatch {
   get receipt(): RunReceipt | undefined { return this.last; }
 
   call(c: CallRecord): void {
-    const row: CallRow = {
-      runId: this.s.runId, step: this.s.step, surface: this.s.surface, at: this.d.now(), model: c.model, outcome: c.outcome, ms: c.ms,
-      ...(c.provider ? { provider: c.provider } : {}), ...(c.served ? { served: c.served } : {}),
-      ...(typeof c.firstMs === "number" ? { firstMs: c.firstMs } : {}),
-      ...(typeof c.promptTokens === "number" ? { promptTokens: c.promptTokens } : {}),
-      ...(typeof c.cachedTokens === "number" ? { cachedTokens: c.cachedTokens } : {}),
-      ...(typeof c.completionTokens === "number" ? { completionTokens: c.completionTokens } : {}),
-      ...(typeof c.reasoningTokens === "number" ? { reasoningTokens: c.reasoningTokens } : {}),
-      ...(typeof c.costUsd === "number" ? { costUsd: c.costUsd } : {}),
-      ...(typeof c.status === "number" ? { status: c.status } : {}),
-      ...(c.picture ? { picture: true } : {}), ...(c.deep ? { deep: true } : {}),
-    };
+    const row = callRowOf(c, { runId: this.s.runId, step: this.s.step, surface: this.s.surface, at: this.d.now() });
     if (this.calls) this.calls.push(row);
     else void this.d.after(() => this.d.store().addCalls(this.s.userId, [row]));
   }
