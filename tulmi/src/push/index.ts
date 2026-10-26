@@ -18,7 +18,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { applyRules } from "../control/rules.js";
 import { controlStore, requireAdmin } from "../control/index.js";
 import { supabase } from "../auth/supabase.js";
-import { PUSH_DEFAULTS, PUSH_KINDS, type PushKind, type PushPayload } from "./defaults.js";
+import type { NotifyData, NotifyKind } from "../code/jobs/types.js";
+import { PUSH_DEFAULTS, PUSH_KINDS, type EventPushKind, type PushKind, type PushPayload } from "./defaults.js";
 import { ExpoSender, type PushSender } from "./expo.js";
 import { PushEngine, type ConfigFor } from "./engine.js";
 import { knobsOf } from "./plan.js";
@@ -54,6 +55,33 @@ export async function notifyApproval(userId: string, taskId: string, app: string
   try {
     await engine?.notify(userId, { kind: "approval", key: taskId, vars: { app }, data: { taskId } });
   } catch { /* a missed push is not a failed task: the card is still in the app */ }
+}
+
+/** The Code bot's job events (code/jobs/types.ts NotifyKind) as push kinds. */
+const CODE_PUSH: Record<NotifyKind, EventPushKind> = {
+  compute_ask: "code_compute_ask", compute_paused: "code_compute_paused", commit_ask: "code_commit_ask",
+  job_moved: "code_job_moved", job_done: "code_job_done", job_failed: "code_job_failed",
+};
+
+/** Where a job moved to, in the words of the push: "carrying on on GitHub's free computers". */
+const MOVED_TO: Record<string, string> = { desktop: "on your own computer", github: "on GitHub's free computers", paid: "on paid compute" };
+
+/**
+ * Tell a person's phones something happened to one of their coding jobs (the
+ * router's `notify`, code/jobs/router.ts). Claimed once per job and moment, so
+ * the same event never pushes twice. Never throws; says nothing about the code.
+ */
+export async function notifyCodeJob(userId: string, kind: NotifyKind, data: NotifyData): Promise<void> {
+  try {
+    await engine?.notify(userId, {
+      kind: CODE_PUSH[kind], key: `${data.jobId}:${data.at}`,
+      vars: {
+        task: data.task, cost: `₹${((data.estimatePaise ?? 0) / 100).toFixed(2).replace(/\.00$/, "")}`,
+        where: MOVED_TO[data.to ?? ""] ?? "somewhere else", reason: (data.reason ?? "").slice(0, 120),
+      },
+      data: { jobId: data.jobId },
+    });
+  } catch { /* a missed push is not a failed job: the job is still in the app */ }
 }
 
 export function registerPushRoutes(app: FastifyInstance, opts: { rateLimit?: Record<string, unknown> } = {}): void {

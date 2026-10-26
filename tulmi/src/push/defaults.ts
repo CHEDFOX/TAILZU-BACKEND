@@ -93,6 +93,23 @@ export const PUSH_DEFAULTS: PushPayload = {
     // The confirm sheet (experience/assistant.ts); the push carries data.taskId.
     "push.approval.screenId": "assistant_approve",
 
+    // The Code bot's jobs (src/code/jobs, docs/code-router.md): paid compute needs a yes, a job is
+    // waiting for a computer, its changes need a yes to be committed, it moved to another place, it
+    // finished, it stopped. The push carries data.jobId. The Code screen is the phone's to come, so
+    // they open home until the control plane points them at it (push.code_*.screenId).
+    "push.code_compute_ask.enabled": true,
+    "push.code_compute_ask.screenId": "home",
+    "push.code_compute_paused.enabled": true,
+    "push.code_compute_paused.screenId": "home",
+    "push.code_commit_ask.enabled": true,
+    "push.code_commit_ask.screenId": "home",
+    "push.code_job_moved.enabled": true,
+    "push.code_job_moved.screenId": "home",
+    "push.code_job_done.enabled": true,
+    "push.code_job_done.screenId": "home",
+    "push.code_job_failed.enabled": true,
+    "push.code_job_failed.screenId": "home",
+
     "push.lowWords.enabled": false,
     "push.lowWords.fraction": 0.1,
     "push.lowWords.screenId": "paywall",
@@ -108,6 +125,18 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.winback.body": "Tailzu writes it for you.",
     "push.approval.title": "Waiting for your OK",
     "push.approval.body": "Tailzu needs a yes from you to carry on in {app}.",
+    "push.code_compute_ask.title": "Paid compute needs your OK",
+    "push.code_compute_ask.body": "“{task}” has no free computer to run on. Paid compute would cost about {cost}.",
+    "push.code_compute_paused.title": "Waiting for a computer",
+    "push.code_compute_paused.body": "“{task}” will carry on by itself when one of your computers is online.",
+    "push.code_commit_ask.title": "Changes waiting for your OK",
+    "push.code_commit_ask.body": "“{task}” has changes ready and needs your OK to commit them.",
+    "push.code_job_moved.title": "Moved to another computer",
+    "push.code_job_moved.body": "“{task}” is carrying on {where}.",
+    "push.code_job_done.title": "Done",
+    "push.code_job_done.body": "“{task}” is finished.",
+    "push.code_job_failed.title": "Couldn't finish",
+    "push.code_job_failed.body": "“{task}” stopped. {reason}",
     "push.lowWords.title": "{n} words left",
     "push.lowWords.body": "Enough for today. More any time.",
   },
@@ -118,5 +147,8 @@ export const PUSH_KINDS = ["streak", "refill", "weekly", "winback", "lowWords"] 
 export type PushKind = (typeof PUSH_KINDS)[number];
 
 /** Reasons that are sent when something happens, not planned by the engine. */
-export const EVENT_PUSH_KINDS = ["approval"] as const;
+export const EVENT_PUSH_KINDS = [
+  "approval",
+  "code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed",
+] as const;
 export type EventPushKind = (typeof EVENT_PUSH_KINDS)[number];

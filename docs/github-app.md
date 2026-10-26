@@ -449,11 +449,13 @@ is ignored for the default.
   request, change repo settings or read issues, Actions or secrets: the App's
   permissions are Contents, Pull requests and Metadata (and Workflows, if you
   add it), and nothing more.
-* A **runner** (a sandbox, no route yet) is given a token for one repo,
-  `contents:read` to clone or `contents:write` to push. GitHub can't narrow a
-  token to a branch, so what a runner pushes is outside this policy: it is the
-  runner's job to keep to its branch, with branch protection behind it. For a
-  sign-in project a runner never gets the token at all.
+* A **runner** (the desktop app, through the runner routes: section 8) is given
+  a token for one repo that can **read and nothing else** (`contents:read`), or
+  for a sign-in project a one-time download link and no token at all. It is
+  never given one that can write: GitHub can't narrow a write token to a
+  branch, so it would step round this policy. It hands its changes back and the
+  server commits them through the policy like any other commit (`runnerAccess`
+  answers `use_server_commit` to a request for push access).
 * A draft pull request needs a repo that can have them. Private repos on
   GitHub's free plans cannot, and Tailzu says so instead of opening a normal
   one.
@@ -621,3 +623,18 @@ delete the OAuth App on GitHub to end every authorisation at GitHub's end too.
 Add to the privacy policy that, for people who sign in with GitHub, Tailzu keeps
 their GitHub id and login and their GitHub token (encrypted) until they
 disconnect, delete their account, or it goes 30 days unused.
+
+## 8. Jobs, and where their commands run
+
+A coding task is a **job**: edit steps through the API above, and exec steps
+(install, build, test) that need a computer. The environment router
+(`tulmi/src/code/jobs`, `docs/code-router.md`) runs each exec step on the
+cheapest place there is: the person's own PC first, then GitHub's free
+Actions minutes (2,000 a month on a free plan, `CODE_GITHUB_FREE_MINUTES`, a
+tenth kept back), then paid compute only under the person's own rule
+(`never`, `ask`, or `auto` up to a monthly cap); otherwise the job waits and
+the person is told. A step that is out holds a 90-second lease with an epoch
+that goes up on every dispatch, so a computer that went quiet and was
+replaced can never count; a finished step writes a checkpoint, and a job
+moved to another place re-runs only the step that was out. Needs migration
+0023.

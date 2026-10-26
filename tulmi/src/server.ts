@@ -44,6 +44,8 @@ import { registerConnectorRoutes } from "./routes/connectors.js";
 import { createCode } from "./code/index.js";
 import { startOAuthSweeper } from "./code/oauth.js";
 import { registerCodeRoutes } from "./routes/code.js";
+import { registerCodeJobRoutes } from "./routes/codeJobs.js";
+import { createJobs } from "./code/jobs/index.js";
 import { registerCustomConnectorRoutes } from "./routes/connectorsCustom.js";
 import { registerOAuthClientMetadataRoute } from "./routes/oauthClientMetadata.js";
 import { startDirectorySync } from "./connectors/registry.js";
@@ -54,7 +56,7 @@ import { ASSISTANT_SCREENS } from "./experience/assistant.js";
 import { getNote, listNotes } from "./notes/store.js";
 import { registerDemoRoutes, sitePage, AUTH_RESUME_SCHEME_URL } from "./routes/demo.js";
 import { initControl, registerControlRoutes, requireAdmin, withControl } from "./control/index.js";
-import { initPush, notifyApproval, pushEngine, registerPushRoutes } from "./push/index.js";
+import { initPush, notifyApproval, notifyCodeJob, pushEngine, registerPushRoutes } from "./push/index.js";
 import { registerPushTokenRoutes, SupabasePushTokens } from "./push/tokens.js";
 import { registerReviewCodeRoute } from "./routes/reviewCode.js";
 import { getConfig, VERSION } from "./config.js";
@@ -1041,6 +1043,14 @@ registerConnectorRoutes(app, { rateLimit: AUTHED_RL, connectors });
 // 404 code_off, and with the GitHub App not set up, 503 not_configured.
 const code = cfg.CODE_GITHUB ? createCode() : null;
 registerCodeRoutes(app, { rateLimit: AUTHED_RL, code });
+// The Code bot's jobs and the environment router (src/code/jobs, docs/code-router.md): where each step that
+// needs a computer runs (the person's PC, then GitHub's free minutes, then paid compute by their own rule), the
+// runner protocol the desktop app will speak, and a ticker (every 15 s, started when the server is ready and
+// stopped when it closes) that takes back leases that ran out. GitHub's free computers and paid compute
+// have no provider yet, so only the person's own PC is ever chosen until they do. The person is told through
+// the push engine.
+const codeJobs = code ? createJobs({ code, notify: notifyCodeJob, log: app.log }) : null;
+registerCodeJobRoutes(app, { rateLimit: AUTHED_RL, code, jobs: codeJobs });
 // "Sign in with GitHub" tokens unused for 30 days are revoked at GitHub (code/oauth.ts), on a timer, even
 // with the switch off: revoking only destroys. Never in a request's way.
 if (code?.oauth) {
