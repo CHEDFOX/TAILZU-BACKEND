@@ -1,7 +1,7 @@
 /**
  * WHERE THE CODE BOT'S GITHUB LINKS, PROJECTS AND WORK BRANCHES ARE KEPT.
  *
- * Three tables (supabase/migrations/0020_code_github.sql), behind one
+ * The tables (supabase/migrations/0020, 0021 and 0022), behind one
  * interface so everything above it runs against the in-memory twin in tests
  * and local runs, as connectors/store.ts does. Written with the service key:
  * the tables' policies only let a person READ their own rows.
@@ -26,6 +26,12 @@
  *                       and the token itself, ENCRYPTED (crypto.ts). The only
  *                       place a GitHub token is kept at all. A project records
  *                       which kind of link it uses (link_kind)
+ *   code_grants         (supabase/migrations/0022_code_policy.sql) the STANDING
+ *                       PERMISSIONS a person gave for one project: "always let
+ *                       the bot do <action> on <branch pattern>" (allow), or
+ *                       "never" (deny), optionally until a time. policy.ts
+ *                       reads them for every decision; a grant is never about
+ *                       a secret, and never lifts a "strict" or "never" action
  *
  * What is NOT kept, on the App's side: any GitHub token. The person's own
  * token is used once, in the callback, and dropped; an installation token is
@@ -138,6 +144,26 @@ export interface CodeBranch {
 
 export type NewCodeBranch = Pick<CodeBranch, "projectId" | "branch" | "task" | "baseSha">;
 
+export type GrantEffect = "allow" | "deny";
+
+/**
+ * A standing permission for one project (policy.ts). `action` is one of the
+ * policy's action ids; `branchPattern` is a glob over branch names ("main",
+ * "release/*"; none means every branch); `expiresAt` is epoch ms, none means
+ * until it is taken back.
+ */
+export interface CodeGrant {
+  id: string;
+  projectId: string;
+  action: string;
+  branchPattern?: string;
+  effect: GrantEffect;
+  expiresAt?: number;
+  createdAt: number;
+}
+
+export interface NewCodeGrant { action: string; branchPattern?: string; effect: GrantEffect; expiresAt?: number }
+
 /** Thrown when this caller has no account row for links to belong to (a static token, the dev user). */
 export class CodeNeedsAccount extends Error {
   constructor() { super("Sign in to connect GitHub."); }
@@ -202,6 +228,17 @@ export interface CodeStore {
   updateBranchesByHead(
     repoId: number, branch: string, patch: { state?: BranchState; lastReviewAt?: number }, o?: { onlyIn?: BranchState[] },
   ): Promise<number>;
+
+  /**
+   * Standing permissions, keyed by project and carrying no owner, as branches
+   * are: the caller has already shown the project is the person's.
+   * Oldest first, expired ones included (policy.ts leaves those out).
+   */
+  listGrants(projectId: string): Promise<CodeGrant[]>;
+  /** Saves a grant. The same action, pattern and effect again is the same grant, with the new expiry. */
+  addGrant(projectId: string, g: NewCodeGrant): Promise<CodeGrant>;
+  /** Takes a grant back. Returns whether it was there. */
+  deleteGrant(projectId: string, grantId: string): Promise<boolean>;
 }
 
 // -------------------------------------------------------------------- memory
@@ -211,6 +248,7 @@ export class MemoryCodeStore implements CodeStore {
   private projects = new Map<string, CodeProject>();
   private branches = new Map<string, CodeBranch>();
   private oauth = new Map<string, CodeOAuthLink>();
+  private grants = new Map<string, CodeGrant>();
 
   /** `now` is for tests that move the clock (the 30-day expiry of a sign-in token). */
   constructor(private readonly now: () => number = Date.now) {}
@@ -272,6 +310,7 @@ export class MemoryCodeStore implements CodeStore {
     this.projects.delete(id);
     // on delete cascade
     for (const [key, b] of [...this.branches]) if (b.projectId === id) this.branches.delete(key);
+    for (const [key, g] of [...this.grants]) if (g.projectId === id) this.grants.delete(key);
   }
 
   async listProjects(userId: string) {
@@ -379,6 +418,28 @@ export class MemoryCodeStore implements CodeStore {
     }
     return n;
   }
+
+  async listGrants(projectId: string) {
+    return [...this.grants.values()].filter((g) => g.projectId === projectId)
+      .sort((a, b) => a.createdAt - b.createdAt).map((g) => ({ ...g }));
+  }
+  async addGrant(projectId: string, n: NewCodeGrant) {
+    const same = [...this.grants.values()].find((g) => g.projectId === projectId && g.action === n.action
+      && (g.branchPattern ?? "") === (n.branchPattern ?? "") && g.effect === n.effect);
+    if (same) {
+      if (n.expiresAt === undefined) delete same.expiresAt; else same.expiresAt = n.expiresAt;
+      return { ...same };
+    }
+    const g: CodeGrant = {
+      id: randomUUID(), projectId, action: n.action, effect: n.effect, createdAt: this.now(),
+      ...(n.branchPattern ? { branchPattern: n.branchPattern } : {}), ...(n.expiresAt !== undefined ? { expiresAt: n.expiresAt } : {}),
+    };
+    this.grants.set(g.id, g);
+    return { ...g };
+  }
+  async deleteGrant(projectId: string, grantId: string) {
+    return this.grants.get(grantId)?.projectId === projectId && this.grants.delete(grantId);
+  }
 }
 
 // ------------------------------------------------------------------ supabase
@@ -407,6 +468,9 @@ interface BranchRow {
   project_id: string; branch: string; task: string; base_sha: string; pr_number: number | null; pr_url: string | null;
   state: BranchState | null; last_review_at: string | null; created_at: string;
 }
+interface GrantRow {
+  id: string; project_id: string; action: string; branch_pattern: string | null; effect: GrantEffect; expires_at: string | null; created_at: string;
+}
 
 const installOf = (r: InstallRow): CodeInstallation => ({
   userId: r.user_id, installationId: Number(r.installation_id), accountLogin: r.account_login, accountType: r.account_type,
@@ -428,6 +492,15 @@ const branchOf = (r: BranchRow): CodeBranch => ({
   prNumber: r.pr_number ?? null, prUrl: r.pr_url ?? null, state: r.state ?? "active", lastReviewAt: ms(r.last_review_at),
   createdAt: ms(r.created_at) ?? 0,
 });
+
+const grantOf = (r: GrantRow): CodeGrant => {
+  const expiresAt = ms(r.expires_at);
+  return {
+    id: r.id, projectId: r.project_id, action: r.action, effect: r.effect, createdAt: ms(r.created_at) ?? 0,
+    // The column is "not null default ''": the empty string is "every branch".
+    ...(r.branch_pattern ? { branchPattern: r.branch_pattern } : {}), ...(expiresAt !== null ? { expiresAt } : {}),
+  };
+};
 
 function ok<T>(res: { data: T | null; error: { message: string } | null }): T | null {
   if (res.error) throw new Error(`code store: ${res.error.message}`);
@@ -614,6 +687,27 @@ export class SupabaseCodeStore implements CodeStore {
     }
     const rows = ok(await q.select("project_id").returns<Array<{ project_id: string }>>());
     return (rows ?? []).length;
+  }
+
+  async listGrants(projectId: string) {
+    if (!UUID.test(projectId)) return [];
+    const rows = ok(await this.sb.from("code_grants").select("*").eq("project_id", projectId)
+      .order("created_at", { ascending: true }).returns<GrantRow[]>());
+    return (rows ?? []).map(grantOf);
+  }
+  async addGrant(projectId: string, n: NewCodeGrant) {
+    // The table's unique (project_id, action, branch_pattern, effect) keeps one: the same grant again only moves its expiry.
+    const r = ok(await this.sb.from("code_grants").upsert({
+      project_id: projectId, action: n.action, branch_pattern: n.branchPattern ?? "", effect: n.effect,
+      expires_at: n.expiresAt === undefined ? null : iso(n.expiresAt),
+    }, { onConflict: "project_id,action,branch_pattern,effect" }).select("*").single<GrantRow>());
+    return grantOf(r!);
+  }
+  async deleteGrant(projectId: string, grantId: string) {
+    if (!UUID.test(projectId) || !UUID.test(grantId)) return false;
+    const rows = ok(await this.sb.from("code_grants").delete().eq("project_id", projectId).eq("id", grantId)
+      .select("id").returns<Array<{ id: string }>>());
+    return (rows ?? []).length > 0;
   }
 }
 

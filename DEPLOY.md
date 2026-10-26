@@ -939,11 +939,19 @@ approved merge.
    `{"configured":true,"connected":false,...}`. Install the App on your own
    account: the page says "GitHub connected", and the App's Advanced tab shows
    its webhook deliveries answered.
-5. **Before real users.** Turn on branch protection for default branches (the
-   `tailzu/` rule is Tailzu's own code, and the App's permission alone could
-   write anywhere), and add the Code bot to the privacy policy: it keeps the
-   account names of linked installs, the person's GitHub id and login, the repos
-   picked, and 200 characters of each task. A person may use a repo only where
+5. **Before real users.** Run `0022_code_policy.sql` (the bot's standing
+   permissions). The bot is not fenced to `tailzu/` branches: it commits to its
+   own branches freely and asks the person before anything else (committing to
+   another branch, merging, closing, deleting, workflow files), with Face ID
+   for a force-push, deleting the default branch, or a commit that looks like it
+   holds a secret (`docs/github-app.md`, section 5). Turn on branch protection
+   or a ruleset for default branches as the second lock (the App's permission
+   alone could write anywhere, and the bot respects what GitHub refuses). Make a
+   GitHub account for the bot and set `CODE_BOT_NAME` and `CODE_BOT_EMAIL` (its
+   noreply address) so its picture shows on commits. Add the Code bot to the
+   privacy policy: it keeps the account names of linked installs, the person's
+   GitHub id and login, the repos picked, 200 characters of each task, and the
+   standing permissions they gave. A person may use a repo only where
    they have write access on GitHub (or it is on their own account), checked
    against GitHub as described in `docs/github-app.md`.
 6. **Sign in with GitHub (optional, off by default).** A second way to connect

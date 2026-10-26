@@ -568,6 +568,18 @@ const EnvSchema = z.object({
   GITHUB_OAUTH_CLIENT_ID: z.string().optional(),
   /** The OAuth App's client secret. Server-side only: never sent to a device, a log or an error message. */
   GITHUB_OAUTH_CLIENT_SECRET: z.string().optional(),
+  /**
+   * WHO THE CODE BOT IS IN GIT. Every commit it makes, through either way of
+   * connecting, has this name and email as its AUTHOR (the committer stays
+   * whoever GitHub says the token is), and its message ends with a
+   * Co-authored-by line for the person it worked for. Default "Blip" and
+   * "blip@tailzu.space". For the avatar to show on GitHub, make a GitHub
+   * account for the bot, and use that account's noreply address here
+   * (<id>+<login>@users.noreply.github.com): docs/github-app.md. A value that
+   * is empty, or has `<`, `>` or a line break in it, is ignored for the default.
+   */
+  CODE_BOT_NAME: z.string().optional(),
+  CODE_BOT_EMAIL: z.string().optional(),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 

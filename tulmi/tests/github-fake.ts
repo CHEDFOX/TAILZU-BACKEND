@@ -28,6 +28,15 @@
  * their own repos); `killOAuthToken` is GitHub ending it, `blockOrg` an
  * organisation that has not let the app in, and DELETE /applications/{id}/token
  * revokes, recorded in `revoked`. Every request is recorded in `calls`.
+ *
+ * For the policy (step 1.4): commits keep the `author` they were sent (see
+ * `headCommit`), tags exist (`addTag`, lightweight or annotated) so a branch can
+ * start from one, branch protection is `protect` (a ref update or delete on a
+ * protected branch is a 422 "protected ref", a merge into one that needs a
+ * check is a 405), an install has permissions (`addInstall`'s `permissions`,
+ * and a token can't ask for more than its install has), and a push that
+ * changes `.github/workflows/*` is turned down (403, as GitHub does) unless
+ * the token has the workflow scope (a person's) or Workflows: write (an install's).
  */
 import { createHash, generateKeyPairSync } from "node:crypto";
 import { jwtVerify, importSPKI } from "jose";
@@ -41,20 +50,26 @@ export interface FakeRepo {
   installationId: number;
 }
 
-interface Commit { tree: string; parents: string[]; message: string }
+interface Commit { tree: string; parents: string[]; message: string; author?: { name: string; email: string } }
 interface RepoGit {
   blobs: Map<string, string>;
   /** Flat trees: path -> blob sha. */
   trees: Map<string, Map<string, string>>;
   commits: Map<string, Commit>;
-  /** "heads/main" -> commit sha. */
+  /** "heads/main" -> commit sha. "tags/v1" -> a commit sha, or an annotated tag object's. */
   refs: Map<string, string>;
+  /** Annotated tag objects: tag sha -> the commit it points at. */
+  tagObjects: Map<string, string>;
+  /** Branch protection: branch -> what is refused. */
+  protection: Map<string, { checks: boolean }>;
   pulls: FakePull[];
 }
 
 export interface FakePull {
   number: number; head: string; base: string; title: string; body: string; draft: boolean;
   state: "open" | "closed"; merged: boolean;
+  /** The head commit when the pull request was opened: what its head is once the branch has been deleted. */
+  headSha?: string;
   /** What GitHub says about whether it merges: undefined works it out from the branches; null is "not worked out yet". */
   mergeable?: boolean | null;
   /** "APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED", or null. */
@@ -84,7 +99,7 @@ export function appKeys(): AppKeys {
 export class FakeGithub {
   clock = { t: Date.UTC(2026, 9, 26, 12, 0, 0) };
   /** Installs by id. */
-  installs = new Map<number, { id: number; login: string; type: string; selection: "all" | "selected"; suspendedAt: string | null }>();
+  installs = new Map<number, { id: number; login: string; type: string; selection: "all" | "selected"; suspendedAt: string | null; permissions: Record<string, string> }>();
   repos: FakeRepo[] = [];
   private git = new Map<number, RepoGit>();
   /** code -> the person's token, one use. */
@@ -126,8 +141,12 @@ export class FakeGithub {
 
   // ------------------------------------------------------------- the world
 
-  addInstall(id: number, login: string, o: { type?: string; selection?: "all" | "selected"; suspended?: boolean } = {}) {
-    this.installs.set(id, { id, login, type: o.type ?? "User", selection: o.selection ?? "selected", suspendedAt: o.suspended ? new Date(this.clock.t).toISOString() : null });
+  /** `permissions` is what the App was given on this install: Contents, Pull requests, Metadata unless said otherwise (add `workflows: "write"` for the Workflows permission). */
+  addInstall(id: number, login: string, o: { type?: string; selection?: "all" | "selected"; suspended?: boolean; permissions?: Record<string, string> } = {}) {
+    this.installs.set(id, {
+      id, login, type: o.type ?? "User", selection: o.selection ?? "selected", suspendedAt: o.suspended ? new Date(this.clock.t).toISOString() : null,
+      permissions: o.permissions ?? { contents: "write", pull_requests: "write", metadata: "read" },
+    });
   }
 
   /** A repo with a default branch holding `files`. */
@@ -137,7 +156,7 @@ export class FakeGithub {
       archived: o.archived ?? false, installationId,
     };
     this.repos.push(repo);
-    const g: RepoGit = { blobs: new Map(), trees: new Map(), commits: new Map(), refs: new Map(), pulls: [] };
+    const g: RepoGit = { blobs: new Map(), trees: new Map(), commits: new Map(), refs: new Map(), tagObjects: new Map(), protection: new Map(), pulls: [] };
     this.git.set(repo.id, g);
     if (o.empty) return repo;
     const tree = new Map<string, string>();
@@ -186,6 +205,26 @@ export class FakeGithub {
     const g = this.git.get(repo.id)!;
     return g.commits.get(g.refs.get(`heads/${branch}`)!)!.message;
   }
+  /** The commit a branch is at, as stored: its message, parents and the author it was sent with (no committer: GitHub fills that in). */
+  headCommit(repo: FakeRepo, branch: string): Commit {
+    const g = this.git.get(repo.id)!;
+    return { ...g.commits.get(g.refs.get(`heads/${branch}`)!)! };
+  }
+  /** A tag at a commit: lightweight, or an annotated tag object that points at the commit. */
+  addTag(repo: FakeRepo, name: string, commit: string, o: { annotated?: boolean } = {}) {
+    const g = this.git.get(repo.id)!;
+    if (o.annotated) {
+      const t = sha("tag:" + name + commit);
+      g.tagObjects.set(t, commit);
+      g.refs.set(`tags/${name}`, t);
+    } else {
+      g.refs.set(`tags/${name}`, commit);
+    }
+  }
+  /** Branch protection: a ref update or delete is refused (422 "protected ref"); with `checks`, a merge into it needs a status check that isn't there (405). */
+  protect(repo: FakeRepo, branch: string, o: { checks?: boolean } = {}) {
+    this.git.get(repo.id)!.protection.set(branch, { checks: o.checks === true });
+  }
 
   /** What `login` may do in a repo. `null`: GitHub has never heard of them there (404). Without a call: "none". */
   setPermission(repo: FakeRepo, login: string, permission: FakePermission | null) {
@@ -199,7 +238,7 @@ export class FakeGithub {
   }
 
   head(repo: FakeRepo, branch: string): string | undefined { return this.git.get(repo.id)!.refs.get(`heads/${branch}`); }
-  branches(repo: FakeRepo): string[] { return [...this.git.get(repo.id)!.refs.keys()].map((r) => r.slice(6)); }
+  branches(repo: FakeRepo): string[] { return [...this.git.get(repo.id)!.refs.keys()].filter((r) => r.startsWith("heads/")).map((r) => r.slice(6)); }
   pulls(repo: FakeRepo) { return this.git.get(repo.id)!.pulls; }
   /** The number of commits a repo has. */
   commitCount(repo: FakeRepo): number { return this.git.get(repo.id)!.commits.size; }
@@ -408,6 +447,12 @@ export class FakeGithub {
     return this.reply(200, { permission: said ?? "none", role_name: said ?? "none", user: { login } });
   }
 
+  /** Whether the token on a call may change workflow files. */
+  private mayWorkflow(c: Call): boolean {
+    const person = this.oauthTokens.get(this.bearer(c));
+    return person ? person.scopes.includes("workflow") : this.tokens.get(this.bearer(c))?.permissions.workflows === "write";
+  }
+
   private mustWrite(token: { permissions: Record<string, string> }, what: "contents" | "pull_requests") {
     if (token.permissions[what] !== "write") this.fail(403, "Resource not accessible by integration");
   }
@@ -471,7 +516,7 @@ export class FakeGithub {
       await this.asApp(c);
       const i = this.installs.get(Number(m[1]));
       if (!i) return this.reply(404, { message: "Not Found" });
-      return this.reply(200, { id: i.id, account: { login: i.login, type: i.type }, repository_selection: i.selection, suspended_at: i.suspendedAt });
+      return this.reply(200, { id: i.id, account: { login: i.login, type: i.type }, repository_selection: i.selection, suspended_at: i.suspendedAt, permissions: i.permissions });
     }
 
     if ((m = p.match(/^\/app\/installations\/(\d+)\/access_tokens$/)) && c.method === "POST") {
@@ -479,6 +524,13 @@ export class FakeGithub {
       const id = Number(m[1]);
       if (!this.installs.has(id)) return this.reply(404, { message: "Not Found" });
       if (this.installs.get(id)!.suspendedAt) return this.reply(403, { message: "This installation has been suspended" });
+      // A token can't have more than the install was given: asking for Workflows on an install without it is a 422.
+      const level = (v: string | undefined) => (v === "write" ? 2 : v === "read" ? 1 : 0);
+      for (const [name, lvl] of Object.entries((c.body?.permissions ?? {}) as Record<string, string>)) {
+        if (level(lvl) > level(this.installs.get(id)!.permissions[name])) {
+          return this.reply(422, { message: `The permissions requested are not granted to this installation.` });
+        }
+      }
       const ids: number[] | undefined = c.body?.repository_ids;
       const mine = this.repos.filter((r) => r.installationId === id).map((r) => r.id);
       if (ids && ids.some((r) => !mine.includes(r))) return this.reply(422, { message: "There is at least one repository that does not exist or is not accessible to the parent installation." });
@@ -523,9 +575,13 @@ export class FakeGithub {
     let r: RegExpMatchArray | null;
 
     if (git.commits.size === 0 && /^\/git\//.test(rest)) return this.reply(409, { message: "Git Repository is empty." });
-    if (c.method === "GET" && (r = wanted(/^\/git\/ref\/(heads\/.+)$/))) {
+    if (c.method === "GET" && (r = wanted(/^\/git\/ref\/((?:heads|tags)\/.+)$/))) {
       const s = git.refs.get(r[1]!);
-      return s ? this.reply(200, { ref: `refs/${r[1]}`, object: { sha: s, type: "commit" } }) : this.reply(404, { message: "Not Found" });
+      return s ? this.reply(200, { ref: `refs/${r[1]}`, object: { sha: s, type: git.tagObjects.has(s) ? "tag" : "commit" } }) : this.reply(404, { message: "Not Found" });
+    }
+    if (c.method === "GET" && (r = wanted(/^\/git\/tags\/([0-9a-f]+)$/))) {
+      const target = git.tagObjects.get(r[1]!);
+      return target ? this.reply(200, { sha: r[1], object: { sha: target, type: "commit" } }) : this.reply(404, { message: "Not Found" });
     }
     if (c.method === "POST" && rest === "/git/refs") {
       this.mustWrite(token, "contents");
@@ -583,9 +639,9 @@ export class FakeGithub {
     }
     if (c.method === "POST" && rest === "/git/commits") {
       this.mustWrite(token, "contents");
-      const { tree, parents, message } = c.body ?? {};
+      const { tree, parents, message, author } = c.body ?? {};
       if (!git.trees.has(tree) || !Array.isArray(parents) || parents.some((s: string) => !git.commits.has(s))) return this.reply(422, { message: "bad commit" });
-      const commit: Commit = { tree, parents, message };
+      const commit: Commit = { tree, parents, message, ...(author ? { author } : {}) };
       const s = this.commitSha(commit);
       git.commits.set(s, commit);
       return this.reply(201, { sha: s });
@@ -597,6 +653,16 @@ export class FakeGithub {
       if (!cur) return this.reply(404, { message: "Reference does not exist" });
       const target: string = c.body?.sha;
       if (!git.commits.has(target)) return this.reply(422, { message: "Object does not exist" });
+      if (git.protection.has(r[1]!.slice(6))) return this.reply(422, { message: "Cannot update this protected ref." });
+      // A push that changes a workflow file needs the workflow scope (a person's token) or Workflows: write (an install's).
+      const before = this.flat(git, cur), after = this.flat(git, target);
+      const touched = [...new Set([...before.keys(), ...after.keys()])].filter((k) => before.get(k) !== after.get(k) && /^\.github\/workflows\//i.test(k));
+      if (touched.length && !this.mayWorkflow(c)) {
+        const person = this.oauthTokens.has(this.bearer(c));
+        return this.reply(403, { message: person
+          ? `refusing to allow an OAuth App to create or update workflow \`${touched[0]}\` without \`workflow\` scope`
+          : `refusing to allow a GitHub App to create or update workflow \`${touched[0]}\` without \`workflows\` permission` });
+      }
       // A fast-forward: the current head is an ancestor of the new commit.
       const seen = new Set<string>();
       const walk = (s: string): boolean => s === cur || (!seen.has(s) && (seen.add(s), (git.commits.get(s)?.parents ?? []).some(walk)));
@@ -615,7 +681,7 @@ export class FakeGithub {
         return this.reply(422, { message: "Validation Failed", errors: [{ resource: "PullRequest", code: "custom", message: `No commits between ${base} and ${head}` }] });
       }
       const number = git.pulls.length + 1;
-      git.pulls.push({ number, head, base, title, body, draft: draft === true, state: "open", merged: false, reviewComments: [], issueComments: [] });
+      git.pulls.push({ number, head, base, title, body, draft: draft === true, state: "open", merged: false, headSha: git.refs.get(`heads/${head}`), reviewComments: [], issueComments: [] });
       return this.reply(201, { number, html_url: `https://github.com/${repo.fullName}/pull/${number}`, draft: draft === true });
     }
     if (c.method === "GET" && rest === "/pulls") {
@@ -648,7 +714,7 @@ export class FakeGithub {
       const tree = this.flat(git, parent);
       if (parent && tree.has(path) && c.body.sha !== tree.get(path)) return this.reply(422, { message: `Invalid request.\n\n"sha" wasn't supplied.` });
       tree.set(path, blob);
-      const commit = this.addCommit(git, { tree: this.addTree(git, tree), parents: parent ? [parent] : [], message: c.body.message });
+      const commit = this.addCommit(git, { tree: this.addTree(git, tree), parents: parent ? [parent] : [], message: c.body.message, ...(c.body.author ? { author: c.body.author } : {}) });
       git.refs.set(`heads/${branch}`, commit);
       return this.reply(201, { content: { path, sha: blob }, commit: { sha: commit } });
     }
@@ -704,6 +770,7 @@ export class FakeGithub {
       if (j.mergeable === false) return this.reply(405, { message: "Pull Request is not mergeable" });
       if (c.body?.sha !== j.head.sha) return this.reply(409, { message: "Head branch was modified. Review and try the merge again." });
       if (c.body?.merge_method !== "squash") return this.reply(405, { message: "Merge method not allowed" });
+      if (git.protection.get(pr.base)?.checks) return this.reply(405, { message: 'Required status check "ci" is expected.' });
       const baseSha = git.refs.get(`heads/${pr.base}`)!, headSha = git.refs.get(`heads/${pr.head}`)!;
       const merged = this.threeWay(git, this.mergeBase(git, baseSha, headSha), baseSha, headSha);
       // A squash: one commit on the base with the branch's changes; the branch's own commits are not parents.
@@ -729,6 +796,7 @@ export class FakeGithub {
     // --- deleting a branch
     if (c.method === "DELETE" && (r = wanted(/^\/git\/refs\/(heads\/.+)$/))) {
       this.mustWrite(token, "contents");
+      if (git.protection.has(r[1]!.slice(6))) return this.reply(422, { message: "Cannot delete this protected ref." });
       return git.refs.delete(r[1]!) ? new Response(null, { status: 204 }) : this.reply(422, { message: "Reference does not exist" });
     }
     return this.reply(404, { message: "Not Found" });
@@ -736,7 +804,7 @@ export class FakeGithub {
 
   /** A pull request as GitHub's REST API shows it. */
   private pullJson(repo: FakeRepo, git: RepoGit, pr: FakePull) {
-    const baseSha = git.refs.get(`heads/${pr.base}`), headSha = git.refs.get(`heads/${pr.head}`)!;
+    const baseSha = git.refs.get(`heads/${pr.base}`), headSha = git.refs.get(`heads/${pr.head}`) ?? pr.headSha!;
     const clash = baseSha ? this.threeWay(git, this.mergeBase(git, baseSha, headSha), baseSha, headSha).conflict : false;
     const mergeable = pr.mergeable !== undefined ? pr.mergeable : !clash;
     const files = baseSha ? this.diffFiles(git, this.flat(git, this.mergeBase(git, baseSha, headSha)), this.flat(git, headSha)) : [];

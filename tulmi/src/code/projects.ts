@@ -3,14 +3,17 @@
  *
  * A PROJECT is one repo a person picked from the repos their linked GitHub
  * installs can see. A WORK BRANCH is where Tailzu does the work for one task:
- * `tailzu/<slug>-<4 hex>`, made from the default branch's head, recorded here
- * with the first 200 characters of the task and the commit it started from.
- * Tailzu never writes anywhere else (github.ts assertWorkBranch).
+ * `tailzu/<slug>-<4 hex>`, made from the head of any ref (the default branch,
+ * unless told otherwise), recorded here with the first 200 characters of the
+ * task and the commit it started from. A recorded branch is one the bot MADE,
+ * and that record is what makes it the bot's own: the bot commits to its own
+ * branches without asking. It can work on any other branch too, but asks the
+ * person first (policy.ts: the tiers, the standing grants, the approvals).
  *
  *   GET  /v1/code/repos                                   listRepos()
  *   POST /v1/code/projects {repoId}                       addProject()
  *   GET  /v1/code/projects                                store.listProjects
- *   POST /v1/code/projects/:id/branches {task}            createWorkBranch()
+ *   POST /v1/code/projects/:id/branches {task, from?}     createWorkBranch()
  *   POST /v1/code/projects/:id/branches/:branch/pr        openPr()
  *
  * Every function takes the person's id and looks things up BY it, so a
@@ -37,32 +40,51 @@
  * commit, a pull request. A workspace's reads check it too (with what is
  * kept), since access can be taken away after the project was added.
  *
+ * ACCESS COMES FIRST, THEN THE POLICY. Whether the person may use the repo at
+ * all is settled before anything is asked of policy.ts; a refusal for that is
+ * no_access, and it is never turned into a question.
+ *
+ * Every write here goes through policy.ts gate(), which allows it, answers
+ * with a question for the person (`{ needsApproval: true, approvalId, ... }`,
+ * and the same call again with `approvalId` does it), or refuses. So the
+ * functions that can be asked about return `Gated<...>`: what they did, or
+ * the question. Each takes `{ approvalId?, attended? }` last.
+ *
  * workspace() is what the Code bot's agent loop will call (there is no route
- * for it yet): the same checks, then a handle with four verbs over one work
- * branch: tree, read, commit and openDraftPr. The handle can't be pointed at
- * any other branch, and the GitHub calls under it check the branch again.
+ * for it yet): the same checks, then a handle over one branch: tree, read,
+ * commit and openDraftPr. The handle can't be pointed at any other branch. It
+ * can be pointed at ANY branch of the project, not just one the bot made; a
+ * commit to a branch the bot didn't make is a question, and a commit with
+ * something that looks like a secret in it, or a workflow file, is a bigger
+ * one (policy.ts).
  *
  * A project goes through one of two links (store.ts LinkKind): a GitHub App
  * install ("app"), or the person's own "Sign in with GitHub" ("oauth",
- * oauth.ts). Everything below is the same for both, and so are the guards in
- * github.ts and pulls.ts: the repo's RepoRef names the access (access.ts) and
- * nothing else changes. What differs is only the access rule. A sign-in token
- * reaches ALL of the person's repos, so a repo counts only if the person
- * added it as a project, and a write first asks GitHub afresh whether they can
- * still push to it. When the App reaches the same repo, the App is used.
+ * oauth.ts). Everything below is the same for both, and so is the policy: the
+ * repo's RepoRef names the access (access.ts) and nothing else changes. What
+ * differs is only the access rule. A sign-in token reaches ALL of the person's
+ * repos, so a repo counts only if the person added it as a project, and a
+ * write first asks GitHub afresh whether they can still push to it. When the
+ * App reaches the same repo, the App is used.
  *
  * Also here: a link to make a new repo on GitHub (newRepoLink: the person
  * makes it, so Tailzu needs no permission to), the first README of a repo that
- * has no commits (initEmptyRepo, one of exactly two writes to a default
- * branch), and runnerAccess, the repo-scoped token a sandbox will clone with.
- * Keeping a branch current, reading what changed, and the pull request's life
- * (ready, close, the two-step merge, deleting the branch) are in pulls.ts.
+ * has no commits (initEmptyRepo; it asks), moving a branch with a force
+ * (forceUpdateBranch; it asks every time, with Face ID), and runnerAccess, the
+ * repo-scoped token a sandbox will clone with. Keeping a branch current,
+ * reading what changed, and the pull request's life (ready, close, the
+ * two-step merge, deleting the branch) are in pulls.ts.
  */
 import { randomBytes } from "node:crypto";
 import { ConnectorError } from "../connectors/oauth.js";
-import { assertWorkBranch, type CommitFile, type GithubApp, type RepoPermission, type RepoRef, type TreeEntry } from "./github.js";
+import type { Person } from "./access.js";
+import { COMMIT_FILES_MAX, commitTreeEntries, validBranchName, type CommitFile, type GithubApp, type RepoPermission, type RepoRef, type TreeEntry } from "./github.js";
 import type { ApprovalBook } from "./approvals.js";
 import type { GithubOAuth } from "./oauth.js";
+import {
+  checkCommit, commitFingerprint, fingerprintOf, gate, gateFree, guardRead,
+  type CommitChecks, type GateOptions, type Gated, type PolicyCtx,
+} from "./policy.js";
 import type { CodeBranch, CodeInstallation, CodeProject, CodeStore } from "./store.js";
 
 export interface ProjectDeps {
@@ -284,18 +306,55 @@ export function newRepoLink(name: unknown): { url: string; name: string } {
   return { url: `https://github.com/new?${new URLSearchParams({ name: slug, visibility: "private" })}`, name: slug };
 }
 
+/** What every gate needs of the person and the project. */
+export const gateBase = (d: ProjectDeps, userId: string, project: CodeProject) =>
+  ({ store: d.store, approvals: d.approvals, userId, project });
+
+/** Whether the bot made this branch: Tailzu recorded it in this project. The default branch is never the bot's own. */
+export async function isOwnBranch(d: ProjectDeps, project: CodeProject, branch: string): Promise<boolean> {
+  return branch !== project.defaultBranch && (await d.store.getBranch(project.id, branch)) !== null;
+}
+
 /**
- * THE FIRST OF TWO WRITES TO A DEFAULT BRANCH (github.ts initEmptyRepo): one
- * README.md with the project's title, in a repo that has no commits. A repo
- * with commits is refused ("repo_not_empty"), however it got here, so this
- * can never add to or replace anything. After it a work branch can be made as
- * usual; before it, createWorkBranch says "repo_empty".
+ * Who a project's work is for on GitHub (id and login), from the link the
+ * project goes through: the sign-in's, or the install's. Null when it isn't
+ * known (a link from before they were kept), and then no Co-authored-by line
+ * is added.
  */
-export async function initEmptyRepo(d: ProjectDeps, userId: string, projectId: string, title?: unknown): Promise<{ commitSha: string }> {
+export async function personOf(d: ProjectDeps, userId: string, p: CodeProject): Promise<Person | null> {
+  if (p.linkKind === "oauth") {
+    const l = await d.store.getOAuthLink(userId);
+    return l ? { id: l.githubUserId, login: l.githubLogin } : null;
+  }
+  const l = await d.store.getInstallation(userId, p.installationId);
+  return l && l.githubUserId !== null && l.githubLogin !== null ? { id: l.githubUserId, login: l.githubLogin } : null;
+}
+
+/**
+ * THE FIRST README OF A REPO WITH NO COMMITS (github.ts initEmptyRepo): one
+ * README.md with the project's title, in a repo that has no commits, written
+ * by the bot. It is a write to the default branch, so it asks (policy.ts
+ * repo.init). A repo with commits is refused ("repo_not_empty") BEFORE any
+ * question is asked, however it got here, so this can never add to or replace
+ * anything. After it a work branch can be made as usual; before it,
+ * createWorkBranch says "repo_empty".
+ */
+export async function initEmptyRepo(
+  d: ProjectDeps, userId: string, projectId: string, title?: unknown, o: GateOptions = {},
+): Promise<Gated<{ commitSha: string }>> {
   const project = await ownProject(d, userId, projectId);
   await assertAccess(d, userId, project, true);
+  const repo = repoRef(d, userId, project);
   const heading = typeof title === "string" && title.trim() ? title : project.fullName.split("/")[1]!;
-  return { commitSha: (await d.github.initEmptyRepo(repoRef(d, userId, project), heading)).sha };
+  if (!(await d.github.repoIsEmpty(repo))) {
+    throw new ConnectorError("repo_not_empty", "This repo already has commits, so Tailzu won't add a first file to its default branch.");
+  }
+  const person = await personOf(d, userId, project);
+  return gate({
+    ...gateBase(d, userId, project), ...o, action: "repo.init", fingerprint: fingerprintOf("init", heading),
+    summary: () => ({ readme: heading.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 100) }),
+    run: async () => ({ commitSha: (await d.github.initEmptyRepo(repo, heading, { person })).sha }),
+  });
 }
 
 /** What a runner gets: for an App project, a clone address and a token for that one repo; for a sign-in project, a one-time download link and never the token. */
@@ -314,12 +373,14 @@ export type RunnerAccess =
  * anything. "read" is a short-lived download link for the branch's code (the
  * address GitHub redirects its tarball request to, not followed here); "push"
  * is refused ("use_server_commit"): the runner hands its changes back and the
- * server commits them through the workspace, under the same guards as any other
- * commit.
+ * server commits them through commitToBranch, under the same policy as any
+ * other commit.
  *
  * The branch has to be one Tailzu recorded; the person has to be allowed in
  * the repo right now (a fresh check, read or push alike, since either is the
- * repo's contents).
+ * repo's contents). GitHub can't narrow a token to a branch, so a push token
+ * can write anywhere in the repo: keeping a runner to its branch is the
+ * runner's job, with branch protection behind it.
  */
 export async function runnerAccess(
   d: ProjectDeps, userId: string, projectId: string, branch: string, mode: "read" | "push",
@@ -327,10 +388,12 @@ export async function runnerAccess(
   if (mode !== "read" && mode !== "push") throw new ConnectorError("bad_request", "Say whether the runner reads or pushes.");
   const project = await ownProject(d, userId, projectId);
   const rec = await recordedBranch(d, project, branch);
-  assertWorkBranch(rec.branch, project.defaultBranch);
   if (rec.state === "deleted") throw new ConnectorError("branch_deleted", "That branch has been deleted from GitHub.");
-  if (project.linkKind === "oauth" && mode === "push") {
-    throw new ConnectorError("use_server_commit", "A runner doesn't get push access to a repo reached through your own sign-in. Hand the changes back and the server will commit them.");
+  // No runner ever holds a token that can write: a repo-wide write token can't be fenced to one branch,
+  // so it would step round every rule in policy.ts. The runner hands its changes back and the server
+  // commits them through the policy, on either connection.
+  if (mode === "push") {
+    throw new ConnectorError("use_server_commit", "A runner doesn't get push access. Hand the changes back and the server will commit them.");
   }
   await assertAccess(d, userId, project, true);
   const repo = repoRef(d, userId, project);
@@ -342,24 +405,37 @@ export async function runnerAccess(
   return { kind: "app", cloneUrl: `https://github.com/${project.fullName}.git`, token: t.token, expiresAt: t.expiresAt };
 }
 
-/** A work branch for a task, from the default branch's head. */
-export async function createWorkBranch(d: ProjectDeps, userId: string, projectId: string, task: unknown): Promise<{ branch: string; baseSha: string; url: string }> {
+/**
+ * A work branch for a task: `tailzu/<slug>-<4 hex>`, at the head of `from` (a
+ * branch, a tag or a commit id; the default branch when none is given). Making
+ * a branch is free: it changes nothing that exists.
+ */
+export async function createWorkBranch(
+  d: ProjectDeps, userId: string, projectId: string, task: unknown, o: GateOptions & { from?: string } = {},
+): Promise<{ branch: string; baseSha: string; url: string }> {
   const text = typeof task === "string" ? task.trim() : "";
   if (!text) throw new ConnectorError("bad_request", "Say what the task is.");
+  if (o.from !== undefined && !validBranchName(o.from)) throw new ConnectorError("bad_request", "from is a branch, a tag or a commit.");
   const project = await ownProject(d, userId, projectId);
   await assertAccess(d, userId, project, true);
-  let made: { branch: string; baseSha: string } | null = null;
-  // Four hex digits can collide with a branch from before: ask for another name, a few times.
-  for (let attempt = 0; !made; attempt += 1) {
-    const branch = newBranchName(text);
-    try {
-      made = { branch, baseSha: await d.github.createBranch(repoRef(d, userId, project), branch) };
-    } catch (err) {
-      if (!(err instanceof ConnectorError && err.code === "branch_exists" && attempt < 3)) throw err;
-    }
-  }
-  await d.store.addBranch({ projectId, branch: made.branch, task: [...text].slice(0, TASK_KEEP).join(""), baseSha: made.baseSha });
-  return { ...made, url: `https://github.com/${project.fullName}/tree/${made.branch}` };
+  return gateFree({
+    ...gateBase(d, userId, project), attended: o.attended, action: "branch.create",
+    summary: () => ({ task: [...text].slice(0, TASK_KEEP).join(""), ...(o.from !== undefined ? { from: o.from } : {}) }),
+    run: async () => {
+      let made: { branch: string; baseSha: string } | null = null;
+      // Four hex digits can collide with a branch from before: ask for another name, a few times.
+      for (let attempt = 0; !made; attempt += 1) {
+        const branch = newBranchName(text);
+        try {
+          made = { branch, baseSha: await d.github.createBranch(repoRef(d, userId, project), branch, o.from) };
+        } catch (err) {
+          if (!(err instanceof ConnectorError && err.code === "branch_exists" && attempt < 3)) throw err;
+        }
+      }
+      await d.store.addBranch({ projectId, branch: made.branch, task: [...text].slice(0, TASK_KEEP).join(""), baseSha: made.baseSha });
+      return { ...made, url: `https://github.com/${project.fullName}/tree/${made.branch}` };
+    },
+  });
 }
 
 export async function listBranches(d: ProjectDeps, userId: string, projectId: string): Promise<CodeBranch[]> {
@@ -367,49 +443,162 @@ export async function listBranches(d: ProjectDeps, userId: string, projectId: st
   return d.store.listBranches(projectId);
 }
 
-/** A draft PR from a branch Tailzu made in this project; its number and link are recorded on the branch. */
+/**
+ * A draft PR from a branch of this project into the default branch. Free, on
+ * any branch (a draft changes nothing until someone takes it out of draft).
+ * When the bot made the branch, its number and link are recorded on it.
+ */
 export async function openPr(
-  d: ProjectDeps, userId: string, projectId: string, branch: string, title: unknown, body: unknown,
+  d: ProjectDeps, userId: string, projectId: string, branch: string, title: unknown, body: unknown, o: GateOptions = {},
 ): Promise<{ prNumber: number; prUrl: string; existing: boolean }> {
   const project = await ownProject(d, userId, projectId);
-  if (!(await d.store.getBranch(projectId, branch))) throw notFound("that branch in this project");
+  if (!validBranchName(branch)) throw notFound("that branch in this project");
+  const rec = await d.store.getBranch(projectId, branch);
   await assertAccess(d, userId, project, true);
-  const pr = await d.github.openDraftPr(repoRef(d, userId, project), branch, typeof title === "string" ? title : "", typeof body === "string" ? body : "");
-  await d.store.setBranchPr(projectId, branch, pr.number, pr.url);
-  return { prNumber: pr.number, prUrl: pr.url, existing: pr.existing };
+  return gateFree({
+    ...gateBase(d, userId, project), attended: o.attended, action: "pr.open_draft", branch, ownBranch: rec !== null,
+    summary: () => ({ title: typeof title === "string" ? title.trim().slice(0, 256) : "" }),
+    run: async () => {
+      const repo = repoRef(d, userId, project);
+      // A branch Tailzu made is known to be there; any other has to be looked for, so a name that isn't a branch is "not found".
+      if (!rec) await d.github.branchHead(repo, branch);
+      const pr = await d.github.openDraftPr(repo, branch, typeof title === "string" ? title : "", typeof body === "string" ? body : "");
+      if (rec) await d.store.setBranchPr(projectId, branch, pr.number, pr.url);
+      return { prNumber: pr.number, prUrl: pr.url, existing: pr.existing };
+    },
+  });
 }
 
-/** The four verbs the Code bot has over one work branch. */
+const firstLine = (s: string, max: number) => [...String(s).split("\n")[0]!.trim()].slice(0, max).join("");
+
+/** What a commit's approval card shows: the files (names, never contents), the message's first line, and what made it a bigger question. */
+function commitSummary(files: readonly CommitFile[], message: string, checks: CommitChecks, head?: string): Record<string, unknown> {
+  return {
+    fileCount: files.length,
+    files: files.slice(0, 25).map((f) => ({ path: f.path, change: f.delete === true || f.content === null ? "delete" : "write" })),
+    message: firstLine(message, 200),
+    ...(head !== undefined ? { at: head } : {}),
+    // Which files look like they hold a secret, and what kind of thing: never the thing.
+    ...(checks.secrets.length ? { flagged: checks.secrets.map((h) => ({ path: h.path, looksLike: h.kinds })) } : {}),
+    ...(checks.workflowPaths.length ? { workflowFiles: checks.workflowPaths } : {}),
+  };
+}
+
+/**
+ * One commit on a branch, by the bot (author: the bot; the person credited in
+ * the message). What it takes:
+ *
+ *   - a branch the bot made, files with nothing in them to worry about:
+ *     free, it is done;
+ *   - any other branch, the default branch included: a question first
+ *     (commit.other_branch), unless the person gave a standing permission;
+ *   - a file under .github/workflows: also a question (workflow.write), and
+ *     the token (or the App) has to be allowed to change workflows;
+ *   - contents that look like a secret (policy.ts scanForSecrets): a strict
+ *     question, with Face ID, every time. The approval says which files, never
+ *     what was found;
+ *   - a path outside the repo or inside .git: never ("bad_path").
+ *
+ * The approval is for exactly this: this branch at the commit it was at, these
+ * files, this message. Anything else, and it is a new question. Throws
+ * "branch_moved" if the branch moved on while committing.
+ */
+export async function commitToBranch(
+  d: ProjectDeps, userId: string, projectId: string, branch: string, files: CommitFile[], message: string, o: GateOptions = {},
+): Promise<Gated<{ sha: string; parentSha: string }>> {
+  const project = await ownProject(d, userId, projectId);
+  if (!validBranchName(branch)) throw notFound("that branch in this project");
+  await assertAccess(d, userId, project, true);
+  const own = await isOwnBranch(d, project, branch);
+  const base = repoRef(d, userId, project);
+
+  const ctx: PolicyCtx = { project, branch, defaultBranch: project.defaultBranch, attended: o.attended !== false, connection: project.linkKind, scopes: [], ownBranch: own };
+  // The paths first (a path that leaves the repo is "never", whatever else is true), then the rest of what makes a commit a commit.
+  if (!Array.isArray(files) || !files.length) throw new ConnectorError("bad_request", "There is nothing to commit.");
+  if (files.length > COMMIT_FILES_MAX) throw new ConnectorError("bad_request", `A commit can have at most ${COMMIT_FILES_MAX} files.`);
+  const checks = checkCommit(files, ctx);
+  commitTreeEntries(files);
+  if (typeof message !== "string" || !message.trim()) throw new ConnectorError("bad_request", "A commit needs a message.");
+
+  // Only a commit that touches a workflow file needs to know what the token may do, and only then does the App's token ask for the Workflows permission.
+  let scopes: string[] = [];
+  let repo = base;
+  if (checks.workflowPaths.length) {
+    scopes = await d.github.scopesOf(base);
+    if (scopes.includes("workflow")) repo = { ...base, workflows: true };
+  }
+  const person = await personOf(d, userId, project);
+
+  return gate({
+    ...gateBase(d, userId, project), ...o, action: own ? "commit.own_branch" : "commit.other_branch", also: checks.also,
+    branch, ownBranch: own, scopes,
+    head: () => d.github.branchHead(repo, branch),
+    fingerprint: commitFingerprint(files, message),
+    summary: (head) => commitSummary(files, message, checks, head),
+    run: (approved) => d.github.commit(repo, branch, files, message, { person, ...(approved?.headSha !== undefined ? { expectHead: approved.headSha } : {}) }),
+  });
+}
+
+/**
+ * Moves a branch to a commit even if that throws commits away: a force-push,
+ * the one way the bot can rewrite history. It always asks, with Face ID, and
+ * no standing permission lifts that (policy.ts push.force). The approval is for
+ * this branch at the commit it is at now, moving to exactly `sha`. Nothing
+ * else uses `force`.
+ */
+export async function forceUpdateBranch(
+  d: ProjectDeps, userId: string, projectId: string, branch: string, sha: string, o: GateOptions = {},
+): Promise<Gated<{ sha: string }>> {
+  const project = await ownProject(d, userId, projectId);
+  if (!validBranchName(branch)) throw notFound("that branch in this project");
+  if (typeof sha !== "string" || !/^[0-9a-f]{40}$/.test(sha)) throw new ConnectorError("bad_request", "That isn't a commit.");
+  await assertAccess(d, userId, project, true);
+  const repo = repoRef(d, userId, project);
+  return gate({
+    ...gateBase(d, userId, project), ...o, action: "push.force", branch, ownBranch: await isOwnBranch(d, project, branch),
+    head: () => d.github.branchHead(repo, branch), fingerprint: fingerprintOf("force", sha),
+    summary: (head) => ({ moveTo: sha, ...(head !== undefined ? { from: head } : {}), rewritesHistory: true }),
+    run: async () => { await d.github.updateRef(repo, branch, sha, { force: true }); return { sha }; },
+  });
+}
+
+/** The handle the Code bot has over one branch. */
 export interface Workspace {
   readonly project: CodeProject;
   readonly branch: string;
+  /** Whether the bot made this branch (so it commits here without asking). */
+  readonly own: boolean;
   /** Every file and folder on the branch. */
   tree(): Promise<{ entries: TreeEntry[]; truncated: boolean }>;
   /** One file's text (1 MB at most, text only). */
   read(path: string): Promise<{ path: string; size: number; text: string }>;
-  /** One commit on the branch. Throws "branch_moved" if the branch has moved on since it was read. */
-  commit(files: CommitFile[], message: string): Promise<{ sha: string; parentSha: string }>;
+  /** One commit on the branch (commitToBranch): done, or a question; pass the `approvalId` it gave to say yes. Throws "branch_moved" if the branch has moved on since it was read. */
+  commit(files: CommitFile[], message: string, c?: { approvalId?: string }): Promise<Gated<{ sha: string; parentSha: string }>>;
   /** A draft PR into the default branch (the open one, if there already is). */
   openDraftPr(title: string, body: string): Promise<{ prNumber: number; prUrl: string; existing: boolean }>;
 }
 
 /**
- * The workspace for a person's work branch: the project must be theirs, the
- * branch one Tailzu recorded in it, the install live and the repo still one
- * they may use. Throws "not found" for anything else, with the same words
- * whichever it was. Each verb checks again when it is used: a commit and a
- * pull request ask GitHub afresh, a read goes by what was kept (ten minutes).
+ * The workspace for a branch of a person's project: the project must be
+ * theirs, the install live and the repo still one they may use. Throws "not
+ * found" for anything else, with the same words whichever it was. The branch
+ * can be any branch, not only one the bot made: reading is free, and what
+ * writing there takes is in commitToBranch. Each verb checks again when it is
+ * used: a commit and a pull request ask GitHub afresh, a read goes by what was
+ * kept (ten minutes). `attended: false` is for a run nobody is watching: what
+ * would ask is refused as "needs_you" instead.
  */
-export async function workspace(d: ProjectDeps, userId: string, projectId: string, branch: string): Promise<Workspace> {
+export async function workspace(d: ProjectDeps, userId: string, projectId: string, branch: string, o: { attended?: boolean } = {}): Promise<Workspace> {
   const project = await ownProject(d, userId, projectId);
-  if (typeof branch !== "string" || !(await d.store.getBranch(projectId, branch))) throw notFound("that branch in this project");
+  if (!validBranchName(branch)) throw notFound("that branch in this project");
   await assertAccess(d, userId, project);
   const repo = repoRef(d, userId, project);
+  const own = await isOwnBranch(d, project, branch);
   return {
-    project, branch,
-    tree: async () => { await assertAccess(d, userId, project); return d.github.tree(repo, branch); },
-    read: async (path) => { await assertAccess(d, userId, project); return d.github.readFile(repo, branch, path); },
-    commit: async (files, message) => { await assertAccess(d, userId, project, true); return d.github.commit(repo, branch, files, message); },
-    openDraftPr: (title, body) => openPr(d, userId, projectId, branch, title, body),
+    project, branch, own,
+    tree: async () => { await assertAccess(d, userId, project); await guardRead(d.store, project, branch); return d.github.tree(repo, branch); },
+    read: async (path) => { await assertAccess(d, userId, project); await guardRead(d.store, project, branch); return d.github.readFile(repo, branch, path); },
+    commit: (files, message, c = {}) => commitToBranch(d, userId, projectId, branch, files, message, { attended: o.attended, approvalId: c.approvalId }),
+    openDraftPr: (title, body) => openPr(d, userId, projectId, branch, title, body, { attended: o.attended }),
   };
 }

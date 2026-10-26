@@ -1,5 +1,5 @@
 /**
- * THE CODE BOT'S GITHUB ROUTES: CONNECT, PICK A PROJECT, START A BRANCH.
+ * THE CODE BOT'S GITHUB ROUTES: CONNECT, PICK A PROJECT, START A BRANCH, AND SAY YES.
  *
  *   POST   /v1/code/github/connect            -> { installUrl }  the link that opens GitHub's install page
  *   GET    /v1/code/github/callback           GitHub sends the browser back here; no session, the signed state says who
@@ -16,38 +16,63 @@
  *   POST   /v1/code/projects { repoId }       -> { project, created }; 404 for a repo outside the person's installs
  *   GET    /v1/code/projects                  -> { projects }
  *   DELETE /v1/code/projects/:id              -> { ok }
- *   POST   /v1/code/projects/:id/branches { task }
- *                                             -> { branch, baseSha, url }  `tailzu/<slug>-<4 hex>` from the default branch's head
+ *   POST   /v1/code/projects/:id/branches { task, from? }
+ *                                             -> { branch, baseSha, url }  `tailzu/<slug>-<4 hex>` from the head of `from` (a branch,
+ *                                                  tag or commit; the default branch when left out)
  *   GET    /v1/code/projects/:id/branches     -> { branches }
  *   POST   /v1/code/projects/:id/branches/:branch/pr { title, body }
  *                                             -> { prNumber, prUrl, existing }  a draft PR; :branch is URL-encoded
  *                                                  (tailzu%2Ffix-login-1a2b), since the branch has a "/" in it
  *   GET    /v1/code/new-repo-link?name=       -> { url, name }  GitHub's "new repository" page with the name and private filled
  *                                                  in; the person makes the repo, so Tailzu needs no permission to
- *   POST   /v1/code/projects/:id/init { title? }
- *                                             -> { commitSha }  one README.md as the first commit of a repo with NO commits
- *                                                  (409 repo_not_empty otherwise). createWorkBranch on an empty repo: 409 repo_empty
+ *   POST   /v1/code/projects/:id/init { title?, approvalId? }
+ *                                             -> a QUESTION, then { commitSha }  one README.md as the first commit of a repo with NO
+ *                                                  commits (409 repo_not_empty otherwise). createWorkBranch on an empty repo: 409 repo_empty
+ *   GET    /v1/code/projects/:id/permissions  -> { grants: [{ id, action, branchPattern?, effect, expiresAt?, createdAt }], actions }
+ *                                                  the project's standing permissions, and the catalog of actions (id, tier, label,
+ *                                                  faceId, grantable, branchScoped) for the screen that edits them
+ *   POST   /v1/code/projects/:id/permissions { action, branchPattern?, effect?, expiresAt? }
+ *                                             -> { grant }  "always let the bot do <action> on <branch pattern>" (effect allow, the
+ *                                                  default), or "never" (deny, which beats every allow). 400 not_grantable for an
+ *                                                  action that always asks (Face ID) or never happens, 409 too_many at 100
+ *   DELETE /v1/code/projects/:id/permissions/:grantId
+ *                                             -> { ok }  takes a standing permission back (404 for one that isn't this project's)
  *
- * and, for a work branch the project recorded (":branch" always URL-encoded), code/pulls.ts:
+ * and, for a branch of the project (":branch" always URL-encoded; the bot's own, or any other), code/pulls.ts:
  *
  *   POST   .../branches/:branch/sync          -> { status: merged | up_to_date, sha? }  the default branch merged INTO
- *                                                  the work branch; a conflict is 409 conflict and the branch's state
- *                                                  `conflict`: never resolved, never forced
+ *                                                  the branch; a conflict is 409 conflict and the branch's state
+ *                                                  `conflict`: never resolved, never forced. A question on a branch the bot didn't make
  *   GET    .../branches/:branch/diff          -> { aheadBy, behindBy, commits: [{ sha, message }], files: [{ path, status,
  *                                                  additions, deletions }], totals, truncated }  300 files at most, no contents
  *   GET    .../branches/:branch/pr            -> { number, url, title, state: open | closed | merged, draft, mergeable,
  *                                                  mergeableState, headSha, reviewDecision, reviewComments, lastReviewAt }
  *   GET    .../branches/:branch/pr/comments   -> { comments: [{ author, body, path?, line?, createdAt }], truncated }
  *                                                  100 at most; the words are other people's (untrusted text)
- *   POST   .../branches/:branch/pr/ready      -> { draft: false }
- *   POST   .../branches/:branch/pr/close      -> { state: closed }  without merging
- *   POST   .../branches/:branch/pr/merge      no body: -> { needsApproval, approvalId, expiresAt, summary: { title, into,
- *                                                  files, additions, deletions, headSha } }, and nothing is merged;
- *                                                  { approvalId }: -> { merged, sha }, a squash merge of exactly the commit
- *                                                  the approval was for (409 changed_since_approval if the branch moved).
- *                                                  An approval is single-use and lasts ten minutes
- *   DELETE .../branches/:branch               -> { state: deleted }  removes the branch from GitHub once its pull request
- *                                                  is merged or closed; the record stays
+ *   POST   .../branches/:branch/pr/ready      -> a QUESTION, then { draft: false }
+ *   POST   .../branches/:branch/pr/close      -> a QUESTION, then { state: closed }  without merging
+ *   POST   .../branches/:branch/pr/merge      -> a QUESTION, then { merged, sha }, a squash merge of exactly the commit
+ *                                                  the approval was for (409 changed_since_approval if the branch moved)
+ *   DELETE .../branches/:branch               -> a QUESTION, then { state: deleted }  removes the branch from GitHub once its
+ *                                                  pull request is merged or closed; the record stays
+ *
+ * A QUESTION. Tailzu does some things on its own (read, make a branch, commit to its own branch, open a draft
+ * pull request, bring its own branch up to date) and asks first about the rest (code/policy.ts: the tiers).
+ * The first request does nothing and answers 200
+ *
+ *   { needsApproval: true, approvalId, action, faceId, expiresAt, summary }
+ *
+ * `summary` is what to show (the files' names, never their contents; for a merge: title, into, files, additions,
+ * deletions, headSha). The same request again with `{ approvalId }` in the body (or ?approvalId= on a DELETE)
+ * does it. An approval is single use, lasts ten minutes, is bound to the person, project, action and branch
+ * (and the commit the branch was at, and what would be written), and does nothing if anything is different:
+ * 409 approval_invalid, approval_expired or changed_since_approval. `faceId: true` is for the actions that
+ * always ask and can never be allowed for good (a force-push, deleting the default branch, committing
+ * something that looks like a secret): the phone puts Face ID in front of the yes. A standing permission
+ * (the routes above) skips the question; a refusal is 403, with a code that says why: policy_denied (a
+ * "never" the person set), needs_workflow_scope, never, needs_you (nobody was there to ask).
+ *
+ * GitHub's branch protection is respected, not worked round: a refusal because of it is 409 protected_branch.
  *
  *   POST   /v1/code/github/webhook            GitHub's own deliveries (code/webhook.ts); authenticated by signature
  *
@@ -86,8 +111,9 @@ import { NoTokenKey, tokenKey } from "../connectors/crypto.js";
 import { ConnectorError } from "../connectors/oauth.js";
 import type { Code } from "../code/index.js";
 import { beginConnect, completeCallback, forgetInstallation, linkStatus } from "../code/link.js";
-import { addProject, createWorkBranch, initEmptyRepo, listBranches, listRepos, newRepoLink, openPr } from "../code/projects.js";
-import { branchDiff, closePr, confirmMerge, deleteWorkBranch, markReady, prComments, prStatus, requestMerge, syncBranch } from "../code/pulls.js";
+import { GRANTS_MAX, PolicyError, actionCatalog, parseGrant, type GateOptions } from "../code/policy.js";
+import { addProject, createWorkBranch, initEmptyRepo, listBranches, listRepos, newRepoLink, openPr, ownProject } from "../code/projects.js";
+import { branchDiff, closePr, deleteWorkBranch, markReady, mergePr, prComments, prStatus, syncBranch } from "../code/pulls.js";
 import { CodeNeedsAccount } from "../code/store.js";
 import { handleWebhook, signatureOk } from "../code/webhook.js";
 import { PAGE_CSP, page } from "./connectors.js";
@@ -108,6 +134,8 @@ const STATUS: Record<string, number> = {
   branch_moved: 409, branch_exists: 409, conflict: 409, too_many: 409, suspended: 409, nothing_to_review: 409, no_drafts: 409,
   repo_empty: 409, repo_not_empty: 409, branch_deleted: 409, branch_in_use: 409, changed_since_approval: 409, approval_expired: 409,
   approval_invalid: 409, pr_draft: 409, pr_not_open: 409, pr_merged: 409, not_mergeable: 409, use_server_commit: 409,
+  protected_branch: 409, not_fast_forward: 409, not_grantable: 400,
+  needs_you: 403, policy_denied: 403, never: 403, needs_workflow_scope: 403,
   oauth_off: 404, needs_signin: 403, not_allowed: 403, org_blocked: 403, scope_too_broad: 403, scope_missing: 403,
   not_configured: 503, busy: 503,
 };
@@ -131,8 +159,21 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
   const fail = (reply: FastifyReply, err: unknown) => {
     if (err instanceof CodeNeedsAccount) return reply.code(403).send({ code: "needs_account", message: err.message });
     if (err instanceof NoTokenKey) return reply.code(503).send({ code: "not_configured", message: err.message });
+    // A refusal by the policy says which action, and whether it is one that asks with Face ID; one that is waiting for the person carries what to show them.
+    if (err instanceof PolicyError) {
+      return reply.code(STATUS[err.code] ?? 403).send({
+        code: err.code, message: err.message, action: err.info.action, faceId: err.info.faceId, ...(err.info.summary ? { summary: err.info.summary } : {}),
+      });
+    }
     if (err instanceof ConnectorError) return reply.code(STATUS[err.code] ?? 502).send({ code: err.code, message: err.message });
     throw err;
+  };
+  /** `approvalId` from the body, or the address for a request that has none: step two of a question. Anything but a non-empty string is a 400. */
+  const gateOptions = (body: Record<string, unknown>, query: unknown): GateOptions => {
+    const id = body.approvalId !== undefined ? body.approvalId : (query && typeof query === "object" ? (query as Record<string, unknown>).approvalId : undefined);
+    if (id === undefined) return {};
+    if (typeof id !== "string" || !id || id.length > 200) throw new ConnectorError("bad_request", "approvalId is the id the question gave.");
+    return { approvalId: id };
   };
   /** Signing the install link needs CONNECTOR_TOKEN_KEY; without it nothing can be linked. */
   const stateKeyOk = () => { try { tokenKey(); return true; } catch { return false; } };
@@ -319,11 +360,15 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     } catch (err) { return fail(reply, err); }
   });
 
-  app.post<{ Params: { id: string }; Body: { task?: unknown } }>("/v1/code/projects/:id/branches", RL, async (req, reply) => {
+  app.post<{ Params: { id: string }; Body: { task?: unknown; from?: unknown } }>("/v1/code/projects/:id/branches", RL, async (req, reply) => {
     const s = await begin(req.headers["authorization"], reply);
     if (!s) return reply;
+    const { task, from } = req.body ?? {};
+    if (from !== undefined && (typeof from !== "string" || !from || from.length > 255)) {
+      return reply.code(400).send({ code: "bad_request", message: "from is a branch, a tag or a commit." });
+    }
     try {
-      return reply.send(await createWorkBranch(s.d, s.user.id, req.params.id, (req.body ?? {}).task));
+      return reply.send(await createWorkBranch(s.d, s.user.id, req.params.id, task, { from: from as string | undefined }));
     } catch (err) { return fail(reply, err); }
   });
 
@@ -357,18 +402,58 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     return reply.send(newRepoLink((req.query ?? {}).name));
   });
 
-  app.post<{ Params: { id: string }; Body: { title?: unknown } }>("/v1/code/projects/:id/init", RL, async (req, reply) => {
+  app.post<{ Params: { id: string }; Body: { title?: unknown; approvalId?: unknown } }>("/v1/code/projects/:id/init", RL, async (req, reply) => {
     const s = await begin(req.headers["authorization"], reply);
     if (!s) return reply;
     try {
-      return reply.send(await initEmptyRepo(s.d, s.user.id, req.params.id, (req.body ?? {}).title));
+      const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+      return reply.send(await initEmptyRepo(s.d, s.user.id, req.params.id, body.title, gateOptions(body, req.query)));
     } catch (err) { return fail(reply, err); }
   });
 
-  /** A route on a work branch of a project: the session, the branch decoded, and the answer or the failure. */
+  // --- the project's standing permissions (code/policy.ts): "always let the bot do this on these branches", or "never".
+  app.get<{ Params: { id: string } }>("/v1/code/projects/:id/permissions", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      const project = await ownProject(s.d, s.user.id, req.params.id);
+      const now = Date.now();
+      const grants = (await s.d.store.listGrants(project.id)).filter((g) => g.expiresAt === undefined || g.expiresAt > now);
+      return reply.send({ grants, actions: actionCatalog() });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.post<{ Params: { id: string }; Body: Record<string, unknown> | undefined }>("/v1/code/projects/:id/permissions", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      const project = await ownProject(s.d, s.user.id, req.params.id);
+      const wanted = parseGrant(req.body);
+      const have = await s.d.store.listGrants(project.id);
+      const same = have.some((g) => g.action === wanted.action && (g.branchPattern ?? "") === (wanted.branchPattern ?? "") && g.effect === wanted.effect);
+      if (!same && have.length >= GRANTS_MAX) {
+        throw new ConnectorError("too_many", `A project can have ${GRANTS_MAX} standing permissions, which is the most. Take one back first.`);
+      }
+      return reply.send({ grant: await s.d.store.addGrant(project.id, wanted) });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.delete<{ Params: { id: string; grantId: string } }>("/v1/code/projects/:id/permissions/:grantId", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      const project = await ownProject(s.d, s.user.id, req.params.id);
+      if (!(await s.d.store.deleteGrant(project.id, req.params.grantId))) {
+        return reply.code(404).send({ code: "not_found", message: "I couldn't find that permission." });
+      }
+      return reply.send({ ok: true });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  /** A route on a branch of a project: the session, the branch decoded, what step two of a question carries, and the answer or the failure. */
   const onBranch = (
     method: "GET" | "POST" | "DELETE", url: string,
-    run: (s: NonNullable<Awaited<ReturnType<typeof begin>>>, projectId: string, branch: string, body: Record<string, unknown>) => Promise<unknown>,
+    run: (s: NonNullable<Awaited<ReturnType<typeof begin>>>, projectId: string, branch: string, o: GateOptions) => Promise<unknown>,
   ) => app.route<{ Params: { id: string; branch: string }; Body: Record<string, unknown> | undefined }>({
     method, url, ...RL,
     handler: async (req, reply) => {
@@ -379,26 +464,21 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
         return reply.code(404).send({ code: "not_found", message: "I couldn't find that branch in this project." });
       }
       try {
-        return reply.send(await run(s, req.params.id, branch, (req.body && typeof req.body === "object" ? req.body : {})));
+        const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+        return reply.send(await run(s, req.params.id, branch, gateOptions(body, req.query)));
       } catch (err) { return fail(reply, err); }
     },
   });
   const B = "/v1/code/projects/:id/branches/:branch";
-  onBranch("POST", `${B}/sync`, (s, id, branch) => syncBranch(s.d, s.user.id, id, branch));
+  onBranch("POST", `${B}/sync`, (s, id, branch, o) => syncBranch(s.d, s.user.id, id, branch, o));
   onBranch("GET", `${B}/diff`, (s, id, branch) => branchDiff(s.d, s.user.id, id, branch));
   onBranch("GET", `${B}/pr`, (s, id, branch) => prStatus(s.d, s.user.id, id, branch));
   onBranch("GET", `${B}/pr/comments`, (s, id, branch) => prComments(s.d, s.user.id, id, branch));
-  onBranch("POST", `${B}/pr/ready`, (s, id, branch) => markReady(s.d, s.user.id, id, branch));
-  onBranch("POST", `${B}/pr/close`, (s, id, branch) => closePr(s.d, s.user.id, id, branch));
-  onBranch("POST", `${B}/pr/merge`, (s, id, branch, body) => {
-    // No approval: step one, which merges nothing. With one: step two.
-    if (body.approvalId === undefined) return requestMerge(s.d, s.user.id, id, branch);
-    if (typeof body.approvalId !== "string" || !body.approvalId || body.approvalId.length > 200) {
-      throw new ConnectorError("bad_request", "approvalId is the id step one gave.");
-    }
-    return confirmMerge(s.d, s.user.id, id, branch, body.approvalId);
-  });
-  onBranch("DELETE", B, (s, id, branch) => deleteWorkBranch(s.d, s.user.id, id, branch));
+  onBranch("POST", `${B}/pr/ready`, (s, id, branch, o) => markReady(s.d, s.user.id, id, branch, o));
+  onBranch("POST", `${B}/pr/close`, (s, id, branch, o) => closePr(s.d, s.user.id, id, branch, o));
+  // No approvalId: step one, which merges nothing. With one: step two.
+  onBranch("POST", `${B}/pr/merge`, (s, id, branch, o) => mergePr(s.d, s.user.id, id, branch, o));
+  onBranch("DELETE", B, (s, id, branch, o) => deleteWorkBranch(s.d, s.user.id, id, branch, o));
 
   // GitHub is the caller: no session, a signature over the raw body instead (code/webhook.ts).
   app.post("/v1/code/github/webhook", { config: { rateLimit: { max: 600, timeWindow: 60_000 } } }, async (req, reply) => {
