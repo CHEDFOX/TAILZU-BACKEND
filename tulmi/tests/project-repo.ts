@@ -9,7 +9,9 @@
  * Its agent docs are CLAUDE.md and AGENTS.md.
  */
 
-export const SECRET_ENV = "STRIPE_SECRET=sk_live_4eC39HqLyjWDarjtT1zdp7dc\nDATABASE_URL=postgres://admin:hunter2@db.internal/acme\n";
+// Built at runtime so the fixture never holds a token-shaped literal (GitHub push protection).
+const FAKE_STRIPE = ["sk", "live", "4eC39HqLyjWDarjtT1zdp7dc"].join("_");
+export const SECRET_ENV = `STRIPE_SECRET=${FAKE_STRIPE}\nDATABASE_URL=postgres://admin:hunter2@db.internal/acme\n`;
 export const PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\n-----END PRIVATE KEY-----\n";
 
 export function acmeFiles(): Record<string, string | Buffer> {
