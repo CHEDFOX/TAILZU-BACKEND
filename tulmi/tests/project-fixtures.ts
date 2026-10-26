@@ -317,6 +317,14 @@ export class BrainGithub {
       } finally { this.commitInflight -= 1; }
     }
     if (rest === "/branches") return this.json(200, this.branches.map((name) => ({ name })));
+    // One file's text, for a read through the workspace (the work core's audit and locate read lockfiles and excerpts this way).
+    if (method === "GET" && (r = /^\/contents\/(.+)$/.exec(rest))) {
+      const path = decodeURIComponent(r[1]!);
+      const content = repo.files.get(path);
+      if (content === undefined) return this.json(404, { message: "Not Found" });
+      const buf = Buffer.isBuffer(content) ? content : Buffer.from(content);
+      return this.json(200, { type: "file", path, name: path.split("/").pop(), sha: blobSha(content), size: buf.length, encoding: "base64", content: buf.toString("base64") });
+    }
     return this.json(404, { message: "Not Found" });
   };
 }

@@ -327,6 +327,10 @@ const FIXED: Array<{ kind: string; re: RegExp }> = [
   { kind: "a private key", re: /-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----/ },
   { kind: "a Slack token", re: /\bxox[abeoprs]-[A-Za-z0-9-]{10,}/ },
   { kind: "a Slack token", re: /\bxapp-[0-9]-[A-Za-z0-9-]{10,}/ },
+  { kind: "a Stripe key", re: /\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b/ },
+  { kind: "a Stripe webhook secret", re: /\bwhsec_[A-Za-z0-9]{24,}\b/ },
+  { kind: "a model API key", re: /\bsk-(?:ant-|or-v1-|proj-)?[A-Za-z0-9_-]{32,}/ },
+  { kind: "a Google API key", re: /\bAIza[0-9A-Za-z_-]{35}\b/ },
   { kind: "a Slack webhook address", re: /https:\/\/hooks\.slack\.com\/services\/T[A-Z0-9]{6,}\/B[A-Z0-9]{6,}\/[A-Za-z0-9]{16,}/ },
 ];
 

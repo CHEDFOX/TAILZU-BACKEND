@@ -303,6 +303,23 @@ describe("making a grant (parseGrant)", () => {
 describe("the secret scan", () => {
   const scan = (path: string, content: string) => scanForSecrets([{ path, content }]);
 
+  it("finds Stripe keys and webhook secrets, model API keys and Google API keys", () => {
+    // Built at runtime so this file never holds a token-shaped literal (GitHub push protection).
+    const j = (...p: string[]) => p.join("");
+    const cases: Array<[string, string]> = [
+      [j("sk_", "live_", "4eC39HqLyjWDarjtT1zdp7dc"), "a Stripe key"],
+      [j("rk_", "test_", "51HxQ2kLmNoPqRsTuVwXyZ"), "a Stripe key"],
+      [j("whsec_", "a1B2c3D4e5F6g7H8i9J0k1L2m3N4"), "a Stripe webhook secret"],
+      [j("sk-", "ant-", "api03-", "Zq8xY7wV6uT5sR4qP3oN2mL1kJ0iH9gF"), "a model API key"],
+      [j("sk-", "or-v1-", "0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e"), "a model API key"],
+      [j("AI", "za", "SyD3x9Kq2Lm8Np4Rt7Vw1Yz5Bc6Fg0Hj2Kl"), "a Google API key"],
+    ];
+    for (const [value, kind] of cases) {
+      expect(scan("config.ts", `const k = "${value}";`), kind).toEqual([{ path: "config.ts", kinds: [kind] }]);
+    }
+    expect(scan("a.md", "sk_live_abc and sk-short and AIzaShort")).toEqual([]);
+  });
+
   it("finds an AWS key, GitHub tokens, a private key, a Slack token, a long random value after api_key= or secret=, and .env files", () => {
     const cases: Array<[string, string, string]> = [
       ["aws.txt", `key ${SECRET.aws} here`, "an AWS access key"],

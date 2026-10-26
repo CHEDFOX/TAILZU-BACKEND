@@ -58,7 +58,7 @@ Pick one of the two ways.
 | Webhook URL | `https://api.tailzu.space/v1/code/github/webhook` |
 | Webhook secret | `openssl rand -hex 32`. This is `GITHUB_APP_WEBHOOK_SECRET` |
 | SSL verification | Enable |
-| Repository permissions | **Contents: Read and write.** **Pull requests: Read and write.** **Metadata: Read-only** (GitHub sets this one itself). **Workflows: Read and write** and **Actions: Read-only**, both for GitHub's free computers (below, and section 9). Nothing else |
+| Repository permissions | **Contents: Read and write.** **Pull requests: Read and write.** **Metadata: Read-only** (GitHub sets this one itself). **Workflows: Read and write** and **Actions: Read-only**, both for GitHub's free computers (below, and section 9). Nothing else, except, optionally, **Deployments**, **Commit statuses** and **Checks**, each **Read-only**, which let a milestone's pull request show its host's preview link (`docs/code-work.md`, section 8; without them the person gets a one-time tip instead) |
 | Account and organization permissions | None |
 | Subscribe to events | Tick **Pull request** and **Pull request review** (they only appear once Pull requests is given) and **Push** (it appears once Contents is given; the project brain, `docs/code-project-brain.md`, keeps itself fresh with it). `installation` and `installation_repositories` are sent to every App without being asked for, and this server reads those too |
 | Where can this GitHub App be installed? | **Any account.** With "Only on this account" nobody but you could install it |

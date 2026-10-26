@@ -52,7 +52,7 @@ import type { Renderer } from "../web/browser/engine.js";
 import { isCacheable, type WebCache } from "../web/cache.js";
 import { WebError, webErrorWords } from "../web/error.js";
 import { asUntrusted, readPage, TEXT_HARD_MAX, type WebPage } from "../web/reader.js";
-import { research, type ResearchLimits, type ResearchResult } from "../web/research.js";
+import { research, type ResearchDepth, type ResearchLimits, type ResearchResult } from "../web/research.js";
 import { search, searchEnvFromConfig, type SearchOutcome } from "../web/search/engine.js";
 import { indexPage, type SearchStore } from "../web/search/index.js";
 import type { AskFn, AskLevel, FetchLike, PlanCtx, Ranked, SearchEnv, Source, ResultSource } from "../web/search/types.js";
@@ -138,9 +138,22 @@ export interface WebToolDeps {
   sleep?: (ms: number) => Promise<void>;
 }
 
+/** The person's daily allowance of research runs is used up. */
+export class ResearchLimit extends Error {
+  constructor(readonly cap: number) {
+    super(`The daily limit of research runs (${cap}) is used up.`);
+    this.name = "ResearchLimit";
+  }
+}
+
 export interface WebTools {
   tools: ToolDef[];
   handlers: Record<WebToolName, (args: unknown) => Promise<WebToolResult>>;
+  /**
+   * research() under the person's daily limit, bound to the model, the search and the page reader of this job, and its result as it is
+   * (not worded as a tool message): for callers that write something of their own from it (code/resources/brief.ts). Throws ResearchLimit.
+   */
+  research(question: string, depth: ResearchDepth): Promise<ResearchResult>;
   /** Runs a tool call the model made, and returns the message to answer it with. */
   run(call: ToolCall): Promise<{ message: Extract<ChatMessage, { role: "tool" }>; ok: boolean }>;
   /** Resolves when the background indexing of pages read so far is done. */
@@ -341,6 +354,17 @@ export function makeWebTools(deps: WebToolDeps): WebTools {
     void job.finally(() => pending.delete(job));
   }
 
+  async function runResearch(question: string, depth: ResearchDepth): Promise<ResearchResult> {
+    if (!counter.take(deps.userId, "research", cap("research"), now())) throw new ResearchLimit(cap("research"));
+    return research(question, {
+      depth, ask, now, ...(deps.signal ? { signal: deps.signal } : {}),
+      ...(deps.ctx ? { ctx: deps.ctx } : {}),
+      ...(deps.limits ? { limits: deps.limits } : {}),
+      search: searchWith,
+      read: (url, o) => readWith(url, { maxChars: o.maxChars, ...(o.section ? { section: o.section } : {}) }),
+    });
+  }
+
   const handlers: WebTools["handlers"] = {
     async web_search(raw) {
       const a = SearchArgs.safeParse(raw);
@@ -370,19 +394,10 @@ export function makeWebTools(deps: WebToolDeps): WebTools {
     async research(raw) {
       const a = ResearchArgs.safeParse(raw);
       if (!a.success) return { ok: false, content: "research needs a question, and a depth of quick, standard or deep." };
-      if (!counter.take(deps.userId, "research", cap("research"), now())) {
-        return { ok: false, content: `The daily limit of research runs (${cap("research")}) is used up. web_search and read_page still work.` };
-      }
       try {
-        const r = await research(a.data.question, {
-          depth: a.data.depth, ask, now, ...(deps.signal ? { signal: deps.signal } : {}),
-          ...(deps.ctx ? { ctx: deps.ctx } : {}),
-          ...(deps.limits ? { limits: deps.limits } : {}),
-          search: searchWith,
-          read: (url, o) => readWith(url, { maxChars: o.maxChars, ...(o.section ? { section: o.section } : {}) }),
-        });
-        return { ok: true, content: formatResearch(r, now()) };
+        return { ok: true, content: formatResearch(await runResearch(a.data.question, a.data.depth), now()) };
       } catch (err) {
+        if (err instanceof ResearchLimit) return { ok: false, content: `The daily limit of research runs (${err.cap}) is used up. web_search and read_page still work.` };
         return { ok: false, content: failureWords(err) };
       }
     },
@@ -391,6 +406,7 @@ export function makeWebTools(deps: WebToolDeps): WebTools {
   return {
     tools: WEB_TOOLS.map((t) => ({ ...t })),
     handlers,
+    research: runResearch,
     async run(call) {
       let result: WebToolResult;
       const name = call.name as WebToolName;

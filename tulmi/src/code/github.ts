@@ -207,6 +207,18 @@ export interface GithubRun {
   createdAt: number;
 }
 
+/**
+ * What GitHub knows that could be a preview of a commit: its deployments (each with its newest status's address), the commit's statuses, and its check
+ * runs. Which of these is a preview, and which host made it, is for newproject/milestones.ts to say; this only carries the raw facts.
+ */
+export interface PreviewSignals {
+  deployments: Array<{ environment: string; url: string; state: string }>;
+  statuses: Array<{ context: string; state: string; url: string }>;
+  checks: Array<{ name: string; app: string; status: string; conclusion: string | null; url: string; title: string; summary: string }>;
+  /** Parts GitHub would not answer, usually for want of a permission on the App ("deployments", "statuses", "checks"). */
+  denied: Array<"deployments" | "statuses" | "checks">;
+}
+
 /** One file of a commit: its new text, or `delete` (or null text) to remove it. */
 export interface CommitFile { path: string; content?: string | null; delete?: boolean }
 
@@ -879,6 +891,17 @@ export class GithubApp {
     throw githubError(r.status, r.json, "the pull request");
   }
 
+  /** Changes a pull request's title and/or body (the milestone's checklist and work log are rewritten as the work goes). The body is cut to 60,000 characters. */
+  async updatePull(repo: RepoRef, number: number, change: { title?: string; body?: string }): Promise<void> {
+    if (!Number.isSafeInteger(number) || number <= 0) throw new ConnectorError("bad_request", "That isn't a pull request.");
+    const patch: Record<string, string> = {};
+    if (typeof change.title === "string" && change.title.trim()) patch.title = change.title.trim().slice(0, 256);
+    if (typeof change.body === "string") patch.body = change.body.slice(0, 60_000);
+    if (!Object.keys(patch).length) return;
+    const r = await this.rsend(repo, "PATCH", `${this.path(repo)}/pulls/${number}`, patch);
+    if (r.status !== 200) throw githubError(r.status, r.json, "that pull request");
+  }
+
   /** The open pull request whose head is this branch of this repo, or null. */
   async findOpenPull(repo: RepoRef, branch: string): Promise<{ number: number; url: string } | null> {
     refName(branch);
@@ -1305,6 +1328,44 @@ export class GithubApp {
     const r = await this.rsend(repo, "GET", `${this.path(repo)}/branches?per_page=${n}`);
     if (r.status !== 200 || !Array.isArray(r.json)) throw githubError(r.status, r.json, "the repo's branches");
     return r.json.filter((b: any) => typeof b?.name === "string").map((b: any) => b.name as string);
+  }
+
+  /**
+   * Deployments, statuses and check runs of a commit, for finding the preview link a host (Vercel, Netlify, Cloudflare Pages) left on a pull
+   * request. Needs Deployments, Commit statuses and Checks: read on the App (or the repo scope on a person's token); a part GitHub will not
+   * answer is left out and named in `denied`, never an error, since a project without a host connected has none of them anyway.
+   */
+  async previewSignals(repo: RepoRef, sha: string): Promise<PreviewSignals> {
+    if (!/^[0-9a-f]{40}$/.test(sha)) throw new ConnectorError("bad_request", "That isn't a commit.");
+    const base = this.path(repo);
+    const out: PreviewSignals = { deployments: [], statuses: [], checks: [], denied: [] };
+    const str = (v: unknown, max = 300): string => (typeof v === "string" ? v.slice(0, max) : "");
+    const [dep, sta, chk] = await Promise.all([
+      this.rsend(repo, "GET", `${base}/deployments?sha=${sha}&per_page=10`).catch(() => null),
+      this.rsend(repo, "GET", `${base}/commits/${sha}/status?per_page=30`).catch(() => null),
+      this.rsend(repo, "GET", `${base}/commits/${sha}/check-runs?per_page=30`).catch(() => null),
+    ]);
+    if (dep?.status === 200 && Array.isArray(dep.json)) {
+      await Promise.all(dep.json.slice(0, 5).filter((d: any) => Number.isSafeInteger(d?.id)).map(async (d: any) => {
+        const r = await this.rsend(repo, "GET", `${base}/deployments/${d.id}/statuses?per_page=5`).catch(() => null);
+        const list: any[] = r?.status === 200 && Array.isArray(r.json) ? r.json : [];
+        // Newest first: the newest status that has an address is the one to show.
+        const s = list.find((x) => str(x?.environment_url) || str(x?.target_url));
+        if (s) out.deployments.push({ environment: str(s.environment ?? d.environment, 60), url: str(s.environment_url) || str(s.target_url), state: str(s.state, 30) });
+      }));
+    } else out.denied.push("deployments");
+    if (sta?.status === 200 && Array.isArray(sta.json?.statuses)) {
+      for (const s of sta.json.statuses.slice(0, 30)) if (str(s?.target_url)) out.statuses.push({ context: str(s.context, 100), state: str(s.state, 30), url: str(s.target_url) });
+    } else out.denied.push("statuses");
+    if (chk?.status === 200 && Array.isArray(chk.json?.check_runs)) {
+      for (const c of chk.json.check_runs.slice(0, 30)) {
+        out.checks.push({
+          name: str(c?.name, 100), app: str(c?.app?.slug, 60), status: str(c?.status, 30), conclusion: typeof c?.conclusion === "string" ? c.conclusion : null,
+          url: str(c?.details_url), title: str(c?.output?.title, 200), summary: str(c?.output?.summary, 600),
+        });
+      }
+    } else out.denied.push("checks");
+    return out;
   }
 
   // ------------------------------------------------------- for runners, later
