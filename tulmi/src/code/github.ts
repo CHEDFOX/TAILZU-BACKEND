@@ -20,6 +20,11 @@
  *      says who the person is (id and login), and it is dropped. It is never
  *      stored.
  *
+ * Which token a call carries is a GitAccess (access.ts): the App's installation
+ * token above, or, for a person who signed in with GitHub instead of installing
+ * the App, their own token (oauth.ts). The calls and every guard below are the
+ * same for both; a RepoRef names the access, and none means the App.
+ *
  * AN INSTALL IS NOT ACCESS. GitHub lists an install for anyone who can reach
  * any repo in it, so an organisation member, or someone invited to a single
  * repo on another person's account, sees it too. permissionOf asks GitHub what
@@ -51,6 +56,7 @@
 import { createPrivateKey, type KeyObject } from "node:crypto";
 import { SignJWT } from "jose";
 import { ConnectorError } from "../connectors/oauth.js";
+import { AppAccess, type GitAccess } from "./access.js";
 
 export const GITHUB_API = "https://api.github.com";
 export const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
@@ -74,6 +80,8 @@ export const FILE_MAX_BYTES = 1024 * 1024;
 export const COMMIT_FILES_MAX = 200;
 /** The installs a person's token is asked for: pages of 100. */
 const INSTALLS_PAGES_MAX = 10;
+/** The most pages of a person's repos looked through for the 300 they can push to. */
+const USER_REPOS_PAGES_MAX = 10;
 
 /** What the App is, from the environment (GITHUB_APP_*). */
 export interface GithubAppConfig {
@@ -114,6 +122,8 @@ export interface RepoRef {
   /** "owner/name". */
   fullName: string;
   defaultBranch: string;
+  /** Where the token for calls on this repo comes from. None: the GitHub App's. */
+  access?: GitAccess;
 }
 
 export interface TreeEntry { path: string; type: string; size?: number; sha: string }
@@ -174,12 +184,22 @@ export function assertWorkBranch(branch: string, defaultBranch: string): void {
   }
 }
 
+/** The one workflow file Tailzu may ever write, and only on a work branch, with a token that has the `workflow` scope. */
+export const TAILZU_WORKFLOW = ".github/workflows/tailzu.yml";
+
 /**
  * A path inside a repo, as the tree and a commit name it: relative, no empty,
  * `.` or `..` part, nothing inside .git. A path to WRITE also may not be under
  * .github/workflows. Returns the path as given.
+ *
+ * The single exception, behind the `workflow` flag: exactly
+ * .github/workflows/tailzu.yml. The flag is only ever set by commit(), after
+ * assertWorkBranch, for an access whose token has the `workflow` scope; nothing
+ * asks for that scope yet (oauth.ts), so in practice the answer is still no.
+ * TODO: this exception is for a later step; before the Code bot ships, remove
+ * it if workflow support was not built (the refusal below is then absolute).
  */
-export function assertRepoPath(path: unknown, write = false): string {
+export function assertRepoPath(path: unknown, write = false, o: { workflow?: boolean } = {}): string {
   const bad = (why: string) => new ConnectorError("bad_path", `I can't use the path ${typeof path === "string" ? JSON.stringify(path.slice(0, 80)) : "given"}: ${why}.`);
   if (typeof path !== "string" || !path) throw bad("it is empty");
   if (path.length > 500) throw bad("it is too long");
@@ -190,7 +210,7 @@ export function assertRepoPath(path: unknown, write = false): string {
   if (parts.some((p) => p === "..")) throw bad("it can't go up with ..");
   if (parts.some((p) => p === "" || p === ".")) throw bad("it has an empty part");
   if (parts.some((p) => p.toLowerCase() === ".git")) throw bad("it is inside .git");
-  if (write && /^\.github\/workflows(\/|$)/i.test(path)) {
+  if (write && /^\.github\/workflows(\/|$)/i.test(path) && !(o.workflow === true && path === TAILZU_WORKFLOW)) {
     throw new ConnectorError("bad_path", "Tailzu can't change .github/workflows (GitHub Actions files). Make that change yourself.");
   }
   return path;
@@ -219,11 +239,50 @@ export function parsePrivateKey(raw: string): KeyObject {
 
 // ---------------------------------------------------------------- the client
 
-interface Reply { status: number; json: any }
+interface Reply { status: number; json: any; headers: Headers }
+
+/**
+ * One request to GitHub, fifteen seconds at most. `auth` is the whole
+ * Authorization header ("" for none). A GitHub that can't be reached or is too
+ * slow is a ConnectorError, never the raw error; `manual` hands back a
+ * redirect instead of following it.
+ */
+export async function githubFetch(
+  fetchFn: typeof fetch | undefined, method: string, url: string, auth: string, body?: unknown, o: { manual?: boolean } = {},
+): Promise<Reply> {
+  let res: Response;
+  try {
+    res = await (fetchFn ?? fetch)(url, {
+      method,
+      headers: {
+        Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "tailzu",
+        ...(auth ? { Authorization: auth } : {}),
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      ...(o.manual ? { redirect: "manual" as const } : {}),
+      signal: AbortSignal.timeout(REQUEST_MS),
+    });
+  } catch {
+    throw new ConnectorError("failed", "GitHub didn't answer. Try again in a moment.");
+  }
+  const text = await res.text().catch(() => "");
+  let json: any = {};
+  if (text) { try { json = JSON.parse(text); } catch { json = {}; } }
+  return { status: res.status, json, headers: res.headers };
+}
+
+/** What GitHub says when an organisation has not let this OAuth App in, or wants the person to sign in through its SSO. */
+const ORG_BLOCKED = /saml|oauth app access restrictions|third-party application/i;
+export const orgBlocked = () => new ConnectorError(
+  "org_blocked",
+  "This organisation hasn't let Tailzu in. An owner can approve Tailzu under the organisation's third-party access settings (or, if it uses SSO, you can authorise Tailzu's sign-in for it on GitHub), or you can install the Tailzu GitHub App on the organisation instead.",
+);
 
 /** A failed GitHub response as a ConnectorError in plain words. GitHub's own text is not repeated. */
 export function githubError(status: number, json: any, what: string): ConnectorError {
   const said = String(json?.message ?? "");
+  if (status === 403 && ORG_BLOCKED.test(said)) return orgBlocked();
   if (status === 401) return new ConnectorError("github_auth", "GitHub turned down Tailzu's access. Try again; if it keeps happening, reconnect GitHub.");
   if (status === 404) return new ConnectorError("not_found", `I couldn't find ${what} on GitHub.`);
   if (status === 429 || (status === 403 && /rate limit|abuse|secondary/i.test(said))) {
@@ -282,41 +341,53 @@ export function assertMergeable(pull: PullInfo, repo: RepoRef, branch: string): 
 }
 
 export class GithubApp {
-  private readonly key: KeyObject;
+  private readonly key: KeyObject | null;
   private jwt: { token: string; until: number } | null = null;
   private readonly tokens = new Map<string, { token: string; expiresAt: number }>();
   private readonly access = new Map<string, { permission: RepoPermission; until: number }>();
   private readonly minting = new Map<string, Promise<string>>();
 
-  /** Throws ConnectorError("not_configured") when the key can't be read. */
-  constructor(private readonly c: GithubAppConfig, private readonly o: { fetchFn?: typeof fetch; now?: () => number } = {}) {
-    this.key = parsePrivateKey(c.privateKey);
+  /** The App's own access: its installation tokens. The default for any call that names none. */
+  private readonly appAccess: GitAccess = new AppAccess((installationId, repoId) => this.installationToken(installationId, repoId));
+
+  /**
+   * `c` is the GitHub App, or null for a server that offers only "Sign in with
+   * GitHub": the calls that need the App then say "not_configured". Throws
+   * ConnectorError("not_configured") when the App's key can't be read.
+   */
+  constructor(private readonly c: GithubAppConfig | null, private readonly o: { fetchFn?: typeof fetch; now?: () => number } = {}) {
+    this.key = c ? parsePrivateKey(c.privateKey) : null;
   }
 
-  get slug(): string { return this.c.slug; }
+  /** The App's settings, or "not_configured" when this server has none. */
+  private app(): GithubAppConfig {
+    if (!this.c) throw new ConnectorError("not_configured", "GitHub isn't set up on this server (the App isn't configured).");
+    return this.c;
+  }
+  get hasApp(): boolean { return this.c !== null; }
+  get slug(): string { return this.app().slug; }
   private now(): number { return (this.o.now ?? Date.now)(); }
 
-  /** One request. A GitHub that can't be reached or is too slow is a ConnectorError, never the raw error. */
-  private async send(method: string, url: string, bearer: string, body?: unknown): Promise<Reply> {
-    let res: Response;
-    try {
-      res = await (this.o.fetchFn ?? fetch)(url, {
-        method,
-        headers: {
-          Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "tailzu",
-          Authorization: `Bearer ${bearer}`,
-          ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-        },
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-        signal: AbortSignal.timeout(REQUEST_MS),
-      });
-    } catch {
-      throw new ConnectorError("failed", "GitHub didn't answer. Try again in a moment.");
+  /** One request with a bearer token (githubFetch). */
+  private send(method: string, url: string, bearer: string, body?: unknown, o: { manual?: boolean } = {}): Promise<Reply> {
+    return githubFetch(this.o.fetchFn, method, url, `Bearer ${bearer}`, body, o);
+  }
+
+  /**
+   * One request on a repo, with the token its access gives (the access says no
+   * before any token is used, if it must). A 401 tells the access its token is
+   * dead; a 403 from an organisation that hasn't let the sign-in in is
+   * "org_blocked", in plain words, whatever the call.
+   */
+  private async rsend(repo: RepoRef, method: string, url: string, body?: unknown, o: { manual?: boolean } = {}): Promise<Reply> {
+    const access = repo.access ?? this.appAccess;
+    const r = await this.send(method, url, await access.token(repo), body, o);
+    if (r.status === 401 && access.rejected) {
+      await access.rejected();
+      throw new ConnectorError("needs_signin", "GitHub no longer accepts your sign-in. Sign in with GitHub again.");
     }
-    const text = await res.text().catch(() => "");
-    let json: any = {};
-    if (text) { try { json = JSON.parse(text); } catch { json = {}; } }
-    return { status: res.status, json };
+    if (r.status === 403 && ORG_BLOCKED.test(String(r.json?.message ?? ""))) throw orgBlocked();
+    return r;
   }
 
   // -------------------------------------------------------------- who we are
@@ -328,9 +399,9 @@ export class GithubApp {
     const secs = Math.floor(now / 1000);
     const token = await new SignJWT({})
       .setProtectedHeader({ alg: "RS256" })
-      .setIssuer(this.c.clientId || this.c.appId || "")
+      .setIssuer(this.app().clientId || this.app().appId || "")
       .setIssuedAt(secs - 60).setExpirationTime(secs + 540)
-      .sign(this.key);
+      .sign(this.key!);
     this.jwt = { token, until: now + JWT_KEEP_MS };
     return token;
   }
@@ -369,7 +440,7 @@ export class GithubApp {
       res = await (this.o.fetchFn ?? fetch)(GITHUB_TOKEN_URL, {
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "tailzu" },
-        body: JSON.stringify({ client_id: this.c.clientId, client_secret: this.c.clientSecret, code }),
+        body: JSON.stringify({ client_id: this.app().clientId, client_secret: this.app().clientSecret, code }),
         signal: AbortSignal.timeout(REQUEST_MS),
       });
     } catch {
@@ -442,7 +513,6 @@ export class GithubApp {
     if (!m) throw new ConnectorError("bad_request", "That repo's name isn't one I can use.");
     return `${GITHUB_API}/repos/${m[1]}/${m[2]}`;
   }
-  private token(repo: RepoRef): Promise<string> { return this.installationToken(repo.installationId, repo.repoId); }
 
   /**
    * What `login` may do in a repo. Asked with the install's own token (one
@@ -482,7 +552,7 @@ export class GithubApp {
 
   /** The commit a branch points at. */
   async branchHead(repo: RepoRef, branch: string): Promise<string> {
-    const r = await this.send("GET", `${this.path(repo)}/git/ref/heads/${encodePath(refName(branch))}`, await this.token(repo));
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/git/ref/heads/${encodePath(refName(branch))}`);
     if (r.status !== 200 || typeof r.json?.object?.sha !== "string") throw githubError(r.status, r.json, `the branch ${branch}`);
     return r.json.object.sha;
   }
@@ -500,7 +570,7 @@ export class GithubApp {
       }
       throw err;
     }
-    const r = await this.send("POST", `${this.path(repo)}/git/refs`, await this.token(repo), { ref: `refs/heads/${branch}`, sha: baseSha });
+    const r = await this.rsend(repo, "POST", `${this.path(repo)}/git/refs`, { ref: `refs/heads/${branch}`, sha: baseSha });
     if (r.status === 422 && /already exists/i.test(String(r.json?.message ?? ""))) {
       throw new ConnectorError("branch_exists", "That branch name is taken.");
     }
@@ -516,11 +586,10 @@ export class GithubApp {
    */
   async tree(repo: RepoRef, branch: string): Promise<{ entries: TreeEntry[]; truncated: boolean }> {
     const base = this.path(repo);
-    const token = await this.token(repo);
     const head = await this.branchHead(repo, branch);
-    const commit = await this.send("GET", `${base}/git/commits/${head}`, token);
+    const commit = await this.rsend(repo, "GET", `${base}/git/commits/${head}`);
     if (commit.status !== 200 || typeof commit.json?.tree?.sha !== "string") throw githubError(commit.status, commit.json, `the branch ${branch}`);
-    const r = await this.send("GET", `${base}/git/trees/${commit.json.tree.sha}?recursive=1`, token);
+    const r = await this.rsend(repo, "GET", `${base}/git/trees/${commit.json.tree.sha}?recursive=1`);
     if (r.status !== 200 || !Array.isArray(r.json?.tree)) throw githubError(r.status, r.json, `the branch ${branch}`);
     const entries: TreeEntry[] = (r.json.tree as any[])
       .filter((e) => e && typeof e.path === "string" && typeof e.type === "string" && typeof e.sha === "string")
@@ -531,7 +600,7 @@ export class GithubApp {
   /** One file's text on the branch. Refuses a folder, a file over 1 MB, and a file that isn't text. */
   async readFile(repo: RepoRef, branch: string, path: string): Promise<{ path: string; size: number; text: string }> {
     assertRepoPath(path);
-    const r = await this.send("GET", `${this.path(repo)}/contents/${encodePath(path)}?ref=${encodeURIComponent(refName(branch))}`, await this.token(repo));
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/contents/${encodePath(path)}?ref=${encodeURIComponent(refName(branch))}`);
     if (r.status !== 200) throw githubError(r.status, r.json, path);
     const f = r.json;
     if (Array.isArray(f) || !f || typeof f !== "object" || (f.type && f.type !== "file")) {
@@ -555,20 +624,23 @@ export class GithubApp {
    */
   async commit(repo: RepoRef, branch: string, files: CommitFile[], message: string): Promise<{ sha: string; parentSha: string }> {
     assertWorkBranch(branch, repo.defaultBranch);
-    const tree = this.treeEntries(files);
-    const msg = typeof message === "string" ? message.trim().slice(0, 5000) : "";
+    const access = repo.access ?? this.appAccess;
+    // The one workflow file is for a token with the `workflow` scope, on a work branch (just checked), and nothing else.
+    const tree = this.treeEntries(files, access.allowsWorkflow ? await access.allowsWorkflow(repo) : false);
+    let msg = typeof message === "string" ? message.trim().slice(0, 5000) : "";
     if (!msg) throw new ConnectorError("bad_request", "A commit needs a message.");
+    // A commit made with a person's own token says whose work it was.
+    if (access.commitTrailer && !msg.endsWith(access.commitTrailer)) msg = `${msg}\n\n${access.commitTrailer}`;
 
     const base = this.path(repo);
-    const token = await this.token(repo);
     const parentSha = await this.branchHead(repo, branch);
-    const parent = await this.send("GET", `${base}/git/commits/${parentSha}`, token);
+    const parent = await this.rsend(repo, "GET", `${base}/git/commits/${parentSha}`);
     if (parent.status !== 200 || typeof parent.json?.tree?.sha !== "string") throw githubError(parent.status, parent.json, "the branch");
-    const made = await this.send("POST", `${base}/git/trees`, token, { base_tree: parent.json.tree.sha, tree });
+    const made = await this.rsend(repo, "POST", `${base}/git/trees`, { base_tree: parent.json.tree.sha, tree });
     if (made.status !== 201 || typeof made.json?.sha !== "string") throw githubError(made.status, made.json, "those files");
-    const commit = await this.send("POST", `${base}/git/commits`, token, { message: msg, tree: made.json.sha, parents: [parentSha] });
+    const commit = await this.rsend(repo, "POST", `${base}/git/commits`, { message: msg, tree: made.json.sha, parents: [parentSha] });
     if (commit.status !== 201 || typeof commit.json?.sha !== "string") throw githubError(commit.status, commit.json, "the commit");
-    const moved = await this.send("PATCH", `${base}/git/refs/heads/${encodePath(branch)}`, token, { sha: commit.json.sha, force: false });
+    const moved = await this.rsend(repo, "PATCH", `${base}/git/refs/heads/${encodePath(branch)}`, { sha: commit.json.sha, force: false });
     // Not a fast-forward: the branch got a commit since we read it.
     if (moved.status === 422) throw new ConnectorError("branch_moved", "The branch changed while I was committing. Nothing was overwritten; read it again and retry.");
     if (moved.status !== 200) throw githubError(moved.status, moved.json, "the branch");
@@ -576,12 +648,12 @@ export class GithubApp {
   }
 
   /** The files of a commit as the tree API takes them, checked. */
-  private treeEntries(files: CommitFile[]): Array<Record<string, unknown>> {
+  private treeEntries(files: CommitFile[], workflow = false): Array<Record<string, unknown>> {
     if (!Array.isArray(files) || !files.length) throw new ConnectorError("bad_request", "There is nothing to commit.");
     if (files.length > COMMIT_FILES_MAX) throw new ConnectorError("bad_request", `A commit can have at most ${COMMIT_FILES_MAX} files.`);
     const seen = new Set<string>();
     return files.map((f) => {
-      const path = assertRepoPath(f?.path, true);
+      const path = assertRepoPath(f?.path, true, { workflow });
       if (seen.has(path)) throw new ConnectorError("bad_path", `${path} is in this commit twice.`);
       seen.add(path);
       if (f.delete === true || f.content === null) return { path, mode: "100644", type: "blob", sha: null };
@@ -598,14 +670,13 @@ export class GithubApp {
     if (!t) throw new ConnectorError("bad_request", "A pull request needs a title.");
     const text = typeof body === "string" ? body.slice(0, 60_000) : "";
     const base = this.path(repo);
-    const token = await this.token(repo);
-    const r = await this.send("POST", `${base}/pulls`, token, { title: t, head: branch, base: repo.defaultBranch, body: text, draft: true });
+    const r = await this.rsend(repo, "POST", `${base}/pulls`, { title: t, head: branch, base: repo.defaultBranch, body: text, draft: true });
     if (r.status === 201 && Number.isSafeInteger(r.json?.number) && typeof r.json?.html_url === "string") {
       return { number: r.json.number, url: r.json.html_url, existing: false };
     }
     if (r.status === 422 && /already exists/i.test(JSON.stringify(r.json ?? {}))) {
       const owner = repo.fullName.split("/")[0]!;
-      const found = await this.send("GET", `${base}/pulls?head=${encodeURIComponent(`${owner}:${branch}`)}&state=open`, token);
+      const found = await this.rsend(repo, "GET", `${base}/pulls?head=${encodeURIComponent(`${owner}:${branch}`)}&state=open`);
       const pr = found.status === 200 && Array.isArray(found.json) ? found.json.find((p: any) => Number.isSafeInteger(p?.number) && typeof p?.html_url === "string") : null;
       if (pr) return { number: pr.number, url: pr.html_url, existing: true };
       throw githubError(found.status === 200 ? 422 : found.status, found.json, "the pull request");
@@ -624,7 +695,7 @@ export class GithubApp {
 
   /** True when the repo has no commits at all (GitHub answers its commit list with 409 "Git Repository is empty"). */
   async repoIsEmpty(repo: RepoRef): Promise<boolean> {
-    const r = await this.send("GET", `${this.path(repo)}/commits?per_page=1`, await this.token(repo));
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/commits?per_page=1`);
     if (r.status === 409 && /empty/i.test(String(r.json?.message ?? ""))) return true;
     if (r.status === 200 && Array.isArray(r.json)) return r.json.length === 0;
     throw githubError(r.status, r.json, "the repo's history");
@@ -642,7 +713,7 @@ export class GithubApp {
       throw new ConnectorError("repo_not_empty", "This repo already has commits, so Tailzu won't add a first file to its default branch.");
     }
     const heading = title.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 100) || repo.fullName.split("/")[1]!;
-    const r = await this.send("PUT", `${this.path(repo)}/contents/README.md`, await this.token(repo), {
+    const r = await this.rsend(repo, "PUT", `${this.path(repo)}/contents/README.md`, {
       message: "Add README", content: Buffer.from(`# ${heading}\n`, "utf8").toString("base64"),
     });
     // Someone made the first commit while we were looking: the same refusal.
@@ -661,7 +732,7 @@ export class GithubApp {
    */
   async mergeDefaultInto(repo: RepoRef, branch: string): Promise<{ status: "merged" | "up_to_date"; sha?: string }> {
     assertWorkBranch(branch, repo.defaultBranch);
-    const r = await this.send("POST", `${this.path(repo)}/merges`, await this.token(repo), {
+    const r = await this.rsend(repo, "POST", `${this.path(repo)}/merges`, {
       base: branch, head: repo.defaultBranch, commit_message: `Merge ${repo.defaultBranch} into ${branch}`,
     });
     if (r.status === 201) return { status: "merged", ...(typeof r.json?.sha === "string" ? { sha: r.json.sha } : {}) };
@@ -674,7 +745,7 @@ export class GithubApp {
 
   /** What the branch changes against the default branch: counts, names and one line per commit. Never contents. */
   async compare(repo: RepoRef, branch: string): Promise<BranchDiff> {
-    const r = await this.send("GET", `${this.path(repo)}/compare/${encodePath(refName(repo.defaultBranch))}...${encodePath(refName(branch))}`, await this.token(repo));
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/compare/${encodePath(refName(repo.defaultBranch))}...${encodePath(refName(branch))}`);
     if (r.status !== 200) throw githubError(r.status, r.json, `the branch ${branch}`);
     const j = r.json ?? {};
     const all: any[] = Array.isArray(j.files) ? j.files : [];
@@ -697,7 +768,7 @@ export class GithubApp {
 
   /** One pull request, as GitHub has it now. */
   async getPull(repo: RepoRef, number: number): Promise<PullInfo> {
-    const r = await this.send("GET", `${this.path(repo)}/pulls/${number}`, await this.token(repo));
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/pulls/${number}`);
     const j = r.json;
     if (r.status !== 200 || !Number.isSafeInteger(j?.number) || typeof j?.head?.sha !== "string") throw githubError(r.status, j, "that pull request");
     return {
@@ -713,7 +784,7 @@ export class GithubApp {
 
   /** GitHub's GraphQL, as the installation. Throws on an error in the answer. */
   private async graphql(repo: RepoRef, query: string, variables: Record<string, unknown>): Promise<any> {
-    const r = await this.send("POST", `${GITHUB_API}/graphql`, await this.token(repo), { query, variables });
+    const r = await this.rsend(repo, "POST", `${GITHUB_API}/graphql`, { query, variables });
     if (r.status !== 200) throw githubError(r.status, r.json, "that pull request");
     if (Array.isArray(r.json?.errors) && r.json.errors.length) throw new ConnectorError("rejected", "GitHub didn't accept that for the pull request.");
     return r.json?.data;
@@ -742,10 +813,9 @@ export class GithubApp {
    */
   async pullComments(repo: RepoRef, number: number): Promise<{ comments: PullComment[]; truncated: boolean }> {
     const base = this.path(repo);
-    const token = await this.token(repo);
     const [review, convo] = await Promise.all([
-      this.send("GET", `${base}/pulls/${number}/comments?per_page=${COMMENTS_MAX}`, token),
-      this.send("GET", `${base}/issues/${number}/comments?per_page=${COMMENTS_MAX}`, token),
+      this.rsend(repo, "GET", `${base}/pulls/${number}/comments?per_page=${COMMENTS_MAX}`),
+      this.rsend(repo, "GET", `${base}/issues/${number}/comments?per_page=${COMMENTS_MAX}`),
     ]);
     if (review.status !== 200) throw githubError(review.status, review.json, "that pull request");
     if (convo.status !== 200) throw githubError(convo.status, convo.json, "that pull request");
@@ -778,7 +848,7 @@ export class GithubApp {
 
   /** Closes a pull request without merging it. */
   async closePull(repo: RepoRef, number: number): Promise<void> {
-    const r = await this.send("PATCH", `${this.path(repo)}/pulls/${number}`, await this.token(repo), { state: "closed" });
+    const r = await this.rsend(repo, "PATCH", `${this.path(repo)}/pulls/${number}`, { state: "closed" });
     if (r.status !== 200) throw githubError(r.status, r.json, "that pull request");
   }
 
@@ -795,7 +865,7 @@ export class GithubApp {
     const pull = await this.getPull(repo, number);
     assertMergeable(pull, repo, branch);
     if (pull.headSha !== sha) throw changedSinceApproval();
-    const r = await this.send("PUT", `${this.path(repo)}/pulls/${number}/merge`, await this.token(repo), { merge_method: "squash", sha });
+    const r = await this.rsend(repo, "PUT", `${this.path(repo)}/pulls/${number}/merge`, { merge_method: "squash", sha });
     if (r.status === 409) throw changedSinceApproval();
     if (r.status === 405) throw new ConnectorError("not_mergeable", "GitHub says this pull request can't be merged right now (a required check or review may be missing).");
     if (r.status !== 200 || r.json?.merged !== true) throw githubError(r.status, r.json, "that pull request");
@@ -805,10 +875,81 @@ export class GithubApp {
   /** Deletes a work branch from GitHub. Already gone is fine. Returns whether it was there. */
   async deleteBranch(repo: RepoRef, branch: string): Promise<boolean> {
     assertWorkBranch(branch, repo.defaultBranch);
-    const r = await this.send("DELETE", `${this.path(repo)}/git/refs/heads/${encodePath(branch)}`, await this.token(repo));
+    const r = await this.rsend(repo, "DELETE", `${this.path(repo)}/git/refs/heads/${encodePath(branch)}`);
     if (r.status === 204) return true;
     if (r.status === 404 || r.status === 422) return false;
     throw githubError(r.status, r.json, `the branch ${branch}`);
+  }
+
+  // ------------------------------------------- the person's own sign-in token
+
+  /**
+   * Who the token's owner is, and the scopes GitHub says the token has (its
+   * X-OAuth-Scopes header: "repo, read:user"). For the sign-in callback, to
+   * check the token is no broader than what was asked.
+   */
+  async oauthProfile(token: string): Promise<{ id: number; login: string; scopes: string[] }> {
+    const r = await this.send("GET", `${GITHUB_API}/user`, token);
+    if (r.status !== 200) throw githubError(r.status, r.json, "your GitHub account");
+    if (!Number.isSafeInteger(r.json?.id) || typeof r.json?.login !== "string" || !r.json.login) {
+      throw new ConnectorError("failed", "GitHub ran into a problem. Try again in a moment.");
+    }
+    const scopes = String(r.headers.get("x-oauth-scopes") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+    return { id: r.json.id, login: r.json.login, scopes };
+  }
+
+  /**
+   * The repos a sign-in token can PUSH to, archived ones left out, at most
+   * REPOS_MAX (`truncated` when there are more). Only a repo whose
+   * permissions.push is true is listed: a repo the person can merely read is
+   * not one Tailzu can work in.
+   */
+  async listUserRepos(token: string, onRejected?: () => Promise<void>): Promise<{ repos: GithubRepo[]; truncated: boolean }> {
+    const repos: GithubRepo[] = [];
+    let truncated = false;
+    for (let page = 1; page <= USER_REPOS_PAGES_MAX; page += 1) {
+      const r = await this.send("GET", `${GITHUB_API}/user/repos?affiliation=owner,collaborator,organization_member&per_page=100${page > 1 ? `&page=${page}` : ""}`, token);
+      if (r.status === 401 && onRejected) {
+        await onRejected();
+        throw new ConnectorError("needs_signin", "GitHub no longer accepts your sign-in. Sign in with GitHub again.");
+      }
+      if (r.status !== 200 || !Array.isArray(r.json)) throw githubError(r.status, r.json, "your repos");
+      for (const row of r.json) {
+        const repo = asRepo(row);
+        if (repo && !repo.archived && row.permissions?.push === true) repos.push(repo);
+      }
+      if (r.json.length < 100) break;
+      if (repos.length >= REPOS_MAX || page === USER_REPOS_PAGES_MAX) { truncated = true; break; }
+    }
+    if (repos.length > REPOS_MAX) { repos.length = REPOS_MAX; truncated = true; }
+    return { repos, truncated };
+  }
+
+  /**
+   * Whether the token's owner can push to the repo, as the repo itself says it
+   * (GET /repos/{o}/{r}, permissions.push). "no" for a repo that isn't there
+   * for them; "unknown" for a GitHub having a bad minute. A dead sign-in or a
+   * blocked organisation says so instead (they throw).
+   */
+  async canPushTo(repo: RepoRef): Promise<"yes" | "no" | "unknown"> {
+    const r = await this.rsend(repo, "GET", this.path(repo));
+    if (r.status === 200) return r.json?.permissions?.push === true ? "yes" : "no";
+    return r.status === 404 ? "no" : "unknown";
+  }
+
+  /**
+   * A short-lived download address for the repo's code at a commit: GitHub
+   * answers the tarball request with a redirect to a signed link, and that
+   * link is what is returned. The redirect is NOT followed here: following it
+   * would be a request this server makes for the runner, and the token would
+   * have been in the one before it. Whoever has the link needs no token.
+   */
+  async tarballUrl(repo: RepoRef, sha: string): Promise<string> {
+    if (!/^[0-9a-f]{40}$/.test(sha)) throw new ConnectorError("bad_request", "That isn't a commit.");
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/tarball/${sha}`, undefined, { manual: true });
+    const where = r.headers.get("location");
+    if (r.status !== 302 || !where || !/^https:\/\//.test(where)) throw githubError(r.status === 302 ? 502 : r.status, r.json, "the code");
+    return where;
   }
 
   // ------------------------------------------------------- for runners, later

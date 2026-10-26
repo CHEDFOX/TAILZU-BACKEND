@@ -552,6 +552,22 @@ const EnvSchema = z.object({
   GITHUB_APP_PRIVATE_KEY: z.string().optional(),
   /** The secret GitHub signs its webhooks with (X-Hub-Signature-256). With none, the webhook refuses everything. */
   GITHUB_APP_WEBHOOK_SECRET: z.string().optional(),
+  /**
+   * "Sign in with GitHub" for the Code bot: a second way to connect that needs
+   * no App install. It is a classic GitHub OAuth App, so its token reaches all
+   * the person's repos; Tailzu's own limits make that safe (src/code/oauth.ts:
+   * only repos added as projects, push access re-checked before every write,
+   * revoked on disconnect, on account delete and after 30 days unused). Off by
+   * default, and the kill switch: while it is false no stored token is ever
+   * used, and the sign-in routes answer 404 { code: "oauth_off" }. Needs
+   * CODE_GITHUB, migration 0021 and CONNECTOR_TOKEN_KEY (tokens are stored
+   * encrypted under it). Setup is in docs/github-app.md.
+   */
+  CODE_GITHUB_OAUTH: bool(false),
+  /** The OAuth App's client id. Separate from the GitHub App's. */
+  GITHUB_OAUTH_CLIENT_ID: z.string().optional(),
+  /** The OAuth App's client secret. Server-side only: never sent to a device, a log or an error message. */
+  GITHUB_OAUTH_CLIENT_SECRET: z.string().optional(),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 
@@ -1175,6 +1191,12 @@ export function getConfig(): AppConfig {
     if (Buffer.from(env.CONNECTOR_TOKEN_KEY ?? "", "base64").length !== 32) {
       console.warn("[config] CODE_GITHUB=true but CONNECTOR_TOKEN_KEY is not 32 bytes of base64 (openssl rand -base64 32): GitHub cannot be connected.");
     }
+    if (env.CODE_GITHUB_OAUTH && !(env.GITHUB_OAUTH_CLIENT_ID && env.GITHUB_OAUTH_CLIENT_SECRET)) {
+      console.warn("[config] CODE_GITHUB_OAUTH=true but GITHUB_OAUTH_CLIENT_ID / GITHUB_OAUTH_CLIENT_SECRET are not both set: Sign in with GitHub answers not_configured.");
+    }
+  }
+  if (env.CODE_GITHUB_OAUTH && !env.CODE_GITHUB) {
+    console.warn("[config] CODE_GITHUB_OAUTH=true does nothing while CODE_GITHUB is off.");
   }
 
   // Our published client document only works for sign-ins that come back to the

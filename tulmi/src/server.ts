@@ -42,6 +42,7 @@ import { registerNotesRoutes } from "./routes/notes.js";
 import { createConnectors, type Connectors } from "./connectors/index.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
 import { createCode } from "./code/index.js";
+import { startOAuthSweeper } from "./code/oauth.js";
 import { registerCodeRoutes } from "./routes/code.js";
 import { registerCustomConnectorRoutes } from "./routes/connectorsCustom.js";
 import { registerOAuthClientMetadataRoute } from "./routes/oauthClientMetadata.js";
@@ -1038,7 +1039,14 @@ registerConnectorRoutes(app, { rateLimit: AUTHED_RL, connectors });
 // The Code bot's GitHub side: connect an install, pick a repo, start a work
 // branch (src/code). Off unless CODE_GITHUB is true; the routes then answer
 // 404 code_off, and with the GitHub App not set up, 503 not_configured.
-registerCodeRoutes(app, { rateLimit: AUTHED_RL, code: cfg.CODE_GITHUB ? createCode() : null });
+const code = cfg.CODE_GITHUB ? createCode() : null;
+registerCodeRoutes(app, { rateLimit: AUTHED_RL, code });
+// "Sign in with GitHub" tokens unused for 30 days are revoked at GitHub (code/oauth.ts), on a timer, even
+// with the switch off: revoking only destroys. Never in a request's way.
+if (code?.oauth) {
+  const stopOAuth = startOAuthSweeper({ oauth: code.oauth, log: app.log });
+  app.addHook("onClose", async () => { stopOAuth(); });
+}
 // Apps a person adds by link (CUSTOM_CONNECTORS): adding, removing, and their tools one by one.
 registerCustomConnectorRoutes(app, { rateLimit: AUTHED_RL, connectors });
 // The page an app's auth server reads to learn who Tailzu is (oauth.ts). Only
@@ -3178,6 +3186,9 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
   // cleanup_history is the verbatim dictated input + output — the most
   // sensitive per-user data, and once silently left behind. Errors are logged
   // and do not abort the sequence.
+  // A GitHub sign-in token is revoked at GitHub before its row goes; the rows go with the account either way.
+  await code?.oauth?.forAccountDelete(user.id);
+
   const summary = {
     personality: false, profile: false, usageEvents: 0,
     history: false, pushTokens: false, authAccount: false,
@@ -3188,7 +3199,7 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
     ["keyboard_telemetry", null], ["push_log", null], ["entitlements", null],
     // The Code bot's GitHub links and projects (a project's branches go with it: code_branches
     // has no user_id, and cascades from code_projects).
-    ["code_installations", null], ["code_projects", null],
+    ["code_installations", null], ["code_projects", null], ["code_oauth_links", null],
   ];
   for (const [table, key] of tables) {
     try {

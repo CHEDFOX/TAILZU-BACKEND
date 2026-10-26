@@ -56,7 +56,7 @@ async function load(d: ProjectDeps, userId: string, projectId: string, branch: s
   const rec = await recordedBranch(d, project, branch);
   if (rec.state === "deleted" && !o.deleted) throw new ConnectorError("branch_deleted", "That branch has been deleted from GitHub.");
   await assertAccess(d, userId, project, o.fresh);
-  return { project, rec, repo: repoRef(project) };
+  return { project, rec, repo: repoRef(d, userId, project) };
 }
 
 /** The pull request Tailzu opened for the branch. */

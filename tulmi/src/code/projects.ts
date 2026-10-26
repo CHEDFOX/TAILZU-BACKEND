@@ -42,6 +42,15 @@
  * branch: tree, read, commit and openDraftPr. The handle can't be pointed at
  * any other branch, and the GitHub calls under it check the branch again.
  *
+ * A project goes through one of two links (store.ts LinkKind): a GitHub App
+ * install ("app"), or the person's own "Sign in with GitHub" ("oauth",
+ * oauth.ts). Everything below is the same for both, and so are the guards in
+ * github.ts and pulls.ts: the repo's RepoRef names the access (access.ts) and
+ * nothing else changes. What differs is only the access rule. A sign-in token
+ * reaches ALL of the person's repos, so a repo counts only if the person
+ * added it as a project, and a write first asks GitHub afresh whether they can
+ * still push to it. When the App reaches the same repo, the App is used.
+ *
  * Also here: a link to make a new repo on GitHub (newRepoLink: the person
  * makes it, so Tailzu needs no permission to), the first README of a repo that
  * has no commits (initEmptyRepo, one of exactly two writes to a default
@@ -53,9 +62,16 @@ import { randomBytes } from "node:crypto";
 import { ConnectorError } from "../connectors/oauth.js";
 import { assertWorkBranch, type CommitFile, type GithubApp, type RepoPermission, type RepoRef, type TreeEntry } from "./github.js";
 import type { ApprovalBook } from "./approvals.js";
+import type { GithubOAuth } from "./oauth.js";
 import type { CodeBranch, CodeInstallation, CodeProject, CodeStore } from "./store.js";
 
-export interface ProjectDeps { store: CodeStore; github: GithubApp; approvals: ApprovalBook }
+export interface ProjectDeps {
+  store: CodeStore;
+  github: GithubApp;
+  approvals: ApprovalBook;
+  /** "Sign in with GitHub" (oauth.ts). Absent: this server has none. */
+  oauth?: GithubOAuth | null;
+}
 
 /** Projects one person may have. */
 export const PROJECTS_MAX = 50;
@@ -65,7 +81,13 @@ const SLUG_MAX = 32;
 /** Questions about what a login may do that are out to GitHub at once, when listing. */
 export const ACCESS_CHECKS_AT_ONCE = 8;
 
-export interface ListedRepo { id: number; fullName: string; private: boolean; defaultBranch: string; installationId: number }
+export interface ListedRepo {
+  id: number; fullName: string; private: boolean; defaultBranch: string;
+  /** The App install it is on; 0 for a repo reached through the person's sign-in. */
+  installationId: number;
+  /** Present, and "oauth", for a repo reached only through the person's sign-in. */
+  source?: "oauth";
+}
 
 /**
  * The branch name for a task: its ASCII words in lower case joined by `-`, at
@@ -113,12 +135,15 @@ async function mayUse(d: ProjectDeps, link: CodeInstallation, repo: { repoId: nu
 /**
  * The repos across this person's linked installs that they may use (suspended
  * installs are skipped, archived repos left out, other people's repos in a
- * shared install filtered out: see the top of this file). An install GitHub
- * can't answer for is skipped too, unless none can be: then the first failure
- * is the answer. `needsReconnect` names the links made before the GitHub login
- * was kept, whose repos can't be told apart; it is there only when there are some.
+ * shared install filtered out: see the top of this file), then those they can
+ * push to through their own sign-in, if they have one and the switch is on (a
+ * repo the App reaches is listed once, as the App's). An install or a sign-in
+ * GitHub can't answer for is skipped too, unless nothing could be asked: then
+ * the first failure is the answer. `needsReconnect` names the links made
+ * before the GitHub login was kept, whose repos can't be told apart;
+ * `needsSignin` says the sign-in token died. Each is there only when it applies.
  */
-export async function listRepos(d: ProjectDeps, userId: string): Promise<{ repos: ListedRepo[]; truncated: boolean; needsReconnect?: number[] }> {
+export async function listRepos(d: ProjectDeps, userId: string): Promise<{ repos: ListedRepo[]; truncated: boolean; needsReconnect?: number[]; needsSignin?: true }> {
   const live = (await d.store.listInstallations(userId)).filter((i) => i.suspendedAt === null);
   const old = live.filter((i) => i.githubLogin === null);
   const installs = live.filter((i) => i.githubLogin !== null);
@@ -138,12 +163,36 @@ export async function listRepos(d: ProjectDeps, userId: string): Promise<{ repos
       }
     }
   });
-  if (installs.length && failure !== undefined && results.every((r) => r.status === "rejected")) throw failure;
+  const appFailed = installs.length > 0 && failure !== undefined && results.every((r) => r.status === "rejected");
   const allowed = await mapLimit(candidates, ACCESS_CHECKS_AT_ONCE, (c) => mayUse(d, c.link, { repoId: c.repo.id, fullName: c.repo.fullName }));
+  const repos = candidates.filter((_, n) => allowed[n]).map((c) => c.repo);
+
+  // The person's own sign-in: what they can push to, minus what the App already gave.
+  let needsSignin = false;
+  let signinOk = false;
+  if (d.oauth) {
+    const state = await d.oauth.state(userId);
+    if (state === "needs_signin") needsSignin = true;
+    if (state === "active") {
+      try {
+        const mine = await d.oauth.listRepos(userId);
+        signinOk = true;
+        truncated ||= mine.truncated;
+        const have = new Set(repos.map((r) => r.id));
+        for (const r of mine.repos) {
+          if (!have.has(r.id)) repos.push({ id: r.id, fullName: r.fullName, private: r.private, defaultBranch: r.defaultBranch, installationId: 0, source: "oauth" });
+        }
+      } catch (err) {
+        if (err instanceof ConnectorError && err.code === "needs_signin") needsSignin = true;
+        else failure ??= err;
+      }
+    }
+  }
+  if ((appFailed || (installs.length === 0 && failure !== undefined)) && !signinOk) throw failure;
   return {
-    repos: candidates.filter((_, n) => allowed[n]).map((c) => c.repo),
-    truncated,
+    repos, truncated,
     ...(old.length ? { needsReconnect: old.map((i) => i.installationId) } : {}),
+    ...(needsSignin ? { needsSignin: true as const } : {}),
   };
 }
 
@@ -151,6 +200,14 @@ export async function listRepos(d: ProjectDeps, userId: string): Promise<{ repos
 export async function addProject(d: ProjectDeps, userId: string, repoId: number): Promise<{ project: CodeProject; created: boolean }> {
   const existing = await d.store.findProjectByRepo(userId, repoId);
   if (existing) {
+    if (existing.linkKind === "oauth") {
+      // The App may reach the repo now, and the App is the one to use.
+      const there = (await listRepos(d, userId)).repos.find((r) => r.id === repoId);
+      if (there && there.source !== "oauth") {
+        const moved = await d.store.setProjectLink(userId, existing.id, { installationId: there.installationId, linkKind: "app" });
+        return { project: moved ?? existing, created: false };
+      }
+    }
     await assertAccess(d, userId, existing);
     return { project: existing, created: false };
   }
@@ -158,13 +215,15 @@ export async function addProject(d: ProjectDeps, userId: string, repoId: number)
   const repo = listed.repos.find((r) => r.id === repoId);
   if (!repo) {
     if (listed.needsReconnect) throw reconnect();
+    if (listed.needsSignin) throw new ConnectorError("needs_signin", "Sign in with GitHub again to see your repos.");
     throw notFound("that repo among the ones you gave Tailzu access to");
   }
   if ((await d.store.listProjects(userId)).length >= PROJECTS_MAX) {
     throw new ConnectorError("too_many", `You have ${PROJECTS_MAX} projects, which is the most. Remove one first.`);
   }
   const project = await d.store.createProject(userId, {
-    installationId: repo.installationId, repoId: repo.id, fullName: repo.fullName, defaultBranch: repo.defaultBranch, private: repo.private,
+    installationId: repo.installationId, linkKind: repo.source === "oauth" ? "oauth" : "app",
+    repoId: repo.id, fullName: repo.fullName, defaultBranch: repo.defaultBranch, private: repo.private,
   });
   return { project, created: true };
 }
@@ -177,11 +236,21 @@ export async function ownProject(d: ProjectDeps, userId: string, projectId: stri
 }
 
 /**
- * The project's install is still linked and not suspended (GitHub would turn
- * every call down otherwise), and the person may still use the repo. A write
- * passes `fresh`, so access taken away since is felt at once.
+ * The project's link still works, and the person may still use the repo. For
+ * an App project: the install is still linked and not suspended (GitHub would
+ * turn every call down otherwise). For a sign-in project: the sign-in is on
+ * and alive and GitHub says they can push. A write passes `fresh`, so access
+ * taken away since is felt at once.
  */
 export async function assertAccess(d: ProjectDeps, userId: string, p: CodeProject, fresh = false): Promise<void> {
+  if (p.linkKind === "oauth") {
+    // Through the person's own sign-in: it has to be on and alive, and GitHub has to say they can still push here.
+    if (!d.oauth) throw new ConnectorError("oauth_off", "Sign in with GitHub isn't switched on.");
+    if (!(await d.oauth.canPush(userId, repoRef(d, userId, p), fresh))) {
+      throw new ConnectorError("no_access", "You don't have write access to that repo on GitHub any more, so Tailzu won't work in it.");
+    }
+    return;
+  }
   const link = await d.store.getInstallation(userId, p.installationId);
   if (!link) throw notFound("that project's GitHub install");
   if (link.suspendedAt !== null) throw new ConnectorError("suspended", "GitHub has suspended Tailzu's access to this account. Unsuspend it on GitHub first.");
@@ -190,7 +259,11 @@ export async function assertAccess(d: ProjectDeps, userId: string, p: CodeProjec
   }
 }
 
-export const repoRef = (p: CodeProject): RepoRef => ({ installationId: p.installationId, repoId: p.repoId, fullName: p.fullName, defaultBranch: p.defaultBranch });
+/** The repo as the git calls need it, carrying its access: the person's sign-in for a sign-in project, else none (the App's). */
+export const repoRef = (d: ProjectDeps, userId: string, p: CodeProject): RepoRef => ({
+  installationId: p.installationId, repoId: p.repoId, fullName: p.fullName, defaultBranch: p.defaultBranch,
+  ...(p.linkKind === "oauth" && d.oauth ? { access: d.oauth.access(userId) } : {}),
+});
 
 /** A branch Tailzu recorded in this project, or "not found". */
 export async function recordedBranch(d: ProjectDeps, project: CodeProject, branch: unknown): Promise<CodeBranch> {
@@ -222,29 +295,51 @@ export async function initEmptyRepo(d: ProjectDeps, userId: string, projectId: s
   const project = await ownProject(d, userId, projectId);
   await assertAccess(d, userId, project, true);
   const heading = typeof title === "string" && title.trim() ? title : project.fullName.split("/")[1]!;
-  return { commitSha: (await d.github.initEmptyRepo(repoRef(project), heading)).sha };
+  return { commitSha: (await d.github.initEmptyRepo(repoRef(d, userId, project), heading)).sha };
 }
 
+/** What a runner gets: for an App project, a clone address and a token for that one repo; for a sign-in project, a one-time download link and never the token. */
+export type RunnerAccess =
+  | { kind: "app"; cloneUrl: string; token: string; expiresAt: number }
+  | { kind: "oauth"; tarballUrl: string };
+
 /**
- * What a sandbox needs to clone a work branch (and push to it): the repo's
- * address and a token for THAT REPO ONLY: contents:read for "read",
- * contents:write for "push", nothing else. There is no route for it yet. It
- * is given once and kept nowhere: not in the store, not in the token cache,
- * not in a log. The branch has to be one Tailzu recorded; the person has to
- * be allowed in the repo right now (a fresh check, read or push alike, since
- * the token is the repo's contents).
+ * What a sandbox needs to work on a work branch. There is no route for it yet.
+ *
+ * App project: the repo's address and a token for THAT REPO ONLY: contents:read
+ * for "read", contents:write for "push", nothing else. It is given once and
+ * kept nowhere: not in the store, not in the token cache, not in a log.
+ *
+ * Sign-in project: the person's own token is never given to a runner, to
+ * anything. "read" is a short-lived download link for the branch's code (the
+ * address GitHub redirects its tarball request to, not followed here); "push"
+ * is refused ("use_server_commit"): the runner hands its changes back and the
+ * server commits them through the workspace, under the same guards as any other
+ * commit.
+ *
+ * The branch has to be one Tailzu recorded; the person has to be allowed in
+ * the repo right now (a fresh check, read or push alike, since either is the
+ * repo's contents).
  */
 export async function runnerAccess(
   d: ProjectDeps, userId: string, projectId: string, branch: string, mode: "read" | "push",
-): Promise<{ cloneUrl: string; token: string; expiresAt: number }> {
+): Promise<RunnerAccess> {
   if (mode !== "read" && mode !== "push") throw new ConnectorError("bad_request", "Say whether the runner reads or pushes.");
   const project = await ownProject(d, userId, projectId);
   const rec = await recordedBranch(d, project, branch);
   assertWorkBranch(rec.branch, project.defaultBranch);
   if (rec.state === "deleted") throw new ConnectorError("branch_deleted", "That branch has been deleted from GitHub.");
+  if (project.linkKind === "oauth" && mode === "push") {
+    throw new ConnectorError("use_server_commit", "A runner doesn't get push access to a repo reached through your own sign-in. Hand the changes back and the server will commit them.");
+  }
   await assertAccess(d, userId, project, true);
-  const t = await d.github.runnerToken(repoRef(project), mode);
-  return { cloneUrl: `https://github.com/${project.fullName}.git`, token: t.token, expiresAt: t.expiresAt };
+  const repo = repoRef(d, userId, project);
+  if (project.linkKind === "oauth") {
+    // Pinned to the commit the branch is at now.
+    return { kind: "oauth", tarballUrl: await d.github.tarballUrl(repo, await d.github.branchHead(repo, rec.branch)) };
+  }
+  const t = await d.github.runnerToken(repo, mode);
+  return { kind: "app", cloneUrl: `https://github.com/${project.fullName}.git`, token: t.token, expiresAt: t.expiresAt };
 }
 
 /** A work branch for a task, from the default branch's head. */
@@ -258,7 +353,7 @@ export async function createWorkBranch(d: ProjectDeps, userId: string, projectId
   for (let attempt = 0; !made; attempt += 1) {
     const branch = newBranchName(text);
     try {
-      made = { branch, baseSha: await d.github.createBranch(repoRef(project), branch) };
+      made = { branch, baseSha: await d.github.createBranch(repoRef(d, userId, project), branch) };
     } catch (err) {
       if (!(err instanceof ConnectorError && err.code === "branch_exists" && attempt < 3)) throw err;
     }
@@ -279,7 +374,7 @@ export async function openPr(
   const project = await ownProject(d, userId, projectId);
   if (!(await d.store.getBranch(projectId, branch))) throw notFound("that branch in this project");
   await assertAccess(d, userId, project, true);
-  const pr = await d.github.openDraftPr(repoRef(project), branch, typeof title === "string" ? title : "", typeof body === "string" ? body : "");
+  const pr = await d.github.openDraftPr(repoRef(d, userId, project), branch, typeof title === "string" ? title : "", typeof body === "string" ? body : "");
   await d.store.setBranchPr(projectId, branch, pr.number, pr.url);
   return { prNumber: pr.number, prUrl: pr.url, existing: pr.existing };
 }
@@ -309,7 +404,7 @@ export async function workspace(d: ProjectDeps, userId: string, projectId: strin
   const project = await ownProject(d, userId, projectId);
   if (typeof branch !== "string" || !(await d.store.getBranch(projectId, branch))) throw notFound("that branch in this project");
   await assertAccess(d, userId, project);
-  const repo = repoRef(project);
+  const repo = repoRef(d, userId, project);
   return {
     project, branch,
     tree: async () => { await assertAccess(d, userId, project); return d.github.tree(repo, branch); },

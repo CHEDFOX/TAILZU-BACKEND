@@ -7,6 +7,10 @@
  *                                                  repositorySelection, suspended, manageUrl }] }
  *   DELETE /v1/code/github/installations/:id  forget the link and its projects here -> { ok, manageUrl }; GitHub's
  *                                                  install is not touched, manageUrl is where to remove it
+ *   POST   /v1/code/github/signin             -> { authorizeUrl }  the other way to connect: "Sign in with GitHub" (code/oauth.ts),
+ *                                                  a classic OAuth App with no install. 404 oauth_off unless CODE_GITHUB_OAUTH
+ *   GET    /v1/code/github/signin/callback    GitHub sends the browser back here; no session, the signed state says who
+ *   DELETE /v1/code/github/signin             -> { ok, revoked }  revokes the token at GitHub, then forgets the link and its projects
  *   GET    /v1/code/repos                     -> { repos: [{ id, fullName, private, defaultBranch, installationId }], truncated,
  *                                                  needsReconnect? }  only repos the person may write to on GitHub (below)
  *   POST   /v1/code/projects { repoId }       -> { project, created }; 404 for a repo outside the person's installs
@@ -62,6 +66,13 @@
  * Every write above asks GitHub afresh whether the person can still write to
  * the repo (403 no_access if not).
  *
+ * "Sign in with GitHub" reaches ALL of a person's repos, which an App install
+ * does not, so Tailzu limits it (code/oauth.ts): only repos added as projects,
+ * push access re-checked before every write, the token encrypted at rest and
+ * never in any reply, revoked on disconnect, on account delete and after 30
+ * days unused. A token GitHub rejects is 403 needs_signin; an organisation that
+ * hasn't let the sign-in in is 403 org_blocked.
+ *
  * Linking an install is not access to every repo in it (code/projects.ts): a
  * repo is the person's to use if the install is on their own GitHub account,
  * or GitHub says their login can write to it. Otherwise it is left out of the
@@ -96,7 +107,8 @@ const STATUS: Record<string, number> = {
   not_yours: 403, no_access: 403, needs_reconnect: 403, not_found: 404,
   branch_moved: 409, branch_exists: 409, conflict: 409, too_many: 409, suspended: 409, nothing_to_review: 409, no_drafts: 409,
   repo_empty: 409, repo_not_empty: 409, branch_deleted: 409, branch_in_use: 409, changed_since_approval: 409, approval_expired: 409,
-  approval_invalid: 409, pr_draft: 409, pr_not_open: 409, pr_merged: 409, not_mergeable: 409,
+  approval_invalid: 409, pr_draft: 409, pr_not_open: 409, pr_merged: 409, not_mergeable: 409, use_server_commit: 409,
+  oauth_off: 404, needs_signin: 403, not_allowed: 403, org_blocked: 403, scope_too_broad: 403, scope_missing: 403,
   not_configured: 503, busy: 503,
 };
 
@@ -125,15 +137,18 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
   /** Signing the install link needs CONNECTOR_TOKEN_KEY; without it nothing can be linked. */
   const stateKeyOk = () => { try { tokenKey(); return true; } catch { return false; } };
 
-  /** The Code bot, when it is on and whole. Otherwise the answer has been sent, and this is null. */
-  const ready = (reply: FastifyReply) => {
+  /**
+   * The Code bot, when it is on and whole. Otherwise the answer has been sent, and this is null.
+   * `need` "app" is for what only the GitHub App does (the install flow).
+   */
+  const ready = (reply: FastifyReply, need: "any" | "app" = "any") => {
     if (!k) { off(reply); return null; }
-    if (!k.github || !stateKeyOk()) { notConfigured(reply); return null; }
-    return { store: k.store, github: k.github, approvals: k.approvals };
+    if (!k.github || !stateKeyOk() || (need === "app" && !k.appReady)) { notConfigured(reply); return null; }
+    return { store: k.store, github: k.github, approvals: k.approvals, oauth: k.oauth };
   };
   /** `ready`, then the session. Null once the answer has been sent. */
-  const begin = async (authorization: string | undefined, reply: FastifyReply) => {
-    const d = ready(reply);
+  const begin = async (authorization: string | undefined, reply: FastifyReply, need: "any" | "app" = "any") => {
+    const d = ready(reply, need);
     if (!d) return null;
     const user = await resolveUser(authorization);
     if (!user) { noSession(reply); return null; }
@@ -141,7 +156,7 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
   };
 
   app.post("/v1/code/github/connect", RL, async (req, reply) => {
-    const s = await begin(req.headers["authorization"], reply);
+    const s = await begin(req.headers["authorization"], reply, "app");
     if (!s) return reply;
     try {
       return reply.send(await beginConnect(s.d, s.user.id));
@@ -154,7 +169,7 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
       reply.header("cache-control", "no-store").header("referrer-policy", "no-referrer")
         .header("content-security-policy", PAGE_CSP).header("content-type", "text/html; charset=utf-8");
       if (!k) return reply.code(404).send(page("Not available", "The Code bot is not switched on.", false));
-      if (!k.github || !stateKeyOk()) return reply.code(503).send(page("Not available", "GitHub isn't set up on this server yet.", false));
+      if (!k.github || !k.appReady || !stateKeyOk()) return reply.code(503).send(page("Not available", "GitHub isn't set up on this server yet.", false));
       const q = req.query ?? {};
       const again = (title: string, line: string) => page(title, line, true, OPEN_APP);
       if (q.error) return reply.code(400).send(again("Nothing was connected", "You can go back to Tailzu and try again any time."));
@@ -185,17 +200,85 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     const s = await begin(req.headers["authorization"], reply);
     if (!s) return reply;
     try {
-      return reply.send(await linkStatus(s.d, s.user.id));
+      const status = await linkStatus(s.d, s.user.id);
+      if (!k!.oauthWanted) return reply.send(status);
+      // The other way in, when it is offered. Who they are and whether it works; never the token.
+      const link = await s.d.store.getOAuthLink(s.user.id);
+      const active = !!link && link.status === "active" && link.tokenEnc !== null;
+      return reply.send({
+        ...status, connected: status.connected || active,
+        oauth: {
+          connected: active, ...(link ? { login: link.githubLogin, status: link.status, workflow: link.scope.split(/[\s,]+/).includes("workflow") } : {}),
+        },
+      });
     } catch (err) { return fail(reply, err); }
   });
 
   app.delete<{ Params: { id: string } }>("/v1/code/github/installations/:id", RL, async (req, reply) => {
-    const s = await begin(req.headers["authorization"], reply);
+    const s = await begin(req.headers["authorization"], reply, "app");
     if (!s) return reply;
     const id = idOf(req.params.id);
     if (id === null) return reply.code(404).send({ code: "not_found", message: "That GitHub install isn't connected." });
     try {
       return reply.send(await forgetInstallation(s.d, s.user.id, id));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // --- Sign in with GitHub (code/oauth.ts): off unless CODE_GITHUB_OAUTH, and not set up without the OAuth App's id and secret.
+  /** The sign-in, when the Code bot is on and it is offered and whole. Otherwise the answer has been sent, and this is null. */
+  const signinReady = (reply: FastifyReply, o: { switchOff?: boolean } = {}) => {
+    if (!k) { off(reply); return null; }
+    // Disconnecting (revoking) still works with the switch off; everything else says it is off.
+    if (!k.oauthWanted && !(o.switchOff && k.oauth)) { reply.code(404).send({ code: "oauth_off", message: "Sign in with GitHub isn't switched on." }); return null; }
+    if (!k.oauth || !stateKeyOk()) { notConfigured(reply); return null; }
+    return k.oauth;
+  };
+
+  app.post("/v1/code/github/signin", RL, async (req, reply) => {
+    const oauth = signinReady(reply);
+    if (!oauth) return reply;
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return noSession(reply);
+    try {
+      return reply.send(await oauth.begin(user.id));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // GitHub's redirect after the sign-in. A browser, no session: the signed state says whose it is.
+  app.get<{ Querystring: { code?: unknown; state?: unknown; error?: unknown } }>("/v1/code/github/signin/callback", RL, async (req, reply) => {
+    reply.header("cache-control", "no-store").header("referrer-policy", "no-referrer")
+      .header("content-security-policy", PAGE_CSP).header("content-type", "text/html; charset=utf-8");
+    if (!k) return reply.code(404).send(page("Not available", "The Code bot is not switched on.", false));
+    if (!k.oauthWanted) return reply.code(404).send(page("Not available", "Sign in with GitHub isn't switched on.", false));
+    if (!k.oauth || !stateKeyOk()) return reply.code(503).send(page("Not available", "GitHub isn't set up on this server yet.", false));
+    const again = (title: string, line: string) => page(title, line, true, OPEN_APP);
+    const q = req.query ?? {};
+    if (q.error) return reply.code(400).send(again("Nothing was connected", "You can go back to Tailzu and try again any time."));
+    const { code, state } = q;
+    if (typeof code !== "string" || typeof state !== "string" || !code || code.length > 4096 || state.length > 4096) {
+      return reply.code(400).send(again("That link didn't work", "Go back to Tailzu and start connecting again."));
+    }
+    try {
+      await k.oauth.complete(code, state);
+      return reply.send(page("GitHub connected", "You signed in. Add the repos you want Tailzu to work in, and only those are touched. You can go back to Tailzu.", true, OPEN_APP));
+    } catch (err) {
+      // The code and the state are in the address: only what went wrong is logged.
+      req.log.warn({ code: (err as { code?: string })?.code }, "github sign-in callback failed");
+      const broad = err instanceof ConnectorError && err.code === "scope_too_broad";
+      return reply.code(broad ? 403 : 400).send(again(
+        broad ? "Nothing was connected" : "That didn't work",
+        broad ? "GitHub gave Tailzu more access than it asked for, so it was revoked." : "Go back to Tailzu and try connecting again.",
+      ));
+    }
+  });
+
+  app.delete("/v1/code/github/signin", RL, async (req, reply) => {
+    const oauth = signinReady(reply, { switchOff: true });
+    if (!oauth) return reply;
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return noSession(reply);
+    try {
+      return reply.send({ ok: true, ...(await oauth.disconnect(user.id)) });
     } catch (err) { return fail(reply, err); }
   });
 
