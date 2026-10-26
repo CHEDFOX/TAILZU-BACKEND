@@ -45,7 +45,7 @@ import { createCode } from "./code/index.js";
 import { startOAuthSweeper } from "./code/oauth.js";
 import { registerCodeRoutes } from "./routes/code.js";
 import { registerCodeJobRoutes } from "./routes/codeJobs.js";
-import { createJobs } from "./code/jobs/index.js";
+import { createGithubActions, createJobs } from "./code/jobs/index.js";
 import { registerCustomConnectorRoutes } from "./routes/connectorsCustom.js";
 import { registerOAuthClientMetadataRoute } from "./routes/oauthClientMetadata.js";
 import { startDirectorySync } from "./connectors/registry.js";
@@ -1046,11 +1046,16 @@ registerCodeRoutes(app, { rateLimit: AUTHED_RL, code });
 // The Code bot's jobs and the environment router (src/code/jobs, docs/code-router.md): where each step that
 // needs a computer runs (the person's PC, then GitHub's free minutes, then paid compute by their own rule), the
 // runner protocol the desktop app will speak, and a ticker (every 15 s, started when the server is ready and
-// stopped when it closes) that takes back leases that ran out. GitHub's free computers and paid compute
-// have no provider yet, so only the person's own PC is ever chosen until they do. The person is told through
-// the push engine.
-const codeJobs = code ? createJobs({ code, notify: notifyCodeJob, log: app.log }) : null;
-registerCodeJobRoutes(app, { rateLimit: AUTHED_RL, code, jobs: codeJobs });
+// stopped when it closes) that takes back leases that ran out and looks at the steps out on GitHub.
+// GitHub's free computers are a real provider (code/jobs/githubActions.ts) whenever the App or the sign-in is
+// set up: a step is a throwaway tailzu-run/ branch in the person's own repo, and its result comes back to
+// POST /v1/code/runner/gh-result with GitHub's identity token. Whether a project can use it (the App's
+// Workflows and Actions permissions, or the sign-in's `workflow` scope) and whether the person has it switched
+// on (github_enabled) is decided per project and person when a step is placed. Paid compute has no provider
+// yet. The person is told through the push engine.
+const githubActions = code ? createGithubActions({ code, log: app.log }) : null;
+const codeJobs = code ? createJobs({ code, github: githubActions, notify: notifyCodeJob, log: app.log }) : null;
+registerCodeJobRoutes(app, { rateLimit: AUTHED_RL, code, jobs: codeJobs, githubActions });
 // "Sign in with GitHub" tokens unused for 30 days are revoked at GitHub (code/oauth.ts), on a timer, even
 // with the switch off: revoking only destroys. Never in a request's way.
 if (code?.oauth) {

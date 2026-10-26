@@ -8,7 +8,9 @@
  *   DELETE /v1/code/github/installations/:id  forget the link and its projects here -> { ok, manageUrl }; GitHub's
  *                                                  install is not touched, manageUrl is where to remove it
  *   POST   /v1/code/github/signin             -> { authorizeUrl }  the other way to connect: "Sign in with GitHub" (code/oauth.ts),
- *                                                  a classic OAuth App with no install. 404 oauth_off unless CODE_GITHUB_OAUTH
+ *                                                  a classic OAuth App with no install. 404 oauth_off unless CODE_GITHUB_OAUTH. With
+ *                                                  { workflow: true } it is the incremental sign-in that also asks for the `workflow`
+ *                                                  scope, which GitHub's free computers need (docs/github-app.md section 9)
  *   GET    /v1/code/github/signin/callback    GitHub sends the browser back here; no session, the signed state says who
  *   DELETE /v1/code/github/signin             -> { ok, revoked }  revokes the token at GitHub, then forgets the link and its projects
  *   GET    /v1/code/repos                     -> { repos: [{ id, fullName, private, defaultBranch, installationId }], truncated,
@@ -144,6 +146,8 @@ export const STATUS: Record<string, number> = {
   // The jobs and the runner protocol (routes/codeJobs.ts): a lease someone else holds now, a step still out, a job that is over,
   // a job that isn't waiting for what was said yes to, a PC that hasn't said hello, paid compute that is off or absent.
   stale_lease: 409, step_in_flight: 409, job_over: 409, not_waiting: 409, unknown_device: 409, paid_off: 409, paid_unavailable: 409,
+  // The result of a step on GitHub's free computers (routes/codeJobs.ts gh-result): a token that isn't GitHub's, or is for something else.
+  bad_runner_token: 401, runner_mismatch: 403,
 };
 
 /**
@@ -294,7 +298,9 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) return noSession(reply);
     try {
-      return reply.send(await oauth.begin(user.id));
+      // `{ workflow: true }` is the incremental sign-in that also asks for the `workflow` scope, which GitHub's free computers need to commit their workflow file (code/jobs/githubActions.ts).
+      const body = req.body && typeof req.body === "object" ? (req.body as { workflow?: unknown }) : {};
+      return reply.send(body.workflow === true ? await oauth.beginWorkflow(user.id) : await oauth.begin(user.id));
     } catch (err) { return fail(reply, err); }
   });
 

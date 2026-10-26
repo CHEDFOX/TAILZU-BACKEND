@@ -54,6 +54,18 @@
  * commit). If the server restarts before that, the step simply runs again.
  * Changes are committed only from a step that exited 0.
  *
+ * A PLACE THAT SENDS NO HEARTBEATS (GitHub's free computers, githubActions.ts)
+ * is looked at instead. Every tick asks its provider's `check` about each step
+ * it has out (checkRun): a step still going keeps its lease alive; one that
+ * will never report (no run appeared, the run ended without reporting, it ran
+ * far past its time) is moved like a lease that ran out, with the cause as the
+ * reason, and if the cause looks like the month's free minutes (or Actions
+ * being off) the person's GitHub is marked used up for the month
+ * (store.markGithubExhausted), so facts() leaves it out until the month turns
+ * over. The minutes a GitHub result counts are the provider's to say
+ * (`billable`): rounded up, none for a public repo, more for the person's own
+ * CI that the push also started.
+ *
  * MONEY. The user's rule (settings) is "never", "ask" or "auto" up to a monthly
  * cap in paise. A job's `budgetPaise` is what the person has said yes to for
  * THAT job (approvePaid raises it; createJob can start it above 0); spending
@@ -70,7 +82,7 @@ import { PolicyError, isNeedsApproval, type NeedsApproval } from "../policy.js";
 import { commitToBranch, ownProject, recordedBranch, repoRef, runnerAccess, type ProjectDeps } from "../projects.js";
 import { DeviceBook, allows, type DeviceBeat } from "./devices.js";
 import { choosePlacement, githubMinutesLeft, GITHUB_FREE_MINUTES_DEFAULT, type PlacementChoice, type PlacementCtx } from "./placement.js";
-import { DesktopProvider, type Availability, type ComputeProvider } from "./providers.js";
+import { DesktopProvider, type Availability, type ComputeProvider, type RunCheck } from "./providers.js";
 import type { JobStore } from "./store.js";
 import { TooManySteps } from "./store.js";
 import {
@@ -144,6 +156,8 @@ export interface StepResult {
   changes?: Array<{ path: string; content: string | null }>;
   /** Paid places only: what the step cost, in paise. */
   paise?: number;
+  /** GitHub's place only: the minutes that count against the person's free allowance (0 for a public repo, more than `minutes` when their own CI also ran). Absent: `minutes`. */
+  billable?: number;
 }
 
 export interface ResultAck {
@@ -183,6 +197,9 @@ const stale = () => new ConnectorError("stale_lease", "That step was given to an
 const inFlight = () => new ConnectorError("step_in_flight", "A step of this job is still out. Wait for it, or cancel the job.");
 const over = () => new ConnectorError("job_over", "That job is over.");
 const notWaiting = (what: string) => new ConnectorError("not_waiting", `That job isn't waiting for ${what}.`);
+
+/** Steps out on GitHub that one pass of the ticker looks at together. */
+const CHECKS_AT_ONCE = 8;
 
 /** Failures of GitHub that are worth asking again, not a verdict on the change. */
 const TRANSIENT = new Set(["failed", "busy", "github_auth"]);
@@ -231,10 +248,15 @@ export function readResult(body: unknown, via: ComputeKind): StepResult {
     if (!isInt(b.paise, 0, PAISE_MAX)) throw bad("paise is a whole number.");
     paise = b.paise;
   }
+  let billable: number | undefined;
+  if (via === "github" && b.billable !== undefined) {
+    if (!isInt(b.billable, 0, 24 * 60 * 2)) throw bad("billable is a whole number of minutes.");
+    billable = b.billable;
+  }
   return {
     jobId: b.jobId, stepIdx: b.stepIdx, epoch: b.epoch, exitCode: b.exitCode,
     outputTail: typeof b.outputTail === "string" ? b.outputTail : "", minutes: Math.ceil(b.minutes),
-    ...(changes ? { changes } : {}), ...(paise !== undefined ? { paise } : {}),
+    ...(changes ? { changes } : {}), ...(paise !== undefined ? { paise } : {}), ...(billable !== undefined ? { billable } : {}),
   };
 }
 
@@ -386,14 +408,19 @@ export class JobRouter {
   /** The person's settings, with this month's use and what is left of GitHub's free minutes. */
   async settingsView(userId: string): Promise<{
     settings: Omit<ComputeSettings, "userId">;
-    githubFreeMinutes: { allowance: number; headroomPercent: number; used: number; left: number };
+    githubFreeMinutes: { allowance: number; headroomPercent: number; used: number; left: number; exhausted?: true };
     usage: Omit<ComputeUsage, "userId">;
     providers: { github: boolean; paid: boolean };
   }> {
     const [s, u] = await Promise.all([this.store.getSettings(userId), this.store.getUsage(userId, monthKey(this.now()))]);
+    const exhausted = this.o.github ? await this.githubExhausted(userId) : false;
     return {
       settings: { paidRule: s.paidRule, autoCapPaise: s.autoCapPaise, githubEnabled: s.githubEnabled },
-      githubFreeMinutes: { allowance: this.freeMinutes, headroomPercent: 10, used: u.githubMinutes, left: githubMinutesLeft(this.freeMinutes, u.githubMinutes) },
+      // `exhausted` is there only when a step pushed to GitHub never ran or never reported this month: none of GitHub's minutes are counted as ours until the month turns.
+      githubFreeMinutes: {
+        allowance: this.freeMinutes, headroomPercent: 10, used: u.githubMinutes,
+        left: exhausted ? 0 : githubMinutesLeft(this.freeMinutes, u.githubMinutes), ...(exhausted ? { exhausted: true as const } : {}),
+      },
       usage: { month: u.month, githubMinutes: u.githubMinutes, paidPaise: u.paidPaise },
       providers: { github: !!this.o.github, paid: !!this.o.paid },
     };
@@ -619,7 +646,8 @@ export class JobRouter {
       }
 
       // The computer ran: count it, whatever happens to what it made.
-      if (via === "github" && r.minutes > 0) await this.store.addUsage(userId, monthKey(now), { githubMinutes: r.minutes });
+      const counted = via === "github" ? r.billable ?? r.minutes : 0;
+      if (via === "github" && counted > 0) await this.store.addUsage(userId, monthKey(now), { githubMinutes: counted });
       if (via === "paid" && paise > 0) await this.store.addUsage(userId, monthKey(now), { paidPaise: paise });
       const spentPaise = job.spentPaise + paise;
       const note = refused ? `\n[Tailzu did not commit the changes: ${refused}.]` : "";
@@ -673,6 +701,17 @@ export class JobRouter {
   async tick(): Promise<TickReport> {
     const report: TickReport = { expired: 0, moved: 0, failed: 0, woken: 0 };
     this.devices.prune(this.now());
+    // A place that sends no heartbeats (GitHub Actions) is looked at: a step still going keeps its lease, one that will never report is moved.
+    const watched = this.o.github;
+    if (watched?.check) {
+      // A few at a time: each is a call to GitHub, and a pass must not outlast its 15 seconds by much when many steps are out.
+      const running = await this.store.listRunning("github", 100);
+      for (let i = 0; i < running.length; i += CHECKS_AT_ONCE) {
+        await Promise.all(running.slice(i, i + CHECKS_AT_ONCE).map(async (j) => {
+          try { await this.checkRun(watched, j, report); } catch (err) { this.o.log?.warn({ jobId: j.id, error: (err as Error)?.message }, "code job: could not look at a step running on GitHub"); }
+        }));
+      }
+    }
     for (const j of await this.store.listExpired(this.now(), 100)) {
       try {
         await this.withJob(j.id, async (job) => {
@@ -755,6 +794,51 @@ export class JobRouter {
     return kind === "desktop" ? this.desktop : kind === "github" ? this.o.github ?? null : this.o.paid ?? null;
   }
 
+  /** Whether this person's GitHub minutes are marked used up this month. A store that can't answer says no: it must not stop PCs and paid compute being chosen. */
+  private async githubExhausted(userId: string): Promise<boolean> {
+    try {
+      return await this.store.isGithubExhausted(userId, monthKey(this.now()));
+    } catch (err) {
+      this.o.log?.warn({ error: (err as Error)?.message }, "code job: could not read whether GitHub's minutes are marked used up");
+      return false;
+    }
+  }
+
+  /**
+   * One step that is out on a place that sends no heartbeats (GitHub's), looked
+   * at by the ticker. The place is asked outside the lock (it talks to GitHub);
+   * what it says is acted on inside it, after reading the job afresh. Going, or
+   * not started: the lease is renewed, so it doesn't run out while the run
+   * does. Lost (no run ever appeared, the run ended without reporting, it ran
+   * past its time): if the cause looks like the month's minutes, they are marked
+   * used up, and the step is moved like a lease that ran out (expire).
+   */
+  private async checkRun(provider: ComputeProvider, j: CodeJob, report: TickReport): Promise<void> {
+    const step = await this.inflight(j.id);
+    if (!step || (step.status !== "dispatched" && step.status !== "running") || step.epoch !== j.leaseEpoch || j.leaseHolder === null) return;
+    let verdict: RunCheck;
+    try {
+      verdict = await provider.check!(j, step);
+    } catch {
+      verdict = { state: "waiting" };
+    }
+    await this.lock.run(j.userId, async () => {
+      const job = await this.store.getJobById(j.id);
+      if (!job || job.state !== "running" || job.placement !== "github" || job.leaseEpoch !== j.leaseEpoch || job.leaseHolder !== j.leaseHolder) return;
+      const now = this.now();
+      if (verdict.state === "waiting") {
+        await this.store.casJob(job.id, { leaseEpoch: job.leaseEpoch, states: ["running"], placement: "github" }, { leaseExpiresAt: now + LEASE_MS });
+        return;
+      }
+      if (verdict.exhausted) await this.store.markGithubExhausted(job.userId, monthKey(now));
+      const how = await this.expire(job, now, { force: true, reason: verdict.reason });
+      if (how === "raced") return;
+      report.expired += 1;
+      if (how === "failed") report.failed += 1;
+      else report.moved += 1;
+    });
+  }
+
   private async available(p: ComputeProvider, job: CodeJob, estimateMinutes: number): Promise<Availability> {
     try {
       return await p.available({ userId: job.userId, projectId: job.projectId, jobId: job.id, estimateMinutes, now: this.now() });
@@ -769,13 +853,18 @@ export class JobRouter {
     const none: Availability = { ok: false };
     const desk = skip.has("desktop") ? none : await this.available(this.desktop, job, step.estimateMinutes);
     const gh = this.o.github && settings.githubEnabled && !skip.has("github") ? await this.available(this.o.github, job, step.estimateMinutes) : none;
+    // A step that never ran or never reported on GitHub this month marks its minutes used up, whatever the count says.
+    const exhausted = gh.ok ? await this.githubExhausted(job.userId) : false;
     const pd = this.o.paid && !skip.has("paid") ? await this.available(this.o.paid, job, step.estimateMinutes) : none;
     const jobLeft = Math.max(0, job.budgetPaise - job.spentPaise);
     const autoLeft = settings.paidRule === "auto" ? Math.max(0, settings.autoCapPaise - usage.paidPaise) : 0;
     return {
       desktops: desk.ok ? desk.places ?? 1 : 0,
       githubEnabled: gh.ok,
-      githubMinutesLeft: githubMinutesLeft(this.freeMinutes, usage.githubMinutes),
+      githubMinutesLeft: exhausted ? 0 : githubMinutesLeft(this.freeMinutes, usage.githubMinutes),
+      ...(gh.extraMinutes ? { githubExtraMinutes: gh.extraMinutes } : {}),
+      ...(gh.unmetered && !exhausted ? { githubUnmetered: true } : {}),
+      ...(!gh.ok && gh.reason ? { githubWhy: gh.reason } : {}),
       paidRule: settings.paidRule,
       paidAvailable: pd.ok,
       // What may be spent without asking: the automatic cap's room, or what the person said yes to for this job. "never" is never.
@@ -837,10 +926,13 @@ export class JobRouter {
       const { holder } = await provider.dispatch(claimed, given);
       const held = await this.store.casJob(job.id, { leaseEpoch: claimed.leaseEpoch, states: ["running"] }, { leaseHolder: holder });
       if (!held) {
-        await provider.cancel(claimed).catch(() => undefined);
+        // The place has started the step but the job moved on: let go of it, saying who held it (the job we read has no holder yet).
+        await provider.cancel({ ...claimed, leaseHolder: holder }).catch(() => undefined);
         return { raced: true };
       }
       if (kind === "desktop") this.nudge(job.userId, holder);
+      // A place that is given the step and sends no heartbeat has started it when it was given: the ticker times it from here.
+      else await this.store.updateStep(job.id, step.idx, { startedAt: this.now() });
       return { job: held };
     } catch {
       await this.store.casJob(job.id, { leaseEpoch: claimed.leaseEpoch }, {
@@ -876,8 +968,14 @@ export class JobRouter {
     return next;
   }
 
-  /** Takes back a lease that ran out and moves the step, or fails the job that has been moved too often. */
-  private async expire(job: CodeJob, now: number): Promise<"moved" | "failed" | "raced"> {
+  /**
+   * Takes back a lease that ran out and moves the step, or fails the job that
+   * has been moved too often. `force` is for a lease that has NOT run out but
+   * whose place has said it will never report (checkRun): the claim then
+   * requires the job still to be on that kind of place instead of an expired
+   * lease; `reason` is what the person reads while it waits.
+   */
+  private async expire(job: CodeJob, now: number, o: { force?: boolean; reason?: string } = {}): Promise<"moved" | "failed" | "raced"> {
     const from = job.placement;
     const step = await this.inflight(job.id);
     const reassignments = job.reassignments + 1;
@@ -885,9 +983,11 @@ export class JobRouter {
     const reason = giveUp
       ? `The computer running this kept going quiet (${reassignments} times), so Tailzu stopped trying. What was committed so far is on the branch.`
       : "";
-    const lost = await this.store.casJob(job.id, { leaseEpoch: job.leaseEpoch, states: ["running"], leaseExpiredBy: now }, {
+    const lost = await this.store.casJob(job.id, {
+      leaseEpoch: job.leaseEpoch, states: ["running"], ...(o.force ? { placement: job.placement } : { leaseExpiredBy: now }),
+    }, {
       placement: "none", leaseHolder: null, leaseExpiresAt: null, reassignments,
-      state: giveUp ? "failed" : "waiting_for_compute", reason: giveUp ? reason : "Its computer went quiet. Finding another place.",
+      state: giveUp ? "failed" : "waiting_for_compute", reason: giveUp ? reason : o.reason ?? "Its computer went quiet. Finding another place.",
     });
     if (!lost) return "raced";
     const provider = this.provider(from as ComputeKind);

@@ -50,12 +50,32 @@
  *                                             watching: where the policy would ask, the job waits for the person (waitingForYou) instead.
  *                                             Changes from a step that did not exit 0 are not committed. A result is at most 4 MB
  *
+ * GitHub's free computers (code/jobs/githubActions.ts) report on their own route, which is NOT behind the person's session: it is
+ * behind GitHub's own signature.
+ *
+ *   POST   /v1/code/runner/gh-result { jobId, stepIdx, epoch, exitCode, outputTail, minutes, changes?: [{ path, content | null }] }
+ *          with `Authorization: Bearer <the OIDC identity token GitHub gave the run>`
+ *                                          -> the same answer as /runner/result. The token is checked before anything is counted: GitHub's signature
+ *                                             (RS256, its JWKS), issuer, audience (CODE_RUNNER_OIDC_AUDIENCE, "tailzu"), expiry, and that it is for
+ *                                             this project's repo, a push, this step's shadow branch, our workflow, and the commit the server made.
+ *                                             401 bad_runner_token (not a token GitHub issued for this, or expired); 403 runner_mismatch (a good
+ *                                             token for something else); 409 stale_lease for an epoch that isn't the job's current one. A result
+ *                                             is at most 4 MB. The shadow branch is deleted after, whatever the answer
+ *
+ * and the project, with what GitHub's free computers make of it:
+ *
+ *   GET    /v1/code/projects/:id           -> { project: { ...the project, ciNoise, ciNoiseMinutes, ciNoiseWorkflows } }  ciNoise is true when a
+ *                                             workflow of the person's own (read from the default branch) would also run on Tailzu's throwaway
+ *                                             branch and spend their minutes; ciNoiseMinutes an estimate of the extra minutes a step then costs, and
+ *                                             ciNoiseWorkflows which files. null when it is not known (the workflows could not be read)
+ *
  * With CODE_GITHUB off every route answers 404 { code: "code_off" }; on, but with no GitHub set up, 503 { code: "not_configured" };
  * both before the session. Another person's job is 404, as a project is.
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { resolveUser } from "../auth/supabase.js";
 import type { Code } from "../code/index.js";
+import type { GithubActionsProvider } from "../code/jobs/githubActions.js";
 import type { JobRouter } from "../code/jobs/router.js";
 import { startJobTicker } from "../code/jobs/ticker.js";
 import { LONG_POLL_MS, TICK_MS } from "../code/jobs/types.js";
@@ -71,10 +91,13 @@ export interface CodeJobRoutesDeps {
   tickEveryMs?: number | null;
   /** How long `next` holds a PC waiting for a step. Default 25 seconds. */
   pollMs?: number;
+  /** GitHub's free computers: the provider that checks and takes their results. Null or absent: this server has none. */
+  githubActions?: GithubActionsProvider | null;
 }
 
 /** A result carries files, so it may be larger than the server's usual 1 MB. */
 const RESULT_BODY_LIMIT = 4 * 1024 * 1024;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesDeps): void {
   const RL = { config: deps.rateLimit };
@@ -230,6 +253,31 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
     if (!s) return reply;
     try {
       return reply.send(await s.jobs.submitResult(s.user.id, req.body, "desktop"));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // --- GitHub's free computers report here: no session, GitHub's own signature instead (code/jobs/githubActions.ts handleResult)
+
+  app.post<{ Body: unknown }>("/v1/code/runner/gh-result", { ...RL, bodyLimit: RESULT_BODY_LIMIT }, async (req, reply) => {
+    if (!code) return off(reply);
+    if (!jobs || !deps.githubActions) return notConfigured(reply);
+    try {
+      return reply.send(await deps.githubActions.handleResult(jobs, req.headers["authorization"], req.body));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // --- a project, with what the person's own CI would do to GitHub's free minutes
+
+  app.get<{ Params: { id: string } }>("/v1/code/projects/:id", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      const project = UUID.test(req.params.id) ? await code!.store.getProject(s.user.id, req.params.id) : null;
+      if (!project) return reply.code(404).send({ code: "not_found", message: "No such project" });
+      const ci = deps.githubActions ? await deps.githubActions.ciNoiseFor(s.user.id, project) : null;
+      return reply.send({
+        project: { ...project, ciNoise: ci ? ci.ciNoise : null, ciNoiseMinutes: ci?.extraMinutes ?? 0, ciNoiseWorkflows: ci?.workflows ?? [] },
+      });
     } catch (err) { return fail(reply, err); }
   });
 }

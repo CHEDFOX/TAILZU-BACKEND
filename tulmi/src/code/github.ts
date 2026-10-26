@@ -11,7 +11,8 @@
  *      good for an hour, with only the permissions asked for (contents write,
  *      pull requests write, metadata read; and workflows write, only for the
  *      one commit that changes a workflow file, and only if the install has
- *      been given that permission). To list an install's repos the token is
+ *      been given that permission; and actions read or write, only for a call
+ *      that looks at or cancels a workflow run). To list an install's repos the token is
  *      unscoped (metadata read only); for everything else it is scoped to ONE
  *      repo id, so a bug cannot reach the person's other repos. Tokens are
  *      cached per (install, repo) until five minutes before they run out, and
@@ -61,6 +62,12 @@
  * merge commits itself (a sync, a squash-merge) and gives no way to set their
  * author, so those are authored by the token's identity.
  *
+ * THE RUNNER'S BRANCH. createShadowBranch makes the throwaway `tailzu-run/`
+ * branch a step runs on: one new commit on a parent, a new ref, nothing else
+ * moved. latestRun and cancelRun look at and stop the workflow run it started;
+ * listDir lists a folder (the person's own workflows). The rules for all of that
+ * are policy.ts (runner.shadow) and code/jobs/githubActions.ts.
+ *
  * WHEN GITHUB SAYS NO. A refusal because of branch protection or a repository
  * rule (a required check, a required review, "changes must be made through a
  * pull request") is a ConnectorError with the code `protected_branch`, in plain
@@ -71,6 +78,7 @@ import { createPrivateKey, type KeyObject } from "node:crypto";
 import { SignJWT } from "jose";
 import { ConnectorError } from "../connectors/oauth.js";
 import { AppAccess, DEFAULT_BOT, withCoAuthor, type BotIdentity, type GitAccess, type Person } from "./access.js";
+import { SHADOW_PREFIX } from "./shadow.js";
 
 export const GITHUB_API = "https://api.github.com";
 export const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
@@ -140,6 +148,8 @@ export interface RepoRef {
   access?: GitAccess;
   /** The App's token for this call also has the Workflows permission (only for a commit that changes a workflow file). Ignored for a person's own token. */
   workflows?: boolean;
+  /** The App's token for this call also has the Actions permission, to read a workflow run ("read") or cancel one ("write"). Ignored for a person's own token. */
+  actions?: "read" | "write";
 }
 
 export interface TreeEntry { path: string; type: string; size?: number; sha: string }
@@ -182,6 +192,20 @@ export interface BranchDiff {
 
 /** A comment on a pull request, as the bot reads it later. The words in `body` are somebody else's: see pullComments. */
 export interface PullComment { author: string; body: string; path?: string; line?: number; createdAt: number }
+
+/** A GitHub Actions workflow run, as much of it as Tailzu looks at. */
+export interface GithubRun {
+  id: number;
+  /** "queued", "in_progress" or "completed" (GitHub also has "waiting", "requested", "pending"). */
+  status: string;
+  /** Once completed: "success", "failure", "cancelled", "timed_out", "startup_failure"... Null before. */
+  conclusion: string | null;
+  /** The commit it ran. */
+  headSha: string;
+  event: string;
+  /** Epoch ms. */
+  createdAt: number;
+}
 
 /** One file of a commit: its new text, or `delete` (or null text) to remove it. */
 export interface CommitFile { path: string; content?: string | null; delete?: boolean }
@@ -410,7 +434,7 @@ export class GithubApp {
 
   /** The App's own access: its installation tokens. The default for any call that names none. */
   private readonly appAccess: GitAccess = new AppAccess(
-    (installationId, repoId, workflows) => this.installationToken(installationId, repoId, workflows),
+    (installationId, repoId, workflows, actions) => this.installationToken(installationId, repoId, workflows, actions),
     (installationId) => this.installationScopes(installationId),
   );
   /** Who the author of every commit is. */
@@ -481,8 +505,8 @@ export class GithubApp {
    * that down (422) if the install was not given it. Cached until five
    * minutes before it ends.
    */
-  async installationToken(installationId: number, repoId?: number, workflows = false): Promise<string> {
-    const key = `${installationId}|${repoId ?? "*"}${workflows && repoId !== undefined ? "|wf" : ""}`;
+  async installationToken(installationId: number, repoId?: number, workflows = false, actions?: "read" | "write"): Promise<string> {
+    const key = `${installationId}|${repoId ?? "*"}${workflows && repoId !== undefined ? "|wf" : ""}${actions && repoId !== undefined ? `|a${actions}` : ""}`;
     const hit = this.tokens.get(key);
     if (hit && hit.expiresAt - TOKEN_SKEW_MS > this.now()) return hit.token;
     const running = this.minting.get(key);
@@ -491,7 +515,10 @@ export class GithubApp {
       const r = await this.send("POST", `${GITHUB_API}/app/installations/${installationId}/access_tokens`, await this.appJwt(),
         repoId === undefined
           ? { permissions: { metadata: "read" } }
-          : { repository_ids: [repoId], permissions: { contents: "write", pull_requests: "write", metadata: "read", ...(workflows ? { workflows: "write" } : {}) } });
+          : {
+            repository_ids: [repoId],
+            permissions: { contents: "write", pull_requests: "write", metadata: "read", ...(workflows ? { workflows: "write" } : {}), ...(actions ? { actions } : {}) },
+          });
       if (r.status < 200 || r.status >= 300 || typeof r.json?.token !== "string") throw githubError(r.status, r.json, "that installation");
       const expiresAt = Date.parse(String(r.json.expires_at));
       this.tokens.set(key, { token: r.json.token, expiresAt: Number.isFinite(expiresAt) ? expiresAt : this.now() + 55 * 60_000 });
@@ -508,11 +535,22 @@ export class GithubApp {
    * changes a workflow file needs it.
    */
   async installationScopes(installationId: number): Promise<string[]> {
+    const perms = await this.installationPermissions(installationId);
+    const out = Object.entries(perms).filter(([, level]) => level === "write" || level === "admin").map(([name]) => name);
+    return out.includes("workflows") ? [...out.filter((n) => n !== "workflows"), "workflow"] : out;
+  }
+
+  /**
+   * Everything the install was given on GitHub, as GitHub says it: permission
+   * name to level ("read", "write", "admin"). The runner provider needs two
+   * the scopes above don't show: Actions (to read a workflow run, or cancel
+   * one) and Workflows (to commit its workflow file).
+   */
+  async installationPermissions(installationId: number): Promise<Record<string, string>> {
     const r = await this.send("GET", `${GITHUB_API}/app/installations/${installationId}`, await this.appJwt());
     if (r.status !== 200) throw githubError(r.status, r.json, "that installation");
     const perms: Record<string, unknown> = r.json?.permissions && typeof r.json.permissions === "object" ? r.json.permissions : {};
-    const out = Object.entries(perms).filter(([, level]) => level === "write" || level === "admin").map(([name]) => name);
-    return out.includes("workflows") ? [...out.filter((n) => n !== "workflows"), "workflow"] : out;
+    return Object.fromEntries(Object.entries(perms).filter((e): e is [string, string] => typeof e[1] === "string"));
   }
 
   /** What the token a call on this repo would carry may do on GitHub (access.ts): has "workflow" when it may change workflow files. */
@@ -1034,6 +1072,80 @@ export class GithubApp {
     // A protected branch is GitHub saying no, not a branch that is already gone.
     if (!isProtectionRefusal(r.status, r.json) && (r.status === 404 || r.status === 422)) return false;
     throw githubError(r.status, r.json, `the branch ${branch}`);
+  }
+
+  // ------------------------------------------- the runner's branch, and GitHub Actions
+
+  /**
+   * The runner's throwaway branch (code/jobs/githubActions.ts): a NEW ref
+   * `tailzu-run/...` at ONE new commit made on top of `parentSha`, holding
+   * `files` on top of the parent's tree. Nothing else is touched: no existing
+   * ref is moved, so the work branch the parent came from stays exactly as it
+   * was. The commit's author is the bot, and its committer whoever the token
+   * is. Refuses a name outside `tailzu-run/` (it is never right to use this
+   * for anything else), and a name that is taken ("branch_exists"). The
+   * policy has already said yes (policy.ts runner.shadow); the repo should be
+   * `{ ...repo, workflows: true }`, since the files include a workflow.
+   */
+  async createShadowBranch(
+    repo: RepoRef, branch: string, parentSha: string, files: Array<{ path: string; content: string }>, message: string,
+  ): Promise<{ sha: string }> {
+    refName(branch);
+    if (!branch.startsWith(SHADOW_PREFIX)) throw new ConnectorError("bad_branch", "That isn't a branch name the runner uses.");
+    if (!/^[0-9a-f]{40}$/.test(parentSha)) throw new ConnectorError("bad_request", "That isn't a commit.");
+    const tree = commitTreeEntries(files);
+    const base = this.path(repo);
+    const parent = await this.rsend(repo, "GET", `${base}/git/commits/${parentSha}`);
+    if (parent.status !== 200 || typeof parent.json?.tree?.sha !== "string") throw githubError(parent.status, parent.json, "the commit to run on");
+    const made = await this.rsend(repo, "POST", `${base}/git/trees`, { base_tree: parent.json.tree.sha, tree });
+    if (made.status !== 201 || typeof made.json?.sha !== "string") throw githubError(made.status, made.json, "those files");
+    const commit = await this.rsend(repo, "POST", `${base}/git/commits`, {
+      message, tree: made.json.sha, parents: [parentSha], author: { name: this.bot.name, email: this.bot.email },
+    });
+    if (commit.status !== 201 || typeof commit.json?.sha !== "string") throw githubError(commit.status, commit.json, "the commit");
+    const ref = await this.rsend(repo, "POST", `${base}/git/refs`, { ref: `refs/heads/${branch}`, sha: commit.json.sha });
+    if (ref.status === 422 && /already exists/i.test(String(ref.json?.message ?? ""))) {
+      throw new ConnectorError("branch_exists", "That branch name is taken.");
+    }
+    if (ref.status !== 201) throw githubError(ref.status, ref.json, "the new branch");
+    return { sha: commit.json.sha };
+  }
+
+  /** The files and folders directly in a folder of the repo at a ref (the contents API); an empty list when there is no such folder. */
+  async listDir(repo: RepoRef, dir: string, ref: string): Promise<Array<{ name: string; path: string; type: string }>> {
+    assertRepoPath(dir);
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/contents/${encodePath(dir)}?ref=${encodeURIComponent(refName(ref))}`);
+    if (r.status === 404) return [];
+    if (r.status !== 200) throw githubError(r.status, r.json, dir);
+    if (!Array.isArray(r.json)) return [];
+    return r.json
+      .filter((e: any) => e && typeof e.name === "string" && typeof e.path === "string")
+      .map((e: any) => ({ name: e.name as string, path: e.path as string, type: String(e.type ?? "file") }));
+  }
+
+  /**
+   * The newest workflow run on a branch, or null when there is none:
+   * `GET /repos/{o}/{r}/actions/runs?branch=<branch>&per_page=1`. Needs Actions:
+   * read on the token (the App) or the repo scope (a person's).
+   */
+  async latestRun(repo: RepoRef, branch: string): Promise<GithubRun | null> {
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/actions/runs?branch=${encodeURIComponent(refName(branch))}&per_page=1`);
+    if (r.status !== 200) throw githubError(r.status, r.json, "the workflow runs");
+    const row = Array.isArray(r.json?.workflow_runs) ? r.json.workflow_runs[0] : undefined;
+    if (!row || !Number.isSafeInteger(row.id)) return null;
+    const created = Date.parse(String(row.created_at));
+    return {
+      id: row.id, status: String(row.status ?? ""), conclusion: typeof row.conclusion === "string" ? row.conclusion : null,
+      headSha: String(row.head_sha ?? ""), event: String(row.event ?? ""), createdAt: Number.isFinite(created) ? created : 0,
+    };
+  }
+
+  /** Cancels a workflow run. Needs Actions: write (the App) or the repo scope (a person's). A run that is over already is fine. */
+  async cancelRun(repo: RepoRef, runId: number): Promise<void> {
+    if (!Number.isSafeInteger(runId) || runId <= 0) throw new ConnectorError("bad_request", "That isn't a run.");
+    const r = await this.rsend(repo, "POST", `${this.path(repo)}/actions/runs/${runId}/cancel`);
+    if (r.status === 202 || r.status === 409) return;
+    throw githubError(r.status, r.json, "the workflow run");
   }
 
   // ------------------------------------------- the person's own sign-in token

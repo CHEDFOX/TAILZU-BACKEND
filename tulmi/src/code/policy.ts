@@ -26,7 +26,19 @@
  *                branch; committing something the secret scanner flags;
  *                changing a repo's visibility (nothing does that yet)
  *   never        refuse, whatever anyone says:  a path that escapes the repo
- *                or writes inside `.git/`; deleting the repo
+ *                or writes inside `.git/`; deleting the repo; touching the
+ *                runner's own files (`.tailzu/`, the workflow `tailzu-run.yml`)
+ *                or a `tailzu-run/` branch (shadow.ts)
+ *
+ * ONE FREE ACTION IS THE SERVER'S ALONE. `runner.shadow` is how the provider
+ * for GitHub's free computers (jobs/githubActions.ts) makes, and later deletes,
+ * the throwaway `tailzu-run/` branch a step runs on. It is free, and it is
+ * narrow: only a ref starting `tailzu-run/`, only the three exact files the
+ * server wrote, and only when the caller says it is the server (`server: true`,
+ * which no commit of an agent and no result of a runner ever sets). Anything
+ * else is a denial. The other side of the same rule is `runner.reserved`
+ * ("never"): an agent's commit, and the changes a runner hands back, can never
+ * write those paths or create or move such a ref.
  *
  * decide() is the ONE function that turns an action and a situation into
  * "allow", "ask" or "deny". Its order, which is the whole policy:
@@ -72,6 +84,7 @@ import { createHash } from "node:crypto";
 import { ConnectorError } from "../connectors/oauth.js";
 import type { Approval, ApprovalBook } from "./approvals.js";
 import { FILE_MAX_BYTES, assertRepoPath, type CommitFile } from "./github.js";
+import { SHADOW_PREFIX, isExactShadowSet, isReservedPath, isShadowBranch } from "./shadow.js";
 import type { CodeGrant, CodeProject, CodeStore, NewCodeGrant } from "./store.js";
 
 // ---------------------------------------------------------------- principles
@@ -111,6 +124,8 @@ export const ACTIONS = {
   "pr.open_draft": { tier: "free", label: "Open a draft pull request", branchScoped: true },
   "branch.sync": { tier: "free", label: "Bring a branch up to date with the default branch", branchScoped: true, ownOnly: true },
   "pr.comment": { tier: "free", label: "Comment on a pull request", branchScoped: true, ownOnly: true },
+  // The server's alone (see runner.shadow above): a throwaway tailzu-run/ branch with three files, to run a step on GitHub's free computers.
+  "runner.shadow": { tier: "free", label: "Run a step on GitHub's free computers (a tailzu-run/ branch)", branchScoped: true },
   // --- ask
   "commit.other_branch": { tier: "ask", label: "Commit to a branch Tailzu didn't make", branchScoped: true },
   "pr.merge": { tier: "ask", label: "Merge a pull request", branchScoped: true },
@@ -127,6 +142,7 @@ export const ACTIONS = {
   // --- never
   "path.escape": { tier: "never", label: "Write outside the repo or inside .git", branchScoped: false },
   "repo.delete": { tier: "never", label: "Delete the repo", branchScoped: false },
+  "runner.reserved": { tier: "never", label: "Write Tailzu's runner files or a tailzu-run/ branch", branchScoped: false },
 } as const satisfies Record<string, ActionDef>;
 
 export type ActionId = keyof typeof ACTIONS;
@@ -231,6 +247,10 @@ export interface PolicyCtx {
   ownBranch?: boolean;
   /** Epoch ms, for the expiry of grants. */
   now?: number;
+  /** The server itself is acting (its own runner provider), not an agent and not a runner's result. Only runner.shadow looks at it. */
+  server?: boolean;
+  /** The paths a runner.shadow commit would hold. Left out for a delete, which holds none. */
+  paths?: readonly string[];
 }
 
 export type Reason =
@@ -256,6 +276,11 @@ export function decide(action: ActionId, ctx: PolicyCtx): Decision {
   const out = (effect: Decision["effect"], tier: Tier, reason: Reason, a: ActionId = action): Decision => ({ effect, tier, reason, faceId: needsFaceId(a), action: a });
 
   if (d.tier === "never") return out("deny", "never", "never");
+  // The server's own narrow action: a tailzu-run/ ref, the exact three files, and only when the server says it is the one acting.
+  if (action === "runner.shadow" && !(ctx.server === true && typeof ctx.branch === "string" && ctx.branch.startsWith(SHADOW_PREFIX)
+    && !ctx.branch.includes("..") && (ctx.paths === undefined || isExactShadowSet(ctx.paths)))) {
+    return out("deny", "never", "never");
+  }
   // Committing to a branch the bot didn't make is a different, asking action.
   if (action === "commit.own_branch" && !own) return decide("commit.other_branch", ctx);
   let tier: Tier = d.tier;
@@ -363,12 +388,15 @@ export interface CommitChecks {
  */
 export function checkCommit(files: readonly CommitFile[], ctx: PolicyCtx): CommitChecks {
   if (!Array.isArray(files)) return { also: [], secrets: [], workflowPaths: [] };
+  // The runner's own ref and files are the server's alone: whatever the files are, a commit to such a ref is "never".
+  if (isShadowBranch(ctx.branch)) throw reservedRefusal();
   for (const f of files) {
     try {
       assertRepoPath(f?.path);
     } catch (err) {
       if (decide("path.escape", ctx).effect === "deny") throw err;
     }
+    if (isReservedPath(f?.path)) throw reservedRefusal();
   }
   const secrets = scanForSecrets(files);
   const workflowPaths = files.map((f) => f.path).filter(isWorkflowPath);
@@ -389,6 +417,23 @@ export function commitFingerprint(files: readonly CommitFile[], message: string)
     files.map((f) => [f.path, f.delete === true || f.content === null || f.content === undefined ? null : createHash("sha256").update(String(f.content)).digest("hex")]),
     message,
   );
+}
+
+/**
+ * The refusal for the runner's own files and refs (runner.reserved, "never"):
+ * what an agent's commit, a runner's changes, a force-push or a sync meets when
+ * it reaches for `.tailzu/`, the workflow `tailzu-run.yml` or a `tailzu-run/`
+ * branch. Those are written by the server alone (shadow.ts).
+ */
+export function reservedRefusal(): PolicyError {
+  return new PolicyError("never", "Those files and branches belong to Tailzu's own runner, so nothing else can write them.", {
+    action: "runner.reserved", tier: "never", reason: "never", faceId: false,
+  });
+}
+
+/** Throws the runner.reserved refusal for a branch in the runner's namespace; any other branch passes. */
+export function assertNotRunnerBranch(branch: unknown): void {
+  if (isShadowBranch(branch)) throw reservedRefusal();
 }
 
 // ------------------------------------------------------------------------ the gate
@@ -441,6 +486,10 @@ export interface GateRequest<T> extends GateOptions {
   branch?: string;
   ownBranch?: boolean;
   scopes?: readonly string[];
+  /** The server itself is acting (runner.shadow only; see PolicyCtx). */
+  server?: boolean;
+  /** The paths a runner.shadow commit holds. */
+  paths?: readonly string[];
   /** What the approval card shows, besides the action and the branch (plain data). Gets the head that was read, when there is one. */
   summary: (head?: string) => Record<string, unknown>;
   /** Where the thing is now (a branch's head, a pull request's head), when an approval is to be bound to it. Read when asking and again when approved. */
@@ -468,6 +517,7 @@ export async function gate<T>(q: GateRequest<T>): Promise<Gated<T>> {
   const ctx: PolicyCtx = {
     project: q.project, ...(q.branch !== undefined ? { branch: q.branch } : {}), defaultBranch: q.project.defaultBranch,
     attended: q.attended !== false, connection: q.project.linkKind, scopes: q.scopes ?? [], grants, ownBranch: q.ownBranch === true,
+    ...(q.server === true ? { server: true } : {}), ...(q.paths !== undefined ? { paths: q.paths } : {}),
   };
   const decisions = [q.action, ...(q.also ?? [])].map((a) => decide(a, ctx));
 

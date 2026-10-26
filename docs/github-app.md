@@ -21,6 +21,10 @@ single time, and a few it never does. You can answer an "ask" once and for all
 for a project (a *standing permission*). Section 5 is that system; read it
 before switching the bot on for anyone else.
 
+A step that needs a computer can also run on GitHub's free computers, in the
+person's own repo (section 9). That is why the App below asks for **Workflows**
+and **Actions** as well; leave them out and it is simply not offered.
+
 There is a second, optional way to connect that needs no App install:
 **Sign in with GitHub**, a classic GitHub OAuth App (section 7). It is off by
 default and reaches far more than an install does, so read section 7 before
@@ -54,7 +58,7 @@ Pick one of the two ways.
 | Webhook URL | `https://api.tailzu.space/v1/code/github/webhook` |
 | Webhook secret | `openssl rand -hex 32`. This is `GITHUB_APP_WEBHOOK_SECRET` |
 | SSL verification | Enable |
-| Repository permissions | **Contents: Read and write.** **Pull requests: Read and write.** **Metadata: Read-only** (GitHub sets this one itself). Nothing else. **Workflows: Read and write** only if you want the bot to be able to change `.github/workflows/*` files at all (it still asks every time; section 5) |
+| Repository permissions | **Contents: Read and write.** **Pull requests: Read and write.** **Metadata: Read-only** (GitHub sets this one itself). **Workflows: Read and write** and **Actions: Read-only**, both for GitHub's free computers (below, and section 9). Nothing else |
 | Account and organization permissions | None |
 | Subscribe to events | Tick **Pull request** and **Pull request review** (they only appear once Pull requests is given). `installation` and `installation_repositories` are sent to every App without being asked for, and this server reads those too |
 | Where can this GitHub App be installed? | **Any account.** With "Only on this account" nobody but you could install it |
@@ -100,6 +104,8 @@ name if it is taken, and the origin if the API is not at `api.tailzu.space`):
   "default_permissions": {
     "contents": "write",
     "pull_requests": "write",
+    "workflows": "write",
+    "actions": "read",
     "metadata": "read"
   },
   "default_events": ["pull_request", "pull_request_review"]
@@ -110,9 +116,29 @@ name if it is taken, and the origin if the API is not at `api.tailzu.space`):
 with (closed, reopened, ready for review; a review submitted). GitHub sends
 `installation` and `installation_repositories` to every App and does not let
 you subscribe to them, and a manifest that lists them can be refused, so they
-are not here. There is no `workflows` permission (add it to the manifest, or to
-the App later, only if you want workflow files to be possible), no `issues`,
-nothing else.
+are not here. There is no `issues`, nothing else.
+
+**Why the manifest asks for Workflows and Actions.** They are what lets a step
+that needs a computer run on GitHub's free computers, in the person's own repo,
+with no taps (section 9). Tailzu commits one small workflow file to a throwaway
+branch of its own, and GitHub refuses to let an App write a file under
+`.github/workflows/` without **Workflows: Read and write**; and Tailzu reads the
+status of the run it started, which needs **Actions: Read-only**. Neither gives
+the bot more reach over a person's repo than Contents already does, and neither
+changes what the bot does by itself: a workflow file of the person's own is
+still a question every time (section 5), and the runner's own files and branch
+are written by the server alone. If you would rather not give Workflows, leave
+both out: everything else works, and the step is run on the person's own PC (or
+waits) instead of on GitHub's. **Actions: Read and write** is optional, and only
+lets Tailzu cancel a run that has gone on far past its time; with read-only,
+GitHub's own `timeout-minutes` ends it a minute or so later.
+
+**An App that already exists.** Add the two permissions on the App's page
+(Permissions & events). GitHub then asks every person who installed it to
+accept the change (an email, and a banner on the install); until they do the
+install keeps its old permissions, and for them GitHub's free computers answer
+"not available" (`needs_workflow_permission`) and the router goes on to the next
+place. Nothing else is affected.
 
 GitHub then sends you to `redirect_url` with a one-time `code` in the address.
 That page says "That didn't work" (it is the install callback, and this is not
@@ -148,6 +174,7 @@ In `tulmi/.env` (also listed in `tulmi/.env.example`):
 | `CONNECTOR_TOKEN_KEY` | Already set for Connected apps. The Code bot signs the install link's `state` with a key made from it, so without it nothing can be connected |
 | `CODE_BOT_NAME` | Who the bot is in git: the **author name** of every commit it makes. Default `Blip` |
 | `CODE_BOT_EMAIL` | The author email. Default `blip@tailzu.space`. For the bot's avatar to show on GitHub, use a GitHub bot account's noreply address (section 5, "Who commits") |
+| `CODE_RUNNER_OIDC_AUDIENCE` | The audience of the identity token a step on GitHub's free computers reports with (section 9). Default `tailzu`; any word works, since the server writes it into the step |
 
 None of the secrets is ever logged or sent to a device. The server does not
 store any GitHub token: the person's own token is used once and dropped, and
@@ -259,10 +286,10 @@ except "never"; an **allow** can lift only "ask".
 
 | Tier | What it means | Actions |
 | --- | --- | --- |
-| **free** | Just do it | read; make a branch (from any branch, tag or commit); commit and push to a branch the bot made (a recorded `tailzu/` branch); open a **draft** pull request; bring its own branch up to date with the default branch; comment on its own pull request |
+| **free** | Just do it | read; make a branch (from any branch, tag or commit); commit and push to a branch the bot made (a recorded `tailzu/` branch); open a **draft** pull request; bring its own branch up to date with the default branch; comment on its own pull request; and, for the server alone, make and delete the throwaway `tailzu-run/` branch a step runs on (`runner.shadow`, section 9) |
 | **ask** | Do it only after the person says yes (or has said "always" for this project) | commit or push to **any other existing branch, the default branch included**; merge a pull request; mark one ready for review; close one; delete a branch; change a `.github/workflows/*` file (also needs the token or the App to be allowed to: below); start an empty repo with a README; keep a branch it didn't make up to date |
 | **ask_strict** | Ask **every time**, with **Face ID** on the phone (`faceId: true`). No standing permission can ever lift it | force-push, or anything that is not a fast-forward; delete the default branch; commit something the secret scanner flags; change a repo's visibility (nothing does that yet; it is in the catalog) |
-| **never** | Refuse, whatever anyone says | a path that escapes the repo (absolute, `..`, backslashes, empty parts) or writes inside `.git/`; deleting the repo |
+| **never** | Refuse, whatever anyone says | a path that escapes the repo (absolute, `..`, backslashes, empty parts) or writes inside `.git/`; deleting the repo; writing the runner's own files (`.tailzu/` and `.github/workflows/tailzu-run.yml`) or creating or moving a `tailzu-run/` branch, from an agent's commit or from the changes a runner hands back (`runner.reserved`) |
 
 `GET /v1/code/projects/:id/permissions` returns the catalog (`actions`: id, tier,
 label, `faceId`, `grantable`, `branchScoped`) for the screen that edits these.
@@ -361,8 +388,9 @@ push protection on the repo as well.
 the connection to be allowed to change workflows at all, which GitHub requires:
 
 * **Sign in with GitHub:** the token needs the `workflow` scope. Sign-in does not
-  ask for it; the incremental sign-in (`oauth.beginWorkflow`) does, for a person
-  who wants it. Without it the bot says so before it asks anything
+  ask for it; the incremental sign-in (`oauth.beginWorkflow`, started with
+  `POST /v1/code/github/signin {"workflow": true}`) does, for a person who wants
+  it (or who wants GitHub's free computers: section 9). Without it the bot says so before it asks anything
   (`403 needs_workflow_scope`: "Sign in with GitHub again and allow it").
 * **The GitHub App:** the App needs **Workflows: Read and write** on the install
   (App settings, Permissions; the person accepts the new permission on GitHub).
@@ -446,9 +474,10 @@ is ignored for the default.
 * The bot **never** resolves a merge conflict, never rewrites history without a
   strict yes, and writes only text files (1 MB at most, every file mode
   `100644`: it can't keep a script's executable bit). It cannot approve a pull
-  request, change repo settings or read issues, Actions or secrets: the App's
-  permissions are Contents, Pull requests and Metadata (and Workflows, if you
-  add it), and nothing more.
+  request, change repo settings or read issues or secrets: the App's
+  permissions are Contents, Pull requests and Metadata, and Workflows and
+  Actions (read) for GitHub's free computers (section 9), and nothing more. It
+  reads Actions only to see the run of a step it started on its own branch.
 * A **runner** (the desktop app, through the runner routes: section 8) is given
   a token for one repo that can **read and nothing else** (`contents:read`), or
   for a sign-in project a one-time download link and no token at all. It is
@@ -494,9 +523,12 @@ is ignored for the default.
 | 403 `needs_you` | The action needs the person's OK and nobody was there to give it (an unattended run). The body says which `action`, and carries a `summary` to show; it is waiting for them |
 | 403 `policy_denied` | The person set a standing "never" for that action in this project (take it back under the project's permissions) |
 | 403 `needs_workflow_scope` | A workflow file: the sign-in token lacks the `workflow` scope (sign in again for it), or the App lacks the Workflows permission |
-| 403 `never` | The one thing that is never done (deleting a repo, a path outside the repo) |
+| 403 `never` | The one thing that is never done (deleting a repo, a path outside the repo, the runner's own files or a `tailzu-run/` branch) |
 | 400 `not_grantable` | A standing permission was asked for an action that always asks (Face ID) or never happens |
 | 400 `bad_path` | A path that is absolute, goes up with `..`, or is inside `.git` |
+| A step waits with "need the Tailzu GitHub App to have the Workflows and Actions permissions" | The install (or the sign-in's token) can't commit a workflow file or read a run, so GitHub's free computers are not available (`needs_workflow_permission`). Give the App Workflows: Read and write and Actions: Read-only and have the person accept them on GitHub; or use the incremental sign-in for the `workflow` scope. A couple of minutes later the job goes on by itself |
+| A step waits, or moves to the PC, saying GitHub's free minutes are used up | A step pushed to GitHub never started a run (three minutes), or the run ended without reporting: the free minutes are most likely gone, or Actions is off for the repo or the account. Tailzu marks GitHub as used up for that person until the month turns (`githubFreeMinutes.exhausted` on `GET /v1/code/settings/compute`). Check the repo's Actions tab and the account's Billing |
+| 401 `bad_runner_token` / 403 `runner_mismatch` on `/v1/code/runner/gh-result` | The identity token isn't one GitHub issued for Tailzu's audience, or has expired (401); or it is a good token for another repo, branch, commit, workflow or event (403). Nothing was counted. See section 9 |
 | A pull request or review on GitHub doesn't show in Tailzu | The App isn't subscribed to Pull request and Pull request review events, or the webhook is failing (the App's Advanced tab) |
 | 502 `github_auth` for everything | The private key does not belong to this App (or was revoked). Generate a new key on the App's page and replace it |
 | `branch_moved` on a commit | Someone pushed to the work branch while Tailzu was committing. Nothing was overwritten; read the branch again and retry |
@@ -637,4 +669,141 @@ the person is told. A step that is out holds a 90-second lease with an epoch
 that goes up on every dispatch, so a computer that went quiet and was
 replaced can never count; a finished step writes a checkpoint, and a job
 moved to another place re-runs only the step that was out. Needs migration
-0023.
+0023. How a step runs on GitHub's free computers is section 9.
+
+---
+
+## 9. GitHub's free computers (GitHub Actions)
+
+When a step of a job needs a computer (install, build, test) and none of the
+person's own PCs is there, it can run on **GitHub's free computers, in the
+person's own repo, with no taps**: GitHub gives a free plan 2,000 Actions
+minutes a month (public repos, without limit), and Tailzu uses a share of them
+(`CODE_GITHUB_FREE_MINUTES`, with a tenth kept back; `docs/code-router.md`). The
+code is `tulmi/src/code/jobs/githubActions.ts`; the router chooses it as its
+second place, after the PC.
+
+### What it needs
+
+| Connection | Needs |
+| --- | --- |
+| GitHub App | **Workflows: Read and write** (to commit the workflow file) and **Actions: Read-only** (to see the run). Actions: Read and write is optional: it lets Tailzu cancel a run that has gone far past its time |
+| Sign in with GitHub | the **`workflow`** scope, from the incremental sign-in: `POST /v1/code/github/signin {"workflow": true}` (`oauth.beginWorkflow`). `repo` already covers Actions |
+
+The provider reads these from the install (`GET /app/installations/{id}`, kept
+two minutes) or the sign-in's scopes. Without them it answers "not available"
+with the reason `needs_workflow_permission`, and the router goes on to the
+next place; the person is told in plain words what is missing, and the job
+goes on by itself once they accept the permission on GitHub. The person can
+also switch GitHub's computers off (`github_enabled` in
+`PUT /v1/code/settings/compute`, on by default).
+
+### One step is one throwaway branch
+
+For exec step *N* of job *J* under lease epoch *E*, Tailzu makes the branch
+`tailzu-run/<first 8 of J>-<N>-<E>` at **one new commit whose parent is the work
+branch's checkpoint** (the commit the branch was at when the last step finished;
+the branch's head if none has). The commit adds exactly three files, written by
+the server, and nothing else:
+
+| File | What it is |
+| --- | --- |
+| `.github/workflows/tailzu-run.yml` | runs on a push to `tailzu-run/**` only; `permissions: contents: read, id-token: write`; one job on `ubuntu-latest` with `timeout-minutes` from the step (its minutes rounded up, plus one); `actions/checkout@v4` with the whole history and without keeping the token; `actions/cache@v4` for `~/.npm`, `~/.cache/pip`, `~/.cache/yarn` and `~/.local/share/pnpm`, keyed on the common lockfiles; then `node .tailzu/run.mjs`. The concurrency group is the ref, so a second push of the branch cancels the first run |
+| `.tailzu/step.json` | `{jobId, stepIdx, epoch, commands, timeoutSec, baseSha, resultUrl, audience}` |
+| `.tailzu/run.mjs` | a small script with no dependencies: runs the commands one by one with `bash -lc`, each with the time the step has left, stopping at the first failure; keeps the last 8 KB of the output with obvious secrets replaced by `[redacted]`; if they passed, sends what they changed against `baseSha` (the text of added and modified files, deletions as null; never `.tailzu/` or the workflow, a file over 1 MB, a binary file, a symlink, more than 200 files or 3 MB in all, and it says in the output what it left out); asks GitHub for an identity token and POSTs the result to `resultUrl` |
+
+**The work branch is never touched.** The runner's commands run in a checkout of
+the shadow branch; their changes come back in the result, and the **server**
+commits them to the work branch through the same policy as any other commit
+(section 5), as a run nobody is watching. After the result, or when the step is
+lost or times out, Tailzu deletes the shadow branch (cancelling the run first if
+the App may). The person's own repo sees, for a few minutes, a branch, a commit
+by the bot and a run called "Tailzu run". The commands of the step are in
+`step.json` while the branch exists: in a public repo anyone can read them.
+
+### The result, and how it is trusted
+
+`POST /v1/code/runner/gh-result` has no Tailzu session. It is accepted only
+with GitHub's own signature: the `Authorization: Bearer` token is a GitHub OIDC
+identity token for the run. Every one of these must hold, or nothing is
+counted:
+
+* signed by GitHub (RS256, the keys at
+  `https://token.actions.githubusercontent.com/.well-known/jwks`);
+* `iss` is `https://token.actions.githubusercontent.com`; `aud` is
+  `CODE_RUNNER_OIDC_AUDIENCE` (default `tailzu`); `exp` and `nbf` are fine;
+* `repository_id` is the project's repo; `event_name` is `push`;
+* `ref` is exactly `refs/heads/` and this step's shadow branch;
+* `workflow_ref` ends with `.github/workflows/tailzu-run.yml@refs/heads/` and the
+  shadow branch;
+* `sha` is the commit Tailzu made for this lease (kept in the lease's holder), so
+  nobody with push access can recreate the branch name at a different commit and
+  have it count.
+
+A bad token is `401 bad_runner_token`; a good token for something else is
+`403 runner_mismatch`. Then the result goes to the router's own path with the
+epoch fence: a result for a lease that has been replaced is `409 stale_lease`
+and changes nothing. A change that touches `.tailzu/` or the workflow is refused
+(the step fails with `refused: "never"`, nothing is committed). The body cannot
+say what counts as minutes: the server works that out.
+
+### The policy
+
+`runner.shadow` is a **free** catalog action, and a narrow one: only a ref
+starting `tailzu-run/`, only the three exact paths above (none, for a delete),
+and only when the server says it is the one acting (`server: true`, which no
+agent commit and no runner result ever sets). Making the branch and deleting it
+are this action. Its other half is `runner.reserved`, a **never**: an agent's
+commit and a runner's changes can never write `.tailzu/` or the workflow file,
+create or update a `tailzu-run/` ref, force-push one or sync one. A person can
+still put a deny on `runner.shadow` to forbid the whole thing for a project.
+
+### Minutes, and when GitHub says no
+
+* **Minutes** are rounded up per job, as GitHub bills (at least one), and added to
+  the month's use. A **public** repo counts none and is never held back by the
+  estimate.
+* **The person's own CI.** Before a project is used, its `.github/workflows/*` on
+  the default branch are read. A workflow that runs on push with no branch
+  filter would also run on the shadow branch and spend the person's minutes. That
+  is recorded as `ciNoise: true`, with an estimate of the extra minutes (3 for
+  each such workflow, 30 at most) that is added to the step's estimate and to the
+  month's use; it never blocks. `GET /v1/code/projects/:id` shows it:
+  `ciNoise`, `ciNoiseMinutes`, `ciNoiseWorkflows`. It is read again after an hour.
+* **The ticker** looks at each step that is out, every 15 seconds
+  (`GET /repos/{o}/{r}/actions/runs?branch=<shadow>&per_page=1`), and keeps its
+  lease alive while the run goes on. **No run three minutes after the push, or a
+  run that ended without reporting** (not one cancelled by hand), is taken as the
+  free minutes being used up or Actions being off: GitHub is marked **used up for
+  that person for the month** (`code_compute_usage.github_exhausted`), the shadow
+  branch is deleted, and the step is placed again from the checkpoint, on the
+  PC or paid compute or by waiting; the person gets the usual `job_moved`. **A run
+  still going two minutes past the step's timeout** is cancelled (needs Actions:
+  write; with read-only, GitHub's own timeout ends it) and the step is placed
+  again, without marking the minutes used up.
+
+### Setting it up
+
+1. Give the App **Workflows: Read and write** and **Actions: Read-only** (the
+   manifest in section 1 has them) and have each person accept the change on
+   GitHub. For a sign-in connection, the incremental sign-in above.
+2. Run `tulmi/supabase/migrations/0024_code_github_actions.sql` (or
+   `full_schema.sql`): one column, `code_compute_usage.github_exhausted`.
+3. Optionally set `CODE_RUNNER_OIDC_AUDIENCE` (default `tailzu`) and, if the API is
+   not at `api.tailzu.space`, `PUBLIC_ORIGIN`: the script is told to report to
+   `$PUBLIC_ORIGIN/v1/code/runner/gh-result`, which must be reachable from GitHub's
+   computers.
+4. Add to the privacy policy: Tailzu also keeps, per person and month, whether
+   GitHub's free minutes were found used up; and a step's commands are written to
+   a temporary branch of the person's own repo.
+
+Nothing else to switch on: the provider exists whenever the App or the sign-in
+is set up, and is used per project when the connection has the permissions.
+
+### Check it works
+
+Add a repo as a project with the permissions given, make a job and ask it for
+`echo hi` with no PC online (`POST /v1/code/jobs`, then the brain's `requestExec`).
+In the repo, a `tailzu-run/...` branch appears and a run called "Tailzu run"
+starts; within a minute the job's step is done, the branch is gone, and
+`GET /v1/code/jobs/:id` shows the step run on `github`.

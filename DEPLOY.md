@@ -924,8 +924,9 @@ approved merge.
    can be run again at any time (it adds `code_branches.state` and
    `last_review_at` to a table made without them).
 2. **The App.** Make it as `docs/github-app.md` says (by hand, or from the
-   manifest there): Contents and Pull requests read/write, Metadata read, no
-   Workflows, events Pull request and Pull request review, installable by any
+   manifest there): Contents and Pull requests read/write, Metadata read,
+   Workflows read/write and Actions read (for GitHub's free computers, step 7),
+   events Pull request and Pull request review, installable by any
    account, OAuth during installation on, callback
    `https://api.tailzu.space/v1/code/github/callback`, webhook
    `https://api.tailzu.space/v1/code/github/webhook`.
@@ -974,9 +975,19 @@ approved merge.
    ticker (every 15 seconds) takes back leases that ran out. Which of a person's
    PCs are online is kept in the server's memory, so run one backend. Optional:
    `CODE_GITHUB_FREE_MINUTES` (GitHub's monthly free Actions minutes, 2000 on a
-   free plan, with a tenth kept back). GitHub's free computers and paid compute
-   have no provider yet: until they do, only a person's own PC runs commands, and
-   a job with no PC online waits and tells them. Add to the privacy policy: the
-   first 500 characters of each job's task, the commands it ran, the last 8 KB each
+   free plan, with a tenth kept back). **GitHub's free computers** are a real
+   place (`docs/github-app.md`, section 9): run `0024_code_github_actions.sql`
+   (one column: whether a person's free minutes were found used up this month),
+   give the App **Workflows: Read and write** and **Actions: Read-only** and have
+   each person accept that on GitHub (a sign-in connection needs the `workflow`
+   scope instead: `POST /v1/code/github/signin {"workflow": true}`), and make
+   sure GitHub can reach `PUBLIC_ORIGIN` (the script reports to
+   `/v1/code/runner/gh-result`). Optional: `CODE_RUNNER_OIDC_AUDIENCE` (default
+   `tailzu`). Without the permissions that place is simply not offered, and the
+   router goes on. Paid compute has no provider yet: with no PC online and no
+   GitHub, a job waits and tells them. Add to the privacy policy: the
+   first 500 characters of each job's task, the commands it ran (a step on GitHub
+   writes them to a temporary branch of the person's own repo), the last 8 KB each
    step printed (none of it if it looks like it holds a secret), and each month's
-   GitHub minutes and paise used. How it works: `docs/code-router.md`.
+   GitHub minutes and paise used, and whether GitHub's minutes were found used up.
+   How it works: `docs/code-router.md`.

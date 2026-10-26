@@ -108,16 +108,16 @@ const SECRET = {
 describe("the catalog of actions", () => {
   it("puts every action in the tier the founder set", () => {
     const tier = (a: keyof typeof ACTIONS) => ACTIONS[a].tier;
-    for (const a of ["read", "branch.create", "commit.own_branch", "pr.open_draft", "branch.sync", "pr.comment"] as const) expect(tier(a), a).toBe("free");
+    for (const a of ["read", "branch.create", "commit.own_branch", "pr.open_draft", "branch.sync", "pr.comment", "runner.shadow"] as const) expect(tier(a), a).toBe("free");
     for (const a of ["commit.other_branch", "pr.merge", "pr.ready", "pr.close", "branch.delete", "workflow.write", "repo.init"] as const) expect(tier(a), a).toBe("ask");
     for (const a of ["push.force", "branch.delete_default", "commit.secret", "repo.visibility"] as const) expect(tier(a), a).toBe("ask_strict");
-    for (const a of ["path.escape", "repo.delete"] as const) expect(tier(a), a).toBe("never");
-    expect(Object.keys(ACTIONS)).toHaveLength(19);
+    for (const a of ["path.escape", "repo.delete", "runner.reserved"] as const) expect(tier(a), a).toBe("never");
+    expect(Object.keys(ACTIONS)).toHaveLength(21);
   });
 
   it("flags only the strict ones for Face ID, and lets only the free and ask ones be granted", () => {
     const rows = actionCatalog();
-    expect(rows).toHaveLength(19);
+    expect(rows).toHaveLength(21);
     for (const row of rows) {
       expect(row.faceId, row.id).toBe(row.tier === "ask_strict");
       expect(row.grantable, row.id).toBe(row.tier === "free" || row.tier === "ask");

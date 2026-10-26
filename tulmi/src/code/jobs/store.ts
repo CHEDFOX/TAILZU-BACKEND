@@ -27,7 +27,13 @@
  * the in-memory twin does the same in one synchronous step.)
  *
  * Usage is added up inside the database (the `code_add_usage` function), so
- * two results arriving together can't lose one.
+ * two results arriving together can't lose one. A month can also carry one
+ * flag, `github_exhausted` (supabase/migrations/0024_code_github_actions.sql):
+ * set when a step pushed to GitHub's computers never ran or never reported
+ * (the free minutes are used up, or Actions is off), so the router stops
+ * choosing GitHub for that person for the rest of the month. It lives in the
+ * usage row but is read and written on its own, so the usage figures keep
+ * their shape.
  */
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -56,6 +62,8 @@ export type JobPatch = Partial<Pick<CodeJob,
 export interface JobExpect {
   leaseEpoch?: number;
   states?: readonly JobState[];
+  /** The kind of place holding the lease must still be this one. */
+  placement?: Placement;
   /** The lease must have run out by this time (epoch ms). */
   leaseExpiredBy?: number;
 }
@@ -90,6 +98,8 @@ export interface JobStore {
   findHeld(userId: string, placement: Placement, holder: string): Promise<CodeJob[]>;
   /** Running jobs on a place whose lease ran out by `now`, oldest first. */
   listExpired(now: number, limit: number): Promise<CodeJob[]>;
+  /** Running jobs on this kind of place, whatever their lease says, oldest first (the ticker looks at each step a place that sends no heartbeats has out). */
+  listRunning(placement: Placement, limit: number): Promise<CodeJob[]>;
   /** Jobs waiting for compute, and jobs waiting for a yes to paid compute (not those waiting to commit), oldest first; one person's, or everyone's. */
   listWaiting(limit: number, userId?: string): Promise<CodeJob[]>;
 
@@ -108,6 +118,10 @@ export interface JobStore {
   getUsage(userId: string, month: string): Promise<ComputeUsage>;
   /** Adds to the month's use and returns the total. */
   addUsage(userId: string, month: string, add: { githubMinutes?: number; paidPaise?: number }): Promise<ComputeUsage>;
+  /** Whether GitHub's free computers are marked used up (or unusable) for the person this month. */
+  isGithubExhausted(userId: string, month: string): Promise<boolean>;
+  /** Marks them so for the rest of the month ("YYYY-MM"). Idempotent. */
+  markGithubExhausted(userId: string, month: string): Promise<void>;
 }
 
 /** A store that has hit the most steps a job can have. */
@@ -125,6 +139,7 @@ export class MemoryJobStore implements JobStore {
   private steps = new Map<string, JobStep[]>();
   private settings = new Map<string, ComputeSettings>();
   private usage = new Map<string, ComputeUsage>();
+  private exhausted = new Set<string>();
 
   /** `now` is for tests that move the clock. */
   constructor(private readonly now: () => number = Date.now) {}
@@ -162,6 +177,7 @@ export class MemoryJobStore implements JobStore {
     if (!j) return null;
     if (expect.leaseEpoch !== undefined && j.leaseEpoch !== expect.leaseEpoch) return null;
     if (expect.states && !expect.states.includes(j.state)) return null;
+    if (expect.placement !== undefined && j.placement !== expect.placement) return null;
     if (expect.leaseExpiredBy !== undefined && (j.leaseExpiresAt === null || j.leaseExpiresAt > expect.leaseExpiredBy)) return null;
     Object.assign(j, patch, { updatedAt: this.now() });
     if (patch.checkpoint) j.checkpoint = { ...patch.checkpoint };
@@ -175,6 +191,10 @@ export class MemoryJobStore implements JobStore {
     return [...this.jobs.values()]
       .filter((j) => j.state === "running" && j.placement !== "none" && j.leaseExpiresAt !== null && j.leaseExpiresAt <= now)
       .sort((a, b) => a.leaseExpiresAt! - b.leaseExpiresAt!).slice(0, limit).map(cloneJob);
+  }
+  async listRunning(placement: Placement, limit: number) {
+    return [...this.jobs.values()].filter((j) => j.state === "running" && j.placement === placement)
+      .sort((a, b) => a.updatedAt - b.updatedAt || a.createdAt - b.createdAt).slice(0, limit).map(cloneJob);
   }
   async listWaiting(limit: number, userId?: string) {
     return [...this.jobs.values()]
@@ -231,6 +251,8 @@ export class MemoryJobStore implements JobStore {
     this.usage.set(`${userId}|${month}`, next);
     return { ...next };
   }
+  async isGithubExhausted(userId: string, month: string) { return this.exhausted.has(`${userId}|${month}`); }
+  async markGithubExhausted(userId: string, month: string) { this.exhausted.add(`${userId}|${month}`); }
 }
 
 // ------------------------------------------------------------------ supabase
@@ -342,6 +364,7 @@ export class SupabaseJobStore implements JobStore {
     let q = this.sb.from("code_jobs").update(row).eq("id", id);
     if (expect.leaseEpoch !== undefined) q = q.eq("lease_epoch", expect.leaseEpoch);
     if (expect.states) q = q.in("state", [...expect.states]);
+    if (expect.placement !== undefined) q = q.eq("placement", expect.placement);
     if (expect.leaseExpiredBy !== undefined) q = q.lte("lease_expires_at", iso(expect.leaseExpiredBy));
     const r = ok(await q.select("*").maybeSingle<JobRow>());
     return r ? jobOf(r) : null;
@@ -354,6 +377,11 @@ export class SupabaseJobStore implements JobStore {
   async listExpired(now: number, limit: number) {
     const rows = ok(await this.sb.from("code_jobs").select("*").eq("state", "running").neq("placement", "none")
       .not("lease_expires_at", "is", null).lte("lease_expires_at", iso(now)).order("lease_expires_at").limit(limit).returns<JobRow[]>());
+    return (rows ?? []).map(jobOf);
+  }
+  async listRunning(placement: Placement, limit: number) {
+    const rows = ok(await this.sb.from("code_jobs").select("*").eq("state", "running").eq("placement", placement)
+      .order("updated_at").limit(limit).returns<JobRow[]>());
     return (rows ?? []).map(jobOf);
   }
   async listWaiting(limit: number, userId?: string) {
@@ -427,6 +455,15 @@ export class SupabaseJobStore implements JobStore {
       p_minutes: Math.max(0, Math.round(add.githubMinutes ?? 0)), p_paise: Math.max(0, Math.round(add.paidPaise ?? 0)),
     }).single<UsageRow>());
     return usageOf(r!);
+  }
+  async isGithubExhausted(userId: string, month: string) {
+    const r = ok(await this.sb.from("code_compute_usage").select("github_exhausted").eq("user_id", this.who(userId)).eq("month", month)
+      .maybeSingle<{ github_exhausted: boolean | null }>());
+    return r?.github_exhausted === true;
+  }
+  async markGithubExhausted(userId: string, month: string) {
+    // Only this column is written; the month's figures (and a row that is not there yet, at zero) are left to code_add_usage.
+    ok(await this.sb.from("code_compute_usage").upsert({ user_id: this.who(userId), month, github_exhausted: true }, { onConflict: "user_id,month" }).select("user_id").maybeSingle());
   }
 }
 

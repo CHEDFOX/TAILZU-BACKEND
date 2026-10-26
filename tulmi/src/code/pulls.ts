@@ -50,7 +50,7 @@
  */
 import { ConnectorError } from "../connectors/oauth.js";
 import { assertMergeable, validBranchName, type BranchDiff, type PullComment, type PullInfo, type RepoRef } from "./github.js";
-import { gate, guardRead, type GateOptions, type Gated } from "./policy.js";
+import { assertNotRunnerBranch, gate, guardRead, type GateOptions, type Gated } from "./policy.js";
 import { assertAccess, gateBase, notFound, ownProject, repoRef, type ProjectDeps } from "./projects.js";
 import type { BranchState, CodeBranch, CodeProject } from "./store.js";
 
@@ -113,6 +113,8 @@ export async function syncBranch(
   if (l.rec.branch === l.project.defaultBranch) {
     throw new ConnectorError("bad_branch", "The default branch is what the others are brought up to; there is nothing to bring it up to.");
   }
+  // A tailzu-run/ branch is the runner's alone: nothing else moves it (policy.ts runner.reserved).
+  assertNotRunnerBranch(l.rec.branch);
   return gate({
     ...gateBase(d, userId, l.project), ...o, action: "branch.sync", branch: l.rec.branch, ownBranch: l.own,
     head: () => d.github.branchHead(l.repo, l.rec.branch),

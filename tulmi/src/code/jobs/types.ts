@@ -186,6 +186,10 @@ export const DEVICES_MAX = 20;
 export const DEVICE_PROJECTS_MAX = 200;
 /** Files a runner can hand back in one result (the commit's own limit, github.ts). */
 export const CHANGES_MAX = 200;
+/** A step pushed to GitHub's computers whose workflow run has not appeared after this long is given up on: the free minutes are most likely used up, or Actions is off (githubActions.ts check). */
+export const GITHUB_NO_RUN_MS = 3 * 60_000;
+/** A run still going this long after its step's own timeout is cancelled (if the App may) and the step moved. */
+export const GITHUB_OVERRUN_MS = 2 * 60_000;
 
 /** "YYYY-MM" in UTC for an epoch ms. */
 export function monthKey(at: number): string {

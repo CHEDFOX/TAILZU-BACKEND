@@ -13,7 +13,12 @@
  *      allowance (2,000 minutes by default, CODE_GITHUB_FREE_MINUTES), which
  *      is shared with everything else the person runs there, so Tailzu counts
  *      only its own use and keeps a tenth back. It counts only if the project
- *      has it set up and the person hasn't switched it off.
+ *      has it set up (the provider says so: githubActions.ts) and the person
+ *      hasn't switched it off. A public repo isn't metered, so the allowance
+ *      doesn't hold it back; and the CI of the person's own that the push would
+ *      also start is added to the step's minutes. Once a step pushed to GitHub
+ *      never ran or never reported, the router sets the minutes left to 0 for
+ *      the rest of the month.
  *   3. PAID COMPUTE, and only by the person's own rule:
  *        never   it is not used. The step waits;
  *        ask     it is used only for as much as the person has said yes to
@@ -36,6 +41,12 @@ export interface PlacementCtx {
   githubEnabled: boolean;
   /** Minutes of GitHub's free allowance still counted as ours this month (githubMinutesLeft). */
   githubMinutesLeft: number;
+  /** Minutes the step would also cost because the person's own CI runs on its push (an estimate; absent: none). */
+  githubExtraMinutes?: number;
+  /** The repo is public: its minutes aren't metered, so the free allowance does not hold the step back. */
+  githubUnmetered?: boolean;
+  /** Why the provider said no, as a short code, for the sentence that explains a wait. */
+  githubWhy?: string;
   paidRule: PaidRule;
   /** There is paid compute on this server to use at all. */
   paidAvailable: boolean;
@@ -83,14 +94,15 @@ export function choosePlacement(ctx: PlacementCtx): PlacementChoice {
   // 1. The person's own PC.
   if (ctx.desktops > 0) return { placement: "desktop", reason: "Your own computer is online and allowed to run this project." };
 
-  // 2. GitHub's free computers.
-  if (ctx.githubEnabled && minutes <= ctx.githubMinutesLeft) {
+  // 2. GitHub's free computers. A public repo isn't metered; otherwise the step, and the CI of the person's own it would also start, must fit.
+  const extra = Math.max(0, Math.ceil(Number.isFinite(ctx.githubExtraMinutes ?? 0) ? ctx.githubExtraMinutes ?? 0 : 0));
+  if (ctx.githubEnabled && (ctx.githubUnmetered === true || minutes + extra <= ctx.githubMinutesLeft)) {
     return { placement: "github", reason: "GitHub's free computers have minutes left this month." };
   }
 
   // 3. Paid compute, by the person's rule.
   const noPc = "none of your computers is online and allowed for this project";
-  const noGithub = ctx.githubEnabled ? "this month's free GitHub minutes are used up" : "GitHub's free computers aren't set up for this project";
+  const noGithub = ctx.githubEnabled ? "this month's free GitHub minutes are used up" : GITHUB_WHY[ctx.githubWhy ?? ""] ?? "GitHub's free computers aren't set up for this project";
   if (ctx.paidRule !== "never" && ctx.paidAvailable) {
     const estimatePaise = Math.max(0, Math.ceil(ctx.estimatePaise));
     if (estimatePaise <= Math.max(0, ctx.paidLeftPaise)) {
@@ -113,5 +125,10 @@ export function choosePlacement(ctx: PlacementCtx): PlacementChoice {
   const noPaid = ctx.paidRule === "never" ? "paid compute is off" : "there is no paid compute to use";
   return { wait: true, reason: `${cap(noPc)}, ${noGithub}, and ${noPaid}. It will carry on by itself when one is.` };
 }
+
+/** What a provider's short reason for saying no means, in the sentence that explains a wait. */
+const GITHUB_WHY: Record<string, string> = {
+  needs_workflow_permission: "GitHub's free computers need the Tailzu GitHub App to have the Workflows and Actions permissions (or your sign-in to allow workflows)",
+};
 
 const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
