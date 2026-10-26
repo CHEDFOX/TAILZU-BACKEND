@@ -521,6 +521,37 @@ const EnvSchema = z.object({
    * nothing breaks. Server-side only: never sent to a device, a log or a reply.
    */
   YOUTUBE_API_KEY: z.string().optional(),
+  // --- Code bot (src/code): connect GitHub, add a project, work on a branch ---
+  /**
+   * The whole feature. Off by default, and while it is off every /v1/code/*
+   * route answers 404 { code: "code_off" }. On, but with the GitHub App below
+   * not set up, they answer 503 { code: "not_configured" }. Needs migration
+   * 0020 and CONNECTOR_TOKEN_KEY (the sign-in state is signed with it).
+   * Setup, with a ready-made App manifest, is in docs/github-app.md.
+   */
+  CODE_GITHUB: bool(false),
+  /** The GitHub App's numeric id. Only the fallback for the client id below, as the JWT's issuer. */
+  GITHUB_APP_ID: z.string().optional(),
+  /** The App's URL name (github.com/apps/<slug>): the install link is https://github.com/apps/<slug>/installations/new. */
+  GITHUB_APP_SLUG: z.string().optional(),
+  /** The App's client id ("Iv23..."). It is the JWT's `iss` and the OAuth client of the install step. */
+  GITHUB_APP_CLIENT_ID: z.string().optional(),
+  /**
+   * The App's client secret, to turn the code GitHub sends back after an
+   * install into proof of who the person is. Server-side only: never sent to
+   * a device, a log or an error message.
+   */
+  GITHUB_APP_CLIENT_SECRET: z.string().optional(),
+  /**
+   * The App's private key, to sign the short-lived JWT every installation
+   * token is minted with. Raw PEM, or base64 of the PEM (an env file cannot
+   * hold newlines); `\n` escapes are turned back into newlines. Whoever holds
+   * it can act on every repo the App is installed on: keep it with the other
+   * secrets, never in a log or a reply.
+   */
+  GITHUB_APP_PRIVATE_KEY: z.string().optional(),
+  /** The secret GitHub signs its webhooks with (X-Hub-Signature-256). With none, the webhook refuses everything. */
+  GITHUB_APP_WEBHOOK_SECRET: z.string().optional(),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 
@@ -1091,6 +1122,7 @@ export function getConfig(): AppConfig {
   for (const [name, value] of [
     ["REVENUECAT_WEBHOOK_SECRET", env.REVENUECAT_WEBHOOK_SECRET],
     ["ADMIN_SECRET", env.ADMIN_SECRET],
+    ["GITHUB_APP_WEBHOOK_SECRET", env.GITHUB_APP_WEBHOOK_SECRET],
   ] as const) {
     if (typeof value === "string" && value.includes("$")) {
       console.warn(
@@ -1129,6 +1161,20 @@ export function getConfig(): AppConfig {
   }
   if (env.CUSTOM_CONNECTORS && !env.CONNECTORS) {
     console.warn("[config] CUSTOM_CONNECTORS=true does nothing while CONNECTORS is off: nobody can add an app by link.");
+  }
+
+  // The Code bot switched on with half a GitHub App can be asked and never answer.
+  // Warned, not refused: every /v1/code route says "not_configured" until it is whole.
+  if (env.CODE_GITHUB) {
+    const missing = ([
+      ["GITHUB_APP_SLUG", env.GITHUB_APP_SLUG], ["GITHUB_APP_CLIENT_ID", env.GITHUB_APP_CLIENT_ID],
+      ["GITHUB_APP_CLIENT_SECRET", env.GITHUB_APP_CLIENT_SECRET], ["GITHUB_APP_PRIVATE_KEY", env.GITHUB_APP_PRIVATE_KEY],
+      ["GITHUB_APP_WEBHOOK_SECRET", env.GITHUB_APP_WEBHOOK_SECRET],
+    ] as const).filter(([, v]) => !v).map(([k]) => k);
+    if (missing.length) console.warn(`[config] CODE_GITHUB=true but ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not set: the Code bot cannot be used until they are (docs/github-app.md).`);
+    if (Buffer.from(env.CONNECTOR_TOKEN_KEY ?? "", "base64").length !== 32) {
+      console.warn("[config] CODE_GITHUB=true but CONNECTOR_TOKEN_KEY is not 32 bytes of base64 (openssl rand -base64 32): GitHub cannot be connected.");
+    }
   }
 
   // Our published client document only works for sign-ins that come back to the

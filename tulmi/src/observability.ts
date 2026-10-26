@@ -32,7 +32,10 @@ let sentry: any = null;
  * phone's verifier, but a log line is no place for any part of a sign-in.
  */
 export function logUrl(url: string): string {
-  return /^\/auth\/callback(?:[?#]|$)/.test(url) ? "/auth/callback" : url;
+  if (/^\/auth\/callback(?:[?#]|$)/.test(url)) return "/auth/callback";
+  // GitHub's install redirect carries a one-time code and the signed state (code/link.ts).
+  if (/^\/v1\/code\/github\/callback(?:[?#]|$)/.test(url)) return "/v1/code/github/callback";
+  return url;
 }
 
 export function fastifyLoggerOptions() {
@@ -47,6 +50,7 @@ export function fastifyLoggerOptions() {
         'req.headers["x-api-key"]',
         'req.headers["x-supabase-auth"]',
         'req.headers["x-admin-secret"]',
+        'req.headers["x-hub-signature-256"]',
         'headers.authorization',
         'headers.cookie',
         // Fastify's own request/reply serializer paths.
@@ -54,6 +58,7 @@ export function fastifyLoggerOptions() {
         '*.token',
         '*.access_token',
         '*.refresh_token',
+        '*.client_secret',
         '*.api_key',
         '*.apiKey',
         '*.password',

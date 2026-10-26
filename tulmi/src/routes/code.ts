@@ -1,0 +1,259 @@
+/**
+ * THE CODE BOT'S GITHUB ROUTES: CONNECT, PICK A PROJECT, START A BRANCH.
+ *
+ *   POST   /v1/code/github/connect            -> { installUrl }  the link that opens GitHub's install page
+ *   GET    /v1/code/github/callback           GitHub sends the browser back here; no session, the signed state says who
+ *   GET    /v1/code/github                    -> { configured, connected, installations: [{ id, account, accountType,
+ *                                                  repositorySelection, suspended, manageUrl }] }
+ *   DELETE /v1/code/github/installations/:id  forget the link and its projects here -> { ok, manageUrl }; GitHub's
+ *                                                  install is not touched, manageUrl is where to remove it
+ *   GET    /v1/code/repos                     -> { repos: [{ id, fullName, private, defaultBranch, installationId }], truncated,
+ *                                                  needsReconnect? }  only repos the person may write to on GitHub (below)
+ *   POST   /v1/code/projects { repoId }       -> { project, created }; 404 for a repo outside the person's installs
+ *   GET    /v1/code/projects                  -> { projects }
+ *   DELETE /v1/code/projects/:id              -> { ok }
+ *   POST   /v1/code/projects/:id/branches { task }
+ *                                             -> { branch, baseSha, url }  `tailzu/<slug>-<4 hex>` from the default branch's head
+ *   GET    /v1/code/projects/:id/branches     -> { branches }
+ *   POST   /v1/code/projects/:id/branches/:branch/pr { title, body }
+ *                                             -> { prNumber, prUrl, existing }  a draft PR; :branch is URL-encoded
+ *                                                  (tailzu%2Ffix-login-1a2b), since the branch has a "/" in it
+ *   POST   /v1/code/github/webhook            GitHub's own deliveries (code/webhook.ts); authenticated by signature
+ *
+ * Every route but the callback and the webhook authenticates exactly like the
+ * rest of /v1. The answers to "is this on":
+ *
+ *   CODE_GITHUB off                         404 { code: "code_off" }, on every route
+ *   on, the GitHub App not set up           503 { code: "not_configured" }
+ *
+ * and both are checked BEFORE the session, so a client can ask once and stop.
+ * The webhook is the exception to the second: it needs only its own secret.
+ *
+ * What a person's mistake looks like: a project or branch that isn't theirs is
+ * 404 (it doesn't say it exists), a bad body 400, a branch that moved under a
+ * commit 409. A GitHub that fails is 502 with plain words, never its own.
+ *
+ * Linking an install is not access to every repo in it (code/projects.ts): a
+ * repo is the person's to use if the install is on their own GitHub account,
+ * or GitHub says their login can write to it. Otherwise it is left out of the
+ * list and a project can't be made from it (404), and one that was made and
+ * then lost its access is turned away: 403 no_access. A link from before their
+ * login was kept answers 403 needs_reconnect ("connect GitHub again").
+ */
+import type { FastifyInstance, FastifyReply } from "fastify";
+import { resolveUser } from "../auth/supabase.js";
+import { NoTokenKey, tokenKey } from "../connectors/crypto.js";
+import { ConnectorError } from "../connectors/oauth.js";
+import type { Code } from "../code/index.js";
+import { beginConnect, completeCallback, forgetInstallation, linkStatus } from "../code/link.js";
+import { addProject, createWorkBranch, listBranches, listRepos, openPr } from "../code/projects.js";
+import { CodeNeedsAccount } from "../code/store.js";
+import { handleWebhook, signatureOk } from "../code/webhook.js";
+import { PAGE_CSP, page } from "./connectors.js";
+
+export interface CodeRoutesDeps {
+  rateLimit: { rateLimit: { max: number; timeWindow: number } };
+  /** Null when CODE_GITHUB is off. */
+  code: Code | null;
+}
+
+/** Where the phone's app is opened from the done page. The Code screen comes with the phone's side; for now, the app. */
+const OPEN_APP = "tulmi://";
+
+/** The HTTP status of a ConnectorError, by its code. Anything not listed (GitHub failing, mostly) is a 502. */
+const STATUS: Record<string, number> = {
+  bad_state: 400, bad_request: 400, bad_branch: 400, bad_path: 400, binary_file: 400, too_large: 400, not_a_file: 400,
+  not_yours: 403, no_access: 403, needs_reconnect: 403, not_found: 404,
+  branch_moved: 409, branch_exists: 409, conflict: 409, too_many: 409, suspended: 409, nothing_to_review: 409, no_drafts: 409,
+  not_configured: 503, busy: 503,
+};
+
+const POSITIVE = /^[0-9]{1,15}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A GitHub id from a path or a body: a positive whole number, as a number or as digits. Else null. */
+function idOf(v: unknown): number | null {
+  const n = typeof v === "number" ? v : typeof v === "string" && POSITIVE.test(v) ? Number(v) : NaN;
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+}
+
+export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): void {
+  const RL = { config: deps.rateLimit };
+  const k = deps.code;
+
+  const off = (reply: FastifyReply) => reply.code(404).send({ code: "code_off", message: "The Code bot is not switched on." });
+  const notConfigured = (reply: FastifyReply) => reply.code(503).send({ code: "not_configured", message: "GitHub isn't set up on this server yet." });
+  const noSession = (reply: FastifyReply) => reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+  const fail = (reply: FastifyReply, err: unknown) => {
+    if (err instanceof CodeNeedsAccount) return reply.code(403).send({ code: "needs_account", message: err.message });
+    if (err instanceof NoTokenKey) return reply.code(503).send({ code: "not_configured", message: err.message });
+    if (err instanceof ConnectorError) return reply.code(STATUS[err.code] ?? 502).send({ code: err.code, message: err.message });
+    throw err;
+  };
+  /** Signing the install link needs CONNECTOR_TOKEN_KEY; without it nothing can be linked. */
+  const stateKeyOk = () => { try { tokenKey(); return true; } catch { return false; } };
+
+  /** The Code bot, when it is on and whole. Otherwise the answer has been sent, and this is null. */
+  const ready = (reply: FastifyReply) => {
+    if (!k) { off(reply); return null; }
+    if (!k.github || !stateKeyOk()) { notConfigured(reply); return null; }
+    return { store: k.store, github: k.github };
+  };
+  /** `ready`, then the session. Null once the answer has been sent. */
+  const begin = async (authorization: string | undefined, reply: FastifyReply) => {
+    const d = ready(reply);
+    if (!d) return null;
+    const user = await resolveUser(authorization);
+    if (!user) { noSession(reply); return null; }
+    return { d, user };
+  };
+
+  app.post("/v1/code/github/connect", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      return reply.send(await beginConnect(s.d, s.user.id));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // GitHub's redirect after the install. A browser, no session: the signed state says whose it is.
+  app.get<{ Querystring: { code?: unknown; installation_id?: unknown; setup_action?: unknown; state?: unknown; error?: unknown } }>(
+    "/v1/code/github/callback", RL, async (req, reply) => {
+      reply.header("cache-control", "no-store").header("referrer-policy", "no-referrer")
+        .header("content-security-policy", PAGE_CSP).header("content-type", "text/html; charset=utf-8");
+      if (!k) return reply.code(404).send(page("Not available", "The Code bot is not switched on.", false));
+      if (!k.github || !stateKeyOk()) return reply.code(503).send(page("Not available", "GitHub isn't set up on this server yet.", false));
+      const q = req.query ?? {};
+      const again = (title: string, line: string) => page(title, line, true, OPEN_APP);
+      if (q.error) return reply.code(400).send(again("Nothing was connected", "You can go back to Tailzu and try again any time."));
+      const text = (v: unknown, max: number) => (typeof v === "string" && v.length <= max ? v : undefined);
+      const code = text(q.code, 4096), state = text(q.state, 4096), installationId = text(q.installation_id, 20), setupAction = text(q.setup_action, 32);
+      if ((q.code !== undefined && code === undefined) || (q.state !== undefined && state === undefined)) {
+        return reply.code(400).send(again("That link didn't work", "Go back to Tailzu and start connecting again."));
+      }
+      try {
+        const r = await completeCallback({ store: k.store, github: k.github }, { code, installationId, setupAction, state });
+        if (r.kind === "waiting") {
+          return reply.send(page("Waiting for your organisation's owner to approve Tailzu", "Once they say yes, open Tailzu and connect GitHub again.", false));
+        }
+        if (r.kind === "synced") return reply.send(page("GitHub updated", "Tailzu has the latest from GitHub. You can go back to Tailzu.", true, OPEN_APP));
+        return reply.send(page("GitHub connected", "Tailzu can now see the repos you chose. You can go back to Tailzu.", true, OPEN_APP));
+      } catch (err) {
+        // The code, the state and the installation are in the address: only what went wrong is logged.
+        req.log.warn({ code: (err as { code?: string })?.code }, "github callback failed");
+        const notYours = err instanceof ConnectorError && err.code === "not_yours";
+        return reply.code(notYours ? 403 : 400).send(again(
+          notYours ? "That install isn't yours" : "That didn't work",
+          notYours ? "Your GitHub account can't reach it, so it wasn't connected." : "Go back to Tailzu and try connecting again.",
+        ));
+      }
+    });
+
+  app.get("/v1/code/github", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      return reply.send(await linkStatus(s.d, s.user.id));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.delete<{ Params: { id: string } }>("/v1/code/github/installations/:id", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    const id = idOf(req.params.id);
+    if (id === null) return reply.code(404).send({ code: "not_found", message: "That GitHub install isn't connected." });
+    try {
+      return reply.send(await forgetInstallation(s.d, s.user.id, id));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.get("/v1/code/repos", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      return reply.send(await listRepos(s.d, s.user.id));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.post<{ Body: { repoId?: unknown } }>("/v1/code/projects", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    const repoId = idOf((req.body ?? {}).repoId);
+    if (repoId === null) return reply.code(400).send({ code: "bad_request", message: "repoId is the repo's number from the list." });
+    try {
+      return reply.send(await addProject(s.d, s.user.id, repoId));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.get("/v1/code/projects", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      return reply.send({ projects: await s.d.store.listProjects(s.user.id) });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.delete<{ Params: { id: string } }>("/v1/code/projects/:id", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      if (!UUID.test(req.params.id) || !(await s.d.store.deleteProject(s.user.id, req.params.id))) {
+        return reply.code(404).send({ code: "not_found", message: "No such project" });
+      }
+      return reply.send({ ok: true });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.post<{ Params: { id: string }; Body: { task?: unknown } }>("/v1/code/projects/:id/branches", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      return reply.send(await createWorkBranch(s.d, s.user.id, req.params.id, (req.body ?? {}).task));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.get<{ Params: { id: string } }>("/v1/code/projects/:id/branches", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      return reply.send({ branches: await listBranches(s.d, s.user.id, req.params.id) });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.post<{ Params: { id: string; branch: string }; Body: { title?: unknown; body?: unknown } }>(
+    "/v1/code/projects/:id/branches/:branch/pr", RL, async (req, reply) => {
+      const s = await begin(req.headers["authorization"], reply);
+      if (!s) return reply;
+      // The branch has a "/" in it, so it arrives percent-encoded. Decoding what is already
+      // decoded changes nothing: a work branch never has a "%" in it.
+      let branch: string;
+      try { branch = decodeURIComponent(req.params.branch); } catch {
+        return reply.code(404).send({ code: "not_found", message: "I couldn't find that branch in this project." });
+      }
+      const { title, body } = req.body ?? {};
+      try {
+        return reply.send(await openPr(s.d, s.user.id, req.params.id, branch, title, body));
+      } catch (err) { return fail(reply, err); }
+    });
+
+  // GitHub is the caller: no session, a signature over the raw body instead (code/webhook.ts).
+  app.post("/v1/code/github/webhook", { config: { rateLimit: { max: 600, timeWindow: 60_000 } } }, async (req, reply) => {
+    if (!k) return off(reply);
+    if (!k.webhookSecret) {
+      req.log.error("[code] github webhook hit with no GITHUB_APP_WEBHOOK_SECRET set");
+      return notConfigured(reply);
+    }
+    const raw = (req as unknown as { rawBody?: string }).rawBody ?? "";
+    if (!signatureOk(raw, String(req.headers["x-hub-signature-256"] ?? ""), k.webhookSecret)) {
+      return reply.code(401).send({ code: "unauthorized" });
+    }
+    try {
+      const done = await handleWebhook(k.store, String(req.headers["x-github-event"] ?? ""), req.body);
+      return reply.code(done === "handled" ? 200 : 202).send({ ok: true });
+    } catch (err) {
+      // 500, so GitHub shows the delivery as failed and it can be sent again.
+      req.log.error({ err }, "[code] github webhook could not be applied");
+      return reply.code(500).send({ ok: false });
+    }
+  });
+}
