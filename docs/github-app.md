@@ -13,6 +13,11 @@ You need to do four things, in this order:
 3. Put the values in `tulmi/.env` and switch `CODE_GITHUB` on.
 4. Install it on your own account and try it (section 4).
 
+There is a second, optional way to connect that needs no App install:
+**Sign in with GitHub**, a classic GitHub OAuth App (section 7). It is off by
+default and reaches far more than an install does, so read section 7 before
+switching it on.
+
 The whole feature is off by default. While `CODE_GITHUB` is false every
 `/v1/code/*` route answers `404 {"code":"code_off"}`; on, but with any part of
 the App missing, they answer `503 {"code":"not_configured"}`.
@@ -312,3 +317,124 @@ Removing it on GitHub (or suspending it) reaches Tailzu through the webhook.
 
 To replace the private key: generate a second key on the App's page, put it in
 `.env`, restart, then delete the old key on GitHub.
+
+---
+
+## 7. Sign in with GitHub (the OAuth App way)
+
+An App install reaches only the repos the person picked, with tokens that last
+an hour and are made for one repo. Some people won't install an App, or want
+to start at once. **Sign in with GitHub** is the other way in: a classic GitHub
+**OAuth App**, where the person signs in once and Tailzu holds *their own*
+GitHub token. It is off by default (`CODE_GITHUB_OAUTH=false`). Both ways can
+be on at the same time; where the App reaches a repo, the App is the one used.
+
+### Create the OAuth App
+
+GitHub, Settings, Developer settings, OAuth Apps, New OAuth App (under the
+account or organisation that should own it):
+
+| Field | Value |
+| --- | --- |
+| Application name | `Tailzu Code`, or anything people will recognise on GitHub's consent page |
+| Homepage URL | `https://www.tailzu.space` |
+| Authorization callback URL | `https://api.tailzu.space/v1/code/github/signin/callback` |
+| Enable Device Flow | **Leave off.** Tailzu uses the web flow only |
+
+Create it, then **Generate a new client secret**. In `tulmi/.env`:
+
+| Variable | What it is |
+| --- | --- |
+| `CODE_GITHUB_OAUTH` | `true` to offer the sign-in. Also the kill switch (below). Default `false` |
+| `GITHUB_OAUTH_CLIENT_ID` | The OAuth App's client id. Not the GitHub App's |
+| `GITHUB_OAUTH_CLIENT_SECRET` | Its client secret. Secret |
+
+Run `tulmi/supabase/migrations/0021_code_oauth.sql` first. `CONNECTOR_TOKEN_KEY`
+must be set: the sign-in's `state` is signed with it and **the tokens are
+stored encrypted under it** (changing that key makes stored tokens unreadable;
+people then sign in again). With the switch on but the id or secret missing,
+the sign-in routes answer `503 not_configured`; with it off, `404 oauth_off`.
+
+The sign-in asks for `repo read:user` and nothing else. It uses PKCE (S256)
+as well as the signed `state`; GitHub has announced PKCE for OAuth Apps, and
+if a GitHub does not enforce it the extra parameters are ignored and the
+signed `state` is what protects the flow.
+
+### What sign-in can reach, against the App
+
+| | GitHub App install | Sign in with GitHub |
+| --- | --- | --- |
+| Reaches | the repos the person chose at install | **every repo the person can reach**, public and private, in every organisation that allows it |
+| The token | an hour, for one repo, made when needed, never kept | the person's own, long-lived, **kept (encrypted)** until it is revoked |
+| Commits show | the App as the author | the person as the author, with a `Co-authored-by: Tailzu <code@tailzu.space>` trailer |
+| Pull requests and merges | by the App | by the person |
+| Revoked by | uninstalling | disconnecting in Tailzu, or on GitHub (Settings, Applications) |
+| Organisations | the owner installs the App | an organisation with **OAuth App access restrictions** (or SAML SSO) refuses it until an owner approves Tailzu |
+
+### What Tailzu does to make that safe
+
+GitHub offers no way to narrow an OAuth token to chosen repos, so Tailzu does:
+
+* **Only repos added as projects.** The token is never used on a repo the
+  person did not explicitly add. Every use checks that, from the database,
+  before the token is decrypted. The one exception is listing the repos to
+  choose from (`GET /user/repos`, only repos the person can **push** to,
+  archived ones left out, 300 at most).
+* **Push access, again, before every write.** Before a branch, a commit, a
+  pull request, a sync, a merge, a delete, Tailzu asks GitHub (`GET
+  /repos/{o}/{r}`, `permissions.push`) whether the person can still push. Reads
+  go by what was kept ten minutes.
+* **Every guard of the git logic**, unchanged: `tailzu/` branches only, never
+  the default branch except the first README of an empty repo and a merge a
+  person approved at that head commit, the path rules, no workflow files.
+* **A runner never gets the token.** For a sign-in project `runnerAccess` "read"
+  gives a one-time download link (GitHub's tarball redirect, not followed by the
+  server) and "push" is refused (`use_server_commit`): a sandbox hands its
+  changes back and the server commits them through the same guards.
+* **The scopes are checked.** The token GitHub returns must have no scope
+  beyond `repo read:user` (its `X-OAuth-Scopes`); if it does it is revoked on
+  the spot and nothing is connected. `workflow` is not asked for. A separate
+  incremental sign-in that adds it exists in the code for later; the only
+  workflow file Tailzu would ever write is `.github/workflows/tailzu.yml`, on a
+  `tailzu/` branch, with a token that has the scope (`assertRepoPath`;
+  there is a TODO there to remove that exception if it is not built).
+* **The token is never shown.** Encrypted at rest (AES-256-GCM), never logged,
+  never in a reply, never given to the model, a sandbox or a runner. The table
+  has no row-level-security policy at all, so even the person's own Supabase
+  token can't read it.
+* **Revoked, not just forgotten.** On disconnect, on account delete, and after
+  **30 days unused**, the server calls `DELETE /applications/{client_id}/token`
+  and then drops the token. A disconnect that can't reach GitHub does not drop
+  the token (it could never be revoked then): the link is made unusable and
+  the person is told to try again. A token GitHub answers 401 for is dropped and
+  the link marked `needs_signin` (403 `needs_signin`; the person signs in again,
+  and their projects are still there).
+* **Organisations that haven't approved it** answer 403 `org_blocked`, with a
+  hint: an owner approves Tailzu under the organisation's third-party access
+  settings (or the person authorises the sign-in for the SSO organisation), or
+  installs the Tailzu GitHub App on it.
+
+### The kill switch
+
+`CODE_GITHUB_OAUTH=false` and a restart: no stored token is used, ever. The
+sign-in routes answer 404, projects that go through it answer `oauth_off`,
+listing skips it. Revoking still works (it only destroys), so a person can still
+disconnect.
+
+To end every token at once, for an emergency:
+
+```bash
+docker compose exec backend node dist/tulmi/scripts/revoke-github-oauth.js
+```
+
+(`npx tsx scripts/revoke-github-oauth.ts` outside the container.) It revokes
+every stored token at GitHub, drops it from the database, and marks each link
+`needs_signin`. It prints counts, never a token. Run it again if it reports
+that GitHub would not revoke some. Rotate `GITHUB_OAUTH_CLIENT_SECRET` or
+delete the OAuth App on GitHub to end every authorisation at GitHub's end too.
+
+### Privacy
+
+Add to the privacy policy that, for people who sign in with GitHub, Tailzu keeps
+their GitHub id and login and their GitHub token (encrypted) until they
+disconnect, delete their account, or it goes 30 days unused.

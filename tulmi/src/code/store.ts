@@ -21,9 +21,18 @@
  *                       where the branch is in its life (state), when the last
  *                       review came in
  *
- * What is NOT kept: any GitHub token. The person's own token is used once, in
- * the callback, and dropped; an installation token is minted when it is needed
- * and lives in the server's memory for under an hour (github.ts).
+ *   code_oauth_links    the other way to connect, "Sign in with GitHub" (oauth.ts):
+ *                       who the person is on GitHub, the scopes the token has,
+ *                       and the token itself, ENCRYPTED (crypto.ts). The only
+ *                       place a GitHub token is kept at all. A project records
+ *                       which kind of link it uses (link_kind)
+ *
+ * What is NOT kept, on the App's side: any GitHub token. The person's own
+ * token is used once, in the callback, and dropped; an installation token is
+ * minted when it is needed and lives in the server's memory for under an hour
+ * (github.ts). On the sign-in side the token is kept, encrypted, because it
+ * is the only credential there is; it never leaves this file in the clear, is
+ * never in a reply, and is revoked at GitHub when the link goes.
  *
  * Two kinds of write are not one person's: GitHub's webhook (webhook.ts) says
  * an installation was deleted or suspended, or that repos were taken off it,
@@ -66,10 +75,15 @@ export interface NewCodeInstallation {
   githubLogin?: string | null;
 }
 
+/** Which link a project goes through: a GitHub App install, or the person's own "Sign in with GitHub". */
+export type LinkKind = "app" | "oauth";
+
 export interface CodeProject {
   id: string;
   userId: string;
+  /** The App install it is on. 0 for an "oauth" project, which is on no install. */
   installationId: number;
+  linkKind: LinkKind;
   repoId: number;
   /** "owner/name". */
   fullName: string;
@@ -78,7 +92,25 @@ export interface CodeProject {
   createdAt: number;
 }
 
-export type NewCodeProject = Omit<CodeProject, "id" | "userId" | "createdAt">;
+export type NewCodeProject = Omit<CodeProject, "id" | "userId" | "createdAt" | "linkKind"> & { linkKind?: LinkKind };
+
+/** "Sign in with GitHub": one per person. */
+export interface CodeOAuthLink {
+  userId: string;
+  githubUserId: number;
+  githubLogin: string;
+  /** The token, encrypted (crypto.ts encrypt). Null once it has been revoked or found dead: the person has to sign in again. */
+  tokenEnc: string | null;
+  /** The scopes GitHub says the token has, as it said them ("repo, read:user"). */
+  scope: string;
+  status: "active" | "needs_signin";
+  /** Epoch ms the token was last used (to the hour), or null. A token unused for 30 days is revoked. */
+  lastUsedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface NewCodeOAuthLink { githubUserId: number; githubLogin: string; tokenEnc: string; scope: string }
 
 /**
  * Where a work branch is in its life. `conflict`: merging the default branch
@@ -134,6 +166,21 @@ export interface CodeStore {
   createProject(userId: string, p: NewCodeProject): Promise<CodeProject>;
   /** Returns whether it was theirs to delete. Its branches go with it. */
   deleteProject(userId: string, id: string): Promise<boolean>;
+  /** Moves a project to another link (the App, once it reaches a repo that sign-in reached first). */
+  setProjectLink(userId: string, id: string, link: { installationId: number; linkKind: LinkKind }): Promise<CodeProject | null>;
+
+  getOAuthLink(userId: string): Promise<CodeOAuthLink | null>;
+  /** Makes or replaces the person's sign-in link: active, with this token. */
+  saveOAuthLink(userId: string, l: NewCodeOAuthLink): Promise<CodeOAuthLink>;
+  /** Sets the status; `dropToken` forgets the token with it. Returns null when there is no link. */
+  setOAuthStatus(userId: string, status: "active" | "needs_signin", o?: { dropToken?: boolean }): Promise<CodeOAuthLink | null>;
+  touchOAuthLink(userId: string, at: number): Promise<void>;
+  /** Forgets the link and the person's projects that go through it. Returns whether there was a link. */
+  deleteOAuthLink(userId: string): Promise<boolean>;
+  /** Links that still hold a token and were last used (or made) before `before`: the ones to revoke. Oldest first. */
+  listOAuthLinksIdleBefore(before: number, limit: number): Promise<CodeOAuthLink[]>;
+  /** Every link that still holds a token (the kill switch's list), after the given user id, in order. */
+  listOAuthLinksWithToken(after: string | null, limit: number): Promise<CodeOAuthLink[]>;
 
   /**
    * Branches are keyed by project and carry no owner: the caller has already
@@ -163,6 +210,10 @@ export class MemoryCodeStore implements CodeStore {
   private installs = new Map<string, CodeInstallation>();
   private projects = new Map<string, CodeProject>();
   private branches = new Map<string, CodeBranch>();
+  private oauth = new Map<string, CodeOAuthLink>();
+
+  /** `now` is for tests that move the clock (the 30-day expiry of a sign-in token). */
+  constructor(private readonly now: () => number = Date.now) {}
 
   async upsertInstallation(userId: string, i: NewCodeInstallation) {
     const key = `${userId}|${i.installationId}`;
@@ -238,7 +289,7 @@ export class MemoryCodeStore implements CodeStore {
   async createProject(userId: string, n: NewCodeProject) {
     const dupe = await this.findProjectByRepo(userId, n.repoId);
     if (dupe) return dupe;
-    const p: CodeProject = { id: randomUUID(), userId, ...n, createdAt: Date.now() };
+    const p: CodeProject = { id: randomUUID(), userId, ...n, linkKind: n.linkKind ?? "app", createdAt: Date.now() };
     this.projects.set(p.id, p);
     return { ...p };
   }
@@ -246,6 +297,48 @@ export class MemoryCodeStore implements CodeStore {
     if (this.projects.get(id)?.userId !== userId) return false;
     this.dropProject(id);
     return true;
+  }
+
+  async setProjectLink(userId: string, id: string, link: { installationId: number; linkKind: LinkKind }) {
+    const p = this.projects.get(id);
+    if (!p || p.userId !== userId) return null;
+    Object.assign(p, link);
+    return { ...p };
+  }
+
+  async getOAuthLink(userId: string) {
+    const l = this.oauth.get(userId);
+    return l ? { ...l } : null;
+  }
+  async saveOAuthLink(userId: string, n: NewCodeOAuthLink) {
+    const now = this.now();
+    const cur = this.oauth.get(userId);
+    const l: CodeOAuthLink = { userId, ...n, status: "active", lastUsedAt: null, createdAt: cur?.createdAt ?? now, updatedAt: now };
+    this.oauth.set(userId, l);
+    return { ...l };
+  }
+  async setOAuthStatus(userId: string, status: "active" | "needs_signin", o: { dropToken?: boolean } = {}) {
+    const l = this.oauth.get(userId);
+    if (!l) return null;
+    Object.assign(l, { status, ...(o.dropToken ? { tokenEnc: null } : {}), updatedAt: this.now() });
+    return { ...l };
+  }
+  async touchOAuthLink(userId: string, at: number) {
+    const l = this.oauth.get(userId);
+    if (l) l.lastUsedAt = at;
+  }
+  async deleteOAuthLink(userId: string) {
+    const had = this.oauth.delete(userId);
+    for (const p of [...this.projects.values()]) if (p.userId === userId && p.linkKind === "oauth") this.dropProject(p.id);
+    return had;
+  }
+  async listOAuthLinksIdleBefore(before: number, limit: number) {
+    return [...this.oauth.values()].filter((l) => l.tokenEnc !== null && (l.lastUsedAt ?? l.createdAt) < before)
+      .sort((a, b) => (a.lastUsedAt ?? a.createdAt) - (b.lastUsedAt ?? b.createdAt)).slice(0, limit).map((l) => ({ ...l }));
+  }
+  async listOAuthLinksWithToken(after: string | null, limit: number) {
+    return [...this.oauth.values()].filter((l) => l.tokenEnc !== null && (after === null || l.userId > after))
+      .sort((a, b) => (a.userId < b.userId ? -1 : 1)).slice(0, limit).map((l) => ({ ...l }));
   }
 
   async addBranch(n: NewCodeBranch) {
@@ -303,8 +396,12 @@ interface InstallRow {
   github_login: string | null; created_at: string; updated_at: string;
 }
 interface ProjectRow {
-  id: string; user_id: string; installation_id: number; repo_id: number; full_name: string;
+  id: string; user_id: string; installation_id: number; link_kind: LinkKind | null; repo_id: number; full_name: string;
   default_branch: string; private: boolean; created_at: string;
+}
+interface OAuthRow {
+  user_id: string; github_user_id: number; github_login: string; token_enc: string | null; scope: string;
+  status: "active" | "needs_signin"; last_used_at: string | null; created_at: string; updated_at: string;
 }
 interface BranchRow {
   project_id: string; branch: string; task: string; base_sha: string; pr_number: number | null; pr_url: string | null;
@@ -318,8 +415,12 @@ const installOf = (r: InstallRow): CodeInstallation => ({
   githubLogin: r.github_login ?? null,
   createdAt: ms(r.created_at) ?? 0, updatedAt: ms(r.updated_at) ?? 0,
 });
+const oauthOf = (r: OAuthRow): CodeOAuthLink => ({
+  userId: r.user_id, githubUserId: Number(r.github_user_id), githubLogin: r.github_login, tokenEnc: r.token_enc ?? null, scope: r.scope ?? "",
+  status: r.status, lastUsedAt: ms(r.last_used_at), createdAt: ms(r.created_at) ?? 0, updatedAt: ms(r.updated_at) ?? 0,
+});
 const projectOf = (r: ProjectRow): CodeProject => ({
-  id: r.id, userId: r.user_id, installationId: Number(r.installation_id), repoId: Number(r.repo_id), fullName: r.full_name,
+  id: r.id, userId: r.user_id, installationId: Number(r.installation_id), linkKind: r.link_kind ?? "app", repoId: Number(r.repo_id), fullName: r.full_name,
   defaultBranch: r.default_branch, private: r.private, createdAt: ms(r.created_at) ?? 0,
 });
 const branchOf = (r: BranchRow): CodeBranch => ({
@@ -408,7 +509,7 @@ export class SupabaseCodeStore implements CodeStore {
     const who = this.who(userId);
     // Two taps at once: the table's unique (user_id, repo_id) keeps one, and both get it.
     ok(await this.sb.from("code_projects").upsert({
-      user_id: who, installation_id: n.installationId, repo_id: n.repoId, full_name: n.fullName,
+      user_id: who, installation_id: n.installationId, link_kind: n.linkKind ?? "app", repo_id: n.repoId, full_name: n.fullName,
       default_branch: n.defaultBranch, private: n.private,
     }, { onConflict: "user_id,repo_id", ignoreDuplicates: true }));
     return (await this.findProjectByRepo(who, n.repoId))!;
@@ -418,6 +519,55 @@ export class SupabaseCodeStore implements CodeStore {
     const rows = ok(await this.sb.from("code_projects").delete()
       .eq("user_id", this.who(userId)).eq("id", id).select("id").returns<Array<{ id: string }>>());
     return (rows ?? []).length > 0;
+  }
+
+  async setProjectLink(userId: string, id: string, link: { installationId: number; linkKind: LinkKind }) {
+    if (!UUID.test(id)) return null;
+    const r = ok(await this.sb.from("code_projects").update({ installation_id: link.installationId, link_kind: link.linkKind })
+      .eq("user_id", this.who(userId)).eq("id", id).select("*").maybeSingle<ProjectRow>());
+    return r ? projectOf(r) : null;
+  }
+
+  async getOAuthLink(userId: string) {
+    const r = ok(await this.sb.from("code_oauth_links").select("*").eq("user_id", this.who(userId)).maybeSingle<OAuthRow>());
+    return r ? oauthOf(r) : null;
+  }
+  async saveOAuthLink(userId: string, n: NewCodeOAuthLink) {
+    const r = ok(await this.sb.from("code_oauth_links").upsert({
+      user_id: this.who(userId), github_user_id: n.githubUserId, github_login: n.githubLogin, token_enc: n.tokenEnc, scope: n.scope,
+      status: "active", last_used_at: null, updated_at: iso(Date.now()),
+    }, { onConflict: "user_id" }).select("*").single<OAuthRow>());
+    return oauthOf(r!);
+  }
+  async setOAuthStatus(userId: string, status: "active" | "needs_signin", o: { dropToken?: boolean } = {}) {
+    const row: Record<string, unknown> = { status, updated_at: iso(Date.now()) };
+    if (o.dropToken) row.token_enc = null;
+    const r = ok(await this.sb.from("code_oauth_links").update(row).eq("user_id", this.who(userId)).select("*").maybeSingle<OAuthRow>());
+    return r ? oauthOf(r) : null;
+  }
+  async touchOAuthLink(userId: string, at: number) {
+    ok(await this.sb.from("code_oauth_links").update({ last_used_at: iso(at) }).eq("user_id", this.who(userId)));
+  }
+  async deleteOAuthLink(userId: string) {
+    const who = this.who(userId);
+    ok(await this.sb.from("code_projects").delete().eq("user_id", who).eq("link_kind", "oauth"));
+    const gone = ok(await this.sb.from("code_oauth_links").delete().eq("user_id", who).select("user_id").returns<Array<{ user_id: string }>>());
+    return (gone ?? []).length > 0;
+  }
+  async listOAuthLinksIdleBefore(before: number, limit: number) {
+    // The oldest by last use, or by creation when never used: two reads, merged, since the column to compare is one of two.
+    const b = iso(before);
+    const [used, never] = await Promise.all([
+      this.sb.from("code_oauth_links").select("*").not("token_enc", "is", null).lt("last_used_at", b).order("last_used_at").limit(limit).returns<OAuthRow[]>(),
+      this.sb.from("code_oauth_links").select("*").not("token_enc", "is", null).is("last_used_at", null).lt("created_at", b).order("created_at").limit(limit).returns<OAuthRow[]>(),
+    ]);
+    return [...(ok(used) ?? []), ...(ok(never) ?? [])].map(oauthOf)
+      .sort((x, y) => (x.lastUsedAt ?? x.createdAt) - (y.lastUsedAt ?? y.createdAt)).slice(0, limit);
+  }
+  async listOAuthLinksWithToken(after: string | null, limit: number) {
+    let q = this.sb.from("code_oauth_links").select("*").not("token_enc", "is", null).order("user_id").limit(limit);
+    if (after !== null) q = q.gt("user_id", after);
+    return (ok(await q.returns<OAuthRow[]>()) ?? []).map(oauthOf);
   }
 
   async addBranch(n: NewCodeBranch) {

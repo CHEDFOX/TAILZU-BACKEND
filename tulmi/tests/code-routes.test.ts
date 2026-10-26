@@ -21,13 +21,19 @@ vi.hoisted(() => {
 });
 
 // Whoever the test says is calling: the token is the user id; none is nobody.
-vi.mock("../src/auth/supabase.js", async (orig) => ({
-  ...(await orig<typeof import("../src/auth/supabase.js")>()),
-  resolveUser: async (h: string | undefined) => {
-    const id = h?.replace(/^Bearer\s+/i, "").trim();
-    return id ? { id } : null;
-  },
-}));
+// Account deletion talks to Supabase's admin client: one test puts a stub there (and only then).
+const stub = vi.hoisted(() => ({ admin: null as unknown }));
+vi.mock("../src/auth/supabase.js", async (orig) => {
+  const real = await orig<typeof import("../src/auth/supabase.js")>();
+  return {
+    ...real,
+    supabase: () => (stub.admin ?? real.supabase()) as ReturnType<typeof real.supabase>,
+    resolveUser: async (h: string | undefined) => {
+      const id = h?.replace(/^Bearer\s+/i, "").trim();
+      return id ? { id } : null;
+    },
+  };
+});
 
 const { appKeys, FakeGithub } = await import("./github-fake.js");
 const { createCode } = await import("../src/code/index.js");
@@ -49,12 +55,16 @@ type Fake = InstanceType<typeof FakeGithub>;
 type Store = InstanceType<typeof MemoryCodeStore>;
 
 /** The routes on a bare Fastify, with a fake GitHub behind them. */
-async function rig(o: { webhookSecret?: string | null; github?: boolean } = {}) {
+async function rig(o: { webhookSecret?: string | null; github?: boolean; signin?: "on" | "off" | "unset" } = {}) {
   const fake: Fake = new FakeGithub(KEYS);
-  const store: Store = new MemoryCodeStore();
+  const store: Store = new MemoryCodeStore(() => fake.clock.t);
   const code = createCode({
     store, webhookSecret: o.webhookSecret === undefined ? WEBHOOK_SECRET : o.webhookSecret,
     app: o.github === false ? null : { slug: "tailzu-test", clientId: fake.appClientId, clientSecret: fake.clientSecret, privateKey: KEYS.privateKeyPem },
+    // "Sign in with GitHub": on, set up but switched off, or (the default) not set up at all.
+    ...(o.signin === "on" || o.signin === "off"
+      ? { oauth: { clientId: fake.oauthClientId, clientSecret: fake.oauthClientSecret }, oauthEnabled: o.signin === "on" }
+      : { oauth: null, oauthEnabled: false }),
     fetchFn: fake.fetchFn, now: () => fake.clock.t,
   });
   const app = Fastify();
@@ -697,6 +707,208 @@ describe("new repos, and a work branch's life", () => {
   });
 });
 
+// ------------------------------------------------------------ Sign in with GitHub
+
+describe("Sign in with GitHub, over HTTP", () => {
+  const SIGNIN = "/v1/code/github/signin";
+  const CALLBACK = "/v1/code/github/signin/callback";
+  const B = (id: string, branch: string) => `/v1/code/projects/${id}/branches/${encodeURIComponent(branch)}`;
+
+  /** Starts a sign-in over HTTP and has GitHub send the person back. Returns the token the code was traded for. */
+  async function signIn(r: Rig, user = "alice", o: { scopes?: string[]; login?: string } = {}) {
+    const begin = await r.call(user, "POST", SIGNIN, {});
+    const u = new URL(begin.json().authorizeUrl);
+    const token = `gho_${user}_route_token`;
+    r.fake.addOAuthPerson(`code-${user}`, token, o.login ?? user, { scopes: o.scopes, challenge: u.searchParams.get("code_challenge")! });
+    const back = await r.app.inject({ method: "GET", url: `${CALLBACK}?code=code-${user}&state=${encodeURIComponent(u.searchParams.get("state")!)}` });
+    return { begin, back, token };
+  }
+
+  it("is off by default: 404 oauth_off on every sign-in route, and nothing about it in the status", async () => {
+    const r = await rig();
+    for (const [method, url] of [["POST", SIGNIN], ["DELETE", SIGNIN]] as const) {
+      const res = await r.call("alice", method, url, method === "POST" ? {} : undefined);
+      expect(res.statusCode, method).toBe(404);
+      expect(res.json().code).toBe("oauth_off");
+    }
+    const cb = await r.app.inject({ method: "GET", url: `${CALLBACK}?code=a&state=b` });
+    expect(cb.statusCode).toBe(404);
+    expect(cb.headers["content-type"]).toContain("text/html");
+    expect((await r.call("alice", "GET", "/v1/code/github")).json()).not.toHaveProperty("oauth");
+    await r.app.close();
+  });
+
+  it("with the switch off but the OAuth App set up, sign-in is off and disconnecting (revoking) still works", async () => {
+    const r = await rig({ signin: "off" });
+    const res = await r.call("alice", "POST", SIGNIN, {});
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe("oauth_off");
+    expect((await r.app.inject({ method: "GET", url: `${CALLBACK}?code=a&state=b` })).statusCode).toBe(404);
+    expect((await r.call("alice", "DELETE", SIGNIN)).json()).toEqual({ ok: true, revoked: false });
+    await r.app.close();
+  });
+
+  it("answers 503 not_configured when it is switched on without the OAuth App's id and secret", async () => {
+    const fake = new FakeGithub(KEYS);
+    const code = createCode({
+      store: new MemoryCodeStore(), webhookSecret: null, oauth: null, oauthEnabled: true,
+      app: { slug: "s", clientId: fake.appClientId, clientSecret: "x", privateKey: KEYS.privateKeyPem }, fetchFn: fake.fetchFn,
+    });
+    const app = Fastify();
+    registerCodeRoutes(app, { rateLimit: RL, code });
+    for (const [method, url] of [["POST", SIGNIN], ["DELETE", SIGNIN]] as const) {
+      const res = await app.inject({ method, url, headers: who("alice"), ...(method === "POST" ? { payload: {} } : {}) });
+      expect(res.statusCode, method).toBe(503);
+      expect(res.json().code).toBe("not_configured");
+    }
+    const cb = await app.inject({ method: "GET", url: `${CALLBACK}?code=a&state=b` });
+    expect(cb.statusCode).toBe(503);
+    await app.close();
+  });
+
+  it("wants a session to start or end a sign-in", async () => {
+    const r = await rig({ signin: "on" });
+    expect((await r.call(null, "POST", SIGNIN, {})).statusCode).toBe(401);
+    expect((await r.call(null, "DELETE", SIGNIN)).statusCode).toBe(401);
+    await r.app.close();
+  });
+
+  it("works with no GitHub App set up at all: sign-in is a way in of its own", async () => {
+    const r = await rig({ signin: "on", github: false });
+    const { back } = await signIn(r);
+    expect(back.statusCode).toBe(200);
+    // The App's own routes say the App isn't set up; the shared ones work.
+    expect((await r.call("alice", "POST", "/v1/code/github/connect", {})).statusCode).toBe(503);
+    expect((await r.call("alice", "DELETE", "/v1/code/github/installations/1")).statusCode).toBe(503);
+    expect((await r.call("alice", "GET", "/v1/code/github")).json()).toMatchObject({ connected: true, oauth: { connected: true } });
+    r.fake.addRepo(900, "alice/app");
+    expect((await r.call("alice", "GET", "/v1/code/repos")).json().repos.map((x: { fullName: string }) => x.fullName)).toEqual(["alice/app"]);
+    await r.app.close();
+  });
+
+  it("goes from the sign-in link to a merged pull request, and the token is in no reply at all", async () => {
+    const r = await rig({ signin: "on" });
+    const seen: string[] = [];
+    const watch = async (res: ReturnType<Rig["call"]>) => { const x = await res; seen.push(x.body); return x; };
+
+    const { begin, back, token } = await signIn(r);
+    seen.push(begin.body, back.body);
+    const u = new URL(begin.json().authorizeUrl);
+    expect(u.searchParams.get("scope")).toBe("repo read:user");
+    expect(back.statusCode).toBe(200);
+    expect(back.headers["content-type"]).toContain("text/html");
+    expect(back.headers["cache-control"]).toBe("no-store");
+    expect(back.body).toContain("<h1>GitHub connected</h1>");
+    expect(back.body).toContain('<a href="tulmi://">Open Tailzu</a>');
+
+    const status = (await watch(r.call("alice", "GET", "/v1/code/github"))).json();
+    expect(status).toMatchObject({ connected: true, installations: [], oauth: { connected: true, login: "alice", status: "active", workflow: false } });
+
+    const repo = r.fake.addRepo(900, "alice/app", { files: { "README.md": "# app\n" } });
+    const listed = (await watch(r.call("alice", "GET", "/v1/code/repos"))).json();
+    expect(listed).toEqual({ repos: [{ id: repo.id, fullName: "alice/app", private: true, defaultBranch: "main", installationId: 0, source: "oauth" }], truncated: false });
+
+    const added = (await watch(r.call("alice", "POST", "/v1/code/projects", { repoId: repo.id }))).json();
+    expect(added.project).toMatchObject({ linkKind: "oauth", installationId: 0, fullName: "alice/app" });
+    const id = added.project.id as string;
+    const { branch } = (await watch(r.call("alice", "POST", `/v1/code/projects/${id}/branches`, { task: "ship it" }))).json();
+    r.fake.push(repo, branch, { "feature.txt": "one\n" }, "Add the feature");
+    expect((await watch(r.call("alice", "POST", `${B(id, branch)}/pr`, { title: "Add feature", body: "B" }))).json().prNumber).toBe(1);
+    expect((await watch(r.call("alice", "POST", `${B(id, branch)}/pr/ready`))).json()).toEqual({ draft: false });
+    const ask = (await watch(r.call("alice", "POST", `${B(id, branch)}/pr/merge`))).json();
+    expect(ask.needsApproval).toBe(true);
+    expect((await watch(r.call("alice", "POST", `${B(id, branch)}/pr/merge`, { approvalId: ask.approvalId }))).json().merged).toBe(true);
+    expect(r.fake.files(repo, "main")).toMatchObject({ "feature.txt": "one\n" });
+    // The commits it made carry the trailer; the merge is the person's own, through their token.
+    expect(r.fake.calls.filter((c) => c.headers.authorization === `Bearer ${token}`).length).toBeGreaterThan(5);
+
+    // Tailzu only touched what was added: a repo that was not is out of reach, though the token reaches it.
+    const other = r.fake.addRepo(900, "alice/other");
+    const outsider = (await watch(r.call("alice", "POST", `/v1/code/projects/${other.id}/branches`, { task: "x" })));
+    expect(outsider.statusCode).toBe(404);
+
+    // Nothing the server sent, in any reply, held the token, the client secret, or the ciphertext.
+    const link = (await r.store.getOAuthLink("alice"))!;
+    for (const text of seen) {
+      expect(text).not.toContain(token);
+      expect(text).not.toContain(r.fake.oauthClientSecret);
+      expect(text).not.toContain(link.tokenEnc!);
+    }
+
+    // Disconnecting revokes at GitHub and forgets the link and its projects.
+    const out = await r.call("alice", "DELETE", SIGNIN);
+    expect(out.json()).toEqual({ ok: true, revoked: true });
+    expect(r.fake.revoked).toEqual([token]);
+    expect((await r.call("alice", "GET", "/v1/code/projects")).json()).toEqual({ projects: [] });
+    expect((await r.call("alice", "GET", "/v1/code/github")).json().oauth).toEqual({ connected: false });
+    await r.app.close();
+  });
+
+  it("refuses a token with scopes beyond what was asked: a 403 page, revoked, nothing connected", async () => {
+    const r = await rig({ signin: "on" });
+    const { back } = await signIn(r, "alice", { scopes: ["repo", "read:user", "delete_repo"] });
+    expect(back.statusCode).toBe(403);
+    expect(back.body).toContain("Nothing was connected");
+    expect(back.body).not.toContain("gho_");
+    expect(r.fake.revoked).toEqual(["gho_alice_route_token"]);
+    expect((await r.call("alice", "GET", "/v1/code/github")).json().oauth).toEqual({ connected: false });
+    await r.app.close();
+  });
+
+  it("answers a callback that is wrong, expired, replayed or declined with a 400 page", async () => {
+    const r = await rig({ signin: "on" });
+    const { back } = await signIn(r);
+    expect(back.statusCode).toBe(200);
+    const u = new URL((await r.call("alice", "POST", SIGNIN, {})).json().authorizeUrl);
+    const state = u.searchParams.get("state")!;
+    for (const url of [
+      `${CALLBACK}?code=x&state=garbage`, `${CALLBACK}?state=${state}`, `${CALLBACK}?code=x`, `${CALLBACK}`,
+      `${CALLBACK}?error=access_denied&state=${state}`, `${CALLBACK}?code=a&code=b&state=${state}`, `${CALLBACK}?code=${"a".repeat(5000)}&state=${state}`,
+    ]) {
+      const res = await r.app.inject({ method: "GET", url });
+      expect(res.statusCode, url.slice(0, 70)).toBe(400);
+      expect(res.headers["content-type"]).toContain("text/html");
+    }
+    // The state is spent only by an exchange that was tried; the one used above can't be used again.
+    r.fake.addOAuthPerson("again", "gho_replay", "alice", { challenge: u.searchParams.get("code_challenge")! });
+    expect((await r.app.inject({ method: "GET", url: `${CALLBACK}?code=again&state=${encodeURIComponent(state)}` })).statusCode).toBe(200);
+    expect((await r.app.inject({ method: "GET", url: `${CALLBACK}?code=again&state=${encodeURIComponent(state)}` })).statusCode).toBe(400);
+    await r.app.close();
+  });
+
+  it("tells the phone to sign in again when GitHub kills the token: 403 needs_signin everywhere, then back to normal", async () => {
+    const r = await rig({ signin: "on" });
+    const { token } = await signIn(r);
+    const repo = r.fake.addRepo(900, "alice/app");
+    const id = (await r.call("alice", "POST", "/v1/code/projects", { repoId: repo.id })).json().project.id as string;
+    r.fake.killOAuthToken(token);
+    const res = await r.call("alice", "POST", `/v1/code/projects/${id}/branches`, { task: "x" });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe("needs_signin");
+    expect((await r.call("alice", "GET", "/v1/code/github")).json().oauth).toMatchObject({ connected: false, status: "needs_signin", login: "alice" });
+    expect((await r.call("alice", "GET", "/v1/code/repos")).json()).toEqual({ repos: [], truncated: false, needsSignin: true });
+    expect((await r.call("alice", "POST", "/v1/code/projects", { repoId: repo.id })).json().code).toBe("needs_signin");
+    const { back } = await signIn(r);
+    expect(back.statusCode).toBe(200);
+    expect((await r.call("alice", "POST", `/v1/code/projects/${id}/branches`, { task: "x" })).statusCode).toBe(200);
+    await r.app.close();
+  });
+
+  it("says 'org_blocked' with a hint when an organisation hasn't let the sign-in in", async () => {
+    const r = await rig({ signin: "on" });
+    await signIn(r);
+    const acme = r.fake.addRepo(901, "acme/api");
+    r.fake.setPermission(acme, "alice", "write");
+    const id = (await r.call("alice", "POST", "/v1/code/projects", { repoId: acme.id })).json().project.id as string;
+    r.fake.blockOrg(acme);
+    const res = await r.call("alice", "POST", `/v1/code/projects/${id}/branches`, { task: "x" });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe("org_blocked");
+    expect(res.json().message).toMatch(/organi[sz]ation/i);
+    await r.app.close();
+  });
+});
+
 // ------------------------------------------------------------ whose repos
 
 describe("an install is not access to every repo in it", () => {
@@ -783,7 +995,10 @@ describe("logs", () => {
   });
 
   it("know the GitHub App's secrets as part of the environment the suite clears", () => {
-    for (const k of ["CODE_GITHUB", "GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_CLIENT_ID", "GITHUB_APP_CLIENT_SECRET", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_WEBHOOK_SECRET"]) {
+    for (const k of [
+      "CODE_GITHUB", "GITHUB_APP_ID", "GITHUB_APP_SLUG", "GITHUB_APP_CLIENT_ID", "GITHUB_APP_CLIENT_SECRET", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_WEBHOOK_SECRET",
+      "CODE_GITHUB_OAUTH", "GITHUB_OAUTH_CLIENT_ID", "GITHUB_OAUTH_CLIENT_SECRET",
+    ]) {
       expect(ENV_KEYS).toContain(k);
     }
   });
@@ -791,7 +1006,7 @@ describe("logs", () => {
 
 // ------------------------------------------------------------ the webhook, through the real server
 
-describe("GitHub's webhook, through the server", () => {
+describe("the real server with the Code bot on: GitHub's webhook, and deleting an account", () => {
   let app: FastifyInstance;
   const store = () => codeStore();
   const hook = (event: string, payload: unknown, o: { signature?: string | null; raw?: string } = {}) => {
@@ -812,6 +1027,9 @@ describe("GitHub's webhook, through the server", () => {
     process.env.GITHUB_APP_CLIENT_SECRET = "client-secret-xyz";
     process.env.GITHUB_APP_PRIVATE_KEY = Buffer.from(KEYS.privateKeyPem).toString("base64");
     process.env.GITHUB_APP_WEBHOOK_SECRET = WEBHOOK_SECRET;
+    process.env.CODE_GITHUB_OAUTH = "true";
+    process.env.GITHUB_OAUTH_CLIENT_ID = "Ov1.oauthclient";
+    process.env.GITHUB_OAUTH_CLIENT_SECRET = "oauth-secret-xyz";
     resetConfigForTests();
     resetCodeStoreForTests();
     const { buildApp } = await import("../src/server.js");
@@ -820,7 +1038,7 @@ describe("GitHub's webhook, through the server", () => {
   });
   afterAll(async () => {
     await app.close();
-    for (const k of ["CODE_GITHUB", "GITHUB_APP_SLUG", "GITHUB_APP_CLIENT_ID", "GITHUB_APP_CLIENT_SECRET", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_WEBHOOK_SECRET"]) delete process.env[k];
+    for (const k of ["CODE_GITHUB", "GITHUB_APP_SLUG", "GITHUB_APP_CLIENT_ID", "GITHUB_APP_CLIENT_SECRET", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_WEBHOOK_SECRET", "CODE_GITHUB_OAUTH", "GITHUB_OAUTH_CLIENT_ID", "GITHUB_OAUTH_CLIENT_SECRET"]) delete process.env[k];
     resetConfigForTests();
     resetCodeStoreForTests();
   });
@@ -948,6 +1166,48 @@ describe("GitHub's webhook, through the server", () => {
     expect(await store().listProjects("alice")).toHaveLength(2);
     expect(await store().getInstallation("bob", 101)).not.toBeNull();
     await reset();
+  });
+
+  it("revokes a person's GitHub sign-in token at GitHub when their account is deleted", async () => {
+    const fake = new FakeGithub(KEYS);
+    const { encrypt } = await import("../src/connectors/crypto.js");
+    const token = "gho_doomed_token";
+    fake.oauthTokens.set(token, { login: "alice", id: 1, scopes: ["repo", "read:user"] });
+    await store().saveOAuthLink("alice", { githubUserId: 1, githubLogin: "alice", tokenEnc: encrypt(token), scope: "repo, read:user" });
+    const deleted: string[] = [];
+    stub.admin = {
+      from: (table: string) => ({ delete: () => ({ eq: async () => { deleted.push(table); return { error: null, count: 0 }; } }) }),
+      auth: { admin: { deleteUser: async () => ({ error: null }) } },
+    };
+    const real = globalThis.fetch;
+    globalThis.fetch = fake.fetchFn;
+    try {
+      const res = await app.inject({ method: "DELETE", url: "/v1/account", headers: who("alice") });
+      expect(res.statusCode).toBe(200);
+      expect(fake.revoked).toEqual([token]);
+      // And its rows were in the list of what is deleted.
+      expect(deleted).toEqual(expect.arrayContaining(["code_oauth_links", "code_projects", "code_installations"]));
+    } finally {
+      globalThis.fetch = real;
+      stub.admin = null;
+    }
+  });
+
+  it("still deletes the account when GitHub can't be reached to revoke the sign-in token", async () => {
+    const fake = new FakeGithub(KEYS);
+    const { encrypt } = await import("../src/connectors/crypto.js");
+    await store().saveOAuthLink("bob", { githubUserId: 2, githubLogin: "bob", tokenEnc: encrypt("gho_bob"), scope: "repo, read:user" });
+    stub.admin = { from: () => ({ delete: () => ({ eq: async () => ({ error: null, count: 0 }) }) }), auth: { admin: { deleteUser: async () => ({ error: null }) } } };
+    fake.failWith = { prefix: "/applications", status: 500 };
+    const real = globalThis.fetch;
+    globalThis.fetch = fake.fetchFn;
+    try {
+      // The account goes either way: a deletion is never held up by GitHub. The row (and so the token) goes with it.
+      expect((await app.inject({ method: "DELETE", url: "/v1/account", headers: who("bob") })).statusCode).toBe(200);
+    } finally {
+      globalThis.fetch = real;
+      stub.admin = null;
+    }
   });
 
   it("never calls GitHub", async () => {

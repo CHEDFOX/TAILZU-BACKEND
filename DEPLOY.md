@@ -946,3 +946,15 @@ approved merge.
    picked, and 200 characters of each task. A person may use a repo only where
    they have write access on GitHub (or it is on their own account), checked
    against GitHub as described in `docs/github-app.md`.
+6. **Sign in with GitHub (optional, off by default).** A second way to connect
+   with no App install, through a classic GitHub OAuth App; it reaches all of a
+   person's repos, so Tailzu limits it itself (only repos added as projects,
+   push access re-checked before every write, the token encrypted and revoked on
+   disconnect, account delete and after 30 days unused). Run
+   `0021_code_oauth.sql`, make the OAuth App (callback
+   `https://api.tailzu.space/v1/code/github/signin/callback`, no device flow),
+   and set `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` and
+   `CODE_GITHUB_OAUTH=true` (also the kill switch: `false` and a restart and no
+   stored token is used). To end every token at once:
+   `docker compose exec backend node dist/tulmi/scripts/revoke-github-oauth.js`.
+   Details in `docs/github-app.md`, section 7.

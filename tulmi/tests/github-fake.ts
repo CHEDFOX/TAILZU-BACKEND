@@ -20,7 +20,14 @@
  * makes the first commit), branches merge (a real three-way merge of flat
  * trees, with conflicts), compare says what a branch changes, and pull
  * requests have a life: draft, comments, reviews, close, squash-merge, and
- * GraphQL for taking one out of draft. Every request is recorded in `calls`.
+ * GraphQL for taking one out of draft. A second way in, the classic OAuth
+ * App: `addOAuthPerson` makes a code that trades for a user token with the
+ * scopes it is given (and PKCE, when a challenge is given); that token works
+ * on /user (with X-OAuth-Scopes), /user/repos and the repo endpoints as the
+ * person, by what `setPermission` says they can do there (an owner is admin of
+ * their own repos); `killOAuthToken` is GitHub ending it, `blockOrg` an
+ * organisation that has not let the app in, and DELETE /applications/{id}/token
+ * revokes, recorded in `revoked`. Every request is recorded in `calls`.
  */
 import { createHash, generateKeyPairSync } from "node:crypto";
 import { jwtVerify, importSPKI } from "jose";
@@ -58,7 +65,7 @@ export interface FakePull {
 
 export type FakePermission = "admin" | "write" | "read" | "none";
 
-export interface Call { method: string; url: URL; headers: Record<string, string>; body: any; signal: boolean }
+export interface Call { method: string; url: URL; headers: Record<string, string>; body: any; signal: boolean; redirect?: string }
 
 const sha = (s: string) => createHash("sha1").update(s).digest("hex");
 
@@ -103,6 +110,18 @@ export class FakeGithub {
   /** Every request to this host path-prefix answers this status (e.g. 500). */
   failWith: { prefix: string; status: number } | null = null;
 
+  /** The classic OAuth App ("Sign in with GitHub"). */
+  readonly oauthClientId = "Ov1.oauthclient";
+  readonly oauthClientSecret = "oauth-secret-xyz";
+  /** code -> what trading it gives. */
+  private oauthGrants = new Map<string, { token: string; login: string; id: number; scopes: string[]; challenge?: string }>();
+  /** User tokens that work. */
+  oauthTokens = new Map<string, { login: string; id: number; scopes: string[] }>();
+  /** Tokens that were revoked through DELETE /applications/{client_id}/token, in order. */
+  revoked: string[] = [];
+  /** Repos of organisations that have not let the OAuth App in: a 403 about SAML / OAuth App access restrictions. */
+  private blocked = new Set<number>();
+
   constructor(readonly keys: AppKeys, readonly appClientId = "Iv1.testclient", readonly clientSecret = "client-secret-xyz") {}
 
   // ------------------------------------------------------------- the world
@@ -143,6 +162,29 @@ export class FakeGithub {
     this.codes.set(code, token);
     this.people.set(token, installIds);
     this.profiles.set(token, { id: 9000 + this.profiles.size + 1, login });
+  }
+
+  /**
+   * A person who will sign in with GitHub: trading `code` gives `token`, with `scopes`. If `challenge` is given the
+   * trade must carry a code_verifier that hashes to it (PKCE, S256).
+   */
+  addOAuthPerson(code: string, token: string, login: string, o: { scopes?: string[]; challenge?: string; id?: number } = {}) {
+    this.oauthGrants.set(code, { token, login, id: o.id ?? 5000 + this.oauthGrants.size + 1, scopes: o.scopes ?? ["repo", "read:user"], challenge: o.challenge });
+  }
+  /** GitHub ends the token (the person revoked it there): it answers 401 from now on. */
+  killOAuthToken(token: string) { this.oauthTokens.delete(token); }
+  /** An organisation (a repo of it) has not let the OAuth App in. */
+  blockOrg(repo: FakeRepo) { this.blocked.add(repo.id); }
+  /** What a person can do in a repo: an owner is admin of their own, else what `setPermission` says. */
+  private oauthPerm(repo: FakeRepo, login: string): FakePermission {
+    if (repo.fullName.split("/")[0]!.toLowerCase() === login.toLowerCase()) return "admin";
+    const said = this.perms.get(`${repo.id}|${login.toLowerCase()}`);
+    return said ?? "none";
+  }
+  /** The message of the commit a branch is at. */
+  headMessage(repo: FakeRepo, branch: string): string {
+    const g = this.git.get(repo.id)!;
+    return g.commits.get(g.refs.get(`heads/${branch}`)!)!.message;
   }
 
   /** What `login` may do in a repo. `null`: GitHub has never heard of them there (404). Without a call: "none". */
@@ -269,7 +311,7 @@ export class FakeGithub {
     const headers: Record<string, string> = {};
     for (const [k, v] of Object.entries((init?.headers ?? {}) as Record<string, string>)) headers[k.toLowerCase()] = v;
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-    const call: Call = { method: init?.method ?? "GET", url, headers, body, signal: init?.signal instanceof AbortSignal };
+    const call: Call = { method: init?.method ?? "GET", url, headers, body, signal: init?.signal instanceof AbortSignal, redirect: init?.redirect };
     this.calls.push(call);
     if (this.failWith && url.pathname.startsWith(this.failWith.prefix)) return this.reply(this.failWith.status, { message: "boom" });
     try {
@@ -280,8 +322,8 @@ export class FakeGithub {
     }
   };
 
-  private reply(status: number, json: unknown): Response {
-    return new Response(JSON.stringify(json), { status, headers: { "content-type": "application/json" } });
+  private reply(status: number, json: unknown, headers: Record<string, string> = {}): Response {
+    return new Response(JSON.stringify(json), { status, headers: { "content-type": "application/json", ...headers } });
   }
   private fail(status: number, message: string, errors?: unknown): never {
     throw this.reply(status, { message, ...(errors ? { errors } : {}) });
@@ -289,6 +331,17 @@ export class FakeGithub {
 
   private async oauth(c: Call): Promise<Response> {
     if (c.url.pathname !== "/login/oauth/access_token" || c.method !== "POST") return this.reply(404, {});
+    if (c.body?.client_id === this.oauthClientId) {
+      if (c.body?.client_secret !== this.oauthClientSecret) return this.reply(200, { error: "incorrect_client_credentials" });
+      const grant = this.oauthGrants.get(c.body?.code);
+      if (!grant) return this.reply(200, { error: "bad_verification_code" });
+      this.oauthGrants.delete(c.body.code);
+      if (grant.challenge && createHash("sha256").update(String(c.body?.code_verifier ?? "")).digest("base64url") !== grant.challenge) {
+        return this.reply(200, { error: "bad_verification_code" });
+      }
+      this.oauthTokens.set(grant.token, { login: grant.login, id: grant.id, scopes: grant.scopes });
+      return this.reply(200, { access_token: grant.token, scope: grant.scopes.join(","), token_type: "bearer" });
+    }
     if (c.body?.client_id !== this.appClientId || c.body?.client_secret !== this.clientSecret) return this.reply(200, { error: "incorrect_client_credentials" });
     const token = this.codes.get(c.body?.code);
     if (!token) return this.reply(200, { error: "bad_verification_code" });
@@ -317,6 +370,15 @@ export class FakeGithub {
   }
 
   private repoOf(c: Call, m: RegExpMatchArray): { repo: FakeRepo; git: RepoGit; token: { repositoryIds: number[] | null; permissions: Record<string, string> } } {
+    const person = this.oauthTokens.get(this.bearer(c));
+    if (person) {
+      const repo = this.repos.find((r) => r.fullName === `${m[1]}/${m[2]}`);
+      if (repo && this.blocked.has(repo.id)) this.fail(403, "Resource protected by organization SAML enforcement. You must grant your OAuth token access to this organization.");
+      const perm = repo ? this.oauthPerm(repo, person.login) : "none";
+      if (!repo || perm === "none") this.fail(404, "Not Found");
+      const write = perm === "admin" || perm === "write";
+      return { repo: repo!, git: this.git.get(repo!.id)!, token: { repositoryIds: null, permissions: write ? { contents: "write", pull_requests: "write", metadata: "read" } : { contents: "read", metadata: "read" } } };
+    }
     const token = this.tokens.get(this.bearer(c));
     if (!token || token.expiresAt <= this.clock.t) this.fail(401, "Bad credentials");
     const repo = this.repos.find((r) => r.fullName === `${m[1]}/${m[2]}`);
@@ -361,6 +423,32 @@ export class FakeGithub {
     const p = c.url.pathname;
     let m: RegExpMatchArray | null;
 
+    if (c.method === "GET" && p === "/user" && this.oauthTokens.has(this.bearer(c))) {
+      const me = this.oauthTokens.get(this.bearer(c))!;
+      return this.reply(200, { id: me.id, login: me.login, type: "User" }, { "x-oauth-scopes": me.scopes.join(", ") });
+    }
+    if (c.method === "GET" && p === "/user/repos") {
+      const me = this.oauthTokens.get(this.bearer(c));
+      if (!me) return this.reply(401, { message: "Bad credentials" });
+      const mine = this.repos.filter((r) => this.oauthPerm(r, me.login) !== "none");
+      const per = Number(c.url.searchParams.get("per_page") ?? 30), page = Number(c.url.searchParams.get("page") ?? 1);
+      return this.reply(200, mine.slice((page - 1) * per, page * per).map((r) => {
+        const perm = this.oauthPerm(r, me.login);
+        return {
+          id: r.id, name: r.fullName.split("/")[1], full_name: r.fullName, private: r.private, default_branch: r.defaultBranch,
+          html_url: `https://github.com/${r.fullName}`, archived: r.archived,
+          permissions: { admin: perm === "admin", push: perm === "admin" || perm === "write", pull: true },
+        };
+      }));
+    }
+    if (c.method === "DELETE" && (m = p.match(/^\/applications\/([^/]+)\/token$/))) {
+      const basic = Buffer.from(`${this.oauthClientId}:${this.oauthClientSecret}`).toString("base64");
+      if (m[1] !== this.oauthClientId || c.headers.authorization !== `Basic ${basic}`) return this.reply(401, { message: "Bad credentials" });
+      const t = String(c.body?.access_token ?? "");
+      if (!this.oauthTokens.delete(t)) return this.reply(404, { message: "Not Found" });
+      this.revoked.push(t);
+      return new Response(null, { status: 204 });
+    }
     if (c.method === "GET" && p === "/user") {
       const me = this.profiles.get(this.bearer(c));
       return me ? this.reply(200, { id: me.id, login: me.login, type: "User" }) : this.reply(401, { message: "Bad credentials" });
@@ -416,6 +504,14 @@ export class FakeGithub {
     }
 
     if (c.method === "POST" && p === "/graphql") return this.graphql(c);
+    if (c.method === "GET" && (m = p.match(/^\/repos\/([^/]+)\/([^/]+)$/))) {
+      const { repo, token } = this.repoOf(c, m);
+      const w = token.permissions.contents === "write";
+      return this.reply(200, {
+        id: repo.id, full_name: repo.fullName, default_branch: repo.defaultBranch, private: repo.private, archived: repo.archived,
+        permissions: { admin: false, push: w, pull: true },
+      });
+    }
 
     // Everything below is one repo's git data.
     if (!(m = p.match(/^\/repos\/([^/]+)\/([^/]+)(\/.*)$/))) return this.reply(404, { message: "Not Found" });
@@ -526,6 +622,12 @@ export class FakeGithub {
       const head = (c.url.searchParams.get("head") ?? "").split(":")[1];
       const open = git.pulls.filter((x) => x.head === head && x.state === "open");
       return this.reply(200, open.map((x) => ({ number: x.number, html_url: `https://github.com/${repo.fullName}/pull/${x.number}`, head: { ref: x.head } })));
+    }
+
+    // --- a short-lived download link for the code at a commit: a redirect, not the code
+    if (c.method === "GET" && (r = wanted(/^\/tarball\/([0-9a-f]{40})$/))) {
+      if (!git.commits.has(r[1]!)) return this.reply(404, { message: "Not Found" });
+      return new Response(null, { status: 302, headers: { location: `https://codeload.github.com/${repo.fullName}/legacy.tar.gz/${r[1]}?token=SHORT-LIVED-${this.seq++}` } });
     }
 
     // --- the first commit of an empty repo, and any later file through the contents API
@@ -651,18 +753,23 @@ export class FakeGithub {
 
   /** The two GraphQL operations the code uses. */
   private graphql(c: Call): Response {
-    const token = this.tokens.get(this.bearer(c));
-    if (!token || token.expiresAt <= this.clock.t) return this.reply(401, { message: "Bad credentials" });
+    const person = this.oauthTokens.get(this.bearer(c));
+    const token = person ? undefined : this.tokens.get(this.bearer(c));
+    if (!person && (!token || token.expiresAt <= this.clock.t)) return this.reply(401, { message: "Bad credentials" });
     const id = String(c.body?.variables?.id ?? "");
     const m = /^PR_(\d+)_(\d+)$/.exec(id);
     const repo = m && this.repos.find((x) => x.id === Number(m[1]));
     const pr = repo && this.git.get(repo.id)!.pulls.find((x) => x.number === Number(m![2]));
-    if (!repo || !pr || repo.installationId !== token.installationId || (token.repositoryIds && !token.repositoryIds.includes(repo.id))) {
+    const reaches = person
+      ? !!repo && this.oauthPerm(repo, person.login) !== "none"
+      : !!repo && repo.installationId === token!.installationId && !(token!.repositoryIds && !token!.repositoryIds.includes(repo.id));
+    if (!repo || !pr || !reaches) {
       return this.reply(200, { data: null, errors: [{ type: "NOT_FOUND", message: "Could not resolve to a node" }] });
     }
+    const permissions = person ? (["admin", "write"].includes(this.oauthPerm(repo, person.login)) ? { pull_requests: "write" } : {}) : token!.permissions;
     const query = String(c.body?.query ?? "");
     if (/markPullRequestReadyForReview/.test(query)) {
-      if (token.permissions.pull_requests !== "write") return this.reply(200, { data: null, errors: [{ type: "FORBIDDEN", message: "Resource not accessible by integration" }] });
+      if (permissions.pull_requests !== "write") return this.reply(200, { data: null, errors: [{ type: "FORBIDDEN", message: "Resource not accessible by integration" }] });
       if (pr.state !== "open") return this.reply(200, { data: null, errors: [{ message: "Pull request is not open" }] });
       pr.draft = false;
       return this.reply(200, { data: { markPullRequestReadyForReview: { pullRequest: { isDraft: false } } } });
