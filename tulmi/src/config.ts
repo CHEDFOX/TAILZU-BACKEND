@@ -661,6 +661,42 @@ const EnvSchema = z.object({
    * Supabase). Documentation hosts are kept for a day at least. 0 keeps nothing.
    */
   WEB_CACHE_TTL_MIN: z.coerce.number().int().min(0).max(10_080).default(360),
+  /**
+   * WEB SEARCH (src/web/search, docs/web-search.md): the Code bot's web_search and
+   * research tools. The direct sources (npm, PyPI, crates.io, GitHub, Stack
+   * Overflow, MDN, Hacker News, Wikipedia) need no key. Then, for a general web
+   * search, tried in this order and only as many as it takes:
+   *
+   * WEB_SEARXNG_URL: the address of a SearXNG we run (https, public: every call
+   * goes through the same guard that refuses private addresses, so an instance on
+   * the server's own network has to be reached through the reverse proxy). Its
+   * json format must be switched on. Anything that is not an https address is
+   * ignored with a warning.
+   * DuckDuckGo's HTML page comes next with no setting: free and for low volume
+   * only (one request every two seconds), and not something to build on.
+   * BRAVE_SEARCH_KEY: the paid fallback. SECRET: .env only.
+   * STACKEXCHANGE_KEY: an app key from stackapps.com, which raises Stack Overflow's
+   * 300 calls a day per address to 10,000. SECRET: .env only.
+   *
+   * WEB_SEARCH_DAILY and WEB_RESEARCH_DAILY hold one person to this many
+   * general-web-search queries and this many research runs in 24 hours (in memory,
+   * so a restart forgets). 0 turns that part off: no general web search, no research.
+   */
+  WEB_SEARXNG_URL: z.string().optional().transform((v) => {
+    const raw = (v ?? "").trim();
+    if (!raw) return undefined;
+    try {
+      const u = new URL(raw);
+      if (u.protocol !== "https:" || u.username || u.password) return undefined;
+      return `${u.origin}${u.pathname.replace(/\/+$/, "")}`;
+    } catch {
+      return undefined;
+    }
+  }),
+  BRAVE_SEARCH_KEY: z.string().trim().optional().transform((v) => v || undefined),
+  STACKEXCHANGE_KEY: z.string().trim().optional().transform((v) => v || undefined),
+  WEB_SEARCH_DAILY: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(0).max(100_000).default(200)),
+  WEB_RESEARCH_DAILY: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(0).max(100_000).default(30)),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 
@@ -1249,6 +1285,16 @@ export function getConfig(): AppConfig {
     }
   }
 
+  // The search keys are third-party API keys, not secrets of ours, so they have no length rule; the `$` trap is the same.
+  for (const [name, value] of [
+    ["BRAVE_SEARCH_KEY", env.BRAVE_SEARCH_KEY],
+    ["STACKEXCHANGE_KEY", env.STACKEXCHANGE_KEY],
+  ] as const) {
+    if (typeof value === "string" && value.includes("$")) {
+      console.warn(`[config] ${name} contains a "$". Docker Compose interpolates those in env_file values, so the running process may be holding a DIFFERENT key than the file does.`);
+    }
+  }
+
   // The selected STT provider must have its key.
   if (env.STT_PROVIDER === "openai" && !env.OPENAI_API_KEY) {
     throw new Error(
@@ -1270,6 +1316,11 @@ export function getConfig(): AppConfig {
   }
   if (env.CUSTOM_CONNECTORS && !env.CONNECTORS) {
     console.warn("[config] CUSTOM_CONNECTORS=true does nothing while CONNECTORS is off: nobody can add an app by link.");
+  }
+
+  // A SearXNG address that is not an https address was dropped by the schema; say so, since it is a setting someone typed.
+  if ((process.env.WEB_SEARXNG_URL ?? "").trim() && !env.WEB_SEARXNG_URL) {
+    console.warn("[config] WEB_SEARXNG_URL is not an https address (https://search.example.com): it is ignored, and web search goes to DuckDuckGo's page, then Brave if there is a key.");
   }
 
   // The Code bot switched on with half a GitHub App can be asked and never answer.

@@ -282,8 +282,7 @@ describe("migration 0026_web_cache.sql", () => {
 
   it("follows 0025 in the migrations folder", () => {
     const names = readdirSync(join(supabaseDir, "migrations")).sort();
-    expect(names.at(-1)).toBe("0026_web_cache.sql");
-    expect(names.at(-2)).toBe("0025_code_route_stats.sql");
+    expect(names.indexOf("0026_web_cache.sql")).toBe(names.indexOf("0025_code_route_stats.sql") + 1);
   });
 
   it("makes web_pages with the columns the cache reads and writes, keyed by the hash", () => {
