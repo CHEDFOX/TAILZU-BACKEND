@@ -72,6 +72,6 @@ WEB_CACHE_TTL_MIN=360    # needs migration 0026 for Supabase; memory without it
 
 ## 4. What's next
 
-* **Layer 3** (search tools) is the first caller: it will pass `render: getRenderer() ?? undefined`, use `section` to keep reads cheap, and use `purpose: "index"` when it gathers pages itself.
+* **Layer 3** (search tools, `docs/web-search.md`) is the first caller, and is built: `code/webTools.ts` passes `render: getRenderer() ?? undefined`, `web/research.ts` uses `section` to keep reads cheap, and `scripts/seed-web-index.ts` uses `purpose: "index"` because it gathers pages itself. The Code bot's `read_page` and research read as `purpose: "user"`: a person's agent opening a page is a browser, not a crawler.
 * **Layer 8: render where the job runs.** A page for a person's own errand is better opened on their desktop (their browser, their network), and a Code bot job's page on its GitHub Actions runner (Chrome preinstalled). Both are another provider of the same `Renderer`. `browser/engine.ts`, `guard.ts`, `cdp.ts` and `chrome.ts` import nothing from the app but `isBlockedAddress`, so they can be bundled into the runner script or the app. Not built yet.
 * Not done: per-hop `robots.txt` checks on redirects (the final host is checked after the fetch), `Crawl-delay`, opening web components' shadow DOM, scrolling a page to wake lazy-loaded content (content that fades in on scroll starts at `opacity:0` and is removed as hidden), and reading PDFs.
