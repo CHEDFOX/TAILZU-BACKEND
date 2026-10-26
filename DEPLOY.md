@@ -966,3 +966,17 @@ approved merge.
    stored token is used). To end every token at once:
    `docker compose exec backend node dist/tulmi/scripts/revoke-github-oauth.js`.
    Details in `docs/github-app.md`, section 7.
+7. **Jobs and the environment router (optional until the agent's brain is
+   built).** Run `0023_code_jobs.sql` (jobs, their steps, each person's paid-compute
+   rule, and what they used each month). Nothing else to switch on: with
+   `CODE_GITHUB` on, `POST /v1/code/jobs`, the desktop runner routes
+   (`/v1/code/runner/*`) and `GET`/`PUT /v1/code/settings/compute` answer, and a
+   ticker (every 15 seconds) takes back leases that ran out. Which of a person's
+   PCs are online is kept in the server's memory, so run one backend. Optional:
+   `CODE_GITHUB_FREE_MINUTES` (GitHub's monthly free Actions minutes, 2000 on a
+   free plan, with a tenth kept back). GitHub's free computers and paid compute
+   have no provider yet: until they do, only a person's own PC runs commands, and
+   a job with no PC online waits and tells them. Add to the privacy policy: the
+   first 500 characters of each job's task, the commands it ran, the last 8 KB each
+   step printed (none of it if it looks like it holds a secret), and each month's
+   GitHub minutes and paise used. How it works: `docs/code-router.md`.

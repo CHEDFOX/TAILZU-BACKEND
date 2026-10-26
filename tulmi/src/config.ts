@@ -580,6 +580,17 @@ const EnvSchema = z.object({
    */
   CODE_BOT_NAME: z.string().optional(),
   CODE_BOT_EMAIL: z.string().optional(),
+  /**
+   * THE JOB ROUTER'S GITHUB ALLOWANCE (src/code/jobs, docs/code-router.md). A
+   * coding job's steps that need a computer run on the cheapest place there is:
+   * the person's own PC, then GitHub's free computers (GitHub Actions), then
+   * paid compute under the person's own rule. GitHub gives a free plan 2,000
+   * Actions minutes a month, shared with everything else the person runs
+   * there, so Tailzu counts only its own use against this number and keeps a
+   * tenth of it back. Set it to 0 to never use GitHub's free computers, or to
+   * the person's plan's allowance if it is bigger. Needs migration 0023.
+   */
+  CODE_GITHUB_FREE_MINUTES: z.coerce.number().int().min(0).default(2000),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 

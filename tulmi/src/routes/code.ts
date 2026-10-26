@@ -76,6 +76,9 @@
  *
  *   POST   /v1/code/github/webhook            GitHub's own deliveries (code/webhook.ts); authenticated by signature
  *
+ * The jobs the bot runs on a branch, the desktop runner protocol (/v1/code/runner/*) and the person's compute
+ * settings (/v1/code/settings/compute) are in routes/codeJobs.ts; the router behind them is code/jobs/router.ts.
+ *
  * Every route but the callback and the webhook authenticates exactly like the
  * rest of /v1. The answers to "is this on":
  *
@@ -128,7 +131,7 @@ export interface CodeRoutesDeps {
 const OPEN_APP = "tulmi://";
 
 /** The HTTP status of a ConnectorError, by its code. Anything not listed (GitHub failing, mostly) is a 502. */
-const STATUS: Record<string, number> = {
+export const STATUS: Record<string, number> = {
   bad_state: 400, bad_request: 400, bad_branch: 400, bad_path: 400, binary_file: 400, too_large: 400, not_a_file: 400,
   not_yours: 403, no_access: 403, needs_reconnect: 403, not_found: 404,
   branch_moved: 409, branch_exists: 409, conflict: 409, too_many: 409, suspended: 409, nothing_to_review: 409, no_drafts: 409,
@@ -138,7 +141,28 @@ const STATUS: Record<string, number> = {
   needs_you: 403, policy_denied: 403, never: 403, needs_workflow_scope: 403,
   oauth_off: 404, needs_signin: 403, not_allowed: 403, org_blocked: 403, scope_too_broad: 403, scope_missing: 403,
   not_configured: 503, busy: 503,
+  // The jobs and the runner protocol (routes/codeJobs.ts): a lease someone else holds now, a step still out, a job that is over,
+  // a job that isn't waiting for what was said yes to, a PC that hasn't said hello, paid compute that is off or absent.
+  stale_lease: 409, step_in_flight: 409, job_over: 409, not_waiting: 409, unknown_device: 409, paid_off: 409, paid_unavailable: 409,
 };
+
+/**
+ * A failure as the answer to a request: the codes above by status, a refusal by
+ * the policy with what to show the person, anything else (a bug) thrown on.
+ * Shared with the jobs' routes (routes/codeJobs.ts).
+ */
+export function failCode(reply: FastifyReply, err: unknown) {
+  if (err instanceof CodeNeedsAccount) return reply.code(403).send({ code: "needs_account", message: err.message });
+  if (err instanceof NoTokenKey) return reply.code(503).send({ code: "not_configured", message: err.message });
+  // A refusal by the policy says which action, and whether it is one that asks with Face ID; one that is waiting for the person carries what to show them.
+  if (err instanceof PolicyError) {
+    return reply.code(STATUS[err.code] ?? 403).send({
+      code: err.code, message: err.message, action: err.info.action, faceId: err.info.faceId, ...(err.info.summary ? { summary: err.info.summary } : {}),
+    });
+  }
+  if (err instanceof ConnectorError) return reply.code(STATUS[err.code] ?? 502).send({ code: err.code, message: err.message });
+  throw err;
+}
 
 const POSITIVE = /^[0-9]{1,15}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -156,18 +180,7 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
   const off = (reply: FastifyReply) => reply.code(404).send({ code: "code_off", message: "The Code bot is not switched on." });
   const notConfigured = (reply: FastifyReply) => reply.code(503).send({ code: "not_configured", message: "GitHub isn't set up on this server yet." });
   const noSession = (reply: FastifyReply) => reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
-  const fail = (reply: FastifyReply, err: unknown) => {
-    if (err instanceof CodeNeedsAccount) return reply.code(403).send({ code: "needs_account", message: err.message });
-    if (err instanceof NoTokenKey) return reply.code(503).send({ code: "not_configured", message: err.message });
-    // A refusal by the policy says which action, and whether it is one that asks with Face ID; one that is waiting for the person carries what to show them.
-    if (err instanceof PolicyError) {
-      return reply.code(STATUS[err.code] ?? 403).send({
-        code: err.code, message: err.message, action: err.info.action, faceId: err.info.faceId, ...(err.info.summary ? { summary: err.info.summary } : {}),
-      });
-    }
-    if (err instanceof ConnectorError) return reply.code(STATUS[err.code] ?? 502).send({ code: err.code, message: err.message });
-    throw err;
-  };
+  const fail = failCode;
   /** `approvalId` from the body, or the address for a request that has none: step two of a question. Anything but a non-empty string is a 400. */
   const gateOptions = (body: Record<string, unknown>, query: unknown): GateOptions => {
     const id = body.approvalId !== undefined ? body.approvalId : (query && typeof query === "object" ? (query as Record<string, unknown>).approvalId : undefined);
