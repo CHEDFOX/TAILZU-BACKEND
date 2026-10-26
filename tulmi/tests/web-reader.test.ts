@@ -122,6 +122,35 @@ describe("the address a page is read from", () => {
   });
 });
 
+describe("keepHttp, the one test-only exception to https", () => {
+  it("leaves an http address as it is when asked, and every other address is still upgraded", async () => {
+    expect(pageTarget("http://example.com/a?b=1#f", true).href).toBe("http://example.com/a?b=1");
+    expect(pageTarget("http://example.com:8080/a").href).toBe("https://example.com:8080/a");
+    const s = site(() => html(ARTICLE));
+    const page = await readPage("http://example.com/guide", opts({ fetchFn: s.fetchFn, keepHttp: true }));
+    expect(s.calls.map((c) => c.url)).toEqual(["http://example.com/guide"]);
+    expect(page.url).toBe("http://example.com/guide");
+    // Not asked: upgraded, as always.
+    const t = site(() => html(ARTICLE));
+    await readPage("http://example.com/guide", opts({ fetchFn: t.fetchFn, keepHttp: false }));
+    expect(t.calls.map((c) => c.url)).toEqual(["https://example.com/guide"]);
+  });
+
+  it("is refused outside a test run, so production cannot be talked out of https", async () => {
+    const was = process.env.VITEST;
+    delete process.env.VITEST;
+    try {
+      const s = site(() => html(ARTICLE));
+      await expect(readPage("http://example.com/guide", opts({ fetchFn: s.fetchFn, keepHttp: true }))).rejects.toThrow(/tests only/);
+      expect(s.calls).toHaveLength(0);
+      await readPage("http://example.com/guide", opts({ fetchFn: s.fetchFn })); // without it, fine anywhere
+      expect(s.calls.map((c) => c.url)).toEqual(["https://example.com/guide"]);
+    } finally {
+      if (was !== undefined) process.env.VITEST = was;
+    }
+  });
+});
+
 describe("the request", () => {
   it("says who it is, asks for text first, and sends no cookie", async () => {
     const s = site(() => html(ARTICLE));

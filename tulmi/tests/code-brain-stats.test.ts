@@ -180,8 +180,9 @@ describe("migration 0025_code_route_stats.sql", () => {
 
   it("follows 0024 in the migrations folder", () => {
     const names = readdirSync(join(supabaseDir, "migrations")).sort();
-    expect(names.at(-1)).toBe("0025_code_route_stats.sql");
-    expect(names.at(-2)).toBe("0024_code_github_actions.sql");
+    const at = names.indexOf("0025_code_route_stats.sql");
+    expect(at).toBeGreaterThan(0);
+    expect(names[at - 1]).toBe("0024_code_github_actions.sql");
   });
 
   it("makes the table with the columns the store reads and writes, one row to a (task type, step, model)", () => {

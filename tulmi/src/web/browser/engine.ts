@@ -275,10 +275,15 @@ export class BrowserEngine {
       let committed = false;
       let status: number | undefined;
       let guardBlocked = false;
+      /** Every host the page's own document was asked of: the address, and each redirect on the way. */
+      const navHosts = new Set<string>();
 
       stops.push(page.on("Network.requestWillBeSent", (p) => {
         if (!OPEN_ENDED.has(p.type)) inflight.add(p.requestId);
         lastActivity = Date.now();
+        if (p.type === "Document" && p.frameId === mainFrame) {
+          try { navHosts.add(new URL(p.request?.url).hostname.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.$/, "")); } catch { /* not an address */ }
+        }
       }));
       for (const done of ["Network.loadingFinished", "Network.loadingFailed"]) {
         stops.push(page.on(done, (p) => { inflight.delete(p.requestId); lastActivity = Date.now(); }));
@@ -318,7 +323,8 @@ export class BrowserEngine {
 
       const nav = await page.send<{ errorText?: string }>("Page.navigate", { url: u.href }, left());
       if (nav.errorText) {
-        const refused = this.refusals.some((r) => r.at >= startedAt && r.host === u.hostname.replace(/^\[|\]$/g, "").toLowerCase());
+        // The guard turned the page away: its own 403 is seen (guardBlocked), or the tunnel it refused was for the page or one of its redirects.
+        const refused = guardBlocked || this.refusals.some((r) => r.at >= startedAt && navHosts.has(r.host));
         throw new BrowserError(refused ? "blocked" : "navigation_failed", nav.errorText.replace(/^net::/, ""));
       }
 
