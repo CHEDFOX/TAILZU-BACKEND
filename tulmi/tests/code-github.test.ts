@@ -1,8 +1,10 @@
 /**
  * The Code bot's GitHub side, against a fake GitHub (tests/github-fake.ts):
  * the App's JWT and installation tokens, tying an install to a person,
- * listing repos, projects, work branches, the guard on every write, commits,
- * draft PRs, the workspace the bot will use, and what the webhook does.
+ * listing repos, projects, work branches, the names and paths that are never
+ * right, commits, draft PRs, the workspace the bot will use, and what the
+ * webhook does. What the bot may do, and what it asks about first, is
+ * tests/code-policy.test.ts.
  *
  * Nothing here reaches the network: GitHub is an injected fetchFn.
  */
@@ -20,7 +22,7 @@ vi.hoisted(() => {
 });
 
 const { appKeys, FakeGithub } = await import("./github-fake.js");
-const { GithubApp, assertWorkBranch, assertRepoPath, parsePrivateKey, REPOS_MAX } = await import("../src/code/github.js");
+const { GithubApp, isWorkBranchName, validBranchName, assertRepoPath, parsePrivateKey, REPOS_MAX } = await import("../src/code/github.js");
 const { MemoryCodeStore } = await import("../src/code/store.js");
 const { beginConnect, completeCallback, CODE_STATE_ID, forgetInstallation, installationView, linkStatus, manageUrl } = await import("../src/code/link.js");
 const {
@@ -30,7 +32,7 @@ const { handleWebhook, signatureFor, signatureOk } = await import("../src/code/w
 const { ApprovalBook, APPROVAL_TTL_MS } = await import("../src/code/approvals.js");
 const { initEmptyRepo, newRepoLink, runnerAccess } = await import("../src/code/projects.js");
 const {
-  branchDiff, closePr, confirmMerge, deleteWorkBranch, markReady, prComments, prStatus, requestMerge, syncBranch,
+  branchDiff, closePr, confirmMerge, deleteWorkBranch, markReady, mergePr, prComments, prStatus, requestMerge, syncBranch,
 } = await import("../src/code/pulls.js");
 const { signState, verifyState } = await import("../src/connectors/oauth.js");
 
@@ -58,6 +60,15 @@ function rig(o: { clientId?: string; appId?: string; privateKey?: string } = {})
 
 /** What the install step keeps of who the person is on GitHub. */
 const asLinked = (login: string | null, id = 77) => ({ githubUserId: login === null ? null : id, githubLogin: login });
+
+/**
+ * The question answered yes: runs the operation; if it asked, runs it again with the approval it gave.
+ * For the operations that ask (ready, close, delete, init, a commit to a branch the bot didn't make).
+ */
+const yes = async (run: (o: { approvalId?: string }) => Promise<any>): Promise<any> => {
+  const first = await run({});
+  return first?.needsApproval ? run({ approvalId: first.approvalId }) : first;
+};
 
 /** Alice, with an install that has a repo, linked on our side. */
 async function withProject() {
@@ -532,7 +543,7 @@ describe("work branches", () => {
     expect(branchSlug("")).toBe("work");
     for (const task of ["Fix the login bug", "लॉगिन ठीक करो", "x".repeat(500), "a b c"]) {
       expect(newBranchName(task)).toMatch(/^tailzu\/[a-z0-9][a-z0-9-]{0,31}-[0-9a-f]{4}$/);
-      expect(() => assertWorkBranch(newBranchName(task), "main")).not.toThrow();
+      expect(isWorkBranchName(newBranchName(task), "main"), task).toBe(true);
     }
   });
 
@@ -579,39 +590,43 @@ describe("work branches", () => {
   });
 });
 
-// ------------------------------------------------------------ the guard
+// ------------------------------------------------------------ names and paths
 
-describe("the guard", () => {
-  it("accepts tailzu/ branches and nothing else", () => {
+describe("names and paths", () => {
+  it("knows the names the bot gives its own branches: tailzu/ and a slug, never the default branch", () => {
     for (const ok of ["tailzu/fix-1a2b", "tailzu/work-0000", "tailzu/a", "tailzu/" + "a".repeat(49)]) {
-      expect(() => assertWorkBranch(ok, "main"), ok).not.toThrow();
+      expect(isWorkBranchName(ok, "main"), ok).toBe(true);
     }
     for (const bad of [
       "main", "master", "develop", "feature/x", "tailzu", "tailzu/", "tailzu//x", "tailzu/-x", "tailzu/Fix", "tailzu/a b",
       "tailzu/a..b", "tailzu/../main", "tailzu/x/y", "tailzu/" + "a".repeat(50), "refs/heads/main", "/tailzu/x", "xtailzu/x",
       "tailzu/x\n", "TAILZU/x", "", " tailzu/x", "tailzu/x.lock",
     ]) {
-      expect(() => assertWorkBranch(bad, "main"), JSON.stringify(bad)).toThrowError(expect.objectContaining({ code: "bad_branch" }));
+      expect(isWorkBranchName(bad, "main"), JSON.stringify(bad)).toBe(false);
     }
     // Not even a work-branch-looking name when that IS the repo's default branch.
-    expect(() => assertWorkBranch("tailzu/x-1234", "tailzu/x-1234")).toThrow();
-    expect(() => assertWorkBranch(undefined as unknown as string, "main")).toThrow();
+    expect(isWorkBranchName("tailzu/x-1234", "tailzu/x-1234")).toBe(false);
+    expect(isWorkBranchName(undefined as unknown as string, "main")).toBe(false);
   });
 
-  it("accepts only relative paths with no .. part, and writes nothing under .github/workflows or .git", () => {
-    for (const ok of ["a.txt", "src/a/b.ts", "a..b.txt", ".github/CODEOWNERS", ".github/workflowsx/a", ".gitignore", "dir/.hidden", "ü/é.md"]) {
-      expect(() => assertRepoPath(ok, true), ok).not.toThrow();
+  it("takes any branch name git would take, and no other (the bot may now work on any branch)", () => {
+    for (const ok of ["main", "feature/x", "release/1.0", "tailzu/fix-1a2b", "a", "dev_2", "Fix-Login", "ü/é"]) {
+      expect(validBranchName(ok), ok).toBe(true);
+    }
+    for (const bad of ["", " main", "a b", "a..b", "a~1", "a^", "a:b", "a?", "a*", "a[", "a\\b", "/a", "a/", "a//b", "x.lock", "a@{1}", "a\u0000b", "a\n", undefined, null, 5, "x".repeat(256)]) {
+      expect(validBranchName(bad as string), JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it("accepts only relative paths with no .. part and nothing inside .git (workflow files are a question for the policy, not a bad path)", () => {
+    for (const ok of ["a.txt", "src/a/b.ts", "a..b.txt", ".github/CODEOWNERS", ".github/workflowsx/a", ".gitignore", "dir/.hidden", "ü/é.md", ".github/workflows/ci.yml"]) {
+      expect(() => assertRepoPath(ok), ok).not.toThrow();
     }
     for (const bad of [
       "", "/etc/passwd", "../x", "a/../b", "a/..", "..", ".", "./a", "a//b", "a/", "C:\\x", "C:/x", "a\\b", "a\0b", "x".repeat(501),
       ".git/config", "a/.git/hooks/pre-commit", ".GIT/config", undefined, null, 7,
     ]) {
-      expect(() => assertRepoPath(bad as string, true), JSON.stringify(bad)).toThrowError(expect.objectContaining({ code: "bad_path" }));
-    }
-    for (const wf of [".github/workflows/ci.yml", ".github/workflows/a/b.yml", ".GitHub/Workflows/ci.yml", ".github/workflows"]) {
-      expect(() => assertRepoPath(wf, true), wf).toThrowError(expect.objectContaining({ code: "bad_path", message: expect.stringContaining("workflows") }));
-      // Reading a workflow file is harmless.
-      expect(() => assertRepoPath(wf, false), wf).not.toThrow();
+      expect(() => assertRepoPath(bad as string), JSON.stringify(bad)).toThrowError(expect.objectContaining({ code: "bad_path" }));
     }
   });
 });
@@ -713,7 +728,12 @@ describe("committing", () => {
       { path: "README.md", mode: "100644", type: "blob", content: "# app, changed\n" },
       { path: "src/a.ts", mode: "100644", type: "blob", sha: null },
     ]);
-    expect(commit!.body).toMatchObject({ message: "Add b, change the readme, drop a", parents: [baseSha] });
+    // The bot is the author; the person is credited at the end of the message; the committer is left for GitHub to fill in.
+    expect(commit!.body).toEqual({
+      message: "Add b, change the readme, drop a\n\nCo-authored-by: alice <77+alice@users.noreply.github.com>",
+      tree: expect.any(String), parents: [baseSha], author: { name: "Blip", email: "blip@tailzu.space" },
+    });
+    expect(commit!.body).not.toHaveProperty("committer");
     expect(patch!.body).toEqual({ sha: r.sha, force: false });
   });
 
@@ -732,21 +752,27 @@ describe("committing", () => {
     expect(fake.files(repo, branch)).toMatchObject({ "theirs.txt": "kept", "mine.txt": "mine" });
   });
 
-  it("refuses the default branch, a branch outside tailzu/, .., and .github/workflows, without calling GitHub", async () => {
+  it("refuses a branch name git wouldn't take, and a path outside the repo or inside .git, without calling GitHub (the paths that are never right)", async () => {
     const { github, fake, repo } = await withProject();
     const ref = { installationId: 101, repoId: repo.id, fullName: repo.fullName, defaultBranch: "main" };
     const one = [{ path: "a.txt", content: "x" }];
     fake.calls.length = 0;
-    for (const branch of ["main", "feature/x", "master", "tailzu/../main", "tailzu/a..b", "TAILZU/x", ""]) {
+    for (const branch of ["tailzu/../main", "tailzu/a..b", "a b", "", "x.lock"]) {
       await expect(github.commit(ref, branch, one, "m"), branch).rejects.toMatchObject({ code: "bad_branch" });
     }
-    await expect(github.commit({ ...ref, defaultBranch: "tailzu/x-1234" }, "tailzu/x-1234", one, "m")).rejects.toMatchObject({ code: "bad_branch" });
-    for (const path of ["../x", "a/../../b", "/abs", ".github/workflows/ci.yml", ".git/config", ""]) {
+    for (const path of ["../x", "a/../../b", "/abs", ".git/config", ""]) {
       await expect(github.commit(ref, "tailzu/ok-1234", [{ path, content: "x" }], "m"), path).rejects.toMatchObject({ code: "bad_path" });
     }
     // One bad path anywhere in the commit refuses the whole commit.
-    await expect(github.commit(ref, "tailzu/ok-1234", [...one, { path: ".github/workflows/x.yml", content: "x" }], "m")).rejects.toMatchObject({ code: "bad_path" });
+    await expect(github.commit(ref, "tailzu/ok-1234", [...one, { path: "a/.git/hooks/x", content: "x" }], "m")).rejects.toMatchObject({ code: "bad_path" });
     expect(fake.calls).toHaveLength(0);
+  });
+
+  it("is not fenced to tailzu/ any more at this level: the client does what it is told, and the policy above it decides whether to", async () => {
+    const { github, fake, repo } = await withProject();
+    const ref = { installationId: 101, repoId: repo.id, fullName: repo.fullName, defaultBranch: "main" };
+    await github.commit(ref, "main", [{ path: "a.txt", content: "x" }], "m");
+    expect(fake.files(repo, "main")).toMatchObject({ "a.txt": "x" });
   });
 
   it("refuses an empty commit, no message, the same path twice, too many files, and a file over 1 MB", async () => {
@@ -811,42 +837,62 @@ describe("draft pull requests", () => {
     await expect(openPr(d, "alice", project.id, branch, "T", "B")).rejects.toMatchObject({ code: "nothing_to_review" });
   });
 
-  it("only opens one from a branch Tailzu made in this person's project, with a title", async () => {
+  it("opens one only in the person's own project, with a title, and never from the branch it goes into", async () => {
     const { d, github, project, fake, repo } = await withProject();
     const { branch } = await createWorkBranch(d, "alice", project.id, "pr");
     await expect(openPr(d, "bob", project.id, branch, "T", "B")).rejects.toMatchObject({ code: "not_found" });
-    await expect(openPr(d, "alice", project.id, "tailzu/never-made-1234", "T", "B")).rejects.toMatchObject({ code: "not_found" });
-    await expect(openPr(d, "alice", project.id, "main", "T", "B")).rejects.toMatchObject({ code: "not_found" });
+    await expect(openPr(d, "alice", project.id, "not a branch", "T", "B")).rejects.toMatchObject({ code: "not_found" });
+    await expect(openPr(d, "alice", project.id, "main", "T", "B")).rejects.toMatchObject({ code: "bad_branch" });
     await expect(openPr(d, "alice", project.id, branch, "", "B")).rejects.toMatchObject({ code: "bad_request" });
     await expect(openPr(d, "alice", project.id, branch, undefined, "B")).rejects.toMatchObject({ code: "bad_request" });
-    // And the GitHub call itself refuses the default branch as the head, whoever asks.
+    // A branch that isn't on GitHub isn't there.
+    await expect(openPr(d, "alice", project.id, "tailzu/never-made-1234", "T", "B")).rejects.toMatchObject({ code: "not_found" });
+    // And the client itself won't make a pull request out of the branch it goes into.
     const ref = { installationId: 101, repoId: repo.id, fullName: repo.fullName, defaultBranch: "main" };
     fake.calls.length = 0;
     await expect(github.openDraftPr(ref, "main", "T", "B")).rejects.toMatchObject({ code: "bad_branch" });
-    await expect(github.openDraftPr(ref, "feature/x", "T", "B")).rejects.toMatchObject({ code: "bad_branch" });
     expect(fake.calls).toHaveLength(0);
+  });
+
+  it("opens one for a branch the bot didn't make without asking (a draft changes nothing), and keeps no record of it", async () => {
+    const { d, project, fake, repo, store } = await withProject();
+    fake.push(repo, "main", { "x": "y" });
+    // A branch of the person's own, made on GitHub.
+    const head = fake.head(repo, "main")!;
+    await d.github.createBranch({ installationId: 101, repoId: repo.id, fullName: repo.fullName, defaultBranch: "main" }, "feature/login");
+    fake.push(repo, "feature/login", { "login.ts": "x" }, "the person's work");
+    const pr = await openPr(d, "alice", project.id, "feature/login", "Login", "B");
+    expect(pr).toEqual({ prNumber: 1, prUrl: "https://github.com/alice/app/pull/1", existing: false });
+    expect(fake.pulls(repo)).toMatchObject([{ head: "feature/login", base: "main", draft: true }]);
+    expect(await store.getBranch(project.id, "feature/login")).toBeNull();
+    expect(head).toBeDefined();
   });
 });
 
 // ------------------------------------------------------------ the workspace
 
 describe("the workspace", () => {
-  it("is for the person's own project and a branch Tailzu recorded in it, nothing else", async () => {
+  it("is for the person's own project and a branch of it: the bot's own, or any other (reading is free)", async () => {
     const { d, project, fake, repo } = await withProject();
     const { branch } = await createWorkBranch(d, "alice", project.id, "mine");
-    // A branch that exists on GitHub but that Tailzu never recorded is not a work branch.
-    fake.push(repo, "main", { "x": "y" });
-    const { baseSha } = await createWorkBranch(d, "alice", project.id, "another");
     for (const [user, id, b] of [
       ["bob", project.id, branch], ["alice", "00000000-0000-4000-8000-000000000000", branch], ["alice", "not-a-uuid", branch],
-      ["alice", project.id, "main"], ["alice", project.id, "tailzu/unrecorded-0000"], ["alice", project.id, ""],
+      ["alice", project.id, "not a branch"], ["alice", project.id, ""], ["alice", project.id, "a..b"],
     ] as const) {
       await expect(workspace(d, user, id, b), `${user} ${id} ${b}`).rejects.toMatchObject({ code: "not_found" });
     }
     const ws = await workspace(d, "alice", project.id, branch);
     expect(ws.branch).toBe(branch);
+    expect(ws.own).toBe(true);
     expect(ws.project.fullName).toBe("alice/app");
-    expect(baseSha).toBeDefined();
+    // The default branch, and one the bot never made, can be looked at; they are just not the bot's own.
+    const main = await workspace(d, "alice", project.id, "main");
+    expect(main.own).toBe(false);
+    expect((await main.read("README.md")).text).toBe("# app\n");
+    fake.push(repo, "main", { "x": "y" });
+    expect((await workspace(d, "alice", project.id, "tailzu/unrecorded-0000")).own).toBe(false);
+    // A name that is a work branch's name, and the default branch's own name, are not "own" unless Tailzu made it.
+    expect((await workspace(d, "alice", project.id, "feature/x")).own).toBe(false);
   });
 
   it("stops when GitHub has suspended the install", async () => {
@@ -865,7 +911,7 @@ describe("the workspace", () => {
     const main = fake.head(repo, "main");
     await ws.commit([{ path: "z.txt", content: "z" }], "z");
     expect(fake.head(repo, "main")).toBe(main);
-    expect(Object.keys(ws).sort()).toEqual(["branch", "commit", "openDraftPr", "project", "read", "tree"]);
+    expect(Object.keys(ws).sort()).toEqual(["branch", "commit", "openDraftPr", "own", "project", "read", "tree"]);
   });
 });
 
@@ -1175,18 +1221,32 @@ describe("new and empty repos", () => {
     expect(fake.commitCount(repo)).toBe(0);
   });
 
-  it("starts an empty repo with one README.md on its default branch, and then work branches work as usual", async () => {
+  it("starts an empty repo with one README.md on its default branch, after a yes, and then work branches work as usual", async () => {
     const { d, project, fake, repo } = await emptyProject();
-    const r = await initEmptyRepo(d, "alice", project.id, "Fresh Idea");
+    // Step one asks, and writes nothing.
+    const asked = await initEmptyRepo(d, "alice", project.id, "Fresh Idea");
+    expect(asked).toMatchObject({ needsApproval: true, action: "repo.init", faceId: false, summary: { readme: "Fresh Idea", project: "alice/fresh-idea" } });
+    expect(fake.writes()).toHaveLength(0);
+    expect(fake.commitCount(repo)).toBe(0);
+
+    fake.calls.length = 0;
+    const r = await initEmptyRepo(d, "alice", project.id, "Fresh Idea", { approvalId: (asked as { approvalId: string }).approvalId }) as { commitSha: string };
     expect(r.commitSha).toMatch(/^[0-9a-f]{40}$/);
     expect(fake.files(repo, "main")).toEqual({ "README.md": "# Fresh Idea\n" });
     expect(fake.head(repo, "main")).toBe(r.commitSha);
     expect(fake.commitCount(repo)).toBe(1);
-    // It asked whether the repo was empty first, and then wrote exactly one file.
+    // It asked whether the repo was empty (before the question was answered, and again by the client), and then wrote exactly one file.
     const calls = fake.calls.filter((c) => c.url.pathname.startsWith("/repos/") && !c.url.pathname.includes("/collaborators/")).map((c) => `${c.method} ${c.url.pathname}${c.url.search}`);
-    expect(calls).toEqual(["GET /repos/alice/fresh-idea/commits?per_page=1", "PUT /repos/alice/fresh-idea/contents/README.md"]);
+    expect(calls).toEqual([
+      "GET /repos/alice/fresh-idea/commits?per_page=1", "GET /repos/alice/fresh-idea/commits?per_page=1", "PUT /repos/alice/fresh-idea/contents/README.md",
+    ]);
+    // By the bot, with the person credited.
     const put = fake.writes()[0]!;
-    expect(put.body).toEqual({ message: "Add README", content: Buffer.from("# Fresh Idea\n").toString("base64") });
+    expect(put.body).toEqual({
+      message: "Add README\n\nCo-authored-by: alice <77+alice@users.noreply.github.com>", content: Buffer.from("# Fresh Idea\n").toString("base64"),
+      author: { name: "Blip", email: "blip@tailzu.space" },
+    });
+    expect(fake.headCommit(repo, "main").author).toEqual({ name: "Blip", email: "blip@tailzu.space" });
     // And now it can be worked on.
     const made = await createWorkBranch(d, "alice", project.id, "first task");
     expect(made.baseSha).toBe(r.commitSha);
@@ -1194,17 +1254,17 @@ describe("new and empty repos", () => {
 
   it("titles the README with the repo's name when no title is given, and keeps the title to one clean line", async () => {
     const a = await emptyProject();
-    await initEmptyRepo(a.d, "alice", a.project.id);
+    await yes((o) => initEmptyRepo(a.d, "alice", a.project.id, undefined, o));
     expect(a.fake.files(a.repo, "main")).toEqual({ "README.md": "# fresh-idea\n" });
     const b = await emptyProject();
-    await initEmptyRepo(b.d, "alice", b.project.id, "  Two\nlines\u0000here  ");
+    await yes((o) => initEmptyRepo(b.d, "alice", b.project.id, "  Two\nlines\u0000here  ", o));
     expect(b.fake.files(b.repo, "main")["README.md"]).toBe("# Two lines here\n");
     const c = await emptyProject();
-    await initEmptyRepo(c.d, "alice", c.project.id, "   ");
+    await yes((o) => initEmptyRepo(c.d, "alice", c.project.id, "   ", o));
     expect(c.fake.files(c.repo, "main")["README.md"]).toBe("# fresh-idea\n");
   });
 
-  it("refuses a repo that has commits, without writing anything: the one exception to 'never the default branch' has a guard", async () => {
+  it("refuses a repo that has commits, before asking anything and without writing anything", async () => {
     const { d, project, fake, repo, github } = await withProject();
     const head = fake.head(repo, "main");
     fake.calls.length = 0;
@@ -1321,15 +1381,16 @@ describe("keeping a branch current", () => {
     expect(await stateOf(w, branch)).toBe("active");
   });
 
-  it("only touches a branch Tailzu recorded for this person, and the client's own guard stops 'base' being anything else", async () => {
+  it("only touches the person's own project; the default branch has nothing to catch up to; a branch that isn't on GitHub isn't there", async () => {
     const w = await withPr();
     const { d, github, repo, fake } = w;
-    for (const [user, b] of [["bob", w.branch], ["alice", "main"], ["alice", "tailzu/unrecorded-0000"]] as const) {
-      await expect(syncBranch(d, user, w.project.id, b), `${user} ${b}`).rejects.toMatchObject({ code: "not_found" });
-    }
+    await expect(syncBranch(d, "bob", w.project.id, w.branch)).rejects.toMatchObject({ code: "not_found" });
+    await expect(syncBranch(d, "alice", w.project.id, "not a branch")).rejects.toMatchObject({ code: "not_found" });
+    await expect(syncBranch(d, "alice", w.project.id, "tailzu/unrecorded-0000")).rejects.toMatchObject({ code: "not_found" });
+    await expect(syncBranch(d, "alice", w.project.id, "main")).rejects.toMatchObject({ code: "bad_branch" });
     const ref = { installationId: 101, repoId: repo.id, fullName: repo.fullName, defaultBranch: "main" };
     fake.calls.length = 0;
-    for (const bad of ["main", "feature/x", "tailzu/../main"]) {
+    for (const bad of ["main", "tailzu/../main", "a b"]) {
       await expect(github.mergeDefaultInto(ref, bad), bad).rejects.toMatchObject({ code: "bad_branch" });
     }
     expect(fake.calls).toHaveLength(0);
@@ -1378,10 +1439,11 @@ describe("what a branch changed", () => {
     expect((await branchDiff(few.d, "alice", few.project.id, few.branch)).truncated).toBe(false);
   });
 
-  it("is a read of the person's own branch only", async () => {
+  it("is a read of the person's own project: any branch of it (reading is free), nobody else's", async () => {
     const w = await withPr();
     await expect(branchDiff(w.d, "bob", w.project.id, w.branch)).rejects.toMatchObject({ code: "not_found" });
-    await expect(branchDiff(w.d, "alice", w.project.id, "main")).rejects.toMatchObject({ code: "not_found" });
+    await expect(branchDiff(w.d, "alice", w.project.id, "not a branch")).rejects.toMatchObject({ code: "not_found" });
+    expect(await branchDiff(w.d, "alice", w.project.id, "main")).toMatchObject({ aheadBy: 0, behindBy: 0, files: [] });
   });
 });
 
@@ -1460,18 +1522,23 @@ describe("the pull request", () => {
     expect(comments[0]!.createdAt).toBeLessThan(comments[99]!.createdAt);
   });
 
-  it("takes a pull request out of draft with GraphQL, once", async () => {
+  it("takes a pull request out of draft with GraphQL, after a yes, once", async () => {
     const w = await withPr();
     const { d, fake, repo, project, branch, pr } = w;
     fake.calls.length = 0;
-    expect(await markReady(d, "alice", project.id, branch)).toEqual({ draft: false });
+    // Step one asks and changes nothing.
+    const asked = await markReady(d, "alice", project.id, branch) as { approvalId: string };
+    expect(asked).toMatchObject({ needsApproval: true, action: "pr.ready", faceId: false, summary: { title: "Add feature", number: pr.prNumber } });
+    expect(fake.pulls(repo)[0]!.draft).toBe(true);
+    expect(fake.calls.some((c) => c.url.pathname === "/graphql" && /mutation/.test(String(c.body?.query)))).toBe(false);
+    expect(await markReady(d, "alice", project.id, branch, { approvalId: asked.approvalId })).toEqual({ draft: false });
     expect(fake.pulls(repo)[0]!.draft).toBe(false);
     const mutation = fake.calls.find((c) => c.url.pathname === "/graphql")!;
     expect(mutation.body.query).toMatch(/markPullRequestReadyForReview/);
     expect(mutation.body.variables).toEqual({ id: `PR_${repo.id}_${pr.prNumber}` });
-    // Already ready: fine, and no second mutation.
+    // Already ready: fine, nothing to ask, and no second mutation.
     fake.calls.length = 0;
-    await markReady(d, "alice", project.id, branch);
+    expect(await markReady(d, "alice", project.id, branch)).toEqual({ draft: false });
     expect(fake.calls.some((c) => c.url.pathname === "/graphql")).toBe(false);
   });
 
@@ -1481,16 +1548,19 @@ describe("the pull request", () => {
     await expect(markReady(w.d, "alice", w.project.id, w.branch)).rejects.toMatchObject({ code: "pr_not_open" });
   });
 
-  it("closes a pull request without merging it", async () => {
+  it("closes a pull request without merging it, after a yes", async () => {
     const w = await withPr();
     const { d, fake, repo, project, branch } = w;
     const mainHead = fake.head(repo, "main");
-    expect(await closePr(d, "alice", project.id, branch)).toEqual({ state: "closed" });
+    const asked = await closePr(d, "alice", project.id, branch) as { approvalId: string };
+    expect(asked).toMatchObject({ needsApproval: true, action: "pr.close", faceId: false });
+    expect(fake.pulls(repo)[0]).toMatchObject({ state: "open" });
+    expect(await closePr(d, "alice", project.id, branch, { approvalId: asked.approvalId })).toEqual({ state: "closed" });
     expect(fake.pulls(repo)[0]).toMatchObject({ state: "closed", merged: false });
     expect(fake.head(repo, "main")).toBe(mainHead);
     expect(await stateOf(w, branch)).toBe("closed");
     expect(fake.writes().at(-1)!.body).toEqual({ state: "closed" });
-    // Again: fine, and no second PATCH.
+    // Again: fine, nothing to ask, and no second PATCH.
     const patches = fake.count("PATCH", /\/pulls\/\d+$/);
     expect(await closePr(d, "alice", project.id, branch)).toEqual({ state: "closed" });
     expect(fake.count("PATCH", /\/pulls\/\d+$/)).toBe(patches);
@@ -1509,7 +1579,7 @@ describe("the pull request", () => {
 describe("merging", () => {
   async function ready() {
     const w = await withPr();
-    await markReady(w.d, "alice", w.project.id, w.branch);
+    await yes((o) => markReady(w.d, "alice", w.project.id, w.branch, o));
     return w;
   }
 
@@ -1521,6 +1591,7 @@ describe("merging", () => {
     const r = await requestMerge(d, "alice", project.id, branch);
     expect(r).toMatchObject({
       needsApproval: true, approvalId: expect.stringMatching(/^[A-Za-z0-9_-]{20,}$/), expiresAt: fake.clock.t + APPROVAL_TTL_MS,
+      action: "pr.merge", faceId: false,
       summary: { title: "Add feature", into: "main", files: 1, additions: 2, deletions: 0, headSha: fake.head(repo, branch) },
     });
     expect(fake.writes().length).toBe(writes);
@@ -1531,7 +1602,7 @@ describe("merging", () => {
   it("step two squash-merges exactly the commit that was looked at", async () => {
     const w = await ready();
     const { d, fake, repo, project, branch } = w;
-    const { approvalId, summary } = await requestMerge(d, "alice", project.id, branch);
+    const { approvalId, summary } = await requestMerge(d, "alice", project.id, branch) as { approvalId: string; summary: { headSha: string } };
     const done = await confirmMerge(d, "alice", project.id, branch, approvalId);
     expect(done).toEqual({ merged: true, sha: fake.head(repo, "main") });
     const put = fake.calls.find((c) => c.method === "PUT" && c.url.pathname.endsWith("/merge"))!;
@@ -1543,28 +1614,54 @@ describe("merging", () => {
 
   it("uses an approval once", async () => {
     const w = await ready();
-    const { approvalId } = await requestMerge(w.d, "alice", w.project.id, w.branch);
+    const { approvalId } = await requestMerge(w.d, "alice", w.project.id, w.branch) as { approvalId: string };
     await confirmMerge(w.d, "alice", w.project.id, w.branch, approvalId);
-    await expect(confirmMerge(w.d, "alice", w.project.id, w.branch, approvalId)).rejects.toMatchObject({ code: "approval_invalid" });
+    // It is spent, and the pull request is merged: the second try finds that out before it finds anything else.
+    await expect(confirmMerge(w.d, "alice", w.project.id, w.branch, approvalId)).rejects.toMatchObject({ code: "pr_merged" });
+    // An approval that stands for something that has not happened is used up by one try, whether or not it worked.
+    const w2 = await ready();
+    const asked = await requestMerge(w2.d, "alice", w2.project.id, w2.branch) as { approvalId: string };
+    w2.fake.push(w2.repo, w2.branch, { "moved.txt": "x" });
+    await expect(confirmMerge(w2.d, "alice", w2.project.id, w2.branch, asked.approvalId)).rejects.toMatchObject({ code: "changed_since_approval" });
+    await expect(confirmMerge(w2.d, "alice", w2.project.id, w2.branch, asked.approvalId)).rejects.toMatchObject({ code: "approval_invalid" });
   });
 
   it("keeps an approval to the person, project and branch it was made for", async () => {
     const w = await ready();
     const { d, project, branch } = w;
-    const { approvalId } = await requestMerge(d, "alice", project.id, branch);
-    await expect(confirmMerge(d, "bob", project.id, branch, approvalId)).rejects.toMatchObject({ code: "approval_invalid" });
-    await expect(confirmMerge(d, "alice", "00000000-0000-4000-8000-000000000000", branch, approvalId)).rejects.toMatchObject({ code: "approval_invalid" });
-    await expect(confirmMerge(d, "alice", project.id, "tailzu/other-0000", approvalId)).rejects.toMatchObject({ code: "approval_invalid" });
+    const { approvalId } = await requestMerge(d, "alice", project.id, branch) as { approvalId: string };
+    // Not somebody else's project to ask about, and not a project that isn't there.
+    await expect(confirmMerge(d, "bob", project.id, branch, approvalId)).rejects.toMatchObject({ code: "not_found" });
+    await expect(confirmMerge(d, "alice", "00000000-0000-4000-8000-000000000000", branch, approvalId)).rejects.toMatchObject({ code: "not_found" });
     await expect(confirmMerge(d, "alice", project.id, branch, "made-up")).rejects.toMatchObject({ code: "approval_invalid" });
-    // None of that used it up: the right person can still say yes.
-    expect((await confirmMerge(d, "alice", project.id, branch, approvalId)).merged).toBe(true);
+    // Another branch of the same project, with a pull request of its own: the yes was for this one.
+    const other = (await createWorkBranch(d, "alice", project.id, "other work")).branch;
+    const ows = await workspace(d, "alice", project.id, other);
+    await ows.commit([{ path: "other.txt", content: "other\n" }], "other");
+    await ows.openDraftPr("Other", "B");
+    await yes((o) => markReady(d, "alice", project.id, other, o));
+    await expect(confirmMerge(d, "alice", project.id, other, approvalId)).rejects.toMatchObject({ code: "approval_invalid" });
+    // None of that used it up: the right person can still say yes, to the right branch.
+    expect((await confirmMerge(d, "alice", project.id, branch, approvalId) as { merged: boolean }).merged).toBe(true);
+  });
+
+  it("is a question like any other: the same call, asked again, and a yes to a different action is no yes at all", async () => {
+    const w = await ready();
+    const { d, project, branch, fake, repo } = w;
+    const asked = await mergePr(d, "alice", project.id, branch) as { approvalId: string };
+    // An approval to close is not an approval to merge, and is not used up by trying.
+    await expect(mergePr(d, "alice", project.id, branch, { approvalId: "x".repeat(32) })).rejects.toMatchObject({ code: "approval_invalid" });
+    const closeAsk = await closePr(d, "alice", project.id, branch) as { approvalId: string };
+    await expect(mergePr(d, "alice", project.id, branch, { approvalId: closeAsk.approvalId })).rejects.toMatchObject({ code: "approval_invalid" });
+    expect(fake.pulls(repo)[0]).toMatchObject({ state: "open", merged: false });
+    expect(await mergePr(d, "alice", project.id, branch, { approvalId: asked.approvalId })).toMatchObject({ merged: true });
   });
 
   it("lets an approval run out after ten minutes", async () => {
     const w = await ready();
-    const { approvalId } = await requestMerge(w.d, "alice", w.project.id, w.branch);
+    const { approvalId } = await requestMerge(w.d, "alice", w.project.id, w.branch) as { approvalId: string };
     w.fake.clock.t += APPROVAL_TTL_MS - 1000;
-    const again = await requestMerge(w.d, "alice", w.project.id, w.branch); // another look replaces the first
+    const again = await requestMerge(w.d, "alice", w.project.id, w.branch) as { approvalId: string }; // another look replaces the first
     await expect(confirmMerge(w.d, "alice", w.project.id, w.branch, approvalId)).rejects.toMatchObject({ code: "approval_invalid" });
     w.fake.clock.t += APPROVAL_TTL_MS + 1;
     await expect(confirmMerge(w.d, "alice", w.project.id, w.branch, again.approvalId)).rejects.toMatchObject({ code: "approval_expired" });
@@ -1574,7 +1671,7 @@ describe("merging", () => {
   it("refuses with 'changed_since_approval' if the branch moved after step one, and merges nothing", async () => {
     const w = await ready();
     const { d, fake, repo, project, branch } = w;
-    const { approvalId } = await requestMerge(d, "alice", project.id, branch);
+    const { approvalId } = await requestMerge(d, "alice", project.id, branch) as { approvalId: string };
     fake.push(repo, branch, { "sneaky.txt": "added after the yes" });
     const mainHead = fake.head(repo, "main");
     await expect(confirmMerge(d, "alice", project.id, branch, approvalId)).rejects.toMatchObject({ code: "changed_since_approval" });
@@ -1583,15 +1680,15 @@ describe("merging", () => {
     expect(fake.calls.some((c) => c.method === "PUT" && c.url.pathname.endsWith("/merge"))).toBe(false);
     // The approval is used up; looking again gives a new one for the new head.
     await expect(confirmMerge(d, "alice", project.id, branch, approvalId)).rejects.toMatchObject({ code: "approval_invalid" });
-    const second = await requestMerge(d, "alice", project.id, branch);
-    expect((await confirmMerge(d, "alice", project.id, branch, second.approvalId)).merged).toBe(true);
+    const second = await requestMerge(d, "alice", project.id, branch) as { approvalId: string };
+    expect((await confirmMerge(d, "alice", project.id, branch, second.approvalId) as { merged: boolean }).merged).toBe(true);
     expect(fake.files(repo, "main")).toMatchObject({ "sneaky.txt": "added after the yes" });
   });
 
   it("also turns away GitHub's own 'head was modified' as the same thing", async () => {
     const w = await ready();
     const { d, fake, repo, project, branch, github } = w;
-    const { approvalId } = await requestMerge(d, "alice", project.id, branch);
+    const { approvalId } = await requestMerge(d, "alice", project.id, branch) as { approvalId: string };
     // The branch moves between our look at it and GitHub's merge.
     const racing = new GithubApp(
       { slug: "s", clientId: fake.appClientId, clientSecret: "x", privateKey: KEYS.privateKeyPem },
@@ -1649,9 +1746,9 @@ describe("merging", () => {
     const ws = await workspace(r.d, "alice", project.id, branch);
     await ws.commit([{ path: "f.txt", content: "x\n" }], "f");
     await ws.openDraftPr("T", "B");
-    await markReady(r.d, "alice", project.id, branch);
+    await yes((o) => markReady(r.d, "alice", project.id, branch, o));
 
-    const { approvalId } = await requestMerge(r.d, "alice", project.id, branch);
+    const { approvalId } = await requestMerge(r.d, "alice", project.id, branch) as { approvalId: string };
     r.fake.setPermission(repo, "alice", "read"); // access taken away between the look and the yes
     await expect(confirmMerge(r.d, "alice", project.id, branch, approvalId)).rejects.toMatchObject({ code: "no_access" });
     expect(r.fake.pulls(repo)[0]!.merged).toBe(false);
@@ -1661,14 +1758,19 @@ describe("merging", () => {
   it("holds approvals in a book that forgets, replaces and caps", () => {
     let t = 1000;
     const book = new ApprovalBook({ now: () => t, ttlMs: 100 });
-    const who = { userId: "u", projectId: "p", branch: "tailzu/x-1" };
+    const who = { userId: "u", projectId: "p", action: "pr.merge", branch: "tailzu/x-1" };
     const a = book.issue({ ...who, prNumber: 1, headSha: "a" });
-    const b = book.issue({ ...who, prNumber: 1, headSha: "b" }); // the same branch again: the first is gone
+    const b = book.issue({ ...who, prNumber: 1, headSha: "b" }); // the same thing again: the first is gone
     expect(book.take(a.id, who)).toEqual({ ok: false, reason: "unknown" });
     expect(book.take(b.id, { ...who, userId: "other" })).toEqual({ ok: false, reason: "unknown" });
+    expect(book.take(b.id, { ...who, projectId: "other" })).toEqual({ ok: false, reason: "unknown" });
+    expect(book.take(b.id, { ...who, branch: "tailzu/y-2" })).toEqual({ ok: false, reason: "unknown" });
+    expect(book.take(b.id, { ...who, action: "pr.close" })).toEqual({ ok: false, reason: "unknown" }); // a yes to one action is no yes to another
     expect(book.take(b.id, who)).toMatchObject({ ok: true, approval: { headSha: "b", expiresAt: 1100 } });
     expect(book.take(b.id, who)).toEqual({ ok: false, reason: "unknown" });
+    const other = book.issue({ ...who, action: "pr.close" }); // another action on the same branch is its own approval
     const c = book.issue({ ...who, prNumber: 1, headSha: "c" });
+    expect(book.take(other.id, { ...who, action: "pr.close" })).toMatchObject({ ok: true });
     t = 1100;
     expect(book.take(c.id, who)).toEqual({ ok: false, reason: "expired" });
     expect(a.id).not.toBe(b.id);
@@ -1679,15 +1781,18 @@ describe("merging", () => {
 // ------------------------------------------------------------ tidying up
 
 describe("deleting a finished branch", () => {
-  it("removes it from GitHub once its pull request is merged, and keeps the record with the state", async () => {
+  it("removes it from GitHub, after a yes, once its pull request is merged, and keeps the record with the state", async () => {
     const w = await withPr();
     const { d, fake, repo, project, branch, pr } = w;
-    await markReady(d, "alice", project.id, branch);
-    const { approvalId } = await requestMerge(d, "alice", project.id, branch);
+    await yes((o) => markReady(d, "alice", project.id, branch, o));
+    const { approvalId } = await requestMerge(d, "alice", project.id, branch) as { approvalId: string };
     await confirmMerge(d, "alice", project.id, branch, approvalId);
     expect(fake.branches(repo)).toContain(branch);
 
-    expect(await deleteWorkBranch(d, "alice", project.id, branch)).toEqual({ state: "deleted" });
+    const asked = await deleteWorkBranch(d, "alice", project.id, branch) as { approvalId: string };
+    expect(asked).toMatchObject({ needsApproval: true, action: "branch.delete", faceId: false, summary: { delete: branch, defaultBranch: false } });
+    expect(fake.branches(repo)).toContain(branch);
+    expect(await deleteWorkBranch(d, "alice", project.id, branch, { approvalId: asked.approvalId })).toEqual({ state: "deleted" });
     expect(fake.branches(repo)).not.toContain(branch);
     expect(fake.branches(repo)).toContain("main");
     expect(fake.writes().at(-1)).toMatchObject({ method: "DELETE" });
@@ -1695,19 +1800,19 @@ describe("deleting a finished branch", () => {
     expect(await d.store.getBranch(project.id, branch)).toMatchObject({ state: "deleted", prNumber: pr.prNumber, prUrl: pr.prUrl, branch });
     expect((await listBranches(d, "alice", project.id)).map((b) => b.branch)).toContain(branch);
 
-    // Again: already done. And nothing else works on a deleted branch.
+    // Again: already done, nothing to ask. And nothing else works on a deleted branch.
     expect(await deleteWorkBranch(d, "alice", project.id, branch)).toEqual({ state: "deleted" });
     expect(fake.count("DELETE", /git\/refs/)).toBe(1);
     for (const op of [syncBranch, branchDiff, prStatus, markReady, closePr, requestMerge]) {
-      await expect(op(d, "alice", project.id, branch)).rejects.toMatchObject({ code: "branch_deleted" });
+      await expect(op(d, "alice", project.id, branch), op.name).rejects.toMatchObject({ code: "branch_deleted" });
     }
     await expect(workspace(d, "alice", project.id, branch)).resolves.toBeDefined(); // the old verbs just fail at GitHub
   });
 
   it("does the same for a closed pull request", async () => {
     const w = await withPr();
-    await closePr(w.d, "alice", w.project.id, w.branch);
-    await deleteWorkBranch(w.d, "alice", w.project.id, w.branch);
+    await yes((o) => closePr(w.d, "alice", w.project.id, w.branch, o));
+    await yes((o) => deleteWorkBranch(w.d, "alice", w.project.id, w.branch, o));
     expect(w.fake.branches(w.repo)).not.toContain(w.branch);
     expect(await stateOf(w, w.branch)).toBe("deleted");
   });
@@ -1716,11 +1821,19 @@ describe("deleting a finished branch", () => {
     const w = await withPr();
     w.fake.editPull(w.repo, w.pr.prNumber, { state: "closed", merged: true });
     expect(await stateOf(w, w.branch)).toBe("pr_open");
-    await deleteWorkBranch(w.d, "alice", w.project.id, w.branch);
+    await yes((o) => deleteWorkBranch(w.d, "alice", w.project.id, w.branch, o));
     expect(w.fake.branches(w.repo)).not.toContain(w.branch);
   });
 
-  it("refuses while the work isn't finished: an open pull request, or no pull request at all", async () => {
+  it("takes a branch that GitHub already deleted (a merge can do that itself) as deleted, and asks nothing", async () => {
+    const w = await withPr();
+    w.fake.editPull(w.repo, w.pr.prNumber, { state: "closed", merged: true });
+    await w.github.deleteBranch({ installationId: 101, repoId: w.repo.id, fullName: w.repo.fullName, defaultBranch: "main" }, w.branch);
+    expect(await deleteWorkBranch(w.d, "alice", w.project.id, w.branch)).toEqual({ state: "deleted" });
+    expect(await stateOf(w, w.branch)).toBe("deleted");
+  });
+
+  it("refuses while the work isn't finished: an open pull request, or no pull request at all, before it asks anything", async () => {
     const w = await withPr();
     await expect(deleteWorkBranch(w.d, "alice", w.project.id, w.branch)).rejects.toMatchObject({ code: "branch_in_use" });
     // Even if the record says closed, an open pull request is what counts.
@@ -1732,17 +1845,25 @@ describe("deleting a finished branch", () => {
     expect(w.fake.count("DELETE", /git\/refs/)).toBe(0);
   });
 
-  it("only ever deletes a tailzu/ branch, whoever asks", async () => {
+  it("is not only for tailzu/ branches any more: any other branch can go, after a yes; the default branch only with Face ID, and never for good", async () => {
     const w = await withPr();
     const ref = { installationId: 101, repoId: w.repo.id, fullName: w.repo.fullName, defaultBranch: "main" };
+    await w.github.createBranch(ref, "feature/old");
     w.fake.calls.length = 0;
-    for (const bad of ["main", "feature/x", "tailzu/../main"]) {
-      await expect(w.github.deleteBranch(ref, bad), bad).rejects.toMatchObject({ code: "bad_branch" });
-    }
-    expect(w.fake.calls).toHaveLength(0);
-    await expect(deleteWorkBranch(w.d, "alice", w.project.id, "main")).rejects.toMatchObject({ code: "not_found" });
-    await expect(deleteWorkBranch(w.d, "bob", w.project.id, w.branch)).rejects.toMatchObject({ code: "not_found" });
+    // Another branch: a question, then gone. It never touches the record of the bot's own.
+    const asked = await deleteWorkBranch(w.d, "alice", w.project.id, "feature/old") as { approvalId: string };
+    expect(asked).toMatchObject({ needsApproval: true, action: "branch.delete", faceId: false });
+    expect(w.fake.branches(w.repo)).toContain("feature/old");
+    expect(await deleteWorkBranch(w.d, "alice", w.project.id, "feature/old", { approvalId: asked.approvalId })).toEqual({ state: "deleted" });
+    expect(w.fake.branches(w.repo)).not.toContain("feature/old");
+    // The default branch: the strictest question there is. Nothing is deleted by asking.
+    const strict = await deleteWorkBranch(w.d, "alice", w.project.id, "main");
+    expect(strict).toMatchObject({ needsApproval: true, action: "branch.delete_default", faceId: true });
     expect(w.fake.branches(w.repo)).toContain("main");
+    // Somebody else's project, or a name that isn't a branch: not found.
+    await expect(deleteWorkBranch(w.d, "bob", w.project.id, w.branch)).rejects.toMatchObject({ code: "not_found" });
+    await expect(deleteWorkBranch(w.d, "alice", w.project.id, "a b")).rejects.toMatchObject({ code: "not_found" });
+    await expect(w.github.deleteBranch(ref, "tailzu/../main")).rejects.toMatchObject({ code: "bad_branch" });
   });
 });
 
@@ -1771,7 +1892,6 @@ describe("the access rule, afresh, before every new write", () => {
       merge2: () => confirmMerge(r.d, "alice", project.id, branch, "anything"),
       remove: () => deleteWorkBranch(r.d, "alice", project.id, branch),
       runnerRead: () => runnerAccess(r.d, "alice", project.id, branch, "read"),
-      runnerPush: () => runnerAccess(r.d, "alice", project.id, branch, "push"),
     };
     for (const [name, run] of Object.entries(writes)) {
       if (name === "merge2") continue; // an unknown approval stops before access; covered with a real one below
@@ -1798,41 +1918,31 @@ describe("the access rule, afresh, before every new write", () => {
 // ------------------------------------------------------------ for a sandbox, later
 
 describe("access for runners", () => {
-  it("hands out a clone address and a token for this one repo: contents:read to look, contents:write to push, nothing else", async () => {
+  it("hands out a clone address and a read-only token for this one repo, and never a token that can write", async () => {
     const w = await withPr();
     const { d, fake, repo, project, branch } = w;
     const other = fake.addRepo(101, "alice/other");
     const read = await runnerAccess(d, "alice", project.id, branch, "read");
-    const push = await runnerAccess(d, "alice", project.id, branch, "push");
-
     expect(read.cloneUrl).toBe("https://github.com/alice/app.git");
-    expect(push.cloneUrl).toBe("https://github.com/alice/app.git");
     expect(read.expiresAt).toBe(fake.clock.t + 60 * MIN);
-    expect(read.token).not.toBe(push.token);
     expect(fake.tokenPermissions(read.token)).toEqual({ contents: "read" });
-    expect(fake.tokenPermissions(push.token)).toEqual({ contents: "write" });
-    const mints = fake.calls.filter((c) => c.url.pathname.endsWith("/access_tokens")).slice(-2);
-    expect(mints.map((c) => c.body)).toEqual([
-      { repository_ids: [repo.id], permissions: { contents: "read" } },
-      { repository_ids: [repo.id], permissions: { contents: "write" } },
-    ]);
-
-    // What each token can do, as GitHub would enforce it.
+    const mint = fake.calls.filter((c) => c.url.pathname.endsWith("/access_tokens")).at(-1)!;
+    expect(mint.body).toEqual({ repository_ids: [repo.id], permissions: { contents: "read" } });
     const call = (token: string, method: string, path: string, body?: unknown) =>
       fake.fetchFn(`https://api.github.com${path}`, { method, headers: { Authorization: `Bearer ${token}` }, ...(body ? { body: JSON.stringify(body) } : {}) });
     expect((await call(read.token, "GET", `/repos/alice/app/git/ref/heads/${branch}`)).status).toBe(200);
     expect((await call(read.token, "PUT", "/repos/alice/app/contents/x.txt", { message: "m", content: "eA==", branch })).status).toBe(403);
-    expect((await call(push.token, "PUT", "/repos/alice/app/contents/x.txt", { message: "m", content: "eA==", branch })).status).toBe(201);
-    // Neither reaches another repo, even one of the same install.
-    for (const t of [read.token, push.token]) expect((await call(t, "GET", `/repos/${other.fullName}/git/ref/heads/main`)).status).toBe(404);
-    // And neither can open or merge a pull request.
-    expect((await call(push.token, "PATCH", `/repos/alice/app/pulls/${w.pr.prNumber}`, { state: "closed" })).status).toBe(403);
+    expect((await call(read.token, "GET", `/repos/${other.fullName}/git/ref/heads/main`)).status).toBe(404);
+    // Writing goes back through the server and its policy: a runner is never handed a write token.
+    const minted = fake.calls.filter((c) => c.url.pathname.endsWith("/access_tokens")).length;
+    await expect(runnerAccess(d, "alice", project.id, branch, "push")).rejects.toMatchObject({ code: "use_server_commit" });
+    expect(fake.calls.filter((c) => c.url.pathname.endsWith("/access_tokens")).length).toBe(minted);
   });
 
   it("keeps the token nowhere: not in the store, and not reused by the other calls", async () => {
     const w = await withPr();
     const { d, store, github, fake, repo, project, branch } = w;
-    const { token } = await runnerAccess(d, "alice", project.id, branch, "push");
+    const { token } = await runnerAccess(d, "alice", project.id, branch, "read");
     const everything = JSON.stringify([
       await store.listInstallations("alice"), await store.listProjects("alice"), await store.listBranches(project.id),
     ]);
@@ -1844,7 +1954,7 @@ describe("access for runners", () => {
     await github.branchHead({ ...ref, repoId: repo.id }, "main");
     expect(fake.calls.some((c) => c.headers.authorization === `Bearer ${token}`)).toBe(false);
     // Each ask is a new token.
-    expect((await runnerAccess(d, "alice", project.id, branch, "push")).token).not.toBe(token);
+    expect((await runnerAccess(d, "alice", project.id, branch, "read")).token).not.toBe(token);
   });
 
   it("only for a branch Tailzu recorded, for its person, that still exists", async () => {
@@ -1854,8 +1964,8 @@ describe("access for runners", () => {
       await expect(runnerAccess(d, user, project.id, b, "read"), `${user} ${b}`).rejects.toMatchObject({ code: "not_found" });
     }
     await expect(runnerAccess(d, "alice", project.id, branch, "write" as "push")).rejects.toMatchObject({ code: "bad_request" });
-    await closePr(d, "alice", project.id, branch);
-    await deleteWorkBranch(d, "alice", project.id, branch);
+    await yes((o) => closePr(d, "alice", project.id, branch, o));
+    await yes((o) => deleteWorkBranch(d, "alice", project.id, branch, o));
     await expect(runnerAccess(d, "alice", project.id, branch, "read")).rejects.toMatchObject({ code: "branch_deleted" });
   });
 });

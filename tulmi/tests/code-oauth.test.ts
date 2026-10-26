@@ -5,11 +5,12 @@
  *
  * What is held here: the sign-in itself (scopes asked, scopes checked, PKCE,
  * the token stored encrypted), the allow-list (only repos added as projects),
- * the push re-check before every write, the commit trailer, runners never
- * getting the token, revoking (disconnect, account delete, 30 days unused, a
- * dead token, the kill switch), the App winning when it reaches the same repo,
- * and every guard of the git logic holding for a sign-in project as for an
- * App one. Nothing reaches the network.
+ * the push re-check before every write, who commits (the bot as author, the
+ * person credited), runners never getting the token, revoking (disconnect,
+ * account delete, 30 days unused, a dead token, the kill switch), the App
+ * winning when it reaches the same repo, and the policy (what is free, what
+ * asks, what never happens) holding for a sign-in project as for an App one.
+ * Nothing reaches the network.
  */
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -23,14 +24,14 @@ vi.hoisted(() => {
 });
 
 const { appKeys, FakeGithub } = await import("./github-fake.js");
-const { GithubApp, assertRepoPath, TAILZU_WORKFLOW } = await import("../src/code/github.js");
+const { GithubApp } = await import("../src/code/github.js");
 const { MemoryCodeStore } = await import("../src/code/store.js");
 const { ApprovalBook } = await import("../src/code/approvals.js");
-const { COMMIT_TRAILER, OAuthAccess } = await import("../src/code/access.js");
+const { OAuthAccess, botIdentity, coAuthorTrailer, withCoAuthor } = await import("../src/code/access.js");
 const {
   GithubOAuth, IDLE_REVOKE_MS, OAUTH_AUTHORIZE_URL, OAUTH_STATE_ID, OAUTH_STATE_ID_WORKFLOW, startOAuthSweeper,
 } = await import("../src/code/oauth.js");
-const { addProject, createWorkBranch, listRepos, openPr, runnerAccess, initEmptyRepo, workspace } = await import("../src/code/projects.js");
+const { addProject, commitToBranch, createWorkBranch, listRepos, openPr, runnerAccess, initEmptyRepo, workspace } = await import("../src/code/projects.js");
 const { closePr, confirmMerge, deleteWorkBranch, markReady, requestMerge, syncBranch } = await import("../src/code/pulls.js");
 const { verifyState } = await import("../src/connectors/oauth.js");
 const { decrypt } = await import("../src/connectors/crypto.js");
@@ -78,13 +79,19 @@ async function oauthProject(r: Rig, user = "alice", name = `${user}/app`, files?
 }
 
 /** The same through a GitHub App install. */
-async function appProject(r: Rig, user = "alice") {
-  r.fake.addInstall(101, user);
+async function appProject(r: Rig, user = "alice", permissions?: Record<string, string>) {
+  r.fake.addInstall(101, user, { permissions });
   const repo = r.fake.addRepo(101, `${user}/app`, { files: { "README.md": "# app\n", "src/a.ts": "export const a = 1;\n" } });
   await r.store.upsertInstallation(user, { installationId: 101, accountLogin: user, accountType: "User", repositorySelection: "selected", githubUserId: 1, githubLogin: user });
   const { project } = await addProject(r.d, user, repo.id);
   return { repo, project };
 }
+
+/** The question answered yes: runs the operation; if it asked, runs it again with the approval it gave. */
+const yes = async (run: (o: { approvalId?: string }) => Promise<any>): Promise<any> => {
+  const first = await run({});
+  return first?.needsApproval ? run({ approvalId: first.approvalId }) : first;
+};
 
 const refOf = (r: Rig, user: string, repo: { id: number; fullName: string }, project?: { installationId: number }) => ({
   installationId: project?.installationId ?? 0, repoId: repo.id, fullName: repo.fullName, defaultBranch: "main", access: r.oauth.access(user),
@@ -370,28 +377,75 @@ describe("push access, checked again before every write", () => {
   });
 });
 
-// ------------------------------------------------------------ the trailer
+// ------------------------------------------------------------ who commits
 
-describe("the commit trailer", () => {
-  it("ends every commit made with the person's token with Co-authored-by: Tailzu", async () => {
+describe.each(["app", "oauth"] as const)("who commits, through a %s project", (kind) => {
+  async function project(r: Rig) {
+    return kind === "app" ? appProject(r) : oauthProject(r);
+  }
+  /** The person as the link keeps them. */
+  async function person(r: Rig) {
+    if (kind === "app") return { id: 1, login: "alice" };
+    const l = (await r.store.getOAuthLink("alice"))!;
+    return { id: l.githubUserId, login: l.githubLogin };
+  }
+
+  it("is the bot as the author and the person as co-author, and the committer is left for GitHub to fill in", async () => {
     const r = rig();
-    const { project, repo } = await oauthProject(r);
-    const { branch } = await createWorkBranch(r.d, "alice", project.id, "trailer");
-    const ws = await workspace(r.d, "alice", project.id, branch);
+    const { project: p, repo } = await project(r);
+    const me = await person(r);
+    const { branch } = await createWorkBranch(r.d, "alice", p.id, "who");
+    const ws = await workspace(r.d, "alice", p.id, branch);
+    r.fake.calls.length = 0;
     await ws.commit([{ path: "x.txt", content: "x" }], "Add x\n\nWhy.");
-    expect(COMMIT_TRAILER).toBe("Co-authored-by: Tailzu <code@tailzu.space>");
-    expect(r.fake.headMessage(repo, branch)).toBe("Add x\n\nWhy.\n\nCo-authored-by: Tailzu <code@tailzu.space>");
+    const trailer = `Co-authored-by: ${me.login} <${me.id}+${me.login}@users.noreply.github.com>`;
+    expect(r.fake.headMessage(repo, branch)).toBe(`Add x\n\nWhy.\n\n${trailer}`);
+    expect(r.fake.headCommit(repo, branch).author).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+    const sent = r.fake.writes().find((c) => c.url.pathname.endsWith("/git/commits"))!;
+    expect(sent.body.author).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+    expect(sent.body).not.toHaveProperty("committer");
+    // Never the old "Co-authored-by: Tailzu".
+    expect(r.fake.headMessage(repo, branch)).not.toMatch(/Tailzu/);
     // Not twice.
-    await ws.commit([{ path: "y.txt", content: "y" }], `Add y\n\n${COMMIT_TRAILER}`);
-    expect(r.fake.headMessage(repo, branch)).toBe(`Add y\n\n${COMMIT_TRAILER}`);
+    await ws.commit([{ path: "y.txt", content: "y" }], `Add y\n\n${trailer}`);
+    expect(r.fake.headMessage(repo, branch)).toBe(`Add y\n\n${trailer}`);
+    // The token that made it is the connection's own: the person's for a sign-in, the App's for an install.
+    const auth = sent.headers.authorization!;
+    expect(kind === "oauth" ? auth === "Bearer gho_alice_token" : /^Bearer ghs_/.test(auth)).toBe(true);
   });
 
-  it("is not added to a commit made through the App", async () => {
+  it("is the bot named in CODE_BOT_NAME and CODE_BOT_EMAIL when they are set, whichever way in", async () => {
     const r = rig();
-    const { project, repo } = await appProject(r);
-    const { branch } = await createWorkBranch(r.d, "alice", project.id, "no trailer");
-    await (await workspace(r.d, "alice", project.id, branch)).commit([{ path: "x.txt", content: "x" }], "Add x");
-    expect(r.fake.headMessage(repo, branch)).toBe("Add x");
+    const { project: p, repo } = await project(r);
+    const custom = new GithubApp(
+      { slug: "tailzu-test", clientId: r.fake.appClientId, clientSecret: r.fake.clientSecret, privateKey: KEYS.privateKeyPem },
+      { fetchFn: r.fake.fetchFn, now: () => r.fake.clock.t, bot: botIdentity("Tailzu Bot", "12345+tailzu-bot@users.noreply.github.com") },
+    );
+    const d = { ...r.d, github: custom };
+    const { branch } = await createWorkBranch(d, "alice", p.id, "custom");
+    await (await workspace(d, "alice", p.id, branch)).commit([{ path: "x.txt", content: "x" }], "Add x");
+    expect(r.fake.headCommit(repo, branch).author).toEqual({ name: "Tailzu Bot", email: "12345+tailzu-bot@users.noreply.github.com" });
+  });
+});
+
+describe("the bot's identity", () => {
+  it("is Blip <blip@tailzu.space> unless set, and a value git couldn't carry is the default", () => {
+    expect(botIdentity()).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+    expect(botIdentity("  ", "")).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+    expect(botIdentity(" Tailzu Bot ", " 1+tailzu-bot@users.noreply.github.com ")).toEqual({ name: "Tailzu Bot", email: "1+tailzu-bot@users.noreply.github.com" });
+    for (const bad of ["a<b", "a>b", "x\ny", "x\ry", "x".repeat(101)]) expect(botIdentity(bad, null).name, JSON.stringify(bad)).toBe("Blip");
+    for (const bad of ["no-at-sign", "a@b@c", "a b@c.d", "<x@y.z>", "x@y.z\nBcc: z@z.z"]) expect(botIdentity(null, bad).email, JSON.stringify(bad)).toBe("blip@tailzu.space");
+  });
+
+  it("credits the person as GitHub writes a noreply co-author, only when their id and login are known and fit for it", () => {
+    expect(coAuthorTrailer({ id: 4242, login: "alice-dev" })).toBe("Co-authored-by: alice-dev <4242+alice-dev@users.noreply.github.com>");
+    for (const bad of [null, undefined, { id: 0, login: "a" }, { id: -1, login: "a" }, { id: 1.5, login: "a" }, { id: 1, login: "" }, { id: 1, login: "a b" },
+      { id: 1, login: "a\nCo-authored-by: eve <e@e.e>" }, { id: 1, login: "-lead" }, { id: 1, login: "x".repeat(40) }, { id: 1, login: "a<b>" }] as const) {
+      expect(coAuthorTrailer(bad as never), JSON.stringify(bad)).toBeNull();
+    }
+    expect(withCoAuthor("msg", null)).toBe("msg");
+    expect(withCoAuthor("msg", { id: 7, login: "bo" })).toBe("msg\n\nCo-authored-by: bo <7+bo@users.noreply.github.com>");
+    expect(withCoAuthor("msg\n\nCo-authored-by: bo <7+bo@users.noreply.github.com>", { id: 7, login: "bo" })).toBe("msg\n\nCo-authored-by: bo <7+bo@users.noreply.github.com>");
   });
 });
 
@@ -426,12 +480,13 @@ describe("access for runners", () => {
     expect(r.fake.calls).toHaveLength(0);
   });
 
-  it("still gives an App project its repo-scoped token, and says which kind it is", async () => {
+  it("gives an App project a repo-scoped read token, says which kind it is, and refuses push there too", async () => {
     const r = rig();
     const { project } = await appProject(r);
     const { branch } = await createWorkBranch(r.d, "alice", project.id, "run");
-    const got = await runnerAccess(r.d, "alice", project.id, branch, "push");
+    const got = await runnerAccess(r.d, "alice", project.id, branch, "read");
     expect(got).toMatchObject({ kind: "app", cloneUrl: "https://github.com/alice/app.git", token: expect.stringMatching(/^ghs_/) });
+    await expect(runnerAccess(r.d, "alice", project.id, branch, "push")).rejects.toMatchObject({ code: "use_server_commit" });
   });
 
   it("applies the rest of the rule to a sign-in project: recorded branch, the person, push access, a live link", async () => {
@@ -676,7 +731,8 @@ describe("when the App reaches the same repo", () => {
     await (await workspace(r.d, "alice", a.id, branch)).commit([{ path: "x.txt", content: "x" }], "m");
     expect(r.fake.calls.some((c) => c.headers.authorization === "Bearer gho_alice_token")).toBe(false);
     expect(r.fake.calls.some((c) => /^Bearer ghs_/.test(c.headers.authorization ?? ""))).toBe(true);
-    expect(r.fake.headMessage(shared, branch)).toBe("m"); // no trailer: it was the App
+    // It was the App's token: and the person is credited the same as with a sign-in.
+    expect(r.fake.headMessage(shared, branch)).toBe("m\n\nCo-authored-by: alice <1+alice@users.noreply.github.com>");
   });
 
   it("moves a project that was added through the sign-in over to the App once the App reaches the repo", async () => {
@@ -696,20 +752,38 @@ describe("when the App reaches the same repo", () => {
   });
 });
 
-// ------------------------------------------------------------ every guard, for both ways in
+// ------------------------------------------------------------ the policy, for both ways in
 
-describe.each(["app", "oauth"] as const)("every guard holds for a %s project", (kind) => {
+describe.each(["app", "oauth"] as const)("the policy holds for a %s project", (kind) => {
   async function project(r: Rig) {
     return kind === "app" ? appProject(r) : oauthProject(r);
   }
 
-  it("never writes to the default branch, or to a branch outside tailzu/, or with .. in it", async () => {
+  it("asks before writing to a branch the bot didn't make, the default branch included, and writes nothing until it is told yes", async () => {
+    const r = rig();
+    const { project: p, repo } = await project(r);
+    const head = r.fake.head(repo, "main");
+    const ws = await workspace(r.d, "alice", p.id, "main");
+    expect(ws.own).toBe(false);
+    r.fake.calls.length = 0;
+    const asked = await ws.commit([{ path: "a.txt", content: "a" }], "m");
+    expect(asked).toMatchObject({ needsApproval: true, action: "commit.other_branch", faceId: false, summary: { branch: "main", fileCount: 1 } });
+    expect(r.fake.writes()).toHaveLength(0);
+    expect(r.fake.head(repo, "main")).toBe(head);
+    // Said yes: it is done, by the bot, on the person's token (sign-in) or the App's.
+    const done = await ws.commit([{ path: "a.txt", content: "a" }], "m", { approvalId: (asked as { approvalId: string }).approvalId });
+    expect(done).toMatchObject({ sha: r.fake.head(repo, "main"), parentSha: head });
+    expect(r.fake.headCommit(repo, "main").author).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+  });
+
+  it("never lets a branch name with .. in it, or one git wouldn't take, anywhere near GitHub", async () => {
     const r = rig();
     const { project: p, repo } = await project(r);
     const ref = { installationId: p.installationId, repoId: repo.id, fullName: repo.fullName, defaultBranch: "main", ...(kind === "oauth" ? { access: r.oauth.access("alice") } : {}) };
     const head = r.fake.head(repo, "main");
     r.fake.calls.length = 0;
-    for (const branch of ["main", "feature/x", "tailzu/../main", "TAILZU/x", ""]) {
+    for (const branch of ["tailzu/../main", "a b", "", "x.lock"]) {
+      await expect(workspace(r.d, "alice", p.id, branch), branch).rejects.toMatchObject({ code: "not_found" });
       await expect(r.github.commit(ref, branch, [{ path: "a.txt", content: "a" }], "m"), branch).rejects.toMatchObject({ code: "bad_branch" });
       await expect(r.github.openDraftPr(ref, branch, "T", "B"), branch).rejects.toMatchObject({ code: "bad_branch" });
       await expect(r.github.createBranch(ref, branch), branch).rejects.toMatchObject({ code: "bad_branch" });
@@ -720,15 +794,19 @@ describe.each(["app", "oauth"] as const)("every guard holds for a %s project", (
     expect(r.fake.head(repo, "main")).toBe(head);
   });
 
-  it("holds the path rules: relative, no .., nothing in .git, no workflow files", async () => {
+  it("holds the path rules, for a branch of its own as for any other: relative, no .., nothing in .git", async () => {
     const r = rig();
     const { project: p } = await project(r);
     const { branch } = await createWorkBranch(r.d, "alice", p.id, "paths");
-    const ws = await workspace(r.d, "alice", p.id, branch);
-    for (const path of ["../x", "a/../../b", "/abs", ".git/config", "", ".github/workflows/ci.yml", ".github/workflows/tailzu.yml", ".GitHub/Workflows/tailzu.yml"]) {
-      await expect(ws.commit([{ path, content: "x" }], "m"), path).rejects.toMatchObject({ code: "bad_path" });
+    for (const target of [branch, "main"]) {
+      const ws = await workspace(r.d, "alice", p.id, target);
+      for (const path of ["../x", "a/../../b", "/abs", ".git/config", "a/.git/hooks/pre-commit", ""]) {
+        await expect(ws.commit([{ path, content: "x" }], "m"), `${target} ${path}`).rejects.toMatchObject({ code: "bad_path" });
+      }
     }
-    await expect(ws.read("../etc/passwd")).rejects.toMatchObject({ code: "bad_path" });
+    expect(r.fake.writes().filter((c) => !c.url.pathname.endsWith("/git/refs"))).toEqual([]);
+    await (await workspace(r.d, "alice", p.id, branch)).read("README.md");
+    await expect((await workspace(r.d, "alice", p.id, branch)).read("../etc/passwd")).rejects.toMatchObject({ code: "bad_path" });
   });
 
   it("writes the first README only into a repo with no commits", async () => {
@@ -750,7 +828,7 @@ describe.each(["app", "oauth"] as const)("every guard holds for a %s project", (
     const mainHead = r.fake.head(repo, "main");
 
     await expect(requestMerge(r.d, "alice", p.id, branch)).rejects.toMatchObject({ code: "pr_draft" });
-    await markReady(r.d, "alice", p.id, branch);
+    await yes((o) => markReady(r.d, "alice", p.id, branch, o));
     const { approvalId, summary } = await requestMerge(r.d, "alice", p.id, branch);
     expect(r.fake.head(repo, "main")).toBe(mainHead); // step one merges nothing
     // The branch moves after the yes: nothing is merged.
@@ -763,22 +841,21 @@ describe.each(["app", "oauth"] as const)("every guard holds for a %s project", (
     await confirmMerge(r.d, "alice", p.id, branch, second.approvalId);
     const put = r.fake.calls.find((c) => c.method === "PUT" && c.url.pathname.endsWith("/merge"))!;
     expect(put.body).toEqual({ merge_method: "squash", sha: second.summary.headSha });
-    await expect(confirmMerge(r.d, "alice", p.id, branch, second.approvalId)).rejects.toMatchObject({ code: "approval_invalid" });
-    // And the finished branch can go; only a tailzu/ one.
-    await closePr(r.d, "alice", p.id, branch).catch(() => undefined);
-    await deleteWorkBranch(r.d, "alice", p.id, branch);
+    await expect(confirmMerge(r.d, "alice", p.id, branch, second.approvalId)).rejects.toMatchObject({ code: "pr_merged" });
+    // And the finished branch can go, after a yes.
+    await yes((o) => deleteWorkBranch(r.d, "alice", p.id, branch, o));
     expect(r.fake.branches(repo)).not.toContain(branch);
     expect(r.fake.branches(repo)).toContain("main");
   });
 
-  it("only merges a pull request from its own work branch into the default branch", async () => {
+  it("only merges a pull request from this branch into the default branch", async () => {
     const r = rig();
     const { project: p, repo } = await project(r);
     const { branch } = await createWorkBranch(r.d, "alice", p.id, "merge");
     const ws = await workspace(r.d, "alice", p.id, branch);
     await ws.commit([{ path: "f.txt", content: "one\n" }], "f");
     const pr = await ws.openDraftPr("T", "B");
-    await markReady(r.d, "alice", p.id, branch);
+    await yes((o) => markReady(r.d, "alice", p.id, branch, o));
     const ref = { installationId: p.installationId, repoId: repo.id, fullName: repo.fullName, defaultBranch: "main", ...(kind === "oauth" ? { access: r.oauth.access("alice") } : {}) };
     const head = r.fake.head(repo, branch)!;
     r.fake.calls.length = 0;
@@ -812,57 +889,85 @@ describe.each(["app", "oauth"] as const)("every guard holds for a %s project", (
     for (const op of [syncBranch, markReady, closePr, requestMerge, deleteWorkBranch]) {
       await expect(op(r.d, "alice", p.id, branch), op.name).rejects.toMatchObject({ code: kind === "oauth" ? "no_access" : "suspended" });
     }
+    // Not even a question about it: access comes before the policy.
+    await expect(ws.commit([{ path: "g.txt", content: "g" }], "m")).rejects.toMatchObject({ code: kind === "oauth" ? "no_access" : "suspended" });
     expect(r.fake.writes().length).toBe(writes);
   });
 });
 
-// ------------------------------------------------------------ the one workflow file
+// ------------------------------------------------------------ workflow files
 
-describe("the one workflow file Tailzu may ever write", () => {
-  it("is refused everywhere by default, with the single exception behind a flag", () => {
-    for (const path of [TAILZU_WORKFLOW, ".github/workflows/ci.yml", ".github/workflows/tailzu.yml/x", ".github/workflows/Tailzu.yml", ".github/workflows/sub/tailzu.yml", ".github/workflows"]) {
-      expect(() => assertRepoPath(path, true), path).toThrowError(expect.objectContaining({ code: "bad_path" }));
-      expect(() => assertRepoPath(path, true, { workflow: false }), path).toThrowError(expect.objectContaining({ code: "bad_path" }));
-    }
-    expect(TAILZU_WORKFLOW).toBe(".github/workflows/tailzu.yml");
-    expect(assertRepoPath(TAILZU_WORKFLOW, true, { workflow: true })).toBe(TAILZU_WORKFLOW);
-    // Even with the flag, nothing else under workflows.
-    for (const path of [".github/workflows/ci.yml", ".github/workflows/tailzu.yml/x", ".github/workflows/Tailzu.yml", ".github/workflows/sub/tailzu.yml", ".GitHub/workflows/tailzu.yml"]) {
-      expect(() => assertRepoPath(path, true, { workflow: true }), path).toThrowError(expect.objectContaining({ code: "bad_path" }));
-    }
-    // Reading is not writing.
-    expect(() => assertRepoPath(".github/workflows/ci.yml", false)).not.toThrow();
+describe("changing a workflow file (.github/workflows/*)", () => {
+  const wf = [{ path: ".github/workflows/ci.yml", content: "name: ci\n" }];
+
+  it("is refused outright for a sign-in without the workflow scope, and for an App without the Workflows permission, before anything is asked", async () => {
+    const r = rig();
+    const { project, repo } = await oauthProject(r);
+    const { branch } = await createWorkBranch(r.d, "alice", project.id, "ci");
+    const ws = await workspace(r.d, "alice", project.id, branch);
+    r.fake.calls.length = 0;
+    const err = await ws.commit(wf, "Add CI").catch((e) => e);
+    expect(err).toMatchObject({ code: "needs_workflow_scope", info: { action: "workflow.write", reason: "missing_scope" } });
+    expect(err.message).toMatch(/Sign in with GitHub again/);
+    expect(r.fake.writes()).toHaveLength(0);
+    expect(r.fake.files(repo, branch)).not.toHaveProperty(".github/workflows/ci.yml");
+
+    const app = rig();
+    const { project: ap } = await appProject(app); // Contents, Pull requests, Metadata: no Workflows
+    const { branch: ab } = await createWorkBranch(app.d, "alice", ap.id, "ci");
+    const err2 = await (await workspace(app.d, "alice", ap.id, ab)).commit(wf, "Add CI").catch((e) => e);
+    expect(err2).toMatchObject({ code: "needs_workflow_scope" });
+    expect(err2.message).toMatch(/Workflows permission/);
+    expect(app.fake.writes().filter((c) => !c.url.pathname.endsWith("/git/refs"))).toHaveLength(0);
   });
 
-  it("is allowed in a commit only on a work branch, with a token that has the workflow scope", async () => {
-    // A sign-in made through the incremental flow, so the token has the scope.
+  it("asks first when the token may (any file under workflows, not just one), even on a branch of its own, and then writes it", async () => {
     const r = rig();
-    const token = await signIn(r, "alice", { workflow: true, scopes: ["repo", "read:user", "workflow"] });
+    await signIn(r, "alice", { workflow: true, scopes: ["repo", "read:user", "workflow"] });
     const repo = r.fake.addRepo(900, "alice/app");
     const { project } = await addProject(r.d, "alice", repo.id);
     const { branch } = await createWorkBranch(r.d, "alice", project.id, "ci");
     const ws = await workspace(r.d, "alice", project.id, branch);
-    await ws.commit([{ path: ".github/workflows/tailzu.yml", content: "name: tailzu\n" }], "Add the workflow");
-    expect(r.fake.files(repo, branch)[".github/workflows/tailzu.yml"]).toBe("name: tailzu\n");
-    expect(token).toBeDefined();
-    // Any other workflow file is still refused, with the scope.
-    for (const path of [".github/workflows/ci.yml", ".github/workflows/other/tailzu.yml"]) {
-      await expect(ws.commit([{ path, content: "x" }], "m"), path).rejects.toMatchObject({ code: "bad_path" });
-    }
-    // The default branch is still never written.
-    const ref = { installationId: 0, repoId: repo.id, fullName: repo.fullName, defaultBranch: "main", access: r.oauth.access("alice") };
-    await expect(r.github.commit(ref, "main", [{ path: ".github/workflows/tailzu.yml", content: "x" }], "m")).rejects.toMatchObject({ code: "bad_branch" });
+    expect(ws.own).toBe(true);
+    const asked = await ws.commit(wf, "Add CI") as { approvalId: string };
+    expect(asked).toMatchObject({ needsApproval: true, action: "workflow.write", faceId: false, summary: { workflowFiles: [".github/workflows/ci.yml"] } });
+    expect(r.fake.files(repo, branch)).not.toHaveProperty(".github/workflows/ci.yml");
+    await ws.commit(wf, "Add CI", { approvalId: asked.approvalId });
+    expect(r.fake.files(repo, branch)[".github/workflows/ci.yml"]).toBe("name: ci\n");
+    // Another file, another path under workflows: the same question, then the same yes.
+    await yes((o) => ws.commit([{ path: ".github/workflows/deploy/prod.yml", content: "x" }], "Add deploy", o));
+    expect(r.fake.files(repo, branch)).toHaveProperty([".github/workflows/deploy/prod.yml"]);
   });
 
-  it("stays refused for a token without the scope, and for the App", async () => {
+  it("asks first for an App that has the Workflows permission, and only then asks GitHub for a token that has it", async () => {
+    const r = rig();
+    const { project, repo } = await appProject(r, "alice", { contents: "write", pull_requests: "write", metadata: "read", workflows: "write" });
+    const { branch } = await createWorkBranch(r.d, "alice", project.id, "ci");
+    const ws = await workspace(r.d, "alice", project.id, branch);
+    const mints = () => r.fake.calls.filter((c) => c.url.pathname.endsWith("/access_tokens")).map((c) => c.body.permissions);
+    const before = mints().length;
+    const asked = await ws.commit(wf, "Add CI") as { approvalId: string; action: string };
+    expect(asked.action).toBe("workflow.write");
+    expect(r.fake.files(repo, branch)).not.toHaveProperty(".github/workflows/ci.yml");
+    await ws.commit(wf, "Add CI", { approvalId: asked.approvalId });
+    expect(r.fake.files(repo, branch)[".github/workflows/ci.yml"]).toBe("name: ci\n");
+    // The ordinary token has no Workflows in it; the one for this commit does, and is a token of its own.
+    expect(mints().slice(0, before).every((p) => p.workflows === undefined)).toBe(true);
+    expect(mints().some((p) => p.workflows === "write")).toBe(true);
+    await ws.commit([{ path: "plain.txt", content: "x" }], "plain");
+    expect(r.fake.calls.filter((c) => c.method === "PATCH" && c.headers.authorization && r.fake.tokenPermissions(c.headers.authorization.slice(7))?.workflows === "write").length).toBe(1);
+  });
+
+  it("is GitHub's refusal, put in plain words, if the token turns out not to be allowed after all", async () => {
     const r = rig();
     const { project } = await oauthProject(r);
     const { branch } = await createWorkBranch(r.d, "alice", project.id, "ci");
-    await expect((await workspace(r.d, "alice", project.id, branch)).commit([{ path: TAILZU_WORKFLOW, content: "x" }], "m")).rejects.toMatchObject({ code: "bad_path" });
-    const app = rig();
-    const { project: ap } = await appProject(app);
-    const { branch: ab } = await createWorkBranch(app.d, "alice", ap.id, "ci");
-    await expect((await workspace(app.d, "alice", ap.id, ab)).commit([{ path: TAILZU_WORKFLOW, content: "x" }], "m")).rejects.toMatchObject({ code: "bad_path" });
+    // The person's link says "workflow" but GitHub's token doesn't have it (taken away on GitHub since).
+    const link = (await r.store.getOAuthLink("alice"))!;
+    await r.store.saveOAuthLink("alice", { githubUserId: link.githubUserId, githubLogin: link.githubLogin, tokenEnc: link.tokenEnc!, scope: "repo, read:user, workflow" });
+    const err = await yes((o) => commitToBranch(r.d, "alice", project.id, branch, wf, "Add CI", o)).catch((e) => e);
+    expect(err).toMatchObject({ code: "needs_workflow_scope" });
+    expect(String(err.message)).not.toMatch(/refusing to allow|OAuth App/);
   });
 });
 
@@ -884,11 +989,13 @@ describe("what GitHub says when an organisation hasn't let the sign-in in", () =
 });
 
 describe("the access object", () => {
-  it("is one interface with a kind, a token source, and for a person's own token a trailer", () => {
+  it("is one interface with a kind, a token source and the scopes the token has", async () => {
     const r = rig();
+    await signIn(r, "alice");
     const a = r.oauth.access("alice");
     expect(a).toBeInstanceOf(OAuthAccess);
     expect(a.kind).toBe("oauth");
-    expect(a.commitTrailer).toBe(COMMIT_TRAILER);
+    expect(await a.scopes({} as never)).toEqual(["repo", "read:user"]);
+    expect(await r.oauth.scopesOf("nobody")).toEqual([]);
   });
 });

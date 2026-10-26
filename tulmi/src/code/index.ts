@@ -14,10 +14,15 @@
  * routes then answer 503 not_configured instead of failing halfway through a
  * person's install.
  *
+ * `github` also carries WHO THE BOT IS in git (CODE_BOT_NAME and CODE_BOT_EMAIL,
+ * "Blip" and "blip@tailzu.space" by default): the author of every commit it
+ * makes, on either way of connecting (access.ts).
+ *
  * Tests pass their own store, App config and fake `fetchFn`, so nothing here
  * reads the environment or reaches GitHub unless it is asked to.
  */
 import { getConfig } from "../config.js";
+import { botIdentity, type BotIdentity } from "./access.js";
 import { ApprovalBook } from "./approvals.js";
 import { GithubApp, type GithubAppConfig } from "./github.js";
 import { GithubOAuth, type GithubOAuthConfig } from "./oauth.js";
@@ -35,7 +40,7 @@ export interface Code {
   oauthWanted: boolean;
   /** Null: no webhook secret, so the webhook refuses everything. */
   webhookSecret: string | null;
-  /** The merges waiting for a yes (approvals.ts): in memory, ten minutes each. */
+  /** The actions waiting for a yes (approvals.ts): in memory, ten minutes each. */
   approvals: ApprovalBook;
 }
 
@@ -51,6 +56,8 @@ export interface CreateCodeOptions {
   webhookSecret?: string | null;
   fetchFn?: typeof fetch;
   now?: () => number;
+  /** Instead of CODE_BOT_NAME and CODE_BOT_EMAIL. */
+  bot?: BotIdentity;
 }
 
 /** The App from GITHUB_APP_*, or null when any part of it is missing. */
@@ -71,15 +78,22 @@ export function oauthConfigFromEnv(): GithubOAuthConfig | null {
     : null;
 }
 
+/** Who the bot is in git, from CODE_BOT_NAME and CODE_BOT_EMAIL (access.ts botIdentity: a bad or missing value is the default). */
+export function botFromEnv(): BotIdentity {
+  const cfg = getConfig();
+  return botIdentity(cfg.CODE_BOT_NAME, cfg.CODE_BOT_EMAIL);
+}
+
 export function createCode(o: CreateCodeOptions = {}): Code {
   const app = o.app !== undefined ? o.app : appConfigFromEnv();
   const oauthConfig = o.oauth !== undefined ? o.oauth : oauthConfigFromEnv();
   const store = o.store ?? codeStore();
+  const bot = o.bot ?? botFromEnv();
   let github: GithubApp | null = null;
   let appReady = false;
   if (app) {
     try {
-      github = new GithubApp(app, { fetchFn: o.fetchFn, now: o.now });
+      github = new GithubApp(app, { fetchFn: o.fetchFn, now: o.now, bot });
       appReady = true;
     } catch {
       // The key is what could not be read: say which setting, never its contents.
@@ -87,7 +101,7 @@ export function createCode(o: CreateCodeOptions = {}): Code {
     }
   }
   // A server with only the sign-in still needs the client for the git calls; it just has no App behind it.
-  if (!github && oauthConfig) github = new GithubApp(null, { fetchFn: o.fetchFn, now: o.now });
+  if (!github && oauthConfig) github = new GithubApp(null, { fetchFn: o.fetchFn, now: o.now, bot });
   const oauthWanted = o.oauthEnabled !== undefined ? o.oauthEnabled : getConfig().CODE_GITHUB_OAUTH;
   const oauth = github && oauthConfig
     ? new GithubOAuth({ config: oauthConfig, store, github, enabled: oauthWanted, fetchFn: o.fetchFn, now: o.now })

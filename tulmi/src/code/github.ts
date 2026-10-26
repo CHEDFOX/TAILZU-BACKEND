@@ -1,5 +1,5 @@
 /**
- * CALLING GITHUB AS THE TAILZU APP, AND THE GUARD THAT KEEPS IT ON ITS OWN BRANCHES.
+ * CALLING GITHUB AS THE TAILZU APP (OR AS THE PERSON), AND SAYING IT IN PLAIN WORDS WHEN GITHUB REFUSES.
  *
  * The Code bot works in a person's repos through a GitHub App, not through
  * their password or a token of theirs. Who Tailzu is to GitHub, in the order a
@@ -9,11 +9,13 @@
  *      for eight. It proves "this is the Tailzu App" and does nothing else;
  *   2. the JWT is traded for an INSTALLATION TOKEN: a token for one install,
  *      good for an hour, with only the permissions asked for (contents write,
- *      pull requests write, metadata read: no workflows, nothing else). To
- *      list an install's repos the token is unscoped (metadata read only); for
- *      everything else it is scoped to ONE repo id, so a bug cannot reach the
- *      person's other repos. Tokens are cached per (install, repo) until five
- *      minutes before they run out, and live in memory only;
+ *      pull requests write, metadata read; and workflows write, only for the
+ *      one commit that changes a workflow file, and only if the install has
+ *      been given that permission). To list an install's repos the token is
+ *      unscoped (metadata read only); for everything else it is scoped to ONE
+ *      repo id, so a bug cannot reach the person's other repos. Tokens are
+ *      cached per (install, repo) until five minutes before they run out, and
+ *      live in memory only;
  *   3. the PERSON's own GitHub token exists for one moment, in the callback:
  *      the code GitHub sends back is traded for it, it lists the installs the
  *      person can reach (which is how an install is proved to be theirs), it
@@ -22,8 +24,8 @@
  *
  * Which token a call carries is a GitAccess (access.ts): the App's installation
  * token above, or, for a person who signed in with GitHub instead of installing
- * the App, their own token (oauth.ts). The calls and every guard below are the
- * same for both; a RepoRef names the access, and none means the App.
+ * the App, their own token (oauth.ts). The calls below are the same for both;
+ * a RepoRef names the access, and none means the App.
  *
  * AN INSTALL IS NOT ACCESS. GitHub lists an install for anyone who can reach
  * any repo in it, so an organisation member, or someone invited to a single
@@ -38,25 +40,37 @@
  * repeats GitHub's own words or a token, a code or a key: a failure is a
  * ConnectorError whose message can be shown to the person (connectors/oauth.ts).
  *
- * THE GUARD. Tailzu never writes to a default branch, or to any branch outside
- * `tailzu/`. assertWorkBranch is the one function that says so, and every
- * write goes through it: making a branch, committing, merging the default
- * branch into the work branch, opening, closing or deleting. The paths of a
- * commit are held to the same standard (assertRepoPath): relative, no `..`,
- * and nothing under .github/workflows (the App has no permission to change
- * workflows anyway; this gives a clear error instead of GitHub's).
+ * THE RULES ARE NOT HERE. This file is the client: it makes the calls, and
+ * checks what can only be checked here (a branch name that is a branch name, a
+ * path that stays inside the repo). Whether the bot SHOULD make a call (is it
+ * its own branch, does it need the person's yes, is it a force-push) is
+ * policy.ts, and projects.ts and pulls.ts ask it before they call anything
+ * here. So a method below does what it is told; the only things it refuses are
+ * the ones that are never right:
  *
- * There are exactly TWO writes to a default branch, each its own method with
- * its own guard, neither one reachable by a bug in the rest:
- *   - initEmptyRepo: the first README.md of a repo with no commits at all,
- *     checked first, so it can't overwrite anything;
- *   - mergePull: squash-merging a work branch's pull request, after a person
- *     approved exactly that head commit (approvals.ts).
+ *   - a path that is absolute, goes up with `..` or sits inside .git
+ *     (assertRepoPath; policy.ts calls that action path.escape and "never");
+ *   - a branch name git itself would not take (validBranchName);
+ *   - moving a branch to a commit that is not a fast-forward unless `force`
+ *     is passed, which only a strict approval ever does (updateRef).
+ *
+ * WHO COMMITS. Every commit made here has the bot as its author (CODE_BOT_NAME
+ * and CODE_BOT_EMAIL; access.ts) and, when the person's GitHub id and login are
+ * known, a Co-authored-by line for them at the end of its message. The committer
+ * is left for GitHub to fill in as the token's own identity. GitHub makes
+ * merge commits itself (a sync, a squash-merge) and gives no way to set their
+ * author, so those are authored by the token's identity.
+ *
+ * WHEN GITHUB SAYS NO. A refusal because of branch protection or a repository
+ * rule (a required check, a required review, "changes must be made through a
+ * pull request") is a ConnectorError with the code `protected_branch`, in plain
+ * words, whichever call it came from. Tailzu reports it and does not try to get
+ * round it.
  */
 import { createPrivateKey, type KeyObject } from "node:crypto";
 import { SignJWT } from "jose";
 import { ConnectorError } from "../connectors/oauth.js";
-import { AppAccess, type GitAccess } from "./access.js";
+import { AppAccess, DEFAULT_BOT, withCoAuthor, type BotIdentity, type GitAccess, type Person } from "./access.js";
 
 export const GITHUB_API = "https://api.github.com";
 export const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
@@ -124,6 +138,8 @@ export interface RepoRef {
   defaultBranch: string;
   /** Where the token for calls on this repo comes from. None: the GitHub App's. */
   access?: GitAccess;
+  /** The App's token for this call also has the Workflows permission (only for a commit that changes a workflow file). Ignored for a person's own token. */
+  workflows?: boolean;
 }
 
 export interface TreeEntry { path: string; type: string; size?: number; sha: string }
@@ -170,36 +186,40 @@ export interface PullComment { author: string; body: string; path?: string; line
 /** One file of a commit: its new text, or `delete` (or null text) to remove it. */
 export interface CommitFile { path: string; content?: string | null; delete?: boolean }
 
-// ---------------------------------------------------------------- the guard
-
-export const WORK_BRANCH = /^tailzu\/[a-z0-9][a-z0-9-]{0,48}$/;
-
-/**
- * The one check every write to a branch passes: it is a Tailzu work branch,
- * it is not the repo's default branch, and it has no `..` in it.
- */
-export function assertWorkBranch(branch: string, defaultBranch: string): void {
-  if (typeof branch !== "string" || !WORK_BRANCH.test(branch) || branch === defaultBranch || branch.includes("..")) {
-    throw new ConnectorError("bad_branch", "Tailzu only works on its own branches (tailzu/...), never on the default branch or any other.");
-  }
+/** What a commit can be told besides its files and message. */
+export interface CommitOptions {
+  /** Who the work is for: credited in the message (access.ts withCoAuthor). */
+  person?: Person | null;
+  /** The commit the branch must be at: if it is anywhere else the commit is not made ("changed_since_approval"). */
+  expectHead?: string;
 }
 
-/** The one workflow file Tailzu may ever write, and only on a work branch, with a token that has the `workflow` scope. */
-export const TAILZU_WORKFLOW = ".github/workflows/tailzu.yml";
+// ---------------------------------------------------------- names and paths
+
+/** The names the bot gives its own branches: `tailzu/<slug>-<4 hex>`. Whether a branch is the bot's is a record (store.ts), not this. */
+export const WORK_BRANCH = /^tailzu\/[a-z0-9][a-z0-9-]{0,48}$/;
+
+/** Whether a name is one the bot would give a branch of its own. */
+export function isWorkBranchName(branch: string, defaultBranch: string): boolean {
+  return typeof branch === "string" && WORK_BRANCH.test(branch) && branch !== defaultBranch && !branch.includes("..");
+}
+
+/** git's own rules for a ref name, enough to keep it one path in a URL. */
+export function validBranchName(branch: unknown): branch is string {
+  // eslint-disable-next-line no-control-regex
+  return typeof branch === "string" && /^[^\s~^:?*[\\\u0000-\u001f\u007f]{1,255}$/.test(branch) && !branch.includes("..") && !branch.includes("@{")
+    && !branch.startsWith("/") && !branch.endsWith("/") && !branch.endsWith(".lock") && !branch.includes("//");
+}
 
 /**
  * A path inside a repo, as the tree and a commit name it: relative, no empty,
- * `.` or `..` part, nothing inside .git. A path to WRITE also may not be under
- * .github/workflows. Returns the path as given.
+ * `.` or `..` part, nothing inside .git. These are the paths policy.ts calls
+ * "never" (path.escape): nothing can allow them. Returns the path as given.
  *
- * The single exception, behind the `workflow` flag: exactly
- * .github/workflows/tailzu.yml. The flag is only ever set by commit(), after
- * assertWorkBranch, for an access whose token has the `workflow` scope; nothing
- * asks for that scope yet (oauth.ts), so in practice the answer is still no.
- * TODO: this exception is for a later step; before the Code bot ships, remove
- * it if workflow support was not built (the refusal below is then absolute).
+ * Writing under .github/workflows is NOT refused here: it is a question for
+ * policy.ts (workflow.write: it asks, and the token must be allowed to).
  */
-export function assertRepoPath(path: unknown, write = false, o: { workflow?: boolean } = {}): string {
+export function assertRepoPath(path: unknown): string {
   const bad = (why: string) => new ConnectorError("bad_path", `I can't use the path ${typeof path === "string" ? JSON.stringify(path.slice(0, 80)) : "given"}: ${why}.`);
   if (typeof path !== "string" || !path) throw bad("it is empty");
   if (path.length > 500) throw bad("it is too long");
@@ -210,9 +230,6 @@ export function assertRepoPath(path: unknown, write = false, o: { workflow?: boo
   if (parts.some((p) => p === "..")) throw bad("it can't go up with ..");
   if (parts.some((p) => p === "" || p === ".")) throw bad("it has an empty part");
   if (parts.some((p) => p.toLowerCase() === ".git")) throw bad("it is inside .git");
-  if (write && /^\.github\/workflows(\/|$)/i.test(path) && !(o.workflow === true && path === TAILZU_WORKFLOW)) {
-    throw new ConnectorError("bad_path", "Tailzu can't change .github/workflows (GitHub Actions files). Make that change yourself.");
-  }
   return path;
 }
 
@@ -279,10 +296,37 @@ export const orgBlocked = () => new ConnectorError(
   "This organisation hasn't let Tailzu in. An owner can approve Tailzu under the organisation's third-party access settings (or, if it uses SSO, you can authorise Tailzu's sign-in for it on GitHub), or you can install the Tailzu GitHub App on the organisation instead.",
 );
 
+/**
+ * What GitHub says when a branch is protected or a repository rule stands in
+ * the way: a protected ref, a required status check, a required review, "changes
+ * must be made through a pull request", a rule violation. It comes as a 403, a
+ * 405 (the merge) or a 422 (a ref update), depending on the call.
+ */
+const PROTECTED = /protected (?:branch|ref)|branch protection|rule violation|repository rule|required status check|status checks? (?:is|are) (?:expected|required)|approving review|review is required|reviews? required|must be made through a pull request|require[sd]? a pull request|GH00[6-9]|GH013/i;
+/** What GitHub says when a token isn't allowed to change a workflow file. */
+const WORKFLOW_REFUSED = /refusing to allow .{0,60}workflow|without `?workflows?`? (?:scope|permission)/i;
+
+/** Everything GitHub said in a failed response, as one string to look in (never to repeat). */
+function saidIn(json: any): string {
+  const errs = Array.isArray(json?.errors) ? json.errors.map((e: any) => (typeof e === "string" ? e : String(e?.message ?? ""))) : [];
+  return [String(json?.message ?? ""), ...errs].join(" ");
+}
+
+/** Whether a failed response is GitHub's branch protection (or a rule) saying no. */
+export function isProtectionRefusal(status: number, json: any): boolean {
+  return (status === 403 || status === 405 || status === 422) && PROTECTED.test(saidIn(json));
+}
+
 /** A failed GitHub response as a ConnectorError in plain words. GitHub's own text is not repeated. */
 export function githubError(status: number, json: any, what: string): ConnectorError {
   const said = String(json?.message ?? "");
   if (status === 403 && ORG_BLOCKED.test(said)) return orgBlocked();
+  if (WORKFLOW_REFUSED.test(saidIn(json))) {
+    return new ConnectorError("needs_workflow_scope", `GitHub wouldn't let Tailzu change a workflow file in ${what}: this connection isn't allowed to. Sign in with GitHub again and allow it, or give the Tailzu GitHub App the Workflows permission.`);
+  }
+  if (isProtectionRefusal(status, json)) {
+    return new ConnectorError("protected_branch", `GitHub's branch protection (or a rule on the repo) wouldn't allow that on ${what}. Tailzu doesn't try to get round it: make the change through a pull request, or change the rule on GitHub yourself.`);
+  }
   if (status === 401) return new ConnectorError("github_auth", "GitHub turned down Tailzu's access. Try again; if it keeps happening, reconnect GitHub.");
   if (status === 404) return new ConnectorError("not_found", `I couldn't find ${what} on GitHub.`);
   if (status === 429 || (status === 403 && /rate limit|abuse|secondary/i.test(said))) {
@@ -295,11 +339,7 @@ export function githubError(status: number, json: any, what: string): ConnectorE
 }
 
 const refName = (branch: string): string => {
-  // git's own rules for a ref name, enough to keep it one path in a URL.
-  // eslint-disable-next-line no-control-regex
-  if (typeof branch !== "string" || !/^[^\s~^:?*[\\\u0000-\u001f\u007f]{1,255}$/.test(branch) || branch.includes("..") || branch.includes("@{") || branch.startsWith("/") || branch.endsWith("/")) {
-    throw new ConnectorError("bad_branch", "That isn't a branch name I can use.");
-  }
+  if (!validBranchName(branch)) throw new ConnectorError("bad_branch", "That isn't a branch name I can use.");
   return branch;
 };
 const encodePath = (p: string): string => p.split("/").map(encodeURIComponent).join("/");
@@ -322,22 +362,43 @@ const asInstallation = (i: any): GithubInstallation | null =>
       }
     : null;
 
-const changedSinceApproval = () => new ConnectorError("changed_since_approval", "The branch changed after you looked at it. Nothing was merged; look at it again.");
+const changedSinceApproval = () => new ConnectorError("changed_since_approval", "The branch changed after you looked at it. Nothing was done; look at it again.");
 
 /**
- * Whether a pull request is one Tailzu may merge: its branch is a work branch,
- * in this repo (not a fork), going into the default branch; open, not merged,
- * not a draft, and not known to have conflicts.
+ * Whether a pull request is one Tailzu may merge: it is from this branch, in
+ * this repo (not a fork), going into the default branch; open, not merged, not
+ * a draft, and not known to have conflicts. (Whether it may be merged at all is
+ * the person's yes: policy.ts pr.merge.)
  */
 export function assertMergeable(pull: PullInfo, repo: RepoRef, branch: string): void {
-  assertWorkBranch(branch, repo.defaultBranch);
-  if (pull.headRef !== branch || pull.headRepoId !== repo.repoId || pull.baseRef !== repo.defaultBranch) {
-    throw new ConnectorError("bad_branch", "That isn't a pull request from one of Tailzu's branches into the default branch.");
+  if (!validBranchName(branch) || pull.headRef !== branch || pull.headRepoId !== repo.repoId || pull.baseRef !== repo.defaultBranch) {
+    throw new ConnectorError("bad_branch", "That isn't a pull request from this branch into the default branch.");
   }
   if (pull.state === "merged") throw new ConnectorError("pr_merged", "That pull request is already merged.");
   if (pull.state === "closed") throw new ConnectorError("pr_not_open", "That pull request is closed.");
   if (pull.draft) throw new ConnectorError("pr_draft", "That pull request is still a draft. Take it out of draft first.");
   if (pull.mergeable === false) throw new ConnectorError("not_mergeable", "GitHub says this pull request has conflicts or can't be merged yet.");
+}
+
+/**
+ * The files of a commit as the tree API takes them, checked: at least one, at
+ * most 200, each path inside the repo and only once, each with text (1 MB at
+ * most) or a deletion. Throws a ConnectorError (bad_request, bad_path,
+ * too_large) before anything is asked of GitHub.
+ */
+export function commitTreeEntries(files: CommitFile[]): Array<Record<string, unknown>> {
+  if (!Array.isArray(files) || !files.length) throw new ConnectorError("bad_request", "There is nothing to commit.");
+  if (files.length > COMMIT_FILES_MAX) throw new ConnectorError("bad_request", `A commit can have at most ${COMMIT_FILES_MAX} files.`);
+  const seen = new Set<string>();
+  return files.map((f) => {
+    const path = assertRepoPath(f?.path);
+    if (seen.has(path)) throw new ConnectorError("bad_path", `${path} is in this commit twice.`);
+    seen.add(path);
+    if (f.delete === true || f.content === null) return { path, mode: "100644", type: "blob", sha: null };
+    if (typeof f.content !== "string") throw new ConnectorError("bad_request", `${path} has no text to write.`);
+    if (Buffer.byteLength(f.content, "utf8") > FILE_MAX_BYTES) throw new ConnectorError("too_large", `${path} is over 1 MB, which is more than I write.`);
+    return { path, mode: "100644", type: "blob", content: f.content };
+  });
 }
 
 export class GithubApp {
@@ -348,15 +409,21 @@ export class GithubApp {
   private readonly minting = new Map<string, Promise<string>>();
 
   /** The App's own access: its installation tokens. The default for any call that names none. */
-  private readonly appAccess: GitAccess = new AppAccess((installationId, repoId) => this.installationToken(installationId, repoId));
+  private readonly appAccess: GitAccess = new AppAccess(
+    (installationId, repoId, workflows) => this.installationToken(installationId, repoId, workflows),
+    (installationId) => this.installationScopes(installationId),
+  );
+  /** Who the author of every commit is. */
+  readonly bot: BotIdentity;
 
   /**
    * `c` is the GitHub App, or null for a server that offers only "Sign in with
    * GitHub": the calls that need the App then say "not_configured". Throws
    * ConnectorError("not_configured") when the App's key can't be read.
    */
-  constructor(private readonly c: GithubAppConfig | null, private readonly o: { fetchFn?: typeof fetch; now?: () => number } = {}) {
+  constructor(private readonly c: GithubAppConfig | null, private readonly o: { fetchFn?: typeof fetch; now?: () => number; bot?: BotIdentity } = {}) {
     this.key = c ? parsePrivateKey(c.privateKey) : null;
+    this.bot = o.bot ?? { ...DEFAULT_BOT };
   }
 
   /** The App's settings, or "not_configured" when this server has none. */
@@ -409,10 +476,13 @@ export class GithubApp {
   /**
    * A token for one install. With a repo id it is scoped to that one repo and
    * may write contents and pull requests; without, it can only read metadata
-   * (to list the install's repos). Cached until five minutes before it ends.
+   * (to list the install's repos). `workflows` also asks for the Workflows
+   * permission, for the one commit that changes a workflow file: GitHub turns
+   * that down (422) if the install was not given it. Cached until five
+   * minutes before it ends.
    */
-  async installationToken(installationId: number, repoId?: number): Promise<string> {
-    const key = `${installationId}|${repoId ?? "*"}`;
+  async installationToken(installationId: number, repoId?: number, workflows = false): Promise<string> {
+    const key = `${installationId}|${repoId ?? "*"}${workflows && repoId !== undefined ? "|wf" : ""}`;
     const hit = this.tokens.get(key);
     if (hit && hit.expiresAt - TOKEN_SKEW_MS > this.now()) return hit.token;
     const running = this.minting.get(key);
@@ -421,7 +491,7 @@ export class GithubApp {
       const r = await this.send("POST", `${GITHUB_API}/app/installations/${installationId}/access_tokens`, await this.appJwt(),
         repoId === undefined
           ? { permissions: { metadata: "read" } }
-          : { repository_ids: [repoId], permissions: { contents: "write", pull_requests: "write", metadata: "read" } });
+          : { repository_ids: [repoId], permissions: { contents: "write", pull_requests: "write", metadata: "read", ...(workflows ? { workflows: "write" } : {}) } });
       if (r.status < 200 || r.status >= 300 || typeof r.json?.token !== "string") throw githubError(r.status, r.json, "that installation");
       const expiresAt = Date.parse(String(r.json.expires_at));
       this.tokens.set(key, { token: r.json.token, expiresAt: Number.isFinite(expiresAt) ? expiresAt : this.now() + 55 * 60_000 });
@@ -429,6 +499,25 @@ export class GithubApp {
     })().finally(() => this.minting.delete(key));
     this.minting.set(key, p);
     return p;
+  }
+
+  /**
+   * What the install was given on GitHub, as the plain words policy.ts looks
+   * for: the names of the permissions it can write, with "workflow" when it has
+   * Workflows: write. Asked with the App's own key; only the commit that
+   * changes a workflow file needs it.
+   */
+  async installationScopes(installationId: number): Promise<string[]> {
+    const r = await this.send("GET", `${GITHUB_API}/app/installations/${installationId}`, await this.appJwt());
+    if (r.status !== 200) throw githubError(r.status, r.json, "that installation");
+    const perms: Record<string, unknown> = r.json?.permissions && typeof r.json.permissions === "object" ? r.json.permissions : {};
+    const out = Object.entries(perms).filter(([, level]) => level === "write" || level === "admin").map(([name]) => name);
+    return out.includes("workflows") ? [...out.filter((n) => n !== "workflows"), "workflow"] : out;
+  }
+
+  /** What the token a call on this repo would carry may do on GitHub (access.ts): has "workflow" when it may change workflow files. */
+  scopesOf(repo: RepoRef): Promise<string[]> {
+    return (repo.access ?? this.appAccess).scopes(repo);
   }
 
   // ---------------------------------------------------------- the person
@@ -557,14 +646,51 @@ export class GithubApp {
     return r.json.object.sha;
   }
 
-  /** A new branch at the default branch's head. Returns that head. Fails with "branch_exists" if the name is taken. */
-  async createBranch(repo: RepoRef, branch: string): Promise<string> {
-    assertWorkBranch(branch, repo.defaultBranch);
+  /**
+   * The commit a ref names: a branch, a tag (an annotated one is followed to
+   * its commit), or a full 40-character commit id. `refs/heads/x` and
+   * `refs/tags/x` are taken as what they say; a bare name is a branch first,
+   * then a tag. "not_found" when it is none of them.
+   */
+  async resolveRef(repo: RepoRef, ref: string): Promise<string> {
+    if (!validBranchName(ref)) throw new ConnectorError("bad_branch", "That isn't a branch, tag or commit name I can use.");
+    const base = this.path(repo);
+    if (/^[0-9a-f]{40}$/i.test(ref)) {
+      const c = await this.rsend(repo, "GET", `${base}/git/commits/${ref.toLowerCase()}`);
+      if (c.status !== 200 || typeof c.json?.sha !== "string") throw githubError(c.status, c.json, `the commit ${ref.slice(0, 7)}`);
+      return c.json.sha;
+    }
+    const explicit = /^refs\/(heads|tags)\/(.+)$/.exec(ref);
+    const kinds = explicit ? [explicit[1]!] : ["heads", "tags"];
+    const name = explicit ? explicit[2]! : ref;
+    for (const kind of kinds) {
+      const r = await this.rsend(repo, "GET", `${base}/git/ref/${kind}/${encodePath(name)}`);
+      if (r.status === 404) continue;
+      if (r.status !== 200 || typeof r.json?.object?.sha !== "string") throw githubError(r.status, r.json, `${ref}`);
+      let obj = r.json.object as { sha: string; type?: string };
+      // An annotated tag points at a tag object, which points at the commit.
+      for (let hop = 0; obj.type === "tag" && hop < 3; hop += 1) {
+        const t = await this.rsend(repo, "GET", `${base}/git/tags/${obj.sha}`);
+        if (t.status !== 200 || typeof t.json?.object?.sha !== "string") throw githubError(t.status, t.json, `the tag ${name}`);
+        obj = t.json.object;
+      }
+      return obj.sha;
+    }
+    throw new ConnectorError("not_found", `I couldn't find ${ref} on GitHub.`);
+  }
+
+  /**
+   * A new branch, at the head of `from` (a branch, tag or commit; the default
+   * branch when none is given). Returns the commit it starts at. Fails with
+   * "branch_exists" if the name is taken.
+   */
+  async createBranch(repo: RepoRef, branch: string, from?: string): Promise<string> {
+    refName(branch);
     let baseSha: string;
     try {
-      baseSha = await this.branchHead(repo, repo.defaultBranch);
+      baseSha = from === undefined ? await this.branchHead(repo, repo.defaultBranch) : await this.resolveRef(repo, from);
     } catch (err) {
-      // A repo with no commits has no default branch to start from (GitHub says 404 or 409).
+      // A repo with no commits has nothing to start from (GitHub says 404 or 409).
       if (err instanceof ConnectorError && (err.code === "not_found" || err.code === "conflict") && await this.repoIsEmpty(repo).catch(() => false)) {
         throw new ConnectorError("repo_empty", "This repo is empty, so there is nothing to branch from. Add a first file to it first (start it with a README), then try again.");
       }
@@ -618,54 +744,67 @@ export class GithubApp {
   }
 
   /**
-   * One commit on a work branch, any number of files in it. The branch moves
-   * only forward (force: false): if someone else pushed in the meantime GitHub
-   * refuses and this throws "branch_moved", so nothing is overwritten.
+   * One commit on a branch, any number of files in it. The branch moves only
+   * forward: if someone else pushed in the meantime GitHub refuses and this
+   * throws "branch_moved", so nothing is overwritten. The commit's author is
+   * the bot, and its message ends with a Co-authored-by line for the person
+   * when they are known (access.ts); the committer is whoever the token is.
+   * `expectHead` is the commit the branch must be at: anywhere else, nothing is
+   * written ("changed_since_approval").
    */
-  async commit(repo: RepoRef, branch: string, files: CommitFile[], message: string): Promise<{ sha: string; parentSha: string }> {
-    assertWorkBranch(branch, repo.defaultBranch);
-    const access = repo.access ?? this.appAccess;
-    // The one workflow file is for a token with the `workflow` scope, on a work branch (just checked), and nothing else.
-    const tree = this.treeEntries(files, access.allowsWorkflow ? await access.allowsWorkflow(repo) : false);
-    let msg = typeof message === "string" ? message.trim().slice(0, 5000) : "";
-    if (!msg) throw new ConnectorError("bad_request", "A commit needs a message.");
-    // A commit made with a person's own token says whose work it was.
-    if (access.commitTrailer && !msg.endsWith(access.commitTrailer)) msg = `${msg}\n\n${access.commitTrailer}`;
+  async commit(repo: RepoRef, branch: string, files: CommitFile[], message: string, o: CommitOptions = {}): Promise<{ sha: string; parentSha: string }> {
+    refName(branch);
+    const tree = commitTreeEntries(files);
+    const text = typeof message === "string" ? message.trim().slice(0, 5000) : "";
+    if (!text) throw new ConnectorError("bad_request", "A commit needs a message.");
+    const msg = withCoAuthor(text, o.person);
 
     const base = this.path(repo);
     const parentSha = await this.branchHead(repo, branch);
+    if (o.expectHead !== undefined && o.expectHead !== parentSha) throw changedSinceApproval();
     const parent = await this.rsend(repo, "GET", `${base}/git/commits/${parentSha}`);
     if (parent.status !== 200 || typeof parent.json?.tree?.sha !== "string") throw githubError(parent.status, parent.json, "the branch");
     const made = await this.rsend(repo, "POST", `${base}/git/trees`, { base_tree: parent.json.tree.sha, tree });
     if (made.status !== 201 || typeof made.json?.sha !== "string") throw githubError(made.status, made.json, "those files");
-    const commit = await this.rsend(repo, "POST", `${base}/git/commits`, { message: msg, tree: made.json.sha, parents: [parentSha] });
+    const commit = await this.rsend(repo, "POST", `${base}/git/commits`, {
+      message: msg, tree: made.json.sha, parents: [parentSha], author: { name: this.bot.name, email: this.bot.email },
+    });
     if (commit.status !== 201 || typeof commit.json?.sha !== "string") throw githubError(commit.status, commit.json, "the commit");
-    const moved = await this.rsend(repo, "PATCH", `${base}/git/refs/heads/${encodePath(branch)}`, { sha: commit.json.sha, force: false });
-    // Not a fast-forward: the branch got a commit since we read it.
-    if (moved.status === 422) throw new ConnectorError("branch_moved", "The branch changed while I was committing. Nothing was overwritten; read it again and retry.");
-    if (moved.status !== 200) throw githubError(moved.status, moved.json, "the branch");
+    try {
+      await this.updateRef(repo, branch, commit.json.sha, { force: false });
+    } catch (err) {
+      // Not a fast-forward: the branch got a commit since we read it.
+      if (err instanceof ConnectorError && err.code === "not_fast_forward") {
+        throw new ConnectorError("branch_moved", "The branch changed while I was committing. Nothing was overwritten; read it again and retry.");
+      }
+      throw err;
+    }
     return { sha: commit.json.sha, parentSha };
   }
 
-  /** The files of a commit as the tree API takes them, checked. */
-  private treeEntries(files: CommitFile[], workflow = false): Array<Record<string, unknown>> {
-    if (!Array.isArray(files) || !files.length) throw new ConnectorError("bad_request", "There is nothing to commit.");
-    if (files.length > COMMIT_FILES_MAX) throw new ConnectorError("bad_request", `A commit can have at most ${COMMIT_FILES_MAX} files.`);
-    const seen = new Set<string>();
-    return files.map((f) => {
-      const path = assertRepoPath(f?.path, true, { workflow });
-      if (seen.has(path)) throw new ConnectorError("bad_path", `${path} is in this commit twice.`);
-      seen.add(path);
-      if (f.delete === true || f.content === null) return { path, mode: "100644", type: "blob", sha: null };
-      if (typeof f.content !== "string") throw new ConnectorError("bad_request", `${path} has no text to write.`);
-      if (Buffer.byteLength(f.content, "utf8") > FILE_MAX_BYTES) throw new ConnectorError("too_large", `${path} is over 1 MB, which is more than I write.`);
-      return { path, mode: "100644", type: "blob", content: f.content };
-    });
+  /**
+   * Moves a branch to a commit. Without `force` that has to be a fast-forward
+   * (the commit is built on the branch's head): if it isn't, nothing moves and
+   * this says "not_fast_forward". `force: true` moves it anyway, which can
+   * throw commits away: only a strict approval (policy.ts push.force) ever
+   * gets it passed. A branch GitHub protects is "protected_branch", not
+   * something to try again another way.
+   */
+  async updateRef(repo: RepoRef, branch: string, sha: string, o: { force?: boolean } = {}): Promise<void> {
+    refName(branch);
+    if (typeof sha !== "string" || !/^[0-9a-f]{40}$/.test(sha)) throw new ConnectorError("bad_request", "That isn't a commit.");
+    const force = o.force === true;
+    const r = await this.rsend(repo, "PATCH", `${this.path(repo)}/git/refs/heads/${encodePath(branch)}`, { sha, force });
+    if (r.status === 422 && !force && !isProtectionRefusal(r.status, r.json) && /fast.?forward/i.test(saidIn(r.json))) {
+      throw new ConnectorError("not_fast_forward", "That isn't a fast-forward of the branch, so nothing moved.");
+    }
+    if (r.status !== 200) throw githubError(r.status, r.json, "the branch");
   }
 
-  /** A draft pull request from a work branch into the default branch. When one is open already, that one. */
+  /** A draft pull request from a branch into the default branch. When one is open already, that one. */
   async openDraftPr(repo: RepoRef, branch: string, title: string, body: string): Promise<{ number: number; url: string; existing: boolean }> {
-    assertWorkBranch(branch, repo.defaultBranch);
+    refName(branch);
+    if (branch === repo.defaultBranch) throw new ConnectorError("bad_branch", "A pull request has to come from a different branch than the one it goes into.");
     const t = typeof title === "string" ? title.trim().slice(0, 256) : "";
     if (!t) throw new ConnectorError("bad_request", "A pull request needs a title.");
     const text = typeof body === "string" ? body.slice(0, 60_000) : "";
@@ -675,11 +814,9 @@ export class GithubApp {
       return { number: r.json.number, url: r.json.html_url, existing: false };
     }
     if (r.status === 422 && /already exists/i.test(JSON.stringify(r.json ?? {}))) {
-      const owner = repo.fullName.split("/")[0]!;
-      const found = await this.rsend(repo, "GET", `${base}/pulls?head=${encodeURIComponent(`${owner}:${branch}`)}&state=open`);
-      const pr = found.status === 200 && Array.isArray(found.json) ? found.json.find((p: any) => Number.isSafeInteger(p?.number) && typeof p?.html_url === "string") : null;
-      if (pr) return { number: pr.number, url: pr.html_url, existing: true };
-      throw githubError(found.status === 200 ? 422 : found.status, found.json, "the pull request");
+      const pr = await this.findOpenPull(repo, branch);
+      if (pr) return { number: pr.number, url: pr.url, existing: true };
+      throw githubError(422, {}, "the pull request");
     }
     if (r.status === 422 && /no commits between/i.test(JSON.stringify(r.json ?? {}))) {
       throw new ConnectorError("nothing_to_review", "There is nothing to open a pull request for yet: commit something to the branch first.");
@@ -689,6 +826,16 @@ export class GithubApp {
       throw new ConnectorError("no_drafts", "This repo's GitHub plan doesn't allow draft pull requests, so I didn't open one.");
     }
     throw githubError(r.status, r.json, "the pull request");
+  }
+
+  /** The open pull request whose head is this branch of this repo, or null. */
+  async findOpenPull(repo: RepoRef, branch: string): Promise<{ number: number; url: string } | null> {
+    refName(branch);
+    const owner = repo.fullName.split("/")[0]!;
+    const found = await this.rsend(repo, "GET", `${this.path(repo)}/pulls?head=${encodeURIComponent(`${owner}:${branch}`)}&state=open`);
+    if (found.status !== 200 || !Array.isArray(found.json)) throw githubError(found.status, found.json, "the pull request");
+    const pr = found.json.find((p: any) => Number.isSafeInteger(p?.number) && typeof p?.html_url === "string");
+    return pr ? { number: pr.number, url: pr.html_url } : null;
   }
 
   // ------------------------------------------------------- a repo's first commit
@@ -702,19 +849,21 @@ export class GithubApp {
   }
 
   /**
-   * THE FIRST OF TWO WRITES TO A DEFAULT BRANCH. A repo with no commits can't
-   * have a branch to work on, so this writes one README.md, with the project's
-   * title, as its first commit (the contents API creates the default branch).
-   * The repo is checked for being empty FIRST, and refused with "repo_not_empty"
-   * if it isn't: this can't overwrite or add to anything that is there.
+   * A repo with no commits can't have a branch to work on, so this writes one
+   * README.md, with the project's title, as its first commit (the contents API
+   * creates the default branch). It is written by the bot, with the person
+   * credited. The repo is checked for being empty FIRST, and refused with
+   * "repo_not_empty" if it isn't: this can't overwrite or add to anything that
+   * is there. (Whether to do it is the person's yes: policy.ts repo.init.)
    */
-  async initEmptyRepo(repo: RepoRef, title: string): Promise<{ sha: string }> {
+  async initEmptyRepo(repo: RepoRef, title: string, o: { person?: Person | null } = {}): Promise<{ sha: string }> {
     if (!(await this.repoIsEmpty(repo))) {
       throw new ConnectorError("repo_not_empty", "This repo already has commits, so Tailzu won't add a first file to its default branch.");
     }
     const heading = title.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 100) || repo.fullName.split("/")[1]!;
     const r = await this.rsend(repo, "PUT", `${this.path(repo)}/contents/README.md`, {
-      message: "Add README", content: Buffer.from(`# ${heading}\n`, "utf8").toString("base64"),
+      message: withCoAuthor("Add README", o.person), content: Buffer.from(`# ${heading}\n`, "utf8").toString("base64"),
+      author: { name: this.bot.name, email: this.bot.email },
     });
     // Someone made the first commit while we were looking: the same refusal.
     if (r.status === 422 || (r.status === 409 && !/empty/i.test(String(r.json?.message ?? "")))) {
@@ -727,11 +876,12 @@ export class GithubApp {
   // --------------------------------------------------------- keeping current
 
   /**
-   * Merges the default branch INTO the work branch (never the other way). Not
+   * Merges the default branch INTO the branch (never the other way). Not
    * resolved and not forced: a conflict is "conflict", and nothing changes.
    */
   async mergeDefaultInto(repo: RepoRef, branch: string): Promise<{ status: "merged" | "up_to_date"; sha?: string }> {
-    assertWorkBranch(branch, repo.defaultBranch);
+    refName(branch);
+    if (branch === repo.defaultBranch) throw new ConnectorError("bad_branch", "The default branch is what the others are brought up to; there is nothing to bring it up to.");
     const r = await this.rsend(repo, "POST", `${this.path(repo)}/merges`, {
       base: branch, head: repo.defaultBranch, commit_message: `Merge ${repo.defaultBranch} into ${branch}`,
     });
@@ -853,31 +1003,36 @@ export class GithubApp {
   }
 
   /**
-   * THE SECOND OF TWO WRITES TO A DEFAULT BRANCH: squash-merges a work branch's
-   * pull request. Only after a person approved this head commit (approvals.ts),
-   * and only if it is still the head: the merge is given the sha, and GitHub
-   * refuses if the branch moved, as does this ("changed_since_approval").
-   * The pull request must be Tailzu's: from the work branch, in this repo,
-   * into the default branch, open and not a draft.
+   * Squash-merges a branch's pull request. Only after a person approved this
+   * head commit (policy.ts pr.merge, approvals.ts), and only if it is still the
+   * head: the merge is given the sha, and GitHub refuses if the branch moved,
+   * as does this ("changed_since_approval"). The pull request must be from this
+   * branch, in this repo, into the default branch, open and not a draft. If
+   * GitHub holds the merge back for a required check or review, that is
+   * "protected_branch" (the squash commit is authored by the token's identity:
+   * GitHub gives no way to say otherwise).
    */
   async mergePull(repo: RepoRef, branch: string, number: number, sha: string): Promise<{ sha: string }> {
-    assertWorkBranch(branch, repo.defaultBranch);
+    refName(branch);
     const pull = await this.getPull(repo, number);
     assertMergeable(pull, repo, branch);
     if (pull.headSha !== sha) throw changedSinceApproval();
     const r = await this.rsend(repo, "PUT", `${this.path(repo)}/pulls/${number}/merge`, { merge_method: "squash", sha });
     if (r.status === 409) throw changedSinceApproval();
-    if (r.status === 405) throw new ConnectorError("not_mergeable", "GitHub says this pull request can't be merged right now (a required check or review may be missing).");
+    if (r.status === 405 && !isProtectionRefusal(r.status, r.json)) {
+      throw new ConnectorError("not_mergeable", "GitHub says this pull request can't be merged right now.");
+    }
     if (r.status !== 200 || r.json?.merged !== true) throw githubError(r.status, r.json, "that pull request");
     return { sha: String(r.json.sha ?? "") };
   }
 
-  /** Deletes a work branch from GitHub. Already gone is fine. Returns whether it was there. */
+  /** Deletes a branch from GitHub. Already gone is fine. Returns whether it was there. (Whether to is policy.ts: branch.delete, and branch.delete_default for the default branch.) */
   async deleteBranch(repo: RepoRef, branch: string): Promise<boolean> {
-    assertWorkBranch(branch, repo.defaultBranch);
+    refName(branch);
     const r = await this.rsend(repo, "DELETE", `${this.path(repo)}/git/refs/heads/${encodePath(branch)}`);
     if (r.status === 204) return true;
-    if (r.status === 404 || r.status === 422) return false;
+    // A protected branch is GitHub saying no, not a branch that is already gone.
+    if (!isProtectionRefusal(r.status, r.json) && (r.status === 404 || r.status === 422)) return false;
     throw githubError(r.status, r.json, `the branch ${branch}`);
   }
 

@@ -9,9 +9,10 @@
  * narrows it itself, and everything here exists to make that true:
  *
  *   - it asks for `repo read:user` and nothing more ("workflow" only through
- *     the separate incremental sign-in, which nothing starts yet). The token
- *     GitHub returns is checked: any scope beyond what was asked and it is
- *     revoked on the spot and nothing is connected;
+ *     the separate incremental sign-in, which a person starts when they want
+ *     the bot to change workflow files). The token GitHub returns is checked:
+ *     any scope beyond what was asked and it is revoked on the spot and
+ *     nothing is connected;
  *   - the token is stored ENCRYPTED (AES-256-GCM under CONNECTOR_TOKEN_KEY,
  *     connectors/crypto.ts), never logged, never in a reply, and never handed
  *     to the model, a sandbox or a runner (projects.ts runnerAccess gives a
@@ -21,7 +22,8 @@
  *     repos to choose from is the one call that is not on a project;
  *   - before every write, projects.ts re-checks that the person still has push
  *     access to the repo (canPush; GitHub's own answer, not kept for writes);
- *   - every commit made with the token ends with a Co-authored-by trailer
+ *   - every commit made with the token is authored by the bot (Blip, by
+ *     default) with the person credited in a Co-authored-by trailer
  *     (access.ts), so it shows which were Tailzu's;
  *   - when an App install reaches the same repo, the App is used instead;
  *   - the token is revoked at GitHub (DELETE /applications/{client_id}/token)
@@ -54,7 +56,7 @@ export const OAUTH_STATE_ID = "code-github-oauth";
 export const OAUTH_STATE_ID_WORKFLOW = "code-github-oauth-workflow";
 /** Everything Tailzu ever asks for, by default. */
 export const OAUTH_SCOPES: readonly string[] = ["repo", "read:user"];
-/** Asked for only by the incremental sign-in, for the one workflow file (github.ts TAILZU_WORKFLOW). */
+/** Asked for only by the incremental sign-in, for changing `.github/workflows/*` (policy.ts: workflow.write asks first, and needs this). */
 export const OAUTH_SCOPES_WORKFLOW: readonly string[] = [...OAUTH_SCOPES, "workflow"];
 /** What a scope on that list brings with it: GitHub may name these instead of, or as well as, the parent. */
 const IMPLIED: Record<string, readonly string[]> = {
@@ -243,8 +245,13 @@ export class GithubOAuth implements OAuthTokens {
 
   /** Whether the person's token has a scope. */
   async hasScope(userId: string, scope: string): Promise<boolean> {
+    return (await this.scopesOf(userId)).includes(scope);
+  }
+
+  /** The scopes the person's token has, as GitHub said them when they signed in (none for a link that is not alive). */
+  async scopesOf(userId: string): Promise<string[]> {
     const link = await this.o.store.getOAuthLink(userId);
-    return !!link && link.status === "active" && scopeList(link.scope).includes(scope);
+    return link && link.status === "active" ? scopeList(link.scope) : [];
   }
 
   /** Where the person's sign-in stands: "off" (the switch), "none", "needs_signin", or "active". */
