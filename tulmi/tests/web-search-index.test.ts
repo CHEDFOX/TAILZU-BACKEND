@@ -647,8 +647,10 @@ describe("migration 0027_web_search.sql", () => {
 
   it("follows 0026 in the migrations folder", () => {
     const names = readdirSync(join(supabaseDir, "migrations")).sort();
-    expect(names.at(-1)).toBe("0027_web_search.sql");
-    expect(names.at(-2)).toBe("0026_web_cache.sql");
+    // Not "the last one": later migrations follow it.
+    const at = names.indexOf("0027_web_search.sql");
+    expect(at).toBeGreaterThan(0);
+    expect(names[at - 1]).toBe("0026_web_cache.sql");
   });
 
   it("makes web_search_cache with the columns the store reads and writes, keyed by the hash", () => {

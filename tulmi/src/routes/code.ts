@@ -18,6 +18,17 @@
  *   POST   /v1/code/projects { repoId }       -> { project, created }; 404 for a repo outside the person's installs
  *   GET    /v1/code/projects                  -> { projects }
  *   DELETE /v1/code/projects/:id              -> { ok }
+ *   POST   /v1/code/projects/:id/brain { mode? }
+ *                                             -> 202 { status, progress: { pct, phase }, headSha, builtAt, summaries, welcome,
+ *                                                  structure, features, ... }  starts, or refreshes, the project brain (code/project):
+ *                                                  Tailzu reads the repo and keeps an understanding of it. It runs in the background;
+ *                                                  `mode` is "full" or "incremental" (default: incremental, or full if nothing has been
+ *                                                  built). A build already running is returned as it is. Adding a project (POST
+ *                                                  /v1/code/projects) starts the first, full, build by itself
+ *   GET    /v1/code/projects/:id/brain        -> { status: none | building | ready | failed | stale, progress, headSha, builtAt,
+ *                                                  summaries: none | partial | complete, welcome, structure, features, conventions,
+ *                                                  baseline, spentPaise, error }  404 for a project that isn't the person's, 404
+ *                                                  brain_off while CODE_PROJECT_BRAIN is off
  *   POST   /v1/code/projects/:id/branches { task, from? }
  *                                             -> { branch, baseSha, url }  `tailzu/<slug>-<4 hex>` from the head of `from` (a branch,
  *                                                  tag or commit; the default branch when left out)
@@ -76,7 +87,9 @@
  *
  * GitHub's branch protection is respected, not worked round: a refusal because of it is 409 protected_branch.
  *
- *   POST   /v1/code/github/webhook            GitHub's own deliveries (code/webhook.ts); authenticated by signature
+ *   POST   /v1/code/github/webhook            GitHub's own deliveries (code/webhook.ts); authenticated by signature. A push to a
+ *                                                  project's default branch marks its brain stale and schedules an incremental build
+ *                                                  a minute later; the delivery is answered at once and GitHub is never called inline
  *
  * The jobs the bot runs on a branch, the desktop runner protocol (/v1/code/runner/*) and the person's compute
  * settings (/v1/code/settings/compute) are in routes/codeJobs.ts; the router behind them is code/jobs/router.ts.
@@ -141,7 +154,7 @@ export const STATUS: Record<string, number> = {
   approval_invalid: 409, pr_draft: 409, pr_not_open: 409, pr_merged: 409, not_mergeable: 409, use_server_commit: 409,
   protected_branch: 409, not_fast_forward: 409, not_grantable: 400,
   needs_you: 403, policy_denied: 403, never: 403, needs_workflow_scope: 403,
-  oauth_off: 404, needs_signin: 403, not_allowed: 403, org_blocked: 403, scope_too_broad: 403, scope_missing: 403,
+  oauth_off: 404, brain_off: 404, needs_signin: 403, not_allowed: 403, org_blocked: 403, scope_too_broad: 403, scope_missing: 403,
   not_configured: 503, busy: 503,
   // The jobs and the runner protocol (routes/codeJobs.ts): a lease someone else holds now, a step still out, a job that is over,
   // a job that isn't waiting for what was said yes to, a PC that hasn't said hello, paid compute that is off or absent.
@@ -211,6 +224,16 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     const user = await resolveUser(authorization);
     if (!user) { noSession(reply); return null; }
     return { d, user };
+  };
+
+  /** `begin`, for the project brain's routes: the brain being switched off is answered before the session, as "code off" is. */
+  const beginBrain = async (authorization: string | undefined, reply: FastifyReply) => {
+    const d = ready(reply);
+    if (!d) return null;
+    if (!k!.brain) { reply.code(404).send({ code: "brain_off", message: "The project brain isn't switched on." }); return null; }
+    const user = await resolveUser(authorization);
+    if (!user) { noSession(reply); return null; }
+    return { d, user, brain: k!.brain };
   };
 
   app.post("/v1/code/github/connect", RL, async (req, reply) => {
@@ -356,7 +379,10 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     const repoId = idOf((req.body ?? {}).repoId);
     if (repoId === null) return reply.code(400).send({ code: "bad_request", message: "repoId is the repo's number from the list." });
     try {
-      return reply.send(await addProject(s.d, s.user.id, repoId));
+      const added = await addProject(s.d, s.user.id, repoId);
+      // The first, full, build of the project brain starts by itself, in the background. A project that already has one is left alone.
+      const started = k!.brain ? await k!.brain.added(s.user.id, added.project).catch(() => false) : false;
+      return reply.send(started ? { ...added, brain: { status: "building" } } : added);
     } catch (err) { return fail(reply, err); }
   });
 
@@ -375,7 +401,33 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
       if (!UUID.test(req.params.id) || !(await s.d.store.deleteProject(s.user.id, req.params.id))) {
         return reply.code(404).send({ code: "not_found", message: "No such project" });
       }
+      // The database cascades; the memory twin and any build timer are told.
+      if (k!.brain) await k!.brain.forget(req.params.id).catch(() => undefined);
       return reply.send({ ok: true });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // --- the project brain (code/project): start or refresh a build, and read where it is.
+  app.post<{ Params: { id: string }; Body: { mode?: unknown } | undefined }>("/v1/code/projects/:id/brain", RL, async (req, reply) => {
+    const s = await beginBrain(req.headers["authorization"], reply);
+    if (!s) return reply;
+    const mode = (req.body && typeof req.body === "object" ? req.body : {}).mode;
+    if (mode !== undefined && mode !== "full" && mode !== "incremental") {
+      return reply.code(400).send({ code: "bad_request", message: 'mode is "full" or "incremental".' });
+    }
+    try {
+      const started = await s.brain.start(s.user.id, req.params.id, { mode: mode as "full" | "incremental" | undefined });
+      // The build goes on in the background; whoever asked has its status now.
+      started.done.catch(() => undefined);
+      return reply.code(202).send(started.status);
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.get<{ Params: { id: string } }>("/v1/code/projects/:id/brain", RL, async (req, reply) => {
+    const s = await beginBrain(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      return reply.send(await s.brain.get(s.user.id, req.params.id));
     } catch (err) { return fail(reply, err); }
   });
 
@@ -511,7 +563,8 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
       return reply.code(401).send({ code: "unauthorized" });
     }
     try {
-      const done = await handleWebhook(k.store, String(req.headers["x-github-event"] ?? ""), req.body);
+      const brain = k.brain;
+      const done = await handleWebhook(k.store, String(req.headers["x-github-event"] ?? ""), req.body, Date.now(), brain ? { pushed: (p) => brain.pushed(p) } : {});
       return reply.code(done === "handled" ? 200 : 202).send({ ok: true });
     } catch (err) {
       // 500, so GitHub shows the delivery as failed and it can be sent again.

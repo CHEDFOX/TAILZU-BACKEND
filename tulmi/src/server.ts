@@ -1043,6 +1043,11 @@ registerConnectorRoutes(app, { rateLimit: AUTHED_RL, connectors });
 // 404 code_off, and with the GitHub App not set up, 503 not_configured.
 const code = cfg.CODE_GITHUB ? createCode() : null;
 registerCodeRoutes(app, { rateLimit: AUTHED_RL, code });
+// The project brain (code/project): its lines go to the server's log, and its push timers stop with the server.
+if (code?.brain) {
+  code.brain.useLog(app.log);
+  app.addHook("onClose", async () => { code.brain!.dispose(); });
+}
 // The Code bot's jobs and the environment router (src/code/jobs, docs/code-router.md): where each step that
 // needs a computer runs (the person's PC, then GitHub's free minutes, then paid compute by their own rule), the
 // runner protocol the desktop app will speak, and a ticker (every 15 s, started when the server is ready and
@@ -3213,7 +3218,8 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
     ["cleanup_history", "history"], ["push_tokens", "pushTokens"],
     ["keyboard_telemetry", null], ["push_log", null], ["entitlements", null],
     // The Code bot's GitHub links and projects (a project's branches go with it: code_branches
-    // has no user_id, and cascades from code_projects).
+    // has no user_id, and cascades from code_projects, as do the project brain's four tables,
+    // code_brain, code_brain_files, code_brain_dirs and code_brain_texts: migration 0028).
     ["code_installations", null], ["code_projects", null], ["code_oauth_links", null],
   ];
   for (const [table, key] of tables) {
