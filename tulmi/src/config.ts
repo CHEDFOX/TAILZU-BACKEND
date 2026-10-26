@@ -102,6 +102,9 @@ export function connectorOAuthClients(raw: string | undefined, warn: (line: stri
   return out;
 }
 
+/** The reader's User-Agent when WEB_BOT_UA is not set (or is not a usable header value). */
+export const DEFAULT_WEB_BOT_UA = "Mozilla/5.0 (compatible; TailzuBot/1.0; +https://tailzu.com/bot)";
+
 const EnvSchema = z.object({
   // --- Speech-to-text provider ---
   // "groq" (default) runs whisper-large-v3-turbo — fast, cheap, and returns
@@ -630,6 +633,34 @@ const EnvSchema = z.object({
   CODE_MODEL_TIERS: z.string().optional(),
   CODE_INDIC_MODEL: z.string().trim().optional(),
   CODE_USD_INR: z.coerce.number().positive().max(10_000).default(88),
+  /**
+   * THE PAGE READER AND ITS BROWSER (src/web, docs/web-reader.md). Shared by the
+   * Code bot's search tools and, later, anything Tailzu does on the web for a
+   * person; it has no routes of its own.
+   *
+   * WEB_BROWSER: "off" (default) reads a page with a plain fetch only, and a page
+   * that needs JavaScript answers needs_browser. "local" lets this server run its
+   * own headless Chrome for those pages, behind a proxy of ours that refuses every
+   * private address. It needs a Chrome: CHROME_PATH, or one found on the machine.
+   * Anything but these two words is "off".
+   */
+  WEB_BROWSER: z.preprocess((v) => (String(v ?? "").trim().toLowerCase() === "local" ? "local" : "off"), z.enum(["off", "local"])),
+  /** Where Chrome is. Empty: look in /opt/pw-browsers, then for google-chrome, chromium and chromium-browser on PATH. */
+  CHROME_PATH: z.string().trim().optional(),
+  /**
+   * The User-Agent the reader says it is. Printable ASCII, 300 characters at
+   * most; anything else (or nothing) is the default. Keep the "+https://..."
+   * part pointing at a page that tells a site owner who we are.
+   */
+  WEB_BOT_UA: z.string().optional().transform((v) => {
+    const ua = (v ?? "").trim();
+    return /^[\x20-\x7e]{1,300}$/.test(ua) ? ua : DEFAULT_WEB_BOT_UA;
+  }),
+  /**
+   * How long a read page is kept, in minutes (migration 0026, or memory without
+   * Supabase). Documentation hosts are kept for a day at least. 0 keeps nothing.
+   */
+  WEB_CACHE_TTL_MIN: z.coerce.number().int().min(0).max(10_080).default(360),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 
