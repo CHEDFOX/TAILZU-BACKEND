@@ -20,6 +20,9 @@
  *   pull_request               reopened       ...`pr_open`
  *   pull_request               ready_for_review  ...`pr_open`, unless a sync found a conflict it still has
  *   pull_request_review        submitted      the matching work branch notes when the review came in
+ *   push                       default branch the project brain of every project on the repo is marked stale, and an
+ *                                             incremental build is scheduled after a minute of quiet (hooks.pushed;
+ *                                             project/index.ts BrainSync). Other branches, deleted branches: nothing
  *
  * A pull request is matched to a branch by the repo's id and the branch name
  * ("tailzu/..." only, and only when the branch is in that same repo, not a
@@ -32,7 +35,7 @@
  */
 import { createHmac } from "node:crypto";
 import { sameSecret } from "../auth/secret.js";
-import type { CodeStore } from "./store.js";
+import type { CodeProject, CodeStore } from "./store.js";
 
 /** True when `header` is the signature of `raw` under `secret`. False for no secret, no header, or any other value. */
 export function signatureOk(raw: string, header: string, secret: string): boolean {
@@ -46,13 +49,32 @@ export const signatureFor = (raw: string, secret: string): string =>
 
 const idOf = (v: unknown): number | null => (typeof v === "number" && Number.isSafeInteger(v) && v > 0 ? v : null);
 
+/** What the webhook hands on to other parts of Tailzu. Each only touches Tailzu's own store and timers: none calls GitHub. */
+export interface WebhookHooks {
+  /** Somebody pushed to the default branch of a project's repo. `after` is the commit the branch is at now. */
+  pushed?: (project: CodeProject, after: string) => void | Promise<void>;
+}
+
 /** What a delivery did: "handled" (a change was made, or there was nothing left to change), or "ignored". */
-export async function handleWebhook(store: CodeStore, event: string, payload: unknown, now = Date.now()): Promise<"handled" | "ignored"> {
+export async function handleWebhook(
+  store: CodeStore, event: string, payload: unknown, now = Date.now(), hooks: WebhookHooks = {},
+): Promise<"handled" | "ignored"> {
   const p = (payload && typeof payload === "object" ? payload : {}) as {
     action?: unknown; installation?: { id?: unknown }; repositories_removed?: Array<{ id?: unknown }>;
     repository?: { id?: unknown }; pull_request?: { merged?: unknown; head?: { ref?: unknown; repo?: { id?: unknown } | null } };
-    review?: { submitted_at?: unknown };
+    review?: { submitted_at?: unknown }; ref?: unknown; after?: unknown; deleted?: unknown;
   };
+
+  if (event === "push") {
+    const repoId = idOf(p.repository?.id);
+    if (repoId === null || !hooks.pushed || typeof p.ref !== "string" || !p.ref.startsWith("refs/heads/") || p.deleted === true) return "ignored";
+    const branch = p.ref.slice("refs/heads/".length);
+    const after = typeof p.after === "string" && /^[0-9a-f]{40}$/.test(p.after) ? p.after : "";
+    // Only the default branch is what a project's brain is built from; every person's project on this repo follows it.
+    const mine = (await store.listProjectsByRepo(repoId)).filter((proj) => proj.defaultBranch === branch);
+    for (const proj of mine) await hooks.pushed(proj, after);
+    return mine.length ? "handled" : "ignored";
+  }
 
   if (event === "pull_request" || event === "pull_request_review") {
     const repoId = idOf(p.repository?.id);

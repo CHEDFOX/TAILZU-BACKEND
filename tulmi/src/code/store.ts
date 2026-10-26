@@ -188,6 +188,8 @@ export interface CodeStore {
   listProjects(userId: string): Promise<CodeProject[]>;
   getProject(userId: string, id: string): Promise<CodeProject | null>;
   findProjectByRepo(userId: string, repoId: number): Promise<CodeProject | null>;
+  /** Every person's projects on a repo: GitHub's push webhook names a repo, not a person (webhook.ts). */
+  listProjectsByRepo(repoId: number): Promise<CodeProject[]>;
   /** The existing project when this person already has the repo (the table's unique (user_id, repo_id)). */
   createProject(userId: string, p: NewCodeProject): Promise<CodeProject>;
   /** Returns whether it was theirs to delete. Its branches go with it. */
@@ -324,6 +326,9 @@ export class MemoryCodeStore implements CodeStore {
   async findProjectByRepo(userId: string, repoId: number) {
     const p = [...this.projects.values()].find((x) => x.userId === userId && x.repoId === repoId);
     return p ? { ...p } : null;
+  }
+  async listProjectsByRepo(repoId: number) {
+    return [...this.projects.values()].filter((p) => p.repoId === repoId).sort((a, b) => a.createdAt - b.createdAt).map((p) => ({ ...p }));
   }
   async createProject(userId: string, n: NewCodeProject) {
     const dupe = await this.findProjectByRepo(userId, n.repoId);
@@ -577,6 +582,10 @@ export class SupabaseCodeStore implements CodeStore {
     const r = ok(await this.sb.from("code_projects").select("*")
       .eq("user_id", this.who(userId)).eq("repo_id", repoId).maybeSingle<ProjectRow>());
     return r ? projectOf(r) : null;
+  }
+  async listProjectsByRepo(repoId: number) {
+    const rows = ok(await this.sb.from("code_projects").select("*").eq("repo_id", repoId).order("created_at", { ascending: true }).returns<ProjectRow[]>());
+    return (rows ?? []).map(projectOf);
   }
   async createProject(userId: string, n: NewCodeProject) {
     const who = this.who(userId);

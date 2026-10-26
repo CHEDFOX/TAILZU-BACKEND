@@ -634,6 +634,23 @@ const EnvSchema = z.object({
   CODE_INDIC_MODEL: z.string().trim().optional(),
   CODE_USD_INR: z.coerce.number().positive().max(10_000).default(88),
   /**
+   * THE PROJECT BRAIN (src/code/project, docs/code-project-brain.md): when a
+   * person adds a repo as a project, Tailzu reads it and keeps an accurate,
+   * cheap-to-query understanding of it (files, symbols, routes, what a person
+   * sees, tests, conventions, hot spots, features), and keeps it fresh from
+   * GitHub's push webhook. Off by default: it needs migration 0028, and the
+   * routes POST/GET /v1/code/projects/:id/brain answer 404 { code: "brain_off" }
+   * while it is off. Needs CODE_GITHUB.
+   *
+   * CODE_IMPORT_BUDGET_PAISE caps what the cheap model may cost for one project's
+   * first import, in paise (1,000, ten rupees, unless set). When it is spent the
+   * lines already written are kept, the build says summaries "partial", and
+   * everything learned without a model stands. An incremental build gets a fifth
+   * of it. 0 turns the model off for the brain altogether.
+   */
+  CODE_PROJECT_BRAIN: bool(false),
+  CODE_IMPORT_BUDGET_PAISE: z.coerce.number().int().min(0).max(1_000_000).default(1000),
+  /**
    * THE PAGE READER AND ITS BROWSER (src/web, docs/web-reader.md). Shared by the
    * Code bot's search tools and, later, anything Tailzu does on the web for a
    * person; it has no routes of its own.

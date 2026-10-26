@@ -60,7 +60,7 @@ Pick one of the two ways.
 | SSL verification | Enable |
 | Repository permissions | **Contents: Read and write.** **Pull requests: Read and write.** **Metadata: Read-only** (GitHub sets this one itself). **Workflows: Read and write** and **Actions: Read-only**, both for GitHub's free computers (below, and section 9). Nothing else |
 | Account and organization permissions | None |
-| Subscribe to events | Tick **Pull request** and **Pull request review** (they only appear once Pull requests is given). `installation` and `installation_repositories` are sent to every App without being asked for, and this server reads those too |
+| Subscribe to events | Tick **Pull request** and **Pull request review** (they only appear once Pull requests is given) and **Push** (it appears once Contents is given; the project brain, `docs/code-project-brain.md`, keeps itself fresh with it). `installation` and `installation_repositories` are sent to every App without being asked for, and this server reads those too |
 | Where can this GitHub App be installed? | **Any account.** With "Only on this account" nobody but you could install it |
 
 Create it, then on the App's page:
@@ -108,15 +108,24 @@ name if it is taken, and the origin if the API is not at `api.tailzu.space`):
     "actions": "read",
     "metadata": "read"
   },
-  "default_events": ["pull_request", "pull_request_review"]
+  "default_events": ["pull_request", "pull_request_review", "push"]
 }
 ```
 
 `default_events` lists the two events the server follows a pull request's life
-with (closed, reopened, ready for review; a review submitted). GitHub sends
+with (closed, reopened, ready for review; a review submitted), and `push`, which
+tells the project brain that a repo's default branch moved (it marks the brain
+stale at once and refreshes it a minute after the last push, without calling
+GitHub while it answers; a push to any other branch is ignored). GitHub sends
 `installation` and `installation_repositories` to every App and does not let
 you subscribe to them, and a manifest that lists them can be refused, so they
 are not here. There is no `issues`, nothing else.
+
+An App made before the project brain existed has no `push` subscription: tick
+**Push** on its Permissions & events page (people who have installed it are not
+asked again for anything, since Push needs only the Contents permission they
+already gave). Without it nothing breaks: the brain is refreshed by asking for
+it, or when `ensureFresh` finds the default branch moved.
 
 **Why the manifest asks for Workflows and Actions.** They are what lets a step
 that needs a computer run on GitHub's free computers, in the person's own repo,
@@ -530,6 +539,7 @@ is ignored for the default.
 | A step waits, or moves to the PC, saying GitHub's free minutes are used up | A step pushed to GitHub never started a run (three minutes), or the run ended without reporting: the free minutes are most likely gone, or Actions is off for the repo or the account. Tailzu marks GitHub as used up for that person until the month turns (`githubFreeMinutes.exhausted` on `GET /v1/code/settings/compute`). Check the repo's Actions tab and the account's Billing |
 | 401 `bad_runner_token` / 403 `runner_mismatch` on `/v1/code/runner/gh-result` | The identity token isn't one GitHub issued for Tailzu's audience, or has expired (401); or it is a good token for another repo, branch, commit, workflow or event (403). Nothing was counted. See section 9 |
 | A pull request or review on GitHub doesn't show in Tailzu | The App isn't subscribed to Pull request and Pull request review events, or the webhook is failing (the App's Advanced tab) |
+| A project's brain doesn't follow new commits | The App isn't subscribed to Push, `CODE_PROJECT_BRAIN` is off, or the push was to a branch other than the repo's default |
 | 502 `github_auth` for everything | The private key does not belong to this App (or was revoked). Generate a new key on the App's page and replace it |
 | `branch_moved` on a commit | Someone pushed to the work branch while Tailzu was committing. Nothing was overwritten; read the branch again and retry |
 | Webhook deliveries fail with 401 | `GITHUB_APP_WEBHOOK_SECRET` is not the secret on the App's page |

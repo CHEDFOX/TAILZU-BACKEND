@@ -749,16 +749,29 @@ export class GithubApp {
    * is read by its own sha.
    */
   async tree(repo: RepoRef, branch: string): Promise<{ entries: TreeEntry[]; truncated: boolean }> {
+    const { entries, truncated } = await this.snapshotTree(repo, branch);
+    return { entries, truncated };
+  }
+
+  /**
+   * `tree`, with the two ids a fingerprint of the branch is made of: the commit
+   * the branch is at and that commit's root tree. Every entry carries its own
+   * sha (a file's blob, a folder's tree), so a folder whose sha is the same as
+   * last time holds exactly what it held (the project brain's Merkle diff,
+   * code/project/merkle.ts). Three calls: the branch, its commit, its tree.
+   */
+  async snapshotTree(repo: RepoRef, branch: string): Promise<{ headSha: string; treeSha: string; entries: TreeEntry[]; truncated: boolean }> {
     const base = this.path(repo);
     const head = await this.branchHead(repo, branch);
     const commit = await this.rsend(repo, "GET", `${base}/git/commits/${head}`);
     if (commit.status !== 200 || typeof commit.json?.tree?.sha !== "string") throw githubError(commit.status, commit.json, `the branch ${branch}`);
-    const r = await this.rsend(repo, "GET", `${base}/git/trees/${commit.json.tree.sha}?recursive=1`);
+    const treeSha: string = commit.json.tree.sha;
+    const r = await this.rsend(repo, "GET", `${base}/git/trees/${treeSha}?recursive=1`);
     if (r.status !== 200 || !Array.isArray(r.json?.tree)) throw githubError(r.status, r.json, `the branch ${branch}`);
     const entries: TreeEntry[] = (r.json.tree as any[])
       .filter((e) => e && typeof e.path === "string" && typeof e.type === "string" && typeof e.sha === "string")
       .map((e) => ({ path: e.path, type: e.type, ...(Number.isFinite(e.size) ? { size: Number(e.size) } : {}), sha: e.sha }));
-    return { entries, truncated: r.json.truncated === true };
+    return { headSha: head, treeSha, entries, truncated: r.json.truncated === true };
   }
 
   /** One file's text on the branch. Refuses a folder, a file over 1 MB, and a file that isn't text. */
@@ -1217,6 +1230,81 @@ export class GithubApp {
     const where = r.headers.get("location");
     if (r.status !== 302 || !where || !/^https:\/\//.test(where)) throw githubError(r.status === 302 ? 502 : r.status, r.json, "the code");
     return where;
+  }
+
+  // --------------------------------------------- reading a repo, for the project brain
+
+  /**
+   * One file's bytes by its blob sha (`GET /git/blobs/{sha}`). Bytes, not text:
+   * what counts as a binary file is the caller's to decide.
+   */
+  async blobBytes(repo: RepoRef, sha: string): Promise<Buffer> {
+    if (!/^[0-9a-f]{40}$/.test(sha)) throw new ConnectorError("bad_request", "That isn't a file id.");
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/git/blobs/${sha}`);
+    if (r.status !== 200 || typeof r.json?.content !== "string" || r.json.encoding !== "base64") throw githubError(r.status, r.json, "that file");
+    return Buffer.from(r.json.content, "base64");
+  }
+
+  /**
+   * The whole repo at a commit as ONE gzipped tarball, for the caller to
+   * stream (the response is not read here). GitHub answers the tarball request
+   * with a redirect to a signed link on codeload; the redirect is followed by
+   * hand so the token goes only to api.github.com and never to codeload (the
+   * link needs none). `timeoutMs` is the whole download, five minutes unless
+   * told otherwise. A refusal at codeload is a ConnectorError like any other.
+   */
+  async downloadTarball(repo: RepoRef, sha: string, o: { timeoutMs?: number } = {}): Promise<Response> {
+    const where = await this.tarballUrl(repo, sha);
+    let res: Response;
+    try {
+      res = await (this.o.fetchFn ?? fetch)(where, { method: "GET", headers: { "User-Agent": "tailzu", Accept: "application/x-gzip" }, signal: AbortSignal.timeout(o.timeoutMs ?? 300_000) });
+    } catch {
+      throw new ConnectorError("failed", "GitHub didn't answer. Try again in a moment.");
+    }
+    if (res.status !== 200 || !res.body) {
+      await res.body?.cancel().catch(() => undefined);
+      throw githubError(res.status === 200 ? 502 : res.status, {}, "the code");
+    }
+    return res;
+  }
+
+  /** The newest commits on a branch, newest first: sha, first line of the message, when. `perPage` is GitHub's, 100 at most. */
+  async recentCommits(repo: RepoRef, branch: string, perPage = 100): Promise<Array<{ sha: string; message: string; at: number }>> {
+    const n = Math.min(Math.max(Math.trunc(perPage) || 1, 1), 100);
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/commits?sha=${encodeURIComponent(refName(branch))}&per_page=${n}`);
+    if (r.status !== 200 || !Array.isArray(r.json)) throw githubError(r.status, r.json, "the branch's history");
+    return r.json
+      .filter((c: any) => c && typeof c.sha === "string")
+      .map((c: any) => {
+        const at = Date.parse(String(c.commit?.author?.date ?? c.commit?.committer?.date ?? ""));
+        return { sha: c.sha as string, message: String(c.commit?.message ?? "").split("\n")[0]!.slice(0, 200), at: Number.isFinite(at) ? at : 0 };
+      });
+  }
+
+  /**
+   * The files one commit touched (names only, 300 at most: GitHub's own limit),
+   * and how many requests GitHub says are left in this token's hour
+   * (X-RateLimit-Remaining), or null when it doesn't say.
+   */
+  async commitFiles(repo: RepoRef, sha: string): Promise<{ files: string[]; truncated: boolean; rateRemaining: number | null }> {
+    if (!/^[0-9a-f]{40}$/.test(sha)) throw new ConnectorError("bad_request", "That isn't a commit.");
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/commits/${sha}`);
+    if (r.status !== 200) throw githubError(r.status, r.json, "that commit");
+    const left = Number(r.headers.get("x-ratelimit-remaining"));
+    const all: any[] = Array.isArray(r.json?.files) ? r.json.files : [];
+    return {
+      files: all.filter((f) => f && typeof f.filename === "string").map((f) => f.filename as string),
+      truncated: all.length >= DIFF_FILES_MAX,
+      rateRemaining: r.headers.get("x-ratelimit-remaining") !== null && Number.isFinite(left) ? left : null,
+    };
+  }
+
+  /** The names of the repo's branches, `perPage` of them at most (100): the first page is enough to see how they are named. */
+  async branchNames(repo: RepoRef, perPage = 100): Promise<string[]> {
+    const n = Math.min(Math.max(Math.trunc(perPage) || 1, 1), 100);
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/branches?per_page=${n}`);
+    if (r.status !== 200 || !Array.isArray(r.json)) throw githubError(r.status, r.json, "the repo's branches");
+    return r.json.filter((b: any) => typeof b?.name === "string").map((b: any) => b.name as string);
   }
 
   // ------------------------------------------------------- for runners, later

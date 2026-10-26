@@ -26,6 +26,7 @@ import { botIdentity, type BotIdentity } from "./access.js";
 import { ApprovalBook } from "./approvals.js";
 import { GithubApp, type GithubAppConfig } from "./github.js";
 import { GithubOAuth, type GithubOAuthConfig } from "./oauth.js";
+import { ProjectBrain, type CreateProjectBrainOptions } from "./project/index.js";
 import { codeStore, type CodeStore } from "./store.js";
 
 export interface Code {
@@ -42,6 +43,11 @@ export interface Code {
   webhookSecret: string | null;
   /** The actions waiting for a yes (approvals.ts): in memory, ten minutes each. */
   approvals: ApprovalBook;
+  /**
+   * The project brain (project/index.ts): reads a repo when it is added as a project and keeps what it learned fresh.
+   * Null while CODE_PROJECT_BRAIN is off, or with no GitHub client.
+   */
+  brain: ProjectBrain | null;
 }
 
 export interface CreateCodeOptions {
@@ -58,6 +64,8 @@ export interface CreateCodeOptions {
   now?: () => number;
   /** Instead of CODE_BOT_NAME and CODE_BOT_EMAIL. */
   bot?: BotIdentity;
+  /** The project brain's settings (its store, model door, budget...), or false for none; instead of CODE_PROJECT_BRAIN. */
+  brain?: false | Omit<CreateProjectBrainOptions, "projects">;
 }
 
 /** The App from GITHUB_APP_*, or null when any part of it is missing. */
@@ -107,5 +115,11 @@ export function createCode(o: CreateCodeOptions = {}): Code {
     ? new GithubOAuth({ config: oauthConfig, store, github, enabled: oauthWanted, fetchFn: o.fetchFn, now: o.now })
     : null;
   const secret = o.webhookSecret !== undefined ? o.webhookSecret : getConfig().GITHUB_APP_WEBHOOK_SECRET ?? null;
-  return { store, github, appReady, oauth, oauthWanted, webhookSecret: secret || null, approvals: new ApprovalBook({ now: o.now }) };
+  const approvals = new ApprovalBook({ now: o.now });
+  // The brain reads repos through the same client, and costs nothing until a project is added.
+  const brainOptions = o.brain !== undefined ? o.brain : getConfig().CODE_PROJECT_BRAIN ? {} : false;
+  const brain = github && brainOptions !== false
+    ? new ProjectBrain({ fetchFn: o.fetchFn, now: o.now, ...brainOptions, projects: { store, github, approvals, oauth } })
+    : null;
+  return { store, github, appReady, oauth, oauthWanted, webhookSecret: secret || null, approvals, brain };
 }
