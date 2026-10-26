@@ -1,6 +1,6 @@
 # The Code bot's environment router
 
-A coding task is a **job**. It runs as **steps**. An **edit** step (read, change and commit files through GitHub's API) needs no computer. An **exec** step (install, build, test) does, and the router decides where it runs, using the cheapest place there is. The agent's brain that makes the steps is not built yet: the router is driven by the methods in `tulmi/src/code/jobs/router.ts`, which the brain and the tests call.
+A coding task is a **job**. It runs as **steps**. An **edit** step (read, change and commit files through GitHub's API) needs no computer. An **exec** step (install, build, test) does, and the router decides where it runs, using the cheapest place there is. The agent's brain that makes the steps is not built yet (its first layer, which models to ask, what they may cost, what kind of request this is and which tier each step deserves, is `docs/code-brain.md`): the router is driven by the methods in `tulmi/src/code/jobs/router.ts`, which the brain and the tests call.
 
 Switched on with the rest of the Code bot (`CODE_GITHUB`), after `tulmi/supabase/migrations/0023_code_jobs.sql` (and `0024_code_github_actions.sql` for GitHub's free computers).
 
@@ -27,7 +27,7 @@ Settings, `GET` and `PUT /v1/code/settings/compute`:
 
 `never` beats everything, including a budget the person said yes to earlier. A step is never sent to paid compute that doesn't exist on the server; it waits instead of asking for money that can't be spent. A free place that appears while a job waits for a yes takes the job; the question goes away.
 
-A job's `budgetPaise` is what the person has said it may spend (`createJob` can start it above 0). What a paid place reports it used goes into the job's `spentPaise` and the month's `paidPaise`. GitHub minutes go into the month's `githubMinutes`. The month is the calendar month in UTC (`code_compute_usage`).
+A job's `budgetPaise` is what the person has said it may spend (`createJob` can start it above 0). What a paid place reports it used goes into the job's `spentPaise` and the month's `paidPaise`. The brain's model calls (`docs/code-brain.md`) are added to the same `spentPaise` and held to the same `budgetPaise`, so one budget bounds everything a job costs. GitHub minutes go into the month's `githubMinutes`. The month is the calendar month in UTC (`code_compute_usage`).
 
 ## 3. Leases, fencing and checkpoints
 

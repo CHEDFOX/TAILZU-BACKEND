@@ -603,6 +603,33 @@ const EnvSchema = z.object({
    * are refused (they run again).
    */
   CODE_RUNNER_OIDC_AUDIENCE: z.string().trim().min(1).max(100).default("tailzu"),
+  /**
+   * THE CODE BOT'S MODELS (src/code/brain, docs/code-brain.md). Every call the
+   * bot's brain makes names a TIER, not a model: tiny (classify and route),
+   * cheap (search, summarise, index), code (normal code writing), strong
+   * (plans and hard or risky changes), review (always a different model family
+   * from the writer), vision, and indic (Indian-language wording). Each tier is
+   * a ladder of OpenRouter model slugs, tried in order when a call fails before
+   * it answers, with its own output limit, reasoning level, timeout and price
+   * estimate. The defaults are in code/brain/tiers.ts.
+   *
+   * CODE_MODEL_TIERS changes them without a deploy: a JSON object keyed by
+   * tier, each value any of { models, maxTokens, reasoning, timeoutMs,
+   * usdPerMIn, usdPerMOut }, merged over that tier's defaults. A `models` list
+   * replaces the ladder, it does not add to it. For example
+   *   {"code":{"models":["deepseek/deepseek-v4.1-flash"],"reasoning":"high"}}
+   * A value that does not parse, or a tier with a field the code does not know,
+   * is ignored with a warning at the first call, never a crash.
+   *
+   * CODE_INDIC_MODEL is the first model of the indic tier; without it the indic
+   * tier is the cheap tier's ladder. CODE_MODEL_TIERS still wins over it.
+   *
+   * CODE_USD_INR turns what OpenRouter charges (US dollars) into the paise a job
+   * is budgeted in: 88 rupees to the dollar unless set.
+   */
+  CODE_MODEL_TIERS: z.string().optional(),
+  CODE_INDIC_MODEL: z.string().trim().optional(),
+  CODE_USD_INR: z.coerce.number().positive().max(10_000).default(88),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 

@@ -66,6 +66,8 @@ export interface JobExpect {
   placement?: Placement;
   /** The lease must have run out by this time (epoch ms). */
   leaseExpiredBy?: number;
+  /** The job's spend must still be this many paise: how the Code bot's model calls add to it without losing a concurrent add (code/brain/spend.ts). */
+  spentPaise?: number;
 }
 
 export interface NewStep {
@@ -179,6 +181,7 @@ export class MemoryJobStore implements JobStore {
     if (expect.states && !expect.states.includes(j.state)) return null;
     if (expect.placement !== undefined && j.placement !== expect.placement) return null;
     if (expect.leaseExpiredBy !== undefined && (j.leaseExpiresAt === null || j.leaseExpiresAt > expect.leaseExpiredBy)) return null;
+    if (expect.spentPaise !== undefined && j.spentPaise !== expect.spentPaise) return null;
     Object.assign(j, patch, { updatedAt: this.now() });
     if (patch.checkpoint) j.checkpoint = { ...patch.checkpoint };
     return cloneJob(j);
@@ -366,6 +369,7 @@ export class SupabaseJobStore implements JobStore {
     if (expect.states) q = q.in("state", [...expect.states]);
     if (expect.placement !== undefined) q = q.eq("placement", expect.placement);
     if (expect.leaseExpiredBy !== undefined) q = q.lte("lease_expires_at", iso(expect.leaseExpiredBy));
+    if (expect.spentPaise !== undefined) q = q.eq("spent_paise", expect.spentPaise);
     const r = ok(await q.select("*").maybeSingle<JobRow>());
     return r ? jobOf(r) : null;
   }
