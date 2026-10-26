@@ -40,6 +40,11 @@
  * teaches Gemini models to write places in the picture in their own order
  * (prompt.ts), so the system prompt is chosen per model, as the ladder
  * reaches it.
+ *
+ * What a call cost is read off its answer, never asked for: OpenRouter puts
+ * its usage, with the charge in dollars, in the last chunk of every streamed
+ * call. The request is the same bytes either way, so the prompt cache and the
+ * request's tests are untouched by it.
  */
 import { getConfig } from "../config.js";
 import { openrouter } from "../pipeline/cleanup.js";
@@ -87,6 +92,10 @@ export interface CallRecord {
   completionTokens?: number;
   /** The part of completionTokens spent thinking, when the model reports it. */
   reasoningTokens?: number;
+  /** Prompt tokens written to the provider's cache on this call, when it says. */
+  cacheWriteTokens?: number;
+  /** What OpenRouter charged for the call, in US dollars (its usage.cost). */
+  costUsd?: number;
   /** Who served it, as OpenRouter names them: the provider, and the model as
    *  that provider calls it. Which one answered is what a slow call is
    *  usually down to. */
@@ -232,8 +241,10 @@ interface StreamChunk {
   usage?: {
     prompt_tokens?: number;
     completion_tokens?: number;
-    prompt_tokens_details?: { cached_tokens?: number };
+    prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
     completion_tokens_details?: { reasoning_tokens?: number };
+    /** OpenRouter's charge for the call, in US dollars. */
+    cost?: number;
   };
   /** OpenRouter's: who served the call, and its name for the model there. */
   provider?: string;
@@ -296,6 +307,11 @@ export async function* planStream(system: SystemPrompt, user: UserContent, opts:
           call.cachedTokens = chunk.usage.prompt_tokens_details?.cached_tokens;
           const reasoning = chunk.usage.completion_tokens_details?.reasoning_tokens;
           if (typeof reasoning === "number") call.reasoningTokens = reasoning;
+          const writes = chunk.usage.prompt_tokens_details?.cache_write_tokens;
+          if (typeof writes === "number") call.cacheWriteTokens = writes;
+          // A charge that is not a plain amount is no charge at all, not a guess.
+          const cost = chunk.usage.cost;
+          if (typeof cost === "number" && Number.isFinite(cost) && cost >= 0) call.costUsd = cost;
         }
         const delta = chunk.choices?.[0]?.delta?.content;
         if (typeof delta === "string" && delta) {

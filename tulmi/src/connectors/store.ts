@@ -16,6 +16,11 @@
  *
  * The audit trail holds what ran, never what it was about: the tool, its risk,
  * how it ended and a few words. No arguments, no message text, no results.
+ *
+ * failStuckTasks is the one write that is not one person's: the stuck-task
+ * sweeper (sweeper.ts) closes, across everyone, the tasks left "running" by a
+ * run that never came back to settle them, a compare-and-set at a time so a
+ * task that moved meanwhile is left as it is.
  */
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -24,6 +29,10 @@ import type { Level, Policy, Risk } from "./risk.js";
 
 export type TaskState = "running" | "waiting" | "done" | "failed" | "cancelled";
 export const TERMINAL_STATES: readonly TaskState[] = ["done", "failed", "cancelled"];
+/** The steps a task keeps, the newest. */
+export const TASK_STEPS_MAX = 30;
+/** Tasks the sweeper closes in one pass. */
+export const STUCK_BATCH = 200;
 
 export interface Connection {
   userId: string;
@@ -159,6 +168,13 @@ export interface ConnectorStore {
   bindCustomIssuer(userId: string, id: string, issuer: string): Promise<string | null>;
   /** Records where the app's sign-in sends the person now. */
   setCustomSignInHost(userId: string, id: string, host: string): Promise<void>;
+  /**
+   * Across everyone: each task still "running" that has not changed since
+   * `before` becomes "failed", with `text` as its last step and its waiting
+   * call (if a yes was being carried out) dropped. Up to `limit`; returns how
+   * many. A task that moves meanwhile is left alone.
+   */
+  failStuckTasks(before: number, text: string, limit?: number): Promise<number>;
 }
 
 // -------------------------------------------------------------------- memory
@@ -267,6 +283,17 @@ export class MemoryConnectorStore implements ConnectorStore {
   async setCustomSignInHost(userId: string, id: string, host: string) {
     const c = this.custom.get(id);
     if (c && c.userId === userId) Object.assign(c, { signInHost: host.slice(0, 255), updatedAt: Date.now() });
+  }
+  async failStuckTasks(before: number, text: string, limit = STUCK_BATCH) {
+    const stuck = [...this.tasks.values()]
+      .filter((t) => t.state === "running" && t.updatedAt < before)
+      .sort((a, b) => a.updatedAt - b.updatedAt)
+      .slice(0, limit);
+    const now = Date.now();
+    for (const t of stuck) {
+      Object.assign(t, { state: "failed", approval: null, steps: [...t.steps, { at: now, text }].slice(-TASK_STEPS_MAX), updatedAt: now });
+    }
+    return stuck.length;
   }
 }
 
@@ -429,6 +456,23 @@ export class SupabaseConnectorStore implements ConnectorStore {
     if (!CUSTOM_ID.test(id)) return;
     ok(await this.sb.from("connector_custom").update({ sign_in_host: host.slice(0, 255), updated_at: iso(Date.now()) })
       .eq("user_id", this.who(userId)).eq("id", id));
+  }
+  async failStuckTasks(before: number, text: string, limit = STUCK_BATCH) {
+    // The oldest first (0019's assistant_tasks_running_idx), then each one
+    // only if it is still running and unchanged since it was read: an
+    // approval carried out, or a run settling it, in between wins.
+    const rows = ok(await this.sb.from("assistant_tasks").select("id, steps, updated_at")
+      .eq("state", "running").lt("updated_at", iso(before)).order("updated_at", { ascending: true }).limit(limit)
+      .returns<Array<Pick<TaskRow, "id" | "steps" | "updated_at">>>());
+    let failed = 0;
+    for (const r of rows ?? []) {
+      const now = Date.now();
+      const steps = [...(Array.isArray(r.steps) ? r.steps : []), { at: now, text }].slice(-TASK_STEPS_MAX);
+      const moved = ok(await this.sb.from("assistant_tasks").update({ state: "failed", approval: null, steps, updated_at: iso(now) })
+        .eq("id", r.id).eq("state", "running").eq("updated_at", r.updated_at).select("id").maybeSingle<{ id: string }>());
+      if (moved) failed += 1;
+    }
+    return failed;
   }
 }
 

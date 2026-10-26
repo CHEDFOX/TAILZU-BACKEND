@@ -17,6 +17,11 @@
     "test:pipeline": "tsx scripts/test-pipeline.ts",
     "smoke": "tsx scripts/smoke.ts",
     "eval": "tsx evals/run.ts",
+    "bench": "tsx evals/agent/run.ts",
+    "bench:live": "tsx evals/agent/run.ts --mode live --trials 3",
+    "bench:record": "tsx evals/agent/run.ts --mode live --record --trials 3",
+    "bench:replay": "tsx evals/agent/run.ts --mode replay",
+    "bench:scripted": "tsx evals/agent/run.ts --mode scripted",
     "spec": "tsx scripts/spec-dump.ts",
     "bench:stt": "tsx scripts/stt-bench.ts",
     "prompts": "tsx scripts/prompt-dump.ts"

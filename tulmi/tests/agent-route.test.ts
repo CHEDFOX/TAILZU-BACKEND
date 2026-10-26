@@ -115,6 +115,7 @@ vi.mock("../src/history/store.js", async (importOriginal) => {
 
 const { buildApp } = await import("../src/server.js");
 const { AGENT_SYSTEM, AGENT_VISION_SYSTEM, AGENT_VISION_SYSTEM_GEMINI } = await import("../src/agent/prompt.js");
+const { MemoryRunStore, runStore } = await import("../src/runs/index.js");
 
 type Ev = Record<string, any>;
 const TERMINAL = new Set(["action", "ask", "look", "done", "error"]);
@@ -162,10 +163,11 @@ beforeEach(() => {
 /** The stream's events, checked for the one rule every stream keeps:
  *  exactly one terminal event, and it is the last. */
 function events(payload: string): Ev[] {
-  const evs = payload.trim().split("\n").map((l) => JSON.parse(l) as Ev);
-  expect(evs.filter((e) => TERMINAL.has(e.t))).toHaveLength(1);
-  expect(TERMINAL.has(evs.at(-1)!.t)).toBe(true);
-  return evs;
+  const all = payload.trim().split("\n").map((l) => JSON.parse(l) as Ev);
+  expect(all.filter((e) => TERMINAL.has(e.t))).toHaveLength(1);
+  expect(TERMINAL.has(all.at(-1)!.t)).toBe(true);
+  // The run's receipt (src/runs) rides just before the terminal event; its own checks are below.
+  return all.filter((e) => e.t !== "receipt");
 }
 
 async function post(body: Record<string, unknown>): Promise<{ status: number; type: string; evs: Ev[]; payload: string }> {
@@ -1081,5 +1083,68 @@ describe("the text path, v2", () => {
     llm.plan = ["DONE"];
     await post(step({ utterance: "click quarterly revenue", screen: { elements } }));
     expect(streamCalls()).toHaveLength(1);
+  });
+});
+
+describe("the run's receipt, and its row in the ledger", () => {
+  /** Every line the stream carried, the receipt included. */
+  const lines = (payload: string): Ev[] => payload.trim().split("\n").map((l) => JSON.parse(l) as Ev);
+  /** The ledger is the memory twin here: no Supabase in this file. */
+  const ledger = () => runStore() as InstanceType<typeof MemoryRunStore>;
+
+  it("comes once, right before a terminal that ends the run, and says how it ended", async () => {
+    llm.plan = ["SAY Export saves a copy.\nDONE"];
+    const res = await post(step({ runId: "run_rcpt01", utterance: "what does export do?" }));
+    const all = lines(res.payload);
+    expect(all.map((e) => e.t)).toEqual(["heard", "say", "receipt", "done"]);
+    expect(all[2]).toEqual({
+      t: "receipt",
+      receipt: { runId: "run_rcpt01", outcome: "done", line: "Done.", effects: 0, steps: 1, ms: expect.any(Number), firstMs: expect.any(Number) },
+    });
+  });
+
+  it("before a question and an error too; never before an action or a look, since the run goes on", async () => {
+    llm.plan = ["ASK Which file?\n"];
+    const asked = lines((await post(step({ runId: "run_rcpt02", utterance: "send the file" }))).payload);
+    expect(asked.slice(-2).map((e) => e.t)).toEqual(["receipt", "ask"]);
+    expect(asked.at(-2)!.receipt).toMatchObject({ outcome: "needs_you", reason: "question", line: "Waiting for your answer." });
+
+    const res = await app.inject({ method: "POST", url: "/v1/agent", ...form(JSON.stringify(step({ runId: "run_rcpt03", privateField: true }))) });
+    expect(lines(res.payload)).toEqual([
+      { t: "receipt", receipt: expect.objectContaining({ runId: "run_rcpt03", outcome: "failed", reason: "private" }) },
+      { t: "error", code: "private", message: expect.any(String) },
+    ]);
+
+    for (const [utterance, plan] of [["scroll down", []], ["click export", []], ["what does this chart say?", ["LOOK the chart"]]] as const) {
+      llm.plan = [...plan];
+      const evs = lines((await post(step({ runId: "run_rcpt04", utterance }))).payload);
+      expect(evs.map((e) => e.t), utterance).not.toContain("receipt");
+      expect(["action", "look"]).toContain(evs.at(-1)!.t);
+    }
+  });
+
+  it("counts what the run changed across its steps, and keeps one row for the whole run", async () => {
+    const first = lines((await post(step({ runId: "run_rcpt05", utterance: "click export" }))).payload);
+    expect(first.at(-1)).toMatchObject({ t: "action", kind: "press" });
+    const second = lines((await post(step({
+      runId: "run_rcpt05", step: 1, utterance: "click export", history: [{ said: "click export", did: "PRESS e3", result: "ok" }],
+    }))).payload);
+    expect(second.map((e) => e.t)).toEqual(["heard", "receipt", "done"]);
+    expect(second[1]!.receipt).toMatchObject({ runId: "run_rcpt05", outcome: "done", effects: 1, steps: 2 });
+    await vi.waitFor(async () => expect((await ledger().get("dev-user", "run_rcpt05"))?.steps).toBe(2));
+    expect(await ledger().get("dev-user", "run_rcpt05")).toMatchObject({
+      surface: "desktop", platform: "mac", outcome: "done", reason: null, effects: 1, steps: 2, title: "", path: "followup", said: null, turns: null,
+    });
+  });
+
+  it("writes each planner call to the call log with its tokens, and none of the prompt", async () => {
+    llm.plan = ["SAY It's on the right.\nDONE"];
+    await post(step({ runId: "run_rcpt06", utterance: "where is the send button?" }));
+    await vi.waitFor(() => expect(ledger().callsOf("dev-user", "run_rcpt06")).toHaveLength(1));
+    const [call] = ledger().callsOf("dev-user", "run_rcpt06");
+    expect(call).toMatchObject({ step: 0, surface: "desktop", model: "openai/gpt-6-luna", outcome: "ok", promptTokens: 1400, cachedTokens: 1100, completionTokens: 12 });
+    expect(JSON.stringify(call)).not.toMatch(/send button|right/);
+    // A desktop run keeps none of their words.
+    expect(await ledger().get("dev-user", "run_rcpt06")).toMatchObject({ outcome: "done", title: "", path: "model", mode: "show" });
   });
 });

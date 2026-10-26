@@ -10,7 +10,7 @@
  */
 import { siteShell } from "./shell.js";
 import { crumbsLd, pageLd } from "../../seo/head.js";
-export const PRIVACY_POLICY_EFFECTIVE = "October 22, 2026";
+export const PRIVACY_POLICY_EFFECTIVE = "October 24, 2026";
 
 const PRIVACY_POLICY_BODY = `
 <h1>Privacy Policy</h1>
@@ -38,6 +38,7 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>Voice recordings</strong> are processed transiently — sent to a speech-to-text provider, converted to text, and then discarded. We do not permanently store raw audio unless you specifically enable session history in Settings.</li>
   <li><strong>Text you dictate or refine</strong> is used to produce refined output and, if you opt in to session history, saved so you can review it later.</li>
   <li><strong>Personality preferences</strong> (tone, vocabulary, personal dictionary) are stored so refinement can match your voice.</li>
+  <li><strong>What you ask Tailzu to do on your phone</strong>: the first 80 characters are kept for 30 days, so the You tab can show your recent requests, and your words for a day when a request failed having changed nothing, so you can try it again with one tap (see 11.4). Of what you ask Ask on your computer, none of your words are kept, apart from your Tasks list (see 11.4).</li>
 </ul>
 
 <h3>1.3 Purchase information</h3>
@@ -139,7 +140,7 @@ const PRIVACY_POLICY_BODY = `
 
 <h3>Authentication and database</h3>
 <ul>
-  <li><strong>Supabase</strong> (supabase.com/privacy) — hosts your account, profile, and (if opted in) session history in secure managed Postgres.</li>
+  <li><strong>Supabase</strong> (supabase.com/privacy) — hosts your account, profile, the record of your requests to Ask (see Section 4), and (if opted in) session history in secure managed Postgres.</li>
   <li><strong>Apple Sign In / Google Sign In</strong> — used only if you choose these methods; each provider shares only the fields you authorize.</li>
 </ul>
 
@@ -169,6 +170,7 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>Voice recordings:</strong> transient. Deleted immediately after transcription.</li>
   <li><strong>Session history:</strong> only if you opt in. Stored until you delete it or your account.</li>
   <li><strong>Ask:</strong> what it reads off your screen, and any picture it sends, is not stored. See Section 10.</li>
+  <li><strong>The record of your requests to Ask:</strong> how each one went (done, waiting for you, or stopped, and why), how long it took, how many steps and changes it made, and which AI model answered and what that cost. It is kept until you delete your account, and holds none of your words, except from your phone: the first 80 characters of what you asked, for 30 days; your words to try again with, for a day; and a question Tailzu asks you back, with your request, for five minutes. See 10.4 and 11.4.</li>
   <li><strong>Google apps you connect:</strong> what Tailzu reads in them is not stored, except the details of a change waiting for your OK. Your access to an app is kept until you disconnect it or delete your account; your Tasks list and its record of actions, until you delete your account. See Section 11.</li>
   <li><strong>Account:</strong> retained until you request deletion.</li>
   <li><strong>Diagnostic logs:</strong> retained by Sentry / PostHog for up to 90 days per their standard retention.</li>
@@ -260,6 +262,7 @@ const PRIVACY_POLICY_BODY = `
   <li>A picture goes from our server through <strong>OpenRouter</strong> to the AI model that answers the question: <strong>Google's Gemini</strong>; only if that fails, <strong>Anthropic's Claude</strong>; and if that fails too, the model that refines your dictation (see Section 3), when it is a different one. It goes with the question and the text list above. OpenRouter and the model's provider handle it under their own privacy policies.</li>
   <li><strong>Tailzu does not store the picture and does not log it.</strong> It is held in memory only while your question is answered. Our logs record that a picture went with a question, its size in bytes, whether it was of one image or the whole window, and which model and provider answered; never the picture or the text on your screen.</li>
   <li>Ask writes nothing to your History. As with dictation, your usage counts the words Ask writes for you and the seconds you spoke, and we keep a count, in memory, of the pictures sent in the past day, for the daily limit.</li>
+  <li>Tailzu keeps a record of each request to Ask on your computer: how it ended and why, how many steps it took and how long, how many things it changed, and which AI model answered and what that cost. It holds nothing you said and nothing from your screen.</li>
 </ul>
 
 <h3>10.5 How to turn it off</h3>
@@ -309,13 +312,15 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>Your Tasks list.</strong> For each request that used an app: the first 80 characters of what you asked, and short steps like "Google Calendar: list events", so you can see what Tailzu did. Only you can see it in Tailzu.</li>
   <li><strong>A change waiting for your OK</strong> keeps its details, which can include what Tailzu read in Google to show it to you (an event's title, time and guests, or the name of a task, task list or sheet), until you tap Approve or Not now. Then they are deleted. If you never answer, they stay until you delete your account.</li>
   <li><strong>A record of each action:</strong> which app and action, whether it ran, failed or you said no, and when. It holds nothing that was read or written.</li>
-  <li><strong>Nothing else.</strong> Apart from a change waiting for your OK, what Tailzu reads in your Google apps is used for that one request and not stored, and we do not write it into our logs. On your phone, a question Tailzu asks you back is held in our server's memory with your request until your next request, and used with it only if that comes within five minutes, so your answer makes sense. Your calendar's time zone is held in memory too, and read from Google again at most once an hour.</li>
+  <li><strong>Your recent requests, on your phone.</strong> The first 80 characters of what you asked and how it ended, for 30 days, shown in Activity on the You tab; and, when a request failed having changed nothing, your words for a day, for Try again. Only you can see them in Tailzu. How each request went (how it ended, how long it took, how many changes it made) is kept until you delete your account, without your words. None of it holds what Tailzu read in your Google apps.</li>
+  <li><strong>Nothing else.</strong> Apart from a change waiting for your OK, what Tailzu reads in your Google apps is used for that one request and not stored, and we do not write it into our logs. On your phone, a question Tailzu asks you back is kept with your request until your next request, and used with it only if that comes within five minutes, so your answer makes sense; then it is deleted. A question that comes after Tailzu read something in a Google app is held only in our server's memory, since it may repeat what was read. Your calendar's time zone is held in memory too, and read from Google again at most once an hour.</li>
 </ul>
 
 <h3>11.5 Limited Use</h3>
 <p>Tailzu's use and transfer of information received from Google APIs to any other app will adhere to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. In plain words:</p>
 <ul>
   <li>Tailzu uses your Google data only to do what you asked, when you ask.</li>
+  <li>The record Tailzu keeps of your requests (see 11.4) says how each one went; it never holds your Google data.</li>
   <li>We never sell it.</li>
   <li>We never use it for advertising, and it is not part of the advertising measurement in 1.6.</li>
   <li>Tailzu does not use it to create, train or improve AI or machine-learning models.</li>

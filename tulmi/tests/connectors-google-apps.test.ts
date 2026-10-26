@@ -302,8 +302,8 @@ describe("the risk of each tool", () => {
     expect(await use("google-tasks", "add_task", { title: "Gym" })).toMatchObject({ kind: "stopped", message: expect.stringContaining("look only") });
     // A write that can't be done is said at once, with no card to approve.
     await store.upsertConnection(user, "google-tasks", { level: "send" });
-    expect(await use("google-tasks", "complete_task", { task: "laundry" })).toEqual({ kind: "stopped", message: 'I couldn\'t find a task called "laundry" on your list.' });
-    expect(await use("google-tasks", "add_task", { title: " " })).toEqual({ kind: "stopped", message: "What's the task?" });
+    expect(await use("google-tasks", "complete_task", { task: "laundry" })).toEqual({ kind: "stopped", message: 'I couldn\'t find a task called "laundry" on your list.', code: "rejected" });
+    expect(await use("google-tasks", "add_task", { title: " " })).toEqual({ kind: "stopped", message: "What's the task?", code: "rejected" });
     // Nothing was written while asking.
     expect(g.only((c) => c.method !== "GET" && c.url.pathname !== "/tasks/v1/lists/@default/tasks")).toHaveLength(0);
   });

@@ -44,6 +44,7 @@ import { registerCustomConnectorRoutes } from "./routes/connectorsCustom.js";
 import { registerOAuthClientMetadataRoute } from "./routes/oauthClientMetadata.js";
 import { startDirectorySync } from "./connectors/registry.js";
 import { registerAssistantRoutes } from "./routes/assistant.js";
+import { RunLedger, runStore, startRunSweeper } from "./runs/index.js";
 import { assistantView } from "./connectors/list.js";
 import { ASSISTANT_SCREENS } from "./experience/assistant.js";
 import { getNote, listNotes } from "./notes/store.js";
@@ -1023,6 +1024,13 @@ if (connectors?.custom.enabled) {
   const stop = startDirectorySync({ store: connectors.directory, log: app.log });
   app.addHook("onClose", async () => { stop(); });
 }
+// The run ledger (src/runs): every Ask run on the desktop and the phone,
+// written down after its answer has gone, and its receipt. The sweep closes
+// runs nobody will finish and lets go of people's words when their time is
+// up; it never runs in a request's way.
+const ledger = new RunLedger({ log: app.log });
+const stopRuns = startRunSweeper({ store: runStore(), log: app.log });
+app.addHook("onClose", async () => { stopRuns(); });
 registerConnectorRoutes(app, { rateLimit: AUTHED_RL, connectors });
 // Apps a person adds by link (CUSTOM_CONNECTORS): adding, removing, and their tools one by one.
 registerCustomConnectorRoutes(app, { rateLimit: AUTHED_RL, connectors });
@@ -1923,6 +1931,14 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
   const quota = await enforceQuota(user, { agentAudio: !!audio, picture: !!image });
   if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
 
+  // The run ledger's eye on this step: how it ends (and the receipt that
+  // says so, before a terminal that ends the run), what the apps did, and
+  // each planner call. Written once the stream has closed.
+  const watch = ledger.begin({
+    userId: user.id, runId: step.runId, surface: "desktop", platform: step.platform, step: step.step,
+    ...(step.utterance ? { said: step.utterance } : {}), ...(step.language ? { language: step.language } : {}),
+  });
+
   // From here the reply is ours to write by hand.
   reply.hijack();
   const res = reply.raw;
@@ -1935,10 +1951,18 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
   // tokens are not paid for. A response this side finished is not a hang-up:
   // the planner's last chunk, with its token counts, may still be on its way.
   const gone = new AbortController();
-  res.on("close", () => { if (!res.writableFinished) gone.abort(); });
+  // The desktop lets go as soon as it has read the terminal event, often
+  // before this side has finished; for the ledger, only a close before the
+  // terminal event is the person stopping the run.
+  let hungUp = false;
+  res.on("close", () => {
+    if (res.writableFinished) return;
+    if (!sink.ended) hungUp = true;
+    gone.abort();
+  });
   const sink = new EventSink((line) => {
     if (!res.writableEnded && !res.destroyed) res.write(line);
-  });
+  }, watch.sink);
 
   const t0 = Date.now();
   let result: StepResult | undefined;
@@ -1980,11 +2004,14 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
           picture,
           // One line per model call: which model, how soon it started, what it
           // cost, and whether a picture went with it. Never the prompt, the
-          // picture or the answer.
-          log: (call) => req.log.info({ agent: { runId: step.runId, step: step.step, ...call } }, "agent model call"),
+          // picture or the answer. The ledger keeps the same, per run.
+          log: (call) => {
+            req.log.info({ agent: { runId: step.runId, step: step.step, ...call } }, "agent model call");
+            watch.call(call);
+          },
         }),
         signal: gone.signal,
-        ...(connectors ? { connectors: connectors.runtimeFor(user.id, () => getProfile(user).then((p) => p?.language)) } : {}),
+        ...(connectors ? { connectors: watch.watch(connectors.runtimeFor(user.id, () => getProfile(user).then((p) => p?.language)), connectors.hub) } : {}),
       },
       sink,
     );
@@ -1997,7 +2024,8 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
   }
 
   // After the stream has closed: the device already has its answer, and a
-  // slow metering write must not hold it open.
+  // slow metering or ledger write must not hold it open.
+  void watch.end(result, { hungUp });
   if (result && result.path !== "refused") {
     if (result.path === "picture") recordPicture(user);
     await recordUsage({
@@ -2013,6 +2041,7 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
     agent: {
       runId: step.runId, step: step.step, platform: step.platform,
       path: result?.path ?? "failed", mode: result?.mode, model: result?.model, ending: sink.ending,
+      ...(watch.receipt ? { outcome: watch.receipt.outcome, reason: watch.receipt.reason } : {}),
       events: sink.count, elements: step.screen.elements.length, words: result?.words ?? 0,
       audioSeconds: result?.audioSeconds ?? 0, ms: Date.now() - t0,
       ...(image ? { picture: true, pictureBytes: image.data.length, region: step.picture?.region } : {}),
@@ -2029,14 +2058,18 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
 // --- The phone's Ask (REST): one command, no screen ------------------------
 //
 // The same planner and connected apps as /v1/agent, for Tailzu on the phone:
-// one JSON answer ({ say, open?, taskId? }) instead of a stream, since there
-// is no screen to act on step by step. See src/routes/assistant.ts.
+// one JSON answer ({ say, open?, taskId?, receipt }) instead of a stream,
+// since there is no screen to act on step by step. See src/routes/assistant.ts.
 registerAssistantRoutes(app, {
   rateLimit: AGENT_RL,
   connectors,
-  plan: (system, userMessage, signal, picture) => planStream(system, userMessage, {
+  ledger,
+  plan: (system, userMessage, signal, picture, log) => planStream(system, userMessage, {
     signal, picture,
-    log: (call) => app.log.info({ ask: call }, "assistant ask model call"),
+    log: (call) => {
+      app.log.info({ ask: call }, "assistant ask model call");
+      log?.(call);
+    },
   }),
   profileLanguage: (user) => getProfile(user).then((p) => p?.language),
   quota: (user) => enforceQuota(user),

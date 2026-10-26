@@ -412,7 +412,7 @@ describe("You: Hand it to me draws only what the shipped app draws", () => {
   });
 
   it("the card's state is the screen's own and clashes with none of the tab's", () => {
-    expect(Object.keys(full.state).sort()).toEqual(["ask", "askHapticsOff", "deck", "hapticsOn", "ini", "up"]);
+    expect(Object.keys(full.state).sort()).toEqual(["act", "ask", "askHapticsOff", "deck", "hapticsOn", "ini", "up"]);
   });
 });
 

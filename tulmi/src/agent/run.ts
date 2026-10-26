@@ -38,13 +38,20 @@
  *
  * Everything goes out through the EventSink, which keeps "exactly one terminal
  * event" true however a path ends.
+ *
+ * A USE line whose arguments do not fit its tool (connectors/validate.ts) runs
+ * nothing, and the planner is asked again once in the step with one of
+ * Tailzu's own lines saying what to fix ("fix: google-tasks.add_task —
+ * missing "title""). A second in the same step is said plainly and ends it
+ * (StepResult.code "invalid_args"): a planner that cannot fill a tool in
+ * twice is not going to the third time, and every try is a model call.
  */
 import { randomUUID } from "node:crypto";
 import type { AgentStepRequest, AgentTurn } from "../../../shared/types/api.js";
 import { aboutTheText, commandText, grammar, grammarLine, modeOf, wantsDetail, type GrammarAction } from "./grammar.js";
 import { LineReader, LineSplitter, parseLine, type ActionLine, type SpotOrder, type UseLine } from "./lines.js";
 import { PlannerUnavailable, type PictureCall, type PlanChunk, type SystemPrompt, type UserContent } from "./llm.js";
-import { AGENT_SYSTEM, agentPictureContent, agentUserMessage, drawOrderFor, visionSystemFor } from "./prompt.js";
+import { agentPictureContent, agentSystemFor, agentUserMessage, drawOrderFor, visionSystemFor } from "./prompt.js";
 import type { AgentImage, EventSink } from "./protocol.js";
 import { resolve, resolverAsk } from "./resolver.js";
 import { isBrowser, isTextEntry, withRisk, type PlannedAction, type Scene } from "./risk.js";
@@ -85,10 +92,14 @@ export interface StepDeps {
 
 /** What the planner is sent on a step where it may use a connected app. */
 export interface ConnectorPlan {
-  /** AGENT_SYSTEM plus the one line that teaches USE. */
+  /** AGENT_SYSTEM (the phone's on a phone) plus the addendum that teaches USE. */
   system: string;
-  /** The step's user message with the apps' tool cards, and any results so far, in it. */
-  message(base: string, results: string[]): string;
+  /**
+   * The step's user message with the apps' tool cards, and any results so far,
+   * in it. `fix`: the last USE did not fit its tool and nothing ran, as
+   * "connector.tool — what to fix", for one of Tailzu's own lines.
+   */
+  message(base: string, results: string[], fix?: string): string;
 }
 
 /** The run's door to connected apps, already bound to the person. */
@@ -118,6 +129,12 @@ export interface StepResult {
   /** Words their writer wrote for them (WRITE, REWRITE, a selection rewrite). */
   words: number;
   audioSeconds: number;
+  /**
+   * An error event's code; or, on a step that ended with a sentence and done,
+   * why it could do nothing: "nothing_usable" (the planner gave nothing it
+   * could use, and the nothing line was said) or "invalid_args" (a tool's
+   * arguments did not fit it twice). For the run ledger (src/runs) and the log.
+   */
   code?: string;
   /** The deep ladder answered a picture question asked for in detail. */
   deep?: boolean;
@@ -315,7 +332,7 @@ async function planWithModel(
   if (!apps || !deps.connectors) {
     return follow(ctx, deps, sink, {
       reader: new LineReader(ids, reads, { draws: drawMax(ctx) }),
-      stream: deps.plan(AGENT_SYSTEM, user, deps.signal),
+      stream: deps.plan(agentSystemFor(req.platform), user, deps.signal),
       // The text prompt teaches every model the one order, and its places in
       // a picture are dropped anyway: it has no picture.
       order: () => "xy",
@@ -327,14 +344,19 @@ async function planWithModel(
 
   // A tool the planner calls to look something up comes back as a result and
   // the planner is asked again, with it, up to MAX_USE_ROUNDS times; the last
-  // round does not read USE lines, so the step always ends.
-  const use: UseHold = { said: s.said, allowWrite: s.mode === "do", results: [], again: false };
+  // round does not read USE lines, so the step always ends. A USE that did
+  // not fit its tool is asked again the same way, with what to fix, once: it
+  // is one of the rounds.
+  const use: UseHold = { said: s.said, allowWrite: s.mode === "do", results: [], again: false, fixed: false };
   for (let round = 0; round <= MAX_USE_ROUNDS; round++) {
     use.again = false;
     const last = round === MAX_USE_ROUNDS;
+    // The fix is about the USE just refused: said on the next call only.
+    const fix = use.fix;
+    use.fix = undefined;
     await follow(ctx, deps, sink, {
       reader: new LineReader(ids, reads, { draws: drawMax(ctx), connectors: !last }),
-      stream: deps.plan(apps.system, apps.message(user, use.results), deps.signal),
+      stream: deps.plan(apps.system, apps.message(user, use.results, fix), deps.signal),
       order: () => "xy",
       scene: s.scene,
       nothing,
@@ -343,6 +365,7 @@ async function planWithModel(
     });
     if (!use.again || sink.ended) break;
   }
+  if (use.code) result.code = use.code;
   // On the phone each ask is a run of its own, and the next has a new id: a
   // question back ends this one's task as an answer would.
   await deps.connectors.settle(req.runId, s.act === false && sink.ending === "ask" ? "done" : sink.ending).catch(() => {});
@@ -355,8 +378,14 @@ interface UseHold {
   allowWrite: boolean;
   /** Results so far, "connector.tool: text", fed back to the next call. */
   results: string[];
-  /** The last call ended on a tool that ran and gave a result: ask again. */
+  /** The last call ended on a tool that ran and gave a result, or on one to fix: ask again. */
   again: boolean;
+  /** The USE that did not fit its tool, "connector.tool — what to fix", for the next call. */
+  fix?: string;
+  /** The step's one repair has been asked for. */
+  fixed: boolean;
+  /** Why the step ended with nothing done, for StepResult.code. */
+  code?: string;
 }
 
 /**
@@ -451,7 +480,10 @@ async function follow(
   // A stream that ended without an ending: whatever it said stands, and
   // nothing usable at all is said plainly rather than left hanging.
   if (!sink.ended) {
-    if (!reader.produced) sink.emit({ t: "say", text: f.nothing });
+    if (!reader.produced) {
+      sink.emit({ t: "say", text: f.nothing });
+      result.code = sink.code = "nothing_usable";
+    }
     sink.emit({ t: "done" });
   }
   return withDraws(result, reader);
@@ -486,7 +518,9 @@ function drain(stream: AsyncIterator<PlanChunk>): void {
 /**
  * One USE line. A read runs and its result goes back into the step; a change
  * becomes an approval the device must confirm (nothing has happened yet); and
- * anything the person's settings do not allow is said to them, as it is.
+ * anything the person's settings do not allow is said to them, as it is. A
+ * call whose arguments do not fit the tool is sent back to the planner to fix
+ * once in the step, and said plainly the second time.
  */
 async function useTool(line: UseLine, req: AgentStepRequest, hold: UseHold | undefined, deps: StepDeps, sink: EventSink): Promise<void> {
   if (!hold || !deps.connectors) return;
@@ -509,6 +543,18 @@ async function useTool(line: UseLine, req: AgentStepRequest, hold: UseHold | und
   } else if (o.kind === "approval") {
     // The card is the server's: its words, its buttons, the routes they call.
     sink.emit({ t: "approve", taskId: o.taskId, approval: o.approval, ...(o.card ? { card: o.card } : {}) });
+  } else if (o.kind === "invalid") {
+    // Nothing ran, and nothing was asked of the person. The first time, the
+    // planner is asked again with what to fix; the second, it is said.
+    if (!hold.fixed) {
+      hold.fixed = true;
+      hold.fix = `${line.connector}.${line.tool} — ${o.problems}`;
+      hold.again = true;
+    } else {
+      hold.code = sink.code = "invalid_args";
+      sink.emit({ t: "say", text: o.message });
+      sink.emit({ t: "done" });
+    }
   } else if (o.ask && (req.platform === "ios" || req.platform === "android")) {
     // On the phone a tool's question back ("What's their UPI ID?") is asked
     // like the planner's own ASK, so their answer is read with this request.

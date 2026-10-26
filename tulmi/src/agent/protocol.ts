@@ -342,6 +342,22 @@ export function audioFormatOf(filename: string | undefined, mime: string | undef
 const TERMINAL = new Set<AgentEvent["t"]>(["action", "ask", "look", "approve", "device", "done", "error"]);
 
 /**
+ * What a route may add to a step's events without the planner knowing: the
+ * run ledger (src/runs) uses both. Neither changes an event, and one that
+ * throws is passed over, so the step's own events always go out.
+ */
+export interface SinkHooks {
+  /**
+   * The terminal event about to be written: an event returned is written just
+   * before it. `code`: why the step ends with nothing done, when it said so
+   * first (EventSink.code).
+   */
+  beforeEnd?(terminal: AgentEvent, code?: string): AgentEvent | null;
+  /** Every event, as it is written. */
+  seen?(e: AgentEvent): void;
+}
+
+/**
  * The one way events leave a step: in order, one JSON object per line, and
  * never anything after the first terminal event. The route closes the stream
  * once a step has finished; this makes "exactly one terminal" true of every
@@ -352,6 +368,9 @@ const TERMINAL = new Set<AgentEvent["t"]>(["action", "ask", "look", "approve", "
  * so the card grows as the model writes instead of each sentence replacing
  * the last. Marked here, on the way out, so a sentence the server adds of its
  * own after the model's is marked like the model's.
+ *
+ * A route's hooks may put one event of their own just before the terminal
+ * one (the run's receipt). With no hooks, every byte is what it always was.
  */
 export class EventSink {
   private finished = false;
@@ -361,8 +380,14 @@ export class EventSink {
   ending: string | undefined;
   /** The run's mode, from its heard event: in show mode nothing acts. */
   mode: "show" | "do" | undefined;
+  /**
+   * Why the step ends with nothing done ("nothing_usable", "invalid_args"),
+   * set by the step before its done, so the hooks see it with the terminal.
+   * Never written out.
+   */
+  code: string | undefined;
 
-  constructor(private readonly write: (line: string) => void) {}
+  constructor(private readonly write: (line: string) => void, private readonly hooks: SinkHooks = {}) {}
 
   get ended(): boolean { return this.finished; }
   /** Events sent so far, the heard event included. */
@@ -383,8 +408,24 @@ export class EventSink {
     if (TERMINAL.has(e.t)) {
       this.finished = true;
       this.ending = e.t === "error" ? `error:${e.code}` : e.t === "action" ? `action:${e.kind}` : e.t === "device" ? `device:${e.tool}` : e.t;
+      const before = this.hook(() => this.hooks.beforeEnd?.(e, this.code));
+      if (before) this.send(before);
     }
+    this.send(e);
+  }
+
+  private send(e: AgentEvent): void {
     this.sent += 1;
     this.write(JSON.stringify(e) + "\n");
+    this.hook(() => this.hooks.seen?.(e));
+  }
+
+  /** A hook's answer, or nothing when it threw: what it adds is never worth the step. */
+  private hook<T>(f: () => T): T | undefined {
+    try {
+      return f();
+    } catch {
+      return undefined;
+    }
   }
 }

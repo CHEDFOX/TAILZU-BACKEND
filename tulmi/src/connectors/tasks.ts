@@ -24,6 +24,17 @@
  *
  * An approval is good for an hour: a "yes" given to a card that has been
  * sitting since yesterday is not a yes to what it says now.
+ *
+ * Before any of that, the call's arguments are read against the tool's own
+ * schema (validate.ts). A call that does not fit is "invalid": nothing is
+ * judged, shown, run or audited, no task is made, and the run hands what to
+ * fix back to its planner. The arguments that go on are the checked ones,
+ * with the coercions every reader already makes ("500" for a number), so the
+ * card shows and the tool runs exactly what was checked.
+ *
+ * Every "stopped" says why in a code as well as in words (not_connected,
+ * blocked, show_only, unknown_tool, an app's own Fail code), for the run
+ * ledger (src/runs), which counts runs and never reads the words.
  */
 import { randomUUID } from "node:crypto";
 import type { ApprovalCard, DeviceWords } from "../../../shared/types/api.js";
@@ -33,12 +44,15 @@ import type { HandoffWords } from "./native.js";
 import { ConnectorError } from "./oauth.js";
 import { policyOf } from "./hygiene.js";
 import { gate, gateTool, type Gate, type Level, type Risk } from "./risk.js";
-import type { Approval, ConnectorStore, Task } from "./store.js";
+import { TASK_STEPS_MAX, type Approval, type ConnectorStore, type Task } from "./store.js";
+import { checkArgs, problemLine } from "./validate.js";
+import { en } from "./words.js";
 
 export const APPROVAL_TTL_MS = 60 * 60_000;
+/** The step a card that waited past APPROVAL_TTL_MS ends on (the You tab's Activity reads it). */
+export const EXPIRED_STEP = "That request expired before you answered";
 /** How many approved kinds of change one app remembers (the newest kept). */
 const REMEMBER_MAX = 100;
-const STEPS_MAX = 30;
 const PREVIEW_MAX = 400;
 
 /** What the run is told about a USE line. */
@@ -48,9 +62,15 @@ export type UseOutcome =
   /**
    * Nothing ran; `message` is said to the person as it is. `ask` when it is
    * a hand-off asking for what it was not given ("What's their UPI ID?"):
-   * their next words answer it.
+   * their next words answer it. `code` says why, for the run ledger.
    */
-  | { kind: "stopped"; message: string; ask?: boolean }
+  | { kind: "stopped"; message: string; ask?: boolean; code?: string }
+  /**
+   * The arguments did not fit the tool's schema (validate.ts), and nothing
+   * ran: `problems` is what to fix, for the planner (problemLine, names only),
+   * and `message` the line said to the person if it is still not right.
+   */
+  | { kind: "invalid"; problems: string; message: string }
   /** A tool of "This computer" (device.ts): nothing ran here; the run sends it to the person's desktop, which does it on their own files. */
   | { kind: "device"; tool: string; args: Record<string, unknown>; risk: "read" | "write" | "destructive"; words: DeviceWords }
   /** Something for the person's own device to open (a hand-off): the run says `say`, opens it and ends. `words` is the app's own line, worded for the person before the run sees it. */
@@ -116,7 +136,7 @@ export class TaskService {
   }
 
   private async step(userId: string, task: Task, text: string, patch: Partial<Pick<Task, "state" | "approval">> = {}): Promise<Task> {
-    const steps = [...task.steps, { at: this.now(), text: clip(text, 160) }].slice(-STEPS_MAX);
+    const steps = [...task.steps, { at: this.now(), text: clip(text, 160) }].slice(-TASK_STEPS_MAX);
     return (await this.o.store.updateTask(userId, task.id, { steps, ...patch })) ?? task;
   }
 
@@ -159,31 +179,45 @@ export class TaskService {
     const free = def?.auth === "none";
     const conn = def && !free ? await this.o.store.getConnection(userId, line.connector) : null;
     if (!def || (!free && !conn?.tokensEnc)) {
-      return { kind: "stopped", message: `${def?.name ?? "That app"} isn't connected. You can connect it in Tailzu.` };
+      return { kind: "stopped", message: `${def?.name ?? "That app"} isn't connected. You can connect it in Tailzu.`, code: "not_connected" };
     }
+    /** The app could not be asked: its own words and code when it gave them. */
+    const trouble = (e: unknown): UseOutcome => e instanceof ConnectorError
+      ? { kind: "stopped", message: e.message, code: e.code }
+      : { kind: "stopped", message: `${def.name} ran into a problem.`, code: "failed" };
     let tools;
     try {
       tools = await this.o.hub.tools(userId, def.id);
     } catch (e) {
-      return { kind: "stopped", message: e instanceof ConnectorError ? e.message : `${def.name} ran into a problem.` };
+      return trouble(e);
     }
     const info = tools.find((t) => t.name === line.tool);
     if (!info) {
       // An app added by link hides a tool that changed since the person approved it, and one they switched off.
       const now = def.custom ? await this.o.store.getConnection(userId, def.id) : null;
+      const changed = now?.toolsChanged.includes(line.tool) === true;
+      const off = now?.toolPolicy[line.tool] === "off";
       return {
         kind: "stopped",
-        message: now?.toolsChanged.includes(line.tool) ? `${human(line.tool)} changed in ${def.name} since you approved it. Have a look in Tailzu first.`
-          : now?.toolPolicy[line.tool] === "off" ? `${human(line.tool)} is switched off for ${def.name}. You can change that in Tailzu.`
+        message: changed ? `${human(line.tool)} changed in ${def.name} since you approved it. Have a look in Tailzu first.`
+          : off ? `${human(line.tool)} is switched off for ${def.name}. You can change that in Tailzu.`
             : `${def.name} doesn't have an action called ${clip(line.tool, 40)}.`,
+        code: changed || off ? "blocked" : "unknown_tool",
       };
     }
 
+    // The arguments, against the tool's own schema: a call that cannot be
+    // right is never judged, shown or run. A hand-off asks for what it was not
+    // given in its own words, so only a value it needs is not looked for there.
+    const checked = checkArgs(info.inputSchema, line.args, { required: !free });
+    if (!checked.ok) return { kind: "invalid", problems: problemLine(checked.problems), message: en("va.failed", { app: def.name }) };
+    const args = checked.args;
+
     let risk: Risk;
     try {
-      risk = await this.o.hub.riskFor(userId, def, info, line.args);
+      risk = await this.o.hub.riskFor(userId, def, info, args);
     } catch (e) {
-      return { kind: "stopped", message: e instanceof ConnectorError ? e.message : `${def.name} ran into a problem.` };
+      return trouble(e);
     }
     let verdict: Gate;
     // The hand-off only opens a draft the person sends themselves, so it runs without asking; but only on a command.
@@ -193,11 +227,14 @@ export class TaskService {
       if (verdict === "run" && await this.otherAppAnswered(userId, runId, def.id)) verdict = "approve";
     } else verdict = gate(risk, conn!.level, conn!.autoOk.includes(info.name));
     if (verdict === "block") {
-      return { kind: "stopped", message: def.custom ? `${human(info.name)} is switched off for ${def.name}. You can change that in Tailzu.` : blockedMessage(def.name, conn!.level, risk) };
+      return {
+        kind: "stopped", code: "blocked",
+        message: def.custom ? `${human(info.name)} is switched off for ${def.name}. You can change that in Tailzu.` : blockedMessage(def.name, conn!.level, risk),
+      };
     }
     if (verdict === "approve" && !opts.allowWrite) {
       return {
-        kind: "stopped",
+        kind: "stopped", code: "show_only",
         message: free ? `Ask me as a command and I'll open it in ${def.name}.`
           : risk === "read" ? `I check with you before using ${def.name}. Ask me as a command and I'll ask you first.`
             : `That would change something in ${def.name}. Ask me as a command and I'll check with you first.`,
@@ -208,27 +245,27 @@ export class TaskService {
     let preview: string | undefined;
     if (verdict === "approve") {
       try {
-        preview = await this.o.hub.previewFor(userId, def, info.name, line.args);
+        preview = await this.o.hub.previewFor(userId, def, info.name, args);
       } catch (e) {
-        return { kind: "stopped", message: e instanceof ConnectorError ? e.message : `${def.name} ran into a problem.` };
+        return trouble(e);
       }
     }
 
     let task = await this.taskFor(userId, runId, said);
     if (verdict === "run") {
-      const out = await this.o.hub.call(userId, def.id, info.name, line.args);
+      const out = await this.o.hub.call(userId, def.id, info.name, args);
       await this.audit(userId, task, def.id, info.name, risk, out.ok ? "ok" : "failed", out.error);
       task = await this.step(userId, task, out.ok ? `${def.name}: ${human(info.name)}` : `${def.name}: ${human(info.name)} failed`);
       if (out.ok && out.open) return { kind: "open", ...out.open };
       if (out.ok) return { kind: "result", text: out.text };
       // A hand-off refuses over what it was given ("What's their UPI ID?"), so their next words answer it.
       const asks = free && out.error!.code === "rejected";
-      return { kind: "stopped", message: out.error!.message, ...(asks ? { ask: true } : {}) };
+      return { kind: "stopped", message: out.error!.message, code: out.error!.code, ...(asks ? { ask: true } : {}) };
     }
 
     const approval: Approval = {
-      id: randomUUID(), connector: def.id, tool: info.name, risk, args: line.args,
-      preview: clip(preview ?? previewOf(def, info.name, line.args), PREVIEW_MAX), at: this.now(),
+      id: randomUUID(), connector: def.id, tool: info.name, risk, args,
+      preview: clip(preview ?? previewOf(def, info.name, args), PREVIEW_MAX), at: this.now(),
     };
     task = await this.step(userId, task, `Waiting for you: ${human(info.name)} in ${def.name}`, { state: "waiting", approval });
     void Promise.resolve().then(() => this.o.notify?.(userId, task, approval)).catch(() => {});
@@ -263,7 +300,7 @@ export class TaskService {
     const def = await this.o.hub.resolve(userId, a.connector).catch(() => undefined);
 
     if (this.now() - a.at > APPROVAL_TTL_MS) {
-      const t = await this.step(userId, task, "That request expired before you answered", { state: "cancelled", approval: null });
+      const t = await this.step(userId, task, EXPIRED_STEP, { state: "cancelled", approval: null });
       return { status: "expired", task: viewOfTask(t) };
     }
     const conn = def ? await this.o.store.getConnection(userId, a.connector) : null;

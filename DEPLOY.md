@@ -850,7 +850,7 @@ are nine characters each) is refused with "Ask me for a shorter one."
 ### Ask on the phone
 
 `POST /v1/assistant/ask` `{ text, lang?, platform? }` answers
-`{ say, open?: { url, label, fallback? }, taskId? }`: the same planner and
+`{ say, open?: { url, label, fallback? }, taskId?, receipt }`: the same planner and
 connected apps as the desktop's Ask, as a command, with no screen. The phone's
 **Ask me** screen (`assistant_ask`, from Settings and from Connected apps) is
 sent by the server like the rest: a field, the mic, **Do it**, and three
@@ -860,8 +860,48 @@ sheet when there is a `taskId`. It is there only while `CONNECTORS=true`
 apps). It is held to Ask's rate limit (`AGENT_RATE_LIMIT_MAX` /
 `AGENT_RATE_LIMIT_WINDOW_MS`) and the free plan's allowance, and metered like
 an Ask step. A question back (the planner's, or a tool's, say for a UPI ID) is
-kept for five minutes in the server's memory, so the person's next ask is read
-as its answer, up to three questions in a row; a restart forgets it. The phone
+kept for five minutes in the run ledger (below), so the person's next ask is read
+as its answer, up to three questions in a row; with the ledger on, after a
+restart too (off, the default, a restart forgets it, as before). The phone
 opens an answer's link only if it is on the hand-off list (`openUrl` with
 `handoff: true`, `isHandoffUrl` in `app/src/security.ts`); an older build
 holds it to its general `openUrl` check.
+
+### The run ledger and receipts
+
+Every Ask run, on the desktop (`/v1/agent`) and the phone
+(`/v1/assistant/ask`), is written down in `src/runs/`: how it ended and why,
+how many steps, how long, what it changed, and one row per planner call with
+its tokens and what OpenRouter charged (read from the answer; the request is
+unchanged). Each run the server ends gets a receipt: on the desktop a
+`receipt` event just before the terminal event (desktop 0.4.4 skips events it
+does not know), on the phone the answer's `receipt` (the store build keeps the
+whole answer and reads only `say`, `open` and `taskId`).
+
+1. **Migration.** Paste `tulmi/supabase/migrations/0019_agent_runs.sql` into
+   the Supabase SQL editor (or re-run `full_schema.sql`), after 0018, and
+   BEFORE turning the ledger on. It creates `agent_runs`, `agent_calls` and
+   the `agent_run_report` view (how a run that stopped on a card really ended,
+   read from its task), the indexes the run sweep reads, and an index for the
+   stuck-task sweep. Written with the service key only; nothing on a device
+   reads them. Without the tables the server logs each failed write and
+   carries on, but a phone's question back is then not kept, and its answer
+   is read as a new ask.
+2. **`AGENT_RUN_LEDGER` is off by default**, and off it keeps all of it in the
+   server's memory (as follow-ups were kept before): Activity on the You tab
+   then shows what this server saw since it started, and a restart forgets it.
+   Receipts are sent either way. Turn it on (`AGENT_RUN_LEDGER=true`) only
+   when both of these hold: 0019 is applied, and the privacy policy people are
+   shown says what the ledger keeps. This change brings those lines in
+   `src/routes/policies/privacy.ts` (sections 1.2, 3, 4, 10.4, 11.4 and 11.5,
+   effective October 24, 2026); `/privacy` serves the published site's page
+   first, so that page must carry them too. Read them before turning it on.
+3. What it keeps of people's words, and for how long (a sweep inside the server
+   runs every minute). From the phone only: the run's title, their first
+   words cut to 80 characters, 30 days (Activity shows it); the words to try
+   again with, for an ask that failed having changed nothing, a day; a
+   question back with the request before it, five minutes. A question asked
+   after an app's answer was read (it may carry what the app said) is written
+   without its words, which the server holds in memory for the five minutes.
+   A desktop run keeps none of the person's words, only how it went. A desktop
+   run with no step for 10 minutes is closed as stopped on the computer.

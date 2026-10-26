@@ -21,6 +21,10 @@
  * Every route but the callback authenticates exactly like the rest of /v1.
  * With CONNECTORS off the list says so ({ enabled: false }) and everything
  * else answers 404, so a client can ask once and stop.
+ *
+ * The tasks these routes show are kept honest here too: while connected apps
+ * are on, the stuck-task sweeper (connectors/sweeper.ts) runs once the server
+ * is ready and every minute after, and stops when it closes.
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { AssistantTask } from "../../../shared/types/api.js";
@@ -34,12 +38,15 @@ import { beginGoogleOAuth, completeGoogleOAuth, otherGoogleApps, revokeGoogleAcc
 import { beginOAuth, completeOAuth, ConnectorError, verifyState } from "../connectors/oauth.js";
 import type { Level } from "../connectors/risk.js";
 import { ConnectorsNeedAccount } from "../connectors/store.js";
+import { startTaskSweeper } from "../connectors/sweeper.js";
 import type { TaskView } from "../connectors/tasks.js";
 
 export interface ConnectorRoutesDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
   /** Null when CONNECTORS is off. */
   connectors: Connectors | null;
+  /** How often the stuck-task sweeper looks; null: it does not run. Default once a minute (sweeper.ts SWEEP_EVERY_MS). */
+  sweepEveryMs?: number | null;
 }
 
 const LEVELS: readonly Level[] = ["look", "draft", "send"];
@@ -74,6 +81,16 @@ export function registerConnectorRoutes(app: FastifyInstance, deps: ConnectorRou
   };
   const noSession = (reply: FastifyReply) =>
     reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+
+  // Tasks left running by a run that never settled them: failed with a reason, on start and every minute.
+  const sweepEvery = deps.sweepEveryMs;
+  if (c && sweepEvery !== null) {
+    let stop: (() => void) | undefined;
+    app.addHook("onReady", async () => {
+      stop = startTaskSweeper({ store: c.store, everyMs: sweepEvery, log: app.log });
+    });
+    app.addHook("onClose", async () => { stop?.(); });
+  }
 
   app.get("/v1/connectors", RL, async (req, reply) => {
     const user = await resolveUser(req.headers["authorization"]);

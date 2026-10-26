@@ -26,13 +26,13 @@ You need to do four things, in this order:
 1. **Deploy section 11 of the privacy policy and check that it is live.** The
    live policy at https://www.tailzu.space/privacy is dated October 20, 2026
    and has no Google section. The new version is already written in
-   `tulmi/src/routes/policies/privacy.ts`, dated October 22, 2026. Its section
+   `tulmi/src/routes/policies/privacy.ts`, dated October 24, 2026. Its section
    "11. Google apps you connect" carries the anchor `id="google-user-data"`
    and the Limited Use statement with its link.
 
    After the deploy, open
    **https://www.tailzu.space/privacy#google-user-data** and check two things:
-   it lands on section 11, and the date at the top says October 22, 2026. If
+   it lands on section 11, and the date at the top says October 24, 2026. If
    `SITE_DIR/privacy.html` exists on the server, that file is served instead,
    so update it or remove it.
 

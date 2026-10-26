@@ -386,8 +386,8 @@ describe("where a hand-off opens", () => {
 
   it("a link off the list is never sent, and a phone's link never reaches a computer", () => {
     const w = wordsFor("en");
-    expect(handoffOut({ kind: "open", url: "https://evil.example/?x", label: "x" }, true, w)).toEqual({ kind: "stopped", message: EN["ho.failed"] });
-    expect(handoffOut({ kind: "open", url: "tel:+919876543210", label: "x" }, false, w)).toEqual({ kind: "stopped", message: EN["ho.phone"] });
+    expect(handoffOut({ kind: "open", url: "https://evil.example/?x", label: "x" }, true, w)).toEqual({ kind: "stopped", message: EN["ho.failed"], code: "failed" });
+    expect(handoffOut({ kind: "open", url: "tel:+919876543210", label: "x" }, false, w)).toEqual({ kind: "stopped", message: EN["ho.phone"], code: "phone_only" });
     expect(handoffOut({ kind: "open", url: "https://wa.me/?text=hi", label: "x", fallback: "javascript:x", words: { say: "wa.pick", open: "wa.open" } }, false, w))
       .toEqual({ kind: "open", url: "https://wa.me/?text=hi", label: "Open WhatsApp", say: EN["wa.pick"] });
   });
