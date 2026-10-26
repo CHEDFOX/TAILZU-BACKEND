@@ -905,3 +905,38 @@ whole answer and reads only `say`, `open` and `taskId`).
    without its words, which the server holds in memory for the five minutes.
    A desktop run keeps none of the person's words, only how it went. A desktop
    run with no step for 10 minutes is closed as stopped on the computer.
+
+### The Code bot: connect GitHub (`CODE_GITHUB`)
+
+Off by default: while `CODE_GITHUB` is false every `/v1/code/*` route answers
+`404 {"code":"code_off"}`. On, a person connects GitHub through a GitHub App
+Tailzu owns, picks a repo as a project, and Tailzu works on `tailzu/<task>-<4 hex>`
+branches made from its default branch and opens draft pull requests. It never
+writes to a default branch or to any branch outside `tailzu/`.
+
+1. **Migration.** Paste `tulmi/supabase/migrations/0020_code_github.sql` into the
+   Supabase SQL editor (or re-run `full_schema.sql`), after 0019: it creates
+   `code_installations`, `code_projects` and `code_branches`. Without
+   `SUPABASE_SERVICE_KEY` they live in memory and are lost on restart.
+2. **The App.** Make it as `docs/github-app.md` says (by hand, or from the
+   manifest there): Contents and Pull requests read/write, Metadata read, no
+   Workflows, installable by any account, OAuth during installation on, callback
+   `https://api.tailzu.space/v1/code/github/callback`, webhook
+   `https://api.tailzu.space/v1/code/github/webhook`.
+3. **The keys.** In `tulmi/.env`: `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`,
+   `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY` (the `.pem`, raw or
+   `base64 -w0`), `GITHUB_APP_WEBHOOK_SECRET` and `GITHUB_APP_ID`, then
+   `CODE_GITHUB=true`. `CONNECTOR_TOKEN_KEY` (above) must be set too: it signs
+   the install link. With the App half set up the routes answer
+   `503 not_configured`, and the server says which setting is missing on start.
+4. **Check.** `GET /v1/code/github` with a signed-in token answers
+   `{"configured":true,"connected":false,...}`. Install the App on your own
+   account: the page says "GitHub connected", and the App's Advanced tab shows
+   its webhook deliveries answered.
+5. **Before real users.** Turn on branch protection for default branches (the
+   `tailzu/` rule is Tailzu's own code, and the App's permission alone could
+   write anywhere), and add the Code bot to the privacy policy: it keeps the
+   account names of linked installs, the person's GitHub id and login, the repos
+   picked, and 200 characters of each task. A person may use a repo only where
+   they have write access on GitHub (or it is on their own account), checked
+   against GitHub as described in `docs/github-app.md`.

@@ -10,6 +10,7 @@
  *   POST /v1/ask                  → screen: screen content + question → answer
  *   POST /v1/agent                → Ask: one step of the on-screen agent (NDJSON)
  *   /v1/connectors, /v1/tasks     → connected apps and the assistant's tasks (CONNECTORS)
+ *   /v1/code/*                    → the Code bot: connect GitHub, projects, work branches (CODE_GITHUB)
  *   GET  /oauth/client-metadata.json → Tailzu's published OAuth client, for the apps' sign-in (CIMD)
  *   POST /v1/assistant/ask        → the phone's Ask: one command, one JSON answer (CONNECTORS)
  *   POST /v1/speak                → voice out: text → spoken audio (TTS)
@@ -40,6 +41,8 @@ import { registerSeoRoutes } from "./routes/seo.js";
 import { registerNotesRoutes } from "./routes/notes.js";
 import { createConnectors, type Connectors } from "./connectors/index.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
+import { createCode } from "./code/index.js";
+import { registerCodeRoutes } from "./routes/code.js";
 import { registerCustomConnectorRoutes } from "./routes/connectorsCustom.js";
 import { registerOAuthClientMetadataRoute } from "./routes/oauthClientMetadata.js";
 import { startDirectorySync } from "./connectors/registry.js";
@@ -363,8 +366,8 @@ app.addContentTypeParser(
   "application/json",
   { parseAs: "string", bodyLimit: 1 * 1024 * 1024 },
   (req, body, done) => {
-    // Razorpay signs the body exactly as sent, so its webhook keeps it.
-    if (typeof body === "string" && req.url.startsWith("/v1/billing/razorpay")) {
+    // Razorpay and GitHub sign the body exactly as sent, so their webhooks keep it.
+    if (typeof body === "string" && (req.url.startsWith("/v1/billing/razorpay") || req.url.startsWith("/v1/code/github/webhook"))) {
       (req as unknown as { rawBody?: string }).rawBody = body;
     }
     const raw = typeof body === "string" ? body.trim() : "";
@@ -1032,6 +1035,10 @@ const ledger = new RunLedger({ log: app.log });
 const stopRuns = startRunSweeper({ store: runStore(), log: app.log });
 app.addHook("onClose", async () => { stopRuns(); });
 registerConnectorRoutes(app, { rateLimit: AUTHED_RL, connectors });
+// The Code bot's GitHub side: connect an install, pick a repo, start a work
+// branch (src/code). Off unless CODE_GITHUB is true; the routes then answer
+// 404 code_off, and with the GitHub App not set up, 503 not_configured.
+registerCodeRoutes(app, { rateLimit: AUTHED_RL, code: cfg.CODE_GITHUB ? createCode() : null });
 // Apps a person adds by link (CUSTOM_CONNECTORS): adding, removing, and their tools one by one.
 registerCustomConnectorRoutes(app, { rateLimit: AUTHED_RL, connectors });
 // The page an app's auth server reads to learn who Tailzu is (oauth.ts). Only
@@ -3179,6 +3186,9 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
     ["usage_events", "usageEvents"], ["personalities", "personality"], ["profiles", "profile"],
     ["cleanup_history", "history"], ["push_tokens", "pushTokens"],
     ["keyboard_telemetry", null], ["push_log", null], ["entitlements", null],
+    // The Code bot's GitHub links and projects (a project's branches go with it: code_branches
+    // has no user_id, and cascades from code_projects).
+    ["code_installations", null], ["code_projects", null],
   ];
   for (const [table, key] of tables) {
     try {

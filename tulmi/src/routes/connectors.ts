@@ -52,16 +52,17 @@ export interface ConnectorRoutesDeps {
 const LEVELS: readonly Level[] = ["look", "draft", "send"];
 const AUTO_MAX = 100;
 
-const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'";
+export const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'";
 /** Where the phone's app is opened from this page: its Connected apps screen (it refreshes itself on the way in). */
 const OPEN_APP = "tulmi://screen/assistant_apps?entry=link";
-const page = (title: string, line: string, openApp = true) =>
+/** The done page of a browser sign-in. The Code bot's GitHub callback (routes/code.ts) uses it too, with its own `openUrl`. */
+export const page = (title: string, line: string, openApp = true, openUrl = OPEN_APP) =>
   `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>` +
   `<style>body{font:18px/1.5 system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:24px;text-align:center;color:#1b1b1f;background:#faf8f5}` +
   `@media(prefers-color-scheme:dark){body{color:#f2f0ed;background:#16161a}}h1{font-size:22px;margin:0 0 8px}p{margin:0;opacity:.7}` +
   `a{display:inline-block;margin-top:22px;padding:12px 26px;border-radius:999px;background:#1b1b1f;color:#faf8f5;font-weight:600;text-decoration:none}` +
   `@media(prefers-color-scheme:dark){a{background:#f2f0ed;color:#16161a}}</style>` +
-  `<main><h1>${title}</h1><p>${line}</p>${openApp ? `<a href="${OPEN_APP}">Open Tailzu</a>` +
+  `<main><h1>${title}</h1><p>${line}</p>${openApp ? `<a href="${openUrl}">Open Tailzu</a>` +
     // An older desktop app, or a browser that won't hand the link on, does nothing on a tap.
     `<p style="margin-top:14px;font-size:14px">Nothing opened? Close this tab and go back to Tailzu.</p>` : ""}</main>`;
 
