@@ -8,7 +8,8 @@
  *
  * The way a read goes:
  *
- *   1. The address is tidied: http becomes https, the #fragment goes, and a
+ *   1. The address is tidied: http becomes https (see `keepHttp` in ReadOptions
+ *      for the one test-only exception), the #fragment goes, and a
  *      GitHub page of a file (github.com/o/r/blob/ref/path) becomes the file
  *      itself (raw.githubusercontent.com/o/r/ref/path).
  *   2. purpose "index" (we are reading to build an index, nobody asked for THIS
@@ -85,6 +86,13 @@ export interface ReadOptions {
   render?: Renderer;
   /** In place of the guarded egress fetch. Tests only; the size and time limits still apply to it. */
   fetchFn?: FetchLike;
+  /**
+   * Leaves an http: address as http instead of making it https, because a
+   * test's own server speaks no TLS (with setEgressTestHooks allowing it, the
+   * guarded fetch takes plain http). Throws outside a test run, as the hooks
+   * do, so a production caller cannot be talked out of https.
+   */
+  keepHttp?: boolean;
   /** The clock. */
   now?: () => number;
   /** Where read pages are kept. The shared cache unless given; null for none. */
@@ -118,8 +126,8 @@ export interface WebPage {
 
 // ---------------------------------------------------------------- the address
 
-/** Turns what was asked for into the address that is fetched. */
-export function pageTarget(raw: string): URL {
+/** Turns what was asked for into the address that is fetched. `keepHttp` (tests only, see ReadOptions) leaves an http: address as it is. */
+export function pageTarget(raw: string, keepHttp = false): URL {
   const s = typeof raw === "string" ? raw.trim() : "";
   if (!s || s.length > 2048) throw new WebError("bad_url");
   let u: URL;
@@ -127,7 +135,7 @@ export function pageTarget(raw: string): URL {
   if (u.protocol !== "http:" && u.protocol !== "https:") throw new WebError("bad_url");
   if (u.username || u.password) throw new WebError("bad_url");
   u.hash = "";
-  u.protocol = "https:";
+  if (!keepHttp) u.protocol = "https:";
   const host = u.hostname.toLowerCase();
   if (host === "github.com" || host === "www.github.com") {
     // /owner/repo/blob/ref/path: the file. (A ref with a slash in it, a branch like feature/x, cannot be told from a folder.)
@@ -463,7 +471,8 @@ function renderFailure(err: unknown): WebError {
  * anything about the page or where it is.
  */
 export async function readPage(rawUrl: string, opts: ReadOptions = {}): Promise<WebPage> {
-  const u = pageTarget(rawUrl);
+  if (opts.keepHttp && !process.env.VITEST) throw new Error("readPage's keepHttp is for tests only");
+  const u = pageTarget(rawUrl, opts.keepHttp === true);
   const now = opts.now ?? Date.now;
   const purpose: ReadPurpose = opts.purpose ?? "user";
   const maxChars = Math.min(Math.max(Math.floor(Number(opts.maxChars ?? MAX_CHARS_DEFAULT)) || MAX_CHARS_DEFAULT, 50), TEXT_HARD_MAX);

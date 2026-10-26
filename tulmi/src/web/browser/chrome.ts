@@ -189,7 +189,8 @@ export async function launch(o: LaunchOptions): Promise<LaunchedChrome> {
       const timer = setTimeout(() => reject(new Error("Chrome did not say where its DevTools are")), o.timeoutMs ?? 15_000);
       proc.stderr!.on("data", (chunk: Buffer) => {
         seen = (seen + chunk.toString("utf8")).slice(-4_000);
-        const m = /DevTools listening on (ws:\/\/\S+)/.exec(seen);
+        // The whole line, newline included: stderr may hand it over in pieces, and half an address is not one.
+        const m = /DevTools listening on (ws:\/\/\S+)\r?\n/.exec(seen);
         if (m) { clearTimeout(timer); resolve(m[1]!); }
       });
       proc.once("exit", (code) => { clearTimeout(timer); reject(new Error(`Chrome exited before it was ready (${code})`)); });
