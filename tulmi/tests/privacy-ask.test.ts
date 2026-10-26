@@ -29,6 +29,10 @@ import { buildApp } from "../src/server.js";
 import { ALWAYS_ON, CATALOG } from "../src/connectors/catalog.js";
 // eslint-disable-next-line import/first
 import { RESULT_MAX } from "../src/connectors/client.js";
+// eslint-disable-next-line import/first
+import { EventSink } from "../src/agent/protocol.js";
+// eslint-disable-next-line import/first
+import { MemoryRunStore, RunLedger, SWEEP_TIMES } from "../src/runs/index.js";
 
 /**
  * THE PRIVACY POLICY'S ASK SECTION (permissions-spec §3).
@@ -46,9 +50,9 @@ const ask = policy.slice(policy.indexOf("10. Ask, on the desktop app"), policy.i
 const google = policy.slice(policy.indexOf("11. Google apps you connect"), policy.indexOf("12. Changes to this policy"));
 
 describe("the policy's date and shape", () => {
-  it("is effective from the day the Google section was added", () => {
-    expect(PRIVACY_POLICY_EFFECTIVE).toBe("October 22, 2026");
-    expect(PRIVACY_POLICY_HTML).toContain("Effective: October 22, 2026");
+  it("is effective from the day the record of requests to Ask was added", () => {
+    expect(PRIVACY_POLICY_EFFECTIVE).toBe("October 24, 2026");
+    expect(PRIVACY_POLICY_HTML).toContain("Effective: October 24, 2026");
   });
 
   it("numbers its sections 1 to 13, once each, in order", () => {
@@ -272,6 +276,49 @@ describe("the Google apps section", () => {
   });
 });
 
+/**
+ * THE RECORD OF REQUESTS TO ASK (src/runs). What the policy says it keeps of
+ * people's words, for how long, and that it is never Google data, held to
+ * the ledger as it runs.
+ */
+describe("the record of requests to Ask", () => {
+  const s4 = policy.slice(policy.indexOf("4. Data retention"), policy.indexOf("5. Your rights"));
+
+  it("says how long each of their words is kept, as the sweep keeps them", () => {
+    const day = 24 * 3_600_000;
+    expect(SWEEP_TIMES).toMatchObject({ titleMs: 30 * day, retryMs: day, followUpMs: 5 * 60_000 });
+    expect(s4).toContain("the first 80 characters of what you asked, for 30 days; your words to try again with, for a day; and a question Tailzu asks you back, with your request, for five minutes.");
+    expect(google).toContain("The first 80 characters of what you asked and how it ended, for 30 days, shown in Activity on the You tab");
+    expect(ask).toContain("It holds nothing you said and nothing from your screen.");
+    expect(google).toContain("The record Tailzu keeps of your requests (see 11.4) says how each one went; it never holds your Google data.");
+    // Off until it is switched on, once this policy is the one people are shown.
+    expect(getConfig().AGENT_RUN_LEDGER).toBe(false);
+  });
+
+  it("keeps a phone request's first 80 characters, none of a desktop's, and a question after a Google read only in memory", async () => {
+    const store = new MemoryRunStore();
+    const ledger = new RunLedger({ store });
+    const said = `add a dentist visit on friday at five and remind me the day before ${"please ".repeat(10)}`;
+    const phone = ledger.begin({ userId: "u1", runId: "ask_p1", surface: "phone", platform: "ios", step: 0, said });
+    new EventSink(() => {}, phone.sink).emit({ t: "done" });
+    await phone.end({ path: "model", mode: "do", words: 0, audioSeconds: 0 });
+    expect((await store.get("u1", "ask_p1"))!.title).toHaveLength(80);
+
+    const desk = ledger.begin({ userId: "u1", runId: "run_d1", surface: "desktop", platform: "mac", step: 0, said });
+    new EventSink(() => {}, desk.sink).emit({ t: "done" });
+    await desk.end({ path: "model", mode: "do", words: 0, audioSeconds: 0 });
+    expect(await store.get("u1", "run_d1")).toMatchObject({ title: "", said: null, turns: null });
+
+    const read = ledger.begin({ userId: "u1", runId: "ask_p2", surface: "phone", platform: "ios", step: 0, said: "what's my first meeting, and move it" });
+    const hub = { resolve: async (_u: string, id: string) => ({ id, name: id }), tools: async () => [{ name: "list_events", inputSchema: {} }], toolRisk: () => "read" };
+    const rt = read.watch({ cards: async () => null, use: async () => ({ kind: "result", text: "9:00 Dr Mehra" }), settle: async () => {} }, hub as never);
+    await rt.use("ask_p2", "x", { connector: "google-calendar", tool: "list_events", args: {} } as never, { allowWrite: true });
+    read.waitForAnswer([{ said: "what's my first meeting, and move it", did: "ASK", note: "Dr Mehra at 9:00. Move it to when?" }]);
+    await read.end({ path: "model", mode: "do", words: 0, audioSeconds: 0 });
+    expect(JSON.stringify(await store.get("u1", "ask_p2"))).not.toContain("Mehra");
+  });
+});
+
 describe("served at /privacy", () => {
   let app: FastifyInstance;
   beforeAll(async () => { app = await buildApp(); });
@@ -284,8 +331,8 @@ describe("served at /privacy", () => {
     // The anchor the Google verification pack links to (docs/google-verification.md).
     expect(res.body).toContain(`<h2 id="google-user-data">11. Google apps you connect</h2>`);
     expect(res.body).toContain("including the Limited Use requirements.");
-    expect(res.body).toContain("Effective: October 22, 2026");
+    expect(res.body).toContain("Effective: October 24, 2026");
     const meta = await app.inject({ method: "GET", url: "/policies.json" });
-    expect(meta.json().privacy).toEqual({ url: "https://tailzu.space/privacy", effective: "October 22, 2026" });
+    expect(meta.json().privacy).toEqual({ url: "https://tailzu.space/privacy", effective: "October 24, 2026" });
   });
 });

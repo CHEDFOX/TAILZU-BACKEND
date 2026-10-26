@@ -135,6 +135,8 @@ export const EN = {
   "ho.phone": "That one's for your phone. Ask me there.",
   "ho.failed": "I couldn't open that one. Try asking another way.",
   "ho.read": "I only fill in a number, username or UPI ID you give me, not one I read in another app. Who should it go to?",
+  // A call I could not get right for the app, twice (validate.ts): nothing ran.
+  "va.failed": "I couldn't fill that in for {app}. Try saying it another way.",
   // This computer: the plan card for the person's own files, and what is said when it can't be done.
   "dv.title": "Okay to change these files?",
   "dv.titleTrash": "Move these to the Trash?",
@@ -311,6 +313,7 @@ export const HG: Record<WordKey, string> = {
   "ho.phone": "Yeh kaam phone pe hota hai. Mujhse wahan poochho.",
   "ho.failed": "Yeh khul nahi paaya. Kisi aur tareeke se poochho.",
   "ho.read": "Main wahi number, username ya UPI ID bharta hoon jo tum khud batao, kisi aur app mein padha hua nahi. Kisko bhejna hai?",
+  "va.failed": "{app} ke liye yeh bhar nahi paaya. Kisi aur tareeke se bolke dekho.",
   "dv.title": "Ye files badalne ki ijazat hai?",
   "dv.titleTrash": "Inhe Trash mein daalu?",
   "dv.label": "Main ye karunga",

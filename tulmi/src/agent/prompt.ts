@@ -42,6 +42,15 @@
  * changed; lines.ts reads the answer back in the same order (drawOrderFor).
  * The text path is not given one: places in the picture are only for a
  * picture, and it has none.
+ *
+ * The phone's Ask (run.ts runCommand) is not on a computer, and a planner
+ * told it is "a small guide on someone's computer screen" there answers as
+ * if it were. So the phone has its own constant, AGENT_SYSTEM_PHONE:
+ * AGENT_SYSTEM with only its first line, who Blip is and where, written for
+ * the phone, and every other line the same. Each is one constant for every
+ * request on its side, so each is cached on its own; agentSystemFor picks by
+ * the request's platform. AGENT_SYSTEM's bytes do not change for this: the
+ * desktops in people's hands are sent exactly what they always were.
  */
 import type { AgentElement, AgentStepRequest } from "../../../shared/types/api.js";
 import { fenceTags, stripFenceTags } from "../pipeline/assistPrompt.js";
@@ -99,8 +108,15 @@ const drawSyntax = (order: SpotOrder) => [
     : "A <spot> is an id from the list (e12, o3), or a place in the picture: a box [x,y,w,h] or a point (x,y), in numbers from 0 to 1000 across from its left edge and down from its top, whatever its shape. A label is optional, except on LABEL: a few words in quotes.",
 ];
 
-export const AGENT_SYSTEM = [
-  "You are Blip, a small guide on someone's computer screen. Each turn you are shown the controls visible in the app in front of them, what they said, and what has happened so far in this run. You point at things, explain them in a sentence, or do one small step at a time; the device runs the step and asks you again with the new screen.",
+/** Who Blip is, and where: the first line of AGENT_SYSTEM, on a computer. */
+const ON_A_COMPUTER = "You are Blip, a small guide on someone's computer screen. Each turn you are shown the controls visible in the app in front of them, what they said, and what has happened so far in this run. You point at things, explain them in a sentence, or do one small step at a time; the device runs the step and asks you again with the new screen.";
+
+/** The same, on the phone: the one line AGENT_SYSTEM_PHONE has of its own. */
+const ON_THE_PHONE = "You are Blip, a small helper in the Tailzu app on someone's phone. There is no screen here to point at or press: each turn you are shown what they said and what has happened so far in this run, and you answer, ask, or use their connected apps.";
+
+/** The planner's prompt after its first line: the lines, the rules, the pen and the examples. */
+const agentSystem = (first: string): string => [
+  first,
   "",
   "Answer in lines only, one command per line. No prose, no markdown, no code fences, no numbering, nothing else.",
   "SAY <text> — a short sentence, shown and spoken",
@@ -194,6 +210,19 @@ export const AGENT_SYSTEM = [
   "SAY Archiving it.",
   "PRESS e14",
 ].join("\n");
+
+export const AGENT_SYSTEM = agentSystem(ON_A_COMPUTER);
+
+/** The phone's Ask: AGENT_SYSTEM with its first line for the phone (see the top of this file). */
+export const AGENT_SYSTEM_PHONE = agentSystem(ON_THE_PHONE);
+
+/**
+ * The text path's system prompt for a request's platform: the phone's on a
+ * phone, AGENT_SYSTEM everywhere else. Written out rather than taken from
+ * connectors/ (handoffs/links.ts onPhone), which this file must not import.
+ */
+export const agentSystemFor = (platform: string): string =>
+  (platform === "ios" || platform === "android" ? AGENT_SYSTEM_PHONE : AGENT_SYSTEM);
 
 /** A label or value as it sits in a line of the list: one line, no fence
  *  tags, and no double quote to end its quoting early. */

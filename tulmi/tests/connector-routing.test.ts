@@ -517,6 +517,7 @@ describe("connector routing: what keeps it right", () => {
       "SAY \"Connect App in Tailzu to do that.\"",
       "never search or list first to check",
     ]) expect(CONNECTOR_ADDENDUM, rule).toContain(rule);
-    expect(CONNECTOR_ADDENDUM.split(/\s+/).length, "short").toBeLessThan(900);
+    // (950 since the fix: line, validate.ts, is taught in one sentence of its own)
+    expect(CONNECTOR_ADDENDUM.split(/\s+/).length, "short").toBeLessThan(950);
   });
 });

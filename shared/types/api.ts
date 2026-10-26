@@ -645,7 +645,11 @@ export interface AskResponse {
 // as application/json with `utterance` set. Answered `200
 // application/x-ndjson`, one AgentEvent per line, ending in exactly one
 // terminal event (action, ask, look, approve, done or error). Problems found before
-// the stream starts are ordinary JSON errors (400/401/413/429).
+// the stream starts are ordinary JSON errors (400/401/413/429). A step that
+// ends the run on the server's side (done, error, ask, approve) sends a
+// `receipt` just before its terminal event: how the run ended, why, and what
+// it changed. It is not terminal, and a device that does not know it skips
+// it, as it skips any event type it does not know.
 //
 // The picture path: a multipart step may also carry ONE `image` part
 // (image/jpeg, image/png or image/webp, at most AGENT_IMAGE_MAX_BYTES: 413
@@ -997,7 +1001,47 @@ export type AgentEvent =
   | { t: "done"; text?: string }
   /** TERMINAL. Codes: private, too_many_steps, no_speech, bad_target,
    *  model_unavailable, internal. */
-  | { t: "error"; code: string; message: string };
+  | { t: "error"; code: string; message: string }
+  /** Not terminal. Sent once, right before the terminal event of a step that
+   *  ends the run on the server's side (done, error, ask, approve; on the
+   *  phone, every terminal). Never before action, look or device on the
+   *  desktop: the run goes on. Desktop 0.4.4 ignores it (agent.js:1734). */
+  | { t: "receipt"; receipt: RunReceipt };
+
+/** How a run ended, as far as the server knows when it says so. */
+export type RunOutcome = "done" | "partial" | "failed" | "needs_you" | "cancelled";
+
+/** Why, in a word. Plain words for each are the server's (src/runs/words.ts). */
+export type RunReason =
+  | "question" | "approval" | "handoff"
+  | "nothing_usable" | "invalid_args" | "desk_only"
+  | "model_unavailable" | "internal" | "no_speech" | "private" | "too_many_steps" | "bad_target"
+  | "needs_reconnect" | "not_connected" | "blocked" | "app_timeout" | "app_unreachable" | "app_error" | "stopped"
+  | "stuck" | "denied" | "expired" | "unanswered" | "device_stopped" | "hung_up";
+
+/**
+ * The last word on a run: how it ended, why, and what it changed, never what
+ * was said in it. On /v1/agent it is a `receipt` event just before the
+ * terminal event that ends the run; on /v1/assistant/ask it is the answer's
+ * `receipt`. A device that does not know it ignores it.
+ */
+export interface RunReceipt {
+  runId: string;
+  outcome: RunOutcome;
+  reason?: RunReason;
+  /** One line for the person, in their language (English or Hinglish). */
+  line: string;
+  /** Changes made in the world so far (see agent_runs.effects). */
+  effects: number;
+  steps: number;
+  /** From the step's request to this receipt, and to its first event after `heard`. */
+  ms: number;
+  firstMs?: number;
+  /** The task waiting for their yes, when outcome is needs_you for a card. */
+  taskId?: string;
+  /** Asking again exactly as before is safe: nothing was changed (phone only). */
+  retry?: true;
+}
 
 // ---------------------------------------------------------------------------
 // REST: the phone's Ask  (POST /v1/assistant/ask)
@@ -1008,7 +1052,9 @@ export type AgentEvent =
 // with one JSON object the phone's screen acts on with the actions it already
 // has: it shows `say`, opens `open.url` when there is one, and goes to the
 // confirm sheet (assistant_approve) when there is a `taskId`. 404 while
-// CONNECTORS is off; 400 for no text; 401 and 429 as everywhere.
+// CONNECTORS is off; 400 for no text; 401 and 429 as everywhere. The answer
+// also carries the run's `receipt`; a screen that does not read it keeps the
+// whole answer and uses the three fields above, as it always has.
 
 export interface AssistantAskRequest {
   /** What they typed or said, ≤ 1000. */
@@ -1026,6 +1072,9 @@ export interface AssistantAskResponse {
   open?: { url: string; label: string; fallback?: string };
   /** Something waits for their yes: the task to show on the confirm sheet. */
   taskId?: string;
+  /** How the run ended (see RunReceipt). Always sent by a server with the run
+   *  ledger; optional so an answer from an older one still reads. */
+  receipt?: RunReceipt;
 }
 
 // ---------------------------------------------------------------------------

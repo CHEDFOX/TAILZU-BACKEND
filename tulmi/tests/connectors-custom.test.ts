@@ -496,7 +496,7 @@ describe("adding an app by link", () => {
     // Off is gone from the planner, and asking for it anyway says why; a catalog app's sheet has no per-tool settings.
     expect((await r.connectors.hub.tools("ann", id)).map((t) => t.name)).toEqual(["create_note", "delete_note", "list_tags"]);
     expect(await r.connectors.tasks.use("ann", "run_off1", "acme notes", { connector: id, tool: "search_notes", args: {} }, { allowWrite: true }))
-      .toEqual({ kind: "stopped", message: "search notes is switched off for Acme Notes. You can change that in Tailzu." });
+      .toEqual({ kind: "stopped", message: "search notes is switched off for Acme Notes. You can change that in Tailzu.", code: "blocked" });
     await r.store.upsertConnection("ann", "testapp", { tokensEnc: encrypt(JSON.stringify({ url: `${base}/open/mcp` })), level: "look" });
     expect((await set("search_notes", "off", "ann", "testapp")).json()).toMatchObject({ code: "not_custom" });
     const cat = (await r.app.inject({ method: "GET", url: "/v1/connectors/testapp/tools", headers: who("ann") })).json();
@@ -525,7 +525,7 @@ describe("adding an app by link", () => {
 
     // The planner asking for a held-back tool is told why.
     const held = await r.connectors.tasks.use("ann", "run_held1", "list acme notes tags", { connector: id, tool: "list_tags", args: {} }, { allowWrite: true });
-    expect(held).toEqual({ kind: "stopped", message: "list tags changed in Acme Notes since you approved it. Have a look in Tailzu first." });
+    expect(held).toEqual({ kind: "stopped", message: "list tags changed in Acme Notes since you approved it. Have a look in Tailzu first.", code: "blocked" });
     expect(calls).toEqual([]);
 
     const accept = (version?: string) => r.app.inject({ method: "POST", url: `/v1/connectors/${id}/tools/accept`, headers: who("ann"), payload: version ? { version } : {} });
@@ -557,7 +557,7 @@ describe("adding an app by link", () => {
     // A question (no command) is told why instead.
     expect((await use("run_mixed2", "testapp", "search_notes")).kind).toBe("result");
     expect(await use("run_mixed2", id, "search_notes", false)).toEqual({
-      kind: "stopped", message: "I check with you before using Acme Notes. Ask me as a command and I'll ask you first.",
+      kind: "stopped", message: "I check with you before using Acme Notes. Ask me as a command and I'll ask you first.", code: "show_only",
     });
     // The yes runs it.
     expect(await r.connectors.tasks.approve("ann", asked.taskId)).toMatchObject({ status: "ok", result: "search_notes ran" });
@@ -684,7 +684,7 @@ describe("adding an app by link", () => {
     expect(await r.store.getCustom("ann", id)).toBeNull();
     expect(await r.store.getConnection("ann", id)).toBeNull();
     expect((await r.connectors.runtimeFor("ann").use("run_gone1", "acme notes", { verb: "USE", connector: id, tool: "search_notes", args: {} }, { allowWrite: true })))
-      .toEqual({ kind: "stopped", message: "That app isn't connected. You can connect it in Tailzu." });
+      .toEqual({ kind: "stopped", message: "That app isn't connected. You can connect it in Tailzu.", code: "not_connected" });
   });
 });
 

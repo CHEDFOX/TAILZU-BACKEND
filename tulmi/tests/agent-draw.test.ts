@@ -391,10 +391,11 @@ beforeEach(() => {
 });
 
 function events(payload: string): Ev[] {
-  const evs = payload.trim().split("\n").map((l) => JSON.parse(l) as Ev);
-  expect(evs.filter((e) => TERMINAL.has(e.t))).toHaveLength(1);
-  expect(TERMINAL.has(evs.at(-1)!.t)).toBe(true);
-  return evs;
+  const all = payload.trim().split("\n").map((l) => JSON.parse(l) as Ev);
+  expect(all.filter((e) => TERMINAL.has(e.t))).toHaveLength(1);
+  expect(TERMINAL.has(all.at(-1)!.t)).toBe(true);
+  // The run's receipt (src/runs) rides just before the terminal event; its own checks are below.
+  return all.filter((e) => e.t !== "receipt");
 }
 async function post(body: Record<string, unknown>) {
   const res = await app.inject({ method: "POST", url: "/v1/agent", payload: body });
@@ -437,6 +438,16 @@ describe("the text path draws by id", () => {
     const evs = await post(step({ utterance: "export this" }));
     expect(evs.map((e) => e.t)).toEqual(["heard", "say", "draw", "action"]);
     expect(evs[2]).toEqual({ t: "draw", kind: "number", target: { id: "e3" }, n: 1 });
+  });
+
+  it("the run's receipt comes after the marks, right before done, and is no mark: a draw changes nothing", async () => {
+    llm.plan = ["SAY Export is up here.\nDRAW CIRCLE e3 \"Export\"\nDRAW ARROW e1 -> e3\nDONE\n"];
+    const res = await app.inject({ method: "POST", url: "/v1/agent", payload: step({ runId: "run_draw01", utterance: "what does export do?" }) });
+    const all = res.payload.trim().split("\n").map((l) => JSON.parse(l) as Ev);
+    expect(all.map((e) => e.t)).toEqual(["heard", "say", "draw", "draw", "receipt", "done"]);
+    expect(all[4]!.receipt).toMatchObject({ runId: "run_draw01", outcome: "done", effects: 0, steps: 1 });
+    // And the stream the device reads, receipt aside, is what it always was.
+    expect(events(res.payload).map((e) => e.t)).toEqual(["heard", "say", "draw", "draw", "done"]);
   });
 });
 

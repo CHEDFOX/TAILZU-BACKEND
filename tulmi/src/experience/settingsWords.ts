@@ -84,6 +84,11 @@ export const SW = {
   "y.none": sentence("Nothing on my list yet.", "Meri list mein abhi kuch nahi."),
   "y.all": label("See all", "Sab dekho"),
   "y.more": label("Add more apps", "Aur apps jodo"),
+  // Activity: the last runs and how each ended (youCard's third card)
+  "y.act": label("Activity", "Kya hua"),
+  "y.again": label("Try again", "Phir se karo"),
+  // A desktop run's row: its words are not kept (src/runs), so it says where it ran.
+  "y.desk": label("On your computer", "Computer pe"),
 
   // ---- the fix, in one line, under an error a screen already shows ------------
   "x.apps": sentence("Open this again in a little while, and I’ll try once more.", "Thodi der baad ise phir kholo, main ek baar aur koshish karunga."),

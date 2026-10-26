@@ -401,6 +401,18 @@ const EnvSchema = z.object({
    * and the stream ends there with what it heard.
    */
   AGENT_STREAM_MAX_SECONDS: z.coerce.number().int().min(1).max(900).default(30),
+  /**
+   * The run ledger (src/runs, migration 0019): one row for every Ask run, on
+   * the desktop and the phone, and one for every planner call in it, with
+   * what OpenRouter charged. Phone follow-ups (a question back waiting for
+   * its answer) are kept there too, so a restart or a second server does not
+   * lose them. Off (the default) keeps all of it in this process's memory
+   * instead, as the follow-ups were kept before; receipts are sent either
+   * way. Turn it on only once 0019 is applied and the privacy policy that
+   * says what the ledger keeps (sections 1.2, 4, 10.4 and 11.4) is the one
+   * people are shown, on the published site as well as here (DEPLOY.md).
+   */
+  AGENT_RUN_LEDGER: bool(false),
 
   // --- Connected apps (src/connectors): Ask acts in the person's own apps ---
   /**
