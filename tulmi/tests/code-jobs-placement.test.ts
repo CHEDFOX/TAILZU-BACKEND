@@ -502,6 +502,29 @@ describe("the jobs' store (Supabase)", () => {
     await expect(new SupabaseJobStore(usage.sb as never).addUsage("alice", "2026-10", {})).rejects.toBeInstanceOf(CodeNeedsAccount);
   });
 
+  it("lists the jobs running on one kind of place, whatever their lease says, and fences a change by the place too", async () => {
+    const running = stub({ data: [row({ placement: "github" })], error: null });
+    expect(await new SupabaseJobStore(running.sb as never).listRunning("github", 9)).toHaveLength(1);
+    expect(running.log).toEqual(expect.arrayContaining([["eq", ["state", "running"]], ["eq", ["placement", "github"]], ["limit", [9]]]));
+    expect(await new SupabaseJobStore(stub({ data: null, error: null }).sb as never).listRunning("github", 1)).toEqual([]);
+    const cas = stub({ data: row(), error: null });
+    await new SupabaseJobStore(cas.sb as never).casJob(JID, { leaseEpoch: 2, states: ["running"], placement: "github" }, { state: "failed" });
+    expect(cas.log).toEqual(expect.arrayContaining([["eq", ["placement", "github"]]]));
+  });
+
+  it("remembers that GitHub's minutes are used up for a month in the month's usage row, and writes nothing else of it", async () => {
+    const yes = stub({ data: { github_exhausted: true }, error: null });
+    expect(await new SupabaseJobStore(yes.sb as never).isGithubExhausted(UID, "2026-10")).toBe(true);
+    expect(yes.log).toEqual(expect.arrayContaining([["from", ["code_compute_usage"]], ["select", ["github_exhausted"]], ["eq", ["month", "2026-10"]]]));
+    expect(await new SupabaseJobStore(stub({ data: null, error: null }).sb as never).isGithubExhausted(UID, "2026-10")).toBe(false);
+    expect(await new SupabaseJobStore(stub({ data: { github_exhausted: null }, error: null }).sb as never).isGithubExhausted(UID, "2026-10")).toBe(false);
+    const marked = stub({ data: { user_id: UID }, error: null });
+    await new SupabaseJobStore(marked.sb as never).markGithubExhausted(UID, "2026-10");
+    expect(marked.log.find(([m]) => m === "upsert")![1]).toEqual([{ user_id: UID, month: "2026-10", github_exhausted: true }, { onConflict: "user_id,month" }]);
+    await expect(new SupabaseJobStore(marked.sb as never).markGithubExhausted("alice", "2026-10")).rejects.toBeInstanceOf(CodeNeedsAccount);
+    await expect(new SupabaseJobStore(stub({ data: null, error: { message: "no such column" } }).sb as never).isGithubExhausted(UID, "2026-10")).rejects.toThrow(/code jobs store/);
+  });
+
   it("counts the jobs that are not over", async () => {
     const s = stub({ data: null, error: null, count: 4 });
     expect(await new SupabaseJobStore(s.sb as never).countLive(UID)).toBe(4);

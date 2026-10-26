@@ -759,7 +759,7 @@ describe("the project's standing permissions", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.grants).toEqual([]);
-    expect(body.actions).toHaveLength(19);
+    expect(body.actions).toHaveLength(21);
     expect(body.actions.find((a: { id: string }) => a.id === "push.force")).toMatchObject({ tier: "ask_strict", faceId: true, grantable: false });
     expect(body.actions.find((a: { id: string }) => a.id === "pr.merge")).toMatchObject({ tier: "ask", faceId: false, grantable: true, branchScoped: true });
     expect(body.actions.find((a: { id: string }) => a.id === "path.escape")).toMatchObject({ tier: "never", grantable: false });
@@ -987,6 +987,24 @@ describe("Sign in with GitHub, over HTTP", () => {
     const cb = await app.inject({ method: "GET", url: `${CALLBACK}?code=a&state=b` });
     expect(cb.statusCode).toBe(503);
     await app.close();
+  });
+
+  it("starts the incremental sign-in that also asks for `workflow` when the body says so, and the plain one otherwise", async () => {
+    const r = await rig({ signin: "on" });
+    const plain = new URL((await r.call("alice", "POST", SIGNIN, {})).json().authorizeUrl);
+    expect(plain.searchParams.get("scope")).toBe("repo read:user");
+    for (const body of [undefined, { workflow: false }, { workflow: "yes" }]) {
+      const res = await r.call("alice", "POST", SIGNIN, body);
+      expect(new URL(res.json().authorizeUrl).searchParams.get("scope"), JSON.stringify(body)).toBe("repo read:user");
+    }
+    const wf = new URL((await r.call("alice", "POST", SIGNIN, { workflow: true })).json().authorizeUrl);
+    expect(wf.searchParams.get("scope")).toBe("repo read:user workflow");
+    // Coming back, it is connected with the extra scope, and the status says so.
+    r.fake.addOAuthPerson("code-wf", "gho_alice_wf", "alice", { scopes: ["repo", "read:user", "workflow"], challenge: wf.searchParams.get("code_challenge")! });
+    const back = await r.app.inject({ method: "GET", url: `${CALLBACK}?code=code-wf&state=${encodeURIComponent(wf.searchParams.get("state")!)}` });
+    expect(back.statusCode).toBe(200);
+    expect((await r.call("alice", "GET", "/v1/code/github")).json().oauth).toMatchObject({ connected: true, workflow: true });
+    await r.app.close();
   });
 
   it("wants a session to start or end a sign-in", async () => {

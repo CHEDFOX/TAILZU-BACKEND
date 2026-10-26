@@ -2,9 +2,10 @@
  * Fake places for the job router's tests (code-jobs*.test.ts).
  *
  * The router (src/code/jobs/router.ts) chooses between three kinds of place.
- * The PC is real code (DesktopProvider); GitHub's free computers and paid
- * compute are interfaces only for now (providers.ts), and these are their test
- * stand-ins. A FakeProvider records what it was given and what it was told to
+ * The PC is real code (DesktopProvider); GitHub's free computers are real too
+ * (githubActions.ts: jobs-rig.ts uses it with `actions: true`, and the fake
+ * here stays for the router's own tests); paid compute is an interface only for
+ * now (providers.ts). These are their test stand-ins. A FakeProvider records what it was given and what it was told to
  * let go of, can be closed (no room) or made to fail a dispatch, and reports a
  * step's result back the way the real one will: by calling the router's
  * submitResult with its own kind and the epoch the job was dispatched under.

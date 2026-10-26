@@ -82,7 +82,7 @@ import { COMMIT_FILES_MAX, commitTreeEntries, validBranchName, type CommitFile, 
 import type { ApprovalBook } from "./approvals.js";
 import type { GithubOAuth } from "./oauth.js";
 import {
-  checkCommit, commitFingerprint, fingerprintOf, gate, gateFree, guardRead,
+  assertNotRunnerBranch, checkCommit, commitFingerprint, fingerprintOf, gate, gateFree, guardRead,
   type CommitChecks, type GateOptions, type Gated, type PolicyCtx,
 } from "./policy.js";
 import type { CodeBranch, CodeInstallation, CodeProject, CodeStore } from "./store.js";
@@ -552,6 +552,7 @@ export async function forceUpdateBranch(
   const project = await ownProject(d, userId, projectId);
   if (!validBranchName(branch)) throw notFound("that branch in this project");
   if (typeof sha !== "string" || !/^[0-9a-f]{40}$/.test(sha)) throw new ConnectorError("bad_request", "That isn't a commit.");
+  assertNotRunnerBranch(branch);
   await assertAccess(d, userId, project, true);
   const repo = repoRef(d, userId, project);
   return gate({

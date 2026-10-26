@@ -12,11 +12,12 @@
  *                           the step is for. The router writes that device as
  *                           the lease's holder and the device's next poll finds
  *                           it there
- *   GithubActionsProvider   an interface only, for now. The next step builds
- *                           the real one (a workflow run in the person's own
- *                           repo). tests/jobs-fakes.ts has a fake that records
- *                           what it is given
- *   PaidProvider            an interface only, likewise
+ *   GithubActionsProvider   REAL, in githubActions.ts: a step is a push of a
+ *                           throwaway `tailzu-run/` branch in the person's own
+ *                           repo, and a GitHub Actions run on it reports back
+ *                           with an identity token. tests/jobs-fakes.ts still
+ *                           has a fake that records what it is given
+ *   PaidProvider            an interface only, for now
  *
  * HOW A PLACE REPORTS BACK. A provider that runs a step somewhere else calls
  * the router's `submitResult(userId, result, kind)` when it finishes, with the
@@ -29,6 +30,13 @@
  * `dispatch` may throw (the place went away between asking and giving): the
  * router then treats that kind of place as unavailable for this attempt and
  * chooses again.
+ *
+ * A place that can't send heartbeats (GitHub Actions) also has `check`, which
+ * the ticker calls every pass for each step that place has out: it answers
+ * whether the step is still going (and the router keeps its lease alive) or
+ * has been lost (no run ever appeared, the run ended without reporting, it ran
+ * far past its time), and then the router moves the step like any lease that
+ * ran out.
  */
 import type { DeviceBook } from "./devices.js";
 import type { JobStore } from "./store.js";
@@ -51,7 +59,24 @@ export interface Availability {
   places?: number;
   /** Paid only: what the step would cost, in paise. */
   estimatePaise?: number;
+  /** When not ok: why, as a short code (GitHub: "needs_workflow_permission"). Shown to the person in plain words by placement.ts. */
+  reason?: string;
+  /** GitHub only: minutes one step would also cost the person because their own CI runs on its push. Added to the estimate and to the month's use. */
+  extraMinutes?: number;
+  /** GitHub only: the repo is public, so its minutes aren't metered: they don't count against the free estimate and don't hold a step back. */
+  unmetered?: boolean;
 }
+
+/**
+ * What the ticker learns by looking at a step that is out on a place that
+ * reports for itself. "waiting": not started yet, or going, and the lease is
+ * kept. "lost": it will not report in time. `exhausted` says the cause looks
+ * like the month's free minutes (or Actions) being unavailable, which the
+ * router remembers for the rest of the month; `reason` is plain words.
+ */
+export type RunCheck =
+  | { state: "waiting" }
+  | { state: "lost"; why: "no_run" | "no_result" | "overrun"; exhausted: boolean; reason: string };
 
 export interface ComputeProvider {
   readonly kind: ComputeKind;
@@ -65,10 +90,9 @@ export interface ComputeProvider {
   dispatch(job: CodeJob, step: JobStep): Promise<{ holder: string }>;
   /** Lets go of the job's step: stop the run, release the machine. Best effort; the router has already fenced it with the epoch. */
   cancel(job: CodeJob): Promise<void>;
+  /** Places that can't send heartbeats only: whether the step that is out is still going, or lost. Never throws for "I can't tell": that is "waiting". */
+  check?(job: CodeJob, step: JobStep): Promise<RunCheck>;
 }
-
-/** GitHub's free computers (GitHub Actions). Built in the next step. */
-export interface GithubActionsProvider extends ComputeProvider { readonly kind: "github" }
 
 /** Paid compute. Built later; it also says what a step would cost. */
 export interface PaidProvider extends ComputeProvider { readonly kind: "paid" }

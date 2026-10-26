@@ -591,6 +591,18 @@ const EnvSchema = z.object({
    * the person's plan's allowance if it is bigger. Needs migration 0023.
    */
   CODE_GITHUB_FREE_MINUTES: z.coerce.number().int().min(0).default(2000),
+  /**
+   * THE AUDIENCE OF THE IDENTITY TOKEN A STEP ON GITHUB'S FREE COMPUTERS REPORTS WITH
+   * (src/code/jobs/githubActions.ts, docs/github-app.md section 9). The script
+   * on the person's runner asks GitHub for an OIDC token for this audience and
+   * sends it with its result to POST /v1/code/runner/gh-result; the server
+   * accepts the result only if the token's audience is exactly this (and it
+   * was signed by GitHub, for the right repo, branch, commit and workflow).
+   * Any word works; it only has to be the same on both ends, which it is,
+   * since the server writes it into the step. Change it and steps already out
+   * are refused (they run again).
+   */
+  CODE_RUNNER_OIDC_AUDIENCE: z.string().trim().min(1).max(100).default("tailzu"),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 

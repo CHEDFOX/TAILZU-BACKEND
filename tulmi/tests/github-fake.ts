@@ -37,6 +37,16 @@
  * and a token can't ask for more than its install has), and a push that
  * changes `.github/workflows/*` is turned down (403, as GitHub does) unless
  * the token has the workflow scope (a person's) or Workflows: write (an install's).
+ *
+ * For GitHub's free computers (src/code/jobs/githubActions.ts): creating a ref
+ * whose NEW commits change a workflow file needs the same permission (as on
+ * GitHub); creating a `tailzu-run/*` branch whose commit holds Tailzu's
+ * workflow starts a workflow run (`runsOf`) unless Actions is down for the repo
+ * (`actionsDown`: no run is ever made, as when the free minutes are used up or
+ * Actions is off); `GET .../actions/runs?branch=` lists them (Actions: read on
+ * the token) and `POST .../actions/runs/:id/cancel` cancels one (Actions:
+ * write); `finishRun` ends one the way a test says. A token can't ask for
+ * Actions or Workflows beyond what the install was given, as before.
  */
 import { createHash, generateKeyPairSync } from "node:crypto";
 import { jwtVerify, importSPKI } from "jose";
@@ -76,6 +86,12 @@ export interface FakePull {
   reviewDecision?: string | null;
   reviewComments: Array<{ user: string; body: string; path: string; line: number; at: string }>;
   issueComments: Array<{ user: string; body: string; at: string }>;
+}
+
+/** A workflow run, as the fake keeps it. */
+export interface FakeRun {
+  id: number; branch: string; headSha: string; event: string;
+  status: "queued" | "in_progress" | "completed"; conclusion: string | null; createdAt: number;
 }
 
 export type FakePermission = "admin" | "write" | "read" | "none";
@@ -124,6 +140,10 @@ export class FakeGithub {
   refCollisions = 0;
   /** Every request to this host path-prefix answers this status (e.g. 500). */
   failWith: { prefix: string; status: number } | null = null;
+  /** Workflow runs by repo id, oldest first. */
+  private runs = new Map<number, FakeRun[]>();
+  /** Repos where no workflow run is ever made (Actions off, or the free minutes used up). */
+  actionsDown = new Set<number>();
 
   /** The classic OAuth App ("Sign in with GitHub"). */
   readonly oauthClientId = "Ov1.oauthclient";
@@ -266,6 +286,20 @@ export class FakeGithub {
     g.refs.set(`heads/${branch}`, c);
     return c;
   }
+  /** The workflow runs of a repo, oldest first. */
+  runsOf(repo: FakeRepo): FakeRun[] { return this.runs.get(repo.id) ?? []; }
+  /** Ends the newest run on a branch the way GitHub would (default "success"). Returns it, or undefined. */
+  finishRun(repo: FakeRepo, branch: string, conclusion = "success"): FakeRun | undefined {
+    const run = [...this.runsOf(repo)].reverse().find((x) => x.branch === branch);
+    if (run) { run.status = "completed"; run.conclusion = conclusion; }
+    return run;
+  }
+  /** The commit a branch points at, with its parents (an empty list for a branch that is gone). */
+  parentsOf(repo: FakeRepo, branch: string): string[] {
+    const g = this.git.get(repo.id)!;
+    const c = g.refs.get(`heads/${branch}`);
+    return c ? [...g.commits.get(c)!.parents] : [];
+  }
   /** Writes (anything but GET) the code made to a repo's git data. */
   writes(): Call[] {
     return this.calls.filter((c) => c.method !== "GET" && !c.url.pathname.includes("/access_tokens") && c.url.hostname === "api.github.com"
@@ -338,6 +372,29 @@ export class FakeGithub {
     const t = this.treeSha(tree);
     g.trees.set(t, tree);
     return t;
+  }
+
+  /** The workflow files changed by commits reachable from `target` that no existing ref reaches (what a push would introduce). */
+  private workflowFilesIntroduced(g: RepoGit, target: string): string[] {
+    const known = new Set<string>();
+    for (const [name, s] of g.refs) {
+      if (name.startsWith("heads/")) for (const a of this.ancestors(g, s)) known.add(a);
+    }
+    const out = new Set<string>();
+    const stack = [target];
+    const seen = new Set<string>();
+    while (stack.length) {
+      const s = stack.pop()!;
+      if (seen.has(s) || known.has(s) || !g.commits.has(s)) continue;
+      seen.add(s);
+      const commit = g.commits.get(s)!;
+      const after = this.flat(g, s), before = this.flat(g, commit.parents[0]);
+      for (const k of new Set([...before.keys(), ...after.keys()])) {
+        if (before.get(k) !== after.get(k) && /^\.github\/workflows\//i.test(k)) out.add(k);
+      }
+      stack.push(...commit.parents);
+    }
+    return [...out];
   }
 
   private treeSha(t: Map<string, string>) { return sha("tree:" + JSON.stringify([...t].sort())); }
@@ -416,7 +473,7 @@ export class FakeGithub {
       const perm = repo ? this.oauthPerm(repo, person.login) : "none";
       if (!repo || perm === "none") this.fail(404, "Not Found");
       const write = perm === "admin" || perm === "write";
-      return { repo: repo!, git: this.git.get(repo!.id)!, token: { repositoryIds: null, permissions: write ? { contents: "write", pull_requests: "write", metadata: "read" } : { contents: "read", metadata: "read" } } };
+      return { repo: repo!, git: this.git.get(repo!.id)!, token: { repositoryIds: null, permissions: write ? { contents: "write", pull_requests: "write", metadata: "read", actions: "write" } : { contents: "read", metadata: "read", actions: "read" } } };
     }
     const token = this.tokens.get(this.bearer(c));
     if (!token || token.expiresAt <= this.clock.t) this.fail(401, "Bad credentials");
@@ -589,7 +646,23 @@ export class FakeGithub {
       if (this.refCollisions > 0) { this.refCollisions -= 1; return this.reply(422, { message: "Reference already exists" }); }
       if (!/^refs\/heads\/.+/.test(name) || !git.commits.has(c.body?.sha)) return this.reply(422, { message: "Object does not exist" });
       if (git.refs.has(name.slice(5))) return this.reply(422, { message: "Reference already exists" });
+      // Commits the repo has never had that change a workflow file need the workflow permission, as on GitHub.
+      const touched = this.workflowFilesIntroduced(git, c.body.sha);
+      if (touched.length && !this.mayWorkflow(c)) {
+        const person = this.oauthTokens.has(this.bearer(c));
+        return this.reply(403, { message: person
+          ? `refusing to allow an OAuth App to create or update workflow \`${touched[0]}\` without \`workflow\` scope`
+          : `refusing to allow a GitHub App to create or update workflow \`${touched[0]}\` without \`workflows\` permission` });
+      }
       git.refs.set(name.slice(5), c.body.sha);
+      // A push of a tailzu-run/ branch holding Tailzu's workflow starts a run, unless Actions is down for the repo.
+      const tree = this.flat(git, c.body.sha);
+      if (name.startsWith("refs/heads/tailzu-run/") && tree.has(".github/workflows/tailzu-run.yml") && !this.actionsDown.has(repo.id)) {
+        const list = this.runs.get(repo.id) ?? [];
+        this.seq += 1;
+        list.push({ id: 7000 + this.seq, branch: name.slice("refs/heads/".length), headSha: c.body.sha, event: "push", status: "in_progress", conclusion: null, createdAt: this.clock.t });
+        this.runs.set(repo.id, list);
+      }
       return this.reply(201, { ref: name, object: { sha: c.body.sha } });
     }
     if (c.method === "GET" && (r = wanted(/^\/git\/trees\/(.+)$/))) {
@@ -670,6 +743,30 @@ export class FakeGithub {
       git.refs.set(r[1]!, target);
       return this.reply(200, { ref: `refs/${r[1]}`, object: { sha: target } });
     }
+    // --- GitHub Actions: the runs of a branch, and cancelling one
+    if (c.method === "GET" && rest === "/actions/runs") {
+      if (token.permissions.actions !== "read" && token.permissions.actions !== "write") return this.reply(403, { message: "Resource not accessible by integration" });
+      const branch = c.url.searchParams.get("branch");
+      const per = Number(c.url.searchParams.get("per_page") ?? 30);
+      const mine = [...(this.runs.get(repo.id) ?? [])].reverse().filter((x) => branch === null || x.branch === branch);
+      return this.reply(200, {
+        total_count: mine.length,
+        workflow_runs: mine.slice(0, per).map((x) => ({
+          id: x.id, head_branch: x.branch, head_sha: x.headSha, event: x.event, status: x.status, conclusion: x.conclusion,
+          created_at: new Date(x.createdAt).toISOString(),
+        })),
+      });
+    }
+    if (c.method === "POST" && (r = wanted(/^\/actions\/runs\/(\d+)\/cancel$/))) {
+      if (token.permissions.actions !== "write") return this.reply(403, { message: "Resource not accessible by integration" });
+      const run = (this.runs.get(repo.id) ?? []).find((x) => x.id === Number(r![1]));
+      if (!run) return this.reply(404, { message: "Not Found" });
+      if (run.status === "completed") return this.reply(409, { message: "Cannot cancel a workflow run that is completed." });
+      run.status = "completed";
+      run.conclusion = "cancelled";
+      return this.reply(202, {});
+    }
+
     if (c.method === "POST" && rest === "/pulls") {
       this.mustWrite(token, "pull_requests");
       const { title, head, base, body, draft } = c.body ?? {};
