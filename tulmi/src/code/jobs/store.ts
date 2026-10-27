@@ -45,6 +45,7 @@
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../../auth/supabase.js";
+import type { RunnerMinutes } from "../live/minutes.js";
 import { CodeNeedsAccount } from "../store.js";
 import {
   NO_CHECKPOINT, STEPS_MAX, isEnded,
@@ -151,6 +152,15 @@ export interface JobStore {
   isGithubExhausted(userId: string, month: string): Promise<boolean>;
   /** Marks them so for the rest of the month ("YYYY-MM"). Idempotent. */
   markGithubExhausted(userId: string, month: string): Promise<void>;
+
+  /** The month's GitHub Actions minutes Tailzu has used for the person (code_runner_minutes, migration 0031, code/live/minutes.ts); zeros when there is none. */
+  getRunnerMinutes(userId: string, month: string): Promise<RunnerMinutes>;
+  /**
+   * Adds minutes and answers the total. `crossedNotify` is true for exactly ONE call in a month: the one that took the total to `notifyAt` or
+   * past it, because the row's `notified_80` is flipped in the same statement (code_add_runner_minutes), so two results arriving together tell
+   * the person once.
+   */
+  addRunnerMinutes(userId: string, month: string, minutes: number, notifyAt: number): Promise<{ minutes: number; crossedNotify: boolean }>;
 }
 
 /** A store that has hit the most steps a job can have. */
@@ -170,6 +180,7 @@ export class MemoryJobStore implements JobStore {
   private settings = new Map<string, ComputeSettings>();
   private usage = new Map<string, ComputeUsage>();
   private exhausted = new Set<string>();
+  private runnerMinutes = new Map<string, RunnerMinutes>();
 
   /** `now` is for tests that move the clock. */
   constructor(private readonly now: () => number = Date.now) {}
@@ -298,6 +309,18 @@ export class MemoryJobStore implements JobStore {
   }
   async isGithubExhausted(userId: string, month: string) { return this.exhausted.has(`${userId}|${month}`); }
   async markGithubExhausted(userId: string, month: string) { this.exhausted.add(`${userId}|${month}`); }
+
+  async getRunnerMinutes(userId: string, month: string) {
+    return { ...(this.runnerMinutes.get(`${userId}|${month}`) ?? { userId, month, minutes: 0, notified80: false }) };
+  }
+  async addRunnerMinutes(userId: string, month: string, minutes: number, notifyAt: number) {
+    // No await between the read and the write: two results arriving together must not both read the old total (the database twin does it in one SQL call).
+    const cur = this.runnerMinutes.get(`${userId}|${month}`) ?? { userId, month, minutes: 0, notified80: false };
+    const total = cur.minutes + Math.max(0, Math.round(minutes));
+    const crossedNotify = !cur.notified80 && total >= notifyAt;
+    this.runnerMinutes.set(`${userId}|${month}`, { userId, month, minutes: total, notified80: cur.notified80 || crossedNotify });
+    return { minutes: total, crossedNotify };
+  }
 }
 
 // ------------------------------------------------------------------ supabase
@@ -543,6 +566,18 @@ export class SupabaseJobStore implements JobStore {
   async markGithubExhausted(userId: string, month: string) {
     // Only this column is written; the month's figures (and a row that is not there yet, at zero) are left to code_add_usage.
     ok(await this.sb.from("code_compute_usage").upsert({ user_id: this.who(userId), month, github_exhausted: true }, { onConflict: "user_id,month" }).select("user_id").maybeSingle());
+  }
+
+  async getRunnerMinutes(userId: string, month: string) {
+    const r = ok(await this.sb.from("code_runner_minutes").select("actions_minutes, notified_80").eq("user_id", this.who(userId)).eq("month", month)
+      .maybeSingle<{ actions_minutes: number; notified_80: boolean }>());
+    return { userId, month, minutes: r?.actions_minutes ?? 0, notified80: r?.notified_80 === true };
+  }
+  async addRunnerMinutes(userId: string, month: string, minutes: number, notifyAt: number) {
+    const r = ok(await this.sb.rpc("code_add_runner_minutes", {
+      p_user: this.who(userId), p_month: month, p_minutes: Math.max(0, Math.round(minutes)), p_notify_at: Math.max(0, Math.round(notifyAt)),
+    }).single<{ total_minutes: number; crossed: boolean }>());
+    return { minutes: r?.total_minutes ?? 0, crossedNotify: r?.crossed === true };
   }
 }
 

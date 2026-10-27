@@ -54,6 +54,8 @@ import { CLAIMABLE_STATES } from "../jobs/store.js";
 import type { JobRouter } from "../jobs/router.js";
 import type { JobStore } from "../jobs/store.js";
 import { AGENT_LEASE_MS, PAISE_MAX, brief, isEnded, type CodeJob, type JobState } from "../jobs/types.js";
+import { SAID_MAX_CHARS } from "../live/limits.js";
+import { MemoryInbox } from "../live/ports.js";
 import { WorkLog, worklogStore, type WorkEntry } from "../work/index.js";
 import type { AgentDeps } from "./deps.js";
 import { advanceLoop, runLoop, type Advance } from "./loop.js";
@@ -75,6 +77,11 @@ export interface RemoteJobs {
   start(jobId: string): Promise<void>;
   /** Says that something changed for a job, so its Workflow looks again. Never throws: the state is in the database, and the Worker's cron looks again. */
   wake(jobId: string, kind: WakeKind): Promise<void>;
+  /**
+   * The person said something while the job works (POST /v1/code/jobs/:id/message): the Worker puts it in the job's room, where the loop takes it at
+   * the start of its next model turn, and wakes the job's Workflow. Throws when it could not be handed over, so the person is told it was not sent.
+   */
+  message?(jobId: string, text: string): Promise<void>;
 }
 
 export interface OrchestratorOptions {
@@ -612,6 +619,34 @@ export class AgentOrchestrator {
     }
     // Not waiting for money: it is on the books for the next time it asks, and nothing needs waking.
     return stripAgent(job);
+  }
+
+  /**
+   * A word from the person to a job that is working (not an answer to a question: that is `answer`). It is shown to the model as the person's own
+   * words at the start of its next turn. The owner's only; a job that is over refuses it. Where the jobs run on the Worker it is handed over (the
+   * room keeps it); here it is kept in this process's memory, which is enough because this process runs the job.
+   */
+  async message(userId: string, jobId: string, text: unknown): Promise<{ delivered: true }> {
+    const t = typeof text === "string" ? text.trim() : "";
+    if (!t) throw new ConnectorError("bad_request", "text is what you want to tell it: some words.");
+    if (t.length > SAID_MAX_CHARS) throw new ConnectorError("bad_request", `text is at most ${SAID_MAX_CHARS} characters.`);
+    const job = await this.jobs.job(userId, jobId);
+    if (isEnded(job.state)) throw new ConnectorError("job_over", "That job is over.");
+    if (!job.agent) throw notWaiting("anything from Tailzu's agent");
+    if (this.remote) {
+      if (!this.remote.message) throw new ConnectorError("live_off", "Messages to a working job are not switched on.");
+      try {
+        await this.remote.message(job.id, t);
+      } catch {
+        throw new ConnectorError("unreachable", "Tailzu could not reach the machine that runs this job, so it did not get your message. Try again in a moment.");
+      }
+      return { delivered: true };
+    }
+    const inbox = this.deps.live?.inbox;
+    if (!(inbox instanceof MemoryInbox)) throw new ConnectorError("live_off", "Messages to a working job are not switched on.");
+    inbox.add(job.id, t, this.now());
+    this.kick();
+    return { delivered: true };
   }
 
   /** Stops the job: the loop here is told, and the router drops any step that is out. */

@@ -54,6 +54,8 @@ export interface TarEntry {
   kind: TarKind;
   /** The file's size in bytes (0 for anything but a file). */
   size: number;
+  /** When the archive says the file was last changed, in seconds since the epoch (a GitHub tarball says the commit's time for every file). Absent when the header has none. */
+  mtime?: number;
   /** The file's bytes, when `want` said to keep them. */
   data?: Buffer;
 }
@@ -243,6 +245,9 @@ export async function* readTar(source: AsyncIterable<Uint8Array>, o: TarOptions 
       if (longName !== null) path = longName;
       if (typeof pax.path === "string" && pax.path) path = pax.path;
       if (typeof pax.size === "string" && /^\d+$/.test(pax.size)) size = Number(pax.size);
+      const mtimeHeader = number(h, 136, 148);
+      const mtimePax = typeof pax.mtime === "string" ? Number.parseFloat(pax.mtime) : Number.NaN;
+      const mtime = Number.isFinite(mtimePax) && mtimePax > 0 ? Math.floor(mtimePax) : Number.isFinite(mtimeHeader) && mtimeHeader > 0 ? mtimeHeader : undefined;
       longName = null;
       pax = {};
       path = path.replace(/\/+$/, "");
@@ -253,10 +258,10 @@ export async function* readTar(source: AsyncIterable<Uint8Array>, o: TarOptions 
         const data = size ? await read(size) : Buffer.alloc(0);
         if (data === null) throw new TarError("truncated");
         await skip(padding(size));
-        yield { path, kind, size, data };
+        yield { path, kind, size, data, ...(mtime !== undefined ? { mtime } : {}) };
       } else {
         await skip(dataSize + (dataSize ? padding(dataSize) : 0));
-        yield { path, kind, size: kind === "file" ? size : 0 };
+        yield { path, kind, size: kind === "file" ? size : 0, ...(kind === "file" && mtime !== undefined ? { mtime } : {}) };
       }
     }
   } finally {

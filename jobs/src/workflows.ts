@@ -14,6 +14,7 @@
 import { brainInstanceId, type BrainBody, type WakeKind } from "../../tulmi/src/code/jobs/handoff/protocol.js";
 import type { BrainRemote } from "../../tulmi/src/code/project/index.js";
 import type { AgentJobParams, Env } from "./env.js";
+import { roomOf } from "./rooms.js";
 
 /** The event type the Workflows wait for. Letters, digits, - and _ only: a "." is refused (".../events-and-parameters/", "Wait for events"). */
 export const WAKE_EVENT = "wake";
@@ -81,7 +82,11 @@ export interface Woken {
  * Tells a job's Workflow to look again. `stop` also ends the instance: the job is already cancelled in the database, so there is
  * nothing for it to do, and a step that is out is cut short (terminate does not run anything more).
  */
-export async function wakeAgentJob(env: Pick<Env, "AGENT_JOB">, jobId: string, kind: WakeKind): Promise<Woken> {
+export async function wakeAgentJob(env: Pick<Env, "AGENT_JOB"> & Partial<Pick<Env, "ROOMS">>, jobId: string, kind: WakeKind): Promise<Woken> {
+  // A stopped job's room (the copy of the code, the runner session) goes with it, whether or not its Workflow is still there.
+  if (kind === "stop" && env.ROOMS) {
+    try { await roomOf(env as Pick<Env, "ROOMS">, jobId).endJob(); } catch { /* the room deletes itself after six idle hours */ }
+  }
   const there = await existing(env.AGENT_JOB, jobId);
   if (!there) return { delivered: false, status: null };
   if (kind === "stop" && !FINISHED.has(there.status)) {

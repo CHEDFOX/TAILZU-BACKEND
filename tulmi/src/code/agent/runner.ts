@@ -46,10 +46,12 @@ export interface RunSpec {
   why?: string;
   /** A step this ask was made for before a restart: if it is there with these commands, it is taken over, finished or not. */
   adopt?: number;
+  /** What this ask is for (a tool call's id, "baseline", "verify:1"): the same ask made again is the same command, which a live session needs to know. */
+  tag?: string;
 }
 
 export type RunOutcome =
-  | { status: "done"; exitCode: number; outputTail: string; minutes: number; stepIdx: number }
+  | { status: "done"; exitCode: number; outputTail: string; minutes: number; stepIdx: number; /** How long it ran, when it is known to the millisecond (a live session). */ ms?: number }
   /** No place took the step in time (no PC online, no free minutes, paid compute off or asking). */
   | { status: "no_runner"; reason: string }
   | { status: "timeout"; reason: string }

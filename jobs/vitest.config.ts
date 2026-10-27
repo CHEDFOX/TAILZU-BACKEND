@@ -18,7 +18,7 @@ export default defineConfig({
         plugins: [
           cloudflareTest({
             wrangler: { configPath: "./wrangler.jsonc" },
-            miniflare: { bindings: { CODE_JOBS_SECRET: "test-secret-for-hmac-0123456789abcdef0123456789abcdef" } },
+            miniflare: { bindings: { CODE_JOBS_SECRET: "test-secret-for-hmac-0123456789abcdef0123456789abcdef", CODE_JOBS_URL: "https://jobs.example" } },
           }),
         ],
         test: { name: "worker", include: ["test/**/*.test.ts"] },

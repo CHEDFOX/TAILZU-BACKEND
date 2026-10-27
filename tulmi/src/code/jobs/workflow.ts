@@ -29,6 +29,7 @@
  * report after its commands have had all the time they were given. The ticker
  * (router.ts) gives up on the run a minute after that.
  */
+import type { SessionOffer } from "../live/offers.js";
 import { SHADOW_SCRIPT, SHADOW_STEP, SHADOW_WORKFLOW } from "../shadow.js";
 import { RUN_MJS } from "./runScript.js";
 import type { OverlayFile } from "./types.js";
@@ -84,6 +85,58 @@ export function renderWorkflow(minutes: number): string {
   ].join("\n");
 }
 
+/**
+ * `.github/workflows/tailzu-run.yml` for a LIVE SESSION: the same workflow with the two differences a session has. The script keeps a
+ * WebSocket to the job's room open and runs what it is sent, so (1) there is no diff against the work branch at the end and the checkout is
+ * shallow, and (2) it needs a Node with a WebSocket of its own (Node 22+). The runner image's own Node is used when it has one, so the person's
+ * checks run on the Node they would run on anyway; only an image whose Node has none gets Node 22 (setup-node, a step that is skipped otherwise). Everything
+ * that keeps a runner harmless is the same: it reads the contents and asks GitHub for an identity token, nothing more; the token is NOT
+ * kept in git's config (`persist-credentials: false`), so there is no token on the machine that could write; the package managers' caches
+ * are restored, so an install in a later session of the same job (or a later job) is quick. `minutes` is the cap: the job's time limit.
+ */
+export function renderSessionWorkflow(minutes: number): string {
+  const lock = LOCKFILES.map((f) => `'${f}'`).join(", ");
+  return [
+    "# Written by Tailzu for a live session of a coding job. Do not edit: it is replaced for every session.",
+    "# It runs only for the throwaway tailzu-run/ branch it was written on, and the branch is deleted afterwards.",
+    "name: Tailzu run",
+    "on:",
+    "  push:",
+    "    branches: ['tailzu-run/**']",
+    "permissions:",
+    "  contents: read",
+    "  id-token: write",
+    "concurrency:",
+    "  group: tailzu-run-${{ github.ref }}",
+    "  cancel-in-progress: true",
+    "jobs:",
+    "  run:",
+    "    runs-on: ubuntu-latest",
+    `    timeout-minutes: ${Math.max(1, Math.floor(minutes))}`,
+    "    steps:",
+    "      - uses: actions/checkout@v4",
+    "        with:",
+    "          fetch-depth: 1",
+    "          persist-credentials: false",
+    "      - id: node",
+    "        run: |",
+    "          node -e 'process.exit(typeof WebSocket === \"function\" ? 0 : 1)' || echo 'need=true' >> \"$GITHUB_OUTPUT\"",
+    "      - if: steps.node.outputs.need == 'true'",
+    "        uses: actions/setup-node@v4",
+    "        with:",
+    "          node-version: '22'",
+    "      - uses: actions/cache@v4",
+    "        with:",
+    "          path: |",
+    ...CACHE_PATHS.map((p) => `            ${p}`),
+    `          key: tailzu-\${{ runner.os }}-\${{ hashFiles(${lock}) }}`,
+    "          restore-keys: |",
+    "            tailzu-${{ runner.os }}-",
+    "      - run: node .tailzu/run.mjs",
+    "",
+  ].join("\n");
+}
+
 /** What `.tailzu/step.json` holds. */
 export interface StepSpec {
   jobId: string;
@@ -102,20 +155,22 @@ export interface StepSpec {
   overlay?: OverlayFile[];
   /** The step's changes are not wanted: the script does not collect or send them. Left out of the file when false. */
   discard?: boolean;
+  /** A live session: the script does not run `commands`; it connects to the job's room (code/live/offers.ts) and runs what it is sent. Left out when there is none. */
+  session?: SessionOffer;
 }
 
 export function stepJson(spec: StepSpec): string {
   return `${JSON.stringify({
     jobId: spec.jobId, stepIdx: spec.stepIdx, epoch: spec.epoch, commands: spec.commands, timeoutSec: spec.timeoutSec,
     baseSha: spec.baseSha, resultUrl: spec.resultUrl, audience: spec.audience,
-    ...(spec.overlay?.length ? { overlay: spec.overlay } : {}), ...(spec.discard ? { discard: true } : {}),
+    ...(spec.overlay?.length ? { overlay: spec.overlay } : {}), ...(spec.discard ? { discard: true } : {}), ...(spec.session ? { session: spec.session } : {}),
   }, null, 2)}\n`;
 }
 
 /** The three files of a shadow commit, in the order they are written. */
 export function shadowFiles(spec: StepSpec): Array<{ path: string; content: string }> {
   return [
-    { path: SHADOW_WORKFLOW, content: renderWorkflow(timeoutMinutes(spec.timeoutSec)) },
+    { path: SHADOW_WORKFLOW, content: spec.session ? renderSessionWorkflow(timeoutMinutes(spec.timeoutSec)) : renderWorkflow(timeoutMinutes(spec.timeoutSec)) },
     { path: SHADOW_STEP, content: stepJson(spec) },
     { path: SHADOW_SCRIPT, content: RUN_MJS },
   ];

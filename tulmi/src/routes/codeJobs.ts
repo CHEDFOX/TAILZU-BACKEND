@@ -69,6 +69,20 @@
  *                                             watching: where the policy would ask, the job waits for the person (waitingForYou) instead.
  *                                             Changes from a step that did not exit 0 are not committed. A result is at most 4 MB
  *
+ * With the jobs on Cloudflare (docs/cloudflare-jobs.md section 10) there is also the LIVE SESSION, and the routes that go with it:
+ *
+ *   POST   /v1/code/runner/ticket { deviceId }
+ *                                          -> { url, ticket, expiresAt }  a two-minute, signed pass for the desktop app's PRESENCE socket on the
+ *                                             Worker (wss://<jobs>/v1/devices/connect): the person's PC is online for the router there as long as
+ *                                             that socket is open. Authenticated as the person; the pass names the person and the device, and only
+ *                                             those. 404 live_off when the jobs are not on Cloudflare (the HTTP heartbeat is the presence there)
+ *   POST   /v1/code/jobs/:id/live          -> { url, ticket, expiresAt }  the same for the app WATCHING a job (wss://<jobs>/v1/rooms/<id>/watch):
+ *                                             the owner's only (404 for anyone else's job). Over it the app is sent the phase, tool calls, short
+ *                                             results, the output tail and the cost, and may send {"t":"message","text":"..."}
+ *   POST   /v1/code/jobs/:id/message { text }
+ *                                          -> { delivered: true }  the person's word to a job that is WORKING (not an answer to a question: that is
+ *                                             /answer). The agent is shown it as the person's own words at the start of its next turn. 409 job_over
+ *
  * GitHub's free computers (code/jobs/githubActions.ts) report on their own route, which is NOT behind the person's session: it is
  * behind GitHub's own signature.
  *
@@ -100,6 +114,8 @@ import type { GithubActionsProvider } from "../code/jobs/githubActions.js";
 import type { JobRouter } from "../code/jobs/router.js";
 import { startJobTicker } from "../code/jobs/ticker.js";
 import { LONG_POLL_MS, TICK_MS } from "../code/jobs/types.js";
+import { DEVICE_TICKET_TTL_MS, VIEWER_TICKET_TTL_MS } from "../code/live/limits.js";
+import { signTicket } from "../code/live/tickets.js";
 import { failCode } from "./code.js";
 
 export interface CodeJobRoutesDeps {
@@ -118,6 +134,8 @@ export interface CodeJobRoutesDeps {
   agent?: AgentOrchestrator | null;
   /** A step's result was taken (a PC's, or GitHub's): tell whoever is waiting on the job. With jobs on the Worker this wakes its Workflow. */
   onStepResult?: (jobId: string) => void;
+  /** The live session's passes (jobs on Cloudflare): where the Worker is and the secret both sides share. Null or absent: the two ticket routes answer 404 live_off. */
+  live?: { jobsUrl: string; secret: string; now?: () => number } | null;
 }
 
 /** A result carries files, so it may be larger than the server's usual 1 MB. */
@@ -295,6 +313,45 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
     try {
       const r = await s.jobs.approveCommit(s.user.id, req.params.id, id as string | undefined);
       return reply.send("job" in r ? { ...r, job: stripAgent(r.job) } : r);
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // --- the live session (jobs on Cloudflare): passes for two WebSockets to the Worker, and the person's word to a working job
+
+  const liveOff = (reply: FastifyReply) => reply.code(404).send({ code: "live_off", message: "The live session is not switched on." });
+  const wsBase = () => deps.live!.jobsUrl.trim().replace(/\/+$/, "").replace(/^http/i, "ws");
+  const DEVICE_ID = /^[A-Za-z0-9._:-]{8,100}$/;
+
+  app.post<{ Body: unknown }>("/v1/code/runner/ticket", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.live) return liveOff(reply);
+    const deviceId = bodyOf(req.body).deviceId;
+    if (typeof deviceId !== "string" || !DEVICE_ID.test(deviceId)) {
+      return reply.code(400).send({ code: "bad_request", message: "deviceId is the id your app made for this computer (8 to 100 letters, digits, . _ : -)." });
+    }
+    const { ticket, claims } = signTicket({ secret: deps.live.secret, kind: "device", user: s.user.id, device: deviceId, ttlMs: DEVICE_TICKET_TTL_MS, ...(deps.live.now ? { now: deps.live.now() } : {}) });
+    return reply.send({ url: `${wsBase()}/v1/devices/connect`, ticket, expiresAt: claims.x });
+  });
+
+  app.post<{ Params: { id: string } }>("/v1/code/jobs/:id/live", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.live) return liveOff(reply);
+    try {
+      // The owner's only: the router looks the job up by the person's id.
+      const job = await s.jobs.job(s.user.id, req.params.id);
+      const { ticket, claims } = signTicket({ secret: deps.live.secret, kind: "viewer", user: s.user.id, job: job.id, ttlMs: VIEWER_TICKET_TTL_MS, ...(deps.live.now ? { now: deps.live.now() } : {}) });
+      return reply.send({ url: `${wsBase()}/v1/rooms/${job.id}/watch`, ticket, expiresAt: claims.x });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.post<{ Params: { id: string }; Body: unknown }>("/v1/code/jobs/:id/message", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.agent) return agentOff(reply);
+    try {
+      return reply.send(await deps.agent.message(s.user.id, req.params.id, bodyOf(req.body).text));
     } catch (err) { return fail(reply, err); }
   });
 

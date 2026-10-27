@@ -61,6 +61,8 @@
 import { createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
 import { ConnectorError } from "../../connectors/state.js";
 import type { GithubRun } from "../github.js";
+import type { OfferSession } from "../live/offers.js";
+import { isSessionCommands } from "../live/protocol.js";
 import { gateFree } from "../policy.js";
 import { assertAccess, gateBase, ownProject, repoRef, type ProjectDeps } from "../projects.js";
 import { SHADOW_WORKFLOW, holderOf, parseHolder, shadowBranchName } from "../shadow.js";
@@ -97,6 +99,11 @@ export interface GithubActionsOptions {
   /** Epoch ms. Tests move it. */
   now?: () => number;
   log?: { info: (o: object, m: string) => void; warn: (o: object, m: string) => void };
+  /**
+   * The way into a job's room (code/live/offers.ts), for a step that is a LIVE SESSION (the one command SESSION_COMMAND): written into
+   * `.tailzu/step.json`, with the session's own workflow. Absent: a session step is run as the command it names, which does nothing.
+   */
+  offerSession?: OfferSession;
 }
 
 /** What the person has let Tailzu do on GitHub, as far as this provider is concerned. */
@@ -207,9 +214,12 @@ export class GithubActionsProvider implements ComputeProvider {
     const repo = { ...repoRef(d, job.userId, project), workflows: true };
     const baseSha = job.checkpoint.headSha || (await d.github.branchHead(repo, job.branch));
     const branch = shadowBranchName(job.id, step.idx, job.leaseEpoch);
+    // A live session: the runner is given the way into the job's room, and the workflow that hosts a session (workflow.ts renderSessionWorkflow).
+    const session = isSessionCommands(step.commands) && this.o.offerSession ? this.o.offerSession(job, step) : undefined;
+    if (isSessionCommands(step.commands) && !session) throw new NoPlace("no_session_room");
     const files = shadowFiles({
       jobId: job.id, stepIdx: step.idx, epoch: job.leaseEpoch, commands: step.commands, timeoutSec: step.timeoutSec,
-      baseSha, resultUrl: this.o.resultUrl, audience: this.audience, overlay: step.overlay, discard: step.discard,
+      baseSha, resultUrl: this.o.resultUrl, audience: this.audience, overlay: step.overlay, discard: step.discard, ...(session ? { session } : {}),
     });
     const made = await gateFree({
       ...gateBase(d, job.userId, project), attended: false, action: "runner.shadow", branch, server: true, paths: files.map((f) => f.path),

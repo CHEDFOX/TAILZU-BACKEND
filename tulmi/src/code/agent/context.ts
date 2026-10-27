@@ -76,10 +76,10 @@ export function systemPrompt(o: SystemInput): string {
     "You are Tailzu's coding agent, Blip. You do one task in a developer's repository, on a work branch of your own, and the developer reads what you did in a pull request.",
     "",
     "HOW YOU WORK",
-    "- Look before you change: search_code, list_dir and read_file. Make the SMALLEST change that does what was asked, in the style of the code around it.",
+    "- Look before you change. For anything EXACT (a name, a string, every place something is used) use grep; for files by name use glob; to learn WHERE a feature lives use search_code; then list_dir and read_file. Make the SMALLEST change that does what was asked, in the style of the code around it.",
     "- edit_file (an exact, unique replace), write_file and delete_file STAGE your edits. Nothing is committed while you work: when you call done, the server runs the project's checks on your staged edits and commits them itself. You cannot push, merge or touch git.",
-    "- run {cmd, why} runs commands on a computer with your staged edits applied, and returns the exit code and the end of the output. Each run starts from a fresh checkout: nothing is installed unless the same run installs it"
-    + `${o.install ? ` (the project installs with \`${o.install}\`)` : ""}. Each run costs time (30 to 60 seconds on GitHub's computers), so batch what you can: put several commands in one run, one per line, and they stop at the first that fails.`,
+    "- run {cmd, why} runs commands on a computer with your staged edits applied over the branch's checkout, and returns the exit code and the end of the output. Do not count on anything being installed: install it in the run that needs it"
+    + `${o.install ? ` (the project installs with \`${o.install}\`)` : ""}. Where a live session is available the first run of a job opens it (about a minute) and later runs start at once; otherwise each run waits for a computer. Batch what you can: put several commands in one run, one per line, and they stop at the first that fails.`,
     "- web_search, read_page and research look things up on the web; find_resources compares libraries for a need. Use them when the repo cannot answer.",
     "- flag_finding records a bug or risk you noticed in code you were not asked to change. note records a decision for the work log. ask_user asks the person a question when you truly cannot go on without them (give options when you can); do not ask what you can find out.",
     "- Call done {summary} when the work is finished, or when there is nothing to change (an answer to a question is the summary). The summary is what the person reads first.",
@@ -119,6 +119,7 @@ export function briefCall(c: CallRecord): string {
   switch (c.name) {
     case "read_file": case "edit_file": case "write_file": case "delete_file": case "list_dir": return s(a.path, 90);
     case "run": return s(a.cmd, 80);
+    case "grep": case "glob": return s(a.pattern, 70);
     case "search_code": case "web_search": return s(a.query, 70);
     case "read_page": return s(a.url, 80);
     case "research": return s(a.question, 70);
@@ -228,6 +229,10 @@ function taskMessage(i: ContextInput, k: Knobs): string {
   const s = i.state;
   const parts: string[] = [];
   parts.push(`<task>\n${fence(cut(forModel(s.task), 4000))}\n</task>`);
+  // The person's own words, sent while the job was working: theirs to give, so they are not data. Newest last.
+  if (s.work.said?.length) {
+    parts.push(`The person added, while you were working (their words; follow them as part of the task):\n${s.work.said.slice(-5).map((m) => `<said>\n${fence(cut(forModel(m.text), 1500)).replace(/<\/said/gi, "<\\/said")}\n</said>`).join("\n")}`);
+  }
   if (s.plan) {
     const steps = s.plan.steps.slice(0, 12).map((p) => `${p.n}. ${cut(p.do, 200)} [${p.files.map((f) => `${f.action} ${f.path}`).join(", ")}]`);
     parts.push(`The plan (an estimate; change course if the code says otherwise):\n${steps.join("\n")}`);

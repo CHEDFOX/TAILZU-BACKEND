@@ -23,6 +23,7 @@
 import { getConfig } from "../../config.js";
 import type { Code } from "../index.js";
 import type { ProjectDeps } from "../projects.js";
+import type { OfferSession } from "../live/offers.js";
 import { DeviceBook } from "./devices.js";
 import { GITHUB_FREE_MINUTES_DEFAULT } from "./placement.js";
 import type { ComputeProvider } from "./providers.js";
@@ -38,6 +39,15 @@ export interface CreateJobsOptions {
   github?: ComputeProvider | null;
   paid?: ComputeProvider | null;
   devices?: DeviceBook;
+  /** The person's PCs as a place, when presence is not in this process (the Worker: a Durable Object per person). */
+  desktop?: ComputeProvider;
+  /**
+   * Count the month's GitHub Actions minutes against CODE_ACTIONS_MONTHLY_MIN (tell the person at 80%, stop choosing GitHub at 95%): the live
+   * session's rule (code/live/minutes.ts). Absent: the older rule, a tenth of CODE_GITHUB_FREE_MINUTES kept back.
+   */
+  actions?: boolean | { monthlyMin: number };
+  /** The way into a job's room, handed to a runner with a live session step. */
+  offerSession?: OfferSession;
   notify?: Notify;
   now?: () => number;
   /** Instead of CODE_GITHUB_FREE_MINUTES. */
@@ -58,6 +68,8 @@ export interface CreateGithubActionsOptions {
   audience?: string;
   /** Where the script reports. Default: PUBLIC_ORIGIN (api.tailzu.space) and /v1/code/runner/gh-result. */
   resultUrl?: string;
+  /** The way into a job's room for a live session step: written into the step's `.tailzu/step.json`. */
+  offerSession?: OfferSession;
   /** Finds the key an identity token was signed with. Default: GitHub's own JWKS. */
   keys?: JWTVerifyGetKey;
   now?: () => number;
@@ -81,7 +93,7 @@ export function createGithubActions(o: CreateGithubActionsOptions): GithubAction
   if (!d) return null;
   return new GithubActionsProvider({
     d, jobs: o.store ?? jobStore(), audience: o.audience ?? getConfig().CODE_RUNNER_OIDC_AUDIENCE ?? OIDC_AUDIENCE_DEFAULT,
-    resultUrl: o.resultUrl ?? runnerResultUrl(), keys: o.keys, now: o.now, log: o.log,
+    resultUrl: o.resultUrl ?? runnerResultUrl(), keys: o.keys, now: o.now, log: o.log, ...(o.offerSession ? { offerSession: o.offerSession } : {}),
   });
 }
 
@@ -93,6 +105,8 @@ export function createJobs(o: CreateJobsOptions): JobRouter | null {
     store: o.store ?? jobStore(), projects, github: o.github, paid: o.paid, devices: o.devices ?? new DeviceBook(),
     notify: o.notify, now: o.now, log: o.log,
     freeMinutes: o.freeMinutes ?? freeMinutesFromEnv(),
+    ...(o.desktop ? { desktop: o.desktop } : {}), ...(o.offerSession ? { offerSession: o.offerSession } : {}),
+    ...(o.actions ? { actions: typeof o.actions === "object" ? o.actions : { monthlyMin: getConfig().CODE_ACTIONS_MONTHLY_MIN } } : {}),
   });
 }
 

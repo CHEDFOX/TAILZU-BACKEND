@@ -21,6 +21,8 @@
 import { resetClassifierCacheForTests } from "../src/code/brain/classify.js";
 import { BudgetExceeded, type CallInput, type CallResult } from "../src/code/brain/gateway.js";
 import { createAgent } from "../src/code/agent/index.js";
+import type { RemoteJobs } from "../src/code/agent/orchestrator.js";
+import type { LiveDeps } from "../src/code/live/ports.js";
 import { CHECK_MARK } from "../src/code/agent/checks.js";
 import { routerRunner } from "../src/code/agent/runner.js";
 import { initialState, stateOf, type AgentState } from "../src/code/agent/types.js";
@@ -246,6 +248,8 @@ export interface AgentRigOptions {
   placeWaitMs?: number;
   /** The model's price per call, in paise. */
   paise?: number;
+  /** The live session's ports (code/live/ports.ts): a room's files, the inbox, progress, closeSession, endJob. */
+  live?: LiveDeps;
 }
 
 export async function agentRig(o: AgentRigOptions = {}) {
@@ -308,11 +312,12 @@ export async function agentRig(o: AgentRigOptions = {}) {
   const log = { info: (x: object, m: string) => { logLines.push({ o: x, m }); }, warn: (x: object, m: string) => { logLines.push({ o: x, m }); } };
 
   /** An orchestrator over these stores. A second one is another server. */
-  function orchestrator(over: { instanceId?: string; concurrency?: number } = {}) {
+  function orchestrator(over: { instanceId?: string; concurrency?: number; live?: LiveDeps; remote?: RemoteJobs } = {}) {
     return createAgent({
       code, jobs, store: jobStore, brain, call: model.call as never, worklog, intake, routeStats, notify, now, sleep, log, web: { store: null, cache: null, fetchFn: webFetch as never },
       runner: routerRunner({ jobs, store: jobStore, now, sleep, placeWaitMs: o.placeWaitMs ?? 120_000, pollMs: 2000 }),
       concurrency: over.concurrency ?? o.concurrency ?? 4, instanceId: over.instanceId ?? "one",
+      ...((over.live ?? o.live) ? { live: (over.live ?? o.live)! } : {}), ...(over.remote ? { remote: over.remote } : {}),
     })!;
   }
   const orch = orchestrator();

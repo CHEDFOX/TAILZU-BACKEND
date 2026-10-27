@@ -1003,7 +1003,8 @@ limits and costs: `docs/cloudflare-jobs.md`.
    `cd jobs && npm ci && npx wrangler login`, fill in the blank `vars` in
    `jobs/wrangler.jsonc` (`GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`,
    `GITHUB_APP_ID`, `CLOUDFLARE_ACCOUNT_ID`, `PUBLIC_ORIGIN` = this server's
-   address), `npx wrangler deploy`, then one `npx wrangler secret put NAME` each
+   address, and `CODE_JOBS_URL` = the Worker's own address, for the live
+   session), `npx wrangler deploy`, then one `npx wrangler secret put NAME` each
    for `CODE_JOBS_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`,
    `OPENROUTER_API_KEY`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`,
    `CONNECTOR_TOKEN_KEY` (the same values as in `tulmi/.env`) and
@@ -1020,5 +1021,11 @@ limits and costs: `docs/cloudflare-jobs.md`.
 3. **Back out:** `CODE_JOBS_MODE=local` and a restart. Jobs already on the
    Worker carry on from their checkpoint here once the Worker's claim runs out.
 
-The desktop PC runner is not used for jobs the Worker runs (which PCs are
-online is kept in this server's memory); GitHub's free computers are.
+**The live session** (on by default with `cloudflare`; `CODE_LIVE_SESSION=false`
+to switch it off): a job's code is copied to a Durable Object so the bot reads and
+searches it at once, and commands run in a runner kept open for the job, on the
+person's own computer when its app is connected to the Worker, else on a GitHub
+Actions run. Run `supabase/migrations/0031_code_runner_minutes.sql` first (it
+counts the month's Actions minutes). The desktop app's half is
+`docs/desktop-runner-session.md`; the rules, costs and what needs a live deploy are
+in `docs/cloudflare-jobs.md` section 10.

@@ -67,6 +67,8 @@ export class ScriptedTicker implements TickPort {
   idleIds: string[] = [];
   summary: TickSummary = { expired: 1, moved: 0, failed: 0, woken: 2, handedBack: 3 };
   fail = false;
+  /** Set by a test that wants the router's wake (a PC came online). */
+  wake?: (userId: string) => Promise<number>;
   async tick() { this.ticks += 1; if (this.fail) throw new Error("db away"); return this.summary; }
   async idle(idleMs: number, limit: number) { this.idleAsked.push({ idleMs, limit }); return this.idleIds; }
 }

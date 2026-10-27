@@ -21,7 +21,7 @@
 import type { RemoteJobs } from "../../agent/orchestrator.js";
 import type { BrainRemote } from "../../project/index.js";
 import { signRequest } from "./sign.js";
-import { BRAIN_PATH, EVENT_PATH, START_PATH, type BrainBody, type EventBody, type StartBody, type WakeKind } from "./protocol.js";
+import { BRAIN_PATH, EVENT_PATH, MESSAGE_PATH, START_PATH, type BrainBody, type EventBody, type MessageBody, type StartBody, type WakeKind } from "./protocol.js";
 
 export const HANDOFF_ATTEMPTS = 3;
 /** Each attempt gets this long, answer included. */
@@ -83,6 +83,11 @@ export class JobsHandoff implements RemoteJobs, BrainRemote {
     } catch (err) {
       this.o.log?.warn({ jobId, kind, error: (err as HandoffError)?.code ?? "error" }, "code jobs: the Worker could not be told");
     }
+  }
+
+  /** The person's word to a working job: kept in the job's room, and the job's Workflow woken. Throws when it could not be handed over. */
+  async message(jobId: string, text: string): Promise<void> {
+    await this.post(MESSAGE_PATH, { jobId, text } satisfies MessageBody);
   }
 
   async build(b: { userId: string; projectId: string; mode: "full" | "incremental"; headSha: string }): Promise<void> {

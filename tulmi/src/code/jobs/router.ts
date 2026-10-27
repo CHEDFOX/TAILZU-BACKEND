@@ -83,6 +83,9 @@ import { PolicyError, isNeedsApproval, isWorkflowPath, type NeedsApproval } from
 import { isReservedPath } from "../shadow.js";
 import { commitToBranch, ownProject, recordedBranch, repoRef, runnerAccess, type ProjectDeps } from "../projects.js";
 import { DeviceBook, allows, type DeviceBeat } from "./devices.js";
+import { actionsMinutesLeft, minutesLowWords, notifyAtMinutes } from "../live/minutes.js";
+import { isSessionCommands } from "../live/protocol.js";
+import type { OfferSession, SessionOffer } from "../live/offers.js";
 import { choosePlacement, githubMinutesLeft, GITHUB_FREE_MINUTES_DEFAULT, type PlacementChoice, type PlacementCtx } from "./placement.js";
 import { DesktopProvider, type Availability, type ComputeProvider, type RunCheck } from "./providers.js";
 import type { JobStore } from "./store.js";
@@ -107,6 +110,19 @@ export interface JobRouterOptions {
   /** Paid compute. Absent: never chosen. */
   paid?: ComputeProvider | null;
   devices?: DeviceBook;
+  /**
+   * The person's own computers as a place, instead of the one that reads this process's DeviceBook. On the Cloudflare Worker presence is not
+   * in this process's memory but in the person's UserDevices Durable Object (jobs/src/desktops.ts), and the provider that asks it goes here.
+   */
+  desktop?: ComputeProvider;
+  /**
+   * The month's GitHub Actions minutes, counted in `code_runner_minutes` against this allowance (CODE_ACTIONS_MONTHLY_MIN; code/live/minutes.ts):
+   * the person is told once at 80%, and at 95% GitHub's computers are not chosen until the month turns over. Absent: the older rule (a tenth of
+   * CODE_GITHUB_FREE_MINUTES kept back) is the only one, as it always was.
+   */
+  actions?: { monthlyMin: number };
+  /** The way into a job's room, handed to a runner with a live session step (code/live/offers.ts). Absent: a session step is not offered a room. */
+  offerSession?: OfferSession;
   notify?: Notify;
   /** Epoch ms. Tests move it. */
   now?: () => number;
@@ -141,6 +157,8 @@ export interface RunnerStep {
   overlay?: OverlayFile[];
   /** Nothing this step changes is committed: the result's `changes` are not wanted. Absent when they are. */
   discard?: true;
+  /** A live session: the commands are not run; connect to the job's room with this ticket and run what it sends (docs/desktop-runner-session.md). */
+  session?: SessionOffer;
 }
 
 export type RunnerHeartbeat = DeviceBeat;
@@ -305,7 +323,7 @@ const PENDING_MAX = 200;
 
 export class JobRouter {
   readonly devices: DeviceBook;
-  readonly desktop: DesktopProvider;
+  readonly desktop: ComputeProvider;
   private readonly store: JobStore;
   private readonly deps: ProjectDeps;
   private readonly lock = new KeyedLock();
@@ -320,7 +338,7 @@ export class JobRouter {
     this.clock = o.now ?? Date.now;
     this.freeMinutes = o.freeMinutes ?? GITHUB_FREE_MINUTES_DEFAULT;
     this.devices = o.devices ?? new DeviceBook();
-    this.desktop = new DesktopProvider({ devices: this.devices, store: this.store, now: this.clock });
+    this.desktop = o.desktop ?? new DesktopProvider({ devices: this.devices, store: this.store, now: this.clock });
   }
 
   now(): number { return this.clock(); }
@@ -499,12 +517,15 @@ export class JobRouter {
   }> {
     const [s, u] = await Promise.all([this.store.getSettings(userId), this.store.getUsage(userId, monthKey(this.now()))]);
     const exhausted = this.o.github ? await this.githubExhausted(userId) : false;
+    const used = await this.actionsUsed(userId, u.githubMinutes);
+    const actions = this.o.actions;
     return {
       settings: { paidRule: s.paidRule, autoCapPaise: s.autoCapPaise, githubEnabled: s.githubEnabled },
       // `exhausted` is there only when a step pushed to GitHub never ran or never reported this month: none of GitHub's minutes are counted as ours until the month turns.
+      // With the month's Actions minutes counted (actions), the line is 95% of CODE_ACTIONS_MONTHLY_MIN and `used` is the larger of the two counts.
       githubFreeMinutes: {
-        allowance: this.freeMinutes, headroomPercent: 10, used: u.githubMinutes,
-        left: exhausted ? 0 : githubMinutesLeft(this.freeMinutes, u.githubMinutes), ...(exhausted ? { exhausted: true as const } : {}),
+        allowance: actions ? actions.monthlyMin : this.freeMinutes, headroomPercent: actions ? 5 : 10, used,
+        left: exhausted ? 0 : actions ? actionsMinutesLeft(actions.monthlyMin, used) : githubMinutesLeft(this.freeMinutes, used), ...(exhausted ? { exhausted: true as const } : {}),
       },
       usage: { month: u.month, githubMinutes: u.githubMinutes, paidPaise: u.paidPaise },
       providers: { github: !!this.o.github, paid: !!this.o.paid },
@@ -733,7 +754,10 @@ export class JobRouter {
 
       // The computer ran: count it, whatever happens to what it made.
       const counted = via === "github" ? r.billable ?? r.minutes : 0;
-      if (via === "github" && counted > 0) await this.store.addUsage(userId, monthKey(now), { githubMinutes: counted });
+      if (via === "github" && counted > 0) {
+        await this.store.addUsage(userId, monthKey(now), { githubMinutes: counted });
+        await this.countActions(job, counted, now);
+      }
       if (via === "paid" && paise > 0) await this.store.addUsage(userId, monthKey(now), { paidPaise: paise });
       const spentPaise = job.spentPaise + paise;
       const note = refused ? `\n[Tailzu did not commit the changes: ${refused}.]` : "";
@@ -757,11 +781,12 @@ export class JobRouter {
 
       const failed = r.exitCode !== 0 || refused !== undefined;
       await this.store.updateStep(job.id, step.idx, { ...base, status: failed ? "failed" : "done" });
-      const first = brief(step.commands[0] ?? "a command", 60);
+      const session = isSessionCommands(step.commands);
+      const first = session ? "a live session" : brief(step.commands[0] ?? "a command", 60);
       const more = step.commands.length > 1 ? ` and ${step.commands.length - 1} more` : "";
       const notes = failed
         ? (refused ? `Ran ${first}${more}; its changes were not committed (${refused}).` : `Ran ${first}${more}: failed (exit ${r.exitCode}).`)
-        : `Ran ${first}${more}: ok${sha ? " and committed its changes" : ""}.`;
+        : session ? `Closed the live session after ${r.minutes} minute${r.minutes === 1 ? "" : "s"}.` : `Ran ${first}${more}: ok${sha ? " and committed its changes" : ""}.`;
       const next = await this.store.casJob(job.id, { leaseEpoch: job.leaseEpoch, states: ["running"] }, {
         state: "running", placement: "none", leaseHolder: null, leaseExpiresAt: null, reason: "", waitingOn: null, spentPaise,
         checkpoint: { ...job.checkpoint, stepIndex: step.idx, headSha: sha ?? job.checkpoint.headSha, notes },
@@ -926,6 +951,29 @@ export class JobRouter {
     });
   }
 
+  /** The month's GitHub minutes Tailzu has used: the larger of the Actions ledger and the older usage count, so starting to count here mid-month hands out no fresh allowance. */
+  private async actionsUsed(userId: string, usageMinutes: number): Promise<number> {
+    if (!this.o.actions) return usageMinutes;
+    try {
+      return Math.max(usageMinutes, (await this.store.getRunnerMinutes(userId, monthKey(this.now()))).minutes);
+    } catch (err) {
+      this.o.log?.warn({ error: (err as Error)?.message }, "code job: could not read the month's Actions minutes");
+      return usageMinutes;
+    }
+  }
+
+  /** Adds minutes a step used on GitHub's computers to the Actions ledger, and tells the person the first time the month passes 80%. Never throws. */
+  private async countActions(job: CodeJob, minutes: number, now: number): Promise<void> {
+    const actions = this.o.actions;
+    if (!actions) return;
+    try {
+      const row = await this.store.addRunnerMinutes(job.userId, monthKey(now), minutes, notifyAtMinutes(actions.monthlyMin));
+      if (row.crossedNotify) this.tell(job, "minutes_low", { reason: minutesLowWords(actions.monthlyMin, row.minutes) });
+    } catch (err) {
+      this.o.log?.warn({ jobId: job.id, error: (err as Error)?.message }, "code job: could not count a step's GitHub minutes");
+    }
+  }
+
   private async available(p: ComputeProvider, job: CodeJob, estimateMinutes: number): Promise<Availability> {
     try {
       return await p.available({ userId: job.userId, projectId: job.projectId, jobId: job.id, estimateMinutes, now: this.now() });
@@ -937,6 +985,8 @@ export class JobRouter {
   /** The facts choosePlacement needs for a step, from the providers, the person's settings and this month's use. */
   private async facts(job: CodeJob, step: JobStep, skip: ReadonlySet<ComputeKind>): Promise<PlacementCtx> {
     const [settings, usage] = await Promise.all([this.store.getSettings(job.userId), this.store.getUsage(job.userId, monthKey(this.now()))]);
+    const actions = this.o.actions;
+    const usedActions = actions ? await this.actionsUsed(job.userId, usage.githubMinutes) : usage.githubMinutes;
     const none: Availability = { ok: false };
     const desk = skip.has("desktop") ? none : await this.available(this.desktop, job, step.estimateMinutes);
     const gh = this.o.github && settings.githubEnabled && !skip.has("github") ? await this.available(this.o.github, job, step.estimateMinutes) : none;
@@ -948,7 +998,8 @@ export class JobRouter {
     return {
       desktops: desk.ok ? desk.places ?? 1 : 0,
       githubEnabled: gh.ok,
-      githubMinutesLeft: exhausted ? 0 : githubMinutesLeft(this.freeMinutes, usage.githubMinutes),
+      // With the month's Actions minutes counted, GitHub is chosen until 95% of the allowance is used (code/live/minutes.ts); else a tenth of the free minutes is kept back.
+      githubMinutesLeft: exhausted ? 0 : actions ? actionsMinutesLeft(actions.monthlyMin, usedActions) : githubMinutesLeft(this.freeMinutes, usage.githubMinutes),
       ...(gh.extraMinutes ? { githubExtraMinutes: gh.extraMinutes } : {}),
       ...(gh.unmetered && !exhausted ? { githubUnmetered: true } : {}),
       ...(!gh.ok && gh.reason ? { githubWhy: gh.reason } : {}),
@@ -1153,9 +1204,9 @@ export class JobRouter {
         if (!allows(device, job.projectId)) continue;
         const step = await this.inflight(job.id);
         if (!step || step.status === "pending" || step.status === "blocked" || step.epoch !== job.leaseEpoch) continue;
-        let repo: RunnerStep["repo"];
+        let runner: RunnerStep;
         try {
-          repo = await this.repoFor(job);
+          runner = await this.runnerStepFor(job, step);
         } catch (err) {
           // A repo the person can't use any more can't be run on: the job ends, with the reason, instead of being handed out again and again.
           if (err instanceof ConnectorError && PERMANENT.has(err.code)) {
@@ -1166,13 +1217,24 @@ export class JobRouter {
         }
         if (step.status === "dispatched") await this.store.updateStep(job.id, step.idx, { status: "running", startedAt: now });
         await this.store.casJob(job.id, { leaseEpoch: job.leaseEpoch, states: ["running"] }, { leaseExpiresAt: now + LEASE_MS });
-        return {
-          jobId: job.id, stepIdx: step.idx, epoch: job.leaseEpoch, commands: step.commands, timeoutSec: step.timeoutSec, repo,
-          ...(step.overlay.length ? { overlay: step.overlay } : {}), ...(step.discard ? { discard: true as const } : {}),
-        };
+        return runner;
       }
       return null;
     });
+  }
+
+  /**
+   * The step as a PC is given it: what to run, where the code is (read access only), the staged edits to lay over it, and, for a live
+   * session, the way into the job's room. `job` carries the lease epoch the step was dispatched under. On Cloudflare the Worker's provider
+   * for the person's PCs calls this to build the offer it pushes down the PC's socket; on the VPS `next` does.
+   */
+  async runnerStepFor(job: CodeJob, step: JobStep): Promise<RunnerStep> {
+    const repo = await this.repoFor(job);
+    const session = isSessionCommands(step.commands) && this.o.offerSession ? this.o.offerSession(job, step) : undefined;
+    return {
+      jobId: job.id, stepIdx: step.idx, epoch: job.leaseEpoch, commands: step.commands, timeoutSec: step.timeoutSec, repo,
+      ...(step.overlay.length ? { overlay: step.overlay } : {}), ...(step.discard ? { discard: true as const } : {}), ...(session ? { session } : {}),
+    };
   }
 
   /** Where and how a PC gets the code: the existing read access for a runner (projects.ts runnerAccess), never a token that can write. */

@@ -44,6 +44,16 @@
  * is started on it. tests/code-github-actions.test.ts also runs it for real
  * against a temporary git repo and a local server.
  *
+ * A LIVE SESSION. When step.json carries a `session` ({ url, ticket, idleSec, maxSec }) the script does something else (sessionMain): it does
+ * not run `commands`. It opens a WebSocket to the job's room (Node's own global WebSocket, Node 22) with the one-time ticket, says hello, and
+ * then, one at a time, does what the room sends: `exec` (lay the staged edits over the checkout, run the commands with a time limit each,
+ * stream the output a line at a time with obvious secrets replaced), `grep` and `glob` (only for a repo too big for the room's own copy; git
+ * grep and git ls-files, in the checkout), `cancel`, `ping`, and `close`. It leaves on the room's `close`, when the room has said nothing for
+ * the idle time and a grace, or when the socket drops, and then reports to Tailzu as a step does (exit code 0 for a clean end), with the minutes
+ * the session lasted. Between commands the checkout is put back as the branch has it (tracked files restored, files the last overlay made
+ * removed) so each command sees "the branch plus the staged edits", with whatever the commands installed (node_modules, caches) kept. No token
+ * that can write is on the machine: the checkout was made with persist-credentials: false.
+ *
  * Written in a String.raw template: it must not hold a backtick or "${".
  */
 export const RUN_MJS = String.raw`// Written by Tailzu for one step of a coding job. Do not edit: it is replaced for every step.
@@ -193,10 +203,12 @@ function runOne(command, ms, o) {
     };
     take(child.stdout);
     take(child.stderr);
-    const timer = setTimeout(() => {
-      timedOut = true;
-      try { process.kill(-child.pid, "SIGKILL"); } catch { try { child.kill("SIGKILL"); } catch { /* already gone */ } }
-    }, Math.max(1, ms));
+    const kill = () => { try { process.kill(-child.pid, "SIGKILL"); } catch { try { child.kill("SIGKILL"); } catch { /* already gone */ } } };
+    const timer = setTimeout(() => { timedOut = true; kill(); }, Math.max(1, ms));
+    if (o.signal) {
+      if (o.signal.aborted) kill();
+      else o.signal.addEventListener("abort", kill, { once: true });
+    }
     child.on("error", () => { gone = { code: 127, signal: null }; finish(); });
     child.on("exit", (code, signal) => { gone = { code, signal }; setTimeout(finish, 1500).unref(); });
     child.on("close", finish);
@@ -224,7 +236,11 @@ export async function runCommands(commands, timeoutSec, o) {
       return { exitCode: 124, output: held };
     }
     add("$ " + command + "\n");
-    const r = await runOne(command, left, { cwd: o.cwd, env: o.env, onOutput: add });
+    const r = await runOne(command, left, { cwd: o.cwd, env: o.env, onOutput: add, signal: o.signal });
+    if (o.signal && o.signal.aborted) {
+      add("\n[Tailzu: stopped]\n");
+      return { exitCode: 130, output: held };
+    }
     if (r.timedOut) {
       add("\n[Tailzu: stopped after " + timeoutSec + " seconds, the time this step had]\n");
       return { exitCode: 124, output: held };
@@ -357,12 +373,243 @@ export async function postResult(url, token, body, o) {
   return { ok: false, status };
 }
 
+// ------------------------------------------------------------ a live session
+
+/** The room's address with the one-time ticket in the query. */
+export function sessionAddress(session) {
+  return session.url + (session.url.indexOf("?") >= 0 ? "&" : "?") + "ticket=" + encodeURIComponent(session.ticket);
+}
+
+/** Paths whose text is never searched or listed: the same kinds the room never holds. */
+export function secretish(path) {
+  const b = String(path).split("/").pop().toLowerCase();
+  if (/^\.env(\..+)?$/.test(b) && !/\.(example|sample|template|dist|defaults?|schema)$/.test(b)) return true;
+  if (/\.(pem|key|p12|pfx|pkcs12|jks|keystore|crt|cer|der|p8|p7b|asc|ppk|kdbx|tfstate)$/.test(b)) return true;
+  if (/^id_(rsa|dsa|ecdsa|ed25519)(\.pem)?$/.test(b)) return true;
+  return /^(\.npmrc|\.pypirc|\.netrc|\.htpasswd|\.pgpass|credentials|credentials\.json|secrets?\.(ya?ml|json|toml))$/.test(b);
+}
+
+/**
+ * A line-at-a-time stream of what the commands print: complete lines are redacted and sent, a half line waits for its end (or for the
+ * flush). The lines of a private key are held back from its BEGIN line to its END line, which a pattern on one line cannot do.
+ */
+export function lineStreamer(send, known) {
+  let pending = "";
+  let inKey = false;
+  const emit = (line) => {
+    if (inKey) { if (/-----END [A-Z0-9 ]*PRIVATE KEY/.test(line)) inKey = false; return "[redacted]\n"; }
+    if (/-----BEGIN [A-Z0-9 ]*PRIVATE KEY/.test(line)) { inKey = true; return "[redacted]\n"; }
+    return redact(line, known) + "\n";
+  };
+  let batch = "";
+  const flushBatch = () => { if (batch) { send(batch); batch = ""; } };
+  return {
+    write(chunk) {
+      pending += chunk;
+      let at;
+      while ((at = pending.indexOf("\n")) >= 0) {
+        batch += emit(pending.slice(0, at));
+        pending = pending.slice(at + 1);
+        if (batch.length >= 16 * 1024) flushBatch();
+      }
+      if (pending.length > 64 * 1024) { batch += emit(pending); pending = ""; }
+    },
+    /** Sends what is waiting, including a half line. */
+    flush() {
+      if (pending) { batch += emit(pending).replace(/\n$/, ""); pending = ""; }
+      flushBatch();
+    },
+    /** Sends the complete lines now (called on a short timer, so a slow command is seen as it goes). */
+    tick() { flushBatch(); },
+  };
+}
+
+function gitOk(args, cwd) {
+  try { execFileSync("git", args, { cwd, stdio: "ignore" }); return true; } catch { return false; }
+}
+
+/**
+ * Puts the checkout back as the branch has it, before the next command: tracked files restored (the commands may have rewritten a lockfile or
+ * run a formatter), and files the previous overlay CREATED removed. Ignored and untracked files (node_modules, build output) are left: that is
+ * what makes the second command quick. laid is the set of paths the last overlay touched; it is emptied.
+ */
+export function resetCheckout(cwd, laid) {
+  gitOk(["checkout", "--", "."], cwd);
+  for (const p of laid) {
+    if (!overlayPathOk(p)) continue;
+    if (!gitOk(["ls-files", "--error-unmatch", "--", p], cwd)) {
+      try { rmSync(resolve(cwd, p), { force: true }); } catch { /* gone already */ }
+    }
+  }
+  laid.clear();
+}
+
+/** git grep in the checkout, in ripgrep's output. PCRE where git has it (a runaway pattern hits PCRE's own backtrack limit), else POSIX. */
+export function gitGrep(m, cwd) {
+  const specs = [];
+  const base = typeof m.path === "string" ? m.path.replace(/^\.\//, "").replace(/\/+$/, "") : "";
+  if (m.glob) specs.push(":(glob)" + (String(m.glob).indexOf("/") >= 0 ? String(m.glob).replace(/^\//, "") : "**/" + m.glob));
+  else if (base) specs.push(base);
+  const run = (engine) => {
+    const args = ["grep", "-n", "-I", "--no-color", engine];
+    if (m.ignoreCase) args.push("-i");
+    if (m.filesOnly) args.push("-l");
+    else if (m.context) args.push("-C", String(Math.min(5, m.context)));
+    args.push("-e", m.pattern, "--", ...(specs.length ? specs : ["."]));
+    if (m.glob && base) args.push(base);
+    try {
+      return { out: execFileSync("git", args, { cwd, encoding: "utf8", maxBuffer: 8 * 1024 * 1024, timeout: 20000, stdio: ["ignore", "pipe", "pipe"] }), code: 0 };
+    } catch (err) {
+      const code = err && typeof err.status === "number" ? err.status : 2;
+      return { out: code === 1 ? "" : String(err && err.stdout ? err.stdout : ""), code, err: String(err && err.stderr ? err.stderr : err && err.message ? err.message : err) };
+    }
+  };
+  let r = run("-P");
+  if (r.code > 1 && /pcre|-P|perl/i.test(r.err || "")) r = run("-E");
+  if (r.code > 1 && !r.out) return { ok: false, error: "git grep would not run that pattern: " + String(r.err || "").trim().split("\n")[0].slice(0, 200) };
+  const max = Math.max(1, Math.min(500, m.maxResults || 100));
+  const rows = [];
+  let matches = 0;
+  let partial = false;
+  const files = new Set();
+  for (const row of r.out.split("\n")) {
+    if (!row) continue;
+    if (row === "--") { rows.push(row); continue; }
+    const hit = /^(.*?)([:-])(\d+)([:-])/.exec(row);
+    const path = m.filesOnly ? row : hit ? hit[1] : row;
+    if (secretish(path)) continue;
+    const isMatch = m.filesOnly || (hit && hit[2] === ":");
+    if (isMatch) {
+      if (matches >= max) { partial = true; break; }
+      matches += 1;
+      files.add(path);
+    }
+    rows.push(row.length > 300 ? row.slice(0, 299) + "…" : row);
+  }
+  while (rows.length && rows[rows.length - 1] === "--") rows.pop();
+  return { ok: true, text: rows.join("\n"), matches, files: files.size, partial };
+}
+
+/** git ls-files for a glob, the most recently changed first. */
+export function gitGlob(m, cwd) {
+  const g = String(m.pattern).replace(/^\.\//, "").replace(/^\//, "");
+  const spec = ":(glob)" + (g.indexOf("/") >= 0 ? g : "**/" + g);
+  let out;
+  try { out = execFileSync("git", ["ls-files", "-z", "--", spec], { cwd, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: 20000 }); } catch { return { ok: false, error: "That glob is not one git can read." }; }
+  const all = out.split("\0").filter((p) => p && !secretish(p));
+  const stamp = (p) => { try { return lstatSync(cwd + "/" + p).mtimeMs; } catch { return 0; } };
+  const sorted = all.slice(0, 5000).map((p) => [p, stamp(p)]).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map((x) => x[0]);
+  const paths = sorted.slice(0, 500);
+  return { ok: true, text: paths.join("\n"), paths, total: all.length, partial: all.length > paths.length };
+}
+
+/**
+ * The session: connect, then do what the room sends, one thing at a time. Resolves { exitCode, reason, commands } when it is over. o is for the
+ * tests: the WebSocket to use, the checkout, and how long the room may be silent.
+ */
+export async function runSession(spec, o) {
+  const WS = (o && o.WebSocket) || globalThis.WebSocket;
+  const cwd = (o && o.cwd) || process.cwd();
+  const env = (o && o.env) || process.env;
+  if (typeof WS !== "function") return { exitCode: 1, reason: "no WebSocket in this Node (need 22)", commands: 0 };
+  const session = spec.session;
+  const known = secretValues(env);
+  const graceMs = Number(env.TAILZU_IDLE_GRACE_MS) || 90000;
+  const silentMs = (o && o.silentMs) || (Math.max(1, Number(session.idleSec) || 120) * 1000 + graceMs);
+  const laid = new Set();
+  let ws;
+  let busy = null;
+  let commands = 0;
+  let last = Date.now();
+  let finish;
+  const over = new Promise((r) => { finish = r; });
+  let ended = false;
+  const end = (exitCode, reason) => { if (ended) return; ended = true; finish({ exitCode, reason, commands }); };
+  const send = (obj) => { try { ws.send(JSON.stringify(obj)); } catch { /* the socket is going */ } };
+
+  try { ws = new WS(sessionAddress(session)); } catch (err) { return { exitCode: 1, reason: "could not open the socket: " + String(err && err.message ? err.message : err).slice(0, 100), commands: 0 }; }
+  // Only between commands: the room says nothing while one runs, and the command has its own time limit.
+  const watch = setInterval(() => { if (!busy && Date.now() - last > silentMs) { end(0, "the room was silent"); try { ws.close(); } catch { /* gone */ } } }, Math.min(1000, Math.max(50, silentMs / 4)));
+  watch.unref();
+  ws.addEventListener("open", () => send({ t: "hello", v: 1, kind: "github", name: "GitHub Actions", os: process.platform, node: process.version }));
+  ws.addEventListener("error", () => end(1, "the socket failed"));
+  ws.addEventListener("close", (ev) => end(ended ? 0 : (ev && ev.code === 1000) || ev.code === 1005 ? 0 : 1, "closed"));
+  ws.addEventListener("message", (ev) => {
+    last = Date.now();
+    let m;
+    try { m = JSON.parse(typeof ev.data === "string" ? ev.data : Buffer.from(ev.data).toString("utf8")); } catch { return; }
+    if (!m || typeof m !== "object") return;
+    if (m.t === "ping") { send({ t: "pong", at: m.at || 0 }); return; }
+    if (m.t === "close") { end(0, String(m.reason || "closed")); try { ws.close(1000, "done"); } catch { /* gone */ } return; }
+    if (m.t === "cancel") { if (busy && busy.id === m.id) busy.abort.abort(); return; }
+    if (m.t === "grep" || m.t === "glob") {
+      const r = m.t === "grep" ? gitGrep(m, cwd) : gitGlob(m, cwd);
+      send(Object.assign({ t: "found", id: m.id }, r));
+      return;
+    }
+    if (m.t !== "exec") return;
+    if (busy) { send({ t: "error", id: m.id, code: "busy", message: "a command is already running" }); return; }
+    const abort = new AbortController();
+    busy = { id: m.id, abort };
+    (async () => {
+      const t0 = Date.now();
+      try {
+        resetCheckout(cwd, laid);
+        const lay = applyOverlay(Array.isArray(m.overlay) ? m.overlay : [], cwd);
+        for (const f of Array.isArray(m.overlay) ? m.overlay : []) if (f && overlayPathOk(f.path)) laid.add(f.path);
+        const stream = lineStreamer((data) => send({ t: "out", id: m.id, data }), known);
+        const timer = setInterval(() => stream.tick(), 100);
+        if (lay.skipped.length) stream.write("[Tailzu: could not lay " + lay.skipped.slice(0, 5).join(", ") + "]\n");
+        const ran = await runCommands(Array.isArray(m.commands) ? m.commands : [], Number(m.timeoutSec) > 0 ? Number(m.timeoutSec) : 600, { cwd, env: commandEnv(env), echo: (x) => stream.write(x), signal: abort.signal });
+        clearInterval(timer);
+        stream.flush();
+        commands += 1;
+        send({ t: "done", id: m.id, exitCode: ran.exitCode, ms: Date.now() - t0, timedOut: ran.exitCode === 124 });
+      } catch (err) {
+        send({ t: "error", id: m.id, code: "failed", message: String(err && err.message ? err.message : err).slice(0, 300) });
+      } finally {
+        busy = null;
+        last = Date.now();
+      }
+    })();
+  });
+  const result = await over;
+  clearInterval(watch);
+  if (busy) busy.abort.abort();
+  return result;
+}
+
+/** A session step: run the session, then report to Tailzu with the identity token, as a step does. */
+export async function sessionMain(spec) {
+  const started = Date.now();
+  const requestUrl = process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
+  const requestToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
+  const ended = await runSession(spec, {});
+  const minutes = Math.round(((Date.now() - started) / 60000) * 1000) / 1000;
+  const note = "[Tailzu: live session ended (" + ended.reason + "); " + ended.commands + " command(s) run]";
+  const body = { jobId: spec.jobId, stepIdx: spec.stepIdx, epoch: spec.epoch, exitCode: ended.exitCode, outputTail: note, minutes, changes: [] };
+  if (!requestUrl || !requestToken) {
+    console.error("Tailzu: this run was not given an identity token (the workflow needs id-token: write).");
+    process.exitCode = 1;
+    return;
+  }
+  const token = await oidcToken(requestUrl, requestToken, spec.audience);
+  const sent = await postResult(spec.resultUrl, token, body);
+  if (!sent.ok && sent.status !== 409) {
+    console.error("Tailzu: could not report the result (" + (sent.status || "no answer") + ").");
+    process.exitCode = 1;
+    return;
+  }
+  process.exitCode = ended.exitCode === 0 ? 0 : 1;
+}
+
 // ------------------------------------------------------------------ main
 
 export async function main() {
   const started = Date.now();
   const cwd = process.cwd();
   const spec = JSON.parse(readFileSync(cwd + "/.tailzu/step.json", "utf8"));
+  if (spec.session && typeof spec.session.url === "string") return sessionMain(spec);
   // Keep the way to ask GitHub for an identity out of the commands' reach, and ours for the report.
   const requestUrl = process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
   const requestToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;

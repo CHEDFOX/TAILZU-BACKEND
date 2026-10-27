@@ -80,6 +80,9 @@ export function checkedText(path: string, text: string, before: string | null): 
 }
 
 export class Changeset {
+  /** Goes up every time something is staged or cleared: how a copy of the code that is laid under these edits knows to be given them again. */
+  rev = 0;
+
   /** Works on the state's own array, so what is staged is in the checkpoint the moment it is staged. */
   constructor(private readonly staged: StagedFile[]) {}
 
@@ -97,6 +100,7 @@ export class Changeset {
    * the branch (`original`) is removed from the changeset too: there is nothing to commit.
    */
   stage(path: string, content: string | null, o: { existed: boolean; original: string | null }): StagedFile | null {
+    this.rev += 1;
     const at = this.staged.findIndex((f) => f.path === path);
     if (content === null && !o.existed) {
       if (at >= 0) this.staged.splice(at, 1);
@@ -136,13 +140,18 @@ export class Changeset {
     return this.staged.map((f) => ({ path: f.path, content: f.content }));
   }
 
+  /** Every staged file as an overlay entry, without the limits a run has: for reads, which see all of it. */
+  toOverlayUnchecked(): OverlayFile[] {
+    return this.staged.map((f) => ({ path: f.path, content: f.content }));
+  }
+
   /** What changed, in one line each, for the log and the report. */
   lines(): string[] {
     const verb = { edit: "changed", create: "added", delete: "deleted" } as const;
     return this.staged.map((f) => `${f.path} (${verb[f.action]})`);
   }
 
-  clear(): void { this.staged.length = 0; }
+  clear(): void { this.rev += 1; this.staged.length = 0; }
 }
 
 /** Replaces `old` with `next` in `text` when `old` occurs exactly once. Otherwise a Refused that says what was found. */

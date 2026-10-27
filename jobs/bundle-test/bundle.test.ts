@@ -85,10 +85,11 @@ describe("wrangler.jsonc", () => {
     expect(cfg.compatibility_date! >= "2026-08-04").toBe(true);
   });
 
-  it("binds the two Workflows, the nonce book, and names no secret", () => {
+  it("binds the two Workflows, the nonce book, the devices and the rooms, and names no secret", () => {
     expect(cfg.workflows.map((w: { binding: string; class_name: string }) => [w.binding, w.class_name])).toEqual([["AGENT_JOB", "AgentJob"], ["BUILD_BRAIN", "BuildBrain"]]);
-    expect(cfg.durable_objects.bindings.map((b: { name: string; class_name: string }) => [b.name, b.class_name])).toEqual([["NONCES", "NonceGuard"]]);
-    expect(cfg.migrations.flatMap((m: { new_sqlite_classes?: string[] }) => m.new_sqlite_classes ?? [])).toEqual(["NonceGuard"]);
+    expect(cfg.durable_objects.bindings.map((b: { name: string; class_name: string }) => [b.name, b.class_name])).toEqual([["NONCES", "NonceGuard"], ["USER_DEVICES", "UserDevices"], ["ROOMS", "JobRoom"]]);
+    // Each class is added once, by a migration of its own, SQLite-backed (a deployed tag is never edited).
+    expect(cfg.migrations.map((m: { tag: string; new_sqlite_classes?: string[] }) => [m.tag, m.new_sqlite_classes])).toEqual([["v1", ["NonceGuard"]], ["v2", ["UserDevices", "JobRoom"]]]);
     const vars = Object.keys(cfg.vars ?? {});
     for (const secret of ["CODE_JOBS_SECRET", "SUPABASE_SERVICE_KEY", "OPENROUTER_API_KEY", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_CLIENT_SECRET", "CLOUDFLARE_API_TOKEN", "CONNECTOR_TOKEN_KEY"]) {
       expect(vars).not.toContain(secret);

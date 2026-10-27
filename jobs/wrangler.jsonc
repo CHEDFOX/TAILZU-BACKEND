@@ -30,9 +30,22 @@
     { "name": "tailzu-build-brain", "binding": "BUILD_BRAIN", "class_name": "BuildBrain", "default_retention": { "success_retention": "1 day", "error_retention": "3 days" } }
   ],
 
-  // Remembers the nonce of every signed call for ten minutes, so a recorded request cannot be replayed (src/nonceGuard.ts).
-  "durable_objects": { "bindings": [{ "name": "NONCES", "class_name": "NonceGuard" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["NonceGuard"] }],
+  // Durable Objects, all with SQLite storage (docs/cloudflare-jobs.md section 10):
+  //   NONCES        remembers the nonce of every signed call for ten minutes, so a recorded request cannot be replayed (src/nonceGuard.ts)
+  //   USER_DEVICES  one per person: which of their PCs are connected, over WebSockets that hibernate while idle (src/userDevices.ts)
+  //   ROOMS         one per job: a copy of its code for instant read/grep/glob, the runner kept open for the job, the app's live view (src/jobRoom.ts)
+  // A class is added with a migration tag of its own (new_sqlite_classes), once; never edit a tag that has been deployed.
+  "durable_objects": {
+    "bindings": [
+      { "name": "NONCES", "class_name": "NonceGuard" },
+      { "name": "USER_DEVICES", "class_name": "UserDevices" },
+      { "name": "ROOMS", "class_name": "JobRoom" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["NonceGuard"] },
+    { "tag": "v2", "new_sqlite_classes": ["UserDevices", "JobRoom"] }
+  ],
 
   // Plain settings. Anything that is a secret goes in the list below instead, never here.
   // Set the GitHub and Cloudflare ones to what the VPS has; PUBLIC_ORIGIN is the VPS's own address (the signed call back is made to it).
@@ -49,7 +62,15 @@
     "GITHUB_APP_ID": "",
     "CLOUDFLARE_ACCOUNT_ID": "",
     "ADVANCE_TURNS": "2",
-    "PERSON_WAIT": "7 days"
+    "PERSON_WAIT": "7 days",
+
+    // The live session. CODE_JOBS_URL is THIS Worker's own public address (https://tailzu-jobs.<your-subdomain>.workers.dev), the same value as on the
+    // VPS: a runner is told to connect to it. Left blank, the live session is off and jobs run as before. The three numbers are its rules.
+    "CODE_JOBS_URL": "",
+    "CODE_LIVE_SESSION": "true",
+    "CODE_SESSION_IDLE_SEC": "120",
+    "CODE_SESSION_MAX_MIN": "20",
+    "CODE_ACTIONS_MONTHLY_MIN": "2000"
   }
 
   // SECRETS, set once each with `npx wrangler secret put <NAME>` (docs/cloudflare-jobs.md):

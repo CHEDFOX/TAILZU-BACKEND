@@ -20,13 +20,16 @@ export const START_PATH = "/v1/start";
 export const EVENT_PATH = "/v1/event";
 export const BRAIN_PATH = "/v1/brain";
 export const NOTIFY_PATH = "/v1/internal/code/notify";
+/** VPS -> Worker: the person said something while the job works (POST /v1/code/jobs/:id/message). */
+export const MESSAGE_PATH = "/v1/message";
 
 /** What the person (or a result) did, so the job's Workflow looks again. All wake it the same; the kind is for the log. */
-export const WAKE_KINDS = ["answer", "approve", "deny", "budget", "stop", "runner", "wake"] as const;
+export const WAKE_KINDS = ["answer", "approve", "deny", "budget", "stop", "runner", "wake", "message"] as const;
 export type WakeKind = (typeof WAKE_KINDS)[number];
 
 export interface StartBody { jobId: string }
 export interface EventBody { jobId: string; kind: WakeKind }
+export interface MessageBody { jobId: string; text: string }
 export interface BrainBody { userId: string; projectId: string; mode: "full" | "incremental"; headSha: string }
 export interface NotifyBody {
   jobId: string;
@@ -41,7 +44,7 @@ export interface NotifyBody {
   estimatePaise?: number;
 }
 
-export const NOTIFY_KINDS: readonly NotifyKind[] = ["compute_ask", "compute_paused", "commit_ask", "job_moved", "job_done", "job_failed", "needs_you"];
+export const NOTIFY_KINDS: readonly NotifyKind[] = ["compute_ask", "compute_paused", "commit_ask", "job_moved", "job_done", "job_failed", "needs_you", "minutes_low"];
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHA = /^[0-9a-f]{40}$/;

@@ -39,6 +39,7 @@ import { checkCommands, parseMarkers, resultsOf, describeCheck, type CheckSpec }
 import { Refused } from "./changeset.js";
 import { buildContext, fold, systemPrompt } from "./context.js";
 import { WITHHELD_ARGS, argsHoldSecret } from "./tools.js";
+import { SAID_KEEP } from "../live/limits.js";
 import { commitMessage, prBody, prTitle, reportText } from "./report.js";
 import { BudgetStop, EndJob, LostClaim, Park, Yield, type Run } from "./run.js";
 import {
@@ -365,11 +366,34 @@ export async function workPhase(r: Run): Promise<void> {
   await r.save();
 }
 
+/**
+ * What the person said while the job worked (POST /v1/code/jobs/:id/message) goes into the state, where the next model turn shows it as
+ * their words. It is acknowledged only once it is saved, so a restart between the two shows it again rather than never; the ids keep it
+ * from being shown twice.
+ */
+export async function takeSaid(r: Run): Promise<void> {
+  const inbox = r.deps.live?.inbox;
+  if (!inbox) return;
+  let pending: Awaited<ReturnType<typeof inbox.pending>>;
+  try { pending = await inbox.pending(r.jobId); } catch { return; }
+  if (!pending.length) return;
+  const w = r.state.work;
+  const have = new Set((w.said ?? []).map((m) => m.id));
+  const fresh = pending.filter((m) => !have.has(m.id));
+  if (fresh.length) {
+    w.said = [...(w.said ?? []), ...fresh.map((m) => ({ id: m.id, text: m.text, at: m.at }))].slice(-SAID_KEEP);
+    for (const m of fresh) await r.log.note(`The person added: ${cut(m.text, 200)}`);
+    await r.save();
+  }
+  await inbox.ack(r.jobId, pending.map((m) => m.id)).catch(() => undefined);
+}
+
 async function modelTurn(r: Run): Promise<void> {
   const s = r.state;
   const w = s.work;
   const d = r.deps;
   await r.renew();
+  await takeSaid(r);
   await fold(s, r.model());
   const install = (await r.brain.baselinePlan().catch(() => [])).find((x) => x.kind === "install")?.cmd;
   const view = await r.brain.status().catch(() => null);
@@ -408,6 +432,10 @@ async function modelTurn(r: Run): Promise<void> {
   w.turns += 1;
   w.lastTier = route.tier;
   w.lastModel = res.model;
+  if (d.live?.progress) {
+    const spent = await r.money().catch(() => null);
+    if (spent) r.progress({ t: "cost", spentPaise: spent.spent, budgetPaise: spent.budget, at: r.now() });
+  }
   // What goes into the checkpoint holds no secret: a call whose arguments look like one is kept without them (and refused when it runs).
   const calls = res.toolCalls.map((t, i) => {
     const id = t.id || `call_${w.turns}_${i}`;

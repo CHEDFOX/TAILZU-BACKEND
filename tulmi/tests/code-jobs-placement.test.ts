@@ -709,11 +709,24 @@ describe("the pushes", () => {
     await expect(notifyCodeJob("nobody", "job_done", data())).resolves.toBeUndefined();
   });
 
+  it("tell the person once, in the router's own words, that the month's free GitHub minutes are running low", async () => {
+    const { sent, notifyCodeJob } = await pushRig();
+    const { minutesLowWords } = await import("../src/code/live/minutes.js");
+    const reason = minutesLowWords(2000, 1612);
+    await notifyCodeJob("user-a", "minutes_low", data({ at: 8000, reason }));
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.title).toBe("GitHub minutes running low");
+    expect(sent[0]!.body).toBe("You have used 1612 of your 2000 GitHub Actions minutes this month. Past 95% Tailzu uses your own computer instead, or waits.");
+    expect(sent[0]!.data).toMatchObject({ kind: "code_minutes_low", jobId: "job-1", screenId: "home" });
+    await notifyCodeJob("user-a", "minutes_low", data({ at: 8000, reason }));
+    expect(sent).toHaveLength(1);
+  });
+
   it("are all in the control plane's defaults, switched on, each with words, and none of them counts toward the planned pushes' fatigue", async () => {
     const { PUSH_DEFAULTS } = await pushRig();
     const { EVENT_PUSH_KINDS } = await import("../src/push/defaults.js");
     const kinds = EVENT_PUSH_KINDS.filter((k) => k.startsWith("code_"));
-    expect(kinds).toEqual(["code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed", "code_needs_you"]);
+    expect(kinds).toEqual(["code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed", "code_needs_you", "code_minutes_low"]);
     for (const k of kinds) {
       expect(PUSH_DEFAULTS.flags[`push.${k}.enabled`], k).toBe(true);
       expect(typeof PUSH_DEFAULTS.flags[`push.${k}.screenId`], k).toBe("string");

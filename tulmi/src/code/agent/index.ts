@@ -27,6 +27,7 @@ import type { JobRouter } from "../jobs/router.js";
 import { projectDepsOf } from "../jobs/index.js";
 import { jobStore, type JobStore } from "../jobs/store.js";
 import { brainOf, type AgentBrain, type AgentDeps } from "./deps.js";
+import { MemoryInbox, type LiveDeps } from "../live/ports.js";
 import { AgentOrchestrator, type RemoteJobs } from "./orchestrator.js";
 import { routerRunner, type AgentRunner } from "./runner.js";
 
@@ -60,6 +61,11 @@ export interface CreateAgentOptions extends Partial<Pick<AgentDeps, "call" | "ga
   remote?: RemoteJobs;
   /** Claims jobs only when told to (the Worker calls `advance`): no polling, no timers. */
   passive?: boolean;
+  /**
+   * The live session's ports (code/live/ports.ts): the job's copy of the code, the person's words mid-task, progress for the app. On a server that
+   * drives its own jobs an inbox in memory is made if none is given, so POST /v1/code/jobs/:id/message works there too.
+   */
+  live?: LiveDeps;
 }
 
 /** The worker, or null when this server cannot run one (no GitHub client, or the project brain is off). */
@@ -75,6 +81,7 @@ export function createAgent(o: CreateAgentOptions): AgentOrchestrator | null {
     ...(o.call ? { call: o.call } : {}), ...(o.gateway ? { gateway: o.gateway } : {}), ...(o.web ? { web: o.web } : {}), ...(o.fetchFn ? { fetchFn: o.fetchFn } : {}),
     ...(o.findResources ? { findResources: o.findResources } : {}), ...(o.worklog ? { worklog: o.worklog } : {}), ...(o.intake ? { intake: o.intake } : {}),
     ...(o.routeStats ? { routeStats: o.routeStats } : {}), ...(o.notify ? { notify: o.notify } : {}), ...(o.log ? { log: o.log } : {}),
+    ...(o.live ? { live: o.live } : o.passive || o.remote ? {} : { live: { inbox: new MemoryInbox() } }),
   };
   return new AgentOrchestrator({
     jobs: o.jobs, store, deps, concurrency: o.concurrency ?? getConfig().CODE_AGENT_CONCURRENCY,

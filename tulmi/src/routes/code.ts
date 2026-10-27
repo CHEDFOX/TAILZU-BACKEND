@@ -191,7 +191,7 @@ export const STATUS: Record<string, number> = {
   protected_branch: 409, not_fast_forward: 409, not_grantable: 400,
   needs_you: 403, policy_denied: 403, never: 403, needs_workflow_scope: 403,
   oauth_off: 404, brain_off: 404, brain_not_ready: 409, needs_signin: 403, not_allowed: 403, org_blocked: 403, scope_too_broad: 403, scope_missing: 403,
-  not_configured: 503, busy: 503,
+  not_configured: 503, busy: 503, live_off: 404,
   // The jobs and the runner protocol (routes/codeJobs.ts): a lease someone else holds now, a step still out, a job that is over,
   // a job that isn't waiting for what was said yes to, a PC that hasn't said hello, paid compute that is off or absent.
   stale_lease: 409, step_in_flight: 409, job_over: 409, not_waiting: 409, unknown_device: 409, paid_off: 409, paid_unavailable: 409,

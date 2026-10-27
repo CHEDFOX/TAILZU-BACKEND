@@ -707,6 +707,25 @@ const EnvSchema = z.object({
   CODE_JOBS_URL: z.string().trim().optional(),
   CODE_JOBS_SECRET: z.string().optional(),
   /**
+   * THE LIVE SESSION (src/code/live, docs/cloudflare-jobs.md section 10). With jobs on Cloudflare, a job has a
+   * room (a Durable Object) that holds a copy of its files for instant read, grep and glob, and keeps ONE runner
+   * open for the whole job, so a command takes about a second instead of 30 to 60. CODE_LIVE_SESSION switches it
+   * off (the job then reads through GitHub's API and runs each command as its own step, as before).
+   *
+   * The rules, all here:
+   *   CODE_SESSION_IDLE_SEC     a session with no command for this long is closed (120)
+   *   CODE_SESSION_MAX_MIN      the most minutes of live session one job may use, in all (20); it is also the
+   *                             time limit of the GitHub workflow that hosts the runner
+   *   CODE_ACTIONS_MONTHLY_MIN  the person's GitHub Actions minutes a month that Tailzu counts against (2000, a
+   *                             free plan). At 80% the person is told once; at 95% Tailzu stops choosing GitHub's
+   *                             computers for them until the month turns over. A public repo does not count
+   * A session is opened late (only on the first command) and closed before the person is asked anything.
+   */
+  CODE_LIVE_SESSION: bool(true),
+  CODE_SESSION_IDLE_SEC: z.coerce.number().int().min(5).max(3600).default(120),
+  CODE_SESSION_MAX_MIN: z.coerce.number().int().min(1).max(120).default(20),
+  CODE_ACTIONS_MONTHLY_MIN: z.coerce.number().int().min(0).max(1_000_000).default(2000),
+  /**
    * WHERE THIS PROCESS RUNS. "node" (default) is the VPS: every setting it needs is
    * checked. "worker" is the Cloudflare jobs Worker, which never transcribes
    * speech, serves the app, or takes a payment, so the settings only those need
