@@ -1,0 +1,2 @@
+{"input": "Question: what is on this screen?", "expect": {"include": ["button"], "exclude": ["```"], "maxChars": 1600}, "images": ["login-screen.png"]}
+{"input": "Question: which plan costs the most?", "expect": {"exclude": ["```"], "maxChars": 1600}, "images": ["pricing-design.png"]}

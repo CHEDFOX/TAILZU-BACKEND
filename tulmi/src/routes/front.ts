@@ -1,0 +1,220 @@
+/**
+ * THE FRONT DOOR OVER HTTP (src/front, docs/front-door.md).
+ *
+ *   POST /v1/ask { message, projectId?, attachments?, device, mode, visuals?, recent?, visual?, stream? }
+ *                          -> { id, decision, result }, or with `stream: true` (or Accept: application/x-ndjson) a stream of events, one JSON
+ *                             per line: decision, status, text, artifact, and last a result (or an error). `id` is the decision's row in the log:
+ *                             what POST /v1/ask/feedback names. `visual: "table"` (and so on) takes a one-tap offer a result made.
+ *   POST /v1/ask/feedback { id, outcome }
+ *                          -> { ok: true }  what the person did with an answer: visual_closed, visual_kept, thumbs_up, thumbs_down
+ *   GET  /v1/admin/guard   -> the overload guards at a glance: the limiter, the idempotency store, coalescing, and every breaker's state
+ *                             (x-admin-secret, like the other admin routes)
+ *
+ * The desktop's old POST /v1/ask { question, screenContent } stays exactly as it was. server.ts hands a body to this door only when it
+ * has a `message` and no `question`. Off unless FRONT_DOOR is true: those bodies are then answered 404 front_door_off.
+ *
+ * A request is guarded (routes/guarded.ts, src/guard): one run per key, so a double tap joins the run that is out; a permit, so one person
+ * and the whole server run only so many at once; 429 with Retry-After and the place in the queue when there is no room. A person who
+ * hangs up stops the run, and the model calls it was making, when nobody else is waiting on it.
+ *
+ * The bytes of an attachment come in the body (`data`, base64) the first time; after that its ref alone is enough, because what was read is
+ * kept by its SHA-256. The route's body limit is FRONT_BODY_LIMIT, because a 4 MB picture is about 5.5 MB of base64.
+ */
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { resolveUser, type AuthedUser } from "../auth/supabase.js";
+import { requireAdmin } from "../control/index.js";
+import { defaultGuard, type Guard } from "../guard/index.js";
+import {
+  DEVICES, MODES, PERSON_OUTCOMES, VISUAL_KINDS, VISUAL_PREFS, FrontError, refFromBody,
+  type AttachmentRef, type Decision, type Device, type Front, type FrontCtx, type FrontEvent, type FrontResult, type Mode, type Outcome, type Turn, type VisualKind, type VisualPref,
+} from "../front/index.js";
+import { failCode } from "./code.js";
+import { idempotencyHeader, planOf } from "./guarded.js";
+
+/** What the route accepts: room for a picture's base64. */
+export const FRONT_BODY_LIMIT = 8 * 1024 * 1024;
+export const MESSAGE_MAX = 8_000;
+const ATTACHMENTS_IN = 8;
+const TURN_CHARS = 600;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export interface FrontRoutesDeps {
+  rateLimit: { rateLimit: { max: number; timeWindow: number } };
+  /** Null while FRONT_DOOR is off. */
+  front: Front | null;
+  /** The guard the admin route reports on; the front door's own, or the process's. */
+  guard?: Guard;
+  /** The monthly allowance, as the server counts it: a sentence when it is spent, else null. */
+  quota?: (user: AuthedUser) => Promise<string | null>;
+  /** Written down after an answer (zero words: the model's words are not the person's). */
+  used?: (user: AuthedUser) => Promise<void>;
+}
+
+export interface AskInput {
+  message: string;
+  ctx: Omit<FrontCtx, "userId" | "plan">;
+  data: Map<string, Buffer>;
+  stream: boolean;
+}
+
+export type AskRead = { ok: true; input: AskInput } | { ok: false; status: number; code: string; message: string };
+
+const bad = (message: string, status = 400): AskRead => ({ ok: false, status, code: "bad_request", message });
+const oneOf = <T extends string>(list: readonly T[], v: unknown): v is T => typeof v === "string" && (list as readonly string[]).includes(v);
+
+/** The body of POST /v1/ask, checked: the message, what the person and the device are, what is attached. */
+export function readAsk(body: unknown): AskRead {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return bad("The body is a JSON object.");
+  const b = body as Record<string, unknown>;
+  if (typeof b.message !== "string" || !b.message.trim()) return bad("message is what the person said.");
+  if (b.message.length > MESSAGE_MAX) return bad(`A message may be ${MESSAGE_MAX} characters at most.`, 413);
+  if (!oneOf(DEVICES, b.device)) return bad(`device is one of ${DEVICES.join(", ")}.`);
+  if (!oneOf(MODES, b.mode)) return bad(`mode is one of ${MODES.join(", ")}.`);
+  if (b.visuals !== undefined && !oneOf(VISUAL_PREFS, b.visuals)) return bad(`visuals is one of ${VISUAL_PREFS.join(", ")}.`);
+  if (b.visual !== undefined && !oneOf(VISUAL_KINDS, b.visual)) return bad(`visual is one of ${VISUAL_KINDS.join(", ")}.`);
+  if (b.projectId !== undefined && (typeof b.projectId !== "string" || !UUID.test(b.projectId))) return bad("projectId is a project's id.");
+  if (b.stream !== undefined && typeof b.stream !== "boolean") return bad("stream is true or false.");
+
+  const attachments: AttachmentRef[] = [];
+  const data = new Map<string, Buffer>();
+  if (b.attachments !== undefined) {
+    if (!Array.isArray(b.attachments) || b.attachments.length > ATTACHMENTS_IN) return bad(`attachments is a list of ${ATTACHMENTS_IN} files at most.`);
+    for (const a of b.attachments) {
+      const got = refFromBody(a);
+      if (!got.ok) return bad(got.why);
+      if (attachments.some((x) => x.id === got.input.ref.id)) return bad("Each attachment has its own id.");
+      attachments.push(got.input.ref);
+      if (got.input.data) data.set(got.input.ref.id, got.input.data);
+    }
+  }
+
+  const recent: Turn[] = [];
+  if (b.recent !== undefined) {
+    if (!Array.isArray(b.recent) || b.recent.length > 3) return bad("recent is the last three turns at most.");
+    for (const t of b.recent) {
+      const o = t as { said?: unknown; did?: unknown } | null;
+      if (!o || typeof o !== "object" || typeof o.said !== "string" || o.said.length > TURN_CHARS) return bad(`A turn's said is up to ${TURN_CHARS} characters.`);
+      if (o.did !== undefined && (typeof o.did !== "string" || o.did.length > TURN_CHARS)) return bad(`A turn's did is up to ${TURN_CHARS} characters.`);
+      recent.push({ said: o.said, ...(o.did ? { did: o.did } : {}) });
+    }
+  }
+
+  return {
+    ok: true,
+    input: {
+      message: b.message, data, stream: b.stream === true,
+      ctx: {
+        device: b.device as Device, mode: b.mode as Mode, visuals: (b.visuals as VisualPref | undefined) ?? "auto", recent, attachments,
+        ...(typeof b.projectId === "string" ? { projectId: b.projectId } : {}), ...(b.visual !== undefined ? { takeOffer: b.visual as VisualKind } : {}),
+      },
+    },
+  };
+}
+
+/** What a finished ask is: the row's id, the decision, the result. */
+interface Asked { id: string | null; decision: Decision; result: FrontResult }
+
+const isAbort = (err: unknown): boolean => (err as { name?: unknown } | null)?.name === "AbortError";
+
+export interface FrontRoutes {
+  /** True for a body this door answers: a `message` and no `question` (the desktop's old ask). */
+  owns(body: unknown): boolean;
+  /** Answers POST /v1/ask for a signed-in person. */
+  ask(req: FastifyRequest, reply: FastifyReply, user: AuthedUser): Promise<FastifyReply>;
+}
+
+export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps): FrontRoutes {
+  const RL = { config: deps.rateLimit };
+  const { front } = deps;
+
+  const fail = (req: FastifyRequest, reply: FastifyReply, err: unknown): FastifyReply => {
+    if (err instanceof FrontError) return reply.code(err.status).send({ code: err.code, message: err.message });
+    try {
+      return failCode(reply, err);
+    } catch {
+      req.log.error(err);
+      return reply.code(500).send({ code: "ask_failed", message: "Couldn't answer that" });
+    }
+  };
+
+  const ask: FrontRoutes["ask"] = async (req, reply, user) => {
+    if (!front) return reply.code(404).send({ code: "front_door_off", message: "The smart entry point is not switched on." });
+    const read = readAsk(req.body);
+    if (!read.ok) return reply.code(read.status).send({ code: read.code, message: read.message });
+    const { input } = read;
+
+    const quota = await deps.quota?.(user);
+    if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+
+    const ctx: FrontCtx = { userId: user.id, plan: await planOf(user), ...input.ctx };
+    const streaming = input.stream || String(req.headers["accept"] ?? "").includes("application/x-ndjson");
+    const gone = new AbortController();
+    reply.raw.once("close", () => { if (!reply.raw.writableFinished) gone.abort(); });
+
+    // The stream starts at its first event, so a request turned away (429) or refused before anything was said is still an ordinary JSON answer.
+    const res = reply.raw;
+    let started = false;
+    let sawResult = false;
+    const write = (ev: FrontEvent): void => {
+      if (!started) {
+        started = true;
+        reply.hijack();
+        res.writeHead(200, { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+      }
+      if (ev.t === "result") sawResult = true;
+      if (!res.writableEnded && !res.destroyed) res.write(`${JSON.stringify(ev)}\n`);
+    };
+
+    try {
+      const out = await front.guard.run<Asked>({
+        userId: user.id, plan: ctx.plan, route: "POST /v1/ask", lane: "ask", header: idempotencyHeader(req), signal: gone.signal,
+        // The key is the person's request, whichever way the client wrote it: the stream flag is part of it, since a stream and a reply are two answers.
+        body: req.body,
+        ...(streaming ? { onEvent: (ev: unknown) => write(ev as FrontEvent) } : {}),
+      }, async (emit, stop) => {
+        const r = await front.ask(input.message, ctx, { signal: stop, emit: (ev) => emit(ev), attachmentData: input.data });
+        return { id: r.id, decision: r.decision, result: r.result };
+      });
+      void deps.used?.(user)?.catch(() => undefined);
+      if (!streaming) {
+        if (out.replay) reply.header("idempotent-replayed", "true");
+        return reply.send({ id: out.result.id, decision: out.result.decision, result: out.result.result });
+      }
+      // A late joiner may have missed events the store did not keep: the answer itself is never missed.
+      if (!sawResult) write({ t: "result", decisionId: out.result.id, decision: out.result.decision, result: out.result.result });
+      res.end();
+      return reply;
+    } catch (err) {
+      if (isAbort(err) && gone.signal.aborted) { if (started) res.end(); return reply; }
+      if (!started) return fail(req, reply, err);
+      req.log.error(err);
+      const known = err instanceof FrontError;
+      write({ t: "error", code: known ? err.code : "ask_failed", message: known ? err.message : "Couldn't answer that" });
+      res.end();
+      return reply;
+    }
+  };
+
+  app.post("/v1/ask/feedback", RL, async (req, reply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+    if (!front) return reply.code(404).send({ code: "front_door_off", message: "The smart entry point is not switched on." });
+    const b = (req.body && typeof req.body === "object" ? req.body : {}) as { id?: unknown; outcome?: unknown };
+    if (typeof b.id !== "string" || !UUID.test(b.id)) return reply.code(400).send({ code: "bad_request", message: "id is the id an answer came with." });
+    if (!oneOf(PERSON_OUTCOMES, b.outcome)) return reply.code(400).send({ code: "bad_request", message: `outcome is one of ${PERSON_OUTCOMES.join(", ")}.` });
+    try {
+      if (!(await front.feedback(user.id, b.id, b.outcome as Outcome))) return reply.code(404).send({ code: "not_found", message: "There is no such answer." });
+      return reply.send({ ok: true });
+    } catch (err) { return fail(req, reply, err); }
+  });
+
+  app.get("/v1/admin/guard", RL, async (req, reply) => {
+    if (!requireAdmin(req, reply)) return reply;
+    return reply.send({ frontDoor: !!front, ...(deps.guard ?? front?.guard ?? defaultGuard()).health() });
+  });
+
+  return {
+    owns: (body) => !!body && typeof body === "object" && typeof (body as { message?: unknown }).message === "string" && (body as { question?: unknown }).question === undefined,
+    ask,
+  };
+}

@@ -70,22 +70,21 @@ const obj = (properties: Record<string, unknown>, required: string[]) => ({ type
 export const AGENT_TOOLS: readonly ToolDef[] = [
   {
     name: "read_file",
-    description: "Read a file from the work branch, with your staged edits applied. Lines are numbered. Long files are cut: ask for a range with from and to (1-based, inclusive).",
+    description: "Read a file with your staged edits applied; lines are numbered. A long file is cut: pass from and to (1-based, inclusive).",
     parameters: obj({
       path: { type: "string", maxLength: 500 }, from: { type: "integer", minimum: 1 }, to: { type: "integer", minimum: 1 },
     }, ["path"]),
   },
   {
     name: "list_dir",
-    description: "List the files and folders directly inside a folder of the repo (path \"\" or \".\" is the root), with your staged edits applied.",
+    description: "List what is directly inside a folder (\"\" or \".\" is the root), with your staged edits applied.",
     parameters: obj({ path: { type: "string", maxLength: 500 } }, ["path"]),
   },
   {
     name: "grep",
-    description: "Search the text of the files for a regular expression (JavaScript syntax), line by line, like ripgrep: each match is `path:line:text`. "
-      + "Use it for anything EXACT: a function or variable name, a string, an import, every place something is called. It sees your staged edits and answers at once. "
-      + "Narrow it with path (a file or folder) and glob (like *.ts); ignoreCase, context (lines around a match, 0 to 5) and filesOnly (just the paths) are optional. "
-      + "Very long patterns, and nested repeats like (a+)+, are refused. If the answer says partial, narrow the search.",
+    description: "Regular-expression search of file text (JavaScript syntax), like ripgrep: `path:line:text` per match. "
+      + "Use it for anything EXACT: a name, a string, an import, every call site. It sees your staged edits. If the answer says partial, narrow it with path and glob. "
+      + "Very long patterns and nested repeats are refused.",
     parameters: obj({
       pattern: { type: "string", minLength: 1, maxLength: 300 }, path: { type: "string", maxLength: 500 }, glob: { type: "string", maxLength: 200 },
       ignoreCase: { type: "boolean" }, context: { type: "integer", minimum: 0, maximum: 5 }, filesOnly: { type: "boolean" }, maxResults: { type: "integer", minimum: 1, maximum: 500 },
@@ -93,24 +92,24 @@ export const AGENT_TOOLS: readonly ToolDef[] = [
   },
   {
     name: "glob",
-    description: "Find files by name with a glob like src/**/*.test.ts, *.md or tests/{a,b}/*.js (a pattern with no / matches the file name at any depth). "
-      + "The files changed most recently come first. It sees your staged edits. Use it to find files by name; use grep for what is inside them.",
+    description: "Find files by name with a glob; a pattern with no / matches the name at any depth. Newest changes first; it sees your staged edits. "
+      + "Use it to find files by name; use grep for what is inside them.",
     parameters: obj({ pattern: { type: "string", minLength: 1, maxLength: 200 } }, ["pattern"]),
   },
   {
     name: "search_code",
-    description: "Ask the project's index WHERE a feature lives: a file, a function or class or route, or text a person sees on screen. Returns paths with a line about each. "
-      + "Good for \"where is login handled\"; for an exact name or string, use grep. It does not see your staged edits.",
+    description: "Ask the project's index WHERE a feature lives: a file, function, class, route, or text shown on screen. Returns paths with a line each; "
+      + "for an exact name or string, use grep. It does not see your staged edits.",
     parameters: obj({ query: { type: "string", minLength: 2, maxLength: 200 } }, ["query"]),
   },
   {
     name: "edit_file",
-    description: "Replace text in a file. `old` must be copied exactly from the file and occur ONCE (include enough lines around it); `new` is what goes in its place. The edit is staged, not committed.",
+    description: "Replace text in a file. `old` is copied exactly from the file and occurs ONCE (add surrounding lines to make it so); `new` replaces it. Staged, not committed.",
     parameters: obj({ path: { type: "string", maxLength: 500 }, old: { type: "string" }, new: { type: "string" } }, ["path", "old", "new"]),
   },
   {
     name: "write_file",
-    description: "Create a file, or replace a whole file, with `content`. Staged, not committed. Prefer edit_file for a change to an existing file.",
+    description: "Create a file, or replace a whole one, with `content`. Staged, not committed. Prefer edit_file for an existing file.",
     parameters: obj({ path: { type: "string", maxLength: 500 }, content: { type: "string" } }, ["path", "content"]),
   },
   {
@@ -120,38 +119,39 @@ export const AGENT_TOOLS: readonly ToolDef[] = [
   },
   {
     name: "run",
-    description: "Run shell commands on a computer with your staged edits applied over the branch's checkout. `cmd` is one command per line; they run in order and stop at the first that fails. Do not count on anything being installed: install it in the run that needs it (a repeat install is quick). Returns the exit code and the end of the output. "
-      + "Where a live session is available, the first run of a job opens it (about a minute), later runs start at once and take as long as the commands do, and the session closes after two idle minutes; otherwise each run waits for a computer. Batch commands where you can.",
+    description: "Run shell commands over your staged edits. `cmd` is one command per line, run in order, stopping at the first failure. "
+      + "Nothing is assumed installed: install what a run needs in that run. Returns the exit code and the end of the output. "
+      + "With a live session the first run opens it (about a minute), later runs start at once, and it closes after two idle minutes; otherwise each run waits for a computer. Batch commands.",
     parameters: obj({ cmd: { type: "string", minLength: 1, maxLength: 6000 }, why: { type: "string", maxLength: 300 } }, ["cmd", "why"]),
   },
   ...WEB_TOOLS,
   {
     name: "find_resources",
-    description: "Find the best library or package for a need (\"a date picker for React\", \"PDF parsing in Python\"): a ranked shortlist with licence, maintenance, known vulnerabilities, size and fit, and a pick.",
+    description: "Find the best library or package for a need: a ranked shortlist with licence, maintenance, known vulnerabilities, size and fit, and a pick.",
     parameters: obj({ need: { type: "string", minLength: 3, maxLength: 300 } }, ["need"]),
   },
   {
     name: "flag_finding",
-    description: "Record something you noticed in code you were not asked to change: a bug, a security problem, dead code. It goes in the pull request. Do not fix it unless it is part of the task.",
+    description: "Record something you noticed outside your task (a bug, a security problem, dead code) for the pull request. Do not fix it unless the task includes it.",
     parameters: obj({
       severity: { type: "string", enum: ["info", "warn", "risk"] }, path: { type: "string", maxLength: 500 }, line: { type: "integer", minimum: 1 }, text: { type: "string", maxLength: 400 },
     }, ["severity", "path", "text"]),
   },
   {
     name: "note",
-    description: "Write a line in the work log for the person who reviews this: a decision you made and why.",
+    description: "Write a line in the work log for the reviewer: a decision and why.",
     parameters: obj({ text: { type: "string", minLength: 3, maxLength: 600 } }, ["text"]),
   },
   {
     name: "ask_user",
-    description: "Ask the person a question, only when you cannot go on without their answer. The job waits for them. Give `options` (up to 4 short choices) when you can.",
+    description: "Ask the person a question, only when you cannot go on without the answer; the job waits. Give `options` (up to 4 short choices) when you can.",
     parameters: obj({
       question: { type: "string", minLength: 3, maxLength: 600 }, options: { type: "array", maxItems: 4, items: { type: "string", maxLength: 120 } },
     }, ["question"]),
   },
   {
     name: "done",
-    description: "The work is finished (or there was nothing to change: then the summary is your answer). The server will now run the checks on your staged edits and commit them. `summary` is what the person reads first: what you did and why, in a few sentences.",
+    description: "The work is finished, or nothing needed changing (then `summary` is your answer). The server then runs the checks on your staged edits and commits them. `summary` is what the person reads first: what you did and why.",
     parameters: obj({ summary: { type: "string", minLength: 3, maxLength: 2000 } }, ["summary"]),
   },
 ];

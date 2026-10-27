@@ -45,6 +45,8 @@ import { createCode } from "./code/index.js";
 import { startOAuthSweeper } from "./code/oauth.js";
 import { createArtifacts, deleteViewerData } from "./artifacts/index.js";
 import { registerArtifactRoutes } from "./routes/artifacts.js";
+import { createFront } from "./front/index.js";
+import { FRONT_BODY_LIMIT, registerFrontRoutes } from "./routes/front.js";
 import { registerCodeRoutes } from "./routes/code.js";
 import { registerCodeJobRoutes } from "./routes/codeJobs.js";
 import { registerCodeInternalRoutes } from "./routes/codeInternal.js";
@@ -1092,6 +1094,16 @@ registerCodeJobRoutes(app, {
 // artifacts look like the project and "build it" makes a job (the routes use `code`, the job router and the agent above).
 const artifacts = createArtifacts({ log: app.log });
 registerArtifactRoutes(app, { rateLimit: AUTHED_RL, artifacts, code, jobs: codeJobs, agent: codeAgent });
+// The front door (src/front, docs/front-door.md): one smart entry point for a message, POST /v1/ask with a `message` (the desktop's old ask,
+// with a `question`, is the route below as it always was). Off unless FRONT_DOOR is true: those bodies are then answered 404 front_door_off.
+// The overload guards (src/guard) are on the routes that spend money either way; GET /v1/admin/guard shows them.
+const front = createFront({ artifacts, code, jobs: codeJobs, agent: codeAgent, log: app.log });
+const frontRoutes = registerFrontRoutes(app, {
+  rateLimit: AUTHED_RL, front,
+  quota: (user) => enforceQuota(user),
+  // The model's words are not the person's: recorded at zero words, like the old ask, so the call still shows in usage.
+  used: (user) => recordUsage({ user, source: "rest", audioSeconds: 0, words: 0, model: "front" }),
+});
 // The Worker's way back to the push engine (the push credentials stay here).
 registerCodeInternalRoutes(app, { rateLimit: AUTHED_RL, secret: jobsHandoff ? cfg.CODE_JOBS_SECRET : null, store: jobStore(), notify: notifyCodeJob });
 // "Sign in with GitHub" tokens unused for 30 days are revoked at GitHub (code/oauth.ts), on a timer, even
@@ -1852,9 +1864,13 @@ app.post("/v1/edit", { config: AUTHED_RL }, async (req, reply) => {
 // /v1/train/converse, it is metered at zero words and written to NO dictation
 // history. `speak` is the read-aloud locale, derived from the answer the same
 // way converse derives it.
-app.post("/v1/ask", { config: AUTHED_RL }, async (req, reply) => {
+app.post("/v1/ask", { config: AUTHED_RL, ...(cfg.FRONT_DOOR ? { bodyLimit: FRONT_BODY_LIMIT } : {}) }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
   if (!user) return unauthorized(reply);
+
+  // A `message` and no `question` is the front door's (routes/front.ts). The old ask keeps its 1 MB, whatever the door's limit is.
+  if (frontRoutes.owns(req.body)) return frontRoutes.ask(req, reply, user);
+  if (Number(req.headers["content-length"] ?? 0) > 1024 * 1024) return reply.code(413).send({ code: "bad_request", message: "Request body is too large" });
 
   const body = (req.body ?? {}) as AskRequest;
   if (!body.question || !body.question.trim()) {
@@ -3257,6 +3273,8 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
     // Artifacts (migration 0032): a person's artifacts take their versions and saved data with them (both cascade from artifacts); the
     // look kept for their projects goes too. What they saved in OTHER people's artifacts (scope = their id) is cleared just after.
     ["artifacts", null], ["artifact_kits", null],
+    // The front door's decision log (migration 0033): categories and numbers about their messages, never a word of them.
+    ["front_decisions", null],
   ];
   for (const [table, key] of tables) {
     try {

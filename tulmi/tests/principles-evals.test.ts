@@ -42,8 +42,13 @@ const { GapSchema, splitGaps } = await import("../src/web/research.js");
 const { ModelPlan } = await import("../src/web/search/plan.js");
 const { VerdictSchema } = await import("../src/artifacts/compare.js");
 const { parseEdits, parseRewrite } = await import("../src/artifacts/edit.js");
+const { DecideReply } = await import("../src/front/decide.js");
+const { PlanSchema: FrontPlanReply } = await import("../src/front/handlers.js");
 type Fixture = import("../src/principles/evalcheck.js").Fixture;
 type RoleId = (typeof ROLE_IDS)[number];
+
+/** The roles that read a picture: their fixtures name one, and they are told it is evidence rather than that it is data. */
+const PICTURE_ROLES: readonly RoleId[] = ["artifact_vision", "artifact_compare", "front_look"];
 
 describe("the fixture files", () => {
   it("are one per role, and nothing else is in evals/ that looks like one", () => {
@@ -72,7 +77,7 @@ describe("the fixture files", () => {
     for (const role of ROLE_IDS) {
       for (const f of loadFixtures(role).fixtures) {
         for (const name of f.images ?? []) expect(fs.existsSync(path.join(EVALS_DIR, "images", name)), `${role}: ${name}`).toBe(true);
-        if (role === "artifact_vision" || role === "artifact_compare") expect(f.images?.length, role).toBeGreaterThan(0);
+        if (PICTURE_ROLES.includes(role)) expect(f.images?.length, role).toBeGreaterThan(0);
         else expect(f.images, role).toBeUndefined();
       }
     }
@@ -84,7 +89,7 @@ describe("the fixture files", () => {
     const all = ROLE_IDS.flatMap((r) => loadFixtures(r).fixtures.map((f) => ({ role: r, f })));
     // every role that reads text has a fixture that plants an instruction in it, and a model that obeys it fails
     for (const role of ROLE_IDS) {
-      if (role === "artifact_vision" || role === "artifact_compare") continue;
+      if (PICTURE_ROLES.includes(role)) continue;
       const planted = all.filter((x) => x.role === role).some((x) => /ignore\s+(?:all\s+)?(?:previous|the above|your)\b|ignore all instructions/i.test(x.f.input));
       expect(planted, `${role} has no fixture with an instruction planted in its data`).toBe(true);
     }
@@ -228,6 +233,15 @@ describe("a known-good answer for each role", () => {
       text: '{"match":0.55,"issues":[{"area":"Subscribe button","issue":"The button is red; the design has a purple button.","severity":"major","fixHint":"Use the primary colour for the button."},{"area":"Card","issue":"Tighter padding and no border.","severity":"minor","fixHint":"Restore the card padding and border."}]}',
       reads: (t) => VerdictSchema.parse(JSON.parse(t)),
     },
+    front_decide: { text: '{"intent":"research","length":"medium","visual":"table","confidence":0.8,"clarify":null}', reads: (t) => DecideReply.parse(JSON.parse(t)) },
+    front_reply: { text: "Canberra is the capital of Australia.", reads: (t) => t },
+    front_code_answer: { text: "The cookie is set in startSession, at src/auth/session.ts:14, with httpOnly and sameSite lax.", reads: (t) => t },
+    front_diagram: { text: "flowchart TD\n  A[App] --> B[API gateway]\n  B --> C[Orders service]\n  C --> D[Database]\n  D --> C\n  C --> B\n  B --> A", reads: (t) => (t.startsWith("flowchart") ? t : null) },
+    front_plan: {
+      text: '{"title":"Three days in Jaipur","steps":[{"do":"Day 1: Amber Fort in the morning, then the old city bazaars","when":"Day 1"},{"do":"Day 2: City Palace, Jantar Mantar and Hawa Mahal","when":"Day 2"},{"do":"Day 3: Nahargarh Fort at sunrise, then shopping","when":"Day 3"}],"notes":["Book fort tickets ahead on weekends."]}',
+      reads: (t) => FrontPlanReply.parse(JSON.parse(t)),
+    },
+    front_look: { text: "A sign-in screen: a heading, two input fields and a wide blue button labelled Sign in, with a small link below it.", reads: (t) => t },
   };
 
   it("has one for every role", () => {

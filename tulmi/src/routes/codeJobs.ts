@@ -116,7 +116,9 @@ import { startJobTicker } from "../code/jobs/ticker.js";
 import { LONG_POLL_MS, TICK_MS } from "../code/jobs/types.js";
 import { DEVICE_TICKET_TTL_MS, VIEWER_TICKET_TTL_MS } from "../code/live/limits.js";
 import { signTicket } from "../code/live/tickets.js";
+import type { Guard } from "../guard/index.js";
 import { failCode } from "./code.js";
+import { guarded } from "./guarded.js";
 
 export interface CodeJobRoutesDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
@@ -134,6 +136,8 @@ export interface CodeJobRoutesDeps {
   agent?: AgentOrchestrator | null;
   /** A step's result was taken (a PC's, or GitHub's): tell whoever is waiting on the job. With jobs on the Worker this wakes its Workflow. */
   onStepResult?: (jobId: string) => void;
+  /** The overload guards job creation runs under (src/guard); the process's own when not given. */
+  guard?: Guard;
   /** The live session's passes (jobs on Cloudflare): where the Worker is and the secret both sides share. Null or absent: the two ticket routes answer 404 live_off. */
   live?: { jobsUrl: string; secret: string; now?: () => number } | null;
 }
@@ -197,11 +201,14 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
       return reply.code(400).send({ code: "bad_request", message: "budgetPaise is a whole number of paise." });
     }
     try {
-      const job = await s.jobs.createJob(s.user.id, projectId, branch, task, b.budgetPaise as number | undefined, { agent: !!deps.agent });
-      // The agent drives it from here: the whole request goes into its state (the job keeps 500 characters of it), and the worker is nudged.
-      // With jobs on the Worker, "nudged" is "handed over": a job the Worker could not be reached for comes back failed, with the reason.
-      const made = deps.agent ? await deps.agent.enqueue(job.id, task) : null;
-      return reply.send({ job: stripAgent(made ?? job) });
+      // One tap, one job: a double tap (or a retry with the same Idempotency-Key) is the job already made, never a second (src/guard).
+      return await guarded(deps.guard, req, reply, s.user, "job", async () => {
+        const job = await s.jobs.createJob(s.user.id, projectId, branch, task, b.budgetPaise as number | undefined, { agent: !!deps.agent });
+        // The agent drives it from here: the whole request goes into its state (the job keeps 500 characters of it), and the worker is nudged.
+        // With jobs on the Worker, "nudged" is "handed over": a job the Worker could not be reached for comes back failed, with the reason.
+        const made = deps.agent ? await deps.agent.enqueue(job.id, task) : null;
+        return { status: 200, body: { job: stripAgent(made ?? job) } };
+      });
     } catch (err) { return fail(reply, err); }
   });
 

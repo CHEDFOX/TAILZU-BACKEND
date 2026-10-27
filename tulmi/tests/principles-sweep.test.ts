@@ -1,5 +1,5 @@
 /**
- * THE SWEEP, HELD DOWN: no model prompt under src/code, src/artifacts or src/web is written out in the code any more.
+ * THE SWEEP, HELD DOWN: no model prompt under src/code, src/artifacts, src/web or src/front is written out in the code any more.
  *
  * It reads the source (comments taken out) and checks what the sweep did, so that it stays done:
  *   - no prompt builder has an example in it: no "Example:", "For example", "e.g.", "Examples" or Input/Output pairs;
@@ -18,7 +18,7 @@ import { describe, expect, it } from "vitest";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(here, "..", "src");
-const DIRS = ["code", "artifacts", "web"];
+const DIRS = ["code", "artifacts", "web", "front"];
 
 const { ROLE_IDS } = await import("../src/principles/roles.js");
 
@@ -70,11 +70,12 @@ const sources: Source[] = DIRS.flatMap((d) => walk(path.join(SRC, d))).map((file
 const lineOf = (code: string, at: number): number => code.slice(0, at).split("\n").length;
 
 describe("the sweep", () => {
-  it("reads every file of the three directories", () => {
+  it("reads every file of the four directories", () => {
     expect(sources.length).toBeGreaterThan(150);
     expect(sources.some((s) => s.rel === "code/brain/classify.ts")).toBe(true);
     expect(sources.some((s) => s.rel === "artifacts/edit.ts")).toBe(true);
     expect(sources.some((s) => s.rel === "web/research.ts")).toBe(true);
+    expect(sources.some((s) => s.rel === "front/decide.ts")).toBe(true);
   });
 
   it("leaves no prompt with an example in it", () => {
@@ -131,7 +132,8 @@ describe("the sweep", () => {
     expect(sites.map((s) => s.rel).sort()).toEqual([
       "artifacts/compare.ts", "artifacts/edit.ts", "artifacts/kit.ts", "artifacts/service.ts",
       "code/agent/context.ts", "code/agent/phases.ts", "code/brain/classify.ts", "code/newproject/spec.ts", "code/project/summarize.ts",
-      "code/resources/brief.ts", "code/webTools.ts", "code/work/locate.ts", "code/work/model.ts", "code/work/plan.ts", "web/research.ts", "web/search/plan.ts",
+      "code/resources/brief.ts", "code/webTools.ts", "code/work/locate.ts", "code/work/model.ts", "code/work/plan.ts",
+      "front/attachments.ts", "front/decide.ts", "front/handlers.ts", "web/research.ts", "web/search/plan.ts",
     ]);
     for (const s of sites) {
       const composes = /\bcompose\(/.test(s.code);
@@ -147,7 +149,7 @@ describe("the sweep", () => {
     const callers = sources.filter((s) => /\bcallModel\b/.test(s.code) && s.rel !== "code/brain/gateway.ts");
     expect(callers.map((s) => s.rel).sort()).toEqual([
       "artifacts/compare.ts", "artifacts/model.ts", "artifacts/service.ts", "code/agent/phases.ts", "code/brain/classify.ts",
-      "code/project/build.ts", "code/webTools.ts", "code/work/model.ts",
+      "code/project/build.ts", "code/webTools.ts", "code/work/model.ts", "front/model.ts",
     ]);
     for (const s of callers) {
       // a hand-built [{ role: ..., content: ... }] is a prompt written out; the messages of a call come from compose()
@@ -163,6 +165,7 @@ describe("the sweep", () => {
     compose("code/agent/context.ts", '"agent_work"');
     compose("artifacts/model.ts", "r.role");
     compose("artifacts/compare.ts", '"artifact_compare"');
+    compose("front/model.ts", "a.role");
   });
 
   it("uses every role at some site", () => {

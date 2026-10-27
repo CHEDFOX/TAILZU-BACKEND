@@ -36,7 +36,10 @@ const { INTENTS, DIRECT_SOURCES } = await import("../src/web/search/types.js");
 const { VerdictSchema } = await import("../src/artifacts/compare.js");
 const { ARTIFACT_LIBS } = await import("../src/artifacts/protocol.js");
 const { WELCOME_CHARS } = await import("../src/code/project/types.js");
-const { rows, totals } = await import("../scripts/prompt-sizes.js");
+const { rows, totals, NEW_ROLES } = await import("../scripts/prompt-sizes.js");
+const { DecideReply } = await import("../src/front/decide.js");
+const { PlanSchema: FrontPlanReply } = await import("../src/front/handlers.js");
+const { INTENTS: FRONT_INTENTS, LENGTHS: FRONT_LENGTHS, VISUAL_KINDS } = await import("../src/front/types.js");
 
 /** Said where the example or the explanation would be. A principle gives the rule, never a case of it. */
 const EXAMPLE_MARKERS = /\be\.g\.|\bi\.e\.|for example|for instance|such as|example:|\bexamples?\b|\blike\s+["`']/i;
@@ -77,6 +80,8 @@ describe("the library", () => {
     says("core.least", /least/i);
     says("core.unsure", /unsure/i);
     says("core.facts", /never invent/i, /facts/, /paths/, /APIs/);
+    says("core.lang", /language and script/i, /Hinglish/);
+    says("core.ask", /one question/i, /two or three options/i, /real work/i);
     says("safe.data", /web/i, /file/i, /tool/i, /never instructions/);
     says("safe.secrets", /secrets/i);
     says("safe.rules", /permission rules decide/i, /never the model/);
@@ -89,9 +94,11 @@ describe("the library", () => {
     says("code.green", /tests green/i);
     says("code.ci", /\.github\/workflows/);
     says("code.impact", /impact/i);
+    says("code.cite", /file path/i, /line/i, /does not show/i);
     says("vis.show", /show/i, /visual/i);
     says("vis.skip", /short fact/i, /voice-only/i);
     says("vis.look", /look/i, /components/i);
+    says("vis.cheap", /cheapest visual/i, /table/, /page/);
     says("res.cite", /cite every claim/i);
     says("res.official", /official/i);
     says("res.dated", /date/i, /version/i);
@@ -153,13 +160,14 @@ describe("the roles", () => {
     expect(has("artifact_compare", "media.evidence")).toBe(true);
   });
 
-  it("are all used, and every principle is used by a role (visuals are the main assistant's, not ours yet)", () => {
+  it("are all used, and every principle is used by a role (the visuals' are the front door's)", () => {
     const used = new Set(ROLE_IDS.flatMap((id) => ROLES[id].principles as readonly string[]));
     const unused = PRINCIPLES.map((p) => p.id).filter((id) => !used.has(id));
-    expect(unused).toEqual(["vis.show", "vis.skip"]);
+    expect(unused).toEqual([]);
     expect(isRoleId("classify")).toBe(true);
+    expect(isRoleId("front_decide")).toBe(true);
     expect(isRoleId("nobody")).toBe(false);
-    expect(ROLE_IDS.length).toBe(23);
+    expect(ROLE_IDS.length).toBe(29);
   });
 });
 
@@ -252,6 +260,12 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   artifact_ask: 527, // 479 measured
   artifact_vision: 482, // 438 measured
   artifact_compare: 942, // 856 measured
+  front_decide: 1606, // 1460 measured
+  front_reply: 1173, // 1066 measured
+  front_code_answer: 868, // 789 measured
+  front_diagram: 612, // 556 measured
+  front_plan: 735, // 668 measured
+  front_look: 646, // 587 measured
 };
 
 describe("the size of a role", () => {
@@ -260,9 +274,11 @@ describe("the size of a role", () => {
     for (const id of ROLE_IDS) expect(stableBlock(id).length, id).toBeLessThanOrEqual(BUDGET[id]);
   });
 
-  it("is smaller in total than what it replaced, and no role is more than a tenth bigger", () => {
+  it("is smaller in total than what it replaced, and no role is more than a tenth bigger (the front door's roles replace nothing: their first size is their 'before')", () => {
     const list = rows();
-    const total = totals(list);
+    const replaced = list.filter((r) => !(NEW_ROLES as readonly string[]).includes(r.role));
+    expect(replaced).toHaveLength(23);
+    const total = totals(replaced);
     expect(total.afterChars).toBeLessThan(total.beforeChars * 0.75);
     expect(total.afterTokens).toBeLessThan(total.beforeTokens);
     for (const r of list) expect(r.afterChars, r.role).toBeLessThanOrEqual(r.beforeChars * 1.1);
@@ -305,6 +321,8 @@ describe("the contracts say what the parsers read", () => {
     ["research_gaps", GapSchema],
     ["search_plan", ModelPlan],
     ["artifact_compare", VerdictSchema],
+    ["front_decide", DecideReply],
+    ["front_plan", FrontPlanReply],
   ];
 
   it("name every field of the schema the answer is read with", () => {
@@ -332,6 +350,11 @@ describe("the contracts say what the parsers read", () => {
     const s = ROLES.search_plan.contract;
     expect(s).toContain(INTENTS.join("|"));
     for (const src of DIRECT_SOURCES) expect(s, src).toContain(src);
+    // the front door's reader of a message says the code's own intents, lengths and visuals
+    const d = ROLES.front_decide.contract;
+    expect(d).toContain(FRONT_INTENTS.join("|"));
+    expect(d).toContain(FRONT_LENGTHS.join("|"));
+    expect(d).toContain(["none", ...VISUAL_KINDS].join("|"));
     // the sandbox every artifact role says is the one the viewer enforces
     for (const role of ["artifact_element", "artifact_edit", "artifact_fix", "artifact_make"] as const) {
       for (const lib of ARTIFACT_LIBS) expect(ROLES[role].contract, `${role} names ${lib}`).toContain(lib);

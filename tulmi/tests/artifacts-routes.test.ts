@@ -35,6 +35,7 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 });
 
 const { registerArtifactRoutes } = await import("../src/routes/artifacts.js");
+const { Guard } = await import("../src/guard/index.js");
 const { rig, idOf, FAKE_STRIPE } = await import("./artifacts-rig.js");
 type Sent = import("./artifacts-rig.js").Sent;
 const { LIMITS } = await import("../src/artifacts/protocol.js");
@@ -51,7 +52,7 @@ type Rig = ReturnType<typeof rig>;
 async function served(r: Rig | null, o: { rateLimit?: typeof RL; plugin?: boolean; code?: unknown; jobs?: unknown; agent?: unknown } = {}) {
   const app = Fastify();
   if (o.plugin) await app.register(rateLimit, { global: false, max: 1000, timeWindow: 60_000, keyGenerator: (req) => String(req.headers.authorization ?? req.ip) });
-  registerArtifactRoutes(app, { rateLimit: o.rateLimit ?? RL, artifacts: r ? { service: r.service } : null, code: (o.code ?? null) as never, jobs: (o.jobs ?? null) as never, agent: (o.agent ?? null) as never });
+  registerArtifactRoutes(app, { guard: new Guard(), rateLimit: o.rateLimit ?? RL, artifacts: r ? { service: r.service } : null, code: (o.code ?? null) as never, jobs: (o.jobs ?? null) as never, agent: (o.agent ?? null) as never });
   await app.ready();
   const call = (user: string | null, method: "GET" | "POST" | "PUT" | "DELETE", url: string, payload?: unknown, headers: Record<string, string> = {}) =>
     app.inject({ method, url, headers: { ...(user ? who(user) : {}), ...headers }, ...(payload !== undefined ? { payload: payload as object } : {}) });
@@ -489,7 +490,7 @@ describe("a component in place, and build it", () => {
     const service = new ArtifactService({ store: new MemoryArtifactStore(), call: a.model.call as never });
     const code = { ...a.code, brain: { open: async () => a.fixture.brain, runtime: { call: a.model.call } } };
     const app = Fastify();
-    registerArtifactRoutes(app, { rateLimit: RL, artifacts: { service }, code: code as never, jobs: a.jobs, agent: a.orch });
+    registerArtifactRoutes(app, { guard: new Guard(), rateLimit: RL, artifacts: { service }, code: code as never, jobs: a.jobs, agent: a.orch });
     await app.ready();
     const call = (user: string | null, method: "GET" | "POST", url: string, payload?: unknown) =>
       app.inject({ method, url, ...(user ? { headers: who(user) } : {}), ...(payload !== undefined ? { payload: payload as object } : {}) });
@@ -535,7 +536,7 @@ describe("a component in place, and build it", () => {
     const noCode = await served(r);
     expect((await noCode.call("alice", "POST", url, { request: "a card" })).json()).toMatchObject({ code: "code_off" });
     const app = Fastify();
-    registerArtifactRoutes(app, { rateLimit: RL, artifacts: { service: r.service }, code: { ...a.code, brain: null } as never });
+    registerArtifactRoutes(app, { guard: new Guard(), rateLimit: RL, artifacts: { service: r.service }, code: { ...a.code, brain: null } as never });
     await app.ready();
     const res = await app.inject({ method: "POST", url, headers: who("alice"), payload: { request: "a card" } });
     expect(res.json()).toMatchObject({ code: "brain_off" });
@@ -573,7 +574,7 @@ describe("a component in place, and build it", () => {
     // no agent loop on this server
     const r = rig();
     const app = Fastify();
-    registerArtifactRoutes(app, { rateLimit: RL, artifacts: { service: r.service }, code: { ...a.code, brain: { open: async () => a.fixture.brain, runtime: {} } } as never, jobs: a.jobs, agent: null });
+    registerArtifactRoutes(app, { guard: new Guard(), rateLimit: RL, artifacts: { service: r.service }, code: { ...a.code, brain: { open: async () => a.fixture.brain, runtime: {} } } as never, jobs: a.jobs, agent: null });
     await app.ready();
     const id = (await app.inject({ method: "POST", url: "/v1/artifacts", headers: who("alice"), payload: { type: "html", title: "H", content: "<p>x</p>" } })).json().artifact.id;
     expect((await app.inject({ method: "POST", url: `/v1/artifacts/${id}/build`, headers: who("alice"), payload: { projectId: a.project.id } })).json()).toMatchObject({ code: "agent_off" });

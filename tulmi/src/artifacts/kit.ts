@@ -28,6 +28,7 @@
  * Every dependency is injectable. Files come through `KitFiles` (the workspace, or the job's room).
  */
 import type { GatewayDeps } from "../code/brain/gateway.js";
+import { coalescer } from "../guard/coalesce.js";
 import { scanForSecrets } from "../code/policy.js";
 import type { BrainHandle } from "../code/project/index.js";
 import { baseName, isVendoredPath } from "../code/project/lang.js";
@@ -447,7 +448,12 @@ export interface KitProject { id: string; userId: string; name?: string }
  * The project's kit: from the cache when the brain's head is where the cached one was read; else read afresh and kept.
  * A project with no brain yet has no head: its kit is made and returned but not kept.
  */
-export async function designKit(deps: KitDeps, project: KitProject, o: { force?: boolean } = {}): Promise<{ kit: DesignKit; cached: boolean }> {
+export function designKit(deps: KitDeps, project: KitProject, o: { force?: boolean } = {}): Promise<{ kit: DesignKit; cached: boolean }> {
+  // Two asks for one project's kit while it is being read are one read (guard/coalesce.ts).
+  return coalescer().run(`kit:${project.id}:${o.force ? "force" : "keep"}`, () => readKit(deps, project, o));
+}
+
+async function readKit(deps: KitDeps, project: KitProject, o: { force?: boolean }): Promise<{ kit: DesignKit; cached: boolean }> {
   const status = deps.brain ? await deps.brain.status().catch(() => null) : null;
   const head = status && status.status !== "none" ? status.headSha : "";
   if (head && !o.force) {

@@ -65,7 +65,9 @@ import { componentArtifact, workspaceFiles } from "../artifacts/kit.js";
 import { LIMITS } from "../artifacts/protocol.js";
 import { isShotId, verifyShotLink } from "../artifacts/shots.js";
 import { ARTIFACT_TYPES, isArtifactError, type Artifact, type Change, type ArtifactType } from "../artifacts/types.js";
+import type { Guard } from "../guard/index.js";
 import { failCode } from "./code.js";
+import { guarded } from "./guarded.js";
 
 export interface ArtifactRoutesDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
@@ -77,6 +79,8 @@ export interface ArtifactRoutesDeps {
   agent?: AgentOrchestrator | null;
   /** The screenshot compare step's seam (artifacts/build.ts); none until it is built. */
   compareHook?: CompareHook;
+  /** The overload guards the making routes run under (src/guard); the process's own when not given. */
+  guard?: Guard;
 }
 
 /** A create carries up to 512 KB of source (JSON-escaped); a component request may carry a picture. */
@@ -153,17 +157,21 @@ export function registerArtifactRoutes(app: FastifyInstance, deps: ArtifactRoute
     const s = await begin(req, reply);
     if (!s) return reply;
     const b = bodyOf(req.body);
+    const generating = typeof b.prompt === "string" && b.content === undefined;
+    const type = b.type === undefined ? "html" : b.type;
+    if (generating && !ARTIFACT_TYPES.includes(type as ArtifactType)) return reply.code(400).send({ code: "bad_request", message: `type is one of ${ARTIFACT_TYPES.join(", ")}.` });
     try {
-      if (typeof b.prompt === "string" && b.content === undefined) {
-        const type = b.type === undefined ? "html" : b.type;
-        if (!ARTIFACT_TYPES.includes(type as ArtifactType)) return reply.code(400).send({ code: "bad_request", message: `type is one of ${ARTIFACT_TYPES.join(", ")}.` });
-        const c = await s.svc.generate(s.user.id, {
-          request: b.prompt, type: type as ArtifactType, ...(typeof b.title === "string" ? { title: b.title } : {}), ...(typeof b.projectId === "string" ? { projectId: b.projectId } : {}),
-        });
-        return reply.code(201).send({ ...(await changed(c)), classifiedAs: c.classifiedAs });
-      }
-      const c = await s.svc.create(s.user.id, { type: b.type, title: b.title, content: b.content, projectId: b.projectId, madeBy: "person" });
-      return reply.code(201).send(await changed(c));
+      // A double tap is one artifact (src/guard): the second joins the making that is out, or is shown the artifact the first made.
+      return await guarded(deps.guard, req, reply, s.user, "artifact", async () => {
+        if (generating) {
+          const c = await s.svc.generate(s.user.id, {
+            request: b.prompt as string, type: type as ArtifactType, ...(typeof b.title === "string" ? { title: b.title } : {}), ...(typeof b.projectId === "string" ? { projectId: b.projectId } : {}),
+          });
+          return { status: 201, body: { ...(await changed(c)), classifiedAs: c.classifiedAs } };
+        }
+        const c = await s.svc.create(s.user.id, { type: b.type, title: b.title, content: b.content, projectId: b.projectId, madeBy: "person" });
+        return { status: 201, body: await changed(c) };
+      });
     } catch (err) { return fail(reply, err); }
   });
 
@@ -235,13 +243,13 @@ export function registerArtifactRoutes(app: FastifyInstance, deps: ArtifactRoute
     const b = bodyOf(req.body);
     if (typeof b.instruction !== "string" || !b.instruction.trim()) return reply.code(400).send({ code: "bad_request", message: "instruction is what to change." });
     if (b.elementId !== undefined && typeof b.elementId !== "string") return reply.code(400).send({ code: "bad_request", message: 'elementId is the element\'s "line:column".' });
-    const gone = new AbortController();
-    reply.raw.once("close", () => { if (!reply.raw.writableFinished) gone.abort(); });
     try {
-      const c = b.elementId
-        ? await s.svc.editElement(s.user.id, req.params.id, b.elementId as string, b.instruction, gone.signal)
-        : await s.svc.editWhole(s.user.id, req.params.id, b.instruction, gone.signal);
-      return reply.send(await changed(c));
+      return await guarded(deps.guard, req, reply, s.user, "artifact", async (stop) => {
+        const c = b.elementId
+          ? await s.svc.editElement(s.user.id, req.params.id, b.elementId as string, b.instruction as string, stop)
+          : await s.svc.editWhole(s.user.id, req.params.id, b.instruction as string, stop);
+        return { status: 200, body: await changed(c) };
+      }, { replayUnkeyed: false });
     } catch (err) { return fail(reply, err); }
   });
 
@@ -373,20 +381,20 @@ export function registerArtifactRoutes(app: FastifyInstance, deps: ArtifactRoute
     if (b.image !== undefined && (typeof b.image !== "string" || b.image.length > 5_000_000 || !IMAGE_URL.test(b.image))) {
       return reply.code(400).send({ code: "bad_request", message: "image is a sketch or a screenshot as a data: URL (png, jpeg, webp or gif), up to about 3.5 MB." });
     }
-    const gone = new AbortController();
-    reply.raw.once("close", () => { if (!reply.raw.writableFinished) gone.abort(); });
     try {
-      const project = await ownProject(c.d, s.user.id, req.params.id);
-      const brain = await c.brain.open(s.user.id, project.id);
-      if ((await brain.status()).status === "none") return reply.code(409).send({ code: "brain_not_ready", message: "Tailzu hasn't read this project yet. Start its brain first." });
-      const ws = await workspace(c.d, s.user.id, project.id, project.defaultBranch);
-      const files = workspaceFiles(ws);
-      const r = await componentArtifact(
-        { service: s.svc, kit: { store: s.svc.store, files, brain }, brain, call: c.brain.runtime.call, gateway: c.brain.runtime.gateway },
-        { id: project.id, userId: s.user.id, name: project.fullName }, b.request, { ...(typeof b.image === "string" ? { image: b.image } : {}), signal: gone.signal },
-      );
-      const { change, ...rest } = r;
-      return reply.code(201).send({ ...(await changed(change)), ...rest });
+      return await guarded(deps.guard, req, reply, s.user, "artifact", async (stop) => {
+        const project = await ownProject(c.d, s.user.id, req.params.id);
+        const brain = await c.brain.open(s.user.id, project.id);
+        if ((await brain.status()).status === "none") return { status: 409, body: { code: "brain_not_ready", message: "Tailzu hasn't read this project yet. Start its brain first." } };
+        const ws = await workspace(c.d, s.user.id, project.id, project.defaultBranch);
+        const files = workspaceFiles(ws);
+        const r = await componentArtifact(
+          { service: s.svc, kit: { store: s.svc.store, files, brain }, brain, call: c.brain.runtime.call, gateway: c.brain.runtime.gateway },
+          { id: project.id, userId: s.user.id, name: project.fullName }, b.request as string, { ...(typeof b.image === "string" ? { image: b.image } : {}), signal: stop },
+        );
+        const { change, ...rest } = r;
+        return { status: 201, body: { ...(await changed(change)), ...rest } };
+      });
     } catch (err) { return fail(reply, err); }
   });
 
@@ -420,21 +428,26 @@ export function registerArtifactRoutes(app: FastifyInstance, deps: ArtifactRoute
     if (typeof b.projectId !== "string" || !UUID.test(b.projectId)) return reply.code(400).send({ code: "bad_request", message: "projectId is the project to build it into." });
     if (b.version !== undefined && (typeof b.version !== "number" || !Number.isInteger(b.version))) return reply.code(400).send({ code: "bad_request", message: "version is the version they approved." });
     if (b.budgetPaise !== undefined && typeof b.budgetPaise !== "number") return reply.code(400).send({ code: "bad_request", message: "budgetPaise is a whole number of paise." });
+    const jobs = deps.jobs;
+    const agent = deps.agent;
     try {
-      const artifact = await s.svc.own(s.user.id, req.params.id);
-      const project = await ownProject(c.d, s.user.id, b.projectId);
-      const brain = await c.brain.open(s.user.id, project.id);
-      if ((await brain.status()).status === "none") return reply.code(409).send({ code: "brain_not_ready", message: "Tailzu hasn't read this project yet. Start its brain first." });
-      const ws = await workspace(c.d, s.user.id, project.id, project.defaultBranch);
-      const built = await buildFromArtifact(
-        {
-          service: s.svc, projects: c.d, jobs: deps.jobs, agent: deps.agent, kit: { store: s.svc.store, files: workspaceFiles(ws), brain }, brain,
-          compareHook: deps.compareHook ?? noCompare, call: c.brain.runtime.call, gateway: c.brain.runtime.gateway,
-        },
-        s.user.id, artifact.id, (b.version as number | undefined) ?? artifact.headVersion, project.id, { ...(typeof b.budgetPaise === "number" ? { budgetPaise: b.budgetPaise } : {}) },
-      );
-      const { job, ...rest } = built;
-      return reply.code(201).send({ job: { id: job.id, state: job.state, branch: built.branch }, ...rest });
+      // "Build it" makes a job: one tap, one job (src/guard).
+      return await guarded(deps.guard, req, reply, s.user, "job", async () => {
+        const artifact = await s.svc.own(s.user.id, req.params.id);
+        const project = await ownProject(c.d, s.user.id, b.projectId as string);
+        const brain = await c.brain.open(s.user.id, project.id);
+        if ((await brain.status()).status === "none") return { status: 409, body: { code: "brain_not_ready", message: "Tailzu hasn't read this project yet. Start its brain first." } };
+        const ws = await workspace(c.d, s.user.id, project.id, project.defaultBranch);
+        const built = await buildFromArtifact(
+          {
+            service: s.svc, projects: c.d, jobs, agent, kit: { store: s.svc.store, files: workspaceFiles(ws), brain }, brain,
+            compareHook: deps.compareHook ?? noCompare, call: c.brain.runtime.call, gateway: c.brain.runtime.gateway,
+          },
+          s.user.id, artifact.id, (b.version as number | undefined) ?? artifact.headVersion, project.id, { ...(typeof b.budgetPaise === "number" ? { budgetPaise: b.budgetPaise } : {}) },
+        );
+        const { job, ...rest } = built;
+        return { status: 201, body: { job: { id: job.id, state: job.state, branch: built.branch }, ...rest } };
+      }, { replayUnkeyed: false });
     } catch (err) { return fail(reply, err); }
   });
 }

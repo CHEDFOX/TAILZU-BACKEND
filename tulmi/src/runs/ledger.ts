@@ -48,6 +48,7 @@ import { withoutUrlSecrets, type SinkHooks } from "../agent/protocol.js";
 import type { ConnectorsRuntime, StepResult } from "../agent/run.js";
 import type { ConnectorHub } from "../connectors/client.js";
 import type { UseOutcome } from "../connectors/tasks.js";
+import { withFallback } from "../guard/timing.js";
 import { outcomeOf, retrySafe, type Tally } from "./outcome.js";
 import { runStore } from "./store.js";
 import { SWEEP_TIMES, type CallRow, type RunPlatform, type RunReason, type RunState, type RunStore, type StepRecord, type Surface } from "./types.js";
@@ -103,12 +104,8 @@ const RUNS_MAX = 2000;
 /** The longest a person's request waits on the store: to claim the question its words may answer, or to keep the one it asks. */
 export const LEDGER_WAIT_MS = 2000;
 
-/** What `p` gives, or `fallback` once `ms` have gone by without it. `p` goes on either way. */
-export function within<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const late = new Promise<T>((r) => { timer = setTimeout(() => r(fallback), ms); timer.unref?.(); });
-  return Promise.race([p, late]).finally(() => clearTimeout(timer));
-}
+/** What `p` gives, or `fallback` once `ms` have gone by without it. `p` goes on either way (guard/timing.ts). */
+export const within = <T>(p: Promise<T>, ms: number, fallback: T): Promise<T> => withFallback(p, ms, fallback);
 
 /** One line of their words: no control characters, single spaces. */
 const clean = (s: string) => s.replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim();

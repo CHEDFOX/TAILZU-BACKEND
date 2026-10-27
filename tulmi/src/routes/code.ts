@@ -160,12 +160,18 @@ import type { ModelCtx } from "../code/work/model.js";
 import { branchDiff, closePr, deleteWorkBranch, markReady, mergePr, prComments, prStatus, syncBranch } from "../code/pulls.js";
 import { CodeNeedsAccount } from "../code/store.js";
 import { handleWebhook, signatureOk } from "../code/webhook.js";
+import type { Guard } from "../guard/index.js";
+import { IdempotencyConflict } from "../guard/idempotency.js";
+import { Overloaded } from "../guard/limiter.js";
 import { PAGE_CSP, page } from "./connectors.js";
+import { guarded } from "./guarded.js";
 
 export interface CodeRoutesDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
   /** Null when CODE_GITHUB is off. */
   code: Code | null;
+  /** The overload guards the model-calling routes run under (src/guard); the process's own when not given. */
+  guard?: Guard;
 }
 
 /** Where the phone's app is opened from the done page. The Code screen comes with the phone's side; for now, the app. */
@@ -205,6 +211,12 @@ export const STATUS: Record<string, number> = {
  * Shared with the jobs' routes (routes/codeJobs.ts).
  */
 export function failCode(reply: FastifyReply, err: unknown) {
+  // The guards (src/guard): no room right now, with the place in the queue and when to come back; or a key used for something else.
+  if (err instanceof Overloaded) {
+    reply.header("retry-after", String(err.retryAfterSec));
+    return reply.code(429).send({ code: err.code, message: err.message, reason: err.reason, position: err.position, retryAfterSec: err.retryAfterSec });
+  }
+  if (err instanceof IdempotencyConflict) return reply.code(409).send({ code: err.code, message: err.message });
   if (err instanceof CodeNeedsAccount) return reply.code(403).send({ code: "needs_account", message: err.message });
   if (err instanceof NoTokenKey) return reply.code(503).send({ code: "not_configured", message: err.message });
   // A refusal by the policy says which action, and whether it is one that asks with Face ID; one that is waiting for the person carries what to show them.
@@ -481,15 +493,17 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     const task = text(bodyOf(req.body).task, 3, LOCATE_TASK_MAX);
     if (task === null) return reply.code(400).send({ code: "bad_request", message: `task is what you want done, ${LOCATE_TASK_MAX} characters at most.` });
     try {
-      const brain = await s.brain.open(s.user.id, req.params.id);
-      if ((await brain.status()).status === "none") return reply.code(409).send({ code: "brain_not_ready", message: "Tailzu hasn't read this project yet. Start its brain first." });
-      const project = await ownProject(s.d, s.user.id, req.params.id);
-      let ws: Awaited<ReturnType<typeof workspace>> | null = null;
-      // Files are read from the default branch, and only when the search was unsure.
-      const read = async (path: string): Promise<string | null> => {
-        try { ws ??= await workspace(s.d, s.user.id, req.params.id, project.defaultBranch); return (await ws.read(path)).text; } catch { return null; }
-      };
-      return reply.send(await locate(task, brain, { model: modelFor(s.brain, s.user.id, LOCATE_PAISE), read }));
+      return await guarded(deps.guard, req, reply, s.user, "code", async (stop) => {
+        const brain = await s.brain.open(s.user.id, req.params.id);
+        if ((await brain.status()).status === "none") return { status: 409, body: { code: "brain_not_ready", message: "Tailzu hasn't read this project yet. Start its brain first." } };
+        const project = await ownProject(s.d, s.user.id, req.params.id);
+        let ws: Awaited<ReturnType<typeof workspace>> | null = null;
+        // Files are read from the default branch, and only when the search was unsure.
+        const read = async (path: string): Promise<string | null> => {
+          try { ws ??= await workspace(s.d, s.user.id, req.params.id, project.defaultBranch); return (await ws.read(path)).text; } catch { return null; }
+        };
+        return { status: 200, body: await locate(task, brain, { model: { ...modelFor(s.brain, s.user.id, LOCATE_PAISE), signal: stop }, read }) };
+      });
     } catch (err) { return fail(reply, err); }
   });
 
@@ -499,10 +513,12 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     const need = text(bodyOf(req.body).need, 3, NEED_MAX);
     if (need === null) return reply.code(400).send({ code: "bad_request", message: `need is what you are looking for, like "a date picker for React", ${NEED_MAX} characters at most.` });
     try {
-      const brain = await s.brain.open(s.user.id, req.params.id);
-      const project = await ownProject(s.d, s.user.id, req.params.id);
-      // A private repo is taken for a closed-source project: GPL and AGPL then warn strongly.
-      return reply.send(await findResources(need, brain, { ...(s.brain.runtime.fetchFn ? { fetchFn: s.brain.runtime.fetchFn } : {}), closedSource: project.private }));
+      return await guarded(deps.guard, req, reply, s.user, "research", async () => {
+        const brain = await s.brain.open(s.user.id, req.params.id);
+        const project = await ownProject(s.d, s.user.id, req.params.id);
+        // A private repo is taken for a closed-source project: GPL and AGPL then warn strongly.
+        return { status: 200, body: await findResources(need, brain, { ...(s.brain.runtime.fetchFn ? { fetchFn: s.brain.runtime.fetchFn } : {}), closedSource: project.private }) };
+      });
     } catch (err) { return fail(reply, err); }
   });
 
@@ -530,16 +546,21 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
       return reply.code(400).send({ code: "bad_request", message: "Send request (your first message), answers (by question id), reply (a free-text answer) or proceed (true to let Tailzu decide the rest), as text." });
     }
     try {
-      const brain = await s.brain.open(s.user.id, req.params.id);
-      const repo = await emptyRepoVerdict(brain);
-      const out = await advanceIntake(s.user.id, req.params.id, {
-        ...(request !== undefined ? { request } : {}), ...(replyText !== undefined ? { reply: replyText } : {}), ...(answers ? { answers } : {}), ...(b.proceed === true ? { proceed: true } : {}),
-      }, { model: modelFor(s.brain, s.user.id, SPEC_PAISE) });
-      if (out.state === "asking") return reply.send({ ...out, repo: { empty: repo.empty, reason: repo.reason } });
-      return reply.send({
-        ...out, repo: { empty: repo.empty, reason: repo.reason },
-        milestones: planMilestones(out.spec, out.stack).map((m) => ({ k: m.k, title: m.title, branch: milestoneBranch(m.k, m.title) })),
-      });
+      return await guarded(deps.guard, req, reply, s.user, "code", async (stop) => {
+        const brain = await s.brain.open(s.user.id, req.params.id);
+        const repo = await emptyRepoVerdict(brain);
+        const out = await advanceIntake(s.user.id, req.params.id, {
+          ...(request !== undefined ? { request } : {}), ...(replyText !== undefined ? { reply: replyText } : {}), ...(answers ? { answers } : {}), ...(b.proceed === true ? { proceed: true } : {}),
+        }, { model: { ...modelFor(s.brain, s.user.id, SPEC_PAISE), signal: stop } });
+        if (out.state === "asking") return { status: 200, body: { ...out, repo: { empty: repo.empty, reason: repo.reason } } };
+        return {
+          status: 200,
+          body: {
+            ...out, repo: { empty: repo.empty, reason: repo.reason },
+            milestones: planMilestones(out.spec, out.stack).map((m) => ({ k: m.k, title: m.title, branch: milestoneBranch(m.k, m.title) })),
+          },
+        };
+      }, { replayUnkeyed: false });
     } catch (err) { return fail(reply, err); }
   });
 

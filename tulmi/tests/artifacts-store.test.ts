@@ -274,11 +274,13 @@ describe("the migration, the whole schema and the account", () => {
     expect(mig).not.toMatch(/to anon/);
   });
 
-  it("is appended to the whole schema, last, after 0031", () => {
+  it("is appended to the whole schema, after 0031 and before the front door's 0033, whole", () => {
     expect(all).toContain("-- 0032_artifacts.sql");
     expect(all.indexOf("-- 0032_artifacts.sql")).toBeGreaterThan(all.indexOf("-- 0031_code_runner_minutes.sql"));
-    expect(all.slice(all.indexOf("-- 0032_artifacts.sql"))).toContain(mig.trim().split("\n").slice(-12).join("\n"));
-    expect(all.trimEnd().endsWith(mig.trimEnd())).toBe(true);
+    const mine = all.slice(all.indexOf("-- 0032_artifacts.sql"), all.indexOf("-- 0033_front_decisions.sql"));
+    expect(mine).toContain(mig.trim().split("\n").slice(-12).join("\n"));
+    // (the next migration's heading starts with a rule of dashes)
+    expect(mine.replace(/\n-- #+\s*$/, "").trimEnd().endsWith(mig.trimEnd())).toBe(true);
   });
 
   it("is on the account delete list (and what a viewer saved in other people's artifacts is cleared by scope), and the export covers every table", () => {
