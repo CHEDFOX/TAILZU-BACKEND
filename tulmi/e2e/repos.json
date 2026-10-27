@@ -1,0 +1,641 @@
+{
+  "version": 1,
+  "note": "Real open-source projects the reality check runs on. Each is pinned to a commit and cloned (shallow) into e2e/cache/clones; dependencies are installed once and hard-linked into every temporary checkout. 'measured' is written by `npm run e2e:repos -- verify` on this machine.",
+  "repos": [
+    {
+      "id": "express",
+      "slug": "expressjs/express",
+      "stack": "Node API",
+      "kind": "node-api",
+      "language": "javascript",
+      "pin": "1c6f1b0fe4000977b9a7b4f34097e4d527dd9824",
+      "depth": 700,
+      "workdir": "",
+      "install": {
+        "manager": "npm",
+        "cmd": "npm ci --no-audit --no-fund --loglevel=error",
+        "lock": "express.package-lock.json",
+        "approxMB": 70
+      },
+      "installChecks": [
+        "^npm (install|ci)\\b.*$"
+      ],
+      "test": {
+        "format": "mocha-json",
+        "run": "npm test",
+        "full": "npx mocha --require test/support/env --reporter json --reporter-option output=\"$E2E_REPORT\" --check-leaks test/ test/acceptance/",
+        "files": "npx mocha --require test/support/env --reporter json --reporter-option output=\"$E2E_REPORT\" --check-leaks {files}",
+        "isTestPath": "^test/.+\\.js$",
+        "testDirs": [
+          "test"
+        ]
+      },
+      "mine": {
+        "sourcePath": "^(lib/|index\\.js)",
+        "ignorePath": "^(History\\.md|Readme\\.md|examples/|benchmarks/|\\.github/|package\\.json)",
+        "runnable": "^test/[^/]+\\.js$|^test/acceptance/.+\\.js$",
+        "since": "2024-06-01"
+      },
+      "uiCapable": false,
+      "measured": {
+        "at": "2026-10-27T09:41:23.042Z",
+        "testSec": 2.6,
+        "tests": 1290,
+        "failed": 0,
+        "command": "npx mocha --require test/support/env --reporter json --reporter-option output=\"$E2E_REPORT\" --check-leaks test/ test/acceptance/",
+        "installSec": 0,
+        "installMB": 66
+      },
+      "format": {
+        "cmd": "npx eslint --fix {files}",
+        "only": "\\.js$"
+      }
+    },
+    {
+      "id": "body-parser",
+      "slug": "expressjs/body-parser",
+      "stack": "Node API middleware (HTTP body parsing, mocha)",
+      "kind": "node-api",
+      "language": "javascript",
+      "pin": "b4744d739e1e2e5257f2ddac31eed191aa5152a4",
+      "depth": 500,
+      "workdir": "",
+      "install": {
+        "manager": "npm",
+        "cmd": "npm ci --no-audit --no-fund --loglevel=error",
+        "lock": "body-parser.package-lock.json",
+        "approxMB": 70
+      },
+      "installChecks": [
+        "^npm (install|ci)\\b.*$"
+      ],
+      "test": {
+        "format": "mocha-json",
+        "run": "npm test",
+        "full": "npx mocha --reporter json --reporter-option output=\"$E2E_REPORT\" --check-leaks test/",
+        "files": "npx mocha --reporter json --reporter-option output=\"$E2E_REPORT\" --check-leaks {files}",
+        "isTestPath": "^test/.+\\.js$",
+        "testDirs": [
+          "test"
+        ]
+      },
+      "mine": {
+        "sourcePath": "^(lib/|index\\.js)",
+        "ignorePath": "^(HISTORY\\.md|README\\.md|\\.github/|package\\.json|eslint)",
+        "runnable": "^test/[^/]+\\.js$",
+        "since": "2023-06-01"
+      },
+      "uiCapable": false,
+      "measured": {
+        "at": "2026-10-27T09:57:42.920Z",
+        "testSec": 1.6,
+        "tests": 281,
+        "failed": 0,
+        "command": "npx mocha --reporter json --reporter-option output=\"$E2E_REPORT\" --check-leaks test/",
+        "installSec": 4.1,
+        "installMB": 116
+      },
+      "format": {
+        "cmd": "npx eslint --fix {files}",
+        "only": "\\.js$"
+      }
+    },
+    {
+      "id": "commander",
+      "slug": "tj/commander.js",
+      "stack": "CLI library",
+      "kind": "cli",
+      "language": "javascript",
+      "pin": "ba6d13ddb4243e5913367734f8c159089ffe7834",
+      "depth": 700,
+      "workdir": "",
+      "install": {
+        "manager": "npm",
+        "cmd": "npm ci --no-audit --no-fund --loglevel=error",
+        "approxMB": 100
+      },
+      "installChecks": [
+        "^npm (install|ci)\\b.*$"
+      ],
+      "test": {
+        "format": "junit",
+        "run": "node --test",
+        "full": "node --test --test-reporter=junit --test-reporter-destination=\"$E2E_REPORT\"",
+        "files": "node --test --test-reporter=junit --test-reporter-destination=\"$E2E_REPORT\" {files}",
+        "isTestPath": "^tests/[^/]+\\.test\\.js$",
+        "testDirs": [
+          "tests"
+        ]
+      },
+      "mine": {
+        "sourcePath": "^(lib/|index\\.js)",
+        "ignorePath": "^(CHANGELOG\\.md|Readme.*\\.md|docs/|examples/|typings/|\\.github/|package.*\\.json)",
+        "runnable": "^tests/[^/]+\\.test\\.js$",
+        "since": "2026-01-12"
+      },
+      "uiCapable": false,
+      "measured": {
+        "at": "2026-10-27T09:41:26.016Z",
+        "testSec": 2.7,
+        "tests": 1373,
+        "failed": 0,
+        "command": "node --test --test-reporter=junit --test-reporter-destination=\"$E2E_REPORT\"",
+        "installSec": 0,
+        "installMB": 100
+      },
+      "format": {
+        "cmd": "npx prettier --write {files}",
+        "only": "\\.(js|mjs|ts|json|md)$"
+      }
+    },
+    {
+      "id": "flask",
+      "slug": "pallets/flask",
+      "stack": "Python web framework",
+      "kind": "python-web",
+      "language": "python",
+      "pin": "d086db856be187255b8ec61ef409357393020f32",
+      "depth": 700,
+      "workdir": "",
+      "install": {
+        "manager": "pip",
+        "venv": "venv",
+        "packages": [
+          "blinker>=1.9.0",
+          "click>=8.1.3",
+          "itsdangerous>=2.2.0",
+          "jinja2>=3.1.2",
+          "markupsafe>=2.1.1",
+          "werkzeug>=3.1.0",
+          "asgiref",
+          "pytest>=8,<9",
+          "python-dotenv"
+        ],
+        "metadata": true,
+        "approxMB": 35
+      },
+      "installChecks": [
+        "^(uv sync|pip install|python -m pip install|pip3 install)\\b.*$"
+      ],
+      "env": {
+        "PYTHONPATH": "src:examples/javascript:examples/tutorial",
+        "PYTHONDONTWRITEBYTECODE": "1"
+      },
+      "pathPrepend": [
+        "{deps}/venv/bin"
+      ],
+      "test": {
+        "format": "junit",
+        "run": "python -m pytest -q",
+        "full": "python -m pytest -q --junitxml=\"$E2E_REPORT\"",
+        "files": "python -m pytest -q --junitxml=\"$E2E_REPORT\" {files}",
+        "isTestPath": "^tests/.+\\.py$",
+        "testDirs": [
+          "tests"
+        ]
+      },
+      "mine": {
+        "sourcePath": "^src/flask/",
+        "ignorePath": "^(CHANGES\\.rst|docs/|examples/|\\.github/|pyproject\\.toml|uv\\.lock)",
+        "runnable": "^tests/test_[^/]+\\.py$",
+        "since": "2025-01-01"
+      },
+      "uiCapable": false,
+      "measured": {
+        "at": "2026-10-27T09:41:27.851Z",
+        "testSec": 1.7,
+        "tests": 494,
+        "failed": 0,
+        "command": "python -m pytest -q --junitxml=\"$E2E_REPORT\"",
+        "installSec": 0,
+        "installMB": 33
+      },
+      "format": {
+        "cmd": "ruff check --fix --quiet {files}; ruff format --quiet {files}",
+        "only": "\\.py$"
+      }
+    },
+    {
+      "id": "click",
+      "slug": "pallets/click",
+      "stack": "Python CLI library (pytest)",
+      "kind": "cli",
+      "language": "python",
+      "pin": "2247b35ea1c47c727d7a06e51fa280e12a863ff6",
+      "depth": 500,
+      "workdir": "",
+      "install": {
+        "manager": "pip",
+        "venv": "venv",
+        "packages": [
+          "pytest>=8,<9"
+        ],
+        "metadata": true,
+        "approxMB": 25
+      },
+      "installChecks": [
+        "^(uv sync|pip install|python -m pip install|pip3 install)\\b.*$"
+      ],
+      "env": {
+        "PYTHONPATH": "src",
+        "PYTHONDONTWRITEBYTECODE": "1"
+      },
+      "pathPrepend": [
+        "{deps}/venv/bin"
+      ],
+      "test": {
+        "format": "junit",
+        "run": "python -m pytest -q",
+        "full": "python -m pytest -q -p no:cacheprovider --junitxml=\"$E2E_REPORT\"",
+        "files": "python -m pytest -q -p no:cacheprovider --junitxml=\"$E2E_REPORT\" {files}",
+        "isTestPath": "^tests/.+\\.py$",
+        "testDirs": [
+          "tests"
+        ]
+      },
+      "mine": {
+        "sourcePath": "^src/click/",
+        "ignorePath": "^(CHANGES\\.(md|rst)|docs/|examples/|\\.github/|pyproject\\.toml|uv\\.lock)",
+        "runnable": "^tests/test_[^/]+\\.py$",
+        "since": "2025-01-01"
+      },
+      "uiCapable": false,
+      "measured": {
+        "at": "2026-10-27T09:57:48.672Z",
+        "testSec": 5.1,
+        "tests": 2287,
+        "failed": 0,
+        "command": "python -m pytest -q -p no:cacheprovider --junitxml=\"$E2E_REPORT\"",
+        "installSec": 7.9,
+        "installMB": 29
+      },
+      "format": {
+        "cmd": "ruff check --fix --quiet {files}; ruff format --quiet {files}",
+        "only": "\\.py$"
+      }
+    },
+    {
+      "id": "changesets",
+      "slug": "changesets/changesets",
+      "stack": "TypeScript monorepo (pnpm, 19 packages)",
+      "kind": "ts-monorepo",
+      "language": "typescript",
+      "pin": "b09779a3d503a581df98a81384d5849db969eb03",
+      "depth": 700,
+      "workdir": "",
+      "install": {
+        "manager": "pnpm",
+        "cmd": "pnpm install --frozen-lockfile --filter '!@changesets/e2e'",
+        "approxMB": 230
+      },
+      "installChecks": [
+        "^(pnpm|npm|yarn) (install|i|ci)\\b.*$"
+      ],
+      "pre": "./node_modules/.bin/tsdown >/dev/null 2>&1",
+      "test": {
+        "format": "junit",
+        "run": "./node_modules/.bin/vitest run --tags-filter='!slow'",
+        "full": "./node_modules/.bin/vitest run --tags-filter='!slow' --reporter=junit --outputFile=\"$E2E_REPORT\"",
+        "files": "./node_modules/.bin/vitest run --reporter=junit --outputFile=\"$E2E_REPORT\" {files}",
+        "isTestPath": "^packages/.+/(__tests__/.+|[^/]+\\.test)\\.ts$|^packages/.+\\.test\\.ts$",
+        "testDirs": [
+          "packages"
+        ],
+        "checkRewrites": [
+          {
+            "match": "^(?:pnpm|npm|yarn)(?: run)? test(?:\\s+(?:--\\s+)?(?<args>.*))?$",
+            "to": "{pre} && ./node_modules/.bin/vitest run --tags-filter='!slow' {args}"
+          }
+        ]
+      },
+      "mine": {
+        "sourcePath": "^packages/[^/]+/src/",
+        "ignorePath": "^(\\.changeset/|docs/|site/|wiki/|scripts/|\\.github/|pnpm-lock|package\\.json)",
+        "runnable": "^packages/.+\\.test\\.ts$",
+        "since": "2025-06-01"
+      },
+      "uiCapable": false,
+      "measured": {
+        "at": "2026-10-27T09:41:42.315Z",
+        "testSec": 14,
+        "tests": 770,
+        "failed": 0,
+        "command": "./node_modules/.bin/tsdown >/dev/null 2>&1 ; ./node_modules/.bin/vitest run --tags-filter='!slow' --reporter=junit --outputFile=\"$E2E_REPORT\"",
+        "installSec": 0,
+        "installMB": 218
+      },
+      "format": {
+        "cmd": "./node_modules/.bin/oxfmt {files}",
+        "only": "\\.(ts|tsx|js|json|md)$"
+      }
+    },
+    {
+      "id": "bulletproof-vite",
+      "slug": "alan2207/bulletproof-react",
+      "clone": "bulletproof-react",
+      "stack": "Vite + React app (TypeScript, vitest, testing-library, msw)",
+      "kind": "vite-react",
+      "language": "typescript",
+      "pin": "9506629ed003a561c6627735480cce4994244bb4",
+      "depth": 700,
+      "workdir": "apps/react-vite",
+      "install": {
+        "manager": "yarn-pruned",
+        "cmd": "yarn install --ignore-scripts --non-interactive --silent",
+        "prune": [
+          "^@storybook/",
+          "^storybook$",
+          "^@playwright/",
+          "^pm2$",
+          "^plop$",
+          "^husky$",
+          "^lint-staged$",
+          "eslint",
+          "^prettier$",
+          "^pino",
+          "^express$",
+          "^cors$",
+          "^vite-node$",
+          "^@types/cors$",
+          "^@mswjs/http-middleware$"
+        ],
+        "approxMB": 260
+      },
+      "installChecks": [
+        "^(yarn|npm|pnpm)( install| i| ci)?( --\\S+)*$"
+      ],
+      "setup": [
+        "[ -f .env ] || cp .env.example .env"
+      ],
+      "test": {
+        "format": "junit",
+        "run": "npx vitest run",
+        "full": "npx vitest run --reporter=junit --outputFile=\"$E2E_REPORT\"",
+        "files": "npx vitest run --reporter=junit --outputFile=\"$E2E_REPORT\" {files}",
+        "isTestPath": "^src/.+\\.test\\.tsx?$",
+        "testDirs": [
+          "src"
+        ],
+        "checkRewrites": [
+          {
+            "match": "^(?:yarn|npm|pnpm)(?: run)? test(?:\\s+(?:--\\s+)?(?<args>.*))?$",
+            "to": "npx vitest run {args}"
+          }
+        ]
+      },
+      "mine": {
+        "sourcePath": "^src/",
+        "ignorePath": "^(README|docs/|e2e/|generators/|\\.storybook/|yarn\\.lock|package\\.json)",
+        "runnable": "^src/.+\\.test\\.tsx?$",
+        "since": "2024-01-01"
+      },
+      "uiCapable": true,
+      "ui": {
+        "dev": "npx vite --port {port} --host 127.0.0.1 --strictPort",
+        "port": 3000,
+        "componentsDir": "src/components/ui"
+      },
+      "measured": {
+        "at": "2026-10-27T09:41:51.258Z",
+        "testSec": 7.7,
+        "tests": 21,
+        "failed": 0,
+        "command": "npx vitest run --reporter=junit --outputFile=\"$E2E_REPORT\"",
+        "installSec": 0,
+        "installMB": 256
+      },
+      "format": {
+        "cmd": "npx eslint --fix {files}",
+        "only": "\\.(ts|tsx)$"
+      }
+    },
+    {
+      "id": "bulletproof-next",
+      "slug": "alan2207/bulletproof-react",
+      "clone": "bulletproof-react",
+      "stack": "Next.js app (App Router, TypeScript, vitest, msw)",
+      "kind": "nextjs",
+      "language": "typescript",
+      "pin": "9506629ed003a561c6627735480cce4994244bb4",
+      "depth": 700,
+      "workdir": "apps/nextjs-app",
+      "install": {
+        "manager": "yarn-pruned",
+        "cmd": "yarn install --ignore-scripts --non-interactive --silent",
+        "prune": [
+          "^@storybook/",
+          "^storybook$",
+          "^@playwright/",
+          "^pm2$",
+          "^plop$",
+          "^husky$",
+          "^lint-staged$",
+          "eslint",
+          "^prettier$",
+          "^pino",
+          "^express$",
+          "^cors$",
+          "^vite-node$",
+          "^@types/cors$",
+          "^@mswjs/http-middleware$",
+          "^tsx$"
+        ],
+        "afterInstall": [
+          "rm -rf node_modules/@next/swc-linux-x64-musl"
+        ],
+        "approxMB": 500
+      },
+      "installChecks": [
+        "^(yarn|npm|pnpm)( install| i| ci)?( --\\S+)*$"
+      ],
+      "setup": [
+        "[ -f .env ] || cp .env.example .env"
+      ],
+      "test": {
+        "format": "junit",
+        "run": "npx vitest run",
+        "full": "npx vitest run --reporter=junit --outputFile=\"$E2E_REPORT\"",
+        "files": "npx vitest run --reporter=junit --outputFile=\"$E2E_REPORT\" {files}",
+        "isTestPath": "^src/.+\\.test\\.tsx?$",
+        "testDirs": [
+          "src"
+        ],
+        "checkRewrites": [
+          {
+            "match": "^(?:yarn|npm|pnpm)(?: run)? test(?:\\s+(?:--\\s+)?(?<args>.*))?$",
+            "to": "npx vitest run {args}"
+          }
+        ]
+      },
+      "mine": {
+        "sourcePath": "^src/",
+        "ignorePath": "^(README|docs/|e2e/|generators/|\\.storybook/|yarn\\.lock|package\\.json)",
+        "runnable": "^src/.+\\.test\\.tsx?$",
+        "since": "2024-01-01"
+      },
+      "uiCapable": true,
+      "ui": {
+        "dev": "npx next dev -p {port} -H 127.0.0.1",
+        "port": 3001,
+        "componentsDir": "src/components/ui"
+      },
+      "measured": {
+        "at": "2026-10-27T09:42:00.493Z",
+        "testSec": 6.7,
+        "tests": 24,
+        "failed": 0,
+        "command": "npx vitest run --reporter=junit --outputFile=\"$E2E_REPORT\"",
+        "installSec": 0,
+        "installMB": 495
+      },
+      "format": {
+        "cmd": "npx eslint --fix {files}",
+        "only": "\\.(ts|tsx)$"
+      }
+    },
+    {
+      "id": "zustand",
+      "slug": "pmndrs/zustand",
+      "stack": "React state library (TypeScript, vitest)",
+      "kind": "react-lib",
+      "language": "typescript",
+      "pin": "382d29c485e67018c06e75ec7235130d0968522c",
+      "depth": 700,
+      "workdir": "",
+      "install": {
+        "manager": "pnpm",
+        "cmd": "pnpm install --frozen-lockfile",
+        "approxMB": 200
+      },
+      "installChecks": [
+        "^(pnpm|npm|yarn) (install|i|ci)\\b.*$"
+      ],
+      "test": {
+        "format": "junit",
+        "run": "npx vitest run",
+        "full": "npx vitest run --reporter=junit --outputFile=\"$E2E_REPORT\"",
+        "files": "npx vitest run --reporter=junit --outputFile=\"$E2E_REPORT\" {files}",
+        "isTestPath": "^tests/.+\\.test\\.tsx?$",
+        "testDirs": [
+          "tests"
+        ],
+        "checkRewrites": [
+          {
+            "match": "^(?:pnpm|npm|yarn)(?: run)? test(?::spec)?(?:\\s+(?:--\\s+)?(?<args>.*))?$",
+            "to": "npx vitest run {args}"
+          }
+        ]
+      },
+      "mine": {
+        "sourcePath": "^src/",
+        "ignorePath": "^(docs/|examples/|\\.github/|package\\.json|pnpm-lock|package-lock)",
+        "runnable": "^tests/.+\\.test\\.tsx?$",
+        "since": "2025-01-01"
+      },
+      "uiCapable": false,
+      "measured": {
+        "at": "2026-10-27T09:42:06.264Z",
+        "testSec": 4.4,
+        "tests": 233,
+        "failed": 0,
+        "command": "npx vitest run --reporter=junit --outputFile=\"$E2E_REPORT\"",
+        "installSec": 0,
+        "installMB": 204
+      },
+      "format": {
+        "cmd": "npx prettier --write {files}",
+        "only": "\\.(ts|tsx|md)$"
+      }
+    },
+    {
+      "id": "smoke-api",
+      "slug": "tailzu/smoke-api",
+      "fixture": "fixtures/smoke-api",
+      "stack": "Node API fixture (no dependencies, node:test), 14 files",
+      "kind": "node-api",
+      "language": "javascript",
+      "pin": "672e51ac5231f89588c13c2308a22be7b3a7c71b",
+      "depth": 1,
+      "workdir": "",
+      "install": {
+        "manager": "none"
+      },
+      "installChecks": [
+        "^(pnpm|npm|yarn) (install|i|ci)\\b.*$"
+      ],
+      "test": {
+        "format": "junit",
+        "run": "node --test",
+        "full": "node --test --test-reporter=junit --test-reporter-destination=\"$E2E_REPORT\"",
+        "files": "node --test --test-reporter=junit --test-reporter-destination=\"$E2E_REPORT\" {files}",
+        "isTestPath": "^test/.+\\.test\\.js$",
+        "testDirs": [
+          "test"
+        ]
+      },
+      "mine": {
+        "sourcePath": "^src/",
+        "ignorePath": "^(README|package)",
+        "runnable": "^test/.+\\.test\\.js$"
+      },
+      "uiCapable": false,
+      "measured": {
+        "at": "2026-10-27T12:08:17.771Z",
+        "testSec": 1.4,
+        "tests": 11,
+        "failed": 0,
+        "command": "node --test --test-reporter=junit --test-reporter-destination=\"$E2E_REPORT\""
+      }
+    },
+    {
+      "id": "smoke-web",
+      "slug": "tailzu/smoke-web",
+      "fixture": "fixtures/smoke-web",
+      "stack": "React app fixture (vitest, testing-library), 15 files",
+      "kind": "react-app",
+      "language": "javascript",
+      "pin": "83830c0e18564ae6994df761a1ec611815e705c4",
+      "depth": 1,
+      "workdir": "",
+      "install": {
+        "manager": "npm",
+        "cmd": "npm install --no-audit --no-fund --loglevel=error",
+        "approxMB": 160
+      },
+      "installChecks": [
+        "^(pnpm|npm|yarn) (install|i|ci)\\b.*$"
+      ],
+      "test": {
+        "format": "junit",
+        "run": "npx vitest run",
+        "full": "npx vitest run --reporter=junit --outputFile=\"$E2E_REPORT\"",
+        "files": "npx vitest run --reporter=junit --outputFile=\"$E2E_REPORT\" {files}",
+        "isTestPath": "^test/.+\\.test\\.jsx?$",
+        "testDirs": [
+          "test"
+        ],
+        "checkRewrites": [
+          {
+            "match": "^(?:yarn|npm|pnpm)(?: run)? test(?:\\s+(?:--\\s+)?(?<args>.*))?$",
+            "to": "npx vitest run {args}"
+          }
+        ]
+      },
+      "mine": {
+        "sourcePath": "^src/",
+        "ignorePath": "^(README|package)",
+        "runnable": "^test/.+\\.test\\.jsx?$"
+      },
+      "uiCapable": false,
+      "measured": {
+        "at": "2026-10-27T12:08:28.559Z",
+        "testSec": 10,
+        "tests": 5,
+        "failed": 0,
+        "command": "npx vitest run --reporter=junit --outputFile=\"$E2E_REPORT\"",
+        "installSec": 31,
+        "installMB": 63
+      }
+    }
+  ]
+}

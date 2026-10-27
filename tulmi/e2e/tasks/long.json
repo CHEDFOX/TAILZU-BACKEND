@@ -1,0 +1,201 @@
+[
+  {
+    "difficulty": 4,
+    "tags": [
+      "long",
+      "flow",
+      "bakeoff",
+      "ts"
+    ],
+    "base": {
+      "empty": true
+    },
+    "checks": {
+      "suite": false,
+      "questions": {
+        "max": 5
+      },
+      "expectPr": true,
+      "mustContain": [
+        {
+          "path": "PLAN.md",
+          "pattern": "Milestone|M1|milestone"
+        },
+        {
+          "path": "package.json",
+          "pattern": "express"
+        },
+        {
+          "path": "src/app.ts",
+          "pattern": "/notes"
+        }
+      ]
+    },
+    "id": "long-notes-api",
+    "title": "A notes API from an empty repository, in two milestones",
+    "category": "long",
+    "repo": "synthetic",
+    "request": "Build me a small notes API with Express in TypeScript. A note has a title and a body. I want to create a note, list the notes, read one and delete one. A note must have a title (400 if it is missing or blank), a missing note is a 404, and ids count up and are never reused. Add tests.",
+    "truth": {
+      "files": [
+        "src/app.ts",
+        "src/notes.ts"
+      ],
+      "allowed": [
+        "^PLAN\\.md$",
+        "^package\\.json$",
+        "^tsconfig\\.json$",
+        "^src/",
+        "^\\.env\\.example$",
+        "^\\.gitignore$",
+        "^README\\.md$"
+      ]
+    },
+    "hidden": {
+      "files": {
+        "src/notes.hidden.test.ts": "import { expect, test } from \"vitest\";\nimport { buildApp } from \"./app.js\";\n\nasync function withApp(run: (base: string) => Promise<void>) {\n  const server = buildApp().listen(0);\n  try {\n    const { port } = server.address() as { port: number };\n    await run(`http://127.0.0.1:${port}`);\n  } finally {\n    server.close();\n  }\n}\nconst json = { \"content-type\": \"application/json\" };\nconst create = (base: string, payload: unknown) => fetch(`${base}/notes`, { method: \"POST\", headers: json, body: JSON.stringify(payload) });\n\ntest(\"a created note answers 201 with its id, title and body\", async () => {\n  await withApp(async (base) => {\n    const res = await create(base, { title: \"Shopping\", body: \"milk\" });\n    expect(res.status).toBe(201);\n    expect(await res.json()).toEqual({ id: 1, title: \"Shopping\", body: \"milk\" });\n  });\n});\n\ntest(\"a note without a title, or with a blank one, is refused with 400\", async () => {\n  await withApp(async (base) => {\n    expect((await create(base, { body: \"x\" })).status).toBe(400);\n    expect((await create(base, { title: \"   \" })).status).toBe(400);\n    expect((await (await fetch(`${base}/notes`)).json())).toEqual([]);\n  });\n});\n\ntest(\"notes are listed in the order they were made\", async () => {\n  await withApp(async (base) => {\n    await create(base, { title: \"one\" });\n    await create(base, { title: \"two\" });\n    const list = (await (await fetch(`${base}/notes`)).json()) as Array<{ title: string }>;\n    expect(list.map((n) => n.title)).toEqual([\"one\", \"two\"]);\n  });\n});\n\ntest(\"one note can be read, and one that is not there is 404\", async () => {\n  await withApp(async (base) => {\n    await create(base, { title: \"one\" });\n    const ok = await fetch(`${base}/notes/1`);\n    expect(ok.status).toBe(200);\n    expect(((await ok.json()) as { title: string }).title).toBe(\"one\");\n    expect((await fetch(`${base}/notes/99`)).status).toBe(404);\n  });\n});\n\ntest(\"a note can be deleted once: 204, then it is gone and a second delete is 404\", async () => {\n  await withApp(async (base) => {\n    await create(base, { title: \"one\" });\n    expect((await fetch(`${base}/notes/1`, { method: \"DELETE\" })).status).toBe(204);\n    expect((await fetch(`${base}/notes/1`)).status).toBe(404);\n    expect((await fetch(`${base}/notes/1`, { method: \"DELETE\" })).status).toBe(404);\n  });\n});\n\ntest(\"ids are not reused after a delete\", async () => {\n  await withApp(async (base) => {\n    await create(base, { title: \"one\" });\n    await fetch(`${base}/notes/1`, { method: \"DELETE\" });\n    const again = (await (await create(base, { title: \"two\" })).json()) as { id: number };\n    expect(again.id).toBe(2);\n  });\n});\n"
+      },
+      "run": [
+        "src/notes.hidden.test.ts"
+      ],
+      "kind": "tests",
+      "minTests": 6,
+      "command": "npm install --no-audit --no-fund --loglevel=error >/dev/null 2>&1; npx vitest run src/notes.hidden.test.ts --reporter=junit --outputFile=\"$E2E_REPORT\""
+    },
+    "oracle": {
+      "kind": "milestones",
+      "classify": {
+        "type": "plan_project"
+      },
+      "files": {
+        "PLAN.md": "# Notes API\n\n## Milestones\n\n- M1: notes store, create and list\n- M2: read one, delete one\n",
+        "package.json": "{\n  \"name\": \"notes-api\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"scripts\": {\n    \"dev\": \"tsx watch src/server.ts\",\n    \"build\": \"tsc\",\n    \"start\": \"node dist/server.js\",\n    \"typecheck\": \"tsc --noEmit\",\n    \"test\": \"vitest run\"\n  },\n  \"dependencies\": {\n    \"express\": \"^4.21.0\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^20.14.0\",\n    \"@types/express\": \"^4.17.21\",\n    \"tsx\": \"^4.19.0\",\n    \"typescript\": \"^5.5.0\",\n    \"vitest\": \"^2.1.0\"\n  }\n}\n",
+        "tsconfig.json": "{\n  \"compilerOptions\": {\n    \"target\": \"ES2022\",\n    \"module\": \"NodeNext\",\n    \"moduleResolution\": \"NodeNext\",\n    \"outDir\": \"dist\",\n    \"rootDir\": \"src\",\n    \"strict\": true,\n    \"esModuleInterop\": true,\n    \"skipLibCheck\": true\n  },\n  \"include\": [\n    \"src\"\n  ]\n}\n",
+        "src/app.ts": "import express from \"express\";\nimport { NoteStore } from \"./notes.js\";\n\nexport function buildApp(store: NoteStore = new NoteStore()) {\n  const app = express();\n  app.use(express.json());\n\n  app.get(\"/health\", (_req, res) => {\n    res.json({ status: \"ok\" });\n  });\n\n  app.get(\"/notes\", (_req, res) => {\n    res.json(store.list());\n  });\n\n  app.post(\"/notes\", (req, res) => {\n    const title = typeof req.body?.title === \"string\" ? req.body.title.trim() : \"\";\n    if (!title) {\n      res.status(400).json({ error: \"title is required\" });\n      return;\n    }\n    const body = typeof req.body?.body === \"string\" ? req.body.body : \"\";\n    res.status(201).json(store.create({ title, body }));\n  });\n\n  app.get(\"/notes/:id\", (req, res) => {\n    const note = store.get(Number(req.params.id));\n    if (!note) {\n      res.status(404).json({ error: \"not found\" });\n      return;\n    }\n    res.json(note);\n  });\n\n  app.delete(\"/notes/:id\", (req, res) => {\n    if (!store.remove(Number(req.params.id))) {\n      res.status(404).json({ error: \"not found\" });\n      return;\n    }\n    res.status(204).end();\n  });\n\n  return app;\n}\n",
+        "src/server.ts": "import { buildApp } from \"./app.js\";\n\nconst port = Number(process.env.PORT ?? 3000);\nbuildApp().listen(port, \"0.0.0.0\");\n",
+        "src/app.test.ts": "import { expect, test } from \"vitest\";\nimport { buildApp } from \"./app.js\";\n\nasync function withApp(run: (base: string) => Promise<void>) {\n  const server = buildApp().listen(0);\n  try {\n    const { port } = server.address() as { port: number };\n    await run(`http://127.0.0.1:${port}`);\n  } finally {\n    server.close();\n  }\n}\n\nconst post = (base: string, payload: unknown) =>\n  fetch(`${base}/notes`, { method: \"POST\", headers: { \"content-type\": \"application/json\" }, body: JSON.stringify(payload) });\n\ntest(\"health\", async () => {\n  await withApp(async (base) => {\n    const res = await fetch(`${base}/health`);\n    expect(res.status).toBe(200);\n    expect(await res.json()).toEqual({ status: \"ok\" });\n  });\n});\n\ntest(\"creates, reads, lists and deletes a note\", async () => {\n  await withApp(async (base) => {\n    const made = await post(base, { title: \"first\", body: \"hello\" });\n    expect(made.status).toBe(201);\n    const note = (await made.json()) as { id: number };\n    expect((await fetch(`${base}/notes/${note.id}`)).status).toBe(200);\n    expect(((await (await fetch(`${base}/notes`)).json()) as unknown[]).length).toBe(1);\n    expect((await fetch(`${base}/notes/${note.id}`, { method: \"DELETE\" })).status).toBe(204);\n    expect((await fetch(`${base}/notes/${note.id}`)).status).toBe(404);\n  });\n});\n\ntest(\"a note needs a title\", async () => {\n  await withApp(async (base) => {\n    expect((await post(base, { body: \"no title\" })).status).toBe(400);\n  });\n});\n",
+        ".env.example": "PORT=3000\n",
+        "src/notes.ts": "export interface Note {\n  id: number;\n  title: string;\n  body: string;\n}\n\n/** The notes, in memory: ids count up and are never used again. */\nexport class NoteStore {\n  private notes: Note[] = [];\n  private nextId = 1;\n\n  list(): Note[] {\n    return this.notes.slice();\n  }\n\n  get(id: number): Note | undefined {\n    return this.notes.find((note) => note.id === id);\n  }\n\n  create(input: { title: string; body?: string }): Note {\n    const note: Note = { id: this.nextId++, title: input.title, body: input.body ?? \"\" };\n    this.notes.push(note);\n    return note;\n  }\n\n  remove(id: number): boolean {\n    const before = this.notes.length;\n    this.notes = this.notes.filter((note) => note.id !== id);\n    return this.notes.length < before;\n  }\n}\n",
+        "src/notes.test.ts": "import { expect, test } from \"vitest\";\nimport { NoteStore } from \"./notes.js\";\n\ntest(\"creates notes with counting ids\", () => {\n  const store = new NoteStore();\n  expect(store.create({ title: \"a\" }).id).toBe(1);\n  expect(store.create({ title: \"b\", body: \"text\" })).toEqual({ id: 2, title: \"b\", body: \"text\" });\n});\n\ntest(\"never reuses an id\", () => {\n  const store = new NoteStore();\n  store.create({ title: \"a\" });\n  store.remove(1);\n  expect(store.create({ title: \"b\" }).id).toBe(2);\n});\n\ntest(\"remove says whether anything was removed\", () => {\n  const store = new NoteStore();\n  store.create({ title: \"a\" });\n  expect(store.remove(1)).toBe(true);\n  expect(store.remove(1)).toBe(false);\n});\n"
+      },
+      "milestones": [
+        {
+          "title": "Notes store, create and list",
+          "files": {
+            "src/notes.ts": "export interface Note {\n  id: number;\n  title: string;\n  body: string;\n}\n\n/** The notes, in memory: ids count up and are never used again. */\nexport class NoteStore {\n  private notes: Note[] = [];\n  private nextId = 1;\n\n  list(): Note[] {\n    return this.notes.slice();\n  }\n\n  get(id: number): Note | undefined {\n    return this.notes.find((note) => note.id === id);\n  }\n\n  create(input: { title: string; body?: string }): Note {\n    const note: Note = { id: this.nextId++, title: input.title, body: input.body ?? \"\" };\n    this.notes.push(note);\n    return note;\n  }\n\n  remove(id: number): boolean {\n    const before = this.notes.length;\n    this.notes = this.notes.filter((note) => note.id !== id);\n    return this.notes.length < before;\n  }\n}\n",
+            "src/notes.test.ts": "import { expect, test } from \"vitest\";\nimport { NoteStore } from \"./notes.js\";\n\ntest(\"creates notes with counting ids\", () => {\n  const store = new NoteStore();\n  expect(store.create({ title: \"a\" }).id).toBe(1);\n  expect(store.create({ title: \"b\", body: \"text\" })).toEqual({ id: 2, title: \"b\", body: \"text\" });\n});\n\ntest(\"never reuses an id\", () => {\n  const store = new NoteStore();\n  store.create({ title: \"a\" });\n  store.remove(1);\n  expect(store.create({ title: \"b\" }).id).toBe(2);\n});\n\ntest(\"remove says whether anything was removed\", () => {\n  const store = new NoteStore();\n  store.create({ title: \"a\" });\n  expect(store.remove(1)).toBe(true);\n  expect(store.remove(1)).toBe(false);\n});\n",
+            "src/app.ts": "import express from \"express\";\nimport { NoteStore } from \"./notes.js\";\n\nexport function buildApp(store: NoteStore = new NoteStore()) {\n  const app = express();\n  app.use(express.json());\n\n  app.get(\"/health\", (_req, res) => {\n    res.json({ status: \"ok\" });\n  });\n\n  app.get(\"/notes\", (_req, res) => {\n    res.json(store.list());\n  });\n\n  app.post(\"/notes\", (req, res) => {\n    const title = typeof req.body?.title === \"string\" ? req.body.title.trim() : \"\";\n    if (!title) {\n      res.status(400).json({ error: \"title is required\" });\n      return;\n    }\n    const body = typeof req.body?.body === \"string\" ? req.body.body : \"\";\n    res.status(201).json(store.create({ title, body }));\n  });\n\n  return app;\n}\n"
+          },
+          "existing": [
+            "src/app.ts"
+          ]
+        },
+        {
+          "title": "Read one, delete one",
+          "files": {
+            "src/app.ts": "import express from \"express\";\nimport { NoteStore } from \"./notes.js\";\n\nexport function buildApp(store: NoteStore = new NoteStore()) {\n  const app = express();\n  app.use(express.json());\n\n  app.get(\"/health\", (_req, res) => {\n    res.json({ status: \"ok\" });\n  });\n\n  app.get(\"/notes\", (_req, res) => {\n    res.json(store.list());\n  });\n\n  app.post(\"/notes\", (req, res) => {\n    const title = typeof req.body?.title === \"string\" ? req.body.title.trim() : \"\";\n    if (!title) {\n      res.status(400).json({ error: \"title is required\" });\n      return;\n    }\n    const body = typeof req.body?.body === \"string\" ? req.body.body : \"\";\n    res.status(201).json(store.create({ title, body }));\n  });\n\n  app.get(\"/notes/:id\", (req, res) => {\n    const note = store.get(Number(req.params.id));\n    if (!note) {\n      res.status(404).json({ error: \"not found\" });\n      return;\n    }\n    res.json(note);\n  });\n\n  app.delete(\"/notes/:id\", (req, res) => {\n    if (!store.remove(Number(req.params.id))) {\n      res.status(404).json({ error: \"not found\" });\n      return;\n    }\n    res.status(204).end();\n  });\n\n  return app;\n}\n",
+            "src/app.test.ts": "import { expect, test } from \"vitest\";\nimport { buildApp } from \"./app.js\";\n\nasync function withApp(run: (base: string) => Promise<void>) {\n  const server = buildApp().listen(0);\n  try {\n    const { port } = server.address() as { port: number };\n    await run(`http://127.0.0.1:${port}`);\n  } finally {\n    server.close();\n  }\n}\n\nconst post = (base: string, payload: unknown) =>\n  fetch(`${base}/notes`, { method: \"POST\", headers: { \"content-type\": \"application/json\" }, body: JSON.stringify(payload) });\n\ntest(\"health\", async () => {\n  await withApp(async (base) => {\n    const res = await fetch(`${base}/health`);\n    expect(res.status).toBe(200);\n    expect(await res.json()).toEqual({ status: \"ok\" });\n  });\n});\n\ntest(\"creates, reads, lists and deletes a note\", async () => {\n  await withApp(async (base) => {\n    const made = await post(base, { title: \"first\", body: \"hello\" });\n    expect(made.status).toBe(201);\n    const note = (await made.json()) as { id: number };\n    expect((await fetch(`${base}/notes/${note.id}`)).status).toBe(200);\n    expect(((await (await fetch(`${base}/notes`)).json()) as unknown[]).length).toBe(1);\n    expect((await fetch(`${base}/notes/${note.id}`, { method: \"DELETE\" })).status).toBe(204);\n    expect((await fetch(`${base}/notes/${note.id}`)).status).toBe(404);\n  });\n});\n\ntest(\"a note needs a title\", async () => {\n  await withApp(async (base) => {\n    expect((await post(base, { body: \"no title\" })).status).toBe(400);\n  });\n});\n"
+          },
+          "existing": [
+            "src/app.ts",
+            "src/app.test.ts",
+            "src/notes.ts"
+          ]
+        }
+      ],
+      "spec": {
+        "name": "Notes API",
+        "summary": "A small REST API for notes: create, list, read and delete, in Express and TypeScript.",
+        "users": [
+          "developers who want a notes service"
+        ],
+        "platforms": [
+          "api"
+        ],
+        "features": [
+          {
+            "name": "Create and list notes",
+            "description": "POST /notes with a required title, GET /notes",
+            "priority": "must"
+          },
+          {
+            "name": "Read and delete a note",
+            "description": "GET /notes/:id and DELETE /notes/:id, 404 when missing",
+            "priority": "must"
+          }
+        ],
+        "nonGoals": [
+          "Accounts, a database, pagination"
+        ],
+        "dataModel": [
+          {
+            "entity": "Note",
+            "fields": [
+              "id",
+              "title",
+              "body"
+            ]
+          }
+        ],
+        "endpoints": [
+          {
+            "method": "POST",
+            "path": "/notes",
+            "purpose": "create a note"
+          },
+          {
+            "method": "GET",
+            "path": "/notes",
+            "purpose": "list the notes"
+          },
+          {
+            "method": "GET",
+            "path": "/notes/:id",
+            "purpose": "read one"
+          },
+          {
+            "method": "DELETE",
+            "path": "/notes/:id",
+            "purpose": "delete one"
+          }
+        ],
+        "risks": [
+          "Notes live in memory and are lost on a restart"
+        ],
+        "assumptions": [
+          "No persistence is needed in the first version"
+        ],
+        "needs": {
+          "auth": false,
+          "database": false,
+          "payments": false,
+          "seo": false,
+          "realtime": false,
+          "files": false,
+          "ai": false
+        }
+      }
+    },
+    "scenario": {
+      "milestoneJobs": 2,
+      "default": "Just start: use your best judgement and keep it small.",
+      "answers": [
+        {
+          "when": ".",
+          "say": "Just start, you decide."
+        }
+      ],
+      "timeoutSec": 480
+    },
+    "budgetPaise": 3000,
+    "validated": {
+      "at": "2026-10-27T13:19:23.276Z",
+      "baseFails": true,
+      "oraclePasses": true,
+      "baseTestsFailed": 1,
+      "oracleTests": 6,
+      "ms": 16059,
+      "note": "fails before, passes with the oracle's patch"
+    }
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "note": "Candidate pools per tier. Edit this file to add a model: `npm run models-watch` lists new ones from these families. A model that is not in OpenRouter's catalog, or that lacks a capability its role needs, is dropped with the reason by e2e/bakeoff/capability.ts.",
+  "tiers": {
+    "tiny": ["qwen/qwen3.7-flash", "openai/gpt-6-luna", "anthropic/claude-haiku-5.5", "minimax/minimax-m3.1-flash"],
+    "cheap": ["deepseek/deepseek-v4.1-flash", "qwen/qwen3.8-flash", "minimax/minimax-m3.1-flash", "z-ai/glm-5.3-flash", "anthropic/claude-haiku-5.5"],
+    "code": ["deepseek/deepseek-v4.1-flash", "qwen/qwen3-coder-next", "moonshotai/kimi-k2.7-code", "minimax/minimax-m3", "z-ai/glm-5.3-flash", "deepseek/deepseek-v4-pro"],
+    "strong": ["deepseek/deepseek-v4-pro", "moonshotai/kimi-k3.1-pro", "moonshotai/kimi-k3", "qwen/qwen3.8-max-0902", "anthropic/claude-sonnet-5.5", "openai/gpt-6.1-sol"],
+    "vision": ["minimax/minimax-m3.1-flash", "qwen/qwen3.8-flash", "anthropic/claude-haiku-5.5", "google/gemini-2.5-flash"]
+  },
+  "writingOnly": ["nousresearch/hermes-4-405b"],
+  "needs": {
+    "tiny": [],
+    "cheap": [],
+    "code": ["tools"],
+    "strong": ["tools"],
+    "vision": ["image"]
+  },
+  "families": ["qwen", "openai", "anthropic", "minimax", "deepseek", "z-ai", "moonshotai", "google", "nousresearch", "mistralai", "x-ai", "meta-llama"]
+}

@@ -1,0 +1,4 @@
+body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 32rem; }
+.todo-item { display: flex; gap: 0.5rem; align-items: center; padding: 0.25rem 0; }
+.todo-item.done span { text-decoration: line-through; color: #888; }
+.footer { display: flex; justify-content: space-between; margin-top: 1rem; }

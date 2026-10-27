@@ -1,0 +1,11 @@
+{
+  "name": "smoke-api",
+  "version": "1.0.0",
+  "description": "A tiny items API: an HTTP server with pagination, validation and a rate limit.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  },
+  "license": "MIT"
+}
