@@ -289,7 +289,8 @@ async function main(): Promise<void> {
   records.push(...res.records);
   flush(res.aborted);
   const { buildReport } = await import("./report/html.js");
-  fs.writeFileSync(path.join(dir, "report.html"), buildReport({ meta: meta(res.aborted), results: res.records }));
+  const readLatest = <T>(...parts: string[]): T | null => { try { return JSON.parse(fs.readFileSync(path.join(OUT_DIR, ...parts), "utf8")) as T; } catch { return null; } };
+  fs.writeFileSync(path.join(dir, "report.html"), buildReport({ meta: meta(res.aborted), results: res.records }, { parts: readLatest("parts", "latest.json"), grid: readLatest("grid", "latest.json") }));
   const latest = path.join(OUT_DIR, "latest");
   rmrf(latest);
   fs.symlinkSync(dir, latest, "dir");

@@ -6,7 +6,11 @@
  *
  *   POST /v1/chat/completions   record: forwarded to OpenRouter and written to the cassette. replay: served from it. mixed: from it, else forwarded
  *   GET  /v1/models             the models the cassette has, so a client that lists models finds them
+ *   POST /v1/responses          the Responses API (Codex CLI speaks nothing else): turned into the chat request it means, so it is recorded and replayed
+ *                               like the rest (adapters/responses.ts)
  *   GET  /stats                 hits, misses, recorded, dollars spent and replayed, per run
+ *   GET  /run/<id>/stats        one run: calls, prompt and completion tokens, dollars (spent, or what a replayed answer had cost), models, wall time
+ *   POST /run/<id>/cap          {"capUsd": 0.25}: from then on this run's calls are refused with a 402 once its dollars reach the cap
  *
  * Environment: E2E_PROXY_PORT (8787), E2E_PROXY_MODE (record | replay | mixed, default replay), E2E_CASSETTE (the cassette's name, default "smoke"),
  * E2E_BUDGET_INR (the hard cap in rupees for record and mixed; 0 = none), E2E_PROXY_LOOSE (1: a miss is tried by the run's call order),
@@ -19,7 +23,8 @@
 import "./env.js";
 import http from "node:http";
 import type { ChatClient } from "../src/code/brain/gateway.js";
-import { CassetteClient, CassetteStore, SpendGuard, type CassetteMode, type CassetteStats } from "./adapters/cassette.js";
+import { CassetteClient, CassetteStore, SpendGuard, costUsdOf, type CassetteMode, type CassetteStats } from "./adapters/cassette.js";
+import { chatToResponses, responseEvents, responsesToChat, sseOf } from "./adapters/responses.js";
 import { openRouterClient } from "./adapters/upstream.js";
 
 export interface ProxyOptions {
@@ -30,7 +35,25 @@ export interface ProxyOptions {
   capUsd?: number;
   loose?: boolean;
   upstream?: ChatClient;
+  /** Where the cassette file lives (the cassettes folder by default): a proof run keeps its own out of the repository. */
+  cassetteDir?: string;
   log?: (s: string) => void;
+}
+
+/** What one labelled run has used, counted from the answers served to it (recorded or replayed). */
+export interface RunUsage {
+  run: string;
+  calls: number;
+  promptTokens: number;
+  completionTokens: number;
+  /** Dollars the answers cost: the upstream's charge when recorded, what it had cost when replayed. */
+  costUsd: number;
+  models: Record<string, number>;
+  firstAt: number | null;
+  lastAt: number | null;
+  /** Calls refused because the run's own cap was reached. */
+  refused: number;
+  capUsd: number;
 }
 
 export interface Proxy {
@@ -40,6 +63,8 @@ export interface Proxy {
   guard: SpendGuard;
   /** Stats per run label ("-" for unlabelled). */
   runs(): Record<string, CassetteStats>;
+  /** Tokens, dollars, models and times of one run. */
+  usage(run: string): RunUsage;
   total(): CassetteStats;
   close(): Promise<void>;
 }
@@ -76,7 +101,7 @@ function streamOf(res: http.ServerResponse, answer: Record<string, any>, include
 }
 
 export async function startProxy(o: ProxyOptions): Promise<Proxy> {
-  const store = new CassetteStore(o.cassette);
+  const store = o.cassetteDir ? new CassetteStore(o.cassette, o.cassetteDir) : new CassetteStore(o.cassette);
   if (o.mode === "record") store.reset(); else store.load();
   const guard = new SpendGuard(o.capUsd ?? 0);
   const upstream = o.mode === "replay" ? undefined : (o.upstream ?? openRouterClient());
@@ -90,6 +115,42 @@ export async function startProxy(o: ProxyOptions): Promise<Proxy> {
     return c;
   };
   const log = o.log ?? (() => undefined);
+  const usages = new Map<string, RunUsage>();
+  const usageOf = (run: string): RunUsage => {
+    let u = usages.get(run);
+    if (!u) { u = { run, calls: 0, promptTokens: 0, completionTokens: 0, costUsd: 0, models: {}, firstAt: null, lastAt: null, refused: 0, capUsd: 0 }; usages.set(run, u); }
+    return u;
+  };
+  const count = (run: string, answer: any): void => {
+    const u = usageOf(run);
+    const now = Date.now();
+    u.calls += 1;
+    u.promptTokens += Number(answer?.usage?.prompt_tokens ?? 0) || 0;
+    u.completionTokens += Number(answer?.usage?.completion_tokens ?? 0) || 0;
+    u.costUsd += costUsdOf(answer);
+    const m = String(answer?.model ?? "");
+    if (m) u.models[m] = (u.models[m] ?? 0) + 1;
+    u.firstAt ??= now;
+    u.lastAt = now;
+  };
+  /** One chat completion through the run's cassette, under the run's own cap. */
+  const complete = async (run: string, chat: Record<string, unknown>): Promise<any> => {
+    const u = usageOf(run);
+    if (u.capUsd > 0 && u.costUsd >= u.capUsd) {
+      u.refused += 1;
+      throw Object.assign(new Error(`this run's cap was reached ($${u.costUsd.toFixed(4)} of $${u.capUsd.toFixed(4)}): no more model calls are made`), { status: 402, spendCap: true });
+    }
+    const model = String(chat.model ?? "").replace(/^openrouter\//, "");
+    const answer = await clientFor(run).create({ ...chat, model });
+    count(run, answer);
+    return answer;
+  };
+  const failure = (res: http.ServerResponse, run: string, err: unknown): void => {
+    const e = err as { status?: number; message?: string; cassetteMiss?: boolean; spendCap?: boolean };
+    const status = e.status && e.status >= 400 && e.status < 600 ? e.status : 502;
+    log(`${run}: ${status} ${(e.message ?? "").slice(0, 120)}`);
+    json(res, status, { error: { message: e.message ?? "upstream error", code: e.cassetteMiss ? "cassette_miss" : e.spendCap ? "budget_exceeded" : "upstream_error", type: "e2e_proxy" } });
+  };
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -98,28 +159,39 @@ export async function startProxy(o: ProxyOptions): Promise<Proxy> {
       const run = m ? m[1]! : "-";
       const pathname = m ? m[2]! : url.pathname;
       if (req.method === "GET" && pathname === "/health") return json(res, 200, { ok: true, mode: o.mode, cassette: o.cassette, entries: store.count });
-      if (req.method === "GET" && pathname === "/stats") return json(res, 200, { mode: o.mode, spentUsd: guard.spentUsd, capUsd: guard.capUsd, runs: Object.fromEntries([...clients].map(([k, c]) => [k, c.stats])) });
+      if (req.method === "GET" && !m && pathname === "/stats") return json(res, 200, { mode: o.mode, spentUsd: guard.spentUsd, capUsd: guard.capUsd, runs: Object.fromEntries([...clients].map(([k, c]) => [k, c.stats])) });
       if (req.method === "GET" && pathname === "/v1/models") {
         const ids = [...new Set(store.entries().map((e) => e.req.model))];
         return json(res, 200, { object: "list", data: ids.map((id) => ({ id, object: "model", owned_by: id.split("/")[0] })) });
+      }
+      if (req.method === "GET" && m && pathname === "/stats") return json(res, 200, { ...usageOf(run), stats: clientFor(run).stats });
+      if (req.method === "POST" && m && pathname === "/cap") {
+        const b = JSON.parse((await readBody(req)) || "{}") as { capUsd?: unknown };
+        const cap = Number(b.capUsd);
+        if (!(cap >= 0) || !Number.isFinite(cap)) return json(res, 400, { error: { message: "capUsd must be a number of dollars (0 = no cap)", code: "bad_request" } });
+        usageOf(run).capUsd = cap;
+        return json(res, 200, { run, capUsd: cap });
       }
       if (req.method === "POST" && pathname === "/v1/chat/completions") {
         const body = JSON.parse(await readBody(req)) as Record<string, unknown>;
         const wantsStream = body.stream === true;
         const includeUsage = (body.stream_options as { include_usage?: boolean } | undefined)?.include_usage === true;
         const { stream: _s, stream_options: _o, ...rest } = body;
-        const model = String(rest.model ?? "").replace(/^openrouter\//, "");
         let answer: any;
-        try {
-          answer = await clientFor(run).create({ ...rest, model });
-        } catch (err) {
-          const e = err as { status?: number; message?: string; cassetteMiss?: boolean; spendCap?: boolean };
-          const status = e.status && e.status >= 400 && e.status < 600 ? e.status : 502;
-          log(`${run}: ${status} ${(e.message ?? "").slice(0, 120)}`);
-          return json(res, status, { error: { message: e.message ?? "upstream error", code: e.cassetteMiss ? "cassette_miss" : e.spendCap ? "budget_exceeded" : "upstream_error", type: "e2e_proxy" } });
-        }
+        try { answer = await complete(run, rest); } catch (err) { return failure(res, run, err); }
         if (wantsStream) return streamOf(res, answer, includeUsage);
         return json(res, 200, answer);
+      }
+      if (req.method === "POST" && pathname === "/v1/responses") {
+        const body = JSON.parse(await readBody(req)) as Record<string, unknown>;
+        const { chat, customTools, stream } = responsesToChat(body);
+        let answer: any;
+        try { answer = await complete(run, chat); } catch (err) { return failure(res, run, err); }
+        const out = chatToResponses(answer, customTools);
+        if (!stream) return json(res, 200, out);
+        res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive" });
+        res.end(sseOf(responseEvents(out)));
+        return;
       }
       json(res, 404, { error: { message: `no such route: ${req.method} ${url.pathname}`, code: "not_found" } });
     } catch (err) {
@@ -135,7 +207,7 @@ export async function startProxy(o: ProxyOptions): Promise<Proxy> {
   };
   return {
     url: `http://127.0.0.1:${port}/v1`, port, store, guard,
-    runs: () => Object.fromEntries([...clients].map(([k, c]) => [k, c.stats])), total: sum,
+    runs: () => Object.fromEntries([...clients].map(([k, c]) => [k, c.stats])), usage: (run) => ({ ...usageOf(run), models: { ...usageOf(run).models } }), total: sum,
     close: () => new Promise<void>((resolve) => { server.close(() => resolve()); server.closeAllConnections?.(); }),
   };
 }

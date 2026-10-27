@@ -79,7 +79,9 @@ export function normalize(text: string): string {
     .replace(/tailzu\/[a-z0-9-]+-[0-9a-f]{4}\b/g, "tailzu/<branch>")
     .replace(/\b\d+(?:\.\d+)?\s?(?:ms|s|sec|secs|seconds|minutes)\b(?!=)/g, "<dur>")
     .replace(/\bin \d+(?:\.\d+)?m?s\b/g, "in <dur>")
-    .replace(/\b(secs|ms|seconds|elapsed|took)=\d+(?:\.\d+)?/g, "$1=<n>");
+    .replace(/\b(secs|ms|seconds|elapsed|took)=\d+(?:\.\d+)?/g, "$1=<n>")
+    // Codex CLI names each command's output chunk with a random six-digit hex id.
+    .replace(/\bChunk ID: [0-9a-f]{4,}/gi, "Chunk ID: <id>");
 }
 
 type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
