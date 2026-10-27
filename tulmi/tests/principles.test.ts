@@ -42,6 +42,9 @@ const { ReviewVerdict } = await import("../src/code/prcare/review.js");
 const { ConflictVerdict } = await import("../src/code/agent/merge.js");
 const { SplitReply } = await import("../src/code/team/split.js");
 const { PartReviewVerdict } = await import("../src/code/team/review.js");
+const { BotDraftReply } = await import("../src/bots/builder.js");
+const { BotPickReply } = await import("../src/bots/door.js");
+const { BotMemoryReply } = await import("../src/bots/memory.js");
 const { PlanSchema: FrontPlanReply } = await import("../src/front/handlers.js");
 const { INTENTS: FRONT_INTENTS, LENGTHS: FRONT_LENGTHS, VISUAL_KINDS } = await import("../src/front/types.js");
 
@@ -276,6 +279,10 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   care_conflict: 767, // 697 measured
   team_split: 1956, // 1778 measured
   team_review: 1406, // 1278 measured
+  bot_builder: 1572, // 1429 measured
+  bot_pick: 809, // 736 measured
+  bot_run: 1516, // 1379 measured
+  bot_memory: 1163, // 1058 measured
   ask_planner: 4904, // 4458 measured
   ask_vision: 4519, // 4108 measured
   writer: 4322, // 3929 measured
@@ -349,6 +356,9 @@ describe("the contracts say what the parsers read", () => {
     ["care_conflict", ConflictVerdict],
     ["team_split", SplitReply],
     ["team_review", PartReviewVerdict],
+    ["bot_builder", BotDraftReply],
+    ["bot_pick", BotPickReply],
+    ["bot_memory", BotMemoryReply],
   ];
 
   it("name every field of the schema the answer is read with", () => {

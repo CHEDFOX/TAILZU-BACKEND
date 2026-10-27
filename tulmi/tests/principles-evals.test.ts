@@ -48,6 +48,9 @@ const { ReviewVerdict } = await import("../src/code/prcare/review.js");
 const { ConflictVerdict } = await import("../src/code/agent/merge.js");
 const { SplitReply } = await import("../src/code/team/split.js");
 const { PartReviewVerdict } = await import("../src/code/team/review.js");
+const { BotDraftReply } = await import("../src/bots/builder.js");
+const { BotPickReply } = await import("../src/bots/door.js");
+const { BotMemoryReply } = await import("../src/bots/memory.js");
 const { parseLine } = await import("../src/agent/lines.js");
 const { readSend } = await import("../src/pipeline/assistPrompt.js");
 const { parsePortraitDraft } = await import("../src/pipeline/portraitDimensions.js");
@@ -268,6 +271,19 @@ describe("a known-good answer for each role", () => {
     team_review: {
       text: '{"verdict":"pass","summary":"The endpoint and its tests meet the acceptance.","findings":[]}',
       reads: (t) => PartReviewVerdict.parse(JSON.parse(t)),
+    },
+    // The bots platform (src/bots): the maker's draft, the front door's pick, a bot's own turn (plain text), and its memory of its owner.
+    bot_builder: {
+      text: '{"name":"Workout planner","purpose":"Plans my workouts and checks my calendar.","colour":"sea","rules":["Plan workouts around my calendar.","Keep each plan to one week."],'
+        + '"skills":{"web":false,"files":false,"artifacts":false,"code":false,"research":false},"connectors":["google-calendar"],"tone":"upbeat and brief",'
+        + '"tests":["Plan my workouts for next week.","What does my calendar look like tomorrow?","Move Thursday\'s session to Friday."]}',
+      reads: (t) => BotDraftReply.parse(JSON.parse(t)),
+    },
+    bot_pick: { text: '{"bot":"workout-buddy","confidence":0.9}', reads: (t) => BotPickReply.parse(JSON.parse(t)) },
+    bot_run: { text: "Two rest days a week is a good rule: one full rest and one light day.", reads: (t) => t },
+    bot_memory: {
+      text: '{"add":["Trains at 6am on weekdays.","Is vegetarian."],"drop":[],"summary":"Planning workouts around a 6am weekday routine and a vegetarian diet."}',
+      reads: (t) => BotMemoryReply.parse(JSON.parse(t)),
     },
     // The main assistant (agent/, pipeline/). Ask's lines are read by the device's parser, the writer's answer by readSend, the portrait by parsePortraitDraft.
     ask_planner: {

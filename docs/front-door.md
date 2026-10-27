@@ -61,6 +61,7 @@ The main assistant (`src/pipeline/`, `src/agent/`, `assistPrompt.ts`) is **not c
   attachments?: [{ id, name, mime, bytes, sha256, kind?, data? }],     see section 6
   recent?: [{ said, did? }],     the last three turns, summarised by the client
   visual?: "table"|"diagram"|"chart"|"component"|"page",   takes an offer a result made
+  bot?: "any" | a bot's slug,      "Ask any bot": the front door picks the best of the person's bots, or goes to the one named (`docs/bots.md`). Off unless `BOTS=true`: 404 `bots_off`
   stream?: boolean }             or Accept: application/x-ndjson
 ```
 
@@ -71,6 +72,8 @@ With `stream: true`, NDJSON, one event a line: `decision`, `status` (reading, th
 Errors: `400 bad_request` (the body), `413` (a message over 8,000 characters), `401`, `404 front_door_off`, `429 quota_exceeded` (the month's allowance), `429 daily_limit` (section 7), `429 overloaded` with `Retry-After` and the place in the queue (section 8), `409 idempotency_key_reuse`, `504 timeout`, `5xx` with a sentence a person can read.
 
 `POST /v1/ask/feedback { id, outcome }` records what the person did with an answer: `visual_closed`, `visual_kept`, `thumbs_up`, `thumbs_down`. `GET /v1/admin/guard` (`x-admin-secret`) shows the limiter, the idempotency store, coalescing and every circuit breaker.
+
+**Ask any bot.** With `bot` in the body (and `BOTS=true`) the front door first picks a bot (`docs/bots.md` section 7): the Code bot and "none of them" go down the roads above exactly as they were, with `bot` in the answer saying which bot it was; any other bot answers with its own rules, skills, files and memory, and the answer is `{ id: null, decision, result, bot, answer }`. A body without `bot` is untouched.
 
 **`POST /v1/ask` already existed**: the desktop's "ask about the screen" sends `{ question, screenContent }`. That is unchanged. `server.ts` hands a body to the front door only when it has a `message` and no `question`; with the flag off, such a body is `404 front_door_off`. The route's body limit is 8 MB while the flag is on (a 4 MB picture is about 5.5 MB of base64); the old ask keeps 1 MB either way.
 

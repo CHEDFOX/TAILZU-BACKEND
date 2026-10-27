@@ -52,6 +52,9 @@ import { FRONT_BODY_LIMIT, registerFrontRoutes } from "./routes/front.js";
 import { registerCodeRoutes } from "./routes/code.js";
 import { registerCodeJobRoutes } from "./routes/codeJobs.js";
 import { registerCodeInternalRoutes } from "./routes/codeInternal.js";
+import { createBots } from "./bots/index.js";
+import { botPorts } from "./bots/wire.js";
+import { registerBotRoutes } from "./routes/bots.js";
 import { jobsHandoffFromConfig } from "./code/jobs/handoff/index.js";
 import { sessionOffers } from "./code/live/offers.js";
 import { jobStore } from "./code/jobs/store.js";
@@ -1128,8 +1131,13 @@ registerFilesRoutes(app, { rateLimit: AUTHED_RL, media, artifacts, code });
 const attachments = new AttachmentRegistry();
 if (media) registerMedia(attachments, media);
 const front = createFront({ artifacts, code, jobs: codeJobs, agent: codeAgent, log: app.log, attachments });
+// The bots platform (src/bots, docs/bots.md): everything is a bot (Code, Keybot, Plan, Travel), and a person makes their own, each with its tools, knowledge, memory and an
+// API endpoint for their own apps. Off unless BOTS is true: /v1/bots answers 404 bots_off and "Ask any bot" on POST /v1/ask does too. It runs on what is above: the connected
+// apps (same permission tiers), the files, the artifact core, the Code bot's chat and the web; migration 0038 keeps the bots, their keys (hashed), commands and memory.
+const bots = createBots({ ports: botPorts({ connectors, media, artifacts, code }), ...(front ? { guard: front.guard } : {}) });
+registerBotRoutes(app, { rateLimit: AUTHED_RL, bots });
 const frontRoutes = registerFrontRoutes(app, {
-  rateLimit: AUTHED_RL, front,
+  rateLimit: AUTHED_RL, front, bots,
   quota: (user) => enforceQuota(user),
   // The model's words are not the person's: recorded at zero words, like the old ask, so the call still shows in usage.
   used: (user) => recordUsage({ user, source: "rest", audioSeconds: 0, words: 0, model: "front" }),
@@ -1894,7 +1902,7 @@ app.post("/v1/edit", { config: AUTHED_RL }, async (req, reply) => {
 // /v1/train/converse, it is metered at zero words and written to NO dictation
 // history. `speak` is the read-aloud locale, derived from the answer the same
 // way converse derives it.
-app.post("/v1/ask", { config: AUTHED_RL, ...(cfg.FRONT_DOOR ? { bodyLimit: FRONT_BODY_LIMIT } : {}) }, async (req, reply) => {
+app.post("/v1/ask", { config: AUTHED_RL, ...(cfg.FRONT_DOOR || cfg.BOTS ? { bodyLimit: FRONT_BODY_LIMIT } : {}) }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
   if (!user) return unauthorized(reply);
 
@@ -3312,6 +3320,8 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
     // Talking about code, a project's settings and PR care (migration 0034): the conversations' short summaries, how a person likes a job worked, and the pull requests
     // Tailzu looks after. A job's rewind points go with the job (code_job_checkpoints cascades from code_jobs).
     ["code_chat_threads", null], ["code_project_settings", null], ["code_pr_care", null],
+    // The bots platform (migration 0038): their bots, the API keys (only hashes), saved commands, and what their bots remember of them.
+    ["bots", null], ["bot_keys", null], ["bot_commands", null], ["bot_facts", null], ["bot_threads", null],
   ];
   for (const [table, key] of tables) {
     try {

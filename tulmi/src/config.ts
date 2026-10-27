@@ -734,6 +734,27 @@ const EnvSchema = z.object({
   R2_BUCKET: z.string().trim().optional(),
   MEDIA_KEEP_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
   /**
+   * THE BOTS PLATFORM (src/bots, docs/bots.md): everything is a bot (the Code bot, Keybot, the Plan bot, the Travel bot), and a person can make their own, each
+   * with its own tools, knowledge, memory and an API endpoint for their own apps. Off by default: it needs migration 0038, and with it off every /v1/bots route
+   * answers 404 { code: "bots_off" } and the front door never picks a bot.
+   *
+   * BOT_KEY_PEPPER is a SECRET (.env only, 32+ characters): a bot's API key is stored as sha256(pepper + key), so a leaked table cannot be used. Without it
+   * nobody can make a key (503 not_configured); rotating it revokes every key at once.
+   *
+   * BOTS_MAX is how many bots one person may make. BOT_REQUEST_PAISE and BOT_DAILY_PAISE are what a new bot is given to spend on one request and in one day
+   * (the person may change both on their own bot, up to BOT_REQUEST_PAISE_MAX and BOT_DAILY_PAISE_MAX). BOT_KEY_RATE_PER_MIN is how many requests one key may make a
+   * minute, and BOT_KEY_DAILY_PAISE what one key may spend in a day.
+   */
+  BOTS: bool(false),
+  BOT_KEY_PEPPER: z.string().optional(),
+  BOTS_MAX: z.coerce.number().int().min(1).max(500).default(20),
+  BOT_REQUEST_PAISE: z.coerce.number().int().min(1).max(100_000).default(150),
+  BOT_DAILY_PAISE: z.coerce.number().int().min(1).max(10_000_000).default(800),
+  BOT_REQUEST_PAISE_MAX: z.coerce.number().int().min(1).max(1_000_000).default(1000),
+  BOT_DAILY_PAISE_MAX: z.coerce.number().int().min(1).max(10_000_000).default(5000),
+  BOT_KEY_RATE_PER_MIN: z.coerce.number().int().min(1).max(10_000).default(30),
+  BOT_KEY_DAILY_PAISE: z.coerce.number().int().min(0).max(10_000_000).default(500),
+  /**
    * THE OVERLOAD GUARDS (src/guard, docs/front-door.md): how many of the guarded requests (/v1/ask, artifact makings and edits, jobs, code
    * questions) run at once in THIS process. In memory: with several workers or servers each has its own count, so the real ceiling is the
    * number of them times these (docs/front-door.md says how to size it).
@@ -1544,6 +1565,12 @@ export function getConfig(): AppConfig {
     if (r2.some(Boolean) && !r2.every(Boolean)) console.warn("[config] R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET are not all set: files are read but their bytes are not kept.");
     if (Boolean(env.MEDIA_WORKER_URL) !== Boolean(env.MEDIA_WORKER_SECRET)) console.warn("[config] MEDIA_WORKER_URL and MEDIA_WORKER_SECRET go together: without both there is no worker, so office files and scanned PDFs are not read.");
     if (env.MEDIA_WORKER_SECRET && env.MEDIA_WORKER_SECRET.length < 32) console.warn("[config] MEDIA_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
+  }
+
+  // Bots: a pepper that is missing or short makes keys that a leaked table could be tested against. Warned, not refused: the rest of the server is unaffected.
+  if (env.BOTS) {
+    if (!env.BOT_KEY_PEPPER) console.warn("[config] BOTS=true but BOT_KEY_PEPPER is not set: nobody can make an API key for a bot until it is (openssl rand -hex 32).");
+    else if (env.BOT_KEY_PEPPER.length < 32) console.warn("[config] BOT_KEY_PEPPER is under 32 characters. Use a long random value (openssl rand -hex 32).");
   }
 
   // Jobs on Cloudflare with no way to reach the Worker: every job would be failed with a reason. Warned, not refused: the rest of the server is unaffected.
