@@ -131,7 +131,9 @@ describe("a piece they asked for is written, not undone", () => {
     const out = await assist("write a poem to my girlfriend, she is upset with me, make it sweet", { targetApp: "Desktop" });
     expect(out).toBe(POEM);
     expect(llm.calls).toHaveLength(1);
-    expect(llm.calls[0]![0]!.content).toMatch(/This time they are asking you to write a piece for them: write it/);
+    // A measured fact about this call: a note in its data, after the stable block.
+    expect(llm.calls[0]![1]!.content).toMatch(/This time they are asking you to write a piece for them: write it/);
+    expect(llm.calls[0]![0]!.content).not.toMatch(/This time they are asking you/);
   });
 
   it("keeps the closing line an email has", async () => {
@@ -169,15 +171,15 @@ describe("a piece they asked for is written, not undone", () => {
   it("an essay is not written: the ask is what they are saying", async () => {
     llm.answers = ["Write me an essay on climate change."];
     await assist("write me an essay on climate change", { targetApp: "Desktop" });
-    expect(llm.calls[0]![0]!.content).toMatch(/more than a keyboard writes, so it is part of what they are saying/);
+    expect(llm.calls[0]![1]!.content).toMatch(/more than a keyboard writes, so it is part of what they are saying/);
   });
 
   it("in another AI's box, the prompt is written down, never carried out", async () => {
     llm.answers = ["Write a birthday message for my mom."];
     await assist("write a birthday message for my mom", { targetApp: "ChatGPT" });
-    const system = llm.calls[0]![0]!.content;
-    expect(system).toMatch(/ChatGPT is an AI assistant: what they say there is their prompt to it/);
-    expect(system).not.toMatch(/This time they are asking you to write a piece/);
+    const data = llm.calls[0]![1]!.content;
+    expect(data).toMatch(/ChatGPT is an AI assistant: what they say there is their prompt to it/);
+    expect(data).not.toMatch(/This time they are asking you to write a piece/);
   });
 });
 
@@ -237,15 +239,18 @@ describe("the session: the last few minutes ride along", () => {
       recent: [{ at: new Date(Date.now() - 120_000).toISOString(), app: "Slack", said: "deck is done", wrote: "The deck is done." }],
     });
     const [system, user] = llm.calls[0]!;
-    expect(user!.content).toMatch(/^<earlier>\n[\s\S]*wrote: The deck is done\.\n<\/earlier>\n<said>/);
-    expect(system!.content).toMatch(/<earlier> holds what they dictated in the last few minutes/);
+    expect(user!.content).toMatch(/<earlier>\n[\s\S]*wrote: The deck is done\.\n<\/earlier>\n<said>/);
+    // What <earlier> is, is a note of the call (after the stable block, ahead of the fence it describes).
+    expect(user!.content).toMatch(/<earlier> holds what they dictated in the last few minutes/);
+    expect(user!.content.indexOf("<earlier> holds")).toBeLessThan(user!.content.indexOf("<earlier>\n"));
+    expect(system!.content).not.toMatch(/<earlier> holds/);
   });
 
   it("is not mentioned at all without one", async () => {
     llm.answers = ["Hi."];
     await assist("hi", {});
-    expect(llm.calls[0]![0]!.content).not.toMatch(/<earlier>/);
-    expect(llm.calls[0]![1]!.content.startsWith("<said>")).toBe(true);
+    expect(llm.calls[0]![1]!.content).not.toMatch(/<earlier>/);
+    expect(llm.calls[0]![1]!.content.endsWith("<said>\nhi\n</said>")).toBe(true);
   });
 
   it("is read from their history: the last thirty minutes, oldest first", async () => {

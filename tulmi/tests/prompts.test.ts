@@ -7,7 +7,8 @@ import {
   resolveAppStyle,
   resolveRecipientHint,
 } from "../src/prompts.js";
-import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
+import { WRITER, dataFor, told } from "./writer-prompt.js";
+import { replyContext } from "../src/pipeline/assistPrompt.js";
 import { CASES } from "../evals/cases.js";
 
 // buildReplySystem reads the config for the prompt version, and the config
@@ -156,7 +157,8 @@ describe("the keyboard never answers what was dictated", () => {
   // ordinary field came back as a reply instead of as the question.
   //
   // The table is gone. One principle replaced it, and unlike a table it cannot
-  // be read as licence to supply content.
+  // be read as licence to supply content. The principle is the writer role's
+  // (the same for every call); the field is the call's, after it.
   const FIELD_KINDS = [
     "a text field",
     "a search field",
@@ -166,28 +168,30 @@ describe("the keyboard never answers what was dictated", () => {
   ];
 
   it("says the destination decides form and never content", () => {
+    expect(WRITER).toMatch(/decides the shape of the text, never its content/i);
     for (const app of FIELD_KINDS) {
-      const s = buildAssistSystem({ targetApp: app, hasContext: false });
-      expect(s, `field kind: ${app}`).toMatch(/decides the shape of the text, never its content/i);
-      expect(s).toContain(app);
+      const data = dataFor({ targetApp: app, hasContext: false });
+      expect(data, `field kind: ${app}`).toContain(`It goes in ${app}.`);
+      // The block does not change with the field.
+      expect(told({ targetApp: app, hasContext: false }).startsWith(WRITER)).toBe(true);
     }
   });
 
   it("never tells the model a field wants an answer of its own", () => {
     for (const app of FIELD_KINDS) {
-      const s = buildAssistSystem({ targetApp: app, hasContext: false });
+      const s = told({ targetApp: app, hasContext: false });
       expect(s, `field kind: ${app}`).not.toMatch(/wants the answer/i);
     }
   });
 
   it("states the dictated-question case outright, wherever it is writing", () => {
+    // In the block, so for every field and for none.
+    expect(WRITER).toMatch(/a question is theirs to ask someone/i);
+    expect(WRITER).toMatch(/You never answer or carry out any of it/i);
+    // "Not one for you to answer" moved up into the principles, where it binds every line below it rather than one clause.
+    expect(WRITER).toMatch(/add no fact, greeting, closing or answer of your own/i);
     for (const app of [...FIELD_KINDS, "WhatsApp", undefined]) {
-      const s = buildAssistSystem({ targetApp: app, hasContext: true });
-      expect(s, `target: ${app}`).toMatch(/a question is theirs to ask someone/i);
-      expect(s, `target: ${app}`).toMatch(/You never answer or carry out any of it/i);
-      // "Not one for you to answer" moved up into the contract, where it
-      // binds every line below it rather than one clause.
-      expect(s, `target: ${app}`).toMatch(/and no answer/i);
+      expect(dataFor({ targetApp: app, hasContext: true }), `target: ${app}`).not.toMatch(/wants the answer/i);
     }
   });
 
@@ -195,8 +199,7 @@ describe("the keyboard never answers what was dictated", () => {
     // The table listed search, URL, email, number, message and form. Six rows
     // that could never cover every field, in a prompt where each added row
     // dimmed the ones above it.
-    const s = buildAssistSystem({ targetApp: "a search field", hasContext: false });
-    expect(s.split("\n").filter((l) => /wants/.test(l)).length).toBe(1);
+    expect(WRITER.split("\n").filter((l) => /wants/.test(l)).length).toBe(1);
   });
 });
 
@@ -251,11 +254,13 @@ describe("the portrait reaches the file-based prompts too", () => {
  * still be caught dropping a rule.
  */
 describe("what reaches the model", () => {
+  // The screen reply is the writer role from v5 (REPLY_PROMPT_VERSION); v1 to v4 are the files, kept to roll back to, and these
+  // tests hold the file as it was.
   it("does not carry the editor's notes", () => {
     // Every prompt file opens with an HTML comment explaining what the last
     // version got wrong. None of it was stripped, so all of it was sent,
     // including the sentence explaining that the prompt is deliberately short.
-    const sys = buildReplySystem({ targetApp: "WhatsApp", language: "hi" });
+    const sys = buildReplySystem({ targetApp: "WhatsApp", language: "hi" }, undefined, "v4");
     expect(sys.startsWith("You are writing a reply")).toBe(true);
     expect(sys).not.toContain("Placeholders, substituted by the backend");
     expect(sys).not.toContain("Versioning: never edit a shipped prompt");
@@ -264,7 +269,7 @@ describe("what reaches the model", () => {
   it("states the user's language as a rule", () => {
     // A setting substituted into a placeholder table inside that comment
     // reached the model as documentation rather than instruction.
-    const sys = buildReplySystem({ targetApp: "WhatsApp", language: "hi" });
+    const sys = buildReplySystem({ targetApp: "WhatsApp", language: "hi" }, undefined, "v4");
     expect(sys).toContain("Their setting is hi");
     expect(sys).not.toMatch(/\{\{[A-Z_]+\}\}/);
   });
@@ -273,7 +278,7 @@ describe("what reaches the model", () => {
     // The ALPHABET is English, the WORDS are theirs. Each failure is what the
     // other rule looks like from the inside, so a prompt that states only one
     // of them reads as permission for the other.
-    const sys = buildReplySystem({ targetApp: "Generic", language: "auto" });
+    const sys = buildReplySystem({ targetApp: "Generic", language: "auto" }, undefined, "v4");
     expect(sys).toMatch(/ENGLISH\s+LETTERS/);
     expect(sys).toMatch(/never\s+translate/i);
     expect(sys).toMatch(/never\s+reach\s+for\s+an\s+English\s+word/i);
@@ -284,7 +289,7 @@ describe("what reaches the model", () => {
     // behind them moving, and the harness stops measuring anything. This is
     // the cheapest moment to catch that: the temptation is strongest right
     // after a case fails, which is exactly when a version gets written.
-    for (const sys of [buildReplySystem({}), buildAssistSystem({ hasContext: true })]) {
+    for (const sys of [buildReplySystem({}, undefined, "v4"), told({ hasContext: true }), replyContext({ targetApp: "WhatsApp" }, "Rahul")]) {
       const hay = sys.toLowerCase();
       for (const c of CASES) {
         const input = c.input.trim().toLowerCase();
@@ -292,5 +297,45 @@ describe("what reaches the model", () => {
         expect(hay, `prompt quotes the eval case ${c.id}`).not.toContain(input);
       }
     }
+  });
+});
+
+describe("the screen reply as the writer role", () => {
+  it("states the user's language setting as a note, and the alphabet rule is the block's", () => {
+    const data = replyContext({ targetApp: "WhatsApp", language: "hi" }, "Rahul");
+    expect(data).toContain('Their language setting is hi. "auto" means English; anything else is a language they chose, and it stands until they ask for another.');
+    expect(replyContext({}, undefined)).toContain("Their language setting is auto.");
+    expect(WRITER).toMatch(/in English letters/);
+    expect(WRITER).toMatch(/never translate/i);
+    expect(WRITER).toMatch(/never reach for an English word/i);
+  });
+
+  it("names the app and the recipient on one line, and fences the voice", () => {
+    const data = replyContext({ targetApp: "Mail", personality: { tone: "warm", customInstructions: "short" } as Personality }, "Priya");
+    expect(data).toContain("It goes in Mail, as a reply to Priya.");
+    expect(data).toMatch(/<voice>\n- Tone: <tone>warm<\/tone>/);
+    expect(data).toContain("<custom_instructions>short</custom_instructions>");
+    expect(data.indexOf("<call>")).toBeLessThan(data.indexOf("<voice>"));
+    expect(replyContext({}, undefined)).toContain("as a reply to Unknown.");
+  });
+
+  it("answers plain, and says the screen is someone else's words", () => {
+    const data = replyContext({}, "Priya");
+    expect(data).toContain("Plain: answer with the text alone, no <intent> and no <send>");
+    expect(data).toContain("<around> is what is on the screen around the field");
+  });
+
+  it("carries the watermark only when it is on, and the dials, the app's style and the recipient's hint when there are any", () => {
+    expect(replyContext({}, "x")).not.toMatch(/Watermark/);
+    expect(replyContext({ personality: { watermark: true } as Personality }, "x")).toContain("Watermark: on.");
+    const p = {
+      dial: { warmth: 80 }, appStyles: { Mail: { note: "keep it formal" } }, recipientHints: [{ recipient: "priya", hint: "warm" }],
+    } as unknown as Personality;
+    const data = replyContext({ targetApp: "Mail", personality: p }, "Priya");
+    expect(data).toContain("- warmth: 80");
+    expect(data).toContain("For this app:");
+    expect(data).toContain("- Note: keep it formal");
+    expect(data).toContain('<recipient_hint recipient="priya">warm</recipient_hint>');
+    expect(replyContext({ targetApp: "Mail" }, "Priya")).not.toMatch(/warmth|For this app|recipient_hint/);
   });
 });

@@ -41,175 +41,14 @@
  * starts (kind "entry").
  */
 import { baseName } from "./lang.js";
-import { SYMBOLS_PER_FILE, type SymbolInfo } from "./types.js";
-
-// ------------------------------------------------------------- blanking
-
-interface BlankOptions {
-  /** `//` and `/* *​/` comments. */
-  slash: boolean;
-  /** `#` comments. */
-  hash: boolean;
-  /** Triple-quoted strings (Python docstrings): blanked whole, they are text, not code. */
-  triple: boolean;
-  /** `...` template literals span lines. */
-  backtick: boolean;
-  /** `'`: a string (JS, Python, Dart) or only a char literal like 'x' (C-like languages, where 'a is a lifetime). */
-  apostrophe: "string" | "char";
-}
-
-const CHAR_LITERAL = /^'(?:\\.[^']*|[^\\'])'/;
-
-/**
- * The text with its comments replaced by spaces (newlines kept, so line numbers
- * stay true). Strings are walked so `"http://x"` is not a comment.
- */
-export function blankComments(text: string, o: BlankOptions): string {
-  const out: string[] = [];
-  const n = text.length;
-  let i = 0;
-  let seg = 0;
-  const blank = (from: number, to: number) => {
-    if (from > seg) out.push(text.slice(seg, from));
-    out.push(text.slice(from, to).replace(/[^\n]/g, " "));
-    seg = to;
-  };
-  while (i < n) {
-    const c = text.charCodeAt(i);
-    if (c === 34 || c === 39 || (o.backtick && c === 96)) {
-      if (o.triple && (c === 34 || c === 39) && text.charCodeAt(i + 1) === c && text.charCodeAt(i + 2) === c) {
-        const q = text.slice(i, i + 3);
-        const end = text.indexOf(q, i + 3);
-        const to = end < 0 ? n : end + 3;
-        blank(i, to);
-        i = to;
-        continue;
-      }
-      if (c === 39 && o.apostrophe === "char") {
-        const m = CHAR_LITERAL.exec(text.slice(i, i + 12));
-        i += m ? m[0].length : 1;
-        continue;
-      }
-      let j = i + 1;
-      while (j < n) {
-        const d = text.charCodeAt(j);
-        if (d === 92) { j += 2; continue; }
-        if (d === c) { j += 1; break; }
-        if (d === 10 && c !== 96) break;
-        j += 1;
-      }
-      i = j;
-      continue;
-    }
-    if (o.slash && c === 47) {
-      const d = text.charCodeAt(i + 1);
-      if (d === 47) {
-        let end = text.indexOf("\n", i);
-        if (end < 0) end = n;
-        blank(i, end);
-        i = end;
-        continue;
-      }
-      if (d === 42) {
-        const end = text.indexOf("*/", i + 2);
-        const to = end < 0 ? n : end + 2;
-        blank(i, to);
-        i = to;
-        continue;
-      }
-    }
-    if (o.hash && c === 35) {
-      let end = text.indexOf("\n", i);
-      if (end < 0) end = n;
-      blank(i, end);
-      i = end;
-      continue;
-    }
-    i += 1;
-  }
-  if (seg < n) out.push(text.slice(seg));
-  return out.join("");
-}
-
-const C_LIKE: BlankOptions = { slash: true, hash: false, triple: false, backtick: false, apostrophe: "char" };
-const JS_LIKE: BlankOptions = { slash: true, hash: false, triple: false, backtick: true, apostrophe: "string" };
-const PY_LIKE: BlankOptions = { slash: false, hash: true, triple: true, backtick: false, apostrophe: "string" };
-const HASH_LIKE: BlankOptions = { slash: false, hash: true, triple: false, backtick: false, apostrophe: "string" };
-const DART_LIKE: BlankOptions = { slash: true, hash: false, triple: true, backtick: false, apostrophe: "string" };
-
-// ---------------------------------------------------------------- helpers
-
-/** Line start offsets, for turning an index in the text into a line number. */
-function lineStarts(text: string): number[] {
-  const starts = [0];
-  for (let i = text.indexOf("\n"); i >= 0; i = text.indexOf("\n", i + 1)) starts.push(i + 1);
-  return starts;
-}
-function lineAt(starts: number[], index: number): number {
-  let lo = 0, hi = starts.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (starts[mid]! <= index) lo = mid; else hi = mid - 1;
-  }
-  return lo + 1;
-}
-
-const VERBS = "get|post|put|patch|delete|options|head|all";
-
-/** Collects symbols, one per (name, kind, line). */
-class Out {
-  readonly items: SymbolInfo[] = [];
-  private seen = new Set<string>();
-  add(s: SymbolInfo): void {
-    const key = `${s.kind}|${s.name}|${s.line}|${s.method ?? ""}|${s.path ?? ""}`;
-    if (this.seen.has(key)) return;
-    this.seen.add(key);
-    this.items.push(s);
-  }
-  /** Marks an earlier symbol of that name as exported. Returns whether there was one. */
-  exportNamed(name: string): boolean {
-    let found = false;
-    for (const s of this.items) if (s.name === name && s.kind !== "route" && s.kind !== "env") { s.exported = true; found = true; }
-    return found;
-  }
-}
-
-/** At most SYMBOLS_PER_FILE: routes first, then exported, then the rest; line order within. */
-function capped(items: SymbolInfo[]): SymbolInfo[] {
-  if (items.length <= SYMBOLS_PER_FILE) return items.sort((a, b) => a.line - b.line);
-  const weight = (s: SymbolInfo) => (s.kind === "route" || s.kind === "entry" ? 0 : s.exported ? 1 : s.kind === "env" ? 3 : 2);
-  const keep = items.map((s, i) => ({ s, i })).sort((a, b) => weight(a.s) - weight(b.s) || a.i - b.i).slice(0, SYMBOLS_PER_FILE);
-  return keep.map((k) => k.s).sort((a, b) => a.line - b.line);
-}
-
-const upper = (s: string) => /^[A-Z]/.test(s);
-
-/** Environment variables a file reads, by regex over the code, first use of each. */
-function envNames(code: string, patterns: RegExp[], out: Out, starts: number[]): void {
-  const seen = new Set<string>();
-  for (const re of patterns) {
-    for (const m of code.matchAll(re)) {
-      const name = m[1]!;
-      if (seen.has(name) || seen.size >= 40) continue;
-      seen.add(name);
-      out.add({ name, kind: "env", line: lineAt(starts, m.index ?? 0) });
-    }
-  }
-}
+import { analyse } from "./treesitter/index.js";
+import type { SymbolInfo } from "./types.js";
+import { C_LIKE, CLIENT_RECEIVERS, DART_LIKE, ENV, HASH_LIKE, JS_LIKE, Out, PY_LIKE, VERBS, blankComments, capped, envNames, isComponentRhs, lineAt, lineStarts, nextRoutes, upper, type SymbolContext } from "./symbolkit.js";
+export { blankComments } from "./symbolkit.js";
+export type { SymbolContext } from "./symbolkit.js";
 
 // ------------------------------------------------------------- TS / JS
 
-/** Receivers of `.get('/x')` that call somebody else's server rather than serve one. */
-const CLIENT_RECEIVERS = /^(?:axios|http|https|\$http|request|got|ky|superagent|client|apiClient|httpClient|fetcher|supertest|agent|cy|page|ctx|context|req|res|window|navigator|history|location|router\.history)$/i;
-
-export interface SymbolContext {
-  /** Directories that hold a Next.js app (a package.json depending on `next`); "" is the repo root. */
-  nextRoots?: readonly string[];
-}
-
-function isComponentRhs(rhs: string): boolean {
-  return /^(?:React\.)?(?:memo|forwardRef|lazy)\s*[(<]/.test(rhs) || /^(?:observer|connect|withRouter|styled)\b/.test(rhs);
-}
 function isFunctionRhs(rhs: string): boolean {
   return /^(?:async\s+)?(?:\(|function\b|[A-Za-z_$][\w$]*\s*=>)/.test(rhs) || /^(?:async\s+)?<[^>]*>\s*\(/.test(rhs);
 }
@@ -325,41 +164,8 @@ function jsSymbols(path: string, text: string, ctx: SymbolContext): SymbolInfo[]
 
   nextRoutes(path, code, ctx, out, starts);
 
-  envNames(code, [
-    /\bprocess\.env\.([A-Za-z_][A-Za-z0-9_]*)/g, /\bprocess\.env\[\s*['"`]([A-Za-z_][A-Za-z0-9_]*)['"`]\s*\]/g,
-    /\bimport\.meta\.env\.([A-Za-z_][A-Za-z0-9_]*)/g, /\b(?:Bun|Deno)\.env\.(?:get\(\s*['"`])?([A-Za-z_][A-Za-z0-9_]*)/g,
-  ], out, starts);
+  envNames(code, ENV.js, out, starts);
   return out.items;
-}
-
-/** Next.js: the route a file is, from where it sits (app/ and pages/). */
-function nextRoutes(path: string, code: string, ctx: SymbolContext, out: Out, starts: number[]): void {
-  const roots = ctx.nextRoots;
-  if (!roots?.length || !/\.(?:tsx?|jsx?|mdx?)$/.test(path)) return;
-  const root = roots.filter((r) => r === "" || path.startsWith(`${r}/`)).sort((a, b) => b.length - a.length)[0];
-  if (root === undefined) return;
-  const rel = root ? path.slice(root.length + 1) : path;
-  const m = /^(?:src\/)?(app|pages)\/(.+)$/.exec(rel);
-  if (!m) return;
-  const segs = m[2]!.replace(/\.[a-z]+$/, "").split("/");
-  const leaf = segs.pop()!;
-  const fix = (seg: string) => seg.replace(/^\[\.\.\.(\w+)\]$/, "*$1").replace(/^\[\[\.\.\.(\w+)\]\]$/, "*$1").replace(/^\[(\w+)\]$/, ":$1");
-  const dirs = segs.filter((s) => !/^\(.*\)$/.test(s) && !s.startsWith("@")).map(fix);
-  if (m[1] === "app") {
-    if (leaf === "page") {
-      out.add({ name: `/${dirs.join("/")}`, kind: "route", line: 1, method: "GET", path: `/${dirs.join("/")}` });
-    } else if (leaf === "route") {
-      const verbs = [...code.matchAll(/\bexport\s+(?:async\s+)?(?:function\s+|const\s+)(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b/g)];
-      for (const v of verbs) out.add({ name: `/${dirs.join("/")}`, kind: "route", line: lineAt(starts, v.index ?? 0), method: v[1]!, path: `/${dirs.join("/")}` });
-    }
-    return;
-  }
-  // pages/: index is the folder itself; _app, _document, _error are not routes.
-  if (leaf.startsWith("_")) return;
-  const parts = leaf === "index" ? dirs : [...dirs, fix(leaf)];
-  const route = `/${parts.join("/")}`;
-  const api = parts[0] === "api";
-  out.add({ name: route, kind: "route", line: 1, method: api ? "ANY" : "GET", path: route });
 }
 
 // ---------------------------------------------------------------- Python
@@ -419,10 +225,7 @@ function pySymbols(text: string): SymbolInfo[] {
       out.add({ name: route, kind: "route", line: lineAt(starts, m.index ?? 0), method: "ANY", path: route });
     }
   }
-  envNames(code, [
-    /\bos\.environ\[\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]\s*\]/g, /\bos\.environ\.get\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]/g,
-    /\bos\.getenv\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]/g,
-  ], out, starts);
+  envNames(code, ENV.py, out, starts);
   return out.items;
 }
 
@@ -473,7 +276,7 @@ function goSymbols(text: string): SymbolInfo[] {
   for (const m of code.matchAll(/\b\w+\s*\.\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|Any|ANY|Get|Post|Put|Patch|Delete|Head|Options)\(\s*"(\/[^"]*)"/g)) {
     out.add({ name: m[2]!, kind: "route", line: lineAt(starts, m.index ?? 0), method: m[1]!.toUpperCase() === "ANY" ? "ANY" : m[1]!.toUpperCase(), path: m[2]! });
   }
-  envNames(code, [/\bos\.(?:Getenv|LookupEnv)\(\s*"([A-Za-z_][A-Za-z0-9_]*)"/g], out, starts);
+  envNames(code, ENV.go, out, starts);
   return out.items;
 }
 
@@ -508,7 +311,7 @@ function rustSymbols(text: string): SymbolInfo[] {
   for (const m of code.matchAll(/\.route\(\s*"([^"]+)"\s*,\s*(get|post|put|patch|delete|any)\(/g)) {
     out.add({ name: m[1]!, kind: "route", line: lineAt(starts, m.index ?? 0), method: m[2] === "any" ? "ANY" : m[2]!.toUpperCase(), path: m[1]! });
   }
-  envNames(code, [/\b(?:std::)?env::var(?:_os)?\(\s*"([A-Za-z_][A-Za-z0-9_]*)"/g, /\b(?:option_)?env!\(\s*"([A-Za-z_][A-Za-z0-9_]*)"/g], out, starts);
+  envNames(code, ENV.rust, out, starts);
   return out.items;
 }
 
@@ -548,7 +351,7 @@ function javaSymbols(text: string, kotlin: boolean): SymbolInfo[] {
     const full = (prefix + sub) || "/";
     out.add({ name: full, kind: "route", line: lineAt(starts, m.index ?? 0), method: m[1] === "Request" ? "ANY" : m[1]!.toUpperCase(), path: full });
   }
-  envNames(code, [/\bSystem\.getenv\(\s*"([A-Za-z_][A-Za-z0-9_]*)"/g], out, starts);
+  envNames(code, ENV.java, out, starts);
   return out.items;
 }
 
@@ -587,10 +390,7 @@ function dartSymbols(text: string): SymbolInfo[] {
   for (const m of code.matchAll(/\bGoRoute\(\s*(?:[^()]*?,\s*)?path\s*:\s*(['"])([^'"]+)\1/g)) {
     out.add({ name: m[2]!, kind: "route", line: lineAt(starts, m.index ?? 0), method: "GET", path: m[2]! });
   }
-  envNames(code, [
-    /\bString\.fromEnvironment\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]/g, /\bPlatform\.environment\[\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]\s*\]/g,
-    /\bdotenv\.env\[\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]\s*\]/g,
-  ], out, starts);
+  envNames(code, ENV.dart, out, starts);
   return out.items;
 }
 
@@ -626,7 +426,7 @@ function rubySymbols(path: string, text: string): SymbolInfo[] {
       out.add({ name: m[2]!, kind: "route", line: at, method: m[1]!.toUpperCase(), path: m[2]! });
     }
   }
-  envNames(code, [/\bENV\[\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]\s*\]/g, /\bENV\.fetch\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]/g], out, starts);
+  envNames(code, ENV.ruby, out, starts);
   return out.items;
 }
 
@@ -651,7 +451,7 @@ function phpSymbols(text: string): SymbolInfo[] {
     const p = `/${m[3]!.replace(/^\/+/, "")}`;
     out.add({ name: p, kind: "route", line: lineAt(starts, m.index ?? 0), method: m[1] === "any" || m[1] === "match" ? "ANY" : m[1]!.toUpperCase(), path: p });
   }
-  envNames(code, [/\bgetenv\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]/g, /\benv\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]/g, /\$_(?:ENV|SERVER)\[\s*['"]([A-Za-z_][A-Za-z0-9_]*)['"]\s*\]/g], out, starts);
+  envNames(code, ENV.php, out, starts);
   return out.items;
 }
 
@@ -676,7 +476,7 @@ function swiftSymbols(text: string): SymbolInfo[] {
       out.add({ name: m[1]!, kind: "type", line: at, exported: true });
     }
   }
-  envNames(code, [/\benvironment\[\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*\]/g], out, starts);
+  envNames(code, ENV.swift, out, starts);
   return out.items;
 }
 
@@ -708,7 +508,7 @@ function csharpSymbols(text: string): SymbolInfo[] {
     const p = `/${m[2]!.replace(/^\/+/, "")}`;
     out.add({ name: p, kind: "route", line: lineAt(starts, m.index ?? 0), method: m[1]!.toUpperCase(), path: p });
   }
-  envNames(code, [/\bEnvironment\.GetEnvironmentVariable\(\s*"([A-Za-z_][A-Za-z0-9_]*)"/g], out, starts);
+  envNames(code, ENV.csharp, out, starts);
   return out.items;
 }
 
@@ -746,8 +546,29 @@ function genericSymbols(lang: string, text: string): SymbolInfo[] {
  * `lang` is lang.ts's name for its language. A file in a language with no
  * patterns, or any file of a kind that has no code in it (JSON, Markdown),
  * gives an empty list.
+ *
+ * Read with a parser (tree-sitter, treesitter/) when one is loaded for the language, with the regexes below when it is not or when it gives
+ * up on the file. Both give the same kinds of symbol; the parser's carry `endLine` as well.
  */
 export function extractSymbols(path: string, lang: string, text: string, ctx: SymbolContext = {}): SymbolInfo[] {
+  const parsed = analyse(path, lang, text);
+  if (parsed) return withNextRoutes(path, lang, parsed.symbols, text, ctx);
+  return extractSymbolsRegex(path, lang, text, ctx);
+}
+
+/** Next.js routes come from where a file sits, not from what is in it: added to the parser's symbols as the regex path adds them to its own. */
+function withNextRoutes(path: string, lang: string, symbols: SymbolInfo[], text: string, ctx: SymbolContext): SymbolInfo[] {
+  if (!ctx.nextRoots?.length || (lang !== "TypeScript" && lang !== "JavaScript")) return symbols;
+  const code = blankComments(text, JS_LIKE);
+  const out = new Out();
+  for (const s of symbols) out.add(s);
+  const before = out.items.length;
+  nextRoutes(path, code, ctx, out, lineStarts(code));
+  return out.items.length === before ? symbols : capped(out.items);
+}
+
+/** The regex reader alone: what runs where no grammar is loaded, and the fallback for a file the parser declined. */
+export function extractSymbolsRegex(path: string, lang: string, text: string, ctx: SymbolContext = {}): SymbolInfo[] {
   let items: SymbolInfo[];
   switch (lang) {
     case "TypeScript": case "JavaScript": items = jsSymbols(path, text, ctx); break;

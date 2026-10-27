@@ -13,7 +13,7 @@ import { gate, riskOf, type Level, type Risk } from "../src/connectors/risk.js";
 import { MAX_CONNECTORS, MAX_TOOLS, pickConnectors, pickTools, wordsOf } from "../src/connectors/router.js";
 import { previewOf } from "../src/connectors/tasks.js";
 import { LineReader, parseLine } from "../src/agent/lines.js";
-import { AGENT_SYSTEM } from "../src/agent/prompt.js";
+import { ROLES, stableBlock } from "../src/principles/roles.js";
 
 // The config reads the environment once, before the modules below load. No
 // CONNECTOR_TOKEN_KEY on purpose: "no key" is a case under test.
@@ -329,8 +329,11 @@ describe("what the planner is shown", () => {
     expect(text).toContain('channel: "#design"');
   });
 
-  it("leaves the system prompt exactly as it always was", () => {
-    expect(createHash("sha256").update(AGENT_SYSTEM).digest("hex")).toBe("e0f10e6a7f626a7471e4e539de5e7c18e3a5f266e727234acb3ffc70249af7b8");
+  it("leaves the planner's system prompt alone: connected apps add nothing to it", () => {
+    // Everything that teaches USE is the head of the message (CONNECTOR_ADDENDUM); the block names no connector and no tool.
+    const block = stableBlock("ask_planner");
+    expect(block).toContain(ROLES.ask_planner.identity);
+    expect(block).not.toMatch(/USE <connector>|<tools>|<result>|Connected apps/);
   });
 });
 

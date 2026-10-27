@@ -51,3 +51,6 @@ tulmi/supabase/
 
 # Source maps add weight + leak source paths.
 **/*.map
+
+# The media worker has its own build context (media-worker/Dockerfile).
+media-worker/

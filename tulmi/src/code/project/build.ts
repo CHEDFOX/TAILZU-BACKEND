@@ -39,6 +39,7 @@
  * A failed build leaves the earlier rows as they were, and says why in plain
  * words (never a path, a line of code, or GitHub's own message).
  */
+import { getConfig, isWorkerRuntime } from "../../config.js";
 import { ConnectorError } from "../../connectors/state.js";
 import type { FetchLike } from "../../web/search/types.js";
 import { callModel, type GatewayDeps } from "../brain/gateway.js";
@@ -65,8 +66,9 @@ import {
 import { countTodos, extractSymbols, type SymbolContext } from "./symbols.js";
 import { buildTestMap, untestedImportant } from "./tests.js";
 import { extractTexts } from "./texts.js";
+import { analyse, ensureGrammars, treeSitter } from "./treesitter/index.js";
 import {
-  BLOBS_MAX, EMPTY_STRUCTURE, TEXTS_PER_PROJECT,
+  BLOBS_MAX, EMPTY_STRUCTURE, PARSER_WORKER_TEXT_MAX, TEXTS_PER_PROJECT,
   type BrainRow, type CoreEntry, type History, type StoredDir, type StoredFile, type StoredText, type Structure, type SymbolInfo, type TreeInfo,
 } from "./types.js";
 
@@ -140,8 +142,10 @@ function resolverSignature(core: Record<string, CoreEntry>): string {
 function analyseFile(path: string, sha: string, text: string, ctx: SymbolContext): Analysed {
   const lang = languageOf(path);
   const symbols: SymbolInfo[] = extractSymbols(path, lang, text, ctx);
+  // Read by a parser, a file also says which names it refers to (the repo map's graph); read by a regex it does not.
+  const refs = analyse(path, lang, text)?.refs;
   return {
-    file: { path, blobSha: sha, lang, bytes: Buffer.byteLength(text, "utf8"), symbols, imports: [], rank: 0, hot: 0, todo: countTodos(text), tests: [], summary: "" },
+    file: { path, blobSha: sha, lang, bytes: Buffer.byteLength(text, "utf8"), symbols, imports: [], rank: 0, hot: 0, todo: countTodos(text), tests: [], summary: "", ...(refs ? { refs } : {}) },
     raw: extractImports(path, lang, text),
     texts: extractTexts(path, lang, text).map((t) => ({ path, line: t.line, text: t.text, kind: t.kind })),
     text,
@@ -255,6 +259,15 @@ export async function runBuild(
     // ---- each file
     await progress(35, "reading each file");
     const nextRoots = nextRootsOf(core);
+    // The parser's grammars for the languages this repo has, loaded now and not before (a repo with no Kotlin never loads Kotlin). A grammar that
+    // cannot be had costs only its language: those files are read by regex, as they were before.
+    let textBytes = 0;
+    for (const t of contents.texts.values()) textBytes += t.length;
+    treeSitter.disable(!getConfig().CODE_TREE_SITTER || (isWorkerRuntime() && textBytes > PARSER_WORKER_TEXT_MAX));
+    const grammarsAt = now();
+    const grammars = await ensureGrammars([...contents.texts.keys()].map((p) => ({ path: p, lang: languageOf(p) })));
+    const parserStatus = treeSitter.status();
+    deps.log?.info({ project: project.id, grammars, failed: Object.keys(parserStatus.failed), absent: parserStatus.absent, ms: now() - grammarsAt }, "code project brain: parser grammars");
     const analysed = new Map<string, Analysed>();
     let n = 0;
     for (const [path, text] of contents.texts) {

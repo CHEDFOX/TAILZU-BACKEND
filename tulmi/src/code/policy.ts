@@ -72,7 +72,10 @@
  *
  * THE SECRET SCAN. Before any commit the new contents (not deletions) are read
  * by scanForSecrets: AWS keys, GitHub tokens, private-key headers, Slack
- * tokens, a long random value after `api_key=` or `secret=`, and `.env` files.
+ * tokens, a long random value after `api_key=` or `secret=`, `.env` files,
+ * and Gitleaks' default rules (secrets/gitleaks.ts: about 220 providers, each
+ * behind its keywords, an entropy floor and its allowlists; MIT, see
+ * THIRD_PARTY_NOTICES.md).
  * A hit makes that commit "commit.secret", which is ask_strict, and the
  * approval card shows which files and what kind of thing, never the value. The
  * values are not kept, not logged and not put in any error, anywhere.
@@ -88,6 +91,7 @@ import { createHash } from "node:crypto";
 import { ConnectorError } from "../connectors/state.js";
 import type { Approval, ApprovalBook } from "./approvals.js";
 import { FILE_MAX_BYTES, assertRepoPath, type CommitFile } from "./github.js";
+import { gitleaksKinds } from "./secrets/gitleaks.js";
 import { SHADOW_PREFIX, isExactShadowSet, isReservedPath, isShadowBranch } from "./shadow.js";
 import type { CodeGrant, CodeProject, CodeStore, NewCodeGrant } from "./store.js";
 
@@ -358,9 +362,9 @@ function isEnvFile(path: string): boolean {
  * Which of the files' NEW contents look like they hold a secret. A deletion has
  * no new contents and is never flagged. Returns the paths (each once, in order)
  * and what kind of thing each looked like; the matched text is thrown away the
- * moment it is matched.
+ * moment it is matched. `{ gitleaks: false }` leaves out the Gitleaks rules (the benchmark compares the scan with and without them).
  */
-export function scanForSecrets(files: readonly CommitFile[]): SecretHit[] {
+export function scanForSecrets(files: readonly CommitFile[], opts: { gitleaks?: boolean } = {}): SecretHit[] {
   const hits: SecretHit[] = [];
   for (const f of files) {
     if (!f || typeof f.path !== "string" || f.delete === true || f.content === null || typeof f.content !== "string") continue;
@@ -373,6 +377,8 @@ export function scanForSecrets(files: readonly CommitFile[]): SecretHit[] {
     for (const m of f.content.matchAll(GENERIC)) {
       if (m[1] && looksRandom(m[1])) { kinds.add("a secret value"); break; }
     }
+    // Then Gitleaks' default rules (secrets/gitleaks.ts): ~220 providers, each behind its keywords, an entropy floor and its allowlists.
+    if (opts.gitleaks !== false) for (const kind of gitleaksKinds(f.path, f.content, kinds.size === 0)) kinds.add(kind);
     if (kinds.size) hits.push({ path: f.path, kinds: [...kinds] });
   }
   return hits;

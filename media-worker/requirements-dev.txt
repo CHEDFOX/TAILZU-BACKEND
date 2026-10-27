@@ -1,0 +1,6 @@
+# What the tests need on top of the worker: pip install -r requirements-dev.txt (after requirements.txt or requirements.lock)
+-r requirements.txt
+pytest==9.1.1              # MIT
+httpx==0.28.1              # BSD-3: FastAPI's test client
+python-docx==1.2.0         # MIT: the tests make their own docx
+pypdf==6.21.2              # BSD-3: the tests make their own password-protected PDF

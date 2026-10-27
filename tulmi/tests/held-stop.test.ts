@@ -1,5 +1,5 @@
 /**
- * A full stop held at a pause (assistPrompt's held stop): the desktop pastes
+ * A full stop held at a pause (assistPrompt's held stop, one of the writer's call notes): the desktop pastes
  * each stretch of a dictation as they pause, holds back the full stop that
  * ends it, and says so (heldStop) with the next stretch, which decides
  * whether the stop goes in. What must hold: the writer is told only when there
@@ -13,7 +13,8 @@ const seen: string[] = [];
 vi.mock("openai", () => ({
   default: class {
     chat = { completions: { create: async (req: { messages: Array<{ role: string; content: string }> }) => {
-      seen.push(req.messages.find((m) => m.role === "system")?.content ?? "");
+      // Everything the model was sent: the writer's block, then the call's data and what they said.
+      seen.push(req.messages.map((m) => m.content).join("\n"));
       return { choices: [{ message: { content: answer } }] };
     } } };
   },
@@ -23,17 +24,18 @@ process.env.OPENAI_API_KEY = "k";
 process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
-const { buildAssistSystem } = await import("../src/pipeline/assistPrompt.js");
+const { WRITER, dataFor } = await import("./writer-prompt.js");
 const { assist } = await import("../src/pipeline/cleanup.js");
 const { joinWithSpace } = await import("../src/pipeline/join.js");
 
 const HELD = /the full stop that would end it is not written yet/;
 
 describe("a full stop held at a pause", () => {
-  it("is in the writer's rules only when asked for, and only with something before it", () => {
-    expect(buildAssistSystem({ hasContext: true, heldStop: true })).toMatch(HELD);
-    expect(buildAssistSystem({ hasContext: true })).not.toMatch(HELD);
-    expect(buildAssistSystem({ hasContext: true, heldStop: false })).not.toMatch(HELD);
+  it("is in the call's notes only when asked for, and only with something before it; never in the stable block", () => {
+    expect(dataFor({ hasContext: true, heldStop: true })).toMatch(HELD);
+    expect(dataFor({ hasContext: true })).not.toMatch(HELD);
+    expect(dataFor({ hasContext: true, heldStop: false })).not.toMatch(HELD);
+    expect(WRITER).not.toMatch(HELD);
   });
 
   it("reaches the writer from assist() with the context it was held from, and not without one", async () => {

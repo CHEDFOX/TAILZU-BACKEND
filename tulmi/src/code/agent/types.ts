@@ -24,6 +24,7 @@
  * on the way. Nothing in this file reaches a network or a store.
  */
 import type { Approval } from "../approvals.js";
+import type { ContextStrategy } from "./mask.js";
 import type { Classification } from "../brain/types.js";
 import type { BaselineResult } from "../project/types.js";
 import type { ChangePlan, Located } from "../work/index.js";
@@ -60,8 +61,10 @@ export const RUNS_MAX = 10;
 export const CALLS_PER_TURN = 8;
 /** Characters of the assembled prompt for one model call. */
 export const CONTEXT_MAX_CHARS = 60_000;
-/** The last this-many tool results go to the model in full; older ones are folded. */
+/** The last this-many tool results go to the model in full; older ones are masked or folded (context.ts, mask.ts). */
 export const FULL_RESULTS = 6;
+/** How the old results are dealt with unless CODE_CONTEXT_STRATEGY (or the agent's `contextStrategy`) says otherwise. Chosen by measurement: docs/code-agent.md. */
+export const CONTEXT_STRATEGY_DEFAULT: ContextStrategy = "summary";
 /** One tool result, as the model is shown it. */
 export const RESULT_MAX_CHARS = 6_000;
 /** The running summary of folded results, and how many fallen-out results are folded at once. */
@@ -123,6 +126,10 @@ export interface ResultRecord {
   label?: string;
   /** `data` is already inside a wrapper for text from the web (asUntrusted). */
   wrapped?: boolean;
+  /** The output was replaced by a one-line placeholder in `content` when it became old (mask.ts): there is no `data` any more. */
+  masked?: boolean;
+  /** The placeholder quotes words from the output (a line of errors, the names of files found): it is shown inside a data fence. */
+  quotes?: boolean;
 }
 
 /** One turn of the model: what it said, the calls it made, and what each came to. A turn with fewer results than calls is half done. */
@@ -392,10 +399,12 @@ export interface AgentState {
   newProject?: NewProjectState;
   work: {
     exchanges: Exchange[];
-    /** One line for each result that fell out of the last six and is not folded yet. */
+    /** One line for each result that fell out of the last six and is not folded yet (the summary strategy; the others keep the turns themselves). */
     digests: string[];
     /** Everything older, folded by the cheap tier. */
     summary: string;
+    /** How this job treats its old results, fixed at its first model turn so that a restart under another setting does not change it halfway. Absent: it is the default. */
+    strategy?: ContextStrategy;
     turns: number;
     /** Turns in a row that came to nothing, and verify rounds that found a break: what the router climbs a tier on. */
     badTurns: number;

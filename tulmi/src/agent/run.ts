@@ -30,8 +30,9 @@
  * out among the sentences, in the order they were written, at most
  * AGENT_DRAW_MAX a step. Places in the picture are honoured only on the
  * picture path, the one step that has a picture for them to be places in.
- * There each model is sent the prompt for its family, and its answer's places
- * are read in the order that prompt taught: Gemini writes y first. The
+ * There each model is sent the note for its family (prompt.ts placesNote),
+ * and its answer's places are read in the order that note taught: Gemini
+ * writes y first. The
  * order is the model's that wrote the answer, read off its chunks, and one
  * answer is always one model's, since the ladder moves on only before any
  * of it is written.
@@ -50,8 +51,9 @@ import { randomUUID } from "node:crypto";
 import type { AgentStepRequest, AgentTurn } from "../../../shared/types/api.js";
 import { aboutTheText, commandText, grammar, grammarLine, modeOf, wantsDetail, type GrammarAction } from "./grammar.js";
 import { LineReader, LineSplitter, parseLine, type ActionLine, type SpotOrder, type UseLine } from "./lines.js";
-import { PlannerUnavailable, type PictureCall, type PlanChunk, type SystemPrompt, type UserContent } from "./llm.js";
-import { agentPictureContent, agentSystemFor, agentUserMessage, drawOrderFor, visionSystemFor } from "./prompt.js";
+import { PlannerUnavailable, type PictureCall, type PlanChunk, type SystemPrompt, type UserPrompt } from "./llm.js";
+import { agentPictureContent, agentUserMessage, drawOrderFor } from "./prompt.js";
+import { stableBlock } from "../principles/roles.js";
 import type { AgentImage, EventSink } from "./protocol.js";
 import { resolve, resolverAsk } from "./resolver.js";
 import { isBrowser, isTextEntry, withRisk, type PlannedAction, type Scene } from "./risk.js";
@@ -81,8 +83,8 @@ export interface StepDeps {
   rewrite: (selection: string, instruction: string) => Promise<string>;
   /** The planner's streamed answer (llm.planStream). `picture` on the
    *  picture path, whose user message then carries the picture as a part,
-   *  and whose system prompt is chosen per model (visionSystemFor). */
-  plan: (system: SystemPrompt, user: UserContent, signal?: AbortSignal, picture?: PictureCall) => AsyncIterable<PlanChunk>;
+   *  and is built per model (it tells each how places in a picture are written). */
+  plan: (system: SystemPrompt, user: UserPrompt, signal?: AbortSignal, picture?: PictureCall) => AsyncIterable<PlanChunk>;
   /** Aborted when the device goes away. */
   signal?: AbortSignal;
   /** The person's connected apps (src/connectors). Absent when the feature is
@@ -92,12 +94,13 @@ export interface StepDeps {
 
 /** What the planner is sent on a step where it may use a connected app. */
 export interface ConnectorPlan {
-  /** AGENT_SYSTEM (the phone's on a phone) plus the addendum that teaches USE. */
+  /** The planner's stable block, the same with or without apps (the addendum that teaches USE is in `message`). */
   system: string;
   /**
-   * The step's user message with the apps' tool cards, and any results so far,
-   * in it. `fix`: the last USE did not fit its tool and nothing ran, as
-   * "connector.tool — what to fix", for one of Tailzu's own lines.
+   * The step's user message with the addendum that teaches USE, the apps' tool
+   * cards, and any results so far, in it. `fix`: the last USE did not fit its
+   * tool and nothing ran, as "connector.tool — what to fix", for one of
+   * Tailzu's own lines.
    */
   message(base: string, results: string[], fix?: string): string;
 }
@@ -332,7 +335,7 @@ async function planWithModel(
   if (!apps || !deps.connectors) {
     return follow(ctx, deps, sink, {
       reader: new LineReader(ids, reads, { draws: drawMax(ctx) }),
-      stream: deps.plan(agentSystemFor(req.platform), user, deps.signal),
+      stream: deps.plan(stableBlock("ask_planner"), user, deps.signal),
       // The text prompt teaches every model the one order, and its places in
       // a picture are dropped anyway: it has no picture.
       order: () => "xy",
@@ -404,14 +407,15 @@ async function answerPicture(
   // the reply ("the second one"), and the ask for detail came before it.
   const all = everythingSaid(req, s.said);
   const deep = wantsDetail(all);
-  const user = agentPictureContent(req, s.said, s.image);
+  // Built for each model the ladder reaches: Gemini is told its own order for places in the picture.
+  const user = (model: string) => agentPictureContent(req, s.said, s.image, drawOrderFor(model));
   const result: StepResult = { path: "picture", mode: "show", words: 0, audioSeconds: s.audioSeconds };
   if (deep) result.deep = true;
   return follow(ctx, deps, sink, {
     reader: new LineReader(new Set(req.screen.elements.map((e) => e.id)), "show", {
       picture: true, says: deep ? DEEP_SAYS : PICTURE_SAYS, draws: drawMax(ctx),
     }),
-    stream: deps.plan(visionSystemFor, user, deps.signal, { deep }),
+    stream: deps.plan(stableBlock("ask_vision"), user, deps.signal, { deep }),
     order: drawOrderFor,
     scene: { req, said: all },
     nothing: NOT_SEEN,

@@ -57,6 +57,18 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   // PR care (src/code/prcare, src/code/agent/merge.ts): written after the principles too, so their first size is their "before".
   care_review: 1422,
   care_conflict: 697,
+  // The main assistant (agent/, pipeline/): what each builder sent at 61edee2, the commit before they became roles. The writer is buildAssistSystem with
+  // no optional line on (5,645 with every one on), the planner AGENT_SYSTEM on a computer (11,895 with the connected apps' addendum), the picture
+  // reader AGENT_VISION_SYSTEM (7,195 in Gemini's order), and the portrait writers' with no rhythms and no voice named (3,762 with rhythms).
+  ask_planner: 6778,
+  ask_vision: 6974,
+  writer: 3576,
+  edit_selection: 1580,
+  answer_about: 740,
+  converse: 780,
+  portrait_update: 3248,
+  portrait_transcript: 3178,
+  portrait_usage: 3285,
 };
 
 /** The roles that replaced a prompt the code used to carry: only these have a real "before", and only these are held to the saving. */

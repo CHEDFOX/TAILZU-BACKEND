@@ -19,7 +19,7 @@ vi.hoisted(() => {
 
 const dev = await import("../src/connectors/device.js");
 const { ALWAYS_ON } = await import("../src/connectors/catalog.js");
-const { createConnectors, deviceResults } = await import("../src/connectors/index.js");
+const { CONNECTOR_ADDENDUM, createConnectors, deviceResults } = await import("../src/connectors/index.js");
 const { MemoryConnectorStore } = await import("../src/connectors/store.js");
 const { EN, HG, wordsFor } = await import("../src/connectors/words.js");
 const { EventSink, readStepRequest } = await import("../src/agent/protocol.js");
@@ -146,7 +146,9 @@ describe("what the planner is offered", () => {
     expect(await rt.cards(req({ platform: "ios", capabilities: ["DeviceFiles"] }), "sort my downloads by type")).toBeNull();
     const plan = await rt.cards(req({ capabilities: ["DeviceFiles"] }), "sort my downloads by type");
     expect(plan).not.toBeNull();
-    expect(plan!.system).toContain(dev.DEVICE_ADDENDUM);
+    // The planner's block is unchanged; what teaches the files is at the head of the message, after the apps' lesson.
+    expect(plan!.system).not.toContain("this-computer");
+    expect(plan!.message("<said>x</said>", []).startsWith(`${CONNECTOR_ADDENDUM}\n${dev.DEVICE_ADDENDUM}\n`)).toBe(true);
     const msg = plan!.message("<said>x</said>", []);
     expect(msg).toContain("this-computer.organise_folder");
     expect(msg).toContain("this-computer.find_files");

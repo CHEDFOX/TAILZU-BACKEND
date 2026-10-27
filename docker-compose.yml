@@ -58,6 +58,42 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    # The default network (out to the internet, and the port above) and the media network, where the media worker is (below). In tulmi/.env:
+    # MEDIA_WORKER_URL=http://media-worker:8000
+    networks:
+      - default
+      - media
+
+  # THE MEDIA WORKER (media-worker/, docs/media.md, DEPLOY.md): reads office files (MarkItDown), scanned and complex PDFs (Docling), shrinks pictures
+  # (Pillow) and cuts videos into key frames and a sound track (ffmpeg) for the backend. OPTIONAL: it only starts with the `media` profile,
+  #
+  #   MEDIA_WORKER_SECRET=$(openssl rand -hex 32) docker compose --profile media up -d --build
+  #
+  # (put the same secret in tulmi/.env as MEDIA_WORKER_SECRET; compose reads its own copy from a `.env` beside this file or from the shell).
+  # It is held to what it needs: no network out (the `media` network is internal: only the backend can reach it), a read-only filesystem with a
+  # scratch space, no capabilities, a memory and process limit, and a user that is not root. Its jobs run in children with their own clock and
+  # memory limit, and without the secret.
+  media-worker:
+    profiles: ["media"]
+    build:
+      context: ./media-worker
+    image: tailzu-media-worker
+    environment:
+      MEDIA_WORKER_SECRET: ${MEDIA_WORKER_SECRET:-}
+      WORKER_CONCURRENCY: ${MEDIA_WORKER_CONCURRENCY:-2}
+    networks:
+      - media
+    read_only: true
+    tmpfs:
+      - /tmp:size=2g,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${MEDIA_WORKER_MEMORY:-6g}
+    cpus: ${MEDIA_WORKER_CPUS:-2}
+    pids_limit: 512
+    restart: unless-stopped
 
   # OPTIONAL reverse proxy with automatic HTTPS. It claims ports 80 and 443, so
   # ONLY use this if nothing else on the VPS is using them. If you already run
@@ -87,6 +123,11 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     restart: unless-stopped
+
+networks:
+  # Only the backend and the media worker are on it, and it has no route out: a file cannot make the worker call anything.
+  media:
+    internal: true
 
 volumes:
   caddy_data:

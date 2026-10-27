@@ -32,6 +32,7 @@ import { scanForSecrets } from "../policy.js";
 import { I18N_DIR, baseName, extOf } from "./lang.js";
 import { parseYaml, isObj, type Json } from "./parse.js";
 import { blankComments } from "./symbols.js";
+import { analyse, type RawText } from "./treesitter/index.js";
 import { TEXTS_PER_FILE, type TextKind } from "./types.js";
 
 export interface TextHit { line: number; text: string; kind: TextKind }
@@ -283,6 +284,18 @@ const CB = { slash: true, hash: false, triple: false, backtick: false, apostroph
  * The visible strings of one file, with the line each is on. Strings on a line
  * the secret scanner flags are left out. At most 200 per file.
  */
+/** What a parser found as raw strings, cleaned the way the regex path cleans its own: judged as words a person reads, attribute values kept whole. */
+function parsedTexts(raw: readonly RawText[]): TextHit[] {
+  const out: TextHit[] = [];
+  for (const r of raw) {
+    const v = cleanText(r.raw, { code: r.code });
+    if (!v) continue;
+    if (r.kind === "attr" && /\{\{|\$\{|^\{/.test(v)) continue;
+    out.push({ line: r.line, text: v, kind: r.kind });
+  }
+  return out;
+}
+
 export function extractTexts(path: string, lang: string, text: string): TextHit[] {
   let hits: TextHit[] = [];
   const e = extOf(path);
@@ -294,7 +307,9 @@ export function extractTexts(path: string, lang: string, text: string): TextHit[
   } else if (e === "xml") {
     hits = /\/res\//.test(`/${path}`) ? androidTexts(path, text) : [];
   } else {
-    switch (lang) {
+    const parsed = lang === "TypeScript" || lang === "JavaScript" || lang === "HTML" ? analyse(path, lang, text) : null;
+    if (parsed?.texts) hits = parsedTexts(parsed.texts);
+    else switch (lang) {
       case "TypeScript": case "JavaScript": {
         const jsx = /\.(?:tsx|jsx)$/.test(path) || /<\/[A-Za-z]|\/>/.test(text);
         hits = jsx ? markupTexts(text.split("\n"), { jsx: true }) : [];

@@ -28,11 +28,13 @@ import { jobStore } from "../../tulmi/src/code/jobs/store.js";
 import type { BrainBody } from "../../tulmi/src/code/jobs/handoff/protocol.js";
 import type { Notify } from "../../tulmi/src/code/jobs/types.js";
 import { getConfig } from "../../tulmi/src/config.js";
+import { setGrammarSource } from "../../tulmi/src/code/project/treesitter/index.js";
 import { installSafeFetch } from "../../tulmi/src/web/safeFetch.js";
 import { workerSafeFetchImpl } from "../../tulmi/src/web/workerSafeFetch.js";
 import { cloudflareRendererFromConfig } from "../../tulmi/src/web/browser/cloudflare.js";
 import { CloudDesktopProvider, devicesOf } from "./desktops.js";
 import { applyEnv, type Env } from "./env.js";
+import { workerGrammars } from "./grammars.js";
 import { buildLive } from "./live.js";
 import { workerNotify } from "./notify.js";
 import { bindingBrainRemote } from "./workflows.js";
@@ -98,6 +100,8 @@ export async function buildWorld(env: Env, o: { notify?: Notify; /** Tests: stor
   applyEnv(env);
   // The Worker's guard for every page and registry it reads, in place of the VPS's (undici, node:dns): see tulmi/src/web/workerSafeFetch.ts.
   installSafeFetch(workerSafeFetchImpl);
+  // The parser's grammars that were bundled with this Worker (grammars.ts); a language without one is read by the brain's regexes.
+  setGrammarSource(workerGrammars());
   const cfg = getConfig();
   if (!cfg.supabaseEnabled && !o.memoryStores) throw new Error("SUPABASE_URL and SUPABASE_SERVICE_KEY are not set on the Worker.");
   const notify = o.notify ?? workerNotify(env, { log });

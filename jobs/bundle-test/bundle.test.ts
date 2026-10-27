@@ -15,6 +15,7 @@ import { gzipSync } from "node:zlib";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { unstable_dev, unstable_readConfig, type Unstable_DevWorker } from "wrangler";
 import { signRequest } from "../../tulmi/src/code/jobs/handoff/sign.js";
+import { GRAMMAR_BUDGET_BYTES, GRAMMAR_MAX_BYTES } from "../src/grammars.js";
 
 const root = resolve(__dirname, "..");
 const outdir = mkdtempSync(join(tmpdir(), "tailzu-jobs-bundle-"));
@@ -56,6 +57,25 @@ describe("the bundle", () => {
     const gz = gzipSync(source).length;
     console.log(`jobs bundle: ${(bytes / 1024).toFixed(0)} KiB, ${(gz / 1024).toFixed(0)} KiB gzipped, ${readdirSync(outdir).length} files`);
     expect(bytes).toBeLessThan(10 * 1024 * 1024);
+  });
+
+  it("carries the parser's grammars as bundled WebAssembly modules, within the budget, and each is imported when a build asks for it", () => {
+    const wasm = readdirSync(outdir).filter((f) => f.endsWith(".wasm"));
+    const sizes = Object.fromEntries(wasm.map((f) => [f.replace(/^[0-9a-f]+-/, "").replace(/\.wasm$/, ""), statSync(join(outdir, f)).size]));
+    const total = Object.values(sizes).reduce((a, b) => a + b, 0);
+    const upload = [...readdirSync(outdir)].reduce((a, f) => a + statSync(join(outdir, f)).size, 0) - statSync(join(outdir, "index.js.map")).size;
+    console.log(`jobs bundle: ${wasm.length} wasm modules, ${(total / 1024 / 1024).toFixed(2)} MiB of WebAssembly, ${(upload / 1024 / 1024).toFixed(2)} MiB uploaded in all (the limit is 64 MiB)`);
+    // The engine and the eleven grammars; Kotlin, Swift and C# are left out on purpose (src/grammars.ts says why).
+    expect(Object.keys(sizes).sort()).toEqual([
+      "tree-sitter-dart", "tree-sitter-go", "tree-sitter-html", "tree-sitter-java", "tree-sitter-javascript", "tree-sitter-php", "tree-sitter-python",
+      "tree-sitter-ruby", "tree-sitter-rust", "tree-sitter-tsx", "tree-sitter-typescript", "web-tree-sitter",
+    ]);
+    expect(total).toBeLessThanOrEqual(GRAMMAR_BUDGET_BYTES + sizes["web-tree-sitter"]!);
+    for (const [name, size] of Object.entries(sizes)) if (name !== "web-tree-sitter") expect(size, name).toBeLessThanOrEqual(GRAMMAR_MAX_BYTES);
+    expect(upload).toBeLessThan(64 * 1024 * 1024);
+    // Imported on demand, by the name wrangler gave the module, and not at the top of the bundle (a request that is no brain build compiles none).
+    for (const f of wasm) expect(source.includes(`import("./${f}")`), f).toBe(true);
+    expect(importsOf(source).filter((m) => m.endsWith(".wasm"))).toEqual([]);
   });
 
   it("exports the three classes the config names, and a fetch and a scheduled handler", () => {

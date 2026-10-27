@@ -16,7 +16,7 @@
  * refused with CassetteMiss, which the route answers as a failure; the
  * harness sees `skip` and drops the trial from the score.
  */
-import { PlannerUnavailable, type CallRecord, type PictureCall, type PlanChunk, type SystemPrompt, type UserContent } from "../../../src/agent/llm.js";
+import { PlannerUnavailable, type CallRecord, type PictureCall, type PlanChunk, type SystemPrompt, type UserPrompt } from "../../../src/agent/llm.js";
 import type { ModelCallTrace } from "../types.js";
 import { CassetteMiss, TracedAdapter, cassetteKey } from "./adapter.js";
 import { recordedTrials, type Cassette } from "./cassette.js";
@@ -35,7 +35,7 @@ export class ReplayAdapter extends TracedAdapter {
     this.recordedTrials = recordedTrials(cassette);
   }
 
-  protected async *answer(trace: ModelCallTrace, system: SystemPrompt, user: UserContent, _signal?: AbortSignal, picture?: PictureCall, log?: (call: CallRecord) => void): AsyncGenerator<PlanChunk> {
+  protected async *answer(trace: ModelCallTrace, system: SystemPrompt, user: UserPrompt, _signal?: AbortSignal, picture?: PictureCall, log?: (call: CallRecord) => void): AsyncGenerator<PlanChunk> {
     const key = cassetteKey(this.models, system, user, picture);
     trace.key = key;
     const entries = this.cassette.entries[key];

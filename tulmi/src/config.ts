@@ -672,6 +672,20 @@ const EnvSchema = z.object({
   CODE_PROJECT_BRAIN: bool(false),
   CODE_IMPORT_BUDGET_PAISE: z.coerce.number().int().min(0).max(1_000_000).default(1000),
   /**
+   * TREE-SITTER FOR THE PROJECT BRAIN (src/code/project/treesitter, docs/code-project-brain.md): symbols, routes, imports, the names a file refers
+   * to and the text a person reads are read with a real parser (web-tree-sitter, one WebAssembly grammar per language, loaded when a repo has a
+   * file in that language) instead of regular expressions. On by default. false makes every build read with the regexes, which are also what runs
+   * for any language whose grammar is not loaded (the Cloudflare Worker carries only some) and for a file the parser gives up on.
+   */
+  CODE_TREE_SITTER: bool(true),
+  /**
+   * HOW THE CODE AGENT TREATS ITS OLD TOOL RESULTS (src/code/agent/mask.ts, context.ts, docs/code-agent.md): "mask" replaces the output of a result that is
+   * older than the last six by a one-line placeholder and keeps the model's own actions, with no model call; "summary" drops those turns and has the cheap
+   * tier fold them into a running summary; "hybrid" masks and folds the oldest ten masked turns into the summary once there are twenty. A job keeps the strategy it started with.
+   * Unset: the default in agent/types.ts (CONTEXT_STRATEGY_DEFAULT). Set it to compare them (the e2e harness does).
+   */
+  CODE_CONTEXT_STRATEGY: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().toLowerCase() : undefined), z.enum(["mask", "summary", "hybrid"]).optional()),
+  /**
    * ARTIFACTS (src/artifacts, docs/artifacts.md): live things a bot makes and the person sees and clicks in the app, like Claude's: a page,
    * a React component, SVG, a diagram, markdown. They run in the viewer (the viewer/ package, a site of its own, in a sandbox with no network);
    * this server keeps them, their versions, what they save while they run, and makes the changes cheaply (an edit of one element sends a
@@ -697,6 +711,28 @@ const EnvSchema = z.object({
    */
   FRONT_DOOR: bool(false),
   FRONT_DAILY_PAISE: z.coerce.number().int().min(0).max(10_000_000).default(1500),
+  /**
+   * MEDIA AND FILES INGESTION (src/media, docs/media.md): a person attaches a PDF, an office file, a spreadsheet, a picture, a recording, a video or a zip,
+   * and a question about it is answered from the part of it that matters. Off by default: it needs migration 0035, and with it off the front door's
+   * attachment registry keeps its "coming soon" for those kinds and every /v1/files route answers 404 { code: "media_off" }.
+   *
+   * MEDIA_WORKER_URL / MEDIA_WORKER_SECRET: the Python worker (media-worker/) that reads office files (MarkItDown), hard PDFs (Docling), makes pictures
+   * smaller and cuts a video into key frames and a sound track (ffmpeg). https, or http on a private address; every call is HMAC-signed with the secret
+   * (SECRET: .env only, 32+ characters, the same on both sides). Without it PDFs with a text layer, CSV, text, code, zip, pictures and sound still work.
+   *
+   * R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET: the Cloudflare R2 bucket the bytes of a file are kept in (S3 API, signed by
+   * src/media/sigv4.ts). R2_SECRET_ACCESS_KEY is a SECRET: .env only. Without all four, files are read and their text kept but their bytes are not.
+   *
+   * MEDIA_KEEP_DAYS: how long a file is kept unless the person keeps it (30).
+   */
+  MEDIA_INGEST: bool(false),
+  MEDIA_WORKER_URL: z.string().trim().optional(),
+  MEDIA_WORKER_SECRET: z.string().optional(),
+  R2_ACCOUNT_ID: z.string().trim().optional(),
+  R2_ACCESS_KEY_ID: z.string().trim().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET: z.string().trim().optional(),
+  MEDIA_KEEP_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
   /**
    * THE OVERLOAD GUARDS (src/guard, docs/front-door.md): how many of the guarded requests (/v1/ask, artifact makings and edits, jobs, code
    * questions) run at once in THIS process. In memory: with several workers or servers each has its own count, so the real ceiling is the
@@ -896,10 +932,12 @@ const EnvSchema = z.object({
   // ever under NODE_ENV=development or test — see the boot-time refusal.
   DEV_SKIP_AUTH: bool(false),
 
-  // The reply prompt to load from shared/prompts/ (reply.v<N>.md). Roll back
-  // by exporting REPLY_PROMPT_VERSION=v3 without a code change. (Cleanup has
-  // no file any more: the writer's prompt is built in assistPrompt.ts.)
-  REPLY_PROMPT_VERSION: z.string().default("v4"),
+  // The screen reply's prompt. From v5 it is the `writer` role (principles/
+  // roles.ts), like every other writing path; v1 to v4 are the files in
+  // shared/prompts/ (reply.v<N>.md). Roll back by exporting
+  // REPLY_PROMPT_VERSION=v4 without a code change. (Cleanup has no file any
+  // more: the writer's rules are the role's, its data is pipeline/assistPrompt.ts.)
+  REPLY_PROMPT_VERSION: z.string().default("v5"),
 
   // Sentry (backend). Optional — the observability layer no-ops when unset,
   // so the value can safely stay empty in dev.
@@ -1490,6 +1528,14 @@ export function getConfig(): AppConfig {
   // A SearXNG address that is not an https address was dropped by the schema; say so, since it is a setting someone typed.
   if ((process.env.WEB_SEARXNG_URL ?? "").trim() && !env.WEB_SEARXNG_URL) {
     console.warn("[config] WEB_SEARXNG_URL is not an https address (https://search.example.com): it is ignored, and web search goes to DuckDuckGo's page, then Brave if there is a key.");
+  }
+
+  // Media ingestion: half-set worker or bucket settings are a feature that quietly does less. Warned, not refused.
+  if (env.MEDIA_INGEST) {
+    const r2 = [env.R2_ACCOUNT_ID, env.R2_ACCESS_KEY_ID, env.R2_SECRET_ACCESS_KEY, env.R2_BUCKET];
+    if (r2.some(Boolean) && !r2.every(Boolean)) console.warn("[config] R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET are not all set: files are read but their bytes are not kept.");
+    if (Boolean(env.MEDIA_WORKER_URL) !== Boolean(env.MEDIA_WORKER_SECRET)) console.warn("[config] MEDIA_WORKER_URL and MEDIA_WORKER_SECRET go together: without both there is no worker, so office files and scanned PDFs are not read.");
+    if (env.MEDIA_WORKER_SECRET && env.MEDIA_WORKER_SECRET.length < 32) console.warn("[config] MEDIA_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
   }
 
   // Jobs on Cloudflare with no way to reach the Worker: every job would be failed with a reason. Warned, not refused: the rest of the server is unaffected.

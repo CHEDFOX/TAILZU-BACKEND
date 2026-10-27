@@ -46,6 +46,11 @@ const { DecideReply } = await import("../src/front/decide.js");
 const { PlanSchema: FrontPlanReply } = await import("../src/front/handlers.js");
 const { ReviewVerdict } = await import("../src/code/prcare/review.js");
 const { ConflictVerdict } = await import("../src/code/agent/merge.js");
+const { parseLine } = await import("../src/agent/lines.js");
+const { readSend } = await import("../src/pipeline/assistPrompt.js");
+const { parsePortraitDraft } = await import("../src/pipeline/portraitDimensions.js");
+const { CONNECTOR_ADDENDUM } = await import("../src/connectors/index.js");
+const { DEVICE_ADDENDUM } = await import("../src/connectors/device.js");
 type Fixture = import("../src/principles/evalcheck.js").Fixture;
 type RoleId = (typeof ROLE_IDS)[number];
 
@@ -252,6 +257,31 @@ describe("a known-good answer for each role", () => {
       text: '{"files":[{"path":"src/index.ts","kind":"mechanical","reason":"Both sides added a different import; both stay."}]}',
       reads: (t) => ConflictVerdict.parse(JSON.parse(t)),
     },
+    // The main assistant (agent/, pipeline/). Ask's lines are read by the device's parser, the writer's answer by readSend, the portrait by parsePortraitDraft.
+    ask_planner: {
+      text: "SAY Captions is this switch on the right.\nPOINT e40 | Captions\nDONE",
+      reads: (t) => (t.split("\n").every((l) => parseLine(l, "mac")) ? t : null),
+    },
+    ask_vision: {
+      text: "SAY It says energy equals mass times the speed of light squared.\nSAY E is energy, m is mass, and c is the speed of light.\nDONE",
+      reads: (t) => (t.split("\n").every((l) => parseLine(l, "mac")) ? t : null),
+    },
+    writer: { text: "<intent>a status update for a contact: short</intent><send>Reaching in ten.</send>", reads: (t) => readSend(t) },
+    edit_selection: { text: "Please send the money as soon as possible.", reads: (t) => t },
+    answer_about: { text: "You owe $42.50.", reads: (t) => t },
+    converse: { text: "That sounds like a lovely trip. What was the best part of it?", reads: (t) => t },
+    portrait_update: {
+      text: '{"core":"Short and direct. Drops greetings, keeps contractions, no exclamation marks.","words":[],"styles":[{"name":"clipped","when":"messages to colleagues"}],"rhythms":[],"toneNote":"Plain."}',
+      reads: (t) => parsePortraitDraft(t).core,
+    },
+    portrait_transcript: {
+      text: '{"core":"Easy and wandering. Long run-on sentences, casual fillers dropped in writing.","words":[],"styles":[],"rhythms":[]}',
+      reads: (t) => parsePortraitDraft(t).core,
+    },
+    portrait_usage: {
+      text: '{"core":"Clipped. Lowercase openers survive every rewrite; politeness words get added by the rewrite, not by them.","words":[],"styles":[],"rhythms":[]}',
+      reads: (t) => parsePortraitDraft(t).core,
+    },
   };
 
   it("has one for every role", () => {
@@ -268,6 +298,26 @@ describe("a known-good answer for each role", () => {
       expect(GOOD[role].reads(GOOD[role].text), role).toBeTruthy();
     });
   }
+
+  it("the connected-app fixtures of the planner begin with the addendum the product sends, so they cannot drift from it", () => {
+    const apps = loadFixtures("ask_planner").fixtures.filter((f) => f.input.includes("<tools>"));
+    expect(apps.length).toBeGreaterThanOrEqual(5);
+    for (const f of apps) {
+      expect(f.input.startsWith(`${CONNECTOR_ADDENDUM}\n`)).toBe(true);
+      // "This computer" has its own lesson, after the apps'.
+      if (f.input.includes("this-computer.")) expect(f.input.startsWith(`${CONNECTOR_ADDENDUM}\n${DEVICE_ADDENDUM}\n`)).toBe(true);
+    }
+    // the rest are the step's message alone, from its first line
+    for (const f of loadFixtures("ask_planner").fixtures.filter((x) => !x.input.includes("<tools>"))) expect(f.input).toMatch(/^Platform: /);
+  });
+
+  it("the writer's fixtures are the user message the product sends: the call's data first, what they said last", () => {
+    for (const f of loadFixtures("writer").fixtures) {
+      expect(f.input).toMatch(/<said>\n[\s\S]*\n<\/said>$/);
+      expect(f.input.startsWith("<call>") || f.input.startsWith("<tone>")).toBe(true);
+      expect(f.expect.include).toContain("<send>");
+    }
+  });
 
   it("agent_work: a first move that reads the code passes, and running a command from a planted instruction does not", () => {
     const planted = loadFixtures("agent_work").fixtures.find((f) => /evil\.example/.test(f.input))!;

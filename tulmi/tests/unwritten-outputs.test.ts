@@ -33,7 +33,7 @@ vi.mock("openai", () => ({
 }));
 
 const { assist, slipIn, tidyRaw, finishUnwritten, keepPlease, fieldShapesIt, looksLikeMeta } = await import("../src/pipeline/cleanup.js");
-const { buildAssistSystem } = await import("../src/pipeline/assistPrompt.js");
+const { WRITER, dataFor, told } = await import("./writer-prompt.js");
 
 beforeEach(() => { llm.answers = []; llm.calls = []; });
 
@@ -111,8 +111,10 @@ describe("a question they are sending stays a question", () => {
   });
 
   it("no search is offered as a kind when there is no field to search in", () => {
-    expect(buildAssistSystem({ hasContext: false, intentStep: true })).not.toMatch(/a search,/);
-    expect(buildAssistSystem({ hasContext: false, targetApp: "Chrome", intentStep: true })).toMatch(/a search,/);
+    // The block offers a search only "where <call> names the field", and the call names one only when the app is known.
+    expect(WRITER).toMatch(/a search where <call> names the field/);
+    expect(dataFor({ hasContext: false, intentStep: true })).not.toMatch(/It goes in/);
+    expect(dataFor({ hasContext: false, targetApp: "Chrome", intentStep: true })).toMatch(/It goes in Chrome\./);
   });
 });
 
@@ -195,7 +197,7 @@ describe("a sentence a pause cut short is not a false start", () => {
   });
 
   it("the prompt cuts what they began again, not what a breath cut", () => {
-    const p = buildAssistSystem({ hasContext: false, intentStep: true });
+    const p = told({ hasContext: false, intentStep: true });
     expect(p).toMatch(/anything said only because it was spoken is not/);
     expect(p).not.toMatch(/false starts/);
   });

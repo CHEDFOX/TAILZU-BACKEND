@@ -28,7 +28,7 @@ vi.mock("openai", () => ({
 
 const { assist } = await import("../src/pipeline/cleanup.js");
 const { sensitiveApp, screenIsOffLimits, capSurroundings } = await import("../src/pipeline/sensitive.js");
-const { buildAssistSystem } = await import("../src/pipeline/assistPrompt.js");
+const { WRITER, dataFor, told } = await import("./writer-prompt.js");
 
 beforeEach(() => { llm.answers = []; llm.calls = []; });
 
@@ -41,9 +41,12 @@ describe("the screen, fenced and reference-only", () => {
     });
     const system = llm.calls[0]![0]!.content, user = llm.calls[0]![1]!.content;
     expect(user).toContain("<around>\nAarav: can we move the sync to Friday?\n</around>");
-    expect(user.indexOf("<around>")).toBeLessThan(user.indexOf("<said>"));
-    expect(system).toContain("<around> is what is on the screen around the field");
-    expect(system).toContain("never write any of it into the field");
+    expect(user.indexOf("<around>\n")).toBeLessThan(user.indexOf("<said>\n"));
+    // The stable block is the same for every call; what <around> is rides in the call's notes, ahead of the fence it describes.
+    expect(system).toBe(WRITER);
+    expect(user).toContain("<around> is what is on the screen around the field");
+    expect(user).toContain("never write any of it into the field");
+    expect(user.indexOf("<around> is what")).toBeLessThan(user.indexOf("<around>\n"));
   });
 
   it("the screen cannot close its own fence", async () => {
@@ -56,7 +59,7 @@ describe("the screen, fenced and reference-only", () => {
   });
 
   it("no line appears when there is nothing around", () => {
-    const t = buildAssistSystem({ hasContext: false });
+    const t = dataFor({ hasContext: false });
     expect(t).not.toContain("<around>");
   });
 });

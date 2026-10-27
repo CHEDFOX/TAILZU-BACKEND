@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { detectScript, leadsOnScript, romanHindiScore, readsAsRomanHindi, mixesEnglishAndRomanHindi, transliterated } from "../src/pipeline/stt.js";
-import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
+import { WRITER, dataFor, told } from "./writer-prompt.js";
 
 describe("detectScript — observed, not declared", () => {
   it("reads Devanagari", () => {
@@ -54,21 +54,21 @@ describe("assist prompt — the observed script is stated as fact", () => {
     // From the English default the output script is decided elsewhere, and
     // the fact is kept for the other half of its job: romanized Hindi read
     // as English is a different sentence.
-    const s = buildAssistSystem({ hasContext: false, script: "latin" });
+    const s = told({ hasContext: false, script: "latin" });
     expect(s).toContain("arrived in latin script");
   });
 
   it("says nothing when the script is unknown (no misleading claim)", () => {
-    const s = buildAssistSystem({ hasContext: false, script: "unknown" });
+    const s = told({ hasContext: false, script: "unknown" });
     expect(s).not.toContain("arrived in");
-    const none = buildAssistSystem({ hasContext: false });
+    const none = told({ hasContext: false });
     expect(none).not.toContain("arrived in");
   });
 
   it("keeps the deliberate paragraph breaks when the conditional line is absent", () => {
     // The script line is conditional; filtering it must not collapse the
     // blank-line separators that structure the rest of the prompt.
-    const s = buildAssistSystem({ hasContext: false });
+    const s = told({ hasContext: false });
     expect(s).toContain("\n\n");
   });
 });
@@ -229,28 +229,27 @@ describe("what the prompt is told about a mixed sentence", () => {
     // The rule was already there and lost three runs of three. An observation
     // about THIS sentence is not something to weigh — which is exactly why
     // the script line works where the script rule alone did not.
-    const t = buildAssistSystem({ hasContext: false, script: "latin", mixedLanguages: true });
+    const t = told({ hasContext: false, script: "latin", mixedLanguages: true });
     expect(t).toMatch(/in two languages at once/i);
     expect(t).toMatch(/not a mistake to repair/i);
   });
 
   it("says nothing when the sentence is in one language", () => {
-    const t = buildAssistSystem({ hasContext: false, script: "latin" });
+    const t = told({ hasContext: false, script: "latin" });
     expect(t).not.toMatch(/two languages at once/i);
   });
 
   it("does not push the prompt past its length guard", () => {
     // The file's own rule: adding to it should feel expensive. If this fails,
     // the fix is to find which line is now redundant — not to raise the cap.
-    const t = buildAssistSystem({
+    const data = dataFor({
       hasContext: true, targetApp: "WhatsApp", script: "latin",
       mixedLanguages: true, hasAlternative: true,
     });
-    // 2400 until the second job (a short piece written on request) was named,
-    // 3000 until the writer was told to work out what they mean first, 3700
-    // until it was told the shapes (lists, quotes, paragraphs), 3900 until it
-    // was told its purpose; see assist-tone's guard.
-    expect(t.length).toBeLessThan(4200);
+    // The stable block has its own guard (assist-tone's); a call's notes, with
+    // the four measured facts on at once, stay a few lines.
+    expect(data.length).toBeLessThan(1000);
+    expect(WRITER.length + data.length).toBeLessThan(5000);
   });
 });
 

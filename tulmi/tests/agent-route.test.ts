@@ -114,7 +114,10 @@ vi.mock("../src/history/store.js", async (importOriginal) => {
 });
 
 const { buildApp } = await import("../src/server.js");
-const { AGENT_SYSTEM, AGENT_VISION_SYSTEM, AGENT_VISION_SYSTEM_GEMINI } = await import("../src/agent/prompt.js");
+const { placesNote } = await import("../src/agent/prompt.js");
+const { stableBlock } = await import("../src/principles/roles.js");
+const PLANNER = stableBlock("ask_planner");
+const VISION = stableBlock("ask_vision");
 const { MemoryRunStore, runStore } = await import("../src/runs/index.js");
 
 type Ev = Record<string, any>;
@@ -551,13 +554,13 @@ describe("the model ladder", () => {
     }
     expect(first!.body.reasoning).toEqual({ effort: "none" });
     expect(first!.body.temperature).toBe(0);
-    expect(first!.body.messages[0].content).toBe(AGENT_SYSTEM);
+    expect(first!.body.messages[0].content).toBe(PLANNER);
     // The provider sort is the picture path's alone; every call refuses providers that keep or train on data.
     expect(first!.body.provider).toEqual({ data_collection: "deny" });
     expect(second!.body.provider).toEqual({ data_collection: "deny" });
     expect(second!.body.reasoning).toEqual({ effort: "none", enabled: false });
     expect(second!.body.temperature).toBeUndefined();
-    expect(second!.body.messages[0].content).toEqual([{ type: "text", text: AGENT_SYSTEM, cache_control: { type: "ephemeral" } }]);
+    expect(second!.body.messages[0].content).toEqual([{ type: "text", text: PLANNER, cache_control: { type: "ephemeral" } }]);
   });
 });
 
@@ -571,7 +574,7 @@ describe("what the model is shown", () => {
     }));
     expect(streamCalls()).toHaveLength(2);
     expect(systemText(0)).toBe(systemText(1));
-    expect(systemText(0)).toBe(AGENT_SYSTEM);
+    expect(systemText(0)).toBe(PLANNER);
     expect(systemText(0)).not.toMatch(/Slack|Visual Studio|dónde|Settings"/);
     expect(userMessage(1)).toContain("Platform: win. App: Visual Studio Code. Mode: show.");
   });
@@ -677,7 +680,7 @@ describe("the picture path: what the vision model is sent", () => {
     // The primary is a Gemini model, so it is taught Gemini's own order for
     // places in the picture.
     expect(call.body.model).toBe("google/gemini-2.5-flash");
-    expect(call.body.messages[0].content).toBe(AGENT_VISION_SYSTEM_GEMINI);
+    expect(call.body.messages[0].content).toBe(VISION);
     const parts = userParts();
     expect(parts).toHaveLength(2);
     expect(parts[0]).toEqual({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${data.toString("base64")}` } });
@@ -711,15 +714,15 @@ describe("the picture path: what the vision model is sent", () => {
     }, { files: [picturePart(jpeg(9000, 1))] });
     await postPicture({ utterance: "walk me through this step by step", app: "Preview" });
     expect(streamCalls()).toHaveLength(3);
-    expect(systemText(0)).toBe(AGENT_VISION_SYSTEM_GEMINI);
-    expect(systemText(1)).toBe(AGENT_VISION_SYSTEM_GEMINI);
-    expect(systemText(2)).toBe(AGENT_VISION_SYSTEM_GEMINI);
-    for (const prompt of [AGENT_VISION_SYSTEM, AGENT_VISION_SYSTEM_GEMINI]) {
-      expect(prompt).not.toMatch(/Slack|Microsoft Edge|Preview|qué|Figure 3/);
-    }
+    expect(systemText(0)).toBe(VISION);
+    expect(systemText(1)).toBe(VISION);
+    expect(systemText(2)).toBe(VISION);
+    expect(VISION).not.toMatch(/Slack|Microsoft Edge|Preview|qué|Figure 3/);
     expect(String(userParts(1)[1]!.text).split("\n")[0]).toBe("App: Microsoft Edge. The picture is the whole window. Their language: es.");
+    // The primary is a Gemini model: the note under that line is its own order for places.
+    for (const i of [0, 1, 2]) expect(String(userParts(i)[1]!.text).split("\n")[1]).toBe(placesNote("yx"));
     // Gemini caches a repeated prefix on its own: no mark.
-    expect(streamCalls()[2]!.body.messages[0].content).toBe(AGENT_VISION_SYSTEM_GEMINI);
+    expect(streamCalls()[2]!.body.messages[0].content).toBe(VISION);
   });
 
   it("the fallback's prompt is the same bytes every time too, and anthropic's is marked for caching", async () => {
@@ -730,7 +733,7 @@ describe("the picture path: what the vision model is sent", () => {
     const haiku = streamCalls().filter((c) => c.body.model === "anthropic/claude-haiku-5.5");
     expect(haiku).toHaveLength(2);
     for (const c of haiku) {
-      expect(c.body.messages[0].content).toEqual([{ type: "text", text: AGENT_VISION_SYSTEM, cache_control: { type: "ephemeral" } }]);
+      expect(c.body.messages[0].content).toEqual([{ type: "text", text: VISION, cache_control: { type: "ephemeral" } }]);
     }
   });
 
@@ -842,7 +845,7 @@ describe("the picture path: what it answers", () => {
       { t: "say", text: "The left bar is March, at about 20,000." },
       { t: "done" },
     ]);
-    expect(systemText()).toBe(AGENT_VISION_SYSTEM_GEMINI);
+    expect(systemText()).toBe(VISION);
     const text = String(userParts()[1]!.text);
     expect(text).toContain("<history>\n1. said: what does this bar show?\n</history>");
     expect(text).toContain("e9 window\n");
@@ -866,10 +869,13 @@ describe("the picture path: its ladders", () => {
       expect(c.body.provider).toEqual({ data_collection: "deny", sort: "latency" });
     }
     const [gemini, haiku] = streamCalls();
-    expect(gemini!.body.messages[0].content).toBe(AGENT_VISION_SYSTEM_GEMINI);
+    expect(gemini!.body.messages[0].content).toBe(VISION);
+    // The same block, and the family's own order for places in the note under the first line.
+    expect(String(gemini!.body.messages[1].content[1].text).split("\n")[1]).toBe(placesNote("yx"));
+    expect(String(haiku!.body.messages[1].content[1].text).split("\n")[1]).toBe(placesNote("xy"));
     expect(gemini!.body.reasoning).toEqual({ effort: "none" });
     expect(gemini!.body.temperature).toBe(0);
-    expect(haiku!.body.messages[0].content).toEqual([{ type: "text", text: AGENT_VISION_SYSTEM, cache_control: { type: "ephemeral" } }]);
+    expect(haiku!.body.messages[0].content).toEqual([{ type: "text", text: VISION, cache_control: { type: "ephemeral" } }]);
     expect(haiku!.body.reasoning).toEqual({ effort: "none", enabled: false });
     expect(haiku!.body.temperature).toBeUndefined();
   });
@@ -946,7 +952,7 @@ describe("the picture path: its ladders", () => {
     expect(deep!.body.max_tokens).toBe(1000);
     expect(next!.body.max_tokens).toBe(1000);
     expect(deep!.body.reasoning).toEqual({ effort: "none" });
-    expect(deep!.body.messages[0].content).toBe(AGENT_VISION_SYSTEM_GEMINI);
+    expect(deep!.body.messages[0].content).toBe(VISION);
   });
 
   it("asked for earlier in the run, it still goes deep when the step's own words are only a reply", async () => {

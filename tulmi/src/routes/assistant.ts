@@ -38,7 +38,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import type { AgentEvent, AgentTurn, AssistantAskResponse } from "../../../shared/types/api.js";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
-import type { CallRecord, PictureCall, PlanChunk, SystemPrompt, UserContent } from "../agent/llm.js";
+import type { CallRecord, PictureCall, PlanChunk, SystemPrompt, UserPrompt } from "../agent/llm.js";
 import { EventSink, LIMITS, oneLine } from "../agent/protocol.js";
 import { runCommand, type StepResult } from "../agent/run.js";
 import type { Connectors } from "../connectors/index.js";
@@ -54,7 +54,7 @@ export interface AssistantRoutesDeps {
    * The planner's streamed answer (llm.planStream). Tests hand in a fake.
    * `log` is told of each model call, for the run ledger's call log.
    */
-  plan: (system: SystemPrompt, user: UserContent, signal?: AbortSignal, picture?: PictureCall, log?: (call: CallRecord) => void) => AsyncIterable<PlanChunk>;
+  plan: (system: SystemPrompt, user: UserPrompt, signal?: AbortSignal, picture?: PictureCall, log?: (call: CallRecord) => void) => AsyncIterable<PlanChunk>;
   /** Where each ask is written down, and its question back kept. A ledger over runStore() when not given. */
   ledger?: RunLedger;
   /** The profile's language: a Hinglish profile is answered in Hinglish. */

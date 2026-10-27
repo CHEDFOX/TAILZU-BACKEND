@@ -31,7 +31,9 @@ process.env.DEV_SKIP_AUTH = "true";
 
 const { splitInstruction } = await import("../src/pipeline/commands.js");
 const { assist } = await import("../src/pipeline/cleanup.js");
-const { buildAssistSystem } = await import("../src/pipeline/assistPrompt.js");
+const { WRITER } = await import("./writer-prompt.js");
+/** What they said: the last fence of the user message, the part the request is cut out of. */
+const said = (user: string) => user.slice(user.lastIndexOf("<said>"));
 
 describe("what counts as an instruction", () => {
   it("cuts a request that follows a finished sentence", () => {
@@ -80,16 +82,19 @@ describe("the writer never sees the request", () => {
     reply = "お元気ですか？";
     const out = await assist("How are you? Write this in Japanese", {});
     expect(out).toBe("お元気ですか？");
-    expect(calls[0]!.user).toContain("How are you?");
-    expect(calls[0]!.user).not.toMatch(/japanese/i);
-    expect(calls[0]!.system).toContain("Write in Japanese.");
+    // What they said, in <said>, is the message alone; the request is a note in <call>, after the stable block.
+    expect(said(calls[0]!.user)).toContain("How are you?");
+    expect(said(calls[0]!.user)).not.toMatch(/japanese/i);
+    expect(calls[0]!.user).toContain("Write in Japanese.");
+    expect(calls[0]!.system).toBe(WRITER);
+    expect(calls[0]!.system).not.toMatch(/Japanese/);
   });
 
   it("is told any other request as what to do, not words to write", async () => {
     reply = "We meet at five.";
     await assist("We will meet at five. Make it formal", {});
-    expect(calls[0]!.user).not.toMatch(/make it formal/i);
-    expect(calls[0]!.system).toMatch(/For this message they asked you: .*FORMAL/);
+    expect(said(calls[0]!.user)).not.toMatch(/make it formal/i);
+    expect(calls[0]!.user).toMatch(/For this message they asked you: .*FORMAL/);
   });
 
   it("falls back to the message without the request, never the raw sentence", async () => {
@@ -116,7 +121,7 @@ describe("the writer never sees the request", () => {
 
 describe("the principle, stated once", () => {
   it("says the request is done, never written, in any language", () => {
-    const t = buildAssistSystem({ hasContext: false });
+    const t = WRITER;
     expect(t).toMatch(/Do that part, and write the rest, never the request, in any language/);
     // Among what speech adds and the writer leaves out, by its cause.
     expect(t).toMatch(/anything said only because it was spoken is not/);

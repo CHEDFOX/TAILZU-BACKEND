@@ -34,7 +34,8 @@ vi.mock("openai", () => ({
   toFile: async (b: Buffer, name: string) => ({ b, name }),
 }));
 
-const { buildAssistSystem, readSend } = await import("../src/pipeline/assistPrompt.js");
+const { readSend } = await import("../src/pipeline/assistPrompt.js");
+const { WRITER, dataFor, told } = await import("./writer-prompt.js");
 const { assist } = await import("../src/pipeline/cleanup.js");
 
 beforeEach(() => {
@@ -43,26 +44,31 @@ beforeEach(() => {
 });
 
 describe("the prompt asks for the meaning first", () => {
-  const p = buildAssistSystem({ hasContext: false, targetApp: "WhatsApp", intentStep: true });
+  const p = told({ hasContext: false, targetApp: "WhatsApp", intentStep: true });
 
   it("states the job before its bounds", () => {
     const job = p.indexOf("First work out what they mean");
     expect(job).toBeGreaterThan(0);
     // The purpose (who it is, what it is for) opens; the job; then the bounds.
-    expect(p.indexOf("Everything you return is what they send")).toBeLessThan(job);
-    expect(job).toBeLessThan(p.indexOf("Say nothing they did not give you"));
+    expect(p.indexOf("Every word you return lands in the field")).toBeLessThan(job);
+    expect(job).toBeLessThan(p.indexOf("The meaning is theirs"));
     expect(p).toMatch(/every point they made, in the tone they made it, in the order that makes sense/);
   });
 
-  it("asks for the intent and the text as two parts, last of all", () => {
-    expect(p.trim().endsWith("Only <send> reaches them.")).toBe(true);
-    expect(p.indexOf("<intent>")).toBeGreaterThan(p.indexOf("TONE:"));
+  it("asks for the intent and the text as two parts, in the block: the answer's shape is not the data's to change", () => {
+    expect(WRITER).toMatch(/Output: <intent>one short line: who they are writing to, what they mean, and the shape it needs<\/intent> then <send>exactly the text for the field<\/send>\. Only <send> reaches them/);
+    // What a person wrote (their voice, their instructions) is data after the block and never carries the format.
+    const theirs = dataFor({ hasContext: false, personality: { customInstructions: "be brief" } as never });
+    expect(theirs).toContain("be brief");
+    expect(theirs).not.toMatch(/<send>|<intent>/);
   });
 
-  it("can be switched off, back to the plain answer", () => {
-    const plain = buildAssistSystem({ hasContext: false, intentStep: false });
-    expect(plain).not.toMatch(/<send>|<intent>/);
-    expect(plain).toMatch(/Only when they said nothing, just silence or noise, return nothing/);
+  it("can be switched off, back to the plain answer: a note in the data, not another prompt", () => {
+    const plain = dataFor({ hasContext: false, intentStep: false });
+    expect(plain).toMatch(/Plain: answer with the text alone, no <intent> and no <send>; when they said nothing, return nothing/);
+    expect(dataFor({ hasContext: false, intentStep: true })).not.toMatch(/Plain:/);
+    // The block is the same bytes either way, and says when the plain answer applies.
+    expect(WRITER).toMatch(/When <call> says plain, answer with that text alone/);
   });
 });
 

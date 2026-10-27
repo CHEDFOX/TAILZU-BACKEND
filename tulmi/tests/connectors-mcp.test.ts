@@ -36,7 +36,10 @@ vi.mock("../src/auth/supabase.js", async (orig) => ({
   },
 }));
 
-const { AGENT_SYSTEM, agentUserMessage } = await import("../src/agent/prompt.js");
+const { agentUserMessage } = await import("../src/agent/prompt.js");
+const { stableBlock } = await import("../src/principles/roles.js");
+const { CONNECTOR_ADDENDUM } = await import("../src/connectors/index.js");
+const PLANNER = stableBlock("ask_planner");
 const { runStep } = await import("../src/agent/run.js");
 const { EventSink } = await import("../src/agent/protocol.js");
 const { encrypt, decrypt } = await import("../src/connectors/crypto.js");
@@ -402,12 +405,15 @@ describe("a run that uses a connected app", () => {
     expect(r.events.map((e) => e.t)).toEqual(["heard", "say", "done"]);
     expect(r.events[1]!.text).toContain("three open items");
     expect(r.calls).toHaveLength(2);
-    // The first call was shown the tools, and taught USE after the unchanged system prompt.
-    expect(r.calls[0]!.system.startsWith(AGENT_SYSTEM)).toBe(true);
-    expect(r.calls[0]!.system).toContain("USE <connector>.<tool>");
+    // The first call was shown the tools, and taught USE at the head of the message: the system prompt is the planner's block, unchanged.
+    expect(r.calls[0]!.system).toBe(PLANNER);
+    expect(r.calls[0]!.system).not.toContain("USE <connector>.<tool>");
+    expect(r.calls[0]!.user.startsWith(`${CONNECTOR_ADDENDUM}\n`)).toBe(true);
+    expect(r.calls[0]!.user).toContain("USE <connector>.<tool>");
     expect(r.calls[0]!.user).toContain("<tools>");
     expect(r.calls[0]!.user).toContain("testapp.search_notes");
-    expect(r.calls[0]!.user).not.toContain("<result>");
+    // (The addendum names <result>; the fenced block of results is not there yet.)
+    expect(r.calls[0]!.user).not.toContain("<result>\n");
     // The second was shown what the tool returned, as data, before the person's words.
     expect(r.calls[1]!.user).toContain("<result>\ntestapp.search_notes: Found: Launch checklist");
     expect(r.calls[1]!.user.endsWith("</said>")).toBe(true);
@@ -578,7 +584,7 @@ describe("with connected apps off or out of the picture, the planner is sent wha
   it("sends the same system prompt and user message when the feature is off", async () => {
     const r = await runWith(["SAY ok\nDONE\n"], req(), undefined);
     expect(r.calls).toHaveLength(1);
-    expect(r.calls[0]!.system).toBe(AGENT_SYSTEM);
+    expect(r.calls[0]!.system).toBe(PLANNER);
     expect(r.calls[0]!.user).toBe(agentUserMessage(req() as any, said, "do", 8));
     // A USE line from a model on its own is read as the prose it is.
     const stray = await runWith(['USE testapp.post_message {"channel":"a","text":"b"}\n', "DONE\n"], req(), undefined);
@@ -590,14 +596,14 @@ describe("with connected apps off or out of the picture, the planner is sent wha
     const store = new MemoryConnectorStore();
     const connectors = createConnectors({ store, catalog: [def()], redirectUrl: "x" });
     const r = await runWith(["SAY ok\nDONE\n"], req(), connectors.runtimeFor("fresh-user"));
-    expect(r.calls[0]!.system).toBe(AGENT_SYSTEM);
+    expect(r.calls[0]!.system).toBe(PLANNER);
     expect(r.calls[0]!.user).toBe(agentUserMessage(req() as any, said, "do", 8));
   });
 
   it("is identical when what was said has nothing to do with the connected apps", async () => {
     const { connectors, user } = await setup();
     const r = await runWith(["SAY ok\nDONE\n"], req({ app: "Finder", utterance: "make this window bigger" }), connectors.runtimeFor(user));
-    expect(r.calls[0]!.system).toBe(AGENT_SYSTEM);
+    expect(r.calls[0]!.system).toBe(PLANNER);
     expect(r.calls[0]!.user).toBe(agentUserMessage(req({ app: "Finder", utterance: "make this window bigger" }) as any, "make this window bigger", "do", 8));
   });
 });

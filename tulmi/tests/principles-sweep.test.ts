@@ -69,6 +69,11 @@ const sources: Source[] = DIRS.flatMap((d) => walk(path.join(SRC, d))).map((file
 
 const lineOf = (code: string, at: number): number => code.slice(0, at).split("\n").length;
 
+/** The main assistant's own: Ask's planner (agent/), the writer and its helpers (pipeline/), and the files that hand them their data. */
+const MAIN_DIRS = ["agent", "pipeline"];
+const mainSources: Source[] = [...MAIN_DIRS.flatMap((d) => walk(path.join(SRC, d))), path.join(SRC, "prompts.ts"), path.join(SRC, "connectors", "index.ts"), path.join(SRC, "connectors", "device.ts")]
+  .map((file) => ({ file, rel: path.relative(SRC, file).replace(/\\/g, "/"), code: withoutComments(fs.readFileSync(file, "utf8")) }));
+
 describe("the sweep", () => {
   it("reads every file of the four directories", () => {
     expect(sources.length).toBeGreaterThan(150);
@@ -169,11 +174,35 @@ describe("the sweep", () => {
   });
 
   it("uses every role at some site", () => {
-    const code = sources.map((s) => s.code).join("\n");
+    // The main assistant's sites (agent/, pipeline/) name a role by compose() or by stableBlock(), the planner's seam taking the block as its system prompt.
+    const code = [...sources, ...mainSources].map((s) => s.code).join("\n");
     for (const id of ROLE_IDS) {
-      const used = new RegExp(`(?:compose\\(\\s*|\\brole:\\s*|\\bask1\\(\\s*|"brain\\.[a-z.]+",\\s*)"${id}"`).test(code);
+      const used = new RegExp(`(?:(?:compose|stableBlock)\\(\\s*|\\brole:\\s*|\\bask1\\(\\s*|"brain\\.[a-z.]+",\\s*)"${id}"`).test(code);
       expect(used, `${id} is not used by any site`).toBe(true);
     }
     // a role that is not in the library does not compile (RoleId), and compose() throws for one at run time
+  });
+
+  it("writes no prompt of the main assistant out: no SYSTEM constant, no *System builder, no 'Example' line in what teaches USE, and a role at every call", () => {
+    for (const s of mainSources) {
+      expect(s.code, `${s.rel} has a SYSTEM constant`).not.toMatch(/\b(?:export\s+)?const\s+[A-Z_]*SYSTEM[A-Z_]*\b/);
+      // (buildReplySystem is the old screen-reply file prompt, kept so REPLY_PROMPT_VERSION=v4 can roll back to it.)
+      const builders = [...s.code.matchAll(/\bfunction\s+(\w*System)\s*\(/g)].map((m) => m[1]).filter((n) => n !== "buildReplySystem");
+      expect(builders, `${s.rel} has a *System builder`).toEqual([]);
+      expect(s.code, `${s.rel} has an example line`).not.toMatch(/"Example\./);
+    }
+    // the six helpers and the writer name their role where they send it
+    const cleanup = mainSources.find((s) => s.rel === "pipeline/cleanup.ts")!.code;
+    for (const id of ["writer", "edit_selection", "answer_about", "converse", "portrait_update", "portrait_usage", "portrait_transcript"]) {
+      expect(cleanup, id).toMatch(new RegExp(`compose\\(\\s*"${id}"`));
+    }
+    // Ask's planner and the picture reader are handed to the seam as their stable blocks
+    const run = mainSources.find((s) => s.rel === "agent/run.ts")!.code;
+    expect(run).toMatch(/stableBlock\("ask_planner"\)/);
+    expect(run).toMatch(/stableBlock\("ask_vision"\)/);
+    // and no message of theirs is a hand-written system one, bar the three left: the planner's request body (the stable block it is handed, cache-marked
+    // for Anthropic), the screen reply's old file prompt (REPLY_PROMPT_VERSION=v4), and inferStyle's one-line analysis of a writing sample (not a role yet)
+    const byHand = new Map<string, number>([["agent/llm.ts", 1], ["pipeline/cleanup.ts", 2]]);
+    for (const s of mainSources) expect((s.code.match(/role:\s*"system"/g) ?? []).length, `${s.rel} writes system messages by hand`).toBe(byHand.get(s.rel) ?? 0);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { looksLikeMeta, looksLikeEmptyEcho, quotesPrompt } from "../src/pipeline/cleanup.js";
-import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
+import { told } from "./writer-prompt.js";
 
 // Regression guard for the "typepad shows a chat reply" failure: the refine LLM
 // sometimes answers conversationally on silence/noise ("I don't get anything,
@@ -146,7 +146,7 @@ describe("looksLikeEmptyEcho — the placeholder never reaches the cursor", () =
 });
 
 describe("quotesPrompt — the instructions are never the message", () => {
-  const system = buildAssistSystem({ hasContext: false, targetApp: "WhatsApp" });
+  const system = told({ hasContext: false, targetApp: "WhatsApp" });
 
   it("catches the whole prompt coming back", () => {
     // Measured on the deployed server, three runs out of three, in answer to
@@ -175,7 +175,7 @@ describe("quotesPrompt — the instructions are never the message", () => {
   it("does not fire on a short line anyone could write", () => {
     // "Theirs was latin." is in the prompt and is also four ordinary words.
     // The 40-character floor is what keeps this from eating real text.
-    const withScript = buildAssistSystem({ hasContext: false, script: "latin" });
+    const withScript = told({ hasContext: false, script: "latin" });
     expect(quotesPrompt("Theirs was latin.", withScript)).toBe(false);
   });
 });

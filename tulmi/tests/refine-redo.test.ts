@@ -159,7 +159,9 @@ describe("the saved language is what they speak, not what to write in", () => {
   it("English saved does not tell the writer to write English", async () => {
     llm.answers = ["Yaar, kal ka plan cancel ho gaya hai."];
     await assist(HINGLISH, { language: "en" });
-    const system = llm.calls[0]![0]!.content;
+    // The saved language is not a note of the call, and the never-translate rule is the block's.
+    const [system, user] = [llm.calls[0]![0]!.content, llm.calls[0]![1]!.content];
+    expect(user).not.toMatch(/Write in en/);
     expect(system).not.toMatch(/Write in en/);
     expect(system).toMatch(/never translate their words/i);
   });
@@ -167,13 +169,16 @@ describe("the saved language is what they speak, not what to write in", () => {
   it("Hindi saved does not either", async () => {
     llm.answers = ["Please send me the invoice before Friday."];
     await assist("please send me the invoice before friday", { language: "hi" });
+    expect(llm.calls[0]![1]!.content).not.toMatch(/Write in hi/);
     expect(llm.calls[0]![0]!.content).not.toMatch(/Write in hi/);
   });
 
   it("a language asked for in the dictation still is", async () => {
     llm.answers = ["कृपया शुक्रवार से पहले चालान भेज दें।"];
     await assist("please send me the invoice before friday, write it in hindi", { language: "en" });
-    expect(llm.calls[0]![0]!.content).toMatch(/Write in Hindi/);
+    // A language asked for in this dictation is a note of this call, after the stable block.
+    expect(llm.calls[0]![1]!.content).toMatch(/Write in Hindi/);
+    expect(llm.calls[0]![0]!.content).not.toMatch(/Write in Hindi/);
     expect(llm.calls).toHaveLength(1);
   });
 });

@@ -28,7 +28,7 @@ const { MemoryConnectorStore } = await import("../src/connectors/store.js");
 const { HANDOFF_IDS } = await import("../src/connectors/handoffs/index.js");
 const L = await import("../src/connectors/handoffs/links.js");
 const { MESSAGE_MAX, POST_MAX, recipientIn, rupees } = await import("../src/connectors/handoffs/apps.js");
-const { AGENT_SYSTEM_CONNECTORS } = await import("../src/connectors/index.js");
+const { CONNECTOR_ADDENDUM } = await import("../src/connectors/index.js");
 const { EN, HG, wordsFor } = await import("../src/connectors/words.js");
 
 // Thursday 22 Oct 2026, 13:30 in India.
@@ -468,8 +468,8 @@ describe("after the run has read another app", () => {
 });
 
 describe("the planner's instructions for hand-offs", () => {
-  it("are a system instruction, not only in the tools' descriptions: no number asked for when the app lets them pick", () => {
-    expect(AGENT_SYSTEM_CONNECTORS).toContain("Leave out a number or username they did not give, since that app lets them pick the chat, and ASK only when a required one is missing, like a UPI ID or an amount.");
+  it("are the planner's own instruction, not only in the tools' descriptions: no number asked for when the app lets them pick", () => {
+    expect(CONNECTOR_ADDENDUM).toContain("Leave out a number or username they did not give, since that app lets them pick the chat, and ASK only when a required one is missing, like a UPI ID or an amount.");
   });
 });
 

@@ -42,7 +42,8 @@ vi.mock("openai", () => ({
 }));
 
 const { buildApp } = await import("../src/server.js");
-const { AGENT_SYSTEM, agentUserMessage } = await import("../src/agent/prompt.js");
+const { agentUserMessage } = await import("../src/agent/prompt.js");
+const { stableBlock } = await import("../src/principles/roles.js");
 
 let app: FastifyInstance;
 beforeAll(async () => { app = await buildApp(); await app.ready(); });
@@ -97,7 +98,7 @@ describe("connected apps, switched on", () => {
     expect(res.statusCode).toBe(200);
     const streamed = llm.calls.filter((c) => c.body.stream);
     expect(streamed).toHaveLength(1);
-    expect(streamed[0]!.body.messages[0].content).toBe(AGENT_SYSTEM);
+    expect(streamed[0]!.body.messages[0].content).toBe(stableBlock("ask_planner"));
     const sent = String(streamed[0]!.body.messages[1].content);
     expect(sent).toBe(agentUserMessage({
       runId: "run_srv123", step: 0, platform: "mac", app: "Notion", utterance: "find my launch notes in notion",

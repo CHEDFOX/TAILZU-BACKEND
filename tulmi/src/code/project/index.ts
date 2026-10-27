@@ -40,6 +40,7 @@ import type { CodeProject } from "../store.js";
 import { baselinePlan } from "./baseline.js";
 import { runBuild, type BuildMode, type ProjectBrainDeps } from "./build.js";
 import { aggregateHistory, coChanged, rankHotspots } from "./hotspots.js";
+import { RepoGraph, mapFiles, type MapHit, type MapOptions, type MapSeeds } from "./repomap.js";
 import { declaredDeps, type DeclaredDep } from "./registry.js";
 import { queryWords, scoreFile, symbolScore } from "./search.js";
 import { projectBrainStore, type ProjectBrainStore } from "./store.js";
@@ -359,7 +360,18 @@ export interface BrainHandle {
   deps(): Promise<DeclaredDep[]>;
   /** The checks to run before the first edit. */
   baselinePlan(): Promise<BaselineStep[]>;
+  /**
+   * The repo map (repomap.ts): the files nearest to what a request names, by PageRank over the definition/reference graph restarted at the files and
+   * identifiers it mentions. Empty when it names nothing the repo has. The graph is made from every file's row once and kept while the brain does not change.
+   */
+  repoMap(seeds: MapSeeds, opts?: MapOptions): Promise<MapHit[]>;
 }
+
+/** The graphs made lately, by project and the state of its row: making one reads every file of the project. */
+const graphs = new Map<string, { graph: RepoGraph; at: number }>();
+const GRAPHS_KEPT = 6;
+
+export function resetRepoGraphsForTests(): void { graphs.clear(); }
 
 export async function openProjectBrain(d: BrainRuntime, userId: string, projectId: string): Promise<BrainHandle> {
   const project = await ownProject(d.projects, userId, projectId);
@@ -442,6 +454,19 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
     async memory() { return (await row())?.memory ?? ""; },
     async deps() { const b = await row(); return b ? declaredDeps(b.structure.core) : []; },
     async baselinePlan() { const b = await row(); return b?.baseline?.plan ?? (b ? baselinePlan(b.structure.commands) : []); },
+    async repoMap(seeds, opts) {
+      const b = await row();
+      if (!b) return [];
+      const key = `${id}|${b.headSha}|${b.status}|${b.updatedAt}|${b.builtAt ?? 0}`;
+      let hit = graphs.get(key);
+      if (!hit) {
+        hit = { graph: new RepoGraph(mapFiles(await store.listFiles(id))), at: Date.now() };
+        for (const k of graphs.keys()) if (k.startsWith(`${id}|`)) graphs.delete(k);
+        graphs.set(key, hit);
+        while (graphs.size > GRAPHS_KEPT) graphs.delete(graphs.keys().next().value as string);
+      }
+      return hit.graph.rank(seeds, opts);
+    },
   };
 }
 

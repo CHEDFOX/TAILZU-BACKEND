@@ -28,14 +28,14 @@ vi.mock("openai", () => ({
   toFile: async (b: Buffer, name: string) => ({ b, name }),
 }));
 
-const { buildAssistSystem } = await import("../src/pipeline/assistPrompt.js");
+const { WRITER, dataFor, told } = await import("./writer-prompt.js");
 const { assist, slipIn } = await import("../src/pipeline/cleanup.js");
 const { joinWithSpace } = await import("../src/pipeline/join.js");
 
 beforeEach(() => { llm.answers = []; llm.calls = 0; });
 
 describe("the prompt states the shape as a principle", () => {
-  const p = buildAssistSystem({ hasContext: false, targetApp: "WhatsApp", intentStep: true });
+  const p = told({ hasContext: false, targetApp: "WhatsApp", intentStep: true });
 
   it("the careful writer's shape, found in what they said rather than added", () => {
     // The owner: "follow the principle method for the prompting". A first
@@ -54,8 +54,10 @@ describe("the prompt states the shape as a principle", () => {
   });
 
   it("keeps the field's rule, and asks the writer to name the shape", () => {
-    expect(p).toMatch(/In WhatsApp, the field decides the shape of the text, never its content/);
-    expect(p).toMatch(/A search box wants just the words/);
+    // The rule is the block's, the same for every call; the field it applies to is the call's.
+    expect(WRITER).toMatch(/The field decides the shape of the text, never its content/);
+    expect(dataFor({ hasContext: false, targetApp: "WhatsApp" })).toMatch(/It goes in WhatsApp\./);
+    expect(p).toMatch(/A search box, where <call> names one, wants just the words/);
     expect(p).toMatch(/who they are writing to, what they mean, and the shape it needs/);
   });
 });
