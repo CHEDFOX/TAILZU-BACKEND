@@ -766,6 +766,14 @@ const EnvSchema = z.object({
   CODE_JOB_DEFAULT_BUDGET_PAISE: z.coerce.number().int().min(0).max(1_000_000).default(3000),
   CODE_AGENT_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
   /**
+   * LEAD AND HELPERS (src/code/team, docs/code-team.md). A goal that is big (a plan over 12 files or 3 features, or one over several projects, or one the
+   * person asked a team for) is split into parts with clear file ownership; helpers build the parts in parallel on their own branches, a model of
+   * another family reviews each, and the lead merges them and opens one pull request. CODE_TEAM=false switches it off for the server (a job is then always one
+   * job). CODE_TEAM_PARALLEL is how many helpers work at once (3): the person's PC first, then GitHub's free computers, whose minutes are limited and shared.
+   */
+  CODE_TEAM: bool(true),
+  CODE_TEAM_PARALLEL: z.coerce.number().int().min(1).max(8).default(3),
+  /**
    * WHERE THE CODE BOT'S JOBS RUN (jobs/, docs/cloudflare-jobs.md).
    *
    * CODE_JOBS_MODE "local" (default) is how it has always been: this server's own

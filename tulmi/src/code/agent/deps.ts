@@ -69,10 +69,23 @@ export interface DesignDeps {
   link?: (o: { userId: string; artifactId: string; shotId: string }) => string | null;
 }
 
+/**
+ * HOW A LEAD AND ITS HELPERS REACH EACH OTHER (code/team, docs/code-team.md). A helper is a job like any other; these are the two things a lead needs of whoever
+ * drives jobs. On a server they are the orchestrator itself (`createAgent` makes them); on Cloudflare they start a Workflow and send one an event.
+ */
+export interface TeamPorts {
+  /** A new helper's job has its state: get it going (a server looks for work now; on Cloudflare its Workflow is started). */
+  start(jobId: string): Promise<void>;
+  /** A helper ended or parked: the lead looks again now (on Cloudflare, the lead's Workflow gets a "wake" event). */
+  wake(parentId: string): Promise<void>;
+  /** More budget for a helper that ran out, and it goes on (the person's `budget`, for a job of the lead's). */
+  addBudget?(userId: string, jobId: string, addPaise: number): Promise<void>;
+}
+
 export interface AgentDeps {
   /** The Code bot's own pieces: projects, GitHub, the approvals. */
   projects: ProjectDeps;
-  jobs: Pick<JobRouter, "finishJob" | "cancelJob"> & Partial<Pick<JobRouter, "clearCaptured">>;
+  jobs: Pick<JobRouter, "finishJob" | "cancelJob"> & Partial<Pick<JobRouter, "clearCaptured" | "createJob" | "capacity">>;
   store: JobStore;
   brain: AgentBrain;
   runner: AgentRunner;
@@ -96,6 +109,8 @@ export interface AgentDeps {
   live?: LiveDeps;
   /** The design round (agent/design.ts) for a job built from an approved design. Absent: the round is skipped, and the report says so. */
   design?: DesignDeps;
+  /** Lead and helpers (code/team): how a lead starts a helper's job and a helper wakes its lead. Absent: a lead cannot start helpers (it does the work itself). */
+  team?: TeamPorts;
   /** What becomes of a tool result once it is older than the last six (agent/mask.ts): instead of CODE_CONTEXT_STRATEGY, for a harness that compares them. */
   contextStrategy?: ContextStrategy;
   now: () => number;

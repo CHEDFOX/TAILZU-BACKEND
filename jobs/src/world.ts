@@ -17,7 +17,7 @@ import { ArtifactService } from "../../tulmi/src/artifacts/service.js";
 import { ArtifactDataShotStore, shootDepsFromConfig, signShotPath } from "../../tulmi/src/artifacts/shots.js";
 import { artifactStore } from "../../tulmi/src/artifacts/store.js";
 import { createAgent } from "../../tulmi/src/code/agent/index.js";
-import type { DesignDeps } from "../../tulmi/src/code/agent/deps.js";
+import type { DesignDeps, TeamPorts } from "../../tulmi/src/code/agent/deps.js";
 import type { Advance } from "../../tulmi/src/code/agent/loop.js";
 import { routerRunner } from "../../tulmi/src/code/agent/runner.js";
 import { createCode } from "../../tulmi/src/code/index.js";
@@ -37,7 +37,7 @@ import { applyEnv, type Env } from "./env.js";
 import { workerGrammars } from "./grammars.js";
 import { buildLive } from "./live.js";
 import { workerNotify } from "./notify.js";
-import { bindingBrainRemote } from "./workflows.js";
+import { bindingBrainRemote, startAgentJob, wakeAgentJob } from "./workflows.js";
 
 /** A claim on a job lasts this long on the Worker: an advance saves and renews all along, but nothing beats it with a heartbeat as a server's does. */
 export const WORKER_LEASE_MS = 5 * 60_000;
@@ -95,6 +95,23 @@ export function buildDesign(env: Env): DesignDeps | undefined {
   };
 }
 
+/**
+ * How a lead's helpers are started and its Workflow woken, on the Worker (docs/code-team.md "On Cloudflare"). A new helper's job has its state written by the lead; starting it is
+ * making its Workflow (the job's id is the instance's id, so a second start finds the first). A helper that ended or needs the person wakes its lead's Workflow, which is
+ * waiting for exactly that (`waitingOn: "team"`, agentJob.ts); an event sent before the lead reaches its wait is kept and delivered when it does. More budget for a helper
+ * that ran out is the orchestrator's own `addBudget`, and then the helper's Workflow, which is waiting for the person, is woken.
+ */
+export function teamPorts(env: Env, orchestrator: () => { addBudget(userId: string, jobId: string, addPaise: number): Promise<unknown> } | null): TeamPorts {
+  return {
+    start: async (jobId) => { await startAgentJob(env, jobId); },
+    wake: async (parentId) => { await wakeAgentJob(env, parentId, "team"); },
+    addBudget: async (userId, jobId, addPaise) => {
+      await orchestrator()?.addBudget(userId, jobId, addPaise);
+      await wakeAgentJob(env, jobId, "budget");
+    },
+  };
+}
+
 /** The real thing, from the Worker's settings. Throws (with a plain reason, never a value) if GitHub or Supabase are not set up. */
 export async function buildWorld(env: Env, o: { notify?: Notify; /** Tests: stores in memory when Supabase is not set. */ memoryStores?: boolean } = {}): Promise<World> {
   applyEnv(env);
@@ -131,6 +148,8 @@ export async function buildWorld(env: Env, o: { notify?: Notify; /** Tests: stor
   const orchestrator = createAgent({
     code, jobs, notify, log, passive: true, leaseMs: WORKER_LEASE_MS, ...(render ? { web: { render } } : {}),
     ...(built ? { runner: built.runner, live: built.deps } : {}), ...(design ? { design } : {}),
+    // Lead and helpers (code/team): a helper is a job with a Workflow of its own, and a helper that ends or needs the person sends its lead's Workflow a "wake" event.
+    team: teamPorts(env, () => orchestrator),
   });
   if (!orchestrator) throw new Error("The agent could not be made.");
   const brain = code.brain;

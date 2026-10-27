@@ -410,12 +410,13 @@ describe("the routes", () => {
     expect((await req(null, "GET", url)).statusCode).toBe(401);
     expect((await req("bob", "GET", url)).statusCode).toBe(404);
     expect((await req("bob", "PUT", url, { mode: "freeform" })).statusCode).toBe(404);
-    expect((await req("alice", "GET", url)).json()).toEqual({ settings: { mode: "guided", planFirst: false } });
-    expect((await req("alice", "PUT", url, { planFirst: true })).json()).toEqual({ settings: { mode: "guided", planFirst: true } });
-    expect((await req("alice", "PUT", url, { mode: "freeform" })).json()).toEqual({ settings: { mode: "freeform", planFirst: true } });
+    expect((await req("alice", "GET", url)).json()).toEqual({ settings: { mode: "guided", planFirst: false, team: "auto" } });
+    expect((await req("alice", "PUT", url, { planFirst: true })).json()).toEqual({ settings: { mode: "guided", planFirst: true, team: "auto" } });
+    expect((await req("alice", "PUT", url, { mode: "freeform" })).json()).toEqual({ settings: { mode: "freeform", planFirst: true, team: "auto" } });
     expect((await req("alice", "PUT", url, { mode: "wild" })).statusCode).toBe(400);
     expect((await req("alice", "PUT", url, { planFirst: 1 })).statusCode).toBe(400);
-    expect((await req("alice", "GET", url)).json()).toEqual({ settings: { mode: "freeform", planFirst: true } });
+    expect((await req("alice", "PUT", url, { team: "sometimes" })).statusCode).toBe(400);
+    expect((await req("alice", "GET", url)).json()).toEqual({ settings: { mode: "freeform", planFirst: true, team: "auto" } });
     r.json.on("work.plan", UTIL_PLAN);
     const { job } = await r.start(UTIL_TASK);
     await r.orch.idle();

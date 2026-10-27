@@ -45,7 +45,17 @@
  *   GET    /v1/code/projects/:id/settings  -> { settings: { mode, planFirst } }  how the project's jobs are worked: "guided" (locate, plan, work) or
  *   PUT    /v1/code/projects/:id/settings { mode?, planFirst? }  "freeform" (the model decides the order of explore, change and run); planFirst: every
  *                                             task's plan goes to the person for a yes before any work. POST /v1/code/jobs may carry { mode?, planFirst? }
- *                                             for that one job, which beats the project's setting
+ *                                             for that one job, which beats the project's setting. The settings also say how a BIG goal is worked (docs/code-team.md):
+ *                                             team "auto" (a plan over 12 files or 3 features becomes a lead's, with helpers), "on" (always) or "off" (never); POST
+ *                                             /v1/code/jobs may carry { team?, projects? } too (projects: more of your projects' ids the same goal spans, one pull request each)
+ *   GET    /v1/code/jobs/:id/team          -> { job, team, children }  a LEAD's team (docs/code-team.md): why there is one, the budget (total, spent, the lead's reserve, the
+ *                                             helpers' pool), each part with its status, files, helper, branch, review, fix rounds and cost, and every helper job with its
+ *                                             state. 404 for a job that leads no team
+ *   POST   /v1/code/jobs/:id/team/parts/:k/stop
+ *   POST   /v1/code/jobs/:id/team/parts/:k/rerun { addPaise? }
+ *                                          -> { queued: true, part, job }  stop one part (its helper is stopped now; the lead leaves it out and the parts that build on it),
+ *                                             or run it again after it failed, was stopped or ran out of money (addPaise gives it more, and adds the same to the job's
+ *                                             budget). 409 part_over / part_not_over / job_over, 404 not_found
  *   GET    /v1/code/jobs/:id/log           -> { entries }  the work log, in order: every step, read, edit, command, finding and decision
  *   POST   /v1/code/jobs/:id/commit-ok { approvalId? }
  *                                          -> a QUESTION, then { committed, sha, job }  yes to committing what a step produced, after a
@@ -238,14 +248,22 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
     if (b.planFirst !== undefined && typeof b.planFirst !== "boolean") {
       return reply.code(400).send({ code: "bad_request", message: "planFirst is true or false." });
     }
+    if (b.team !== undefined && b.team !== "auto" && b.team !== "on" && b.team !== "off") {
+      return reply.code(400).send({ code: "bad_request", message: 'team is "auto", "on" or "off".' });
+    }
     try {
+      // The other projects of a goal that spans several are the person's own, checked before anything is made.
+      const projects = deps.agent ? await deps.agent.teamProjects(s.user.id, projectId, b.projects) : [];
       // One tap, one job: a double tap (or a retry with the same Idempotency-Key) is the job already made, never a second (src/guard).
       return await guarded(deps.guard, req, reply, s.user, "job", async () => {
         const job = await s.jobs.createJob(s.user.id, projectId, branch, task, b.budgetPaise as number | undefined, { agent: !!deps.agent });
         // The agent drives it from here: the whole request goes into its state (the job keeps 500 characters of it), and the worker is nudged.
         // With jobs on the Worker, "nudged" is "handed over": a job the Worker could not be reached for comes back failed, with the reason.
         const made = deps.agent
-          ? await deps.agent.enqueue(job.id, task, { ...(b.mode ? { mode: b.mode as "guided" | "freeform" } : {}), ...(b.planFirst !== undefined ? { planFirst: b.planFirst as boolean } : {}) })
+          ? await deps.agent.enqueue(job.id, task, {
+            ...(b.mode ? { mode: b.mode as "guided" | "freeform" } : {}), ...(b.planFirst !== undefined ? { planFirst: b.planFirst as boolean } : {}),
+            ...(b.team ? { team: b.team as "auto" | "on" | "off" } : {}), ...(projects.length ? { projects } : {}),
+          })
           : null;
         return { status: 200, body: { job: stripAgent(made ?? job) } };
       });
@@ -341,6 +359,28 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
       return reply.send(await deps.agent.rewind(s.user.id, req.params.id, bodyOf(req.body).toStep, id as string | undefined));
     } catch (err) { return fail(reply, err); }
   });
+
+  app.get<{ Params: { id: string } }>("/v1/code/jobs/:id/team", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.agent) return agentOff(reply);
+    try {
+      return reply.send(await deps.agent.team(s.user.id, req.params.id));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  for (const op of ["stop", "rerun"] as const) {
+    app.post<{ Params: { id: string; k: string }; Body: unknown }>(`/v1/code/jobs/:id/team/parts/:k/${op}`, RL, async (req, reply) => {
+      const s = await begin(req.headers["authorization"], reply);
+      if (!s) return reply;
+      if (!deps.agent) return agentOff(reply);
+      const k = /^\d{1,3}$/.test(req.params.k) ? Number(req.params.k) : NaN;
+      if (!Number.isInteger(k)) return reply.code(400).send({ code: "bad_request", message: "The part is a number." });
+      try {
+        return reply.send(await deps.agent.teamCommand(s.user.id, req.params.id, { op, part: k, ...(op === "rerun" && bodyOf(req.body).addPaise !== undefined ? { addPaise: bodyOf(req.body).addPaise } : {}) }));
+      } catch (err) { return fail(reply, err); }
+    });
+  }
 
   app.get<{ Params: { id: string } }>("/v1/code/jobs/:id/checkpoints", RL, async (req, reply) => {
     const s = await begin(req.headers["authorization"], reply);

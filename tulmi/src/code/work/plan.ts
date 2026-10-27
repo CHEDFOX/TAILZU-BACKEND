@@ -306,7 +306,8 @@ export interface Runner {
 
 const RUNNERS: Record<Exclude<Runner["id"], "other">, Pick<Runner, "tests" | "sources">> = {
   js: { tests: /\.[cm]?[jt]sx?$/, sources: /\.(?:[cm]?[jt]sx?|vue|svelte|astro|json|css|scss)$/ },
-  python: { tests: /\.py$/, sources: /\.py$/ },
+  // pytest collects test_*.py and *_test.py; a conftest.py, an __init__.py or an app a test uses sits in the tests folder too, and named on the command line it is an error, not a test.
+  python: { tests: /(?:^|\/)(?:test_[^/]*|[^/]*_test)\.py$/, sources: /\.py$/ },
   go: { tests: /_test\.go$/, sources: /\.go$/ },
   dart: { tests: /\.dart$/, sources: /\.dart$/ },
   rust: { tests: /\.rs$/, sources: /\.rs$/ },

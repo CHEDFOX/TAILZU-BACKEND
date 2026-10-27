@@ -1236,6 +1236,15 @@ function compact(ev: unknown): ViewerEvent | null {
     case "result": return { t: "result", id: s(e.id, 120), ok: e.ok === true, brief: s(e.brief, 160), at };
     case "cost": return { t: "cost", spentPaise: Number(e.spentPaise) || 0, budgetPaise: Number(e.budgetPaise) || 0, at };
     case "end": return { t: "end", why: s(e.why, 40), at };
+    // A lead's team board (code/team): a few fields for each part, and nothing of the person's code.
+    case "team": return {
+      t: "team", at,
+      parts: (Array.isArray(e.parts) ? e.parts : []).slice(0, 12).flatMap((p) => {
+        if (!p || typeof p !== "object") return [];
+        const x = p as Record<string, unknown>;
+        return [{ id: Number(x.id) || 0, title: s(x.title, 80), status: s(x.status, 20), ...(typeof x.jobId === "string" ? { jobId: s(x.jobId, 80) } : {}), spentPaise: Number(x.spentPaise) || 0, budgetPaise: Number(x.budgetPaise) || 0 }];
+      }),
+    };
     default: return null;
   }
 }

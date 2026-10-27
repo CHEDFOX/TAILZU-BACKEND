@@ -127,6 +127,8 @@ export interface Decision {
   handoff?: boolean;
   /** A code task that is open-ended (debugging, investigating, exploring): worked in the free-form mode, where the model decides the order of explore, change and run (code/agent). */
   mode?: "freeform";
+  /** A code task the person asked a team for ("on": a lead splits it and helpers build the parts in parallel) or asked not to have one ("off"): code/team, docs/code-team.md. Absent: the plan decides. */
+  team?: "on" | "off";
   /** Short ids of why: the rules' hits, and the learning's adjustments. Never the message. */
   reasons: string[];
 }

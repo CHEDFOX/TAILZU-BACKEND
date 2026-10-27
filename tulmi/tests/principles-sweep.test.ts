@@ -137,7 +137,7 @@ describe("the sweep", () => {
     expect(sites.map((s) => s.rel).sort()).toEqual([
       "artifacts/compare.ts", "artifacts/edit.ts", "artifacts/kit.ts", "artifacts/service.ts",
       "code/agent/context.ts", "code/agent/merge.ts", "code/agent/phases.ts", "code/brain/classify.ts", "code/chat/answer.ts", "code/newproject/spec.ts",
-      "code/prcare/review.ts", "code/project/summarize.ts", "code/resources/brief.ts", "code/webTools.ts", "code/work/locate.ts", "code/work/model.ts", "code/work/plan.ts",
+      "code/prcare/review.ts", "code/project/summarize.ts", "code/resources/brief.ts", "code/team/review.ts", "code/team/split.ts", "code/webTools.ts", "code/work/locate.ts", "code/work/model.ts", "code/work/plan.ts",
       "front/attachments.ts", "front/decide.ts", "front/handlers.ts", "web/research.ts", "web/search/plan.ts",
     ]);
     for (const s of sites) {

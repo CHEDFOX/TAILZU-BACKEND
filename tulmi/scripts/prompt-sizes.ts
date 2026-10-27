@@ -57,6 +57,9 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   // PR care (src/code/prcare, src/code/agent/merge.ts): written after the principles too, so their first size is their "before".
   care_review: 1422,
   care_conflict: 697,
+  // Lead and helpers (src/code/team): written after the principles, so their first size is their "before".
+  team_split: 1778,
+  team_review: 1278,
   // The main assistant (agent/, pipeline/): what each builder sent at 61edee2, the commit before they became roles. The writer is buildAssistSystem with
   // no optional line on (5,645 with every one on), the planner AGENT_SYSTEM on a computer (11,895 with the connected apps' addendum), the picture
   // reader AGENT_VISION_SYSTEM (7,195 in Gemini's order), and the portrait writers' with no rhythms and no voice named (3,762 with rhythms).
@@ -72,7 +75,7 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
 };
 
 /** The roles that replaced a prompt the code used to carry: only these have a real "before", and only these are held to the saving. */
-export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict"];
+export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review"];
 
 /**
  * The agent's tool definitions are sent with every turn of a job, so they are prompt too. What they were before they were tightened in the

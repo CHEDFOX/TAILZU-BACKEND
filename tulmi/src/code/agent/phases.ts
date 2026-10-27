@@ -51,6 +51,10 @@ import {
   type AgentState, type Exchange, type Phase, type ResultRecord, type VerifyState,
 } from "./types.js";
 import { GithubRefusal } from "../github.js";
+import { afterConflict, afterContracts, teamClean } from "../team/lead.js";
+import { afterPlan } from "../team/when.js";
+import { isHelperState } from "../team/types.js";
+import { linkPulls, teamLines, teamPrSections } from "../team/report.js";
 
 /** Characters a model turn may write. Small, so the budget check's worst case is small too. */
 export const WORK_TOKENS = 4096;
@@ -141,6 +145,8 @@ export async function baseline(r: Run): Promise<void> {
  */
 export function afterBaseline(s: AgentState): Phase {
   if (s.care?.kind === "conflict") return "merge";
+  // A goal over several projects is split by project before anything is located or planned: there is no one place to locate it in.
+  if (s.teamRepos?.length && s.teamMode !== "off" && !s.part) return "split";
   if (s.mode === "freeform") return s.planFirst ? "plan" : "work";
   return "locate";
 }
@@ -229,7 +235,7 @@ export async function planPhase(r: Run): Promise<void> {
       s.waiting = undefined;
       s.planOk = true;
       await r.log.decision("You approved the plan.");
-      s.phase = "work";
+      s.phase = afterPlan(s);
       await r.save();
       return;
     }
@@ -237,7 +243,7 @@ export async function planPhase(r: Run): Promise<void> {
   }
   if (s.plan) {
     s.planOk = true;
-    s.phase = "work";
+    s.phase = afterPlan(s);
     await r.save();
     return;
   }
@@ -290,7 +296,7 @@ export async function planPhase(r: Run): Promise<void> {
   }
   s.planOk = true;
   await r.log.decision(`Plan: ${plan.steps.length} step${plan.steps.length === 1 ? "" : "s"} touching ${plan.impact.files.length} file${plan.impact.files.length === 1 ? "" : "s"}; risk ${plan.risk}. No OK needed.`);
-  s.phase = "work";
+  s.phase = afterPlan(s);
   await r.save();
 }
 
@@ -412,7 +418,9 @@ export async function workPhase(r: Run): Promise<void> {
     if (w.finished) break;
   }
   // A merge is a change even when its resolution leaves the files as the branch has them (keeping this branch's side): the commit has two parents.
-  s.phase = r.tools.changes.empty && !s.merge ? "report" : "verify";
+  // A lead (code/team) has things to do after its own work: the contracts that needed no change hand over to the helpers, and the full check goes on after a fix that changed nothing.
+  if (s.team?.stage === "contracts" && r.tools.changes.empty) { await afterContracts(r, { none: true }); return; }
+  s.phase = r.tools.changes.empty && !s.merge ? (s.team?.stage === "final" && s.commits.length ? "verify" : "report") : "verify";
   await r.save();
 }
 
@@ -550,7 +558,7 @@ async function verifyChecks(r: Run): Promise<CheckSpec[]> {
   const verify = (s.plan?.verify ?? []).slice(0, 6).map((v) => ({ kind: v.kind, cmd: v.cmd, cwd: v.cwd }));
   if (verify.length) return [...installs, ...verify];
   // A job with no plan to name its checks (free-form, or a merge) is checked by everything the project has: its typecheck, lint, tests and build.
-  if (s.mode === "freeform" || s.merge) {
+  if (s.mode === "freeform" || s.merge || s.team) {
     const all = (await r.brain.baselinePlan().catch(() => [])).filter((x) => x.kind !== "install").slice(0, 6).map(checkOf);
     return all.length ? [...installs, ...all] : [];
   }
@@ -612,7 +620,9 @@ export async function runVerify(r: Run, round: number): Promise<{ v: VerifyState
 export async function verifyPhase(r: Run): Promise<void> {
   const s = r.state;
   const w = s.work;
-  if (r.tools.changes.empty && !s.merge) {
+  // A lead whose helpers' parts are all merged has nothing staged and everything to check: the branch is what is verified. With nothing merged into this project there is nothing to check.
+  const wholeBranch = s.team?.stage === "final" && s.commits.length > 0;
+  if (r.tools.changes.empty && !s.merge && !wholeBranch) {
     s.phase = "report";
     await r.save();
     return;
@@ -638,7 +648,7 @@ export async function verifyPhase(r: Run): Promise<void> {
   }
   if (w.fixRounds >= FIX_ROUNDS_MAX) {
     await r.save();
-    throw new EndJob("failed", `The checks still fail after ${FIX_ROUNDS_MAX} rounds of fixes, so I stopped. Nothing was committed. ${v.summary}`);
+    throw new EndJob("failed", `The checks still fail after ${FIX_ROUNDS_MAX} rounds of fixes, so I stopped. ${s.team ? "What the helpers built is merged on the branch, and no pull request was opened." : "Nothing was committed."} ${v.summary}`);
   }
   w.fixRounds += 1;
   w.feedback = feedback;
@@ -749,7 +759,12 @@ export async function commitPhase(r: Run): Promise<void> {
       throw new EndJob("failed", "You chose to stop after GitHub refused the push. The edits were not pushed, and nothing on the branch changed.");
     }
   }
-  if (!r.tools.changes.empty || s.merge || (s.commit && !s.commit.sha)) await commitStaged(r);
+  if (!r.tools.changes.empty || s.merge || (s.commit && !s.commit.sha)) {
+    const sha = await commitStaged(r);
+    // A lead's own commits are steps of the team (code/team): the contracts hand over to the helpers, and a part merged by the runner merge flow goes back to the team.
+    if (s.team?.merging !== undefined) { await afterConflict(r, sha ? { sha } : {}); return; }
+    if (s.team?.stage === "contracts") { await afterContracts(r, sha ? { sha } : { none: true }); return; }
+  }
   s.phase = s.commits.length ? "pr" : "report";
   await r.save();
 }
@@ -759,6 +774,13 @@ export async function commitPhase(r: Run): Promise<void> {
 export async function prPhase(r: Run): Promise<void> {
   const s = r.state;
   const d = r.deps.projects;
+  // A helper's work is merged into the lead's branch by the lead, and the lead opens the one pull request (code/team): a helper opens none.
+  if (isHelperState(s)) {
+    await r.log.step("Finished on its own branch; the lead merges it");
+    s.phase = "report";
+    await r.save();
+    return;
+  }
   // A PR-care job pushes to a pull request that exists, and is not its description's to rewrite: the pull request is the person's (or Tailzu's earlier) and says what it is.
   if (s.care) {
     s.pr = { number: s.care.prNumber, url: s.care.prUrl, ready: true, existing: true };
@@ -769,7 +791,8 @@ export async function prPhase(r: Run): Promise<void> {
   }
   const money = await r.money();
   const worklog = await worklogMarkdown(r.jobId, { ...(r.deps.worklog ? { store: r.deps.worklog } : {}) });
-  const body = prBody(s, { worklog, jobId: r.jobId, spentPaise: money.spent, design: designTextOf(r) });
+  const team = s.team ? await teamPrSections(r) : undefined;
+  const body = prBody(s, { worklog: team?.worklog ?? worklog, jobId: r.jobId, spentPaise: money.spent, design: designTextOf(r), ...(team ? { team: team.sections } : {}) });
   const pr = await r.ws.openDraftPr(prTitle(s), body);
   if (pr.existing) {
     // The pull request is open already (an earlier round of this job, or the person's): its description is brought up to date.
@@ -783,7 +806,7 @@ export async function prPhase(r: Run): Promise<void> {
   await r.log.step(`${pr.existing ? "Updated" : "Opened"} the draft pull request #${pr.prNumber}`);
   await r.save();
   // Ready for review only when the checks ran and found nothing this change broke.
-  const green = s.verify?.ran === true && s.verify.ok;
+  const green = s.verify?.ran === true && s.verify.ok && (!s.team || teamClean(s.team));
   if (green && !s.pr.ready && !s.readyDenied) {
     try {
       await r.gated("ready", "mark the pull request ready for review", (id) => markReady(d, r.userId, r.projectId, r.branch, { attended: true, ...(id ? { approvalId: id } : {}) }));
@@ -797,7 +820,7 @@ export async function prPhase(r: Run): Promise<void> {
       } else throw err;
     }
   } else if (!green) {
-    await r.log.decision(s.verify?.ran ? "The checks found something this change broke, so the pull request stays a draft." : "The checks did not run, so the pull request stays a draft.");
+    await r.log.decision(s.verify?.ran && s.verify.ok && s.team ? "Not every part of the team's work is in, or a review left a problem open, so the pull request stays a draft." : s.verify?.ran ? "The checks found something this change broke, so the pull request stays a draft." : "The checks did not run, so the pull request stays a draft.");
   }
   s.phase = "report";
   await r.save();
@@ -913,7 +936,8 @@ export async function reportPhase(r: Run): Promise<void> {
   const s = r.state;
   const money = await r.money();
   const outcome = s.commits.length === 0 && r.tools.changes.empty ? "answer" : "done";
-  const text = reportText({ state: s, spentPaise: money.spent, budgetPaise: money.budget, outcome, prReady: s.pr?.ready, design: designTextOf(r) });
+  if (s.team) await linkPulls(r);
+  const text = reportText({ state: s, spentPaise: money.spent, budgetPaise: money.budget, outcome, prReady: s.pr?.ready, design: designTextOf(r), ...(s.team ? { team: teamLines(s.team) } : {}) });
   s.report = { at: r.now(), outcome, text, ...(s.pr ? { prUrl: s.pr.url } : {}), costPaise: money.spent };
   s.phase = "done";
   await r.save({ notes: cut(text.split("\n")[0] ?? "Done.", 200) });

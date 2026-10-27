@@ -46,6 +46,8 @@ const { DecideReply } = await import("../src/front/decide.js");
 const { PlanSchema: FrontPlanReply } = await import("../src/front/handlers.js");
 const { ReviewVerdict } = await import("../src/code/prcare/review.js");
 const { ConflictVerdict } = await import("../src/code/agent/merge.js");
+const { SplitReply } = await import("../src/code/team/split.js");
+const { PartReviewVerdict } = await import("../src/code/team/review.js");
 const { parseLine } = await import("../src/agent/lines.js");
 const { readSend } = await import("../src/pipeline/assistPrompt.js");
 const { parsePortraitDraft } = await import("../src/pipeline/portraitDimensions.js");
@@ -256,6 +258,16 @@ describe("a known-good answer for each role", () => {
     care_conflict: {
       text: '{"files":[{"path":"src/index.ts","kind":"mechanical","reason":"Both sides added a different import; both stay."}]}',
       reads: (t) => ConflictVerdict.parse(JSON.parse(t)),
+    },
+    team_split: {
+      text: '{"parts":[{"id":0,"title":"Invoice export contract","goal":"Add what an export needs to the Invoice type.","ownedPaths":["src/types/"],"reads":[],"dependsOn":[],"acceptance":["The Invoice type carries what an export needs"],"budgetShare":1},'
+        + '{"id":1,"title":"Export endpoint","goal":"Build the export endpoint and its tests.","ownedPaths":["src/api/"],"reads":["src/types/invoice.ts"],"dependsOn":[0],"acceptance":["The endpoint answers with a PDF"],"budgetShare":2},'
+        + '{"id":2,"title":"Invoice page","goal":"Add the export button and the call to the endpoint.","ownedPaths":["src/web/"],"reads":["src/types/invoice.ts"],"dependsOn":[0],"acceptance":["The page has an export button"],"budgetShare":2}],"notes":[]}',
+      reads: (t) => SplitReply.parse(JSON.parse(t)),
+    },
+    team_review: {
+      text: '{"verdict":"pass","summary":"The endpoint and its tests meet the acceptance.","findings":[]}',
+      reads: (t) => PartReviewVerdict.parse(JSON.parse(t)),
     },
     // The main assistant (agent/, pipeline/). Ask's lines are read by the device's parser, the writer's answer by readSend, the portrait by parsePortraitDraft.
     ask_planner: {

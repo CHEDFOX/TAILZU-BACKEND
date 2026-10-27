@@ -1148,6 +1148,13 @@ export class GithubApp {
     };
   }
 
+  /** The text of a pull request's description, as it is now: for adding to it (the links between a team's pull requests) without losing what is there. */
+  async pullBody(repo: RepoRef, number: number): Promise<string> {
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/pulls/${number}`);
+    if (r.status !== 200) throw githubError(r.status, r.json, "that pull request");
+    return typeof r.json?.body === "string" ? r.json.body : "";
+  }
+
   /** GitHub's GraphQL, as the installation. Throws on an error in the answer. */
   private async graphql(repo: RepoRef, query: string, variables: Record<string, unknown>): Promise<any> {
     const r = await this.rsend(repo, "POST", `${GITHUB_API}/graphql`, { query, variables });

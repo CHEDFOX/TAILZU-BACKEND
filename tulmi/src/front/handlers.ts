@@ -191,6 +191,7 @@ async function codeJobDefault(d: HandlerDeps, c: RouteCall): Promise<{ job: NonN
     if (handed) { task = handed.task.slice(0, 20_000); opts = { located: handed.located, locatedFrom: "chat" }; }
   }
   if (c.decision.mode === "freeform") opts = { ...opts, mode: "freeform" };
+  if (c.decision.team) opts = { ...opts, team: c.decision.team };
   const { branch } = await createWorkBranch(pd, c.userId, project.id, c.said ?? c.message);
   const job = await d.jobs.createJob(c.userId, project.id, branch, task, c.maxPaise, { agent: true });
   const made = await d.agent.enqueue(job.id, task, opts);

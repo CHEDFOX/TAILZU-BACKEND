@@ -23,8 +23,8 @@ export const NOTIFY_PATH = "/v1/internal/code/notify";
 /** VPS -> Worker: the person said something while the job works (POST /v1/code/jobs/:id/message). */
 export const MESSAGE_PATH = "/v1/message";
 
-/** What the person (or a result) did, so the job's Workflow looks again. All wake it the same; the kind is for the log. */
-export const WAKE_KINDS = ["answer", "approve", "deny", "budget", "stop", "runner", "wake", "message"] as const;
+/** What the person (or a result) did, so the job's Workflow looks again. All wake it the same; the kind is for the log. "team": a helper of a lead ended or needs the person (code/team). */
+export const WAKE_KINDS = ["answer", "approve", "deny", "budget", "stop", "runner", "wake", "message", "team"] as const;
 export type WakeKind = (typeof WAKE_KINDS)[number];
 
 export interface StartBody { jobId: string }

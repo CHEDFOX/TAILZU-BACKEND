@@ -28,6 +28,7 @@ import { isSecretPath } from "../project/lang.js";
 import { isReservedPath } from "../shadow.js";
 import type { OverlayFile } from "../jobs/types.js";
 import { OVERLAY_MAX_BYTES, OVERLAY_MAX_FILES } from "../jobs/types.js";
+import type { PathGuard } from "../team/guard.js";
 import { STAGED_CHARS_MAX, STAGED_FILES_MAX, type StagedFile } from "./types.js";
 
 /** A tool call that cannot be done, in words for the model. */
@@ -83,8 +84,18 @@ export class Changeset {
   /** Goes up every time something is staged or cleared: how a copy of the code that is laid under these edits knows to be given them again. */
   rev = 0;
 
-  /** Works on the state's own array, so what is staged is in the checkpoint the moment it is staged. */
-  constructor(private readonly staged: StagedFile[]) {}
+  /**
+   * Works on the state's own array, so what is staged is in the checkpoint the moment it is staged. `guard` is asked for the part this job owns
+   * (team/guard.ts): a helper changes its own files and nobody else's, a lead doing the shared contracts only those. It is a function because the lead's
+   * part changes as the job goes on; it answers undefined for a job that owns everything (every ordinary job).
+   */
+  constructor(private readonly staged: StagedFile[], private readonly guard?: () => PathGuard | undefined) {}
+
+  /** Throws Refused when the path is not one this job may change. Called first, so a refused path costs no read; `stage` asks again, so no way round it stages one. */
+  assertOwned(path: string): void {
+    const why = this.guard?.()?.check(path);
+    if (why) throw new Refused(why);
+  }
 
   get files(): readonly StagedFile[] { return this.staged; }
   get size(): number { return this.staged.length; }
@@ -100,6 +111,7 @@ export class Changeset {
    * the branch (`original`) is removed from the changeset too: there is nothing to commit.
    */
   stage(path: string, content: string | null, o: { existed: boolean; original: string | null }): StagedFile | null {
+    this.assertOwned(path);
     this.rev += 1;
     const at = this.staged.findIndex((f) => f.path === path);
     if (content === null && !o.existed) {

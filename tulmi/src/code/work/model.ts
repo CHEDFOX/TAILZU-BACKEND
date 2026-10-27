@@ -57,6 +57,8 @@ export interface AskJson<T> {
   tier: ModelTier;
   /** Forces the first model tried (the router named one that earned it). */
   model?: string;
+  /** For the review tier: the model that wrote what is being reviewed. The gateway never picks a reviewer of its family, even when the first choice fails and it moves down the pool. */
+  writerModel?: string;
   /** A word for the log and the ledger, never any content: "work.locate.expand". */
   purpose: string;
   /** Who the model is for this call (principles/roles.ts): the stable block that goes in front of `user`. */
@@ -90,7 +92,7 @@ export async function askJson<T>(ctx: ModelCtx, o: AskJson<T>): Promise<Asked<T>
   const call: CallFn = ctx.call ?? (callModel as CallFn);
   try {
     const r = await call<T>({
-      tier: o.tier, ...(o.model ? { model: o.model } : {}),
+      tier: o.tier, ...(o.model ? { model: o.model } : {}), ...(o.writerModel ? { writerModel: o.writerModel } : {}),
       messages: compose(o.role, [{ role: "user" as const, content: o.user }]),
       json: o.schema, maxTokens: o.maxTokens, purpose: o.purpose, budget: ctx.budget,
       userId: ctx.userId, ...(ctx.jobId ? { jobId: ctx.jobId } : {}), ...(o.step !== undefined ? { step: o.step } : {}),

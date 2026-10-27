@@ -137,6 +137,8 @@ export type ViewerEvent =
   | { t: "session"; state: "opening" | "open" | "closed"; kind?: string; reason?: CloseReason; at: number }
   | { t: "said"; text: string; at: number }
   | { t: "end"; why: string; at: number }
+  /** A lead's team board (code/team): each part and where it stands, so the app can draw it. Never anything of the person's code. */
+  | { t: "team"; parts: Array<{ id: number; title: string; status: string; jobId?: string; spentPaise: number; budgetPaise: number }>; at: number }
   /** The project's own dev server is running on the job's runner, and this address shows it (docs/cloudflare-jobs.md "The preview"). Only the owner is sent it. */
   | { t: "preview-ready"; url: string; at: number }
   | { t: "preview-closed"; reason: string; at: number }

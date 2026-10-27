@@ -17,6 +17,7 @@
  *   design.ts        the design round: run the app, shoot it, compare it to the approved design
  *   loop.ts          the driver, and the budget stop
  *   orchestrator.ts  the worker: claims, checkpoints, concurrency, the person's word
+ *   ../team/         lead and helpers: a big goal split into parts, built in parallel by helpers, reviewed, merged and verified (docs/code-team.md)
  *
  * createAgent() wires it from the Code object and the job router. It exists only when the Code bot has a
  * GitHub client AND the project brain is on (the loop reads the brain for where a change belongs); a server
@@ -27,7 +28,7 @@ import type { Code } from "../index.js";
 import type { JobRouter } from "../jobs/router.js";
 import { projectDepsOf } from "../jobs/index.js";
 import { jobStore, type JobStore } from "../jobs/store.js";
-import { brainOf, type AgentBrain, type AgentDeps, type DesignDeps } from "./deps.js";
+import { brainOf, type AgentBrain, type AgentDeps, type DesignDeps, type TeamPorts } from "./deps.js";
 import { MemoryInbox, type LiveDeps } from "../live/ports.js";
 import type { ContextStrategy } from "./mask.js";
 import { AgentOrchestrator, type RemoteJobs } from "./orchestrator.js";
@@ -51,6 +52,7 @@ export * from "./runner.js";
 export * from "./settings.js";
 export * from "./tools.js";
 export * from "./types.js";
+export * as team from "../team/index.js";
 
 export interface CreateAgentOptions extends Partial<Pick<AgentDeps, "call" | "gateway" | "web" | "fetchFn" | "findResources" | "worklog" | "intake" | "routeStats" | "notify" | "now" | "sleep" | "log">> {
   /** Where rewind points and the projects' settings are kept; the process's own (Supabase, else memory) when not given. */
@@ -79,6 +81,8 @@ export interface CreateAgentOptions extends Partial<Pick<AgentDeps, "call" | "ga
   live?: LiveDeps;
   /** The design round's compare step and links (agent/design.ts). */
   design?: DesignDeps;
+  /** Lead and helpers (code/team): how a helper's job is started and a lead woken, when this is not a server that drives its own jobs (the Worker starts a Workflow and sends an event). */
+  team?: Partial<TeamPorts>;
   /** What becomes of a tool result once it is older than the last six: "mask", "summary" or "hybrid" (agent/mask.ts). Instead of CODE_CONTEXT_STRATEGY, for a harness that compares them. */
   contextStrategy?: ContextStrategy;
 }
@@ -101,9 +105,17 @@ export function createAgent(o: CreateAgentOptions): AgentOrchestrator | null {
     ...(o.design ? { design: o.design } : {}),
     ...(o.contextStrategy ? { contextStrategy: o.contextStrategy } : {}),
   };
-  return new AgentOrchestrator({
+  const orch = new AgentOrchestrator({
     jobs: o.jobs, store, deps, concurrency: o.concurrency ?? getConfig().CODE_AGENT_CONCURRENCY,
     ...(o.instanceId ? { instanceId: o.instanceId } : {}), ...(o.leaseMs ? { leaseMs: o.leaseMs } : {}),
     ...(o.remote ? { remote: o.remote } : {}), ...(o.passive ? { passive: true } : {}),
   });
+  // Lead and helpers: on a server that drives its own jobs, starting a helper is looking for work, and waking a lead is making it claimable now.
+  deps.team = {
+    start: async () => { orch.kick(); },
+    wake: (id) => orch.wakeLead(id),
+    addBudget: async (userId, jobId, paise) => { await orch.addBudget(userId, jobId, paise); },
+    ...(o.team ?? {}),
+  };
+  return orch;
 }

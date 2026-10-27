@@ -438,6 +438,29 @@ export async function createWorkBranch(
   });
 }
 
+/**
+ * A work branch with a name the caller chose, cut from `from` (a branch or a commit): a helper's branch in a team (code/team), `tailzu/<slug>-p<k>`. Free like any
+ * work branch, recorded like one (so the router runs jobs on it and the policy treats it as Tailzu's own). Throws "branch_exists" when the name is taken: the
+ * caller asks for another.
+ */
+export async function createNamedBranch(
+  d: ProjectDeps, userId: string, projectId: string, name: string, task: string, o: GateOptions & { from: string },
+): Promise<{ branch: string; baseSha: string; url: string }> {
+  if (!name.startsWith("tailzu/") || !validBranchName(name)) throw new ConnectorError("bad_request", "A work branch is tailzu/ and a name.");
+  if (!validBranchName(o.from)) throw new ConnectorError("bad_request", "from is a branch, a tag or a commit.");
+  const project = await ownProject(d, userId, projectId);
+  await assertAccess(d, userId, project, true);
+  return gateFree({
+    ...gateBase(d, userId, project), attended: o.attended, action: "branch.create",
+    summary: () => ({ task: [...task].slice(0, TASK_KEEP).join(""), from: o.from, branch: name }),
+    run: async () => {
+      const baseSha = await d.github.createBranch(repoRef(d, userId, project), name, o.from);
+      await d.store.addBranch({ projectId, branch: name, task: [...task].slice(0, TASK_KEEP).join(""), baseSha });
+      return { branch: name, baseSha, url: `https://github.com/${project.fullName}/tree/${name}` };
+    },
+  });
+}
+
 export async function listBranches(d: ProjectDeps, userId: string, projectId: string): Promise<CodeBranch[]> {
   await ownProject(d, userId, projectId);
   return d.store.listBranches(projectId);

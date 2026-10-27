@@ -208,6 +208,8 @@ export const STATUS: Record<string, number> = {
   stale_lease: 409, step_in_flight: 409, job_over: 409, not_waiting: 409, unknown_device: 409, paid_off: 409, paid_unavailable: 409,
   // Rewinding a job and a project's settings (agent/orchestrator.ts): points that are not kept, a commit that did not record its base.
   rewind_off: 404, settings_off: 404, cannot_rewind: 409,
+  // A lead's team (agent/orchestrator.ts team, teamCommand): a part that is already over, or one that is not over and so cannot be run again.
+  part_over: 409, part_not_over: 409,
   // The result of a step on GitHub's free computers (routes/codeJobs.ts gh-result): a token that isn't GitHub's, or is for something else.
   bad_runner_token: 401, runner_mismatch: 403,
 };

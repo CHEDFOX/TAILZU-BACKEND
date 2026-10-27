@@ -52,6 +52,7 @@ import { findResources } from "../resources/finder.js";
 import { WEB_TOOLS, type WebTools } from "../webTools.js";
 import { cleanFinding, redactText, type WorkLog } from "../work/index.js";
 import { Changeset, Refused, checkedText, editablePath, replaceOnce } from "./changeset.js";
+import type { PathGuard } from "../team/guard.js";
 import type { RunOutcome, RunSpec } from "./runner.js";
 import { FINDINGS_MAX, FREEFORM_RUNS_MAX, LIST_MAX, READ_MAX_CHARS, RESULT_MAX_CHARS, RUNS_MAX, RUN_TIMEOUT_SEC, type AgentState, type ResultRecord } from "./types.js";
 
@@ -177,6 +178,8 @@ export interface ToolEnv {
   files?: LiveFiles | null;
   /** Compact events for the app's live view. Never throws into the tool. */
   progress?: (ev: ViewerEvent) => void;
+  /** Which files this job may change, when it is a part of a team's (team/guard.ts): a helper its own, the lead doing the contracts those. Absent: all of them. */
+  owns?: () => PathGuard | undefined;
 }
 
 /**
@@ -214,7 +217,7 @@ export class Tools {
   private logged = new Set<string>();
 
   constructor(private readonly env: ToolEnv) {
-    this.changes = new Changeset(env.state.work.staged);
+    this.changes = new Changeset(env.state.work.staged, env.owns);
   }
 
   /** The branch moved (a commit): what was read of it is stale. */
@@ -600,6 +603,7 @@ export class Tools {
 
   private async editFile(call: ToolCall, a: Record<string, unknown>): Promise<ToolOutcome> {
     const path = editablePath(a.path);
+    this.changes.assertOwned(path);
     const before = await this.current(path);
     if (before === null) throw new Refused(`There is no file ${path} to edit. Use write_file to create it.`);
     const next = checkedText(path, replaceOnce(path, before, a.old, a.new), before);
@@ -611,6 +615,7 @@ export class Tools {
 
   private async writeFile(call: ToolCall, a: Record<string, unknown>): Promise<ToolOutcome> {
     const path = editablePath(a.path);
+    this.changes.assertOwned(path);
     if (typeof a.content !== "string") throw new Refused("content is needed: the file's whole text.");
     const original = await this.branchText(path);
     const before = await this.current(path);
@@ -623,6 +628,7 @@ export class Tools {
 
   private async deleteFile(call: ToolCall, a: Record<string, unknown>): Promise<ToolOutcome> {
     const path = editablePath(a.path);
+    this.changes.assertOwned(path);
     const before = await this.current(path);
     if (before === null) throw new Refused(`There is no file ${path} to delete.`);
     const original = await this.branchText(path);
