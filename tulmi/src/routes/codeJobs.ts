@@ -10,13 +10,32 @@
  * routes the app uses to see and steer them):
  *
  *   POST   /v1/code/jobs { projectId, branch, task, budgetPaise? }
- *                                          -> { job }  on a branch Tailzu made in the person's project (404 otherwise)
+ *                                          -> { job }  on a branch Tailzu made in the person's project (404 otherwise). Left out, the budget is
+ *                                             CODE_JOB_DEFAULT_BUDGET_PAISE (3,000 paise); a budgetPaise of 0 sent on purpose means no model calls.
+ *                                             On a server that has the agent loop the job is the agent's to drive from here (it is queued for the
+ *                                             orchestrator, which picks it up at once)
  *   GET    /v1/code/jobs                   -> { jobs }  newest first
- *   GET    /v1/code/jobs/:id               -> { job, steps }  the steps with where they ran, how they ended and the last 8 KB they printed
+ *   GET    /v1/code/jobs/:id               -> { job, steps, agent? }  the steps with where they ran, how they ended and the last 8 KB they printed;
+ *                                             `agent` (agent jobs only) is where the agent is: the phase, what it waits for, the plan, what is
+ *                                             staged, the pull request, the checks, the findings and the final report
  *   POST   /v1/code/jobs/:id/cancel        -> { job }  nothing more is dispatched; a late result from the step that was out is refused
  *   POST   /v1/code/jobs/:id/compute-ok { maxPaise? }
  *                                          -> { job }  yes to paid compute for this job, after a compute_ask (409 not_waiting otherwise,
  *                                             409 paid_off if the rule is "never"). maxPaise is how much more it may spend
+ *   POST   /v1/code/jobs/:id/answer { answer }
+ *                                          -> { job }  the person's words to a question the agent asked (locate, a new project's intake, or the model's
+ *                                             own ask_user); the job goes back to running. 409 not_waiting if it asked nothing
+ *   POST   /v1/code/jobs/:id/approve { approvalId? }
+ *                                          -> a QUESTION, then { approved, job }  yes to a plan the agent wants approved, or to something the policy asks
+ *                                             about (a commit, marking the pull request ready): the same two steps as every other question (see
+ *                                             routes/code.ts). 409 approval_expired / approval_invalid / not_waiting. { refreshing } when the question
+ *                                             ran out and the agent is asking it again
+ *   POST   /v1/code/jobs/:id/deny          -> { job }  no. A plan or a commit not approved ends the job; a pull request not marked ready stays a draft
+ *   POST   /v1/code/jobs/:id/budget { addPaise }
+ *                                          -> { job }  adds to the job's budget; a job that stopped for the money ("continue with ₹X more") goes on
+ *                                             from where it was. 409 job_over for a job that is over
+ *   POST   /v1/code/jobs/:id/stop          -> { job }  stops the job: the agent's loop is told and any step that is out is dropped
+ *   GET    /v1/code/jobs/:id/log           -> { entries }  the work log, in order: every step, read, edit, command, finding and decision
  *   POST   /v1/code/jobs/:id/commit-ok { approvalId? }
  *                                          -> a QUESTION, then { committed, sha, job }  yes to committing what a step produced, after a
  *                                             commit_ask: the same two steps as every other question (see routes/code.ts), or
@@ -74,6 +93,8 @@
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { resolveUser } from "../auth/supabase.js";
+import { stripAgent, viewOfState, type AgentOrchestrator } from "../code/agent/orchestrator.js";
+import { stateOf } from "../code/agent/types.js";
 import type { Code } from "../code/index.js";
 import type { GithubActionsProvider } from "../code/jobs/githubActions.js";
 import type { JobRouter } from "../code/jobs/router.js";
@@ -93,6 +114,8 @@ export interface CodeJobRoutesDeps {
   pollMs?: number;
   /** GitHub's free computers: the provider that checks and takes their results. Null or absent: this server has none. */
   githubActions?: GithubActionsProvider | null;
+  /** The agent loop's worker (code/agent). Null or absent: this server has none, and a job is left to whatever drives the router. */
+  agent?: AgentOrchestrator | null;
 }
 
 /** A result carries files, so it may be larger than the server's usual 1 MB. */
@@ -122,9 +145,14 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
   const tickEvery = deps.tickEveryMs === undefined ? TICK_MS : deps.tickEveryMs;
   if (jobs && tickEvery !== null) {
     let stop: (() => void) | undefined;
-    app.addHook("onReady", async () => { stop = startJobTicker({ jobs, everyMs: tickEvery, log: app.log }); });
-    app.addHook("onClose", async () => { stop?.(); });
+    app.addHook("onReady", async () => {
+      stop = startJobTicker({ jobs, agents: deps.agent, everyMs: tickEvery, log: app.log });
+      deps.agent?.start();
+    });
+    app.addHook("onClose", async () => { stop?.(); await deps.agent?.stop(); });
   }
+
+  const agentOff = (reply: FastifyReply) => reply.code(404).send({ code: "agent_off", message: "The Code bot's agent is not switched on on this server." });
 
   const bodyOf = (b: unknown): Record<string, unknown> => (b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, unknown>) : {});
   const text = (v: unknown, max: number) => (typeof v === "string" && v.length <= max ? v : undefined);
@@ -143,7 +171,10 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
       return reply.code(400).send({ code: "bad_request", message: "budgetPaise is a whole number of paise." });
     }
     try {
-      return reply.send({ job: await s.jobs.createJob(s.user.id, projectId, branch, task, (b.budgetPaise as number | undefined) ?? 0) });
+      const job = await s.jobs.createJob(s.user.id, projectId, branch, task, b.budgetPaise as number | undefined, { agent: !!deps.agent });
+      // The agent drives it from here: the whole request goes into its state (the job keeps 500 characters of it), and the worker is nudged.
+      if (deps.agent) await deps.agent.enqueue(job.id, task);
+      return reply.send({ job: stripAgent(job) });
     } catch (err) { return fail(reply, err); }
   });
 
@@ -151,7 +182,7 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
     const s = await begin(req.headers["authorization"], reply);
     if (!s) return reply;
     try {
-      return reply.send({ jobs: await s.jobs.listJobs(s.user.id) });
+      return reply.send({ jobs: (await s.jobs.listJobs(s.user.id)).map(stripAgent) });
     } catch (err) { return fail(reply, err); }
   });
 
@@ -159,7 +190,9 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
     const s = await begin(req.headers["authorization"], reply);
     if (!s) return reply;
     try {
-      return reply.send(await s.jobs.jobWithSteps(s.user.id, req.params.id));
+      const { job, steps } = await s.jobs.jobWithSteps(s.user.id, req.params.id);
+      const state = stateOf(job.checkpoint);
+      return reply.send({ job: stripAgent(job), steps, ...(state ? { agent: viewOfState(state) } : {}) });
     } catch (err) { return fail(reply, err); }
   });
 
@@ -168,7 +201,68 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
     if (!s) return reply;
     try {
       const job = await s.jobs.job(s.user.id, req.params.id);
-      return reply.send({ job: await s.jobs.cancelJob(job.id) });
+      return reply.send({ job: stripAgent(await s.jobs.cancelJob(job.id)) });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // --- the agent loop: the person's word to a job it is working on (code/agent/orchestrator.ts). Each is the owner's only.
+
+  app.post<{ Params: { id: string }; Body: unknown }>("/v1/code/jobs/:id/answer", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.agent) return agentOff(reply);
+    try {
+      return reply.send({ job: await deps.agent.answer(s.user.id, req.params.id, bodyOf(req.body).answer) });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.post<{ Params: { id: string }; Body: unknown; Querystring: { approvalId?: unknown } }>("/v1/code/jobs/:id/approve", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.agent) return agentOff(reply);
+    const b = bodyOf(req.body);
+    const id = b.approvalId !== undefined ? b.approvalId : req.query?.approvalId;
+    if (id !== undefined && (typeof id !== "string" || !id || id.length > 200)) {
+      return reply.code(400).send({ code: "bad_request", message: "approvalId is the id the question gave." });
+    }
+    try {
+      return reply.send(await deps.agent.approve(s.user.id, req.params.id, id as string | undefined));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.post<{ Params: { id: string } }>("/v1/code/jobs/:id/deny", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.agent) return agentOff(reply);
+    try {
+      return reply.send({ job: await deps.agent.deny(s.user.id, req.params.id) });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.post<{ Params: { id: string }; Body: unknown }>("/v1/code/jobs/:id/budget", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.agent) return agentOff(reply);
+    try {
+      return reply.send({ job: await deps.agent.addBudget(s.user.id, req.params.id, bodyOf(req.body).addPaise) });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.post<{ Params: { id: string } }>("/v1/code/jobs/:id/stop", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.agent) return agentOff(reply);
+    try {
+      return reply.send({ job: await deps.agent.stopJob(s.user.id, req.params.id) });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.get<{ Params: { id: string } }>("/v1/code/jobs/:id/log", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.agent) return agentOff(reply);
+    try {
+      return reply.send({ entries: await deps.agent.workLog(s.user.id, req.params.id) });
     } catch (err) { return fail(reply, err); }
   });
 
@@ -177,7 +271,7 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
     if (!s) return reply;
     const maxPaise = bodyOf(req.body).maxPaise;
     try {
-      return reply.send({ job: await s.jobs.approvePaid(s.user.id, req.params.id, maxPaise as number | undefined) });
+      return reply.send({ job: stripAgent(await s.jobs.approvePaid(s.user.id, req.params.id, maxPaise as number | undefined)) });
     } catch (err) { return fail(reply, err); }
   });
 
@@ -190,7 +284,8 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
       return reply.code(400).send({ code: "bad_request", message: "approvalId is the id the question gave." });
     }
     try {
-      return reply.send(await s.jobs.approveCommit(s.user.id, req.params.id, id as string | undefined));
+      const r = await s.jobs.approveCommit(s.user.id, req.params.id, id as string | undefined);
+      return reply.send("job" in r ? { ...r, job: stripAgent(r.job) } : r);
     } catch (err) { return fail(reply, err); }
   });
 

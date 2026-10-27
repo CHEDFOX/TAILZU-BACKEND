@@ -10,7 +10,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFile, execFileSync } from "node:child_process";
 import { createServer, type IncomingMessage, type Server } from "node:http";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -125,6 +125,15 @@ describe("step.json and the three files", () => {
     expect(text.endsWith("\n")).toBe(true);
   });
 
+  it("step.json carries the agent's staged edits (overlay) and discard only when there are some, after the rest", () => {
+    const overlay = [{ path: "src/a.ts", content: "export const a = 2;\n" }, { path: "old.ts", content: null }];
+    const withBoth = JSON.parse(stepJson({ ...spec, overlay, discard: true }));
+    expect(Object.keys(withBoth)).toEqual([...Object.keys(spec), "overlay", "discard"]);
+    expect(withBoth.overlay).toEqual(overlay);
+    expect(withBoth.discard).toBe(true);
+    expect(stepJson({ ...spec, overlay: [], discard: false })).toBe(stepJson(spec));
+  });
+
   it("a shadow commit is exactly the workflow, step.json and run.mjs, in that order, and nothing else", () => {
     const files = shadowFiles(spec);
     expect(files.map((f) => f.path)).toEqual([...shadow.SHADOW_FILES]);
@@ -224,6 +233,51 @@ describe("run.mjs: what it prints and keeps", () => {
     const m = await loadScript();
     const env = m.commandEnv({ PATH: "/bin", ACTIONS_ID_TOKEN_REQUEST_URL: "u", ACTIONS_ID_TOKEN_REQUEST_TOKEN: "t", ACTIONS_RUNTIME_TOKEN: "r", CI: "true" });
     expect(env).toEqual({ PATH: "/bin", CI: "true" });
+  });
+});
+
+describe("run.mjs: the overlay", () => {
+  it("allows a path inside the checkout, and not .git, Tailzu's own files, a workflow, an absolute or a parent path", async () => {
+    const m = await loadScript();
+    for (const p of ["src/a.ts", "a.txt", "deep/er/path/file.md", ".env.example", ".github/CODEOWNERS"]) expect(m.overlayPathOk(p), p).toBe(true);
+    for (const p of ["", "/etc/passwd", "../x", "a/../../x", "a//b", "./a", ".git/config", "src/.git/hooks/x", ".tailzu/run.mjs", ".TAILZU/step.json", ".github/workflows/ci.yml", ".github/workflows/tailzu-run.yml", "a\\b", 5, null]) {
+      expect(m.overlayPathOk(p), String(p)).toBe(false);
+    }
+    expect(m.overlayPathOk("x".repeat(501))).toBe(false);
+  });
+
+  it("writes text over the checkout, removes a file whose content is null (one that is not there is no error), makes folders, and names what it would not do", async () => {
+    const m = await loadScript();
+    const dir = scratch();
+    mkdirSync(join(dir, "src"), { recursive: true });
+    writeFileSync(join(dir, "src/a.ts"), "old\n");
+    writeFileSync(join(dir, "gone.ts"), "x\n");
+    const out = m.applyOverlay([
+      { path: "src/a.ts", content: "new\n" }, { path: "new/dir/b.ts", content: "b\n" }, { path: "gone.ts", content: null }, { path: "never-there.ts", content: null },
+      { path: ".git/config", content: "evil" }, { path: "../escape.txt", content: "evil" }, { path: ".github/workflows/ci.yml", content: "evil" }, { path: "bad.ts", content: 5 },
+    ], dir);
+    expect(out).toEqual({ written: 2, removed: 2, skipped: [".git/config", "../escape.txt", ".github/workflows/ci.yml", "bad.ts"] });
+    expect(readFileSync(join(dir, "src/a.ts"), "utf8")).toBe("new\n");
+    expect(readFileSync(join(dir, "new/dir/b.ts"), "utf8")).toBe("b\n");
+    expect(existsSync(join(dir, "gone.ts"))).toBe(false);
+    expect(existsSync(join(dir, "..", "escape.txt"))).toBe(false);
+    expect(m.applyOverlay("not a list", dir)).toEqual({ written: 0, removed: 0, skipped: [] });
+  });
+
+  it("will not write through a symlink out of the checkout, or onto a symlink", async () => {
+    const m = await loadScript();
+    const dir = scratch();
+    const outside = scratch();
+    symlinkSync(outside, join(dir, "link"));
+    writeFileSync(join(outside, "target.txt"), "keep\n");
+    symlinkSync(join(outside, "target.txt"), join(dir, "file-link.txt"));
+    const out = m.applyOverlay([{ path: "link/x.txt", content: "evil" }, { path: "link/target.txt", content: null }, { path: "file-link.txt", content: "mine\n" }], dir);
+    expect(out.skipped).toEqual(["link/x.txt", "link/target.txt"]);
+    expect(existsSync(join(outside, "x.txt"))).toBe(false);
+    expect(readFileSync(join(outside, "target.txt"), "utf8")).toBe("keep\n");
+    // The link itself is replaced by a file of ours, not written through.
+    expect(readFileSync(join(dir, "file-link.txt"), "utf8")).toBe("mine\n");
+    expect(readFileSync(join(outside, "target.txt"), "utf8")).toBe("keep\n");
   });
 });
 
@@ -411,6 +465,7 @@ const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "user
  */
 async function runStep(o: {
   commands: string[]; timeoutSec?: number; base?: Record<string, string>; identity?: boolean; resultStatus?: number;
+  overlay?: Array<{ path: string; content: string | null }>; discard?: boolean;
 }): Promise<{ exit: number; stdout: string; seen: Seen; dir: string; elapsedMs: number }> {
   const dir = scratch();
   git(dir, "init", "-q", "-b", "main");
@@ -426,6 +481,7 @@ async function runStep(o: {
   const spec = {
     jobId: "job-1", stepIdx: 3, epoch: 2, commands: o.commands, timeoutSec: o.timeoutSec ?? 60, baseSha,
     resultUrl: `http://127.0.0.1:${srv.port}/result`, audience: "tailzu",
+    ...(o.overlay ? { overlay: o.overlay } : {}), ...(o.discard ? { discard: true } : {}),
   };
   mkdirSync(join(dir, ".tailzu"), { recursive: true });
   mkdirSync(join(dir, ".github/workflows"), { recursive: true });
@@ -482,6 +538,27 @@ describe("run.mjs, run for real in a git repo", () => {
     expect(body.outputTail).toContain("hello from the build");
     expect(body.outputTail).toMatch(/\$ env \| grep -c ACTIONS_ID_TOKEN \|\| true\n0\n/);
     expect(r.stdout).toContain("hello from the build");
+  });
+
+  it("lays the staged edits over the checkout for the commands to see, and with discard sends no changes back", async () => {
+    const r = await runStep({
+      commands: ["cat src/a.ts", "test ! -e README.md && echo readme-gone", "echo extra >> src/a.ts"],
+      overlay: [{ path: "src/a.ts", content: "export const a = 42;\n" }, { path: "README.md", content: null }, { path: "src/new.ts", content: "export const n = 1;\n" }, { path: ".github/workflows/ci.yml", content: "evil" }],
+      discard: true,
+    });
+    expect(r.exit).toBe(0);
+    const body = r.seen.results[0]!.body;
+    expect(body.exitCode).toBe(0);
+    expect(body.outputTail).toContain("[Tailzu: laid 3 staged file(s) over the checkout; could not lay .github/workflows/ci.yml]");
+    expect(body.outputTail).toContain("export const a = 42;");
+    expect(body.outputTail).toContain("readme-gone");
+    expect(body.changes).toEqual([]);
+  });
+
+  it("without discard, a step with an overlay reports what the commands changed against the checkpoint, the overlay included", async () => {
+    const r = await runStep({ commands: ["echo more >> src/a.ts"], overlay: [{ path: "src/a.ts", content: "export const a = 42;\n" }] });
+    const body = r.seen.results[0]!.body;
+    expect(body.changes).toEqual([{ path: "src/a.ts", content: "export const a = 42;\nmore\n" }]);
   });
 
   it("stops at the first command that fails, reports its exit code, sends no files, and still reports (the run ends red, but the server heard)", async () => {

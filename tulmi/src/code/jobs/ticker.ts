@@ -17,6 +17,11 @@
  * Started once the server is ready and stopped when it closes, like the
  * stuck-task sweeper (connectors/sweeper.ts): routes/codeJobs.ts hooks it in.
  *
+ * With the agent loop (src/code/agent) the same pass also hands back the claims
+ * of agent jobs whose server went quiet, and picks up the jobs nobody is driving
+ * (`agents.tick`): that is how a job a dead server was working on carries on from
+ * its checkpoint.
+ *
  * The clock is the router's own (`now` in its options), so a test moves time
  * by moving that and calling tick, and the timer here only decides how often.
  */
@@ -26,6 +31,8 @@ import type { JobRouter, TickReport } from "./router.js";
 /** A pass at once, then one every `everyMs`, never two at the same time. Returns the stop. */
 export function startJobTicker(o: {
   jobs: Pick<JobRouter, "tick">;
+  /** The agent loop's worker (agent/orchestrator.ts): its claims are handed back and free jobs picked up on the same pass. */
+  agents?: { tick(): Promise<{ handedBack: number; started: number }> } | null;
   everyMs?: number;
   log?: { info: (o: object, m: string) => void; warn: (o: object, m: string) => void };
 }): () => void {
@@ -36,6 +43,8 @@ export function startJobTicker(o: {
     try {
       const r: TickReport = await o.jobs.tick();
       if (r.expired || r.woken) o.log?.info({ ...r }, "code jobs: leases taken back, waiting jobs placed");
+      const a = await o.agents?.tick();
+      if (a && (a.handedBack || a.started)) o.log?.info({ ...a }, "code agent: claims handed back, jobs picked up");
     } catch (err) {
       o.log?.warn({ error: (err as Error)?.message }, "code jobs: tick failed");
     } finally {

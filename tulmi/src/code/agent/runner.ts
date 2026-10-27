@@ -1,0 +1,150 @@
+/**
+ * RUNNING COMMANDS FOR THE AGENT: THE RUNNER PORT, AND THE ENVIRONMENT ROUTER BEHIND IT.
+ *
+ * The agent never runs a command itself. It asks a RUNNER (an interface, so the whole loop
+ * runs offline in tests with one that answers from a script) and gets back what a person
+ * would want to know: did it run, what was the exit code, what did it print. The real runner
+ * (routerRunner) is the environment router (code/jobs/router.ts, docs/code-router.md): it
+ * asks for an exec step, and the router puts it on the person's own PC, or GitHub's free
+ * computers, or paid compute by the person's own rule, and the agent waits for the result.
+ *
+ *   - OVERLAY. The agent's staged edits are not committed, so they go WITH the step: the
+ *     runner lays them over its checkout before it runs (jobs/types.ts OverlayFile). A trial
+ *     run keeps nothing: `keepChanges: false` tells the router that whatever the commands
+ *     change (an install that rewrites a lockfile, a snapshot) is not to be committed. The
+ *     one run that wants its changes kept is the scaffold of a new project, which the router
+ *     commits through the policy like any runner's changes (the server commits; a runner is
+ *     never given a token that can write).
+ *   - WAITING. A step with no place waits (`waiting_for_compute`). The agent waits for a
+ *     place only so long (PLACE_WAIT_MS); after that the step is dropped (router.cancelExec)
+ *     and the run answers `no_runner`, and the caller decides what that means (a baseline
+ *     recorded as unknown, a tool result for the model, a question to the person). A step
+ *     that runs is waited for until its own time and RUN_GRACE_MS have passed.
+ *   - ADOPTING. A server that died while a step was out leaves it in the database. The next
+ *     run of the same commands takes that step over instead of asking for another, so a
+ *     restart never runs the same checks twice.
+ *   - A STEP WAITING FOR A YES. If what a step made needs the person's OK to be committed (the router's
+ *     commit_ask, answered at /commit-ok), the agent waits for that too, for BLOCKED_WAIT_MS.
+ *   - STOPPING. The caller's signal answers `cancelled` and leaves the step where it is: a job that was stopped has its step dropped by the router, and a server that is only closing leaves it for the next to take over.
+ *
+ * Nothing here reads a clock or sleeps except through the injected `now` and `sleep`.
+ */
+import type { JobRouter } from "../jobs/router.js";
+import type { JobStore } from "../jobs/store.js";
+import { isEnded, type CodeJob, type JobStep, type OverlayFile } from "../jobs/types.js";
+import { BLOCKED_WAIT_MS, PLACE_WAIT_MS, RUN_GRACE_MS, RUN_POLL_MS } from "./types.js";
+
+export interface RunSpec {
+  commands: string[];
+  timeoutSec: number;
+  estimateMinutes: number;
+  /** The staged edits to lay over the checkout. */
+  overlay?: OverlayFile[];
+  /** Keep what the commands change (the scaffold of a new project). Default: no, it is a trial. */
+  keepChanges?: boolean;
+  /** Why, in a few words, for the log. */
+  why?: string;
+  /** A step this ask was made for before a restart: if it is there with these commands, it is taken over, finished or not. */
+  adopt?: number;
+}
+
+export type RunOutcome =
+  | { status: "done"; exitCode: number; outputTail: string; minutes: number; stepIdx: number }
+  /** No place took the step in time (no PC online, no free minutes, paid compute off or asking). */
+  | { status: "no_runner"; reason: string }
+  | { status: "timeout"; reason: string }
+  /** The job was stopped, or the caller's signal went. */
+  | { status: "cancelled"; reason: string };
+
+export interface RunControl {
+  signal?: AbortSignal;
+  /** Called while waiting, to keep the agent's claim alive. */
+  renew?: () => Promise<void>;
+  /** Called as soon as the step exists, so a restart can adopt it. */
+  onStep?: (stepIdx: number) => Promise<void>;
+}
+
+export interface AgentRunner {
+  run(job: CodeJob, spec: RunSpec, ctl?: RunControl): Promise<RunOutcome>;
+}
+
+export interface RouterRunnerOptions {
+  jobs: Pick<JobRouter, "requestExec" | "cancelExec">;
+  store: Pick<JobStore, "listSteps" | "getStep" | "getJobById">;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+  pollMs?: number;
+  placeWaitMs?: number;
+  graceMs?: number;
+}
+
+const sleepFor = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const isOpen = (s: JobStep): boolean => s.kind === "exec" && (s.status === "pending" || s.status === "dispatched" || s.status === "running" || s.status === "blocked");
+const same = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
+
+export function routerRunner(o: RouterRunnerOptions): AgentRunner {
+  const now = o.now ?? Date.now;
+  const sleep = o.sleep ?? sleepFor;
+  const poll = o.pollMs ?? RUN_POLL_MS;
+  const placeWait = o.placeWaitMs ?? PLACE_WAIT_MS;
+  const grace = o.graceMs ?? RUN_GRACE_MS;
+
+  return {
+    async run(job, spec, ctl = {}) {
+      // A step a server that died asked for is taken over if it is this one (whether it has finished or not); any other that is still out is dropped.
+      let step: JobStep | undefined;
+      if (spec.adopt !== undefined) {
+        const was = await o.store.getStep(job.id, spec.adopt);
+        if (was && was.kind === "exec" && was.status !== "cancelled" && same(was.commands, spec.commands)) step = was;
+      }
+      if (!step) {
+        step = (await o.store.listSteps(job.id)).filter(isOpen).at(-1);
+        if (step && !same(step.commands, spec.commands)) {
+          await o.jobs.cancelExec(job.id);
+          step = undefined;
+        }
+      }
+      if (!step) {
+        step = (await o.jobs.requestExec(job.id, spec.commands, spec.timeoutSec, spec.estimateMinutes, {
+          ...(spec.overlay?.length ? { overlay: spec.overlay } : {}), keepChanges: spec.keepChanges === true,
+        })).step;
+      }
+      await ctl.onStep?.(step.idx);
+
+      const started = now();
+      const idx = step.idx;
+      for (;;) {
+        // The caller is stopping (the server is closing, the claim was lost, the job was stopped). The step is not dropped here: a job that was stopped has its step dropped by the router, and one that is only changing servers leaves it for the next to take over.
+        if (ctl.signal?.aborted) return { status: "cancelled", reason: "stopped" };
+        const cur = await o.store.getStep(job.id, idx);
+        const j = await o.store.getJobById(job.id);
+        if (!cur || !j || isEnded(j.state)) return { status: "cancelled", reason: "The job was stopped." };
+        if (cur.status === "done" || cur.status === "failed") {
+          return { status: "done", exitCode: cur.exitCode ?? 1, outputTail: cur.outputTail, minutes: cur.minutes, stepIdx: idx };
+        }
+        if (cur.status === "cancelled") return { status: "cancelled", reason: "The step was dropped." };
+        const waited = now() - started;
+        // A step whose changes wait for the person's OK to be committed (the router's commit_ask) is waited for, a long time: the answer comes by /commit-ok.
+        if (cur.status === "blocked") {
+          if (waited > BLOCKED_WAIT_MS) {
+            await o.jobs.cancelExec(job.id);
+            return { status: "timeout", reason: "Nobody said yes to committing what it made, so it was dropped." };
+          }
+          await ctl.renew?.();
+          await sleep(poll);
+          continue;
+        }
+        if (cur.status === "pending" && waited > placeWait) {
+          await o.jobs.cancelExec(job.id);
+          return { status: "no_runner", reason: j.reason || "No computer was free to run it." };
+        }
+        if (waited > cur.timeoutSec * 1000 + grace + placeWait) {
+          await o.jobs.cancelExec(job.id);
+          return { status: "timeout", reason: "It did not finish in the time it was given." };
+        }
+        await ctl.renew?.();
+        await sleep(poll);
+      }
+    },
+  };
+}

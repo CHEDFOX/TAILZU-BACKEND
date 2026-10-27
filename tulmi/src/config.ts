@@ -651,6 +651,23 @@ const EnvSchema = z.object({
   CODE_PROJECT_BRAIN: bool(false),
   CODE_IMPORT_BUDGET_PAISE: z.coerce.number().int().min(0).max(1_000_000).default(1000),
   /**
+   * THE CODE BOT'S AGENT LOOP (src/code/agent, docs/code-agent.md): the server-side
+   * worker that drives a job from "fix this" to a pull request. It rides on the
+   * environment router (src/code/jobs) and the brain (layers 1 to 7).
+   *
+   * CODE_JOB_DEFAULT_BUDGET_PAISE is what a job may spend on models (and paid
+   * compute) when it is made WITHOUT a budget: 3,000 paise, thirty rupees, unless
+   * set. A budget of 0 sent on purpose still means "no model calls": the default
+   * is for a job made with no budget at all. A job that runs out stops cleanly
+   * and offers the person "continue with ₹X more" (POST /v1/code/jobs/:id/budget).
+   *
+   * CODE_AGENT_CONCURRENCY is how many jobs one server drives at once (4 unless
+   * set). A job is run by one server at a time whatever this says: the claim is in
+   * the database (migration 0030).
+   */
+  CODE_JOB_DEFAULT_BUDGET_PAISE: z.coerce.number().int().min(0).max(1_000_000).default(3000),
+  CODE_AGENT_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
+  /**
    * THE PAGE READER AND ITS BROWSER (src/web, docs/web-reader.md). Shared by the
    * Code bot's search tools and, later, anything Tailzu does on the web for a
    * person; it has no routes of its own.

@@ -5,9 +5,16 @@
  * throwaway `tailzu-run/` branch of a step, next to `.tailzu/step.json` and the
  * workflow (shadow.ts, workflow.ts). The workflow checks the branch out and runs
  * `node .tailzu/run.mjs`. It is plain Node with no dependencies (only Node's
- * own modules) so the person's runner needs nothing installed, and it does five
+ * own modules) so the person's runner needs nothing installed, and it does six
  * things in order:
  *
+ *   0. only when step.json carries an `overlay`: lays the agent's staged edits
+ *      over the checkout, each file written (or removed, when its content is
+ *      null) unless its path leaves the checkout, is in .git, is under .tailzu/,
+ *      is a workflow, or reaches the checkout through a symlink. It is a TRIAL of
+ *      edits that are not committed yet; what it could not lay is named at the
+ *      top of the output. With `discard` in step.json, step 3 below is skipped:
+ *      the step's changes are not wanted;
  *   1. runs the step's commands one by one with `bash -lc`, each with the time
  *      the step has left, and stops at the first one that fails (a command
  *      that runs out of time is exit code 124);
@@ -43,7 +50,8 @@ export const RUN_MJS = String.raw`// Written by Tailzu for one step of a coding 
 // Runs the commands in .tailzu/step.json, collects what they changed, and reports to Tailzu
 // with a GitHub OIDC identity token. No dependencies: only Node's own modules.
 import { spawn, execFileSync } from "node:child_process";
-import { readFileSync, lstatSync, realpathSync } from "node:fs";
+import { readFileSync, lstatSync, realpathSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { dirname, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const TAIL_BYTES = 8 * 1024;
@@ -56,6 +64,52 @@ const PATH_MAX = 500;
 /** The files this script and its workflow are made of: never part of the changes. */
 export function isTailzuPath(path) {
   return /^\.tailzu(\/|$)/i.test(path) || path.toLowerCase() === ".github/workflows/tailzu-run.yml";
+}
+
+// ---------------------------------------------------------------- the overlay
+
+/** A path from step.json that may be written under the checkout: inside it, not .git, not Tailzu's own files, not a workflow. */
+export function overlayPathOk(path) {
+  if (typeof path !== "string" || !path || path.length > PATH_MAX) return false;
+  if (path.startsWith("/") || path.includes("\\") || BAD_PATH.test(path)) return false;
+  if (path.split("/").some((p) => p === "" || p === "." || p === ".." || p.toLowerCase() === ".git")) return false;
+  return !isTailzuPath(path) && !/^\.github\/workflows(\/|$)/i.test(path);
+}
+
+/**
+ * Lays the step's files over the checkout: text written, or the file removed when
+ * its content is null. A path that is not allowed, or whose folder is, or leads
+ * through, a symlink out of the checkout, is skipped (and named). Returns
+ * { written, removed, skipped }; skipped is the list of paths.
+ */
+export function applyOverlay(files, cwd) {
+  const root = realpathSync(cwd);
+  const out = { written: 0, removed: 0, skipped: [] };
+  for (const f of Array.isArray(files) ? files : []) {
+    const path = f && f.path;
+    if (!overlayPathOk(path) || (f.content !== null && typeof f.content !== "string")) { out.skipped.push(String(path).slice(0, 120)); continue; }
+    const target = resolve(root, path);
+    try {
+      if (f.content === null) {
+        let there;
+        try { there = realpathSync(dirname(target)); } catch { continue; }
+        if (there !== root && !there.startsWith(root + sep)) { out.skipped.push(path); continue; }
+        rmSync(target, { force: true });
+        out.removed += 1;
+        continue;
+      }
+      mkdirSync(dirname(target), { recursive: true });
+      const folder = realpathSync(dirname(target));
+      if (folder !== root && !folder.startsWith(root + sep)) { out.skipped.push(path); continue; }
+      // Never write through a symlink at the file itself.
+      try { if (lstatSync(target).isSymbolicLink()) rmSync(target); } catch { /* not there yet */ }
+      writeFileSync(target, f.content);
+      out.written += 1;
+    } catch {
+      out.skipped.push(path);
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- the output
@@ -314,11 +368,19 @@ export async function main() {
   const requestToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
   const known = secretValues(process.env);
 
+  // The agent's staged edits go over the checkout first, so the commands see the code as it would be if they were committed.
+  let laidNote = "";
+  if (Array.isArray(spec.overlay) && spec.overlay.length) {
+    const laid = applyOverlay(spec.overlay, cwd);
+    laidNote = "[Tailzu: laid " + (laid.written + laid.removed) + " staged file(s) over the checkout" + (laid.skipped.length ? "; could not lay " + laid.skipped.slice(0, 5).join(", ") : "") + "]\n";
+    process.stdout.write(laidNote);
+  }
+
   const ran = await runCommands(spec.commands, spec.timeoutSec, { cwd, env: commandEnv(process.env), echo: (s) => process.stdout.write(s) });
 
   let changes = [];
   let note = "";
-  if (ran.exitCode === 0) {
+  if (ran.exitCode === 0 && !spec.discard) {
     try {
       const found = changesAgainst(spec.baseSha, cwd);
       changes = found.changes;
@@ -327,7 +389,7 @@ export async function main() {
       note = "\n[Tailzu: could not work out what the commands changed: " + String(err && err.message ? err.message : err).slice(0, 200) + "]";
     }
   }
-  const outputTail = tailOf(redact(ran.output, known) + note, TAIL_BYTES);
+  const outputTail = tailOf(redact(laidNote + ran.output, known) + note, TAIL_BYTES);
   const body = {
     jobId: spec.jobId, stepIdx: spec.stepIdx, epoch: spec.epoch, exitCode: ran.exitCode, outputTail,
     minutes: Math.round(((Date.now() - started) / 60000) * 1000) / 1000, changes,

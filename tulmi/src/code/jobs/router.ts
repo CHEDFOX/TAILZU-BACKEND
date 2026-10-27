@@ -76,9 +76,11 @@
  * (util.ts), and every change that depends on the lease goes through the
  * store's casJob, so a ticker, a request and a second server can't both win.
  */
+import { getConfig } from "../../config.js";
 import { ConnectorError } from "../../connectors/oauth.js";
-import type { CommitFile } from "../github.js";
-import { PolicyError, isNeedsApproval, type NeedsApproval } from "../policy.js";
+import { assertRepoPath, type CommitFile } from "../github.js";
+import { PolicyError, isNeedsApproval, isWorkflowPath, type NeedsApproval } from "../policy.js";
+import { isReservedPath } from "../shadow.js";
 import { commitToBranch, ownProject, recordedBranch, repoRef, runnerAccess, type ProjectDeps } from "../projects.js";
 import { DeviceBook, allows, type DeviceBeat } from "./devices.js";
 import { choosePlacement, githubMinutesLeft, GITHUB_FREE_MINUTES_DEFAULT, type PlacementChoice, type PlacementCtx } from "./placement.js";
@@ -86,11 +88,11 @@ import { DesktopProvider, type Availability, type ComputeProvider, type RunCheck
 import type { JobStore } from "./store.js";
 import { TooManySteps } from "./store.js";
 import {
-  CHANGES_MAX, COMMANDS_MAX, COMMAND_CHARS, DEVICE_ONLINE_MS, DEVICE_PROJECTS_MAX, ESTIMATE_MAX_MINUTES, LEASE_MS, LIVE_JOBS_MAX,
-  MAX_REASSIGNMENTS, PAISE_MAX, STEPS_MAX, TASK_KEEP, TIMEOUT_DEFAULT_SEC, TIMEOUT_MAX_SEC,
+  AGENT_WAITS, CHANGES_MAX, COMMANDS_MAX, COMMAND_CHARS, DEVICE_ONLINE_MS, DEVICE_PROJECTS_MAX, ESTIMATE_MAX_MINUTES, LEASE_MS, LIVE_JOBS_MAX,
+  MAX_REASSIGNMENTS, OVERLAY_MAX_BYTES, OVERLAY_MAX_FILES, PAISE_MAX, STEPS_MAX, TASK_KEEP, TIMEOUT_DEFAULT_SEC, TIMEOUT_MAX_SEC,
   brief, isEnded, monthKey,
   type CodeJob, type ComputeKind, type ComputeSettings, type ComputeUsage, type JobState, type JobStep, type Notify, type NotifyData,
-  type NotifyKind, type Placement, type WaitingOn,
+  type NotifyKind, type OverlayFile, type Placement, type WaitingOn,
 } from "./types.js";
 import { KeyedLock, keepOutput, tailBytes } from "./util.js";
 
@@ -110,6 +112,8 @@ export interface JobRouterOptions {
   now?: () => number;
   /** GitHub's monthly free allowance in minutes (CODE_GITHUB_FREE_MINUTES). */
   freeMinutes?: number;
+  /** What a job made without a budget may spend, in paise: instead of CODE_JOB_DEFAULT_BUDGET_PAISE. */
+  defaultBudgetPaise?: number;
   log?: { info: (o: object, m: string) => void; warn: (o: object, m: string) => void };
 }
 
@@ -133,6 +137,10 @@ export interface RunnerStep {
     /** A one-time download link for the branch at headSha. Sign-in projects only. */
     tarballUrl?: string;
   };
+  /** Files to lay over the checkout before running the commands (a trial of edits that are not committed). Absent when the step has none. */
+  overlay?: OverlayFile[];
+  /** Nothing this step changes is committed: the result's `changes` are not wanted. Absent when they are. */
+  discard?: true;
 }
 
 export type RunnerHeartbeat = DeviceBeat;
@@ -260,6 +268,31 @@ export function readResult(body: unknown, via: ComputeKind): StepResult {
   };
 }
 
+/**
+ * The overlay of a step, checked: at most 200 files and 400 KB of text, each a
+ * path inside the repo that is not a workflow, the runner's own file or in .git,
+ * a path once. The agent checks its edits as it makes them; this is the router's
+ * own look at what it is asked to hand to a computer.
+ */
+export function readOverlay(raw: unknown): OverlayFile[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw) || raw.length > OVERLAY_MAX_FILES) throw bad(`overlay is a list of at most ${OVERLAY_MAX_FILES} files.`);
+  const seen = new Set<string>();
+  let bytes = 0;
+  return raw.map((f) => {
+    const x = asObject(f);
+    if (typeof x.path !== "string") throw bad("Each overlay file has a path.");
+    try { assertRepoPath(x.path); } catch { throw bad("An overlay path has to be inside the repo."); }
+    if (isWorkflowPath(x.path) || isReservedPath(x.path)) throw bad("An overlay never holds a workflow or one of Tailzu's runner files.");
+    if (seen.has(x.path)) throw bad("An overlay names a path once.");
+    seen.add(x.path);
+    if (x.content !== null && typeof x.content !== "string") throw bad("An overlay file's content is its text, or null to delete it.");
+    bytes += typeof x.content === "string" ? Buffer.byteLength(x.content, "utf8") : 0;
+    if (bytes > OVERLAY_MAX_BYTES) throw bad(`An overlay holds at most ${OVERLAY_MAX_BYTES / 1024} KB of text.`);
+    return { path: x.path, content: x.content as string | null };
+  });
+}
+
 const WHERE: Record<Placement, string> = { none: "nowhere", desktop: "your own computer", github: "GitHub's free computers", paid: "paid compute" };
 
 interface Waiter { nudge: () => void }
@@ -296,13 +329,18 @@ export class JobRouter {
 
   /**
    * Makes a job on a branch Tailzu made in the person's project. `budgetPaise`
-   * is what the person has already said this job may spend on paid compute (0:
-   * nothing yet; the rule decides whether to ask). At most 20 jobs not yet over.
+   * is what the person has said this job may spend, on models and on paid compute
+   * (0: nothing, so no model call is made and the rule decides whether to ask for
+   * compute). Left out, it is the server's default, CODE_JOB_DEFAULT_BUDGET_PAISE
+   * (3,000 paise): a job made with no budget at all is a job that may do its work.
+   * At most 20 jobs not yet over. `agent` makes it the agent loop's to drive
+   * (src/code/agent).
    */
-  async createJob(userId: string, projectId: string, branch: string, task: string, budgetPaise = 0): Promise<CodeJob> {
+  async createJob(userId: string, projectId: string, branch: string, task: string, budgetPaise?: number, o: { agent?: boolean } = {}): Promise<CodeJob> {
     const text = typeof task === "string" ? task.trim() : "";
     if (!text) throw bad("Say what the task is.");
-    if (!isInt(budgetPaise, 0, PAISE_MAX)) throw bad(`budgetPaise is a whole number of paise, 0 to ${PAISE_MAX}.`);
+    const budget = budgetPaise === undefined ? this.defaultBudget() : budgetPaise;
+    if (!isInt(budget, 0, PAISE_MAX)) throw bad(`budgetPaise is a whole number of paise, 0 to ${PAISE_MAX}.`);
     return this.lock.run(userId, async () => {
       const project = await ownProject(this.deps, userId, projectId);
       const rec = await recordedBranch(this.deps, project, branch);
@@ -310,8 +348,17 @@ export class JobRouter {
       if ((await this.store.countLive(userId)) >= LIVE_JOBS_MAX) {
         throw new ConnectorError("too_many", `You have ${LIVE_JOBS_MAX} jobs going, which is the most. Let one finish or cancel one first.`);
       }
-      return this.store.createJob({ userId, projectId: project.id, branch: rec.branch, task: [...text].slice(0, TASK_KEEP).join(""), budgetPaise });
+      return this.store.createJob({
+        userId, projectId: project.id, branch: rec.branch, task: [...text].slice(0, TASK_KEEP).join(""), budgetPaise: budget, ...(o.agent === true ? { agent: true } : {}),
+      });
     });
+  }
+
+  /** What a job made without a budget may spend. */
+  defaultBudget(): number {
+    if (this.o.defaultBudgetPaise !== undefined) return this.o.defaultBudgetPaise;
+    const n = getConfig().CODE_JOB_DEFAULT_BUDGET_PAISE;
+    return Number.isFinite(n) && n >= 0 ? n : 3000;
   }
 
   /**
@@ -332,7 +379,7 @@ export class JobRouter {
       const step = await this.addStep(job.id, { kind: "edit", commands: files, timeoutSec: 0, estimateMinutes: 0, status: "done", finishedAt: this.now() });
       const notes = brief(e.summary?.trim() || `Edited ${files.length} file${files.length === 1 ? "" : "s"}.`, 200);
       const next = await this.store.casJob(job.id, { leaseEpoch: job.leaseEpoch, states: ["queued", "running"] }, {
-        state: "running", reason: "", checkpoint: { stepIndex: step.idx, headSha: e.headSha ?? job.checkpoint.headSha, notes },
+        state: "running", reason: "", checkpoint: { ...job.checkpoint, stepIndex: step.idx, headSha: e.headSha ?? job.checkpoint.headSha, notes },
       });
       if (!next) throw inFlight();
       return { job: next, step };
@@ -343,9 +390,16 @@ export class JobRouter {
    * Asks for commands to be run, and places them (see the top of this file).
    * The job comes back running on a place, or waiting for compute, or waiting
    * for the person's yes to paid compute. One exec step at a time.
+   *
+   * `overlay` lays files over the checkout before the commands run: the agent's
+   * staged edits, tried without being committed. `keepChanges: false` says the
+   * step's changes are not wanted (the checks of a trial run, an install that
+   * rewrites a lockfile): they are not committed, whatever the runner sends back.
+   * With neither, the step is what it always was.
    */
   async requestExec(
     jobId: string, commands: string[], timeoutSec: number = TIMEOUT_DEFAULT_SEC, estimateMinutes = 1,
+    opts: { overlay?: OverlayFile[]; keepChanges?: boolean } = {},
   ): Promise<{ job: CodeJob; step: JobStep }> {
     if (!Array.isArray(commands) || !commands.length || commands.length > COMMANDS_MAX
       || commands.some((c) => typeof c !== "string" || !c.trim() || c.length > COMMAND_CHARS)) {
@@ -356,11 +410,14 @@ export class JobRouter {
       throw bad(`estimateMinutes is how long it should take, 0 to ${ESTIMATE_MAX_MINUTES}.`);
     }
     const minutes = Math.max(1, Math.ceil(estimateMinutes));
+    const overlay = readOverlay(opts.overlay);
     return this.withJob(jobId, async (job) => {
       this.mustBeLive(job);
       if (job.state === "paused") throw new ConnectorError("conflict", "That job is paused.");
       if (await this.inflight(job.id)) throw inFlight();
-      const step = await this.addStep(job.id, { kind: "exec", commands, timeoutSec, estimateMinutes: minutes, status: "pending" });
+      const step = await this.addStep(job.id, {
+        kind: "exec", commands, timeoutSec, estimateMinutes: minutes, status: "pending", ...(overlay.length ? { overlay } : {}), ...(opts.keepChanges === false ? { discard: true } : {}),
+      });
       const after = await this.place(job, step, { prior: { state: job.state, waitingOn: null } });
       return { job: after, step: (await this.store.getStep(job.id, step.idx)) ?? step };
     });
@@ -380,9 +437,37 @@ export class JobRouter {
     });
   }
 
-  /** Stops a job: nothing more is dispatched, the step that is out is dropped, and its late result is refused. Over already: left as it is. */
-  async cancelJob(jobId: string): Promise<CodeJob> {
-    return this.withJob(jobId, async (job) => (isEnded(job.state) ? job : this.end(job, "cancelled", "You stopped this job.")));
+  /** Stops a job: nothing more is dispatched, the step that is out is dropped, and its late result is refused. Over already: left as it is. `reason` is what the person reads. */
+  async cancelJob(jobId: string, reason = "You stopped this job."): Promise<CodeJob> {
+    return this.withJob(jobId, async (job) => (isEnded(job.state) ? job : this.end(job, "cancelled", brief(reason, 300))));
+  }
+
+  /**
+   * Drops the exec step that is out (waiting for a place, given to one, running,
+   * or waiting for a yes to commit) WITHOUT ending the job: whoever asked for it
+   * has stopped waiting. The place is told to let go, a new lease epoch refuses a
+   * result that is still on its way, and the job is between steps again. Answers
+   * whether there was a step to drop.
+   */
+  async cancelExec(jobId: string): Promise<boolean> {
+    return this.withJob(jobId, async (job) => {
+      if (isEnded(job.state)) return false;
+      const step = await this.inflight(job.id);
+      if (!step) return false;
+      const from = job.placement;
+      // A wait of the person's own (an answer, an approval, more budget) is not this step's to end.
+      const routers = job.state === "waiting_for_compute" || (job.state === "waiting_for_you" && (job.waitingOn === null || !AGENT_WAITS.includes(job.waitingOn)));
+      const next = await this.store.casJob(job.id, { leaseEpoch: job.leaseEpoch, states: ["queued", "running", "waiting_for_compute", "waiting_for_you"] }, {
+        placement: "none", leaseHolder: null, leaseExpiresAt: null,
+        ...(routers ? { state: "running" as const, waitingOn: null, reason: "" } : {}),
+        ...(from !== "none" ? { leaseEpoch: job.leaseEpoch + 1 } : {}),
+      });
+      if (!next) return false;
+      this.held.delete(job.id);
+      await this.store.updateStep(job.id, step.idx, { status: "cancelled", finishedAt: this.now(), overlay: [] });
+      if (from !== "none") await this.provider(from as ComputeKind)?.cancel(job).catch(() => undefined);
+      return true;
+    });
   }
 
   // -------------------------------------------------------- reading
@@ -510,7 +595,7 @@ export class JobRouter {
       await this.store.updateStep(job.id, step.idx, { status: "done" });
       const next = await this.store.casJob(job.id, { leaseEpoch: job.leaseEpoch, states: ["waiting_for_you"] }, {
         state: "running", waitingOn: null, reason: "",
-        checkpoint: { stepIndex: step.idx, headSha: made.sha, notes: brief(`Committed the changes from ${step.commands[0] ?? "a step"}.`, 200) },
+        checkpoint: { ...job.checkpoint, stepIndex: step.idx, headSha: made.sha, notes: brief(`Committed the changes from ${step.commands[0] ?? "a step"}.`, 200) },
       });
       if (!next) throw notWaiting("a yes to commit");
       return { committed: true as const, sha: made.sha, job: next };
@@ -625,7 +710,8 @@ export class JobRouter {
       const now = this.now();
       const tail = keepOutput(r.outputTail);
       const paise = via === "paid" ? r.paise ?? 0 : 0;
-      const wantsCommit = !!r.changes && r.changes.length > 0 && r.exitCode === 0;
+      // A step asked for as a trial (the agent's checks) has no changes of its own to keep: they are not committed, whatever is sent.
+      const wantsCommit = !!r.changes && r.changes.length > 0 && r.exitCode === 0 && !step.discard;
       const files: CommitFile[] = wantsCommit ? r.changes!.map((c) => ({ path: c.path, content: c.content })) : [];
       const message = `Tailzu: changes from ${brief(step.commands[0] ?? "a command", 60)}\n\nFrom step ${step.idx} of a Tailzu job, run on ${WHERE[via]}.`;
 
@@ -652,7 +738,8 @@ export class JobRouter {
       const spentPaise = job.spentPaise + paise;
       const note = refused ? `\n[Tailzu did not commit the changes: ${refused}.]` : "";
       const out = tailBytes(`${tail}${note}`);
-      const base = { finishedAt: now, exitCode: r.exitCode, outputTail: out, minutes: r.minutes };
+      // The files a trial laid over the checkout are not kept once it has run.
+      const base = { finishedAt: now, exitCode: r.exitCode, outputTail: out, minutes: r.minutes, ...(step.overlay.length ? { overlay: [] } : {}) };
 
       if (ask) {
         await this.store.updateStep(job.id, step.idx, { ...base, status: "blocked" });
@@ -677,7 +764,7 @@ export class JobRouter {
         : `Ran ${first}${more}: ok${sha ? " and committed its changes" : ""}.`;
       const next = await this.store.casJob(job.id, { leaseEpoch: job.leaseEpoch, states: ["running"] }, {
         state: "running", placement: "none", leaseHolder: null, leaseExpiresAt: null, reason: "", waitingOn: null, spentPaise,
-        checkpoint: { stepIndex: step.idx, headSha: sha ?? job.checkpoint.headSha, notes },
+        checkpoint: { ...job.checkpoint, stepIndex: step.idx, headSha: sha ?? job.checkpoint.headSha, notes },
       });
       if (!next) throw stale();
       // A place has just come free: whatever was waiting for one may go now.
@@ -685,7 +772,7 @@ export class JobRouter {
       return {
         ok: true, state: next.state, committed: sha !== undefined,
         ...(sha !== undefined ? { sha } : {}), ...(refused !== undefined ? { refused } : {}),
-        ...(!wantsCommit && r.changes && r.changes.length && r.exitCode !== 0 ? { changesIgnored: true } : {}),
+        ...(!wantsCommit && r.changes && r.changes.length && (r.exitCode !== 0 || step.discard) ? { changesIgnored: true } : {}),
       };
     });
   }
@@ -1034,7 +1121,7 @@ export class JobRouter {
   private async retry(jobId: string): Promise<CodeJob | null> {
     const job = await this.store.getJobById(jobId);
     if (!job) return null;
-    if (job.state !== "waiting_for_compute" && !(job.state === "waiting_for_you" && job.waitingOn !== "commit")) return null;
+    if (job.state !== "waiting_for_compute" && !(job.state === "waiting_for_you" && (job.waitingOn === null || job.waitingOn === "paid"))) return null;
     const step = await this.pendingExec(job.id);
     if (!step) {
       // Nothing is out: the job is only between steps.
@@ -1079,7 +1166,10 @@ export class JobRouter {
         }
         if (step.status === "dispatched") await this.store.updateStep(job.id, step.idx, { status: "running", startedAt: now });
         await this.store.casJob(job.id, { leaseEpoch: job.leaseEpoch, states: ["running"] }, { leaseExpiresAt: now + LEASE_MS });
-        return { jobId: job.id, stepIdx: step.idx, epoch: job.leaseEpoch, commands: step.commands, timeoutSec: step.timeoutSec, repo };
+        return {
+          jobId: job.id, stepIdx: step.idx, epoch: job.leaseEpoch, commands: step.commands, timeoutSec: step.timeoutSec, repo,
+          ...(step.overlay.length ? { overlay: step.overlay } : {}), ...(step.discard ? { discard: true as const } : {}),
+        };
       }
       return null;
     });
