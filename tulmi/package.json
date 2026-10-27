@@ -24,7 +24,9 @@
     "bench:scripted": "tsx evals/agent/run.ts --mode scripted",
     "spec": "tsx scripts/spec-dump.ts",
     "bench:stt": "tsx scripts/stt-bench.ts",
-    "prompts": "tsx scripts/prompt-dump.ts"
+    "prompts": "tsx scripts/prompt-dump.ts",
+    "prompt-sizes": "tsx scripts/prompt-sizes.ts",
+    "eval:prompts": "tsx scripts/eval-prompts.ts"
   },
   "dependencies": {
     "@deepgram/sdk": "^4.11.3",

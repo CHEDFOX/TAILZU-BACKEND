@@ -74,7 +74,7 @@ export interface BriefResult {
 
 // ------------------------------------------------------------------ the weighing
 
-const Weighed = z.object({
+export const Weighed = z.object({
   shortAnswer: z.string(),
   options: z.array(z.object({
     name: z.string(), what: z.string().optional(), good: z.array(z.string()).max(5).optional(), watch: z.array(z.string()).max(5).optional(),
@@ -83,13 +83,6 @@ const Weighed = z.object({
   recommendation: z.object({ choice: z.string(), because: z.string(), caveats: z.array(z.string()).max(4).optional() }).nullable(),
 });
 type Weighed = z.infer<typeof Weighed>;
-
-const SYSTEM =
-  "You turn a researched answer into a short brief for a developer. You are given the question, the researched answer (it cites its sources as [n]), and what the project is built with. "
-  + "Write: a short answer (two sentences at most); the options the answer compares (up to six: what each is, what is good about it, what to watch, and whether it fits THIS project's stack); "
-  + "and a recommendation for this project, with the reasons and any caveats. Use only what the researched answer says: add no claim of your own, and say so when the answer does not compare options "
-  + "(options: []) or does not support a recommendation (recommendation: null). Keep the [n] citations on claims; cite only numbers that appear in the answer. "
-  + 'Answer with JSON {"shortAnswer":"...","options":[{"name":"...","what":"...","good":["..."],"watch":["..."],"fit":"good|poor|unknown"}],"recommendation":{"choice":"...","because":"...","caveats":["..."]}|null}.';
 
 /** [n] that name no source are removed (with the space before them, unless another citation follows): an invented source is worse than none. */
 export function keepCitations(text: string, valid: ReadonlySet<number>): string {
@@ -204,7 +197,7 @@ export async function researchBrief(question: string, project: BriefProject, o: 
   };
   const stack = view ? stackLine(view) : "";
   const asked = await askJson(model, {
-    tier: o.depth === "quick" ? "cheap" : "code", purpose: "work.brief", schema: Weighed, maxTokens: 1400, system: SYSTEM,
+    tier: o.depth === "quick" ? "cheap" : "code", purpose: "work.brief", schema: Weighed, maxTokens: 1400, role: "brief",
     user: [
       `<request>\n${fence(cut(q, 600))}\n</request>`,
       `what the project is built with: ${stack || "(not known)"}${deps.length ? `\nits dependencies: ${deps.slice(0, 30).map((d) => d.name).join(", ")}` : ""}`,

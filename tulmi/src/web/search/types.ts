@@ -6,10 +6,12 @@
  * (rank.ts), the engine (engine.ts) and research (../research.ts), and
  * imported by nothing outside src/web except the glue in code/webTools.ts. It
  * names no model and no store: a model is an AskFn handed in, a store is a
- * SearchStore handed in.
+ * SearchStore handed in. A call says WHO the model is with a role id
+ * (principles/roles.ts, a type and nothing more here), never with prompt text.
  */
 import type { z } from "zod";
 import type { FetchLike } from "../../connectors/egressTypes.js";
+import type { RoleId } from "../../principles/roles.js";
 
 export type { FetchLike } from "../../connectors/egressTypes.js";
 
@@ -122,13 +124,15 @@ export class SearchSkip extends Error {
 
 export type AskLevel = "tiny" | "cheap" | "code" | "strong";
 
-/** One model call that search or research wants made. The system text is ours; `user` may carry web text only inside asUntrusted wrappers. */
+/** One model call that search or research wants made. The role is ours (principles/roles.ts); `user` may carry web text only inside asUntrusted wrappers. */
 export interface AskRequest {
   /** How much model the job deserves: the caller maps it to a tier. */
   level: AskLevel;
   /** A word for the log and the ledger, never any content. */
   purpose: string;
-  system: string;
+  /** Who the model is for this call: the caller turns it into messages with compose(role, [user]). */
+  role: RoleId;
+  /** The dynamic context: the question, the draft, the sources. */
   user: string;
   /** A zod schema to hold the answer to, or true for any JSON. */
   json?: z.ZodType<unknown> | true;

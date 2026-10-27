@@ -13,7 +13,8 @@ vi.hoisted(() => {
 });
 
 const { scripted } = await import("./artifacts-rig.js");
-const { compareShots, createCompareHook, routeUrl, COMPARE_SYSTEM } = await import("../src/artifacts/compare.js");
+const { compareShots, createCompareHook, routeUrl } = await import("../src/artifacts/compare.js");
+const { stableBlock } = await import("../src/principles/index.js");
 const { encodePng, fillRect, solid } = await import("../src/artifacts/pixels.js");
 const { MemoryShotStore, ShotError } = await import("../src/artifacts/shots.js");
 const { ArtifactService } = await import("../src/artifacts/service.js");
@@ -61,7 +62,7 @@ describe("compareShots", () => {
     const s = model.sent[0]!;
     expect(s).toMatchObject({ purpose: "artifact.compare", tier: "vision", userId: "alice" });
     expect(s.maxTokens).toBeLessThanOrEqual(1200);
-    expect(s.system).toBe(COMPARE_SYSTEM);
+    expect(s.system).toBe(stableBlock("artifact_compare"));
     expect(s.user).toContain("Component: Pricing card");
     expect(s.user).toContain("src/components/Pricing.tsx (the pricing section) on /pricing");
     expect(s.user).toContain("colors: primary #7c3aed");

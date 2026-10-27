@@ -43,7 +43,7 @@ const given = (v: string | undefined): string => (v && v !== NONE ? v : "");
 
 // --------------------------------------------------------------------- the spec
 
-const SpecReply = z.object({
+export const SpecReply = z.object({
   name: z.string().min(1),
   summary: z.string().min(1),
   users: z.array(z.string()).max(8),
@@ -58,14 +58,6 @@ const SpecReply = z.object({
   needs: z.object({ auth: z.boolean(), database: z.boolean(), payments: z.boolean(), seo: z.boolean(), realtime: z.boolean(), files: z.boolean(), ai: z.boolean() }),
 });
 type SpecReply = z.infer<typeof SpecReply>;
-
-const SYSTEM =
-  "You are a product planner. A person has an idea for a software project and has answered a few questions. Write a small, concrete spec for a FIRST version that a developer can build. "
-  + "Prefer the smallest thing that works. Do not invent requirements: anything the person did not say that you had to guess goes in `assumptions`, not in the features. "
-  + "Features: at most 12, each with priority \"must\" (in the first version; six at most), \"should\" or \"later\". platforms: any of web, ios, android, desktop, api, cli. "
-  + "nonGoals: what the first version is NOT. dataModel: the main things the app keeps, with field names only. screens for an app or site, endpoints for an API (a few each). "
-  + "risks: real ones (law, safety, privacy, cost, a hard part), five at most. needs: auth (people sign in), database (data is kept), payments, seo (public pages that search engines should find), realtime, files (uploads), ai. "
-  + 'Answer with JSON {"name","summary","users":[],"platforms":[],"features":[{"name","description","priority"}],"nonGoals":[],"dataModel":[{"entity","fields":[]}],"screens":[{"name","purpose"}],"endpoints":[{"method","path","purpose"}],"risks":[],"assumptions":[],"needs":{"auth","database","payments","seo","realtime","files","ai"}}.';
 
 const strings = (xs: readonly unknown[], n: number, max: number): string[] => xs.map((x) => oneLine(x, max)).filter(Boolean).slice(0, n);
 
@@ -153,7 +145,7 @@ export interface SpecCtx { model: ModelCtx }
 export async function buildSpec(intake: IntakeText, ctx: SpecCtx): Promise<Spec> {
   const answers = Object.entries(intake.answers).filter(([, v]) => v).map(([k, v]) => `<answer question="${k}">${fence(cut(forModel(v!), 1200))}</answer>`).join("\n");
   const r = await askJson(ctx.model, {
-    tier: "strong", purpose: "work.spec", schema: SpecReply, maxTokens: 3500, system: SYSTEM,
+    tier: "strong", purpose: "work.spec", schema: SpecReply, maxTokens: 3500, role: "spec",
     user: `<request>\n${fence(cut(forModel(intake.request), 2000))}\n</request>\n${answers}`,
   });
   if (!r.ok) return specFromIntake(intake);

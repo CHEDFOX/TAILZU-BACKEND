@@ -65,7 +65,7 @@ The usual way to change a generated page is to send the model the whole page and
 
 **Tiers, and one climb.** Small edits and fixes start cheap. When a tier fails (every model on it is down, an answer is cut off, an element that does not parse, an edit that does not apply, a secret or a forbidden import in the result) the *same* request is made **once** on the next tier up (cheap, code, strong) with why the first answer was unusable. A second failure is reported, not retried: a loop of ever stronger models is how a small edit becomes a large bill. Every call is held to a cap in paise (the gateway refuses a call whose worst case would pass it) and to what is left of the person's day (`ARTIFACT_DAILY_PAISE`).
 
-**Cache-friendly prompts.** Every prompt is laid out stable first: the system prompt (identical for every artifact), the project's kit (identical for every artifact of a project), the artifact or the span of it, and the instruction last. A provider that caches the start of a prompt (DeepSeek, OpenAI and Gemini do it by themselves) hits the system prompt and the kit on every edit of a project, and the whole prompt up to the instruction when the same element is edited again. A test checks the layout and the common prefix.
+**Cache-friendly prompts.** Every prompt is laid out stable first: the role's block (`compose` in `src/principles/`: identical for every artifact of that kind of call), the project's kit (identical for every artifact of a project), the artifact or the span of it, and the instruction last. A provider that caches the start of a prompt (DeepSeek, OpenAI and Gemini do it by themselves) hits the role's block and the kit on every edit of a project, and the whole prompt up to the instruction when the same element is edited again. A test checks the layout and the common prefix.
 
 **Auto-fix.** `reportError(id, version, error)`: *deduped* by kind and message within a version (the same error twice is one call; a render loop that reports every frame costs nothing after the first), **at most two attempts per version**, and a chain of fixes of fixes stops at three. An error with no place (no line, nothing in the stack) is not fixed, because there is no small part to send: the person is told to ask the bot instead. A fix for a version that is no longer the head is `stale`.
 
@@ -74,12 +74,12 @@ The usual way to change a generated page is to send the model the whole page and
 | Change (heading text) | Tokens in | Tokens out | Tokens in all | Paise |
 | --- | ---: | ---: | ---: | ---: |
 | 5.7 KB artifact, full rewrite | 1,688 | 1,630 | 3,318 | 87 (code tier) / 260 (strong tier) |
-| 5.7 KB artifact, **element edit** | 420 | 19 | **439 (13%)** | **5** |
+| 5.7 KB artifact, **element edit** | 374 | 19 | **393 (12%)** | **5** |
 | 22.4 KB artifact, full rewrite | 6,460 | 6,402 | 12,862 | 339 (code) / 1,016 (strong) |
-| 22.4 KB artifact, **element edit** | 420 | 19 | **439 (3.4%)** | **5** |
+| 22.4 KB artifact, **element edit** | 374 | 19 | **393 (3.1%)** | **5** |
 | `artifact_update` with one edit (the bot's own call) | n/a | 30 | 30 (1.8% / 0.5% of a rewrite's output) | 0 |
 
-An element edit that rewrites a bigger element (a button and its colours) is 589 tokens in all (18% / 4.6%). The cost of an element edit does not grow with the artifact: it is the same prompt on the 5.7 KB and the 22.4 KB artifact. The system prompt is most of the 420; with a full 2,000-character project kit the edit sends about 1,000 tokens, of which about 840 (system and kit) are the cacheable prefix. The stored version of a heading edit is 96 bytes.
+An element edit that rewrites a bigger element (a button and its colours) is 543 tokens in all (16% / 4.2%). The cost of an element edit does not grow with the artifact: it is the same prompt on the 5.7 KB and the 22.4 KB artifact. The role's block is 219 of the 374 (it was 264 before the principles, `docs/principles.md`); with a full 2,000-character project kit the edit sends about 950 tokens, of which about 800 (the block and the kit) are the cacheable prefix. The stored version of a heading edit is 96 bytes.
 
 Every change returns `{ artifact, version, content, paise, totalPaise, how }`, `how` saying the mode, tier, model, tokens, and how many characters of the artifact the model was sent against its size. The artifact keeps the running total (`spentPaise`), failed attempts included.
 
@@ -238,7 +238,7 @@ The `design` phase sits between `verify` and `commit`, and only for a job with a
 
 * Browser Rendering's `html` host page with a real token: that the sandboxed iframe loads the shot viewer, `ready` and `load` cross, and `waitForSelector("#done")` fires. (The page and the viewer are tested together in a local Chrome, `viewer/e2e/shot.spec.ts`; Cloudflare's browser is not reachable from here.)
 * That Browser Rendering can fetch a preview address (it must be public; the token in the address is the credential) and that a dev server's pages are drawn before the shot is taken.
-* The vision tier's real answer: the prompt asks for JSON only; check that the real model keeps to it, and tune `COMPARE_SYSTEM` from a few real pairs.
+* The vision tier's real answer: the prompt asks for JSON only; check that the real model keeps to it, and tune the `artifact_compare` role (`src/principles/roles.ts`) from a few real pairs; `evals/artifact_compare.jsonl` and `npm run eval:prompts` are for that.
 
 Tests of this section: `tulmi/tests/artifacts-{pixels,shots,shots-route,compare}.test.ts`, `web-browser-shot.test.ts`, `code-agent-design.test.ts`; the preview's are `code-live-preview*.test.ts` and `jobs/test/preview.test.ts`, and the shot viewer's `viewer/e2e/shot.spec.ts`.
 

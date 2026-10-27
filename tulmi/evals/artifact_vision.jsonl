@@ -1,0 +1,2 @@
+{"input": "Describe this screen's layout.", "expect": {"include": ["button", "input"], "exclude": ["```", "<"], "maxChars": 1800}, "images": ["login-screen.png"]}
+{"input": "Describe this screen's layout.", "expect": {"include": ["button"], "exclude": ["```", "lorem"], "maxChars": 1800}, "images": ["pricing-design.png"]}

@@ -19,6 +19,7 @@ import { callModel, type GatewayDeps } from "../code/brain/gateway.js";
 import type { ChatMessage } from "../code/brain/types.js";
 import type { CallFn } from "../code/work/model.js";
 import { forModel, oneLine } from "../code/work/model.js";
+import { compose } from "../principles/index.js";
 import type { CompareHook, CompareInput, CompareJob, CompareResult, DesignIssue, ViewportResult } from "./build.js";
 import { PngError, gate } from "./pixels.js";
 import type { ArtifactService } from "./service.js";
@@ -29,7 +30,7 @@ import { isArtifactError } from "./types.js";
 export const COMPARE_CAP_PAISE = 120;
 const MAX_ISSUES = 10;
 
-const VerdictSchema = z.object({
+export const VerdictSchema = z.object({
   match: z.coerce.number().min(0).max(1),
   issues: z.array(z.object({
     area: z.string().min(1).max(160),
@@ -38,18 +39,6 @@ const VerdictSchema = z.object({
     fixHint: z.string().max(500).default(""),
   })).max(30).default([]),
 });
-
-export const COMPARE_SYSTEM = [
-  "You compare two screenshots of one screen, taken at the same size, for a developer who is building a design into a real app.",
-  "IMAGE 1 is the DESIGN the person approved: the target. IMAGE 2 is the REAL APP as it is built now.",
-  "Say how well the real app matches the design in the part the design is about (the component named below), and list every difference a person would notice.",
-  "Look at: layout and order, sizes and spacing, colours, fonts and weight, the words, icons, states, and what is missing or extra.",
-  "Ignore: the rest of the app around the component, data that is different (names, numbers, dates), a scrollbar, a cursor, and pictures from other addresses, which the design's picture does not load (they are blank there).",
-  "If the real app shows an error, a blank page or a login, say so as ONE major issue and nothing else.",
-  "severity \"major\": the person would say it is wrong (a different layout, a missing part, a wrong colour or text, broken spacing). \"minor\": small polish (a few pixels, a slightly different shade).",
-  "fixHint: one sentence telling the developer what to change, in the project's own terms (its tokens, its components); say nothing you cannot see.",
-  "match is 1 for identical, 0 for nothing alike. Answer with JSON only: {\"match\": number, \"issues\": [{\"area\": string, \"issue\": string, \"severity\": \"minor\"|\"major\", \"fixHint\": string}]}, at most 10 issues, the worst first.",
-].join("\n");
 
 const cut = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 const dataUrl = (png: Uint8Array): string => `data:image/png;base64,${Buffer.from(png).toString("base64")}`;
@@ -91,10 +80,9 @@ export async function compareShots(approved: Uint8Array, built: Uint8Array, c: C
     `The cheap check found: ${g.changedCells} regions of the screen differ in lightness${g.colorMax > 0.12 ? ", and some in colour" : ""}${g.sameShape ? "" : ", and the two pictures are not the same shape"}.`,
     "Image 1 is the design. Image 2 is the real app.",
   ].join("\n");
-  const messages: ChatMessage[] = [
-    { role: "system", content: COMPARE_SYSTEM },
-    { role: "user", content: [{ type: "text", text }, { type: "image_url", image_url: { url: dataUrl(approved) } }, { type: "image_url", image_url: { url: dataUrl(built) } }] },
-  ];
+  const messages: ChatMessage[] = compose("artifact_compare", [
+    { role: "user" as const, content: [{ type: "text" as const, text }, { type: "image_url" as const, image_url: { url: dataUrl(approved) } }, { type: "image_url" as const, image_url: { url: dataUrl(built) } }] },
+  ]);
   const call = c.call ?? (callModel as CallFn);
   const res = await call({
     tier: "vision", messages, json: VerdictSchema, maxTokens: 1100, purpose: "artifact.compare", userId: c.userId,

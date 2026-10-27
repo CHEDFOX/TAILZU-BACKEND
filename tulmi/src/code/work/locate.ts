@@ -395,8 +395,8 @@ export function confidenceOf(fused: readonly Fused[]): Confidence {
 
 // --------------------------------------------------------------- the model
 
-const SynonymReply = z.object({ terms: z.array(z.string()).max(12) });
-const PickReply = z.object({ picks: z.array(z.object({ path: z.string(), why: z.string().optional() })).max(3), sure: z.boolean() });
+export const SynonymReply = z.object({ terms: z.array(z.string()).max(12) });
+export const PickReply = z.object({ picks: z.array(z.object({ path: z.string(), why: z.string().optional() })).max(3), sure: z.boolean() });
 
 /** The terms a model offered, as they are kept: short, plain, once each, nothing a secret scan flags. */
 export function cleanTerms(raw: readonly unknown[], max = 8): string[] {
@@ -417,10 +417,7 @@ async function expandTerms(task: string, c: Cues, brain: LocateBrain, ctx: Model
   const tainted = scanForSecrets([{ path: "request.txt", content: task }]).length > 0;
   const shown = tainted ? [] : [...c.quoted, ...c.uiPhrases, ...c.nouns, ...c.identifiers].filter((w) => !scanForSecrets([{ path: "term.txt", content: w }]).length).slice(0, 12);
   const r = await askJson(ctx, {
-    tier: "cheap", purpose: "work.locate.expand", schema: SynonymReply, maxTokens: EXPAND_TOKENS,
-    system:
-      "You help find where a change belongs in a codebase. Given a request, list other words the code or the screen might use for the same thing: synonyms, other labels, likely names. "
-      + 'Short terms only (one to three words each), at most 8, lower case, no sentences. Answer with JSON {"terms":["..."]}.',
+    tier: "cheap", purpose: "work.locate.expand", schema: SynonymReply, maxTokens: EXPAND_TOKENS, role: "locate_terms",
     user: [
       `<request>\n${fence(cut(forModel(task), 600))}\n</request>`,
       `words already tried: ${shown.join(", ") || "(none)"}`,
@@ -462,11 +459,7 @@ async function pickFrom(task: string, fused: Fused[], brain: LocateBrain, read: 
   const parts: string[] = [];
   for (const f of top) parts.push(`<excerpt path="${f.path}">\n${fence(await excerptFor(f, byPath.get(f.path) ?? null, read))}\n</excerpt>`);
   const r = await askJson(ctx, {
-    tier: "cheap", purpose: "work.locate.pick", schema: PickReply, maxTokens: PICK_TOKENS,
-    system:
-      "You decide which file or files a requested change belongs in. You are given the request and candidate files, each with an excerpt. Pick the best one to three, best first. "
-      + "Prefer the file that CONTAINS what the request names over a file that only uses it. Say sure=true only if one file (or a few that clearly go together) is plainly the place; sure=false if two candidates are equally likely. "
-      + 'Answer with JSON {"picks":[{"path":"...","why":"..."}],"sure":true|false}, each path exactly as given.',
+    tier: "cheap", purpose: "work.locate.pick", schema: PickReply, maxTokens: PICK_TOKENS, role: "locate_pick",
     user: `<request>\n${fence(cut(forModel(task), 800))}\n</request>\n${parts.join("\n")}`,
   });
   if (!r.ok) return { skipped: r.reason === "budget" ? "budget" : "down" };

@@ -400,7 +400,7 @@ export function compactPrompt(kit: Pick<DesignKit, "systems" | "tokens" | "compo
     if (kit.components.length && nComponents > 0) {
       lines.push(`components: ${kit.components.slice(0, nComponents).map((c) => (c.props.length ? `${c.name}(${c.props.join(",")})` : c.name)).join(" ")}`);
     }
-    lines.push(`Rules: the colours above are the project's, by name; keep the radius; name its components when they fit${tw ? "; use Tailwind classes (bg-primary, text-muted-foreground, rounded-lg) where the names above match" : ""}.`);
+    lines.push(`Rules: the colours above are the project's, by name; keep the radius; name its components when they fit${tw ? "; use Tailwind classes where the names above match" : ""}.`);
     return lines.join("\n");
   };
   // Trim in order of how little each part is worth until it fits.
@@ -465,11 +465,6 @@ export async function designKit(deps: KitDeps, project: KitProject, o: { force?:
 
 // ------------------------------------------------------------------ componentArtifact
 
-const VISION_SYSTEM = [
-  "You describe a sketch or a screenshot of a screen, or of a part of one, for a developer who will build it. Describe the LAYOUT from top to bottom: each section, how it is arranged (rows, columns, a grid, a stack), what each element is (heading, button, input, card, image, list...), the visible words, relative sizes, any colours you can see, and what looks interactive.",
-  "At most 250 words. Plain prose, no code. If the picture is not a screen or a sketch of one, say so in one line.",
-].join("\n");
-
 export interface ComponentDeps {
   service: ArtifactService;
   kit: KitDeps;
@@ -517,7 +512,7 @@ export async function componentArtifact(
   if (o.image) {
     try {
       const seen = await d.service.model.run<string>({
-        userId, tier: "vision", purpose: "artifact.vision", system: VISION_SYSTEM, artifact: "<picture/>", instruction: "Describe this screen's layout.",
+        userId, tier: "vision", purpose: "artifact.vision", role: "artifact_vision", artifact: "<picture/>", instruction: "Describe this screen's layout.",
         image: o.image, maxTokens: 700, capPaise: CAP_PAISE.vision, noClimb: true, ...(o.signal ? { signal: o.signal } : {}),
         accept: (t) => (t.trim() ? { ok: true, value: cut(t.trim(), 1800) } : { ok: false, reason: "the description is empty" }),
       });

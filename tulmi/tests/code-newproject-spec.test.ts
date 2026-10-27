@@ -42,7 +42,7 @@ describe("buildSpec", () => {
     expect(call.calls[0]!.maxTokens).toBeGreaterThanOrEqual(3000);
     expect(call.calls[0]!.user).toContain('<answer question="what">for yoga studios</answer>');
     expect(call.calls[0]!.user.match(/<\/request>/g)).toHaveLength(1);
-    expect(call.calls[0]!.system).toMatch(/Prefer the smallest thing that works/);
+    expect(call.calls[0]!.system).toMatch(/Do the least that fully solves it/);
     expect(call.calls[0]!.system).toMatch(/assumptions/);
     expect(spec).toMatchObject({ name: "Yoga Book", source: "model", users: ["studio owners", "students"], nonGoals: ["Video classes"], assumptions: ["One studio to start."] });
     // the vocabulary is held: "tablet" is not a platform

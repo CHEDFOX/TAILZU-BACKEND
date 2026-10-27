@@ -139,7 +139,7 @@ describe("researchBrief", () => {
     expect(calls[0]!.user).toContain("what the project is built with: TypeScript · React, Vite · pnpm");
     expect(calls[0]!.user).toContain("its dependencies: react, react-dom");
     expect(calls[0]!.user).toMatch(/the researched answer \(sources \[1, 2, 3\]\)/);
-    expect(calls[0]!.system).toMatch(/add no claim of your own/);
+    expect(calls[0]!.system).toMatch(/Use only what the answer says/);
   });
 
   it("with the weighing unavailable it is still a brief: the research is the details, and it says what is missing", async () => {
