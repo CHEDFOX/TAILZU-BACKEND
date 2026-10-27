@@ -172,6 +172,15 @@ export interface JobStep {
   overlay: OverlayFile[];
   /** Nothing the step changes is committed: the agent commits what it means to through the workspace. */
   discard: boolean;
+  /**
+   * The step's changes are kept for the agent to read (`captured`) instead of being committed: the merge of a branch with the default branch, whose
+   * result the agent reads, resolves and commits as a merge commit with two parents (code/prcare). The server never commits a captured step.
+   */
+  capture: boolean;
+  /** What a `capture` step handed back, until the agent has taken it (it is the person's code: emptied as soon as it is, and when the job ends). */
+  captured: OverlayFile[];
+  /** The computers that declined this step (they said no, and it was given to another): never offered it again. */
+  declined: string[];
 }
 
 export interface ComputeSettings {
@@ -226,8 +235,8 @@ export const OVERLAY_MAX_BYTES = 400 * 1024;
 export const AGENT_LEASE_MS = 120_000;
 /** Devices one person can have online at once. */
 export const DEVICES_MAX = 20;
-/** Projects a device can name. */
-export const DEVICE_PROJECTS_MAX = 200;
+/** Project ids a device's allow list can name (devices.ts PROJECTS_ALLOW_MAX; it was 200 before protocol version 2). */
+export const DEVICE_PROJECTS_MAX = 5000;
 /** Files a runner can hand back in one result (the commit's own limit, github.ts). */
 export const CHANGES_MAX = 200;
 /** A step pushed to GitHub's computers whose workflow run has not appeared after this long is given up on: the free minutes are most likely used up, or Actions is off (githubActions.ts check). */

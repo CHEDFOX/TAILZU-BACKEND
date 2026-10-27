@@ -56,17 +56,37 @@ import type { JobStore } from "../jobs/store.js";
 import { AGENT_LEASE_MS, PAISE_MAX, brief, isEnded, type CodeJob, type JobState } from "../jobs/types.js";
 import { SAID_MAX_CHARS } from "../live/limits.js";
 import { MemoryInbox } from "../live/ports.js";
+import { isNeedsApproval, type NeedsApproval } from "../policy.js";
+import { repoRef, workspace } from "../projects.js";
 import { WorkLog, worklogStore, type Located, type WorkEntry } from "../work/index.js";
 import type { AgentDeps } from "./deps.js";
 import { advanceLoop, runLoop, type Advance } from "./loop.js";
 import { reportText } from "./report.js";
+import { revertFiles } from "./rewind.js";
 import { LostClaim, type Claim } from "./run.js";
-import { ERROR_BACKOFF_MS, LOOP_ERRORS_MAX, TASK_CHARS, initialState, stateOf, type AgentState, type SpecArtifact } from "./types.js";
+import { DEFAULT_PROJECT_SETTINGS, readSettingsPatch } from "./settings.js";
+import { ERROR_BACKOFF_MS, LOOP_ERRORS_MAX, TASK_CHARS, initialState, stateOf, type AgentState, type CareContext, type JobMode, type SpecArtifact } from "./types.js";
 
 /** The states a write by the claim's holder may happen in. */
 const WRITABLE: readonly JobState[] = ["queued", "running", "waiting_for_compute", "waiting_for_you"];
 
 const notWaiting = (what: string) => new ConnectorError("not_waiting", `That job isn't waiting for ${what}.`);
+
+/** What a job may be made with besides its words (enqueue). */
+export interface EnqueueOptions {
+  /** The approved design this job builds (artifacts/build.ts). */
+  spec?: SpecArtifact;
+  /** Where the change belongs, when something already found it. */
+  located?: Located;
+  /** "chat": a conversation about the code found it (code/chat); "care": a reviewer's comment pointed at it (code/prcare). Either way the job does not look for the place again. */
+  locatedFrom?: "chat" | "care";
+  /** How the job is worked, when the request or the front door decided; else the project's setting. */
+  mode?: JobMode;
+  /** "Always show me the plan first", when the request said; else the project's setting. */
+  planFirst?: boolean;
+  /** Why this job exists, when it is PR care's (code/prcare). */
+  care?: CareContext;
+}
 
 /** What the VPS tells the Worker's Workflow about a job besides starting it (jobs/handoff/protocol.ts). */
 export type { WakeKind };
@@ -111,6 +131,11 @@ export interface AgentView {
   pr?: { number: number; url: string; ready: boolean };
   verify?: { ran: boolean; ok: boolean; summary: string };
   fixRounds: number;
+  /** How the job is worked, and whether it showed the plan first. */
+  mode: "guided" | "freeform";
+  planFirst: boolean;
+  /** Steps of the model's work so far: the points a rewind can go to are numbered by them. */
+  steps: number;
   findings: AgentState["findings"];
   report?: AgentState["report"];
   notes: string[];
@@ -133,7 +158,7 @@ export function viewOfState(s: AgentState): AgentView {
     staged: s.work.staged.map((f) => f.path), commits: s.commits,
     ...(s.pr ? { pr: { number: s.pr.number, url: s.pr.url, ready: s.pr.ready } } : {}),
     ...(s.verify ? { verify: { ran: s.verify.ran, ok: s.verify.ok, summary: s.verify.summary } } : {}),
-    fixRounds: s.work.fixRounds, findings: s.findings, ...(s.report ? { report: s.report } : {}), notes: s.notes,
+    fixRounds: s.work.fixRounds, mode: s.mode ?? "guided", planFirst: s.planFirst === true, steps: s.work.turns, findings: s.findings, ...(s.report ? { report: s.report } : {}), notes: s.notes,
     ...(s.spec ? { spec: { artifactId: s.spec.artifactId, version: s.spec.version, title: s.spec.title } } : {}),
     ...(s.design ? { design: { stage: s.design.stage, round: s.design.round, ...(s.design.history.length ? { match: s.design.history.at(-1)!.match } : {}), ...(s.design.skipped ? { skipped: s.design.skipped } : {}) } } : {}),
   };
@@ -178,7 +203,7 @@ export class AgentOrchestrator {
    * A job made for the agent: its whole request is written into its state (the job keeps the first 500
    * characters), and the worker is nudged. Idempotent: a job that already has a state is left as it is.
    */
-  async enqueue(jobId: string, task?: string, o: { spec?: SpecArtifact; located?: Located } = {}): Promise<CodeJob | null> {
+  async enqueue(jobId: string, task?: string, o: EnqueueOptions = {}): Promise<CodeJob | null> {
     const job = await this.store.getJobById(jobId);
     if (!job || isEnded(job.state)) return job;
     if (!stateOf(job.checkpoint)) {
@@ -186,7 +211,18 @@ export class AgentOrchestrator {
       const state = initialState(text.slice(0, TASK_CHARS), this.now());
       // A job made from an approved design (artifacts/build.ts) starts with the design and the place it goes.
       if (o.spec) state.spec = o.spec;
-      if (o.located) state.located = o.located;
+      if (o.located) {
+        state.located = o.located;
+        // A conversation about the code found this place (code/chat), or a reviewer pointed at it (code/prcare): locate takes it as it is and does not look again.
+        if (o.locatedFrom) state.handoff = true;
+      }
+      if (o.care) state.care = o.care;
+      // How it is worked: the request's own word, else the project's setting, else guided with no plan-first.
+      const set = await this.deps.settings?.get(job.projectId).catch(() => null);
+      const mode = o.mode ?? set?.mode ?? DEFAULT_PROJECT_SETTINGS.mode;
+      const planFirst = o.planFirst ?? set?.planFirst ?? DEFAULT_PROJECT_SETTINGS.planFirst;
+      if (mode === "freeform") state.mode = "freeform";
+      if (planFirst) state.planFirst = true;
       await this.store.casJob(job.id, { agentEpoch: job.agentEpoch }, {
         agent: true, checkpoint: { ...job.checkpoint, agent: state as unknown as Record<string, unknown> },
       });
@@ -665,6 +701,143 @@ export class AgentOrchestrator {
     const ended = await this.jobs.cancelJob(job.id);
     await this.remote?.wake(job.id, "stop");
     return stripAgent(ended);
+  }
+
+  // ------------------------------------------------------------ settings
+
+  /** How the project's jobs are worked, as the person set it: guided with no plan-first until they say. The owner's only. */
+  async settings(userId: string, projectId: string): Promise<{ mode: JobMode; planFirst: boolean }> {
+    const project = await this.deps.projects.store.getProject(userId, projectId);
+    if (!project) throw new ConnectorError("not_found", "No such project");
+    const set = await this.deps.settings?.get(project.id);
+    return { mode: set?.mode ?? DEFAULT_PROJECT_SETTINGS.mode, planFirst: set?.planFirst ?? DEFAULT_PROJECT_SETTINGS.planFirst };
+  }
+
+  /** Changes what the person set (each field optional), and answers how the project's jobs are worked now. */
+  async setSettings(userId: string, projectId: string, body: unknown): Promise<{ mode: JobMode; planFirst: boolean }> {
+    const patch = readSettingsPatch(body);
+    const cur = await this.settings(userId, projectId);
+    if (!this.deps.settings) throw new ConnectorError("settings_off", "This server does not keep project settings.");
+    const next = { mode: patch.mode ?? cur.mode, planFirst: patch.planFirst ?? cur.planFirst };
+    await this.deps.settings.put({ projectId, userId, ...next, updatedAt: this.now() });
+    return next;
+  }
+
+  // ------------------------------------------------------------ rewind
+
+  /** The points a person can rewind a job to: each step of the model's work, oldest first, with a line on what it did and the files staged then. */
+  async checkpoints(userId: string, jobId: string): Promise<Array<{ step: number; at: number; note: string; files: string[] }>> {
+    const job = await this.jobs.job(userId, jobId);
+    if (!job.agent) throw notWaiting("anything from Tailzu's agent");
+    return (await this.deps.rewind?.list(job.id)) ?? [];
+  }
+
+  /**
+   * REWIND a job to the state it stood in after a step (POST /v1/code/jobs/:id/rewind { toStep }). `toStep` 0 is before any work.
+   *
+   *   BEFORE THE COMMIT   the staged edits are put back as they stood after that step, what the model did since is dropped (it is given the notes it had then),
+   *                       and the job goes on from there, working. The running loop is fenced off first (its claim's epoch moves), so it can write nothing more
+   *   AFTER THE COMMIT    a NEW commit takes the files the job changed back to how they were at that step (revertFiles), through the policy like any commit,
+   *                       and the job ends: history is never rewritten, nothing is reset, forced or rebased. The policy may ask for the person's yes first:
+   *                       the answer says so, and the same call with that `approvalId` makes the commit
+   *
+   * The owner's only. A job that is over can be rewound only after its commit (a job that ended before one has nothing left to go on with).
+   */
+  async rewind(userId: string, jobId: string, toStep: unknown, approvalId?: string): Promise<
+    | { kind: "restored"; step: number; job: CodeJob }
+    | { kind: "reverted"; step: number; sha: string | null; files: string[]; job: CodeJob }
+    | ({ kind: "needs_approval" } & Omit<NeedsApproval, "needsApproval">)
+  > {
+    if (typeof toStep !== "number" || !Number.isInteger(toStep) || toStep < 0 || toStep > 100_000) throw new ConnectorError("bad_request", "toStep is the number of a step: 0 for before any work.");
+    const { job, state } = await this.mine(userId, jobId);
+    const rewinds = this.deps.rewind;
+    if (!rewinds) throw new ConnectorError("rewind_off", "This job keeps no rewind points.");
+    const point = toStep === 0 ? { step: 0, at: this.now(), note: "Before any work.", staged: [], summary: "", digests: [] } : await rewinds.get(job.id, toStep);
+    if (!point) throw new ConnectorError("not_found", `There is no rewind point at step ${toStep}. GET /v1/code/jobs/:id/checkpoints lists them.`);
+    const committed = state.commits.length > 0;
+    if (!committed && isEnded(job.state)) throw new ConnectorError("job_over", "That job is over, and made no commit, so there is nothing to go back to.");
+    // The loop that is running is fenced off: the epoch moves, so its next write is turned away. The abort ends it sooner when it is this server's.
+    const fenced = await this.fence(job);
+    const log = new WorkLog(job.id, { store: this.deps.worklog ?? worklogStore() });
+    if (!committed) {
+      const w = state.work;
+      w.staged = structuredClone(point.staged);
+      w.exchanges = [];
+      w.digests = [...point.digests];
+      w.summary = point.summary;
+      w.turns = point.step;
+      w.badTurns = 0;
+      w.finished = false;
+      w.doneSummary = undefined;
+      w.feedback = undefined;
+      w.designFeedback = undefined;
+      w.nudged = false;
+      state.verified = undefined;
+      state.verify = undefined;
+      state.commit = undefined;
+      state.waiting = undefined;
+      state.phase = "work";
+      (state.rewinds ??= []).push({ to: point.step, at: this.now(), kind: "restored" });
+      await rewinds.dropAfter(job.id, point.step);
+      await log.decision(toStep === 0 ? "Went back to before any work, at your request." : `Went back to step ${point.step} (${point.note.slice(0, 120)}), at your request.`);
+      const next = await this.store.casJob(job.id, { agentEpoch: fenced.agentEpoch }, {
+        state: "running", waitingOn: null, reason: "", checkpoint: { ...fenced.checkpoint, agent: state as unknown as Record<string, unknown> },
+      });
+      if (!next) throw new ConnectorError("conflict", "The job changed while it was being rewound. Try again.");
+      if (this.remote) await this.remote.wake(job.id, "wake");
+      else this.kick();
+      return { kind: "restored", step: point.step, job: stripAgent(next) };
+    }
+    // After the commit: a new commit that returns the files. The job's loop is over (fenced); the commit is the person's to approve if the policy asks.
+    const d = this.deps.projects;
+    const ws = await workspace(d, userId, job.projectId, job.branch);
+    const repo = repoRef(d, userId, ws.project);
+    const baseSha = state.baseSha;
+    if (!baseSha) throw new ConnectorError("cannot_rewind", "This job's commit did not record where the branch stood before it, so it cannot be taken back.");
+    const read = (ref: string) => async (path: string): Promise<string | null> => {
+      try { return (await d.github.readFile(repo, ref, path)).text; } catch (err) {
+        if ((err as { code?: string } | null)?.code === "not_found") return null;
+        throw err;
+      }
+    };
+    const paths = [...(state.committedPaths ?? []), ...point.staged.map((f) => f.path)];
+    const files = await revertFiles({ paths, staged: point.staged, atBase: read(baseSha), atHead: async (p) => { try { return (await ws.read(p)).text; } catch (err) { if ((err as { code?: string } | null)?.code === "not_found") return null; throw err; } } });
+    if (!files.length) {
+      await this.endAfterRewind(job, fenced, state, point.step, null, "The branch already matches that step, so nothing was committed.");
+      return { kind: "reverted", step: point.step, sha: null, files: [], job: stripAgent((await this.store.getJobById(job.id)) ?? job) };
+    }
+    const message = `Go back to step ${point.step} of Tailzu job ${job.id.slice(0, 8)}\n\nThis is a new commit that returns ${files.length} file${files.length === 1 ? "" : "s"} to how they were at that step, at the person's request. Nothing in the history was rewritten.`;
+    const made = await ws.commit(files, message, approvalId ? { approvalId } : {});
+    if (isNeedsApproval(made)) {
+      // The loop stays fenced and the job as it is; the same call with this id makes the commit.
+      const { needsApproval: _n, ...ask } = made;
+      return { kind: "needs_approval", ...ask };
+    }
+    state.commits.push(made.sha);
+    await log.decision(`Went back to step ${point.step} in a new commit, ${made.sha.slice(0, 7)}, at your request. ${files.length} file${files.length === 1 ? "" : "s"} returned; the history was not rewritten.`);
+    await this.endAfterRewind(job, fenced, state, point.step, made.sha, `Rewound to step ${point.step} in commit ${made.sha.slice(0, 7)}.`);
+    return { kind: "reverted", step: point.step, sha: made.sha, files: files.map((f) => f.path), job: stripAgent((await this.store.getJobById(job.id)) ?? job) };
+  }
+
+  /** The loop that holds the job is told to stop and its claim is fenced (the epoch goes up): whatever it was about to write is turned away. Returns the job as it is now. */
+  private async fence(job: CodeJob): Promise<CodeJob> {
+    this.active.get(job.id)?.abort.abort();
+    for (let i = 0; i < 6; i += 1) {
+      const cur = (await this.store.getJobById(job.id)) ?? job;
+      const next = await this.store.casJob(job.id, { agentEpoch: cur.agentEpoch }, { agentHolder: null, agentExpiresAt: null, agentEpoch: cur.agentEpoch + 1 });
+      if (next) return next;
+    }
+    throw new ConnectorError("conflict", "The job is changing too fast to be rewound just now. Try again in a moment.");
+  }
+
+  /** After a revert commit the job is over: its state keeps the rewind, and a job that was still going is ended with the reason. */
+  private async endAfterRewind(job: CodeJob, fenced: CodeJob, state: AgentState, step: number, sha: string | null, why: string): Promise<void> {
+    (state.rewinds ??= []).push({ to: step, at: this.now(), kind: "reverted", ...(sha ? { sha } : {}) });
+    state.waiting = undefined;
+    state.phase = "done";
+    await this.store.casJob(job.id, { agentEpoch: fenced.agentEpoch }, { checkpoint: { ...fenced.checkpoint, agent: state as unknown as Record<string, unknown> } });
+    if (!isEnded(fenced.state)) await this.jobs.cancelJob(job.id, why);
+    await this.remote?.wake(job.id, "stop");
   }
 
   /** The job's work log, in order. */

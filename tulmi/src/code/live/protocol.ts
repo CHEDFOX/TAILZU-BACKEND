@@ -18,6 +18,18 @@ export const isSessionCommands = (commands: readonly string[]): boolean => Array
 
 export const PROTOCOL_VERSION = 1;
 
+/**
+ * THE DEVICE PROTOCOL'S VERSION (presence, offers, and the HTTP runner), which docs/desktop-runner-session.md calls "protocol version 2":
+ *
+ *   1  hello/state with project ids or "all" (at most 200); an offer without the project's name; `decline` informational
+ *   2  `hello.capabilities` {liveOnly, container, os, arch}; the allow list may be {"allExcept": [...]}, with no 200 cap; an offer carries
+ *      projectId and projectName; `decline` releases the lease at once and the step goes to another computer
+ *
+ * A version 1 app keeps working as it did (its offers carry the two new fields, which it ignores; its decline now takes effect at once);
+ * the new forms are accepted only from a hello that says `v: 2`.
+ */
+export const DEVICE_PROTOCOL_VERSION = 2;
+
 export type CloseReason = "idle" | "cap" | "needs_you" | "job_end" | "superseded" | "expired" | "error";
 
 export interface OverlayEntry { path: string; content: string | null }
@@ -70,17 +82,21 @@ export const PREVIEW_FAILURES: readonly PreviewFailure[] = ["unreachable", "time
 
 // ------------------------------------------------------ device <-> presence
 
+export interface DeviceCapabilities { liveOnly: boolean; container: boolean; os: string; arch: string }
+
 export interface DeviceInfo {
   deviceId: string;
   name: string;
   allowRun: boolean;
-  /** Project ids, or "all". */
-  projects: string[] | "all";
+  /** Project ids, "all", or (version 2) everything but the ids listed. */
+  projects: string[] | "all" | { allExcept: string[] };
   busy: boolean;
+  /** What the computer can do (version 2). Absent: a plain computer. */
+  capabilities?: DeviceCapabilities;
 }
 
 export type FromDevice =
-  | ({ t: "hello"; v: 1; app?: string } & DeviceInfo)
+  | ({ t: "hello"; v: 1 | 2; app?: string } & DeviceInfo)
   | ({ t: "state" } & Partial<Omit<DeviceInfo, "deviceId">>)
   | { t: "decline"; jobId: string; epoch: number; reason?: string }
   | { t: "bye" };
@@ -90,6 +106,9 @@ export interface DeviceOffer {
   jobId: string;
   stepIdx: number;
   epoch: number;
+  /** Which project the step is for, so the app can say so (version 2). */
+  projectId: string;
+  projectName: string;
   commands: string[];
   timeoutSec: number;
   repo: Record<string, unknown>;
@@ -100,7 +119,7 @@ export interface DeviceOffer {
 }
 
 export type ToDevice =
-  | { t: "ack"; v: 1; deviceId: string }
+  | { t: "ack"; v: 1 | 2; deviceId: string; /** Version 2: the capabilities as the book will use them. */ capabilities?: DeviceCapabilities }
   | { t: "offer"; offer: DeviceOffer }
   | { t: "cancel"; jobId: string; epoch: number }
   | { t: "replaced" }
@@ -147,10 +166,28 @@ const ID = /^[A-Za-z0-9._:/@-]{1,200}$/;
 export const isId = (v: unknown): v is string => typeof v === "string" && ID.test(v);
 const DEVICE_ID = /^[A-Za-z0-9._:-]{8,100}$/;
 
-function projectsOf(v: unknown): string[] | "all" | null {
+/** The most ids an allow list may hold (devices.ts PROJECTS_ALLOW_MAX; a frame is at most 64 KB here, so 5,000 ids of 64 characters would not fit anyway). */
+const ALLOW_IDS_MAX = 5000;
+const idList = (v: unknown): string[] | null => (Array.isArray(v) && v.length <= ALLOW_IDS_MAX && v.every((p) => str(p, 64) && p.length > 0) ? (v as string[]) : null);
+
+/** Version 1 says "all" or at most 200 ids; version 2 may also say {allExcept: [...]} and has no 200 cap. */
+function projectsOf(v: unknown, version: 1 | 2 = 1): string[] | "all" | { allExcept: string[] } | null {
   if (v === "all") return "all";
-  if (Array.isArray(v) && v.length <= 200 && v.every((p) => str(p, 64) && p.length > 0)) return v as string[];
+  if (Array.isArray(v)) return version === 2 ? idList(v) : v.length <= 200 ? idList(v) : null;
+  if (version === 2 && isObj(v) && Object.keys(v).length === 1) {
+    const except = idList(v.allExcept);
+    return except ? { allExcept: except } : null;
+  }
   return null;
+}
+
+/** `capabilities` of a version 2 hello: every field optional, the wrong kind of any is a bad frame. */
+function capsOfFrame(v: unknown): DeviceCapabilities | null | undefined {
+  if (v === undefined) return undefined;
+  if (!isObj(v)) return null;
+  if ((v.liveOnly !== undefined && !bool(v.liveOnly)) || (v.container !== undefined && !bool(v.container))) return null;
+  if ((v.os !== undefined && !str(v.os, 40)) || (v.arch !== undefined && !str(v.arch, 40))) return null;
+  return { liveOnly: v.liveOnly === true, container: v.container === true, os: typeof v.os === "string" ? v.os : "", arch: typeof v.arch === "string" ? v.arch : "" };
 }
 
 const HTTP_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
@@ -288,11 +325,15 @@ export function parseFromDevice(raw: unknown): FromDevice | null {
   if (!m) return null;
   switch (m.t) {
     case "hello": {
-      const projects = projectsOf(m.projects);
-      if (m.v !== 1 || typeof m.deviceId !== "string" || !DEVICE_ID.test(m.deviceId) || !bool(m.allowRun) || !projects) return null;
+      if (m.v !== 1 && m.v !== 2) return null;
+      const v: 1 | 2 = m.v;
+      const projects = projectsOf(m.projects, v);
+      // The capabilities are version 2's: a version 1 hello that carries them is not understood, not silently trusted.
+      const caps = v === 2 ? capsOfFrame(m.capabilities) : m.capabilities === undefined ? undefined : null;
+      if (typeof m.deviceId !== "string" || !DEVICE_ID.test(m.deviceId) || !bool(m.allowRun) || !projects || caps === null) return null;
       return {
-        t: "hello", v: 1, deviceId: m.deviceId, name: str(m.name, 80) && m.name.trim() ? m.name.trim() : "This computer", allowRun: m.allowRun, projects, busy: m.busy === true,
-        ...(str(m.app, 60) ? { app: m.app } : {}),
+        t: "hello", v, deviceId: m.deviceId, name: str(m.name, 80) && m.name.trim() ? m.name.trim() : "This computer", allowRun: m.allowRun, projects, busy: m.busy === true,
+        ...(caps ? { capabilities: caps } : {}), ...(str(m.app, 60) ? { app: m.app } : {}),
       };
     }
     case "state": {
@@ -300,7 +341,10 @@ export function parseFromDevice(raw: unknown): FromDevice | null {
       if (m.allowRun !== undefined) { if (!bool(m.allowRun)) return null; out.allowRun = m.allowRun; }
       if (m.busy !== undefined) { if (!bool(m.busy)) return null; out.busy = m.busy; }
       if (m.name !== undefined) { if (!str(m.name, 80)) return null; out.name = m.name.trim() || "This computer"; }
-      if (m.projects !== undefined) { const p = projectsOf(m.projects); if (!p) return null; out.projects = p; }
+      // A state frame has no version of its own: the forms of version 2 are accepted here, since only a computer that said hello at version 2 has them to send
+      // (the presence object refuses them from one that did not: userDevices.ts).
+      if (m.projects !== undefined) { const p = projectsOf(m.projects, 2); if (!p) return null; out.projects = p; }
+      if (m.capabilities !== undefined) { const c = capsOfFrame(m.capabilities); if (!c) return null; out.capabilities = c; }
       return out;
     }
     case "decline":

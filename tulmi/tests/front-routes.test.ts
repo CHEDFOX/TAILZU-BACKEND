@@ -85,6 +85,10 @@ describe("the body", () => {
     expect(ok).toMatchObject({ ok: true, input: { message: FACT, stream: false, ctx: { device: "phone", mode: "text", visuals: "ask", projectId: PROJECT, takeOffer: "table", recent: [{ said: "hi", did: "said hello" }], attachments: [] } } });
     expect(readAsk(BODY)).toMatchObject({ ok: true, input: { ctx: { visuals: "auto" } } });
     expect(readAsk({ ...BODY, stream: true })).toMatchObject({ ok: true, input: { stream: true } });
+    // The conversation about a project's code (docs/code-chat.md): an id the app makes.
+    const THREAD = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    expect(readAsk({ ...BODY, projectId: PROJECT, threadId: THREAD })).toMatchObject({ ok: true, input: { ctx: { projectId: PROJECT, threadId: THREAD } } });
+    expect((readAsk(BODY) as { input: { ctx: { threadId?: string } } }).input.ctx.threadId).toBeUndefined();
   });
 
   it("refuses what it cannot make sense of, with the reason, and a message that is too long with 413", () => {
@@ -101,6 +105,8 @@ describe("the body", () => {
     expect(refused({ ...BODY, visuals: "always" }).message).toContain("auto, ask, off");
     expect(refused({ ...BODY, visual: "hologram" }).status).toBe(400);
     expect(refused({ ...BODY, projectId: "not-a-project" }).status).toBe(400);
+    expect(refused({ ...BODY, threadId: "not-a-thread" }).message).toContain("threadId");
+    expect(refused({ ...BODY, threadId: 7 }).status).toBe(400);
     expect(refused({ ...BODY, stream: "yes" }).status).toBe(400);
     expect(refused({ ...BODY, recent: [{ said: "a" }, { said: "b" }, { said: "c" }, { said: "d" }] }).message).toContain("three");
     expect(refused({ ...BODY, recent: [{ said: 3 }] }).status).toBe(400);

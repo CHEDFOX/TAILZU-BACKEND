@@ -58,9 +58,9 @@ Pick one of the two ways.
 | Webhook URL | `https://api.tailzu.space/v1/code/github/webhook` |
 | Webhook secret | `openssl rand -hex 32`. This is `GITHUB_APP_WEBHOOK_SECRET` |
 | SSL verification | Enable |
-| Repository permissions | **Contents: Read and write.** **Pull requests: Read and write.** **Metadata: Read-only** (GitHub sets this one itself). **Workflows: Read and write** and **Actions: Read-only**, both for GitHub's free computers (below, and section 9). Nothing else, except, optionally, **Deployments**, **Commit statuses** and **Checks**, each **Read-only**, which let a milestone's pull request show its host's preview link (`docs/code-work.md`, section 8; without them the person gets a one-time tip instead) |
+| Repository permissions | **Contents: Read and write.** **Pull requests: Read and write.** **Metadata: Read-only** (GitHub sets this one itself). **Workflows: Read and write** and **Actions: Read-only**, both for GitHub's free computers (below, and section 9). **Checks: Read-only** and **Commit statuses: Read-only**, for PR care (`docs/pr-care.md`): they let Tailzu see why a pull request's CI is red (with Actions, for the failing job's log). Nothing else, except, optionally, **Deployments** (**Read-only**), which lets a milestone's pull request show its host's preview link (`docs/code-work.md`, section 8; without it the person gets a one-time tip instead) |
 | Account and organization permissions | None |
-| Subscribe to events | Tick **Pull request** and **Pull request review** (they only appear once Pull requests is given) and **Push** (it appears once Contents is given; the project brain, `docs/code-project-brain.md`, keeps itself fresh with it). `installation` and `installation_repositories` are sent to every App without being asked for, and this server reads those too |
+| Subscribe to events | Tick **Pull request**, **Pull request review**, **Pull request review comment** and **Issue comment** (they only appear once Pull requests is given), **Check run** and **Check suite** (once Checks is given), **Status** (once Commit statuses is given) and **Push** (it appears once Contents is given; the project brain, `docs/code-project-brain.md`, keeps itself fresh with it). The five after Pull request review are PR care's (`docs/pr-care.md`). `installation` and `installation_repositories` are sent to every App without being asked for, and this server reads those too |
 | Where can this GitHub App be installed? | **Any account.** With "Only on this account" nobody but you could install it |
 
 Create it, then on the App's page:
@@ -106,20 +106,36 @@ name if it is taken, and the origin if the API is not at `api.tailzu.space`):
     "pull_requests": "write",
     "workflows": "write",
     "actions": "read",
+    "checks": "read",
+    "statuses": "read",
     "metadata": "read"
   },
-  "default_events": ["pull_request", "pull_request_review", "push"]
+  "default_events": [
+    "pull_request", "pull_request_review", "pull_request_review_comment", "issue_comment", "check_run", "check_suite", "status", "push"
+  ]
 }
 ```
 
-`default_events` lists the two events the server follows a pull request's life
-with (closed, reopened, ready for review; a review submitted), and `push`, which
+`default_events` lists the events the server follows a pull request's life
+with: `pull_request` (closed, reopened, ready for review, a new commit) and
+`pull_request_review` (a review submitted) as always, and, for PR care
+(`docs/pr-care.md`), `pull_request_review_comment` and `issue_comment` (a
+reviewer's comment), `check_run`, `check_suite` and `status` (CI finished). And
+`push`, which
 tells the project brain that a repo's default branch moved (it marks the brain
 stale at once and refreshes it a minute after the last push, without calling
 GitHub while it answers; a push to any other branch is ignored). GitHub sends
 `installation` and `installation_repositories` to every App and does not let
 you subscribe to them, and a manifest that lists them can be refused, so they
 are not here. There is no `issues`, nothing else.
+
+**Why the manifest asks for Checks and Commit statuses.** PR care reads what CI
+said about a pull request's head commit, and the end of a failing GitHub Actions
+job's log (that is the Actions permission above, which it already has for the
+free computers). They are read-only: PR care never writes a check or a status,
+and never re-runs, cancels or kicks a CI run. Without them PR care still
+answers reviewers and brings a branch up to date, and says in the pull
+request's status comment, once, that it cannot read the checks.
 
 An App made before the project brain existed has no `push` subscription: tick
 **Push** on its Permissions & events page (people who have installed it are not
@@ -142,7 +158,7 @@ waits) instead of on GitHub's. **Actions: Read and write** is optional, and only
 lets Tailzu cancel a run that has gone on far past its time; with read-only,
 GitHub's own `timeout-minutes` ends it a minute or so later.
 
-**An App that already exists.** Add the two permissions on the App's page
+**An App that already exists.** Add the permissions (Workflows, Actions, and for PR care Checks and Commit statuses) and the events (Pull request review comment, Issue comment, Check run, Check suite, Status) on the App's page
 (Permissions & events). GitHub then asks every person who installed it to
 accept the change (an email, and a banner on the install); until they do the
 install keeps its old permissions, and for them GitHub's free computers answer
@@ -539,6 +555,7 @@ is ignored for the default.
 | A step waits, or moves to the PC, saying GitHub's free minutes are used up | A step pushed to GitHub never started a run (three minutes), or the run ended without reporting: the free minutes are most likely gone, or Actions is off for the repo or the account. Tailzu marks GitHub as used up for that person until the month turns (`githubFreeMinutes.exhausted` on `GET /v1/code/settings/compute`). Check the repo's Actions tab and the account's Billing |
 | 401 `bad_runner_token` / 403 `runner_mismatch` on `/v1/code/runner/gh-result` | The identity token isn't one GitHub issued for Tailzu's audience, or has expired (401); or it is a good token for another repo, branch, commit, workflow or event (403). Nothing was counted. See section 9 |
 | A pull request or review on GitHub doesn't show in Tailzu | The App isn't subscribed to Pull request and Pull request review events, or the webhook is failing (the App's Advanced tab) |
+| PR care does not answer a comment or fix red CI (`docs/pr-care.md`) | The App isn't subscribed to Pull request review comment, Issue comment, Check run, Check suite and Status, or the install has not accepted Checks and Commit statuses (the pull request's status comment says "cannot read this repository's checks"), or migration `0034` has not been run (the rows stay in memory and a restart forgets them) |
 | A project's brain doesn't follow new commits | The App isn't subscribed to Push, `CODE_PROJECT_BRAIN` is off, or the push was to a branch other than the repo's default |
 | 502 `github_auth` for everything | The private key does not belong to this App (or was revoked). Generate a new key on the App's page and replace it |
 | `branch_moved` on a commit | Someone pushed to the work branch while Tailzu was committing. Nothing was overwritten; read the branch again and retry |

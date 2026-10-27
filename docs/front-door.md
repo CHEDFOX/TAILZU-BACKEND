@@ -80,8 +80,8 @@ Errors: `400 bad_request` (the body), `413` (a message over 8,000 characters), `
 | --- | --- | --- | --- |
 | `chat` | `reply` | tiny | small talk |
 | `answer` | `reply` | cheap | general knowledge; a table inline when it helps |
-| `code_question` | `code_answer` | cheap | locate the code (the brain's index, no model when the words suffice), read up to three excerpts, answer from them with `path:line` |
-| `code_task` | `code_job` | by risk (`baseTier`) | a Code bot job on a new work branch, driven by the agent loop; the result is a pull request |
+| `code_question` | `code_answer` | cheap; strong for a deep why or "what would break" | `code/chat` (`docs/code-chat.md`): locate the code from the brain's index (no model when the words suffice), answer from the index alone when it is enough, else read at most three located spans; every claim with `path:line`, the ones that do not resolve taken out; a flow drawn from the import graph; a short summary of the thread kept for the follow-up |
+| `code_task` | `code_job` | by risk (`baseTier`) | a Code bot job on a new work branch, driven by the agent loop; the result is a pull request. After a question about the code, "ok, change it" starts it with the place the conversation found (`decision.handoff`); an open-ended task (debug, investigate, find out why) is worked free-form (`decision.mode = "freeform"`, `docs/code-agent.md` section 14) |
 | `design` | `artifact` | code | in a project, a component in the project's look (`componentArtifact`); otherwise a page |
 | `research` | `research` | cheap, code or strong for quick, standard, deep | the web layer's `research()` under the person's daily research runs |
 | `plan` | `plan` | cheap (code in a project) | steps and a timeline; in a project the work core's plan |
@@ -228,7 +228,8 @@ What a message costs, in paise: the budgets `decide()` gives these messages from
 | "what is the latest version of Next.js?" | research quick | cheap | 150 | cited, from the web |
 | "do a deep research on ..." | research deep | strong | 1,000 | needs 0.7 sure |
 | "plan a 3 day trip to Jaipur" | plan | cheap | 120 | its diagram is drawn by code: 0 |
-| "where is the session cookie set?" | code_answer | cheap | 111 | locate (up to 60) + the answer |
+| "where is the session cookie set?" | code_answer | cheap | 111 | locate (up to 60) + the answer; with the brain's index enough, the answer is the only model call |
+| "why is checkout slow under load?" | code_answer | strong | 211 | a deep why: the strong tier, and the reason (`code:deep`) is written down |
 | "fix the crash when the cart is empty" | code_job | code | 3,000 | the default job budget, scaled by difficulty (0.4, 1, 1.5); needs 0.7 sure |
 | "show me how a pricing card would look" | artifact (component) | code | 660 | in a project: the component, the project's kit and where it goes |
 
@@ -259,4 +260,5 @@ Free tests (no network, no model, no database): `front-decide` (table-driven dec
 * **running `0033_front_decisions.sql`** in Supabase before turning the flag on if the log is to be kept (without it, the log is in memory);
 * **Mermaid, chart and component artifacts** rendering in the viewer from the front door, and the **vision** tier reading a real picture;
 * the **limits per instance**: the right `GUARD_*` numbers depend on how many instances run and on the providers' rate limits;
+* the **real model on the code roads**: whether a cheap model keeps to `path:line` and to what it was shown (the citation check takes out what it invents, but a model that cites nothing is a poor answer), whether the "deep" words (`chat/question.ts`) send the right questions to the strong tier, and what a free-form job costs on a real model (`docs/code-chat.md`, `docs/code-agent.md`);
 * the **main assistant** as a handler for chat: left as it is; the seam is `HandlerDeps.assistant`.

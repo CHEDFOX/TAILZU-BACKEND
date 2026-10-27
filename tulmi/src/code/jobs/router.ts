@@ -82,16 +82,18 @@ import { assertRepoPath, type CommitFile } from "../github.js";
 import { PolicyError, isNeedsApproval, isWorkflowPath, type NeedsApproval } from "../policy.js";
 import { isReservedPath } from "../shadow.js";
 import { commitToBranch, ownProject, recordedBranch, repoRef, runnerAccess, type ProjectDeps } from "../projects.js";
-import { DeviceBook, allows, type DeviceBeat } from "./devices.js";
+import type { CodeProject } from "../store.js";
+import { DeviceBook, PROJECTS_ALLOW_MAX, allows, type DeviceBeat, type DeviceCaps, type ProjectAllow } from "./devices.js";
+import { CapableDesktopProvider, isStepAware } from "./desktop.js";
 import { actionsMinutesLeft, minutesLowWords, notifyAtMinutes } from "../live/minutes.js";
 import { isSessionCommands } from "../live/protocol.js";
 import type { OfferSession, SessionOffer } from "../live/offers.js";
 import { choosePlacement, githubMinutesLeft, GITHUB_FREE_MINUTES_DEFAULT, type PlacementChoice, type PlacementCtx } from "./placement.js";
-import { DesktopProvider, type Availability, type ComputeProvider, type RunCheck } from "./providers.js";
+import type { Availability, ComputeProvider, RunCheck } from "./providers.js";
 import type { JobStore } from "./store.js";
 import { TooManySteps } from "./store.js";
 import {
-  AGENT_WAITS, CHANGES_MAX, COMMANDS_MAX, COMMAND_CHARS, DEVICE_ONLINE_MS, DEVICE_PROJECTS_MAX, ESTIMATE_MAX_MINUTES, LEASE_MS, LIVE_JOBS_MAX,
+  AGENT_WAITS, CHANGES_MAX, COMMANDS_MAX, COMMAND_CHARS, DEVICE_ONLINE_MS, ESTIMATE_MAX_MINUTES, LEASE_MS, LIVE_JOBS_MAX,
   MAX_REASSIGNMENTS, OVERLAY_MAX_BYTES, OVERLAY_MAX_FILES, PAISE_MAX, STEPS_MAX, TASK_KEEP, TIMEOUT_DEFAULT_SEC, TIMEOUT_MAX_SEC,
   brief, isEnded, monthKey,
   type CodeJob, type ComputeKind, type ComputeSettings, type ComputeUsage, type JobState, type JobStep, type Notify, type NotifyData,
@@ -139,6 +141,9 @@ export interface RunnerStep {
   stepIdx: number;
   /** Goes back with every progress and result call. */
   epoch: number;
+  /** Which project the step is for, so the app can say so ("Running tests for acme/app"): protocol version 2. */
+  projectId: string;
+  projectName: string;
   commands: string[];
   timeoutSec: number;
   repo: {
@@ -236,18 +241,42 @@ const isInt = (v: unknown, min: number, max: number): v is number => typeof v ==
 const DEVICE_ID = /^[A-Za-z0-9._:-]{8,100}$/;
 const SHA = /^[0-9a-f]{40}$/;
 
+/**
+ * The projects a heartbeat allows (protocol version 2, docs/desktop-runner-session.md): "all"; a list of project ids; or `{ allExcept: [ids] }`, every
+ * project but those. The lists are not capped at 200 any more (PROJECTS_ALLOW_MAX is the guard). A version 1 app sends the first two and nothing changes for it.
+ */
+export function readProjectAllow(v: unknown): ProjectAllow {
+  const ids = (list: unknown): string[] | null => (Array.isArray(list) && list.length <= PROJECTS_ALLOW_MAX && list.every((p) => typeof p === "string" && p.length > 0 && p.length <= 64) ? (list as string[]) : null);
+  if (v === "all") return "all";
+  const plain = ids(v);
+  if (plain) return plain;
+  const o = asObject(v);
+  const except = Object.keys(o).length === 1 ? ids(o.allExcept) : null;
+  if (except) return { allExcept: except };
+  throw bad(`projects is "all", a list of at most ${PROJECTS_ALLOW_MAX} project ids, or { "allExcept": [project ids] }.`);
+}
+
+/** The capabilities a heartbeat states (protocol version 2): every field optional, a field of the wrong kind is refused. */
+export function readCapabilities(v: unknown): Partial<DeviceCaps> | undefined {
+  if (v === undefined) return undefined;
+  const c = asObject(v);
+  if ((c.liveOnly !== undefined && typeof c.liveOnly !== "boolean") || (c.container !== undefined && typeof c.container !== "boolean")) throw bad("capabilities.liveOnly and capabilities.container are true or false.");
+  if ((c.os !== undefined && (typeof c.os !== "string" || c.os.length > 40)) || (c.arch !== undefined && (typeof c.arch !== "string" || c.arch.length > 40))) throw bad("capabilities.os and capabilities.arch are short words.");
+  return {
+    ...(c.liveOnly !== undefined ? { liveOnly: c.liveOnly as boolean } : {}), ...(c.container !== undefined ? { container: c.container as boolean } : {}),
+    ...(c.os !== undefined ? { os: c.os as string } : {}), ...(c.arch !== undefined ? { arch: c.arch as string } : {}),
+  };
+}
+
 export function readHeartbeat(body: unknown): RunnerHeartbeat {
   const b = asObject(body);
   if (typeof b.deviceId !== "string" || !DEVICE_ID.test(b.deviceId)) throw bad("deviceId is the id your app made for this computer (8 to 100 letters, digits, . _ : -).");
   if (typeof b.allowRun !== "boolean") throw bad("allowRun is true or false.");
   if (b.busy !== undefined && typeof b.busy !== "boolean") throw bad("busy is true or false.");
-  let projects: string[] | "all";
-  if (b.projects === "all") projects = "all";
-  else if (Array.isArray(b.projects) && b.projects.length <= DEVICE_PROJECTS_MAX && b.projects.every((p) => typeof p === "string" && p.length > 0 && p.length <= 64)) {
-    projects = b.projects as string[];
-  } else throw bad(`projects is "all", or a list of at most ${DEVICE_PROJECTS_MAX} project ids.`);
+  const projects = readProjectAllow(b.projects);
+  const capabilities = readCapabilities(b.capabilities);
   const name = typeof b.name === "string" ? [...b.name.trim()].slice(0, 80).join("") : "";
-  return { deviceId: b.deviceId, name: name || "This computer", allowRun: b.allowRun, projects, busy: b.busy === true };
+  return { deviceId: b.deviceId, name: name || "This computer", allowRun: b.allowRun, projects, busy: b.busy === true, ...(capabilities ? { capabilities } : {}) };
 }
 
 /** The result of a step, checked. `via` decides whether `paise` is read: only a paid place may say what it cost. */
@@ -338,7 +367,7 @@ export class JobRouter {
     this.clock = o.now ?? Date.now;
     this.freeMinutes = o.freeMinutes ?? GITHUB_FREE_MINUTES_DEFAULT;
     this.devices = o.devices ?? new DeviceBook();
-    this.desktop = o.desktop ?? new DesktopProvider({ devices: this.devices, store: this.store, now: this.clock });
+    this.desktop = o.desktop ?? new CapableDesktopProvider({ devices: this.devices, store: this.store, now: this.clock });
   }
 
   now(): number { return this.clock(); }
@@ -413,11 +442,13 @@ export class JobRouter {
    * staged edits, tried without being committed. `keepChanges: false` says the
    * step's changes are not wanted (the checks of a trial run, an install that
    * rewrites a lockfile): they are not committed, whatever the runner sends back.
-   * With neither, the step is what it always was.
+   * With neither, the step is what it always was. `capture: true` is a step whose changes the AGENT wants to read and decide on (the merge of the
+   * default branch into a branch, whose conflicts the model resolves): they are not committed by the router but kept on the step (`captured`) until the
+   * agent has taken them (clearCaptured), and a captured step is never committed by anything but the agent's own commit through the policy.
    */
   async requestExec(
     jobId: string, commands: string[], timeoutSec: number = TIMEOUT_DEFAULT_SEC, estimateMinutes = 1,
-    opts: { overlay?: OverlayFile[]; keepChanges?: boolean } = {},
+    opts: { overlay?: OverlayFile[]; keepChanges?: boolean; capture?: boolean } = {},
   ): Promise<{ job: CodeJob; step: JobStep }> {
     if (!Array.isArray(commands) || !commands.length || commands.length > COMMANDS_MAX
       || commands.some((c) => typeof c !== "string" || !c.trim() || c.length > COMMAND_CHARS)) {
@@ -435,6 +466,7 @@ export class JobRouter {
       if (await this.inflight(job.id)) throw inFlight();
       const step = await this.addStep(job.id, {
         kind: "exec", commands, timeoutSec, estimateMinutes: minutes, status: "pending", ...(overlay.length ? { overlay } : {}), ...(opts.keepChanges === false ? { discard: true } : {}),
+        ...(opts.capture === true ? { capture: true } : {}),
       });
       const after = await this.place(job, step, { prior: { state: job.state, waitingOn: null } });
       return { job: after, step: (await this.store.getStep(job.id, step.idx)) ?? step };
@@ -732,7 +764,7 @@ export class JobRouter {
       const tail = keepOutput(r.outputTail);
       const paise = via === "paid" ? r.paise ?? 0 : 0;
       // A step asked for as a trial (the agent's checks) has no changes of its own to keep: they are not committed, whatever is sent.
-      const wantsCommit = !!r.changes && r.changes.length > 0 && r.exitCode === 0 && !step.discard;
+      const wantsCommit = !!r.changes && r.changes.length > 0 && r.exitCode === 0 && !step.discard && !step.capture;
       const files: CommitFile[] = wantsCommit ? r.changes!.map((c) => ({ path: c.path, content: c.content })) : [];
       const message = `Tailzu: changes from ${brief(step.commands[0] ?? "a command", 60)}\n\nFrom step ${step.idx} of a Tailzu job, run on ${WHERE[via]}.`;
 
@@ -763,7 +795,9 @@ export class JobRouter {
       const note = refused ? `\n[Tailzu did not commit the changes: ${refused}.]` : "";
       const out = tailBytes(`${tail}${note}`);
       // The files a trial laid over the checkout are not kept once it has run.
-      const base = { finishedAt: now, exitCode: r.exitCode, outputTail: out, minutes: r.minutes, ...(step.overlay.length ? { overlay: [] } : {}) };
+      // A captured step keeps what it changed for the agent to read (the person's code: cleared when the agent has it, and when the job ends).
+      const captured = step.capture && r.exitCode === 0 && r.changes?.length ? r.changes.map((c) => ({ path: c.path, content: c.content })) : [];
+      const base = { finishedAt: now, exitCode: r.exitCode, outputTail: out, minutes: r.minutes, ...(step.overlay.length ? { overlay: [] } : {}), ...(captured.length ? { captured } : {}) };
 
       if (ask) {
         await this.store.updateStep(job.id, step.idx, { ...base, status: "blocked" });
@@ -797,9 +831,51 @@ export class JobRouter {
       return {
         ok: true, state: next.state, committed: sha !== undefined,
         ...(sha !== undefined ? { sha } : {}), ...(refused !== undefined ? { refused } : {}),
-        ...(!wantsCommit && r.changes && r.changes.length && (r.exitCode !== 0 || step.discard) ? { changesIgnored: true } : {}),
+        ...(!wantsCommit && r.changes && r.changes.length && !step.capture && (r.exitCode !== 0 || step.discard) ? { changesIgnored: true } : {}),
       };
     });
+  }
+
+  /**
+   * A computer says no to the step it was given (protocol version 2: `decline` on the presence socket, POST /v1/code/runner/decline). The lease is
+   * released AT ONCE, not when its 90 seconds run out, the computer is remembered on the step as one that declined it, and the step is placed again:
+   * on another computer of the person's, or GitHub's, or paid, or it waits. Declining is not a fault of the computer's, so the step is not counted as
+   * moved (reassignments). Only the holder of the current lease can: anyone else's, or a late one, is "stale_lease" and changes nothing.
+   */
+  async decline(userId: string, body: unknown): Promise<{ ok: true; placement: Placement; state: JobState }> {
+    const b = asObject(body);
+    if (typeof b.jobId !== "string" || !b.jobId || b.jobId.length > 64) throw bad("jobId is the job's id.");
+    if (!isInt(b.epoch, 1, Number.MAX_SAFE_INTEGER)) throw bad("epoch is the number you were given with the step.");
+    if (typeof b.deviceId !== "string" || !DEVICE_ID.test(b.deviceId)) throw bad("deviceId is the id your app made for this computer.");
+    const { jobId, epoch, deviceId } = b as { jobId: string; epoch: number; deviceId: string };
+    return this.lock.run(userId, async () => {
+      const job = await this.store.getJobById(jobId);
+      if (!job || job.userId !== userId) throw missing();
+      if (job.state !== "running" || job.placement !== "desktop" || job.leaseHolder !== deviceId || job.leaseEpoch !== epoch) throw stale();
+      const step = await this.inflight(job.id);
+      if (!step || (step.status !== "dispatched" && step.status !== "running") || step.epoch !== epoch) throw stale();
+      const released = await this.store.casJob(job.id, { leaseEpoch: epoch, states: ["running"], placement: "desktop" }, {
+        placement: "none", leaseHolder: null, leaseExpiresAt: null, state: "waiting_for_compute", reason: "That computer said no. Finding another place.",
+      });
+      if (!released) throw stale();
+      const pending: JobStep = { ...step, status: "pending", placement: "none", startedAt: null, declined: [...new Set([...step.declined, deviceId])] };
+      await this.store.updateStep(job.id, step.idx, { status: "pending", placement: "none", startedAt: null, declined: pending.declined });
+      const after = await this.place(released, pending, { prior: { state: "running", waitingOn: null }, movedFrom: "desktop" });
+      return { ok: true as const, placement: after.placement, state: after.state };
+    });
+  }
+
+  /** The agent has what a captured step handed back: it is not kept (it is the person's code). */
+  async clearCaptured(jobId: string, stepIdx: number): Promise<void> {
+    await this.store.updateStep(jobId, stepIdx, { captured: [] });
+  }
+
+  private async dropCaptured(jobId: string): Promise<void> {
+    try {
+      for (const s of await this.store.listSteps(jobId)) if (s.captured.length) await this.store.updateStep(jobId, s.idx, { captured: [] });
+    } catch (err) {
+      this.o.log?.warn({ jobId, error: (err as Error)?.message }, "code job: could not clear what a captured step kept");
+    }
   }
 
   // -------------------------------------------------------------- the clock's
@@ -974,9 +1050,11 @@ export class JobRouter {
     }
   }
 
-  private async available(p: ComputeProvider, job: CodeJob, estimateMinutes: number): Promise<Availability> {
+  private async available(p: ComputeProvider, job: CodeJob, estimateMinutes: number, step?: JobStep): Promise<Availability> {
+    const ctx = { userId: job.userId, projectId: job.projectId, jobId: job.id, estimateMinutes, now: this.now() };
     try {
-      return await p.available({ userId: job.userId, projectId: job.projectId, jobId: job.id, estimateMinutes, now: this.now() });
+      // A place that looks at the step (live-only computers, computers that declined it) is asked about it; any other, as it always was.
+      return step && isStepAware(p) ? await p.availableFor(ctx, step) : await p.available(ctx);
     } catch {
       return { ok: false };
     }
@@ -988,7 +1066,7 @@ export class JobRouter {
     const actions = this.o.actions;
     const usedActions = actions ? await this.actionsUsed(job.userId, usage.githubMinutes) : usage.githubMinutes;
     const none: Availability = { ok: false };
-    const desk = skip.has("desktop") ? none : await this.available(this.desktop, job, step.estimateMinutes);
+    const desk = skip.has("desktop") ? none : await this.available(this.desktop, job, step.estimateMinutes, step);
     const gh = this.o.github && settings.githubEnabled && !skip.has("github") ? await this.available(this.o.github, job, step.estimateMinutes) : none;
     // A step that never ran or never reported on GitHub this month marks its minutes used up, whatever the count says.
     const exhausted = gh.ok ? await this.githubExhausted(job.userId) : false;
@@ -1162,6 +1240,7 @@ export class JobRouter {
     if (!next) return (await this.store.getJobById(job.id)) ?? job;
     this.held.delete(job.id);
     if (step) await this.store.updateStep(job.id, step.idx, { status: "cancelled", finishedAt: this.now() });
+    await this.dropCaptured(job.id);
     if (from !== "none") await this.provider(from as ComputeKind)?.cancel(job).catch(() => undefined);
     if (state === "done") this.tell(next, "job_done", {});
     if (state === "failed") this.tell(next, "job_failed", { reason });
@@ -1229,18 +1308,18 @@ export class JobRouter {
    * for the person's PCs calls this to build the offer it pushes down the PC's socket; on the VPS `next` does.
    */
   async runnerStepFor(job: CodeJob, step: JobStep): Promise<RunnerStep> {
-    const repo = await this.repoFor(job);
+    const project = await ownProject(this.deps, job.userId, job.projectId);
+    const repo = await this.repoFor(job, project);
     const session = isSessionCommands(step.commands) && this.o.offerSession ? this.o.offerSession(job, step) : undefined;
     return {
-      jobId: job.id, stepIdx: step.idx, epoch: job.leaseEpoch, commands: step.commands, timeoutSec: step.timeoutSec, repo,
+      jobId: job.id, stepIdx: step.idx, epoch: job.leaseEpoch, projectId: project.id, projectName: project.fullName, commands: step.commands, timeoutSec: step.timeoutSec, repo,
       ...(step.overlay.length ? { overlay: step.overlay } : {}), ...(step.discard ? { discard: true as const } : {}), ...(session ? { session } : {}),
     };
   }
 
   /** Where and how a PC gets the code: the existing read access for a runner (projects.ts runnerAccess), never a token that can write. */
-  private async repoFor(job: CodeJob): Promise<RunnerStep["repo"]> {
+  private async repoFor(job: CodeJob, project: CodeProject): Promise<RunnerStep["repo"]> {
     const access = await runnerAccess(this.deps, job.userId, job.projectId, job.branch, "read");
-    const project = await ownProject(this.deps, job.userId, job.projectId);
     const headSha = await this.deps.github.branchHead(repoRef(this.deps, job.userId, project), job.branch);
     return access.kind === "app"
       ? { kind: "app", cloneUrl: access.cloneUrl, branch: job.branch, headSha, readToken: access.token, readTokenExpiresAt: access.expiresAt }

@@ -5,7 +5,7 @@
  *
  *   reply / file    the main assistant's reply, or the cheap fallback role; a file is read first (attachments.ts), once, and only the part
  *                   that matters reaches the model
- *   code_answer     the hook that answers a question about a project from its brain
+ *   code_answer     a question about a project, answered from its brain (code/chat); a flow it drew from the import graph is the diagram
  *   code_job        a Code bot job on a new branch
  *   artifact        a design: a component in the project's style, or a page
  *   research        the web layer's research, quick, standard or deep
@@ -125,7 +125,7 @@ export async function dispatch(decision: Decision, message: string, ctx: FrontCt
   }
 
   const call = (maxPaise: number, signal: AbortSignal, message2 = message): RouteCall => ({
-    userId, message: decision.followUp ? `${decision.followUp}. ${message2}` : message2, ctx, decision, signal, maxPaise,
+    userId, message: decision.followUp ? `${decision.followUp}. ${message2}` : message2, said: message2, ctx, decision, signal, maxPaise,
     onText: (piece) => { streamed = true; emit({ t: "text", text: piece }); },
   });
   const text = (t: string): void => { result.text = t; if (!streamed) emit({ t: "text", text: t }); };
@@ -188,7 +188,8 @@ export async function dispatch(decision: Decision, message: string, ctx: FrontCt
       result.paise += r.paise;
       ownPaise += r.paise;
       if (r.notes) result.notes.push(...r.notes);
-      await visualBeside(r.text);
+      // A flow drawn from the project's own import graph is kept as it is (no model, no cost); a diagram of any other kind is made from the answer.
+      await visualBeside(r.text, decision.shape.visual?.kind === "diagram" ? r.diagram : undefined);
       break;
     }
     case "code_job": {

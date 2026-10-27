@@ -16,7 +16,10 @@ tulmi/src/code/agent/
   run.ts           one run of the loop: the state, the claim it writes through, the ways it stops
   phases.ts        prepare ... report, each a function over a Run that can be entered again
   loop.ts          the driver (runLoop), the single-advance entry (advanceLoop), and the budget stop
-  orchestrator.ts  the worker: claims, checkpoints, concurrency, the person's word
+  orchestrator.ts  the worker: claims, checkpoints, concurrency, the person's word, rewind, the project's settings
+  merge.ts         the merge phase (a PR-care job for a conflict): the default branch merged in on a runner, judged, resolved by the model
+  rewind.ts        the rewind points (the staged edits after each step) and the files of a revert commit
+  settings.ts      how a project's jobs are worked: guided or free-form, and "always show me the plan first"
   index.ts         createAgent(): wired from the Code object and the job router
 ```
 
@@ -49,6 +52,10 @@ prepare ──┬─ a question, research, a library to find ──────�
 | `report` | What changed, the PR link, the checks, the findings, **"already broken before Tailzu" as its own list**, the cost in rupees and what to do next. The job is finished through the router, which pushes `job_done`. | |
 
 A job that changes nothing (a question, "nothing needed changing") skips `verify`, `design`, `commit` and `pr`: the model's summary is the report. A job with no design to match skips `design`; its phase list is otherwise the same.
+
+Two jobs take other roads through this table. A **free-form** job (section 14) goes from `baseline` straight to `work`, with no `locate` and, unless the person asked to see the plan first, no `plan`. A **PR-care job for a conflict** (`docs/pr-care.md` section 5) has a `merge` phase after `baseline`: a runner merges the default branch into the branch, the model judges which files clash and resolves them in `work`, and `commit` makes a **merge commit with two parents** instead of an ordinary one; its `pr` is the existing pull request, which is not rewritten.
+
+**Verify comes first, and the commit checks it.** What is committed must be exactly what the checks passed. `verify` writes a digest of the staged edits it passed (`AgentState.verified`) and `commitStaged` refuses any other: edits that were never verified, or that changed after they were, throw `Unverified` before GitHub is asked for anything. No order of phases, no model turn and no restart can commit edits the checks have not seen. (A merge commit is verified the same way, with the project's own typecheck, lint, test and build run on the merged result.)
 
 ## 2. Who runs a job, and what a restart does
 
@@ -133,7 +140,7 @@ A job that needs the person is **parked**: `waiting_for_you`, nobody's claim, th
 All the owner's only (the router's `job` looks the job up by the person's id: anyone else is told `404 not_found`), all behind the session, and `404 agent_off` on a server without the agent (it needs the Code bot's GitHub client **and** the project brain, `CODE_PROJECT_BRAIN`).
 
 ```
-POST /v1/code/jobs                   { projectId, branch, task, budgetPaise? }  -> { job }; enqueued for the agent at once
+POST /v1/code/jobs                   { projectId, branch, task, budgetPaise?, mode?, planFirst? }  -> { job }; enqueued for the agent at once. mode "guided" | "freeform" and planFirst true | false are for this job and beat the project's setting (sections 14 and 15)
 GET  /v1/code/jobs/:id               -> { job, steps, agent? }   where the agent is: phase, waiting, plan, staged, commits, PR, verify, findings, report
 POST /v1/code/jobs/:id/answer        { answer }                  409 not_waiting if it asked nothing
 POST /v1/code/jobs/:id/approve       { approvalId? }             a question, then { approved, job }; 409 approval_expired / approval_invalid / not_waiting
@@ -143,6 +150,10 @@ POST /v1/code/jobs/:id/stop                                      the loop is tol
 GET  /v1/code/jobs/:id/log                                       -> { entries } the work log, in order
 POST /v1/code/jobs/:id/message       { text }                    -> { delivered: true }  the person's words to a job that is working (section 13); 404 live_off, 409 job_over
 POST /v1/code/jobs/:id/live                                      -> { url, ticket, expiresAt }  a pass for the app's live view of the job (section 13); 404 live_off
+POST /v1/code/jobs/:id/rewind        { toStep, approvalId? }     -> { kind: "restored" | "reverted" | "needs_approval", ... }  go back to a step (section 16)
+GET  /v1/code/jobs/:id/checkpoints                               -> { checkpoints: [{ step, at, note, files }] }  the steps a rewind can go to
+GET  /v1/code/projects/:id/settings                              -> { settings: { mode, planFirst } }
+PUT  /v1/code/projects/:id/settings  { mode?, planFirst? }       -> the same, after the change
 POST /v1/code/runner/ticket          { deviceId }                -> { url, ticket, expiresAt }  a pass for a computer's presence socket (docs/desktop-runner-session.md); 404 live_off
 ```
 
@@ -158,7 +169,7 @@ The agent's state holds the person's code (the staged edits, the last files it r
 
 ## 9. Setting up
 
-1. Run `tulmi/supabase/migrations/0030_code_agent.sql` (or `full_schema.sql`) after `0029`, **before** the new release takes `POST /v1/code/jobs`: the job has new columns and three new waits.
+1. Run `tulmi/supabase/migrations/0030_code_agent.sql` (or `full_schema.sql`) after `0029`, **before** the new release takes `POST /v1/code/jobs`: the job has new columns and three new waits. For free-form jobs, plan-first, rewind and PR care also run `0034_code_chat_and_care.sql` (the settings, the rewind points, PR care's rows, and three columns on the steps); without it each of those stores keeps its rows in memory and a restart forgets them, and nothing else depends on it.
 2. Optionally set `CODE_JOB_DEFAULT_BUDGET_PAISE` (default 3000) and `CODE_AGENT_CONCURRENCY` (default 4). `CODE_GITHUB` and `CODE_PROJECT_BRAIN` must be on.
 3. Nothing else: the worker starts with the router's ticker when the server is ready and stops when it closes.
 4. Optional: run the jobs on Cloudflare instead (`CODE_JOBS_MODE=cloudflare`, section 12). Nothing in sections 1 to 8 changes for the person.
@@ -179,7 +190,7 @@ The tests run the whole loop offline, over a fake GitHub, a scripted model and a
 
 ## 11. Tests
 
-`tests/code-agent-loop.test.ts` (the happy path, fix rounds, already-broken, the baseline, the tools), `-ask` (every wait: the model's question, locate, plan approval and deny, commit and ready approvals, the budget), `-resume` (a crash after two edits, an adopted run, two servers, a slow server fenced, concurrency, closing, loop errors), `-safety` (refused paths, secrets, prompt injection), `-newproject` (an empty repo), `-routes` (the HTTP), `-units` (the parts, the claim in the store, the router's overlay, the runner), and `code-run-script.test.ts` / `code-jobs-placement.test.ts` for `applyOverlay` and the ticker. The live session's tests are `code-live-search` (the search and its safety), `-tools` (the model's `grep`, `glob`, `read_file`, `list_dir` over a fake room, and without one), `-agent` (the loop's hooks: the room, closing the session before the person is asked and before the job ends, progress events, the person's words), `-routes`, `-minutes`, `-runner` (`run.mjs`'s session mode against a fake room), `-workflow` and `-tickets`; and in `jobs/test/` the room, the session, presence, the viewer and a whole agent job over a real room. The design round's are `code-agent-design.test.ts` (route finding, the dev command, every skip, the rounds, the budget, resuming after a restart or a wait, the report), with `artifacts-{pixels,shots,shots-route,compare}.test.ts` and `web-browser-shot.test.ts` for what it calls. `tests/agent-rig.ts` is the rig: a real orchestrator, router, policy and workspace over `FakeGithub`, the fixture brain, a scripted model (`scriptedModel`) and a runner that answers from a script (`ScriptRunner`).
+`tests/code-agent-loop.test.ts` (the happy path, fix rounds, already-broken, the baseline, the tools), `-ask` (every wait: the model's question, locate, plan approval and deny, commit and ready approvals, the budget), `-resume` (a crash after two edits, an adopted run, two servers, a slow server fenced, concurrency, closing, loop errors), `-safety` (refused paths, secrets, prompt injection), `-newproject` (an empty repo), `-routes` (the HTTP), `-units` (the parts, the claim in the store, the router's overlay, the runner), and `code-run-script.test.ts` / `code-jobs-placement.test.ts` for `applyOverlay` and the ticker. The live session's tests are `code-live-search` (the search and its safety), `-tools` (the model's `grep`, `glob`, `read_file`, `list_dir` over a fake room, and without one), `-agent` (the loop's hooks: the room, closing the session before the person is asked and before the job ends, progress events, the person's words), `-routes`, `-minutes`, `-runner` (`run.mjs`'s session mode against a fake room), `-workflow` and `-tickets`; and in `jobs/test/` the room, the session, presence, the viewer and a whole agent job over a real room. The design round's are `code-agent-design.test.ts` (route finding, the dev command, every skip, the rounds, the budget, resuming after a restart or a wait, the report), with `artifacts-{pixels,shots,shots-route,compare}.test.ts` and `web-browser-shot.test.ts` for what it calls. Free-form, plan-first, rewind and the settings' routes are `code-agent-freeform.test.ts`; the merge phase's is in `code-pr-care-conflict.test.ts`. `tests/agent-rig.ts` is the rig: a real orchestrator, router, policy and workspace over `FakeGithub`, the fixture brain, a scripted model (`scriptedModel`) and a runner that answers from a script (`ScriptRunner`).
 
 ## 12. Running the loop on Cloudflare (`CODE_JOBS_MODE=cloudflare`)
 
@@ -234,3 +245,27 @@ What the loop does to keep these honest:
 * **Output is scrubbed** before it goes into a checkpoint, a work log or an event.
 
 The tools' own descriptions tell the model to use `grep` for anything exact, `glob` for names, `search_code` for "where is the feature" and `read_file` after, and to batch commands in a `run`.
+
+## 14. Free-form jobs
+
+The guided road is right when the task names its place: locate, plan, work. It is wrong for "why does checkout sometimes fail?", "find out what is eating the memory", "try a few things and see": there is no place to locate yet, and a plan written before the exploring is a guess. A **free-form** job (`AgentState.mode = "freeform"`) lets the model decide the order of explore, change and run:
+
+```
+prepare ► baseline ► work (read, search, run, edit, run again ... in the model's own order) ► verify ► commit ► pr ► report
+```
+
+* **Chosen** by the front door (a code task whose words are open-ended: debug, investigate, find out why, track down, an intermittent or flaky failure; `docs/front-door.md`), by `mode: "freeform"` on `POST /v1/code/jobs`, or for every job of a project by its setting (section 15). A job's own word beats the project's; the default is guided. The same job on the same project is guided or free-form, never half of each.
+* **The same rails.** Free-form means the model chooses the order, not that it chooses the rules. The budget (a turn the money cannot cover is not made), the policy, the staged changeset, the secret scan, text from outside as data, checkpoints, and **verify before commit** (section 1) are exactly the guided job's. It never gets a tool that commits.
+* **Held in a way of its own.** The model is told, in the task, that the order is its to decide and how much it has. A free-form job has at most **40 steps** (a step is a turn and its tool calls; the guided job has 60 turns) and **25 runs** in all (a guided round has 10): investigating means running things, and a model that may decide anything is easy to lose in. At the step cap the work is called done with a note, and goes on to the checks with what is staged.
+* **Plan-first still plans.** A free-form job with "show me the plan first" runs one locate (that never stops to ask) and one plan, waits for the yes, and only then works.
+
+## 15. "Always show me the plan first"
+
+A person who wants to see what Tailzu intends before it does anything sets `planFirst` (on the project, `PUT /v1/code/projects/:id/settings { planFirst: true }`, or on one job). Then **every task's plan goes to the person for a yes before any work**, whatever its risk, in either mode: the job parks (`waiting_for_you`, `approval`, the plan's steps and files in the summary), and goes on when they `approve` (the two-step question of section 6) or ends when they `deny`, with nothing changed. Without the setting only a high-risk plan, or one the policy would ask about, waits, as before. The setting is the project's (`code_project_settings`, migration 0034, one row per project, the owner's); a job's `planFirst` beats it in either direction. PR care's jobs obey it too.
+
+## 16. Rewind
+
+After every step of the model's work the staged edits as they then stood are kept with a line on what the step did (`rewind.ts`; `code_job_checkpoints`; the last 60 steps and 3 MB of staged text in all, the oldest dropped first; they go with the job and are the owner's to read). `GET /v1/code/jobs/:id/checkpoints` lists them; `POST /v1/code/jobs/:id/rewind { toStep }` goes back to one (`0` is before any work):
+
+* **Before the commit** the staged edits are put back as they stood after that step; what the model did since is forgotten (it is given the notes it had then); and the job goes on working from there. The loop that was running is fenced off first (the claim's epoch moves), so it can write nothing more. A job that is over and made no commit has nothing to go on with (`409 job_over`).
+* **After the commit** a **new commit** returns the files the job changed to what they were at that step (the staged text of the step, or the branch as it was before the job's first commit), made through the policy like any commit. **History is never rewritten**: no reset, no force, no rebase; the old commits stay as its parents. The job ends. If the policy would ask for the person's yes, the answer is `{ kind: "needs_approval", approvalId, ... }` and the same call with that `approvalId` makes the commit; a standing "never" refuses it (`403 policy_denied`) and nothing is pushed. If the branch already is what the step had, no commit is made.

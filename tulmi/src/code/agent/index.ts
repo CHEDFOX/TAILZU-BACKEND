@@ -30,7 +30,9 @@ import { jobStore, type JobStore } from "../jobs/store.js";
 import { brainOf, type AgentBrain, type AgentDeps, type DesignDeps } from "./deps.js";
 import { MemoryInbox, type LiveDeps } from "../live/ports.js";
 import { AgentOrchestrator, type RemoteJobs } from "./orchestrator.js";
+import { rewindStore, type RewindStore } from "./rewind.js";
 import { routerRunner, type AgentRunner } from "./runner.js";
+import { settingsStore, type SettingsStore } from "./settings.js";
 
 export * from "./changeset.js";
 export * from "./checks.js";
@@ -42,11 +44,16 @@ export * from "./orchestrator.js";
 export * from "./phases.js";
 export * from "./report.js";
 export * from "./run.js";
+export * from "./rewind.js";
 export * from "./runner.js";
+export * from "./settings.js";
 export * from "./tools.js";
 export * from "./types.js";
 
 export interface CreateAgentOptions extends Partial<Pick<AgentDeps, "call" | "gateway" | "web" | "fetchFn" | "findResources" | "worklog" | "intake" | "routeStats" | "notify" | "now" | "sleep" | "log">> {
+  /** Where rewind points and the projects' settings are kept; the process's own (Supabase, else memory) when not given. */
+  rewind?: RewindStore;
+  settings?: SettingsStore;
   code: Pick<Code, "store" | "github" | "approvals" | "oauth" | "brain">;
   jobs: JobRouter;
   store?: JobStore;
@@ -82,6 +89,7 @@ export function createAgent(o: CreateAgentOptions): AgentOrchestrator | null {
   const sleep = o.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const deps: AgentDeps = {
     projects, jobs: o.jobs, store, brain, runner: o.runner ?? routerRunner({ jobs: o.jobs, store, now, sleep }), now, sleep,
+    rewind: o.rewind ?? rewindStore(), settings: o.settings ?? settingsStore(),
     ...(o.call ? { call: o.call } : {}), ...(o.gateway ? { gateway: o.gateway } : {}), ...(o.web ? { web: o.web } : {}), ...(o.fetchFn ? { fetchFn: o.fetchFn } : {}),
     ...(o.findResources ? { findResources: o.findResources } : {}), ...(o.worklog ? { worklog: o.worklog } : {}), ...(o.intake ? { intake: o.intake } : {}),
     ...(o.routeStats ? { routeStats: o.routeStats } : {}), ...(o.notify ? { notify: o.notify } : {}), ...(o.log ? { log: o.log } : {}),

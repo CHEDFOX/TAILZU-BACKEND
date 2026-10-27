@@ -911,7 +911,7 @@ describe("the workspace", () => {
     const main = fake.head(repo, "main");
     await ws.commit([{ path: "z.txt", content: "z" }], "z");
     expect(fake.head(repo, "main")).toBe(main);
-    expect(Object.keys(ws).sort()).toEqual(["branch", "commit", "openDraftPr", "own", "project", "read", "tree"]);
+    expect(Object.keys(ws).sort()).toEqual(["branch", "commit", "mergeCommit", "openDraftPr", "own", "project", "read", "tree"]);
   });
 });
 

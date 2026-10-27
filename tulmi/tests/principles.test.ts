@@ -38,6 +38,8 @@ const { ARTIFACT_LIBS } = await import("../src/artifacts/protocol.js");
 const { WELCOME_CHARS } = await import("../src/code/project/types.js");
 const { rows, totals, NEW_ROLES } = await import("../scripts/prompt-sizes.js");
 const { DecideReply } = await import("../src/front/decide.js");
+const { ReviewVerdict } = await import("../src/code/prcare/review.js");
+const { ConflictVerdict } = await import("../src/code/agent/merge.js");
 const { PlanSchema: FrontPlanReply } = await import("../src/front/handlers.js");
 const { INTENTS: FRONT_INTENTS, LENGTHS: FRONT_LENGTHS, VISUAL_KINDS } = await import("../src/front/types.js");
 
@@ -167,7 +169,7 @@ describe("the roles", () => {
     expect(isRoleId("classify")).toBe(true);
     expect(isRoleId("front_decide")).toBe(true);
     expect(isRoleId("nobody")).toBe(false);
-    expect(ROLE_IDS.length).toBe(29);
+    expect(ROLE_IDS.length).toBe(31);
   });
 });
 
@@ -262,10 +264,12 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   artifact_compare: 942, // 856 measured
   front_decide: 1606, // 1460 measured
   front_reply: 1173, // 1066 measured
-  front_code_answer: 868, // 789 measured
+  front_code_answer: 1174, // 1067 measured
   front_diagram: 612, // 556 measured
   front_plan: 735, // 668 measured
   front_look: 646, // 587 measured
+  care_review: 1565, // 1422 measured
+  care_conflict: 767, // 697 measured
 };
 
 describe("the size of a role", () => {
@@ -323,6 +327,8 @@ describe("the contracts say what the parsers read", () => {
     ["artifact_compare", VerdictSchema],
     ["front_decide", DecideReply],
     ["front_plan", FrontPlanReply],
+    ["care_review", ReviewVerdict],
+    ["care_conflict", ConflictVerdict],
   ];
 
   it("name every field of the schema the answer is read with", () => {

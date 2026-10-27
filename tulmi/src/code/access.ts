@@ -97,10 +97,10 @@ export interface GitAccess {
 export class AppAccess implements GitAccess {
   readonly kind = "app" as const;
   constructor(
-    private readonly mint: (installationId: number, repoId?: number, workflows?: boolean, actions?: "read" | "write") => Promise<string>,
+    private readonly mint: (installationId: number, repoId?: number, workflows?: boolean, actions?: "read" | "write", ci?: boolean) => Promise<string>,
     private readonly permissions: (installationId: number) => Promise<string[]>,
   ) {}
-  token(repo: RepoRef): Promise<string> { return this.mint(repo.installationId, repo.repoId, repo.workflows === true, repo.actions); }
+  token(repo: RepoRef): Promise<string> { return this.mint(repo.installationId, repo.repoId, repo.workflows === true, repo.actions, repo.ci === true); }
   scopes(repo: RepoRef): Promise<string[]> { return this.permissions(repo.installationId); }
 }
 

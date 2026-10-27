@@ -116,7 +116,7 @@ describe("a PC's presence", () => {
 
   it("is sent a step with `offer`, and only if it is there", async () => {
     const c = await pc("alice-9", "laptop-0009");
-    const offer = { jobId: newJob(301), stepIdx: 2, epoch: 4, commands: ["npm test"], timeoutSec: 600, repo: { kind: "app", cloneUrl: "https://github.com/acme/app.git", branch: "tailzu/x", headSha: "a".repeat(40) } };
+    const offer = { jobId: newJob(301), stepIdx: 2, epoch: 4, projectId: newJob(302), projectName: "acme/app", commands: ["npm test"], timeoutSec: 600, repo: { kind: "app", cloneUrl: "https://github.com/acme/app.git", branch: "tailzu/x", headSha: "a".repeat(40) } };
     expect(await devices("alice-9").offer("laptop-0009", offer)).toBe(true);
     expect(await c.next((m) => m.t === "offer")).toEqual({ t: "offer", offer });
     expect(await devices("alice-9").cancel("laptop-0009", offer.jobId, 4)).toBe(true);

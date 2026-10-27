@@ -139,10 +139,15 @@ export interface CodeBranch {
   state: BranchState;
   /** Epoch ms of the last review GitHub told us about (pull_request_review), or null. */
   lastReviewAt: number | null;
+  /**
+   * The person HANDED this pull request's branch over to Tailzu (code/prcare): it is not a "tailzu/..." branch Tailzu made, but one the person asked Tailzu to look
+   * after. It is recorded like a work branch, so jobs run on it and the policy treats it as Tailzu's own: the hand-over is the person's yes to pushing to it.
+   */
+  handed?: boolean;
   createdAt: number;
 }
 
-export type NewCodeBranch = Pick<CodeBranch, "projectId" | "branch" | "task" | "baseSha">;
+export type NewCodeBranch = Pick<CodeBranch, "projectId" | "branch" | "task" | "baseSha"> & { handed?: boolean };
 
 export type GrantEffect = "allow" | "deny";
 
@@ -471,7 +476,7 @@ interface OAuthRow {
 }
 interface BranchRow {
   project_id: string; branch: string; task: string; base_sha: string; pr_number: number | null; pr_url: string | null;
-  state: BranchState | null; last_review_at: string | null; created_at: string;
+  state: BranchState | null; last_review_at: string | null; handed?: boolean | null; created_at: string;
 }
 interface GrantRow {
   id: string; project_id: string; action: string; branch_pattern: string | null; effect: GrantEffect; expires_at: string | null; created_at: string;
@@ -495,7 +500,7 @@ const projectOf = (r: ProjectRow): CodeProject => ({
 const branchOf = (r: BranchRow): CodeBranch => ({
   projectId: r.project_id, branch: r.branch, task: r.task, baseSha: r.base_sha,
   prNumber: r.pr_number ?? null, prUrl: r.pr_url ?? null, state: r.state ?? "active", lastReviewAt: ms(r.last_review_at),
-  createdAt: ms(r.created_at) ?? 0,
+  ...(r.handed === true ? { handed: true } : {}), createdAt: ms(r.created_at) ?? 0,
 });
 
 const grantOf = (r: GrantRow): CodeGrant => {
@@ -654,7 +659,7 @@ export class SupabaseCodeStore implements CodeStore {
 
   async addBranch(n: NewCodeBranch) {
     const r = ok(await this.sb.from("code_branches").insert({
-      project_id: n.projectId, branch: n.branch, task: n.task, base_sha: n.baseSha,
+      project_id: n.projectId, branch: n.branch, task: n.task, base_sha: n.baseSha, ...(n.handed === true ? { handed: true } : {}),
     }).select("*").single<BranchRow>());
     return branchOf(r!);
   }

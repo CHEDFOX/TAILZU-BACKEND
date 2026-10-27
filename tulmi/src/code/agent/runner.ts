@@ -42,6 +42,11 @@ export interface RunSpec {
   overlay?: OverlayFile[];
   /** Keep what the commands change (the scaffold of a new project). Default: no, it is a trial. */
   keepChanges?: boolean;
+  /**
+   * Hand what the commands change BACK to the agent (RunOutcome.changes) instead of committing it: the merge of the default branch into a branch,
+   * whose result the model reads, resolves and the server commits as a merge commit (code/prcare). The step keeps them until `clearCaptured`.
+   */
+  capture?: boolean;
   /** Why, in a few words, for the log. */
   why?: string;
   /** A step this ask was made for before a restart: if it is there with these commands, it is taken over, finished or not. */
@@ -51,7 +56,7 @@ export interface RunSpec {
 }
 
 export type RunOutcome =
-  | { status: "done"; exitCode: number; outputTail: string; minutes: number; stepIdx: number; /** How long it ran, when it is known to the millisecond (a live session). */ ms?: number }
+  | { status: "done"; exitCode: number; outputTail: string; minutes: number; stepIdx: number; /** How long it ran, when it is known to the millisecond (a live session). */ ms?: number; /** A `capture` step's changes (the files as the commands left them). */ changes?: OverlayFile[] }
   /** No place took the step in time (no PC online, no free minutes, paid compute off or asking). */
   | { status: "no_runner"; reason: string }
   | { status: "timeout"; reason: string }
@@ -131,7 +136,7 @@ export function routerRunner(o: RouterRunnerOptions): AgentRunner {
       }
       if (!step) {
         step = (await o.jobs.requestExec(job.id, spec.commands, spec.timeoutSec, spec.estimateMinutes, {
-          ...(spec.overlay?.length ? { overlay: spec.overlay } : {}), keepChanges: spec.keepChanges === true,
+          ...(spec.overlay?.length ? { overlay: spec.overlay } : {}), keepChanges: spec.keepChanges === true, ...(spec.capture === true ? { capture: true } : {}),
         })).step;
       }
       await ctl.onStep?.(step.idx);
@@ -146,7 +151,7 @@ export function routerRunner(o: RouterRunnerOptions): AgentRunner {
         const j = await o.store.getJobById(job.id);
         if (!cur || !j || isEnded(j.state)) return { status: "cancelled", reason: "The job was stopped." };
         if (cur.status === "done" || cur.status === "failed") {
-          return { status: "done", exitCode: cur.exitCode ?? 1, outputTail: cur.outputTail, minutes: cur.minutes, stepIdx: idx };
+          return { status: "done", exitCode: cur.exitCode ?? 1, outputTail: cur.outputTail, minutes: cur.minutes, stepIdx: idx, ...(cur.captured.length ? { changes: cur.captured } : {}) };
         }
         if (cur.status === "cancelled") return { status: "cancelled", reason: "The step was dropped." };
         const waited = now() - started;

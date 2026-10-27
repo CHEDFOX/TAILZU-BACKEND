@@ -22,8 +22,8 @@
  *   A PC that cannot be reached (no socket) makes `offer` return false, and the router chooses again.
  */
 import { DurableObject } from "cloudflare:workers";
-import { allows } from "../../tulmi/src/code/jobs/devices.js";
-import { parseFromDevice, type DeviceInfo, type DeviceOffer, type ToDevice } from "../../tulmi/src/code/live/protocol.js";
+import { allows, capsOf, type CapableOpts } from "../../tulmi/src/code/jobs/devices.js";
+import { DEVICE_PROTOCOL_VERSION, parseFromDevice, type DeviceCapabilities, type DeviceInfo, type DeviceOffer, type ToDevice } from "../../tulmi/src/code/live/protocol.js";
 import type { Env } from "./env.js";
 import { getWorld } from "./world.js";
 
@@ -35,6 +35,8 @@ export interface DeviceView extends DeviceInfo {
   lastSeen: number;
   /** The app's own words about itself. */
   app?: string;
+  /** Always there once the computer has said hello: a plain computer's are all false and empty (protocol version 2). */
+  capabilities: DeviceCapabilities;
 }
 
 interface Attachment extends DeviceView {
@@ -71,7 +73,7 @@ export class UserDevices extends DurableObject<Env> {
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     this.ctx.acceptWebSocket(server, [deviceId]);
     const now = Date.now();
-    const a: Attachment = { deviceId, userId: request.headers.get("x-user-id") ?? "", name: "This computer", allowRun: false, projects: [], busy: false, since: now, lastSeen: now, hello: false };
+    const a: Attachment = { deviceId, userId: request.headers.get("x-user-id") ?? "", name: "This computer", allowRun: false, projects: [], busy: false, since: now, lastSeen: now, hello: false, capabilities: capsOf(undefined) };
     server.serializeAttachment(a);
     return new Response(null, { status: 101, webSocket: client });
   }
@@ -86,8 +88,10 @@ export class UserDevices extends DurableObject<Env> {
       case "hello": {
         // The device the ticket was for is the device this socket is.
         if (m.deviceId !== a.deviceId) { this.send(ws, { t: "error", code: "wrong_device", message: "That is not the device this connection was made for." }); try { ws.close(4003, "wrong device"); } catch { /* gone */ } return; }
-        ws.serializeAttachment({ ...a, name: m.name, allowRun: m.allowRun, projects: m.projects, busy: m.busy, ...(m.app ? { app: m.app } : {}), hello: true, lastSeen: now } satisfies Attachment);
-        this.send(ws, { t: "ack", v: 1, deviceId: a.deviceId });
+        const capabilities = capsOf(m.capabilities);
+        ws.serializeAttachment({ ...a, name: m.name, allowRun: m.allowRun, projects: m.projects, busy: m.busy, capabilities, ...(m.app ? { app: m.app } : {}), hello: true, lastSeen: now } satisfies Attachment);
+        // A version 1 app is answered in version 1: it does not know the new words. A version 2 one is told the capabilities as they will be used.
+        this.send(ws, m.v === 2 ? { t: "ack", v: DEVICE_PROTOCOL_VERSION, deviceId: a.deviceId, capabilities } : { t: "ack", v: 1, deviceId: a.deviceId });
         await this.changed(a.userId);
         return;
       }
@@ -96,14 +100,17 @@ export class UserDevices extends DurableObject<Env> {
         const next: Attachment = {
           ...a, lastSeen: now, ...(m.name !== undefined ? { name: m.name } : {}), ...(m.allowRun !== undefined ? { allowRun: m.allowRun } : {}),
           ...(m.projects !== undefined ? { projects: m.projects } : {}), ...(m.busy !== undefined ? { busy: m.busy } : {}),
+          ...(m.capabilities !== undefined ? { capabilities: capsOf(m.capabilities) } : {}),
         };
         ws.serializeAttachment(next);
-        const freed = (next.allowRun && !next.busy && !(a.allowRun && !a.busy)) || next.projects !== a.projects;
+        const freed = (next.allowRun && !next.busy && !(a.allowRun && !a.busy)) || next.projects !== a.projects || next.capabilities.liveOnly !== a.capabilities.liveOnly;
         if (freed) await this.changed(a.userId);
         return;
       }
       case "decline":
-        // Informational: the router moves a step whose PC does not take it when the lease runs out.
+        // Protocol version 2: the lease is released AT ONCE and the step goes elsewhere (never back to this computer). The router does it, in the Worker's world;
+        // a late or foreign decline is refused there (stale_lease) and is of no consequence here. It used to be informational only.
+        await this.declined(a, m.jobId, m.epoch, m.reason);
         return;
       case "bye":
         try { ws.close(1000, "bye"); } catch { /* gone */ }
@@ -116,6 +123,12 @@ export class UserDevices extends DurableObject<Env> {
   }
 
   async webSocketError(): Promise<void> { /* the socket is gone; online() reads the sockets that are left */ }
+
+  /** A PC said no to the step it was offered: the router takes the lease back now and places the step again. */
+  private async declined(a: Attachment, jobId: string, epoch: number, reason?: string): Promise<void> {
+    if (!a.userId) return;
+    try { await (await getWorld(this.env)).ticker.decline?.(a.userId, { jobId, epoch, deviceId: a.deviceId, ...(reason ? { reason } : {}) }); } catch { /* it was not the holder, or the step moved already: nothing to undo */ }
+  }
 
   /** A PC became able to take work: this person's waiting jobs are looked at now, not at the next cron. */
   private async changed(userId: string): Promise<void> {
@@ -137,9 +150,17 @@ export class UserDevices extends DurableObject<Env> {
     return out.sort((x, y) => y.lastSeen - x.lastSeen || (x.deviceId < y.deviceId ? -1 : 1));
   }
 
-  /** The PCs that may take a step of this project: online, "run commands" on, the project allowed, not busy. */
-  async capable(projectId: string): Promise<DeviceView[]> {
-    return (await this.online()).filter((d) => d.allowRun && !d.busy && allows(d, projectId));
+  /**
+   * The PCs that may take a step of this project: online, "run commands" on, the project allowed, not busy; for a step that is not a live session, not a
+   * live-only one; not one that declined this step. A PC that is not in a container comes first (devices.ts capable). `online()` is already newest first.
+   */
+  async capable(projectId: string, o: { session?: boolean; skip?: string[] } = {}): Promise<DeviceView[]> {
+    const opts: CapableOpts = { ...(o.session === true ? { session: true } : {}), ...(o.skip?.length ? { skip: new Set(o.skip) } : {}) };
+    return (await this.online())
+      .filter((d) => d.allowRun && !d.busy && allows(d, projectId) && (opts.session === true || !d.capabilities.liveOnly) && !opts.skip?.has(d.deviceId))
+      .map((d, i) => ({ d, i }))
+      .sort((a, b) => Number(a.d.capabilities.container) - Number(b.d.capabilities.container) || a.i - b.i)
+      .map((x) => x.d);
   }
 
   /** Sends a PC a step. False when it has no socket here, or the send failed. */

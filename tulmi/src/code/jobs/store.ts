@@ -102,9 +102,10 @@ export interface NewStep {
   finishedAt?: number | null;
   overlay?: OverlayFile[];
   discard?: boolean;
+  capture?: boolean;
 }
 
-export type StepPatch = Partial<Pick<JobStep, "status" | "placement" | "epoch" | "startedAt" | "finishedAt" | "exitCode" | "outputTail" | "minutes" | "overlay">>;
+export type StepPatch = Partial<Pick<JobStep, "status" | "placement" | "epoch" | "startedAt" | "finishedAt" | "exitCode" | "outputTail" | "minutes" | "overlay" | "captured" | "declined">>;
 
 export const DEFAULT_SETTINGS: Readonly<Omit<ComputeSettings, "userId">> = { paidRule: "never", autoCapPaise: 0, githubEnabled: true };
 
@@ -170,7 +171,7 @@ export class TooManySteps extends Error {
 
 const cloneJob = (j: CodeJob): CodeJob => ({ ...j, checkpoint: cloneCheckpoint(j.checkpoint) });
 const cloneCheckpoint = (c: Checkpoint): Checkpoint => ({ ...c, ...(c.agent ? { agent: structuredClone(c.agent) } : {}) });
-const cloneStep = (s: JobStep): JobStep => ({ ...s, commands: [...s.commands], overlay: s.overlay.map((f) => ({ ...f })) });
+const cloneStep = (s: JobStep): JobStep => ({ ...s, commands: [...s.commands], overlay: s.overlay.map((f) => ({ ...f })), captured: s.captured.map((f) => ({ ...f })), declined: [...s.declined] });
 
 // -------------------------------------------------------------------- memory
 
@@ -267,6 +268,7 @@ export class MemoryJobStore implements JobStore {
       jobId, idx: list.length, kind: n.kind, commands: [...n.commands], timeoutSec: n.timeoutSec, estimateMinutes: n.estimateMinutes,
       status: n.status, placement: n.placement ?? "none", epoch: 0, startedAt: null, finishedAt: n.finishedAt ?? null,
       exitCode: null, outputTail: "", minutes: 0, overlay: (n.overlay ?? []).map((f) => ({ ...f })), discard: n.discard === true,
+      capture: n.capture === true, captured: [], declined: [],
     };
     list.push(s);
     return cloneStep(s);
@@ -281,7 +283,7 @@ export class MemoryJobStore implements JobStore {
   async updateStep(jobId: string, idx: number, patch: StepPatch) {
     const s = this.steps.get(jobId)?.[idx];
     if (!s) return null;
-    Object.assign(s, patch, patch.overlay ? { overlay: patch.overlay.map((f) => ({ ...f })) } : {});
+    Object.assign(s, patch, patch.overlay ? { overlay: patch.overlay.map((f) => ({ ...f })) } : {}, patch.captured ? { captured: patch.captured.map((f) => ({ ...f })) } : {}, patch.declined ? { declined: [...patch.declined] } : {});
     return cloneStep(s);
   }
 
@@ -343,7 +345,7 @@ interface JobRow {
 interface StepRow {
   job_id: string; idx: number; kind: StepKind; commands: unknown; timeout_sec: number; estimate_minutes: number; status: StepStatus;
   placement: Placement; epoch: number; started_at: string | null; finished_at: string | null; exit_code: number | null;
-  output_tail: string | null; minutes: number; overlay: unknown; discard: boolean | null;
+  output_tail: string | null; minutes: number; overlay: unknown; discard: boolean | null; capture: boolean | null; captured: unknown; declined: unknown;
 }
 interface SettingsRow { user_id: string; paid_rule: PaidRule; auto_cap_paise: number; github_enabled: boolean }
 interface UsageRow { user_id: string; month: string; github_minutes: number; paid_paise: number }
@@ -381,6 +383,7 @@ const stepOf = (r: StepRow): JobStep => ({
   timeoutSec: int(r.timeout_sec), estimateMinutes: int(r.estimate_minutes), status: r.status, placement: r.placement, epoch: int(r.epoch),
   startedAt: ms(r.started_at), finishedAt: ms(r.finished_at), exitCode: r.exit_code === null || r.exit_code === undefined ? null : int(r.exit_code),
   outputTail: r.output_tail ?? "", minutes: int(r.minutes), overlay: overlayOf(r.overlay), discard: r.discard === true,
+  capture: r.capture === true, captured: overlayOf(r.captured), declined: Array.isArray(r.declined) ? r.declined.filter((x): x is string => typeof x === "string") : [],
 });
 const settingsOf = (r: SettingsRow): ComputeSettings => ({
   userId: r.user_id, paidRule: r.paid_rule, autoCapPaise: int(r.auto_cap_paise), githubEnabled: r.github_enabled !== false,
@@ -500,7 +503,7 @@ export class SupabaseJobStore implements JobStore {
       const res = await this.sb.from("code_job_steps").insert({
         job_id: jobId, idx, kind: n.kind, commands: n.commands, timeout_sec: n.timeoutSec, estimate_minutes: n.estimateMinutes,
         status: n.status, placement: n.placement ?? "none", finished_at: n.finishedAt === undefined || n.finishedAt === null ? null : iso(n.finishedAt),
-        ...(n.overlay?.length ? { overlay: n.overlay } : {}), ...(n.discard === true ? { discard: true } : {}),
+        ...(n.overlay?.length ? { overlay: n.overlay } : {}), ...(n.discard === true ? { discard: true } : {}), ...(n.capture === true ? { capture: true } : {}),
       }).select("*").single<StepRow>();
       if (!res.error) return stepOf(res.data!);
       if (attempt < 3 && /duplicate key|unique/i.test(res.error.message)) continue;
@@ -529,6 +532,8 @@ export class SupabaseJobStore implements JobStore {
     if (patch.outputTail !== undefined) row.output_tail = patch.outputTail;
     if (patch.minutes !== undefined) row.minutes = patch.minutes;
     if (patch.overlay !== undefined) row.overlay = patch.overlay;
+    if (patch.captured !== undefined) row.captured = patch.captured;
+    if (patch.declined !== undefined) row.declined = patch.declined;
     if (!Object.keys(row).length) return this.getStep(jobId, idx);
     const r = ok(await this.sb.from("code_job_steps").update(row).eq("job_id", jobId).eq("idx", idx).select("*").maybeSingle<StepRow>());
     return r ? stepOf(r) : null;

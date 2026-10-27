@@ -35,6 +35,17 @@
  *                                          -> { job }  adds to the job's budget; a job that stopped for the money ("continue with ₹X more") goes on
  *                                             from where it was. 409 job_over for a job that is over
  *   POST   /v1/code/jobs/:id/stop          -> { job }  stops the job: the agent's loop is told and any step that is out is dropped
+ *   POST   /v1/code/jobs/:id/rewind { toStep, approvalId? }
+ *                                          -> { kind: "restored", step, job }  before the commit: the staged edits are put back as they stood after that step
+ *                                             (0: before any work) and the job goes on working from there; or { kind: "reverted", step, sha, files, job }
+ *                                             after it: a NEW commit returns the files to that step, through the policy (history is never rewritten) and
+ *                                             the job ends; or { kind: "needs_approval", approvalId, action, summary, faceId, expiresAt }: say yes by sending
+ *                                             the same call with that approvalId. 404 not_found for a step with no point, 409 job_over
+ *   GET    /v1/code/jobs/:id/checkpoints   -> { checkpoints: [{ step, at, note, files }] }  the points a rewind can go to, oldest first
+ *   GET    /v1/code/projects/:id/settings  -> { settings: { mode, planFirst } }  how the project's jobs are worked: "guided" (locate, plan, work) or
+ *   PUT    /v1/code/projects/:id/settings { mode?, planFirst? }  "freeform" (the model decides the order of explore, change and run); planFirst: every
+ *                                             task's plan goes to the person for a yes before any work. POST /v1/code/jobs may carry { mode?, planFirst? }
+ *                                             for that one job, which beats the project's setting
  *   GET    /v1/code/jobs/:id/log           -> { entries }  the work log, in order: every step, read, edit, command, finding and decision
  *   POST   /v1/code/jobs/:id/commit-ok { approvalId? }
  *                                          -> a QUESTION, then { committed, sha, job }  yes to committing what a step produced, after a
@@ -49,16 +60,22 @@
  * The runner protocol, for the Tailzu desktop app (its side comes later). All of it is authenticated as the
  * person, like the rest of /v1; the app names itself with a device id it made, in the body or the address:
  *
- *   POST   /v1/code/runner/heartbeat { deviceId, name, allowRun, projects: [projectId] | "all", busy }
+ *   POST   /v1/code/runner/heartbeat { deviceId, name, allowRun, projects: [projectId] | "all" | { allExcept: [projectId] }, busy, capabilities?: { liveOnly, container, os, arch } }
  *                                          -> { ok, onlineForSec: 60, leasesRenewed }  marks the PC online for 60 seconds. Send one about
- *                                             every 30. A PC that says it is busy keeps the lease on the step it is running
+ *                                             every 30. A PC that says it is busy keeps the lease on the step it is running. Protocol version 2
+ *                                             (docs/desktop-runner-session.md): `allExcept` and `capabilities` are new, and the list of ids is no
+ *                                             longer cut at 200; a live-only PC is offered a live session and no ordinary step
  *   GET    /v1/code/runner/next?deviceId=&wait=
- *                                          -> { jobId, stepIdx, epoch, commands, timeoutSec, repo: { kind, cloneUrl, branch, headSha,
+ *                                          -> { jobId, stepIdx, epoch, projectId, projectName, commands, timeoutSec, repo: { kind, cloneUrl, branch, headSha,
  *                                             readToken?, readTokenExpiresAt?, tarballUrl? } }  or 204 when there is nothing. It waits up to
  *                                             25 seconds for a step (`wait` is seconds, 0 to answer at once). repo is the existing
  *                                             read-only runner access (code/projects.ts runnerAccess): a token that can read one repo and
  *                                             nothing else, or for a sign-in project a one-time download link. A PC is never given a token
  *                                             that can write. 409 unknown_device if it hasn't sent a heartbeat in the last minute
+ *   POST   /v1/code/runner/decline { jobId, epoch, deviceId }
+ *                                          -> { ok, placement, state }  "not this computer": the lease is released AT ONCE (protocol version 2; it used to
+ *                                             run out after 90 seconds) and the step is placed again, never on this computer. 409 stale_lease for a
+ *                                             lease the caller does not hold
  *   POST   /v1/code/runner/progress { jobId, epoch }
  *                                          -> { ok, leaseExpiresAt }  keeps the lease. 409 stale_lease: the step was given to another
  *                                             computer or the job stopped; drop it
@@ -95,6 +112,17 @@
  *                                             token for something else); 409 stale_lease for an epoch that isn't the job's current one. A result
  *                                             is at most 4 MB. The shadow branch is deleted after, whatever the answer
  *
+ * PR care (code/prcare, docs/pr-care.md): the pull requests Tailzu looks after. Its own (opened by Tailzu) are looked after from the first event; any other
+ * is looked after only when the person hands it over here. 404 care_off when it is not switched on.
+ *
+ *   GET    /v1/code/projects/:id/care      -> { pulls: [{ prNumber, branch, origin: "tailzu" | "handed", prUrl, title, ended, checks, conflict, waiting, working,
+ *                                             fixesToday, notes }] }  where each pull request stands, newest first
+ *   POST   /v1/code/projects/:id/care { prNumber }
+ *                                          -> { care }  "look after this pull request": it must be open and from a branch in this repo (not a fork).
+ *                                             Handing it over is the person's yes to Tailzu pushing to its branch (never forced; a protection rule still
+ *                                             says no). What was said on it before is taken as seen. 409 pr_not_open, 400 for a fork
+ *   DELETE /v1/code/projects/:id/care/:pr  -> { released }  "stop looking after it": the status comment says so, and jobs it started are cancelled
+ *
  * and the project, with what GitHub's free computers make of it:
  *
  *   GET    /v1/code/projects/:id           -> { project: { ...the project, ciNoise, ciNoiseMinutes, ciNoiseWorkflows } }  ciNoise is true when a
@@ -110,6 +138,8 @@ import { resolveUser } from "../auth/supabase.js";
 import { stripAgent, viewOfState, type AgentOrchestrator } from "../code/agent/orchestrator.js";
 import { stateOf } from "../code/agent/types.js";
 import type { Code } from "../code/index.js";
+import type { PrCare } from "../code/prcare/engine.js";
+import type { CareRow } from "../code/prcare/types.js";
 import type { GithubActionsProvider } from "../code/jobs/githubActions.js";
 import type { JobRouter } from "../code/jobs/router.js";
 import { startJobTicker } from "../code/jobs/ticker.js";
@@ -134,6 +164,8 @@ export interface CodeJobRoutesDeps {
   githubActions?: GithubActionsProvider | null;
   /** The agent loop's worker (code/agent). Null or absent: this server has none, and a job is left to whatever drives the router. */
   agent?: AgentOrchestrator | null;
+  /** PR care (code/prcare): looks after pull requests Tailzu opened or the person handed over. Null or absent: the care routes answer 404 care_off. */
+  care?: PrCare | null;
   /** A step's result was taken (a PC's, or GitHub's): tell whoever is waiting on the job. With jobs on the Worker this wakes its Workflow. */
   onStepResult?: (jobId: string) => void;
   /** The overload guards job creation runs under (src/guard); the process's own when not given. */
@@ -200,13 +232,21 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
     if (b.budgetPaise !== undefined && typeof b.budgetPaise !== "number") {
       return reply.code(400).send({ code: "bad_request", message: "budgetPaise is a whole number of paise." });
     }
+    if (b.mode !== undefined && b.mode !== "guided" && b.mode !== "freeform") {
+      return reply.code(400).send({ code: "bad_request", message: 'mode is "guided" or "freeform".' });
+    }
+    if (b.planFirst !== undefined && typeof b.planFirst !== "boolean") {
+      return reply.code(400).send({ code: "bad_request", message: "planFirst is true or false." });
+    }
     try {
       // One tap, one job: a double tap (or a retry with the same Idempotency-Key) is the job already made, never a second (src/guard).
       return await guarded(deps.guard, req, reply, s.user, "job", async () => {
         const job = await s.jobs.createJob(s.user.id, projectId, branch, task, b.budgetPaise as number | undefined, { agent: !!deps.agent });
         // The agent drives it from here: the whole request goes into its state (the job keeps 500 characters of it), and the worker is nudged.
         // With jobs on the Worker, "nudged" is "handed over": a job the Worker could not be reached for comes back failed, with the reason.
-        const made = deps.agent ? await deps.agent.enqueue(job.id, task) : null;
+        const made = deps.agent
+          ? await deps.agent.enqueue(job.id, task, { ...(b.mode ? { mode: b.mode as "guided" | "freeform" } : {}), ...(b.planFirst !== undefined ? { planFirst: b.planFirst as boolean } : {}) })
+          : null;
         return { status: 200, body: { job: stripAgent(made ?? job) } };
       });
     } catch (err) { return fail(reply, err); }
@@ -288,6 +328,26 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
     if (!deps.agent) return agentOff(reply);
     try {
       return reply.send({ job: await deps.agent.stopJob(s.user.id, req.params.id) });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.post<{ Params: { id: string }; Body: unknown; Querystring: { approvalId?: unknown } }>("/v1/code/jobs/:id/rewind", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.agent) return agentOff(reply);
+    try {
+      const id = req.query.approvalId ?? bodyOf(req.body).approvalId;
+      if (id !== undefined && (typeof id !== "string" || !id || id.length > 200)) return reply.code(400).send({ code: "bad_request", message: "approvalId is the id the question gave." });
+      return reply.send(await deps.agent.rewind(s.user.id, req.params.id, bodyOf(req.body).toStep, id as string | undefined));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.get<{ Params: { id: string } }>("/v1/code/jobs/:id/checkpoints", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.agent) return agentOff(reply);
+    try {
+      return reply.send({ checkpoints: await deps.agent.checkpoints(s.user.id, req.params.id) });
     } catch (err) { return fail(reply, err); }
   });
 
@@ -408,6 +468,17 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
     } catch (err) { return fail(reply, err); }
   });
 
+  app.post<{ Body: unknown }>("/v1/code/runner/decline", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      const out = await s.jobs.decline(s.user.id, req.body);
+      // The step went to another place (or is waiting for one): whoever waits on the job is told to look.
+      stepResult(req.body);
+      return reply.send(out);
+    } catch (err) { return fail(reply, err); }
+  });
+
   app.post<{ Body: unknown }>("/v1/code/runner/progress", RL, async (req, reply) => {
     const s = await begin(req.headers["authorization"], reply);
     if (!s) return reply;
@@ -435,6 +506,68 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
       const out = await deps.githubActions.handleResult(jobs, req.headers["authorization"], req.body);
       stepResult(req.body);
       return reply.send(out);
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // --- how a project's jobs are worked: guided or free-form, and "always show me the plan first"
+
+  app.get<{ Params: { id: string } }>("/v1/code/projects/:id/settings", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.agent) return agentOff(reply);
+    try {
+      return reply.send({ settings: await deps.agent.settings(s.user.id, req.params.id) });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.put<{ Params: { id: string }; Body: unknown }>("/v1/code/projects/:id/settings", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.agent) return agentOff(reply);
+    try {
+      return reply.send({ settings: await deps.agent.setSettings(s.user.id, req.params.id, req.body) });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // --- PR care: the pull requests Tailzu looks after in a project (code/prcare, docs/pr-care.md)
+
+  const careOff = (reply: FastifyReply) => reply.code(404).send({ code: "care_off", message: "Looking after pull requests is not switched on on this server." });
+  /** A row as the app sees it: where each part stands, never the person's code. */
+  const careView = (r: CareRow) => ({
+    prNumber: r.prNumber, branch: r.branch, origin: r.origin, prUrl: r.state.prUrl ?? null, title: r.state.title ?? null, ended: r.state.ended ?? null,
+    checks: r.state.ci ? { outcome: r.state.ci.outcome, names: r.state.ci.checks, note: r.state.ci.note } : null,
+    conflict: r.state.conflict ? { outcome: r.state.conflict.outcome, note: r.state.conflict.note } : null,
+    waiting: r.state.waiting ? { jobId: r.state.waiting.jobId, text: r.state.waiting.text } : null,
+    working: r.state.jobs.filter((j) => !j.done).map((j) => ({ jobId: j.jobId, kind: j.kind })),
+    fixesToday: r.ciRounds[new Date().toISOString().slice(0, 10)] ?? 0, notes: r.state.notes.slice(-8),
+  });
+
+  app.get<{ Params: { id: string } }>("/v1/code/projects/:id/care", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.care) return careOff(reply);
+    try {
+      return reply.send({ pulls: (await deps.care.list(s.user.id, req.params.id)).map(careView) });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.post<{ Params: { id: string }; Body: unknown }>("/v1/code/projects/:id/care", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.care) return careOff(reply);
+    try {
+      return reply.send({ care: careView(await deps.care.handOver(s.user.id, req.params.id, bodyOf(req.body).prNumber)) });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.delete<{ Params: { id: string; pr: string } }>("/v1/code/projects/:id/care/:pr", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    if (!deps.care) return careOff(reply);
+    try {
+      const n = /^[0-9]{1,9}$/.test(req.params.pr) ? Number(req.params.pr) : 0;
+      if (n < 1) return reply.code(400).send({ code: "bad_request", message: "The pull request is its number." });
+      return reply.send({ released: await deps.care.release(s.user.id, req.params.id, n) });
     } catch (err) { return fail(reply, err); }
   });
 

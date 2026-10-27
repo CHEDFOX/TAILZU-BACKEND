@@ -22,7 +22,13 @@
  *   pull_request_review        submitted      the matching work branch notes when the review came in
  *   push                       default branch the project brain of every project on the repo is marked stale, and an
  *                                             incremental build is scheduled after a minute of quiet (hooks.pushed;
- *                                             project/index.ts BrainSync). Other branches, deleted branches: nothing
+ *                                             project/index.ts BrainSync); PR care looks again for a conflict on every
+ *                                             pull request it looks after. Other branches, deleted branches: nothing
+ *   pull_request (opened, reopened, synchronize, ready_for_review, closed), pull_request_review (submitted),
+ *   pull_request_review_comment (created), issue_comment (created), check_run (completed), check_suite (completed),
+ *   status                                    PR care (hooks.care, code/prcare): handed over to it as they are and answered at once,
+ *                                             whatever else this file does with the same event. It is the care engine that decides the
+ *                                             event is about a pull request Tailzu looks after; every other pull request is ignored there
  *
  * A pull request is matched to a branch by the repo's id and the branch name
  * ("tailzu/..." only, and only when the branch is in that same repo, not a
@@ -31,7 +37,9 @@
  *
  * Anything else is a 202 and nothing. It only touches Tailzu's own store: it
  * never calls GitHub, so it answers fast (GitHub gives up after ten seconds),
- * and a delivery that arrives twice or late does the same thing twice.
+ * and a delivery that arrives twice or late does the same thing twice. PR care's
+ * events are only QUEUED here (the work happens after the answer is sent), and what
+ * they do is idempotent in the care row, so a delivery that comes twice does it once.
  */
 import { createHmac } from "node:crypto";
 import { sameSecret } from "../auth/secret.js";
@@ -53,12 +61,21 @@ const idOf = (v: unknown): number | null => (typeof v === "number" && Number.isS
 export interface WebhookHooks {
   /** Somebody pushed to the default branch of a project's repo. `after` is the commit the branch is at now. */
   pushed?: (project: CodeProject, after: string) => void | Promise<void>;
+  /** One of the events PR care listens to (prcare/engine.ts CARE_EVENTS). Quick: it queues the work and returns. */
+  care?: (event: string, payload: unknown) => void;
 }
+
+/** The events handed to `hooks.care` before anything else is done with them. */
+const CARE_EVENTS = new Set(["pull_request", "pull_request_review", "pull_request_review_comment", "issue_comment", "check_run", "check_suite", "status"]);
 
 /** What a delivery did: "handled" (a change was made, or there was nothing left to change), or "ignored". */
 export async function handleWebhook(
   store: CodeStore, event: string, payload: unknown, now = Date.now(), hooks: WebhookHooks = {},
 ): Promise<"handled" | "ignored"> {
+  // PR care first, whatever the rest does with the event (a handed-over pull request is not on a "tailzu/" branch). It queues; a failure here is never the delivery's.
+  if (hooks.care && CARE_EVENTS.has(event)) {
+    try { hooks.care(event, payload); } catch { /* the care engine's own log has it */ }
+  }
   const p = (payload && typeof payload === "object" ? payload : {}) as {
     action?: unknown; installation?: { id?: unknown }; repositories_removed?: Array<{ id?: unknown }>;
     repository?: { id?: unknown }; pull_request?: { merged?: unknown; head?: { ref?: unknown; repo?: { id?: unknown } | null } };

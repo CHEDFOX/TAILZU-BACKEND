@@ -32,6 +32,7 @@ import { answerPaise, budgetOf, COSTLY_PAISE, routeOf, tierOf } from "./path.js"
 import { readByRules, type RuleRead } from "./rules.js";
 import { chooseVisual } from "./visual.js";
 import { clarifyFor, langOf, type ClarifyKind } from "./words.js";
+import { deepCodeQuestion } from "../code/chat/question.js";
 import { INTENTS, LENGTHS, VISUAL_KINDS, type Clarify, type Decision, type FrontCtx, type Intent, type Length, type Via, type VisualKind } from "./types.js";
 
 /** The rules are trusted alone at or above this. */
@@ -198,7 +199,10 @@ export async function decide(message: string, ctx: FrontCtx, deps: DecideDeps = 
   // 4. The road, the shape and the money.
   const depth = intent === "research" ? rules.depth ?? "standard" : undefined;
   const route = routeOf(intent);
-  const tier = tierOf(intent, { hasImage, hasProject, ...(depth ? { depth } : {}), cls: rules.cls });
+  // A deep why (a slow page, a leak, a race) or what a change reaches is where a cheap model is most often confidently wrong: the strong tier, and the reason is written down.
+  const deep = intent === "code_question" && deepCodeQuestion(text);
+  if (deep) reasons.push("code:deep");
+  const tier = tierOf(intent, { hasImage, hasProject, ...(depth ? { depth } : {}), ...(deep ? { deep } : {}), cls: rules.cls });
   // How long the answer is when written; spoken, it is brief (below), but a visual is judged on the written length: a spoken comparison still has a table to offer.
   const written = length ?? lengthOf(text, intent, "text");
   length = ctx.mode === "voice" ? spoken(written, LONG.test(text)) : written;
@@ -224,6 +228,8 @@ export async function decide(message: string, ctx: FrontCtx, deps: DecideDeps = 
 
   return {
     intent, shape: { length, visual }, route, tier, budgetPaise, confidence, ...(clarify ? { clarify } : {}), via, ...(depth ? { depth } : {}),
-    language: rules.cls.language, ...(rules.followUp ? { followUp: rules.followUp.base } : {}), reasons: [...new Set(reasons)],
+    language: rules.cls.language, ...(rules.followUp ? { followUp: rules.followUp.base } : {}),
+    ...(rules.handoff && intent === "code_task" ? { handoff: true } : {}), ...(rules.openEnded && intent === "code_task" ? { mode: "freeform" as const } : {}),
+    reasons: [...new Set(reasons)],
   };
 }

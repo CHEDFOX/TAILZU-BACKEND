@@ -334,7 +334,7 @@ describe("migration 0033_front_decisions.sql", () => {
     const at = names.indexOf("0033_front_decisions.sql");
     expect(at).toBeGreaterThan(0);
     expect(names[at - 1]).toBe("0032_artifacts.sql");
-    expect(names.at(-1)).toBe("0033_front_decisions.sql");
+    expect(names[at + 1]).toBe("0034_code_chat_and_care.sql");
   });
 
   it("makes the table with the columns the store reads and writes, and the lists the code's own", async () => {
@@ -369,11 +369,11 @@ describe("migration 0033_front_decisions.sql", () => {
     }
   });
 
-  it("is in full_schema.sql, under its own heading, after 0032, last, and the same text", () => {
+  it("is in full_schema.sql, under its own heading, after 0032 and before 0034, and the same text", () => {
     expect(full).toContain("-- 0033_front_decisions.sql");
     expect(full.indexOf("-- 0033_front_decisions.sql")).toBeGreaterThan(full.indexOf("-- 0032_artifacts.sql"));
+    expect(full.indexOf("-- 0034_code_chat_and_care.sql")).toBeGreaterThan(full.indexOf("-- 0033_front_decisions.sql"));
     expect(full).toContain(migration.trim());
-    expect(full.endsWith(migration)).toBe(true);
     expect(full.match(/create table if not exists public\.front_decisions/g)).toHaveLength(1);
   });
 

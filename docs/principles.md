@@ -58,7 +58,7 @@ Every principle is `{ id, text }`: **one imperative line of at most 120 characte
 
 ## 2. The roles (`roles.ts`)
 
-A role is a one-line identity, a list of principle ids, and an **output contract**: the exact output as a compact schema line (or two), never an example. What a field means is said in a few words beside it. There are 29, one for each kind of call:
+A role is a one-line identity, a list of principle ids, and an **output contract**: the exact output as a compact schema line (or two), never an example. What a field means is said in a few words beside it. There are 31, one for each kind of call:
 
 | Role | Asked by | Contract |
 | --- | --- | --- |
@@ -77,10 +77,12 @@ A role is a one-line identity, a list of principle ids, and an **output contract
 | `artifact_compare` | `artifacts/compare.ts` | JSON: `match`, `issues` |
 | `front_decide` | `front/decide.ts`, only when the free rules are under 0.7 sure | JSON: `intent`, `length`, `visual`, `confidence`, `clarify` |
 | `front_reply` | `front/handlers.ts` | plain text in the person's language; `<shape>` says the length and whether a table comes first; `Spoken: yes` means plain sentences |
-| `front_code_answer` | `front/handlers.ts` | plain text: the answer, then `path:line` for each file it rests on |
+| `front_code_answer` | `code/chat/answer.ts` (the front door's `code_answer` road, `docs/code-chat.md`) | plain text: the answer first, then the files it rests on as `path:line`, each copied from `<facts>` or `<excerpts>`; it says what they do not show and changes nothing |
 | `front_diagram` | `front/handlers.ts` | Mermaid text only, at most 12 nodes |
 | `front_plan` | `front/handlers.ts` | JSON: `title`, `steps` (do, when), `notes` |
 | `front_look` | `front/attachments.ts` | plain prose, at most 200 words, the picture described for the question asked |
+| `care_review` | `code/prcare/review.ts` (`docs/pr-care.md`) | JSON: `kind` (small, large, question, other), `summary`, `reply` (under 600 characters). The comment, the code it is on and the work log are fenced data |
+| `care_conflict` | `code/agent/merge.ts` | JSON: `files` (path, `kind` mechanical or semantic, `reason`). Each file shows both sides between its conflict markers |
 
 The contracts are what the models are told; the zod schemas and parsers next to each call are what is checked, and `tests/principles.test.ts` holds the two together: every field of each schema is named in its role's contract, and the lists a contract spells out (request types, intents, search sources, the libraries an artifact may import, the welcome's length) are the code's own.
 
@@ -158,17 +160,19 @@ The system prompt of each role, in characters and in tokens estimated as the gat
 | artifact_compare | 1449 | 414 | 856 | 245 | 41% |
 | **total (23 replaced)** | **21517** | **6148** | **14686** | **4196** | **32%** |
 
-The front door's six roles (`src/front/`) replace no older prompt, so they have no real "before": the table records their first size, and the saving is not claimed for them. They are held to the same budget, so they do not grow either.
+The front door's six roles (`src/front/`) and PR care's two (`care_review`, `care_conflict`) replace no older prompt, so they have no real "before": the table records their first size, and the saving is not claimed for them. They are held to the same budget, so they do not grow either. (`front_code_answer` was rewritten for talking about code, `docs/code-chat.md`: it was 789 characters as a stand-in, and 1067 now that it takes `<facts>`, `<excerpts>` and `<thread>` and cites `path:line`; the table records the size of the role that is there.)
 
 | role | first size (chars) | tokens |
 | --- | ---: | ---: |
 | front_decide | 1460 | 418 |
 | front_reply | 1066 | 305 |
-| front_code_answer | 789 | 226 |
+| front_code_answer | 1067 | 305 |
 | front_diagram | 556 | 159 |
 | front_plan | 668 | 191 |
 | front_look | 587 | 168 |
-| **total (6 new)** | **5126** | **1465** |
+| care_review | 1422 | 407 |
+| care_conflict | 697 | 200 |
+| **total (8 new)** | **7523** | **2150** |
 
 Counted once per role, which says little about a job: the agent's prompt goes out on every turn (dozens), the classifier's on every request, the index summaries' once for each batch of ten files. `front_decide` is sent only when the free rules are under 0.7 sure; the rules are meant to make it the exception, and the decision log (`docs/front-door.md`) records `via` so the share of messages that needed it is measured, not assumed.
 

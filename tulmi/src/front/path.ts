@@ -6,7 +6,7 @@
  *   chat, unclear          reply        tiny      small talk and "I did not catch that" need no more than the smallest model
  *   answer                 reply        cheap     general knowledge, a table inline when asked for
  *   file_question          file         vision    for an image (it is described once); cheap for text and code
- *   code_question          code_answer  cheap     locate the code, read a few excerpts, answer from them
+ *   code_question          code_answer  cheap     the brain's facts first, a few excerpts only when it must, answer from them (strong for a deep why or an impact question)
  *   code_task              code_job     code      a Code bot job (strong when the classifier calls the change risky)
  *   design                 artifact     code      a project-styled component, or a page
  *   research               research     cheap, code or strong, by depth: quick, standard, deep
@@ -54,10 +54,11 @@ export function routeOf(intent: Intent): RouteName {
   }
 }
 
-export function tierOf(intent: Intent, o: { hasImage: boolean; hasProject: boolean; depth?: ResearchDepth; cls: Pick<Classification, "type" | "difficulty" | "risk"> }): ModelTier {
+export function tierOf(intent: Intent, o: { hasImage: boolean; hasProject: boolean; depth?: ResearchDepth; /** A deep "why" or an "impact" question about the code (code/chat/question.ts): the strong tier. */ deep?: boolean; cls: Pick<Classification, "type" | "difficulty" | "risk"> }): ModelTier {
   switch (intent) {
     case "chat": case "unclear": return "tiny";
-    case "answer": case "code_question": return "cheap";
+    case "code_question": return o.deep ? "strong" : "cheap";
+    case "answer": return "cheap";
     case "file_question": return o.hasImage ? "vision" : "cheap";
     case "code_task": return baseTier("write_code", o.cls).tier;
     case "design": return "code";
@@ -81,7 +82,7 @@ export function answerPaise(route: RouteName, tier: ModelTier, length: Length, d
   switch (route) {
     case "research": return typical(depth === "deep" ? "strong" : "code", 9000, depth === "deep" ? 3500 : 1200) + (depth === "deep" ? 150 : 0);
     case "plan": return typical(tier, 900, 700);
-    case "code_answer": return typical("cheap", 2500, TYPICAL_OUT[length]) + 10;
+    case "code_answer": return typical(tier === "strong" ? "strong" : "cheap", 2500, TYPICAL_OUT[length]) + 10;
     case "code_job": case "artifact": return typical("code", 3000, 2000);
     default: return typical(tier, TYPICAL_IN, TYPICAL_OUT[length]);
   }

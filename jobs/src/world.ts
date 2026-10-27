@@ -59,6 +59,8 @@ export interface TickPort {
   tick(): Promise<TickSummary>;
   /** A person's PC came online (the Durable Object that keeps presence says so): their jobs that wait for a place are looked at now, not at the next minute. Absent in a test's scripted world. */
   wake?(userId: string): Promise<number>;
+  /** A person's PC said no to the step it was offered (the presence object says so): the lease is released at once and the step placed again. Absent in a test's scripted world. */
+  decline?(userId: string, d: { jobId: string; epoch: number; deviceId: string; reason?: string }): Promise<unknown>;
   /** Ids of agent jobs nobody is driving that have not changed for `idleMs`: their Workflow may be gone, or not have been told. */
   idle(idleMs: number, limit: number): Promise<string[]>;
 }
@@ -148,6 +150,7 @@ export async function buildWorld(env: Env, o: { notify?: Notify; /** Tests: stor
     },
     ticker: {
       wake: (userId) => jobs.wake(userId),
+      decline: (userId, d) => jobs.decline(userId, d),
       async tick() {
         const router = await jobs.tick();
         const agent = await orchestrator.tick();

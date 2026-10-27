@@ -85,8 +85,22 @@ export interface FakePull {
   /** "APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED", or null. */
   reviewDecision?: string | null;
   reviewComments: Array<{ user: string; body: string; path: string; line: number; at: string }>;
-  issueComments: Array<{ user: string; body: string; at: string }>;
+  issueComments: Array<{ id?: number; user: string; body: string; at: string }>;
+  /** Review threads (GraphQL): where on the diff, who said what, whether resolved. */
+  threads?: FakeThread[];
+  /** The repo the head branch is in, when it is not this one (a fork's pull request). */
+  headRepoId?: number;
 }
+
+/** A review thread of a pull request: its id is `RT_<repo>_<pr>_<n>`, what resolveReviewThread takes. */
+export interface FakeThread {
+  id: string; path: string; line: number; resolved: boolean; outdated: boolean;
+  comments: Array<{ id: number; user: string; body: string; at: string }>;
+}
+
+/** A check run of a commit, as the fake keeps it (`id` is also the Actions job's id). */
+export interface FakeCheckRun { id: number; name: string; status: string; conclusion: string | null; title: string; summary: string; app: string }
+export interface FakeStatus { context: string; state: string; description: string; url: string }
 
 /** A workflow run, as the fake keeps it. */
 export interface FakeRun {
@@ -101,6 +115,9 @@ export interface Call { method: string; url: URL; headers: Record<string, string
 const sha = (s: string) => createHash("sha1").update(s).digest("hex");
 
 export interface AppKeys { privateKeyPem: string; publicKeyPem: string }
+
+/** Where a job's log is fetched from after GitHub's redirect: another host, reached with no token. */
+export const LOGS_HOST = "logs.actions.test";
 
 /** A fresh RSA key pair, the private half in GitHub's own format (PKCS#1). */
 export function appKeys(): AppKeys {
@@ -144,6 +161,11 @@ export class FakeGithub {
   private runs = new Map<number, FakeRun[]>();
   /** Repos where no workflow run is ever made (Actions off, or the free minutes used up). */
   actionsDown = new Set<number>();
+  /** Check runs and commit statuses by "repoId|sha" (PR care). */
+  private checks = new Map<string, { runs: FakeCheckRun[]; statuses: FakeStatus[] }>();
+  /** Actions job logs by job id; fetched through a redirect to LOGS_HOST, as GitHub does. */
+  private jobLogs = new Map<number, string>();
+  private ids = 9000;
 
   /** The classic OAuth App ("Sign in with GitHub"). */
   readonly oauthClientId = "Ov1.oauthclient";
@@ -245,6 +267,8 @@ export class FakeGithub {
   protect(repo: FakeRepo, branch: string, o: { checks?: boolean } = {}) {
     this.git.get(repo.id)!.protection.set(branch, { checks: o.checks === true });
   }
+  /** Takes the protection off a branch again (the person changed the rule). */
+  unprotect(repo: FakeRepo, branch: string) { this.git.get(repo.id)!.protection.delete(branch); }
 
   /** What `login` may do in a repo. `null`: GitHub has never heard of them there (404). Without a call: "none". */
   setPermission(repo: FakeRepo, login: string, permission: FakePermission | null) {
@@ -300,6 +324,62 @@ export class FakeGithub {
     const c = g.refs.get(`heads/${branch}`);
     return c ? [...g.commits.get(c)!.parents] : [];
   }
+  // -------------------------------------------------- PR care: checks, logs, comments, threads
+
+  private pullOf(repo: FakeRepo, number: number): FakePull { return this.git.get(repo.id)!.pulls.find((x) => x.number === number)!; }
+  /** A check run on a commit (a GitHub Actions job when it has a log: `setJobLog(run.id, text)`). */
+  addCheckRun(repo: FakeRepo, commit: string, o: { name: string; status?: string; conclusion?: string | null; id?: number; title?: string; summary?: string; app?: string }): FakeCheckRun {
+    const key = `${repo.id}|${commit}`;
+    const e = this.checks.get(key) ?? { runs: [], statuses: [] };
+    const run: FakeCheckRun = {
+      id: o.id ?? (this.ids += 1), name: o.name, status: o.status ?? "completed", conclusion: o.conclusion === undefined ? ((o.status ?? "completed") === "completed" ? "success" : null) : o.conclusion,
+      title: o.title ?? "", summary: o.summary ?? "", app: o.app ?? "github-actions",
+    };
+    e.runs.push(run);
+    this.checks.set(key, e);
+    return run;
+  }
+  /** A commit status (the older way a CI reports). */
+  addStatus(repo: FakeRepo, commit: string, o: { context: string; state: string; description?: string; url?: string }) {
+    const key = `${repo.id}|${commit}`;
+    const e = this.checks.get(key) ?? { runs: [], statuses: [] };
+    e.statuses.push({ context: o.context, state: o.state, description: o.description ?? "", url: o.url ?? "" });
+    this.checks.set(key, e);
+  }
+  /** Ends a check run the way a test says. */
+  endCheckRun(repo: FakeRepo, commit: string, id: number, conclusion: string) {
+    const run = this.checks.get(`${repo.id}|${commit}`)?.runs.find((x) => x.id === id);
+    if (run) { run.status = "completed"; run.conclusion = conclusion; }
+  }
+  setJobLog(id: number, text: string) { this.jobLogs.set(id, text); }
+  /** A review thread on a pull request, started by `user`. */
+  addThread(repo: FakeRepo, number: number, o: { user: string; body: string; path: string; line: number; outdated?: boolean }): FakeThread {
+    const pr = this.pullOf(repo, number);
+    pr.threads ??= [];
+    const t: FakeThread = {
+      id: `RT_${repo.id}_${number}_${pr.threads.length + 1}`, path: o.path, line: o.line, resolved: false, outdated: o.outdated ?? false,
+      comments: [{ id: (this.ids += 1), user: o.user, body: o.body, at: new Date(this.clock.t).toISOString() }],
+    };
+    pr.threads.push(t);
+    return t;
+  }
+  /** Another comment in a thread. */
+  replyIn(thread: FakeThread, user: string, body: string): number {
+    const id = (this.ids += 1);
+    thread.comments.push({ id, user, body, at: new Date(this.clock.t).toISOString() });
+    return id;
+  }
+  threadsOf(repo: FakeRepo, number: number): FakeThread[] { return this.pullOf(repo, number).threads ?? []; }
+  /** A comment in the pull request's conversation. */
+  addIssueComment(repo: FakeRepo, number: number, user: string, body: string): number {
+    const id = (this.ids += 1);
+    this.pullOf(repo, number).issueComments.push({ id, user, body, at: new Date(this.clock.t).toISOString() });
+    return id;
+  }
+  conversationOf(repo: FakeRepo, number: number) { return this.pullOf(repo, number).issueComments; }
+  /** The comments the code posted (their author is the App's bot). */
+  readonly botLogin = "tailzu-test[bot]";
+
   /** Writes (anything but GET) the code made to a repo's git data. */
   writes(): Call[] {
     return this.calls.filter((c) => c.method !== "GET" && !c.url.pathname.includes("/access_tokens") && c.url.hostname === "api.github.com"
@@ -411,12 +491,21 @@ export class FakeGithub {
     this.calls.push(call);
     if (this.failWith && url.pathname.startsWith(this.failWith.prefix)) return this.reply(this.failWith.status, { message: "boom" });
     try {
+      if (url.hostname === LOGS_HOST) return this.log(call);
       return url.hostname === "github.com" ? await this.oauth(call) : await this.api(call);
     } catch (e) {
       if (e instanceof Response) return e;
       throw e;
     }
   };
+
+  /** A job's log, from the address GitHub redirected to. */
+  private log(c: Call): Response {
+    const m = c.url.pathname.match(/^\/job\/(\d+)$/);
+    const text = m ? this.jobLogs.get(Number(m[1])) : undefined;
+    if (c.headers["authorization"]) return new Response("the log address takes no token", { status: 400 });
+    return text === undefined ? new Response("gone", { status: 404 }) : new Response(text, { status: 200, headers: { "content-type": "text/plain" } });
+  }
 
   private reply(status: number, json: unknown, headers: Record<string, string> = {}): Response {
     return new Response(JSON.stringify(json), { status, headers: { "content-type": "application/json", ...headers } });
@@ -726,7 +815,7 @@ export class FakeGithub {
       if (!cur) return this.reply(404, { message: "Reference does not exist" });
       const target: string = c.body?.sha;
       if (!git.commits.has(target)) return this.reply(422, { message: "Object does not exist" });
-      if (git.protection.has(r[1]!.slice(6))) return this.reply(422, { message: "Cannot update this protected ref." });
+      if (git.protection.has(r[1]!.slice(6))) return this.reply(422, { message: "Cannot update this protected ref.", documentation_url: "https://docs.github.com/articles/about-protected-branches" });
       // A push that changes a workflow file needs the workflow scope (a person's token) or Workflows: write (an install's).
       const before = this.flat(git, cur), after = this.flat(git, target);
       const touched = [...new Set([...before.keys(), ...after.keys()])].filter((k) => before.get(k) !== after.get(k) && /^\.github\/workflows\//i.test(k));
@@ -889,7 +978,65 @@ export class FakeGithub {
     if (c.method === "GET" && (r = wanted(/^\/issues\/(\d+)\/comments$/))) {
       const pr = git.pulls.find((x) => x.number === Number(r![1]));
       if (!pr) return this.reply(404, { message: "Not Found" });
-      return this.reply(200, pr.issueComments.slice(0, Number(c.url.searchParams.get("per_page") ?? 30)).map((x) => ({ user: { login: x.user }, body: x.body, created_at: x.at })));
+      return this.reply(200, pr.issueComments.slice(0, Number(c.url.searchParams.get("per_page") ?? 30)).map((x) => ({ id: x.id, user: { login: x.user }, body: x.body, created_at: x.at })));
+    }
+
+    // --- PR care: the checks of a commit, the Actions logs, comments and replies
+    const has = (name: string) => token.permissions[name] === "read" || token.permissions[name] === "write";
+    if (c.method === "GET" && (r = wanted(/^\/commits\/([0-9a-f]{40})\/check-runs$/))) {
+      if (!has("checks")) return this.reply(403, { message: "Resource not accessible by integration" });
+      const runs = this.checks.get(`${repo.id}|${r[1]}`)?.runs ?? [];
+      return this.reply(200, {
+        total_count: runs.length,
+        check_runs: runs.map((x) => ({
+          id: x.id, name: x.name, status: x.status, conclusion: x.conclusion, html_url: `https://github.com/${repo.fullName}/runs/${x.id}`, app: { slug: x.app },
+          output: { title: x.title, summary: x.summary },
+        })),
+      });
+    }
+    if (c.method === "GET" && (r = wanted(/^\/commits\/([0-9a-f]{40})\/status$/))) {
+      if (!has("statuses")) return this.reply(403, { message: "Resource not accessible by integration" });
+      const sts = this.checks.get(`${repo.id}|${r[1]}`)?.statuses ?? [];
+      return this.reply(200, { state: sts.some((x) => x.state === "failure" || x.state === "error") ? "failure" : "success", statuses: sts.map((x) => ({ context: x.context, state: x.state, description: x.description, target_url: x.url })) });
+    }
+    if (c.method === "GET" && (r = wanted(/^\/actions\/jobs\/(\d+)$/))) {
+      if (!has("actions")) return this.reply(403, { message: "Resource not accessible by integration" });
+      return this.jobLogs.has(Number(r[1])) ? this.reply(200, { id: Number(r[1]) }) : this.reply(404, { message: "Not Found" });
+    }
+    if (c.method === "GET" && (r = wanted(/^\/actions\/jobs\/(\d+)\/logs$/))) {
+      if (!has("actions")) return this.reply(403, { message: "Resource not accessible by integration" });
+      if (!this.jobLogs.has(Number(r[1]))) return this.reply(404, { message: "Not Found" });
+      return new Response(null, { status: 302, headers: { location: `https://${LOGS_HOST}/job/${r[1]}` } });
+    }
+    if (c.method === "POST" && (r = wanted(/^\/issues\/(\d+)\/comments$/))) {
+      this.mustWrite(token, "pull_requests");
+      const pr = git.pulls.find((x) => x.number === Number(r![1]));
+      if (!pr) return this.reply(404, { message: "Not Found" });
+      const id = (this.ids += 1);
+      pr.issueComments.push({ id, user: this.botLogin, body: String(c.body?.body ?? ""), at: new Date(this.clock.t).toISOString() });
+      return this.reply(201, { id, html_url: `https://github.com/${repo.fullName}/pull/${pr.number}#issuecomment-${id}` });
+    }
+    if (c.method === "PATCH" && (r = wanted(/^\/issues\/comments\/(\d+)$/))) {
+      this.mustWrite(token, "pull_requests");
+      for (const pr of git.pulls) {
+        const cm = pr.issueComments.find((x) => x.id === Number(r![1]));
+        if (cm) {
+          if (cm.user !== this.botLogin) return this.reply(403, { message: "Resource not accessible by integration" });
+          cm.body = String(c.body?.body ?? "");
+          return this.reply(200, { id: cm.id });
+        }
+      }
+      return this.reply(404, { message: "Not Found" });
+    }
+    if (c.method === "POST" && (r = wanted(/^\/pulls\/(\d+)\/comments\/(\d+)\/replies$/))) {
+      this.mustWrite(token, "pull_requests");
+      const pr = git.pulls.find((x) => x.number === Number(r![1]));
+      const thread = pr?.threads?.find((t) => t.comments[0]?.id === Number(r![2]));
+      // As on GitHub, a reply goes under the comment that started the thread: a reply to a reply is not supported.
+      if (!pr || !thread) return this.reply(pr?.threads?.some((t) => t.comments.some((x) => x.id === Number(r![2]))) ? 422 : 404, { message: pr ? "Validation Failed" : "Not Found" });
+      const id = (this.ids += 1);
+      thread.comments.push({ id, user: this.botLogin, body: String(c.body?.body ?? ""), at: new Date(this.clock.t).toISOString() });
+      return this.reply(201, { id });
     }
 
     // --- deleting a branch
@@ -912,7 +1059,7 @@ export class FakeGithub {
       state: pr.state, merged: pr.merged, draft: pr.draft, mergeable,
       mergeable_state: pr.draft ? "draft" : mergeable === false ? "dirty" : mergeable === null ? "unknown" : "clean",
       node_id: `PR_${repo.id}_${pr.number}`,
-      head: { sha: headSha, ref: pr.head, repo: { id: repo.id } }, base: { ref: pr.base },
+      head: { sha: headSha, ref: pr.head, repo: { id: pr.headRepoId ?? repo.id } }, base: { ref: pr.base },
       review_comments: pr.reviewComments.length, changed_files: files.length,
       additions: files.reduce((n, f) => n + f.additions, 0), deletions: files.reduce((n, f) => n + f.deletions, 0),
     };
@@ -924,6 +1071,16 @@ export class FakeGithub {
     const token = person ? undefined : this.tokens.get(this.bearer(c));
     if (!person && (!token || token.expiresAt <= this.clock.t)) return this.reply(401, { message: "Bad credentials" });
     const id = String(c.body?.variables?.id ?? "");
+    // resolveReviewThread names a thread, not a pull request.
+    const tm = /^RT_(\d+)_(\d+)_(\d+)$/.exec(id);
+    if (tm && /resolveReviewThread/.test(String(c.body?.query ?? ""))) {
+      const trepo = this.repos.find((x) => x.id === Number(tm[1]));
+      const thread = trepo && this.git.get(trepo.id)!.pulls.find((x) => x.number === Number(tm[2]))?.threads?.find((t) => t.id === id);
+      const okPerson = person ? !!trepo && ["admin", "write"].includes(this.oauthPerm(trepo, person.login)) : token!.permissions.pull_requests === "write" && !!trepo && trepo.installationId === token!.installationId;
+      if (!thread || !okPerson) return this.reply(200, { data: null, errors: [{ type: "FORBIDDEN", message: "Resource not accessible by integration" }] });
+      thread.resolved = true;
+      return this.reply(200, { data: { resolveReviewThread: { thread: { isResolved: true } } } });
+    }
     const m = /^PR_(\d+)_(\d+)$/.exec(id);
     const repo = m && this.repos.find((x) => x.id === Number(m[1]));
     const pr = repo && this.git.get(repo.id)!.pulls.find((x) => x.number === Number(m![2]));
@@ -940,6 +1097,14 @@ export class FakeGithub {
       if (pr.state !== "open") return this.reply(200, { data: null, errors: [{ message: "Pull request is not open" }] });
       pr.draft = false;
       return this.reply(200, { data: { markPullRequestReadyForReview: { pullRequest: { isDraft: false } } } });
+    }
+    if (/reviewThreads/.test(query)) {
+      return this.reply(200, {
+        data: { node: { reviewThreads: { nodes: (pr.threads ?? []).map((t) => ({
+          id: t.id, isResolved: t.resolved, isOutdated: t.outdated, path: t.path, line: t.line,
+          comments: { nodes: t.comments.map((x) => ({ databaseId: x.id, author: { login: x.user }, body: x.body, createdAt: x.at })) },
+        })) } } },
+      });
     }
     if (/reviewDecision/.test(query)) return this.reply(200, { data: { node: { reviewDecision: pr.reviewDecision ?? null } } });
     return this.reply(200, { data: null, errors: [{ message: "unknown query" }] });
