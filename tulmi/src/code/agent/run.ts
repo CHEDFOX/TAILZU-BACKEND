@@ -23,7 +23,7 @@
  * request ready): it runs the operation, and if the answer is a question it parks with the approval the
  * book gave; when the person has said yes it runs the operation again with that approval.
  */
-import { ConnectorError } from "../../connectors/oauth.js";
+import { ConnectorError } from "../../connectors/state.js";
 import { brief, type CodeJob, type NotifyKind, type WaitingOn } from "../jobs/types.js";
 import { isNeedsApproval, type Gated } from "../policy.js";
 import type { BrainHandle } from "../project/index.js";
@@ -80,7 +80,19 @@ export interface Claim {
   park(state: AgentState, p: { waitingOn: WaitingOn; reason: string }): Promise<void>;
 }
 
+/** The phase did a slice of its work and the driver (loop.ts advanceLoop) should stop here: the state is saved, and the next advance goes on. */
+export class Yield extends Error {
+  constructor() {
+    super("a slice of the work is done");
+    this.name = "Yield";
+  }
+}
+
 export interface LoopEnv {
+  /** Look at a step that is out once, and let the driver come back later, instead of waiting for it (advanceLoop). */
+  pollOnce?: boolean;
+  /** The work phase gives way after this many rounds (a model turn and its tool calls), so one advance stays short (advanceLoop). */
+  turnsPerAdvance?: number;
   job: CodeJob;
   /** Where the job has got to: the checkpoint's agent state, or a fresh one. */
   state: AgentState;
@@ -167,9 +179,15 @@ export class Run {
    */
   async runStep(tag: string, spec: RunSpec): Promise<RunOutcome> {
     const adopt = this.state.run && this.state.run.tag === tag ? this.state.run.stepIdx : undefined;
+    // When it was first asked for survives a restart in the mark, so a runner looked at once per advance still knows how long it has waited.
+    const askedAt = this.state.run && this.state.run.tag === tag ? this.state.run.at : undefined;
     const ctl: RunControl = {
       signal: this.signal, renew: () => this.renew(),
-      onStep: async (idx) => { this.state.run = { stepIdx: idx, commands: spec.commands, tag }; await this.save(); },
+      ...(this.env.pollOnce ? { once: true, ...(askedAt !== undefined ? { startedAt: askedAt } : {}) } : {}),
+      onStep: async (idx) => {
+        this.state.run = { stepIdx: idx, commands: spec.commands, tag, at: this.state.run?.stepIdx === idx && askedAt !== undefined ? askedAt : this.now() };
+        await this.save();
+      },
     };
     const out = await this.deps.runner.run(await this.job(), { ...spec, ...(adopt !== undefined ? { adopt } : {}) }, ctl);
     this.state.run = undefined;
@@ -203,6 +221,8 @@ export class Run {
   async gated<T>(forWhat: WaitFor, what: string, op: (approvalId?: string) => Promise<Gated<T>>): Promise<T> {
     const w = this.state.waiting;
     const approvalId = w?.kind === "approval" && w.for === forWhat && w.approved === true ? w.approvalId : undefined;
+    // The yes may be taken by a process that did not ask the question (a Worker's isolate, a restarted server): the question is in the job's state.
+    if (approvalId && w?.kind === "approval" && w.bound) this.deps.projects.approvals.restore(w.bound);
     let res: Gated<T>;
     try {
       res = await op(approvalId);
@@ -213,8 +233,10 @@ export class Run {
       } else throw err;
     }
     if (isNeedsApproval(res)) {
+      const bound = this.deps.projects.approvals.peek(res.approvalId) ?? undefined;
       this.state.waiting = {
         kind: "approval", for: forWhat, action: res.action, faceId: res.faceId, summary: res.summary, approvalId: res.approvalId, expiresAt: res.expiresAt, at: this.now(),
+        ...(bound ? { bound } : {}),
       };
       await this.log.question(`Needs your OK to ${what}.`);
       throw new Park("approval", `It needs your OK to ${what}.`);

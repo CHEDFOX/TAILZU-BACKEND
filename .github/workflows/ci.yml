@@ -42,6 +42,41 @@ jobs:
       - name: Build
         run: npm run build
 
+  # The Cloudflare jobs Worker (jobs/): it bundles ../tulmi/src, so tulmi's dependencies are installed too.
+  jobs-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: |
+            tulmi/package-lock.json
+            jobs/package-lock.json
+
+      - name: Install tulmi (the Worker imports its source)
+        run: npm ci --no-audit --no-fund
+        working-directory: tulmi
+
+      - name: Install jobs (frozen)
+        run: npm ci --no-audit --no-fund
+        working-directory: jobs
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+        working-directory: jobs
+
+      - name: Test (workerd, offline)
+        run: npx vitest run
+        working-directory: jobs
+
+      - name: Bundle (dry run)
+        run: npx wrangler deploy --dry-run --outdir dist
+        working-directory: jobs
+
   docker-build:
     runs-on: ubuntu-latest
     timeout-minutes: 15

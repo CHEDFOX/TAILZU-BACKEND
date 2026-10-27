@@ -45,7 +45,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { decrypt, encrypt } from "../connectors/crypto.js";
-import { ConnectorError, signState, verifyState } from "../connectors/oauth.js";
+import { ConnectorError, signState, verifyState } from "../connectors/state.js";
 import { OAuthAccess, type OAuthTokens } from "./access.js";
 import { GITHUB_API, GITHUB_TOKEN_URL, githubFetch, type GithubApp, type GithubRepo, type RepoRef } from "./github.js";
 import type { CodeOAuthLink, CodeStore } from "./store.js";

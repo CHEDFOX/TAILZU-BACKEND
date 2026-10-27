@@ -81,7 +81,7 @@
  * permission system is what makes the principles hold when a prompt doesn't.
  */
 import { createHash } from "node:crypto";
-import { ConnectorError } from "../connectors/oauth.js";
+import { ConnectorError } from "../connectors/state.js";
 import type { Approval, ApprovalBook } from "./approvals.js";
 import { FILE_MAX_BYTES, assertRepoPath, type CommitFile } from "./github.js";
 import { SHADOW_PREFIX, isExactShadowSet, isReservedPath, isShadowBranch } from "./shadow.js";

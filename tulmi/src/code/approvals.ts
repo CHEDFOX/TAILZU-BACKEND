@@ -25,6 +25,11 @@
  * Kept in the server's memory, not the database: it lives ten minutes, and a
  * restart in that time only means asking again. An approval is a plain random
  * id with nothing in it; what it stands for is held here.
+ *
+ * A job waiting for a yes also keeps a copy of the approval in its own state
+ * (peek/restore), because the question may be asked by one process and the yes
+ * taken by another: a Cloudflare Worker's isolate comes and goes, and the VPS
+ * answers the person.
  */
 import { randomBytes } from "node:crypto";
 
@@ -72,6 +77,31 @@ export class ApprovalBook {
     const approval: Approval = { ...a, id: randomBytes(24).toString("base64url"), expiresAt: now + (this.o.ttlMs ?? APPROVAL_TTL_MS) };
     this.items.set(approval.id, approval);
     return { ...approval };
+  }
+
+  /**
+   * What an approval stands for, without using it up: a copy, or null when it is unknown or has run out. A job that waits for a yes
+   * keeps this in its state (agent/types.ts Waiting), so the yes can be taken by a process that did not issue the question.
+   */
+  peek(id: string): Approval | null {
+    const a = this.items.get(id);
+    return a && a.expiresAt > this.now() ? { ...a } : null;
+  }
+
+  /**
+   * Puts an approval that was issued somewhere else back in the book (the agent runs on the VPS, or on a Cloudflare Worker whose
+   * isolate comes and goes, while the yes arrives at another). Only one that is still good, and only exactly as it was issued: its
+   * expiry is not extended. Replaces an earlier approval for the same person, project, action and branch, as `issue` does.
+   */
+  restore(a: Approval): boolean {
+    const now = this.now();
+    if (!a || typeof a.id !== "string" || !a.id || a.expiresAt <= now) return false;
+    for (const [id, x] of this.items) {
+      if (x.expiresAt <= now || (x.userId === a.userId && x.projectId === a.projectId && x.action === a.action && x.branch === a.branch)) this.items.delete(id);
+    }
+    while (this.items.size >= BOOK_MAX) this.items.delete(this.items.keys().next().value as string);
+    this.items.set(a.id, { ...a });
+    return true;
   }
 
   /**

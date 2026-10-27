@@ -36,10 +36,10 @@
  * three times, words in a chunk's heading twice.
  */
 import { createHash } from "node:crypto";
-import { isIP } from "node:net";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../../auth/supabase.js";
-import { isBlockedAddress } from "../../connectors/egress.js";
+import { isIpLiteral } from "../../connectors/egressTypes.js";
+import { isBlockedAddress } from "../safeFetch.js";
 import { cacheKey, isCacheable, normalizeUrl } from "../cache.js";
 import type { Heading } from "../extract.js";
 import { isIndexableHost } from "./catalog.js";
@@ -508,7 +508,7 @@ export function isPublicHttpUrl(u: URL): boolean {
   if ((u.protocol !== "http:" && u.protocol !== "https:") || u.username || u.password) return false;
   if (u.port && !["80", "443", "8443"].includes(u.port)) return false;
   const host = u.hostname.replace(/^\[|\]$/g, "");
-  if (isIP(host)) return !isBlockedAddress(host);
+  if (isIpLiteral(host) || host.includes(":")) return !isBlockedAddress(host);
   return !PRIVATE_NAME.test(host);
 }
 

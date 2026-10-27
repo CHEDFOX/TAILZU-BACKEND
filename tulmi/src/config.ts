@@ -11,9 +11,27 @@ import { dirname, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { z } from "zod";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const backendEnv = resolve(__dirname, "..", ".env");
-const rootEnv = resolve(__dirname, "..", "..", ".env");
+/**
+ * Whether this is the Cloudflare jobs Worker (jobs/), not the VPS. On a Worker
+ * there is no .env beside the source and no file system worth asking, and
+ * `import.meta.url` may not be a file address, so none of the loading below is
+ * done: the settings come from the Worker's own env (vars and secrets), which
+ * jobs/src/env.ts copies into process.env before anything reads them.
+ */
+export function isWorkerRuntime(): boolean {
+  const nav = (globalThis as { navigator?: { userAgent?: string } }).navigator;
+  return nav?.userAgent === "Cloudflare-Workers" || process.env.RUNTIME === "worker";
+}
+
+/** Where the .env files would be, or null when this module's own address is not a file (a bundle on a Worker). */
+function envPaths(): { backendEnv: string; rootEnv: string } | null {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    return { backendEnv: resolve(here, "..", ".env"), rootEnv: resolve(here, "..", "..", ".env") };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * A TEST RUN NEVER READS THE DEPLOYMENT'S .env.
@@ -48,16 +66,19 @@ export function envFileToLoad(where: {
   return "default";
 }
 
-const source = envFileToLoad({
-  underTest: !!process.env.VITEST,
-  backendEnv: existsSync(backendEnv),
-  rootEnv: existsSync(rootEnv),
-});
+const paths = isWorkerRuntime() ? null : envPaths();
+if (paths) {
+  const source = envFileToLoad({
+    underTest: !!process.env.VITEST,
+    backendEnv: existsSync(paths.backendEnv),
+    rootEnv: existsSync(paths.rootEnv),
+  });
 
-if (source === "backend") loadEnv({ path: backendEnv });
-else if (source === "root") loadEnv({ path: rootEnv });
-else if (source === "default") loadEnv(); // process env / default lookup
-// "none" — under the runner. process.env as the test file left it.
+  if (source === "backend") loadEnv({ path: paths.backendEnv });
+  else if (source === "root") loadEnv({ path: paths.rootEnv });
+  else if (source === "default") loadEnv(); // process env / default lookup
+  // "none" — under the runner. process.env as the test file left it.
+}
 
 const bool = (def: boolean) =>
   z
@@ -668,6 +689,34 @@ const EnvSchema = z.object({
   CODE_JOB_DEFAULT_BUDGET_PAISE: z.coerce.number().int().min(0).max(1_000_000).default(3000),
   CODE_AGENT_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
   /**
+   * WHERE THE CODE BOT'S JOBS RUN (jobs/, docs/cloudflare-jobs.md).
+   *
+   * CODE_JOBS_MODE "local" (default) is how it has always been: this server's own
+   * orchestrator and ticker drive the agent loop and build project brains.
+   * "cloudflare" moves job EXECUTION to the Cloudflare Worker in jobs/ (a Workflow
+   * per job, a Workflow per brain build, a Cron Trigger for the ticker): this
+   * server then starts no orchestrator and no ticker, and instead tells the Worker
+   * at CODE_JOBS_URL (https, no trailing path) when a job is made, when the person
+   * answers, approves, denies, adds budget or stops it, and when a brain needs
+   * building. Every call is signed with CODE_JOBS_SECRET (HMAC-SHA256, five-minute
+   * window, a nonce), and so is the Worker's call back to POST
+   * /v1/internal/code/notify, which is how the push still goes out from here.
+   * Anything but "cloudflare" is "local".
+   */
+  CODE_JOBS_MODE: z.preprocess((v) => (String(v ?? "").trim().toLowerCase() === "cloudflare" ? "cloudflare" : "local"), z.enum(["local", "cloudflare"])),
+  CODE_JOBS_URL: z.string().trim().optional(),
+  CODE_JOBS_SECRET: z.string().optional(),
+  /**
+   * WHERE THIS PROCESS RUNS. "node" (default) is the VPS: every setting it needs is
+   * checked. "worker" is the Cloudflare jobs Worker, which never transcribes
+   * speech, serves the app, or takes a payment, so the settings only those need
+   * (the speech provider's key) are not required of it. Set by jobs/wrangler.jsonc.
+   */
+  RUNTIME: z.preprocess((v) => (String(v ?? "").trim().toLowerCase() === "worker" ? "worker" : "node"), z.enum(["node", "worker"])),
+  /** Cloudflare's Browser Rendering REST API, for WEB_BROWSER=cloudflare: an API token with "Browser Rendering - Edit", and the account. */
+  CLOUDFLARE_ACCOUNT_ID: z.string().trim().optional(),
+  CLOUDFLARE_API_TOKEN: z.string().trim().optional(),
+  /**
    * THE PAGE READER AND ITS BROWSER (src/web, docs/web-reader.md). Shared by the
    * Code bot's search tools and, later, anything Tailzu does on the web for a
    * person; it has no routes of its own.
@@ -676,9 +725,15 @@ const EnvSchema = z.object({
    * that needs JavaScript answers needs_browser. "local" lets this server run its
    * own headless Chrome for those pages, behind a proxy of ours that refuses every
    * private address. It needs a Chrome: CHROME_PATH, or one found on the machine.
-   * Anything but these two words is "off".
+   * "cloudflare" renders those pages on Cloudflare's Browser Rendering (its REST
+   * /content endpoint; CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN), which is
+   * what the jobs Worker uses: it has no Chrome to start. Anything but these
+   * three words is "off".
    */
-  WEB_BROWSER: z.preprocess((v) => (String(v ?? "").trim().toLowerCase() === "local" ? "local" : "off"), z.enum(["off", "local"])),
+  WEB_BROWSER: z.preprocess((v) => {
+    const w = String(v ?? "").trim().toLowerCase();
+    return w === "local" || w === "cloudflare" ? w : "off";
+  }, z.enum(["off", "local", "cloudflare"])),
   /** Where Chrome is. Empty: look in /opt/pw-browsers, then for google-chrome, chromium and chromium-browser on PATH. */
   CHROME_PATH: z.string().trim().optional(),
   /**
@@ -1329,14 +1384,14 @@ export function getConfig(): AppConfig {
     }
   }
 
-  // The selected STT provider must have its key.
-  if (env.STT_PROVIDER === "openai" && !env.OPENAI_API_KEY) {
+  // The selected STT provider must have its key. (The jobs Worker never transcribes speech: RUNTIME=worker is not asked for one.)
+  if (env.RUNTIME !== "worker" && env.STT_PROVIDER === "openai" && !env.OPENAI_API_KEY) {
     throw new Error(
       "STT_PROVIDER=openai but OPENAI_API_KEY is missing. Add OPENAI_API_KEY, " +
         "or set STT_PROVIDER=groq and add GROQ_API_KEY.",
     );
   }
-  if (env.STT_PROVIDER === "groq" && !env.GROQ_API_KEY) {
+  if (env.RUNTIME !== "worker" && env.STT_PROVIDER === "groq" && !env.GROQ_API_KEY) {
     throw new Error(
       "STT_PROVIDER=groq but GROQ_API_KEY is missing. Add GROQ_API_KEY, " +
         "or set STT_PROVIDER=openai and add OPENAI_API_KEY.",
@@ -1355,6 +1410,16 @@ export function getConfig(): AppConfig {
   // A SearXNG address that is not an https address was dropped by the schema; say so, since it is a setting someone typed.
   if ((process.env.WEB_SEARXNG_URL ?? "").trim() && !env.WEB_SEARXNG_URL) {
     console.warn("[config] WEB_SEARXNG_URL is not an https address (https://search.example.com): it is ignored, and web search goes to DuckDuckGo's page, then Brave if there is a key.");
+  }
+
+  // Jobs on Cloudflare with no way to reach the Worker: every job would be failed with a reason. Warned, not refused: the rest of the server is unaffected.
+  if (env.CODE_JOBS_MODE === "cloudflare" && env.RUNTIME !== "worker") {
+    const missing = ([["CODE_JOBS_URL", env.CODE_JOBS_URL], ["CODE_JOBS_SECRET", env.CODE_JOBS_SECRET]] as const).filter(([, v]) => !v).map(([k]) => k);
+    if (missing.length) console.warn(`[config] CODE_JOBS_MODE=cloudflare but ${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} not set: new jobs are failed with a reason until they are (docs/cloudflare-jobs.md).`);
+    else if (env.CODE_JOBS_URL && !/^https:\/\//i.test(env.CODE_JOBS_URL)) console.warn("[config] CODE_JOBS_URL is not an https address: the Worker is not called.");
+  }
+  if (env.CODE_JOBS_SECRET && env.CODE_JOBS_SECRET.length < 32) {
+    console.warn("[config] CODE_JOBS_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the Worker.");
   }
 
   // The Code bot switched on with half a GitHub App can be asked and never answer.

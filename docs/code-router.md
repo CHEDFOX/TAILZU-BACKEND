@@ -39,6 +39,8 @@ Every change that depends on the lease goes through the store's `casJob` (the ep
 
 The **checkpoint** is `{ stepIndex, headSha, notes, agent? }`, written after every step that finishes (`agent` is the agent loop's own state, which it writes after every model turn and tool call: `docs/code-agent.md`, section 2): the last finished step (-1 before any), the commit the branch was at, and a line in plain words. When a step's place goes quiet the step goes back to `pending` and is placed again; only that step runs again, from the branch as it is. The person gets `job_moved` when it changes kind of place (their PC went offline, it continues on GitHub).
 
+With `CODE_JOBS_MODE=cloudflare` (`docs/cloudflare-jobs.md`) the ticker does not run on the API server: the jobs Worker's one-minute cron runs the same `tick` (and the agent's claim hand-back) over the same Supabase tables, and the server wakes a job's Workflow when a runner reports (`onStepResult`). The placement rules and the lease are unchanged; the one difference is that the Worker cannot see which desktop PCs are online (that is the server's memory), so it places on GitHub's computers or waits.
+
 ## 4. The desktop runner protocol
 
 All authenticated as the person; the app names itself with a device id it made. (The desktop app's side comes later.)

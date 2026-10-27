@@ -28,8 +28,8 @@
  * a secret before it is kept); the call's id goes in the entry, so a server that picks the
  * job up after a crash does not log a call twice.
  */
-import { ConnectorError } from "../../connectors/oauth.js";
-import type { FetchLike } from "../../connectors/egress.js";
+import { ConnectorError } from "../../connectors/state.js";
+import type { FetchLike } from "../../connectors/egressTypes.js";
 import { asUntrusted } from "../../web/reader.js";
 import type { ToolCall, ToolDef } from "../brain/types.js";
 import { assertRepoPath } from "../github.js";

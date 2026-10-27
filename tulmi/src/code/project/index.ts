@@ -32,7 +32,7 @@
  * project that is someone else's is not found (404), as in projects.ts.
  */
 import { getConfig } from "../../config.js";
-import type { ConnectorError } from "../../connectors/oauth.js";
+import type { ConnectorError } from "../../connectors/state.js";
 import { assertAccess, ownProject, repoRef, type ProjectDeps } from "../projects.js";
 import type { CodeProject } from "../store.js";
 import { baselinePlan } from "./baseline.js";
@@ -115,6 +115,74 @@ export interface CreateProjectBrainOptions {
   /** Timers, for tests. */
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (handle: unknown) => void;
+  /**
+   * Builds run somewhere else (the Cloudflare jobs Worker, CODE_JOBS_MODE=cloudflare): this process only marks the brain "building"
+   * and hands the build over. Everything that READS the brain is unchanged.
+   */
+  remote?: BrainRemote;
+}
+
+/** Where a build is handed: the Worker's BuildBrain Workflow, by HTTP from the VPS (code/jobs/handoff/client.ts) or by binding on the Worker. Asking twice for one head is one build. */
+export interface BrainRemote {
+  build(b: { userId: string; projectId: string; mode: BuildMode; headSha: string }): Promise<void>;
+}
+
+/**
+ * `startProjectBrain` where the build is run elsewhere: the same checks, the same answer, but the build itself is handed over. The
+ * row is marked "building" first so that GET .../brain shows it at once; if the hand-over fails the row says so, in plain words.
+ * `done` settles at once with the building status: nothing here can wait for a build in another process.
+ */
+export async function startRemote(d: BrainRuntime, remote: BrainRemote, userId: string, projectId: string, o: StartOptions = {}): Promise<{ status: BrainView; done: Promise<BrainView>; started: boolean }> {
+  const project = await ownProject(d.projects, userId, projectId);
+  await assertAccess(d.projects, userId, project);
+  return handOverBuild(d, remote, userId, project, o);
+}
+
+async function handOverBuild(d: BrainRuntime, remote: BrainRemote, userId: string, project: CodeProject, o: StartOptions): Promise<{ status: BrainView; done: Promise<BrainView>; started: boolean }> {
+  const now = d.now ?? Date.now;
+  const row = await d.store.getBrain(project.id);
+  if (row?.status === "building" && now() - row.updatedAt <= BUILD_DEAD_MS) {
+    const v = viewOf(row, { running: true, now: now() });
+    return { status: v, done: Promise.resolve(v), started: false };
+  }
+  const mode: BuildMode = (o.mode ?? "incremental") === "incremental" && row && row.headSha ? "incremental" : "full";
+  const headSha = await d.projects.github.branchHead(repoRef(d.projects, userId, project), project.defaultBranch);
+  await d.store.saveBrain(project.id, { status: "building", progress: { pct: 0, phase: "starting" }, error: "" });
+  try {
+    await remote.build({ userId, projectId: project.id, mode, headSha });
+  } catch {
+    await d.store.saveBrain(project.id, { status: "failed", progress: { pct: 0, phase: "" }, error: "The build could not be started. Start it again in a little while." });
+  }
+  const v = viewOf(await d.store.getBrain(project.id), { running: true, now: now() });
+  return { status: v, done: Promise.resolve(v), started: true };
+}
+
+/** `ensureStarted` where builds are handed over. */
+export async function ensureStartedRemote(d: BrainRuntime, remote: BrainRemote, userId: string, project: CodeProject): Promise<boolean> {
+  if (await d.store.getBrain(project.id)) return false;
+  try {
+    await assertAccess(d.projects, userId, project);
+    return (await handOverBuild(d, remote, userId, project, { mode: "full" })).started;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `ensureFresh` where builds are handed over: is the brain built from the default branch's head? If not, the build is handed over
+ * (one per head, however often it is asked) and NOT waited for: the answer says it is not fresh yet, and the caller (the agent's
+ * first phase) goes on with the brain as it is, as it does when an update times out.
+ */
+export async function ensureFreshRemote(d: BrainRuntime, remote: BrainRemote, userId: string, projectId: string): Promise<Fresh> {
+  const project = await ownProject(d.projects, userId, projectId);
+  await assertAccess(d.projects, userId, project);
+  const now = d.now ?? Date.now;
+  const row = await d.store.getBrain(project.id);
+  const head = await d.projects.github.branchHead(repoRef(d.projects, userId, project), project.defaultBranch);
+  if (row?.status === "ready" && row.headSha === head) return { fresh: true, updated: false, status: "ready", headSha: head };
+  if (row?.status === "building" && now() - row.updatedAt <= BUILD_DEAD_MS) return { fresh: false, updated: false, status: "building", headSha: row.headSha };
+  const started = await handOverBuild(d, remote, userId, project, { mode: "incremental" });
+  return { fresh: false, updated: started.started, status: started.status.status, headSha: row?.headSha ?? "" };
 }
 
 /** The import budget: CODE_IMPORT_BUDGET_PAISE, 1,000 paise unless set. */
@@ -133,6 +201,11 @@ export interface StartOptions {
   mode?: BuildMode;
   /** If a build is running, run another when it ends (a push that came during it). */
   queue?: boolean;
+  /**
+   * Whoever asked for this build has already marked the brain "building" and handed it to THIS process (the VPS did, and the jobs Worker
+   * runs it): so a "building" row that moved recently is not another server's work to be left alone, it is this one's to do.
+   */
+  handedOver?: boolean;
 }
 
 /**
@@ -158,7 +231,7 @@ async function startFor(d: BrainRuntime, userId: string, project: CodeProject, o
   }
   const row = await d.store.getBrain(project.id);
   // A build on the books that nobody is running and that stopped moving long ago is dead: start over. A recent one may be another server's.
-  if (row?.status === "building" && now() - row.updatedAt <= BUILD_DEAD_MS) {
+  if (row?.status === "building" && !o.handedOver && now() - row.updatedAt <= BUILD_DEAD_MS) {
     return { status: viewOf(row, { running: true, now: now() }), done: Promise.resolve(viewOf(row, { now: now() })), started: false };
   }
   const mode: BuildMode = (o.mode ?? "incremental") === "incremental" && row && row.headSha ? "incremental" : "full";
@@ -389,7 +462,11 @@ export class BrainSync {
   private readonly set: (fn: () => void, ms: number) => unknown;
   private readonly clear: (h: unknown) => void;
 
-  constructor(private readonly d: BrainRuntime, o: { debounceMs?: number; setTimer?: CreateProjectBrainOptions["setTimer"]; clearTimer?: CreateProjectBrainOptions["clearTimer"] } = {}) {
+  private readonly launch: (project: CodeProject) => Promise<unknown>;
+
+  /** `launch` starts the build when the quiet minute is up: in this process by default, or wherever the builds are handed (a Worker). */
+  constructor(private readonly d: BrainRuntime, o: { debounceMs?: number; setTimer?: CreateProjectBrainOptions["setTimer"]; clearTimer?: CreateProjectBrainOptions["clearTimer"]; launch?: (project: CodeProject) => Promise<unknown> } = {}) {
+    this.launch = o.launch ?? ((project) => startFor(this.d, project.userId, project, { mode: "incremental", queue: true }));
     this.debounce = o.debounceMs ?? PUSH_DEBOUNCE_MS;
     this.set = o.setTimer ?? ((fn, ms) => { const h = setTimeout(fn, ms); (h as { unref?: () => void }).unref?.(); return h; });
     this.clear = o.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
@@ -405,7 +482,7 @@ export class BrainSync {
     if (old !== undefined) this.clear(old);
     this.timers.set(project.id, this.set(() => {
       this.timers.delete(project.id);
-      void startFor(this.d, project.userId, project, { mode: "incremental", queue: true }).catch((err: unknown) => {
+      void this.launch(project).catch((err: unknown) => {
         this.d.log?.warn({ project: project.id, code: (err as { code?: string })?.code }, "code project brain: the build after a push did not start");
       });
     }, this.debounce));
@@ -427,23 +504,32 @@ export class BrainSync {
 export class ProjectBrain {
   readonly runtime: BrainRuntime;
   readonly sync: BrainSync;
+  private readonly remote: BrainRemote | undefined;
 
   constructor(o: CreateProjectBrainOptions) {
     this.runtime = {
       projects: o.projects, store: o.store ?? projectBrainStore(), call: o.call, gateway: o.gateway, fetchFn: o.fetchFn, sources: o.sources, now: o.now,
       budgetPaise: o.budgetPaise ?? importBudgetFromEnv(), log: o.log, builds: new BuildBook(),
     };
-    this.sync = new BrainSync(this.runtime, { debounceMs: o.debounceMs, setTimer: o.setTimer, clearTimer: o.clearTimer });
+    this.remote = o.remote;
+    const remote = o.remote;
+    this.sync = new BrainSync(this.runtime, {
+      debounceMs: o.debounceMs, setTimer: o.setTimer, clearTimer: o.clearTimer,
+      ...(remote ? { launch: (project: CodeProject) => handOverBuild(this.runtime, remote, project.userId, project, { mode: "incremental" }) } : {}),
+    });
   }
 
   get store(): ProjectBrainStore { return this.runtime.store; }
-  start(userId: string, projectId: string, o?: StartOptions) { return startProjectBrain(this.runtime, userId, projectId, o); }
-  build(userId: string, projectId: string, o?: StartOptions) { return buildProjectBrain(this.runtime, userId, projectId, o); }
+  start(userId: string, projectId: string, o?: StartOptions) { return this.remote ? startRemote(this.runtime, this.remote, userId, projectId, o) : startProjectBrain(this.runtime, userId, projectId, o); }
+  /** Waited for, where builds run in this process; where they are handed over, the answer is the status at the hand-over. */
+  build(userId: string, projectId: string, o?: StartOptions) { return this.remote ? this.start(userId, projectId, o).then((s) => s.done) : buildProjectBrain(this.runtime, userId, projectId, o); }
+  /** The build itself, in THIS process, for the one that was handed the work (the Worker's BuildBrain Workflow): the row was marked "building" by whoever asked. */
+  buildHere(userId: string, projectId: string, o: Omit<StartOptions, "handedOver"> = {}) { return buildProjectBrain(this.runtime, userId, projectId, { ...o, handedOver: true }); }
   get(userId: string, projectId: string) { return getProjectBrain(this.runtime, userId, projectId); }
   open(userId: string, projectId: string) { return openProjectBrain(this.runtime, userId, projectId); }
-  ensureFresh(userId: string, projectId: string, o?: { waitMs?: number }) { return ensureFresh(this.runtime, userId, projectId, o); }
+  ensureFresh(userId: string, projectId: string, o?: { waitMs?: number }) { return this.remote ? ensureFreshRemote(this.runtime, this.remote, userId, projectId) : ensureFresh(this.runtime, userId, projectId, o); }
   /** A project was just added: build it, unless it has been built. */
-  added(userId: string, project: CodeProject) { return ensureStarted(this.runtime, userId, project); }
+  added(userId: string, project: CodeProject) { return this.remote ? ensureStartedRemote(this.runtime, this.remote, userId, project) : ensureStarted(this.runtime, userId, project); }
   /** GitHub's push webhook (see BrainSync). */
   pushed(project: CodeProject) { return this.sync.pushed(project); }
   /** The project is gone: forget what was learned. (The database cascades too.) */

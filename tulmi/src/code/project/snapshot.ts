@@ -33,7 +33,7 @@
  *
  * Nothing here logs a path or a byte of a file.
  */
-import { ConnectorError } from "../../connectors/oauth.js";
+import { ConnectorError } from "../../connectors/state.js";
 import type { GithubApp, RepoRef, TreeEntry } from "../github.js";
 import {
   baseName, depthOf, isBinaryPath, isEnvExample, isGeneratedPath, isLockfile, isReadable, isSecretPath, isTestPath, isVendoredPath,

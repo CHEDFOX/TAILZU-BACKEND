@@ -48,7 +48,7 @@
  * deleted) is kept up as these happen, and by GitHub's webhook when things
  * happen on GitHub (webhook.ts). A deleted branch keeps its record.
  */
-import { ConnectorError } from "../connectors/oauth.js";
+import { ConnectorError } from "../connectors/state.js";
 import { assertMergeable, validBranchName, type BranchDiff, type PullComment, type PullInfo, type RepoRef } from "./github.js";
 import { assertNotRunnerBranch, gate, guardRead, type GateOptions, type Gated } from "./policy.js";
 import { assertAccess, gateBase, notFound, ownProject, repoRef, type ProjectDeps } from "./projects.js";

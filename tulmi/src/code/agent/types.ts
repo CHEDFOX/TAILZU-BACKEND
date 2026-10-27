@@ -21,6 +21,7 @@
  * A phase is entered, worked and left; the state says which, and what was decided
  * on the way. Nothing in this file reaches a network or a store.
  */
+import type { Approval } from "../approvals.js";
 import type { Classification } from "../brain/types.js";
 import type { BaselineResult } from "../project/types.js";
 import type { ChangePlan, Located } from "../work/index.js";
@@ -183,6 +184,11 @@ export type Waiting =
     expiresAt: number;
     /** The person said yes. */
     approved?: boolean;
+    /**
+     * The approval book's own record of the question (approvals.ts peek), kept here so that the yes can be taken by a process that did not
+     * ask it: the book is in one process's memory, and with jobs on Cloudflare the question is asked on the Worker and answered on the VPS.
+     */
+    bound?: Approval;
     at: number;
   }
   | { kind: "budget"; needPaise: number; at: number };
@@ -255,7 +261,7 @@ export interface AgentState {
   /** Consecutive loop failures, for the backoff. */
   errors?: number;
   /** The run in flight, so a server that picks the job up after a restart takes that step over instead of asking for another. `tag` says which ask it was for (a call's id, "baseline", "verify:1", "scaffold"). */
-  run?: { stepIdx: number; commands: string[]; tag: string };
+  run?: { stepIdx: number; commands: string[]; tag: string; /** Epoch ms the step was asked for (so a run that is looked at once per advance knows how long it has waited). */ at?: number };
   /** Epoch ms the job was handed to the agent. */
   startedAt: number;
 }

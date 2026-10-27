@@ -45,6 +45,9 @@ import { createCode } from "./code/index.js";
 import { startOAuthSweeper } from "./code/oauth.js";
 import { registerCodeRoutes } from "./routes/code.js";
 import { registerCodeJobRoutes } from "./routes/codeJobs.js";
+import { registerCodeInternalRoutes } from "./routes/codeInternal.js";
+import { jobsHandoffFromConfig } from "./code/jobs/handoff/index.js";
+import { jobStore } from "./code/jobs/store.js";
 import { createAgent } from "./code/agent/index.js";
 import { createGithubActions, createJobs } from "./code/jobs/index.js";
 import { registerCustomConnectorRoutes } from "./routes/connectorsCustom.js";
@@ -1042,7 +1045,10 @@ registerConnectorRoutes(app, { rateLimit: AUTHED_RL, connectors });
 // The Code bot's GitHub side: connect an install, pick a repo, start a work
 // branch (src/code). Off unless CODE_GITHUB is true; the routes then answer
 // 404 code_off, and with the GitHub App not set up, 503 not_configured.
-const code = cfg.CODE_GITHUB ? createCode() : null;
+// With CODE_JOBS_MODE=cloudflare the jobs (the agent loop, the project brain's builds) run on the Worker in jobs/: this server hands
+// them over (signed calls, docs/cloudflare-jobs.md) and starts no orchestrator and no ticker. "local" (the default) is as it always was.
+const jobsHandoff = jobsHandoffFromConfig(cfg, app.log);
+const code = cfg.CODE_GITHUB ? createCode(jobsHandoff ? { brain: cfg.CODE_PROJECT_BRAIN ? { remote: jobsHandoff } : false } : {}) : null;
 registerCodeRoutes(app, { rateLimit: AUTHED_RL, code });
 // The project brain (code/project): its lines go to the server's log, and its push timers stop with the server.
 if (code?.brain) {
@@ -1066,8 +1072,14 @@ const codeJobs = code ? createJobs({ code, github: githubActions, notify: notify
 // most CODE_AGENT_CONCURRENCY at a time, checkpointing after every step so a restart carries on without redoing an
 // edit or a commit. It needs the project brain (CODE_PROJECT_BRAIN) as well; without it jobs are left to whatever
 // drives the router, as before. The ticker above hands back the claims of servers that went quiet.
-const codeAgent = code && codeJobs ? createAgent({ code, jobs: codeJobs, notify: notifyCodeJob, log: app.log }) : null;
-registerCodeJobRoutes(app, { rateLimit: AUTHED_RL, code, jobs: codeJobs, githubActions, agent: codeAgent });
+const codeAgent = code && codeJobs ? createAgent({ code, jobs: codeJobs, notify: notifyCodeJob, log: app.log, ...(jobsHandoff ? { remote: jobsHandoff } : {}) }) : null;
+registerCodeJobRoutes(app, {
+  rateLimit: AUTHED_RL, code, jobs: codeJobs, githubActions, agent: codeAgent,
+  // On the Worker the ticker is the Cron Trigger: this server starts none.
+  ...(jobsHandoff ? { tickEveryMs: null, onStepResult: (jobId: string) => { void jobsHandoff.wake(jobId, "runner"); } } : {}),
+});
+// The Worker's way back to the push engine (the push credentials stay here).
+registerCodeInternalRoutes(app, { rateLimit: AUTHED_RL, secret: jobsHandoff ? cfg.CODE_JOBS_SECRET : null, store: jobStore(), notify: notifyCodeJob });
 // "Sign in with GitHub" tokens unused for 30 days are revoked at GitHub (code/oauth.ts), on a timer, even
 // with the switch off: revoking only destroys. Never in a request's way.
 if (code?.oauth) {

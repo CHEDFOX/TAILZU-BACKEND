@@ -34,16 +34,30 @@
  * The clock, the sleep, the model, the runner and every store come in through AgentDeps, so a test runs all
  * of it offline. `crash()` is for tests: it kills this orchestrator the way a power cut would, without
  * letting go of anything.
+ *
+ * JOBS ON CLOUDFLARE (CODE_JOBS_MODE=cloudflare, jobs/, docs/cloudflare-jobs.md). The same class serves three roles:
+ *
+ *   local     (the default) everything above: it claims jobs and runs the loop itself
+ *   remote    the VPS when jobs run on the Worker: it claims nothing, polls nothing and starts no timer. The person's word
+ *             (answer, approve, deny, budget, stop) still goes through the methods below, because the state lives in the
+ *             database and the owner's rules are checked here; what changes is who is TOLD afterwards: `kick()` becomes a
+ *             call to the Worker (`remote.wake`), and a new job is handed over (`remote.start`)
+ *   worker    the Worker's own: `advance()` claims a job for one advance of its Workflow, runs the loop to its next
+ *             checkpoint (loop.ts advanceLoop) and lets the claim go. The claim, the epoch fencing and the checkpoints are
+ *             exactly the ones a server uses, so a retried step, a second Workflow instance or a VPS that is still in
+ *             local mode can never run one job twice
  */
 import { randomUUID } from "node:crypto";
-import { ConnectorError } from "../../connectors/oauth.js";
+import { ConnectorError } from "../../connectors/state.js";
+import type { WakeKind } from "../jobs/handoff/protocol.js";
 import { CLAIMABLE_STATES } from "../jobs/store.js";
 import type { JobRouter } from "../jobs/router.js";
 import type { JobStore } from "../jobs/store.js";
 import { AGENT_LEASE_MS, PAISE_MAX, brief, isEnded, type CodeJob, type JobState } from "../jobs/types.js";
 import { WorkLog, worklogStore, type WorkEntry } from "../work/index.js";
 import type { AgentDeps } from "./deps.js";
-import { runLoop } from "./loop.js";
+import { advanceLoop, runLoop, type Advance } from "./loop.js";
+import { reportText } from "./report.js";
 import { LostClaim, type Claim } from "./run.js";
 import { ERROR_BACKOFF_MS, LOOP_ERRORS_MAX, TASK_CHARS, initialState, stateOf, type AgentState } from "./types.js";
 
@@ -52,10 +66,25 @@ const WRITABLE: readonly JobState[] = ["queued", "running", "waiting_for_compute
 
 const notWaiting = (what: string) => new ConnectorError("not_waiting", `That job isn't waiting for ${what}.`);
 
+/** What the VPS tells the Worker's Workflow about a job besides starting it (jobs/handoff/protocol.ts). */
+export type { WakeKind };
+
+/** The VPS's way to the Worker (code/jobs/handoff/client.ts). */
+export interface RemoteJobs {
+  /** Starts the job's Workflow. Tried again a few times; throws when it could not be (the job is then failed with a reason). */
+  start(jobId: string): Promise<void>;
+  /** Says that something changed for a job, so its Workflow looks again. Never throws: the state is in the database, and the Worker's cron looks again. */
+  wake(jobId: string, kind: WakeKind): Promise<void>;
+}
+
 export interface OrchestratorOptions {
   jobs: JobRouter;
   store: JobStore;
   deps: AgentDeps;
+  /** Jobs run on the Cloudflare Worker: this server hands them over and claims none (the "remote" role above). */
+  remote?: RemoteJobs;
+  /** Runs no loops and no timers of its own: the Worker's role (jobs/ calls `advance`). */
+  passive?: boolean;
   /** Names this server in the claim. A new one for each process. */
   instanceId?: string;
   /** Jobs at once: CODE_AGENT_CONCURRENCY, 4 by default. */
@@ -104,6 +133,9 @@ export class AgentOrchestrator {
   private readonly deps: AgentDeps;
   private readonly concurrency: number;
   private readonly leaseMs: number;
+  private readonly remote: RemoteJobs | undefined;
+  /** Never claims or runs a loop by itself (remote or worker). */
+  private readonly passive: boolean;
   private readonly active = new Map<string, Active>();
   private polling: Promise<number> | null = null;
   private again = false;
@@ -118,6 +150,8 @@ export class AgentOrchestrator {
     this.deps = o.deps;
     this.concurrency = Math.max(1, Math.floor(o.concurrency));
     this.leaseMs = o.leaseMs ?? AGENT_LEASE_MS;
+    this.remote = o.remote;
+    this.passive = o.passive === true || o.remote !== undefined;
   }
 
   private now(): number { return this.deps.now(); }
@@ -131,9 +165,9 @@ export class AgentOrchestrator {
    * A job made for the agent: its whole request is written into its state (the job keeps the first 500
    * characters), and the worker is nudged. Idempotent: a job that already has a state is left as it is.
    */
-  async enqueue(jobId: string, task?: string): Promise<void> {
+  async enqueue(jobId: string, task?: string): Promise<CodeJob | null> {
     const job = await this.store.getJobById(jobId);
-    if (!job || isEnded(job.state)) return;
+    if (!job || isEnded(job.state)) return job;
     if (!stateOf(job.checkpoint)) {
       const text = typeof task === "string" && task.trim() ? task.trim() : job.task;
       const state = initialState(text.slice(0, TASK_CHARS), this.now());
@@ -143,12 +177,32 @@ export class AgentOrchestrator {
     } else if (!job.agent) {
       await this.store.casJob(job.id, { agentEpoch: job.agentEpoch }, { agent: true });
     }
+    if (this.remote) return this.handOver(job.id);
     this.kick();
+    return this.store.getJobById(jobId);
+  }
+
+  /**
+   * Gives a new job to the Worker. When the Worker cannot be reached after the client's tries, the job is failed with a reason the person
+   * can read (nothing was started, so nothing was changed), and it is that failed job that is returned.
+   */
+  private async handOver(jobId: string): Promise<CodeJob | null> {
+    try {
+      await this.remote!.start(jobId);
+    } catch (err) {
+      const code = (err as { code?: string } | null)?.code ?? (err as Error)?.name ?? "error";
+      this.deps.log?.warn({ jobId, error: code }, "code agent: the jobs Worker could not be reached");
+      await this.jobs.finishJob(jobId, {
+        ok: false,
+        reason: "Tailzu could not hand this job to the machine that runs it, after trying three times. Nothing was changed. Try again in a little while.",
+      }).catch(() => undefined);
+    }
+    return this.store.getJobById(jobId);
   }
 
   /** Looks for work soon, without waiting for it. */
   kick(): void {
-    if (this.dead || this.closed) return;
+    if (this.dead || this.closed || this.passive) return;
     void this.poll().catch((err) => this.deps.log?.warn({ error: (err as Error)?.name }, "code agent: a poll failed"));
   }
 
@@ -156,7 +210,7 @@ export class AgentOrchestrator {
 
   /** Claims free agent jobs, up to the room this server has, and starts the loop on each. Returns how many were started. */
   async poll(): Promise<number> {
-    if (this.dead || this.closed) return 0;
+    if (this.dead || this.closed || this.passive) return 0;
     if (this.polling) {
       // A poll is running: ask for one more when it ends, so a job made during it is not left for the next tick.
       this.again = true;
@@ -275,7 +329,7 @@ export class AgentOrchestrator {
    * their old holder can never write again), and free jobs are picked up.
    */
   async tick(): Promise<{ handedBack: number; started: number }> {
-    if (this.dead || this.closed) return { handedBack: 0, started: 0 };
+    if (this.dead || this.closed || this.remote) return { handedBack: 0, started: 0 };
     let handedBack = 0;
     const now = this.now();
     for (const j of await this.store.listAgentExpired(now, 100)) {
@@ -299,7 +353,7 @@ export class AgentOrchestrator {
 
   /** Starts the heartbeat and looks for work now. The ticker (every 15 seconds) does the rest. */
   start(): void {
-    if (this.beat || this.dead) return;
+    if (this.beat || this.dead || this.passive) return;
     this.beat = setInterval(() => void this.heartbeat(), Math.floor(this.leaseMs / 3));
     this.beat.unref?.();
     this.kick();
@@ -337,6 +391,102 @@ export class AgentOrchestrator {
     }
   }
 
+  // ----------------------------------------------- one advance (the Worker)
+
+  /**
+   * ONE ADVANCE OF A JOB, for a Cloudflare Workflow (jobs/src/agentJob.ts): claims the job, runs the loop up to its next checkpoint
+   * (loop.ts advanceLoop) and lets go of the claim, then says what the Workflow should do next.
+   *
+   * The claim is the one a server takes (`claimAndRun`): one compare-and-set on the job's epoch, held for `leaseMs`, every write
+   * fenced by it. So the Workflow is not trusted to be alone: a retried step whose first attempt is still running, a second Workflow
+   * on the same job, or a VPS in local mode all find the claim taken, and `advance` says "wait, claim" until it runs out.
+   *
+   * A job that is waiting for the person is not claimed at all: the answer is "wait" until their word is written into it.
+   * An error it does not understand is counted and backed off from exactly as `errored` does for a loop on a server: the claim is
+   * let go with a wait that doubles (15 s, then 30 s), and the third time running the job is failed, with a plain reason.
+   */
+  async advance(jobId: string, o: { holder: string; signal?: AbortSignal; turns?: number }): Promise<Advance> {
+    const job = await this.store.getJobById(jobId);
+    if (!job || isEnded(job.state) || !job.agent) return { next: "end", why: "over" };
+    if (job.state === "waiting_for_you" && (job.waitingOn === "answer" || job.waitingOn === "approval" || job.waitingOn === "budget")) {
+      return { next: "wait", waitingOn: job.waitingOn };
+    }
+    const now = this.now();
+    const claimed = await this.store.casJob(job.id, { agentEpoch: job.agentEpoch, agentFreeBy: now, states: CLAIMABLE_STATES }, {
+      agentHolder: o.holder, agentEpoch: job.agentEpoch + 1, agentExpiresAt: now + this.leaseMs, ...(job.state === "queued" ? { state: "running" as const } : {}),
+    });
+    if (!claimed) {
+      const cur = await this.store.getJobById(jobId);
+      if (!cur || isEnded(cur.state)) return { next: "end", why: "over" };
+      // Somebody holds it (or the epoch moved between the read and the write): look again when their time is up.
+      const wakeAt = Math.max(now + 5_000, cur.agentExpiresAt ?? now + 15_000);
+      return { next: "wait", waitingOn: "claim", wakeAt, waitMs: wakeAt - now };
+    }
+    const epoch = claimed.agentEpoch;
+    const claim = this.claimFor(claimed.id, epoch);
+    try {
+      const state = stateOf(claimed.checkpoint) ?? initialState(claimed.task, now);
+      const a = await advanceLoop({ job: claimed, state, deps: this.deps, claim, signal: o.signal ?? new AbortController().signal }, o.turns !== undefined ? { turns: o.turns } : {});
+      return a.next === "end" && a.why === "lost" ? await this.settleLost(jobId) : a;
+    } catch (err) {
+      if (err instanceof LostClaim) return await this.settleLost(jobId);
+      return await this.advanceErrored(claimed, epoch, err);
+    } finally {
+      // Let go of the claim so the next advance (or the next try of this one) takes it at once. A no-op when the epoch has moved on (the ticker handed it back, the job was parked or ended).
+      await this.store.casJob(claimed.id, { agentEpoch: epoch }, { agentHolder: null, agentExpiresAt: null }).catch(() => null);
+    }
+  }
+
+  /**
+   * The claim was not ours any more. If the job is over (the person stopped it) that is the end; if not, the ticker handed the claim back
+   * to someone (this advance ran long) and the job is still there to be claimed again, so the driver is told to look again shortly.
+   */
+  private async settleLost(jobId: string): Promise<Advance> {
+    const cur = await this.store.getJobById(jobId);
+    if (!cur || isEnded(cur.state)) return { next: "end", why: "over" };
+    return { next: "wait", waitingOn: "claim", wakeAt: this.now() + 5_000, waitMs: 5_000 };
+  }
+
+  private async advanceErrored(job: CodeJob, epoch: number, err: unknown): Promise<Advance> {
+    const why = (err as { code?: string; name?: string } | null)?.code ?? (err as Error)?.name ?? "error";
+    this.deps.log?.warn({ jobId: job.id, error: why }, "code agent: an advance failed");
+    const cur = await this.store.getJobById(job.id);
+    if (!cur || cur.agentEpoch !== epoch || isEnded(cur.state)) return { next: "end", why: "lost" };
+    const state = stateOf(cur.checkpoint);
+    const errors = (state?.errors ?? 0) + 1;
+    if (errors >= LOOP_ERRORS_MAX) {
+      await this.jobs.finishJob(job.id, { ok: false, reason: `Something went wrong on Tailzu's side three times running (${why}). What was committed so far is on the branch; nothing else was changed.` });
+      return { next: "end", why: "finished" };
+    }
+    if (state) state.errors = errors;
+    const wakeAt = this.now() + ERROR_BACKOFF_MS * 2 ** (errors - 1);
+    // The wait is the Workflow's (it sleeps until `wakeAt`); the count is kept in the state so the third failure in a row fails the job.
+    if (state) {
+      await this.store.casJob(job.id, { agentEpoch: epoch }, { checkpoint: { ...cur.checkpoint, agent: state as unknown as Record<string, unknown> } });
+    }
+    return { next: "wait", waitingOn: "retry", wakeAt, waitMs: wakeAt - this.now() };
+  }
+
+  /**
+   * Ends a job nobody came back to (a question or a yes that was never answered): the report says why and what was and was not done,
+   * the job is failed with the reason, and the person is told through the router's own notification. Nothing on the branch changes.
+   */
+  async abandon(jobId: string, why: string): Promise<void> {
+    const job = await this.store.getJobById(jobId);
+    if (!job || isEnded(job.state)) return;
+    const state = stateOf(job.checkpoint);
+    if (state) {
+      state.report = {
+        at: this.now(), outcome: "failed", text: reportText({ state, spentPaise: job.spentPaise, budgetPaise: job.budgetPaise, outcome: "failed", why }),
+        ...(state.pr ? { prUrl: state.pr.url } : {}), costPaise: job.spentPaise,
+      };
+      state.waiting = undefined;
+      state.phase = "done";
+      await this.store.casJob(job.id, { agentEpoch: job.agentEpoch }, { checkpoint: { ...job.checkpoint, agent: state as unknown as Record<string, unknown> } });
+    }
+    await this.jobs.finishJob(jobId, { ok: false, reason: why });
+  }
+
   // ------------------------------------------------------ the person's word
 
   /** The person's own agent job, with its state; not found for anyone else's. */
@@ -347,12 +497,14 @@ export class AgentOrchestrator {
     return { job, state };
   }
 
-  private async resume(job: CodeJob, state: AgentState): Promise<CodeJob> {
+  private async resume(job: CodeJob, state: AgentState, kind: WakeKind): Promise<CodeJob> {
     const next = await this.store.casJob(job.id, { agentEpoch: job.agentEpoch, states: ["waiting_for_you"] }, {
       state: "running", waitingOn: null, reason: "", checkpoint: { ...job.checkpoint, agent: state as unknown as Record<string, unknown> },
     });
     if (!next) throw notWaiting("that");
-    this.kick();
+    // The word is in the database. Where the Worker runs the job, its Workflow is told to look again (and does not need telling twice).
+    if (this.remote) await this.remote.wake(job.id, kind);
+    else this.kick();
     return next;
   }
 
@@ -371,7 +523,7 @@ export class AgentOrchestrator {
     const { job, state } = await this.mine(userId, jobId);
     if (job.state !== "waiting_for_you" || job.waitingOn !== "answer" || state.waiting?.kind !== "question") throw notWaiting("an answer");
     state.waiting = { ...state.waiting, answer: text };
-    return stripAgent(await this.resume(job, state));
+    return stripAgent(await this.resume(job, state, "answer"));
   }
 
   /**
@@ -395,17 +547,21 @@ export class AgentOrchestrator {
       }
       if (w.for === "plan") {
         const a = approvals.issue({ userId, projectId: job.projectId, action: w.action, branch: job.branch });
-        state.waiting = { ...w, approvalId: a.id, expiresAt: a.expiresAt };
+        state.waiting = { ...w, approvalId: a.id, expiresAt: a.expiresAt, bound: a };
         await this.store.casJob(job.id, { agentEpoch: job.agentEpoch, states: ["waiting_for_you"] }, { checkpoint: { ...job.checkpoint, agent: state as unknown as Record<string, unknown> } });
         return { needsApproval: true, approvalId: a.id, action: w.action, summary: w.summary, faceId: w.faceId, expiresAt: a.expiresAt };
       }
       // The commit's or the pull request's question is the policy's: it is asked again by doing it again.
       state.waiting = undefined;
-      await this.resume(job, state);
+      await this.resume(job, state, "approve");
       return { refreshing: true };
     }
     if (typeof approvalId !== "string" || !approvalId || approvalId.length > 200) throw new ConnectorError("bad_request", "approvalId is the id the question gave.");
     if (w.for === "plan") {
+      // The question may have been asked by another process (a Cloudflare Worker): its record is in the job's state.
+      if (w.bound && w.bound.id === approvalId && !approvals.restore(w.bound) && w.expiresAt <= this.now()) {
+        throw new ConnectorError("approval_expired", "That approval ran out. Ask again, and say yes within ten minutes.");
+      }
       const taken = approvals.take(approvalId, key);
       if (!taken.ok) {
         throw taken.reason === "expired"
@@ -416,7 +572,7 @@ export class AgentOrchestrator {
       throw new ConnectorError("approval_invalid", "That isn't an approval I have for this. Ask again to get one.");
     }
     state.waiting = { ...w, approved: true };
-    return { approved: true, job: stripAgent(await this.resume(job, state)) };
+    return { approved: true, job: stripAgent(await this.resume(job, state, "approve")) };
   }
 
   /** No to what the job asked. A plan or a commit not approved ends the job; a pull request not marked ready stays a draft and the job reports. */
@@ -427,10 +583,12 @@ export class AgentOrchestrator {
     if (w.for === "ready") {
       state.waiting = undefined;
       state.readyDenied = true;
-      return stripAgent(await this.resume(job, state));
+      return stripAgent(await this.resume(job, state, "deny"));
     }
     const why = w.for === "plan" ? "You didn't approve the plan, so nothing was changed." : "You didn't approve the commit, so nothing was committed.";
-    return stripAgent(await this.jobs.cancelJob(job.id, why));
+    const ended = await this.jobs.cancelJob(job.id, why);
+    await this.remote?.wake(job.id, "deny");
+    return stripAgent(ended);
   }
 
   /** More budget. A job that stopped for the money goes on from where it was. */
@@ -450,8 +608,9 @@ export class AgentOrchestrator {
     const state = stateOf(job.checkpoint);
     if (state && job.state === "waiting_for_you" && job.waitingOn === "budget") {
       state.waiting = undefined;
-      return stripAgent(await this.resume(job, state));
+      return stripAgent(await this.resume(job, state, "budget"));
     }
+    // Not waiting for money: it is on the books for the next time it asks, and nothing needs waking.
     return stripAgent(job);
   }
 
@@ -459,7 +618,9 @@ export class AgentOrchestrator {
   async stopJob(userId: string, jobId: string): Promise<CodeJob> {
     const job = await this.jobs.job(userId, jobId);
     this.active.get(job.id)?.abort.abort();
-    return stripAgent(await this.jobs.cancelJob(job.id));
+    const ended = await this.jobs.cancelJob(job.id);
+    await this.remote?.wake(job.id, "stop");
+    return stripAgent(ended);
   }
 
   /** The job's work log, in order. */

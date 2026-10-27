@@ -35,35 +35,10 @@ import { isBlockedAddress } from "../../connectors/egress.js";
 import { CdpClient, CdpError, type CdpSession } from "./cdp.js";
 import { launch, type LaunchedChrome } from "./chrome.js";
 import { startGuard, type Guard, type GuardOptions } from "./guard.js";
+import { BrowserError, type BrowserErrorCode, type RenderOptions, type RenderedPage, type Renderer } from "./types.js";
 
-export interface RenderOptions {
-  /** The whole render, queue excluded. Default 20 s. */
-  timeoutMs?: number;
-  /** Fail images, media and fonts. Default true. */
-  blockResources?: boolean;
-}
-
-export interface RenderedPage {
-  /** The page's HTML after its scripts ran and the invisible was removed. */
-  html: string;
-  /** Where the page ended up (redirects and scripts included). */
-  finalUrl: string;
-  title: string;
-  /** The status of the page's own document (200 when the browser did not say). */
-  status: number;
-}
-
-/** What readPage takes to render a page that needs its scripts. */
-export type Renderer = (url: string, opts?: RenderOptions) => Promise<RenderedPage>;
-
-export type BrowserErrorCode = "bad_url" | "blocked" | "timeout" | "navigation_failed" | "crashed" | "unavailable" | "busy";
-
-export class BrowserError extends Error {
-  constructor(readonly code: BrowserErrorCode, message?: string) {
-    super(message ?? code);
-    this.name = "BrowserError";
-  }
-}
+export { BrowserError };
+export type { BrowserErrorCode, RenderOptions, RenderedPage, Renderer };
 
 export interface EngineOptions {
   chromePath: string;

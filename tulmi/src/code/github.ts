@@ -75,8 +75,10 @@
  * round it.
  */
 import { createPrivateKey, type KeyObject } from "node:crypto";
-import { SignJWT } from "jose";
-import { ConnectorError } from "../connectors/oauth.js";
+import { SignJWT, importPKCS8 } from "jose";
+import { isWorkerRuntime } from "../config.js";
+import { ConnectorError } from "../connectors/state.js";
+import { normalizePem, toPkcs8Pem } from "./appKey.js";
 import { AppAccess, DEFAULT_BOT, withCoAuthor, type BotIdentity, type GitAccess, type Person } from "./access.js";
 import { SHADOW_PREFIX } from "./shadow.js";
 
@@ -279,12 +281,20 @@ export function assertRepoPath(path: unknown): string {
  * what was in the value.
  */
 export function parsePrivateKey(raw: string): KeyObject {
-  const unquote = (s: string) => s.trim().replace(/^(["'])([\s\S]*)\1$/, "$2").trim();
-  const unescape = (s: string) => s.replace(/\\n/g, "\n");
-  let pem = unescape(unquote(raw));
-  if (!pem.includes("-----BEGIN")) pem = unescape(Buffer.from(pem, "base64").toString("utf8"));
   try {
-    return createPrivateKey(pem);
+    return createPrivateKey(normalizePem(raw));
+  } catch {
+    throw new ConnectorError("not_configured", "GitHub isn't set up on this server (the App's private key can't be read).");
+  }
+}
+
+/**
+ * The key as a PKCS#8 PEM, for the Worker's path (appKey.ts): WebCrypto imports only PKCS#8, and GitHub's own download is
+ * PKCS#1. Same "not_configured" as parsePrivateKey when it cannot be read.
+ */
+export function parsePrivateKeyPkcs8(raw: string): string {
+  try {
+    return toPkcs8Pem(raw);
   } catch {
     throw new ConnectorError("not_configured", "GitHub isn't set up on this server (the App's private key can't be read).");
   }
@@ -437,8 +447,15 @@ export function commitTreeEntries(files: CommitFile[]): Array<Record<string, unk
   });
 }
 
+/** What jose's importPKCS8 makes: a WebCrypto CryptoKey. */
+type WebKey = Awaited<ReturnType<typeof importPKCS8>>;
+
 export class GithubApp {
+  /** The key as node:crypto holds it: the VPS signs with this. Null on a Worker (and for a sign-in-only server). */
   private readonly key: KeyObject | null;
+  /** The key as a PKCS#8 PEM: a Worker signs with the CryptoKey made from this (appKey.ts). */
+  private readonly pkcs8: string | null;
+  private cryptoKey: Promise<WebKey> | null = null;
   private jwt: { token: string; until: number } | null = null;
   private readonly tokens = new Map<string, { token: string; expiresAt: number }>();
   private readonly access = new Map<string, { permission: RepoPermission; until: number }>();
@@ -457,9 +474,26 @@ export class GithubApp {
    * GitHub": the calls that need the App then say "not_configured". Throws
    * ConnectorError("not_configured") when the App's key can't be read.
    */
-  constructor(private readonly c: GithubAppConfig | null, private readonly o: { fetchFn?: typeof fetch; now?: () => number; bot?: BotIdentity } = {}) {
-    this.key = c ? parsePrivateKey(c.privateKey) : null;
+  constructor(
+    private readonly c: GithubAppConfig | null,
+    private readonly o: { fetchFn?: typeof fetch; now?: () => number; bot?: BotIdentity; keyMode?: "node" | "webcrypto" } = {},
+  ) {
+    // The VPS signs with node:crypto's KeyObject, as it always has; a Worker (RUNTIME=worker, or keyMode "webcrypto") with a CryptoKey made from the PKCS#8 form of the same key.
+    const webcrypto = (o.keyMode ?? (isWorkerRuntime() ? "webcrypto" : "node")) === "webcrypto";
+    this.key = c && !webcrypto ? parsePrivateKey(c.privateKey) : null;
+    this.pkcs8 = c && webcrypto ? parsePrivateKeyPkcs8(c.privateKey) : null;
     this.bot = o.bot ?? { ...DEFAULT_BOT };
+  }
+
+  /** What the App JWT is signed with. */
+  private async signingKey(): Promise<KeyObject | WebKey> {
+    if (this.key) return this.key;
+    try {
+      return await (this.cryptoKey ??= importPKCS8(this.pkcs8!, "RS256"));
+    } catch {
+      this.cryptoKey = null;
+      throw new ConnectorError("not_configured", "GitHub isn't set up on this server (the App's private key can't be read).");
+    }
   }
 
   /** The App's settings, or "not_configured" when this server has none. */
@@ -504,7 +538,7 @@ export class GithubApp {
       .setProtectedHeader({ alg: "RS256" })
       .setIssuer(this.app().clientId || this.app().appId || "")
       .setIssuedAt(secs - 60).setExpirationTime(secs + 540)
-      .sign(this.key!);
+      .sign(await this.signingKey());
     this.jwt = { token, until: now + JWT_KEEP_MS };
     return token;
   }

@@ -27,7 +27,7 @@ import type { JobRouter } from "../jobs/router.js";
 import { projectDepsOf } from "../jobs/index.js";
 import { jobStore, type JobStore } from "../jobs/store.js";
 import { brainOf, type AgentBrain, type AgentDeps } from "./deps.js";
-import { AgentOrchestrator } from "./orchestrator.js";
+import { AgentOrchestrator, type RemoteJobs } from "./orchestrator.js";
 import { routerRunner, type AgentRunner } from "./runner.js";
 
 export * from "./changeset.js";
@@ -56,6 +56,10 @@ export interface CreateAgentOptions extends Partial<Pick<AgentDeps, "call" | "ga
   instanceId?: string;
   /** How long a claim lasts, instead of two minutes. */
   leaseMs?: number;
+  /** Jobs run on the Cloudflare Worker (CODE_JOBS_MODE=cloudflare): hand them over and claim none (orchestrator.ts). */
+  remote?: RemoteJobs;
+  /** Claims jobs only when told to (the Worker calls `advance`): no polling, no timers. */
+  passive?: boolean;
 }
 
 /** The worker, or null when this server cannot run one (no GitHub client, or the project brain is off). */
@@ -75,5 +79,6 @@ export function createAgent(o: CreateAgentOptions): AgentOrchestrator | null {
   return new AgentOrchestrator({
     jobs: o.jobs, store, deps, concurrency: o.concurrency ?? getConfig().CODE_AGENT_CONCURRENCY,
     ...(o.instanceId ? { instanceId: o.instanceId } : {}), ...(o.leaseMs ? { leaseMs: o.leaseMs } : {}),
+    ...(o.remote ? { remote: o.remote } : {}), ...(o.passive ? { passive: true } : {}),
   });
 }

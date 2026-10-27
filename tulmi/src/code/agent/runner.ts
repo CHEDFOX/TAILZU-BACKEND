@@ -56,7 +56,30 @@ export type RunOutcome =
   /** The job was stopped, or the caller's signal went. */
   | { status: "cancelled"; reason: string };
 
+/**
+ * A step is out and has not finished, and the caller asked not to wait for it (RunControl.once). Thrown out of a phase, which the
+ * driver (loop.ts advanceLoop) turns into "come back in `retryInMs`": the step's mark is in the state, so the next advance adopts
+ * it and looks again. This is how a Cloudflare Workflow waits for a runner with step.sleep instead of holding a step open.
+ */
+export class RunPending extends Error {
+  constructor(readonly retryInMs: number, readonly stepIdx: number) {
+    super("the step is still out");
+    this.name = "RunPending";
+  }
+}
+
+/** How long to leave a step that is out before looking again: often at first, then less. */
+export function retryAfter(waitedMs: number): number {
+  return waitedMs < 60_000 ? 10_000 : waitedMs < 5 * 60_000 ? 30_000 : 60_000;
+}
+
 export interface RunControl {
+  /**
+   * Look at the step once, and throw RunPending if it is not finished, instead of waiting for it. The wait for a place, the timeouts and
+   * the grace are measured from `startedAt`, the time the step was first asked for, which a caller that comes back later passes in.
+   */
+  once?: boolean;
+  startedAt?: number;
   signal?: AbortSignal;
   /** Called while waiting, to keep the agent's claim alive. */
   renew?: () => Promise<void>;
@@ -111,7 +134,8 @@ export function routerRunner(o: RouterRunnerOptions): AgentRunner {
       }
       await ctl.onStep?.(step.idx);
 
-      const started = now();
+      // The time of the first ask counts only for the step that ask was for.
+      const started = spec.adopt !== undefined && step.idx === spec.adopt && ctl.startedAt !== undefined ? ctl.startedAt : now();
       const idx = step.idx;
       for (;;) {
         // The caller is stopping (the server is closing, the claim was lost, the job was stopped). The step is not dropped here: a job that was stopped has its step dropped by the router, and one that is only changing servers leaves it for the next to take over.
@@ -130,6 +154,7 @@ export function routerRunner(o: RouterRunnerOptions): AgentRunner {
             await o.jobs.cancelExec(job.id);
             return { status: "timeout", reason: "Nobody said yes to committing what it made, so it was dropped." };
           }
+          if (ctl.once) throw new RunPending(retryAfter(waited), idx);
           await ctl.renew?.();
           await sleep(poll);
           continue;
@@ -142,6 +167,7 @@ export function routerRunner(o: RouterRunnerOptions): AgentRunner {
           await o.jobs.cancelExec(job.id);
           return { status: "timeout", reason: "It did not finish in the time it was given." };
         }
+        if (ctl.once) throw new RunPending(retryAfter(waited), idx);
         await ctl.renew?.();
         await sleep(poll);
       }

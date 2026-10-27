@@ -20,7 +20,7 @@
  * branch, open a draft pull request, change the description of the pull request it opened, and read
  * (the App needs Deployments, Commit statuses and Checks: read for previews; without them the tip is shown).
  */
-import { ConnectorError } from "../../connectors/oauth.js";
+import { ConnectorError } from "../../connectors/state.js";
 import { validBranchName, type PreviewSignals, type RepoRef } from "../github.js";
 import { gateFree } from "../policy.js";
 import {

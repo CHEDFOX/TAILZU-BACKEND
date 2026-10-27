@@ -10,7 +10,7 @@
  * Anything that goes wrong is a null, never a throw: an audit with a lockfile it cannot read says so and falls back
  * to the manifests.
  */
-import { ConnectorError } from "../../connectors/oauth.js";
+import { ConnectorError } from "../../connectors/state.js";
 import { repoRef, workspace, ownProject, type ProjectDeps } from "../projects.js";
 
 export const BLOB_READ_MAX = 20 * 1024 * 1024;

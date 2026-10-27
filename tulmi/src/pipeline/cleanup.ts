@@ -9,7 +9,6 @@
  * The model is CLEANUP_MODEL (config.ts).
  */
 import { nameForPrompt } from "../experience/assistantName.js";
-import OpenAI from "openai";
 import { getConfig } from "../config.js";
 import type { CleanupOptions, Personality } from "../../../shared/types/api.js";
 import { cleanLabel, describeField, fieldKindOf, takesAValue } from "./field.js";
@@ -40,28 +39,8 @@ export function scriptOf(text: string): string | undefined {
 }
 export { stripFenceTags };
 
-let client: OpenAI | null = null;
-/** The one OpenRouter client. Exported for Ask's planner (agent/llm.ts), which
- *  shares the connection but sets its own timeout and retries per call. */
-export function openrouter(): OpenAI {
-  if (!client) {
-    const cfg = getConfig();
-    client = new OpenAI({
-      apiKey: cfg.OPENROUTER_API_KEY,
-      baseURL: "https://openrouter.ai/api/v1",
-      // Bound each call so a hung upstream can't pin a request/socket for the
-      // SDK default (~10 min). 30s covers refine/draft; the SDK retries twice
-      // on transient network/5xx.
-      timeout: 30_000,
-      maxRetries: 2,
-      defaultHeaders: {
-        "HTTP-Referer": cfg.OPENROUTER_APP_URL,
-        "X-Title": cfg.OPENROUTER_APP_NAME,
-      },
-    });
-  }
-  return client;
-}
+import { openrouter } from "./openrouter.js";
+export { openrouter };
 
 /**
  * Reasoning effort for every LLM call.

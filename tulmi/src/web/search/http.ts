@@ -24,7 +24,8 @@
  */
 import { gunzipSync } from "node:zlib";
 import { DEFAULT_WEB_BOT_UA, getConfig } from "../../config.js";
-import { EgressRefused, egressFetchWith, type FetchLike } from "../../connectors/egress.js";
+import { EgressRefused, type FetchLike } from "../../connectors/egressTypes.js";
+import { safeFetchWith } from "../safeFetch.js";
 import { WebError } from "../error.js";
 import { decodeBody } from "../extract.js";
 
@@ -41,7 +42,7 @@ const guarded = new Map<number, FetchLike>();
 /** The egress fetch with a time limit of its own (the usual one unless a caller asks for longer) and the hard size cap. */
 function defaultFetch(timeoutMs: number): FetchLike {
   let f = guarded.get(timeoutMs);
-  if (!f) { f = egressFetchWith({ timeoutMs, maxBytes: HARD_MAX_BYTES }); guarded.set(timeoutMs, f); }
+  if (!f) { f = safeFetchWith({ timeoutMs, maxBytes: HARD_MAX_BYTES }); guarded.set(timeoutMs, f); }
   return f;
 }
 

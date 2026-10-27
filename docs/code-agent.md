@@ -2,7 +2,7 @@
 
 Layers 1 to 7 are the parts (`docs/code-brain.md`: which model, what it costs; `docs/code-project-brain.md`: what the bot knows about a repo; `docs/web-search.md`; `docs/code-work.md`: locate, plan, the work log, libraries, new projects) and the environment router (`docs/code-router.md`: where a command runs, leases, the policy's commit). **Layer 8 is the worker that ties them together.** A person says "fix this" in the app; a server finds where it belongs, plans it, does it with a model and tools, checks it against what the project was before, commits it through the policy, opens a pull request and says what it did, spending the budget it was given and stopping to ask whenever it has to.
 
-It is `tulmi/src/code/agent/`. No npm dependency was added. The clock, the sleep, the model, the network, the runner and every store come in through `AgentDeps` (`deps.ts`), so the whole loop runs offline in the tests (`tests/code-agent-*.test.ts`, over `tests/agent-rig.ts`).
+It is `tulmi/src/code/agent/`. No npm dependency was added. By default it runs inside the API server; with `CODE_JOBS_MODE=cloudflare` the same loop runs on a Cloudflare Workflow instead (section 12, `docs/cloudflare-jobs.md`). The clock, the sleep, the model, the network, the runner and every store come in through `AgentDeps` (`deps.ts`), so the whole loop runs offline in the tests (`tests/code-agent-*.test.ts`, over `tests/agent-rig.ts`).
 
 ```
 tulmi/src/code/agent/
@@ -15,7 +15,7 @@ tulmi/src/code/agent/
   report.ts        the commit message, the pull request body, the final report
   run.ts           one run of the loop: the state, the claim it writes through, the ways it stops
   phases.ts        prepare ... report, each a function over a Run that can be entered again
-  loop.ts          the driver, and the budget stop
+  loop.ts          the driver (runLoop), the single-advance entry (advanceLoop), and the budget stop
   orchestrator.ts  the worker: claims, checkpoints, concurrency, the person's word
   index.ts         createAgent(): wired from the Code object and the job router
 ```
@@ -152,6 +152,7 @@ The agent's state holds the person's code (the staged edits, the last files it r
 1. Run `tulmi/supabase/migrations/0030_code_agent.sql` (or `full_schema.sql`) after `0029`, **before** the new release takes `POST /v1/code/jobs`: the job has new columns and three new waits.
 2. Optionally set `CODE_JOB_DEFAULT_BUDGET_PAISE` (default 3000) and `CODE_AGENT_CONCURRENCY` (default 4). `CODE_GITHUB` and `CODE_PROJECT_BRAIN` must be on.
 3. Nothing else: the worker starts with the router's ticker when the server is ready and stops when it closes.
+4. Optional: run the jobs on Cloudflare instead (`CODE_JOBS_MODE=cloudflare`, section 12). Nothing in sections 1 to 8 changes for the person.
 
 ## 10. What needs a live check
 
@@ -168,3 +169,36 @@ The tests run the whole loop offline, over a fake GitHub, a scripted model and a
 ## 11. Tests
 
 `tests/code-agent-loop.test.ts` (the happy path, fix rounds, already-broken, the baseline, the tools), `-ask` (every wait: the model's question, locate, plan approval and deny, commit and ready approvals, the budget), `-resume` (a crash after two edits, an adopted run, two servers, a slow server fenced, concurrency, closing, loop errors), `-safety` (refused paths, secrets, prompt injection), `-newproject` (an empty repo), `-routes` (the HTTP), `-units` (the parts, the claim in the store, the router's overlay, the runner), and `code-run-script.test.ts` / `code-jobs-placement.test.ts` for `applyOverlay` and the ticker. `tests/agent-rig.ts` is the rig: a real orchestrator, router, policy and workspace over `FakeGithub`, the fixture brain, a scripted model (`scriptedModel`) and a runner that answers from a script (`ScriptRunner`).
+
+## 12. Running the loop on Cloudflare (`CODE_JOBS_MODE=cloudflare`)
+
+The loop above is one function that runs a job to its end in one process. For Cloudflare Workflows it is also available **one advance at a time**, with the same phases, the same claim and the same checkpoints; the Worker in `jobs/` imports it straight from `tulmi/src` (no copy). The set-up, the deploy and the limits are in `docs/cloudflare-jobs.md`.
+
+**The entry.** `advanceLoop(env, {turns?})` in `loop.ts` runs the phase the job is in up to its next checkpoint and returns a small value, never state:
+
+```
+{ next: "continue" }                                             more to do: call again
+{ next: "wait", waitingOn, wakeAt?, waitMs? }                    nothing to do until: the person (answer | approval | budget),
+                                                                 a runner's report (runner), a time (retry), or the claim (claim)
+{ next: "end", why: "finished" | "lost" | "stopped" | "over" }   the job is over
+```
+
+`AgentOrchestrator.advance(jobId, {holder, turns?})` claims the job (the same compare-and-set as section 2), calls `advanceLoop` and lets the claim go. In the **work** phase an advance is `turns` model rounds (a round is a model turn and its tool calls; the Worker uses 2), after which the phase yields and the state is saved; a runner step that is out is **polled once** (`pollOnce`, `RunPending`) instead of waited for, and the wait comes back as `{next:"wait", waitingOn:"runner", waitMs}`. Every other phase in the table of section 1 is one advance (a phase that finishes returns `continue`, and the next advance runs the next phase).
+
+**Who drives.** One Workflow instance per job, its id the job's id: `step.do("advance-<n>")` for each advance, `waitForEvent("wake")` for the person (seven days, then the job is ended with a report) and for a runner, `step.sleep` for a claim or a back-off. The VPS posts a signed `/v1/event` after it writes the person's word, so the instance wakes at once; the Worker's one-minute cron looks again at any job nobody has driven for five minutes, so a lost event is harmless.
+
+**What stays the same.**
+
+* **The claim** (section 2) is the second guard: the Workflow engine retries a failed step and the epoch fences a step that was cut off. The Worker's claim is five minutes long (it has no heartbeat).
+* **Checkpoints** stay in Supabase, after every model turn and tool call. A step's result is the small value above.
+* **The routes** (section 7) are still the VPS's. In cloudflare mode `POST /v1/code/jobs`, `answer`, `approve`, `deny`, `budget` and `stop` write what they always wrote, then call the Worker; a job that cannot be started because the Worker cannot be reached in three signed attempts is failed with a reason the person can read.
+* **Money, safety and the model's tools** are the code of sections 3 to 8, unchanged.
+
+**What is different.**
+
+* An **approval** used to live in the server's memory. The plan phase now also keeps the approval record in the job's state (`Waiting.approval.bound`); the next advance restores it (`approvals.ts` `peek` / `restore`), so a yes given to the VPS reaches a loop running in another process. In `local` mode this is harmless.
+* **Push** is still sent from the VPS: the Worker asks for it with a signed `POST /v1/internal/code/notify {jobId, kind, text}`; the VPS pushes to the job's owner, looked up from the job.
+* A person's **own computer is not offered** as a place for these jobs: which PCs are online is the VPS's memory. GitHub's free computers are.
+* Web reads (`read_page`, `web_search`, `find_resources`) go through the `safeFetch` seam (`tulmi/src/web/safeFetch.ts`): the VPS installs `egressFetch`, the Worker installs `workerSafeFetch`. A page that needs its scripts is rendered by Cloudflare's Browser Rendering (`WEB_BROWSER=cloudflare`).
+
+**Tests.** `tests/code-agent-advance.test.ts` (the entry: every wait and end, a claim held, a passive orchestrator), `tests/code-jobs-cloudflare.test.ts` (the VPS hand-off in the routes), `tests/jobs-handoff-*.test.ts`, `tests/code-internal-notify.test.ts`; and in `jobs/test/`: `loop-in-workerd.test.ts` runs a whole job (plan, edit, checks, commit, PR, a question, finish) advance by advance inside the Workers runtime over this same `agent-rig.ts`.

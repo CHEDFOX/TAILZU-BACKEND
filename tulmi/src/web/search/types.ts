@@ -9,9 +9,9 @@
  * SearchStore handed in.
  */
 import type { z } from "zod";
-import type { FetchLike } from "../../connectors/egress.js";
+import type { FetchLike } from "../../connectors/egressTypes.js";
 
-export type { FetchLike } from "../../connectors/egress.js";
+export type { FetchLike } from "../../connectors/egressTypes.js";
 
 // ------------------------------------------------------------------ the plan
 

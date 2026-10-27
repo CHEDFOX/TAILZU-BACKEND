@@ -9,7 +9,8 @@
  * is not JSON is `unsupported_type`. The body that was sent is never in an error.
  */
 import { gunzipSync } from "node:zlib";
-import { egressFetchWith, type FetchLike } from "../../connectors/egress.js";
+import type { FetchLike } from "../../connectors/egressTypes.js";
+import { safeFetchWith } from "../../web/safeFetch.js";
 import { WebError } from "../../web/error.js";
 import { botUa } from "../../web/search/http.js";
 
@@ -23,7 +24,7 @@ let guarded: FetchLike | null = null;
 export async function postJson<T = unknown>(url: string, body: unknown, o: PostOptions = {}): Promise<T> {
   const timeoutMs = o.timeoutMs ?? POST_TIMEOUT_MS;
   const max = o.maxBytes ?? POST_MAX_BYTES;
-  const fetchFn = o.fetchFn ?? (guarded ??= egressFetchWith({ timeoutMs: POST_TIMEOUT_MS, maxBytes: 8 * 1024 * 1024 }));
+  const fetchFn = o.fetchFn ?? (guarded ??= safeFetchWith({ timeoutMs: POST_TIMEOUT_MS, maxBytes: 8 * 1024 * 1024 }));
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
   try {

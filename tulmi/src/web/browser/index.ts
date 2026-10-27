@@ -3,8 +3,8 @@
  *
  * getRenderer() is what the search tools and the agent loop pass to readPage as
  * `render`: a function that opens a page in a real browser and hands back its
- * HTML, or null when this server has no browser to offer (WEB_BROWSER is not
- * "local", or no Chrome was found), in which case readPage says needs_browser
+ * HTML, or null when this server has no browser to offer (WEB_BROWSER is "off",
+ * or "local" with no Chrome found, or "cloudflare" with no account and token), in which case readPage says needs_browser
  * for a page that only exists once its scripts have run.
  *
  * LATER, LAYER 8: render where the job runs. A page for the user's own errand
@@ -21,17 +21,24 @@
 import { getConfig } from "../../config.js";
 import { BrowserEngine, rendererFrom, type Renderer } from "./engine.js";
 import { findChrome } from "./chrome.js";
+import { cloudflareRendererFromConfig } from "./cloudflare.js";
 
 export { BrowserEngine, BrowserError, rendererFrom } from "./engine.js";
 export type { RenderedPage, RenderOptions, Renderer } from "./engine.js";
 export { findChrome } from "./chrome.js";
+export { cloudflareRenderer, cloudflareRendererFromConfig } from "./cloudflare.js";
 
 let engine: BrowserEngine | null = null;
 let warned = false;
 
-/** The server's own browser, or null. The same engine (one Chrome) serves every caller. */
+/**
+ * The server's own browser, or null. The same engine (one Chrome) serves every caller.
+ * WEB_BROWSER=cloudflare is Cloudflare's Browser Rendering instead (cloudflare.ts): no Chrome here, one REST call per page.
+ * (The jobs Worker imports cloudflare.ts directly: this file also holds the Chrome engine, which a Worker cannot run.)
+ */
 export function getRenderer(): Renderer | null {
   const cfg = getConfig();
+  if (cfg.WEB_BROWSER === "cloudflare") return cloudflareRendererFromConfig();
   if (cfg.WEB_BROWSER !== "local") return null;
   if (!engine) {
     const chromePath = findChrome({ chromePath: cfg.CHROME_PATH });
