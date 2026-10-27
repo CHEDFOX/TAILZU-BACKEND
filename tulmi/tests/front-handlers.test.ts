@@ -117,19 +117,34 @@ describe("a question about a project", () => {
     return { a, code };
   }
 
-  it("is answered from the files the search points at: the question, then numbered excerpts, by a cheap role that cites path and line", async () => {
+  it("is answered from what the project's index knows, with no file read, by a cheap role that cites path and line (the full story is in code-chat.test.ts)", async () => {
     const { a, code } = await projectRig();
-    a.json.on("front.code_answer", "slug() lowercases a title and dashes its spaces: src/util.ts:2.");
+    a.json.on("front.code_answer", "slug() lowercases a title and dashes its spaces: src/util.ts:1.");
     const h = defaultHandlers({ code: code as never, call: a.model.call as never });
     const c = inProject({ projectId: a.project.id });
+    const reads = a.fake.calls.length;
     const out = await h.codeAnswer({ ...(await call("what does slug() in src/util.ts do?", c)), maxPaise: 150 });
-    expect(out.text).toContain("src/util.ts:2");
+    expect(out.text).toContain("src/util.ts:1");
     const sent = a.json.of("front.code_answer")[0]!;
     expect(sent).toMatchObject({ tier: "cheap", system: stableBlock("front_code_answer") });
     expect(sent.user).toContain("<question>\nwhat does slug() in src/util.ts do?\n</question>");
-    expect(sent.user).toContain("<excerpts>\nsrc/util.ts\n1: export function slug(s: string): string {");
-    expect(sent.user).toContain("2:   return s.toLowerCase()");
+    expect(sent.user).toContain("<facts>\nsrc/util.ts:1 — String helpers: slug turns a title into a URL slug.");
+    // The index was enough: no file was read from GitHub, and so no excerpts were sent.
+    expect(sent.user).not.toContain("<excerpts>");
+    expect(a.fake.calls.filter((x) => /\/contents\//.test(x.url.pathname)).length).toBe(0);
+    expect(a.fake.calls.length).toBeGreaterThanOrEqual(reads);
     expect(out.notes).toBeUndefined();
+  });
+
+  it("reads the lines it must when the question is about what the code does, and numbers them", async () => {
+    const { a, code } = await projectRig();
+    a.json.on("front.code_answer", "slug() lowercases the title, then replaces whitespace with dashes: src/util.ts:2.");
+    const h = defaultHandlers({ code: code as never, call: a.model.call as never });
+    const out = await h.codeAnswer({ ...(await call("why does slug() in src/util.ts replace whitespace with a dash?", inProject({ projectId: a.project.id }))), maxPaise: 150 });
+    const sent = a.json.of("front.code_answer")[0]!;
+    expect(sent.user).toContain("<excerpts>\nsrc/util.ts\n");
+    expect(sent.user).toContain("2:   return s.toLowerCase()");
+    expect(out.text).toContain("src/util.ts:2");
   });
 
   it("never reads a secret file, even when the search points at it", async () => {
@@ -167,6 +182,18 @@ describe("a question about a project", () => {
     const job = await a.jobNow(out.job.id);
     expect(job).toMatchObject({ userId: "alice", branch: out.job.branch, budgetPaise: 1200, agent: true });
     expect((await a.stateNow(out.job.id)).task).toContain("trim leading and trailing dashes");
+  });
+
+  it("works an open-ended task free-form, when the decision says so, and a plain one guided", async () => {
+    const { a, code } = await projectRig();
+    const h = defaultHandlers({ code: code as never, jobs: a.jobs, agent: a.orch });
+    const c = inProject({ projectId: a.project.id });
+    const open = await call("debug why slug() leaves stray dashes at the ends and fix it", c);
+    expect(open.decision).toMatchObject({ intent: "code_task", mode: "freeform" });
+    const out = await h.codeJob({ ...open, maxPaise: 1200 });
+    expect((await a.stateNow(out.job.id)).mode).toBe("freeform");
+    const plain = await h.codeJob({ ...(await call("change the button color to red", c)), maxPaise: 1200 });
+    expect((await a.stateNow(plain.job.id)).mode).toBeUndefined();
   });
 
   it("is a job of the person's own project only", async () => {

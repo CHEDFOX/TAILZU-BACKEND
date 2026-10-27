@@ -32,16 +32,17 @@ import type { LoopEnv } from "./run.js";
 import { BudgetStop, EndJob, LostClaim, Park, Run, Yield } from "./run.js";
 import { RunPending } from "./runner.js";
 import {
-  baseline, commitPhase, commitStaged, headlineOf, locatePhase, newProjectPhase, planPhase, prPhase, prepare, reportPhase, runVerify, verifyPhase, workPhase,
+  baseline, commitPhase, commitStaged, headlineOf, locatePhase, newProjectPhase, planPhase, prPhase, prepare, reportPhase, runVerify, stagedFingerprint, verifyPhase, workPhase,
 } from "./phases.js";
 import { designPhase } from "./design.js";
+import { mergePhase } from "./merge.js";
 import { reportText } from "./report.js";
 import { rupees, topUpFor, type Phase } from "./types.js";
 
 export type LoopEnd = "finished" | "parked" | "lost" | "stopped";
 
 const PHASES: Record<Exclude<Phase, "done">, (r: Run) => Promise<void>> = {
-  prepare, new_project: newProjectPhase, baseline, locate: locatePhase, plan: planPhase, work: workPhase, verify: verifyPhase, design: designPhase, commit: commitPhase, pr: prPhase, report: reportPhase,
+  prepare, new_project: newProjectPhase, baseline, merge: mergePhase, locate: locatePhase, plan: planPhase, work: workPhase, verify: verifyPhase, design: designPhase, commit: commitPhase, pr: prPhase, report: reportPhase,
 };
 
 const isBudget = (e: unknown): boolean => e instanceof BudgetStop || e instanceof BudgetExceeded || (e as { code?: unknown } | null)?.code === "budget_exceeded";
@@ -207,6 +208,7 @@ async function budgetStop(r: Run, needPaise: number): Promise<void> {
       const { v } = await runVerify(r, s.work.fixRounds);
       s.verify = v;
       if (v.ran && v.ok) {
+        s.verified = stagedFingerprint(r);
         const sha = await commitStaged(r, { partial: true });
         outcome = sha ? `What I had done so far passed the checks, so it is committed (${sha.slice(0, 7)}) on ${r.branch}; the rest is not done.` : "";
       } else {

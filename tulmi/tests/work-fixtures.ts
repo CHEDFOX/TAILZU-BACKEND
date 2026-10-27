@@ -185,7 +185,9 @@ export function fakeSupabase(o: { error?: string; tables?: string[] } = {}) {
           const out: Row[] = [];
           for (const r of rows) {
             if (op === "upsert") {
-              const at = list.findIndex((x) => x[conflict] === r[conflict]);
+              // `onConflict` may name several columns, comma separated, as a composite primary key does.
+              const keys = conflict.split(",").map((k) => k.trim());
+              const at = list.findIndex((x) => keys.every((k) => x[k] === r[k]));
               if (at >= 0) { list[at] = { ...list[at], ...r }; out.push(list[at]!); continue; }
             }
             const stored = { ...(table === "code_worklog" ? { id: nextId++ } : {}), ...r, ...(table === "code_intake" && !r.created_at ? { created_at: new Date().toISOString() } : {}) };
@@ -196,8 +198,8 @@ export function fakeSupabase(o: { error?: string; tables?: string[] } = {}) {
           return { data: out.map((r) => structuredClone(r)), error: null };
         }
         let hit = list.filter((r) => filters.every((f) => f(r)));
-        if (op === "delete") { tables[table] = list.filter((r) => !hit.includes(r)); log.push({ table, op, args: [] }); return { data: null, error: null }; }
-        if (order) hit = [...hit].sort((a, b) => a[order!] - b[order!]);
+        if (op === "delete") { tables[table] = list.filter((r) => !hit.includes(r)); log.push({ table, op, args: [] }); return { data: hit.map((r) => structuredClone(r)), error: null }; }
+        if (order) hit = [...hit].sort((a, b) => (a[order!] < b[order!] ? -1 : a[order!] > b[order!] ? 1 : 0));
         if (range) hit = hit.slice(range[0], range[1] + 1);
         return { data: head ? null : hit.map((r) => structuredClone(r)), error: null, ...(count ? { count: list.filter((r) => filters.every((f) => f(r))).length } : {}) };
       };
@@ -207,6 +209,7 @@ export function fakeSupabase(o: { error?: string; tables?: string[] } = {}) {
         upsert: (row: Row | Row[], opts: { onConflict: string }) => { op = "upsert"; payload = row; conflict = opts.onConflict; return b; },
         delete: () => { op = "delete"; return b; },
         eq: (c: string, v: unknown) => { filters.push((r) => r[c] === v); return b; },
+        is: (c: string, v: unknown) => { filters.push((r) => (r[c] ?? null) === v); return b; },
         in: (c: string, vs: unknown[]) => { filters.push((r) => vs.includes(r[c])); return b; },
         order: (c: string) => { order = c; return b; },
         range: (a: number, z: number) => { range = [a, z]; return b; },

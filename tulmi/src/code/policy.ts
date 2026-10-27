@@ -420,10 +420,12 @@ export function fingerprintOf(...parts: unknown[]): string {
 }
 
 /** The digest of a commit: its files (paths, and the digest of each text) and its message. */
-export function commitFingerprint(files: readonly CommitFile[], message: string): string {
+export function commitFingerprint(files: readonly CommitFile[], message: string, mergeParent?: string): string {
   return fingerprintOf(
     files.map((f) => [f.path, f.delete === true || f.content === null || f.content === undefined ? null : createHash("sha256").update(String(f.content)).digest("hex")]),
     message,
+    // A merge commit is a different thing from a commit of the same files: a yes to one is not a yes to the other. (Left out for a plain commit, so every earlier fingerprint is unchanged.)
+    ...(mergeParent !== undefined ? [mergeParent] : []),
   );
 }
 

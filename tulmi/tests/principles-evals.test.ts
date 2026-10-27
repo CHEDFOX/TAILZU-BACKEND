@@ -44,6 +44,8 @@ const { VerdictSchema } = await import("../src/artifacts/compare.js");
 const { parseEdits, parseRewrite } = await import("../src/artifacts/edit.js");
 const { DecideReply } = await import("../src/front/decide.js");
 const { PlanSchema: FrontPlanReply } = await import("../src/front/handlers.js");
+const { ReviewVerdict } = await import("../src/code/prcare/review.js");
+const { ConflictVerdict } = await import("../src/code/agent/merge.js");
 type Fixture = import("../src/principles/evalcheck.js").Fixture;
 type RoleId = (typeof ROLE_IDS)[number];
 
@@ -242,6 +244,14 @@ describe("a known-good answer for each role", () => {
       reads: (t) => FrontPlanReply.parse(JSON.parse(t)),
     },
     front_look: { text: "A sign-in screen: a heading, two input fields and a wide blue button labelled Sign in, with a small link below it.", reads: (t) => t },
+    care_review: {
+      text: '{"kind":"small","summary":"Rename the variable tmp to retryCount in retry().","reply":"Renaming it now."}',
+      reads: (t) => ReviewVerdict.parse(JSON.parse(t)),
+    },
+    care_conflict: {
+      text: '{"files":[{"path":"src/index.ts","kind":"mechanical","reason":"Both sides added a different import; both stay."}]}',
+      reads: (t) => ConflictVerdict.parse(JSON.parse(t)),
+    },
   };
 
   it("has one for every role", () => {

@@ -152,6 +152,12 @@ export interface RepoRef {
   workflows?: boolean;
   /** The App's token for this call also has the Actions permission, to read a workflow run ("read") or cancel one ("write"). Ignored for a person's own token. */
   actions?: "read" | "write";
+  /**
+   * PR care (code/prcare): the App's token for this call also reads checks, commit statuses and Actions (job logs), as far as the install was given them.
+   * Asked for only by the calls that look at CI; whatever the install lacks is simply left out of the token, so the call that needs it says "forbidden" in words
+   * and nothing else is affected. Ignored for a person's own token (the repo scope already reads them).
+   */
+  ci?: boolean;
 }
 
 export interface TreeEntry { path: string; type: string; size?: number; sha: string }
@@ -194,6 +200,37 @@ export interface BranchDiff {
 
 /** A comment on a pull request, as the bot reads it later. The words in `body` are somebody else's: see pullComments. */
 export interface PullComment { author: string; body: string; path?: string; line?: number; createdAt: number }
+
+/** One check run of a commit (GitHub Actions' jobs and other Apps' checks), as Tailzu looks at it. */
+export interface CheckRunView {
+  id: number; name: string;
+  /** "queued", "in_progress", "completed". */
+  status: string;
+  /** Once completed: "success", "failure", "neutral", "cancelled", "skipped", "timed_out", "action_required", "stale". Null before. */
+  conclusion: string | null;
+  app: string; url: string; title: string; summary: string;
+}
+
+/** One commit status (the older way a CI says "success", "failure", "error" or "pending"). */
+export interface CommitStatusView { context: string; state: string; url: string; description: string }
+
+export interface CommitChecksView {
+  runs: CheckRunView[];
+  statuses: CommitStatusView[];
+  /** Parts GitHub would not answer, usually for want of a permission on the App. */
+  denied: Array<"checks" | "statuses">;
+}
+
+/** A review thread: where on the diff, who said what, whether it is resolved. The bodies are somebody else's words. */
+export interface ReviewThread {
+  /** GraphQL's id, what resolveReviewThread takes. */
+  id: string;
+  resolved: boolean;
+  outdated: boolean;
+  path: string;
+  line?: number;
+  comments: Array<{ id: number; author: string; body: string; createdAt: number }>;
+}
 
 /** A GitHub Actions workflow run, as much of it as Tailzu looks at. */
 export interface GithubRun {
@@ -358,6 +395,29 @@ function saidIn(json: any): string {
   return [String(json?.message ?? ""), ...errs].join(" ");
 }
 
+/**
+ * A refusal by GitHub's branch protection or a repository rule, with what GitHub SAID kept beside the plain-words message. The message is still Tailzu's own
+ * (and the one nothing repeats GitHub's words in); `said` and `links` are for the one place that must show the person exactly what GitHub told it: a push
+ * that was refused is reported with GitHub's own sentence and the link it gave (agent/phases.ts, prcare), and then waits for the person. They are
+ * GitHub's words about a rule of the person's own repo: they hold no token and are cut and cleaned here.
+ */
+export class GithubRefusal extends ConnectorError {
+  constructor(code: string, message: string, readonly said: string, readonly links: string[]) { super(code, message); }
+}
+
+/** GitHub's sentence from a failed response, one line, 600 characters at most, with control characters taken out. */
+function saidText(json: any): string {
+  // eslint-disable-next-line no-control-regex
+  const t = saidIn(json).replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+  return t.length > 600 ? `${t.slice(0, 599)}…` : t;
+}
+
+/** The links GitHub gave with a refusal: its documentation_url, and any address in its sentence. https only, three at most. */
+function linksIn(json: any): string[] {
+  const found = [typeof json?.documentation_url === "string" ? json.documentation_url : "", ...(saidIn(json).match(/https:\/\/[^\s"'<>)\]]+/g) ?? [])];
+  return [...new Set(found.map((u) => u.replace(/[.,;]+$/, "")).filter((u) => /^https:\/\/[^\s]+$/.test(u) && u.length <= 300))].slice(0, 3);
+}
+
 /** Whether a failed response is GitHub's branch protection (or a rule) saying no. */
 export function isProtectionRefusal(status: number, json: any): boolean {
   return (status === 403 || status === 405 || status === 422) && PROTECTED.test(saidIn(json));
@@ -371,7 +431,7 @@ export function githubError(status: number, json: any, what: string): ConnectorE
     return new ConnectorError("needs_workflow_scope", `GitHub wouldn't let Tailzu change a workflow file in ${what}: this connection isn't allowed to. Sign in with GitHub again and allow it, or give the Tailzu GitHub App the Workflows permission.`);
   }
   if (isProtectionRefusal(status, json)) {
-    return new ConnectorError("protected_branch", `GitHub's branch protection (or a rule on the repo) wouldn't allow that on ${what}. Tailzu doesn't try to get round it: make the change through a pull request, or change the rule on GitHub yourself.`);
+    return new GithubRefusal("protected_branch", `GitHub's branch protection (or a rule on the repo) wouldn't allow that on ${what}. Tailzu doesn't try to get round it: make the change through a pull request, or change the rule on GitHub yourself.`, saidText(json), linksIn(json));
   }
   if (status === 401) return new ConnectorError("github_auth", "GitHub turned down Tailzu's access. Try again; if it keeps happening, reconnect GitHub.");
   if (status === 404) return new ConnectorError("not_found", `I couldn't find ${what} on GitHub.`);
@@ -463,7 +523,7 @@ export class GithubApp {
 
   /** The App's own access: its installation tokens. The default for any call that names none. */
   private readonly appAccess: GitAccess = new AppAccess(
-    (installationId, repoId, workflows, actions) => this.installationToken(installationId, repoId, workflows, actions),
+    (installationId, repoId, workflows, actions, ci) => this.installationToken(installationId, repoId, workflows, actions, ci),
     (installationId) => this.installationScopes(installationId),
   );
   /** Who the author of every commit is. */
@@ -551,19 +611,29 @@ export class GithubApp {
    * that down (422) if the install was not given it. Cached until five
    * minutes before it ends.
    */
-  async installationToken(installationId: number, repoId?: number, workflows = false, actions?: "read" | "write"): Promise<string> {
-    const key = `${installationId}|${repoId ?? "*"}${workflows && repoId !== undefined ? "|wf" : ""}${actions && repoId !== undefined ? `|a${actions}` : ""}`;
+  async installationToken(installationId: number, repoId?: number, workflows = false, actions?: "read" | "write", ci = false): Promise<string> {
+    const wantCi = ci && repoId !== undefined;
+    const key = `${installationId}|${repoId ?? "*"}${workflows && repoId !== undefined ? "|wf" : ""}${actions && repoId !== undefined ? `|a${actions}` : ""}${wantCi ? "|ci" : ""}`;
     const hit = this.tokens.get(key);
     if (hit && hit.expiresAt - TOKEN_SKEW_MS > this.now()) return hit.token;
     const running = this.minting.get(key);
     if (running) return running;
     const p = (async () => {
+      // PR care reads checks, statuses and Actions logs: asked for only as far as the install was given them (GitHub refuses a token that asks for more than the install has).
+      const reads: Record<string, string> = {};
+      if (wantCi) {
+        const have = await this.installationPermissions(installationId).catch(() => ({} as Record<string, string>));
+        for (const name of ["checks", "statuses", "actions"]) {
+          if (name === "actions" && actions) continue;
+          if (have[name] === "read" || have[name] === "write") reads[name] = "read";
+        }
+      }
       const r = await this.send("POST", `${GITHUB_API}/app/installations/${installationId}/access_tokens`, await this.appJwt(),
         repoId === undefined
           ? { permissions: { metadata: "read" } }
           : {
             repository_ids: [repoId],
-            permissions: { contents: "write", pull_requests: "write", metadata: "read", ...(workflows ? { workflows: "write" } : {}), ...(actions ? { actions } : {}) },
+            permissions: { contents: "write", pull_requests: "write", metadata: "read", ...(workflows ? { workflows: "write" } : {}), ...(actions ? { actions } : {}), ...reads },
           });
       if (r.status < 200 || r.status >= 300 || typeof r.json?.token !== "string") throw githubError(r.status, r.json, "that installation");
       const expiresAt = Date.parse(String(r.json.expires_at));
@@ -850,8 +920,23 @@ export class GithubApp {
    * written ("changed_since_approval").
    */
   async commit(repo: RepoRef, branch: string, files: CommitFile[], message: string, o: CommitOptions = {}): Promise<{ sha: string; parentSha: string }> {
+    return this.commitWith(repo, branch, files, message, o, []);
+  }
+
+  /**
+   * A MERGE COMMIT: the branch's head and `mergeParent` (the default branch's head the merge brought in) are its two parents, and its tree is the head's
+   * with `files` laid over it: the result of merging, conflicts resolved. Made with the Git Data API, so it is the bot's commit like any other (author, co-author
+   * line), and it only ever moves the branch forward: the head is its first parent, so the update is a fast-forward and never needs a force. Tailzu does not
+   * rebase and does not rewrite a branch. `files` may be empty (the merge changed nothing in the tree).
+   */
+  async mergeCommit(repo: RepoRef, branch: string, files: CommitFile[], message: string, mergeParent: string, o: CommitOptions = {}): Promise<{ sha: string; parentSha: string }> {
+    if (typeof mergeParent !== "string" || !/^[0-9a-f]{40}$/.test(mergeParent)) throw new ConnectorError("bad_request", "That isn't a commit to merge in.");
+    return this.commitWith(repo, branch, files, message, o, [mergeParent], true);
+  }
+
+  private async commitWith(repo: RepoRef, branch: string, files: CommitFile[], message: string, o: CommitOptions, more: string[], allowEmpty = false): Promise<{ sha: string; parentSha: string }> {
     refName(branch);
-    const tree = commitTreeEntries(files);
+    const tree = files.length === 0 && allowEmpty ? [] : commitTreeEntries(files);
     const text = typeof message === "string" ? message.trim().slice(0, 5000) : "";
     if (!text) throw new ConnectorError("bad_request", "A commit needs a message.");
     const msg = withCoAuthor(text, o.person);
@@ -861,10 +946,14 @@ export class GithubApp {
     if (o.expectHead !== undefined && o.expectHead !== parentSha) throw changedSinceApproval();
     const parent = await this.rsend(repo, "GET", `${base}/git/commits/${parentSha}`);
     if (parent.status !== 200 || typeof parent.json?.tree?.sha !== "string") throw githubError(parent.status, parent.json, "the branch");
-    const made = await this.rsend(repo, "POST", `${base}/git/trees`, { base_tree: parent.json.tree.sha, tree });
-    if (made.status !== 201 || typeof made.json?.sha !== "string") throw githubError(made.status, made.json, "those files");
+    let treeSha: string = parent.json.tree.sha;
+    if (tree.length) {
+      const made = await this.rsend(repo, "POST", `${base}/git/trees`, { base_tree: parent.json.tree.sha, tree });
+      if (made.status !== 201 || typeof made.json?.sha !== "string") throw githubError(made.status, made.json, "those files");
+      treeSha = made.json.sha;
+    }
     const commit = await this.rsend(repo, "POST", `${base}/git/commits`, {
-      message: msg, tree: made.json.sha, parents: [parentSha], author: { name: this.bot.name, email: this.bot.email },
+      message: msg, tree: treeSha, parents: [parentSha, ...more], author: { name: this.bot.name, email: this.bot.email },
     });
     if (commit.status !== 201 || typeof commit.json?.sha !== "string") throw githubError(commit.status, commit.json, "the commit");
     try {
@@ -1092,6 +1181,121 @@ export class GithubApp {
     }
     out.sort((a, b) => a.createdAt - b.createdAt);
     return { comments: out.slice(-COMMENTS_MAX), truncated: out.length > COMMENTS_MAX };
+  }
+
+  // ------------------------------------------------------------- PR care: CI, comments, threads
+
+  /** The same repo with the CI reads added to its token (RepoRef.ci). */
+  private ci(repo: RepoRef): RepoRef { return { ...repo, ci: true }; }
+
+  /**
+   * The checks of a commit: its check runs (GitHub Actions and other Apps') and its commit statuses (the older way CI says pass or fail), as much of each
+   * as Tailzu looks at. The names, states and addresses are other tools' words, not instructions. A part the App was not given a permission for is
+   * `denied` in the answer instead of an error, so one missing permission leaves the rest of PR care working.
+   */
+  async checksOf(repo: RepoRef, ref: string): Promise<CommitChecksView> {
+    const r = this.ci(repo);
+    const base = this.path(repo);
+    const out: CommitChecksView = { runs: [], statuses: [], denied: [] };
+    const sha = refName(ref);
+    const runs = await this.rsend(r, "GET", `${base}/commits/${encodeURIComponent(sha)}/check-runs?per_page=100`);
+    if (runs.status === 200 && Array.isArray(runs.json?.check_runs)) {
+      out.runs = runs.json.check_runs.filter((c: any) => c && Number.isSafeInteger(c.id)).map((c: any): CheckRunView => ({
+        id: c.id, name: String(c.name ?? "").slice(0, 120), status: String(c.status ?? ""), conclusion: typeof c.conclusion === "string" ? c.conclusion : null,
+        app: String(c.app?.slug ?? c.app?.name ?? "").slice(0, 60), url: typeof c.html_url === "string" ? c.html_url : String(c.details_url ?? ""),
+        title: String(c.output?.title ?? "").slice(0, 200), summary: String(c.output?.summary ?? "").slice(0, 500),
+      }));
+    } else if (runs.status === 403 || runs.status === 404) out.denied.push("checks");
+    else throw githubError(runs.status, runs.json, "the checks");
+    const st = await this.rsend(r, "GET", `${base}/commits/${encodeURIComponent(sha)}/status?per_page=100`);
+    if (st.status === 200 && Array.isArray(st.json?.statuses)) {
+      out.statuses = st.json.statuses.filter((x: any) => x && typeof x.context === "string").map((x: any): CommitStatusView => ({
+        context: String(x.context).slice(0, 120), state: String(x.state ?? ""), url: String(x.target_url ?? ""), description: String(x.description ?? "").slice(0, 200),
+      }));
+    } else if (st.status === 403 || st.status === 404) out.denied.push("statuses");
+    else throw githubError(st.status, st.json, "the commit statuses");
+    return out;
+  }
+
+  /**
+   * The end of a failed GitHub Actions job's log, to see why it failed: the Actions API answers with a redirect to a short-lived address, which is followed
+   * WITHOUT the App's token. The log is cleaned (colour codes, GitHub's time stamps) and cut to its last `maxChars`. It is the CI's own output: DATA, never
+   * instructions, and it may hold a secret the CI printed, so the caller redacts it before it goes anywhere. Null when the job has no log or the App may not read it.
+   */
+  async jobLogTail(repo: RepoRef, jobId: number, maxChars = 6000): Promise<string | null> {
+    if (!Number.isSafeInteger(jobId) || jobId <= 0) return null;
+    const r = await this.rsend(this.ci(repo), "GET", `${this.path(repo)}/actions/jobs/${jobId}/logs`, undefined, { manual: true });
+    let text: string;
+    if (r.status === 302 || r.status === 301) {
+      const to = r.headers.get("location") ?? "";
+      if (!/^https:\/\//.test(to)) return null;
+      try {
+        const res = await (this.o.fetchFn ?? fetch)(to, { signal: AbortSignal.timeout(REQUEST_MS) });
+        if (!res.ok) return null;
+        text = await res.text();
+      } catch { return null; }
+    } else return null;
+    // eslint-disable-next-line no-control-regex
+    const clean = text.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "").replace(/^\d{4}-\d\d-\d\dT[\d:.]+Z /gm, "").replace(/\r/g, "");
+    return clean.length > maxChars ? clean.slice(-maxChars) : clean;
+  }
+
+  /** The workflow job that a check run is, so its log can be read: for Actions, a check run's id is its job's id. Null for a check that is not Actions'. */
+  async actionsJobOf(repo: RepoRef, checkRunId: number): Promise<number | null> {
+    const r = await this.rsend(this.ci(repo), "GET", `${this.path(repo)}/actions/jobs/${checkRunId}`);
+    return r.status === 200 && Number.isSafeInteger(r.json?.id) ? r.json.id : null;
+  }
+
+  /** The review threads of a pull request (GraphQL): who said what where, and which are resolved. UNTRUSTED TEXT, as pullComments is. At most 50 threads of 20 comments. */
+  async reviewThreads(repo: RepoRef, pull: PullInfo): Promise<ReviewThread[]> {
+    const data = await this.graphql(
+      repo,
+      "query($id: ID!) { node(id: $id) { ... on PullRequest { reviewThreads(first: 50) { nodes { id isResolved isOutdated path line comments(first: 20) { nodes { databaseId author { login } body createdAt } } } } } } }",
+      { id: pull.nodeId },
+    );
+    const nodes: any[] = data?.node?.reviewThreads?.nodes ?? [];
+    return nodes.filter((t) => t && typeof t.id === "string").map((t): ReviewThread => ({
+      id: t.id, resolved: t.isResolved === true, outdated: t.isOutdated === true, path: String(t.path ?? ""), ...(Number.isSafeInteger(t.line) ? { line: t.line } : {}),
+      comments: (t.comments?.nodes ?? []).filter((c: any) => c && Number.isSafeInteger(c.databaseId)).map((c: any) => ({
+        id: c.databaseId, author: String(c.author?.login ?? ""), body: [...String(c.body ?? "")].slice(0, COMMENT_CHARS).join(""), createdAt: Date.parse(String(c.createdAt)) || 0,
+      })),
+    }));
+  }
+
+  /** Marks a review thread resolved (GraphQL `resolveReviewThread`). */
+  async resolveThread(repo: RepoRef, threadId: string): Promise<void> {
+    const data = await this.graphql(repo, "mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { isResolved } } }", { id: threadId });
+    if (data?.resolveReviewThread?.thread?.isResolved !== true) throw new ConnectorError("rejected", "GitHub didn't resolve that thread.");
+  }
+
+  /** A reply on a review thread, under the comment that started it. */
+  async replyToReviewComment(repo: RepoRef, pullNumber: number, commentId: number, body: string): Promise<{ id: number }> {
+    if (!Number.isSafeInteger(commentId) || commentId <= 0) throw new ConnectorError("bad_request", "That isn't a comment.");
+    const r = await this.rsend(repo, "POST", `${this.path(repo)}/pulls/${pullNumber}/comments/${commentId}/replies`, { body: body.slice(0, 20_000) });
+    if (r.status !== 201 || !Number.isSafeInteger(r.json?.id)) throw githubError(r.status, r.json, "that comment");
+    return { id: r.json.id };
+  }
+
+  /** A comment in the pull request's conversation. */
+  async createIssueComment(repo: RepoRef, number: number, body: string): Promise<{ id: number; url: string }> {
+    const r = await this.rsend(repo, "POST", `${this.path(repo)}/issues/${number}/comments`, { body: body.slice(0, 60_000) });
+    if (r.status !== 201 || !Number.isSafeInteger(r.json?.id)) throw githubError(r.status, r.json, "that pull request");
+    return { id: r.json.id, url: String(r.json.html_url ?? "") };
+  }
+
+  /** Edits a comment of the pull request's conversation in place. False when it is gone (the person deleted it): the caller then makes a new one. */
+  async updateIssueComment(repo: RepoRef, commentId: number, body: string): Promise<boolean> {
+    const r = await this.rsend(repo, "PATCH", `${this.path(repo)}/issues/comments/${commentId}`, { body: body.slice(0, 60_000) });
+    if (r.status === 404) return false;
+    if (r.status !== 200) throw githubError(r.status, r.json, "that comment");
+    return true;
+  }
+
+  /** The pull request's conversation comments with their ids, oldest first (100 at most): how a status comment that was lost track of is found again. */
+  async issueComments(repo: RepoRef, number: number): Promise<Array<{ id: number; author: string; body: string }>> {
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/issues/${number}/comments?per_page=${COMMENTS_MAX}`);
+    if (r.status !== 200 || !Array.isArray(r.json)) throw githubError(r.status, r.json, "that pull request");
+    return r.json.filter((c: any) => Number.isSafeInteger(c?.id)).map((c: any) => ({ id: c.id, author: String(c.user?.login ?? ""), body: String(c.body ?? "") }));
   }
 
   /** Takes a pull request out of draft. REST can't (the pulls endpoint has no `draft` to change), so this is GraphQL's markPullRequestReadyForReview. */

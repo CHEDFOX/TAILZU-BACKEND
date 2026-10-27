@@ -253,6 +253,8 @@ export interface AgentRigOptions {
   live?: LiveDeps;
   /** The design round's compare step and links (code/agent/design.ts). */
   design?: DesignDeps;
+  /** What the GitHub App was given on the install (Contents, Pull requests and Metadata unless said otherwise): PR care needs Checks, Commit statuses and Actions (read) as well. */
+  installPermissions?: Record<string, string>;
 }
 
 export async function agentRig(o: AgentRigOptions = {}) {
@@ -260,7 +262,7 @@ export async function agentRig(o: AgentRigOptions = {}) {
   resetClassifierCacheForTests();
   const fake = new FakeGithub(KEYS);
   const now = () => fake.clock.t;
-  fake.addInstall(101, "alice");
+  fake.addInstall(101, "alice", o.installPermissions ? { permissions: o.installPermissions } : {});
   const repo = fake.addRepo(101, "alice/app", { ...(o.empty ? { empty: true } : { files: o.files ?? APP_FILES }) });
   const store = new MemoryCodeStore(now);
   await store.upsertInstallation("alice", { installationId: 101, accountLogin: "alice", accountType: "User", repositorySelection: "selected", githubUserId: 77, githubLogin: "alice" });

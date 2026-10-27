@@ -948,9 +948,12 @@ describe("a runner's messages", () => {
     const hb = (b: object) => r.jobs.heartbeat("alice", b);
     const base = { deviceId: LAPTOP, name: "x", allowRun: true, projects: "all", busy: false };
     for (const bad of [{}, { ...base, deviceId: "short" }, { ...base, deviceId: "has spaces here" }, { ...base, allowRun: "yes" }, { ...base, busy: 1 },
-      { ...base, projects: "some" }, { ...base, projects: [1] }, { ...base, projects: Array.from({ length: 201 }, (_, i) => `p${i}`) }]) {
+      { ...base, projects: "some" }, { ...base, projects: [1] }, { ...base, projects: Array.from({ length: 5001 }, (_, i) => `p${i}`) }, { ...base, projects: { allExcept: "p1" } }, { ...base, projects: { allExcept: [1] } },
+      { ...base, projects: { allow: ["p1"] } }, { ...base, capabilities: { liveOnly: "yes" } }]) {
       await expect(hb(bad), JSON.stringify(bad).slice(0, 60)).rejects.toMatchObject({ code: "bad_request" });
     }
+    // Protocol version 2 (docs/desktop-runner-session.md section 9): the list is not cut at 200 any more.
+    await expect(hb({ ...base, projects: Array.from({ length: 201 }, (_, i) => `p${i}`) })).resolves.toMatchObject({ ok: true });
     await expect(r.jobs.next("alice", "x")).rejects.toMatchObject({ code: "bad_request" });
     const ok = { jobId: job.id, stepIdx: 0, epoch: given.epoch, exitCode: 0, outputTail: "", minutes: 1 };
     for (const bad of [{ ...ok, jobId: 7 }, { ...ok, stepIdx: -1 }, { ...ok, epoch: 0 }, { ...ok, epoch: 1.5 }, { ...ok, exitCode: "0" }, { ...ok, minutes: -1 },

@@ -19,6 +19,9 @@
  * reason in words, never silence. Nothing here logs what was sent or received.
  */
 import type { Artifacts } from "../artifacts/index.js";
+import { CodeChat } from "../code/chat/index.js";
+import type { ThreadStore } from "../code/chat/threads.js";
+import type { LiveFiles } from "../code/live/ports.js";
 import { componentArtifact, workspaceFiles } from "../artifacts/kit.js";
 import { unfence } from "../artifacts/edit.js";
 import { CAP_PAISE, isArtifactError, type Change } from "../artifacts/types.js";
@@ -27,10 +30,9 @@ import type { AgentOrchestrator } from "../code/agent/orchestrator.js";
 import type { GatewayDeps } from "../code/brain/gateway.js";
 import type { Code } from "../code/index.js";
 import type { JobRouter } from "../code/jobs/router.js";
-import { isSecretPath } from "../code/project/lang.js";
 import { assertAccess, createWorkBranch, ownProject, workspace, type ProjectDeps } from "../code/projects.js";
 import { makeWebTools, ResearchLimit, type WebTools, type WebToolDeps } from "../code/webTools.js";
-import { locate, type Located } from "../code/work/locate.js";
+import { locate } from "../code/work/locate.js";
 import { askJson, fence, forModel, type CallFn, type ModelCtx } from "../code/work/model.js";
 import { planChange } from "../code/work/plan.js";
 import { askText, type FrontModel } from "./model.js";
@@ -44,6 +46,8 @@ export interface RouteCall {
   userId: string;
   /** The person's words. For a short follow-up, the earlier turn's words are in front of them. */
   message: string;
+  /** The person's words alone, whatever was put in front of them. */
+  said?: string;
   ctx: FrontCtx;
   decision: Decision;
   signal?: AbortSignal;
@@ -60,9 +64,15 @@ export interface PlanOut extends TextOut {
   diagram?: string;
 }
 
+export interface CodeAnswerOut extends TextOut {
+  notes?: string[];
+  /** The flow the answer is about, as Mermaid text drawn from the project's import graph (no model made it). */
+  diagram?: string;
+}
+
 export interface Handlers {
   reply(c: RouteCall & { files: ReadFile[] }): Promise<TextOut>;
-  codeAnswer(c: RouteCall): Promise<TextOut & { notes?: string[] }>;
+  codeAnswer(c: RouteCall): Promise<CodeAnswerOut>;
   codeJob(c: RouteCall): Promise<{ job: NonNullable<FrontResult["job"]>; paise: number }>;
   research(c: RouteCall & { depth: ResearchDepth }): Promise<TextOut & { sources: NonNullable<FrontResult["sources"]>; confidence: number; partial?: boolean; gaps: string[] }>;
   plan(c: RouteCall): Promise<PlanOut>;
@@ -81,6 +91,12 @@ export interface HandlerDeps {
   assistant?: (c: RouteCall) => Promise<TextOut>;
   /** makeWebTools, or a stand-in. */
   web?: (d: WebToolDeps) => WebTools;
+  /** Talking about code (code/chat): made from `code` when not given. */
+  chat?: CodeChat;
+  /** Where a project chat thread's rolling summary is kept (migration 0034); the process's own when not given. */
+  threads?: ThreadStore;
+  /** The job's copy of the code for the person's open job on a project, if any: a question is then answered with read and grep from it instead of GitHub reads. */
+  rooms?: (userId: string, projectId: string) => Promise<Pick<LiveFiles, "read" | "grep"> | null>;
 }
 
 const model = (d: HandlerDeps, c: RouteCall): FrontModel => ({ ...(d.call ? { call: d.call } : {}), ...(d.gateway ? { gateway: d.gateway } : {}), userId: c.userId, ...(c.signal ? { signal: c.signal } : {}) });
@@ -131,43 +147,29 @@ function needCode(d: HandlerDeps, c: RouteCall): { code: Code; pd: ProjectDeps; 
   return { code, pd: projectDeps(code), projectId: c.ctx.projectId };
 }
 
-/** The lines of a file around where the evidence points, numbered, cut. */
-function around(text: string, lines?: [number, number]): string {
-  const all = text.split("\n");
-  const from = lines ? Math.max(1, lines[0] - 20) : 1;
-  const to = Math.min(all.length, lines ? lines[1] + 20 : 50);
-  const body = all.slice(from - 1, to).map((l, i) => `${from + i}: ${l.length > 200 ? `${l.slice(0, 199)}…` : l}`).join("\n");
-  return cut(body, 1_400);
-}
-
-async function codeAnswerDefault(d: HandlerDeps, c: RouteCall): Promise<TextOut & { notes?: string[] }> {
+function chatOf(d: HandlerDeps, c: RouteCall): { chat: CodeChat; projectId: string } {
   const { code, pd, projectId } = needCode(d, c);
   if (!code.brain) throw new FrontError("brain_off", "The project brain isn't switched on.", 404);
-  const project = await ownProject(pd, c.userId, projectId);
-  const brain = await code.brain.open(c.userId, project.id);
-  const status = await brain.status();
-  if (status.status === "none") return { text: "Tailzu hasn't read this project yet. Start its brain first, then ask again.", paise: 0, notes: ["The project has not been read."] };
-
-  let ws: Awaited<ReturnType<typeof workspace>> | null = null;
-  const read = async (p: string): Promise<string | null> => {
-    try { ws ??= await workspace(pd, c.userId, project.id, project.defaultBranch); return (await ws.read(p)).text; } catch { return null; }
+  return {
+    projectId,
+    chat: d.chat ?? new CodeChat({
+      projects: pd, brain: code.brain, ...(d.call ? { call: d.call } : {}), ...(d.gateway ? { gateway: d.gateway } : {}), ...(d.threads ? { threads: d.threads } : {}),
+      ...(d.rooms ? { rooms: d.rooms } : {}),
+    }),
   };
-  const located: Located = await locate(c.message, brain, { model: ctxOf(d, c, Math.min(60, c.maxPaise)), read });
-  const excerpts: string[] = [];
-  for (const t of located.targets.slice(0, 3)) {
-    if (isSecretPath(t.path)) continue;
-    const text = await read(t.path);
-    excerpts.push(`${t.path}\n${text ? around(text, t.lines) : `(not readable; the index says: ${cut(t.why, 160)})`}`);
-  }
-  // Nothing found in the code: what the brain knows of the project as a whole is the basis, and the answer says what it does not show.
-  const basis = excerpts.length ? excerpts.join("\n\n") : `${cut(status.welcome, 800)}\n${status.features.slice(0, 8).map((f) => `${f.name}: ${cut(f.summary, 100)}`).join("\n")}`;
-  const left = Math.max(0, c.maxPaise - located.used.paise);
-  const r = await askText(model(d, c), {
-    role: "front_code_answer", tier: "cheap", purpose: "front.code_answer", maxTokens: REPLY_TOKENS[c.decision.shape.length], budget: { maxPaise: left },
-    user: `<question>\n${forModel(c.message).replace(/<\/question/gi, "<\\/question")}\n</question>\n\n<excerpts>\n${fence(forModel(basis))}\n</excerpts>`,
+}
+
+/** A question about the project's code: the brain's facts first, a few reads only when it must, every claim with path:line (code/chat, docs/code-chat.md). */
+async function codeAnswerDefault(d: HandlerDeps, c: RouteCall): Promise<CodeAnswerOut> {
+  const { chat, projectId } = chatOf(d, c);
+  const v = c.decision.shape.visual;
+  const out = await chat.answer({
+    userId: c.userId, projectId, question: c.said ?? c.message, ...(c.ctx.threadId ? { threadId: c.ctx.threadId } : {}),
+    ...(c.decision.followUp ? { context: c.decision.followUp } : {}), tier: c.decision.tier === "vision" ? "cheap" : c.decision.tier, length: c.decision.shape.length,
+    diagram: !!v && v.kind === "diagram" && !v.offer && v.via === "artifact", maxPaise: c.maxPaise, ...(c.signal ? { signal: c.signal } : {}),
   });
-  c.onText?.(r.text);
-  return { text: r.text, paise: r.paise + located.used.paise, ...(excerpts.length ? {} : { notes: ["Nothing in the code matched, so this answer is from the project's overview."] }) };
+  c.onText?.(out.text);
+  return { text: out.text, paise: out.paise, ...(out.notes.length ? { notes: out.notes } : {}), ...(out.diagram ? { diagram: out.diagram } : {}) };
 }
 
 async function codeJobDefault(d: HandlerDeps, c: RouteCall): Promise<{ job: NonNullable<FrontResult["job"]>; paise: number }> {
@@ -176,9 +178,17 @@ async function codeJobDefault(d: HandlerDeps, c: RouteCall): Promise<{ job: NonN
   if (!d.agent) throw new FrontError("agent_off", "The Code bot's agent is not switched on on this server.", 404);
   const project = await ownProject(pd, c.userId, projectId);
   await assertAccess(pd, c.userId, project);
-  const { branch } = await createWorkBranch(pd, c.userId, project.id, c.message);
-  const job = await d.jobs.createJob(c.userId, project.id, branch, c.message.slice(0, 20_000), c.maxPaise, { agent: true });
-  const made = await d.agent.enqueue(job.id, c.message);
+  // "Ok, change it" after a talk about the code: the job starts with the place the conversation found, and does not look for it again.
+  let task = c.message.slice(0, 20_000);
+  let opts: Parameters<AgentOrchestrator["enqueue"]>[2] = {};
+  if (c.decision.handoff && c.ctx.threadId && d.code?.brain) {
+    const handed = await chatOf(d, c).chat.handoff(c.userId, project.id, c.ctx.threadId, c.said ?? c.message);
+    if (handed) { task = handed.task.slice(0, 20_000); opts = { located: handed.located, locatedFrom: "chat" }; }
+  }
+  if (c.decision.mode === "freeform") opts = { ...opts, mode: "freeform" };
+  const { branch } = await createWorkBranch(pd, c.userId, project.id, c.said ?? c.message);
+  const job = await d.jobs.createJob(c.userId, project.id, branch, task, c.maxPaise, { agent: true });
+  const made = await d.agent.enqueue(job.id, task, opts);
   return { job: { id: job.id, branch, state: (made ?? job).state, budgetPaise: c.maxPaise }, paise: 0 };
 }
 

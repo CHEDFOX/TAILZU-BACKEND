@@ -2,7 +2,9 @@
 
 What the desktop app does so that a person's own computer is the first place the Code bot runs commands, with the jobs on Cloudflare (`docs/cloudflare-jobs.md` section 10) and without a 30-second wait for each command. The words below are the ones in `tulmi/src/code/live/protocol.ts`; if the two ever differ, that file is right. A runnable reference of the runner's half is `RUN_MJS` in `tulmi/src/code/jobs/runScript.ts` (`runSession`), which is what GitHub's computers run; `tulmi/tests/code-live-runner.test.ts` drives it against a fake room.
 
-Nothing here changes the old HTTP runner (`docs/code-router.md`): with the jobs on the VPS (`CODE_JOBS_MODE=local`) the app keeps sending its heartbeat and long-polling `GET /v1/code/runner/next`. The app tries the new door first and uses the old one when the VPS says `live_off`.
+**Protocol version: 2.** Version 2 (section 9) adds what the app needs to be a good place to run: a computer says what it is (`capabilities`) and can say "every project except these"; an offer says which project it is for; and a computer that does not want a step says so and the step moves at once. Everything of version 1 still works: an app that says `v: 1` is understood as before. Section 9 lists exactly what changed; the sections before it are written for version 2 and say where a thing is version 2's.
+
+Nothing here changes the old HTTP runner (`docs/code-router.md`): with the jobs on the VPS (`CODE_JOBS_MODE=local`) the app keeps sending its heartbeat and long-polling `GET /v1/code/runner/next`. The app tries the new door first and uses the old one when the VPS says `live_off`. The HTTP runner has the same version 2 additions (section 9).
 
 ## 1. The shape of it
 
@@ -54,22 +56,23 @@ Online **means the socket is open**. There is no heartbeat to forget. Closing th
 ### App to Worker
 
 ```jsonc
-{ "t": "hello", "v": 1, "deviceId": "laptop-0001", "name": "Work laptop", "allowRun": true,
-  "projects": "all",            // or ["<projectId>", …] (at most 200)
-  "busy": false, "app": "tailzu-desktop 1.4.0" }     // name ≤ 80 characters, app ≤ 60, both optional
+{ "t": "hello", "v": 2, "deviceId": "laptop-0001", "name": "Work laptop", "allowRun": true,
+  "projects": "all",            // or ["<projectId>", …], or { "allExcept": ["<projectId>", …] } (version 2); version 1: at most 200 ids
+  "capabilities": { "liveOnly": false, "container": false, "os": "darwin", "arch": "arm64" },   // version 2, every field optional
+  "busy": false, "app": "tailzu-desktop 1.5.0" }     // name ≤ 80 characters, app ≤ 60, both optional
 ```
-Must be the first frame, and `deviceId` must be the one the ticket was made for (else `error wrong_device` and the socket is closed with 4003). Answered by `{"t":"ack","v":1,"deviceId":"…"}`. Until `hello`, the computer is not listed.
+Must be the first frame, and `deviceId` must be the one the ticket was made for (else `error wrong_device` and the socket is closed with 4003). Answered by `{"t":"ack","v":2,"deviceId":"…","capabilities":{…}}` (the `v` of the hello, and for version 2 the capabilities as the router will use them). `v` is 1 or 2; anything else is a bad frame. A version 1 hello that carries `capabilities` or `allExcept` is not understood (`error bad_message`): those are version 2's. Until `hello`, the computer is not listed.
 
 ```jsonc
-{ "t": "state", "allowRun": false, "busy": true, "name": "…", "projects": ["…"] }   // any of the four
+{ "t": "state", "allowRun": false, "busy": true, "name": "…", "projects": ["…"], "capabilities": { … } }   // any of the five
 ```
-Send it when the person changes "let Tailzu run commands here" or the project list, and `busy: true` while the app is doing something else on the computer's behalf. `busy: true` or `allowRun: false` means no offers. A change that makes the computer able again wakes the person's waiting jobs at once.
+Send it when the person changes "let Tailzu run commands here" or the project list, and `busy: true` while the app is doing something else on the computer's behalf. `busy: true` or `allowRun: false` means no offers. A change that makes the computer able again wakes the person's waiting jobs at once. A computer that said hello at version 1 is refused the version 2 forms here (`error bad_message`).
 
 ```jsonc
-{ "t": "decline", "jobId": "…", "epoch": 3, "reason": "…" }   // informational
+{ "t": "decline", "jobId": "…", "epoch": 3, "reason": "…" }   // version 2: takes effect at once
 { "t": "bye" }                                                   // closes the socket politely
 ```
-A `decline` changes nothing by itself: the router moves a step that its computer does not take when the lease runs out (90 seconds). Say `bye`, or just close, to leave.
+A `decline` means "not this computer": the lease is released **at once** and the step is placed again, never on a computer that declined it (version 1 left the step to run out its 90 seconds; a version 1 app that sends it gets the faster behaviour too). A `decline` for a step the computer does not hold is ignored. Say `bye`, or just close, to leave.
 
 ### Worker to app
 
@@ -86,6 +89,7 @@ After `replaced`, do **not** reconnect on your own: a second copy of the app has
 ```jsonc
 {
   "jobId": "3f9a1c2b-…", "stepIdx": 5, "epoch": 3,
+  "projectId": "8d1e…", "projectName": "acme/app",     // version 2: which project the step is for, so the app can say so
   "commands": ["tailzu:live-session"],         // see below
   "timeoutSec": 1200,
   "repo": { "kind": "app", "cloneUrl": "https://github.com/acme/app.git", "branch": "tailzu/fix-login", "headSha": "…", "readToken": "…", "readTokenExpiresAt": 1793000000000 },
@@ -226,6 +230,8 @@ The router places a session step like any other: this computer if it is online, 
 
 ## 8. Checklist for the app
 
+0. Say `v: 2` in the hello, with the `capabilities` that are true of this computer (section 9).
+
 1. Ask for a device ticket; on `404 live_off`, keep to the HTTP runner.
 2. Connect, `hello`, keep `ping` going, keep `state` current (`allowRun`, `projects`, `busy`).
 3. On an `offer`: keep the lease with `progress`; for an ordinary step run it as before; for a `session`, make a git checkout and open the runner socket.
@@ -233,3 +239,25 @@ The router places a session step like any other: this computer if it is online, 
 5. Report the step with `POST /v1/code/runner/result`, with the real minutes.
 6. To support the preview: handle `preview` / `http` / `http-cancel` / `preview-stop` as above (a desktop app that does not loses only the design check, after a wait of up to 150 seconds). Never pass a WebSocket upgrade, never forward an `http` to anything but `127.0.0.1` / `::1` on the port the dev server answered on, never a body past 1 MB or a response past 10 MB.
 7. Never run the string `tailzu:live-session`, never keep a write token on the machine for this, never send an unredacted line.
+
+## 9. Protocol version 2: what changed
+
+The version is the `v` in `hello` (and `ack`). A version 1 app keeps working exactly as before, except that its `decline` is now acted on at once. A step is placed by what the router knows of each computer, so a version 2 app should say what it is.
+
+| | Version 1 | Version 2 |
+| --- | --- | --- |
+| `hello.v` | `1` | `2` (`1` is still understood) |
+| Allow list (`projects`, in `hello`, `state` and the HTTP `heartbeat`) | `"all"` or at most 200 project ids | `"all"`, a list (no 200 cap; 5,000 at the most), or `{ "allExcept": ["<projectId>", …] }`: every project of the person, now and later, except these. The list is the person's choice and is stored as given; a project made after "all except" is allowed without the app saying so |
+| Capabilities | none | `hello.capabilities` `{ liveOnly, container, os, arch }`, every field optional. `liveOnly`: take a live session and no ordinary step. `container`: this computer is a container or a managed machine, not the person's own. `os` and `arch` (at most 40 characters each): `darwin`, `linux`, `win32`; `arm64`, `x64`. Sent again in `state` when they change (a battery saver that turns the machine live-only) |
+| The offer | no project | `projectId` and `projectName`: the project the step is for, so the app can show "Tailzu wants to run commands for acme/app" |
+| `decline` | informational; the lease ran out in 90 seconds | the lease is released at once, the step is placed again, and never on a computer that declined it. The router writes the computer's id on the step |
+
+**How placement uses them.** A step is offered, among the person's computers that are online, allow the project, have "run commands" on, are not `busy` and hold no other step, to: (1) never one that declined this step; (2) a **live-only** computer takes a live session (`commands` is `["tailzu:live-session"]`) and no ordinary step, so an app that can only hold a socket open is never given a command to run once; (3) a computer that is **not a container** is preferred (the person's own machine), then the one heard from most recently. If no computer can take the step, the router goes on to GitHub's free computers, then paid compute, as before (section 6).
+
+**The HTTP runner has the same additions.**
+
+* `POST /v1/code/runner/heartbeat { deviceId, name, allowRun, projects: [..] | "all" | { allExcept: [..] }, busy, capabilities?: { liveOnly, container, os, arch } }`. The list is no longer cut at 200.
+* `GET /v1/code/runner/next` answers `{ jobId, stepIdx, epoch, projectId, projectName, commands, timeoutSec, repo }`.
+* `POST /v1/code/runner/decline { jobId, epoch, deviceId }` answers `{ ok, placement, state }`. The lease is released at once and the step goes to another computer (or waits); `409 stale_lease` for a lease the caller does not hold.
+
+**For the app.** Say `v: 2`; send `capabilities` honestly (a container that says it is not one is offered steps first and may be the wrong place for a person's code); when the person says "not this project on this computer" or the app cannot take a step, `decline` it rather than ignore it, so the step moves in a second and not in a minute and a half. Keep sending `progress` for a step you hold, as before.

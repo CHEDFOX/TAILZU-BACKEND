@@ -49,14 +49,18 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   // The front door's roles (src/front) were written after the principles: they replace no older prompt, so "before" is their first size.
   front_decide: 1460,
   front_reply: 1066,
-  front_code_answer: 789,
+  // Rewritten when the code answer became real (src/code/chat): it is told about <facts> and <thread> too. Re-measured, 789 before.
+  front_code_answer: 1067,
   front_diagram: 556,
   front_plan: 668,
   front_look: 587,
+  // PR care (src/code/prcare, src/code/agent/merge.ts): written after the principles too, so their first size is their "before".
+  care_review: 1422,
+  care_conflict: 697,
 };
 
 /** The roles that replaced a prompt the code used to carry: only these have a real "before", and only these are held to the saving. */
-export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "front_diagram", "front_plan", "front_look"];
+export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict"];
 
 /**
  * The agent's tool definitions are sent with every turn of a job, so they are prompt too. What they were before they were tightened in the

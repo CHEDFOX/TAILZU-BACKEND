@@ -34,6 +34,10 @@ export interface RuleRead {
   depth?: ResearchDepth;
   /** A short follow-up to an earlier turn: what that turn was about, to be put in front of this one. */
   followUp?: { base: string };
+  /** "Ok, change it" right after a question about the code. */
+  handoff?: boolean;
+  /** The words of an open-ended task (debug, investigate, find out why, explore): if it is a code task, it is worked freely. */
+  openEnded?: boolean;
 }
 
 /** How much of a rival's score is taken off the leader's confidence (the classifier's own number). */
@@ -108,6 +112,12 @@ const CODE_SHAPES = /\b[a-z]+[A-Z]\w*\b|\b[a-z]+_[a-z_]+\b/;
 const CODE_HI = hindi(["कोड", "ऐप", "प्रोजेक्ट", "फ़ाइल", "फाइल", "फंक्शन", "लॉगिन"]);
 /** A change asked for: the Code bot's classifier calls these small_edit, bug_fix, feature and refactor. */
 const CHANGE_TYPES = new Set(["small_edit", "bug_fix", "feature", "refactor"]);
+/** "Ok, change it", "go ahead and fix that", "make the change": what a person says after a question about the code when they want it done. */
+const HANDOFF = /^\s*(?:ok(?:ay)?|yes|yeah|yep|sure|great|cool|alright|right|so|then|now|fine|good|perfect)?[\s,.!:;-]*(?:please\s+|pls\s+|plz\s+)?(?:go\s+ahead\s+and\s+|let'?s\s+|can\s+you\s+|could\s+you\s+|you\s+can\s+)?(?:change|fix|update|implement|apply|do|make|add|edit|modify|patch)\s+(?:it|that|this|those|them)(?:\s+(?:now|then|please|for\s+me))?[\s.!?]*$|^\s*(?:ok(?:ay)?[\s,.!-]*)?(?:go\s+ahead|do\s+it|make\s+the\s+change|make\s+that\s+change|apply\s+(?:the\s+)?(?:change|fix))[\s.!?]*$/i;
+const HANDOFF_HG = /^\s*(?:ok(?:ay)?|haan|theek\s+hai|thik\s+hai|accha|acha)?[\s,.!-]*(?:isko|ise|usko|use)?\s*(?:badal|badlo|change|fix|theek|thik|update|kar)\s*(?:do|karo|dena|de|dijiye)(?:\s+(?:ab|abhi))?[\s.!]*$/i;
+const HANDOFF_HI = hindi(["(?:अब\\s+)?(?:इसे|इसको|उसे)\\s*(?:बदल|ठीक|सुधार)\\s*(?:दो|दीजिए|करो)(?=[\\s!।.?]*$)"]);
+/** A task with no known place to start: something to find out first, then perhaps fix. */
+const OPEN_ENDED = /\b(?:debug|investigate|diagnose|figure\s+out|find\s+out\s+why|track\s+down|look\s+into|trace\s+(?:down|why)|root\s+cause|bisect|reproduce|explore|experiment|spike|poke\s+around|not\s+sure\s+(?:why|where|what)|no\s+idea\s+(?:why|where|what)|something(?:'s|\s+is)\s+(?:wrong|off|broken)|intermittent(?:ly)?|flaky|sometimes\s+(?:fails?|crash(?:es)?|breaks?)|randomly\s+(?:fails?|crash(?:es)?|breaks?))\b|\bpata\s+(?:lagao|karo)\b|\bkyun\s+(?:fail|crash|nahi)\b/i;
 const FOLLOW_UP = /^\s*(?:and|also|what\s+about|how\s+about|now|then|ok(?:ay)?\s+(?:and|now)|make\s+it|change\s+it|do\s+(?:that|it)|same\s+(?:for|with)|aur|phir|ab|isko|usko|aur\s+kya)\b/i;
 
 const wordCount = (s: string): number => s.trim().split(/\s+/).filter(Boolean).length;
@@ -227,8 +237,14 @@ export function readByRules(message: string, ctx: Pick<FrontCtx, "projectId" | "
 
   // A short follow-up to what they were just doing.
   let followUp: RuleRead["followUp"];
+  let handoff = false;
   const last = lastIntent(ctx.recent);
-  if (last && n <= 7 && FOLLOW_UP.test(text) && !miss.has("design")) {
+  // "Ok, change it" after a question about the code is a task, not another question: the job is handed what the conversation found.
+  if (hasProject && last?.intent === "code_question" && (HANDOFF.test(text) || HANDOFF_HG.test(text) || HANDOFF_HI.test(text))) {
+    hit("code_task", 0.9, "handoff");
+    followUp = { base: last.said };
+    handoff = true;
+  } else if (last && n <= 7 && FOLLOW_UP.test(text) && !miss.has("design")) {
     hit(last.intent, 0.6, "follow_up");
     followUp = { base: last.said };
   }
@@ -250,6 +266,7 @@ export function readByRules(message: string, ctx: Pick<FrontCtx, "projectId" | "
   for (const [i, s] of ranked) scores[i] = Math.round(s * 100) / 100;
   return {
     intent, confidence, scores, ...(second ? { rival: second[0] } : {}), signals: [...new Set(signals)], cls,
-    ...(intent === "research" && depth ? { depth } : {}), ...(followUp && intent === last?.intent ? { followUp } : {}),
+    ...(intent === "research" && depth ? { depth } : {}), ...(followUp && (intent === last?.intent || (handoff && intent === "code_task")) ? { followUp } : {}),
+    ...(handoff && intent === "code_task" ? { handoff: true } : {}), ...(OPEN_ENDED.test(text) ? { openEnded: true } : {}),
   };
 }

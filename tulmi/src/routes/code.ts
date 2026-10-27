@@ -159,7 +159,7 @@ import { locate } from "../code/work/locate.js";
 import type { ModelCtx } from "../code/work/model.js";
 import { branchDiff, closePr, deleteWorkBranch, markReady, mergePr, prComments, prStatus, syncBranch } from "../code/pulls.js";
 import { CodeNeedsAccount } from "../code/store.js";
-import { handleWebhook, signatureOk } from "../code/webhook.js";
+import { handleWebhook, signatureOk, type WebhookHooks } from "../code/webhook.js";
 import type { Guard } from "../guard/index.js";
 import { IdempotencyConflict } from "../guard/idempotency.js";
 import { Overloaded } from "../guard/limiter.js";
@@ -172,6 +172,11 @@ export interface CodeRoutesDeps {
   code: Code | null;
   /** The overload guards the model-calling routes run under (src/guard); the process's own when not given. */
   guard?: Guard;
+  /**
+   * More for the webhook to hand events to (PR care, which is made after the routes are). Read on each delivery, so it may be filled in later: the object
+   * is the server's, and what is set on it is what the next delivery uses.
+   */
+  hooks?: WebhookHooks;
 }
 
 /** Where the phone's app is opened from the done page. The Code screen comes with the phone's side; for now, the app. */
@@ -201,6 +206,8 @@ export const STATUS: Record<string, number> = {
   // The jobs and the runner protocol (routes/codeJobs.ts): a lease someone else holds now, a step still out, a job that is over,
   // a job that isn't waiting for what was said yes to, a PC that hasn't said hello, paid compute that is off or absent.
   stale_lease: 409, step_in_flight: 409, job_over: 409, not_waiting: 409, unknown_device: 409, paid_off: 409, paid_unavailable: 409,
+  // Rewinding a job and a project's settings (agent/orchestrator.ts): points that are not kept, a commit that did not record its base.
+  rewind_off: 404, settings_off: 404, cannot_rewind: 409,
   // The result of a step on GitHub's free computers (routes/codeJobs.ts gh-result): a token that isn't GitHub's, or is for something else.
   bad_runner_token: 401, runner_mismatch: 403,
 };
@@ -697,7 +704,13 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     }
     try {
       const brain = k.brain;
-      const done = await handleWebhook(k.store, String(req.headers["x-github-event"] ?? ""), req.body, Date.now(), brain ? { pushed: (p) => brain.pushed(p) } : {});
+      const late = deps.hooks ?? {};
+      const hooks: WebhookHooks = {
+        ...late,
+        // The project brain and PR care both hear of a push to the default branch.
+        ...(brain || late.pushed ? { pushed: async (p, after) => { if (brain) await brain.pushed(p); await late.pushed?.(p, after); } } : {}),
+      };
+      const done = await handleWebhook(k.store, String(req.headers["x-github-event"] ?? ""), req.body, Date.now(), hooks);
       return reply.code(done === "handled" ? 200 : 202).send({ ok: true });
     } catch (err) {
       // 500, so GitHub shows the delivery as failed and it can be sent again.

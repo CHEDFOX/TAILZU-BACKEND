@@ -506,6 +506,24 @@ function commitSummary(files: readonly CommitFile[], message: string, checks: Co
 export async function commitToBranch(
   d: ProjectDeps, userId: string, projectId: string, branch: string, files: CommitFile[], message: string, o: GateOptions = {},
 ): Promise<Gated<{ sha: string; parentSha: string }>> {
+  return commitCore(d, userId, projectId, branch, files, message, o);
+}
+
+/**
+ * A MERGE COMMIT on a branch, through the same policy as any commit (prcare: a branch with a conflict with the default branch). Its parents are the
+ * branch's head and `mergeParent` (the default branch's head that was merged in); its tree is the head's with `files` laid over it, the merge's result with
+ * the conflicts resolved. Never a rebase and never a force: the head is the first parent, so the branch only moves forward. The same questions as a
+ * commit: free on a branch the bot made, a question on any other, a bigger one for a workflow file or something that looks like a secret.
+ */
+export async function mergeCommitToBranch(
+  d: ProjectDeps, userId: string, projectId: string, branch: string, files: CommitFile[], message: string, mergeParent: string, o: GateOptions = {},
+): Promise<Gated<{ sha: string; parentSha: string }>> {
+  return commitCore(d, userId, projectId, branch, files, message, o, mergeParent);
+}
+
+async function commitCore(
+  d: ProjectDeps, userId: string, projectId: string, branch: string, files: CommitFile[], message: string, o: GateOptions, mergeParent?: string,
+): Promise<Gated<{ sha: string; parentSha: string }>> {
   const project = await ownProject(d, userId, projectId);
   if (!validBranchName(branch)) throw notFound("that branch in this project");
   await assertAccess(d, userId, project, true);
@@ -514,10 +532,10 @@ export async function commitToBranch(
 
   const ctx: PolicyCtx = { project, branch, defaultBranch: project.defaultBranch, attended: o.attended !== false, connection: project.linkKind, scopes: [], ownBranch: own };
   // The paths first (a path that leaves the repo is "never", whatever else is true), then the rest of what makes a commit a commit.
-  if (!Array.isArray(files) || !files.length) throw new ConnectorError("bad_request", "There is nothing to commit.");
+  if (!Array.isArray(files) || (!files.length && mergeParent === undefined)) throw new ConnectorError("bad_request", "There is nothing to commit.");
   if (files.length > COMMIT_FILES_MAX) throw new ConnectorError("bad_request", `A commit can have at most ${COMMIT_FILES_MAX} files.`);
   const checks = checkCommit(files, ctx);
-  commitTreeEntries(files);
+  if (files.length) commitTreeEntries(files);
   if (typeof message !== "string" || !message.trim()) throw new ConnectorError("bad_request", "A commit needs a message.");
 
   // Only a commit that touches a workflow file needs to know what the token may do, and only then does the App's token ask for the Workflows permission.
@@ -533,9 +551,12 @@ export async function commitToBranch(
     ...gateBase(d, userId, project), ...o, action: own ? "commit.own_branch" : "commit.other_branch", also: checks.also,
     branch, ownBranch: own, scopes,
     head: () => d.github.branchHead(repo, branch),
-    fingerprint: commitFingerprint(files, message),
-    summary: (head) => commitSummary(files, message, checks, head),
-    run: (approved) => d.github.commit(repo, branch, files, message, { person, ...(approved?.headSha !== undefined ? { expectHead: approved.headSha } : {}) }),
+    fingerprint: commitFingerprint(files, message, mergeParent),
+    summary: (head) => ({ ...commitSummary(files, message, checks, head), ...(mergeParent !== undefined ? { mergesIn: mergeParent } : {}) }),
+    run: (approved) => {
+      const opts = { person, ...(approved?.headSha !== undefined ? { expectHead: approved.headSha } : {}) };
+      return mergeParent === undefined ? d.github.commit(repo, branch, files, message, opts) : d.github.mergeCommit(repo, branch, files, message, mergeParent, opts);
+    },
   });
 }
 
@@ -575,6 +596,8 @@ export interface Workspace {
   read(path: string): Promise<{ path: string; size: number; text: string }>;
   /** One commit on the branch (commitToBranch): done, or a question; pass the `approvalId` it gave to say yes. Throws "branch_moved" if the branch has moved on since it was read. */
   commit(files: CommitFile[], message: string, c?: { approvalId?: string }): Promise<Gated<{ sha: string; parentSha: string }>>;
+  /** A merge commit with two parents (the branch's head and `mergeParent`), through the same policy as commit. Never a rebase, never a force. */
+  mergeCommit(files: CommitFile[], message: string, mergeParent: string, c?: { approvalId?: string }): Promise<Gated<{ sha: string; parentSha: string }>>;
   /** A draft PR into the default branch (the open one, if there already is). */
   openDraftPr(title: string, body: string): Promise<{ prNumber: number; prUrl: string; existing: boolean }>;
 }
@@ -600,6 +623,7 @@ export async function workspace(d: ProjectDeps, userId: string, projectId: strin
     tree: async () => { await assertAccess(d, userId, project); await guardRead(d.store, project, branch); return d.github.tree(repo, branch); },
     read: async (path) => { await assertAccess(d, userId, project); await guardRead(d.store, project, branch); return d.github.readFile(repo, branch, path); },
     commit: (files, message, c = {}) => commitToBranch(d, userId, projectId, branch, files, message, { attended: o.attended, approvalId: c.approvalId }),
+    mergeCommit: (files, message, mergeParent, c = {}) => mergeCommitToBranch(d, userId, projectId, branch, files, message, mergeParent, { attended: o.attended, approvalId: c.approvalId }),
     openDraftPr: (title, body) => openPr(d, userId, projectId, branch, title, body, { attended: o.attended }),
   };
 }

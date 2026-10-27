@@ -54,6 +54,8 @@ import { jobsHandoffFromConfig } from "./code/jobs/handoff/index.js";
 import { sessionOffers } from "./code/live/offers.js";
 import { jobStore } from "./code/jobs/store.js";
 import { createAgent } from "./code/agent/index.js";
+import { createPrCare, startCareSweep, type PrCare } from "./code/prcare/index.js";
+import type { WebhookHooks } from "./code/webhook.js";
 import { createGithubActions, createJobs } from "./code/jobs/index.js";
 import { registerCustomConnectorRoutes } from "./routes/connectorsCustom.js";
 import { registerOAuthClientMetadataRoute } from "./routes/oauthClientMetadata.js";
@@ -1054,7 +1056,10 @@ registerConnectorRoutes(app, { rateLimit: AUTHED_RL, connectors });
 // them over (signed calls, docs/cloudflare-jobs.md) and starts no orchestrator and no ticker. "local" (the default) is as it always was.
 const jobsHandoff = jobsHandoffFromConfig(cfg, app.log);
 const code = cfg.CODE_GITHUB ? createCode(jobsHandoff ? { brain: cfg.CODE_PROJECT_BRAIN ? { remote: jobsHandoff } : false } : {}) : null;
-registerCodeRoutes(app, { rateLimit: AUTHED_RL, code });
+// PR care (src/code/prcare) is made after the jobs and the agent it uses; the webhook reads its hooks on each delivery, so they are filled in below.
+const careHooks: WebhookHooks = {};
+let care: PrCare | null = null;
+registerCodeRoutes(app, { rateLimit: AUTHED_RL, code, hooks: careHooks });
 // The project brain (code/project): its lines go to the server's log, and its push timers stop with the server.
 if (code?.brain) {
   code.brain.useLog(app.log);
@@ -1075,15 +1080,30 @@ if (code?.brain) {
 const liveSession = !!(jobsHandoff?.configured && cfg.CODE_LIVE_SESSION);
 const offerSession = liveSession ? sessionOffers({ secret: cfg.CODE_JOBS_SECRET!, jobsUrl: cfg.CODE_JOBS_URL!, idleSec: cfg.CODE_SESSION_IDLE_SEC }) : undefined;
 const githubActions = code ? createGithubActions({ code, log: app.log, ...(offerSession ? { offerSession } : {}) }) : null;
-const codeJobs = code ? createJobs({ code, github: githubActions, notify: notifyCodeJob, log: app.log, ...(liveSession ? { actions: true, ...(offerSession ? { offerSession } : {}) } : {}) }) : null;
+// A job's news goes to the person (the push engine) and to PR care, which writes the end of a job it started on the pull request.
+const notifyJob: typeof notifyCodeJob = async (userId, kind, data) => { await notifyCodeJob(userId, kind, data); care?.onJobEvent(userId, kind, data); };
+const codeJobs = code ? createJobs({ code, github: githubActions, notify: notifyJob, log: app.log, ...(liveSession ? { actions: true, ...(offerSession ? { offerSession } : {}) } : {}) }) : null;
 // The agent loop (src/code/agent, docs/code-agent.md): the worker that drives a job made through POST /v1/code/jobs
 // from the person's words to a pull request, claiming each job in the database so that no two servers run one, at
 // most CODE_AGENT_CONCURRENCY at a time, checkpointing after every step so a restart carries on without redoing an
 // edit or a commit. It needs the project brain (CODE_PROJECT_BRAIN) as well; without it jobs are left to whatever
 // drives the router, as before. The ticker above hands back the claims of servers that went quiet.
-const codeAgent = code && codeJobs ? createAgent({ code, jobs: codeJobs, notify: notifyCodeJob, log: app.log, ...(jobsHandoff ? { remote: jobsHandoff } : {}) }) : null;
+const codeAgent = code && codeJobs ? createAgent({ code, jobs: codeJobs, notify: notifyJob, log: app.log, ...(jobsHandoff ? { remote: jobsHandoff } : {}) }) : null;
+// PR care (src/code/prcare, docs/pr-care.md): looks after the pull requests Tailzu opened (and ones the person hands over) after they are open: red CI, a reviewer's
+// ask, a conflict with the default branch. GitHub's events reach it through the webhook; it needs the App subscribed to them (docs/github-app.md). It makes jobs on
+// the agent above, so it exists only where that does.
+if (code && codeJobs && codeAgent) {
+  care = createPrCare({ code, jobs: codeJobs, agent: codeAgent, notify: notifyJob, log: app.log });
+  if (care) {
+    const c = care;
+    careHooks.care = (event, payload) => c.onEvent(event, payload);
+    careHooks.pushed = (project) => c.baseMoved(project);
+    const stopCare = startCareSweep(c, { log: app.log });
+    app.addHook("onClose", async () => { stopCare(); await c.idle(); });
+  }
+}
 registerCodeJobRoutes(app, {
-  rateLimit: AUTHED_RL, code, jobs: codeJobs, githubActions, agent: codeAgent,
+  rateLimit: AUTHED_RL, code, jobs: codeJobs, githubActions, agent: codeAgent, care,
   // The live session's passes (docs/cloudflare-jobs.md section 10): only when the jobs run on the Worker, and it can be reached.
   ...(jobsHandoff?.configured && cfg.CODE_LIVE_SESSION ? { live: { jobsUrl: cfg.CODE_JOBS_URL!, secret: cfg.CODE_JOBS_SECRET! } } : {}),
   // On the Worker the ticker is the Cron Trigger: this server starts none.
@@ -1105,7 +1125,7 @@ const frontRoutes = registerFrontRoutes(app, {
   used: (user) => recordUsage({ user, source: "rest", audioSeconds: 0, words: 0, model: "front" }),
 });
 // The Worker's way back to the push engine (the push credentials stay here).
-registerCodeInternalRoutes(app, { rateLimit: AUTHED_RL, secret: jobsHandoff ? cfg.CODE_JOBS_SECRET : null, store: jobStore(), notify: notifyCodeJob });
+registerCodeInternalRoutes(app, { rateLimit: AUTHED_RL, secret: jobsHandoff ? cfg.CODE_JOBS_SECRET : null, store: jobStore(), notify: notifyJob });
 // "Sign in with GitHub" tokens unused for 30 days are revoked at GitHub (code/oauth.ts), on a timer, even
 // with the switch off: revoking only destroys. Never in a request's way.
 if (code?.oauth) {
@@ -3275,6 +3295,9 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
     ["artifacts", null], ["artifact_kits", null],
     // The front door's decision log (migration 0033): categories and numbers about their messages, never a word of them.
     ["front_decisions", null],
+    // Talking about code, a project's settings and PR care (migration 0034): the conversations' short summaries, how a person likes a job worked, and the pull requests
+    // Tailzu looks after. A job's rewind points go with the job (code_job_checkpoints cascades from code_jobs).
+    ["code_chat_threads", null], ["code_project_settings", null], ["code_pr_care", null],
   ];
   for (const [table, key] of tables) {
     try {

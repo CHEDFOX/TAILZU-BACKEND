@@ -37,16 +37,18 @@ import {
 import { cut } from "../work/model.js";
 import { checkCommands, parseMarkers, resultsOf, describeCheck, type CheckSpec } from "./checks.js";
 import { Refused } from "./changeset.js";
-import { buildContext, fold, projectContext } from "./context.js";
+import { buildContext, digestOf, fold, projectContext } from "./context.js";
 import { designDue, designLines } from "./design.js";
 import { WITHHELD_ARGS, argsHoldSecret } from "./tools.js";
 import { SAID_KEEP } from "../live/limits.js";
 import { commitMessage, prBody, prTitle, reportText } from "./report.js";
 import { BudgetStop, EndJob, LostClaim, Park, Yield, type Run } from "./run.js";
+import { hasConflictMarkers } from "./merge.js";
 import {
-  BASELINE_MAX_AGE_MS, CALLS_PER_TURN, FIX_ROUNDS_MAX, TURNS_MAX,
-  type Exchange, type ResultRecord, type VerifyState,
+  BASELINE_MAX_AGE_MS, CALLS_PER_TURN, FIX_ROUNDS_MAX, FREEFORM_STEPS_MAX, TURNS_MAX,
+  type AgentState, type Exchange, type Phase, type ResultRecord, type VerifyState,
 } from "./types.js";
+import { GithubRefusal } from "../github.js";
 
 /** Characters a model turn may write. Small, so the budget check's worst case is small too. */
 export const WORK_TOKENS = 4096;
@@ -127,8 +129,18 @@ export async function baseline(r: Run): Promise<void> {
       }
     }
   }
-  s.phase = "locate";
+  s.phase = afterBaseline(s);
   await r.save();
+}
+
+/**
+ * The phase after the baseline. A guided job locates and plans; a free-form job goes straight to work, because where an open-ended task belongs is what its
+ * exploring finds out (it plans only when the person asked to see the plan first); a PR-care job for a conflict merges the default branch in.
+ */
+export function afterBaseline(s: AgentState): Phase {
+  if (s.care?.kind === "conflict") return "merge";
+  if (s.mode === "freeform") return s.planFirst ? "plan" : "work";
+  return "locate";
 }
 
 // ------------------------------------------------------------------ locate
@@ -149,8 +161,8 @@ export async function locatePhase(r: Run): Promise<void> {
   const w = s.waiting;
   // A job made from an approved design was located when the design was approved (artifacts/build.ts): a sure answer stands, and costs nothing
   // again. One that came with a question (the search was unsure) is looked at the usual way, and the person is asked.
-  if (s.spec && s.located?.targets.length && !s.located.question && !w) {
-    await r.log.read(s.located.targets.slice(0, 3).map((t) => t.path), "Using the place found when the design was approved.");
+  if ((s.spec || s.handoff) && s.located?.targets.length && !s.located.question && !w) {
+    await r.log.read(s.located.targets.slice(0, 3).map((t) => t.path), s.spec ? "Using the place found when the design was approved." : "Using the place found while talking about the code.");
     s.phase = "plan";
     await r.save();
     return;
@@ -228,6 +240,11 @@ export async function planPhase(r: Run): Promise<void> {
     return;
   }
   const money = await r.money();
+  // A free-form job that is to show its plan first has not located yet: a search, once, that never stops to ask (the plan is what the person is asked about).
+  if (s.mode === "freeform" && !s.located) {
+    const l = await locate(s.task, r.brain, { model: r.model(), read: readOrNull(r) });
+    s.located = { ...l, question: undefined };
+  }
   let plan;
   try {
     plan = await planChange(s.task, s.located ?? emptyLocated(), r.brain, {
@@ -248,7 +265,7 @@ export async function planPhase(r: Run): Promise<void> {
   const paths = plan.steps.flatMap((st) => st.files.map((f) => f.path));
   const asks = await planAsks(r, paths);
   if (asks.denied) throw new EndJob("failed", asks.denied);
-  if (plan.risk === "high" || asks.asking.length) {
+  if (plan.risk === "high" || asks.asking.length || s.planFirst) {
     const top = asks.asking.find((x) => x.faceId) ?? asks.asking[0];
     const action = top?.action ?? "job.plan";
     const approval = r.deps.projects.approvals.issue({
@@ -263,8 +280,11 @@ export async function planPhase(r: Run): Promise<void> {
         needs: asks.asking.map((x) => ({ action: x.action, label: ACTIONS[x.action].label, faceId: x.faceId })),
       },
     };
-    await r.log.decision(`The plan is ${plan.risk} risk${asks.asking.length ? " and the policy asks about part of it" : ""}, so it waits for your OK.`);
-    throw new Park("approval", `The plan for this is ${plan.risk} risk${plan.riskReasons[0] ? ` (${cut(plan.riskReasons[0], 100)})` : ""}. It needs your OK before I change anything.`);
+    const must = plan.risk === "high" || asks.asking.length > 0;
+    await r.log.decision(must ? `The plan is ${plan.risk} risk${asks.asking.length ? " and the policy asks about part of it" : ""}, so it waits for your OK.` : "You asked to see the plan first, so it waits for your OK.");
+    throw new Park("approval", must
+      ? `The plan for this is ${plan.risk} risk${plan.riskReasons[0] ? ` (${cut(plan.riskReasons[0], 100)})` : ""}. It needs your OK before I change anything.`
+      : `Here is the plan (${plan.steps.length} step${plan.steps.length === 1 ? "" : "s"}, ${plan.risk} risk). You asked to see it first: it needs your OK before I change anything.`);
   }
   s.planOk = true;
   await r.log.decision(`Plan: ${plan.steps.length} step${plan.steps.length === 1 ? "" : "s"} touching ${plan.impact.files.length} file${plan.impact.files.length === 1 ? "" : "s"}; risk ${plan.risk}. No OK needed.`);
@@ -332,6 +352,24 @@ async function executeCalls(r: Run, ex: Exchange): Promise<void> {
   }
   const ok = ex.results.filter((x) => x.ok).length - startOk;
   w.badTurns = ok > 0 || w.finished ? 0 : w.badTurns + 1;
+  await checkpointStep(r, ex);
+}
+
+/**
+ * A round of the model's work is done: the staged edits as they stand are kept as a REWIND POINT for this step (agent/rewind.ts), with a line on what the step did and the
+ * notes the model is given back if the person goes to it. A point that cannot be kept costs the person that one rewind, never the job.
+ */
+async function checkpointStep(r: Run, ex: Exchange): Promise<void> {
+  const store = r.deps.rewind;
+  if (!store) return;
+  const w = r.state.work;
+  try {
+    await store.put(r.jobId, {
+      step: w.turns, at: r.now(), note: cut(digestOf(ex).replace(/\s+/g, " "), 280), staged: structuredClone(w.staged), summary: w.summary, digests: [...w.digests, ...w.exchanges.map(digestOf)].slice(-12),
+    });
+  } catch (err) {
+    r.deps.log?.warn({ jobId: r.jobId, error: (err as Error)?.name }, "code agent: a rewind point was not kept");
+  }
 }
 
 export async function workPhase(r: Run): Promise<void> {
@@ -359,7 +397,7 @@ export async function workPhase(r: Run): Promise<void> {
     if (open && open.results.length < open.calls.length) {
       await executeCalls(r, open);
     } else if (!w.finished) {
-      if (w.turns >= TURNS_MAX) {
+      if (w.turns >= (s.mode === "freeform" ? FREEFORM_STEPS_MAX : TURNS_MAX)) {
         w.finished = true;
         w.doneSummary ??= "I reached the most steps one job takes, so I stopped there with what is staged.";
         r.note("I stopped at the most steps one job takes, so the work may be unfinished.");
@@ -371,7 +409,8 @@ export async function workPhase(r: Run): Promise<void> {
     }
     if (w.finished) break;
   }
-  s.phase = r.tools.changes.empty ? "report" : "verify";
+  // A merge is a change even when its resolution leaves the files as the branch has them (keeping this branch's side): the commit has two parents.
+  s.phase = r.tools.changes.empty && !s.merge ? "report" : "verify";
   await r.save();
 }
 
@@ -494,7 +533,18 @@ async function verifyChecks(r: Run): Promise<CheckSpec[]> {
   }
   const installs = (await r.brain.baselinePlan().catch(() => [])).filter((x) => x.kind === "install").slice(0, 2).map(checkOf);
   const verify = (s.plan?.verify ?? []).slice(0, 6).map((v) => ({ kind: v.kind, cmd: v.cmd, cwd: v.cwd }));
-  return verify.length ? [...installs, ...verify] : [];
+  if (verify.length) return [...installs, ...verify];
+  // A job with no plan to name its checks (free-form, or a merge) is checked by everything the project has: its typecheck, lint, tests and build.
+  if (s.mode === "freeform" || s.merge) {
+    const all = (await r.brain.baselinePlan().catch(() => [])).filter((x) => x.kind !== "install").slice(0, 6).map(checkOf);
+    return all.length ? [...installs, ...all] : [];
+  }
+  return [];
+}
+
+/** A digest of the staged edits: what verify passed, and what the commit checks it is committing. */
+export function stagedFingerprint(r: Run): string {
+  return fingerprintOf(r.tools.changes.files.map((f) => [f.path, f.content]));
 }
 
 /** Runs the checks on the staged edits and compares them to the baseline. Does not change the phase. */
@@ -503,6 +553,14 @@ export async function runVerify(r: Run, round: number): Promise<{ v: VerifyState
   const none = (note: string, ran = false): { v: VerifyState } => ({
     v: { ran, ok: true, summary: note, checks: [], broke: [], alreadyBroken: [], fixed: [], note, round },
   });
+  // A merge with a marker still in a file is not a merge: nothing runs on it, and the model is told which file.
+  if (s.merge) {
+    const left = r.tools.changes.files.filter((f) => f.content !== null && hasConflictMarkers(f.content)).map((f) => f.path);
+    if (left.length) {
+      const why = `Conflict markers (<<<<<<<, =======, >>>>>>>) are still in ${left.slice(0, 5).join(", ")}. Resolve them before anything is checked.`;
+      return { v: { ran: false, ok: false, summary: why, checks: [], broke: left.map((p) => `conflict: ${p}`), alreadyBroken: [], fixed: [], note: why, round }, feedback: why };
+    }
+  }
   const checks = await verifyChecks(r);
   if (!checks.length) return none("The project has no checks Tailzu could find.");
   let overlay;
@@ -539,11 +597,13 @@ export async function runVerify(r: Run, round: number): Promise<{ v: VerifyState
 export async function verifyPhase(r: Run): Promise<void> {
   const s = r.state;
   const w = s.work;
-  if (r.tools.changes.empty) {
+  if (r.tools.changes.empty && !s.merge) {
     s.phase = "report";
     await r.save();
     return;
   }
+  // Whatever was verified before is not what is staged now until the checks say so again.
+  s.verified = undefined;
   const { v, feedback } = await runVerify(r, w.fixRounds);
   s.verify = v;
   // The router learns how this round of writing went.
@@ -554,6 +614,8 @@ export async function verifyPhase(r: Run): Promise<void> {
   }, { ...(r.deps.routeStats ? { store: r.deps.routeStats } : {}), ...(r.deps.log ? { log: r.deps.log } : {}) });
   if (v.ok) {
     w.feedback = undefined;
+    // What the checks passed on is written down: the commit is made of exactly this, and of nothing the checks did not see.
+    s.verified = stagedFingerprint(r);
     // A job built from an approved design runs the app and looks at it before it is committed (design.ts); every other job commits.
     s.phase = designDue(r) ? "design" : "commit";
     await r.save();
@@ -587,16 +649,44 @@ async function alreadyOnBranch(r: Run): Promise<boolean> {
   return r.tools.changes.size > 0;
 }
 
-/** Commits the staged edits (no-op when nothing is staged). Parks when the policy asks. Throws EndJob when it refuses. */
+/** The commit was asked for edits the checks have not passed: never made. A bug in whoever asked, not a thing a job can do. */
+export class Unverified extends Error {
+  constructor() {
+    super("the staged edits were not verified: no commit is made of edits the checks have not passed");
+    this.name = "Unverified";
+  }
+}
+
+/** GitHub's refusal of a push, in its own words and with its link, and what happens now: Tailzu does not go round it, and waits for the person. */
+function refusalWords(branch: string, err: GithubRefusal): string {
+  const said = redactText(err.said || "GitHub gave no reason.", 600);
+  return `GitHub refused the push to ${branch}. Exactly what GitHub said: "${said}"${err.links.length ? ` Its link: ${err.links.join(" ")}` : ""} `
+    + "Tailzu does not try to get round a rule like this, and pushed nothing else. Change the rule on GitHub, or take the change through a pull request, then tell me to try again; or stop.";
+}
+
+/**
+ * Commits the staged edits (no-op when nothing is staged). Parks when the policy asks. Throws EndJob when it refuses.
+ *
+ *   VERIFY COMES FIRST, AND THE COMMIT CHECKS IT. What is committed must be exactly what the checks passed (`state.verified`, set by verify): a commit of
+ *   anything else is refused with Unverified before GitHub is asked for anything, so no order of phases, no model turn and no restart can commit edits unchecked.
+ *   A MERGE (a PR-care job for a conflict) is committed as a merge commit with two parents, through the policy: never a rebase, never a force.
+ *   A PUSH GITHUB REFUSES (a protection rule) is not worked round: the job stops, tells the person exactly what GitHub said with the link it gave, and waits.
+ */
 export async function commitStaged(r: Run, o: { partial?: boolean } = {}): Promise<string | null> {
   const s = r.state;
-  if (r.tools.changes.empty) return null;
+  if (r.tools.changes.empty && !s.merge) return null;
+  if (s.verified !== stagedFingerprint(r)) throw new Unverified();
   const files = r.tools.changes.toCommitFiles();
   const repo = repoRef(r.deps.projects, r.userId, r.project);
   const head = await r.deps.projects.github.branchHead(repo, r.branch);
   const view = await r.brain.status().catch(() => null);
+  const merge = s.merge;
+  if (merge && merge.stage !== "uptodate" && head !== merge.headSha && !(s.commit && !s.commit.sha)) {
+    throw new EndJob("failed", `The branch changed while ${merge.base} was being merged into it, so I did not commit over the new work. Nothing was committed; the next check will merge again.`);
+  }
   const message = s.commit?.message && !s.commit.sha ? s.commit.message
-    : commitMessage(s, { conventional: view?.conventions?.commits.style === "conventional", jobId: r.jobId }) + (o.partial ? "\n\nThis is part of the work: the budget ran out before the rest." : "");
+    : (merge ? `Merge ${merge.base} into ${r.branch}\n\nThe conflicts were resolved by Tailzu (job ${r.jobId.slice(0, 8)}). ${merge.conflicted.length ? `They were in ${merge.conflicted.slice(0, 6).join(", ")}.` : "There were none."}`
+      : commitMessage(s, { conventional: view?.conventions?.commits.style === "conventional", jobId: r.jobId })) + (o.partial ? "\n\nThis is part of the work: the budget ran out before the rest." : "");
   // A commit made just before a crash, and not written down: found on the branch, not made again.
   if (s.commit && !s.commit.sha && s.commit.base !== head && (await alreadyOnBranch(r))) {
     s.commit.sha = head;
@@ -604,26 +694,47 @@ export async function commitStaged(r: Run, o: { partial?: boolean } = {}): Promi
     s.commit = { base: head, message, files: r.tools.changes.lines() };
     await r.save();
     try {
-      const made = await r.gated("commit", "commit the changes", (id) => r.ws.commit(files, message, id ? { approvalId: id } : {}));
+      const made = merge
+        ? await r.gated("commit", "commit the merge", (id) => r.ws.mergeCommit(files, message, merge.baseSha, id ? { approvalId: id } : {}))
+        : await r.gated("commit", "commit the changes", (id) => r.ws.commit(files, message, id ? { approvalId: id } : {}));
       s.commit.sha = made.sha;
     } catch (err) {
       if (err instanceof PolicyError) throw new EndJob("failed", `${err.message} Nothing was committed.`);
       if (err instanceof ConnectorError && err.code === "branch_moved") throw new EndJob("failed", "Someone else changed this branch while I was working, so I did not commit over their work. Nothing was committed; start again from the branch as it is.");
+      if (err instanceof GithubRefusal) {
+        s.commit = undefined;
+        const question = refusalWords(r.branch, err);
+        s.waiting = { kind: "question", from: "push", question, options: ["Try again", "Stop"], at: r.now() };
+        await r.log.question(question);
+        throw new Park("answer", `GitHub refused the push: ${redactText(err.said || "no reason given", 140)}${err.links[0] ? ` ${err.links[0]}` : ""}`);
+      }
       throw err;
     }
   }
   const sha = s.commit.sha!;
   s.commits.push(sha);
-  await r.log.step(`Committed ${sha.slice(0, 7)} to ${r.branch} (${r.tools.changes.size} file${r.tools.changes.size === 1 ? "" : "s"})`, r.tools.changes.paths());
+  s.baseSha ??= s.commit.base;
+  s.committedPaths = [...new Set([...(s.committedPaths ?? []), ...r.tools.changes.paths()])];
+  await r.log.step(`${merge ? "Merged" : "Committed"} ${sha.slice(0, 7)} to ${r.branch} (${r.tools.changes.size} file${r.tools.changes.size === 1 ? "" : "s"})`, r.tools.changes.paths());
   r.tools.changes.clear();
   r.tools.invalidate();
-  await r.save({ headSha: sha, notes: `Committed ${sha.slice(0, 7)}.` });
+  await r.save({ headSha: sha, notes: `${merge ? "Merged" : "Committed"} ${sha.slice(0, 7)}.` });
   return sha;
 }
 
 export async function commitPhase(r: Run): Promise<void> {
   const s = r.state;
-  if (!r.tools.changes.empty || (s.commit && !s.commit.sha)) await commitStaged(r);
+  const w = s.waiting;
+  // GitHub refused the push and the person has answered: stop, or try again.
+  if (w?.kind === "question" && w.from === "push") {
+    if (w.answer === undefined) throw new LostClaim();
+    await r.log.question(w.question, w.answer);
+    s.waiting = undefined;
+    if (/\b(?:stop|no|cancel|abandon)\b/i.test(w.answer) && !/try\s+again/i.test(w.answer)) {
+      throw new EndJob("failed", "You chose to stop after GitHub refused the push. The edits were not pushed, and nothing on the branch changed.");
+    }
+  }
+  if (!r.tools.changes.empty || s.merge || (s.commit && !s.commit.sha)) await commitStaged(r);
   s.phase = s.commits.length ? "pr" : "report";
   await r.save();
 }
@@ -633,6 +744,14 @@ export async function commitPhase(r: Run): Promise<void> {
 export async function prPhase(r: Run): Promise<void> {
   const s = r.state;
   const d = r.deps.projects;
+  // A PR-care job pushes to a pull request that exists, and is not its description's to rewrite: the pull request is the person's (or Tailzu's earlier) and says what it is.
+  if (s.care) {
+    s.pr = { number: s.care.prNumber, url: s.care.prUrl, ready: true, existing: true };
+    await r.log.step(`Pushed to pull request #${s.care.prNumber}`);
+    s.phase = "report";
+    await r.save();
+    return;
+  }
   const money = await r.money();
   const worklog = await worklogMarkdown(r.jobId, { ...(r.deps.worklog ? { store: r.deps.worklog } : {}) });
   const body = prBody(s, { worklog, jobId: r.jobId, spentPaise: money.spent, design: designTextOf(r) });

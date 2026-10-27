@@ -10,9 +10,10 @@
  *   prepare      read the project's brain, classify the request, load the rules
  *   new_project  (an empty repo only) intake, spec, PLAN.md, the scaffold step
  *   baseline     what the project's own checks said before any edit
- *   locate       where does this belong? (a question to the person if unsure)
- *   plan         what to change; the person's OK if it is risky or the policy asks
- *   work         a model with tools: read, search, edit (staged), run, ask
+ *   merge        (a PR-care job for a branch that conflicts with the default branch only) the default branch is merged in on a runner, and the result is staged
+ *   locate       where does this belong? (a question to the person if unsure). Free-form jobs skip it
+ *   plan         what to change; the person's OK if it is risky, the policy asks, or the person said "always show me the plan first". Free-form jobs plan only for that
+ *   work         a model with tools: read, search, edit (staged), run, ask. Guided: after locate and plan. Free-form: the model decides the order of explore, change and run
  *   verify       the plan's checks against the baseline
  *   design       only for a job built from an approved design (spec): run the app, shoot it, compare it to the design; major differences go back to work
  *   commit       the server commits the staged edits, through the policy
@@ -27,8 +28,12 @@ import type { Classification } from "../brain/types.js";
 import type { BaselineResult } from "../project/types.js";
 import type { ChangePlan, Located } from "../work/index.js";
 
-export const PHASES = ["prepare", "new_project", "baseline", "locate", "plan", "work", "verify", "design", "commit", "pr", "report", "done"] as const;
+export const PHASES = ["prepare", "new_project", "baseline", "merge", "locate", "plan", "work", "verify", "design", "commit", "pr", "report", "done"] as const;
 export type Phase = (typeof PHASES)[number];
+
+/** How a job is worked: GUIDED (locate, plan, work, verify, commit: the phases in order) or FREEFORM (the model decides the order of explore, change and run). */
+export const JOB_MODES = ["guided", "freeform"] as const;
+export type JobMode = (typeof JOB_MODES)[number];
 
 // ------------------------------------------------------------------ numbers
 
@@ -36,6 +41,17 @@ export type Phase = (typeof PHASES)[number];
 export const TASK_CHARS = 20_000;
 /** Model turns in the work phase, over the whole job. At the limit the work is called done. */
 export const TURNS_MAX = 60;
+/**
+ * Free-form: STEPS (a step is a round of the model's work: a turn and its tool calls) in all, and runs in all. The model decides the order of explore, change
+ * and run, which makes a job easy to lose in; a lower cap on steps and a higher one on runs (investigating means running things) is how it is kept in hand.
+ * At the cap the work is called done and goes to the checks like any other.
+ */
+export const FREEFORM_STEPS_MAX = 40;
+export const FREEFORM_RUNS_MAX = 25;
+/** Rewind points kept for a job: the last this-many steps. */
+export const REWIND_KEEP = 60;
+/** The most characters of staged text all of a job's rewind points may hold together (the oldest go first). */
+export const REWIND_CHARS_MAX = 3_000_000;
 /** Fix rounds after a verify that found something this change broke. */
 export const FIX_ROUNDS_MAX = 3;
 /** Runs the model may ask for in one work round. */
@@ -169,7 +185,7 @@ export type WaitFor = "plan" | "commit" | "ready";
 export type Waiting =
   | {
     kind: "question";
-    from: "locate" | "intake" | "model" | "scaffold";
+    from: "locate" | "intake" | "model" | "scaffold" | "push" | "merge";
     question: string;
     options?: string[];
     /** The model's call to answer with the person's words (from "model"). */
@@ -197,6 +213,55 @@ export type Waiting =
     at: number;
   }
   | { kind: "budget"; needPaise: number; at: number };
+
+/** Why a PR-care job exists (code/prcare): what it is for, on which pull request, so its end can be told on that pull request. */
+export interface CareContext {
+  kind: "ci" | "review" | "conflict";
+  prNumber: number;
+  prUrl: string;
+  /** The pull request's head commit when the job was made: a CI fix or a review change is for this commit. */
+  headSha: string;
+  /** ci: the names of the failing checks. review: the ids of the comments it answers. conflict: the default branch it merges in. */
+  refs: string[];
+  /** review: the thread ids to resolve once the change is committed. */
+  threadIds?: string[];
+  /**
+   * What the job is shown as DATA, beside its task: ci: the end of the failing checks' logs. review: the reviewer's own words. Somebody else's text,
+   * cleaned of anything that looks like a secret, and never an instruction (context.ts shows it inside a data wrapper).
+   */
+  log?: string;
+  comment?: string;
+  /** review: where on the diff the ask is. */
+  path?: string;
+  line?: number;
+  /** conflict: the branch the pull request is into, which is the one merged in (the default branch when the pull request is into it). */
+  base?: string;
+}
+
+/** The merge of the default branch into a conflicting branch (stage "merge"): what was merged, and where it stands. */
+export interface MergeState {
+  stage: "run" | "judge" | "resolve" | "uptodate";
+  /** The default branch's name, and the commit of it that is merged in (the merge commit's second parent). */
+  base: string;
+  baseSha: string;
+  /** The branch's head when the merge was made: the merge commit's first parent. */
+  headSha: string;
+  /** The files that conflict. */
+  conflicted: string[];
+  /** The person's choice, when both sides changed the same logic and picking one loses behaviour. */
+  choice?: string;
+}
+
+/** A step of the model's work, as a rewind point: the staged edits as they stood after it, and the notes the model is given back. */
+export interface StepCheckpoint {
+  step: number;
+  at: number;
+  /** What the step did, in a line. */
+  note: string;
+  staged: StagedFile[];
+  summary: string;
+  digests: string[];
+}
 
 export interface Report {
   at: number;
@@ -301,6 +366,26 @@ export interface AgentState {
   design?: DesignState;
   /** A clarification the person gave for a question from locate (spent: locate does not ask twice). */
   locateAsked?: boolean;
+  /** How the job is worked. Absent: guided, as every job was before free-form existed. */
+  mode?: JobMode;
+  /** "Always show me the plan first": the plan goes to the person for a yes before any work, whatever its risk. */
+  planFirst?: boolean;
+  /** `located` came from a conversation about the code (code/chat): locate takes it as it is and does not look again. */
+  handoff?: boolean;
+  /** Why this job exists, when it is PR care's (code/prcare). */
+  care?: CareContext;
+  /** The merge of the default branch into the branch, when this is a PR-care job for a conflict. */
+  merge?: MergeState;
+  /**
+   * What the checks were run on: a digest of the staged edits that passed verify. A commit is made only of exactly this (agent/phases.ts commitStaged):
+   * verifying before committing is not a convention of the phases' order but a thing the commit checks.
+   */
+  verified?: string;
+  /** The branch's head before this job's first commit, and every path its commits touched: what a rewind after the commit undoes (with a new commit, never a rewrite). */
+  baseSha?: string;
+  committedPaths?: string[];
+  /** Times the person rewound the job, and how. */
+  rewinds?: Array<{ to: number; at: number; kind: "restored" | "reverted"; sha?: string }>;
   plan?: ChangePlan;
   /** The person said yes to the plan, or it needed no yes. */
   planOk?: boolean;

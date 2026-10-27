@@ -33,6 +33,8 @@ import type { findResources } from "../resources/finder.js";
 import type { CompareHook } from "../../artifacts/build.js";
 import type { LiveDeps } from "../live/ports.js";
 import type { AgentRunner } from "./runner.js";
+import type { RewindStore } from "./rewind.js";
+import type { SettingsStore } from "./settings.js";
 
 /** What the loop asks of the project brain. */
 export interface AgentBrain {
@@ -69,7 +71,7 @@ export interface DesignDeps {
 export interface AgentDeps {
   /** The Code bot's own pieces: projects, GitHub, the approvals. */
   projects: ProjectDeps;
-  jobs: Pick<JobRouter, "finishJob" | "cancelJob">;
+  jobs: Pick<JobRouter, "finishJob" | "cancelJob"> & Partial<Pick<JobRouter, "clearCaptured">>;
   store: JobStore;
   brain: AgentBrain;
   runner: AgentRunner;
@@ -81,6 +83,10 @@ export interface AgentDeps {
   fetchFn?: FetchLike;
   findResources?: typeof findResources;
   worklog?: WorklogStore;
+  /** The staged edits after each step, for the person to rewind to (rewind.ts). Absent: none are kept, and a rewind says so. */
+  rewind?: RewindStore;
+  /** How the project's jobs are worked, as the person set it (settings.ts). Absent: every job is guided, with no plan-first. */
+  settings?: SettingsStore;
   intake?: IntakeStore;
   routeStats?: RouteStatsStore;
   /** How the person is told (the push engine in the server). */

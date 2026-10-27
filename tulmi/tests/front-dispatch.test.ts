@@ -112,6 +112,30 @@ describe("the roads", () => {
     expect(result.notes.join(" ")).toMatch(/Still missing or unsure: no benchmark; no price/);
   });
 
+  it("keeps a flow the chat drew from the import graph as it is: no model call to make the diagram, and the thread reaches the road", async () => {
+    const flow = "flowchart TD\n  N1[\"routes/login.ts\"]\n  N2[\"auth/session.ts\"]\n  N1 --> N2";
+    const seen: Array<{ threadId?: string }> = [];
+    const t = rig({ handlers: { codeAnswer: async (c: { ctx: { threadId?: string } }) => { seen.push({ threadId: c.ctx.threadId }); return { text: "Login starts a session: src/routes/login.ts:4.", paise: 7, diagram: flow }; } } });
+    const c = inProject({ threadId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" });
+    const d = await rules("how does the login flow work", c);
+    const { result } = await t.run(d, "how does the login flow work", c);
+    expect(t.h.calls.artifact).toHaveLength(1);
+    expect(t.h.calls.artifact[0]!.mermaid).toBe(flow);
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.paise).toBe(7);
+    expect(seen).toEqual([{ threadId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" }]);
+  });
+
+  it("hands the code roads the person's own words, whatever earlier words the decision folded in", async () => {
+    const t = rig();
+    const c = inProject({ recent: [{ said: "where is the session cookie set?", did: "code_question" }], threadId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" });
+    const d = await rules("ok, change it", c);
+    expect(d).toMatchObject({ intent: "code_task", handoff: true });
+    await t.run(d, "ok, change it", c);
+    expect(t.h.calls.codeJob[0]).toMatchObject({ said: "ok, change it", message: "where is the session cookie set?. ok, change it" });
+    expect(t.h.calls.codeJob[0]!.ctx.threadId).toBe("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+  });
+
   it("plans, and draws the plan from its steps with no model: the diagram is handed to the artifact road as it is", async () => {
     const t = rig();
     const d = await rules("plan my week");

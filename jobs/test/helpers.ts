@@ -69,6 +69,9 @@ export class ScriptedTicker implements TickPort {
   fail = false;
   /** Set by a test that wants the router's wake (a PC came online). */
   wake?: (userId: string) => Promise<number>;
+  /** What the presence object asked the router to do when a PC declined a step (protocol version 2). */
+  declines: Array<{ userId: string; jobId: string; epoch: number; deviceId: string; reason?: string }> = [];
+  decline = async (userId: string, d: { jobId: string; epoch: number; deviceId: string; reason?: string }): Promise<unknown> => { this.declines.push({ userId, ...d }); return { ok: true }; };
   async tick() { this.ticks += 1; if (this.fail) throw new Error("db away"); return this.summary; }
   async idle(idleMs: number, limit: number) { this.idleAsked.push({ idleMs, limit }); return this.idleIds; }
 }

@@ -53,7 +53,7 @@ import { WEB_TOOLS, type WebTools } from "../webTools.js";
 import { cleanFinding, redactText, type WorkLog } from "../work/index.js";
 import { Changeset, Refused, checkedText, editablePath, replaceOnce } from "./changeset.js";
 import type { RunOutcome, RunSpec } from "./runner.js";
-import { FINDINGS_MAX, LIST_MAX, READ_MAX_CHARS, RESULT_MAX_CHARS, RUNS_MAX, RUN_TIMEOUT_SEC, type AgentState, type ResultRecord } from "./types.js";
+import { FINDINGS_MAX, FREEFORM_RUNS_MAX, LIST_MAX, READ_MAX_CHARS, RESULT_MAX_CHARS, RUNS_MAX, RUN_TIMEOUT_SEC, type AgentState, type ResultRecord } from "./types.js";
 
 export type ToolControl = { type: "done"; summary: string } | { type: "ask"; question: string; options?: string[] };
 export interface ToolOutcome extends ResultRecord { control?: ToolControl }
@@ -642,7 +642,9 @@ export class Tools {
     if (scanForSecrets([{ path: "command.sh", content: cmd }]).length) throw new Refused("That command has something in it that looks like a secret. Never put a secret in a command: read it from the environment.");
     // A run picked up again after the advance that started it (a step still out, a session waited for) is the same run, not another.
     const resumed = this.env.state.run?.tag === call.id;
-    if (!resumed && this.env.state.work.runs >= RUNS_MAX) throw new Refused(`${RUNS_MAX} runs are used already in this round of work. Finish with what you have learned, or call done.`);
+    // A free-form job investigates by running things, so its runs are allowed more of them (and it has fewer steps: types.ts FREEFORM_RUNS_MAX).
+    const runsMax = this.env.state.mode === "freeform" ? FREEFORM_RUNS_MAX : RUNS_MAX;
+    if (!resumed && this.env.state.work.runs >= runsMax) throw new Refused(`${runsMax} runs are used already in this round of work. Finish with what you have learned, or call done.`);
     const overlay = this.changes.toOverlay();
     if (!resumed) this.env.state.work.runs += 1;
     const why = short(str(a.why)?.trim() || commands[0]!, 200);

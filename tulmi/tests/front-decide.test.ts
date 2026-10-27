@@ -513,3 +513,52 @@ describe("the road: route, tier, budget", () => {
     expect((await ruled("पायथन और जावा में अंतर बताओ")).language).toBe("hi");
   });
 });
+
+// ------------------------------------------------------------------------------------------------ talking about code, and free-form work
+
+describe("talking about code, and how a task is worked (docs/code-chat.md, docs/code-agent.md)", () => {
+  const recent = [{ said: "where is the session cookie set?", did: "code_question" }];
+
+  it("sends a deep why or a what-would-break question to the strong tier, and every other question about the code to the cheap one", async () => {
+    for (const q of ["why is checkout slow under load?", "why is the cart page slow after refresh?", "what would break if I rename startSession?"]) {
+      const d = await ruled(q, inProject());
+      expect(d, q).toMatchObject({ intent: "code_question", route: "code_answer", tier: "strong" });
+      expect(d.reasons, q).toContain("code:deep");
+    }
+    for (const q of ["where is the session cookie set?", "how does the login flow work", "why does startSession use sameSite lax?"]) {
+      const d = await ruled(q, inProject());
+      expect(d, q).toMatchObject({ intent: "code_question", tier: "cheap" });
+      expect(d.reasons, q).not.toContain("code:deep");
+    }
+    // The strong tier costs more of the question's money than the cheap one does.
+    expect((await ruled("why is checkout slow under load?", inProject())).budgetPaise).toBeGreaterThan((await ruled("where is the session cookie set?", inProject())).budgetPaise);
+  });
+
+  it("plans a flow diagram for a question about how something works, and the chat draws it", async () => {
+    const d = await ruled("how does login work across the app?", inProject());
+    expect(d.shape.visual).toMatchObject({ kind: "diagram" });
+  });
+
+  it("takes 'ok, change it' after a question about the code for a task that carries what the talk found", async () => {
+    for (const m of ["ok, change it", "okay, make the change", "haan, isko badal do"]) {
+      const d = await ruled(m, inProject({ recent }));
+      expect(d, m).toMatchObject({ intent: "code_task", route: "code_job", handoff: true, followUp: "where is the session cookie set?" });
+    }
+    // The same words with no question before them are an ordinary short message, not a hand-off.
+    expect((await ruled("ok, change it", inProject())).handoff).toBeUndefined();
+    // After a task, not a question: no hand-off either.
+    expect((await ruled("ok, change it", inProject({ recent: [{ said: "fix the login bug", did: "code_task" }] }))).handoff).toBeUndefined();
+  });
+
+  it("works an open-ended task free-form: debugging, investigating, finding out why, and a flaky or intermittent failure", async () => {
+    for (const m of ["debug why the checkout sometimes fails and fix it", "debug the intermittent timeout in the upload job and fix it", "figure out why the cart is empty after refresh and fix it", "track down the flaky login test and fix it"]) {
+      const d = await ruled(m, inProject());
+      expect(d, m).toMatchObject({ intent: "code_task", mode: "freeform" });
+    }
+    for (const m of ["change the button color to red", "refactor the auth module into smaller functions", "fix the login bug"]) {
+      expect((await ruled(m, inProject())).mode, m).toBeUndefined();
+    }
+    // A question about the code is never a free-form job.
+    expect((await ruled("why does the checkout sometimes fail?", inProject())).mode).toBeUndefined();
+  });
+});

@@ -1,10 +1,12 @@
 /**
  * THE FRONT DOOR OVER HTTP (src/front, docs/front-door.md).
  *
- *   POST /v1/ask { message, projectId?, attachments?, device, mode, visuals?, recent?, visual?, stream? }
+ *   POST /v1/ask { message, projectId?, threadId?, attachments?, device, mode, visuals?, recent?, visual?, stream? }
  *                          -> { id, decision, result }, or with `stream: true` (or Accept: application/x-ndjson) a stream of events, one JSON
  *                             per line: decision, status, text, artifact, and last a result (or an error). `id` is the decision's row in the log:
- *                             what POST /v1/ask/feedback names. `visual: "table"` (and so on) takes a one-tap offer a result made.
+ *                             what POST /v1/ask/feedback names. `visual: "table"` (and so on) takes a one-tap offer a result made. `threadId` is the id the app
+ *                             makes for a conversation about a project's code: its short rolling summary is what a follow-up leans on, and "ok, change it" starts a
+ *                             job that is handed the place the conversation found (docs/code-chat.md).
  *   POST /v1/ask/feedback { id, outcome }
  *                          -> { ok: true }  what the person did with an answer: visual_closed, visual_kept, thumbs_up, thumbs_down
  *   GET  /v1/admin/guard   -> the overload guards at a glance: the limiter, the idempotency store, coalescing, and every breaker's state
@@ -73,6 +75,7 @@ export function readAsk(body: unknown): AskRead {
   if (b.visuals !== undefined && !oneOf(VISUAL_PREFS, b.visuals)) return bad(`visuals is one of ${VISUAL_PREFS.join(", ")}.`);
   if (b.visual !== undefined && !oneOf(VISUAL_KINDS, b.visual)) return bad(`visual is one of ${VISUAL_KINDS.join(", ")}.`);
   if (b.projectId !== undefined && (typeof b.projectId !== "string" || !UUID.test(b.projectId))) return bad("projectId is a project's id.");
+  if (b.threadId !== undefined && (typeof b.threadId !== "string" || !UUID.test(b.threadId))) return bad("threadId is an id the app makes for a conversation about a project's code (a uuid).");
   if (b.stream !== undefined && typeof b.stream !== "boolean") return bad("stream is true or false.");
 
   const attachments: AttachmentRef[] = [];
@@ -105,7 +108,8 @@ export function readAsk(body: unknown): AskRead {
       message: b.message, data, stream: b.stream === true,
       ctx: {
         device: b.device as Device, mode: b.mode as Mode, visuals: (b.visuals as VisualPref | undefined) ?? "auto", recent, attachments,
-        ...(typeof b.projectId === "string" ? { projectId: b.projectId } : {}), ...(b.visual !== undefined ? { takeOffer: b.visual as VisualKind } : {}),
+        ...(typeof b.projectId === "string" ? { projectId: b.projectId } : {}), ...(typeof b.threadId === "string" ? { threadId: b.threadId } : {}),
+        ...(b.visual !== undefined ? { takeOffer: b.visual as VisualKind } : {}),
       },
     },
   };
