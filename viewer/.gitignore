@@ -1,0 +1,15 @@
+node_modules/
+vendor-src/node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+dist/
+test-results/
+playwright-report/
+
+# Built by `npm run build` (scripts/build.mjs, scripts/vendor.mjs): never committed.
+public/shell.html
+public/assets/
+public/vendor/
