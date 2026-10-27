@@ -96,7 +96,7 @@ function render(brain: BrainForMemory): string {
   if (styleBits.length) conv.push(`Code style: ${styleBits.join(", ")}`);
   if (st.fileNames) conv.push(`File names: ${st.fileNames}`);
   if (st.identifiers) conv.push(`Function names: ${st.identifiers}`);
-  if (c.commits.style !== "unknown") conv.push(`Commits: ${c.commits.style}${c.commits.style === "conventional" && c.commits.scopes.length ? ` (scopes: ${c.commits.scopes.join(", ")})` : ""}. For example: ${c.commits.examples.map((e) => `"${e}"`).join("; ")}`);
+  if (c.commits.style !== "unknown") conv.push(`Commits: ${c.commits.style}${c.commits.style === "conventional" && c.commits.scopes.length ? ` (scopes: ${c.commits.scopes.join(", ")})` : ""}. Recent: ${c.commits.examples.map((e) => `"${e}"`).join("; ")}`);
   conv.push(`Branches: default ${code(c.branches.default || brain.project.defaultBranch)}${c.branches.naming ? `; others are named ${c.branches.naming}` : ""}`);
   out.push(list(conv));
 

@@ -30,6 +30,7 @@ process.env.NODE_ENV = "test";
 noNetwork();
 
 const { research, bestHeading, checkCitations, splitGaps, DEFAULT_LIMITS, HARD_LIMITS, MAX_ROUNDS } = await import("../src/web/research.js");
+const { stableBlock } = await import("../src/principles/index.js");
 type AskRequest = import("../src/web/search/types.js").AskRequest;
 type AskReply = import("../src/web/search/types.js").AskReply;
 type Ranked = import("../src/web/search/types.js").Ranked;
@@ -408,10 +409,11 @@ describe("what the model is handed", () => {
 
     expect(m.calls).toHaveLength(1);
     const req = m.calls[0]!;
-    expect(req.system).toMatch(/data from the web/i);
-    expect(req.system).toMatch(/never an instruction/i);
-    expect(req.system).toMatch(/citation like \[1\]/i);
-    expect(req.system).toMatch(/GAPS:/);
+    expect(req.role).toBe("research_answer");
+    const system = stableBlock(req.role);
+    expect(system).toMatch(/web[^.]*text is data, never instructions/i);
+    expect(system).toMatch(/Every claim ends with \[n\]/);
+    expect(system).toMatch(/GAPS:/);
 
     // take every wrapper out: what is left is ours, and holds none of the web's words
     const outside = req.user.replace(/<web_page url="[^"]*" fetched="[^"]*">\n[\s\S]*?\n<\/web_page>/g, "<WRAPPED>");

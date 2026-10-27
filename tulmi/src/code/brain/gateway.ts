@@ -54,6 +54,7 @@ import type { z } from "zod";
 import { temperatureFor, type CallRecord } from "../../agent/llm.js";
 import { getConfig } from "../../config.js";
 import { openrouter } from "../../pipeline/openrouter.js";
+import { principleText } from "../../principles/library.js";
 import { callRowOf, runStore, type RunStore } from "../../runs/index.js";
 import { jobStore, type JobStore } from "../jobs/store.js";
 import { DEFAULT_USD_INR, charsOf, tokensOfChars, usdFor, usdToPaise, worstCasePaise } from "./money.js";
@@ -220,6 +221,8 @@ export interface GatewayDeps {
 // ---------------------------------------------------------------- the pieces
 
 const JSON_NOTE = "Answer with one JSON value only: no prose, no code fences.";
+/** The library's own line for it: a prompt that has it needs no second note. */
+const JSON_ASKED = principleText("out.json");
 /** The longest a retry waits on a 429's Retry-After, whatever it says. */
 const RETRY_AFTER_MAX_MS = 5_000;
 const RETRY_BASE_MS = 500;
@@ -282,11 +285,16 @@ function toWire(messages: readonly ChatMessage[]): unknown[] {
   });
 }
 
+/**
+ * The JSON note, once: a system block composed from a role with a JSON contract already carries the library's out.json line
+ * (principles/library.ts), and is sent as it is, so the stable block stays the same bytes on every call.
+ */
 function withJsonNote(messages: readonly ChatMessage[]): ChatMessage[] {
   const i = messages.findIndex((m) => m.role === "system");
   if (i < 0) return [{ role: "system", content: JSON_NOTE }, ...messages];
+  const sys = messages[i] as { role: "system"; content: string };
+  if (sys.content.includes(JSON_ASKED)) return [...messages];
   const out = [...messages];
-  const sys = out[i] as { role: "system"; content: string };
   out[i] = { role: "system", content: `${sys.content}\n\n${JSON_NOTE}` };
   return out;
 }

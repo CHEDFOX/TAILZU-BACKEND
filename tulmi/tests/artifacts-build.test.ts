@@ -1,7 +1,7 @@
 /**
  * "Build it" (src/artifacts/build.ts, code/agent): an approved artifact becomes a Code bot job whose SPEC it is. The job's task carries the design,
  * the kit and the place found; its state carries the whole design at the approved version; the agent loop shows the design to the model as the
- * thing to match, using the project's real components, and does not search for the place again. The screenshot compare is a seam, not built here.
+ * thing to match, with the project's real components, and does not search for the place again. The screenshot compare is a seam, not built here.
  */
 import { describe, expect, it, vi } from "vitest";
 import { noNetwork } from "./no-network.js";
@@ -24,7 +24,7 @@ const { MemoryArtifactStore } = await import("../src/artifacts/store.js");
 const { buildFromArtifact, buildTask, noCompare } = await import("../src/artifacts/build.js");
 const { workspaceFiles } = await import("../src/artifacts/kit.js");
 const { workspace } = await import("../src/code/projects.js");
-const { buildContext, specBlock, systemPrompt } = await import("../src/code/agent/context.js");
+const { buildContext, specBlock, projectContext } = await import("../src/code/agent/context.js");
 const { initialState, SPEC_CHARS_MAX } = await import("../src/code/agent/types.js");
 const { viewOfState } = await import("../src/code/agent/orchestrator.js");
 const { PHASES } = await import("../src/code/agent/types.js");
@@ -167,7 +167,7 @@ describe("the agent loop with a spec", () => {
     // the first work turn: the task, then the design in its fence, the kit, and the place
     const first = r.model.seen[0]!;
     expect(first.user).toContain("The person approved this design as the SPEC (an artifact: react, \"Slug helper card\", version 1)");
-    expect(first.user).toContain("using the project's real components, styles and conventions");
+    expect(first.user).toContain("with the project's real components, styles and conventions");
     expect(first.user).toMatch(/<tool_data tool="design_spec" label="Slug helper card \(react, version 1\)">\nimport \{ useState \} from "react";/);
     expect(first.user).toContain("Copy slug");
     expect(first.user).toMatch(/<tool_data tool="style_kit">\n.*colors: primary #7c3aed/s);
@@ -211,13 +211,13 @@ describe("the agent loop with a spec", () => {
   it("is in every turn's context under the cap, and drops last", () => {
     const s = initialState("Build the design", 1);
     s.spec = { artifactId: "a", version: 1, type: "react", title: "Card", content: "c".repeat(30_000), kit: "k", target: [], approvedAt: 1 };
-    const ctx = buildContext({ state: s, system: systemPrompt({ rules: "", memory: "", kind: "feature" }), tools: [], stagedLines: [], checks: [] });
+    const ctx = buildContext({ state: s, project: projectContext({ rules: "", memory: "", kind: "feature" }), tools: [], stagedLines: [], checks: [] });
     const user = String(ctx.messages[1]!.content);
     expect(user).toContain("design_spec");
     expect(ctx.chars).toBeLessThanOrEqual(60_000);
     // without a spec the context is what it always was
     const plain = initialState("Do it", 1);
-    expect(String(buildContext({ state: plain, system: "sys", tools: [], stagedLines: [], checks: [] }).messages[1]!.content)).not.toContain("design_spec");
+    expect(String(buildContext({ state: plain, project: "", tools: [], stagedLines: [], checks: [] }).messages[1]!.content)).not.toContain("design_spec");
     expect(PHASES).toContain("locate");
   });
 });

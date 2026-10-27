@@ -16,6 +16,7 @@ vi.hoisted(() => {
 
 const { buildKit, designKit, brainComponents, pickSources, compactPrompt, buildCss, componentArtifact, workspaceFiles, liveFiles, KIT_FILES_MAX, KIT_PROMPT_MAX } = await import("../src/artifacts/kit.js");
 const P = await import("../src/artifacts/kitparse.js");
+const { stableBlock } = await import("../src/principles/index.js");
 const { MemoryArtifactStore } = await import("../src/artifacts/store.js");
 const { rig, FAKE_STRIPE } = await import("./artifacts-rig.js");
 const { fixtureBrain, sym, text } = await import("./work-fixtures.js");
@@ -157,7 +158,7 @@ describe("Tailwind with shadcn and CSS variables", () => {
     expect(kit.prompt).toContain("radius: 0.5rem");
     expect(kit.prompt).toContain("icons: lucide-react (import it)");
     expect(kit.prompt).toContain("components: Button(variant,size,asChild) Card(title,footer)");
-    expect(kit.prompt).toMatch(/Rules: .*keep the radius.*use Tailwind classes \(bg-primary/);
+    expect(kit.prompt).toMatch(/Rules: .*keep the radius.*use Tailwind classes where the names above match/);
   });
 });
 
@@ -512,7 +513,8 @@ describe("componentArtifact", () => {
     expect(made.user).toContain("5:       <OrderSummary />");
     expect(made.user).toMatch(/It probably goes in src\/app\/checkout\/page\.tsx \(.*but that is not certain/);
     expect(made.user.trimEnd().endsWith("in the style of the project.")).toBe(true);
-    expect(made.system).toMatch(/recreate just enough of it around the new part/);
+    expect(made.system).toBe(stableBlock("artifact_make"));
+    expect(made.system).toMatch(/recreate just enough of that screen around the new part/);
     // the artifact is kept, in the project, with the code unfenced, and its cost is the sum of its parts
     const got = await r.service.get("u1", out.change.artifact.id);
     expect(got.artifact.projectId).toBe(fb.projectId);

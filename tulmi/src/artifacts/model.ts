@@ -16,7 +16,8 @@
  *   CAP      each call is held to `capPaise` (the gateway refuses a call whose worst case would pass it),
  *            and to what is left of the person's day (limits.ts SpendMeter). What was spent is added to the
  *            meter, failed attempts included: a call that was billed and thrown away cost what it cost
- *   CACHE    the prompt is laid out stable-first: the system prompt, then the project's kit, then the
+ *   CACHE    the prompt is laid out stable-first: the role's block (principles/roles.ts compose: the
+ *            principles, who the model is, the output contract), then the project's kit, then the
  *            artifact, then the instruction last, so a provider that caches a prompt's prefix hits it on
  *            the next edit of the same thing
  *
@@ -25,6 +26,7 @@
 import { BudgetExceeded, callModel, type GatewayDeps } from "../code/brain/gateway.js";
 import { charsOf } from "../code/brain/money.js";
 import { tierSettings, type ModelTier } from "../code/brain/tiers.js";
+import { compose, type RoleId } from "../principles/index.js";
 import type { ChatMessage } from "../code/brain/types.js";
 import type { CallFn } from "../code/work/model.js";
 import type { SpendMeter } from "./limits.js";
@@ -40,8 +42,8 @@ export interface RunRequest<T> {
   tier: ModelTier;
   /** A word for the log and the ledger, never any content: "artifact.element". */
   purpose: string;
-  /** The stable instructions for this kind of call. */
-  system: string;
+  /** Who the model is for this kind of call: the stable instructions (principles/roles.ts). */
+  role: RoleId;
   /** The project's compact kit, or "". Stable across calls for a project. */
   kit?: string;
   /** The artifact, or the part of it the model is shown. */
@@ -86,12 +88,11 @@ export class ArtifactModel {
   }
 
   /** The messages of a call, stable first. */
-  static messages(r: Pick<RunRequest<unknown>, "system" | "kit" | "artifact" | "instruction" | "image">, again?: string): ChatMessage[] {
+  static messages(r: Pick<RunRequest<unknown>, "role" | "kit" | "artifact" | "instruction" | "image">, again?: string): ChatMessage[] {
     const text = [r.kit?.trim() ? `PROJECT STYLE\n${r.kit.trim()}` : "", r.artifact, again ? `${r.instruction}\n\n${again}` : r.instruction].filter(Boolean).join("\n\n");
-    return [
-      { role: "system", content: r.system },
-      { role: "user", content: r.image ? [{ type: "text", text }, { type: "image_url", image_url: { url: r.image } }] : text },
-    ];
+    return compose(r.role, [
+      { role: "user" as const, content: r.image ? [{ type: "text" as const, text }, { type: "image_url" as const, image_url: { url: r.image } }] : text },
+    ]);
   }
 
   async run<T>(r: RunRequest<T>): Promise<Ran<T>> {

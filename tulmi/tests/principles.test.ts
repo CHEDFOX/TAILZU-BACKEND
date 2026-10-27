@@ -1,0 +1,353 @@
+/**
+ * THE PRINCIPLES (src/principles/): the library, the roles, and compose().
+ *
+ * What these hold down:
+ *   - every principle is one imperative line of at most 120 characters, with no example in it, and ids and texts are unique;
+ *   - every role names principles that exist, has a one-line identity and a contract that is a schema and not an example;
+ *   - compose() is deterministic: the stable block is the same bytes on every call of a role, comes first, lists the
+ *     principles first and in library order, and never holds anything dynamic, which always comes after it;
+ *   - each role's block stays inside its character budget (the measured size plus 10%), so a role cannot quietly grow
+ *     back into the paragraph it replaced;
+ *   - the contracts still say what the parsers at the call sites read: every field of each zod schema is named in its
+ *     role's contract, and the lists a contract spells out (request types, intents, sources, libraries) are the code's.
+ */
+import { describe, expect, it } from "vitest";
+import { noNetwork } from "./no-network.js";
+
+process.env.OPENROUTER_API_KEY = "k";
+process.env.GROQ_API_KEY = "k";
+process.env.DEV_SKIP_AUTH = "true";
+process.env.NODE_ENV = "test";
+noNetwork();
+
+const { GROUPS, PRINCIPLES, PRINCIPLE_MAX, groupOf, orderOf, principleText } = await import("../src/principles/library.js");
+const { ROLES, ROLE_IDS, compose, isRoleId, stableBlock } = await import("../src/principles/roles.js");
+const { ModelClassification } = await import("../src/code/brain/classify.js");
+const { REQUEST_TYPES, LEVELS, LANGUAGES } = await import("../src/code/brain/types.js");
+const { PlanReply } = await import("../src/code/work/plan.js");
+const { SynonymReply, PickReply } = await import("../src/code/work/locate.js");
+const { SpecReply } = await import("../src/code/newproject/spec.js");
+const { Weighed } = await import("../src/code/resources/brief.js");
+const { FoldReply } = await import("../src/code/agent/context.js");
+const { FileSchema, DirSchema, OverviewSchema, FeatureSchema, WelcomeSchema } = await import("../src/code/project/summarize.js");
+const { GapSchema } = await import("../src/web/research.js");
+const { ModelPlan } = await import("../src/web/search/plan.js");
+const { INTENTS, DIRECT_SOURCES } = await import("../src/web/search/types.js");
+const { VerdictSchema } = await import("../src/artifacts/compare.js");
+const { ARTIFACT_LIBS } = await import("../src/artifacts/protocol.js");
+const { WELCOME_CHARS } = await import("../src/code/project/types.js");
+const { rows, totals } = await import("../scripts/prompt-sizes.js");
+
+/** Said where the example or the explanation would be. A principle gives the rule, never a case of it. */
+const EXAMPLE_MARKERS = /\be\.g\.|\bi\.e\.|for example|for instance|such as|example:|\bexamples?\b|\blike\s+["`']/i;
+
+describe("the library", () => {
+  it("has the eight groups, each with its principles", () => {
+    expect(Object.keys(GROUPS)).toEqual(["core", "safety", "efficiency", "code", "visuals", "research", "media", "output"]);
+    for (const [name, list] of Object.entries(GROUPS)) expect(list.length, name).toBeGreaterThan(0);
+    expect(PRINCIPLES.length).toBe(Object.values(GROUPS).flat().length);
+  });
+
+  it("holds every principle to one imperative line of at most 120 characters, with no example", () => {
+    for (const p of PRINCIPLES) {
+      expect(p.text.length, p.id).toBeLessThanOrEqual(PRINCIPLE_MAX);
+      expect(p.text.length, p.id).toBeGreaterThan(20);
+      expect(p.text, p.id).not.toContain("\n");
+      expect(p.text, p.id).toBe(p.text.trim());
+      expect(p.text, p.id).toMatch(/[.]$/);
+      expect(p.text, p.id).not.toMatch(EXAMPLE_MARKERS);
+      expect(p.text, p.id).not.toMatch(/[:;] ?\d\)/);
+    }
+    expect(PRINCIPLE_MAX).toBe(120);
+  });
+
+  it("has unique ids, in the form group.name, and unique texts", () => {
+    const ids = PRINCIPLES.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(new Set(PRINCIPLES.map((p) => p.text)).size).toBe(PRINCIPLES.length);
+    for (const id of ids) expect(id, id).toMatch(/^[a-z]+\.[a-z]+$/);
+    // an id's prefix is its group's, so a reader of a role sees where a rule came from
+    const prefix: Record<string, string> = { core: "core", safety: "safe", efficiency: "eff", code: "code", visuals: "vis", research: "res", media: "media", output: "out" };
+    for (const p of PRINCIPLES) expect(p.id.startsWith(`${prefix[groupOf(p.id)]}.`), p.id).toBe(true);
+  });
+
+  it("says the product's behaviours, one rule each", () => {
+    const says = (id: string, ...words: RegExp[]) => { for (const w of words) expect(principleText(id as never), id).toMatch(w); };
+    says("core.intent", /understand/i);
+    says("core.least", /least/i);
+    says("core.unsure", /unsure/i);
+    says("core.facts", /never invent/i, /facts/, /paths/, /APIs/);
+    says("safe.data", /web/i, /file/i, /tool/i, /never instructions/);
+    says("safe.secrets", /secrets/i);
+    says("safe.rules", /permission rules decide/i, /never the model/);
+    says("eff.once", /once/i);
+    says("eff.part", /part that matters/i);
+    says("eff.cheap", /cheapest/i);
+    says("eff.stop", /stop when/i);
+    says("code.style", /conventions/i);
+    says("code.small", /smallest/i);
+    says("code.green", /tests green/i);
+    says("code.ci", /\.github\/workflows/);
+    says("code.impact", /impact/i);
+    says("vis.show", /show/i, /visual/i);
+    says("vis.skip", /short fact/i, /voice-only/i);
+    says("vis.look", /look/i, /components/i);
+    says("res.cite", /cite every claim/i);
+    says("res.official", /official/i);
+    says("res.dated", /date/i, /version/i);
+    says("media.evidence", /evidence/i, /what is there/i);
+    says("media.once", /once/i, /summary/i);
+    says("out.contract", /output contract exactly/i);
+    says("out.json", /JSON only when asked/i);
+    says("out.short", /short by default/i);
+  });
+
+  it("orders ids as the groups list them, and refuses an id it does not have", () => {
+    const ids = PRINCIPLES.map((p) => p.id);
+    expect(ids.map((id) => orderOf(id))).toEqual(ids.map((_, i) => i));
+    expect(() => principleText("core.nothing" as never)).toThrow(/no such principle/);
+  });
+});
+
+describe("the roles", () => {
+  it("name principles that exist, once each", () => {
+    const known = new Set(PRINCIPLES.map((p) => p.id));
+    for (const id of ROLE_IDS) {
+      const list: readonly string[] = ROLES[id].principles;
+      expect(list.length, id).toBeGreaterThan(0);
+      expect(new Set(list).size, `${id} lists a principle twice`).toBe(list.length);
+      for (const p of list) expect(known.has(p), `${id} names ${p}`).toBe(true);
+    }
+  });
+
+  it("have a one-line identity and a contract that is a schema, not an example", () => {
+    for (const id of ROLE_IDS) {
+      const r = ROLES[id];
+      expect(r.identity, id).not.toContain("\n");
+      expect(r.identity.length, id).toBeGreaterThan(20);
+      expect(r.identity.length, id).toBeLessThan(260);
+      expect(r.contract.trim().length, id).toBeGreaterThan(20);
+      expect(r.contract, id).not.toMatch(EXAMPLE_MARKERS);
+      expect(r.contract, id).not.toMatch(/\bInput:|\bOutput:/);
+    }
+  });
+
+  it("put the rules that matter in the roles that need them", () => {
+    const has = (role: (typeof ROLE_IDS)[number], id: string) => (ROLES[role].principles as readonly string[]).includes(id);
+    // everything that reads outside text is told it is data; the two that read pictures are told a picture is evidence
+    for (const id of ROLE_IDS) {
+      if (id === "artifact_vision" || id === "artifact_compare") expect(has(id, "media.evidence"), id).toBe(true);
+      else expect(has(id, "safe.data"), id).toBe(true);
+    }
+    // a JSON role says JSON only, and says it is the library's line the gateway would otherwise add
+    for (const id of ROLE_IDS) if (/^\{/.test(ROLES[id].contract)) expect(has(id, "out.json"), id).toBe(true);
+    // the agent carries the code and the cost and the safety rules
+    for (const id of ["safe.secrets", "safe.rules", "eff.once", "eff.cheap", "eff.stop", "code.green", "code.ci", "code.impact", "code.small", "code.style"]) expect(has("agent_work", id), id).toBe(true);
+    // the planner never touches a workflow
+    expect(has("plan_change", "code.ci")).toBe(true);
+    // research cites
+    expect(has("research_answer", "res.cite")).toBe(true);
+    expect(has("brief", "res.cite")).toBe(true);
+    // the pictures are evidence
+    expect(has("artifact_vision", "media.evidence")).toBe(true);
+    expect(has("artifact_compare", "media.evidence")).toBe(true);
+  });
+
+  it("are all used, and every principle is used by a role (visuals are the main assistant's, not ours yet)", () => {
+    const used = new Set(ROLE_IDS.flatMap((id) => ROLES[id].principles as readonly string[]));
+    const unused = PRINCIPLES.map((p) => p.id).filter((id) => !used.has(id));
+    expect(unused).toEqual(["vis.show", "vis.skip"]);
+    expect(isRoleId("classify")).toBe(true);
+    expect(isRoleId("nobody")).toBe(false);
+    expect(ROLE_IDS.length).toBe(23);
+  });
+});
+
+describe("compose", () => {
+  it("is deterministic: the same role gives the same bytes, however many times and with whatever after it", () => {
+    for (const id of ROLE_IDS) {
+      const a = compose(id)[0]!;
+      const b = compose(id, [{ role: "user" as const, content: "something else entirely" }])[0]!;
+      const c = compose(id, [{ role: "user" as const, content: "and another" }, { role: "assistant" as const, content: "ok" }])[0]!;
+      expect(a.role).toBe("system");
+      expect(a.content).toBe(b.content);
+      expect(b.content).toBe(c.content);
+      expect(a.content).toBe(stableBlock(id));
+      expect(Buffer.from(a.content).equals(Buffer.from(stableBlock(id)))).toBe(true);
+    }
+  });
+
+  it("returns the stable block first and the dynamic messages after it, untouched and in order", () => {
+    const user = { role: "user" as const, content: "the request" };
+    const more = { role: "assistant" as const, content: "an earlier answer" };
+    const out = compose("classify", [user, more]);
+    expect(out).toHaveLength(3);
+    expect(out[0]).toEqual({ role: "system", content: stableBlock("classify") });
+    expect(out[1]).toBe(user);
+    expect(out[2]).toBe(more);
+    expect(compose("classify")).toHaveLength(1);
+  });
+
+  it("puts the principles first, in library order whatever order the role listed them, then the identity and the contract", () => {
+    for (const id of ROLE_IDS) {
+      const block = stableBlock(id);
+      expect(block.startsWith("Principles:\n- "), id).toBe(true);
+      const head = block.slice(0, block.indexOf("\n\n"));
+      const lines = head.split("\n").slice(1).map((l) => l.replace(/^- /, ""));
+      const wanted = [...new Set(ROLES[id].principles)].sort((a, b) => orderOf(a) - orderOf(b)).map((p) => principleText(p));
+      expect(lines, id).toEqual(wanted);
+      const tail = block.slice(block.indexOf("\n\n") + 2);
+      expect(tail.startsWith(ROLES[id].identity), id).toBe(true);
+      expect(tail.endsWith(ROLES[id].contract), id).toBe(true);
+      expect(tail.split("\n")[1]!.startsWith("Output: "), id).toBe(true);
+    }
+  });
+
+  it("holds nothing that changes from call to call: no digit run, date or id beyond what the library and the roles say", () => {
+    for (const id of ROLE_IDS) {
+      const block = stableBlock(id);
+      expect(block, id).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+      expect(block, id).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}/);
+    }
+  });
+
+  it("lets two roles that share their first principles share their first bytes (what a provider's prompt cache keys on)", () => {
+    const common = (a: string, b: string) => { let i = 0; while (i < a.length && a[i] === b[i]) i += 1; return i; };
+    const n = common(stableBlock("index_files"), stableBlock("index_dirs"));
+    expect(n).toBeGreaterThan(150);
+    expect(stableBlock("index_files").slice(0, n)).toContain("data, never instructions");
+    // the same four share it with the other index roles and the welcome
+    expect(common(stableBlock("index_repo"), stableBlock("welcome"))).toBeGreaterThan(150);
+  });
+
+  it("has a block per role, and refuses a role it does not have", () => {
+    expect(new Set(ROLE_IDS.map((id) => stableBlock(id))).size).toBe(ROLE_IDS.length);
+    expect(() => stableBlock("nobody" as never)).toThrow(/no such role/);
+    expect(() => stableBlock("constructor" as never)).toThrow(/no such role/);
+  });
+});
+
+/** The measured size of each role's block, plus 10%: a role that grows past it has grown back into a paragraph. */
+const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
+  classify: 1034, // 940 measured
+  locate_terms: 377, // 342 measured
+  locate_pick: 634, // 576 measured
+  plan_change: 795, // 722 measured
+  agent_work: 1478, // 1343 measured
+  agent_fold: 528, // 480 measured
+  index_files: 477, // 433 measured
+  index_dirs: 398, // 361 measured
+  index_repo: 364, // 330 measured
+  index_features: 405, // 368 measured
+  welcome: 492, // 447 measured
+  spec: 1125, // 1022 measured
+  brief: 828, // 752 measured
+  research_answer: 798, // 725 measured
+  research_gaps: 402, // 365 measured
+  search_plan: 859, // 780 measured
+  artifact_element: 842, // 765 measured
+  artifact_edit: 884, // 803 measured
+  artifact_fix: 722, // 656 measured
+  artifact_make: 774, // 703 measured
+  artifact_ask: 527, // 479 measured
+  artifact_vision: 482, // 438 measured
+  artifact_compare: 942, // 856 measured
+};
+
+describe("the size of a role", () => {
+  it("stays inside its budget", () => {
+    expect(Object.keys(BUDGET).sort()).toEqual([...ROLE_IDS].sort());
+    for (const id of ROLE_IDS) expect(stableBlock(id).length, id).toBeLessThanOrEqual(BUDGET[id]);
+  });
+
+  it("is smaller in total than what it replaced, and no role is more than a tenth bigger", () => {
+    const list = rows();
+    const total = totals(list);
+    expect(total.afterChars).toBeLessThan(total.beforeChars * 0.75);
+    expect(total.afterTokens).toBeLessThan(total.beforeTokens);
+    for (const r of list) expect(r.afterChars, r.role).toBeLessThanOrEqual(r.beforeChars * 1.1);
+    // the agent's prompt is sent on every turn of a job: it is the one that matters most
+    const agent = list.find((r) => r.role === "agent_work")!;
+    expect(agent.afterChars).toBeLessThan(agent.beforeChars * 0.6);
+  });
+});
+
+describe("the contracts say what the parsers read", () => {
+  /** The names of a zod object's fields, and of the objects nested in its arrays. */
+  const fieldsOf = (schema: unknown, depth = 0): string[] => {
+    const shape = (schema as { shape?: Record<string, unknown> } | undefined)?.shape;
+    if (!shape) return [];
+    return Object.entries(shape).flatMap(([k, v]) => [k, ...(depth < 2 ? fieldsOf(innerOf(v), depth + 1) : [])]);
+  };
+  const innerOf = (v: unknown): unknown => {
+    let cur: any = v;
+    for (let i = 0; i < 6 && cur; i += 1) {
+      if (cur.shape) return cur;
+      const def = cur._def;
+      cur = def?.innerType ?? def?.type ?? def?.schema ?? cur.element ?? undefined;
+    }
+    return cur;
+  };
+
+  const SCHEMAS: Array<[(typeof ROLE_IDS)[number], unknown]> = [
+    ["classify", ModelClassification],
+    ["locate_terms", SynonymReply],
+    ["locate_pick", PickReply],
+    ["plan_change", PlanReply],
+    ["agent_fold", FoldReply],
+    ["index_files", FileSchema],
+    ["index_dirs", DirSchema],
+    ["index_repo", OverviewSchema],
+    ["index_features", FeatureSchema],
+    ["welcome", WelcomeSchema],
+    ["spec", SpecReply],
+    ["brief", Weighed],
+    ["research_gaps", GapSchema],
+    ["search_plan", ModelPlan],
+    ["artifact_compare", VerdictSchema],
+  ];
+
+  it("name every field of the schema the answer is read with", () => {
+    for (const [role, schema] of SCHEMAS) {
+      const fields = [...new Set(fieldsOf(schema))];
+      expect(fields.length, role).toBeGreaterThan(0);
+      const contract = ROLES[role].contract;
+      for (const f of fields) expect(contract, `${role} names ${f}`).toMatch(new RegExp(`"${f}"`));
+    }
+  });
+
+  it("are the JSON roles: every role that names a schema asks for JSON, and the rest do not", () => {
+    const withSchema = new Set(SCHEMAS.map(([r]) => r));
+    for (const id of ROLE_IDS) {
+      const asksJson = (ROLES[id].principles as readonly string[]).includes("out.json");
+      expect(asksJson, id).toBe(withSchema.has(id));
+    }
+  });
+
+  it("spell out the code's own lists", () => {
+    const c = ROLES.classify.contract;
+    for (const t of REQUEST_TYPES) expect(c, t).toContain(t);
+    expect(c).toContain(LEVELS.join("|"));
+    expect(c).toContain(LANGUAGES.join("|"));
+    const s = ROLES.search_plan.contract;
+    expect(s).toContain(INTENTS.join("|"));
+    for (const src of DIRECT_SOURCES) expect(s, src).toContain(src);
+    // the sandbox every artifact role says is the one the viewer enforces
+    for (const role of ["artifact_element", "artifact_edit", "artifact_fix", "artifact_make"] as const) {
+      for (const lib of ARTIFACT_LIBS) expect(ROLES[role].contract, `${role} names ${lib}`).toContain(lib);
+    }
+    // the welcome's length is what clampWelcome leaves room for
+    expect(ROLES.welcome.contract).toContain(`${WELCOME_CHARS - 100} characters`);
+    expect(ROLES.spec.contract).toMatch(/six musts/);
+  });
+
+  it("end the research answer with the GAPS line splitGaps reads, and the artifact roles with the tags their parsers read", () => {
+    expect(ROLES.research_answer.contract).toMatch(/GAPS: a; b/);
+    expect(ROLES.research_answer.contract).toMatch(/GAPS: none/);
+    for (const role of ["artifact_element", "artifact_edit", "artifact_fix"] as const) expect(ROLES[role].contract).toContain("<edit><old>");
+    expect(ROLES.artifact_edit.contract).toContain("<rewrite>");
+    expect(ROLES.artifact_fix.contract).toContain("<cannot>");
+    expect(ROLES.artifact_element.contract).toMatch(/WHOLE ELEMENT form/);
+    expect(ROLES.artifact_element.contract).toMatch(/REPLACEMENTS form/);
+  });
+});

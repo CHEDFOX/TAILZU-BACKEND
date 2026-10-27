@@ -48,6 +48,7 @@
  */
 import { z } from "zod";
 import { getConfig } from "../config.js";
+import { compose } from "../principles/index.js";
 import type { Renderer } from "../web/browser/engine.js";
 import { isCacheable, type WebCache } from "../web/cache.js";
 import { WebError, webErrorWords } from "../web/error.js";
@@ -298,7 +299,7 @@ export function makeWebTools(deps: WebToolDeps): WebTools {
   const ask: AskFn = async (req) => {
     const r = await callFn({
       tier: TIER[req.level],
-      messages: [{ role: "system", content: req.system }, { role: "user", content: req.user }],
+      messages: compose(req.role, [{ role: "user" as const, content: req.user }]),
       ...(req.json ? { json: req.json } : {}),
       ...(req.maxTokens ? { maxTokens: req.maxTokens } : {}),
       ...(deps.jobId ? { jobId: deps.jobId } : {}),

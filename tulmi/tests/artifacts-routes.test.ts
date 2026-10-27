@@ -138,7 +138,9 @@ describe("making, reading, listing, going back, deleting", () => {
   });
 
   it("reads the head or an earlier version, lists newest first (by project too), shows the versions, goes back, and deletes", async () => {
-    const { call, id } = await withPage();
+    // A clock that never gives the same millisecond twice: two artifacts made in one millisecond are listed in the order of their random ids.
+    let last = Date.now();
+    const { call, id } = await withPage(undefined, { now: () => (last = Math.max(last + 1, Date.now())) });
     await call("alice", "POST", "/v1/artifacts", { type: "markdown", title: "Other", content: "# o", projectId: PROJECT });
     const head = await call("alice", "GET", `/v1/artifacts/${id}`);
     expect(head.json()).toMatchObject({ version: 1, content: PAGE, artifact: { id, headVersion: 1 } });

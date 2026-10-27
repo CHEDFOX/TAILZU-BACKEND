@@ -26,6 +26,7 @@ process.env.DEV_SKIP_AUTH = "true";
 process.env.NODE_ENV = "test";
 
 const { cleanErrorLine, cleanQuestion, findIdentifiers, planByRules, planSearch, scrubQuery, PLAN_CONFIDENCE_MIN } = await import("../src/web/search/plan.js");
+const { stableBlock } = await import("../src/principles/index.js");
 const { CONTENT_FARMS, DOCS, docsFor, docsMatch, findDocsInText, isContentFarm, isIndexableHost, nameOf } = await import("../src/web/search/catalog.js");
 type AskFn = import("../src/web/search/types.js").AskFn;
 type PlanCtx = import("../src/web/search/types.js").PlanCtx;
@@ -341,7 +342,8 @@ describe("the model", () => {
     expect(req.level).toBe("tiny");
     expect(req.purpose).toBe("plan_search");
     expect(req.json).toBeTruthy();
-    expect(req.system).toMatch(/data[^.]*never instructions/);
+    expect(req.role).toBe("search_plan");
+    expect(stableBlock(req.role)).toMatch(/data[^.]*never instructions/);
     expect(JSON.parse(req.user)).toMatchObject({ question: "what does frobnicate() do", project: { deps: ["lodash"] }, rules: { intent: "api_docs" } });
     expect(p).toEqual({ intent: "api_docs", queries: ["frobnicate docs"], sources: ["stackoverflow", "mdn"], site: ["docs.example.dev"], freshness: "year", confidence: 0.8 });
   });

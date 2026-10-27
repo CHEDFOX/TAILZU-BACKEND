@@ -150,7 +150,7 @@ export function buildTask(o: { title: string; type: string; version: number; tar
     : "No place in the project stood out; put it where a component of this kind belongs, and say where you chose.";
   return [
     `Build the design "${cut(o.title, 80)}" (the person approved version ${o.version}, a ${o.type} artifact) into this project, so that it looks and behaves like the design.`,
-    "Use the project's own components, styles and conventions rather than the design's stand-ins. The whole design is the SPEC you are shown with every step; it is a picture of what they want, not code to paste.",
+    "Use the project's own components, styles and conventions rather than the design's stand-ins. The whole design is the SPEC shown with every step.",
     where,
     ...(o.kit ? [`The project's style kit:\n${cut(o.kit, 1200)}`] : []),
     `The top of the design, for orientation:\n${cut(o.content, 1500)}`,

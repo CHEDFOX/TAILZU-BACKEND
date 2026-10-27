@@ -37,7 +37,7 @@ import {
 import { cut } from "../work/model.js";
 import { checkCommands, parseMarkers, resultsOf, describeCheck, type CheckSpec } from "./checks.js";
 import { Refused } from "./changeset.js";
-import { buildContext, fold, systemPrompt } from "./context.js";
+import { buildContext, fold, projectContext } from "./context.js";
 import { designDue, designLines } from "./design.js";
 import { WITHHELD_ARGS, argsHoldSecret } from "./tools.js";
 import { SAID_KEEP } from "../live/limits.js";
@@ -410,7 +410,7 @@ async function modelTurn(r: Run): Promise<void> {
   const memory = (await r.brain.memory().catch(() => "")).replace(/\n## Project rules[\s\S]*?(?=\n## |$)/, "");
   const checks = (s.plan?.verify ?? []).map((v) => `${v.kind}: ${v.cmd}`).slice(0, 6);
   const ctx = buildContext({
-    state: s, system: systemPrompt({ rules, memory, ...(install ? { install } : {}), kind: s.classification ? s.classification.type.replace("_", " ") : "" }),
+    state: s, project: projectContext({ rules, memory, ...(install ? { install } : {}), kind: s.classification ? s.classification.type.replace("_", " ") : "" }),
     tools: r.tools.defs(), stagedLines: r.tools.changes.lines(), checks,
   });
   const money = await r.money();

@@ -77,8 +77,12 @@
  * approval card shows which files and what kind of thing, never the value. The
  * values are not kept, not logged and not put in any error, anywhere.
  *
- * GIT_PRINCIPLES is what the bot's prompt will tell it, in plain words. The
- * permission system is what makes the principles hold when a prompt doesn't.
+ * GIT_PRINCIPLES is the policy's statement of them in plain words, for the person
+ * and the tests. The agent's prompt no longer carries the list as it stands: the agent
+ * cannot touch git (the server commits what it staged), and what a model can act on
+ * (no secrets, no workflow edits, green tests, the permission rules decide) is said
+ * once in the principles library (principles/library.ts). The permission system is
+ * what makes the principles hold when a prompt doesn't.
  */
 import { createHash } from "node:crypto";
 import { ConnectorError } from "../connectors/state.js";
@@ -89,7 +93,7 @@ import type { CodeGrant, CodeProject, CodeStore, NewCodeGrant } from "./store.js
 
 // ---------------------------------------------------------------- principles
 
-/** The rules of working with git that the bot's prompt will include, in plain English. */
+/** The rules of working with git, in plain English: the policy's own statement of what the permission system enforces. */
 export const GIT_PRINCIPLES: readonly string[] = [
   "Work on your own branch by default: start a tailzu/ branch for each task instead of changing someone else's.",
   "Make small commits with clear messages that say what changed and why.",

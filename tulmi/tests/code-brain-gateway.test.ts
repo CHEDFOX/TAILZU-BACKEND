@@ -334,6 +334,21 @@ describe("JSON mode", () => {
     expect(r.router.calls[0]!.body.messages).toHaveLength(2);
   });
 
+  it("adds the JSON note only when the system block does not already say it: a role's block carries the library's line, sent as it is", async () => {
+    const { compose, stableBlock } = await import("../src/principles/index.js");
+    const r = rig([answer('{"type":"bug_fix"}')]);
+    await callModel(ask({ json: true, messages: compose("classify", [{ role: "user" as const, content: "go" }]) }), r.deps);
+    const sent = r.router.calls[0]!.body.messages;
+    expect(sent).toHaveLength(2);
+    expect(sent[0].content).toBe(stableBlock("classify"));
+    expect(sent[0].content.match(/JSON only when asked/g)).toHaveLength(1);
+    expect(sent[0].content).not.toContain("Answer with one JSON value only");
+    // a system message without it still gets the note
+    const r2 = rig([answer("[1]")]);
+    await callModel(ask({ json: true, messages: [{ role: "system", content: "You plan." }, { role: "user", content: "go" }] }), r2.deps);
+    expect(r2.router.calls[0]!.body.messages[0].content).toMatch(/Answer with one JSON value only/);
+  });
+
   it("repairs ONE bad answer: the same model is shown what it wrote and what was wrong, and its second answer is used", async () => {
     const r = rig([answer('{"steps":[],"risky":"no"}', { prompt_tokens: 100, completion_tokens: 10, cost: 0.001 }), answer('{"steps":["x"],"risky":true}', { prompt_tokens: 150, completion_tokens: 12, cost: 0.002 })]);
     const got = await callModel(ask({ json: Plan }), r.deps);
