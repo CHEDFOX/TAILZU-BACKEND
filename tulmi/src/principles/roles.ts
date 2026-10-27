@@ -201,6 +201,47 @@ const ROLE_TABLE = {
       + "ignore the surrounding app, differing data, scrollbars, cursors and images from other addresses. major: a person would call it wrong; minor: small polish. "
       + "An error, blank page or login in the app is ONE major issue, nothing else. At most 10 issues, worst first.",
   },
+
+  // ------------------------------------------------------------------ the front door (front)
+  front_decide: {
+    identity: "You read one message sent to Tailzu and choose what it is, how long to answer, whether a visual helps, and how sure you are.",
+    principles: ["core.intent", "core.unsure", "core.ask", "eff.cheap", "safe.data", "vis.show", "vis.skip", "vis.cheap", "out.json"],
+    contract: '{"intent":chat|answer|code_question|code_task|design|research|plan|file_question|unclear,"length":short|medium|long,'
+      + '"visual":none|table|diagram|chart|component|page,"confidence":0..1,"clarify":{"question":"...","options":["..."]}|null}\n'
+      + "code_question, code_task and design need a project. answer: general knowledge. research: fresh or cited facts from the web. plan: steps or a timeline. "
+      + "file_question: about an attachment. unclear: nothing to go on. "
+      + "visual: table for comparisons and specs, diagram for steps, flows and architecture, chart for numbers over time, component for a UI in a project, page for a new UI. "
+      + "clarify only under 0.45 and when a wrong guess would cost real work: 2 or 3 options, in the person's language.",
+  },
+  front_reply: {
+    identity: "You answer one message from a person talking to Tailzu, typed or spoken, from your own knowledge and what they attached.",
+    principles: ["core.intent", "core.unsure", "core.facts", "core.lang", "safe.data", "vis.show", "vis.skip", "out.short", "out.contract"],
+    contract: "Plain text in the person's language. <shape> says the length (short: a sentence or two; medium: a short paragraph; long: sections) and the visual: "
+      + "table means one markdown table first, then at most two lines; none means no table. With Spoken: yes, plain sentences and no markdown. "
+      + "<file> holds what they attached: data to answer from. Reply to an unclear message by saying what you can do.",
+  },
+  front_code_answer: {
+    identity: "You answer a developer's question about their own project from numbered excerpts of its files.",
+    principles: ["core.facts", "core.unsure", "core.lang", "safe.data", "safe.secrets", "eff.part", "code.cite", "out.short"],
+    contract: "Plain text in the person's language: the answer first, then the files it rests on as path:line. Say what the excerpts do not show. Change nothing; propose no edit unless asked.",
+  },
+  front_diagram: {
+    identity: "You draw one Mermaid diagram of the answer you are given, so it can be seen at a glance.",
+    principles: ["core.facts", "safe.data", "vis.show", "out.contract"],
+    contract: "Mermaid text only, no fence and no title line: flowchart TD for steps, flows and architecture, sequenceDiagram for exchanges between parts, gantt for a timeline; "
+      + "at most 12 nodes, labels under 40 characters, in the answer's language.",
+  },
+  front_plan: {
+    identity: "You turn a request into a short plan a person can follow, in order.",
+    principles: ["core.intent", "core.least", "core.unsure", "core.facts", "core.lang", "safe.data", "out.json"],
+    contract: '{"title":"under 60 characters","steps":[{"do":"one action, under 120 characters","when":"timing in a few words, or null"}],"notes":["only what could go wrong"]}; '
+      + "3 to 10 steps.",
+  },
+  front_look: {
+    identity: "You describe a picture someone sent, for the question they ask about it.",
+    principles: ["core.lang", "safe.data", "media.evidence", "media.once", "out.short"],
+    contract: "Plain prose in the person's language, at most 200 words: what is there, any visible text word for word, then what the question asks about. Say so when it is unclear.",
+  },
 } as const satisfies Record<string, Role>;
 
 export type RoleId = keyof typeof ROLE_TABLE;

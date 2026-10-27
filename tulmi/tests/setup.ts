@@ -1,4 +1,8 @@
+import { beforeEach } from "vitest";
 import { clearAppEnv } from "./env-surface.js";
+import { resetBreakersForTests } from "../src/guard/breaker.js";
+import { resetCoalescerForTests } from "../src/guard/coalesce.js";
+import { resetGuardForTests } from "../src/guard/index.js";
 // The VPS guard for outbound reads (web/safeFetch.ts): the server installs it by loading this file, and so does every test.
 import "../src/connectors/egress.js";
 
@@ -32,3 +36,11 @@ clearAppEnv(process.env);
 // FREE_FOR_ALL on for now, and tests/free-for-all.test.ts turns it on to test
 // that; every other file sees the limits it was written against.
 process.env.FREE_FOR_ALL = "false";
+
+// The brain's circuit breakers (guard/breaker.ts) are the process's, and a test that fails a model on purpose many times would otherwise
+// leave the next one with that model skipped. Every test starts with every breaker closed.
+beforeEach(() => { resetBreakersForTests(); });
+
+// The same for the rest of the guards (src/guard): a request that repeats an earlier test's within 30 seconds would be answered from its idempotency
+// store, a read in flight would be shared, and a permit left out would be missed by the next. Every test starts with a fresh guard and no reads in flight.
+beforeEach(() => { resetGuardForTests(); resetCoalescerForTests(); });

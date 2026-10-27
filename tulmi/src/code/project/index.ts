@@ -33,6 +33,8 @@
  */
 import { getConfig } from "../../config.js";
 import type { ConnectorError } from "../../connectors/state.js";
+import { coalescer } from "../../guard/coalesce.js";
+import { withFallback } from "../../guard/timing.js";
 import { assertAccess, ownProject, repoRef, type ProjectDeps } from "../projects.js";
 import type { CodeProject } from "../store.js";
 import { baselinePlan } from "./baseline.js";
@@ -303,10 +305,7 @@ export async function ensureFresh(d: BrainRuntime, userId: string, projectId: st
     return { fresh: false, updated: false, status: s.status.status, headSha: "" };
   }
   const waitMs = o.waitMs ?? 30_000;
-  const within = <T>(p: Promise<T>): Promise<T | "timeout"> => new Promise((resolve, reject) => {
-    const t = setTimeout(() => resolve("timeout"), waitMs);
-    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
-  });
+  const within = <T>(p: Promise<T>): Promise<T | "timeout"> => withFallback<T | "timeout">(p, waitMs, "timeout");
   if (d.builds.isRunning(project.id)) {
     const r = await within(d.builds.waitFor(project.id)!);
     if (r === "timeout") return { fresh: false, updated: false, status: "building", headSha: row.headSha };
@@ -368,6 +367,8 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
   const store = d.store;
   const row = () => store.getBrain(id);
   const words = (q: string) => queryWords(q);
+  /** A search while the same search is out is answered by it; each caller gets a list of its own to sort. */
+  const shared = <T>(key: string, fn: () => Promise<T[]>): Promise<T[]> => coalescer().run(key, fn).then((r) => [...r]);
 
   const fileHit = (f: StoredFile, score: number, q: string): FileHit => {
     const lq = q.trim().toLowerCase();
@@ -379,13 +380,14 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
   return {
     projectId: id,
     status: async () => viewOf(await row(), { running: d.builds.isRunning(id), now: (d.now ?? Date.now)() }),
-    async findFiles(q, limit = 10) {
+    // The three searches are reads of the kept rows: the same question asked while it is out is answered once (guard/coalesce.ts).
+    findFiles: (q, limit = 10) => shared(`brain:${id}:files:${limit}:${q}`, async () => {
       const w = words(q);
       if (!w.length) return [];
       const found = await store.searchFiles(id, q, Math.max(limit * 5, 50));
       return found.map((f) => fileHit(f, scoreFile(f, q, w), q)).sort((a, b) => b.score - a.score || (a.path < b.path ? -1 : 1)).slice(0, limit);
-    },
-    async findSymbols(q, limit = 20) {
+    }),
+    findSymbols: (q, limit = 20) => shared(`brain:${id}:symbols:${limit}:${q}`, async () => {
       const w = words(q);
       const lq = q.trim().toLowerCase();
       if (!w.length) return [];
@@ -393,8 +395,8 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
       const out: SymbolHit[] = [];
       for (const f of found) for (const s of f.symbols) { const score = symbolScore(s, lq, w); if (score > 0) out.push({ ...s, path: f.path, score: score + f.rank * 4 }); }
       return out.sort((a, b) => b.score - a.score || (a.path < b.path ? -1 : 1) || a.line - b.line).slice(0, limit);
-    },
-    async findTexts(q, limit = 20) {
+    }),
+    findTexts: (q, limit = 20) => shared(`brain:${id}:texts:${limit}:${q}`, async () => {
       const w = words(q);
       if (!w.length) return [];
       const lq = q.trim().toLowerCase();
@@ -406,7 +408,7 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
       };
       return found.map((t) => ({ t, s: score(t) })).sort((a, b) => b.s - a.s || (a.t.path < b.t.path ? -1 : 1) || a.t.line - b.t.line)
         .slice(0, limit).map(({ t }) => ({ path: t.path, line: t.line, text: t.text, kind: t.kind }));
-    },
+    }),
     async neighbors(path) {
       const f = await store.getFile(id, path);
       return { imports: f?.imports ?? [], importedBy: f ? await store.importersOf(id, path, 100) : [] };

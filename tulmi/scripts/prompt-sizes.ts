@@ -18,6 +18,7 @@
  * Tokens are estimated the way the gateway estimates them before a call (code/brain/money.ts, 3.5 characters
  * to a token), so the table is in the same unit as a job's budget check.
  */
+import { AGENT_TOOLS } from "../src/code/agent/tools.js";
 import { tokensOfChars } from "../src/code/brain/money.js";
 import { ROLE_IDS, stableBlock, type RoleId } from "../src/principles/index.js";
 
@@ -45,7 +46,34 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   artifact_ask: 534,
   artifact_vision: 482,
   artifact_compare: 1449,
+  // The front door's roles (src/front) were written after the principles: they replace no older prompt, so "before" is their first size.
+  front_decide: 1460,
+  front_reply: 1066,
+  front_code_answer: 789,
+  front_diagram: 556,
+  front_plan: 668,
+  front_look: 587,
 };
+
+/** The roles that replaced a prompt the code used to carry: only these have a real "before", and only these are held to the saving. */
+export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "front_diagram", "front_plan", "front_look"];
+
+/**
+ * The agent's tool definitions are sent with every turn of a job, so they are prompt too. What they were before they were tightened in the
+ * principles' style (short, the schema does the work, no examples), as JSON.stringify(AGENT_TOOLS) measured them: the whole list, the
+ * descriptions alone, and the parameter schemas alone (which hold the web tools' per-parameter descriptions that were dropped).
+ */
+export const TOOLS_BEFORE = { total: 8258, descriptions: 4023, schema: 3355 } as const;
+
+export interface ToolSizes { total: number; descriptions: number; schema: number; tools: number; longest: { name: string; chars: number } }
+
+/** The size of the agent's tool definitions as they are now. */
+export function toolSizes(tools: ReadonlyArray<{ name: string; description: string; parameters: unknown }> = AGENT_TOOLS): ToolSizes {
+  const descriptions = tools.reduce((n, t) => n + t.description.length, 0);
+  const schema = tools.reduce((n, t) => n + JSON.stringify(t.parameters).length, 0);
+  const longest = tools.reduce((a, t) => (t.description.length > a.chars ? { name: t.name, chars: t.description.length } : a), { name: "", chars: 0 });
+  return { total: JSON.stringify(tools).length, descriptions, schema, tools: tools.length, longest };
+}
 
 export interface Row {
   role: RoleId;
@@ -78,12 +106,17 @@ export function totals(list: readonly Row[]): Row {
 }
 
 function render(list: readonly Row[], md: boolean): string {
-  const total = totals(list);
+  // The saving is for the roles that replaced a prompt. The front door's roles replace none, so they are a total of their own.
+  const isNew = (r: Row) => (NEW_ROLES as readonly string[]).includes(r.role);
+  const replaced = totals(list.filter((r) => !isNew(r)));
+  const fresh = totals(list.filter(isNew));
   const head = ["role", "before chars", "before tokens", "after chars", "after tokens", "saved"];
-  const body = [...list, total].map((r) => [r.role, String(r.beforeChars), String(r.beforeTokens), String(r.afterChars), String(r.afterTokens), `${r.saved}%`]);
+  const label = (r: Row, name: string): Row => ({ ...r, role: name as RoleId });
+  const body = [...list, label(replaced, `total (${list.filter((r) => !isNew(r)).length} replaced)`), label(fresh, `total (${NEW_ROLES.length} new)`)]
+    .map((r) => [r.role, String(r.beforeChars), String(r.beforeTokens), String(r.afterChars), String(r.afterTokens), isNew(r) || String(r.role).includes("new)") ? "n/a" : `${r.saved}%`]);
   if (md) {
     const line = (cells: string[]) => `| ${cells.join(" | ")} |`;
-    return [line(head), line(head.map((_, i) => (i === 0 ? "---" : "---:"))), ...body.map((r, i) => line(i === body.length - 1 ? r.map((c) => `**${c}**`) : r))].join("\n");
+    return [line(head), line(head.map((_, i) => (i === 0 ? "---" : "---:"))), ...body.map((r, i) => line(i >= body.length - 2 ? r.map((c) => `**${c}**`) : r))].join("\n");
   }
   const width = head.map((h, i) => Math.max(h.length, ...body.map((r) => r[i]!.length)));
   const line = (cells: string[]) => cells.map((c, i) => (i === 0 ? c.padEnd(width[i]!) : c.padStart(width[i]!))).join("  ");
@@ -96,4 +129,10 @@ if (process.argv[1] && /prompt-sizes\.[tj]s$/.test(process.argv[1])) {
   console.log(render(list, process.argv.includes("--md")));
   const biggest = [...list].sort((a, b) => (b.beforeChars - b.afterChars) - (a.beforeChars - a.afterChars)).slice(0, 3);
   console.log(`\nbiggest savings: ${biggest.map((r) => `${r.role} (${r.beforeTokens} -> ${r.afterTokens} tokens)`).join(", ")}`);
+  const t = toolSizes();
+  const pct = (a: number, b: number) => `${Math.round((1 - a / b) * 100)}%`;
+  console.log(
+    `\nthe agent's ${t.tools} tool definitions, as JSON: ${TOOLS_BEFORE.total} -> ${t.total} chars (${pct(t.total, TOOLS_BEFORE.total)} fewer, ${tokensOfChars(TOOLS_BEFORE.total)} -> ${tokensOfChars(t.total)} tokens a turn); `
+    + `descriptions ${TOOLS_BEFORE.descriptions} -> ${t.descriptions} (${pct(t.descriptions, TOOLS_BEFORE.descriptions)}), schemas ${TOOLS_BEFORE.schema} -> ${t.schema} (${pct(t.schema, TOOLS_BEFORE.schema)})`,
+  );
 }

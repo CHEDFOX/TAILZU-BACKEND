@@ -19,6 +19,14 @@
  * Only then does the ladder climb. A timeout is not retried: the wait was already
  * the tier's whole allowance.
  *
+ * CIRCUIT BREAKERS (guard/breaker.ts). Every request to a model is counted, per model slug and per
+ * provider (the slug's vendor), as it worked or failed (an HTTP error, a timeout, an empty answer).
+ * A key that fails half of 8 or more calls in 60 seconds is OPEN: the ladder SKIPS the models behind
+ * it, without a call, and climbs; the skip is in the trail and one line of the log. After a cooldown
+ * one call, the probe, is let through: if it works the breaker closes, if not it opens again. When
+ * every model of a ladder is skipped the call fails at once with ModelUnavailable, which is what a
+ * breaker is for. `deps.breakers` is the shared set unless a test gives its own, or null for none.
+ *
  * JSON. With `json` the answer is parsed (a code fence or a line of preamble
  * is tolerated) and, given a zod schema, checked against it. A bad answer gets
  * ONE repair: the same model is shown what it wrote and what was wrong with it
@@ -53,6 +61,8 @@ import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { temperatureFor, type CallRecord } from "../../agent/llm.js";
 import { getConfig } from "../../config.js";
+import { sharedBreakers, type Breakers, type Ticket } from "../../guard/breaker.js";
+import { retryJitter } from "../../guard/timing.js";
 import { openrouter } from "../../pipeline/openrouter.js";
 import { principleText } from "../../principles/library.js";
 import { callRowOf, runStore, type RunStore } from "../../runs/index.js";
@@ -60,7 +70,7 @@ import { jobStore, type JobStore } from "../jobs/store.js";
 import { DEFAULT_USD_INR, charsOf, tokensOfChars, usdFor, usdToPaise, worstCasePaise } from "./money.js";
 import { addJobSpend, readJobMoney } from "./spend.js";
 import {
-  UNLISTED_MODEL, ladderOf, reasoningParam, tierOfModel, tierTable,
+  UNLISTED_MODEL, familyOf, ladderOf, reasoningParam, tierOfModel, tierTable,
   type ModelTier, type TierSettings,
 } from "./tiers.js";
 import type { ChatMessage, ToolCall, ToolDef } from "./types.js";
@@ -132,7 +142,9 @@ export interface CallResult<T = unknown> {
 
 export interface TrailEntry {
   model: string;
-  outcome: "ok" | "failed" | "timeout" | "empty" | "invalid_json";
+  /** "skipped": its circuit breaker is open (`skipped` says whose), so it was not tried. */
+  outcome: "ok" | "failed" | "timeout" | "empty" | "invalid_json" | "skipped";
+  skipped?: "breaker";
   status?: number;
   /** A transient retry was made on this model. */
   retried?: boolean;
@@ -216,6 +228,8 @@ export interface GatewayDeps {
   fx?: number;
   /** The tier table, instead of the one the config makes. */
   tiers?: Record<ModelTier, TierSettings>;
+  /** The circuit breakers (guard/breaker.ts): the process's shared ones when left out, none at all when null. */
+  breakers?: Breakers | null;
 }
 
 // ---------------------------------------------------------------- the pieces
@@ -266,6 +280,9 @@ function retryAfterOf(err: unknown): number | undefined {
 }
 
 const transient = (status: number | undefined): boolean => status !== undefined && (status === 429 || status >= 500);
+
+/** The breakers a model is behind: its own slug, and its provider (the slug's vendor). */
+const breakerKeys = (model: string): string[] => [`model:${model}`, `provider:${familyOf(model)}`];
 
 /** The person as OpenRouter sees them: a hash, so their id never leaves. */
 export function hashedUser(id: string): string {
@@ -411,6 +428,7 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
   const tiers = deps.tiers ?? tierTable();
   const sleep = deps.sleep ?? sleepFor;
   const random = deps.random ?? Math.random;
+  const breakers = deps.breakers === undefined ? sharedBreakers() : deps.breakers;
   const plan = planOf(input, tiers);
   const { settings } = plan;
   const maxTokens = input.maxTokens ?? settings.maxTokens;
@@ -476,8 +494,8 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
     }
   }
 
-  /** One request to one model. Throws CallFailure (climb), BudgetExceeded, or an AbortError. */
-  async function oneCall(model: string, messages: readonly ChatMessage[]): Promise<Completion> {
+  /** One request to one model. Throws CallFailure (climb), BudgetExceeded, or an AbortError. `ticket` is the model's breakers, told how it went. */
+  async function oneCall(model: string, messages: readonly ChatMessage[], ticket: Ticket | null): Promise<Completion> {
     if (input.signal?.aborted) throw abortError();
     await guard(model, messages);
     const body = requestBody(model, messages);
@@ -531,6 +549,8 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
       if (!reported) total.allReported = false;
       const empty = !done.text.trim() && done.toolCalls.length === 0;
       rec.outcome = empty ? "empty" : "ok";
+      // An answer with nothing in it is the model failing, as far as the breaker is concerned.
+      if (ticket) { if (empty) breakers!.failure(ticket); else breakers!.success(ticket); }
       await settle(rec, paise);
       if (empty) throw new CallFailure("empty");
       return done;
@@ -544,6 +564,7 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
         : new CallFailure(timedOut ? "timeout" : "http", statusOf(err), transient(statusOf(err)) ? retryAfterOf(err) : undefined);
       rec.outcome = failure.kind === "timeout" ? "timeout" : "failed";
       if (failure.status !== undefined) rec.status = failure.status;
+      if (ticket) breakers!.failure(ticket);
       await settle(rec, 0);
       throw failure;
     } finally {
@@ -578,21 +599,20 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
   }
 
   /** One model, start to end: a transient retry, a JSON repair. Throws what makes the ladder climb. */
-  async function tryModel(model: string): Promise<CallResult<T>> {
+  async function tryModel(model: string, ticket: Ticket | null): Promise<CallResult<T>> {
     const entry: TrailEntry = { model, outcome: "failed" };
     trail.push(entry);
     let retried = false;
 
     const attempt = async (messages: readonly ChatMessage[]): Promise<Completion> => {
       try {
-        return await oneCall(model, messages);
+        return await oneCall(model, messages, ticket);
       } catch (err) {
         if (err instanceof CallFailure && err.kind === "http" && transient(err.status) && !retried) {
           retried = true;
           entry.retried = true;
-          const base = err.retryAfterMs ?? RETRY_BASE_MS;
-          await sleep(Math.round(base * (0.5 + random())));
-          return await oneCall(model, messages);
+          await sleep(retryJitter(err.retryAfterMs ?? RETRY_BASE_MS, random));
+          return await oneCall(model, messages, ticket);
         }
         throw err;
       }
@@ -641,14 +661,26 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
   let lastError: unknown = new Error("no model was tried");
   for (const model of plan.ladder) {
     if (input.signal?.aborted) throw abortError();
+    // A model whose breaker is open is not asked: the ladder climbs without a call, and the trail and the log say so.
+    const gate = breakers ? breakers.admit(breakerKeys(model)) : null;
+    if (gate && !gate.ok) {
+      trail.push({ model, outcome: "skipped", skipped: "breaker" });
+      lastError = new Error("every model on the ladder is cooling off after failures");
+      log.info({ model, purpose: input.purpose, breaker: gate.by, retryInMs: gate.retryInMs }, "code brain: skipping a model whose breaker is open");
+      continue;
+    }
+    const ticket = gate ? gate.ticket : null;
     try {
-      return await tryModel(model);
+      return await tryModel(model, ticket);
     } catch (err) {
       // Only a model failing moves the ladder on. A budget, an abort, a job that is not there, a store that is down
       // (the budget cannot be checked, so no call is made) and a bug are the caller's to hear about.
       if (!(err instanceof CallFailure || err instanceof JsonInvalid)) throw err;
       lastError = err;
       log.info({ model, purpose: input.purpose, ...(err instanceof CallFailure ? { kind: err.kind, ...(err.status !== undefined ? { status: err.status } : {}) } : { kind: "invalid_json" }) }, "code brain: moving on to the next model");
+    } finally {
+      // A probe that came to nothing (a budget refusal, a stopped caller) must not keep the breaker shut.
+      if (ticket) breakers!.release(ticket);
     }
   }
   throw new ModelUnavailable(trail, lastError);

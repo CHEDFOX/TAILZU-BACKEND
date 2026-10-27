@@ -687,6 +687,32 @@ const EnvSchema = z.object({
   ARTIFACT_DAILY_PAISE: z.coerce.number().int().min(0).max(10_000_000).default(2000),
   ARTIFACT_ASK_DAILY_PAISE: z.coerce.number().int().min(0).max(10_000_000).default(500),
   /**
+   * THE FRONT DOOR (src/front, docs/front-door.md): one smart entry point for a message. POST /v1/ask with {message, ...} understands it, picks
+   * the answer's shape (a visual when one explains faster), and sends it down the cheapest path that can do it. Off by default: with it off
+   * that body answers 404 { code: "front_door_off" } and /v1/ask keeps answering the desktop's {question, screenContent} exactly as before.
+   * Needs migration 0033 only for the decision log and what it teaches (without it the log is the memory twin's, lost on a restart).
+   *
+   * FRONT_DAILY_PAISE is what the front door itself may spend on one person's messages in a day (1,500 paise, fifteen rupees): the small
+   * model that reads a message, the replies, the research, the plans. Jobs have their own budgets and artifacts their own daily cap.
+   */
+  FRONT_DOOR: bool(false),
+  FRONT_DAILY_PAISE: z.coerce.number().int().min(0).max(10_000_000).default(1500),
+  /**
+   * THE OVERLOAD GUARDS (src/guard, docs/front-door.md): how many of the guarded requests (/v1/ask, artifact makings and edits, jobs, code
+   * questions) run at once in THIS process. In memory: with several workers or servers each has its own count, so the real ceiling is the
+   * number of them times these (docs/front-door.md says how to size it).
+   *
+   * GUARD_GLOBAL_CONCURRENCY all people together (64). GUARD_USER_CONCURRENCY one person (3); GUARD_USER_CONCURRENCY_FREE one person on the
+   * free plan (1). A request over a limit waits in a queue: GUARD_QUEUE_MAX waiting in all (256), GUARD_QUEUE_PER_USER for one person (4),
+   * GUARD_QUEUE_WAIT_MS at most this long before it is answered 429 with Retry-After and its place in the queue (8,000).
+   */
+  GUARD_GLOBAL_CONCURRENCY: z.coerce.number().int().min(1).max(100_000).default(64),
+  GUARD_USER_CONCURRENCY: z.coerce.number().int().min(1).max(1_000).default(3),
+  GUARD_USER_CONCURRENCY_FREE: z.coerce.number().int().min(1).max(1_000).default(1),
+  GUARD_QUEUE_MAX: z.coerce.number().int().min(0).max(100_000).default(256),
+  GUARD_QUEUE_PER_USER: z.coerce.number().int().min(0).max(1_000).default(4),
+  GUARD_QUEUE_WAIT_MS: z.coerce.number().int().min(0).max(120_000).default(8000),
+  /**
    * THE CODE BOT'S AGENT LOOP (src/code/agent, docs/code-agent.md): the server-side
    * worker that drives a job from "fix this" to a pull request. It rides on the
    * environment router (src/code/jobs) and the brain (layers 1 to 7).
