@@ -56,12 +56,12 @@ import type { JobStore } from "../jobs/store.js";
 import { AGENT_LEASE_MS, PAISE_MAX, brief, isEnded, type CodeJob, type JobState } from "../jobs/types.js";
 import { SAID_MAX_CHARS } from "../live/limits.js";
 import { MemoryInbox } from "../live/ports.js";
-import { WorkLog, worklogStore, type WorkEntry } from "../work/index.js";
+import { WorkLog, worklogStore, type Located, type WorkEntry } from "../work/index.js";
 import type { AgentDeps } from "./deps.js";
 import { advanceLoop, runLoop, type Advance } from "./loop.js";
 import { reportText } from "./report.js";
 import { LostClaim, type Claim } from "./run.js";
-import { ERROR_BACKOFF_MS, LOOP_ERRORS_MAX, TASK_CHARS, initialState, stateOf, type AgentState } from "./types.js";
+import { ERROR_BACKOFF_MS, LOOP_ERRORS_MAX, TASK_CHARS, initialState, stateOf, type AgentState, type SpecArtifact } from "./types.js";
 
 /** The states a write by the claim's holder may happen in. */
 const WRITABLE: readonly JobState[] = ["queued", "running", "waiting_for_compute", "waiting_for_you"];
@@ -114,6 +114,8 @@ export interface AgentView {
   findings: AgentState["findings"];
   report?: AgentState["report"];
   notes: string[];
+  /** The approved artifact this job builds (artifacts/build.ts): which one, and which version. */
+  spec?: { artifactId: string; version: number; title: string };
 }
 
 export function viewOfState(s: AgentState): AgentView {
@@ -130,6 +132,7 @@ export function viewOfState(s: AgentState): AgentView {
     ...(s.pr ? { pr: { number: s.pr.number, url: s.pr.url, ready: s.pr.ready } } : {}),
     ...(s.verify ? { verify: { ran: s.verify.ran, ok: s.verify.ok, summary: s.verify.summary } } : {}),
     fixRounds: s.work.fixRounds, findings: s.findings, ...(s.report ? { report: s.report } : {}), notes: s.notes,
+    ...(s.spec ? { spec: { artifactId: s.spec.artifactId, version: s.spec.version, title: s.spec.title } } : {}),
   };
 }
 
@@ -172,12 +175,15 @@ export class AgentOrchestrator {
    * A job made for the agent: its whole request is written into its state (the job keeps the first 500
    * characters), and the worker is nudged. Idempotent: a job that already has a state is left as it is.
    */
-  async enqueue(jobId: string, task?: string): Promise<CodeJob | null> {
+  async enqueue(jobId: string, task?: string, o: { spec?: SpecArtifact; located?: Located } = {}): Promise<CodeJob | null> {
     const job = await this.store.getJobById(jobId);
     if (!job || isEnded(job.state)) return job;
     if (!stateOf(job.checkpoint)) {
       const text = typeof task === "string" && task.trim() ? task.trim() : job.task;
       const state = initialState(text.slice(0, TASK_CHARS), this.now());
+      // A job made from an approved design (artifacts/build.ts) starts with the design and the place it goes.
+      if (o.spec) state.spec = o.spec;
+      if (o.located) state.located = o.located;
       await this.store.casJob(job.id, { agentEpoch: job.agentEpoch }, {
         agent: true, checkpoint: { ...job.checkpoint, agent: state as unknown as Record<string, unknown> },
       });

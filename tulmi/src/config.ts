@@ -672,6 +672,21 @@ const EnvSchema = z.object({
   CODE_PROJECT_BRAIN: bool(false),
   CODE_IMPORT_BUDGET_PAISE: z.coerce.number().int().min(0).max(1_000_000).default(1000),
   /**
+   * ARTIFACTS (src/artifacts, docs/artifacts.md): live things a bot makes and the person sees and clicks in the app, like Claude's: a page,
+   * a React component, SVG, a diagram, markdown. They run in the viewer (the viewer/ package, a site of its own, in a sandbox with no network);
+   * this server keeps them, their versions, what they save while they run, and makes the changes cheaply (an edit of one element sends a
+   * model only that element, on the cheap tier). Off by default: it needs migration 0032, and every /v1/artifacts route answers
+   * 404 { code: "artifacts_off" } while it is off. Not tied to the Code bot, but a Code project makes an artifact look like the project
+   * (needs CODE_GITHUB and CODE_PROJECT_BRAIN for that part).
+   *
+   * ARTIFACT_DAILY_PAISE is what one person's edits, fixes and makings may cost in a day, in paise (2,000, twenty rupees, unless set).
+   * ARTIFACT_ASK_DAILY_PAISE is what an artifact asking the bot may cost the PERSON WHO OPENED IT in a day (500, five rupees): never the
+   * owner's money. 0 turns the model off for that part.
+   */
+  ARTIFACTS: bool(false),
+  ARTIFACT_DAILY_PAISE: z.coerce.number().int().min(0).max(10_000_000).default(2000),
+  ARTIFACT_ASK_DAILY_PAISE: z.coerce.number().int().min(0).max(10_000_000).default(500),
+  /**
    * THE CODE BOT'S AGENT LOOP (src/code/agent, docs/code-agent.md): the server-side
    * worker that drives a job from "fix this" to a pull request. It rides on the
    * environment router (src/code/jobs) and the brain (layers 1 to 7).

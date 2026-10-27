@@ -43,6 +43,8 @@ import { createConnectors, type Connectors } from "./connectors/index.js";
 import { registerConnectorRoutes } from "./routes/connectors.js";
 import { createCode } from "./code/index.js";
 import { startOAuthSweeper } from "./code/oauth.js";
+import { createArtifacts, deleteViewerData } from "./artifacts/index.js";
+import { registerArtifactRoutes } from "./routes/artifacts.js";
 import { registerCodeRoutes } from "./routes/code.js";
 import { registerCodeJobRoutes } from "./routes/codeJobs.js";
 import { registerCodeInternalRoutes } from "./routes/codeInternal.js";
@@ -1085,6 +1087,11 @@ registerCodeJobRoutes(app, {
   // On the Worker the ticker is the Cron Trigger: this server starts none.
   ...(jobsHandoff ? { tickEveryMs: null, onStepResult: (jobId: string) => { void jobsHandoff.wake(jobId, "runner"); } } : {}),
 });
+// Artifacts (src/artifacts, docs/artifacts.md): live things a bot makes and the person sees and clicks in the app, run by the viewer in a
+// sandbox with no network. Off unless ARTIFACTS is true (the routes then answer 404 artifacts_off). With the Code bot on, a project's
+// artifacts look like the project and "build it" makes a job (the routes use `code`, the job router and the agent above).
+const artifacts = createArtifacts({ log: app.log });
+registerArtifactRoutes(app, { rateLimit: AUTHED_RL, artifacts, code, jobs: codeJobs, agent: codeAgent });
 // The Worker's way back to the push engine (the push credentials stay here).
 registerCodeInternalRoutes(app, { rateLimit: AUTHED_RL, secret: jobsHandoff ? cfg.CODE_JOBS_SECRET : null, store: jobStore(), notify: notifyCodeJob });
 // "Sign in with GitHub" tokens unused for 30 days are revoked at GitHub (code/oauth.ts), on a timer, even
@@ -3247,6 +3254,9 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
     // has no user_id, and cascades from code_projects, as do the project brain's four tables,
     // code_brain, code_brain_files, code_brain_dirs and code_brain_texts: migration 0028).
     ["code_installations", null], ["code_projects", null], ["code_oauth_links", null],
+    // Artifacts (migration 0032): a person's artifacts take their versions and saved data with them (both cascade from artifacts); the
+    // look kept for their projects goes too. What they saved in OTHER people's artifacts (scope = their id) is cleared just after.
+    ["artifacts", null], ["artifact_kits", null],
   ];
   for (const [table, key] of tables) {
     try {
@@ -3256,6 +3266,8 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
       else if (key) summary[key] = !error;
     } catch (err) { req.log.error({ err }, `delete ${table}`); }
   }
+
+  try { await deleteViewerData(admin, user.id); } catch (err) { req.log.error({ err }, "delete artifact_data"); }
 
   // Deleting the auth user takes anything missed above with it (cascade).
   try {

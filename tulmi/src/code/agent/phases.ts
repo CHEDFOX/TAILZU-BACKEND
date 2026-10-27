@@ -146,6 +146,14 @@ export async function locatePhase(r: Run): Promise<void> {
   const s = r.state;
   let task = s.task;
   const w = s.waiting;
+  // A job made from an approved design was located when the design was approved (artifacts/build.ts): a sure answer stands, and costs nothing
+  // again. One that came with a question (the search was unsure) is looked at the usual way, and the person is asked.
+  if (s.spec && s.located?.targets.length && !s.located.question && !w) {
+    await r.log.read(s.located.targets.slice(0, 3).map((t) => t.path), "Using the place found when the design was approved.");
+    s.phase = "plan";
+    await r.save();
+    return;
+  }
   if (w?.kind === "question" && w.from === "locate" && w.answer !== undefined) {
     await r.log.question(w.question, w.answer);
     s.waiting = undefined;

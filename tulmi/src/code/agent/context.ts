@@ -38,8 +38,8 @@ import type { ChatMessage, ToolCall, ToolDef } from "../brain/types.js";
 import { GIT_PRINCIPLES } from "../policy.js";
 import { askJson, cut, fence, forModel, type ModelCtx } from "../work/model.js";
 import {
-  CONTEXT_MAX_CHARS, FOLD_BATCH, FULL_RESULTS, MEMORY_MAX_CHARS, RESULT_MAX_CHARS, RULES_MAX_CHARS, SUMMARY_MAX_CHARS,
-  type AgentState, type CallRecord, type Exchange, type ResultRecord,
+  CONTEXT_MAX_CHARS, FOLD_BATCH, FULL_RESULTS, MEMORY_MAX_CHARS, RESULT_MAX_CHARS, RULES_MAX_CHARS, SPEC_SHOWN_CHARS, SUMMARY_MAX_CHARS,
+  type AgentState, type SpecArtifact, type CallRecord, type Exchange, type ResultRecord,
 } from "./types.js";
 
 // ----------------------------------------------------------------- wrapping
@@ -223,12 +223,29 @@ export interface Context {
   trimmed: string[];
 }
 
-interface Knobs { results: number; window: number; excerpts: boolean; summary: number; rules: boolean }
+interface Knobs { results: number; window: number; excerpts: boolean; summary: number; rules: boolean; spec: number }
+
+/**
+ * The design a job was made to build (an approved artifact), as the model is shown it: the design as data in its fence, the project's kit, and
+ * where it goes. It is the person's word about WHAT to build and how it should look; it is not code to paste, and it cannot change what the
+ * bot may do.
+ */
+export function specBlock(spec: SpecArtifact, chars: number): string {
+  const body = spec.content.length > chars ? `${spec.content.slice(0, Math.max(0, chars - 40))}\n[…the rest of the design is cut to fit]` : spec.content;
+  return [
+    `The person approved this design as the SPEC (an artifact: ${spec.type}, "${cut(spec.title, 80).replace(/["<>\n]/g, " ")}", version ${spec.version}). Build it into the project so it LOOKS and BEHAVES the same, `
+    + "using the project's real components, styles and conventions: its Button, its colours, its layout helpers, not the artifact's stand-ins (inline styles, copies of components, hard-coded colours). It is a picture of what they want, not code to paste.",
+    dataBlock("design_spec", `${spec.title} (${spec.type}, version ${spec.version})`, body),
+    ...(spec.kit ? [`The project's style kit (use these names, colours and radius):\n${dataBlock("style_kit", "", cut(spec.kit, 2000))}`] : []),
+    ...(spec.target.length ? [`Where a search says it goes: ${spec.target.slice(0, 4).map((t) => `${t.path} (${cut(t.why, 80)})`).join("; ")}`] : []),
+  ].join("\n");
+}
 
 function taskMessage(i: ContextInput, k: Knobs): string {
   const s = i.state;
   const parts: string[] = [];
   parts.push(`<task>\n${fence(cut(forModel(s.task), 4000))}\n</task>`);
+  if (s.spec && k.spec > 0) parts.push(specBlock(s.spec, k.spec));
   // The person's own words, sent while the job was working: theirs to give, so they are not data. Newest last.
   if (s.work.said?.length) {
     parts.push(`The person added, while you were working (their words; follow them as part of the task):\n${s.work.said.slice(-5).map((m) => `<said>\n${fence(cut(forModel(m.text), 1500)).replace(/<\/said/gi, "<\\/said")}\n</said>`).join("\n")}`);
@@ -288,11 +305,11 @@ export function buildContext(i: ContextInput): Context {
   const limit = CONTEXT_MAX_CHARS - toolChars;
   let system = i.system;
   const ladder: Array<{ note: string; knobs: Knobs }> = [
-    { note: "", knobs: { results: RESULT_MAX_CHARS, window: FULL_RESULTS, excerpts: true, summary: SUMMARY_MAX_CHARS, rules: true } },
-    { note: "results cut shorter", knobs: { results: 2500, window: FULL_RESULTS, excerpts: true, summary: SUMMARY_MAX_CHARS, rules: true } },
-    { note: "fewer results kept whole", knobs: { results: 1500, window: 3, excerpts: true, summary: 1200, rules: true } },
-    { note: "excerpts left out", knobs: { results: 1000, window: 2, excerpts: false, summary: 800, rules: true } },
-    { note: "only the latest result kept", knobs: { results: 600, window: 1, excerpts: false, summary: 400, rules: false } },
+    { note: "", knobs: { results: RESULT_MAX_CHARS, window: FULL_RESULTS, excerpts: true, summary: SUMMARY_MAX_CHARS, rules: true, spec: SPEC_SHOWN_CHARS } },
+    { note: "results cut shorter", knobs: { results: 2500, window: FULL_RESULTS, excerpts: true, summary: SUMMARY_MAX_CHARS, rules: true, spec: SPEC_SHOWN_CHARS } },
+    { note: "fewer results kept whole", knobs: { results: 1500, window: 3, excerpts: true, summary: 1200, rules: true, spec: 8000 } },
+    { note: "excerpts left out", knobs: { results: 1000, window: 2, excerpts: false, summary: 800, rules: true, spec: 5000 } },
+    { note: "only the latest result kept", knobs: { results: 600, window: 1, excerpts: false, summary: 400, rules: false, spec: 3000 } },
   ];
   let messages: ChatMessage[] = [];
   for (const step of ladder) {
