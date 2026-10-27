@@ -16,6 +16,8 @@
  *   work         a model with tools: read, search, edit (staged), run, ask. Guided: after locate and plan. Free-form: the model decides the order of explore, change and run
  *   verify       the plan's checks against the baseline
  *   design       only for a job built from an approved design (spec): run the app, shoot it, compare it to the design; major differences go back to work
+ *   split        (a LEAD only: a goal that is big, code/team) the plan is split into parts with clear file ownership (team/split.ts)
+ *   team         (a LEAD only) the helpers build the parts in parallel on their own branches, a model of another family reviews each, the lead merges them
  *   commit       the server commits the staged edits, through the policy
  *   pr           the draft pull request, and ready for review if the checks are green
  *   report       what was done, in words, to the person
@@ -28,8 +30,9 @@ import type { ContextStrategy } from "./mask.js";
 import type { Classification } from "../brain/types.js";
 import type { BaselineResult } from "../project/types.js";
 import type { ChangePlan, Located } from "../work/index.js";
+import type { PartContext, TeamMode, TeamState } from "../team/types.js";
 
-export const PHASES = ["prepare", "new_project", "baseline", "merge", "locate", "plan", "work", "verify", "design", "commit", "pr", "report", "done"] as const;
+export const PHASES = ["prepare", "new_project", "baseline", "merge", "locate", "plan", "split", "team", "work", "verify", "design", "commit", "pr", "report", "done"] as const;
 export type Phase = (typeof PHASES)[number];
 
 /** How a job is worked: GUIDED (locate, plan, work, verify, commit: the phases in order) or FREEFORM (the model decides the order of explore, change and run). */
@@ -377,6 +380,14 @@ export interface AgentState {
   mode?: JobMode;
   /** "Always show me the plan first": the plan goes to the person for a yes before any work, whatever its risk. */
   planFirst?: boolean;
+  /** Lead and helpers (code/team): "on" always splits a goal into parts, "off" never does; absent is "auto", where the plan decides (more than 12 files, more than 3 features, or several projects). */
+  teamMode?: TeamMode;
+  /** The other projects of the same person this goal spans (a lead job over several repositories). */
+  teamRepos?: string[];
+  /** This job is a LEAD: how it split the goal, and where each part stands (team/lead.ts). */
+  team?: TeamState;
+  /** This job is a HELPER: the part of a lead's goal it builds, and the files it owns (team/guard.ts). */
+  part?: PartContext;
   /** `located` came from a conversation about the code (code/chat): locate takes it as it is and does not look again. */
   handoff?: boolean;
   /** Why this job exists, when it is PR care's (code/prcare). */
@@ -426,6 +437,8 @@ export interface AgentState {
     nudged?: boolean;
     /** What the design check found, for the model to fix: the differences and the fix hints. Data, wrapped when shown. */
     designFeedback?: string;
+    /** What a team's reviewer found in this helper's work (code/team): the findings, for the fix round. Data, wrapped when shown. */
+    reviewFeedback?: string;
     /** What the person said while the job was working (POST /v1/code/jobs/:id/message), newest last. The model is shown them as the person's words. */
     said?: Array<{ id: string; text: string; at: number }>;
   };

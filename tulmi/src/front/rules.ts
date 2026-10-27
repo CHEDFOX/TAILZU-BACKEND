@@ -38,6 +38,8 @@ export interface RuleRead {
   handoff?: boolean;
   /** The words of an open-ended task (debug, investigate, find out why, explore): if it is a code task, it is worked freely. */
   openEnded?: boolean;
+  /** The person asked for a team of helpers ("on"), or said not to ("off"): a code task is then worked as a lead's, or never (code/team). */
+  team?: "on" | "off";
 }
 
 /** How much of a rival's score is taken off the leader's confidence (the classifier's own number). */
@@ -118,6 +120,9 @@ const HANDOFF_HG = /^\s*(?:ok(?:ay)?|haan|theek\s+hai|thik\s+hai|accha|acha)?[\s
 const HANDOFF_HI = hindi(["(?:अब\\s+)?(?:इसे|इसको|उसे)\\s*(?:बदल|ठीक|सुधार)\\s*(?:दो|दीजिए|करो)(?=[\\s!।.?]*$)"]);
 /** A task with no known place to start: something to find out first, then perhaps fix. */
 const OPEN_ENDED = /\b(?:debug|investigate|diagnose|figure\s+out|find\s+out\s+why|track\s+down|look\s+into|trace\s+(?:down|why)|root\s+cause|bisect|reproduce|explore|experiment|spike|poke\s+around|not\s+sure\s+(?:why|where|what)|no\s+idea\s+(?:why|where|what)|something(?:'s|\s+is)\s+(?:wrong|off|broken)|intermittent(?:ly)?|flaky|sometimes\s+(?:fails?|crash(?:es)?|breaks?)|randomly\s+(?:fails?|crash(?:es)?|breaks?))\b|\bpata\s+(?:lagao|karo)\b|\bkyun\s+(?:fail|crash|nahi)\b/i;
+/** The person asking for a team ("with a team", "use helpers", "in parallel", "split it up", "lead mode"), and the person refusing one ("no team", "do it yourself", "without helpers"). */
+const TEAM_ON = /\b(?:(?:use|with|as|get|make|build\s+a)\s+(?:a\s+)?(?:team|helpers?|sub-?agents?)|lead\s+(?:and|\+|&)\s+helpers?|lead\s+mode|team\s+mode|in\s+parallel|split\s+(?:it|this|the\s+work)\s+(?:up|between|across|into\s+parts)|parallel\s+(?:helpers?|agents?))\b/i;
+const TEAM_OFF = /\b(?:no\s+(?:team|helpers?)|without\s+(?:a\s+)?(?:team|helpers?)|(?:do|build)\s+(?:it|this)\s+(?:all\s+)?(?:yourself|alone|in\s+one\s+go)|don'?t\s+(?:use|split|bring)\s+(?:a\s+)?(?:team|helpers?|it\s+up)|one\s+job\s+only|solo\s+mode)\b/i;
 const FOLLOW_UP = /^\s*(?:and|also|what\s+about|how\s+about|now|then|ok(?:ay)?\s+(?:and|now)|make\s+it|change\s+it|do\s+(?:that|it)|same\s+(?:for|with)|aur|phir|ab|isko|usko|aur\s+kya)\b/i;
 
 const wordCount = (s: string): number => s.trim().split(/\s+/).filter(Boolean).length;
@@ -268,5 +273,6 @@ export function readByRules(message: string, ctx: Pick<FrontCtx, "projectId" | "
     intent, confidence, scores, ...(second ? { rival: second[0] } : {}), signals: [...new Set(signals)], cls,
     ...(intent === "research" && depth ? { depth } : {}), ...(followUp && (intent === last?.intent || (handoff && intent === "code_task")) ? { followUp } : {}),
     ...(handoff && intent === "code_task" ? { handoff: true } : {}), ...(OPEN_ENDED.test(text) ? { openEnded: true } : {}),
+    ...(TEAM_OFF.test(text) ? { team: "off" as const } : TEAM_ON.test(text) ? { team: "on" as const } : {}),
   };
 }

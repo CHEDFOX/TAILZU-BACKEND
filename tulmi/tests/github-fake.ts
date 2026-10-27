@@ -322,6 +322,11 @@ export class FakeGithub {
     if (run) { run.status = "completed"; run.conclusion = conclusion; }
     return run;
   }
+  /** One commit by its sha: its parents and its message, or undefined. */
+  commitOf(repo: FakeRepo, sha: string): { parents: string[]; message: string } | undefined {
+    const c = this.git.get(repo.id)!.commits.get(sha);
+    return c ? { parents: [...c.parents], message: c.message } : undefined;
+  }
   /** The commit a branch points at, with its parents (an empty list for a branch that is gone). */
   parentsOf(repo: FakeRepo, branch: string): string[] {
     const g = this.git.get(repo.id)!;
@@ -1076,7 +1081,7 @@ export class FakeGithub {
       number: pr.number, html_url: `https://github.com/${repo.fullName}/pull/${pr.number}`, title: pr.title,
       state: pr.state, merged: pr.merged, draft: pr.draft, mergeable,
       mergeable_state: pr.draft ? "draft" : mergeable === false ? "dirty" : mergeable === null ? "unknown" : "clean",
-      node_id: `PR_${repo.id}_${pr.number}`,
+      node_id: `PR_${repo.id}_${pr.number}`, body: pr.body ?? "",
       head: { sha: headSha, ref: pr.head, repo: { id: pr.headRepoId ?? repo.id } }, base: { ref: pr.base },
       review_comments: pr.reviewComments.length, changed_files: files.length,
       additions: files.reduce((n, f) => n + f.additions, 0), deletions: files.reduce((n, f) => n + f.deletions, 0),

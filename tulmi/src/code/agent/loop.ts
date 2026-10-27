@@ -2,6 +2,7 @@
  * THE AGENT LOOP: THE PHASES IN ORDER, AND THE FOUR WAYS A RUN COMES TO AN END.
  *
  *   prepare -> (new_project) -> baseline -> locate -> plan -> work -> verify -> (design) -> commit -> pr -> report
+ *   a LEAD (a goal that is big, code/team):  ... plan -> split -> (work: the contracts) -> team <-> (merge) -> verify -> (design) -> commit -> pr -> report
  *
  * runLoop drives one job from wherever its checkpoint says it is (phases.ts), and returns how the run
  * ended:
@@ -29,20 +30,22 @@
 import { BudgetExceeded } from "../brain/gateway.js";
 import type { WaitingOn } from "../jobs/types.js";
 import type { LoopEnv } from "./run.js";
-import { BudgetStop, EndJob, LostClaim, Park, Run, Yield } from "./run.js";
+import { BudgetStop, EndJob, LostClaim, Park, Run, TeamWait, Yield } from "./run.js";
 import { RunPending } from "./runner.js";
 import {
   baseline, commitPhase, commitStaged, headlineOf, locatePhase, newProjectPhase, planPhase, prPhase, prepare, reportPhase, runVerify, stagedFingerprint, verifyPhase, workPhase,
 } from "./phases.js";
 import { designPhase } from "./design.js";
 import { mergePhase } from "./merge.js";
+import { splitPhase, teamPhase } from "../team/lead.js";
 import { reportText } from "./report.js";
 import { rupees, topUpFor, type Phase } from "./types.js";
 
 export type LoopEnd = "finished" | "parked" | "lost" | "stopped";
 
 const PHASES: Record<Exclude<Phase, "done">, (r: Run) => Promise<void>> = {
-  prepare, new_project: newProjectPhase, baseline, merge: mergePhase, locate: locatePhase, plan: planPhase, work: workPhase, verify: verifyPhase, design: designPhase, commit: commitPhase, pr: prPhase, report: reportPhase,
+  prepare, new_project: newProjectPhase, baseline, merge: mergePhase, locate: locatePhase, plan: planPhase, split: splitPhase, team: teamPhase, work: workPhase, verify: verifyPhase,
+  design: designPhase, commit: commitPhase, pr: prPhase, report: reportPhase,
 };
 
 const isBudget = (e: unknown): boolean => e instanceof BudgetStop || e instanceof BudgetExceeded || (e as { code?: unknown } | null)?.code === "budget_exceeded";
@@ -77,8 +80,14 @@ async function ended(r: Run, err: unknown): Promise<LoopEnd> {
 }
 
 /** `ended`, and what a parked job waits for. Throws what it does not know. */
-async function endedWith(r: Run, err: unknown): Promise<{ end: LoopEnd; waitingOn?: WaitingOn }> {
+async function endedWith(r: Run, err: unknown): Promise<{ end: LoopEnd; waitingOn?: WaitingOn | "team"; waitMs?: number }> {
   if (err instanceof LostClaim) return { end: "lost" };
+  if (err instanceof TeamWait) {
+    // The lead has nothing to do until a helper changes. A server lets the claim go with the rest on it; a Workflow sleeps, and the claim is let go by `advance`.
+    await r.save();
+    if (!r.env.pollOnce) await r.env.claim.rest?.(r.state, err.ms);
+    return { end: "parked", waitingOn: "team", waitMs: err.ms };
+  }
   if (err instanceof Park) {
     await park(r, err);
     return { end: "parked", waitingOn: err.waitingOn };
@@ -101,14 +110,14 @@ async function endedWith(r: Run, err: unknown): Promise<{ end: LoopEnd; waitingO
  *
  *   continue   a slice of the work is done and saved; call advance again at once
  *   wait       nothing more can be done until `waitingOn` happens: the person's answer, yes or money (the job is parked; their
- *              word is written into the state and the driver is woken), a step that is out on a runner (look again at `wakeAt`,
+ *              word is written into the state and the driver is woken), a lead's helpers (`team`: wake when one of them ends or parks, or at `wakeAt`), a step that is out on a runner (look again at `wakeAt`,
  *              epoch ms; `waitMs` is the same wait as a length, for a driver that must not read the clock), a claim somebody
  *              else holds (try again then), or an error that is being backed off from
  *   end        the job is over, or this driver has no business with it any more (`why`)
  */
 export type Advance =
   | { next: "continue" }
-  | { next: "wait"; waitingOn: "answer" | "approval" | "budget" | "runner" | "retry" | "claim"; wakeAt?: number; waitMs?: number }
+  | { next: "wait"; waitingOn: "answer" | "approval" | "budget" | "runner" | "retry" | "claim" | "team"; wakeAt?: number; waitMs?: number }
   | { next: "end"; why: "finished" | "lost" | "stopped" | "over" };
 
 /**
@@ -147,6 +156,7 @@ export async function advanceLoop(env: LoopEnv, o: { turns?: number } = {}): Pro
     if (err instanceof RunPending) return { next: "wait", waitingOn: "runner", wakeAt: r.now() + err.retryInMs, waitMs: err.retryInMs };
     try {
       const e = await endedWith(r, err);
+      if (e.end === "parked" && e.waitingOn === "team") return { next: "wait", waitingOn: "team", wakeAt: r.now() + (e.waitMs ?? 0), waitMs: e.waitMs ?? 20_000 };
       if (e.end === "parked") return { next: "wait", waitingOn: e.waitingOn as "answer" | "approval" | "budget" };
       return { next: "end", why: e.end === "finished" ? "finished" : e.end === "stopped" ? "stopped" : "lost" };
     } catch (again) {

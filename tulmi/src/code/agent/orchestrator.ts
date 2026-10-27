@@ -57,6 +57,7 @@ import { AGENT_LEASE_MS, PAISE_MAX, brief, isEnded, type CodeJob, type JobState 
 import { SAID_MAX_CHARS } from "../live/limits.js";
 import { MemoryInbox } from "../live/ports.js";
 import { isNeedsApproval, type NeedsApproval } from "../policy.js";
+import { adjustSpend } from "../team/budget.js";
 import { repoRef, workspace } from "../projects.js";
 import { WorkLog, worklogStore, type Located, type WorkEntry } from "../work/index.js";
 import type { AgentDeps } from "./deps.js";
@@ -65,6 +66,7 @@ import { reportText } from "./report.js";
 import { revertFiles } from "./rewind.js";
 import { LostClaim, type Claim } from "./run.js";
 import { DEFAULT_PROJECT_SETTINGS, readSettingsPatch } from "./settings.js";
+import { viewOfPart, viewOfTeam, REPOS_MAX, TEAM_COMMANDS_MAX, type PartView, type TeamCommand, type TeamMode, type TeamView } from "../team/types.js";
 import { ERROR_BACKOFF_MS, LOOP_ERRORS_MAX, TASK_CHARS, initialState, stateOf, type AgentState, type CareContext, type JobMode, type SpecArtifact } from "./types.js";
 
 /** The states a write by the claim's holder may happen in. */
@@ -86,6 +88,10 @@ export interface EnqueueOptions {
   planFirst?: boolean;
   /** Why this job exists, when it is PR care's (code/prcare). */
   care?: CareContext;
+  /** Lead and helpers (code/team): "on" always splits the goal into parts, "off" never does, "auto" lets the plan decide. Else the project's setting. */
+  team?: TeamMode;
+  /** The other projects of the same person this goal spans, already checked (`teamProjects`): a lead job over several repositories. */
+  projects?: string[];
 }
 
 /** What the VPS tells the Worker's Workflow about a job besides starting it (jobs/handoff/protocol.ts). */
@@ -143,6 +149,10 @@ export interface AgentView {
   spec?: { artifactId: string; version: number; title: string };
   /** The design check of such a job (agent/design.ts): where it is, how many times it sent the job back to work, the latest match, and why it did not run. */
   design?: { stage: string; round: number; match?: number; skipped?: string };
+  /** A lead's team (code/team): where each part stands (GET .../team has the rest). */
+  team?: { stage: string; why: string; parts: Array<{ id: number; title: string; status: string; jobId?: string }> };
+  /** A helper's part of a lead's goal: whose it is and which part. */
+  part?: { parentId: string; id: number; title: string; round: number; repo?: boolean };
 }
 
 export function viewOfState(s: AgentState): AgentView {
@@ -161,6 +171,8 @@ export function viewOfState(s: AgentState): AgentView {
     fixRounds: s.work.fixRounds, mode: s.mode ?? "guided", planFirst: s.planFirst === true, steps: s.work.turns, findings: s.findings, ...(s.report ? { report: s.report } : {}), notes: s.notes,
     ...(s.spec ? { spec: { artifactId: s.spec.artifactId, version: s.spec.version, title: s.spec.title } } : {}),
     ...(s.design ? { design: { stage: s.design.stage, round: s.design.round, ...(s.design.history.length ? { match: s.design.history.at(-1)!.match } : {}), ...(s.design.skipped ? { skipped: s.design.skipped } : {}) } } : {}),
+    ...(s.team ? { team: { stage: s.team.stage, why: s.team.why, parts: s.team.parts.map((p) => ({ id: p.id, title: p.title, status: p.status, ...(p.jobId ? { jobId: p.jobId } : {}) })) } } : {}),
+    ...(s.part ? { part: { parentId: s.part.parentId, id: s.part.id, title: s.part.title, round: s.part.round, ...(s.part.repo ? { repo: true } : {}) } } : {}),
   };
 }
 
@@ -180,6 +192,10 @@ export class AgentOrchestrator {
   private dead = false;
   private closed = false;
   private beat: ReturnType<typeof setInterval> | null = null;
+  /** Things done because a job ended (a helper's lead woken, a lead's helpers stopped), so a test can wait for them. */
+  private readonly settling = new Set<Promise<void>>();
+  /** Leads this server is driving that a helper tried to wake while they were busy: they rest for no time when they next rest, instead of the usual wait. */
+  private readonly wakes = new Set<string>();
 
   constructor(o: OrchestratorOptions) {
     this.id = `agent-${o.instanceId ?? randomUUID().slice(0, 8)}`;
@@ -190,6 +206,77 @@ export class AgentOrchestrator {
     this.leaseMs = o.leaseMs ?? AGENT_LEASE_MS;
     this.remote = o.remote;
     this.passive = o.passive === true || o.remote !== undefined;
+    // Lead and helpers (code/team): a helper that ends wakes its lead, and a lead that ends stops its helpers. Whoever ends a job (this loop, a route, the router's ticker) reaches here.
+    o.jobs.onEnded?.((job) => this.track(this.afterEnded(job)));
+  }
+
+  private track(p: Promise<void>): void {
+    const q = p.catch(() => undefined).finally(() => { this.settling.delete(q); });
+    this.settling.add(q);
+  }
+
+  /** A job that was part of a team has ended: the lead is told, or the helpers are stopped. */
+  private async afterEnded(job: CodeJob): Promise<void> {
+    if (this.dead) return;
+    const state = stateOf(job.checkpoint);
+    if (!state) return;
+    if (state.part?.parentId) await this.wakeParent(state.part.parentId);
+    if (state.team) {
+      for (const p of state.team.parts) {
+        if (!p.jobId || ["merged", "failed", "stopped", "skipped"].includes(p.status)) continue;
+        this.active.get(p.jobId)?.abort.abort();
+        await this.jobs.cancelJob(p.jobId, "The lead job ended, so this part was stopped.").catch(() => undefined);
+      }
+      await this.settleLead(job.id);
+    }
+  }
+
+  /**
+   * A lead is over: the slices it took from its wallet for helpers and did not see spent are given back (the lead's spend is then what the team really cost). Done from
+   * the lead's saved state, written down first, so that it is done once.
+   */
+  private async settleLead(jobId: string): Promise<void> {
+    const cur = await this.store.getJobById(jobId);
+    const state = stateOf(cur?.checkpoint);
+    if (!cur || !state?.team) return;
+    let back = 0;
+    for (const p of state.team.parts) {
+      let spent = 0;
+      for (const id of p.jobIds) spent += (await this.store.getJobById(id))?.spentPaise ?? 0;
+      p.spentPaise = spent;
+      const out = p.reservedPaise - p.refundedPaise - spent;
+      if (out > 0) { p.refundedPaise += out; back += out; }
+    }
+    if (back <= 0) return;
+    const wrote = await this.store.casJob(cur.id, { agentEpoch: cur.agentEpoch }, { checkpoint: { ...cur.checkpoint, agent: state as unknown as Record<string, unknown> } });
+    if (wrote) await adjustSpend(this.store, cur.id, -back);
+  }
+
+  /** The lead of a helper that changed (ended, parked) looks again now. On Cloudflare, the lead's Workflow is sent an event. */
+  private async wakeParent(parentId: string): Promise<void> {
+    try { await this.deps.team?.wake(parentId); } catch { /* the lead looks again by itself, within its rest */ }
+  }
+
+  /** A lead parked for the money of a part goes on: a part has been given some. */
+  private async unparkLead(jobId: string): Promise<void> {
+    const j = await this.store.getJobById(jobId);
+    const st = stateOf(j?.checkpoint);
+    if (!j || !st?.team || j.state !== "waiting_for_you" || j.waitingOn !== "budget" || st.waiting?.kind !== "budget") return;
+    st.waiting = undefined;
+    await this.resume(j, st, "budget").catch(() => undefined);
+  }
+
+  /** A resting lead is claimable now (a server): its rest is over. A lead that is being driven is left alone: it looks again when it has done what it is doing. */
+  async wakeLead(jobId: string): Promise<void> {
+    const j = await this.store.getJobById(jobId);
+    if (!j || isEnded(j.state)) return;
+    if (j.agentHolder !== null) {
+      // Being driven: it is not woken, but it will not rest when it next would (a helper changed after it last looked).
+      if (this.active.has(jobId)) this.wakes.add(jobId);
+      return;
+    }
+    await this.store.casJob(j.id, { agentEpoch: j.agentEpoch }, { agentExpiresAt: null });
+    this.kick();
   }
 
   private now(): number { return this.deps.now(); }
@@ -223,6 +310,10 @@ export class AgentOrchestrator {
       const planFirst = o.planFirst ?? set?.planFirst ?? DEFAULT_PROJECT_SETTINGS.planFirst;
       if (mode === "freeform") state.mode = "freeform";
       if (planFirst) state.planFirst = true;
+      // Lead and helpers: the request's own word, else the project's setting; "auto" is left out of the state.
+      const teamMode = o.team ?? set?.team ?? DEFAULT_PROJECT_SETTINGS.team;
+      if (teamMode !== "auto") state.teamMode = teamMode;
+      if (o.projects?.length) state.teamRepos = [...new Set(o.projects)].filter((id) => id !== job.projectId).slice(0, REPOS_MAX);
       await this.store.casJob(job.id, { agentEpoch: job.agentEpoch }, {
         agent: true, checkpoint: { ...job.checkpoint, agent: state as unknown as Record<string, unknown> },
       });
@@ -370,6 +461,15 @@ export class AgentOrchestrator {
           checkpoint: { ...cur.checkpoint, agent: state as unknown as Record<string, unknown> }, agentHolder: null, agentExpiresAt: null,
         });
         if (!next) throw new LostClaim();
+        // A helper that needs the person (a question, a yes, more money) is something its lead shows; the lead looks again.
+        if (state.part?.parentId) this.track(this.wakeParent(state.part.parentId));
+      },
+      rest: async (state, ms) => {
+        const cur = await live();
+        const next = await this.store.casJob(jobId, { agentEpoch: epoch, states: WRITABLE }, {
+          checkpoint: { ...cur.checkpoint, agent: state as unknown as Record<string, unknown> }, agentHolder: null, agentExpiresAt: this.wakes.delete(jobId) ? this.now() : this.now() + ms,
+        });
+        if (!next) throw new LostClaim();
       },
     };
   }
@@ -435,9 +535,10 @@ export class AgentOrchestrator {
   /** Waits until no loop is running on this server (and none is about to start). */
   async idle(): Promise<void> {
     for (;;) {
+      if (this.settling.size) await Promise.allSettled([...this.settling]);
       if (this.polling) await this.polling.catch(() => 0);
       const running = [...this.active.values()];
-      if (!running.length && !this.polling) return;
+      if (!running.length && !this.polling && !this.settling.size) return;
       await Promise.allSettled(running.map((a) => a.done));
       if (!this.active.size && !this.polling) return;
     }
@@ -660,7 +761,10 @@ export class AgentOrchestrator {
     const state = stateOf(job.checkpoint);
     if (state && job.state === "waiting_for_you" && job.waitingOn === "budget") {
       state.waiting = undefined;
-      return stripAgent(await this.resume(job, state, "budget"));
+      const resumed = await this.resume(job, state, "budget");
+      // A helper that goes on is something its lead, parked for the money of a part, wants to see.
+      if (state.part?.parentId) await this.unparkLead(state.part.parentId);
+      return stripAgent(resumed);
     }
     // Not waiting for money: it is on the books for the next time it asks, and nothing needs waking.
     return stripAgent(job);
@@ -706,19 +810,19 @@ export class AgentOrchestrator {
   // ------------------------------------------------------------ settings
 
   /** How the project's jobs are worked, as the person set it: guided with no plan-first until they say. The owner's only. */
-  async settings(userId: string, projectId: string): Promise<{ mode: JobMode; planFirst: boolean }> {
+  async settings(userId: string, projectId: string): Promise<{ mode: JobMode; planFirst: boolean; team: TeamMode }> {
     const project = await this.deps.projects.store.getProject(userId, projectId);
     if (!project) throw new ConnectorError("not_found", "No such project");
     const set = await this.deps.settings?.get(project.id);
-    return { mode: set?.mode ?? DEFAULT_PROJECT_SETTINGS.mode, planFirst: set?.planFirst ?? DEFAULT_PROJECT_SETTINGS.planFirst };
+    return { mode: set?.mode ?? DEFAULT_PROJECT_SETTINGS.mode, planFirst: set?.planFirst ?? DEFAULT_PROJECT_SETTINGS.planFirst, team: set?.team ?? DEFAULT_PROJECT_SETTINGS.team };
   }
 
   /** Changes what the person set (each field optional), and answers how the project's jobs are worked now. */
-  async setSettings(userId: string, projectId: string, body: unknown): Promise<{ mode: JobMode; planFirst: boolean }> {
+  async setSettings(userId: string, projectId: string, body: unknown): Promise<{ mode: JobMode; planFirst: boolean; team: TeamMode }> {
     const patch = readSettingsPatch(body);
     const cur = await this.settings(userId, projectId);
     if (!this.deps.settings) throw new ConnectorError("settings_off", "This server does not keep project settings.");
-    const next = { mode: patch.mode ?? cur.mode, planFirst: patch.planFirst ?? cur.planFirst };
+    const next = { mode: patch.mode ?? cur.mode, planFirst: patch.planFirst ?? cur.planFirst, team: patch.team ?? cur.team };
     await this.deps.settings.put({ projectId, userId, ...next, updatedAt: this.now() });
     return next;
   }
@@ -750,6 +854,7 @@ export class AgentOrchestrator {
   > {
     if (typeof toStep !== "number" || !Number.isInteger(toStep) || toStep < 0 || toStep > 100_000) throw new ConnectorError("bad_request", "toStep is the number of a step: 0 for before any work.");
     const { job, state } = await this.mine(userId, jobId);
+    if (state.team || state.part) throw new ConnectorError("cannot_rewind", "A job that leads a team, or is a helper's, cannot be rewound: its parts are on their own branches. Stop a part, or run it again, instead.");
     const rewinds = this.deps.rewind;
     if (!rewinds) throw new ConnectorError("rewind_off", "This job keeps no rewind points.");
     const point = toStep === 0 ? { step: 0, at: this.now(), note: "Before any work.", staged: [], summary: "", digests: [] } : await rewinds.get(job.id, toStep);
@@ -838,6 +943,109 @@ export class AgentOrchestrator {
     await this.store.casJob(job.id, { agentEpoch: fenced.agentEpoch }, { checkpoint: { ...fenced.checkpoint, agent: state as unknown as Record<string, unknown> } });
     if (!isEnded(fenced.state)) await this.jobs.cancelJob(job.id, why);
     await this.remote?.wake(job.id, "stop");
+  }
+
+  // ------------------------------------------------------ lead and helpers
+
+  /** The other projects a request names, checked: each is the person's own, and none is the job's. At most REPOS_MAX. Throws `not_found` for one that is not theirs. */
+  async teamProjects(userId: string, primaryId: string, raw: unknown): Promise<string[]> {
+    if (raw === undefined) return [];
+    if (!Array.isArray(raw) || raw.length > REPOS_MAX || raw.some((x) => typeof x !== "string" || !x)) throw new ConnectorError("bad_request", `projects is a list of at most ${REPOS_MAX} of your projects' ids.`);
+    const ids = [...new Set(raw as string[])].filter((id) => id !== primaryId);
+    for (const id of ids) {
+      if (!(await this.deps.projects.store.getProject(userId, id))) throw new ConnectorError("not_found", "No such project");
+    }
+    return ids;
+  }
+
+  /** A lead's team: its parts and where each stands, with what each has cost so far (read from the helpers' jobs now, not from the lead's last save). The owner's only. */
+  async team(userId: string, jobId: string): Promise<{ job: { id: string; state: JobState; budgetPaise: number; spentPaise: number }; team: TeamView; children: Array<{ part: number; jobId: string; state: JobState; waitingOn: string | null; reason: string; spentPaise: number; budgetPaise: number }> }> {
+    const { job, state } = await this.mine(userId, jobId);
+    if (!state.team) throw new ConnectorError("not_found", "That job is not leading a team.");
+    const children: Array<{ part: number; jobId: string; state: JobState; waitingOn: string | null; reason: string; spentPaise: number; budgetPaise: number }> = [];
+    const parts = [];
+    for (const p of state.team.parts) {
+      let spent = 0;
+      for (const id of p.jobIds) {
+        const c = await this.store.getJobById(id);
+        if (!c) continue;
+        spent += c.spentPaise;
+        children.push({ part: p.id, jobId: c.id, state: c.state, waitingOn: c.waitingOn, reason: c.reason, spentPaise: c.spentPaise, budgetPaise: c.budgetPaise });
+      }
+      parts.push({ ...p, spentPaise: p.jobIds.length ? spent : p.spentPaise });
+    }
+    return {
+      job: { id: job.id, state: job.state, budgetPaise: job.budgetPaise, spentPaise: job.spentPaise },
+      team: viewOfTeam({ ...state.team, parts }, job), children,
+    };
+  }
+
+  /**
+   * The person's word to a lead about one part: STOP it (its helper is stopped now, and the lead leaves it out), or run it again (RERUN: a part that failed, was stopped or ran
+   * out of money; `addPaise` gives it more, and adds the same to the lead's budget). The lead is the only one that writes its state, so the word is left in its checkpoint
+   * and the lead is woken to read it; a lead that is parked for the money of a part goes on. The owner's only.
+   */
+  async teamCommand(userId: string, jobId: string, body: unknown): Promise<{ queued: true; part: PartView; job: CodeJob }> {
+    const b = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>;
+    const op = b.op;
+    const partId = b.part;
+    if (op !== "stop" && op !== "rerun") throw new ConnectorError("bad_request", 'op is "stop" or "rerun".');
+    if (typeof partId !== "number" || !Number.isInteger(partId) || partId < 1) throw new ConnectorError("bad_request", "part is the number of a part (1 or more).");
+    const addPaise = b.addPaise;
+    if (addPaise !== undefined && (typeof addPaise !== "number" || !Number.isInteger(addPaise) || addPaise < 1 || addPaise > PAISE_MAX)) throw new ConnectorError("bad_request", `addPaise is a whole number of paise, 1 to ${PAISE_MAX}.`);
+    if (op === "stop" && addPaise !== undefined) throw new ConnectorError("bad_request", "addPaise is for running a part again.");
+    let { job, state } = await this.mine(userId, jobId);
+    if (!state.team) throw new ConnectorError("not_found", "That job is not leading a team.");
+    if (isEnded(job.state)) throw new ConnectorError("job_over", "That job is over.");
+    const part = state.team.parts.find((p) => p.id === partId);
+    if (!part) throw new ConnectorError("not_found", `There is no part ${partId}.`);
+    if (op === "stop" && ["merged", "failed", "stopped", "skipped"].includes(part.status)) throw new ConnectorError("part_over", `Part ${partId} is ${part.status}, so there is nothing to stop.`);
+    if (op === "rerun" && !["failed", "stopped", "exhausted", "skipped"].includes(part.status)) throw new ConnectorError("part_not_over", `Part ${partId} is ${part.status}: only a part that failed, was stopped or ran out of money can be run again.`);
+
+    const cmd: TeamCommand = { id: randomUUID(), op, part: partId, ...(typeof addPaise === "number" ? { addPaise } : {}), at: this.now() };
+    // The helper of a part to be stopped is stopped now, not at the lead's next look.
+    if (op === "stop" && part.jobId) {
+      this.active.get(part.jobId)?.abort.abort();
+      await this.jobs.cancelJob(part.jobId, "You stopped this part.").catch(() => undefined);
+    }
+    // More money: the lead's budget grows by it, and so does the helper's, if its job is parked for the money.
+    if (typeof addPaise === "number") {
+      await this.addBudgetQuietly(job.id, addPaise);
+      if (part.status === "exhausted" && part.jobId) await this.addBudget(userId, part.jobId, addPaise).catch(() => undefined);
+    }
+    await this.leaveCommand(job.id, cmd);
+    ({ job, state } = await this.mine(userId, jobId));
+    // A lead parked for the money of a part goes on; any other is woken to read it.
+    if (job.state === "waiting_for_you" && job.waitingOn === "budget" && state.waiting?.kind === "budget") {
+      state.waiting = undefined;
+      job = await this.resume(job, state, "budget");
+    } else if (this.remote) await this.remote.wake(job.id, "wake");
+    else if (this.deps.team) await this.deps.team.wake(job.id);
+    return { queued: true, part: viewOfPart(part), job: stripAgent(job) };
+  }
+
+  /** Leaves a command in the lead's checkpoint, and checks it is still there after (the lead's own save writes the whole checkpoint, so a write can lose to it: it is made again). */
+  private async leaveCommand(jobId: string, cmd: TeamCommand): Promise<void> {
+    for (let i = 0; i < 6; i += 1) {
+      const cur = await this.store.getJobById(jobId);
+      if (!cur) return;
+      const have = cur.checkpoint.teamCommands ?? [];
+      if (!have.some((c) => c.id === cmd.id)) {
+        await this.store.casJob(jobId, { agentEpoch: cur.agentEpoch }, { checkpoint: { ...cur.checkpoint, teamCommands: [...have, cmd].slice(-TEAM_COMMANDS_MAX) } });
+      }
+      const after = await this.store.getJobById(jobId);
+      if (after?.checkpoint.teamCommands?.some((c) => c.id === cmd.id)) return;
+    }
+  }
+
+  /** The job's budget goes up by `addPaise`, and nothing else happens. */
+  private async addBudgetQuietly(jobId: string, addPaise: number): Promise<void> {
+    for (let i = 0; i < 8; i += 1) {
+      const cur = await this.store.getJobById(jobId);
+      if (!cur) return;
+      const budget = Math.min(PAISE_MAX, cur.budgetPaise + addPaise);
+      if (await this.store.casJob(jobId, { budgetPaise: cur.budgetPaise }, { budgetPaise: budget })) return;
+    }
   }
 
   /** The job's work log, in order. */

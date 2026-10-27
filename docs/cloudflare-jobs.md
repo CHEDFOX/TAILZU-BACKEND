@@ -46,7 +46,7 @@ On top of that the Worker has a **live session** (section 10): a copy of a job's
                                                                 ... commit, PR, report ► job_done (notify again) ► instance ends
 ```
 
-**What travels is only ids.** Both directions carry a job id and a kind (`answer`, `approve`, `deny`, `budget`, `stop`, `runner`). What the person said, the plan, the staged files and the work log are in Supabase, where they always were, so a message that is lost, late, repeated or replayed can at worst make the Worker look at a job that has not changed.
+**What travels is only ids.** Both directions carry a job id and a kind (`answer`, `approve`, `deny`, `budget`, `stop`, `runner`, `team`). What the person said, the plan, the staged files and the work log are in Supabase, where they always were, so a message that is lost, late, repeated or replayed can at worst make the Worker look at a job that has not changed.
 
 ## 2. How a job runs on the Worker
 
@@ -57,6 +57,7 @@ On top of that the Worker has a **live session** (section 10): a copy of a job's
 * **Waits are Workflow waits, not polling.**
   * the person (a question, an approval, more money): `step.waitForEvent("wake", {timeout: PERSON_WAIT})`, 7 days by default. `waitForEvent` **throws** on a timeout, so it is caught and the job is ended with a report that says nobody came; what was committed stays on the branch.
   * a step out on a runner (GitHub's computers): `waitForEvent("wake")` for 10 s, then 30, then 60. The VPS wakes it the moment the runner reports (`onStepResult`); otherwise the time is simply up and the step is looked at.
+  * a lead's helpers (`docs/code-team.md`): `waitForEvent("wake")` for the time the advance gave (20 seconds, or five minutes when only the person can move things on). A helper is a job with a Workflow of its own, started with `startAgentJob` (the same instance-id-is-the-job-id rule, so starting twice is one helper); when it ends or needs the person, its lead's Workflow gets a `wake` event of kind `team` (`teamPorts` in `jobs/src/world.ts`; the VPS can send the same through `/v1/event`). An event sent before the lead reaches its wait is kept; a timeout is not an error, the lead just looks at its helpers again.
   * a claim someone else holds, or a failure being backed off from: `step.sleep` for the time given.
 * **The claim is the second guard.** The Workflow engine runs a step to completion and retries it on failure; the job's own claim (`agent_holder`, `agent_epoch`, `agent_expires_at`, `docs/code-agent.md` section 2) makes sure that even a retried or doubled step runs nothing twice: every write the loop makes carries the epoch, so a step that was cut off cannot write after its replacement has begun. The holder name includes the step's attempt number.
 * **Checkpoints stay in Supabase**, as before: after every model turn and every tool call. A Workflow step's result is a few bytes (the 1 MiB limit per step is nowhere near).

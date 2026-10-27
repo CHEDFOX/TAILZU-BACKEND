@@ -34,6 +34,7 @@ import { makeWebTools, type WebToolDeps, type WebTools } from "../webTools.js";
 import { WorkLog, type ModelCtx } from "../work/index.js";
 import type { AgentDeps } from "./deps.js";
 import type { RunControl, RunOutcome, RunSpec } from "./runner.js";
+import { OwnedPaths, type PathGuard } from "../team/guard.js";
 import { Tools } from "./tools.js";
 import type { AgentState, WaitFor } from "./types.js";
 
@@ -68,6 +69,17 @@ export class EndJob extends Error {
   }
 }
 
+/**
+ * The lead has nothing to do until a helper changes: it rests. The loop saves the state, lets the claim go with the time to rest on it (so no server takes the lead
+ * up again before then, and the lead holds no place among the jobs a server drives), and a helper that ends or parks wakes it at once (code/team, docs/code-team.md).
+ */
+export class TeamWait extends Error {
+  constructor(readonly ms: number) {
+    super("the lead is waiting for its helpers");
+    this.name = "TeamWait";
+  }
+}
+
 /** What the loop writes through: the orchestrator's claim on the job (orchestrator.ts). */
 export interface Claim {
   readonly epoch: number;
@@ -79,6 +91,8 @@ export interface Claim {
   renew(): Promise<void>;
   /** Saves the state, puts the job to waiting_for_you for `waitingOn`, and lets the claim go. */
   park(state: AgentState, p: { waitingOn: WaitingOn; reason: string }): Promise<void>;
+  /** Saves the state and lets the claim go with `ms` on it: nobody takes the job up before then, unless a helper wakes it. A lead resting while its helpers work. */
+  rest?(state: AgentState, ms: number): Promise<void>;
 }
 
 /** The phase did a slice of its work and the driver (loop.ts advanceLoop) should stop here: the state is saved, and the next advance goes on. */
@@ -150,9 +164,23 @@ export class Run {
       runStep: (tag, spec) => this.runStep(tag, spec), web: this.web, ...(d.fetchFn ? { fetchFn: d.fetchFn } : {}), closedSource: this.project.private,
       now: d.now, signal: this.signal, ...(d.findResources ? { findResources: d.findResources } : {}),
       ...(files ? { files } : {}), ...(live?.progress ? { progress: (ev) => this.progress(ev) } : {}),
+      owns: () => this.guard(),
     });
     const seen = (await this.log.entries().catch(() => [])).flatMap((e) => (typeof e.data?.callId === "string" ? [`${e.data.callId}:${e.kind}`] : []));
     this.tools.seedLogged(seen);
+  }
+
+  /**
+   * Which files this job may change. A helper: the ones its part owns. A lead doing the shared contracts (part 0): those. Every other job, and a lead at any other
+   * time (merging a conflict, fixing what the full check found): all of them. Asked at every edit, because a lead's part changes as the job goes on.
+   */
+  guard(): PathGuard | undefined {
+    const s = this.state;
+    if (s.part && !s.part.repo) return new OwnedPaths({ label: `part ${s.part.id} (${s.part.title})`, globs: s.part.ownedPaths, refused: s.part.refused });
+    const t = s.team;
+    const p0 = t?.stage === "contracts" ? t.parts.find((x) => x.id === 0) : undefined;
+    if (p0) return new OwnedPaths({ label: "part 0, the shared contracts", globs: p0.ownedPaths, refused: [], lead: true });
+    return undefined;
   }
 
   // ------------------------------------------------------- the live session

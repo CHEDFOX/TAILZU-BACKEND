@@ -62,12 +62,21 @@ export function prTitle(state: AgentState): string {
   return cut(t.charAt(0).toUpperCase() + t.slice(1) || "Tailzu change", 70);
 }
 
-export function prBody(state: AgentState, o: { worklog: string; jobId: string; spentPaise: number; design?: readonly string[] }): string {
+/** A team's part of the pull request (code/team/report.ts): why there is a team, the parts table, what the reviewers found, what is open, and the other projects' pull requests. */
+export interface PrTeam { reason: string; table: string; review: readonly string[]; notes: readonly string[]; links: readonly string[] }
+
+export function prBody(state: AgentState, o: { worklog: string; jobId: string; spentPaise: number; design?: readonly string[]; team?: PrTeam }): string {
   const out: string[] = [];
   out.push("## What this does", "", safe(state.work.doneSummary ?? state.task, 1500), "");
   if (state.plan?.steps.length) {
     out.push("## The plan", "", ...state.plan.steps.slice(0, 15).map((s) => `${s.n}. ${safe(s.do, 220)}${s.files.length ? ` (${s.files.slice(0, 6).map((f) => `\`${f.path}\``).join(", ")})` : ""}`), "");
     if (state.plan.risk !== "low") out.push(`Risk: **${state.plan.risk}**${state.plan.riskReasons.length ? `: ${state.plan.riskReasons.slice(0, 3).map((r) => safe(r, 120)).join("; ")}` : ""}.`, "");
+  }
+  if (o.team) {
+    out.push("## The team", "", safe(o.team.reason, 300), "", "A lead split this into parts with their own files, helpers built them in parallel, and a model of another family reviewed each before the lead merged it.", "", o.team.table, "");
+    if (o.team.review.length) out.push("### What the reviewers found", "", ...o.team.review, "");
+    if (o.team.notes.length) out.push("### Open", "", ...o.team.notes.map((n) => `- ${n}`), "");
+    if (o.team.links.length) out.push("### Related pull requests", "", ...o.team.links, "");
   }
   out.push("## Checks", "");
   const v = state.verify;
@@ -100,13 +109,17 @@ export interface ReportInput {
   continueWithPaise?: number;
   /** The design check, in lines (design.ts designLines), for a job built from an approved design. */
   design?: readonly string[];
+  /** The team that built it, in lines (code/team/report.ts teamLines), for a lead. */
+  team?: readonly string[];
 }
 
 export function reportText(i: ReportInput): string {
   const s = i.state;
   const out: string[] = [];
   const task = safe(s.task, 100);
-  const files = s.commit?.files?.length ? s.commit.files : s.work.staged.map((f) => `${f.path} (${f.action === "delete" ? "deleted" : f.action === "create" ? "added" : "changed"})`);
+  // A lead's work is its helpers' parts, merged: the files are theirs (code/team).
+  const files = s.team && !s.work.staged.length ? (s.committedPaths ?? []).map((p) => `${p} (changed)`)
+    : s.commit?.files?.length ? s.commit.files : s.work.staged.map((f) => `${f.path} (${f.action === "delete" ? "deleted" : f.action === "create" ? "added" : "changed"})`);
   const headline = {
     done: `Done: ${task}`, failed: `I stopped: ${task}`, budget: `I ran out of budget: ${task}`, answer: `Here is the answer: ${task}`,
   }[i.outcome];
@@ -131,6 +144,7 @@ export function reportText(i: ReportInput): string {
   }
   if (s.baseline?.status === "unknown" && s.baseline.note) out.push(`Note: ${safe(s.baseline.note, 300)}`, "");
   if (i.design?.length) out.push("The design", ...i.design.map((l) => (l.startsWith("- ") ? l : safe(l, 600))), "");
+  if (i.team?.length) out.push("The team", ...i.team.map((l) => (l.startsWith("- ") ? l : safe(l, 600))), "");
   if (s.findings.length) out.push("Findings", ...list(s.findings.map((f) => `${f.severity}: ${f.path}${f.line ? `:${f.line}` : ""} ${cut(f.text, 160)}`), 10), "");
   for (const n of s.notes.slice(0, 6)) out.push(`Note: ${safe(n, 300)}`);
   if (s.notes.length) out.push("");

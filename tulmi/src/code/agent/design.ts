@@ -131,7 +131,11 @@ const fresh = (viewports: DesignViewport[]): DesignState => ({ stage: "session",
 
 /** Whether the design round is still to be done for this job. */
 export function designDue(r: Run): boolean {
-  return !!r.state.spec && r.state.design?.stage !== "done" && getConfig().CODE_DESIGN_CHECK;
+  const s = r.state;
+  // A lead looks at the design once, when everything is merged and checked together; a helper never (the lead does, for the whole).
+  if (s.team && s.team.stage !== "final") return false;
+  if (s.part && !s.part.repo) return false;
+  return !!s.spec && s.design?.stage !== "done" && getConfig().CODE_DESIGN_CHECK;
 }
 
 /** The check is over: say why if it did not run, close the preview, and go on to commit. Never throws for the preview. */

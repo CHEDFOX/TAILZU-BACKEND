@@ -196,6 +196,19 @@ describe("a question about a project", () => {
     expect((await a.stateNow(plain.job.id)).mode).toBeUndefined();
   });
 
+  it("hands the person's word for a team to the job: asked for or refused", async () => {
+    const { a, code } = await projectRig();
+    const h = defaultHandlers({ code: code as never, jobs: a.jobs, agent: a.orch });
+    const c = inProject({ projectId: a.project.id });
+    const on = await call("use a team to change the slug helper and its callers", c);
+    expect(on.decision).toMatchObject({ intent: "code_task", team: "on" });
+    expect((await a.stateNow((await h.codeJob({ ...on, maxPaise: 1200 })).job.id)).teamMode).toBe("on");
+    const off = await call("change the slug helper, no team", c);
+    expect((await a.stateNow((await h.codeJob({ ...off, maxPaise: 1200 })).job.id)).teamMode).toBe("off");
+    const plain = await call("change the button color to red", c);
+    expect((await a.stateNow((await h.codeJob({ ...plain, maxPaise: 1200 })).job.id)).teamMode).toBeUndefined();
+  });
+
   it("is a job of the person's own project only", async () => {
     const { a, code } = await projectRig();
     const h = defaultHandlers({ code: code as never, jobs: a.jobs, agent: a.orch });

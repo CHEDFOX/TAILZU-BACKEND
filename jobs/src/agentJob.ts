@@ -15,6 +15,8 @@
  *                       caught) and the job is ended with a report
  *                   a step out on a runner     waitForEvent("wake") for the length the advance gave (10 s, then 30, then
  *                       60): the VPS posts /v1/event when the runner reports, or the time is up and the step is looked at
+ *                   a lead's helpers (team)   waitForEvent("wake") for the length the advance gave: a helper that ends or needs the person sends the lead
+ *                       a "wake" event (tulmi's orchestrator, through the port in world.ts), or the time is up and the helpers are looked at again
  *                   a claim held / a failure backed off from     step.sleep for the length given
  *
  * THE SECOND GUARD. The Workflow engine makes a step run to completion once, and retries it if it fails. The job's own claim
@@ -88,6 +90,10 @@ export class AgentJob extends WorkflowEntrypoint<Env, AgentJobParams> {
           await step.do(`timeout-${n}`, SHORT_STEP, async () => (await getWorld(this.env)).agent.abandon(jobId, `Nobody replied for ${personWait}, so I stopped here. What was committed so far is on the branch; nothing else was changed. Start the task again if you still want it.`));
           return { ended: "timeout", advances: n + 1 };
         }
+      } else if (a.waitingOn === "team") {
+        try {
+          await step.waitForEvent(`wait-${n}`, { type: WAKE_EVENT, timeout: clampMs(a.waitMs, 20_000) });
+        } catch { /* time is up: look at the helpers again */ }
       } else if (a.waitingOn === "runner") {
         try {
           // The VPS posts an event when a runner reports; otherwise the step is looked at again when the time is up.

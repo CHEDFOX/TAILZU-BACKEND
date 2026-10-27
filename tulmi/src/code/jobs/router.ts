@@ -95,7 +95,7 @@ import { TooManySteps } from "./store.js";
 import {
   AGENT_WAITS, CHANGES_MAX, COMMANDS_MAX, COMMAND_CHARS, DEVICE_ONLINE_MS, ESTIMATE_MAX_MINUTES, LEASE_MS, LIVE_JOBS_MAX,
   MAX_REASSIGNMENTS, OVERLAY_MAX_BYTES, OVERLAY_MAX_FILES, PAISE_MAX, STEPS_MAX, TASK_KEEP, TIMEOUT_DEFAULT_SEC, TIMEOUT_MAX_SEC,
-  brief, isEnded, monthKey,
+  brief, isEnded, isHelperJob, monthKey,
   type CodeJob, type ComputeKind, type ComputeSettings, type ComputeUsage, type JobState, type JobStep, type Notify, type NotifyData,
   type NotifyKind, type OverlayFile, type Placement, type WaitingOn,
 } from "./types.js";
@@ -360,6 +360,8 @@ export class JobRouter {
   private readonly held = new Map<string, Pending>();
   private readonly freeMinutes: number;
   private readonly clock: () => number;
+  /** Who is told when a job ends (onEnded): the agent's lead and helpers. */
+  private readonly endListeners: Array<(job: CodeJob) => void> = [];
 
   constructor(private readonly o: JobRouterOptions) {
     this.store = o.store;
@@ -371,6 +373,25 @@ export class JobRouter {
   }
 
   now(): number { return this.clock(); }
+
+  /**
+   * Calls `fn` when a job ends (done, failed or cancelled), however it ended. It is called after the job is written, outside the router's lock, and what it throws is
+   * its own: the agent's lead and helpers use it (a helper that ends wakes its lead; a lead that ends stops its helpers).
+   */
+  onEnded(fn: (job: CodeJob) => void): void { this.endListeners.push(fn); }
+
+  /**
+   * Where a lead's helpers could run now, in numbers (code/team/budget.ts parallelCap): the person's PCs that could take a step, whether GitHub's free computers can,
+   * how many of their minutes are left this month, and whether there is paid compute by the person's rule.
+   */
+  async capacity(job: CodeJob): Promise<{ desktops: number; githubEnabled: boolean; githubMinutesLeft: number; paidAvailable: boolean }> {
+    const step: JobStep = {
+      jobId: job.id, idx: 0, kind: "exec", commands: [], timeoutSec: 600, estimateMinutes: 5, status: "pending", placement: "none", epoch: 0, startedAt: null, finishedAt: null,
+      exitCode: null, outputTail: "", minutes: 0, overlay: [], discard: true, capture: false, captured: [], declined: [],
+    };
+    const f = await this.facts(job, step, new Set());
+    return { desktops: f.desktops, githubEnabled: f.githubEnabled, githubMinutesLeft: f.githubMinutesLeft, paidAvailable: f.paidAvailable };
+  }
 
   // -------------------------------------------------------- the brain's API
 
@@ -1242,8 +1263,10 @@ export class JobRouter {
     if (step) await this.store.updateStep(job.id, step.idx, { status: "cancelled", finishedAt: this.now() });
     await this.dropCaptured(job.id);
     if (from !== "none") await this.provider(from as ComputeKind)?.cancel(job).catch(() => undefined);
-    if (state === "done") this.tell(next, "job_done", {});
+    // A helper's "done" is the lead's to say (one push for the whole team); a failure is worth saying.
+    if (state === "done" && !isHelperJob(next)) this.tell(next, "job_done", {});
     if (state === "failed") this.tell(next, "job_failed", { reason });
+    for (const fn of this.endListeners) { try { fn(next); } catch { /* the listener's own */ } }
     return next;
   }
 

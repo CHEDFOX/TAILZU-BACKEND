@@ -550,6 +550,21 @@ describe("talking about code, and how a task is worked (docs/code-chat.md, docs/
     expect((await ruled("ok, change it", inProject({ recent: [{ said: "fix the login bug", did: "code_task" }] }))).handoff).toBeUndefined();
   });
 
+  it("takes the person's word for a team: asked for in words, refused in words, and otherwise left to the plan", async () => {
+    for (const m of ["refactor the settings screens with a team", "add search to every list in parallel with helpers", "build the export, split it up between helpers", "lead mode: rewrite the settings screens"]) {
+      expect(await ruled(m, inProject()), m).toMatchObject({ intent: "code_task", team: "on" });
+    }
+    for (const m of ["add a logout button, no team please", "rename the api folder, do it yourself", "update the readme without helpers", "fix the typo in the header, one job only"]) {
+      expect(await ruled(m, inProject()), m).toMatchObject({ intent: "code_task", team: "off" });
+    }
+    for (const m of ["change the button color to red", "add a logout button", "refactor the auth module into smaller functions"]) {
+      expect((await ruled(m, inProject())).team, m).toBeUndefined();
+    }
+    // Refusing wins over asking; and a question about the code is never a team's job.
+    expect((await ruled("add a logout button, use a team, no team", inProject())).team).toBe("off");
+    expect((await ruled("should we use a team of helpers for this?", inProject())).team).toBeUndefined();
+  });
+
   it("works an open-ended task free-form: debugging, investigating, finding out why, and a flaky or intermittent failure", async () => {
     for (const m of ["debug why the checkout sometimes fails and fix it", "debug the intermittent timeout in the upload job and fix it", "figure out why the cart is empty after refresh and fix it", "track down the flaky login test and fix it"]) {
       const d = await ruled(m, inProject());

@@ -103,6 +103,14 @@ export interface Checkpoint {
   notes: string;
   /** The agent loop's own state (src/code/agent/types.ts AgentState), opaque here. Absent for a job nobody's agent drives. */
   agent?: Record<string, unknown>;
+  /** What the person told a LEAD (stop a part, run it again): left here because the lead is the only one that writes its state (code/team/types.ts TeamCommand). */
+  teamCommands?: Array<{ id: string; op: "stop" | "rerun"; part: number; addPaise?: number; at: number }>;
+}
+
+/** The job that a helper of a team is (code/team): it builds a part on its own branch, and the lead says how it went. Its own push for "done" is not sent. */
+export function isHelperJob(job: Pick<CodeJob, "checkpoint">): boolean {
+  const part = job.checkpoint.agent?.part as { repo?: boolean } | undefined;
+  return !!part && typeof part === "object" && part.repo !== true;
 }
 
 export const NO_CHECKPOINT: Readonly<Checkpoint> = { stepIndex: -1, headSha: "", notes: "" };

@@ -40,6 +40,8 @@ const { rows, totals, NEW_ROLES } = await import("../scripts/prompt-sizes.js");
 const { DecideReply } = await import("../src/front/decide.js");
 const { ReviewVerdict } = await import("../src/code/prcare/review.js");
 const { ConflictVerdict } = await import("../src/code/agent/merge.js");
+const { SplitReply } = await import("../src/code/team/split.js");
+const { PartReviewVerdict } = await import("../src/code/team/review.js");
 const { PlanSchema: FrontPlanReply } = await import("../src/front/handlers.js");
 const { INTENTS: FRONT_INTENTS, LENGTHS: FRONT_LENGTHS, VISUAL_KINDS } = await import("../src/front/types.js");
 
@@ -272,6 +274,8 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   front_look: 646, // 587 measured
   care_review: 1565, // 1422 measured
   care_conflict: 767, // 697 measured
+  team_split: 1956, // 1778 measured
+  team_review: 1406, // 1278 measured
   ask_planner: 4904, // 4458 measured
   ask_vision: 4519, // 4108 measured
   writer: 4322, // 3929 measured
@@ -343,6 +347,8 @@ describe("the contracts say what the parsers read", () => {
     ["front_plan", FrontPlanReply],
     ["care_review", ReviewVerdict],
     ["care_conflict", ConflictVerdict],
+    ["team_split", SplitReply],
+    ["team_review", PartReviewVerdict],
   ];
 
   it("name every field of the schema the answer is read with", () => {
