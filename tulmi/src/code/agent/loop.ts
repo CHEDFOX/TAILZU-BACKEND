@@ -1,7 +1,7 @@
 /**
  * THE AGENT LOOP: THE PHASES IN ORDER, AND THE FOUR WAYS A RUN COMES TO AN END.
  *
- *   prepare -> (new_project) -> baseline -> locate -> plan -> work -> verify -> commit -> pr -> report
+ *   prepare -> (new_project) -> baseline -> locate -> plan -> work -> verify -> (design) -> commit -> pr -> report
  *
  * runLoop drives one job from wherever its checkpoint says it is (phases.ts), and returns how the run
  * ended:
@@ -34,13 +34,14 @@ import { RunPending } from "./runner.js";
 import {
   baseline, commitPhase, commitStaged, headlineOf, locatePhase, newProjectPhase, planPhase, prPhase, prepare, reportPhase, runVerify, verifyPhase, workPhase,
 } from "./phases.js";
+import { designPhase } from "./design.js";
 import { reportText } from "./report.js";
 import { rupees, topUpFor, type Phase } from "./types.js";
 
 export type LoopEnd = "finished" | "parked" | "lost" | "stopped";
 
 const PHASES: Record<Exclude<Phase, "done">, (r: Run) => Promise<void>> = {
-  prepare, new_project: newProjectPhase, baseline, locate: locatePhase, plan: planPhase, work: workPhase, verify: verifyPhase, commit: commitPhase, pr: prPhase, report: reportPhase,
+  prepare, new_project: newProjectPhase, baseline, locate: locatePhase, plan: planPhase, work: workPhase, verify: verifyPhase, design: designPhase, commit: commitPhase, pr: prPhase, report: reportPhase,
 };
 
 const isBudget = (e: unknown): boolean => e instanceof BudgetStop || e instanceof BudgetExceeded || (e as { code?: unknown } | null)?.code === "budget_exceeded";

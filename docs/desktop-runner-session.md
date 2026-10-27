@@ -120,6 +120,13 @@ Connect to `session.url` with `?ticket=<session.ticket>`, within `expiresAt`. Th
 { "t": "error", "id": "<exec or search id>", "code": "busy", "message": "…" }                      // id optional
 { "t": "pong", "at": 123 }
 { "t": "bye", "reason": "…" }                                                                         // the runner is leaving; the room closes the session
+// the preview (below): only after the room sent `preview`
+{ "t": "preview", "id": "p-1", "ok": true, "port": 5173, "ms": 6120 }                                   // the dev server answers on 127.0.0.1:port
+{ "t": "preview", "id": "p-1", "ok": false, "error": "…" }                                              // it could not be started (≤ 2,000 characters)
+{ "t": "preview-ended", "id": "p-1", "reason": "the dev server exited (1)" }                            // it went by itself, or an exec took the checkout
+{ "t": "res", "id": "h-7", "status": 200, "headers": [["content-type", "text/html"]] }                  // the head of a response to an `http`
+{ "t": "res-data", "id": "h-7", "data": "<base64>", "last": false }                                     // the body, pieces of ≤ 192 KB; `last: true` ends it
+{ "t": "res-error", "id": "h-7", "code": "unreachable", "message": "…" }                               // unreachable | timeout | too_large | bad_request | busy | failed
 ```
 
 ### Room to runner
@@ -132,6 +139,11 @@ Connect to `session.url` with `?ticket=<session.ticket>`, within `expiresAt`. Th
 { "t": "glob", "id": "g-4", "pattern": "src/**/*.test.ts" }
 { "t": "ping", "at": 123 }                                                  // answer with pong, same `at`
 { "t": "close", "reason": "idle", "message": "…" }                         // reasons: idle, cap, needs_you, job_end, superseded, expired, error
+// the preview (below)
+{ "t": "preview", "id": "p-1", "cmd": "npm run dev", "port": 5173, "prepare": "npm ci", "readySec": 90, "idleSec": 300, "overlay": [ … ] }
+{ "t": "http", "id": "h-7", "method": "GET", "path": "/src/main.tsx?t=1", "headers": [["accept", "*/*"]], "body": "<base64>" }
+{ "t": "http-cancel", "id": "h-7" }
+{ "t": "preview-stop", "reason": "design round" }
 ```
 
 Ids match `[A-Za-z0-9._:/@-]{1,200}`; give back the id you were sent. `exec` has 1 to 20 commands of at most 2,000 characters each, `timeoutSec` from 1 to 3,600, at most 200 overlay files.
@@ -148,6 +160,24 @@ One at a time. If an `exec` arrives while one runs, answer `{"t":"error","id":"<
 6. A command that leaves a process in the background must not hold the `exec` up: finish when the shell exits and its output has been read (give a short grace, then stop reading).
 
 `cancel` for the running id kills its process group and ends with `done` 130. A `cancel` for any other id does nothing.
+
+### The preview: the project's dev server, seen through the room
+
+The agent's design round (`docs/artifacts.md` section 11) starts the project's dev server on the runner and looks at it in a browser. The browser never reaches the runner: the Worker (`docs/cloudflare-jobs.md` section 11) passes each request to the runner as an `http` frame over this same socket, and the runner makes it on the loopback. A runner that does not understand `preview` just ignores the frame: the agent gives up waiting after 150 seconds, stops the preview, and the design round is skipped with a sentence ("the app's dev server did not answer in time"); nothing else about the session changes. (`run.mjs` of this repository understands it.)
+
+**`preview`** (`cmd` up to 2,000 characters, `readySec` 5 to 180, `idleSec` 5 to 3,600, at most 200 overlay files, `port` and `prepare` optional). Not while an `exec` runs (answer `{"t":"preview","ok":false,"error":"…"}`). Then:
+
+1. **Reset the checkout and lay the overlay**, exactly as for an `exec` (the dev server runs on the branch plus the staged edits). Any dev server already running is stopped first.
+2. **`prepare`** (the install) only if there is a `package.json` and no `node_modules`, with the same limits as a command (300 s), its output streamed as `out` frames with the preview's `id`.
+3. **Start `cmd`** in a login shell, in its own process group, with the environment of a command plus `PORT=<port>` (the given one, else a free one), `HOST=127.0.0.1`, `BROWSER=none` and colour off. Its output is streamed (`out`, redacted) until it answers.
+4. **Find its port**: the ports its output names as its own (`Local: http://localhost:5173/`, `listening on port 3000`; a line saying a port is in use is not counted), newest first, then the given `port`, then the one it was told. For each, ask `GET /` on `127.0.0.1` and then `::1` (a server told "localhost" may be on either); any status counts as an answer. Every 400 ms until `readySec`.
+5. Answer `{"t":"preview","ok":true,"port","ms"}`, or `ok: false` with a sentence and the last lines of what it printed (redacted): the server exited, or never answered.
+
+**`http`**: one request, several at once (the room allows 32). `path` is root-relative (starts with one `/`, no spaces, no backslash), `method` one a browser sends, `headers` the browser's own pairs, `body` base64 and at most 1 MB. The runner asks the dev server on the host that answered, with `Host: localhost:<port>` and `Accept-Encoding: identity` (so the bytes can be passed as they are), `agent: false`, 50 seconds at most. It answers `res` (the status, 100 to 599, and the header pairs: names are tokens, values without control characters) and then the body in `res-data` pieces of **at most 192 KB** (a frame is at most 2 MB, and base64 is a third bigger), `last: true` on the final one (an empty body is one empty piece). **At most 10 MB** in all: over it, stop the request and send `res-error` `too_large`. A refused connection is `unreachable`, a timeout `timeout`, a broken-off body `failed`, a bad path or method `bad_request`, a thirty-third request `busy`. A `res-error` may follow a `res` (the response broke off); the room settles the request once. `http-cancel` destroys the request.
+
+**Ending it.** `preview-stop` kills the dev server **and everything it started** (SIGTERM to the process group, SIGKILL after two seconds), answering `preview-ended` if there was one. An `exec` (the agent wants the checkout) stops it first and says `preview-ended` ("a command took the checkout"). The session's end stops it. If the dev server exits by itself, say `preview-ended`. While a preview is open, **the room's silence is waited for as long as `idleSec` plus a 90 s grace** (not the session's idle time), because requests are the room's, not commands.
+
+No WebSocket is passed through. A dev server's hot-reload socket cannot reach the browser, so the page is reloaded to see a change.
 
 ### What the runner does with `grep` and `glob`
 
@@ -185,6 +215,8 @@ The router places a session step like any other: this computer if it is online, 
 { "t": "out",    "id": "e-12", "data": "…", "at": … }                                // at most 2,000 characters at a time
 { "t": "cost",   "spentPaise": 14, "budgetPaise": 3000, "at": … }
 { "t": "session","state": "open", "kind": "desktop", "reason"?: "idle", "at": … }
+{ "t": "preview-ready", "url": "https://<token>.<preview domain>/", "at": … }              // the project's dev server is running; this address shows it (owner's socket only)
+{ "t": "preview-closed", "reason": "idle", "at": … }                                       // idle, expired, runner_gone, failed, replaced, superseded, session_*, or the agent's own
 { "t": "said",   "text": "…", "at": … }                                              // the person's own words, echoed
 { "t": "end",    "why": "finished", "at": … }                                        // the job is over; the room closes viewers with 1000 "over"
 ```
@@ -199,4 +231,5 @@ The router places a session step like any other: this computer if it is online, 
 3. On an `offer`: keep the lease with `progress`; for an ordinary step run it as before; for a `session`, make a git checkout and open the runner socket.
 4. In the session: reset, lay the overlay, run, stream redacted lines, `done`; `grep` / `glob` only when asked; leave on `close`.
 5. Report the step with `POST /v1/code/runner/result`, with the real minutes.
-6. Never run the string `tailzu:live-session`, never keep a write token on the machine for this, never send an unredacted line.
+6. To support the preview: handle `preview` / `http` / `http-cancel` / `preview-stop` as above (a desktop app that does not loses only the design check, after a wait of up to 150 seconds). Never pass a WebSocket upgrade, never forward an `http` to anything but `127.0.0.1` / `::1` on the port the dev server answered on, never a body past 1 MB or a response past 10 MB.
+7. Never run the string `tailzu:live-session`, never keep a write token on the machine for this, never send an unredacted line.

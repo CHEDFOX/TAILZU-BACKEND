@@ -741,6 +741,26 @@ const EnvSchema = z.object({
   CODE_SESSION_MAX_MIN: z.coerce.number().int().min(1).max(120).default(20),
   CODE_ACTIONS_MONTHLY_MIN: z.coerce.number().int().min(0).max(1_000_000).default(2000),
   /**
+   * THE PREVIEW AND THE DESIGN CHECK (docs/cloudflare-jobs.md "The preview", docs/artifacts.md section 11). A job built from an approved design
+   * (artifacts/build.ts) can run the project's own dev server on its runner, look at it, and compare it to the design.
+   *
+   *   CODE_PREVIEW_IDLE_SEC  a preview that gets no request for this long is closed (300). It counts as session activity only while it is used,
+   *                          and always inside CODE_SESSION_MAX_MIN
+   *   PREVIEW_DOMAIN         wildcard mode, on the Worker: the registrable domain whose subdomains are previews, `<token>.<PREVIEW_DOMAIN>`.
+   *                          A site of its own, never the app's or the API's (it runs the person's project)
+   *   PREVIEW_HOST           cookie mode, on the Worker: one dedicated host, `https://<PREVIEW_HOST>/p/<token>/`. Used when PREVIEW_DOMAIN is not set
+   *   CODE_DESIGN_CHECK      "false" skips the design round of the agent loop altogether (true)
+   *   ARTIFACT_SHOT_VIEWER_URL  the address of the viewer kept for screenshots: the same viewer deployed a second time with VIEWER_PARENT_ORIGINS=null
+   *                          (viewer/docs/artifact-viewer.md section 14). It is NOT the app's viewer, which refuses the host page of a shot. Screenshots of a design need it
+   *   ARTIFACT_SHOT_SECRET   signs the 7-day links to a job's screenshots; CODE_JOBS_SECRET when not set
+   */
+  CODE_PREVIEW_IDLE_SEC: z.coerce.number().int().min(10).max(3600).default(300),
+  PREVIEW_DOMAIN: z.string().trim().toLowerCase().optional(),
+  PREVIEW_HOST: z.string().trim().toLowerCase().optional(),
+  CODE_DESIGN_CHECK: bool(true),
+  ARTIFACT_SHOT_VIEWER_URL: z.string().trim().optional(),
+  ARTIFACT_SHOT_SECRET: z.string().optional(),
+  /**
    * WHERE THIS PROCESS RUNS. "node" (default) is the VPS: every setting it needs is
    * checked. "worker" is the Cloudflare jobs Worker, which never transcribes
    * speech, serves the app, or takes a payment, so the settings only those need

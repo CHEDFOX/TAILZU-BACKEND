@@ -36,6 +36,8 @@
  *   POST   /v1/artifacts/:id/ask { prompt, tier? }                      -> { text, paise, leftPaise }  the artifact asks the bot: metered against the
  *                                                                          CALLER (signed in; the owner or someone with the share token), the cheap
  *                                                                          tier unless tier is "code", at most 8,000 characters, rate limited
+ *   GET    /v1/artifacts/:id/shots/:shotId?exp=&sig=                    -> image/png  a screenshot of a design check (docs/artifacts.md section 11): the link
+ *                                                                          is SIGNED for its owner (7 days) and served only to that person's own session
  *   POST   /v1/artifacts/:id/build { projectId, version?, budgetPaise? }
  *                                                                       -> 201 { job, branch, spec, located, kit }  "build it": a Code bot job whose
  *                                                                          spec is this version (the head if none is named)
@@ -61,6 +63,7 @@ import type { Artifacts, Access } from "../artifacts/index.js";
 import { buildFromArtifact, noCompare, type CompareHook } from "../artifacts/build.js";
 import { componentArtifact, workspaceFiles } from "../artifacts/kit.js";
 import { LIMITS } from "../artifacts/protocol.js";
+import { isShotId, verifyShotLink } from "../artifacts/shots.js";
 import { ARTIFACT_TYPES, isArtifactError, type Artifact, type Change, type ArtifactType } from "../artifacts/types.js";
 import { failCode } from "./code.js";
 
@@ -385,6 +388,25 @@ export function registerArtifactRoutes(app: FastifyInstance, deps: ArtifactRoute
       const { change, ...rest } = r;
       return reply.code(201).send({ ...(await changed(change)), ...rest });
     } catch (err) { return fail(reply, err); }
+  });
+
+  // A screenshot of a design check, for the person it was made for. The link is signed for that person, that artifact and that shot (shots.ts signShotPath);
+  // the route also wants their own session, so a link that leaks is of no use to anyone else. Everything that is not exactly right is the same plain 404.
+  app.get<{ Params: { id: string; shotId: string }; Querystring: { exp?: string; sig?: string } }>("/v1/artifacts/:id/shots/:shotId", tight(120), async (req, reply) => {
+    const s = await begin(req, reply);
+    if (!s) return reply;
+    const gone = () => reply.code(404).send({ code: "not_found", message: "There is no such picture." });
+    const secret = deps.artifacts?.shotSecret;
+    const { id, shotId } = req.params;
+    if (!secret || !UUID.test(id) || !isShotId(shotId)) return gone();
+    if (!verifyShotLink({ secret, userId: s.user.id, artifactId: id, shotId, exp: req.query.exp, sig: req.query.sig })) return gone();
+    try {
+      await s.svc.own(s.user.id, id);
+      const shot = await deps.artifacts!.shots.get(s.user.id, id, shotId);
+      if (!shot) return gone();
+      return reply.header("content-type", "image/png").header("cache-control", "private, max-age=600").header("content-disposition", 'inline; filename="design-check.png"')
+        .header("x-content-type-options", "nosniff").send(Buffer.from(shot.png));
+    } catch (err) { return isArtifactError(err) ? gone() : fail(reply, err); }
   });
 
   app.post<{ Params: { id: string }; Body: unknown }>("/v1/artifacts/:id/build", tight(10), async (req, reply) => {

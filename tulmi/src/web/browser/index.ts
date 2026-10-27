@@ -20,11 +20,13 @@
  */
 import { getConfig } from "../../config.js";
 import { BrowserEngine, rendererFrom, type Renderer } from "./engine.js";
+import type { Screenshotter } from "./types.js";
 import { findChrome } from "./chrome.js";
 import { cloudflareRendererFromConfig } from "./cloudflare.js";
 
 export { BrowserEngine, BrowserError, rendererFrom } from "./engine.js";
 export type { RenderedPage, RenderOptions, Renderer } from "./engine.js";
+export type { ShotOptions, Screenshotter } from "./types.js";
 export { findChrome } from "./chrome.js";
 export { cloudflareRenderer, cloudflareRendererFromConfig } from "./cloudflare.js";
 
@@ -52,6 +54,15 @@ export function getRenderer(): Renderer | null {
     engine = new BrowserEngine({ chromePath, userAgent: cfg.WEB_BOT_UA });
   }
   return rendererFrom(engine);
+}
+
+/**
+ * The server's own browser as a screenshotter (engine.ts `screenshot`): for WEB_BROWSER=local with a Chrome found, else null. (With
+ * WEB_BROWSER=cloudflare shots go to Cloudflare's /screenshot endpoint: artifacts/shots.ts.)
+ */
+export function getScreenshotter(): Screenshotter | null {
+  if (getRenderer() === null || getConfig().WEB_BROWSER !== "local") return null;
+  return (o) => engine!.screenshot(o);
 }
 
 /** Shuts the server's browser down (it also does so by itself when idle). For shutdown and for tests. */

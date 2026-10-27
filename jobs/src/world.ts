@@ -12,7 +12,12 @@
  * `setWorld` fakes of the three, so a Workflow's own logic (its steps, its waits, its retries) runs for real in Miniflare while
  * the loop, the database, GitHub and the model are scripted.
  */
+import { createCompareHook } from "../../tulmi/src/artifacts/compare.js";
+import { ArtifactService } from "../../tulmi/src/artifacts/service.js";
+import { ArtifactDataShotStore, shootDepsFromConfig, signShotPath } from "../../tulmi/src/artifacts/shots.js";
+import { artifactStore } from "../../tulmi/src/artifacts/store.js";
 import { createAgent } from "../../tulmi/src/code/agent/index.js";
+import type { DesignDeps } from "../../tulmi/src/code/agent/deps.js";
 import type { Advance } from "../../tulmi/src/code/agent/loop.js";
 import { routerRunner } from "../../tulmi/src/code/agent/runner.js";
 import { createCode } from "../../tulmi/src/code/index.js";
@@ -69,6 +74,23 @@ const log = {
   warn: (o: object, m: string) => console.warn(m, JSON.stringify(o)),
 };
 
+/**
+ * The design round's compare step (docs/artifacts.md section 11): shots by Cloudflare's Browser Rendering (WEB_BROWSER=cloudflare; the Worker has no
+ * Chrome), kept in the owner's own scope of the artifact's saved data, compared by the vision tier, and 7-day links to them signed for the owner. Only with
+ * ARTIFACTS and CODE_DESIGN_CHECK on; without a browser or a viewer for shots the compare says so and the round is skipped.
+ */
+export function buildDesign(env: Env): DesignDeps | undefined {
+  const cfg = getConfig();
+  if (!cfg.ARTIFACTS || !cfg.CODE_DESIGN_CHECK) return undefined;
+  const store = artifactStore();
+  const secret = cfg.ARTIFACT_SHOT_SECRET || cfg.CODE_JOBS_SECRET || "";
+  const origin = String(env.PUBLIC_ORIGIN ?? "").replace(/\/+$/, "");
+  return {
+    compare: createCompareHook({ shoot: shootDepsFromConfig(), shots: new ArtifactDataShotStore(store), artifacts: new ArtifactService({ store }) }),
+    ...(secret && /^https?:\/\//.test(origin) ? { link: ({ userId, artifactId, shotId }) => `${origin}${signShotPath({ secret, userId, artifactId, shotId })}` } : {}),
+  };
+}
+
 /** The real thing, from the Worker's settings. Throws (with a plain reason, never a value) if GitHub or Supabase are not set up. */
 export async function buildWorld(env: Env, o: { notify?: Notify; /** Tests: stores in memory when Supabase is not set. */ memoryStores?: boolean } = {}): Promise<World> {
   applyEnv(env);
@@ -80,7 +102,7 @@ export async function buildWorld(env: Env, o: { notify?: Notify; /** Tests: stor
   const code = createCode({ brain: { remote: bindingBrainRemote(env), log } });
   if (!code.github) throw new Error("GitHub is not set up on the Worker (GITHUB_APP_* secrets).");
   if (!code.brain) throw new Error("CODE_PROJECT_BRAIN is not on for the Worker.");
-  const settings = { idleSec: cfg.CODE_SESSION_IDLE_SEC, maxMin: cfg.CODE_SESSION_MAX_MIN };
+  const settings = { idleSec: cfg.CODE_SESSION_IDLE_SEC, maxMin: cfg.CODE_SESSION_MAX_MIN, previewIdleSec: cfg.CODE_PREVIEW_IDLE_SEC };
   // The live session needs the Worker's own public address (a runner is told to connect to it) and the secret that signs its tickets.
   const liveOn = cfg.CODE_LIVE_SESSION && !!env.CODE_JOBS_URL?.trim() && !!env.CODE_JOBS_SECRET && !!env.ROOMS;
   const offerSession = liveOn ? sessionOffers({ secret: env.CODE_JOBS_SECRET!, jobsUrl: env.CODE_JOBS_URL!, idleSec: settings.idleSec }) : undefined;
@@ -99,9 +121,10 @@ export async function buildWorld(env: Env, o: { notify?: Notify; /** Tests: stor
   const dProjects = projectDepsOf(code)!;
   const classic = routerRunner({ jobs, store, now: Date.now, sleep: (ms) => new Promise<void>((r) => setTimeout(r, ms)) });
   const built = liveOn ? buildLive(env, { d: dProjects, jobs, store, fallback: classic, settings }) : null;
+  const design = buildDesign(env);
   const orchestrator = createAgent({
     code, jobs, notify, log, passive: true, leaseMs: WORKER_LEASE_MS, ...(render ? { web: { render } } : {}),
-    ...(built ? { runner: built.runner, live: built.deps } : {}),
+    ...(built ? { runner: built.runner, live: built.deps } : {}), ...(design ? { design } : {}),
   });
   if (!orchestrator) throw new Error("The agent could not be made.");
   const brain = code.brain;

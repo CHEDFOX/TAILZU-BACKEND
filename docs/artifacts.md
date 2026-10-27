@@ -21,6 +21,10 @@ tools.ts      artifact_create, artifact_update, artifact_rewrite: the bot's tool
 kitparse.ts   the readers that turn a project's files into design tokens
 kit.ts        designKit (the project's look, cached per head) and componentArtifact (a component in place)
 build.ts      "build it": an approved artifact becomes a Code bot job; the compare seam
+pixels.ts     a PNG reader and writer in pure TypeScript, and the cheap gate that decides whether two shots differ (section 11)
+shothost.ts   the page a screenshot of an artifact is taken of: it frames the viewer, sends `load`, marks `#done` (section 11)
+shots.ts      screenshots of a web page and of an artifact (Cloudflare Browser Rendering, or a local Chrome); where they are kept; their signed links
+compare.ts    the compare step: both shots, the gate, then the vision tier; implements CompareHook
 ```
 
 ## 1. The flow
@@ -113,7 +117,7 @@ What it never does: read an env file or a key (`isSecretPath`), use a file the s
 
 The agent loop then shows the design to the model **every turn** as the thing to match (`code/agent/context.ts specBlock`): in a data fence its own text cannot close, beside the kit and the place found, with the instruction to use the project's **real** components, styles and conventions, not the artifact's stand-ins (inline styles, copies of components, hard-coded colours). When the context is tight the design is cut last (14,000 characters, then 8,000, 5,000, 3,000). The locate phase is **not run again** when the search at approval time was sure: that answer stands. If it was unsure and came with a question, the phase runs the usual way and the person is asked. `GET /v1/code/jobs/:id` shows which artifact and version a job builds (`agent.spec`).
 
-**The screenshot compare is built next, in another step, and is not here.** `CompareHook` (`build.ts`, passed as `compareHook`) is the seam: when the job is made, `register(job, {artifactId, version, type, title})` tells the compare step which artifact version is this job's spec; later `compare({job, spec, builtUrl?})` is given what the built page looks like and answers `{ similarity?, notes, skipped? }`. Until the step exists the default hook (`noCompare`) does nothing and says so, and the job runs the same.
+**The screenshot compare is section 11.** `CompareHook` (`build.ts`, passed as `compareHook`) is the seam: when the job is made, `register(job, {artifactId, version, type, title})` tells the compare step which artifact version is this job's spec; later `compare({job, spec, builtUrl?, route?, location?, kit?, viewports?})` is given the address of the built page and answers `{ similarity?, notes, skipped?, viewports? }`, one `ViewportResult` (`match`, `issues`, `gate`, `shots`, `paise`, `error?`) for each viewport asked for. `compare.ts` is the real hook; without it (`ARTIFACTS` off, or no browser) the default (`noCompare`) does nothing and says so, and the job runs the same.
 
 ## 7. Routes
 
@@ -132,6 +136,7 @@ All authenticate like the rest of `/v1`, and are the owner's only (another perso
 | `POST /:id/ask {prompt, tier?}` | the artifact asks the bot |
 | `POST /v1/code/projects/:id/artifacts/component {request, image?}` | a component in place |
 | `POST /:id/build {projectId, version?, budgetPaise?}` | build it |
+| `GET /:id/shots/:shotId?exp=&sig=` | one screenshot of the design check (a PNG), **the owner's signed-in session only**, and only with a signature that has not run out (section 11) |
 
 **Saved data.** Scope `shared` is everyone's; `me` is the caller's own. The owner may do all of it. Someone with the share token (header `x-artifact-share`, or `?share=`), signed in or not, may **read** shared data, and may **write** only if the owner turned "others can save" on (anonymous: shared scope only; signed in: their own scope too). A value is at most 64 KB, a scope holds 500 keys (in the database a function counts them under a lock), and a key is 1 to 128 letters, digits, spaces and `. _ : / @ # -`. Taking the link back takes the access and the switch with it. The owner never sees a viewer's own scope through the API, and the row-level security says the same: an owner reads the shared scope of their artifacts, a person reads their own scope anywhere, nobody reads another's.
 
@@ -164,5 +169,77 @@ All authenticate like the rest of `/v1`, and are the owner's only (another perso
 * An edit by instruction sends the artifact once, so it has a size at which it costs more than one edit may: about 100 KB on the code tier. Past that the edit is refused ("more than one edit may cost") and the person points at an element instead, which costs the same on any size.
 * The kit's readers are tolerant, not complete: a Tailwind preset, a theme built by a function, or tokens in a package are not followed. They leave the kit smaller, never wrong.
 * The viewer's `data-tz-id` must be the position in the *original* source (`ELEMENT_ID_ATTR`); an id from another version gets "the element id is from another version".
+
+## 11. Looking at what was built: the preview, the shots and the compare
+
+"Build it" (section 6) gives the job the approved design as its spec. Before the commit, the agent now does what a person does before saying "done": **runs the app, looks at it, and puts it next to the design.** Three pieces, none of which can stop a job from committing.
+
+```
+ the job's runner          jobs Worker (JobRoom)            Cloudflare Browser Rendering           the vision tier
+ ┌──────────────┐  http    ┌──────────────────┐   url      ┌──────────────────────────┐  2 PNGs   ┌────────────┐
+ │ project's dev│◀────────▶│ preview door     │◀───────────│ shootUrl(built page)     │──────────▶│ compare.ts │
+ │ server       │  frames  │ <token>.preview… │            │ shootArtifact(design)    │           │ gate first │
+ └──────────────┘          └──────────────────┘            └──────────────────────────┘           └────────────┘
+```
+
+### The preview
+
+The project's own dev server runs on the job's runner, and the Worker shows it at an address on **a site of its own**. The runner connects out to the job's room, as it does for commands, so the dev server is reached through that socket: no inbound port, no tunnel. How the address, the token, the cookie, the idle rule and the minute cap work is in `docs/cloudflare-jobs.md` section 11; the runner's frames are in `docs/desktop-runner-session.md` section 5. For this section: the address exists only while the design check needs it (or while the app shows it to the person: the live view gets `preview-ready {url}`), it dies with the job's session, and it costs nothing when nobody asks for it.
+
+### The shots (`shots.ts`, `shothost.ts`)
+
+* **`shootUrl(url, {viewport})`** a page, as Cloudflare's `/screenshot` endpoint takes it (`url`, a viewport, a `waitForSelector` object, `allowRequestPattern`). With `WEB_BROWSER=local`, our own headless Chrome over the DevTools protocol does it (`web/browser`), so a developer can try all of this without a Cloudflare token.
+* **`shootArtifact(artifact, version, kit, viewport)`** an artifact **as the viewer draws it**. The viewer is driven by `postMessage`, so a shot of an artifact is a shot of a parent page: `shothost.ts` makes one (an iframe of the viewer at exactly the viewport's size, `ready` answered by `load`, `#done` added when the viewer says `rendered` and fonts and images had 700 ms), and sends it to the browser as inline HTML (`html` instead of `url`). An artifact that never renders never gets `#done`, so the shot fails instead of drawing a blank. The viewer used for this is the one **kept for screenshots** (`ARTIFACT_SHOT_VIEWER_URL`, `viewer/docs/artifact-viewer.md` section 14): inline HTML has an opaque origin, which the normal viewer's `frame-ancestors` cannot allow.
+* **Two viewports**: mobile 390 x 844 (touch, mobile) and desktop 1280 x 800. The project's main target decides: mobile only for an Expo or React Native app with no web framework in it, both otherwise.
+* The browser may fetch only the shot viewer, Google Fonts and `data:`/`blob:` (`allowRequestPattern`), so a design with pictures from other sites shows them blank, in the design's shot and nowhere else; the compare is told to ignore that.
+* **Where a shot is kept.** The jobs Worker has no R2 and `tulmi/` has none, so a shot goes in the **artifact's saved data** (`artifact_data`), in pieces of 40 KB (a value may be 64 KB), under keys that begin `_tz/shot/`. It is in a scope of its own, not the person's `me` scope or `shared`: `shotScope(userId)` is a UUID made from the owner's id (the table's check allows `shared` or a UUID), which is nobody's user id, so **no data route can name it**. The artifact itself, which a bot wrote and anyone with a link may run, can neither list nor read its screenshots, and they do not spend its 500 keys. The scope keeps at most 40 shots and 480 keys (the oldest go first; a picture that alone would not fit is refused). A shot is **kept for 7 days** and is dropped as the index is next written; its id is 128 random bits. They go with the artifact when it is deleted (the table cascades).
+* **The link to a shot is signed and the owner's alone**: `GET /v1/artifacts/:id/shots/:shotId?exp=&sig=`, where `sig` is an HMAC (`ARTIFACT_SHOT_SECRET`, else `CODE_JOBS_SECRET`) over the owner, the artifact, the shot and the expiry, **and** the request must carry the owner's session. A link that leaks is a `404`. It runs out at 7 days, with the shot.
+
+### The compare (`pixels.ts`, `compare.ts`)
+
+For each viewport, the built page and the approved design are shot at the same size, and:
+
+1. **The cheap gate, in pure TypeScript.** `pixels.ts` reads both PNGs (`node:zlib`, no dependency; every chunk's CRC is checked, so a picture cut short is refused, not compared), reduces each to a 64 x 128 grid of lightness and a 16 x 32 grid of colour, blurs the lightness over 3 x 3 cells, and compares them cell by cell. When the shapes and the colours agree, the answer is **a match of 0.95 to 1 and no model call**. The gate catches two shots of one page (the common case after a good build, and the second round of a fix); a thin line that moved a whole pixel is not the same to it, and the model is asked, which costs little.
+2. **The vision tier** is sent both pictures with the component's name, where it lives and the project's kit, and answers `{match, issues: [{area, issue, severity, fixHint}]}` once per viewport (`severity` is `minor` or `major`; at most 10 issues, the worst first). Its call is metered in **the job's budget** (`budget: "job"`, the job's id); at most `COMPARE_CAP_PAISE` (120) a call, and a call the job cannot afford is refused by the gateway before it is made. An answer that is not that shape is one unusable viewport, not a failed job.
+
+### The design round (`code/agent/design.ts`)
+
+The `design` phase sits between `verify` and `commit`, and only for a job with a spec (`CODE_DESIGN_CHECK=false` skips it for all):
+
+1. open the runner (a trivial command, so the staged edits are laid over the checkout), start the dev server from the brain's scripts (`dev`, `serve`, `start`, with the package manager's prefix), wait for it to answer (150 s at most);
+2. find the route: where the design goes, from the brain (Next's `app/` and `pages/`, the files that import it, React Router's `<Route>`), else `/`;
+3. shoot and compare, mobile and desktop (the second viewport in a later advance, so one advance is never long);
+4. **major issues send the job back to work**, with the differences and the fix hints in front of the model, **at most twice**; the checks run again before each look. After the last round one more look is taken and what still differs is **reported**, not looped on.
+
+**It never blocks the commit.** No live runner, a project that is not a web app, no `dev` script, a dev server that will not start, no browser for shots, no shot viewer, a budget too small for a compare (about 240 paise), a failed shot, a model with nothing usable: the round is skipped or stops, one sentence says why in the report, and the job commits what its checks passed. The stages are saved one by one in the checkpoint (`DesignState.stage`), so a restart or a wait picks up where it was and nothing is done twice.
+
+**The report** (and the pull request) carries the match per viewport, side-by-side signed links to the built page and the design, the number of rounds, and the minor differences that remain. `GET /v1/code/jobs/:id` shows where it is in `agent.design` (`stage`, `round`, the latest `match`, and `skipped` with the reason).
+
+### What it costs
+
+| | Per design check |
+| --- | --- |
+| Preview | the runner is already open for the job; the minutes count against `CODE_SESSION_MAX_MIN`. Idle: `CODE_PREVIEW_IDLE_SEC` |
+| Shots | 2 per viewport, so 4 for a web app, 2 for a mobile one, per look. Cloudflare Browser Run bills browser time: **Workers Paid** 10 hours a month included, then $0.09 an hour; a shot is a few seconds of it. **The Free plan will not do**: 10 minutes of browser a day, and one Quick Action request every 10 seconds (Paid: 30 a second), so most shots there are refused with 429 (`busy`) and the check is skipped with that sentence ([pricing](https://developers.cloudflare.com/browser-run/pricing/), [limits](https://developers.cloudflare.com/browser-run/limits/), checked 2026-10-27) |
+| Gate | free: pure CPU, a few tens of milliseconds |
+| Vision call | at most 120 paise a viewport, only when the gate says the shots differ; in the job's budget, and the design check stops when what is left is under about 240 paise |
+| Rounds | at most 2 more times through `work` and `verify`, each metered like any work |
+
+### Setting it up
+
+1. `ARTIFACTS=true` (this whole document), `CODE_LIVE_SESSION` on, and a runner that can run a dev server (GitHub Actions or the person's computer).
+2. Previews: `PREVIEW_DOMAIN` or `PREVIEW_HOST` and the route, on the Worker (`docs/cloudflare-jobs.md` section 11).
+3. Shots: `WEB_BROWSER=cloudflare` with `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` (Browser Rendering - Edit) on the Worker, or `WEB_BROWSER=local` where there is a Chrome.
+4. The shot viewer: a second deployment of `viewer/` with `VIEWER_PARENT_ORIGINS=null`, its address in `ARTIFACT_SHOT_VIEWER_URL` (`viewer/docs/artifact-viewer.md` section 14). **Not the app's viewer.**
+5. `ARTIFACT_SHOT_SECRET` (optional) signs the links; `CODE_JOBS_SECRET` is used when it is not set. The Worker signs a link and the VPS serves it (`routes/artifacts.ts`), so the value must be the same on both; `CODE_JOBS_SECRET` already is. The link is made on the Worker's `PUBLIC_ORIGIN`, the VPS's address.
+6. The Workers **Paid** plan (see What it costs).
+
+### What to check live
+
+* Browser Rendering's `html` host page with a real token: that the sandboxed iframe loads the shot viewer, `ready` and `load` cross, and `waitForSelector("#done")` fires. (The page and the viewer are tested together in a local Chrome, `viewer/e2e/shot.spec.ts`; Cloudflare's browser is not reachable from here.)
+* That Browser Rendering can fetch a preview address (it must be public; the token in the address is the credential) and that a dev server's pages are drawn before the shot is taken.
+* The vision tier's real answer: the prompt asks for JSON only; check that the real model keeps to it, and tune `COMPARE_SYSTEM` from a few real pairs.
+
+Tests of this section: `tulmi/tests/artifacts-{pixels,shots,shots-route,compare}.test.ts`, `web-browser-shot.test.ts`, `code-agent-design.test.ts`; the preview's are `code-live-preview*.test.ts` and `jobs/test/preview.test.ts`, and the shot viewer's `viewer/e2e/shot.spec.ts`.
 
 Tests: `tulmi/tests/artifacts-{versions,validate,scan,tools,edit,kit,build,store,routes}.test.ts`, on a scripted model (`artifacts-rig.ts`) and the memory twin.

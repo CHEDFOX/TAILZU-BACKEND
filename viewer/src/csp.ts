@@ -3,6 +3,11 @@
 export interface CspInput {
   /** Origins that may embed the viewer (`frame-ancestors`). Empty: nobody. */
   parents: readonly string[];
+  /**
+   * The viewer is kept for screenshots: its parent is a page made from inline HTML, whose origin is opaque, and `frame-ancestors` cannot name one
+   * (not even `*` matches it), so the directive is left out and any page may frame the viewer. Everything else about the policy is the same.
+   */
+  anyParent?: boolean;
   /** `'sha256-…'` of the page's import map, the one inline script it has. */
   importMapHash: string | null;
 }
@@ -21,7 +26,7 @@ export interface CspInput {
  * - sandbox allow-scripts: even if someone opens the page in a window or forgets the iframe's sandbox attribute, the document is
  *   in an opaque origin without cookies, storage, popups, forms or top navigation.
  */
-export function buildCsp({ parents, importMapHash }: CspInput): string {
+export function buildCsp({ parents, importMapHash, anyParent }: CspInput): string {
   return [
     "default-src 'none'",
     `script-src 'self' blob:${importMapHash ? ` 'sha256-${importMapHash}'` : ""}`,
@@ -32,7 +37,7 @@ export function buildCsp({ parents, importMapHash }: CspInput): string {
     "connect-src 'none'",
     "form-action 'none'",
     "base-uri 'none'",
-    `frame-ancestors ${parents.length ? parents.join(" ") : "'none'"}`,
+    ...(anyParent ? [] : [`frame-ancestors ${parents.length ? parents.join(" ") : "'none'"}`]),
     "sandbox allow-scripts",
   ].join("; ");
 }

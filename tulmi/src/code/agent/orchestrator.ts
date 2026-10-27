@@ -116,6 +116,8 @@ export interface AgentView {
   notes: string[];
   /** The approved artifact this job builds (artifacts/build.ts): which one, and which version. */
   spec?: { artifactId: string; version: number; title: string };
+  /** The design check of such a job (agent/design.ts): where it is, how many times it sent the job back to work, the latest match, and why it did not run. */
+  design?: { stage: string; round: number; match?: number; skipped?: string };
 }
 
 export function viewOfState(s: AgentState): AgentView {
@@ -133,6 +135,7 @@ export function viewOfState(s: AgentState): AgentView {
     ...(s.verify ? { verify: { ran: s.verify.ran, ok: s.verify.ok, summary: s.verify.summary } } : {}),
     fixRounds: s.work.fixRounds, findings: s.findings, ...(s.report ? { report: s.report } : {}), notes: s.notes,
     ...(s.spec ? { spec: { artifactId: s.spec.artifactId, version: s.spec.version, title: s.spec.title } } : {}),
+    ...(s.design ? { design: { stage: s.design.stage, round: s.design.round, ...(s.design.history.length ? { match: s.design.history.at(-1)!.match } : {}), ...(s.design.skipped ? { skipped: s.design.skipped } : {}) } } : {}),
   };
 }
 

@@ -23,6 +23,7 @@ import { BudgetExceeded, type CallInput, type CallResult } from "../src/code/bra
 import { createAgent } from "../src/code/agent/index.js";
 import type { RemoteJobs } from "../src/code/agent/orchestrator.js";
 import type { LiveDeps } from "../src/code/live/ports.js";
+import type { DesignDeps } from "../src/code/agent/deps.js";
 import { CHECK_MARK } from "../src/code/agent/checks.js";
 import { routerRunner } from "../src/code/agent/runner.js";
 import { initialState, stateOf, type AgentState } from "../src/code/agent/types.js";
@@ -248,8 +249,10 @@ export interface AgentRigOptions {
   placeWaitMs?: number;
   /** The model's price per call, in paise. */
   paise?: number;
-  /** The live session's ports (code/live/ports.ts): a room's files, the inbox, progress, closeSession, endJob. */
+  /** The live session's ports (code/live/ports.ts): a room's files, the inbox, progress, closeSession, endJob, the preview. */
   live?: LiveDeps;
+  /** The design round's compare step and links (code/agent/design.ts). */
+  design?: DesignDeps;
 }
 
 export async function agentRig(o: AgentRigOptions = {}) {
@@ -317,7 +320,7 @@ export async function agentRig(o: AgentRigOptions = {}) {
       code, jobs, store: jobStore, brain, call: model.call as never, worklog, intake, routeStats, notify, now, sleep, log, web: { store: null, cache: null, fetchFn: webFetch as never },
       runner: routerRunner({ jobs, store: jobStore, now, sleep, placeWaitMs: o.placeWaitMs ?? 120_000, pollMs: 2000 }),
       concurrency: over.concurrency ?? o.concurrency ?? 4, instanceId: over.instanceId ?? "one",
-      ...((over.live ?? o.live) ? { live: (over.live ?? o.live)! } : {}), ...(over.remote ? { remote: over.remote } : {}),
+      ...((over.live ?? o.live) ? { live: (over.live ?? o.live)! } : {}), ...(over.remote ? { remote: over.remote } : {}), ...(o.design ? { design: o.design } : {}),
     })!;
   }
   const orch = orchestrator();

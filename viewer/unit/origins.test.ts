@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { originAllowed, parseOrigins } from "../lib/origins.js";
+import { OPAQUE, originAllowed, parseOrigins } from "../lib/origins.js";
 import { decodeMappings, makeLookup } from "../lib/srcmap.js";
 import { looksLikeTailwind, tailwindConfigToCss } from "../lib/tailwind.js";
 
@@ -14,6 +14,15 @@ describe("parseOrigins", () => {
     expect(parseOrigins("https://*.preview.tailzu.space")).toEqual(["https://*.preview.tailzu.space"]);
     expect(parseOrigins(undefined)).toEqual([]);
     expect(parseOrigins("")).toEqual([]);
+  });
+
+  it("keeps `null` (a parent with an opaque origin, the page a screenshot is taken of) only when it is asked for", () => {
+    expect(OPAQUE).toBe("null");
+    expect(parseOrigins("null")).toEqual([]);
+    expect(parseOrigins("null", { opaque: true })).toEqual(["null"]);
+    expect(parseOrigins(" NULL, null, https://tailzu.space", { opaque: true })).toEqual(["null", "https://tailzu.space"]);
+    // Nothing that merely looks like it.
+    expect(parseOrigins("nul, nulll, 'null', null:, null/x, undefined, *", { opaque: true })).toEqual([]);
   });
 });
 
@@ -30,6 +39,14 @@ describe("originAllowed", () => {
     expect(originAllowed("http://localhost:3001", allowed)).toBe(false);
     expect(originAllowed("null", allowed)).toBe(false);
     expect(originAllowed("", allowed)).toBe(false);
+  });
+  it("lets an opaque origin in only when `null` is in the list, and `null` lets in nothing else", () => {
+    expect(originAllowed("null", ["null"])).toBe(true);
+    expect(originAllowed("null", ["null", "https://tailzu.space"])).toBe(true);
+    expect(originAllowed("https://tailzu.space", ["null"])).toBe(false);
+    expect(originAllowed("http://localhost:3000", ["null"])).toBe(false);
+    expect(originAllowed("", ["null"])).toBe(false);
+    expect(originAllowed("Null", ["null"])).toBe(false); // MessageEvent.origin is exactly "null"
   });
   it("wildcards match subdomains only", () => {
     expect(originAllowed("https://pr-12.preview.tailzu.space", allowed)).toBe(true);

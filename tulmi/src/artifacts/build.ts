@@ -15,10 +15,10 @@
  *          and told to use the project's REAL components and conventions rather than the artifact's stand-ins
  *        - the locate phase is not run again: the answer found now stands
  *
- * THE SCREENSHOT COMPARE comes next, in another step, and is not here. `CompareHook` is the seam it plugs into: when the
- * job is made, `register` tells it which artifact and version are this job's spec, and later `compare` is given what the
- * built page looks like and answers how close it is. Until it exists the default hook does nothing and says so
- * (`noCompare`); the job runs the same either way.
+ * THE SCREENSHOT COMPARE (compare.ts) plugs in through `CompareHook`: when the job is made, `register` tells it which artifact and
+ * version are this job's spec, and later `compare` is given where the built page can be seen and answers how close it is, viewport by
+ * viewport. The agent's design round (code/agent/design.ts) calls it after the checks pass. Where no browser is set up the default hook
+ * (`noCompare`) does nothing and says so; the job runs the same either way.
  *
  * Nothing here edits the person's repo: the job does, through the workspace and the policy, as every job does.
  */
@@ -31,6 +31,7 @@ import { assertAccess, createWorkBranch, ownProject, type ProjectDeps } from "..
 import { locate, type LocateBrain, type Located } from "../code/work/locate.js";
 import type { CallFn } from "../code/work/model.js";
 import { designKit, type KitBrain, type KitDeps } from "./kit.js";
+import type { ViewportName } from "./shothost.js";
 import type { ArtifactService } from "./service.js";
 import { ArtifactError } from "./types.js";
 
@@ -38,21 +39,58 @@ import { ArtifactError } from "./types.js";
 
 export interface CompareJob { jobId: string; userId: string; projectId: string; branch: string }
 
-/** What the compare step is given about the built page. Built with the step itself; the fields it needs are added then. */
+/** One difference between the design and the built page, as the vision tier reports it. */
+export interface DesignIssue {
+  /** Where on the screen, in words ("the pricing card's header"). */
+  area: string;
+  issue: string;
+  /** "major": the person would say it is wrong. "minor": polish. */
+  severity: "minor" | "major";
+  /** One sentence telling a developer what to change. */
+  fixHint: string;
+  viewport: ViewportName;
+}
+
+/** What one viewport came to. */
+export interface ViewportResult {
+  viewport: ViewportName;
+  /** 0 to 1. */
+  match: number;
+  issues: DesignIssue[];
+  /** "same": the cheap gate found the shots alike and the model was not asked. "model": the vision tier looked. "failed": see `error`. */
+  gate: "same" | "model" | "failed";
+  /** What the model call cost, in paise (0 when the gate answered). */
+  paise: number;
+  /** Ids of the two shots in the shot store (shots.ts), when they were kept. */
+  shots?: { built: string; approved: string };
+  error?: string;
+}
+
+/** What the compare step is given about the built page. */
 export interface CompareInput {
   job: CompareJob;
   spec: Pick<SpecArtifact, "artifactId" | "version" | "type" | "title">;
-  /** Where the built page can be seen (a preview address), once the step has one. */
+  /** Where the built page can be seen: the preview's address (shots of it are made by a browser that fetches it). */
   builtUrl?: string;
+  /** The page of the app the design is shown on (`/pricing`); `/` when not given. */
+  route?: string;
+  /** Where in the project the design goes, for the model ("src/components/Pricing.tsx"). */
+  location?: string;
+  /** The project's kit, for the model. */
+  kit?: string;
+  /** Which viewports to compare. All of them when not given. */
+  viewports?: ViewportName[];
 }
 
 export interface CompareResult {
-  /** The compare did not run (no screenshots yet). */
+  /** The compare did not run (no browser, no viewer, no built page). */
   skipped?: boolean;
-  /** 0 to 1: how close the built page is to the design. */
+  /** 0 to 1: how close the built page is to the design (the average over the viewports that were compared). */
   similarity?: number;
   /** What differs, in words. */
   notes: string[];
+  /** Each viewport's result, with its issues and the ids of its shots. */
+  viewports?: ViewportResult[];
 }
 
 export interface CompareHook {
@@ -62,9 +100,9 @@ export interface CompareHook {
   compare(input: CompareInput): Promise<CompareResult>;
 }
 
-/** The hook until the screenshot step exists: it remembers nothing and compares nothing. */
+/** The hook where no screenshot step is set up: it remembers nothing and compares nothing. */
 export const noCompare: CompareHook = {
-  register() { /* the compare step is built next */ },
+  register() { /* nothing to remember */ },
   async compare() { return { skipped: true, notes: [] }; },
 };
 
@@ -77,7 +115,7 @@ export interface BuildDeps {
   agent: Pick<AgentOrchestrator, "enqueue">;
   kit: KitDeps;
   brain: KitBrain & LocateBrain;
-  /** The screenshot compare step's seam (built next); `noCompare` when none is given. */
+  /** The screenshot compare step (compare.ts createCompareHook); `noCompare` when none is given. */
   compareHook?: CompareHook;
   call?: CallFn;
   gateway?: GatewayDeps;

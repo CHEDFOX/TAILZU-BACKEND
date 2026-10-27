@@ -6,7 +6,7 @@ Why: a job is dozens of model turns, sometimes for hours, and waits days for a p
 
 The Worker is `jobs/`. It contains **no copy of the logic**: it imports `tulmi/src/...` and Wrangler bundles it. A fix to the loop is a fix for both.
 
-On top of that the Worker has a **live session** (section 10): a copy of a job's code kept in a Durable Object so the bot reads and searches it at once, a runner kept open for the whole job so a command takes about a second, and the person's own computers as the first place to run. It is on by default with `cloudflare` and can be switched off with `CODE_LIVE_SESSION=false`.
+On top of that the Worker has a **live session** (section 10): a copy of a job's code kept in a Durable Object so the bot reads and searches it at once, a runner kept open for the whole job so a command takes about a second, and the person's own computers as the first place to run. It is on by default with `cloudflare` and can be switched off with `CODE_LIVE_SESSION=false`. Section 11 adds the **preview**: the project's own dev server, running on that runner, seen in a browser through the Worker, which is what lets the agent look at what it built and compare it to the approved design (`docs/artifacts.md` section 11).
 
 ## 1. The split
 
@@ -102,6 +102,8 @@ Plain settings are in `vars` (a few are blank for you to fill in); **secrets are
 `vars` to fill in: `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_ID`, `CLOUDFLARE_ACCOUNT_ID`, and `PUBLIC_ORIGIN` (the VPS's own address: the Worker's calls back go there). `ADVANCE_TURNS` (2) and `PERSON_WAIT` (`7 days`) are tunable. `RUNTIME=worker` is set for you.
 
 For the live session (section 10) the Worker also takes five plain `vars`: `CODE_JOBS_URL` (**this Worker's own public address**, the same value as on the VPS: runners are told to connect to it; **blank means the live session is off**), `CODE_LIVE_SESSION` (`true`), `CODE_SESSION_IDLE_SEC` (`120`), `CODE_SESSION_MAX_MIN` (`20`) and `CODE_ACTIONS_MONTHLY_MIN` (`2000`). There is no new secret: the tickets are signed with `CODE_JOBS_SECRET`, which both sides already have.
+
+For the preview (section 11) there are six more plain `vars`, all blank or defaulted so that it is **off until you choose a site**: `PREVIEW_DOMAIN` or `PREVIEW_HOST`, `PREVIEW_PARENT_ORIGINS` (the app's origins, which alone may frame a preview), `CODE_PREVIEW_IDLE_SEC` (`300`), `CODE_DESIGN_CHECK` (`true`), `ARTIFACTS` (`false`) and `ARTIFACT_SHOT_VIEWER_URL` (blank). The screenshots use the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` that the renderer already has, with `WEB_BROWSER=cloudflare`. `ARTIFACT_SHOT_SECRET` is an optional secret (it signs the 7-day links to a job's screenshots; `CODE_JOBS_SECRET` is used when it is not set).
 
 **Not on the Worker, on purpose:** push credentials (they stay on the VPS), the speech and payment keys, `GITHUB_APP_WEBHOOK_SECRET` (the webhooks still arrive at the VPS).
 
@@ -233,6 +235,16 @@ Found while building the live session (section 10):
 18. **A Workflow cannot wait on a long call into a Durable Object.** A command takes seconds to minutes; holding an RPC open for it would hold the step, and the object awake. The room returns at once, and when the runner reports it **sends the Workflow an event** (`sendEvent`, the same `wake` the person's answers use); the next advance asks for the result. Nothing waits on a socket.
 19. **GitHub's `ubuntu-latest` Node may be older than 22**, and a global `WebSocket` needs 22. The session workflow tests for one (`node -e` on `typeof WebSocket`) and runs `actions/setup-node@v4` for Node 22 only when it is missing, so the common case does not pay for it.
 
+Found while building the preview and the screenshots (section 11):
+
+20. **Workers Custom Domains cannot be wildcards.** "Custom Domains do not support wildcard DNS records", and a hostname must match exactly. A wildcard needs a **Route** (`*.preview.example/*`) on a zone, plus a proxied wildcard DNS record, so the wildcard mode is a route and the single-host cookie mode is the one that can be a Custom Domain ([custom domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)).
+21. **Universal SSL covers the apex and one level of subdomain only** (in a full setup). A name two levels down, `<token>.preview.example.com`, would serve no valid certificate without Advanced Certificate Manager. So the preview domain is a registrable domain of its own (`tailzu-preview.app`), and a preview is `<token>.tailzu-preview.app`, one level down ([Universal SSL limitations](https://developers.cloudflare.com/ssl/edge-certificates/universal-ssl/limitations/)).
+22. **A DNS label is at most 63 characters**, hence the token: 38 bytes as 61 base32 letters, in one label.
+23. **The `/screenshot` request takes `html` *or* `url`**, and `waitForSelector` is an **object** (`{selector, timeout, visible}`), not a string. The binary PNG is the answer (a JSON envelope with the picture is read too). `allowRequestPattern` takes regular expressions as strings. The path is `/browser-run/screenshot` on the product page and `/browser-rendering/screenshot` in the API reference, tried in that order as for `/content`. `gotoOptions.timeout` is 60 s at most ([screenshot endpoint](https://developers.cloudflare.com/browser-run/quick-actions/screenshot-endpoint/)).
+24. **The Free plan cannot take the design check**: 10 minutes of browser a day and one Quick Action request every 10 seconds (Paid: 30 a second), checked 2026-10-27 on the [limits page](https://developers.cloudflare.com/browser-run/limits/).
+25. **A request in flight keeps a Durable Object from hibernating**, and so does a timer. The preview door's request is held by the room until the runner has sent the whole answer, so a busy preview is a room that is awake (and billed for duration); an idle preview is nothing. Requests in flight are capped at 32 and a response at 10 MB, far under the 32 MiB an RPC may carry (the room hands the door a `Response` over RPC).
+26. **A page made from inline HTML has an opaque origin** (`"null"`), which no CSP `frame-ancestors` can name (`*` does not match it either). The viewer used for screenshots therefore omits the directive; it is a second deployment (`viewer/docs/artifact-viewer.md` section 14).
+
 ## 9. Verified here, and what needs a real deploy
 
 **Verified locally** (`cd jobs && npx vitest run`, `cd tulmi && npx vitest run`; the Workers tests run inside workerd through `@cloudflare/vitest-plugin`):
@@ -258,6 +270,8 @@ Found while building the live session (section 10):
 * The real model's behaviour is as unproven as it is in local mode (`docs/code-agent.md` section 10).
 * **The live session on the real thing** (section 10): a WebSocket upgrade through Cloudflare's edge to the three objects (the tests call the Worker's handler inside workerd, which is the same code but not the same network), a hibernating object waking on a message and on an alarm, `sendEvent` from an object to a Workflow that is in `waitForEvent`, the real cost of a day with a computer online, a real GitHub Actions run connecting back to the room (the Node 22 probe, the cache action, `persist-credentials: false`, the time the first command waits for the runner), the app's presence socket from a real desktop, and the tarball download of a real, large repository inside the five-minute limit.
 * The VPS side in cloudflare mode against the deployed Worker: `CODE_JOBS_URL` reachable from the VPS, `PUBLIC_ORIGIN` reachable from Cloudflare, and the push arriving on a phone.
+* **The preview on the real thing** (section 11): the wildcard route and DNS record reaching the Worker, a certificate that covers `<token>.<PREVIEW_DOMAIN>`, a dev server (Vite, Next) answering through the room, a 10 MB asset crossing it, the app framing the preview, a request that keeps the room awake for its whole length, and the preview closing by itself after `CODE_PREVIEW_IDLE_SEC`.
+* **Browser Rendering's `/screenshot`** with a real token: the `html` host page of an artifact (a sandboxed iframe of the shot viewer, `waitForSelector('#done')`), the preview address as `url`, the cookie mode's redirect, and which of the two paths your account answers.
 
 A suggested first check: make a job on a throwaway repo with a small task, watch `wrangler workflows instances describe`, and answer the first question from the app.
 
@@ -364,3 +378,68 @@ Idle is free: every socket is accepted with the Hibernation API (`ctx.acceptWebS
 2. Set `CODE_JOBS_URL` in `jobs/wrangler.jsonc` to the Worker's own address, and deploy (this creates `UserDevices` and `JobRoom`, migration `v2`).
 3. Nothing to change on the VPS beyond the three variables of section 4: the live settings default to on. Restart it.
 4. Update the desktop app to speak `docs/desktop-runner-session.md`. Until then, jobs use GitHub's computers for sessions and the old step path for the rest.
+
+## 11. The preview
+
+The agent's design round (`docs/artifacts.md` section 11) needs to **look at the app it built**. The project's own dev server (`npm run dev`) is started on the job's runner, which is already connected to the job's room, and the Worker shows it at an address in a browser. Nothing is opened on the runner's machine: the browser's requests go to the Worker, the Worker passes each one to the runner **over the runner's own WebSocket** (the `http` frame, `docs/desktop-runner-session.md` section 5), and the runner makes it on `127.0.0.1` and sends the answer back in pieces.
+
+```
+ browser / Browser Rendering          jobs Worker                                 runner (GitHub Actions or the person's PC)
+ GET https://<token>.<domain>/  ──▶  index.ts: host says "preview"
+                                      previewDoor.ts: read the token, no object woken
+                                      JobRoom.previewHttp ─ http frame ─────────▶  fetch http://127.0.0.1:<port>/ (the dev server)
+                                      ◀────────────── res, res-data…, last ───────  head, then the body in 192 KB pieces
+ ◀── the page, with the door's headers
+```
+
+### The address, and why it is on another site
+
+The preview runs the person's project code, so it must not share a site with the app or with this API: a cookie set for the parent domain would reach it, and its scripts could talk to a page of the app. The Worker checks this when it starts (`guardSite`): a `PREVIEW_DOMAIN` or `PREVIEW_HOST` that shares a registrable domain with `CODE_JOBS_URL`, `PUBLIC_ORIGIN` or an origin in `PREVIEW_PARENT_ORIGINS` is **taken out and said once in the log**, and previews are off. Two ways to give it an address:
+
+| | Wildcard mode (`PREVIEW_DOMAIN`) | Cookie mode (`PREVIEW_HOST`) |
+| --- | --- | --- |
+| Address | `https://<token>.tailzu-preview.app/` | `https://preview.tailzu-preview.app/p/<token>/` |
+| Origin | one per preview: absolute paths (`/src/main.tsx`, `/@vite/client`) just work and one preview cannot read another's cookies | one for all previews: the first visit sets a **host-only, HttpOnly, Secure, SameSite=Lax** cookie (`tzpv`) and redirects to `/`; later root-relative requests are routed by the cookie |
+| Setup | a **Route** `*.tailzu-preview.app/*` (Custom Domains cannot be wildcards) and a **proxied wildcard DNS record**, e.g. `AAAA * 100::`, in a zone of that domain. The certificate is Universal SSL's only if the preview domain is itself a registrable domain (one level down) | a Custom Domain on one host (`"custom_domain": true`), which makes its certificate |
+| Use it | when you can add a domain | when you cannot add a wildcard. Previews of one person's own jobs share an origin: acceptable for that, not for strangers |
+
+`PREVIEW_DOMAIN` wins when both are set. `jobs/wrangler.jsonc` has the routes commented in; add them when you choose. No other host changes: a request to the API's host goes to the API as before, and the preview's host is told apart **before** the path is looked at (`index.ts`).
+
+### The token
+
+The address is made of a token: `jobId (16 bytes) · nonce (6 random bytes) · expires (4 bytes) · HMAC-SHA256 (12 bytes)` as 61 base32 letters, signed with `CODE_JOBS_SECRET` under a label of its own (`tailzu-preview-v1`), so it cannot be taken for a call or a ticket. The Worker checks the signature and the expiry **without waking any object**, so a scanner trying names under the preview domain costs nothing. The **room** then checks the nonce is the one it made for this preview (a token of an earlier preview of the same job is refused), that the preview is open and ready, and that it was made for the job's owner. The token **expires with the session**: at the end of the job's session minutes (`CODE_SESSION_MAX_MIN`), never later. It is handed only to the owner: the live view's `preview-ready {url}` event goes to the owner's socket, `previewStatus` is for the agent's own loop, and nothing logs a token, an address, a header or a body.
+
+### What the door does with a request (`jobs/src/previewDoor.ts`)
+
+1. Only the methods a browser sends; **an upgrade is refused with 426**: there are no WebSockets through a preview, so a dev server's hot reload does not work, and the page is reloaded to see a change (the agent's design round loads once per look, so it needs none).
+2. The token is read; a bad one is a plain 404 with no object woken.
+3. The body is read, **at most 1 MB**.
+4. The room is asked. It allows 32 requests in flight (`503 preview_busy`), a request lasts 55 s at most (`504`), a response is at most 10 MB (`502 preview_too_large`), the runner failing to reach the dev server is `502`.
+5. The answer gets the door's headers: `cache-control: no-store`, `nosniff`, `referrer-policy: no-referrer`, `x-robots-tag: noindex`, a restrictive `permissions-policy`, and a CSP of `frame-ancestors <PREVIEW_PARENT_ORIGINS>`, so only the app can show it. A CSP the project sent stays, minus its own `frame-ancestors`; `X-Frame-Options` is dropped (it would stop the app); a `Set-Cookie` loses its `Domain`; a redirect to `localhost:<port>` becomes a root-relative one; the routing cookie is never passed to the project; `Origin` and `Referer` are rewritten to the dev server's own (a dev server that checks them would otherwise refuse the public address) and the public host is given in `X-Forwarded-*`.
+
+### How long it lives (the idle rule)
+
+* It starts when the agent asks (`JobRoom.startPreview`): the runner gets the staged edits laid over the checkout (as for any command), runs `prepare` (the install) if there is no `node_modules`, starts the dev command with `HOST=127.0.0.1`, `PORT`, `BROWSER=none`, reads the port from its output if none was given, and answers when the server responds. A command that is **not** the preview's (an `exec`) takes the checkout back and ends the preview, so the next look starts a fresh one.
+* A preview counts as **session activity only while requests arrive**. It holds the session open (the session would otherwise close after `CODE_SESSION_IDLE_SEC` of no commands, 120 s), and **closes after `CODE_PREVIEW_IDLE_SEC`** (default 300 s) with no request, and the session's own idle clock then starts from that last request. The room writes "the preview was used" at most every 5 s, not once per asset.
+* It is always **inside the job's minute cap** (`CODE_SESSION_MAX_MIN`, 20): the cap closes the preview with the session, and the token has stopped working by then. A runner on GitHub Actions is a person's minutes, so the preview is part of what `CODE_SESSION_MAX_MIN` already limits.
+* It closes when the agent is done with it, when the runner drops, when the dev server exits, when the job ends. Requests in flight get a `502` in words; the live view gets `preview-closed {reason}`.
+
+### The settings
+
+| Setting | Default | |
+| --- | --- | --- |
+| `PREVIEW_DOMAIN` | blank | wildcard mode, the registrable domain whose subdomains are previews |
+| `PREVIEW_HOST` | blank | cookie mode, one host. Blank and blank: **previews are off** and nothing else changes |
+| `PREVIEW_PARENT_ORIGINS` | `https://tailzu.space,https://www.tailzu.space` | the app's origins, which alone may frame a preview |
+| `CODE_PREVIEW_IDLE_SEC` | 300 | no request for this long closes the preview (10 to 3600) |
+| `CODE_DESIGN_CHECK` | true | `false` skips the agent's design round altogether |
+| `ARTIFACTS`, `WEB_BROWSER=cloudflare`, `ARTIFACT_SHOT_VIEWER_URL` | off, `none`, blank | the design round also needs these (`docs/artifacts.md` section 11) |
+
+### Switching it on
+
+1. Pick a **registrable domain of its own** for previews (not a subdomain of the app's or the API's) and add it to Cloudflare as a zone.
+2. Wildcard mode: add the proxied wildcard record (`AAAA * 100::`) and the route `*.<domain>/*` for the zone in `jobs/wrangler.jsonc` (`routes`), set `PREVIEW_DOMAIN`. Cookie mode: a Custom Domain on `preview.<domain>`, set `PREVIEW_HOST`.
+3. `PREVIEW_PARENT_ORIGINS` is the app's origin(s). `ARTIFACTS=true` and `ARTIFACT_SHOT_VIEWER_URL` (the second viewer, `viewer/docs/artifact-viewer.md` section 14) for the design round; `WEB_BROWSER=cloudflare` for the shots.
+4. `npx wrangler deploy`. Check: a job built from an approved design gets `preview-ready {url}` on its live view; opening the address shows the app; it stops answering `CODE_PREVIEW_IDLE_SEC` after the last request.
+
+Tests: `jobs/test/preview.test.ts` (the door, the token, the room's state machine and idle rule, in workerd against a fake runner), `tulmi/tests/code-live-preview.test.ts` (the token, the site guard, the frames and the header rules) and `code-live-preview-runner.test.ts` (`run.mjs` against a real dev server).

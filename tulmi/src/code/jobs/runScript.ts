@@ -54,13 +54,20 @@
  * removed) so each command sees "the branch plus the staged edits", with whatever the commands installed (node_modules, caches) kept. No token
  * that can write is on the machine: the checkout was made with persist-credentials: false.
  *
+ * A PREVIEW (docs/desktop-runner-session.md "The preview"). The room may also send `preview` (start the project's dev server in the background, on the
+ * checkout with the staged edits laid, with PORT, HOST=127.0.0.1 and BROWSER=none; read the port from its output; ask it for / until it answers; say ready),
+ * and then `http` (one request for it: the answer comes back as `res` and `res-data` pieces, at most 10 MB, or `res-error`), `http-cancel` and
+ * `preview-stop`. The server is killed (with everything it started) when the room asks, when a command needs the checkout, and when the session ends.
+ *
  * Written in a String.raw template: it must not hold a backtick or "${".
  */
 export const RUN_MJS = String.raw`// Written by Tailzu for one step of a coding job. Do not edit: it is replaced for every step.
 // Runs the commands in .tailzu/step.json, collects what they changed, and reports to Tailzu
 // with a GitHub OIDC identity token. No dependencies: only Node's own modules.
 import { spawn, execFileSync } from "node:child_process";
-import { readFileSync, lstatSync, realpathSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { readFileSync, lstatSync, realpathSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import http from "node:http";
+import net from "node:net";
 import { dirname, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -503,6 +510,210 @@ export function gitGlob(m, cwd) {
   return { ok: true, text: paths.join("\n"), paths, total: all.length, partial: all.length > paths.length };
 }
 
+// ------------------------------------------------------------ the preview
+
+const ANSI = /\u001b\[[0-9;?]*[ -\/]*[@-~]|\u001b\][^\u0007]*\u0007/g;
+export function stripAnsi(text) { return String(text).replace(ANSI, ""); }
+
+const LOCAL_URL = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\])(?::(\d{2,5}))?/gi;
+const WORD_PORT = /(?:listening|running|started|ready|serving|available|server)[^\n]{0,60}?(?:\bon\b|\bat\b)\s+(?:port\s+)?(?:[\w.\[\]:]*:)?(\d{2,5})\b/gi;
+const PORT_IS = /\bport\s*(?:is\s*|number\s*)?[:=]?\s*(\d{2,5})\b/gi;
+/** A line that names a port it did NOT get ("Port 5173 is in use, trying another one"): that port belongs to somebody else. */
+const NOT_OURS = /in use|already|busy|EADDRINUSE|trying another|taken|occupied/i;
+
+/** The ports a dev server's output mentions as its own, in the order it said them (the newest last). "Local: http://localhost:5173/", "listening on port 3000"... */
+export function detectPorts(text) {
+  const found = [];
+  const add = (n) => { const p = Number(n); if (p >= 80 && p <= 65535) { const i = found.indexOf(p); if (i >= 0) found.splice(i, 1); found.push(p); } };
+  for (const line of stripAnsi(text).split("\n")) {
+    if (NOT_OURS.test(line)) continue;
+    for (const m of line.matchAll(LOCAL_URL)) if (m[1]) add(m[1]);
+    for (const m of line.matchAll(WORD_PORT)) add(m[1]);
+    for (const m of line.matchAll(PORT_IS)) add(m[1]);
+  }
+  return found;
+}
+
+function freePort() {
+  return new Promise((done) => {
+    const s = net.createServer();
+    s.on("error", () => done(0));
+    s.listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => done(p)); });
+  });
+}
+
+/** One GET / to the port, on 127.0.0.1 and then ::1 (a dev server that was told "localhost" may be on either): the host that answered, any status, or "". */
+function probe(port, hosts) {
+  const one = (host) => new Promise((done) => {
+    const req = http.request({ host, port, path: "/", method: "GET", headers: { host: "localhost:" + port, accept: "text/html,*/*" }, agent: false, timeout: 2000 }, (res) => { res.destroy(); done(true); });
+    req.on("timeout", () => req.destroy());
+    req.on("error", () => done(false));
+    req.end();
+  });
+  return (async () => { for (const h of hosts || ["127.0.0.1", "::1"]) if (await one(h)) return h; return ""; })();
+}
+
+const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+export const PREVIEW_RES_MAX = 10 * 1024 * 1024;
+const PREVIEW_CHUNK = 192 * 1024;
+const PREVIEW_PENDING = 32;
+const HEADER_NAME_OK = /^[!#$%&'*+.^_|~0-9A-Za-z-]{1,100}$/;
+
+/**
+ * The project's dev server in the background, and the HTTP the room sends it.
+ *   start(m)    runs m.cmd (after m.prepare when there is no node_modules) with PORT, HOST=127.0.0.1 and BROWSER=none, reads the port from what it prints
+ *               (or uses m.port), asks it for / until it answers, and says { ok, port, ms } or { ok: false, error }. Its boot output is streamed like a command's
+ *   request(m)  one HTTP request to it: the head, then the body in pieces of at most 192 KB, at most 10 MB in all, 50 seconds at most
+ *   stop()      kills the server and everything it started
+ * o: { cwd, env, send(frame), known: secret values to redact }.
+ */
+export function createPreview(o) {
+  const hold = { child: null, id: "", port: 0, host: "127.0.0.1", ready: false, out: "" };
+  const inflight = new Map();
+  const killTree = (c, sig) => { try { process.kill(-c.pid, sig); } catch { try { c.kill(sig); } catch { /* gone */ } } };
+
+  function stop() {
+    for (const r of inflight.values()) { try { r.destroy(); } catch { /* gone */ } }
+    inflight.clear();
+    const c = hold.child;
+    if (!c) return false;
+    hold.child = null;
+    hold.ready = false;
+    killTree(c, "SIGTERM");
+    const t = setTimeout(() => killTree(c, "SIGKILL"), 2000);
+    t.unref();
+    c.once("exit", () => clearTimeout(t));
+    return true;
+  }
+
+  const tail = () => { const t = stripAnsi(hold.out).trim().split("\n").slice(-12).join(" | "); return t ? " The end of what it printed: " + redact(t.slice(-700), o.known) : ""; };
+
+  async function start(m) {
+    stop();
+    const t0 = Date.now();
+    const chosen = Number(m.port) > 0 ? Number(m.port) : await freePort();
+    const env = Object.assign({}, commandEnv(o.env), { PORT: String(chosen), HOST: "127.0.0.1", BROWSER: "none", FORCE_COLOR: "0", NO_COLOR: "1", npm_config_color: "false" });
+    const stream = lineStreamer((data) => o.send({ t: "out", id: m.id, data }), o.known);
+    const timer = setInterval(() => stream.tick(), 100);
+    const done = (r) => { clearInterval(timer); stream.flush(); return r; };
+    const fail = (error) => done({ ok: false, error: String(error).slice(0, 1900) });
+
+    if (m.prepare && existsSync(resolve(o.cwd, "package.json")) && !existsSync(resolve(o.cwd, "node_modules"))) {
+      const ran = await runCommands([m.prepare], 300, { cwd: o.cwd, env: commandEnv(o.env), echo: (x) => stream.write(x) });
+      if (ran.exitCode !== 0) return fail("The install before the dev server failed (exit " + ran.exitCode + ")." + (ran.output ? " The end of what it printed: " + redact(stripAnsi(ran.output).trim().split("\n").slice(-6).join(" | ").slice(-500), o.known) : ""));
+    }
+
+    stream.write("$ " + m.cmd + "\n");
+    let child;
+    try { child = spawn("bash", ["-lc", m.cmd], { cwd: o.cwd, env, stdio: ["ignore", "pipe", "pipe"], detached: true }); } catch (err) { return fail("The dev server could not be started: " + String(err && err.message ? err.message : err).slice(0, 200)); }
+    hold.child = child;
+    hold.id = m.id;
+    hold.ready = false;
+    hold.out = "";
+    let exited = null;
+    let was = false;
+    child.on("error", () => { exited = exited || { code: 127 }; });
+    child.on("exit", (code, signal) => {
+      exited = { code, signal };
+      if (hold.child === child) {
+        hold.child = null;
+        hold.ready = false;
+        if (was) o.send({ t: "preview-ended", id: m.id, reason: "the dev server exited (" + (code === null ? signal : code) + ")" });
+      }
+    });
+    let streaming = true;
+    for (const s of [child.stdout, child.stderr]) {
+      s.setEncoding("utf8");
+      s.on("data", (d) => { hold.out = (hold.out + d).slice(-200000); if (streaming) stream.write(d); });
+    }
+
+    const deadline = t0 + Math.max(5, Math.min(180, Number(m.readySec) || 90)) * 1000;
+    for (;;) {
+      if (exited) return fail("The dev server stopped (exit " + (exited.code === null || exited.code === undefined ? exited.signal : exited.code) + ") before it answered." + tail());
+      // The newest port it printed first, then the one that was named, then the one it was told to use.
+      const cands = [];
+      for (const p of detectPorts(hold.out).reverse()) if (cands.indexOf(p) < 0) cands.push(p);
+      if (Number(m.port) > 0 && cands.indexOf(Number(m.port)) < 0) cands.push(Number(m.port));
+      if (cands.indexOf(chosen) < 0) cands.push(chosen);
+      for (const port of cands) {
+        const host = await probe(port);
+        if (host) {
+          hold.port = port; hold.host = host; hold.ready = true; was = true; streaming = false;
+          return done({ ok: true, port, ms: Date.now() - t0 });
+        }
+      }
+      if (Date.now() > deadline) { stop(); return fail("The dev server did not answer within " + Math.round((deadline - t0) / 1000) + " seconds." + tail()); }
+      await sleepMs(400);
+    }
+  }
+
+  function request(m) {
+    const id = m.id;
+    const err = (code, message) => o.send({ t: "res-error", id, code, message });
+    if (!hold.ready || !hold.child) return err("unreachable", "no preview is running");
+    if (inflight.size >= PREVIEW_PENDING) return err("busy", "too many requests at once");
+    if (!/^\/(?!\/)[^\s\\]*$/.test(String(m.path))) return err("bad_request", "that is not a path");
+    const headers = {};
+    for (const pair of Array.isArray(m.headers) ? m.headers : []) {
+      const k = String(pair[0]).toLowerCase();
+      if (k === "host" || k === "content-length" || k === "connection" || k === "transfer-encoding" || k === "accept-encoding") continue;
+      headers[k] = k in headers ? headers[k] + (k === "cookie" ? "; " : ", ") + pair[1] : pair[1];
+    }
+    headers.host = "localhost:" + hold.port;
+    headers["accept-encoding"] = "identity";
+    const body = m.body ? Buffer.from(String(m.body), "base64") : null;
+    if (body) headers["content-length"] = String(body.length);
+    let req;
+    const sent = { size: 0, parts: [], len: 0 };
+    // Pieces of at most PREVIEW_CHUNK bytes however the dev server writes; what is left waits for more or for the end.
+    const flush = (last) => {
+      let all = Buffer.concat(sent.parts);
+      while (all.length >= PREVIEW_CHUNK) { o.send({ t: "res-data", id, data: all.subarray(0, PREVIEW_CHUNK).toString("base64"), last: false }); all = all.subarray(PREVIEW_CHUNK); }
+      if (last) { o.send({ t: "res-data", id, data: all.toString("base64"), last: true }); all = Buffer.alloc(0); }
+      sent.parts = all.length ? [all] : [];
+      sent.len = all.length;
+    };
+    try {
+      req = http.request({ host: hold.host, port: hold.port, method: m.method, path: m.path, headers, agent: false, timeout: 50000, setHost: false }, (res) => {
+        const head = [];
+        for (let i = 0; i + 1 < res.rawHeaders.length && head.length < 200; i += 2) {
+          const k = res.rawHeaders[i];
+          const v = String(res.rawHeaders[i + 1]).replace(/[\u0000-\u0008\u000a-\u001f\u007f]/g, " ").slice(0, 16000);
+          if (HEADER_NAME_OK.test(k)) head.push([k, v]);
+        }
+        o.send({ t: "res", id, status: res.statusCode >= 100 && res.statusCode <= 599 ? res.statusCode : 502, headers: head });
+        res.on("data", (chunk) => {
+          if (!inflight.has(id)) return;
+          sent.size += chunk.length;
+          if (sent.size > PREVIEW_RES_MAX) { inflight.delete(id); req.destroy(); err("too_large", "the response is over 10 MB"); return; }
+          sent.parts.push(chunk);
+          sent.len += chunk.length;
+          if (sent.len >= PREVIEW_CHUNK) flush(false);
+        });
+        res.on("end", () => { if (inflight.delete(id)) flush(true); });
+        res.on("error", () => { if (inflight.delete(id)) err("failed", "the response broke off"); });
+        res.on("aborted", () => { if (inflight.delete(id)) err("failed", "the response broke off"); });
+      });
+    } catch (e) { return err("bad_request", String(e && e.message ? e.message : e).slice(0, 200)); }
+    inflight.set(id, req);
+    req.on("timeout", () => req.destroy(Object.assign(new Error("timeout"), { code: "TIMEOUT" })));
+    req.on("error", (e) => {
+      if (!inflight.delete(id)) return;
+      const code = e && e.code === "TIMEOUT" ? "timeout" : e && /ECONNREFUSED|ECONNRESET|EHOSTUNREACH|EPIPE/.test(String(e.code)) ? "unreachable" : "failed";
+      err(code, String(e && e.message ? e.message : e).slice(0, 200));
+    });
+    req.end(body || undefined);
+  }
+
+  return {
+    start, stop, request,
+    cancel(id) { const r = inflight.get(id); if (r) { inflight.delete(id); try { r.destroy(); } catch { /* gone */ } } },
+    alive() { return !!hold.child; },
+    id() { return hold.id; },
+    inflight() { return inflight.size; },
+  };
+}
+
 /**
  * The session: connect, then do what the room sends, one thing at a time. Resolves { exitCode, reason, commands } when it is over. o is for the
  * tests: the WebSocket to use, the checkout, and how long the room may be silent.
@@ -519,6 +730,7 @@ export async function runSession(spec, o) {
   const laid = new Set();
   let ws;
   let busy = null;
+  let previewIdleSec = 0;
   let commands = 0;
   let last = Date.now();
   let finish;
@@ -526,10 +738,15 @@ export async function runSession(spec, o) {
   let ended = false;
   const end = (exitCode, reason) => { if (ended) return; ended = true; finish({ exitCode, reason, commands }); };
   const send = (obj) => { try { ws.send(JSON.stringify(obj)); } catch { /* the socket is going */ } };
+  const preview = createPreview({ cwd, env, known, send });
 
   try { ws = new WS(sessionAddress(session)); } catch (err) { return { exitCode: 1, reason: "could not open the socket: " + String(err && err.message ? err.message : err).slice(0, 100), commands: 0 }; }
   // Only between commands: the room says nothing while one runs, and the command has its own time limit.
-  const watch = setInterval(() => { if (!busy && Date.now() - last > silentMs) { end(0, "the room was silent"); try { ws.close(); } catch { /* gone */ } } }, Math.min(1000, Math.max(50, silentMs / 4)));
+  // A preview that is open is waited for as long as the room keeps it with no request, and a grace.
+  const watch = setInterval(() => {
+    const limit = preview.alive() ? Math.max(silentMs, previewIdleSec * 1000 + graceMs) : silentMs;
+    if (!busy && Date.now() - last > limit) { end(0, "the room was silent"); try { ws.close(); } catch { /* gone */ } }
+  }, Math.min(1000, Math.max(50, silentMs / 4)));
   watch.unref();
   ws.addEventListener("open", () => send({ t: "hello", v: 1, kind: "github", name: "GitHub Actions", os: process.platform, node: process.version }));
   ws.addEventListener("error", () => end(1, "the socket failed"));
@@ -542,6 +759,30 @@ export async function runSession(spec, o) {
     if (m.t === "ping") { send({ t: "pong", at: m.at || 0 }); return; }
     if (m.t === "close") { end(0, String(m.reason || "closed")); try { ws.close(1000, "done"); } catch { /* gone */ } return; }
     if (m.t === "cancel") { if (busy && busy.id === m.id) busy.abort.abort(); return; }
+    // The preview: the dev server runs in the background, and the room sends it HTTP, several requests at once.
+    if (m.t === "http") { preview.request(m); return; }
+    if (m.t === "http-cancel") { preview.cancel(m.id); return; }
+    if (m.t === "preview-stop") { const id = preview.id(); if (preview.stop()) send({ t: "preview-ended", id, reason: String(m.reason || "stopped").slice(0, 100) }); return; }
+    if (m.t === "preview") {
+      if (busy) { send({ t: "preview", id: m.id, ok: false, error: "A command is running on the computer; the dev server could not be started." }); return; }
+      busy = { id: m.id, abort: new AbortController() };
+      (async () => {
+        try {
+          // The dev server runs on the branch plus the staged edits, like a command does.
+          resetCheckout(cwd, laid);
+          applyOverlay(Array.isArray(m.overlay) ? m.overlay : [], cwd);
+          for (const f of Array.isArray(m.overlay) ? m.overlay : []) if (f && overlayPathOk(f.path)) laid.add(f.path);
+          previewIdleSec = Number(m.idleSec) > 0 ? Number(m.idleSec) : 300;
+          send(Object.assign({ t: "preview", id: m.id }, await preview.start(m)));
+        } catch (err) {
+          send({ t: "preview", id: m.id, ok: false, error: String(err && err.message ? err.message : err).slice(0, 300) });
+        } finally {
+          busy = null;
+          last = Date.now();
+        }
+      })();
+      return;
+    }
     if (m.t === "grep" || m.t === "glob") {
       const r = m.t === "grep" ? gitGrep(m, cwd) : gitGlob(m, cwd);
       send(Object.assign({ t: "found", id: m.id }, r));
@@ -554,6 +795,8 @@ export async function runSession(spec, o) {
     (async () => {
       const t0 = Date.now();
       try {
+        // A command resets the checkout to the branch and the staged edits, which is not what the dev server was started on.
+        if (preview.alive()) { const pid = preview.id(); preview.stop(); send({ t: "preview-ended", id: pid, reason: "a command took the checkout" }); }
         resetCheckout(cwd, laid);
         const lay = applyOverlay(Array.isArray(m.overlay) ? m.overlay : [], cwd);
         for (const f of Array.isArray(m.overlay) ? m.overlay : []) if (f && overlayPathOk(f.path)) laid.add(f.path);
@@ -576,6 +819,7 @@ export async function runSession(spec, o) {
   const result = await over;
   clearInterval(watch);
   if (busy) busy.abort.abort();
+  preview.stop();
   return result;
 }
 
