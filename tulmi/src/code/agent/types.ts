@@ -204,6 +204,31 @@ export interface Report {
   continueWithPaise?: number;
 }
 
+/** The most of an approved design's source the checkpoint keeps, and the most of it the model is shown in one turn. */
+export const SPEC_CHARS_MAX = 40_000;
+export const SPEC_SHOWN_CHARS = 14_000;
+
+/**
+ * A DESIGN THE PERSON APPROVED, TO BUILD INTO THE PROJECT (src/artifacts/build.ts, docs/artifacts.md): an artifact as it was at the version they
+ * said yes to, the project's compact style kit, and where a search says it goes. The model is shown it as the design to match, built with the
+ * project's real components. The screenshot compare (built next) reads `artifactId` and `version` to know what to compare the built page to.
+ */
+export interface SpecArtifact {
+  artifactId: string;
+  version: number;
+  /** html, react, svg, mermaid or markdown. */
+  type: string;
+  title: string;
+  /** The artifact's source at that version, cut to SPEC_CHARS_MAX. */
+  content: string;
+  truncated?: boolean;
+  /** The project's kit for a model (artifacts/kit.ts), at most 2,000 characters. */
+  kit: string;
+  /** Where it goes, best first. */
+  target: Array<{ path: string; why: string }>;
+  approvedAt: number;
+}
+
 /** The whole of where the agent has got to. Plain data: it goes into the checkpoint as JSON. */
 export interface AgentState {
   v: 1;
@@ -214,6 +239,8 @@ export interface AgentState {
   repoEmpty?: boolean;
   baseline?: BaselineState;
   located?: Located;
+  /** The design this job builds, when it was made from an approved artifact. */
+  spec?: SpecArtifact;
   /** A clarification the person gave for a question from locate (spent: locate does not ask twice). */
   locateAsked?: boolean;
   plan?: ChangePlan;
