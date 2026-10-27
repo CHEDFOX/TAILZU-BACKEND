@@ -24,7 +24,7 @@ import type { JobRouter } from "../code/jobs/router.js";
 import type { CallFn } from "../code/work/model.js";
 import { getConfig } from "../config.js";
 import { defaultGuard, type Guard } from "../guard/index.js";
-import { AttachmentRegistry } from "./attachments.js";
+import { AttachmentRegistry, type ReadResult } from "./attachments.js";
 import { decide, type DecideDeps } from "./decide.js";
 import { dispatch, type DispatchOptions } from "./dispatch.js";
 import { defaultHandlers, type HandlerDeps, type Handlers } from "./handlers.js";
@@ -75,6 +75,8 @@ export interface Front {
   ask(message: string, ctx: FrontCtx, o?: DispatchOptions): Promise<{ id: string | null; decision: Decision; result: FrontResult }>;
   /** What the person did with an answer: closed or kept its visual, a thumb. False when it is not theirs. */
   feedback(userId: string, id: string, outcome: Outcome): Promise<boolean>;
+  /** What is attached, read the way the front door reads it (once, by SHA-256, only the part that matters): for a bot with the Files skill (docs/bots.md). */
+  readFiles(userId: string, refs: FrontCtx["attachments"], data: ReadonlyMap<string, Buffer>, question: string, o: { maxPaise: number; signal?: AbortSignal }): Promise<ReadResult>;
 }
 
 /** The front door, or null while FRONT_DOOR is off. */
@@ -103,6 +105,10 @@ export function createFront(o: FrontOptions = {}): Front | null {
       const decision = await front.decide(message, ctx, opts.signal ? { signal: opts.signal } : {});
       return { decision, ...(await front.dispatch(decision, message, ctx, opts)) };
     },
+    readFiles: (userId, refs, data, question, opts) => attachments.read(
+      userId, refs.map((ref) => ({ ref, ...(data.get(ref.id) ? { data: data.get(ref.id)! } : {}) })),
+      { question, lang: "en", budget: { maxPaise: opts.maxPaise }, model: { ...(o.call ? { call: o.call } : {}), ...(o.gateway ? { gateway: o.gateway } : {}), userId, ...(opts.signal ? { signal: opts.signal } : {}) } },
+    ),
     async feedback(userId, id, outcome) {
       if (!(PERSON_OUTCOMES as readonly string[]).includes(outcome)) return false;
       const ok = await store.setOutcome(userId, id, outcome);

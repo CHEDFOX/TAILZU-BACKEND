@@ -1078,3 +1078,28 @@ one is useful without the next (a PDF with text, a CSV, a zip, a picture and a r
    pieces of it that matter to the reply model. Deleting the account deletes the files and their bytes.
 8. **Back out:** `MEDIA_INGEST=false` and a restart. The app goes back to "coming soon". Nothing is swept while it is off, so files already kept stay
    (rows and bytes) until it is turned on again or you empty the bucket and run `delete from media_items;`.
+
+### Bots: people's own bots and their API (`BOTS`)
+
+Everything is a bot (the Code bot, Keybot, the Plan bot, the Travel bot), and a person can make their own, each with its own tools, knowledge, memory and an
+endpoint for their own apps. Off by default: with `BOTS` false every `/v1/bots` route answers `404 bots_off`, and the front door never picks a bot. Full story,
+the safety model, the endpoint and its limits: `docs/bots.md`.
+
+1. **Migration.** Paste `tulmi/supabase/migrations/0038_bots.sql` into the Supabase SQL editor (or re-run `full_schema.sql`). It makes `bots`, `bot_keys`,
+   `bot_commands`, `bot_facts` and `bot_threads` with owner-only RLS (and hides a key's hash from a token), and can be run again. Without `SUPABASE_SERVICE_KEY`
+   everything is kept in memory and a restart forgets it, **API keys included**.
+2. **The pepper.** `openssl rand -hex 32`, and in `tulmi/.env`: `BOT_KEY_PEPPER=<the value>` (**a secret, `.env` only**, no `$`). A bot's API key is stored as
+   `sha256(pepper:key)`, so a leaked table is of no use. Without it nobody can make a key (503). Changing it later revokes every key.
+3. **Switch it on.** `BOTS=true` in `tulmi/.env`, then `docker compose up -d --build`. What the skills run on is what you already have: connected apps
+   (`CONNECTORS`), files (`MEDIA_INGEST`), artifacts (`ARTIFACTS`), the Code bot (`CODE_GITHUB`); a bot whose part is off has no tool for that skill and says so.
+   The limits (`BOTS_MAX`, `BOT_REQUEST_PAISE`, `BOT_DAILY_PAISE`, `BOT_KEY_RATE_PER_MIN`, `BOT_KEY_DAILY_PAISE`) are in `docs/bots.md` section 10.
+4. **Check.** With a signed-in token: `POST /v1/bots/draft {"sentence":"a bot that plans my workouts"}` answers a draft and saves nothing; `POST /v1/bots/approve`
+   with its `definition` saves it; `POST /v1/bots/<slug>/keys` answers the key once; then
+   `curl -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"message":"hi"}' https://api.tailzu.space/v1/bots/<slug>/ask`.
+   The same key at another bot's address is `403`, and after `DELETE /v1/bots/<slug>/keys/<id>` it is `401`.
+5. **The proxy.** Nothing to change for the JSON endpoint. A streamed answer (`"stream": true`) needs the proxy not to buffer: Caddy does not; for **nginx**
+   add `proxy_buffering off;` to the `location /` block.
+6. **Add to the privacy policy.** What a person asks their bot and what it answers goes to the model providers like any message; nothing of it is logged here.
+   A bot keeps, for its owner and until they forget it or delete the bot or the account, a few short facts they told it and a short summary of the talk.
+   An app calling with a key never reads or writes that memory.
+7. **Back out:** `BOTS=false` and a restart. The routes answer 404; the rows and keys stay, and work again when it is turned back on.

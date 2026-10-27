@@ -25,6 +25,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { requireAdmin } from "../control/index.js";
+import type { Bots } from "../bots/index.js";
+import { frontEnvelope, tagOf, type BotTag } from "../bots/envelope.js";
+import { isBotError, type BotAnswer } from "../bots/types.js";
 import { defaultGuard, type Guard } from "../guard/index.js";
 import {
   DEVICES, MODES, PERSON_OUTCOMES, VISUAL_KINDS, VISUAL_PREFS, FrontError, refFromBody,
@@ -50,10 +53,14 @@ export interface FrontRoutesDeps {
   quota?: (user: AuthedUser) => Promise<string | null>;
   /** Written down after an answer (zero words: the model's words are not the person's). */
   used?: (user: AuthedUser) => Promise<void>;
+  /** The bots platform (src/bots), for `bot` in the body ("Ask any bot"). Null or absent while BOTS is off: a body with `bot` is then 404 bots_off. */
+  bots?: Bots | null;
 }
 
 export interface AskInput {
   message: string;
+  /** "any" (the front door picks the best of the person's bots), or a bot's slug: docs/bots.md. Absent: the front door as it always was. */
+  bot?: string;
   ctx: Omit<FrontCtx, "userId" | "plan">;
   data: Map<string, Buffer>;
   stream: boolean;
@@ -77,6 +84,7 @@ export function readAsk(body: unknown): AskRead {
   if (b.projectId !== undefined && (typeof b.projectId !== "string" || !UUID.test(b.projectId))) return bad("projectId is a project's id.");
   if (b.threadId !== undefined && (typeof b.threadId !== "string" || !UUID.test(b.threadId))) return bad("threadId is an id the app makes for a conversation about a project's code (a uuid).");
   if (b.stream !== undefined && typeof b.stream !== "boolean") return bad("stream is true or false.");
+  if (b.bot !== undefined && (typeof b.bot !== "string" || b.bot.length > 40 || !/^(?:any|auto|[a-z0-9]+(?:-[a-z0-9]+)*)$/.test(b.bot))) return bad('bot is "any" or a bot\'s slug.');
 
   const attachments: AttachmentRef[] = [];
   const data = new Map<string, Buffer>();
@@ -105,7 +113,7 @@ export function readAsk(body: unknown): AskRead {
   return {
     ok: true,
     input: {
-      message: b.message, data, stream: b.stream === true,
+      message: b.message, data, stream: b.stream === true, ...(typeof b.bot === "string" ? { bot: b.bot } : {}),
       ctx: {
         device: b.device as Device, mode: b.mode as Mode, visuals: (b.visuals as VisualPref | undefined) ?? "auto", recent, attachments,
         ...(typeof b.projectId === "string" ? { projectId: b.projectId } : {}), ...(typeof b.threadId === "string" ? { threadId: b.threadId } : {}),
@@ -115,8 +123,8 @@ export function readAsk(body: unknown): AskRead {
   };
 }
 
-/** What a finished ask is: the row's id, the decision, the result. */
-interface Asked { id: string | null; decision: Decision; result: FrontResult }
+/** What a finished ask is: the row's id, the decision, the result; and when a bot answered or was picked, which one and all it did. */
+interface Asked { id: string | null; decision: Decision; result: FrontResult; bot?: BotTag; answer?: BotAnswer }
 
 const isAbort = (err: unknown): boolean => (err as { name?: unknown } | null)?.name === "AbortError";
 
@@ -133,6 +141,10 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
 
   const fail = (req: FastifyRequest, reply: FastifyReply, err: unknown): FastifyReply => {
     if (err instanceof FrontError) return reply.code(err.status).send({ code: err.code, message: err.message });
+    if (isBotError(err)) {
+      if (typeof err.detail?.retryAfterSec === "number") reply.header("retry-after", String(err.detail.retryAfterSec));
+      return reply.code(err.status).send({ code: err.code, message: err.message });
+    }
     try {
       return failCode(reply, err);
     } catch {
@@ -142,10 +154,14 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
   };
 
   const ask: FrontRoutes["ask"] = async (req, reply, user) => {
-    if (!front) return reply.code(404).send({ code: "front_door_off", message: "The smart entry point is not switched on." });
+    const botMode = typeof (req.body as { bot?: unknown } | null)?.bot === "string";
+    // "Ask any bot" needs the bots platform; with it off, a body that names a bot is 404 before anything else. A chosen bot does not need the front door.
+    if (botMode && !deps.bots) return reply.code(404).send({ code: "bots_off", message: "Bots are not switched on." });
+    if (!front && !botMode) return reply.code(404).send({ code: "front_door_off", message: "The smart entry point is not switched on." });
     const read = readAsk(req.body);
     if (!read.ok) return reply.code(read.status).send({ code: read.code, message: read.message });
     const { input } = read;
+    const bots = input.bot !== undefined ? deps.bots ?? null : null;
 
     const quota = await deps.quota?.(user);
     if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
@@ -159,7 +175,7 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
     const res = reply.raw;
     let started = false;
     let sawResult = false;
-    const write = (ev: FrontEvent): void => {
+    const write = (ev: FrontEvent | { t: "bot"; bot: BotTag }): void => {
       if (!started) {
         started = true;
         reply.hijack();
@@ -170,22 +186,53 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
     };
 
     try {
-      const out = await front.guard.run<Asked>({
+      const out = await (front?.guard ?? deps.guard ?? defaultGuard()).run<Asked>({
         userId: user.id, plan: ctx.plan, route: "POST /v1/ask", lane: "ask", header: idempotencyHeader(req), signal: gone.signal,
         // The key is the person's request, whichever way the client wrote it: the stream flag is part of it, since a stream and a reply are two answers.
         body: req.body,
         ...(streaming ? { onEvent: (ev: unknown) => write(ev as FrontEvent) } : {}),
       }, async (emit, stop) => {
-        const r = await front.ask(input.message, ctx, { signal: stop, emit: (ev) => emit(ev), attachmentData: input.data });
+        // "Ask any bot", or a bot the person chose: the front door picks, or is told. The Code bot and "none of them" go down the front door's own roads, unchanged.
+        if (bots) {
+          const target = await bots.target(user.id, input.bot!, input.message, { ...(ctx.projectId ? { projectId: ctx.projectId } : {}), attachments: ctx.attachments, recent: ctx.recent, mode: ctx.mode }, stop);
+          if (target.kind === "bot") {
+            const daily = front?.guard.daily;
+            // The front door's own spend on this person today: the picker's small model and the reading of a file are its own, like its replies are.
+            if (daily && daily.leftPaise(user.id) <= 0) throw new FrontError("daily_limit", "You've used what Tailzu may spend on your messages today. It starts again tomorrow.", 429);
+            emit({ t: "bot", bot: tagOf(target.bot, target.by) });
+            // Files attached to the message are read the front door's way, once, for a bot that can read files; a bot that can't is told so (its note), and nothing is read.
+            let read: Awaited<ReturnType<Front["readFiles"]>> | null = null;
+            if (front && ctx.attachments.length && target.bot.skills.files) {
+              emit({ t: "status", stage: "reading" });
+              read = await front.readFiles(user.id, ctx.attachments, input.data, target.message, { maxPaise: Math.max(1, Math.min(60, Math.floor(target.bot.budgets.perRequestPaise / 2))), signal: stop });
+            }
+            const answer = await bots.ask(user.id, target.bot.id, {
+              message: target.message, signal: stop, pickedBy: target.by, ctx: { attachments: ctx.attachments, recent: ctx.recent, mode: ctx.mode },
+              ...(ctx.projectId ? { projectId: ctx.projectId } : {}), emit: (e) => { if (e.t !== "result") emit(e); },
+              ...(read?.files.length ? { attached: read.files.map((f) => ({ name: f.name, kind: f.kind, text: f.text })) } : {}), ...(read?.paise ? { extraPaise: read.paise } : {}),
+            });
+            if (read?.notes.length) answer.notes.push(...read.notes.map((n) => n.note ?? "").filter(Boolean));
+            daily?.add(user.id, target.paise + answer.paise);
+            const env = frontEnvelope({ ...answer, paise: answer.paise + target.paise }, target.bot, { by: target.by, confidence: target.confidence, reasons: target.reasons });
+            return { id: null, decision: env.decision, result: { ...env.result, ...(read?.files.length ? { files: read.notes } : {}) }, bot: env.bot, answer: env.answer };
+          }
+          if (!front) throw new FrontError("front_door_off", "The smart entry point is not switched on.", 404);
+          const tag = target.bot ? tagOf(target.bot, target.by === "none" ? "rules" : target.by) : null;
+          if (tag) emit({ t: "bot", bot: tag });
+          // The front door's own events, as they were; the one that ends the stream says which bot it was.
+          const r = await front.ask(target.message, ctx, { signal: stop, emit: (ev) => emit(tag && ev.t === "result" ? { ...ev, bot: tag } : ev), attachmentData: input.data });
+          return { id: r.id, decision: r.decision, result: r.result, ...(tag ? { bot: tag } : {}) };
+        }
+        const r = await front!.ask(input.message, ctx, { signal: stop, emit: (ev) => emit(ev), attachmentData: input.data });
         return { id: r.id, decision: r.decision, result: r.result };
       });
       void deps.used?.(user)?.catch(() => undefined);
       if (!streaming) {
         if (out.replay) reply.header("idempotent-replayed", "true");
-        return reply.send({ id: out.result.id, decision: out.result.decision, result: out.result.result });
+        return reply.send({ id: out.result.id, decision: out.result.decision, result: out.result.result, ...(out.result.bot ? { bot: out.result.bot } : {}), ...(out.result.answer ? { answer: out.result.answer } : {}) });
       }
       // A late joiner may have missed events the store did not keep: the answer itself is never missed.
-      if (!sawResult) write({ t: "result", decisionId: out.result.id, decision: out.result.decision, result: out.result.result });
+      if (!sawResult) write({ t: "result", decisionId: out.result.id, decision: out.result.decision, result: out.result.result, ...(out.result.bot ? { bot: out.result.bot } : {}), ...(out.result.answer ? { answer: out.result.answer } : {}) } as FrontEvent);
       res.end();
       return reply;
     } catch (err) {
