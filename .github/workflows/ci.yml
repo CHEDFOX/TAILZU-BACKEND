@@ -77,6 +77,54 @@ jobs:
         run: npx wrangler deploy --dry-run --outdir dist
         working-directory: jobs
 
+  # The artifact viewer Worker (viewer/). Its vendored libraries (~8 MB) are not committed: `npm run build` fetches the pinned packages from
+  # npm (viewer/vendor-src/package-lock.json) and bundles them; `--verify` checks the result against viewer/vendor.lock.json.
+  viewer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: |
+            viewer/package-lock.json
+            viewer/vendor-src/package-lock.json
+
+      - name: Install (frozen)
+        run: npm ci --no-audit --no-fund
+        working-directory: viewer
+
+      - name: Vendor the libraries and build the runtime
+        run: npm run build
+        working-directory: viewer
+
+      - name: Vendored files match the lock
+        run: npm run vendor -- --verify
+        working-directory: viewer
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+        working-directory: viewer
+
+      - name: Unit and workerd tests
+        run: npx vitest run
+        working-directory: viewer
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: viewer
+
+      - name: End to end (Chromium against wrangler dev)
+        run: npx playwright test
+        working-directory: viewer
+
+      - name: Bundle (dry run)
+        run: npx wrangler deploy --dry-run --outdir dist
+        working-directory: viewer
+
   docker-build:
     runs-on: ubuntu-latest
     timeout-minutes: 15

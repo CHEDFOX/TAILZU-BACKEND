@@ -1,0 +1,30 @@
+/* The viewer's own styles. Small on purpose: the artifact brings its own, and the design kit (if any) comes after this. */
+:root{color-scheme:light}
+:root[data-theme=dark]{color-scheme:dark}
+html,body{margin:0}
+body{font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;background:transparent;color:CanvasText;-webkit-text-size-adjust:100%}
+#root:empty,#tz-frames:empty{display:none}
+.tz-frame{position:fixed;inset:0;width:100%;height:100%;border:0;background:transparent;color-scheme:normal}
+.tz-err{margin:1rem;padding:1rem;border:1px solid #e5484d;border-radius:8px;background:color-mix(in srgb,#e5484d 10%,transparent);font:14px/1.5 system-ui,sans-serif}
+.tz-err pre{margin:.5rem 0 0;white-space:pre-wrap;word-break:break-word;font:12px/1.5 ui-monospace,Menlo,monospace}
+.tz-md{max-width:46rem;margin:0 auto;padding:1.25rem 1rem 3rem;line-height:1.65;overflow-wrap:anywhere}
+.tz-md h1,.tz-md h2,.tz-md h3,.tz-md h4,.tz-md h5,.tz-md h6{line-height:1.25;margin:1.6em 0 .5em}
+.tz-md h1{font-size:1.9em}.tz-md h2{font-size:1.5em}.tz-md h3{font-size:1.25em}
+.tz-md>:first-child{margin-top:0}
+.tz-md p,.tz-md ul,.tz-md ol,.tz-md pre,.tz-md blockquote,.tz-md .tz-table{margin:0 0 1em}
+.tz-md ul,.tz-md ol{padding-left:1.6em}
+.tz-md a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+.tz-md code{font:.9em ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;padding:.12em .35em;border-radius:5px;background:color-mix(in srgb,currentColor 10%,transparent)}
+.tz-md pre{overflow:auto;padding:.9rem 1rem;border-radius:8px;background:color-mix(in srgb,currentColor 8%,transparent);font-size:.875em;line-height:1.5}
+.tz-md pre code{padding:0;background:none;font-size:1em}
+.tz-md blockquote{padding:.1em 1em;border-left:3px solid color-mix(in srgb,currentColor 30%,transparent);opacity:.85}
+.tz-md hr{border:0;border-top:1px solid color-mix(in srgb,currentColor 20%,transparent);margin:1.6em 0}
+.tz-md .tz-table{overflow-x:auto}
+.tz-md table{border-collapse:collapse;min-width:100%}
+.tz-md th,.tz-md td{border:1px solid color-mix(in srgb,currentColor 22%,transparent);padding:.4rem .7rem;text-align:left}
+.tz-md th{background:color-mix(in srgb,currentColor 7%,transparent)}
+.tz-md img{max-width:100%;height:auto;border-radius:6px}
+.tz-md li.task{list-style:none;margin-left:-1.3em}
+.tz-md li.task input{margin-right:.5em}
+.tz-svg,.tz-mermaid{padding:1rem;text-align:center}
+.tz-svg svg,.tz-mermaid svg{max-width:100%;height:auto;display:inline-block}
