@@ -17,5 +17,6 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts", "evals/**/*.ts", "../shared/types/**/*.ts"]
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "evals/**/*.ts", "e2e/**/*.ts", "../shared/types/**/*.ts"],
+  "exclude": ["node_modules", "dist", "e2e/cache", "e2e/out"]
 }

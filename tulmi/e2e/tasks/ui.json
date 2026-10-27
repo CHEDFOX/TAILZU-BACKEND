@@ -1,0 +1,309 @@
+[
+  {
+    "difficulty": 2,
+    "tags": [
+      "ui",
+      "bakeoff",
+      "quick",
+      "vite-react",
+      "bulletproof-vite"
+    ],
+    "base": {
+      "commit": "9506629ed003a561c6627735480cce4994244bb4"
+    },
+    "checks": {
+      "suite": true,
+      "questions": {
+        "max": 1
+      },
+      "expectPr": true,
+      "design": {
+        "reference": "badge.png",
+        "route": "/__e2e_preview.html",
+        "minSimilarity": 0.88
+      }
+    },
+    "id": "bulletproof-vite-ui-badge",
+    "title": "A Badge component from a description",
+    "category": "ui",
+    "repo": "bulletproof-vite",
+    "request": "Add a `Badge` component in src/components/ui/badge (the component in badge.tsx, and an index.ts so it can be imported from '@/components/ui/badge'), like the other ui components. It renders a `<span role=\"status\">` with a `data-variant` attribute holding its variant: `default` (the default), `success`, `warning` or `danger`. It is a small pill: classes inline-flex, items-center, rounded-full, px-2.5, py-0.5, text-xs and font-medium. The colours by variant are gray (`bg-gray-100 text-gray-800`) for default, green (`bg-green-100 text-green-800`) for success, amber (`bg-amber-100 text-amber-800`) for warning and red (`bg-red-100 text-red-800`) for danger. A `className` prop is merged in and wins over a conflicting default class (use the project's existing helper for that), and other props are passed to the span.",
+    "truth": {
+      "files": [
+        "src/components/ui/badge/badge.tsx",
+        "src/components/ui/badge/index.ts"
+      ],
+      "near": [
+        "src/components/ui/button/button.tsx",
+        "src/components/ui/button/index.ts"
+      ],
+      "allowed": [
+        "^src/components/ui/badge/"
+      ]
+    },
+    "hidden": {
+      "files": {
+        "src/components/ui/badge/__tests__/badge.test.tsx": "import { render, screen } from '@testing-library/react';\n\nimport { Badge } from '@/components/ui/badge';\n\ntest('renders its children as a status', () => {\n  render(<Badge>Paid</Badge>);\n  const el = screen.getByRole('status');\n  expect(el).toHaveTextContent('Paid');\n  expect(el.tagName).toBe('SPAN');\n});\n\ntest('is the default variant unless told otherwise', () => {\n  render(<Badge>Draft</Badge>);\n  const el = screen.getByRole('status');\n  expect(el).toHaveAttribute('data-variant', 'default');\n  expect(el.className).toContain('bg-gray-100');\n  expect(el.className).toContain('text-gray-800');\n});\n\ntest.each([\n  ['success', 'bg-green-100', 'text-green-800'],\n  ['warning', 'bg-amber-100', 'text-amber-800'],\n  ['danger', 'bg-red-100', 'text-red-800'],\n] as const)('the %s variant has its colours', (variant, bg, text) => {\n  render(<Badge variant={variant}>x</Badge>);\n  const el = screen.getByRole('status');\n  expect(el).toHaveAttribute('data-variant', variant);\n  expect(el.className).toContain(bg);\n  expect(el.className).toContain(text);\n});\n\ntest('is a small pill', () => {\n  render(<Badge>x</Badge>);\n  const cls = screen.getByRole('status').className;\n  for (const c of ['inline-flex', 'rounded-full', 'text-xs', 'font-medium', 'px-2.5', 'py-0.5']) expect(cls).toContain(c);\n});\n\ntest('a className is merged and wins over a conflicting default', () => {\n  render(<Badge className=\"px-4 ml-2\">x</Badge>);\n  const cls = screen.getByRole('status').className;\n  expect(cls).toContain('ml-2');\n  expect(cls).toContain('px-4');\n  expect(cls).not.toContain('px-2.5');\n});\n\ntest('passes other attributes to the element', () => {\n  render(<Badge id=\"state\" title=\"The state\">x</Badge>);\n  const el = screen.getByRole('status');\n  expect(el).toHaveAttribute('id', 'state');\n  expect(el).toHaveAttribute('title', 'The state');\n});\n",
+        "__e2e_preview.html": "<!doctype html>\n<html lang=\"en\">\n  <head><meta charset=\"utf-8\" /><title>preview</title></head>\n  <body style=\"margin:0;background:#fff\">\n    <div id=\"e2e-target\" style=\"display:inline-block;padding:16px;background:#fff\"></div>\n    <script type=\"module\" src=\"/src/__e2e__/preview.tsx\"></script>\n  </body>\n</html>\n",
+        "src/__e2e__/preview.tsx": "import { createRoot } from 'react-dom/client';\n\nimport '@/index.css';\nimport { Badge } from '@/components/ui/badge';\n\ncreateRoot(document.getElementById('e2e-target') as HTMLElement).render(\n  <div className=\"flex items-center gap-3\">\n    <Badge>Draft</Badge>\n    <Badge variant=\"success\">Paid</Badge>\n    <Badge variant=\"warning\">Due soon</Badge>\n    <Badge variant=\"danger\">Overdue</Badge>\n  </div>,\n);\n"
+      },
+      "run": [
+        "src/components/ui/badge/__tests__/badge.test.tsx"
+      ],
+      "kind": "dom",
+      "minTests": 7
+    },
+    "oracle": {
+      "kind": "patch",
+      "files": {
+        "src/components/ui/badge/badge.tsx": "import * as React from 'react';\n\nimport { cn } from '@/utils/cn';\n\nconst variants = {\n  default: 'bg-gray-100 text-gray-800',\n  success: 'bg-green-100 text-green-800',\n  warning: 'bg-amber-100 text-amber-800',\n  danger: 'bg-red-100 text-red-800',\n} as const;\n\nexport type BadgeProps = React.HTMLAttributes<HTMLSpanElement> & {\n  variant?: keyof typeof variants;\n};\n\nexport const Badge = ({\n  variant = 'default',\n  className,\n  children,\n  ...props\n}: BadgeProps) => (\n  <span\n    role=\"status\"\n    data-variant={variant}\n    className={cn(\n      'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium',\n      variants[variant],\n      className,\n    )}\n    {...props}\n  >\n    {children}\n  </span>\n);\n",
+        "src/components/ui/badge/index.ts": "export * from './badge';\n"
+      },
+      "classify": {
+        "type": "feature"
+      },
+      "plan": "Add the Badge component and its index next to the other ui components"
+    },
+    "validated": {
+      "at": "2026-10-27T11:23:48.630Z",
+      "baseFails": true,
+      "oraclePasses": true,
+      "baseTestsFailed": 1,
+      "oracleTests": 8,
+      "ms": 56552,
+      "note": "the project's own suite with the hidden files: 29 pass, 0 already failing, none newly broken"
+    }
+  },
+  {
+    "difficulty": 3,
+    "tags": [
+      "ui",
+      "screenshot",
+      "bakeoff",
+      "vite-react",
+      "bulletproof-vite"
+    ],
+    "base": {
+      "commit": "9506629ed003a561c6627735480cce4994244bb4"
+    },
+    "checks": {
+      "suite": true,
+      "questions": {
+        "max": 1
+      },
+      "expectPr": true,
+      "design": {
+        "reference": "statcard.png",
+        "route": "/__e2e_preview.html",
+        "minSimilarity": 0.85
+      }
+    },
+    "id": "bulletproof-vite-ui-statcard-shot",
+    "title": "A StatCard component from a screenshot",
+    "category": "ui",
+    "repo": "bulletproof-vite",
+    "request": "Build the card in the attached screenshot as a `StatCard` component in src/components/ui/stat-card (stat-card.tsx and an index.ts so it imports from '@/components/ui/stat-card'). Props: `label` and `value` (strings), an optional `delta` (a number, a percentage change), an optional `period` (default \"vs last month\") and `className`. The delta row is only there when `delta` is given: a positive delta shows an up arrow and a plus sign (\"▲ +12.5%\") in green, a negative one a down arrow (\"▼ -3.2%\") in red, zero shows \"0%\" in gray with no arrow; put `data-testid=\"delta\"` and `data-trend=\"up\"`, `\"down\"` or `\"flat\"` on that row. Match the screenshot's look with the project's Tailwind classes.",
+    "images": [
+      "statcard.png"
+    ],
+    "truth": {
+      "files": [
+        "src/components/ui/stat-card/stat-card.tsx",
+        "src/components/ui/stat-card/index.ts"
+      ],
+      "near": [
+        "src/components/ui/button/button.tsx",
+        "src/components/ui/button/index.ts"
+      ],
+      "allowed": [
+        "^src/components/ui/stat-card/"
+      ]
+    },
+    "hidden": {
+      "files": {
+        "src/components/ui/stat-card/__tests__/stat-card.test.tsx": "import { render, screen } from '@testing-library/react';\n\nimport { StatCard } from '@/components/ui/stat-card';\n\ntest('shows the label and the value', () => {\n  render(<StatCard label=\"Revenue\" value=\"$48,200\" />);\n  expect(screen.getByText('Revenue')).toBeInTheDocument();\n  expect(screen.getByText('$48,200')).toBeInTheDocument();\n});\n\ntest('has no delta row without a delta', () => {\n  render(<StatCard label=\"Revenue\" value=\"$48,200\" />);\n  expect(screen.queryByTestId('delta')).toBeNull();\n});\n\ntest('a positive delta is up, signed, with an up arrow and the default period', () => {\n  render(<StatCard label=\"Revenue\" value=\"$48,200\" delta={12.5} />);\n  const delta = screen.getByTestId('delta');\n  expect(delta).toHaveAttribute('data-trend', 'up');\n  expect(delta).toHaveTextContent('▲ +12.5%');\n  expect(delta).toHaveTextContent('vs last month');\n});\n\ntest('a negative delta is down with a down arrow and no extra sign', () => {\n  render(<StatCard label=\"Churn\" value=\"3.1%\" delta={-3.2} />);\n  const delta = screen.getByTestId('delta');\n  expect(delta).toHaveAttribute('data-trend', 'down');\n  expect(delta).toHaveTextContent('▼ -3.2%');\n  expect(delta.textContent).not.toContain('--');\n});\n\ntest('a zero delta is flat with no arrow', () => {\n  render(<StatCard label=\"Users\" value=\"900\" delta={0} />);\n  const delta = screen.getByTestId('delta');\n  expect(delta).toHaveAttribute('data-trend', 'flat');\n  expect(delta.textContent).not.toMatch(/[▲▼]/);\n  expect(delta).toHaveTextContent('0%');\n});\n\ntest('the period can be changed', () => {\n  render(<StatCard label=\"Revenue\" value=\"$1\" delta={1} period=\"vs last week\" />);\n  expect(screen.getByTestId('delta')).toHaveTextContent('vs last week');\n});\n\ntest('is a fixed-width white card with a border and a shadow', () => {\n  const { container } = render(<StatCard label=\"Revenue\" value=\"$1\" />);\n  const cls = (container.firstElementChild as HTMLElement).className;\n  for (const c of ['w-64', 'rounded-lg', 'border', 'bg-white', 'p-5', 'shadow-sm']) expect(cls).toContain(c);\n});\n",
+        "__e2e_preview.html": "<!doctype html>\n<html lang=\"en\">\n  <head><meta charset=\"utf-8\" /><title>preview</title></head>\n  <body style=\"margin:0;background:#fff\">\n    <div id=\"e2e-target\" style=\"display:inline-block;padding:16px;background:#fff\"></div>\n    <script type=\"module\" src=\"/src/__e2e__/preview.tsx\"></script>\n  </body>\n</html>\n",
+        "src/__e2e__/preview.tsx": "import { createRoot } from 'react-dom/client';\n\nimport '@/index.css';\nimport { StatCard } from '@/components/ui/stat-card';\n\ncreateRoot(document.getElementById('e2e-target') as HTMLElement).render(\n  <StatCard label=\"Revenue\" value=\"$48,200\" delta={12.5} />,\n);\n"
+      },
+      "run": [
+        "src/components/ui/stat-card/__tests__/stat-card.test.tsx"
+      ],
+      "kind": "dom",
+      "minTests": 7
+    },
+    "oracle": {
+      "kind": "patch",
+      "files": {
+        "src/components/ui/stat-card/stat-card.tsx": "import { cn } from '@/utils/cn';\n\nexport type StatCardProps = {\n  label: string;\n  value: string;\n  delta?: number;\n  period?: string;\n  className?: string;\n};\n\nexport const StatCard = ({\n  label,\n  value,\n  delta,\n  period = 'vs last month',\n  className,\n}: StatCardProps) => {\n  const trend = delta === undefined ? undefined : delta > 0 ? 'up' : delta < 0 ? 'down' : 'flat';\n  const sign = delta === undefined ? '' : delta > 0 ? '+' : '';\n  return (\n    <div\n      className={cn(\n        'w-64 rounded-lg border border-slate-200 bg-white p-5 shadow-sm',\n        className,\n      )}\n    >\n      <div className=\"text-xs font-medium uppercase tracking-wide text-slate-500\">\n        {label}\n      </div>\n      <div className=\"mt-2 text-3xl font-bold text-slate-900\">{value}</div>\n      {delta !== undefined && (\n        <div\n          data-testid=\"delta\"\n          data-trend={trend}\n          className=\"mt-3 flex items-center gap-1 text-sm\"\n        >\n          <span\n            className={cn(\n              'font-semibold',\n              trend === 'up' && 'text-green-600',\n              trend === 'down' && 'text-red-600',\n              trend === 'flat' && 'text-slate-500',\n            )}\n          >\n            {trend === 'up' ? '▲ ' : trend === 'down' ? '▼ ' : ''}\n            {sign}\n            {delta}%\n          </span>\n          <span className=\"text-slate-500\">{period}</span>\n        </div>\n      )}\n    </div>\n  );\n};\n",
+        "src/components/ui/stat-card/index.ts": "export * from './stat-card';\n"
+      },
+      "classify": {
+        "type": "feature"
+      },
+      "plan": "Add the StatCard component and its index"
+    },
+    "rubric": [
+      "The result keeps the screenshot's structure: a small uppercase gray label, a large bold value, then a row with the change and the period",
+      "The delta colours follow the request: green for up, red for down, gray for flat"
+    ],
+    "validated": {
+      "at": "2026-10-27T10:45:31.651Z",
+      "baseFails": true,
+      "oraclePasses": true,
+      "baseTestsFailed": 1,
+      "oracleTests": 7,
+      "ms": 31223,
+      "note": "the project's own suite with the hidden files: 28 pass, 0 already failing, none newly broken"
+    }
+  },
+  {
+    "difficulty": 3,
+    "tags": [
+      "ui",
+      "screenshot",
+      "bakeoff",
+      "vite-react",
+      "bulletproof-vite"
+    ],
+    "base": {
+      "commit": "9506629ed003a561c6627735480cce4994244bb4"
+    },
+    "checks": {
+      "suite": true,
+      "questions": {
+        "max": 1
+      },
+      "expectPr": true,
+      "design": {
+        "reference": "emptystate.png",
+        "route": "/__e2e_preview.html",
+        "minSimilarity": 0.85
+      }
+    },
+    "id": "bulletproof-vite-ui-emptystate-shot",
+    "title": "An EmptyState component from a screenshot and a description",
+    "category": "ui",
+    "repo": "bulletproof-vite",
+    "request": "Add an `EmptyState` component in src/components/ui/empty-state (empty-state.tsx and an index.ts, importable from '@/components/ui/empty-state'), looking like the attached screenshot. Props: `title`, an optional `description`, an optional `action` ({ label, onClick }) and `className`. It is a `<section>` labelled by its title, which is an h3; above the title an inbox icon (the project already depends on lucide-react) that is hidden from screen readers; the description under it only when given; and the action as the project's own Button, only when given. Use a dashed border and centred text as in the picture.",
+    "images": [
+      "emptystate.png"
+    ],
+    "truth": {
+      "files": [
+        "src/components/ui/empty-state/empty-state.tsx",
+        "src/components/ui/empty-state/index.ts"
+      ],
+      "near": [
+        "src/components/ui/button/button.tsx",
+        "src/components/ui/button/index.ts"
+      ],
+      "allowed": [
+        "^src/components/ui/empty-state/"
+      ]
+    },
+    "hidden": {
+      "files": {
+        "src/components/ui/empty-state/__tests__/empty-state.test.tsx": "import { render, screen } from '@testing-library/react';\nimport userEvent from '@testing-library/user-event';\n\nimport { EmptyState } from '@/components/ui/empty-state';\n\ntest('shows the title as a heading inside a labelled region', () => {\n  render(<EmptyState title=\"No discussions yet\" />);\n  expect(screen.getByRole('heading', { name: 'No discussions yet' })).toBeInTheDocument();\n  expect(screen.getByRole('region', { name: 'No discussions yet' })).toBeInTheDocument();\n});\n\ntest('shows the description when there is one, and not when there is none', () => {\n  const { rerender } = render(<EmptyState title=\"Empty\" description=\"Start one to see it here.\" />);\n  expect(screen.getByText('Start one to see it here.')).toBeInTheDocument();\n  rerender(<EmptyState title=\"Empty\" />);\n  expect(screen.queryByText('Start one to see it here.')).toBeNull();\n});\n\ntest('has an icon that screen readers skip', () => {\n  const { container } = render(<EmptyState title=\"Empty\" />);\n  const svg = container.querySelector('svg');\n  expect(svg).not.toBeNull();\n  expect(svg).toHaveAttribute('aria-hidden', 'true');\n});\n\ntest('an action is a button that calls its handler', async () => {\n  const onClick = vi.fn();\n  render(<EmptyState title=\"Empty\" action={{ label: 'Create one', onClick }} />);\n  await userEvent.click(screen.getByRole('button', { name: 'Create one' }));\n  expect(onClick).toHaveBeenCalledTimes(1);\n});\n\ntest('has no button without an action', () => {\n  render(<EmptyState title=\"Empty\" />);\n  expect(screen.queryByRole('button')).toBeNull();\n});\n\ntest('is a centred dashed box', () => {\n  render(<EmptyState title=\"Empty\" />);\n  const cls = screen.getByRole('region').className;\n  for (const c of ['flex', 'flex-col', 'items-center', 'text-center', 'border-dashed', 'rounded-lg']) expect(cls).toContain(c);\n});\n",
+        "__e2e_preview.html": "<!doctype html>\n<html lang=\"en\">\n  <head><meta charset=\"utf-8\" /><title>preview</title></head>\n  <body style=\"margin:0;background:#fff\">\n    <div id=\"e2e-target\" style=\"display:inline-block;padding:16px;background:#fff\"></div>\n    <script type=\"module\" src=\"/src/__e2e__/preview.tsx\"></script>\n  </body>\n</html>\n",
+        "src/__e2e__/preview.tsx": "import { createRoot } from 'react-dom/client';\n\nimport '@/index.css';\nimport { EmptyState } from '@/components/ui/empty-state';\n\ncreateRoot(document.getElementById('e2e-target') as HTMLElement).render(\n  <EmptyState title=\"No discussions yet\" description=\"Start one and it will show up here.\" action={{ label: 'New discussion', onClick: () => undefined }} />,\n);\n"
+      },
+      "run": [
+        "src/components/ui/empty-state/__tests__/empty-state.test.tsx"
+      ],
+      "kind": "dom",
+      "minTests": 6
+    },
+    "oracle": {
+      "kind": "patch",
+      "files": {
+        "src/components/ui/empty-state/empty-state.tsx": "import { Inbox } from 'lucide-react';\nimport * as React from 'react';\n\nimport { Button } from '@/components/ui/button';\nimport { cn } from '@/utils/cn';\n\nexport type EmptyStateProps = {\n  title: string;\n  description?: string;\n  action?: { label: string; onClick: () => void };\n  className?: string;\n};\n\nexport const EmptyState = ({\n  title,\n  description,\n  action,\n  className,\n}: EmptyStateProps) => (\n  <section\n    aria-labelledby=\"empty-state-title\"\n    className={cn(\n      'flex w-80 flex-col items-center gap-3 rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center',\n      className,\n    )}\n  >\n    <Inbox aria-hidden=\"true\" className=\"size-10 text-slate-400\" />\n    <h3 id=\"empty-state-title\" className=\"text-lg font-semibold text-slate-900\">\n      {title}\n    </h3>\n    {description && <p className=\"text-sm text-slate-500\">{description}</p>}\n    {action && (\n      <Button size=\"sm\" onClick={action.onClick}>\n        {action.label}\n      </Button>\n    )}\n  </section>\n);\n",
+        "src/components/ui/empty-state/index.ts": "export * from './empty-state';\n"
+      },
+      "classify": {
+        "type": "feature"
+      },
+      "plan": "Add the EmptyState component using lucide-react and the project's Button"
+    },
+    "rubric": [
+      "Uses the project's existing Button and lucide-react rather than new dependencies",
+      "The structure matches the picture: icon, title, description, action button, in a dashed centred box"
+    ],
+    "validated": {
+      "at": "2026-10-27T10:45:02.316Z",
+      "baseFails": true,
+      "oraclePasses": true,
+      "baseTestsFailed": 1,
+      "oracleTests": 6,
+      "ms": 37319,
+      "note": "the project's own suite with the hidden files: 27 pass, 0 already failing, none newly broken"
+    }
+  },
+  {
+    "difficulty": 3,
+    "tags": [
+      "ui",
+      "bakeoff",
+      "nextjs",
+      "bulletproof-next"
+    ],
+    "base": {
+      "commit": "9506629ed003a561c6627735480cce4994244bb4"
+    },
+    "checks": {
+      "suite": true,
+      "questions": {
+        "max": 1
+      },
+      "expectPr": true
+    },
+    "id": "bulletproof-next-ui-avatar",
+    "title": "An Avatar component in the Next.js app",
+    "category": "ui",
+    "repo": "bulletproof-next",
+    "request": "Add an `Avatar` component in src/components/ui/avatar (avatar.tsx and an index.ts so it imports from '@/components/ui/avatar'), and export a helper `initialsOf(name)` from it. `initialsOf` gives the first letter of the first two words of the name, in upper case (\"ada lovelace\" is \"AL\", \"Grace Brewster Murray Hopper\" is \"GB\", an empty name is \"\"). Props: `name`, an optional `src`, an optional `size` (`sm`, `md` default, `lg`) and `className`. The root is a round `<span>` with a `data-size` attribute and the size classes size-8, size-10 or size-12 (use the project's class-merging helper so a className wins). With a `src` it shows an <img> whose alt text is the name; without one it shows the initials in an element with role=\"img\" and aria-label set to the name. Style: rounded-full, bg-slate-200, text-slate-700, font-medium, centred.",
+    "truth": {
+      "files": [
+        "src/components/ui/avatar/avatar.tsx",
+        "src/components/ui/avatar/index.ts"
+      ],
+      "near": [
+        "src/components/ui/button/button.tsx",
+        "src/components/ui/button/index.ts"
+      ],
+      "allowed": [
+        "^src/components/ui/avatar/"
+      ]
+    },
+    "hidden": {
+      "files": {
+        "src/components/ui/avatar/__tests__/avatar.test.tsx": "import { render, screen } from '@testing-library/react';\n\nimport { Avatar, initialsOf } from '@/components/ui/avatar';\n\ntest('initials are the first letters of the first two words, upper case', () => {\n  expect(initialsOf('ada lovelace')).toBe('AL');\n  expect(initialsOf('Grace Brewster Murray Hopper')).toBe('GB');\n  expect(initialsOf('  plato ')).toBe('P');\n  expect(initialsOf('')).toBe('');\n});\n\ntest('without an image it shows initials, labelled with the name', () => {\n  render(<Avatar name=\"Ada Lovelace\" />);\n  const el = screen.getByRole('img', { name: 'Ada Lovelace' });\n  expect(el).toHaveTextContent('AL');\n});\n\ntest('with an image it shows the picture with the name as its alt text', () => {\n  render(<Avatar name=\"Ada Lovelace\" src=\"/ada.png\" />);\n  const img = screen.getByRole('img', { name: 'Ada Lovelace' });\n  expect(img.tagName).toBe('IMG');\n  expect(img).toHaveAttribute('src', '/ada.png');\n});\n\ntest.each([\n  ['sm', 'size-8'],\n  ['md', 'size-10'],\n  ['lg', 'size-12'],\n] as const)('the %s size is %s', (size, cls) => {\n  const { container } = render(<Avatar name=\"Ada\" size={size} />);\n  const root = container.firstElementChild as HTMLElement;\n  expect(root).toHaveAttribute('data-size', size);\n  expect(root.className).toContain(cls);\n});\n\ntest('is medium and round by default, and merges a className', () => {\n  const { container } = render(<Avatar name=\"Ada\" className=\"ring-2\" />);\n  const root = container.firstElementChild as HTMLElement;\n  expect(root).toHaveAttribute('data-size', 'md');\n  expect(root.className).toContain('rounded-full');\n  expect(root.className).toContain('ring-2');\n});\n",
+        "src/app/e2e-preview/page.tsx": "import { Avatar } from '@/components/ui/avatar';\n\nconst Page = () => (\n  <div id=\"e2e-target\" style={{ display: 'inline-block', padding: 16, background: '#fff' }}>\n    <div className=\"flex items-center gap-3\">\n      <Avatar name=\"Ada Lovelace\" size=\"sm\" />\n      <Avatar name=\"Grace Hopper\" />\n      <Avatar name=\"Plato\" size=\"lg\" />\n    </div>\n  </div>\n);\n\nexport default Page;\n"
+      },
+      "run": [
+        "src/components/ui/avatar/__tests__/avatar.test.tsx"
+      ],
+      "kind": "dom",
+      "minTests": 7
+    },
+    "oracle": {
+      "kind": "patch",
+      "files": {
+        "src/components/ui/avatar/avatar.tsx": "import { cn } from '@/utils/cn';\n\nconst sizes = { sm: 'size-8 text-xs', md: 'size-10 text-sm', lg: 'size-12 text-base' } as const;\n\nexport type AvatarProps = {\n  name: string;\n  src?: string;\n  size?: keyof typeof sizes;\n  className?: string;\n};\n\nexport const initialsOf = (name: string): string =>\n  name\n    .trim()\n    .split(/\\s+/)\n    .filter(Boolean)\n    .slice(0, 2)\n    .map((word) => word.charAt(0).toUpperCase())\n    .join('');\n\nexport const Avatar = ({ name, src, size = 'md', className }: AvatarProps) => (\n  <span\n    data-size={size}\n    className={cn(\n      'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-200 font-medium text-slate-700',\n      sizes[size],\n      className,\n    )}\n  >\n    {src ? (\n      // eslint-disable-next-line @next/next/no-img-element\n      <img src={src} alt={name} className=\"size-full object-cover\" />\n    ) : (\n      <span role=\"img\" aria-label={name}>\n        {initialsOf(name)}\n      </span>\n    )}\n  </span>\n);\n",
+        "src/components/ui/avatar/index.ts": "export * from './avatar';\n"
+      },
+      "classify": {
+        "type": "feature"
+      },
+      "plan": "Add the Avatar component with initialsOf and its index"
+    },
+    "validated": {
+      "at": "2026-10-27T10:45:57.683Z",
+      "baseFails": true,
+      "oraclePasses": true,
+      "baseTestsFailed": 1,
+      "oracleTests": 7,
+      "ms": 19315,
+      "note": "the project's own suite with the hidden files: 31 pass, 0 already failing, none newly broken"
+    }
+  }
+]

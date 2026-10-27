@@ -1,0 +1,3 @@
+# Clones, installed dependencies, temp checkouts and every run's output: local, large, reproducible.
+cache/
+out/
