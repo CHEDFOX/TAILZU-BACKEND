@@ -31,9 +31,12 @@
 import dns from "node:dns";
 import { BlockList, isIP, isIPv4, isIPv6, type LookupFunction } from "node:net";
 import { Agent } from "undici";
+import { EgressRefused, MAX_REDIRECTS, PORTS, capBody, followRedirects, type EgressOptions, type FetchLike, type RefusedReason } from "./egressTypes.js";
+import { installSafeFetch, isSafeFetchInstalled } from "../web/safeFetch.js";
 
-/** The fetch the MCP SDK takes, and the one this file hands out. */
-export type FetchLike = (url: string | URL, init?: RequestInit) => Promise<Response>;
+// The refusal, the body cap, the walk through redirects and the fetch type are in egressTypes.ts (no node-only module), where the Cloudflare jobs Worker's own guard shares them. They are re-exported so nothing that imports them from here has to change.
+export { EgressRefused, MAX_REDIRECTS, capBody, followRedirects };
+export type { EgressOptions, FetchLike, RefusedReason };
 
 /** Most an MCP answer may be: one POST's response, or everything over the life of the GET stream. */
 export const MCP_BODY_MAX = 1024 * 1024;
@@ -41,45 +44,6 @@ export const MCP_BODY_MAX = 1024 * 1024;
 export const METADATA_BODY_MAX = 256 * 1024;
 /** A sign-in endpoint (discovery, registration, token) gets this long, body included. */
 export const OAUTH_TIMEOUT_MS = 10_000;
-/** Redirects followed for one request, each checked like the first. */
-export const MAX_REDIRECTS = 3;
-
-/** "" is the default port of https. */
-const PORTS = new Set(["", "443", "8443"]);
-const REDIRECTS = new Set([301, 302, 303, 307, 308]);
-/** Statuses a Response cannot be built with a body for. */
-const NO_BODY = new Set([101, 103, 204, 205, 304]);
-
-export type RefusedReason =
-  | "bad_url" | "not_https" | "bad_port" | "userinfo" | "fragment"
-  | "private_address" | "no_address" | "redirects" | "too_large";
-
-/** Plain words for each refusal: a person who pasted the address may read them. */
-const REFUSED_WORDS: Record<RefusedReason, string> = {
-  bad_url: "That isn't a web address.",
-  not_https: "The address has to start with https://.",
-  bad_port: "That address uses a port Tailzu doesn't connect to.",
-  userinfo: "Take the name and password out of the address.",
-  fragment: "Take the part after # out of the address.",
-  private_address: "That address points into a private network, so Tailzu won't connect to it.",
-  no_address: "I couldn't find that address.",
-  redirects: "That address sent me through too many redirects.",
-  too_large: "That app's answer was too big to take.",
-};
-
-/**
- * A request this file would not make, or an answer it would not take. Not a
- * TypeError on purpose: the SDK reads a TypeError during discovery as a
- * browser's CORS failure and quietly tries something else, and a refusal must
- * stop the sign-in instead.
- */
-export class EgressRefused extends Error {
-  constructor(readonly reason: RefusedReason) {
-    super(REFUSED_WORDS[reason]);
-    this.name = "EgressRefused";
-  }
-}
-
 // ------------------------------------------------------------ the blocked ranges
 
 /**
@@ -224,29 +188,6 @@ export async function checkPublicUrl(raw: unknown): Promise<URL> {
   return u;
 }
 
-/**
- * The answer's body, cut off past `max` bytes: reading further fails with
- * EgressRefused("too_large"). A Content-Length already over it fails at the
- * first read, without waiting for the bytes.
- */
-export function capBody(res: Response, max: number): Response {
-  if (!res.body || NO_BODY.has(res.status)) return res;
-  const declared = Number(res.headers.get("content-length"));
-  let seen = 0;
-  const counted = res.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
-    start(ctl) { if (declared > max) ctl.error(new EgressRefused("too_large")); },
-    transform(chunk, ctl) {
-      seen += chunk.byteLength;
-      if (seen > max) ctl.error(new EgressRefused("too_large"));
-      else ctl.enqueue(chunk);
-    },
-  }));
-  const out = new Response(counted, { status: res.status, statusText: res.statusText, headers: res.headers });
-  // The SDK names a redirect it did not follow from the response's URL.
-  Object.defineProperty(out, "url", { value: res.url });
-  return out;
-}
-
 // ---------------------------------------------------------------- the fetch
 
 /** One request through the guarded Agent. A refusal inside the lookup comes out as itself, not as "fetch failed". */
@@ -259,57 +200,12 @@ async function send(url: URL, init: RequestInit): Promise<Response> {
   }
 }
 
-/**
- * Redirects, by hand. `manual` (what the SDK asks for: it follows a redirect
- * only within the same origin, and each hop it takes comes back through here
- * and is checked) gets the redirect itself. Otherwise up to three are
- * followed, each checked; a body is only ever re-sent to the same origin, and
- * credentials never leave it.
- */
-async function follow(start: URL, init: RequestInit): Promise<Response> {
-  const mode = init.redirect ?? "follow";
-  let url = start;
-  let method = (init.method ?? "GET").toUpperCase();
-  let body = init.body;
-  const headers = new Headers(init.headers);
-  for (let hop = 0; ; hop++) {
-    checkShape(url);
-    const res = await send(url, { ...init, method, body, headers });
-    const location = REDIRECTS.has(res.status) ? res.headers.get("location") : null;
-    if (!location || mode === "manual") return res;
-    let next: URL;
-    try { next = new URL(location, url); } catch { return res; }
-    const sameOrigin = next.origin === url.origin;
-    const keepsBody = res.status === 307 || res.status === 308;
-    // A body (a token request's code and secret) is never carried to another origin: that redirect is handed back unfollowed.
-    if (body != null && keepsBody && !sameOrigin) return res;
-    await res.body?.cancel().catch(() => {});
-    if (mode === "error") throw new TypeError("fetch failed: redirected");
-    if (hop >= MAX_REDIRECTS) throw new EgressRefused("redirects");
-    if (!sameOrigin) for (const h of ["authorization", "cookie", "proxy-authorization"]) headers.delete(h);
-    if (!keepsBody && method !== "GET" && method !== "HEAD") {
-      method = "GET";
-      body = undefined;
-      headers.delete("content-type");
-      headers.delete("content-length");
-    }
-    url = next;
-  }
-}
-
-export interface EgressOptions {
-  /** The whole request, body included. */
-  timeoutMs?: number;
-  /** Most bytes the body may be (capBody). */
-  maxBytes?: number;
-}
-
 /** A guarded fetch with a time limit and a size limit of its own. */
 export function egressFetchWith(o: EgressOptions = {}): FetchLike {
   return async (input, init = {}) => {
     const timer = o.timeoutMs ? AbortSignal.timeout(o.timeoutMs) : undefined;
     const signal = timer && init.signal ? AbortSignal.any([init.signal, timer]) : timer ?? init.signal ?? undefined;
-    const res = await follow(new URL(String(input)), { ...init, signal });
+    const res = await followRedirects(new URL(String(input)), { ...init, signal }, { check: checkShape, send });
     return o.maxBytes ? capBody(res, o.maxBytes) : res;
   };
 }
@@ -320,3 +216,6 @@ export const egressFetch: FetchLike = egressFetchWith();
 export const mcpFetch: FetchLike = egressFetchWith({ maxBytes: MCP_BODY_MAX });
 /** Signing in: discovery, registration, token. Ten seconds and 256 KiB each. */
 export const oauthFetch: FetchLike = egressFetchWith({ timeoutMs: OAUTH_TIMEOUT_MS, maxBytes: METADATA_BODY_MAX });
+
+// The seam the readers, the search sources and the resources fetch through (web/safeFetch.ts): on this server it is this guard. A process that loads this file (the server, the tests) gets it unless something else was installed first.
+if (!isSafeFetchInstalled()) installSafeFetch({ fetchWith: egressFetchWith, isBlockedAddress });

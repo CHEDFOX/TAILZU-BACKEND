@@ -53,7 +53,7 @@ import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { temperatureFor, type CallRecord } from "../../agent/llm.js";
 import { getConfig } from "../../config.js";
-import { openrouter } from "../../pipeline/cleanup.js";
+import { openrouter } from "../../pipeline/openrouter.js";
 import { callRowOf, runStore, type RunStore } from "../../runs/index.js";
 import { jobStore, type JobStore } from "../jobs/store.js";
 import { DEFAULT_USD_INR, charsOf, tokensOfChars, usdFor, usdToPaise, worstCasePaise } from "./money.js";

@@ -77,7 +77,7 @@
  * store's casJob, so a ticker, a request and a second server can't both win.
  */
 import { getConfig } from "../../config.js";
-import { ConnectorError } from "../../connectors/oauth.js";
+import { ConnectorError } from "../../connectors/state.js";
 import { assertRepoPath, type CommitFile } from "../github.js";
 import { PolicyError, isNeedsApproval, isWorkflowPath, type NeedsApproval } from "../policy.js";
 import { isReservedPath } from "../shadow.js";

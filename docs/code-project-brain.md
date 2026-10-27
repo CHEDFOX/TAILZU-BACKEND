@@ -129,6 +129,8 @@ Subscribe the GitHub App to **Push** (`docs/github-app.md`). The webhook answers
 
 `ensureFresh(userId, projectId, { waitMs = 30000 })` is for the layer that starts a job: if the brain was built from an older commit than the default branch's head now (or a push marked it stale), it updates it incrementally and waits, up to `waitMs`; it answers `{ fresh, updated, status, headSha }`. A project with no brain starts a full build and answers at once, not fresh.
 
+**On Cloudflare.** With `CODE_JOBS_MODE=cloudflare` (`docs/cloudflare-jobs.md`) the builds this section starts (a project added, the push webhook's incremental build after its debounce, the refresh route, `ensureFresh`) are Workflow instances on the jobs Worker, id `brain-<projectId>-<headSha>` (one build per head). This server still receives the webhook, keeps the debounce and marks the brain `building` at once (and `failed`, in plain words, if the Worker could not be reached in three signed attempts); `ensureFresh` hands the build over and does not wait for it, so a job goes on with the brain as it is. The Worker runs `buildProjectBrain` (one step, with the raised CPU limit) and writes the progress into the same row, so `GET /v1/code/projects/:id/brain` is unchanged. The build holds up to 60 MB of text in a 128 MB isolate, which is the risk to watch for large repos.
+
 ## 8. For layer 5 (the planner): what to call
 
 What layers 5 to 7 do with these calls (locate, plan, the work log, the library finder and audit, the research brief, the new-project planner) is `docs/code-work.md`.

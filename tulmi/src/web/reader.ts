@@ -18,7 +18,7 @@
  *      this page) skips robots, as a browser does.
  *   3. The cache (cache.ts) is asked first. A hit is `via: "cache"`.
  *   4. For "index", at most one request a second per host.
- *   5. The fetch goes through connectors/egress.ts, which refuses private
+ *   5. The fetch goes through web/safeFetch.ts (connectors/egress.ts on the VPS), which refuses private
  *      addresses at connect time (DNS rebinding included), takes only https on
  *      443 or 8443, follows three redirects checking each, and here has 15
  *      seconds and 3 MiB. The size and time limits are also enforced again here,
@@ -39,7 +39,8 @@
  * unable to close the wrapper, and a line saying it is data.
  */
 import { DEFAULT_WEB_BOT_UA, getConfig } from "../config.js";
-import { EgressRefused, egressFetchWith, type FetchLike } from "../connectors/egress.js";
+import { EgressRefused, type FetchLike } from "../connectors/egressTypes.js";
+import { safeFetchWith } from "./safeFetch.js";
 import type { Renderer } from "./browser/engine.js";
 import { isCacheable, redactUrl, ttlMinutes, webCache, type CachedPage, type WebCache } from "./cache.js";
 import { WebError } from "./error.js";
@@ -247,7 +248,7 @@ async function politely(host: string, d: Deps): Promise<void> {
 let guarded: FetchLike | undefined;
 /** The egress fetch with this reader's time and size limits. */
 function defaultFetch(): FetchLike {
-  return (guarded ??= egressFetchWith({ timeoutMs: FETCH_TIMEOUT_MS, maxBytes: FETCH_MAX_BYTES }));
+  return (guarded ??= safeFetchWith({ timeoutMs: FETCH_TIMEOUT_MS, maxBytes: FETCH_MAX_BYTES }));
 }
 
 /** Whatever went wrong in a fetch, as the WebError a caller can switch on. Never carries an address. */

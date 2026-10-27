@@ -27,8 +27,10 @@
  * failure, and it never leaves a half-way commit that breaks the project.
  */
 import { BudgetExceeded } from "../brain/gateway.js";
+import type { WaitingOn } from "../jobs/types.js";
 import type { LoopEnv } from "./run.js";
-import { BudgetStop, EndJob, LostClaim, Park, Run } from "./run.js";
+import { BudgetStop, EndJob, LostClaim, Park, Run, Yield } from "./run.js";
+import { RunPending } from "./runner.js";
 import {
   baseline, commitPhase, commitStaged, headlineOf, locatePhase, newProjectPhase, planPhase, prPhase, prepare, reportPhase, runVerify, verifyPhase, workPhase,
 } from "./phases.js";
@@ -68,20 +70,86 @@ export async function runLoop(env: LoopEnv): Promise<LoopEnd> {
 }
 
 async function ended(r: Run, err: unknown): Promise<LoopEnd> {
-  if (err instanceof LostClaim) return "lost";
+  return (await endedWith(r, err)).end;
+}
+
+/** `ended`, and what a parked job waits for. Throws what it does not know. */
+async function endedWith(r: Run, err: unknown): Promise<{ end: LoopEnd; waitingOn?: WaitingOn }> {
+  if (err instanceof LostClaim) return { end: "lost" };
   if (err instanceof Park) {
     await park(r, err);
-    return "parked";
+    return { end: "parked", waitingOn: err.waitingOn };
   }
   if (err instanceof EndJob) {
     await failed(r, err.why);
-    return "finished";
+    return { end: "finished" };
   }
   if (isBudget(err)) {
     await budgetStop(r, err instanceof BudgetStop ? err.needPaise : (err as BudgetExceeded).needPaise ?? 0);
-    return "parked";
+    return { end: "parked", waitingOn: "budget" };
   }
   throw err;
+}
+
+// -------------------------------------------------------------- one advance
+
+/**
+ * What one advance of the loop came to, for a driver that comes back for the next (a Cloudflare Workflow: jobs/src/agentJob.ts):
+ *
+ *   continue   a slice of the work is done and saved; call advance again at once
+ *   wait       nothing more can be done until `waitingOn` happens: the person's answer, yes or money (the job is parked; their
+ *              word is written into the state and the driver is woken), a step that is out on a runner (look again at `wakeAt`,
+ *              epoch ms; `waitMs` is the same wait as a length, for a driver that must not read the clock), a claim somebody
+ *              else holds (try again then), or an error that is being backed off from
+ *   end        the job is over, or this driver has no business with it any more (`why`)
+ */
+export type Advance =
+  | { next: "continue" }
+  | { next: "wait"; waitingOn: "answer" | "approval" | "budget" | "runner" | "retry" | "claim"; wakeAt?: number; waitMs?: number }
+  | { next: "end"; why: "finished" | "lost" | "stopped" | "over" };
+
+/**
+ * Runs the loop ONE ADVANCE: the phase the state is in, up to the next checkpoint, and says how it ended. It is runLoop's body for
+ * one pass, built from the same phases, so everything they promise (re-entered after a restart, nothing done twice, every write
+ * fenced by the claim) holds between advances exactly as it holds between a crash and the next server. Differences from runLoop:
+ *
+ *   - a step that is out on a runner is looked at once (`pollOnce`); if it has not finished the advance says "wait, runner" and the
+ *     driver sleeps, instead of this function holding a step open;
+ *   - the work phase gives way after `turns` rounds (a model turn and its tool calls), each already saved;
+ *   - the run of failures the backoff counts is cleared AND saved when a phase gets to its end, because nothing in memory
+ *     outlives the advance.
+ *
+ * An error it does not understand is thrown (the orchestrator's `advance` backs off and counts it, as `errored` does for runLoop).
+ */
+export async function advanceLoop(env: LoopEnv, o: { turns?: number } = {}): Promise<Advance> {
+  const r = new Run({ ...env, pollOnce: true, ...(o.turns !== undefined ? { turnsPerAdvance: Math.max(1, Math.floor(o.turns)) } : {}) });
+  try {
+    await r.init();
+    if (env.signal.aborted) return { next: "end", why: "stopped" };
+    if (r.state.phase !== "done") {
+      await PHASES[r.state.phase](r);
+      if (r.state.errors) {
+        r.state.errors = undefined;
+        await r.save();
+      }
+    }
+    if (r.state.phase === "done") {
+      await finish(r);
+      return { next: "end", why: "finished" };
+    }
+    return { next: "continue" };
+  } catch (err) {
+    if (err instanceof Yield) return { next: "continue" };
+    if (err instanceof RunPending) return { next: "wait", waitingOn: "runner", wakeAt: r.now() + err.retryInMs, waitMs: err.retryInMs };
+    try {
+      const e = await endedWith(r, err);
+      if (e.end === "parked") return { next: "wait", waitingOn: e.waitingOn as "answer" | "approval" | "budget" };
+      return { next: "end", why: e.end === "finished" ? "finished" : e.end === "stopped" ? "stopped" : "lost" };
+    } catch (again) {
+      if (again instanceof LostClaim) return { next: "end", why: "lost" };
+      throw again;
+    }
+  }
 }
 
 // ------------------------------------------------------------ the ways out

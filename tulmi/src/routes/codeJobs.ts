@@ -116,6 +116,8 @@ export interface CodeJobRoutesDeps {
   githubActions?: GithubActionsProvider | null;
   /** The agent loop's worker (code/agent). Null or absent: this server has none, and a job is left to whatever drives the router. */
   agent?: AgentOrchestrator | null;
+  /** A step's result was taken (a PC's, or GitHub's): tell whoever is waiting on the job. With jobs on the Worker this wakes its Workflow. */
+  onStepResult?: (jobId: string) => void;
 }
 
 /** A result carries files, so it may be larger than the server's usual 1 MB. */
@@ -152,6 +154,12 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
     app.addHook("onClose", async () => { stop?.(); await deps.agent?.stop(); });
   }
 
+  /** A result was taken: whoever waits on the job (its Workflow, on Cloudflare) is told to look. */
+  const stepResult = (body: unknown) => {
+    const id = bodyOf(body).jobId;
+    if (deps.onStepResult && typeof id === "string" && UUID.test(id)) deps.onStepResult(id);
+  };
+
   const agentOff = (reply: FastifyReply) => reply.code(404).send({ code: "agent_off", message: "The Code bot's agent is not switched on on this server." });
 
   const bodyOf = (b: unknown): Record<string, unknown> => (b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, unknown>) : {});
@@ -173,8 +181,9 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
     try {
       const job = await s.jobs.createJob(s.user.id, projectId, branch, task, b.budgetPaise as number | undefined, { agent: !!deps.agent });
       // The agent drives it from here: the whole request goes into its state (the job keeps 500 characters of it), and the worker is nudged.
-      if (deps.agent) await deps.agent.enqueue(job.id, task);
-      return reply.send({ job: stripAgent(job) });
+      // With jobs on the Worker, "nudged" is "handed over": a job the Worker could not be reached for comes back failed, with the reason.
+      const made = deps.agent ? await deps.agent.enqueue(job.id, task) : null;
+      return reply.send({ job: stripAgent(made ?? job) });
     } catch (err) { return fail(reply, err); }
   });
 
@@ -347,7 +356,9 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
     const s = await begin(req.headers["authorization"], reply);
     if (!s) return reply;
     try {
-      return reply.send(await s.jobs.submitResult(s.user.id, req.body, "desktop"));
+      const out = await s.jobs.submitResult(s.user.id, req.body, "desktop");
+      stepResult(req.body);
+      return reply.send(out);
     } catch (err) { return fail(reply, err); }
   });
 
@@ -357,7 +368,9 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
     if (!code) return off(reply);
     if (!jobs || !deps.githubActions) return notConfigured(reply);
     try {
-      return reply.send(await deps.githubActions.handleResult(jobs, req.headers["authorization"], req.body));
+      const out = await deps.githubActions.handleResult(jobs, req.headers["authorization"], req.body);
+      stepResult(req.body);
+      return reply.send(out);
     } catch (err) { return fail(reply, err); }
   });
 

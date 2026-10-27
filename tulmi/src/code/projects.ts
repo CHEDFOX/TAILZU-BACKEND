@@ -76,7 +76,7 @@
  * two-step merge, deleting the branch) are in pulls.ts.
  */
 import { randomBytes } from "node:crypto";
-import { ConnectorError } from "../connectors/oauth.js";
+import { ConnectorError } from "../connectors/state.js";
 import type { Person } from "./access.js";
 import { COMMIT_FILES_MAX, commitTreeEntries, validBranchName, type CommitFile, type GithubApp, type RepoPermission, type RepoRef, type TreeEntry } from "./github.js";
 import type { ApprovalBook } from "./approvals.js";

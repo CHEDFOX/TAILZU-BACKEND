@@ -42,7 +42,7 @@
  */
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { INDIC_SCRIPTS, detectScript, romanHindiHits } from "../../pipeline/stt.js";
+import { INDIC_SCRIPTS, detectScript, romanHindiHits } from "../../pipeline/script.js";
 import { callModel, type CallInput, type CallResult, type GatewayDeps } from "./gateway.js";
 import {
   LANGUAGES, LEVELS, REQUEST_TYPES,

@@ -59,7 +59,7 @@
  * timeout-minutes ends it) and the step moved.
  */
 import { createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
-import { ConnectorError } from "../../connectors/oauth.js";
+import { ConnectorError } from "../../connectors/state.js";
 import type { GithubRun } from "../github.js";
 import { gateFree } from "../policy.js";
 import { assertAccess, gateBase, ownProject, repoRef, type ProjectDeps } from "../projects.js";

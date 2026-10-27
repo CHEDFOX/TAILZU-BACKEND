@@ -1,4 +1,6 @@
 import { clearAppEnv } from "./env-surface.js";
+// The VPS guard for outbound reads (web/safeFetch.ts): the server installs it by loading this file, and so does every test.
+import "../src/connectors/egress.js";
 
 /**
  * THE SUITE STARTS FROM AN EMPTY ENVIRONMENT, ON EVERY MACHINE.

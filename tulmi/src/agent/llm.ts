@@ -47,7 +47,7 @@
  * request's tests are untouched by it.
  */
 import { getConfig } from "../config.js";
-import { openrouter } from "../pipeline/cleanup.js";
+import { openrouter } from "../pipeline/openrouter.js";
 
 export const AGENT_MAX_TOKENS = 300;
 /** About 90 words of answer, a line each, with room for its points. */

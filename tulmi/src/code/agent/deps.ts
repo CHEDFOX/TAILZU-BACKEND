@@ -15,7 +15,7 @@
  * defaulting to the shared one. `brain` is the project brain (layer 4) behind the three things the
  * loop asks of it; the real one is `brainOf(code.brain)`.
  */
-import type { FetchLike } from "../../connectors/egress.js";
+import type { FetchLike } from "../../connectors/egressTypes.js";
 import type { GatewayDeps } from "../brain/gateway.js";
 import type { RouteStatsStore } from "../brain/stats.js";
 import type { JobRouter } from "../jobs/router.js";

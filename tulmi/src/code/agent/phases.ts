@@ -16,7 +16,7 @@
  * runner, text from a file or the web taken as an instruction (context.ts fences it), and a model call
  * that is not charged to the job (every call carries the job and "job" as its budget).
  */
-import { ConnectorError } from "../../connectors/oauth.js";
+import { ConnectorError } from "../../connectors/state.js";
 import { classifyRequest } from "../brain/classify.js";
 import { callModel } from "../brain/gateway.js";
 import { planRoute } from "../brain/route.js";
@@ -40,7 +40,7 @@ import { Refused } from "./changeset.js";
 import { buildContext, fold, systemPrompt } from "./context.js";
 import { WITHHELD_ARGS, argsHoldSecret } from "./tools.js";
 import { commitMessage, prBody, prTitle, reportText } from "./report.js";
-import { BudgetStop, EndJob, LostClaim, Park, type Run } from "./run.js";
+import { BudgetStop, EndJob, LostClaim, Park, Yield, type Run } from "./run.js";
 import {
   BASELINE_MAX_AGE_MS, CALLS_PER_TURN, FIX_ROUNDS_MAX, TURNS_MAX,
   type Exchange, type ResultRecord, type VerifyState,
@@ -245,7 +245,7 @@ export async function planPhase(r: Run): Promise<void> {
       userId: r.userId, projectId: r.projectId, action, branch: r.branch, fingerprint: fingerprintOf("plan", plan.steps.map((st) => [st.do, st.files])),
     });
     s.waiting = {
-      kind: "approval", for: "plan", action, faceId: top?.faceId ?? false, approvalId: approval.id, expiresAt: approval.expiresAt, at: r.now(),
+      kind: "approval", for: "plan", action, faceId: top?.faceId ?? false, approvalId: approval.id, expiresAt: approval.expiresAt, at: r.now(), bound: approval,
       summary: {
         project: r.project.fullName, branch: r.branch, risk: plan.risk, why: plan.riskReasons.slice(0, 4),
         steps: plan.steps.slice(0, 12).map((st) => ({ n: st.n, do: cut(st.do, 200), files: st.files.map((f) => `${f.action} ${f.path}`) })),
@@ -335,8 +335,15 @@ export async function workPhase(r: Run): Promise<void> {
     w.excerpts = await excerptsOf(r);
     await r.log.note("Starting the work.");
   }
+  let rounds = 0;
   for (;;) {
     if (r.signal.aborted) throw new LostClaim();
+    // One advance of a Workflow does a few rounds and gives way (every round is saved, so the next picks up exactly here).
+    if (r.env.turnsPerAdvance !== undefined && rounds >= r.env.turnsPerAdvance && !w.finished) {
+      await r.save();
+      throw new Yield();
+    }
+    rounds += 1;
     // A turn that was half done (a restart, or the person answering a question) is finished first.
     const open = w.exchanges.at(-1);
     if (open && open.results.length < open.calls.length) {

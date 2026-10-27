@@ -35,7 +35,7 @@
  *     still says who it is, and the installs they already linked are looked at
  *     again with the App's own key (account, repos, suspended or gone).
  */
-import { ConnectorError, signState, verifyState } from "../connectors/oauth.js";
+import { ConnectorError, signState, verifyState } from "../connectors/state.js";
 import type { GithubApp } from "./github.js";
 import type { CodeInstallation, CodeStore } from "./store.js";
 

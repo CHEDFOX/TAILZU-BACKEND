@@ -991,3 +991,34 @@ approved merge.
    step printed (none of it if it looks like it holds a secret), and each month's
    GitHub minutes and paise used, and whether GitHub's minutes were found used up.
    How it works: `docs/code-router.md`.
+
+### The Code bot's jobs on Cloudflare (optional, `CODE_JOBS_MODE`)
+
+The agent loop and the project brain's builds can run on Cloudflare Workflows
+(`jobs/`) while this server stays here. Off by default: `CODE_JOBS_MODE=local`
+is how it has always been, and nothing below is needed for it. Full story,
+limits and costs: `docs/cloudflare-jobs.md`.
+
+1. **Deploy the Worker** (a Cloudflare account on Workers Paid):
+   `cd jobs && npm ci && npx wrangler login`, fill in the blank `vars` in
+   `jobs/wrangler.jsonc` (`GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`,
+   `GITHUB_APP_ID`, `CLOUDFLARE_ACCOUNT_ID`, `PUBLIC_ORIGIN` = this server's
+   address), `npx wrangler deploy`, then one `npx wrangler secret put NAME` each
+   for `CODE_JOBS_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`,
+   `OPENROUTER_API_KEY`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY`,
+   `CONNECTOR_TOKEN_KEY` (the same values as in `tulmi/.env`) and
+   `CLOUDFLARE_API_TOKEN` (a token with "Browser Rendering - Edit").
+   `curl https://tailzu-jobs.<you>.workers.dev/v1/health` answers `{"ok":true}`.
+2. **Switch this server over.** In `tulmi/.env`: `CODE_JOBS_MODE=cloudflare`,
+   `CODE_JOBS_URL=https://tailzu-jobs.<you>.workers.dev` and `CODE_JOBS_SECRET`
+   (`openssl rand -hex 32`, the same value as the Worker's). Then
+   `docker compose up -d --build`. This server then starts no agent loop and no
+   ticker; it signs a call to the Worker when a job is made or answered and when
+   a brain build is wanted, and takes the Worker's signed call back at
+   `/v1/internal/code/notify` to send the push (the push keys stay here).
+   The Worker must be able to reach `PUBLIC_ORIGIN`, and this server the Worker.
+3. **Back out:** `CODE_JOBS_MODE=local` and a restart. Jobs already on the
+   Worker carry on from their checkpoint here once the Worker's claim runs out.
+
+The desktop PC runner is not used for jobs the Worker runs (which PCs are
+online is kept in this server's memory); GitHub's free computers are.

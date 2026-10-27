@@ -21,7 +21,9 @@ import type {
   ToneDial,
 } from "../../shared/types/api.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+/** This file's folder, found when a prompt is first read: a bundle on a Worker has no file address to ask (and reads no prompt file). */
+let here: string | undefined;
+const folder = (): string => (here ??= dirname(fileURLToPath(import.meta.url)));
 const cache = new Map<string, string>();
 
 /** Read a prompt file (e.g. "reply.v4.md") from shared/prompts/, cached. */
@@ -34,8 +36,8 @@ function loadPromptFile(filename: string): string {
   const candidates = [
     process.env.TULMI_SHARED_DIR &&
       resolve(process.env.TULMI_SHARED_DIR, "prompts", filename),
-    resolve(__dirname, "..", "..", "shared", "prompts", filename), // tulmi/src → repo/shared
-    resolve(__dirname, "..", "..", "..", "shared", "prompts", filename), // dist/tulmi/src → repo/shared
+    resolve(folder(), "..", "..", "shared", "prompts", filename), // tulmi/src → repo/shared
+    resolve(folder(), "..", "..", "..", "shared", "prompts", filename), // dist/tulmi/src → repo/shared
     resolve(process.cwd(), "..", "shared", "prompts", filename), // run from tulmi/
     resolve(process.cwd(), "shared", "prompts", filename), // run from repo root
   ].filter(Boolean) as string[];

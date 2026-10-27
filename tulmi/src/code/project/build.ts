@@ -39,7 +39,7 @@
  * A failed build leaves the earlier rows as they were, and says why in plain
  * words (never a path, a line of code, or GitHub's own message).
  */
-import { ConnectorError } from "../../connectors/oauth.js";
+import { ConnectorError } from "../../connectors/state.js";
 import type { FetchLike } from "../../web/search/types.js";
 import { callModel, type GatewayDeps } from "../brain/gateway.js";
 import type { GithubApp } from "../github.js";

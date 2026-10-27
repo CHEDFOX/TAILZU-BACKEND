@@ -18,6 +18,9 @@ README.md
 DEPLOY.md
 docs/
 
+# The Cloudflare jobs Worker (jobs/) is deployed with wrangler, not shipped in the VPS image.
+jobs/
+
 # Compose + reverse-proxy configs (used on the host, not inside the image).
 docker-compose.yml
 deploy/

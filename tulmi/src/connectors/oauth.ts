@@ -53,59 +53,16 @@
  * tokens and the verifier. The registered client's id is not a secret, and a
  * pre-registered client's secret is never stored: it stays in the environment.
  */
-import { randomUUID } from "node:crypto";
 import { auth, type OAuthClientProvider, type OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
-import { jwtVerify, SignJWT } from "jose";
 import type { ConnectorOAuthClient } from "../config.js";
 import { CATALOG, siteOf, vendorSites, type ConnectorDef } from "./catalog.js";
-import { decrypt, encrypt, stateKey } from "./crypto.js";
+import { decrypt, encrypt } from "./crypto.js";
 import { EgressRefused, oauthFetch, type FetchLike } from "./egress.js";
 import type { ConnectorStore } from "./store.js";
 
-export const STATE_TTL_SEC = 10 * 60;
-const ISSUER = "tailzu-connectors";
-const AUDIENCE = "connector-oauth";
-
-/** A failure with a plain-words message and a code the app can switch on. */
-export class ConnectorError extends Error {
-  constructor(readonly code: string, message: string) { super(message); }
-}
-
-/** The auth server a sign-in was sent to, and whether it promised to say so on the way back (RFC 9207). */
-export interface StateIssuer { issuer: string; required: boolean }
-
-export async function signState(userId: string, connectorId: string, now = Date.now(), key = stateKey(), as?: StateIssuer): Promise<string> {
-  const iat = Math.floor(now / 1000);
-  // "asi" (auth server issuer) and "isr" (iss required), not "iss": this token's
-  // own iss is ours, ISSUER, and is checked as such.
-  return new SignJWT({ uid: userId, cid: connectorId, ...(as ? { asi: as.issuer, isr: as.required } : {}) })
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuer(ISSUER).setAudience(AUDIENCE).setJti(randomUUID())
-    .setIssuedAt(iat).setExpirationTime(iat + STATE_TTL_SEC)
-    .sign(key);
-}
-
-export interface VerifiedState {
-  userId: string;
-  connectorId: string;
-  /** Set when the sign-in found an auth server: the issuer the callback is held to. */
-  issuer?: string;
-  issRequired?: boolean;
-}
-
-export async function verifyState(token: string, now = Date.now(), key = stateKey()): Promise<VerifiedState> {
-  try {
-    const { payload } = await jwtVerify(token, key, {
-      issuer: ISSUER, audience: AUDIENCE, algorithms: ["HS256"], currentDate: new Date(now),
-    });
-    if (typeof payload.uid !== "string" || typeof payload.cid !== "string") throw new Error("shape");
-    const as = typeof payload.asi === "string" ? { issuer: payload.asi, issRequired: payload.isr === true } : {};
-    return { userId: payload.uid, connectorId: payload.cid, ...as };
-  } catch {
-    throw new ConnectorError("bad_state", "That sign-in link has expired or isn't valid. Start again from Tailzu.");
-  }
-}
+export { STATE_TTL_SEC, ConnectorError, signState, verifyState, type StateIssuer, type VerifiedState } from "./state.js";
+import { ConnectorError, signState, verifyState } from "./state.js";
 
 /**
  * RFC 9207: the code came back from the auth server the person was sent to,

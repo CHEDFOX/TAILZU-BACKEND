@@ -1,0 +1,67 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "tailzu-jobs",
+  "main": "src/index.ts",
+
+  // The newest date the pinned wrangler's runtime (workerd 1.20261023.1) runs. From 2026-08-04 a compatibility date turns
+  // nodejs_compat on by itself; the flag stays so that the file still means the same if the date is ever pinned back.
+  // https://developers.cloudflare.com/workers/runtime-apis/nodejs/
+  "compatibility_date": "2026-10-23",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "workers_dev": true,
+  "upload_source_maps": true,
+  "observability": { "enabled": true },
+
+  // The shared config loads a .env file with dotenv; a Worker has none (src/shims/dotenv.ts). https://developers.cloudflare.com/workers/wrangler/configuration/#module-aliasing
+  "alias": { "dotenv": "./src/shims/dotenv.ts" },
+
+  // A brain build reads a whole repo and analyses every file in one step (the Workers default is 30 s of CPU; 300 s is the most
+  // a Worker may ask for). Waiting on GitHub, Supabase or a model is not CPU time. Subrequests are raised for a long job: each
+  // advance of the agent loop makes a few dozen. https://developers.cloudflare.com/workers/wrangler/configuration/#limits
+  "limits": { "cpu_ms": 300000, "subrequests": 100000 },
+
+  // The ticker: lease and claim hand-backs, steps out on GitHub, jobs waiting for a place, jobs nobody woke. Every minute, UTC.
+  "triggers": { "crons": ["* * * * *"] },
+
+  // One Workflow instance per job (id = the job's id) and one per brain build (id = brain-<projectId>-<headSha>).
+  "workflows": [
+    { "name": "tailzu-agent-job", "binding": "AGENT_JOB", "class_name": "AgentJob", "default_retention": { "success_retention": "3 days", "error_retention": "14 days" } },
+    { "name": "tailzu-build-brain", "binding": "BUILD_BRAIN", "class_name": "BuildBrain", "default_retention": { "success_retention": "1 day", "error_retention": "3 days" } }
+  ],
+
+  // Remembers the nonce of every signed call for ten minutes, so a recorded request cannot be replayed (src/nonceGuard.ts).
+  "durable_objects": { "bindings": [{ "name": "NONCES", "class_name": "NonceGuard" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["NonceGuard"] }],
+
+  // Plain settings. Anything that is a secret goes in the list below instead, never here.
+  // Set the GitHub and Cloudflare ones to what the VPS has; PUBLIC_ORIGIN is the VPS's own address (the signed call back is made to it).
+  "vars": {
+    "RUNTIME": "worker",
+    "NODE_ENV": "production",
+    "CODE_GITHUB": "true",
+    "CODE_PROJECT_BRAIN": "true",
+    "CODE_GITHUB_OAUTH": "false",
+    "WEB_BROWSER": "cloudflare",
+    "PUBLIC_ORIGIN": "https://api.tailzu.space",
+    "GITHUB_APP_SLUG": "",
+    "GITHUB_APP_CLIENT_ID": "",
+    "GITHUB_APP_ID": "",
+    "CLOUDFLARE_ACCOUNT_ID": "",
+    "ADVANCE_TURNS": "2",
+    "PERSON_WAIT": "7 days"
+  }
+
+  // SECRETS, set once each with `npx wrangler secret put <NAME>` (docs/cloudflare-jobs.md):
+  //   CODE_JOBS_SECRET          the same value as on the VPS: signs every call in both directions
+  //   SUPABASE_URL              the same Supabase project as the VPS
+  //   SUPABASE_SERVICE_KEY      its service-role key (the jobs read and write the code_* tables)
+  //   OPENROUTER_API_KEY        the model door
+  //   GITHUB_APP_CLIENT_SECRET  the GitHub App's, as on the VPS
+  //   GITHUB_APP_PRIVATE_KEY    the App's private key (PEM, or base64 of it; PKCS#1 as GitHub gives it is fine)
+  //   CONNECTOR_TOKEN_KEY       32 bytes of base64, the VPS's: opens the stored GitHub sign-in tokens
+  //   CLOUDFLARE_API_TOKEN      an API token with "Browser Rendering - Edit"
+  //   GITHUB_OAUTH_CLIENT_ID    only with CODE_GITHUB_OAUTH=true (projects connected by "Sign in with GitHub")
+  //   GITHUB_OAUTH_CLIENT_SECRET   only with CODE_GITHUB_OAUTH=true
+  // Not here on purpose: push credentials (they stay on the VPS), and the speech and payment keys (the Worker never needs them).
+}
