@@ -26,6 +26,13 @@
  * at the same job at once. (In Supabase it is one UPDATE with those conditions;
  * the in-memory twin does the same in one synchronous step.)
  *
+ * THE AGENT'S CLAIM (agent, agent_holder, agent_epoch, agent_expires_at,
+ * migration 0030) is the same idea on its own fields: the agent loop
+ * (src/code/agent) claims a job it drives, every write it makes is fenced by the
+ * claim's epoch (`agentEpoch` in casJob), and `agentFreeBy` is the condition a
+ * claim is taken under (nobody holds it, or the holder's time has run out).
+ * listClaimable and listAgentExpired are what the orchestrator and the ticker ask.
+ *
  * Usage is added up inside the database (the `code_add_usage` function), so
  * two results arriving together can't lose one. A month can also carry one
  * flag, `github_exhausted` (supabase/migrations/0024_code_github_actions.sql):
@@ -41,7 +48,7 @@ import { supabase } from "../../auth/supabase.js";
 import { CodeNeedsAccount } from "../store.js";
 import {
   NO_CHECKPOINT, STEPS_MAX, isEnded,
-  type Checkpoint, type CodeJob, type ComputeSettings, type ComputeUsage, type JobState, type JobStep, type PaidRule,
+  type Checkpoint, type CodeJob, type ComputeSettings, type ComputeUsage, type JobState, type JobStep, type OverlayFile, type PaidRule,
   type Placement, type StepKind, type StepStatus, type WaitingOn,
 } from "./types.js";
 
@@ -51,12 +58,20 @@ export interface NewJob {
   branch: string;
   task: string;
   budgetPaise: number;
+  /** The agent loop drives it. */
+  agent?: boolean;
 }
 
 export type JobPatch = Partial<Pick<CodeJob,
   "state" | "placement" | "leaseHolder" | "leaseEpoch" | "leaseExpiresAt" | "checkpoint" | "budgetPaise" | "spentPaise"
-  | "reassignments" | "reason" | "waitingOn"
+  | "reassignments" | "reason" | "waitingOn" | "agent" | "agentHolder" | "agentEpoch" | "agentExpiresAt"
 >>;
+
+/** The states an agent job can be claimed in: a step may be out or waiting for a place (the agent that died was waiting for it), but not waiting for the person's own word. */
+export const CLAIMABLE_STATES: readonly JobState[] = ["queued", "running", "waiting_for_compute", "waiting_for_you"];
+/** Whether an agent job in this state and wait can be claimed. */
+export const claimable = (j: Pick<CodeJob, "agent" | "state" | "waitingOn">): boolean =>
+  j.agent && CLAIMABLE_STATES.includes(j.state) && (j.state !== "waiting_for_you" || j.waitingOn === null || j.waitingOn === "paid" || j.waitingOn === "commit");
 
 /** What a change to a job requires to still be true. */
 export interface JobExpect {
@@ -68,6 +83,12 @@ export interface JobExpect {
   leaseExpiredBy?: number;
   /** The job's spend must still be this many paise: how the Code bot's model calls add to it without losing a concurrent add (code/brain/spend.ts). */
   spentPaise?: number;
+  /** The job's budget must still be this many paise: how more budget is added without losing a concurrent add. */
+  budgetPaise?: number;
+  /** The agent's claim must still be at this epoch: the fence of every write the agent loop makes. */
+  agentEpoch?: number;
+  /** The agent's claim has no time on it, or its time ran out by this time (epoch ms): the condition a claim is taken under. */
+  agentFreeBy?: number;
 }
 
 export interface NewStep {
@@ -78,9 +99,11 @@ export interface NewStep {
   status: StepStatus;
   placement?: Placement;
   finishedAt?: number | null;
+  overlay?: OverlayFile[];
+  discard?: boolean;
 }
 
-export type StepPatch = Partial<Pick<JobStep, "status" | "placement" | "epoch" | "startedAt" | "finishedAt" | "exitCode" | "outputTail" | "minutes">>;
+export type StepPatch = Partial<Pick<JobStep, "status" | "placement" | "epoch" | "startedAt" | "finishedAt" | "exitCode" | "outputTail" | "minutes" | "overlay">>;
 
 export const DEFAULT_SETTINGS: Readonly<Omit<ComputeSettings, "userId">> = { paidRule: "never", autoCapPaise: 0, githubEnabled: true };
 
@@ -102,8 +125,12 @@ export interface JobStore {
   listExpired(now: number, limit: number): Promise<CodeJob[]>;
   /** Running jobs on this kind of place, whatever their lease says, oldest first (the ticker looks at each step a place that sends no heartbeats has out). */
   listRunning(placement: Placement, limit: number): Promise<CodeJob[]>;
-  /** Jobs waiting for compute, and jobs waiting for a yes to paid compute (not those waiting to commit), oldest first; one person's, or everyone's. */
+  /** Jobs waiting for compute, and jobs waiting for a yes to paid compute (not those waiting to commit or for the agent's own waits), oldest first; one person's, or everyone's. */
   listWaiting(limit: number, userId?: string): Promise<CodeJob[]>;
+  /** The agent jobs nobody drives now (no time on the claim, or it ran out by `now`), in a state they can be claimed in, oldest first. */
+  listClaimable(now: number, limit: number): Promise<CodeJob[]>;
+  /** The agent jobs whose claim has run out by `now`, oldest first: the ticker gives them back. */
+  listAgentExpired(now: number, limit: number): Promise<CodeJob[]>;
 
   /** Adds a step with the next number. "too_many" past STEPS_MAX. */
   addStep(jobId: string, n: NewStep): Promise<JobStep>;
@@ -131,8 +158,9 @@ export class TooManySteps extends Error {
   constructor() { super(`A job can have ${STEPS_MAX} steps, which is the most.`); }
 }
 
-const cloneJob = (j: CodeJob): CodeJob => ({ ...j, checkpoint: { ...j.checkpoint } });
-const cloneStep = (s: JobStep): JobStep => ({ ...s, commands: [...s.commands] });
+const cloneJob = (j: CodeJob): CodeJob => ({ ...j, checkpoint: cloneCheckpoint(j.checkpoint) });
+const cloneCheckpoint = (c: Checkpoint): Checkpoint => ({ ...c, ...(c.agent ? { agent: structuredClone(c.agent) } : {}) });
+const cloneStep = (s: JobStep): JobStep => ({ ...s, commands: [...s.commands], overlay: s.overlay.map((f) => ({ ...f })) });
 
 // -------------------------------------------------------------------- memory
 
@@ -152,7 +180,8 @@ export class MemoryJobStore implements JobStore {
       id: randomUUID(), userId: n.userId, projectId: n.projectId, branch: n.branch, task: n.task,
       state: "queued", placement: "none", leaseHolder: null, leaseEpoch: 0, leaseExpiresAt: null,
       checkpoint: { ...NO_CHECKPOINT }, budgetPaise: n.budgetPaise, spentPaise: 0,
-      reassignments: 0, reason: "", waitingOn: null, createdAt: at, updatedAt: at,
+      reassignments: 0, reason: "", waitingOn: null, agent: n.agent === true, agentHolder: null, agentEpoch: 0, agentExpiresAt: null,
+      createdAt: at, updatedAt: at,
     };
     this.jobs.set(j.id, j);
     this.steps.set(j.id, []);
@@ -182,8 +211,11 @@ export class MemoryJobStore implements JobStore {
     if (expect.placement !== undefined && j.placement !== expect.placement) return null;
     if (expect.leaseExpiredBy !== undefined && (j.leaseExpiresAt === null || j.leaseExpiresAt > expect.leaseExpiredBy)) return null;
     if (expect.spentPaise !== undefined && j.spentPaise !== expect.spentPaise) return null;
+    if (expect.budgetPaise !== undefined && j.budgetPaise !== expect.budgetPaise) return null;
+    if (expect.agentEpoch !== undefined && j.agentEpoch !== expect.agentEpoch) return null;
+    if (expect.agentFreeBy !== undefined && j.agentExpiresAt !== null && j.agentExpiresAt > expect.agentFreeBy) return null;
     Object.assign(j, patch, { updatedAt: this.now() });
-    if (patch.checkpoint) j.checkpoint = { ...patch.checkpoint };
+    if (patch.checkpoint) j.checkpoint = cloneCheckpoint(patch.checkpoint);
     return cloneJob(j);
   }
   async findHeld(userId: string, placement: Placement, holder: string) {
@@ -202,8 +234,18 @@ export class MemoryJobStore implements JobStore {
   async listWaiting(limit: number, userId?: string) {
     return [...this.jobs.values()]
       .filter((j) => (userId === undefined || j.userId === userId)
-        && (j.state === "waiting_for_compute" || (j.state === "waiting_for_you" && j.waitingOn !== "commit")))
+        && (j.state === "waiting_for_compute" || (j.state === "waiting_for_you" && (j.waitingOn === null || j.waitingOn === "paid"))))
       .sort((a, b) => a.updatedAt - b.updatedAt || a.createdAt - b.createdAt).slice(0, limit).map(cloneJob);
+  }
+  async listClaimable(now: number, limit: number) {
+    return [...this.jobs.values()]
+      .filter((j) => claimable(j) && (j.agentExpiresAt === null || j.agentExpiresAt <= now))
+      .sort((a, b) => a.updatedAt - b.updatedAt || a.createdAt - b.createdAt).slice(0, limit).map(cloneJob);
+  }
+  async listAgentExpired(now: number, limit: number) {
+    return [...this.jobs.values()]
+      .filter((j) => j.agent && !isEnded(j.state) && j.agentHolder !== null && j.agentExpiresAt !== null && j.agentExpiresAt <= now)
+      .sort((a, b) => a.agentExpiresAt! - b.agentExpiresAt!).slice(0, limit).map(cloneJob);
   }
 
   async addStep(jobId: string, n: NewStep) {
@@ -213,7 +255,7 @@ export class MemoryJobStore implements JobStore {
     const s: JobStep = {
       jobId, idx: list.length, kind: n.kind, commands: [...n.commands], timeoutSec: n.timeoutSec, estimateMinutes: n.estimateMinutes,
       status: n.status, placement: n.placement ?? "none", epoch: 0, startedAt: null, finishedAt: n.finishedAt ?? null,
-      exitCode: null, outputTail: "", minutes: 0,
+      exitCode: null, outputTail: "", minutes: 0, overlay: (n.overlay ?? []).map((f) => ({ ...f })), discard: n.discard === true,
     };
     list.push(s);
     return cloneStep(s);
@@ -228,7 +270,7 @@ export class MemoryJobStore implements JobStore {
   async updateStep(jobId: string, idx: number, patch: StepPatch) {
     const s = this.steps.get(jobId)?.[idx];
     if (!s) return null;
-    Object.assign(s, patch);
+    Object.assign(s, patch, patch.overlay ? { overlay: patch.overlay.map((f) => ({ ...f })) } : {});
     return cloneStep(s);
   }
 
@@ -272,12 +314,13 @@ interface JobRow {
   id: string; user_id: string; project_id: string; branch: string; task: string; state: JobState; placement: Placement;
   lease_holder: string | null; lease_epoch: number; lease_expires_at: string | null; checkpoint: unknown;
   budget_paise: number; spent_paise: number; reassignments: number; reason: string | null; waiting_on: WaitingOn | null;
+  agent: boolean | null; agent_holder: string | null; agent_epoch: number | null; agent_expires_at: string | null;
   created_at: string; updated_at: string;
 }
 interface StepRow {
   job_id: string; idx: number; kind: StepKind; commands: unknown; timeout_sec: number; estimate_minutes: number; status: StepStatus;
   placement: Placement; epoch: number; started_at: string | null; finished_at: string | null; exit_code: number | null;
-  output_tail: string | null; minutes: number;
+  output_tail: string | null; minutes: number; overlay: unknown; discard: boolean | null;
 }
 interface SettingsRow { user_id: string; paid_rule: PaidRule; auto_cap_paise: number; github_enabled: boolean }
 interface UsageRow { user_id: string; month: string; github_minutes: number; paid_paise: number }
@@ -288,7 +331,17 @@ function checkpointOf(raw: unknown): Checkpoint {
     stepIndex: typeof c.stepIndex === "number" && Number.isInteger(c.stepIndex) && c.stepIndex >= -1 ? c.stepIndex : -1,
     headSha: typeof c.headSha === "string" ? c.headSha : "",
     notes: typeof c.notes === "string" ? c.notes : "",
+    // The agent loop's state rides along untouched: it is the loop's to read, and nothing else makes sense of it.
+    ...(c.agent && typeof c.agent === "object" && !Array.isArray(c.agent) ? { agent: c.agent as Record<string, unknown> } : {}),
   };
+}
+
+function overlayOf(raw: unknown): OverlayFile[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((f): OverlayFile[] => {
+    const x = (f && typeof f === "object" ? f : {}) as Record<string, unknown>;
+    return typeof x.path === "string" && (x.content === null || typeof x.content === "string") ? [{ path: x.path, content: x.content as string | null }] : [];
+  });
 }
 
 const jobOf = (r: JobRow): CodeJob => ({
@@ -296,6 +349,7 @@ const jobOf = (r: JobRow): CodeJob => ({
   leaseHolder: r.lease_holder ?? null, leaseEpoch: int(r.lease_epoch), leaseExpiresAt: ms(r.lease_expires_at),
   checkpoint: checkpointOf(r.checkpoint), budgetPaise: int(r.budget_paise), spentPaise: int(r.spent_paise),
   reassignments: int(r.reassignments), reason: r.reason ?? "", waitingOn: r.waiting_on ?? null,
+  agent: r.agent === true, agentHolder: r.agent_holder ?? null, agentEpoch: int(r.agent_epoch), agentExpiresAt: ms(r.agent_expires_at),
   createdAt: ms(r.created_at) ?? 0, updatedAt: ms(r.updated_at) ?? 0,
 });
 const stepOf = (r: StepRow): JobStep => ({
@@ -303,7 +357,7 @@ const stepOf = (r: StepRow): JobStep => ({
   commands: Array.isArray(r.commands) ? r.commands.filter((c): c is string => typeof c === "string") : [],
   timeoutSec: int(r.timeout_sec), estimateMinutes: int(r.estimate_minutes), status: r.status, placement: r.placement, epoch: int(r.epoch),
   startedAt: ms(r.started_at), finishedAt: ms(r.finished_at), exitCode: r.exit_code === null || r.exit_code === undefined ? null : int(r.exit_code),
-  outputTail: r.output_tail ?? "", minutes: int(r.minutes),
+  outputTail: r.output_tail ?? "", minutes: int(r.minutes), overlay: overlayOf(r.overlay), discard: r.discard === true,
 });
 const settingsOf = (r: SettingsRow): ComputeSettings => ({
   userId: r.user_id, paidRule: r.paid_rule, autoCapPaise: int(r.auto_cap_paise), githubEnabled: r.github_enabled !== false,
@@ -326,6 +380,7 @@ export class SupabaseJobStore implements JobStore {
   async createJob(n: NewJob) {
     const r = ok(await this.sb.from("code_jobs").insert({
       user_id: this.who(n.userId), project_id: n.projectId, branch: n.branch, task: n.task, budget_paise: n.budgetPaise,
+      ...(n.agent === true ? { agent: true } : {}),
     }).select("*").single<JobRow>());
     return jobOf(r!);
   }
@@ -364,12 +419,19 @@ export class SupabaseJobStore implements JobStore {
     if (patch.reassignments !== undefined) row.reassignments = patch.reassignments;
     if (patch.reason !== undefined) row.reason = patch.reason;
     if (patch.waitingOn !== undefined) row.waiting_on = patch.waitingOn;
+    if (patch.agent !== undefined) row.agent = patch.agent;
+    if (patch.agentHolder !== undefined) row.agent_holder = patch.agentHolder;
+    if (patch.agentEpoch !== undefined) row.agent_epoch = patch.agentEpoch;
+    if (patch.agentExpiresAt !== undefined) row.agent_expires_at = patch.agentExpiresAt === null ? null : iso(patch.agentExpiresAt);
     let q = this.sb.from("code_jobs").update(row).eq("id", id);
     if (expect.leaseEpoch !== undefined) q = q.eq("lease_epoch", expect.leaseEpoch);
     if (expect.states) q = q.in("state", [...expect.states]);
     if (expect.placement !== undefined) q = q.eq("placement", expect.placement);
     if (expect.leaseExpiredBy !== undefined) q = q.lte("lease_expires_at", iso(expect.leaseExpiredBy));
     if (expect.spentPaise !== undefined) q = q.eq("spent_paise", expect.spentPaise);
+    if (expect.budgetPaise !== undefined) q = q.eq("budget_paise", expect.budgetPaise);
+    if (expect.agentEpoch !== undefined) q = q.eq("agent_epoch", expect.agentEpoch);
+    if (expect.agentFreeBy !== undefined) q = q.or(`agent_expires_at.is.null,agent_expires_at.lte.${iso(expect.agentFreeBy)}`);
     const r = ok(await q.select("*").maybeSingle<JobRow>());
     return r ? jobOf(r) : null;
   }
@@ -394,6 +456,17 @@ export class SupabaseJobStore implements JobStore {
     if (userId !== undefined) q = q.eq("user_id", this.who(userId));
     return (ok(await q.returns<JobRow[]>()) ?? []).map(jobOf);
   }
+  async listClaimable(now: number, limit: number) {
+    // The claim's own condition is in the query (nobody holds it, or its time ran out); the wait is read here, since a wait that is the person's own to end is not one to claim.
+    const rows = ok(await this.sb.from("code_jobs").select("*").eq("agent", true).in("state", [...CLAIMABLE_STATES])
+      .or(`agent_expires_at.is.null,agent_expires_at.lte.${iso(now)}`).order("updated_at").limit(limit * 3).returns<JobRow[]>());
+    return (rows ?? []).map(jobOf).filter(claimable).slice(0, limit);
+  }
+  async listAgentExpired(now: number, limit: number) {
+    const rows = ok(await this.sb.from("code_jobs").select("*").eq("agent", true).not("state", "in", "(done,failed,cancelled)")
+      .not("agent_holder", "is", null).lte("agent_expires_at", iso(now)).order("agent_expires_at").limit(limit).returns<JobRow[]>());
+    return (rows ?? []).map(jobOf);
+  }
 
   async addStep(jobId: string, n: NewStep) {
     // The next number is one past the last; the table's primary key (job_id, idx) refuses a second step made with the same number at the same moment, and it is asked again.
@@ -404,6 +477,7 @@ export class SupabaseJobStore implements JobStore {
       const res = await this.sb.from("code_job_steps").insert({
         job_id: jobId, idx, kind: n.kind, commands: n.commands, timeout_sec: n.timeoutSec, estimate_minutes: n.estimateMinutes,
         status: n.status, placement: n.placement ?? "none", finished_at: n.finishedAt === undefined || n.finishedAt === null ? null : iso(n.finishedAt),
+        ...(n.overlay?.length ? { overlay: n.overlay } : {}), ...(n.discard === true ? { discard: true } : {}),
       }).select("*").single<StepRow>();
       if (!res.error) return stepOf(res.data!);
       if (attempt < 3 && /duplicate key|unique/i.test(res.error.message)) continue;
@@ -431,6 +505,7 @@ export class SupabaseJobStore implements JobStore {
     if (patch.exitCode !== undefined) row.exit_code = patch.exitCode;
     if (patch.outputTail !== undefined) row.output_tail = patch.outputTail;
     if (patch.minutes !== undefined) row.minutes = patch.minutes;
+    if (patch.overlay !== undefined) row.overlay = patch.overlay;
     if (!Object.keys(row).length) return this.getStep(jobId, idx);
     const r = ok(await this.sb.from("code_job_steps").update(row).eq("job_id", jobId).eq("idx", idx).select("*").maybeSingle<StepRow>());
     return r ? stepOf(r) : null;

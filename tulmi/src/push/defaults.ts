@@ -95,7 +95,8 @@ export const PUSH_DEFAULTS: PushPayload = {
 
     // The Code bot's jobs (src/code/jobs, docs/code-router.md): paid compute needs a yes, a job is
     // waiting for a computer, its changes need a yes to be committed, it moved to another place, it
-    // finished, it stopped. The push carries data.jobId. The Code screen is the phone's to come, so
+    // finished, it stopped, and (the agent loop, docs/code-agent.md) it needs the person: a question,
+    // a plan to approve, an OK, more budget. The push carries data.jobId. The Code screen is the phone's to come, so
     // they open home until the control plane points them at it (push.code_*.screenId).
     "push.code_compute_ask.enabled": true,
     "push.code_compute_ask.screenId": "home",
@@ -109,6 +110,8 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.code_job_done.screenId": "home",
     "push.code_job_failed.enabled": true,
     "push.code_job_failed.screenId": "home",
+    "push.code_needs_you.enabled": true,
+    "push.code_needs_you.screenId": "home",
 
     "push.lowWords.enabled": false,
     "push.lowWords.fraction": 0.1,
@@ -137,6 +140,8 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.code_job_done.body": "“{task}” is finished.",
     "push.code_job_failed.title": "Couldn't finish",
     "push.code_job_failed.body": "“{task}” stopped. {reason}",
+    "push.code_needs_you.title": "Tailzu needs you",
+    "push.code_needs_you.body": "“{task}”: {reason}",
     "push.lowWords.title": "{n} words left",
     "push.lowWords.body": "Enough for today. More any time.",
   },
@@ -149,6 +154,6 @@ export type PushKind = (typeof PUSH_KINDS)[number];
 /** Reasons that are sent when something happens, not planned by the engine. */
 export const EVENT_PUSH_KINDS = [
   "approval",
-  "code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed",
+  "code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed", "code_needs_you",
 ] as const;
 export type EventPushKind = (typeof EVENT_PUSH_KINDS)[number];

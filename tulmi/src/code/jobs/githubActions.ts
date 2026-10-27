@@ -209,7 +209,7 @@ export class GithubActionsProvider implements ComputeProvider {
     const branch = shadowBranchName(job.id, step.idx, job.leaseEpoch);
     const files = shadowFiles({
       jobId: job.id, stepIdx: step.idx, epoch: job.leaseEpoch, commands: step.commands, timeoutSec: step.timeoutSec,
-      baseSha, resultUrl: this.o.resultUrl, audience: this.audience,
+      baseSha, resultUrl: this.o.resultUrl, audience: this.audience, overlay: step.overlay, discard: step.discard,
     });
     const made = await gateFree({
       ...gateBase(d, job.userId, project), attended: false, action: "runner.shadow", branch, server: true, paths: files.map((f) => f.path),

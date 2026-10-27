@@ -1,8 +1,8 @@
 # The Code bot's environment router
 
-A coding task is a **job**. It runs as **steps**. An **edit** step (read, change and commit files through GitHub's API) needs no computer. An **exec** step (install, build, test) does, and the router decides where it runs, using the cheapest place there is. The agent's brain that makes the steps is not built yet (its first layer, which models to ask, what they may cost, what kind of request this is and which tier each step deserves, is `docs/code-brain.md`): the router is driven by the methods in `tulmi/src/code/jobs/router.ts`, which the brain and the tests call.
+A coding task is a **job**. It runs as **steps**. An **edit** step (read, change and commit files through GitHub's API) needs no computer. An **exec** step (install, build, test) does, and the router decides where it runs, using the cheapest place there is. What makes the steps is the brain: its first layer (which models to ask, what they may cost, what kind of request this is and which tier each step deserves) is `docs/code-brain.md`, and the **agent loop** (`docs/code-agent.md`) is the worker that drives a job from the person's words to a pull request. The router is driven by the methods in `tulmi/src/code/jobs/router.ts`, which the agent loop and the tests call.
 
-Switched on with the rest of the Code bot (`CODE_GITHUB`), after `tulmi/supabase/migrations/0023_code_jobs.sql` (and `0024_code_github_actions.sql` for GitHub's free computers).
+Switched on with the rest of the Code bot (`CODE_GITHUB`), after `tulmi/supabase/migrations/0023_code_jobs.sql` (and `0024_code_github_actions.sql` for GitHub's free computers, and `0030_code_agent.sql` for the agent loop).
 
 ## 1. Where an exec step runs
 
@@ -27,7 +27,7 @@ Settings, `GET` and `PUT /v1/code/settings/compute`:
 
 `never` beats everything, including a budget the person said yes to earlier. A step is never sent to paid compute that doesn't exist on the server; it waits instead of asking for money that can't be spent. A free place that appears while a job waits for a yes takes the job; the question goes away.
 
-A job's `budgetPaise` is what the person has said it may spend (`createJob` can start it above 0). What a paid place reports it used goes into the job's `spentPaise` and the month's `paidPaise`. The brain's model calls (`docs/code-brain.md`) are added to the same `spentPaise` and held to the same `budgetPaise`, so one budget bounds everything a job costs. GitHub minutes go into the month's `githubMinutes`. The month is the calendar month in UTC (`code_compute_usage`).
+A job's `budgetPaise` is what the person has said it may spend. Made without one, it is `CODE_JOB_DEFAULT_BUDGET_PAISE` (3,000 paise, thirty rupees); a budget of **0 sent on purpose** still means no model calls, and the rule decides whether to ask for compute. What a paid place reports it used goes into the job's `spentPaise` and the month's `paidPaise`. The brain's model calls (`docs/code-brain.md`) are added to the same `spentPaise` and held to the same `budgetPaise`, so one budget bounds everything a job costs. GitHub minutes go into the month's `githubMinutes`. The month is the calendar month in UTC (`code_compute_usage`).
 
 ## 3. Leases, fencing and checkpoints
 
@@ -37,7 +37,7 @@ The **ticker** (`code/jobs/ticker.ts`, every 15 seconds, started when the server
 
 Every change that depends on the lease goes through the store's `casJob` (the epoch, the state and the expiry must still be what the caller read), and everything for one person runs under one lock, so a ticker, a request and a second server can't both win.
 
-The **checkpoint** is `{ stepIndex, headSha, notes }`, written after every step that finishes: the last finished step (-1 before any), the commit the branch was at, and a line in plain words. When a step's place goes quiet the step goes back to `pending` and is placed again; only that step runs again, from the branch as it is. The person gets `job_moved` when it changes kind of place (their PC went offline, it continues on GitHub).
+The **checkpoint** is `{ stepIndex, headSha, notes, agent? }`, written after every step that finishes (`agent` is the agent loop's own state, which it writes after every model turn and tool call: `docs/code-agent.md`, section 2): the last finished step (-1 before any), the commit the branch was at, and a line in plain words. When a step's place goes quiet the step goes back to `pending` and is placed again; only that step runs again, from the branch as it is. The person gets `job_moved` when it changes kind of place (their PC went offline, it continues on GitHub).
 
 ## 4. The desktop runner protocol
 
@@ -55,20 +55,26 @@ GitHub's free computers report on their own route, `POST /v1/code/runner/gh-resu
 ## 5. For the brain
 
 ```
-createJob(userId, projectId, branch, task, budgetPaise)   a branch Tailzu made; 20 jobs not over at most
+createJob(userId, projectId, branch, task, budgetPaise?, { agent? })  a branch Tailzu made; 20 jobs not over at most; the budget left out is the default
 addEditStep(jobId, { summary, files, headSha })           an edit done through the workspace; moves the checkpoint
-requestExec(jobId, commands, timeoutSec, estimateMinutes) routes it; one exec step at a time
+requestExec(jobId, commands, timeoutSec, estimateMinutes, { overlay?, keepChanges? })
+                                                          routes it; one exec step at a time
+cancelExec(jobId)                                         drops the step that is out WITHOUT ending the job (whoever asked has stopped waiting)
 finishJob(jobId, { ok: true } | { ok: false, reason })    done / failed (job_done, job_failed)
-cancelJob(jobId)                                          nothing more is dispatched; late results are refused
+cancelJob(jobId, reason?)                                 nothing more is dispatched; late results are refused
 ```
 
-Routes for the app: `POST /v1/code/jobs`, `GET /v1/code/jobs`, `GET /v1/code/jobs/:id` (with steps), `POST /v1/code/jobs/:id/cancel`, `…/compute-ok`, `…/commit-ok`, and the settings. A place that runs a step somewhere else (GitHub, paid) reports back by calling `submitResult(userId, result, kind)` with the epoch it was dispatched under.
+**A trial.** `overlay` is a list of `{ path, content | null }` laid over the checkout before the commands run: the agent's staged edits, tried without being committed (at most 200 files and 400 KB of text; never a workflow, a path outside the repo, `.git` or one of Tailzu's runner files). `keepChanges: false` says the step's changes are not wanted, so none are committed whatever the runner sends back. The overlay rides in the step (`code_job_steps.overlay`) and in the shadow branch's `step.json` (`overlay`, `discard`), and is emptied as soon as the step ends: the code is not kept there. A PC's `GET /v1/code/runner/next` carries `overlay` and `discard` too, and must honour both.
 
-States: `queued`, `running`, `waiting_for_compute`, `waiting_for_you`, `paused` (reserved for a person pausing by hand; the router never sets it), `done`, `failed`, `cancelled`.
+Routes for the app: `POST /v1/code/jobs`, `GET /v1/code/jobs`, `GET /v1/code/jobs/:id` (with steps), `POST /v1/code/jobs/:id/cancel`, `…/compute-ok`, `…/commit-ok`, and the settings; and for a job the agent loop is driving, `…/answer`, `…/approve`, `…/deny`, `…/budget`, `…/stop` and `GET …/log` (`docs/code-agent.md`, section 7). A place that runs a step somewhere else (GitHub, paid) reports back by calling `submitResult(userId, result, kind)` with the epoch it was dispatched under.
+
+States: `queued`, `running`, `waiting_for_compute`, `waiting_for_you`, `paused` (reserved for a person pausing by hand; the router never sets it), `done`, `failed`, `cancelled`. A job in `waiting_for_you` says what for in `waiting_on`: `paid` (a yes to paid compute) and `commit` (a yes to committing what a step produced) are the router's own, and the ticker does not move a job waiting for `commit`; `answer`, `approval` and `budget` are the agent loop's, and are the person's alone to end.
+
+**The agent's claim.** An agent job (`code_jobs.agent`) also has a claim of its own, `agent_holder`, `agent_epoch` and `agent_expires_at`, that fences the agent loop's writes the way the lease fences a step's result (`docs/code-agent.md`, section 2). The ticker's pass hands back the claims that ran out, as it takes back leases. The two are independent: the agent holds its claim for the whole job and a lease only while a step is out.
 
 ## 6. Telling the person
 
-The router calls an injected `notify(userId, kind, data)`: `compute_ask`, `compute_paused`, `commit_ask`, `job_moved`, `job_done`, `job_failed`. In the server it is the push engine (`notifyCodeJob`), as event pushes that skip the daily caps; the words, the on/off and the screen each are control-plane knobs (`push.code_*`). The push opens `home` until the phone's Code screen exists. A person is told once when a job *enters* a waiting state, not every time a pass finds it still there.
+The router calls an injected `notify(userId, kind, data)`: `compute_ask`, `compute_paused`, `commit_ask`, `job_moved`, `job_done`, `job_failed`, and, for the agent loop, `needs_you` (it is waiting for an answer, a yes or more budget; the push is `code_needs_you`, "Tailzu needs you"). In the server it is the push engine (`notifyCodeJob`), as event pushes that skip the daily caps; the words, the on/off and the screen each are control-plane knobs (`push.code_*`). The push opens `home` until the phone's Code screen exists. A person is told once when a job *enters* a waiting state, not every time a pass finds it still there.
 
 ## 7. GitHub's free computers
 
@@ -81,6 +87,6 @@ The router calls an injected `notify(userId, kind, data)`: `compute_ask`, `compu
 
 ## 8. Setting up
 
-1. Run `tulmi/supabase/migrations/0023_code_jobs.sql` (or `full_schema.sql`) after 0022, and `0024_code_github_actions.sql` after that (the month's "GitHub is used up" flag).
-2. Optionally set `CODE_GITHUB_FREE_MINUTES` (default 2000) and `CODE_RUNNER_OIDC_AUDIENCE` (default `tailzu`). Give the App Workflows: Read and write and Actions: Read-only (`docs/github-app.md`).
+1. Run `tulmi/supabase/migrations/0023_code_jobs.sql` (or `full_schema.sql`) after 0022, and `0024_code_github_actions.sql` after that (the month's "GitHub is used up" flag). For the agent loop, `0030_code_agent.sql` after `0029` (the agent's claim, three more waits, and the overlay of a step).
+2. Optionally set `CODE_GITHUB_FREE_MINUTES` (default 2000), `CODE_RUNNER_OIDC_AUDIENCE` (default `tailzu`), `CODE_JOB_DEFAULT_BUDGET_PAISE` (default 3000) and `CODE_AGENT_CONCURRENCY` (default 4). Give the App Workflows: Read and write and Actions: Read-only (`docs/github-app.md`).
 3. Privacy policy: Tailzu now also keeps, per job, the first 500 characters of the task, the commands run, the last 8 KB each step printed, and per month the GitHub minutes and paise used, and whether GitHub's free minutes were found used up. A step run on GitHub also writes its commands to a temporary branch of the person's own repo.

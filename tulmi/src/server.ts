@@ -45,6 +45,7 @@ import { createCode } from "./code/index.js";
 import { startOAuthSweeper } from "./code/oauth.js";
 import { registerCodeRoutes } from "./routes/code.js";
 import { registerCodeJobRoutes } from "./routes/codeJobs.js";
+import { createAgent } from "./code/agent/index.js";
 import { createGithubActions, createJobs } from "./code/jobs/index.js";
 import { registerCustomConnectorRoutes } from "./routes/connectorsCustom.js";
 import { registerOAuthClientMetadataRoute } from "./routes/oauthClientMetadata.js";
@@ -1060,7 +1061,13 @@ if (code?.brain) {
 // yet. The person is told through the push engine.
 const githubActions = code ? createGithubActions({ code, log: app.log }) : null;
 const codeJobs = code ? createJobs({ code, github: githubActions, notify: notifyCodeJob, log: app.log }) : null;
-registerCodeJobRoutes(app, { rateLimit: AUTHED_RL, code, jobs: codeJobs, githubActions });
+// The agent loop (src/code/agent, docs/code-agent.md): the worker that drives a job made through POST /v1/code/jobs
+// from the person's words to a pull request, claiming each job in the database so that no two servers run one, at
+// most CODE_AGENT_CONCURRENCY at a time, checkpointing after every step so a restart carries on without redoing an
+// edit or a commit. It needs the project brain (CODE_PROJECT_BRAIN) as well; without it jobs are left to whatever
+// drives the router, as before. The ticker above hands back the claims of servers that went quiet.
+const codeAgent = code && codeJobs ? createAgent({ code, jobs: codeJobs, notify: notifyCodeJob, log: app.log }) : null;
+registerCodeJobRoutes(app, { rateLimit: AUTHED_RL, code, jobs: codeJobs, githubActions, agent: codeAgent });
 // "Sign in with GitHub" tokens unused for 30 days are revoked at GitHub (code/oauth.ts), on a timer, even
 // with the switch off: revoking only destroys. Never in a request's way.
 if (code?.oauth) {

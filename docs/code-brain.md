@@ -1,6 +1,6 @@
 # The Code bot's brain, layer 1: models, money, classifying and routing
 
-The Code bot works on a person's repo in **jobs** (`docs/code-router.md`). Layer 1 of its brain is everything underneath the thinking: which model to ask, what it may cost, what kind of request this is, and which tier of model each step deserves. It lives in `tulmi/src/code/brain/`. **Layer 2, the loop that plans, writes and reviews, is not built yet**; it will call the five things below and nothing else for a model.
+The Code bot works on a person's repo in **jobs** (`docs/code-router.md`). Layer 1 of its brain is everything underneath the thinking: which model to ask, what it may cost, what kind of request this is, and which tier of model each step deserves. It lives in `tulmi/src/code/brain/`. **Layer 2, the loop that plans, writes and reviews, is the agent loop (`docs/code-agent.md`, layer 8)**; it calls the five things below and nothing else for a model.
 
 ```
 tiers.ts      which OpenRouter models do which kind of step        (CODE_MODEL_TIERS)
@@ -87,7 +87,7 @@ With a `jobId` the job's budget is **always** enforced; it is the person's money
 
 After a call the cost is read from `usage.cost` (OpenRouter's own charge, in dollars); only if that is missing is it estimated from the tokens reported and the tier's prices, and failing even that, from the characters written (`costSource` says which). A call that was billed and then thrown away (an empty answer, a JSON answer that did not hold up) is still counted. The paise are added to the job's `spent_paise` with a compare-and-set on the spend itself, so two calls finishing together both count (`spend.ts`).
 
-> **One number covers a job's money.** `budget_paise` and `spent_paise` already carry what the person allows for paid compute (`docs/code-router.md`, section 2). Model calls draw from the same budget. A job created with the default budget of 0 refuses every model call, on purpose.
+> **One number covers a job's money.** `budget_paise` and `spent_paise` already carry what the person allows for paid compute (`docs/code-router.md`, section 2). Model calls draw from the same budget. A job created with a budget of 0 sent on purpose refuses every model call; a job created with no budget at all gets the server's default (`CODE_JOB_DEFAULT_BUDGET_PAISE`, 3,000 paise), so that it can do its work (`docs/code-agent.md`).
 
 ### What is logged and kept
 

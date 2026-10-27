@@ -7,7 +7,9 @@
  *
  *   .github/workflows/tailzu-run.yml   renderWorkflow(): written here, from one
  *                                      function, and pinned by a golden test
- *   .tailzu/step.json                  stepJson(): what to run and where to report
+ *   .tailzu/step.json                  stepJson(): what to run and where to report (and,
+ *                                      for a trial run of the agent's edits, the files
+ *                                      to lay over the checkout first)
  *   .tailzu/run.mjs                    runScript.ts, byte for byte
  *
  * THE WORKFLOW. It runs on a push to `tailzu-run/**` only; asks GitHub for
@@ -29,6 +31,7 @@
  */
 import { SHADOW_SCRIPT, SHADOW_STEP, SHADOW_WORKFLOW } from "../shadow.js";
 import { RUN_MJS } from "./runScript.js";
+import type { OverlayFile } from "./types.js";
 
 /** The lockfiles the cache is keyed on. */
 export const LOCKFILES: readonly string[] = [
@@ -95,12 +98,17 @@ export interface StepSpec {
   resultUrl: string;
   /** The audience of the identity token the script asks GitHub for. */
   audience: string;
+  /** Files the script writes over its checkout before the commands run (the agent's staged edits). Left out of the file when there are none. */
+  overlay?: OverlayFile[];
+  /** The step's changes are not wanted: the script does not collect or send them. Left out of the file when false. */
+  discard?: boolean;
 }
 
 export function stepJson(spec: StepSpec): string {
   return `${JSON.stringify({
     jobId: spec.jobId, stepIdx: spec.stepIdx, epoch: spec.epoch, commands: spec.commands, timeoutSec: spec.timeoutSec,
     baseSha: spec.baseSha, resultUrl: spec.resultUrl, audience: spec.audience,
+    ...(spec.overlay?.length ? { overlay: spec.overlay } : {}), ...(spec.discard ? { discard: true } : {}),
   }, null, 2)}\n`;
 }
 

@@ -421,7 +421,8 @@ describe("the jobs' store (Supabase)", () => {
     expect(got).toEqual({
       id: JID, userId: UID, projectId: PID, branch: "tailzu/x-1111", task: "t", state: "running", placement: "desktop", leaseHolder: "d1", leaseEpoch: 2,
       leaseExpiresAt: Date.parse("2026-10-26T12:01:30.000Z"), checkpoint: { stepIndex: 3, headSha: "a".repeat(40), notes: "n" }, budgetPaise: 500, spentPaise: 100,
-      reassignments: 1, reason: "", waitingOn: null, createdAt: Date.parse("2026-10-26T12:00:00.000Z"), updatedAt: Date.parse("2026-10-26T12:00:05.000Z"),
+      reassignments: 1, reason: "", waitingOn: null, agent: false, agentHolder: null, agentEpoch: 0, agentExpiresAt: null,
+      createdAt: Date.parse("2026-10-26T12:00:00.000Z"), updatedAt: Date.parse("2026-10-26T12:00:05.000Z"),
     });
     const odd = await new SupabaseJobStore(stub({ data: row({ checkpoint: { stepIndex: "x", headSha: 5 }, lease_holder: null, lease_expires_at: null }), error: null }).sb as never).getJobById(JID);
     expect(odd).toMatchObject({ checkpoint: { stepIndex: -1, headSha: "", notes: "" }, leaseHolder: null, leaseExpiresAt: null });
@@ -581,6 +582,38 @@ describe("the ticker", () => {
   });
 });
 
+describe("the ticker, with the agent loop's worker", () => {
+  it("asks the worker to hand back claims and pick up jobs on the same pass, says so when it did, and a worker that fails costs the next pass nothing", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const log = { info: vi.fn(), warn: vi.fn() };
+    const tick = vi.fn(async () => ({ expired: 0, moved: 0, failed: 0, woken: 0 }));
+    const agents = {
+      tick: vi.fn()
+        .mockResolvedValueOnce({ handedBack: 1, started: 2 })
+        .mockRejectedValueOnce(new Error("agent store is away"))
+        .mockResolvedValue({ handedBack: 0, started: 0 }),
+    };
+    const stop = startJobTicker({ jobs: { tick }, agents, log });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(agents.tick).toHaveBeenCalledTimes(1);
+    expect(log.info).toHaveBeenCalledWith({ handedBack: 1, started: 2 }, expect.stringMatching(/claims handed back, jobs picked up/));
+    await vi.advanceTimersByTimeAsync(TICK_MS);
+    expect(log.warn).toHaveBeenCalledWith({ error: "agent store is away" }, "code jobs: tick failed");
+    await vi.advanceTimersByTimeAsync(TICK_MS);
+    expect(agents.tick).toHaveBeenCalledTimes(3);
+    expect(log.info).toHaveBeenCalledTimes(1);
+    // The router's own pass ran each time, before the worker's.
+    expect(tick).toHaveBeenCalledTimes(3);
+    stop();
+    // A server without the agent has none to ask.
+    const none = vi.fn(async () => ({ expired: 0, moved: 0, failed: 0, woken: 0 }));
+    const stop2 = startJobTicker({ jobs: { tick: none }, agents: null });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(none).toHaveBeenCalledTimes(1);
+    stop2();
+  });
+});
+
 // ------------------------------------------------------- small tools
 
 describe("the lock", () => {
@@ -680,7 +713,7 @@ describe("the pushes", () => {
     const { PUSH_DEFAULTS } = await pushRig();
     const { EVENT_PUSH_KINDS } = await import("../src/push/defaults.js");
     const kinds = EVENT_PUSH_KINDS.filter((k) => k.startsWith("code_"));
-    expect(kinds).toEqual(["code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed"]);
+    expect(kinds).toEqual(["code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed", "code_needs_you"]);
     for (const k of kinds) {
       expect(PUSH_DEFAULTS.flags[`push.${k}.enabled`], k).toBe(true);
       expect(typeof PUSH_DEFAULTS.flags[`push.${k}.screenId`], k).toBe("string");

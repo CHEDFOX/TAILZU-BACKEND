@@ -39,7 +39,18 @@
  * THE CHECKPOINT is `{ stepIndex, headSha, notes }`, written after every step
  * that finishes: the number of the last finished step (-1 before any), the
  * commit the branch was at, and a line of plain words. A job moved to another
- * place starts again from there and re-runs only the step that was out.
+ * place starts again from there and re-runs only the step that was out. The
+ * agent loop (src/code/agent) keeps the rest of where it is in `agent`, inside
+ * the checkpoint: the phase, the plan, the staged edits.
+ *
+ * THE AGENT'S CLAIM. A job made for the agent loop (`agent`) is driven by one
+ * server at a time, which holds the job's CLAIM: a holder, an epoch that goes up
+ * by one on every claim, and an expiry. It is the same idea as the step's lease
+ * and a different set of fields, because the two are held at the same time (the
+ * agent waits for a step that is out): every write the agent makes is fenced by
+ * its epoch, so a server that lost the claim (it went quiet, it was restarted)
+ * can never write again. The ticker takes back a claim that ran out, and any
+ * server may claim the job again and carry on from the checkpoint.
  */
 
 export const JOB_STATES = [
@@ -72,8 +83,16 @@ export type StepStatus = "pending" | "dispatched" | "running" | "blocked" | "don
 export type PaidRule = "never" | "ask" | "auto";
 export const PAID_RULES: readonly PaidRule[] = ["never", "ask", "auto"];
 
-/** What a waiting_for_you job is waiting for. */
-export type WaitingOn = "paid" | "commit";
+/**
+ * What a waiting_for_you job is waiting for. "paid" and "commit" are the router's
+ * (a yes to paid compute, a yes to committing what a step made); the other three
+ * are the agent's: "answer" (a question it asked), "approval" (a yes to a plan or
+ * to something the policy asks about) and "budget" (it ran out of money and
+ * offers to go on with more).
+ */
+export type WaitingOn = "paid" | "commit" | "answer" | "approval" | "budget";
+/** The waits the person's own words or yes end: the router's retry never looks at these. */
+export const AGENT_WAITS: readonly WaitingOn[] = ["answer", "approval", "budget"];
 
 export interface Checkpoint {
   /** The last step that finished; -1 before any. */
@@ -82,6 +101,8 @@ export interface Checkpoint {
   headSha: string;
   /** A line of plain words about where the job is. */
   notes: string;
+  /** The agent loop's own state (src/code/agent/types.ts AgentState), opaque here. Absent for a job nobody's agent drives. */
+  agent?: Record<string, unknown>;
 }
 
 export const NO_CHECKPOINT: Readonly<Checkpoint> = { stepIndex: -1, headSha: "", notes: "" };
@@ -110,8 +131,22 @@ export interface CodeJob {
   /** In plain words, why it is waiting or why it ended badly. Empty otherwise. */
   reason: string;
   waitingOn: WaitingOn | null;
+  /** The job is the agent loop's to drive (made through POST /v1/code/jobs on a server that has the agent). */
+  agent: boolean;
+  /** Which server drives it: an instance id. Null when nobody does. */
+  agentHolder: string | null;
+  /** Goes up by one on every claim. Every write the agent makes carries the one it was given. */
+  agentEpoch: number;
+  /** Epoch ms, or null. */
+  agentExpiresAt: number | null;
   createdAt: number;
   updatedAt: number;
+}
+
+/** A file laid over the checkout before a step's commands run: the agent's staged edits. `content: null` deletes the file. */
+export interface OverlayFile {
+  path: string;
+  content: string | null;
 }
 
 export interface JobStep {
@@ -133,6 +168,10 @@ export interface JobStep {
   outputTail: string;
   /** Whole minutes it ran, rounded up. */
   minutes: number;
+  /** Files the runner lays over its checkout before the commands run (a trial run of edits that are not committed yet). Cleared when the step ends: the code is not kept. */
+  overlay: OverlayFile[];
+  /** Nothing the step changes is committed: the agent commits what it means to through the workspace. */
+  discard: boolean;
 }
 
 export interface ComputeSettings {
@@ -180,6 +219,11 @@ export const TIMEOUT_DEFAULT_SEC = 600;
 export const ESTIMATE_MAX_MINUTES = 360;
 /** The most a person can put on one job or as an automatic monthly limit: ₹10,000. */
 export const PAISE_MAX = 1_000_000;
+/** What a step may lay over the checkout: files, and bytes of text (the whole of it is written into the step's one JSON file on GitHub's side, which holds 1 MB). */
+export const OVERLAY_MAX_FILES = 200;
+export const OVERLAY_MAX_BYTES = 400 * 1024;
+/** The agent's claim lasts this long and is renewed a third of the way through. */
+export const AGENT_LEASE_MS = 120_000;
 /** Devices one person can have online at once. */
 export const DEVICES_MAX = 20;
 /** Projects a device can name. */
@@ -216,8 +260,9 @@ export function brief(text: string, max = 80): string {
  *   job_moved        the job went to another kind of place (their PC went offline, it continues on GitHub)
  *   job_done         finished
  *   job_failed       stopped, with a reason
+ *   needs_you        the agent needs the person: a question, a plan to approve, an OK the policy asks for, or more budget
  */
-export type NotifyKind = "compute_ask" | "compute_paused" | "commit_ask" | "job_moved" | "job_done" | "job_failed";
+export type NotifyKind = "compute_ask" | "compute_paused" | "commit_ask" | "job_moved" | "job_done" | "job_failed" | "needs_you";
 
 export interface NotifyData {
   jobId: string;
