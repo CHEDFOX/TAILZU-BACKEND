@@ -6,6 +6,7 @@
  * markup that need no libraries. The compiler, React, Mermaid and the rest are imported when a particular artifact needs them.
  */
 import { LIMITS, PROTOCOL_VERSION, type ArtifactPayload, type ArtifactType, type DesignKitCss, type FrameMsg, type HostMsg } from "../../tulmi/src/artifacts/protocol.js";
+import { OPEN_GAP_MS, openableUrl } from "../lib/links.js";
 import { originAllowed, parseOrigins } from "../lib/origins.js";
 import { utf8Length } from "../lib/text.js";
 import { createBridge } from "./bridge.js";
@@ -26,8 +27,11 @@ const TYPES: readonly ArtifactType[] = ["html", "react", "svg", "mermaid", "mark
 
 // ------------------------------------------------------------------------------------------------ who may talk to us
 
-const parents = parseOrigins(document.querySelector('meta[name="tz-parents"]')?.getAttribute("content"));
+const parents = parseOrigins(document.querySelector('meta[name="tz-parents"]')?.getAttribute("content"), { opaque: true });
 let parentOrigin: string | null = null;
+
+/** A message to a parent with an opaque origin ("null") can only be addressed to "*": the browser takes no other target for it. It still goes to window.parent, whoever that is. */
+const targetOf = (origin: string): string => (origin === "null" ? "*" : origin);
 
 /**
  * Where `ready` can be sent. The embedding page's origin, when the browser tells us (ancestorOrigins, or the referrer) and it is an
@@ -48,7 +52,7 @@ function post(m: FrameMsg): void {
   if (window.parent === window) return; // opened on its own: there is nobody to tell
   for (const o of parentOrigin ? [parentOrigin] : readyTargets()) {
     try {
-      window.parent.postMessage(m, o);
+      window.parent.postMessage(m, targetOf(o));
     } catch {
       /* a target that is not the parent: the browser drops it */
     }
@@ -247,9 +251,21 @@ function onStream(m: Record<string, unknown>, at: number): void {
 const UP_KINDS = new Set(["compile", "runtime", "import", "limit"]);
 const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
+let lastOpenRelayed = -Infinity;
+
 function relayUp(raw: unknown, visible: boolean): void {
   if (!isObj(raw)) return;
   switch (raw.t) {
+    case "open": {
+      // An address to open, from a frame the artifact controls: the frame has checked it, and the shell does it again, once in a while, for the visible frame only.
+      const url = visible ? openableUrl(raw.url) : null;
+      const now = performance.now();
+      if (url && now - lastOpenRelayed >= OPEN_GAP_MS) {
+        lastOpenRelayed = now;
+        post({ t: "open", url });
+      }
+      break;
+    }
     case "error":
       if (typeof raw.message === "string" && typeof raw.kind === "string" && UP_KINDS.has(raw.kind)) {
         reporter.report(raw.kind as "compile", raw.message, { line: num(raw.line), col: num(raw.col), stack: typeof raw.stack === "string" ? raw.stack : undefined });
@@ -339,7 +355,7 @@ window.addEventListener("pagehide", (e) => {
 // Tell the app we are here. It answers with `load`.
 for (const o of readyTargets()) {
   try {
-    if (window.parent !== window) window.parent.postMessage({ t: "ready", protocol: PROTOCOL_VERSION } satisfies FrameMsg, o);
+    if (window.parent !== window) window.parent.postMessage({ t: "ready", protocol: PROTOCOL_VERSION } satisfies FrameMsg, targetOf(o));
   } catch {
     /* not the parent's origin */
   }

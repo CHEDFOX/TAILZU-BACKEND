@@ -31,7 +31,17 @@ export type ToRunner =
   | { t: "grep"; id: string; pattern: string; path?: string; glob?: string; ignoreCase?: boolean; context?: number; filesOnly?: boolean; maxResults?: number }
   | { t: "glob"; id: string; pattern: string }
   | { t: "ping"; at: number }
-  | { t: "close"; reason: CloseReason; message?: string };
+  | { t: "close"; reason: CloseReason; message?: string }
+  /**
+   * PREVIEW: start the project's dev server in the background (after the checkout is reset and `overlay` laid, as for `exec`) and say when it
+   * answers. `cmd` is the dev command; `port` is where it is known to listen (else the runner reads it from the output); `prepare` runs first
+   * when there is no node_modules; `idleSec` is how long the room keeps the preview with no request (the runner stays for that long).
+   */
+  | { t: "preview"; id: string; cmd: string; port?: number; prepare?: string; readySec: number; idleSec: number; overlay: OverlayEntry[] }
+  | { t: "preview-stop"; reason?: string }
+  /** One HTTP request for the dev server. `body` is base64 (at most 1 MB raw). Answered by `res` and `res-data`, or `res-error`. */
+  | { t: "http"; id: string; method: string; path: string; headers: Array<[string, string]>; body?: string }
+  | { t: "http-cancel"; id: string };
 
 // ---------------------------------------------------------- runner -> room
 
@@ -43,7 +53,20 @@ export type FromRunner =
   | { t: "found"; id: string; ok: false; error: string }
   | { t: "error"; id?: string; code: string; message: string }
   | { t: "pong"; at: number }
-  | { t: "bye"; reason?: string };
+  | { t: "bye"; reason?: string }
+  /** The dev server answers on `port` (`ms` after it was started), or it could not be started (`error`: a sentence, the end of its output redacted). */
+  | { t: "preview"; id: string; ok: true; port: number; ms: number }
+  | { t: "preview"; id: string; ok: false; error: string }
+  /** The dev server is gone (it exited by itself, or an `exec` took the checkout). */
+  | { t: "preview-ended"; id: string; reason: string }
+  /** The head of a response, then its body in `res-data` pieces (base64, at most PREVIEW_CHUNK_BYTES each); `last` ends it. At most PREVIEW_RES_MAX_BYTES in all. */
+  | { t: "res"; id: string; status: number; headers: Array<[string, string]> }
+  | { t: "res-data"; id: string; data: string; last: boolean }
+  | { t: "res-error"; id: string; code: PreviewFailure; message?: string };
+
+/** Why a request to the dev server did not come back. */
+export type PreviewFailure = "unreachable" | "timeout" | "too_large" | "bad_request" | "busy" | "failed";
+export const PREVIEW_FAILURES: readonly PreviewFailure[] = ["unreachable", "timeout", "too_large", "bad_request", "busy", "failed"];
 
 // ------------------------------------------------------ device <-> presence
 
@@ -95,6 +118,9 @@ export type ViewerEvent =
   | { t: "session"; state: "opening" | "open" | "closed"; kind?: string; reason?: CloseReason; at: number }
   | { t: "said"; text: string; at: number }
   | { t: "end"; why: string; at: number }
+  /** The project's own dev server is running on the job's runner, and this address shows it (docs/cloudflare-jobs.md "The preview"). Only the owner is sent it. */
+  | { t: "preview-ready"; url: string; at: number }
+  | { t: "preview-closed"; reason: string; at: number }
   | { t: "error"; code: string; message: string };
 
 export type FromViewer = { t: "message"; text: string } | { t: "ping" };
@@ -127,6 +153,30 @@ function projectsOf(v: unknown): string[] | "all" | null {
   return null;
 }
 
+const HTTP_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
+/** Header names are tokens; values have no line breaks or control characters. */
+// eslint-disable-next-line no-control-regex
+const HEADER_VALUE_BAD = /[\u0000-\u0008\u000a-\u001f\u007f]/;
+const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]{1,100}$/;
+// eslint-disable-next-line no-control-regex
+const PATH_BAD = /[\u0000-\u0020\u007f\\]/;
+
+/** `[[name, value], …]`, at most `max` pairs, every pair well formed; null if not. */
+function pairsOf(v: unknown, max: number): Array<[string, string]> | null {
+  if (!Array.isArray(v) || v.length > max) return null;
+  const out: Array<[string, string]> = [];
+  for (const p of v) {
+    if (!Array.isArray(p) || p.length !== 2) return null;
+    const [k, val] = p as [unknown, unknown];
+    if (typeof k !== "string" || !HEADER_NAME.test(k) || typeof val !== "string" || val.length > 16 * 1024 || HEADER_VALUE_BAD.test(val)) return null;
+    out.push([k, val]);
+  }
+  return out;
+}
+
+/** A path for the dev server: root-relative, no spaces, control characters or backslashes, not a scheme-relative `//host`. */
+export const isPreviewPath = (v: unknown): v is string => typeof v === "string" && v.length >= 1 && v.length <= 4000 && v.startsWith("/") && !v.startsWith("//") && !PATH_BAD.test(v);
+
 /** A frame a runner sent, checked; null when it is not one. */
 export function parseFromRunner(raw: unknown): FromRunner | null {
   const m = json(raw, 2 * 1024 * 1024);
@@ -156,6 +206,20 @@ export function parseFromRunner(raw: unknown): FromRunner | null {
       return { t: "pong", at: typeof m.at === "number" ? m.at : 0 };
     case "bye":
       return { t: "bye", ...(str(m.reason, 200) ? { reason: m.reason } : {}) };
+    case "preview":
+      if (!isId(m.id)) return null;
+      if (m.ok === true) return int(m.port, 1, 65535) && typeof m.ms === "number" && Number.isFinite(m.ms) && m.ms >= 0 ? { t: "preview", id: m.id, ok: true, port: m.port, ms: Math.round(m.ms) } : null;
+      return m.ok === false && str(m.error, 2000) ? { t: "preview", id: m.id, ok: false, error: m.error } : null;
+    case "preview-ended":
+      return isId(m.id) && str(m.reason, 200) ? { t: "preview-ended", id: m.id, reason: m.reason } : null;
+    case "res": {
+      const headers = pairsOf(m.headers, 200);
+      return isId(m.id) && int(m.status, 100, 599) && headers ? { t: "res", id: m.id, status: m.status, headers } : null;
+    }
+    case "res-data":
+      return isId(m.id) && str(m.data, 400 * 1024) && bool(m.last) ? { t: "res-data", id: m.id, data: m.data, last: m.last } : null;
+    case "res-error":
+      return isId(m.id) && (PREVIEW_FAILURES as readonly unknown[]).includes(m.code) ? { t: "res-error", id: m.id, code: m.code as PreviewFailure, ...(str(m.message, 500) ? { message: m.message } : {}) } : null;
     default:
       return null;
   }
@@ -188,6 +252,27 @@ export function parseToRunner(raw: unknown): ToRunner | null {
       } : null;
     case "glob":
       return isId(m.id) && str(m.pattern, 200) ? { t: "glob", id: m.id, pattern: m.pattern } : null;
+    case "preview": {
+      if (!isId(m.id) || !str(m.cmd, 2000) || !m.cmd.trim() || !int(m.readySec, 5, 180) || !int(m.idleSec, 5, 3600) || !Array.isArray(m.overlay) || m.overlay.length > 200) return null;
+      const overlay: OverlayEntry[] = [];
+      for (const f of m.overlay) {
+        if (!isObj(f) || !str(f.path, 500) || !f.path || (f.content !== null && typeof f.content !== "string")) return null;
+        overlay.push({ path: f.path, content: f.content as string | null });
+      }
+      if (m.port !== undefined && !int(m.port, 1, 65535)) return null;
+      if (m.prepare !== undefined && !str(m.prepare, 2000)) return null;
+      return { t: "preview", id: m.id, cmd: m.cmd, ...(m.port !== undefined ? { port: m.port as number } : {}), ...(m.prepare ? { prepare: m.prepare as string } : {}), readySec: m.readySec, idleSec: m.idleSec, overlay };
+    }
+    case "preview-stop":
+      return { t: "preview-stop", ...(str(m.reason, 100) ? { reason: m.reason } : {}) };
+    case "http": {
+      const headers = pairsOf(m.headers, 100);
+      if (!isId(m.id) || typeof m.method !== "string" || !HTTP_METHODS.has(m.method) || !isPreviewPath(m.path) || !headers) return null;
+      if (m.body !== undefined && (!str(m.body, 1_500_000) || !/^[A-Za-z0-9+/]*={0,2}$/.test(m.body))) return null;
+      return { t: "http", id: m.id, method: m.method, path: m.path, headers, ...(m.body ? { body: m.body as string } : {}) };
+    }
+    case "http-cancel":
+      return isId(m.id) ? { t: "http-cancel", id: m.id } : null;
     case "ping":
       return { t: "ping", at: typeof m.at === "number" ? m.at : 0 };
     case "close":

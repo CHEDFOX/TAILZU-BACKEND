@@ -14,6 +14,7 @@
  *   search.ts     read, list, glob and grep over text, with the guards against a pattern that never ends
  *   minutes.ts    the month's GitHub Actions minutes: tell at 80%, stop at 95%
  *   ports.ts      what the agent loop asks of all this (AgentDeps.live)
+ *   preview.ts    the preview: its address, its token, what crosses between the browser and the dev server
  */
 export * from "./limits.js";
 export * from "./protocol.js";
@@ -24,3 +25,4 @@ export * from "./unpack.js";
 export * from "./search.js";
 export * from "./minutes.js";
 export * from "./ports.js";
+export * from "./preview.js";

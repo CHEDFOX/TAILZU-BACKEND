@@ -35,10 +35,10 @@ import { isBlockedAddress } from "../../connectors/egress.js";
 import { CdpClient, CdpError, type CdpSession } from "./cdp.js";
 import { launch, type LaunchedChrome } from "./chrome.js";
 import { startGuard, type Guard, type GuardOptions } from "./guard.js";
-import { BrowserError, type BrowserErrorCode, type RenderOptions, type RenderedPage, type Renderer } from "./types.js";
+import { BrowserError, type BrowserErrorCode, type RenderOptions, type RenderedPage, type Renderer, type ShotOptions } from "./types.js";
 
 export { BrowserError };
-export type { BrowserErrorCode, RenderOptions, RenderedPage, Renderer };
+export type { BrowserErrorCode, RenderOptions, RenderedPage, Renderer, ShotOptions };
 
 export interface EngineOptions {
   chromePath: string;
@@ -146,6 +146,120 @@ export class BrowserEngine {
       }
     } finally {
       this.release();
+    }
+  }
+
+  // ------------------------------------------------------------- a screenshot
+
+  /**
+   * A picture of a page, as PNG bytes: a fresh incognito context like render()'s, the viewport set (a phone's has `mobile`), cookies held, the page opened
+   * (an address, or `html` shown in a blank page), the load event and half a second with nothing on the wire waited for, then `waitForSelector` if
+   * there is one, then Page.captureScreenshot of what the viewport shows. With `allow`, every request whose address matches none of the patterns is refused
+   * before it leaves (the guard still judges what is let through). The errors are render()'s.
+   */
+  async screenshot(o: ShotOptions): Promise<Uint8Array> {
+    if ((o.url === undefined) === (o.html === undefined)) throw new BrowserError("bad_url", "a screenshot is of an address or of html, not both");
+    let u: URL | null = null;
+    if (o.url !== undefined) {
+      try { u = new URL(o.url); } catch { throw new BrowserError("bad_url"); }
+      if (u.protocol !== "http:" && u.protocol !== "https:") throw new BrowserError("bad_url");
+      const bare = u.hostname.replace(/^\[|\]$/g, "");
+      const port = u.port ? Number(u.port) : u.protocol === "https:" ? 443 : 80;
+      if (net.isIP(bare) && isBlockedAddress(bare) && !this.o.guard?.allow?.(bare.toLowerCase(), port)) throw new BrowserError("blocked");
+    }
+    await this.take();
+    try {
+      try {
+        return await this.shootOnce(u, o);
+      } catch (err) {
+        if (err instanceof BrowserError && err.code === "crashed") return await this.shootOnce(u, o);
+        throw err;
+      }
+    } finally {
+      this.release();
+    }
+  }
+
+  private async shootOnce(u: URL | null, o: ShotOptions): Promise<Uint8Array> {
+    const timeoutMs = o.timeoutMs ?? 30_000;
+    const deadline = Date.now() + timeoutMs;
+    const left = () => Math.max(1_000, deadline - Date.now());
+    const run = await this.ensure();
+    const { cdp } = run;
+    let contextId: string | undefined;
+    const stops: Array<() => void> = [];
+    try {
+      contextId = (await cdp.send<{ browserContextId: string }>("Target.createBrowserContext", { disposeOnDetach: true })).browserContextId;
+      await cdp.send("Browser.setDownloadBehavior", { behavior: "deny", browserContextId: contextId });
+      const { targetId } = await cdp.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", browserContextId: contextId });
+      const page: CdpSession = await cdp.attach(targetId);
+
+      const inflight = new Set<string>();
+      let lastActivity = Date.now();
+      let loaded = false;
+      let mainFrame = "";
+      stops.push(page.on("Network.requestWillBeSent", (p) => { if (!OPEN_ENDED.has(p.type)) inflight.add(p.requestId); lastActivity = Date.now(); }));
+      for (const done of ["Network.loadingFinished", "Network.loadingFailed"]) stops.push(page.on(done, (p) => { inflight.delete(p.requestId); lastActivity = Date.now(); }));
+      stops.push(page.on("Page.lifecycleEvent", (p) => { if (p.name === "load" && p.frameId === mainFrame) loaded = true; }));
+      stops.push(page.on("Page.javascriptDialogOpening", () => { page.send("Page.handleJavaScriptDialog", { accept: false }).catch(() => {}); }));
+      if (o.allow) {
+        const allow = o.allow;
+        stops.push(page.on("Fetch.requestPaused", (p) => {
+          const url = String(p.request?.url ?? "");
+          if (allow.some((re) => re.test(url))) page.send("Fetch.continueRequest", { requestId: p.requestId }).catch(() => {});
+          else page.send("Fetch.failRequest", { requestId: p.requestId, errorReason: "BlockedByClient" }).catch(() => {});
+        }));
+      }
+
+      await page.send("Page.enable");
+      await page.send("Network.enable");
+      await page.send("Page.setLifecycleEventsEnabled", { enabled: true });
+      await page.send("Emulation.setDeviceMetricsOverride", { width: o.viewport.width, height: o.viewport.height, deviceScaleFactor: 1, mobile: o.viewport.mobile === true });
+      if (this.o.userAgent) await page.send("Network.setUserAgentOverride", { userAgent: this.o.userAgent });
+      if (o.allow) await page.send("Fetch.enable", { patterns: [{ urlPattern: "*" }] });
+      if (o.cookies?.length) {
+        await page.send("Network.setCookies", { cookies: o.cookies.map((c) => ({ name: c.name, value: c.value, path: c.path ?? "/", ...(c.domain ? { domain: c.domain } : { url: c.url ?? u?.origin ?? "about:blank" }) })) });
+      }
+      const tree = await page.send<{ frameTree: { frame: { id: string } } }>("Page.getFrameTree");
+      mainFrame = tree.frameTree.frame.id;
+
+      if (u) {
+        const nav = await page.send<{ errorText?: string }>("Page.navigate", { url: u.href }, left());
+        if (nav.errorText) throw new BrowserError("navigation_failed", nav.errorText.replace(/^net::/, ""));
+      } else {
+        await page.send("Page.setDocumentContent", { frameId: mainFrame, html: o.html });
+        loaded = true;
+      }
+      for (;;) {
+        const now = Date.now();
+        if (now >= deadline) { if (!loaded) throw new BrowserError("timeout"); break; }
+        if (loaded && inflight.size === 0 && now - lastActivity >= QUIET_MS) break;
+        await sleep(Math.min(POLL_MS, deadline - now));
+      }
+      if (o.waitForSelector) {
+        const until = Math.min(deadline + 5_000, Date.now() + (o.selectorTimeoutMs ?? 20_000));
+        const expr = `!!document.querySelector(${JSON.stringify(o.waitForSelector)})`;
+        for (;;) {
+          const ev = await page.send<{ result?: { value?: boolean } }>("Runtime.evaluate", { expression: expr, returnByValue: true }, left() + 5_000);
+          if (ev.result?.value === true) break;
+          if (Date.now() >= until) throw new BrowserError("timeout", "the element never appeared");
+          await sleep(POLL_MS);
+        }
+      }
+      const shot = await page.send<{ data?: string }>("Page.captureScreenshot", { format: "png", captureBeyondViewport: false }, left() + 10_000);
+      if (typeof shot.data !== "string" || !shot.data) throw new BrowserError("navigation_failed", "the browser made no picture");
+      return Uint8Array.from(Buffer.from(shot.data, "base64"));
+    } catch (err) {
+      if (err instanceof BrowserError) throw err;
+      if (err instanceof CdpError) {
+        if (err.code === "closed") throw new BrowserError("crashed", "Chrome closed under the page");
+        if (err.code === "timeout") throw new BrowserError("timeout", err.method);
+        throw new BrowserError("navigation_failed", err.method);
+      }
+      throw err;
+    } finally {
+      for (const stopListening of stops) stopListening();
+      if (contextId && !cdp.closed) await cdp.send("Target.disposeBrowserContext", { browserContextId: contextId }, undefined, 5_000).catch(() => {});
     }
   }
 

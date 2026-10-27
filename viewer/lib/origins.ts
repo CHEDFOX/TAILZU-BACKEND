@@ -4,18 +4,27 @@
  * message that arrives.
  *
  * An entry is `scheme://host[:port]`, or `scheme://*.host[:port]` for every subdomain of a host. Nothing else is kept:
- * no paths, no bare `*`, no `null`.
+ * no paths, no bare `*`. And no `null`, unless it is asked for (`{ opaque: true }`): `null` stands for a parent with an OPAQUE origin, a page
+ * made from inline HTML such as the one a screenshot is taken of (docs section 14). A viewer that lists it can be framed by any page, because
+ * a Content-Security-Policy cannot name an opaque origin, so it is for a deployment kept for screenshots and nothing else.
  */
+
+/** The entry that stands for a parent whose origin is opaque ("null"). */
+export const OPAQUE = "null";
 
 const ENTRY = /^(https?):\/\/((?:\*\.)?(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*)(:\d{1,5})?$/;
 
 /** The valid origins in a comma/space separated list, lower-cased and without duplicates. Invalid entries are dropped. */
-export function parseOrigins(raw: string | undefined | null): string[] {
+export function parseOrigins(raw: string | undefined | null, o: { opaque?: boolean } = {}): string[] {
   if (!raw) return [];
   const out: string[] = [];
   for (const piece of raw.split(/[\s,]+/)) {
     const entry = piece.trim().replace(/\/+$/, "").toLowerCase();
     if (!entry) continue;
+    if (entry === OPAQUE) {
+      if (o.opaque && !out.includes(OPAQUE)) out.push(OPAQUE);
+      continue;
+    }
     const m = ENTRY.exec(entry);
     if (!m) continue;
     // `https://*.com` would allow every .com site: a wildcard needs at least two labels after it.
@@ -29,6 +38,7 @@ export function parseOrigins(raw: string | undefined | null): string[] {
 
 /** Is `origin` (as `MessageEvent.origin` gives it) one of the allowed entries? */
 export function originAllowed(origin: string, allowed: readonly string[]): boolean {
+  if (origin === OPAQUE) return allowed.includes(OPAQUE);
   const o = ENTRY.exec(origin.toLowerCase());
   if (!o || o[2]!.startsWith("*")) return false;
   const [, scheme, host, port = ""] = o as unknown as [string, string, string, string | undefined];

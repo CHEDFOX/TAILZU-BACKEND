@@ -14,6 +14,7 @@
  *   plan         what to change; the person's OK if it is risky or the policy asks
  *   work         a model with tools: read, search, edit (staged), run, ask
  *   verify       the plan's checks against the baseline
+ *   design       only for a job built from an approved design (spec): run the app, shoot it, compare it to the design; major differences go back to work
  *   commit       the server commits the staged edits, through the policy
  *   pr           the draft pull request, and ready for review if the checks are green
  *   report       what was done, in words, to the person
@@ -26,7 +27,7 @@ import type { Classification } from "../brain/types.js";
 import type { BaselineResult } from "../project/types.js";
 import type { ChangePlan, Located } from "../work/index.js";
 
-export const PHASES = ["prepare", "new_project", "baseline", "locate", "plan", "work", "verify", "commit", "pr", "report", "done"] as const;
+export const PHASES = ["prepare", "new_project", "baseline", "locate", "plan", "work", "verify", "design", "commit", "pr", "report", "done"] as const;
 export type Phase = (typeof PHASES)[number];
 
 // ------------------------------------------------------------------ numbers
@@ -75,6 +76,10 @@ export const LOOP_ERRORS_MAX = 3;
 export const ERROR_BACKOFF_MS = 15_000;
 /** Findings the model may flag in one job. */
 export const FINDINGS_MAX = 30;
+/** Times the design check may send the job back to work (design.ts). After the last, one more look is taken and what still differs is reported. */
+export const DESIGN_ROUNDS_MAX = 2;
+/** The longest the dev server is given to answer for the design check, in all (the runner's own wait is inside it). */
+export const DESIGN_START_MS = 150_000;
 
 // ------------------------------------------------------------------ the work
 
@@ -229,6 +234,57 @@ export interface SpecArtifact {
   approvedAt: number;
 }
 
+// ------------------------------------------------------------------ the design check
+
+export type DesignViewport = "mobile" | "desktop";
+
+/** One difference the vision tier found between the design and the built page (artifacts/build.ts DesignIssue, kept in the job's state). */
+export interface DesignIssueRecord { area: string; issue: string; severity: "minor" | "major"; fixHint: string; viewport: DesignViewport }
+
+/** What one viewport came to in the latest look. */
+export interface DesignViewState {
+  viewport: DesignViewport;
+  /** 0 to 1. */
+  match: number;
+  issues: DesignIssueRecord[];
+  /** "same": the cheap gate found the shots alike (no model was asked). "model": the vision tier looked. "failed": see `error`. */
+  gate: "same" | "model" | "failed";
+  /** Ids of the two kept shots (artifacts/shots.ts); a link to each is made when the report is written. */
+  shots?: { built: string; approved: string };
+  error?: string;
+}
+
+/**
+ * THE DESIGN CHECK (agent/design.ts, docs/artifacts.md section 11), for a job that has a spec. Its stages are saved one by one, so it is entered again
+ * after a restart or a wait and does not do anything twice:
+ *   session   a runner is opened (a trivial command, so the staged edits are laid) 
+ *   start     the dev server is started on it
+ *   wait      until it answers
+ *   check     the built page and the design are shot and compared, one viewport at a time
+ *   decide    major differences send the job back to work (twice at most); otherwise the check is over
+ *   done
+ */
+export interface DesignState {
+  stage: "session" | "start" | "wait" | "check" | "decide" | "done";
+  /** Times it has sent the job back to work. */
+  round: number;
+  startedAt?: number;
+  /** The page of the app the design is shown on, and a word about how it was found. */
+  route?: string;
+  routeNote?: string;
+  /** Where the design goes, for the vision tier ("src/components/Pricing.tsx"). */
+  location?: string;
+  viewports: DesignViewport[];
+  /** The latest look, viewport by viewport (emptied when the job goes back to work). */
+  views: DesignViewState[];
+  /** Every look: round, the average match, and how many differences of each kind. */
+  history: Array<{ round: number; match: number; major: number; minor: number }>;
+  /** Why the check did not run (or stopped), in a sentence for the report. */
+  skipped?: string;
+  /** What the compare calls cost, in paise (already in the job's spend). */
+  paise: number;
+}
+
 /** The whole of where the agent has got to. Plain data: it goes into the checkpoint as JSON. */
 export interface AgentState {
   v: 1;
@@ -241,6 +297,8 @@ export interface AgentState {
   located?: Located;
   /** The design this job builds, when it was made from an approved artifact. */
   spec?: SpecArtifact;
+  /** The design check, once the job has got to it (only a job with a spec). */
+  design?: DesignState;
   /** A clarification the person gave for a question from locate (spent: locate does not ask twice). */
   locateAsked?: boolean;
   plan?: ChangePlan;
@@ -272,6 +330,8 @@ export interface AgentState {
     doneSummary?: string;
     /** The model was nudged once to use a tool. */
     nudged?: boolean;
+    /** What the design check found, for the model to fix: the differences and the fix hints. Data, wrapped when shown. */
+    designFeedback?: string;
     /** What the person said while the job was working (POST /v1/code/jobs/:id/message), newest last. The model is shown them as the person's words. */
     said?: Array<{ id: string; text: string; at: number }>;
   };

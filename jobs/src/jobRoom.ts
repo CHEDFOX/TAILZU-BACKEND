@@ -35,12 +35,13 @@
 import { DurableObject } from "cloudflare:workers";
 import { keepOutput } from "../../tulmi/src/code/jobs/util.js";
 import {
-  EXEC_GRACE_MS, EXEC_QUEUE_MAX, MESSAGE_MAX_BYTES, OUTPUT_HOLD_CHARS, PREPARE_TIMEOUT_MS, SAID_KEEP, SAID_MAX_CHARS, SEARCH_TIMEOUT_MS, TARBALL_MAX_BYTES,
-  VIEWER_BACKLOG, VIEWER_OUT_CHARS, WORKSPACE_IDLE_MS,
+  EXEC_GRACE_MS, EXEC_QUEUE_MAX, MESSAGE_MAX_BYTES, OUTPUT_HOLD_CHARS, PREPARE_TIMEOUT_MS, PREVIEW_PENDING_MAX, PREVIEW_REQ_MAX_BYTES, PREVIEW_REQUEST_MS,
+  PREVIEW_RES_MAX_BYTES, PREVIEW_TOUCH_MS, SAID_KEEP, SAID_MAX_CHARS, SEARCH_TIMEOUT_MS, TARBALL_MAX_BYTES, VIEWER_BACKLOG, VIEWER_OUT_CHARS, WORKSPACE_IDLE_MS,
 } from "../../tulmi/src/code/live/limits.js";
+import { mintPreviewToken, previewAvailable, previewUrl, requestHeadersFor, responseHeadersFor, sameHex, type PreviewSite } from "../../tulmi/src/code/live/preview.js";
 import type { LiveGlob, LiveGrep, LiveList, LiveRead } from "../../tulmi/src/code/live/ports.js";
 import {
-  isId, parseFromRunner, parseFromViewer, type CloseReason, type FromRunner, type OverlayEntry, type ToRunner, type ViewerEvent,
+  isId, parseFromRunner, parseFromViewer, type CloseReason, type FromRunner, type OverlayEntry, type PreviewFailure, type ToRunner, type ViewerEvent,
 } from "../../tulmi/src/code/live/protocol.js";
 import { globPaths, grepFiles, inScope, listDir, readLines, type GrepBudget, type GrepFile, type GrepOptions } from "../../tulmi/src/code/live/search.js";
 import { unpackTarball, type HeldWrite, type WorkspaceSink } from "../../tulmi/src/code/live/unpack.js";
@@ -104,6 +105,95 @@ export interface QueueExec {
 
 export type Opened = { ok: true; remainingMs: number } | { ok: false; reason: "cap" };
 
+// ------------------------------------------------------------------ the preview
+
+/** What the room keeps of a preview (meta "preview"). The token is not kept, only its nonce and who it was made for. */
+export interface PreviewRow {
+  state: "starting" | "ready" | "closed";
+  /** The id the runner knows it by. */
+  id: string;
+  nonce: string;
+  /** The job's owner: the person the address is made for, and the only one it is handed to. */
+  userId: string;
+  /** Epoch ms the token stops: the end of the job's session time. */
+  exp: number;
+  url: string;
+  startedAt: number;
+  readySec: number;
+  readyAt?: number;
+  port?: number;
+  lastRequestAt: number;
+  idleMs: number;
+  requests: number;
+  error?: string;
+  closeReason?: string;
+}
+
+export interface PreviewStartReq {
+  jobId: string;
+  /** The job's owner. */
+  userId: string;
+  /** The dev command (the brain's `dev` / `start` script, with the package manager's prefix). */
+  cmd: string;
+  port?: number;
+  /** The install to run first if there is no node_modules. */
+  prepare?: string;
+  readySec: number;
+  /** CODE_PREVIEW_IDLE_SEC. */
+  idleSec: number;
+  /** The staged edits: the dev server runs on the branch plus these. */
+  overlay: OverlayEntry[];
+  site: PreviewSite;
+}
+
+export type PreviewStart =
+  | { ok: true; state: "starting"; url: string }
+  | { ok: false; reason: "off" | "no_session" | "bad_request"; message: string };
+
+export interface PreviewView {
+  state: "none" | "starting" | "ready" | "closed";
+  url?: string;
+  port?: number;
+  error?: string;
+  closeReason?: string;
+  requests: number;
+}
+
+/** One HTTP request for the preview, as the door hands it over: already read, already limited. */
+export interface PreviewHttpReq {
+  /** From the token, in hex. */
+  nonce: string;
+  method: string;
+  /** Root-relative path and query. */
+  path: string;
+  headers: Array<[string, string]>;
+  body: ArrayBuffer | null;
+  /** The host the browser used, for X-Forwarded-Host. */
+  publicHost: string;
+}
+
+interface PendingHttp {
+  method: string;
+  status?: number;
+  headers?: Array<[string, string]>;
+  parts: Uint8Array[];
+  size: number;
+  done: (r: Response) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+const pvError = (status: number, code: string, message: string, extra: Record<string, string> = {}): Response =>
+  Response.json({ code, message }, { status, headers: { "cache-control": "no-store", ...extra } });
+
+const FAILURE_STATUS: Record<PreviewFailure, [number, string, string]> = {
+  unreachable: [502, "preview_unreachable", "The dev server did not take the request."],
+  timeout: [504, "preview_timeout", "The dev server took too long to answer."],
+  too_large: [502, "preview_too_large", "That response is over 10 MB, more than a preview carries."],
+  bad_request: [400, "bad_request", "That request could not be passed on."],
+  busy: [503, "preview_busy", "The preview is busy. Try again."],
+  failed: [502, "preview_failed", "The dev server's answer broke off."],
+};
+
 /** Test seam: how the room fetches a tarball, what time it is, and (only so that a test need not make 50 MB) how much text a copy may hold. */
 export const roomDeps: { fetch: (url: string, init: RequestInit) => Promise<Response>; now: () => number; maxBytes?: number } = {
   fetch: (url, init) => fetch(url, init),
@@ -136,6 +226,8 @@ interface SessionRow {
   closeReason?: CloseReason;
 }
 
+/** A preview that has not said it is ready this long after its own time (the install before it takes its time) is given up on. */
+const PREVIEW_START_GRACE_SEC = 330;
 const NO_SESSION: SessionRow = { state: "none", idleMs: 0, remainingMs: 0, lastActivity: 0 };
 const BAD = (status: number, code: string, message: string): Response => Response.json({ code, message }, { status });
 const short = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -147,6 +239,11 @@ export class JobRoom extends DurableObject<Env> {
   private preparing: Promise<void> | null = null;
   /** Searches forwarded to a runner, waiting for its answer (the RPC that asked is held for it). */
   private readonly searches = new Map<string, (r: Extract<FromRunner, { t: "found" }>) => void>();
+  /** HTTP requests for the preview, waiting for the runner's answer. A request in flight keeps this object in memory, so a Map is enough. */
+  private readonly pending = new Map<string, PendingHttp>();
+  private httpSeq = 0;
+  /** The last time the preview's "used" mark was written, so a page's dozens of assets are one write. */
+  private lastTouch = 0;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -551,6 +648,8 @@ export class JobRoom extends DurableObject<Env> {
     for (const ws of this.ctx.getWebSockets("runner")) {
       try { ws.close(1000, reason); } catch { /* gone already */ }
     }
+    // The dev server lived on that runner.
+    await this.closePreview(`session_${reason}`);
     if (s.state === "open" && s.connectedAt) this.setMeta("used_ms", this.num("used_ms") + Math.max(0, this.now() - s.connectedAt));
     this.loseExecs(reason === "idle" ? "The session was closed." : reason === "cap" ? "The session reached the time limit for this job." : "The session was closed before the command finished.");
     this.setSession({ ...s, state: "closed", closeReason: reason });
@@ -559,6 +658,191 @@ export class JobRoom extends DurableObject<Env> {
     // Someone may be waiting on a command that will now never finish; an idle close or the person's turn has nobody waiting.
     if (reason === "cap" || reason === "error" || reason === "expired") await this.wake("runner");
     return { closed: true };
+  }
+
+  // ----------------------------------------------------------- the preview
+
+  private get preview(): PreviewRow | null {
+    const raw = this.meta("preview");
+    if (!raw) return null;
+    try { return JSON.parse(raw) as PreviewRow; } catch { return null; }
+  }
+
+  private setPreview(p: PreviewRow): void { this.setMeta("preview", JSON.stringify(p)); }
+
+  /** The preview exists and has not been closed: the session must not be closed as idle under it. */
+  private previewActive(): boolean {
+    const p = this.preview;
+    return !!p && p.state !== "closed";
+  }
+
+  /** What the preview is doing. Costs nothing and creates nothing. */
+  async previewStatus(): Promise<PreviewView> {
+    const p = this.preview;
+    if (!p) return { state: "none", requests: 0 };
+    return {
+      state: p.state, ...(p.state !== "closed" ? { url: p.url } : {}), ...(p.port ? { port: p.port } : {}), ...(p.error ? { error: p.error } : {}),
+      ...(p.closeReason ? { closeReason: p.closeReason } : {}), requests: p.requests,
+    };
+  }
+
+  /**
+   * The address of the preview, for the person it was made for and nobody else. (The live view is sent it as an event on the owner's socket; this is
+   * for an owner who asks again.)
+   */
+  async previewFor(userId: string): Promise<{ ok: true; url: string } | { ok: false }> {
+    const p = this.preview;
+    if (!p || p.state !== "ready" || !sameHex(p.userId, String(userId))) return { ok: false };
+    return { ok: true, url: p.url };
+  }
+
+  /**
+   * Starts the project's dev server on the open session's runner, with the staged edits laid over the checkout, and returns at once: the runner says
+   * when it answers (`preview` frame), the room tells the job's Workflow and sends the live view `preview-ready`. The address is made here: a token
+   * for this job that stops working when the session's time does. A preview already open is closed first.
+   */
+  async startPreview(req: PreviewStartReq): Promise<PreviewStart> {
+    this.remember(req.jobId);
+    const secret = String(this.env.CODE_JOBS_SECRET ?? "");
+    if (!secret || !previewAvailable(req.site)) return { ok: false, reason: "off", message: "Previews are not set up on the Worker (a PREVIEW_DOMAIN or a PREVIEW_HOST, and the secret)." };
+    if (!/^[0-9a-f-]{36}$/i.test(req.jobId) || !req.cmd.trim()) return { ok: false, reason: "bad_request", message: "A preview needs a job and a command." };
+    const s = this.session;
+    if (s.state !== "open" || !this.runnerSocket()) return { ok: false, reason: "no_session", message: "No runner is connected for this job, so there is nowhere to run the dev server." };
+    if (this.previewActive()) await this.closePreview("replaced", { tellRunner: true });
+    const now = this.now();
+    const capEnd = (s.connectedAt ?? now) + s.remainingMs;
+    const minted = mintPreviewToken({ secret, jobId: req.jobId, ttlMs: Math.max(30_000, capEnd - now), now });
+    const url = previewUrl(req.site, minted.token)!;
+    const id = `pv${now.toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+    const readySec = Math.min(180, Math.max(5, Math.floor(req.readySec)));
+    const row: PreviewRow = {
+      state: "starting", id, nonce: minted.nonce, userId: req.userId, exp: minted.exp, url, startedAt: now, readySec, lastRequestAt: now,
+      idleMs: Math.max(10, Math.floor(req.idleSec)) * 1000, requests: 0,
+    };
+    this.setPreview(row);
+    this.touch();
+    this.setSession({ ...this.session, lastActivity: now });
+    const sent = this.toRunner({
+      t: "preview", id, cmd: req.cmd, readySec, idleSec: Math.max(10, Math.floor(req.idleSec)), overlay: req.overlay,
+      ...(req.port ? { port: req.port } : {}), ...(req.prepare ? { prepare: req.prepare } : {}),
+    });
+    if (!sent) {
+      this.setPreview({ ...row, state: "closed", closeReason: "failed", error: "The runner could not be reached." });
+      return { ok: false, reason: "no_session", message: "The runner could not be reached." };
+    }
+    await this.reschedule();
+    return { ok: true, state: "starting", url };
+  }
+
+  /** Closes the preview (the person's agent is done with it, or the loop is going back to work). */
+  async stopPreview(reason = "stopped"): Promise<{ closed: boolean }> {
+    return { closed: await this.closePreview(short(reason, 60), { tellRunner: true }) };
+  }
+
+  /**
+   * Closes the preview: the dev server is told to go (unless it already has), requests in flight are answered 502, the live view is told, and the
+   * session's idle clock, which the preview was holding, starts from the last request.
+   */
+  private async closePreview(reason: string, o: { tellRunner?: boolean } = {}): Promise<boolean> {
+    const p = this.preview;
+    if (!p || p.state === "closed") return false;
+    if (o.tellRunner) this.toRunner({ t: "preview-stop", reason });
+    for (const [id, w] of [...this.pending]) this.settle(id, w, pvError(502, "preview_closed", "The preview was closed."));
+    this.setPreview({ ...p, state: "closed", closeReason: reason });
+    this.event({ t: "preview-closed", reason, at: this.now() });
+    await this.reschedule();
+    return true;
+  }
+
+  private settle(id: string, w: PendingHttp, r: Response): void {
+    if (this.pending.get(id) !== w) return;
+    this.pending.delete(id);
+    clearTimeout(w.timer);
+    w.done(r);
+  }
+
+  /** The preview was used: the time of the last request is kept (at most every few seconds), and so is the session awake. */
+  private usedPreview(p: PreviewRow): PreviewRow {
+    const now = this.now();
+    const next = { ...p, requests: p.requests + 1, lastRequestAt: now };
+    if (now - this.lastTouch >= PREVIEW_TOUCH_MS) {
+      this.lastTouch = now;
+      this.setPreview(next);
+      const s = this.session;
+      if (s.state === "open") this.setSession({ ...s, lastActivity: now });
+      this.touch();
+      void this.reschedule();
+    }
+    return next;
+  }
+
+  /**
+   * One HTTP request for the dev server, passed to the runner over its socket. The door has already read the token (signature, expiry) and limited
+   * the body; the room checks the nonce is this preview's, that it is open and ready, and answers 502/503/504 in words when the runner cannot.
+   * Held until the runner has sent the whole answer (at most 10 MB), which is why the object stays awake meanwhile.
+   */
+  async previewHttp(req: PreviewHttpReq): Promise<Response> {
+    const p = this.preview;
+    if (!p || !sameHex(p.nonce, req.nonce)) return pvError(404, "preview_not_found", "There is no such preview.");
+    if (p.state === "closed") return pvError(410, "preview_closed", "This preview has ended.");
+    if (this.now() >= p.exp) { await this.closePreview("expired", { tellRunner: true }); return pvError(410, "preview_closed", "This preview has ended."); }
+    if (p.state === "starting") return pvError(503, "preview_starting", "The dev server is still starting. Try again in a moment.", { "retry-after": "2" });
+    if (!this.runnerSocket()) { await this.closePreview("runner_gone"); return pvError(502, "preview_closed", "The computer running the preview is gone."); }
+    if (req.body && req.body.byteLength > PREVIEW_REQ_MAX_BYTES) return pvError(413, "request_too_large", "A request to a preview may carry 1 MB at most.");
+    if (this.pending.size >= PREVIEW_PENDING_MAX) return pvError(503, "preview_busy", "The preview is busy. Try again.", { "retry-after": "1" });
+
+    const id = `h${(this.httpSeq += 1).toString(36)}${this.now().toString(36)}`;
+    const used = this.usedPreview(p);
+    const headers = requestHeadersFor(req.headers, { publicHost: req.publicHost, port: p.port ?? 0 });
+    const body = req.body && req.body.byteLength ? Buffer.from(req.body).toString("base64") : undefined;
+    return new Promise<Response>((resolve) => {
+      const w: PendingHttp = {
+        method: req.method, parts: [], size: 0, done: resolve,
+        timer: setTimeout(() => {
+          this.toRunner({ t: "http-cancel", id });
+          this.settle(id, w, pvError(504, "preview_timeout", FAILURE_STATUS.timeout[2]));
+        }, PREVIEW_REQUEST_MS),
+      };
+      this.pending.set(id, w);
+      const sent = this.toRunner({ t: "http", id, method: req.method, path: req.path, headers, ...(body ? { body } : {}) });
+      if (!sent) this.settle(id, w, pvError(502, "preview_closed", "The computer running the preview is gone."));
+      void used;
+    });
+  }
+
+  /** The runner's answer to a request: the head, a piece of the body, or why there will be none. */
+  private fromPreview(m: Extract<FromRunner, { t: "res" | "res-data" | "res-error" }>): void {
+    const w = this.pending.get(m.id);
+    if (!w) return;
+    if (m.t === "res") {
+      w.status = m.status;
+      w.headers = m.headers;
+      return;
+    }
+    if (m.t === "res-error") {
+      const [status, code, message] = FAILURE_STATUS[m.code] ?? FAILURE_STATUS.failed;
+      this.settle(m.id, w, pvError(status, code, message));
+      return;
+    }
+    if (w.status === undefined) { this.settle(m.id, w, pvError(502, "preview_failed", FAILURE_STATUS.failed[2])); return; }
+    let bytes: Uint8Array;
+    try { bytes = Uint8Array.from(atob(m.data), (c) => c.charCodeAt(0)); } catch { this.settle(m.id, w, pvError(502, "preview_failed", FAILURE_STATUS.failed[2])); return; }
+    w.size += bytes.length;
+    if (w.size > PREVIEW_RES_MAX_BYTES) {
+      this.toRunner({ t: "http-cancel", id: m.id });
+      this.settle(m.id, w, pvError(FAILURE_STATUS.too_large[0], FAILURE_STATUS.too_large[1], FAILURE_STATUS.too_large[2]));
+      return;
+    }
+    if (bytes.length) w.parts.push(bytes);
+    if (!m.last) return;
+    const headers = new Headers();
+    for (const [k, v] of responseHeadersFor(w.headers ?? [])) { try { headers.append(k, v); } catch { /* a header the platform will not take is dropped */ } }
+    const status = w.status >= 200 && w.status <= 599 ? w.status : 502;
+    const noBody = w.method === "HEAD" || status === 204 || status === 205 || status === 304;
+    const all = new Uint8Array(w.size);
+    let at = 0;
+    for (const part of w.parts) { all.set(part, at); at += part.length; }
+    this.settle(m.id, w, new Response(noBody ? null : all, { status, headers }));
   }
 
   // ------------------------------------------------------- remote searches
@@ -615,6 +899,7 @@ export class JobRoom extends DurableObject<Env> {
       for (const old of there) { try { old.send(JSON.stringify({ t: "close", reason: "superseded" } satisfies ToRunner)); old.close(4001, "superseded"); } catch { /* gone */ } }
       if (s.state === "open" && s.connectedAt) this.setMeta("used_ms", this.num("used_ms") + Math.max(0, this.now() - s.connectedAt));
       this.loseExecs("The computer running the session was replaced.");
+      await this.closePreview("superseded");
     }
     this.sql.exec("INSERT INTO nonces (n, exp) VALUES (?, ?)", nonce, Number.isFinite(exp) ? exp : this.now() + 20 * 60_000);
     this.setSession({ ...this.session, state: "opening", stepIdx: step, epoch, connectedAt: undefined });
@@ -669,6 +954,7 @@ export class JobRoom extends DurableObject<Env> {
     if (s.state !== "open" && s.state !== "opening") return;
     if (s.state === "open" && s.connectedAt) this.setMeta("used_ms", this.num("used_ms") + Math.max(0, this.now() - s.connectedAt));
     this.loseExecs("The computer running the session disconnected.");
+    await this.closePreview("runner_gone");
     this.setSession({ ...s, state: "closed", closeReason: "error" });
     this.event({ t: "session", state: "closed", reason: "error", at: this.now() });
     await this.reschedule();
@@ -728,6 +1014,36 @@ export class JobRoom extends DurableObject<Env> {
         return;
       case "pong":
         return;
+      case "res":
+      case "res-data":
+      case "res-error":
+        this.fromPreview(m);
+        return;
+      case "preview": {
+        const p = this.preview;
+        if (!p || p.id !== m.id || p.state !== "starting") return;
+        const now = this.now();
+        if (m.ok) {
+          this.setPreview({ ...p, state: "ready", port: m.port, readyAt: now, lastRequestAt: now });
+          this.lastTouch = now;
+          if (s.state === "open") this.setSession({ ...s, lastActivity: now });
+          this.event({ t: "preview-ready", url: p.url, at: now });
+          await this.reschedule();
+        } else {
+          this.setPreview({ ...p, error: short(m.error, 600) });
+          await this.closePreview("failed");
+        }
+        // The job's Workflow is waiting to hear how it went.
+        await this.wake("runner");
+        return;
+      }
+      case "preview-ended": {
+        const p = this.preview;
+        if (!p || p.id !== m.id || p.state === "closed") return;
+        await this.closePreview(short(m.reason, 100));
+        await this.wake("runner");
+        return;
+      }
     }
   }
 
@@ -818,9 +1134,13 @@ export class JobRoom extends DurableObject<Env> {
       const running = this.sql.exec("SELECT deadline FROM execs WHERE status = 'running' LIMIT 1").toArray()[0];
       const queued = this.sql.exec("SELECT 1 FROM execs WHERE status = 'queued' LIMIT 1").toArray().length > 0;
       if (running) times.push(Number(running.deadline));
-      else if (!queued) times.push(s.lastActivity + s.idleMs);
+      // A preview that is open holds the session: it has its own idle time, from the last request, and the session's follows it.
+      else if (!queued && !this.previewActive()) times.push(s.lastActivity + s.idleMs);
       if (s.connectedAt) times.push(s.connectedAt + s.remainingMs);
     }
+    const pv = this.preview;
+    if (pv && pv.state === "starting") times.push(Math.min(pv.exp, pv.startedAt + (pv.readySec + PREVIEW_START_GRACE_SEC) * 1000));
+    if (pv && pv.state === "ready") times.push(Math.min(pv.exp, pv.lastRequestAt + pv.idleMs));
     // Anything the room holds (a copy, staged edits, commands and their output, a person's words) is deleted after six idle hours.
     if (this.meta("touched") !== null) times.push(this.num("touched") + WORKSPACE_IDLE_MS);
     return times.length ? Math.min(...times) : null;
@@ -836,6 +1156,15 @@ export class JobRoom extends DurableObject<Env> {
 
   async alarm(): Promise<void> {
     const now = this.now();
+    // The preview first: when it closes for being unused, the session's own idle clock (from the last request) is read just after.
+    const pv = this.preview;
+    if (pv && pv.state === "starting" && now >= Math.min(pv.exp, pv.startedAt + (pv.readySec + PREVIEW_START_GRACE_SEC) * 1000)) {
+      this.setPreview({ ...pv, error: "The dev server did not answer in time." });
+      await this.closePreview("failed", { tellRunner: true });
+      await this.wake("runner");
+    } else if (pv && pv.state === "ready" && now >= Math.min(pv.exp, pv.lastRequestAt + pv.idleMs)) {
+      await this.closePreview(now >= pv.exp ? "expired" : "idle", { tellRunner: true });
+    }
     const s = this.session;
     if (s.state === "opening" && s.deadline && now >= s.deadline) {
       // Nobody came with the ticket in time: the Workflow is told, and falls back.
@@ -850,7 +1179,7 @@ export class JobRoom extends DurableObject<Env> {
       } else if (running && now >= Number(running.deadline)) {
         this.toRunner({ t: "cancel", id: String(running.tag) });
         await this.endExec(String(running.tag), { lost: "It ran past its time and was stopped." });
-      } else if (!running && now >= s.lastActivity + s.idleMs && !this.sql.exec("SELECT 1 FROM execs WHERE status = 'queued' LIMIT 1").toArray().length) {
+      } else if (!running && !this.previewActive() && now >= s.lastActivity + s.idleMs && !this.sql.exec("SELECT 1 FROM execs WHERE status = 'queued' LIMIT 1").toArray().length) {
         await this.closeSession("idle");
       }
     }

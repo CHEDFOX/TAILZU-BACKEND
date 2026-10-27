@@ -62,7 +62,7 @@ export function prTitle(state: AgentState): string {
   return cut(t.charAt(0).toUpperCase() + t.slice(1) || "Tailzu change", 70);
 }
 
-export function prBody(state: AgentState, o: { worklog: string; jobId: string; spentPaise: number }): string {
+export function prBody(state: AgentState, o: { worklog: string; jobId: string; spentPaise: number; design?: readonly string[] }): string {
   const out: string[] = [];
   out.push("## What this does", "", safe(state.work.doneSummary ?? state.task, 1500), "");
   if (state.plan?.steps.length) {
@@ -79,6 +79,7 @@ export function prBody(state: AgentState, o: { worklog: string; jobId: string; s
     out.push("## Already broken before Tailzu", "", "These were failing before this change, so they are not caused by it and were not fixed here:", ...list(v.alreadyBroken.map((n) => `\`${cut(n, 140)}\``)), "");
   }
   if (state.baseline?.status === "unknown" && state.baseline.note) out.push(`> Heads up: ${safe(state.baseline.note, 300)}`, "");
+  if (o.design?.length) out.push("## Design check", "", ...o.design.map((l) => (l.startsWith("- ") ? l : safe(l, 600))), "");
   if (o.worklog.trim()) out.push(o.worklog.trim(), "");
   out.push("---", `Made by Tailzu (job \`${o.jobId.slice(0, 8)}\`) for ${rupees(o.spentPaise)}. It is a draft until the checks are green and you say it is ready.`);
   const text = out.join("\n");
@@ -97,6 +98,8 @@ export interface ReportInput {
   prReady?: boolean;
   /** For "budget": the top-up on offer, in paise. */
   continueWithPaise?: number;
+  /** The design check, in lines (design.ts designLines), for a job built from an approved design. */
+  design?: readonly string[];
 }
 
 export function reportText(i: ReportInput): string {
@@ -127,6 +130,7 @@ export function reportText(i: ReportInput): string {
     if (v.alreadyBroken.length) out.push("Already broken before Tailzu (not caused by this change)", ...list(v.alreadyBroken.map((n) => cut(n, 140))), "");
   }
   if (s.baseline?.status === "unknown" && s.baseline.note) out.push(`Note: ${safe(s.baseline.note, 300)}`, "");
+  if (i.design?.length) out.push("The design", ...i.design.map((l) => (l.startsWith("- ") ? l : safe(l, 600))), "");
   if (s.findings.length) out.push("Findings", ...list(s.findings.map((f) => `${f.severity}: ${f.path}${f.line ? `:${f.line}` : ""} ${cut(f.text, 160)}`), 10), "");
   for (const n of s.notes.slice(0, 6)) out.push(`Note: ${safe(n, 300)}`);
   if (s.notes.length) out.push("");

@@ -10,6 +10,22 @@
   "compatibility_flags": ["nodejs_compat"],
 
   "workers_dev": true,
+
+  // THE PREVIEW'S SITE (docs/cloudflare-jobs.md "The preview"). The project's dev server is shown on a site of its own, never the app's and never this API's, so it
+  // is reached by hostnames that are NOT workers.dev. Switch it on by setting PREVIEW_DOMAIN and/or PREVIEW_HOST below and adding the matching routes here:
+  //
+  //   wildcard mode  PREVIEW_DOMAIN = "tailzu-preview.app"   routes: { "pattern": "*.tailzu-preview.app/*", "zone_name": "tailzu-preview.app" }
+  //                  plus a PROXIED wildcard DNS record in that zone (AAAA * -> 100::). A preview is https://<token>.tailzu-preview.app/. Custom Domains cannot be
+  //                  wildcards, so it is a ROUTE; and a certificate for *.tailzu-preview.app is Universal SSL's only if the preview domain is a registrable domain
+  //                  itself (a name two levels down, <token>.preview.example.com, needs an Advanced certificate)
+  //   cookie mode    PREVIEW_HOST = "preview.tailzu-preview.app"   routes: { "pattern": "preview.tailzu-preview.app", "custom_domain": true }
+  //                  One host; https://preview.tailzu-preview.app/p/<token>/ sets a cookie and redirects. All previews share that one origin
+  //
+  // "routes": [
+  //   { "pattern": "*.tailzu-preview.app/*", "zone_name": "tailzu-preview.app" },
+  //   { "pattern": "preview.tailzu-preview.app", "custom_domain": true }
+  // ],
+
   "upload_source_maps": true,
   "observability": { "enabled": true },
 
@@ -70,7 +86,18 @@
     "CODE_LIVE_SESSION": "true",
     "CODE_SESSION_IDLE_SEC": "120",
     "CODE_SESSION_MAX_MIN": "20",
-    "CODE_ACTIONS_MONTHLY_MIN": "2000"
+    "CODE_ACTIONS_MONTHLY_MIN": "2000",
+
+    // The preview of the project's dev server (blank: off) and the design round that uses it. PREVIEW_DOMAIN wins over PREVIEW_HOST. PREVIEW_PARENT_ORIGINS are the
+    // app's origins, which alone may frame a preview. CODE_PREVIEW_IDLE_SEC: a preview with no request for this long is closed (and it is always inside the job's session
+    // minutes). The design round needs ARTIFACTS, a browser for shots (WEB_BROWSER=cloudflare), and a viewer kept for shots (ARTIFACT_SHOT_VIEWER_URL, viewer/docs section 14).
+    "PREVIEW_DOMAIN": "",
+    "PREVIEW_HOST": "",
+    "PREVIEW_PARENT_ORIGINS": "https://tailzu.space,https://www.tailzu.space",
+    "CODE_PREVIEW_IDLE_SEC": "300",
+    "CODE_DESIGN_CHECK": "true",
+    "ARTIFACTS": "false",
+    "ARTIFACT_SHOT_VIEWER_URL": ""
   }
 
   // SECRETS, set once each with `npx wrangler secret put <NAME>` (docs/cloudflare-jobs.md):
@@ -81,7 +108,8 @@
   //   GITHUB_APP_CLIENT_SECRET  the GitHub App's, as on the VPS
   //   GITHUB_APP_PRIVATE_KEY    the App's private key (PEM, or base64 of it; PKCS#1 as GitHub gives it is fine)
   //   CONNECTOR_TOKEN_KEY       32 bytes of base64, the VPS's: opens the stored GitHub sign-in tokens
-  //   CLOUDFLARE_API_TOKEN      an API token with "Browser Rendering - Edit"
+  //   CLOUDFLARE_API_TOKEN      an API token with "Browser Rendering - Edit" (screenshots of the design check use the same one)
+  //   ARTIFACT_SHOT_SECRET      optional: signs the 7-day links to the design check's shots; CODE_JOBS_SECRET when not set
   //   GITHUB_OAUTH_CLIENT_ID    only with CODE_GITHUB_OAUTH=true (projects connected by "Sign in with GitHub")
   //   GITHUB_OAUTH_CLIENT_SECRET   only with CODE_GITHUB_OAUTH=true
   // Not here on purpose: push credentials (they stay on the VPS), and the speech and payment keys (the Worker never needs them).

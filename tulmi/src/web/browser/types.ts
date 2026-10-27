@@ -36,3 +36,23 @@ export class BrowserError extends Error {
     this.name = "BrowserError";
   }
 }
+
+/** What a screenshot is of, and how (engine.ts `screenshot`; shots.ts asks Cloudflare's /screenshot the same things). */
+export interface ShotOptions {
+  /** An address to open, or `html` to show: not both. */
+  url?: string;
+  html?: string;
+  viewport: { width: number; height: number; mobile?: boolean };
+  /** Cookies to hold while the page loads. `url` or `domain` says where they go; `url` defaults to the page's address. */
+  cookies?: Array<{ name: string; value: string; url?: string; domain?: string; path?: string }>;
+  /** Wait until an element matches this selector (after the page has loaded), at most `selectorTimeoutMs`. */
+  waitForSelector?: string;
+  selectorTimeoutMs?: number;
+  /** A request whose address matches none of these is refused. Absent: every request the guard lets through. */
+  allow?: RegExp[];
+  /** The whole shot, queue excluded. Default 30 s. */
+  timeoutMs?: number;
+}
+
+/** What shots.ts takes to make a picture of a page without Cloudflare: PNG bytes. */
+export type Screenshotter = (o: ShotOptions) => Promise<Uint8Array>;

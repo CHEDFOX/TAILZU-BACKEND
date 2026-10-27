@@ -263,6 +263,9 @@ function taskMessage(i: ContextInput, k: Knobs): string {
   if (s.work.feedback) {
     parts.push(`The checks FAILED on your last attempt (fix round ${s.work.fixRounds} of 3). Fix what this change broke:\n${dataBlock("checks", "", cut(s.work.feedback, 3500))}`);
   }
+  if (s.work.designFeedback) {
+    parts.push(`The app was RUN and looked at, and it does not match the approved design yet (design round ${s.design?.round ?? 1} of 2). Fix these differences, using the project's own components, styles and tokens:\n${dataBlock("design_check", "", cut(s.work.designFeedback, 3500))}`);
+  }
   const history = [cut(s.work.summary, k.summary), ...s.work.digests.map((d) => `- ${d}`)].filter(Boolean).join("\n");
   if (history) parts.push(`Earlier in this job (notes on steps no longer shown in full):\n${dataBlock("history", "", cut(history, k.summary + 1500))}`);
   return parts.join("\n\n");

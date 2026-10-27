@@ -38,6 +38,7 @@ import { cut } from "../work/model.js";
 import { checkCommands, parseMarkers, resultsOf, describeCheck, type CheckSpec } from "./checks.js";
 import { Refused } from "./changeset.js";
 import { buildContext, fold, systemPrompt } from "./context.js";
+import { designDue, designLines } from "./design.js";
 import { WITHHELD_ARGS, argsHoldSecret } from "./tools.js";
 import { SAID_KEEP } from "../live/limits.js";
 import { commitMessage, prBody, prTitle, reportText } from "./report.js";
@@ -553,7 +554,8 @@ export async function verifyPhase(r: Run): Promise<void> {
   }, { ...(r.deps.routeStats ? { store: r.deps.routeStats } : {}), ...(r.deps.log ? { log: r.deps.log } : {}) });
   if (v.ok) {
     w.feedback = undefined;
-    s.phase = "commit";
+    // A job built from an approved design runs the app and looks at it before it is committed (design.ts); every other job commits.
+    s.phase = designDue(r) ? "design" : "commit";
     await r.save();
     return;
   }
@@ -633,7 +635,7 @@ export async function prPhase(r: Run): Promise<void> {
   const d = r.deps.projects;
   const money = await r.money();
   const worklog = await worklogMarkdown(r.jobId, { ...(r.deps.worklog ? { store: r.deps.worklog } : {}) });
-  const body = prBody(s, { worklog, jobId: r.jobId, spentPaise: money.spent });
+  const body = prBody(s, { worklog, jobId: r.jobId, spentPaise: money.spent, design: designTextOf(r) });
   const pr = await r.ws.openDraftPr(prTitle(s), body);
   if (pr.existing) {
     // The pull request is open already (an earlier round of this job, or the person's): its description is brought up to date.
@@ -777,10 +779,17 @@ export async function reportPhase(r: Run): Promise<void> {
   const s = r.state;
   const money = await r.money();
   const outcome = s.commits.length === 0 && r.tools.changes.empty ? "answer" : "done";
-  const text = reportText({ state: s, spentPaise: money.spent, budgetPaise: money.budget, outcome, prReady: s.pr?.ready });
+  const text = reportText({ state: s, spentPaise: money.spent, budgetPaise: money.budget, outcome, prReady: s.pr?.ready, design: designTextOf(r) });
   s.report = { at: r.now(), outcome, text, ...(s.pr ? { prUrl: s.pr.url } : {}), costPaise: money.spent };
   s.phase = "done";
   await r.save({ notes: cut(text.split("\n")[0] ?? "Done.", 200) });
+}
+
+/** The design check in words, with the links to its shots (signed, 7 days, the owner's only): for the report and the pull request. */
+export function designTextOf(r: Run): string[] {
+  const s = r.state;
+  const link = r.deps.design?.link;
+  return designLines(s.design, link && s.spec ? (shotId) => link({ userId: r.userId, artifactId: s.spec!.artifactId, shotId }) : undefined);
 }
 
 /** The words a finished job's summary has for the job list and the push. */

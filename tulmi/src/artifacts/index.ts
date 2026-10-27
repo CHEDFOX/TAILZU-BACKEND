@@ -14,13 +14,18 @@
  *   tools.ts     artifact_create, artifact_update, artifact_rewrite: the bot's tools, for any bot
  *   kitparse.ts  the readers that turn a project's files into design tokens
  *   kit.ts       designKit (the project's look, cached per head) and componentArtifact (a component shown in place)
- *   build.ts     "build it": an approved artifact becomes a Code bot job whose spec it is; the compare seam
+ *   build.ts     "build it": an approved artifact becomes a Code bot job whose spec it is; the compare seam (CompareHook)
+ *   pixels.ts    a PNG reader and the cheap gate (small grids of lightness and colour), in pure TypeScript
+ *   shothost.ts  the host page an artifact's screenshot is taken of (it frames the viewer, posts load, marks #done)
+ *   shots.ts     screenshots of a page and of an artifact (Cloudflare Browser Rendering, or our own Chrome), kept in the owner's saved data, with signed 7-day links
+ *   compare.ts   the compare step (CompareHook): the cheap gate, then the vision tier, per viewport, metered in the job's budget
  *
  * Off unless ARTIFACTS=true (config.ts). Nothing here reaches a network or a store unless it is called to; every piece takes its
  * dependencies as arguments, so the tests drive it against a fake model and the memory twin.
  */
 import { getConfig } from "../config.js";
 import { ArtifactService, type ServiceOptions } from "./service.js";
+import { ArtifactDataShotStore, type ShotStore } from "./shots.js";
 import { artifactStore } from "./store.js";
 
 export * from "./types.js";
@@ -35,11 +40,21 @@ export { validateArtifact, assertValid } from "./validate.js";
 export { EditEngine, FixBook } from "./edit.js";
 export { designKit, componentArtifact, workspaceFiles, liveFiles } from "./kit.js";
 export { buildFromArtifact, noCompare } from "./build.js";
-export type { CompareHook } from "./build.js";
+export type { CompareHook, CompareInput, CompareResult, DesignIssue, ViewportResult } from "./build.js";
+export { createCompareHook, compareShots, routeUrl } from "./compare.js";
+export { shootUrl, shootArtifact, shootDepsFromConfig, shootProblem, ShotError, ArtifactDataShotStore, MemoryShotStore, signShotPath, verifyShotLink, isShotId, SHOT_TTL_MS } from "./shots.js";
+export type { ShotStore, ShootDeps, ShotMeta } from "./shots.js";
+export { decodePng, encodePng, gate, isPng, PngError } from "./pixels.js";
+export { SHOT_VIEWPORTS, VIEWPORT_NAMES } from "./shothost.js";
+export type { ViewportName } from "./shothost.js";
 
 /** What the server holds while artifacts are on. */
 export interface Artifacts {
   service: ArtifactService;
+  /** The screenshots of a design check (shots.ts), in the owner's own scope of the artifact's saved data. */
+  shots: ShotStore;
+  /** Signs and checks the 7-day links to them (ARTIFACT_SHOT_SECRET, else CODE_JOBS_SECRET); null: none are served. */
+  shotSecret: string | null;
 }
 
 /**
@@ -50,9 +65,12 @@ export function createArtifacts(o: Partial<ServiceOptions> & { force?: boolean }
   if (!cfg.ARTIFACTS && !o.force) return null;
   const { force: _force, ...rest } = o;
   void _force;
+  const store = rest.store ?? artifactStore();
   return {
     service: new ArtifactService({
-      store: artifactStore(), dailyPaise: cfg.ARTIFACT_DAILY_PAISE, askDailyPaise: cfg.ARTIFACT_ASK_DAILY_PAISE, ...rest,
+      store, dailyPaise: cfg.ARTIFACT_DAILY_PAISE, askDailyPaise: cfg.ARTIFACT_ASK_DAILY_PAISE, ...rest,
     }),
+    shots: new ArtifactDataShotStore(store),
+    shotSecret: cfg.ARTIFACT_SHOT_SECRET || cfg.CODE_JOBS_SECRET || null,
   };
 }

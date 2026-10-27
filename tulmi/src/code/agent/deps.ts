@@ -30,6 +30,7 @@ import type { WebToolDeps } from "../webTools.js";
 import type { CallFn } from "../work/model.js";
 import type { WorklogStore } from "../work/index.js";
 import type { findResources } from "../resources/finder.js";
+import type { CompareHook } from "../../artifacts/build.js";
 import type { LiveDeps } from "../live/ports.js";
 import type { AgentRunner } from "./runner.js";
 
@@ -56,6 +57,15 @@ export interface AgentLog {
   warn(o: object, m: string): void;
 }
 
+/**
+ * What the design round needs besides a preview (live.preview): the compare step that shoots the built page and the design and compares them
+ * (artifacts/compare.ts), and a way to make the link to a kept shot for the report (a signed, 7-day link served to the owner only).
+ */
+export interface DesignDeps {
+  compare: CompareHook;
+  link?: (o: { userId: string; artifactId: string; shotId: string }) => string | null;
+}
+
 export interface AgentDeps {
   /** The Code bot's own pieces: projects, GitHub, the approvals. */
   projects: ProjectDeps;
@@ -77,6 +87,8 @@ export interface AgentDeps {
   notify?: Notify;
   /** The live session (code/live): the job's copy of the code, the person's words mid-task, progress for the app. Absent: none of it. */
   live?: LiveDeps;
+  /** The design round (agent/design.ts) for a job built from an approved design. Absent: the round is skipped, and the report says so. */
+  design?: DesignDeps;
   now: () => number;
   sleep: (ms: number) => Promise<void>;
   log?: AgentLog;

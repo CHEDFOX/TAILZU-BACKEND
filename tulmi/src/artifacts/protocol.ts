@@ -96,7 +96,12 @@ export type FrameMsg =
   /** The artifact asks the bot a question (metered against the person who opened it). */
   | { t: "ask"; reqId: string; prompt: string }
   | { t: "download"; name: string; mime: string; dataBase64: string }
-  | { t: "resize"; height: number };
+  | { t: "resize"; height: number }
+  /**
+   * The person clicked a link in the artifact (or its code called `window.open`). The viewer never navigates; it asks. `url` is an
+   * absolute http(s) address (the viewer checks; the app checks again). The app confirms with the person, then opens the system browser.
+   */
+  | { t: "open"; url: string };
 
 /** Hard limits both sides enforce. */
 export const LIMITS = {

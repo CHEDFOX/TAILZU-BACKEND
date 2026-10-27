@@ -3,6 +3,7 @@
  * bridge, error watching, point-and-change, and a guard against the page navigating itself away.
  */
 import { ELEMENT_ID_ATTR, type FrameMsg } from "../../tulmi/src/artifacts/protocol.js";
+import { OPEN_GAP_MS, openableUrl } from "../lib/links.js";
 import type { Bridge } from "./bridge.js";
 import type { Reporter } from "./errors.js";
 
@@ -105,22 +106,59 @@ export function instrument(win: Window, ctx: InstrumentCtx): void {
   );
 
   // --- the page must stay put -------------------------------------------------------------------------------
-  // A link inside the artifact would load another page into this frame, and a form would submit; neither is wanted.
+  // A link inside the artifact would load another page into this frame, and a form would submit; neither is wanted. A link that goes somewhere
+  // outside (an absolute http(s) address) is ASKED about instead: an `open` message, and the app confirms with the person and opens the system
+  // browser. The same for window.open. Nothing here navigates, ever.
+  let lastOpen = -Infinity;
+  const ask = (url: string): void => {
+    const now = win.performance.now();
+    if (now - lastOpen < OPEN_GAP_MS) return;
+    lastOpen = now;
+    ctx.post({ t: "open", url });
+  };
+
+  // In the capture phase, so that an artifact that stops the click's propagation (React's stopPropagation) cannot let the browser follow the link.
   win.addEventListener(
     "click",
     (e) => {
-      if (e.defaultPrevented) return;
       let t = e.target as Node | null;
       while (t && t.nodeType !== 1) t = t.parentNode;
       const a = t ? (t as Element).closest("a[href], area[href]") : null;
       if (!a) return;
       const href = a.getAttribute("href") ?? "";
       if (href.startsWith("#")) return; // scrolling inside the page is fine
-      e.preventDefault();
+      // The page never moves. If the artifact itself says it handled the click (preventDefault) we only note it, and do not ask the app.
+      let handled = e.defaultPrevented;
+      const native = e.preventDefault.bind(e);
+      e.preventDefault = () => {
+        handled = true;
+        native();
+      };
+      native();
+      // Only a real click (a person's, or Enter on a focused link): a script that calls element.click() asks nothing.
+      const url = e.isTrusted ? openableUrl(href) : null;
+      if (!url) return;
+      // After the artifact's own handlers have run.
+      win.setTimeout(() => {
+        if (!handled) ask(url);
+      }, 0);
     },
-    false,
+    true,
   );
   win.addEventListener("submit", (e) => e.preventDefault(), true);
+
+  // window.open: no popup (the sandbox has none), but the address is asked about, if a person just did something (a script that opens things on its own is not obeyed).
+  const open = (url?: string | URL): null => {
+    const nav = win.navigator as Navigator & { userActivation?: { isActive: boolean } };
+    const target = openableUrl(String(url ?? ""));
+    if (target && (nav.userActivation ? nav.userActivation.isActive : true)) ask(target);
+    return null;
+  };
+  try {
+    Object.defineProperty(win, "open", { value: open, configurable: false, writable: false, enumerable: true });
+  } catch {
+    /* a window that will not take it keeps the sandbox's own refusal */
+  }
 }
 
 /** Report the height of the page's content whenever it changes. */

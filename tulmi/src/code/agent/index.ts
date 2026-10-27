@@ -14,6 +14,7 @@
  *   report.ts        the commit message, the pull request and the final report
  *   run.ts           one run of the loop: the state, the claim it writes through, the ways it stops
  *   phases.ts        prepare ... report, each a function over a Run that can be entered again
+ *   design.ts        the design round: run the app, shoot it, compare it to the approved design
  *   loop.ts          the driver, and the budget stop
  *   orchestrator.ts  the worker: claims, checkpoints, concurrency, the person's word
  *
@@ -26,7 +27,7 @@ import type { Code } from "../index.js";
 import type { JobRouter } from "../jobs/router.js";
 import { projectDepsOf } from "../jobs/index.js";
 import { jobStore, type JobStore } from "../jobs/store.js";
-import { brainOf, type AgentBrain, type AgentDeps } from "./deps.js";
+import { brainOf, type AgentBrain, type AgentDeps, type DesignDeps } from "./deps.js";
 import { MemoryInbox, type LiveDeps } from "../live/ports.js";
 import { AgentOrchestrator, type RemoteJobs } from "./orchestrator.js";
 import { routerRunner, type AgentRunner } from "./runner.js";
@@ -35,6 +36,7 @@ export * from "./changeset.js";
 export * from "./checks.js";
 export * from "./context.js";
 export * from "./deps.js";
+export * from "./design.js";
 export * from "./loop.js";
 export * from "./orchestrator.js";
 export * from "./phases.js";
@@ -66,6 +68,8 @@ export interface CreateAgentOptions extends Partial<Pick<AgentDeps, "call" | "ga
    * drives its own jobs an inbox in memory is made if none is given, so POST /v1/code/jobs/:id/message works there too.
    */
   live?: LiveDeps;
+  /** The design round's compare step and links (agent/design.ts). */
+  design?: DesignDeps;
 }
 
 /** The worker, or null when this server cannot run one (no GitHub client, or the project brain is off). */
@@ -82,6 +86,7 @@ export function createAgent(o: CreateAgentOptions): AgentOrchestrator | null {
     ...(o.findResources ? { findResources: o.findResources } : {}), ...(o.worklog ? { worklog: o.worklog } : {}), ...(o.intake ? { intake: o.intake } : {}),
     ...(o.routeStats ? { routeStats: o.routeStats } : {}), ...(o.notify ? { notify: o.notify } : {}), ...(o.log ? { log: o.log } : {}),
     ...(o.live ? { live: o.live } : o.passive || o.remote ? {} : { live: { inbox: new MemoryInbox() } }),
+    ...(o.design ? { design: o.design } : {}),
   };
   return new AgentOrchestrator({
     jobs: o.jobs, store, deps, concurrency: o.concurrency ?? getConfig().CODE_AGENT_CONCURRENCY,

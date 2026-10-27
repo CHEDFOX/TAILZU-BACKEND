@@ -78,11 +78,33 @@ describe("GET /", () => {
   });
 
   it("fails closed: no valid origin configured, nobody may embed it", async () => {
-    for (const bad of [undefined, "", "   ", "*", "null", "javascript:alert(1)", "https://evil.example/path", "https://*.com"]) {
+    for (const bad of [undefined, "", "   ", "*", "nul", "javascript:alert(1)", "https://evil.example/path", "https://*.com"]) {
       expect(directive(await csp({ ENV: "production", VIEWER_PARENT_ORIGINS: bad }), "frame-ancestors"), String(bad)).toBe("frame-ancestors 'none'");
     }
     const html = await (await call("/", { ENV: "production", VIEWER_PARENT_ORIGINS: "*" })).text();
     expect(html).toContain('<meta name="tz-parents" content="">');
+  });
+
+  it("shot mode: `null` in the list means a parent with an opaque origin, which frame-ancestors cannot name, so the directive is left out", async () => {
+    const res = await call("/", { ENV: "production", VIEWER_PARENT_ORIGINS: "null" });
+    const policy = res.headers.get("content-security-policy")!;
+    expect(policy).not.toContain("frame-ancestors");
+    // The rest of the policy is the strict one, unchanged.
+    expect(directive(policy, "default-src")).toBe("default-src 'none'");
+    expect(directive(policy, "connect-src")).toBe("connect-src 'none'");
+    expect(directive(policy, "sandbox")).toBe("sandbox allow-scripts");
+    expect(policy).not.toContain("unsafe-eval");
+    // The page is told who may talk to it: opaque parents, and nobody else.
+    expect(await res.text()).toContain('<meta name="tz-parents" content="null">');
+    // Named origins next to it are still handed to the page, but only `null` has a say in the (absent) header.
+    const both = await call("/", { ENV: "production", VIEWER_PARENT_ORIGINS: "https://tailzu.space, null" });
+    expect(directive(both.headers.get("content-security-policy")!, "frame-ancestors")).toBe("");
+    expect(await both.text()).toContain('content="https://tailzu.space,null"');
+  });
+
+  it("the normal viewer (no `null`) still names its parents, and /__host stays off in production in either mode", async () => {
+    expect(directive(await csp(PROD), "frame-ancestors")).toBe("frame-ancestors https://tailzu.space https://www.tailzu.space");
+    expect((await call("/__host", { ENV: "production", VIEWER_PARENT_ORIGINS: "null" })).status).toBe(404);
   });
 
   it("keeps wildcard subdomain entries, drops junk, and cannot be broken out of with a crafted value", async () => {

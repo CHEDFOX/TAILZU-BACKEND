@@ -85,3 +85,24 @@ export const EXEC_QUEUE_MAX = 8;
 export const EXEC_GRACE_MS = 20_000;
 /** A search forwarded to a runner. */
 export const SEARCH_TIMEOUT_MS = 60_000;
+
+/**
+ * THE PREVIEW: the project's dev server, running on the job's runner, seen live through the room (docs/cloudflare-jobs.md "The preview").
+ * A preview that gets no request for this long is closed (CODE_PREVIEW_IDLE_SEC); the job's session minutes cap it all the same.
+ */
+export const PREVIEW_IDLE_SEC_DEFAULT = 300;
+/** The most a response may carry, from the runner through the room to the browser. Over it: 502 preview_too_large. */
+export const PREVIEW_RES_MAX_BYTES = 10 * 1024 * 1024;
+/** The most a request body may carry (it travels in ONE frame, base64: a frame is at most 2 MB). */
+export const PREVIEW_REQ_MAX_BYTES = 1024 * 1024;
+/** A response goes from the runner in pieces of at most this many bytes (base64 inflates by a third; a frame is at most 2 MB). */
+export const PREVIEW_CHUNK_BYTES = 192 * 1024;
+/** Requests in flight through one room at once. */
+export const PREVIEW_PENDING_MAX = 32;
+/** The whole of one request, from the browser asking to the last byte. */
+export const PREVIEW_REQUEST_MS = 55_000;
+/** How long the dev server is given to answer its first request. */
+export const PREVIEW_READY_SEC_DEFAULT = 90;
+export const PREVIEW_READY_SEC_MAX = 180;
+/** The room writes "the preview was used" at most this often (a write per request would be a row per asset). */
+export const PREVIEW_TOUCH_MS = 5_000;
