@@ -9,6 +9,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { proxyClient } from "../adapters/upstream.js";
 import { runTask } from "../runTask.js";
 import { mkdirp } from "../util.js";
 import type { AgentMetrics, AgentRunInput, AgentRunResult, AgentStatus, AgentUnderTest, FileChange } from "./types.js";
@@ -22,6 +23,8 @@ export const tailzuAgent: AgentUnderTest = {
     const out = await runTask(i.task, {
       mode: i.model.mode, ...(i.model.persona ? { persona: i.model.persona } : {}), repeat: i.repeat, ...(i.model.tiers ? { tiers: i.model.tiers } : {}),
       capPaise: i.budgetPaise, timeoutSec: Math.max(i.timeoutSec, i.task.scenario?.timeoutSec ?? 0), ...(i.model.cassette ? { cassette: i.model.cassette } : {}), ...(i.model.wire ? { wire: true } : {}), ...(i.model.maxTurns ? { maxTurns: i.model.maxTurns } : {}), ...(i.model.maxTokens ? { maxTokens: i.model.maxTokens } : {}), ...(i.brainBudgetPaise !== undefined ? { brainBudgetPaise: i.brainBudgetPaise } : {}), log: i.log,
+      // Through the recording proxy like an external agent, when it is given one and no in-process cassette (the security suite does this).
+      ...(i.model.proxyUrl && i.model.mode === "real" && !i.model.cassette ? { rig: { client: proxyClient(i.model.proxyUrl) } } : {}),
     });
     try {
       const t = out.trace;

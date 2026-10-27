@@ -5,7 +5,9 @@
  * the answer, and never streams (a stream is rebuilt from the whole answer when a caller wants one). The key comes from the argument or the environment and
  * goes only into the Authorization header of the one request; it is never logged or stored.
  */
+import OpenAI from "openai";
 import type { ChatClient } from "../../src/code/brain/gateway.js";
+import { fakeSecret, uid } from "../util.js";
 
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1";
 
@@ -38,4 +40,12 @@ export function openRouterClient(o: { key?: string; baseUrl?: string; fetchFn?: 
       },
     },
   };
+}
+
+/**
+ * The recording proxy (proxy.ts) as an OpenAI-shaped client: for Tailzu's own flow to reach its model THROUGH the proxy, the way an external agent does, so that
+ * the same cassette, the same per-run counting and the same spend caps apply. The key is a fake one made now; the proxy ignores it and holds the real one.
+ */
+export function proxyClient(baseUrl: string): ChatClient {
+  return new OpenAI({ baseURL: baseUrl, apiKey: fakeSecret("generic", uid(8)), maxRetries: 0, timeout: 180_000 }) as unknown as ChatClient;
 }

@@ -92,6 +92,8 @@ export interface Slim {
   fixRounds: number;
   badTurns: number;
   turns: number;
+  /** What became of old tool results: mask, summary or hybrid (agent/mask.ts). */
+  strategy: string | null;
   staged: string[];
   commits: string[];
   pr: { number: number; url: string; ready: boolean } | null;
@@ -109,7 +111,7 @@ const slim = (s: AgentState | null): Slim | null => {
     phase: s.phase, classification: s.classification ?? null,
     located: (any.located?.targets ?? []).map((t: { path: string }) => t.path), locateConfidence: any.located?.confidence ?? null,
     plan: s.plan ? { risk: s.plan.risk, steps: s.plan.steps.map((p) => ({ do: p.do, files: p.files.map((f) => `${f.action} ${f.path}`) })) } : null,
-    baseline: any.baseline ?? null, verify: s.verify ?? null, fixRounds: s.work.fixRounds, badTurns: s.work.badTurns, turns: s.work.turns,
+    baseline: any.baseline ?? null, verify: s.verify ?? null, fixRounds: s.work.fixRounds, badTurns: s.work.badTurns, turns: s.work.turns, strategy: (s.work as { strategy?: string }).strategy ?? null,
     staged: s.work.staged.map((f) => f.path), commits: s.commits, pr: s.pr ? { number: s.pr.number, url: s.pr.url, ready: s.pr.ready } : null,
     report: s.report ? { outcome: s.report.outcome, text: s.report.text, ...(s.report.prUrl ? { prUrl: s.report.prUrl } : {}) } : null,
     findings: s.findings, notes: s.notes, waiting: s.waiting ?? null, tiersUsed: [],

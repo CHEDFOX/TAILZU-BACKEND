@@ -12,6 +12,9 @@
  *   --model sim        simulated models (no key, no cost): proves the machinery, measures nothing
  *   --record|--replay|--mixed --cassette <name>      every model call recorded to e2e/cassettes, or replayed for nothing
  *   --grid --models a,b --agents x,y --tasks <glob>  every (model, agent) pair on the same tasks: see grid.ts
+ *   --parts [--prove] [--spend --budget-inr X] [--only a,b]   the part bake-offs: page extraction and locate for free, now; edit formats, context strategy and
+ *                      router wired (their estimates, and with --prove their machinery on scripted models, with --spend the real thing); see parts.ts
+ *   --fetch-pages      fetch the page corpus the extraction bake-off needs, once (e2e/cache/pages)
  *
  * A hard cap (`--budget-inr`, 100 by default for a real run) stops the run cleanly; what has been measured is written.
  */
@@ -168,6 +171,7 @@ export async function runBakeoffCli(argvIn: string[] = process.argv.slice(2)): P
   const arg = (n: string): string | undefined => { const i = argvIn.indexOf(`--${n}`); return i >= 0 ? argvIn[i + 1] : undefined; };
   const flag = (n: string): boolean => argvIn.includes(`--${n}`);
   if (flag("grid")) { const { runGridCli } = await import("./grid.js"); return runGridCli(argvIn); }
+  if (flag("parts") || flag("fetch-pages")) { const { runPartsCli } = await import("./parts.js"); return runPartsCli(argvIn); }
   const mode = (arg("model") ?? "real") as "real" | "sim";
   if (!["real", "sim"].includes(mode)) throw new Error("--model is real or sim");
   const cassetteMode: CassetteMode | null = flag("record") ? "record" : flag("replay") ? "replay" : flag("mixed") ? "mixed" : null;

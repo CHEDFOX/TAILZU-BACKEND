@@ -1,6 +1,6 @@
 # Third-party notices
 
-Tailzu's Code bot uses the open-source work below. Everything here is under the MIT licence; the licence text, with each copyright holder's line, follows the table. Dependencies are pinned to exact versions (`tulmi/package.json`, `jobs/package.json`). Nothing from an AGPL, GPL or other copyleft project is used.
+Tailzu's Code bot uses the open-source work below. Everything the product uses is under the MIT licence (the tools used only to test it, never shipped, are listed apart in "Test-only tools"); the licence text, with each copyright holder's line, follows the table. Dependencies are pinned to exact versions (`tulmi/package.json`, `jobs/package.json`). Nothing from an AGPL, GPL or other copyleft project is used.
 
 ## What is used, and where
 
@@ -33,6 +33,25 @@ The rules are Go (RE2) regular expressions. `gen-gitleaks.ts` rewrites them as J
 
 - **Aider's repo map** ([Aider-AI/aider](https://github.com/Aider-AI/aider), Apache-2.0): the idea of ranking files by a PageRank over a definition/reference graph, personalised on the identifiers and paths a request mentions, and the edge weighting by name shape. `tulmi/src/code/project/repomap.ts` is written from that published description, with edges also run backwards, and shares no code with Aider.
 - **Observation masking** (SWE-agent, MIT; OpenHands, MIT; JetBrains Research, "The Complexity Trap", arXiv 2508.21433): replacing old tool outputs, not the model's actions, with a placeholder. `tulmi/src/code/agent/mask.ts` is written for Tailzu's own tools.
+
+## Test-only tools (not shipped, not part of the product)
+
+The reality check (`tulmi/e2e`) compares Tailzu with open-source tools. None of them is in the product, its image or its Worker bundle: the Python and native tools live in `tulmi/e2e/cache/tools` (git-ignored) and are run as separate processes; the three Node libraries are `devDependencies`, left out of the image by `npm ci --omit=dev`. Every one is pinned to an exact version (`tulmi/e2e/agents/versions.json`, hash-locked requirements in `tulmi/e2e/agents/locks`). Nothing from them is copied into our code.
+
+| Tool | Version | Licence | Used for |
+|---|---|---|---|
+| Aider | 0.86.2 | Apache-2.0 | a contestant, and its repo map as a locate baseline |
+| opencode | 1.19.0 | MIT | a contestant |
+| OpenAI Codex CLI | 0.161.0 | Apache-2.0 | a contestant |
+| mini-swe-agent | 2.4.6 | MIT | the simple control contestant |
+| OpenHands CLI | 1.16.0 | MIT | a contestant. Two of its Python dependencies are copyleft (bashlex, GPL-3.0-or-later; func_timeout, LGPL-2): they run inside the OpenHands process only, nothing of it is installed in the Node tree, linked, copied or redistributed |
+| Trafilatura | 2.3.1 | Apache-2.0 | page-extraction baseline (one transitive package, tld, is MPL-1.1 OR GPL-2.0-only OR LGPL-2.1-or-later, taken under the MPL) |
+| Defuddle | 0.19.5 | MIT | page-extraction baseline (devDependency) |
+| @mozilla/readability | 0.6.0 | Apache-2.0 | page-extraction baseline (devDependency) |
+| linkedom | 0.18.13 | ISC | the DOM the two libraries above run on (devDependency) |
+| garak (NVIDIA) | not installed | Apache-2.0 | the shape of the prompt-injection probes in `tulmi/e2e/security`; run it as a separate scanner if installed |
+| AgentDojo (ETH Zurich) | not installed | MIT | the structure of the injection suite (user task, injection vector, attack template); no code or data copied |
+| Harbor | 0.24.0 (documented, not installed) | Apache-2.0 | the runner for Terminal-Bench and SWE-bench Pro where Docker is available |
 
 ## Licence text
 

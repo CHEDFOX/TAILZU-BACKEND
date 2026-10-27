@@ -1,7 +1,13 @@
 /**
- * THE AGENTS THE HARNESS KNOWS. To add one (OpenHands, Aider, opencode, Codex CLI): implement AgentUnderTest in its own file here, run headless inside
- * `input.checkout` with `input.model.slug` through OpenRouter, and register it below. Nothing else in the harness names an agent.
+ * THE AGENTS THE HARNESS KNOWS. Tailzu's own flow, the patch agent (no model: proves the scoring) and the open-source contestants (aider, opencode, Codex CLI,
+ * mini-swe-agent, OpenHands), each a small spec over agents/external.ts: headless inside `input.checkout`, `input.model.slug` through the recording proxy, the
+ * versions pinned in versions.json. To add one: write its spec in its own file here and register it below. Nothing else in the harness names an agent.
  */
+import { aiderAgent } from "./aider.js";
+import { codexAgent } from "./codex.js";
+import { miniAgent } from "./miniswe.js";
+import { opencodeAgent } from "./opencode.js";
+import { openhandsAgent } from "./openhands.js";
 import { patchAgent } from "./patch.js";
 import { tailzuAgent } from "./tailzu.js";
 import type { AgentUnderTest } from "./types.js";
@@ -9,7 +15,15 @@ import type { AgentUnderTest } from "./types.js";
 export const AGENTS: Record<string, AgentUnderTest> = {
   [tailzuAgent.id]: tailzuAgent,
   [patchAgent.id]: patchAgent,
+  [aiderAgent.id]: aiderAgent,
+  [opencodeAgent.id]: opencodeAgent,
+  [codexAgent.id]: codexAgent,
+  [miniAgent.id]: miniAgent,
+  [openhandsAgent.id]: openhandsAgent,
 };
+
+/** The open-source contestants (external processes, behind the recording proxy), in the order the grid shows them. */
+export const CONTESTANTS = ["tailzu", "aider", "opencode", "codex", "mini-swe-agent", "openhands"] as const;
 
 export function agentById(id: string): AgentUnderTest {
   const a = AGENTS[id];

@@ -7,6 +7,8 @@
  */
 import type { RunFile, RunRecord } from "../run.js";
 import { STAGES } from "../score/stages.js";
+import type { PartsFile } from "../bakeoff/parts.js";
+import { contestantsSection, partsSection, type GridFile } from "./parts.js";
 import { barChart, esc, page, type Bar } from "./svg.js";
 
 const inr = (paise: number): string => `₹${(paise / 100).toFixed(2)}`;
@@ -78,7 +80,10 @@ const dot = (v: { status: string; reason: string } | undefined): string => {
   return `<td class="${v.status === "ok" ? "ok" : "bad"}" title="${esc(v.reason)}">${v.status === "ok" ? "ok" : "FAIL"}</td>`;
 };
 
-export function buildReport(f: RunFile): string {
+/** What a run report shows beside the run itself: the contestants and the parts (bakeoff/parts.ts), when a parts file exists. */
+export interface ReportExtras { parts?: PartsFile | null; grid?: GridFile | null }
+
+export function buildReport(f: RunFile, extras: ReportExtras = {}): string {
   const a = aggregate(f);
   const m = f.meta;
   const fx = m.fx || 88;
@@ -109,6 +114,7 @@ export function buildReport(f: RunFile): string {
 <h2>Models and tiers the calls went to</h2><div style="display:flex;flex-wrap:wrap;gap:24px"><div style="flex:1;min-width:300px">${barChart(modelBars, { format: (b) => String(b.value), labelWidth: 220 })}</div><div style="flex:1;min-width:260px">${barChart(tierBars, { format: (b) => String(b.value) })}</div></div>
 ${a.cassette ? `<h2>Cassettes</h2><p>${a.cassette.hits} answer(s) replayed, ${a.cassette.recorded} recorded, ${a.cassette.misses} miss(es). Spent ₹${(a.cassette.spentUsd * fx).toFixed(2)}; the replayed answers had cost ₹${(a.cassette.replayedUsd * fx).toFixed(2)} when recorded.</p>` : ""}
 <h2>Every run</h2><div class="wrap"><table><thead><tr><th>Task</th><th>Result</th>${STAGES.map((s) => `<th>${s}</th>`).join("")}<th>Cost</th><th>Time</th><th>Turns</th></tr></thead><tbody>${rows}</tbody></table></div>
-<h2>The projects</h2><div class="wrap"><table><thead><tr><th>Project</th><th>Stack</th><th>Pinned at</th><th>Tests</th></tr></thead><tbody>${m.repos.map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.stack)}</td><td><code>${esc(r.pin.slice(0, 10))}</code></td><td>${r.tests ?? "-"}${r.testSec ? ` in ${r.testSec}s` : ""}</td></tr>`).join("")}</tbody></table></div>`;
+<h2>The projects</h2><div class="wrap"><table><thead><tr><th>Project</th><th>Stack</th><th>Pinned at</th><th>Tests</th></tr></thead><tbody>${m.repos.map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.stack)}</td><td><code>${esc(r.pin.slice(0, 10))}</code></td><td>${r.tests ?? "-"}${r.testSec ? ` in ${r.testSec}s` : ""}</td></tr>`).join("")}</tbody></table></div>
+${extras.parts ? contestantsSection(extras.parts, extras.grid ?? null) + partsSection(extras.parts) : ""}`;
   return page(`Reality check ${m.id}`, body);
 }

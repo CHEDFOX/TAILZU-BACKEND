@@ -39,6 +39,9 @@
     "e2e:validate": "tsx e2e/validate.ts",
     "e2e:load": "tsx e2e/load.ts",
     "e2e:proxy": "tsx e2e/proxy.ts",
+    "e2e:tools": "tsx e2e/agents/tools.ts",
+    "e2e:agents": "tsx e2e/agents/prove.ts",
+    "e2e:security": "tsx e2e/security/index.ts",
     "bakeoff": "tsx e2e/bakeoff/index.ts",
     "models-watch": "tsx scripts/models-watch.ts"
   },
@@ -64,8 +67,11 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@mozilla/readability": "0.6.0",
     "@types/node": "^20.14.0",
     "@types/ws": "^8.5.12",
+    "defuddle": "0.19.5",
+    "linkedom": "0.18.13",
     "simple-icons": "^16.35.0",
     "tsx": "^4.19.1",
     "typescript": "^5.6.2",

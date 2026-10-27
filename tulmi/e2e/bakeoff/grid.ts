@@ -173,6 +173,11 @@ export async function runGridCli(argvIn: string[]): Promise<number> {
   const fx = Number(process.env.CODE_USD_INR) || 88;
   writeJson(path.join(outDir, "grid.json"), { ...g, at: new Date().toISOString() });
   fs.writeFileSync(path.join(outDir, "report.html"), renderGridHtml(g, fx));
+  // The e2e report's Contestants section reads the newest REAL grid (a simulated one would only hide the cost estimate behind invented numbers).
+  if (mode === "real") {
+    mkdirp(path.join(OUT_DIR, "grid"));
+    writeJson(path.join(OUT_DIR, "grid", "latest.json"), { ...g, at: new Date().toISOString() });
+  }
   console.log(`\n${renderGridText(g, fx)}\n\nreport: ${path.join(outDir, "report.html")}`);
   return g.aborted ? 4 : 0;
 }
