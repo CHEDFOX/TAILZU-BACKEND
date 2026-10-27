@@ -94,9 +94,9 @@ describe("who is told, and about what", () => {
     expect(s.told).toHaveLength(0);
   });
 
-  it("takes the seven kinds the router knows and nothing else", async () => {
+  it("takes the eight kinds the router knows and nothing else", async () => {
     const s = await setup();
-    const kinds: NotifyKind[] = ["compute_ask", "compute_paused", "commit_ask", "job_moved", "job_done", "job_failed", "needs_you"];
+    const kinds: NotifyKind[] = ["compute_ask", "compute_paused", "commit_ask", "job_moved", "job_done", "job_failed", "needs_you", "minutes_low"];
     for (const kind of kinds) expect((await s.post({ jobId: s.mine.id, kind, text: "" })).status).toBe(200);
     expect(s.told.map((t) => t.kind)).toEqual(kinds);
     for (const kind of ["admin", "needs_you ", "", 5, null]) expect((await s.post({ jobId: s.mine.id, kind, text: "" })).status).toBe(400);

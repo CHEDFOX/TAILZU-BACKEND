@@ -3,7 +3,9 @@
  *
  *   read_file {path, from?, to?}       the work branch overlaid with the staged edits, 12,000 characters at most
  *   list_dir {path}                    the same overlay, one level
- *   search_code {query}                the project brain: files, symbols, the text people see
+ *   grep {pattern, path?, glob?, ...}  exact text in the files, ripgrep-like, with the staged edits
+ *   glob {pattern}                     files by name, newest change first, with the staged edits
+ *   search_code {query}                the project brain: files, symbols, the text people see ("where is the feature")
  *   edit_file {path, old, new}         an exact replace of text that occurs once; STAGES it
  *   write_file {path, content}         stages a whole file
  *   delete_file {path}                 stages a deletion
@@ -14,6 +16,10 @@
  *   note {text}                        a line for the work log
  *   ask_user {question, options?}      the job waits for the person
  *   done {summary}                     the work is finished
+ *
+ * read_file, list_dir, grep and glob are answered from the job's COPY OF THE CODE when it has one (code/live: the room, a Durable Object, filled
+ * from one tarball) and instantly; without one, or when the copy says it cannot (a repo too big for a copy, a file it does not hold), read_file
+ * and list_dir use GitHub's API as they always did, glob reads GitHub's tree, and grep reads a bounded number of files from GitHub.
  *
  * A tool never throws at the model. A refusal comes back as a result that says what to do
  * instead (changeset.ts Refused), and a failure of ours as one plain sentence; the loop
@@ -33,13 +39,18 @@ import type { FetchLike } from "../../connectors/egressTypes.js";
 import { asUntrusted } from "../../web/reader.js";
 import type { ToolCall, ToolDef } from "../brain/types.js";
 import { assertRepoPath } from "../github.js";
+import { briefCall } from "./context.js";
+import type { LiveFiles, LiveStatus } from "../live/ports.js";
+import type { ViewerEvent } from "../live/protocol.js";
+import { skipReason } from "../live/rules.js";
+import { byPath, globPaths, grepFiles, type GrepFile, type GrepOk, type GrepOptions } from "../live/search.js";
 import { scanForSecrets } from "../policy.js";
 import type { BrainHandle } from "../project/index.js";
 import { isSecretPath } from "../project/lang.js";
 import type { Workspace } from "../projects.js";
 import { findResources } from "../resources/finder.js";
 import { WEB_TOOLS, type WebTools } from "../webTools.js";
-import { cleanFinding, type WorkLog } from "../work/index.js";
+import { cleanFinding, redactText, type WorkLog } from "../work/index.js";
 import { Changeset, Refused, checkedText, editablePath, replaceOnce } from "./changeset.js";
 import type { RunOutcome, RunSpec } from "./runner.js";
 import { FINDINGS_MAX, LIST_MAX, READ_MAX_CHARS, RESULT_MAX_CHARS, RUNS_MAX, RUN_TIMEOUT_SEC, type AgentState, type ResultRecord } from "./types.js";
@@ -48,7 +59,7 @@ export type ToolControl = { type: "done"; summary: string } | { type: "ask"; que
 export interface ToolOutcome extends ResultRecord { control?: ToolControl }
 
 export const AGENT_TOOL_NAMES = [
-  "read_file", "list_dir", "search_code", "edit_file", "write_file", "delete_file", "run",
+  "read_file", "list_dir", "grep", "glob", "search_code", "edit_file", "write_file", "delete_file", "run",
   "web_search", "read_page", "research", "find_resources", "flag_finding", "note", "ask_user", "done",
 ] as const;
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
@@ -70,8 +81,26 @@ export const AGENT_TOOLS: readonly ToolDef[] = [
     parameters: obj({ path: { type: "string", maxLength: 500 } }, ["path"]),
   },
   {
+    name: "grep",
+    description: "Search the text of the files for a regular expression (JavaScript syntax), line by line, like ripgrep: each match is `path:line:text`. "
+      + "Use it for anything EXACT: a function or variable name, a string, an import, every place something is called. It sees your staged edits and answers at once. "
+      + "Narrow it with path (a file or folder) and glob (like *.ts); ignoreCase, context (lines around a match, 0 to 5) and filesOnly (just the paths) are optional. "
+      + "Very long patterns, and nested repeats like (a+)+, are refused. If the answer says partial, narrow the search.",
+    parameters: obj({
+      pattern: { type: "string", minLength: 1, maxLength: 300 }, path: { type: "string", maxLength: 500 }, glob: { type: "string", maxLength: 200 },
+      ignoreCase: { type: "boolean" }, context: { type: "integer", minimum: 0, maximum: 5 }, filesOnly: { type: "boolean" }, maxResults: { type: "integer", minimum: 1, maximum: 500 },
+    }, ["pattern"]),
+  },
+  {
+    name: "glob",
+    description: "Find files by name with a glob like src/**/*.test.ts, *.md or tests/{a,b}/*.js (a pattern with no / matches the file name at any depth). "
+      + "The files changed most recently come first. It sees your staged edits. Use it to find files by name; use grep for what is inside them.",
+    parameters: obj({ pattern: { type: "string", minLength: 1, maxLength: 200 } }, ["pattern"]),
+  },
+  {
     name: "search_code",
-    description: "Search the project's index for a file, a function or class or route, or text a person sees on screen. Returns paths with a line about each. It does not see your staged edits.",
+    description: "Ask the project's index WHERE a feature lives: a file, a function or class or route, or text a person sees on screen. Returns paths with a line about each. "
+      + "Good for \"where is login handled\"; for an exact name or string, use grep. It does not see your staged edits.",
     parameters: obj({ query: { type: "string", minLength: 2, maxLength: 200 } }, ["query"]),
   },
   {
@@ -91,7 +120,8 @@ export const AGENT_TOOLS: readonly ToolDef[] = [
   },
   {
     name: "run",
-    description: "Run shell commands on a computer with your staged edits applied to a fresh checkout. `cmd` is one command per line; they run in order and stop at the first that fails. Nothing is installed unless you install it in the same run. Returns the exit code and the end of the output. Each run takes 30 to 60 seconds and costs: batch commands.",
+    description: "Run shell commands on a computer with your staged edits applied over the branch's checkout. `cmd` is one command per line; they run in order and stop at the first that fails. Do not count on anything being installed: install it in the run that needs it (a repeat install is quick). Returns the exit code and the end of the output. "
+      + "Where a live session is available, the first run of a job opens it (about a minute), later runs start at once and take as long as the commands do, and the session closes after two idle minutes; otherwise each run waits for a computer. Batch commands where you can.",
     parameters: obj({ cmd: { type: "string", minLength: 1, maxLength: 6000 }, why: { type: "string", maxLength: 300 } }, ["cmd", "why"]),
   },
   ...WEB_TOOLS,
@@ -143,6 +173,10 @@ export interface ToolEnv {
   now: () => number;
   signal?: AbortSignal;
   findResources?: typeof findResources;
+  /** The job's copy of the code (code/live), when there is one. */
+  files?: LiveFiles | null;
+  /** Compact events for the app's live view. Never throws into the tool. */
+  progress?: (ev: ViewerEvent) => void;
 }
 
 /**
@@ -170,7 +204,11 @@ const short = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n 
 
 export class Tools {
   readonly changes: Changeset;
-  private tree: { files: Set<string>; dirs: Map<string, Set<string>>; truncated: boolean } | null = null;
+  private tree: { files: Set<string>; sizes: Map<string, number>; dirs: Map<string, Set<string>>; truncated: boolean } | null = null;
+  /** What the job's copy of the code said about itself, once asked (undefined: not asked yet). */
+  private liveStatus: LiveStatus | null | undefined;
+  /** The staged edits the copy was last given. */
+  private overlayRev = -1;
   private branchTexts = new Map<string, string | null>();
   /** `callId:kind` of the entries already in the work log: a call picked up again after a crash is not logged twice. */
   private logged = new Set<string>();
@@ -183,6 +221,12 @@ export class Tools {
   invalidate(): void {
     this.tree = null;
     this.branchTexts.clear();
+    // The job's copy of the code is of the commit before this one: thrown away, and made again at the next need.
+    if (this.env.files?.reset) {
+      this.liveStatus = undefined;
+      this.overlayRev = -1;
+      void this.env.files.reset().catch(() => undefined);
+    }
   }
 
   defs(): readonly ToolDef[] { return AGENT_TOOLS; }
@@ -208,15 +252,17 @@ export class Tools {
     if (this.tree) return this.tree;
     const t = await this.env.ws.tree();
     const files = new Set<string>();
+    const sizes = new Map<string, number>();
     const dirs = new Map<string, Set<string>>();
     const add = (dir: string, name: string) => { (dirs.get(dir) ?? dirs.set(dir, new Set()).get(dir)!).add(name); };
     for (const e of t.entries) {
       if (e.type === "tree") continue;
       files.add(e.path);
+      if (typeof e.size === "number") sizes.set(e.path, e.size);
       const parts = e.path.split("/");
       for (let i = 0; i < parts.length; i += 1) add(parts.slice(0, i).join("/"), i === parts.length - 1 ? parts[i]! : `${parts[i]!}/`);
     }
-    this.tree = { files, dirs, truncated: t.truncated };
+    this.tree = { files, sizes, dirs, truncated: t.truncated };
     return this.tree;
   }
 
@@ -262,23 +308,55 @@ export class Tools {
     } catch {
       return { ok: false, content: `${name} was called with arguments that are not a JSON object. Call it again with its arguments as JSON.` };
     }
+    this.emit({ t: "tool", id: call.id, name, brief: redactText(briefCall({ id: call.id, name, arguments: call.arguments }), 120), at: this.env.now() });
+    let out: ToolOutcome;
     try {
-      return await this.dispatch(call, name as AgentToolName, args);
+      out = await this.dispatch(call, name as AgentToolName, args);
     } catch (err) {
       if (err instanceof Refused) {
         await this.log(call, "note", `${name} refused: ${short(err.message, 200)}`);
-        return { ok: false, content: err.message };
-      }
-      if (err instanceof ConnectorError) return { ok: false, content: err.message };
-      if ((err as { name?: string })?.name === "AbortError") return { ok: false, content: "That was stopped." };
-      throw err;
+        out = { ok: false, content: err.message };
+      } else if (err instanceof ConnectorError) out = { ok: false, content: err.message };
+      else if ((err as { name?: string })?.name === "AbortError") out = { ok: false, content: "That was stopped." };
+      else throw err;
     }
+    this.emit({ t: "result", id: call.id, ok: out.ok, brief: short(redactText((out.content || out.data || "").split("\n")[0] ?? "", 200), 120), at: this.env.now() });
+    return out;
+  }
+
+  private emit(ev: ViewerEvent): void {
+    try { this.env.progress?.(ev); } catch { /* a live view is never worth a failed tool */ }
+  }
+
+  // ------------------------------------------------------- the job's copy
+
+  /**
+   * The job's copy of the code, if there is one that can answer. `forSearch` also takes a repo too big for a copy ("remote"): its grep and
+   * glob go to a runner, which the copy's owner arranges. The staged edits are given to the copy whenever they have changed.
+   */
+  private async live(forSearch: boolean): Promise<LiveFiles | null> {
+    const f = this.env.files;
+    if (!f) return null;
+    if (this.liveStatus === undefined) {
+      try { this.liveStatus = await f.status(); } catch { this.liveStatus = null; }
+    }
+    const st = this.liveStatus;
+    if (!st || !(forSearch ? st.ready || st.remote : st.ready && !st.remote)) return null;
+    if (this.overlayRev !== this.changes.rev) {
+      try {
+        await f.setOverlay(this.changes.toOverlayUnchecked());
+        this.overlayRev = this.changes.rev;
+      } catch { return null; }
+    }
+    return f;
   }
 
   private async dispatch(call: ToolCall, name: AgentToolName, a: Record<string, unknown>): Promise<ToolOutcome> {
     switch (name) {
       case "read_file": return this.readFile(call, a);
       case "list_dir": return this.listDir(call, a);
+      case "grep": return this.grep(call, a);
+      case "glob": return this.glob(call, a);
       case "search_code": return this.searchCode(call, a);
       case "edit_file": return this.editFile(call, a);
       case "write_file": return this.writeFile(call, a);
@@ -323,31 +401,64 @@ export class Tools {
     const raw = str(a.path)?.trim();
     if (!raw) throw new Refused("path is needed.");
     const path = readablePath(raw);
+    const live = await this.live(false);
+    if (live) {
+      const from = int(a.from) ?? 1;
+      const to = int(a.to);
+      const r = await live.read(path, { offset: from, ...(to !== undefined ? { limit: Math.max(1, to - from + 1) } : {}) }).catch(() => ({ kind: "unavailable" as const }));
+      if (r.kind === "missing") throw new Refused(r.deleted ? `${path} is deleted in your staged edits.` : `There is no file ${path} on the branch. Use list_dir, glob or search_code to find it.`);
+      if (r.kind === "ok") return this.readOut(call, path, from, r.out.total, r.out.from === 0 ? [] : r.out.text.split("\n"), r.staged);
+      // Not held by the copy (vendored, a lockfile, generated, too big) or the copy would not answer: GitHub still can.
+    }
     const text = await this.current(path);
-    if (text === null) throw new Refused(this.changes.get(path) ? `${path} is deleted in your staged edits.` : `There is no file ${path} on the branch. Use list_dir or search_code to find it.`);
+    if (text === null) throw new Refused(this.changes.get(path) ? `${path} is deleted in your staged edits.` : `There is no file ${path} on the branch. Use list_dir, glob or search_code to find it.`);
     const lines = text.split("\n");
     const from = Math.min(int(a.from) ?? 1, lines.length);
     const want = Math.min(int(a.to) ?? lines.length, lines.length);
     const out: string[] = [];
+    for (let n = from; n <= want; n += 1) out.push(`${n}: ${lines[n - 1]!.slice(0, 400)}`);
+    return this.readOut(call, path, from, lines.length, out, !!this.changes.get(path));
+  }
+
+  /** What a read answers with, from numbered lines (`12: text`): cut to what the model is shown, and withheld if it looks like a secret. */
+  private async readOut(call: ToolCall, path: string, from: number, total: number, numbered: string[], staged: boolean): Promise<ToolOutcome> {
+    if (!numbered.length) {
+      await this.log(call, "read", `Read ${path} (nothing from line ${from}; ${total} lines).`, [path]);
+      return { ok: true, content: `${path} has ${total} line${total === 1 ? "" : "s"}; there is nothing from line ${from}.`, label: path };
+    }
+    const first = Number.parseInt(numbered[0]!, 10) || from;
+    const out: string[] = [];
     let size = 0;
-    let last = from - 1;
-    for (let n = from; n <= want; n += 1) {
-      const line = `${n}: ${lines[n - 1]!.slice(0, 400)}`;
-      if (size + line.length > READ_MAX_CHARS) break;
-      out.push(line);
-      size += line.length + 1;
-      last = n;
+    let last = first - 1;
+    for (const line of numbered) {
+      const cutLine = line.length > 412 ? `${line.slice(0, 411)}…` : line;
+      if (size + cutLine.length > READ_MAX_CHARS) break;
+      out.push(cutLine);
+      size += cutLine.length + 1;
+      last = Number.parseInt(line, 10) || last + 1;
     }
     const withheld = scanForSecrets([{ path, content: out.join("\n") }]).length > 0;
-    const note = last < want ? ` Cut at line ${last} of ${lines.length}; ask for the rest with from=${last + 1}.` : "";
-    await this.log(call, "read", `Read ${path} (lines ${from}-${last} of ${lines.length}).`, [path]);
+    const note = last < total ? ` Cut at line ${last} of ${total}; ask for the rest with from=${last + 1}.` : "";
+    await this.log(call, "read", `Read ${path} (lines ${first}-${last} of ${total}).`, [path]);
     if (withheld) return { ok: true, content: `${path} looks like it holds a secret, so its text is not shown to you. You can still edit around it if you know the text.`, label: path };
-    return { ok: true, content: `${path}, lines ${from}-${last} of ${lines.length}.${note}${this.changes.get(path) ? " (with your staged edits)" : ""}`, data: out.join("\n"), label: path };
+    return { ok: true, content: `${path}, lines ${first}-${last} of ${total}.${note}${staged ? " (with your staged edits)" : ""}`, data: out.join("\n"), label: path };
   }
 
   private async listDir(call: ToolCall, a: Record<string, unknown>): Promise<ToolOutcome> {
     const raw = (str(a.path) ?? "").trim().replace(/^\.\/?$/, "").replace(/^\.\//, "").replace(/\/+$/, "");
     if (raw) readablePath(raw);
+    const live = await this.live(false);
+    if (live) {
+      const r = await live.list(raw).catch(() => ({ kind: "unavailable" as const }));
+      if (r.kind === "empty") throw new Refused(`There is nothing in ${raw || "the root"}: no such folder, or it is empty.`);
+      if (r.kind === "ok") {
+        await this.log(call, "read", `Listed ${raw || "the root"} (${r.out.total} entries).`, raw ? [raw] : undefined);
+        return {
+          ok: true, content: `${raw || "The root"}: ${r.out.total} entries${r.out.partial ? `, the first ${r.out.entries.length} shown` : ""}.`,
+          data: r.out.entries.slice(0, LIST_MAX).join("\n"), label: raw || "/",
+        };
+      }
+    }
     const t = await this.loadTree();
     const names = new Set(t.dirs.get(raw) ?? []);
     const prefix = raw ? `${raw}/` : "";
@@ -366,6 +477,107 @@ export class Tools {
     return {
       ok: true, content: `${raw || "The root"}: ${sorted.length} entries${sorted.length > shown.length ? `, the first ${shown.length} shown` : ""}${t.truncated ? " (GitHub cut the listing of this big repo short)" : ""}.`,
       data: shown.join("\n"), label: raw || "/",
+    };
+  }
+
+  // ------------------------------------------------------------ grep, glob
+
+  private async grep(call: ToolCall, a: Record<string, unknown>): Promise<ToolOutcome> {
+    const pattern = str(a.pattern);
+    if (!pattern?.length) throw new Refused("pattern is needed: a regular expression to look for, like \"parseConfig\" or \"TODO\\(\".");
+    const opts: GrepOptions = {
+      ...(str(a.path)?.trim() ? { path: str(a.path)!.trim().replace(/^\.\//, "") } : {}), ...(str(a.glob)?.trim() ? { glob: str(a.glob)!.trim() } : {}),
+      ...(a.ignoreCase === true ? { ignoreCase: true } : {}), ...(int(a.context) !== undefined ? { context: Math.min(5, int(a.context)!) } : {}),
+      ...(a.filesOnly === true ? { filesOnly: true } : {}), ...(int(a.maxResults) !== undefined ? { maxResults: int(a.maxResults)! } : {}),
+    };
+    let out: (GrepOk & { searched?: number; candidates?: number }) | null = null;
+    let why = "";
+    const live = await this.live(true);
+    if (live) {
+      const r = await live.grep(pattern, opts).catch(() => ({ kind: "unavailable" as const, why: "" }));
+      if (r.kind === "error") return { ok: false, content: r.error };
+      if (r.kind === "ok") out = r.out;
+      else why = r.why ?? "";
+    }
+    if (!out) {
+      if (this.liveStatus?.remote) {
+        throw new Refused(`This repo is too big to search from here${why ? ` (${why})` : ""}. Use search_code to find where something lives, then read_file; or run \`rg\` or \`grep -rn\` with run, which searches the whole checkout.`);
+      }
+      const fallback = await this.grepViaGithub(pattern, opts);
+      if ("error" in fallback) return { ok: false, content: fallback.error };
+      out = fallback;
+    }
+    const text = withholdSecrets(out.text);
+    const words = out.matches === 0
+      ? `No match for ${JSON.stringify(short(pattern, 60))}${out.partial ? ` (the search was cut short: ${partialWhy(out)})` : ""}.`
+      : `${out.matches} ${a.filesOnly === true ? "file" : "line"}${out.matches === 1 ? "" : "s"} match${out.matches === 1 ? "es" : ""} ${JSON.stringify(short(pattern, 60))} in ${out.files} file${out.files === 1 ? "" : "s"}${out.partial ? `. PARTIAL: ${partialWhy(out)}` : ""}.`;
+    await this.log(call, "read", `Searched the files for ${JSON.stringify(short(pattern, 60))}: ${out.matches} match${out.matches === 1 ? "" : "es"}.`);
+    return text ? { ok: true, content: words, data: text, label: pattern } : { ok: true, content: words };
+  }
+
+  /** Without a copy of the code: a bounded look through the files GitHub can give, one by one. Says plainly that it is bounded. */
+  private async grepViaGithub(pattern: string, o: GrepOptions): Promise<(GrepOk & { searched?: number; candidates?: number }) | { error: string }> {
+    const t = await this.loadTree();
+    const staged = new Map(this.changes.files.map((f) => [f.path, f.content]));
+    const paths = new Set<string>();
+    for (const p of t.files) if (skipReason(p, t.sizes.get(p) ?? 1) === null && staged.get(p) !== null) paths.add(p);
+    for (const [p, c] of staged) if (c !== null && skipReason(p, c.length || 1) === null) paths.add(p);
+    const scoped = [...paths].filter((p) => (!o.path || p === o.path || p.startsWith(`${o.path.replace(/\/+$/, "")}/`))).sort();
+    let globbed = scoped;
+    if (o.glob) {
+      const g = globPaths(scoped, o.glob, undefined, scoped.length || 1);
+      if (!g.ok) return { error: g.error };
+      globbed = g.paths.sort();
+    }
+    const take = globbed.slice(0, GITHUB_GREP_FILES_MAX);
+    const files: GrepFile[] = [];
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(6, take.length) }, async () => {
+      while (next < take.length) {
+        const p = take[next++]!;
+        try {
+          const c = await this.current(p);
+          if (c !== null) files.push({ path: p, content: c });
+        } catch { /* a file that cannot be read is a file not searched */ }
+      }
+    }));
+    files.sort(byPath);
+    const r = grepFiles(files, pattern, o);
+    if (!r.ok) return { error: r.error };
+    if (globbed.length > take.length) {
+      return { ...r, partial: true, why: r.why ?? "files", searched: take.length, candidates: globbed.length };
+    }
+    return r;
+  }
+
+  private async glob(call: ToolCall, a: Record<string, unknown>): Promise<ToolOutcome> {
+    const pattern = str(a.pattern)?.trim();
+    if (!pattern) throw new Refused("pattern is needed: a glob like src/**/*.ts or *.md.");
+    const live = await this.live(true);
+    if (live) {
+      const r = await live.glob(pattern).catch(() => ({ kind: "unavailable" as const }));
+      if (r.kind === "error") return { ok: false, content: r.error };
+      if (r.kind === "ok") return this.globOut(call, pattern, r.out.paths, r.out.total);
+    }
+    const t = await this.loadTree();
+    const paths = new Set(t.files);
+    const recent = new Map<string, number>();
+    // Staged edits are the most recent change there is, the last staged first.
+    this.changes.files.forEach((f, i) => {
+      recent.set(f.path, 1e15 + i);
+      if (f.content === null) paths.delete(f.path); else paths.add(f.path);
+    });
+    const r = globPaths(paths, pattern, recent);
+    if (!r.ok) return { ok: false, content: r.error };
+    return this.globOut(call, pattern, r.paths, r.total, t.truncated);
+  }
+
+  private async globOut(call: ToolCall, pattern: string, paths: string[], total: number, truncated = false): Promise<ToolOutcome> {
+    await this.log(call, "read", `Found files matching ${JSON.stringify(short(pattern, 60))}: ${total}.`);
+    if (!paths.length) return { ok: true, content: `No file matches ${JSON.stringify(short(pattern, 60))}.${truncated ? " (GitHub cut the listing of this big repo short.)" : ""}` };
+    return {
+      ok: true, content: `${total} file${total === 1 ? "" : "s"} match${total === 1 ? "es" : ""} ${JSON.stringify(short(pattern, 60))}${total > paths.length ? `, the first ${paths.length} shown` : ""}, most recently changed first.`,
+      data: paths.join("\n"), label: pattern,
     };
   }
 
@@ -428,9 +640,11 @@ export class Tools {
     if (commands.length > 20) throw new Refused("At most 20 commands in one run. Put them in a script, or split the run.");
     if (commands.some((c) => c.length > 1800)) throw new Refused("A command is over 1,800 characters. Put it in a script file and run that.");
     if (scanForSecrets([{ path: "command.sh", content: cmd }]).length) throw new Refused("That command has something in it that looks like a secret. Never put a secret in a command: read it from the environment.");
-    if (this.env.state.work.runs >= RUNS_MAX) throw new Refused(`${RUNS_MAX} runs are used already in this round of work. Finish with what you have learned, or call done.`);
+    // A run picked up again after the advance that started it (a step still out, a session waited for) is the same run, not another.
+    const resumed = this.env.state.run?.tag === call.id;
+    if (!resumed && this.env.state.work.runs >= RUNS_MAX) throw new Refused(`${RUNS_MAX} runs are used already in this round of work. Finish with what you have learned, or call done.`);
     const overlay = this.changes.toOverlay();
-    this.env.state.work.runs += 1;
+    if (!resumed) this.env.state.work.runs += 1;
     const why = short(str(a.why)?.trim() || commands[0]!, 200);
     const out = await this.env.runStep(call.id, { commands, timeoutSec: RUN_TIMEOUT_SEC, estimateMinutes: 2, overlay, why });
     if (out.status !== "done") {
@@ -441,8 +655,9 @@ export class Tools {
       return { ok: false, content: words };
     }
     const tail = out.outputTail.length > RESULT_MAX_CHARS - 400 ? out.outputTail.slice(-(RESULT_MAX_CHARS - 400)) : out.outputTail;
-    await this.log(call, "command", short(cmd, 200), undefined, { exitCode: out.exitCode, durationMs: out.minutes * 60_000, summary: short(out.outputTail.trim().split("\n").at(-1) ?? "", 140) });
-    return { ok: true, content: `Exit code ${out.exitCode}${out.exitCode === 0 ? " (it passed)" : " (it failed)"}, ${out.minutes} minute${out.minutes === 1 ? "" : "s"}. The end of what it printed:`, data: tail, label: short(commands[0]!, 80) };
+    await this.log(call, "command", short(cmd, 200), undefined, { exitCode: out.exitCode, durationMs: out.ms ?? out.minutes * 60_000, summary: short(out.outputTail.trim().split("\n").at(-1) ?? "", 140) });
+    const took = out.ms !== undefined && out.ms < 60_000 ? `${(out.ms / 1000).toFixed(1)} seconds` : `${out.minutes} minute${out.minutes === 1 ? "" : "s"}`;
+    return { ok: true, content: `Exit code ${out.exitCode}${out.exitCode === 0 ? " (it passed)" : " (it failed)"}, ${took}. The end of what it printed:`, data: tail, label: short(commands[0]!, 80) };
   }
 
   // ---------------------------------------------------------------- the web
@@ -481,6 +696,33 @@ export class Tools {
     await this.log(call, "finding", f.text, [f.path], { severity: f.severity, path: f.path, ...(f.line !== undefined ? { line: f.line } : {}) });
     return { ok: true, content: "Recorded. It will be in the pull request." };
   }
+}
+
+/** Files a grep without a copy of the code reads from GitHub, one request each. */
+export const GITHUB_GREP_FILES_MAX = 60;
+
+function partialWhy(o: GrepOk & { searched?: number; candidates?: number }): string {
+  switch (o.why) {
+    case "results": return "there are more matches than are shown. Narrow it with path or glob.";
+    case "time": return "it ran out of time. Narrow it with path or glob.";
+    case "work": return "it was too much text to search in one go. Narrow it with path or glob.";
+    case "files": return `only ${o.searched ?? "some"} of ${o.candidates ?? "many"} files were searched, because the code is being read from GitHub one file at a time. Narrow it with path or glob, or use search_code.`;
+    default: return "not everything was searched.";
+  }
+}
+
+/** A line of grep output that looks like it holds a secret is replaced by a note, as read_file withholds a file's text. */
+function withholdSecrets(text: string): string {
+  if (!text) return text;
+  let held = 0;
+  const lines = text.split("\n").map((row) => {
+    if (row === "--") return row;
+    if (scanForSecrets([{ path: "grep.txt", content: row }]).length === 0) return row;
+    held += 1;
+    const head = /^(.*?[:-]\d+[:-])/.exec(row)?.[1] ?? "";
+    return `${head}[line withheld: it looks like it holds a secret]`;
+  });
+  return held ? `${lines.join("\n")}\n[${held} line${held === 1 ? "" : "s"} withheld: they look like they hold a secret]` : lines.join("\n");
 }
 
 /** A path to READ: inside the repo (workflows are the project's and readable), and not a file that holds secrets, which are never shown to a model. */

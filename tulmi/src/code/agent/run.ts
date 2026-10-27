@@ -25,6 +25,7 @@
  */
 import { ConnectorError } from "../../connectors/state.js";
 import { brief, type CodeJob, type NotifyKind, type WaitingOn } from "../jobs/types.js";
+import type { CloseReason, ViewerEvent } from "../live/protocol.js";
 import { isNeedsApproval, type Gated } from "../policy.js";
 import type { BrainHandle } from "../project/index.js";
 import { ownProject, workspace, type Workspace } from "../projects.js";
@@ -142,13 +143,28 @@ export class Run {
       now: d.now, sleep: d.sleep, signal: this.signal,
     };
     this.web = makeWebTools({ userId: this.userId, jobId: this.jobId, budget: "job", ...web });
+    const live = d.live;
+    const files = live?.files?.({ id: this.jobId, userId: this.userId, projectId: this.projectId, branch: this.branch }) ?? null;
     this.tools = new Tools({
       userId: this.userId, projectId: this.projectId, state: this.state, ws: this.ws, brain: this.brain, log: this.log,
       runStep: (tag, spec) => this.runStep(tag, spec), web: this.web, ...(d.fetchFn ? { fetchFn: d.fetchFn } : {}), closedSource: this.project.private,
       now: d.now, signal: this.signal, ...(d.findResources ? { findResources: d.findResources } : {}),
+      ...(files ? { files } : {}), ...(live?.progress ? { progress: (ev) => this.progress(ev) } : {}),
     });
     const seen = (await this.log.entries().catch(() => [])).flatMap((e) => (typeof e.data?.callId === "string" ? [`${e.data.callId}:${e.kind}`] : []));
     this.tools.seedLogged(seen);
+  }
+
+  // ------------------------------------------------------- the live session
+
+  /** A compact event for the app's live view. Never throws and never waits: a lost event is a gap in a view, not a failed job. */
+  progress(ev: ViewerEvent): void {
+    try { this.deps.live?.progress?.(this.jobId, ev); } catch { /* a live view is never worth a failed job */ }
+  }
+
+  /** Closes the job's live session, before the person is asked anything or the job ends. Never throws. */
+  async closeSession(reason: CloseReason): Promise<void> {
+    try { await this.deps.live?.closeSession?.(this.jobId, reason); } catch { /* the room closes it by itself when it is idle */ }
   }
 
   // ------------------------------------------------------------- the claim
@@ -189,7 +205,7 @@ export class Run {
         await this.save();
       },
     };
-    const out = await this.deps.runner.run(await this.job(), { ...spec, ...(adopt !== undefined ? { adopt } : {}) }, ctl);
+    const out = await this.deps.runner.run(await this.job(), { ...spec, tag, ...(adopt !== undefined ? { adopt } : {}) }, ctl);
     this.state.run = undefined;
     return out;
   }

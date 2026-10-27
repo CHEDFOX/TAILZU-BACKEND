@@ -14,8 +14,11 @@
  */
 import { createAgent } from "../../tulmi/src/code/agent/index.js";
 import type { Advance } from "../../tulmi/src/code/agent/loop.js";
+import { routerRunner } from "../../tulmi/src/code/agent/runner.js";
 import { createCode } from "../../tulmi/src/code/index.js";
-import { createGithubActions, createJobs } from "../../tulmi/src/code/jobs/index.js";
+import { createGithubActions, createJobs, projectDepsOf } from "../../tulmi/src/code/jobs/index.js";
+import { sessionOffers } from "../../tulmi/src/code/live/offers.js";
+import type { JobRouter } from "../../tulmi/src/code/jobs/router.js";
 import { jobStore } from "../../tulmi/src/code/jobs/store.js";
 import type { BrainBody } from "../../tulmi/src/code/jobs/handoff/protocol.js";
 import type { Notify } from "../../tulmi/src/code/jobs/types.js";
@@ -23,7 +26,9 @@ import { getConfig } from "../../tulmi/src/config.js";
 import { installSafeFetch } from "../../tulmi/src/web/safeFetch.js";
 import { workerSafeFetchImpl } from "../../tulmi/src/web/workerSafeFetch.js";
 import { cloudflareRendererFromConfig } from "../../tulmi/src/web/browser/cloudflare.js";
+import { CloudDesktopProvider, devicesOf } from "./desktops.js";
 import { applyEnv, type Env } from "./env.js";
+import { buildLive } from "./live.js";
 import { workerNotify } from "./notify.js";
 import { bindingBrainRemote } from "./workflows.js";
 
@@ -47,6 +52,8 @@ export interface TickSummary { expired: number; moved: number; failed: number; w
 
 export interface TickPort {
   tick(): Promise<TickSummary>;
+  /** A person's PC came online (the Durable Object that keeps presence says so): their jobs that wait for a place are looked at now, not at the next minute. Absent in a test's scripted world. */
+  wake?(userId: string): Promise<number>;
   /** Ids of agent jobs nobody is driving that have not changed for `idleMs`: their Workflow may be gone, or not have been told. */
   idle(idleMs: number, limit: number): Promise<string[]>;
 }
@@ -73,16 +80,32 @@ export async function buildWorld(env: Env, o: { notify?: Notify; /** Tests: stor
   const code = createCode({ brain: { remote: bindingBrainRemote(env), log } });
   if (!code.github) throw new Error("GitHub is not set up on the Worker (GITHUB_APP_* secrets).");
   if (!code.brain) throw new Error("CODE_PROJECT_BRAIN is not on for the Worker.");
-  const githubActions = createGithubActions({ code, log });
-  const jobs = createJobs({ code, github: githubActions, notify, log });
+  const settings = { idleSec: cfg.CODE_SESSION_IDLE_SEC, maxMin: cfg.CODE_SESSION_MAX_MIN };
+  // The live session needs the Worker's own public address (a runner is told to connect to it) and the secret that signs its tickets.
+  const liveOn = cfg.CODE_LIVE_SESSION && !!env.CODE_JOBS_URL?.trim() && !!env.CODE_JOBS_SECRET && !!env.ROOMS;
+  const offerSession = liveOn ? sessionOffers({ secret: env.CODE_JOBS_SECRET!, jobsUrl: env.CODE_JOBS_URL!, idleSec: settings.idleSec }) : undefined;
+  const githubActions = createGithubActions({ code, log, ...(offerSession ? { offerSession } : {}) });
+  const store = jobStore();
+  // The person's own PCs: the router on the Worker cannot see the VPS's memory, so presence is kept in a Durable Object per person (userDevices.ts)
+  // and this is the place that asks it. The order of choice is the router's, unchanged: the PC if it is online, GitHub's computers, paid, wait.
+  let routerRef: JobRouter | null = null;
+  const desktop = env.USER_DEVICES ? new CloudDesktopProvider({ devices: devicesOf(env), store, router: () => routerRef }) : undefined;
+  const jobs = createJobs({
+    code, github: githubActions, notify, log, store, actions: true, ...(desktop ? { desktop } : {}), ...(offerSession ? { offerSession } : {}),
+  });
   if (!jobs) throw new Error("The job router could not be made.");
+  routerRef = jobs;
   const render = cloudflareRendererFromConfig();
+  const dProjects = projectDepsOf(code)!;
+  const classic = routerRunner({ jobs, store, now: Date.now, sleep: (ms) => new Promise<void>((r) => setTimeout(r, ms)) });
+  const built = liveOn ? buildLive(env, { d: dProjects, jobs, store, fallback: classic, settings }) : null;
   const orchestrator = createAgent({
     code, jobs, notify, log, passive: true, leaseMs: WORKER_LEASE_MS, ...(render ? { web: { render } } : {}),
+    ...(built ? { runner: built.runner, live: built.deps } : {}),
   });
   if (!orchestrator) throw new Error("The agent could not be made.");
   const brain = code.brain;
-  const store = brain.runtime.store;
+  const brainStore = brain.runtime.store;
 
   return {
     agent: {
@@ -91,7 +114,7 @@ export async function buildWorld(env: Env, o: { notify?: Notify; /** Tests: stor
     },
     brain: {
       async check(b) {
-        const row = await store.getBrain(b.projectId);
+        const row = await brainStore.getBrain(b.projectId);
         if (b.mode === "incremental" && row?.status === "ready" && row.headSha === b.headSha) return { skip: true, reason: "The brain is already built from this commit." };
         return { skip: false, reason: "" };
       },
@@ -101,6 +124,7 @@ export async function buildWorld(env: Env, o: { notify?: Notify; /** Tests: stor
       },
     },
     ticker: {
+      wake: (userId) => jobs.wake(userId),
       async tick() {
         const router = await jobs.tick();
         const agent = await orchestrator.tick();

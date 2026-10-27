@@ -73,15 +73,18 @@ A loop that fails on something unexpected (GitHub down, a bug) is not the person
 
 ## 3. The tools
 
-`read_file`, `list_dir`, `search_code`, `edit_file`, `write_file`, `delete_file`, `run`, `web_search`, `read_page`, `research`, `find_resources`, `flag_finding`, `note`, `ask_user`, `done` (`tools.ts`). There is **no** tool that commits, pushes or touches git: the server does that after the checks.
+`read_file`, `list_dir`, `grep`, `glob`, `search_code`, `edit_file`, `write_file`, `delete_file`, `run`, `web_search`, `read_page`, `research`, `find_resources`, `flag_finding`, `note`, `ask_user`, `done` (`tools.ts`). There is **no** tool that commits, pushes or touches git: the server does that after the checks.
 
 | Tool | What it really does |
 | --- | --- |
-| `read_file {path, from?, to?}` | The work branch **with the staged edits applied**, numbered lines, 12,000 characters at most (ask for a range for the rest). A file that looks like it holds a secret is not shown. |
-| `list_dir`, `search_code` | The same overlay for folders; the project brain for the search (files, symbols, the text people see). |
+| `read_file {path, from?, to?}` | The work branch **with the staged edits applied**, numbered lines, 12,000 characters at most (ask for a range for the rest). A file that looks like it holds a secret is not shown. With the live session (section 13) it is answered at once from the job's own copy of the code; without it, from GitHub's API, as it always was. |
+| `list_dir {path}` | The same overlay for folders. A skipped folder (`node_modules`, `dist`) is listed by name. |
+| `grep {pattern, path?, glob?, ignoreCase?, context?, filesOnly?, maxResults?}` | **Exact search**, like ripgrep: a JavaScript regular expression, line by line, each match `path:line:text` (context lines `path-line-text`). Sees the staged edits. At most 500 matches (100 by default), a pattern of at most 300 characters; a dangerous pattern (a back-reference, `(a+)+`) is refused with the reason, and a search that runs out of time or work comes back `partial` and says so. Without the live session it searches up to 60 files through GitHub's API, and says which it did not reach. |
+| `glob {pattern}` | Files by name: `src/**/*.test.ts`, `*.md`, `tests/{a,b}/*.js` (a pattern with no `/` matches the name at any depth). The most recently changed first, at most 500. Sees the staged edits. |
+| `search_code {query}` | The project brain's index, for **where a feature lives** (files, symbols, the text people see). It does not see the staged edits. Use `grep` for an exact name or string. |
 | `edit_file {path, old, new}` | An exact replace of text that occurs **once**; says what it found otherwise (not there, or N times). Staged. |
 | `write_file`, `delete_file` | Stage a whole file, or a deletion. |
-| `run {cmd, why}` | Up to 20 commands on a runner, **with the staged edits laid over a fresh checkout** (`overlay` on the step; nothing it changes is kept); the exit code and the end of the output. At most 10 runs in a round of work. |
+| `run {cmd, why}` | Up to 20 commands on a runner, **with the staged edits laid over the checkout** (`overlay` on the step; nothing it changes is kept); the exit code and the end of the output. At most 10 runs in a round of work. With the live session the commands go to a runner kept open for the job (about a second each); otherwise each is a step of its own. |
 | `web_search`, `read_page`, `research` | Layer 3. The page arrives inside `asUntrusted`'s wrapper. |
 | `find_resources {need}` | Layer 6: a ranked shortlist of libraries. |
 | `flag_finding`, `note` | A bug noticed in code it was not asked to change (it goes in the pull request); a line for the work log. |
@@ -135,6 +138,9 @@ POST /v1/code/jobs/:id/deny                                      -> { job }
 POST /v1/code/jobs/:id/budget        { addPaise }                409 job_over
 POST /v1/code/jobs/:id/stop                                      the loop is told, any step that is out is dropped
 GET  /v1/code/jobs/:id/log                                       -> { entries } the work log, in order
+POST /v1/code/jobs/:id/message       { text }                    -> { delivered: true }  the person's words to a job that is working (section 13); 404 live_off, 409 job_over
+POST /v1/code/jobs/:id/live                                      -> { url, ticket, expiresAt }  a pass for the app's live view of the job (section 13); 404 live_off
+POST /v1/code/runner/ticket          { deviceId }                -> { url, ticket, expiresAt }  a pass for a computer's presence socket (docs/desktop-runner-session.md); 404 live_off
 ```
 
 The agent's state holds the person's code (the staged edits, the last files it read), so `GET /v1/code/jobs` and the job in every response are sent **without** `checkpoint.agent`; `agent` in `GET /:id` says where it is in words and paths.
@@ -143,7 +149,7 @@ The agent's state holds the person's code (the staged edits, the last files it r
 
 * **No write token on a runner, and no write but the server's commit.** The agent writes to the repo only through `workspace().commit` after the checks; the policy (branch protection, workflows, secrets, a branch Tailzu did not make), the Blip author and the co-author trailer always apply.
 * **Text from outside is data.** A page, a file, a command's output, the project's own rules: fenced, labelled, and never obeyed. A prompt-injection attempt in a page or a file changes nothing the loop does (`code-agent-safety.test.ts`).
-* **Nothing is run on a guess.** The only commands that reach a runner are the project's own checks and a `run` the model asked for, with the staged edits laid over a fresh checkout, nothing kept.
+* **Nothing is run on a guess.** The only commands that reach a runner are the project's own checks and a `run` the model asked for, with the staged edits laid over the checkout, nothing kept.
 * **A change that breaks the project is never committed by the loop.** Three failed fix rounds stop it; running out of budget commits only what is no worse than the baseline.
 * **Privacy.** The job's checkpoint holds the agent's state while the job lives: the staged edits, and the last files and outputs it read, in `code_jobs.checkpoint`, readable only by the person (the row policies from `0023`). A step's overlay is emptied as soon as the step ends. The state stays in the row after the job is over; pruning it on finish is a decision for the privacy policy.
 
@@ -168,7 +174,7 @@ The tests run the whole loop offline, over a fake GitHub, a scripted model and a
 
 ## 11. Tests
 
-`tests/code-agent-loop.test.ts` (the happy path, fix rounds, already-broken, the baseline, the tools), `-ask` (every wait: the model's question, locate, plan approval and deny, commit and ready approvals, the budget), `-resume` (a crash after two edits, an adopted run, two servers, a slow server fenced, concurrency, closing, loop errors), `-safety` (refused paths, secrets, prompt injection), `-newproject` (an empty repo), `-routes` (the HTTP), `-units` (the parts, the claim in the store, the router's overlay, the runner), and `code-run-script.test.ts` / `code-jobs-placement.test.ts` for `applyOverlay` and the ticker. `tests/agent-rig.ts` is the rig: a real orchestrator, router, policy and workspace over `FakeGithub`, the fixture brain, a scripted model (`scriptedModel`) and a runner that answers from a script (`ScriptRunner`).
+`tests/code-agent-loop.test.ts` (the happy path, fix rounds, already-broken, the baseline, the tools), `-ask` (every wait: the model's question, locate, plan approval and deny, commit and ready approvals, the budget), `-resume` (a crash after two edits, an adopted run, two servers, a slow server fenced, concurrency, closing, loop errors), `-safety` (refused paths, secrets, prompt injection), `-newproject` (an empty repo), `-routes` (the HTTP), `-units` (the parts, the claim in the store, the router's overlay, the runner), and `code-run-script.test.ts` / `code-jobs-placement.test.ts` for `applyOverlay` and the ticker. The live session's tests are `code-live-search` (the search and its safety), `-tools` (the model's `grep`, `glob`, `read_file`, `list_dir` over a fake room, and without one), `-agent` (the loop's hooks: the room, closing the session before the person is asked and before the job ends, progress events, the person's words), `-routes`, `-minutes`, `-runner` (`run.mjs`'s session mode against a fake room), `-workflow` and `-tickets`; and in `jobs/test/` the room, the session, presence, the viewer and a whole agent job over a real room. `tests/agent-rig.ts` is the rig: a real orchestrator, router, policy and workspace over `FakeGithub`, the fixture brain, a scripted model (`scriptedModel`) and a runner that answers from a script (`ScriptRunner`).
 
 ## 12. Running the loop on Cloudflare (`CODE_JOBS_MODE=cloudflare`)
 
@@ -202,3 +208,24 @@ The loop above is one function that runs a job to its end in one process. For Cl
 * Web reads (`read_page`, `web_search`, `find_resources`) go through the `safeFetch` seam (`tulmi/src/web/safeFetch.ts`): the VPS installs `egressFetch`, the Worker installs `workerSafeFetch`. A page that needs its scripts is rendered by Cloudflare's Browser Rendering (`WEB_BROWSER=cloudflare`).
 
 **Tests.** `tests/code-agent-advance.test.ts` (the entry: every wait and end, a claim held, a passive orchestrator), `tests/code-jobs-cloudflare.test.ts` (the VPS hand-off in the routes), `tests/jobs-handoff-*.test.ts`, `tests/code-internal-notify.test.ts`; and in `jobs/test/`: `loop-in-workerd.test.ts` runs a whole job (plan, edit, checks, commit, PR, a question, finish) advance by advance inside the Workers runtime over this same `agent-rig.ts`.
+
+## 13. The live session
+
+The model works the way a person with an editor and a terminal does, not the way a script with a network round trip for each look does. With the jobs on Cloudflare (`docs/cloudflare-jobs.md` section 10) the loop is given four optional ports, `AgentDeps.live` (`tulmi/src/code/live/ports.ts`). Without them, which is the VPS in local mode and any test that gives none, nothing in this document changes.
+
+| Port | What the loop asks | What it is |
+| --- | --- | --- |
+| `files` | read, list, glob, grep over the job's code | The job's **room**: a copy of the branch head in a Durable Object's SQLite, with the staged edits laid over every answer. Reads and searches are instant and cost no model and no runner |
+| (the runner) | `run` | One runner kept open for the job. **Opened late** (the first `run`, not the start of the job), **closed after two idle minutes** (`CODE_SESSION_IDLE_SEC`), at most `CODE_SESSION_MAX_MIN` (20) minutes of it per job; after the cap commands are steps of their own, as before |
+| `inbox` | the person's words | `POST /v1/code/jobs/:id/message {text}`: kept in the room (or, in local mode, in the process's memory) and shown to the model at the **start of its next turn**, in the person's own words, as part of the task. It is acknowledged only after it is saved in the job's state, so a restart shows it again rather than never, and an id keeps it from being shown twice. It never changes what Tailzu may do: the policy, the budget and the safety rules are the same whatever is said |
+| `progress` | events for the app's live view | The phase, each tool call (`grep slug`, `edit_file src/util.ts`) and the first line of its result, the output of a running command, the cost so far, and the end. Scrubbed of secrets, never a file's contents. Fire and forget: a lost event is a gap in a view, never a failed job |
+| `closeSession`, `endJob` | the rules only the loop can keep | `closeSession("needs_you")` is called **before** the person is asked anything (a session open while a person thinks costs minutes); `closeSession("job_end")` before the job is finished (a job cannot be done with a step out); `endJob` after, which **deletes the job's copy of the code**. Tailzu never keeps a person's code |
+
+What the loop does to keep these honest:
+
+* **The staged edits are given to the room whenever they change** (`Changeset.rev`), and travel with every command as its overlay, so a grep, a read and a test run all see the same code: the branch plus the work so far.
+* **A commit invalidates the copy** (`Tools.invalidate`): it is of the commit before this one. The next need makes it again.
+* **Nothing the live session does can fail a job.** A room that is down, a runner that does not come, a progress hook that throws: the tools go back to GitHub's API and the runner back to a step of its own. The only thing the session can change is how long things take.
+* **Output is scrubbed** before it goes into a checkpoint, a work log or an event.
+
+The system prompt tells the model to use `grep` for anything exact, `glob` for names, `search_code` for "where is the feature" and `read_file` after, and to batch commands in a `run`.

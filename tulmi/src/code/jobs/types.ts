@@ -261,8 +261,9 @@ export function brief(text: string, max = 80): string {
  *   job_done         finished
  *   job_failed       stopped, with a reason
  *   needs_you        the agent needs the person: a question, a plan to approve, an OK the policy asks for, or more budget
+ *   minutes_low      the month's GitHub Actions minutes passed 80% of the allowance (once a month); at 95% GitHub's computers are not chosen
  */
-export type NotifyKind = "compute_ask" | "compute_paused" | "commit_ask" | "job_moved" | "job_done" | "job_failed" | "needs_you";
+export type NotifyKind = "compute_ask" | "compute_paused" | "commit_ask" | "job_moved" | "job_done" | "job_failed" | "needs_you" | "minutes_low";
 
 export interface NotifyData {
   jobId: string;

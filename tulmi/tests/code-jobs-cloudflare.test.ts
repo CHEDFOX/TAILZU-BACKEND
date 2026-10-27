@@ -239,6 +239,62 @@ describe("the person's word", () => {
   });
 });
 
+describe("the person's word to a job that is working (POST /v1/code/jobs/:id/message)", () => {
+  it("is handed to the Worker's room, signed, and written nowhere here: the room keeps it and wakes the Workflow", async () => {
+    const { r, w, s, id } = await parkedJob(UTIL_TASK, (r) => {
+      r.json.on("work.plan", UTIL_PLAN);
+      r.model.push(call("ask_user", { question: "Which?" }), call("edit_file", UTIL_EDIT), done("ok"));
+    });
+    const res = await s.api("alice", "POST", `/v1/code/jobs/${id}/message`, { text: "  Keep the name slug  " });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ delivered: true });
+    expect(w.seen).toEqual([{ path: "/v1/message", body: { jobId: id, text: "Keep the name slug" } }]);
+    // nothing of it is in the job's state here: the room has it, and the loop takes it at its next turn
+    expect((await r.stateNow(id)).work.said ?? []).toEqual([]);
+  });
+
+  it("is the owner's only and words only, checked here before the Worker is troubled", async () => {
+    const { s, id, w } = await parkedJob(UTIL_TASK, (r) => {
+      r.json.on("work.plan", UTIL_PLAN);
+      r.model.push(call("ask_user", { question: "Which?" }), done("ok"));
+    });
+    expect((await s.api("bob", "POST", `/v1/code/jobs/${id}/message`, { text: "x" })).statusCode).toBe(404);
+    expect((await s.api("alice", "POST", `/v1/code/jobs/${id}/message`, { text: "  " })).statusCode).toBe(400);
+    expect((await s.api("alice", "POST", `/v1/code/jobs/${id}/message`, {})).statusCode).toBe(400);
+    expect(w.seen).toEqual([]);
+  });
+
+  it("tells the person it was not sent when the Worker could not be reached, rather than saying it was", async () => {
+    const r = await agentRig();
+    r.json.on("work.plan", UTIL_PLAN);
+    r.model.push(call("ask_user", { question: "Which?" }), done("ok"));
+    let down = false;
+    const w = theWorker(() => (down ? new Response("", { status: 500 }) : Response.json({ ok: true })));
+    const s = await cloudflareServer(r, w);
+    const id = (await made(r, s.api, UTIL_TASK)).json().job.id as string;
+    await runToTheWait(r, await workerOf(r), id);
+    down = true;
+    w.seen.length = 0;
+    const res = await s.api("alice", "POST", `/v1/code/jobs/${id}/message`, { text: "hello" });
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toMatchObject({ code: "unreachable" });
+    expect(w.seen).toHaveLength(3); // tried three times
+  });
+
+  it("is refused for a job that is over", async () => {
+    const { s, id, w } = await parkedJob(UTIL_TASK, (r) => {
+      r.json.on("work.plan", UTIL_PLAN);
+      r.model.push(call("ask_user", { question: "Which?" }), done("ok"));
+    });
+    await s.api("alice", "POST", `/v1/code/jobs/${id}/stop`);
+    w.seen.length = 0;
+    const res = await s.api("alice", "POST", `/v1/code/jobs/${id}/message`, { text: "hello" });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ code: "job_over" });
+    expect(w.seen).toEqual([]);
+  });
+});
+
 describe("a result from a runner", () => {
   it("wakes the job's Workflow, once the router has taken it", async () => {
     const r = await jobsRig.rig({ github: false, paid: false });

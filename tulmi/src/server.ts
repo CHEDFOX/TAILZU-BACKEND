@@ -47,6 +47,7 @@ import { registerCodeRoutes } from "./routes/code.js";
 import { registerCodeJobRoutes } from "./routes/codeJobs.js";
 import { registerCodeInternalRoutes } from "./routes/codeInternal.js";
 import { jobsHandoffFromConfig } from "./code/jobs/handoff/index.js";
+import { sessionOffers } from "./code/live/offers.js";
 import { jobStore } from "./code/jobs/store.js";
 import { createAgent } from "./code/agent/index.js";
 import { createGithubActions, createJobs } from "./code/jobs/index.js";
@@ -1065,8 +1066,12 @@ if (code?.brain) {
 // Workflows and Actions permissions, or the sign-in's `workflow` scope) and whether the person has it switched
 // on (github_enabled) is decided per project and person when a step is placed. Paid compute has no provider
 // yet. The person is told through the push engine.
-const githubActions = code ? createGithubActions({ code, log: app.log }) : null;
-const codeJobs = code ? createJobs({ code, github: githubActions, notify: notifyCodeJob, log: app.log }) : null;
+// With the live session on (jobs on Cloudflare), this server's own router counts the month's Actions minutes too and can hand a runner the way
+// into a job's room, so a step it places (a waiting job looked at again when a heartbeat arrives) is the same as one the Worker places.
+const liveSession = !!(jobsHandoff?.configured && cfg.CODE_LIVE_SESSION);
+const offerSession = liveSession ? sessionOffers({ secret: cfg.CODE_JOBS_SECRET!, jobsUrl: cfg.CODE_JOBS_URL!, idleSec: cfg.CODE_SESSION_IDLE_SEC }) : undefined;
+const githubActions = code ? createGithubActions({ code, log: app.log, ...(offerSession ? { offerSession } : {}) }) : null;
+const codeJobs = code ? createJobs({ code, github: githubActions, notify: notifyCodeJob, log: app.log, ...(liveSession ? { actions: true, ...(offerSession ? { offerSession } : {}) } : {}) }) : null;
 // The agent loop (src/code/agent, docs/code-agent.md): the worker that drives a job made through POST /v1/code/jobs
 // from the person's words to a pull request, claiming each job in the database so that no two servers run one, at
 // most CODE_AGENT_CONCURRENCY at a time, checkpointing after every step so a restart carries on without redoing an
@@ -1075,6 +1080,8 @@ const codeJobs = code ? createJobs({ code, github: githubActions, notify: notify
 const codeAgent = code && codeJobs ? createAgent({ code, jobs: codeJobs, notify: notifyCodeJob, log: app.log, ...(jobsHandoff ? { remote: jobsHandoff } : {}) }) : null;
 registerCodeJobRoutes(app, {
   rateLimit: AUTHED_RL, code, jobs: codeJobs, githubActions, agent: codeAgent,
+  // The live session's passes (docs/cloudflare-jobs.md section 10): only when the jobs run on the Worker, and it can be reached.
+  ...(jobsHandoff?.configured && cfg.CODE_LIVE_SESSION ? { live: { jobsUrl: cfg.CODE_JOBS_URL!, secret: cfg.CODE_JOBS_SECRET! } } : {}),
   // On the Worker the ticker is the Cron Trigger: this server starts none.
   ...(jobsHandoff ? { tickEveryMs: null, onStepResult: (jobId: string) => { void jobsHandoff.wake(jobId, "runner"); } } : {}),
 });

@@ -12,7 +12,7 @@
  *
  * WHO IS TOLD IS DECIDED HERE, FROM THE DATABASE. The body names a job, never a person: the push goes to the
  * user the job belongs to. A job id that does not exist is 404; one that is not an agent's job is refused
- * (403), because only a Workflow ever has a reason to ask. `kind` is one of the seven the router knows and
+ * (403), because only a Workflow ever has a reason to ask. `kind` is one of the eight the router knows and
  * `text` is cut to 300 characters; nothing else in the body is taken. The route is closed (404 `not_found`,
  * as if it were not there) unless CODE_JOBS_MODE=cloudflare and a secret is set.
  *

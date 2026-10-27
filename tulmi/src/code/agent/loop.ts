@@ -53,6 +53,7 @@ export async function runLoop(env: LoopEnv): Promise<LoopEnd> {
       if (env.signal.aborted) return "stopped";
       const phase = r.state.phase;
       if (phase === "done") break;
+      r.progress({ t: "phase", phase, at: r.now() });
       await PHASES[phase](r);
       // A phase that got to its end is progress: the run of failures the backoff counts is over.
       if (r.state.errors) r.state.errors = undefined;
@@ -127,6 +128,7 @@ export async function advanceLoop(env: LoopEnv, o: { turns?: number } = {}): Pro
     await r.init();
     if (env.signal.aborted) return { next: "end", why: "stopped" };
     if (r.state.phase !== "done") {
+      r.progress({ t: "phase", phase: r.state.phase, at: r.now() });
       await PHASES[r.state.phase](r);
       if (r.state.errors) {
         r.state.errors = undefined;
@@ -156,15 +158,26 @@ export async function advanceLoop(env: LoopEnv, o: { turns?: number } = {}): Pro
 
 /** The job waits for the person; the claim is let go; they are told. */
 async function park(r: Run, p: Park): Promise<void> {
+  // A live session is never left open while a person thinks: it is closed first, always, before they are asked anything (code/live).
+  await r.closeSession("needs_you");
   await r.env.claim.park(r.state, { waitingOn: p.waitingOn, reason: p.reason });
   await r.tell("needs_you", p.reason);
 }
 
 /** The report is written and the job finished: done, or failed. */
 async function finish(r: Run): Promise<void> {
+  // A live session is a step that stays out for the whole job, and a job cannot be done with a step out: it is closed first, and given a moment to report.
+  await r.closeSession("job_end");
   const rep = r.state.report;
   if (rep?.outcome === "failed") await r.deps.jobs.finishJob(r.jobId, { ok: false, reason: headlineOf(rep.text) });
   else await r.deps.jobs.finishJob(r.jobId, { ok: true, summary: headlineOf(rep?.text ?? "Done") });
+  await over(r, rep?.outcome === "failed" ? "failed" : "finished");
+}
+
+/** The job is over: its live session is closed and its copy of the code deleted (we never keep a person's code), and a watching app is told. */
+async function over(r: Run, why: string): Promise<void> {
+  r.progress({ t: "end", why, at: r.now() });
+  try { await r.deps.live?.endJob?.(r.jobId); } catch { /* the room deletes the copy itself after six idle hours */ }
 }
 
 /** The job stops for a reason, with a report that says what was and was not done. */
@@ -176,7 +189,9 @@ async function failed(r: Run, why: string): Promise<void> {
   s.waiting = undefined;
   s.phase = "done";
   await r.save({ notes: why.slice(0, 200) });
+  await r.closeSession("job_end");
   await r.deps.jobs.finishJob(r.jobId, { ok: false, reason: why });
+  await over(r, "failed");
 }
 
 /**

@@ -2,14 +2,14 @@
 
 A coding task is a **job**. It runs as **steps**. An **edit** step (read, change and commit files through GitHub's API) needs no computer. An **exec** step (install, build, test) does, and the router decides where it runs, using the cheapest place there is. What makes the steps is the brain: its first layer (which models to ask, what they may cost, what kind of request this is and which tier each step deserves) is `docs/code-brain.md`, and the **agent loop** (`docs/code-agent.md`) is the worker that drives a job from the person's words to a pull request. The router is driven by the methods in `tulmi/src/code/jobs/router.ts`, which the agent loop and the tests call.
 
-Switched on with the rest of the Code bot (`CODE_GITHUB`), after `tulmi/supabase/migrations/0023_code_jobs.sql` (and `0024_code_github_actions.sql` for GitHub's free computers, and `0030_code_agent.sql` for the agent loop).
+Switched on with the rest of the Code bot (`CODE_GITHUB`), after `tulmi/supabase/migrations/0023_code_jobs.sql` (and `0024_code_github_actions.sql` for GitHub's free computers, `0030_code_agent.sql` for the agent loop, and `0031_code_runner_minutes.sql` for the live session's count of the month's minutes).
 
 ## 1. Where an exec step runs
 
 In this order, the first that fits (`code/jobs/placement.ts`, one pure function, tested against every combination):
 
 1. **The person's own PC.** Free, and the code never leaves their machine. A Tailzu desktop app of theirs must be online, have "run commands" switched on, be allowed on this project, and not be busy.
-2. **GitHub's free computers (GitHub Actions).** Free up to GitHub's monthly allowance: 2,000 minutes on a free plan (`CODE_GITHUB_FREE_MINUTES`). That allowance is shared with everything else the person runs there, so Tailzu counts only its own use and keeps **a tenth back**: with nothing used, 1,800 minutes are Tailzu's. It counts only if the project has it set up (the provider says so: the App needs Workflows and Actions, a sign-in needs the `workflow` scope) and the person hasn't switched it off. A **public** repo's minutes aren't metered, so they don't count and don't hold a step back. This is real: `GithubActionsProvider` in `code/jobs/githubActions.ts`, section 7 below, and `docs/github-app.md` section 9.
+2. **GitHub's free computers (GitHub Actions).** Free up to GitHub's monthly allowance: 2,000 minutes on a free plan (`CODE_GITHUB_FREE_MINUTES`). That allowance is shared with everything else the person runs there, so Tailzu counts only its own use and keeps **a tenth back**: with nothing used, 1,800 minutes are Tailzu's. It counts only if the project has it set up (the provider says so: the App needs Workflows and Actions, a sign-in needs the `workflow` scope) and the person hasn't switched it off. A **public** repo's minutes aren't metered, so they don't count and don't hold a step back. This is real: `GithubActionsProvider` in `code/jobs/githubActions.ts`, section 7 below, and `docs/github-app.md` section 9. With the live session (section 9) the rule changes: Tailzu counts the minutes itself, tells the person at 80% of the month's allowance, and stops choosing GitHub's computers at 95% instead of keeping a tenth back.
 3. **Paid compute**, and only by the person's own rule (below). *Interface only for now (`PaidProvider`).*
 4. **Otherwise the job waits** (`waiting_for_compute`), the person is told (`compute_paused`), and it carries on by itself when a place frees up: a PC sends a heartbeat, a result frees a PC, the month turns over, or a setting changes.
 
@@ -92,3 +92,23 @@ The router calls an injected `notify(userId, kind, data)`: `compute_ask`, `compu
 1. Run `tulmi/supabase/migrations/0023_code_jobs.sql` (or `full_schema.sql`) after 0022, and `0024_code_github_actions.sql` after that (the month's "GitHub is used up" flag). For the agent loop, `0030_code_agent.sql` after `0029` (the agent's claim, three more waits, and the overlay of a step).
 2. Optionally set `CODE_GITHUB_FREE_MINUTES` (default 2000), `CODE_RUNNER_OIDC_AUDIENCE` (default `tailzu`), `CODE_JOB_DEFAULT_BUDGET_PAISE` (default 3000) and `CODE_AGENT_CONCURRENCY` (default 4). Give the App Workflows: Read and write and Actions: Read-only (`docs/github-app.md`).
 3. Privacy policy: Tailzu now also keeps, per job, the first 500 characters of the task, the commands run, the last 8 KB each step printed, and per month the GitHub minutes and paise used, and whether GitHub's free minutes were found used up. A step run on GitHub also writes its commands to a temporary branch of the person's own repo.
+
+## 9. The live session: session steps and the month's minutes
+
+Only with the jobs on Cloudflare (`docs/cloudflare-jobs.md` section 10); the router changes are all optional and off by default, so the VPS in local mode and every older test behave as before.
+
+**A session step** is an ordinary exec step whose only command is the mark `tailzu:live-session` (`SESSION_COMMAND`, `code/live/protocol.ts`), with `keepChanges: false`. It is **not** run as a command. It is placed like any other step, in the order of section 1, and the place it is given is, with the step, the way into the job's room: an address and a one-time **runner ticket** made for this step and this lease epoch (`code/live/offers.ts`, 15 minutes).
+
+* On **a PC**, `runnerStepFor` adds `session: { url, ticket, expiresAt, idleSec, maxSec }` to the step the PC is given, which the PC uses to connect out to the room (`docs/desktop-runner-session.md`). With the jobs on the Worker the step is sent down the PC's open socket (`UserDevices.offer`); with the HTTP runner, `GET /v1/code/runner/next` carries it.
+* On **GitHub's computers**, `.tailzu/step.json` carries the same `session`, and the shadow branch has the session's workflow (`renderSessionWorkflow`: a shallow checkout that keeps no token, Node 22 when needed, the caches, the job's cap as its timeout). A provider that was not given a way into a room does not take a session step (it is not a command to run).
+* The step stays out for as long as the session lasts, and the usual rules hold: the lease (a PC keeps it with `progress`), the epoch fence, the ticker's check of the run. When the session closes the runner reports the step like any other (exit code 0, the minutes it lasted), and the router writes the checkpoint note "Closed the live session after N minutes." A job is finished only with no step out; the loop closes the session first, and the Worker gives the step a few seconds to report.
+
+**The month's Actions minutes** (`createJobs({ actions: { monthlyMin } })`, `CODE_ACTIONS_MONTHLY_MIN`, 2,000):
+
+* Every result from GitHub's computers for a **private** repo adds its minutes (rounded up per job) to `code_runner_minutes` (`code_add_runner_minutes`, one SQL call that adds and says whether this call crossed the line). A public repo's are not counted.
+* **80%**: one `minutes_low` notification for the month (push `code_minutes_low`: "GitHub minutes running low"). It names the job whose result crossed the line, which is how the push is addressed.
+* **95%**: placement no longer chooses GitHub: the step goes to the next place, or waits (`waiting_for_compute`, `compute_paused`) with the reason "free GitHub minutes are used up", and it goes on when a place frees up or the month turns over.
+* The count placement uses is the larger of this ledger and `code_compute_usage.github_minutes`, so turning the ledger on mid-month gives no fresh allowance. Without `actions`, the older rule (a tenth kept back) applies and `GET /v1/code/settings/compute` says `headroomPercent: 10`; with it, `5`.
+* The new notification kind is `minutes_low`; the VPS's internal notify route and the Worker's hand-off take eight kinds now.
+
+Tests: `tests/code-live-minutes.test.ts` (the lines, the store's one-call crossing, the migration, the router at 80% and 95% and a public repo, a session step's offer to a PC and to GitHub), `tests/code-live-workflow.test.ts` (the session workflow as a golden file and step.json), `tests/code-live-runner.test.ts` (`run.mjs`'s session mode).

@@ -245,6 +245,8 @@ export interface AgentState {
     doneSummary?: string;
     /** The model was nudged once to use a tool. */
     nudged?: boolean;
+    /** What the person said while the job was working (POST /v1/code/jobs/:id/message), newest last. The model is shown them as the person's words. */
+    said?: Array<{ id: string; text: string; at: number }>;
   };
   verify?: VerifyState;
   commit?: { base: string; message: string; sha?: string; files: string[] };

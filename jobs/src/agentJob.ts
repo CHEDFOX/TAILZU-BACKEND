@@ -30,6 +30,7 @@ import { NonRetryableError } from "cloudflare:workflows";
 import type { Advance } from "../../tulmi/src/code/agent/loop.js";
 import { isUuid } from "../../tulmi/src/code/jobs/handoff/protocol.js";
 import type { AgentJobParams, Env } from "./env.js";
+import { roomOf } from "./rooms.js";
 import { WAKE_EVENT } from "./workflows.js";
 import { getWorld } from "./world.js";
 
@@ -50,6 +51,16 @@ export async function advanceJob(env: Env, jobId: string, holder: string): Promi
 
 export class AgentJob extends WorkflowEntrypoint<Env, AgentJobParams> {
   async run(event: WorkflowEvent<AgentJobParams>, step: WorkflowStep): Promise<{ ended: string; advances: number }> {
+    const ended = await this.drive(event, step);
+    // However the job ended, its room is emptied: the live session closed, the copy of the code deleted (we never keep a person's code).
+    const jobId = event.payload?.jobId;
+    if (isUuid(jobId)) {
+      try { await step.do("cleanup", SHORT_STEP, async () => { await roomOf(this.env, jobId).endJob(); }); } catch { /* the room deletes itself after six idle hours */ }
+    }
+    return ended;
+  }
+
+  private async drive(event: WorkflowEvent<AgentJobParams>, step: WorkflowStep): Promise<{ ended: string; advances: number }> {
     const jobId = event.payload?.jobId;
     if (!isUuid(jobId)) throw new NonRetryableError("jobId is the id of a code job.");
     const personWait = (this.env.PERSON_WAIT?.trim() || PERSON_WAIT_DEFAULT) as WorkflowSleepDuration;

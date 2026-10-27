@@ -30,6 +30,7 @@ import type { WebToolDeps } from "../webTools.js";
 import type { CallFn } from "../work/model.js";
 import type { WorklogStore } from "../work/index.js";
 import type { findResources } from "../resources/finder.js";
+import type { LiveDeps } from "../live/ports.js";
 import type { AgentRunner } from "./runner.js";
 
 /** What the loop asks of the project brain. */
@@ -74,6 +75,8 @@ export interface AgentDeps {
   routeStats?: RouteStatsStore;
   /** How the person is told (the push engine in the server). */
   notify?: Notify;
+  /** The live session (code/live): the job's copy of the code, the person's words mid-task, progress for the app. Absent: none of it. */
+  live?: LiveDeps;
   now: () => number;
   sleep: (ms: number) => Promise<void>;
   log?: AgentLog;

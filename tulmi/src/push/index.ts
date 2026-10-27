@@ -60,8 +60,14 @@ export async function notifyApproval(userId: string, taskId: string, app: string
 /** The Code bot's job events (code/jobs/types.ts NotifyKind) as push kinds. */
 const CODE_PUSH: Record<NotifyKind, EventPushKind> = {
   compute_ask: "code_compute_ask", compute_paused: "code_compute_paused", commit_ask: "code_commit_ask",
-  job_moved: "code_job_moved", job_done: "code_job_done", job_failed: "code_job_failed", needs_you: "code_needs_you",
+  job_moved: "code_job_moved", job_done: "code_job_done", job_failed: "code_job_failed", needs_you: "code_needs_you", minutes_low: "code_minutes_low",
 };
+
+/** The words of `reason` that a push has room for. The minutes warning is several sentences in the app; the push says the first and adds its own second. */
+function pushReason(kind: NotifyKind, reason: string | undefined): string {
+  const text = (reason ?? "").trim();
+  return (kind === "minutes_low" ? text.split(/(?<=[.!?])\s/)[0] ?? "" : text).slice(0, 120);
+}
 
 /** Where a job moved to, in the words of the push: "carrying on on GitHub's free computers". */
 const MOVED_TO: Record<string, string> = { desktop: "on your own computer", github: "on GitHub's free computers", paid: "on paid compute" };
@@ -77,7 +83,7 @@ export async function notifyCodeJob(userId: string, kind: NotifyKind, data: Noti
       kind: CODE_PUSH[kind], key: `${data.jobId}:${data.at}`,
       vars: {
         task: data.task, cost: `₹${((data.estimatePaise ?? 0) / 100).toFixed(2).replace(/\.00$/, "")}`,
-        where: MOVED_TO[data.to ?? ""] ?? "somewhere else", reason: (data.reason ?? "").slice(0, 120),
+        where: MOVED_TO[data.to ?? ""] ?? "somewhere else", reason: pushReason(kind, data.reason),
       },
       data: { jobId: data.jobId },
     });

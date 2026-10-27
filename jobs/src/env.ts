@@ -10,7 +10,9 @@
  */
 import type { Advance } from "../../tulmi/src/code/agent/loop.js";
 import type { BrainBody } from "../../tulmi/src/code/jobs/handoff/protocol.js";
+import type { JobRoom } from "./jobRoom.js";
 import type { NonceGuard } from "./nonceGuard.js";
+import type { UserDevices } from "./userDevices.js";
 
 export interface AgentJobParams {
   jobId: string;
@@ -20,6 +22,10 @@ export interface Env {
   AGENT_JOB: Workflow<AgentJobParams>;
   BUILD_BRAIN: Workflow<BrainBody>;
   NONCES: DurableObjectNamespace<NonceGuard>;
+  /** One per person: which of their PCs are connected (userDevices.ts). */
+  USER_DEVICES: DurableObjectNamespace<UserDevices>;
+  /** One per job: its copy of the code, its runner session, the app's live view (jobRoom.ts). */
+  ROOMS: DurableObjectNamespace<JobRoom>;
 
   // wrangler.jsonc vars
   RUNTIME?: string;
@@ -28,6 +34,10 @@ export interface Env {
   ADVANCE_TURNS?: string;
   /** How long a job waits for the person before it is ended with a report: "7 days". */
   PERSON_WAIT?: string;
+  /** The Worker's own public address (https): the address a runner is told to connect to. The same as the VPS's CODE_JOBS_URL. */
+  CODE_JOBS_URL?: string;
+  /** "false" switches the live session off. CODE_SESSION_IDLE_SEC, CODE_SESSION_MAX_MIN and CODE_ACTIONS_MONTHLY_MIN are its rules (tulmi config.ts). */
+  CODE_LIVE_SESSION?: string;
 
   // secrets (and the rest of the settings the shared code reads: see wrangler.jsonc)
   CODE_JOBS_SECRET?: string;
