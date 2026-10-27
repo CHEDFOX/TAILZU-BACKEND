@@ -55,7 +55,9 @@ vi.mock("openai", () => ({
 
 const tv = await import("../scripts/time-vision.js");
 const { PICTURE_BASE64, PICTURE_HEIGHT, PICTURE_MIME, PICTURE_WIDTH } = await import("../scripts/time-vision-picture.js");
-const { AGENT_VISION_SYSTEM, AGENT_VISION_SYSTEM_GEMINI } = await import("../src/agent/prompt.js");
+const { placesNote } = await import("../src/agent/prompt.js");
+const { stableBlock } = await import("../src/principles/roles.js");
+const VISION = stableBlock("ask_vision");
 const { resetConfigForTests } = await import("../src/config.js");
 import type { Run } from "../scripts/time-vision.js";
 
@@ -278,14 +280,16 @@ describe("a whole run, through the server's own planStream", () => {
       expect(c.messages[1].content[1].text).toContain('o1 text "a² + b² = c²" @c');
       expect(c.messages[1].content[1].text.endsWith("<said>explain this triangle</said>")).toBe(true);
     }
-    // Each family's prompt, reasoning and temperature, as the server sends them.
-    expect(gemini!.messages[0].content).toBe(AGENT_VISION_SYSTEM_GEMINI);
+    // The same block for every family, each family's note for places, reasoning and temperature, as the server sends them.
+    expect(gemini!.messages[0].content).toBe(VISION);
+    expect(gemini!.messages[1].content[1].text.split("\n")[1]).toBe(placesNote("yx"));
+    expect(haiku!.messages[1].content[1].text.split("\n")[1]).toBe(placesNote("xy"));
     expect(gemini!.reasoning).toEqual({ effort: "none" });
     expect(gemini!.temperature).toBe(0);
-    expect(haiku!.messages[0].content).toEqual([{ type: "text", text: AGENT_VISION_SYSTEM, cache_control: { type: "ephemeral" } }]);
+    expect(haiku!.messages[0].content).toEqual([{ type: "text", text: VISION, cache_control: { type: "ephemeral" } }]);
     expect(haiku!.reasoning).toEqual({ effort: "none", enabled: false });
     expect("temperature" in haiku!).toBe(false);
-    expect(gemini3!.messages[0].content).toBe(AGENT_VISION_SYSTEM_GEMINI);
+    expect(gemini3!.messages[0].content).toBe(VISION);
     expect(gemini3!.reasoning).toEqual({ effort: "low" });
     expect("temperature" in gemini3!).toBe(false);
   });

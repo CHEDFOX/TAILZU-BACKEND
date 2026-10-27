@@ -230,8 +230,8 @@ describe("the command line", () => {
     const [stamp] = readdirSync(dir);
     const sb = JSON.parse(readFileSync(join(dir, stamp!, "scoreboard.json"), "utf8"));
     expect(sb).toMatchObject({ version: 1, mode: "scripted", models: ["scripted"], overall: { tasks: FIXTURES.length, passAt1: 1, xfail: 1, xpass: 0, unsafeActions: 0 } });
-    // The bench drives the phone, so it hashes the phone's prompts, each by its constant's name.
-    expect(Object.keys(sb.prompts).sort()).toEqual(["AGENT_SYSTEM_PHONE", "AGENT_SYSTEM_PHONE_CONNECTORS"]);
+    // The bench drives the phone, and the phone's planner is sent the same stable block with or without apps: one hash, named by its role.
+    expect(Object.keys(sb.prompts).sort()).toEqual(["ask_planner"]);
     expect(readFileSync(join(dir, stamp!, "scoreboard.md"), "utf8")).toContain("# Roz Bench: scripted");
     expect(run.lines.join("\n")).toContain("ok    fx-calendar-en-001 1/1");
 
@@ -248,7 +248,8 @@ describe("the command line", () => {
     const task = fixture("fx-calendar-en-002");
     // Answers as a model would: the lookup first, then the answer once the result is in.
     const modelLike: PlanStreamFn = async function* (_system, user, opts) {
-      const text = `${task.scripted.calls[String(user).includes("<result>") ? 1 : 0]}\n`;
+      // (The apps' addendum names <result>, so the fenced block of results, which has a newline after it, is what says the lookup came back.)
+      const text = `${task.scripted.calls[String(user).includes("<result>\n") ? 1 : 0]}\n`;
       for (const part of text.match(/[\s\S]{1,7}/g) ?? []) yield { model: "fake/model-1", delta: part };
       opts?.log?.({ model: "fake/model-1", outcome: "ok", ms: 0, promptTokens: 900, completionTokens: 30 } as CallRecord);
     };

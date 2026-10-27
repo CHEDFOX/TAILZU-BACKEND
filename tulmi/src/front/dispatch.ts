@@ -35,20 +35,23 @@ import type { SpendMeter } from "../artifacts/limits.js";
 import type { GatewayDeps } from "../code/brain/gateway.js";
 import type { CallFn } from "../code/work/model.js";
 import { TimeoutError, withTimeout } from "../guard/timing.js";
+import type { DataTable } from "../media/types.js";
 import { LOOK_CAP_PAISE, type AttachmentInput, type AttachmentRegistry } from "./attachments.js";
 import type { Handlers, RouteCall } from "./handlers.js";
 import type { Learning, RephraseWatch } from "./learn.js";
 import { visualCapOf } from "./path.js";
 import type { FrontStore } from "./store.js";
 import { clarifyFor, designReady, jobStarted, langOf, offerLabel, type ClarifyKind } from "./words.js";
-import { FrontError, type Decision, type FileNote, type FrontCtx, type FrontEvent, type FrontResult, type RouteName } from "./types.js";
+import { FrontError, type Decision, type FileNote, type FrontCtx, type FrontEvent, type FrontResult, type RouteName, type VisualKind } from "./types.js";
 
 /** A job or a deep research run needs the decision to be at least this sure. */
 export const SELF_CHECK_MIN = 0.7;
 
 /** How long each road may take, in milliseconds. */
 export const DEADLINES: Readonly<Record<RouteName | "visual" | "attachments", number>> = {
-  reply: 45_000, file: 60_000, code_answer: 60_000, code_job: 30_000, artifact: 150_000, research: 210_000, plan: 90_000, visual: 150_000, attachments: 60_000,
+  reply: 45_000, file: 60_000, code_answer: 60_000, code_job: 30_000, artifact: 150_000, research: 210_000, plan: 90_000, visual: 150_000,
+  // Reading a file: a scanned PDF through the layout reader, a recording or a video can take minutes (docs/media.md). The work goes on and is kept if the person's request gives up.
+  attachments: 180_000,
 };
 
 export interface DispatchDeps {
@@ -130,6 +133,19 @@ export async function dispatch(decision: Decision, message: string, ctx: FrontCt
   });
   const text = (t: string): void => { result.text = t; if (!streamed) emit({ t: "text", text: t }); };
 
+  /** The first table read from a spreadsheet or a CSV among the attachments: a chart is made from its rows, by code. */
+  let dataTable: DataTable | undefined;
+
+  /** A table or a chart of a spreadsheet's rows is offered with the answer (one tap, nothing made or paid for until taken). */
+  function offerData(): void {
+    if (!dataTable || ctx.visuals === "off" || ctx.takeOffer) return;
+    const has = (k: VisualKind): boolean => result.offers.some((x) => x.kind === k) || decision.shape.visual?.kind === k;
+    if (!has("table")) result.offers.push({ kind: "table", label: offerLabel("table", lang), request: { visual: "table" } });
+    if (!has("chart") && dataTable.numeric.length > 0 && dataTable.rows.length >= 2 && dataTable.columns.length >= 2) {
+      result.offers.push({ kind: "chart", label: offerLabel("chart", lang), request: { visual: "chart" } });
+    }
+  }
+
   /** The picture beside an answer: offered, or made from the answer, or left out in words. */
   async function visualBeside(basis: string | undefined, mermaid?: string): Promise<void> {
     const v = decision.shape.visual;
@@ -138,7 +154,9 @@ export async function dispatch(decision: Decision, message: string, ctx: FrontCt
     if (v.via === "inline" || v.isAnswer) return;
     emit({ t: "status", stage: "visual" });
     try {
-      const made = await stage("visual", (sig) => deps.handlers.artifact({ ...call(room(visualCap || CAP_PAISE.cheap), sig), visual: v, ...(basis ? { basis } : {}), ...(mermaid ? { mermaid } : {}) }));
+      const made = await stage("visual", (sig) => deps.handlers.artifact({
+        ...call(room(visualCap || CAP_PAISE.cheap), sig), visual: v, ...(basis ? { basis } : {}), ...(mermaid ? { mermaid } : {}), ...(dataTable ? { data: dataTable } : {}),
+      }));
       result.artifacts.push(made.artifact);
       result.paise += made.paise;
       if (made.notes) result.notes.push(...made.notes);
@@ -164,6 +182,7 @@ export async function dispatch(decision: Decision, message: string, ctx: FrontCt
         }));
         files = read.files;
         fileNotes = read.notes;
+        dataTable = read.tables[0];
         result.files = fileNotes;
         result.paise += read.paise;
         ownPaise += read.paise;
@@ -179,6 +198,7 @@ export async function dispatch(decision: Decision, message: string, ctx: FrontCt
       result.paise += r.paise;
       ownPaise += r.paise;
       await visualBeside(r.text);
+      offerData();
       break;
     }
     case "code_answer": {

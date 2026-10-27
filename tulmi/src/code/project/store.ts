@@ -178,6 +178,8 @@ interface BrainDbRow {
 interface FileDbRow {
   project_id: string; path: string; blob_sha: string; lang: string; bytes: number; symbols: SymbolInfo[]; imports: string[]; rank: number;
   hot: number; todo: number; tests: string[]; summary: string;
+  /** Migration 0035; absent from a row read before it was run. */
+  refs?: Array<[string, number]> | null;
 }
 interface DirDbRow { project_id: string; path: string; tree_sha: string; summary: string }
 interface TextDbRow { project_id: string; path: string; line: number; text: string; kind: StoredText["kind"] }
@@ -192,10 +194,11 @@ const brainOf = (r: BrainDbRow): BrainRow => ({
 const fileOf = (r: FileDbRow): StoredFile => ({
   path: r.path, blobSha: r.blob_sha, lang: r.lang ?? "", bytes: Number(r.bytes) || 0, symbols: r.symbols ?? [], imports: r.imports ?? [],
   rank: Number(r.rank) || 0, hot: Number(r.hot) || 0, todo: Number(r.todo) || 0, tests: r.tests ?? [], summary: r.summary ?? "",
+  ...(Array.isArray(r.refs) && r.refs.length ? { refs: r.refs } : {}),
 });
-const fileRow = (projectId: string, f: StoredFile): FileDbRow => ({
+const fileRow = (projectId: string, f: StoredFile, withRefs: boolean): FileDbRow => ({
   project_id: projectId, path: f.path, blob_sha: f.blobSha, lang: f.lang, bytes: f.bytes, symbols: f.symbols, imports: f.imports, rank: f.rank,
-  hot: f.hot, todo: f.todo, tests: f.tests, summary: f.summary,
+  hot: f.hot, todo: f.todo, tests: f.tests, summary: f.summary, ...(withRefs ? { refs: f.refs ?? [] } : {}),
 });
 
 function ok<T>(res: { data: T | null; error: { message: string } | null }): T | null {
@@ -204,6 +207,9 @@ function ok<T>(res: { data: T | null; error: { message: string } | null }): T | 
 }
 
 export class SupabaseProjectBrainStore implements ProjectBrainStore {
+  /** Whether code_brain_files has the refs column (migration 0035): until a write says it does not, it is taken to. */
+  private refsColumn = true;
+
   constructor(private readonly sb: SupabaseClient, private readonly now: () => number = Date.now) {}
 
   /** A project id that isn't a uuid is no project's: reads find nothing, writes are refused. */
@@ -264,7 +270,7 @@ export class SupabaseProjectBrainStore implements ProjectBrainStore {
     if (!id) return [];
     const out: StoredFile[] = [];
     for (let from = 0; ; from += PAGE) {
-      const rows = ok(await this.sb.from("code_brain_files").select("path,blob_sha,lang,bytes,symbols,imports,rank,hot,todo,tests,summary,project_id")
+      const rows = ok(await this.sb.from("code_brain_files").select(this.refsColumn ? "path,blob_sha,lang,bytes,symbols,imports,rank,hot,todo,tests,summary,refs,project_id" : "path,blob_sha,lang,bytes,symbols,imports,rank,hot,todo,tests,summary,project_id")
         .eq("project_id", id).order("path").range(from, from + PAGE - 1).returns<FileDbRow[]>()) ?? [];
       out.push(...rows.map(fileOf));
       if (rows.length < PAGE) break;
@@ -280,7 +286,14 @@ export class SupabaseProjectBrainStore implements ProjectBrainStore {
   async upsertFiles(projectId: string, files: readonly StoredFile[]) {
     const id = this.must(projectId);
     for (let i = 0; i < files.length; i += WRITE_CHUNK) {
-      ok(await this.sb.from("code_brain_files").upsert(files.slice(i, i + WRITE_CHUNK).map((f) => fileRow(id, f)), { onConflict: "project_id,path" }));
+      const chunk = files.slice(i, i + WRITE_CHUNK);
+      let res = await this.sb.from("code_brain_files").upsert(chunk.map((f) => fileRow(id, f, this.refsColumn)), { onConflict: "project_id,path" });
+      // A database that has not had migration 0035 run has no refs column: write the rest and go on without references, never fail the build over them.
+      if (res.error && this.refsColumn && /\brefs\b/.test(res.error.message)) {
+        this.refsColumn = false;
+        res = await this.sb.from("code_brain_files").upsert(chunk.map((f) => fileRow(id, f, false)), { onConflict: "project_id,path" });
+      }
+      ok(res);
     }
   }
   async deleteFiles(projectId: string, paths: readonly string[]) {

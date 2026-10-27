@@ -3,10 +3,13 @@
  * per-request values (target app, language, personality, recipient), plus the
  * helpers every prompt uses to place user-supplied values as data.
  *
- * Only the screen reply (/v1/draft) is a file prompt now; the writing prompt
- * every other path uses is built in pipeline/assistPrompt.ts. Prompts are the
- * product's core asset, kept as versioned markdown so we can A/B and roll back
- * without code changes.
+ * The screen reply (/v1/draft) used to be the one file prompt. From v5 it is
+ * the `writer` role like every other path (principles/roles.ts), with what
+ * these files' placeholders held as fenced data after it (pipeline/assistPrompt
+ * replyContext). The files reply.v1 to reply.v4 stay, and so does the loader,
+ * so REPLY_PROMPT_VERSION=v4 rolls the reply back without a code change; the
+ * helpers below that render a personality, its dials, an app's style and a
+ * recipient's hint serve both.
  */
 import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -261,9 +264,16 @@ export function renderCommandOverride(command: Command | undefined): string {
   }
 }
 
-/** Build the system prompt for the screen-reply drafting task. */
-export function buildReplySystem(opts: CleanupOptions, recipient?: string): string {
-  const version = getConfig().REPLY_PROMPT_VERSION;
+/**
+ * Whether the screen reply is still a prompt FILE (REPLY_PROMPT_VERSION v1 to
+ * v4, kept to roll back to) and not the `writer` role (v5 on).
+ */
+export function replyIsAFile(version: string = getConfig().REPLY_PROMPT_VERSION): boolean {
+  return /^v[1-4]$/.test(version);
+}
+
+/** Build the system prompt for the screen-reply drafting task, from a prompt file (v1 to v4). */
+export function buildReplySystem(opts: CleanupOptions, recipient?: string, version: string = getConfig().REPLY_PROMPT_VERSION): string {
   const targetApp = inlineValue(opts.targetApp, 40) || "Generic";
   const appStyle = resolveAppStyle(opts.personality?.appStyles, targetApp);
   return fill(loadPromptFile(`reply.${version}.md`), {

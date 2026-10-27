@@ -25,7 +25,7 @@ store.ts         ProjectBrainStore (memory twin and Supabase), migration 0028
 index.ts         the door: build / get / open / ensureFresh, BrainSync (push), the facade on Code
 ```
 
-Everything but `summarize.ts` and the welcome message works **without a model** and is complete on its own: if the model is down or the money is out, the brain is still true, it just has fewer plain-English lines (`summaries: "partial"`). No npm dependency was added: no tree-sitter, no tar library.
+Everything but `summarize.ts` and the welcome message works **without a model** and is complete on its own: if the model is down or the money is out, the brain is still true, it just has fewer plain-English lines (`summaries: "partial"`). Two npm dependencies read code, `web-tree-sitter` and `tree-sitter-wasm` (section 3a, licences in `THIRD_PARTY_NOTICES.md`); there is still no tar library.
 
 ## 1. What a build does
 
@@ -79,13 +79,56 @@ An incremental build gets a fifth of the budget (below); a rebuild after a parti
 ## 3. What it knows, with no model
 
 * **Structure**: languages by bytes, package managers (from lockfiles and manifests), frameworks, workspaces and monorepo packages, entry points (never tests), **commands** with the package manager's prefix (`pnpm run test`, not `npm`), CI workflows, environment variable *names*, Docker (files, images, ports, services), the README's title.
-* **Symbols and routes**, by regex per language (TypeScript/JavaScript, Python, Go, Rust, Java/Kotlin, Dart, Ruby, PHP, Swift, C#, and a generic fallback; routes for Express, Fastify, Hono, Koa, NestJS, Next.js, FastAPI, Flask, Django, Rails, Go's net/http and Gin, Spring, Laravel, ASP.NET, Rust and Flutter's GoRoute), after blanking comments so commented-out code is not a symbol. The environment variables a file reads are recorded too. Capped at 120 symbols a file. Every pattern has a fixture in the tests.
+* **Symbols and routes**, by **tree-sitter** where a grammar is loaded (section 3a) and otherwise by regex per language (TypeScript/JavaScript, Python, Go, Rust, Java/Kotlin, Dart, Ruby, PHP, Swift, C#, and a generic fallback; routes for Express, Fastify, Hono, Koa, NestJS, Next.js, FastAPI, Flask, Django, Rails, Go's net/http and Gin, Spring, Laravel, ASP.NET, Rust and Flutter's GoRoute), after blanking comments so commented-out code is not a symbol. The environment variables a file reads are recorded too. Capped at 120 symbols a file. Every pattern has a fixture in the tests.
 * **The import graph**, resolved: TypeScript/JavaScript with `tsconfig` `paths` and `baseUrl`, Python (absolute, relative, packages), Go (module path), Dart (`package:`). Ranked by in-degree and 20 iterations of PageRank, normalised. `neighbors(path)` is one hop each way.
 * **Visible text**: the strings a person sees, with `file:line`: JSX/TSX text and attributes, HTML, i18n JSON, Flutter `Text(...)`, Android `strings.xml`, iOS `.strings`, Python and Go user-facing strings. Any line the secret scanner (`policy.ts`) flags is dropped. At most 200 a file and 30,000 a project.
 * **Tests**: which test files cover which source files (by name, nearest first, and by import), which frameworks run them, and which hot or central files have no test.
 * **Conventions**: the formatter and linter (from config files and dev dependencies), indentation, quotes, semicolons and naming (sniffed from the source), the commit message style (the last 30 messages: Conventional Commits or freeform, with the scopes used), branch naming, and the project's own **rules**: `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.github/copilot-instructions.md` and `CONTRIBUTING.md`, kept verbatim (6,000 characters a document, 16,000 in all) as "project rules" the bot reads as the owners' convention. They are text from a repo: they never raise the bot's permissions.
 * **History and hotspots**: the last 100 commits (four requests at a time), what changed most, what changes together, TODO/FIXME counts per file. It **stops asking when GitHub's rate limit falls below 500** and keeps what it has; a commit touching more than 40 files is stored empty (a mass rename tells nothing). Hotspots are code files only; a hotspot that is central and untested is where to be careful.
 * **Features**: files are clustered, with no model, by route segment, folder name, shared file-name word, co-change and imports into features (a cluster needs two files, or one with two routes), which the cheap model then names and describes; if it never does, the plain names stand.
+
+## 3a. Reading code with tree-sitter
+
+`symbols.ts`, `graph.ts` and `texts.ts` each ask `analyse(path, language, text)` (`src/code/project/treesitter`) first. It parses the file once, runs the language's **tags-style queries** (`treesitter/queries/<language>/*.scm`, embedded in `queries.gen.ts` by `npm run gen:queries`) and hands back the file's symbols, imports, routes, the names it refers to, and the words a person reads in it. It answers `null`, and the regex reader that was always there answers instead, whenever the parser cannot: `CODE_TREE_SITTER=false`; no grammar for the language, or this runtime does not carry it; a file over 600,000 characters, or with a line over 4,000 (minified code); a parse over 3 seconds; a file more than a quarter syntax error. A grammar that fails to load is remembered as failed for the life of the process, and its language is read by regex. Nothing in a build can fail because of the parser.
+
+* **What the queries find.** Definitions, exported or not, with the line they start and **end** on; classes with their members as `Owner.method` (nothing local to a function body); references (calls, `new`, types, JSX tags, base classes); imports in each language's form; HTTP routes (Express, Fastify, Hono, Koa and NestJS; FastAPI, Flask and Django; Rails and Sinatra; Go's net/http, Gin, Echo and chi; Spring and Ktor; Laravel; ASP.NET; actix, Rocket and axum; Vapor; Flutter's GoRoute; Next.js file routes stay with the path reader); JSX and HTML text and attributes. One combined query per grammar, since a query costs a walk of the tree whatever its patterns.
+* **Fourteen grammars**: TypeScript, TSX, JavaScript (JSX), Python, Go, Rust, Java, Kotlin, Ruby, PHP, Swift, C#, Dart, HTML. All MIT, exact-pinned (`web-tree-sitter` 0.27.1, `tree-sitter-wasm` 2.0.4). **On the VPS** every grammar is a file in `node_modules`, compiled the first time a repo has a file in that language: a repo of TypeScript never loads Kotlin. **On the Cloudflare Worker** (`jobs/src/grammars.ts`) a grammar must be bundled, because a Worker may not compile WebAssembly at run time; the bundle carries the engine and **eleven** grammars (9.6 MiB of WebAssembly, each loaded by a dynamic `import()` only when a build asks for it) and leaves out Kotlin, Swift and C#, which compile to 60, 80 and 195 MB of machine code in the 128 MB isolate (measured in workerd). Those three are read by regex on the Worker and by the parser on the VPS. A build with more than 32 MB of text on the Worker does not use the parser at all.
+* **Worker bundle** (`wrangler deploy --dry-run`): **2,741 KiB** (671 KiB gzip) before, **12,962 KiB** (1,842 KiB gzip) now, 12.7 MiB of the 64 MiB the Workers limits page allows; all fourteen grammars would be 25 MiB. About 88 KiB of the growth is the secret scan's rules (`docs/github-app.md`, "The secret scan"). The Worker's tests load each carried grammar in workerd and parse with it.
+
+**Measured** (`npm run bench:symbols`; the TypeScript compiler API, `evals/symbols/truth.ts`, is the ground truth for the second table, so it does not grade the parser with its own queries). Precision and recall of definitions, regex against tree-sitter:
+
+| | regex P / R | tree-sitter P / R |
+| --- | --- | --- |
+| Hand-written fixtures, 11 languages (gold in `evals/symbols/gold.ts`: 185 definitions, 16 routes, 27 imports) | 95.5% / 69.2% | 100% / 100% |
+| Routes (fixtures) | 87.5% / 87.5% | 100% / 100% |
+| Imports (fixtures) | 100% / 96.3% | 100% / 100% |
+| **`tulmi/src`, 402 TypeScript files, 6.6 MB**: exported top-level definitions (3,632) | 99.1% / 100% (32 invented) | 100% / 100% |
+| all top-level definitions (6,518) | 98.1% / 97.7% (126 invented, 148 missed) | 100% / 100% |
+| top-level definitions and methods (7,530) | 98.1% / 84.6% (1,160 methods missed) | 100% / 100% |
+| imports (1,929) | 99.0% / 100% (19 invented) | 99.9% / 100% (1 invented) |
+| where a definition ends (`endLine`) | not available | 100% |
+
+Per language on the fixtures, the regex reader's recall is TypeScript 73.3%, Python 92.9%, Go 100%, Rust 63.2%, Java 46.7%, Kotlin 47.1% (precision 61.5%), Ruby 75.0%, PHP 75.0%, Swift 56.3%, C# 64.3%, Dart 64.7%; TSX is 100% for both. The parser is 100% in each.
+
+The fixtures were written by us while the queries were, so the 100% there says the engine passes the tests it grew up with; the compiler check is the one nobody tuned for. Three files of `tulmi/src` (more definitions than a row keeps) are left out of the corpus and one is declined by the parser and read by regex; both are counted in the bench's header.
+
+**What it costs.** A full build of `tulmi/` itself (406 files, 5.9 MB) takes **4.0 s with the regexes and 5.3 s with the parser** (best of six runs, wall clock, on a machine that was doing other work), plus **0.4 s once per process** to start the engine and load the TypeScript and TSX grammars. Parsing is the cost; nothing else in a build changed.
+
+## 3b. The repo map
+
+`repomap.ts` is Aider's idea written for Tailzu's brain. A file **defines** names (its symbols) and **refers to** names (what the parser found it calling, instantiating, extending and using as a type: `code_brain_files.refs`, at most 120 a file, migration 0035). A file that refers to a name another file defines depends on it. The dependencies, with the import edges the brain already resolves, are a graph over the repo's files, ranked by **PageRank personalised on the request**: the walk restarts at the files and identifiers the request names, so the rank is closeness to what was named, not popularity. Edges are weighted as Aider weights them (the square root of how often a name is used; ten times for a name the request mentions and for a distinctive one such as `parseConfigFile`; a tenth for `_private` names and for names defined in more than five files), and every edge also runs **backwards at twice its weight**: Aider's walk follows references only and can never reach a caller. A repo read by regex has no references; its map is the import graph.
+
+It is **locate's sixth signal** (`work/locate.ts`), and the funnel's second look: when the five signals are already sure (over `CONFIDENT`) or the request names exactly one strong place, the map is not asked; otherwise its neighbours of what was named are fused in with weight 2.5 (`MAP_DEFAULTS`; `back` 2, the named files themselves left to the other signals). A brain without `refs`, a Worker without the grammar or `MapSettings.on = false` have no sixth signal and nothing else changes. The graph is kept in memory while the brain's row does not change.
+
+**Measured** (`npm run bench:locate`; the map's weight and direction were chosen on the DEV half of the tasks, the TEST half was only read). Locate's file ranking, five signals against five plus the map:
+
+| Tasks | DEV: top-1 / top-3 / top-8 / MRR, map off to on | TEST: the same |
+| --- | --- | --- |
+| Acme Shop fixtures (12 requests of the brain's own tests; not split) | 91.7% in top-1, top-3 and top-8, unchanged | |
+| "fix the bug in `<symbol>`" (120 generated from `tulmi/src`, the answer is its definition) | 98.5 / 100 / 100 / 0.990, unchanged | 98.2 / 98.2 / 98.2 / 0.982 to 96.4 / 98.2 / 98.2 / 0.973 (one task) |
+| "update the code that uses `<X>` and `<Y>`" (120 generated, the answer is the file that uses both) | 0 / 8.5 / 10.2 / 0.038 to **11.9 / 45.8 / 61.0 / 0.291** | 0 / 11.5 / 16.4 / 0.055 to **11.5 / 39.3 / 60.7 / 0.274** |
+
+The old signals find a definition and cannot find a caller; the map finds the callers and costs one task in the test half of the first set. `tests/code-work-locate-map.test.ts` holds those bounds on a smaller sample.
 
 ## 4. The words, and what they cost
 
@@ -163,7 +206,7 @@ Every call is a read of the kept rows: no GitHub call, no model. In Supabase, `f
 | Table | One row per | Holds |
 | --- | --- | --- |
 | `code_brain` | project | status, progress, head and tree sha, structure, conventions, features, memory, welcome, baseline, history, `summaries_state`, `spent_paise`, `error` |
-| `code_brain_files` | project and path | blob sha (the Merkle leaf), language, symbols, imports, rank, hotness, TODOs, tests, summary, and a generated `tsv` (GIN-indexed) |
+| `code_brain_files` | project and path | blob sha (the Merkle leaf), language, symbols, imports, **refs** (migration 0035: the names the file refers to, for the repo map), rank, hotness, TODOs, tests, summary, and a generated `tsv` (GIN-indexed) |
 | `code_brain_dirs` | project and folder | tree sha, summary |
 | `code_brain_texts` | project, path and line | a visible string, its kind, and a generated, GIN-indexed `tsv` |
 
@@ -175,6 +218,7 @@ All four reference `code_projects (id) on delete cascade`, so a deleted project 
 | --- | --- | --- |
 | `CODE_PROJECT_BRAIN` | `false` | the whole layer; needs the GitHub App and migration 0028 |
 | `CODE_IMPORT_BUDGET_PAISE` | `1000` | model money for one build, in paise (see section 4) |
+| `CODE_TREE_SITTER` | `true` | read code with tree-sitter (section 3a); `false` reads everything with the regexes, as before. Also off by itself on the Worker for a build of more than 32 MB of text |
 
 The tiers the summaries use are layer 1's (`CODE_MODEL_TIERS`, the `cheap` tier).
 
@@ -182,5 +226,6 @@ The tiers the summaries use are layer 1's (`CODE_MODEL_TIERS`, the `cheap` tier)
 
 * **OpenRouter**: that the `cheap` tier's slugs exist, and what a build really costs in paise on a real repo of a few hundred files; tune `CODE_IMPORT_BUDGET_PAISE` from that.
 * **GitHub**: the tarball stream on a real repo (redirect to codeload without the token, a 100+ MB repo, a private repo), the tree's `truncated` flag on a huge one, and the rate-limit behaviour of the history step.
-* **Supabase**: run migration 0028 and watch the generated `tsv` columns and the prefix search on real data.
+* **Supabase**: run migration 0028 and watch the generated `tsv` columns and the prefix search on real data. Run 0035 (`refs`) before the tree-sitter release; until it is run the store says once that the column is missing and the repo map has no references to rank by.
+* **The Worker's memory** with the parser on a real, large repo: the grammars were measured in workerd on 300 files of one language (`jobs/src/grammars.ts`), not on a 20,000-file build with 60 MB of text.
 * **The App**: that **Push** is ticked on the live GitHub App (existing Apps need it added; see `docs/github-app.md`) and a real push shows up as `stale` and then an incremental build a minute later.

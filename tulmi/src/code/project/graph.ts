@@ -28,6 +28,7 @@
  */
 import { baseName, dirName } from "./lang.js";
 import { blankComments } from "./symbols.js";
+import { analyse } from "./treesitter/index.js";
 import type { CoreEntry } from "./types.js";
 
 export interface RawImport {
@@ -47,6 +48,14 @@ const DART_BLANK = { slash: true, hash: false, triple: true, backtick: false, ap
 const HASH_BLANK = { slash: false, hash: true, triple: false, backtick: false, apostrophe: "string" as const };
 
 export function extractImports(path: string, lang: string, text: string): RawImport[] {
+  // Read with a parser when one is loaded for the language (treesitter/); the regexes below are what runs otherwise.
+  const parsed = analyse(path, lang, text);
+  if (parsed) return parsed.imports;
+  return extractImportsRegex(path, lang, text);
+}
+
+/** The regex reader alone. */
+export function extractImportsRegex(path: string, lang: string, text: string): RawImport[] {
   const out: RawImport[] = [];
   const seen = new Set<string>();
   const add = (i: RawImport) => {

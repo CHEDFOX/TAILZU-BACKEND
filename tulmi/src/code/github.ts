@@ -258,8 +258,12 @@ export interface PreviewSignals {
   denied: Array<"deployments" | "statuses" | "checks">;
 }
 
-/** One file of a commit: its new text, or `delete` (or null text) to remove it. */
-export interface CommitFile { path: string; content?: string | null; delete?: boolean }
+/**
+ * One file of a commit: its new text, or `delete` (or null text) to remove it. A file that is not text (a logo, a picture: media/assets.ts) has
+ * `encoding: "base64"` and its bytes, in base64, as `content`: it is written as a blob first (git/blobs) and the tree points at it. Everything that
+ * looks at a commit (the secret scan, the approval's digest, the size limit) sees that same string, so a binary file is held to the same rules.
+ */
+export interface CommitFile { path: string; content?: string | null; delete?: boolean; encoding?: "utf8" | "base64" }
 
 /** What a commit can be told besides its files and message. */
 export interface CommitOptions {
@@ -502,6 +506,13 @@ export function commitTreeEntries(files: CommitFile[]): Array<Record<string, unk
     seen.add(path);
     if (f.delete === true || f.content === null) return { path, mode: "100644", type: "blob", sha: null };
     if (typeof f.content !== "string") throw new ConnectorError("bad_request", `${path} has no text to write.`);
+    if (f.encoding === "base64") {
+      if (!f.content || f.content.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(f.content)) throw new ConnectorError("bad_request", `${path} is not valid base64.`);
+      const bytes = (f.content.length / 4) * 3 - (f.content.endsWith("==") ? 2 : f.content.endsWith("=") ? 1 : 0);
+      if (bytes > FILE_MAX_BYTES) throw new ConnectorError("too_large", `${path} is over 1 MB, which is more than I write.`);
+      // Not a tree entry yet: commitWith writes the blob and replaces this with its sha.
+      return { path, mode: "100644", type: "blob", base64: f.content };
+    }
     if (Buffer.byteLength(f.content, "utf8") > FILE_MAX_BYTES) throw new ConnectorError("too_large", `${path} is over 1 MB, which is more than I write.`);
     return { path, mode: "100644", type: "blob", content: f.content };
   });
@@ -936,12 +947,20 @@ export class GithubApp {
 
   private async commitWith(repo: RepoRef, branch: string, files: CommitFile[], message: string, o: CommitOptions, more: string[], allowEmpty = false): Promise<{ sha: string; parentSha: string }> {
     refName(branch);
-    const tree = files.length === 0 && allowEmpty ? [] : commitTreeEntries(files);
+    const planned = files.length === 0 && allowEmpty ? [] : commitTreeEntries(files);
     const text = typeof message === "string" ? message.trim().slice(0, 5000) : "";
     if (!text) throw new ConnectorError("bad_request", "A commit needs a message.");
     const msg = withCoAuthor(text, o.person);
 
     const base = this.path(repo);
+    // A file that is bytes, not text, is a blob of its own first; its tree entry names the blob.
+    const tree: Array<Record<string, unknown>> = [];
+    for (const e of planned) {
+      if (typeof e.base64 !== "string") { tree.push(e); continue; }
+      const blob = await this.rsend(repo, "POST", `${base}/git/blobs`, { content: e.base64, encoding: "base64" });
+      if (blob.status !== 201 || typeof blob.json?.sha !== "string") throw githubError(blob.status, blob.json, "that file");
+      tree.push({ path: e.path, mode: e.mode, type: e.type, sha: blob.json.sha });
+    }
     const parentSha = await this.branchHead(repo, branch);
     if (o.expectHead !== undefined && o.expectHead !== parentSha) throw changedSinceApproval();
     const parent = await this.rsend(repo, "GET", `${base}/git/commits/${parentSha}`);

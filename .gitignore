@@ -15,3 +15,8 @@ tulmi/.quality/
 # Roz Bench scoreboards (npm run bench): one folder per run, kept locally.
 tulmi/evals/agent/out/
 __pycache__/
+
+# The media worker (media-worker/): its virtualenv and test caches.
+media-worker/.venv/
+media-worker/.pytest_cache/
+.pytest_cache/

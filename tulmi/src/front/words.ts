@@ -47,6 +47,9 @@ const KIND_NAME: Record<Exclude<AttachmentKind, "image" | "text" | "code">, Reco
   audio: { en: "audio files", hinglish: "audio files", hi: "ऑडियो फ़ाइलें" },
   video: { en: "videos", hinglish: "videos", hi: "वीडियो" },
   pdf: { en: "PDFs", hinglish: "PDF files", hi: "PDF फ़ाइलें" },
+  document: { en: "Word, PowerPoint and other documents", hinglish: "Word, PowerPoint jaise documents", hi: "Word, PowerPoint जैसे दस्तावेज़" },
+  data: { en: "spreadsheets", hinglish: "spreadsheets", hi: "स्प्रेडशीट" },
+  archive: { en: "zip files", hinglish: "zip files", hi: "zip फ़ाइलें" },
   other: { en: "this kind of file", hinglish: "is tarah ki file", hi: "इस तरह की फ़ाइल" },
 };
 

@@ -20,10 +20,10 @@
  * recorded answer no longer applies, so replay skips rather than plays it.
  */
 import { createHash } from "node:crypto";
-import type { CallRecord, PictureCall, PlanChunk, SystemPrompt, UserContent } from "../../../src/agent/llm.js";
+import type { CallRecord, PictureCall, PlanChunk, SystemPrompt, UserPrompt } from "../../../src/agent/llm.js";
 import type { ModelCallTrace } from "../types.js";
 
-export type PlanFn = (system: SystemPrompt, user: UserContent, signal?: AbortSignal, picture?: PictureCall, log?: (call: CallRecord) => void) => AsyncIterable<PlanChunk>;
+export type PlanFn = (system: SystemPrompt, user: UserPrompt, signal?: AbortSignal, picture?: PictureCall, log?: (call: CallRecord) => void) => AsyncIterable<PlanChunk>;
 
 export interface ModelAdapter {
   /**
@@ -49,13 +49,14 @@ export interface ModelAdapter {
 
 export const CASSETTE_VERSION = 1;
 
-/** A system prompt as text: itself, or, chosen per model, each model's in ladder order. */
-export function systemText(system: SystemPrompt, models: string[]): string {
-  return typeof system === "string" ? system : models.map((m) => system(m)).join("\n␞\n");
+/** A system prompt as text: a role's stable block, the same for every model. */
+export function systemText(system: SystemPrompt): string {
+  return system;
 }
 
-/** A user message as text: itself, or its parts, a picture by the hash of its data. */
-export function userText(user: UserContent): string {
+/** A user message as text: itself, or its parts, a picture by the hash of its data; chosen per model, each model's in ladder order. */
+export function userText(user: UserPrompt, models: string[] = []): string {
+  if (typeof user === "function") return models.map((m) => userText(user(m))).join("\n␞\n");
   if (typeof user === "string") return user;
   return user.map((p) => (p.type === "text" ? p.text : `[picture ${sha256(p.image_url.url).slice(0, 16)}]`)).join("\n␞\n");
 }
@@ -63,9 +64,9 @@ export function userText(user: UserContent): string {
 export const sha256 = (s: string): string => createHash("sha256").update(s).digest("hex");
 
 /** sha256 of [version, models joined, the system text, the user text, the picture mark]. */
-export function cassetteKey(models: string[], system: SystemPrompt, user: UserContent, picture?: PictureCall): string {
+export function cassetteKey(models: string[], system: SystemPrompt, user: UserPrompt, picture?: PictureCall): string {
   const mark = picture ? (picture.deep ? "picture:deep" : "picture") : "";
-  return sha256(JSON.stringify([CASSETTE_VERSION, models.join(","), systemText(system, models), userText(user), mark]));
+  return sha256(JSON.stringify([CASSETTE_VERSION, models.join(","), systemText(system), userText(user, models), mark]));
 }
 
 /** No recorded answer for this call: the cassette is stale (or was never recorded for this path). */
@@ -89,20 +90,20 @@ export abstract class TracedAdapter implements ModelAdapter {
   skip: string | undefined;
   private readonly open = new Set<Promise<void>>();
 
-  /** The models a call's system prompt is read for when it is chosen per model. */
+  /** The models a call's user message is read for when it is chosen per model. */
   protected abstract readonly models: string[];
 
   /** One call's answer, as chunks; `trace` is filled in as the mode learns its timing, tokens and key. */
-  protected abstract answer(trace: ModelCallTrace, system: SystemPrompt, user: UserContent, signal?: AbortSignal, picture?: PictureCall, log?: (call: CallRecord) => void): AsyncIterable<PlanChunk>;
+  protected abstract answer(trace: ModelCallTrace, system: SystemPrompt, user: UserPrompt, signal?: AbortSignal, picture?: PictureCall, log?: (call: CallRecord) => void): AsyncIterable<PlanChunk>;
 
   readonly plan: PlanFn = (system, user, signal, picture, log) => this.traced(system, user, signal, picture, log);
 
-  private async *traced(system: SystemPrompt, user: UserContent, signal?: AbortSignal, picture?: PictureCall, log?: (call: CallRecord) => void): AsyncGenerator<PlanChunk> {
+  private async *traced(system: SystemPrompt, user: UserPrompt, signal?: AbortSignal, picture?: PictureCall, log?: (call: CallRecord) => void): AsyncGenerator<PlanChunk> {
     const trace: ModelCallTrace = { turn: this.turn, text: "", model: "" };
     const time: { startedAt: number; firstAt?: number } = { startedAt: performance.now() };
     this.calls.push(trace);
     this.timing.push(time);
-    this.systems.add(systemText(system, this.models));
+    this.systems.add(systemText(system));
     let finish!: () => void;
     const done = new Promise<void>((resolve) => { finish = resolve; });
     this.open.add(done);

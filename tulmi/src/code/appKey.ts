@@ -1,10 +1,10 @@
 /**
  * THE GITHUB APP'S PRIVATE KEY, READ SO THAT IT CAN SIGN ON A WORKER AS WELL AS ON THE VPS.
  *
- * GitHub hands out the key as PKCS#1 ("-----BEGIN RSA PRIVATE KEY-----"). On the
+ * GitHub hands out the key as PKCS#1 (a PEM block labelled "RSA PRIVATE KEY"). On the
  * VPS, node:crypto's createPrivateKey reads that and jose signs with the
  * KeyObject. On a Cloudflare Worker jose runs on WebCrypto, which imports only
- * PKCS#8 ("-----BEGIN PRIVATE KEY-----") and cannot take a KeyObject. So the
+ * PKCS#8 (a block labelled just "PRIVATE KEY") and cannot take a KeyObject. So the
  * Worker's path is: read the PEM here, wrap a PKCS#1 key's DER in the PKCS#8
  * envelope (a fixed header and the same key bytes: no maths, no crypto library),
  * and let jose's importPKCS8 make the CryptoKey.

@@ -1,0 +1,2 @@
+; Go: import "path", import ( "path"; alias "path" ).
+(import_spec path: (interpreted_string_literal (interpreted_string_literal_content) @source)) @import

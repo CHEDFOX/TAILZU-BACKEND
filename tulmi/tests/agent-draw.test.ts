@@ -62,7 +62,10 @@ vi.mock("groq-sdk", () => ({
 }));
 
 const { LineReader, LABEL_MAX, PATH_MAX, parseDraw, parseLine } = await import("../src/agent/lines.js");
-const { AGENT_SYSTEM, AGENT_VISION_SYSTEM, AGENT_VISION_SYSTEM_GEMINI } = await import("../src/agent/prompt.js");
+const { placesNote } = await import("../src/agent/prompt.js");
+const { stableBlock } = await import("../src/principles/roles.js");
+const PLANNER = stableBlock("ask_planner");
+const VISION = stableBlock("ask_vision");
 const { EventSink } = await import("../src/agent/protocol.js");
 const { runStep } = await import("../src/agent/run.js");
 const { getConfig } = await import("../src/config.js");
@@ -513,60 +516,66 @@ describe("the picture path draws in the picture", () => {
     llm.plan = GENERIC;
     const evs = await postPicture({ utterance: "how long is the long side?" });
     expect(streamCalls().map((c) => c.body.model)).toEqual(["google/gemini-2.5-flash", "anthropic/claude-haiku-5.5"]);
-    expect(systemText(1)).toBe(AGENT_VISION_SYSTEM);
+    expect(systemText(1)).toBe(VISION);
     expect(evs).toEqual(TRIANGLE);
   });
 });
 
-describe("the prompts teach DRAW, and stay the same bytes", () => {
-  it("the text prompt: the same for two different requests, with DRAW in it, and picture places only for pictures", async () => {
+describe("the roles teach DRAW, and stay the same bytes", () => {
+  it("the planner's block: the same for two different requests, with the pen in it, by id, and no picture places", async () => {
     await post(step({ utterance: "what does export do?" }));
     await post(step({ utterance: "¿qué hace esto?", platform: "win", app: "Excel", language: "es", screen: { elements: [{ id: "o1", role: "text", label: "Total", region: "c" }] } }));
     expect(streamCalls()).toHaveLength(2);
     expect(systemText(0)).toBe(systemText(1));
-    expect(systemText(0)).toBe(AGENT_SYSTEM);
-    for (const must of ["DRAW marks the screen while you explain, like a teacher's pen.", "DRAW BOX <spot>", "DRAW CIRCLE <spot>", "DRAW UNDERLINE <spot>",
-      "DRAW HIGHLIGHT <spot>", "DRAW ARROW <spot> -> <spot>", "DRAW NUMBER <spot> <1-9>", "DRAW LABEL <spot> \"text\"", "DRAW PATH (x,y) (x,y) … CLOSED",
-      "DRAW CLEAR", "At most 6 marks.", "Put each DRAW right after the SAY it belongs to.", "Do not draw for a plain \"where is X\" (POINT rings it).",
-      "only for a question answered from a picture you are shown", "SAY, POINT and DRAW come first."]) {
-      expect(AGENT_SYSTEM, must).toContain(must);
+    expect(systemText(0)).toBe(PLANNER);
+    for (const must of ["DRAW marks the screen while you explain, like a teacher's pen", "DRAW BOX <id>", "DRAW CIRCLE <id>", "DRAW UNDERLINE <id>",
+      "DRAW HIGHLIGHT <id>", "DRAW ARROW <id> -> <id>", "DRAW NUMBER <id> <1-9>", "DRAW LABEL <id> \"text\"", "DRAW CLEAR", "At most 6 marks",
+      "each right after the SAY it belongs to", "A plain where-question is a POINT, never a DRAW",
+      "There is no picture here, so mark things by their ids", "SAY, POINT and DRAW come first."]) {
+      expect(PLANNER, must).toContain(must);
     }
-    // Its example draws by id: it has no picture to draw in.
-    expect(AGENT_SYSTEM).toMatch(/^DRAW NUMBER e8 2$/m);
-    expect(AGENT_SYSTEM).not.toMatch(/^DRAW \w+ [[(]\d/m);
+    // It has no picture to draw in: no place in a picture is taught, and no PATH.
+    expect(PLANNER).not.toMatch(/DRAW PATH|\[x,y,w,h\]|\(x,y\)|\[y,x\]|ymin/);
+    // The pen is the library's two visual principles at work: a mark when it explains faster, none for a short fact or a voice-only reply.
+    expect(PLANNER).toContain("Show, don't describe, when a visual explains faster.");
+    expect(PLANNER).toContain("No visual for a short fact or a voice-only reply.");
   });
 
-  it("the vision prompt: the same for two different pictures, with DRAW in it and an example in picture numbers", async () => {
+  it("the picture reader's block: the same for two different pictures, the pen in it, and places left to the note", async () => {
     await postPicture({ utterance: "how long is the long side?" });
     await postPicture({ utterance: "walk me through this step by step", app: "Preview", platform: "win" });
     expect(streamCalls()).toHaveLength(2);
-    expect(systemText(0)).toBe(AGENT_VISION_SYSTEM_GEMINI);
-    expect(systemText(1)).toBe(AGENT_VISION_SYSTEM_GEMINI);
-    for (const must of ["DRAW marks the screen while you explain, like a teacher's pen.", "DRAW ARROW <spot> -> <spot>", "DRAW PATH (x,y) (x,y) … CLOSED",
-      "from 0 to 1000 across from its left edge and down from its top", "answer with SAY, POINT, DRAW and DONE only"]) {
-      expect(AGENT_VISION_SYSTEM, must).toContain(must);
+    expect(systemText(0)).toBe(VISION);
+    expect(systemText(1)).toBe(VISION);
+    for (const must of ["DRAW marks the picture while you explain, like a teacher's pen", "DRAW ARROW <spot> -> <spot>", "DRAW PATH <point> <point> … CLOSED",
+      "a <point> is a place", "answer with SAY, POINT, DRAW and DONE only", "Prefer a listed id when the thing has one"]) {
+      expect(VISION, must).toContain(must);
     }
-    expect(AGENT_VISION_SYSTEM).toMatch(/^DRAW CIRCLE \[160,790,50,50\] "90°"$/m);
-    // Gemini's: the same pen, with places in the picture y first.
-    for (const must of ["DRAW marks the screen while you explain, like a teacher's pen.", "DRAW ARROW <spot> -> <spot>", "DRAW PATH [y,x] [y,x] … CLOSED",
-      "a box [ymin,xmin,ymax,xmax] or a point [y,x]", "DRAW BOX [ymin,xmin,ymax,xmax], DRAW CIRCLE [ymin,xmin,ymax,xmax], DRAW ARROW [y,x] -> [y,x], DRAW NUMBER [y,x] 2, DRAW PATH [y,x] [y,x] …, DRAW LABEL [y,x] \"…\"",
-      "answer with SAY, POINT, DRAW and DONE only"]) {
-      expect(AGENT_VISION_SYSTEM_GEMINI, must).toContain(must);
-    }
-    expect(AGENT_VISION_SYSTEM_GEMINI).toMatch(/^DRAW CIRCLE \[790,160,840,210\] "90°"$/m);
-    expect(AGENT_VISION_SYSTEM_GEMINI).not.toContain("(x,y)");
-    // Every example line each is taught parses in its own order, is kept on a
-    // picture step, and the two come to the same marks.
-    const taught = (prompt: string, order: "xy" | "yx") => {
+    expect(VISION).not.toMatch(/\[x,y,w,h\]|\(x,y\)|\[y,x\]|ymin/);
+    // The primary is a Gemini model: its note, under the first line of the message, writes places y first.
+    for (const i of [0, 1]) expect(String((streamCalls()[i]!.body.messages[1].content as Array<Record<string, any>>)[1]!.text).split("\n")[1]).toBe(placesNote("yx"));
+  });
+
+  it("both notes teach the same marks: every line each teaches parses in its own order, and the two come to the same events", () => {
+    const xy = placesNote("xy");
+    const yx = placesNote("yx");
+    expect(xy).toContain("a box [x,y,w,h] or a point (x,y)");
+    expect(yx).toContain("a box [ymin,xmin,ymax,xmax] or a point [y,x]");
+    expect(yx).toContain("DRAW BOX [ymin,xmin,ymax,xmax], DRAW CIRCLE [ymin,xmin,ymax,xmax], DRAW ARROW [y,x] -> [y,x], DRAW NUMBER [y,x] 2, DRAW PATH [y,x] [y,x] …, DRAW LABEL [y,x] \"…\"");
+    expect(yx).not.toContain("(x,y)");
+    // The marks of the worked triangle, which the fixtures hold (evals/ask_vision.jsonl), in each order.
+    const marks = {
+      xy: ['DRAW ARROW (640,450) -> (450,620) "c, what we want"', 'DRAW CIRCLE [160,790,50,50] "90°"', "DRAW UNDERLINE [135,600,30,40]", "DRAW NUMBER (150,620) 2", "DRAW PATH (180,820) (180,420) (720,820) CLOSED"],
+      yx: ['DRAW ARROW [450,640] -> [620,450] "c, what we want"', 'DRAW CIRCLE [790,160,840,210] "90°"', "DRAW UNDERLINE [600,135,640,165]", "DRAW NUMBER [620,150] 2", "DRAW PATH [820,180] [420,180] [820,720] CLOSED"],
+    };
+    const read = (lines: string[], order: "xy" | "yx") => {
       const r = new LineReader(new Set(), "show", { picture: true });
-      const examples = prompt.split("\n").filter((l) => /^DRAW [A-Z]+ /.test(l) && /\d/.test(l) && !/[<—…]/.test(l));
-      expect(examples.length).toBeGreaterThan(3);
-      return examples.map((l) => {
+      return lines.map((l) => {
         const out = r.read(parseLine(l, "mac", { order })!);
         expect(out, l).toHaveLength(1);
         return out[0];
       });
     };
-    expect(taught(AGENT_VISION_SYSTEM_GEMINI, "yx")).toEqual(taught(AGENT_VISION_SYSTEM, "xy"));
+    expect(read(marks.yx, "yx")).toEqual(read(marks.xy, "xy"));
   });
 });

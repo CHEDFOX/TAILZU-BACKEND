@@ -41,7 +41,7 @@ export type Via = "rules" | "model";
 
 // ------------------------------------------------------------------ attachments
 
-export const ATTACHMENT_KINDS = ["image", "text", "code", "audio", "video", "pdf", "other"] as const;
+export const ATTACHMENT_KINDS = ["image", "text", "code", "audio", "video", "pdf", "document", "data", "archive", "other"] as const;
 export type AttachmentKind = (typeof ATTACHMENT_KINDS)[number];
 
 export interface AttachmentRef {

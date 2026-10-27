@@ -83,7 +83,9 @@ describe("POST /v1/transcribe-clean with a selection", () => {
     // One writing call: the edit, with the selection as its text and what
     // was said as its instruction.
     expect(seen.calls).toHaveLength(1);
-    expect(seen.calls[0]!.system).toMatch(SPOKEN);
+    // A note of this call, after the stable block: the block itself is the edit role's, whoever spoke.
+    expect(seen.calls[0]!.user).toMatch(SPOKEN);
+    expect(seen.calls[0]!.system).not.toMatch(SPOKEN);
     expect(seen.calls[0]!.user).toContain(`<text>\n${SELECTED}\n</text>`);
     expect(seen.calls[0]!.user).toContain(`<instruction>\n${SAID}\n</instruction>`);
   });
@@ -92,7 +94,7 @@ describe("POST /v1/transcribe-clean with a selection", () => {
     const res = await app.inject({ method: "POST", url: "/v1/transcribe-clean", ...form({ context: "Notes:" }) });
     expect(res.statusCode).toBe(200);
     expect(res.json().replacedSelection).toBeUndefined();
-    expect(seen.calls[0]!.system).not.toMatch(SPOKEN);
+    expect(seen.calls[0]!.user).not.toMatch(SPOKEN);
   });
 
   it("treats a selection of only whitespace as no selection", async () => {
@@ -124,7 +126,9 @@ describe("POST /v1/refine with a selection (the live path)", () => {
     expect(json.replacedSelection).toBe(true);
     expect(json.joinWithSpace).toBe(false);
     expect(seen.calls).toHaveLength(1);
-    expect(seen.calls[0]!.system).toMatch(SPOKEN);
+    // A note of this call, after the stable block: the block itself is the edit role's, whoever spoke.
+    expect(seen.calls[0]!.user).toMatch(SPOKEN);
+    expect(seen.calls[0]!.system).not.toMatch(SPOKEN);
     expect(seen.calls[0]!.user).toContain(`<text>\n${SELECTED}\n</text>`);
   });
 
@@ -132,7 +136,7 @@ describe("POST /v1/refine with a selection (the live path)", () => {
     const res = await app.inject({ method: "POST", url: "/v1/refine", payload: { text: SAID } });
     expect(res.statusCode).toBe(200);
     expect(res.json().replacedSelection).toBeUndefined();
-    expect(seen.calls[0]!.system).not.toMatch(SPOKEN);
+    expect(seen.calls[0]!.user).not.toMatch(SPOKEN);
   });
 
   it("never uses a selection from a private window", async () => {

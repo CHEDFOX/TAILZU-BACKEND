@@ -45,7 +45,9 @@ import { createCode } from "./code/index.js";
 import { startOAuthSweeper } from "./code/oauth.js";
 import { createArtifacts, deleteViewerData } from "./artifacts/index.js";
 import { registerArtifactRoutes } from "./routes/artifacts.js";
-import { createFront } from "./front/index.js";
+import { AttachmentRegistry, createFront } from "./front/index.js";
+import { createMedia, registerMedia, startMediaSweep } from "./media/index.js";
+import { registerFilesRoutes } from "./routes/files.js";
 import { FRONT_BODY_LIMIT, registerFrontRoutes } from "./routes/front.js";
 import { registerCodeRoutes } from "./routes/code.js";
 import { registerCodeJobRoutes } from "./routes/codeJobs.js";
@@ -1117,7 +1119,15 @@ registerArtifactRoutes(app, { rateLimit: AUTHED_RL, artifacts, code, jobs: codeJ
 // The front door (src/front, docs/front-door.md): one smart entry point for a message, POST /v1/ask with a `message` (the desktop's old ask,
 // with a `question`, is the route below as it always was). Off unless FRONT_DOOR is true: those bodies are then answered 404 front_door_off.
 // The overload guards (src/guard) are on the routes that spend money either way; GET /v1/admin/guard shows them.
-const front = createFront({ artifacts, code, jobs: codeJobs, agent: codeAgent, log: app.log });
+// Media and files (src/media, docs/media.md): a PDF, an office file, a spreadsheet, a picture, a recording, a video or a zip is read once and a question about it is
+// answered from the few chunks that matter. Off unless MEDIA_INGEST is true: the attachment registry then keeps its "coming soon" for those kinds and /v1/files answers
+// 404 media_off. Bytes go to R2, text and chunks to migration 0035's tables, office files and hard PDFs to the worker (media-worker/).
+const media = createMedia({ log: app.log });
+if (media) startMediaSweep(media, { log: app.log });
+registerFilesRoutes(app, { rateLimit: AUTHED_RL, media, artifacts, code });
+const attachments = new AttachmentRegistry();
+if (media) registerMedia(attachments, media);
+const front = createFront({ artifacts, code, jobs: codeJobs, agent: codeAgent, log: app.log, attachments });
 const frontRoutes = registerFrontRoutes(app, {
   rateLimit: AUTHED_RL, front,
   quota: (user) => enforceQuota(user),
@@ -3277,6 +3287,8 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
   // and do not abort the sequence.
   // A GitHub sign-in token is revoked at GitHub before its row goes; the rows go with the account either way.
   await code?.oauth?.forAccountDelete(user.id);
+  // The bytes of their files are in a bucket, not in the database: they go first (the rows go with the account just below).
+  try { await media?.forAccountDelete(user.id); } catch (err) { req.log.error({ err }, "delete media bytes"); }
 
   const summary = {
     personality: false, profile: false, usageEvents: 0,
@@ -3295,6 +3307,8 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
     ["artifacts", null], ["artifact_kits", null],
     // The front door's decision log (migration 0033): categories and numbers about their messages, never a word of them.
     ["front_decisions", null],
+    // Media and files (migration 0035): what was read from their files, and the text in pieces (media_chunks cascades from media_items).
+    ["media_items", null],
     // Talking about code, a project's settings and PR care (migration 0034): the conversations' short summaries, how a person likes a job worked, and the pull requests
     // Tailzu looks after. A job's rewind points go with the job (code_job_checkpoints cascades from code_jobs).
     ["code_chat_threads", null], ["code_project_settings", null], ["code_pr_care", null],

@@ -265,13 +265,12 @@ function lineFor(task: Task, trials: TrialRow[], verbose: boolean): string {
   return [head, ...new Set(details)].join("\n");
 }
 
-/** sha256 of each system prompt the run sent, named by the constant it is when it is one. */
+/** sha256 of each system prompt the run sent, named by the role it is the stable block of when it is one. */
 async function promptHashes(systems: Set<string>): Promise<Record<string, string>> {
   const { sha256 } = await import("./model/adapter.js");
+  const { stableBlock } = await import("../../src/principles/roles.js");
   const named = new Map<string, string>();
-  for (const mod of [await import("../../src/agent/prompt.js"), await import("../../src/connectors/index.js")] as Array<Record<string, unknown>>) {
-    for (const [k, v] of Object.entries(mod)) if (/^AGENT_/.test(k) && typeof v === "string") named.set(v, k);
-  }
+  for (const role of ["ask_planner", "ask_vision"] as const) named.set(stableBlock(role), role);
   return Object.fromEntries([...systems].map((s) => [named.get(s) ?? `system-${sha256(s).slice(0, 8)}`, sha256(s)]));
 }
 

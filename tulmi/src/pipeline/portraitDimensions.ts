@@ -25,92 +25,17 @@
  *   the behavioural layer, it is observable in every message, and every item
  *   of it changes a word on the screen.
  *
- * So the dimensions below are the ones a linguist would use to describe an
+ * So the dimensions (principles/roles.ts, in the portrait roles) are the ones a linguist would use to describe an
  * individual's idiolect, and the prohibitions are the things that would be
  * profiling rather than portraiture.
  */
 
-import { inlineValue } from "../prompts.js";
-
-/** The observable dimensions of one person's writing, in prompt form. */
-export const PORTRAIT_DIMENSIONS = [
-  "REGISTER — where they sit between formal and casual, and how far they move when the audience changes.",
-  "DIRECTNESS — whether they lead with the ask or arrive at it, and how much they hedge before committing to it.",
-  "DISTANCE — how they are polite: warmth and solidarity, or deference and apology, or neither because they are simply plain.",
-  "ORDER — headline first, or context first and the point at the end.",
-  "SHAPE — sentence length, how many clauses they run together, whether they use fragments.",
-  "LEXICON — the words and phrases they actually reach for, quoted exactly and in their own script.",
-  "TYPOGRAPHY — capitalisation, commas, dashes, ellipses, exclamation marks, emoji.",
-  "FRAMING — how they open and close, whether they greet, whether they use the person's name, whether they sign off.",
-  "SWITCHING — which languages they mix, when they switch, and which script they write each in.",
-  "ELLIPSIS — what they leave unsaid because they assume it is understood.",
-].join("\n");
-
-/**
- * The line that keeps a portrait a portrait.
- *
- * Without it a writing model asked to describe someone will reach for
- * character judgement — it is what "describe this person" means in most of
- * its training data. Every clause here rules out a specific thing that turned
- * up when this was left implicit.
- */
-export const PORTRAIT_BOUNDS = [
-  "Write only what is visible in the text itself. Every line must be something another reader could check against the same messages.",
-  "Never infer or record personality traits, mood, mental state, intelligence, age, gender, politics, health or circumstances. None of that is reliable from writing, none of it tells you how to write a sentence, and it would be kept and acted on for months.",
-  "Never judge them. Not their grammar, not their spelling, not their taste. You are describing a voice so it can be reproduced, not assessing one.",
-  "Say nothing about the training, the conversation, or how you learned any of it.",
-].join(" ");
-
-/**
- * The output contract, shared so the three writers cannot drift on it.
- *
- * FIELDS, NOT ONE PARAGRAPH. The portrait used to be a single prose blob
- * rewritten from scratch each session, and prose forgets: a word learned in
- * March that simply did not come up in April was gone by May, because the
- * rewrite had no reason to carry it. Splitting the parts that ACCUMULATE away
- * from the parts that are a fresh read is what makes it a memory instead of a
- * running impression.
- *
- *   core     rewritten every time — the current summary
- *   words    accumulates and dedupes — their lexicon, built one word at a time
- *   styles   rewritten — the handful of modes they write in
- *   rhythms  rewritten, and only when the clock is known
- */
-export function portraitJsonContract(opts: {
-  trainingTone?: string;
-  /** Only ask for rhythms when the evidence actually carried local times. */
-  withRhythms?: boolean;
-} = {}): string {
-  const fields = [
-    '"core": "≤130 words of plain prose covering the dimensions above"',
-    '"words": [{"term": "the word exactly as they write it, in their script", "means": "what THEY use it to mean, in one short phrase — not a dictionary definition"}]',
-    '"styles": [{"name": "two or three words for the mode", "when": "where it shows up"}]',
-  ];
-  if (opts.withRhythms) {
-    fields.push(
-      '"rhythms": [{"when": "a part of their day", "vibe": "how their writing differs then"}]',
-    );
-  }
-  // A voice's name is the user's own, placed inside a quoted field spec.
-  const tone = inlineValue(opts.trainingTone, 40).replace(/["']/g, "");
-  if (tone) {
-    fields.push(
-      `"toneNote": "≤40 words, only what is specific to their '${tone}' voice"`,
-    );
-  }
-  return [
-    "Return ONLY JSON with these fields:",
-    `{${fields.join(", ")}}`,
-    "",
-    "words: every word or phrase that is THEIRS rather than the language's — slang, local words, borrowings, in-jokes, the ones they reach for instead of the ordinary term. Skip anything a dictionary of their language would carry with the same meaning. At most 12 new ones per pass; they accumulate across sessions, so there is no need to re-list what is already there unless the meaning has shifted.",
-    "styles: at most 4. If they only write one way, say so with one entry rather than inventing variety.",
-    opts.withRhythms
-      ? "rhythms: at most 3, and only where the difference is real and repeated. Most people do not have one; an empty list is the honest answer and is better than a guess."
-      : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
+// THE LISTS THEMSELVES ARE IN THE ROLES. The dimensions, the bounds and the
+// fields of the portrait are the stable text of the three portrait roles
+// (principles/roles.ts: portrait_update, portrait_transcript, portrait_usage),
+// one copy read by all three, so a cache holds them and they cannot drift.
+// What is left here is what is not the same twice: how much evidence is behind
+// the portrait a call is given (below), and the reader of what comes back.
 
 /**
  * The portrait's own provenance, told to the writer that is about to rewrite it.

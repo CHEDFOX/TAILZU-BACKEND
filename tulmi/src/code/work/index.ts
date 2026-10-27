@@ -5,7 +5,7 @@
  *
  *   model.ts      askJson(): the one way a model is asked a JSON question here (callModel, charged to the job)
  *   cues.ts       the cues in a request, read for nothing: quotes, UI words, names, paths, routes, errors, frames
- *   locate.ts     locate(): five signals, fused, one hop out, a cheap model only when unsure, a question when it must
+ *   locate.ts     locate(): six signals (the repo map is the sixth), fused, one hop out, a cheap model only when unsure, a question when it must
  *   impact.ts     what a change reaches, from the graph; the risk it adds
  *   plan.ts       planChange(): steps, validated against the brain, impact, verify, risk, milestones
  *   worklog.ts    the per-job log (store: worklogStore.ts, migration 0029) and its PR-body markdown

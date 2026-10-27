@@ -29,7 +29,7 @@ const { registerAssistantRoutes, answerOf, phoneOf, FOLLOW_UP_MS, FOLLOW_UPS_CHA
 const { ALWAYS_ON } = await import("../src/connectors/catalog.js");
 const { createConnectors } = await import("../src/connectors/index.js");
 const { MemoryConnectorStore } = await import("../src/connectors/store.js");
-const { AGENT_SYSTEM_CONNECTORS } = await import("../src/connectors/index.js");
+const { stableBlock } = await import("../src/principles/roles.js");
 const { PlannerUnavailable } = await import("../src/agent/llm.js");
 const { EN, HG, wordsFor } = await import("../src/connectors/words.js");
 const { MemoryRunStore, RunLedger } = await import("../src/runs/index.js");
@@ -37,8 +37,9 @@ const { RUN_EN, RUN_HG } = await import("../src/runs/words.js");
 type Connectors = import("../src/connectors/index.js").Connectors;
 type CallRecord = import("../src/agent/llm.js").CallRecord;
 
-/** The connector prompt's own line: on every system prompt that offers apps, and on no other (desktop or phone). */
+/** The connector addendum's own line: at the head of every message that offers apps, and of no other (desktop or phone). The system prompt is the planner's one stable block either way. */
 const USE_LINE = "USE <connector>.<tool>";
+const PLANNER = stableBlock("ask_planner");
 const RUN_ID = /^ask_[0-9a-f]{32}$/;
 /** A receipt as the phone gets it, with the times it took. */
 const receipt = (over: Record<string, unknown>) => ({ runId: expect.stringMatching(RUN_ID), effects: 0, steps: 1, ms: expect.any(Number), firstMs: expect.any(Number), ...over });
@@ -116,7 +117,10 @@ describe("POST /v1/assistant/ask", () => {
       receipt: receipt({ outcome: "done", reason: "handoff", line: RUN_EN.handoff, effects: 1 }),
     });
     // The same planner and apps as the desktop's Ask, told it is a command on a phone with no screen.
-    expect(a.sent[0]!.system).toContain(USE_LINE);
+    expect(a.sent[0]!.system).toBe(PLANNER);
+    expect(a.sent[0]!.system).not.toContain(USE_LINE);
+    expect(a.sent[0]!.user.split("\n")[0]).toMatch(/^Connected apps\./);
+    expect(a.sent[0]!.user).toContain(USE_LINE);
     expect(a.sent[0]!.user).toContain("whatsapp.send_message");
     expect(a.sent[0]!.user).toContain("Platform: ios. App: Tailzu. Mode: do. Step 1 of at most 1.");
     expect(a.sent[0]!.user).toContain("(no controls could be read)");
@@ -150,7 +154,8 @@ describe("POST /v1/assistant/ask", () => {
     const a = await app({ answers: ["SAY It's 4pm in London.\nDONE"] });
     expect((await a.ask({ text: "what time is it in london" })).json()).toEqual({ say: "It's 4pm in London.", receipt: receipt({ outcome: "done", line: RUN_EN.done }) });
     // Nothing relevant connected: the planner gets the prompt it always gets, with no apps in it.
-    expect(a.sent[0]!.system).not.toContain(USE_LINE);
+    expect(a.sent[0]!.system).toBe(PLANNER);
+    expect(a.sent[0]!.user).not.toContain(USE_LINE);
   });
 
   it("a line that would act on a computer's screen is never sent to the phone", async () => {
@@ -221,7 +226,7 @@ describe("POST /v1/assistant/ask", () => {
   it("an approval comes back as the task, with a line to go with it", async () => {
     const fake = {
       runtimeFor: () => ({
-        cards: async () => ({ system: AGENT_SYSTEM_CONNECTORS, message: (base: string) => `${base}\n<tools>\nnotion.add_comment — Add a comment. {"text":"string"}\n</tools>` }),
+        cards: async () => ({ system: PLANNER, message: (base: string) => `${base}\n<tools>\nnotion.add_comment — Add a comment. {"text":"string"}\n</tools>` }),
         use: async () => ({ kind: "approval", taskId: "task-1", approval: { id: "ap1", connector: "notion", tool: "add_comment", risk: "send", preview: "Add comment in Notion" } }),
         settle: async () => {},
       }),

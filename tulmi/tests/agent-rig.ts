@@ -26,6 +26,7 @@ import type { LiveDeps } from "../src/code/live/ports.js";
 import type { DesignDeps } from "../src/code/agent/deps.js";
 import { CHECK_MARK } from "../src/code/agent/checks.js";
 import { routerRunner } from "../src/code/agent/runner.js";
+import type { ContextStrategy } from "../src/code/agent/mask.js";
 import { initialState, stateOf, type AgentState } from "../src/code/agent/types.js";
 import { createCode } from "../src/code/index.js";
 import { createJobs } from "../src/code/jobs/index.js";
@@ -253,6 +254,8 @@ export interface AgentRigOptions {
   live?: LiveDeps;
   /** The design round's compare step and links (code/agent/design.ts). */
   design?: DesignDeps;
+  /** What becomes of a tool result once it is older than the last six (agent/mask.ts). Absent: the agent's default. */
+  contextStrategy?: ContextStrategy;
   /** What the GitHub App was given on the install (Contents, Pull requests and Metadata unless said otherwise): PR care needs Checks, Commit statuses and Actions (read) as well. */
   installPermissions?: Record<string, string>;
 }
@@ -323,6 +326,7 @@ export async function agentRig(o: AgentRigOptions = {}) {
       runner: routerRunner({ jobs, store: jobStore, now, sleep, placeWaitMs: o.placeWaitMs ?? 120_000, pollMs: 2000 }),
       concurrency: over.concurrency ?? o.concurrency ?? 4, instanceId: over.instanceId ?? "one",
       ...((over.live ?? o.live) ? { live: (over.live ?? o.live)! } : {}), ...(over.remote ? { remote: over.remote } : {}), ...(o.design ? { design: o.design } : {}),
+      ...(o.contextStrategy ? { contextStrategy: o.contextStrategy } : {}),
     })!;
   }
   const orch = orchestrator();

@@ -37,7 +37,9 @@ import {
 import { cut } from "../work/model.js";
 import { checkCommands, parseMarkers, resultsOf, describeCheck, type CheckSpec } from "./checks.js";
 import { Refused } from "./changeset.js";
+import { getConfig } from "../../config.js";
 import { buildContext, digestOf, fold, projectContext } from "./context.js";
+import { isStrategy, type ContextStrategy } from "./mask.js";
 import { designDue, designLines } from "./design.js";
 import { WITHHELD_ARGS, argsHoldSecret } from "./tools.js";
 import { SAID_KEEP } from "../live/limits.js";
@@ -45,7 +47,7 @@ import { commitMessage, prBody, prTitle, reportText } from "./report.js";
 import { BudgetStop, EndJob, LostClaim, Park, Yield, type Run } from "./run.js";
 import { hasConflictMarkers } from "./merge.js";
 import {
-  BASELINE_MAX_AGE_MS, CALLS_PER_TURN, FIX_ROUNDS_MAX, FREEFORM_STEPS_MAX, TURNS_MAX,
+  BASELINE_MAX_AGE_MS, CALLS_PER_TURN, CONTEXT_STRATEGY_DEFAULT, FIX_ROUNDS_MAX, FREEFORM_STEPS_MAX, TURNS_MAX,
   type AgentState, type Exchange, type Phase, type ResultRecord, type VerifyState,
 } from "./types.js";
 import { GithubRefusal } from "../github.js";
@@ -436,20 +438,33 @@ export async function takeSaid(r: Run): Promise<void> {
   await inbox.ack(r.jobId, pending.map((m) => m.id)).catch(() => undefined);
 }
 
+/**
+ * How this job treats its old tool results, decided once and kept: the agent's `contextStrategy`, else CODE_CONTEXT_STRATEGY, else the default. A job that
+ * had already worked under the old way (it has folded notes, or turns behind it, and no strategy written down) goes on as it was: summary.
+ */
+function strategyOf(r: Run): ContextStrategy {
+  const w = r.state.work;
+  if (isStrategy(w.strategy)) return w.strategy;
+  const configured = r.deps.contextStrategy ?? getConfig().CODE_CONTEXT_STRATEGY ?? CONTEXT_STRATEGY_DEFAULT;
+  w.strategy = w.turns > 0 || w.digests.length > 0 || w.summary ? "summary" : configured;
+  return w.strategy;
+}
+
 async function modelTurn(r: Run): Promise<void> {
   const s = r.state;
   const w = s.work;
   const d = r.deps;
   await r.renew();
   await takeSaid(r);
-  await fold(s, r.model());
+  const strategy = strategyOf(r);
+  await fold(s, r.model(), strategy);
   const install = (await r.brain.baselinePlan().catch(() => [])).find((x) => x.kind === "install")?.cmd;
   const view = await r.brain.status().catch(() => null);
   const rules = (view?.conventions?.rules ?? []).map((x) => `${x.path}:\n${x.text}`).join("\n\n");
   const memory = (await r.brain.memory().catch(() => "")).replace(/\n## Project rules[\s\S]*?(?=\n## |$)/, "");
   const checks = (s.plan?.verify ?? []).map((v) => `${v.kind}: ${v.cmd}`).slice(0, 6);
   const ctx = buildContext({
-    state: s, project: projectContext({ rules, memory, ...(install ? { install } : {}), kind: s.classification ? s.classification.type.replace("_", " ") : "" }),
+    strategy, state: s, project: projectContext({ rules, memory, ...(install ? { install } : {}), kind: s.classification ? s.classification.type.replace("_", " ") : "" }),
     tools: r.tools.defs(), stagedLines: r.tools.changes.lines(), checks,
   });
   const money = await r.money();

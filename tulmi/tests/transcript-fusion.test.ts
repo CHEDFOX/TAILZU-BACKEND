@@ -12,7 +12,7 @@
  * which is worse than picking one outright.
  */
 import { describe, expect, it } from "vitest";
-import { buildAssistSystem } from "../src/pipeline/assistPrompt.js";
+import { dataFor, told } from "./writer-prompt.js";
 import { transcriptsAgree, isUsableAlternative } from "../src/pipeline/stt.js";
 
 describe("transcriptsAgree — only real disagreement is worth a second opinion", () => {
@@ -53,10 +53,10 @@ describe("isUsableAlternative — a failed call is not a second opinion", () => 
 });
 
 describe("assist prompt — reconciliation block", () => {
-  const withAlt = () => buildAssistSystem({ hasContext: false, hasAlternative: true });
+  const withAlt = () => told({ hasContext: false, hasAlternative: true });
 
   it("is ABSENT when the recognizers agreed (the common case stays untouched)", () => {
-    const s = buildAssistSystem({ hasContext: false });
+    const s = told({ hasContext: false });
     expect(s).not.toContain("candidates");
     expect(s).not.toContain("Candidate 1");
   });
@@ -83,10 +83,13 @@ describe("assist prompt — reconciliation block", () => {
   });
 
   it("settles what was said BEFORE the writing task, not after", () => {
-    // Reconciliation is a pre-step. Placed after the writing contract it reads
-    // as an afterthought about output rather than a decision about input.
-    const s = withAlt();
-    expect(s.indexOf("two candidates")).toBeLessThan(s.indexOf("Only words about how to write it"));
+    // Reconciliation is a pre-step. Placed after the other notes about the call
+    // it reads as an afterthought about output rather than a decision about
+    // input: it is the first of them, and the notes come ahead of what they said.
+    const d = dataFor({ hasContext: false, hasAlternative: true, script: "latin", targetApp: "Chrome" });
+    expect(d.indexOf("two candidates")).toBeGreaterThan(-1);
+    expect(d.indexOf("two candidates")).toBeLessThan(d.indexOf("arrived in latin script"));
+    expect(d.indexOf("two candidates")).toBeLessThan(d.indexOf("It goes in Chrome"));
   });
 
   it("never leaks the mechanism into the user's text", () => {
@@ -96,7 +99,7 @@ describe("assist prompt — reconciliation block", () => {
   it("still carries the writing contract alongside reconciliation", () => {
     // Fusion is a pre-step, not a replacement — the separation principle and
     // the observed script must survive it.
-    const s = buildAssistSystem({ hasContext: false, hasAlternative: true, script: "latin" });
+    const s = told({ hasContext: false, hasAlternative: true, script: "latin" });
     expect(s).toMatch(/When you cannot tell, it is their message/i);
     expect(s).toContain("arrived in latin script");
   });

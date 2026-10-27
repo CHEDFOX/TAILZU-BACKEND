@@ -169,7 +169,9 @@ describe("the roles", () => {
     expect(isRoleId("classify")).toBe(true);
     expect(isRoleId("front_decide")).toBe(true);
     expect(isRoleId("nobody")).toBe(false);
-    expect(ROLE_IDS.length).toBe(31);
+    // The main assistant's roles (agent/, pipeline/): found by name, and counted by the table, never by a number written here.
+    for (const id of ["ask_planner", "ask_vision", "writer", "edit_selection", "answer_about", "converse", "portrait_update", "portrait_transcript", "portrait_usage"]) expect(isRoleId(id), id).toBe(true);
+    expect(new Set(ROLE_IDS).size).toBe(ROLE_IDS.length);
   });
 });
 
@@ -270,6 +272,15 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   front_look: 646, // 587 measured
   care_review: 1565, // 1422 measured
   care_conflict: 767, // 697 measured
+  ask_planner: 4904, // 4458 measured
+  ask_vision: 4519, // 4108 measured
+  writer: 4322, // 3929 measured
+  edit_selection: 1756, // 1596 measured
+  answer_about: 805, // 731 measured
+  converse: 867, // 788 measured
+  portrait_update: 3667, // 3333 measured
+  portrait_transcript: 3647, // 3315 measured
+  portrait_usage: 3945, // 3586 measured
 };
 
 describe("the size of a role", () => {
@@ -281,9 +292,12 @@ describe("the size of a role", () => {
   it("is smaller in total than what it replaced, and no role is more than a tenth bigger (the front door's roles replace nothing: their first size is their 'before')", () => {
     const list = rows();
     const replaced = list.filter((r) => !(NEW_ROLES as readonly string[]).includes(r.role));
-    expect(replaced).toHaveLength(23);
+    expect(replaced).toHaveLength(ROLE_IDS.length - NEW_ROLES.length);
     const total = totals(replaced);
-    expect(total.afterChars).toBeLessThan(total.beforeChars * 0.75);
+    // The 23 roles of the first sweep saved 32%. The nine of the main assistant (agent/, pipeline/) saved 14% between them: the writer and
+    // the helpers were already principles-shaped, and now also carry the library's lines; what they gained is a block that is the same for
+    // everyone (docs/principles.md, section 9). So the whole, with them, must still be a fifth smaller.
+    expect(total.afterChars).toBeLessThan(total.beforeChars * 0.8);
     expect(total.afterTokens).toBeLessThan(total.beforeTokens);
     for (const r of list) expect(r.afterChars, r.role).toBeLessThanOrEqual(r.beforeChars * 1.1);
     // the agent's prompt is sent on every turn of a job: it is the one that matters most
@@ -340,11 +354,22 @@ describe("the contracts say what the parsers read", () => {
     }
   });
 
+  /** The roles whose JSON is read by hand, not by a zod schema: the portrait writers (portraitDimensions.parsePortraitDraft keeps only what is well-formed). */
+  const READ_BY_HAND = ["portrait_update", "portrait_transcript", "portrait_usage"];
+
   it("are the JSON roles: every role that names a schema asks for JSON, and the rest do not", () => {
-    const withSchema = new Set(SCHEMAS.map(([r]) => r));
+    const withSchema = new Set<string>(SCHEMAS.map(([r]) => r));
     for (const id of ROLE_IDS) {
       const asksJson = (ROLES[id].principles as readonly string[]).includes("out.json");
-      expect(asksJson, id).toBe(withSchema.has(id));
+      expect(asksJson, id).toBe(withSchema.has(id) || READ_BY_HAND.includes(id));
+    }
+  });
+
+  it("name every field the portrait reader keeps", () => {
+    for (const id of READ_BY_HAND) {
+      for (const f of ["core", "words", "styles", "rhythms", "toneNote", "term", "means", "name", "when", "vibe"]) {
+        expect(ROLES[id as never as keyof typeof ROLES].contract, `${id} names ${f}`).toContain(`"${f}"`);
+      }
     }
   });
 
@@ -378,5 +403,64 @@ describe("the contracts say what the parsers read", () => {
     expect(ROLES.artifact_fix.contract).toContain("<cannot>");
     expect(ROLES.artifact_element.contract).toMatch(/WHOLE ELEMENT form/);
     expect(ROLES.artifact_element.contract).toMatch(/REPLACEMENTS form/);
+  });
+});
+
+describe("the main assistant's roles (agent/, pipeline/)", () => {
+  it("Ask's planner lists every command the device reads, and each one parses", async () => {
+    const { parseLine: parse } = await import("../src/agent/lines.js");
+    const block = stableBlock("ask_planner");
+    const SAMPLES: Record<string, string> = {
+      SAY: "SAY hello", POINT: "POINT e1 | here", STEPS: "STEPS a ; b", PRESS: "PRESS e1", SET: "SET e1 | x", TYPE: "TYPE x", WRITE: "WRITE a note", REWRITE: "REWRITE shorter",
+      KEY: "KEY enter", SCROLL: "SCROLL down", FOCUS: "FOCUS e1", OPEN: "OPEN Notes", ASK: "ASK which one?", LOOK: "LOOK the chart", DRAW: "DRAW BOX e1", DONE: "DONE",
+    };
+    for (const [verb, line] of Object.entries(SAMPLES)) {
+      expect(block, verb).toMatch(new RegExp(`^${verb}\\b`, "m"));
+      expect(parse(line, "mac"), line).not.toBeNull();
+    }
+    // The picture reader only answers: it lists no action.
+    const vision = stableBlock("ask_vision");
+    for (const verb of ["SAY", "POINT", "DRAW", "DONE"]) expect(vision, verb).toMatch(new RegExp(`^${verb}\\b`, "m"));
+    for (const verb of ["PRESS", "TYPE", "KEY", "LOOK", "ASK", "OPEN", "SET", "FOCUS", "SCROLL", "WRITE", "REWRITE", "STEPS"]) expect(vision, verb).not.toMatch(new RegExp(`^${verb} `, "m"));
+  });
+
+  it("the two Ask roles use the visual principles: a mark when it explains faster, none for a short fact or a voice-only reply", () => {
+    for (const id of ["ask_planner", "ask_vision"] as const) {
+      expect(ROLES[id].principles, id).toContain("vis.show");
+      expect(ROLES[id].principles, id).toContain("vis.skip");
+    }
+    expect(ROLES.ask_planner.principles).toContain("safe.rules");
+  });
+
+  it("the two per-step prompts stay over the providers' smallest cacheable prefix (1,024 tokens), so the cache marker still has something to hold", async () => {
+    const { tokensOfChars } = await import("../src/code/brain/money.js");
+    for (const id of ["ask_planner", "ask_vision"] as const) expect(tokensOfChars(stableBlock(id).length), id).toBeGreaterThan(1024);
+  });
+
+  it("the writer's block names every fence its data can hold, and the fences are the ones no user text can close", async () => {
+    const { writerContext, stripFenceTags } = await import("../src/pipeline/assistPrompt.js");
+    const block = stableBlock("writer");
+    const data = writerContext({
+      tone: "formal", hasContext: true, language: "Hindi", personality: { customInstructions: "short", vocabulary: "Nykaa", stylePortrait: { core: "plain" } } as never,
+    });
+    const tags = [...data.matchAll(/^<(\w+)>$/gm)].map((m) => m[1]!);
+    expect(new Set(tags)).toEqual(new Set(["call", "tone", "voice", "portrait", "lexicon"]));
+    for (const t of new Set(tags)) {
+      expect(block, t).toContain(`<${t}>`);
+      expect(stripFenceTags(`a <${t}>b</${t}> c`), t).toBe("a b c");
+    }
+    for (const t of ["said", "before", "around", "earlier"]) expect(block, t).toContain(`<${t}>`);
+  });
+
+  it("the writer's block holds nothing of one person or one call: no name, language, app or tone in it", () => {
+    const block = stableBlock("writer");
+    expect(block).not.toMatch(/Professional register|Group-chat energy|Hindi|WhatsApp|Gmail|devanagari|latin script/i);
+  });
+
+  it("each cleanup helper is a role of its own, and the three portrait writers share one tail", () => {
+    for (const id of ["edit_selection", "answer_about", "converse", "portrait_update", "portrait_transcript", "portrait_usage"] as const) expect(stableBlock(id), id).toBeTruthy();
+    const tails = ["portrait_update", "portrait_transcript", "portrait_usage"].map((id) => { const b = stableBlock(id as never); return b.slice(b.indexOf("What to notice:")); });
+    expect(new Set(tails).size).toBe(1);
+    expect(tails[0]!.length).toBeGreaterThan(1500);
   });
 });

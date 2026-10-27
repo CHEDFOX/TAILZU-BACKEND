@@ -37,6 +37,11 @@ clearAppEnv(process.env);
 // that; every other file sees the limits it was written against.
 process.env.FREE_FOR_ALL = "false";
 
+// The project brain reads code with tree-sitter where it can (src/code/project/treesitter). The brain's older tests were written against the regex readers and
+// build a brain in nearly every file, each paying to start the parser: they run on the regexes, which are also what ships as the fallback. The tests that
+// are about the parser (tests/code-project-treesitter*.test.ts) turn it on for themselves.
+process.env.CODE_TREE_SITTER = "false";
+
 // The brain's circuit breakers (guard/breaker.ts) are the process's, and a test that fails a model on purpose many times would otherwise
 // leave the next one with that model skipped. Every test starts with every breaker closed.
 beforeEach(() => { resetBreakersForTests(); });

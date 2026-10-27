@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { converseSystem, languageName, spokenLanguage } from "../src/pipeline/cleanup";
+import { converseContext, languageName, spokenLanguage } from "../src/pipeline/cleanup";
+import { stableBlock } from "../src/principles/roles";
 import { buildScreen, buildKeyboardConfig, speechLocale } from "../src/experience/catalog";
 
 describe("the spoken training partner speaks the user's language", () => {
@@ -9,19 +10,22 @@ describe("the spoken training partner speaks the user's language", () => {
     expect(languageName("hinglish")).toMatch(/Hinglish/);
     expect(languageName("auto")).toBeNull();
     expect(languageName(undefined)).toBeNull();
-    // The saved language only opens the conversation; it is named, not coded.
-    expect(converseSystem("hi")).toContain("Until they speak, use Hindi.");
-    expect(converseSystem("hi")).not.toContain("use hi.");
-    expect(converseSystem("auto")).toContain("Always answer in the language they last spoke");
+    // The saved language only opens the conversation; it is named, not coded. It is a note after the stable block.
+    expect(converseContext("hi")).toContain("Until they speak, use Hindi.");
+    expect(converseContext("hi")).not.toContain("use hi.");
+    expect(stableBlock("converse")).not.toContain("Hindi");
+    // With none saved there is no note, and the block alone says to answer in what they last spoke.
+    expect(converseContext("auto")).toBe("");
+    expect(stableBlock("converse")).toContain("answer in the one they last spoke, in the same script");
   });
 
   it("answers in what they are speaking, not in what the account says", () => {
     // Saved as English; they spoke Bengali. The Bengali wins.
-    const s = converseSystem("en", "আমি আজ অফিসে অনেক কাজ করেছি");
+    const s = converseContext("en", "আমি আজ অফিসে অনেক কাজ করেছি");
     expect(s).toContain("They are speaking Bengali");
     expect(s).not.toContain("Until they speak");
-    expect(converseSystem("en", "aaj kaam bahut tha yaar, thak gaya hoon")).toContain("Hinglish");
-    expect(converseSystem("hi", "I had a long day at work")).not.toMatch(/They are speaking/);
+    expect(converseContext("en", "aaj kaam bahut tha yaar, thak gaya hoon")).toContain("Hinglish");
+    expect(converseContext("hi", "I had a long day at work")).not.toMatch(/They are speaking/);
   });
 
   it("names the voice for a reply by the reply's own script", () => {

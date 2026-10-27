@@ -21,7 +21,7 @@ process.env.DEV_SKIP_AUTH = "true";
 process.env.MEDIA_DIR = "/tmp/tailzu-test-media";
 process.env.NODE_ENV = "test";
 
-const seen = vi.hoisted(() => ({ systems: [] as string[] }));
+const seen = vi.hoisted(() => ({ systems: [] as string[], users: [] as string[] }));
 vi.mock("openai", () => ({
   default: class {
     audio = { transcriptions: { create: async () => ({ text: "" }) } };
@@ -29,6 +29,7 @@ vi.mock("openai", () => ({
       completions: {
         create: async (req: { messages: Array<{ content: string }> }) => {
           seen.systems.push(req.messages[0]!.content);
+          seen.users.push(req.messages[1]!.content);
           return { choices: [{ message: { content: "Hey, how are you?" } }] };
         },
       },
@@ -44,6 +45,7 @@ vi.mock("groq-sdk", () => ({
 }));
 
 const { toneGuidance } = await import("../src/pipeline/assistPrompt.js");
+const { WRITER } = await import("./writer-prompt.js");
 const { buildApp } = await import("../src/server.js");
 
 const WARMTH = "Write with warmth";
@@ -92,13 +94,16 @@ describe("through the routes the desktop calls", () => {
     expect(put.statusCode).toBe(200);
   });
   afterAll(async () => { await app.close(); });
-  beforeEach(() => { seen.systems.length = 0; });
+  beforeEach(() => { seen.systems.length = 0; seen.users.length = 0; });
 
   it("POST /v1/refine/none writes in the account's voice", async () => {
     const res = await app.inject({ method: "POST", url: "/v1/refine/none", payload: { text: "hey how are you", targetApp: "Desktop" } });
     expect(res.statusCode).toBe(200);
-    expect(seen.systems[0]).toContain(WARMTH);
-    expect(seen.systems[0]).not.toMatch(ZU_NONE);
+    // The voice is data after the stable block, which is the same bytes for this account and every other.
+    expect(seen.systems[0]).toBe(WRITER);
+    expect(seen.systems[0]).not.toContain(WARMTH);
+    expect(seen.users[0]).toContain(WARMTH);
+    expect(seen.users[0]).not.toMatch(ZU_NONE);
     expect(res.json().joinWithSpace).toBe(false);   // no context sent
   });
 
@@ -116,8 +121,9 @@ describe("through the routes the desktop calls", () => {
       headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
     });
     expect(res.statusCode).toBe(200);
-    expect(seen.systems[0]).toContain(WARMTH);
-    expect(seen.systems[0]).not.toMatch(ZU_NONE);
+    expect(seen.systems[0]).toBe(WRITER);
+    expect(seen.users[0]).toContain(WARMTH);
+    expect(seen.users[0]).not.toMatch(ZU_NONE);
     const json = res.json();
     expect(json.cleanedText).toBe("Hey, how are you?");
     expect(json.joinWithSpace).toBe(true);

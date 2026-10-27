@@ -29,6 +29,7 @@ import { projectDepsOf } from "../jobs/index.js";
 import { jobStore, type JobStore } from "../jobs/store.js";
 import { brainOf, type AgentBrain, type AgentDeps, type DesignDeps } from "./deps.js";
 import { MemoryInbox, type LiveDeps } from "../live/ports.js";
+import type { ContextStrategy } from "./mask.js";
 import { AgentOrchestrator, type RemoteJobs } from "./orchestrator.js";
 import { rewindStore, type RewindStore } from "./rewind.js";
 import { routerRunner, type AgentRunner } from "./runner.js";
@@ -40,6 +41,7 @@ export * from "./context.js";
 export * from "./deps.js";
 export * from "./design.js";
 export * from "./loop.js";
+export * from "./mask.js";
 export * from "./orchestrator.js";
 export * from "./phases.js";
 export * from "./report.js";
@@ -77,6 +79,8 @@ export interface CreateAgentOptions extends Partial<Pick<AgentDeps, "call" | "ga
   live?: LiveDeps;
   /** The design round's compare step and links (agent/design.ts). */
   design?: DesignDeps;
+  /** What becomes of a tool result once it is older than the last six: "mask", "summary" or "hybrid" (agent/mask.ts). Instead of CODE_CONTEXT_STRATEGY, for a harness that compares them. */
+  contextStrategy?: ContextStrategy;
 }
 
 /** The worker, or null when this server cannot run one (no GitHub client, or the project brain is off). */
@@ -95,6 +99,7 @@ export function createAgent(o: CreateAgentOptions): AgentOrchestrator | null {
     ...(o.routeStats ? { routeStats: o.routeStats } : {}), ...(o.notify ? { notify: o.notify } : {}), ...(o.log ? { log: o.log } : {}),
     ...(o.live ? { live: o.live } : o.passive || o.remote ? {} : { live: { inbox: new MemoryInbox() } }),
     ...(o.design ? { design: o.design } : {}),
+    ...(o.contextStrategy ? { contextStrategy: o.contextStrategy } : {}),
   };
   return new AgentOrchestrator({
     jobs: o.jobs, store, deps, concurrency: o.concurrency ?? getConfig().CODE_AGENT_CONCURRENCY,

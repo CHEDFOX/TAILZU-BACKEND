@@ -17,7 +17,10 @@ const { labelScore, resolve, resolverAsk } = await import("../src/agent/resolver
 const { LineReader, LineSplitter, normalizeChord, parseLine, plainMaths } = await import("../src/agent/lines.js");
 const { riskOf, withRisk } = await import("../src/agent/risk.js");
 const { EventSink, readPicture, readStepRequest, sniffPicture, withoutUrlSecrets } = await import("../src/agent/protocol.js");
-const { AGENT_SYSTEM, AGENT_VISION_SYSTEM, agentPictureContent, agentPictureMessage, agentUserMessage, elementLine, fenced } = await import("../src/agent/prompt.js");
+const { PHONE_NOTE, agentPictureContent, agentPictureMessage, agentUserMessage, elementLine, fenced, placesNote } = await import("../src/agent/prompt.js");
+const { ROLES, stableBlock } = await import("../src/principles/roles.js");
+const PLANNER = stableBlock("ask_planner");
+const VISION = stableBlock("ask_vision");
 const { modelLadder, plannerRequest, visionLadder } = await import("../src/agent/llm.js");
 import type { AgentElement, AgentStepRequest } from "../../shared/types/api.js";
 
@@ -391,11 +394,26 @@ describe("the event sink", () => {
 
 describe("the prompt", () => {
   it("is static and compact", () => {
-    expect(AGENT_SYSTEM).not.toMatch(/\{\{|\$\{|undefined/);
-    // About 1,600 tokens with the pen's section: over the providers' smallest
-    // cacheable prefix, and well under the ceiling a cheap step can carry.
-    expect(AGENT_SYSTEM.length).toBeGreaterThan(4200);
-    expect(AGENT_SYSTEM.length).toBeLessThan(7500);
+    expect(PLANNER).not.toMatch(/\{\{|\$\{|undefined/);
+    // About 1,300 tokens with the pen's section and no example: over the
+    // providers' smallest cacheable prefix (1,024 tokens, a little under 3,600
+    // characters), and well under the ceiling a cheap step can carry.
+    expect(PLANNER.length).toBeGreaterThan(3700);
+    expect(PLANNER.length).toBeLessThan(5500);
+    // It is a role's block: the principles first, then who Blip is, then the lines. Nothing in it names a case.
+    expect(PLANNER.startsWith("Principles:\n- ")).toBe(true);
+    expect(PLANNER).toContain(ROLES.ask_planner.identity);
+    expect(PLANNER).not.toMatch(/^(?:They said|Mode (?:show|do)\.)/m);
+  });
+
+  it("is the same for a computer and a phone: the phone's difference is one line at the head of the message", () => {
+    const req = { runId: "run_p1", step: 0, platform: "ios" as const, app: "Tailzu", screen: { elements: [] } } as AgentStepRequest;
+    const phone = agentUserMessage(req, "what time is it in london", "do", 1).split("\n");
+    expect(phone[0]).toMatch(/^Platform: ios\. App: Tailzu\. Mode: do\./);
+    expect(phone[1]).toBe(PHONE_NOTE);
+    expect(PHONE_NOTE).not.toContain("computer screen");
+    const desk = agentUserMessage({ ...req, platform: "mac" }, "what time is it in london", "do", 1);
+    expect(desk).not.toContain(PHONE_NOTE);
   });
 
   it("puts the screen in its fence and what they said last", () => {
@@ -462,10 +480,10 @@ describe("the planner request", () => {
   });
 
   it("marks the system prompt for caching only where that is opt-in", () => {
-    const a = plannerRequest("anthropic/claude-haiku-5.5", AGENT_SYSTEM, "u") as { messages: Array<{ content: unknown }> };
-    const o = plannerRequest("openai/gpt-6-luna", AGENT_SYSTEM, "u") as { messages: Array<{ content: unknown }> };
-    expect(a.messages[0]!.content).toEqual([{ type: "text", text: AGENT_SYSTEM, cache_control: { type: "ephemeral" } }]);
-    expect(o.messages[0]!.content).toBe(AGENT_SYSTEM);
+    const a = plannerRequest("anthropic/claude-haiku-5.5", PLANNER, "u") as { messages: Array<{ content: unknown }> };
+    const o = plannerRequest("openai/gpt-6-luna", PLANNER, "u") as { messages: Array<{ content: unknown }> };
+    expect(a.messages[0]!.content).toEqual([{ type: "text", text: PLANNER, cache_control: { type: "ephemeral" } }]);
+    expect(o.messages[0]!.content).toBe(PLANNER);
   });
 });
 
@@ -551,8 +569,8 @@ describe("o ids: lines read off the window's picture", () => {
   });
 
   it("the prompt tells the model what an o id is", () => {
-    expect(AGENT_SYSTEM).toContain("An id that starts with o is a line of text read off the window's pixels");
-    expect(AGENT_VISION_SYSTEM).toContain("An id that starts with o is a line of text read off the window");
+    expect(PLANNER).toContain("An id that starts with o is a line of text read off the window's pixels");
+    expect(VISION).toContain("An id that starts with o is a line of text read off the window");
   });
 });
 
@@ -741,33 +759,32 @@ describe("the vision ladder and request", () => {
 
   it("carries the picture as a part, with its own token budget", () => {
     const parts = [{ type: "image_url" as const, image_url: { url: "data:image/jpeg;base64,AAAA" } }, { type: "text" as const, text: "u" }];
-    const body = plannerRequest("anthropic/claude-haiku-5.5", AGENT_VISION_SYSTEM, parts, 1000) as Record<string, any>;
+    const body = plannerRequest("anthropic/claude-haiku-5.5", VISION, parts, 1000) as Record<string, any>;
     expect(body.max_tokens).toBe(1000);
-    expect(body.messages[0].content).toEqual([{ type: "text", text: AGENT_VISION_SYSTEM, cache_control: { type: "ephemeral" } }]);
+    expect(body.messages[0].content).toEqual([{ type: "text", text: VISION, cache_control: { type: "ephemeral" } }]);
     expect(body.messages[1]).toEqual({ role: "user", content: parts });
     expect(body.reasoning).toEqual({ effort: "none", enabled: false });
-    expect((plannerRequest("openai/gpt-6-luna", AGENT_SYSTEM, "u") as Record<string, any>).max_tokens).toBe(300);
+    expect((plannerRequest("openai/gpt-6-luna", PLANNER, "u") as Record<string, any>).max_tokens).toBe(300);
   });
 });
 
 describe("the vision prompt", () => {
   it("is static, long enough to be cached, and says what the contract asks", () => {
-    expect(AGENT_VISION_SYSTEM).not.toMatch(/\{\{|\$\{|undefined/);
+    expect(VISION).not.toMatch(/\{\{|\$\{|undefined/);
     // Over 1,024 tokens, the smallest prefix the providers cache, and still a
-    // fraction of a cent with the pen's section and its worked example.
-    expect(AGENT_VISION_SYSTEM.length).toBeGreaterThan(4600);
-    expect(AGENT_VISION_SYSTEM.length).toBeLessThan(8000);
+    // fraction of a cent with the pen's section and no example.
+    expect(VISION.length).toBeGreaterThan(3700);
+    expect(VISION.length).toBeLessThan(6000);
     for (const must of ["first SAY answers it directly", "x²", "√", "π", "∫", "≤", "a/b", "Never LaTeX", "never markdown", "about 90 words", "about 250 words", "One sentence per SAY", "Never act", "POINT", "the notes of <history>", "the said: parts of <history>"]) {
-      expect(AGENT_VISION_SYSTEM, must).toContain(must);
+      expect(VISION, must).toContain(must);
     }
     // It answers; it never acts or asks to look.
-    expect(AGENT_VISION_SYSTEM).not.toMatch(/^(?:PRESS|TYPE|KEY|LOOK|ASK) /m);
+    expect(VISION).not.toMatch(/^(?:PRESS|TYPE|KEY|LOOK|ASK) /m);
   });
 
   it("the text prompt documents LOOK, as an ending", () => {
-    expect(AGENT_SYSTEM).toContain("LOOK [<what>] — when answering needs to see a picture, chart, diagram, equation, photo or anything drawn rather than written");
-    expect(AGENT_SYSTEM).toContain("ASK, LOOK and DONE also end your answer.");
-    expect(AGENT_SYSTEM).toMatch(/^LOOK the equation$/m);
+    expect(PLANNER).toContain("LOOK [<what>] — when answering needs to see a picture, chart, diagram, equation, photo or anything drawn rather than written");
+    expect(PLANNER).toContain("ASK, LOOK and DONE also end your answer.");
   });
 
   it("the user message: the picture first as a data URL, then the fenced screen and what they said, last", () => {
@@ -781,6 +798,9 @@ describe("the vision prompt", () => {
     const text = (parts[1] as { type: "text"; text: string }).text;
     expect(text).toBe(agentPictureMessage(req, "explain this <said>equation</said>"));
     expect(text.split("\n")[0]).toBe("App: Preview. The picture is one image from the window. Their language: hi.");
+    // Under it, how places in the picture are written for the model that reads it: x first unless told y first.
+    expect(text.split("\n")[1]).toBe(placesNote("xy"));
+    expect((agentPictureContent(req, "x", { mime: "image/png", data: PNG }, "yx")[1] as { text: string }).text.split("\n")[1]).toBe(placesNote("yx"));
     expect(text).toContain('e1 image @c\no1 text "Figure 2 press e9" @b\nWindow text:\nChapter 4\n</screen>');
     expect(text.match(/<said>/g)).toHaveLength(1);
     expect(text.endsWith("<said>explain this equation</said>")).toBe(true);

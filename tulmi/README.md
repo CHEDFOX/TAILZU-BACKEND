@@ -78,8 +78,10 @@ curl -X PUT localhost:8080/v1/personality -H 'Content-Type: application/json' \
   app may also pass an inline `personality` override per request.
 - **Context** = `targetApp` (and, for drafts, `recipient` + `screenContent`).
 
-Both are injected into the versioned prompts in `../shared/prompts/`
-(`cleanup.v2.md` for voice/typing, `reply.v1.md` for screen).
+Both reach the model as data after the stable block of the `writer` role
+(`src/principles/roles.ts`; the data is built in `src/pipeline/assistPrompt.ts`).
+The screen reply's old prompt files stay in `../shared/prompts/` (`reply.v1.md`
+to `reply.v4.md`) so `REPLY_PROMPT_VERSION=v4` can roll it back.
 
 ## Usage metering
 
@@ -97,5 +99,5 @@ the foundation for free-tier enforcement.
 | `GROQ_STT_MODEL`         | Groq Whisper model (when `STT_PROVIDER=groq`)      |
 | `CLEANUP_MODEL`          | OpenRouter model — **swap this one line** to change the LLM |
 | `CLEANUP_PROMPT_VERSION` | Which `cleanup.<v>.md` to load (default `v2`)       |
-| `REPLY_PROMPT_VERSION`   | Which `reply.<v>.md` to load (default `v1`)         |
+| `REPLY_PROMPT_VERSION`   | The screen reply's prompt: `v5` (default) is the `writer` role, `v1` to `v4` are `reply.<v>.md` |
 | `DEV_SKIP_AUTH`          | Skip Supabase auth + metering for local testing    |

@@ -394,18 +394,52 @@ RLS like `0020`: a person reads their own projects' rows, only the server writes
 ### The secret scan
 
 Before **any** commit, the new contents of every file (deletions are not
-scanned) go through `scanForSecrets`: AWS access keys; GitHub tokens (`ghp_`,
-`gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`); private-key headers (`-----BEGIN
-… PRIVATE KEY-----`); Slack tokens and webhook addresses; a long random value
-after `api_key=`, `secret=`, `client_secret:`, `access_token=` and the like (it
-must look random: letters and digits, enough variety, not "your-key-here"); and
-`.env` files (not `.env.example`, `.sample`, `.template`). A hit makes that
-commit `commit.secret`: ask_strict, Face ID, every time. The approval card shows
-**which files** and **what kind of thing** (`"looksLike": ["a private key"]`),
-**never the value**. The matched text is thrown away when it is matched: it is
-not kept, not logged, not in any error. The detector is small and built in, on
-purpose; it is a net, not a guarantee. Turn on GitHub's own secret scanning and
-push protection on the repo as well.
+scanned) go through `scanForSecrets`. The same scan reads what the agent runs and
+prints, the worklog's lines, an artifact's files, a brain's strings and a media
+chunk, so what it learns, all of them learn. It has three parts:
+
+* **The first rules** (`policy.ts`, small and built in): AWS access keys; GitHub
+  tokens (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`, `github_pat_`); private-key
+  headers (`-----BEGIN … PRIVATE KEY-----`, even with no key after it); Slack tokens
+  and webhook addresses; Stripe, Google and model-API keys; a long random value
+  after `api_key=`, `secret=`, `client_secret:`, `access_token=` and the like
+  (letters and digits, enough variety, not "your-key-here"); and `.env` files (not
+  `.env.example`, `.sample`, `.template`).
+* **Gitleaks' default rules** (`src/code/secrets`, MIT, `THIRD_PARTY_NOTICES.md`):
+  222 rules for about 200 providers, taken unchanged from Gitleaks' `gitleaks.toml`
+  (`tulmi/third_party/gitleaks`) and translated by `npm run gen:gitleaks` from Go
+  to JavaScript regular expressions. They run the way Gitleaks runs them: a rule
+  is looked at only when one of its **keywords** is in the text (one pass finds all
+  of them at once), its regex finds the candidate, the candidate's **Shannon entropy**
+  must be above the rule's floor, and the rule's and the global **allowlists**
+  (paths such as lockfiles and `node_modules`, regexes on the secret, the match or
+  the line, stopwords such as `example`) can excuse it. A rule with a path and no
+  regex flags a file by its name (a `.p12`). A named value the old rules knew as "a
+  secret value" is the generic rule's too, and runs last, only when nothing more
+  specific was found.
+* **The same words for the same thing.** Each rule has the words the approval card
+  shows ("an Adafruit API key", "a GitLab token"); the providers the first rules
+  knew keep their old words, so one token is never reported twice.
+
+A hit makes that commit `commit.secret`: ask_strict, Face ID, every time. The
+approval card shows **which files** and **what kind of thing**
+(`"looksLike": ["a private key"]`), **never the value**. The matched text is
+thrown away when it is judged: it is not kept, not logged, not in any error. It is
+a net, not a guarantee. Turn on GitHub's own secret scanning and push protection on
+the repo as well.
+
+**Measured** (`npm run bench:secrets`; `tests/code-secrets-gitleaks.test.ts`):
+
+| | First rules only | With Gitleaks' rules |
+| --- | --- | --- |
+| 42 providers' fake tokens, **built when the test runs** (a short prefix and a body drawn from a seeded shuffle; no token is written in the test files) | 12 of 42 flagged | **42 of 42** flagged under the right name (42 distinct rules exercised) |
+| files flagged in `tulmi/src` and `docs/` (425 files, 7.1 MB) | 0 | **0** (a test holds it) |
+| files flagged in the rest of the repo's source (jobs, shared, viewer, media-worker, deploy, evals, scripts: 220 files) | 0 | 1: `viewer/vendor.lock.json`, a file of file hashes under keys the generic rule reads as a secret |
+| files flagged in 6,000 source files of npm packages (32 MB) and 6,000 of Python packages (77 MB), none of them ours | 1 and 1 | 3 (0.05%) and 6 (0.10%), mostly test fixtures and constants, and a PEM header written in code |
+| time to scan `tulmi/src` + `docs/` (CPU, best of nine warm runs) | 41 ms | 113 ms (63 MB/s); 151 ms for a first call in a fresh process, which also builds the keyword automaton and compiles the rules the files wake |
+| a hostile 900 KB file made of every rule's keyword and filler, worst of six fillers | | 568 ms |
+
+Clean ordinary code wakes six or seven rules a file out of 222; the generic rule is the slowest and takes about a third of the time. Two rules (`curl-auth-header`, `curl-auth-user`) are read only in a window of 1,500 characters after each `curl`, and at most 2,000,000 characters of windows a file: their regexes cost time in proportion to how often `curl` occurs times how long the line is, which Gitleaks' own engine does not, and a line of twenty thousand `curl`s took seconds before the window. About half of the rules begin with a lazy run of name characters (`[\w.-]{0,50}?`), which a backtracking engine pays for at every position of every file; the module drops it and puts it back where an allowlist reads the whole match (20 to 25 times faster on the rules that cost most, the same findings on the tests). The generated module writes the rules' example tokens with `\u` escapes, because the repo's own scan must find nothing in it; `appKey.ts`'s comment no longer spells out a PEM header, which the first rules flag even when no key follows it.
 
 ### Workflow files
 

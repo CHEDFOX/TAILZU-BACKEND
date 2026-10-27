@@ -45,6 +45,8 @@ export const ROLE_TIER: Readonly<Record<RoleId, ModelTier>> = {
   artifact_vision: "vision", artifact_compare: "vision",
   front_decide: "tiny", front_reply: "cheap", front_code_answer: "cheap", front_diagram: "cheap", front_plan: "cheap", front_look: "vision",
   care_review: "cheap", care_conflict: "cheap",
+  ask_planner: "cheap", ask_vision: "vision", writer: "cheap", edit_selection: "cheap", answer_about: "cheap", converse: "cheap",
+  portrait_update: "code", portrait_transcript: "code", portrait_usage: "code",
 };
 
 /** The most each role may write, so a call's worst case stays small. */

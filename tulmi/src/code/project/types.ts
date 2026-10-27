@@ -32,6 +32,12 @@ export const FILES_MAX = 20_000;
 export const TEXT_MAX_BYTES = 60 * 1024 * 1024;
 /** A file bigger than this is not read. */
 export const FILE_READ_MAX = 512 * 1024;
+/**
+ * On a Cloudflare Worker (128 MB for the isolate) a build that holds more text than this in memory does not also load the parser: the engine and one
+ * grammar take about 40 MB of it (measured in workerd, jobs/src/grammars.ts), and the build's text is the larger part of what the isolate holds. Such a
+ * repo is read by the regexes, as it was before the parser.
+ */
+export const PARSER_WORKER_TEXT_MAX = 32 * 1024 * 1024;
 /** The first bytes looked at for a NUL, which makes a file binary. */
 export const BINARY_SNIFF_BYTES = 8 * 1024;
 /** An incremental build with this many changed files or fewer asks for the blobs one by one; more takes the tarball again. */
@@ -58,6 +64,8 @@ export const TEXTS_PER_FILE = 200;
 export const TEXTS_PER_PROJECT = 30_000;
 /** Symbols kept per file. */
 export const SYMBOLS_PER_FILE = 120;
+/** Names a file refers to that are kept for the repo map (the definition/reference graph), most telling first. */
+export const REFS_PER_FILE = 120;
 /** A project's rules, from the agent docs the repo already has: per document and in all. */
 export const RULES_DOC_CHARS = 6000;
 export const RULES_TOTAL_CHARS = 16_000;
@@ -85,6 +93,8 @@ export interface SymbolInfo {
   /** A route: the verb ("GET", "ANY"...) and the path as written. */
   method?: string;
   path?: string;
+  /** The last line of the definition, when a parser read the file (tree-sitter). Absent when a regex did: a regex knows where a thing starts, not where it ends. */
+  endLine?: number;
 }
 
 /** What a file is, by its path. */
@@ -108,6 +118,12 @@ export interface StoredFile {
   /** The test files that cover it. */
   tests: string[];
   summary: string;
+  /**
+   * The names it refers to (calls, new, types, JSX tags, base classes) with how often, when a parser read it: the references half of the repo
+   * map's definition/reference graph (repomap.ts). Names, not files: which file a name means is decided when the map is made, against the
+   * definitions the repo has by then, so a file added later is found by files that were not rebuilt. Absent when a regex read the file.
+   */
+  refs?: Array<[string, number]>;
 }
 
 export interface StoredDir { path: string; treeSha: string; summary: string }

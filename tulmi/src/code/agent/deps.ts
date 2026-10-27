@@ -32,6 +32,7 @@ import type { WorklogStore } from "../work/index.js";
 import type { findResources } from "../resources/finder.js";
 import type { CompareHook } from "../../artifacts/build.js";
 import type { LiveDeps } from "../live/ports.js";
+import type { ContextStrategy } from "./mask.js";
 import type { AgentRunner } from "./runner.js";
 import type { RewindStore } from "./rewind.js";
 import type { SettingsStore } from "./settings.js";
@@ -95,6 +96,8 @@ export interface AgentDeps {
   live?: LiveDeps;
   /** The design round (agent/design.ts) for a job built from an approved design. Absent: the round is skipped, and the report says so. */
   design?: DesignDeps;
+  /** What becomes of a tool result once it is older than the last six (agent/mask.ts): instead of CODE_CONTEXT_STRATEGY, for a harness that compares them. */
+  contextStrategy?: ContextStrategy;
   now: () => number;
   sleep: (ms: number) => Promise<void>;
   log?: AgentLog;

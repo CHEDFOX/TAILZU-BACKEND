@@ -3,8 +3,9 @@
  *
  *   image       the VISION tier, once: "describe what is there" (role front_look). The description is what a reply is made from
  *   text, code  read directly (no model), capped, decoded as text; for a question, only the relevant windows of it are sent on
- *   audio, video, pdf, other
- *               a clear "coming soon" until the media feature ships; no model is called and nothing is guessed
+ *   audio, video, pdf, document, data, archive, other
+ *               the media feature (src/media, docs/media.md) registers a handler for each; without it a clear "coming soon", with no model
+ *               called and nothing guessed
  *
  * An AttachmentRef is the file's metadata: id, kind, mime, bytes, sha256, name. The bytes themselves come with the request (`data`,
  * base64) the first time. What was read is KEPT BY SHA-256 (per person), so the same file in a later message is read once: a follow-up
@@ -15,7 +16,10 @@
  * 1 MB (the first 200,000 characters are read), at most 3,500 characters of a file reach a model, and a text the secret scan flags
  * is not sent at all (code/work/model.ts forModel).
  *
- * The handlers are a registry, so the media feature adds a kind by registering one. Nothing here reads the environment or a store.
+ * The handlers are a registry, so the media feature adds a kind by registering one. A handler that keeps its own files (the media one: bytes in a
+ * bucket, text and chunks in the database, read once by SHA-256 for good and not for half an hour) has an `open`, and the registry hands the whole
+ * reading to it. The registry can also be given `retype`, which decides a file's kind from its bytes and not from what the client claimed.
+ * Nothing here reads the environment or a store.
  */
 import { createHash } from "node:crypto";
 import type { Budget } from "../code/brain/gateway.js";
@@ -23,6 +27,7 @@ import { forModel } from "../code/work/model.js";
 import { CAP_PAISE } from "../artifacts/types.js";
 import { askText, type FrontModel } from "./model.js";
 import { comingSoon, type Lang } from "./words.js";
+import type { DataTable } from "../media/types.js";
 import { ATTACHMENT_KINDS, type AttachmentKind, type AttachmentRef, type FileNote } from "./types.js";
 
 export const ATTACHMENTS_MAX = 4;
@@ -58,9 +63,31 @@ export interface Extracted {
   paise: number;
 }
 
+/** What a handler that keeps its own files gives back: the part that matters, already wrapped for a model, and anything it found worth a visual. */
+export interface Opened {
+  text: string;
+  status: "read" | "described" | "cached";
+  note?: string;
+  paise: number;
+  /** Tables read from a spreadsheet or a CSV: a chart or a table artifact can be made from them. */
+  tables?: DataTable[];
+}
+
+export type OpenOutcome = { ok: true; opened: Opened } | { ok: false; status: "unreadable" | "too_big" | "missing"; note: string };
+
 export interface AttachmentHandler {
   readonly kinds: readonly AttachmentKind[];
   extract(input: { ref: AttachmentRef; data: Buffer }, ctx: ReadCtx): Promise<Extracted>;
+  /**
+   * For a handler that keeps its own files: reads (or recalls, by checksum) the file and returns the part a question is about. The registry's own
+   * cache, size caps and `extract`/`relevant` are then not used for its kinds. `data` is absent when the file was read in an earlier message.
+   */
+  open?(input: { userId: string; ref: AttachmentRef; data?: Buffer; question: string }, ctx: ReadCtx): Promise<OpenOutcome>;
+  /**
+   * For a handler with an `open` that took the place of another for these kinds: whether it takes a file that came with its bytes. False hands the file
+   * back to the handler it replaced (media: a small text or code file is read the front door's own way, kept in memory, with its lines numbered).
+   */
+  takes?(ref: AttachmentRef, data: Buffer): boolean;
   /** The part of the extracted text that matters for the question; the text cut to size when a handler has no better idea. */
   relevant?(text: string, question: string, max: number, kind: AttachmentKind): string;
 }
@@ -253,38 +280,73 @@ export interface ReadResult {
   files: ReadFile[];
   notes: FileNote[];
   paise: number;
+  /** Tables read from the spreadsheets and CSVs among the files, the first file's first. */
+  tables: DataTable[];
 }
 
 export const sha256Of = (data: Buffer): string => createHash("sha256").update(data).digest("hex");
 
 export class AttachmentRegistry {
   private readonly handlers = new Map<AttachmentKind, AttachmentHandler>();
+  /** The handler an `open` handler replaced for a kind: it still reads what the newcomer does not take, and what it read lately. */
+  private readonly bases = new Map<AttachmentKind, AttachmentHandler>();
   readonly cache: AttachmentCache;
+  private retype: ((ref: AttachmentRef, data: Buffer) => AttachmentKind) | undefined;
 
-  constructor(o: { cache?: AttachmentCache; handlers?: readonly AttachmentHandler[] } = {}) {
+  constructor(o: {
+    cache?: AttachmentCache; handlers?: readonly AttachmentHandler[];
+    /** The kind of a file from its bytes. What the client said it was (`ref.kind`) is a claim; with this, only the bytes count. */
+    retype?: (ref: AttachmentRef, data: Buffer) => AttachmentKind;
+  } = {}) {
     this.cache = o.cache ?? new AttachmentCache();
+    this.retype = o.retype;
     for (const h of o.handlers ?? [textHandler, imageHandler]) this.register(h);
   }
 
+  /** From now on a file's kind is decided from its bytes (media/attach.ts). */
+  useRetype(fn: (ref: AttachmentRef, data: Buffer) => AttachmentKind): void { this.retype = fn; }
+
   /** A handler for the kinds it names; the media feature registers its own for audio, video and PDFs. */
   register(h: AttachmentHandler): void {
-    for (const k of h.kinds) this.handlers.set(k, h);
+    for (const k of h.kinds) {
+      const prev = this.handlers.get(k);
+      if (h.open && prev && !prev.open) this.bases.set(k, prev);
+      this.handlers.set(k, h);
+    }
   }
 
   handles(kind: AttachmentKind): boolean { return this.handlers.has(kind); }
 
   async read(userId: string, inputs: readonly AttachmentInput[], ctx: ReadCtx): Promise<ReadResult> {
-    const out: ReadResult = { files: [], notes: [], paise: 0 };
+    const out: ReadResult = { files: [], notes: [], paise: 0, tables: [] };
     for (const [i, input] of inputs.entries()) {
-      const { ref, data } = input;
+      const { data } = input;
+      // What the client says a file is can be wrong or a lie; with a typer, the bytes decide.
+      const typed = data && this.retype ? this.retype(input.ref, data) : input.ref.kind;
+      const ref: AttachmentRef = typed === input.ref.kind ? input.ref : { ...input.ref, kind: typed };
       const note = (status: FileNote["status"], words?: string): void => { out.notes.push({ id: ref.id, name: ref.name, kind: ref.kind, status, ...(words ? { note: words } : {}) }); };
       if (i >= ATTACHMENTS_MAX) { note("too_big", `Only the first ${ATTACHMENTS_MAX} files of a message are read.`); continue; }
-      const handler = this.handlers.get(ref.kind);
+      let handler = this.handlers.get(ref.kind);
       if (!handler) { note("coming_soon", comingSoon(ref.kind, ctx.lang)); continue; }
 
       // The checksum the cache is keyed on is the computed one. A client's that does not match the bytes is a file that is not what it says.
       const sha = data ? sha256Of(data) : ref.sha256;
       if (data && sha !== ref.sha256) { note("unreadable", "The file does not match its checksum, so it was not read."); continue; }
+
+      // A file the handler it replaced read lately (kept in memory), or one the newcomer leaves to it, is read the way it always was.
+      const base = this.bases.get(ref.kind);
+      if (handler.open && base && (this.cache.get(userId, sha) || (data && handler.takes && !handler.takes(ref, data)))) handler = base;
+
+      // A handler that keeps its own files reads (or recalls) the file and finds the part that matters itself.
+      if (handler.open) {
+        const r = await handler.open({ userId, ref, ...(data ? { data } : {}), question: ctx.question }, ctx);
+        if (!r.ok) { note(r.status, r.note); continue; }
+        out.paise += r.opened.paise;
+        out.files.push({ name: ref.name, kind: ref.kind, text: forModel(r.opened.text) });
+        if (r.opened.tables?.length) out.tables.push(...r.opened.tables);
+        note(r.opened.status, r.opened.note);
+        continue;
+      }
 
       let kept = this.cache.get(userId, sha);
       let cached = true;

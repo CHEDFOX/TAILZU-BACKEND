@@ -1,0 +1,13 @@
+# Direct dependencies of the media worker, pinned exactly. requirements.lock holds every transitive pin (the runtime closure of this file).
+# Licences: all MIT, BSD, Apache-2.0, MPL-2.0 or MIT-CMU. NO AGPL or GPL anywhere: no PyMuPDF, no Marker. `python licenses_check.py` fails the build if one appears.
+fastapi==0.162.0           # MIT
+uvicorn==0.54.0            # BSD-3-Clause
+python-multipart==0.0.32   # Apache-2.0 (FastAPI's form parsing; the worker takes raw bodies, but fastapi imports it)
+pillow==13.0.0             # MIT-CMU: resize, convert, strip metadata
+markitdown[docx,pptx,xlsx]==0.1.9   # MIT: docx, pptx, xlsx, epub, html to Markdown
+openpyxl==3.1.5            # MIT: a spreadsheet's rows
+defusedxml==0.7.1          # PSF: the OpenDocument XML, with entity attacks refused
+docling==2.143.0           # MIT: layout, tables and OCR for scanned and complex PDFs (its models are baked into the image)
+pypdfium2==5.14.0          # Apache-2.0 / BSD-3: page count and password check before any model is loaded
+torch==2.14.1              # BSD-3: the CPU build (+cpu) from https://download.pytorch.org/whl/cpu, via requirements.lock
+torchvision==0.29.1        # BSD-3: the same

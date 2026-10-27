@@ -7,7 +7,6 @@
  * The model is a fake that streams what a test gives it, per model, so what
  * is checked is the request each rung is sent and how its answer is read.
  */
-import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 process.env.OPENROUTER_API_KEY = "k";
@@ -42,7 +41,10 @@ vi.mock("openai", () => ({
   },
 }));
 
-const { AGENT_SYSTEM, AGENT_VISION_SYSTEM, AGENT_VISION_SYSTEM_GEMINI, drawOrderFor, visionSystemFor } = await import("../src/agent/prompt.js");
+const { drawOrderFor, placesNote } = await import("../src/agent/prompt.js");
+const { stableBlock } = await import("../src/principles/roles.js");
+const PLANNER = stableBlock("ask_planner");
+const VISION = stableBlock("ask_vision");
 const { planStream, plannerRequest, providerSortOf, reasoningFor, temperatureFor, visionLadder } = await import("../src/agent/llm.js");
 const { parseDraw, parseLine } = await import("../src/agent/lines.js");
 const { EventSink } = await import("../src/agent/protocol.js");
@@ -51,7 +53,6 @@ const { resetConfigForTests } = await import("../src/config.js");
 import type { AgentStepRequest } from "../../shared/types/api.js";
 import type { CallRecord } from "../src/agent/llm.js";
 
-const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 const PICTURE = { mime: "image/jpeg" as const, data: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]) };
 const REQ: AgentStepRequest = {
   runId: "run_vision1", step: 0, platform: "mac", app: "Preview", utterance: "how long is the long side?",
@@ -101,7 +102,7 @@ describe("reasoning and sampling, per family", () => {
   ])("%s: reasoning %j, temperature %s", (model, reasoning, temperature) => {
     expect(reasoningFor(model)).toEqual(reasoning);
     expect(temperatureFor(model)).toBe(temperature);
-    const body = plannerRequest(model, AGENT_VISION_SYSTEM, USER) as Record<string, any>;
+    const body = plannerRequest(model, VISION, USER) as Record<string, any>;
     expect(body.reasoning).toEqual(reasoning);
     if (temperature === undefined) expect("temperature" in body).toBe(false);
     else expect(body.temperature).toBe(temperature);
@@ -109,7 +110,7 @@ describe("reasoning and sampling, per family", () => {
 
   it("the system bytes are what they were given, for every family, cache-marked only for anthropic", () => {
     for (const model of ["anthropic/claude-haiku-5.5", "google/gemini-2.5-flash", "google/gemini-3.8-flash", "openai/gpt-6-luna"]) {
-      for (const system of [AGENT_SYSTEM, AGENT_VISION_SYSTEM, AGENT_VISION_SYSTEM_GEMINI]) {
+      for (const system of [PLANNER, VISION]) {
         const content = (plannerRequest(model, system, "u") as Record<string, any>).messages[0].content;
         const text = typeof content === "string" ? content : content[0].text;
         expect(text).toBe(system);
@@ -126,7 +127,9 @@ describe("reasoning and sampling, per family", () => {
     expect(llm.calls[0]!.model).toBe("google/gemini-3.8-flash");
     expect(llm.calls[0]!.reasoning).toEqual({ effort: "low" });
     expect("temperature" in llm.calls[0]!).toBe(false);
-    expect(llm.calls[0]!.messages[0].content).toBe(AGENT_VISION_SYSTEM_GEMINI);
+    // One stable block for every model; the Gemini family's own order for places is in the message.
+    expect(llm.calls[0]!.messages[0].content).toBe(VISION);
+    expect(JSON.stringify(llm.calls[0]!.messages[1].content)).toContain(placesNote("yx").slice(0, 60));
     expect(sent.at(-1)).toEqual({ t: "done" });
   });
 });
@@ -173,9 +176,9 @@ describe("provider routing", () => {
     await pictureStep();
     expect(llm.calls[0]!.provider).toEqual({ data_collection: "deny", sort: "throughput" });
     llm.calls.length = 0;
-    for await (const _ of planStream(AGENT_SYSTEM, "u")) { /* read it */ }
+    for await (const _ of planStream(PLANNER, "u")) { /* read it */ }
     expect(llm.calls[0]!.provider).toEqual({ data_collection: "deny" });
-    expect(plannerRequest("openai/gpt-6-luna", AGENT_SYSTEM, "u")).toHaveProperty("provider", { data_collection: "deny" });
+    expect(plannerRequest("openai/gpt-6-luna", PLANNER, "u")).toHaveProperty("provider", { data_collection: "deny" });
   });
 
   it("a setting OpenRouter would not understand is sent as no preference, so it cannot fail every picture question", async () => {
@@ -194,7 +197,7 @@ describe("provider routing", () => {
     expect(llm.calls[0]!.provider).toEqual({ data_collection: "deny", sort: "latency" });
     expect(providerSortOf("price")).toBe("price");
     expect(providerSortOf(undefined)).toBe("");
-    expect(plannerRequest("google/gemini-2.5-flash", AGENT_VISION_SYSTEM, "u", 450, { providerSort: "none" })).toHaveProperty("provider", { data_collection: "deny" });
+    expect(plannerRequest("google/gemini-2.5-flash", VISION, "u", 450, { providerSort: "none" })).toHaveProperty("provider", { data_collection: "deny" });
   });
 
   it("the call's log line says who served it and what it spent thinking", async () => {
@@ -238,43 +241,26 @@ describe("Gemini's order for places in the picture", () => {
   });
 
   it("which order is whose: Gemini models are taught y first and read y first; every other model x first", () => {
-    for (const m of ["google/gemini-2.5-flash", "google/gemini-3.8-flash", "google/gemini-4-argon"]) {
-      expect(drawOrderFor(m)).toBe("yx");
-      expect(visionSystemFor(m)).toBe(AGENT_VISION_SYSTEM_GEMINI);
-    }
-    for (const m of ["anthropic/claude-haiku-5.5", "openai/gpt-6-luna", "openai/gpt-5.4-mini"]) {
-      expect(drawOrderFor(m)).toBe("xy");
-      expect(visionSystemFor(m)).toBe(AGENT_VISION_SYSTEM);
-    }
+    for (const m of ["google/gemini-2.5-flash", "google/gemini-3.8-flash", "google/gemini-4-argon"]) expect(drawOrderFor(m)).toBe("yx");
+    for (const m of ["anthropic/claude-haiku-5.5", "openai/gpt-6-luna", "openai/gpt-5.4-mini"]) expect(drawOrderFor(m)).toBe("xy");
   });
 });
 
-describe("the two vision prompts", () => {
-  it("the generic prompts are byte for byte what they were before Gemini had its own", () => {
-    // sha256 of AGENT_SYSTEM and AGENT_VISION_SYSTEM at cdb6b21.
-    expect(sha(AGENT_SYSTEM)).toBe("e0f10e6a7f626a7471e4e539de5e7c18e3a5f266e727234acb3ffc70249af7b8");
-    expect(sha(AGENT_VISION_SYSTEM)).toBe("2a3e881e5d718ed75e34d13c1bfa3106b50a75b93af0a07b70d2b0756ee5a0d2");
+describe("one stable block, and a note for each family", () => {
+  it("the block says only that places are written as the note says; the notes are the only difference between the families", () => {
+    expect(VISION).toContain("a <point> is a place");
+    expect(VISION).not.toMatch(/\[x,y,w,h\]|\(x,y\)|\[ymin,xmin,ymax,xmax\]|\[y,x\]/);
+    const xy = placesNote("xy");
+    const yx = placesNote("yx");
+    expect(xy).toContain("a box [x,y,w,h] or a point (x,y)");
+    expect(xy).toContain("DRAW PATH (x,y) (x,y) …");
+    expect(yx).toContain("a box [ymin,xmin,ymax,xmax] or a point [y,x]");
+    expect(yx).toContain("DRAW BOX [ymin,xmin,ymax,xmax], DRAW CIRCLE [ymin,xmin,ymax,xmax], DRAW ARROW [y,x] -> [y,x], DRAW NUMBER [y,x] 2, DRAW PATH [y,x] [y,x] …, DRAW LABEL [y,x] \"…\"");
+    expect(yx).not.toContain("(x,y)");
+    expect(xy).not.toMatch(/ymin|\[y,x\]/);
   });
 
-  it("Gemini's differs only in how places in the picture are written", () => {
-    const generic = AGENT_VISION_SYSTEM.split("\n");
-    const gemini = AGENT_VISION_SYSTEM_GEMINI.split("\n");
-    expect(gemini).toHaveLength(generic.length);
-    const differ = generic.flatMap((l, i) => (l === gemini[i] ? [] : [i]));
-    // The PATH syntax, what a spot is, and the worked triangle's description
-    // and its four marks: nothing else.
-    expect(differ).toHaveLength(7);
-    for (const i of differ) {
-      expect(generic[i], generic[i]).toMatch(/\(\d+,\d+\)|\[\d+,\d+,\d+,\d+\]|\(x,y\)|\[x,y,w,h\]/);
-      expect(gemini[i], gemini[i]).toMatch(/\[\d+,\d+\]|\[\d+,\d+,\d+,\d+\]|\[y,x\]|\[ymin,xmin,ymax,xmax\]/);
-      expect(gemini[i]).not.toMatch(/\(\d+,\d+\)|\(x,y\)/);
-    }
-    // Ids are written as ids in both.
-    expect(AGENT_VISION_SYSTEM_GEMINI).toContain("an id from the list (e12, o3)");
-    expect(AGENT_VISION_SYSTEM_GEMINI).toContain("POINT o4 | Load balancer");
-  });
-
-  it("each is the same bytes for two different requests, whichever the ladder reaches", async () => {
+  it("each family is sent the same system bytes, and its own note in the message, whichever the ladder reaches", async () => {
     llm.plan = ["SAY Five.\nDONE"];
     await pictureStep();
     await pictureStep({ ...REQ, app: "Microsoft Edge", platform: "win", language: "es", utterance: "¿qué es esto?", picture: { region: "window" } });
@@ -282,10 +268,15 @@ describe("the two vision prompts", () => {
     await pictureStep();
     await pictureStep({ ...REQ, app: "Notes", utterance: "walk me through this step by step" });
     const system = (c: Record<string, any>) => (typeof c.messages[0].content === "string" ? c.messages[0].content : c.messages[0].content[0].text);
-    const gemini = llm.calls.filter((c) => c.model === "google/gemini-2.5-flash").map(system);
-    const haiku = llm.calls.filter((c) => c.model === "anthropic/claude-haiku-5.5").map(system);
-    expect(gemini).toEqual([AGENT_VISION_SYSTEM_GEMINI, AGENT_VISION_SYSTEM_GEMINI, AGENT_VISION_SYSTEM_GEMINI, AGENT_VISION_SYSTEM_GEMINI]);
-    expect(haiku).toEqual([AGENT_VISION_SYSTEM, AGENT_VISION_SYSTEM]);
+    const text = (c: Record<string, any>) => String(c.messages[1].content.find((p: Record<string, any>) => p.type === "text").text);
+    const gemini = llm.calls.filter((c) => c.model === "google/gemini-2.5-flash");
+    const haiku = llm.calls.filter((c) => c.model === "anthropic/claude-haiku-5.5");
+    expect(gemini).toHaveLength(4);
+    expect(haiku).toHaveLength(2);
+    // One block for every model: the cache holds across the families.
+    for (const c of [...gemini, ...haiku]) expect(system(c)).toBe(VISION);
+    for (const c of gemini) expect(text(c).split("\n")[1]).toBe(placesNote("yx"));
+    for (const c of haiku) expect(text(c).split("\n")[1]).toBe(placesNote("xy"));
   });
 });
 
@@ -306,7 +297,7 @@ describe("one answer, one model's order", () => {
     const { sent, result, calls } = await pictureStep();
     expect(calls.map((c) => [c.model, c.outcome])).toEqual([["google/gemini-2.5-flash", "failed"], ["anthropic/claude-haiku-5.5", "ok"]]);
     expect(result.model).toBe("anthropic/claude-haiku-5.5");
-    expect(llm.calls[1]!.messages[0].content).toEqual([{ type: "text", text: AGENT_VISION_SYSTEM, cache_control: { type: "ephemeral" } }]);
+    expect(llm.calls[1]!.messages[0].content).toEqual([{ type: "text", text: VISION, cache_control: { type: "ephemeral" } }]);
     expect(sent.filter((e) => e.t === "draw")).toEqual([
       { t: "draw", kind: "circle", target: { box: [160, 790, 50, 50] }, text: "90°" },
       { t: "draw", kind: "arrow", from: { id: "o1" }, to: { pt: [450, 620] } },
@@ -327,7 +318,7 @@ describe("one answer, one model's order", () => {
       write: async () => "", rewrite: async () => "",
       plan: (system, user, signal, picture) => planStream(system, user, { signal, picture, models: ["google/gemini-2.5-flash"] }),
     }, new EventSink((l) => sent.push(JSON.parse(l))));
-    expect(llm.calls[0]!.messages[0].content).toBe(AGENT_SYSTEM);
+    expect(llm.calls[0]!.messages[0].content).toBe(PLANNER);
     expect(sent.filter((e) => e.t === "draw")).toEqual([{ t: "draw", kind: "circle", target: { id: "e6" } }]);
     expect(result).toMatchObject({ draws: 1, drawsDropped: 1 });
   });

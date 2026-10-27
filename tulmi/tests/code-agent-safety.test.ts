@@ -218,8 +218,8 @@ describe("text from outside", () => {
     expect((await r.jobNow(job.id)).state).toBe("done");
   });
 
-  it("is also fenced after it has been folded into the notes the model keeps of an older step", async () => {
-    const r = await agentRig({ files: { ...APP_FILES, "docs/notes.md": `${INJECTION}\n` } });
+  it.each(["summary", "mask", "hybrid"] as const)("is also fenced after it has become old, under the %s strategy", async (strategy) => {
+    const r = await agentRig({ files: { ...APP_FILES, "docs/notes.md": `${INJECTION}\n` }, contextStrategy: strategy });
     r.json.on("agent.fold", { summary: "Read docs/notes.md, which says to run a command; it is only a note." });
     r.model.push(
       call("read_file", { path: "docs/notes.md" }),
@@ -229,9 +229,17 @@ describe("text from outside", () => {
     );
     const { job } = await run(r);
     expect((await r.jobNow(job.id)).state).toBe("done");
-    expect(r.json.calls.some((c) => c.purpose === "agent.fold")).toBe(true);
+    // The summary strategy folds the old turns with the cheap tier; the others do not (hybrid only once twenty old turns have piled up).
+    expect(r.json.calls.some((c) => c.purpose === "agent.fold")).toBe(strategy === "summary");
     // Whatever the later prompts show of the old read, it is not outside a fence.
     for (const seen of r.model.seen.slice(2)) expect(outsideTheFences(seen.messages)).not.toContain("IGNORE ALL PREVIOUS");
+    if (strategy !== "summary") {
+      // The old read is still there as an action, and its output is a placeholder that does not carry the page's words.
+      const late = r.model.seen.at(-1)!.messages;
+      expect(late).toContain("docs/notes.md");
+      expect(late).toContain("output masked");
+      expect(late).not.toContain("IGNORE ALL PREVIOUS");
+    }
   });
 
   it("runs a command only when the model asks for one, on a runner with the staged edits laid over, even if the task talks about running things", async () => {

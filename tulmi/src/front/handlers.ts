@@ -37,6 +37,8 @@ import { askJson, fence, forModel, type CallFn, type ModelCtx } from "../code/wo
 import { planChange } from "../code/work/plan.js";
 import { askText, type FrontModel } from "./model.js";
 import { REPLY_TOKENS } from "./path.js";
+import { chartable, makeDataArtifact } from "../media/dataartifact.js";
+import type { DataTable } from "../media/types.js";
 import type { ReadFile } from "./attachments.js";
 import { z } from "zod";
 import { FrontError, type ArtifactRef, type Decision, type FrontCtx, type FrontResult, type ResearchDepth, type VisualPlan } from "./types.js";
@@ -76,8 +78,11 @@ export interface Handlers {
   codeJob(c: RouteCall): Promise<{ job: NonNullable<FrontResult["job"]>; paise: number }>;
   research(c: RouteCall & { depth: ResearchDepth }): Promise<TextOut & { sources: NonNullable<FrontResult["sources"]>; confidence: number; partial?: boolean; gaps: string[] }>;
   plan(c: RouteCall): Promise<PlanOut>;
-  /** Makes the visual. `basis` is the answer it illustrates; `mermaid` is a diagram already drawn (a plan's), to be kept as it is. */
-  artifact(c: RouteCall & { visual: VisualPlan; basis?: string; mermaid?: string }): Promise<{ artifact: ArtifactRef; paise: number; notes?: string[] }>;
+  /**
+   * Makes the visual. `basis` is the answer it illustrates; `mermaid` is a diagram already drawn (a plan's), to be kept as it is; `data` is the rows of
+   * a spreadsheet the message is about, from which a chart is written by code (media/dataartifact.ts), with no model and no cost.
+   */
+  artifact(c: RouteCall & { visual: VisualPlan; basis?: string; mermaid?: string; data?: DataTable }): Promise<{ artifact: ArtifactRef; paise: number; notes?: string[] }>;
 }
 
 export interface HandlerDeps {
@@ -326,7 +331,7 @@ async function componentDefault(d: HandlerDeps, c: RouteCall): Promise<{ artifac
   return { artifact: refOf(r.change, "component", paise), paise };
 }
 
-async function artifactDefault(d: HandlerDeps, c: RouteCall & { visual: VisualPlan; basis?: string; mermaid?: string }) {
+async function artifactDefault(d: HandlerDeps, c: RouteCall & { visual: VisualPlan; basis?: string; mermaid?: string; data?: DataTable }) {
   const service = needService(d);
   try {
     if (c.mermaid) {
@@ -336,6 +341,10 @@ async function artifactDefault(d: HandlerDeps, c: RouteCall & { visual: VisualPl
     switch (c.visual.kind) {
       case "diagram": return await diagramFrom(d, c, c.basis || c.message);
       case "chart": {
+        if (c.data && chartable(c.data)) {
+          const r = await makeDataArtifact(service, c.userId, c.data, "chart", c.ctx.projectId ? { projectId: c.ctx.projectId } : {});
+          return { artifact: refOf(r.change, "chart", 0), paise: 0 };
+        }
         const made = await service.generate(c.userId, { request: `A chart (use recharts) of the numbers in this: ${c.message}`, type: "react", ...(c.ctx.projectId ? { projectId: c.ctx.projectId } : {}), ...(c.signal ? { signal: c.signal } : {}) });
         return { artifact: refOf(made, "chart", made.paise), paise: made.paise };
       }

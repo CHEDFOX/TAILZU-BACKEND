@@ -33,7 +33,7 @@ vi.mock("openai", () => ({
 }));
 
 const { assist, slipIn } = await import("../src/pipeline/cleanup.js");
-const { buildAssistSystem } = await import("../src/pipeline/assistPrompt.js");
+const { WRITER } = await import("./writer-prompt.js");
 
 beforeEach(() => { llm.answers = []; llm.calls = []; });
 
@@ -80,9 +80,9 @@ describe("what speech adds that typing never would", () => {
   });
 
   it("the prompt says what goes by what typing never would, and keeps language its own line", () => {
-    const t = buildAssistSystem({ hasContext: true, targetApp: "WhatsApp", script: "latin" });
+    const t = WRITER;
     expect(t).toMatch(/anything said only because it was spoken is not/);
     expect(t).not.toMatch(/Their words stay theirs/);
-    expect(t).toMatch(/Never translate their words/);
+    expect(t).toMatch(/never translate their words/);
   });
 });

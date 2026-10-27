@@ -27,7 +27,7 @@
  *
  * "none" is the default, and it means NO TONE ON TOP OF THE VOICE — not no
  * refinement. Every tone, "none" included, is written by the same refine
- * pass (assistPrompt.buildAssistSystem) in the active preset's voice; the
+ * pass (the `writer` role, with assistPrompt.writerContext) in the active preset's voice; the
  * other four tones add a register (formal, casual…) over that voice. With Zu
  * active, "none" is the user's own voice, repaired. (This comment used to say
  * "none" inserted the raw transcript with no LLM pass; the server has not

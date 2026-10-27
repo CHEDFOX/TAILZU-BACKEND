@@ -12,12 +12,14 @@
  *   1. CUES (cues.ts), for nothing: the quoted strings, the UI words, the
  *      identifiers, the paths, the routes, the error lines and stack frames, and
  *      the feature nouns of the request.
- *   2. FIVE SIGNALS, each a ranked list of files, each a read of the brain:
+ *   2. SIX SIGNALS, each a ranked list of files, each a read of the brain:
  *        path     a file the request names (or a stack frame points at)
  *        text     the strings a person sees (findTexts): very strong for UI tasks
  *        symbol   functions, classes and routes (findSymbols)
  *        file     path and summary words (findFiles)
  *        feature  the feature map (feature)
+ *        map      the repo map (project/repomap.ts): the files nearest, in the definition/reference graph, to the files and identifiers the request
+ *                 names, by PageRank restarted at them. It finds what the other five cannot: the callers and the callees of the thing that was named
  *      How central a file is and how often it changes are a weak prior, no more.
  *      When the free cues find fewer than two STRONG hits, the cheap tier is asked
  *      once for synonyms (signup, register, create account) and the signals run
@@ -48,6 +50,7 @@
  */
 import { z } from "zod";
 import type { BrainHandle } from "../project/index.js";
+import type { MapHit } from "../project/repomap.js";
 import { tokenize } from "../project/search.js";
 import { isTestPath } from "../project/lang.js";
 import type { StoredFile } from "../project/types.js";
@@ -57,9 +60,24 @@ import { askJson, cut, fence, forModel, oneLine, type ModelCtx } from "./model.j
 
 // ------------------------------------------------------------------- shapes
 
-export type SignalId = "path" | "text" | "symbol" | "file" | "feature";
+export type SignalId = "path" | "text" | "symbol" | "file" | "feature" | "map";
 
-export type LocateBrain = Pick<BrainHandle, "findFiles" | "findSymbols" | "findTexts" | "neighbors" | "testsFor" | "feature" | "features" | "file">;
+/** What locate asks of a brain. `repoMap` is optional: a brain without it (a test's stand-in) simply has no sixth signal. */
+export type LocateBrain = Pick<BrainHandle, "findFiles" | "findSymbols" | "findTexts" | "neighbors" | "testsFor" | "feature" | "features" | "file"> & Partial<Pick<BrainHandle, "repoMap">>;
+
+/** How the repo map takes part. The defaults are what ships; the benchmark (evals/locate) turns the pieces on and off. */
+export interface MapSettings {
+  /** false: no repo map at all (the five signals only). */
+  on?: boolean;
+  /** What the signal counts for in the fusion. */
+  weight?: number;
+  /** How much of an edge's weight runs backwards (callers of what was named). */
+  back?: number;
+  /** Whether the files the request names (and the ones that define what it names) are in the map's own list, or only the files near them. */
+  seeds?: boolean;
+}
+
+export const MAP_DEFAULTS = { on: true, weight: 2.5, back: 2, seeds: false } as const satisfies Required<MapSettings>;
 
 export interface LocateTarget {
   path: string;
@@ -104,6 +122,8 @@ export interface LocateOptions {
   read?: (path: string) => Promise<string | null>;
   /** Cues already extracted. */
   cues?: Cues;
+  /** The repo map's part (on by default). */
+  map?: MapSettings;
 }
 
 // ------------------------------------------------------------------- numbers
@@ -128,11 +148,11 @@ const WINDOW = 20;
 const EXPAND_TOKENS = 300;
 const PICK_TOKENS = 500;
 
-export interface Weights { path: number; text: number; symbol: number; file: number; feature: number }
+export interface Weights { path: number; text: number; symbol: number; file: number; feature: number; map?: number }
 
 /** What each signal counts for, by what the request is about. */
-export function weightsFor(c: Cues): Weights {
-  const w: Weights = { path: 1.6, text: 1, symbol: 0.9, file: 0.6, feature: 0.4 };
+export function weightsFor(c: Cues, map?: MapSettings): Weights {
+  const w: Weights = { path: 1.6, text: 1, symbol: 0.9, file: 0.6, feature: 0.4, map: map?.weight ?? MAP_DEFAULTS.weight };
   if (c.ui) { w.text = 1.3; w.symbol = 0.8; }
   if (c.identifiers.length || c.routes.length) w.symbol = Math.max(w.symbol, 1.2);
   if (c.errors.length || c.frames.length) w.path = 1.8;
@@ -193,7 +213,7 @@ const settle = async <T>(xs: Array<Promise<T>>): Promise<T[]> => (await Promise.
 
 // ------------------------------------------------------------ the signals
 
-interface Signals { path: Hit[]; text: Hit[]; symbol: Hit[]; file: Hit[]; feature: Hit[] }
+interface Signals { path: Hit[]; text: Hit[]; symbol: Hit[]; file: Hit[]; feature: Hit[]; map?: Hit[] }
 
 /** A path from the request or a trace, found in the brain: as written, or by its tail, or by its name. */
 export async function resolvePath(brain: Pick<LocateBrain, "file" | "findFiles">, p: string): Promise<string | null> {
@@ -303,11 +323,56 @@ async function featureSignal(brain: LocateBrain, c: Cues, more: Query[]): Promis
   return h.ranked();
 }
 
+/**
+ * The repo map's list: the files nearest, in the graph, to the paths and identifiers the request names. Empty when the request names none, when the brain has
+ * no map, or when it is switched off. A file the request itself names is by default not in this list (the path and symbol signals have it): the map is
+ * for the files AROUND it, the callers and the callees.
+ */
+async function mapSignal(brain: LocateBrain, c: Cues, named: readonly Hit[], settings: MapSettings | undefined): Promise<Hit[]> {
+  const cfg = { ...MAP_DEFAULTS, ...settings };
+  if (!cfg.on || !brain.repoMap) return [];
+  const identifiers = [...new Set([...c.identifiers, ...c.quoted.filter(looksLikeIdentifier)])];
+  const paths = named.filter((h) => h.q >= 0.5).map((h) => h.path);
+  if (!identifiers.length && !paths.length) return [];
+  let found: MapHit[];
+  try { found = await brain.repoMap({ identifiers, paths, words: c.dirs }, { back: cfg.back }); } catch { return []; }
+  const h = new Hits();
+  for (const m of found) {
+    if (m.seed && !cfg.seeds) continue;
+    // The best neighbour is nearly as good as a named file; the far ones count for little.
+    const q = Math.min(0.9, m.q * (m.seed ? 0.9 : 0.8));
+    if (q < 0.1) continue;
+    h.add(m.path, q, `${m.why} (repo map)`);
+  }
+  return h.ranked();
+}
+
 async function runSignals(brain: LocateBrain, c: Cues, more: Query[]): Promise<Signals> {
   const [path, text, symbol, file, feature] = await Promise.all([
     pathSignal(brain, c), textSignal(brain, c, more), symbolSignal(brain, c, more), fileSignal(brain, c, more), featureSignal(brain, c, more),
   ]);
   return { path, text, symbol, file, feature };
+}
+
+/**
+ * The repo map is the funnel's second look, not its first: when the five signals are already sure (over CONFIDENT: a path, a stack trace, one exact
+ * symbol) the map is not asked, so that a decisive answer stays decisive and a map's neighbours never cost the answer its confidence. When they are not
+ * sure, and the request does not name just one place, the map's list is added and the signals are fused again. Returns the fusion to go on with, and
+ * whether the map was added.
+ */
+async function consultMap(brain: LocateBrain, c: Cues, signals: Signals, weights: Weights, fused: Fused[], settings?: MapSettings): Promise<{ fused: Fused[]; used: boolean }> {
+  if (!(settings?.on ?? MAP_DEFAULTS.on) || confidenceOf(fused).value > CONFIDENT) return { fused, used: false };
+  // A request that names ONE place is about that place: its callers and callees are not asked about. Naming two or more, or none the index could place, is when the files
+  // that tie them together are worth a look.
+  const named = new Set<string>();
+  for (const id of ["path", "symbol", "file"] as const) for (const h of signals[id]) if (h.q >= STRONG_Q) named.add(h.path);
+  if (named.size === 1) return { fused, used: false };
+  const map = await mapSignal(brain, c, signals.path, settings);
+  if (!map.length) return { fused, used: false };
+  signals.map = map;
+  const again = fuse(signals, weights);
+  await withPrior(brain, again);
+  return { fused: again, used: true };
 }
 
 /** Strong hits: a signal that found a file almost exactly (the string itself, the symbol by name, the file by name). */
@@ -332,14 +397,14 @@ export interface Fused {
   lines: number[];
 }
 
-const IDS: readonly SignalId[] = ["path", "text", "symbol", "file", "feature"];
+const IDS: readonly SignalId[] = ["path", "text", "symbol", "file", "feature", "map"];
 
 export function fuse(s: Signals, w: Weights): Fused[] {
   const by = new Map<string, Fused>();
   for (const id of IDS) {
-    s[id].forEach((h, i) => {
+    (s[id] ?? []).forEach((h, i) => {
       const f = by.get(h.path) ?? { path: h.path, score: 0, raw: 0, signals: [], top3: [], whys: [], lines: [] };
-      f.raw += w[id] * h.q * ((RRF_K + 1) / (RRF_K + i + 1));
+      f.raw += (w[id] ?? 0) * h.q * ((RRF_K + 1) / (RRF_K + i + 1));
       if (h.q >= 0.3 && !f.signals.includes(id)) f.signals.push(id);
       if (i < 3 && h.q >= 0.45 && !f.top3.includes(id)) f.top3.push(id);
       for (const y of h.whys) if (!f.whys.includes(y) && f.whys.length < 4) f.whys.push(y);
@@ -529,10 +594,12 @@ export async function locate(task: string, brain: LocateBrain, opts: LocateOptio
   });
   if (isVague(cues)) return done([], 0, await questionFor([], brain));
 
-  const weights = weightsFor(cues);
+  const weights = weightsFor(cues, opts.map);
   let signals = await runSignals(brain, cues, []);
   let fused = fuse(signals, weights);
   await withPrior(brain, fused);
+  // Not sure yet? The repo map takes a look (consultMap).
+  fused = (await consultMap(brain, cues, signals, weights, fused, opts.map)).fused;
   let { value: confidence, margin } = confidenceOf(fused);
 
   // Not sure, and fewer than two strong hits: a cheap model offers other words for the same thing, and the signals run again with them.
@@ -546,6 +613,7 @@ export async function locate(task: string, brain: LocateBrain, opts: LocateOptio
       signals = await runSignals(brain, cues, e.terms.map((q) => ({ q, weight: 0.6 })));
       fused = fuse(signals, weights);
       await withPrior(brain, fused);
+      fused = (await consultMap(brain, cues, signals, weights, fused, opts.map)).fused;
       ({ value: confidence, margin } = confidenceOf(fused));
     }
   }
@@ -591,6 +659,30 @@ export async function locate(task: string, brain: LocateBrain, opts: LocateOptio
   const targets = toTargets();
   if (confidence < UNSURE || tie) return done(targets, confidence, await questionFor(fused, brain));
   return done(targets, confidence);
+}
+
+/**
+ * The funnel's first half on its own, for measuring: the fused list of files for a request, with no model asked and no threshold applied.
+ * (locate() adds the cheap tier, the questions and the one hop out; this is what they all start from.)
+ */
+export async function fusedFor(task: string, brain: LocateBrain, map?: MapSettings): Promise<Fused[]> {
+  return fusedWith(brain, await baseSignals(task, brain), map);
+}
+
+/** The five signals of a request, which do not depend on the map's settings: a benchmark that tries many settings computes them once. */
+export interface BaseSignals { cues: Cues; signals: Signals }
+export async function baseSignals(task: string, brain: LocateBrain): Promise<BaseSignals> {
+  const cues = extractCues(String(task ?? ""));
+  return { cues, signals: await runSignals(brain, cues, []) };
+}
+
+/** The base signals plus the repo map under these settings, fused. */
+export async function fusedWith(brain: LocateBrain, base: BaseSignals, map?: MapSettings): Promise<Fused[]> {
+  const signals: Signals = { ...base.signals };
+  const weights = weightsFor(base.cues, map);
+  const fused = fuse(signals, weights);
+  await withPrior(brain, fused);
+  return (await consultMap(brain, base.cues, signals, weights, fused, map)).fused;
 }
 
 export { looksLikeIdentifier };

@@ -114,6 +114,10 @@ export interface Call { method: string; url: URL; headers: Record<string, string
 
 const sha = (s: string) => createHash("sha1").update(s).digest("hex");
 
+/** What a blob made from bytes is held as: this marker, then the base64. A test reads a binary file back with `bytesOf`. */
+export const BINARY_BLOB = "\u0000base64:";
+export const bytesOf = (stored: string | undefined): Buffer | null => (stored?.startsWith(BINARY_BLOB) ? Buffer.from(stored.slice(BINARY_BLOB.length), "base64") : null);
+
 export interface AppKeys { privateKeyPem: string; publicKeyPem: string }
 
 /** Where a job's log is fetched from after GitHub's redirect: another host, reached with no token. */
@@ -771,6 +775,7 @@ export class FakeGithub {
       const b = tree.get(path);
       if (b) {
         const text = git.blobs.get(b)!;
+        if (text.startsWith(BINARY_BLOB)) return this.reply(200, { type: "file", path, size: Buffer.from(text.slice(BINARY_BLOB.length), "base64").length, encoding: "base64", content: text.slice(BINARY_BLOB.length), sha: b });
         return this.reply(200, { type: "file", path, size: Buffer.byteLength(text), encoding: "base64", content: Buffer.from(text).toString("base64"), sha: b });
       }
       const dir = [...tree.keys()].filter((k) => k.startsWith(path + "/"));
@@ -779,6 +784,15 @@ export class FakeGithub {
     if (c.method === "GET" && (r = wanted(/^\/git\/commits\/([0-9a-f]+)$/))) {
       const commit = git.commits.get(r[1]!);
       return commit ? this.reply(200, { sha: r[1], tree: { sha: commit.tree }, parents: commit.parents.map((s) => ({ sha: s })) }) : this.reply(404, { message: "Not Found" });
+    }
+    if (c.method === "POST" && rest === "/git/blobs") {
+      // Bytes, as base64. Kept as a marked string so a test can read them back (BINARY_BLOB).
+      this.mustWrite(token, "contents");
+      if (c.body?.encoding !== "base64" || typeof c.body?.content !== "string") return this.reply(422, { message: "Invalid request." });
+      const text = BINARY_BLOB + c.body.content;
+      const b = sha("blob:" + text);
+      git.blobs.set(b, text);
+      return this.reply(201, { sha: b });
     }
     if (c.method === "POST" && rest === "/git/trees") {
       this.mustWrite(token, "contents");
@@ -789,6 +803,10 @@ export class FakeGithub {
         if (e.mode !== "100644" || e.type !== "blob") return this.reply(422, { message: "bad entry" });
         if (e.sha === null) {
           if (!tree.delete(e.path)) return this.reply(422, { message: `GitRPC::BadObjectState: ${e.path} does not exist` });
+        } else if (typeof e.sha === "string") {
+          // A blob made earlier (git/blobs), for a file that is bytes.
+          if (!git.blobs.has(e.sha)) return this.reply(422, { message: `GitRPC::BadObjectState: ${e.sha} is not a blob` });
+          tree.set(e.path, e.sha);
         } else {
           const b = sha("blob:" + e.content);
           git.blobs.set(b, e.content);

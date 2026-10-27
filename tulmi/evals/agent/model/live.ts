@@ -15,13 +15,13 @@
  * Needs OPENROUTER_API_KEY. run.ts refuses to start live without one, so this
  * file is never where a missing key is found.
  */
-import { PlannerUnavailable, modelLadder, planStream, type CallRecord, type PictureCall, type PlanChunk, type PlanOptions, type SystemPrompt, type UserContent } from "../../../src/agent/llm.js";
+import { PlannerUnavailable, modelLadder, planStream, type CallRecord, type PictureCall, type PlanChunk, type PlanOptions, type SystemPrompt, type UserPrompt } from "../../../src/agent/llm.js";
 import type { ModelCallTrace } from "../types.js";
 import { TracedAdapter, cassetteKey } from "./adapter.js";
 import type { Cassette, CassetteEntry, RecordedCall } from "./cassette.js";
 
 /** planStream's shape, so a test can hand in a fake. */
-export type PlanStreamFn = (system: SystemPrompt, user: UserContent, opts?: PlanOptions) => AsyncIterable<PlanChunk>;
+export type PlanStreamFn = (system: SystemPrompt, user: UserPrompt, opts?: PlanOptions) => AsyncIterable<PlanChunk>;
 
 export interface LiveOptions {
   /** The ladder: --models, else the server's own (AGENT_MODEL, the fallbacks, CLEANUP_MODEL). */
@@ -44,7 +44,7 @@ export class LiveAdapter extends TracedAdapter {
     this.stream = o.planStream ?? planStream;
   }
 
-  protected async *answer(trace: ModelCallTrace, system: SystemPrompt, user: UserContent, signal?: AbortSignal, picture?: PictureCall, log?: (call: CallRecord) => void): AsyncGenerator<PlanChunk> {
+  protected async *answer(trace: ModelCallTrace, system: SystemPrompt, user: UserPrompt, signal?: AbortSignal, picture?: PictureCall, log?: (call: CallRecord) => void): AsyncGenerator<PlanChunk> {
     const key = cassetteKey(this.models, system, user, picture);
     trace.key = key;
     const t0 = performance.now();

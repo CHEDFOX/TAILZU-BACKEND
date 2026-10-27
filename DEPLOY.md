@@ -1029,3 +1029,52 @@ Actions run. Run `supabase/migrations/0031_code_runner_minutes.sql` first (it
 counts the month's Actions minutes). The desktop app's half is
 `docs/desktop-runner-session.md`; the rules, costs and what needs a live deploy are
 in `docs/cloudflare-jobs.md` section 10.
+
+### Media and files (`MEDIA_INGEST`)
+
+A person attaches a PDF, a Word, Excel or PowerPoint file, a spreadsheet, a picture, a recording, a video or a zip, and asks about it; Tailzu reads
+it once and answers from the few pieces that matter. Off by default: with `MEDIA_INGEST` false the app is told "coming soon" for those files and
+every `/v1/files` route answers `404 media_off`. Full story, limits and what is not proven yet: `docs/media.md`. Do the steps in this order; each
+one is useful without the next (a PDF with text, a CSV, a zip, a picture and a recording all work with just steps 1, 2 and 5).
+
+1. **Migration.** Paste `tulmi/supabase/migrations/0036_media.sql` into the Supabase SQL editor (or re-run `full_schema.sql`). It makes `media_items`
+   and `media_chunks` (with the full-text index and the `media_search` function) and their owner-only RLS, and can be run again. There is another file
+   numbered 0035 (`0035_code_brain_refs.sql`); they do not depend on each other, in either order. Without `SUPABASE_SERVICE_KEY` the rows live in
+   memory and are lost on restart.
+2. **The bucket (Cloudflare R2).** Cloudflare dashboard, R2: create a bucket (private: no public access, no custom domain), then "Manage API tokens"
+   and a token with **Object Read & Write** on that bucket only. Put these in `tulmi/.env`: `R2_ACCOUNT_ID` (R2's overview page), `R2_ACCESS_KEY_ID`,
+   `R2_SECRET_ACCESS_KEY` (shown once; **a secret, `.env` only**) and `R2_BUCKET`. The server signs its own requests (no SDK) at
+   `https://<account>.r2.cloudflarestorage.com/<bucket>/u/<user>/<sha256>` and sweeps expired files itself every hour, so no R2 lifecycle rule is
+   needed. Without all four, files are read and their text kept, but not their bytes (so "add this logo to the project" needs the bucket). The bucket is used only together with Supabase (step 1): with no `SUPABASE_SERVICE_KEY` the index is in memory, and the server keeps no bytes rather than leave them in the bucket with nothing to find them.
+3. **The worker** (office files, scanned PDFs, video, shrinking pictures). It is its own container, `media-worker/`, started only with the `media`
+   profile:
+
+   ```bash
+   openssl rand -hex 32                         # the secret: 64 hex characters, no "$"
+   # In a file called .env beside docker-compose.yml (compose reads it for itself):  MEDIA_WORKER_SECRET=<the secret>
+   # In tulmi/.env, the same value and the address:  MEDIA_WORKER_SECRET=<the secret>   MEDIA_WORKER_URL=http://media-worker:8000
+   docker compose --profile media up -d --build
+   docker compose --profile media ps            # media-worker: healthy (the first start takes a minute: it loads its libraries)
+   ```
+
+   The first build downloads about 4 GB (Python packages, the CPU build of PyTorch, Docling's models) and the image is about 4 to 5 GB, so check the
+   disk first. It wants **about 6 GB of memory** for a scanned PDF (`MEDIA_WORKER_MEMORY=6g` by default; on a smaller VPS set it lower and
+   `MEDIA_WORKER_CONCURRENCY=1`, and expect scanned PDFs to be refused when they do not fit; everything else needs far less) and **2 CPUs**. It is
+   on a Docker network with no route to the internet (only the backend can reach it), runs as a user that is not root, with a read-only filesystem,
+   and runs every file in a child process with a clock and a memory limit. The build stops if any package in it is AGPL or GPL.
+   `curl` it from the backend: `docker compose exec backend wget -qO- http://media-worker:8000/healthz` answers `{"ok":true,...}`.
+4. **The proxy.** `POST /v1/files` carries up to 50 MB. Caddy needs nothing. **nginx** refuses over 1 MB unless told: inside the `location /` block
+   of the server above add `client_max_body_size 55m;` (and keep `proxy_read_timeout 300s;`: a video takes a while). Cloudflare's proxy in front of the
+   server allows 100 MB on the free plan.
+5. **Switch it on.** In `tulmi/.env`: `MEDIA_INGEST=true`, then `docker compose up -d --build`. Recordings and the sound of a video need `DEEPGRAM_API_KEY`
+   (already used for dictation); pictures need the vision model the front door already uses (`FRONT_DOOR=true`).
+6. **Check.** With a signed-in token: `curl -H "Authorization: Bearer $TOKEN" -F file=@handbook.pdf https://api.tailzu.space/v1/files` answers
+   `201 {"file":{...},"attachment":{...}}`, and the same file again `200` with `"cached":true` and nothing read. Then `POST /v1/ask` with the
+   `attachment` in `attachments` (without its bytes) and a question. A password-protected file, a zip bomb and a kind we do not read each answer with a
+   sentence. Delete it with `DELETE /v1/files/<id>`, and see the object go from the bucket.
+7. **Add to the privacy policy.** Files a person attaches are kept for 30 days unless they keep them: the file itself in a private bucket at
+   Cloudflare, what was read from it (text, in pieces) in the database. A picture's location and camera details are removed before it is kept.
+   Recordings and the sound of videos are sent to Deepgram, pictures and some video frames to the vision model, and a question about a file sends the few
+   pieces of it that matter to the reply model. Deleting the account deletes the files and their bytes.
+8. **Back out:** `MEDIA_INGEST=false` and a restart. The app goes back to "coming soon". Nothing is swept while it is off, so files already kept stay
+   (rows and bytes) until it is turned on again or you empty the bucket and run `delete from media_items;`.

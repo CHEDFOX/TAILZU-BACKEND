@@ -36,10 +36,11 @@
  * model that answers soonest (AGENT_VISION_PROVIDER_SORT): measured, that
  * took the primary's worst first sentence from 4.6 s to 2.4 s.
  *
- * Each model on a ladder may be told something different: the picture path
- * teaches Gemini models to write places in the picture in their own order
- * (prompt.ts), so the system prompt is chosen per model, as the ladder
- * reaches it.
+ * Each model on a ladder may be told something different, and it is told it
+ * after the system prompt, never in it: the picture path teaches Gemini models
+ * to write places in the picture in their own order (prompt.ts placesNote), so
+ * the user message is built per model, as the ladder reaches it, and the
+ * system prompt is one stable block for all of them.
  *
  * What a call cost is read off its answer, never asked for: OpenRouter puts
  * its usage, with the charge in dollars, in the last chunk of every streamed
@@ -63,9 +64,9 @@ export interface PlanChunk {
   delta: string;
 }
 
-/** The system prompt for a call: the same for every model, or chosen per
- *  model as the ladder reaches it. */
-export type SystemPrompt = string | ((model: string) => string);
+/** The system prompt for a call: a role's stable block (principles/roles.ts),
+ *  the same bytes for every model. */
+export type SystemPrompt = string;
 
 /** One part of a user message that carries a picture. */
 export type UserPart =
@@ -74,6 +75,11 @@ export type UserPart =
 
 /** A user message: text, or parts when it carries a picture. */
 export type UserContent = string | UserPart[];
+
+/** What a call sends after the system prompt: one message for every model, or
+ *  built per model as the ladder reaches it (the picture path tells each model
+ *  how places in a picture are written, in the order it is trained on). */
+export type UserPrompt = UserContent | ((model: string) => UserContent);
 
 /** The picture path's call: which ladder, and how much it may write. */
 export interface PictureCall {
@@ -257,12 +263,11 @@ interface StreamChunk {
  * Stopping the iteration early (the step has its action) aborts the upstream
  * call, so the tokens after it are never paid for.
  *
- * `system` is one prompt for every model, or a function that gives each
- * model its own; each request is built with the prompt of the model it goes
- * to, so a ladder that moves from Gemini to another model moves to that
- * model's prompt too.
+ * `system` is one prompt for every model; `user` is one message for every
+ * model, or a function that gives each model its own, so a ladder that moves
+ * from Gemini to another model moves to that model's message too.
  */
-export async function* planStream(system: SystemPrompt, user: UserContent, opts: PlanOptions = {}): AsyncGenerator<PlanChunk> {
+export async function* planStream(system: SystemPrompt, user: UserPrompt, opts: PlanOptions = {}): AsyncGenerator<PlanChunk> {
   const cfg = getConfig();
   const picture = opts.picture;
   const models = ladder(opts.models ?? (picture ? visionLadder(picture.deep) : modelLadder()));
@@ -271,7 +276,7 @@ export async function* planStream(system: SystemPrompt, user: UserContent, opts:
   // Only the picture path asks for a provider: the text path's calls are
   // short and its models were never measured slow to start.
   const providerSort = picture ? opts.providerSort ?? cfg.AGENT_VISION_PROVIDER_SORT : "";
-  const systemFor = typeof system === "string" ? () => system : system;
+  const userFor = typeof user === "function" ? user : () => user;
   let lastError: unknown = new Error("no agent model configured");
   // A model answered, with nothing. When the ladder runs out after that, the
   // step had nothing to say, which is not the same as no model being there.
@@ -295,7 +300,7 @@ export async function* planStream(system: SystemPrompt, user: UserContent, opts:
     let wrote = false;
     try {
       const stream = (await openrouter().chat.completions.create(
-        plannerRequest(model, systemFor(model), user, maxTokens, { providerSort }) as never,
+        plannerRequest(model, system, userFor(model), maxTokens, { providerSort }) as never,
         { signal: ctrl.signal, maxRetries: 0, timeout: timeoutMs },
       )) as unknown as AsyncIterable<StreamChunk>;
       for await (const chunk of stream) {

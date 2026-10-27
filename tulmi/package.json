@@ -26,7 +26,21 @@
     "bench:stt": "tsx scripts/stt-bench.ts",
     "prompts": "tsx scripts/prompt-dump.ts",
     "prompt-sizes": "tsx scripts/prompt-sizes.ts",
-    "eval:prompts": "tsx scripts/eval-prompts.ts"
+    "gen:queries": "tsx scripts/gen-ts-queries.ts",
+    "gen:gitleaks": "tsx scripts/gen-gitleaks.ts",
+    "bench:symbols": "tsx evals/symbols/run.ts",
+    "bench:locate": "tsx evals/locate/run.ts",
+    "bench:secrets": "tsx evals/secrets/run.ts",
+    "eval:prompts": "tsx scripts/eval-prompts.ts",
+    "e2e": "tsx e2e/run.ts",
+    "e2e:repos": "tsx e2e/repos.ts",
+    "e2e:mine": "tsx e2e/mine.ts",
+    "e2e:author": "tsx e2e/author.ts",
+    "e2e:validate": "tsx e2e/validate.ts",
+    "e2e:load": "tsx e2e/load.ts",
+    "e2e:proxy": "tsx e2e/proxy.ts",
+    "bakeoff": "tsx e2e/bakeoff/index.ts",
+    "models-watch": "tsx scripts/models-watch.ts"
   },
   "dependencies": {
     "@deepgram/sdk": "^4.11.3",
@@ -43,7 +57,10 @@
     "groq-sdk": "^0.7.0",
     "jose": "^6.2.3",
     "openai": "^4.67.3",
+    "tree-sitter-wasm": "2.0.4",
     "undici": "6.23.0",
+    "unpdf": "1.9.1",
+    "web-tree-sitter": "0.27.1",
     "zod": "^3.23.8"
   },
   "devDependencies": {

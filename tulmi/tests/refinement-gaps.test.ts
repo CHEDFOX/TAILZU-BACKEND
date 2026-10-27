@@ -31,7 +31,7 @@ vi.mock("openai", () => ({
 
 const { assist, slipIn, stripPlaceholders, tidyRaw, stripEdgeFiller } = await import("../src/pipeline/cleanup.js");
 const { isFillerOnly } = await import("../src/pipeline/speechGate.js");
-const { buildAssistSystem } = await import("../src/pipeline/assistPrompt.js");
+const { WRITER, dataFor } = await import("./writer-prompt.js");
 
 beforeEach(() => { llm.answers = []; llm.calls = []; });
 
@@ -106,14 +106,14 @@ describe("a hum in Korean or Chinese is a hum", () => {
 });
 
 describe("the prompt", () => {
-  it("names a search box only where the app is known", () => {
-    expect(buildAssistSystem({ hasContext: false })).not.toMatch(/search box/);
-    expect(buildAssistSystem({ hasContext: false, targetApp: "Google" })).toMatch(/A search box wants just the words/);
+  it("names a search box only where the app is known: the block says 'where <call> names one', and the call names it only with an app", () => {
+    expect(WRITER).toMatch(/A search box, where <call> names one, wants just the words/);
+    expect(dataFor({ hasContext: false })).not.toMatch(/It goes in/);
+    expect(dataFor({ hasContext: false, targetApp: "Google" })).toMatch(/It goes in Google\./);
   });
 
   it("keeps their tone, and writes nothing only for silence", () => {
-    const p = buildAssistSystem({ hasContext: false, intentStep: true });
-    expect(p).toMatch(/in the tone they made it/);
-    expect(p).toMatch(/Only when they said nothing, just silence or noise, <send> stays empty/);
+    expect(WRITER).toMatch(/in the tone they made it/);
+    expect(WRITER).toMatch(/it stays empty only when they said nothing, just silence or noise/);
   });
 });

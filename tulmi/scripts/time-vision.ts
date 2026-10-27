@@ -18,8 +18,8 @@
  * not; by default what the server does, AGENT_VISION_PROVIDER_SORT).
  *
  * Every run is the real request, built by the server's own code: the vision
- * system prompt for the model's family (visionSystemFor), the user content
- * with the picture (agentPictureContent), plannerRequest with reasoningFor
+ * role's stable block (ask_vision), the user content with the picture and the
+ * note for the model's family (agentPictureContent), plannerRequest with reasoningFor
  * and the temperature rule, and planStream, a ladder of one so a failure is
  * seen rather than passed over. The picture is the worksheet photo in
  * time-vision-picture.ts, the question "explain this triangle", over a short
@@ -48,9 +48,10 @@ import { fileURLToPath } from "node:url";
 import type { AgentElement, AgentStepRequest } from "../../shared/types/api.js";
 import { LineReader, LineSplitter, parseLine } from "../src/agent/lines.js";
 import {
-  PlannerUnavailable, planStream, providerSortOf, type CallRecord, type PlanChunk, type PlanOptions, type SystemPrompt, type UserContent,
+  PlannerUnavailable, planStream, providerSortOf, type CallRecord, type PlanChunk, type PlanOptions, type SystemPrompt, type UserPrompt,
 } from "../src/agent/llm.js";
-import { agentPictureContent, drawOrderFor, visionSystemFor } from "../src/agent/prompt.js";
+import { agentPictureContent, drawOrderFor } from "../src/agent/prompt.js";
+import { stableBlock } from "../src/principles/roles.js";
 import { getConfig } from "../src/config.js";
 import { PICTURE_BASE64, PICTURE_MIME } from "./time-vision-picture.js";
 
@@ -250,7 +251,7 @@ export function pictureRequest(): AgentStepRequest {
 
 export interface MeasureDeps {
   /** planStream, unless a test gives its own. */
-  plan?: (system: SystemPrompt, user: UserContent, opts: PlanOptions) => AsyncIterable<PlanChunk>;
+  plan?: (system: SystemPrompt, user: UserPrompt, opts: PlanOptions) => AsyncIterable<PlanChunk>;
   now?: () => number;
   /** "" for no provider preference. */
   providerSort: string;
@@ -276,7 +277,8 @@ export async function measure(model: string, deps: MeasureDeps): Promise<Run> {
   const plan = deps.plan ?? planStream;
   const req = pictureRequest();
   const image = { mime: PICTURE_MIME, data: Buffer.from(PICTURE_BASE64, "base64") };
-  const user = agentPictureContent(req, QUESTION, image);
+  // Built for each model the ladder reaches, as the product builds it: places in the picture in that model's order.
+  const user = (m: string) => agentPictureContent(req, QUESTION, image, drawOrderFor(m));
   // The answer is read as the server reads it: each line in this model's
   // order, through the picture path's reader, so the marks counted are the
   // marks the device would have drawn.
@@ -298,7 +300,7 @@ export async function measure(model: string, deps: MeasureDeps): Promise<Run> {
     }
   };
   try {
-    const stream = plan(visionSystemFor, user, {
+    const stream = plan(stableBlock("ask_vision"), user, {
       models: [model],
       picture: { deep: false },
       timeoutMs: MEASURE_TIMEOUT_MS,

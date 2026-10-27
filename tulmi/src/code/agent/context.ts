@@ -16,12 +16,16 @@
  *             checks said, and a running summary of the work so far
  *   recent    the last SIX tool results in full, as the model made the calls
  *
- * A result that falls out of the last six becomes one digest line at once (so nothing
- * is lost from view), and every FOLD_BATCH of those digests the cheap tier folds them
- * into the running summary (`agent.fold`, one small call), which the summary's own size
- * limit keeps small. If the cheap tier cannot be had the digests are kept as they are
- * and the oldest are dropped when the summary is full: a model is a help here, never a
- * dependency.
+ * WHAT BECOMES OF A RESULT THAT FALLS OUT OF THE LAST SIX is the job's CONTEXT STRATEGY (mask.ts; CODE_CONTEXT_STRATEGY, or the agent's `contextStrategy`):
+ *
+ *   mask      its OUTPUT becomes a one-line placeholder that keeps what was done and the facts that matter (`[run "npm test": exit 1, 240 lines, first
+ *             error: ... - output masked]`); the model's own turn, with the call it made, stays in the transcript. No model call.
+ *   summary   (default; docs/code-agent.md says why) the turn leaves the transcript and becomes one digest line at once, and every FOLD_BATCH of those digests the cheap tier folds them into the
+ *             running summary (`agent.fold`, one small call), which the summary's own size limit keeps small. If the cheap tier cannot be had the digests are
+ *             kept as they are and the oldest are dropped when the summary is full: a model is a help here, never a dependency.
+ *   hybrid    mask, and every HYBRID_EVERY turns the oldest masked turns are folded into the running summary, so the transcript stops growing.
+ *
+ * The strategy of a job is fixed at its first model turn (AgentState.work.strategy).
  *
  * THE CAP IS HARD. buildContext shrinks what it must until the whole prompt (messages
  * and the tool definitions, counted as the gateway counts them) is under
@@ -41,6 +45,7 @@ import { compose, stableBlock } from "../../principles/index.js";
 import { charsOf } from "../brain/money.js";
 import type { ChatMessage, ToolCall, ToolDef } from "../brain/types.js";
 import { askJson, cut, fence, forModel, type ModelCtx } from "../work/model.js";
+import { HYBRID_EVERY, maskArguments, maskResult, maskText, type ContextStrategy } from "./mask.js";
 import {
   CONTEXT_MAX_CHARS, FOLD_BATCH, FREEFORM_RUNS_MAX, FREEFORM_STEPS_MAX, FULL_RESULTS, MEMORY_MAX_CHARS, RESULT_MAX_CHARS, RULES_MAX_CHARS, SPEC_SHOWN_CHARS, SUMMARY_MAX_CHARS,
   type AgentState, type SpecArtifact, type CallRecord, type Exchange, type ResultRecord,
@@ -125,40 +130,61 @@ export function digestOf(ex: Exchange): string {
 
 export const FoldReply = z.object({ summary: z.string().min(1) });
 
-/**
- * Moves results that fell out of the last six into the digests, and folds the digests
- * into the summary when enough have piled up. Changes `state.work`. Costs one cheap
- * call per FOLD_BATCH results, and none if the cheap tier cannot be had.
- */
-export async function fold(state: AgentState, model: ModelCtx | null): Promise<void> {
-  const w = state.work;
-  // The window is the last FULL_RESULTS results, in whole turns, and always the latest turn.
+/** The index where the window of whole results starts: the last FULL_RESULTS results, in whole turns, and always the latest turn. */
+function windowStart(w: AgentState["work"], size = FULL_RESULTS): number {
   let kept = 0;
   let start = w.exchanges.length;
   while (start > 0) {
     const n = w.exchanges[start - 1]!.results.length;
-    if (kept > 0 && kept + n > FULL_RESULTS) break;
+    if (kept > 0 && kept + n > size) break;
     kept += n;
     start -= 1;
-    if (kept >= FULL_RESULTS) break;
+    if (kept >= size) break;
   }
-  if (start > 0) {
-    const out = w.exchanges.splice(0, start);
-    for (const ex of out) w.digests.push(digestOf(ex));
+  return start;
+}
+
+/** Folds the digests into the running summary: one cheap call, or, without the cheap tier, the lines as they are (the oldest dropped when the notes are full). */
+async function foldDigests(w: AgentState["work"], model: ModelCtx | null): Promise<void> {
+  const lines = w.digests.splice(0, w.digests.length);
+  let folded: string | null = null;
+  if (model) {
+    const r = await askJson(model, {
+      tier: "cheap", purpose: "agent.fold", schema: FoldReply, maxTokens: 500, role: "agent_fold",
+      user: `<notes>\n${fence(forModel(w.summary))}\n</notes>\n<latest>\n${fence(forModel(lines.join("\n")))}\n</latest>`,
+    });
+    if (r.ok) folded = r.value.summary.replace(/\s+/g, " ").trim();
   }
-  if (w.digests.length >= FOLD_BATCH) {
-    const lines = w.digests.splice(0, w.digests.length);
-    let folded: string | null = null;
-    if (model) {
-      const r = await askJson(model, {
-        tier: "cheap", purpose: "agent.fold", schema: FoldReply, maxTokens: 500, role: "agent_fold",
-        user: `<notes>\n${fence(forModel(w.summary))}\n</notes>\n<latest>\n${fence(forModel(lines.join("\n")))}\n</latest>`,
-      });
-      if (r.ok) folded = r.value.summary.replace(/\s+/g, " ").trim();
+  // Without the cheap tier the lines are kept as they are, and the oldest go when the notes are full.
+  const joined = [w.summary, ...lines].filter(Boolean).join("\n");
+  w.summary = folded !== null ? cut(folded, SUMMARY_MAX_CHARS) : joined.length > SUMMARY_MAX_CHARS ? `…${joined.slice(-(SUMMARY_MAX_CHARS - 1))}` : joined;
+}
+
+/**
+ * Deals with the results that fell out of the last six, as the job's strategy says (see the head of this file). Changes `state.work`.
+ *   summary  moves them into the digests and folds the digests into the summary when enough have piled up: one cheap call per FOLD_BATCH results, none if the
+ *            cheap tier cannot be had
+ *   mask     replaces their outputs by placeholders, in place: no call
+ *   hybrid   masks, and folds the oldest HYBRID_EVERY masked turns into the summary once there are twice that many: one cheap call every HYBRID_EVERY turns
+ */
+export async function fold(state: AgentState, model: ModelCtx | null, strategy: ContextStrategy = "summary"): Promise<void> {
+  const w = state.work;
+  const start = windowStart(w);
+  if (strategy === "summary") {
+    if (start > 0) {
+      const out = w.exchanges.splice(0, start);
+      for (const ex of out) w.digests.push(digestOf(ex));
     }
-    // Without the cheap tier the lines are kept as they are, and the oldest go when the notes are full.
-    const joined = [w.summary, ...lines].filter(Boolean).join("\n");
-    w.summary = folded !== null ? cut(folded, SUMMARY_MAX_CHARS) : joined.length > SUMMARY_MAX_CHARS ? `…${joined.slice(-(SUMMARY_MAX_CHARS - 1))}` : joined;
+    if (w.digests.length >= FOLD_BATCH) await foldDigests(w, model);
+    return;
+  }
+  for (const ex of w.exchanges.slice(0, start)) {
+    ex.results = ex.results.map((r, i) => (ex.calls[i] ? maskResult(ex.calls[i]!, r) : r));
+  }
+  if (strategy === "hybrid" && start >= 2 * HYBRID_EVERY) {
+    const out = w.exchanges.splice(0, HYBRID_EVERY);
+    for (const ex of out) w.digests.push(digestOf(ex));
+    await foldDigests(w, model);
   }
 }
 
@@ -193,6 +219,8 @@ export interface ContextInput {
   stagedLines: string[];
   /** The checks that will run after done, as words. */
   checks: string[];
+  /** What becomes of old results (mask.ts). Absent: the job's own (`state.work.strategy`), else summary, which is what jobs did before there was a choice. */
+  strategy?: ContextStrategy;
 }
 
 export interface Context {
@@ -202,7 +230,13 @@ export interface Context {
   trimmed: string[];
 }
 
-interface Knobs { results: number; window: number; excerpts: boolean; summary: number; rules: boolean; spec: number }
+interface Knobs {
+  results: number; window: number; excerpts: boolean; summary: number; rules: boolean; spec: number;
+  /** Turns older than the window are kept as masked turns (mask, hybrid). False: they are dropped (summary) or, with `lines`, reduced to a digest line each. */
+  masked?: boolean;
+  /** The turns older than the window are not messages at all but one digest line each in the notes (the last rung of the ladder for a masking job). */
+  lines?: boolean;
+}
 
 /**
  * The design a job was made to build (an approved artifact), as the model is shown it: the design as data in its fence, the project's kit, and
@@ -254,7 +288,8 @@ function taskMessage(i: ContextInput, k: Knobs): string {
   if (s.work.designFeedback) {
     parts.push(`The app was RUN and looked at, and it does not match the approved design yet (design round ${s.design?.round ?? 1} of 2). Fix these differences, using the project's own components, styles and tokens:\n${dataBlock("design_check", "", cut(s.work.designFeedback, 3500))}`);
   }
-  const history = [cut(s.work.summary, k.summary), ...s.work.digests.map((d) => `- ${d}`)].filter(Boolean).join("\n");
+  const older = k.lines ? s.work.exchanges.slice(0, windowStart(s.work, k.window)).map((ex) => `- ${digestOf(ex)}`) : [];
+  const history = [cut(s.work.summary, k.summary), ...s.work.digests.map((d) => `- ${d}`), ...older].filter(Boolean).join("\n");
   if (history) parts.push(`Earlier in this job (notes on steps no longer shown in full):\n${dataBlock("history", "", cut(history, k.summary + 1500))}`);
   return parts.join("\n\n");
 }
@@ -262,27 +297,28 @@ function taskMessage(i: ContextInput, k: Knobs): string {
 function recentMessages(state: AgentState, k: Knobs): ChatMessage[] {
   const out: ChatMessage[] = [];
   const list = state.work.exchanges;
-  let kept = 0;
-  let from = list.length;
-  while (from > 0) {
-    const n = list[from - 1]!.results.length;
-    if (kept > 0 && kept + n > k.window) break;
-    kept += n;
-    from -= 1;
-    if (kept >= k.window) break;
-  }
-  for (const ex of list.slice(from)) {
+  const from = windowStart(state.work, k.window);
+  const emit = (ex: Exchange, old: boolean) => {
     if (!ex.calls.length) {
-      out.push({ role: "assistant", content: ex.text || "(no answer)" }, { role: "user", content: NUDGE });
-      continue;
+      out.push({ role: "assistant", content: (old ? maskText(ex.text) : ex.text) || "(no answer)" }, { role: "user", content: NUDGE });
+      return;
     }
-    const calls: ToolCall[] = ex.calls.map((c) => ({ id: c.id, name: c.name, arguments: c.arguments }));
-    out.push({ role: "assistant", content: ex.text || null, tool_calls: calls });
+    const calls: ToolCall[] = ex.calls.map((c) => ({ id: c.id, name: c.name, arguments: old ? maskArguments(c.arguments) : c.arguments }));
+    out.push({ role: "assistant", content: (old ? maskText(ex.text) : ex.text) || null, tool_calls: calls });
     ex.calls.forEach((c, n) => {
       const r = ex.results[n];
-      if (r) out.push({ role: "tool", tool_call_id: c.id, content: renderResult(c, r, k.results) });
+      if (!r) return;
+      if (old) {
+        // An old turn's output is a placeholder in our own words, with the part of it that came from outside kept inside a data fence.
+        const m = maskResult(c, r);
+        const body = m.masked ? (m.quotes ? dataBlock(c.name, "", m.content) : m.content) : renderResult(c, m, k.results);
+        out.push({ role: "tool", tool_call_id: c.id, content: body });
+      } else out.push({ role: "tool", tool_call_id: c.id, content: renderResult(c, r, k.results) });
     });
-  }
+  };
+  // Turns older than the window: masked ones when the strategy keeps them, nothing otherwise.
+  if (k.masked && !k.lines) for (const ex of list.slice(0, from)) emit(ex, true);
+  for (const ex of list.slice(from)) emit(ex, false);
   return out;
 }
 
@@ -301,12 +337,15 @@ export function buildContext(i: ContextInput): Context {
   const toolChars = JSON.stringify(i.tools).length;
   const limit = CONTEXT_MAX_CHARS - toolChars;
   let project = i.project;
+  const masked = (i.strategy ?? i.state.work.strategy ?? "summary") !== "summary";
   const ladder: Array<{ note: string; knobs: Knobs }> = [
-    { note: "", knobs: { results: RESULT_MAX_CHARS, window: FULL_RESULTS, excerpts: true, summary: SUMMARY_MAX_CHARS, rules: true, spec: SPEC_SHOWN_CHARS } },
-    { note: "results cut shorter", knobs: { results: 2500, window: FULL_RESULTS, excerpts: true, summary: SUMMARY_MAX_CHARS, rules: true, spec: SPEC_SHOWN_CHARS } },
-    { note: "fewer results kept whole", knobs: { results: 1500, window: 3, excerpts: true, summary: 1200, rules: true, spec: 8000 } },
-    { note: "excerpts left out", knobs: { results: 1000, window: 2, excerpts: false, summary: 800, rules: true, spec: 5000 } },
-    { note: "only the latest result kept", knobs: { results: 600, window: 1, excerpts: false, summary: 400, rules: false, spec: 3000 } },
+    { note: "", knobs: { results: RESULT_MAX_CHARS, window: FULL_RESULTS, excerpts: true, summary: SUMMARY_MAX_CHARS, rules: true, spec: SPEC_SHOWN_CHARS, masked } },
+    { note: "results cut shorter", knobs: { results: 2500, window: FULL_RESULTS, excerpts: true, summary: SUMMARY_MAX_CHARS, rules: true, spec: SPEC_SHOWN_CHARS, masked } },
+    { note: "fewer results kept whole", knobs: { results: 1500, window: 3, excerpts: true, summary: 1200, rules: true, spec: 8000, masked } },
+    { note: "excerpts left out", knobs: { results: 1000, window: 2, excerpts: false, summary: 800, rules: true, spec: 5000, masked } },
+    { note: "only the latest result kept", knobs: { results: 600, window: 1, excerpts: false, summary: 400, rules: false, spec: 3000, masked } },
+    // A masking job that is still over the cap has too many turns: they become a line each in the notes, as a summary job's always are.
+    ...(masked ? [{ note: "older steps reduced to a line each", knobs: { results: 600, window: 1, excerpts: false, summary: 400, rules: false, spec: 3000, masked, lines: true } }] : []),
   ];
   let messages: ChatMessage[] = [];
   for (const step of ladder) {
