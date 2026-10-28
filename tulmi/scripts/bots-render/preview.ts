@@ -43,6 +43,7 @@ const { fakeDeps, ctxFor, IST } = await import("../../src/experience/bots/fixtur
 const { loadLive } = await import("../../src/experience/bots/live.js");
 const kit = await import("../../src/experience/bots/kit.js");
 const { buildBootstrap } = await import("../../src/experience/catalog.js");
+const { BLIP_LOOPS } = await import("../../src/experience/blipLoops.js");
 type Sample = (typeof SAMPLES)[number];
 type Client = "phone" | "desktop";
 type Params = Record<string, string | number | boolean>;
@@ -123,7 +124,13 @@ function sampleFor(t: Target, c: Client): Sample | undefined {
   return same.find((s) => canon(s.id, params(s, c)) === k) ?? same.find((s) => canon(s.id, (s.params ?? {}) as Params) === k) ?? same[0];
 }
 
-const COMPS: Record<Client, string[]> = { phone: [], desktop: R.DESKTOP_COMPONENTS };
+/**
+ * What each client declares beyond BotsKit. Both draw the onboarding's stage and its one Blip (the first run walks him
+ * from Welcome to Name: the window with its own walker, blip.js; the phone with phone/preview.jsx's stand-in for
+ * BlipHost, which needs Skia).
+ */
+const STAGE = ["OnboardStage", "BlipSpot"];
+const COMPS: Record<Client, string[]> = { phone: STAGE, desktop: [...R.DESKTOP_COMPONENTS, ...STAGE] };
 
 async function build(t: Target, c: Client): Promise<unknown> {
   const s = sampleFor(t, c);
@@ -269,8 +276,10 @@ write("desk.html", desk);
 for (const f of ["knobs.js", "blip.js", "sdui.js"]) copy(path.join(DESKTOP, f), f);
 for (const m of desk.matchAll(/url\((assets\/[^)"']+)\)/g)) if (fs.existsSync(path.join(DESKTOP, m[1]!))) copy(path.join(DESKTOP, m[1]!), m[1]!);
 
-// What the screens name, and the faces the page around them is set in.
+// What the screens name, and the faces the page around them is set in; and every one of Blip's loops, which the
+// phone's stand-in for BlipHost draws by pose.
 for (const f of ["fonts/geist.ttf", "fonts/geist-semibold.ttf", "fonts/geist-mono.ttf"]) assets.add(f);
+for (const loop of BLIP_LOOPS) assets.add(`blip/${loop}.webp`);
 for (const a of assets) {
   const from = path.join(TULMI, a);
   if (fs.existsSync(from)) copy(from, a);
@@ -286,7 +295,11 @@ const GROUP: Record<string, string> = {
 };
 const ACTIVITY = new Set(["bots.activity", "bots.tasks", "bots.approve"]);
 const GROUPS = ["First run", "Bots", "Keybot", "Code bot", "Activity and You", "Desktop pages"];
-const groupOf = (s: Sample) => (!s.board && s.deskBoard ? "Desktop pages" : s.area === "shell" ? (ACTIVITY.has(s.id) ? "Activity and You" : "Bots") : GROUP[s.area] ?? "Bots");
+/** The first run's old pages, listed where the app reaches them now. */
+const REACHED_FROM: Record<string, string> = {
+  "bots.keybot.on": "Keybot", "bots.first-words": "Keybot", "bots.language": "Activity and You", "bots.plans": "Activity and You",
+};
+const groupOf = (s: Sample) => REACHED_FROM[s.id] ?? (!s.board && s.deskBoard ? "Desktop pages" : s.area === "shell" ? (ACTIVITY.has(s.id) ? "Activity and You" : "Bots") : GROUP[s.area] ?? "Bots");
 /** A screen's own title, or its board's name when it has none of its own yet ("On its way"). */
 const titleOf = (s: Sample) => {
   const t = crawls.phone.titles.get(canon(s.id, params(s, "phone"))) ?? crawls.desktop.titles.get(canon(s.id, params(s, "desktop")));

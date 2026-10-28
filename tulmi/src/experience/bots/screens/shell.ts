@@ -22,6 +22,7 @@ import {
 } from "../kit.js";
 import type { Mark } from "../glyphs.js";
 import { screen, type BotsScreen } from "../registry.js";
+import { DEVICE_STATE, setupCards } from "./firstRun.js";
 import { clockOf, dayLabel, longDate, type FeedRow } from "../../../shell/feed.js";
 import { upiOf } from "../../../shell/parse.js";
 import { qrOf, qrPath } from "../../../shell/qr.js";
@@ -165,7 +166,7 @@ function tiles(ctx: BotsCtx, columns: number, height: number, padding: number): 
 function homePhone(ctx: BotsCtx) {
   const first = ctx.live.needs[0];
   return page(ctx, {
-    tab: "bots", title: "Your bots",
+    tab: "bots", title: "Your bots", state: { ...DEVICE_STATE },
     body: [
       row([
         tailzuMark(34),
@@ -174,6 +175,8 @@ function homePhone(ctx: BotsCtx) {
         roundButton("search", open(SCREENS.search), { size: 44, light: true, label: "Search everything" }),
         roundButton("person", toTab("you"), { size: 44, light: true, label: "Profile and settings" }),
       ], { gap: 10 }),
+      // What Keybot still lacks on this phone (the keyboard with Full Access, the microphone), until it has it.
+      ...setupCards(ctx),
       weekRow(ctx),
       ...(first ? [needsCard(first)] : []),
       tiles(ctx, 2, 132, 16),
@@ -185,7 +188,7 @@ function homePhone(ctx: BotsCtx) {
 function homeDesk(ctx: BotsCtx) {
   const first = ctx.live.needs[0];
   return page(ctx, {
-    tab: "bots", title: "Your bots",
+    tab: "bots", title: "Your bots", state: { ...DEVICE_STATE },
     body: [
       row([
         col([text(ctx.live.greeting, { size: 14, color: C.meta, lineHeight: 18 }), title("What should we do?", { size: 32, tracking: -0.8, lineHeight: 38 })], { gap: 4 }),
@@ -193,6 +196,8 @@ function homeDesk(ctx: BotsCtx) {
         weekRow(ctx),
         roundButton("search", open(SCREENS.search), { size: 40, light: true, label: "Search everything" }),
       ], { alignItems: "flex-end", flexWrap: "wrap", gap: 12 }),
+      // This computer's Accessibility and microphone for Keybot, where the window can tell, until they are on.
+      ...setupCards(ctx),
       ...(first ? [needsCard(first, { layout: "row" })] : []),
       tiles(ctx, 4, 150, 18),
     ],
@@ -227,9 +232,10 @@ function emptyHome(ctx: BotsCtx) {
   if (ctx.client === "desktop") {
     return page(ctx, {
       tab: "bots", title: "Your bots", gap: 20, maxWidth: 1100,
-      state: { draft: "" },
+      state: { draft: "", ...DEVICE_STATE },
       body: [
         col([text(greet, { size: 14, color: C.meta, lineHeight: 18 }), title("Your bots")], { gap: 4 }),
+        ...setupCards(ctx),
         row([
           col([
             row([blip("hello", 140), col([text(hi, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), text(line, { size: 15, color: C.grey70, lineHeight: 21 })], { gap: 6, flexShrink: 1 })], { gap: 24 }),
@@ -271,7 +277,7 @@ function emptyHome(ctx: BotsCtx) {
   }
 
   return page(ctx, {
-    tab: "bots", title: "Your bots", gap: 16,
+    tab: "bots", title: "Your bots", gap: 16, state: { ...DEVICE_STATE },
     body: [
       row([
         tailzuMark(34),
@@ -279,6 +285,7 @@ function emptyHome(ctx: BotsCtx) {
         grow(),
         roundButton("person", toTab("you"), { size: 44, light: true, label: "Profile and settings" }),
       ], { gap: 10 }),
+      ...setupCards(ctx),
       col([blip("hello", 172), text(hi, { size: 25, weight: 700, tracking: -0.5, lineHeight: 31, align: "center" }), text(line, { size: 14, color: C.grey70, lineHeight: 20, align: "center" })], { gap: 6, alignItems: "center" }),
       row([
         botAvatar(keybot, 38),

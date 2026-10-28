@@ -1,4 +1,11 @@
 {
+ "GET /v1/bots/first-run/profile": {
+  "name": "Aanya Sharma",
+  "via": "google",
+  "source": "provider",
+  "gender": null,
+  "saved": false
+ },
  "GET /v1/bots/first-run/languages": {
   "options": [
    {

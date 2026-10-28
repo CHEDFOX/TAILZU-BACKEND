@@ -21,8 +21,17 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
 
 * **Off, or an older build: today's app, byte for byte** (tests/bots-app-boot.test.ts checks the bootstrap is identical).
 * **On:** the bootstrap sends the tabs `bots` / `activity` / `you` (screens `bots.home`, `bots.activity`, `bots.you`), lands on
-  `bots.home` (after onboarding, which is unchanged), adds the Geist fonts, flag `bots.app: true`, and warms the three tabs. The screen
-  route answers every `bots.*` id, and `home` (where every "go to the app" in today's flows points) becomes `bots.home`.
+  `bots.home` (after the Bots app's own first run, below), adds the Geist fonts, flag `bots.app: true`, and warms the three tabs. The
+  screen route answers every `bots.*` id, and `home` (where every "go to the app" in today's flows points) becomes `bots.home`.
+* **The first run** (screens/firstRun.ts): Welcome → Sign in → Code in the sign-in gate (`auth.screen` = `botsAuthTree()`), then
+  `bots.name-it` (About you: the name and gender card's own question and write, `PUT /v1/profile { full_name, gender }`, started from
+  the sign-in's name; then Name your Tailzu, which marks the account onboarded) → Bots. Both are OnboardStages with a `BlipSpot` per
+  step, so the apps draw **one Blip** walking across all of them, through the gate's swap (the phone's BlipHost, the window's
+  blip.js walker), as the old onboarding does. Language, Turn on Keybot, First words and Plans are pages reached from the app.
+  After it, Bots and Keybot carry two cards while something is missing: "Turn on full access" (the keyboard; one button to its
+  settings) and "Let Keybot hear you" (the microphone; asks, then opens First words), drawn from what the app writes into the
+  screen's state (`keyboardEnabled`, `keyboardReady`, `micGranted`). A window shows its Accessibility card (`DeskAskSetup`) and the
+  microphone card (`DeskMicAsk`) only where it declares them.
 * **Existing screens stay reachable** by their ids: `settings`, `keyboard`/keyboard settings, `history`, `paywall`, `personality`…
   and in a window the desk's `desk_today`, `desk_notes`, `desk_settings` (the sidebar links Today, Meeting notes and Settings to them).
   They draw as today, with the app's own chrome.
@@ -39,7 +48,7 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
 | `…/bots/live.ts` | the live state every screen gets (`ctx.live`), `BotsDeps` |
 | `…/bots/deps.ts` | the real `BotsDeps` (server.ts builds one per request) |
 | `…/bots/registry.ts` | `screen({ id, load?, build })` |
-| `…/bots/screens/{shell,you,bots,keybot,code}.ts` | **the screens, one file per area: yours** |
+| `…/bots/screens/{shell,you,bots,keybot,code,firstRun}.ts` | **the screens, one file per area: yours** |
 | `…/bots/index.ts` | joins the screen files, bootstrap nav, the switch, `buildBotsScreen` |
 | `…/bots/fixtures.ts` | fake deps and the boards' sample day (Aanya), for tests and the render check |
 | `…/bots/lint.ts` | `lintTree(root)`: the kit's rules as a check |
@@ -214,4 +223,5 @@ No new node types: the design is expressed with core types plus four extensions,
   **Never touch `tulmi/e2e`.**
 * Known gaps: `bots.activity`, `bots.you` and the rest of `SCREENS` are not built yet; the monthly limit is `DEFAULT_MONTH_BUDGET_PAISE`
   (₹500) until the Budget screen stores one (`BotsDeps.budgetPaise`); spend counts Code bot jobs' `spentPaise` only; the name-and-gender
-  card (`profileGate.screenIds`) is not shown on bots.home.
+  card is asked in the first run (About you), so `profileGate.screenIds` is empty while someone is still in it; someone onboarded
+  before that keeps the card on `personality` / `home`.

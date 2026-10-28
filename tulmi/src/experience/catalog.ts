@@ -2621,8 +2621,13 @@ export function buildBootstrap(
         // steps. (Also the default in appKnobsData.ts; set here so a knob
         // sync that forgets it cannot let a tap past the new flow.)
         if (newFlow) flags["boot.firstRunGateIds"] = ["onboarding", "onboarding_keyboard", "onboard"];
-        // The Bots app's first run (Languages to Plans) holds a keyboard tap the same way.
+        // The Bots app's first run (About you, Name) holds a keyboard tap the same way.
         if (botsApp) flags["boot.firstRunGateIds"] = [...(newFlow ? ["onboarding", "onboarding_keyboard", "onboard"] : ["onboarding", "onboarding_keyboard"]), ...BOTS_FIRST_RUN_IDS];
+        // The Bots app asks the name and gender card's question in its first run (About you, the same write), so
+        // the card itself is never laid over a screen for someone still in it: not while the run is on, and not
+        // after it in the same launch, while this bootstrap still says the answer is owed. Someone onboarded
+        // before the run asked it keeps the card where it has always been.
+        if (botsApp && !opts.onboarded) flags["profileGate.screenIds"] = [];
       }
 
       /**

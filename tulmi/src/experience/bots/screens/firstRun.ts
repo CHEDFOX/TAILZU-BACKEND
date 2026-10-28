@@ -1,6 +1,8 @@
 /**
- * FIRST RUN: WELCOME, SIGN IN, CODE, LANGUAGES, NAME, TURN ON KEYBOT, FIRST WORDS, PLANS (Welcome, SignIn, SignCode,
- * Language, NameIt, KeyOn, FirstWords, Plans and their D* boards). One id serves the phone and the window (ctx.client).
+ * FIRST RUN: WELCOME, SIGN IN, CODE, ABOUT YOU, NAME (Welcome, SignIn, SignCode, NameIt and their D* boards), and the
+ * pages that used to follow them and are now reached from the app: Language (from You), Turn on Keybot (from the
+ * keyboard card), First words (after the microphone card) and Plans (from You and Billing). One id serves the phone
+ * and the window (ctx.client).
  *
  * ON THE MACHINERY THAT IS ALREADY THERE, NOT BESIDE IT.
  *
@@ -8,21 +10,34 @@
  *   it before there is an account. With the Bots app on, catalog.buildBootstrap sends `botsAuthTree()` there: these
  *   steps, drawn with the kit, around the sign-in components the gate already runs (SwipePill's field, GoogleSignIn,
  *   AppleSignIn, CodeEntry). The sign-in itself (Supabase OTP, the captcha, Google, Apple, the review address) stays
- *   in AuthGateScreen (phone) and sdui.js's gate (window); this only decides how it looks. The root is an
- *   OnboardStage, the one container both gates already step through (a state change repaints it in the window, and
- *   the flow's phase picks the Code step on both), dressed white with no bar and no Blip of its own.
+ *   in AuthGateScreen (phone) and sdui.js's gate (window); this only decides how it looks.
  *
- *   After it, bots.language is the first screen of someone not onboarded yet (buildBootstrap), and each step leads to
- *   the next: Languages → Name → Turn on Keybot → First words → Plans, which marks the account onboarded
- *   (PUT /v1/profile, as the onboarding's Done does) and lands on Bots.
+ *   ONE BLIP, THE WHOLE WAY. The root is an OnboardStage, the onboarding's own: each step holds a BlipSpot (where he
+ *   stands and in which pose) and the apps draw Blip once, above everything (the phone's BlipHost, the window's
+ *   blip.js walker), walking him from spot to spot. He waves on Welcome, listens while the number or the email is
+ *   typed, waits for the code and thinks while it is checked. After the code the gate goes and the app fetches
+ *   bots.name-it, whose root is a stage too (id "bots.first"): the apps hold Blip and the white ground through the
+ *   swap, exactly as they do between the onboarding's two stages, and he walks on to its spot, presents "About you",
+ *   and cheers on "Name". Reduce Motion is the apps': no walk and no glide, a fade.
+ *
+ *   After the session, bots.name-it is the first screen of someone not onboarded yet (buildBootstrap): About you (the
+ *   name and gender card's own question and write, PUT /v1/profile { full_name, gender }, started from the sign-in's
+ *   own name), then Name your Tailzu, which saves the boss bot's name and marks the account onboarded (PUT /v1/profile
+ *   { onboarded }, as the onboarding's Done does) and lands on Bots.
  *
  * As screens of their own (bots.welcome, bots.sign-in, bots.sign-code) the three sign-in steps are the same layout
- * drawn with the kit only; someone who reaches them is already signed in, so their buttons lead to the gate (sign out)
- * or on to Languages rather than pretending to send a code.
+ * drawn with the kit only, each on a stage of its own so Blip walks on from one to the next; someone who reaches them is
+ * already signed in, so Google and Apple lead to the gate (sign out), and Send code and Continue walk on through the
+ * Code page to About you without sending anything. A build without the stage gets each step as a page.
  *
- * Reads: GET /v1/bots/first-run/{languages,words,plans} (routes/botsFirstRun.ts), GET /v1/personality.
- * Writes: PUT /v1/personality (languages, the boss bot's name), PUT /v1/profile { onboarded }, the paywall's own
- * purchase actions (iap.showPaywall / iap.subscribe: RevenueCat on the phone, the pay page in a window).
+ * AFTER ONBOARDING, two cards on Bots (and on Keybot) ask for what Keybot still lacks: the keyboard with Full Access
+ * (opens the keyboard's settings) and the microphone (asks for it, then opens First words). Each is drawn from what
+ * the app itself reports into the screen's state (keyboardEnabled, keyboardReady, micGranted) and goes once it is on.
+ *
+ * Reads: GET /v1/bots/first-run/{profile,languages,words,plans} (routes/botsFirstRun.ts), GET /v1/personality.
+ * Writes: PUT /v1/profile { full_name, gender }, PUT /v1/personality (languages, the boss bot's name), PUT /v1/profile
+ * { onboarded }, the paywall's own purchase actions (iap.showPaywall / iap.subscribe: RevenueCat on the phone, the pay
+ * page in a window).
  */
 import type { ActionRef, ActionSpec, Condition, Node, ScreenResponse } from "../../../../../shared/types/sdui.js";
 import { SDUI_SCHEMA_VERSION } from "../../../../../shared/types/sdui.js";
@@ -34,8 +49,8 @@ import {
 import { screen, type BotsScreen } from "../registry.js";
 
 const CLAY = PALETTE_HEX.clay!;
-/** The window's setup steps, as its boards list them. */
-const STEPS = ["Sign in", "Languages", "Name", "Keybot", "First words", "Plan"];
+/** The window's setup steps. */
+const STEPS = ["Sign in", "About you", "Name"];
 type Mode = "gate" | "page";
 type Style = Record<string, unknown>;
 
@@ -58,6 +73,10 @@ const W = {
   langH: "Which languages do you speak?",
   langP: "Pick every one you use, at home, at work, with friends.",
   langMix: "Mix them freely. Keybot follows how you talk.",
+  youH: "What's your name?",
+  youP: "So your bots know what to call you, and how to write for you.",
+  youGender: "You are",
+  youMissing: "Add your name and pick one.",
   nameH: "What should I be called?",
   nameP: "I'm the one in charge. Your other bots report to me and call me by this name.",
   keyH: "Turn on Keybot",
@@ -67,10 +86,50 @@ const W = {
   saveErr: "Couldn't save that. Try again.",
 };
 
+/** The name and gender card's choices (the app's `profile.genders`), as PUT /v1/profile takes them. */
+const GENDERS: Array<{ value: string; label: string }> = [{ value: "male", label: "Male" }, { value: "female", label: "Female" }, { value: "other", label: "Other" }];
+
+// ===================================================================== Blip, one for the whole run
+
+/** The poses Blip takes in the run: the walker's own names (blip.js, the phone's blipFigure). */
+type Pose = "wave" | "listen" | "wait" | "think" | "present" | "tada";
+/** The same pose as the kit's picture of him, for a build that draws no stage. */
+const KIT_POSE: Record<Pose, BlipPose> = { wave: "hello", listen: "listen", wait: "listen", think: "think", present: "needs", tada: "done" };
+
+/** Blip in a step: where the stage's one Blip stands (a BlipSpot), or, with no stage, his picture. */
+type Figure = (pose: Pose, h: number) => Node;
+/** An empty box the apps measure; Blip is drawn above it, by them. No words: the boards give him none. */
+const onStage: Figure = (pose, h) => ({ type: "BlipSpot", props: { pose, h, say: "", bubble: "side" } });
+const asPicture: Figure = (pose, h) => blip(KIT_POSE[pose], h);
+
+/** Does this build draw the onboarding's stage and its one Blip? (Every BotsKit build so far does.) */
+const staged = (ctx: BotsCtx): boolean => ctx.can.has("OnboardStage") && ctx.can.has("BlipSpot");
+const figureFor = (ctx: BotsCtx): Figure => (staged(ctx) ? onStage : asPicture);
+
+/**
+ * The stage's look, the same on both sides of sign-in so nothing changes at the boundary: white, no bar (drawn
+ * transparent), Blip in the onboarding's own colours (the kit's pictures of him are cut from the same drawing), no
+ * bubble (he says nothing), a short glide. Reduce Motion is the apps' to apply.
+ */
+const STAGE_LOOK = {
+  // Sentences, not titles: the capitalising pass leaves them be.
+  keepCase: true,
+  ground: C.paper,
+  progress: { on: "transparent", off: "transparent", height: 1, gap: 0 },
+  blip: { dot: "#F3E2C6", sticker: "#151311", glow: "#39FF14" },
+  // Never shown (no words); its ground is the paper the window's walker draws him against.
+  bubble: { background: C.paper, border: C.ink, ink: C.ink, font: "Tailzu Hand", size: 17, bigSize: 19 },
+  glide: { slide: 18, outMs: 200, inMs: 260, inDelayMs: 40 },
+};
+/** The run's steps, for the stages' `first` / `of`: Welcome and Sign in, Code, About you, Name. */
+const RUN_STEPS = 4;
+
 // ===================================================================== small parts
 
 const setState = (path: string, value: unknown): ActionSpec => ({ kind: "setState", path, value });
 const toast = (message: string): ActionSpec => ({ kind: "toast", message, tone: "error" } as ActionSpec);
+/** A short ink toast for a write that went through. */
+const saved = (message: string): ActionSpec => ({ kind: "toast", message, tone: "success" } as ActionSpec);
 const go = (screenId: string, params?: Record<string, unknown>, replace = false): ActionSpec =>
   ({ kind: "navigate", screenId, ...(params ? { params } : {}), ...(replace ? { replace: true } : {}) });
 const back: ActionSpec = { kind: "navigateBack" };
@@ -173,21 +232,25 @@ function consent(terms: string, privacy: string, align: "center" | "right" = "ce
 
 // ===================================================================== progress
 
-/** The phone's setup bar: five segments, filled to the step. */
-function phoneProgress(step: number): Node {
-  return labelled(row(Array.from({ length: 5 }, (_, i) => box([], {
+/** The phone's setup bar: a segment a step after sign-in, filled to the step. */
+function phoneProgress(step: number, of: number): Node {
+  return labelled(row(Array.from({ length: of }, (_, i) => box([], {
     flexGrow: 1, flexBasis: 0, height: 4, borderRadius: 2, backgroundColor: i < step ? C.ink : C.track,
-  })), { width: 116, gap: 4, flexShrink: 0 }), `Setup step ${step} of 5`);
+  })), { width: 24 * of + 4 * (of - 1), gap: 4, flexShrink: 0 }), `Setup step ${step} of ${of}`);
 }
 
-/** The phone's top line: back, the bar, and "N of 5" (or what the step puts there). */
-function phoneTop(step: number, o: { back?: ActionRef | null; right?: Node } = {}): Node {
-  const backTo = o.back === undefined ? back : o.back;
+/** The phone's top line: back (or nothing), the bar, and "N of M". */
+function phoneTop(step: number, of: number, o: { back?: ActionRef | null } = {}): Node {
   return row([
-    box(backTo ? [chevron(backTo)] : [], { flexGrow: 1, flexBasis: 0, alignItems: "flex-start", minHeight: 44, justifyContent: "center" }),
-    phoneProgress(step),
-    box([o.right ?? meta(`${step} of 5`, { size: 12 })], { flexGrow: 1, flexBasis: 0, alignItems: "flex-end" }),
+    box(o.back ? [chevron(o.back)] : [], { flexGrow: 1, flexBasis: 0, alignItems: "flex-start", minHeight: 44, justifyContent: "center" }),
+    phoneProgress(step, of),
+    box([meta(`${step} of ${of}`, { size: 12 })], { flexGrow: 1, flexBasis: 0, alignItems: "flex-end" }),
   ], { minHeight: 44 });
+}
+
+/** A pushed page's top line on the phone: back, and something on the right. */
+function phoneBackLine(right?: Node): Node {
+  return row([chevron(back), grow(), ...(right ? [right] : [])], { minHeight: 44 });
 }
 
 /** The window's steps: a bar each, the name under it; done ones with a ring, the one in hand with the ink dot. */
@@ -286,7 +349,7 @@ const deskFoot = (left: Node | null, right: Node[]): Node =>
     justifyContent: "space-between", flexWrap: "wrap", gap: 12, paddingTop: 2,
   });
 
-/** "Step 1 of 5", the title, the line under it (the window's left column). */
+/** "Step 1 of 2" (or the page it is), the title, the line under it (the window's left column). */
 const deskHeading = (kicker: string, h: string, sub: string): Node =>
   col([meta(kicker, { size: 13, lineHeight: 17 }), title(h, { lineHeight: 31 }), text(sub, { size: 15, lineHeight: 22, color: C.grey70, style: { maxWidth: 400 } })], { gap: 6 });
 
@@ -353,8 +416,8 @@ function signField(mode: Mode, method: "phone" | "email", desktop: boolean): Nod
       })] : [box([], { width: 2 })]),
       input,
     ], { height: desktop ? 54 : 56, borderWidth: 1.5, borderColor: C.ink, borderRadius: desktop ? 14 : 16, overflow: "hidden" }),
-    // Signed in already, this page's way to sign in is the gate itself.
-    primaryButton(W.sendCode, signOut, { wide: true }),
+    // Signed in already, there is no code to send: this page leads on to the Code page, as the gate's would.
+    primaryButton(W.sendCode, go(SCREENS.signCode), { wide: true }),
   ], { gap: 14 });
 }
 
@@ -388,16 +451,16 @@ function byMethod(phone: Node, email: Node): Node[] {
 
 // ----------------------------------------------------------------- Welcome
 
-function welcomePhone(start: ActionRef): { body: Node[]; footer: Node[] } {
+function welcomePhone(start: ActionRef, fig: Figure): { body: Node[]; footer: Node[] } {
   return {
     body: [
       row([tailzuMark(24), text("Tailzu", { size: 16, weight: 700, tracking: -0.3, lineHeight: 20 })], { gap: 8, minHeight: 44 }),
       grow(),
-      row([blip("hello", 200)], { justifyContent: "center" }),
+      row([fig("wave", 172)], { justifyContent: "center" }),
       col([
         title(W.welcomeH, { align: "center", lineHeight: 31 }),
         text(W.welcomeP, { size: 15, lineHeight: 22, color: C.grey70, align: "center", style: { maxWidth: 300 } }),
-      ], { alignItems: "center", gap: 10, paddingTop: 28, paddingHorizontal: 8 }),
+      ], { alignItems: "center", gap: 10, paddingTop: 22, paddingHorizontal: 8 }),
       row([fourDots()], { justifyContent: "center", paddingTop: 22 }),
       { type: "Stack", style: { flexGrow: 1.3, flexShrink: 1 } },
     ],
@@ -412,7 +475,10 @@ const FIRST_BOTS: Array<{ slug: string; name: string; line: string }> = [
   { slug: "travel", name: "Travel bot", line: "Tickets, refunds and the waiting on hold." },
 ];
 
-function welcomeDesk(start: ActionRef): DeskOpts {
+/** Blip in the window's left column, set against its edge as the boards place him. */
+const deskFig = (fig: Figure, pose: Pose, h: number): Node => box([fig(pose, h)], { alignSelf: "flex-start", marginLeft: -10 });
+
+function welcomeDesk(start: ActionRef, fig: Figure): DeskOpts {
   const rows: Node[] = [
     ...FIRST_BOTS.map((b) => ({ look: botLook(b.slug), name: b.name, line: b.line })),
     { look: { color: PALETTE_HEX.pine!, icon: "spark" as IconName }, name: "Your own bots", line: "Make one for anything, like a Gym bot." },
@@ -423,11 +489,11 @@ function welcomeDesk(start: ActionRef): DeskOpts {
   const list: Node[] = [];
   rows.forEach((r, i) => { if (i) list.push(divider()); list.push(r); });
   return {
-    title: "Welcome", right: meta("6 short steps", { size: 13 }), current: -1,
+    title: "Welcome", right: meta(`${STEPS.length} short steps`, { size: 13 }), current: -1,
     left: [
-      deskBlip("hello", 200),
+      deskFig(fig, "wave", 172),
       col([title(W.welcomeH, { lineHeight: 31 }), text(W.welcomeP, { size: 15, lineHeight: 22, color: C.grey70, style: { maxWidth: 400 } })], { gap: 6 }),
-      row([fourDots(), meta("Free to start · about 2 minutes", { size: 12 })], { gap: 12, paddingTop: 4 }),
+      row([fourDots(), meta("Free to start · about a minute", { size: 12 })], { gap: 12, paddingTop: 4 }),
     ],
     main: [col([
       row([sectionLabel("Your first bots"), grow(), meta("Each one does one job", { size: 12 })], { paddingTop: 14, paddingHorizontal: 18, paddingBottom: 4, gap: 10 }),
@@ -439,11 +505,15 @@ function welcomeDesk(start: ActionRef): DeskOpts {
 
 // ----------------------------------------------------------------- Sign in
 
-function signInPhone(mode: Mode, o: BotsAuthOpts, backTo: ActionRef): Node[] {
+/** The heading with Blip beside it, listening while the number or the email is typed. */
+const headingBeside = (heading: Node, fig: Figure): Node =>
+  row([box([heading], { flexGrow: 1, flexShrink: 1, minWidth: 0 }), box([fig("listen", 84)], { marginRight: -12, marginTop: -8, flexShrink: 0 })], { gap: 4, alignItems: "flex-end" });
+
+function signInPhone(mode: Mode, o: BotsAuthOpts, backTo: ActionRef, fig: Figure): Node[] {
   const social = socialButtons(mode, o, 54);
   return [
     chevron(backTo),
-    ...byMethod(phoneHeading(W.phoneH, W.phoneP), phoneHeading(W.emailH, W.emailP)),
+    ...byMethod(headingBeside(phoneHeading(W.phoneH, W.phoneP), fig), headingBeside(phoneHeading(W.emailH, W.emailP), fig)),
     ...byMethod(
       col([sectionLabel("Mobile number"), signField(mode, "phone", false)], { gap: 8 }),
       col([sectionLabel("Email"), signField(mode, "email", false)], { gap: 8 }),
@@ -457,7 +527,7 @@ function signInPhone(mode: Mode, o: BotsAuthOpts, backTo: ActionRef): Node[] {
   ];
 }
 
-function signInDesk(mode: Mode, o: BotsAuthOpts, backTo: ActionRef): DeskOpts {
+function signInDesk(mode: Mode, o: BotsAuthOpts, backTo: ActionRef, fig: Figure): DeskOpts {
   const social = socialButtons(mode, o, 46);
   const field = (label: string, method: "phone" | "email", hint: string) => col([
     text(label, { size: 13, weight: 500, lineHeight: 17 }),
@@ -465,9 +535,9 @@ function signInDesk(mode: Mode, o: BotsAuthOpts, backTo: ActionRef): DeskOpts {
     meta(hint, { size: 12 }),
   ], { gap: 6 });
   return {
-    title: "Sign in", right: meta("About 2 minutes", { size: 13 }), current: 0,
+    title: "Sign in", right: meta("About a minute", { size: 13 }), current: 0,
     left: [
-      deskBlip("needs", 150),
+      deskFig(fig, "listen", 140),
       ...byMethod(deskHeading("Sign in", W.phoneH, W.phoneP), deskHeading("Sign in", W.emailH, W.emailP)),
       box([trustCard(true)], { maxWidth: 400 }),
     ],
@@ -507,13 +577,25 @@ function codeEntry(mode: Mode, desktop: boolean): Node {
   })), { gap: 8 });
 }
 
+/**
+ * Blip on Code: in the gate he waits while the code is on its way (the flow's `verify`) and thinks while it is checked
+ * (`verifying`): two spots of one size, each shown in its phase (AuthPhase), so the step does not move.
+ */
+function codeFigure(mode: Mode, fig: Figure, h: number): Node {
+  if (mode !== "gate" || fig !== onStage) return fig("think", h);
+  return box([
+    { type: "AuthPhase", props: { phases: ["verify"] }, children: [fig("wait", h)] },
+    { type: "AuthPhase", props: { phases: ["verifying"] }, children: [fig("think", h)] },
+  ]);
+}
+
 const smsNote = (): Node => row([icon("notes", { size: 16, color: C.meta }), meta(W.codeNote, { size: 13, lineHeight: 18, style: { flexShrink: 1 } })], { gap: 8 });
 
-function codePhone(mode: Mode): { body: Node[]; footer: Node[] } {
+function codePhone(mode: Mode, fig: Figure): { body: Node[]; footer: Node[] } {
   return {
     body: [
       ...(mode === "page" ? [chevron(back)] : []),
-      row([blip("listen", 130)], { justifyContent: "center" }),
+      row([codeFigure(mode, fig, 124)], { justifyContent: "center" }),
       phoneHeading(W.codeH, mode === "gate" ? "The code is on its way." : "Sent by SMS to your number."),
       col([codeEntry(mode, false), smsNote()], { gap: 12 }),
       ...(mode === "page" ? [row([meta("Didn't get it?", { size: 14 }), grow(), link("Wrong number?", back, { size: 14 })], {
@@ -521,15 +603,15 @@ function codePhone(mode: Mode): { body: Node[]; footer: Node[] } {
       })] : []),
     ],
     // The code is checked the moment it is complete, so the gate has nothing to press.
-    footer: mode === "page" ? [primaryButton("Continue", go(SCREENS.language), { wide: true })] : [],
+    footer: mode === "page" ? [primaryButton("Continue", go(SCREENS.nameIt), { wide: true })] : [],
   };
 }
 
-function codeDesk(mode: Mode): DeskOpts {
+function codeDesk(mode: Mode, fig: Figure): DeskOpts {
   return {
-    title: "Enter the code", right: meta("About 2 minutes", { size: 13 }), current: 0,
+    title: "Enter the code", right: meta("About a minute", { size: 13 }), current: 0,
     left: [
-      deskBlip("listen", 150),
+      box([codeFigure(mode, fig, 140)], { alignSelf: "flex-start", marginLeft: -10 }),
       deskHeading("Sign in", W.codeH, "Type the 6-digit code we sent you."),
       row([icon("lock", { size: 16, color: C.grey70 }), text("The code is only for this sign-in. Nothing else in your messages is read.", { size: 13, lineHeight: 19, color: C.grey70, style: { flexShrink: 1 } })], {
         gap: 10, alignItems: "flex-start", maxWidth: 400,
@@ -538,15 +620,18 @@ function codeDesk(mode: Mode): DeskOpts {
     main: [col([
       col([text("Type the code", { size: 16, weight: 600, lineHeight: 21 }), meta("It comes by SMS or email, from Tailzu.", { size: 13 })], { gap: 3 }),
       codeEntry(mode, true),
-      ...(mode === "page" ? [primaryButton("Continue", go(SCREENS.language), { wide: true })] : []),
+      ...(mode === "page" ? [primaryButton("Continue", go(SCREENS.nameIt), { wide: true })] : []),
     ], { padding: 20, gap: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line })],
     ...(mode === "page" ? { foot: deskFoot(deskBack(), [link("Wrong number?", back, { size: 14 })]) } : {}),
   };
 }
 
-// ===================================================================== the gate's tree
+// ===================================================================== the stage
 
-/** A step of the gate's stage: on the phone a column that fills the step; in a window the whole width, not the stage's narrow column. */
+/**
+ * A step of a stage: on the phone a column that fills the step (the stage gives it the safe area); in a window the
+ * whole width, not the stage's narrow column.
+ */
 function gateStep(desktop: boolean, kids: Node[], extra: Partial<Node> = {}): Node {
   const style: Style = desktop
     // The stage centres a phone-wide column (460) under a 44 top; the boards are two columns across 1080.
@@ -555,10 +640,41 @@ function gateStep(desktop: boolean, kids: Node[], extra: Partial<Node> = {}): No
   return { type: "Stack", style: { flexDirection: "column", ...style }, children: kids, ...extra };
 }
 
+/** A phone step's content: its body, then its footer at the foot of the step. */
+const phoneStepBody = (body: Node[], footer: Node[], gap = 18): Node =>
+  col([...body, ...(footer.length ? [grow(), col(footer, { gap: 6, paddingTop: 8 })] : [])], { flexGrow: 1, gap });
+
+/** An OnboardStage in the run's look: one Blip walks from spot to spot across it, and on into the next stage. */
+function stageNode(id: string, first: number, steps: Node[], extra: Record<string, unknown> = {}): Node {
+  return { type: "OnboardStage", bind: { step: "step" }, props: { id, first, of: RUN_STEPS, ...STAGE_LOOK, ...extra }, children: steps };
+}
+
+/**
+ * A screen of stage steps: the stage itself for a build that draws it, else the steps one at a time by the same
+ * `step`, in the frame a page has (the safe area and a scrolling body on the phone, the whole window in one).
+ */
+function stageScreen(ctx: BotsCtx, o: { title: string; id: string; first: number; steps: Node[]; state?: Record<string, unknown> }): ScreenResponse {
+  const state = { step: 0, ...o.state };
+  if (staged(ctx)) return respond(ctx, o.title, stageNode(o.id, o.first, o.steps), state);
+  const shown = o.steps.length > 1 ? o.steps.map((s, i) => when({ eq: ["step", i] }, s)) : o.steps;
+  if (ctx.client === "desktop") {
+    return respond(ctx, o.title, col([col(shown, { minHeight: "100%", paddingTop: 44 })], { height: "100%", overflowY: "auto", backgroundColor: C.paper }), state);
+  }
+  return respond(ctx, o.title, {
+    type: "SafeArea",
+    props: { edges: ["top", "bottom"], barStyle: "dark-content" },
+    style: { flex: 1, flexDirection: "column", backgroundColor: C.paper },
+    children: [{ type: "Screen", props: { paddingBottom: 0 }, style: { backgroundColor: C.paper, paddingTop: 22, flexGrow: 1 }, children: shown }],
+  }, state);
+}
+
+// ===================================================================== the gate's tree
+
 /**
  * Welcome, Sign in and Code for the bootstrap's `auth.screen`, with the Bots app on (catalog.buildBootstrap).
  * All actions are inline: the gate has no action table. Its state: `signing` (Welcome → Sign in) and `method`
- * (phone or email). The flow's phase shows Code (phaseStep), and "Change it" there returns to Sign in.
+ * (phone or email). The flow's phase shows Code (phaseStep), and "Change it" there returns to Sign in. Each step has
+ * Blip's spot: he waves, listens, waits and thinks, and walks on into bots.name-it's stage after the code.
  */
 export function botsAuthTree(o: BotsAuthOpts): Record<string, unknown> {
   const desktop = o.desktop === true;
@@ -570,62 +686,56 @@ export function botsAuthTree(o: BotsAuthOpts): Record<string, unknown> {
   let entry: Node;
   let code: Node;
   if (desktop) {
-    const wd = welcomeDesk(start), sd = signInDesk("gate", o, toWelcome), cd = codeDesk("gate");
+    const wd = welcomeDesk(start, onStage), sd = signInDesk("gate", o, toWelcome, onStage), cd = codeDesk("gate", onStage);
     entry = gateStep(true, [
       when(welcomeOn, col(deskBody(wd), { gap: 22, flexGrow: 1 })),
       when(signOn, col(deskBody(sd), { gap: 22, flexGrow: 1 })),
     ], { props: { stepId: "entry" } });
     code = gateStep(true, deskBody(cd), { props: { stepId: "code" } });
   } else {
-    const w = welcomePhone(start);
-    const c = codePhone("gate");
+    const w = welcomePhone(start, onStage);
+    const c = codePhone("gate", onStage);
     entry = gateStep(false, [
       when(welcomeOn, col([...w.body, col(w.footer, { gap: 6, paddingTop: 8 })], { flexGrow: 1 })),
-      when(signOn, col(signInPhone("gate", o, toWelcome), { flexGrow: 1, gap: 18 })),
+      when(signOn, col(signInPhone("gate", o, toWelcome, onStage), { flexGrow: 1, gap: 18 })),
     ], { props: { stepId: "entry" } });
     code = gateStep(false, [col(c.body, { gap: 18, flexGrow: 1 })], { props: { stepId: "code" } });
   }
-  return {
-    type: "OnboardStage",
-    bind: { step: "step" },
-    props: {
-      id: "bots.auth", first: 0, of: 2,
-      // Sentences, not titles: the capitalising pass leaves them be.
-      keepCase: true,
-      // White, no bar (it is drawn transparent), no Blip walking (no spot): the boards' pages.
-      ground: C.paper,
-      progress: { on: "transparent", off: "transparent", height: 1, gap: 0 },
-      glide: { slide: 18, outMs: 200, inMs: 260, inDelayMs: 40 },
-      phaseStep: { verify: 1, verifying: 1 },
-    },
-    children: [entry, code],
-  };
+  return stageNode("bots.auth", 0, [entry, code], { phaseStep: { verify: 1, verifying: 1 } }) as unknown as Record<string, unknown>;
 }
 
 /** The first screen after sign-in for someone not onboarded yet, and every id of the run (the app parks a keyboard tap until they are past). */
-export const BOTS_FIRST_RUN_SCREEN = SCREENS.language;
-export const BOTS_FIRST_RUN_IDS: string[] = [SCREENS.language, SCREENS.nameIt, SCREENS.keyOn, SCREENS.firstWords, SCREENS.plans];
+export const BOTS_FIRST_RUN_SCREEN = SCREENS.nameIt;
+export const BOTS_FIRST_RUN_IDS: string[] = [SCREENS.nameIt];
 
 // ===================================================================== the pages: Welcome, Sign in, Code
 
 const PAGE_AUTH: BotsAuthOpts = { terms: "https://tailzu.space/terms", privacy: "https://tailzu.space/privacy" };
 
+/** One sign-in step as a page of its own, on a stage of its own, so Blip walks between them as he does in the gate. */
+function authPage(ctx: BotsCtx, title: string, step: Node, state: Record<string, unknown> = {}): ScreenResponse {
+  return stageScreen(ctx, { title, id: ctx.screenId, first: 0, steps: [step], state });
+}
+
 function welcomePage(ctx: BotsCtx): ScreenResponse {
   const start = go(SCREENS.signIn);
-  if (ctx.client === "desktop") return deskFrame(ctx, welcomeDesk(start));
-  const w = welcomePhone(start);
-  return phoneFrame(ctx, { title: "Welcome", body: w.body, footer: w.footer, gap: 0, padTop: 14 });
+  const fig = figureFor(ctx);
+  if (ctx.client === "desktop") return authPage(ctx, "Welcome", gateStep(true, deskBody(welcomeDesk(start, fig)), { props: { stepId: "welcome" } }));
+  const w = welcomePhone(start, fig);
+  return authPage(ctx, "Welcome", gateStep(false, [col([...w.body, col(w.footer, { gap: 6, paddingTop: 8 })], { flexGrow: 1 })], { props: { stepId: "welcome" } }));
 }
 
 function signInPage(ctx: BotsCtx): ScreenResponse {
-  if (ctx.client === "desktop") return deskFrame(ctx, { ...signInDesk("page", PAGE_AUTH, back), state: { method: "phone" } });
-  return phoneFrame(ctx, { title: "Sign in", body: signInPhone("page", PAGE_AUTH, back), state: { method: "phone" } });
+  const fig = figureFor(ctx);
+  if (ctx.client === "desktop") return authPage(ctx, "Sign in", gateStep(true, deskBody(signInDesk("page", PAGE_AUTH, back, fig)), { props: { stepId: "signin" } }), { method: "phone" });
+  return authPage(ctx, "Sign in", gateStep(false, [col(signInPhone("page", PAGE_AUTH, back, fig), { flexGrow: 1, gap: 18 })], { props: { stepId: "signin" } }), { method: "phone" });
 }
 
 function signCodePage(ctx: BotsCtx): ScreenResponse {
-  if (ctx.client === "desktop") return deskFrame(ctx, codeDesk("page"));
-  const c = codePhone("page");
-  return phoneFrame(ctx, { title: "Enter the code", body: c.body, footer: c.footer });
+  const fig = figureFor(ctx);
+  if (ctx.client === "desktop") return authPage(ctx, "Enter the code", gateStep(true, deskBody(codeDesk("page", fig)), { props: { stepId: "code" } }));
+  const c = codePhone("page", fig);
+  return authPage(ctx, "Enter the code", gateStep(false, [phoneStepBody(c.body, c.footer)], { props: { stepId: "code" } }));
 }
 
 // ===================================================================== Languages
@@ -656,7 +766,8 @@ function language(ctx: BotsCtx, data: Langs | undefined): ScreenResponse {
   const desk = ctx.client === "desktop";
   const options = data?.options?.length ? data.options : FALLBACK_LANGS;
   const picked = data?.picked?.length ? data.picked : ["hinglish", "hi", "en"];
-  const next = call("PUT", "/v1/personality", { languages: "$state.langs" }, { ok: go(SCREENS.nameIt), fail: toast(W.saveErr) });
+  // Reached from You (and Keybot's settings): saved, and back to where it was opened from.
+  const next = call("PUT", "/v1/personality", { languages: "$state.langs" }, { ok: seq(saved("Saved"), back), fail: toast(W.saveErr) });
   const cont: ActionRef = { kind: "condition", if: { truthy: "langs" }, then: next, else: toast("Pick at least one language.") } as ActionSpec;
   const chips = row(options.map((l) => langChip(l, desk)), { gap: 8, flexWrap: "wrap" });
   const keybot = botLook("keybot");
@@ -668,10 +779,10 @@ function language(ctx: BotsCtx, data: Langs | undefined): ScreenResponse {
 
   if (desk) {
     return deskFrame(ctx, {
-      title: "Your languages", right: signedInAs(ctx), current: 1, state,
+      title: "Your languages", right: signedInAs(ctx), current: null, state,
       left: [
         deskBlip("hello", 150),
-        deskHeading("Step 1 of 5", W.langH, W.langP),
+        deskHeading("Language", W.langH, W.langP),
         row([botAvatar(keybot, 30), text(W.langMix, { size: 14, lineHeight: 20, color: C.grey70, style: { flexShrink: 1 } })], { gap: 12, maxWidth: 400 }),
       ],
       main: [
@@ -686,14 +797,13 @@ function language(ctx: BotsCtx, data: Langs | undefined): ScreenResponse {
           box([meta("Said in one breath. Written the way you'd type it, no switching keyboards.", { size: 13, lineHeight: 18 })], { paddingTop: 10, paddingHorizontal: 16, paddingBottom: 14 }),
         ], { borderRadius: 18, borderWidth: 1, borderColor: C.line, overflow: "hidden" }),
       ],
-      foot: deskFoot(null, [button("Continue", cont, { size: "lg" })]),
+      foot: deskFoot(deskBack(), [button("Save", cont, { size: "lg" })]),
     });
   }
   return phoneFrame(ctx, {
     title: "Your languages", state, gap: 20,
-    // The first screen after sign-in: there is nothing behind it to go back to.
     body: [
-      phoneTop(1, { back: null }),
+      phoneBackLine(),
       phoneHeading(W.langH, W.langP),
       col([row([sectionLabel("Languages"), grow(), meta("Pick all that fit", { size: 12 })]), chips], { gap: 10 }),
       row([botAvatar(keybot, 30), text(W.langMix, { size: 15, lineHeight: 21, style: { flexShrink: 1 } })], { gap: 12 }),
@@ -703,40 +813,112 @@ function language(ctx: BotsCtx, data: Langs | undefined): ScreenResponse {
         meta("Said in one breath. Written the way you'd type it, no switching keyboards.", { size: 12, lineHeight: 17 }),
       ], { paddingVertical: 14, paddingHorizontal: 16, gap: 10, borderRadius: 18, borderWidth: 1, borderColor: C.line }),
     ],
-    footer: [primaryButton("Continue", cont, { wide: true })],
+    footer: [primaryButton("Save", cont, { wide: true })],
   });
 }
 
-// ===================================================================== Name
+// ===================================================================== About you, Name: the stage after sign-in
 
 /** GET /v1/personality, as much as this step reads. */
 interface Persona { personality?: { assistantName?: string } }
+/** GET /v1/bots/first-run/profile (routes/botsFirstRun.ts). */
+interface Me { name: string; via: string; source: "saved" | "provider" | "email" | null; gender: string | null; saved: boolean }
+interface AfterSignIn { me?: Me; persona?: Persona }
 
 const NAME_IDEAS = ["Tara", "Mitra", "Chotu", "Jarvis"];
 
-function nameIt(ctx: BotsCtx, data: Persona | undefined): ScreenResponse {
-  const desk = ctx.client === "desktop";
-  const name = (data?.personality?.assistantName ?? "").trim() || "Tailzu";
-  const save = call("PUT", "/v1/personality", { assistantName: "$state.name" }, {
-    ok: go(SCREENS.keyOn),
-    fail: toast("A name is letters and spaces, up to 24 characters."),
-  });
+/** A text field in the boards' look: the ink outline, the clear button. */
+function nameField(path: string, placeholder: string, onSubmit: ActionRef, desk: boolean, o: { capitalize?: boolean; label: string }): Node {
   const input: Node = {
-    type: "TextField", id: "name", bind: { value: "name" },
+    type: "TextField", id: path, bind: { value: path },
     props: {
-      placeholder: "Tailzu", placeholderColor: C.idle, background: "transparent", borderWidth: 0, radius: 0, paddingHorizontal: 0,
+      placeholder, placeholderColor: C.idle, background: "transparent", borderWidth: 0, radius: 0, paddingHorizontal: 0,
       paddingVertical: 0, minHeight: 44, color: C.ink, autoCorrect: false, returnKeyType: "done",
+      ...(o.capitalize ? { autoCapitalize: "words", textContentType: "name", autoComplete: "name" } : {}),
     },
-    on: { onSubmit: save },
+    on: { onSubmit },
     style: {
       flexGrow: 1, flexShrink: 1, minWidth: 0, minHeight: 44, paddingHorizontal: 0, paddingVertical: 0, fontFamily: FACE.medium, fontSize: 17,
       color: C.ink, borderWidth: 0, backgroundColor: "transparent", outlineStyle: "none",
     },
   };
-  const fieldBox = row([
+  return row([
     input,
-    labelled(box([icon("close", { size: 18, color: C.meta })], { width: 44, height: 44, alignItems: "center", justifyContent: "center", flexShrink: 0 }, setState("name", "")), "Clear name"),
+    labelled(box([icon("close", { size: 18, color: C.meta })], { width: 44, height: 44, alignItems: "center", justifyContent: "center", flexShrink: 0 }, setState(path, "")), `Clear ${o.label}`),
   ], { height: desk ? 54 : 56, borderWidth: 1.5, borderColor: C.ink, borderRadius: desk ? 14 : 16, paddingLeft: 16, paddingRight: desk ? 6 : 4 });
+}
+
+/** The name and gender card's three choices, as chips: picked is ink with a tick. */
+function genderChips(desk: boolean): Node {
+  return row(GENDERS.map((g) => {
+    const on: Condition = { eq: ["gender", g.value] };
+    const c = (then: string, otherwise: string) => ({ ...on, then, else: otherwise });
+    return labelled(row([
+      when(on, icon("check", { size: 14, color: C.paper, weight: 2 })),
+      text(g.label, { size: desk ? 14 : 15, weight: 500, lineHeight: 19, style: { color: c(C.paper, C.ink) } }),
+    ], {
+      gap: 6, height: desk ? 44 : 48, paddingHorizontal: 18, borderRadius: desk ? 22 : 24, borderWidth: 1, justifyContent: "center",
+      borderColor: c(C.ink, C.outline), backgroundColor: c(C.ink, C.paper), flexGrow: desk ? 0 : 1, flexBasis: desk ? "auto" : 0,
+    }, setState("gender", g.value)), g.label);
+  }), { gap: 8 });
+}
+
+/** Where the name in the field came from, said under it: nothing for one the person typed or saved. */
+function nameSource(me: Me | undefined): string | null {
+  if (!me?.name || me.source === "saved" || !me.source) return null;
+  if (me.source === "email") return "Guessed from your email. Change it if it's wrong.";
+  const who = me.via === "apple" ? "Apple" : me.via === "google" ? "Google" : "sign-in";
+  return `From your ${who} account. Change it if you like.`;
+}
+
+/** About you: the person's own name and gender, the name and gender card's question, saved where it saves them. */
+function youStep(ctx: BotsCtx, fig: Figure, me: Me | undefined): Node {
+  const desk = ctx.client === "desktop";
+  const save: ActionSpec = {
+    kind: "condition", if: { all: [{ truthy: "fullName" }, { truthy: "gender" }] },
+    // PUT /v1/profile { full_name, gender }: the card's own write, so everything that reads them (the bootstrap's
+    // profile.complete, the greeting, the prompt) keeps working, and the card is never asked again.
+    then: call("PUT", "/v1/profile", { full_name: "$state.fullName", gender: "$state.gender" }, {
+      ok: seq({ kind: "haptic", style: "selection" } as ActionSpec, setState("step", 1)),
+      fail: toast(W.saveErr),
+    }),
+    else: toast(W.youMissing),
+  } as ActionSpec;
+  const field = nameField("fullName", "Your name", save, desk, { capitalize: true, label: "your name" });
+  const source = nameSource(me);
+  const cont = button("Continue", save, { size: "lg", wide: !desk });
+
+  if (desk) {
+    return gateStep(true, deskBody({
+      title: "About you", right: signedInAs(ctx), current: 1,
+      left: [
+        deskFig(fig, "present", 140),
+        deskHeading(`Step 1 of ${STEPS.length - 1}`, W.youH, W.youP),
+      ],
+      main: [col([
+        col([text("Your name", { size: 13, weight: 500, lineHeight: 17 }), field, ...(source ? [meta(source, { size: 12 })] : [])], { gap: 6 }),
+        col([text(W.youGender, { size: 13, weight: 500, lineHeight: 17 }), genderChips(true)], { gap: 8 }),
+      ], { padding: 20, gap: 18, borderRadius: 18, borderWidth: 1, borderColor: C.line })],
+      foot: deskFoot(null, [cont]),
+    }), { props: { stepId: "you" } });
+  }
+  return gateStep(false, [phoneStepBody([
+    phoneTop(1, 2),
+    row([fig("present", 116)], { justifyContent: "center" }),
+    phoneHeading(W.youH, W.youP),
+    col([sectionLabel("Your name"), field, ...(source ? [meta(source, { size: 12 })] : [])], { gap: 8 }),
+    col([sectionLabel(W.youGender), genderChips(false)], { gap: 8 }),
+  ], [cont])], { props: { stepId: "you" } });
+}
+
+/** Name your Tailzu: the boss bot's name; saving it finishes onboarding. */
+function nameStep(ctx: BotsCtx, fig: Figure): Node {
+  const desk = ctx.client === "desktop";
+  const save = call("PUT", "/v1/personality", { assistantName: "$state.name" }, {
+    ok: finish(),
+    fail: toast("A name is letters and spaces, up to 24 characters."),
+  });
+  const fieldBox = nameField("name", "Tailzu", save, desk, { label: "name" });
   const ideas = row([
     meta("Or try", { size: desk ? 13 : 12, style: { marginRight: 2 } }),
     ...NAME_IDEAS.map((n) => row([text(n, { size: desk ? 14 : 13, lineHeight: 17 })], {
@@ -752,15 +934,14 @@ function nameIt(ctx: BotsCtx, data: Persona | undefined): ScreenResponse {
       meta(who, { size: 12 }),
     ], { gap: 2, flexShrink: 1, minWidth: 0 }),
   ], { gap: desk ? 12 : 10, alignItems: "flex-start" });
-  const state = { name };
 
   if (desk) {
     const heads = ctx.live.bots.slice(0, 4);
-    return deskFrame(ctx, {
-      title: "Name your Tailzu", right: signedInAs(ctx), current: 2, state,
+    return gateStep(true, deskBody({
+      title: "Name your Tailzu", right: signedInAs(ctx), current: 2,
       left: [
-        deskBlip("think", 150),
-        deskHeading("Step 2 of 5", W.nameH, W.nameP),
+        deskFig(fig, "tada", 140),
+        deskHeading(`Step 2 of ${STEPS.length - 1}`, W.nameH, W.nameP),
         ...(heads.length ? [row([
           row(heads.map((b) => botAvatar(b, 22)), { gap: 4 }),
           meta(`${heads.length === 1 ? "1 bot" : `${heads.length} bots`} will report to this name`, { size: 13 }),
@@ -778,21 +959,38 @@ function nameIt(ctx: BotsCtx, data: Persona | undefined): ScreenResponse {
           box([says("travel", "the Goa refund is still with the airline. I'll ask again on Friday.", "Travel bot, in Activity")], { paddingVertical: 14, paddingHorizontal: 16 }),
         ], { borderRadius: 18, borderWidth: 1, borderColor: C.line, overflow: "hidden" }),
       ],
-      foot: deskFoot(deskBack(), [button("That's my name", save, { size: "lg" })]),
-    });
+      // A window's stage never steps back, so there is no Back here.
+      foot: deskFoot(null, [button("That's my name", save, { size: "lg" })]),
+    }), { props: { stepId: "name" } });
   }
-  return phoneFrame(ctx, {
-    title: "Name your Tailzu", state,
-    body: [
-      phoneTop(2),
-      row([blip("think", 150)], { justifyContent: "center" }),
-      phoneHeading(W.nameH, W.nameP),
-      col([sectionLabel("Name"), fieldBox, ideas], { gap: 8 }),
-      col([sectionLabel("How your bots will say it"), says("plan", "the dentist can do Friday 10 am. Should I book it?", "Plan bot, reporting to the one in charge")], {
-        backgroundColor: C.surface, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16, gap: 10,
-      }),
-    ],
-    footer: [primaryButton("That's my name", save, { wide: true })],
+  return gateStep(false, [phoneStepBody([
+    phoneTop(2, 2, { back: setState("step", 0) }),
+    row([fig("tada", 128)], { justifyContent: "center" }),
+    phoneHeading(W.nameH, W.nameP),
+    col([sectionLabel("Name"), fieldBox, ideas], { gap: 8 }),
+    col([sectionLabel("How your bots will say it"), says("plan", "the dentist can do Friday 10 am. Should I book it?", "Plan bot, reporting to the one in charge")], {
+      backgroundColor: C.surface, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16, gap: 10,
+    }),
+  ], [primaryButton("That's my name", save, { wide: true })])], { props: { stepId: "name" } });
+}
+
+/**
+ * bots.name-it: About you, then Name, on the stage Blip walks on to from the gate's (id "bots.first"). Someone whose
+ * account already has both answers starts on Name.
+ */
+function afterSignIn(ctx: BotsCtx, data: AfterSignIn | undefined): ScreenResponse {
+  const fig = figureFor(ctx);
+  const me = data?.me;
+  const gender = GENDERS.some((g) => g.value === me?.gender) ? me!.gender! : "";
+  return stageScreen(ctx, {
+    title: "About you", id: "bots.first", first: 2,
+    steps: [youStep(ctx, fig, me), nameStep(ctx, fig)],
+    state: {
+      step: me?.saved ? 1 : 0,
+      fullName: me?.name ?? "",
+      gender,
+      name: (data?.persona?.personality?.assistantName ?? "").trim() || "Tailzu",
+    },
   });
 }
 
@@ -854,7 +1052,7 @@ function keyOnPhone(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
     // Overwritten live by the app: it re-reads the keyboard on a timer and on every return from Settings.
     state: { opened: false, keyboardEnabled: false, keyboardReady: false },
     body: [
-      phoneTop(3, { right: link("Not now", go(SCREENS.plans), { size: 14, color: C.grey70 }) }),
+      phoneBackLine(link("Not now", back, { size: 14, color: C.grey70 })),
       row([botAvatar(botLook("keybot"), 52), col([title(W.keyH, { lineHeight: 31 }), meta(W.keyP, { size: 13 })], { gap: 3, flexShrink: 1 })], { gap: 14 }),
       col([
         col([
@@ -910,11 +1108,11 @@ function keyOnDesk(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
       }], { paddingHorizontal: 4, paddingBottom: 4 })
     : permRow("computer", "Accessibility", "If your Mac asks, allow Tailzu in Privacy & Security › Accessibility, so Keybot can type where your cursor is.", null);
   return deskFrame(ctx, {
-    title: W.keyH, current: 3,
-    right: link("Not now", go(SCREENS.plans), { size: 14, color: C.grey70 }),
+    title: W.keyH, current: null,
+    right: link("Not now", back, { size: 14, color: C.grey70 }),
     left: [
       deskBlip("needs", 140),
-      deskHeading("Step 3 of 5", W.keyH, "Speak instead of type, in every app."),
+      deskHeading("Keybot", W.keyH, "Speak instead of type, in every app."),
       col([
         text("Why these two?", { size: 14, weight: 600, lineHeight: 19 }),
         why("mic", "The mic is on only while you hold the key. It never listens otherwise."),
@@ -1034,15 +1232,16 @@ function firstWords(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
     meta("Your words, and how long they took, show here once you've spoken.", { size: 13, lineHeight: 18 }),
     when({ truthy: "said" }, button("How fast was that?", check, { kind: "secondary", size: "md" })),
   ], { gap: 10 });
-  const next = button(result ? "Nice, next" : "Next", go(SCREENS.plans), { size: "lg", wide: !desk });
+  // Opened from Keybot's setup or the microphone card: done is back to where it was opened from.
+  const next = button(result ? "Nice, done" : "Done", back, { size: "lg", wide: !desk });
   const state = { said };
 
   if (desk) {
     return deskFrame(ctx, {
-      title: W.wordsH, right: signedInAs(ctx), current: 4, state,
+      title: W.wordsH, right: signedInAs(ctx), current: null, state,
       left: [
         deskBlip("listen", 140),
-        deskHeading("Step 4 of 5", W.wordsH, "Hold your key and say anything, in any mix."),
+        deskHeading("Keybot", W.wordsH, "Hold your key and say anything, in any mix."),
         box([result ?? nothingYet], { maxWidth: 400 }),
       ],
       main: [col([
@@ -1065,7 +1264,7 @@ function firstWords(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
   return phoneFrame(ctx, {
     title: W.wordsH, state, gap: 16,
     body: [
-      phoneTop(4),
+      phoneBackLine(),
       phoneHeading(W.wordsH, "Hold the clay key and say anything, in any mix.", 6),
       col([
         box([blip("listen", 140)], { position: "absolute", top: 0, right: 22 }),
@@ -1106,17 +1305,18 @@ function dayAfter(nowMs: number, tzOffsetMinutes: number, days: number): string 
 
 function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
   const desk = ctx.client === "desktop";
-  const top = desk ? null : phoneTop(5);
-  const doneHeading = (h: string, sub: string): Node[] => desk ? [deskBlip("done", 140), deskHeading("Step 5 of 5", h, sub)] : [top!, phoneHeading(h, sub, 6)];
+  // Reached from You and Billing, not the first run any more: every way out goes back to where it was opened from.
+  const done: ActionSpec = back;
+  const doneHeading = (h: string, sub: string): Node[] => desk ? [deskBlip("done", 140), deskHeading("Plans", h, sub)] : [phoneBackLine(), phoneHeading(h, sub, 6)];
   // Nothing to choose: free for everyone, already paying, or the plans could not be read. Say so, and go in.
   const simple = (h: string, sub: string, cta: string): ScreenResponse => desk
-    ? deskFrame(ctx, { title: W.plansH, right: signedInAs(ctx), current: 5, left: doneHeading(h, sub), main: [], foot: deskFoot(deskBack(), [button(cta, finish(), { size: "lg" })]) })
-    : phoneFrame(ctx, { title: W.plansH, body: [...doneHeading(h, sub), row([blip("done", 160)], { justifyContent: "center", paddingTop: 20 })], footer: [primaryButton(cta, finish(), { wide: true })] });
-  if (!data) return simple("You're set up", "Plans couldn't load just now. You can pick one any time from You.", "Start using Tailzu");
-  if (data.freeForAll) return simple("You're set up", "Tailzu is free for everyone right now. Nothing to pick, nothing to pay.", "Start using Tailzu");
-  if (data.entitled) return simple("You're set up", "This account already has a plan. It covers your phone and your computer.", "Start using Tailzu");
+    ? deskFrame(ctx, { title: W.plansH, right: signedInAs(ctx), current: null, left: doneHeading(h, sub), main: [], foot: deskFoot(deskBack(), [button(cta, done, { size: "lg" })]) })
+    : phoneFrame(ctx, { title: W.plansH, body: [...doneHeading(h, sub), row([blip("done", 160)], { justifyContent: "center", paddingTop: 20 })], footer: [primaryButton(cta, done, { wide: true })] });
+  if (!data) return simple("Plans", "Plans couldn't load just now. Try again in a moment.", "Done");
+  if (data.freeForAll) return simple("Plans", "Tailzu is free for everyone right now. Nothing to pick, nothing to pay.", "Done");
+  if (data.entitled) return simple("You have a plan", "This account already has a plan. It covers your phone and your computer.", "Done");
   const paid = data.plans;
-  if (!paid.length) return simple("You're set up", "You're on Free. Plans to buy aren't available here yet; you can pick one later from You.", "Start using Tailzu");
+  if (!paid.length) return simple("Plans", "You're on Free. Plans to buy aren't available here yet.", "Done");
 
   const chosen = (paid.find((p) => p.default) ?? paid[0]!).id;
   const isOn = (id: string): Condition => ({ eq: ["plan", id] });
@@ -1126,8 +1326,8 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
     if (!p.buy) return undefined;
     const failed = toast("Couldn't complete the purchase. Nothing was charged.");
     // The window has no store: the pay page opens in the browser, and the account is ready when they come back.
-    if (desk) return seq(p.buy as ActionSpec, finish());
-    return { ...p.buy, onSuccess: seq({ kind: "toast", message: "You're in.", tone: "success" } as ActionSpec, finish()), onError: failed } as ActionSpec;
+    if (desk) return seq(p.buy as ActionSpec, done);
+    return { ...p.buy, onSuccess: seq(saved("You're in."), done), onError: failed } as ActionSpec;
   };
   const radio = (id: string): Node => box([when(isOn(id), box([], { width: 10, height: 10, borderRadius: 5, backgroundColor: C.ink }))], {
     width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: sel(id, C.ink, C.outline), alignItems: "center", justifyContent: "center", flexShrink: 0,
@@ -1170,10 +1370,10 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
   const ctaFor = (p: Plans["plans"][number]): string =>
     p.trialDays ? (p.trialDays === 7 ? "Start free week" : `Start ${p.trialDays} free days`) : `Choose ${p.label}`;
   const ctas: Node[] = [
-    when(isOn("free"), button("Continue on Free", finish(), { size: "lg", wide: !desk })),
+    when(isOn("free"), button("Stay on Free", done, { size: "lg", wide: !desk })),
     ...paid.map((p) => when(isOn(p.id), button(ctaFor(p), buyAction(p), { size: "lg", wide: !desk, ...(p.buy ? {} : { kind: "disabled" }) }))),
   ];
-  const stay = when({ neq: ["plan", "free"] }, link("Stay on Free", finish(), { center: true }));
+  const stay = when({ neq: ["plan", "free"] }, link("Stay on Free", done, { center: true }));
   const sub = "Start today. Switch any time from You.";
   const fine = desk
     ? "You pay in your browser. Nothing is charged until you confirm there."
@@ -1182,7 +1382,7 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
 
   if (desk) {
     return deskFrame(ctx, {
-      title: W.plansH, right: signedInAs(ctx), current: 5, state,
+      title: W.plansH, right: signedInAs(ctx), current: null, state,
       left: [...doneHeading(W.plansH, sub), ...(trials.length ? [box(trials, { maxWidth: 400 })] : []), meta(fine, { size: 12, style: { maxWidth: 400 } })],
       main: [col(cards, { gap: 12 })],
       foot: deskFoot(deskBack(), [stay, ...ctas]),
@@ -1193,6 +1393,97 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
     body: [...doneHeading(W.plansH, sub), col(cards, { gap: 12 }), ...trials],
     footer: [...ctas, stay, meta(fine, { size: 11, align: "center" })],
   });
+}
+
+// ===================================================================== after onboarding: the keyboard and microphone cards
+
+/**
+ * What the app reports into every screen's state: the phone's SduiApp writes keyboardEnabled, keyboardReady (Full
+ * Access) and micGranted on a timer and on every return from Settings; a window that declares DeskMicAsk writes
+ * micGranted from its own system's answer. Declared as "on" here, so a card never flashes up for someone who has it
+ * and then vanishes: it comes in once the app says something is missing, and goes when it is on.
+ */
+export const DEVICE_STATE = { keyboardEnabled: true, keyboardReady: true, micGranted: true };
+
+/** A setup card in Keybot's clay: its head (pressable, to the page that explains), and one clay button. */
+function setupCard(o: { lead: Node; title: string; lines: Node[]; cta: string; onPress: ActionRef; more?: ActionRef; desk: boolean }): Node {
+  const head = row([
+    o.lead,
+    col([text(o.title, { size: 16, weight: 600, lineHeight: 21 }), ...o.lines], { gap: 3, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+    ...(o.more ? [icon("chevron", { size: 16, color: C.meta })] : []),
+  ], { gap: 12, alignItems: "flex-start" }, o.more);
+  const pill = labelled(row([text(o.cta, { size: 15, weight: 600, color: C.paper, lineHeight: 20 })], {
+    height: 44, paddingHorizontal: 22, borderRadius: 22, backgroundColor: CLAY, justifyContent: "center", alignSelf: o.desk ? "flex-start" : "stretch",
+  }, o.onPress), o.cta);
+  return col([head, pill], { padding: 16, gap: 14, borderRadius: 20, borderWidth: 1.5, borderColor: CLAY, backgroundColor: C.paper });
+}
+
+/**
+ * "Turn on full access": on a phone whose keyboard is not added, or added without Full Access. Its one button goes
+ * straight to the keyboard's settings ({ kind: "openSettings", target: "keyboard" }): Android's list of input
+ * methods, and on an iPhone the app's own page in Settings (which holds Keyboards; iOS has no link to the keyboard
+ * list). The card's head opens Turn on Keybot, the steps one by one. In a window it is this computer's Accessibility,
+ * on its own card (DeskAskSetup), where the window declares it; it hides itself once allowed.
+ */
+export function keyboardCard(ctx: BotsCtx): Node | null {
+  if (ctx.client === "desktop") {
+    if (!ctx.can.has("DeskAskSetup")) return null;
+    return {
+      type: "DeskAskSetup",
+      props: {
+        place: "home", eyebrow: "Keybot", title: "Turn on", titleEm: "Accessibility",
+        lede: "So Keybot can put your words where your cursor is, in any app.",
+        on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart Tailzu to finish", restartButton: "Restart",
+        rows: [{ key: "read", title: "Accessibility", sub: "Lets Keybot type what you said into the app you're in." }],
+      },
+    };
+  }
+  const android: Condition = { platform: "android" };
+  const missing: Condition = { any: [{ falsy: "keyboardEnabled" }, { falsy: "keyboardReady" }] };
+  return when(missing, setupCard({
+    lead: botAvatar(botLook("keybot"), 40),
+    title: "Turn on full access",
+    lines: [
+      when({ not: android }, text("In Settings, open Keyboards, switch on Tailzu, then Allow Full Access.", { size: 13, lineHeight: 18, color: C.grey70 })),
+      when(android, text("Switch on Tailzu in your keyboards, and tap OK.", { size: 13, lineHeight: 18, color: C.grey70 })),
+    ],
+    cta: "Open Settings",
+    onPress: { kind: "openSettings", target: "keyboard" } as ActionSpec,
+    more: go(SCREENS.keyOn),
+    desk: false,
+  }));
+}
+
+/**
+ * "Let Keybot hear you": while the microphone is not allowed. Its button asks for it for real (the phone's
+ * requestPermission; a window's own system prompt), and once allowed opens First words to try it. Asked before and
+ * refused, the phone opens the app's page in Settings instead. A window shows it only where it declares DeskMicAsk.
+ */
+export function micCard(ctx: BotsCtx): Node | null {
+  const desk = ctx.client === "desktop";
+  if (desk && !ctx.can.has("DeskMicAsk")) return null;
+  const off = desk
+    ? toast("The microphone is off for Tailzu. Turn it on in your computer's Privacy settings.")
+    : seq(toast("The microphone is off for Tailzu. Turn it on in Settings."), { kind: "openSettings", target: "app" } as ActionSpec);
+  const ask = {
+    kind: "requestPermission", permission: "microphone",
+    onGranted: seq(setState("micGranted", true), go(SCREENS.firstWords)),
+    onDenied: toast("Keybot can't hear you yet. Allow the microphone to speak."),
+    onBlocked: off,
+  } as ActionSpec;
+  return when({ falsy: "micGranted" }, setupCard({
+    lead: box([icon("mic", { size: 20, color: C.paper })], { width: 40, height: 40, borderRadius: 20, backgroundColor: CLAY, alignItems: "center", justifyContent: "center", flexShrink: 0 }),
+    title: "Let Keybot hear you",
+    lines: [text("Allow the microphone, then say something to try it.", { size: 13, lineHeight: 18, color: C.grey70 })],
+    cta: "Allow microphone",
+    onPress: ask,
+    desk,
+  }));
+}
+
+/** Both cards, in the order they are owed (the keyboard first), for Bots and Keybot. */
+export function setupCards(ctx: BotsCtx): Node[] {
+  return [keyboardCard(ctx), micCard(ctx)].filter((n): n is Node => !!n);
 }
 
 // ===================================================================== the list
@@ -1207,7 +1498,17 @@ export const firstRunScreens: BotsScreen[] = [
   screen({ id: SCREENS.signIn, build: (ctx) => signInPage(ctx) }),
   screen({ id: SCREENS.signCode, build: (ctx) => signCodePage(ctx) }),
   screen<Langs>({ id: SCREENS.language, load: (_ctx, deps) => deps.api<Langs>("GET", "/v1/bots/first-run/languages"), build: language }),
-  screen<Persona>({ id: SCREENS.nameIt, load: (_ctx, deps) => deps.api<Persona>("GET", "/v1/personality"), build: nameIt }),
+  screen<AfterSignIn>({
+    id: SCREENS.nameIt,
+    load: async (_ctx, deps) => {
+      const [me, persona] = await Promise.all([
+        deps.api<Me>("GET", "/v1/bots/first-run/profile").catch(() => undefined),
+        deps.api<Persona>("GET", "/v1/personality").catch(() => undefined),
+      ]);
+      return { me, persona };
+    },
+    build: afterSignIn,
+  }),
   screen<Words>({
     id: SCREENS.keyOn,
     load: (_ctx, deps) => deps.api<Words>("GET", "/v1/bots/first-run/words"),
