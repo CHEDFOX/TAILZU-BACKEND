@@ -8,6 +8,9 @@
  *                                      taken when the step opened) also what was said since: First words' numbers
  *   GET /v1/bots/first-run/plans       Plans' cards: the paywall's own plans (phone, RevenueCat) or the pay page's
  *                                      Razorpay prices (window), the free words, and whether the account already pays
+ *   GET /v1/bots/first-run/arrival     { due }: the first-arrival card over Home (the microphone, then the keyboard) is
+ *                                      still to be shown, answered or put off (personality.botsArrivalAt unset)
+ *   PUT /v1/bots/first-run/arrival     it was: botsArrivalAt is set (once; a second PUT keeps the first time)
  *
  * Every write the steps make goes to the routes that already own it: PUT /v1/profile { full_name, gender } (the name
  * and gender card's own write), PUT /v1/personality (languages, the boss bot's name), PUT /v1/profile { onboarded }
@@ -19,7 +22,7 @@ import { getEntitlement } from "../billing/entitlements.js";
 import { fetchPlan, formatPeriod, formatPrice, planFor, razorpayReady, type Market, type Period } from "../billing/razorpay.js";
 import { getConfig } from "../config.js";
 import { DAILY_LANGUAGES, freeForAll, PAYWALL_CONFIG } from "../experience/catalog.js";
-import { getPersonality } from "../personality/store.js";
+import { getPersonality, updatePersonality } from "../personality/store.js";
 import { getProfile } from "../profile/store.js";
 import { TYPING_WORDS_PER_MINUTE } from "../history/store.js";
 import { usageSummary } from "../usage/metering.js";
@@ -151,6 +154,26 @@ function phonePlans(): FirstRunPlan[] {
 
 export function registerBotsFirstRunRoutes(app: FastifyInstance, deps: BotsAreaDeps): void {
   const rl = { config: deps.rateLimit };
+
+  app.get("/v1/bots/first-run/arrival", rl, async (req, reply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return unauthorized(reply);
+    const personality = await getPersonality(user).catch(() => null);
+    // Unknown (the store failed): not due. A card that never comes is better than one that keeps coming back.
+    return reply.send({ due: !!personality && !personality.botsArrivalAt });
+  });
+
+  app.put("/v1/bots/first-run/arrival", rl, async (req, reply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return unauthorized(reply);
+    try {
+      await updatePersonality(user, (p) => (p.botsArrivalAt ? p : { ...p, botsArrivalAt: new Date().toISOString() }));
+      return reply.send({ ok: true });
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ code: "internal", message: "Couldn't save that" });
+    }
+  });
 
   app.get("/v1/bots/first-run/profile", rl, async (req, reply) => {
     const user = await resolveUser(req.headers["authorization"]);

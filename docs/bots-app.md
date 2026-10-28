@@ -28,10 +28,13 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
   the sign-in's name; then Name your Tailzu, which marks the account onboarded) → Bots. Both are OnboardStages with a `BlipSpot` per
   step, so the apps draw **one Blip** walking across all of them, through the gate's swap (the phone's BlipHost, the window's
   blip.js walker), as the old onboarding does. Language, Turn on Keybot, First words and Plans are pages reached from the app.
-  After it, Bots and Keybot carry two cards while something is missing: "Turn on full access" (the keyboard; one button to its
-  settings) and "Let Keybot hear you" (the microphone; asks, then opens First words), drawn from what the app writes into the
-  screen's state (`keyboardEnabled`, `keyboardReady`, `micGranted`). A window shows its Accessibility card (`DeskAskSetup`) and the
-  microphone card (`DeskMicAsk`) only where it declares them.
+  After it, the first time they land on Bots, **one card** comes up over a blurred Home (`arrivalCard`, firstRun.ts): the
+  microphone (asked for real), then on the same card the keyboard (straight to its settings); allowed or refused, the mic moves it
+  on; with both on, the bot's small happy moment and it closes. "Not now" closes it for good. It is due until answered
+  (`GET`/`PUT /v1/bots/first-run/arrival`, personality `botsArrivalAt`) and decides only once the app's readings arrive (Home's
+  state starts them as `null`: `keyboardEnabled`, `keyboardReady`, `micGranted`). Keybot carries the same card in the page for
+  whatever is still missing (`keybotCard`), and none when all is on. A window asks for its microphone (`DeskMicAsk`) and shows
+  Accessibility (`DeskAskSetup`) only where it declares them.
 * **Existing screens stay reachable** by their ids: `settings`, `keyboard`/keyboard settings, `history`, `paywall`, `personality`…
   and in a window the desk's `desk_today`, `desk_notes`, `desk_settings` (the sidebar links Today, Meeting notes and Settings to them).
   They draw as today, with the app's own chrome.
@@ -200,6 +203,15 @@ app.html + sdui.js) and a stand-in API (`preview/shim.js`) that answers from tho
 doctype or head: it is made to be published as a claude.ai Artifact with the rest of the folder.
 
 ## 8. The node types the kit adds
+
+**The living tiles** (a build that declares **`BotsMotion`**; `canMove(ctx)`): `botTiles(specs, { columns, height, padding, gap })`
+draws Home's grid with a tiny Blip per tile playing on a faint ink fabric (Code juggles 0s and 1s, Keybot hops keycaps, Plan
+stacks day tiles that topple, Travel chases a paper plane, Make a bot puts himself together from dots; anyone's own bot plays
+ball); a tap makes the other bots look at it and fades their words before it opens. `botCard(steps, props)` is a card with one
+such bot on top and its steps below (the permission cards). Both are physics, one core: the phone's
+`src/botTiles/core.ts`, from which the window's `botTiles.js` is generated (`node src/botTiles/genDesktop.mjs`; tests on both
+sides fail if they drift). Builds without it get `botTile` / `makeBotTile` and a plain card.
+
 
 No new node types: the design is expressed with core types plus four extensions, promised by the `BotsKit` capability
 (shared/types/sdui.ts, "The Bots app's kit"; phone types.ts mirror; desktop sdui.js):

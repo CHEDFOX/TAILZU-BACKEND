@@ -130,11 +130,18 @@ function sampleFor(t: Target, c: Client): Sample | undefined {
  * BlipHost, which needs Skia).
  */
 const STAGE = ["OnboardStage", "BlipSpot"];
-const COMPS: Record<Client, string[]> = { phone: STAGE, desktop: [...R.DESKTOP_COMPONENTS, ...STAGE] };
+// The window: its microphone too (desk-bridge.js answers for it), so its first-arrival card asks for it.
+const COMPS: Record<Client, string[]> = { phone: [...STAGE, "BotsMotion"], desktop: [...R.DESKTOP_COMPONENTS, ...STAGE, "DeskMicAsk"] };
+
+/**
+ * The first arrival: Home carries its card (the microphone, then the keyboard, over a blurred Home) as it does the
+ * first time someone lands in the app; closed, it stays closed in the preview too (the card remembers it).
+ */
+const ARRIVAL = { "GET /v1/bots/first-run/arrival": { due: true } };
 
 async function build(t: Target, c: Client): Promise<unknown> {
   const s = sampleFor(t, c);
-  const api = await apiFor(s ?? ({ id: t.id, area: "shell" } as Sample));
+  const api = { ...(await apiFor(s ?? ({ id: t.id, area: "shell" } as Sample))), ...(t.id === "bots.home" ? ARRIVAL : {}) };
   const deps = fakeDeps({ ...(s?.fake ?? {}), api });
   const comps = COMPS[c];
   return buildBotsScreen({
@@ -273,7 +280,7 @@ desk = desk.replace(/<meta http-equiv="Content-Security-Policy"[\s\S]*?>/, "")
   .replace(/<html([^>]*)>/, '<html$1 data-client="desktop">')
   .replace('<script src="knobs.js"></script>', '<script src="shim.js"></script>\n  <script src="desk-bridge.js"></script>\n  <script src="knobs.js"></script>');
 write("desk.html", desk);
-for (const f of ["knobs.js", "blip.js", "sdui.js"]) copy(path.join(DESKTOP, f), f);
+for (const f of ["knobs.js", "blip.js", "botTiles.js", "sdui.js"]) copy(path.join(DESKTOP, f), f);
 for (const m of desk.matchAll(/url\((assets\/[^)"']+)\)/g)) if (fs.existsSync(path.join(DESKTOP, m[1]!))) copy(path.join(DESKTOP, m[1]!), m[1]!);
 
 // What the screens name, and the faces the page around them is set in; and every one of Blip's loops, which the

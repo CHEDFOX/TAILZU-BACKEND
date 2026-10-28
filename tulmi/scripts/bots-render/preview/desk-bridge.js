@@ -8,7 +8,14 @@
     env: async () => ({ baseUrl: "https://api.local", session: s, appVersion: "1.0.0", os: "mac", launchCount: 3, notes: true }),
     session: async () => s, setSession: async (x) => x, config: async () => ({}), askSetup: async () => null,
     folders: async () => ({ custom: false, folders: [], error: "" }),
+    // The microphone, as this computer would answer: not asked yet, until the page asks (and the stand-in below says yes).
+    micStatus: async () => window.__previewMic || "not-determined",
   };
+  // The system's microphone prompt, answered yes (as the phone preview's expo-audio stand-in does): a silent stream.
+  try {
+    const md = navigator.mediaDevices || (navigator.mediaDevices = {});
+    md.getUserMedia = async () => { window.__previewMic = "granted"; return { getTracks: () => [] }; };
+  } catch { /* a page that cannot: the card's own refusal path */ }
   window.tailzuApp = new Proxy(known, { get: (t, k) => (k in t ? t[k] : noop) });
   // sdui.js's own names (a classic script's top-level bindings), read when called.
   /* global go, back, STACK */

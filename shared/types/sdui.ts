@@ -827,6 +827,79 @@ export interface SvgShape {
   delayMs?: number;
 }
 
+// ---------------------------------------------------------------------------
+// 3c. The living bot tiles (docs/bots-app.md, "Living tiles")
+// ---------------------------------------------------------------------------
+//
+// A build that declares BOTS_MOTION_CAPABILITY draws two more nodes. Both hold a tiny Blip in his bot's colour
+// playing on a faint ink fabric, all of it physics (particles, constraints, forces at a fixed step): one core,
+// the phone's src/botTiles/core.ts, which the window's botTiles.js is generated from.
+//
+//   BotTiles   Home's grid of bot tiles (BotTilesProps). A tap presses the tile in, every other bot turns its
+//              head to it and the others' words fade to 35 %, and after about 450 ms the tile's action runs.
+//              Reduce Motion: the bots rest in a pose, nothing moves, and a tap goes straight through.
+//   BotCard    a card with the tiny bot on its fabric across the top and its children below it (BotCardProps).
+//              The children are its steps, each shown by its own visibleIf; a change of step cross-fades and the
+//              bot plays on. `overlay`: centred over the screen, which is blurred behind it, with a soft entrance
+//              (Reduce Motion: no scale); `closeWhen` takes it away (the blur clears), `once` keeps it away on
+//              this device. on.onComplete runs when `doneWhen` holds, after the bot's small happy moment.
+//
+// A build without it gets today's static tiles and a plain card.
+
+/** Declared in capabilities.components by a build that draws BotTiles and BotCard. */
+export const BOTS_MOTION_CAPABILITY = "BotsMotion";
+
+export type BotTileKind = "code" | "keybot" | "plan" | "travel" | "make" | "custom";
+
+/** One tile of a BotTiles grid. */
+export interface BotTileSpec {
+  slug: string;
+  name: string;
+  /** The line under the name: "Working · fixing cart", "Needs you · 1 question", or the bot's own line. */
+  sub: string;
+  /** The bot's colour (#rrggbb). Make a bot: ink. */
+  color: string;
+  /** Which play: the built-ins' own, Make a bot's, or anyone's own bot's. */
+  kind: BotTileKind;
+  /** working: busier, its colour's dot · needs: stops and looks out, an ink dot · idle. */
+  state: "working" | "needs" | "idle";
+  action?: ActionRef;
+  /** For a screen reader; defaults to name and sub. */
+  label?: string;
+}
+
+export interface BotTilesProps {
+  tiles: BotTileSpec[];
+  columns: number;
+  /** A tile's height, its padding, the gap between tiles. */
+  height: number;
+  padding: number;
+  gap: number;
+  /** The Geist faces by weight, as the app registered them. */
+  faces: { regular: string; medium: string; semibold: string };
+}
+
+export interface BotCardProps {
+  kind?: BotTileKind;
+  /** The bot's colour: a neutral ink or grey on the permission cards. */
+  color: string;
+  /** The bot's stage across the top of the card. */
+  stageHeight: number;
+  overlay?: boolean;
+  /** The card's width (overlay; inline it fills its row). */
+  width?: number;
+  /** Shown only once this holds (the app's own readings have arrived). */
+  readyWhen?: Condition;
+  /** When this holds: the bot's happy moment, then on.onComplete. */
+  doneWhen?: Condition;
+  doneDelayMs?: number;
+  /** When this holds the card goes (and the blur clears). */
+  closeWhen?: Condition;
+  /** Once closed on this device, never drawn again (a key). */
+  once?: string;
+  label?: string;
+}
+
 /** Named layouts for `template` + `blocks` screens. */
 export const CORE_TEMPLATES = [
   "scroll", "feature", "list", "centered", "detail", "grid", "hero",

@@ -15,14 +15,15 @@
  */
 import type { ActionRef, ActionSpec, Condition, Node } from "../../../../../shared/types/sdui.js";
 import {
-  askBar, back, blip, body, botAvatar, botLook, botRoute, botTile, box, button, C, call, card, choiceRow, col, divider, duration, emptyState,
-  FACE, grid, grow, icon, labelled, listCard, listRow, makeBotTile, meta, mono, needsCard, notice, open, page, primaryButton, quietButton,
+  askBar, back, blip, body, botAvatar, botLook, botRoute, botTile, botTiles, botTileSpec, box, button, C, call, canMove, card, choiceRow, col,
+  divider, duration, emptyState, FACE, grid, grow, icon, labelled, listCard, listRow, makeBotTile, makeTileSpec, meta, mono, needsCard, notice,
+  open, page, primaryButton, quietButton,
   RADIUS, roundButton, row, rupees, SCREENS, secondaryButton, sectionLabel, segmented, seq, shapes, statusMark, tailzuMark, text, title, toTab,
   when, whenEq, type BotsCtx, type LiveBot, type NeedsItem,
 } from "../kit.js";
 import type { Mark } from "../glyphs.js";
 import { screen, type BotsScreen } from "../registry.js";
-import { DEVICE_STATE, setupCards } from "./firstRun.js";
+import { ARRIVAL_PATH, ARRIVAL_STATE, arrivalCard } from "./firstRun.js";
 import { clockOf, dayLabel, longDate, type FeedRow } from "../../../shell/feed.js";
 import { upiOf } from "../../../shell/parse.js";
 import { qrOf, qrPath } from "../../../shell/qr.js";
@@ -154,19 +155,31 @@ function weekRow(ctx: BotsCtx): Node {
   return row([weekBeads(ctx.live.week.done), text(weekLine(ctx.live.week), { size: 13, color: C.grey70, lineHeight: 17 })], { gap: 10 });
 }
 
-/** The tiles: the three bots that matter most right now (needs you, working, then the built-ins), and Make a bot. */
+/**
+ * The tiles: the three bots that matter most right now (needs you, working, then the built-ins), and Make a bot.
+ * Living (a tiny Blip in each, playing; BotTiles) where the build draws them, else today's static tiles.
+ */
 function tiles(ctx: BotsCtx, columns: number, height: number, padding: number): Node {
   const shown = ctx.live.bots.slice(0, 3);
+  if (canMove(ctx)) {
+    return botTiles([
+      ...shown.map((b) => botTileSpec(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug) })),
+      makeTileSpec(open(SCREENS.make)),
+    ], { columns, height, padding, gap: columns === 4 ? 14 : 12 });
+  }
   return grid([
     ...shown.map((b) => botTile(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug), height, padding })),
     makeBotTile({ onPress: open(SCREENS.make), height, padding }),
   ], columns, columns === 4 ? 14 : 12);
 }
 
-function homePhone(ctx: BotsCtx) {
+/** What Home's state starts with: the first-arrival card's, when it is due. */
+const homeState = (arrival: boolean): Record<string, unknown> => (arrival ? { ...ARRIVAL_STATE } : {});
+
+function homePhone(ctx: BotsCtx, arrival = false) {
   const first = ctx.live.needs[0];
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: { ...DEVICE_STATE },
+    tab: "bots", title: "Your bots", state: homeState(arrival),
     body: [
       row([
         tailzuMark(34),
@@ -175,8 +188,8 @@ function homePhone(ctx: BotsCtx) {
         roundButton("search", open(SCREENS.search), { size: 44, light: true, label: "Search everything" }),
         roundButton("person", toTab("you"), { size: 44, light: true, label: "Profile and settings" }),
       ], { gap: 10 }),
-      // What Keybot still lacks on this phone (the keyboard with Full Access, the microphone), until it has it.
-      ...setupCards(ctx),
+      // The first time here: one card for the microphone and the keyboard, over Home.
+      ...(arrival ? arrivalCard(ctx) : []),
       weekRow(ctx),
       ...(first ? [needsCard(first)] : []),
       tiles(ctx, 2, 132, 16),
@@ -185,10 +198,10 @@ function homePhone(ctx: BotsCtx) {
   });
 }
 
-function homeDesk(ctx: BotsCtx) {
+function homeDesk(ctx: BotsCtx, arrival = false) {
   const first = ctx.live.needs[0];
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: { ...DEVICE_STATE },
+    tab: "bots", title: "Your bots", state: homeState(arrival),
     body: [
       row([
         col([text(ctx.live.greeting, { size: 14, color: C.meta, lineHeight: 18 }), title("What should we do?", { size: 32, tracking: -0.8, lineHeight: 38 })], { gap: 4 }),
@@ -196,8 +209,8 @@ function homeDesk(ctx: BotsCtx) {
         weekRow(ctx),
         roundButton("search", open(SCREENS.search), { size: 40, light: true, label: "Search everything" }),
       ], { alignItems: "flex-end", flexWrap: "wrap", gap: 12 }),
-      // This computer's Accessibility and microphone for Keybot, where the window can tell, until they are on.
-      ...setupCards(ctx),
+      // The first time here: one card for this computer's microphone and Accessibility, over Home.
+      ...(arrival ? arrivalCard(ctx) : []),
       ...(first ? [needsCard(first, { layout: "row" })] : []),
       tiles(ctx, 4, 150, 18),
     ],
@@ -218,7 +231,7 @@ const IDEAS = [
   { label: "Rent yaad dilana, 1st ko", body: "On the 1st it reminds you and opens UPI with the rent filled in. You press pay.", uses: "Uses Reminders, UPI", icon: "rupee" as const },
 ];
 
-function emptyHome(ctx: BotsCtx) {
+function emptyHome(ctx: BotsCtx, arrival = false) {
   const name = firstName(ctx);
   const hi = name ? `Hi ${name}, I'm Blip` : "Hi, I'm Blip";
   const greet = name ? `${ctx.live.greeting}, ${name}` : ctx.live.greeting;
@@ -232,10 +245,10 @@ function emptyHome(ctx: BotsCtx) {
   if (ctx.client === "desktop") {
     return page(ctx, {
       tab: "bots", title: "Your bots", gap: 20, maxWidth: 1100,
-      state: { draft: "", ...DEVICE_STATE },
+      state: { draft: "", ...homeState(arrival) },
       body: [
         col([text(greet, { size: 14, color: C.meta, lineHeight: 18 }), title("Your bots")], { gap: 4 }),
-        ...setupCards(ctx),
+        ...(arrival ? arrivalCard(ctx) : []),
         row([
           col([
             row([blip("hello", 140), col([text(hi, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), text(line, { size: 15, color: C.grey70, lineHeight: 21 })], { gap: 6, flexShrink: 1 })], { gap: 24 }),
@@ -277,7 +290,7 @@ function emptyHome(ctx: BotsCtx) {
   }
 
   return page(ctx, {
-    tab: "bots", title: "Your bots", gap: 16, state: { ...DEVICE_STATE },
+    tab: "bots", title: "Your bots", gap: 16, state: homeState(arrival),
     body: [
       row([
         tailzuMark(34),
@@ -285,7 +298,7 @@ function emptyHome(ctx: BotsCtx) {
         grow(),
         roundButton("person", toTab("you"), { size: 44, light: true, label: "Profile and settings" }),
       ], { gap: 10 }),
-      ...setupCards(ctx),
+      ...(arrival ? arrivalCard(ctx) : []),
       col([blip("hello", 172), text(hi, { size: 25, weight: 700, tracking: -0.5, lineHeight: 31, align: "center" }), text(line, { size: 14, color: C.grey70, lineHeight: 20, align: "center" })], { gap: 6, alignItems: "center" }),
       row([
         botAvatar(keybot, 38),
@@ -1530,10 +1543,20 @@ function notePage(ctx: BotsCtx, n: Note | undefined) {
 // ===================================================================== the list
 
 export const shellScreens: BotsScreen[] = [
-  screen<{ started?: boolean }>({
+  screen<{ started?: boolean; arrival?: boolean }>({
     id: SCREENS.home,
-    load: (_ctx, deps) => deps.api<{ started: boolean }>("GET", "/v1/shell/started"),
-    build: (ctx, data) => (isNew(ctx, data) ? emptyHome(ctx) : ctx.client === "desktop" ? homeDesk(ctx) : homePhone(ctx)),
+    // Whether they have anything of their own yet, and whether the first-arrival card is due (once, after onboarding).
+    load: async (_ctx, deps) => {
+      const [started, arrival] = await Promise.all([
+        deps.api<{ started: boolean }>("GET", "/v1/shell/started").catch(() => undefined),
+        deps.api<{ due: boolean }>("GET", ARRIVAL_PATH).catch(() => undefined),
+      ]);
+      return { ...(started ?? {}), arrival: arrival?.due === true };
+    },
+    build: (ctx, data) => {
+      const arrival = !!data?.arrival;
+      return isNew(ctx, data) ? emptyHome(ctx, arrival) : ctx.client === "desktop" ? homeDesk(ctx, arrival) : homePhone(ctx, arrival);
+    },
   }),
   screen({ id: SCREENS.empty, build: (ctx) => emptyHome(ctx) }),
   screen<ActivityData>({ id: SCREENS.activity, load: activityLoad, build: (ctx, d) => (ctx.client === "desktop" ? activityDesk(ctx, d) : activityPhone(ctx, d)) }),
