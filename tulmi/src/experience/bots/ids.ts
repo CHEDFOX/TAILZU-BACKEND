@@ -29,6 +29,9 @@ export const SCREENS = {
   signCode: "bots.sign-code",        // SignCode / DSignCode
   lock: "bots.lock",                 // Lock (phone only)
   widgets: "bots.widgets",           // Widgets / DWidgets
+  today: "bots.today",               // DeskToday (the window's Today; the phone draws it in a column)
+  notes: "bots.notes",               // DeskNotes (meeting notes; params: q)
+  note: "bots.note",                 // DeskNote (one meeting's notes; params: id)
   // screens/you.ts: You and its settings
   you: "bots.you",                   // You / DYou
   budget: "bots.budget",             // Budget / DBudget
