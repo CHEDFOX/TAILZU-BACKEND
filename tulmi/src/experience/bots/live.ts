@@ -11,7 +11,8 @@
  *   working     a Code bot job that is queued / running / waiting for a computer; a connected-app task that is running
  *   needs you   a Code bot job waiting for the person's answer (its question and options) or yes; a task waiting for approval
  *   the week    jobs and tasks that ended done since Monday, and the minutes writing by voice saved (history stats)
- *   spend       what the month's jobs spent, against the monthly limit (DEFAULT_MONTH_BUDGET_PAISE until a Budget screen stores one)
+ *   spend       what the month's jobs spent, against the monthly limit (DEFAULT_MONTH_BUDGET_PAISE until a Budget screen stores one); with the
+ *               You tab's source set (setSpendSource, src/you), the person's own limit and the month over every bot's records
  */
 import type { ActionSpec } from "../../../../shared/types/sdui.js";
 import type { TabLive } from "./glyphs.js";
@@ -76,6 +77,15 @@ export interface BotsDeps {
 
 /** ₹500 a month: the limit until the person sets their own (the Budget board's example). */
 export const DEFAULT_MONTH_BUDGET_PAISE = 50_000;
+
+/**
+ * The person's own monthly limit, and the month's spend over every bot (the Code bot's jobs and the other bots' answers), from the You tab's
+ * records (src/you; routes/botsYou.ts sets it when the server starts). Read through the person's own `api`. Unset (tests, the render check)
+ * or failing: the limit is deps.budgetPaise() and the spend the jobs', as before.
+ */
+export type SpendSource = (deps: BotsDeps, tzOffsetMinutes: number) => Promise<{ limitPaise: number; monthPaise: number } | null>;
+let spendSource: SpendSource | null = null;
+export function setSpendSource(s: SpendSource | null): void { spendSource = s; }
 
 // ------------------------------------------------------------------ the model
 
@@ -143,11 +153,12 @@ export interface BotsLive {
 /** Reads everything at once; a read that fails counts as empty. */
 export async function loadLive(deps: BotsDeps, tzOffsetMinutes = 0): Promise<BotsLive> {
   const safe = <T>(p: Promise<T>, empty: T): Promise<T> => p.catch(() => empty);
-  const [bots, jobs, tasks, saved, budget] = await Promise.all([
+  const [bots, jobs, tasks, saved, budget, stored] = await Promise.all([
     safe(deps.bots(), [] as BotLite[]), safe(deps.jobs(), [] as JobLite[]), safe(deps.tasks(), [] as TaskLite[]),
     safe(deps.minutesSaved(), 0), safe(deps.budgetPaise(), DEFAULT_MONTH_BUDGET_PAISE),
+    spendSource ? safe(spendSource(deps, tzOffsetMinutes), null) : Promise.resolve(null),
   ]);
-  return liveFrom({ bots, jobs, tasks, minutesSaved: saved, budgetPaise: budget, now: deps.now(), tzOffsetMinutes });
+  return liveFrom({ bots, jobs, tasks, minutesSaved: saved, budgetPaise: budget, now: deps.now(), tzOffsetMinutes, ...(stored ? { stored } : {}) });
 }
 
 const ACTIVE_JOB = new Set<JobLite["state"]>(["queued", "running", "waiting_for_compute"]);
@@ -217,6 +228,8 @@ export interface LiveInput {
   budgetPaise: number;
   now: number;
   tzOffsetMinutes?: number;
+  /** The person's own limit and the month over every bot (SpendSource), when known: they win over budgetPaise and the jobs' sum. */
+  stored?: { limitPaise: number; monthPaise: number };
 }
 
 /** The model from what the deps returned. Pure. */
@@ -277,8 +290,9 @@ export function liveFrom(i: LiveInput): BotsLive {
 
   const done = i.jobs.filter((j) => j.state === "done" && j.updatedAt >= week).length
     + i.tasks.filter((t) => t.state === "done" && t.updatedAt >= week).length;
-  const monthPaise = i.jobs.filter((j) => j.updatedAt >= month).reduce((n, j) => n + Math.max(0, j.spentPaise || 0), 0);
-  const budgetPaise = i.budgetPaise > 0 ? i.budgetPaise : DEFAULT_MONTH_BUDGET_PAISE;
+  const monthPaise = i.stored && Number.isFinite(i.stored.monthPaise) ? Math.max(0, Math.round(i.stored.monthPaise))
+    : i.jobs.filter((j) => j.updatedAt >= month).reduce((n, j) => n + Math.max(0, j.spentPaise || 0), 0);
+  const budgetPaise = i.stored && i.stored.limitPaise > 0 ? i.stored.limitPaise : i.budgetPaise > 0 ? i.budgetPaise : DEFAULT_MONTH_BUDGET_PAISE;
   // The tab icons' four dots are the first four bots in their own order, so a dot never moves when a bot gets busy.
   const tab: TabLive = {
     dots: bots.slice(0, 4).map((b) => ({ color: look(b.slug, b.colour).color, working: working.some((w) => w.bot === b.slug) })),

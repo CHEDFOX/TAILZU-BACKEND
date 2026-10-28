@@ -115,6 +115,10 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.code_minutes_low.enabled": true,
     "push.code_minutes_low.screenId": "home",
 
+    // The Bots app's daily summary (src/you/push.ts): sent only to a person who turned it on, at the hour they chose, on a day something happened.
+    "push.bots_summary.enabled": true,
+    "push.bots_summary.screenId": "bots.activity",
+
     "push.lowWords.enabled": false,
     "push.lowWords.fraction": 0.1,
     "push.lowWords.screenId": "paywall",
@@ -146,6 +150,8 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.code_needs_you.body": "“{task}”: {reason}",
     "push.code_minutes_low.title": "GitHub minutes running low",
     "push.code_minutes_low.body": "{reason} Past 95% Tailzu uses your own computer instead, or waits.",
+    "push.bots_summary.title": "Today, {time}",
+    "push.bots_summary.body": "{line}",
     "push.lowWords.title": "{n} words left",
     "push.lowWords.body": "Enough for today. More any time.",
   },
@@ -159,5 +165,6 @@ export type PushKind = (typeof PUSH_KINDS)[number];
 export const EVENT_PUSH_KINDS = [
   "approval",
   "code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed", "code_needs_you", "code_minutes_low",
+  "bots_summary",
 ] as const;
 export type EventPushKind = (typeof EVENT_PUSH_KINDS)[number];
