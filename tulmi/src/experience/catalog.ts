@@ -14594,6 +14594,11 @@ export function buildKeyboardConfig(
         // lives in the same inset frame. OTA-tunable — takes effect on the
         // current build without a rebuild.
         "kb.mic.idleIconInset": 7,
+        // The mic key as a tiny bot in a round window (iOS PeekBotView,
+        // Android TulmiPeekBot): it peeks in now and then, pops up to listen,
+        // thinks while the words are cleaned up, smiles when they land. ""
+        // keeps the mark. Builds before the bot ignore this and draw the mark.
+        "kb.mic.bot": "peek",
         // Mic mode (iOS only — Android reads `liveVoice` and records in-process,
         // which iOS extensions CANNOT do). iOS blocks microphone recording
         // inside a keyboard extension: even with Full Access,
