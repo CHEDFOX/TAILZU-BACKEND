@@ -62,12 +62,14 @@ export const SAMPLES: Sample[] = [
   { id: S.today, area: "shell", deskBoard: "DeskToday" },
   { id: S.notes, area: "shell", deskBoard: "DeskNotes" },
   { id: S.note, area: "shell", deskBoard: "DeskNote", params: { id: "n1" } },
-  // screens/firstRun.ts
+  // screens/firstRun.ts: the first run, Welcome to Name (About you, then Name, are the two steps of bots.name-it)...
   { id: S.welcome, area: "firstrun", board: "Welcome", deskBoard: "DWelcome" },
   { id: S.signIn, area: "firstrun", board: "SignIn", deskBoard: "DSignIn" },
   { id: S.signCode, area: "firstrun", board: "SignCode", deskBoard: "DSignCode" },
-  { id: S.language, area: "firstrun", board: "Language", deskBoard: "DLanguage" },
   { id: S.nameIt, area: "firstrun", board: "NameIt", deskBoard: "DNameIt" },
+  // ...and the pages it used to lead through, reached from the app now: Language and Plans from You, Turn on Keybot
+  // from the keyboard card, First words after the microphone card.
+  { id: S.language, area: "firstrun", board: "Language", deskBoard: "DLanguage" },
   { id: S.keyOn, area: "firstrun", board: "KeyOn", deskBoard: "DKeyOn" },
   { id: S.firstWords, area: "firstrun", board: "FirstWords", deskBoard: "DFirstWords", params: { w: 5196, s: 1876 } },
   { id: S.plans, area: "firstrun", board: "Plans", deskBoard: "DPlans" },

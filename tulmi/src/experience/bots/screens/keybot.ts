@@ -14,7 +14,7 @@
  * writes through it or the routes that were already there (PUT /v1/personality, POST /v1/words, DELETE /v1/history).
  * A failed read draws the page's honest "couldn't load" state, never a made-up number.
  *
- * Not here: bots.keybot.on (first run, screens/firstRun.ts). bots.keybot.pill / .reply / .rewrite are the desktop's
+ * Not here: bots.keybot.on and the keyboard and microphone cards shown on Keybot (screens/firstRun.ts). bots.keybot.pill / .reply / .rewrite are the desktop's
  * own windows (TAILZU-DESKTOP pill.html and guide.html, behind the same switch), and the phone keyboard's KeyLive,
  * KeyReply and KeyRewrite are the keyboard extension itself: neither is a server-drawn screen.
  */
@@ -30,6 +30,7 @@ import {
   switchMark, switchRow, text, title, when, whenEq, type BotsCtx,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
+import { DEVICE_STATE, setupCards } from "./firstRun.js";
 
 const KEYBOT = botLook("keybot");
 const CLAY = KEYBOT.color;
@@ -225,9 +226,11 @@ function keybotPhone(ctx: BotsCtx, d: KeybotHomeView | undefined) {
     col([text("Keybot", { size: 19, weight: 600, lineHeight: 24 }), meta("Your keyboard, in every app")], { gap: 2 }),
   ], { gap: 10 });
   return page(ctx, {
-    back: false, nav: "keybot", title: "Keybot", gap: 18,
+    back: false, nav: "keybot", title: "Keybot", gap: 18, state: { ...DEVICE_STATE },
     body: [
       head,
+      // The keyboard with Full Access and the microphone, until this phone has them.
+      ...setupCards(ctx),
       d ? col(weekNumbers(d.week), { gap: 4 }) : couldntLoad("your week"),
       col([sectionLabel("What the key does"), col([
         row([modeCard(MODES[0]!, 0), modeCard(MODES[1]!, 1)].map((c) => box([c], { flexGrow: 1, flexBasis: 0 })), { gap: 10, alignItems: "stretch" }),
@@ -300,7 +303,7 @@ function keybotDesk(ctx: BotsCtx, d: KeybotHomeView | undefined) {
     text("Speak in the reply box", { size: 12, color: C.grey70, lineHeight: 16 }),
   ];
   return page(ctx, {
-    nav: "keybot", title: "Keybot", gap: 18, maxWidth: DESK_WIDTH,
+    nav: "keybot", title: "Keybot", gap: 18, maxWidth: DESK_WIDTH, state: { ...DEVICE_STATE },
     body: [
       row([
         botAvatar(KEYBOT, 48),
@@ -309,6 +312,8 @@ function keybotDesk(ctx: BotsCtx, d: KeybotHomeView | undefined) {
         when({ falsy: "desktop.hold" }, row([kbd("Ctrl+Space", "desktop.hotkey"), text("Press to speak in any app", { size: 13, color: C.grey70, lineHeight: 17 })], { gap: 8 })),
         button("Settings", open(SCREENS.keySettings), { kind: "secondary", size: "md", icon: "settings" }),
       ], { gap: 14, flexWrap: "wrap" }),
+      // This computer's Accessibility and microphone, where the window can tell, until they are on.
+      ...setupCards(ctx),
       d ? twoCols([
         card([sectionLabel("This week"), col(weekNumbers(d.week), { gap: 4 }), weekBars(d.week.days)], { gap: 12, radius: 18, style: { paddingHorizontal: 20, paddingBottom: 14 } }),
       ], [byAppCard(d)], { leftWeight: 1, rightWeight: 1.1, gap: 16 }) : couldntLoad("your week"),

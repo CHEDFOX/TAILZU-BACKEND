@@ -104,6 +104,8 @@ export async function buildPhoneBundle(entry = path.join(HERE, "phone/entry.jsx"
     "expo-linear-gradient": path.join(HERE, "phone/views.jsx"),
     "expo-blur": path.join(HERE, "phone/views.jsx"),
     "@supabase/supabase-js": path.join(HERE, "phone/supabase.js"),
+    // The microphone's prompt, answered yes (the preview's stand-in for the system's).
+    "expo-audio": path.join(HERE, "phone/expo-audio.js"),
   };
   const plugin = {
     name: "phone",

@@ -1,7 +1,7 @@
 /**
  * THE YOU TAB AND WHAT HANGS OFF IT: You, Budget, Billing, This computer helps, What pings you, Privacy, Delete account, Connected apps, Connect an
  * app, and the window's Settings (You.dc.html, Budget, Billing, Devices, Notify, Privacy, DeleteAcct, Apps, AppConnect and their D* / Desk*
- * desktop boards). Plans and Language are the first run's (screens/firstRun.ts); they are linked, not built, here.
+ * desktop boards). Plans and Language are built in screens/firstRun.ts (once first-run steps, now pages); they are linked, not built, here.
  *
  * Every number is the person's own, from the routes in routes/botsYou.ts (src/you): the month's spend over every bot's records, the stored
  * limit, the plan and invoices from billing, the computers from runner presence, the connected apps from connectors. A read that fails draws

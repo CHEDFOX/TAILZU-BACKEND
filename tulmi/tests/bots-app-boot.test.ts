@@ -44,9 +44,13 @@ describe("the bootstrap", () => {
     expect(on.flags?.["desktop.desk"]).toBe(true);
     expect(on.flags?.["desktop.desk.settingsScreenId"]).toBe("desk_settings");
   });
-  it("on, for someone the new onboarding has not finished: the onboarding first (the Bots app's own, from Languages)", () => {
+  it("on, for someone the new onboarding has not finished: the onboarding first (the Bots app's own, About you and Name)", () => {
     const on = buildBootstrap({ onboarded: false, botsApp: true, onboardV2: true, launchCount: 1 });
-    expect(on.initialScreenId).toBe("bots.language");
+    expect(on.initialScreenId).toBe("bots.name-it");
+    // The run asks the name and gender card's question itself: the card is not laid over anything meanwhile.
+    expect(on.flags?.["profileGate.screenIds"]).toEqual([]);
+    // Onboarded before the run asked it: the card stays where it always was.
+    expect(buildBootstrap({ onboarded: true, botsApp: true }).flags?.["profileGate.screenIds"]).toEqual(["personality", "home"]);
   });
 });
 

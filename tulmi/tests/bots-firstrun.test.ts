@@ -3,7 +3,8 @@ import type { FastifyInstance } from "fastify";
 import type { ActionSpec, Node } from "../../shared/types/sdui.js";
 
 // The Bots app's first run (screens/firstRun.ts, routes/botsFirstRun.ts): Welcome, Sign in and Code in the gate's
-// tree, then Languages → Name → Turn on Keybot → First words → Plans, each on the routes that already own the write.
+// tree, then About you → Name on a stage of their own, with one Blip walking across both; Language, Turn on Keybot,
+// First words and Plans are pages reached from the app, and Bots and Keybot carry the keyboard and microphone cards.
 process.env.OPENROUTER_API_KEY = "k";
 process.env.OPENAI_API_KEY = "k";
 process.env.GROQ_API_KEY = "k";
@@ -21,7 +22,7 @@ const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { botsAuthTree, BOTS_FIRST_RUN_IDS } = await import("../src/experience/bots/screens/firstRun.js");
-const { spokenSince, trialDaysOf } = await import("../src/routes/botsFirstRun.js");
+const { nameFromEmail, signedInVia, spokenSince, startingName, trialDaysOf } = await import("../src/routes/botsFirstRun.js");
 
 const LANGS = { options: [{ value: "hinglish", label: "Hinglish" }, { value: "hi", label: "Hindi" }, { value: "en", label: "English" }, { value: "ta", label: "Tamil" }], picked: ["ta", "en"] };
 const WORDS = { words: 0, seconds: 0, typingSeconds: 0, totalWords: 5210, totalSeconds: 1880 };
@@ -35,17 +36,24 @@ const PHONE_PLANS = {
 const API: Record<string, unknown> = {
   "GET /v1/bots/first-run/languages": LANGS,
   "GET /v1/personality": { personality: { assistantName: "Zara" } },
+  "GET /v1/bots/first-run/profile": { name: "Aanya Rao", via: "email", source: "email", gender: null, saved: false },
   "GET /v1/bots/first-run/words": WORDS,
   "GET /v1/bots/first-run/words?w=5196&s=1876": { words: 14, seconds: 4, typingSeconds: 21, totalWords: 5210, totalSeconds: 1880 },
   "GET /v1/bots/first-run/plans?client=phone": PHONE_PLANS,
   "GET /v1/bots/first-run/plans?client=desktop&market=IN": { ...PHONE_PLANS, plans: [{ id: "annual", label: "Elite", price: "₹5,999", per: "a year", default: true, buy: { kind: "iap.subscribe", productId: "tailzu_annu" } }] },
 };
 
-const build = (screenId: string, client: "phone" | "desktop", o: { params?: Record<string, string | number>; api?: Record<string, unknown>; calls?: Array<{ method: string; path: string }> } = {}) =>
+const build = (screenId: string, client: "phone" | "desktop", o: { params?: Record<string, string | number>; api?: Record<string, unknown>; calls?: Array<{ method: string; path: string }>; can?: string[] } = {}) =>
   buildBotsScreen({
     screenId, client, params: o.params, tzOffsetMinutes: IST, user: { id: "u1", name: "Aanya", email: "aanya@example.in" },
-    can: new Set(["BotsKit"]), desk: { pages: false, notes: false },
+    can: new Set(["BotsKit", ...(o.can ?? [])]), desk: { pages: false, notes: false },
   }, fakeDeps({ api: o.api ?? API, calls: o.calls }));
+/** What a build that draws the onboarding's stage declares. */
+const STAGE = ["OnboardStage", "BlipSpot"];
+/** The kit's lint, less the two node types a stage build promises (the stage and Blip's spot). */
+const lintStaged = (n: Node) => lintTree(n).filter((m) => m !== "type OnboardStage" && m !== "type BlipSpot" && m !== "type AuthPhase");
+/** Blip's spots in a tree, by pose. */
+const poses = (n: Node) => walk(n).filter((x) => x.type === "BlipSpot").map((x) => x.props?.pose);
 const texts = (n: Node): string[] => walk(n).filter((x) => x.type === "Text").map((x) => String(x.props?.content));
 /** Every action in a tree, nested ones included. */
 function actions(n: unknown, out: ActionSpec[] = []): ActionSpec[] {
@@ -79,25 +87,68 @@ describe("the first run's screens", () => {
   });
 });
 
-describe("Languages, Name", () => {
-  it("Languages: the person's own picks, chips that toggle (never to none), saved to the personality, then Name", async () => {
+describe("About you and Name: the stage after sign-in", () => {
+  const profileWrite = (x: ActionSpec) => x.kind === "callEndpoint" && (x as { path?: string }).path === "/v1/profile";
+  it("About you: the name to start from and the card's three genders, saved with the card's own write, then Name", async () => {
+    const s = await build("bots.name-it", "phone");
+    expect(s.state).toMatchObject({ step: 0, fullName: "Aanya Rao", gender: "", name: "Zara" });
+    expect(texts(s.root!)).toEqual(expect.arrayContaining(["What's your name?", "Male", "Female", "Other", "Guessed from your email. Change it if it's wrong."]));
+    const all = actions(s.root);
+    expect(all).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "setState", path: "gender", value: "female" }),
+      expect.objectContaining({
+        kind: "callEndpoint", method: "PUT", path: "/v1/profile", body: { full_name: "$state.fullName", gender: "$state.gender" },
+        onSuccess: expect.objectContaining({ kind: "sequence", actions: expect.arrayContaining([{ kind: "setState", path: "step", value: 1 }]) }),
+      }),
+    ]));
+    // Both answers are needed, as on the card.
+    expect(all).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "condition", if: { all: [{ truthy: "fullName" }, { truthy: "gender" }] } })]));
+  });
+  it("Name: the boss bot's name, saved as the assistant's name, and that finishes onboarding (on to Bots)", async () => {
+    const s = await build("bots.name-it", "desktop");
+    const save = actions(s.root).find((x) => x.kind === "callEndpoint" && (x as { path?: string }).path === "/v1/personality") as { body?: unknown; onSuccess?: unknown } | undefined;
+    expect(save?.body).toEqual({ assistantName: "$state.name" });
+    const done = actions(save!.onSuccess);
+    expect(done).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/profile", body: { onboarded: true } }),
+      { kind: "switchTab", tabId: "bots" },
+    ]));
+    expect(actions(s.root)).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "setState", path: "name", value: "Jarvis" })]));
+    // Nothing after it any more: no Turn on Keybot, no Plans in the run.
+    expect(actions(s.root).some((x) => x.kind === "navigate")).toBe(false);
+    // The two writes to the profile on this screen (each from its button and from its field's return): About you's,
+    // and the end of onboarding.
+    expect(new Set(actions(s.root).filter(profileWrite).map((x) => JSON.stringify((x as { body?: unknown }).body))))
+      .toEqual(new Set(['{"full_name":"$state.fullName","gender":"$state.gender"}', '{"onboarded":true}']));
+  });
+  it("starts on Name for an account that already answered, and blank when nothing could be read", async () => {
+    const answered = await build("bots.name-it", "phone", { api: { ...API, "GET /v1/bots/first-run/profile": { name: "Aanya Rao", via: "google", source: "saved", gender: "female", saved: true } } });
+    expect(answered.state).toMatchObject({ step: 1, fullName: "Aanya Rao", gender: "female" });
+    const blank = await build("bots.name-it", "phone", { api: {} });
+    expect(blank.state).toMatchObject({ step: 0, fullName: "", gender: "", name: "Tailzu" });
+    expect(lintTree(blank.root!)).toEqual([]);
+  });
+  it("on a build that draws the stage: one stage, Blip presenting About you and cheering on Name", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      const s = await build("bots.name-it", client, { can: STAGE });
+      expect(s.root).toMatchObject({ type: "OnboardStage", bind: { step: "step" }, props: { id: "bots.first", first: 2, of: 4, ground: "#ffffff" } });
+      expect(s.root!.children?.map((c) => c.props?.stepId)).toEqual(["you", "name"]);
+      expect(poses(s.root!)).toEqual(["present", "tada"]);
+      expect(lintStaged(s.root!), client).toEqual([]);
+    }
+  });
+});
+
+describe("Language: a page from You now", () => {
+  it("the person's own picks, chips that toggle (never to none), saved to the personality, then back", async () => {
     const s = await build("bots.language", "phone");
     expect(s.state?.langs).toEqual(["ta", "en"]);
     expect(texts(s.root!)).toEqual(expect.arrayContaining(["Which languages do you speak?", "Hinglish", "Tamil"]));
+    expect(texts(s.root!).some((t) => / of 5$/.test(t))).toBe(false);
     expect(actions(s.root)).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "toggleInArray", path: "langs", value: "ta", min: 1 }),
-      expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: { languages: "$state.langs" }, onSuccess: { kind: "navigate", screenId: "bots.name-it" } }),
+      expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: { languages: "$state.langs" }, onSuccess: expect.objectContaining({ kind: "sequence", actions: expect.arrayContaining([{ kind: "navigateBack" }]) }) }),
     ]));
-  });
-  it("Name: today's name for it, saved as the assistant's name, then Turn on Keybot", async () => {
-    const s = await build("bots.name-it", "desktop");
-    expect(s.state?.name).toBe("Zara");
-    expect(actions(s.root)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: "setState", path: "name", value: "Jarvis" }),
-      expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: { assistantName: "$state.name" }, onSuccess: { kind: "navigate", screenId: "bots.keybot.on" } }),
-    ]));
-    const blank = await build("bots.name-it", "phone", { api: {} });
-    expect(blank.state?.name).toBe("Tailzu");
   });
 });
 
@@ -113,6 +164,10 @@ describe("Turn on Keybot, First words", () => {
       expect.objectContaining({ kind: "openSettings", target: "keyboard" }),
       expect.objectContaining({ kind: "navigate", screenId: "bots.first-words", params: { w: 5210, s: 1880 } }),
     ]));
+    // Out of the run: Not now goes back to where it was opened from, never on to Plans.
+    expect(JSON.stringify(s.root)).not.toContain('"screenId":"bots.plans"');
+    expect(texts(s.root!)).toContain("Not now");
+    expect(texts(s.root!).some((t) => / of 5$/.test(t))).toBe(false);
   });
   it("window: this computer's own Accessibility card when it has one", async () => {
     const plain = await build("bots.keybot.on", "desktop");
@@ -141,6 +196,9 @@ describe("Turn on Keybot, First words", () => {
     expect(mic).toMatchObject({ bind: { value: "said" }, props: { hold: true }, on: { onChange: { kind: "navigate", screenId: "bots.first-words", replace: true } } });
     const quiet = await build("bots.first-words", "desktop");
     expect(texts(quiet.root!).some((t) => /^\d[\d,]* words?$/.test(t))).toBe(false);
+    // Done goes back (to Bots, or Keybot), not on to Plans.
+    expect(texts(quiet.root!)).toContain("Done");
+    expect(JSON.stringify(quiet.root)).not.toContain('"screenId":"bots.plans"');
   });
   it("spokenSince and the typing estimate", () => {
     expect(spokenSince({ words: 120, audioSeconds: 40 }, { w: 100, s: 32 })).toEqual({ words: 20, seconds: 8, typingSeconds: 30, totalWords: 120, totalSeconds: 40 });
@@ -150,39 +208,46 @@ describe("Turn on Keybot, First words", () => {
   });
 });
 
-describe("Plans", () => {
-  const finishes = (a: ActionSpec[]) => a.some((x) => x.kind === "callEndpoint" && (x as { path?: string }).path === "/v1/profile"
-    && JSON.stringify((x as { body?: unknown }).body) === '{"onboarded":true}');
-  it("phone: the paywall's plans, bought as the paywall buys them; buying or staying free ends the first run", async () => {
+describe("Plans: a page from You and Billing now", () => {
+  const finishes = (a: ActionSpec[]) => a.some((x) => x.kind === "callEndpoint" && (x as { path?: string }).path === "/v1/profile");
+  it("phone: the paywall's plans, bought as the paywall buys them; buying or staying free goes back, and onboarding is not touched", async () => {
     const s = await build("bots.plans", "phone");
     expect(s.state?.plan).toBe("annual");
     expect(texts(s.root!)).toEqual(expect.arrayContaining(["Free", "Elite", "$59.99", "Lite", "Start free week", "Stay on Free", "Keybot, 2,000 words a month"]));
     const all = actions(s.root);
     const buy = all.find((x) => x.kind === "iap.showPaywall" && (x as { packageId?: string }).packageId === "$rc_annual") as { onSuccess?: unknown } | undefined;
     expect(buy).toBeDefined();
-    expect(finishes(actions(buy!.onSuccess))).toBe(true);
-    expect(finishes(all)).toBe(true);
+    expect(actions(buy!.onSuccess)).toEqual(expect.arrayContaining([{ kind: "navigateBack" }]));
+    expect(finishes(all)).toBe(false);
+    expect(texts(s.root!).some((t) => /Step \d of/.test(t) || / of 5$/.test(t))).toBe(false);
   });
   it("window: the pay page (iap.subscribe) at Razorpay's prices", async () => {
     const s = await build("bots.plans", "desktop");
     expect(texts(s.root!)).toContain("₹5,999");
     expect(actions(s.root)).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "iap.subscribe", productId: "tailzu_annu" })]));
   });
-  it("nothing to sell (free for all, or already paying): say so, and go in", async () => {
+  it("nothing to sell (free for all, or already paying): say so, and back", async () => {
     const free = await build("bots.plans", "phone", { api: { "GET /v1/bots/first-run/plans?client=phone": { ...PHONE_PLANS, freeForAll: true, plans: [] } } });
     expect(texts(free.root!)).toContain("Tailzu is free for everyone right now. Nothing to pick, nothing to pay.");
     expect(actions(free.root).some((x) => x.kind.startsWith("iap."))).toBe(false);
-    expect(finishes(actions(free.root))).toBe(true);
+    expect(finishes(actions(free.root))).toBe(false);
+    expect(actions(free.root)).toEqual(expect.arrayContaining([{ kind: "navigateBack" }]));
   });
 });
 
 describe("the gate: Welcome, Sign in, Code on the sign-in the app already runs", () => {
   const opts = { terms: "https://tailzu.space/terms", privacy: "https://tailzu.space/privacy" };
-  it("a stage both gates step through, with the gate's own controls", () => {
+  it("a stage both gates step through, with the gate's own controls, and Blip's spots: wave, listen, wait, think", () => {
     for (const desktop of [false, true]) {
       const t = botsAuthTree({ ...opts, desktop }) as unknown as Node;
       expect(t.type).toBe("OnboardStage");
-      expect(t.props).toMatchObject({ id: "bots.auth", phaseStep: { verify: 1, verifying: 1 }, ground: "#ffffff" });
+      expect(t.props).toMatchObject({ id: "bots.auth", first: 0, of: 4, phaseStep: { verify: 1, verifying: 1 }, ground: "#ffffff", blip: { dot: "#F3E2C6" } });
+      // One Blip, walked from spot to spot by the app; the gate's Sign in step and the screen after sign-in share the look.
+      // (The phone's Sign in has one spot by each way in, phone or email; one shows.)
+      expect(poses(t)).toEqual(desktop ? ["wave", "listen", "wait", "think"] : ["wave", "listen", "listen", "wait", "think"]);
+      expect(walk(t).filter((n) => n.type === "AuthPhase").map((n) => n.props?.phases)).toEqual([["verify"], ["verifying"]]);
+      // No picture of him (an animated loop) anywhere: the one Blip is the app's.
+      expect(walk(t).some((n) => n.type === "Image" && JSON.stringify(n.props).includes(".webp"))).toBe(false);
       const types = walk(t).map((n) => n.type);
       expect(types).toEqual(expect.arrayContaining(["SwipePill", "GoogleSignIn", "AppleSignIn", "CodeEntry"]));
       const pills = walk(t).filter((n) => n.type === "SwipePill").map((n) => n.props?.method);
@@ -204,13 +269,100 @@ describe("the gate: Welcome, Sign in, Code on the sign-in the app already runs",
     const on = buildBootstrap({ botsApp: true, onboarded: false, onboardV2: true });
     expect((on.flags?.["auth.screen"] as { props?: { id?: string } }).props?.id).toBe("bots.auth");
     expect(on.flags?.["auth.sdui"]).toBe(true);
-    expect(on.initialScreenId).toBe("bots.language");
+    expect(on.initialScreenId).toBe("bots.name-it");
+    expect(BOTS_FIRST_RUN_IDS).toEqual(["bots.name-it"]);
     expect(on.flags?.["boot.firstRunGateIds"]).toEqual(expect.arrayContaining(BOTS_FIRST_RUN_IDS));
     expect(buildBootstrap({ botsApp: true, onboarded: true }).initialScreenId).toBe("bots.home");
-    expect(buildBootstrap({ botsApp: true, onboarded: false, isReviewer: true }).initialScreenId).not.toBe("bots.language");
+    expect(buildBootstrap({ botsApp: true, onboarded: false, isReviewer: true }).initialScreenId).not.toBe("bots.name-it");
     const off = buildBootstrap({ onboarded: false, onboardV2: true });
     expect((off.flags?.["auth.screen"] as { props?: { id?: string } }).props?.id).not.toBe("bots.auth");
     expect(off.initialScreenId).toBe("onboard");
+  });
+});
+
+describe("the sign-in steps as pages", () => {
+  it("each on a stage of its own where the build draws one, so Blip walks on between them; pictures of him otherwise", async () => {
+    for (const [id, pose] of [["bots.welcome", "wave"], ["bots.sign-in", "listen"], ["bots.sign-code", "think"]] as const) {
+      for (const client of ["phone", "desktop"] as const) {
+        const s = await build(id, client, { can: STAGE });
+        expect(s.root).toMatchObject({ type: "OnboardStage", props: { id, ground: "#ffffff" } });
+        expect(poses(s.root!)).toContain(pose);
+        expect(lintStaged(s.root!), `${id} ${client}`).toEqual([]);
+        const plain = await build(id, client);
+        expect(walk(plain.root!).some((n) => n.type === "BlipSpot" || n.type === "OnboardStage")).toBe(false);
+      }
+    }
+    // Code's Continue leads on to About you.
+    expect(actions((await build("bots.sign-code", "phone")).root)).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "navigate", screenId: "bots.name-it" })]));
+  });
+});
+
+describe("after onboarding: the keyboard and microphone cards", () => {
+  const cardOf = (n: Node, title: string) => walk(n).find((x) => x.visibleIf && texts(x).includes(title));
+  it("Bots and Keybot on a phone: Turn on full access (straight to the keyboard's settings) and the microphone (asked for real, then First words)", async () => {
+    for (const id of ["bots.home", "bots.keybot"]) {
+      const s = await build(id, "phone", { api: { ...API, "GET /v1/shell/started": { started: true } } });
+      // Declared on, so neither card flashes: the app's own readings bring them in.
+      expect(s.state).toMatchObject({ keyboardEnabled: true, keyboardReady: true, micGranted: true });
+      const key = cardOf(s.root!, "Turn on full access");
+      expect(key?.visibleIf, id).toEqual({ any: [{ falsy: "keyboardEnabled" }, { falsy: "keyboardReady" }] });
+      expect(actions(key)).toEqual(expect.arrayContaining([
+        { kind: "openSettings", target: "keyboard" },
+        expect.objectContaining({ kind: "navigate", screenId: "bots.keybot.on" }),
+      ]));
+      const mic = cardOf(s.root!, "Let Keybot hear you");
+      expect(mic?.visibleIf).toEqual({ falsy: "micGranted" });
+      const ask = actions(mic).find((x) => x.kind === "requestPermission") as { permission?: string; onGranted?: unknown; onBlocked?: unknown } | undefined;
+      expect(ask?.permission).toBe("microphone");
+      expect(actions(ask!.onGranted)).toEqual(expect.arrayContaining([{ kind: "setState", path: "micGranted", value: true }, expect.objectContaining({ kind: "navigate", screenId: "bots.first-words" })]));
+      expect(actions(ask!.onBlocked)).toEqual(expect.arrayContaining([{ kind: "openSettings", target: "app" }]));
+      expect(lintTree(s.root!)).toEqual([]);
+    }
+    // The empty home (nothing of their own yet) has them too.
+    const empty = await build("bots.home", "phone", { api: { ...API, "GET /v1/shell/started": { started: false } } });
+    expect(cardOf(empty.root!, "Turn on full access")).toBeDefined();
+  });
+  it("in a window: this computer's Accessibility card and the microphone card, only where the window declares them", async () => {
+    const plain = await build("bots.home", "desktop", { api: { ...API, "GET /v1/shell/started": { started: true } } });
+    expect(JSON.stringify(plain.root)).not.toContain("DeskAskSetup");
+    expect(cardOf(plain.root!, "Let Keybot hear you")).toBeUndefined();
+    expect(cardOf(plain.root!, "Turn on full access")).toBeUndefined();
+    for (const id of ["bots.home", "bots.keybot"]) {
+      const real = await build(id, "desktop", { api: { ...API, "GET /v1/shell/started": { started: true } }, can: ["DeskAskSetup", "DeskMicAsk"] });
+      expect(walk(real.root!).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({ place: "home", rows: [{ key: "read" }] });
+      expect(cardOf(real.root!, "Let Keybot hear you")?.visibleIf).toEqual({ falsy: "micGranted" });
+    }
+  });
+});
+
+describe("the name to start from", () => {
+  it("from an email: split on . _ - and digits, number-only parts dropped, title-cased", () => {
+    expect(nameFromEmail("aanya.rao92@gmail.com")).toBe("Aanya Rao");
+    expect(nameFromEmail("first_last-name@x.in")).toBe("First Last Name");
+    expect(nameFromEmail("PRIYA.SHARMA@x.in")).toBe("Priya Sharma");
+    expect(nameFromEmail("vikram+news@x.in")).toBe("Vikram");
+    expect(nameFromEmail("rahul..k__2001--x@x.in")).toBe("Rahul");
+    // Nothing that is a name: initials, lone letters, numbers.
+    expect(nameFromEmail("rk2001@x.in")).toBe("");
+    expect(nameFromEmail("a.b@x.in")).toBe("");
+    expect(nameFromEmail("12345@x.in")).toBe("");
+    expect(nameFromEmail("@x.in")).toBe("");
+    expect(nameFromEmail("no-at-sign")).toBe("");
+    expect(nameFromEmail(undefined)).toBe("");
+  });
+  it("by how they signed in: Google or Apple's own name, the email's guess, nothing for a phone", () => {
+    expect(startingName({ provider: "google", providerName: "Aanya Rao", email: "zz@x.in" })).toEqual({ name: "Aanya Rao", source: "provider" });
+    expect(startingName({ provider: "apple", providerName: " Kabir Mehta ", email: "x@privaterelay.appleid.com" })).toEqual({ name: "Kabir Mehta", source: "provider" });
+    // Apple without a name (every sign-in after the first) and a hidden address: nothing, never a guess from random letters.
+    expect(startingName({ provider: "apple", email: "q7fe2kdi4u@privaterelay.appleid.com" })).toEqual({ name: "", source: null });
+    // Google without a name: the email's guess.
+    expect(startingName({ provider: "google", email: "aanya.rao92@gmail.com" })).toEqual({ name: "Aanya Rao", source: "email" });
+    expect(startingName({ provider: "email", email: "aanya.rao92@gmail.com", providerName: "ignored" })).toEqual({ name: "Aanya Rao", source: "email" });
+    expect(startingName({ provider: "phone", phone: "+919800000000" })).toEqual({ name: "", source: null });
+    expect(startingName({ provider: "phone", phone: "+919800000000" }, "Aanya")).toEqual({ name: "Aanya", source: "saved" });
+    expect(signedInVia({ email: "a@x.in" })).toBe("email");
+    expect(signedInVia({ phone: "+91" })).toBe("phone");
+    expect(signedInVia({})).toBe("other");
   });
 });
 
@@ -223,6 +375,12 @@ describe("the routes", () => {
   });
   afterAll(async () => { await server?.close(); });
   const auth = { authorization: "Bearer test-static-token-0123456789" };
+  it("the profile step's starting name: a static token has no sign-in to read, so nothing is suggested", async () => {
+    const me = await server.inject({ method: "GET", url: "/v1/bots/first-run/profile", headers: auth });
+    expect(me.statusCode).toBe(200);
+    expect(me.json()).toMatchObject({ name: "", via: "other", saved: false });
+    expect((await server.inject({ method: "GET", url: "/v1/bots/first-run/profile" })).statusCode).toBe(401);
+  });
   it("languages, words and plans, signed in only", async () => {
     const langs = await server.inject({ method: "GET", url: "/v1/bots/first-run/languages", headers: auth });
     expect(langs.statusCode).toBe(200);

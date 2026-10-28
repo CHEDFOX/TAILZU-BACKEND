@@ -55,6 +55,12 @@ export interface AuthedUser {
   /** When the account was made (ISO), as Supabase has it. Absent for a
    *  static token, which is no one's sign-up. */
   createdAt?: string;
+  /** How the account signs in, as Supabase has it (app_metadata.provider):
+   *  "email", "phone", "google", "apple". Absent for a static token. */
+  provider?: string;
+  /** The full name the sign-in provider gave (user_metadata.full_name, or
+   *  .name): Google's, and Apple's on the first sign-in. Only a suggestion. */
+  providerName?: string;
 }
 
 /**
@@ -116,12 +122,17 @@ export async function resolveUser(
   const { data, error } = await sb.auth.getUser(token);
   if (error || !data.user) return null;
 
+  const meta = (data.user.user_metadata ?? {}) as Record<string, unknown>;
+  const metaName = [meta.full_name, meta.name].find((v): v is string => typeof v === "string" && !!v.trim());
+  const provider = typeof data.user.app_metadata?.provider === "string" ? data.user.app_metadata.provider : undefined;
   return {
     id: data.user.id,
     email: data.user.email ?? undefined,
     phone: data.user.phone ?? undefined,
     token,
     createdAt: data.user.created_at ?? undefined,
+    ...(provider ? { provider } : {}),
+    ...(metaName ? { providerName: metaName.trim().slice(0, 120) } : {}),
   };
 }
 

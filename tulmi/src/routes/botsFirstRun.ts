@@ -1,22 +1,26 @@
 /**
  * Bots app · first run: what its screens read beyond the existing routes (screens/firstRun.ts).
  *
- *   GET /v1/bots/first-run/languages   the Languages step's chips (the onboarding's own list) and what is picked
+ *   GET /v1/bots/first-run/profile     the "Your name" step: the name to start from (the account's own, else the
+ *                                      sign-in provider's, else one suggested from the email) and the gender saved
+ *   GET /v1/bots/first-run/languages   the Language page's chips (the onboarding's own list) and what is picked
  *   GET /v1/bots/first-run/words       the account's spoken words and audio seconds, all time; with ?w=&s= (a baseline
  *                                      taken when the step opened) also what was said since: First words' numbers
  *   GET /v1/bots/first-run/plans       Plans' cards: the paywall's own plans (phone, RevenueCat) or the pay page's
  *                                      Razorpay prices (window), the free words, and whether the account already pays
  *
- * Every write the steps make goes to the routes that already own it: PUT /v1/personality (languages, the name),
- * PUT /v1/profile { onboarded } (the end), and the clients' own purchase actions (iap.*).
+ * Every write the steps make goes to the routes that already own it: PUT /v1/profile { full_name, gender } (the name
+ * and gender card's own write), PUT /v1/personality (languages, the boss bot's name), PUT /v1/profile { onboarded }
+ * (the end), and the clients' own purchase actions (iap.*).
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
-import { resolveUser } from "../auth/supabase.js";
+import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { getEntitlement } from "../billing/entitlements.js";
 import { fetchPlan, formatPeriod, formatPrice, planFor, razorpayReady, type Market, type Period } from "../billing/razorpay.js";
 import { getConfig } from "../config.js";
 import { DAILY_LANGUAGES, freeForAll, PAYWALL_CONFIG } from "../experience/catalog.js";
 import { getPersonality } from "../personality/store.js";
+import { getProfile } from "../profile/store.js";
 import { TYPING_WORDS_PER_MINUTE } from "../history/store.js";
 import { usageSummary } from "../usage/metering.js";
 import type { BotsAreaDeps } from "./botsArea.js";
@@ -55,6 +59,45 @@ const unauthorized = (reply: FastifyReply) => reply.code(401).send({ code: "unau
 export function trialDaysOf(note: string | undefined): number | undefined {
   const m = /(\d+)\s*days?\s+free/i.exec(note ?? "");
   return m ? Number(m[1]) : undefined;
+}
+
+/**
+ * A name to start from, out of an email address: its local part split on dots, underscores, hyphens and digits,
+ * every part a word title-cased ("aanya.rao92@gmail.com" → "Aanya Rao"). A "+tag" is dropped, and so is any part that
+ * cannot be a name: a lone letter ("a.b@"), or letters with no vowel, which are initials ("rk2001@"). Nothing left
+ * is no suggestion (""), never a guess.
+ */
+export function nameFromEmail(email: string | undefined | null): string {
+  const at = typeof email === "string" ? email.lastIndexOf("@") : -1;
+  if (at <= 0) return "";
+  const local = email!.slice(0, at).split("+")[0]!;
+  const words = local.split(/[._\-\d]+/u)
+    .map((p) => p.replace(/[^\p{L}]/gu, ""))
+    .filter((p) => p.length > 1 && (/[aeiouy]/i.test(p) || /[^a-z]/i.test(p)))
+    .map((p) => p.charAt(0).toLocaleUpperCase("en") + p.slice(1).toLocaleLowerCase("en"));
+  return words.join(" ").slice(0, 120);
+}
+
+/** How the person signed in, for the "Your name" step: the provider Supabase names, else what the account has. */
+export function signedInVia(user: Pick<AuthedUser, "provider" | "email" | "phone">): "google" | "apple" | "email" | "phone" | "other" {
+  const p = (user.provider ?? "").toLowerCase();
+  if (p === "google" || p === "apple" || p === "email" || p === "phone") return p;
+  if (!p) return user.email ? "email" : user.phone ? "phone" : "other";
+  return "other";
+}
+
+/**
+ * The name the "About you" step starts with, and where it came from: the one already saved; else, signed in with
+ * Google or Apple, the provider's full name; by email, one suggested from the address; by phone, nothing.
+ */
+export function startingName(user: Pick<AuthedUser, "provider" | "providerName" | "email" | "phone">, saved?: string | null): { name: string; source: "saved" | "provider" | "email" | null } {
+  if (saved && saved.trim()) return { name: saved.trim(), source: "saved" };
+  const via = signedInVia(user);
+  if (via !== "phone" && via !== "email" && user.providerName?.trim()) return { name: user.providerName.trim(), source: "provider" };
+  // Apple's "Hide my email" address is random letters, not a name.
+  if (via === "phone" || /@privaterelay\.appleid\.com$/i.test(user.email ?? "")) return { name: "", source: null };
+  const guess = nameFromEmail(user.email);
+  return guess ? { name: guess, source: "email" } : { name: "", source: null };
 }
 
 /** First words' numbers: what was said since the baseline, and how long typing it would have taken. */
@@ -108,6 +151,20 @@ function phonePlans(): FirstRunPlan[] {
 
 export function registerBotsFirstRunRoutes(app: FastifyInstance, deps: BotsAreaDeps): void {
   const rl = { config: deps.rateLimit };
+
+  app.get("/v1/bots/first-run/profile", rl, async (req, reply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return unauthorized(reply);
+    const profile = await getProfile(user).catch(() => null);
+    const gender = profile?.gender === "male" || profile?.gender === "female" || profile?.gender === "other" ? profile.gender : null;
+    return reply.send({
+      ...startingName(user, profile?.fullName),
+      via: signedInVia(user),
+      gender,
+      // Both answers are what the name and gender card asks for: with both, the step has nothing to ask.
+      saved: !!(profile?.fullName?.trim() && gender),
+    });
+  });
 
   app.get("/v1/bots/first-run/languages", rl, async (req, reply) => {
     const user = await resolveUser(req.headers["authorization"]);
