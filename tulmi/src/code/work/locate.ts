@@ -148,11 +148,20 @@ const WINDOW = 20;
 const EXPAND_TOKENS = 300;
 const PICK_TOKENS = 500;
 
-export interface Weights { path: number; text: number; symbol: number; file: number; feature: number; map?: number }
+export interface Weights {
+  path: number; text: number; symbol: number; file: number; feature: number; map?: number;
+  /** What a test file's evidence counts for, against the same evidence in a source file: 1 when the request is about tests, less when it is not. */
+  tests?: number;
+}
+
+/** A test file is a place the change is CHECKED, listed on its own (`tests`); it is not where a change to behaviour is made, unless the request is about tests. */
+export const TEST_FILE_WEIGHT = 0.5;
+const ABOUT_TESTS = /\b(?:tests?|specs?|testing|coverage|jest|vitest|pytest|mocha|unittest|e2e)\b/i;
+export const wantsTests = (c: Cues): boolean => [...c.nouns, ...c.identifiers, ...c.paths, ...c.dirs, ...c.quoted].some((w) => ABOUT_TESTS.test(w) || isTestPath(w));
 
 /** What each signal counts for, by what the request is about. */
 export function weightsFor(c: Cues, map?: MapSettings): Weights {
-  const w: Weights = { path: 1.6, text: 1, symbol: 0.9, file: 0.6, feature: 0.4, map: map?.weight ?? MAP_DEFAULTS.weight };
+  const w: Weights = { path: 1.6, text: 1, symbol: 0.9, file: 0.6, feature: 0.4, map: map?.weight ?? MAP_DEFAULTS.weight, tests: wantsTests(c) ? 1 : TEST_FILE_WEIGHT };
   if (c.ui) { w.text = 1.3; w.symbol = 0.8; }
   if (c.identifiers.length || c.routes.length) w.symbol = Math.max(w.symbol, 1.2);
   if (c.errors.length || c.frames.length) w.path = 1.8;
@@ -413,6 +422,9 @@ export function fuse(s: Signals, w: Weights): Fused[] {
     });
   }
   const out = [...by.values()];
+  // A test file that shares a word with the request (a helper called addTodo, a describe block) is not where the change goes: its evidence counts for less, unless
+  // the request is about tests. (Without this, two test files outranked the hook that held the state in a React app, and the plan was written for the wrong files.)
+  for (const f of out) if (isTestPath(f.path)) f.raw *= w.tests ?? 1;
   for (const f of out) f.score = f.raw / (f.raw + HALF);
   return out.sort((a, b) => b.score - a.score || (a.path < b.path ? -1 : 1));
 }
@@ -652,6 +664,10 @@ export async function locate(task: string, brain: LocateBrain, opts: LocateOptio
       } else {
         // The model could not say, and there is more than one to choose from.
         tie = fused.length > 1;
+        // With ONE candidate, "none of these" is the model declining the only place the search found: a lone weak match that the reader would not pick is not an
+        // answer to go and work on (the smoke run: validateItem matched the word "item", the reader declined, and the job was planned on validate.js at 0.57). It is
+        // asked about instead ("I found one possible place but I am not sure. Is this it?").
+        if (fused.length === 1) confidence = Math.min(confidence, UNSURE - 0.01);
       }
     }
   }

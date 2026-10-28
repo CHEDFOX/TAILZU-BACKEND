@@ -359,7 +359,10 @@ describe("the budget", () => {
     expect(j.spentPaise).toBe(306);
     const told = r.toldOf("needs_you");
     expect(told).toHaveLength(1);
-    expect(told[0]!.data.reason).toMatch(/^Out of budget: ₹3\.06 of ₹4\.50 used\. Continue with ₹10 more\?$/);
+    // Honest about why: ₹1.44 is NOT nothing, it is less than the next step's reservation, and the report says so instead of "used up".
+    expect(told[0]!.data.reason).toMatch(/^The next step needs about ₹2\.06 and ₹1\.44 is left \(₹3\.06 of the ₹4\.50 budget spent\)\. Continue with ₹10 more\?$/);
+    expect(s.report!.text).toContain("The next step needs about ₹2.06 and ₹1.44 is left");
+    expect(s.report!.text).not.toContain("is used up");
 
     // They add budget; the model carries on from the staged edit and mends it.
     r.model.push(call("edit_file", { ...UTIL_EDIT, old: BUG.new }), done("Trimmed."));

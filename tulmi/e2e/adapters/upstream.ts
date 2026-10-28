@@ -7,6 +7,7 @@
  */
 import OpenAI from "openai";
 import type { ChatClient } from "../../src/code/brain/gateway.js";
+import { proxyAwareFetch } from "../fetch.js";
 import { fakeSecret, uid } from "../util.js";
 
 export const OPENROUTER_URL = "https://openrouter.ai/api/v1";
@@ -14,7 +15,7 @@ export const OPENROUTER_URL = "https://openrouter.ai/api/v1";
 export function openRouterClient(o: { key?: string; baseUrl?: string; fetchFn?: typeof fetch } = {}): ChatClient {
   const key = o.key ?? process.env.OPENROUTER_API_KEY;
   if (!key) throw new Error("OPENROUTER_API_KEY is not set, so the real model cannot be called");
-  const f = o.fetchFn ?? fetch;
+  const f = o.fetchFn ?? proxyAwareFetch();
   const base = (o.baseUrl ?? OPENROUTER_URL).replace(/\/$/, "");
   return {
     chat: {

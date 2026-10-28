@@ -8,7 +8,8 @@
  * cost per pass above a quality floor, and a ready CODE_MODEL_TIERS value.
  *
  *   --probes-only      only round 1 (and the edit-format probe): a few cents in all
- *   --dry              the plan and the estimated cost in rupees, nothing called
+ *   --dry              the plan and the estimated cost in rupees, nothing called (with --edit-format the edit-format probe is in it; without, the extra it would cost is named)
+ *   --estimate         the same as --dry (the word the smoke suite and `e2e/run.ts` use); also for --parts and --grid: what they would cost, from the live prices, and stop
  *   --model sim        simulated models (no key, no cost): proves the machinery, measures nothing
  *   --record|--replay|--mixed --cassette <name>      every model call recorded to e2e/cassettes, or replayed for nothing
  *   --grid --models a,b --agents x,y --tasks <glob>  every (model, agent) pair on the same tasks: see grid.ts
@@ -170,6 +171,8 @@ export async function runBakeoff(o: BakeoffOptions): Promise<BakeoffRun | { plan
 export async function runBakeoffCli(argvIn: string[] = process.argv.slice(2)): Promise<number> {
   const arg = (n: string): string | undefined => { const i = argvIn.indexOf(`--${n}`); return i >= 0 ? argvIn[i + 1] : undefined; };
   const flag = (n: string): boolean => argvIn.includes(`--${n}`);
+  // One word for "say what it costs and stop" in every suite: --estimate. (For the bake-off proper it is --dry.)
+  if (flag("estimate") && !flag("dry") && !flag("grid") && !flag("parts")) argvIn = [...argvIn, "--dry"];
   if (flag("grid")) { const { runGridCli } = await import("./grid.js"); return runGridCli(argvIn); }
   if (flag("parts") || flag("fetch-pages")) { const { runPartsCli } = await import("./parts.js"); return runPartsCli(argvIn); }
   const mode = (arg("model") ?? "real") as "real" | "sim";

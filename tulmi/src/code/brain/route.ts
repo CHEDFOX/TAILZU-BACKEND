@@ -29,8 +29,11 @@
  * never climbs past strong. Review, vision and indic are not on the ladder and
  * do not climb.
  *
- * MONEY. If the remaining budget cannot afford the chosen tier's worst case
- * (money.ts), the router takes the CHEAPEST tier that can still do the step (a
+ * MONEY. If the remaining budget cannot afford the chosen tier for THIS step
+ * (money.ts: the tier's price for the input, and for as many tokens as the step
+ * will ask to write, never more than the tier allows: `budget.maxTokens` is
+ * what the caller's own call passes the gateway, so the router reserves what the
+ * gateway will), the router takes the CHEAPEST tier that can still do the step (a
  * plan or a write_code never goes below code; a classify may go to tiny; a search
  * never below cheap). If even that is out of reach it answers { stop: "budget" },
  * and the caller ends the job or asks for more money; it does not make a call
@@ -83,6 +86,11 @@ export interface RouteBudget {
   remainingPaise: number;
   /** About how many characters the step will send; DEFAULT_INPUT_CHARS if not said. */
   inputChars?: number;
+  /**
+   * The most the step will ask the model to write (the maxTokens its call passes the gateway). The reservation is sized by it, capped at the tier's own
+   * limit; without it a step that writes 3,000 tokens was held against the tier's 8,000 or 16,000, and a job with plenty left was told it could not pay.
+   */
+  maxTokens?: number;
   /** Rupees to the dollar; the default rate if not said. */
   fx?: number;
 }
@@ -96,7 +104,11 @@ export interface RouteOptions {
 
 export type Route =
   | { tier: ModelTier; model?: string; reason: string; stop?: undefined }
-  | { stop: "budget" | "no_reviewer"; reason: string; tier?: undefined; model?: undefined };
+  | {
+    stop: "budget" | "no_reviewer"; reason: string; tier?: undefined; model?: undefined;
+    /** For "budget": about what the cheapest tier that can do the step would reserve, in paise, and what is left. Honest numbers for the person. */
+    needPaise?: number; leftPaise?: number;
+  };
 
 const rank = (t: ModelTier | undefined): number => (t ? CLIMB_LADDER.indexOf(t) : -1);
 
@@ -133,6 +145,16 @@ export function climbReasons(h: StepHistory): string[] {
   return why;
 }
 
+/**
+ * What a step on a tier reserves, in paise: the input at the tier's price, and as many tokens written as the step asks for (`askedTokens`), never more than
+ * the tier allows. The gateway reserves the same sum for the same call (brain/gateway.ts guard), so the router never refuses what the gateway would take, and
+ * never takes what the gateway would refuse.
+ */
+export function reservationPaise(t: Pick<TierSettings, "maxTokens" | "usdPerMIn" | "usdPerMOut">, chars: number, askedTokens: number | undefined, fx: number): number {
+  const out = askedTokens !== undefined && askedTokens > 0 ? Math.min(t.maxTokens, askedTokens) : t.maxTokens;
+  return worstCasePaise({ chars, maxTokens: out, usdPerMIn: t.usdPerMIn, usdPerMOut: t.usdPerMOut }, fx);
+}
+
 export function routeStep(step: StepName, cls: Classification, history: StepHistory = {}, opts: RouteOptions = {}): Route {
   const tiers = opts.tiers ?? tierTable();
   const base = baseTier(step, cls);
@@ -157,13 +179,16 @@ export function routeStep(step: StepName, cls: Classification, history: StepHist
     const { remainingPaise } = opts.budget;
     const fx = opts.budget.fx ?? DEFAULT_USD_INR;
     const chars = opts.budget.inputChars ?? DEFAULT_INPUT_CHARS;
-    const cost = (t: ModelTier) => worstCasePaise({ chars, maxTokens: tiers[t].maxTokens, usdPerMIn: tiers[t].usdPerMIn, usdPerMOut: tiers[t].usdPerMOut }, fx);
+    const cost = (t: ModelTier) => reservationPaise(tiers[t], chars, opts.budget!.maxTokens, fx);
     if (cost(tier) > remainingPaise) {
       const floor = FLOOR[step];
       const eligible = floor ? CLIMB_LADDER.slice(rank(floor)) : [];
       const cheapest = eligible.reduce<ModelTier | undefined>((best, t) => (best === undefined || cost(t) < cost(best) ? t : best), undefined);
       if (!cheapest || cost(cheapest) > remainingPaise) {
-        return { stop: "budget", reason: `${notes.join("; ")}; the ${cheapest ?? tier} tier needs up to ${cost(cheapest ?? tier)} paise and ${Math.max(0, remainingPaise)} are left` };
+        return {
+          stop: "budget", reason: `${notes.join("; ")}; the ${cheapest ?? tier} tier needs up to ${cost(cheapest ?? tier)} paise and ${Math.max(0, remainingPaise)} are left`,
+          needPaise: cost(cheapest ?? tier), leftPaise: Math.max(0, remainingPaise),
+        };
       }
       if (cheapest !== tier) {
         notes.push(`${tier} needs up to ${cost(tier)} paise and ${Math.max(0, remainingPaise)} are left, so ${cheapest}`);

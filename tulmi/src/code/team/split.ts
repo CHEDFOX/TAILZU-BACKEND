@@ -223,7 +223,7 @@ export type SplitResult =
  */
 export async function splitWork(model: ModelCtx, i: SplitInput, o: { rounds?: number } = {}): Promise<SplitResult> {
   const cls: Classification = i.classification ?? { type: "feature", difficulty: "high", risk: "medium", needs: { web: false, exec: true, vision: false, indic: false }, language: "en", confidence: 0.8, signals: [] };
-  const route = routeStep("plan", { ...cls, difficulty: "high" }, {}, i.remainingPaise !== undefined ? { budget: { remainingPaise: i.remainingPaise, inputChars: 14_000 } } : {});
+  const route = routeStep("plan", { ...cls, difficulty: "high" }, {}, i.remainingPaise !== undefined ? { budget: { remainingPaise: i.remainingPaise, inputChars: 14_000, maxTokens: SPLIT_TOKENS } } : {});
   if (route.stop) return { ok: false, why: "budget", problems: [], paise: 0, rounds: 0 };
   const planFiles = planFilesOf(i.plan);
   let problems: string[] = [];

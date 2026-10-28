@@ -59,7 +59,13 @@ npm run bakeoff -- --fetch-pages         # the page corpus, once (43 real pages,
 npm run bakeoff -- --parts               # the free parts, for real: page extraction and locate; the others shown wired, with estimate and command
 npm run bakeoff -- --parts --prove       # also runs the cents parts on scripted models (no key) to prove their machinery
 npm run bakeoff -- --parts --spend --budget-inr N [--only editFormats,contextStrategy,router]   # the real thing, with OPENROUTER_API_KEY
+npm run bakeoff -- --estimate [--probes-only] [--edit-format]   # (= --dry) the plan and its cost from the live prices; also `--parts --estimate` and `--grid --models .. --estimate`
 ```
+
+`--estimate` says what a run costs and stops: no key, no model. The catalog it prices from is fetched through the proxy the environment names (`HTTPS_PROXY`,
+`NO_PROXY`: `e2e/fetch.ts`; Node's own `fetch` ignores them), so a sandbox gets real prices and not the assumed ones. A bake-off plan without `--edit-format` says
+what the edit-format probe would add ("NOT INCLUDED"). Cassettes key on `reasoning` too: a run whose reasoning changed (a model that requires it is no longer told to
+switch it off) re-records instead of replaying the old refusal; recordings from before the field still answer the requests that are unchanged.
 
 It writes `out/parts/<time>/report.html` and `parts.json` (and `out/parts/latest.*`); the e2e run report shows the same **Contestants** and **Parts** sections
 when a parts file exists.

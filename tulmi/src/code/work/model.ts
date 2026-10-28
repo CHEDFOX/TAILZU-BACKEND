@@ -51,7 +51,7 @@ export interface ModelCtx {
 
 export type Asked<T> =
   | { ok: true; value: T; paise: number; model: string }
-  | { ok: false; reason: "budget" | "down" | "aborted" };
+  | { ok: false; reason: "budget" | "down" | "aborted"; /** For "budget": what the call would have reserved, and what the budget had left, in paise. */ needPaise?: number; leftPaise?: number };
 
 export interface AskJson<T> {
   tier: ModelTier;
@@ -101,7 +101,10 @@ export async function askJson<T>(ctx: ModelCtx, o: AskJson<T>): Promise<Asked<T>
     if (r.json === undefined) return { ok: false, reason: "down" };
     return { ok: true, value: r.json, paise: r.paise, model: r.model };
   } catch (err) {
-    if (err instanceof BudgetExceeded || (err as { code?: unknown } | null)?.code === "budget_exceeded") return { ok: false, reason: "budget" };
+    if (err instanceof BudgetExceeded || (err as { code?: unknown } | null)?.code === "budget_exceeded") {
+      const b = err as Partial<BudgetExceeded>;
+      return { ok: false, reason: "budget", ...(typeof b.needPaise === "number" ? { needPaise: b.needPaise } : {}), ...(typeof b.leftPaise === "number" ? { leftPaise: b.leftPaise } : {}) };
+    }
     if ((err as { name?: unknown } | null)?.name === "AbortError") return { ok: false, reason: "aborted" };
     return { ok: false, reason: "down" };
   }

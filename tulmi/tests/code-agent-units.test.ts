@@ -817,3 +817,69 @@ describe("routerRunner", () => {
     expect(typeof routerRunner).toBe("function");
   });
 });
+
+// ============================================== why the money stopped a job, and what a loop error says
+
+describe("budgetShortfall: the words for a budget stop are true", () => {
+  it("says 'used up' only when nothing is left", async () => {
+    const { budgetShortfall } = await import("../src/code/agent/loop.js");
+    const spent = budgetShortfall({ spent: 250, budget: 250 }, 0);
+    expect(spent).toMatchObject({ kind: "spent" });
+    expect(spent.words).toBe("The budget of ₹2.50 is used up (₹2.50 spent) before the work was finished.");
+    expect(budgetShortfall({ spent: 300, budget: 250 }, 120).kind).toBe("spent");
+  });
+
+  it("says what the next step needs and what is left when most of the budget is not spent (the smoke run: 1% spent, 'used up')", async () => {
+    const { budgetShortfall } = await import("../src/code/agent/loop.js");
+    const r = budgetShortfall({ spent: 3, budget: 250 }, 330);
+    expect(r).toMatchObject({ kind: "short", needPaise: 330, leftPaise: 247 });
+    expect(r.words).toBe("The next step needs about ₹3.30 and ₹2.47 is left (₹0.03 of the ₹2.50 budget is spent), so I stopped before the work was finished.");
+    expect(r.words).not.toContain("used up");
+    expect(r.ask).toBe("The next step needs about ₹3.30 and ₹2.47 is left (₹0.03 of the ₹2.50 budget spent).");
+  });
+
+  it("does not invent a number it does not have", async () => {
+    const { budgetShortfall } = await import("../src/code/agent/loop.js");
+    const r = budgetShortfall({ spent: 3, budget: 250 }, 0);
+    expect(r.kind).toBe("short");
+    expect(r.words).toContain("Only ₹2.47 is left of the budget");
+    expect(r.words).not.toMatch(/needs about/);
+  });
+});
+
+describe("errorFacts: what a loop error says", () => {
+  it("keeps the message and the cause chain of an Error, the code before the name, and cuts and redacts what it keeps", async () => {
+    const { errorFacts, errorLine, kindOf } = await import("../src/code/agent/failure.js");
+    const f = errorFacts(Object.assign(new Error("GitHub is down", { cause: new TypeError("fetch failed") }), { code: "github_down" }));
+    expect(f).toMatchObject({ name: "Error", code: "github_down", message: "GitHub is down", cause: { name: "TypeError", message: "fetch failed" } });
+    expect(kindOf(f)).toBe("github_down");
+    expect(errorLine(f)).toBe("GitHub is down (github_down), caused by fetch failed (TypeError)");
+    expect(errorFacts(new Error("x".repeat(2000))).message.length).toBeLessThanOrEqual(300);
+    expect(errorFacts(new Error("the key is sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789")).message).not.toContain("abcdefghijklmnop");
+  });
+
+  it("reads what is thrown that is not an Error, an error with no message, and a wrapper that keeps its cause under its own name", async () => {
+    const { errorFacts, errorLine } = await import("../src/code/agent/failure.js");
+    expect(errorFacts("a string")).toEqual({ name: "NonError", message: "a string" });
+    expect(errorFacts(undefined)).toEqual({ name: "NonError", message: "undefined" });
+    expect(errorFacts({ weird: true, other: 1 }).message).toBe("non-error object with keys weird, other");
+    expect(errorFacts(new Error()).message).toBe("");
+    expect(errorLine(errorFacts(new Error()))).toBe("Error");
+    const wrapper = Object.assign(new Error("every model for this call failed"), { name: "ModelUnavailable", causeError: Object.assign(new Error("400 body repeats the prompt"), { status: 400 }) });
+    expect(errorFacts(wrapper).cause).toEqual({ name: "Error", status: 400, message: "" });
+    expect(errorLine(errorFacts(wrapper))).toBe("every model for this call failed (ModelUnavailable), caused by Error 400");
+  });
+
+  it("does not loop on an error that is its own cause", async () => {
+    const { errorFacts } = await import("../src/code/agent/failure.js");
+    const e = new Error("loop") as Error & { cause?: unknown };
+    e.cause = e;
+    expect(errorFacts(e).cause).toBeUndefined();
+    const a = new Error("a") as Error & { cause?: unknown };
+    const b = new Error("b", { cause: a });
+    a.cause = b;
+    let depth = 0;
+    for (let f = errorFacts(a) as { cause?: unknown }; f.cause; f = f.cause as { cause?: unknown }) depth += 1;
+    expect(depth).toBeLessThanOrEqual(4);
+  });
+});

@@ -163,6 +163,7 @@ function nextSteps(i: ReportInput): string[] {
     return next;
   }
   if (i.outcome === "failed") {
+    if (s.work.staged.length) next.push("What I had changed but not committed is kept with this job; nothing on the branch was touched.");
     next.push("Look at the failing checks above. If you still want this, start a new job with more detail about what should happen.");
     return next;
   }

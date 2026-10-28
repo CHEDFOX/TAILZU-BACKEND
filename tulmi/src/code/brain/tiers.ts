@@ -43,6 +43,7 @@
  */
 import { z } from "zod";
 import { reasoningFor } from "../../agent/llm.js";
+import { allowedEffort } from "../../agent/reasoning.js";
 import { getConfig } from "../../config.js";
 
 export const MODEL_TIERS = ["tiny", "cheap", "code", "strong", "review", "vision", "indic"] as const;
@@ -243,10 +244,12 @@ export function tierOfModel(model: string, table: Record<ModelTier, TierSettings
 /**
  * The reasoning setting for one model at one level, in OpenRouter's form.
  * "none" is agent/llm.ts's own answer (reasoningFor): off where a model can be
- * turned off, with Anthropic's explicit switch too, and "low" for the models
- * whose thinking cannot be, which refuse "none" with a 400 before writing a
- * word. The other levels are OpenRouter's effort.
+ * turned off, with Anthropic's explicit switch too, and the model's LOWEST
+ * allowed effort for the models whose thinking cannot be (never "none" or
+ * `enabled: false` for those: they refuse it with a 400 before writing a
+ * word). The other levels are OpenRouter's effort, moved up to the nearest one
+ * the model accepts when it is known to list efforts that leave the level out.
  */
 export function reasoningParam(model: string, level: Reasoning): Record<string, unknown> {
-  return level === "none" ? { ...reasoningFor(model) } : { effort: level };
+  return level === "none" ? { ...reasoningFor(model) } : { effort: allowedEffort(model, level) };
 }

@@ -31,6 +31,18 @@ export function smokeTierOverrides(m: SmokeModels, catalog?: Catalog): Partial<R
   return overrides;
 }
 
+/**
+ * CODE_MODEL_TIERS that holds every tier's answer to `maxTokens` and changes nothing else: the product's own ladders and prices, short answers. A run that caps what a
+ * call may write (the router part's 800) must cap it HERE, where the product's router and the gateway both read it, and not only in the harness's model door:
+ * otherwise the router reserves each step against the tier's whole limit (8,000 or 16,000 tokens), finds a small task budget "used up" at 1% spent, and stops
+ * a job that the capped calls could easily have paid for.
+ */
+export function cappedTierOverrides(maxTokens: number): Partial<Record<ModelTier, Partial<TierSettings>>> {
+  const out: Partial<Record<ModelTier, Partial<TierSettings>>> = {};
+  for (const tier of MODEL_TIERS) if (tier !== "indic") out[tier] = { maxTokens };
+  return out;
+}
+
 export function smokeTiers(m: SmokeModels, catalog?: Catalog): Record<ModelTier, TierSettings> {
   return buildTierTable({ tiers: JSON.stringify(smokeTierOverrides(m, catalog)) });
 }

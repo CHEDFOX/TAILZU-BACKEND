@@ -61,6 +61,7 @@ import { adjustSpend } from "../team/budget.js";
 import { repoRef, workspace } from "../projects.js";
 import { WorkLog, worklogStore, type Located, type WorkEntry } from "../work/index.js";
 import type { AgentDeps } from "./deps.js";
+import { errorFacts, errorLine, kindOf } from "./failure.js";
 import { advanceLoop, runLoop, type Advance } from "./loop.js";
 import { reportText } from "./report.js";
 import { revertFiles } from "./rewind.js";
@@ -408,17 +409,24 @@ export class AgentOrchestrator {
     }
   }
 
-  /** A loop failed on something unexpected: the claim is let go with a wait that doubles, and the third time running the job is failed. */
+  /**
+   * A loop failed on something unexpected: the claim is let go with a wait that doubles, and the third time running the job is failed.
+   *
+   * The log says what the error was (its message and what caused it: failure.ts), not only its class. And NOTHING the job had made is lost to it: the staged
+   * edits are in the checkpoint (the loop saved them before the error got out: loop.ts), every try starts from them, and the third failure ends the job with a
+   * REPORT that lists them (`failedForGood`), the checkpoint still holding them and where the job had got to.
+   */
   private async errored(job: CodeJob, claim: Claim, err: unknown): Promise<void> {
-    const why = (err as { code?: string; name?: string } | null)?.code ?? (err as Error)?.name ?? "error";
-    this.deps.log?.warn({ jobId: job.id, error: why }, "code agent: the loop failed");
+    const facts = errorFacts(err);
+    const why = kindOf(facts);
+    const cur = await this.store.getJobById(job.id).catch(() => null);
+    const state = cur ? stateOf(cur.checkpoint) : undefined;
     try {
-      const cur = await this.store.getJobById(job.id);
+      this.deps.log?.warn({ jobId: job.id, error: why, ...(facts.message ? { message: facts.message } : {}), ...(facts.status !== undefined ? { status: facts.status } : {}), ...(facts.cause ? { cause: errorLine(facts.cause) } : {}), ...(state ? { phase: state.phase, staged: state.work.staged.length } : {}) }, "code agent: the loop failed");
       if (!cur || cur.agentEpoch !== claim.epoch || isEnded(cur.state)) return;
-      const state = stateOf(cur.checkpoint);
       const errors = (state?.errors ?? 0) + 1;
       if (errors >= LOOP_ERRORS_MAX) {
-        await this.jobs.finishJob(job.id, { ok: false, reason: `Something went wrong on Tailzu's side three times running (${why}). What was committed so far is on the branch; nothing else was changed.` });
+        await this.failedForGood(cur, state, errors, err);
         return;
       }
       if (state) state.errors = errors;
@@ -427,6 +435,30 @@ export class AgentOrchestrator {
         ...(state ? { checkpoint: { ...cur.checkpoint, agent: state as unknown as Record<string, unknown> } } : {}),
       });
     } catch { /* the next tick finds it */ }
+  }
+
+  /**
+   * The third failure in a row. The job is failed with a plain reason AND a report in its checkpoint: what went wrong, and what had been done and was not
+   * committed (the staged files, which stay staged in the checkpoint, with the phase the job was in, so a person or a later retry can pick the job up from
+   * there). The report is what the person reads; without it a failed job showed only "Something went wrong" and an empty diff.
+   */
+  private async failedForGood(cur: CodeJob, state: AgentState | null | undefined, errors: number, err: unknown): Promise<void> {
+    const facts = errorFacts(err);
+    const staged = state?.work.staged ?? [];
+    const kept = staged.length ? ` The ${staged.length} file${staged.length === 1 ? "" : "s"} I had changed ${staged.length === 1 ? "is" : "are"} kept, uncommitted, with this job.` : "";
+    const said = facts.message ? ` The last error said: ${facts.message.slice(0, 160)}.` : "";
+    const reason = `Something went wrong on Tailzu's side three times running (${kindOf(facts)}).${said} What was committed so far is on the branch; nothing else was changed.${kept}`;
+    if (state) {
+      state.errors = errors;
+      state.waiting = undefined;
+      state.report = {
+        at: this.now(), outcome: "failed", costPaise: cur.spentPaise, ...(state.pr ? { prUrl: state.pr.url } : {}),
+        text: reportText({ state, spentPaise: cur.spentPaise, budgetPaise: cur.budgetPaise, outcome: "failed", why: `${reason} What went wrong: ${errorLine(facts).slice(0, 400)}` }),
+      };
+      // The phase is left where it was, not set to done: the staged edits and the place in the work stay in the checkpoint for whoever goes on from here.
+      await this.store.casJob(cur.id, { agentEpoch: cur.agentEpoch }, { checkpoint: { ...cur.checkpoint, agent: state as unknown as Record<string, unknown> } }).catch(() => null);
+    }
+    await this.jobs.finishJob(cur.id, { ok: false, reason });
   }
 
   /** The claim a loop writes through: every call checks the epoch it was given. */
@@ -601,14 +633,15 @@ export class AgentOrchestrator {
   }
 
   private async advanceErrored(job: CodeJob, epoch: number, err: unknown): Promise<Advance> {
-    const why = (err as { code?: string; name?: string } | null)?.code ?? (err as Error)?.name ?? "error";
-    this.deps.log?.warn({ jobId: job.id, error: why }, "code agent: an advance failed");
+    const facts = errorFacts(err);
+    const why = kindOf(facts);
     const cur = await this.store.getJobById(job.id);
+    const state = cur ? stateOf(cur.checkpoint) : undefined;
+    this.deps.log?.warn({ jobId: job.id, error: why, ...(facts.message ? { message: facts.message } : {}), ...(facts.status !== undefined ? { status: facts.status } : {}), ...(facts.cause ? { cause: errorLine(facts.cause) } : {}), ...(state ? { phase: state.phase, staged: state.work.staged.length } : {}) }, "code agent: an advance failed");
     if (!cur || cur.agentEpoch !== epoch || isEnded(cur.state)) return { next: "end", why: "lost" };
-    const state = stateOf(cur.checkpoint);
     const errors = (state?.errors ?? 0) + 1;
     if (errors >= LOOP_ERRORS_MAX) {
-      await this.jobs.finishJob(job.id, { ok: false, reason: `Something went wrong on Tailzu's side three times running (${why}). What was committed so far is on the branch; nothing else was changed.` });
+      await this.failedForGood(cur, state, errors, err);
       return { next: "end", why: "finished" };
     }
     if (state) state.errors = errors;

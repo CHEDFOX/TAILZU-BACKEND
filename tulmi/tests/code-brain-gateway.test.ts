@@ -453,6 +453,36 @@ describe("what a call costs", () => {
     expect((await jobs.getJobById(job.id))!.spentPaise).toBe(88 + 176);
   });
 
+  it("rounds up ONCE over a job's calls, not once per call: twenty calls of 0.4 paise cost the job 8, where a paise each read 20 (the meter that ran twice the proxy's)", async () => {
+    const jobs = new MemoryJobStore();
+    const job = await jobs.createJob({ userId: "alice", projectId: "p", branch: "tailzu/x", task: "t", budgetPaise: 100_000 });
+    const r = rig([answer("ok", { cost: 0.4 / 8800 })], { jobs });
+    const paise: number[] = [];
+    for (let i = 0; i < 20; i += 1) paise.push((await callModel(ask({ jobId: job.id, budget: "job" }), r.deps)).paise);
+    // The first call is charged as it always was (its cost rounded up); the others only when the running total passes another whole paise.
+    expect(paise[0]).toBe(1);
+    expect(paise.reduce((n, x) => n + x, 0)).toBe(8);
+    expect((await jobs.getJobById(job.id))!.spentPaise).toBe(8);
+    // A call outside any job has no running total to round against: its cost rounded up, as before.
+    const one = await callModel(ask(), rig([answer("ok", { cost: 0.4 / 8800 })]).deps);
+    expect(one.paise).toBe(1);
+  });
+
+  it("never reads a job's spend low, and never more than one paise high, whatever the mix of calls", async () => {
+    const jobs = new MemoryJobStore();
+    const job = await jobs.createJob({ userId: "alice", projectId: "p", branch: "tailzu/x", task: "t", budgetPaise: 100_000 });
+    const costs = [0.3, 2.7, 0.05, 11.2, 0.9, 0.9, 0.9, 4.01, 0.2];
+    const r = rig(costs.map((c) => answer("ok", { cost: c / 8800 })), { jobs });
+    let exact = 0;
+    for (const c of costs) {
+      exact += c;
+      await callModel(ask({ jobId: job.id, budget: "job" }), r.deps);
+      const spent = (await jobs.getJobById(job.id))!.spentPaise;
+      expect(spent).toBeGreaterThanOrEqual(Math.ceil(Number(exact.toFixed(6))));
+      expect(spent).toBeLessThan(exact + 1);
+    }
+  });
+
   it("is added even when the job is spent on by someone else at the same moment: two adds both count", async () => {
     const jobs = new MemoryJobStore();
     const job = await jobs.createJob({ userId: "alice", projectId: "p", branch: "tailzu/x", task: "t", budgetPaise: 100_000 });

@@ -283,4 +283,91 @@ describe("a loop that fails on something unexpected", () => {
     expect(j.reason).toContain("Something went wrong on Tailzu's side three times running");
     expect(r.toldOf("job_failed")).toHaveLength(1);
   });
+
+  it("says what went wrong (message and cause), and never loses what was staged: the third failure ends the job with a report that lists the edits, still in the checkpoint", async () => {
+    const r = await agentRig();
+    r.json.on("work.plan", { steps: [{ do: "Make slug() trim dashes", files: [{ path: "src/util.ts", action: "edit" as const }] }], notes: [] });
+    r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed."));
+    // The first turn stages the edit; every turn after it fails with a plain Error that has a message and a cause (the shape of smoke #2's lost work).
+    r.model.beforeTurn = (turn) => {
+      if (turn >= 2) throw new Error("the checks could not be read", { cause: new TypeError("unexpected token") });
+    };
+    const { job } = await r.start(UTIL_TASK);
+    await r.orch.idle();
+    for (const wait of [16_000, 31_000]) {
+      r.fake.clock.t += wait;
+      await r.orch.poll();
+      await r.orch.idle();
+    }
+    const j = await r.jobNow(job.id);
+    expect(j.state).toBe("failed");
+    expect(j.reason).toContain("three times running (Error). The last error said: the checks could not be read.");
+    expect(j.reason).toContain("1 file I had changed is kept, uncommitted");
+    const s = await r.stateNow(job.id);
+    // The edit survives in the checkpoint; the phase is where it was, not "done", so the work can be picked up from there.
+    expect(s.work.staged.map((f) => f.path)).toEqual(["src/util.ts"]);
+    expect(s.phase).toBe("work");
+    expect(s.report).toMatchObject({ outcome: "failed" });
+    expect(s.report!.text).toContain("What I changed but did not commit");
+    expect(s.report!.text).toContain("src/util.ts (changed)");
+    expect(s.report!.text).toContain("caused by unexpected token (TypeError)");
+    expect(s.report!.text).toContain("is kept with this job; nothing on the branch was touched");
+    // Nothing reached the branch.
+    expect(r.fake.commitCount(r.repo)).toBe(1);
+    // The log names the message and the cause, not just "Error".
+    const warns = r.logLines.filter((l) => l.m === "code agent: the loop failed");
+    expect(warns).toHaveLength(3);
+    expect(warns[0]!.o).toMatchObject({ error: "Error", message: "the checks could not be read", cause: expect.stringContaining("unexpected token"), staged: 1, phase: "work" });
+  });
+
+  it("saves an edit that was staged by a call whose own save then failed, before the error goes up, so the retry starts from it", async () => {
+    const r = await agentRig();
+    r.json.on("work.plan", { steps: [{ do: "Make slug() trim dashes", files: [{ path: "src/util.ts", action: "edit" as const }] }], notes: [] });
+    r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed."));
+    // The edit is staged in memory; the save that follows it fails once (the store hiccups). The checkpoint does not have the edit, the run does.
+    const cas = r.jobStore.casJob.bind(r.jobStore);
+    let tripped = false;
+    r.jobStore.casJob = (async (id: string, expect: never, patch: { checkpoint?: { agent?: { work?: { staged?: unknown[] } } } }) => {
+      if (!tripped && patch.checkpoint?.agent?.work?.staged?.length === 1) { tripped = true; throw new Error("the store hiccuped"); }
+      return cas(id, expect, patch as never);
+    }) as never;
+    const { job } = await r.start(UTIL_TASK);
+    await r.orch.idle();
+    expect(tripped).toBe(true);
+    const s = await r.stateNow(job.id);
+    expect(s.errors).toBe(1);
+    expect(s.work.staged.map((f) => f.path)).toEqual(["src/util.ts"]);
+    // And the retry goes on from there, to a commit with the edit in it.
+    r.fake.clock.t += 16_000;
+    await r.orch.poll();
+    await r.orch.idle();
+    expect((await r.jobNow(job.id)).state).toBe("done");
+  });
+
+  it("keeps a thrown non-Error readable, and does not log the message of an error that carries an HTTP status", async () => {
+    const r = await agentRig();
+    r.json.on("work.plan", { steps: [{ do: "Make slug() trim dashes", files: [{ path: "src/util.ts", action: "edit" as const }] }], notes: [] });
+    r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed."));
+    let n = 0;
+    r.model.beforeTurn = () => {
+      n += 1;
+      if (n === 1) throw "a plain string was thrown";
+      if (n === 2) throw Object.assign(new Error("400 the prompt said: my secret plan"), { status: 400 });
+      throw { weird: true };
+    };
+    const { job } = await r.start(UTIL_TASK);
+    await r.orch.idle();
+    for (const wait of [16_000, 31_000]) {
+      r.fake.clock.t += wait;
+      await r.orch.poll();
+      await r.orch.idle();
+    }
+    const warns = r.logLines.filter((l) => l.m === "code agent: the loop failed").map((l) => l.o as Record<string, unknown>);
+    expect(warns[0]).toMatchObject({ error: "NonError", message: "a plain string was thrown" });
+    expect(warns[1]).toMatchObject({ status: 400 });
+    expect(warns[1]).not.toHaveProperty("message");
+    expect(JSON.stringify(warns)).not.toContain("my secret plan");
+    expect(warns[2]).toMatchObject({ error: "NonError", message: expect.stringContaining("weird") });
+    expect((await r.jobNow(job.id)).state).toBe("failed");
+  });
 });

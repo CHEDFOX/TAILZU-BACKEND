@@ -128,7 +128,7 @@ async function judge(r: Run, m: MergeState): Promise<void> {
     tier: "cheap", purpose: "care.conflict", role: "care_conflict", schema: ConflictVerdict, maxTokens: 600,
     user: `Merging ${m.base} into a branch left these files in conflict. Each shows both sides between the conflict markers.\n\n${shown.join("\n\n")}`,
   });
-  if (!res.ok && res.reason === "budget") throw new BudgetStop(0);
+  if (!res.ok && res.reason === "budget") throw new BudgetStop(res.needPaise ?? 0);
   if (!res.ok && res.reason === "aborted") throw new LostClaim();
   // A model that cannot be reached cannot say the sides can both be kept: the person is asked, never a guess.
   const semantic = res.ok ? res.value.files.filter((f) => f.kind === "semantic" && m.conflicted.includes(f.path)) : m.conflicted.slice(0, JUDGED_MAX).map((path) => ({ path, kind: "semantic" as const, reason: "I could not tell whether both sides can be kept." }));

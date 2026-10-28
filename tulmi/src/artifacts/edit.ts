@@ -243,7 +243,10 @@ export class EditEngine {
 
     const ran = await this.paid(artifact, () => this.d.model.run<{ next: string; hint: PosEdit[] }>({
       userId, tier: "cheap", purpose: "artifact.element", role: "artifact_element", kit, artifact: artifactBlock, instruction: instructionText,
-      maxTokens: whole ? clamp(tokens(source.length) * 2 + 200, 300, 2500) : 1800, capPaise: CAP_PAISE.cheap, ...(o.signal ? { signal: o.signal } : {}),
+      maxTokens: whole ? clamp(tokens(source.length) * 2 + 200, 300, 2500) : 1800,
+      // Sized from the element: the whole element again is its tokens and a margin; the call is given as much of that as its cap pays for.
+      wantTokens: whole ? clamp(tokens(source.length) * 2 + 600, 900, 2500) : tokens(source.length) + 1200,
+      capPaise: CAP_PAISE.cheap, ...(o.signal ? { signal: o.signal } : {}),
       accept: (text) => {
         let repl: string;
         // In the replacements form the patch is the replacements, at their places in the artifact; in the whole-element form it is the span.
@@ -291,7 +294,10 @@ export class EditEngine {
 
     const ran = await this.paid(artifact, () => this.d.model.run<{ next: string; hint?: PosEdit[]; rewrite: boolean }>({
       userId, tier: small ? "cheap" : "code", purpose: "artifact.edit", role: "artifact_edit", kit, artifact: block, instruction: `Change: ${said}`,
-      maxTokens: small ? 2000 : 5000, capPaise: small ? CAP_PAISE.cheap : CAP_PAISE.code, ...(o.signal ? { signal: o.signal } : {}),
+      maxTokens: small ? 2000 : 5000,
+      // A rewrite (when most of it changes) is the whole artifact again: its tokens, and the framing and the model's own words around it.
+      wantTokens: tokens(content.length) + 1200,
+      capPaise: small ? CAP_PAISE.cheap : CAP_PAISE.code, ...(o.signal ? { signal: o.signal } : {}),
       accept: (text) => {
         const rewrite = parseRewrite(text);
         let next: string;

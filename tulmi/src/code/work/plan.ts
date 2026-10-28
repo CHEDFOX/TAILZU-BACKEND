@@ -93,9 +93,12 @@ export interface ChangePlan {
 }
 
 export class PlanError extends Error {
-  constructor(readonly code: "budget" | "model_down" | "empty" | "aborted", message: string) {
+  /** For "budget": about what the planning call would have reserved, in paise (0 when not known). */
+  readonly needPaise: number;
+  constructor(readonly code: "budget" | "model_down" | "empty" | "aborted", message: string, needPaise = 0) {
     super(message);
     this.name = "PlanError";
+    this.needPaise = needPaise;
   }
 }
 
@@ -397,8 +400,8 @@ export async function planChange(task: string, located: Located, brain: PlanBrai
   // The cheapest tier that fits: code for an ordinary change, strong for a risky or hard one, and one rung down when the money is short.
   const route: Route = routeStep("plan", classification, {
     failures: ctx.failures ?? 0, lowConfidence: located.confidence < 0.6 && located.targets.length > 0, filesTouched: located.targets.length + located.related.length,
-  }, ctx.remainingPaise !== undefined ? { budget: { remainingPaise: ctx.remainingPaise, inputChars: 12_000 } } : {});
-  if (route.stop) throw new PlanError("budget", "There is not enough budget left to plan this.");
+  }, ctx.remainingPaise !== undefined ? { budget: { remainingPaise: ctx.remainingPaise, inputChars: 12_000, maxTokens: PLAN_TOKENS } } : {});
+  if (route.stop) throw new PlanError("budget", "There is not enough budget left to plan this.", route.needPaise ?? 0);
 
   const rules = (view.conventions?.rules ?? []).map((r) => `${r.path}:\n${r.text}`).join("\n\n");
   const common = facts(view.structure, view.conventions);
@@ -410,7 +413,7 @@ export async function planChange(task: string, located: Located, brain: PlanBrai
       role: "plan_change", user: userMessage(text, located, common, rules, excerpts, problems),
     });
     if (!r.ok) {
-      if (r.reason === "budget") throw new PlanError("budget", "The job's budget cannot cover planning this.");
+      if (r.reason === "budget") throw new PlanError("budget", "The job's budget cannot cover planning this.", r.needPaise ?? 0);
       if (r.reason === "aborted") throw new PlanError("aborted", "Planning was stopped.");
       throw new PlanError("model_down", "No model could write the plan. Try again in a moment.");
     }

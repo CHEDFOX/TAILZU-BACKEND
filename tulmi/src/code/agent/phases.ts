@@ -260,7 +260,7 @@ export async function planPhase(r: Run): Promise<void> {
     });
   } catch (err) {
     if (err instanceof PlanError) {
-      if (err.code === "budget") throw new BudgetStop(0);
+      if (err.code === "budget") throw new BudgetStop(err.needPaise);
       if (err.code === "aborted") throw new LostClaim();
       throw new EndJob("failed", err.code === "empty" ? `I could not make a plan out of that: ${err.message}` : err.message);
     }
@@ -478,8 +478,8 @@ async function modelTurn(r: Run): Promise<void> {
   const money = await r.money();
   const route = await planRoute("write_code", s.classification!, {
     failures: w.badTurns + w.fixRounds, ...(w.lastTier ? { lastTier: w.lastTier as never } : {}), filesTouched: r.tools.changes.size,
-  }, { ...(d.routeStats ? { store: d.routeStats } : {}), budget: { remainingPaise: money.remaining, inputChars: ctx.chars }, tiers: tiersForTurn() });
-  if (route.stop) throw new BudgetStop(0);
+  }, { ...(d.routeStats ? { store: d.routeStats } : {}), budget: { remainingPaise: money.remaining, inputChars: ctx.chars, maxTokens: WORK_TOKENS }, tiers: tiersForTurn() });
+  if (route.stop) throw new BudgetStop(route.needPaise ?? 0);
 
   const call = d.call ?? callModel;
   let res;

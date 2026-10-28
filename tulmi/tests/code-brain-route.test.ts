@@ -246,6 +246,24 @@ describe("the budget", () => {
     expect(dear).toMatchObject({ stop: "budget" });
   });
 
+  it("sizes the reservation by what the step will ask to write, never more than the tier allows (the smoke-run bug: 'used up' with 1% spent)", () => {
+    // The plan step asks for 3,000 tokens; the code tier allows 8,000. Held against 8,000 it needed more than a ₹2.47 remainder; held against its 3,000 it fits.
+    const asked = (maxTokens: number) => worstCasePaise({ chars: 12_000, maxTokens: Math.min(maxTokens, tiers.code.maxTokens), usdPerMIn: tiers.code.usdPerMIn, usdPerMOut: tiers.code.usdPerMOut }, FX);
+    expect(asked(3_000)).toBeLessThan(asked(8_000));
+    const left = asked(3_000);
+    expect(routeStep("plan", cls(), {}, { tiers, budget: { remainingPaise: left, fx: FX, inputChars: 12_000 } })).toMatchObject({ stop: "budget" });
+    expect(routeStep("plan", cls(), {}, { tiers, budget: { remainingPaise: left, fx: FX, inputChars: 12_000, maxTokens: 3_000 } })).toMatchObject({ tier: "code" });
+    // Asking for more than the tier allows is held at the tier's limit, like the gateway does.
+    expect(routeStep("plan", cls(), {}, { tiers, budget: { remainingPaise: asked(8_000), fx: FX, inputChars: 12_000, maxTokens: 50_000 } })).toMatchObject({ tier: "code" });
+    expect(routeStep("plan", cls(), {}, { tiers, budget: { remainingPaise: asked(8_000) - 1, fx: FX, inputChars: 12_000, maxTokens: 50_000 } })).toMatchObject({ stop: "budget" });
+  });
+
+  it("a stop says what the step needs and what is left, in numbers the caller can show", () => {
+    const stop = routeStep("write_code", cls(), {}, { tiers, budget: { remainingPaise: 10, fx: FX, maxTokens: 4_096 } });
+    expect(stop).toMatchObject({ stop: "budget", leftPaise: 10 });
+    expect(stop.needPaise).toBe(worstCasePaise({ chars: 8_000, maxTokens: 4_096, usdPerMIn: tiers.code.usdPerMIn, usdPerMOut: tiers.code.usdPerMOut }, FX));
+  });
+
   it("is applied after climbing, and a stop still says what was wanted", () => {
     const r = route("write_code", cls(), { failures: 2 }, budget(cost("code")));
     expect(r.tier).toBe("code");

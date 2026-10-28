@@ -145,6 +145,20 @@ export async function runPartsCli(argv: string[]): Promise<number> {
   if (flag("fetch-pages")) { const r = await fetchCorpus((s) => console.log(s)); console.log(`${r.have} page(s) saved, ${r.fetched.length} fetched now, ${r.failed.length} failed${r.failed.length ? `: ${r.failed.map((f) => `${f.id} (${f.why})`).join(", ")}` : ""}`); return r.failed.length ? 1 : 0; }
   const only = arg("only")?.split(",").map((s) => s.trim()).filter(Boolean) as PartId[] | undefined;
   for (const x of only ?? []) if (!(PART_IDS as readonly string[]).includes(x)) throw new Error(`no part called ${x}; there are ${PART_IDS.join(", ")}`);
+  if (flag("estimate")) {
+    // What each part that needs cents would cost, and the contestants grid, from the live prices; nothing is run, not even the free parts.
+    const fx = Number(process.env.CODE_USD_INR) || 88;
+    const catalog = await loadCatalog();
+    const ctx: PartCtx = { mode: "sim", fx, catalog, capInr: 0, cassetteName: arg("cassette") ?? "parts", cassetteMode: null, outDir: "", log: () => undefined };
+    console.log(`prices: OpenRouter's catalog (${catalog.source}), ₹${fx} to the dollar${catalog.source === "none" ? "; THE CATALOG COULD NOT BE READ, so these use assumed prices" : ""}`);
+    for (const c of wiredCentParts(ctx).filter((p) => !only || only.includes(p.id))) console.log(`  ${c.title}: about ₹${c.estimateInr.toFixed(2)}\n    ${c.estimateBasis}\n    ${c.command}`);
+    const pools = loadPools();
+    const gridModels = [pools.tiers.tiny[0]!, pools.tiers.code[0]!, pools.tiers.strong[0]!];
+    const agents = ["tailzu", "aider", "opencode", "codex", "mini-swe-agent", "openhands"];
+    const g = estimateGrid({ agents, models: gridModels, tasks: loadTasks().filter((t) => t.tags.includes("smoke")).length, catalog, fx });
+    console.log(`  contestants grid with the key: about ₹${g.totalInr.toFixed(0)} (range ₹${g.lowInr.toFixed(0)} to ₹${g.highInr.toFixed(0)}), ${g.runs} runs`);
+    return 0;
+  }
   const spend = flag("spend");
   const capInr = Number(arg("budget-inr") ?? 0);
   if (spend && !(capInr > 0)) throw new Error("--spend needs --budget-inr X, a hard cap in rupees");

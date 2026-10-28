@@ -100,7 +100,21 @@ async function endedWith(r: Run, err: unknown): Promise<{ end: LoopEnd; waitingO
     await budgetStop(r, err instanceof BudgetStop ? err.needPaise : (err as BudgetExceeded).needPaise ?? 0);
     return { end: "parked", waitingOn: "budget" };
   }
+  // Something nobody planned for. The driver backs off and tries again, and fails the job on the third time with a report (orchestrator.ts errored): all of it starts
+  // from the checkpoint, so what this run holds in memory and has not saved (an edit staged by a call that then threw) is saved now, before the error goes up.
+  await keepWhatIsStaged(r);
   throw err;
+}
+
+/** Saves the run's state, so the staged edits survive an error. Best effort: the error being handled is the one that matters, but a lost claim is still a lost claim. */
+async function keepWhatIsStaged(r: Run): Promise<void> {
+  if (r.tools === undefined) return;
+  try {
+    await r.save();
+  } catch (err) {
+    if (err instanceof LostClaim) throw err;
+    // The store may be what failed; the checkpoint still holds the last save, which is what the error handling reads.
+  }
 }
 
 // -------------------------------------------------------------- one advance
@@ -236,10 +250,41 @@ async function budgetStop(r: Run, needPaise: number): Promise<void> {
     }
   }
   const money = await r.money();
-  const top = topUpFor(money.spent);
-  const why = `The budget of ${rupees(money.budget)} is used up (${rupees(money.spent)} spent) before the work was finished. ${outcome}`.trim();
+  const short = budgetShortfall(money, needPaise);
+  // The top-up on offer covers what is short, not only half of what was spent: a job that stopped at 1% spent needs the step's price, not a rule of thumb.
+  const top = Math.max(topUpFor(money.spent), short.kind === "short" ? Math.ceil((short.needPaise - short.leftPaise) / 100) * 100 : 0);
+  const why = `${short.words} ${outcome}`.trim();
   const text = reportText({ state: s, spentPaise: money.spent, budgetPaise: money.budget, outcome: "budget", why, continueWithPaise: top });
   s.report = { at: r.now(), outcome: "budget", text, ...(s.pr ? { prUrl: s.pr.url } : {}), costPaise: money.spent, continueWithPaise: top };
   s.waiting = { kind: "budget", needPaise, at: r.now() };
-  await park(r, new Park("budget", `Out of budget: ${rupees(money.spent)} of ${rupees(money.budget)} used. Continue with ${rupees(top)} more?`));
+  await park(r, new Park("budget", `${short.ask} Continue with ${rupees(top)} more?`));
+}
+
+/**
+ * Why the money stopped the job, in words that are TRUE: "used up" only when it is, and otherwise what the next step needs and what is left. The gateway and the
+ * router refuse a step whose RESERVATION (its input and everything it may write, at the tier's price) is more than what is left, which can happen with most of
+ * the budget unspent; telling the person the budget was used up then was a lie that sent them to top up a job that had barely started.
+ */
+export function budgetShortfall(money: { spent: number; budget: number }, needPaise: number): { kind: "spent" | "short"; words: string; ask: string; needPaise: number; leftPaise: number } {
+  const left = Math.max(0, money.budget - money.spent);
+  const of = `${rupees(money.spent)} of the ${rupees(money.budget)} budget`;
+  if (left <= 0 || (needPaise <= 0 && money.spent >= money.budget)) {
+    return {
+      kind: "spent", needPaise, leftPaise: left,
+      words: `The budget of ${rupees(money.budget)} is used up (${rupees(money.spent)} spent) before the work was finished.`,
+      ask: `Out of budget: ${rupees(money.spent)} of ${rupees(money.budget)} used.`,
+    };
+  }
+  if (needPaise > 0) {
+    return {
+      kind: "short", needPaise, leftPaise: left,
+      words: `The next step needs about ${rupees(needPaise)} and ${rupees(left)} is left (${of} is spent), so I stopped before the work was finished.`,
+      ask: `The next step needs about ${rupees(needPaise)} and ${rupees(left)} is left (${of} spent).`,
+    };
+  }
+  return {
+    kind: "short", needPaise, leftPaise: left,
+    words: `Only ${rupees(left)} is left of the budget (${of} is spent), which is not enough to pay for the next step, so I stopped before the work was finished.`,
+    ask: `Only ${rupees(left)} is left of the budget (${of} spent), not enough for the next step.`,
+  };
 }

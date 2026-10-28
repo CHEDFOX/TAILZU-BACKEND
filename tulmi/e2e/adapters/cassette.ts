@@ -8,7 +8,11 @@
  *   replay   answers come from the file; a request with no recording is a MISS: an error to the caller, and a line in `stats.misses`. Strict: no model is called.
  *   mixed    a recorded request is answered from the file, a missing one goes upstream and is added to it
  *
- * THE KEY is a hash of what the request says to the model: the model, the messages, the tools and the answer format. Anything that changes from run to run
+ * THE KEY is a hash of what the request says to the model: the model, the messages, the tools, the answer format and HOW MUCH IT IS TOLD TO THINK (`reasoning`):
+ * a request that asks a model to think less, or more, or not to think at all is a different request, and the answer to one is not the answer to another (the
+ * first real run recorded six models' "Reasoning is mandatory" 400s for a request that said `effort: none`; after the fix those models are asked `low`, and a
+ * replay must miss, not serve the 400). A recording made before the key had the field has no `reasoning` in it; it still answers a request that the product
+ * would have sent the same way then (`legacyKey`), but never one whose reasoning has changed since (a model that requires reasoning). Anything that changes from run to run
  * without meaning anything (an id, a time, a commit hash, a temporary folder, a duration in a test's output) is replaced by a placeholder first, so the same
  * pipeline asks the same questions every time. The same key asked twice is answered with the recordings in order (the last one repeats).
  * `loose` replay adds a second chance for a miss: the same run's n-th call of the same purpose, for runs whose prompts moved a little.
@@ -23,6 +27,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { reasoningRequired } from "../../src/agent/reasoning.js";
 import type { ChatClient } from "../../src/code/brain/gateway.js";
 import { callContext } from "./models.js";
 import { E2E_DIR, mkdirp } from "../util.js";
@@ -105,7 +110,14 @@ function cleanContent(c: unknown): Json {
 }
 
 /** The part of a request that is stored and hashed: what it says to the model, redacted. */
-export interface WireRequest { model: string; messages: Json[]; tools?: Json[]; response_format?: Json; max_tokens?: number }
+export interface WireRequest { model: string; messages: Json[]; tools?: Json[]; response_format?: Json; max_tokens?: number; reasoning?: Json }
+
+/** An object with its keys in order, so the same setting is the same text. */
+function sorted(v: Json): Json {
+  if (Array.isArray(v)) return v.map(sorted);
+  if (v && typeof v === "object") return Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted((v as { [k: string]: Json })[k]!)]));
+  return v;
+}
 
 export function wireRequestOf(body: Record<string, unknown>): WireRequest {
   const messages = ((body.messages ?? []) as Array<Record<string, unknown>>).map((m) => {
@@ -121,6 +133,7 @@ export function wireRequestOf(body: Record<string, unknown>): WireRequest {
     ...(Array.isArray(body.tools) && body.tools.length ? { tools: cleanContent(body.tools) as Json[] } : {}),
     ...(body.response_format ? { response_format: cleanContent(body.response_format) as Json } : {}),
     ...(typeof body.max_tokens === "number" ? { max_tokens: body.max_tokens } : {}),
+    ...(body.reasoning !== undefined && body.reasoning !== null ? { reasoning: sorted(cleanContent(body.reasoning)) } : {}),
   };
 }
 
@@ -131,11 +144,28 @@ const walk = (v: Json, f: (s: string) => string): Json => {
   return v;
 };
 
-/** The key of a request: a hash of its model, messages, tools and answer format, with the volatile parts replaced. */
-export function cassetteKey(body: Record<string, unknown>): string {
+/**
+ * The key of a request: a hash of its model, messages, tools, answer format and reasoning, with the volatile parts replaced.
+ * `legacy`: the key as it was made before reasoning was part of it, to find a recording from then.
+ */
+export function cassetteKey(body: Record<string, unknown>, o: { legacy?: boolean } = {}): string {
   const r = wireRequestOf(body);
-  const canon = walk({ model: r.model, messages: r.messages, ...(r.tools ? { tools: r.tools } : {}), ...(r.response_format ? { rf: (r.response_format as { type?: string }).type ?? null } : {}) } as Json, normalize);
+  const canon = walk({
+    model: r.model, messages: r.messages, ...(r.tools ? { tools: r.tools } : {}), ...(r.response_format ? { rf: (r.response_format as { type?: string }).type ?? null } : {}),
+    ...(r.reasoning !== undefined && !o.legacy ? { reasoning: r.reasoning } : {}),
+  } as Json, normalize);
   return createHash("sha256").update(JSON.stringify(canon)).digest("hex").slice(0, 24);
+}
+
+/**
+ * Whether a recording from before reasoning was part of the key can stand for this request: yes unless the product now asks this model something different
+ * from what it asked then. The one thing that changed is a model that requires reasoning, which used to be told "none" (the Gemini 3 rule predates it).
+ */
+export function legacyCanStand(model: string): boolean {
+  const m = model.replace(/^openrouter\//, "");
+  const major = Number(/^google\/gemini-(\d+)/.exec(m)?.[1] ?? NaN);
+  const askedLowBefore = major >= 3 || m.startsWith("google/gemini-2.5-pro");
+  return askedLowBefore || !reasoningRequired(m);
 }
 
 // ------------------------------------------------------------------- the file
@@ -261,15 +291,23 @@ export class CassetteClient implements ChatClient {
 
   async create(body: Record<string, unknown>, opts?: { signal?: AbortSignal; timeout?: number; maxRetries?: number }): Promise<unknown> {
     const key = cassetteKey(body);
+    const legacyKey = cassetteKey(body, { legacy: true });
     const ctx = callContext.getStore();
     const purpose = ctx?.purpose;
     const run = this.o.run;
     const ord = purpose && run ? this.bump(`${run}|${purpose}`) : undefined;
     const nth = this.seen.get(key) ?? 0;
     this.seen.set(key, nth + 1);
+    const legacyNth = this.seen.get(`legacy:${legacyKey}`) ?? 0;
+    this.seen.set(`legacy:${legacyKey}`, legacyNth + 1);
 
     if (this.o.mode !== "record") {
       let hit = this.o.store.get(key, nth);
+      // A recording from before the key held the reasoning (its request has none): it answers a request that is asked the same way now.
+      if (!hit && legacyKey !== key && legacyCanStand(String(body.model ?? ""))) {
+        const old = this.o.store.get(legacyKey, legacyNth);
+        if (old && old.req.reasoning === undefined) hit = old;
+      }
       if (!hit && this.o.loose && run && purpose && ord !== undefined) hit = this.o.store.byOrdinal(run, purpose, ord);
       if (hit) {
         this.stats.hits += 1;
