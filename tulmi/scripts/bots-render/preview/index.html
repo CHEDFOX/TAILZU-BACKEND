@@ -1,0 +1,247 @@
+<title>Tailzu App Preview</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: a quiet rail (what this is, Phone / Desktop, the screens by area) beside a stage that holds one device,
+   scaled to fit. Under 900px the rail's controls go on top, the device next, the screen list last. One light theme. */
+:root {
+  --paper: #eceeef;
+  --panel: #ffffff;
+  --ink: #141515;
+  --muted: #5f6468;
+  --line: #d6d9dc;
+  --hover: #e3e6e8;
+  --sel: #141515;
+  --sel-ink: #ffffff;
+  --tailzu: #0a0a0a;
+  --keybot: #a9573a;
+  --code: #4f7a3a;
+  --plan: #8f6a1f;
+  --travel: #3e6e8e;
+  --face: "Preview Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --face-strong: "Preview Geist SemiBold", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Preview Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@font-face { font-family: "Preview Geist"; src: url(fonts/geist.ttf); font-display: swap; }
+@font-face { font-family: "Preview Geist SemiBold"; src: url(fonts/geist-semibold.ttf); font-display: swap; }
+@font-face { font-family: "Preview Geist Mono"; src: url(fonts/geist-mono.ttf); font-display: swap; }
+html, body { overflow-x: hidden; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.45 var(--face); }
+.app {
+  display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 28px; align-items: start;
+  max-width: 1720px; margin: 0 auto;
+  padding-block: 20px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.rail { display: grid; gap: 18px; min-width: 0; position: sticky; top: 16px; max-height: calc(100vh - 32px); grid-template-rows: auto auto minmax(0, 1fr); }
+.intro h1 { font: 22px/1.15 var(--face-strong); letter-spacing: -0.4px; margin: 0 0 6px; text-wrap: balance; }
+.intro p { margin: 0; color: var(--muted); max-width: 60ch; }
+.controls { display: grid; gap: 10px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.seg button, .reset {
+  font: 14px/1 var(--face-strong); color: var(--ink); background: transparent; border: 0; border-radius: 999px;
+  padding: 10px 14px; cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--sel); color: var(--sel-ink); }
+.reset { background: var(--panel); border: 1px solid var(--line); }
+.reset:hover, .seg button[aria-pressed="false"]:hover { background: var(--hover); }
+button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.now { font: 12px/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; min-height: 17px; }
+.now b { font-weight: normal; color: var(--ink); }
+.screens { overflow: auto; min-height: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 6px 6px 10px; }
+.screens h2 {
+  display: flex; align-items: center; gap: 8px; margin: 12px 8px 4px;
+  font: 11px/1 var(--face-strong); letter-spacing: 0.8px; text-transform: uppercase; color: var(--muted);
+}
+.screens h2 i { width: 8px; height: 8px; border-radius: 50%; background: var(--dot, var(--tailzu)); display: inline-block; }
+.screens ul { list-style: none; margin: 0; padding: 0; }
+.screens li button {
+  width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; text-align: left;
+  font: 13.5px/1.3 var(--face); color: var(--ink); background: transparent; border: 0; border-radius: 9px; padding: 7px 8px; cursor: pointer;
+}
+.screens li button:hover { background: var(--hover); }
+.screens li button.on { background: var(--sel); color: var(--sel-ink); }
+.screens li button span { min-width: 0; overflow-wrap: anywhere; }
+.screens li button small { font: 11px/1.3 var(--mono); color: var(--muted); white-space: nowrap; }
+.screens li button.on small { color: #c9cccf; }
+.screens li button.other { color: var(--muted); }
+.stage { min-width: 0; display: grid; justify-items: center; gap: 12px; }
+.fit { position: relative; max-width: 100%; }
+.fit > .device { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.phone { width: 414px; height: 868px; border-radius: 62px; background: #1b1c1d; padding: 12px; box-sizing: border-box; box-shadow: 0 1px 0 #ffffff inset, 0 18px 50px rgba(20, 21, 21, 0.18); }
+.phone .screen { position: relative; width: 390px; height: 844px; border-radius: 50px; overflow: hidden; background: #ffffff; }
+.phone iframe, .desk iframe { display: block; border: 0; background: #ffffff; }
+.phone iframe { width: 390px; height: 844px; }
+.status { position: absolute; inset: 0 0 auto; height: 47px; pointer-events: none; display: flex; align-items: center; justify-content: space-between; padding: 0 30px 0 44px; font: 15px/1 var(--face-strong); color: #0a0a0a; }
+.island { position: absolute; left: 50%; top: 11px; width: 122px; height: 35px; margin-left: -61px; border-radius: 20px; background: #0a0a0a; }
+.bars { display: flex; gap: 5px; align-items: center; }
+.bars i { display: block; width: 25px; height: 12px; border: 1.5px solid #0a0a0a; border-radius: 4px; box-sizing: border-box; padding: 1.5px; }
+.bars i::after { content: ""; display: block; height: 100%; width: 72%; background: #0a0a0a; border-radius: 1.5px; }
+.homebar { position: absolute; left: 50%; bottom: 8px; width: 134px; height: 5px; margin-left: -67px; border-radius: 3px; background: #0a0a0a; pointer-events: none; }
+.desk { width: 1282px; height: 831px; border-radius: 12px; overflow: hidden; background: #ffffff; border: 1px solid #c8cbce; box-shadow: 0 18px 50px rgba(20, 21, 21, 0.16); }
+.desk .bar { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: #f3f4f5; border-bottom: 1px solid #dfe2e4; }
+.desk .bar i { width: 12px; height: 12px; border-radius: 50%; background: #d2d5d8; display: block; }
+.desk iframe { width: 1280px; height: 800px; }
+.caption { font: 12px/1.4 var(--mono); color: var(--muted); text-align: center; max-width: 100%; overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .rail { position: static; max-height: none; grid-template-rows: none; display: contents; }
+  .intro { order: 1; } .controls { order: 2; } .stage { order: 3; } .screens { order: 4; }
+}
+@media (prefers-reduced-motion: no-preference) { .seg button, .screens li button { transition: background-color 0.12s; } }
+</style>
+
+<div class="app">
+  <aside class="rail">
+    <div class="intro">
+      <h1>Tailzu app preview</h1>
+      <p>The real app renderers, phone and desktop, drawing the screens the server builds, with a sample day's data. Tap around: tabs, back and links work.</p>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Client">
+        <button type="button" id="to-phone" aria-pressed="true">Phone</button>
+        <button type="button" id="to-desktop" aria-pressed="false">Desktop</button>
+      </div>
+      <button type="button" class="reset" id="reset">Start over</button>
+      <div class="now" id="now" aria-live="polite"></div>
+    </div>
+    <nav class="screens" id="screens" aria-label="Jump to a screen"></nav>
+  </aside>
+  <main class="stage" id="stage">
+    <div class="fit" id="fit-phone">
+      <div class="device phone" id="phone">
+        <div class="screen">
+          <iframe id="frame-phone" title="Tailzu on a phone" src="phone.html"></iframe>
+          <div class="status" aria-hidden="true"><span>9:41</span><span class="island"></span><span class="bars"><i></i></span></div>
+          <div class="homebar" aria-hidden="true"></div>
+        </div>
+      </div>
+    </div>
+    <div class="fit" id="fit-desktop" hidden>
+      <div class="device desk" id="desk">
+        <div class="bar" aria-hidden="true"><i></i><i></i><i></i></div>
+        <iframe id="frame-desktop" title="Tailzu in a window" data-src="desk.html"></iframe>
+      </div>
+    </div>
+    <div class="caption" id="caption"></div>
+  </main>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const JUMPS = /*JUMPS*/[];
+  const DOTS = { "First run": "var(--travel)", "Bots": "var(--tailzu)", "Keybot": "var(--keybot)", "Code bot": "var(--code)", "Activity and You": "var(--plan)", "Desktop pages": "var(--muted)" };
+  const SIZE = { phone: [414, 868], desktop: [1282, 831] };
+  let client = "phone";
+  try { if (localStorage.getItem("tailzu-preview-client") === "desktop") client = "desktop"; } catch (e) { /* no storage */ }
+  const $ = (id) => document.getElementById(id);
+  const frame = (c) => $("frame-" + c);
+  const win = (c) => { try { return frame(c).contentWindow; } catch (e) { return null; } };
+
+  // The screen list, by area.
+  const nav = $("screens");
+  const buttons = [];
+  for (const g of JUMPS) {
+    const h = document.createElement("h2");
+    const dot = document.createElement("i");
+    dot.style.setProperty("--dot", DOTS[g.group] || "var(--tailzu)");
+    h.append(dot, g.group);
+    const ul = document.createElement("ul");
+    for (const it of g.items) {
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.type = "button";
+      const name = document.createElement("span");
+      name.textContent = it.label;
+      const id = document.createElement("small");
+      id.textContent = it.id.replace(/^bots\./, "");
+      b.append(name, id);
+      b.addEventListener("click", () => jump(it));
+      b._item = it;
+      buttons.push(b);
+      li.append(b);
+      ul.append(li);
+    }
+    nav.append(h, ul);
+  }
+  const mark = () => {
+    for (const b of buttons) {
+      b.classList.toggle("other", b._item.on.indexOf(client) < 0);
+      b.title = b._item.on.indexOf(client) < 0 ? "Its board is for the " + (client === "phone" ? "window" : "phone") + "; drawn here all the same" : "";
+    }
+  };
+
+  // Each device waits for its renderer before it takes a jump.
+  const ready = (c) => new Promise((res) => {
+    const t0 = Date.now();
+    const poll = () => {
+      const w = win(c);
+      const ok = w && typeof w.__previewGo === "function" && typeof w.__previewTop === "function" && w.__previewTop();
+      if (ok || Date.now() - t0 > 15000) res(w); else setTimeout(poll, 120);
+    };
+    poll();
+  });
+  async function jump(it) {
+    const w = await ready(client);
+    if (w && w.__previewGo) w.__previewGo(it.id, it[client] || {});
+    for (const b of buttons) b.classList.toggle("on", b._item === it);
+  }
+
+  function show(c) {
+    client = c;
+    try { localStorage.setItem("tailzu-preview-client", c); } catch (e) { /* no storage */ }
+    $("to-phone").setAttribute("aria-pressed", String(c === "phone"));
+    $("to-desktop").setAttribute("aria-pressed", String(c === "desktop"));
+    $("fit-phone").hidden = c !== "phone";
+    $("fit-desktop").hidden = c !== "desktop";
+    const f = frame("desktop");
+    if (c === "desktop" && !f.getAttribute("src")) f.setAttribute("src", f.dataset.src);
+    for (const b of buttons) b.classList.remove("on");
+    mark();
+    fit();
+  }
+  $("to-phone").addEventListener("click", () => show("phone"));
+  $("to-desktop").addEventListener("click", () => show("desktop"));
+  $("reset").addEventListener("click", () => {
+    const w = win(client);
+    if (client === "phone" && w && w.__previewReset) w.__previewReset();
+    else if (w) w.location.reload();
+    for (const b of buttons) b.classList.remove("on");
+  });
+
+  // Scale the device to the room it has: the stage's width, and the window's height on a wide screen.
+  function fit() {
+    const [W, H] = SIZE[client];
+    const stage = $("stage");
+    const wide = window.matchMedia("(min-width: 901px)").matches;
+    const roomW = stage.clientWidth;
+    const roomH = wide ? window.innerHeight - 90 : Infinity;
+    let s = Math.min(1, roomW / W, roomH / H);
+    if (client === "phone") s = Math.max(s, Math.min(1, roomW / W, 0.6));
+    const box = $("fit-" + client);
+    box.style.width = Math.floor(W * s) + "px";
+    box.style.height = Math.floor(H * s) + "px";
+    box.firstElementChild.style.transform = "scale(" + s + ")";
+  }
+  if (window.ResizeObserver) new ResizeObserver(fit).observe($("stage")); else window.addEventListener("resize", fit);
+  window.addEventListener("resize", fit);
+
+  // What is showing, under the device.
+  setInterval(() => {
+    const w = win(client);
+    let t = null;
+    try { t = w && w.__previewTop && w.__previewTop(); } catch (e) { t = null; }
+    const p = t && t.params ? Object.keys(t.params).map((k) => k + "=" + String(t.params[k]).slice(0, 24)).join(" ") : "";
+    $("caption").textContent = t ? t.screenId + (p ? "  ·  " + p : "") : "Loading…";
+    $("now").innerHTML = "";
+    const lead = document.createTextNode(client === "phone" ? "Phone · 390 × 844 · showing " : "Desktop · 1280 × 800 · showing ");
+    const b = document.createElement("b");
+    b.textContent = t ? t.screenId : "…";
+    $("now").append(lead, b);
+  }, 500);
+
+  show(client);
+})();
+</script>

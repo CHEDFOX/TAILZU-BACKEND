@@ -18,7 +18,8 @@
  */
 import type { ActionRef, ActionSpec, Condition, Node, ScreenResponse, ThemeTokens } from "../../../../shared/types/sdui.js";
 import { SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
-import { blipUrl, BLIP_BODY_RATIO, type BlipPose } from "./art.js";
+import { blipLoopFor, type BlipPose } from "./art.js";
+import { blipSize, blipUrl as blipLoopUrl } from "../blipLoops.js";
 import { icon, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type TabId } from "./glyphs.js";
 import type { BotsLive, LiveBot, NeedsItem } from "./live.js";
 import { C, type BotLook } from "./palette.js";
@@ -221,9 +222,14 @@ export function picture(url: string, w: number, h: number, o: { radius?: number;
   });
 }
 
-/** Blip's whole body, for the big moments (STYLE.md: 140-200 tall, no circle). */
+/**
+ * Blip's whole body, for the big moments (STYLE.md: 140-200 tall, no circle), moving: the pose's loop (art.blipLoopFor),
+ * as tall as asked and as wide as that loop's own proportions.
+ */
 export function blip(pose: BlipPose, height = 160): Node {
-  return picture(blipUrl(pose), Math.round(height * BLIP_BODY_RATIO), height, { label: "Blip" });
+  const loop = blipLoopFor(pose, height);
+  const { w, h } = blipSize(loop);
+  return picture(blipLoopUrl(loop), Math.round((height * w) / h), height, { label: "Blip" });
 }
 
 // ===================================================================== bots

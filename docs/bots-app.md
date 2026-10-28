@@ -34,7 +34,7 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
 | `tulmi/src/experience/bots/kit.ts` | theme + one helper per design primitive (section 5). Builders import only this. |
 | `…/bots/glyphs.ts` | line icons, status marks, the Tailzu mark, the living tab icons |
 | `…/bots/palette.ts` | greys (`C`), bot colours, each bot's look (colour, icon, head) |
-| `…/bots/art.ts` | Blip heads and bodies (PNGs in `tulmi/blip/bots`, served at `/blip/bots/`) |
+| `…/bots/art.ts` | Blip heads (PNGs in `tulmi/blip/bots`, served at `/blip/bots/`) and which animated loop plays each pose (`blipLoopFor`; the loops are the onboarding's, `experience/blipLoops.ts`) |
 | `…/bots/ids.ts` | **every screen id** (`SCREENS`), mapped to its boards and its file; `botRoute(slug)` |
 | `…/bots/live.ts` | the live state every screen gets (`ctx.live`), `BotsDeps` |
 | `…/bots/deps.ts` | the real `BotsDeps` (server.ts builds one per request) |
@@ -44,6 +44,7 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
 | `…/bots/fixtures.ts` | fake deps and the boards' sample day (Aanya), for tests and the render check |
 | `…/bots/lint.ts` | `lintTree(root)`: the kit's rules as a check |
 | `tulmi/scripts/bots-render/render.ts` | the render check (section 7) |
+| `tulmi/scripts/bots-render/preview.ts` | the live preview: every screen, clickable, in both renderers, as static files (section 7) |
 
 ## 3. Adding a screen
 
@@ -175,6 +176,19 @@ them. Look at `scripts/bots-render/out/<id>.<client>.compare.png`. Options: `--c
 running server sent), `--motion` (default is Reduce Motion, so shots are stable), `--design <bots-design dir>` (or `$BOTS_DESIGN`).
 First run installs react-native-web, react-dom and esbuild into `scripts/bots-render/.deps` (gitignored). The phone's native-only
 modules are stubbed; text is set by the browser, so a line may break a word apart from a device. Boards: `bots-design/project`.
+Blip (`blip(pose)`) is an animated WebP, which Reduce Motion does not stop, so two shots of a screen with him can differ.
+
+**The live preview**, to click through the whole app as it will look and move:
+
+```
+cd tulmi && npx tsx scripts/bots-render/preview.ts         # writes scripts/bots-render/out/preview/ (about 60 files, 12 MB)
+npx tsx scripts/bots-render/preview/serve.ts               # try it: http://localhost:8787, under an Artifact's content policy
+```
+
+It builds the bootstrap and every sample screen on both clients, then every screen they link to (at most `--max`, 300, a client),
+and writes them with the real renderers (the phone's through react-native-web with a navigator, `phone/preview.jsx`; the window's
+app.html + sdui.js) and a stand-in API (`preview/shim.js`) that answers from those files. Motions run. `index.html` has no
+doctype or head: it is made to be published as a claude.ai Artifact with the rest of the folder.
 
 ## 8. The node types the kit adds
 
