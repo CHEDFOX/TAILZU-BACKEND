@@ -113,7 +113,7 @@ describe("the views", () => {
   it("searches what you said, and says when history is off", () => {
     expect(views.historyView(HIST, {}, "pune").entries).toHaveLength(1);
     expect(views.historyView([], { retainHistory: false }).off).toBe(true);
-    expect(views.settingsView(PERSON, {}).keyboard).toEqual({ look: "light", haptics: "light", height: "normal", sounds: false, holdSpace: true, keyAt: "left" });
+    expect(views.settingsView(PERSON, {}).keyboard).toEqual({ look: "phone", haptics: "light", height: "normal", sounds: "phone", holdSpace: false, keyAt: "top" });
     expect(views.settingsView(PERSON, {}).languages).toEqual([{ value: "en", label: "English" }, { value: "hinglish", label: "Hinglish" }]);
   });
 });
