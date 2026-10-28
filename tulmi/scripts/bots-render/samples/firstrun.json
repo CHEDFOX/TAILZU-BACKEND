@@ -1,0 +1,144 @@
+{
+ "GET /v1/bots/first-run/languages": {
+  "options": [
+   {
+    "value": "hinglish",
+    "label": "Hinglish"
+   },
+   {
+    "value": "hi",
+    "label": "Hindi"
+   },
+   {
+    "value": "en",
+    "label": "English"
+   },
+   {
+    "value": "mr",
+    "label": "Marathi"
+   },
+   {
+    "value": "ta",
+    "label": "Tamil"
+   },
+   {
+    "value": "te",
+    "label": "Telugu"
+   },
+   {
+    "value": "bn",
+    "label": "Bengali"
+   },
+   {
+    "value": "gu",
+    "label": "Gujarati"
+   },
+   {
+    "value": "kn",
+    "label": "Kannada"
+   },
+   {
+    "value": "ml",
+    "label": "Malayalam"
+   },
+   {
+    "value": "pa",
+    "label": "Punjabi"
+   }
+  ],
+  "picked": [
+   "hinglish",
+   "hi",
+   "en"
+  ]
+ },
+ "GET /v1/personality": {
+  "personality": {
+   "assistantName": ""
+  }
+ },
+ "GET /v1/bots/first-run/words": {
+  "words": 0,
+  "seconds": 0,
+  "typingSeconds": 0,
+  "totalWords": 5210,
+  "totalSeconds": 1880
+ },
+ "GET /v1/bots/first-run/words?w=5196&s=1876": {
+  "words": 14,
+  "seconds": 4,
+  "typingSeconds": 21,
+  "totalWords": 5210,
+  "totalSeconds": 1880
+ },
+ "GET /v1/bots/first-run/plans?client=phone": {
+  "freeForAll": false,
+  "entitled": false,
+  "freeWords": 2000,
+  "features": [
+   "Unlimited voice-to-text refinement",
+   "All 12 personality presets + tones"
+  ],
+  "plans": [
+   {
+    "id": "annual",
+    "label": "Elite",
+    "price": "$59.99",
+    "per": "$5.00 / mo, billed yearly",
+    "note": "7 days free, then billed yearly",
+    "badge": "Save 50%",
+    "trialDays": 7,
+    "default": true,
+    "buy": {
+     "kind": "iap.showPaywall",
+     "offeringId": "default",
+     "packageId": "$rc_annual"
+    }
+   },
+   {
+    "id": "monthly",
+    "label": "Lite",
+    "price": "$9.99",
+    "per": "per month",
+    "note": "Billed monthly, cancel anytime",
+    "buy": {
+     "kind": "iap.showPaywall",
+     "offeringId": "default",
+     "packageId": "$rc_monthly"
+    }
+   }
+  ]
+ },
+ "GET /v1/bots/first-run/plans?client=desktop&market=IN": {
+  "freeForAll": false,
+  "entitled": false,
+  "freeWords": 2000,
+  "features": [
+   "Unlimited voice-to-text refinement",
+   "All 12 personality presets + tones"
+  ],
+  "plans": [
+   {
+    "id": "annual",
+    "label": "Elite",
+    "price": "₹5,999",
+    "per": "a year",
+    "default": true,
+    "buy": {
+     "kind": "iap.subscribe",
+     "productId": "tailzu_annu"
+    }
+   },
+   {
+    "id": "monthly",
+    "label": "Lite",
+    "price": "₹599",
+    "per": "a month",
+    "buy": {
+     "kind": "iap.subscribe",
+     "productId": "TAILZU_MONT"
+    }
+   }
+  ]
+ }
+}

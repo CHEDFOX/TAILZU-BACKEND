@@ -1,0 +1,1081 @@
+{
+ "base": {
+  "GET /v1/code/github": {
+   "configured": true,
+   "connected": true,
+   "installations": [
+    {
+     "id": 1,
+     "account": "aanya-sharma",
+     "manageUrl": "https://github.com/settings/installations/1"
+    }
+   ],
+   "oauth": {
+    "connected": false
+   }
+  },
+  "GET /v1/code/projects": {
+   "projects": [
+    {
+     "id": "11111111-1111-4111-8111-111111111111",
+     "fullName": "aanya-sharma/storefront",
+     "defaultBranch": "main",
+     "private": true,
+     "createdAt": 1790604600000
+    },
+    {
+     "id": "22222222-2222-4222-8222-222222222222",
+     "fullName": "aanya-sharma/mobile-app",
+     "defaultBranch": "main",
+     "private": true,
+     "createdAt": 1790604600000
+    },
+    {
+     "id": "33333333-3333-4333-8333-333333333333",
+     "fullName": "aanya-sharma/docs-site",
+     "defaultBranch": "main",
+     "private": true,
+     "createdAt": 1790604600000
+    }
+   ]
+  },
+  "GET /v1/code/jobs": {
+   "jobs": [
+    {
+     "id": "7c1d2e3f-0000-4000-8000-000000000001",
+     "projectId": "11111111-1111-4111-8111-111111111111",
+     "branch": "tailzu/fix-cart-total-rounding-1a2b",
+     "task": "Fix cart total rounding",
+     "state": "running",
+     "waitingOn": null,
+     "spentPaise": 420,
+     "budgetPaise": 3000,
+     "reason": "",
+     "createdAt": 1793195400000,
+     "updatedAt": 1793196480000,
+     "checkpoint": {
+      "notes": "step 3 of 5"
+     }
+    },
+    {
+     "id": "7c1d2e3f-0000-4000-8000-000000000002",
+     "projectId": "11111111-1111-4111-8111-111111111111",
+     "branch": "tailzu/pick-a-sign-in-page-style-9c0d",
+     "task": "Pick a sign-in page style",
+     "state": "waiting_for_you",
+     "waitingOn": "answer",
+     "spentPaise": 110,
+     "budgetPaise": 3000,
+     "reason": "",
+     "createdAt": 1793193000000,
+     "updatedAt": 1793196000000,
+     "checkpoint": {
+      "notes": ""
+     }
+    },
+    {
+     "id": "7c1d2e3f-0000-4000-8000-000000000003",
+     "projectId": "11111111-1111-4111-8111-111111111111",
+     "branch": "tailzu/add-hindi-to-sign-up-77aa",
+     "task": "Add Hindi to sign-up",
+     "state": "done",
+     "waitingOn": null,
+     "spentPaise": 640,
+     "budgetPaise": 3000,
+     "reason": "",
+     "createdAt": 1793020200000,
+     "updatedAt": 1793023800000,
+     "checkpoint": {
+      "notes": ""
+     }
+    },
+    {
+     "id": "7c1d2e3f-0000-4000-8000-000000000004",
+     "projectId": "11111111-1111-4111-8111-111111111111",
+     "branch": "tailzu/add-dark-mode-3f9a",
+     "task": "Add dark mode",
+     "state": "waiting_for_you",
+     "waitingOn": "approval",
+     "spentPaise": 120,
+     "budgetPaise": 4000,
+     "reason": "",
+     "createdAt": 1793196300000,
+     "updatedAt": 1793196540000,
+     "checkpoint": {
+      "notes": ""
+     }
+    },
+    {
+     "id": "7c1d2e3f-0000-4000-8000-000000000005",
+     "projectId": "22222222-2222-4222-8222-222222222222",
+     "branch": "tailzu/x",
+     "task": "Upgrade Flutter",
+     "state": "done",
+     "waitingOn": null,
+     "spentPaise": 900,
+     "budgetPaise": 3000,
+     "reason": "",
+     "createdAt": 1792764600000,
+     "updatedAt": 1792766400000,
+     "checkpoint": {
+      "notes": ""
+     }
+    },
+    {
+     "id": "7c1d2e3f-0000-4000-8000-000000000006",
+     "projectId": "22222222-2222-4222-8222-222222222222",
+     "branch": "tailzu/y",
+     "task": "Fix OTP timer",
+     "state": "done",
+     "waitingOn": null,
+     "spentPaise": 1400,
+     "budgetPaise": 3000,
+     "reason": "",
+     "createdAt": 1792678200000,
+     "updatedAt": 1792681200000,
+     "checkpoint": {
+      "notes": ""
+     }
+    },
+    {
+     "id": "7c1d2e3f-0000-4000-8000-000000000007",
+     "projectId": "33333333-3333-4333-8333-333333333333",
+     "branch": "tailzu/z",
+     "task": "Fix broken links in the guides",
+     "state": "done",
+     "waitingOn": null,
+     "spentPaise": 420,
+     "budgetPaise": 3000,
+     "reason": "",
+     "createdAt": 1793106600000,
+     "updatedAt": 1793110200000,
+     "checkpoint": {
+      "notes": ""
+     }
+    }
+   ]
+  },
+  "GET /v1/code/projects/11111111-1111-4111-8111-111111111111/brain": {
+   "status": "ready",
+   "progress": {
+    "pct": 100,
+    "phase": "ready"
+   },
+   "builtAt": 1793178600000,
+   "structure": {
+    "note": "",
+    "fileCount": 1284,
+    "analysedCount": 1200,
+    "languages": [
+     {
+      "lang": "TypeScript",
+      "pct": 88
+     }
+    ],
+    "frameworks": [
+     "Next.js",
+     "Supabase"
+    ],
+    "readme": {
+     "title": "Storefront"
+    },
+    "secretFiles": [
+     ".env.local"
+    ],
+    "testing": {
+     "frameworks": [
+      "vitest"
+     ],
+     "testFiles": 215,
+     "untestedHot": [
+      "app/checkout/page.tsx"
+     ]
+    }
+   },
+   "features": [
+    {
+     "name": "Home",
+     "files": [
+      "app/page.tsx"
+     ],
+     "fileCount": 12
+    },
+    {
+     "name": "Product page",
+     "files": [
+      "app/p/[id]/page.tsx"
+     ],
+     "fileCount": 31
+    },
+    {
+     "name": "Cart",
+     "files": [
+      "lib/cart/total.ts"
+     ],
+     "fileCount": 18
+    },
+    {
+     "name": "Checkout",
+     "files": [
+      "app/checkout/page.tsx"
+     ],
+     "fileCount": 22
+    },
+    {
+     "name": "Sign-in",
+     "files": [
+      "app/login/page.tsx"
+     ],
+     "fileCount": 9
+    },
+    {
+     "name": "Payments",
+     "files": [
+      "lib/upi.ts"
+     ],
+     "fileCount": 7
+    },
+    {
+     "name": "Orders API",
+     "files": [
+      "app/api/orders/route.ts"
+     ],
+     "fileCount": 5
+    },
+    {
+     "name": "Database",
+     "files": [
+      "supabase/schema.sql"
+     ],
+     "fileCount": 4
+    }
+   ],
+   "conventions": {
+    "linter": [
+     "eslint"
+    ],
+    "formatter": [
+     "prettier"
+    ]
+   },
+   "baseline": {
+    "plan": [
+     {
+      "kind": "install",
+      "cmd": "pnpm install"
+     },
+     {
+      "kind": "lint",
+      "cmd": "pnpm lint"
+     },
+     {
+      "kind": "typecheck",
+      "cmd": "pnpm typecheck"
+     },
+     {
+      "kind": "test",
+      "cmd": "pnpm test"
+     },
+     {
+      "kind": "build",
+      "cmd": "pnpm build"
+     }
+    ],
+    "recorded": {
+     "at": 1793178600000,
+     "healthy": false,
+     "results": [
+      {
+       "kind": "lint",
+       "exitCode": 0,
+       "summary": "ok"
+      },
+      {
+       "kind": "test",
+       "exitCode": 1,
+       "summary": "212 passed, 3 failed",
+       "failing": [
+        "payments/refund.test.ts",
+        "emails/receipt.test.ts",
+        "search/filters.test.ts"
+       ]
+      }
+     ]
+    }
+   }
+  },
+  "GET /v1/code/projects/22222222-2222-4222-8222-222222222222/brain": {
+   "status": "ready",
+   "progress": {
+    "pct": 100,
+    "phase": "ready"
+   },
+   "builtAt": 1793178600000,
+   "structure": {
+    "note": "",
+    "fileCount": 1284,
+    "analysedCount": 1200,
+    "languages": [
+     {
+      "lang": "Dart",
+      "pct": 90
+     }
+    ],
+    "frameworks": [
+     "Flutter"
+    ],
+    "readme": {
+     "title": "Storefront"
+    },
+    "secretFiles": [
+     ".env.local"
+    ],
+    "testing": {
+     "frameworks": [],
+     "testFiles": 12,
+     "untestedHot": []
+    }
+   },
+   "features": [
+    {
+     "name": "Home",
+     "files": [
+      "app/page.tsx"
+     ],
+     "fileCount": 12
+    },
+    {
+     "name": "Product page",
+     "files": [
+      "app/p/[id]/page.tsx"
+     ],
+     "fileCount": 31
+    },
+    {
+     "name": "Cart",
+     "files": [
+      "lib/cart/total.ts"
+     ],
+     "fileCount": 18
+    },
+    {
+     "name": "Checkout",
+     "files": [
+      "app/checkout/page.tsx"
+     ],
+     "fileCount": 22
+    },
+    {
+     "name": "Sign-in",
+     "files": [
+      "app/login/page.tsx"
+     ],
+     "fileCount": 9
+    },
+    {
+     "name": "Payments",
+     "files": [
+      "lib/upi.ts"
+     ],
+     "fileCount": 7
+    },
+    {
+     "name": "Orders API",
+     "files": [
+      "app/api/orders/route.ts"
+     ],
+     "fileCount": 5
+    },
+    {
+     "name": "Database",
+     "files": [
+      "supabase/schema.sql"
+     ],
+     "fileCount": 4
+    }
+   ],
+   "conventions": {
+    "linter": [
+     "eslint"
+    ],
+    "formatter": [
+     "prettier"
+    ]
+   },
+   "baseline": {
+    "plan": [],
+    "recorded": {
+     "at": 1793196600000,
+     "healthy": true,
+     "results": [
+      {
+       "kind": "test",
+       "exitCode": 0,
+       "summary": "88 passed"
+      }
+     ]
+    }
+   }
+  },
+  "GET /v1/code/projects/33333333-3333-4333-8333-333333333333/brain": {
+   "status": "ready",
+   "structure": {
+    "fileCount": 140,
+    "frameworks": [
+     "Astro"
+    ],
+    "languages": [
+     {
+      "lang": "MDX",
+      "pct": 70
+     }
+    ],
+    "readme": {
+     "title": "Docs"
+    },
+    "testing": {
+     "frameworks": [],
+     "testFiles": 0,
+     "untestedHot": []
+    }
+   },
+   "features": [],
+   "baseline": null
+  },
+  "GET /v1/code/projects/11111111-1111-4111-8111-111111111111/branches": {
+   "branches": [
+    {
+     "branch": "tailzu/fix-cart-total-rounding-1a2b",
+     "task": "Fix cart total rounding",
+     "prNumber": 128,
+     "prUrl": "https://github.com/aanya-sharma/storefront/pull/128",
+     "state": "pr_open",
+     "createdAt": 1793195400000
+    },
+    {
+     "branch": "rohan/filters",
+     "task": "Product filters on phones",
+     "prNumber": 127,
+     "prUrl": "https://github.com/aanya-sharma/storefront/pull/127",
+     "state": "pr_open",
+     "createdAt": 1793110200000
+    },
+    {
+     "branch": "tailzu/add-hindi-to-sign-up-77aa",
+     "task": "Add Hindi to sign-up",
+     "prNumber": 126,
+     "prUrl": "https://github.com/aanya-sharma/storefront/pull/126",
+     "state": "merged",
+     "createdAt": 1793020200000
+    }
+   ]
+  },
+  "GET /v1/code/projects/11111111-1111-4111-8111-111111111111": {
+   "project": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "fullName": "aanya-sharma/storefront",
+    "defaultBranch": "main",
+    "private": true,
+    "createdAt": 1790604600000
+   }
+  },
+  "GET /v1/code/repos": {
+   "repos": [
+    {
+     "id": 101,
+     "fullName": "aanya-sharma/storefront",
+     "private": true,
+     "defaultBranch": "main",
+     "installationId": 1
+    },
+    {
+     "id": 102,
+     "fullName": "aanya-sharma/mobile-app",
+     "private": true,
+     "defaultBranch": "main",
+     "installationId": 1
+    },
+    {
+     "id": 103,
+     "fullName": "aanya-sharma/docs-site",
+     "private": false,
+     "defaultBranch": "main",
+     "installationId": 1
+    },
+    {
+     "id": 104,
+     "fullName": "aanya-sharma/api-server",
+     "private": true,
+     "defaultBranch": "develop",
+     "installationId": 1
+    },
+    {
+     "id": 105,
+     "fullName": "aanya-sharma/salon-booking",
+     "private": true,
+     "defaultBranch": "main",
+     "installationId": 1
+    }
+   ],
+   "truncated": false
+  },
+  "GET /v1/code/new-repo-link?name=my-new-project": {
+   "url": "https://github.com/new?name=my-new-project&visibility=private",
+   "name": "my-new-project"
+  },
+  "GET /v1/code/jobs/7c1d2e3f-0000-4000-8000-000000000004": {
+   "job": {
+    "id": "7c1d2e3f-0000-4000-8000-000000000004",
+    "projectId": "11111111-1111-4111-8111-111111111111",
+    "branch": "tailzu/add-dark-mode-3f9a",
+    "task": "Add dark mode",
+    "state": "waiting_for_you",
+    "waitingOn": "approval",
+    "spentPaise": 120,
+    "budgetPaise": 4000,
+    "reason": "",
+    "createdAt": 1793196300000,
+    "updatedAt": 1793196540000,
+    "checkpoint": {
+     "notes": ""
+    }
+   },
+   "agent": {
+    "phase": "plan",
+    "waiting": {
+     "kind": "approval",
+     "for": "plan",
+     "action": "job.plan",
+     "faceId": false
+    },
+    "plan": {
+     "risk": "medium",
+     "steps": [
+      {
+       "n": 1,
+       "do": "Add a light and a dark colour set",
+       "files": [
+        "edit app/globals.css",
+        "edit tailwind.config.ts"
+       ]
+      },
+      {
+       "n": 2,
+       "do": "Remember each person's choice",
+       "files": [
+        "create lib/theme.ts",
+        "edit app/layout.tsx"
+       ]
+      },
+      {
+       "n": 3,
+       "do": "Put a Light / Dark switch in Settings",
+       "files": [
+        "edit app/settings/page.tsx"
+       ]
+      },
+      {
+       "n": 4,
+       "do": "Fix booking cards and time slots",
+       "files": [
+        "edit ui/BookingCard.tsx",
+        "edit ui/SlotPicker.tsx"
+       ]
+      },
+      {
+       "n": 5,
+       "do": "Check every page in both modes",
+       "files": [
+        "create tests/theme.spec.ts"
+       ]
+      }
+     ]
+    },
+    "staged": [],
+    "commits": [],
+    "notes": []
+   }
+  },
+  "GET /v1/code/jobs/7c1d2e3f-0000-4000-8000-000000000001": {
+   "job": {
+    "id": "7c1d2e3f-0000-4000-8000-000000000001",
+    "projectId": "11111111-1111-4111-8111-111111111111",
+    "branch": "tailzu/fix-cart-total-rounding-1a2b",
+    "task": "Fix cart total rounding",
+    "state": "waiting_for_you",
+    "waitingOn": "approval",
+    "spentPaise": 640,
+    "budgetPaise": 3000,
+    "reason": "",
+    "createdAt": 1793195400000,
+    "updatedAt": 1793196480000,
+    "checkpoint": {
+     "notes": "step 3 of 5"
+    }
+   },
+   "agent": {
+    "phase": "report",
+    "waiting": {
+     "kind": "approval",
+     "for": "ready"
+    },
+    "pr": {
+     "number": 128,
+     "url": "https://github.com/aanya-sharma/storefront/pull/128",
+     "ready": false
+    },
+    "verify": {
+     "ran": true,
+     "ok": true,
+     "summary": "18 of 18 tests pass"
+    },
+    "staged": [],
+    "commits": [
+     "a"
+    ],
+    "notes": []
+   }
+  },
+  "GET /v1/bots/code/projects/11111111-1111-4111-8111-111111111111/changes?branch=tailzu%2Ffix-cart-total-rounding-1a2b&job=7c1d2e3f-0000-4000-8000-000000000001": {
+   "files": [
+    {
+     "path": "cart/total.ts",
+     "status": "modified",
+     "additions": 4,
+     "deletions": 2,
+     "why": "Rounds each line first, then adds, the way your invoices do.",
+     "hunks": [
+      {
+       "lines": [
+        {
+         "kind": "ctx",
+         "n": 3,
+         "text": "export function cartTotal(items: Item[]): number {"
+        },
+        {
+         "kind": "del",
+         "n": 4,
+         "text": "  const sum = items.reduce((a, i) => a + i.price * i.qty, 0);"
+        },
+        {
+         "kind": "del",
+         "n": 5,
+         "text": "  return round(sum);"
+        },
+        {
+         "kind": "add",
+         "n": 4,
+         "text": "  // Round each line first, like invoices."
+        },
+        {
+         "kind": "add",
+         "n": 5,
+         "text": "  return items"
+        },
+        {
+         "kind": "add",
+         "n": 6,
+         "text": "    .map((i) => roundItem(i.price * i.qty))"
+        },
+        {
+         "kind": "add",
+         "n": 7,
+         "text": "    .reduce((a, b) => a + b, 0);"
+        },
+        {
+         "kind": "ctx",
+         "n": 8,
+         "text": "}"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "path": "cart/total.test.ts",
+     "status": "modified",
+     "additions": 21,
+     "deletions": 0,
+     "why": "Two new tests: odd paise per item, and a 0-quantity line.",
+     "hunks": [
+      {
+       "lines": [
+        {
+         "kind": "add",
+         "n": 31,
+         "text": "it(\"rounds each line, like invoices\", () => {"
+        },
+        {
+         "kind": "add",
+         "n": 32,
+         "text": "  const items = [line(10.005), line(10.005)];"
+        },
+        {
+         "kind": "add",
+         "n": 33,
+         "text": "  expect(cartTotal(items)).toBe(20.02);"
+        },
+        {
+         "kind": "add",
+         "n": 34,
+         "text": "});"
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "path": "CHANGELOG.md",
+     "status": "modified",
+     "additions": 1,
+     "deletions": 0,
+     "why": "Noted the fix.",
+     "hunks": [
+      {
+       "lines": [
+        {
+         "kind": "add",
+         "n": 12,
+         "text": "- Cart total now rounds each line, like invoices."
+        }
+       ]
+      }
+     ]
+    }
+   ],
+   "totals": {
+    "files": 3,
+    "additions": 26,
+    "deletions": 2
+   },
+   "commits": 3,
+   "truncated": false
+  },
+  "GET /v1/code/projects/11111111-1111-4111-8111-111111111111/branches/tailzu%2Ffix-cart-total-rounding-1a2b/pr": {
+   "number": 128,
+   "url": "https://github.com/aanya-sharma/storefront/pull/128",
+   "title": "Fix cart total rounding",
+   "state": "open",
+   "draft": true,
+   "mergeable": true,
+   "reviewDecision": null,
+   "reviewComments": 2
+  },
+  "GET /v1/code/projects/11111111-1111-4111-8111-111111111111/care": {
+   "pulls": [
+    {
+     "prNumber": 128,
+     "branch": "tailzu/fix-cart-total-rounding-1a2b",
+     "origin": "tailzu",
+     "prUrl": "https://github.com/aanya-sharma/storefront/pull/128",
+     "title": "Add dark mode",
+     "ended": null,
+     "checks": {
+      "outcome": "green",
+      "names": [
+       "pnpm lint",
+       "pnpm typecheck",
+       "pnpm test",
+       "pnpm e2e"
+      ],
+      "note": "A test failed on Safari. I fixed it on my own: wait for theme to load (e41b7c2)."
+     },
+     "conflict": null,
+     "waiting": null,
+     "working": [],
+     "notes": [
+      {
+       "at": 1793180400000,
+       "text": "Opened the PR with 4 commits"
+      },
+      {
+       "at": 1793181900000,
+       "text": "Kept print pages light, as Rohan asked"
+      },
+      {
+       "at": 1793183520000,
+       "text": "Answered Meera, no change needed"
+      },
+      {
+       "at": 1793185920000,
+       "text": "Theme test failed on Safari"
+      },
+      {
+       "at": 1793186400000,
+       "text": "Fixed it and pushed one commit"
+      },
+      {
+       "at": 1793186640000,
+       "text": "All 4 checks pass"
+      }
+     ]
+    }
+   ]
+  },
+  "GET /v1/code/projects/11111111-1111-4111-8111-111111111111/branches/tailzu%2Ffix-cart-total-rounding-1a2b/pr/comments": {
+   "comments": [
+    {
+     "author": "rohan-k",
+     "body": "Receipts print dark now. Can print pages stay light?",
+     "path": "receipt/print.css",
+     "createdAt": 1793181120000
+    },
+    {
+     "author": "tailzu[bot]",
+     "body": "Yes. Print pages now always use the light theme. Pushed in 3f9a2d1.",
+     "createdAt": 1793181900000
+    },
+    {
+     "author": "meera-i",
+     "body": "Will this change the booking emails too?",
+     "path": "emails/booking.tsx",
+     "createdAt": 1793182800000
+    }
+   ]
+  },
+  "GET /v1/code/projects/11111111-1111-4111-8111-111111111111/branches/tailzu%2Ffix-cart-total-rounding-1a2b/diff": {
+   "aheadBy": 6,
+   "behindBy": 0,
+   "commits": [
+    {
+     "sha": "0",
+     "message": "m"
+    },
+    {
+     "sha": "1",
+     "message": "m"
+    },
+    {
+     "sha": "2",
+     "message": "m"
+    },
+    {
+     "sha": "3",
+     "message": "m"
+    },
+    {
+     "sha": "4",
+     "message": "m"
+    },
+    {
+     "sha": "5",
+     "message": "m"
+    }
+   ],
+   "files": [],
+   "totals": {
+    "files": 8,
+    "additions": 171,
+    "deletions": 21
+   },
+   "truncated": false
+  },
+  "GET /v1/bots/code/projects/11111111-1111-4111-8111-111111111111/rules": {
+   "project": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "fullName": "aanya-sharma/salon-booking",
+    "defaultBranch": "main"
+   },
+   "rules": {
+    "prs": "yes",
+    "merge": "ask",
+    "main": "never"
+   },
+   "capPaise": 4000,
+   "capSet": true,
+   "typical": [
+    400,
+    1400
+   ],
+   "checks": [
+    "pnpm lint",
+    "pnpm typecheck",
+    "pnpm test",
+    "pnpm e2e"
+   ],
+   "branchExample": "tailzu/add-dark-mode-3f9a",
+   "computers": [
+    {
+     "name": "Aanya's MacBook",
+     "on": true
+    }
+   ]
+  }
+ },
+ "variants": {
+  "single": {
+   "GET /v1/code/projects": {
+    "projects": [
+     {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "fullName": "aanya-sharma/storefront",
+      "defaultBranch": "main",
+      "private": true,
+      "createdAt": 1790604600000
+     }
+    ]
+   }
+  },
+  "building": {
+   "GET /v1/code/projects/11111111-1111-4111-8111-111111111111/brain": {
+    "status": "building",
+    "progress": {
+     "pct": 64,
+     "phase": "connecting the files"
+    },
+    "structure": {
+     "fileCount": 1284,
+     "testing": {
+      "frameworks": [
+       "vitest"
+      ],
+      "testFiles": 215,
+      "untestedHot": []
+     },
+     "frameworks": [
+      "Next.js"
+     ]
+    },
+    "features": [
+     {
+      "name": "Home",
+      "files": [
+       "app/page.tsx"
+      ],
+      "fileCount": 12
+     },
+     {
+      "name": "Product page",
+      "files": [
+       "app/p/[id]/page.tsx"
+      ],
+      "fileCount": 31
+     },
+     {
+      "name": "Cart",
+      "files": [
+       "lib/cart/total.ts"
+      ],
+      "fileCount": 18
+     },
+     {
+      "name": "Checkout",
+      "files": [
+       "app/checkout/page.tsx"
+      ],
+      "fileCount": 22
+     },
+     {
+      "name": "Sign-in",
+      "files": [
+       "app/login/page.tsx"
+      ],
+      "fileCount": 9
+     }
+    ],
+    "conventions": null,
+    "baseline": null
+   }
+  },
+  "ask": {
+   "GET /v1/bots/code/projects/11111111-1111-4111-8111-111111111111/intake": {
+    "project": {
+     "id": "11111111-1111-4111-8111-111111111111",
+     "fullName": "aanya-sharma/salon-booking"
+    },
+    "request": "A booking app for my salon, Glow Studio in Pune",
+    "answers": {
+     "what": "Customers of Glow Studio, Pune"
+    },
+    "questions": [
+     {
+      "id": "platforms",
+      "ask": "Where should it run: a website, an iPhone or Android app, a desktop app, or just an API?",
+      "why": "It decides what gets built first and how it is hosted."
+     },
+     {
+      "id": "features",
+      "ask": "What must the first version be able to do? A short list is perfect.",
+      "why": "A small first version is finished sooner."
+     },
+     {
+      "id": "constraints",
+      "ask": "Any limits I should plan around: a budget, hosting you already have, or a stack you would like me to use?",
+      "why": "So I choose what you can run."
+     }
+    ],
+    "answered": [
+     "what"
+    ],
+    "state": "asking"
+   }
+  },
+  "done": {
+   "GET /v1/bots/code/projects/11111111-1111-4111-8111-111111111111/intake": {
+    "project": {
+     "id": "11111111-1111-4111-8111-111111111111",
+     "fullName": "aanya-sharma/salon-booking"
+    },
+    "request": "A booking app for my salon, Glow Studio in Pune",
+    "answers": {
+     "what": "Customers of Glow Studio, Pune"
+    },
+    "questions": [],
+    "answered": [
+     "what",
+     "platforms",
+     "features",
+     "constraints",
+     "examples"
+    ],
+    "state": "done",
+    "spec": {
+     "name": "Salon booking app",
+     "summary": "For Glow Studio, Pune. Customers pick a service and a time; you see the whole day at a glance.",
+     "platforms": [
+      "web"
+     ],
+     "features": [
+      "Book"
+     ]
+    },
+    "stack": {
+     "label": "Next.js + Supabase",
+     "hosting": "Vercel",
+     "tier": "free"
+    },
+    "milestones": [
+     {
+      "k": 0,
+      "title": "Setup, sign-in, first preview"
+     },
+     {
+      "k": 1,
+      "title": "Services and prices"
+     },
+     {
+      "k": 2,
+      "title": "Pick a time, book, get a reminder"
+     },
+     {
+      "k": 3,
+      "title": "Owner dashboard"
+     }
+    ]
+   }
+  },
+  "meet": {
+   "GET /v1/code/github": {
+    "configured": true,
+    "connected": false,
+    "installations": []
+   },
+   "GET /v1/code/projects": {
+    "projects": []
+   },
+   "POST /v1/code/github/connect": {
+    "installUrl": "https://github.com/apps/tailzu/installations/new?state=x"
+   }
+  }
+ }
+}
