@@ -55,6 +55,13 @@ import { registerCodeInternalRoutes } from "./routes/codeInternal.js";
 import { createBots } from "./bots/index.js";
 import { botPorts } from "./bots/wire.js";
 import { registerBotRoutes } from "./routes/bots.js";
+import { registerBotsShellRoutes } from "./routes/botsShell.js";
+import { registerBotsYouRoutes } from "./routes/botsYou.js";
+import { registerBotsBotsRoutes } from "./routes/botsBots.js";
+import { registerBotsKeybotRoutes } from "./routes/botsKeybot.js";
+import { registerBotsCodeRoutes } from "./routes/botsCode.js";
+import { registerBotsCodeWorkRoutes } from "./routes/botsCodeWork.js";
+import { registerBotsFirstRunRoutes } from "./routes/botsFirstRun.js";
 import { jobsHandoffFromConfig } from "./code/jobs/handoff/index.js";
 import { sessionOffers } from "./code/live/offers.js";
 import { jobStore } from "./code/jobs/store.js";
@@ -1137,6 +1144,14 @@ const front = createFront({ artifacts, code, jobs: codeJobs, agent: codeAgent, l
 // apps (same permission tiers), the files, the artifact core, the Code bot's chat and the web; migration 0038 keeps the bots, their keys (hashed), commands and memory.
 const bots = createBots({ ports: botPorts({ connectors, media, artifacts, code }), ...(front ? { guard: front.guard } : {}) });
 registerBotRoutes(app, { rateLimit: AUTHED_RL, bots });
+const botsAreaDeps = { rateLimit: AUTHED_RL, bots, code, jobs: codeJobs, connectors, media, artifacts };
+registerBotsShellRoutes(app, botsAreaDeps);
+registerBotsYouRoutes(app, botsAreaDeps);
+registerBotsBotsRoutes(app, botsAreaDeps);
+registerBotsKeybotRoutes(app, botsAreaDeps);
+registerBotsCodeRoutes(app, botsAreaDeps);
+registerBotsCodeWorkRoutes(app, botsAreaDeps);
+registerBotsFirstRunRoutes(app, botsAreaDeps);
 const frontRoutes = registerFrontRoutes(app, {
   rateLimit: AUTHED_RL, front, bots,
   quota: (user) => enforceQuota(user),
