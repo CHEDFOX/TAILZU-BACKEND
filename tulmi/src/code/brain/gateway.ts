@@ -260,14 +260,17 @@ class CallFailure extends Error {
    * `cause` is the error the SDK threw, so a failure that ends a job still says what the model's side said. `reasoningRequired`: the 400 for turning thinking
    * off in a model that cannot. `cutShort`: the empty answer stopped because it ran out of max_tokens (the thinking took them all).
    */
-  constructor(readonly kind: "http" | "timeout" | "empty", readonly status?: number, readonly retryAfterMs?: number, o: { cause?: unknown; reasoningRequired?: boolean; cutShort?: boolean } = {}) {
-    super(`model call failed (${kind}${status === undefined ? "" : ` ${status}`})`, o.cause !== undefined ? { cause: o.cause } : undefined);
+  constructor(readonly kind: "http" | "timeout" | "empty", readonly status?: number, readonly retryAfterMs?: number, o: { cause?: unknown; reasoningRequired?: boolean; cutShort?: boolean; dropped?: boolean } = {}) {
+    super(`model call failed (${kind}${status === undefined ? (o.dropped ? ", connection dropped" : "") : ` ${status}`})`, o.cause !== undefined ? { cause: o.cause } : undefined);
     this.name = "CallFailure";
     this.reasoningRequired = o.reasoningRequired === true;
     this.cutShort = o.cutShort === true;
+    this.dropped = o.dropped === true;
   }
   readonly reasoningRequired: boolean;
   readonly cutShort: boolean;
+  /** The connection dropped before an answer (droppedConnection): retried once, like a 5xx. */
+  readonly dropped: boolean;
 }
 
 class JsonInvalid extends Error {
@@ -300,6 +303,20 @@ function retryAfterOf(err: unknown): number | undefined {
 }
 
 const transient = (status: number | undefined): boolean => status !== undefined && (status === 429 || status >= 500);
+
+/**
+ * A connection that dropped before any answer came, so it has no status: the SDK's "Connection error.", undici's "terminated" or "fetch failed", a reset
+ * socket. A second try mends it as often as it mends a 5xx, so it gets the same one retry. It was treated as final: one dropped socket climbed a ladder
+ * whose every rung was the same model, opened its breaker, and the job ended "No model could be reached" (the paid comparison, 2026-10-28). A timeout of
+ * our own is not this (a hung call is not retried), nor is any error that carries a status.
+ */
+export function droppedConnection(err: unknown): boolean {
+  if (statusOf(err) !== undefined) return false;
+  const e = err as { name?: unknown; message?: unknown; code?: unknown; cause?: { code?: unknown; message?: unknown } | null } | null;
+  if (!e || e.name === "AbortError") return false;
+  const text = [e.name, e.message, e.code, e.cause?.code, e.cause?.message].map((x) => (typeof x === "string" ? x : "")).join(" ");
+  return /APIConnectionError|Connection error|terminated|fetch failed|socket hang up|other side closed|ECONNRESET|ECONNREFUSED|EPIPE|EAI_AGAIN|UND_ERR_SOCKET/i.test(text);
+}
 
 /** The breakers a model is behind: its own slug, and its provider (the slug's vendor). */
 const breakerKeys = (model: string): string[] => [`model:${model}`, `provider:${familyOf(model)}`];
@@ -592,7 +609,7 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
       }
       const failure = err instanceof CallFailure ? err
         : new CallFailure(timedOut ? "timeout" : "http", statusOf(err), transient(statusOf(err)) ? retryAfterOf(err) : undefined, {
-          cause: err, reasoningRequired: offSent && !timedOut && isReasoningRequiredError(err),
+          cause: err, reasoningRequired: offSent && !timedOut && isReasoningRequiredError(err), dropped: !timedOut && droppedConnection(err),
         });
       rec.outcome = failure.kind === "timeout" ? "timeout" : "failed";
       if (failure.status !== undefined) rec.status = failure.status;
@@ -679,7 +696,7 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
             how.bigger = true;
             continue;
           }
-          if (err instanceof CallFailure && err.kind === "http" && transient(err.status) && !retried) {
+          if (err instanceof CallFailure && err.kind === "http" && (transient(err.status) || err.dropped) && !retried) {
             retried = true;
             entry.retried = true;
             await sleep(retryJitter(err.retryAfterMs ?? RETRY_BASE_MS, random));

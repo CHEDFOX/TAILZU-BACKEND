@@ -3,7 +3,7 @@
  *
  *   quick      about 12 tasks (the smallest set that touches every category and stage, plus a couple), the comparisons on the first 6 of them, 3 models
  *   standard   about 24 tasks, comparisons on 12, 5 models, every contestant
- *   deep       all 65 tasks, comparisons on all of them, 8 models, every contestant, repeats for flaky results
+ *   deep       all 71 tasks, comparisons on all of them, 8 models, every contestant, repeats for flaky results
  *
  * THE ESTIMATE (`estimateStages`) is made before anything is spent, per stage, from OpenRouter's live prices through the proxy the environment names:
  *   expected   what the stage should spend with its early stops working (a dominated contestant dropped after the first round, a result already in the store not paid again)
@@ -19,6 +19,7 @@ import path from "node:path";
 import { ASSUMED, loadCatalog, type Catalog } from "../catalog.js";
 import { CliExit } from "../cli.js";
 import { contestantRows } from "../bakeoff/contestants.js";
+import { isOurs } from "../agents/tailzu.js";
 import { estimateGrid } from "../bakeoff/contestants.js";
 import { candidateModels, contextStrategyEstimate, editFormatsEstimate, routerEstimate, strategyTasks, type PartCtx } from "../bakeoff/centparts.js";
 import { loadPools } from "../bakeoff/pools.js";
@@ -33,7 +34,7 @@ import { bestModels, probeKeyNow, probeNeeds } from "./scoreboard.js";
 import type { SimScenario } from "./sim.js";
 import { storeFor, type ResultKey, type ResultsStore } from "./store.js";
 import { StageOverrun } from "./compare.js";
-import { loadTasks, type Task } from "../tasks/schema.js";
+import { loadTasks, selectTasks, type Task } from "../tasks/schema.js";
 import { OUT_DIR, mkdirp, readJson, writeJson } from "../util.js";
 import type { Arm, Mode, PlanName, StageEstimate, StageId } from "./types.js";
 import { STAGE_TITLES } from "./types.js";
@@ -57,7 +58,7 @@ export interface PlanSpec {
 export const PLAN_SPECS: Record<PlanName, PlanSpec> = {
   quick: { tasks: PLAN_TASKS.quick, compareTasks: 6, models: 3, minTasks: 4, roundSize: 2, maxRepeats: 1, agents: ["tailzu", "aider", "opencode", "mini-swe-agent"], share: { 0: 0, 1: 0.08, 2: 0.04, 3: 0.28, 4: 0.45, 5: 0.15 } },
   standard: { tasks: PLAN_TASKS.standard, compareTasks: 12, models: 5, minTasks: 4, roundSize: 3, maxRepeats: 1, agents: ["tailzu", "aider", "opencode", "codex", "openhands", "mini-swe-agent"], share: { 0: 0, 1: 0.06, 2: 0.03, 3: 0.3, 4: 0.46, 5: 0.15 } },
-  deep: { tasks: PLAN_TASKS.deep, compareTasks: 65, models: 8, minTasks: 5, roundSize: 5, maxRepeats: 2, agents: ["tailzu", "aider", "opencode", "codex", "openhands", "mini-swe-agent"], share: { 0: 0, 1: 0.04, 2: 0.02, 3: 0.32, 4: 0.5, 5: 0.12 } },
+  deep: { tasks: PLAN_TASKS.deep, compareTasks: PLAN_TASKS.deep, models: 8, minTasks: 5, roundSize: 5, maxRepeats: 2, agents: ["tailzu", "aider", "opencode", "codex", "openhands", "mini-swe-agent"], share: { 0: 0, 1: 0.04, 2: 0.02, 3: 0.32, 4: 0.5, 5: 0.12 } },
 };
 
 export interface RealityOptions {
@@ -88,6 +89,8 @@ export interface RealityOptions {
   poolsFile?: string;
   /** Cap the sample and the comparisons at this many tasks (a quick look, a proof). */
   taskLimit?: number;
+  /** These tasks instead of the stratified sample (`--tasks`): ids, in the order given, or a glob (tag:, category:, repo:), in id order. */
+  taskGlob?: string;
 }
 
 export interface Ctx extends RealityOptions {
@@ -137,7 +140,26 @@ export async function buildCtx(o: RealityOptions): Promise<Ctx> {
     cost: (t) => { const s = REAL_SHAPE[t.category] ?? REAL_SHAPE.bug!; return inrOf(catalog, fx, code, s.inTokens, s.outTokens); },
   });
   const agentModel = o.agentModel ?? candidateModels(catalog, ["code"], 1)[0] ?? loadPools(o.poolsFile).tiers.code[0] ?? "deepseek/deepseek-v4.1-flash";
-  return { ...o, fx, catalog, store, pool, repos, blocked, sample, spec, agentModel, priceSource: catalog.source };
+  const chosen = o.taskGlob ? chosenSample(o.taskGlob, pool, blocked) : null;
+  return { ...o, fx, catalog, store, pool, repos, blocked, sample: chosen ?? sample, spec: chosen ? { ...spec, tasks: chosen.ordered.length, compareTasks: chosen.ordered.length } : spec, agentModel, priceSource: catalog.source };
+}
+
+/**
+ * The tasks named on the command line, as the sample: ids in the order given (a comparison adds them in that order), or what a glob matches, in id order. A task
+ * whose project cannot run here is left out and named, as the sampler does.
+ */
+export function chosenSample(glob: string, pool: readonly Task[], blocked: ReadonlyMap<string, string>): Sample {
+  const parts = glob.split(",").map((x) => x.trim()).filter(Boolean);
+  const literal = parts.every((x) => /^[a-z0-9][a-z0-9._-]*$/i.test(x) && !x.includes("*"));
+  const byId = new Map(pool.map((t) => [t.id, t]));
+  const picked = literal ? parts.map((id) => byId.get(id)).filter((t): t is Task => !!t) : selectTasks(pool, glob);
+  if (!picked.length) throw new CliExit(2, `--tasks ${glob} matches no task`);
+  const ordered = picked.filter((t) => !blocked.has(t.id));
+  const skipped = picked.filter((t) => blocked.has(t.id)).map((t) => ({ id: t.id, category: t.category, repo: t.repo, reason: blocked.get(t.id)! }));
+  return {
+    ordered, cover: ordered, covered: { categories: [...new Set(ordered.map((t) => t.category))], stages: [] }, uncovered: [], skipped,
+    why: Object.fromEntries(ordered.map((t) => [t.id, "named with --tasks"])),
+  };
 }
 
 // ----------------------------------------------------------------------- what the comparisons run
@@ -181,7 +203,7 @@ const MAX_FACTOR = 1.7;
 /**
  * The arm x task cells a comparison is expected to run once the stopping rule works: the two arms in contention run on until the answer is clear (about the first
  * round, three more rounds and a fifth of the tasks, at most all of them); every other arm is dropped after about two rounds. Of the full grid that is most of it for
- * a short list of tasks and about a quarter of it for 65.
+ * a short list of tasks and about a quarter of it for 71.
  */
 export function expectedCells(arms: number, tasks: number, minTasks: number, roundSize: number): number {
   if (arms <= 1 || tasks <= 0) return Math.max(0, arms * tasks);
@@ -245,12 +267,12 @@ export function estimateStages(ctx: Ctx): StageEstimate[] {
   let cells4 = 0;
   for (const g of groupPlans(ctx)) {
     const model = g.group === "agents" ? ctx.agentModel : codeModel;
-    const grid = estimateGrid({ agents: g.arms.map((a) => a.agent).filter((x, i, a) => a.indexOf(x) === i), models: [model], tasks: 1, catalog, fx });
+    const grid = estimateGrid({ agents: g.arms.map((a) => a.agent).filter((x, i, a) => a.indexOf(x) === i && !isOurs(x)), models: [model], tasks: 1, catalog, fx });
     let full = 0, reused = 0;
     for (const arm of g.arms) {
       for (const t of g.tasks) {
         const s = REAL_SHAPE[t.category] ?? REAL_SHAPE.bug!;
-        const per = arm.agent === "tailzu" ? inrOf(catalog, fx, arm.model === "ladders" || arm.model === "oracle" || arm.model === "fake" || arm.model.startsWith("{") ? codeModel : arm.model, s.inTokens, s.outTokens) : (grid.perAgent.find((p) => p.agent === arm.agent)?.inrPerRun[model] ?? 0) * (s.inTokens / REAL_SHAPE.bug!.inTokens);
+        const per = isOurs(arm.agent) ? inrOf(catalog, fx, arm.model === "ladders" || arm.model === "oracle" || arm.model === "fake" || arm.model.startsWith("{") ? codeModel : arm.model, s.inTokens, s.outTokens) : (grid.perAgent.find((p) => p.agent === arm.agent)?.inrPerRun[model] ?? 0) * (s.inTokens / REAL_SHAPE.bug!.inTokens);
         cells4 += 1;
         if (store.reusable(taskKey(arm, t))) reused += per; else full += per;
       }

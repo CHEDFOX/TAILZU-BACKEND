@@ -259,7 +259,7 @@ describe("the system prompt", () => {
     expect(sys).not.toContain("Use tabs");
     expect(sys).not.toContain("npm ci");
     expect(tools.map((t) => t.name)).toEqual([
-      "read_file", "list_dir", "grep", "glob", "search_code", "edit_file", "write_file", "delete_file", "run", "web_search", "read_page", "research", "find_resources", "flag_finding", "note", "ask_user", "done",
+      "read_file", "list_dir", "grep", "glob", "search_code", "suggest_files", "edit_file", "write_file", "delete_file", "run", "web_search", "read_page", "research", "find_resources", "flag_finding", "note", "ask_user", "done",
     ]);
   });
 

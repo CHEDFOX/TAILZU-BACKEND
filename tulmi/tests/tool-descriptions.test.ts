@@ -20,8 +20,13 @@ const { AGENT_TOOLS, AGENT_TOOL_NAMES } = await import("../src/code/agent/tools.
 const { WEB_TOOLS } = await import("../src/code/webTools.js");
 const { TOOLS_BEFORE, toolSizes } = await import("../scripts/prompt-sizes.js");
 
-/** The measured size of the list as it is now. A tool that grows past it has grown back into a paragraph. */
-const MEASURED = { total: 7070, descriptions: 3065 };
+/**
+ * The measured size of the list as it is now. A tool that grows past it has grown back into a paragraph. Measured again on 2026-10-28, when suggest_files joined
+ * (free-form by default: the locate funnel as a tool) and the run tool learned to say that what a command writes is not kept.
+ */
+const MEASURED = { total: 7538, descriptions: 3301 };
+/** The tools that were there when TOOLS_BEFORE was measured: the "smaller than it was" comparison is between the same tools. */
+const ORIGINAL = AGENT_TOOLS.filter((t) => t.name !== "suggest_files");
 const room = (n: number) => Math.ceil(n * 1.05);
 
 /** Said where the example would be. The same markers the principles are held to (principles.test.ts). */
@@ -44,10 +49,13 @@ describe("the tool definitions' size", () => {
     expect(now.descriptions).toBeLessThanOrEqual(room(MEASURED.descriptions));
   });
 
-  it("is smaller than it was: the whole list by a tenth, the descriptions by a fifth, and the schemas not bigger", () => {
-    expect(now.total).toBeLessThan(TOOLS_BEFORE.total * 0.9);
-    expect(now.descriptions).toBeLessThan(TOOLS_BEFORE.descriptions * 0.8);
-    expect(now.schema).toBeLessThanOrEqual(TOOLS_BEFORE.schema);
+  it("is smaller than it was: the whole list by a tenth, the descriptions by a fifth, and the schemas not bigger (the same seventeen tools)", () => {
+    const total = JSON.stringify(ORIGINAL).length;
+    const descriptions = ORIGINAL.reduce((n, t) => n + t.description.length, 0);
+    const schema = ORIGINAL.reduce((n, t) => n + JSON.stringify(t.parameters).length, 0);
+    expect(total).toBeLessThan(TOOLS_BEFORE.total * 0.9);
+    expect(descriptions).toBeLessThan(TOOLS_BEFORE.descriptions * 0.8);
+    expect(schema).toBeLessThanOrEqual(TOOLS_BEFORE.schema);
   });
 
   it("has no description that is a paragraph: 450 characters at most, and the longest is the run tool's", () => {
@@ -57,9 +65,9 @@ describe("the tool definitions' size", () => {
 });
 
 describe("the tool definitions' style", () => {
-  it("are the same seventeen tools, in the same order", () => {
+  it("are the same eighteen tools, in the same order", () => {
     expect(AGENT_TOOLS.map((t) => t.name)).toEqual([...AGENT_TOOL_NAMES]);
-    expect(AGENT_TOOLS).toHaveLength(17);
+    expect(AGENT_TOOLS).toHaveLength(18);
     for (const t of AGENT_TOOLS) {
       expect(Object.keys(t).sort(), t.name).toEqual(["description", "name", "parameters"]);
       expect(t.description.trim(), t.name).toBe(t.description);
@@ -85,7 +93,7 @@ describe("the tool definitions' style", () => {
   it("keep their schema: strict objects, the same required fields, the same bounds", () => {
     const req = Object.fromEntries(AGENT_TOOLS.map((t) => [t.name, (t.parameters as { required: string[] }).required]));
     expect(req).toEqual({
-      read_file: ["path"], list_dir: ["path"], grep: ["pattern"], glob: ["pattern"], search_code: ["query"], edit_file: ["path", "old", "new"],
+      read_file: ["path"], list_dir: ["path"], grep: ["pattern"], glob: ["pattern"], search_code: ["query"], suggest_files: [], edit_file: ["path", "old", "new"],
       write_file: ["path", "content"], delete_file: ["path"], run: ["cmd", "why"], web_search: ["query"], read_page: ["url"], research: ["question", "depth"],
       find_resources: ["need"], flag_finding: ["severity", "path", "text"], note: ["text"], ask_user: ["question"], done: ["summary"],
     });
@@ -122,6 +130,8 @@ describe("the tool definitions' behaviour", () => {
     expect(by.run).toMatch(/install what a run needs in that run/);
     expect(by.run).toMatch(/live session/);
     expect(by.run).toMatch(/two idle minutes/);
+    expect(by.run).toMatch(/what a command writes is not kept/);
+    expect(by.suggest_files).toMatch(/A guess to read from/);
     expect(by.ask_user).toMatch(/only when you cannot go on/);
     expect(by.flag_finding).toMatch(/Do not fix it/);
     expect(by.done).toMatch(/runs the checks/);

@@ -13,10 +13,11 @@ const call = (name: string, args: Record<string, unknown>): CallRecord => ({ id:
 const result = (content: string, data?: string, label?: string): ResultRecord => ({ ok: true, content, ...(data !== undefined ? { data } : {}), ...(label ? { label } : {}) });
 
 describe("the strategies", () => {
-  it("are mask, summary and hybrid", () => {
-    expect([...CONTEXT_STRATEGIES]).toEqual(["mask", "summary", "hybrid"]);
+  it("are mask, summary, hybrid and transcript", () => {
+    expect([...CONTEXT_STRATEGIES]).toEqual(["mask", "summary", "hybrid", "transcript"]);
     expect(isStrategy("mask")).toBe(true);
     expect(isStrategy("hybrid")).toBe(true);
+    expect(isStrategy("transcript")).toBe(true);
     expect(isStrategy("nope")).toBe(false);
     expect(isStrategy(undefined)).toBe(false);
     expect(HYBRID_EVERY).toBeGreaterThan(1);

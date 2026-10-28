@@ -34,6 +34,8 @@ export interface CallLog {
   completionTokens: number;
   ok: boolean;
   error?: string;
+  /** For a failed call: what each model on the ladder came to (`deepseek-v4.1-flash timeout`, `glm-5.3-flash failed 429`, `... skipped breaker`) and the cause's first words. */
+  why?: string;
   /** JSON answers that had to be repaired, or could not be. */
   repaired: number;
   invalidJson: number;
@@ -65,7 +67,15 @@ export interface ModelKit {
 /** What the model door knows about the call in flight (the wire has no purpose): a scripted model behind a client reads it, and so do the cassettes. */
 export const callContext = new AsyncLocalStorage<{ purpose: string; jobId?: string; tier?: string }>();
 
-const TOOL_NAMES = new Set(["read_file", "list_dir", "grep", "glob", "search_code", "edit_file", "write_file", "delete_file", "run", "web_search", "read_page", "research", "find_resources", "flag_finding", "note", "ask_user", "done"]);
+const TOOL_NAMES = new Set(["read_file", "list_dir", "grep", "glob", "search_code", "suggest_files", "edit_file", "write_file", "delete_file", "run", "web_search", "read_page", "research", "find_resources", "flag_finding", "note", "ask_user", "done"]);
+
+/** A failed call in a line: the ladder's outcomes and the cause's first words, so a run that failed for want of a model says why (the first reality run did not). */
+export function whyOf(trail: readonly TrailEntry[], err: unknown): string {
+  const steps = trail.map((t) => `${t.model.split("/").pop()} ${t.outcome}${t.skipped ? ` (${t.skipped})` : ""}${t.status ? ` ${t.status}` : ""}`);
+  const cause = (err as { causeError?: unknown; cause?: unknown } | null)?.causeError ?? (err as { cause?: unknown } | null)?.cause ?? err;
+  const said = cause instanceof Error ? cause.message : typeof cause === "string" ? cause : "";
+  return [steps.join(", "), said.replace(/\s+/g, " ").slice(0, 160)].filter(Boolean).join(": ");
+}
 
 function logOf(input: CallInput<unknown>, r: CallResult<unknown> | null, err: unknown, t0: number): CallLog {
   const trail: TrailEntry[] = r?.trail ?? (err as { trail?: TrailEntry[] } | null)?.trail ?? [];
@@ -79,7 +89,7 @@ function logOf(input: CallInput<unknown>, r: CallResult<unknown> | null, err: un
   return {
     at: t0, purpose: input.purpose, tier: input.tier, model: r?.model ?? input.model ?? trail.find((x) => x.outcome === "ok")?.model ?? trail[0]?.model ?? "?",
     ms: Date.now() - t0, paise: r?.paise ?? 0, promptTokens: r?.promptTokens ?? 0, completionTokens: r?.completionTokens ?? 0,
-    ok: !!r, ...(err ? { error: (err as { name?: string }).name ?? "Error" } : {}),
+    ok: !!r, ...(err ? { error: (err as { name?: string }).name ?? "Error", why: whyOf(trail, err) } : {}),
     repaired: trail.filter((x) => x.repaired).length, invalidJson: trail.filter((x) => x.outcome === "invalid_json").length,
     fallbacks: trail.filter((x) => x.outcome !== "ok" || x.retried).length, toolCalls: calls.length, badToolCalls: bad,
   };

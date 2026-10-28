@@ -12,15 +12,29 @@ import path from "node:path";
 import { proxyClient } from "../adapters/upstream.js";
 import { runTask } from "../runTask.js";
 import { mkdirp } from "../util.js";
+import type { JobMode } from "../../src/code/agent/types.js";
 import type { AgentMetrics, AgentRunInput, AgentRunResult, AgentStatus, AgentUnderTest, FileChange } from "./types.js";
 
-export const tailzuAgent: AgentUnderTest = {
-  id: "tailzu",
-  describe: "Tailzu's Code bot: front door, project brain, locate, plan, agent loop, policy commit, pull request",
-  modes: ["real", "fake", "oracle"],
-  usesCheckout: false,
-  async run(i: AgentRunInput): Promise<AgentRunResult> {
+/** Our agent ids: the product as it ships (free-form by default) and the phased flow kept behind CODE_JOB_MODE, for comparison. */
+export const OUR_AGENTS = ["tailzu", "tailzu-phased"] as const;
+export const isOurs = (id: string): boolean => (OUR_AGENTS as readonly string[]).includes(id);
+
+/** Tailzu's flow as an agent under test, with every job worked in `jobMode` (absent: the product's default). */
+function tailzuAs(id: string, describe: string, jobMode?: JobMode): AgentUnderTest {
+  return {
+    id, describe, modes: ["real", "fake", "oracle"], usesCheckout: false,
+    run: (i) => runOurs(id, i, jobMode),
+  };
+}
+
+export const tailzuAgent: AgentUnderTest = tailzuAs("tailzu", "Tailzu's Code bot as it ships: front door, project brain, free-form agent loop (the locate funnel as a tool and hints), policy commit, pull request");
+/** The phased flow (locate, plan, work on the planned files, verify) the product used before free-form became the default: CODE_JOB_MODE=guided. */
+export const tailzuPhasedAgent: AgentUnderTest = tailzuAs("tailzu-phased", "Tailzu's Code bot, phased (CODE_JOB_MODE=guided): locate, plan, work on the planned files, verify, policy commit, pull request", "guided");
+
+async function runOurs(id: string, i: AgentRunInput, jobMode: JobMode | undefined): Promise<AgentRunResult> {
+  {
     const out = await runTask(i.task, {
+      ...(jobMode ? { jobMode } : {}),
       mode: i.model.mode, ...(i.model.persona ? { persona: i.model.persona } : {}), repeat: i.repeat, ...(i.model.tiers ? { tiers: i.model.tiers } : {}),
       capPaise: i.budgetPaise, timeoutSec: Math.max(i.timeoutSec, i.task.scenario?.timeoutSec ?? 0), ...(i.model.cassette ? { cassette: i.model.cassette } : {}), ...(i.model.wire ? { wire: true } : {}), ...(i.model.maxTurns ? { maxTurns: i.model.maxTurns } : {}), ...(i.model.maxTokens ? { maxTokens: i.model.maxTokens } : {}), ...(i.brainBudgetPaise !== undefined ? { brainBudgetPaise: i.brainBudgetPaise } : {}), log: i.log,
       // Through the recording proxy like an external agent, when it is given one and no in-process cassette (the security suite does this).
@@ -46,11 +60,12 @@ export const tailzuAgent: AgentUnderTest = {
       };
       const status: AgentStatus = t.timedOut ? "timeout" : t.job?.state === "done" ? "finished" : t.questions.some((q) => q.kind === "budget") ? "budget" : "failed";
       mkdirp(path.join(i.outDir, "transcripts"));
-      const transcriptPath = path.join(i.outDir, "transcripts", `${i.task.id}-${i.repeat}.json`);
+      // One transcript per agent and model (the arms of a comparison used to overwrite each other's).
+      const transcriptPath = path.join(i.outDir, "transcripts", `${i.task.id}-${id}-${(i.model.slug ?? i.model.mode).replace(/[^A-Za-z0-9._-]+/g, "_")}-${i.repeat}.json`);
       fs.writeFileSync(transcriptPath, JSON.stringify({ task: i.task.id, request: i.request, questions: t.questions, calls: t.calls, tools: t.tools, workLog: t.workLog, report: t.agent?.report ?? null, diff }, null, 1));
-      return { agent: "tailzu", status, reason: t.job?.reason ?? "", changes, diff, answer: t.agent?.report?.text ?? "", metrics, transcriptPath, flow: t };
+      return { agent: id, status, reason: t.job?.reason ?? "", changes, diff, answer: t.agent?.report?.text ?? "", metrics, transcriptPath, flow: t };
     } finally {
       await out.rig.dispose().catch(() => undefined);
     }
-  },
-};
+  }
+}

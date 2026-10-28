@@ -21,13 +21,14 @@ import { classifyRequest } from "../brain/classify.js";
 import { callModel } from "../brain/gateway.js";
 import { planRoute } from "../brain/route.js";
 import { recordOutcome } from "../brain/stats.js";
-import { tierTable } from "../brain/tiers.js";
+import { reasoningParam, tierTable, type TierSettings } from "../brain/tiers.js";
+import { REASONING_ALLOWANCE, reasoningAllowance } from "../../agent/reasoning.js";
 import type { ToolCall } from "../brain/types.js";
 import { advanceIntake, checksFor, isEmptyRepo, planMilestones, scaffoldStep, type IntakeInput, type StackKind } from "../newproject/index.js";
 import {
   ACTIONS, PolicyError, decide, fingerprintOf, gateFree, isWorkflowPath, type ActionId, type Decision, type PolicyCtx,
 } from "../policy.js";
-import { gatherFacts, isConfigPath, missingFacts, withMissing } from "../chat/facts.js";
+import { gatherFacts, isConfigPath, missingFacts, sourcesFor, withMissing, withSources } from "../chat/facts.js";
 import { classOf, isSecretPath, isTestPath } from "../project/lang.js";
 import type { BaselineKind, BaselineStep } from "../project/types.js";
 import { gateBase, repoRef } from "../projects.js";
@@ -35,6 +36,7 @@ import { markReady } from "../pulls.js";
 import {
   PlanError, compareToBaseline, locate, logComparison, planChange, redactText, worklogMarkdown, type Located,
 } from "../work/index.js";
+import { fusedFor, type Fused } from "../work/locate.js";
 import { cut } from "../work/model.js";
 import { checkCommands, parseMarkers, resultsOf, describeCheck, type CheckSpec } from "./checks.js";
 import { Refused } from "./changeset.js";
@@ -48,7 +50,7 @@ import { commitMessage, prBody, prTitle, reportText } from "./report.js";
 import { BudgetStop, EndJob, LostClaim, Park, Yield, type Run } from "./run.js";
 import { hasConflictMarkers } from "./merge.js";
 import {
-  BASELINE_MAX_AGE_MS, CALLS_PER_TURN, CONTEXT_STRATEGY_DEFAULT, FIX_ROUNDS_MAX, FREEFORM_STEPS_MAX, TURNS_MAX,
+  ANSWER_MAX_CHARS, BASELINE_MAX_AGE_MS, CALLS_PER_TURN, CONTEXT_STRATEGY_DEFAULT, FIX_ROUNDS_MAX, TURNS_MAX, freeformStepCap,
   type AgentState, type Exchange, type Phase, type ResultRecord, type VerifyState,
 } from "./types.js";
 import { GithubRefusal } from "../github.js";
@@ -148,7 +150,8 @@ export function afterBaseline(s: AgentState): Phase {
   if (s.care?.kind === "conflict") return "merge";
   // A goal over several projects is split by project before anything is located or planned: there is no one place to locate it in.
   if (s.teamRepos?.length && s.teamMode !== "off" && !s.part) return "split";
-  if (s.mode === "freeform") return s.planFirst ? "plan" : "work";
+  // A free-form job goes to work. One whose person asked for a team ("on") needs a plan to split, so it is located and planned as a guided job is.
+  if (s.mode === "freeform" && s.teamMode !== "on") return s.planFirst ? "plan" : "work";
   return "locate";
 }
 
@@ -303,10 +306,40 @@ export async function planPhase(r: Run): Promise<void> {
 
 // -------------------------------------------------------------------- work
 
-const tiersForTurn = () => {
-  const t = tierTable();
-  return { ...t, ...Object.fromEntries((["tiny", "cheap", "code", "strong"] as const).map((k) => [k, { ...t[k], maxTokens: Math.min(t[k].maxTokens, WORK_TOKENS) }])) } as typeof t;
+/**
+ * What a work turn may write on a tier: WORK_TOKENS of answer, and its own room for thinking when the tier thinks (agent/reasoning.ts REASONING_ALLOWANCE), within
+ * the tier's limit. A thinking model given WORK_TOKENS in all spent them all thinking and wrote nothing (the free-form debug run: 4,096 tokens of reasoning, an
+ * empty answer, and the job failed when the retry was not made).
+ */
+export function workTokens(tier: Pick<TierSettings, "maxTokens" | "reasoning">): number {
+  return Math.min(tier.maxTokens, WORK_TOKENS + (tier.reasoning === "none" ? 0 : REASONING_ALLOWANCE[tier.reasoning]));
+}
+
+/**
+ * The tiers a work turn is routed on: the gateway's own table when it was given one (a harness pinning one model), else the server's. The router must price a
+ * step as the gateway will ("the router never refuses what the gateway would take", route.ts reservationPaise): routed on the server's default table while the
+ * gateway called a model seven times cheaper, a free-form job stopped for money with three quarters of its budget left.
+ */
+const tiersForTurn = (r: Run) => {
+  const t = r.deps.gateway?.tiers ?? tierTable();
+  return { ...t, ...Object.fromEntries((["tiny", "cheap", "code", "strong"] as const).map((k) => [k, { ...t[k], maxTokens: workTokens(t[k]) }])) } as typeof t;
 };
+
+/**
+ * A FREE-FORM JOB'S HINTS: where the project's index points for the request, from the locate funnel's free half (fusedFor: the request's names, the text people see,
+ * symbols, paths, features and the repo map; no model, no threshold, no question), as a line per file with the reason. Shown once, as a guess to check, and the
+ * model can ask again with other words (suggest_files). A job that was already placed (a design's target, a conversation's handoff) is shown that place instead.
+ */
+export const HINTS_MAX = 6;
+export async function hintsOf(r: Run): Promise<string> {
+  const s = r.state;
+  if (s.located?.targets.length) return "";
+  let fused: Fused[];
+  try { fused = await fusedFor(s.task, r.brain); } catch { return ""; }
+  const top = fused[0]?.score ?? 0;
+  return fused.filter((f, i) => i < HINTS_MAX && f.score >= 0.3 * top && !isSecretPath(f.path))
+    .map((f) => `${f.path}: ${cut((f.whys.length ? f.whys.slice(0, 2).join("; ") : f.signals.join(", ")).replace(/\s+/g, " "), 160)}`).join("\n");
+}
 
 /** The first lines of the files the search points at, as they are now, for the model's first message. */
 async function excerptsOf(r: Run): Promise<string> {
@@ -341,6 +374,7 @@ async function executeCalls(r: Run, ex: Exchange): Promise<void> {
       if (q.answer === undefined) throw new LostClaim();
       await r.log.question(q.question, q.answer);
       r.state.waiting = undefined;
+      w.answeredAt = w.turns;
       result = { ok: true, content: `The person answered: ${q.answer}` };
     } else {
       const out = await r.tools.exec(callOf(c, r.held));
@@ -352,7 +386,8 @@ async function executeCalls(r: Run, ex: Exchange): Promise<void> {
       }
       if (out.control?.type === "done") {
         w.finished = true;
-        w.doneSummary = out.control.summary;
+        // A job that changed nothing answers with its words AND its summary (answerOf): the summary alone shortened the answer.
+        w.doneSummary = r.tools.changes.empty && !r.state.merge ? answerOf(out.control.summary, [ex.text, w.draft]) : out.control.summary;
       }
     }
     ex.results.push(result);
@@ -389,7 +424,9 @@ export async function workPhase(r: Run): Promise<void> {
     w.roundStartedAt = r.now();
   }
   if (w.excerpts === undefined) {
-    w.excerpts = await excerptsOf(r);
+    // A free-form job is not shown slivers of files it may not need (the guided flow's excerpts led the work to them); it is shown where the index points, once.
+    w.excerpts = s.mode === "freeform" && !s.located?.targets.length ? "" : await excerptsOf(r);
+    if (s.mode === "freeform" && w.hints === undefined) w.hints = await hintsOf(r);
     await r.log.note("Starting the work.");
   }
   let rounds = 0;
@@ -406,7 +443,7 @@ export async function workPhase(r: Run): Promise<void> {
     if (open && open.results.length < open.calls.length) {
       await executeCalls(r, open);
     } else if (!w.finished) {
-      if (w.turns >= (s.mode === "freeform" ? FREEFORM_STEPS_MAX : TURNS_MAX)) {
+      if (w.turns >= (s.mode === "freeform" ? freeformStepCap(w) : TURNS_MAX)) {
         w.finished = true;
         w.doneSummary ??= "I reached the most steps one job takes, so I stopped there with what is staged.";
         r.note("I stopped at the most steps one job takes, so the work may be unfinished.");
@@ -425,6 +462,27 @@ export async function workPhase(r: Run): Promise<void> {
   if (s.team?.stage === "contracts" && r.tools.changes.empty) { await afterContracts(r, { none: true }); return; }
   s.phase = r.tools.changes.empty && !s.merge ? (s.team?.stage === "final" && s.commits.length ? "verify" : "report") : "verify";
   await r.save();
+}
+
+const plain = (t: string): string => t.toLowerCase().replace(/[`*_#>|~-]+/g, " ").replace(/\s+/g, " ").trim();
+/** Words shorter than this are not an answer of their own ("Now I will call done."). */
+export const ANSWER_WORDS_MIN = 80;
+
+/**
+ * THE ANSWER OF A JOB THAT CHANGES NOTHING (a question, a refusal). The model often writes the answer as its words (beside done, or in the turn before, when it
+ * was nudged) and then calls done with a SHORTER summary, which was all the report kept: the first reality run lost "getCharset" and "utf-" from a charset answer
+ * that had them, and "I can't" from a refusal that said it ("I could not" was left). So the words and the summary are both kept, the words first, unless one
+ * already holds the other.
+ */
+export function answerOf(summary: string, said: ReadonlyArray<string | undefined>): string {
+  const sum = summary.trim();
+  const words = said.map((x) => (x ?? "").trim()).filter((x) => x.length >= ANSWER_WORDS_MIN).sort((a, b) => b.length - a.length)[0];
+  if (!words) return sum;
+  const ps = plain(sum);
+  const pw = plain(words);
+  if (!ps || pw.includes(ps)) return cut(words, ANSWER_MAX_CHARS);
+  if (ps.includes(pw)) return sum;
+  return cut(`${words}\n\n${sum}`, ANSWER_MAX_CHARS);
 }
 
 /** The files the model read, in the order it read them (a read_file call's path; a grep of one file). */
@@ -457,11 +515,14 @@ async function addMissingValues(r: Run): Promise<void> {
     const n = await r.brain.neighbors(p).catch(() => null);
     for (const q of n?.imports ?? []) if (isConfigPath(q)) imported.push(q);
   }
-  const { facts } = await gatherFacts([...seen.filter(isConfigPath), ...imported, ...seen], read, { files: 6 });
+  const { facts, texts } = await gatherFacts([...seen.filter(isConfigPath), ...imported, ...seen], read, { files: 6 });
   const missing = missingFacts(facts, r.state.task, answer);
-  if (!missing.length) return;
-  w.doneSummary = withMissing(answer, missing);
-  await r.log.note(`The answer left out ${missing.map((f) => f.name).join(", ")} from the code, so ${missing.length === 1 ? "it was" : "they were"} added.`);
+  // An answer that names no file it was read from is given the places it comes from (the files read that hold the names it uses).
+  const sources = sourcesFor(answer, new Map([...texts].filter(([p]) => seen.includes(p))));
+  if (!missing.length && !sources.length) return;
+  w.doneSummary = withSources(withMissing(answer, missing), sources);
+  if (missing.length) await r.log.note(`The answer left out ${missing.map((f) => f.name).join(", ")} from the code, so ${missing.length === 1 ? "it was" : "they were"} added.`);
+  if (sources.length) await r.log.note(`The answer named no file, so the files it comes from were added: ${sources.join(", ")}.`);
   await r.save();
 }
 
@@ -494,7 +555,8 @@ export async function takeSaid(r: Run): Promise<void> {
 function strategyOf(r: Run): ContextStrategy {
   const w = r.state.work;
   if (isStrategy(w.strategy)) return w.strategy;
-  const configured = r.deps.contextStrategy ?? getConfig().CODE_CONTEXT_STRATEGY ?? CONTEXT_STRATEGY_DEFAULT;
+  // A free-form job keeps its transcript (context.ts) unless the agent or CODE_CONTEXT_STRATEGY names another.
+  const configured = r.deps.contextStrategy ?? getConfig().CODE_CONTEXT_STRATEGY ?? (r.state.mode === "freeform" ? "transcript" : CONTEXT_STRATEGY_DEFAULT);
   w.strategy = w.turns > 0 || w.digests.length > 0 || w.summary ? "summary" : configured;
   return w.strategy;
 }
@@ -519,15 +581,20 @@ async function modelTurn(r: Run): Promise<void> {
   const money = await r.money();
   const route = await planRoute("write_code", s.classification!, {
     failures: w.badTurns + w.fixRounds, ...(w.lastTier ? { lastTier: w.lastTier as never } : {}), filesTouched: r.tools.changes.size,
-  }, { ...(d.routeStats ? { store: d.routeStats } : {}), budget: { remainingPaise: money.remaining, inputChars: ctx.chars, maxTokens: WORK_TOKENS }, tiers: tiersForTurn() });
+  }, { ...(d.routeStats ? { store: d.routeStats } : {}), budget: { remainingPaise: money.remaining, inputChars: ctx.chars, maxTokens: WORK_TOKENS }, tiers: tiersForTurn(r) });
   if (route.stop) throw new BudgetStop(route.needPaise ?? 0);
 
   const call = d.call ?? callModel;
+  // The room this turn may write: the tier's, and at least the answer's plus what the model will really think at the tier's level (a model that has no "medium"
+  // thinks "high": DeepSeek V4.1 Flash thought 6,144 tokens and was cut off with nothing written, four times in one job).
+  const tierSet = tiersForTurn(r)[route.tier];
+  const thinker = route.model ?? tierSet?.models[0];
+  const room = Math.max(tierSet?.maxTokens ?? WORK_TOKENS, thinker && tierSet ? WORK_TOKENS + reasoningAllowance(reasoningParam(thinker, tierSet.reasoning)) : WORK_TOKENS);
   let res;
   try {
     res = await call({
       tier: route.tier, ...(route.model ? { model: route.model } : {}), messages: ctx.messages, tools: [...r.tools.defs()], toolChoice: "auto",
-      purpose: "agent.work", budget: "job", jobId: r.jobId, userId: r.userId, step: w.turns, maxTokens: WORK_TOKENS, signal: r.signal,
+      purpose: "agent.work", budget: "job", jobId: r.jobId, userId: r.userId, step: w.turns, maxTokens: room, signal: r.signal,
     }, d.gateway);
   } catch (err) {
     if ((err as { name?: string })?.name === "ModelUnavailable") {
@@ -558,13 +625,14 @@ async function modelTurn(r: Run): Promise<void> {
   const ex: Exchange = { text: redactText(res.text.trim(), 4000), calls, results: [], model: res.model };
   w.exchanges.push(ex);
   if (!calls.length) {
-    // Words and no tool: once it is nudged; twice and the words are taken as the answer.
+    // Words and no tool: once it is nudged (the words are kept: often they are the answer); twice and the words are taken as the answer.
     if (w.nudged || !ex.text) {
       w.finished = true;
-      w.doneSummary = ex.text || "I had nothing to add.";
+      w.doneSummary = ex.text ? (r.tools.changes.empty ? answerOf(ex.text, [w.draft]) : ex.text) : "I had nothing to add.";
     } else {
       w.nudged = true;
       w.badTurns += 1;
+      if (ex.text.length >= ANSWER_WORDS_MIN) w.draft = ex.text;
     }
     await r.save();
     return;
@@ -683,7 +751,7 @@ export async function testWanted(r: Run): Promise<boolean> {
   if (!(await r.brain.baselinePlan().catch(() => [])).some((x) => x.kind === "test")) return false;
   const money = await r.money();
   if (money.remaining < Math.max(TEST_ROUND_MIN_PAISE, TEST_ROUND_MIN_SHARE * money.budget)) return false;
-  return w.turns + 3 <= TURNS_MAX;
+  return s.mode === "freeform" || w.turns + 3 <= TURNS_MAX;
 }
 
 export async function verifyPhase(r: Run): Promise<void> {

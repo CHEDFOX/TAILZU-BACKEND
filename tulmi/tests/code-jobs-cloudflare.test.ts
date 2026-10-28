@@ -66,6 +66,8 @@ async function cloudflareServer(r: Rig, w: ReturnType<typeof theWorker>) {
   const agent = createAgent({
     code: r.code, jobs: r.jobs, store: r.jobStore, brain: r.brain, call: r.model.call as never, worklog: r.worklog, notify: (u, k, d) => { r.told.push({ userId: u, kind: k, data: d }); },
     now: r.now, sleep: r.sleep, log: r.log, remote: w.handoff, instanceId: "vps",
+    // The phased flow: these tests drive its plan approval (approve, deny, stop at the plan's question). Free-form, the default, has no plan to approve.
+    jobMode: "guided",
   })!;
   const app = Fastify();
   apps.push(app);
@@ -130,7 +132,7 @@ async function workerOf(r: Rig, instanceId = "wf") {
     code: r.code, jobs: r.jobs, store: r.jobStore, brain: r.brain, call: r.model.call as never, worklog: r.worklog, now: r.now, sleep: r.sleep, log: r.log,
     web: { store: null, cache: null, fetchFn: (async () => new Response("no", { status: 404 })) as never },
     runner: routerRunner({ jobs: r.jobs, store: r.jobStore, now: r.now, sleep: r.sleep, placeWaitMs: 120_000, pollMs: 2000 }),
-    passive: true, instanceId,
+    passive: true, instanceId, jobMode: "guided",
   })!;
 }
 

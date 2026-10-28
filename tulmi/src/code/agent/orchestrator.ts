@@ -66,7 +66,7 @@ import { advanceLoop, runLoop, type Advance } from "./loop.js";
 import { reportText } from "./report.js";
 import { revertFiles } from "./rewind.js";
 import { LostClaim, type Claim } from "./run.js";
-import { DEFAULT_PROJECT_SETTINGS, readSettingsPatch } from "./settings.js";
+import { DEFAULT_PROJECT_SETTINGS, defaultJobMode, readSettingsPatch } from "./settings.js";
 import { viewOfPart, viewOfTeam, REPOS_MAX, TEAM_COMMANDS_MAX, type PartView, type TeamCommand, type TeamMode, type TeamView } from "../team/types.js";
 import { ERROR_BACKOFF_MS, LOOP_ERRORS_MAX, TASK_CHARS, initialState, stateOf, type AgentState, type CareContext, type JobMode, type SpecArtifact } from "./types.js";
 
@@ -305,11 +305,11 @@ export class AgentOrchestrator {
         if (o.locatedFrom) state.handoff = true;
       }
       if (o.care) state.care = o.care;
-      // How it is worked: the request's own word, else the project's setting, else guided with no plan-first.
+      // How it is worked: the request's own word, else the project's setting, else the server's default (free-form unless CODE_JOB_MODE says guided), with no plan-first.
       const set = await this.deps.settings?.get(job.projectId).catch(() => null);
-      const mode = o.mode ?? set?.mode ?? DEFAULT_PROJECT_SETTINGS.mode;
+      const mode = o.mode ?? set?.mode ?? defaultJobMode(this.deps.jobMode);
       const planFirst = o.planFirst ?? set?.planFirst ?? DEFAULT_PROJECT_SETTINGS.planFirst;
-      if (mode === "freeform") state.mode = "freeform";
+      state.mode = mode;
       if (planFirst) state.planFirst = true;
       // Lead and helpers: the request's own word, else the project's setting; "auto" is left out of the state.
       const teamMode = o.team ?? set?.team ?? DEFAULT_PROJECT_SETTINGS.team;
@@ -842,12 +842,12 @@ export class AgentOrchestrator {
 
   // ------------------------------------------------------------ settings
 
-  /** How the project's jobs are worked, as the person set it: guided with no plan-first until they say. The owner's only. */
+  /** How the project's jobs are worked, as the person set it: the server's default mode (free-form) with no plan-first until they say. The owner's only. */
   async settings(userId: string, projectId: string): Promise<{ mode: JobMode; planFirst: boolean; team: TeamMode }> {
     const project = await this.deps.projects.store.getProject(userId, projectId);
     if (!project) throw new ConnectorError("not_found", "No such project");
     const set = await this.deps.settings?.get(project.id);
-    return { mode: set?.mode ?? DEFAULT_PROJECT_SETTINGS.mode, planFirst: set?.planFirst ?? DEFAULT_PROJECT_SETTINGS.planFirst, team: set?.team ?? DEFAULT_PROJECT_SETTINGS.team };
+    return { mode: set?.mode ?? defaultJobMode(this.deps.jobMode), planFirst: set?.planFirst ?? DEFAULT_PROJECT_SETTINGS.planFirst, team: set?.team ?? DEFAULT_PROJECT_SETTINGS.team };
   }
 
   /** Changes what the person set (each field optional), and answers how the project's jobs are worked now. */

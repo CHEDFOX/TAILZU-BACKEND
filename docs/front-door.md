@@ -33,7 +33,7 @@ POST /v1/ask { message, device, mode, ... }
    │   2. under 0.7 sure: the small model, once (role front_decide, the tiny tier, at most 100 paise)
    │   3. the shape: how long, and the cheapest visual that explains it (or none)
    │   4. the road: route, tier, budget
-   │   5. under 0.45 sure AND a costly road (200 paise or more): one question, 2 or 3 options
+   │   5. under 0.45 sure AND a costly road (200 paise or more), or a change that names nothing ("fix it"): one question, 2 or 3 options
    ▼
  dispatch(decision, message, ctx)
    │   a costly road (a job, a deep research) needs 0.7, else the question goes back and nothing starts
@@ -129,6 +129,7 @@ Two things are never skipped for those reasons: **what the person asked for in s
 Rarely, and never for something cheap.
 
 * **From `decide`:** the intent is under **0.45** sure **and** the road is **costly** (a budget of **200 paise or more**: a code task, a design, a long piece of research). The question has **two or three options** and is in the person's language; the small model's own is used when it is well-formed, otherwise a fixed one (`words.ts`, in English, Hinglish and Hindi). A cheap road is never asked about: an unclear message that would only be a chat reply is answered.
+* **From `decide`, however sure:** a change asked for with nothing that says what or where ("fix it", "make it work", "please fix", "theek karo": the rules' `vague`, no file, screen, name, error or feature in it), with no conversation before it to point back to and nothing attached. A model reads "fix it" as a code task at 0.95; a job started on it can only guess (the first reality run's front-door batch). The reasons say `clarify:bare`.
 * **From `dispatch`, the self-check:** before a **job** or a **deep research** run, the confidence must be **0.7 or more**, else the question goes back and nothing starts. The money is spent only on a thing the front door is sure about.
 
 A question is a result with `clarify` set and no road taken: no model call, no cost beyond the decision itself. The client sends the chosen option back as the next message.

@@ -11,6 +11,8 @@
  */
 import "../env.js";
 import { createAgent } from "../../src/code/agent/index.js";
+import type { JobMode } from "../../src/code/agent/types.js";
+import { Breakers } from "../../src/guard/breaker.js";
 import type { AgentOrchestrator, RemoteJobs } from "../../src/code/agent/orchestrator.js";
 import { routerRunner } from "../../src/code/agent/runner.js";
 import { initialState, stateOf, type AgentState } from "../../src/code/agent/types.js";
@@ -130,7 +132,10 @@ export function makeModelKit(o: Pick<RigOptions, "mode" | "persona" | "tiers" | 
     }
     // A strict replay is never about a provider's health: a request the recording lacks is a failed call, and eight of them (a stale item) would open the circuit breaker
     // of the provider (its vendor prefix) for everything replayed after it in the process, answering from neither the cassette nor the model. No breakers in a replay.
-    kit = realKit({ jobs: jobStore, ...(o.tiers ? { tiers: o.tiers } : {}), ...(client ? { client } : {}), ...(o.breakers !== undefined ? { breakers: o.breakers } : o.cassette?.mode === "replay" ? { breakers: null } : {}), ...(sleep ? { sleep } : {}), ...(o.maxTokensCap ? { maxTokensCap: o.maxTokensCap } : {}) });
+    // A strict replay has no breakers (above). Any other run of a task is a server of its own, with breakers of its own: in one process the shared ones carried an
+    // earlier run's failures into the next (the first reality run's context-strategy part: one task's failed calls opened the provider's breaker, and the eleven
+    // runs after it never reached a model turn).
+    kit = realKit({ jobs: jobStore, ...(o.tiers ? { tiers: o.tiers } : {}), ...(client ? { client } : {}), breakers: o.breakers !== undefined ? o.breakers : o.cassette?.mode === "replay" ? null : new Breakers(), ...(sleep ? { sleep } : {}), ...(o.maxTokensCap ? { maxTokensCap: o.maxTokensCap } : {}) });
     kit.mode = o.mode;
     if (brain) { kit.persona = brain.persona; kit.bind = (t, b) => brain!.bind(t, b); kit.prices = brain.prices; }
   } else {
@@ -250,10 +255,11 @@ export async function createRig(o: RigOptions) {
   }
 
   /** A work branch for the request and an agent job on it, enqueued. */
-  async function start(h: ProjectHandle, request: string, over: { budgetPaise?: number; enqueue?: boolean } = {}) {
+  async function start(h: ProjectHandle, request: string, over: { budgetPaise?: number; enqueue?: boolean; mode?: JobMode } = {}) {
     const { branch } = await createWorkBranch(d, USER, h.project.id, request);
     const job = await jobs.createJob(USER, h.project.id, branch, request, over.budgetPaise, { agent: true });
-    if (over.enqueue !== false) await orch.enqueue(job.id, request);
+    // The job's mode: the arm's own (the phased contestant asks for guided), else the product's default.
+    if (over.enqueue !== false) await orch.enqueue(job.id, request, over.mode ? { mode: over.mode } : {});
     return { job, branch };
   }
 

@@ -179,6 +179,31 @@ export function legacyCanStand(model: string): boolean {
   return askedLowBefore || !reasoningRequired(m);
 }
 
+/**
+ * Whether a recording is an answer that wrote nothing because it ran out of room (finish_reason "length", no text, no tool call), and this request allows more
+ * tokens than the recorded one did: the recording says nothing about what the larger allowance would bring.
+ */
+export function cutShortFor(hit: Pick<Entry, "req" | "res">, body: Record<string, unknown>): boolean {
+  const choice = ((hit.res as { choices?: Array<{ finish_reason?: unknown; message?: { content?: unknown; tool_calls?: unknown[] } }> } | null)?.choices ?? [])[0];
+  if (!choice || choice.finish_reason !== "length") return false;
+  const text = typeof choice.message?.content === "string" ? choice.message.content.trim() : "";
+  if (text || (choice.message?.tool_calls?.length ?? 0) > 0) return false;
+  const was = hit.req.max_tokens;
+  const now = typeof body.max_tokens === "number" ? body.max_tokens : undefined;
+  return was !== undefined && now !== undefined && now > was;
+}
+
+/**
+ * Whether a recording is a failure that a second try can mend: a dropped connection (no status) or a 429 or a 5xx. In a run that may call the model it is not
+ * an answer: replaying it made the gateway's retry, and then every rung of a ladder of one model, fail the same way in 60 ms, and the job ended "No model
+ * could be reached" (the paid comparison, 2026-10-28: one dropped socket). Replay mode still replays it, so a recorded story is told the same way.
+ */
+export function failedTransiently(hit: Pick<Entry, "err">): boolean {
+  if (!hit.err) return false;
+  const s = hit.err.status;
+  return s === undefined || s === 429 || s >= 500;
+}
+
 // ------------------------------------------------------------------- the file
 
 export interface Entry {
@@ -329,6 +354,10 @@ export class CassetteClient implements ChatClient {
         if (old && old.req.reasoning === undefined) hit = old;
       }
       if (!hit && this.o.loose && run && purpose && ord !== undefined) hit = this.o.store.byOrdinal(run, purpose, ord);
+      // The key does not hold max_tokens. An answer recorded EMPTY because it ran out of room (the thinking took every token) cannot stand for the gateway's
+      // retry with a larger allowance: replaying it made the retry fail the same way, and the job with it (the free-form debug run, 2026-10-28). It is a miss.
+      if (hit && cutShortFor(hit, body)) hit = undefined;
+      if (hit && this.o.mode !== "replay" && failedTransiently(hit)) hit = undefined;
       if (hit) {
         this.stats.hits += 1;
         this.stats.replayedUsd += hit.usd;

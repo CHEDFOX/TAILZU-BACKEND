@@ -376,6 +376,13 @@ export async function stage5(st: RunState, b: StageBudget, est: StageEstimate): 
 
 // ------------------------------------------------------------------------------------- the run
 
+/** A paid stage's share of the run's cap, among the paid stages this run selected (the plan's shares, made to add up to one over them). */
+export function shareOf(ctx: Pick<RunState["ctx"], "stages" | "spec">, stage: StageId): number {
+  const paid = ctx.stages.filter((s) => s !== 0);
+  const sum = paid.reduce((n, s) => n + ctx.spec.share[s], 0);
+  return sum > 0 ? ctx.spec.share[stage] / sum : 0;
+}
+
 /** Runs the selected stages in order, each with its own guard; the money a stage does not use passes to the next. */
 export async function runStages(st: RunState): Promise<RunState> {
   const { ctx } = st;
@@ -393,7 +400,8 @@ export async function runStages(st: RunState): Promise<RunState> {
     }
     const est0 = estimateStages({ ...ctx, stages: [stage] })[0]!;
     const est: StageEstimate = { ...est0, expectedInr: est0.expectedInr * st.ratio, maxInr: est0.maxInr * st.ratio };
-    const cap = real ? Math.max(0, Math.min(left, ctx.budgetInr * ctx.spec.share[stage] + carry)) : Number.POSITIVE_INFINITY;
+    // A stage's share of the cap is among the stages this run runs: a run of stage 4 alone gives it the whole cap, not the 45% it has in the full plan.
+    const cap = real ? Math.max(0, Math.min(left, ctx.budgetInr * shareOf(ctx, stage) + carry)) : Number.POSITIVE_INFINITY;
     const b = new StageBudget(stage, est.expectedInr, cap, real);
     if (real && !realKey && ctx.mode === "real") { st.stages.push({ stage, title: STAGE_TITLES[stage], status: "blocked", estimateInr: est.expectedInr, spentInr: 0, reusedInr: est.reusedInr, reason: "OPENROUTER_API_KEY is not set", lines: [] }); continue; }
     if (real && cap < 0.05 && est.expectedInr > 0) {

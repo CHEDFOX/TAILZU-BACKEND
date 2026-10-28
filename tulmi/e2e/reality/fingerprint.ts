@@ -79,8 +79,11 @@ const PARTS: Record<FingerprintKind, string[]> = {
 };
 
 /** The code fingerprint of one kind of result for one agent. A contestant is its pinned version; only Tailzu is the working tree. */
+/** Our own arms (the product as it ships, and its phased flow): the working tree is what they run. */
+const ours = (agent: string): boolean => agent === "tailzu" || agent.startsWith("tailzu-");
+
 export function codeFingerprint(kind: FingerprintKind, agent = "tailzu"): string {
-  if (agent !== "tailzu" && agent !== "-" && (kind === "task" || kind === "smoke")) return externalVersion(agent);
+  if (!ours(agent) && agent !== "-" && (kind === "task" || kind === "smoke")) return externalVersion(agent);
   return treeHash(PARTS[kind], { except: PROMPT_RE });
 }
 
@@ -109,7 +112,7 @@ export function taskPromptVersion(task: Pick<Task, "id">, agent = "tailzu", full
   const h = createHash("sha1");
   h.update(JSON.stringify(fullTask ?? task.id));
   h.update(scorerVersion());
-  if (agent === "tailzu") h.update(treeHash(PROMPT_PATHS));
+  if (ours(agent)) h.update(treeHash(PROMPT_PATHS));
   return h.digest("hex").slice(0, 12);
 }
 

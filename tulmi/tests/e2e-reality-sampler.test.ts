@@ -17,8 +17,8 @@ function task(id: string, category: Task["category"], over: Partial<Task> = {}):
 }
 
 describe("the pool", () => {
-  it("is the 65 tasks on the real projects: no smoke task, no injection case", () => {
-    expect(pool.length).toBe(65);
+  it("is the 71 tasks on the real projects (65, and the six complex ones of 2026-10-28): no smoke task, no injection case", () => {
+    expect(pool.length).toBe(71);
     expect(pool.some((t) => t.tags.includes("smoke") || t.tags.includes("injection-suite"))).toBe(false);
     for (const c of CATEGORIES_REQUIRED) expect(pool.some((t) => t.category === c), c).toBe(true);
   });
@@ -54,13 +54,13 @@ describe("the cover", () => {
     expect(s.ordered.slice(0, s.cover.length)).toEqual(s.cover);
   });
 
-  it("standard is about 24 and deep is all 65, each with the same cover first", () => {
+  it("standard is about 24 and deep is all 71, each with the same cover first", () => {
     const q = sampleTasks({ tasks: pool, target: PLAN_TASKS.quick });
     const std = sampleTasks({ tasks: pool, target: PLAN_TASKS.standard });
     const deep = sampleTasks({ tasks: pool, target: PLAN_TASKS.deep });
     expect(std.ordered.length).toBe(24);
-    expect(deep.ordered.length).toBe(65);
-    expect(new Set(deep.ordered.map((t) => t.id)).size).toBe(65);
+    expect(deep.ordered.length).toBe(71);
+    expect(new Set(deep.ordered.map((t) => t.id)).size).toBe(71);
     expect(std.cover.map((t) => t.id)).toEqual(q.cover.map((t) => t.id));
     expect(std.ordered.slice(0, 12).map((t) => t.id)).toEqual(q.ordered.map((t) => t.id));
   });

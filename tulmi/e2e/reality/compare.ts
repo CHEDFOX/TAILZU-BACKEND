@@ -107,18 +107,24 @@ export async function compare(o: CompareOptions): Promise<ComparisonReport> {
             for (const [i, r] of stored.entries()) { cell.runs.push({ ok: r.ok, costInr: r.costInr, perf: r.perf ?? emptyPerf(r), reused: true, repeat: i + 1 }); }
             o.log(`  ${arm.id} ${task.id}: ${stored.length} result(s) already in the store (${stored.at(-1)!.ok ? "pass" : "fail"}), not paid again`);
           } else {
-            const earlier = o.store.history("task", arm.agent, arm.model, task.id).map((r) => r.ok);
+            // What the store knew of this arm and task under the SAME code and prompt: a result of other code is another measurement, not a disagreement (a fix
+            // that turned an old failure into a pass was run twice for nothing).
+            const earlier = o.store.history("task", arm.agent, arm.model, task.id).filter((r) => r.code === key.code && r.prompt === key.prompt).map((r) => r.ok);
             let repeat = 1;
             for (;;) {
               if (o.allowance.leftInr() < 0.05 && o.exec.mode === "real") { budgetStop = true; break; }
+              const paid0 = o.exec.spentInr();
               const res = await o.exec.task(arm, task, { repeat, budgetInr: Math.min(o.allowance.leftInr(), o.taskCapInr ?? Number.POSITIVE_INFINITY), index: at });
               if (res.skipped) { skips.set(res.skipped, (skips.get(res.skipped) ?? 0) + 1); if (/budget/.test(res.skipped)) budgetStop = true; break; }
               cell.runs.push({ ok: res.ok, costInr: res.costInr, perf: res.perf, reused: false, repeat });
               o.onRun?.(arm, task, repeat, res);
-              o.allowance.charge(res.costInr, `${arm.id} ${task.id}`);
-              o.log(`  ${arm.id} ${task.id}${repeat > 1 ? ` #${repeat}` : ""}: ${res.ok ? "pass" : "FAIL"}  ₹${res.costInr.toFixed(2)}  ${res.ok ? "" : res.detail.slice(0, 110)}`);
+              // Said before the guard is charged: the run that takes the stage past its limit is stored, and was not printed (the guard throws).
+              o.log(`  ${arm.id} ${task.id}${repeat > 1 ? ` #${repeat}` : ""}: ${res.ok ? "pass" : "FAIL"}  ₹${res.costInr.toFixed(2)}${res.replayed ? " (replayed)" : ""}  ${res.ok ? "" : res.detail.slice(0, 110)}`);
+              // The stage's guard counts money paid: in a real run, what this run paid (a run answered from the cassette pays nothing), not what it is worth.
+              o.allowance.charge(o.exec.mode === "real" ? Math.max(0, o.exec.spentInr() - paid0) : res.costInr, `${arm.id} ${task.id}`);
               const history = [...earlier, ...cell.runs.slice(0, -1).map((r) => r.ok)];
-              if (repeat > maxRepeats || !isUnstable(res.perf, history)) break;
+              // A run answered wholly from a recording would replay the same answers again: no repeat says anything about it.
+              if (repeat > maxRepeats || res.replayed || !isUnstable(res.perf, history)) break;
               repeat += 1;
             }
             if (budgetStop && !cell.runs.length) break;

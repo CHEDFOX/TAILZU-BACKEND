@@ -45,7 +45,7 @@ function worker(r: Rig, o: { instanceId?: string; leaseMs?: number; book?: Insta
     intake: r.intake, routeStats: r.routeStats, notify: (u, k, d) => { r.told.push({ userId: u, kind: k, data: d }); }, now: r.now, sleep: r.sleep, log: r.log,
     web: { store: null, cache: null, fetchFn: (async () => new Response("no", { status: 404 })) as never },
     runner: routerRunner({ jobs: r.jobs, store: r.jobStore, now: r.now, sleep: r.sleep, placeWaitMs: 120_000, pollMs: 2000 }),
-    passive: true, instanceId: o.instanceId ?? "wf", ...(o.leaseMs ? { leaseMs: o.leaseMs } : {}),
+    passive: true, jobMode: "guided", instanceId: o.instanceId ?? "wf", ...(o.leaseMs ? { leaseMs: o.leaseMs } : {}),
   })!;
 }
 
@@ -441,7 +441,7 @@ describe("the VPS's role: hand over, wake, claim nothing", () => {
   function vps(r: Rig, rj: RemoteJobs, book?: InstanceType<typeof ApprovalBook>) {
     return createAgent({
       code: { ...r.code, approvals: book ?? new ApprovalBook({ now: r.now }) }, jobs: r.jobs, store: r.jobStore, brain: r.brain, call: r.model.call as never, worklog: r.worklog,
-      now: r.now, sleep: r.sleep, log: r.log, remote: rj, instanceId: "vps",
+      now: r.now, sleep: r.sleep, log: r.log, remote: rj, instanceId: "vps", jobMode: "guided",
     })!;
   }
 
@@ -549,7 +549,7 @@ describe("the approval book is one process's memory", () => {
     const w1 = worker(r, { instanceId: "wf-1", book: new ApprovalBook({ now: r.now }) });
     const v = createAgent({
       code: { ...r.code, approvals: new ApprovalBook({ now: r.now }) }, jobs: r.jobs, store: r.jobStore, brain: r.brain, call: r.model.call as never, worklog: r.worklog,
-      now: r.now, sleep: r.sleep, log: r.log, remote: { start: async () => undefined, wake: async () => undefined }, instanceId: "vps",
+      now: r.now, sleep: r.sleep, log: r.log, remote: { start: async () => undefined, wake: async () => undefined }, instanceId: "vps", jobMode: "guided",
     })!;
     const { job } = await made(r, w1, RISKY);
     await drive(r, w1, job.id);
@@ -579,7 +579,7 @@ describe("the approval book is one process's memory", () => {
     const w1 = worker(r, { instanceId: "wf-1" });
     const v = createAgent({
       code: { ...r.code, approvals: new ApprovalBook({ now: r.now }) }, jobs: r.jobs, store: r.jobStore, brain: r.brain, call: r.model.call as never, worklog: r.worklog,
-      now: r.now, sleep: r.sleep, log: r.log, remote: { start: async () => undefined, wake: async () => undefined }, instanceId: "vps",
+      now: r.now, sleep: r.sleep, log: r.log, remote: { start: async () => undefined, wake: async () => undefined }, instanceId: "vps", jobMode: "guided",
     })!;
     // A branch Tailzu did not make: committing to it is a question.
     const { branch } = await createWorkBranch(r.d, "alice", r.project.id, UTIL_TASK);
@@ -608,7 +608,7 @@ describe("the approval book is one process's memory", () => {
     const w = worker(r);
     const v = createAgent({
       code: { ...r.code, approvals: new ApprovalBook({ now: r.now }) }, jobs: r.jobs, store: r.jobStore, brain: r.brain, call: r.model.call as never, worklog: r.worklog,
-      now: r.now, sleep: r.sleep, log: r.log, remote: { start: async () => undefined, wake: async () => undefined }, instanceId: "vps",
+      now: r.now, sleep: r.sleep, log: r.log, remote: { start: async () => undefined, wake: async () => undefined }, instanceId: "vps", jobMode: "guided",
     })!;
     const { job } = await made(r, w, RISKY);
     await drive(r, w, job.id);

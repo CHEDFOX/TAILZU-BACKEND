@@ -35,6 +35,7 @@ import { AgentOrchestrator, type RemoteJobs } from "./orchestrator.js";
 import { rewindStore, type RewindStore } from "./rewind.js";
 import { routerRunner, type AgentRunner } from "./runner.js";
 import { settingsStore, type SettingsStore } from "./settings.js";
+import type { JobMode } from "./types.js";
 
 export * from "./changeset.js";
 export * from "./checks.js";
@@ -83,10 +84,12 @@ export interface CreateAgentOptions extends Partial<Pick<AgentDeps, "call" | "ga
   design?: DesignDeps;
   /** Lead and helpers (code/team): how a helper's job is started and a lead woken, when this is not a server that drives its own jobs (the Worker starts a Workflow and sends an event). */
   team?: Partial<TeamPorts>;
-  /** What becomes of a tool result once it is older than the last six: "mask", "summary" or "hybrid" (agent/mask.ts). Instead of CODE_CONTEXT_STRATEGY, for a harness that compares them. */
+  /** What becomes of old tool results: "mask", "summary", "hybrid" or "transcript" (agent/mask.ts). Instead of CODE_CONTEXT_STRATEGY, for a harness that compares them. */
   contextStrategy?: ContextStrategy;
   /** Ask once for a focused test of the change before the checks run: instead of CODE_PROVE_FIX (agent/phases.ts testWanted). */
   proveFix?: boolean;
+  /** How a new job is worked when neither the job nor its project says: instead of CODE_JOB_MODE (free-form by default). */
+  jobMode?: JobMode;
 }
 
 /** The worker, or null when this server cannot run one (no GitHub client, or the project brain is off). */
@@ -107,6 +110,7 @@ export function createAgent(o: CreateAgentOptions): AgentOrchestrator | null {
     ...(o.design ? { design: o.design } : {}),
     ...(o.contextStrategy ? { contextStrategy: o.contextStrategy } : {}),
     ...(o.proveFix !== undefined ? { proveFix: o.proveFix } : {}),
+    ...(o.jobMode ? { jobMode: o.jobMode } : {}),
   };
   const orch = new AgentOrchestrator({
     jobs: o.jobs, store, deps, concurrency: o.concurrency ?? getConfig().CODE_AGENT_CONCURRENCY,

@@ -227,9 +227,13 @@ async function decideRequest(message: string, ctx: FrontCtx, deps: DecideDeps): 
 
   // 5. Unsure and costly: ask, once, instead of guessing.
   let clarify: Clarify | undefined;
-  if (confidence < CLARIFY_BELOW && budgetPaise >= COSTLY_PAISE) {
+  // A change asked for with nothing that says what or where ("fix it", "make it work", "theek karo"), and no conversation before it to point back to: however sure the
+  // read of the intent (a model reads "fix it" as a code task at 0.95), a job started on it can only guess. Ask what, once (the first reality run's "fix it").
+  const bare = !!rules.vague && (intent === "code_task" || intent === "unclear") && !rules.followUp && !rules.handoff && !ctx.recent.length && !ctx.attachments.length;
+  if ((confidence < CLARIFY_BELOW && budgetPaise >= COSTLY_PAISE) || bare) {
     clarify = modelClarify ?? clarifyFor(clarifyKind(intent), langOf(rules.cls.language));
     reasons.push("clarify");
+    if (bare) reasons.push("clarify:bare");
   }
 
   return {

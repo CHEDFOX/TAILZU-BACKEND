@@ -27,7 +27,7 @@ import type { DesignDeps, TeamPorts } from "../src/code/agent/deps.js";
 import { CHECK_MARK } from "../src/code/agent/checks.js";
 import { routerRunner } from "../src/code/agent/runner.js";
 import type { ContextStrategy } from "../src/code/agent/mask.js";
-import { initialState, stateOf, type AgentState } from "../src/code/agent/types.js";
+import { initialState, stateOf, type AgentState, type JobMode } from "../src/code/agent/types.js";
 import { createCode } from "../src/code/index.js";
 import { createJobs } from "../src/code/jobs/index.js";
 import type { JobRouter } from "../src/code/jobs/router.js";
@@ -260,6 +260,11 @@ export interface AgentRigOptions {
   proveFix?: boolean;
   /** What the GitHub App was given on the install (Contents, Pull requests and Metadata unless said otherwise): PR care needs Checks, Commit statuses and Actions (read) as well. */
   installPermissions?: Record<string, string>;
+  /**
+   * How a job is worked when neither the job nor the project says. The product's default is free-form (CODE_JOB_MODE); this rig's is GUIDED, because most of the
+   * suite was written for the phases in order (locate, plan, work, verify) and still tests them, the phased flow being kept behind the knob. null: the product's default.
+   */
+  jobMode?: JobMode | null;
 }
 
 export async function agentRig(o: AgentRigOptions = {}) {
@@ -331,6 +336,7 @@ export async function agentRig(o: AgentRigOptions = {}) {
       ...(over.passive ? { passive: true } : {}), ...(over.team ? { team: over.team } : {}), ...(over.leaseMs ? { leaseMs: over.leaseMs } : {}),
       ...(o.contextStrategy ? { contextStrategy: o.contextStrategy } : {}),
       ...(o.proveFix !== undefined ? { proveFix: o.proveFix } : {}),
+      ...(o.jobMode === null ? {} : { jobMode: o.jobMode ?? "guided" }),
     })!;
   }
   const orch = orchestrator();

@@ -33,7 +33,7 @@ export const REALITY_SPEC: CliSpec = {
   about: "the reality plan: staged, adaptive end-to-end tests and comparisons that stop spending as soon as the answers are clear",
   positionals: false,
   flags: {
-    plan: { kind: "string", value: "quick|standard|deep", about: "how much to learn: about 12, about 24 or all 65 tasks (default quick)" },
+    plan: { kind: "string", value: "quick|standard|deep", about: "how much to learn: about 12, about 24 or all 71 tasks (default quick)" },
     "budget-inr": { kind: "number", value: "N", about: "REQUIRED for a paid run: the hard cap in rupees for the whole plan (no default)" },
     estimate: { kind: "bool", about: "print the per-stage estimate from the live prices and the plan's maximum, and stop (mandatory before a paid run)" },
     "all-plans": { kind: "bool", about: "with --estimate: the three plans side by side" },
@@ -46,6 +46,7 @@ export const REALITY_SPEC: CliSpec = {
     sim: { kind: "string", value: "clear|tie|mixed", about: "with --mode sim: the truth the draws come from (default clear)" },
     persona: { kind: "string", value: "oracle|fake", about: "with --mode scripted: right answers or known wrong ones (default oracle)" },
     "task-limit": { kind: "number", about: "cap the sample and the comparisons at N tasks (a quick look)" },
+    tasks: { kind: "string", value: "<ids|glob>", about: "run these tasks instead of the stratified sample (ids in this order, or a glob, tag:x, category:x), in stage 3 and the comparisons" },
     seed: { kind: "number", about: "the seed of the draws and the bootstrap (default 1)" },
     confidence: { kind: "number", about: "P(best) needed to stop a comparison (default 0.9)" },
     install: { kind: "bool", about: "try to install the projects the tasks need (otherwise those tasks are skipped: needs a session where installs are allowed)" },
@@ -106,7 +107,7 @@ export function optionsFrom(argv: readonly string[]): Parsed {
   const outDir = path.resolve(p.str("out") ?? path.join(OUT_DIR, "reality", `${stamp}-${mode}`));
   const opts: RealityOptions = {
     plan, budgetInr: p.num("budget-inr") ?? 0, mode, estimateOnly: p.has("estimate"), stages: [...new Set(stages)].sort(), groups, ...(p.has("agents") ? { agents: p.list("agents") } : {}), ...(p.has("models") ? { models: p.list("models") } : {}),
-    ...(p.str("agent-model") ? { agentModel: p.str("agent-model")! } : {}), ...(p.num("task-limit") !== undefined ? { taskLimit: p.num("task-limit")! } : {}), ...(p.str("results-dir") ? { resultsDir: path.resolve(p.str("results-dir")!) } : {}), outDir, seed: p.num("seed") ?? 1, confidence,
+    ...(p.str("agent-model") ? { agentModel: p.str("agent-model")! } : {}), ...(p.str("tasks") ? { taskGlob: p.str("tasks")! } : {}), ...(p.num("task-limit") !== undefined ? { taskLimit: p.num("task-limit")! } : {}), ...(p.str("results-dir") ? { resultsDir: path.resolve(p.str("results-dir")!) } : {}), outDir, seed: p.num("seed") ?? 1, confidence,
     install: p.has("install"), skipSuite: p.has("no-suite"), skipTypecheck: p.has("no-typecheck"), freeParts: !p.has("no-free-parts"), judge: p.has("judge"), sim, persona, log: (s) => console.log(s),
   };
   return { opts, estimateOnly: p.has("estimate"), allPlans: p.has("all-plans"), prove: p.has("prove"), summary: p.has("summary"), commands: p.has("commands") };

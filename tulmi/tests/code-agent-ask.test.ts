@@ -53,6 +53,8 @@ describe("a question from the model", () => {
     expect(j.state).toBe("done");
     expect(j.spentPaise).toBeGreaterThan(spent);
     expect(r.model.seen[1]!.messages).toContain("The person answered: Both ends");
+    // The step it was answered at is kept: a free-form change that keeps reading after it is told to build (context.ts statusLine).
+    expect((await r.stateNow(job.id)).work.answeredAt).toBe(1);
     expect(r.fake.files(r.repo, branch)["src/util.ts"]).toContain("^-+|-+$");
     expect((await r.worklog.list(job.id)).find((e) => e.kind === "question" && e.data?.answer)).toMatchObject({ data: { answer: "Both ends" } });
     expect(r.toldOf("job_done")).toHaveLength(1);
@@ -360,8 +362,8 @@ describe("the budget", () => {
     const told = r.toldOf("needs_you");
     expect(told).toHaveLength(1);
     // Honest about why: ₹1.44 is NOT nothing, it is less than the next step's reservation, and the report says so instead of "used up".
-    expect(told[0]!.data.reason).toMatch(/^The next step needs about ₹2\.06 and ₹1\.44 is left \(₹3\.06 of the ₹4\.50 budget spent\)\. Continue with ₹10 more\?$/);
-    expect(s.report!.text).toContain("The next step needs about ₹2.06 and ₹1.44 is left");
+    expect(told[0]!.data.reason).toMatch(/^The next step needs about ₹2\.07 and ₹1\.44 is left \(₹3\.06 of the ₹4\.50 budget spent\)\. Continue with ₹10 more\?$/);
+    expect(s.report!.text).toContain("The next step needs about ₹2.07 and ₹1.44 is left");
     expect(s.report!.text).not.toContain("is used up");
 
     // They add budget; the model carries on from the staged edit and mends it.
