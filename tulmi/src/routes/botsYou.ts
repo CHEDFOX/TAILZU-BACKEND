@@ -38,8 +38,15 @@ import { applyPatch } from "../you/settings.js";
 import { youStore } from "../you/store.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 
-/** The bots each app is for when the person made no bot of their own that uses it (live.ts CONNECTOR_BOT; builtin.ts skills). */
-const BUILTIN_APPS: Record<string, string[]> = { "google-calendar": ["Plan bot"], "google-tasks": ["Plan bot"] };
+/** The bots each app is for when the person made no bot of their own that uses it (builtin.ts skills). None today: the Plan bot runs on
+ *  Tailzu's own calendar and to-dos (src/calendar), which are not connected apps. */
+const BUILTIN_APPS: Record<string, string[]> = {};
+
+/**
+ * Not offered in the Bots app: Tailzu keeps its own calendar and to-dos. Someone who connected one before still sees it (to switch it off);
+ * nobody is asked to connect it.
+ */
+const NOT_OFFERED = new Set(["google-calendar", "google-tasks"]);
 
 /** What one app may do, in the person's words: what it can, and what it can't. Apps not named here say their own line. */
 const APP_WORDS: Record<string, { can: string[]; cant: string[] }> = {
@@ -126,7 +133,7 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
     }).sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0) || a.name.localeCompare(b.name));
     // Connect more: the apps the person's bots name first, then Google's, then the rest; three at most.
     const rank = (id: string) => (uses.has(id) ? 0 : id.startsWith("google-") ? 1 : 2);
-    const more = defs.filter((d) => !byId.get(d.id)?.tokensEnc && !d.custom).sort((a, b) => rank(a.id) - rank(b.id))
+    const more = defs.filter((d) => !byId.get(d.id)?.tokensEnc && !d.custom && !NOT_OFFERED.has(d.id)).sort((a, b) => rank(a.id) - rank(b.id))
       .slice(0, 6).map((d) => ({ id: d.id, name: d.name, category: d.category, oneLine: d.oneLine, usedBy: uses.get(d.id) ?? [] }));
     // What bots may do alone: the changes the person let an app make without asking (connectors' "auto").
     const alone = conns.filter((x) => x.tokensEnc).reduce((n, x) => n + x.autoOk.length, 0);
@@ -290,6 +297,7 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
       const def = await c.hub.resolve(user.id, req.params.id).catch(() => undefined);
       if (!def || def.hidden || def.kind === "device") return reply.code(404).send({ code: "not_found", message: "No such app." });
       const conn = await c.store.getConnection(user.id, def.id);
+      if (NOT_OFFERED.has(def.id) && !conn?.tokensEnc) return reply.code(404).send({ code: "not_offered", message: "Tailzu has its own calendar and to-dos: they're on your Plan." });
       const defs = deps.bots ? await deps.bots.defs(user.id).catch(() => []) : [];
       const bots = defs.filter((d) => d.skills.connectors.includes(def.id))
         .map((d) => ({ slug: d.slug, name: d.name, colour: d.colour, purpose: d.purpose, builtin: d.ownerId === null, linked: true }));

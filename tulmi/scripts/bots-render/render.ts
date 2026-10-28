@@ -163,9 +163,9 @@ export interface ScreenData {
 }
 
 const USER = { id: "00000000-0000-4000-8000-00000000aaaa", name: "Aanya Sharma", email: "aanya@example.in" };
-export const DESKTOP_COMPONENTS = ["DeskShell", "DeskNotes", "DeskConnectors", "BotsKit", "BotsMotion", "BotBuddy", "WriteOn", "LiveMark", "HeadBar"];
-/** What the phone build declares beyond BotsKit, for the screens drawn here: the living tiles. */
-export const PHONE_COMPONENTS = ["BotsMotion", "BotBuddy", "WriteOn", "LiveMark", "HeadBar"];
+export const DESKTOP_COMPONENTS = ["DeskShell", "DeskNotes", "DeskConnectors", "BotsKit", "BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "Outbox"];
+/** What the phone build declares beyond BotsKit, for the screens drawn here: the living tiles, the media actions. */
+export const PHONE_COMPONENTS = ["BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "VoiceRecord", "Outbox"];
 
 /**
  * The builder the stand-in server uses. `misses` collects the api calls the target screen made that had no answer

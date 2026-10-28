@@ -20,6 +20,8 @@ import { randomUUID } from "node:crypto";
 import { dataClientFor, type AuthedUser } from "../auth/supabase.js";
 import { usageEventsSince } from "../usage/metering.js";
 import { joinWithSpace } from "../pipeline/join.js";
+import { livePublish } from "../live/writes.js";
+import { TOPIC } from "../live/topics.js";
 import type {
   HistoryEntry,
   LanguageHint,
@@ -438,7 +440,9 @@ export async function appendHistoryEntry(
   audioSeconds?: number,
 ): Promise<void> {
   if (!hasConsentedToHistory(personality)) return;
-  return withUserLock(user.id, () => appendHistoryEntryLocked(user, entry, audioSeconds));
+  await withUserLock(user.id, () => appendHistoryEntryLocked(user, entry, audioSeconds));
+  // Keybot's pages and Activity's words, on the person's other devices (live/writes.ts).
+  livePublish(user.id, [TOPIC.keybot, TOPIC.activity]);
 }
 
 async function appendHistoryEntryLocked(

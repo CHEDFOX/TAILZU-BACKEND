@@ -6,6 +6,9 @@
  * Nothing here is new behaviour: the connected apps are connectors/ (the same permission tiers), the files are media/ (read once, searched by
  * chunk), the artifacts are artifacts/ (the same checks), the web is code/webTools.ts, and a question about a person's project is the Code bot's own
  * chat (code/chat), read-only, on the cheap tier, as the front door asks it. Only server.ts imports this file, so the platform itself stays light.
+ *
+ * In front of the connected apps sit Tailzu's own calendar and to-dos ("calendar", "tasks": src/calendar/bots.ts), always on, so a bot
+ * given them (the Plan bot is) reads and writes the person's own days, with or without connected apps switched on.
  */
 import type { Artifacts } from "../artifacts/index.js";
 import type { GatewayDeps } from "../code/brain/gateway.js";
@@ -15,6 +18,7 @@ import type { ProjectDeps } from "../code/projects.js";
 import type { CallFn } from "../code/work/model.js";
 import type { Connectors } from "../connectors/index.js";
 import type { MediaService } from "../media/service.js";
+import { calendar, withOwnDays } from "../calendar/index.js";
 import { connectorsPort, type BotPorts, type CodeAsk } from "./ports.js";
 
 export interface WireOptions {
@@ -39,7 +43,7 @@ export function codeAskPort(code: Code | null | undefined, o: Pick<WireOptions, 
 
 export function botPorts(o: WireOptions): BotPorts {
   return {
-    connectors: o.connectors ? connectorsPort(o.connectors) : null,
+    connectors: withOwnDays(o.connectors ? connectorsPort(o.connectors) : null, calendar()),
     media: o.media ?? null,
     artifacts: o.artifacts ?? null,
     code: codeAskPort(o.code, o),

@@ -119,6 +119,19 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.bots_summary.enabled": true,
     "push.bots_summary.screenId": "bots.activity",
 
+    // Spaces (src/botsBots/spaceTasks.ts, threads.ts): someone in a space gave you a task, put something on your day, or messaged you.
+    // A message push never carries the words; a muted chat sends none. The push carries data.spaceId / data.threadId.
+    "push.space_task.enabled": true,
+    "push.space_task.screenId": "bots.space.tasks",
+    "push.space_plan.enabled": true,
+    "push.space_plan.screenId": "bots.space.tasks",
+    "push.space_message.enabled": true,
+    "push.space_message.screenId": "bots.chats",
+
+    // A reminder the person set on their own calendar or a to-do (src/calendar): the Plan, on that day (data.day).
+    "push.plan_reminder.enabled": true,
+    "push.plan_reminder.screenId": "bots.plan",
+
     "push.lowWords.enabled": false,
     "push.lowWords.fraction": 0.1,
     "push.lowWords.screenId": "paywall",
@@ -152,6 +165,14 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.code_minutes_low.body": "{reason} Past 95% Tailzu uses your own computer instead, or waits.",
     "push.bots_summary.title": "Today, {time}",
     "push.bots_summary.body": "{line}",
+    "push.space_task.title": "{name} gave you a task",
+    "push.space_task.body": "{title}{due}",
+    "push.space_plan.title": "{name} planned something for you",
+    "push.space_plan.body": "{title}{due}",
+    "push.space_message.title": "{chat}",
+    "push.space_message.body": "{name} sent a message",
+    "push.plan_reminder.title": "{title}",
+    "push.plan_reminder.body": "{when}",
     "push.lowWords.title": "{n} words left",
     "push.lowWords.body": "Enough for today. More any time.",
   },
@@ -166,5 +187,7 @@ export const EVENT_PUSH_KINDS = [
   "approval",
   "code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed", "code_needs_you", "code_minutes_low",
   "bots_summary",
+  "space_task", "space_plan", "space_message",
+  "plan_reminder",
 ] as const;
 export type EventPushKind = (typeof EVENT_PUSH_KINDS)[number];

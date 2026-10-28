@@ -312,7 +312,8 @@ clip in scene 10.
    - Classroom can stay at **Can look**.
 7. Say or caption which scope does what, using the lines from section 2.
 
-**To ask Tailzu something on the desktop,** tap **Alt twice** (or use the tray) and speak.
+**To ask Tailzu something on the desktop,** hold the one key (**Fn** on a Mac, **Right Ctrl** on Windows; or use the
+tray) and say "Tailzu, …".
 Changes show a confirm card. Click **Approve**.
 
 | # | Time | Shot | Shows |

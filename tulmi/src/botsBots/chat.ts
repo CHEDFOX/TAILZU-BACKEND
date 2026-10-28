@@ -55,7 +55,8 @@ export class BotChat {
     return rows.map(turnOf).reverse();
   }
 
-  async send(userId: string, slug: string, message: unknown, signal?: AbortSignal): Promise<{ answer: BotAnswer; turns: ChatTurn[] }> {
+  /** `attached`: what the person's spaces shared with this bot (shared.ts forBot), read as data. */
+  async send(userId: string, slug: string, message: unknown, signal?: AbortSignal, attached: Array<{ name: string; kind: string; text: string }> = []): Promise<{ answer: BotAnswer; turns: ChatTurn[] }> {
     if (typeof message !== "string" || !message.trim()) throw new BotError("bad_request", "Type what you want to ask first.");
     if (message.length > LIMITS.message) throw new BotError("too_large", `A message may be ${LIMITS.message} characters at most.`, 413);
     const found = await this.bots.resolve(userId, slug);
@@ -64,7 +65,7 @@ export class BotChat {
     const said = message.trim();
     const before = await this.recent(userId, found.def.slug, LIMITS.history.turns);
     const history = before.map((t) => ({ role: t.role === "me" ? "user" as const : "assistant" as const, content: t.text.slice(0, LIMITS.history.chars) }));
-    const answer = await this.bots.ask(userId, found.def.slug, { message: said, history, ...(signal ? { signal } : {}) });
+    const answer = await this.bots.ask(userId, found.def.slug, { message: said, history, ...(signal ? { signal } : {}), ...(attached.length ? { attached } : {}) });
     const at = this.now();
     const mine: ChatTurnRow = { id: randomUUID(), user_id: userId, bot: found.def.slug, role: "me", text: said, extra: {}, at_ms: at };
     const theirs: ChatTurnRow = {

@@ -12,6 +12,7 @@
  *   POST /v1/keybot/tone            { group, preset?, noStop?, latin?, signOff? }: kept, and written into personality.appStyles
  *   GET  /v1/keybot/words?q=        Your words: added, learned, how often each was said, where last
  *   GET  /v1/keybot/voices          Read aloud
+ *   GET  /v1/keybot/voices/:id/sample?speed=   a voice saying one line, for its play button (routes/voiceSample.ts)
  *   GET  /v1/keybot/train           Teach your style: the ten lines, what was said, what it learned
  *   POST /v1/keybot/train           { line, said }: learned from (POST /v1/train/pick, the same as the Train sheet), then kept
  *   POST /v1/keybot/train/skip      { line }
@@ -37,6 +38,7 @@ import { allowanceFor, usageSummary } from "../usage/metering.js";
 import { getEntitlement } from "../billing/entitlements.js";
 import { getConfig } from "../config.js";
 import type { BotsAreaDeps } from "./botsArea.js";
+import { registerVoiceSampleRoute } from "./voiceSample.js";
 
 /** The clock the person reads their day by: the app sends it (x-tz-offset or ?tz), else their portrait's. */
 function tzOf(req: FastifyRequest, fallback: number | undefined): number {
@@ -165,6 +167,8 @@ export function registerBotsKeybotRoutes(app: FastifyInstance, deps: BotsAreaDep
     const [personality, prefs] = await Promise.all([getPersonality(user), getPrefs(user)]);
     return reply.send(voicesView(personality, prefs));
   });
+  // A voice's sample, for its play button (routes/voiceSample.ts).
+  registerVoiceSampleRoute(app, { rateLimit: deps.rateLimit });
 
   // ------------------------------------------------------------------ teach your style
 

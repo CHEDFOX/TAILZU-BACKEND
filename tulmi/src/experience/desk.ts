@@ -665,12 +665,15 @@ const ROOM: Style = {
 const room = (inner: Node[], style: Style = {}): Node =>
   stack([row(inner, { justify: "between", align: "end", gap: 24, flexWrap: "wrap", ...style }, "d-room-inner")], ROOM, "d-room");
 
-/** The keys that start a dictation, as the room shows them. */
+/** The keys that start a dictation, as the room shows them. The one key (a window that has it bound says
+ *  desktop.oneKeyOn, and names it as its hotkey) is held; otherwise the pair tapped, or the chord pressed. */
 const talkKeys = (): Node[] => [
+  row([keys("hotkey", true), text("hold in any app, and talk", "d-count d-on-room", { maxWidth: 150, marginLeft: 6 })],
+    { align: "center", gap: 0 }, undefined, { visibleIf: { truthy: "desktop.oneKeyOn" } }),
   row([keys("tap", true), text("tap twice, in any app, and talk", "d-count d-on-room", { maxWidth: 150, marginLeft: 6 })],
-    { align: "center", gap: 0 }, undefined, { visibleIf: { truthy: "desktop.tap" } }),
+    { align: "center", gap: 0 }, undefined, { visibleIf: { all: [{ falsy: "desktop.oneKeyOn" }, { truthy: "desktop.tap" }] } }),
   row([keys("hotkey", true), text("in any app, and talk", "d-count d-on-room", { maxWidth: 150, marginLeft: 6 })],
-    { align: "center", gap: 0 }, undefined, { visibleIf: { falsy: "desktop.tap" } }),
+    { align: "center", gap: 0 }, undefined, { visibleIf: { all: [{ falsy: "desktop.oneKeyOn" }, { falsy: "desktop.tap" }] } }),
 ];
 
 /**
@@ -2210,6 +2213,8 @@ export function deskNote(ctx: DeskContext): ScreenResponse {
 
 // ---- SETTINGS and PLAN ----------------------------------------------------------------
 
+/** A node shown only while `c` holds (the window's state). */
+const shownIf = (n: Node, c: NonNullable<Node["visibleIf"]>): Node => ({ ...n, visibleIf: c });
 const defRow = (k: string | Node, v: Node | string, right?: Node): Node => row([
   typeof k === "string" ? text(k, "d-k", { width: 220, flex: "none" }) : k,
   typeof v === "string" ? text(v, "d-v", { flex: 1, minWidth: 0 }) : stack([v], { flex: 1, minWidth: 0 }),
@@ -2368,10 +2373,19 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
 
     // ---- This computer -----------------------------------------------------
     part(say("comp.h"), say("comp.p"), [
-      defRow("Shortcut", row([
-        text("Tap", "d-v"), keys("tap", true), text("twice, or press", "d-v"), keys("hotkey", true),
-      ], { gap: 8, align: "center", flexWrap: "wrap" }), text("Change it from the tray", "d-margin")),
-      defRow("Tap to talk", "Tap the key twice to start, twice again to finish", sw("tap", "Tap to talk")),
+      defRow("Shortcut", stack([
+        // The one key: held to talk, tapped to keep listening; picked in Keybot's settings.
+        row([text("Hold", "d-v"), keys("hotkey", true), text("to talk, tap it to keep listening", "d-v")],
+          { gap: 8, align: "center", flexWrap: "wrap" }, undefined, { visibleIf: { truthy: "desktop.oneKeyOn" } }),
+        row([
+          text("Tap", "d-v"), keys("tap", true), text("twice, or press", "d-v"), keys("hotkey", true),
+        ], { gap: 8, align: "center", flexWrap: "wrap" }, undefined, { visibleIf: { falsy: "desktop.oneKeyOn" } }),
+      ]), shownIf(text("Change it from the tray", "d-margin"), { falsy: "desktop.oneKey" })),
+      // One switch: with the one key a single tap keeps it listening; without it, the pair.
+      defRow("Tap to talk", stack([
+        shownIf(text("Tap the key twice to start, twice again to finish", "d-v"), { falsy: "desktop.oneKey" }),
+        shownIf(text("Tap the key to keep listening, tap again to finish", "d-v"), { truthy: "desktop.oneKey" }),
+      ]), sw("tap", "Tap to talk")),
       defRow("The pill", say("d.pill"), sw("pill", "Show the pill")),
       defRow("Write on a pause", say("d.pause"), sw("pauseFlush", "Write on a pause")),
       defRow("Live words", say("d.live"), sw("live", "Live words")),

@@ -36,6 +36,9 @@ import {
   whenEq, FACE, RADIUS, type BotsCtx, type Mark,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
+import { shareButton } from "../shareAction.js";
+import { canUpload, uploadChip, uploadPick } from "../media.js";
+import { canLive, liveView } from "../kit.js";
 
 const CODE = botLook("code");
 const MOSS = CODE.color;
@@ -60,6 +63,8 @@ const G = {
   image: "M5 4.5h14a1.5 1.5 0 0 1 1.5 1.5v12a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 18V6A1.5 1.5 0 0 1 5 4.5zM3.5 16l5-5 4 4 3-3 5 5M15.5 8.5h.01",
   video: "M4 6.5h11a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 16V8A1.5 1.5 0 0 1 4 6.5zM16.5 10.5l5-3v9l-5-3",
   refresh: "M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4.2h-4.2",
+  shot: "M4 8.5V6a2 2 0 0 1 2-2h2.5M15.5 4H18a2 2 0 0 1 2 2v2.5M20 15.5V18a2 2 0 0 1-2 2h-2.5M8.5 20H6a2 2 0 0 1-2-2v-2.5M9.7 8.5h4.6a1.2 1.2 0 0 1 1.2 1.2v4.6a1.2 1.2 0 0 1-1.2 1.2H9.7a1.2 1.2 0 0 1-1.2-1.2V9.7a1.2 1.2 0 0 1 1.2-1.2z",
+  recording: "M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM8 21h8M12 9.6a.9.9 0 1 0 0 1.8.9.9 0 0 0 0-1.8z",
   failed: "M8 8l8 8M16 8l-8 8",
 };
 
@@ -843,7 +848,9 @@ function teamScreen(ctx: BotsCtx, d: TeamData | undefined) {
 
 // ===================================================================== artifacts: design and preview
 
-interface ArtData { art: ArtifactRead; versions: VersionRow[]; job?: JobData }
+/** `live`: the page the app runs the artifact in (GET /v1/artifacts/:id/live), for a build that draws LiveView while a viewer is set. */
+interface ArtData { art: ArtifactRead; versions: VersionRow[]; job?: JobData; live?: LivePage }
+interface LivePage { html: string; origin: string }
 
 async function readArtifact(deps: Parameters<NonNullable<BotsScreen["load"]>>[1], id: string): Promise<{ art: ArtifactRead; versions: VersionRow[] }> {
   const [art, versions] = await Promise.all([
@@ -862,8 +869,45 @@ async function loadArt(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["lo
     id = list.artifacts[0]?.id;
   }
   if (!id) throw new Error("nothing to show");
-  const a = await readArtifact(deps, id);
-  return { ...a, ...(job ? { job } : {}) };
+  // The running page too, for a build that can show one: none (no viewer set, an older build) draws the parts as before.
+  const [a, live] = await Promise.all([
+    readArtifact(deps, id),
+    canLive(ctx) ? deps.api<LivePage>("GET", `/v1/artifacts/${id}/live?pick=1`).catch(() => undefined) : Promise.resolve(undefined),
+  ]);
+  return { ...a, ...(job ? { job } : {}), ...(live && typeof live.html === "string" && typeof live.origin === "string" ? { live } : {}) };
+}
+
+/**
+ * The artifact running (LiveView), for point and change: a tap on a part (in "Point to change") picks it into `sel` / `selName`, as the
+ * drawn parts do; an error the page reports goes to POST /v1/artifacts/:id/errors, and a fix it lands reloads the screen.
+ */
+function liveArt(d: ArtData, height: number): Node | null {
+  if (!d.live) return null;
+  const art = d.art;
+  const report = call("POST", `/v1/artifacts/${art.artifact.id}/errors`, {
+    version: art.version, kind: "$state.live.kind", message: "$state.live.message", line: "$state.live.line", col: "$state.live.col",
+  }, { assignTo: "fixed", ok: { kind: "condition", if: { eq: ["fixed.status", "fixed"] }, then: seq(toast("Fixed a problem in the page"), refresh) } });
+  const onMessage: ActionSpec = {
+    kind: "condition", if: { eq: ["live.t", "select"] },
+    then: seq({ kind: "setState", path: "sel", value: "$state.live.id" }, { kind: "setState", path: "selName", value: "$state.live.name" }),
+    else: { kind: "condition", if: { eq: ["live.t", "error"] }, then: report },
+  };
+  return liveView({
+    html: d.live.html, origin: d.live.origin, title: art.artifact.title, messagePath: "live", waitForReady: true,
+    loadingText: "Opening the page…", errorText: "Couldn't open the page.",
+  }, { sendPath: "liveSend", onResult: onMessage, style: { width: "100%", height, borderRadius: 16 } });
+}
+
+/** "Use it" or "Point to change": whether a tap on the running page uses it or picks a part (the page is told, nothing reloads). */
+function liveMode(o: { compact?: boolean } = {}): Node {
+  const tab = (labelText: string, pick: boolean, glyphNode?: Node) => box([row([
+    ...(glyphNode ? [glyphNode] : []),
+    text(labelText, { size: 13, weight: 500, lineHeight: 17, align: "center" }),
+  ], { gap: 6, justifyContent: "center" })], {
+    flexGrow: o.compact ? 0 : 1, flexBasis: o.compact ? undefined : 0, paddingVertical: o.compact ? 6 : 9, paddingHorizontal: 14, borderRadius: 10,
+    backgroundColor: whenEq("liveSend.pick", pick, C.paper, "transparent"),
+  }, { kind: "setState", path: "liveSend.pick", value: pick });
+  return labelled(row([tab("Use it", false), tab("Point to change", true, glyph("M5 3l14 7-6 2-2 6z", { size: 14 }))], { gap: 2, padding: 3, borderRadius: 12, backgroundColor: C.surface }), "Preview mode");
 }
 
 const POINTABLE = new Set(["html", "react", "svg", "jsx", "tsx"]);
@@ -954,11 +998,12 @@ function selectedLabel(): Node {
 function designPhone(ctx: BotsCtx, d: ArtData) {
   const { art } = d;
   const build = buildAction(art);
+  const live = liveArt(d, 420);
   return page(ctx, {
     nav: "code", title: art.artifact.title, gap: 16,
     body: [
       head({ title: art.artifact.title, sub: meta(`In your app's style · version ${art.version}`, { size: 12 }), right: versionDots(art.artifact.headVersion) }),
-      col([partsView(art), selectedLabel()], { backgroundColor: C.surface, borderRadius: 24, padding: 14, gap: 12 }),
+      col([live ?? partsView(art), selectedLabel()], { backgroundColor: C.surface, borderRadius: 24, padding: 14, gap: 12 }),
       field("change", "Make it stand out more", changeAction(art), { ink: true }),
       changing(),
       meta("Tap any part, say what to change. Only that part is redone.", { size: 12 }),
@@ -967,7 +1012,7 @@ function designPhone(ctx: BotsCtx, d: ArtData) {
       button("Build it into my app", build, { kind: "primary", wide: true, icon: undefined }),
       meta("After building, I'll compare the real screen with this and fix any difference.", { size: 12, align: "center" }),
     ] : [meta("This design isn't part of a project, so there's nowhere to build it yet.", { size: 12, align: "center" })],
-    state: { sel: "", selName: "Tap a part", change: "", changing: false },
+    state: { sel: "", selName: "Tap a part", change: "", changing: false, ...liveState(live) },
   });
 }
 
@@ -1002,6 +1047,7 @@ function builtSide(ctx: BotsCtx, d: ArtData): Node {
 function designDesk(ctx: BotsCtx, d: ArtData) {
   const { art } = d;
   const pr = d.job?.agent?.pr;
+  const live = liveArt(d, 520);
   return page(ctx, {
     nav: "code", title: art.artifact.title, gap: 22, maxWidth: 1100,
     body: [
@@ -1015,14 +1061,14 @@ function designDesk(ctx: BotsCtx, d: ArtData) {
       row([
         col([
           sectionLabel("The design you approved"),
-          col([partsView(art), selectedLabel()], { backgroundColor: C.surface, borderRadius: 24, padding: 16, gap: 12 }),
+          col([live ?? partsView(art), selectedLabel()], { backgroundColor: C.surface, borderRadius: 24, padding: 16, gap: 12 }),
           field("change", "Click any part, then say what to change…", changeAction(art)),
           changing(),
         ], { gap: 12, flexGrow: 1, flexBasis: 0, minWidth: 0 }),
         builtSide(ctx, d),
       ], { gap: 28, alignItems: "flex-start" }),
     ],
-    state: { sel: "", selName: "Click a part", change: "", changing: false },
+    state: { sel: "", selName: "Click a part", change: "", changing: false, ...liveState(live) },
   });
 }
 
@@ -1042,6 +1088,23 @@ function versionRows(ctx: BotsCtx, d: ArtData): Node[] {
   });
 }
 
+/** The running page's state: point and change on, and nothing heard from it yet. */
+const liveState = (live: Node | null): Record<string, unknown> => (live ? { liveSend: { pick: true }, live: null, fixed: null } : {});
+
+/**
+ * DPreview's frame around the running page: a phone (300 wide, its bar) or the window's width, by the Phone / Desktop switch. One frame
+ * whose look follows state, so switching does not reload the page.
+ */
+function liveFrame(live: Node): Node {
+  return col([
+    when({ eq: ["frame", "phone"] }, row([text("9:41", { size: 9.5, weight: 600, lineHeight: 12 }), grow(), box([], { width: 56, height: 14, borderRadius: 7, backgroundColor: C.ink }), grow(), text("5G", { size: 9, lineHeight: 12 })])),
+    live,
+  ], {
+    width: whenEq("frame", "phone", 300, "100%"), borderWidth: whenEq("frame", "phone", 6, 1), borderColor: whenEq("frame", "phone", C.ink, C.line),
+    borderRadius: whenEq("frame", "phone", 34, 14), padding: whenEq("frame", "phone", 12, 0), gap: 10, backgroundColor: C.paper, alignSelf: "center", overflow: "hidden",
+  });
+}
+
 function phoneFrame(inner: Node, width: number): Node {
   return col([
     row([text("9:41", { size: 9.5, weight: 600, lineHeight: 12 }), grow(), box([], { width: 56, height: 14, borderRadius: 7, backgroundColor: C.ink }), grow(), text("5G", { size: 9, lineHeight: 12 })]),
@@ -1049,9 +1112,13 @@ function phoneFrame(inner: Node, width: number): Node {
   ], { width, borderWidth: 6, borderColor: C.ink, borderRadius: 34, backgroundColor: C.paper, paddingVertical: 12, paddingHorizontal: 12, gap: 10, alignSelf: "center" });
 }
 
+/** Share the preview with a space or a person: its name and version, as a card (screens/spaces.ts bots.share). */
+const previewShare = (art: ArtifactRead): Node => shareButton({ kind: "preview", ref: art.artifact.id, title: art.artifact.title, text: `A live preview Code bot made: ${art.artifact.title}, version ${art.version}.` });
+
 function previewPhone(ctx: BotsCtx, d: ArtData) {
   const { art } = d;
   const head0 = art.artifact.headVersion;
+  const live = liveArt(d, 440);
   return page(ctx, {
     nav: "code", title: "Live preview", gap: 16,
     body: [
@@ -1060,21 +1127,23 @@ function previewPhone(ctx: BotsCtx, d: ArtData) {
         sub: meta(`${art.artifact.title} · updated ${ago(art.artifact.updatedAt, ctx.live.now)}`, { size: 12, lines: 1 }),
         right: col([versionDots(head0), meta(`v${art.version} of ${head0}`, { size: 12 })], { gap: 4, alignItems: "flex-end" }, { kind: "toggleState", path: "showVersions" }),
       }),
-      row([icon("search", { size: 15, color: C.meta }), meta("Point to change: tap any part of the preview.", { size: 13 })], { gap: 6, backgroundColor: C.surface, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12 }),
+      live ? liveMode() : row([icon("search", { size: 15, color: C.meta }), meta("Point to change: tap any part of the preview.", { size: 13 })], { gap: 6, backgroundColor: C.surface, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 12 }),
       when({ truthy: "showVersions" }, col(versionRows(ctx, d), { gap: 2 })),
-      box([phoneFrame(partsView(art, { scale: 0.85, max: 22 }), 260)], { backgroundColor: C.surface, borderRadius: 24, paddingVertical: 16, alignItems: "center" }),
+      box([phoneFrame(live ?? partsView(art, { scale: 0.85, max: 22 }), 260)], { backgroundColor: C.surface, borderRadius: 24, paddingVertical: 16, alignItems: "center" }),
       selectedLabel(),
       field("change", "Make this bigger and say 'Book now'", changeAction(art), { ink: true }),
       changing(),
       meta(`Only the part you picked changes. v${head0} stays, so you can go back.`, { size: 12 }),
+      previewShare(art),
     ],
-    state: { sel: "", selName: "Tap a part", change: "", changing: false, showVersions: false },
+    state: { sel: "", selName: "Tap a part", change: "", changing: false, showVersions: false, ...liveState(live) },
   });
 }
 
 function previewDesk(ctx: BotsCtx, d: ArtData) {
   const { art } = d;
   const head0 = art.artifact.headVersion;
+  const live = liveArt(d, 560);
   return page(ctx, {
     nav: "code", title: "Live preview", gap: 20, maxWidth: 1180,
     body: [
@@ -1087,10 +1156,12 @@ function previewDesk(ctx: BotsCtx, d: ArtData) {
           box([text("Phone", { size: 13, weight: 500, lineHeight: 17, align: "center" })], { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 10, backgroundColor: whenEq("frame", "phone", C.paper, "transparent") }, { kind: "setState", path: "frame", value: "phone" }),
           box([text("Desktop", { size: 13, weight: 500, lineHeight: 17, align: "center" })], { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 10, backgroundColor: whenEq("frame", "desktop", C.paper, "transparent") }, { kind: "setState", path: "frame", value: "desktop" }),
         ], { gap: 2 })], { padding: 3, borderRadius: 12, backgroundColor: C.surface }),
+        ...(live ? [liveMode({ compact: true })] : []),
+        previewShare(art),
       ], { gap: 12 }),
       row([
         col([sectionLabel("Versions"), ...versionRows(ctx, d), meta("Every change makes a new version. Older ones stay.", { size: 12, lineHeight: 17 })], { width: 220, flexShrink: 0, gap: 6 }),
-        box([
+        box(live ? [liveFrame(live)] : [
           when({ eq: ["frame", "phone"] }, phoneFrame(partsView(art, { scale: 0.9, max: 30 }), 300)),
           when({ eq: ["frame", "desktop"] }, box([partsView(art, { scale: 1, max: 40 })], { width: "100%", borderWidth: 1, borderColor: C.line, borderRadius: 14, backgroundColor: C.paper, padding: 18 })),
         ], { flexGrow: 1, flexBasis: 0, minWidth: 0, backgroundColor: C.surface, borderRadius: 24, padding: 22, alignItems: "center" }),
@@ -1111,7 +1182,7 @@ function previewDesk(ctx: BotsCtx, d: ArtData) {
         ], { width: 280, flexShrink: 0, gap: 10 }),
       ], { gap: 22, alignItems: "flex-start" }),
     ],
-    state: { sel: "", selName: "Click a part", change: "", changing: false, frame: "phone" },
+    state: { sel: "", selName: "Click a part", change: "", changing: false, frame: "phone", ...liveState(live) },
   });
 }
 
@@ -1172,15 +1243,27 @@ function attachScreen(ctx: BotsCtx, d: AttachData | undefined) {
     }, else: askCode(ctx, c, "$state.msg", { from: "msg", attachments: "$state.atts" }),
   };
   const voice: ActionRef = desk ? { kind: "dictate" } : open(SCREENS.ask, { voice: true });
+  // A picked file goes up at once (media.ts uploadPick) and is the one this message carries, as a recent one is.
+  const picked = seq({ kind: "setState", path: "pick", value: "$state.sent.file.id" }, { kind: "setState", path: "pickName", value: "$state.sent.name" });
+  const sendIt = (what: Parameters<typeof uploadPick>[0]) => uploadPick(what, "atts", picked);
   const options = [
+    ...(canUpload(ctx) ? [
+      optionTile("Photo", desk ? "From this computer" : undefined, glyph(G.image, { size: 22 }), sendIt("photo"), desk),
+      optionTile("Screenshot", desk ? "Pick a window or an area" : undefined, glyph(G.shot, { size: 22 }), sendIt("screenshot"), desk),
+      optionTile("Screen recording", desk ? "A video from this computer" : undefined, glyph(G.recording, { size: 22 }), sendIt("video"), desk),
+      optionTile("File", desk ? "PDF, Word, CSV, zip" : undefined, glyph(G.file, { size: 22 }), sendIt("file"), desk),
+    ] : []),
     optionTile("Link", desk ? "Figma, Drive or any page" : undefined, icon("link", { size: 22 }), { kind: "setState", path: "linkHint", value: true }, desk),
     optionTile("Voice note", desk ? "Say it instead of typing" : undefined, icon("mic", { size: 22 }), voice, desk),
   ];
+  const optionRows = options.length > 3 ? col([row(options.slice(0, 3), { gap: 10, alignItems: "flex-start" }), row(options.slice(3), { gap: 10, alignItems: "flex-start" })], { gap: 18 }) : row(options, { gap: 12 });
+  const sentChip = canUpload(ctx) ? [uploadChip("atts", { wide: desk, onRemove: seq({ kind: "clearState", path: "pick" }, { kind: "clearState", path: "pickName" }) })] : [];
   const recent = files.length
     ? col([sectionLabel("Recent"), row(files.map((f) => fileTile(f, ctx)), { gap: 10, alignItems: "flex-start" })], { gap: 10 })
     : card([text("Nothing sent yet", { size: 14, weight: 600, lineHeight: 19 }), meta("Files you send to your bots show here, ready to add to any chat. Paste a link below, or say it.", { size: 13, lineHeight: 18 })], { dashed: true, gap: 6, padding: 16 });
   const box1 = col([
     when({ truthy: "linkHint" }, meta("Paste the link in the message. Code bot opens it and reads it.", { size: 12 })),
+    ...sentChip,
     field("msg", "Message Code bot", send, { compact: desk }),
     when({ truthy: "asking" }, row([statusMark("working", { color: MOSS }), meta("Sending to Code bot…", { size: 13 })], { gap: 8 })),
   ], { gap: 8 });
@@ -1200,7 +1283,7 @@ function attachScreen(ctx: BotsCtx, d: AttachData | undefined) {
           ...options, divider(), recent, grow(), reads,
         ], { width: 340, flexShrink: 0, gap: 8, padding: 20, borderRadius: 20, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper }),
       ], { gap: 28, alignItems: "stretch", flexGrow: 1 })],
-      state: { msg: "", pick: "", pickName: "", atts: [], linkHint: false, said: null },
+      state: { msg: "", pick: "", pickName: "", atts: [], linkHint: false, said: null, up: null, sent: null },
     });
   }
   return page(ctx, {
@@ -1209,12 +1292,12 @@ function attachScreen(ctx: BotsCtx, d: AttachData | undefined) {
     footer: [col([
       row([box([], { width: 36, height: 4, borderRadius: 2, backgroundColor: C.outline })], { justifyContent: "center" }),
       row([text("Add to chat", { size: 17, weight: 600, lineHeight: 22 }), grow(), labelled(box([icon("close", { size: 20 })], { width: 44, height: 44, marginRight: -10, alignItems: "center", justifyContent: "center" }, back()), "Close")]),
-      row(options, { gap: 12 }),
+      optionRows,
       recent,
       box1,
       reads,
     ], { gap: 14, paddingTop: 10, paddingHorizontal: 20, paddingBottom: 6, marginHorizontal: -20, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, borderColor: C.line, backgroundColor: C.paper })],
-    state: { msg: "", pick: "", pickName: "", atts: [], linkHint: false, said: null },
+    state: { msg: "", pick: "", pickName: "", atts: [], linkHint: false, said: null, up: null, sent: null },
   });
 }
 

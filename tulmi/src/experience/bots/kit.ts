@@ -17,7 +17,8 @@
  *   - colour is only for bots (palette.ts). Errors, success and links are ink.
  */
 import type { ActionRef, ActionSpec, BotBuddyProps, BotCardProps, BotTileKind, BotTileSpec, Condition, Node, ScreenResponse, ThemeTokens } from "../../../../shared/types/sdui.js";
-import { BOT_BUDDY_COMPONENT, BOTS_MOTION_CAPABILITY, HOME_HEAD_COMPONENTS, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
+import { BOT_BUDDY_COMPONENT, BOT_TILES_STRIP, BOTS_MOTION_CAPABILITY, HOME_HEAD_COMPONENTS, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
+import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, type LiveViewProps } from "../../../../shared/types/sdui.js";
 import { blipLoopFor, type BlipPose } from "./art.js";
 import { blipSize, blipUrl as blipLoopUrl } from "../blipLoops.js";
 import { icon, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type TabId } from "./glyphs.js";
@@ -49,7 +50,7 @@ export interface BotsCtx {
   user: { id: string; name?: string; email?: string } | null;
   /** What the asking build can draw (capabilities.components). */
   can: ReadonlySet<string>;
-  /** The window's own pages that exist for it (the desk: Today, Meeting notes, its settings). */
+  /** The window's own pages that exist for it (the desk: Today, Notes, its settings). */
   desk: { pages: boolean; notes: boolean };
   tzOffsetMinutes: number;
 }
@@ -289,7 +290,7 @@ export function botLineText(bot: LiveBot, idle: string): string {
 
 /** The built-ins have their own play (Code juggles 0s and 1s, Keybot hops keys…); anyone's own bot plays with a ball. */
 export function botKind(slug: string): BotTileKind {
-  return slug === "code" || slug === "keybot" || slug === "plan" || slug === "travel" ? slug : "custom";
+  return slug === "code" || slug === "keybot" || slug === "plan" || slug === "travel" || slug === "notes" ? slug : "custom";
 }
 
 /** One living tile for a bot: its name, its line, its colour, its play, its state, where a tap goes. */
@@ -308,13 +309,20 @@ export function makeTileSpec(onPress?: ActionRef): BotTileSpec {
 /**
  * Home's grid as living tiles (BotTiles): a tiny Blip per tile, playing on a faint fabric; a tap makes every other bot
  * look at it before the tile opens. Only for a build that can draw it (canMove); others get botTile / makeBotTile.
+ * `strip`: one more tile as a full-width row under the grid, in the same world (only for canStrip).
  */
-export function botTiles(tiles: BotTileSpec[], o: { columns: number; height: number; padding: number; gap: number }): Node {
+export function botTiles(tiles: BotTileSpec[], o: { columns: number; height: number; padding: number; gap: number; strip?: BotTileSpec; stripHeight?: number }): Node {
   return {
     type: "BotTiles",
-    props: { tiles, columns: o.columns, height: o.height, padding: o.padding, gap: o.gap, faces: { regular: FACE.regular, medium: FACE.medium, semibold: FACE.semibold } },
+    props: {
+      tiles, columns: o.columns, height: o.height, padding: o.padding, gap: o.gap, faces: { regular: FACE.regular, medium: FACE.medium, semibold: FACE.semibold },
+      ...(o.strip ? { strip: o.strip, stripHeight: o.stripHeight ?? 104 } : {}),
+    },
   };
 }
+
+/** A build that draws a strip under the living grid (BotTilesProps.strip). */
+export const canStrip = (ctx: BotsCtx): boolean => canMove(ctx) && ctx.can.has(BOT_TILES_STRIP);
 
 /**
  * A card with the tiny bot playing across its top (BotCard) and its steps below: each step a node with its own
@@ -804,7 +812,7 @@ export function sidebar(ctx: BotsCtx, active?: string): Node {
     navItem("Make a bot", icon("plus", { size: 18, color: C.meta }), active === "make", open(SCREENS.make), 38),
     box([], { height: 1, backgroundColor: C.divider, marginVertical: 8, marginHorizontal: 10 }),
     ...(ctx.desk.pages ? [navItem("Today", plain("today", active === "today"), active === "today", open(SCREENS.today), 40)] : []),
-    ...(ctx.desk.notes ? [navItem("Meeting notes", plain("notes", active === "notes"), active === "notes", open(SCREENS.notes), 40)] : []),
+    ...(ctx.desk.notes ? [navItem("Notes", plain("notes", active === "notes"), active === "notes", open(SCREENS.notes), 40)] : []),
     grow(),
     navItem("This computer helps", plain("computer", active === "computer"), active === "computer", open(SCREENS.computer), 40, meta("On")),
     navItem("Settings", plain("settings", active === "settings"), active === "settings", open(settingsId), 40),
@@ -842,6 +850,8 @@ export interface PageOpts {
   maxWidth?: number;
   /** Over the top of the page, outside its scroll (a HeadBar): before the phone's Screen, before the window's column. */
   pinned?: Node[];
+  /** Live topics this screen listens to (src/live/bus.ts): when one changes, the open screen reloads itself. */
+  live?: string[];
 }
 
 /** A page for whichever client is asking: phonePage or deskPage. Most screens need only this. */
@@ -854,6 +864,7 @@ function response(ctx: BotsCtx, o: PageOpts, root: Node): ScreenResponse {
     schemaVersion: SDUI_SCHEMA_VERSION, screenId: ctx.screenId, ...(o.title ? { title: o.title } : {}),
     hideChrome: true, look: "bots", theme: BOTS_THEME, cacheTtlSeconds: 0,
     state: { ask: "", asking: false, ...(o.state ?? {}) }, ...(o.actions ? { actions: o.actions } : {}), root,
+    ...(o.live?.length ? { liveTopics: o.live } : {}),
   };
 }
 
@@ -922,6 +933,37 @@ export function duration(min: number): string {
   if (m < 60) return `${m} min`;
   const h = Math.floor(m / 60), r = m % 60;
   return r >= 10 ? `${h} h ${r} min` : `${h} h`;
+}
+
+// ===================================================================== a live page, and the outbox (shared/types/sdui.ts 3e)
+
+/** A build that draws LiveView: a running page or artifact, in a sandbox of its own. */
+export const canLive = (ctx: BotsCtx): boolean => ctx.can.has(LIVE_VIEW_COMPONENT);
+
+/**
+ * A running page (LiveView): from `url`, or the `html` the server wrote (run as `origin`). Its loading and error states are the app's
+ * own, in these words. What the page says goes to `messagePath`, then `onResult` runs; `sendPath` names the state the page is told
+ * whenever it changes (its window.tzLive). Give it a height, or let it grow in a box that has one.
+ */
+export function liveView(p: LiveViewProps, o: { sendPath?: string; onResult?: ActionRef; onError?: ActionRef; style?: Style } = {}): Node {
+  return {
+    type: "LiveView",
+    props: { loadingText: "Loading…", errorText: "Couldn't show this page.", retryText: "Try again", fontFamily: FACE.regular, ...p },
+    style: { backgroundColor: C.paper, overflow: "hidden", ...(p.height ? { height: p.height } : {}), ...o.style },
+    ...(o.sendPath ? { bind: { send: o.sendPath } } : {}),
+    ...(o.onResult || o.onError ? { on: { ...(o.onResult ? { onResult: o.onResult } : {}), ...(o.onError ? { onError: o.onError } : {}) } } : {}),
+  };
+}
+
+/** A build that keeps an outbox: asks typed offline wait on the device and go out once, in order, when the connection is back. */
+export const hasOutbox = (ctx: BotsCtx): boolean => ctx.can.has(OUTBOX_CAPABILITY);
+
+/** Keep an ask in the outbox: POST /v1/shell/ask, once (now, if online). `sub` is its line under it; "{time}" is when it was typed. */
+export function keepAsk(client: Client, o: { message: string; bot?: string; label?: string; sub: string }): ActionSpec {
+  return {
+    kind: "outbox", op: "add", path: "/v1/shell/ask", body: { message: o.message, bot: o.bot ?? "any", device: client, mode: "text" },
+    label: o.label ?? o.message, sub: o.sub,
+  };
 }
 
 export type { BotsLive, LiveBot, NeedsItem };

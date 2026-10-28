@@ -40,6 +40,7 @@ import {
 } from "../kit.js";
 import type { BotsDeps } from "../live.js";
 import { screen, type BotsScreen } from "../registry.js";
+import { canPlay, playButton, playingLine, playingSub } from "../media.js";
 import { DEVICE_STATE, keybotCard } from "./firstRun.js";
 import {
   appSquare, both, calendar, CLAY, clock, columns, couldntLoad, dayKey, dayLabel, deskCard, deskHead, DESK_WIDTH, field, figure, figures,
@@ -352,24 +353,52 @@ function keybotPhone(ctx: BotsCtx, d: HomeData | undefined) {
   });
 }
 
-/** The laptop's bottom row, the Keybot key in clay with the key this computer holds to talk. */
+/** A Mac's bottom row and a PC's, [label, width]; the one key's place in each by its id (desktop.oneKey, main.js oneKey.js). */
+const MAC_ROW: Array<[string, number]> = [["fn", 1], ["control", 1.05], ["option", 1], ["command", 1.3], ["", 4.4], ["command", 1.3], ["option", 1]];
+const PC_ROW: Array<[string, number]> = [["ctrl", 1.2], ["win", 1], ["alt", 1.1], ["", 4.6], ["alt", 1.1], ["ctrl", 1.2]];
+const KEY_AT: Array<{ id: string; row: Array<[string, number]>; at: number }> = [
+  { id: "rightCommand", row: MAC_ROW, at: 5 }, { id: "rightOption", row: MAC_ROW, at: 6 },
+  { id: "rightCtrl", row: PC_ROW, at: 5 }, { id: "rightAlt", row: PC_ROW, at: 4 },
+];
+
+/** The laptop's bottom row, the Keybot key in clay where the chosen key is, named as this computer has it bound. A window
+ *  from before the one key (no desktop.oneKey), or Fn: the Mac's row with Fn in clay. */
 function laptopKeys(): Node {
-  const k = (f: number, label: string, o: { clay?: boolean } = {}): Node => box([
-    ...(o.clay ? [icon("mic", { size: 13, color: C.paper })] : []),
-    text(label, { size: o.clay ? 10.5 : 10, weight: o.clay ? 600 : 400, color: o.clay ? C.paper : C.meta, lineHeight: 13, ...(o.clay ? { bind: "desktop.holdKey" } : {}) }),
-  ], { flexGrow: f, flexBasis: 0, height: 42, borderRadius: 7, backgroundColor: o.clay ? CLAY : C.paper, alignItems: "center", justifyContent: "center", gap: 2, minWidth: 0 });
-  return row([k(1, "fn", { clay: true }), k(1.05, "control"), k(1, "option"), k(1.3, "command"), k(4.4, ""), k(1.3, "command"), k(1, "option")],
-    { gap: 5, padding: 9, borderRadius: 14, backgroundColor: C.surface });
+  const k = (f: number, label: string, clay: boolean): Node => box([
+    ...(clay ? [icon("mic", { size: 13, color: C.paper })] : []),
+    text(label, { size: clay ? 10.5 : 10, weight: clay ? 600 : 400, color: clay ? C.paper : C.meta, lineHeight: 13, ...(clay ? { bind: "desktop.holdKey" } : {}) }),
+  ], { flexGrow: f, flexBasis: 0, height: 42, borderRadius: 7, backgroundColor: clay ? CLAY : C.paper, alignItems: "center", justifyContent: "center", gap: 2, minWidth: 0 });
+  const keys = (r: Array<[string, number]>, at: number): Node =>
+    row(r.map(([label, f], i) => k(f, label, i === at)), { gap: 5, padding: 9, borderRadius: 14, backgroundColor: C.surface });
+  return col([
+    ...KEY_AT.map((x) => when({ eq: ["desktop.oneKey", x.id] }, keys(x.row, x.at))),
+    when({ not: { in: ["desktop.oneKey", KEY_AT.map((x) => x.id)] } }, keys(MAC_ROW, 0)),
+  ], { gap: 0 });
 }
 
-/** This computer's keys, as main.js has them bound (desktop state): a row each. */
+/** This computer's key, as main.js has it bound (desktop state): one line. The one key is held (desktop.hold, its name in
+ *  desktop.holdKey); a window from before it names the chord it presses. */
 function keyList(): Node {
   const line = (label: string, key: string, bind: string) => row([text(label, { size: 13, lineHeight: 18 }), grow(), kbd(key, bind)], { gap: 10, paddingVertical: 6 });
   return col([
-    when({ truthy: "desktop.hold" }, line("Hold to speak", "F9", "desktop.holdKey")),
-    line("Start or stop talking", "Ctrl+Space", "desktop.hotkey"),
-    line("Meeting notes", "Ctrl+Shift+N", "desktop.notesHotkey"),
+    when({ truthy: "desktop.hold" }, line("Hold to talk, tap to keep listening", "Fn", "desktop.holdKey")),
+    when({ falsy: "desktop.hold" }, line("Press to talk", "Ctrl+Space", "desktop.hotkey")),
   ], { gap: 0 });
+}
+
+/** The one key's choices (gap 17): a Mac's three, a PC's two, for a window that has the one key (desktop.oneKey). Picked,
+ *  main.js binds it at once (app:setConfig oneKey) and answers with the keys as bound. */
+const MAC_KEYS = [{ label: "Fn", value: "fn" }, { label: "Right ⌥", value: "rightOption" }, { label: "Right ⌘", value: "rightCommand" }];
+const PC_KEYS = [{ label: "Right Ctrl", value: "rightCtrl" }, { label: "Right Alt", value: "rightAlt" }];
+function keyChoice(): Node[] {
+  const pick = { kind: "desktop.config", key: "oneKey", value: "$state.desktop.oneKey" } as ActionSpec;
+  const has: Condition = { truthy: "desktop.oneKey" };
+  return [
+    when({ all: [has, { eq: ["desktop.os", "mac"] }] }, segmented(MAC_KEYS, "desktop.oneKey", { onChange: pick })),
+    when({ all: [has, { eq: ["desktop.os", "windows"] }] }, segmented(PC_KEYS, "desktop.oneKey", { onChange: pick })),
+    when({ all: [has, { falsy: "desktop.oneKeyOn" }] }, meta("This key can't be used on this computer right now, so Keybot listens on the key above.", { size: 12 })),
+    when({ eq: ["desktop.oneKey", "fn"] }, meta("If Fn opens emoji, set “Press 🌐 key to” to “Do Nothing” in Keyboard settings.", { size: 12 })),
+  ];
 }
 
 function keybotDesk(ctx: BotsCtx, d: HomeData | undefined) {
@@ -409,7 +438,12 @@ function keybotDesk(ctx: BotsCtx, d: HomeData | undefined) {
         lines("What you said", saidLines(home)),
       ], [
         lines("Keyboard and voice", keyboardLines(home, true)),
-        card([sectionLabel("Shortcut keys"), laptopKeys(), meta("The clay key is Keybot. Hold to speak, tap twice to keep listening.", { size: 12 }), keyList()], { gap: 10, radius: 18 }),
+        card([
+          sectionLabel("Shortcut keys"), laptopKeys(),
+          when({ truthy: "desktop.oneKey" }, meta("The clay key is Keybot. Hold to talk, tap to keep listening. Ask, notes and your bots are on it too: just say so.", { size: 12 })),
+          when({ falsy: "desktop.oneKey" }, meta("The clay key is Keybot. Hold to speak, tap twice to keep listening.", { size: 12 })),
+          keyList(),
+        ], { gap: 10, radius: 18 }),
       ], { gap: 16 }),
       col([sectionLabel("What the key does"), row(MODES.map((m, i) => box([modeCard(m, i, hints[i])], { flexGrow: 1, flexBasis: 0, minWidth: 0 })), { gap: 12, alignItems: "stretch" })], { gap: 10 }),
     ],
@@ -752,14 +786,30 @@ function wordsDesk(ctx: BotsCtx, d: KeybotWordsView | undefined) {
 
 const SPEEDS = [{ label: "0.8×", value: "0.8" }, { label: "Normal", value: "1" }, { label: "1.25×", value: "1.25" }, { label: "1.5×", value: "1.5" }];
 
-function voiceCard(v: KeybotVoicesView["voices"][number], desk: boolean): Node {
-  return row([
-    col([text(v.label, { size: 15, weight: 600, lineHeight: 20 }), meta(v.blurb, { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
-    when({ eq: ["voice", v.id] }, text("In use", { size: 12, weight: 600, lineHeight: 16 })),
-  ], {
-    gap: 12, paddingVertical: 12, paddingHorizontal: 16, minHeight: 60, borderRadius: 18, borderWidth: 1.5, backgroundColor: C.paper,
+function voiceCard(v: KeybotVoicesView["voices"][number], desk: boolean, play = false): Node {
+  const choose = seq({ kind: "setState", path: "voice", value: v.id }, save("PUT", "/v1/personality", { ttsVoice: v.id }, "Couldn't change the voice. Try again."));
+  const frame = {
+    borderRadius: 18, borderWidth: 1.5, backgroundColor: C.paper,
     borderColor: whenEq("voice", v.id, CLAY, C.line), ...(desk ? { flexGrow: 1, flexBasis: 0, minWidth: 0 } : {}),
-  }, seq({ kind: "setState", path: "voice", value: v.id }, save("PUT", "/v1/personality", { ttsVoice: v.id }, "Couldn't change the voice. Try again.")));
+  };
+  if (!play) {
+    return row([
+      col([text(v.label, { size: 15, weight: 600, lineHeight: 20 }), meta(v.blurb, { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+      when({ eq: ["voice", v.id] }, text("In use", { size: 12, weight: 600, lineHeight: 16 })),
+    ], { gap: 12, paddingVertical: 12, paddingHorizontal: 16, minHeight: 60, ...frame }, choose);
+  }
+  // With a play button (KeyVoices): hear it without choosing it; the rest of the card chooses it. One plays at a time
+  // (the app's own), at the speed picked below, and it stops when they leave the page.
+  return col([
+    row([
+      playButton(v.id, `/v1/keybot/voices/${v.id}/sample?speed=$state.read.speed`, `Hear ${v.label}`),
+      row([
+        col([text(v.label, { size: 15, weight: 600, lineHeight: 20 }), ...playingSub(v.id, v.blurb)], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+        when({ eq: ["voice", v.id] }, text("In use", { size: 12, weight: 600, lineHeight: 16 })),
+      ], { gap: 12, flexGrow: 1, flexShrink: 1, minWidth: 0, minHeight: 44 }, choose),
+    ], { gap: 12 }),
+    playingLine(v.id, CLAY),
+  ], { gap: 10, paddingVertical: 10, paddingLeft: 10, paddingRight: 14, minHeight: 64, ...frame });
 }
 
 const readSave = (key: string) => save("PUT", "/v1/keybot/prefs", { read: { [key]: `$state.read.${key}` } });
@@ -767,11 +817,11 @@ const readSave = (key: string) => save("PUT", "/v1/keybot/prefs", { read: { [key
 function voicesPhone(ctx: BotsCtx, d: KeybotVoicesView | undefined) {
   if (!d) return page(ctx, { nav: "keybot", title: "Read aloud", gap: 14, body: [phoneHead("Read aloud"), couldntLoad("the voices")] });
   return page(ctx, {
-    nav: "keybot", title: "Read aloud", gap: 14, state: { voice: d.current, read: d.read },
+    nav: "keybot", title: "Read aloud", gap: 14, state: { voice: d.current, read: d.read, playing: null },
     body: [
       phoneHead("Read aloud"),
       text("Pick the voice Keybot reads aloud in.", { size: 14, color: C.grey70, lineHeight: 19 }),
-      col([sectionLabel("Voices"), ...d.voices.map((v) => voiceCard(v, false))], { gap: 8 }),
+      col([sectionLabel("Voices"), ...d.voices.map((v) => voiceCard(v, false, canPlay(ctx)))], { gap: 8 }),
       col([sectionLabel("Speed"), segmented(SPEEDS, "read.speed", { onChange: readSave("speed") })], { gap: 8 }),
       meta("Keybot reads Ask’s answers to you in this voice.", { size: 12 }),
     ],
@@ -783,10 +833,10 @@ function voicesDesk(ctx: BotsCtx, d: KeybotVoicesView | undefined) {
   if (!d) return page(ctx, { nav: "keybot", title: "Read aloud", gap: 18, maxWidth: DESK_WIDTH, body: [head, couldntLoad("the voices")] });
   const pairs: Node[] = [];
   for (let i = 0; i < d.voices.length; i += 2) {
-    pairs.push(row([voiceCard(d.voices[i]!, true), d.voices[i + 1] ? voiceCard(d.voices[i + 1]!, true) : box([], { flexGrow: 1, flexBasis: 0 })], { gap: 10, alignItems: "stretch" }));
+    pairs.push(row([voiceCard(d.voices[i]!, true, canPlay(ctx)), d.voices[i + 1] ? voiceCard(d.voices[i + 1]!, true, canPlay(ctx)) : box([], { flexGrow: 1, flexBasis: 0 })], { gap: 10, alignItems: "stretch" }));
   }
   return page(ctx, {
-    nav: "keybot", title: "Read aloud", gap: 18, maxWidth: DESK_WIDTH, state: { voice: d.current, read: d.read },
+    nav: "keybot", title: "Read aloud", gap: 18, maxWidth: DESK_WIDTH, state: { voice: d.current, read: d.read, playing: null },
     body: [
       head,
       twoCols([
@@ -1183,12 +1233,16 @@ function settingsDesk(ctx: BotsCtx, d: KeybotSettingsView | undefined) {
         deskCard("Shortcut", [
           row([text("Keybot key", { size: 14, lineHeight: 19 }), grow(),
             when({ truthy: "desktop.hold" }, kbd("Fn", "desktop.holdKey")), when({ falsy: "desktop.hold" }, kbd("Ctrl+Space", "desktop.hotkey"))], { gap: 12, minHeight: 32 }),
+          // The one key (gap 17): picked here, on a window that has it.
+          ...keyChoice(),
           laptopKeys(),
           keyList(),
           divider(),
-          deskToggle("Tap twice to keep listening", "tap", "Hands free. Tap the key again to stop."),
-          row([meta("Change these keys in Settings.", { size: 12 }), grow(),
-            quietButton("Open Settings", open(ctx.desk.pages ? "desk_settings" : "settings"), { size: "md" })], { gap: 8 }),
+          when({ truthy: "desktop.oneKey" }, deskToggle("Tap to keep listening", "tap", "Hands free. Tap the key again to stop.")),
+          when({ falsy: "desktop.oneKey" }, deskToggle("Tap twice to keep listening", "tap", "Hands free. Tap the key again to stop.")),
+          when({ truthy: "desktop.oneKey" }, meta("One key for everything. Keybot types it, Ask answers it, “take notes” starts notes, and a task goes to the right bot.", { size: 12 })),
+          when({ falsy: "desktop.oneKey" }, row([meta("Change these keys in Settings.", { size: 12 }), grow(),
+            quietButton("Open Settings", open(ctx.desk.pages ? "desk_settings" : "settings"), { size: "md" })], { gap: 8 })),
         ]),
         deskCard("Languages", d ? [
           row([...langChips, row([text("+ Add a language", { size: 13, color: C.meta, lineHeight: 17 })], {

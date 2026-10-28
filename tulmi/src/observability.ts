@@ -35,6 +35,8 @@ export function logUrl(url: string): string {
   if (/^\/auth\/callback(?:[?#]|$)/.test(url)) return "/auth/callback";
   // GitHub's install redirect carries a one-time code and the signed state (code/link.ts).
   if (/^\/v1\/code\/github\/callback(?:[?#]|$)/.test(url)) return "/v1/code/github/callback";
+  // The phone's QR link opened in a browser carries a computer's pending sign-in (routes/deviceLink.ts).
+  if (/^\/s\/bots\.link(?:[?#]|$)/.test(url)) return "/s/bots.link";
   return url;
 }
 

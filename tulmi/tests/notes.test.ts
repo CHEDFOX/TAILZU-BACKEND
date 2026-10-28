@@ -43,6 +43,11 @@ import { parseBody, parts, transcriptLines } from "../src/notes/organise.js";
 // eslint-disable-next-line import/first
 import { resetNotesForTests } from "../src/notes/store.js";
 // eslint-disable-next-line import/first
+import { resetFindForTests, setFindGateway } from "../src/notes/extract.js";
+
+/** The to-dos read (notes/extract.ts) answers from here: nothing reaches a network. tests/notes-todos.test.ts tests it. */
+const noTodos = { chat: { completions: { create: async () => ({ choices: [{ message: { content: '{"todos":[],"decisions":[]}' }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, cost: 0 } }) } } };
+// eslint-disable-next-line import/first
 import { notesWork, resetNotesRoutesForTests } from "../src/routes/notes.js";
 // eslint-disable-next-line import/first
 import { buildApp } from "../src/server.js";
@@ -145,7 +150,7 @@ describe("the notes routes", () => {
   let app: FastifyInstance;
   beforeAll(async () => { app = await buildApp(); await app.ready(); });
   afterAll(async () => { await app.close(); });
-  beforeEach(() => { resetNotesForTests(); resetNotesRoutesForTests(); organiseCalls.length = 0; organiseNotes.length = 0; for (const k of Object.keys(diarized)) delete diarized[k]; });
+  beforeEach(() => { resetNotesForTests(); resetNotesRoutesForTests(); resetFindForTests(); setFindGateway({ client: noTodos, breakers: null, ledger: null }); organiseCalls.length = 0; organiseNotes.length = 0; for (const k of Object.keys(diarized)) delete diarized[k]; });
 
   const upload = (id: string, track: string, at: number, bytes = "audio-" + track, path = "audio") => {
     const b = "----notes";

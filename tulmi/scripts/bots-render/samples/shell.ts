@@ -45,8 +45,8 @@ export function shellApi(): Record<string, unknown> {
   const people = { you: { label: "You", name: "Aanya Sharma" }, kavya: { label: "Speaker 1", name: "Kavya Rao" } };
   const notes = [
     { id: "n0", status: "recording", startedAt: new Date(N - 16 * MIN).toISOString(), durationSeconds: 960, words: 2100, title: "Diwali sale plan with Kavya", summary: "", people: [people.you, people.kavya, { label: "Speaker 2", name: "Meera Iyer" }], organised: false },
-    { id: "n1", status: "ready", startedAt: new Date(N - 8 * HOUR).toISOString(), durationSeconds: 2520, words: 5200, title: "Salon booking app review", summary: "Kavya's salon loses most bookings to weekend no-shows. You agreed to send reminders on WhatsApp, ask for a small UPI deposit on weekends, and launch before Diwali.", people: [people.you, people.kavya, { label: "Speaker 2", name: "Rohan Mehta" }, { label: "Speaker 3", name: "Meera Iyer" }], organised: true },
-    { id: "n2", status: "ready", startedAt: new Date(N - 10 * HOUR).toISOString(), durationSeconds: 960, words: 1500, title: "Call with our CA about GST filing", summary: "GST for October is due on the 20th. Two invoices are missing.", people: [people.you, { label: "Speaker 1", name: "Vikram Joshi" }], organised: true },
+    { id: "n1", status: "ready", startedAt: new Date(N - 8 * HOUR).toISOString(), durationSeconds: 2520, words: 5200, title: "Salon booking app review", summary: "Kavya's salon loses most bookings to weekend no-shows. You agreed to send reminders on WhatsApp, ask for a small UPI deposit on weekends, and launch before Diwali.", people: [people.you, people.kavya, { label: "Speaker 2", name: "Rohan Mehta" }, { label: "Speaker 3", name: "Meera Iyer" }], organised: true, todos: 4, openTodos: 3, decisions: 3 },
+    { id: "n2", status: "ready", startedAt: new Date(N - 10 * HOUR).toISOString(), durationSeconds: 960, words: 1500, title: "Call with our CA about GST filing", summary: "GST for October is due on the 20th. Two invoices are missing.", people: [people.you, { label: "Speaker 1", name: "Vikram Joshi" }], organised: true, todos: 2, openTodos: 2, decisions: 1 },
     { id: "n3", status: "ready", startedAt: new Date(N - DAY - 4 * HOUR).toISOString(), durationSeconds: 720, words: 1100, title: "Storefront standup", summary: "Checkout redesign is on track.", people: [people.you, { label: "Speaker 1", name: "Rohan Mehta" }, { label: "Speaker 2", name: "Dev K" }], organised: true },
   ];
   const note = { ...notes[1], highlights: [
@@ -60,7 +60,16 @@ export function shellApi(): Record<string, unknown> {
     { at: 124, speaker: "Speaker 2", text: "That old calendar plugin was useless for this, honestly." },
     { at: 140, speaker: "Speaker 1", text: "₹200 deposit, refunded when they walk in. Done." },
     { at: 161, speaker: "You", text: "Okay. Code bot can start on the reminders today." },
-  ] };
+  ], decisions: [
+    "Reminders go out on WhatsApp, 24 hours and 2 hours before",
+    "Weekend slots need a ₹200 UPI deposit, refunded at the counter",
+    "Launch on Saturday, 8 November",
+  ], todos: [
+    { id: "t1", text: "Pick a date for the launch photo shoot", who: "Speaker 1", when: "this week", done: false },
+    { id: "t2", text: "Move booking reminders to WhatsApp", who: "You", when: "today", done: false },
+    { id: "t3", text: "Check how deposit refunds reach the bank", who: "Speaker 2", when: "by Friday", done: false },
+    { id: "t4", text: "Send Meera the new price list", who: "You", done: true, doneAt: new Date(N - 7 * HOUR).toISOString() },
+  ], found: { hash: "sample", at: new Date(N - 8 * HOUR).toISOString(), ok: true } };
 
   const today = {
     calendar: { connected: true, events: [
@@ -89,7 +98,8 @@ export function shellApi(): Record<string, unknown> {
     [`GET /v1/shell/tasks?tz=${IST}`]: tasksData,
     [`GET /v1/shell/today?tz=${IST}`]: today,
     "GET /v1/notes?limit=100": { notes },
-    "GET /v1/notes/n1": { note },
+    "GET /v1/notes/n1": { note, finding: false },
+    "GET /v1/notes/stats": { week: { meetings: 4, seconds: 5160, people: 6 }, openTodos: 5, recording: true, organising: 0 },
     "GET /v1/shell/started": { started: true },
   };
 }

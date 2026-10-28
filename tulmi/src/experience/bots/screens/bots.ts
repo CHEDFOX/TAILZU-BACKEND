@@ -10,12 +10,15 @@
  */
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
 import {
-  back, blip, body, botAvatar, botLook, botRoute, box, button, C, call, card, chip, chips, col, divider, emptyState, FACE, grid, grow, icon,
+  back, blip, body, botAvatar, botLook, box, button, C, call, card, chip, chips, col, divider, emptyState, FACE, grid, grow, icon,
   infoChip, labelled, listCard, listRow, meta, meter, mono, needsCard, notice, open, page, primaryButton, quietButton, roundButton, row, rupees, SCREENS,
   secondaryButton, sectionLabel, segmented, seq, shapes, statusMark, switchMark, switchRow, text, title, toTab, when, whenEq,
   headerBuddy, type BotsCtx, type LiveBot,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
+import { shareButton, shareTo } from "../shareAction.js";
+import * as places from "./botsPlaces.js";
+import { addAction, itemAction, planItemScreens, tickAction, tickBox } from "./planItem.js";
 
 /** This area's routes (routes/botsBots.ts). */
 const A = "/v1/botsapp/bots";
@@ -132,15 +135,6 @@ function sendField(id: string, path: string, placeholder: string, send: ActionRe
 const sectionHead = (label: string, right?: Node): Node => row([sectionLabel(label), grow(), ...(right ? [right] : [])], { minHeight: 20 });
 const link = (label: string, onPress: ActionRef): Node => row([text(label, { size: 13, weight: 500, lineHeight: 18 })], { minHeight: 32, paddingHorizontal: 4 }, onPress);
 const dotLine = (s: string, size = 13): Node => row([text("·", { size, color: C.idle, lineHeight: 19 }), text(s, { size, lineHeight: 19, style: { flexShrink: 1 } })], { gap: 8, alignItems: "flex-start" });
-const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase();
-function personDot(name: string, you: boolean, size = 32): Node {
-  return box([text(initial(name), { size: 13, weight: 600, color: you ? C.paper : C.grey70, lineHeight: 16 })], {
-    width: size, height: size, borderRadius: size / 2, alignItems: "center", justifyContent: "center", flexShrink: 0,
-    backgroundColor: you ? C.ink : C.surface, borderWidth: you ? 0 : 1, borderColor: C.outline,
-  });
-}
-/** A bot's head in a ring of white, for overlapping rows. */
-const ringed = (n: Node): Node => box([n], { borderRadius: 18, borderWidth: 2, borderColor: C.paper, marginRight: -8 });
 
 /** A dot of colour, crossed out when another bot has it, ringed when chosen. */
 function colourDot(name: string, o: { chosen: boolean; taken?: string; onPress?: ActionRef; size?: number }): Node {
@@ -216,6 +210,12 @@ function botTurn(ctx: BotsCtx, look: { color: string; icon: Parameters<typeof bo
 
 const dayRule = (label: string): Node => row([box([], { height: 1, flexGrow: 1, backgroundColor: C.divider }), meta(label, { size: 12 }), box([], { height: 1, flexGrow: 1, backgroundColor: C.divider })], { gap: 10 });
 
+/** "Share" under a bot's answer: to a space or a person, as a copy (screens/spaces.ts bots.share). */
+function answerShare(slug: string, t: Turn): Node {
+  const first = t.text.replace(/[*#>`]/g, "").split("\n").map((l) => l.trim()).find(Boolean) ?? "Answer";
+  return row([link("Share", shareTo({ kind: "answer", title: first.length > 60 ? `${first.slice(0, 59)}…` : first, text: t.text, bot: slug }))], { paddingLeft: 0 });
+}
+
 /** The chat: turns oldest first, a day rule where the day changes (the window), the bot's answers with what they leave to do. */
 function chatTurns(ctx: BotsCtx, bot: { slug: string; colour?: string }, turns: Turn[], o: { big?: boolean; days?: boolean } = {}): Node[] {
   const look = lookOf(bot.slug, bot.colour);
@@ -224,7 +224,7 @@ function chatTurns(ctx: BotsCtx, bot: { slug: string; colour?: string }, turns: 
   for (const t of turns) {
     const day = dayKeyOf(ctx, t.at);
     if (o.days && day !== lastDay) { out.push(dayRule(dayLabel(ctx, t.at))); lastDay = day; }
-    out.push(t.role === "me" ? bubble(ctx, t.text, o.big) : botTurn(ctx, look, t, o.big));
+    out.push(t.role === "me" ? bubble(ctx, t.text, o.big) : col([botTurn(ctx, look, t, o.big), answerShare(bot.slug, t)], { gap: 4 }));
   }
   return out;
 }
@@ -277,6 +277,13 @@ async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["lo
   ]);
   return { bot, memory, linked, turns: chat };
 }
+
+/** Tailzu's own calendar and to-dos, as a bot's apps (src/calendar/bots.ts); the old Google ids mean them now. */
+const OWN_APP_LINE: Record<string, string> = {
+  calendar: "Your days in Tailzu", tasks: "Your to-dos in Tailzu", "google-calendar": "Your days in Tailzu", "google-tasks": "Your to-dos in Tailzu",
+};
+/** Not offered in the Bots app: Tailzu keeps its own (routes/botsYou.ts). */
+const NOT_OFFERED_APPS = new Set(["google-calendar", "google-tasks"]);
 
 /** "Calendar, Reminders": the apps a bot uses, and its own skills, in a line. */
 function usesLine(bot: BotView, linked: Linked[] | undefined): string {
@@ -611,8 +618,10 @@ function editParts(_ctx: BotsCtx, d: EditData) {
 
   const linkedIds = new Set(bot.skills.connectors);
   const apps = new Map<string, { name: string; sub: string; on: boolean; connected: boolean }>();
-  for (const l of d.linked ?? []) apps.set(l.id, { name: l.name, sub: l.status === "connected" ? "Connected" : l.status === "not_connected" ? "Not connected yet" : "Not on this server", on: true, connected: l.status === "connected" });
-  for (const a of d.apps ?? []) if (a.connected && !apps.has(a.id)) apps.set(a.id, { name: a.name, sub: a.oneLine ?? "Connected", on: linkedIds.has(a.id), connected: true });
+  for (const l of d.linked ?? []) apps.set(l.id, { name: l.name, sub: OWN_APP_LINE[l.id] ?? (l.status === "connected" ? "Connected" : l.status === "not_connected" ? "Not connected yet" : "Not on this server"), on: true, connected: l.status === "connected" });
+  // Tailzu's own calendar and to-dos: always there, nothing to connect (the Google ones are no longer offered).
+  for (const id of ["calendar", "tasks"]) if (!apps.has(id) && !apps.has(`google-${id}`)) apps.set(id, { name: id === "calendar" ? "Calendar" : "Tasks", sub: OWN_APP_LINE[id]!, on: false, connected: true });
+  for (const a of d.apps ?? []) if (a.connected && !apps.has(a.id) && !NOT_OFFERED_APPS.has(a.id)) apps.set(a.id, { name: a.name, sub: a.oneLine ?? "Connected", on: linkedIds.has(a.id), connected: true });
   const state: Record<string, unknown> = { name: bot.name, rule: "", s_web: bot.skills.web, s_files: bot.skills.files, s_listed: d.listed === true };
   const toolRows: Node[] = [
     switchRow("Search the web", "s_web", { sub: bot.skills.web ? "Finds and reads pages for you" : "Off · it never goes online", onChange: botPut(slug, { skills: { web: !bot.skills.web } }) }),
@@ -947,16 +956,36 @@ function storeDesk(ctx: BotsCtx, d: Shop | undefined) {
 
 // ===================================================================== bots.plan
 
-interface PlanEvent { id: string; title: string; start: number; end: number; allDay: boolean; where?: string; people: number }
-interface PlanDay { key: string; events: PlanEvent[]; tasks: Array<{ id: string; title: string; due: string }> }
-interface Suggestion { key: string; eventId: string; title: string; question: string; detail: string; startIso: string; fromDay: string; toWords: string }
-interface PlanRead { connected: { calendar: boolean; tasks: boolean }; today: string; tomorrow: string; week: string[]; days: PlanDay[]; suggestion: Suggestion | null; trouble?: string }
+/** GET .../plan (src/botsBots/plan.ts): the person's own calendar and to-dos (src/calendar), nothing to connect. */
+interface PlanEvent { id: string; title: string; start: number; end: number; allDay: boolean; where?: string; people: number; from?: string; fixed?: boolean; repeat?: string }
+interface PlanTask { id: string; title: string; due: string; at?: number | null; done?: boolean; from?: string; fixed?: boolean }
+interface PlanDay { key: string; events: PlanEvent[]; tasks: PlanTask[] }
+interface Suggestion { key: string; eventId: string; title: string; question: string; detail: string; startIso: string; fromDay: string; toWords: string; savedMin?: number }
+interface PlanRead { connected: { calendar: boolean; tasks: boolean }; today: string; tomorrow: string; week: string[]; days: PlanDay[]; suggestion: Suggestion | null; trouble?: string; travel?: places.PlanTravelView; open?: PlanTask[] }
 
 const PLAN_WEEKDAYS_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const keyDate = (k: string) => new Date(`${k}T00:00:00Z`);
 const keyWords = (k: string) => { const d = keyDate(k); return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
 const lengthWords = (ms: number) => { const m = Math.round(ms / MIN); return m < 60 ? `${m} min` : m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m / 60} h`; };
 const hourWords = (ctx: BotsCtx, ms: number) => clockOf(ctx, ms).replace(":00", "");
+
+/** The week the page shows: `week` (weeks from this one), or the one `day` is in (a reminder opens its day), else this week. */
+function planWeek(ctx: BotsCtx): number {
+  const w = Number(ctx.params.week);
+  if (ctx.params.week !== undefined && ctx.params.week !== "" && Number.isFinite(w)) return Math.max(-8, Math.min(8, Math.round(w)));
+  const day = String(ctx.params.day ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return 0;
+  const monday = (k: string) => { const t = Date.parse(`${k}T00:00:00Z`); return t - ((new Date(t).getUTCDay() + 6) % 7) * DAY; };
+  return Math.max(-8, Math.min(8, Math.round((monday(day) - monday(dayKeyOf(ctx, ctx.live.now))) / (7 * DAY))));
+}
+/** The day the phone shows: `day` when it was read, else tomorrow on this week, else the week's Monday. */
+function planDay(ctx: BotsCtx, d: PlanRead): string {
+  const p = String(ctx.params.day ?? "");
+  if (d.days.some((x) => x.key === p)) return p;
+  return planWeek(ctx) === 0 ? d.tomorrow : d.week[0] ?? d.tomorrow;
+}
+const dayLabelOf = (d: PlanRead, key: string) => (key === d.today ? "Today" : key === d.tomorrow ? "Tomorrow" : PLAN_WEEKDAYS_LONG[keyDate(key).getUTCDay()]!);
+const planGo = (week: number, day?: string): ActionSpec => ({ kind: "navigate", screenId: SCREENS.plan, params: { week, ...(day ? { day } : {}) }, replace: true } as ActionSpec);
 
 function suggestionCard(_ctx: BotsCtx, s: Suggestion, o: { desk?: boolean } = {}): Node {
   const item: { choices: Array<{ label: string; kind: "primary" | "secondary"; action: ActionRef }> } = {
@@ -978,65 +1007,133 @@ function planChips(d: PlanRead): string[] {
   return [busy && busy.events.length >= 2 ? `Free up ${PLAN_WEEKDAYS_LONG[keyDate(busy.key).getUTCDay()]}` : "Plan my week", "What should I do first tomorrow?"];
 }
 
-function notConnected(_ctx: BotsCtx): Node {
-  return emptyState({
-    pose: "hello", title: "Connect Google Calendar",
-    body: "Plan bot reads your days to plan around them. It changes nothing without your yes.",
-    action: { label: "Connect", onPress: open(SCREENS.appConnect, { id: "google-calendar" }) },
-  });
+/** "From Meera S.", "Added by Plan bot": who put it on the person's days, when not them. */
+const fromWords = (x: { from?: string }) => (x.from ? (x.from === "You" ? "" : x.from.endsWith(" bot") ? `Added by ${x.from}` : `From ${x.from}`) : "");
+
+/** A to-do on a day or a list: its tick (on its own), and its words (open it). */
+function todoRow(ctx: BotsCtx, t: PlanTask, o: { size?: number; when?: boolean } = {}): Node {
+  const sub = [o.when && t.at !== null && t.at !== undefined ? clockOf(ctx, t.at) : "", fromWords(t)].filter(Boolean).join(" · ");
+  return row([
+    tickBox(!!t.done, tickAction(t.id, !!t.done), t.done ? `${t.title}. Done. Tap to put it back.` : `${t.title}. Tap when it's done.`),
+    col([
+      text(t.title, { size: o.size ?? 14, lineHeight: 19, lines: 2, color: t.done ? C.meta : C.ink }),
+      ...(sub ? [meta(sub, { size: 12, lines: 1 })] : []),
+    ], { gap: 1, flexGrow: 1, flexShrink: 1, minWidth: 0, paddingVertical: 8 }, itemAction("task", t.id)),
+  ], { gap: 10, alignItems: "center" });
 }
 
-function tomorrowTimeline(ctx: BotsCtx, d: PlanRead, day: PlanDay): Node {
+function dayTimeline(ctx: BotsCtx, d: PlanRead, day: PlanDay): Node {
   const timed = day.events.filter((e) => !e.allDay);
   const rows: Node[] = [];
   const line = (h?: number) => box([], { width: 1.5, alignSelf: "stretch", backgroundColor: C.track, ...(h ? { height: h } : {}) });
-  for (const e of day.events.filter((x) => x.allDay)) rows.push(row([text("All day", { size: 12, weight: 600, lineHeight: 16, style: { width: 54 } }), line(), box([text(e.title, { size: 14, weight: 500, lineHeight: 19 })], { flexGrow: 1, flexShrink: 1, borderRadius: 14, borderWidth: 1, borderColor: C.line, padding: 12 })], { gap: 10, alignItems: "stretch" }));
+  for (const e of day.events.filter((x) => x.allDay)) {
+    rows.push(row([text("All day", { size: 12, weight: 600, lineHeight: 16, style: { width: 54 } }), line(), col([
+      text(e.title, { size: 14, weight: 500, lineHeight: 19 }), ...(e.where || e.from ? [meta([e.where, fromWords(e)].filter(Boolean).join(" · "), { size: 12, lines: 1 })] : []),
+    ], { flexGrow: 1, flexShrink: 1, borderRadius: 14, borderWidth: 1, borderColor: C.line, padding: 12, gap: 2 }, itemAction("event", e.id))], { gap: 10, alignItems: "stretch" }));
+  }
   timed.forEach((e, i) => {
     const target = d.suggestion?.eventId === e.id;
+    rows.push(...places.legRowsTo(ctx, d.travel, e.id));
     rows.push(row([
       text(clockOf(ctx, e.start), { size: 12, weight: 600, lineHeight: 16, style: { width: 54, paddingTop: 12 } }),
       line(),
       row([
-        col([text(e.title, { size: 14, weight: 500, lineHeight: 19, lines: 1 }), meta([lengthWords(e.end - e.start), ...(e.where ? [e.where] : []), ...(e.people ? [plural(e.people, "other")] : [])].join(" · "), { size: 12, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+        col([text(e.title, { size: 14, weight: 500, lineHeight: 19, lines: 1 }), meta([lengthWords(e.end - e.start), ...(e.where ? [e.where] : []), ...(e.people ? [plural(e.people, "other")] : []), fromWords(e)].filter(Boolean).join(" · "), { size: 12, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
         ...(target ? [row([text("Move?", { size: 12, weight: 600, lineHeight: 16 }), statusMark("needs", { size: 8 })], { gap: 6 })] : []),
-      ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 8, padding: 12, borderRadius: 14, borderWidth: target ? 1.5 : 1, borderColor: target ? C.ink : C.line, ...(target ? { borderStyle: "dashed" } : {}), backgroundColor: C.paper }),
+      ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 8, padding: 12, borderRadius: 14, borderWidth: target ? 1.5 : 1, borderColor: target ? C.ink : C.line, ...(target ? { borderStyle: "dashed" } : {}), backgroundColor: C.paper }, itemAction("event", e.id)),
     ], { gap: 10, alignItems: "stretch" }));
+    rows.push(...places.headsUpRows(ctx, d.travel, e.id));
     const next = timed[i + 1];
     if (next && next.start - e.end >= 90 * MIN) {
       rows.push(row([box([], { width: 54 }), line(26), meta(`Free · ${hourWords(ctx, e.end)} to ${hourWords(ctx, next.start)}, ${lengthWords(next.start - e.end)}`, { size: 12 })], { gap: 10, minHeight: 26 }));
     }
   });
-  for (const t of day.tasks) rows.push(row([text("To do", { size: 12, weight: 600, lineHeight: 16, style: { width: 54 } }), line(), row([statusMark("waiting"), text(t.title, { size: 14, lineHeight: 19, style: { flexShrink: 1 } })], { gap: 8, flexGrow: 1, flexShrink: 1, paddingVertical: 8 })], { gap: 10, alignItems: "stretch" }));
-  if (!rows.length) return card([text("Nothing on your calendar tomorrow", { size: 15, weight: 500, lineHeight: 20 }), meta("A free day. Ask Plan bot to fill it, or keep it free.", { size: 13 })], { dashed: true });
+  for (const t of day.tasks) rows.push(row([text("To do", { size: 12, weight: 600, lineHeight: 16, style: { width: 54, paddingTop: 12 } }), line(), box([todoRow(ctx, t, { when: true })], { flexGrow: 1, flexShrink: 1, minWidth: 0 })], { gap: 10, alignItems: "stretch" }));
+  if (!rows.length) {
+    return card([
+      text(`Nothing on ${day.key === d.today ? "today" : day.key === d.tomorrow ? "tomorrow" : dayLabelOf(d, day.key)}`, { size: 15, weight: 500, lineHeight: 20 }),
+      meta("A free day. Add something, or ask Plan bot to fill it.", { size: 13 }),
+    ], { dashed: true });
+  }
   return col(rows, { gap: 8 });
 }
 
 function planHeadLine(d: PlanRead | undefined): string {
-  if (!d) return "Couldn't read your calendar";
-  if (!d.connected.calendar) return "Connect your calendar to start";
+  if (!d) return "Couldn't read your days";
   const t = d.days.find((x) => x.key === d.tomorrow);
-  const n = t ? t.events.length + t.tasks.length : 0;
-  return d.suggestion ? `${plural(n, "thing")} tomorrow · 1 needs you` : `${plural(n, "thing")} tomorrow`;
+  const n = t ? t.events.length + t.tasks.filter((x) => !x.done).length : 0;
+  const saved = places.savedWords(d.travel);
+  return saved ? `${plural(n, "thing")} tomorrow · ${saved}` : d.suggestion ? `${plural(n, "thing")} tomorrow · 1 needs you` : `${plural(n, "thing")} tomorrow`;
+}
+
+/** Share a day's plan with a space or a person, as a copy of its lines (screens/spaces.ts bots.share). */
+function planShare(ctx: BotsCtx, d: PlanRead, day: PlanDay | undefined): Node[] {
+  if (!day) return [];
+  const lines = [...day.events.map((e) => `${e.allDay ? "All day" : clockOf(ctx, e.start)} · ${e.title}${e.where ? ` · ${e.where}` : ""}`), ...day.tasks.filter((t) => !t.done).map((t) => `To do · ${t.title}`)];
+  const label = dayLabelOf(d, day.key);
+  return lines.length ? [shareButton({ kind: "plan", title: `${label} · ${keyWords(day.key)}`, text: lines.join("\n") }, { label: `Share ${label === "Today" || label === "Tomorrow" ? label.toLowerCase() : label}` })] : [];
+}
+
+/** The to-dos with no day, ticked off here. */
+function openTodos(ctx: BotsCtx, d: PlanRead): Node[] {
+  const open = d.open ?? [];
+  if (!open.length) return [];
+  const kids: Node[] = [];
+  open.slice(0, 12).forEach((t, i) => { if (i) kids.push(divider()); kids.push(box([todoRow(ctx, t)], { paddingHorizontal: 14 })); });
+  return [col([
+    row([sectionLabel(`To do, no day · ${open.length}`), grow(), link("Add", addAction(undefined, "task"))], { gap: 8 }),
+    col(kids, { borderRadius: 18, borderWidth: 1, borderColor: C.line, paddingVertical: 2 }),
+  ], { gap: 8 })];
+}
+
+/** The week as seven days (the phone): each opens its day; the arrows go a week back or on. */
+function dayStrip(d: PlanRead, sel: string, week: number): Node {
+  const look = lookOf("plan");
+  const cell = (k: string): Node => {
+    const dt = keyDate(k);
+    const on = k === sel;
+    const day = d.days.find((x) => x.key === k);
+    const busy = !!day && day.events.length + day.tasks.filter((t) => !t.done).length > 0;
+    return labelled(col([
+      text(WEEKDAYS[dt.getUTCDay()]!, { size: 11, weight: 500, color: on ? C.paper : C.meta, lineHeight: 14 }),
+      text(String(dt.getUTCDate()), { size: 15, weight: on || k === d.today ? 600 : 400, color: on ? C.paper : C.ink, lineHeight: 20 }),
+      box([], { width: 4, height: 4, borderRadius: 2, backgroundColor: busy ? (on ? C.paper : look.color) : "transparent" }),
+    ], {
+      flexGrow: 1, flexBasis: 0, minWidth: 0, alignItems: "center", gap: 2, paddingVertical: 7, borderRadius: 14, backgroundColor: on ? C.ink : C.paper,
+      ...(k === d.today && !on ? { borderWidth: 1, borderColor: C.line } : {}),
+    }, planGo(week, k)), `${PLAN_WEEKDAYS_LONG[dt.getUTCDay()]} ${dt.getUTCDate()} ${MONTHS[dt.getUTCMonth()]}`);
+  };
+  const arrow = (dir: -1 | 1) => labelled(box([icon(dir < 0 ? "back" : "chevron", { size: 16, color: C.grey70 })], { width: 26, alignSelf: "stretch", alignItems: "center", justifyContent: "center" }, planGo(week + dir)), dir < 0 ? "The week before" : "The week after");
+  return row([arrow(-1), ...d.week.map(cell), arrow(1)], { gap: 2, alignItems: "stretch" });
 }
 
 function planPhone(ctx: BotsCtx, d: PlanRead | undefined) {
   const look = lookOf("plan");
-  const tomorrow = d?.days.find((x) => x.key === d.tomorrow);
+  const week = planWeek(ctx);
+  const sel = d ? planDay(ctx, d) : "";
+  const day = d ? d.days.find((x) => x.key === sel) ?? { key: sel, events: [], tasks: [] } : undefined;
   return page(ctx, {
-    title: "Plan bot", nav: "plan",
+    title: "Plan bot", nav: "plan", live: ["bot:plan", "calendar", "tasks"], state: { ...places.PLAN_STATE },
     body: [
       phoneHead(look, "Plan bot", planHeadLine(d), undefined, headerBuddy(ctx, "plan", { lookTo: "down", thinkWhen: ANSWERING })),
-      ...(!d ? [emptyState({ pose: "think", title: "Couldn't read your days", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
-        : !d.connected.calendar ? [notConnected(ctx)]
-          : [
-            col([row([sectionLabel(`Tomorrow · ${keyWords(d.tomorrow)}`), grow(), meta(d.connected.tasks ? "From Google Calendar and Tasks" : "From Google Calendar", { size: 12 })]),
-              ...(d.trouble ? [notice(d.trouble)] : []), tomorrowTimeline(ctx, d, tomorrow ?? { key: d.tomorrow, events: [], tasks: [] })], { gap: 12 }),
-            ...(d.suggestion ? [suggestionCard(ctx, d.suggestion)] : []),
-          ]),
+      ...(!d || !day ? [emptyState({ pose: "think", title: "Couldn't read your days", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
+        : [
+          dayStrip(d, sel, week),
+          col([
+            row([sectionLabel(`${dayLabelOf(d, sel)} · ${keyWords(sel)}`), grow(), link("Add", addAction(sel))], { gap: 8 }),
+            ...(d.trouble ? [notice(d.trouble)] : []),
+            dayTimeline(ctx, d, day),
+            ...(sel === d.tomorrow ? places.planFoot(ctx, d.travel) : []),
+            ...planShare(ctx, d, day),
+          ], { gap: 12 }),
+          ...(d.suggestion ? [suggestionCard(ctx, d.suggestion)] : []),
+          ...openTodos(ctx, d),
+          ...places.homePart(ctx, d.travel),
+        ]),
     ],
     footer: [
-      ...(d?.connected.calendar ? [row(planChips(d).map((c) => chip(c, { onPress: askBot("plan", c) })), { gap: 8, flexWrap: "wrap" })] : []),
-      chatBar(ctx, "plan", "Plan bot", "Plan my week…", open(SCREENS.chat, { slug: "plan" })),
+      ...(d ? [row(planChips(d).map((c) => chip(c, { onPress: askBot("plan", c) })), { gap: 8, flexWrap: "wrap" })] : []),
+      chatBar(ctx, "plan", "Plan bot", "Add dentist Fri 5 pm, or plan my week…", open(SCREENS.chat, { slug: "plan" })),
     ],
   });
 }
@@ -1049,19 +1146,22 @@ function weekColumn(ctx: BotsCtx, d: PlanRead, day: PlanDay): Node {
   const past = day.key < d.today;
   const kids: Node[] = [];
   let at = top;
-  for (const e of day.events.filter((x) => !x.allDay && x.end > top && x.start < bottom).sort((a, b) => a.start - b.start)) {
+  const leaves = day.key === d.tomorrow ? places.leaveBlocks(ctx, d.travel, day.events) : [];
+  for (const e of [...day.events, ...leaves].filter((x) => !x.allDay && x.end > top && x.start < bottom).sort((a, b) => a.start - b.start)) {
     const s = Math.max(e.start, at), en = Math.min(e.end, bottom);
     if (en <= s) continue;
     if (s > at) kids.push(box([], { height: Math.round(((s - at) / 3_600_000) * PX), flexShrink: 0 }));
     const h = Math.max(20, Math.round(((en - s) / 3_600_000) * PX) - 2);
     const target = d.suggestion?.eventId === e.id;
+    const leave = places.isLeave(e.id);
     kids.push(col([
       text(e.title, { size: 11.5, weight: 500, lineHeight: 15, lines: h >= 46 ? 2 : 1, color: past ? C.meta : C.ink }),
       ...(h >= 44 && e.where ? [text(e.where, { size: 10.5, color: C.meta, lineHeight: 13, lines: 1 })] : []),
     ], {
       height: h, flexShrink: 0, marginBottom: 2, borderRadius: 7, paddingVertical: 3, paddingHorizontal: 6, overflow: "hidden",
       backgroundColor: past ? C.surface : C.paper, borderWidth: past ? 0 : target ? 1.5 : 1, borderColor: target ? C.ink : C.line, ...(target ? { borderStyle: "dashed" } : {}),
-    }));
+      ...(leave ? places.leaveStyle() : {}),
+    }, leave ? undefined : itemAction("event", e.id)));
     at = en + 2 * MIN;
   }
   const tomorrow = day.key === d.tomorrow;
@@ -1070,58 +1170,62 @@ function weekColumn(ctx: BotsCtx, d: PlanRead, day: PlanDay): Node {
 
 function planDesk(ctx: BotsCtx, d: PlanRead | undefined) {
   const look = lookOf("plan");
-  const week = Number(ctx.params.week ?? 0) || 0;
+  const week = planWeek(ctx);
   const weekDays = d ? d.week.map((k) => d.days.find((x) => x.key === k) ?? { key: k, events: [], tasks: [] }) : [];
   const range = weekDays.length ? `${keyDate(weekDays[0]!.key).getUTCDate()} ${MONTHS[keyDate(weekDays[0]!.key).getUTCMonth()]} – ${keyDate(weekDays[6]?.key ?? weekDays[0]!.key).getUTCDate()} ${MONTHS[keyDate(weekDays[6]?.key ?? weekDays[0]!.key).getUTCMonth()]}` : "";
   const nav = row([
-    box([icon("back", { size: 16 })], { width: 30, height: 30, alignItems: "center", justifyContent: "center" }, { kind: "navigate", screenId: SCREENS.plan, params: { week: week - 1 }, replace: true }),
+    box([icon("back", { size: 16 })], { width: 30, height: 30, alignItems: "center", justifyContent: "center" }, planGo(week - 1)),
     text(range, { size: 13, weight: 500, lineHeight: 18 }),
-    box([icon("chevron", { size: 16 })], { width: 30, height: 30, alignItems: "center", justifyContent: "center" }, { kind: "navigate", screenId: SCREENS.plan, params: { week: week + 1 }, replace: true }),
+    box([icon("chevron", { size: 16 })], { width: 30, height: 30, alignItems: "center", justifyContent: "center" }, planGo(week + 1)),
   ], { gap: 6, borderWidth: 1, borderColor: C.outline, borderRadius: 20, height: 38, paddingHorizontal: 4 });
   const head = row([box([], { width: 44 }), ...weekDays.map((x) => {
     const dt = keyDate(x.key);
     const today = x.key === d!.today, tomorrow = x.key === d!.tomorrow;
     const allDay = x.events.filter((e) => e.allDay);
+    const open = x.tasks.filter((t) => !t.done).length;
     return col([
       text(tomorrow ? "Tomorrow" : WEEKDAYS[dt.getUTCDay()]!, { size: 12, weight: tomorrow ? 600 : 400, color: tomorrow ? C.ink : C.meta, lineHeight: 16 }),
       today
         ? box([text(String(dt.getUTCDate()), { size: 14, weight: 600, color: C.paper, lineHeight: 18 })], { width: 28, height: 28, borderRadius: 14, backgroundColor: C.ink, alignItems: "center", justifyContent: "center" })
         : box([text(String(dt.getUTCDate()), { size: 14, weight: tomorrow ? 600 : 400, lineHeight: 18 })], { height: 28, justifyContent: "center" }),
       ...allDay.slice(0, 1).map((e) => text(e.title, { size: 10.5, color: C.grey70, lineHeight: 13, lines: 1 })),
-      ...(x.tasks.length ? [text(`${plural(x.tasks.length, "to do", "to dos")}`, { size: 10.5, color: look.color, lineHeight: 13 })] : []),
-    ], { flexGrow: 1, flexBasis: 0, minWidth: 0, alignItems: "center", gap: 2 });
+      ...(open ? [text(`${plural(open, "to do", "to dos")}`, { size: 10.5, color: look.color, lineHeight: 13 })] : []),
+    ], { flexGrow: 1, flexBasis: 0, minWidth: 0, alignItems: "center", gap: 2 }, addAction(x.key));
   })], { gap: 0, alignItems: "flex-start" });
   const hours = col(Array.from({ length: (TO_H - FROM_H) / 2 }, (_, i) => box([meta(`${((FROM_H + i * 2) % 12) || 12} ${FROM_H + i * 2 < 12 ? "am" : "pm"}`, { size: 11 })], { height: PX * 2 })), { width: 44, flexShrink: 0 });
   const grid7 = col([head, row([hours, ...weekDays.map((x) => weekColumn(ctx, d!, x))], { alignItems: "flex-start" })], { gap: 10, flexGrow: 1, flexShrink: 1, minWidth: 0 });
   const tomorrow = d?.days.find((x) => x.key === d.tomorrow);
   const sorted: Node[] = [
-    ...(tomorrow?.tasks ?? []).map((t) => listRow({ label: t.title, sub: "Due tomorrow · Google Tasks", left: statusMark("waiting") })),
-    ...(tomorrow?.events.filter((e) => !e.allDay).slice(0, 4) ?? []).map((e) => listRow({ label: e.title, sub: `${clockOf(ctx, e.start)} · ${lengthWords(e.end - e.start)}${e.where ? ` · ${e.where}` : ""}`, left: statusMark(d?.suggestion?.eventId === e.id ? "needs" : "done") })),
+    ...places.legListRows(ctx, d?.travel),
+    ...(tomorrow?.tasks ?? []).map((t) => box([todoRow(ctx, t, { when: true })], { paddingHorizontal: 16, paddingVertical: 4 })),
+    ...(tomorrow?.events.filter((e) => !e.allDay).slice(0, 4) ?? []).map((e) => listRow({ label: e.title, sub: `${clockOf(ctx, e.start)} · ${lengthWords(e.end - e.start)}${e.where ? ` · ${e.where}` : ""}${e.from ? ` · ${fromWords(e)}` : ""}`, left: statusMark(d?.suggestion?.eventId === e.id ? "needs" : "done"), onPress: itemAction("event", e.id) })),
   ];
   const aside = col([
     ...(d?.suggestion ? [suggestionCard(ctx, d.suggestion, { desk: true })] : []),
-    col([sectionLabel("Tomorrow, sorted"), sorted.length ? listCard(sorted) : card([meta("Nothing on tomorrow yet.", { size: 13 })], { dashed: true })], { gap: 8 }),
+    col([sectionLabel("Tomorrow, sorted"), sorted.length ? listCard(sorted) : card([meta("Nothing on tomorrow yet.", { size: 13 })], { dashed: true }), ...places.planFoot(ctx, d?.travel), ...(d ? planShare(ctx, d, tomorrow) : [])], { gap: 8 }),
+    ...(d ? openTodos(ctx, d) : []),
+    ...places.homePart(ctx, d?.travel),
     row(d ? planChips(d).map((c) => chip(c, { onPress: askBot("plan", c) })) : [], { gap: 8, flexWrap: "wrap" }),
-    chatBar(ctx, "plan", "Plan bot", "Plan my week…", open(SCREENS.chat, { slug: "plan" })),
+    chatBar(ctx, "plan", "Plan bot", "Add dentist Fri 5 pm, or plan my week…", open(SCREENS.chat, { slug: "plan" })),
   ], { width: 300, flexShrink: 0, gap: 18 });
   return page(ctx, {
-    title: "Plan bot", nav: "plan", maxWidth: 1180,
+    title: "Plan bot", nav: "plan", maxWidth: 1180, live: ["bot:plan", "calendar", "tasks"], state: { ...places.PLAN_STATE },
     body: [
       row([botAvatar(look, 44), col([title("Plan bot", { size: 26 }), text(planHeadLine(d), { size: 13, weight: 500, color: look.color, lineHeight: 18 })], { gap: 2 }),
         ...headerBuddy(ctx, "plan", { lookTo: "down", thinkWhen: ANSWERING }), grow(),
-        ...(d?.connected.calendar ? [meta(d.connected.tasks ? "From Google Calendar and Tasks" : "From Google Calendar", { size: 12 }), nav] : [])], { gap: 14 }),
+        ...(d ? [secondaryButton("Add", addAction(d.tomorrow), { size: "md", icon: "plus" }), nav] : [])], { gap: 14 }),
       ...(!d ? [emptyState({ pose: "think", title: "Couldn't read your days", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
-        : !d.connected.calendar ? [notConnected(ctx)]
-          : [...(d.trouble ? [notice(d.trouble)] : []), row([grid7, aside], { gap: 28, alignItems: "flex-start" })]),
+        : [...(d.trouble ? [notice(d.trouble)] : []), row([grid7, aside], { gap: 28, alignItems: "flex-start" })]),
     ],
   });
 }
 
 // ===================================================================== bots.travel
 
-interface TripData { trip: { id: string; place: string; when: string; who: string; packing: Array<{ text: string; done: boolean }> } | null; facts: Array<{ id: string; text: string }>; bookings: Array<{ label: string; url: string; at: number; said: string }> }
+interface TripData { trip: { id: string; place: string; when: string; who: string; packing: Array<{ text: string; done: boolean }>; spots?: string[]; stays?: Array<{ picked: boolean }> } | null; facts: Array<{ id: string; text: string }>; bookings: Array<{ label: string; url: string; at: number; said: string }> }
 interface MediaFile { id: string; name: string; mime: string; bytes: number; createdAt: number; pages?: number }
-interface TravelData { t?: TripData; files?: MediaFile[] }
+/** `x`: the trip's weather, places and stays compared (GET .../trip/:id/extras, botsPlaces.ts). */
+interface TravelData { t?: TripData; files?: MediaFile[]; x?: places.TripExtrasView }
 
 const TRAVELLY = /ticket|pnr|boarding|itinerary|hotel|booking|flight|train|irctc|visa|passport|e-?ticket|bus|stay|trip/i;
 const GETTING = /train|flight|bus|cab|ticket|irctc|rail|air|uber|ola|route|maps|direction/i;
@@ -1135,7 +1239,7 @@ function tripSteps(ctx: BotsCtx, d: TravelData) {
   const steps = [
     { name: "Dates", ok: !!t?.when },
     { name: "Getting there", ok: opens.some((o) => GETTING.test(`${o.label} ${o.url} ${o.said}`)) || files.some((f) => GETTING.test(f.name)) },
-    { name: "Stay", ok: opens.some((o) => STAYING.test(`${o.label} ${o.url} ${o.said}`)) || files.some((f) => STAYING.test(f.name)) },
+    { name: "Stay", ok: opens.some((o) => STAYING.test(`${o.label} ${o.url} ${o.said}`)) || files.some((f) => STAYING.test(f.name)) || !!t?.stays?.some((x) => x.picked) },
     { name: "Packed", ok: !!t && t.packing.length > 0 && t.packing.every((p) => p.done) },
     { name: "Nothing waiting", ok: !!t && travelNeeds.length === 0 },
   ];
@@ -1201,14 +1305,15 @@ function travelParts(ctx: BotsCtx, d: TravelData) {
   const facts = d.t?.facts ?? [];
   const remembers = facts.length ? col([sectionLabel("Travel bot remembers"), ...facts.slice(0, 5).map((f) => dotLine(f.text))], { gap: 6 }) : null;
   const needs = s.travelNeeds.slice(0, 2).map((n) => needsCard(n));
-  const over = trip ? quietButton("Trip over", write("DELETE", `${A}/trip/${enc(trip.id)}`, undefined, { ok: "Trip cleared" }), { size: "md" }) : null;
+  // Share the trip with a space or a person (a copy, with its packing list: screens/spaces.ts bots.share).
+  const over = trip ? row([shareButton({ kind: "trip", ref: trip.id, title: `Trip to ${trip.place}` }), quietButton("Trip over", write("DELETE", `${A}/trip/${enc(trip.id)}`, undefined, { ok: "Trip cleared" }), { size: "md" })], { gap: 4 }) : null;
   return { look, s, trip, headLine, segments, files, remembers, needs, over };
 }
 
 function travelPhone(ctx: BotsCtx, d: TravelData) {
   const p = travelParts(ctx, d);
   return page(ctx, {
-    title: "Travel bot", nav: "travel", state: { t_place: "", t_when: "", t_who: "", pack: "" },
+    title: "Travel bot", nav: "travel", state: { t_place: "", t_when: "", t_who: "", pack: "", ...places.TRIP_STATE }, live: ["bot:travel"],
     body: [
       phoneHead(p.look, "Travel bot", p.headLine, undefined, headerBuddy(ctx, "travel", { lookTo: "down", thinkWhen: ANSWERING })),
       ...(!d.t ? [emptyState({ pose: "think", title: "Couldn't load your trip", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
@@ -1220,10 +1325,15 @@ function travelPhone(ctx: BotsCtx, d: TravelData) {
               p.segments,
             ], { gap: 8 }),
             ...p.needs,
+            ...places.datesHint(p.trip, d.x),
             ...bookingCards(ctx, d, p.trip.place),
+            places.staysPart(ctx, p.trip, d.x, d.t?.bookings ?? []),
+            ...places.weatherPart(ctx, p.trip, d.x),
+            places.spotsPart(ctx, p.trip, d.x),
             ...(p.files ? [p.files] : []),
             packingPart(ctx, p.trip, 2),
             ...(p.remembers ? [p.remembers] : []),
+            ...places.tripFoot(d.x),
           ]),
     ],
     footer: [chatBar(ctx, "travel", "Travel bot", "Ask about this trip…", open(SCREENS.chat, { slug: "travel" }))],
@@ -1242,7 +1352,11 @@ function travelDesk(ctx: BotsCtx, d: TravelData) {
           row(p.s.steps.map((st) => text(st.name, { size: 11, weight: st.ok ? 500 : 400, color: st.ok ? C.ink : C.meta, lineHeight: 14, style: { flexGrow: 1, flexBasis: 0 } })), { gap: 4 }),
         ], { gap: 8 }),
         ...p.needs,
+        ...places.datesHint(p.trip, d.x),
         grid(bookingCards(ctx, d, p.trip.place), 2, 14),
+        ...(d.x ? [places.tripPlanPart(ctx, p.trip, d.x)!] : []),
+        places.staysPart(ctx, p.trip, d.x, d.t?.bookings ?? [], { desk: true }),
+        places.spotsPart(ctx, p.trip, d.x),
         packingPart(ctx, p.trip, 3),
       ];
   const right: Node[] = [
@@ -1251,7 +1365,7 @@ function travelDesk(ctx: BotsCtx, d: TravelData) {
     col([sectionLabel("Ask Travel bot"), chatBar(ctx, "travel", "Travel bot", "Ask about this trip…", open(SCREENS.chat, { slug: "travel" }))], { gap: 8 }),
   ];
   return page(ctx, {
-    title: "Travel bot", nav: "travel", maxWidth: 1100, state: { t_place: "", t_when: "", t_who: "", pack: "" },
+    title: "Travel bot", nav: "travel", maxWidth: 1100, state: { t_place: "", t_when: "", t_who: "", pack: "", ...places.TRIP_STATE }, live: ["bot:travel"],
     body: [
       row([botAvatar(p.look, 44), col([title("Travel bot", { size: 26 }), text(p.headLine, { size: 13, weight: 500, color: p.look.color, lineHeight: 18 })], { gap: 2 }),
         ...headerBuddy(ctx, "travel", { lookTo: "right", thinkWhen: ANSWERING })], { gap: 14 }),
@@ -1260,187 +1374,78 @@ function travelDesk(ctx: BotsCtx, d: TravelData) {
   });
 }
 
-// ===================================================================== bots.spaces
-
-interface SpaceView {
-  id: string; name: string; mine: boolean;
-  members: Array<{ userId: string; name: string; you: boolean; maker: boolean; canApprove: boolean; joinedAt: number }>;
-  bots: Array<{ slug: string; name: string; colour: string; addedBy: string; byYou: boolean }>;
-  invite: { code: string; expiresAt: number } | null;
-}
-interface SpacesData { spaces?: SpaceView[]; you?: string; bots?: Array<{ slug: string; name: string; colour: string; builtin: boolean }> }
-
-const names = (list: string[]) => (list.length <= 1 ? list[0] ?? "" : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`);
-const memberName = (m: SpaceView["members"][number]) => (m.you ? `${m.name} (you)` : m.name);
-function approversLine(s: SpaceView): string {
-  const yes = s.members.filter((m) => m.canApprove).map((m) => (m.you ? "You" : m.name));
-  const ask = s.members.filter((m) => !m.canApprove).map((m) => (m.you ? "you" : m.name));
-  return `${names(yes)}${ask.length ? ` · ${names(ask)} can ask` : ""}`;
-}
-const spaceCount = (s: SpaceView) => `${plural(s.members.length, "person", "people")} · ${plural(s.bots.length, "bot")}`;
-const inviteSpace = (s: SpaceView) => write("POST", `${A}/spaces/${enc(s.id)}/invite`, {}, { ok: "Invite code made" });
-
-function inviteRow(ctx: BotsCtx, s: SpaceView): Node | null {
-  if (!s.invite) return null;
-  const msg = `Join my space ${s.name} on Tailzu. Open Tailzu, go to You → Spaces → Join with a code, and enter ${s.invite.code}.`;
-  return row([
-    col([text(`Invite code ${s.invite.code}`, { size: 14, weight: 600, lineHeight: 19, mono: true }), meta(`Good till ${shortDate(ctx, s.invite.expiresAt)} · anyone with it can join`, { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
-    button(isDesk(ctx) ? "Copy" : "Share", isDesk(ctx) ? { kind: "copyText", text: msg, message: "Invite copied" } : { kind: "share", text: msg, title: `Join ${s.name}` }, { kind: "secondary", size: "md", icon: "share" }),
-  ], { gap: 10, padding: 14, borderRadius: 14, backgroundColor: C.surface });
-}
-
-function spaceBotsRow(s: SpaceView): Node {
-  return row([
-    row(s.bots.slice(0, 4).map((b) => ringed(botAvatar(lookOf(b.slug, b.colour), 30))), { paddingRight: 8 }),
-    col([text(s.bots.length ? names(s.bots.map((b) => b.name)) : "No bots shared yet", { size: 14, lineHeight: 19, lines: 2 }), meta(s.bots.length ? "Everyone can ask them" : "Share one so everyone can use it", { size: 12 })], { gap: 2, flexShrink: 1 }),
-  ], { gap: 12 });
-}
-
-function spaceSummary(ctx: BotsCtx, s: SpaceView): Node {
-  const rowStyle = { paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: C.divider };
-  const inv = inviteRow(ctx, s);
-  return col([
-    row([col([text(s.name, { size: 17, weight: 600, lineHeight: 22 }), meta(spaceCount(s), { size: 12 })], { gap: 2, flexGrow: 1 }, open(SCREENS.spaces, { id: s.id })), button("Invite", inviteSpace(s), { kind: "secondary", size: "md" })], { ...rowStyle, gap: 10 }),
-    row([row(s.members.slice(0, 5).map((m) => box([personDot(m.name, m.you)], { marginRight: -8, borderRadius: 18, borderWidth: 2, borderColor: C.paper })), { paddingRight: 8 }), text(names(s.members.map(memberName)), { size: 14, lineHeight: 19, lines: 2, style: { flexShrink: 1 } })], { ...rowStyle, gap: 12 }),
-    box([spaceBotsRow(s)], rowStyle),
-    row([col([text("Who can approve payments", { size: 14, lineHeight: 19 }), meta(approversLine(s), { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1 }), text(s.mine ? "Change" : "See", { size: 13, color: C.meta, lineHeight: 18 })], { ...rowStyle, gap: 10, borderBottomWidth: inv ? 1 : 0 }, open(SCREENS.spaces, { id: s.id })),
-    ...(inv ? [box([inv], { padding: 10 })] : []),
-  ], { borderWidth: 1, borderColor: C.line, borderRadius: 18, overflow: "hidden" });
-}
-
-/** One space, whole: members and who approves, the bots and adding one, the rules, invite, leave. */
-function spaceDetail(ctx: BotsCtx, s: SpaceView, d: SpacesData): Node[] {
-  const shareable = (d.bots ?? []).filter((b) => !s.bots.some((x) => x.slug === b.slug));
-  const members = listCard(s.members.map((m) => row([
-    personDot(m.name, m.you, 30),
-    col([text(memberName(m), { size: 14, lineHeight: 19 }), meta(m.maker ? "Made this space" : `Joined ${shortDate(ctx, m.joinedAt)}`, { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
-    ...(s.mine
-      ? [row([meta(m.canApprove ? "Approves" : "Can ask", { size: 13 }), switchMark(apKey(s.id, m.userId))], { gap: 8, minHeight: 44 }, seq({ kind: "toggleState", path: apKey(s.id, m.userId) }, write("PUT", `${A}/spaces/${enc(s.id)}/members/${enc(m.userId)}`, { canApprove: !m.canApprove }, { fail: "Someone has to be able to approve payments." })))]
-      : [meta(m.canApprove ? "Approves" : "Can ask", { size: 13 })]),
-    ...(s.mine && !m.maker ? [labelledIcon("close", write("DELETE", `${A}/spaces/${enc(s.id)}/members/${enc(m.userId)}`, undefined, { ok: `${m.name} removed` }), "Remove")] : []),
-  ], { gap: 12, paddingVertical: 10, paddingLeft: 16, paddingRight: 8, minHeight: 52 })));
-  const bots = listCard([
-    ...s.bots.map((b) => row([
-      row([
-        botAvatar(lookOf(b.slug, b.colour), 30),
-        col([text(b.name, { size: 14, lineHeight: 19 }), meta(`${b.byYou ? "You added it" : `${b.addedBy} added it`} · everyone can ask it`, { size: 12 })], { gap: 2, flexShrink: 1, minWidth: 0 }),
-      ], { gap: 12, flexGrow: 1, flexShrink: 1, minWidth: 0 }, botRoute(b.slug)),
-      ...(b.byYou || s.mine ? [labelledIcon("close", write("DELETE", `${A}/spaces/${enc(s.id)}/bots/${enc(b.slug)}`, undefined, { ok: `${b.name} taken out` }), "Take it out")] : []),
-    ], { gap: 12, paddingVertical: 10, paddingLeft: 16, paddingRight: 8, minHeight: 52 })),
-    col([
-      row([box([icon("plus", { size: 18 })], { width: 30, height: 30, alignItems: "center", justifyContent: "center" }), text(`Add a bot to ${s.name}`, { size: 14, weight: 600, lineHeight: 19 })], { gap: 12 }),
-      row(shareable.slice(0, 6).map((b) => chip(b.name, { onPress: write("POST", `${A}/spaces/${enc(s.id)}/bots`, { slug: b.slug }, { ok: `${b.name} shared` }) })), { gap: 8, flexWrap: "wrap" }),
-    ], { gap: 10, paddingVertical: 12, paddingHorizontal: 16 }),
-  ]);
-  const inv = inviteRow(ctx, s);
-  return [
-    row([col([text(s.name, { size: 22, weight: 700, lineHeight: 28 }), meta(`${names(s.members.map(memberName))} · ${s.bots.length ? names(s.bots.map((b) => b.name)) : "no bots yet"}`, { size: 13, lines: 2 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
-      button(s.invite ? "New code" : "Invite", inviteSpace(s), { kind: "secondary", size: "md" })], { gap: 12 }),
-    ...(inv ? [inv] : []),
-    grid([col([sectionLabel(`Members · ${s.members.length}`), members], { gap: 8, minWidth: 0 }), col([sectionLabel(`Bots · ${s.bots.length}`), bots], { gap: 8, minWidth: 0 })], isDesk(ctx) ? 2 : 1, 18),
-    col([sectionLabel("Rules"), listCard([
-      listRow({ label: "Who can approve payments", sub: approversLine(s) }),
-      listRow({ label: "Who can add bots", sub: "Everyone in the space, their own bots and Tailzu's" }),
-      listRow({ label: "What bots remember", sub: `Each person's chats stay their own. ${s.name} never pays by itself: you press pay.` }),
-    ])], { gap: 8 }),
-    quietButton(s.mine ? `Delete ${s.name}` : `Leave ${s.name}`, call("DELETE", `${A}/spaces/${enc(s.id)}`, undefined, { ok: seq(toast(s.mine ? `${s.name} deleted` : `You left ${s.name}`), { kind: "navigate", screenId: SCREENS.spaces, replace: true }), fail: toast("Couldn't do that. Try again.", true) }), { size: "md" }),
-  ];
-}
-
-const apKey = (space: string, user: string) => `ap_${`${space}_${user}`.replace(/[^a-z0-9_]/gi, "")}`;
-function spaceStateOf(spaces: SpaceView[]): Record<string, unknown> {
-  const st: Record<string, unknown> = { spaceName: "", code: "" };
-  for (const s of spaces) for (const m of s.members) st[apKey(s.id, m.userId)] = m.canApprove;
-  return st;
-}
-const newSpace = ifFilled("spaceName", seq(call("POST", `${A}/spaces`, { name: "$state.spaceName" }, { ok: seq(toast("Space made"), clearState("spaceName"), refresh), fail: toast("Couldn't make it. Try again.", true) })), "Name the space first");
-const joinSpace = ifFilled("code", seq(call("POST", `${A}/spaces/join`, { code: "$state.code" }, { assignTo: "joined", ok: seq(toast("You're in"), clearState("code"), refresh), fail: toast("That code doesn't work. Ask for a new invite.", true) })), "Enter the invite code");
-
-function spacesPhone(ctx: BotsCtx, d: SpacesData) {
-  const id = String(ctx.params.id ?? "");
-  const one = id ? d.spaces?.find((s) => s.id === id) : undefined;
-  if (one) return page(ctx, { back: true, title: one.name, nav: "you", state: spaceStateOf([one]), body: spaceDetail(ctx, one, d) });
-  return page(ctx, {
-    back: true, title: "Spaces", nav: "you", state: spaceStateOf(d.spaces ?? []),
-    body: [
-      col([title("Spaces"), meta("Share bots with family or a team. Each space has its own rules.", { size: 13 })], { gap: 4 }),
-      ...(!d.spaces ? [emptyState({ pose: "think", title: "Couldn't load your spaces", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
-        : d.spaces.length ? d.spaces.map((s) => spaceSummary(ctx, s))
-          : [emptyState({ pose: "hello", title: "No spaces yet", body: "Make one for home or your team, then invite people with a code." })]),
-      col([sectionLabel("Join with a code"), inputBox([field("code", "code", "Invite code", { onSubmit: joinSpace }), button("Join", joinSpace, { kind: "secondary", size: "md" })], { radius: 14 })], { gap: 8 }),
-      inputBox([field("spaceName", "spaceName", "Name a new space: Home, Studio…", { onSubmit: newSpace })], { radius: 14 }),
-    ],
-    footer: [secondaryButton("New space", newSpace, { wide: true })],
-  });
-}
-
-function spacesDesk(ctx: BotsCtx, d: SpacesData) {
-  const list = d.spaces ?? [];
-  const sel = list.find((s) => s.id === String(ctx.params.id ?? "")) ?? list[0];
-  const nav = col([
-    sectionLabel(`Your spaces · ${list.length}`),
-    ...list.map((s) => col([
-      row([col([text(s.name, { size: 16, weight: 600, lineHeight: 21 }), meta(spaceCount(s), { size: 12 })], { gap: 2, flexGrow: 1 }),
-        row(s.members.slice(0, 4).map((m) => box([personDot(m.name, m.you, 28)], { marginRight: -6, borderRadius: 16, borderWidth: 2, borderColor: s.id === sel?.id ? C.surface : C.paper })), { paddingRight: 6 })], { gap: 8 }),
-      ...(s.bots[0] ? [row([statusMark("working", { color: lookOf(s.bots[0].slug, s.bots[0].colour).color, still: true }), text(names(s.bots.map((b) => b.name)), { size: 13, color: C.grey70, lineHeight: 18, lines: 1, style: { flexShrink: 1 } })], { gap: 8 })] : []),
-    ], { gap: 10, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: s.id === sel?.id ? C.surface : C.line, ...(s.id === sel?.id ? { backgroundColor: C.surface } : {}) }, open(SCREENS.spaces, { id: s.id }))),
-    meta("Each space keeps its own bots and money rules. What happens in one stays there.", { size: 12, lineHeight: 17 }),
-    col([sectionLabel("Join with a code"), inputBox([field("code", "code", "Invite code", { onSubmit: joinSpace }), button("Join", joinSpace, { kind: "secondary", size: "md" })], { radius: 14 })], { gap: 8, paddingTop: 8 }),
-  ], { width: 280, flexShrink: 0, gap: 10 });
-  return page(ctx, {
-    title: "Spaces", nav: "you", maxWidth: 1080, state: spaceStateOf(list),
-    body: [
-      row([
-        col([row([text("You", { size: 13, color: C.grey70, lineHeight: 18 })], { minHeight: 32 }, toTab("you")), title("Spaces", { size: 26 }), meta("Share bots with family or a team. Each space has its own rules.", { size: 14 })], { gap: 4, flexGrow: 1 }),
-        box([inputBox([field("spaceName", "spaceName", "Name: Home, Studio…", { onSubmit: newSpace })], { radius: 22 })], { width: 220 }),
-        button("New space", newSpace, { kind: "secondary", size: "md" }),
-      ], { gap: 12, alignItems: "flex-end" }),
-      ...(!d.spaces ? [emptyState({ pose: "think", title: "Couldn't load your spaces", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
-        : [row([nav, col(sel ? spaceDetail(ctx, sel, d) : [emptyState({ pose: "hello", title: "No spaces yet", body: "Name one above and press New space. Then invite people with a code." })], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 22 })], { gap: 28, alignItems: "flex-start" })]),
-    ],
-  });
-}
+// bots.spaces and the rest of Spaces (members, invites, sharing, payments, tasks, chats): screens/spaces.ts
 
 // ===================================================================== bots.share-in
 
 interface Attachment { id: string; name: string; mime: string; bytes: number; sha256: string; kind?: string }
-interface ShareData { file?: MediaFile; attachment?: Attachment; pick?: string | null; ask?: string; line?: string }
+interface ShareData { file?: MediaFile; attachment?: Attachment; files?: MediaFile[]; attachments?: Attachment[]; pick?: string | null; ask?: string; line?: string }
+
+/**
+ * What came in from another app's Share menu (the phone's share extension and share intent) or was dropped on the window: `text`, `url`,
+ * and files already sent to POST /v1/files, as `file` (one id) and `files` (ids, comma separated: a share of several). At most five.
+ */
+const SHARE_FILES = 5;
+function shareFileIds(params: Record<string, unknown>): string[] {
+  const ids = [String(params.file ?? ""), ...String(params.files ?? "").split(",")].map((s) => s.trim()).filter((s) => /^[A-Za-z0-9-]{1,64}$/.test(s));
+  return [...new Set(ids)].slice(0, SHARE_FILES);
+}
 
 function sharedOf(ctx: BotsCtx, d: ShareData) {
   const text0 = String(ctx.params.text ?? "").slice(0, 2000);
   const url = String(ctx.params.url ?? "").slice(0, 2000);
-  const file = d.file;
+  const files = d.files?.length ? d.files : d.file ? [d.file] : [];
+  const file = files[0];
   const kind: "file" | "link" | "text" | null = file ? "file" : url ? "link" : text0 ? "text" : null;
-  return { text: text0, url, file, kind };
+  return { text: text0, url, file, files, kind };
 }
 
 function sharedCard(ctx: BotsCtx, s: ReturnType<typeof sharedOf>): Node {
   const badge = (label: string) => box([text(label, { size: 10, weight: 600, color: C.grey70, lineHeight: 12 })], { width: 40, height: 48, borderRadius: 8, backgroundColor: C.surface, alignItems: "center", justifyContent: "center", flexShrink: 0 });
+  // Words that came with a file or a link (a caption, a page's title), under it.
+  const said = s.text && s.text !== s.url && (s.file || s.url) ? [meta(s.text, { size: 12, lines: 2 })] : [];
   if (s.file) {
-    const ext = (s.file.name.split(".").pop() ?? "FILE").slice(0, 4).toUpperCase();
-    return card([row([badge(ext), col([text(s.file.name, { size: 14, weight: 600, lineHeight: 19, lines: 1 }), meta([kb(s.file.bytes), ...(s.file.pages ? [plural(s.file.pages, "page")] : []), shortDate(ctx, s.file.createdAt)].join(" · "), { size: 12 })], { gap: 2, flexShrink: 1, minWidth: 0 })], { gap: 12 })], { padding: 14 });
+    const fileRow = (f: MediaFile, i: number) => row([
+      badge((f.name.split(".").pop() ?? "FILE").slice(0, 4).toUpperCase()),
+      col([text(f.name, { size: 14, weight: 600, lineHeight: 19, lines: 1 }), meta([kb(f.bytes), ...(f.pages ? [plural(f.pages, "page")] : []), shortDate(ctx, f.createdAt)].join(" · "), { size: 12 })], { gap: 2, flexShrink: 1, minWidth: 0 }),
+    ], { gap: 12, ...(i ? { paddingTop: 10, borderTopWidth: 1, borderTopColor: C.divider } : {}) });
+    return card([...s.files.map(fileRow), ...said], { padding: 14, gap: 10 });
   }
-  if (s.url) return card([row([badge("LINK"), col([text(s.url.replace(/^https?:\/\//, "").slice(0, 80), { size: 14, weight: 600, lineHeight: 19, lines: 2 }), meta("A link", { size: 12 })], { gap: 2, flexShrink: 1, minWidth: 0 })], { gap: 12 })], { padding: 14 });
+  if (s.url) return card([row([badge("LINK"), col([text(s.url.replace(/^https?:\/\//, "").slice(0, 80), { size: 14, weight: 600, lineHeight: 19, lines: 2 }), meta("A link", { size: 12 })], { gap: 2, flexShrink: 1, minWidth: 0 })], { gap: 12 }), ...said], { padding: 14, gap: 10 });
   return card([row([badge("TEXT"), text(s.text, { size: 14, lineHeight: 20, lines: 4, style: { flexShrink: 1 } })], { gap: 12, alignItems: "flex-start" })], { padding: 14 });
 }
 
+/** What came in, to a space or a person instead of a bot (screens/spaces.ts bots.share): the file (theirs), the link, or the words. */
+function sharePeople(s: ReturnType<typeof sharedOf>): ActionRef {
+  if (s.file) return shareTo({ kind: "file", ref: s.file.id, title: s.file.name });
+  if (s.url) return shareTo({ kind: "link", url: s.url, title: s.text && s.text !== s.url ? s.text.slice(0, 120) : s.url.replace(/^https?:\/\//, "").slice(0, 120) });
+  return shareTo({ kind: "text", title: s.text.split("\n")[0]!.slice(0, 60) || "A note", text: s.text });
+}
+
+/** "Ask any bot": the front door gives it to the bot that fits (POST /v1/ask with bot "any"). Always on the list, last unless it is the pick. */
+const ASK_ANY = "any";
+const askAny = (): LiveBot => ({ ...lookOf("tailzu"), slug: ASK_ANY, name: "Ask any bot", builtin: true, state: "idle", working: false, needs: 0, purpose: "Tailzu picks the bot that fits" });
+
 const shareLineFor = (slug: string, name: string) => {
   switch (slug) {
+    case ASK_ANY: return "Tailzu gives it to the bot that fits best. It asks before it changes anything or spends money.";
     case "travel": return "Travel bot adds the times and booking details to your trip. It won't book or pay for anything.";
-    case "plan": return "Plan bot shows you the change first, and adds it to your calendar only after you say yes.";
+    case "plan": return "Plan bot puts it on your calendar in Tailzu. You can change it or take it out any time.";
     case "code": return "Code bot reads it and answers. It changes code only through a pull request you approve.";
     case "keybot": return "Keybot writes it in your voice. You send it yourself.";
     default: return `${name} reads it and answers here. It asks before it changes anything or spends money.`;
   }
 };
-const SHARE_LINE: Record<string, string> = { travel: "Reads tickets, keeps your trips in order", plan: "Calendar and reminders", code: "Projects and code", keybot: "Writes and replies in your voice" };
+const SHARE_LINE: Record<string, string> = { [ASK_ANY]: "Tailzu picks the bot that fits", travel: "Reads tickets, keeps your trips in order", plan: "Calendar and reminders", code: "Projects and code", keybot: "Writes and replies in your voice" };
 
 function shareSend(ctx: BotsCtx, s: ReturnType<typeof sharedOf>, d: ShareData): ActionRef {
+  const names = s.files.map((f) => f.name).join(", ").slice(0, 200);
+  const attachments = d.attachments?.length ? d.attachments : d.attachment ? [d.attachment] : [];
   return ifFilled("what", seq(
     setState("sendingShare", true),
-    call("POST", `${A}/share/compose`, { what: "$state.what", ...(s.file ? { name: s.file.name } : {}), ...(s.text ? { text: s.text } : {}), ...(s.url ? { url: s.url } : {}) }, {
+    call("POST", `${A}/share/compose`, { what: "$state.what", ...(names ? { name: names } : {}), ...(s.text ? { text: s.text } : {}), ...(s.url ? { url: s.url } : {}) }, {
       assignTo: "composed",
-      ok: call("POST", "/v1/ask", { message: "$state.composed.message", bot: "$state.bot", device: ctx.client, mode: "text", ...(d.attachment ? { attachments: [d.attachment] } : {}) }, {
+      ok: call("POST", "/v1/ask", { message: "$state.composed.message", bot: "$state.bot", device: ctx.client, mode: "text", ...(attachments.length ? { attachments } : {}) }, {
         assignTo: "asked",
         ok: seq(setState("sendingShare", false), { kind: "navigate", screenId: SCREENS.ask, params: { message: "$state.what", answer: "$state.asked.result.text", id: "$state.asked.id" }, replace: true }),
         fail: seq(setState("sendingShare", false), toast("Couldn't send it. Try again.", true)),
@@ -1450,17 +1455,22 @@ function shareSend(ctx: BotsCtx, s: ReturnType<typeof sharedOf>, d: ShareData): 
   ), "Say what it should do");
 }
 
+/** The person's bots and "Ask any bot", the pick first. */
 function shareBots(ctx: BotsCtx, pick: string | null | undefined): LiveBot[] {
-  const list = ctx.live.bots.slice();
+  const list = [...ctx.live.bots, askAny()];
   return list.sort((a, b) => Number(b.slug === pick) - Number(a.slug === pick));
 }
 
+/** The front door's pick when it made one, else "Ask any bot". */
+const sharePick = (ctx: BotsCtx, d: ShareData): string => (d.pick && ctx.live.bots.some((b) => b.slug === d.pick) ? d.pick : ASK_ANY);
+
 function sharePhone(ctx: BotsCtx, d: ShareData) {
   const s = sharedOf(ctx, d);
-  const pick = d.pick && ctx.live.bots.some((b) => b.slug === d.pick) ? d.pick : ctx.live.bots.find((b) => b.slug === "plan")?.slug ?? ctx.live.bots[0]?.slug ?? "plan";
+  const pick = sharePick(ctx, d);
   const bots = shareBots(ctx, pick);
   const top = bots[0];
-  const rest = bots.slice(1, 5);
+  const others = bots.slice(1).filter((b) => b.slug !== ASK_ANY);
+  const rest = top?.slug === ASK_ANY ? others.slice(0, 4) : [...others.slice(0, 3), askAny()];
   const radio = (slug: string) => box([box([], { width: 8, height: 8, borderRadius: 4, backgroundColor: C.paper })], {
     width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", flexShrink: 0,
     backgroundColor: whenEq("bot", slug, C.ink, C.paper), borderWidth: 1.5, borderColor: whenEq("bot", slug, C.ink, C.outline),
@@ -1494,7 +1504,7 @@ function sharePhone(ctx: BotsCtx, d: ShareData) {
         when({ truthy: "sendingShare" }, row([statusMark("working", { color: C.ink }), meta("Sending…", { size: 13 })], { gap: 8 })),
       ], { gap: 8 }),
     ],
-    footer: [primaryButton("Send", shareSend(ctx, s, d), { wide: true })],
+    footer: [primaryButton("Send", shareSend(ctx, s, d), { wide: true }), quietButton("Share with a space or person", sharePeople(s), { wide: true, size: "md" })],
   });
 }
 
@@ -1510,16 +1520,16 @@ function defaultAsk(slug: string, kind: "file" | "link" | "text"): string {
 
 function shareDesk(ctx: BotsCtx, d: ShareData) {
   const s = sharedOf(ctx, d);
-  const pick = d.pick && ctx.live.bots.some((b) => b.slug === d.pick) ? d.pick : ctx.live.bots.find((b) => b.slug === "plan")?.slug ?? ctx.live.bots[0]?.slug ?? "plan";
+  const pick = sharePick(ctx, d);
   const bots = shareBots(ctx, pick);
   if (!s.kind) {
-    return page(ctx, { title: "Send to a bot", nav: "bots", body: [title("Send to a bot"), emptyState({ pose: "hello", title: "Nothing to send yet", body: "From any app's Share menu, pick Tailzu, and it lands here with the bot that fits best." })] });
+    return page(ctx, { title: "Send to a bot", nav: "bots", body: [title("Send to a bot"), emptyState({ pose: "hello", title: "Nothing to send yet", body: "Drop a file, a link or some text on this window, or pick Tailzu in another app's Share menu. It lands here with the bot that fits best." })] });
   }
   const asks: Record<string, string> = {};
   for (const b of bots) asks[b.slug] = b.slug === pick && d.ask ? d.ask : defaultAsk(b.slug, s.kind);
   const big = (b: LiveBot) => when({ eq: ["bot", b.slug] }, col([
     botAvatar(b, 56),
-    text(`Send to ${b.name}`, { size: 24, weight: 700, lineHeight: 30, align: "center" }),
+    text(b.slug === ASK_ANY ? b.name : `Send to ${b.name}`, { size: 24, weight: 700, lineHeight: 30, align: "center" }),
     text(SHARE_LINE[b.slug] ?? b.purpose, { size: 14, color: C.grey70, lineHeight: 20, align: "center" }),
     ...(b.slug === d.pick ? [row([infoChip("Suggested")], { justifyContent: "center" })] : []),
     box([sharedCard(ctx, s)], { width: 360, maxWidth: "100%" }),
@@ -1538,7 +1548,7 @@ function shareDesk(ctx: BotsCtx, d: ShareData) {
         ...bots.map((b) => when({ eq: ["bot", b.slug] }, meta(shareLineFor(b.slug, b.name), { size: 12.5, lineHeight: 18 }))),
         when({ truthy: "sendingShare" }, row([statusMark("working", { color: C.ink }), meta("Sending…", { size: 13 })], { gap: 8 })),
       ], { gap: 8, paddingTop: 16, borderTopWidth: 1, borderTopColor: C.divider }),
-      row([quietButton("Cancel", back(), { size: "md" }), grow(), primaryButton("Send", shareSend(ctx, s, d), { size: "md" })], { gap: 12 }),
+      row([quietButton("Cancel", back(), { size: "md" }), grow(), secondaryButton("Share with a space or person", sharePeople(s), { size: "md", icon: "share" }), primaryButton("Send", shareSend(ctx, s, d), { size: "md" })], { gap: 12 }),
     ],
   });
 }
@@ -1625,42 +1635,39 @@ export const botsScreens: BotsScreen[] = [
   }),
   screen<PlanRead>({
     id: SCREENS.plan,
-    load: (ctx, deps) => deps.api<PlanRead>("GET", `${A}/plan?tz=${ctx.tzOffsetMinutes}&week=${Number(ctx.params.week ?? 0) || 0}`),
+    load: (ctx, deps) => deps.api<PlanRead>("GET", `${A}/plan?tz=${ctx.tzOffsetMinutes}&week=${planWeek(ctx)}`),
     build: (ctx, d) => (isDesk(ctx) ? planDesk(ctx, d) : planPhone(ctx, d)),
   }),
   screen<TravelData>({
     id: SCREENS.travel,
-    load: async (_ctx, deps) => {
+    load: async (ctx, deps) => {
       const [t, files] = await Promise.all([
         deps.api<TripData>("GET", `${A}/trip`).catch(() => undefined),
         deps.api<{ files: MediaFile[] }>("GET", "/v1/files").then((r) => r.files).catch(() => undefined),
       ]);
-      return { t, files };
+      const x = t?.trip
+        ? await deps.api<{ extras: places.TripExtrasView }>("GET", `${A}/trip/${enc(t.trip.id)}/extras?tz=${ctx.tzOffsetMinutes}`).then((r) => r.extras).catch(() => undefined)
+        : undefined;
+      return { t, files, x };
     },
     build: (ctx, d) => (isDesk(ctx) ? travelDesk(ctx, d ?? {}) : travelPhone(ctx, d ?? {})),
-  }),
-  screen<SpacesData>({
-    id: SCREENS.spaces,
-    load: async (_ctx, deps) => {
-      const [sp, bots] = await Promise.all([
-        deps.api<{ spaces: SpaceView[]; you: string }>("GET", `${A}/spaces`).catch(() => undefined),
-        deps.api<{ bots: Array<{ slug: string; name: string; colour: string; builtin: boolean }> }>("GET", "/v1/bots").then((r) => r.bots).catch(() => undefined),
-      ]);
-      return { spaces: sp?.spaces, you: sp?.you, bots };
-    },
-    build: (ctx, d) => (isDesk(ctx) ? spacesDesk(ctx, d ?? {}) : spacesPhone(ctx, d ?? {})),
   }),
   screen<ShareData>({
     id: SCREENS.shareIn,
     load: async (ctx, deps) => {
-      const fileId = String(ctx.params.file ?? "");
-      const got = fileId ? await deps.api<{ file: MediaFile; attachment: Attachment }>("GET", `/v1/files/${enc(fileId)}`).catch(() => undefined) : undefined;
+      type Got = { file: MediaFile; attachment: Attachment };
+      const got = (await Promise.all(shareFileIds(ctx.params).map((id) => deps.api<Got>("GET", `/v1/files/${enc(id)}`).catch(() => undefined))))
+        .filter((g): g is Got => !!g?.file && !!g.attachment);
       const text0 = String(ctx.params.text ?? ""), url = String(ctx.params.url ?? "");
-      if (!got && !text0 && !url) return {};
-      const sug = await deps.api<{ pick: string | null; ask: string; line: string }>("POST", `${A}/share/suggest`, { ...(got ? { name: got.file.name } : {}), ...(text0 ? { text: text0 } : {}), ...(url ? { url } : {}) }).catch(() => undefined);
-      return { ...(got ? { file: got.file, attachment: got.attachment } : {}), pick: sug?.pick ?? null, ...(sug ? { ask: sug.ask, line: sug.line } : {}) };
+      if (!got.length && !text0 && !url) return {};
+      const name = got.map((g) => g.file.name).join(", ").slice(0, 200);
+      const sug = await deps.api<{ pick: string | null; ask: string; line: string }>("POST", `${A}/share/suggest`, { ...(name ? { name } : {}), ...(text0 ? { text: text0 } : {}), ...(url ? { url } : {}) }).catch(() => undefined);
+      const files = got.length ? { file: got[0]!.file, attachment: got[0]!.attachment, files: got.map((g) => g.file), attachments: got.map((g) => g.attachment) } : {};
+      return { ...files, pick: sug?.pick ?? null, ...(sug ? { ask: sug.ask, line: sug.line } : {}) };
     },
     build: (ctx, d) => (isDesk(ctx) ? shareDesk(ctx, d ?? {}) : sharePhone(ctx, d ?? {})),
   }),
   screen({ id: SCREENS.avatars, build: (ctx) => avatarsPage(ctx) }),
+  // Plan's own calendar, one event or to-do at a time (screens/planItem.ts).
+  ...planItemScreens,
 ];

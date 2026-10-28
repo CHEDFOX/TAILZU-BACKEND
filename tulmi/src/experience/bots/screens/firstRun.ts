@@ -431,14 +431,15 @@ function socialButtons(mode: Mode, o: BotsAuthOpts, h: number): Node[] {
       }, seq(setState("googleStarted", true), { kind: "openUrl", url: o.googleLink, external: true }))
     : o.googleHidden ? null : {
         type: "GoogleSignIn",
-        props: { size: h, radius: h / 2, background: C.paper, borderWidth: 1, borderColor: C.outline, label: "Continue with Google" },
+        // The window's short pair (beside its QR panel) says just the name, as the board does.
+        props: { size: h, radius: h / 2, background: C.paper, borderWidth: 1, borderColor: C.outline, label: label("Google") },
         style: { width: "100%" },
         children: [row([googleG(18), text(label("Google"), { size: h >= 54 ? 16 : 14, weight: h >= 54 ? 600 : 500, lineHeight: 20 })], { gap: 10 })],
       };
   // Apple's own control (their guidelines): it draws itself, and hides where it cannot serve.
   const apple: Node | null = o.appleHidden ? null : {
     type: "AppleSignIn",
-    props: { size: h, radius: h / 2, buttonType: "CONTINUE", buttonStyle: "WHITE_OUTLINE", label: "Continue with Apple" },
+    props: { size: h, radius: h / 2, buttonType: "CONTINUE", buttonStyle: "WHITE_OUTLINE", label: label("Apple") },
     style: { width: "100%" },
   };
   return [google, apple].filter((n): n is Node => !!n);
@@ -534,6 +535,15 @@ function signInDesk(mode: Mode, o: BotsAuthOpts, backTo: ActionRef, fig: Figure)
     signField(mode, method, true),
     meta(hint, { size: 12 }),
   ], { gap: 6 });
+  const form = [
+    when(PHONE_ON, segmented([{ label: "Phone", value: "phone" }, { label: "Email", value: "email" }], "method")),
+    ...byMethod(
+      field("Mobile number", "phone", "We text you a 6-digit code. Email works too, from the tab above."),
+      field("Email", "email", "We email you a 6-digit code."),
+    ),
+    ...(social.length ? [orLine(), row(social.map((s) => box([s], { flexGrow: 1, flexBasis: 0, minWidth: 0 })), { gap: 8 })] : []),
+  ];
+  const card = { borderRadius: 18, borderWidth: 1, borderColor: C.line };
   return {
     title: "Sign in", right: meta("About a minute", { size: 13 }), current: 0,
     left: [
@@ -541,15 +551,40 @@ function signInDesk(mode: Mode, o: BotsAuthOpts, backTo: ActionRef, fig: Figure)
       ...byMethod(deskHeading("Sign in", W.phoneH, W.phoneP), deskHeading("Sign in", W.emailH, W.emailP)),
       box([trustCard(true)], { maxWidth: 400 }),
     ],
-    main: [col([
-      when(PHONE_ON, segmented([{ label: "Phone", value: "phone" }, { label: "Email", value: "email" }], "method")),
-      ...byMethod(
-        field("Mobile number", "phone", "We text you a 6-digit code. Email works too, from the tab above."),
-        field("Email", "email", "We email you a 6-digit code."),
-      ),
-      ...(social.length ? [orLine(), row(social.map((s) => box([s], { flexGrow: 1, flexBasis: 0, minWidth: 0 })), { gap: 8 })] : []),
-    ], { padding: 20, gap: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line })],
+    // In the gate, the phone's way in beside the form (DSignIn): the window draws the QR panel itself, and a window that
+    // does not know it draws nothing there, leaving the form the whole card.
+    main: [mode === "gate"
+      ? row([col(form, { padding: 20, gap: 14, flexGrow: 1.2, flexShrink: 1, flexBasis: "260px", minWidth: 0 }), linkPanel()], { ...card, alignItems: "stretch", flexWrap: "wrap" })
+      : col(form, { padding: 20, gap: 14, ...card })],
     foot: deskFoot(deskBack(backTo), [consent(o.terms, o.privacy, "right")]),
+  };
+}
+
+/**
+ * SIGN IN WITH THE PHONE (docs/bots-gaps.md item 16): the window's own panel ("DeskLinkSignIn", TAILZU-DESKTOP
+ * linkSignIn.js). It asks POST /v1/auth/link for a request, draws the QR the answer carries and the code to type,
+ * waits on POST /v1/auth/link/poll, and signs in with the one-time sign-in it gets once the phone approves (bots.link).
+ * Only the words are the server's; `{t}` is the time left, `{code}` the code.
+ */
+function linkPanel(): Node {
+  return {
+    type: "DeskLinkSignIn",
+    props: {
+      or: "or",
+      title: "Scan with your phone",
+      sub: "Already use Tailzu there? No code to type.",
+      steps: ["Open the camera on your phone", "Point it at this code", "Tap Approve in Tailzu"],
+      typed: "No camera? In Tailzu, go to You, then Link a computer, and type {code}",
+      changesIn: "Code changes in {t}",
+      loading: "Making a code…",
+      approved: "Approved on your phone. Signing you in…",
+      denied: "Not approved on your phone.",
+      expired: "This code ran out.",
+      failed: "Couldn't sign you in this way. Use your number or email.",
+      offline: "Couldn't make a code. Check your connection.",
+      renew: "Show a new code",
+      qrLabel: "Sign-in code for your phone",
+    },
   };
 }
 
@@ -1400,17 +1435,24 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
 /**
  * What the app reports into every screen's state: the phone's SduiApp writes keyboardEnabled, keyboardReady (Full
  * Access) and micGranted on a timer and on every return from Settings; a window that declares DeskMicAsk writes
- * micGranted from its own system's answer. Keybot declares them "on", so its card never flashes up for someone who
- * has it all and then vanishes: it comes in once the app says something is missing, and goes when it is on.
+ * micGranted from its own system's answer, and one that declares DeskAxState writes axGranted (the Mac's Accessibility
+ * for Tailzu; any other system has none to give, so true) on each paint and each return to the window. Keybot
+ * declares them "on", so its card never flashes up for someone who has it all and then vanishes: it comes in once the
+ * app says something is missing, and goes when it is on.
  */
-export const DEVICE_STATE = { keyboardEnabled: true, keyboardReady: true, micGranted: true };
+export const DEVICE_STATE = { keyboardEnabled: true, keyboardReady: true, micGranted: true, axGranted: true };
 
 /**
  * The first arrival (over Home): unknown until the app's readings come in (null), so the card decides only then;
  * `micAsked` once the microphone has been asked (allowed or not: either way on to the keyboard), `permitClosed`
  * once it is answered or put off.
  */
-export const ARRIVAL_STATE = { keyboardEnabled: null, keyboardReady: null, micGranted: null, micAsked: false, permitClosed: false };
+export const ARRIVAL_STATE = { keyboardEnabled: null, keyboardReady: null, micGranted: null, axGranted: null, micAsked: false, permitClosed: false };
+
+/** A window that reads this computer's Accessibility into $state.axGranted (TAILZU-DESKTOP sdui.js axFollow). */
+export const AX_STATE = "DeskAxState";
+/** The window's own action (sdui.js, declared with its Ask card's): the main process opens the Mac's Accessibility page. */
+const OPEN_AX = { kind: "ask.openAccessibility" } as unknown as ActionSpec;
 
 /** The read the first-arrival card is due on (GET /v1/bots/first-run/arrival) and the write that ends it. */
 export const ARRIVAL_PATH = "/v1/bots/first-run/arrival";
@@ -1470,29 +1512,44 @@ export function arrivalCard(ctx: BotsCtx): Node[] {
   });
   let steps: Node[], ready: Condition | undefined, done: Condition | undefined;
   if (desk) {
-    // A window: its microphone (where it can tell) and this computer's Accessibility (where it can show it).
-    const hasMic = ctx.can.has("DeskMicAsk"), hasAx = ctx.can.has("DeskAskSetup");
+    // A window: its microphone (where it can tell) and this computer's Accessibility (where it can show it). A window
+    // that reads Accessibility itself (AX_STATE) lets the step go on its own once it is on, and the card close; one
+    // that only shows it (DeskAskSetup) keeps a Done.
+    const hasMic = ctx.can.has("DeskMicAsk"), askCard = ctx.can.has("DeskAskSetup"), axRead = ctx.can.has(AX_STATE);
+    const hasAx = askCard || axRead;
     if (!hasMic && !hasAx) return [];
+    const axTurn: Condition = hasMic ? MIC_SETTLED : { falsy: "permitClosed" };
+    const allSet: Condition | undefined = axRead ? { all: [...(hasMic ? [MIC_SETTLED] : []), { truthy: "axGranted" }] } : hasMic && !hasAx ? MIC_SETTLED : undefined;
     steps = [
       ...(hasMic ? [mic({ all: [{ falsy: "micGranted" }, { falsy: "micAsked" }] })] : []),
       ...(hasAx ? [permitStep({
-        when: hasMic ? MIC_SETTLED : { falsy: "permitClosed" },
+        when: axRead ? { all: [axTurn, { falsy: "axGranted" }] } : axTurn,
         title: "Let Keybot type for you",
         lines: [line("Allow Accessibility so Keybot can put your words where your cursor is, in any app.")],
-        extra: [{
-          type: "DeskAskSetup",
-          props: {
-            place: "settings", eyebrow: "", title: "", titleEm: "", lede: "",
-            on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart Tailzu to finish", restartButton: "Restart",
-            rows: [{ key: "read", title: "Accessibility", sub: "Lets Keybot type what you said into the app you're in." }],
-          },
-        }],
-        quiet: { label: "Done", onPress: close },
+        ...(askCard ? {
+          extra: [{
+            type: "DeskAskSetup",
+            props: {
+              place: "settings", eyebrow: "", title: "", titleEm: "", lede: "",
+              on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart Tailzu to finish", restartButton: "Restart",
+              rows: [{ key: "read", title: "Accessibility", sub: "Lets Keybot type what you said into the app you're in." }],
+            },
+          }],
+        } : {
+          // The Mac's own page; the window asks the main process, which opens only that fixed address.
+          cta: { label: "Open Settings", onPress: OPEN_AX },
+        }),
+        quiet: axRead ? notNow : { label: "Done", onPress: close },
       })] : []),
-      ...(hasMic && !hasAx ? [permitStep({ when: MIC_SETTLED, title: "You're all set", lines: [line("Hold the clay key to speak, in any app.")] })] : []),
+      ...(allSet ? [permitStep({ when: allSet, title: "You're all set", lines: [
+        // The key this computer holds to talk (desktop.holdKey: the one key, as main.js has it bound): "Hold Fn to talk".
+        when({ truthy: "desktop.hold" }, row([line("Hold"), text("Fn", { size: 14, weight: 600, lineHeight: 20, bind: "desktop.holdKey" }), line("to talk, in any app.")], { gap: 4, flexWrap: "wrap" })),
+        when({ falsy: "desktop.hold" }, line("Hold the clay key to speak, in any app.")),
+      ] })] : []),
     ];
-    ready = hasMic ? { neq: ["micGranted", null] } : undefined;
-    done = hasMic && !hasAx ? MIC_SETTLED : undefined;
+    const known: Condition[] = [...(hasMic ? [{ neq: ["micGranted", null] } as Condition] : []), ...(axRead ? [{ neq: ["axGranted", null] } as Condition] : [])];
+    ready = known.length > 1 ? { all: known } : known[0];
+    done = allSet;
   } else {
     steps = [
       mic({ all: [{ falsy: "micGranted" }, { falsy: "micAsked" }] }),
@@ -1559,6 +1616,16 @@ export function keybotCard(ctx: BotsCtx): Node[] {
           rows: [{ key: "read", title: "Accessibility", sub: "Lets Keybot type what you said into the app you're in." }],
         },
       });
+    } else if (ctx.can.has(AX_STATE)) {
+      // No Ask card here: the same step as the arrival's, while this computer says Accessibility is off.
+      const steps = [permitStep({
+        when: { falsy: "axGranted" }, title: "Let Keybot type for you",
+        lines: [line("Allow Accessibility so Keybot can put your words where your cursor is, in any app.")],
+        cta: { label: "Open Settings", onPress: OPEN_AX },
+      })];
+      out.push(when({ falsy: "axGranted" }, canMove(ctx)
+        ? botCard(steps, { ...CARD_BOT, kind: "custom", label: "Let Keybot type for you" })
+        : col(steps, { borderRadius: 24, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper })));
     }
     return out;
   }

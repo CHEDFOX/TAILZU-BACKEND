@@ -104,6 +104,10 @@ const NEEDS_VISUAL = /\b(?:chart|graph|diagram|dashboard|infographic|table\s+of|
 const NEEDS_FRESH = /\b(?:latest|news|today'?s|current|price\s+of|prices?|compare|versus|vs\.?|review|trending|score|weather|khabar|aaj\s+ka|abhi\s+ka)\b/i;
 
 /** Every bot scored for a message, best first. Free, and the same words always give the same scores. */
+/** Tailzu's own calendar and to-dos, as the job ids connectors/intent.ts JOB_APPS names for them; and back (a bot made before still names Google's). */
+const OWN_DOES: Readonly<Record<string, string>> = { calendar: "google-calendar", tasks: "google-tasks" };
+const OWN_OF: Readonly<Record<string, string>> = { "google-calendar": "calendar", "google-tasks": "tasks" };
+
 export function scoreBots(
   message: string, bots: readonly BotDef[], ctx: Pick<FrontCtx, "projectId" | "attachments" | "recent" | "mode">,
   /** The apps this person has connected. An app that is not connected makes no bot a better fit; absent: all are taken as connected. */
@@ -157,8 +161,9 @@ export function scoreBots(
     }
     if (overlap) add(Math.min(12, Math.round(overlap)), "purpose");
 
-    // The apps it was given.
-    const mine = new Set(bot.skills.connectors.filter((id) => !connected || connected.has(id)));
+    // The apps it was given. Tailzu's own calendar and to-dos ("calendar", "tasks": src/calendar) do the jobs the Google ids name.
+    const given = bot.skills.connectors.filter((id) => !connected || connected.has(id) || (!!OWN_OF[id] && connected.has(OWN_OF[id]!)));
+    const mine = new Set([...given, ...given.map((id) => OWN_DOES[id]).filter((x): x is string => !!x)]);
     const byName = [...namedApps].filter((id) => mine.has(id));
     const byJob = [...jobApps].filter((id) => mine.has(id));
     if (byName.length) add(8, "app:named");

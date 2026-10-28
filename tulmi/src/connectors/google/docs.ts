@@ -68,6 +68,11 @@ export function noteText(note: Note): { title: string; body: string } {
   if (note.highlights.length) {
     lines.push("", "Key points", ...note.highlights.map((h) => `• ${nameOf(h.speaker)}: ${h.text.trim()}`));
   }
+  // What the meeting settled and left to do (notes/extract.ts), when they were found.
+  if (note.decisions?.length) lines.push("", "Decisions", ...note.decisions.map((d) => `• ${d.trim()}`));
+  if (note.todos?.length) {
+    lines.push("", "To-dos", ...note.todos.map((t) => `${t.done ? "☑" : "☐"} ${t.text.trim()}${[t.who ? nameOf(t.who) : "", t.when ?? ""].filter(Boolean).length ? ` (${[t.who ? nameOf(t.who) : "", t.when ?? ""].filter(Boolean).join(", ")})` : ""}`));
+  }
   if (!note.summary?.trim() && !note.highlights.length && note.transcript.length) {
     lines.push("", "What was said", ...note.transcript.map((s) => `${s.speaker ? `${nameOf(s.speaker)}: ` : ""}${s.text.trim()}`));
   }
