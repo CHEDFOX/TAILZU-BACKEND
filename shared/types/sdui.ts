@@ -900,6 +900,72 @@ export interface BotCardProps {
   label?: string;
 }
 
+/**
+ * BotBuddy: a bot's own tiny bot on its pages, on the same core as the tiles: its colour, its kind's play, on a small
+ * stage of its own (a page's header, the top of a Code bot setup step) that never covers words or controls. Its mood
+ * follows the bot (working: busier; needs: stops and faces the person); `act` is the page's moment; while `thinkWhen`
+ * holds (an answer is on its way) it thinks; `lookTo` is where the page's ask field is, and it glances at it. Kept by
+ * `life` for the life of the app: the same life on the next screen is the same bot, carrying on where he was (the
+ * Code bot's setup steps are one bot). Reduce Motion: a still pose. Declared by the component name below (a build
+ * that declares BotsMotion without it gets the page as before: its avatar, its Blip).
+ */
+export const BOT_BUDDY_COMPONENT = "BotBuddy";
+
+/** play: his own · wave: hello, then play · survey: looks over a list below him · read: dots and lines flow into him · settle: sits · think: an answer is on its way. */
+export type BuddyAct = "play" | "wave" | "survey" | "read" | "settle" | "think";
+
+export interface BotBuddyProps {
+  kind: BotTileKind;
+  color: string;
+  /** Who he is across screens: the same life, the same bot. */
+  life: string;
+  /** The stage: its width (none: fills its row) and height. `size`: the bot's own height. */
+  width?: number;
+  height: number;
+  size?: number;
+  state: "working" | "needs" | "idle";
+  act?: BuddyAct;
+  thinkWhen?: Condition;
+  lookTo?: "down" | "left" | "right" | "up";
+  label?: string;
+}
+
+/**
+ * Home's header, alive: three nodes a build declares by name (with BotsMotion); a build without them gets the same
+ * header, still (the mark as an SVG, the line as Text).
+ *
+ *   WriteOn   the bold line writes itself in word by word, at dictation's uneven pace, with Keybot's clay caret
+ *             blinking after the last word; the caret fades a few seconds on. Once per app open and `once` (it
+ *             carries the part of the day), never on a return to Home. Reduce Motion: written.
+ *   LiveMark  the Tailzu dot mark, alive: ring dots on springs, eyes on the finger or cursor that swing with a
+ *             scroll, a ring dot lit in each working bot's colour (`lit`); a tap squishes it and runs on.onPress.
+ *   HeadBar   a compact bar (its children) pinned over the top of the page, outside its scroll, shown once the page
+ *             is scrolled past `at` (the big header has gone under it). The kit's page() puts it in place (`pinned`).
+ */
+export const HOME_HEAD_COMPONENTS = ["WriteOn", "LiveMark", "HeadBar"] as const;
+
+export interface WriteOnProps {
+  content: string;
+  size: number;
+  lineHeight: number;
+  tracking?: number;
+  color?: string;
+  fontFamily: string;
+  caretColor: string;
+  once: string;
+}
+
+export interface LiveMarkProps {
+  size: number;
+  lit: string[];
+  life?: string;
+  label?: string;
+}
+
+export interface HeadBarProps {
+  at: number;
+}
+
 /** Named layouts for `template` + `blocks` screens. */
 export const CORE_TEMPLATES = [
   "scroll", "feature", "list", "centered", "detail", "grid", "hero",

@@ -18,8 +18,8 @@ export function walk(n: Node, out: Node[] = []): Node[] {
 }
 
 /** The node types the kit uses: core types both clients draw (desktop/sdui.js COMPONENTS, the phone's REGISTRY), and the
- *  living tiles' two (BotTiles, BotCard), which the kit sends only to a build that declares BotsMotion. */
-export const KIT_TYPES: ReadonlySet<string> = new Set(["Stack", "Text", "SVG", "Image", "Grid", "Screen", "SafeArea", "TextField", "BotTiles", "BotCard"]);
+ *  living tiles' two (BotTiles, BotCard), which the kit sends only to a build that declares BotsMotion, and BotBuddy and Home's live header (WriteOn, LiveMark, HeadBar) with it. */
+export const KIT_TYPES: ReadonlySet<string> = new Set(["Stack", "Text", "SVG", "Image", "Grid", "Screen", "SafeArea", "TextField", "BotTiles", "BotCard", "BotBuddy", "WriteOn", "LiveMark", "HeadBar"]);
 
 export function lintTree(root: Node): string[] {
   const bad: string[] = [];

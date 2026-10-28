@@ -17,7 +17,7 @@
  *   bots.code.review     params id (a job), or project + branch
  *   bots.code.pr-care    params project, pr (and branch, when PR care is off)
  */
-import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, BuddyAct, Node } from "../../../../../shared/types/sdui.js";
 import { builtWith, checksOf, firstTasks, health, isEmptyRepo, placeOf, stackChips, testsLine, type BrainLite } from "../../../botsCode/brain.js";
 import { estimate, type PastJob } from "../../../botsCode/history.js";
 import { QUICK, SHORT, slugOf } from "../../../botsCode/intake.js";
@@ -27,7 +27,7 @@ import {
   back, bigNumber, blip, body, botAvatar, botLook, box, button, C, call, chips, col, emptyState, grid, grow,
   icon, labelled, listCard, listRow, meta, meter, mono, needsCard, notice, open, page, primaryButton, quietButton, row,
   rupees, SCREENS, sectionLabel, secondaryButton, segmented, seq, statusMark, stepper, text, title, duration, FACE,
-  type BotsCtx, type Mark,
+  botBuddy, canBuddy, headerBuddy, type BotsCtx, type Mark,
 } from "../kit.js";
 import type { ScreenResponse } from "../../../../../shared/types/sdui.js";
 import type { BotsDeps } from "../live.js";
@@ -354,6 +354,24 @@ function enterSteps(current: number): Node {
   return row(parts, { gap: 10 });
 }
 
+/**
+ * Code bot's own tiny bot across the getting-started steps (meet, pick, read, home), where the build draws him: one
+ * life, one stage, in the same place on every step (under the back chevron on the phone, under the steps line in the
+ * window), so he carries on from step to step instead of starting again. What he does follows the step: meet waves
+ * and juggles his 0s and 1s, pick looks over the list below, read takes in dots and lines, home settles.
+ */
+function setupBuddy(ctx: BotsCtx, act: BuddyAct): Node | null {
+  if (!canBuddy(ctx)) return null;
+  const desk = ctx.client === "desktop";
+  return botBuddy({ kind: "code", color: MOSS, life: "code.setup", state: "idle", act, height: desk ? 120 : 128, ...(desk ? { width: 300 } : {}), size: desk ? 48 : 52, label: "Code bot" });
+}
+
+/** The phone's top of a getting-started step with his stage: the back chevron, then him (the same place on every step). */
+const setupTop = (top: Node, stage: Node): Node => col([top, stage], { gap: 14 });
+
+/** While a plan is being made or Code bot is asked (taskBar's `starting` / `asking`): his tiny bot thinks. */
+const CODE_BUSY = { any: [{ truthy: "starting" }, { truthy: "asking" }] };
+
 /** The window's top line on the getting-started pages: back, "Bots · Code bot", the steps. */
 const enterTop = (to: ActionRef, current: number): Node =>
   row([backButton(to), meta("Bots · Code bot", { size: 13 }), grow(), enterSteps(current)], { gap: 6 });
@@ -387,11 +405,12 @@ function meet(ctx: BotsCtx, d: MeetData | undefined): ScreenResponse {
     "I work on a safe copy and test every change.",
     "Nothing goes live until you say yes.",
   ];
+  const stage = setupBuddy(ctx, "wave");
   if (!desk) {
     return page(ctx, {
       title: "Code bot", nav: "code",
       body: [
-        backButton(), row([blip("think", 210)], { justifyContent: "center" }),
+        ...(stage ? [setupTop(backButton(), stage)] : [backButton(), row([blip("think", 210)], { justifyContent: "center" })]),
         col([title("Hi, I'm Code bot.", { size: 30, tracking: -0.8, lineHeight: 36 }), body("Tell me what you want built or fixed. I'll do the work and show you the proof.", { color: C.grey70 })], { gap: 8 }),
         col(how.map((h, i) => row([numberDot(i + 1, "plain", 24), body(h, { style: { flexShrink: 1 } })], { gap: 12 })), { gap: 14 }),
         ...offLine,
@@ -412,7 +431,7 @@ function meet(ctx: BotsCtx, d: MeetData | undefined): ScreenResponse {
       enterTop(back(), 1),
       row([
         col([
-          blip("think", 176),
+          stage ?? blip("think", 176),
           col([title("Hi, I'm Code bot."), body("Tell me what you want built or fixed. I'll do the work and show you the proof.", { size: 16, color: C.grey70 })], { gap: 10 }),
           row(ways, { gap: 10, flexWrap: "wrap" }),
           row([icon("shield", { size: 18, color: C.meta }), meta("I only see the projects you pick, and I never change your main branch without you.", { size: 13, lineHeight: 18, style: { flexShrink: 1 } })], { gap: 10, maxWidth: 420, alignItems: "flex-start" }),
@@ -506,11 +525,12 @@ function pickProjects(ctx: BotsCtx, d: PickData | undefined): ScreenResponse {
     have ? open(SCREENS.code, { project: have }) : { kind: "toggleState", path: `pick.${r.id}` });
   };
 
+  const stage = setupBuddy(ctx, "survey");
   if (!desk) {
     const list = shown.slice(0, 20);
     return page(ctx, {
-      back: true, title: "Pick projects", nav: "code", state: { pick: {}, q: str(ctx.params.q) },
-      body: [heading, searchBox, ...(empty ? [empty] : [col(list.map((r, i) => rowOf(r, i, list.length)))])],
+      back: !stage, title: "Pick projects", nav: "code", state: { pick: {}, q: str(ctx.params.q) },
+      body: [...(stage ? [setupTop(backButton(), stage)] : []), heading, searchBox, ...(empty ? [empty] : [col(list.map((r, i) => rowOf(r, i, list.length)))])],
       footer: [...(empty ? [] : [primaryButton("Add projects", add, { wide: true })]), missing], gap: 16,
     });
   }
@@ -539,6 +559,7 @@ function pickProjects(ctx: BotsCtx, d: PickData | undefined): ScreenResponse {
     title: "Pick projects", nav: "code", maxWidth: 1100, gap: 18, state: { pick: {}, q: str(ctx.params.q) },
     body: [
       enterTop(open(SCREENS.codeStart, { step: "meet" }), 2),
+      ...(stage ? [stage] : []),
       heading,
       row([
         col([
@@ -613,8 +634,9 @@ function readProject(ctx: BotsCtx, d: ReadData | undefined): ScreenResponse {
     : failed || none ? primaryButton(failed ? "Try again" : "Start reading", startRead, { wide: true })
       : secondaryButton("Tell me what you want meanwhile", open(SCREENS.code, { project: id }), { wide: true });
   const progress = row([box([meter(pct, 100, { color: MOSS })], { flexGrow: 1 }), meta(`${pct}%`)], { gap: 10 });
+  const stage = setupBuddy(ctx, ready ? "wave" : failed || none ? "play" : "read");
   const left: Node[] = [
-    row([blip(ready ? "done" : "think", desk ? 104 : 190)], { justifyContent: desk ? "flex-start" : "center" }),
+    stage && desk ? stage : row([blip(ready ? "done" : "think", desk ? 104 : 190)], { justifyContent: desk ? "flex-start" : "center" }),
     col([title(words, { size: 24, lineHeight: 30 }), meta(line, { size: 14, lineHeight: 19 })], { gap: 6 }),
     ...(none || failed ? [] : [progress]),
     col([...countRows, ...stages], { gap: desk ? 0 : 14 }),
@@ -623,7 +645,7 @@ function readProject(ctx: BotsCtx, d: ReadData | undefined): ScreenResponse {
   if (!desk) {
     return page(ctx, {
       title: "Reading your project", nav: "code",
-      body: [backButton(), ...left],
+      body: stage ? [setupTop(backButton(), stage), ...left.slice(1)] : [backButton(), ...left],
       footer: [goHome, ...(!ready && !failed && !none ? [quietButton("Check again", REFRESH, { size: "md" })] : [])], gap: 20,
     });
   }
@@ -687,7 +709,8 @@ function projectNow(ctx: BotsCtx, p: Project, jobs: Job[]): { mark: Mark; line: 
   return { mark: "waiting", line: "Nothing yet", color: C.meta };
 }
 
-function overview(ctx: BotsCtx, d: OverviewData | undefined): ScreenResponse {
+/** The projects overview: Code bot's home with several projects, and the last getting-started step (`setup`). */
+function overview(ctx: BotsCtx, d: OverviewData | undefined, setup = false): ScreenResponse {
   const desk = ctx.client === "desktop";
   if (!d) return unreachable(ctx, "your projects");
   const week = ctx.live.now - 7 * 86_400_000;
@@ -711,6 +734,8 @@ function overview(ctx: BotsCtx, d: OverviewData | undefined): ScreenResponse {
   const addRow = row([icon("plus", { size: 16, color: C.grey70 }), text("Add a project · or start one from scratch", { size: 14, color: C.grey70, lineHeight: 19 })],
     { gap: 8, borderWidth: 1.5, borderStyle: "dashed", borderColor: C.dashed, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16 }, open(SCREENS.codeStart, { step: "pick" }));
 
+  // The last getting-started step: he settles, in the same place as on the steps before.
+  const stage = setup ? setupBuddy(ctx, "settle") : null;
   if (!desk) {
     const cards = d.projects.slice(0, 6).map((p) => {
       const now = projectNow(ctx, p, d.jobs);
@@ -722,10 +747,12 @@ function overview(ctx: BotsCtx, d: OverviewData | undefined): ScreenResponse {
         ...(facts.length ? [row(facts.map((f) => meta(f)), { gap: 14, flexWrap: "wrap" })] : []),
       ], { borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16, gap: 8 }, open(SCREENS.code, { project: p.id }));
     });
+    const head = row([backButton(), botAvatar(CODE, 40), col([text("Code bot", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(statusLine, { size: 12, weight: 500, color: working.length ? MOSS : C.meta, lineHeight: 16 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
+      ...(stage ? [] : headerBuddy(ctx, "code", { lookTo: "down", thinkWhen: CODE_BUSY }))], { gap: 10 });
     return page(ctx, {
       back: false, nav: "code", title: "Code bot",
       body: [
-        row([backButton(), botAvatar(CODE, 40), col([text("Code bot", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(statusLine, { size: 12, weight: 500, color: working.length ? MOSS : C.meta, lineHeight: 16 })], { gap: 2, flexGrow: 1, flexShrink: 1 })], { gap: 10 }),
+        stage ? setupTop(head, stage) : head,
         ...(need ? [needsCard(need)] : []),
         col([sectionLabel("Projects"), ...cards, addRow], { gap: 10 }),
       ],
@@ -765,9 +792,11 @@ function overview(ctx: BotsCtx, d: OverviewData | undefined): ScreenResponse {
   return page(ctx, {
     title: "Code bot", nav: "code", maxWidth: 1100, gap: 18,
     body: [
+      ...(stage ? [enterTop(open(SCREENS.codeStart, { step: "pick" }), 4), stage] : []),
       row([
         botAvatar(CODE, 44),
         col([title("Code bot"), row(status.length ? status.map((s) => row([statusMark(s.mark, { color: MOSS }), text(s.w, { size: 13, color: C.grey70, lineHeight: 17 })], { gap: 6 })) : [meta(statusLine, { size: 13 })], { gap: 14 })], { gap: 3, flexGrow: 1 }),
+        ...(stage ? [] : headerBuddy(ctx, "code", { lookTo: "down", thinkWhen: CODE_BUSY })),
         secondaryButton("Add a project", open(SCREENS.codeStart, { step: "pick" }), { size: "md", icon: "plus" }),
         secondaryButton("Start from scratch", open(SCREENS.newProject), { size: "md" }),
       ], { gap: 14 }),
@@ -866,7 +895,8 @@ function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project" }>): S
     return page(ctx, {
       nav: "code", title: `Code bot · ${name}`,
       body: [
-        row([backButton(), col([text("Code bot", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(p.fullName, { size: 13, mono: true, color: C.meta, lineHeight: 17, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }), branchTag, rules], { gap: 8 }),
+        row([backButton(), col([text("Code bot", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(p.fullName, { size: 13, mono: true, color: C.meta, lineHeight: 17, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+          ...headerBuddy(ctx, "code", { width: 64, lookTo: "down", thinkWhen: CODE_BUSY }), branchTag, rules], { gap: 8 }),
         readCard,
         ...(tasks.length && !building ? [col([sectionLabel("Good first tasks"), ...tasks.map((t, i) => row([
           text(t.sub ? `${t.label} — ${t.sub}` : t.label, { size: 15, lineHeight: 20, style: { flexShrink: 1 } }), grow(), icon("chevron", { size: 16, color: C.meta }),
@@ -925,7 +955,7 @@ function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project" }>): S
       row([
         botAvatar(CODE, 36),
         row([text(owner(p.fullName), { size: 26, weight: 500, color: C.meta, tracking: -0.5, lineHeight: 32 }), title(name)], { flexShrink: 1 }),
-        branchTag, grow(),
+        branchTag, ...headerBuddy(ctx, "code", { lookTo: "down", thinkWhen: CODE_BUSY }), grow(),
         ...(building || empty ? [] : [row([statusMark("done"), text("I've read your project", { size: 13, color: C.grey70, lineHeight: 17 })], { gap: 7 })]),
         ...(chipsOf.length ? [row(chipsOf.map((c) => tag(c, { mono: true })), { gap: 6, flexShrink: 1, overflow: "hidden" })] : []),
         rules,
@@ -961,7 +991,7 @@ function start(ctx: BotsCtx, s: StartData | undefined): ScreenResponse {
   if (!s) return meet(ctx, undefined);
   if (s.step === "pick") return pickProjects(ctx, s.d);
   if (s.step === "read") return readProject(ctx, s.d);
-  if (s.step === "home") return overview(ctx, s.d);
+  if (s.step === "home") return overview(ctx, s.d, true);
   return meet(ctx, s.d);
 }
 

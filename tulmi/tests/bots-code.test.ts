@@ -7,6 +7,7 @@
  *     merge answers the policy's questions with the person's press; a new project's answers go to the intake as words
  */
 import { describe, expect, it, vi } from "vitest";
+import type { Node } from "../../shared/types/sdui.js";
 import Fastify from "fastify";
 
 vi.hoisted(() => {
@@ -140,8 +141,8 @@ const API: Record<string, unknown> = {
   },
 };
 
-async function build(screenId: string, client: "phone" | "desktop", params: Record<string, string | number> = {}, api: Record<string, unknown> = API) {
-  const s = await buildBotsScreen({ screenId, client, params, tzOffsetMinutes: IST, user: { id: "u" }, can: new Set(["BotsKit"]), desk: { pages: false, notes: false } }, fakeDeps({ api }));
+async function build(screenId: string, client: "phone" | "desktop", params: Record<string, string | number> = {}, api: Record<string, unknown> = API, can: string[] = ["BotsKit"]) {
+  const s = await buildBotsScreen({ screenId, client, params, tzOffsetMinutes: IST, user: { id: "u" }, can: new Set(can), desk: { pages: false, notes: false } }, fakeDeps({ api }));
   const nodes = walk(s.root!);
   const words = nodes.map((n) => String(n.props?.content ?? "")).filter(Boolean);
   const json = JSON.stringify(s.root);
@@ -172,6 +173,30 @@ describe("the screens, for the phone and the window", () => {
       const read = await build("bots.code.start", client, { step: "read", project: P });
       expect(read.lint).toEqual([]);
       expect(read.words).toContain("I've read storefront");
+    });
+    it(`bots.code.start (${client}) with BotBuddy: one Code bot of his own across the steps, in one place, a moment per step`, async () => {
+      const BUDDY = ["BotsKit", "BotsMotion", "BotBuddy"];
+      const meetApi = { ...API, "GET /v1/code/github": { connected: false, installations: [] } };
+      const steps = [["meet", "wave", meetApi], ["pick", "survey", API], ["read", "wave", API], ["home", "settle", API]] as const;
+      const seen: Array<{ path: string; props: Record<string, unknown> }> = [];
+      for (const [step, act, api] of steps) {
+        const b = await build("bots.code.start", client, { step, ...(step === "read" ? { project: P } : {}) }, api, BUDDY);
+        expect(b.lint, step).toEqual([]);
+        const buddies = walk(b.s.root!).filter((n) => n.type === "BotBuddy");
+        expect(buddies.map((n) => n.props?.life), step).toEqual(["code.setup"]);
+        expect(buddies[0]!.props).toMatchObject({ kind: "code", color: "#4F7A3A", act });
+        // Where he is in the tree: the same place on every step of the phone (under the back chevron).
+        const path = (n: Node, target: Node, at = ""): string | null => n === target ? at : (n.children ?? []).reduce<string | null>((f, c, i) => f ?? path(c, target, `${at}/${i}`), null);
+        seen.push({ path: path(b.s.root!, buddies[0]!)!, props: buddies[0]!.props as Record<string, unknown> });
+      }
+      for (const x of seen) expect({ width: x.props.width, height: x.props.height, size: x.props.size }).toEqual({ width: seen[0]!.props.width, height: seen[0]!.props.height, size: seen[0]!.props.size });
+      if (client === "phone") expect(new Set(seen.map((x) => x.path)).size).toBe(1);
+      // Meet: he is the one there, not the Blip; a build without BotBuddy keeps the Blip.
+      const meet = await build("bots.code.start", client, { step: "meet" }, meetApi, BUDDY);
+      expect(meet.json).not.toContain("/blip/");
+      const plain = await build("bots.code.start", client, { step: "meet" }, meetApi, ["BotsKit", "BotsMotion"]);
+      expect(plain.json).toContain("/blip/");
+      expect(plain.json).not.toContain("BotBuddy");
     });
     it(`bots.code.new (${client}): the question, its quick answers and the plan so far`, async () => {
       const { words, json, lint } = await build("bots.code.new", client, { project: P });

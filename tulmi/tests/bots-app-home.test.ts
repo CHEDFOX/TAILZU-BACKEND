@@ -69,7 +69,7 @@ describe("bots.home", () => {
   it("phone: Main.dc.html, from the live state, with its actions wired", async () => {
     const s = await buildBotsScreen(req("bots.home", "phone"), fakeDeps());
     const words = texts(s.root!);
-    for (const w of ["Good evening", "Your bots", "4 things done this week · 2 h saved", "Needs you · Code bot",
+    for (const w of ["Good evening, Aanya", "Anything to write up before the day ends?", "4 things done this week · 2 h saved", "Needs you · Code bot",
       "Round the cart total per item, or once at the end?", "Per item", "At the end", "You decide",
       "Code bot", "Working · fixing cart", "Keybot", "Your keyboard, everywhere", "Plan bot", "Make a bot", "Bots", "Activity", "You"]) {
       expect(words, w).toContain(w);
@@ -95,7 +95,7 @@ describe("bots.home", () => {
   it("window: DeskHome.dc.html in the sidebar frame, four tiles across, the ask bar says desktop", async () => {
     const s = await buildBotsScreen(req("bots.home", "desktop"), fakeDeps());
     const words = texts(s.root!);
-    for (const w of ["What should we do?", "Hold a key, speak, done", "Your bots", "Travel bot", "Gym bot"]) expect(words, w).toContain(w);
+    for (const w of ["Good evening, Aanya", "Anything to write up before the day ends?", "Hold a key, speak, done", "Your bots", "Travel bot", "Gym bot"]) expect(words, w).toContain(w);
     expect(walk(s.root!).some((n) => n.type === "Grid" && n.props?.columns === 4)).toBe(true);
     const field = walk(s.root!).find((n) => n.type === "TextField")!;
     expect(JSON.stringify(field.on!.onSubmit)).toContain('"device":"desktop"');
@@ -127,6 +127,52 @@ describe("bots.home", () => {
     }
   });
 
+  it("a bot's own tiny bot in its page's header (BotBuddy): its colour and play, small, busy or facing you as the bot is", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      for (const [id, slug, look] of [["bots.keybot", "keybot", undefined], ["bots.plan", "plan", "down"]] as const) {
+        const s = await buildBotsScreen({ ...req(id, client), can: new Set(["BotsKit", "BotsMotion", "BotBuddy"]) }, fakeDeps());
+        const b = walk(s.root!).filter((n) => n.type === "BotBuddy");
+        expect(b.map((n) => n.props?.life), `${id} ${client}`).toEqual([`page.${slug}`]);
+        expect(b[0]!.props).toMatchObject({ kind: slug, state: expect.stringMatching(/^(idle|working|needs)$/) });
+        expect(Number(b[0]!.props!.height)).toBeLessThanOrEqual(56);
+        expect(b[0]!.props!.lookTo).toBe(look);
+        if (slug === "plan") expect(b[0]!.props!.thinkWhen).toEqual({ truthy: "sending" });
+        // A build that declares BotsMotion but not BotBuddy: the header as before.
+        const old = await buildBotsScreen({ ...req(id, client), can: new Set(["BotsKit", "BotsMotion"]) }, fakeDeps());
+        expect(walk(old.root!).some((n) => n.type === "BotBuddy")).toBe(false);
+      }
+    }
+  });
+
+  it("Home's header alive (WriteOn, LiveMark, HeadBar): the line writes itself, the mark lights for the bots at work, a bar on scroll", async () => {
+    const HEAD = ["BotsKit", "BotsMotion", "WriteOn", "LiveMark", "HeadBar"];
+    for (const client of ["phone", "desktop"] as const) {
+      const s = await buildBotsScreen({ ...req("bots.home", client), can: new Set(HEAD) }, fakeDeps());
+      expect(checkTree(s.root!), client).toEqual([]);
+      const nodes = walk(s.root!);
+      const line = nodes.find((n) => n.type === "WriteOn")!;
+      expect(line.props).toMatchObject({ content: "Anything to write up before the day ends?", once: "home.evening", caretColor: "#A9573A", fontFamily: "Tailzu Geist Bold", size: client === "phone" ? 30 : 40 });
+      const mark = nodes.find((n) => n.type === "LiveMark")!;
+      expect(mark.props!.lit).toContain("#4F7A3A");
+      expect(mark.on?.onPress).toMatchObject({ kind: "navigate", screenId: "bots.ask" });
+      // The compact bar: over the page, before what scrolls (the phone's Screen, the window's column).
+      const bar = nodes.find((n) => n.type === "HeadBar")!;
+      expect(texts(bar)).toContain("Your bots");
+      const parent = nodes.find((n) => n.children?.includes(bar))!;
+      const next = parent.children![parent.children!.indexOf(bar) + 1]!;
+      expect(client === "phone" ? next.type : next.style?.overflowY, client).toBe(client === "phone" ? "Screen" : "auto");
+      // Still for a build without them: the same words, no new nodes.
+      const still = await buildBotsScreen({ ...req("bots.home", client), can: new Set(["BotsKit", "BotsMotion"]) }, fakeDeps());
+      expect(walk(still.root!).some((n) => ["WriteOn", "LiveMark", "HeadBar"].includes(n.type))).toBe(false);
+      expect(texts(still.root!)).toContain("Anything to write up before the day ends?");
+    }
+    // The old app's lines: the greeting sentence dropped under a greeting, the night's whole; Hinglish beside them.
+    const { dayLineAfterGreeting, homeLineSeeds } = await import("../src/experience/settingsWords.js");
+    expect(dayLineAfterGreeting("morning").en).toBe("I’m ready when you are.");
+    expect(dayLineAfterGreeting("night").en).toBe("Still up? I’m here, and I’ll keep it quiet.");
+    expect(homeLineSeeds().get("Anything to write up before the day ends?")).toBe("Din khatam hone se pehle kuch likhwana hai?");
+  });
+
   it("a quiet day: no decision card, and the week says so", async () => {
     const s = await buildBotsScreen(req("bots.home", "phone"), fakeDeps({ jobs: [], tasks: [], minutesSaved: 0 }));
     const words = texts(s.root!);
@@ -144,6 +190,9 @@ describe("bots.home", () => {
         // And with the living tiles.
         const moving = await buildBotsScreen({ ...req(id, client), can: new Set(["BotsKit", "BotsMotion"]) }, fakeDeps());
         expect(checkTree(moving.root!), `${id} ${client} BotsMotion`).toEqual([]);
+        // And with the bots' own tiny bots on their pages.
+        const buddy = await buildBotsScreen({ ...req(id, client), can: new Set(["BotsKit", "BotsMotion", "BotBuddy", "WriteOn", "LiveMark", "HeadBar"]) }, fakeDeps());
+        expect(checkTree(buddy.root!), `${id} ${client} BotBuddy`).toEqual([]);
       }
     }
   });
@@ -158,7 +207,7 @@ describe("the registry", () => {
   it("a failed read draws the screen anyway", async () => {
     const deps = { ...fakeDeps(), jobs: async () => { throw new Error("down"); } };
     const s = await buildBotsScreen(req("bots.home", "phone"), deps);
-    expect(texts(s.root!)).toContain("Your bots");
+    expect(texts(s.root!)).toContain("Good evening, Aanya");
   });
   it("the answer page shows what was asked and what came back", () => {
     const def = BOTS_SCREENS.get("bots.ask")!;

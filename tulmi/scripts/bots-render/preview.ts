@@ -131,7 +131,7 @@ function sampleFor(t: Target, c: Client): Sample | undefined {
  */
 const STAGE = ["OnboardStage", "BlipSpot"];
 // The window: its microphone too (desk-bridge.js answers for it), so its first-arrival card asks for it.
-const COMPS: Record<Client, string[]> = { phone: [...STAGE, "BotsMotion"], desktop: [...R.DESKTOP_COMPONENTS, ...STAGE, "DeskMicAsk"] };
+const COMPS: Record<Client, string[]> = { phone: [...STAGE, "BotsMotion", "BotBuddy", "WriteOn", "LiveMark", "HeadBar"], desktop: [...R.DESKTOP_COMPONENTS, ...STAGE, "DeskMicAsk"] };
 
 /**
  * The first arrival: Home carries its card (the microphone, then the keyboard, over a blurred Home) as it does the

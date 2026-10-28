@@ -36,7 +36,7 @@ import { sw } from "../../settingsWords.js";
 import {
   back, blip, botAvatar, box, button, C, call, card, chip, col, divider, emptyState, grow, icon, listCard, listRow,
   meta, meter, open, page, primaryButton, quietButton, row, SCREENS, sectionLabel, segmented, seq, statusMark,
-  switchMark, switchRow, text, title, when, whenEq, type BotsCtx,
+  switchMark, switchRow, text, title, when, whenEq, headerBuddy, type BotsCtx,
 } from "../kit.js";
 import type { BotsDeps } from "../live.js";
 import { screen, type BotsScreen } from "../registry.js";
@@ -318,6 +318,8 @@ function keybotPhone(ctx: BotsCtx, d: HomeData | undefined) {
     box([icon("back", { size: 24, label: "Back" })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center" }, back()),
     botAvatar(KEYBOT, 40),
     col([text("Keybot", { size: 19, weight: 600, lineHeight: 24 }), meta("Your keyboard, in every app")], { gap: 2, flexShrink: 1 }),
+    // Keybot's own tiny bot, hopping his keys at the head's right end (where the build draws it).
+    ...headerBuddy(ctx, "keybot").flatMap((b) => [grow(), b]),
   ], { gap: 10 });
   return page(ctx, {
     back: false, nav: "keybot", title: "Keybot", gap: 18, state: homeState(d),
@@ -388,6 +390,7 @@ function keybotDesk(ctx: BotsCtx, d: HomeData | undefined) {
       row([
         botAvatar(KEYBOT, 48),
         col([title("Keybot", { size: 26 }), text(`Your keyboard, in every app. ${dayLine(ctx)}`, { size: 14, color: C.grey70, lineHeight: 19 })], { gap: 3, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+        ...headerBuddy(ctx, "keybot"),
         when({ truthy: "desktop.hold" }, row([kbd("Fn", "desktop.holdKey"), text("Hold to speak in any app", { size: 13, color: C.grey70, lineHeight: 17 })], { gap: 8 })),
         when({ falsy: "desktop.hold" }, row([kbd("Ctrl+Space", "desktop.hotkey"), text("Press to speak in any app", { size: 13, color: C.grey70, lineHeight: 17 })], { gap: 8 })),
         button("Settings", open(SCREENS.keySettings), { kind: "secondary", size: "md", icon: "settings" }),

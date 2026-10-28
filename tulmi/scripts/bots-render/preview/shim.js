@@ -54,6 +54,8 @@
       const b = body ? JSON.parse(body) : {};
       return reply(await screen(b.screenId, b.params));
     }
+    // An answer takes a moment, as it does for real: the bot's own tiny bot thinks while it comes (BotBuddy thinkWhen).
+    if (method === "POST" && /\/chat\/|\/ask$|\/code\/start$/.test(url.pathname)) await new Promise((r) => setTimeout(r, 2600));
     const got = answer(m, method, url);
     if (got !== undefined) return reply(got);
     if (method === "GET" || method === "HEAD") return reply({ error: "not in this preview" }, 404);
