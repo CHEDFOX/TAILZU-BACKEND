@@ -5,6 +5,7 @@
  * pinned projects' real text (a pin that moved makes an edit fail loudly), so run this after changing repos.json, then `npm run e2e:validate`.
  * `tsx e2e/author.ts [module..]` (no argument: all of them).
  */
+import { parseCli, runCli, type CliSpec } from "./cli.js";
 import "./env.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -77,9 +78,17 @@ async function formatOracle(t: Task): Promise<number> {
 /** The modules other tasks are derived from come first, so a variant reads a finished (formatted) task from its JSON. */
 const FIRST = ["features", "refactors", "questions", "ui"];
 
+export const AUTHOR_SPEC: CliSpec = {
+  name: "npm run e2e:author --",
+  about: "write the authored tasks (e2e/tasks/author/*.ts) to e2e/tasks/*.json, formatted by each project's own formatter",
+  positionals: { name: "[modules]", about: "only these task modules (default all)" },
+  flags: { images: { kind: "bool", about: "render the reference picture of each design task instead" } },
+};
+
 async function main(): Promise<void> {
-  if (process.argv.includes("--images")) { await renderImages(process.argv.slice(2).filter((a) => !a.startsWith("--"))); return; }
-  const only = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+  const p = parseCli(AUTHOR_SPEC, process.argv.slice(2));
+  const only = p.positionals;
+  if (p.has("images")) { await renderImages(only); return; }
   const mods = fs.readdirSync(AUTHOR_DIR).filter((f) => f.endsWith(".ts") && f !== "lib.ts").map((f) => f.replace(/\.ts$/, "")).filter((m) => !only.length || only.includes(m)).sort((a, b) => (FIRST.includes(a) ? FIRST.indexOf(a) : 99) - (FIRST.includes(b) ? FIRST.indexOf(b) : 99) || (a < b ? -1 : 1));
   for (const m of mods) {
     const mod = (await import(pathToFileURL(path.join(AUTHOR_DIR, `${m}.ts`)).href)) as { tasks(): Promise<Task[]> };
@@ -102,4 +111,4 @@ async function main(): Promise<void> {
   }
 }
 
-main().then(() => process.exit(0), (err) => { console.error(err); process.exit(1); });
+runCli(async () => { await main(); }).then((c) => process.exit(c), (err) => { console.error(err); process.exit(1); });

@@ -9,6 +9,7 @@
  * What it proves is invariants, not speed: every job ends; none is lost or run twice; no job spends past its budget; each work branch has exactly the commits it
  * should and the default branch never moves; the breakers and ladder absorbed the faults; memory does not grow without bound. `npm run e2e:load`.
  */
+import { parseCli, runCli, type CliSpec } from "./cli.js";
 import "./env.js";
 import path from "node:path";
 import type { ChatClient } from "../src/code/brain/gateway.js";
@@ -209,10 +210,16 @@ export function renderLoad(r: LoadResult): string {
   return L.join("\n");
 }
 
+export const LOAD_SPEC: CliSpec = {
+  name: "npm run e2e:load --",
+  about: "many jobs at once through the real orchestrator on scripted models (no key, no cost): leases, ladders, budgets under load",
+  positionals: false,
+  flags: { jobs: { kind: "number", about: "jobs at once" }, seed: { kind: "number", about: "the random seed" } },
+};
+
 async function main(): Promise<number> {
-  const a = process.argv.slice(2);
-  const arg = (n: string): string | undefined => { const i = a.indexOf(`--${n}`); return i >= 0 ? a[i + 1] : undefined; };
-  const r = await runLoad({ ...(arg("jobs") ? { jobs: Number(arg("jobs")) } : {}), ...(arg("seed") ? { seed: Number(arg("seed")) } : {}), log: (s) => console.log(s) });
+  const p = parseCli(LOAD_SPEC, process.argv.slice(2));
+  const r = await runLoad({ ...(p.num("jobs") !== undefined ? { jobs: p.num("jobs")! } : {}), ...(p.num("seed") !== undefined ? { seed: p.num("seed")! } : {}), log: (s) => console.log(s) });
   console.log(`\n${renderLoad(r)}`);
   mkdirp(OUT_DIR);
   writeJson(path.join(OUT_DIR, "load.json"), r);
@@ -220,5 +227,5 @@ async function main(): Promise<number> {
 }
 
 if (process.argv[1] && /e2e\/load\.[tj]s$/.test(process.argv[1])) {
-  main().then((c) => process.exit(c), (err) => { console.error(err); process.exit(1); });
+  runCli(main).then((c) => process.exit(c), (err) => { console.error(err); process.exit(1); });
 }

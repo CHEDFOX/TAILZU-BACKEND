@@ -43,6 +43,7 @@
     "e2e:agents": "tsx e2e/agents/prove.ts",
     "e2e:security": "tsx e2e/security/index.ts",
     "bakeoff": "tsx e2e/bakeoff/index.ts",
+    "reality": "tsx e2e/reality/index.ts",
     "models-watch": "tsx scripts/models-watch.ts"
   },
   "dependencies": {

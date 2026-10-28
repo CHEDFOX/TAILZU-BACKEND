@@ -69,10 +69,10 @@ async function guarded(base: Pick<ItemResult, "id" | "n" | "title" | "kind">, ct
   try {
     const r = await body(kit);
     const failed = Object.values(r.stages).some((s) => !s.ok);
-    return { ...base, ok: !failed, ...r, costPaise: costOf(kit), calls: kit.logs.length, ms: Date.now() - t0, ...(cassette ? { cassette: cassetteOf(cassette)! } : {}) };
+    return { ...base, ok: !failed, harness: [], ...r, costPaise: costOf(kit), calls: kit.logs.length, ms: Date.now() - t0, ...(cassette ? { cassette: cassetteOf(cassette)! } : {}) };
   } catch (err) {
     const stage = ({ front: "front", artifact: "artifact", research: "research", vision: "vision" } as Record<string, SmokeStage>)[base.kind] ?? "work";
-    return { ...base, ok: false, stages: { [stage]: bad(`it stopped with an error: ${(err as Error).message.slice(0, 160)}`) }, costPaise: costOf(kit), calls: kit.logs.length, ms: Date.now() - t0, detail: "", notes: [], error: (err as Error).message.slice(0, 300), ...(cassette ? { cassette: cassetteOf(cassette)! } : {}) };
+    return { ...base, ok: false, stages: { [stage]: bad(`it stopped with an error: ${(err as Error).message.slice(0, 160)}`) }, costPaise: costOf(kit), calls: kit.logs.length, ms: Date.now() - t0, detail: "", notes: [], harness: [], error: (err as Error).message.slice(0, 300), ...(cassette ? { cassette: cassetteOf(cassette)! } : {}) };
   }
 }
 
@@ -219,11 +219,16 @@ export async function taskItem(task: Task, ctx: SmokeCtx, n: number, i: number):
     const detail = hidden ? hidden.detail : facts ? facts.detail : score.success ? "done" : score.stage.reason;
     // A task that failed with no stage blamed still has to show red somewhere.
     if (!score.success && !Object.values(stages).some((s) => !s.ok)) stages.work = bad(score.stage.reason || "it did not meet the task's checks");
+    // What the harness did to the run (its turn cap, a timeout, a described picture), from the flow's own notes. A failure that follows one of the harness's stops says so
+    // in its own line, so the report cannot read as the product's fault.
+    const harness = (result.flow?.notes ?? []).map((x) => x.slice(0, 240)).slice(0, 8);
+    const stopped = harness.find((x) => /-turn cap|ran out of time/.test(x));
+    if (stopped && !score.success) for (const v of Object.values(stages)) if (!v.ok) v.detail = `${v.detail} [harness: ${stopped}]`;
     return {
       id: task.id, n, title: task.title, kind: "task", ok: score.success && !Object.values(stages).some((s) => !s.ok), stages, costPaise: score.metrics.costPaise + score.metrics.judgePaise, calls: score.metrics.modelCalls,
-      ms: Date.now() - t0, detail, notes: score.notes.slice(0, 4), ...(result.metrics.cassette ? { cassette: result.metrics.cassette } : {}),
+      ms: Date.now() - t0, detail, notes: score.notes.slice(0, 4), harness, ...(result.metrics.cassette ? { cassette: result.metrics.cassette } : {}),
     };
   } catch (err) {
-    return { id: task.id, n, title: task.title, kind: "task", ok: false, stages: { work: bad(`it stopped with an error: ${(err as Error).message.slice(0, 160)}`) }, costPaise: 0, calls: 0, ms: Date.now() - t0, detail: "", notes: [], error: (err as Error).message.slice(0, 300) };
+    return { id: task.id, n, title: task.title, kind: "task", ok: false, stages: { work: bad(`it stopped with an error: ${(err as Error).message.slice(0, 160)}`) }, costPaise: 0, calls: 0, ms: Date.now() - t0, detail: "", notes: [], harness: [], error: (err as Error).message.slice(0, 300) };
   }
 }

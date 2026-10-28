@@ -10,6 +10,7 @@
  *
  * What it reports is the attack success rate (and, for the injection suite, utility under attack): see suite.ts and garak.ts.
  */
+import { CliExit, parseCli, requireBudget, runCli, type CliSpec } from "../cli.js";
 import "../env.js";
 import { realKey } from "../env.js";
 import path from "node:path";
@@ -73,14 +74,31 @@ export function renderSecurityRun(r: SecurityRun): string {
   return L.join("\n");
 }
 
+export const SECURITY_SPEC: CliSpec = {
+  name: "npm run e2e:security --",
+  about: "the security suites: 20 injection cases (AgentDojo-style) and garak-shaped probes, at the front door and in the agent loop",
+  positionals: false,
+  flags: {
+    prove: { kind: "bool", about: "no key: run both suites on scripted models (wiring, not a measurement)" },
+    model: { kind: "string", value: "<slug>", about: "a real run on this model through the recording proxy (needs the key and --budget-inr)" },
+    agent: { kind: "list", value: "tailzu,aider", about: "agents for the injection suite (default tailzu)" },
+    limit: { kind: "number", about: "only the first N injection cases" },
+    garak: { kind: "number", about: "probes per target (default 10)" },
+    "garak-cmd": { kind: "bool", about: "print the command that points the real garak at the proxy, and stop" },
+    "budget-inr": { kind: "number", value: "N", about: "REQUIRED for a real run: the hard cap in rupees (no default)" },
+    replay: { kind: "bool", about: "answer every call from the cassette, for nothing" },
+    cassette: { kind: "string", value: "<name>", about: "the cassette (default security)" },
+  },
+};
+
 async function main(): Promise<void> {
-  const a = process.argv.slice(2);
-  const arg = (n: string): string | undefined => { const i = a.indexOf(`--${n}`); return i >= 0 ? a[i + 1] : undefined; };
+  const a = parseCli(SECURITY_SPEC, process.argv.slice(2));
+  const arg = (n: string): string | undefined => a.str(n);
   const outDir = path.join(OUT_DIR, "security", new Date().toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-"));
+  if (a.has("garak-cmd")) { console.log(garakCommand({ proxyUrl: "http://127.0.0.1:8787/v1", slug: arg("model") ?? "qwen/qwen3.7-flash" })); return; }
   mkdirp(outDir);
-  if (a.includes("--garak-cmd")) { console.log(garakCommand({ proxyUrl: "http://127.0.0.1:8787/v1", slug: arg("model") ?? "qwen/qwen3.7-flash" })); return; }
-  if (a.includes("--prove")) {
-    const r = await proveSecurity({ outDir, ...(arg("limit") ? { limit: Number(arg("limit")) } : {}), log: (s) => console.log(s) });
+  if (a.has("prove")) {
+    const r = await proveSecurity({ outDir, ...(a.num("limit") !== undefined ? { limit: a.num("limit")! } : {}), log: (s) => console.log(s) });
     console.log(`\n${renderSecurityRun(r)}`);
     writeJson(path.join(outDir, "security.json"), r);
     mkdirp(path.join(OUT_DIR, "security"));
@@ -88,21 +106,20 @@ async function main(): Promise<void> {
     return;
   }
   const slug = arg("model");
-  if (!slug) { console.error("usage: npm run e2e:security -- --prove | --model <slug> --budget-inr X [--agent tailzu,aider] [--limit N] [--garak N] | --garak-cmd"); process.exit(2); }
-  if (!realKey) { console.error("OPENROUTER_API_KEY is not set: use --prove to exercise the suites with scripted models."); process.exit(2); }
-  const capInr = Number(arg("budget-inr") ?? 0);
-  if (!(capInr > 0)) throw new Error("a real run needs --budget-inr X, a hard cap in rupees");
-  const proxy = await startProxy({ port: 0, mode: (a.includes("--replay") ? "replay" : "mixed") as "replay" | "mixed", cassette: arg("cassette") ?? "security", capUsd: capInr / fx(), log: (s) => console.log(s) });
+  if (!slug) throw new CliExit(2, "usage: npm run e2e:security -- --prove | --model <slug> --budget-inr X [--agent tailzu,aider] [--limit N] [--garak N] | --garak-cmd");
+  const capInr = requireBudget(a, !a.has("replay"), "a real security run");
+  if (!a.has("replay") && !realKey) { console.error("OPENROUTER_API_KEY is not set: use --prove to exercise the suites with scripted models."); process.exitCode = 2; return; }
+  const proxy = await startProxy({ port: 0, mode: a.has("replay") ? "replay" : "mixed", cassette: arg("cassette") ?? "security", capUsd: capInr / fx(), log: (s) => console.log(s) });
   const run: SecurityRun = { at: new Date().toISOString(), mode: "real", simulated: false, model: slug, injection: [], garak: [], spentInr: 0, notes: [] };
   try {
     const { pinnedTiers } = await import("../bakeoff/engine.js");
-    for (const agent of (arg("agent") ?? "tailzu").split(",").map((s) => s.trim()).filter(Boolean)) {
-      const r = await runInjectionSuite({ agent, model: { mode: "real", slug, ladder: [slug], tiers: pinnedTiers(slug, undefined), proxyUrl: proxy.url, maxTurns: 14, maxTokens: 1000 }, budgetPaise: 300, timeoutSec: 600, outDir, ...(arg("limit") ? { limit: Number(arg("limit")) } : {}), log: (s) => console.log(s) });
+    for (const agent of a.has("agent") ? a.list("agent") : ["tailzu"]) {
+      const r = await runInjectionSuite({ agent, model: { mode: "real", slug, ladder: [slug], tiers: pinnedTiers(slug, undefined), proxyUrl: proxy.url, maxTurns: 14, maxTokens: 1000 }, budgetPaise: 300, timeoutSec: 600, outDir, ...(a.num("limit") !== undefined ? { limit: a.num("limit")! } : {}), log: (s) => console.log(s) });
       console.log(renderSecurity(agent, r.summary));
       run.injection.push({ agent, label: slug, summary: r.summary, rows: r.rows });
     }
     for (const target of ["frontdoor", "agent"] as const) {
-      const g = await runGarak({ target, proxyUrl: proxy.url, slug, limit: Number(arg("garak") ?? 10), outDir, log: (s) => console.log(s) });
+      const g = await runGarak({ target, proxyUrl: proxy.url, slug, limit: a.num("garak") ?? 10, outDir, log: (s) => console.log(s) });
       run.garak.push({ target, label: slug, summary: g.summary, rows: g.rows });
     }
   } finally { run.spentInr = proxy.guard.spentUsd * fx(); await proxy.close(); }
@@ -111,5 +128,5 @@ async function main(): Promise<void> {
   writeJson(path.join(OUT_DIR, "security", "latest.json"), run);
 }
 
-if (process.argv[1] && /e2e\/security\/index\.[tj]s$/.test(process.argv[1])) main().then(() => process.exit(0), (err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
+if (process.argv[1] && /e2e\/security\/index\.[tj]s$/.test(process.argv[1])) runCli(async () => { await main(); return Number(process.exitCode ?? 0); }).then((c) => process.exit(c), (err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
 

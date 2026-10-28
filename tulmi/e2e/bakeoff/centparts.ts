@@ -25,10 +25,11 @@ import { baseTier } from "../../src/code/brain/route.js";
 import { resetConfigForTests } from "../../src/config.js";
 import { runOne } from "../runOne.js";
 import { frontItem, taskItem, type SmokeCtx } from "../smoke/items.js";
+import { SMOKE_STAGES, STAGE_NAMES, type ItemResult } from "../smoke/types.js";
 import { REAL_SHAPE, SHAPE } from "../smoke/estimate.js";
 import { loadTasks, selectTasks, type Task } from "../tasks/schema.js";
 import { Engine, pinnedTiers } from "./engine.js";
-import { cappedTierOverrides } from "../smoke/tiers.js";
+import { cappedTierOverrides, SMOKE_MAX_TURNS } from "../smoke/tiers.js";
 import { resetTierTableForTests } from "../../src/code/brain/tiers.js";
 import { EDIT_CASES, EDIT_FORMATS, scoreEditFormats, type EditFormat, type EditFormatScore } from "./editformat.js";
 import { loadPools } from "./pools.js";
@@ -45,6 +46,8 @@ export interface PartCtx {
   cassetteMode: CassetteMode | null;
   outDir: string;
   log: (s: string) => void;
+  /** Most work turns a task may take in the router part (default SMOKE_MAX_TURNS). */
+  maxTurns?: number;
 }
 
 export interface Table { head: string[]; rows: string[][] }
@@ -57,6 +60,8 @@ export interface CentPartResult {
   headline: string;
   winner?: { id: string; by: string; margin: string };
   table?: Table;
+  /** Further tables under the headline one (the router's task by stage). */
+  tables?: Array<{ title: string; table: Table }>;
   notes: string[];
   command: string;
   estimateInr: number;
@@ -96,6 +101,7 @@ function cassetteFor(ctx: PartCtx, guard: SpendGuard | undefined): CassetteSetup
   const store = new CassetteStore(ctx.cassetteName);
   const mode: CassetteMode = ctx.cassetteMode ?? "mixed";
   if (mode === "record") store.reset(); else store.load();
+  if (mode === "replay" && !store.count) throw new Error(`the cassette ${store.file} is empty or missing: record it first (--spend --record)`);
   return { store, mode, ...(guard ? { guard } : {}) };
 }
 
@@ -167,7 +173,7 @@ export async function runContextStrategy(ctx: PartCtx, o: { model?: string; task
       const info = ctx.catalog.models.get(model);
       const { result, score } = await withStrategy(strategy, () => runOne(task, tailzuAgent, {
         model: ctx.mode === "sim"
-          ? { mode: "oracle", persona: oracle, maxTurns: 12, maxTokens: 800 }
+          ? { mode: "oracle", persona: oracle, maxTurns: SMOKE_MAX_TURNS, maxTokens: 800 }
           : { mode: "real", slug: model, ladder: [model], tiers: pinnedTiers(model, info), ...(cassette ? { cassette: { ...cassette, run: `${strategy}|${t.id}` }, wire: true } : {}) },
         budgetPaise: ctx.mode === "sim" ? 3000 : 3000, timeoutSec: ctx.mode === "sim" ? 240 : 900, outDir: path.join(ctx.outDir, "strategy", strategy), repeat: 1, log: () => undefined, brainBudgetPaise: 0,
       }));
@@ -222,6 +228,30 @@ export function routerEstimate(ctx: PartCtx, mid: string, smokeTasks: number): {
   return { inr: per(mid) * 2, basis: `2 arms (routed, fixed mid ${mid}) x (${smokeTasks} smoke task(s) at the smoke task size + the 12 labelled front-door messages)` };
 }
 
+/** The stages a router item can be judged on, in the order of the flow, for the per-task table. */
+const ROUTER_STAGES = SMOKE_STAGES.filter((s) => ["front", "locate", "plan", "work", "verify", "commit", "pr", "safety"].includes(s));
+
+/** What a router arm did on one item, kept whole: which task, which stage, why (the part used to keep only the pass counts, so a failing task could not be found). */
+export interface RouterItem {
+  arm: string;
+  id: string;
+  title: string;
+  ok: boolean;
+  stages: ItemResult["stages"];
+  costPaise: number;
+  detail: string;
+  /** What the test rig did to the run (a turn cap), apart from the product. */
+  harness: string[];
+  /** The first stage that failed and its reason, in a line. */
+  why: string;
+  cassette?: { hits: number; misses: number };
+}
+
+const firstFailure = (r: ItemResult): string => {
+  for (const s of SMOKE_STAGES) { const v = r.stages[s]; if (v && !v.ok) return `${STAGE_NAMES[s]}: ${v.detail}`.slice(0, 200); }
+  return r.error ? `error: ${r.error}`.slice(0, 200) : r.ok ? "" : "did not meet the task's checks";
+};
+
 export async function runRouter(ctx: PartCtx, o: { mid?: string } = {}): Promise<CentPartResult> {
   const mid = o.mid ?? loadPools().tiers.code[0]!;
   const tasks = loadTasks().filter((t) => t.tags.includes("smoke") && ["bug", "feature"].includes(t.category) && !t.tags.includes("hostile"));
@@ -231,6 +261,7 @@ export async function runRouter(ctx: PartCtx, o: { mid?: string } = {}): Promise
   const cassette = cassetteFor(ctx, guard);
   const arms: Array<{ id: string; tiers: SmokeCtx["tiers"] | undefined }> = [{ id: "routed", tiers: undefined }, { id: `fixed-mid`, tiers: pinnedTiers(mid, ctx.catalog.models.get(mid)) }];
   const rows: Array<{ arm: string; front: string; frontOk: boolean; pass: number; n: number; costPaise: number }> = [];
+  const items: RouterItem[] = [];
   // The 800-token cap is part of the product's tiers for this run (see cappedTierOverrides), so the router and the gateway reserve against the same answer length.
   const realRun = ctx.mode === "real";
   const savedTiers = process.env.CODE_MODEL_TIERS;
@@ -238,19 +269,24 @@ export async function runRouter(ctx: PartCtx, o: { mid?: string } = {}): Promise
   try {
     for (const arm of arms) {
       const sctx: SmokeCtx = {
-        mode: ctx.mode === "sim" ? "oracle" : "real", maxTurns: 12, maxTokens: ROUTER_MAX_TOKENS, taskBudgetPaise: ctx.mode === "sim" ? 3000 : 250, outDir: path.join(ctx.outDir, "router", arm.id), log: () => undefined,
+        mode: ctx.mode === "sim" ? "oracle" : "real", maxTurns: ctx.maxTurns ?? SMOKE_MAX_TURNS, maxTokens: ROUTER_MAX_TOKENS, taskBudgetPaise: ctx.mode === "sim" ? 3000 : 250, outDir: path.join(ctx.outDir, "router", arm.id), log: () => undefined,
         ...(arm.tiers ? { tiers: arm.tiers } : {}), ...(cassette ? { cassette: { ...cassette } } : {}),
       };
+      const keep = (r: ItemResult): void => {
+        items.push({ arm: arm.id, id: r.id, title: r.title, ok: r.ok, stages: r.stages, costPaise: r.costPaise, detail: r.detail, harness: r.harness ?? [], why: firstFailure(r), ...(r.cassette ? { cassette: { hits: r.cassette.hits, misses: r.cassette.misses } } : {}) });
+      };
       const front = await frontItem(sctx, 1);
+      keep(front);
       let pass = 0, cost = front.costPaise;
       for (const [i, t] of tasks.entries()) {
         if (guard?.exhausted) break;
         const r = await taskItem(ctx.mode === "sim" ? { ...t, budgetPaise: 3000 } : t, sctx, 2 + i, i);
+        keep(r);
         if (r.ok) pass += 1;
         cost += r.costPaise;
       }
       rows.push({ arm: arm.id, front: front.detail, frontOk: front.ok, pass, n: tasks.length, costPaise: cost });
-      ctx.log(`  router arm ${arm.id}: front door ${front.detail}, tasks ${pass}/${tasks.length}, ₹${(cost / 100).toFixed(2)}`);
+      ctx.log(`  router arm ${arm.id}: front door ${front.detail}, tasks ${pass}/${tasks.length}, ₹${(cost / 100).toFixed(2)}${items.filter((x) => x.arm === arm.id && !x.ok).map((x) => `\n    FAILED ${x.id}: ${x.why}`).join("")}`);
     }
   } finally {
     if (realRun) {
@@ -260,22 +296,33 @@ export async function runRouter(ctx: PartCtx, o: { mid?: string } = {}): Promise
   }
   const [a, b] = rows;
   const winner = a && b ? (() => { const [w, l] = a.pass !== b.pass ? (a.pass > b.pass ? [a, b] : [b, a]) : (a.costPaise <= b.costPaise ? [a, b] : [b, a]); return { id: w.arm, by: "smoke-task passes, then cost", margin: `${w.pass - l.pass} more pass(es) and ₹${((l.costPaise - w.costPaise) / 100).toFixed(2)} less than ${l.arm}` }; })() : undefined;
+  const usedStages = ROUTER_STAGES.filter((s) => items.some((x) => x.stages[s]));
+  const mark = (v: { ok: boolean } | undefined): string => (v ? (v.ok ? "pass" : "FAIL") : "-");
+  const perTask: Table = {
+    head: ["arm", "item", ...usedStages.map((s) => STAGE_NAMES[s]), "cost ₹", "why it failed"],
+    rows: items.map((x) => [x.arm, x.id, ...usedStages.map((s) => mark(x.stages[s])), (x.costPaise / 100).toFixed(2), x.why || (x.harness.length ? `harness: ${x.harness[0]}` : "")]),
+  };
+  const same = a && b && items.filter((x) => x.arm === a.arm).every((x, i) => { const y = items.filter((z) => z.arm === b.arm)[i]; return y && JSON.stringify(Object.entries(x.stages).map(([k, v]) => [k, v?.ok])) === JSON.stringify(Object.entries(y.stages).map(([k, v]) => [k, v?.ok])); });
   return {
     id: "router", title: "Router: learned routing against a fixed mid tier", status: ctx.mode === "sim" ? "proved" : "measured",
     headline: `rules read ${pct(free.typeRight)} of ${free.n} labelled tasks' type right (confident on ${pct(free.confident)}); ${rows.map((r) => `${r.arm}: ${r.pass}/${r.n} tasks, front door ${r.front}`).join("; ")}`,
     ...(winner ? { winner } : {}),
     table: { head: ["arm", "front door (labelled messages)", "smoke tasks", "cost ₹"], rows: rows.map((r) => [r.arm, r.front, `${r.pass}/${r.n}`, (r.costPaise / 100).toFixed(2)]) },
+    tables: [{ title: "Every item of each arm, by stage", table: perTask }],
     notes: [
       `MEASURED NOW, FREE: the classifier's rules against the labels of ${free.n} tasks: type ${pct(free.typeRight)}, difficulty ${pct(free.difficultyRight)}; ${pct(free.confident)} are read with confidence 0.7 or more (the rest go to the tiny model). The code-writing step would go to: ${Object.entries(free.tiers).map(([k, v]) => `${k} ${v}`).join(", ")}.`,
       ctx.mode === "sim" ? "The arms run on a scripted model, which answers the same way whatever tier it is asked on: this proves both arms run, are priced and compared; it says nothing about routing." : "The live route statistics (src/code/brain/stats.ts) need 20 outcomes per task type, step and model before they change a choice (MIN_SAMPLES): at this sample size the routed arm is the rules, the tier map and the climb ladder.",
+      ...(same ? ["Both arms passed and failed the same stages on every item: the difference between them is cost only, which is not evidence for either."] : []),
+      ...items.filter((x) => !x.ok && x.arm === "routed").map((x) => `Failing item (routed): ${x.id} - ${x.why}`),
     ],
     command: `npm run bakeoff -- --parts --spend --only router --budget-inr ${Math.max(10, Math.ceil(est.inr * 1.5))}`,
-    estimateInr: est.inr, estimateBasis: est.basis, spentInr: (guard?.spentUsd ?? 0) * ctx.fx, data: { free, rows },
+    estimateInr: est.inr, estimateBasis: est.basis, spentInr: (guard?.spentUsd ?? 0) * ctx.fx, data: { free, rows, items },
   };
 }
 
 export async function makeCtx(o: { mode: PartMode; capInr?: number; cassetteMode?: CassetteMode | null; cassetteName?: string; outDir: string; log: (s: string) => void }): Promise<PartCtx> {
   const fx = Number(process.env.CODE_USD_INR) || 88;
-  const catalog = await loadCatalog({ offline: o.mode === "sim" });
+  // A replay must not depend on today's prices and reasoning facts: it reads the saved catalog, as the recording did.
+  const catalog = await loadCatalog({ offline: o.mode === "sim" || o.cassetteMode === "replay" });
   return { mode: o.mode, fx, catalog, capInr: o.capInr ?? 0, cassetteName: o.cassetteName ?? "parts", cassetteMode: o.cassetteMode ?? null, outDir: o.outDir, log: o.log };
 }

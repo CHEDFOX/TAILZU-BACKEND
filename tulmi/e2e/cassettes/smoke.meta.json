@@ -446,5 +446,11 @@
     "src/web/search/sources/wikipedia.ts": "2ef70f823a697720",
     "src/web/search/types.ts": "b5326e1dc1344408",
     "src/web/workerSafeFetch.ts": "91a72f865e097080"
+  },
+  "run": {
+    "maxTurns": 12,
+    "primary": "qwen/qwen3.7-flash",
+    "fallback": "deepseek/deepseek-v4.1-flash",
+    "tiers": "smoke"
   }
 }

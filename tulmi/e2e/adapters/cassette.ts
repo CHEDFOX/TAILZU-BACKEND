@@ -71,6 +71,17 @@ export function redact(text: string): string {
 /** Replaces what changes from run to run without meaning anything. */
 export function normalize(text: string): string {
   return text
+    // Colour codes: a test runner's timing is written `92\u001b[2mms` with codes between the number and its unit, so no duration rule below would see it.
+    .replace(/\u001b\[[0-9;]*m/g, "")
+    // Node's notice about its env-proxy support, with the process id in it. A project's own command (`npm test`) printed it whenever the run that RECORDED had
+    // NODE_USE_ENV_PROXY=1 in its environment (the first real runs did), once for every `node` the tests started, as plain lines and as TAP comments. So the tool
+    // result the agent read was different in a session without it, the next request missed, and a strict replay of a just-recorded cassette failed (parts-router-2,
+    // smoke-2). It is not about the project: it is gone from the key, and any other process id is a placeholder.
+    .replace(/^(?:# ?)?\(node:\d+\) \[UNDICI-EHPA\][^\n]*\n?/gm, "")
+    .replace(/^(?:# ?)?\(Use `node --trace-warnings \.\.\.` to show where the warning was created\)\n?/gm, "")
+    .replace(/\(node:\d+\)/g, "(node:<pid>)")
+    // The test runner's own timings (node:test's TAP: `duration_ms: 32.4` per test and `# duration_ms 215.5` at the end).
+    .replace(/\bduration_ms:? ?\d+(?:\.\d+)?/g, "duration_ms <n>")
     .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, "<uuid>")
     .replace(/\b[0-9a-f]{40}\b/g, "<sha>")
     .replace(/\b[0-9a-f]{64}\b/g, "<sha256>")
@@ -188,7 +199,10 @@ export interface Entry {
 export class CassetteStore {
   readonly file: string;
   private readonly byKey = new Map<string, Entry[]>();
+  /** The same entries under the key the CURRENT rules (normalize, wireRequestOf) make of their request: a recording survives a change in what is ignored. */
+  private readonly byCurrentKey = new Map<string, Entry[]>();
   private readonly byRun = new Map<string, Entry>();
+  private readonly all: Entry[] = [];
   count = 0;
 
   constructor(readonly name: string, dir = CASSETTES_DIR) {
@@ -198,7 +212,7 @@ export class CassetteStore {
   exists(): boolean { return fs.existsSync(this.file); }
 
   load(): this {
-    this.byKey.clear(); this.byRun.clear(); this.count = 0;
+    this.byKey.clear(); this.byCurrentKey.clear(); this.byRun.clear(); this.all.length = 0; this.count = 0;
     if (!this.exists()) return this;
     for (const line of fs.readFileSync(this.file, "utf8").split("\n")) {
       if (!line.trim()) continue;
@@ -208,13 +222,19 @@ export class CassetteStore {
   }
 
   /** Starts the file afresh (a new recording). */
-  reset(): void { mkdirp(path.dirname(this.file)); fs.writeFileSync(this.file, ""); this.byKey.clear(); this.byRun.clear(); this.count = 0; }
+  reset(): void { mkdirp(path.dirname(this.file)); fs.writeFileSync(this.file, ""); this.byKey.clear(); this.byCurrentKey.clear(); this.byRun.clear(); this.all.length = 0; this.count = 0; }
 
   private add(e: Entry): void {
     const l = this.byKey.get(e.k) ?? [];
     l.push(e);
     this.byKey.set(e.k, l);
+    // The key as the rules are NOW (the request is stored whole, so it can be made again). Only worth a second index when it differs from the stored one.
+    try {
+      const now = cassetteKey(e.req as unknown as Record<string, unknown>);
+      if (now !== e.k) { const m = this.byCurrentKey.get(now) ?? []; m.push(e); this.byCurrentKey.set(now, m); }
+    } catch { /* an entry whose request cannot be read keeps only its stored key */ }
     if (e.run && e.purpose && e.n !== undefined) this.byRun.set(`${e.run}|${e.purpose}|${e.n}`, e);
+    this.all.push(e);
     this.count += 1;
   }
 
@@ -225,11 +245,11 @@ export class CassetteStore {
   }
 
   get(key: string, nth: number): Entry | undefined {
-    const l = this.byKey.get(key);
+    const l = this.byKey.get(key) ?? this.byCurrentKey.get(key);
     return l ? l[Math.min(nth, l.length - 1)] : undefined;
   }
   byOrdinal(run: string, purpose: string, n: number): Entry | undefined { return this.byRun.get(`${run}|${purpose}|${n}`); }
-  entries(): Entry[] { return [...this.byKey.values()].flat(); }
+  entries(): Entry[] { return [...this.all]; }
   totalUsd(): number { return this.entries().reduce((n, e) => n + e.usd, 0); }
 }
 

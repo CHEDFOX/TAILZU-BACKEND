@@ -11,6 +11,7 @@
  * A task with no hidden tests (a question, a refusal) is checked for having what its checks need (truth files exist at the base, an oracle answer).
  * The outcome is written into the task's `validated` field. `npm run e2e:validate -- --tasks <glob> [--write]`.
  */
+import { parseCli, runCli, type CliSpec } from "./cli.js";
 import "./env.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -141,14 +142,25 @@ export function recordValidation(task: Task, v: Validation): void {
   }
 }
 
+export const VALIDATE_SPEC: CliSpec = {
+  name: "npm run e2e:validate --",
+  about: "check that every task's hidden command FAILS on the base project and PASSES with the oracle's patch",
+  positionals: false,
+  flags: {
+    tasks: { kind: "string", value: "<glob>", about: "task selector (default all)" },
+    missing: { kind: "bool", about: "only tasks not validated yet" },
+    write: { kind: "bool", about: "record the result in the task files" },
+    parallel: { kind: "number", about: "tasks at once (default 2)" },
+  },
+};
+
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const arg = (n: string) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : undefined; };
-  const tasks = selectTasks(loadTasks(), arg("tasks")).filter((t) => !args.includes("--missing") || !t.validated?.oraclePasses);
-  const write = args.includes("--write");
+  const p = parseCli(VALIDATE_SPEC, process.argv.slice(2));
+  const tasks = selectTasks(loadTasks(), p.str("tasks")).filter((t) => !p.has("missing") || !t.validated?.oraclePasses);
+  const write = p.has("write");
   console.log(`validating ${tasks.length} task(s)`);
   let bad = 0;
-  await pool(tasks, Number(arg("parallel") ?? 2), async (t) => {
+  await pool(tasks, p.num("parallel") ?? 2, async (t) => {
     const spec = t.repo !== "synthetic" ? getRepo(t.repo) : undefined;
     if (spec && !isInstalled(spec)) await installRepo(spec, { log: console.log });
     const v = await validateTask(t);
@@ -161,5 +173,5 @@ async function main(): Promise<void> {
 }
 
 if (process.argv[1] && /e2e\/validate\.[tj]s$/.test(process.argv[1])) {
-  main().then(() => process.exit(process.exitCode ?? 0), (err) => { console.error(err); process.exit(1); });
+  runCli(async () => { await main(); return Number(process.exitCode ?? 0); }).then((c) => process.exit(c), (err) => { console.error(err); process.exit(1); });
 }

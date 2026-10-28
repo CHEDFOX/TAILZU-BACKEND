@@ -27,6 +27,7 @@
  * It writes results.json and a self-contained report.html. The exit code is 0 when the run completed (failures are results, not errors).
  */
 import { realKey } from "./env.js";
+import { parseCli, requireBudget, runCli, type CliSpec, type Parsed } from "./cli.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -97,12 +98,48 @@ export interface RunFile {
   results: RunRecord[];
 }
 
+/** The words of this command, read once by `main` against RUN_SPEC. */
+let P: Parsed | null = null;
 function argv(name: string): string | undefined {
-  const a = process.argv.slice(2);
-  const i = a.indexOf(`--${name}`);
-  return i >= 0 ? a[i + 1] : undefined;
+  const v = P?.given.get(name);
+  return v === undefined ? undefined : Array.isArray(v) ? v.join(",") : String(v);
 }
-const flag = (name: string): boolean => process.argv.slice(2).includes(`--${name}`);
+const flag = (name: string): boolean => P?.has(name) ?? false;
+
+export const RUN_SPEC: CliSpec = {
+  name: "npm run e2e --",
+  about: "run tasks through Tailzu's real flow (or another agent) and score them with hidden checks; `--suite smoke` is the nine-item smoke suite (its own --help)",
+  positionals: false,
+  flags: {
+    list: { kind: "bool", about: "list the suites with their task counts and stop" },
+    agents: { kind: "bool", about: "list the agents that can be run and stop" },
+    suite: { kind: "string", value: "<name>", about: `a named group of tasks: ${Object.keys(SUITES).join(", ")}` },
+    tasks: { kind: "string", value: "<glob>", about: "task ids with * ; category:bug, tag:mined, repo:express; several separated by commas" },
+    agent: { kind: "string", value: "<id>", about: "the agent under test (default tailzu; patch applies each task's known patch)" },
+    part: { kind: "string", value: "locate|editApply|condense", about: "compare one PART of an agent in isolation instead of whole tasks" },
+    impl: { kind: "string", value: "<id>", about: "with --part: the implementation (default the agent)" },
+    model: { kind: "string", value: "real|fake|oracle", about: "real models (needs the key), a scripted failing one, or the known answer (default oracle where the agent has one)" },
+    persona: { kind: "string", value: "<name>", about: "with --model fake: one persona instead of rotating" },
+    repeats: { kind: "number", about: "each task N times, for variance (default 1)" },
+    limit: { kind: "number", about: "only the first N tasks" },
+    "budget-inr": { kind: "number", value: "X", about: "REQUIRED for a real run: the hard cap on what the whole run may spend (no default)" },
+    "task-budget-inr": { kind: "number", value: "X", about: "each job's own budget (default: the task's, else the product's 30)" },
+    "brain-inr": { kind: "number", value: "X", about: "what the repo summaries may cost per project (default 0)" },
+    parallel: { kind: "number", about: "tasks at once (default 1 for real, 2 otherwise)" },
+    "max-turns": { kind: "number", about: "most work turns a task may take" },
+    out: { kind: "string", value: "<dir>", about: "where the run is written (default e2e/out/<time>-<model>)" },
+    "no-suite": { kind: "bool", about: "skip running each project's own suite on the result (faster, weaker)" },
+    estimate: { kind: "bool", about: "(real) print what the run would cost, from the live prices, and stop" },
+    "no-estimate": { kind: "bool", about: "(real) do not print the estimate before the run" },
+    record: { kind: "bool", about: "record every model call to e2e/cassettes/<cassette>.jsonl" },
+    replay: { kind: "bool", about: "answer every call from the cassette, for nothing (strict)" },
+    mixed: { kind: "bool", about: "replay what is recorded, call the model for the rest" },
+    cassette: { kind: "string", value: "<name>", about: "the cassette (default: the suite's name)" },
+    loose: { kind: "bool", about: "replay: also match a call by its run, purpose and ordinal" },
+  },
+  examples: ["npm run e2e -- --suite bugs --model oracle", "npm run e2e -- --suite quick --model real --estimate", "npm run e2e -- --tasks 'express-*' --model real --budget-inr 40"],
+  notes: ["The exit code is 0 when the run completed (failures are results, not errors), 2 for a mistaken command, 3 for a cassette miss in a strict replay."],
+};
 
 export interface RunSpec {
   agent: AgentUnderTest;
@@ -180,6 +217,14 @@ export function writeRun(dir: string, file: RunFile): void {
 }
 
 async function main(): Promise<void> {
+  // The smoke suite has its own flags and its own --help: look at the mode leniently, then read the words strictly against the right list.
+  const peek = parseCli(RUN_SPEC, process.argv.slice(2), { lenient: true });
+  if (peek.str("suite") === "smoke" && !peek.has("agent") && !peek.has("part")) {
+    const { runSmokeCli } = await import("./smoke/index.js");
+    process.exitCode = await runSmokeCli();
+    return;
+  }
+  P = parseCli(RUN_SPEC, process.argv.slice(2));
   if (flag("list")) {
     const tasks = loadTasks();
     for (const [name, s] of Object.entries(SUITES)) console.log(`${name.padEnd(11)} ${String(tasks.filter(s.pick).length).padStart(3)}  ${s.about}`);
@@ -192,16 +237,13 @@ async function main(): Promise<void> {
     for (const a of Object.values(AGENTS)) console.log(`${a.id.padEnd(10)} modes: ${a.modes.join(", ").padEnd(18)} ${a.describe}`);
     return;
   }
-  if (argv("suite") === "smoke" && !argv("agent") && !argv("part")) {
-    const { runSmokeCli } = await import("./smoke/index.js");
-    process.exitCode = await runSmokeCli();
-    return;
-  }
   const agent = agentById(argv("agent") ?? "tailzu");
   const mode = (argv("model") ?? (agent.modes.includes("oracle") ? "oracle" : "real")) as "real" | "fake" | "oracle";
   if (!agent.modes.includes(mode)) throw new Error(`the ${agent.id} agent runs in ${agent.modes.join(", ")}, not ${mode}`);
   if (!["real", "fake", "oracle"].includes(mode)) throw new Error("--model is real, fake or oracle");
   const cmode: CassetteMode | null = flag("record") ? "record" : flag("replay") ? "replay" : flag("mixed") ? "mixed" : null;
+  // The cap before the key: a forgotten --budget-inr stops the run whether or not a key is set. There is no default cap.
+  const capInr = requireBudget(P, mode === "real" && cmode !== "replay" && !flag("estimate"), "a real run");
   if (mode === "real" && cmode !== "replay" && !realKey && !flag("estimate")) {
     console.error("OPENROUTER_API_KEY is not set, so a real run cannot start. Use --model fake or --model oracle to run the harness itself, --replay to run from a cassette, or add the key (tulmi/.env or the shell).");
     process.exitCode = 2;
@@ -239,9 +281,7 @@ async function main(): Promise<void> {
     return;
   }
   const repeats = Math.max(1, Number(argv("repeats") ?? 1));
-  const capInr = Number(argv("budget-inr") ?? 0);
   const spends = mode === "real" && cmode !== "replay";
-  if (spends && !flag("estimate") && !(capInr > 0)) throw new Error("a real run needs --budget-inr X, a hard cap in rupees");
   const cap = spends ? new SpendCap(inrToPaise(capInr)) : noCap();
   const fxRate = Number(process.env.CODE_USD_INR) || 88;
   if (mode === "real" && (flag("estimate") || (spends && !flag("no-estimate")))) {
@@ -310,5 +350,5 @@ async function main(): Promise<void> {
 }
 
 if (process.argv[1] && /e2e\/run\.[tj]s$/.test(process.argv[1])) {
-  main().then(() => process.exit(process.exitCode ?? 0), (err) => { console.error(err); process.exit(1); });
+  runCli(async () => { await main(); return Number(process.exitCode ?? 0); }).then((c) => process.exit(c), (err) => { console.error(err); process.exit(1); });
 }

@@ -11,6 +11,8 @@
  */
 import "../env.js";
 import { realKey } from "../env.js";
+import { CliExit, parseCli, requireBudget, type CliSpec } from "../cli.js";
+import type { CassetteMode } from "../adapters/cassette.js";
 import fs from "node:fs";
 import path from "node:path";
 import { loadCatalog } from "../catalog.js";
@@ -70,6 +72,8 @@ export function latestSecurity(): SecurityRun | null {
 
 export async function runParts(o: {
   only?: readonly PartId[]; prove: boolean; spend: boolean; capInr: number; cassetteName: string; outDir: string; log: (s: string) => void;
+  /** How the cents parts use the cassette: record starts it afresh, replay answers from it for nothing (no key), mixed (the default for --spend) replays and records. */
+  cassetteMode?: CassetteMode | null;
 }): Promise<PartsFile> {
   const want = (id: PartId): boolean => !o.only || o.only.includes(id);
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-");
@@ -91,10 +95,11 @@ export async function runParts(o: {
   const catalog = await loadCatalog({ offline: true });
   const wiredCtx: PartCtx = { mode: "sim", fx, catalog, capInr: 0, cassetteName: o.cassetteName, cassetteMode: null, outDir: o.outDir, log: o.log };
   let cents = wiredCentParts(wiredCtx).filter((c) => want(c.id));
-  if (o.spend) {
-    if (!realKey) { notes.push("--spend was asked for but OPENROUTER_API_KEY is not set: the cents parts stay wired."); }
+  const replay = o.cassetteMode === "replay";
+  if (o.spend || replay) {
+    if (!replay && !realKey) { notes.push("--spend was asked for but OPENROUTER_API_KEY is not set: the cents parts stay wired."); }
     else {
-      const ctx = await makeCtx({ mode: "real", capInr: o.capInr, cassetteName: o.cassetteName, outDir: o.outDir, log: o.log });
+      const ctx = await makeCtx({ mode: "real", capInr: o.capInr, cassetteName: o.cassetteName, cassetteMode: o.cassetteMode ?? null, outDir: o.outDir, log: o.log });
       cents = [];
       if (want("editFormats")) cents.push(await runEditFormats(ctx));
       if (want("contextStrategy")) cents.push(await runContextStrategy(ctx));
@@ -139,19 +144,39 @@ export function loadLatestParts(): PartsFile | null {
   return fs.existsSync(f) ? readJson<PartsFile>(f) : null;
 }
 
+export const PARTS_SPEC: CliSpec = {
+  name: "npm run bakeoff -- --parts",
+  about: "the part bake-offs: page extraction and locate for free now; edit formats, context strategy and router with the key (or from a cassette)",
+  positionals: false,
+  flags: {
+    parts: { kind: "bool", about: "mode switch (this tool)" },
+    "fetch-pages": { kind: "bool", about: "fetch the page corpus the extraction bake-off needs, once, and stop" },
+    only: { kind: "list", value: PART_IDS.join(","), about: "only these parts" },
+    estimate: { kind: "bool", about: "print what each part that needs cents would cost, from the live prices, and stop" },
+    prove: { kind: "bool", about: "also run the cents parts on scripted models (no key): wiring, not a measurement" },
+    spend: { kind: "bool", about: "run the cents parts for real (needs the key and --budget-inr)" },
+    record: { kind: "bool", about: "with --spend: record the cents parts' model calls afresh to the cassette" },
+    replay: { kind: "bool", about: "run the cents parts from the cassette for nothing (no key; a miss is reported, not paid)" },
+    mixed: { kind: "bool", about: "with --spend: replay what is recorded, call the model for the rest (the default for --spend)" },
+    cassette: { kind: "string", value: "<name>", about: "the cassette (default parts)" },
+    "budget-inr": { kind: "number", value: "N", about: "REQUIRED with --spend: the hard cap in rupees (no default)" },
+    out: { kind: "string", value: "<dir>", about: "where the report is written" },
+  },
+  examples: ["npm run bakeoff -- --parts", "npm run bakeoff -- --parts --estimate", "npm run bakeoff -- --parts --replay --only router --cassette parts-router-2", "npm run bakeoff -- --parts --spend --only router --budget-inr 5 --cassette parts-router-3"],
+};
+
 export async function runPartsCli(argv: string[]): Promise<number> {
-  const arg = (n: string): string | undefined => { const i = argv.indexOf(`--${n}`); return i >= 0 ? argv[i + 1] : undefined; };
-  const flag = (n: string): boolean => argv.includes(`--${n}`);
-  if (flag("fetch-pages")) { const r = await fetchCorpus((s) => console.log(s)); console.log(`${r.have} page(s) saved, ${r.fetched.length} fetched now, ${r.failed.length} failed${r.failed.length ? `: ${r.failed.map((f) => `${f.id} (${f.why})`).join(", ")}` : ""}`); return r.failed.length ? 1 : 0; }
-  const only = arg("only")?.split(",").map((s) => s.trim()).filter(Boolean) as PartId[] | undefined;
-  for (const x of only ?? []) if (!(PART_IDS as readonly string[]).includes(x)) throw new Error(`no part called ${x}; there are ${PART_IDS.join(", ")}`);
-  if (flag("estimate")) {
+  const p = parseCli(PARTS_SPEC, argv);
+  if (p.has("fetch-pages")) { const r = await fetchCorpus((s) => console.log(s)); console.log(`${r.have} page(s) saved, ${r.fetched.length} fetched now, ${r.failed.length} failed${r.failed.length ? `: ${r.failed.map((f) => `${f.id} (${f.why})`).join(", ")}` : ""}`); return r.failed.length ? 1 : 0; }
+  const only = p.has("only") ? (p.list("only") as PartId[]) : undefined;
+  for (const x of only ?? []) if (!(PART_IDS as readonly string[]).includes(x)) throw new CliExit(2, `no part called ${x}; there are ${PART_IDS.join(", ")}`);
+  if (p.has("estimate")) {
     // What each part that needs cents would cost, and the contestants grid, from the live prices; nothing is run, not even the free parts.
     const fx = Number(process.env.CODE_USD_INR) || 88;
     const catalog = await loadCatalog();
-    const ctx: PartCtx = { mode: "sim", fx, catalog, capInr: 0, cassetteName: arg("cassette") ?? "parts", cassetteMode: null, outDir: "", log: () => undefined };
+    const ctx: PartCtx = { mode: "sim", fx, catalog, capInr: 0, cassetteName: p.str("cassette") ?? "parts", cassetteMode: null, outDir: "", log: () => undefined };
     console.log(`prices: OpenRouter's catalog (${catalog.source}), ₹${fx} to the dollar${catalog.source === "none" ? "; THE CATALOG COULD NOT BE READ, so these use assumed prices" : ""}`);
-    for (const c of wiredCentParts(ctx).filter((p) => !only || only.includes(p.id))) console.log(`  ${c.title}: about ₹${c.estimateInr.toFixed(2)}\n    ${c.estimateBasis}\n    ${c.command}`);
+    for (const c of wiredCentParts(ctx).filter((x) => !only || only.includes(x.id))) console.log(`  ${c.title}: about ₹${c.estimateInr.toFixed(2)}\n    ${c.estimateBasis}\n    ${c.command}`);
     const pools = loadPools();
     const gridModels = [pools.tiers.tiny[0]!, pools.tiers.code[0]!, pools.tiers.strong[0]!];
     const agents = ["tailzu", "aider", "opencode", "codex", "mini-swe-agent", "openhands"];
@@ -159,12 +184,14 @@ export async function runPartsCli(argv: string[]): Promise<number> {
     console.log(`  contestants grid with the key: about ₹${g.totalInr.toFixed(0)} (range ₹${g.lowInr.toFixed(0)} to ₹${g.highInr.toFixed(0)}), ${g.runs} runs`);
     return 0;
   }
-  const spend = flag("spend");
-  const capInr = Number(arg("budget-inr") ?? 0);
-  if (spend && !(capInr > 0)) throw new Error("--spend needs --budget-inr X, a hard cap in rupees");
+  const spend = p.has("spend");
+  const cassetteMode: CassetteMode | null = p.has("record") ? "record" : p.has("replay") ? "replay" : p.has("mixed") ? "mixed" : null;
+  if (cassetteMode && !spend && cassetteMode !== "replay") throw new CliExit(2, `--${cassetteMode} is for --spend (it records what a paid run says); to run from a recording use --replay`);
+  // Spending names its cap; a replay spends nothing and needs none.
+  const capInr = requireBudget(p, spend && cassetteMode !== "replay", "--spend");
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-");
-  const outDir = path.resolve(arg("out") ?? path.join(OUT_DIR, "parts", stamp));
-  const f = await runParts({ ...(only ? { only } : {}), prove: flag("prove"), spend, capInr, cassetteName: arg("cassette") ?? "parts", outDir, log: (s) => console.log(s) });
+  const outDir = path.resolve(p.str("out") ?? path.join(OUT_DIR, "parts", stamp));
+  const f = await runParts({ ...(only ? { only } : {}), prove: p.has("prove"), spend, capInr, cassetteName: p.str("cassette") ?? "parts", cassetteMode, outDir, log: (s) => console.log(s) });
   console.log(`\nparts report: ${path.join(outDir, "report.html")}`);
   for (const c of f.cents) console.log(`  ${c.title}: ${c.status}; ${c.status === "wired" ? "waits for the key" : c.headline.slice(0, 120)}; the real run is estimated at ₹${c.estimateInr.toFixed(2)}`);
   console.log(`  contestants grid with the key: ₹${f.contestants.estimate.totalInr.toFixed(0)} (range ₹${f.contestants.estimate.lowInr.toFixed(0)} to ₹${f.contestants.estimate.highInr.toFixed(0)}), ${f.contestants.estimate.runs} runs`);

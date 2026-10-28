@@ -20,6 +20,7 @@
  * `stream_options.include_usage` asks for it. A leading `openrouter/` on the model name is dropped (Aider, opencode and Codex CLI add it).
  * When the cap is reached the answer is a 402 with `error.code: "budget_exceeded"`; a miss in replay is a 400 with `error.code: "cassette_miss"`.
  */
+import { CliExit, parseCli, runCli, type CliSpec } from "./cli.js";
 import "./env.js";
 import http from "node:http";
 import type { ChatClient } from "../src/code/brain/gateway.js";
@@ -214,17 +215,30 @@ export async function startProxy(o: ProxyOptions): Promise<Proxy> {
 
 // ------------------------------------------------------------------- command line
 
+export const PROXY_SPEC: CliSpec = {
+  name: "npm run e2e:proxy --",
+  about: "the local recording proxy an external agent is pointed at: OpenAI-shaped, every call recorded once or replayed, under a hard cap",
+  positionals: false,
+  flags: {
+    mode: { kind: "string", value: "record|replay|mixed", about: "what it does with a call (default replay; env E2E_PROXY_MODE)" },
+    "budget-inr": { kind: "number", value: "N", about: "REQUIRED to record or mix: the hard cap in rupees (no default; env E2E_BUDGET_INR)" },
+    port: { kind: "number", about: "the port (default 8787; env E2E_PROXY_PORT)" },
+    cassette: { kind: "string", value: "<name>", about: "the cassette (default smoke; env E2E_CASSETTE)" },
+    loose: { kind: "bool", about: "replay: also match a call by its run, purpose and ordinal (env E2E_PROXY_LOOSE=1)" },
+  },
+};
+
 async function main(): Promise<void> {
-  const a = process.argv.slice(2);
-  const arg = (n: string, env: string, d: string): string => { const i = a.indexOf(`--${n}`); return i >= 0 ? a[i + 1]! : process.env[env] ?? d; };
-  const mode = arg("mode", "E2E_PROXY_MODE", "replay") as CassetteMode;
-  if (!["record", "replay", "mixed"].includes(mode)) throw new Error("--mode is record, replay or mixed");
+  const pp = parseCli(PROXY_SPEC, process.argv.slice(2));
+  const mode = (pp.str("mode") ?? process.env.E2E_PROXY_MODE ?? "replay") as CassetteMode;
+  if (!["record", "replay", "mixed"].includes(mode)) throw new CliExit(2, "--mode is record, replay or mixed");
   const fx = Number(process.env.CODE_USD_INR) || 88;
-  const capInr = Number(arg("budget-inr", "E2E_BUDGET_INR", "0"));
-  if (mode !== "replay" && !(capInr > 0)) throw new Error("recording needs a hard cap: --budget-inr X (or E2E_BUDGET_INR)");
+  // The cap is named on the command line or in E2E_BUDGET_INR; there is no default, and recording without one is refused.
+  const capInr = pp.num("budget-inr") ?? Number(process.env.E2E_BUDGET_INR ?? 0);
+  if (mode !== "replay" && !(capInr > 0)) throw new CliExit(2, "recording needs a hard cap: --budget-inr X (or E2E_BUDGET_INR)");
   const p = await startProxy({
-    port: Number(arg("port", "E2E_PROXY_PORT", "8787")), mode, cassette: arg("cassette", "E2E_CASSETTE", "smoke"), capUsd: capInr / fx,
-    loose: arg("loose", "E2E_PROXY_LOOSE", "0") === "1" || a.includes("--loose"), log: (s) => console.log(s),
+    port: pp.num("port") ?? Number(process.env.E2E_PROXY_PORT ?? 8787), mode, cassette: pp.str("cassette") ?? process.env.E2E_CASSETTE ?? "smoke", capUsd: capInr / fx,
+    loose: pp.has("loose") || process.env.E2E_PROXY_LOOSE === "1", log: (s) => console.log(s),
   });
   console.log(`proxy ${mode} on ${p.url}  cassette ${p.store.file} (${p.store.count} entries)${capInr ? `  cap ₹${capInr}` : ""}`);
   console.log(`point an agent at it: OPENAI_BASE_URL=${p.url} OPENAI_API_KEY=any    (per-run counting: ${p.url.replace(/\/v1$/, "")}/run/<id>/v1)`);
@@ -233,4 +247,7 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => void stop());
 }
 
-if (process.argv[1] && /e2e\/proxy\.[tj]s$/.test(process.argv[1])) main().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
+if (process.argv[1] && /e2e\/proxy\.[tj]s$/.test(process.argv[1])) {
+  // The proxy keeps running until it is stopped: only a mistake in the command ends this early.
+  runCli(async () => { await main(); return -1; }).then((c) => { if (c >= 0) process.exit(c); }, (err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
+}

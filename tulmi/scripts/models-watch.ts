@@ -9,6 +9,7 @@
  * It reads OpenRouter's public model list (no key needed), keeps a copy in e2e/cache/models.json, and writes what it has seen to e2e/cache/models-seen.json.
  * Offline it says so and uses the copy. It calls no model and spends nothing.
  */
+import { parseCli, runCli, type CliSpec } from "../e2e/cli.js";
 import path from "node:path";
 import { loadCatalog } from "../e2e/catalog.js";
 import { loadPools } from "../e2e/bakeoff/pools.js";
@@ -40,8 +41,16 @@ export function newModels(
   return out.sort();
 }
 
+export const WATCH_SPEC: CliSpec = {
+  name: "npm run models-watch --",
+  about: "list the models of the watched vendors that are new since the last look (or in no pool), so a pool can be extended",
+  positionals: false,
+  flags: { all: { kind: "bool", about: "every watched-family model that is in no pool, not only the new" }, "no-save": { kind: "bool", about: "do not remember this look" } },
+};
+
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+  const parsed = parseCli(WATCH_SPEC, process.argv.slice(2));
+  const args = parsed.given.has("all") ? ["--all", ...(parsed.has("no-save") ? ["--no-save"] : [])] : parsed.has("no-save") ? ["--no-save"] : [];
   const catalog = await loadCatalog({ maxAgeMs: 0 });
   if (catalog.source === "none") { console.error("OpenRouter's model list could not be read and there is no saved copy."); process.exitCode = 1; return; }
   if (catalog.source === "cache") console.log(`(offline: using the copy saved ${new Date(catalog.fetchedAt).toISOString().slice(0, 16)})`);
@@ -59,5 +68,5 @@ async function main(): Promise<void> {
 }
 
 if (process.argv[1] && /models-watch\.[tj]s$/.test(process.argv[1])) {
-  main().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
+  runCli(async () => { await main(); return Number(process.exitCode ?? 0); }).then((c) => process.exit(c), (err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
 }
