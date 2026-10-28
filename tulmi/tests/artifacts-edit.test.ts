@@ -201,9 +201,9 @@ describe("a model that fails", () => {
     expect((await r2.service.own("u1", r2.id)).headVersion).toBe(1);
   });
 
-  it("climbs from an answer that was cut off, and from one that is unchanged, or more than one element, or holds a secret", async () => {
+  it("climbs from an answer that is unchanged, or more than one element, or holds a secret", async () => {
     for (const bad of [
-      { text: "<h2>cut off", truncated: true }, "<h2 style={{ margin: \"0 0 8px\", fontSize: 16 }}>Sales this week</h2>", "<b>one</b><b>two</b>", `<h2>${FAKE_STRIPE}</h2>`,
+      "<h2 style={{ margin: \"0 0 8px\", fontSize: 16 }}>Sales this week</h2>", "<b>one</b><b>two</b>", `<h2>${FAKE_STRIPE}</h2>`,
     ]) {
       const { service, model, id } = await dash((s, n) => (n === 0 ? (bad as never) : elementOf(s).replace("Sales this week", "Weekly sales")));
       const c = await service.editElement("u1", id, H(), "Rename the heading");
@@ -211,6 +211,93 @@ describe("a model that fails", () => {
       expect(c.version).toBe(2);
       expect(model.sent[1]!.user).not.toContain(FAKE_STRIPE);
     }
+  });
+
+  describe("an answer that ran out of room (smoke: 'the answer was cut off before it ended')", () => {
+    const FULL = H2.replace("Sales this week", "Weekly sales");
+    const CUT = FULL.slice(0, 40);
+    const REST = FULL.slice(40);
+    const made = async (answer: (s: Sent, n: number) => string | { text: string; truncated?: boolean }, o: Parameters<typeof rig>[1] = {}) => {
+      const r = rig(answer as never, { paise: 3, ...o });
+      const m = await r.service.create("u1", { type: "react", title: "Dashboard", content: SAMPLE_DASHBOARD, projectId: PROJECT });
+      return { ...r, id: m.artifact.id };
+    };
+
+    it("is finished by ONE continuation on the same tier: the model is given what it wrote and goes on, and the two halves are one answer", async () => {
+      const r = await made((_s, n) => (n === 0 ? { text: CUT, truncated: true } : REST));
+      const c = await r.service.editElement("u1", r.id, H(), "Rename the heading to Weekly sales");
+      expect(r.model.sent.map((s) => [s.tier, s.purpose])).toEqual([["cheap", "artifact.element"], ["cheap", "artifact.element.continue"]]);
+      const second = r.model.sent[1]!;
+      expect(second.messages.at(-2)).toEqual({ role: "assistant", content: CUT });
+      expect(second.user).toMatch(/Continue it from exactly the character where it stopped/);
+      expect(c.version).toBe(2);
+      expect((await r.service.get("u1", r.id)).content).toContain(FULL);
+      // Both calls were paid for, by the edit and by the person's day.
+      expect(c.paise).toBe(6);
+      expect(c.how.tier).toBe("cheap");
+    });
+
+    it("goes to the next tier like any answer that does not pass when the continuation is cut off too, and when it cannot be paid for", async () => {
+      const twice = await made((_s, n) => (n < 2 ? { text: CUT, truncated: true } : FULL));
+      await twice.service.editElement("u1", twice.id, H(), "Rename the heading to Weekly sales");
+      expect(twice.model.sent.map((s) => s.tier)).toEqual(["cheap", "cheap", "code"]);
+      // A day with room for one call and not two: the answer stays cut off, and the climb is the old behaviour.
+      const poor = await made((_s, n) => (n === 0 ? { text: CUT, truncated: true } : FULL), { dailyPaise: 4 });
+      await expect(poor.service.editElement("u1", poor.id, H(), "Rename the heading to Weekly sales")).rejects.toMatchObject({ code: "limit_reached" });
+      expect(poor.model.sent).toHaveLength(1);
+    });
+
+    it("a cut-off answer with nothing in it is not continued", async () => {
+      const r = await made((_s, n) => (n === 0 ? { text: "", truncated: true } : FULL));
+      await r.service.editElement("u1", r.id, H(), "Rename the heading to Weekly sales");
+      expect(r.model.sent.map((s) => s.tier)).toEqual(["cheap", "code"]);
+    });
+
+    it("a climb is never given less room than the first try had, even where the stronger tier's own limit is smaller (a run that holds every tier short)", async () => {
+      const r = await made((_s, n) => (n === 0 ? "no" : FULL));
+      await r.service.editElement("u1", r.id, H(), "Rename the heading to Weekly sales");
+      expect(r.model.sent[1]!.maxTokens).toBeGreaterThanOrEqual(r.model.sent[0]!.maxTokens);
+    });
+  });
+
+  describe("sized from the artifact", () => {
+    const worstOf = (s: Sent, tier: "cheap" | "code" | "strong") => worstCasePaise({ chars: s.chars, maxTokens: s.maxTokens, usdPerMIn: DEFAULT_TIERS[tier].usdPerMIn, usdPerMOut: DEFAULT_TIERS[tier].usdPerMOut }, 88);
+
+    it("affordableTokens is the most a cap pays for, exactly: one more token and the gateway would refuse", async () => {
+      const { affordableTokens } = await import("../src/artifacts/model.js");
+      for (const [tier, cap, chars] of [["cheap", 150, 12_000], ["code", 500, 80_000], ["strong", 2500, 40_000], ["cheap", 40, 500]] as const) {
+        const n = affordableTokens(DEFAULT_TIERS[tier], cap, chars, 88);
+        const at = (t: number) => worstCasePaise({ chars, maxTokens: t, usdPerMIn: DEFAULT_TIERS[tier].usdPerMIn, usdPerMOut: DEFAULT_TIERS[tier].usdPerMOut }, 88);
+        expect(at(n), `${tier} ${cap}`).toBeLessThanOrEqual(cap);
+        expect(at(n + 1), `${tier} ${cap}`).toBeGreaterThan(cap);
+      }
+      expect(affordableTokens(DEFAULT_TIERS.cheap, 1, 400_000, 88)).toBe(0);
+    });
+
+    it("an instruction on a bigger artifact is given room to rewrite it, as far as the cap allows, and no further", async () => {
+      const content = `alpha ${"w".repeat(9_000)}`;
+      const r = rig(() => "<edit><old>alpha</old><new>ALPHA</new></edit>");
+      const m = await r.service.create("u1", { type: "markdown", title: "M", content, projectId: PROJECT });
+      await r.service.editWhole("u1", m.artifact.id, "Shout the first word");
+      const sent = r.model.sent[0]!;
+      expect(sent.tier).toBe("cheap");
+      expect(sent.maxTokens).toBeGreaterThan(2000);
+      expect(worstOf(sent, "cheap")).toBeLessThanOrEqual(sent.capPaise!);
+      // A small artifact keeps the room it always had.
+      const r2 = rig(() => "<edit><old>alpha</old><new>ALPHA</new></edit>");
+      const m2 = await r2.service.create("u1", { type: "markdown", title: "M", content: "alpha beta", projectId: PROJECT });
+      await r2.service.editWhole("u1", m2.artifact.id, "Shout the first word");
+      expect(r2.model.sent[0]!.maxTokens).toBeLessThanOrEqual(2000 + 1200);
+      expect(r2.model.sent[0]!.maxTokens).toBeGreaterThanOrEqual(2000);
+    });
+
+    it("making a page asks for room for a page, within the cap; a diagram keeps the floor", async () => {
+      const r = rig((s) => (s.purpose === "artifact.generate" ? "<!doctype html><html><body><h1>Hi</h1></body></html>" : ""));
+      await r.service.generate("u1", { request: "A pricing page with three plans", type: "html" });
+      const page = r.model.sent.find((s) => s.purpose === "artifact.generate")!;
+      expect(page.maxTokens).toBe(8000);
+      expect(worstOf(page, page.tier as never)).toBeLessThanOrEqual(page.capPaise!);
+    });
   });
 
   it("holds a call to its cap and a person to their day", async () => {

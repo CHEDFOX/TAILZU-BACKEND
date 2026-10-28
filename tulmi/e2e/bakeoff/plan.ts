@@ -22,7 +22,13 @@ export interface TierPlan {
   inr: { probes: number; edit: number; evals: number; tasks: number; total: number; early: number };
 }
 
-export interface Plan { tiers: TierPlan[]; excluded: Filtered["excluded"]; totalInr: number; earlyInr: number; fx: number; note: string }
+export interface Plan {
+  tiers: TierPlan[]; excluded: Filtered["excluded"]; totalInr: number; earlyInr: number; fx: number; note: string;
+  /** Whether the edit-format probe (`--edit-format`) is in the totals. */
+  editFormat: boolean;
+  /** What `--edit-format` adds, in rupees, over every candidate of the code and strong tiers: in the totals when asked for, the extra cost when not. */
+  editInr: number;
+}
 
 const usd = (tin: number, tout: number, p: { inUsdPerM: number; outUsdPerM: number }): number => (tin * p.inUsdPerM + tout * p.outUsdPerM) / 1e6;
 
@@ -54,7 +60,9 @@ export function planBakeoff(f: Filtered, o: PlanOptions): Plan {
   // A model that is a candidate for several tiers is probed once per tier here (an upper bound: a real run shares a model's probes).
   const totalInr = tiers.reduce((n, t) => n + t.inr.total, 0);
   const earlyInr = tiers.reduce((n, t) => n + t.inr.early, 0);
-  return { tiers, excluded: f.excluded, totalInr, earlyInr, fx: o.fx, note: "estimates at OpenRouter's catalog prices; a model in several tiers is counted once per tier (an upper bound); each real task is counted at the size of a bug fix on a real project (about 170k tokens in, 11k out)" };
+  // What the edit-format probe costs, whether or not it was asked for: a dry run without --edit-format said ₹5.77 and the run with it spent ₹8.94.
+  const editInr = o.editFormat ? tiers.reduce((n, t) => n + t.inr.edit, 0) : tiers.reduce((n, t) => n + (t.tier === "code" || t.tier === "strong" ? t.candidates.reduce((m, c) => m + EDIT_CASES.length * EDIT_FORMATS.length * usd(700, 200, c) * o.fx, 0) : 0), 0);
+  return { tiers, excluded: f.excluded, totalInr, earlyInr, fx: o.fx, editFormat: o.editFormat, editInr, note: "estimates at OpenRouter's catalog prices; a model in several tiers is counted once per tier (an upper bound); each real task is counted at the size of a bug fix on a real project (about 170k tokens in, 11k out)" };
 }
 
 export function renderPlan(p: Plan): string {
@@ -69,6 +77,9 @@ export function renderPlan(p: Plan): string {
     L.push("", "left out by the capability filter:");
     for (const e of p.excluded) L.push(`    ${e.tier}: ${e.slug} (${e.reason})`);
   }
-  L.push("", `TOTAL: ₹${p.totalInr.toFixed(2)} if every candidate goes all the way, about ₹${p.earlyInr.toFixed(2)} with the early stop`, p.note);
+  L.push("", `TOTAL: ₹${p.totalInr.toFixed(2)} if every candidate goes all the way, about ₹${p.earlyInr.toFixed(2)} with the early stop`);
+  if (p.editFormat) L.push(`(includes ₹${p.editInr.toFixed(2)} for the edit-format probe, --edit-format)`);
+  else if (p.editInr > 0) L.push(`NOT INCLUDED: the edit-format probe (--edit-format) would add up to ₹${p.editInr.toFixed(2)} for the code and strong candidates, ₹${(p.totalInr + p.editInr).toFixed(2)} in all`);
+  L.push(p.note);
   return L.join("\n");
 }

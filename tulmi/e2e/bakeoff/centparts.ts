@@ -28,6 +28,8 @@ import { frontItem, taskItem, type SmokeCtx } from "../smoke/items.js";
 import { REAL_SHAPE, SHAPE } from "../smoke/estimate.js";
 import { loadTasks, selectTasks, type Task } from "../tasks/schema.js";
 import { Engine, pinnedTiers } from "./engine.js";
+import { cappedTierOverrides } from "../smoke/tiers.js";
+import { resetTierTableForTests } from "../../src/code/brain/tiers.js";
 import { EDIT_CASES, EDIT_FORMATS, scoreEditFormats, type EditFormat, type EditFormatScore } from "./editformat.js";
 import { loadPools } from "./pools.js";
 
@@ -212,6 +214,9 @@ export function routerFree(): { n: number; typeRight: number; difficultyRight: n
   return { n: labelled.length, typeRight: typeRight / (labelled.length || 1), difficultyRight: withDifficulty ? difficultyRight / withDifficulty : 0, confident: confident / (labelled.length || 1), tiers };
 }
 
+/** The most a call may write in the router part, held in the tiers themselves. */
+const ROUTER_MAX_TOKENS = 800;
+
 export function routerEstimate(ctx: PartCtx, mid: string, smokeTasks: number): { inr: number; basis: string } {
   const per = (slug: string) => inrFor(ctx.catalog, ctx.fx, slug, SHAPE.task.inTokens, SHAPE.task.outTokens) * smokeTasks + inrFor(ctx.catalog, ctx.fx, slug, SHAPE.front.inTokens * 4, SHAPE.front.outTokens * 4);
   return { inr: per(mid) * 2, basis: `2 arms (routed, fixed mid ${mid}) x (${smokeTasks} smoke task(s) at the smoke task size + the 12 labelled front-door messages)` };
@@ -226,21 +231,32 @@ export async function runRouter(ctx: PartCtx, o: { mid?: string } = {}): Promise
   const cassette = cassetteFor(ctx, guard);
   const arms: Array<{ id: string; tiers: SmokeCtx["tiers"] | undefined }> = [{ id: "routed", tiers: undefined }, { id: `fixed-mid`, tiers: pinnedTiers(mid, ctx.catalog.models.get(mid)) }];
   const rows: Array<{ arm: string; front: string; frontOk: boolean; pass: number; n: number; costPaise: number }> = [];
-  for (const arm of arms) {
-    const sctx: SmokeCtx = {
-      mode: ctx.mode === "sim" ? "oracle" : "real", maxTurns: 12, maxTokens: 800, taskBudgetPaise: ctx.mode === "sim" ? 3000 : 250, outDir: path.join(ctx.outDir, "router", arm.id), log: () => undefined,
-      ...(arm.tiers ? { tiers: arm.tiers } : {}), ...(cassette ? { cassette: { ...cassette } } : {}),
-    };
-    const front = await frontItem(sctx, 1);
-    let pass = 0, cost = front.costPaise;
-    for (const [i, t] of tasks.entries()) {
-      if (guard?.exhausted) break;
-      const r = await taskItem(ctx.mode === "sim" ? { ...t, budgetPaise: 3000 } : t, sctx, 2 + i, i);
-      if (r.ok) pass += 1;
-      cost += r.costPaise;
+  // The 800-token cap is part of the product's tiers for this run (see cappedTierOverrides), so the router and the gateway reserve against the same answer length.
+  const realRun = ctx.mode === "real";
+  const savedTiers = process.env.CODE_MODEL_TIERS;
+  if (realRun) { process.env.CODE_MODEL_TIERS = JSON.stringify(cappedTierOverrides(ROUTER_MAX_TOKENS)); resetConfigForTests(); resetTierTableForTests(); }
+  try {
+    for (const arm of arms) {
+      const sctx: SmokeCtx = {
+        mode: ctx.mode === "sim" ? "oracle" : "real", maxTurns: 12, maxTokens: ROUTER_MAX_TOKENS, taskBudgetPaise: ctx.mode === "sim" ? 3000 : 250, outDir: path.join(ctx.outDir, "router", arm.id), log: () => undefined,
+        ...(arm.tiers ? { tiers: arm.tiers } : {}), ...(cassette ? { cassette: { ...cassette } } : {}),
+      };
+      const front = await frontItem(sctx, 1);
+      let pass = 0, cost = front.costPaise;
+      for (const [i, t] of tasks.entries()) {
+        if (guard?.exhausted) break;
+        const r = await taskItem(ctx.mode === "sim" ? { ...t, budgetPaise: 3000 } : t, sctx, 2 + i, i);
+        if (r.ok) pass += 1;
+        cost += r.costPaise;
+      }
+      rows.push({ arm: arm.id, front: front.detail, frontOk: front.ok, pass, n: tasks.length, costPaise: cost });
+      ctx.log(`  router arm ${arm.id}: front door ${front.detail}, tasks ${pass}/${tasks.length}, ₹${(cost / 100).toFixed(2)}`);
     }
-    rows.push({ arm: arm.id, front: front.detail, frontOk: front.ok, pass, n: tasks.length, costPaise: cost });
-    ctx.log(`  router arm ${arm.id}: front door ${front.detail}, tasks ${pass}/${tasks.length}, ₹${(cost / 100).toFixed(2)}`);
+  } finally {
+    if (realRun) {
+      if (savedTiers === undefined) delete process.env.CODE_MODEL_TIERS; else process.env.CODE_MODEL_TIERS = savedTiers;
+      resetConfigForTests(); resetTierTableForTests();
+    }
   }
   const [a, b] = rows;
   const winner = a && b ? (() => { const [w, l] = a.pass !== b.pass ? (a.pass > b.pass ? [a, b] : [b, a]) : (a.costPaise <= b.costPaise ? [a, b] : [b, a]); return { id: w.arm, by: "smoke-task passes, then cost", margin: `${w.pass - l.pass} more pass(es) and ₹${((l.costPaise - w.costPaise) / 100).toFixed(2)} less than ${l.arm}` }; })() : undefined;

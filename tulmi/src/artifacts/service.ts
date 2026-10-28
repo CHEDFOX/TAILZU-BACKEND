@@ -417,7 +417,10 @@ export class ArtifactService implements Docs {
       userId, tier, purpose: "artifact.generate", role: "artifact_make", kit: o.kit ?? "", ...(o.image ? { image: o.image } : {}),
       artifact: `<artifact type="${type}">\n${forType}\n</artifact>${o.context ? `\n<surroundings>\n${o.context}\n</surroundings>` : ""}`,
       instruction: `Make it: ${forModel(request)}`,
-      maxTokens: tier === "strong" ? 12000 : 6000, capPaise: tier === "strong" ? CAP_PAISE.strong : CAP_PAISE.code, ...(o.signal ? { signal: o.signal } : {}),
+      maxTokens: tier === "strong" ? 12000 : 6000,
+      // Sized from what is being made: a page or a component is long, a diagram or a drawing is not. The floor above is what it always had.
+      wantTokens: (tier === "strong" ? 2 : 1) * MAKE_TOKENS[type],
+      capPaise: tier === "strong" ? CAP_PAISE.strong : CAP_PAISE.code, ...(o.signal ? { signal: o.signal } : {}),
       accept: (text) => {
         const content = unfence(text);
         const checked = validateArtifact({ type, content });
@@ -438,6 +441,9 @@ export class ArtifactService implements Docs {
 }
 
 // ------------------------------------------------------------------ prompts and small things
+
+/** About how much of an answer making one of each kind needs, in tokens: what `generate` asks for when its cap allows more than the floor. */
+const MAKE_TOKENS: Record<ArtifactType, number> = { html: 8000, react: 8000, svg: 4000, mermaid: 2000, markdown: 4000 };
 
 const FORMAT_RULES: Record<ArtifactType, string> = {
   html: "An HTML page: one self-contained document (inline <style> and <script>).",

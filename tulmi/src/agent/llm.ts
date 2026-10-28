@@ -18,10 +18,13 @@
  * Reasoning is as low as each model allows, in OpenRouter's own form,
  * whatever LLM_REASONING_EFFORT says for the writer: a step is one line of
  * protocol, and a model that thinks first spends seconds the user watches go
- * by. Off where it can be turned off; "low" for the models whose thinking
- * cannot be, which refuse "none" with a 400 before writing a word, so every
- * picture question on one of them used to fail and fall back
- * (reasoningFor). For anthropic/* the system prompt is marked for caching,
+ * by. Off where it can be turned off; the lowest effort it allows for the
+ * models whose thinking cannot be, which refuse "none" with a 400 before
+ * writing a word, so every picture question on one of them used to fail and
+ * fall back (reasoningFor, reasoning.ts). A model that is not known to be one
+ * and answers that exact 400 is asked again at once with its lowest effort,
+ * and remembered, so it costs one failed call in the life of the process and
+ * not one per step. For anthropic/* the system prompt is marked for caching,
  * because there it is opt-in; the other providers cache a repeated prefix on
  * their own.
  *
@@ -49,6 +52,7 @@
  */
 import { getConfig } from "../config.js";
 import { openrouter } from "../pipeline/openrouter.js";
+import { isReasoningRequiredError, learnReasoningRequired, lowestEffort, reasoningRequired, type Effort } from "./reasoning.js";
 
 export const AGENT_MAX_TOKENS = 300;
 /** About 90 words of answer, a line each, with room for its points. */
@@ -130,7 +134,7 @@ export interface PlanOptions {
 /** Thrown when every model in the ladder failed before writing anything. */
 export class PlannerUnavailable extends Error {
   constructor(readonly causeError: unknown) {
-    super("every agent model failed");
+    super("every agent model failed", causeError !== undefined ? { cause: causeError } : undefined);
   }
 }
 
@@ -167,14 +171,15 @@ const isGemini3Up = (model: string) => geminiMajor(model) >= 3;
  *
  * "none" is cleanup.common()'s way of saying off, and for Anthropic it comes
  * with OpenRouter's explicit off switch too, since its models think by
- * default. Gemini 3 and later, and 2.5 Pro, cannot turn their thinking off:
- * their lowest level is "low", and OpenRouter refuses "none" for a model
- * whose reasoning is mandatory. Sent "none", every one of them failed before
- * writing a word, and the step paid for that call before its fallback.
+ * default. A model whose reasoning is mandatory (reasoning.ts: the catalog
+ * says so, or the short list of those found refusing, or Gemini 3 and later and
+ * 2.5 Pro, or it answered the 400 once) is NEVER sent "none" or `enabled:
+ * false`: OpenRouter refuses both before a word is written, and the step paid
+ * for that call before its fallback. It is sent its lowest allowed effort.
  */
-export function reasoningFor(model: string): { effort: "none" | "low"; enabled?: false } {
+export function reasoningFor(model: string): { effort: "none" | Effort; enabled?: false } {
+  if (reasoningRequired(model)) return { effort: lowestEffort(model) };
   if (isAnthropic(model)) return { effort: "none", enabled: false };
-  if (isGemini3Up(model) || model.startsWith("google/gemini-2.5-pro")) return { effort: "low" };
   return { effort: "none" };
 }
 
@@ -299,10 +304,21 @@ export async function* planStream(system: SystemPrompt, user: UserPrompt, opts: 
     if (picture?.deep) call.deep = true;
     let wrote = false;
     try {
-      const stream = (await openrouter().chat.completions.create(
+      const open = () => openrouter().chat.completions.create(
         plannerRequest(model, system, userFor(model), maxTokens, { providerSort }) as never,
         { signal: ctrl.signal, maxRetries: 0, timeout: timeoutMs },
-      )) as unknown as AsyncIterable<StreamChunk>;
+      );
+      let opened: unknown;
+      try {
+        opened = await open();
+      } catch (err) {
+        // "Reasoning is mandatory" from a model that was not known to need it: remembered, and asked once more at once at its lowest effort (the request reads
+        // what was learned), instead of the ladder moving on. A model that was already sent a level and still gets it is not retried.
+        if (!isReasoningRequiredError(err) || reasoningRequired(model)) throw err;
+        learnReasoningRequired(model);
+        opened = await open();
+      }
+      const stream = opened as AsyncIterable<StreamChunk>;
       for await (const chunk of stream) {
         if (typeof chunk.provider === "string" && chunk.provider) call.provider ??= chunk.provider;
         if (typeof chunk.model === "string" && chunk.model && chunk.model !== model) call.served ??= chunk.model;

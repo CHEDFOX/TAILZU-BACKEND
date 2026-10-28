@@ -183,6 +183,21 @@ describe("which model writes the plan", () => {
     await expect(planChange("tidy util", sure, brain, { model: model(call), classification: cls() })).rejects.toMatchObject({ code: "budget" });
   });
 
+  it("reserves for the plan what the plan call will ask to write, not the tier's whole limit: a budget that fits the 3,000 tokens is not refused (smoke: 'used up' with 1% spent)", async () => {
+    const brain = await acme();
+    call.on("work.plan", steps);
+    const { tierTable } = await import("../src/code/brain/tiers.js");
+    const { worstCasePaise } = await import("../src/code/brain/money.js");
+    const t = tierTable().code;
+    const fits = worstCasePaise({ chars: 12_000, maxTokens: 3_000, usdPerMIn: t.usdPerMIn, usdPerMOut: t.usdPerMOut }, 88);
+    const wholeTier = worstCasePaise({ chars: 12_000, maxTokens: t.maxTokens, usdPerMIn: t.usdPerMIn, usdPerMOut: t.usdPerMOut }, 88);
+    expect(wholeTier).toBeGreaterThan(fits);
+    const p = await planChange("tidy util", sure, brain, { model: model(call), classification: cls(), remainingPaise: fits });
+    expect(p.steps.length).toBeGreaterThan(0);
+    // One paise short of that is a refusal that says how much it needed.
+    await expect(planChange("tidy util", sure, brain, { model: model(call), classification: cls(), remainingPaise: fits - 1 })).rejects.toMatchObject({ code: "budget", needPaise: fits });
+  });
+
   it("a model that is down is a PlanError, not a silent empty plan", async () => {
     const brain = await acme();
     call.down = true;

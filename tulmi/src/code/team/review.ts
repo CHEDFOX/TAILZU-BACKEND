@@ -89,7 +89,7 @@ export async function reviewDiff(model: ModelCtx, i: ReviewInput, round: number,
   if (!diff.files) return skipped("The part's diff is empty, so there is nothing to review.");
 
   const cls: Classification = i.classification ?? { type: "feature", difficulty: "medium", risk: "medium", needs: { web: false, exec: false, vision: false, indic: false }, language: "en", confidence: 0.8, signals: [] };
-  const route = routeStep("review", cls, { ...(writer ? { writerModel: writer } : {}) }, i.remainingPaise !== undefined ? { budget: { remainingPaise: i.remainingPaise, inputChars: diff.text.length + 3000 } } : {});
+  const route = routeStep("review", cls, { ...(writer ? { writerModel: writer } : {}) }, i.remainingPaise !== undefined ? { budget: { remainingPaise: i.remainingPaise, inputChars: diff.text.length + 3000, maxTokens: REVIEW_TOKENS } } : {});
   if (route.stop === "no_reviewer") return skipped("No model of a different family from the helper's could be had, so this part was not reviewed.");
   if (route.stop === "budget") return skipped("The lead's budget is too short for a review, so this part was not reviewed.");
 

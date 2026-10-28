@@ -209,9 +209,11 @@ export async function runTask(task: Task, o: RunOptions): Promise<RunOutcome> {
   const jobIdOf = () => jobId;
   rig.kit.beforeTurn = async (turn) => {
     if (o.maxTurns && turn > o.maxTurns && jobIdOf()) {
-      notes.push(`the run was stopped at the ${o.maxTurns}-turn cap`);
+      // The cap is the harness's, not the product's (which has its own, and finishes with what is staged): a job stopped here has edits that were never committed.
+      const staged = (await rig.stateNow(jobIdOf()!).catch(() => null))?.work.staged.length ?? 0;
+      notes.push(`the run was stopped at the ${o.maxTurns}-turn cap${staged ? `, with ${staged} file(s) staged and not committed` : ""}`);
       await rig.orch.stopJob(USER, jobIdOf()!).catch(() => undefined);
-      throw new Error(`the ${o.maxTurns}-turn cap of this run was reached`);
+      throw new Error(`the ${o.maxTurns}-turn cap of this run was reached${staged ? ` (${staged} staged file(s) were not committed)` : ""}`);
     }
     if (sc.crash && turn === sc.crash.afterTurn + 1 && !crashed) {
       crashed = true;

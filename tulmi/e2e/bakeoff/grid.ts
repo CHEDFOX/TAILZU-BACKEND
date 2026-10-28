@@ -23,6 +23,7 @@ import { runOne } from "../runOne.js";
 import { loadTasks, selectTasks, type Task } from "../tasks/schema.js";
 import { OUT_DIR, mkdirp, writeJson } from "../util.js";
 import { esc, page } from "../report/svg.js";
+import { estimateGrid } from "./contestants.js";
 import { pinnedTiers } from "./engine.js";
 import { quality, unit } from "./sim.js";
 
@@ -161,6 +162,16 @@ export async function runGridCli(argvIn: string[]): Promise<number> {
   const agents = (arg("agents") ?? "tailzu").split(",").map((s) => s.trim()).filter(Boolean);
   if (!models.length) throw new Error("--grid needs --models a,b (OpenRouter slugs)");
   for (const a of agents) if (!AGENTS[a]) throw new Error(`no agent called ${a}; there are ${Object.keys(AGENTS).join(", ")}`);
+  if (flag("estimate")) {
+    // What the grid would cost, from the live prices, and stop: no key, no model, no task run.
+    const picked = selectTasks(loadTasks(), arg("tasks") ?? "tag:smoke");
+    if (!picked.length) throw new Error("no task matches --tasks");
+    const catalog = await loadCatalog();
+    const fxRate = Number(process.env.CODE_USD_INR) || 88;
+    const e = estimateGrid({ agents, models, tasks: picked.length, catalog, fx: fxRate });
+    console.log(`estimate: about ₹${e.totalInr.toFixed(0)} (range ₹${e.lowInr.toFixed(0)} to ₹${e.highInr.toFixed(0)}) for ${e.runs} runs. ${e.basis}${e.models.some((m) => !m.known) ? `\nsome prices are assumed (not in the catalog): ${e.models.filter((m) => !m.known).map((m) => m.slug).join(", ")}` : ""}`);
+    return 0;
+  }
   if (mode === "real" && cassetteMode !== "replay" && !realKey) { console.error("OPENROUTER_API_KEY is not set: use --model sim to exercise the grid, or --replay."); return 2; }
   const capInr = Number(arg("budget-inr") ?? (mode === "real" && cassetteMode !== "replay" ? 25 : 0));
   if (mode === "real" && cassetteMode !== "replay" && !(capInr > 0)) throw new Error("a real grid needs --budget-inr X");

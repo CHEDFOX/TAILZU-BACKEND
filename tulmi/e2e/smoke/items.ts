@@ -97,8 +97,15 @@ export async function frontItem(ctx: SmokeCtx, n: number): Promise<ItemResult> {
 
 // ------------------------------------------------------------------ 4. an artifact
 
+/**
+ * A page is made and an element of it changed in about 1,600 tokens written (estimate.ts), more than the smoke suite's 800-token cap for every other item: held to 800
+ * the made page was cut off at its 800th token on both tiers and the item failed on the cap, not on anything the product does. The artifact item is given room for it.
+ */
+export const ARTIFACT_MAX_TOKENS = 4000;
+
 export async function artifactItem(ctx: SmokeCtx, n: number): Promise<ItemResult> {
-  return guarded({ id: "smoke-artifact-create-edit", n, title: "Artifact: make a pricing section, change one element", kind: "artifact" }, ctx, async (kit) => {
+  const room: SmokeCtx = ctx.maxTokens ? { ...ctx, maxTokens: Math.max(ctx.maxTokens, ARTIFACT_MAX_TOKENS) } : ctx;
+  return guarded({ id: "smoke-artifact-create-edit", n, title: "Artifact: make a pricing section, change one element", kind: "artifact" }, room, async (kit) => {
     const svc = new ArtifactService({ store: new MemoryArtifactStore(), call: kit.call, ...(kit.gateway ? { gateway: kit.gateway } : {}) });
     const made = await svc.generate(USER, { request: ARTIFACT_REQUEST, type: "html" });
     const first = (await svc.load(USER, made.artifact.id)).content;
