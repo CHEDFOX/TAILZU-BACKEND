@@ -20,7 +20,7 @@ import { getConfig } from "../config.js";
 import { CATALOG } from "../connectors/catalog.js";
 import { hinglishSeeds } from "../connectors/words.js";
 import { onboardHinglishSeeds } from "./onboard.js";
-import { settingsHinglishSeeds } from "./settingsWords.js";
+import { homeLineSeeds, settingsHinglishSeeds } from "./settingsWords.js";
 import type {
   ActionRef,
   ActionSpec,
@@ -445,6 +445,7 @@ async function translateViaLLM(languageName: string, items: string[]): Promise<s
 
 let hinglishSeedsOnce: Map<string, string> | undefined;
 let onboardSeedsOnce: Map<string, string> | undefined;
+let homeSeedsOnce: Map<string, string> | undefined;
 let settingsSeedsOnce: Map<string, string> | undefined;
 
 /**
@@ -472,6 +473,8 @@ function onboardingLines(resp: AnyResponse, code: string): Map<string, string> |
   if (code !== "hinglish") return undefined;
   const id = (resp as { screenId?: unknown }).screenId;
   if (id === "onboard") return (onboardSeedsOnce ??= onboardHinglishSeeds());
+  // Home's time-aware line (the old app's, settingsWords dayLineAfterGreeting), in its own Hinglish.
+  if (id === "bots.home") return (homeSeedsOnce ??= homeLineSeeds());
   // The settings words are the design's own lines, used as written, on the
   // screens that draw them (and on the bootstrap, for the tab labels).
   if (typeof id === "string" ? SETTINGS_SCREENS.has(id) : "navigation" in (resp as object)) return (settingsSeedsOnce ??= settingsHinglishSeeds());

@@ -13,7 +13,7 @@ import {
   back, blip, body, botAvatar, botLook, botRoute, box, button, C, call, card, chip, chips, col, divider, emptyState, FACE, grid, grow, icon,
   infoChip, labelled, listCard, listRow, meta, meter, mono, needsCard, notice, open, page, primaryButton, quietButton, roundButton, row, rupees, SCREENS,
   secondaryButton, sectionLabel, segmented, seq, shapes, statusMark, switchMark, switchRow, text, title, toTab, when, whenEq,
-  type BotsCtx, type LiveBot,
+  headerBuddy, type BotsCtx, type LiveBot,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
 
@@ -295,14 +295,21 @@ function noBot(ctx: BotsCtx): ReturnType<typeof page> {
 
 const apiLine = (slug: string) => `POST /v1/bots/${slug}/ask`;
 
-/** The phone's head of a bot's own page: back, the bot, its line in its colour (BotPage, PlanBot, TravelBot). */
-function phoneHead(look: ReturnType<typeof lookOf>, name: string, line: string, lineColor?: string): Node {
+/**
+ * The phone's head of a bot's own page: back, the bot, its line in its colour (BotPage, PlanBot, TravelBot), and at
+ * its right end the bot's own tiny bot where the build draws it (`buddy`, kit headerBuddy).
+ */
+function phoneHead(look: ReturnType<typeof lookOf>, name: string, line: string, lineColor?: string, buddy: Node[] = []): Node {
   return row([
     labelled(box([icon("back", { size: 24 })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center" }, back()), "Back"),
     botAvatar(look, 40),
     col([text(name, { size: 19, weight: 600, lineHeight: 24 }), text(line, { size: 12, weight: 500, color: lineColor ?? look.color, lineHeight: 16, lines: 1 })], { gap: 2, flexShrink: 1 }),
+    ...(buddy.length ? [grow(), ...buddy] : []),
   ], { gap: 10 });
 }
+
+/** While a chat message is on its way to the bot and its answer is coming (sendToBot's `sending`): the bot thinks. */
+const ANSWERING = { truthy: "sending" };
 
 function botPhone(ctx: BotsCtx, d: BotPageData) {
   const bot = d.bot!;
@@ -322,7 +329,7 @@ function botPhone(ctx: BotsCtx, d: BotPageData) {
   return page(ctx, {
     title: bot.name, nav: bot.slug,
     body: [
-      phoneHead(look, bot.name, stateLine(ctx, bot)),
+      phoneHead(look, bot.name, stateLine(ctx, bot), undefined, headerBuddy(ctx, bot.slug, { color: look.color, lookTo: "down", thinkWhen: ANSWERING })),
       ...(turns.length
         ? [col(chatTurns(ctx, bot, turns), { gap: 14 }), ...(d.turns && d.turns.length > 2 ? [quietButton("See the whole chat", open(SCREENS.chat, { slug: bot.slug }), { size: "md" })] : [])]
         : [col([body(bot.purpose, { color: C.grey70 }), row(starters(bot.slug, bot.purpose).map((s) => chip(s, { onPress: askBot(bot.slug, s) })), { gap: 8, flexWrap: "wrap" })], { gap: 12 })]),
@@ -374,6 +381,7 @@ function botDesk(ctx: BotsCtx, d: BotPageData) {
       row([
         botAvatar(look, 48),
         col([title(bot.name, { size: 24, lineHeight: 30 }), meta(stateLine(ctx, bot), { size: 13 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
+        ...headerBuddy(ctx, bot.slug, { color: look.color, lookTo: "down", thinkWhen: ANSWERING }),
         ...(turns.length ? [quietButton("Clear chat", write("DELETE", `${A}/chat/${enc(bot.slug)}`, undefined, { ok: "Chat cleared" }), { size: "md" })] : []),
         secondaryButton(bot.builtin ? "See its rules" : "Edit bot", edit, { size: "md" }),
       ], { gap: 14 }),
@@ -389,13 +397,17 @@ function chatPage(ctx: BotsCtx, d: BotPageData) {
     return page(ctx, { back: true, title: "Code bot", nav: "code", body: [emptyState({ pose: "think", title: "The Code bot talks on its own page", body: "It reads your projects and answers there.", action: { label: "Open the Code bot", onPress: open(SCREENS.code) } })] });
   }
   const turns = d.turns ?? [];
+  // The bot's own tiny bot at the head's right end: it thinks while an answer comes, and glances down at the field.
+  const buddy = headerBuddy(ctx, bot.slug, { color: look.color, lookTo: "down", thinkWhen: ANSWERING });
   const head = row([
     botAvatar(look, 30),
     col([text(bot.name, { size: 17, weight: 600, lineHeight: 22 }), meta(stateLine(ctx, bot), { size: 12, lines: 1 })], { gap: 1, flexShrink: 1 }),
+    ...(buddy.length ? [grow(), ...buddy] : []),
   ], { gap: 10 });
   const phoneTop = row([
     labelled(box([icon("back", { size: 24 })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center" }, back()), "Back"),
     col([text(bot.name, { size: 17, weight: 600, lineHeight: 22 }), meta(stateLine(ctx, bot), { size: 12, lines: 1 })], { gap: 1, flexShrink: 1 }),
+    ...(buddy.length ? [grow(), ...buddy] : []),
   ], { gap: 6 });
   return page(ctx, {
     back: isDesk(ctx), title: bot.name, nav: bot.slug, ...(isDesk(ctx) ? { maxWidth: 720 } : {}),
@@ -1013,7 +1025,7 @@ function planPhone(ctx: BotsCtx, d: PlanRead | undefined) {
   return page(ctx, {
     title: "Plan bot", nav: "plan",
     body: [
-      phoneHead(look, "Plan bot", planHeadLine(d)),
+      phoneHead(look, "Plan bot", planHeadLine(d), undefined, headerBuddy(ctx, "plan", { lookTo: "down", thinkWhen: ANSWERING })),
       ...(!d ? [emptyState({ pose: "think", title: "Couldn't read your days", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
         : !d.connected.calendar ? [notConnected(ctx)]
           : [
@@ -1095,7 +1107,8 @@ function planDesk(ctx: BotsCtx, d: PlanRead | undefined) {
   return page(ctx, {
     title: "Plan bot", nav: "plan", maxWidth: 1180,
     body: [
-      row([botAvatar(look, 44), col([title("Plan bot", { size: 26 }), text(planHeadLine(d), { size: 13, weight: 500, color: look.color, lineHeight: 18 })], { gap: 2 }), grow(),
+      row([botAvatar(look, 44), col([title("Plan bot", { size: 26 }), text(planHeadLine(d), { size: 13, weight: 500, color: look.color, lineHeight: 18 })], { gap: 2 }),
+        ...headerBuddy(ctx, "plan", { lookTo: "down", thinkWhen: ANSWERING }), grow(),
         ...(d?.connected.calendar ? [meta(d.connected.tasks ? "From Google Calendar and Tasks" : "From Google Calendar", { size: 12 }), nav] : [])], { gap: 14 }),
       ...(!d ? [emptyState({ pose: "think", title: "Couldn't read your days", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
         : !d.connected.calendar ? [notConnected(ctx)]
@@ -1197,7 +1210,7 @@ function travelPhone(ctx: BotsCtx, d: TravelData) {
   return page(ctx, {
     title: "Travel bot", nav: "travel", state: { t_place: "", t_when: "", t_who: "", pack: "" },
     body: [
-      phoneHead(p.look, "Travel bot", p.headLine),
+      phoneHead(p.look, "Travel bot", p.headLine, undefined, headerBuddy(ctx, "travel", { lookTo: "down", thinkWhen: ANSWERING })),
       ...(!d.t ? [emptyState({ pose: "think", title: "Couldn't load your trip", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
         : !p.trip ? [tripForm(ctx), ...(p.remembers ? [p.remembers] : [])]
           : [
@@ -1240,7 +1253,8 @@ function travelDesk(ctx: BotsCtx, d: TravelData) {
   return page(ctx, {
     title: "Travel bot", nav: "travel", maxWidth: 1100, state: { t_place: "", t_when: "", t_who: "", pack: "" },
     body: [
-      row([botAvatar(p.look, 44), col([title("Travel bot", { size: 26 }), text(p.headLine, { size: 13, weight: 500, color: p.look.color, lineHeight: 18 })], { gap: 2 })], { gap: 14 }),
+      row([botAvatar(p.look, 44), col([title("Travel bot", { size: 26 }), text(p.headLine, { size: 13, weight: 500, color: p.look.color, lineHeight: 18 })], { gap: 2 }),
+        ...headerBuddy(ctx, "travel", { lookTo: "right", thinkWhen: ANSWERING })], { gap: 14 }),
       row([col(left, { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 22 }), col(right, { width: 300, flexShrink: 0, gap: 22 })], { gap: 28, alignItems: "flex-start" }),
     ],
   });

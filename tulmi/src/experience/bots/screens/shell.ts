@@ -20,8 +20,11 @@ import {
   open, page, primaryButton, quietButton,
   RADIUS, roundButton, row, rupees, SCREENS, secondaryButton, sectionLabel, segmented, seq, shapes, statusMark, tailzuMark, text, title, toTab,
   when, whenEq, type BotsCtx, type LiveBot, type NeedsItem,
+  canHead, headBar, liveMark, writeOn,
 } from "../kit.js";
 import type { Mark } from "../glyphs.js";
+import { dayPart } from "../../touches.js";
+import { dayLineAfterGreeting } from "../../settingsWords.js";
 import { screen, type BotsScreen } from "../registry.js";
 import { ARRIVAL_PATH, ARRIVAL_STATE, arrivalCard } from "./firstRun.js";
 import { clockOf, dayLabel, longDate, type FeedRow } from "../../../shell/feed.js";
@@ -176,18 +179,44 @@ function tiles(ctx: BotsCtx, columns: number, height: number, padding: number): 
 /** What Home's state starts with: the first-arrival card's, when it is due. */
 const homeState = (arrival: boolean): Record<string, unknown> => (arrival ? { ...ARRIVAL_STATE } : {});
 
+/**
+ * Home's header: the Tailzu mark and the quiet buttons, then the greeting, small ("Good evening, Aanya"), and the old
+ * app's time-aware line under it, big and bold ("Anything to write up before the day ends?"; its own "Good evening."
+ * dropped, the night's line whole; Hinglish through i18n's Home seeds), with room around them: on the phone it owns
+ * about the top third of the first screen. Where the build draws it alive (canHead): the line writes itself in with
+ * Keybot's caret, once per app open and part of the day; the mark lives (its eyes on the finger, a dot lit in each
+ * working bot's colour; a tap opens Ask); and once the header has scrolled away, a compact bar (the mark, "Your bots")
+ * takes the top, until the page is back at its top (`pinned`). Else the same header, still.
+ */
+function homeHead(ctx: BotsCtx): { head: Node; pinned: Node[] } {
+  const desk = ctx.client === "desktop";
+  const name = firstName(ctx);
+  const greet = name ? `${ctx.live.greeting}, ${name}` : ctx.live.greeting;
+  const part = dayPart(ctx.tzOffsetMinutes, ctx.live.now);
+  const line = dayLineAfterGreeting(part).en;
+  const alive = canHead(ctx);
+  const size = desk ? 40 : 30, lineHeight = desk ? 46 : 35, tracking = desk ? -1.2 : -0.9;
+  const bold = alive ? writeOn(line, { size, lineHeight, tracking, once: `home.${part}` }) : text(line, { size, weight: 700, tracking, lineHeight });
+  const markSize = desk ? 56 : 44;
+  const mark = alive ? liveMark(markSize, ctx.live.bots.filter((b) => b.working).map((b) => b.color), open(SCREENS.ask)) : tailzuMark(markSize);
+  const quiet = (glyph: "search" | "person", onPress: ActionRef, label: string) => roundButton(glyph, onPress, { size: desk ? 38 : 36, light: true, label });
+  const head = col([
+    row([mark, grow(), quiet("search", open(SCREENS.search), "Search everything"), ...(desk ? [] : [quiet("person", toTab("you"), "Profile and settings")])], { gap: 6, alignItems: "flex-start" }),
+    col([text(greet, { size: desk ? 16 : 15, color: C.meta, lineHeight: desk ? 21 : 20 }), bold], { gap: desk ? 12 : 10, ...(desk ? { maxWidth: 680 } : {}) }),
+  ], { gap: desk ? 30 : 34, paddingTop: desk ? 4 : 10, paddingBottom: desk ? 10 : 14 });
+  const bar = headBar([row([tailzuMark(desk ? 24 : 26), text("Your bots", { size: desk ? 16 : 17, weight: 600, lineHeight: 22 })], {
+    gap: 10, height: desk ? 56 : 52, paddingHorizontal: desk ? 48 : 20,
+  })], desk ? 170 : 150);
+  return { head, pinned: alive ? [bar] : [] };
+}
+
 function homePhone(ctx: BotsCtx, arrival = false) {
   const first = ctx.live.needs[0];
+  const { head, pinned } = homeHead(ctx);
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: homeState(arrival),
+    tab: "bots", title: "Your bots", state: homeState(arrival), pinned,
     body: [
-      row([
-        tailzuMark(34),
-        col([text(ctx.live.greeting, { size: 13, color: C.meta, lineHeight: 17 }), text("Your bots", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 })], { gap: 2 }),
-        grow(),
-        roundButton("search", open(SCREENS.search), { size: 44, light: true, label: "Search everything" }),
-        roundButton("person", toTab("you"), { size: 44, light: true, label: "Profile and settings" }),
-      ], { gap: 10 }),
+      head,
       // The first time here: one card for the microphone and the keyboard, over Home.
       ...(arrival ? arrivalCard(ctx) : []),
       weekRow(ctx),
@@ -200,15 +229,12 @@ function homePhone(ctx: BotsCtx, arrival = false) {
 
 function homeDesk(ctx: BotsCtx, arrival = false) {
   const first = ctx.live.needs[0];
+  const { head, pinned } = homeHead(ctx);
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: homeState(arrival),
+    tab: "bots", title: "Your bots", state: homeState(arrival), pinned,
     body: [
-      row([
-        col([text(ctx.live.greeting, { size: 14, color: C.meta, lineHeight: 18 }), title("What should we do?", { size: 32, tracking: -0.8, lineHeight: 38 })], { gap: 4 }),
-        grow(),
-        weekRow(ctx),
-        roundButton("search", open(SCREENS.search), { size: 40, light: true, label: "Search everything" }),
-      ], { alignItems: "flex-end", flexWrap: "wrap", gap: 12 }),
+      head,
+      weekRow(ctx),
       // The first time here: one card for this computer's microphone and Accessibility, over Home.
       ...(arrival ? arrivalCard(ctx) : []),
       ...(first ? [needsCard(first, { layout: "row" })] : []),

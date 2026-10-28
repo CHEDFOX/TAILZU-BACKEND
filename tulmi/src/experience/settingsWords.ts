@@ -103,6 +103,26 @@ export type SwKey = keyof typeof SW;
 /** The English line. */
 export const sw = (key: SwKey): string => SW[key].en;
 
+export type DayPartName = "morning" | "afternoon" | "evening" | "night";
+
+/**
+ * The old app's time-aware line, for under a greeting that already says it ("Good evening, Aanya"): its own
+ * greeting sentence dropped ("Anything to write up before the day ends?"). The night's line has none and stays whole.
+ */
+export function dayLineAfterGreeting(part: DayPartName): Line {
+  const l: Line = SW[`g.${part}`];
+  if (part === "night") return l;
+  const drop = (t: string) => t.replace(/^[^.?!]*[.?!]\s+/, "");
+  return { en: drop(l.en), hg: drop(l.hg), sentence: true };
+}
+
+/** Hinglish for Home's day lines as Home draws them (i18n.ts applies it to bots.home). */
+export function homeLineSeeds(): Map<string, string> {
+  const seeds = new Map<string, string>();
+  for (const part of ["morning", "afternoon", "evening", "night"] as const) { const l = dayLineAfterGreeting(part); seeds.set(l.en, l.hg); }
+  return seeds;
+}
+
 /**
  * Hinglish, keyed by the English line as a screen draws it. The phone's labels
  * are drawn capitalised (titleCase.ts), the desk's as written, so a label is

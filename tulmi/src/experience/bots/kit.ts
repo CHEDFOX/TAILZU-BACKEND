@@ -16,13 +16,13 @@
  *   - images are { url } sources inside a sized box (`picture()`), so neither client guesses a size.
  *   - colour is only for bots (palette.ts). Errors, success and links are ink.
  */
-import type { ActionRef, ActionSpec, BotCardProps, BotTileKind, BotTileSpec, Condition, Node, ScreenResponse, ThemeTokens } from "../../../../shared/types/sdui.js";
-import { BOTS_MOTION_CAPABILITY, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, BotBuddyProps, BotCardProps, BotTileKind, BotTileSpec, Condition, Node, ScreenResponse, ThemeTokens } from "../../../../shared/types/sdui.js";
+import { BOT_BUDDY_COMPONENT, BOTS_MOTION_CAPABILITY, HOME_HEAD_COMPONENTS, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
 import { blipLoopFor, type BlipPose } from "./art.js";
 import { blipSize, blipUrl as blipLoopUrl } from "../blipLoops.js";
 import { icon, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type TabId } from "./glyphs.js";
 import type { BotsLive, LiveBot, NeedsItem } from "./live.js";
-import { C, type BotLook } from "./palette.js";
+import { C, botLook, type BotLook } from "./palette.js";
 import { botRoute, SCREENS } from "./ids.js";
 
 export { C, PALETTE_HEX, botLook, BUILTIN_SLUGS, type BotLook } from "./palette.js";
@@ -323,6 +323,51 @@ export function botTiles(tiles: BotTileSpec[], o: { columns: number; height: num
 export function botCard(steps: Node[], o: BotCardProps & { onComplete?: ActionRef }): Node {
   const { onComplete, ...props } = o;
   return { type: "BotCard", props: { ...props }, ...(onComplete ? { on: { onComplete } } : {}), children: steps };
+}
+
+/** A build that draws a bot's own tiny bot on its pages (BotBuddy, with BotsMotion). */
+export const canBuddy = (ctx: BotsCtx): boolean => canMove(ctx) && ctx.can.has(BOT_BUDDY_COMPONENT);
+
+/** A bot's own tiny bot on a stage of his own (BotBuddy): only for a build that draws it (canBuddy). */
+export function botBuddy(o: BotBuddyProps): Node {
+  return { type: "BotBuddy", props: { ...o } };
+}
+
+/**
+ * The bot's own tiny bot for its page's header, where the build draws it (else nothing: the header as before): its
+ * colour and play, as busy as the bot is, facing the person when it needs them. `lookTo`: where the page's ask field
+ * is; `thinkWhen`: the state that holds while an answer is on its way. Small: the header's height.
+ */
+export function headerBuddy(ctx: BotsCtx, slug: string, o: { color?: string; lookTo?: BotBuddyProps["lookTo"]; thinkWhen?: Condition; width?: number } = {}): Node[] {
+  if (!canBuddy(ctx)) return [];
+  const desk = ctx.client === "desktop";
+  const bot = ctx.live.bots.find((b) => b.slug === slug);
+  return [botBuddy({
+    kind: botKind(slug), color: o.color ?? bot?.color ?? botLook(slug).color, life: `page.${slug}`, width: o.width ?? (desk ? 150 : 76), height: desk ? 56 : 44, size: desk ? 34 : 28,
+    state: bot?.working ? "working" : bot?.needs ? "needs" : "idle",
+    ...(o.lookTo ? { lookTo: o.lookTo } : {}), ...(o.thinkWhen ? { thinkWhen: o.thinkWhen } : {}),
+  })];
+}
+
+/** A build that draws Home's header alive (WriteOn, LiveMark, HeadBar, with BotsMotion). */
+export const canHead = (ctx: BotsCtx): boolean => canMove(ctx) && HOME_HEAD_COMPONENTS.every((c) => ctx.can.has(c));
+
+/** A bold line that writes itself in, with Keybot's caret (WriteOn); once per app open and `once`. */
+export function writeOn(content: string, o: { size: number; lineHeight: number; tracking?: number; once: string; color?: string }): Node {
+  return {
+    type: "WriteOn",
+    props: { content, size: o.size, lineHeight: o.lineHeight, ...(o.tracking ? { tracking: o.tracking } : {}), color: o.color ?? C.ink, fontFamily: FACE.bold, caretColor: botLook("keybot").color, once: o.once },
+  };
+}
+
+/** The Tailzu mark, alive (LiveMark): a ring dot lit in each working bot's colour; a tap runs `onPress`. */
+export function liveMark(size: number, lit: string[], onPress?: ActionRef): Node {
+  return { type: "LiveMark", props: { size, lit: lit.slice(0, 8), label: "Tailzu. Ask anything" }, ...(onPress ? { on: { onPress } } : {}) };
+}
+
+/** A compact bar over the top of the page that comes in once the page has scrolled past `at` (page()'s `pinned`). */
+export function headBar(children: Node[], at: number): Node {
+  return { type: "HeadBar", props: { at }, children };
 }
 
 /** The dashed "Make a bot" tile. */
@@ -795,6 +840,8 @@ export interface PageOpts {
   gap?: number;
   /** The window's main column at most this wide (880). */
   maxWidth?: number;
+  /** Over the top of the page, outside its scroll (a HeadBar): before the phone's Screen, before the window's column. */
+  pinned?: Node[];
 }
 
 /** A page for whichever client is asking: phonePage or deskPage. Most screens need only this. */
@@ -823,6 +870,7 @@ export function phonePage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
     props: { edges: ["top"], barStyle: "dark-content" },
     style: { flex: 1, flexDirection: "column", backgroundColor: C.paper },
     children: [
+      ...(o.pinned ?? []),
       {
         type: "Screen",
         props: { paddingBottom: 24 },
@@ -848,7 +896,9 @@ export function deskPage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
       ...(o.footer?.length ? [grow(), ...o.footer] : []),
     ], { maxWidth: o.maxWidth ?? 880, width: "100%", flexGrow: 1, gap: o.gap ?? 28 }),
   ], { flexGrow: 1, flexShrink: 1, minWidth: 0, height: "100%", overflowY: "auto", paddingTop: 40, paddingHorizontal: 48, paddingBottom: 32 });
-  const root = row([sidebar(ctx, o.tab ?? o.nav), main], { height: "100%", minHeight: 600, alignItems: "stretch", backgroundColor: C.paper });
+  // Pinned (a HeadBar): just before the column that scrolls, in a frame of their own, so they stay over its top.
+  const column = o.pinned?.length ? col([...o.pinned, main], { flexGrow: 1, flexShrink: 1, minWidth: 0, height: "100%", position: "relative" }) : main;
+  const root = row([sidebar(ctx, o.tab ?? o.nav), column], { height: "100%", minHeight: 600, alignItems: "stretch", backgroundColor: C.paper });
   return response(ctx, o, root);
 }
 

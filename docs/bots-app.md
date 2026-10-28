@@ -213,6 +213,16 @@ such bot on top and its steps below (the permission cards). Both are physics, on
 `src/botTiles/core.ts`, from which the window's `botTiles.js` is generated (`node src/botTiles/genDesktop.mjs`; tests on both
 sides fail if they drift). Builds without it get `botTile` / `makeBotTile` and a plain card.
 
+A tap's look never outlives its moment: leaving Home, coming back to it (`gridWorld` starts a grid released) and the
+app or window coming back to the front all let it go. **`botBuddy` / `headerBuddy(ctx, slug, { lookTo, thinkWhen })`**
+(component `BotBuddy`, `canBuddy`): a bot's own tiny bot on its pages, on a small stage of its own in the header (Code
+bot, Keybot, Plan, Travel, a person's bot page and chat), busy when the bot works, facing you when it needs you,
+glancing at the ask field (`lookTo`) and thinking while an answer comes (`thinkWhen`); kept by `life`, so the Code bot's
+setup steps (bots.code.start meet, pick, read, home) are one bot in one place, waving, looking over the list, reading,
+settling. **Home's header** (`writeOn`, `liveMark`, `headBar`, page `pinned`; components `WriteOn`, `LiveMark`, `HeadBar`,
+`canHead`): the greeting, the old app's time-aware line written in by Keybot's caret, the living Tailzu mark (a dot lit
+per working bot, a tap opens Ask) and a compact bar once the header has scrolled away. Older builds get them still.
+
 
 No new node types: the design is expressed with core types plus four extensions, promised by the `BotsKit` capability
 (shared/types/sdui.ts, "The Bots app's kit"; phone types.ts mirror; desktop sdui.js):
