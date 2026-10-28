@@ -256,6 +256,8 @@ export interface AgentRigOptions {
   design?: DesignDeps;
   /** What becomes of a tool result once it is older than the last six (agent/mask.ts). Absent: the agent's default. */
   contextStrategy?: ContextStrategy;
+  /** Ask once for a focused test of the change before the checks run (agent/phases.ts testWanted). Off in the suite (tests/setup.ts) unless a test turns it on: most scripts end a job with one `done`. */
+  proveFix?: boolean;
   /** What the GitHub App was given on the install (Contents, Pull requests and Metadata unless said otherwise): PR care needs Checks, Commit statuses and Actions (read) as well. */
   installPermissions?: Record<string, string>;
 }
@@ -328,6 +330,7 @@ export async function agentRig(o: AgentRigOptions = {}) {
       ...((over.live ?? o.live) ? { live: (over.live ?? o.live)! } : {}), ...(over.remote ? { remote: over.remote } : {}), ...(o.design ? { design: o.design } : {}),
       ...(over.passive ? { passive: true } : {}), ...(over.team ? { team: over.team } : {}), ...(over.leaseMs ? { leaseMs: over.leaseMs } : {}),
       ...(o.contextStrategy ? { contextStrategy: o.contextStrategy } : {}),
+      ...(o.proveFix !== undefined ? { proveFix: o.proveFix } : {}),
     })!;
   }
   const orch = orchestrator();

@@ -92,6 +92,7 @@ function centBlock(c: PartsFile["cents"][number]): string {
   const tone = c.status === "measured" ? "ok" : c.status === "proved" ? "mut" : "mut";
   return `<h3>${esc(c.title)} ${pill(c.status === "wired" ? "wired, waits for the key" : c.status === "proved" ? "machinery proved on scripted models" : "measured", tone)}</h3>
 <p>${esc(c.headline)}</p>${c.winner ? `<p>Winner: <b>${esc(c.winner.id)}</b> (${esc(c.winner.by)}); margin: ${esc(c.winner.margin)}.</p>` : ""}${c.table ? table(c.table.head, c.table.rows) : ""}
+${(c.tables ?? []).map((t) => `<h4>${esc(t.title)}</h4>${table(t.table.head, t.table.rows, 99)}`).join("")}
 ${c.notes.map((n) => `<p class="mut">${esc(n)}</p>`).join("")}<p class="mut">Real run: estimated <b>${inr(c.estimateInr)}</b> (${esc(c.estimateBasis)}).</p><pre>${esc(c.command)}</pre>`;
 }
 

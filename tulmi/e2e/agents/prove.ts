@@ -10,6 +10,7 @@
  *   --task <id>      the task (default smoke-api-bug-pagination)
  *   --keep           leave the proof's cassette and transcripts in e2e/out/agent-proof (they are there either way; this stops the folder being emptied first)
  */
+import { CliExit, parseCli, runCli, type CliSpec } from "../cli.js";
 import "../env.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -95,21 +96,33 @@ export function renderProof(rows: readonly ProofRow[]): string {
   return L.join("\n");
 }
 
+export const PROVE_SPEC: CliSpec = {
+  name: "npm run e2e:agents --",
+  about: "no key: run each open-source agent against a scripted model through the recording proxy on the smoke task, then replay it from the cassette",
+  positionals: false,
+  flags: {
+    prove: { kind: "bool", about: "run the proof (required)" },
+    agents: { kind: "list", value: "aider,codex", about: "only these agents (default all)" },
+    task: { kind: "string", value: "<id>", about: "the task (default smoke-api-bug-pagination)" },
+    keep: { kind: "bool", about: "keep the previous proof's folder" },
+  },
+};
+
 async function main(): Promise<void> {
-  const a = process.argv.slice(2);
-  const arg = (n: string): string | undefined => { const i = a.indexOf(`--${n}`); return i >= 0 ? a[i + 1] : undefined; };
-  if (!a.includes("--prove")) { console.error("usage: npm run e2e:agents -- --prove [--agents aider,codex] [--task <id>]"); process.exit(2); }
-  const agents = (arg("agents") ?? PROOF_AGENTS.join(",")).split(",").map((s) => s.trim()).filter(Boolean);
-  for (const x of agents) if (!(PROOF_AGENTS as readonly string[]).includes(x)) throw new Error(`no contestant called ${x}; there are ${PROOF_AGENTS.join(", ")}`);
+  const a = parseCli(PROVE_SPEC, process.argv.slice(2));
+  if (!a.has("prove")) throw new CliExit(2, "usage: npm run e2e:agents -- --prove [--agents aider,codex] [--task <id>]");
+  const agents = a.has("agents") ? a.list("agents") : [...PROOF_AGENTS];
+  for (const x of agents) if (!(PROOF_AGENTS as readonly string[]).includes(x)) throw new CliExit(2, `no contestant called ${x}; there are ${PROOF_AGENTS.join(", ")}`);
   const outDir = path.join(OUT_DIR, "agent-proof");
-  if (!a.includes("--keep")) rmrf(outDir);
+  if (!a.has("keep")) rmrf(outDir);
+  const arg = (n: string): string | undefined => a.str(n);
   const rows = await proveAgents({ agents, taskId: arg("task") ?? "smoke-api-bug-pagination", outDir, log: (s) => console.log(s) });
   console.log(`\n${renderProof(rows)}`);
   writeJson(path.join(outDir, "proof.json"), { at: new Date().toISOString(), task: arg("task") ?? "smoke-api-bug-pagination", rows });
   fs.mkdirSync(path.join(OUT_DIR, "agents"), { recursive: true });
   writeJson(path.join(OUT_DIR, "agents", "proof.json"), { at: new Date().toISOString(), task: arg("task") ?? "smoke-api-bug-pagination", rows });
   const bad = rows.filter((r) => r.record && !(r.record.success && r.replay?.success && r.replay.misses === 0));
-  process.exit(bad.length ? 1 : 0);
+  process.exitCode = bad.length ? 1 : 0;
 }
 
-if (process.argv[1] && /e2e\/agents\/prove\.[tj]s$/.test(process.argv[1])) main().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
+if (process.argv[1] && /e2e\/agents\/prove\.[tj]s$/.test(process.argv[1])) runCli(async () => { await main(); return Number(process.exitCode ?? 0); }).then((c) => process.exit(c), (err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });

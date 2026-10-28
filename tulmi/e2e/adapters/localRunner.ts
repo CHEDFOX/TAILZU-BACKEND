@@ -290,7 +290,7 @@ function syntheticEnv(checkout: string): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(process.env)) {
     if (v === undefined || /(TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|CREDENTIAL|^SUPABASE|^GROQ|^OPENROUTER|^GITHUB_|^GH_)/i.test(k)) continue;
-    if (/^(npm_|NODE_ENV$|DEV_SKIP_AUTH$|CONNECTOR_|AGENT_RUN_LEDGER$)/.test(k)) continue;
+    if (/^(npm_|NODE_ENV$|DEV_SKIP_AUTH$|CONNECTOR_|AGENT_RUN_LEDGER$|NODE_USE_ENV_PROXY$)/.test(k)) continue;
     env[k] = v;
   }
   env.CI = "1";

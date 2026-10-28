@@ -25,6 +25,12 @@ export interface ItemResult {
   ms: number;
   detail: string;
   notes: string[];
+  /**
+   * What the HARNESS did to the item, as opposed to what the product did: it stopped a job at the turn cap (with the files it had staged), cut the time, described a
+   * picture for it. The first re-check had an item fail on the harness's own 12-turn cap and the report said only "did not meet the task's checks"; these are shown
+   * in the report next to the failure they explain.
+   */
+  harness: string[];
   cassette?: ItemCassette;
   error?: string;
 }

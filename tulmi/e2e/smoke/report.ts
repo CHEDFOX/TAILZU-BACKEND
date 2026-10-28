@@ -55,6 +55,12 @@ export function renderText(run: SmokeRun): string {
     lines.push("what failed:");
     for (const i of failing) for (const [s, v] of Object.entries(i.stages)) if (v && !v.ok) lines.push(`  ${i.n}. ${i.title} [${STAGE_NAMES[s as SmokeStage]}] ${v.detail}`);
   }
+  const stopped = run.items.filter((i) => i.harness?.length);
+  if (stopped.length) {
+    lines.push("");
+    lines.push("harness notes (what the test rig did to the run, not the product):");
+    for (const i of stopped) for (const h of i.harness) lines.push(`  ${i.n}. ${i.title.slice(0, 40)}: ${h}`);
+  }
   if (run.misses.length) {
     lines.push("");
     lines.push(`cassette misses (${run.misses.length}): the pipeline asked something that was not recorded (record again, or use --mixed):`);
@@ -88,6 +94,7 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}.wrap{overflow-x:auto}
 ${run.items.map((i) => `<tr><td>${i.n}</td><td>${esc(i.title)}</td>${used.map((s) => cell(i.stages[s])).join("")}<td class="num">${inr(i.costPaise)}</td><td class="num">${(i.ms / 1000).toFixed(0)}s</td></tr>`).join("\n")}
 <tr><td></td><td><b>Stage totals</b></td>${used.map((s) => `<td><b>${t[s].pass}/${t[s].pass + t[s].fail}</b></td>`).join("")}<td></td><td></td></tr></tbody></table></div>
 ${run.items.some((i) => !i.ok) ? `<h2>What failed</h2><ul>${run.items.filter((i) => !i.ok).flatMap((i) => Object.entries(i.stages).filter(([, v]) => v && !v.ok).map(([s, v]) => `<li>${i.n}. ${esc(i.title)} <b>[${esc(STAGE_NAMES[s as SmokeStage])}]</b> ${esc(v!.detail)}</li>`)).join("")}</ul>` : ""}
+${run.items.some((i) => i.harness?.length) ? `<h2>Harness notes</h2><p>What the test rig did to a run, as opposed to what the product did (a turn cap that stopped a job, a timeout).</p><ul>${run.items.filter((i) => i.harness?.length).flatMap((i) => i.harness.map((h) => `<li>${i.n}. ${esc(i.title)}: <b>${esc(h)}</b></li>`)).join("")}</ul>` : ""}
 ${run.misses.length ? `<h2>Cassette misses (${run.misses.length})</h2><ul>${run.misses.slice(0, 20).map((m) => `<li>${esc(m.item)} ${esc(m.purpose ?? "")} ${esc(m.model)}: ${esc(m.summary.slice(0, 120))}</li>`).join("")}</ul>` : ""}
 </body></html>`;
 }

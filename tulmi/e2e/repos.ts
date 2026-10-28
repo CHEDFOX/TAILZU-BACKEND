@@ -16,6 +16,7 @@
  * CLI:  tsx e2e/repos.ts list | clone [id..] | install [id..] | verify [id..] | status
  */
 import "./env.js";
+import { CliExit, parseCli, runCli, type CliSpec } from "./cli.js";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -276,6 +277,9 @@ export function checkoutEnv(r: RepoSpec, extra: Record<string, string> = {}, che
     if (v === undefined) continue;
     if (/(TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|CREDENTIAL|^SUPABASE|^GROQ|^OPENROUTER|^GITHUB_|^GH_)/i.test(k)) continue;
     if (/^(npm_|NODE_ENV$|DEV_SKIP_AUTH$|CONNECTOR_|AGENT_RUN_LEDGER$)/.test(k)) continue;
+    // The harness's own network setting, not the project's: with it, every `node` the project's tests start prints a warning (with a process id) into the output the
+    // agent reads, and a cassette recorded under it could not be replayed without it.
+    if (k === "NODE_USE_ENV_PROXY") continue;
     base[k] = v;
   }
   const deps = depsDirOf(r);
@@ -399,9 +403,21 @@ export function saveMeasured(id: string, m: Measured): void {
 
 // --------------------------------------------------------------------- CLI
 
+export const REPOS_SPEC: CliSpec = {
+  name: "npm run e2e:repos --",
+  about: "the real projects the reality check runs on: list | status | clone [id..] | install [id..] | verify [id..]",
+  positionals: { name: "<command> [project ids]", about: "list | status | clone | install | verify, then the project ids (default all)" },
+  flags: {
+    force: { kind: "bool", about: "install: install again even if installed" },
+    adopt: { kind: "bool", about: "install: record dependencies that are already on disk without installing" },
+  },
+  examples: ["npm run e2e:repos -- status", "npm run e2e:repos -- clone express", "npm run e2e:repos -- install body-parser click"],
+};
+
 async function main(): Promise<void> {
-  const [cmd = "list", ...rest] = process.argv.slice(2);
-  const ids = rest.filter((a) => !a.startsWith("--"));
+  const p = parseCli(REPOS_SPEC, process.argv.slice(2));
+  const [cmd = "list", ...ids] = p.positionals;
+  if (!["list", "status", "clone", "install", "verify"].includes(cmd)) throw new CliExit(2, `no command called ${cmd}.\n\n${REPOS_SPEC.name} list | status | clone | install | verify [project ids]`);
   const all = loadRepos();
   const picked = ids.length ? ids.map(getRepo) : all;
   const log = (s: string) => console.log(s);
@@ -416,7 +432,7 @@ async function main(): Promise<void> {
   if (cmd === "clone") { const seen = new Set<string>(); for (const r of picked) { const k = r.clone ?? r.id; if (seen.has(k)) continue; seen.add(k); await cloneRepo(r, log); } return; }
   if (cmd === "install") {
     for (const r of picked) {
-      if (process.argv.includes("--adopt")) {
+      if (p.has("adopt")) {
         // Dependencies that are already on disk (installed by hand with the same recipe): record them without installing again.
         const root = installRootOf(r);
         const depDirs = r.install.manager === "pip" ? [] : await findDepDirs(root);
@@ -425,7 +441,7 @@ async function main(): Promise<void> {
         log(`${r.id}: adopted (${installMB} MB, ${depDirs.length} dependency folders)`);
         continue;
       }
-      const s = await installRepo(r, { force: process.argv.includes("--force"), log });
+      const s = await installRepo(r, { force: p.has("force"), log });
       log(`${r.id}: installed (${s.installMB} MB, ${s.installSec}s)`);
     }
     return;
@@ -439,10 +455,8 @@ async function main(): Promise<void> {
     }
     return;
   }
-  console.error("usage: tsx e2e/repos.ts list | clone [id..] | install [id..] [--force] | verify [id..] | status");
-  process.exitCode = 2;
 }
 
 if (process.argv[1] && /e2e\/repos\.[tj]s$/.test(process.argv[1])) {
-  main().catch((err) => { console.error(err); process.exit(1); });
+  runCli(async () => { await main(); }).then((c) => process.exit(c), (err) => { console.error(err); process.exit(1); });
 }

@@ -11,6 +11,12 @@ import type { Catalog } from "../catalog.js";
 export const SMOKE_PRIMARY = "qwen/qwen3.7-flash";
 export const SMOKE_FALLBACK = "deepseek/deepseek-v4.1-flash";
 export const SMOKE_MAX_TOKENS = 800;
+/**
+ * The most work turns a smoke task may take. 12 stopped the "Clear completed" button task (about 15 turns on qwen3.7-flash: one failed read and one failed edit cost two)
+ * with three correct files staged and not committed, and the item failed on the harness's cap and not on the product (RESULTS-2026-10-28, bug 2). With 20 it passes
+ * every stage. A cassette recorded under another cap is replayed under that one (see smoke/changed.ts, `run`).
+ */
+export const SMOKE_MAX_TURNS = 20;
 
 export interface SmokeModels { primary: string; fallback: string; maxTokens: number }
 

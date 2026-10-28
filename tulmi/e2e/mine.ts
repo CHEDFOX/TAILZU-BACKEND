@@ -23,6 +23,7 @@
  * for these repos from here).
  */
 import "./env.js";
+import { parseCli, runCli, type CliSpec } from "./cli.js";
 import fs from "node:fs";
 import path from "node:path";
 import { checkoutEnv, cloneDirOf, cloneObjects, getRepo, installRepo, isInstalled, loadRepos, makeCheckout, testCommand, type RepoSpec } from "./repos.js";
@@ -210,13 +211,24 @@ export function taskFrom(r: RepoSpec, c: Candidate, v: Validation, hidden: Recor
 
 // --------------------------------------------------------------------- CLI
 
+export const MINE_SPEC: CliSpec = {
+  name: "npm run e2e:mine --",
+  about: "find real bug-fix commits in the pinned projects whose tests fail before the fix and pass with it, and keep them as tasks",
+  positionals: false,
+  flags: {
+    repo: { kind: "list", value: "a,b", about: "projects to mine (default all)" },
+    want: { kind: "number", about: "tasks to keep per project (default 3)" },
+    "max-attempts": { kind: "number", about: "candidates to try per project (default 30)" },
+    write: { kind: "bool", about: "write the kept tasks (without it: a dry run)" },
+  },
+};
+
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const arg = (name: string, d?: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : d; };
-  const repoIds = (arg("repo") ?? "").split(",").filter(Boolean);
-  const want = Number(arg("want", "3"));
-  const maxAttempts = Number(arg("max-attempts", "30"));
-  const write = args.includes("--write");
+  const p = parseCli(MINE_SPEC, process.argv.slice(2));
+  const repoIds = p.list("repo");
+  const want = p.num("want") ?? 3;
+  const maxAttempts = p.num("max-attempts") ?? 30;
+  const write = p.has("write");
   const repos = repoIds.length ? repoIds.map(getRepo) : loadRepos();
   for (const r of repos) {
     if (!isInstalled(r)) { console.log(`${r.id}: installing first`); await installRepo(r, { log: console.log }); }
@@ -246,5 +258,5 @@ async function main(): Promise<void> {
 }
 
 if (process.argv[1] && /e2e\/mine\.[tj]s$/.test(process.argv[1])) {
-  main().catch((err) => { console.error(err); process.exit(1); });
+  runCli(async () => { await main(); }).then((c) => process.exit(c), (err) => { console.error(err); process.exit(1); });
 }

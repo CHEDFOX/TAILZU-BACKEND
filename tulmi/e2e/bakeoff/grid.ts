@@ -13,6 +13,7 @@
  */
 import "../env.js";
 import { realKey } from "../env.js";
+import { CliExit, parseCli, requireBudget, type CliSpec } from "../cli.js";
 import fs from "node:fs";
 import path from "node:path";
 import { CassetteStore, SpendGuard, type CassetteMode } from "../adapters/cassette.js";
@@ -153,34 +154,55 @@ export function renderGridHtml(g: Awaited<ReturnType<typeof runGrid>>, fx: numbe
 <h2>Best model per scaffold</h2><ul>${Object.entries(g.summary.bestModelPerAgent).map(([a, m]) => `<li><b>${esc(a)}</b>: <code>${esc(m)}</code></li>`).join("")}</ul>`);
 }
 
+export const GRID_SPEC: CliSpec = {
+  name: "npm run bakeoff -- --grid",
+  about: "every (model, agent) pair on the same tasks, so a model is compared inside each agent's own logic",
+  positionals: false,
+  flags: {
+    grid: { kind: "bool", about: "mode switch (this tool)" },
+    models: { kind: "list", value: "a,b", about: "OpenRouter slugs (required)" },
+    agents: { kind: "list", value: "x,y", about: "agents (default tailzu; see npm run e2e -- --agents)" },
+    tasks: { kind: "string", value: "<glob>", about: "task selector (default tag:smoke)" },
+    model: { kind: "string", value: "real|sim", about: "real models or a simulated draw (default real)" },
+    record: { kind: "bool", about: "record every call to the cassette" },
+    replay: { kind: "bool", about: "answer every call from the cassette, for nothing" },
+    mixed: { kind: "bool", about: "replay what is recorded, call the model for the rest" },
+    cassette: { kind: "string", value: "<name>", about: "the cassette (default grid)" },
+    estimate: { kind: "bool", about: "print what the grid would cost, from the live prices, and stop" },
+    "budget-inr": { kind: "number", value: "N", about: "REQUIRED for a real grid: the hard cap in rupees (no default)" },
+    "stop-after": { kind: "number", about: "tasks after which a clearly losing pair is stopped (default 2)" },
+    "no-early": { kind: "bool", about: "turn the early stop off" },
+    out: { kind: "string", value: "<dir>", about: "where the grid is written" },
+  },
+  examples: ["npm run bakeoff -- --grid --models qwen/qwen3.7-flash --agents tailzu,aider --estimate", "npm run bakeoff -- --grid --models a,b --agents tailzu,aider --budget-inr 25"],
+};
+
 export async function runGridCli(argvIn: string[]): Promise<number> {
-  const arg = (n: string): string | undefined => { const i = argvIn.indexOf(`--${n}`); return i >= 0 ? argvIn[i + 1] : undefined; };
-  const flag = (n: string): boolean => argvIn.includes(`--${n}`);
-  const mode = (arg("model") ?? "real") as "real" | "sim";
-  const cassetteMode: CassetteMode | null = flag("record") ? "record" : flag("replay") ? "replay" : flag("mixed") ? "mixed" : null;
-  const models = (arg("models") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  const agents = (arg("agents") ?? "tailzu").split(",").map((s) => s.trim()).filter(Boolean);
-  if (!models.length) throw new Error("--grid needs --models a,b (OpenRouter slugs)");
-  for (const a of agents) if (!AGENTS[a]) throw new Error(`no agent called ${a}; there are ${Object.keys(AGENTS).join(", ")}`);
-  if (flag("estimate")) {
+  const p = parseCli(GRID_SPEC, argvIn);
+  const mode = (p.str("model") ?? "real") as "real" | "sim";
+  if (!["real", "sim"].includes(mode)) throw new CliExit(2, "--model is real or sim");
+  const cassetteMode: CassetteMode | null = p.has("record") ? "record" : p.has("replay") ? "replay" : p.has("mixed") ? "mixed" : null;
+  const models = p.list("models");
+  const agents = p.has("agents") ? p.list("agents") : ["tailzu"];
+  if (!models.length) throw new CliExit(2, "--grid needs --models a,b (OpenRouter slugs)");
+  for (const a of agents) if (!AGENTS[a]) throw new CliExit(2, `no agent called ${a}; there are ${Object.keys(AGENTS).join(", ")}`);
+  if (p.has("estimate")) {
     // What the grid would cost, from the live prices, and stop: no key, no model, no task run.
-    const picked = selectTasks(loadTasks(), arg("tasks") ?? "tag:smoke");
-    if (!picked.length) throw new Error("no task matches --tasks");
+    const picked = selectTasks(loadTasks(), p.str("tasks") ?? "tag:smoke");
+    if (!picked.length) throw new CliExit(2, "no task matches --tasks");
     const catalog = await loadCatalog();
     const fxRate = Number(process.env.CODE_USD_INR) || 88;
     const e = estimateGrid({ agents, models, tasks: picked.length, catalog, fx: fxRate });
     console.log(`estimate: about ₹${e.totalInr.toFixed(0)} (range ₹${e.lowInr.toFixed(0)} to ₹${e.highInr.toFixed(0)}) for ${e.runs} runs. ${e.basis}${e.models.some((m) => !m.known) ? `\nsome prices are assumed (not in the catalog): ${e.models.filter((m) => !m.known).map((m) => m.slug).join(", ")}` : ""}`);
     return 0;
   }
+  const capInr = requireBudget(p, mode === "real" && cassetteMode !== "replay", "a real grid");
   if (mode === "real" && cassetteMode !== "replay" && !realKey) { console.error("OPENROUTER_API_KEY is not set: use --model sim to exercise the grid, or --replay."); return 2; }
-  const capInr = Number(arg("budget-inr") ?? (mode === "real" && cassetteMode !== "replay" ? 25 : 0));
-  if (mode === "real" && cassetteMode !== "replay" && !(capInr > 0)) throw new Error("a real grid needs --budget-inr X");
-  let tasks = loadTasks();
-  tasks = selectTasks(tasks, arg("tasks") ?? "tag:smoke");
-  if (!tasks.length) throw new Error("no task matches --tasks");
+  const tasks = selectTasks(loadTasks(), p.str("tasks") ?? "tag:smoke");
+  if (!tasks.length) throw new CliExit(2, "no task matches --tasks");
   const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\..*/, "").replace("T", "-");
-  const outDir = path.resolve(arg("out") ?? path.join(OUT_DIR, "grid", `${stamp}-${mode}`));
-  const g = await runGrid({ mode, models, agents, tasks, capInr, cassetteMode, cassetteName: arg("cassette") ?? "grid", stopAfter: Number(arg("stop-after") ?? 2), early: !flag("no-early"), outDir, log: (s) => console.log(s) });
+  const outDir = path.resolve(p.str("out") ?? path.join(OUT_DIR, "grid", `${stamp}-${mode}`));
+  const g = await runGrid({ mode, models, agents, tasks, capInr, cassetteMode, cassetteName: p.str("cassette") ?? "grid", stopAfter: p.num("stop-after") ?? 2, early: !p.has("no-early"), outDir, log: (s) => console.log(s) });
   const fx = Number(process.env.CODE_USD_INR) || 88;
   writeJson(path.join(outDir, "grid.json"), { ...g, at: new Date().toISOString() });
   fs.writeFileSync(path.join(outDir, "report.html"), renderGridHtml(g, fx));

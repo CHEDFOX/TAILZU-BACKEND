@@ -128,7 +128,9 @@ export function makeModelKit(o: Pick<RigOptions, "mode" | "persona" | "tiers" | 
       cassette = new CassetteClient({ ...setup, ...(upstream ? { upstream } : {}), ...(run ? { run } : {}) });
       client = cassette;
     }
-    kit = realKit({ jobs: jobStore, ...(o.tiers ? { tiers: o.tiers } : {}), ...(client ? { client } : {}), ...(o.breakers !== undefined ? { breakers: o.breakers } : {}), ...(sleep ? { sleep } : {}), ...(o.maxTokensCap ? { maxTokensCap: o.maxTokensCap } : {}) });
+    // A strict replay is never about a provider's health: a request the recording lacks is a failed call, and eight of them (a stale item) would open the circuit breaker
+    // of the provider (its vendor prefix) for everything replayed after it in the process, answering from neither the cassette nor the model. No breakers in a replay.
+    kit = realKit({ jobs: jobStore, ...(o.tiers ? { tiers: o.tiers } : {}), ...(client ? { client } : {}), ...(o.breakers !== undefined ? { breakers: o.breakers } : o.cassette?.mode === "replay" ? { breakers: null } : {}), ...(sleep ? { sleep } : {}), ...(o.maxTokensCap ? { maxTokensCap: o.maxTokensCap } : {}) });
     kit.mode = o.mode;
     if (brain) { kit.persona = brain.persona; kit.bind = (t, b) => brain!.bind(t, b); kit.prices = brain.prices; }
   } else {
@@ -204,6 +206,9 @@ export async function createRig(o: RigOptions) {
       runner: routerRunner({ jobs, store: jobStore, now, sleep, placeWaitMs: o.placeWaitMs ?? 120_000, pollMs: o.pollMs ?? 150 }),
       concurrency: over.concurrency ?? o.concurrency ?? 4, instanceId: over.instanceId ?? "one", ...(o.leaseMs ? { leaseMs: o.leaseMs } : {}),
       live, ...(over.remote ? { remote: over.remote } : {}),
+      // The product asks once for a focused test of a source fix before the checks run (CODE_PROVE_FIX, on by default). A scripted persona (the oracle, a failing one) plays
+      // "edit, done" and has no test to write, so it runs without the round; a real model gets the product as it ships.
+      ...(o.mode !== "real" ? { proveFix: false } : {}),
     })!;
   }
   const orch = orchestrator();

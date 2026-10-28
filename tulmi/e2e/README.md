@@ -1,5 +1,41 @@
 # The reality check: contestants, parts, security
 
+## 0. One command: the reality plan (`npm run reality`)
+
+```
+npm run reality -- --plan quick --estimate          # what each stage will cost, from the live prices; mandatory before a paid run
+npm run reality -- --stages 0                       # free: the offline suite, every cassette replayed, the free part bake-offs
+npm run reality -- --plan quick --budget-inr 150    # the whole plan, adaptive, under one hard cap (needs OPENROUTER_API_KEY)
+npm run reality -- --prove                          # no key: stage 0 for real, the rest from cassettes, simulations and scripted models; writes REALITY.md
+npm run reality -- --commands                       # what to run in a session where installs are allowed
+```
+
+Six stages, each only as far as it is still worth money (`e2e/reality/stages.ts`): **0** free (the offline tests and `tsc`, every cassette replayed against the current code,
+the page-extraction and locate bake-offs); **1** cents (capability probes only for models with no score under this code and probe version); **2** smoke, recorded (only the
+items the store does not answer); **3** a stratified sample of 12 (quick), 24 (standard) or all 65 tasks, the smallest set that has every category and every stage, weighted
+toward what failed before, run on our bot with the product's own ladders; **4** comparisons with sequential testing (our agent, aider, opencode, codex, openhands and
+mini-swe-agent on one model; model ladders in our agent), interleaved on the same tasks, stopped when the leader is the best with probability 0.9 or an arm is beaten on both
+success and cost per success, repeats only for unstable results; **5** the parts (edit formats for models missing them, context strategy, router) with the money left.
+
+- **The results store** `e2e/results/*.jsonl` (committed, append-only) holds every measurement under the key (agent, model, task or probe, code fingerprint of the src
+  directories that feed it, prompt version). A result whose key is in the store is reused and never paid for twice; change the code or the prompts and only what that touches
+  is measured again. Simulated and scripted runs write to a `sim-results` folder of their own.
+- **Stage 0 and the cassettes.** A strict replay runs the product again on the recorded answers. No miss means the outcome is the current code's, kept as a result
+  (`same`, `regressed`, `fixed`); a miss means the code now asks what the recording lacks (`stale`: only a paid re-record can say, and it is never counted as a pass or a
+  failure). The replay key ignores what changes between sessions without meaning anything: Node's proxy warning with its process id, colour codes, the test runner's timings
+  (`adapters/cassette.ts` `normalize`), and a cassette recorded under older rules is found by the key the current rules make of its stored request.
+- **The estimate** per stage has an *expected* figure (early stops working) and an *at most* figure; a stage whose live spend passes 130% of its expected figure is
+  **aborted**. A paid run refuses to start without an estimate for its plan from the last 24 hours and without `--budget-inr`.
+- **Installs.** The plan never installs by itself. A task whose project is not installed, or a contestant whose tool is not, is left out and named: *needs a session where
+  installs are allowed*. `--install` tries; a refused install is classified and treated the same way. `--commands` lists what to run where installs are allowed.
+- **The report** `out/reality/latest.html` and the committed summary `REALITY.md`: a verdict per area (working, weak, broken), the five things to fix next (failures clustered by
+  stage and cause, with examples), the winner of each comparison with its confidence and the efficiency frontier (success against rupees per success), the recommended
+  `CODE_MODEL_TIERS`, what is still unknown and the cheapest run that would answer it.
+- A winner at P(best) ≥ 0.9, looked at after every round, is a lead and not a proof (about one tie in ten is called anyway); raise `--confidence` for a decision that must hold.
+
+**Every command line here is strict** (`e2e/cli.ts`): `--help` prints help and runs nothing, an unknown flag is an error (exit 2), and a run that calls a real model needs an
+explicit `--budget-inr N`: there is no default cap. (`bakeoff --help` once started a real bake-off.)
+
 The harness runs Tailzu's real flow (and other agents) on real projects at pinned commits and scores the result with hidden checks. This page covers the part
 added for comparing Tailzu with open-source tools: the **contestants** (whole agents), the **part bake-offs** (one piece at a time) and the **security suites**.
 Everything that costs money goes through the recording proxy, under a hard cap, and is recorded once so that a second run is free.
@@ -59,6 +95,7 @@ npm run bakeoff -- --fetch-pages         # the page corpus, once (43 real pages,
 npm run bakeoff -- --parts               # the free parts, for real: page extraction and locate; the others shown wired, with estimate and command
 npm run bakeoff -- --parts --prove       # also runs the cents parts on scripted models (no key) to prove their machinery
 npm run bakeoff -- --parts --spend --budget-inr N [--only editFormats,contextStrategy,router]   # the real thing, with OPENROUTER_API_KEY
+npm run bakeoff -- --parts --replay --only router --cassette parts-router-2   # a recorded paid run, replayed for nothing (no key)
 npm run bakeoff -- --estimate [--probes-only] [--edit-format]   # (= --dry) the plan and its cost from the live prices; also `--parts --estimate` and `--grid --models .. --estimate`
 ```
 

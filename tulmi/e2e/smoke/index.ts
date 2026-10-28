@@ -7,8 +7,8 @@
  *   8 a planted secret that must never be committed                          9 a picture read by the vision tier
  *
  * On two tiny fixture projects (e2e/fixtures: a Node API and a React app, a handful of files each), so the context a model reads stays tiny. Every tier uses the
- * cheapest capable model (qwen/qwen3.7-flash, then deepseek/deepseek-v4.1-flash; `--tiers default` uses the product's ladders), at most 800 tokens a call and 12
- * agent turns a task, under a hard cap (`--budget-inr`, 25 by default) that stops the run cleanly. Before anything is spent an estimate is printed from the live
+ * cheapest capable model (qwen/qwen3.7-flash, then deepseek/deepseek-v4.1-flash; `--tiers default` uses the product's ladders), at most 800 tokens a call and 20
+ * agent turns a task, under a hard cap (`--budget-inr`, REQUIRED for a run that calls a real model: there is no default) that stops the run cleanly. Before anything is spent an estimate is printed from the live
  * OpenRouter prices. The result is one page: pass or fail per stage, per item, with the cost.
  *
  * CASSETTES. `--record` saves every model request and answer (e2e/cassettes/<name>.jsonl, `--cassette smoke` by default); `--replay` runs everything from them
@@ -20,6 +20,7 @@
  */
 import "../env.js";
 import { realKey } from "../env.js";
+import { CliExit, parseCli, requireBudget, runCli, type CliSpec } from "../cli.js";
 import fs from "node:fs";
 import path from "node:path";
 import { CassetteStore, SpendGuard, type CassetteMode } from "../adapters/cassette.js";
@@ -29,13 +30,13 @@ import { loadCatalog, type Catalog } from "../catalog.js";
 import { getRepo, installRepo, isInstalled } from "../repos.js";
 import { loadTasks, type Task } from "../tasks/schema.js";
 import { OUT_DIR, mkdirp, pool, rmrf, writeJson } from "../util.js";
-import { affectedBy, changedFiles, hashSources, loadHashes, saveHashes } from "./changed.js";
+import { affectedBy, changedFiles, hashSources, loadHashes, saveHashes, type RunParams } from "./changed.js";
 import { estimateSmoke, SHAPE, type ItemShape } from "./estimate.js";
 import { artifactItem, frontItem, researchItem, taskItem, visionItem, type SmokeCtx } from "./items.js";
 import { renderHtml, renderText, type SmokeRun } from "./report.js";
 import { resetConfigForTests } from "../../src/config.js";
 import { resetTierTableForTests } from "../../src/code/brain/tiers.js";
-import { smokeTierOverrides, smokeTiers, SMOKE_FALLBACK, SMOKE_MAX_TOKENS, SMOKE_PRIMARY } from "./tiers.js";
+import { smokeTierOverrides, smokeTiers, SMOKE_FALLBACK, SMOKE_MAX_TOKENS, SMOKE_MAX_TURNS, SMOKE_PRIMARY } from "./tiers.js";
 import type { ItemResult } from "./types.js";
 
 export interface SmokeOptions {
@@ -183,8 +184,9 @@ export async function runSmoke(o: SmokeOptions): Promise<SmokeRun> {
     replayedInr: results.reduce((n, r) => n + (r.cassette?.replayedUsd ?? 0), 0) * fx,
     estimatedInr: est.totalInr, fx, items: results, ...(aborted ? { aborted } : {}), ...(changed ? { changed } : {}), misses,
   };
-  if (o.cassetteMode === "record" || (o.cassetteMode === "mixed")) saveHashes(store.file);
-  if (o.changed && o.cassetteMode) saveHashes(store.file);
+  const params: RunParams = { maxTurns: o.maxTurns, primary, fallback, tiers: o.tiers };
+  if (o.cassetteMode === "record") saveHashes(store.file, hashSources(), params);
+  else if (o.cassetteMode === "mixed" || (o.changed && o.cassetteMode)) saveHashes(store.file);
   writeJson(path.join(outDir, "smoke.json"), run);
   fs.writeFileSync(path.join(outDir, "report.html"), renderHtml(run));
   const latest = path.join(OUT_DIR, "latest-smoke");
@@ -195,31 +197,63 @@ export async function runSmoke(o: SmokeOptions): Promise<SmokeRun> {
 
 // ------------------------------------------------------------------- command line
 
+export const SMOKE_SPEC: CliSpec = {
+  name: "npm run e2e -- --suite smoke",
+  about: "nine short items across the whole real flow, on two tiny fixture projects, for a few rupees",
+  positionals: false,
+  flags: {
+    suite: { kind: "string", value: "smoke", about: "the suite (this tool is --suite smoke)" },
+    model: { kind: "string", value: "real|fake|oracle", about: "real models (needs the key), a scripted wrong one, or a scripted right one (default real)" },
+    record: { kind: "bool", about: "record every model call to e2e/cassettes/<cassette>.jsonl" },
+    replay: { kind: "bool", about: "answer every call from the cassette, for nothing (strict: a miss fails the run)" },
+    mixed: { kind: "bool", about: "replay what is recorded, call the model for the rest" },
+    cassette: { kind: "string", value: "<name>", about: "the cassette (default smoke)" },
+    loose: { kind: "bool", about: "replay: also match a call by its run, purpose and ordinal" },
+    changed: { kind: "bool", about: "re-run only the items the code changed since the recording can affect; replay the rest" },
+    items: { kind: "list", value: "1,5", about: "item numbers or ids to run (default all nine)" },
+    estimate: { kind: "bool", about: "print what the run would cost, from the live prices, and stop" },
+    "budget-inr": { kind: "number", value: "N", about: "REQUIRED for a run that calls a real model: the hard cap in rupees (no default)" },
+    tiers: { kind: "string", value: "smoke|default", about: "one cheap ladder for every tier (default smoke), or the product's own" },
+    "smoke-model": { kind: "string", value: "<slug>", about: `the primary model (default ${SMOKE_PRIMARY})` },
+    "smoke-fallback": { kind: "string", value: "<slug>", about: `the fallback model (default ${SMOKE_FALLBACK})` },
+    "max-turns": { kind: "number", about: `most work turns a task may take (default ${SMOKE_MAX_TURNS}; a replay uses the recording's own)` },
+    parallel: { kind: "number", about: "items at once (default 3)" },
+    out: { kind: "string", value: "<dir>", about: "where the run is written" },
+  },
+  examples: ["npm run e2e -- --suite smoke --estimate", "npm run e2e -- --suite smoke --record --budget-inr 8", "npm run e2e -- --suite smoke --replay --cassette smoke-2", "npm run e2e -- --suite smoke --model oracle"],
+};
+
 export async function runSmokeCli(argvIn: string[] = process.argv.slice(2)): Promise<number> {
-  const arg = (n: string): string | undefined => { const i = argvIn.indexOf(`--${n}`); return i >= 0 ? argvIn[i + 1] : undefined; };
-  const flag = (n: string): boolean => argvIn.includes(`--${n}`);
-  const mode = (arg("model") ?? "real") as ModelMode;
-  if (!["real", "fake", "oracle"].includes(mode)) throw new Error("--model is real, fake or oracle");
-  const cassetteMode: CassetteMode | null = flag("record") ? "record" : flag("replay") ? "replay" : flag("mixed") ? "mixed" : null;
-  if (mode === "real" && cassetteMode !== "replay" && !flag("estimate") && !realKey) {
-    console.error("OPENROUTER_API_KEY is not set, so a real smoke run cannot start.\n  - to prove the suite itself without a key: --model oracle (answers right) or --model fake (wrong in known ways)\n  - to run from a recording: --replay\n  - or add the key (tulmi/.env or the shell) and run: npm run e2e -- --suite smoke --record --budget-inr 25");
-    return 2;
-  }
-  const capInr = Number(arg("budget-inr") ?? (mode === "real" && cassetteMode !== "replay" ? 25 : 0));
-  if (mode === "real" && cassetteMode !== "replay" && !(capInr > 0)) throw new Error("a real run needs --budget-inr X, a hard cap in rupees");
-  const tiers = (arg("tiers") ?? "smoke") as "smoke" | "default";
-  if (!["smoke", "default"].includes(tiers)) throw new Error("--tiers is smoke or default");
-  const run = await runSmoke({
-    mode, cassetteMode, cassetteName: arg("cassette") ?? "smoke", loose: flag("loose"), capInr: capInr || 25, tiers,
-    primary: arg("smoke-model") ?? SMOKE_PRIMARY, fallback: arg("smoke-fallback") ?? SMOKE_FALLBACK, maxTurns: Number(arg("max-turns") ?? 12),
-    parallel: Number(arg("parallel") ?? 3), outDir: arg("out") ?? "", changed: flag("changed"), only: (arg("items") ?? "").split(",").map((s) => s.trim()).filter(Boolean),
-    estimateOnly: flag("estimate"), log: (s) => console.log(s),
+  return runCli(async () => {
+    const p = parseCli(SMOKE_SPEC, argvIn);
+    const mode = (p.str("model") ?? "real") as ModelMode;
+    if (!["real", "fake", "oracle"].includes(mode)) throw new CliExit(2, "--model is real, fake or oracle");
+    if (p.has("suite") && p.str("suite") !== "smoke") throw new CliExit(2, `this is the smoke suite: --suite is smoke, not ${p.str("suite")}`);
+    const cassetteMode: CassetteMode | null = p.has("record") ? "record" : p.has("replay") ? "replay" : p.has("mixed") ? "mixed" : null;
+    const estimateOnly = p.has("estimate");
+    // The cap, before the key: a forgotten --budget-inr stops the run whether or not a key is set. Nothing here has a default.
+    const capInr = requireBudget(p, mode === "real" && cassetteMode !== "replay" && !estimateOnly, "a real smoke run");
+    if (mode === "real" && cassetteMode !== "replay" && !estimateOnly && !realKey) {
+      console.error("OPENROUTER_API_KEY is not set, so a real smoke run cannot start.\n  - to prove the suite itself without a key: --model oracle (answers right) or --model fake (wrong in known ways)\n  - to run from a recording: --replay\n  - or add the key (tulmi/.env or the shell) and run: npm run e2e -- --suite smoke --record --budget-inr 8");
+      return 2;
+    }
+    const tiers = (p.str("tiers") ?? "smoke") as "smoke" | "default";
+    if (!["smoke", "default"].includes(tiers)) throw new CliExit(2, "--tiers is smoke or default");
+    // A replay is made the way the recording was: its own turn cap, models and ladders (the cassette's sidecar), unless the person says otherwise.
+    const cassetteName = p.str("cassette") ?? "smoke";
+    const recorded = (cassetteMode && cassetteMode !== "record") || p.has("changed") ? loadHashes(new CassetteStore(cassetteName).file)?.run : undefined;
+    const run = await runSmoke({
+      mode, cassetteMode, cassetteName, loose: p.has("loose"), capInr: capInr || 25, tiers: p.has("tiers") ? tiers : recorded?.tiers ?? tiers,
+      primary: p.str("smoke-model") ?? recorded?.primary ?? SMOKE_PRIMARY, fallback: p.str("smoke-fallback") ?? recorded?.fallback ?? SMOKE_FALLBACK, maxTurns: p.num("max-turns") ?? recorded?.maxTurns ?? SMOKE_MAX_TURNS,
+      parallel: p.num("parallel") ?? 3, outDir: p.str("out") ?? "", changed: p.has("changed"), only: p.list("items"),
+      estimateOnly, log: (s) => console.log(s),
+    });
+    if (estimateOnly) return 0;
+    console.log(`\n${renderText(run)}\n\nreport: ${path.relative(process.cwd(), path.join(OUT_DIR, "latest-smoke", "report.html"))}`);
+    if (run.aborted) return 4;
+    if (cassetteMode === "replay" && run.misses.length) return 3;
+    return run.items.every((i) => i.ok) ? 0 : 1;
   });
-  if (flag("estimate")) return 0;
-  console.log(`\n${renderText(run)}\n\nreport: ${path.relative(process.cwd(), path.join(OUT_DIR, "latest-smoke", "report.html"))}`);
-  if (run.aborted) return 4;
-  if (cassetteMode === "replay" && run.misses.length) return 3;
-  return run.items.every((i) => i.ok) ? 0 : 1;
 }
 
 if (process.argv[1] && /e2e\/smoke\/index\.[tj]s$/.test(process.argv[1])) {

@@ -17,10 +17,12 @@
  *                      router wired (their estimates, and with --prove their machinery on scripted models, with --spend the real thing); see parts.ts
  *   --fetch-pages      fetch the page corpus the extraction bake-off needs, once (e2e/cache/pages)
  *
- * A hard cap (`--budget-inr`, 100 by default for a real run) stops the run cleanly; what has been measured is written.
+ * A hard cap (`--budget-inr`, REQUIRED for a real run: there is no default) stops the run cleanly; what has been measured is written. Every flag is checked: an
+ * unknown one is an error and nothing runs (`--help` prints the help).
  */
 import "../env.js";
 import { realKey } from "../env.js";
+import { CliExit, parseCli, requireBudget, runCli, type CliSpec } from "../cli.js";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -168,36 +170,73 @@ export async function runBakeoff(o: BakeoffOptions): Promise<BakeoffRun | { plan
 
 // ------------------------------------------------------------------- command line
 
+/** Which mode a bake-off command is in, read before the mode's own strict flags are applied. */
+const MODE_SPEC: CliSpec = { name: "bakeoff", about: "", flags: { grid: { kind: "bool", about: "" }, parts: { kind: "bool", about: "" }, "fetch-pages": { kind: "bool", about: "" } } };
+
+export const BAKEOFF_SPEC: CliSpec = {
+  name: "npm run bakeoff --",
+  about: "the model bake-off: candidates per tier, probes first, dearer rounds only for the survivors (also --grid and --parts, see their --help)",
+  positionals: false,
+  flags: {
+    tiers: { kind: "list", about: `tiers to run (default all: ${BAKEOFF_TIERS.join(",")})` },
+    "probes-only": { kind: "bool", about: "only round 1 (and the edit-format probe): a few cents in all" },
+    dry: { kind: "bool", about: "print the plan and its cost estimate, call nothing (same as --estimate)" },
+    estimate: { kind: "bool", about: "the same as --dry; for --grid and --parts: what they would cost" },
+    "edit-format": { kind: "bool", about: "include the edit-format probe (code and strong tiers)" },
+    "no-early": { kind: "bool", about: "turn the early stop off" },
+    keep: { kind: "number", about: "candidates a tier always keeps (default 2)" },
+    wave: { kind: "number", about: "role-eval fixtures per wave (default 8)" },
+    "eval-runs": { kind: "number", about: "runs per role-eval fixture (default 1)" },
+    "task-limit": { kind: "number", about: "real tasks per code/strong candidate (default 6)" },
+    floor: { kind: "number", about: "quality floor of a ladder (default 0.7)" },
+    "needle-kb": { kind: "number", about: "size of the needle probe's codebase (default 120)" },
+    model: { kind: "string", value: "real|sim", about: "real models (needs the key) or simulated ones (default real)" },
+    record: { kind: "bool", about: "record every model call to e2e/cassettes/<cassette>.jsonl" },
+    replay: { kind: "bool", about: "answer every call from the cassette, for nothing (strict: a miss fails)" },
+    mixed: { kind: "bool", about: "replay what is recorded, call the model for the rest" },
+    cassette: { kind: "string", value: "<name>", about: "the cassette (default bakeoff)" },
+    loose: { kind: "bool", about: "replay: also match a call by its run, purpose and ordinal" },
+    pools: { kind: "string", value: "<file>", about: "a pools file instead of e2e/bakeoff/pools.json (the way to filter models)" },
+    out: { kind: "string", value: "<dir>", about: "where the run is written" },
+    "budget-inr": { kind: "number", value: "N", about: "REQUIRED for a real run: the hard cap in rupees (there is no default)" },
+    grid: { kind: "bool", about: "mode: every (model, agent) pair on the same tasks (npm run bakeoff -- --grid --help)" },
+    parts: { kind: "bool", about: "mode: the part bake-offs (npm run bakeoff -- --parts --help)" },
+    "fetch-pages": { kind: "bool", about: "mode: fetch the page corpus the extraction bake-off needs, once" },
+  },
+  examples: ["npm run bakeoff -- --estimate --probes-only", "npm run bakeoff -- --probes-only --record --cassette probes-3 --budget-inr 10", "npm run bakeoff -- --model sim --probes-only"],
+  notes: ["Any run that calls a real model needs --budget-inr; without it the command stops before anything is called. --help, --dry/--estimate, --model sim and --replay never spend."],
+};
+
 export async function runBakeoffCli(argvIn: string[] = process.argv.slice(2)): Promise<number> {
-  const arg = (n: string): string | undefined => { const i = argvIn.indexOf(`--${n}`); return i >= 0 ? argvIn[i + 1] : undefined; };
-  const flag = (n: string): boolean => argvIn.includes(`--${n}`);
-  // One word for "say what it costs and stop" in every suite: --estimate. (For the bake-off proper it is --dry.)
-  if (flag("estimate") && !flag("dry") && !flag("grid") && !flag("parts")) argvIn = [...argvIn, "--dry"];
-  if (flag("grid")) { const { runGridCli } = await import("./grid.js"); return runGridCli(argvIn); }
-  if (flag("parts") || flag("fetch-pages")) { const { runPartsCli } = await import("./parts.js"); return runPartsCli(argvIn); }
-  const mode = (arg("model") ?? "real") as "real" | "sim";
-  if (!["real", "sim"].includes(mode)) throw new Error("--model is real or sim");
-  const cassetteMode: CassetteMode | null = flag("record") ? "record" : flag("replay") ? "replay" : flag("mixed") ? "mixed" : null;
-  const tiers = (arg("tiers") ?? BAKEOFF_TIERS.join(",")).split(",").map((s) => s.trim()).filter(Boolean) as BakeoffTier[];
-  const bad = tiers.filter((t) => !(BAKEOFF_TIERS as readonly string[]).includes(t));
-  if (bad.length) throw new Error(`no such tier: ${bad.join(", ")}; the tiers are ${BAKEOFF_TIERS.join(", ")}`);
-  const dry = flag("dry");
-  if (mode === "real" && !dry && cassetteMode !== "replay" && !realKey) {
-    console.error("OPENROUTER_API_KEY is not set, so a real bake-off cannot start.\n  - --dry prints the plan and the estimated cost without a key\n  - --model sim runs the whole machinery on simulated models\n  - --replay runs from a recording\n  - or add the key (tulmi/.env or the shell)");
-    return 2;
-  }
-  const capInr = Number(arg("budget-inr") ?? (mode === "real" && cassetteMode !== "replay" && !dry ? 100 : 0));
-  if (mode === "real" && !dry && cassetteMode !== "replay" && !(capInr > 0)) throw new Error("a real run needs --budget-inr X, a hard cap in rupees");
-  const probesOnly = flag("probes-only");
-  const r = await runBakeoff({
-    mode, tiers, capInr: capInr || 0, probesOnly, dry, editFormat: flag("edit-format"), early: !flag("no-early"), keep: Number(arg("keep") ?? 2), wave: Number(arg("wave") ?? 8), evalRuns: Number(arg("eval-runs") ?? 1),
-    taskCount: Number(arg("task-limit") ?? 6), floor: Number(arg("floor") ?? 0.7), needleKb: Number(arg("needle-kb") ?? 120), cassetteMode, cassetteName: arg("cassette") ?? "bakeoff", loose: flag("loose"),
-    ...(arg("pools") ? { poolsFile: path.resolve(arg("pools")!) } : {}), ...(arg("out") ? { outDir: arg("out")! } : {}), log: (s) => { if (!dry) console.log(s); },
+  return runCli(async () => {
+    // The mode first (leniently), then the mode's own flags strictly: a mistyped flag is an error in every mode.
+    const peek = parseCli(MODE_SPEC, argvIn, { lenient: true });
+    if (peek.has("grid")) { const { runGridCli } = await import("./grid.js"); return runGridCli(argvIn); }
+    if (peek.has("parts") || peek.has("fetch-pages")) { const { runPartsCli } = await import("./parts.js"); return runPartsCli(argvIn); }
+    const p = parseCli(BAKEOFF_SPEC, argvIn);
+    const mode = (p.str("model") ?? "real") as "real" | "sim";
+    if (!["real", "sim"].includes(mode)) throw new CliExit(2, "--model is real or sim");
+    const cassetteMode: CassetteMode | null = p.has("record") ? "record" : p.has("replay") ? "replay" : p.has("mixed") ? "mixed" : null;
+    const tiers = (p.has("tiers") ? p.list("tiers") : [...BAKEOFF_TIERS]) as BakeoffTier[];
+    const bad = tiers.filter((t) => !(BAKEOFF_TIERS as readonly string[]).includes(t));
+    if (bad.length) throw new CliExit(2, `no such tier: ${bad.join(", ")}; the tiers are ${BAKEOFF_TIERS.join(", ")}`);
+    const dry = p.has("dry") || p.has("estimate");
+    // The cap before the key: a forgotten --budget-inr must stop the run whether or not a key is set.
+    const capInr = requireBudget(p, mode === "real" && !dry && cassetteMode !== "replay", "a real bake-off");
+    if (mode === "real" && !dry && cassetteMode !== "replay" && !realKey) {
+      console.error("OPENROUTER_API_KEY is not set, so a real bake-off cannot start.\n  - --dry prints the plan and the estimated cost without a key\n  - --model sim runs the whole machinery on simulated models\n  - --replay runs from a recording\n  - or add the key (tulmi/.env or the shell)");
+      return 2;
+    }
+    const r = await runBakeoff({
+      mode, tiers, capInr, probesOnly: p.has("probes-only"), dry, editFormat: p.has("edit-format"), early: !p.has("no-early"), keep: p.num("keep") ?? 2, wave: p.num("wave") ?? 8, evalRuns: p.num("eval-runs") ?? 1,
+      taskCount: p.num("task-limit") ?? 6, floor: p.num("floor") ?? 0.7, needleKb: p.num("needle-kb") ?? 120, cassetteMode, cassetteName: p.str("cassette") ?? "bakeoff", loose: p.has("loose"),
+      ...(p.str("pools") ? { poolsFile: path.resolve(p.str("pools")!) } : {}), ...(p.str("out") ? { outDir: p.str("out")! } : {}), log: (s) => { if (!dry) console.log(s); },
+    });
+    if ("plan" in r) { console.log(r.plan); return 0; }
+    const where = p.str("out") ? path.resolve(p.str("out")!) : path.join(OUT_DIR, "bakeoff", r.id);
+    console.log(`\n${renderScoreboardText(r)}\n\nreport: ${path.join(where, "report.html")}\nladders: ${path.join(OUT_DIR, mode === "sim" ? "ladders.sim.json" : "ladders.json")} (also ${path.join(where, "ladders.json")})`);
+    return r.aborted ? 4 : 0;
   });
-  if ("plan" in r) { console.log(r.plan); return 0; }
-  const where = arg("out") ? path.resolve(arg("out")!) : path.join(OUT_DIR, "bakeoff", r.id);
-  console.log(`\n${renderScoreboardText(r)}\n\nreport: ${path.join(where, "report.html")}\nladders: ${path.join(OUT_DIR, mode === "sim" ? "ladders.sim.json" : "ladders.json")} (also ${path.join(where, "ladders.json")})`);
-  return r.aborted ? 4 : 0;
 }
 
 if (process.argv[1] && /e2e\/bakeoff\/index\.[tj]s$/.test(process.argv[1])) {

@@ -58,7 +58,10 @@ export const ITEMS_OF_STAGE: Record<SmokeStage, string[]> = {
   safety: ["smoke-research-cached", "smoke-api-hostile-note", "smoke-api-secret-in-config"],
 };
 
-export interface SourceHashes { at: string; files: Record<string, string> }
+/** How the recording was made, so that a replay is made the same way (a cassette recorded under a 12-turn cap needs the 12-turn cap to replay: a 13th turn was never recorded). */
+export interface RunParams { maxTurns?: number; primary?: string; fallback?: string; tiers?: "smoke" | "default" }
+
+export interface SourceHashes { at: string; files: Record<string, string>; run?: RunParams }
 
 function walk(dir: string, out: string[]): void {
   if (!fs.existsSync(dir)) return;
@@ -81,7 +84,11 @@ export function hashSources(root = SRC): SourceHashes {
 
 export const metaFile = (cassetteFile: string): string => cassetteFile.replace(/\.jsonl$/, ".meta.json");
 
-export function saveHashes(cassetteFile: string, h: SourceHashes = hashSources()): void { writeJson(metaFile(cassetteFile), h); }
+export function saveHashes(cassetteFile: string, h: SourceHashes = hashSources(), run?: RunParams): void {
+  // A re-save (a --changed run) keeps the parameters of the recording unless it is given new ones.
+  const keep = run ?? loadHashes(cassetteFile)?.run;
+  writeJson(metaFile(cassetteFile), { ...h, ...(keep ? { run: keep } : {}) });
+}
 export function loadHashes(cassetteFile: string): SourceHashes | null { return readJson<SourceHashes | null>(metaFile(cassetteFile), null); }
 
 /** The files that differ between two records (changed, added or removed). */

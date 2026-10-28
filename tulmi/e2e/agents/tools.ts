@@ -11,6 +11,7 @@
  * its own venv, an npm tool with `npm ci --ignore-scripts` from the package-lock.json kept beside it. Nothing is installed from "latest", and no install
  * script of an npm package runs.
  */
+import { CliExit, parseCli, runCli, type CliSpec } from "../cli.js";
 import "../env.js";
 import fs from "node:fs";
 import path from "node:path";
@@ -141,8 +142,16 @@ async function lockTool(name: string): Promise<void> {
   if (r.code !== 0) throw new Error(`uv pip compile failed: ${(r.stderr || r.stdout).trim().slice(-400)}`);
 }
 
+export const TOOLS_SPEC: CliSpec = {
+  name: "npm run e2e:tools --",
+  about: "the pinned open-source agents (aider, opencode, codex, mini-swe-agent, openhands): list | install | verify | licences | lock",
+  positionals: { name: "<command> [tool names]", about: "list | install | verify | licences | lock, then the tools (default all)" },
+  flags: {},
+};
+
 async function main(): Promise<void> {
-  const [cmd = "list", ...rest] = process.argv.slice(2);
+  const parsed = parseCli(TOOLS_SPEC, process.argv.slice(2));
+  const [cmd = "list", ...rest] = parsed.positionals;
   const names = rest.length ? rest : Object.entries(versions().tools).filter(([, t]) => t.bin).map(([n]) => n);
   if (cmd === "list") {
     for (const [n, t] of Object.entries(versions().tools)) console.log(`${n.padEnd(15)} ${t.package}@${t.version}`.padEnd(46), t.licence.padEnd(11), toolBin(n) ? "installed" : t.bin ? "not installed" : "not installable here", `  ${t.role}`);
@@ -161,9 +170,8 @@ async function main(): Promise<void> {
   } else if (cmd === "lock") {
     for (const n of rest) { await lockTool(n); console.log(`${n}: locked`); }
   } else {
-    console.error("usage: e2e:tools -- list | install [name..] | verify [name..] | licences [name..] | lock <name>");
-    process.exit(2);
+    throw new CliExit(2, `no command called ${cmd}.\n\nusage: e2e:tools -- list | install [name..] | verify [name..] | licences [name..] | lock <name>`);
   }
 }
 
-if (process.argv[1] && /e2e\/agents\/tools\.[tj]s$/.test(process.argv[1])) main().catch((err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
+if (process.argv[1] && /e2e\/agents\/tools\.[tj]s$/.test(process.argv[1])) runCli(async () => { await main(); }).then((c) => process.exit(c), (err) => { console.error(err instanceof Error ? err.message : err); process.exit(1); });
