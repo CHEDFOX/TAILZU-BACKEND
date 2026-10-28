@@ -33,6 +33,15 @@ type Deliverable = Pick<Extract<Decision, { sendAt: number }>, "sendAt" | "title
   data?: Record<string, string>;
 };
 
+/**
+ * THE PERSON'S OWN SAY (the Bots app's "What pings you", src/you/push.ts): asked before every push is claimed. "send" as planned, "silent" (sent
+ * without a sound: a needs-you in quiet hours), "drop" (not sent: it waits in the app). Unset, or a gate that throws: "send", as before.
+ */
+export type PushVerdict = "send" | "silent" | "drop";
+export type PushGate = (p: { userId: string; kind: string; data?: Record<string, string>; tzOffsetMin: number | null; now: number }) => Promise<PushVerdict> | PushVerdict;
+let pushGate: PushGate | null = null;
+export function setPushGate(g: PushGate | null): void { pushGate = g; }
+
 export interface TickReport {
   at: string;
   dryRun: boolean;
@@ -273,6 +282,11 @@ export class PushEngine {
   /** Claim, send to every phone, record. Null when someone else claimed it. */
   async deliver(c: Candidate, d: Deliverable, payload: PushPayload, now: number):
     Promise<{ sent: boolean; dropped: number; id: string } | null> {
+    let verdict: PushVerdict = "send";
+    if (pushGate) {
+      try { verdict = await pushGate({ userId: c.userId, kind: d.kind, ...(d.data ? { data: d.data } : {}), tzOffsetMin: c.tzOffsetMin, now }); } catch { verdict = "send"; }
+    }
+    if (verdict === "drop") return null;
     const id = await this.store.claim({ userId: c.userId, kind: d.kind, periodKey: d.periodKey, plannedAt: d.sendAt });
     if (!id) return null;
     const k = knobsOf(payload);
@@ -280,7 +294,7 @@ export class PushEngine {
       to: t.token,
       title: d.title,
       body: d.body,
-      sound: "default",
+      sound: verdict === "silent" ? null : "default",
       channelId: k.flag("push.android.channelId", "default"),
       ttl: d.ttlSec,
       priority: "default",
