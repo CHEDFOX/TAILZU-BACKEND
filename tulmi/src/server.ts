@@ -122,6 +122,7 @@ import {
   setMediaRegistryAccessor,
   PAYWALL_CONFIG, POLICY,
 } from "./experience/catalog.js";
+import { botsAppOn, botsDepsFor, buildBotsScreen, emptyDeps, isBotsScreen } from "./experience/bots/index.js";
 import { canOnboard, onboardLanguage } from "./experience/onboard.js";
 import { canOnboardStore, onboardMode } from "./experience/onboardStore.js";
 import { hasAlreadyDictated } from "./experience/onboardGuard.js";
@@ -2765,7 +2766,10 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     });
   }
 
+  // THE BOTS APP (experience/bots): the switch, a build that draws its kit, and the testers while that list is set.
+  const botsApp = botsAppOn({ on: cfg.BOTS_APP, testers: cfg.BOTS_APP_TESTERS, email: user?.email, components: reqBody.capabilities?.components });
   const bootstrap = buildBootstrap({
+    botsApp,
     onboarded: isReviewer || (!newOnboarding && micGranted && keyboardReady) || dictatedBefore || (profile?.onboarded ?? false),
     // Have they ever been inside the app before? A reviewer always has — a
     // fresh account walked into You on every submission otherwise, which is
@@ -2957,6 +2961,31 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
     locale: profile?.language,
     signedIn: !!user,
   });
+
+  // THE BOTS APP's screens (experience/bots): every "bots.*" id, and "home" itself, which is where every "go to
+  // the app" in today's flows still points (the intro's end, the onboarding's Done). Only for a request the Bots
+  // app is on for; any other build is answered exactly as before, and a "bots.*" id it asks for is unknown.
+  const botsOn = botsAppOn({ on: cfg.BOTS_APP, testers: cfg.BOTS_APP_TESTERS, email: user?.email, components: body.capabilities?.components });
+  const botsId = botsOn && screenId === "home" ? "bots.home" : screenId;
+  if (isBotsScreen(botsId)) {
+    if (!botsOn) return reply.code(404).send({ code: "bad_request", message: `Unknown screen '${screenId}'` });
+    const tz = typeof body.tzOffsetMinutes === "number" && Number.isFinite(body.tzOffsetMinutes) ? body.tzOffsetMinutes : 0;
+    const comps = new Set(Array.isArray(body.capabilities?.components) ? body.capabilities!.components!.map(String) : []);
+    const deps = user
+      ? botsDepsFor({
+          bots, jobs: codeJobs, connectors,
+          minutesSaved: (u, offset) => statsForUser(u, "week", offset).then((st) => st.minutesSaved),
+          inject: (o) => app.inject({ method: o.method as "GET", url: o.url, headers: o.headers, ...(o.payload === undefined ? {} : { payload: o.payload as object }) })
+            .then((r) => ({ statusCode: r.statusCode, body: r.body })),
+        }, user, String(req.headers["authorization"] ?? ""), tz)
+      : emptyDeps();
+    const screen = await buildBotsScreen({
+      screenId: botsId, client: screenFormFactor, params: body.params, tzOffsetMinutes: tz, can: comps,
+      user: user ? { id: user.id, ...(profile?.fullName ? { name: profile.fullName } : {}), ...(user.email ? { email: user.email } : {}) } : null,
+      desk: { pages: comps.has("DeskShell"), notes: comps.has("DeskNotes") },
+    }, deps);
+    return reply.send(await localize(withControl(req, reply, screen, screenCtx(botsId)), profile?.language ?? "auto"));
+  }
 
   // Load per-screen aggregates only for the screens that need them.
   // usageSummary covers legacy stats numbers; statsForUser adds the

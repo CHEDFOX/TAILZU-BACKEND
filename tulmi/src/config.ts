@@ -752,6 +752,14 @@ const EnvSchema = z.object({
    * minute, and BOT_KEY_DAILY_PAISE what one key may spend in a day.
    */
   BOTS: bool(false),
+  /**
+   * THE BOTS APP (experience/bots, docs/bots-app.md): the new design of the phone and desktop apps, "everything is a bot" (tabs Bots / Activity / You,
+   * Home is your bots). Off by default, and off means today's app, byte for byte. On, a build that declares "BotsKit" (it draws the kit's pieces)
+   * is booted into it; an older build keeps today's app. BOTS_APP_TESTERS (sign-in emails, comma separated) narrows it to those people while set.
+   * The screens read the bots platform (BOTS), the Code bot's jobs and connected apps where they are on, and draw an honest empty state where not.
+   */
+  BOTS_APP: bool(false),
+  BOTS_APP_TESTERS: z.string().default(""),
   BOT_KEY_PEPPER: z.string().optional(),
   BOTS_MAX: z.coerce.number().int().min(1).max(500).default(20),
   BOT_REQUEST_PAISE: z.coerce.number().int().min(1).max(100_000).default(150),
