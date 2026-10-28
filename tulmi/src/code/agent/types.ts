@@ -490,6 +490,9 @@ export interface AgentState {
     reviewFeedback?: string;
     /** What the person said while the job was working (POST /v1/code/jobs/:id/message), newest last. The model is shown them as the person's words. */
     said?: Array<{ id: string; text: string; at: number }>;
+    /** Adaptive effort (agent/effort.ts): the mark of the feedback a turn has already been shown, and how many turns thought at "low". */
+    feedbackSeen?: string;
+    lowTurns?: number;
   };
   verify?: VerifyState;
   commit?: { base: string; message: string; sha?: string; files: string[] };

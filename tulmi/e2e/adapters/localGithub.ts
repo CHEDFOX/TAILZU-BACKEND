@@ -38,13 +38,35 @@ export interface RepoSeed {
   defaultBranch?: string;
   private?: boolean;
   /** Borrow an existing object store and start the default branch at one of its commits. */
-  from?: { objects: string; shallow?: string; commit: string; /** the repo's root is this folder of the commit (a project inside a monorepo) */ subdir?: string; message?: string };
+  from?: {
+    objects: string; shallow?: string; commit: string; /** the repo's root is this folder of the commit (a project inside a monorepo) */ subdir?: string; message?: string;
+    /** ONE fresh root commit of the tree (with `planted` laid on it) and only its objects: no history, nothing borrowed, so nothing planted can be read back from git. */
+    snapshot?: boolean;
+    /** Files laid over the tree in a snapshot: text, or null to delete. */
+    planted?: Record<string, string | null>;
+  };
   /** A map of files: a synthetic project. */
   files?: Record<string, string>;
   /** No commits at all. */
   empty?: boolean;
   /** Commit message and author for a seed made from files or a subfolder. */
   message?: string;
+}
+
+/**
+ * Makes a bare repo that borrows objects (git alternates) own exactly the objects of one tree and nothing else: they are packed into its own store, then the
+ * borrowed store, the shallow file and every loose object that the tree does not hold (a planted file's predecessor) are dropped.
+ */
+export async function ownTreeOnly(gitDir: string, tree: string): Promise<void> {
+  const listed = await git(gitDir, ["ls-tree", "-r", "-t", "--full-tree", tree]);
+  const ids = [tree, ...listed.split("\n").filter(Boolean).map((l) => l.split(/\s+/)).filter((f) => f[1] !== "commit").map((f) => f[2]!)];
+  const pack = path.join(gitDir, "objects", "pack");
+  mkdirp(pack);
+  await git(gitDir, ["pack-objects", "-q", path.join(pack, "snapshot")], { input: `${[...new Set(ids)].join("\n")}\n` });
+  fs.rmSync(path.join(gitDir, "objects", "info", "alternates"), { force: true });
+  fs.rmSync(path.join(gitDir, "shallow"), { force: true });
+  await git(gitDir, ["prune-packed"]);
+  for (const d of fs.readdirSync(path.join(gitDir, "objects"))) if (/^[0-9a-f]{2}$/.test(d)) rmrf(path.join(gitDir, "objects", d));
 }
 
 export interface PullRecord {
@@ -261,7 +283,13 @@ export class LocalGitHub {
     if (seed.from) {
       fs.writeFileSync(path.join(dir, "objects", "info", "alternates"), `${seed.from.objects}\n`);
       if (seed.from.shallow && fs.existsSync(seed.from.shallow)) fs.copyFileSync(seed.from.shallow, path.join(dir, "shallow"));
-      if (seed.from.subdir) {
+      if (seed.from.snapshot) {
+        const base = (await repo.g(["rev-parse", seed.from.subdir ? `${seed.from.commit}:${seed.from.subdir}` : `${seed.from.commit}^{tree}`])).trim();
+        const tree = await repo.writeTree(base, Object.entries(seed.from.planted ?? {}).map(([p, c]) => ({ path: p, content: c })));
+        await ownTreeOnly(dir, tree);
+        const sha = await repo.commitTree({ tree, parents: [], message: msg, author: { name: "e2e", email: "e2e@tailzu.local" } });
+        await repo.setRef(fr.defaultBranch, sha, null);
+      } else if (seed.from.subdir) {
         const tree = (await repo.g(["rev-parse", `${seed.from.commit}:${seed.from.subdir}`])).trim();
         const sha = await repo.commitTree({ tree, parents: [], message: seed.from.message ?? msg, author: { name: "e2e", email: "e2e@tailzu.local" } });
         await repo.setRef(fr.defaultBranch, sha, null);

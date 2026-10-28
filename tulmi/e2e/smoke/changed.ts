@@ -82,7 +82,7 @@ export function hashSources(root = SRC): SourceHashes {
   return { at: new Date().toISOString(), files: out };
 }
 
-export const metaFile = (cassetteFile: string): string => cassetteFile.replace(/\.jsonl$/, ".meta.json");
+export const metaFile = (cassetteFile: string): string => cassetteFile.replace(/\.jsonl(\.gz)?$/, ".meta.json");
 
 export function saveHashes(cassetteFile: string, h: SourceHashes = hashSources(), run?: RunParams): void {
   // A re-save (a --changed run) keeps the parameters of the recording unless it is given new ones.

@@ -77,7 +77,7 @@ import { DEFAULT_USD_INR, charsOf, tokensOfChars, usdFor, usdToPaise, worstCaseP
 import { SpendMeter, addJobSpend, currentSpendScope, readJobMoney, sharedSpendMeter } from "./spend.js";
 import {
   UNLISTED_MODEL, familyOf, ladderOf, reasoningParam, tierOfModel, tierTable,
-  type ModelTier, type TierSettings,
+  type ModelTier, type Reasoning, type TierSettings,
 } from "./tiers.js";
 import type { ChatMessage, ToolCall, ToolDef } from "./types.js";
 
@@ -119,6 +119,8 @@ export interface CallInput<T = unknown> {
   writerModel?: string;
   /** Instead of the tier's. */
   timeoutMs?: number;
+  /** How hard the model thinks, instead of the tier's level (the free-form loop's adaptive effort: agent/effort.ts). */
+  reasoning?: Reasoning;
   signal?: AbortSignal;
 }
 
@@ -625,7 +627,7 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
 
   /** The reasoning a request to a model carries. `lowest`: the model has just said it cannot think "none"; whatever the tier asked for, this is the least it allows. */
   function reasoningOf(model: string, lowest: boolean): Record<string, unknown> {
-    return lowest ? { effort: lowestEffort(model) } : reasoningParam(model, settings.reasoning);
+    return lowest ? { effort: lowestEffort(model) } : reasoningParam(model, input.reasoning ?? settings.reasoning);
   }
 
   /**
@@ -634,7 +636,7 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
    * chose its level sized its limit for it. `bigger`: the last try ran out of room, so the thinking gets more.
    */
   function tokensFor(reasoning: Record<string, unknown>, bigger: boolean): number {
-    const forced = settings.reasoning === "none";
+    const forced = (input.reasoning ?? settings.reasoning) === "none";
     return bigger || forced ? maxTokensWithReasoning(maxTokens, reasoning, { retry: bigger }) : maxTokens;
   }
 

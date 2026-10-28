@@ -191,7 +191,7 @@ export const BAKEOFF_SPEC: CliSpec = {
     floor: { kind: "number", about: "quality floor of a ladder (default 0.7)" },
     "needle-kb": { kind: "number", about: "size of the needle probe's codebase (default 120)" },
     model: { kind: "string", value: "real|sim", about: "real models (needs the key) or simulated ones (default real)" },
-    record: { kind: "bool", about: "record every model call to e2e/cassettes/<cassette>.jsonl" },
+    record: { kind: "bool", about: "record every model call to e2e/cassettes/<cassette>.jsonl.gz" },
     replay: { kind: "bool", about: "answer every call from the cassette, for nothing (strict: a miss fails)" },
     mixed: { kind: "bool", about: "replay what is recorded, call the model for the rest" },
     cassette: { kind: "string", value: "<name>", about: "the cassette (default bakeoff)" },

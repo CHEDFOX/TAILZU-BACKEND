@@ -44,6 +44,12 @@ export async function rankOf(brain: LocateBrain, task: Task, base: BaseSignals, 
 
 export { baseSignals };
 
+/**
+ * A draw that belongs to the item, not to its place in the list: a new file in src/ used to shift every later draw and so change the whole sample (and a test's
+ * bounds with it) without changing locate at all.
+ */
+const stableKey = (seed: number, id: string): number => createHash("sha1").update(`${seed}:${id}`).digest().readUInt32BE(0) / 2 ** 32;
+
 export const splitOf = (path: string): "dev" | "test" => (createHash("sha1").update(path).digest()[0]! % 2 === 0 ? "dev" : "test");
 
 // ------------------------------------------------------------ the tulmi/src brain
@@ -64,7 +70,6 @@ export function appSources(): Record<string, string> {
 
 // ---------------------------------------------------------------- the tasks
 
-const rng = (seed: number) => () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
 
 /** "fix the bug in <name>": one distinctive exported name that only one source file defines. */
 export function generateDefined(files: readonly StoredFile[], max = 120): Task[] {
@@ -75,10 +80,9 @@ export function generateDefined(files: readonly StoredFile[], max = 120): Task[]
     if (!l.includes(f.path)) l.push(f.path);
     definers.set(s.name, l);
   }
-  const rand = rng(7);
   const tasks: Task[] = [];
   const names = [...definers.entries()].filter(([n, ps]) => distinctive(n) && ps.length === 1 && !isTestPath(ps[0]!)).sort((a, b) => (a[0] < b[0] ? -1 : 1));
-  const picked = names.map((e) => ({ e, r: rand() })).sort((a, b) => a.r - b.r).slice(0, max).map((x) => x.e);
+  const picked = names.map((e) => ({ e, r: stableKey(7, JSON.stringify(e)) })).sort((a, b) => a.r - b.r).slice(0, max).map((x) => x.e);
   for (const [name, [path]] of picked) tasks.push({ id: `defined:${name}`, set: "defined", text: `fix the bug in ${name}`, gold: [path!], split: splitOf(path!) });
   return tasks;
 }
@@ -107,10 +111,9 @@ export function generateCallers(files: readonly StoredFile[], max = 120): Task[]
       users.set(name, set);
     }
   }
-  const rand = rng(11);
   const seen = new Set<string>();
   const tasks: Task[] = [];
-  const order = files.filter((f) => !isTestPath(f.path) && f.refs?.length).map((f) => ({ f, r: rand() })).sort((a, b) => a.r - b.r).map((x) => x.f);
+  const order = files.filter((f) => !isTestPath(f.path) && f.refs?.length).map((f) => ({ f, r: stableKey(11, f.path) })).sort((a, b) => a.r - b.r).map((x) => x.f);
   for (const f of order) {
     const mine = (f.refs ?? []).map(([n]) => n).filter((n) => usable(n) && definer.get(n) !== f.path && users.has(n));
     // Two names from two different files, used together in as few files as possible.

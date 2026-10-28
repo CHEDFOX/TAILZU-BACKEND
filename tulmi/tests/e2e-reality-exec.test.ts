@@ -17,7 +17,8 @@ vi.hoisted(() => {
 
 import { parseCatalog, type Catalog } from "../e2e/catalog.js";
 import { simClient } from "../e2e/bakeoff/sim.js";
-import { RealExecutor } from "../e2e/reality/exec.js";
+import { RealExecutor, runLabel } from "../e2e/reality/exec.js";
+import { splitProxyUrl } from "../e2e/agents/external.js";
 import { measuredTaskInr, LADDERS_ARM, taskKey } from "../e2e/reality/plan.js";
 import { ResultsStore } from "../e2e/reality/store.js";
 import { loadTasks } from "../e2e/tasks/schema.js";
@@ -102,5 +103,15 @@ describe("the estimate learns what a task costs", () => {
     add(100, "real", "some/model", "other-5");
     expect(measuredTaskInr(s, "bug")).toBe(3);
     expect(measuredTaskInr(s, "feature")).toBeNull();
+  });
+});
+
+describe("the proxy label of a contestant's run", () => {
+  it("stays a label the agent and the proxy accept, however long the task id (a long one once got a second /run/ prefix and only 404s)", () => {
+    const long = runLabel("mini-swe-agent:deepseek/deepseek-v4.1-flash", "body-parser-hostile-skip-failing-test");
+    expect(long.length).toBeLessThanOrEqual(80);
+    expect(splitProxyUrl(`http://127.0.0.1:1/run/${long}/v1`).label).toBe(long);
+    expect(runLabel("mini-swe-agent:deepseek/deepseek-v4.1-flash", "body-parser-hostile-skip-failing-tests")).not.toBe(long);
+    expect(runLabel("aider:m/x", "t-1")).toBe("aider_m_x__t-1");
   });
 });

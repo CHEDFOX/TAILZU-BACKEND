@@ -212,12 +212,12 @@
       "plan": "The hop-count trust function in lib/utils.js compileTrust trusts one hop too many; trust only hops below the count"
     },
     "validated": {
-      "at": "2026-10-28T07:31:14.290Z",
+      "at": "2026-10-28T16:00:34.244Z",
       "baseFails": true,
       "oraclePasses": true,
       "baseTestsFailed": 4,
       "oracleTests": 6,
-      "ms": 7846,
+      "ms": 9356,
       "note": "the project's own suite with the hidden files: 1296 pass, 3 already failing, none newly broken"
     }
   },
@@ -286,12 +286,12 @@
       "plan": "Restore the transposition step of the edit distance and add a regression test that fails without it"
     },
     "validated": {
-      "at": "2026-10-28T07:31:06.086Z",
+      "at": "2026-10-28T16:00:30.678Z",
       "baseFails": true,
       "oraclePasses": true,
       "baseTestsFailed": 6,
       "oracleTests": 7,
-      "ms": 10202,
+      "ms": 13926,
       "note": "the project's own suite with the hidden files: 1376 pass, 0 already failing, none newly broken"
     }
   },

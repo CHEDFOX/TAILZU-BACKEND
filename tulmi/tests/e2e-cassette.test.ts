@@ -8,7 +8,9 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { unsafeReason } from "../e2e/adapters/localRunner.js";
 import { callContext } from "../e2e/adapters/models.js";
-import { CassetteClient, CassetteMiss, CassetteStore, SpendGuard, cassetteKey, normalize, redact, wireRequestOf } from "../e2e/adapters/cassette.js";
+import { CassetteClient, CassetteMiss, CassetteStore, SpendGuard, cassetteKey, compactCassette, normalize, readCassetteText, redact, wireRequestOf } from "../e2e/adapters/cassette.js";
+import { listCassettes } from "../e2e/reality/replay.js";
+import zlib from "node:zlib";
 import { startProxy } from "../e2e/proxy.js";
 import type { ChatClient } from "../src/code/brain/gateway.js";
 import { fakeSecret } from "../e2e/util.js";
@@ -88,7 +90,7 @@ describe("redaction", () => {
     const secret = fakeSecret("stripe", "file");
     const c = new CassetteClient({ store, mode: "record", upstream: upstream() });
     await c.create(body(`my key is ${secret}`));
-    expect(fs.readFileSync(store.file, "utf8")).not.toContain(secret);
+    expect(store.text()).not.toContain(secret);
     expect(cassetteKey(body(`my key is ${secret}`))).toBe(cassetteKey(body("my key is [redacted]")));
   });
 });
@@ -122,6 +124,38 @@ describe("record and replay", () => {
     await expect(play.create(body("never recorded"))).rejects.toBeInstanceOf(CassetteMiss);
     expect(play.stats.misses).toHaveLength(1);
     expect(play.stats.misses[0]!.summary).toContain("never recorded");
+  });
+
+  it("writes gzip (one member per entry), still reads a plain .jsonl first, and packing keeps the text byte for byte", async () => {
+    const d = dir();
+    const up = upstream();
+    const s = new CassetteStore("z", d);
+    s.reset();
+    expect(s.file.endsWith("z.jsonl.gz")).toBe(true);
+    const rec = new CassetteClient({ store: s, mode: "record", upstream: up });
+    await rec.create(body("one"));
+    await rec.create(body("two"));
+    expect(fs.readFileSync(s.file).subarray(0, 2)).toEqual(Buffer.from([0x1f, 0x8b]));
+    const text = s.text();
+    expect(text.trim().split("\n").length).toBe(2);
+    // An older plain recording beside it is read first, and the pair packs into one gzip member with the same text.
+    const old = new CassetteStore("o", d); old.reset();
+    await new CassetteClient({ store: old, mode: "record", upstream: up }).create(body("old"));
+    fs.writeFileSync(path.join(d, "z.jsonl"), old.text());
+    const both = new CassetteStore("z", d).load();
+    expect(both.count).toBe(3);
+    expect(both.text()).toBe(old.text() + text);
+    const r = compactCassette(d, "z");
+    expect(fs.existsSync(path.join(d, "z.jsonl"))).toBe(false);
+    expect(readCassetteText(s.file)).toBe(old.text() + text);
+    expect(r.bytes).toBe(Buffer.byteLength(old.text() + text));
+    const play = new CassetteClient({ store: new CassetteStore("z", d).load(), mode: "replay" });
+    await play.create(body("two"));
+    expect(play.stats.misses).toEqual([]);
+    expect(listCassettes(d).map((c) => [c.name, c.entries])).toEqual(expect.arrayContaining([["z", 3], ["o", 1]]));
+    // A torn last member (a crash while writing) loses only that entry.
+    fs.appendFileSync(s.file, zlib.gzipSync('{"k":"x"}\n').subarray(0, 12));
+    expect(new CassetteStore("z", d).load().count).toBe(3);
   });
 
   it("mixed mode replays what is recorded and calls the model for the rest, adding it", async () => {

@@ -15,6 +15,7 @@
  */
 import "../env.js";
 import { realKey } from "../env.js";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { CassetteStore, SpendGuard, type CassetteMode } from "../adapters/cassette.js";
 import { makeModelKit, type CassetteSetup } from "../adapters/rig.js";
@@ -36,6 +37,16 @@ import type { Task } from "../tasks/schema.js";
 import { mkdirp } from "../util.js";
 import { perfOf } from "./perf.js";
 import type { Arm, Mode, ProbeOutcome, TaskOutcome } from "./types.js";
+
+/**
+ * The proxy's label for one contestant's run of one task: at most 80 characters, what the proxy's route and the agent's URL parser accept. A longer one (a long
+ * task id after "mini-swe-agent:deepseek/...") was not recognised as a label, so the agent was given a second /run/ prefix and every call was a 404.
+ */
+export function runLabel(armId: string, taskId: string): string {
+  const full = `${armId}__${taskId}`.replace(/[^A-Za-z0-9._-]/g, "_");
+  if (full.length <= 80) return full;
+  return `${full.slice(0, 71)}_${createHash("sha1").update(full).digest("hex").slice(0, 8)}`;
+}
 
 export interface Executor {
   readonly mode: Mode;
@@ -165,7 +176,7 @@ export class RealExecutor implements Executor {
     const model = this.modelFor(arm, task, o.index);
     if (!isOurs(arm.agent) && this.o.mode !== "scripted") {
       const proxy = await this.ensureProxy();
-      model.proxyUrl = `${proxy.url.replace(/\/v1$/, "")}/run/${encodeURIComponent(`${arm.id}__${task.id}`.replace(/[^A-Za-z0-9._-]/g, "_"))}/v1`;
+      model.proxyUrl = `${proxy.url.replace(/\/v1$/, "")}/run/${runLabel(arm.id, task.id)}/v1`;
     }
     const t0 = Date.now();
     const judge = this.o.judge && this.o.mode === "real" ? this.judge() : undefined;

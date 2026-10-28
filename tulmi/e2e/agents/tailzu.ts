@@ -13,17 +13,18 @@ import { proxyClient } from "../adapters/upstream.js";
 import { runTask } from "../runTask.js";
 import { mkdirp } from "../util.js";
 import type { JobMode } from "../../src/code/agent/types.js";
+import type { EffortMode } from "../../src/code/agent/effort.js";
 import type { AgentMetrics, AgentRunInput, AgentRunResult, AgentStatus, AgentUnderTest, FileChange } from "./types.js";
 
 /** Our agent ids: the product as it ships (free-form by default) and the phased flow kept behind CODE_JOB_MODE, for comparison. */
-export const OUR_AGENTS = ["tailzu", "tailzu-phased"] as const;
+export const OUR_AGENTS = ["tailzu", "tailzu-phased", "tailzu-high", "tailzu-adaptive"] as const;
 export const isOurs = (id: string): boolean => (OUR_AGENTS as readonly string[]).includes(id);
 
 /** Tailzu's flow as an agent under test, with every job worked in `jobMode` (absent: the product's default). */
-function tailzuAs(id: string, describe: string, jobMode?: JobMode): AgentUnderTest {
+function tailzuAs(id: string, describe: string, jobMode?: JobMode, effort?: EffortMode): AgentUnderTest {
   return {
     id, describe, modes: ["real", "fake", "oracle"], usesCheckout: false,
-    run: (i) => runOurs(id, i, jobMode),
+    run: (i) => runOurs(id, i, jobMode, effort),
   };
 }
 
@@ -31,14 +32,18 @@ export const tailzuAgent: AgentUnderTest = tailzuAs("tailzu", "Tailzu's Code bot
 /** The phased flow (locate, plan, work on the planned files, verify) the product used before free-form became the default: CODE_JOB_MODE=guided. */
 export const tailzuPhasedAgent: AgentUnderTest = tailzuAs("tailzu-phased", "Tailzu's Code bot, phased (CODE_JOB_MODE=guided): locate, plan, work on the planned files, verify, policy commit, pull request", "guided");
 
-async function runOurs(id: string, i: AgentRunInput, jobMode: JobMode | undefined): Promise<AgentRunResult> {
+/** Free-form with every work turn at its tier's level (CODE_EFFORT=high), and with the effort chosen turn by turn (CODE_EFFORT=adaptive): the paired comparison of agent/effort.ts. */
+export const tailzuHighAgent: AgentUnderTest = tailzuAs("tailzu-high", "Tailzu's Code bot, free-form, every work turn at its tier's reasoning level (CODE_EFFORT=high)", "freeform", "high");
+export const tailzuAdaptiveAgent: AgentUnderTest = tailzuAs("tailzu-adaptive", "Tailzu's Code bot, free-form, reasoning chosen turn by turn: the tier's level to decide, low to carry out (CODE_EFFORT=adaptive)", "freeform", "adaptive");
+
+async function runOurs(id: string, i: AgentRunInput, jobMode: JobMode | undefined, effort?: EffortMode): Promise<AgentRunResult> {
   {
     const out = await runTask(i.task, {
       ...(jobMode ? { jobMode } : {}),
       mode: i.model.mode, ...(i.model.persona ? { persona: i.model.persona } : {}), repeat: i.repeat, ...(i.model.tiers ? { tiers: i.model.tiers } : {}),
       capPaise: i.budgetPaise, timeoutSec: Math.max(i.timeoutSec, i.task.scenario?.timeoutSec ?? 0), ...(i.model.cassette ? { cassette: i.model.cassette } : {}), ...(i.model.wire ? { wire: true } : {}), ...(i.model.maxTurns ? { maxTurns: i.model.maxTurns } : {}), ...(i.model.maxTokens ? { maxTokens: i.model.maxTokens } : {}), ...(i.brainBudgetPaise !== undefined ? { brainBudgetPaise: i.brainBudgetPaise } : {}), log: i.log,
       // Through the recording proxy like an external agent, when it is given one and no in-process cassette (the security suite does this).
-      ...(i.model.proxyUrl && i.model.mode === "real" && !i.model.cassette ? { rig: { client: proxyClient(i.model.proxyUrl) } } : {}),
+      rig: { ...(effort ? { effort } : {}), ...(i.model.proxyUrl && i.model.mode === "real" && !i.model.cassette ? { client: proxyClient(i.model.proxyUrl) } : {}) },
     });
     try {
       const t = out.trace;
@@ -55,7 +60,9 @@ async function runOurs(id: string, i: AgentRunInput, jobMode: JobMode | undefine
       for (const c of ok) models[c.model] = (models[c.model] ?? 0) + 1;
       const metrics: AgentMetrics = {
         costPaise: (t.job?.spentPaise ?? 0) + (t.front?.paise ?? 0), promptTokens: t.calls.reduce((n, c) => n + c.promptTokens, 0), completionTokens: t.calls.reduce((n, c) => n + c.completionTokens, 0),
-        steps: t.agent?.turns ?? 0, toolCalls: t.tools.length, toolErrors: t.tools.filter((x) => x.ok === false).length, modelCalls: t.calls.length, wallMs: t.wallMs, models,
+        steps: t.agent?.turns ?? 0, toolCalls: t.tools.length, toolErrors: t.tools.filter((x) => x.ok === false).length, modelCalls: t.calls.length, models,
+        // As if live: a call answered from the cassette took no time now, so the time it took when it was recorded is added back (cassette.ts replayedMs).
+        wallMs: t.wallMs + (out.rig.cassette?.stats.replayedMs ?? 0),
         ...(out.rig.cassette ? { cassette: { hits: out.rig.cassette.stats.hits, misses: out.rig.cassette.stats.misses.length, recorded: out.rig.cassette.stats.recorded, spentUsd: out.rig.cassette.stats.spentUsd, replayedUsd: out.rig.cassette.stats.replayedUsd, missed: out.rig.cassette.stats.misses.slice(0, 5) } } : {}),
       };
       const status: AgentStatus = t.timedOut ? "timeout" : t.job?.state === "done" ? "finished" : t.questions.some((q) => q.kind === "budget") ? "budget" : "failed";

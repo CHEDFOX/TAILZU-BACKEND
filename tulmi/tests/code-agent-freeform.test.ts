@@ -470,3 +470,26 @@ describe("the routes", () => {
     await r.orch.idle();
   });
 });
+
+describe("adaptive effort in a free-form job (agent/effort.ts)", () => {
+  const script = () => [
+    call("search_code", { query: "slug" }), call("read_file", { path: "src/util.ts" }), call("edit_file", UTIL_EDIT),
+    call("read_file", { path: "src/util.ts" }), call("run", { cmd: "npm test" }), done("The ends were never trimmed; now they are."),
+  ];
+  it("sends 'low' only on the turns that carry out a decision; CODE_EFFORT=high (the default) sends the tier's own level on every turn", async () => {
+    const adaptive = await agentRig({ effort: "adaptive" });
+    adaptive.model.push(...script());
+    const a = await startMode(adaptive, OPEN, { mode: "freeform" });
+    await adaptive.orch.idle();
+    expect((await adaptive.jobNow(a.job.id)).state).toBe("done");
+    // search, read, edit: understanding and deciding (HIGH); the read after the edit (LOW); the test run (LOW: carrying out); done after the tests passed (HIGH: the review).
+    expect(adaptive.model.seen.map((x) => x.input.reasoning ?? "tier")).toEqual(["tier", "tier", "tier", "low", "low", "tier"]);
+    expect((await adaptive.stateNow(a.job.id)).work.lowTurns).toBe(2);
+
+    const high = await agentRig({});
+    high.model.push(...script());
+    const h = await startMode(high, OPEN, { mode: "freeform" });
+    await high.orch.idle();
+    expect(high.model.seen.map((x) => x.input.reasoning ?? "tier")).toEqual(Array(6).fill("tier"));
+  });
+});

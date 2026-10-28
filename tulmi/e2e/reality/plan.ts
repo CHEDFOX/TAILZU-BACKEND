@@ -3,7 +3,7 @@
  *
  *   quick      about 12 tasks (the smallest set that touches every category and stage, plus a couple), the comparisons on the first 6 of them, 3 models
  *   standard   about 24 tasks, comparisons on 12, 5 models, every contestant
- *   deep       all 71 tasks, comparisons on all of them, 8 models, every contestant, repeats for flaky results
+ *   deep       all 77 tasks, comparisons on all of them, 8 models, every contestant, repeats for flaky results
  *
  * THE ESTIMATE (`estimateStages`) is made before anything is spent, per stage, from OpenRouter's live prices through the proxy the environment names:
  *   expected   what the stage should spend with its early stops working (a dominated contestant dropped after the first round, a result already in the store not paid again)
@@ -75,6 +75,8 @@ export interface RealityOptions {
   outDir: string;
   seed: number;
   confidence: number;
+  /** Instead of the plan's: how many times an unstable run is run again (0: never; a paired run repeats what it chooses itself). */
+  maxRepeats?: number;
   install: boolean;
   skipSuite: boolean;
   skipTypecheck: boolean;
@@ -130,7 +132,7 @@ export async function buildCtx(o: RealityOptions): Promise<Ctx> {
   // Simulated and scripted runs do not touch the projects' dependencies, so nothing is blocked for them.
   const repos = o.mode === "sim" ? new Map<string, RepoStatus>() : await checkRepos(pool, { install: o.install && !o.estimateOnly && o.mode === "real", log: o.log });
   const blocked = blockedTasks(pool, repos);
-  const spec = PLAN_SPECS[o.plan];
+  const spec = { ...PLAN_SPECS[o.plan], ...(o.maxRepeats !== undefined ? { maxRepeats: o.maxRepeats } : {}) };
   const history = new Map<string, { runs: number; fails: number }>();
   for (const r of store.list((x) => x.kind === "task" && x.agent === "tailzu")) { const h = history.get(r.item) ?? { runs: 0, fails: 0 }; h.runs += 1; if (!r.ok) h.fails += 1; history.set(r.item, h); }
   const answered = new Set(pool.filter((t) => store.reusable(taskKey(LADDERS_ARM, t))).map((t) => t.id));

@@ -11,7 +11,7 @@
  * agent turns a task, under a hard cap (`--budget-inr`, REQUIRED for a run that calls a real model: there is no default) that stops the run cleanly. Before anything is spent an estimate is printed from the live
  * OpenRouter prices. The result is one page: pass or fail per stage, per item, with the cost.
  *
- * CASSETTES. `--record` saves every model request and answer (e2e/cassettes/<name>.jsonl, `--cassette smoke` by default); `--replay` runs everything from them
+ * CASSETTES. `--record` saves every model request and answer (e2e/cassettes/<name>.jsonl.gz, `--cassette smoke` by default); `--replay` runs everything from them
  * at zero cost; `--mixed` replays what is recorded and calls the model for the rest (and adds it); a miss in a strict replay fails the run. `--changed`
  * re-runs only the items the code changed since the recording can affect (mixed), and replays the rest.
  *
@@ -30,7 +30,7 @@ import { loadCatalog, type Catalog } from "../catalog.js";
 import { getRepo, installRepo, isInstalled } from "../repos.js";
 import { loadTasks, type Task } from "../tasks/schema.js";
 import { OUT_DIR, mkdirp, pool, rmrf, writeJson } from "../util.js";
-import { affectedBy, changedFiles, hashSources, loadHashes, saveHashes, type RunParams } from "./changed.js";
+import { affectedBy, changedFiles, hashSources, loadHashes, metaFile, saveHashes, type RunParams } from "./changed.js";
 import { estimateSmoke, SHAPE, type ItemShape } from "./estimate.js";
 import { artifactItem, frontItem, researchItem, taskItem, visionItem, type SmokeCtx } from "./items.js";
 import { renderHtml, renderText, type SmokeRun } from "./report.js";
@@ -139,7 +139,7 @@ export async function runSmoke(o: SmokeOptions): Promise<SmokeRun> {
   let affected = new Set<string>();
   if (o.changed) {
     const before = loadHashes(store.file);
-    if (!before) throw new Error(`--changed needs the source checksums saved with the recording (${store.file.replace(/\.jsonl$/, ".meta.json")}): record again with --record`);
+    if (!before) throw new Error(`--changed needs the source checksums saved with the recording (${metaFile(store.file)}): record again with --record`);
     const a = affectedBy(changedFiles(before, hashSources()));
     affected = new Set(a.items);
     changed = { files: a.files, stages: a.stages, items: a.items };
@@ -204,7 +204,7 @@ export const SMOKE_SPEC: CliSpec = {
   flags: {
     suite: { kind: "string", value: "smoke", about: "the suite (this tool is --suite smoke)" },
     model: { kind: "string", value: "real|fake|oracle", about: "real models (needs the key), a scripted wrong one, or a scripted right one (default real)" },
-    record: { kind: "bool", about: "record every model call to e2e/cassettes/<cassette>.jsonl" },
+    record: { kind: "bool", about: "record every model call to e2e/cassettes/<cassette>.jsonl.gz" },
     replay: { kind: "bool", about: "answer every call from the cassette, for nothing (strict: a miss fails the run)" },
     mixed: { kind: "bool", about: "replay what is recorded, call the model for the rest" },
     cassette: { kind: "string", value: "<name>", about: "the cassette (default smoke)" },

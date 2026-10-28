@@ -580,6 +580,17 @@ describe("talking about code, and how a task is worked (docs/code-chat.md, docs/
     expect((await ruled("should we use a team of helpers for this?", inProject())).team).toBeUndefined();
   });
 
+  it("reads a problem report that asks for a fix as a code task, not research: \"Security report… find out why and fix it\"", async () => {
+    const report = "Security report from a customer: their app runs behind exactly one load balancer and sets `app.set('trust proxy', 1)` as the docs say. A client can spoof `req.ip` with its own X-Forwarded-For header. Find out why and fix it.";
+    for (const m of [report, "Bug report from QA: the invoice total is off by one cent when a discount and tax both apply. Investigate and patch it.", "Customer ne bataya ki checkout page pe coupon do baar lag jata hai, dekho kyun hota hai aur fix karo"]) {
+      expect(await ruled(m, inProject()), m).toMatchObject({ intent: "code_task" });
+    }
+    // Without a project there is nothing to change; research words without a fix ask stay research; a bare "fix it" still asks what.
+    expect((await ruled(report)).intent).not.toBe("code_task");
+    expect((await ruled("research the latest auth libraries for node and find out which one is best", inProject())).intent).toBe("research");
+    expect((await ruled("how do I fix this error in the login code?", inProject())).intent).not.toBe("research");
+  });
+
   it("works an open-ended task free-form: debugging, investigating, finding out why, and a flaky or intermittent failure", async () => {
     for (const m of ["debug why the checkout sometimes fails and fix it", "debug the intermittent timeout in the upload job and fix it", "figure out why the cart is empty after refresh and fix it", "track down the flaky login test and fix it"]) {
       const d = await ruled(m, inProject());

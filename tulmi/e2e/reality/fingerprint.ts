@@ -10,7 +10,7 @@
  *   task, external  nothing of ours: the contestant's pinned version (agents/versions.json). Its task and the scorer are in the prompt version.
  *   part            the directories of that part (edit formats: the model door; router: the Code flow; extraction: src/web; locate: the work core)
  *
- * The PROMPT VERSION is a second hash, of the words the models are given: src/principles for the product, the probe and edit-format texts for probes, the task's
+ * The PROMPT VERSION is a second hash, of the words the models are given (and, for a task, how its project was built: `fixtureFingerprint`): src/principles for the product, the probe and edit-format texts for probes, the task's
  * own text and the scorer for a task. A prompt edit invalidates results without touching "code"; a code edit without touching a prompt leaves the probe words alone.
  *
  * All pure reads of the working tree (uncommitted edits count: the other worker's change to src/** shows up here the moment it lands).
@@ -19,7 +19,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { E2E_DIR, TULMI_DIR } from "../env.js";
-import type { Task } from "../tasks/schema.js";
+import { fixtureFingerprint, type Task } from "../tasks/schema.js";
 
 const TEXT = /\.(ts|tsx|js|mjs|json|md|txt|scm|py)$/;
 
@@ -113,6 +113,9 @@ export function taskPromptVersion(task: Pick<Task, "id">, agent = "tailzu", full
   h.update(JSON.stringify(fullTask ?? task.id));
   h.update(scorerVersion());
   if (ours(agent)) h.update(treeHash(PROMPT_PATHS));
+  // How the project was built: a snapshot task (planted files, no history) is not the same task as the leaky fixture before it. "" adds nothing, so other keys stand.
+  const fx = fixtureFingerprint(fullTask);
+  if (fx) h.update(fx);
   return h.digest("hex").slice(0, 12);
 }
 

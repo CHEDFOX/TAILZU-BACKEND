@@ -76,7 +76,7 @@ export interface Contestant { id: string; usable: boolean; why?: string; row?: C
 /** The agents of a comparison and whether each can run here: Tailzu always; the others when their tool is installed and needs no Docker. */
 export function contestants(wanted: readonly string[], rows: readonly ContestantRow[] = contestantRows()): Contestant[] {
   return wanted.map((id): Contestant => {
-    if (id === "tailzu" || id === "tailzu-phased") return { id, usable: true };
+    if (id === "tailzu" || id.startsWith("tailzu-")) return { id, usable: true };
     const row = rows.find((r) => r.id === id);
     if (!row) return { id, usable: false, why: `no agent called ${id}` };
     if (row.skipped) return { id, usable: false, why: row.requiresDocker ? row.skipped : `${NEEDS_INSTALLS}: ${row.skipped}`, row };

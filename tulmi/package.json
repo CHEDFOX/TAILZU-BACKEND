@@ -39,6 +39,7 @@
     "e2e:validate": "tsx e2e/validate.ts",
     "e2e:load": "tsx e2e/load.ts",
     "e2e:proxy": "tsx e2e/proxy.ts",
+    "e2e:cassettes": "tsx e2e/cassettes.ts",
     "e2e:tools": "tsx e2e/agents/tools.ts",
     "e2e:agents": "tsx e2e/agents/prove.ts",
     "e2e:security": "tsx e2e/security/index.ts",

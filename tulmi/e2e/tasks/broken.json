@@ -69,12 +69,12 @@
     },
     "derivedFrom": "express-feat-nocontent",
     "validated": {
-      "at": "2026-10-27T11:13:39.750Z",
+      "at": "2026-10-28T16:00:30.229Z",
       "baseFails": true,
       "oraclePasses": true,
       "baseTestsFailed": 6,
       "oracleTests": 6,
-      "ms": 8490,
+      "ms": 12499,
       "note": "the project's own suite with the hidden files: 1296 pass, 1 already failing, none newly broken"
     }
   },
@@ -153,12 +153,12 @@
     },
     "derivedFrom": "commander-feat-envprefix",
     "validated": {
-      "at": "2026-10-27T11:23:11.428Z",
+      "at": "2026-10-28T16:00:24.594Z",
       "baseFails": true,
       "oraclePasses": true,
       "baseTestsFailed": 12,
       "oracleTests": 12,
-      "ms": 18372,
+      "ms": 14519,
       "note": "the project's own suite with the hidden files: 1379 pass, 3 already failing, none newly broken"
     }
   }

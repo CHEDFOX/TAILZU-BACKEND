@@ -21,8 +21,9 @@ import { classifyRequest } from "../brain/classify.js";
 import { callModel } from "../brain/gateway.js";
 import { planRoute } from "../brain/route.js";
 import { recordOutcome } from "../brain/stats.js";
-import { reasoningParam, tierTable, type TierSettings } from "../brain/tiers.js";
+import { reasoningParam, tierTable, type Reasoning, type TierSettings } from "../brain/tiers.js";
 import { REASONING_ALLOWANCE, reasoningAllowance } from "../../agent/reasoning.js";
+import { effortLevel, feedbackMark, turnEffort } from "./effort.js";
 import type { ToolCall } from "../brain/types.js";
 import { advanceIntake, checksFor, isEmptyRepo, planMilestones, scaffoldStep, type IntakeInput, type StackKind } from "../newproject/index.js";
 import {
@@ -566,6 +567,7 @@ async function modelTurn(r: Run): Promise<void> {
   const w = s.work;
   const d = r.deps;
   await r.renew();
+  const saidBefore = w.said?.length ?? 0;
   await takeSaid(r);
   const strategy = strategyOf(r);
   await fold(s, r.model(), strategy);
@@ -590,10 +592,19 @@ async function modelTurn(r: Run): Promise<void> {
   const tierSet = tiersForTurn(r)[route.tier];
   const thinker = route.model ?? tierSet?.models[0];
   const room = Math.max(tierSet?.maxTokens ?? WORK_TOKENS, thinker && tierSet ? WORK_TOKENS + reasoningAllowance(reasoningParam(thinker, tierSet.reasoning)) : WORK_TOKENS);
+  // Adaptive effort (agent/effort.ts): a free-form turn that carries out a decision thinks at "low"; one that decides keeps the tier's level.
+  const feedback = feedbackMark(w.feedback ?? w.testFeedback ?? w.designFeedback ?? w.reviewFeedback ?? "");
+  let reasoning: Reasoning | undefined;
+  if (s.mode === "freeform" && (d.effort ?? getConfig().CODE_EFFORT) === "adaptive" && tierSet) {
+    const e = turnEffort({ exchanges: w.exchanges, freshFeedback: !!feedback && feedback !== w.feedbackSeen, answered: w.answeredAt === w.turns, said: (w.said?.length ?? 0) > saidBefore });
+    const level = effortLevel(tierSet.reasoning, e.effort);
+    if (level !== tierSet.reasoning) { reasoning = level; w.lowTurns = (w.lowTurns ?? 0) + 1; }
+  }
+  w.feedbackSeen = feedback || undefined;
   let res;
   try {
     res = await call({
-      tier: route.tier, ...(route.model ? { model: route.model } : {}), messages: ctx.messages, tools: [...r.tools.defs()], toolChoice: "auto",
+      tier: route.tier, ...(route.model ? { model: route.model } : {}), ...(reasoning ? { reasoning } : {}), messages: ctx.messages, tools: [...r.tools.defs()], toolChoice: "auto",
       purpose: "agent.work", budget: "job", jobId: r.jobId, userId: r.userId, step: w.turns, maxTokens: room, signal: r.signal,
     }, d.gateway);
   } catch (err) {

@@ -123,6 +123,20 @@ export interface Scenario {
   milestoneJobs?: number;
 }
 
+/**
+ * Whether a task's project is a SNAPSHOT: one root commit of the files as the agent gets them, with no history and no objects borrowed from the clone.
+ * Every repos.json task with planted files is one. Before 2026-10-28 the planted files were one more commit over the pinned history, so `git show HEAD`,
+ * `git log -S` or `git diff HEAD~1` gave the original code back (models did that); the old results of those tasks are from that leaky fixture and are not
+ * reused (`fixtureFingerprint` is in their store key).
+ */
+export const snapshotBase = (t: Pick<Task, "repo" | "base">): boolean => t.repo !== "synthetic" && Object.keys(t.base?.planted ?? {}).length > 0;
+
+/** What a result's key holds of how the task's project was built: "" (unchanged, so old keys stand) unless the project is a snapshot. */
+export const fixtureFingerprint = (t: unknown): string => {
+  const task = t as Partial<Pick<Task, "repo" | "base">> | null;
+  return task && typeof task === "object" && task.repo && task.base && snapshotBase(task as Pick<Task, "repo" | "base">) ? "fixture:snapshot-1" : "";
+};
+
 export interface Task {
   id: string;
   title: string;
@@ -134,7 +148,8 @@ export interface Task {
     /** A synthetic project: path -> text. `{}` is a repo with files, absent with no commit is an empty repo. */
     files?: Record<string, string>;
     empty?: boolean;
-    /** Files planted over the commit as one more commit (an injection in a README, a secret in a config). `{{SECRET:n}}` is the n-th secret. */
+    /** Files planted over the commit (an injection in a README, a secret in a config, a bug). `{{SECRET:n}}` is the n-th secret. The project is then a
+     * SNAPSHOT (`snapshotBase`): one fresh commit, no history, no borrowed objects, so what was planted cannot be read back from git. */
     planted?: Record<string, string | null>;
     message?: string;
   };

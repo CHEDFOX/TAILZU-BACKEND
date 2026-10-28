@@ -115,6 +115,12 @@ const CODE_WORDS = /\b(?:app|project|repo|repository|codebase|code|file|files|fu
 const CODE_SHAPES = /\b[a-z]+[A-Z]\w*\b|\b[a-z]+_[a-z_]+\b/;
 const CODE_HI = hindi(["कोड", "ऐप", "प्रोजेक्ट", "फ़ाइल", "फाइल", "फंक्शन", "लॉगिन"]);
 /** A change asked for: the Code bot's classifier calls these small_edit, bug_fix, feature and refactor. */
+/**
+ * A report that ends in an ask to change the code ("Security report from a customer: … Find out why and fix it."): a code task, whatever research-sounding words
+ * ("find out", "investigate") come with it. Only with a project, only when the message says what is wrong (code words or a dozen words), never bare ("fix it").
+ */
+const FIX_ASK = /\b(?:fix|patch|repair|resolve|correct)\s+(?:it|this|that|them|these|those|the\s+(?:bug|bugs|issue|issues|problem|hole|vulnerability|vuln|leak|crash|error|regression))\b/i;
+const FIX_ASK_HG = /\b(?:fix|theek|thik|sahi|patch)\s+(?:karo|kar\s+do|kardo|karna|kijiye|kar\s+dijiye|kar\s+dena)\b/i;
 const CHANGE_TYPES = new Set(["small_edit", "bug_fix", "feature", "refactor"]);
 /** "Ok, change it", "go ahead and fix that", "make the change": what a person says after a question about the code when they want it done. */
 const HANDOFF = /^\s*(?:ok(?:ay)?|yes|yeah|yep|sure|great|cool|alright|right|so|then|now|fine|good|perfect)?[\s,.!:;-]*(?:please\s+|pls\s+|plz\s+)?(?:go\s+ahead\s+and\s+|let'?s\s+|can\s+you\s+|could\s+you\s+|you\s+can\s+)?(?:change|fix|update|implement|apply|do|make|add|edit|modify|patch)\s+(?:it|that|this|those|them)(?:\s+(?:now|then|please|for\s+me))?[\s.!?]*$|^\s*(?:ok(?:ay)?[\s,.!-]*)?(?:go\s+ahead|do\s+it|make\s+the\s+change|make\s+that\s+change|apply\s+(?:the\s+)?(?:change|fix))[\s.!?]*$/i;
@@ -205,22 +211,26 @@ export function readByRules(message: string, ctx: Pick<FrontCtx, "projectId" | "
   const comparing = COMPARE.test(text) || COMPARE_HG.test(text) || COMPARE_HI.test(text);
   const aboutCode = CODE_WORDS.test(text) || CODE_SHAPES.test(text) || CODE_HI.test(text) || cls.signals.includes("error_text");
 
+  const vague = isVague(extractCues(text)) || isBare(text);
+  // A problem report with an ask to fix it: the "find out why" in it is diagnosis in the project, not research on the web.
+  const fixAsk = hasProject && (FIX_ASK.test(text) || FIX_ASK_HG.test(text)) && (aboutCode || n >= 12) && !vague && !(asking && questionMark);
+
   // Looking something up on the web.
   let depth: ResearchDepth | undefined;
-  const explicitResearch = RESEARCH_WORDS.test(text);
+  const explicitResearch = RESEARCH_WORDS.test(text) && !fixAsk;
   const fresh = FRESH_WORDS.test(text) || RESEARCH_HG.test(text) || RESEARCH_HI.test(text);
   if (explicitResearch) hit("research", 0.7, "research:explicit");
   if (fresh) hit("research", 0.55, "research:fresh");
   if (fresh && (asking || questionMark)) hit("research", 0.4, "research:fresh_question");
   if (cls.type === "find_resource") hit("research", Math.min(0.75, cls.confidence), "research:find_resource");
-  if (cls.type === "research" && !comparing) hit("research", Math.min(0.7, cls.confidence), "research:classifier");
+  if (cls.type === "research" && !comparing && !fixAsk) hit("research", Math.min(0.7, cls.confidence), "research:classifier");
   if (explicitResearch || fresh || cls.type === "find_resource") depth = DEEP_WORDS.test(text) ? "deep" : QUICK_WORDS.test(text) && !explicitResearch ? "quick" : "standard";
   const looksUp = miss.has("research");
 
   // About a project, when there is one: a question about its code, or a change to it. Else a question about the world.
   const projectAsk = hasProject && aboutCode;
-  const vague = isVague(extractCues(text)) || isBare(text);
   if (hasProject) {
+    if (fixAsk) hit("code_task", 0.9, "code:fix_ask");
     if (CHANGE_TYPES.has(cls.type)) hit("code_task", Math.min(0.9, cls.confidence + (aboutCode ? 0.1 : 0)) * (vague ? 0.4 : 1), `code:${cls.type}`);
     if (cls.signals.includes("error_text")) hit("code_task", 0.8, "code:error_text");
     if (WRITE_CODE.test(text) && !miss.has("design")) hit("code_task", 0.6 * (vague ? 0.5 : 1), "code:write");

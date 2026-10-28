@@ -140,7 +140,7 @@ describe("the cassette key and record hold the reasoning", () => {
     await new CassetteClient({ store, mode: "record", upstream }).create(req({ effort: "low" }));
     expect(wireRequestOf(req({ effort: "low" })).reasoning).toEqual({ effort: "low" });
     expect(store.entries()[0]!.req.reasoning).toEqual({ effort: "low" });
-    expect(JSON.parse(fs.readFileSync(store.file, "utf8").trim()).req.reasoning).toEqual({ effort: "low" });
+    expect(JSON.parse(store.text().trim()).req.reasoning).toEqual({ effort: "low" });
   });
 
   it("re-records when the reasoning changed: a replay of the refusal is not served to the request that fixed it", async () => {
