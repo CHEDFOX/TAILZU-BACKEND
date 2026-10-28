@@ -1,0 +1,453 @@
+{
+ "GET /v1/keybot?tz=330": {
+  "week": {
+   "words": 3240,
+   "spoken": 3240,
+   "minutesSaved": 81,
+   "days": [
+    {
+     "label": "Mon",
+     "words": 1012,
+     "today": false,
+     "ahead": false
+    },
+    {
+     "label": "Tue",
+     "words": 944,
+     "today": false,
+     "ahead": false
+    },
+    {
+     "label": "Today",
+     "words": 1284,
+     "today": true,
+     "ahead": false
+    },
+    {
+     "label": "Thu",
+     "words": 0,
+     "today": false,
+     "ahead": true
+    },
+    {
+     "label": "Fri",
+     "words": 0,
+     "today": false,
+     "ahead": true
+    },
+    {
+     "label": "Sat",
+     "words": 0,
+     "today": false,
+     "ahead": true
+    },
+    {
+     "label": "Sun",
+     "words": 0,
+     "today": false,
+     "ahead": true
+    }
+   ]
+  },
+  "apps": [
+   {
+    "app": "Gmail",
+    "words": 1080,
+    "line": "Mail · Clear and polite"
+   },
+   {
+    "app": "WhatsApp",
+    "words": 960,
+    "line": "Chats · Casual Hinglish"
+   },
+   {
+    "app": "Slack",
+    "words": 720,
+    "line": "Work chat · Short and direct"
+   },
+   {
+    "app": "Notes",
+    "words": 480,
+    "line": "As you say it"
+   }
+  ],
+  "tones": {
+   "chats": "Casual Hinglish",
+   "mail": "Clear and polite",
+   "work": "Short and direct"
+  },
+  "words": {
+   "added": 5,
+   "learned": 4
+  },
+  "train": {
+   "done": 4,
+   "total": 10
+  },
+  "voice": {
+   "label": "Shimmer",
+   "speed": "1.25×"
+  },
+  "today": 1284,
+  "keyboard": "Light keys · haptics on"
+ },
+ "GET /v1/keybot/tone?tz=330": {
+  "groups": [
+   {
+    "id": "chats",
+    "label": "Chats",
+    "appsLine": "WhatsApp, Messages",
+    "preset": "casual_hinglish",
+    "noStop": true,
+    "latin": true,
+    "signOff": false
+   },
+   {
+    "id": "mail",
+    "label": "Mail",
+    "appsLine": "Gmail, Outlook",
+    "preset": "clear_polite",
+    "noStop": false,
+    "latin": false,
+    "signOff": true
+   },
+   {
+    "id": "work",
+    "label": "Work chat",
+    "appsLine": "Slack, Teams",
+    "preset": "short_direct",
+    "noStop": false,
+    "latin": false,
+    "signOff": false
+   }
+  ],
+  "focus": "chats",
+  "train": {
+   "done": 4,
+   "total": 10
+  }
+ },
+ "GET /v1/keybot/words?tz=330": {
+  "added": [
+   {
+    "word": "Sharvari",
+    "was": "Sarvari",
+    "kind": "pair",
+    "recent": {
+     "text": "Sharvari ko bhi bula lo, Sunday ko",
+     "at": "2026-10-28T13:10:00.000Z",
+     "app": "WhatsApp"
+    }
+   },
+   {
+    "word": "Aanya",
+    "kind": "word",
+    "uses": 12
+   },
+   {
+    "word": "Koregaon Park",
+    "kind": "word",
+    "uses": 4
+   },
+   {
+    "word": "PRD",
+    "kind": "word",
+    "uses": 9
+   },
+   {
+    "word": "Dr. Kulkarni",
+    "kind": "word",
+    "uses": 0
+   }
+  ],
+  "learned": [
+   {
+    "word": "haan",
+    "means": "yes, in chats",
+    "recent": {
+     "text": "Haan pakka! 8 tak aa jaungi",
+     "at": "2026-10-27T14:10:00.000Z",
+     "app": "WhatsApp"
+    }
+   },
+   {
+    "word": "7 baje",
+    "means": "times, the way you write them",
+    "recent": {
+     "text": "Kal 7 baje Pune station pe milte hain",
+     "at": "2026-10-28T13:40:00.000Z",
+     "app": "WhatsApp"
+    }
+   },
+   {
+    "word": "Hinjewadi",
+    "means": "where you work, Pune"
+   },
+   {
+    "word": "Sprint demo",
+    "means": "the Friday work call"
+   }
+  ],
+  "q": "",
+  "total": {
+   "added": 5,
+   "learned": 4
+  }
+ },
+ "GET /v1/keybot/voices?tz=330": {
+  "current": "shimmer",
+  "voices": [
+   {
+    "id": "nova",
+    "label": "Nova",
+    "blurb": "Warm and bright"
+   },
+   {
+    "id": "sage",
+    "label": "Sage",
+    "blurb": "Calm and soft"
+   },
+   {
+    "id": "onyx",
+    "label": "Onyx",
+    "blurb": "Deep and steady"
+   },
+   {
+    "id": "shimmer",
+    "label": "Shimmer",
+    "blurb": "Clear and upbeat"
+   },
+   {
+    "id": "fable",
+    "label": "Fable",
+    "blurb": "Expressive storyteller"
+   },
+   {
+    "id": "coral",
+    "label": "Coral",
+    "blurb": "Friendly and light"
+   },
+   {
+    "id": "ash",
+    "label": "Ash",
+    "blurb": "Natural and even"
+   },
+   {
+    "id": "echo",
+    "label": "Echo",
+    "blurb": "Measured and cool"
+   },
+   {
+    "id": "alloy",
+    "label": "Alloy",
+    "blurb": "Neutral and balanced"
+   }
+  ],
+  "read": {
+   "speed": "1.25",
+   "driving": true,
+   "draftBack": false
+  }
+ },
+ "GET /v1/keybot/train?tz=330": {
+  "lines": [
+   {
+    "text": "Happy birthday! Have a lovely year.",
+    "kind": "Chats",
+    "said": "Happy birthday yaar! Bahut saara pyaar",
+    "skipped": false
+   },
+   {
+    "text": "Sorry, I missed your call. Will call back.",
+    "kind": "Work",
+    "said": "Sorry, call miss ho gaya. Call back karti hoon",
+    "skipped": false
+   },
+   {
+    "text": "Can you send me the address?",
+    "kind": "Chats",
+    "said": "Address bhej do na",
+    "skipped": false
+   },
+   {
+    "text": "Yes, I will reach by 7 pm.",
+    "kind": "Chats",
+    "said": "Haan, 7 baje tak pahunch jaungi",
+    "skipped": false
+   },
+   {
+    "text": "Thank you for the update. I will check and get back.",
+    "kind": "Work",
+    "skipped": false
+   },
+   {
+    "text": "Please share the invoice by Friday.",
+    "kind": "Mail",
+    "skipped": false
+   },
+   {
+    "text": "Good morning! Did you have breakfast?",
+    "kind": "Chats",
+    "skipped": false
+   },
+   {
+    "text": "Let us move the call to tomorrow.",
+    "kind": "Work",
+    "skipped": false
+   },
+   {
+    "text": "Congratulations on the new job!",
+    "kind": "Chats",
+    "skipped": false
+   },
+   {
+    "text": "I am on my way, see you soon.",
+    "kind": "Chats",
+    "skipped": false
+   }
+  ],
+  "current": 4,
+  "previous": 3,
+  "done": 4,
+  "learned": [
+   {
+    "kind": "word",
+    "key": "haan",
+    "title": "You say “haan”",
+    "sub": "yes, in chats"
+   },
+   {
+    "kind": "word",
+    "key": "7 baje",
+    "title": "You say “7 baje”",
+    "sub": "times, the way you write them"
+   },
+   {
+    "kind": "word",
+    "key": "Hinjewadi",
+    "title": "You say “Hinjewadi”",
+    "sub": "where you work, Pune"
+   },
+   {
+    "kind": "word",
+    "key": "Sprint demo",
+    "title": "You say “Sprint demo”",
+    "sub": "the Friday work call"
+   },
+   {
+    "kind": "style",
+    "key": "In chats you skip the full stop",
+    "title": "In chats you skip the full stop",
+    "sub": "chats with friends and family"
+   },
+   {
+    "kind": "style",
+    "key": "Folded hands to sign off at work",
+    "title": "Folded hands to sign off at work",
+    "sub": "work chat"
+   }
+  ]
+ },
+ "GET /v1/keybot/history?tz=330": {
+  "entries": [
+   {
+    "id": "00000000-0000-4000-8000-000000000000",
+    "kind": "voice",
+    "targetApp": "WhatsApp",
+    "input": "Kal 7 baje Pune station pe milte hain",
+    "output": "Kal 7 baje Pune station pe milte hain",
+    "createdAt": "2026-10-28T13:40:00.000Z"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000008",
+    "kind": "voice",
+    "targetApp": "WhatsApp",
+    "input": "Sharvari ko bhi bula lo, Sunday ko",
+    "output": "Sharvari ko bhi bula lo, Sunday ko",
+    "createdAt": "2026-10-28T13:10:00.000Z"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "kind": "typing",
+    "targetApp": "Gmail",
+    "input": "Could I take 14–15 Nov off for a family wedding in Jaipur?",
+    "output": "Could I take 14–15 Nov off for a family wedding in Jaipur?",
+    "createdAt": "2026-10-28T10:16:00.000Z"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000002",
+    "kind": "voice",
+    "targetApp": "Gmail",
+    "input": "Can we move it to Saturday morning, around 10?",
+    "output": "Can we move it to Saturday morning, around 10?",
+    "createdAt": "2026-10-28T08:22:00.000Z"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000003",
+    "kind": "voice",
+    "targetApp": "Notes",
+    "input": "Free gift wrap on every order above ₹999",
+    "output": "Free gift wrap on every order above ₹999",
+    "createdAt": "2026-10-28T06:10:00.000Z"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000004",
+    "kind": "voice",
+    "targetApp": "Slack",
+    "input": "10 min late. Start without me.",
+    "output": "10 min late. Start without me.",
+    "createdAt": "2026-10-28T02:10:00.000Z"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000005",
+    "kind": "draft",
+    "targetApp": "WhatsApp",
+    "input": "Haan pakka! 8 tak aa jaungi",
+    "output": "Haan pakka! 8 tak aa jaungi",
+    "createdAt": "2026-10-27T14:10:00.000Z"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000006",
+    "kind": "voice",
+    "targetApp": "Gmail",
+    "input": "Please send the new fabric samples by Friday.",
+    "output": "Please send the new fabric samples by Friday.",
+    "createdAt": "2026-10-27T09:40:00.000Z"
+   },
+   {
+    "id": "00000000-0000-4000-8000-000000000007",
+    "kind": "voice",
+    "targetApp": "WhatsApp",
+    "input": "Doodh aur bread le aaungi, aur kuch chahiye?",
+    "output": "Doodh aur bread le aaungi, aur kuch chahiye?",
+    "createdAt": "2026-10-27T01:34:00.000Z"
+   }
+  ],
+  "q": "",
+  "off": false
+ },
+ "GET /v1/keybot/settings?tz=330": {
+  "keyboard": {
+   "look": "light",
+   "haptics": "light",
+   "height": "normal",
+   "sounds": false,
+   "holdSpace": true,
+   "keyAt": "left"
+  },
+  "languages": [
+   {
+    "value": "en",
+    "label": "English"
+   },
+   {
+    "value": "hi",
+    "label": "Hindi"
+   },
+   {
+    "value": "hinglish",
+    "label": "Hinglish"
+   }
+  ]
+ }
+}
