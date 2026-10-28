@@ -43,6 +43,7 @@ import type {
 } from "../../../shared/types/sdui.js";
 import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
 import { botsFonts, botsNav, BOTS_WARM_SCREEN_IDS } from "./bots/index.js";
+import { botsAuthTree, BOTS_FIRST_RUN_IDS, BOTS_FIRST_RUN_SCREEN } from "./bots/screens/firstRun.js";
 import { applyRollouts, activeRollouts } from "./rollout.js";
 import type { HistoryEntry, Note, NoteSummary, PaywallConfig, PaywallPlan, Personality, StatsResponse, UsageSummary } from "../../../shared/types/api.js";
 import { getConfig } from "../config.js";
@@ -2270,7 +2271,9 @@ export function buildBootstrap(
     //
     // A window that is not onboarded yet starts the new flow first, with the
     // desk behind it; onboarded, it opens on Today as ever.
-    initialScreenId: desk && !botsApp && !(onboardV2 && !opts.onboarded) ? "desk_today" : landingScreenId(nav, pickInitialScreenId(
+    // The Bots app's own first run (Languages, Name, Keybot, First words, Plans) for someone not onboarded yet.
+    initialScreenId: botsApp && !opts.onboarded && opts.isReviewer !== true ? BOTS_FIRST_RUN_SCREEN
+      : desk && !botsApp && !(onboardV2 && !opts.onboarded) ? "desk_today" : landingScreenId(nav, pickInitialScreenId(
       !!opts.onboarded,
       // Uploaded media OR the built-in mark. The intro used to require a file,
       // so out of the box it silently never played — which reads as a broken
@@ -2602,7 +2605,11 @@ export function buildBootstrap(
         // The new onboarding's Welcome, Sign in and Code, for a build that
         // draws them; every other build keeps the screen it has always had.
         // (AUTH_SDUI off still sends everyone to the native sign-in.)
-        flags["auth.screen"] = onboardV2
+        // THE BOTS APP's Welcome, Sign in and Code (screens/firstRun.ts): the same
+        // sign-in components, drawn as its boards.
+        flags["auth.screen"] = botsApp
+          ? botsAuthTree({ ...authOpts, desktop: opts.formFactor === "desktop", terms: POLICY.terms, privacy: POLICY.privacy })
+          : onboardV2
           ? onboardAuthTree({
               ...authOpts,
               desktop: opts.formFactor === "desktop",
@@ -2614,6 +2621,8 @@ export function buildBootstrap(
         // steps. (Also the default in appKnobsData.ts; set here so a knob
         // sync that forgets it cannot let a tap past the new flow.)
         if (newFlow) flags["boot.firstRunGateIds"] = ["onboarding", "onboarding_keyboard", "onboard"];
+        // The Bots app's first run (Languages to Plans) holds a keyboard tap the same way.
+        if (botsApp) flags["boot.firstRunGateIds"] = [...(newFlow ? ["onboarding", "onboarding_keyboard", "onboard"] : ["onboarding", "onboarding_keyboard"]), ...BOTS_FIRST_RUN_IDS];
       }
 
       /**
