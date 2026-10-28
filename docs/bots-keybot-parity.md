@@ -12,7 +12,7 @@ where its data came from, and where it lives now in the Bots app. Every line is 
 | `bots.keybot.month` · `.day` · `.apps` · `.speak` · `.days` (screens/keybotStats.ts) | the old Stats tab's detail cards, and the desk's Insights, Day and App pages |
 | `bots.keybot.style` · `.haptics` · `.name` (screens/keybotYou.ts) | the old Voice list, Haptics picker and "What you call me" page |
 | `bots.keybot.tone` · `.words` · `.voices` · `.train` · `.history` · `.settings` (screens/keybot.ts) | Keybot's pages that were already there (words gained spellings, shortcuts and how the words do; the window's keyboard page gained "Start with the computer") |
-| `bots.language`, `bots.billing`, `bots.privacy`, `bots.notify`, `bots.apps`, `bots.tasks`, `bots.computer`, `bots.settings`, `bots.delete-account` | the You tab's pages: **linked** from Keybot ("Your account"), not built again |
+| `bots.language`, `bots.billing`, `bots.privacy`, `bots.notify`, `bots.apps`, `bots.tasks`, `bots.computer`, `bots.settings`, `bots.delete-account` | the You tab's own pages (Keybot is part of the app, so account items are not repeated in it) |
 | `GET /v1/keybot/stats` (routes/botsKeybot.ts → src/keybot/stats.ts) | the old Stats screen's own reads, as one view: `statsForUser(user, "month", tz, saved words, languages)`, `usageSummary`, `allowanceFor`, the entitlement, `FREE_FOR_ALL` |
 | `GET /v1/keybot` (src/keybot/views.ts homeView) | the week, and now the You tab's lines: the voice, languages, haptics, what it learned, its name, history kept, spellings, shortcuts |
 | `GET /v1/personality` | read by Voice, Haptics and What you call it, as the old screens read `ctx.personality` |
@@ -68,7 +68,7 @@ Now: `GET /v1/keybot/stats`.
   "Settings" / "Keys and the pill" (window).
 - [x] **The notification ask the first time Stats shows** (the old bootstrap's `pushAsk`, screen `stats`) → *not a screen
   element: it belongs to the bootstrap, which the Bots app's owns (index.ts, not changed here). What pings you is
-  `bots.notify`, linked from Keybot ("Your account").*
+  `bots.notify`, reached from the You tab.*
 
 ### The cards behind it (one overlay, `openCard`)
 
@@ -153,8 +153,8 @@ assistant's tasks (`youCard`, while CONNECTORS is on), `ctx.stats` for the wavef
 - [x] **Writing · What you call me** → "What you call it" (`bots.keybot.name`): a name of its own, or Tailzu only.
 - [x] **Connected apps · Ask me, Your apps, Tasks** → "Connected apps" (`bots.apps`, which has what bots may do alone) and
   "Hand it to me" (`bots.tasks`).
-- [x] **Privacy and data · Privacy policy** → "Privacy policy" (Help and about); **Delete my account** → "Delete account".
-- [x] **Help and about · Write to us, Terms of use** → "Write to us", "Terms of use".
+- [x] **Privacy and data · Privacy policy** → You tab, Help: "Privacy policy"; **Delete my account** → You tab, "Delete account".
+- [x] **Help and about · Write to us, Terms of use** → You tab, Help: "Write to us", "Terms of use".
 
 ## 4. The window (the desk's pages)
 
@@ -197,7 +197,7 @@ assistant's tasks (`youCard`, while CONNECTORS is on), `ctx.stats` for the wavef
   unchanged) while one is missing; all of them in `desk_settings` (from `bots.settings`, "Open computer settings").
 - [x] **Settings · Privacy and data**: Your audio (deleted as soon as written), History (keep it), Privacy policy → "Keep what I
   say" (the switch, "Only the text, never the audio"), `bots.privacy` (what is kept), "Privacy policy".
-- [x] **Settings · Help and about**: Questions (write to us), Terms → "Write to us", "Terms of use".
+- [x] **Settings · Help and about**: Questions (write to us), Terms → You tab, Help.
 
 ## 5. Kept as it was
 
@@ -205,3 +205,6 @@ assistant's tasks (`youCard`, while CONNECTORS is on), `ctx.stats` for the wavef
   line), above the numbers, on both clients, with `DEVICE_STATE` in the page's state.
 - [x] Keybot's existing pages (tone, words, voices, train, history, settings): unchanged except as listed above.
 - [x] What the key does (Speak, Rewrite, Translate, Reply), the phone keyboard drawing, the window's shortcut keys: still on Keybot.
+
+
+**Owner's call (28 Oct):** Keybot is part of the app, not an app of its own, so it carries no "Your account" or "Help" groups. Account items stay in the You tab, and Help (write to us, privacy policy, terms) moved there.

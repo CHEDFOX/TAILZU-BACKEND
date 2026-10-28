@@ -4,7 +4,7 @@
  *   bots.keybot            Keybot / DKeybot         everything the old Stats and You tabs had, in Keybot's look
  *                          (docs/bots-keybot-parity.md): the month typed against said, the words left, the week, today,
  *                          where the words went, how you speak, the days, six figures; then the You tab's lines in
- *                          groups (Make it yours, Keyboard and voice, What you said, Your account, Help); what the key does
+ *                          groups (Make it yours, Keyboard and voice, What you said); what the key does. Account and help live in the You tab: Keybot is part of the app, not an app of its own
  *   bots.keybot.tone       KeyTone / DKeyTone       a tone for each kind of app (Chats, Mail, Work chat)
  *   bots.keybot.words      KeyWords / DKeyWords     the words it spells your way: added, learned, how often said
  *   bots.keybot.voices     KeyVoices / DKeyVoices   the read-aloud voice, speed, when it reads
@@ -245,8 +245,6 @@ function figureTiles(s: KeybotStatsView): Node[] {
 
 // ---------------------------------------------------------------- the old You tab's lines
 
-const POLICY = { privacy: "https://tailzu.space/privacy", terms: "https://tailzu.space/terms" };
-const openUrl = (url: string): ActionSpec => ({ kind: "openUrl", url, external: true });
 
 interface Line { label: string; value?: string; sub?: string; onPress: ActionRef; right?: Node }
 
@@ -288,28 +286,6 @@ function saidLines(d: KeybotHomeView | undefined): Line[] {
       label: "Keep what I say", sub: "So you can copy it again. Only the text, never the audio.", right: switchMark("keep"),
       onPress: seq({ kind: "toggleState", path: "keep" }, save("PUT", "/v1/personality", { retainHistory: "$state.keep" }, "Couldn't change that. Try again.")),
     },
-  ];
-}
-
-/** Your account: the You tab's pages, linked (they live there). */
-function accountLines(): Line[] {
-  return [
-    { label: "Plan and billing", onPress: open(SCREENS.billing) },
-    { label: "Privacy and your data", sub: "What we keep, download it, delete it", onPress: open(SCREENS.privacy) },
-    { label: "What pings you", onPress: open(SCREENS.notify) },
-    { label: "Connected apps", onPress: open(SCREENS.apps) },
-    { label: "Hand it to me", sub: "What your bots are doing in your apps", onPress: open(SCREENS.tasks) },
-    { label: "This computer helps", onPress: open(SCREENS.computer) },
-    { label: "Settings and sign out", onPress: open(SCREENS.settings) },
-    { label: "Delete account", onPress: open(SCREENS.deleteAccount) },
-  ];
-}
-
-function helpLines(): Line[] {
-  return [
-    { label: "Write to us", value: "support@tailzu.space", onPress: openUrl("mailto:support@tailzu.space") },
-    { label: "Privacy policy", onPress: openUrl(POLICY.privacy) },
-    { label: "Terms of use", onPress: openUrl(POLICY.terms) },
   ];
 }
 
@@ -364,8 +340,6 @@ function keybotPhone(ctx: BotsCtx, d: HomeData | undefined) {
       lines("Make it yours", yoursLines(home)),
       lines("Keyboard and voice", keyboardLines(home, false)),
       lines("What you said", saidLines(home)),
-      lines("Your account", accountLines()),
-      lines("Help and about", helpLines()),
       // ---- what the key does
       col([sectionLabel("What the key does"), col([
         row([modeCard(MODES[0]!, 0), modeCard(MODES[1]!, 1)].map((c) => box([c], { flexGrow: 1, flexBasis: 0 })), { gap: 10, alignItems: "stretch" }),
@@ -430,11 +404,9 @@ function keybotDesk(ctx: BotsCtx, d: HomeData | undefined) {
       twoCols([
         lines("Make it yours", yoursLines(home)),
         lines("What you said", saidLines(home)),
-        lines("Help and about", helpLines()),
       ], [
         lines("Keyboard and voice", keyboardLines(home, true)),
         card([sectionLabel("Shortcut keys"), laptopKeys(), meta("The clay key is Keybot. Hold to speak, tap twice to keep listening.", { size: 12 }), keyList()], { gap: 10, radius: 18 }),
-        lines("Your account", accountLines()),
       ], { gap: 16 }),
       col([sectionLabel("What the key does"), row(MODES.map((m, i) => box([modeCard(m, i, hints[i])], { flexGrow: 1, flexBasis: 0, minWidth: 0 })), { gap: 12, alignItems: "stretch" })], { gap: 10 }),
     ],
