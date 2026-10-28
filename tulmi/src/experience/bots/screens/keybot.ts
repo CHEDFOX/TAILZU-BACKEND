@@ -961,7 +961,27 @@ const appOf = (e: HistoryEntry) => groupOfApp(e.targetApp)?.label ?? (e.targetAp
 function copyAction(client: "phone" | "desktop", textToCopy: string): ActionSpec {
   return client === "desktop" ? { kind: "copyText", text: textToCopy, message: "Copied" } : { kind: "copyToClipboard", text: textToCopy, toastMessage: "Copied" };
 }
-const forgetLine = (e: HistoryEntry) => write("DELETE", `/v1/history/${encodeURIComponent(e.id)}`, undefined, "Forgotten", "Couldn't forget that. Try again.");
+/** Forget a line: first ask why (the old History card did), so "doesn't sound like me" can teach the writer. */
+const forgetLine = (e: HistoryEntry): ActionSpec => ({ kind: "setState", path: "askDelete", value: e.id });
+const forgetFor = (reason: "not_me" | "cleanup"): ActionSpec =>
+  call("DELETE", `/v1/history/$state.askDelete?reason=${reason}`, undefined, {
+    ok: seq({ kind: "setState", path: "askDelete", value: false }, toast("Gone for good"), { kind: "refresh" }),
+    fail: oops("Couldn't forget that. Try again."),
+  });
+
+/** Why should it go? Asked before a line is forgotten. Either way it is gone for good, and the writer stops learning from it. */
+function whyCard(): Node {
+  return when({ truthy: "askDelete" }, card([
+    text("Forget this line", { size: 11, weight: 600, tracking: 0.4, upper: true, color: C.meta, lineHeight: 15 }),
+    text("Why should it go?", { size: 20, weight: 700, tracking: -0.3, lineHeight: 26 }),
+    meta("Either way it's gone for good, and Tailzu stops learning from it.", { size: 13 }),
+    col([
+      button("It doesn't sound like me", forgetFor("not_me"), { size: "md" }),
+      button("Just a clean-up", forgetFor("cleanup"), { kind: "secondary", size: "md" }),
+      quietButton("Leave it", { kind: "setState", path: "askDelete", value: false }, { size: "md" }),
+    ], { gap: 8 }),
+  ], { gap: 8, padding: 16, radius: 18 }));
+}
 
 function historyChips(): Node {
   const c = (label: string, value: string) => row([text(label, { size: 13, lineHeight: 17, style: { color: whenEq("app", value, C.paper, C.ink) } })], {
@@ -995,7 +1015,7 @@ function historyPhone(ctx: BotsCtx, d: KeybotHistoryView | undefined) {
   const days = byDay(ctx, d.entries.slice(0, 80));
   const actionBtn = (g: Glyph, label: string, a: ActionRef) => box([glyph(g, { size: 18, color: C.grey70, label })], { width: 44, height: 44, alignItems: "center", justifyContent: "center", flexShrink: 0 }, a);
   return page(ctx, {
-    nav: "keybot", title: "What you said", gap: 14, state: { q, app: "all", confirmClear: false },
+    nav: "keybot", title: "What you said", gap: 14, state: { q, app: "all", confirmClear: false, askDelete: false },
     body: [
       phoneHead("What you said"),
       searchField(SCREENS.keyHistory, "Search what you said"),
@@ -1017,6 +1037,7 @@ function historyPhone(ctx: BotsCtx, d: KeybotHistoryView | undefined) {
       ], { gap: 8 }))),
     ],
     footer: d.off ? [] : [
+      whyCard(),
       clearConfirm(),
       row([
         icon("lock", { size: 16, color: C.grey70 }),
@@ -1049,9 +1070,10 @@ function historyDesk(ctx: BotsCtx, d: KeybotHistoryView | undefined) {
   ], { gap: 12, paddingVertical: 4, paddingLeft: 16, paddingRight: 12, minHeight: 48 }));
   const days = byDay(ctx, d.entries.slice(0, 150));
   return page(ctx, {
-    nav: "keybot", title: "What you said", gap: 18, maxWidth: DESK_WIDTH, state: { q, app: "all", confirmClear: false },
+    nav: "keybot", title: "What you said", gap: 18, maxWidth: DESK_WIDTH, state: { q, app: "all", confirmClear: false, askDelete: false },
     body: [
       head,
+      whyCard(),
       clearConfirm(),
       row([box([searchField(SCREENS.keyHistory, "Search what you said")], { flexGrow: 1, flexShrink: 1, flexBasis: 300, minWidth: 220 }), ...(d.entries.length ? [historyChips()] : [])], { gap: 8, flexWrap: "wrap" }),
       ...(q ? [searchLine(SCREENS.keyHistory, q)] : []),
