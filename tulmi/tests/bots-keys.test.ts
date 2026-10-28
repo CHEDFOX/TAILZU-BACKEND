@@ -144,6 +144,34 @@ describe("asking with a key", () => {
     expect(r.model.of("bot.run")).toHaveLength(0);
   });
 
+  it("stops working while the owner's account waits to be deleted, as the bot does for the owner, and works again once they keep it", async () => {
+    const { deletionStore, forgetLeaving, MemoryDeletionStore } = await import("../src/you/deletion.js");
+    const store = deletionStore();
+    expect(store).toBeInstanceOf(MemoryDeletionStore);
+    const r = await rig(() => "Hello from the bot.");
+    await make(r, "api-bot");
+    await make(r, "bobs-bot", BOB);
+    const { key } = await r.bots.createKey(ALICE, "api-bot", "x");
+    const bobs = await r.bots.createKey(BOB, "bobs-bot", "b");
+    await store.schedule(ALICE, r.now.t, r.now.t + 7 * 86_400_000);
+    forgetLeaving(ALICE);
+    // The caller is not told why: only that the key doesn't work.
+    const e = await r.bots.askWithKey(bearer(key), "api-bot", { message: "hi" }).catch((x) => x);
+    expect(e).toMatchObject({ code: "invalid_key", status: 401, message: "That key doesn't work right now." });
+    // The owner's own asks and the test console start nothing either.
+    await expect(r.bots.ask(ALICE, "api-bot", { message: "hi" })).rejects.toMatchObject({ code: "account_leaving", status: 403 });
+    await expect(r.bots.ask(ALICE, "travel", { message: "hi" })).rejects.toMatchObject({ code: "account_leaving", status: 403 });
+    await expect(r.bots.test(ALICE, def({ slug: "draft-bot" }), { message: "hi" })).rejects.toMatchObject({ code: "account_leaving", status: 403 });
+    expect(r.model.of("bot.run")).toHaveLength(0);
+    // Someone else's bots are not touched.
+    await expect(r.bots.askWithKey(bearer(bobs.key), "bobs-bot", { message: "hi" })).resolves.toBeTruthy();
+    // Keep my account: everything works again.
+    await store.cancel(ALICE);
+    forgetLeaving(ALICE);
+    expect((await r.bots.askWithKey(bearer(key), "api-bot", { message: "hi" })).answer.text).toBe("Hello from the bot.");
+    expect((await r.bots.ask(ALICE, "api-bot", { message: "hi" })).text).toBe("Hello from the bot.");
+  });
+
   it("refuses a good key at another bot's address", async () => {
     const r = await rig(() => "hi");
     await make(r, "bot-a");

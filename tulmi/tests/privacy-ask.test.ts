@@ -50,9 +50,9 @@ const ask = policy.slice(policy.indexOf("10. Ask, on the desktop app"), policy.i
 const google = policy.slice(policy.indexOf("11. Google apps you connect"), policy.indexOf("12. Changes to this policy"));
 
 describe("the policy's date and shape", () => {
-  it("is effective from the day the record of requests to Ask was added", () => {
-    expect(PRIVACY_POLICY_EFFECTIVE).toBe("October 24, 2026");
-    expect(PRIVACY_POLICY_HTML).toContain("Effective: October 24, 2026");
+  it("is effective from the day deleting an account was given seven days to undo", () => {
+    expect(PRIVACY_POLICY_EFFECTIVE).toBe("October 28, 2026");
+    expect(PRIVACY_POLICY_HTML).toContain("Effective: October 28, 2026");
   });
 
   it("numbers its sections 1 to 13, once each, in order", () => {
@@ -66,6 +66,19 @@ describe("the policy's date and shape", () => {
 
   it("points the advertising identifier at the advertising section", () => {
     expect(policy).toMatch(/one of our ads \(see 1\.6\)/);
+  });
+
+  it("says, with the terms, that deleting an account waits 7 days, stops the bots, and can be kept until then", async () => {
+    const { TERMS_HTML, TERMS_EFFECTIVE } = await import("../src/routes/policies/terms.js");
+    const terms = text(TERMS_HTML);
+    expect(TERMS_EFFECTIVE).toBe("October 28, 2026");
+    for (const words of [policy, terms]) {
+      expect(words).toContain("7 days");
+      expect(words).toContain("your bots stop working");
+      expect(words).toContain("Keep my account");
+    }
+    expect(terms).not.toMatch(/It removes the account, the personality it learned, and the usage history, and it cannot be undone/);
+    expect(policy).not.toContain("retained until you request deletion");
   });
 });
 
@@ -331,8 +344,8 @@ describe("served at /privacy", () => {
     // The anchor the Google verification pack links to (docs/google-verification.md).
     expect(res.body).toContain(`<h2 id="google-user-data">11. Google apps you connect</h2>`);
     expect(res.body).toContain("including the Limited Use requirements.");
-    expect(res.body).toContain("Effective: October 24, 2026");
+    expect(res.body).toContain("Effective: October 28, 2026");
     const meta = await app.inject({ method: "GET", url: "/policies.json" });
-    expect(meta.json().privacy).toEqual({ url: "https://tailzu.space/privacy", effective: "October 24, 2026" });
+    expect(meta.json().privacy).toEqual({ url: "https://tailzu.space/privacy", effective: "October 28, 2026" });
   });
 });

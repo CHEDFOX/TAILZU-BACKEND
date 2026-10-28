@@ -57,6 +57,27 @@ describe("whose pull requests", () => {
     expect(r.statusComments(pr.number)).toHaveLength(1);
   });
 
+  it("does nothing while the person's account waits to be deleted (their bots are stopped), and looks again once they keep it", async () => {
+    const { deletionStore, forgetLeaving } = await import("../src/you/deletion.js");
+    const r = await careRig();
+    const pr = await redPr(r);
+    await deletionStore().schedule("alice", 0, 7 * 86_400_000);
+    forgetLeaving("alice");
+    try {
+      r.care.onEvent("check_suite", r.ev.checkSuite(pr.number, pr.branch));
+      await r.settle();
+      expect(await r.careJobs()).toEqual([]);
+      expect(r.statusComments(pr.number)).toHaveLength(0);
+    } finally {
+      await deletionStore().cancel("alice");
+      forgetLeaving("alice");
+    }
+    fixScript(r);
+    r.care.onEvent("check_suite", r.ev.checkSuite(pr.number, pr.branch));
+    await r.settle();
+    expect((await r.careJobs()).length).toBe(1);
+  });
+
   it("ignores a pull request Tailzu did not open and was not handed, before GitHub is asked anything", async () => {
     const r = await careRig();
     // A person's own branch and pull request, made straight on GitHub.

@@ -139,6 +139,18 @@ describe("Add to chat sends a picked file", () => {
     });
   }
 
+  it("the window's Screenshot says what it does there: a Mac's own picker, else a screenshot you saved", async () => {
+    const s = await build("bots.attach", "desktop", { project: PROJECT }, ALL, { "GET /v1/files": { files: [] } });
+    const lines = walk(s.root!).filter((n) => n.type === "Text" && /^Pick a (window or an area|screenshot you saved)$/.test(String(n.props?.content)));
+    expect(lines.map((n) => [n.props?.content, n.visibleIf])).toEqual([
+      ["Pick a window or an area", { eq: ["desktop.os", "mac"] }],
+      ["Pick a screenshot you saved", { neq: ["desktop.os", "mac"] }],
+    ]);
+    // The phone has no line under it.
+    const phone = await build("bots.attach", "phone", { project: PROJECT }, ALL, { "GET /v1/files": { files: [] } });
+    expect(texts(phone.root!).some((t) => t.startsWith("Pick a "))).toBe(false);
+  });
+
   it("a build without FileUpload: a link or a voice note, as before", async () => {
     const s = await build("bots.attach", "phone", { project: PROJECT }, ["BotsKit"], { "GET /v1/files": { files: [] } });
     expect(texts(s.root!)).not.toContain("Screenshot");

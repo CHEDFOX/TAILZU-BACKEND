@@ -10,7 +10,7 @@
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
 import { PERM_WORDS, PERMS, type Perm } from "../../../botsBots/spacePerms.js";
 import {
-  back, botAvatar, botLook, botRoute, box, button, C, call, chip, chips, col, divider, emptyState, FACE, grid, grow, icon, labelled,
+  back, botAvatar, botLook, botRoute, box, button, C, call, card, chip, chips, col, divider, emptyState, FACE, grid, grow, icon, labelled,
   listRow, meta, notice, open, page, picture, primaryButton, quietButton, row, rupees, SCREENS, secondaryButton, sectionLabel, segmented,
   seq, statusMark, switchMark, text, title, toTab, when, type BotsCtx,
 } from "../kit.js";
@@ -161,7 +161,13 @@ function failed(ctx: BotsCtx, what: string, o: { back?: boolean; nav?: string } 
 
 // ===================================================================== bots.spaces: the list
 
-interface SpacesData { spaces?: Space[]; you?: string; unread?: number; given?: Task[]; one?: { space: Space; items: Item[]; payments: Payment[]; tasks: Task[]; mailReady: boolean }; bots?: Array<{ slug: string; name: string; colour: string; builtin: boolean }> }
+interface SpacesData {
+  spaces?: Space[]; you?: string; unread?: number; given?: Task[]; one?: { space: Space; items: Item[]; payments: Payment[]; tasks: Task[]; mailReady: boolean };
+  bots?: Array<{ slug: string; name: string; colour: string; builtin: boolean }>;
+  /** What the invite in `join` is for (GET .../spaces/join/:code): null when it doesn't work, absent when it couldn't be read. */
+  invite?: JoinInvite | null;
+}
+interface JoinInvite { name: string; members: number; email: string | null }
 
 const spaceCount = (s: Space) => `${plural(s.members.length, "person", "people")} · ${plural(s.bots.length, "bot")}`;
 function approversLine(s: Space): string {
@@ -202,12 +208,41 @@ function spaceSummary(s: Space): Node {
 
 const joinBox = (): Node => col([sectionLabel("Join with a code"), inputBox([field("code", "code", "Invite code", { onSubmit: joinSpace }), button("Join", joinSpace, { kind: "secondary", size: "md" })])], { gap: 8 });
 
+// An invite's link (https://app.tailzu.space/s/bots.spaces?join=CODE, botsBots/spaces.ts inviteLinkOf) opens Spaces with its code: what
+// it is for and Join, at the top. The code is in Join with a code too, as the way that always works.
+
+/** The code an invite's link carried. */
+const joinParam = (ctx: BotsCtx): string => String(ctx.params.join ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
+
+/** In, then that space. */
+const joinFromLink = (code: string): ActionRef => call("POST", `${A}/spaces/join`, { code }, {
+  assignTo: "joined",
+  ok: seq(toast("You're in"), { kind: "navigate", screenId: SCREENS.spaces, params: { id: "$state.joined.id" }, replace: true } as ActionSpec),
+  fail: toast("That invite doesn't work, or it's for another email.", true),
+});
+
+function joinCard(ctx: BotsCtx, d: SpacesData): Node[] {
+  const code = joinParam(ctx);
+  if (!code) return [];
+  const inv = d.invite;
+  if (inv === null) return [notice("This invite doesn't work any more. Ask for a new one.")];
+  const name = inv?.name ?? "the space";
+  return [card([
+    col([
+      text(inv ? `You're invited to ${inv.name}` : "You're invited to a space", { size: 17, weight: 600, lineHeight: 22 }),
+      meta(inv ? `${plural(inv.members, "person", "people")} so far${inv.email ? ` · for ${inv.email}` : ""}` : `Invite code ${code}`, { size: 13 }),
+    ], { gap: 2 }),
+    primaryButton(inv ? `Join ${name}` : "Join", joinFromLink(code), { wide: !isDesk(ctx), size: "md" }),
+  ], { gap: 14, padding: 18 })];
+}
+
 function spacesPhone(ctx: BotsCtx, d: SpacesData) {
   const list = d.spaces ?? [];
   return page(ctx, {
-    back: true, title: "Spaces", nav: "you", state: { spaceName: "", code: "" }, live: ["spaces", "threads", ...list.map((s) => `space:${s.id}`)],
+    back: true, title: "Spaces", nav: "you", state: { spaceName: "", code: joinParam(ctx) }, live: ["spaces", "threads", ...list.map((s) => `space:${s.id}`)],
     body: [
       col([title("Spaces"), meta("Family and friends: share bots, lists and plans, give tasks, ask for payments, and chat.", { size: 13 })], { gap: 4 }),
+      ...joinCard(ctx, d),
       ...(!d.spaces ? [emptyState({ pose: "think", title: "Couldn't load your spaces", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
         : [topRows(d), ...(list.length ? list.map((s) => spaceSummary(s)) : [emptyState({ pose: "hello", title: "No spaces yet", body: "Make one for home or your friends, then invite people by link or email." })])]),
       joinBox(),
@@ -403,13 +438,14 @@ function spacesDesk(ctx: BotsCtx, d: SpacesData) {
     col([joinBox()], { paddingTop: 8 }),
   ], { width: 300, flexShrink: 0, gap: 10 });
   return page(ctx, {
-    title: "Spaces", nav: "you", maxWidth: 1180, state: { spaceName: "", code: "", listName: "", spaceRename: "" }, live: spaceLive(sel, list),
+    title: "Spaces", nav: "you", maxWidth: 1180, state: { spaceName: "", code: joinParam(ctx), listName: "", spaceRename: "" }, live: spaceLive(sel, list),
     body: [
       row([
         col([row([text("You", { size: 13, color: C.grey70, lineHeight: 18 })], { minHeight: 32 }, toTab("you")), title("Spaces", { size: 26 }), meta("Family and friends: share, give tasks, ask for payments, and chat.", { size: 14 })], { gap: 4, flexGrow: 1 }),
         box([inputBox([field("spaceName", "spaceName", "Name: Home, Studio…", { onSubmit: newSpace })], { radius: 22 })], { width: 220 }),
         button("New space", newSpace, { kind: "secondary", size: "md" }),
       ], { gap: 12, alignItems: "flex-end" }),
+      ...joinCard(ctx, d),
       ...(!d.spaces ? [emptyState({ pose: "think", title: "Couldn't load your spaces", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
         : [row([nav, col(sel ? spaceDetail(ctx, sel, d.bots) : [emptyState({ pose: "hello", title: list.length ? "Couldn't open that space" : "No spaces yet", body: list.length ? "Pick one on the left." : "Name one above and press New space. Then invite people by link or email." })], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 24 })], { gap: 28, alignItems: "flex-start" })]),
     ],
@@ -865,16 +901,18 @@ export const spacesScreens: BotsScreen[] = [
   screen<SpacesData>({
     id: SCREENS.spaces,
     load: async (ctx, deps) => {
-      const id = idParam(ctx);
-      const [sp, bots, given, one] = await Promise.all([
+      const id = idParam(ctx), join = joinParam(ctx);
+      const [sp, bots, given, one, invite] = await Promise.all([
         deps.api<{ spaces: Space[]; you: string; unread: number }>("GET", `${A}/spaces`).catch(() => undefined),
         deps.api<{ bots: SpacesData["bots"] }>("GET", "/v1/bots").then((r) => r.bots).catch(() => undefined),
         deps.api<{ tasks: Task[] }>("GET", `${A}/tasks/given`).then((r) => r.tasks).catch(() => undefined),
         id ? oneSpace(deps, id) : Promise.resolve(undefined),
+        // An invite's link: what it is for.
+        join ? deps.api<{ invite: JoinInvite | null }>("GET", `${A}/spaces/join/${enc(join)}`).then((r) => r.invite ?? null, () => undefined) : Promise.resolve(undefined),
       ]);
       // The window always shows one: the asked one, else the first.
       const first = !one && ctx.client === "desktop" && sp?.spaces[0] ? await oneSpace(deps, sp.spaces[0].id) : undefined;
-      return { spaces: sp?.spaces, you: sp?.you, unread: sp?.unread, bots, given, one: one ?? first };
+      return { spaces: sp?.spaces, you: sp?.you, unread: sp?.unread, bots, given, one: one ?? first, ...(join ? { invite } : {}) };
     },
     build: (ctx, d) => (isDesk(ctx) ? spacesDesk(ctx, d ?? {}) : d?.one && idParam(ctx) ? spaceOnePhone(ctx, d.one, d) : idParam(ctx) && d?.spaces ? failed(ctx, "This space") : spacesPhone(ctx, d ?? {})),
   }),

@@ -2,8 +2,9 @@
  * DELETE ACCOUNT, WITH SEVEN DAYS TO CHANGE YOUR MIND (the Bots app's Delete account, bots.delete-account; migration 0045).
  *
  * Asking to delete does not delete: it sets a date GRACE_DAYS out (account_deletions), signs the person out everywhere and stops
- * their pings (push tokens go; a sign-in brings them back). Until that date everything is kept as it was; signing in shows "Your
- * account will be deleted on 4 Nov" with Keep my account, which takes the date away. On the date a sweep does the real delete,
+ * their pings (push tokens go; a sign-in brings them back). Until that date everything is kept as it was, but their bots are stopped
+ * (isLeaving, below); signing in shows "Your account will be deleted on 4 Nov" with Keep my account, which takes the date away and
+ * starts them again. On the date a sweep does the real delete,
  * the same one DELETE /v1/account always did (server.ts eraseAccount), and the row goes with the account.
  *
  * The sweep is safe with more than one server: a due row is claimed (claimed_at) before it is worked on, and a claim older than
@@ -140,6 +141,45 @@ export function deletionStore(): DeletionStore {
 }
 
 export function resetDeletionStoreForTests(): void { current = null; }
+
+// -------------------------------------------------------------------- while the date stands, the bots stop
+
+/**
+ * Whether a person asked to delete their account and the date still stands. Their bots stop right away (the DeleteAcct board): a
+ * Code bot job or a bot's answer does not start (bots/service.ts, code/jobs/router.ts createJob, routes/front.ts), their bots' API
+ * keys do not work, and the jobs that were running are stopped (routes/accountDeletion.ts). Keep my account takes the date away,
+ * and everything works again.
+ *
+ * Every bot run asks, so the answer is kept for LEAVING_TTL_MS; asking and Keep my account on this server forget it at once
+ * (`forgetLeaving`). A read that fails is "no": a store that is down must not stop everyone's bots.
+ */
+export const LEAVING_TTL_MS = 15_000;
+const LEAVING_KEEP = 10_000;
+const leavingSeen = new WeakMap<DeletionStore, Map<string, { leaving: boolean; at: number }>>();
+
+export async function isLeaving(userId: string, o: { store?: DeletionStore; now?: number } = {}): Promise<boolean> {
+  if (!userId) return false;
+  const store = o.store ?? deletionStore();
+  const now = o.now ?? Date.now();
+  let seen = leavingSeen.get(store);
+  if (!seen) { seen = new Map(); leavingSeen.set(store, seen); }
+  const had = seen.get(userId);
+  if (had && now - had.at < LEAVING_TTL_MS) return had.leaving;
+  const leaving = await store.get(userId).then((s) => s !== null, () => false);
+  if (seen.size >= LEAVING_KEEP) seen.clear();
+  seen.set(userId, { leaving, at: now });
+  return leaving;
+}
+
+/** The date was set or taken away on this server: the next check reads it again. */
+export function forgetLeaving(userId: string, store?: DeletionStore): void {
+  leavingSeen.get(store ?? deletionStore())?.delete(userId);
+}
+
+/** What the person is told when something of theirs does not start while the date stands. */
+export const LEAVING_MESSAGE = "Your bots are stopped while your account waits to be deleted. Keep your account to start them again.";
+/** The same, where others may read it (a job's reason, which PR care can write on a pull request): nothing about the account. */
+export const STOPPED_MESSAGE = "Your bots are stopped for now.";
 
 // -------------------------------------------------------------------- the sweep
 

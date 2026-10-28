@@ -16,7 +16,7 @@
 import type { ActionRef, ActionSpec, Condition, Node } from "../../../../../shared/types/sdui.js";
 import {
   askBar, back, blip, body, botAvatar, botLook, botRoute, botTile, botTiles, botTileSpec, box, button, C, call, canMove, card, choiceRow, col,
-  divider, duration, emptyState, FACE, grid, grow, icon, labelled, listCard, listRow, makeBotTile, makeTileSpec, meta, mono, needsCard, notice,
+  divider, duration, emptyState, FACE, grid, grow, icon, keptOffline, labelled, listCard, listRow, makeBotTile, makeTileSpec, meta, mono, needsCard, notice,
   open, page, primaryButton, quietButton,
   RADIUS, roundButton, row, rupees, SCREENS, secondaryButton, sectionLabel, segmented, seq, shapes, statusMark, tailzuMark, text, title, toTab,
   when, whenEq, type BotsCtx, type LiveBot, type NeedsItem,
@@ -585,11 +585,20 @@ const checkWho: ActionSpec = {
   onError: seq({ kind: "setState", path: "route", value: { slug: "any", name: "Tailzu", say: "Tailzu picks who answers", hint: "Tap to send" } }, toast("Couldn't check who answers. Tap to send anyway.")),
 };
 
-/** The big button: nothing said yet, a word; said but not routed, who will answer; routed, send. */
-function goAction(ctx: BotsCtx): ActionRef {
+/**
+ * The big button: nothing said yet, a word; said but not routed, who will answer; routed, send. Offline (a build with an outbox), the ask
+ * is kept there for the bot picked, or any, and goes once the connection is back (kit keptOffline). The "Check" chip (`keep: false`)
+ * only ever asks who answers.
+ */
+function goAction(ctx: BotsCtx, o: { keep?: boolean } = {}): ActionRef {
+  const keep = o.keep !== false;
   return {
     kind: "condition", if: { falsy: "ask" }, then: toast("Say or type what you need first"),
-    else: { kind: "condition", if: { truthy: "route.slug" }, then: sendAsk(ctx), else: checkWho },
+    else: {
+      kind: "condition", if: { truthy: "route.slug" },
+      then: keep ? keptOffline(ctx.client, { message: "$state.ask", bot: "$state.route.slug", who: "$state.route.name", clear: "ask" }, sendAsk(ctx)) : sendAsk(ctx),
+      else: keep ? keptOffline(ctx.client, { message: "$state.ask", clear: "ask" }, checkWho) : checkWho,
+    },
   };
 }
 
@@ -607,7 +616,7 @@ function whoChip(ctx: BotsCtx): Node {
   ], {
     gap: big ? 10 : 8, height: big ? 46 : 44, paddingLeft: 6, paddingRight: 14, borderRadius: 23, alignSelf: "flex-start",
     borderWidth: o.pre ? 1 : 1.5, borderColor: o.pre ? C.line : colorOf(ctx, slug), backgroundColor: C.paper,
-  }, o.pre ? goAction(ctx) : { kind: "toggleState", path: "picking" });
+  }, o.pre ? goAction(ctx, { keep: false }) : { kind: "toggleState", path: "picking" });
   return col([
     when({ falsy: "route.slug" }, chipOf("tailzu", { pre: true })),
     ...candidates(ctx).map((s) => when({ eq: ["route.slug", s] }, labelled(chipOf(s), `${nameOf(ctx, s)} will take this. Change who answers`))),

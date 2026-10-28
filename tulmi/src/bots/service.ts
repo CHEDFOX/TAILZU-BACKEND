@@ -36,6 +36,7 @@ import type { Attached, Turn } from "./prompt.js";
 import { botStore, SlugTaken, type BotStore, type Command, type Fact, type KeyRow } from "./store.js";
 import { BotError, LIMITS, type BotAnswer, type BotDef, type BotEvent, type BotView, type StoredBot } from "./types.js";
 import { parseBotInput, slugOf, type CleanInput, type Limits } from "./validate.js";
+import { isLeaving, LEAVING_MESSAGE } from "../you/deletion.js";
 
 export interface ServiceLimits extends Limits {
   botsMax: number;
@@ -65,6 +66,11 @@ export interface BotsOptions {
   pepper?: string | null;
   limits?: Partial<ServiceLimits>;
   now?: () => number;
+  /**
+   * Whether a person's bots are stopped: their account waits to be deleted (you/deletion.ts isLeaving, the default). Their bots
+   * answer nobody, the owner included, and their keys do not work, until Keep my account.
+   */
+  stopped?: (userId: string) => Promise<boolean>;
 }
 
 /** What the person is shown of a key: never the key. */
@@ -123,6 +129,7 @@ export class Bots {
   private readonly keyDaily: SpendMeter;
   private readonly keyRate: Limiter;
   private readonly draftRate: Limiter;
+  private readonly stopped: (userId: string) => Promise<boolean>;
 
   constructor(o: BotsOptions = {}) {
     this.now = o.now ?? Date.now;
@@ -138,6 +145,12 @@ export class Bots {
     this.keyDaily = new SpendMeter(Number.MAX_SAFE_INTEGER, clock);
     this.keyRate = new Limiter(this.limits.keyRatePerMin, 60_000, clock);
     this.draftRate = new Limiter(this.limits.draftsPerHour, 3_600_000, clock);
+    this.stopped = o.stopped ?? ((userId) => isLeaving(userId));
+  }
+
+  /** Nothing runs for a person whose bots are stopped (their account waits to be deleted). */
+  private async notStopped(userId: string): Promise<void> {
+    if (await this.stopped(userId)) throw new BotError("account_leaving", LEAVING_MESSAGE, 403);
   }
 
   // ------------------------------------------------------------------ finding
@@ -287,6 +300,7 @@ export class Bots {
 
   /** A chat with a draft that was never saved: the test console. Nothing is kept: no memory, no key, no row. */
   async test(userId: string, definition: unknown, input: AskInput): Promise<BotAnswer> {
+    await this.notStopped(userId);
     const { value } = this.parse(definition);
     await this.check(userId, value);
     const message = this.messageOf(input.message);
@@ -333,6 +347,7 @@ export class Bots {
     if (!found) throw notFound();
     const def = found.def;
     if (def.slug === CODE_SLUG) throw new BotError("code_bot", "The Code bot answers through the front door (POST /v1/ask).", 409);
+    await this.notStopped(userId);
     let message = this.messageOf(input.message);
     const ran = expand(await this.store.listCommands(userId, def.id), message);
     if (ran) message = ran.message;
@@ -358,6 +373,8 @@ export class Bots {
     const stored = await this.store.getById(row.botId);
     if (!stored) throw new BotError("invalid_key", "That key doesn't work. Make a new one in the bot's settings.", 401);
     if (stored.slug !== slug) throw new BotError("wrong_bot", "This key is for a different bot.", 403);
+    // The owner's account waits to be deleted: the key does not work until they keep it. The caller is not told why.
+    if (await this.stopped(stored.ownerId!)) throw new BotError("invalid_key", "That key doesn't work right now.", 401);
     if (!this.keyRate.allow(row.id)) {
       throw new BotError("rate_limited", `That's more than ${this.limits.keyRatePerMin} requests a minute for one key. Slow down.`, 429, { retryAfterSec: this.keyRate.retryAfterSec(row.id) });
     }

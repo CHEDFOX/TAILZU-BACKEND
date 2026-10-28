@@ -27,7 +27,7 @@ import {
   back, bigNumber, blip, body, botAvatar, botLook, box, button, C, call, chips, col, emptyState, grid, grow,
   icon, labelled, listCard, listRow, meta, meter, mono, needsCard, notice, open, page, primaryButton, quietButton, row,
   rupees, SCREENS, sectionLabel, secondaryButton, segmented, seq, statusMark, stepper, text, title, duration, FACE,
-  botBuddy, canBuddy, headerBuddy, type BotsCtx, type Mark,
+  botBuddy, canBuddy, headerBuddy, keptOffline, type BotsCtx, type Mark,
 } from "../kit.js";
 import type { ScreenResponse } from "../../../../../shared/types/sdui.js";
 import type { BotsDeps } from "../live.js";
@@ -238,10 +238,11 @@ function startTask(projectId: string, task: string, statePath?: string): ActionR
 
 /**
  * Ask the Code bot (POST /v1/shell/ask, bot "code": the front door, with the answer written down for Activity as Ask's are) and
- * open the answer: a question, "what changed this week?", "explain this change".
+ * open the answer: a question, "what changed this week?", "explain this change". Offline (a build with an outbox), an ask about no one
+ * project is kept there and goes once the connection is back (kit keptOffline).
  */
 function codeAsk(ctx: BotsCtx, message: string, o: { projectId?: string; statePath?: string } = {}): ActionRef {
-  const send: ActionSpec = {
+  const asked: ActionSpec = {
     kind: "sequence", actions: [
       { kind: "setState", path: "asking", value: true },
       {
@@ -257,6 +258,7 @@ function codeAsk(ctx: BotsCtx, message: string, o: { projectId?: string; statePa
       },
     ],
   };
+  const send: ActionSpec = o.projectId ? asked : keptOffline(ctx.client, { message, bot: "code", who: "Code bot", ...(o.statePath ? { clear: o.statePath } : {}) }, asked);
   return o.statePath ? { kind: "condition", if: { falsy: o.statePath }, then: toast("Type what you need first"), else: send } : send;
 }
 

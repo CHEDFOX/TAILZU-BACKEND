@@ -43,6 +43,7 @@ import { decideCi, type CiDecision } from "./ci.js";
 import { readComment, type ReviewVerdict } from "./review.js";
 import { writeStatus } from "./status.js";
 import { careStore, type CareStore } from "./store.js";
+import { isLeaving } from "../../you/deletion.js";
 import {
   CI_ROUNDS_PER_DAY, COMMENTS_PER_PASS, HANDLED_KEEP, JOBS_KEEP, JOB_STUCK_MS, NOTES_KEEP, ROUND_DAYS_KEEP, STATUS_MARK,
   dayOf, emptyState, type CareJobRef, type CareKind, type CareRow,
@@ -68,6 +69,8 @@ export interface CareDeps {
   budgetPaise?: number;
   /** Paise one reading of a comment may cost. */
   readPaise?: number;
+  /** Whether a person's bots are stopped (their account waits to be deleted: you/deletion.ts isLeaving, the default): nothing is read or started for them. */
+  stopped?: (userId: string) => Promise<boolean>;
 }
 
 /** One pull request, as it is being worked on: its row, its project, the repo, and the pull request as GitHub has it now. */
@@ -319,6 +322,8 @@ export class PrCare {
   private async process(projectId: string, prNumber: number, event: string, action: string): Promise<void> {
     let row = await this.store.get(projectId, prNumber);
     if (!row) return;
+    // The person's bots are stopped (their account waits to be deleted): nothing is read, written or started until they keep it.
+    if (await (this.d.stopped ?? isLeaving)(row.userId)) return;
     if (row.endedAt) {
       if (!(event === "pull_request" && action === "reopened")) return;
       row = { ...row, endedAt: null, state: { ...row.state, ended: undefined } };

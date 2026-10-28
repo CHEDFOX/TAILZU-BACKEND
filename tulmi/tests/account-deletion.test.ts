@@ -6,6 +6,8 @@
  *   - the sweep deletes only what is due, never someone who pressed Keep as it started, and tries a failed one again only later
  *   - Delete account shows the seven days and asks by holding; once a date is set it says so, with Keep my account
  *   - Home, signed in during the seven days: the date and Keep my account at the top, and no other ask
+ *   - while the date stands the bots stop: the jobs going are stopped as Stop job does, and Keep my account starts them again
+ *     (the refusals themselves: bots-keys.test.ts, code-jobs.test.ts, bots-routes.test.ts)
  */
 import { describe, expect, it, vi } from "vitest";
 import Fastify from "fastify";
@@ -24,7 +26,7 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
   return { ...real, resolveUser: async (h: string | undefined) => { const id = h?.replace(/^Bearer\s+/i, "").trim(); return id ? { id, token: `jwt-${id}` } : null; } };
 });
 
-const { MemoryDeletionStore, sweepDeletions, GRACE_MS, CLAIM_STALE_MS, DELETION_PATH } = await import("../src/you/deletion.js");
+const { MemoryDeletionStore, sweepDeletions, GRACE_MS, CLAIM_STALE_MS, DELETION_PATH, isLeaving, forgetLeaving, LEAVING_TTL_MS, STOPPED_MESSAGE } = await import("../src/you/deletion.js");
 const { registerAccountDeletionRoutes } = await import("../src/routes/accountDeletion.js");
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, FIXED_NOW, IST, SAMPLE_BOTS } = await import("../src/experience/bots/fixtures.js");
@@ -35,7 +37,9 @@ const texts = (n: Node): string[] => walk(n).filter((x) => x.type === "Text").ma
 const json = (n: unknown): string => JSON.stringify(n);
 const who = (id: string) => ({ authorization: `Bearer ${id}` });
 
-function served(o: { erase?: ((id: string) => Promise<boolean>) | null; now?: number } = {}) {
+type Deps = Parameters<typeof registerAccountDeletionRoutes>[1];
+
+function served(o: { erase?: ((id: string) => Promise<boolean>) | null; now?: number; jobs?: Deps["jobs"]; agent?: Deps["agent"] } = {}) {
   const app = Fastify();
   const store = new MemoryDeletionStore();
   const left: string[] = [];
@@ -45,8 +49,22 @@ function served(o: { erase?: ((id: string) => Promise<boolean>) | null; now?: nu
     erase: o.erase === undefined ? async () => true : o.erase,
     store, now: () => t.now, sweepEveryMs: null,
     leave: async (u) => { left.push(u.id); },
+    ...(o.jobs !== undefined ? { jobs: o.jobs } : {}), ...(o.agent !== undefined ? { agent: o.agent } : {}),
   });
   return { app, store, left, t };
+}
+
+/** A person's jobs as the router lists them: two going, one over. Stopping writes down who stopped what, and why. */
+function jobsOf(userId: string) {
+  const stopped: Array<[string, string, string | undefined]> = [];
+  const cancelled: Array<[string, string | undefined]> = [];
+  const list = [{ id: "j-running", state: "running" }, { id: "j-done", state: "done" }, { id: "j-waits", state: "waiting_for_you" }];
+  const jobs = {
+    listJobs: async (u: string) => (u === userId ? list : []),
+    cancelJob: async (id: string, reason?: string) => { cancelled.push([id, reason]); return {}; },
+  } as unknown as NonNullable<Deps["jobs"]>;
+  const agent = { stopJob: async (u: string, id: string, reason?: string) => { stopped.push([u, id, reason]); return {}; } } as unknown as NonNullable<Deps["agent"]>;
+  return { jobs, agent, stopped, cancelled };
 }
 
 describe("the store and the sweep", () => {
@@ -114,6 +132,46 @@ describe("the routes", () => {
   });
 });
 
+describe("while the date stands, the bots stop", () => {
+  it("reads the date, remembers the answer a moment, and takes a read that fails as no", async () => {
+    const s = new MemoryDeletionStore();
+    expect(await isLeaving("a", { store: s, now: 1000 })).toBe(false);
+    await s.schedule("a", 1000, 1000 + GRACE_MS);
+    // Remembered for a moment (every bot run asks); forgotten at once on this server when the date is set or taken away.
+    expect(await isLeaving("a", { store: s, now: 2000 })).toBe(false);
+    expect(await isLeaving("a", { store: s, now: 1000 + LEAVING_TTL_MS })).toBe(true);
+    await s.cancel("a");
+    forgetLeaving("a", s);
+    expect(await isLeaving("a", { store: s, now: 1000 + LEAVING_TTL_MS + 1 })).toBe(false);
+    const down = new MemoryDeletionStore();
+    down.get = async () => { throw new Error("store down"); };
+    expect(await isLeaving("b", { store: down })).toBe(false);
+    expect(await isLeaving("", { store: s })).toBe(false);
+  });
+
+  it("asking stops the jobs that are going, as Stop job does, without a word about the account; Keep my account lets them start again", async () => {
+    const j = jobsOf("u1");
+    const { app, store } = served({ jobs: j.jobs, agent: j.agent });
+    expect(await isLeaving("u1", { store })).toBe(false);
+    expect((await app.inject({ method: "POST", url: DELETION_PATH, headers: who("u1"), payload: {} })).statusCode).toBe(202);
+    expect(j.stopped).toEqual([["u1", "j-running", STOPPED_MESSAGE], ["u1", "j-waits", STOPPED_MESSAGE]]);
+    expect(STOPPED_MESSAGE).not.toMatch(/delet|account/i);
+    // The "no" remembered just before is forgotten: from now on their bots are stopped.
+    expect(await isLeaving("u1", { store })).toBe(true);
+    expect(await isLeaving("u2", { store })).toBe(false);
+    expect((await app.inject({ method: "DELETE", url: DELETION_PATH, headers: who("u1") })).json()).toEqual({ ok: true, kept: true });
+    expect(await isLeaving("u1", { store })).toBe(false);
+  });
+
+  it("without the agent, the router cancels them; a job that won't stop does not fail the ask", async () => {
+    const j = jobsOf("u1");
+    const jobs = { ...j.jobs, cancelJob: async (id: string, reason?: string) => { if (id === "j-running") throw new Error("busy"); j.cancelled.push([id, reason]); return {}; } } as unknown as NonNullable<Deps["jobs"]>;
+    const { app } = served({ jobs, agent: null });
+    expect((await app.inject({ method: "POST", url: DELETION_PATH, headers: who("u1"), payload: {} })).statusCode).toBe(202);
+    expect(j.cancelled).toEqual([["j-waits", STOPPED_MESSAGE]]);
+  });
+});
+
 // ------------------------------------------------------------------ the screens
 
 const req = (screenId: string, client: "phone" | "desktop", can: string[] = []) => ({
@@ -134,7 +192,7 @@ describe("Delete account", () => {
       const s = await buildBotsScreen(req("bots.delete-account", client), fakeDeps({ api: { "GET /v1/you/account": ACCOUNT, [`GET ${DELETION_PATH}`]: NONE } }));
       expect(lintTree(s.root!)).toEqual([]);
       const t = texts(s.root!);
-      expect(t).toEqual(expect.arrayContaining(["Gone for good, 4 Nov", "You have 7 days to change your mind. Sign in before 4 Nov and everything comes back as it was.", "stop working on 4 Nov"]));
+      expect(t).toEqual(expect.arrayContaining(["Gone for good, 4 Nov", "You have 7 days to change your mind. Sign in before 4 Nov and everything comes back as it was.", "stop working right away"]));
       const j = json(s.root);
       expect(j).toContain(`"method":"POST","path":"${DELETION_PATH}"`);
       expect(j).toContain('{"kind":"signOut"}');
@@ -148,7 +206,9 @@ describe("Delete account", () => {
     for (const client of ["phone", "desktop"] as const) {
       const s = await buildBotsScreen(req("bots.delete-account", client), fakeDeps({ api: { "GET /v1/you/account": ACCOUNT, [`GET ${DELETION_PATH}`]: SET } }));
       expect(lintTree(s.root!)).toEqual([]);
-      expect(texts(s.root!)).toEqual(expect.arrayContaining(["Your account will be deleted on 2 Nov.", "Keep my account", "Gone for good, 2 Nov"]));
+      expect(texts(s.root!)).toEqual(expect.arrayContaining(["Your account will be deleted on 2 Nov.", "Keep my account", "Gone for good, 2 Nov", "stop working right away"]));
+      // The bots stopped the day they asked (isLeaving), and the page says so.
+      expect(texts(s.root!).some((x) => x.includes("your bots are stopped") && x.includes("they start again"))).toBe(true);
       const j = json(s.root);
       expect(j).toContain(`"method":"DELETE","path":"${DELETION_PATH}"`);
       expect(j).not.toContain('"kind":"signOut"');
@@ -163,7 +223,7 @@ describe("Home, signed in during the seven days", () => {
         const api = { "GET /v1/shell/started": { started }, "GET /v1/bots/first-run/arrival": { due: true }, [`GET ${DELETION_PATH}`]: SET, "GET /v1/bots/push-ask": { due: true } };
         const s = await buildBotsScreen(req("bots.home", client), fakeDeps(started ? { api } : { api, bots: SAMPLE_BOTS.filter((b) => b.builtin), jobs: [], tasks: [] }));
         expect(lintTree(s.root!)).toEqual([]);
-        expect(texts(s.root!)).toEqual(expect.arrayContaining(["Your account will be deleted on 2 Nov", "Keep my account", ...(started ? [] : ["Hi Aanya, I'm Blip"])]));
+        expect(texts(s.root!)).toEqual(expect.arrayContaining(["Your account will be deleted on 2 Nov", "Your bots are stopped. Keep it, and they start again.", "Keep my account", ...(started ? [] : ["Hi Aanya, I'm Blip"])]));
         expect(json(s.root)).toContain(`"method":"DELETE","path":"${DELETION_PATH}"`);
         expect(s.state).not.toHaveProperty("permitClosed");
         expect(s.state).not.toHaveProperty("pushGranted");

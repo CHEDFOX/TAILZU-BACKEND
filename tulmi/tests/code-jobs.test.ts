@@ -63,6 +63,20 @@ describe("making a job", () => {
     await expect(r.jobs.createJob("alice", r.project.id, r.branch, "t")).rejects.toMatchObject({ code: "branch_deleted" });
   });
 
+  it("starts none while the person's account waits to be deleted, saying nothing about the account; kept, it starts again", async () => {
+    const { deletionStore, forgetLeaving } = await import("../src/you/deletion.js");
+    const r = await rig();
+    await deletionStore().schedule("alice", 0, 7 * 86_400_000);
+    forgetLeaving("alice");
+    const e = await r.job("make the build pass").catch((x) => x);
+    expect(e).toMatchObject({ code: "account_leaving", message: "Your bots are stopped for now." });
+    expect(e.message).not.toMatch(/delet|account/i);
+    expect(await r.jobs.listJobs("alice")).toEqual([]);
+    await deletionStore().cancel("alice");
+    forgetLeaving("alice");
+    await expect(r.job("make the build pass")).resolves.toMatchObject({ state: "queued" });
+  });
+
   it("allows 20 that are not over, and a cancelled one makes room", async () => {
     const r = await rig();
     const made = [];

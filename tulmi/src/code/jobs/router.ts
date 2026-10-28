@@ -100,6 +100,7 @@ import {
   type NotifyKind, type OverlayFile, type Placement, type WaitingOn,
 } from "./types.js";
 import { KeyedLock, keepOutput, tailBytes } from "./util.js";
+import { isLeaving, STOPPED_MESSAGE } from "../../you/deletion.js";
 
 // ---------------------------------------------------------------- the shapes
 
@@ -132,6 +133,8 @@ export interface JobRouterOptions {
   freeMinutes?: number;
   /** What a job made without a budget may spend, in paise: instead of CODE_JOB_DEFAULT_BUDGET_PAISE. */
   defaultBudgetPaise?: number;
+  /** Whether a person's bots are stopped (their account waits to be deleted: you/deletion.ts isLeaving, the default): no job of theirs starts. */
+  stopped?: (userId: string) => Promise<boolean>;
   log?: { info: (o: object, m: string) => void; warn: (o: object, m: string) => void };
 }
 
@@ -409,6 +412,8 @@ export class JobRouter {
     if (!text) throw bad("Say what the task is.");
     const budget = budgetPaise === undefined ? this.defaultBudget() : budgetPaise;
     if (!isInt(budget, 0, PAISE_MAX)) throw bad(`budgetPaise is a whole number of paise, 0 to ${PAISE_MAX}.`);
+    // A person whose account waits to be deleted starts nothing (the words may end up on a pull request: nothing about the account).
+    if (await (this.o.stopped ?? isLeaving)(userId)) throw new ConnectorError("account_leaving", STOPPED_MESSAGE);
     return this.lock.run(userId, async () => {
       const project = await ownProject(this.deps, userId, projectId);
       const rec = await recordedBranch(this.deps, project, branch);

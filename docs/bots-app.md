@@ -148,7 +148,7 @@ an automatic charge.
 | `timeline(items)` | bead timeline: each row's bead is its status mark |
 | `table(columns, rows)` | the window's tables |
 | `needsCard(item, { layout })` · `needsLabel` · `choiceRow` | a decision, one tap |
-| `askBar(client)` · `askAction(client)` | "Ask any bot…": sends to POST /v1/ask, opens bots.ask with the answer |
+| `askBar(client)` · `askAction(client)` · `keptOffline(client, o, send)` | "Ask any bot…": sends to POST /v1/ask, opens bots.ask with the answer; offline, keeps the ask in the outbox instead |
 | `emptyState({ pose, title, body, action })` · `blip(pose, height)` · `notice(text, { ink, mark })` · `infoChip(text)` | moments and states |
 | `icon(name, { size, color, weight })` · `shapes(list)` · `tailzuMark(size)` · `tabGlyph(tab, active, live.tab)` | glyphs (ICONS lists the names) |
 | `tabBar(active, live)` · `sidebar(ctx, active)` | the frames' chrome (page() adds them) |
@@ -270,7 +270,9 @@ ONCE (src/shell/sentAsks.ts, migration 0047): a retry gets the first answer, one
 (`BOTS_OFFLINE_FLAGS`) say what happens when the connection drops: Home (`offline.roots`) is shown as `bots.offline` (kept for a
 day, `cacheTtlSeconds`, so it can be drawn without a connection) and comes back when it returns; any other screen gets the line
 `offline.bar`; `offline.sentToast` once kept asks went. The Offline screen lists the asks with their state (Waiting to send,
-Sending…, Sent, Couldn't send · Try again; the window's Edit and Cancel), and Home shows them going out once it is back.
+Sending…, Sent, Couldn't send · Try again; the window's Edit and Cancel), and Home shows them going out once it is back. Every ask
+bar keeps an ask the same way while `online` is false (kit `keptOffline`: the ask bar, Ask's own send, the Code bot's "Tell Code bot
+what to do"), clears the field and says "Kept. It will send when you're back."; online, it sends as before.
 
 ## 9. Rules, and what not to touch
 

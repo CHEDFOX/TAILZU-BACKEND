@@ -3,17 +3,22 @@
  *
  *   POST   /v1/account/deletion   -> 202 { scheduled: { requestedAt, deleteAt }, graceDays }   the date is set (asking twice keeps the
  *                                    first), the person is signed out everywhere and their pings stop (push tokens go; signing in
- *                                    brings them back). 503 delete_unavailable when this server cannot delete anyone (no service
- *                                    key): a deletion that could never run must not be promised.
+ *                                    brings them back). Their bots stop right away: the Code bot jobs that are running are stopped
+ *                                    (as Stop job does), and while the date stands no job or bot answer starts and their bots' API
+ *                                    keys do not work (you/deletion.ts isLeaving). 503 delete_unavailable when this server cannot
+ *                                    delete anyone (no service key): a deletion that could never run must not be promised.
  *   GET    /v1/account/deletion   -> { scheduled: null | { requestedAt, deleteAt }, graceDays, deleteAtIfNow }
- *   DELETE /v1/account/deletion   -> { ok, kept }   Keep my account: the date is taken away
+ *   DELETE /v1/account/deletion   -> { ok, kept }   Keep my account: the date is taken away, and the bots and keys work again
  *
  * DELETE /v1/account (server.ts) still deletes at once, for today's app and anyone who must have it gone now. The sweep that does
  * the real delete on the date runs here, once the server is ready, while the server can delete (`erase`).
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { resolveUser, supabase, type AuthedUser } from "../auth/supabase.js";
-import { deletionStore, GRACE_DAYS, GRACE_MS, startDeletionSweep, type DeletionStore, type Erase } from "../you/deletion.js";
+import type { AgentOrchestrator } from "../code/agent/orchestrator.js";
+import type { JobRouter } from "../code/jobs/router.js";
+import { isEnded } from "../code/jobs/types.js";
+import { deletionStore, forgetLeaving, GRACE_DAYS, GRACE_MS, startDeletionSweep, STOPPED_MESSAGE, type DeletionStore, type Erase } from "../you/deletion.js";
 
 export interface AccountDeletionDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
@@ -25,6 +30,30 @@ export interface AccountDeletionDeps {
   sweepEveryMs?: number | null;
   /** After the date is set: sign out everywhere and stop pings. Tests hand in their own. */
   leave?: (user: AuthedUser) => Promise<void>;
+  /** The Code bot's jobs and the agent that drives them: the person's running jobs are stopped when the date is set. Null: none here. */
+  jobs?: Pick<JobRouter, "listJobs" | "cancelJob"> | null;
+  agent?: Pick<AgentOrchestrator, "stopJob"> | null;
+}
+
+/** How many of a person's jobs are looked at when their bots stop: more than can be going at once (LIVE_JOBS_MAX), helpers included. */
+const JOBS_LOOKED_AT = 100;
+
+/**
+ * The person's bots stop: each job still going is stopped the way Stop job stops it (the agent's loop is told, a step that is out is
+ * dropped, a late result is refused), with a reason that says nothing about the account. Best effort, one at a time; returns how many.
+ */
+export async function stopJobsOf(userId: string, o: Pick<AccountDeletionDeps, "jobs" | "agent">, log?: { warn: (o: object, m: string) => void }): Promise<number> {
+  if (!o.jobs) return 0;
+  const going = (await o.jobs.listJobs(userId, JOBS_LOOKED_AT).catch(() => [])).filter((j) => !isEnded(j.state));
+  let stopped = 0;
+  for (const j of going) {
+    try {
+      if (o.agent) await o.agent.stopJob(userId, j.id, STOPPED_MESSAGE);
+      else await o.jobs.cancelJob(j.id, STOPPED_MESSAGE);
+      stopped++;
+    } catch (err) { log?.warn({ error: (err as Error)?.name }, "account deletion: a job did not stop"); }
+  }
+  return stopped;
 }
 
 /** Signed out on every device (their refresh tokens revoked) and no pings while the date stands. Best effort: never fails the ask. */
@@ -77,7 +106,10 @@ export function registerAccountDeletionRoutes(app: FastifyInstance, deps: Accoun
     try {
       const t = now();
       const scheduled = await store().schedule(user.id, t, t + GRACE_MS);
+      // From here every bot run of theirs is refused (isLeaving); what is already going is stopped.
+      forgetLeaving(user.id, store());
       await leave(user).catch(() => undefined);
+      await stopJobsOf(user.id, deps, app.log).catch(() => 0);
       return reply.code(202).send({ scheduled, graceDays: GRACE_DAYS });
     } catch (err) { return fail(reply, err); }
   });
@@ -86,7 +118,9 @@ export function registerAccountDeletionRoutes(app: FastifyInstance, deps: Accoun
     const user = await who(req.headers["authorization"], reply);
     if (!user) return reply;
     try {
-      return reply.send({ ok: true, kept: await store().cancel(user.id) });
+      const kept = await store().cancel(user.id);
+      forgetLeaving(user.id, store());
+      return reply.send({ ok: true, kept });
     } catch (err) { return fail(reply, err); }
   });
 

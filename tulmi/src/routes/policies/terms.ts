@@ -7,7 +7,7 @@
  */
 import { siteShell } from "./shell.js";
 import { crumbsLd, pageLd } from "../../seo/head.js";
-export const TERMS_EFFECTIVE = "October 1, 2026";
+export const TERMS_EFFECTIVE = "October 28, 2026";
 
 const TERMS_BODY = `
 <h1>Terms of Service</h1>
@@ -118,7 +118,7 @@ const TERMS_BODY = `
 
 <h2>12. Termination</h2>
 <ul>
-  <li>You may stop using the Service at any time. To delete your account, open Settings in the app and choose <strong>Delete account</strong>. It removes the account, the personality it learned, and the usage history, and it cannot be undone. If you cannot reach the app, email <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a> instead.</li>
+  <li>You may stop using the Service at any time. To delete your account, open <strong>Delete account</strong> in the app (under You, or in Settings). Your account is deleted 7 days after you ask. Until then nothing is removed, your bots stop working, and you can sign in and choose <strong>Keep my account</strong> to keep everything as it was. After the 7 days the account, the personality it learned, and the usage history are deleted for good, and that cannot be undone. Where the app says deleting cannot be undone, it deletes the account straight away. If you cannot reach the app, email <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a> instead.</li>
   <li>We may suspend or terminate your access if you violate these Terms.</li>
   <li>On termination, sections that by their nature should survive (IP, disclaimers, limitations, indemnity, governing law) remain in effect.</li>
 </ul>

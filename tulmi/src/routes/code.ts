@@ -210,6 +210,8 @@ export const STATUS: Record<string, number> = {
   rewind_off: 404, settings_off: 404, cannot_rewind: 409,
   // A lead's team (agent/orchestrator.ts team, teamCommand): a part that is already over, or one that is not over and so cannot be run again.
   part_over: 409, part_not_over: 409,
+  // The person's account waits to be deleted, so their bots are stopped (you/deletion.ts).
+  account_leaving: 403,
   // The result of a step on GitHub's free computers (routes/codeJobs.ts gh-result): a token that isn't GitHub's, or is for something else.
   bad_runner_token: 401, runner_mismatch: 403,
 };

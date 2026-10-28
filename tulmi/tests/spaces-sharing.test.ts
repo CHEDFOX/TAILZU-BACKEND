@@ -36,7 +36,7 @@ vi.mock("../src/push/index.js", () => ({
   pushEngine: () => ({ notify: async (userId: string, msg: { kind: string; vars: Record<string, string> }) => { pushes.push({ userId, kind: msg.kind, vars: msg.vars }); return null; } }),
 }));
 
-const { Spaces } = await import("../src/botsBots/spaces.js");
+const { Spaces, INVITE_ORIGIN, inviteLinkOf } = await import("../src/botsBots/spaces.js");
 const { MailOutbox, NOT_CONFIGURED } = await import("../src/botsBots/mail.js");
 const { MemoryPaged, resetSpaceTablesForTests } = await import("../src/botsBots/spaceRows.js");
 const { resetAreaTablesForTests } = await import("../src/botsBots/rows.js");
@@ -70,7 +70,7 @@ async function served(o: { now?: { t: number } } = {}) {
   const now = () => clock.t;
   const outbox = new MailOutbox(new MemoryPaged(), now);
   const bots = { resolve: async (_u: string, slug: string) => (["plan", "shop-bot"].includes(slug) ? { def: { slug, name: slug === "plan" ? "Plan bot" : "Shop bot", colour: "ochre" } } : null) };
-  const spaces = new Spaces(bots as never, now, { outbox, mailer: NOT_CONFIGURED, origin: () => "https://api.example.in" });
+  const spaces = new Spaces(bots as never, now, { outbox, mailer: NOT_CONFIGURED, origin: () => "https://app.example.in" });
   const media = fakeMedia();
   const app = Fastify();
   const trips = { current: async (u: string) => (u === A_ ? { id: "trip-1", place: "Pune", when: "14–16 Nov", who: "Mom", packing: [{ text: "Charger", done: true }, { text: "Aadhaar", done: false }] } : null) };
@@ -159,13 +159,15 @@ describe("invites by link and by email", () => {
     const id = await s.home();
     const inv = (await s.call("POST", `${AREA}/spaces/${id}/invite`, A_, { email: "X@Example.in", role: "guest" })).body;
     expect(inv).toMatchObject({ email: "x@example.in", mail: "queued", mailReady: false });
-    expect(inv.link).toBe(`https://api.example.in${AREA}/invite/${inv.code}`);
+    // The link opens the app at joining (a link the apps claim, as bots.link's does).
+    expect(inv.link).toBe(`https://app.example.in/s/bots.spaces?join=${inv.code}`);
     const mail = await s.outbox.byRef("space_invite", inv.code);
     expect(mail).toMatchObject({ status: "queued", to_email: "x@example.in" });
     expect(mail!.body_text).toContain(inv.link);
     expect(await s.outbox.sendDue(NOT_CONFIGURED)).toBe(0);
     expect((await s.outbox.byRef("space_invite", inv.code))!.status).toBe("queued");
-    // The invite page says whose it is, masked.
+    // The invite page says whose it is, masked: at the link (a browser with no app to hand it to), and at the old address.
+    expect((await s.call("GET", inv.link, null)).body).toContain("x•••@example.in");
     expect((await s.call("GET", `${AREA}/invite/${inv.code}`, null)).body).toContain("x•••@example.in");
     // Rohan has it, but it isn't his.
     const wrong = await s.call("POST", `${AREA}/spaces/join`, R_, { code: inv.code });
@@ -177,6 +179,34 @@ describe("invites by link and by email", () => {
     // Used up.
     await s.call("DELETE", `${AREA}/spaces/${id}`, X_);
     expect((await s.call("POST", `${AREA}/spaces/join`, X_, { code: inv.code })).status).toBe(404);
+  });
+
+  it("opens the app straight to joining: the link's page opens Tailzu at Spaces with the code, and keeps the code to type", async () => {
+    const s = await served();
+    const id = await s.home();
+    const inv = (await s.call("POST", `${AREA}/spaces/${id}/invite`, A_, { role: "family" })).body;
+    const page = await s.call("GET", inv.link, null);
+    expect(page.status).toBe(200);
+    expect(page.headers["content-type"]).toContain("text/html");
+    expect(String(page.headers["content-security-policy"])).toContain("default-src 'none'");
+    expect(page.body).toContain("<b>Home</b>");
+    expect(page.body).toContain(`href="tulmi://screen/bots.spaces?join=${inv.code}"`);
+    expect(page.body).toContain("Join with a code");
+    expect(page.body).toContain(`>${inv.code}<`);
+    expect(page.body).not.toContain("<script");
+    // A code that isn't one, or one that doesn't work: the plain words, and nothing to open.
+    for (const bad of ["NOPE1234", "%3Cscript%3E", ""]) {
+      const p = await s.call("GET", `/s/bots.spaces?join=${bad}`, null);
+      expect(p.body).toContain("This invite doesn't work any more.");
+      expect(p.body).not.toContain("tulmi://");
+    }
+    // What the app's join card reads, signed in: what it is for, before joining.
+    expect((await s.call("GET", `${AREA}/spaces/join/${inv.code}`, R_)).body).toEqual({ invite: { name: "Home", members: 3, email: null } });
+    expect((await s.call("GET", `${AREA}/spaces/join/NOPE1234`, R_)).body).toEqual({ invite: null });
+    expect((await s.call("GET", `${AREA}/spaces/join/${inv.code}`, null)).status).toBe(401);
+    // Without an origin given, the link is the apps' own host.
+    expect(INVITE_ORIGIN).toBe("https://app.tailzu.space");
+    expect(inviteLinkOf(INVITE_ORIGIN, "QW3RT7YP")).toBe("https://app.tailzu.space/s/bots.spaces?join=QW3RT7YP");
   });
 
   it("sends queued mail once a mailer is plugged in, retrying a failure", async () => {
