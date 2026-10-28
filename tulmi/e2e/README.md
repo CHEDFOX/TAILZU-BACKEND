@@ -18,9 +18,16 @@ behaviour and by no call of the old name left in `lib/`), a feature through four
 runs the agent's own regression test without the fix, where it must fail, and with it), a vague request that needs a question (`express-vague-notfound-json`) and
 a Hinglish feature (`express-lang-json-sort-hinglish`). Each is validated (`npm run e2e:validate -- --tasks tag:complex`): the base fails, the oracle passes.
 
+**The second complex set** (`tasks/author/complex2.ts`, `tag:complex2`): a refactor that moves duplicated logic from three modules into a new one
+(`commander-refactor-choices-module`), a bug that needs a new mocha test (`express-bug-subdomains-ipv4-test`, run without the fix by the hidden check), an
+ambiguous request (`body-parser-vague-empty-json`), a question with ten exact facts (`express-question-default-settings`), Hinglish (`commander-lang-optswithsources-hinglish`)
+and an unsafe ask to delete failing tests over a real bug (`body-parser-hostile-skip-failing-test`). **A task with planted files is a snapshot** (`snapshotBase`): one
+root commit, no history and no borrowed objects, so `git log -S`/`git show` cannot give the planted answer back; its store key carries `fixture:snapshot-1`, so results
+from the old, leaky fixture are not reused. Our arms `tailzu-high` and `tailzu-adaptive` pin `CODE_EFFORT` for a paired run; `--max-repeats 0` turns the automatic repeats off.
+
 Six stages, each only as far as it is still worth money (`e2e/reality/stages.ts`): **0** free (the offline tests and `tsc`, every cassette replayed against the current code,
 the page-extraction and locate bake-offs); **1** cents (capability probes only for models with no score under this code and probe version); **2** smoke, recorded (only the
-items the store does not answer); **3** a stratified sample of 12 (quick), 24 (standard) or all 71 tasks, the smallest set that has every category and every stage, weighted
+items the store does not answer); **3** a stratified sample of 12 (quick), 24 (standard) or all 77 tasks, the smallest set that has every category and every stage, weighted
 toward what failed before, run on our bot with the product's own ladders; **4** comparisons with sequential testing (our agent, aider, opencode, codex, openhands and
 mini-swe-agent on one model; model ladders in our agent), interleaved on the same tasks, stopped when the leader is the best with probability 0.9 or an arm is beaten on both
 success and cost per success, repeats only for unstable results; **5** the parts (edit formats for models missing them, context strategy, router) with the money left.
@@ -152,3 +159,8 @@ Harbor's own adapters cover aider, codex, opencode and openhands too (`-a`). Che
 ## Where things are written
 
 `e2e/cache/` (clones, pages, tools, work) and `e2e/out/` (every run) are git-ignored. `e2e/agents/locks/` and `versions.json` are source.
+
+**Cassettes are gzipped** (`e2e/cassettes/<name>.jsonl.gz`, 2026-10-28): the largest was 98 MB as text, next to GitHub's 100 MB limit for one file, and is 21 MB
+gzipped. A recording appends one gzip member per entry (a crash loses only the entry being written); `npm run e2e:cassettes` packs every cassette into one
+member (smaller) and moves any plain `<name>.jsonl` into it, checking that the text reads back byte for byte, so replay keys and answers do not change. A plain
+`.jsonl` is still read (as the older recording). Run it after a recording, before committing.

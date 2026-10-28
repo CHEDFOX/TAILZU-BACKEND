@@ -15,6 +15,7 @@
  * defaulting to the shared one. `brain` is the project brain (layer 4) behind the three things the
  * loop asks of it; the real one is `brainOf(code.brain)`.
  */
+import type { EffortMode } from "./effort.js";
 import type { FetchLike } from "../../connectors/egressTypes.js";
 import type { GatewayDeps } from "../brain/gateway.js";
 import type { RouteStatsStore } from "../brain/stats.js";
@@ -118,6 +119,8 @@ export interface AgentDeps {
   proveFix?: boolean;
   /** How a new job is worked when neither the job nor its project says: instead of CODE_JOB_MODE (default free-form), for a harness that compares the two. */
   jobMode?: JobMode;
+  /** How hard a free-form turn thinks (agent/effort.ts): instead of CODE_EFFORT, for a harness that compares the two. */
+  effort?: EffortMode;
   now: () => number;
   sleep: (ms: number) => Promise<void>;
   log?: AgentLog;

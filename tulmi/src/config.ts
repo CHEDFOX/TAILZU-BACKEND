@@ -699,6 +699,12 @@ const EnvSchema = z.object({
    */
   CODE_JOB_MODE: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().toLowerCase() : undefined), z.enum(["freeform", "guided"]).optional()),
   /**
+   * HOW HARD A FREE-FORM JOB'S MODEL THINKS, TURN BY TURN (src/code/agent/effort.ts): "high" (every work turn at its tier's level) or "adaptive" (the tier's
+   * level when a turn decides something: understanding the task, after a failure or an answer, the review before done; "low" when it carries out a decision:
+   * reading, searching, applying an edit after the first one). The router's tiers and models are the same either way.
+   */
+  CODE_EFFORT: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().toLowerCase() : undefined), z.enum(["adaptive", "high"]).default("high")),
+  /**
    * ARTIFACTS (src/artifacts, docs/artifacts.md): live things a bot makes and the person sees and clicks in the app, like Claude's: a page,
    * a React component, SVG, a diagram, markdown. They run in the viewer (the viewer/ package, a site of its own, in a sandbox with no network);
    * this server keeps them, their versions, what they save while they run, and makes the changes cheaply (an edit of one element sends a

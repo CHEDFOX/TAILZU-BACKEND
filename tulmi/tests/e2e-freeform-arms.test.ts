@@ -23,7 +23,7 @@ import { REASONING_ALLOWANCE } from "../src/agent/reasoning.js";
 
 describe("our two arms", () => {
   it("are the product as it ships (free-form) and its phased flow, both run from the working tree", () => {
-    expect([...OUR_AGENTS]).toEqual(["tailzu", "tailzu-phased"]);
+    expect([...OUR_AGENTS]).toEqual(["tailzu", "tailzu-phased", "tailzu-high", "tailzu-adaptive"]);
     expect(agentById("tailzu-phased").id).toBe("tailzu-phased");
     expect(agentById("tailzu-phased").usesCheckout).toBe(false);
     expect(isOurs("tailzu-phased") && isOurs("tailzu") && !isOurs("aider")).toBe(true);
@@ -45,11 +45,12 @@ describe("the comparison's own tasks (--tasks)", () => {
     expect(() => chosenSample("no-such-task", pool, new Map())).toThrow(/matches no task/);
   });
 
-  it("takes a glob too, in id order: the six complex tasks are there and validated", () => {
+  it("takes a glob too, in id order: the twelve complex tasks (two sets of six) are there and validated", () => {
     const s = chosenSample("tag:complex", pool, new Map());
     expect(s.ordered.map((t) => t.id)).toEqual([...s.ordered.map((t) => t.id)].sort());
-    expect(s.ordered).toHaveLength(6);
-    expect(new Set(s.ordered.map((t) => t.category))).toEqual(new Set(["refactor", "feature", "bug", "vague", "language"]));
+    expect(s.ordered).toHaveLength(12);
+    expect(chosenSample("tag:complex2", pool, new Map()).ordered).toHaveLength(6);
+    expect(new Set(s.ordered.map((t) => t.category))).toEqual(new Set(["refactor", "feature", "bug", "vague", "language", "question", "hostile"]));
     expect(s.ordered.every((t) => t.validated?.oraclePasses && t.validated.baseFails)).toBe(true);
   });
 });

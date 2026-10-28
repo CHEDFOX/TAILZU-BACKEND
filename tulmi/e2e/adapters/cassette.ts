@@ -4,7 +4,7 @@
  * The cassette sits at the one place every model call passes, the OpenAI-shaped client (the gateway's `ChatClient`, and the proxy's `/v1/chat/completions`
  * in e2e/proxy.ts), so a replay runs the real gateway on top of it: the ladder, retries, JSON repair, budgets and ledger all run again, at zero cost.
  *
- *   record   every request goes to the upstream model and the answer is written to e2e/cassettes/<name>.jsonl (the file is started afresh)
+ *   record   every request goes to the upstream model and the answer is written to e2e/cassettes/<name>.jsonl.gz (the file is started afresh)
  *   replay   answers come from the file; a request with no recording is a MISS: an error to the caller, and a line in `stats.misses`. Strict: no model is called.
  *   mixed    a recorded request is answered from the file, a missing one goes upstream and is added to it
  *
@@ -27,6 +27,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
 import { reasoningRequired } from "../../src/agent/reasoning.js";
 import type { ChatClient } from "../../src/code/brain/gateway.js";
 import { callContext } from "./models.js";
@@ -36,6 +37,42 @@ import { E2E_DIR, mkdirp } from "../util.js";
 export const CASSETTES_DIR = process.env.E2E_CASSETTES_DIR ? path.resolve(process.env.E2E_CASSETTES_DIR) : path.join(E2E_DIR, "cassettes");
 
 export type CassetteMode = "record" | "replay" | "mixed";
+
+// ------------------------------------------------------------------- the file
+//
+// A cassette is JSON lines, kept GZIPPED (`<name>.jsonl.gz`): the biggest recordings are about 100 MB as text, GitHub's limit for one file, and about a fifth
+// of that compressed. Each appended entry is its own gzip member (a crash loses at most the line being written; gunzip reads concatenated members as one
+// stream), and `npm run e2e:cassettes` rewrites a file as one member, which compresses better. A plain `<name>.jsonl` from before is still read (first, as the
+// older recording); the decompressed text is byte for byte what the plain file held, so replay keys and answers do not change.
+
+/** The cassette's file name stem: what a name may hold. */
+export const cassetteStem = (name: string): string => name.replace(/[^A-Za-z0-9._-]/g, "_");
+/** A cassette file's name without its extension (`x.jsonl.gz` and `x.jsonl` are both `x`); null for a file that is not a cassette. */
+export const cassetteNameOf = (file: string): string | null => { const m = /^(.*)\.jsonl(\.gz)?$/.exec(path.basename(file)); return m ? m[1]! : null; };
+
+/** The text of a cassette file, plain or gzipped (several members, or a torn last one, are read as far as they go). "" for a missing or empty file. */
+export function readCassetteText(file: string): string {
+  if (!fs.existsSync(file)) return "";
+  const buf = fs.readFileSync(file);
+  if (!buf.length) return "";
+  if (!file.endsWith(".gz")) return buf.toString("utf8");
+  try { return zlib.gunzipSync(buf).toString("utf8"); }
+  catch { return zlib.gunzipSync(buf, { finishFlush: zlib.constants.Z_SYNC_FLUSH }).toString("utf8"); }
+}
+
+/** Rewrites a cassette as ONE gzip member at `<stem>.jsonl.gz` (from the plain file, the gzipped one, or both: plain first), checks that it reads back byte for byte, then removes the plain file. */
+export function compactCassette(dir: string, stem: string): { from: number; to: number; bytes: number } {
+  const plain = path.join(dir, `${stem}.jsonl`), gz = `${plain}.gz`;
+  const had = (fs.existsSync(plain) ? fs.statSync(plain).size : 0) + (fs.existsSync(gz) ? fs.statSync(gz).size : 0);
+  const text = readCassetteText(plain) + readCassetteText(gz);
+  const packed = zlib.gzipSync(text, { level: 9 });
+  if (zlib.gunzipSync(packed).toString("utf8") !== text) throw new Error(`${stem}: the compressed cassette does not read back the same`);
+  const tmp = `${gz}.tmp`;
+  fs.writeFileSync(tmp, packed);
+  fs.renameSync(tmp, gz);
+  if (fs.existsSync(plain)) fs.rmSync(plain);
+  return { from: had, to: packed.length, bytes: Buffer.byteLength(text) };
+}
 
 // ------------------------------------------------------------------- redaction
 
@@ -222,7 +259,10 @@ export interface Entry {
 }
 
 export class CassetteStore {
+  /** The file written to: `<name>.jsonl.gz`. */
   readonly file: string;
+  /** A plain `<name>.jsonl` from before the cassettes were gzipped: still read, never written. */
+  readonly plainFile: string;
   private readonly byKey = new Map<string, Entry[]>();
   /** The same entries under the key the CURRENT rules (normalize, wireRequestOf) make of their request: a recording survives a change in what is ignored. */
   private readonly byCurrentKey = new Map<string, Entry[]>();
@@ -231,15 +271,19 @@ export class CassetteStore {
   count = 0;
 
   constructor(readonly name: string, dir = CASSETTES_DIR) {
-    this.file = path.join(dir, `${name.replace(/[^A-Za-z0-9._-]/g, "_")}.jsonl`);
+    this.plainFile = path.join(dir, `${cassetteStem(name)}.jsonl`);
+    this.file = `${this.plainFile}.gz`;
   }
 
-  exists(): boolean { return fs.existsSync(this.file); }
+  exists(): boolean { return fs.existsSync(this.file) || fs.existsSync(this.plainFile); }
+
+  /** The whole recording as text (the plain file first, as the older one, then the gzipped one). */
+  text(): string { return readCassetteText(this.plainFile) + readCassetteText(this.file); }
 
   load(): this {
     this.byKey.clear(); this.byCurrentKey.clear(); this.byRun.clear(); this.all.length = 0; this.count = 0;
     if (!this.exists()) return this;
-    for (const line of fs.readFileSync(this.file, "utf8").split("\n")) {
+    for (const line of this.text().split("\n")) {
       if (!line.trim()) continue;
       try { this.add(JSON.parse(line) as Entry); } catch { /* a torn last line is not a recording */ }
     }
@@ -247,7 +291,7 @@ export class CassetteStore {
   }
 
   /** Starts the file afresh (a new recording). */
-  reset(): void { mkdirp(path.dirname(this.file)); fs.writeFileSync(this.file, ""); this.byKey.clear(); this.byCurrentKey.clear(); this.byRun.clear(); this.all.length = 0; this.count = 0; }
+  reset(): void { mkdirp(path.dirname(this.file)); fs.writeFileSync(this.file, ""); fs.rmSync(this.plainFile, { force: true }); this.byKey.clear(); this.byCurrentKey.clear(); this.byRun.clear(); this.all.length = 0; this.count = 0; }
 
   private add(e: Entry): void {
     const l = this.byKey.get(e.k) ?? [];
@@ -265,7 +309,7 @@ export class CassetteStore {
 
   append(e: Entry): void {
     mkdirp(path.dirname(this.file));
-    fs.appendFileSync(this.file, `${JSON.stringify(e)}\n`);
+    fs.appendFileSync(this.file, zlib.gzipSync(`${JSON.stringify(e)}\n`));
     this.add(e);
   }
 
@@ -303,6 +347,8 @@ export interface CassetteStats {
   spentUsd: number;
   /** Dollars the replayed answers had cost when they were recorded. */
   replayedUsd: number;
+  /** Milliseconds the replayed answers had taken when they were recorded: a run's wall time "as if live" adds them (a replay answers at once). */
+  replayedMs?: number;
   refused: number;
 }
 
@@ -324,7 +370,7 @@ export class CassetteMiss extends Error {
 }
 
 export class CassetteClient implements ChatClient {
-  readonly stats: CassetteStats = { hits: 0, misses: [], recorded: 0, spentUsd: 0, replayedUsd: 0, refused: 0 };
+  readonly stats: CassetteStats = { hits: 0, misses: [], recorded: 0, spentUsd: 0, replayedUsd: 0, replayedMs: 0, refused: 0 };
   private readonly seen = new Map<string, number>();
   private readonly ordinals = new Map<string, number>();
   readonly chat: ChatClient["chat"];
@@ -361,6 +407,7 @@ export class CassetteClient implements ChatClient {
       if (hit) {
         this.stats.hits += 1;
         this.stats.replayedUsd += hit.usd;
+        this.stats.replayedMs = (this.stats.replayedMs ?? 0) + (hit.ms || 0);
         if (hit.err) throw Object.assign(new Error(hit.err.message), { ...(hit.err.status !== undefined ? { status: hit.err.status } : {}) });
         return structuredClone(hit.res);
       }

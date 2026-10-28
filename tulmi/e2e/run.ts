@@ -131,7 +131,7 @@ export const RUN_SPEC: CliSpec = {
     "no-suite": { kind: "bool", about: "skip running each project's own suite on the result (faster, weaker)" },
     estimate: { kind: "bool", about: "(real) print what the run would cost, from the live prices, and stop" },
     "no-estimate": { kind: "bool", about: "(real) do not print the estimate before the run" },
-    record: { kind: "bool", about: "record every model call to e2e/cassettes/<cassette>.jsonl" },
+    record: { kind: "bool", about: "record every model call to e2e/cassettes/<cassette>.jsonl.gz" },
     replay: { kind: "bool", about: "answer every call from the cassette, for nothing (strict)" },
     mixed: { kind: "bool", about: "replay what is recorded, call the model for the rest" },
     cassette: { kind: "string", value: "<name>", about: "the cassette (default: the suite's name)" },

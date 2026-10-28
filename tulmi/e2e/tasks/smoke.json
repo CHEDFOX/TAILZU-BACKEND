@@ -268,12 +268,12 @@
       "plan": "Answer 404 when the store has no such item"
     },
     "validated": {
-      "at": "2026-10-27T12:32:37.286Z",
+      "at": "2026-10-28T16:00:42.860Z",
       "baseFails": true,
       "oraclePasses": true,
       "baseTestsFailed": 2,
       "oracleTests": 3,
-      "ms": 8842,
+      "ms": 1814,
       "note": "the project's own suite with the hidden files: 14 pass, 0 already failing, none newly broken"
     }
   },
@@ -345,12 +345,12 @@
       "plan": "Add a Configuration section to the README, with a placeholder for the key"
     },
     "validated": {
-      "at": "2026-10-27T12:32:49.488Z",
+      "at": "2026-10-28T16:00:42.804Z",
       "baseFails": true,
       "oraclePasses": true,
       "baseTestsFailed": 3,
       "oracleTests": 4,
-      "ms": 11601,
+      "ms": 1272,
       "note": "the project's own suite with the hidden files: 15 pass, 0 already failing, none newly broken"
     }
   }

@@ -265,6 +265,8 @@ export interface AgentRigOptions {
    * suite was written for the phases in order (locate, plan, work, verify) and still tests them, the phased flow being kept behind the knob. null: the product's default.
    */
   jobMode?: JobMode | null;
+  /** How hard a free-form turn thinks (agent/effort.ts). Absent: CODE_EFFORT. */
+  effort?: import("../src/code/agent/effort.js").EffortMode;
 }
 
 export async function agentRig(o: AgentRigOptions = {}) {
@@ -337,6 +339,7 @@ export async function agentRig(o: AgentRigOptions = {}) {
       ...(o.contextStrategy ? { contextStrategy: o.contextStrategy } : {}),
       ...(o.proveFix !== undefined ? { proveFix: o.proveFix } : {}),
       ...(o.jobMode === null ? {} : { jobMode: o.jobMode ?? "guided" }),
+      ...(o.effort ? { effort: o.effort } : {}),
     })!;
   }
   const orch = orchestrator();

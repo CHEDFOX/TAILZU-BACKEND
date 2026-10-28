@@ -1,7 +1,7 @@
 /**
  * STAGE 0, THE CASSETTES: EVERY RECORDING REPLAYED AGAINST THE CODE AS IT IS NOW, FOR NOTHING.
  *
- * A cassette (e2e/cassettes/*.jsonl) holds every model request of a paid run and the answer it got. Replayed strictly, the product runs again on those answers: if its
+ * A cassette (e2e/cassettes/*.jsonl.gz; a plain .jsonl is still read) holds every model request of a paid run and the answer it got. Replayed strictly, the product runs again on those answers: if its
  * requests are the same, the answers are the same and the run comes out as it did, and any difference in the outcome is a CHANGE IN THE CODE AFTER THE MODEL'S ANSWER
  * (a regression, or a fix) found at ₹0. If the code now asks something that was not recorded, that is a MISS: the prompts or the inputs changed, the recording no
  * longer says what the new code would do, and the item must be re-run with money to be known. So each replayed item lands in one of four boxes:
@@ -21,8 +21,7 @@
  */
 import "../env.js";
 import fs from "node:fs";
-import path from "node:path";
-import { CassetteStore, CASSETTES_DIR } from "../adapters/cassette.js";
+import { CassetteStore, CASSETTES_DIR, cassetteNameOf } from "../adapters/cassette.js";
 import { makeModelKit } from "../adapters/rig.js";
 import type { Catalog } from "../catalog.js";
 import { MemoryJobStore } from "../../src/code/jobs/store.js";
@@ -52,10 +51,9 @@ export function kindOfCassette(name: string): CassetteKind {
 /** The cassettes, OLDEST RECORDING FIRST (by the time written in their first entry): when two recordings answer the same question, the newer one is the later word. */
 export function listCassettes(dir = CASSETTES_DIR): Array<{ name: string; kind: CassetteKind; entries: number; bytes: number; recordedAt: string }> {
   if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir).filter((f) => f.endsWith(".jsonl")).sort().map((f) => {
-    const file = path.join(dir, f);
-    const name = f.replace(/\.jsonl$/, "");
-    const text = fs.readFileSync(file, "utf8");
+  const names = [...new Set(fs.readdirSync(dir).map((f) => cassetteNameOf(f)).filter((n): n is string => !!n))].sort();
+  return names.map((name) => {
+    const text = new CassetteStore(name, dir).text();
     const lines = text.split("\n").filter((l) => l.trim());
     let recordedAt = "";
     try { recordedAt = (JSON.parse(lines[0] ?? "{}") as { at?: string }).at ?? ""; } catch { /* a cassette whose first line cannot be read sorts first */ }

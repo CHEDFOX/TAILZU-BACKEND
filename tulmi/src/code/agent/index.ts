@@ -23,6 +23,7 @@
  * GitHub client AND the project brain is on (the loop reads the brain for where a change belongs); a server
  * without it leaves a job to whatever drives the router directly, as before.
  */
+import type { EffortMode } from "./effort.js";
 import { getConfig } from "../../config.js";
 import type { Code } from "../index.js";
 import type { JobRouter } from "../jobs/router.js";
@@ -90,6 +91,8 @@ export interface CreateAgentOptions extends Partial<Pick<AgentDeps, "call" | "ga
   proveFix?: boolean;
   /** How a new job is worked when neither the job nor its project says: instead of CODE_JOB_MODE (free-form by default). */
   jobMode?: JobMode;
+  /** How hard a free-form turn thinks: instead of CODE_EFFORT (agent/effort.ts). */
+  effort?: EffortMode;
 }
 
 /** The worker, or null when this server cannot run one (no GitHub client, or the project brain is off). */
@@ -111,6 +114,7 @@ export function createAgent(o: CreateAgentOptions): AgentOrchestrator | null {
     ...(o.contextStrategy ? { contextStrategy: o.contextStrategy } : {}),
     ...(o.proveFix !== undefined ? { proveFix: o.proveFix } : {}),
     ...(o.jobMode ? { jobMode: o.jobMode } : {}),
+    ...(o.effort ? { effort: o.effort } : {}),
   };
   const orch = new AgentOrchestrator({
     jobs: o.jobs, store, deps, concurrency: o.concurrency ?? getConfig().CODE_AGENT_CONCURRENCY,

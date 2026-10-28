@@ -18,7 +18,7 @@ import path from "node:path";
 import { cloneDirOf, cloneObjects, getRepo, installRepo, isInstalled, makeCheckout, testCommand, type RepoSpec } from "./repos.js";
 import { fileChecks, groundingProblems, walkTexts } from "./score/files.js";
 import { lay, runTests } from "./score/hidden.js";
-import { loadTasks, selectTasks, type Task } from "./tasks/schema.js";
+import { loadTasks, selectTasks, snapshotBase, type Task } from "./tasks/schema.js";
 import { TASKS_DIR, fakeSecret, git, mkdirp, pool, readJson, rmrf, synthTmp, tmpDir, writeJson } from "./util.js";
 
 export interface Materialized { dir: string; dispose(): void; spec: RepoSpec | undefined; /** The commit the checkout is at: the base project with the planted files and the project's setup committed. A diff against it is what an agent did. */ baseSha: string }
@@ -53,9 +53,24 @@ export async function materialize(task: Task): Promise<Materialized> {
   // What the project was before anyone touched it: planted files and setup included, so that `git diff` against this commit is exactly the agent's work.
   const ident = { GIT_AUTHOR_NAME: "e2e", GIT_AUTHOR_EMAIL: "e2e@tailzu.local", GIT_COMMITTER_NAME: "e2e", GIT_COMMITTER_EMAIL: "e2e@tailzu.local" };
   await git(dest, ["add", "-A"], { env: ident });
+  if (snapshotBase(task)) await freshHistory(dest);
   await git(dest, ["commit", "-q", "--allow-empty", "-m", "base"], { env: ident });
   const baseSha = (await git(dest, ["rev-parse", "HEAD"])).trim();
   return { dir: dest, spec, baseSha, dispose: () => rmrf(dest) };
+}
+
+/**
+ * Replaces a checkout's git history with ONE root commit-to-be of the files it tracks now: the old .git (history, borrowed objects, shallow file, reflog) is
+ * removed and the same paths are added to a new one. The work tree (dependencies linked in, setup output) is left as it is.
+ */
+async function freshHistory(dest: string): Promise<void> {
+  const tracked = await git(dest, ["ls-files", "-z"]);
+  rmrf(path.join(dest, ".git"));
+  await git(dest, ["init", "-q"]);
+  await git(dest, ["config", "user.email", "e2e@tailzu.local"]);
+  await git(dest, ["config", "user.name", "e2e"]);
+  await git(dest, ["config", "core.fileMode", "false"]);
+  if (tracked) await git(dest, ["add", "-f", "--pathspec-from-file=-", "--pathspec-file-nul"], { input: tracked });
 }
 
 export interface Validation { ok: boolean; why: string; baseFailed: number; oracleTests: number; ms: number; notes: string[] }

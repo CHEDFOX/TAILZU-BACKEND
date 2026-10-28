@@ -12,6 +12,7 @@
 import "../env.js";
 import { createAgent } from "../../src/code/agent/index.js";
 import type { JobMode } from "../../src/code/agent/types.js";
+import type { EffortMode } from "../../src/code/agent/effort.js";
 import { Breakers } from "../../src/guard/breaker.js";
 import type { AgentOrchestrator, RemoteJobs } from "../../src/code/agent/orchestrator.js";
 import { routerRunner } from "../../src/code/agent/runner.js";
@@ -34,7 +35,7 @@ import { MemoryCodeStore } from "../../src/code/store.js";
 import { MemoryWorklogStore, WorkLog } from "../../src/code/work/index.js";
 import { appKeys, type AppKeys } from "../../tests/github-fake.js";
 import { cloneObjects, getRepo, type RepoSpec } from "../repos.js";
-import type { Task } from "../tasks/schema.js";
+import { snapshotBase, type Task } from "../tasks/schema.js";
 import { fakeSecret } from "../util.js";
 import { LocalGitHub, type LocalRepo } from "./localGithub.js";
 import { LocalRoom } from "./localRoom.js";
@@ -60,6 +61,8 @@ export interface CassetteSetup {
 }
 
 export interface RigOptions {
+  /** How hard a free-form turn thinks (src/code/agent/effort.ts): the tailzu-high and tailzu-adaptive arms. Absent: CODE_EFFORT. */
+  effort?: EffortMode;
   /** The most any model call may write (the smoke suite's 800), whatever the caller asks for. */
   maxTokensCap?: number;
   /** Oracle and fake: answer through the real gateway, over a scripted OpenAI-shaped client, instead of in place of it. Implied by `cassette`. */
@@ -214,6 +217,7 @@ export async function createRig(o: RigOptions) {
       // The product asks once for a focused test of a source fix before the checks run (CODE_PROVE_FIX, on by default). A scripted persona (the oracle, a failing one) plays
       // "edit, done" and has no test to write, so it runs without the round; a real model gets the product as it ships.
       ...(o.mode !== "real" ? { proveFix: false } : {}),
+      ...(o.effort ? { effort: o.effort } : {}),
     })!;
   }
   const orch = orchestrator();
@@ -224,21 +228,21 @@ export async function createRig(o: RigOptions) {
     const fullName = `${USER}/${short}`;
     let spec: RepoSpec | undefined;
     let repo: LocalRepo;
+    const secrets = (task.checks.secrets ?? []).map((s) => fakeSecret(s.kind, s.salt));
+    const planted: Record<string, string | null> = {};
+    for (const [p, text] of Object.entries(task.base.planted ?? {})) planted[p] = text === null ? null : text.replace(/\{\{SECRET:(\d+)\}\}/g, (_m, i) => secrets[Number(i)] ?? "");
+    // Planted files make the project a snapshot (one fresh commit, nothing borrowed): what was planted cannot be read back from git history.
+    const snapshot = snapshotBase(task);
     if (task.repo !== "synthetic") {
       spec = getRepo(task.repo);
       const { objects, shallow } = cloneObjects(spec);
-      repo = await gh.addRepo({ fullName, from: { objects, shallow, commit: task.base.commit ?? spec.pin, ...(spec.workdir ? { subdir: spec.workdir } : {}) }, ...(task.base.message ? { message: task.base.message } : {}) });
+      repo = await gh.addRepo({ fullName, from: { objects, shallow, commit: task.base.commit ?? spec.pin, ...(spec.workdir ? { subdir: spec.workdir } : {}), ...(snapshot ? { snapshot, planted } : {}) }, ...(task.base.message ? { message: task.base.message } : {}) });
     } else if (task.base.empty) {
       repo = await gh.addRepo({ fullName, empty: true });
     } else {
       repo = await gh.addRepo({ fullName, files: task.base.files ?? { "README.md": "# project\n" } });
     }
-    const secrets = (task.checks.secrets ?? []).map((s) => fakeSecret(s.kind, s.salt));
-    if (task.base.planted && Object.keys(task.base.planted).length) {
-      const planted: Record<string, string | null> = {};
-      for (const [p, text] of Object.entries(task.base.planted)) planted[p] = text === null ? null : text.replace(/\{\{SECRET:(\d+)\}\}/g, (_m, i) => secrets[Number(i)] ?? "");
-      await repo.push(repo.defaultBranch, planted, "Add project notes");
-    }
+    if (!snapshot && Object.keys(planted).length) await repo.push(repo.defaultBranch, planted, "Add project notes");
     const { project } = await addProject(d, USER, repo.id);
     if (task.base.empty) {
       const asked = await initEmptyRepo(d, USER, project.id, "app", { attended: true });

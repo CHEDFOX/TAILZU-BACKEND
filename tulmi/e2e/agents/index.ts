@@ -9,12 +9,14 @@ import { miniAgent } from "./miniswe.js";
 import { opencodeAgent } from "./opencode.js";
 import { openhandsAgent } from "./openhands.js";
 import { patchAgent } from "./patch.js";
-import { tailzuAgent, tailzuPhasedAgent } from "./tailzu.js";
+import { tailzuAdaptiveAgent, tailzuAgent, tailzuHighAgent, tailzuPhasedAgent } from "./tailzu.js";
 import type { AgentUnderTest } from "./types.js";
 
 export const AGENTS: Record<string, AgentUnderTest> = {
   [tailzuAgent.id]: tailzuAgent,
   [tailzuPhasedAgent.id]: tailzuPhasedAgent,
+  [tailzuHighAgent.id]: tailzuHighAgent,
+  [tailzuAdaptiveAgent.id]: tailzuAdaptiveAgent,
   [patchAgent.id]: patchAgent,
   [aiderAgent.id]: aiderAgent,
   [opencodeAgent.id]: opencodeAgent,
