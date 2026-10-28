@@ -18,8 +18,11 @@
 import { scanForSecrets } from "../policy.js";
 import type { CallRecord, ResultRecord } from "./types.js";
 
-/** How the old observations are dealt with: masked (no model), folded into a summary by the cheap model, or masked with a summary every so often. */
-export const CONTEXT_STRATEGIES = ["mask", "summary", "hybrid"] as const;
+/**
+ * How the old observations are dealt with: masked (no model), folded into a summary by the cheap model, masked with a summary every so often, or (TRANSCRIPT, a
+ * free-form job's) kept whole until they pass a size and then masked oldest first in one batch, so the transcript is append-only between batches (context.ts).
+ */
+export const CONTEXT_STRATEGIES = ["mask", "summary", "hybrid", "transcript"] as const;
 export type ContextStrategy = (typeof CONTEXT_STRATEGIES)[number];
 
 export const isStrategy = (v: unknown): v is ContextStrategy => typeof v === "string" && (CONTEXT_STRATEGIES as readonly string[]).includes(v);

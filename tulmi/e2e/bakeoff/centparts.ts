@@ -143,7 +143,24 @@ export async function runEditFormats(ctx: PartCtx, o: { models?: string[] } = {}
 
 // ================================================================== context strategy
 
-export const STRATEGIES = ["summary", "mask", "hybrid"] as const;
+export const STRATEGIES = ["summary", "mask", "hybrid", "transcript"] as const;
+/** The most work turns one run of the strategy part may take: the first reality run let one task take 54 turns and most of the part's money. */
+export const STRATEGY_MAX_TURNS = 30;
+
+/**
+ * What one run of the strategy part came to, read from the agent's own state. A run whose agent never reached a model turn (every call before it failed: no model
+ * could be reached, the money ran out) has no strategy to see: it is NOT MEASURED, with the reason, and is neither a pass nor a failure of the strategy, nor proof
+ * that the strategy was not applied (the first reality run counted eleven such runs as "strategy seen by the agent: ?" and failed the part on them).
+ */
+export function strategyRun(strategy: string, r: { flow?: { agent?: { strategy: string | null; turns: number } | null; calls?: Array<{ ok: boolean; purpose: string; why?: string; error?: string }> } | undefined; metrics: { steps: number } }): { measured: boolean; applied: boolean; turns: number; why: string } {
+  const a = r.flow?.agent ?? null;
+  const turns = a?.turns ?? r.metrics.steps;
+  if (!a || turns === 0 || !a.strategy) {
+    const failed = (r.flow?.calls ?? []).find((c) => !c.ok);
+    return { measured: false, applied: true, turns, why: failed ? `${failed.purpose} failed: ${failed.why ?? failed.error ?? "no reason given"}` : "the job ended before its first model turn" };
+  }
+  return { measured: true, applied: a.strategy === strategy, turns, why: "" };
+}
 
 /** A subset of real tasks for the strategy comparison: bugs and features that need some turns, one per project, the oracle proven. */
 export function strategyTasks(n: number): Task[] {
@@ -164,9 +181,9 @@ export async function runContextStrategy(ctx: PartCtx, o: { model?: string; task
   const est = contextStrategyEstimate(ctx, model, tasks);
   const guard = ctx.mode === "real" ? new SpendGuard(ctx.capInr / ctx.fx) : undefined;
   const cassette = cassetteFor(ctx, guard);
-  const rows: Array<{ strategy: string; pass: number; n: number; costPaise: number; promptTokens: number; turns: number; applied: boolean }> = [];
+  const rows: Array<{ strategy: string; pass: number; n: number; costPaise: number; promptTokens: number; turns: number; applied: boolean; unmeasured: number }> = [];
   for (const strategy of STRATEGIES) {
-    const acc = { strategy, pass: 0, n: 0, costPaise: 0, promptTokens: 0, turns: 0, applied: true };
+    const acc = { strategy, pass: 0, n: 0, costPaise: 0, promptTokens: 0, turns: 0, applied: true, unmeasured: 0 };
     for (const t of tasks) {
       if (guard?.exhausted) break;
       const task = ctx.mode === "sim" ? { ...t, budgetPaise: 3000 } : t;
@@ -174,16 +191,22 @@ export async function runContextStrategy(ctx: PartCtx, o: { model?: string; task
       const { result, score } = await withStrategy(strategy, () => runOne(task, tailzuAgent, {
         model: ctx.mode === "sim"
           ? { mode: "oracle", persona: oracle, maxTurns: SMOKE_MAX_TURNS, maxTokens: 800 }
-          : { mode: "real", slug: model, ladder: [model], tiers: pinnedTiers(model, info), ...(cassette ? { cassette: { ...cassette, run: `${strategy}|${t.id}` }, wire: true } : {}) },
+          : { mode: "real", slug: model, ladder: [model], tiers: pinnedTiers(model, info), maxTurns: STRATEGY_MAX_TURNS, ...(cassette ? { cassette: { ...cassette, run: `${strategy}|${t.id}` }, wire: true } : {}) },
         budgetPaise: ctx.mode === "sim" ? 3000 : 3000, timeoutSec: ctx.mode === "sim" ? 240 : 900, outDir: path.join(ctx.outDir, "strategy", strategy), repeat: 1, log: () => undefined, brainBudgetPaise: 0,
       }));
+      const run = strategyRun(strategy, result);
+      acc.costPaise += score.metrics.costPaise;
+      if (!run.measured) {
+        acc.unmeasured += 1;
+        ctx.log(`  context strategy ${strategy} on ${t.id}: NOT MEASURED (no model turn: ${run.why.slice(0, 160)})`);
+        continue;
+      }
       acc.n += 1;
       if (score.success) acc.pass += 1;
-      acc.costPaise += score.metrics.costPaise;
       acc.promptTokens += result.metrics.promptTokens;
-      acc.turns += result.flow?.agent?.turns ?? result.metrics.steps;
-      if (result.flow?.agent && result.flow.agent.strategy !== strategy) acc.applied = false;
-      ctx.log(`  context strategy ${strategy} on ${t.id}: ${score.success ? "pass" : "FAIL"}, ${result.metrics.steps} turn(s), strategy seen by the agent: ${result.flow?.agent?.strategy ?? "?"}`);
+      acc.turns += run.turns;
+      if (!run.applied) acc.applied = false;
+      ctx.log(`  context strategy ${strategy} on ${t.id}: ${score.success ? "pass" : "FAIL"}, ${run.turns} turn(s), strategy seen by the agent: ${result.flow?.agent?.strategy ?? "?"}${score.success ? "" : ` (${`${score.stage.failedAt}: ${score.stage.reason}`.slice(0, 100)})`}`);
     }
     rows.push(acc);
   }
@@ -192,9 +215,9 @@ export async function runContextStrategy(ctx: PartCtx, o: { model?: string; task
   const winner = best && second ? { id: best.strategy, by: "pass rate, then cost", margin: `${((best.pass / best.n - second.pass / second.n) * 100).toFixed(0)} points of pass rate and ₹${((second.costPaise - best.costPaise) / 100 / Math.max(1, best.n)).toFixed(2)} per task over ${second.strategy}` } : undefined;
   return {
     id: "contextStrategy", title: "Context strategy: summary, mask or hybrid", status: ctx.mode === "sim" ? "proved" : "measured",
-    headline: rows.every((r) => r.applied) ? `${rows.map((r) => `${r.strategy} ${r.pass}/${r.n}`).join(", ")}` : "the strategy was NOT applied as asked for some run",
+    headline: rows.every((r) => r.applied) ? `${rows.map((r) => `${r.strategy} ${r.pass}/${r.n}${r.unmeasured ? ` (${r.unmeasured} not measured)` : ""}`).join(", ")}` : "the strategy was NOT applied as asked for some run",
     ...(winner ? { winner } : {}),
-    table: { head: ["strategy", "pass", "mean cost ₹", "mean prompt tokens", "mean turns", "applied"], rows: rows.map((r) => [r.strategy, `${r.pass}/${r.n}`, (r.costPaise / 100 / Math.max(1, r.n)).toFixed(2), String(Math.round(r.promptTokens / Math.max(1, r.n))), (r.turns / Math.max(1, r.n)).toFixed(1), r.applied ? "yes" : "NO"]) },
+    table: { head: ["strategy", "pass", "not measured", "mean cost ₹", "mean prompt tokens", "mean turns", "applied"], rows: rows.map((r) => [r.strategy, `${r.pass}/${r.n}`, String(r.unmeasured), (r.costPaise / 100 / Math.max(1, r.n)).toFixed(2), String(Math.round(r.promptTokens / Math.max(1, r.n))), (r.turns / Math.max(1, r.n)).toFixed(1), r.applied ? "yes" : "NO"]) },
     notes: [ctx.mode === "sim" ? "A scripted model that does the same on every strategy: this proves CODE_CONTEXT_STRATEGY reaches the agent (the `applied` column reads it back from the agent's own state), not which strategy is better." : `One model (${model}) for all three, the same tasks, a cassette per run.`, "The JetBrains 'Complexity Trap' result to test: masking about halves cost against a raw agent at an equal solve rate; a summary costs an extra model call per fold."],
     command: `npm run bakeoff -- --parts --spend --only contextStrategy --budget-inr ${Math.max(10, Math.ceil(est.inr * 1.5))}`,
     estimateInr: est.inr, estimateBasis: est.basis, spentInr: (guard?.spentUsd ?? 0) * ctx.fx, data: rows,

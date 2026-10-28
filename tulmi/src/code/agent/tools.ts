@@ -6,10 +6,12 @@
  *   grep {pattern, path?, glob?, ...}  exact text in the files, ripgrep-like, with the staged edits
  *   glob {pattern}                     files by name, newest change first, with the staged edits
  *   search_code {query}                the project brain: files, symbols, the text people see ("where is the feature")
+ *   suggest_files {query?}             the locate funnel's free half (work/locate.ts fusedFor): the files the request (or the query) is most likely about, ranked,
+ *                                      each with why, and the tests near the first ones. No model. A free-form job's map of where to look, never a gate
  *   edit_file {path, old, new}         an exact replace of text that occurs once; STAGES it
  *   write_file {path, content}         stages a whole file
  *   delete_file {path}                 stages a deletion
- *   run {cmd, why}                     on a runner, with the staged edits laid over the checkout
+ *   run {cmd, why, timeoutSec?}        on a runner, with the staged edits laid over the checkout; 3 minutes unless it asks for more (10 at most)
  *   web_search, read_page, research    layer 3 (code/webTools.ts)
  *   find_resources {need}              layer 6: the library shortlist
  *   flag_finding {severity, path, line?, text}   something noticed in code it was not asked about
@@ -51,16 +53,17 @@ import type { Workspace } from "../projects.js";
 import { findResources } from "../resources/finder.js";
 import { WEB_TOOLS, type WebTools } from "../webTools.js";
 import { cleanFinding, redactText, type WorkLog } from "../work/index.js";
+import { fusedFor } from "../work/locate.js";
 import { Changeset, Refused, checkedText, editablePath, replaceOnce } from "./changeset.js";
 import type { PathGuard } from "../team/guard.js";
 import type { RunOutcome, RunSpec } from "./runner.js";
-import { FINDINGS_MAX, FREEFORM_RUNS_MAX, LIST_MAX, READ_MAX_CHARS, RESULT_MAX_CHARS, RUNS_MAX, RUN_TIMEOUT_SEC, type AgentState, type ResultRecord } from "./types.js";
+import { FINDINGS_MAX, FREEFORM_RUNS_MAX, LIST_MAX, READ_MAX_CHARS, RESULT_MAX_CHARS, RUNS_MAX, RUN_DEFAULT_SEC, RUN_MIN_SEC, RUN_TIMEOUT_SEC, type AgentState, type ResultRecord } from "./types.js";
 
 export type ToolControl = { type: "done"; summary: string } | { type: "ask"; question: string; options?: string[] };
 export interface ToolOutcome extends ResultRecord { control?: ToolControl }
 
 export const AGENT_TOOL_NAMES = [
-  "read_file", "list_dir", "grep", "glob", "search_code", "edit_file", "write_file", "delete_file", "run",
+  "read_file", "list_dir", "grep", "glob", "search_code", "suggest_files", "edit_file", "write_file", "delete_file", "run",
   "web_search", "read_page", "research", "find_resources", "flag_finding", "note", "ask_user", "done",
 ] as const;
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
@@ -104,6 +107,12 @@ export const AGENT_TOOLS: readonly ToolDef[] = [
     parameters: obj({ query: { type: "string", minLength: 2, maxLength: 200 } }, ["query"]),
   },
   {
+    name: "suggest_files",
+    description: "The files this request is most likely about, ranked by the project's index (names, text, symbols, imports), each with why, and tests near the first ones. "
+      + "A guess to read from. Give query to ask with other words.",
+    parameters: obj({ query: { type: "string", maxLength: 500 } }, []),
+  },
+  {
     name: "edit_file",
     description: "Replace text in a file. `old` is copied exactly from the file and occurs ONCE (add surrounding lines to make it so); `new` replaces it. Staged, not committed.",
     parameters: obj({ path: { type: "string", maxLength: 500 }, old: { type: "string" }, new: { type: "string" } }, ["path", "old", "new"]),
@@ -120,10 +129,12 @@ export const AGENT_TOOLS: readonly ToolDef[] = [
   },
   {
     name: "run",
-    description: "Run shell commands over your staged edits. `cmd` is one command per line, run in order, stopping at the first failure. "
-      + "Nothing is assumed installed: install what a run needs in that run. Returns the exit code and the end of the output. "
-      + "With a live session the first run opens it (about a minute), later runs start at once, and it closes after two idle minutes; otherwise each run waits for a computer. Batch commands.",
-    parameters: obj({ cmd: { type: "string", minLength: 1, maxLength: 6000 }, why: { type: "string", maxLength: 300 } }, ["cmd", "why"]),
+    description: "Run shell commands over your staged edits, one per line, stopping at the first failure. It runs on a copy: what a command writes is not kept; "
+      + "edit with edit_file or write_file. Nothing is assumed installed: install what a run needs in that run. It is stopped after 3 minutes unless timeoutSec says more. "
+      + "Returns the exit code and the output's end. A live session opens on the first run and closes after two idle minutes. Batch commands.",
+    parameters: obj({
+      cmd: { type: "string", minLength: 1, maxLength: 6000 }, why: { type: "string", maxLength: 300 }, timeoutSec: { type: "integer", minimum: RUN_MIN_SEC, maximum: RUN_TIMEOUT_SEC },
+    }, ["cmd", "why"]),
   },
   ...WEB_TOOLS,
   {
@@ -152,8 +163,8 @@ export const AGENT_TOOLS: readonly ToolDef[] = [
   },
   {
     name: "done",
-    description: "The work is finished, or nothing needed changing (then `summary` is your answer). The server then runs the checks on your staged edits and commits them. `summary` is what the person reads first: what you did and why.",
-    parameters: obj({ summary: { type: "string", minLength: 3, maxLength: 2000 } }, ["summary"]),
+    description: "The work is finished, or nothing needed changing (then `summary` is your whole answer). The server then runs the checks on your staged edits and commits them. `summary` is what the person reads first: what you did and why.",
+    parameters: obj({ summary: { type: "string", minLength: 3, maxLength: 8000 } }, ["summary"]),
   },
 ];
 
@@ -361,6 +372,7 @@ export class Tools {
       case "grep": return this.grep(call, a);
       case "glob": return this.glob(call, a);
       case "search_code": return this.searchCode(call, a);
+      case "suggest_files": return this.suggestFiles(call, a);
       case "edit_file": return this.editFile(call, a);
       case "write_file": return this.writeFile(call, a);
       case "delete_file": return this.deleteFile(call, a);
@@ -385,7 +397,7 @@ export class Tools {
         const summary = str(a.summary)?.trim();
         if (!summary) throw new Refused("summary is needed: what you did, in a few sentences.");
         await this.log(call, "decision", `Finished: ${short(summary, 300)}`);
-        return { ok: true, content: "Done.", control: { type: "done", summary: short(summary, 2000) } };
+        return { ok: true, content: "Done.", control: { type: "done", summary: short(summary, 8000) } };
       }
     }
   }
@@ -599,6 +611,23 @@ export class Tools {
     return { ok: true, content: `Search for ${JSON.stringify(short(q, 60))} (the index does not see your staged edits):`, data: lines.join("\n"), label: q };
   }
 
+  /** The locate funnel's free half for the task (or a query of the model's own): ranked files with why, and the tests near the first three. No model. */
+  private async suggestFiles(call: ToolCall, a: Record<string, unknown>): Promise<ToolOutcome> {
+    const own = str(a.query)?.trim();
+    const q = own && own.length >= 2 ? own : this.env.state.task;
+    const fused = (await fusedFor(q, this.env.brain).catch(() => [])).filter((f) => !isSecretPath(f.path));
+    const top = fused[0]?.score ?? 0;
+    const shown = fused.filter((f, i) => i < 8 && f.score >= 0.2 * top);
+    const label = own ? short(own, 60) : "the task";
+    await this.log(call, "read", `Asked the index where ${own ? JSON.stringify(short(own, 60)) : "the task"} belongs: ${shown.length} file${shown.length === 1 ? "" : "s"}.`);
+    if (!shown.length) return { ok: true, content: `The index has no file for ${own ? JSON.stringify(short(own, 60)) : "the task"}. Try other words, grep for a name, or list_dir.` };
+    const tests = new Set<string>();
+    for (const f of shown.slice(0, 3)) for (const t of (await this.env.brain.testsFor(f.path).catch(() => [])).slice(0, 3)) tests.add(t);
+    const lines = shown.map((f, i) => `${i + 1}. ${f.path} (${f.score.toFixed(2)}): ${short((f.whys.length ? f.whys.slice(0, 3).join("; ") : f.signals.join(", ")).replace(/\s+/g, " "), 200)}`);
+    if (tests.size) lines.push(`Tests near the first ones: ${[...tests].slice(0, 6).join(", ")}`);
+    return { ok: true, content: `Where the index points for ${label} (a guess; read before you trust it; it does not see your staged edits):`, data: lines.join("\n"), label };
+  }
+
   // ------------------------------------------------------------------ editing
 
   private async editFile(call: ToolCall, a: Record<string, unknown>): Promise<ToolOutcome> {
@@ -654,12 +683,13 @@ export class Tools {
     const overlay = this.changes.toOverlay();
     if (!resumed) this.env.state.work.runs += 1;
     const why = short(str(a.why)?.trim() || commands[0]!, 200);
-    const out = await this.env.runStep(call.id, { commands, timeoutSec: RUN_TIMEOUT_SEC, estimateMinutes: 2, overlay, why });
+    const timeoutSec = Math.min(RUN_TIMEOUT_SEC, Math.max(RUN_MIN_SEC, int(a.timeoutSec) ?? RUN_DEFAULT_SEC));
+    const out = await this.env.runStep(call.id, { commands, timeoutSec, estimateMinutes: Math.max(1, Math.ceil(timeoutSec / 120)), overlay, why });
     if (out.status !== "done") {
       await this.log(call, "command", short(cmd, 200), undefined, { exitCode: -1, summary: out.status });
       const words = out.status === "no_runner"
         ? "No computer was free to run that (none of the person's computers is online and GitHub's free computers are not available), so it was not run. Carry on without running it, and say in your answer what could not be checked."
-        : out.status === "timeout" ? "That did not finish in the time it was given, so it was stopped. Try something smaller." : "The run was stopped.";
+        : out.status === "timeout" ? `That did not finish in ${timeoutSec} seconds, so it was stopped: a test that never ends, a server left running, or a big install? Try something smaller, or give timeoutSec more.` : "The run was stopped.";
       return { ok: false, content: words };
     }
     const tail = out.outputTail.length > RESULT_MAX_CHARS - 400 ? out.outputTail.slice(-(RESULT_MAX_CHARS - 400)) : out.outputTail;

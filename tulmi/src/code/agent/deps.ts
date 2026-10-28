@@ -36,6 +36,7 @@ import type { ContextStrategy } from "./mask.js";
 import type { AgentRunner } from "./runner.js";
 import type { RewindStore } from "./rewind.js";
 import type { SettingsStore } from "./settings.js";
+import type { JobMode } from "./types.js";
 
 /** What the loop asks of the project brain. */
 export interface AgentBrain {
@@ -99,7 +100,7 @@ export interface AgentDeps {
   worklog?: WorklogStore;
   /** The staged edits after each step, for the person to rewind to (rewind.ts). Absent: none are kept, and a rewind says so. */
   rewind?: RewindStore;
-  /** How the project's jobs are worked, as the person set it (settings.ts). Absent: every job is guided, with no plan-first. */
+  /** How the project's jobs are worked, as the person set it (settings.ts). Absent: every job is worked in the server's default mode (free-form), with no plan-first. */
   settings?: SettingsStore;
   intake?: IntakeStore;
   routeStats?: RouteStatsStore;
@@ -115,6 +116,8 @@ export interface AgentDeps {
   contextStrategy?: ContextStrategy;
   /** Ask once for a focused test of the change before the checks run (phases.ts testWanted): instead of CODE_PROVE_FIX, for a harness that compares them. */
   proveFix?: boolean;
+  /** How a new job is worked when neither the job nor its project says: instead of CODE_JOB_MODE (default free-form), for a harness that compares the two. */
+  jobMode?: JobMode;
   now: () => number;
   sleep: (ms: number) => Promise<void>;
   log?: AgentLog;

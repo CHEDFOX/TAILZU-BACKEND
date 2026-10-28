@@ -7,7 +7,7 @@
  *     person as a hash, reasoning in OpenRouter's form, the model order;
  *   - the ladder: an error, a timeout, an empty answer or an error hidden in a
  *     200 moves on to the next model; every model failing is ModelUnavailable;
- *   - one transient retry (429, 5xx) per model, jittered, honouring Retry-After,
+ *   - one transient retry (429, 5xx, a dropped connection) per model, jittered, honouring Retry-After,
  *     and none for a 400 or for a second failure on the same model;
  *   - JSON: parsed through a fence, checked against a schema, ONE repair that
  *     shows the model what was wrong, then the next model;
@@ -28,7 +28,7 @@ process.env.GROQ_API_KEY = "k";
 process.env.DEV_SKIP_AUTH = "true";
 process.env.NODE_ENV = "test";
 
-const { callModel, BudgetExceeded, ModelUnavailable, hashedUser, parseJsonLoose } = await import("../src/code/brain/gateway.js");
+const { callModel, BudgetExceeded, ModelUnavailable, hashedUser, parseJsonLoose, droppedConnection } = await import("../src/code/brain/gateway.js");
 const { buildTierTable, resetTierTableForTests } = await import("../src/code/brain/tiers.js");
 const { addJobSpend } = await import("../src/code/brain/spend.js");
 const { usdToPaise, worstCasePaise, charsOf } = await import("../src/code/brain/money.js");
@@ -299,6 +299,24 @@ describe("the one transient retry", () => {
     const got = await callModel(ask(), r.deps);
     expect(r.router.models()).toEqual(["a/one", "a/one"]);
     expect(got.trail).toEqual([{ model: "a/one", outcome: "ok", retried: true }]);
+  });
+
+  it("tries a dropped connection again too (no status: undici's \"terminated\", the SDK's connection error), but not any error with no status", async () => {
+    const terminated = Object.assign(new TypeError("terminated"), { cause: { code: "UND_ERR_SOCKET", message: "other side closed" } });
+    const r = rig([terminated, answer("ok")], { random: () => 0.5 });
+    const got = await callModel(ask(), r.deps);
+    expect(r.router.models()).toEqual(["a/one", "a/one"]);
+    expect(got.trail).toEqual([{ model: "a/one", outcome: "ok", retried: true }]);
+    expect(r.slept).toEqual([500]);
+    const sdk = Object.assign(new Error("Connection error."), { name: "APIConnectionError" });
+    expect(droppedConnection(sdk) && droppedConnection(terminated)).toBe(true);
+    // A bug of ours, a refusal with a status, an abort: a second try mends none of them.
+    expect(droppedConnection(new Error("Cannot read properties of undefined"))).toBe(false);
+    expect(droppedConnection(httpError(400))).toBe(false);
+    expect(droppedConnection(Object.assign(new Error("terminated"), { name: "AbortError" }))).toBe(false);
+    const bug = rig([new Error("boom"), answer("ok")]);
+    await callModel(ask(), bug.deps);
+    expect(bug.router.models()).toEqual(["a/one", "b/two"]);
   });
 
   it("does not retry what a second try cannot mend: a 400, a 404, a timeout", async () => {

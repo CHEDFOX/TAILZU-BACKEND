@@ -236,6 +236,32 @@ export function withMissing(answer: string, missing: readonly Fact[]): string {
   return `${answer.trimEnd()}\n\nFrom the code: ${line}.`;
 }
 
+/** Names in an answer that point into code: what it puts in backticks, and words shaped like identifiers (camelCase, snake_case, dotted). */
+function namesIn(answer: string): string[] {
+  const out = new Set<string>();
+  for (const m of answer.matchAll(/`([^`\n]{3,60})`/g)) for (const w of m[1]!.match(/[A-Za-z_$][\w$.]{2,}/g) ?? []) out.add(w.replace(/\.$/, ""));
+  for (const w of answer.match(/\b[a-z]+[A-Z][A-Za-z0-9]*\b|\b[a-z0-9]+_[a-z0-9_]+\b|\b[a-z]\w*\.[a-z]\w*\b/g) ?? []) out.add(w);
+  return [...out].filter((w) => w.length >= 4 && !/^(?:https?|www)\b/.test(w));
+}
+
+/**
+ * Where an answer comes from, when it says nowhere: the files that were read and hold a name the answer uses. An answer that cites any file read is left alone;
+ * one that cites none is given the places (a question about code is answered with where it is decided, and the first reality run's answers often were not).
+ */
+export function sourcesFor(answer: string, texts: ReadonlyMap<string, string>, max = 3): string[] {
+  const paths = [...texts.keys()].filter((p) => !isSecretPath(p));
+  if (!paths.length || paths.some((p) => answer.includes(p))) return [];
+  const names = namesIn(answer);
+  if (!names.length) return [];
+  const has = (text: string, n: string) => new RegExp(`(?<![\\w$])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w$])`).test(text);
+  return paths.filter((p) => names.some((n) => has(texts.get(p)!, n))).slice(0, max);
+}
+
+/** The answer with a line naming where it comes from (sourcesFor). */
+export function withSources(answer: string, sources: readonly string[]): string {
+  return sources.length ? `${answer.trimEnd()}\n\nWhere in the code: ${sources.join(", ")}.` : answer;
+}
+
 /** The facts as lines the model is shown, each with the place it can be cited at. */
 export function factsBlock(facts: readonly Fact[], max = 24): string {
   return facts.slice(0, max).map((f) => `${f.path}:${f.line} — ${f.name} = ${f.value}`).join("\n");

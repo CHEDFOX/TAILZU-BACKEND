@@ -56,7 +56,7 @@ export interface Perf {
   detail: "full" | "coarse";
 }
 
-const READISH = new Set(["read_file", "list_dir", "grep", "glob", "search_code", "find_resources"]);
+const READISH = new Set(["read_file", "list_dir", "grep", "glob", "search_code", "suggest_files", "find_resources"]);
 const EDITS = new Set(["edit_file", "write_file", "delete_file"]);
 
 export function perfOf(score: Score, result: AgentRunResult): Perf {

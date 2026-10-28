@@ -8,11 +8,19 @@ npm run reality -- --stages 0                       # free: the offline suite, e
 npm run reality -- --plan quick --budget-inr 150    # the whole plan, adaptive, under one hard cap (needs OPENROUTER_API_KEY)
 npm run reality -- --prove                          # no key: stage 0 for real, the rest from cassettes, simulations and scripted models; writes REALITY.md
 npm run reality -- --commands                       # what to run in a session where installs are allowed
+npm run reality -- --plan quick --stages 4 --groups agents --agents tailzu,tailzu-phased,mini-swe-agent,aider --agent-model <slug> --tasks <id,id,..> --budget-inr N
+                                                    # one comparison on tasks you name (in that order); a stage run alone gets the whole cap
 ```
+
+**The complex tasks** (`tasks/author/complex.ts`, `tag:complex`, 2026-10-28): a rename across modules with every call site (`commander-refactor-storagekey`, checked by
+behaviour and by no call of the old name left in `lib/`), a feature through four layers (`commander-feat-deprecated-option`), a bug far from its symptom
+(`express-bug-trust-proxy-hops`: a spoofable `req.ip` caused two modules away), a fix that needs a NEW test (`commander-bug-transposition-test`: the hidden check
+runs the agent's own regression test without the fix, where it must fail, and with it), a vague request that needs a question (`express-vague-notfound-json`) and
+a Hinglish feature (`express-lang-json-sort-hinglish`). Each is validated (`npm run e2e:validate -- --tasks tag:complex`): the base fails, the oracle passes.
 
 Six stages, each only as far as it is still worth money (`e2e/reality/stages.ts`): **0** free (the offline tests and `tsc`, every cassette replayed against the current code,
 the page-extraction and locate bake-offs); **1** cents (capability probes only for models with no score under this code and probe version); **2** smoke, recorded (only the
-items the store does not answer); **3** a stratified sample of 12 (quick), 24 (standard) or all 65 tasks, the smallest set that has every category and every stage, weighted
+items the store does not answer); **3** a stratified sample of 12 (quick), 24 (standard) or all 71 tasks, the smallest set that has every category and every stage, weighted
 toward what failed before, run on our bot with the product's own ladders; **4** comparisons with sequential testing (our agent, aider, opencode, codex, openhands and
 mini-swe-agent on one model; model ladders in our agent), interleaved on the same tasks, stopped when the leader is the best with probability 0.9 or an arm is beaten on both
 success and cost per success, repeats only for unstable results; **5** the parts (edit formats for models missing them, context strategy, router) with the money left.
@@ -44,7 +52,8 @@ Everything that costs money goes through the recording proxy, under a hard cap, 
 
 | agent | version | licence | how it is run |
 |---|---|---|---|
-| `tailzu` | this repository | ours | the product's flow over a local git host |
+| `tailzu` | this repository | ours | the product's flow over a local git host, as it ships: free-form jobs (`CODE_JOB_MODE` default) |
+| `tailzu-phased` | this repository | ours | the same flow with every job guided (locate, plan, work on the planned files, verify): the phased flow kept behind `CODE_JOB_MODE=guided`, for comparison |
 | `aider` | 0.86.2 | Apache-2.0 | `aider --message <task> --yes-always --no-auto-commits`, edit format `diff` (`E2E_AIDER_EDIT_FORMAT` changes it) |
 | `opencode` | 1.19.0 | MIT | `opencode run --pure --format json`, one config naming the proxy as an openai-compatible provider |
 | `codex` | 0.161.0 | Apache-2.0 | `codex exec --json`, workspace-write sandbox on. Codex speaks only the Responses API, so the proxy accepts `POST /v1/responses` (`adapters/responses.ts`) |

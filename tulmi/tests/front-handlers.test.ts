@@ -184,7 +184,7 @@ describe("a question about a project", () => {
     expect((await a.stateNow(out.job.id)).task).toContain("trim leading and trailing dashes");
   });
 
-  it("works an open-ended task free-form, when the decision says so, and a plain one guided", async () => {
+  it("works an open-ended task free-form, when the decision says so, and a plain one in the server's default mode (this rig's: guided)", async () => {
     const { a, code } = await projectRig();
     const h = defaultHandlers({ code: code as never, jobs: a.jobs, agent: a.orch });
     const c = inProject({ projectId: a.project.id });
@@ -193,7 +193,7 @@ describe("a question about a project", () => {
     const out = await h.codeJob({ ...open, maxPaise: 1200 });
     expect((await a.stateNow(out.job.id)).mode).toBe("freeform");
     const plain = await h.codeJob({ ...(await call("change the button color to red", c)), maxPaise: 1200 });
-    expect((await a.stateNow(plain.job.id)).mode).toBeUndefined();
+    expect((await a.stateNow(plain.job.id)).mode).toBe("guided");
   });
 
   it("hands the person's word for a team to the job: asked for or refused", async () => {

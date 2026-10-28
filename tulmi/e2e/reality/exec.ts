@@ -20,6 +20,7 @@ import { CassetteStore, SpendGuard, type CassetteMode } from "../adapters/casset
 import { makeModelKit, type CassetteSetup } from "../adapters/rig.js";
 import { failingPersonaFor, lazy, oracle } from "../adapters/personas.js";
 import { agentById } from "../agents/index.js";
+import { isOurs } from "../agents/tailzu.js";
 import type { AgentUnderTest, ModelSpec } from "../agents/types.js";
 import { pinnedTiers } from "../bakeoff/engine.js";
 import { ALL_PROBES, runProbe } from "../bakeoff/probes.js";
@@ -82,7 +83,10 @@ export class RealExecutor implements Executor {
     this.guard = new SpendGuard(o.mode === "real" ? o.capInr / o.fx : 0);
   }
 
-  spentInr(): number { return (this.guard.spentUsd + (this.proxy?.guard.spentUsd ?? 0)) * this.o.fx; }
+  /** What the contestants' proxy paid before it was closed: the run's total is read after close() (it said ₹50.87 for a stage that paid ₹74.92). */
+  private closedProxyUsd = 0;
+
+  spentInr(): number { return (this.guard.spentUsd + this.closedProxyUsd + (this.proxy?.guard.spentUsd ?? 0)) * this.o.fx; }
 
   private cassetteMode(): CassetteMode | null { return this.o.mode === "real" ? "mixed" : this.o.mode === "replay" ? "replay" : null; }
 
@@ -136,8 +140,8 @@ export class RealExecutor implements Executor {
       const wrong = arm.model !== "oracle" && (arm.model === "fake" || this.o.persona === "fake");
       return wrong ? { mode: "fake", persona: failingPersonaFor(task, index) ?? lazy, maxTurns: 20, maxTokens: 800 } : { mode: "oracle", persona: oracle, maxTurns: 20, maxTokens: 800 };
     }
-    const cassette = this.setup(`reality-${arm.agent === "tailzu" ? "tailzu" : "agents"}`);
-    if (arm.agent === "tailzu") {
+    const cassette = this.setup(`reality-${isOurs(arm.agent) ? "tailzu" : "agents"}`);
+    if (isOurs(arm.agent)) {
       if (arm.model === "ladders") return { mode: "real", ...(cassette ? { cassette: { ...cassette, run: `${arm.id}|${task.id}` }, wire: true } : {}) };
       if (arm.model.startsWith("{")) return { mode: "real", tiers: buildTierTable({ tiers: arm.model }), ...(cassette ? { cassette: { ...cassette, run: `${arm.id}|${task.id}` }, wire: true } : {}) };
       return { mode: "real", slug: arm.model, ladder: [arm.model], tiers: pinnedTiers(arm.model, this.o.catalog.models.get(arm.model)), ...(cassette ? { cassette: { ...cassette, run: `${arm.id}|${task.id}` }, wire: true } : {}) };
@@ -147,11 +151,11 @@ export class RealExecutor implements Executor {
 
   async task(arm: Arm, task: Task, o: { repeat: number; budgetInr: number; index: number }): Promise<TaskOutcome> {
     const empty = (skipped: string): TaskOutcome => ({ ok: false, costInr: 0, wallMs: 0, quality: 0, detail: skipped, skipped, perf: perfOf0() });
-    if (this.o.mode === "scripted" && arm.agent !== "tailzu") return empty("an external agent has no scripted mode");
+    if (this.o.mode === "scripted" && !isOurs(arm.agent)) return empty("an external agent has no scripted mode");
     if (this.o.mode !== "scripted" && !realKey && this.o.mode === "real") return empty("OPENROUTER_API_KEY is not set");
     // A replay of something that was never recorded is not started: an agent would run its whole loop against a cassette that answers every call with a miss.
     if (this.o.mode === "replay") {
-      const ours = arm.agent === "tailzu";
+      const ours = isOurs(arm.agent);
       const label = ours ? `${arm.id}|${task.id}` : `${arm.id}__${task.id}`.replace(/[^A-Za-z0-9._-]/g, "_");
       if (!this.store(ours ? "reality-tailzu" : "reality-agents").entries().some((e) => e.run === label)) return empty("not recorded: the cassette has no recording of this run");
     }
@@ -159,7 +163,7 @@ export class RealExecutor implements Executor {
     const budgetPaise = Math.min(Math.round(o.budgetInr * 100), task.budgetPaise ?? 3000);
     if (this.o.mode === "real" && budgetPaise < 300) return empty("not enough budget left for a task");
     const model = this.modelFor(arm, task, o.index);
-    if (arm.agent !== "tailzu" && this.o.mode !== "scripted") {
+    if (!isOurs(arm.agent) && this.o.mode !== "scripted") {
       const proxy = await this.ensureProxy();
       model.proxyUrl = `${proxy.url.replace(/\/v1$/, "")}/run/${encodeURIComponent(`${arm.id}__${task.id}`.replace(/[^A-Za-z0-9._-]/g, "_"))}/v1`;
     }
@@ -174,7 +178,9 @@ export class RealExecutor implements Executor {
     const perf = perfOf(score, result);
     // A replayed run costs what it cost when it was recorded; a scripted one costs nothing.
     const costInr = this.o.mode === "scripted" ? 0 : perf.costInr;
-    return { ok: score.success, costInr, wallMs: Date.now() - t0, perf: { ...perf, costInr }, quality: score.quality, detail: score.success ? "pass" : `${score.stage.failedAt}: ${score.stage.reason}`.slice(0, 220) };
+    const c = result.metrics.cassette;
+    const replayed = !!c && c.recorded === 0 && c.hits > 0;
+    return { ok: score.success, costInr, wallMs: Date.now() - t0, perf: { ...perf, costInr }, quality: score.quality, detail: score.success ? "pass" : `${score.stage.failedAt}: ${score.stage.reason}`.slice(0, 220), ...(replayed ? { replayed: true } : {}) };
   }
 
   private judge(): { call: Parameters<typeof runOne>[2]["judgeCall"] & object } {
@@ -194,6 +200,7 @@ export class RealExecutor implements Executor {
   }
 
   async close(): Promise<void> {
+    this.closedProxyUsd += this.proxy?.guard.spentUsd ?? 0;
     await this.proxy?.close();
     this.proxy = null;
   }

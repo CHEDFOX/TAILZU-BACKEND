@@ -681,8 +681,9 @@ const EnvSchema = z.object({
   /**
    * HOW THE CODE AGENT TREATS ITS OLD TOOL RESULTS (src/code/agent/mask.ts, context.ts, docs/code-agent.md): "mask" replaces the output of a result that is
    * older than the last six by a one-line placeholder and keeps the model's own actions, with no model call; "summary" drops those turns and has the cheap
-   * tier fold them into a running summary; "hybrid" masks and folds the oldest ten masked turns into the summary once there are twenty. A job keeps the strategy it started with.
-   * Unset: the default in agent/types.ts (CONTEXT_STRATEGY_DEFAULT). Set it to compare them (the e2e harness does).
+   * tier fold them into a running summary; "hybrid" masks and folds the oldest ten masked turns into the summary once there are twenty; "transcript" keeps every
+   * result whole until they pass a size, then masks the oldest in a batch (a free-form job's default). A job keeps the strategy it started with.
+   * Unset: a free-form job's transcript, else the default in agent/types.ts (CONTEXT_STRATEGY_DEFAULT). Set it to compare them (the e2e harness does).
    */
   /**
    * A FIX IS PROVED BY A TEST OF ITS OWN (src/code/agent/phases.ts testWanted, principle code.prove): before the checks run on a change to source with no test staged, the
@@ -690,7 +691,13 @@ const EnvSchema = z.object({
    * compare a run with and without the round (the e2e harness can).
    */
   CODE_PROVE_FIX: bool(true),
-  CODE_CONTEXT_STRATEGY: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().toLowerCase() : undefined), z.enum(["mask", "summary", "hybrid"]).optional()),
+  CODE_CONTEXT_STRATEGY: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().toLowerCase() : undefined), z.enum(["mask", "summary", "hybrid", "transcript"]).optional()),
+  /**
+   * HOW A NEW CODE JOB IS WORKED WHEN NEITHER THE JOB NOR ITS PROJECT SAYS (src/code/agent/orchestrator.ts enqueue, docs/code-agent.md): "freeform" (the
+   * default: the model reads, runs and edits in its own order, with the locate funnel offered as a tool and as hints, inside the same rails) or "guided" (the
+   * phases in order: locate, plan, work on the planned files, verify). Kept so the two can be compared (the e2e harness's tailzu-phased contestant).
+   */
+  CODE_JOB_MODE: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().toLowerCase() : undefined), z.enum(["freeform", "guided"]).optional()),
   /**
    * ARTIFACTS (src/artifacts, docs/artifacts.md): live things a bot makes and the person sees and clicks in the app, like Claude's: a page,
    * a React component, SVG, a diagram, markdown. They run in the viewer (the viewer/ package, a site of its own, in a sandbox with no network);

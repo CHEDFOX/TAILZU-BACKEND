@@ -127,13 +127,35 @@ describe("the sequential comparison", () => {
   });
 
   it("stops when the money does, and says so; and ends as an overrun when the stage guard throws", async () => {
-    const real: Executor = { ...sim("clear"), mode: "real", spentInr: () => 0, probe: async () => { throw new Error("no"); }, smoke: async () => ({ items: [], spentInr: 0 }), part: async () => { throw new Error("no"); }, close: async () => undefined, task: async () => ({ ok: true, costInr: 1, wallMs: 1, quality: 1, detail: "", perf: (await sim("clear").task(A("x"), tasks[0]!, { repeat: 1, budgetInr: 9, index: 1 })).perf }) };
+    // A real executor's spend grows with what its runs pay (the guard is charged with that, not with what a run is worth).
+    let paid = 0;
+    const real: Executor = { ...sim("clear"), mode: "real", spentInr: () => paid, probe: async () => { throw new Error("no"); }, smoke: async () => ({ items: [], spentInr: 0 }), part: async () => { throw new Error("no"); }, close: async () => undefined, task: async () => { paid += 1; return { ok: true, costInr: 1, wallMs: 1, quality: 1, detail: "", perf: (await sim("clear").task(A("x"), tasks[0]!, { repeat: 1, budgetInr: 9, index: 1 })).perf }; } };
     const poor = await compare({ id: "g", title: "g", group: "agents", arms: [A("a"), A("b")], tasks, exec: real, store: new ResultsStore(tmp("s-"), ["sim"]).load(), key, allowance: { leftInr: () => 0.01, charge: () => undefined }, source: "sim", runId: "r", log: () => undefined });
     expect(poor.ended).toBe("budget");
     const b = new StageBudget(4, 1, 100, true);
     const over = await compare({ id: "g", title: "g", group: "agents", arms: [A("a"), A("b")], tasks, exec: real, store: new ResultsStore(tmp("s-"), ["sim"]).load(), key, allowance: b, source: "sim", runId: "r", log: () => undefined });
     expect(over.ended).toBe("overrun");
     expect(b.overrun).toBeInstanceOf(StageOverrun);
+  });
+
+  it("charges the guard with what a run paid, does not repeat a run answered from the cassette, and does not call a result of other code a disagreement", async () => {
+    let paid = 0;
+    const calls: string[] = [];
+    const flaky = (await sim("clear").task(A("x"), tasks[0]!, { repeat: 1, budgetInr: 9, index: 1 })).perf;
+    const exec: Executor = {
+      ...sim("clear"), mode: "real", spentInr: () => paid, probe: async () => { throw new Error("no"); }, smoke: async () => ({ items: [], spentInr: 0 }), part: async () => { throw new Error("no"); }, close: async () => undefined,
+      task: async (arm, t) => { calls.push(`${arm.id}/${t.id}`); const replayed = arm.id === "replayed"; if (!replayed) paid += 2; return { ok: true, costInr: 5, wallMs: 1, quality: 1, detail: "", perf: { ...flaky, success: true, flakySignals: ["timeout"] }, ...(replayed ? { replayed: true } : {}) }; },
+    };
+    const charged: number[] = [];
+    const store = new ResultsStore(tmp("s-"), ["sim"]).load();
+    // A failure of the same arm and task under OTHER code is in the store.
+    store.append({ ...key(A("fresh", "tailzu", "m2"), tasks[0]!), code: "older-code", ok: false, costInr: 1, wallMs: 1, at: "2026-10-27T00:00:00.000Z", run: "old", source: "sim" } as never);
+    await compare({ id: "g", title: "g", group: "agents", arms: [A("replayed", "tailzu", "m1"), A("fresh", "tailzu", "m2")], tasks: tasks.slice(0, 2), exec, store, key, allowance: { leftInr: () => 100, charge: (inr) => { charged.push(inr); } }, source: "sim", runId: "r", log: () => undefined, minTasks: 2, maxRepeats: 1 });
+    // The replayed arm is run once per task (its flaky signal is the recording's); the fresh one is repeated for its flaky signal, not for the old code's failure.
+    expect(calls.filter((c) => c.startsWith("replayed/"))).toHaveLength(2);
+    expect(calls.filter((c) => c.startsWith("fresh/"))).toHaveLength(4);
+    expect(charged.filter((x) => x === 0)).toHaveLength(2);
+    expect(charged.filter((x) => x === 2)).toHaveLength(4);
   });
 });
 
@@ -218,10 +240,10 @@ describe("the estimate", () => {
     expect(fs.existsSync(path.join(outDir, "reality", "estimate-standard.json"))).toBe(true);
   });
 
-  it("the plans grow: quick about 12 tasks, standard about 24, deep all 65", async () => {
+  it("the plans grow: quick about 12 tasks, standard about 24, deep all 71", async () => {
     const sizes = [];
     for (const plan of ["quick", "standard", "deep"] as const) sizes.push((await buildCtx(base({ plan, estimateOnly: true, mode: "real" }))).sample.ordered.length);
-    expect(sizes).toEqual([12, 24, 65]);
+    expect(sizes).toEqual([12, 24, 71]);
   });
 });
 
@@ -243,12 +265,12 @@ describe("the stages, simulated end to end", () => {
     const ctx = await buildCtx(o);
     const st = await runStages(newState(ctx, sim("clear")));
     expect(st.stages.map((s) => s.stage)).toEqual([3, 4]);
-    expect(st.sample.ran).toBe(65);
+    expect(st.sample.ran).toBe(71);
     expect(st.comparisons.length).toBe(2);
     const agentsRun = st.comparisons.find((c) => c.id === "agents")!;
     expect(agentsRun.winner).toMatch(/^tailzu:/);
     expect(["clear", "last"]).toContain(agentsRun.ended);
-    // Found early: nowhere near all 65 tasks, and most of the 6 x 65 runs were never needed.
+    // Found early: nowhere near all 71 tasks, and most of the 6 x 71 runs were never needed.
     expect(agentsRun.tasks.length).toBeLessThan(30);
     expect(agentsRun.runsSaved).toBeGreaterThan(150);
     expect(fs.existsSync(path.join(o.resultsDir!, "tasks.jsonl"))).toBe(false);
@@ -259,7 +281,7 @@ describe("the stages, simulated end to end", () => {
     const ctx2 = await buildCtx({ ...o });
     const st2 = await runStages(newState(ctx2, sim("clear")));
     expect(st2.sample.ran).toBe(0);
-    expect(st2.sample.reused).toBe(65);
+    expect(st2.sample.reused).toBe(71);
     expect(st2.stages.find((s) => s.stage === 3)!.status).toBe("skipped");
   });
 

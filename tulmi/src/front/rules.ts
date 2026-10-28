@@ -40,6 +40,8 @@ export interface RuleRead {
   openEnded?: boolean;
   /** The person asked for a team of helpers ("on"), or said not to ("off"): a code task is then worked as a lead's, or never (code/team). */
   team?: "on" | "off";
+  /** Nothing in the words says what or where ("fix it", "make it work", "theek karo"): no file, screen, name, error or feature (decide.ts asks what, once). */
+  vague?: boolean;
 }
 
 /** How much of a rival's score is taken off the leader's confidence (the classifier's own number). */
@@ -274,5 +276,6 @@ export function readByRules(message: string, ctx: Pick<FrontCtx, "projectId" | "
     ...(intent === "research" && depth ? { depth } : {}), ...(followUp && (intent === last?.intent || (handoff && intent === "code_task")) ? { followUp } : {}),
     ...(handoff && intent === "code_task" ? { handoff: true } : {}), ...(OPEN_ENDED.test(text) ? { openEnded: true } : {}),
     ...(TEAM_OFF.test(text) ? { team: "off" as const } : TEAM_ON.test(text) ? { team: "on" as const } : {}),
+    ...(vague ? { vague: true } : {}),
   };
 }

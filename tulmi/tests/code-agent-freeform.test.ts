@@ -83,20 +83,42 @@ describe("free-form", () => {
     expect(s.report).toMatchObject({ outcome: "done" });
   });
 
-  it("is chosen per job, per project, and by neither: guided is the default, and a job's own word beats the project's", async () => {
-    const r = await agentRig();
+  it("is chosen per job, per project, and by neither: free-form is the default, and a job's own word beats the project's", async () => {
+    const r = await agentRig({ jobMode: null });
     r.json.on("work.plan", UTIL_PLAN);
     r.model.push(call("edit_file", UTIL_EDIT), done("a"), call("edit_file", UTIL_EDIT), done("b"), call("edit_file", UTIL_EDIT), done("c"));
     const a = await startMode(r, UTIL_TASK);
     await r.orch.idle();
-    expect((await r.stateNow(a.job.id)).mode).toBeUndefined();
-    await settingsStore().put({ projectId: r.project.id, userId: "alice", mode: "freeform", planFirst: false, updatedAt: r.now() });
+    const sa = await r.stateNow(a.job.id);
+    expect(sa.mode).toBe("freeform");
+    // No locate and no plan were asked of a model: the default job went straight to work.
+    expect(sa.plan).toBeUndefined();
+    await settingsStore().put({ projectId: r.project.id, userId: "alice", mode: "guided", planFirst: false, updatedAt: r.now() });
     const b = await startMode(r, UTIL_TASK + " (again)");
     await r.orch.idle();
-    expect((await r.stateNow(b.job.id)).mode).toBe("freeform");
-    const c = await startMode(r, UTIL_TASK + " (once more)", { mode: "guided" });
+    expect((await r.stateNow(b.job.id)).mode).toBe("guided");
+    expect((await r.stateNow(b.job.id)).plan).toBeTruthy();
+    const c = await startMode(r, UTIL_TASK + " (once more)", { mode: "freeform" });
     await r.orch.idle();
-    expect((await r.stateNow(c.job.id)).mode).toBeUndefined();
+    expect((await r.stateNow(c.job.id)).mode).toBe("freeform");
+  });
+
+  it("keeps the phased flow behind the knob: CODE_JOB_MODE (or the agent's jobMode) makes guided the server's default", async () => {
+    const r = await agentRig({ jobMode: "guided" });
+    r.json.on("work.plan", UTIL_PLAN);
+    r.model.push(call("edit_file", UTIL_EDIT), done("a"));
+    const a = await startMode(r, UTIL_TASK);
+    await r.orch.idle();
+    const s = await r.stateNow(a.job.id);
+    expect(s.mode).toBe("guided");
+    expect(s.plan).toBeTruthy();
+    const { defaultJobMode } = await import("../src/code/agent/settings.js");
+    expect(defaultJobMode()).toBe("freeform");
+    expect(defaultJobMode("guided")).toBe("guided");
+    process.env.CODE_JOB_MODE = "guided";
+    const { resetConfigForTests } = await import("../src/config.js");
+    resetConfigForTests();
+    try { expect(defaultJobMode()).toBe("guided"); } finally { delete process.env.CODE_JOB_MODE; resetConfigForTests(); }
   });
 
   it("holds the step cap: after the last step it stops, says so, and goes on to the checks with what is staged", async () => {

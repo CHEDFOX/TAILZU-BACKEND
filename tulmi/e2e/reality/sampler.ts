@@ -182,4 +182,4 @@ function cmp(a: readonly number[], b: readonly number[]): number {
 }
 
 /** The target size of each plan. */
-export const PLAN_TASKS: Readonly<Record<"quick" | "standard" | "deep", number>> = { quick: 12, standard: 24, deep: 65 };
+export const PLAN_TASKS: Readonly<Record<"quick" | "standard" | "deep", number>> = { quick: 12, standard: 24, deep: 71 };

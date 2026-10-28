@@ -14,7 +14,7 @@ import path from "node:path";
 import { decide } from "../src/front/decide.js";
 import { AttachmentRegistry, sha256Of } from "../src/front/attachments.js";
 import type { Intent as FrontIntent } from "../src/front/types.js";
-import type { AgentState } from "../src/code/agent/types.js";
+import type { AgentState, JobMode } from "../src/code/agent/types.js";
 import { isEnded, type CodeJob } from "../src/code/jobs/types.js";
 import type { WorkEntry } from "../src/code/work/worklogStore.js";
 import { buildProjectBrain } from "../src/code/project/index.js";
@@ -92,8 +92,10 @@ export interface Slim {
   fixRounds: number;
   badTurns: number;
   turns: number;
-  /** What became of old tool results: mask, summary or hybrid (agent/mask.ts). */
+  /** What became of old tool results: mask, summary, hybrid or transcript (agent/mask.ts). */
   strategy: string | null;
+  /** How the job was worked: guided (the phases) or freeform. */
+  mode: string | null;
   staged: string[];
   commits: string[];
   pr: { number: number; url: string; ready: boolean } | null;
@@ -109,9 +111,12 @@ const slim = (s: AgentState | null): Slim | null => {
   const any = s as unknown as Record<string, any>;
   return {
     phase: s.phase, classification: s.classification ?? null,
-    located: (any.located?.targets ?? []).map((t: { path: string }) => t.path), locateConfidence: any.located?.confidence ?? null,
+    // A free-form job has no locate step: where it placed the change is where it found the change belongs (the files it committed or left staged).
+    located: s.mode === "freeform" && !(any.located?.targets ?? []).length ? [...new Set([...(s.committedPaths ?? []), ...s.work.staged.map((f) => f.path)])]
+      : (any.located?.targets ?? []).map((t: { path: string }) => t.path),
+    locateConfidence: any.located?.confidence ?? null,
     plan: s.plan ? { risk: s.plan.risk, steps: s.plan.steps.map((p) => ({ do: p.do, files: p.files.map((f) => `${f.action} ${f.path}`) })) } : null,
-    baseline: any.baseline ?? null, verify: s.verify ?? null, fixRounds: s.work.fixRounds, badTurns: s.work.badTurns, turns: s.work.turns, strategy: (s.work as { strategy?: string }).strategy ?? null,
+    baseline: any.baseline ?? null, verify: s.verify ?? null, fixRounds: s.work.fixRounds, badTurns: s.work.badTurns, turns: s.work.turns, strategy: (s.work as { strategy?: string }).strategy ?? null, mode: s.mode ?? "guided",
     staged: s.work.staged.map((f) => f.path), commits: s.commits, pr: s.pr ? { number: s.pr.number, url: s.pr.url, ready: s.pr.ready } : null,
     report: s.report ? { outcome: s.report.outcome, text: s.report.text, ...(s.report.prUrl ? { prUrl: s.report.prUrl } : {}) } : null,
     findings: s.findings, notes: s.notes, waiting: s.waiting ?? null, tiersUsed: [],
@@ -139,6 +144,8 @@ export interface RunOptions {
   maxTurns?: number;
   /** The most any model call may write. */
   maxTokens?: number;
+  /** How the job is worked: "guided" (the phased contestant) or "freeform"; absent, the product's default (free-form). */
+  jobMode?: JobMode;
 }
 
 export interface RunOutcome { trace: RunTrace; rig: Rig; handle: Awaited<ReturnType<Rig["addProjectFor"]>>; jobId: string | null }
@@ -271,7 +278,7 @@ export async function runTask(task: Task, o: RunOptions): Promise<RunOutcome> {
       notes.push(`the person merged milestone ${k} and asked for the next: "${say.slice(0, 80)}"`);
       held.second = null;
     }
-    const started = await rig.start(handle, say, budgetPaise !== undefined ? { budgetPaise } : {});
+    const started = await rig.start(handle, say, { ...(budgetPaise !== undefined ? { budgetPaise } : {}), ...(o.jobMode ? { mode: o.jobMode } : {}) });
     job = started.job;
     branch = started.branch;
     jobId = job.id;

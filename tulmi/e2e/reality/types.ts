@@ -55,6 +55,8 @@ export interface TaskOutcome {
   detail: string;
   /** Set when the task was not run, and why ("needs a session where installs are allowed"). */
   skipped?: string;
+  /** Every model call of the run was answered from a recording: running it again would replay the same answers, so it says nothing about how stable the result is. */
+  replayed?: boolean;
 }
 
 export interface StageReport {

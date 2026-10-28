@@ -47,11 +47,46 @@ export const TASK_CHARS = 20_000;
 export const TURNS_MAX = 60;
 /**
  * Free-form: STEPS (a step is a round of the model's work: a turn and its tool calls) in all, and runs in all. The model decides the order of explore, change
- * and run, which makes a job easy to lose in; a lower cap on steps and a higher one on runs (investigating means running things) is how it is kept in hand.
- * At the cap the work is called done and goes to the checks like any other.
+ * and run, which makes a job easy to lose in; a cap on steps (lower than a guided job's turns) and a higher one on runs (investigating means running things) is
+ * how it is kept in hand. At the cap the work is called done and goes to the checks like any other.
  */
-export const FREEFORM_STEPS_MAX = 40;
-export const FREEFORM_RUNS_MAX = 25;
+export const FREEFORM_STEPS_MAX = 50;
+export const FREEFORM_RUNS_MAX = 30;
+/**
+ * Steps a free-form job is given past its cap for each round of fixing what the checks found, and for the focused test it is asked for: a job that used its 50
+ * steps and then broke a test had no step left to fix it, and its three fix rounds ran the checks on the same edits three times (the first comparison run).
+ */
+export const FREEFORM_FIX_STEPS = 6;
+export const FREEFORM_TEST_STEPS = 4;
+/**
+ * Steps a free-form change may go on reading after the person answered its question, with nothing staged, before it is told to make the change. The vague
+ * request of the paid comparison (2026-10-28) asked well, was told exactly what to build, and then read for fifteen steps (finalhandler, History.md, the
+ * test client's headers) until the job ran out of time, three times out of three; the half-way nudge (step 25) never came.
+ */
+export const FREEFORM_AFTER_ANSWER_STEPS = 4;
+
+/** The most steps a free-form job may take as it stands: the cap, and a few more for each fix round and for the test round. */
+export function freeformStepCap(w: { fixRounds: number; testAsked?: boolean }): number {
+  return FREEFORM_STEPS_MAX + FREEFORM_FIX_STEPS * w.fixRounds + (w.testAsked ? FREEFORM_TEST_STEPS : 0);
+}
+/**
+ * The default mode of a new job when neither the job, the project nor CODE_JOB_MODE says: FREE-FORM. The first paid reality run (e2e/REALITY.md, 2026-10-28)
+ * lost most of its tasks before any code was written: the guided flow located a wrong file and planned and edited only what it located. A free-form job reads
+ * and runs its way to the place itself, with the locate funnel offered as a tool (suggest_files) and as hints, not as a gate.
+ */
+export const JOB_MODE_DEFAULT: JobMode = "freeform";
+/**
+ * A free-form job keeps its whole TRANSCRIPT (the "transcript" context strategy, agent/context.ts): every tool result stays whole until the results together pass
+ * this many characters; then the oldest are masked, in a batch, down to 60% of it (never the latest six). The transcript is append-only between batches, so a
+ * provider's prompt cache keeps hitting it, and the model does not forget what it read (the guided default, summary, made models read the same file again and
+ * again: 60 turns of re-reading in the reality run).
+ */
+export const FREEFORM_KEEP_CHARS = 160_000;
+/** The hard cap on a free-form job's prompt (characters), and the most of one tool result it is shown. */
+export const FREEFORM_CONTEXT_MAX_CHARS = 240_000;
+export const FREEFORM_RESULT_MAX_CHARS = 12_500;
+/** The most of an answer (a question's, a refusal's) the report keeps; a change's summary keeps less (report.ts). */
+export const ANSWER_MAX_CHARS = 8_000;
 /** Rewind points kept for a job: the last this-many steps. */
 export const REWIND_KEEP = 60;
 /** The most characters of staged text all of a job's rewind points may hold together (the oldest go first). */
@@ -88,8 +123,10 @@ export const RUN_GRACE_MS = 3 * 60_000;
 export const RUN_POLL_MS = 2_000;
 /** How long a run whose changes wait for the person's OK is waited for. */
 export const BLOCKED_WAIT_MS = 6 * 60 * 60_000;
-/** The default time a run is given, and the least and most. */
+/** The most time a model's run may be given (its `timeoutSec`), and what it is given when it does not say: a test that never ends cost a free-form job ten minutes of a fifteen-minute task. */
 export const RUN_TIMEOUT_SEC = 600;
+export const RUN_DEFAULT_SEC = 180;
+export const RUN_MIN_SEC = 30;
 /** A baseline older than this is run again. */
 export const BASELINE_MAX_AGE_MS = 7 * 24 * 60 * 60_000;
 /** Times in a row a loop may fail on something unexpected before the job is failed. */
@@ -424,6 +461,15 @@ export interface AgentState {
     staged: StagedFile[];
     /** The excerpts of the located files, as they were when work began. */
     excerpts?: string;
+    /** A free-form job: where the project's index points for the request (the locate funnel, no model), as lines, worked out once when work began. A hint, not a gate. */
+    hints?: string;
+    /**
+     * The model's latest turn that was words and no tool call (it is nudged once): often the answer itself, which the done{summary} that follows shortens. A job
+     * that changes nothing answers with both (phases.ts answerOf).
+     */
+    draft?: string;
+    /** The step at which the person last answered the model's own question (ask_user): from there, what to build is settled (context.ts statusLine). */
+    answeredAt?: number;
     /** What the last verify found, for the model to fix: the failing checks and the end of their output. Data, wrapped when shown. */
     feedback?: string;
     lastTier?: string;

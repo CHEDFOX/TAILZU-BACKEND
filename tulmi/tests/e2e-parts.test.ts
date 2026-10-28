@@ -9,7 +9,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseCatalog, type Catalog } from "../e2e/catalog.js";
 import { contestantRows, estimateGrid } from "../e2e/bakeoff/contestants.js";
-import { candidateModels, routerFree, runContextStrategy, runEditFormats, strategyTasks, type PartCtx } from "../e2e/bakeoff/centparts.js";
+import { candidateModels, routerFree, runContextStrategy, runEditFormats, STRATEGY_MAX_TURNS, strategyRun, strategyTasks, type PartCtx } from "../e2e/bakeoff/centparts.js";
 import { PAGES, type PageSpec } from "../e2e/bakeoff/corpus.js";
 import {
   EXTRACTORS, codeLoose, codeStrict, defuddleExtractor, hasPhrase, htmlToText, loadTruth, readabilityExtractor, runExtractionBakeoff, scorePage, squash, tailzuExtractor, totalsOf as extractTotals,
@@ -205,10 +205,20 @@ describe("the cents parts, on scripted models", () => {
 
   it("context strategy: each strategy runs the same task and the agent reads back the strategy it was set to", async () => {
     const r = await runContextStrategy(ctx(), { model: ids[0]!, tasks: loadTasks().filter((t) => t.id === "smoke-api-bug-pagination") });
-    expect(r.table!.rows.map((x) => x[0])).toEqual(["summary", "mask", "hybrid"]);
-    expect(r.table!.rows.every((x) => x[5] === "yes")).toBe(true);
+    expect(r.table!.rows.map((x) => x[0])).toEqual(["summary", "mask", "hybrid", "transcript"]);
+    expect(r.table!.head[6]).toBe("applied");
+    expect(r.table!.rows.every((x) => x[6] === "yes" && x[2] === "0")).toBe(true);
     expect(r.headline).not.toMatch(/NOT applied/);
-  }, 60_000);
+  }, 90_000);
+
+  it("context strategy: a run that never reached a model turn is not measured (with why), not counted, and not taken as the strategy not applied", () => {
+    const failed = { flow: { agent: { strategy: null, turns: 0 }, calls: [{ ok: true, purpose: "classify" }, { ok: false, purpose: "work.plan", error: "ModelUnavailable", why: "deepseek-v4.1-flash skipped (breaker)" }] }, metrics: { steps: 0 } };
+    expect(strategyRun("mask", failed)).toEqual({ measured: false, applied: true, turns: 0, why: "work.plan failed: deepseek-v4.1-flash skipped (breaker)" });
+    expect(strategyRun("mask", { flow: { agent: null }, metrics: { steps: 0 } }).measured).toBe(false);
+    expect(strategyRun("mask", { flow: { agent: { strategy: "mask", turns: 12 } }, metrics: { steps: 12 } })).toEqual({ measured: true, applied: true, turns: 12, why: "" });
+    expect(strategyRun("mask", { flow: { agent: { strategy: "summary", turns: 3 } }, metrics: { steps: 3 } }).applied).toBe(false);
+    expect(STRATEGY_MAX_TURNS).toBeLessThanOrEqual(30);
+  });
 
   it("the strategy tasks are real, validated, one per project; the router's free half reads the labels of every task that has one", () => {
     const t = strategyTasks(4);

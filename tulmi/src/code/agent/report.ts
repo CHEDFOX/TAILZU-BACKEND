@@ -19,7 +19,7 @@
  */
 import { redactText } from "../work/index.js";
 import { cut, oneLine } from "../work/model.js";
-import { rupees, type AgentState, type CheckSummary } from "./types.js";
+import { ANSWER_MAX_CHARS, rupees, type AgentState, type CheckSummary } from "./types.js";
 
 const safe = (s: string, n: number): string => redactText(oneLine(s, n), n);
 const list = (items: readonly string[], max = 15): string[] => items.slice(0, max).map((i) => `- ${i}`).concat(items.length > max ? [`- and ${items.length - max} more`] : []);
@@ -127,7 +127,8 @@ export function reportText(i: ReportInput): string {
   if (i.outcome === "failed" || i.outcome === "budget") {
     if (i.why) out.push(safe(i.why, 500), "");
   }
-  if (s.work.doneSummary) out.push(i.outcome === "answer" ? "" : "What I did", safe(s.work.doneSummary, 1500), "");
+  // An answer is the whole of what the person asked for (the names and values it must hold): it is kept nearly whole. A change's summary is a few sentences.
+  if (s.work.doneSummary) out.push(i.outcome === "answer" ? "" : "What I did", safe(s.work.doneSummary, i.outcome === "answer" ? ANSWER_MAX_CHARS : 1500), "");
   if (i.outcome !== "answer") {
     if (files.length) out.push(i.outcome === "done" ? "What changed" : "What I changed but did not commit", ...list(files, 20), "");
     else if (i.outcome === "done") out.push("Nothing needed changing.", "");

@@ -463,9 +463,24 @@ describe("a question back", () => {
 
   it("stays quiet at 0.45 and over, for a costly road: that is the self-check's, at dispatch", async () => {
     const mid = model(() => decideJson({ intent: "code_task", confidence: 0.5 }));
-    const d = await decide("fix it", inProject(), { call: mid.call, tiers, fx: 88, jobBudgetPaise: 3000 });
+    const d = await decide("fix the redirect after login", inProject(), { call: mid.call, tiers, fx: 88, jobBudgetPaise: 3000, threshold: 1 });
     expect(d.confidence).toBe(0.5);
     expect(d.clarify).toBeUndefined();
+  });
+
+  it("asks what, however sure the read, when a change names nothing to change and follows no conversation: fix it, make it work, theek karo", async () => {
+    const sure = model(() => decideJson({ intent: "code_task", confidence: 0.95, clarify: null }));
+    for (const text of ["fix it", "make it work", "theek karo", "please fix"]) {
+      const d = await decide(text, inProject(), { call: sure.call, tiers, fx: 88, jobBudgetPaise: 3000 });
+      expect(d.clarify, text).toBeDefined();
+      expect(d.reasons, text).toContain("clarify:bare");
+    }
+    // A request that says what, or a word that follows a conversation, is not asked about.
+    for (const text of ["fix the redirect after login", "add a clear completed button to the todo list"]) {
+      expect((await decide(text, inProject(), { call: sure.call, tiers, fx: 88, jobBudgetPaise: 3000 })).clarify, text).toBeUndefined();
+    }
+    const after = await decide("fix it", inProject({ recent: [{ said: "the checkout page throws on an empty cart" }] }), { call: sure.call, tiers, fx: 88, jobBudgetPaise: 3000 });
+    expect(after.reasons).not.toContain("clarify:bare");
   });
 });
 

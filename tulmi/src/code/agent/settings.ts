@@ -1,8 +1,8 @@
 /**
  * HOW A PROJECT'S JOBS ARE WORKED, AS THE PERSON SET IT: THE MODE, AND "ALWAYS SHOW ME THE PLAN FIRST".
  *
- *   mode        "guided" (the default: locate, plan, work, verify, commit) or "freeform" (the model decides the order of explore, change and run: debugging,
- *               investigating, exploratory changes). The front door chooses freeform for a task that reads as open-ended; this makes every job of the project so
+ *   mode        "freeform" (the default: the model decides the order of explore, change and run, with the locate funnel as a tool and hints) or "guided"
+ *               (locate, plan, work on the planned files, verify, commit). CODE_JOB_MODE changes the server's default; this makes every job of the project so
  *   planFirst   every task's plan goes to the person for a yes before any work, in either mode (a guided job always planned; a free-form job plans only for this)
  *   team        lead and helpers (code/team, docs/code-team.md): "auto" (a plan over 12 files or 3 features becomes a team's work), "on" (always) or "off" (never)
  *
@@ -13,7 +13,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../../auth/supabase.js";
 import { ConnectorError } from "../../connectors/state.js";
 import { TEAM_MODES, type TeamMode } from "../team/types.js";
-import { JOB_MODES, type JobMode } from "./types.js";
+import { getConfig } from "../../config.js";
+import { JOB_MODES, JOB_MODE_DEFAULT, type JobMode } from "./types.js";
 
 export interface ProjectSettings {
   projectId: string;
@@ -24,7 +25,13 @@ export interface ProjectSettings {
   updatedAt: number;
 }
 
-export const DEFAULT_PROJECT_SETTINGS = { mode: "guided", planFirst: false, team: "auto" } as const satisfies Pick<ProjectSettings, "mode" | "planFirst" | "team">;
+/** What a project that never set anything has. Its mode is the server's default (defaultJobMode): free-form unless CODE_JOB_MODE says guided. */
+export const DEFAULT_PROJECT_SETTINGS = { mode: JOB_MODE_DEFAULT, planFirst: false, team: "auto" } as const satisfies Pick<ProjectSettings, "mode" | "planFirst" | "team">;
+
+/** How a new job is worked when neither the job nor its project says: the agent's own setting (a harness's), else CODE_JOB_MODE, else free-form. */
+export function defaultJobMode(over?: JobMode): JobMode {
+  return over ?? getConfig().CODE_JOB_MODE ?? JOB_MODE_DEFAULT;
+}
 
 export interface SettingsStore {
   /** The project's settings; the defaults (guided, no plan first) when the person never set any. */
