@@ -197,13 +197,15 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   }));
 
   // A key's answered request is counted after it went out. Streams (hijacked) are not seen here.
-  app.addHook("onSend", async (req, reply, payload) => {
+  // A callback hook on purpose: an async onSend on every route delays reply.sent, and handlers that call reply.send()
+  // without returning it would then be sent twice (ERR_HTTP_HEADERS_SENT).
+  app.addHook("onSend", (req, reply, payload, done) => {
     try {
-      if (req.method !== "POST" || reply.statusCode !== 200 || req.routeOptions?.url !== "/v1/bots/:slug/ask" || !deps.bots) return payload;
+      if (req.method !== "POST" || reply.statusCode !== 200 || req.routeOptions?.url !== "/v1/bots/:slug/ask" || !deps.bots) return done(null, payload);
       const auth = req.headers["authorization"];
-      if (!looksLikeKey(auth)) return payload;
+      if (!looksLikeKey(auth)) return done(null, payload);
       const key = bearerKey(auth);
-      if (!key) return payload;
+      if (!key) return done(null, payload);
       const slug = String((req.params as { slug?: unknown }).slug ?? "").toLowerCase();
       const paise = typeof payload === "string" ? Number((JSON.parse(payload) as { paise?: unknown }).paise) || 0 : 0;
       const b = deps.bots;
@@ -212,7 +214,7 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
         if (bot?.ownerId) await parts.usage.record(bot.ownerId, slug, maskKey(prefixOf(key)), paise);
       })().catch(() => undefined);
     } catch { /* counting never breaks an answer */ }
-    return payload;
+    done(null, payload);
   });
 
   // ------------------------------------------------------------------ spaces
