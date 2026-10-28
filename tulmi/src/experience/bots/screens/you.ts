@@ -154,6 +154,13 @@ const oops = (what = "save that"): ActionSpec => ({ kind: "toast", message: `Cou
 const save = (b: Record<string, unknown>, ok: string): ActionRef => call("PUT", "/v1/you/settings", b, { ok: seq(toast(ok), refresh), fail: oops() });
 const when2 = (path: string, then: ActionRef, otherwise: ActionRef): ActionSpec => ({ kind: "condition", if: { truthy: path }, then, else: otherwise });
 const openUrl = (url: string): ActionSpec => ({ kind: "openUrl", url });
+/** Help: the whole app's, kept here (Keybot links nothing account-wide). */
+const HELP = [
+  { label: "Write to us", value: "support@tailzu.space", url: "mailto:support@tailzu.space" },
+  { label: "Privacy policy", value: "", url: "https://tailzu.space/privacy" },
+  { label: "Terms of use", value: "", url: "https://tailzu.space/terms" },
+] as const;
+const helpAction = (url: string): ActionSpec => ({ kind: "openUrl", url, external: true });
 
 /** A text input in an outlined box, into a state path. */
 function field(path: string, placeholder: string, o: { keyboard?: "numeric" | "url" } = {}): Node {
@@ -307,6 +314,7 @@ function youPhone(ctx: BotsCtx, d: YouData | undefined) {
         listRow({ label: "Your data", value: "Download · Delete", onPress: open(SCREENS.privacy) }),
         listRow({ label: "Privacy", onPress: open(SCREENS.privacy) }),
       ]),
+      listCard(HELP.map((h) => listRow({ label: h.label, value: h.value || undefined, onPress: helpAction(h.url) })), { title: "Help" }),
     ],
   });
 }
@@ -396,6 +404,7 @@ function youDesk(ctx: BotsCtx, d: YouData | undefined) {
           }),
           deskRow({ glyphNode: glyph(G.trash, 18), label: "Delete account", sub: "Everything goes, right away", onPress: open(SCREENS.deleteAccount) }),
         ]),
+        deskList(HELP.map((h) => deskRow({ glyphNode: icon(h.url.startsWith("mailto:") ? "send" : "book", { size: 18 }), label: h.label, value: h.value || undefined, onPress: helpAction(h.url) }))),
       ], { rightWidth: 380 }),
     ],
   });

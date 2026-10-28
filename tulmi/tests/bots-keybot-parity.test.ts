@@ -133,22 +133,19 @@ describe("Keybot's home", () => {
         "Make it yours", "Voice", "Zu", "Tone per app", "Teach your style", "Knows 6 things about how you write, from 3 sittings",
         "Your words", "Languages", "English, Hindi, Hinglish", "What you call it", "Tailzu, or Zara",
         "Keyboard and voice", "Haptics", "5 keys", "Read aloud", "What you said", "Keep what I say",
-        "Your account", "Plan and billing", "Privacy and your data", "What pings you", "Connected apps", "Hand it to me", "This computer helps",
-        "Settings and sign out", "Delete account", "Help and about", "Write to us", "Privacy policy", "Terms of use",
         "What the key does", "Good evening. Anything to write up before the day ends?",
       ]) expect(t.some((x) => x === w || x.includes(w)), `${client}: ${w}`).toBe(true);
       const to = opens(s.root!).map((o) => o.screenId);
       for (const id of [
         SCREENS.keyMonth, SCREENS.keyDay, SCREENS.keyApps, SCREENS.keySpeak, SCREENS.keyDays, SCREENS.keyWords, SCREENS.keyStyle, SCREENS.keyTone,
         SCREENS.keyTrain, SCREENS.language, SCREENS.keyName, SCREENS.keySettings, SCREENS.keyHaptics, SCREENS.keyVoices, SCREENS.keyHistory,
-        SCREENS.billing, SCREENS.privacy, SCREENS.notify, SCREENS.apps, SCREENS.tasks, SCREENS.computer, SCREENS.settings, SCREENS.deleteAccount,
       ]) expect(to, `${client} opens ${id}`).toContain(id);
       expect(opens(s.root!)).toContainEqual({ screenId: SCREENS.keyApps, params: { app: "Gmail" } });
       expect(opens(s.root!)).toContainEqual({ screenId: SCREENS.keyDay, params: { day: 18 } });
       const j = json(s);
-      expect(j).toContain('"kind":"openUrl","url":"mailto:support@tailzu.space"');
-      expect(j).toContain('"url":"https://tailzu.space/privacy"');
-      expect(j).toContain('"url":"https://tailzu.space/terms"');
+      // Keybot is part of the app: no account or help groups of its own (they live in the You tab).
+      for (const w of ["Your account", "Help and about", "Write to us", "Delete account"]) expect(t.includes(w), `${client}: no ${w}`).toBe(false);
+      expect(to).not.toContain(SCREENS.deleteAccount);
       expect(j).toContain('"path":"/v1/personality","body":{"retainHistory":"$state.keep"}');
       expect(s.state).toMatchObject({ keep: true, keyboardEnabled: true, micGranted: true });
     });
@@ -166,7 +163,7 @@ describe("Keybot's home", () => {
     expect(a).toEqual(expect.arrayContaining(["Couldn't load your numbers.", "By app · this week", "Make it yours"]));
     const onlyStats = { [`GET /v1/keybot/stats?${tz}`]: statsFor() };
     const b = texts((await build(SCREENS.keybot, "phone", onlyStats)).root!);
-    expect(b).toEqual(expect.arrayContaining(["Couldn't load your week.", "October so far", "Your account"]));
+    expect(b).toEqual(expect.arrayContaining(["Couldn't load your week.", "October so far", "Make it yours"]));
   });
 
   it("an empty month says so, not zeros in a grid", async () => {
