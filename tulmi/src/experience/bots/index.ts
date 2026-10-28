@@ -19,12 +19,14 @@ import { codeScreens } from "./screens/code.js";
 import { keybotScreens } from "./screens/keybot.js";
 import { shellScreens } from "./screens/shell.js";
 import { youScreens } from "./screens/you.js";
+import { codeWorkScreens } from "./screens/codeWork.js";
+import { firstRunScreens } from "./screens/firstRun.js";
 
 export { isBotsScreen, screen, type BotsScreen } from "./registry.js";
 export { botsDepsFor, emptyDeps, type BotsServices } from "./deps.js";
 export { botsFonts } from "./kit.js";
 
-const ALL: BotsScreen[] = [...shellScreens, ...youScreens, ...botsScreens, ...keybotScreens, ...codeScreens];
+const ALL: BotsScreen[] = [...shellScreens, ...youScreens, ...botsScreens, ...keybotScreens, ...codeScreens, ...codeWorkScreens, ...firstRunScreens];
 
 /** Every registered screen, by id. Two files claiming one id is a mistake caught when the server starts. */
 export const BOTS_SCREENS: ReadonlyMap<string, BotsScreen> = (() => {
