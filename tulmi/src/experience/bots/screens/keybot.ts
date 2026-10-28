@@ -1143,7 +1143,7 @@ function settingsPhone(ctx: BotsCtx, d: KeybotSettingsView | undefined) {
       ], { borderRadius: 18, borderWidth: 1, borderColor: C.line, overflow: "hidden" })], { gap: 8 }),
       listCard([
         listRow({ label: "Languages", value: langs, onPress: open(SCREENS.language) }),
-        switchRow("Hold space to speak", "kb.holdSpace", { sub: "Starts listening, like the clay key. Space stops sliding the cursor.", onChange: kbSave("holdSpace") }),
+        switchRow("Hold space to speak", "kb.holdSpace", { sub: "Hold still to speak, like the clay key. Slide to move the cursor.", onChange: kbSave("holdSpace") }),
       ], { title: "Typing" }),
       col([sectionLabel("Keybot key"), card([
         tight(segmented([{ label: "Left of space", value: "left" }, { label: "Right of space", value: "right" }, { label: "Top row", value: "top" }], "kb.keyAt", { onChange: kbSave("keyAt") })),

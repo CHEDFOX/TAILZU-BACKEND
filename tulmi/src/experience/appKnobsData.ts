@@ -2231,6 +2231,7 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "ui.SVG.strokeLinejoin": "round",
   "ui.SVG.viewBox": "0 0 100 100",
   "ui.Screen.paddingBottom": 120,
+  "ui.Screen.keyboardGap": 16,
   "ui.SearchField.background": "#1c1c25",
   "ui.SearchField.color": "#fff",
   "ui.SearchField.fontSize": 15,
