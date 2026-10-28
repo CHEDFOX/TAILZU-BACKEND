@@ -166,9 +166,12 @@ async function missing(c: Client): Promise<unknown> {
 
 function bootstrap(c: Client): unknown {
   const common = { onboarded: true, landedBefore: true, botsApp: true, entitled: true, signedIn: true, languagesSet: true, profileComplete: true, wordsEver: 5196 };
-  return c === "phone"
+  const boot = (c === "phone"
     ? buildBootstrap({ ...common, platform: "ios" })
-    : buildBootstrap({ ...common, formFactor: "desktop", os: "mac", desk: true, deskNotes: true, deskTasks: true });
+    : buildBootstrap({ ...common, formFactor: "desktop", os: "mac", desk: true, deskNotes: true, deskTasks: true })) as { flags?: Record<string, unknown> };
+  // No live channel here: the stand-in API answers from files, and the page may not open a socket.
+  boot.flags = { ...(boot.flags ?? {}), "live.enabled": false };
+  return boot;
 }
 
 // ------------------------------------------------------------------ the crawl
@@ -280,7 +283,11 @@ desk = desk.replace(/<meta http-equiv="Content-Security-Policy"[\s\S]*?>/, "")
   .replace(/<html([^>]*)>/, '<html$1 data-client="desktop">')
   .replace('<script src="knobs.js"></script>', '<script src="shim.js"></script>\n  <script src="desk-bridge.js"></script>\n  <script src="knobs.js"></script>');
 write("desk.html", desk);
-for (const f of ["knobs.js", "blip.js", "botTiles.js", "sdui.js"]) copy(path.join(DESKTOP, f), f);
+// Every script the window loads, as app.html names them (sdui.js and the abilities loaded after it).
+for (const m of desk.matchAll(/<script src="([\w.-]+\.js)"><\/script>/g)) {
+  const f = m[1]!;
+  if (f !== "shim.js" && f !== "desk-bridge.js" && fs.existsSync(path.join(DESKTOP, f))) copy(path.join(DESKTOP, f), f);
+}
 for (const m of desk.matchAll(/url\((assets\/[^)"']+)\)/g)) if (fs.existsSync(path.join(DESKTOP, m[1]!))) copy(path.join(DESKTOP, m[1]!), m[1]!);
 
 // What the screens name, and the faces the page around them is set in; and every one of Blip's loops, which the
