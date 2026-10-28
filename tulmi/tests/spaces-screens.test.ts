@@ -113,6 +113,30 @@ describe("Spaces' screens", () => {
     void s;
   });
 
+  it("an invite's link opens Spaces at joining: what it is for and Join at the top, the code in Join with a code too", async () => {
+    const api = { ...spacesApi(), [`GET ${A}/spaces/join/QW3RT7YP`]: { invite: { name: "Cousins", members: 4, email: null } }, [`GET ${A}/spaces/join/NOPE1234`]: { invite: null } };
+    for (const client of ["phone", "desktop"] as const) {
+      const { nodes, s } = await build("bots.spaces", client, { join: "qw3rt7yp" }, api);
+      expect(lintTree(s.root!), client).toEqual([]);
+      expect(texts(nodes), client).toContain("You're invited to Cousins");
+      expect(texts(nodes), client).toContain("4 people so far");
+      expect(s.state, client).toMatchObject({ code: "QW3RT7YP" });
+      const join = actions(nodes).find((a) => a.kind === "callEndpoint" && a.path === `${A}/spaces/join` && (a.body as { code?: string }).code === "QW3RT7YP");
+      expect(join, client).toBeTruthy();
+      // In, then that space.
+      expect(JSON.stringify(join!.onSuccess), client).toContain('"params":{"id":"$state.joined.id"}');
+      // The code box stays, the way that always works.
+      expect(calls(nodes), client).toContain(`POST ${A}/spaces/join`);
+      expect(texts(nodes), client).toContain("Join with a code");
+      // One that doesn't work says so, and offers no Join of its own.
+      const bad = await build("bots.spaces", client, { join: "NOPE1234" }, api);
+      expect(texts(bad.nodes), client).toContain("This invite doesn't work any more. Ask for a new one.");
+      expect(texts(bad.nodes), client).not.toContain("You're invited");
+    }
+    // No invite in the link: Spaces as it was.
+    expect(texts((await build("bots.spaces", "phone")).nodes)).not.toContain("You're invited");
+  });
+
   it("listens to the live topics of what it shows", async () => {
     expect((await build("bots.spaces", "phone", { id: "s1" })).s.liveTopics).toEqual(expect.arrayContaining(["space:s1", "spaces"]));
     expect((await build("bots.thread", "phone", { id: "th-home" })).s.liveTopics).toEqual(["thread:th-home"]);

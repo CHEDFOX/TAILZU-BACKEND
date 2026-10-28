@@ -1869,9 +1869,11 @@ export function deskNotes(ctx: DeskContext): ScreenResponse {
       text("Meetings, lectures, thoughts", "d-h1", { marginTop: 6 }),
       ...(all.length ? [] : [text("Nothing yet", "d-count d-on-room", { marginTop: 12 })]),
     ], { minWidth: 0 }),
+    // The notes chord; with the one key there is none, and the window draws "Say “take notes” / “stop notes” with <key>" instead.
     ...(ctx.notesHotkey ? [row([
       keys("notes", true),
-      text("to start or stop. Nothing is typed anywhere.", "d-count d-on-room", { maxWidth: 170, marginLeft: 6 }),
+      shownIf(text("to start or stop. Nothing is typed anywhere.", "d-count d-on-room", { maxWidth: 170, marginLeft: 6 }), { falsy: "desktop.oneKey" }),
+      shownIf(text("Nothing is typed anywhere.", "d-count d-on-room", { maxWidth: 170, marginLeft: 6 }), { truthy: "desktop.oneKey" }),
     ], { align: "center", gap: 0 })] : []),
     ...(figures ? [figures] : []),
   ]);

@@ -688,11 +688,14 @@ export function needsCard(item: NeedsItem, o: { layout?: "column" | "row" } = {}
 
 // ===================================================================== the ask bar
 
-/** What the ask bar sends: the front door (POST /v1/ask, "Ask any bot"), then the answer opens on the Ask screen. */
+/**
+ * What the ask bar sends: the front door (POST /v1/ask, "Ask any bot"), then the answer opens on the Ask screen. Offline, in a build
+ * that keeps an outbox, the ask is kept there instead and goes out once the connection is back (`keptOffline`).
+ */
 export function askAction(client: Client, path = "ask"): ActionSpec {
   return {
     kind: "sequence", actions: [
-      { kind: "condition", if: { falsy: path }, then: { kind: "toast", message: "Type what you need first" }, else: {
+      { kind: "condition", if: { falsy: path }, then: { kind: "toast", message: "Type what you need first" }, else: keptOffline(client, { message: `$state.${path}`, clear: path }, {
         kind: "sequence", actions: [
           { kind: "setState", path: "asking", value: true },
           {
@@ -710,9 +713,34 @@ export function askAction(client: Client, path = "ask"): ActionSpec {
             ] },
           },
         ],
-      } },
+      }) },
     ],
   };
+}
+
+/**
+ * Offline, as a build that keeps an outbox says (`online` is false in every screen's state; any other build never says so). Read when
+ * the person sends, so an ask is either kept or sent, never both.
+ */
+export const OFFLINE: Condition = { eq: ["online", false] };
+
+/** What an ask bar says when it kept an ask. */
+export const KEPT_OFFLINE = "Kept. It will send when you're back.";
+
+/**
+ * AN ASK BAR, OFFLINE: what was typed goes into the outbox (keepAsk, as the Offline screen's field does: POST /v1/shell/ask, once, in
+ * order, when the connection is back), the field (`clear`) is emptied, and a short line says so. Online, `send` runs as it always did.
+ * `who` is the line's bot ("Code bot · asked 9:38"), `bot` the slug it goes to.
+ */
+export function keptOffline(client: Client, o: { message: string; bot?: string; who?: string; clear?: string }, send: ActionRef): ActionSpec {
+  const keep: ActionSpec = {
+    kind: "sequence", actions: [
+      keepAsk(client, { message: o.message, bot: o.bot ?? "any", label: o.message, sub: `${o.who ?? "Any bot"} · asked {time}` }),
+      ...(o.clear ? [{ kind: "clearState", path: o.clear } as ActionSpec] : []),
+      { kind: "toast", message: KEPT_OFFLINE },
+    ],
+  };
+  return { kind: "condition", if: OFFLINE, then: keep, else: send };
 }
 
 /**

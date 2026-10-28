@@ -831,11 +831,11 @@ export class AgentOrchestrator {
     return { delivered: true };
   }
 
-  /** Stops the job: the loop here is told, and the router drops any step that is out. */
-  async stopJob(userId: string, jobId: string): Promise<CodeJob> {
+  /** Stops the job: the loop here is told, and the router drops any step that is out. `reason` is what the person reads (default: they stopped it). */
+  async stopJob(userId: string, jobId: string, reason?: string): Promise<CodeJob> {
     const job = await this.jobs.job(userId, jobId);
     this.active.get(job.id)?.abort.abort();
-    const ended = await this.jobs.cancelJob(job.id);
+    const ended = await this.jobs.cancelJob(job.id, reason);
     await this.remote?.wake(job.id, "stop");
     return stripAgent(ended);
   }

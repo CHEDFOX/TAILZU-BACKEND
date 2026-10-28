@@ -179,6 +179,15 @@ describe("what pings the person", () => {
     expect(summaryLine({ done: 0, needs: 0, spentPaise: 0 })).toBeNull();
   });
 
+  it("a task, a plan or a message from someone in a space comes with Keybot off, and without a sound in quiet hours", () => {
+    for (const kind of ["space_task", "space_plan", "space_message"]) {
+      expect(verdict(s, kind, 12 * 60)).toBe("send");
+      expect(verdict(s, kind, 2 * 60)).toBe("silent");
+      expect(verdict({ ...s, notify: { ...s.notify, botsOff: ["keybot", "plan", "code"] } }, kind, 12 * 60)).toBe("send");
+      expect(verdict(DEFAULT_SETTINGS, kind, 2 * 60)).toBe("send");
+    }
+  });
+
   it("the push engine asks the gate before it claims: dropped is never sent, silent has no sound", async () => {
     const store = new MemoryPushStore();
     store.candidatesList = [{ userId: "u", tokens: [{ platform: "ios", token: "ExponentPushToken[a]", updatedAt: 0 }], lastSeenAt: null, createdAt: null, locale: null, entitled: false, tzOffsetMin: 0 }];

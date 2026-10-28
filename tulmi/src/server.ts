@@ -1159,7 +1159,7 @@ registerBotRoutes(app, { rateLimit: AUTHED_RL, bots });
 const botsAreaDeps = { rateLimit: AUTHED_RL, bots, code, jobs: codeJobs, connectors, media, artifacts };
 registerBotsShellRoutes(app, botsAreaDeps);
 registerBotsYouRoutes(app, botsAreaDeps);
-registerBotsBotsRoutes(app, botsAreaDeps);
+const botsArea = registerBotsBotsRoutes(app, botsAreaDeps);
 registerBotsKeybotRoutes(app, botsAreaDeps);
 registerBotsCodeRoutes(app, botsAreaDeps);
 registerBotsCodeWorkRoutes(app, botsAreaDeps);
@@ -1167,6 +1167,8 @@ registerBotsFirstRunRoutes(app, botsAreaDeps);
 registerBotsPushAskRoutes(app, botsAreaDeps);
 const frontRoutes = registerFrontRoutes(app, {
   rateLimit: AUTHED_RL, front, bots,
+  // "Ask any bot": a bot shared into a space reads what the space shared, as data, as in its chat.
+  ...(bots ? { sharedFor: botsArea.sharedFor } : {}),
   quota: (user) => enforceQuota(user),
   // The model's words are not the person's: recorded at zero words, like the old ask, so the call still shows in usage.
   used: (user) => recordUsage({ user, source: "rest", audioSeconds: 0, words: 0, model: "front" }),
@@ -3443,6 +3445,8 @@ async function eraseAccount(admin: NonNullable<ReturnType<typeof supabase>>, use
 // eraseAccount on the day. No service key, no deleting: the ask is refused (503), as DELETE /v1/account is above.
 registerAccountDeletionRoutes(app, {
   rateLimit: AUTHED_RL,
+  // The person's bots stop when the date is set: their running Code bot jobs are stopped.
+  jobs: codeJobs, agent: codeAgent,
   erase: supabase() ? async (userId) => {
     const admin = supabase();
     if (!admin) return false;

@@ -8,6 +8,8 @@
  *   the rest     the engine's own reminders (Keybot's streak, the week): not sent in quiet hours, nor with Keybot turned off
  *   summary      one note a day at their hour, only when they turned it on and something happened that day
  *   reminders    what they asked to be reminded of (their calendar, a to-do): sent; in quiet hours without a sound; not with Plan bot off
+ *   people       someone in a space gave them a task, planned something for them, or messaged them: sent; in quiet hours without a
+ *                sound. A person's word, not a bot's: no bot being off stops it (a muted chat sends none: botsBots/threads.ts)
  *
  * A person who never opened the screen has the defaults (settings.ts), which are what the pushes did before it: nothing changes for them.
  */
@@ -20,6 +22,8 @@ import { rupeesOf, type Spending } from "./limits.js";
 
 const NEEDS_YOU = new Set(["approval", "code_needs_you", "code_compute_ask", "code_commit_ask"]);
 const DONE = new Set(["code_job_done", "code_job_failed", "code_job_moved", "code_compute_paused", "code_minutes_low"]);
+/** From people in a space (push/defaults.ts): quiet hours apply, Keybot being off does not. */
+const PEOPLE = new Set(["space_task", "space_plan", "space_message"]);
 
 /** The person's minute of the day, in their own time. */
 export const minuteOf = (now: number, tzOffsetMinutes: number): number => {
@@ -34,6 +38,7 @@ export function verdict(s: YouSettings, kind: string, minute: number): PushVerdi
   if (NEEDS_YOU.has(kind)) return quiet ? "silent" : "send";
   if (kind === "bots_summary") return !n.summary ? "drop" : quiet ? "silent" : "send";
   if (kind === "plan_reminder") return n.botsOff.includes("plan") ? "drop" : quiet ? "silent" : "send";
+  if (PEOPLE.has(kind)) return quiet ? "silent" : "send";
   if (DONE.has(kind)) {
     if (quiet || n.botsOff.includes("code")) return "drop";
     return n.done === "quiet" ? "silent" : "send";

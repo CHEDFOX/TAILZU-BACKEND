@@ -961,7 +961,7 @@ function privacyDesk(ctx: BotsCtx, d: YouData | undefined) {
 /** What the page reads: what the account holds (GET /v1/you/account), and whether a date is set (GET /v1/account/deletion). */
 interface DeleteData { account: AccountData | undefined; deletion: DeletionState | undefined }
 
-function goesAway(ctx: BotsCtx, d: AccountData, gone?: string): Node[] {
+function goesAway(ctx: BotsCtx, d: AccountData): Node[] {
   const own = d.bots.filter((b) => !b.builtin);
   return [
     listRow({
@@ -971,7 +971,8 @@ function goesAway(ctx: BotsCtx, d: AccountData, gone?: string): Node[] {
     }),
     listRow({ label: plural(d.projects.length, "project"), value: d.projects.length ? (d.projects.length > 1 ? `${d.projects[0]} and ${d.projects.length - 1} more` : d.projects[0]!) : "None" }),
     listRow({ label: plural(d.notes, "note"), value: "and every chat" }),
-    listRow({ label: plural(d.keys, "key"), value: d.keys ? (gone ? `stop working on ${gone}` : "stop working right away") : "None" }),
+    // The bots stop the day they ask, keys too (you/deletion.ts isLeaving); Keep my account starts them again.
+    listRow({ label: plural(d.keys, "key"), value: d.keys ? "stop working right away" : "None" }),
   ];
 }
 const planWarning = (ctx: BotsCtx, d: AccountData): Node[] =>
@@ -987,7 +988,7 @@ function graceBlock(ctx: BotsCtx, del: DeletionState | undefined): Node {
   return col([
     daysStrip(ctx, from),
     row([meta(`${s ? "Asked on" : "Today,"} ${dayMonthOf(ctx, from)}`, { size: 12 }), grow(), meta(`Gone for good, ${gone}`, { size: 12 })]),
-    text(s ? "Until then everything is here, as it was. Keep your account and nothing is lost."
+    text(s ? "Until then everything is kept, and your bots are stopped. Keep your account and they start again."
       : `You have ${GRACE_DAYS} days to change your mind. Sign in before ${gone} and everything comes back as it was.`, { size: 14, lineHeight: 20 }),
   ], { gap: 8 });
 }
@@ -1001,7 +1002,7 @@ function deletePhone(ctx: BotsCtx, data: DeleteData | undefined) {
       body: [
         heading(ctx, "Delete account", `Your account will be deleted on ${gone}.`),
         graceBlock(ctx, del),
-        ...(d ? [col([sectionLabel("What goes then"), listCard(goesAway(ctx, d, gone))], { gap: 8 })] : []),
+        ...(d ? [col([sectionLabel("What goes then"), listCard(goesAway(ctx, d))], { gap: 8 })] : []),
       ],
       footer: [primaryButton("Keep my account", keepAccount, { wide: true })],
     });
@@ -1015,7 +1016,7 @@ function deletePhone(ctx: BotsCtx, data: DeleteData | undefined) {
     body: [
       heading(ctx, "Delete account", "Here is exactly what happens, so there are no surprises."),
       ...(d ? [
-        col([sectionLabel("What goes away"), listCard(goesAway(ctx, d, gone))], { gap: 8 }),
+        col([sectionLabel("What goes away"), listCard(goesAway(ctx, d))], { gap: 8 }),
         graceBlock(ctx, del),
         ...planWarning(ctx, d),
         row([meta("Want a copy first? ", { size: 13 }), text("Download my data", { size: 13, weight: 500, style: { textDecorationLine: "underline" } })], {}, exportAction(d.exportUrl)),
@@ -1031,11 +1032,11 @@ function deleteDesk(ctx: BotsCtx, data: DeleteData | undefined) {
   const days = card([
     row([sectionLabel(s ? "Until then, nothing is lost" : `${GRACE_DAYS} days to change your mind`), grow(), text(`Gone for good, ${gone}`, { size: 13, weight: 600, lineHeight: 18 })], { gap: 10 }),
     daysStrip(ctx, s?.requestedAt ?? ctx.live.now, { labels: true }),
-    text(s ? "Everything is here, as it was. Keep your account and nothing changes."
+    text(s ? "Everything is kept, and your bots are stopped. Keep your account and they start again."
       : `You have ${GRACE_DAYS} days to change your mind. Sign in before ${gone} and everything comes back as it was.`, { size: 14, lineHeight: 20 }),
   ], { padding: 20, gap: 12 });
   const left = [
-    ...(d ? [col([sectionLabel(s ? "What goes then" : "What goes away"), listCard(goesAway(ctx, d, gone))], { gap: 8 })] : [couldNot("what your account holds")]),
+    ...(d ? [col([sectionLabel(s ? "What goes then" : "What goes away"), listCard(goesAway(ctx, d))], { gap: 8 })] : [couldNot("what your account holds")]),
     days,
   ];
   if (s) {
@@ -1045,7 +1046,7 @@ function deleteDesk(ctx: BotsCtx, data: DeleteData | undefined) {
         heading(ctx, "Delete account", `Your account will be deleted on ${gone}.`),
         columns(left, [card([
           sectionLabel("Changed your mind?"),
-          meta("Keep your account and everything stays as it is: your bots, projects, notes and keys.", { size: 13, lineHeight: 18 }),
+          meta("Keep your account and your bots and keys work again. Nothing is lost.", { size: 13, lineHeight: 18 }),
           primaryButton("Keep my account", keepAccount, { wide: true, size: "md" }),
         ], { padding: 20, gap: 12 })]),
       ],

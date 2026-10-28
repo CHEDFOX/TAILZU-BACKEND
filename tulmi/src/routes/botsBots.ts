@@ -68,7 +68,11 @@ export function apiOrigin(): string {
   try { return new URL(getConfig().CONNECTOR_REDIRECT_URL).origin; } catch { return "https://api.tailzu.space"; }
 }
 
-export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { parts?: BotsAreaParts; events?: EventStore } = {}): void {
+/**
+ * Returns `sharedFor`: what the person's spaces shared with a bot (shared.ts forBot), for "Ask any bot" on POST /v1/ask (routes/front.ts),
+ * so a bot shared into a space reads it there as it does in its chat.
+ */
+export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { parts?: BotsAreaParts; events?: EventStore } = {}): { sharedFor: (userId: string, slug: string) => Promise<Array<{ name: string; kind: string; text: string }>> } {
   const parts = o.parts ?? botsAreaParts({ bots: deps.bots, connectors: deps.connectors });
   const RL = { config: deps.rateLimit };
   const tight = (max: number) => ({ config: { rateLimit: { max: Math.min(max, deps.rateLimit.rateLimit.max), timeWindow: deps.rateLimit.rateLimit.timeWindow } } });
@@ -293,4 +297,6 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
     const str = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "");
     return { message: shareMessage(str(b.what, 600), { name: str(b.name, 200), text: str(b.text, 6000), url: str(b.url, 2000) }) };
   }));
+
+  return { sharedFor: (userId, slug) => spacesArea.items.forBot(userId, slug.toLowerCase()) };
 }

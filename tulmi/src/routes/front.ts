@@ -6,7 +6,9 @@
  *                             per line: decision, status, text, artifact, and last a result (or an error). `id` is the decision's row in the log:
  *                             what POST /v1/ask/feedback names. `visual: "table"` (and so on) takes a one-tap offer a result made. `threadId` is the id the app
  *                             makes for a conversation about a project's code: its short rolling summary is what a follow-up leans on, and "ok, change it" starts a
- *                             job that is handed the place the conversation found (docs/code-chat.md).
+ *                             job that is handed the place the conversation found (docs/code-chat.md). With `bot` ("Ask any bot", or one chosen), a
+ *                             bot shared into a space the person is in also reads what that space shared, as data (`sharedFor`), as its chat does.
+ *                             403 account_leaving while the person's account waits to be deleted: their bots are stopped (you/deletion.ts).
  *   POST /v1/ask/feedback { id, outcome }
  *                          -> { ok: true }  what the person did with an answer: visual_closed, visual_kept, thumbs_up, thumbs_down
  *   GET  /v1/admin/guard   -> the overload guards at a glance: the limiter, the idempotency store, coalescing, and every breaker's state
@@ -35,6 +37,8 @@ import {
 } from "../front/index.js";
 import { failCode } from "./code.js";
 import { idempotencyHeader, planOf } from "./guarded.js";
+import { isLeaving, LEAVING_MESSAGE } from "../you/deletion.js";
+import type { Attached } from "../bots/prompt.js";
 
 /** What the route accepts: room for a picture's base64. */
 export const FRONT_BODY_LIMIT = 8 * 1024 * 1024;
@@ -55,6 +59,13 @@ export interface FrontRoutesDeps {
   used?: (user: AuthedUser) => Promise<void>;
   /** The bots platform (src/bots), for `bot` in the body ("Ask any bot"). Null or absent while BOTS is off: a body with `bot` is then 404 bots_off. */
   bots?: Bots | null;
+  /**
+   * What the person's spaces shared with a bot (botsBots/shared.ts forBot), for a bot shared into a space they are in: the bot reads it as
+   * data, never as instructions, as it does in its chat (routes/botsBots.ts). Absent: nothing is added.
+   */
+  sharedFor?: (userId: string, slug: string) => Promise<Attached[]>;
+  /** Whether a person's bots are stopped (their account waits to be deleted: you/deletion.ts isLeaving, the default): nothing is asked. */
+  stopped?: (userId: string) => Promise<boolean>;
 }
 
 export interface AskInput {
@@ -163,6 +174,9 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
     const { input } = read;
     const bots = input.bot !== undefined ? deps.bots ?? null : null;
 
+    // Their account waits to be deleted: their bots are stopped until they keep it.
+    if (await (deps.stopped ?? isLeaving)(user.id)) return reply.code(403).send({ code: "account_leaving", message: LEAVING_MESSAGE });
+
     const quota = await deps.quota?.(user);
     if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
 
@@ -206,10 +220,13 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
               emit({ t: "status", stage: "reading" });
               read = await front.readFiles(user.id, ctx.attachments, input.data, target.message, { maxPaise: Math.max(1, Math.min(60, Math.floor(target.bot.budgets.perRequestPaise / 2))), signal: stop });
             }
+            // A bot shared into a space the person is in reads what the space shared, as its chat does: data, never instructions (bots/prompt.ts).
+            const shared = deps.sharedFor ? await deps.sharedFor(user.id, target.bot.slug).catch(() => []) : [];
+            const attached: Attached[] = [...(read?.files ?? []).map((f) => ({ name: f.name, kind: f.kind, text: f.text })), ...shared];
             const answer = await bots.ask(user.id, target.bot.id, {
               message: target.message, signal: stop, pickedBy: target.by, ctx: { attachments: ctx.attachments, recent: ctx.recent, mode: ctx.mode },
               ...(ctx.projectId ? { projectId: ctx.projectId } : {}), emit: (e) => { if (e.t !== "result") emit(e); },
-              ...(read?.files.length ? { attached: read.files.map((f) => ({ name: f.name, kind: f.kind, text: f.text })) } : {}), ...(read?.paise ? { extraPaise: read.paise } : {}),
+              ...(attached.length ? { attached } : {}), ...(read?.paise ? { extraPaise: read.paise } : {}),
             });
             if (read?.notes.length) answer.notes.push(...read.notes.map((n) => n.note ?? "").filter(Boolean));
             daily?.add(user.id, target.paise + answer.paise);

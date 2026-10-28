@@ -5,7 +5,9 @@
  *
  *   list(user) / detail(user, space)   the spaces the person is in, and one whole (members, roles, invites, activity as they may see them)
  *   create(user, name, me)             a new space; its maker is its admin, for good
- *   invite(user, space, { email?, role?, perms? })   a code and its link, seven days; with an email, bound to that address and mailed
+ *   invite(user, space, { email?, role?, perms? })   a code and its link, seven days; with an email, bound to that address and mailed.
+ *                                      The link opens the app at joining (https://app.tailzu.space/s/bots.spaces?join=CODE, a link
+ *                                      the apps claim, as bots.link's does); a browser gets a page that opens it, with the code to type
  *   join(user, code, me)               into the space, with what the invite gave (never more than its maker can still do)
  *   setPerms(user, space, member, { role?, perms? })  what someone may do
  *   saveRole / dropRole                the admin's own named roles
@@ -17,7 +19,6 @@
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { BotError, type Bots } from "../bots/index.js";
-import { getConfig } from "../config.js";
 import { live } from "../live/bus.js";
 import { cleanEmail, mailerFromEnv, MailOutbox, type Mailer } from "./mail.js";
 import { table, type Table } from "./rows.js";
@@ -74,6 +75,17 @@ export const INVITES_A_DAY = 30;
 const INVITE_MS = 7 * 24 * 3600_000;
 const ACTIVITY_KEEP = 200;
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+/** What an invite code looks like, in a link: anything else is not one. */
+export const INVITE_CODE_RE = /^[A-Z0-9]{6,16}$/;
+
+/**
+ * Where an invite's link points: the host the phone app claims for its links (associatedDomains, intentFilters; the AASA serves
+ * /s/*), the same one bots.link's QR uses (routes/deviceLink.ts LINK_ORIGIN). Opened there, the app goes straight to joining.
+ */
+export const INVITE_ORIGIN = (process.env.DEVICE_LINK_ORIGIN || "https://app.tailzu.space").replace(/\/+$/, "");
+/** The screen an invite opens, and its parameter. */
+export const JOIN_SCREEN = "bots.spaces";
+export const inviteLinkOf = (origin: string, code: string): string => `${origin}/s/${JOIN_SCREEN}?join=${code}`;
 
 const clean = (s: unknown, max: number): string => (typeof s === "string" ? s.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const notFound = () => new BotError("not_found", "That space isn't there any more.", 404);
@@ -93,7 +105,7 @@ export interface SpaceOpts {
   publish?: Publish;
   outbox?: MailOutbox;
   mailer?: Mailer;
-  /** The address invite links start with (routes: apiOrigin()). */
+  /** The address invite links start with (INVITE_ORIGIN). */
   origin?: () => string;
   tables?: {
     spaces?: Table<SpaceRow>; members?: Table<MemberRow>; bots?: Table<SpaceBotRow>; invites?: Table<InviteRow>;
@@ -125,8 +137,8 @@ export class Spaces {
     this.publish = o.publish ?? ((ids, topic, data) => live.publish(ids, topic, data));
     this.outbox = o.outbox ?? new MailOutbox(undefined, now);
     this.mailer = o.mailer ?? mailerFromEnv();
-    // The API's own address (routes/botsBots.ts apiOrigin): where the invite page is.
-    this.origin = o.origin ?? (() => { try { return new URL(getConfig().CONNECTOR_REDIRECT_URL).origin; } catch { return "https://api.tailzu.space"; } });
+    // The host the apps claim for their links: the invite opens Tailzu at joining (a browser gets a page that opens it).
+    this.origin = o.origin ?? (() => INVITE_ORIGIN);
   }
 
   /** Someone joined, left or was removed, or the space went: the chats follow (threads.ts). */
@@ -310,7 +322,7 @@ export class Spaces {
 
   // ------------------------------------------------------------------ invites
 
-  private linkOf(code: string): string { return `${this.origin()}/v1/botsapp/bots/invite/${code}`; }
+  private linkOf(code: string): string { return inviteLinkOf(this.origin(), code); }
 
   /** What an invite gives: its preset or role as it is now, else its own list, else (an invite from before permissions) Family. */
   private async invitePerms(i: InviteRow, s: SpaceRow, roles?: RoleRow[]): Promise<Perm[]> {

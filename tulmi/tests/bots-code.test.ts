@@ -293,6 +293,21 @@ function served() {
 }
 const who = (user: string) => ({ authorization: `Bearer ${user}` });
 
+describe("Tell Code bot what to do, offline", () => {
+  it("keeps the ask in the outbox for the Code bot (a build with one says it is offline); online, it asks as before", async () => {
+    // Two projects: Code bot's overview, whose bar asks the bot (not one project's plan).
+    const two = { ...API, "GET /v1/code/projects": { projects: [project, { ...project, id: "22222222-2222-4222-8222-222222222222", fullName: "aanya-sharma/salon-booking" }] } };
+    for (const client of ["phone", "desktop"] as const) {
+      const { json, lint } = await build("bots.code", client, {}, two);
+      expect(lint, client).toEqual([]);
+      expect(json, client).toContain('"if":{"eq":["online",false]},"then":{"kind":"sequence","actions":[{"kind":"outbox","op":"add","path":"/v1/shell/ask","body":{"message":"$state.task","bot":"code","device":"' + client + '","mode":"text"},"label":"$state.task","sub":"Code bot · asked {time}"},{"kind":"clearState","path":"task"},{"kind":"toast","message":"Kept. It will send when you\'re back."}]},"else":{"kind":"sequence","actions":[{"kind":"setState","path":"asking","value":true},{"kind":"callEndpoint","method":"POST","path":"/v1/shell/ask"');
+    }
+    // In a project the bar starts a plan, which is not an ask: nothing is kept for it.
+    const inProject = await build("bots.code", "phone", { project: P });
+    expect(inProject.json).not.toContain('"sub":"Code bot · asked {time}"');
+  });
+});
+
 describe("the Bots app's Code bot doors", () => {
   it("a task: a branch, then a plan-first job with the project's cap; another's project is a 404", async () => {
     const { app, seen } = served();

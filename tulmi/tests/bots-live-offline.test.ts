@@ -5,7 +5,7 @@
  *     script allowed by hash, the protocol answered (load, point and change, errors, links, "not here" for saved data); GET
  *     /v1/artifacts/:id/live; Design and Live preview drawing a LiveView for a build that has one, and the parts for one that has not
  *   - the outbox: an ask from the apps' outbox is answered once (src/shell/sentAsks.ts, POST /v1/shell/ask with a clientId); the Offline
- *     screen and Home read the outbox from state; the bootstrap's offline flags
+ *     screen and Home read the outbox from state; every ask bar keeps an ask there while offline; the bootstrap's offline flags
  */
 import { describe, expect, it, vi } from "vitest";
 import Fastify from "fastify";
@@ -353,6 +353,33 @@ describe("Offline and the outbox on screen", () => {
       expect(actionsOf(s.root!).some((a) => a.kind === "outbox" && a.op === "clear")).toBe(true);
       const older = await build("bots.home", client, []);
       expect(json(older.s.root)).not.toContain("outbox.0");
+    }
+  });
+
+  it("every ask bar keeps an ask in the outbox while offline, and sends as before while online", async () => {
+    const OFFLINE = { eq: ["online", false] };
+    const offline = (root: Node) => actionsOf(root).filter((a) => a.kind === "condition" && json((a as { if?: unknown }).if) === json(OFFLINE)) as Array<ActionSpec & { then: ActionSpec & { actions: ActionSpec[] }; else: ActionSpec }>;
+    for (const client of ["phone", "desktop"] as const) {
+      // Home's ask bar (kit askAction): kept for any bot, the field emptied, said so; online, POST /v1/ask as it was.
+      const home = await build("bots.home", client, ["Outbox"]);
+      const bar = offline(home.s.root!);
+      expect(bar.length, client).toBeGreaterThan(0);
+      for (const c of bar) {
+        expect(c.then.actions, client).toEqual([
+          { kind: "outbox", op: "add", path: "/v1/shell/ask", body: { message: "$state.ask", bot: "any", device: client, mode: "text" }, label: "$state.ask", sub: "Any bot · asked {time}" },
+          { kind: "clearState", path: "ask" },
+          { kind: "toast", message: "Kept. It will send when you're back." },
+        ]);
+        expect(json(c.else), client).toContain('"path":"/v1/ask"');
+        expect(json(c.then), client).not.toContain("callEndpoint");
+      }
+      // Ask's own send: for the bot picked (its name on the line), or any; online, who answers and then the send, as before.
+      const ask = offline((await build("bots.ask", client, ["Outbox"])).s.root!);
+      const picked = ask.find((c) => json(c.then).includes('"bot":"$state.route.slug"'));
+      expect(picked?.then.actions[0], client).toMatchObject({ kind: "outbox", op: "add", body: { message: "$state.ask", bot: "$state.route.slug" }, sub: "$state.route.name · asked {time}" });
+      expect(json(picked?.else), client).toContain('"path":"/v1/shell/ask"');
+      const any = ask.find((c) => json(c.then).includes('"bot":"any"') && json(c.else).includes('"path":"/v1/shell/route"'));
+      expect(any, client).toBeTruthy();
     }
   });
 

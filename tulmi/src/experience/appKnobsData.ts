@@ -114,6 +114,7 @@ export const APP_KNOB_LABELS: Record<string, string> = {
   "desktop.notes.micOnly": "Noting your microphone only: the computer's sound isn't available here.",
   "desktop.notes.noMic": "Couldn't open the microphone, so notes did not start.",
   "desktop.notes.nothingHeard": "No one spoke in that note, so there is nothing to organise.",
+  "desktop.notes.oneKeySay": "Say “take notes” / “stop notes” with {key}",
   "desktop.notes.saving": "Notes saved. Organising them now.",
   "desktop.notes.untitled": "Your notes",
   "desktop.notify.accessibilityBody": "Text was copied. To auto-paste, enable Tailzu under System Settings → Privacy & Security → Accessibility.",

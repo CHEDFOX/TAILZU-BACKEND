@@ -10,11 +10,14 @@
  *   POST   /v1/botsapp/bots/spaces/:id/invite { email?, role?, perms? }  -> { code, link, expiresAt, email, mail, mailReady }
  *   DELETE /v1/botsapp/bots/spaces/:id/invites/:code    take an invite back
  *   POST   /v1/botsapp/bots/spaces/join { code }        -> { id, name }   (an email invite: signed in with that email)
+ *   GET    /v1/botsapp/bots/spaces/join/:code           -> { invite: { name, members, email } | null }   what an invite is for, before joining
  *   PUT    /v1/botsapp/bots/spaces/:id/members/:member { role } | { perms } | { canApprove };  DELETE (remove)
  *   POST   /v1/botsapp/bots/spaces/:id/roles { name, perms };  PUT|DELETE .../roles/:role
  *   POST   /v1/botsapp/bots/spaces/:id/bots { slug };  DELETE .../bots/:slug
  *   GET    /v1/botsapp/bots/spaces/:id/activity
- *   GET    /v1/botsapp/bots/invite/:code                a small page: what the invite is for and how to use it (no session)
+ *   GET    /s/bots.spaces?join=CODE                     an invite's link (spaces.ts inviteLinkOf) opened in a browser, not the app: a small
+ *                                                      page (no session) that says what it is for, opens Tailzu at joining, and gives the code
+ *   GET    /v1/botsapp/bots/invite/:code                the same page, for the links invites had before
  *
  *   GET    /v1/botsapp/bots/share/targets               -> { spaces, people }   where something can be shared
  *   POST   /v1/botsapp/bots/shares { kind, ref?, title?, text?, url?, items?, note?, access, to: { space } | { person } }  -> 201 { item, threadId }
@@ -47,7 +50,7 @@ import { startMailSender } from "../botsBots/mail.js";
 import { Payments } from "../botsBots/payments.js";
 import { SharedItems } from "../botsBots/shared.js";
 import { verifyQuery } from "../botsBots/spaceLinks.js";
-import type { Spaces } from "../botsBots/spaces.js";
+import { INVITE_CODE_RE, JOIN_SCREEN, type Spaces } from "../botsBots/spaces.js";
 import { SpaceTasks } from "../botsBots/spaceTasks.js";
 import { Threads, type FileRef } from "../botsBots/threads.js";
 import type { Trips } from "../botsBots/trips.js";
@@ -61,6 +64,31 @@ const bodyOf = (b: unknown): Body => (b && typeof b === "object" && !Array.isArr
 const param = (req: FastifyRequest, k: string): string => String((req.params as Record<string, unknown>)[k] ?? "");
 const queryOf = (req: FastifyRequest): Record<string, unknown> => (req.query as Record<string, unknown> | undefined) ?? {};
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
+/** An invite's code as typed or linked: letters and digits, upper case. */
+const codeOf = (v: unknown): string => String(v ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
+/** Where the app is got (the API's own /download page). */
+const DOWNLOAD = `${(process.env.PUBLIC_ORIGIN || "https://api.tailzu.space").replace(/\/+$/, "")}/download`;
+
+/**
+ * An invite opened in a browser instead of the app: what it is for, a button that opens Tailzu at joining (tulmi://, which the apps
+ * register), and the code to type in You › Spaces › Join with a code. The code is written into the page only once it has the exact
+ * shape of one; no script runs here.
+ */
+function invitePage(code: string, s: { name: string; members: number; email: string | null } | null): string {
+  const line = s
+    ? `You're invited to <b>${esc(s.name)}</b> on Tailzu (${s.members} ${s.members === 1 ? "person" : "people"} so far).`
+    : "This invite doesn't work any more. Ask for a new one.";
+  const who = s?.email ? `<p>It's for ${esc(s.email)}: sign in to Tailzu with that email to accept it.</p>` : "";
+  const how = s && INVITE_CODE_RE.test(code)
+    ? `${who}<a class="btn" href="tulmi://screen/${JOIN_SCREEN}?join=${code}">Open in Tailzu</a>`
+      + `<p>Or open Tailzu, go to <b>You → Spaces</b>, tap <b>Join with a code</b> and enter:</p><p class="code">${esc(code)}</p>`
+      + `<p class="meta">No Tailzu yet? <a href="${DOWNLOAD}">Get it here</a>, sign in, and open this link again.</p>`
+    : "";
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tailzu space invite</title>
+<style>body{margin:0;font:16px/1.45 -apple-system,system-ui,sans-serif;color:#0a0a0a;background:#fff}main{max-width:420px;margin:0 auto;padding:48px 20px;display:flex;flex-direction:column;gap:14px}p{margin:0}.btn{display:flex;align-items:center;justify-content:center;height:54px;border-radius:27px;background:#0a0a0a;color:#fff;text-decoration:none;font-weight:600;margin-top:4px}.code{font:600 22px ui-monospace,monospace;letter-spacing:2px}.meta{font-size:13px;color:#5c5c5c}a{color:#0a0a0a}</style></head>
+<body><main><p>${line}</p>${how}</main></body></html>`;
+}
+
 /** Shown inline only when it can't run anything: pictures, PDFs, sound and video. Everything else is a download. */
 const INLINE = /^(image\/(png|jpeg|webp|gif|heic|heif)|application\/pdf|audio\/[a-z0-9.+-]+|video\/(mp4|webm|quicktime))$/;
 
@@ -156,6 +184,8 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   }));
   app.delete(`${AREA}/spaces/:id/invites/:code`, RL, run(async (user, req) => { await spaces.revokeInvite(user.id, param(req, "id"), param(req, "code")); return { ok: true }; }));
   app.post(`${AREA}/spaces/join`, tight(20), run(async (user, req) => spaces.join({ id: user.id, email: user.email ?? null }, bodyOf(req.body).code, shownName(user))));
+  // What an invite is for, before joining (the invite's link opens Spaces with it: screens/spaces.ts).
+  app.get(`${AREA}/spaces/join/:code`, tight(30), run(async (_user, req) => ({ invite: await spaces.peek(codeOf(param(req, "code"))) })));
   app.put(`${AREA}/spaces/:id/members/:member`, RL, run(async (user, req) => {
     const b = bodyOf(req.body);
     if (b.role === undefined && b.perms === undefined) { await spaces.setApprover(user.id, param(req, "id"), param(req, "member"), b.canApprove); return { ok: true }; }
@@ -169,17 +199,17 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   app.delete(`${AREA}/spaces/:id/bots/:slug`, RL, run(async (user, req) => { await spaces.removeBot(user.id, param(req, "id"), param(req, "slug")); return { ok: true }; }));
   app.get(`${AREA}/spaces/:id/activity`, RL, run(async (user, req) => ({ activity: await spaces.activity(user.id, param(req, "id"), Number(queryOf(req).limit) || 50) })));
 
-  app.get(`${AREA}/invite/:code`, tight(30), async (req, reply) => {
-    const code = param(req, "code").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
-    const s = await spaces.peek(code).catch(() => null);
-    const line = s
-      ? `You're invited to <b>${esc(s.name)}</b> on Tailzu (${s.members} ${s.members === 1 ? "person" : "people"} so far).`
-      : "This invite doesn't work any more. Ask for a new one.";
-    const who = s?.email ? `<p>It's for ${esc(s.email)}: sign in to Tailzu with that email to accept it.</p>` : "";
-    const how = s ? `${who}<p>Open Tailzu, go to <b>You → Spaces</b>, tap <b>Join with a code</b> and enter:</p><p style="font:600 22px ui-monospace,monospace;letter-spacing:2px">${esc(code)}</p>` : "";
+  // An invite's link (https://app.tailzu.space/s/bots.spaces?join=CODE) opens the app; a browser that has no app to hand it to lands here.
+  const sendInvite = async (reply: FastifyReply, raw: unknown) => {
+    const code = codeOf(raw);
+    const s = code ? await spaces.peek(code).catch(() => null) : null;
     return reply.header("content-type", "text/html; charset=utf-8").header("cache-control", "no-store")
-      .send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tailzu space invite</title><body style="font:16px system-ui,sans-serif;max-width:420px;margin:48px auto;padding:0 20px;color:#0a0a0a"><p>${line}</p>${how}</body>`);
-  });
+      .header("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+      .header("referrer-policy", "no-referrer").header("x-robots-tag", "noindex")
+      .send(invitePage(code, s));
+  };
+  app.get(`/s/${JOIN_SCREEN}`, tight(30), async (req, reply) => sendInvite(reply, queryOf(req).join));
+  app.get(`${AREA}/invite/:code`, tight(30), async (req, reply) => sendInvite(reply, param(req, "code")));
 
   // ------------------------------------------------------------------ sharing
 

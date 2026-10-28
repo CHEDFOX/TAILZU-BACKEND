@@ -1221,10 +1221,12 @@ function fileTile(f: FileRow, ctx: BotsCtx): Node {
   ], { flexGrow: 1, flexBasis: 0, minWidth: 0, gap: 6 }, pick), `${f.name}, ${sub}`);
 }
 
-function optionTile(label: string, sub: string | undefined, glyphNode: Node, onPress: ActionRef, desk: boolean): Node {
+/** A line under an option: words, or the lines to choose between by what the window reports (each with its own `when`). */
+function optionTile(label: string, sub: string | Node[] | undefined, glyphNode: Node, onPress: ActionRef, desk: boolean): Node {
+  const subNodes = typeof sub === "string" ? [meta(sub, { size: 12 })] : sub ?? [];
   return labelled(desk
     ? row([box([glyphNode], { width: 40, height: 40, borderRadius: 20, backgroundColor: C.surface, alignItems: "center", justifyContent: "center", flexShrink: 0 }),
-      col([text(label, { size: 14, weight: 500, lineHeight: 19 }), ...(sub ? [meta(sub, { size: 12 })] : [])], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 1 })],
+      col([text(label, { size: 14, weight: 500, lineHeight: 19 }), ...subNodes], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 1 })],
     { gap: 12, padding: 10, borderRadius: 14 }, onPress)
     : col([box([glyphNode], { width: 52, height: 52, borderRadius: 26, backgroundColor: C.surface, alignItems: "center", justifyContent: "center" }), text(label, { size: 13, lineHeight: 17, align: "center" })],
       { alignItems: "center", gap: 8, flexGrow: 1, flexBasis: 0 }, onPress), label);
@@ -1249,7 +1251,11 @@ function attachScreen(ctx: BotsCtx, d: AttachData | undefined) {
   const options = [
     ...(canUpload(ctx) ? [
       optionTile("Photo", desk ? "From this computer" : undefined, glyph(G.image, { size: 22 }), sendIt("photo"), desk),
-      optionTile("Screenshot", desk ? "Pick a window or an area" : undefined, glyph(G.shot, { size: 22 }), sendIt("screenshot"), desk),
+      // A Mac takes it with its own picker; elsewhere the window has none and asks for a picture you saved (desktop media.js).
+      optionTile("Screenshot", desk ? [
+        when({ eq: ["desktop.os", "mac"] }, meta("Pick a window or an area", { size: 12 })),
+        when({ neq: ["desktop.os", "mac"] }, meta("Pick a screenshot you saved", { size: 12 })),
+      ] : undefined, glyph(G.shot, { size: 22 }), sendIt("screenshot"), desk),
       optionTile("Screen recording", desk ? "A video from this computer" : undefined, glyph(G.recording, { size: 22 }), sendIt("video"), desk),
       optionTile("File", desk ? "PDF, Word, CSV, zip" : undefined, glyph(G.file, { size: 22 }), sendIt("file"), desk),
     ] : []),
