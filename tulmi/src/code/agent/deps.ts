@@ -113,6 +113,8 @@ export interface AgentDeps {
   team?: TeamPorts;
   /** What becomes of a tool result once it is older than the last six (agent/mask.ts): instead of CODE_CONTEXT_STRATEGY, for a harness that compares them. */
   contextStrategy?: ContextStrategy;
+  /** Ask once for a focused test of the change before the checks run (phases.ts testWanted): instead of CODE_PROVE_FIX, for a harness that compares them. */
+  proveFix?: boolean;
   now: () => number;
   sleep: (ms: number) => Promise<void>;
   log?: AgentLog;

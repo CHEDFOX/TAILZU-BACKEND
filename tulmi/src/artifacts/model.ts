@@ -30,6 +30,7 @@
  * It never logs or keeps what was sent or received. Every dependency is injectable.
  */
 import { BudgetExceeded, callModel, type GatewayDeps } from "../code/brain/gateway.js";
+import { inRequestSpend } from "../code/brain/spend.js";
 import { DEFAULT_USD_INR, charsOf, worstCasePaise } from "../code/brain/money.js";
 import { getConfig } from "../config.js";
 import { tierSettings, type ModelTier, type TierSettings } from "../code/brain/tiers.js";
@@ -123,7 +124,12 @@ export class ArtifactModel {
     ]);
   }
 
-  async run<T>(r: RunRequest<T>): Promise<Ran<T>> {
+  /** One run, its tries and its continuation: rounded up to the paise once over all of them, and with the rest of the request when it is part of one (brain/spend.ts). */
+  run<T>(r: RunRequest<T>): Promise<Ran<T>> {
+    return inRequestSpend(() => this.runRequest(r));
+  }
+
+  private async runRequest<T>(r: RunRequest<T>): Promise<Ran<T>> {
     const meter = this.o.meter;
     let paise = 0;
     let again: string | undefined;

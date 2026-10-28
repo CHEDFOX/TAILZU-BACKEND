@@ -20,6 +20,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { BudgetExceeded, callModel, type GatewayDeps } from "../code/brain/gateway.js";
+import { inRequestSpend } from "../code/brain/spend.js";
 import type { ChatMessage } from "../code/brain/types.js";
 import { scanForSecrets } from "../code/policy.js";
 import type { CallFn } from "../code/work/model.js";
@@ -80,7 +81,12 @@ export function scrub(text: string): { text: string; cleaned: boolean } {
   return { text: out, cleaned };
 }
 
-export async function runBot(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
+/** One request: every turn of the run, its tools' model calls and what it remembers are rounded up to the paise once over all of them (code/brain/spend.ts). */
+export function runBot(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
+  return inRequestSpend(() => runBotRequest(d, r));
+}
+
+async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   const t0 = (d.now ?? Date.now)();
   const bot = r.bot;
   const emit = r.emit ?? (() => undefined);

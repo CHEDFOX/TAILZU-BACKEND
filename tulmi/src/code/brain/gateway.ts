@@ -43,7 +43,9 @@
  * JSON answer that did not hold up) is still added: it cost what it cost.
  * The rounding up to whole paise is done ONCE over a job's calls, not once per
  * call (spend.ts SpendMeter): per call it made a job of cheap calls read about
- * twice what the proxy charged, and the budget with it.
+ * twice what the proxy charged, and the budget with it. The calls of one request
+ * that is not a job (a front-door message, a research, an artifact edit, a bot's
+ * run) are one scope too, opened with inRequestSpend.
  *
  * PRIVACY. Requests ask OpenRouter for providers that neither keep nor train on
  * what they are sent (data_collection: "deny"), and carry the person as a
@@ -63,7 +65,7 @@
 import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { temperatureFor, type CallRecord } from "../../agent/llm.js";
-import { isReasoningRequiredError, learnReasoningRequired, lowestEffort, reasoningIsOff } from "../../agent/reasoning.js";
+import { isReasoningRequiredError, learnReasoningRequired, lowestEffort, maxTokensWithReasoning, reasoningIsOff } from "../../agent/reasoning.js";
 import { getConfig } from "../../config.js";
 import { sharedBreakers, type Breakers, type Ticket } from "../../guard/breaker.js";
 import { retryJitter } from "../../guard/timing.js";
@@ -72,7 +74,7 @@ import { principleText } from "../../principles/library.js";
 import { callRowOf, runStore, type RunStore } from "../../runs/index.js";
 import { jobStore, type JobStore } from "../jobs/store.js";
 import { DEFAULT_USD_INR, charsOf, tokensOfChars, usdFor, usdToPaise, worstCasePaise } from "./money.js";
-import { SpendMeter, addJobSpend, readJobMoney, sharedSpendMeter } from "./spend.js";
+import { SpendMeter, addJobSpend, currentSpendScope, readJobMoney, sharedSpendMeter } from "./spend.js";
 import {
   UNLISTED_MODEL, familyOf, ladderOf, reasoningParam, tierOfModel, tierTable,
   type ModelTier, type TierSettings,
@@ -156,6 +158,8 @@ export interface TrailEntry {
   repaired?: boolean;
   /** The model answered "Reasoning is mandatory": it was asked again at once with its lowest effort, and remembered. */
   reasoningRetried?: boolean;
+  /** The answer ran out of room (finish_reason "length") with nothing written, the thinking having taken it all: asked again at once with a larger allowance. */
+  grown?: boolean;
 }
 
 /** The job's budget, or this call's own, would be passed by the next call. Catch it to ask for less or to stop. */
@@ -252,13 +256,18 @@ const RETRY_BASE_MS = 500;
 const PROBLEM_MAX = 300;
 
 class CallFailure extends Error {
-  /** `cause` is the error the SDK threw, so a failure that ends a job still says what the model's side said. `reasoningRequired`: the 400 for turning thinking off in a model that cannot. */
-  constructor(readonly kind: "http" | "timeout" | "empty", readonly status?: number, readonly retryAfterMs?: number, o: { cause?: unknown; reasoningRequired?: boolean } = {}) {
+  /**
+   * `cause` is the error the SDK threw, so a failure that ends a job still says what the model's side said. `reasoningRequired`: the 400 for turning thinking
+   * off in a model that cannot. `cutShort`: the empty answer stopped because it ran out of max_tokens (the thinking took them all).
+   */
+  constructor(readonly kind: "http" | "timeout" | "empty", readonly status?: number, readonly retryAfterMs?: number, o: { cause?: unknown; reasoningRequired?: boolean; cutShort?: boolean } = {}) {
     super(`model call failed (${kind}${status === undefined ? "" : ` ${status}`})`, o.cause !== undefined ? { cause: o.cause } : undefined);
     this.name = "CallFailure";
     this.reasoningRequired = o.reasoningRequired === true;
+    this.cutShort = o.cutShort === true;
   }
   readonly reasoningRequired: boolean;
+  readonly cutShort: boolean;
 }
 
 class JsonInvalid extends Error {
@@ -467,9 +476,9 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
     return { spent: m.spentPaise, budget: m.budgetPaise };
   }
 
-  /** Refuses the call if its worst case would pass the job's budget or this call's own. */
-  async function guard(model: string, messages: readonly ChatMessage[]): Promise<void> {
-    const need = worstCasePaise({ chars: charsOf(messages, input.tools), maxTokens, usdPerMIn: settings.usdPerMIn, usdPerMOut: settings.usdPerMOut }, fx);
+  /** Refuses the call if its worst case would pass the job's budget or this call's own. `tokens`: what this request may write, thinking included. */
+  async function guard(model: string, messages: readonly ChatMessage[], tokens: number): Promise<void> {
+    const need = worstCasePaise({ chars: charsOf(messages, input.tools), maxTokens: tokens, usdPerMIn: settings.usdPerMIn, usdPerMOut: settings.usdPerMOut }, fx);
     const money = await jobMoney();
     const who = { needPaise: need, purpose: input.purpose, ...(input.tier ? { tier: input.tier } : {}), model };
     if (money && money.spent + need > money.budget) {
@@ -506,11 +515,16 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
     }
   }
 
-  /** One request to one model. Throws CallFailure (climb), BudgetExceeded, or an AbortError. `ticket` is the model's breakers, told how it went. */
-  async function oneCall(model: string, messages: readonly ChatMessage[], ticket: Ticket | null, lowest = false): Promise<Completion> {
+  /**
+   * One request to one model. Throws CallFailure (climb), BudgetExceeded, or an AbortError. `ticket` is the model's breakers, told how it went.
+   * `lowest`: the model has just said it cannot think "none". `bigger`: the last try wrote nothing because the thinking took all the room.
+   */
+  async function oneCall(model: string, messages: readonly ChatMessage[], ticket: Ticket | null, how: { lowest?: boolean; bigger?: boolean } = {}): Promise<Completion> {
     if (input.signal?.aborted) throw abortError();
-    await guard(model, messages);
-    const body = requestBody(model, messages, lowest);
+    const reasoning = reasoningOf(model, how.lowest === true);
+    const tokens = tokensFor(reasoning, how.bigger === true);
+    await guard(model, messages, tokens);
+    const body = requestBody(model, messages, reasoning, tokens);
     const offSent = reasoningIsOff(body.reasoning);
     const ctrl = new AbortController();
     let timedOut = false;
@@ -553,8 +567,10 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
       } else {
         usd = usdFor(tokensOfChars(charsOf(messages, input.tools)), tokensOfChars(done.text.length + done.toolCalls.reduce((n, t) => n + t.arguments.length, 0)), settings);
       }
-      // A call of a job is charged against the job's running total, rounded up once for all of them (spend.ts); one with no job, to the next paise.
-      const paise = input.jobId ? meter.charge(input.jobId, usd * fx * 100) : usdToPaise(usd, fx);
+      // A call of a job is charged against the job's running total, rounded up once for all of them (spend.ts); so is a call of a request that opened a scope
+      // (the front door, research, artifacts, bots: inRequestSpend); one with neither, to the next paise.
+      const scope = input.jobId ?? currentSpendScope();
+      const paise = scope ? meter.charge(scope, usd * fx * 100) : usdToPaise(usd, fx);
       total.promptTokens += done.promptTokens ?? 0;
       total.completionTokens += done.completionTokens ?? 0;
       total.costUsd += usd;
@@ -566,7 +582,7 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
       // An answer with nothing in it is the model failing, as far as the breaker is concerned.
       if (ticket) { if (empty) breakers!.failure(ticket); else breakers!.success(ticket); }
       await settle(rec, paise);
-      if (empty) throw new CallFailure("empty");
+      if (empty) throw new CallFailure("empty", undefined, undefined, { cutShort: done.finishReason === "length" });
       return done;
     } catch (err) {
       if (rec.outcome === "empty" || err instanceof BudgetExceeded) throw err;
@@ -590,7 +606,22 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
     }
   }
 
-  function requestBody(model: string, messages: readonly ChatMessage[], lowest = false): Record<string, unknown> {
+  /** The reasoning a request to a model carries. `lowest`: the model has just said it cannot think "none"; whatever the tier asked for, this is the least it allows. */
+  function reasoningOf(model: string, lowest: boolean): Record<string, unknown> {
+    return lowest ? { effort: lowestEffort(model) } : reasoningParam(model, settings.reasoning);
+  }
+
+  /**
+   * The most a request may write, thinking included. A tier that asks for "none" gets the model's least effort when the model cannot think less, and that thinking
+   * would come out of the answer's own limit (a classifier's 600 tokens, all spent thinking, and an empty answer): so it gets an allowance on top. A tier that
+   * chose its level sized its limit for it. `bigger`: the last try ran out of room, so the thinking gets more.
+   */
+  function tokensFor(reasoning: Record<string, unknown>, bigger: boolean): number {
+    const forced = settings.reasoning === "none";
+    return bigger || forced ? maxTokensWithReasoning(maxTokens, reasoning, { retry: bigger }) : maxTokens;
+  }
+
+  function requestBody(model: string, messages: readonly ChatMessage[], reasoning: Record<string, unknown>, tokens: number): Record<string, unknown> {
     const temperature = temperatureFor(model);
     return {
       model,
@@ -599,9 +630,8 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
       provider: { data_collection: "deny" },
       // OpenRouter's usage accounting: the charge in dollars comes back with the answer.
       usage: { include: true },
-      max_tokens: maxTokens,
-      // `lowest`: the model has just said it cannot think "none"; whatever the tier asked for, this is the least it allows.
-      reasoning: lowest ? { effort: lowestEffort(model) } : reasoningParam(model, settings.reasoning),
+      max_tokens: tokens,
+      reasoning,
       ...(temperature === undefined ? {} : { temperature }),
       ...(userId ? { user: hashedUser(userId) } : {}),
       messages: toWire(messages),
@@ -621,26 +651,42 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
     trail.push(entry);
     let retried = false;
     let reasoningRetried = false;
+    let grown = false;
 
     const attempt = async (messages: readonly ChatMessage[]): Promise<Completion> => {
-      try {
-        return await oneCall(model, messages, ticket);
-      } catch (err) {
-        // "Reasoning is mandatory for this endpoint": remembered for the life of the process (every later call, of any step, sends this model its lowest effort
-        // and not "none"), and asked once more at once with the lowest effort, on this model, instead of the ladder climbing.
-        if (err instanceof CallFailure && err.reasoningRequired && !reasoningRetried) {
-          reasoningRetried = true;
-          entry.reasoningRetried = true;
-          learnReasoningRequired(model);
-          return await oneCall(model, messages, ticket, true);
+      const how: { lowest?: boolean; bigger?: boolean } = {};
+      // The failure the larger try was made for: if the money does not cover that try, this is what happened, and the ladder climbs as it always did.
+      let cutShort: CallFailure | undefined;
+      for (;;) {
+        try {
+          return await oneCall(model, messages, ticket, how);
+        } catch (err) {
+          if (err instanceof BudgetExceeded && cutShort) throw cutShort;
+          // "Reasoning is mandatory for this endpoint": remembered for the life of the process (every later call, of any step, sends this model its lowest effort
+          // and not "none"), and asked once more at once with the lowest effort, on this model, instead of the ladder climbing.
+          if (err instanceof CallFailure && err.reasoningRequired && !reasoningRetried) {
+            reasoningRetried = true;
+            entry.reasoningRetried = true;
+            learnReasoningRequired(model);
+            how.lowest = true;
+            continue;
+          }
+          // Nothing written and "length": the model that must think spent the whole limit thinking. Once, on this model, with a larger allowance.
+          if (err instanceof CallFailure && err.kind === "empty" && err.cutShort && !grown) {
+            grown = true;
+            entry.grown = true;
+            cutShort = err;
+            how.bigger = true;
+            continue;
+          }
+          if (err instanceof CallFailure && err.kind === "http" && transient(err.status) && !retried) {
+            retried = true;
+            entry.retried = true;
+            await sleep(retryJitter(err.retryAfterMs ?? RETRY_BASE_MS, random));
+            continue;
+          }
+          throw err;
         }
-        if (err instanceof CallFailure && err.kind === "http" && transient(err.status) && !retried) {
-          retried = true;
-          entry.retried = true;
-          await sleep(retryJitter(err.retryAfterMs ?? RETRY_BASE_MS, random));
-          return await oneCall(model, messages, ticket);
-        }
-        throw err;
       }
     };
 

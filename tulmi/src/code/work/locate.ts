@@ -20,6 +20,10 @@
  *        feature  the feature map (feature)
  *        map      the repo map (project/repomap.ts): the files nearest, in the definition/reference graph, to the files and identifiers the request
  *                 names, by PageRank restarted at them. It finds what the other five cannot: the callers and the callees of the thing that was named
+ *        near     (only when the answer is not already sure) the import-graph neighbours of the best candidates: the file that wires a component to
+ *                 the state it shows (App.jsx), the route table that calls a validator (app.js), and the data and state files (hooks, stores, services)
+ *                 that hold what the components render. A neighbour is checked against what the request quotes: a file that contains the very
+ *                 string the request wants changed (`"not found"`, a route's segment) is the better candidate than the one that only shares a word
  *      How central a file is and how often it changes are a weak prior, no more.
  *      When the free cues find fewer than two STRONG hits, the cheap tier is asked
  *      once for synonyms (signup, register, create account) and the signals run
@@ -52,7 +56,7 @@ import { z } from "zod";
 import type { BrainHandle } from "../project/index.js";
 import type { MapHit } from "../project/repomap.js";
 import { tokenize } from "../project/search.js";
-import { isTestPath } from "../project/lang.js";
+import { classOf, isSecretPath, isTestPath } from "../project/lang.js";
 import type { StoredFile } from "../project/types.js";
 import { scanForSecrets } from "../policy.js";
 import { errorMessage, extractCues, isVague, looksLikeIdentifier, type Cues } from "./cues.js";
@@ -60,7 +64,7 @@ import { askJson, cut, fence, forModel, oneLine, type ModelCtx } from "./model.j
 
 // ------------------------------------------------------------------- shapes
 
-export type SignalId = "path" | "text" | "symbol" | "file" | "feature" | "map";
+export type SignalId = "path" | "text" | "symbol" | "file" | "feature" | "map" | "near";
 
 /** What locate asks of a brain. `repoMap` is optional: a brain without it (a test's stand-in) simply has no sixth signal. */
 export type LocateBrain = Pick<BrainHandle, "findFiles" | "findSymbols" | "findTexts" | "neighbors" | "testsFor" | "feature" | "features" | "file"> & Partial<Pick<BrainHandle, "repoMap">>;
@@ -149,9 +153,11 @@ const EXPAND_TOKENS = 300;
 const PICK_TOKENS = 500;
 
 export interface Weights {
-  path: number; text: number; symbol: number; file: number; feature: number; map?: number;
+  path: number; text: number; symbol: number; file: number; feature: number; map?: number; near?: number;
   /** What a test file's evidence counts for, against the same evidence in a source file: 1 when the request is about tests, less when it is not. */
   tests?: number;
+  /** The same for a documentation file (README, docs/): 1 when the request is about documentation, less when it is not. */
+  docs?: number;
 }
 
 /** A test file is a place the change is CHECKED, listed on its own (`tests`); it is not where a change to behaviour is made, unless the request is about tests. */
@@ -159,9 +165,18 @@ export const TEST_FILE_WEIGHT = 0.5;
 const ABOUT_TESTS = /\b(?:tests?|specs?|testing|coverage|jest|vitest|pytest|mocha|unittest|e2e)\b/i;
 export const wantsTests = (c: Cues): boolean => [...c.nouns, ...c.identifiers, ...c.paths, ...c.dirs, ...c.quoted].some((w) => ABOUT_TESTS.test(w) || isTestPath(w));
 
+/**
+ * A documentation file is where a change is DESCRIBED, not made, unless the request is about documentation. What a README says about the project (and a model's
+ * summary of it, which is made from its text) is a handle on the project for a person reading it, not a place to change a route: its evidence counts for less.
+ * It is never the reason a source file is, or is not, a candidate: nothing a doc says is carried to another file.
+ */
+export const DOC_FILE_WEIGHT = 0.35;
+const ABOUT_DOCS = /\b(?:readme|docs?|documentation|changelog|contributing|licen[sc]e|guide|tutorial|wiki|markdown|docstrings?)\b|\.mdx?\b/i;
+export const wantsDocs = (task: string, c: Cues): boolean => ABOUT_DOCS.test(task) || c.paths.some((p) => classOf(p) === "doc");
+
 /** What each signal counts for, by what the request is about. */
-export function weightsFor(c: Cues, map?: MapSettings): Weights {
-  const w: Weights = { path: 1.6, text: 1, symbol: 0.9, file: 0.6, feature: 0.4, map: map?.weight ?? MAP_DEFAULTS.weight, tests: wantsTests(c) ? 1 : TEST_FILE_WEIGHT };
+export function weightsFor(c: Cues, map?: MapSettings, task = ""): Weights {
+  const w: Weights = { path: 1.6, text: 1, symbol: 0.9, file: 0.6, feature: 0.4, map: map?.weight ?? MAP_DEFAULTS.weight, near: 1, tests: wantsTests(c) ? 1 : TEST_FILE_WEIGHT, docs: wantsDocs(task, c) ? 1 : DOC_FILE_WEIGHT };
   if (c.ui) { w.text = 1.3; w.symbol = 0.8; }
   if (c.identifiers.length || c.routes.length) w.symbol = Math.max(w.symbol, 1.2);
   if (c.errors.length || c.frames.length) w.path = 1.8;
@@ -222,7 +237,7 @@ const settle = async <T>(xs: Array<Promise<T>>): Promise<T[]> => (await Promise.
 
 // ------------------------------------------------------------ the signals
 
-interface Signals { path: Hit[]; text: Hit[]; symbol: Hit[]; file: Hit[]; feature: Hit[]; map?: Hit[] }
+interface Signals { path: Hit[]; text: Hit[]; symbol: Hit[]; file: Hit[]; feature: Hit[]; map?: Hit[]; near?: Hit[] }
 
 /** A path from the request or a trace, found in the brain: as written, or by its tail, or by its name. */
 export async function resolvePath(brain: Pick<LocateBrain, "file" | "findFiles">, p: string): Promise<string | null> {
@@ -406,7 +421,7 @@ export interface Fused {
   lines: number[];
 }
 
-const IDS: readonly SignalId[] = ["path", "text", "symbol", "file", "feature", "map"];
+const IDS: readonly SignalId[] = ["path", "text", "symbol", "file", "feature", "map", "near"];
 
 export function fuse(s: Signals, w: Weights): Fused[] {
   const by = new Map<string, Fused>();
@@ -425,6 +440,7 @@ export function fuse(s: Signals, w: Weights): Fused[] {
   // A test file that shares a word with the request (a helper called addTodo, a describe block) is not where the change goes: its evidence counts for less, unless
   // the request is about tests. (Without this, two test files outranked the hook that held the state in a React app, and the plan was written for the wrong files.)
   for (const f of out) if (isTestPath(f.path)) f.raw *= w.tests ?? 1;
+  for (const f of out) if (classOf(f.path) === "doc") f.raw *= w.docs ?? 1;
   for (const f of out) f.score = f.raw / (f.raw + HALF);
   return out.sort((a, b) => b.score - a.score || (a.path < b.path ? -1 : 1));
 }
@@ -549,6 +565,162 @@ async function pickFrom(task: string, fused: Fused[], brain: LocateBrain, read: 
   return { picks, sure: r.value.sure && picks.length > 0, paise: r.paise };
 }
 
+// ------------------------------------------------------------ the neighbours
+
+/**
+ * What a file is FOR in an app, as far as its place and name say: the state or data it holds (a hook, a store, a service, a context), the file that wires the
+ * parts together (App, main, the server, the router), the screen parts (components, views, pages), or none of those. A change to what a screen DOES is made
+ * in the first two as often as in the third, and a search by the request's nouns finds the third: TodoItem, TodoList and AddTodo matched "todo" and the hook
+ * that holds the todos, and the App that wires it, were not among the three places the question offered.
+ */
+export type FileRole = "state" | "entry" | "ui" | "other";
+
+const STATE_DIR = /(?:^|\/)(?:hooks?|stores?|state|services?|contexts?|models?|reducers?|slices?|repositor(?:y|ies)|api|data|queries|mutations)\//i;
+const STATE_FILE = /^(?:use[A-Z]\w*|\w*(?:Store|Service|Context|Provider|Reducer|Slice|Repository)|store|state|reducer|context)\.[a-z0-9]+$/;
+const ENTRY_FILE = /^(?:App|app|main|index|server|routes?|router|_app|Root)\.[a-z0-9]+$/;
+const UI_PATH = /(?:^|\/)(?:components?|views?|pages?|screens?|ui|widgets?|templates?)\/|\.(?:jsx|tsx|vue|svelte)$/i;
+
+export function roleOf(path: string): FileRole {
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  if (STATE_FILE.test(name) || STATE_DIR.test(path)) return "state";
+  if (ENTRY_FILE.test(name)) return "entry";
+  if (UI_PATH.test(path)) return "ui";
+  return "other";
+}
+
+/**
+ * Up to `n` of the candidates, best first, but not all of one role: after the best, a candidate of a role not yet chosen comes before a better one of a role
+ * that is (when it is a real candidate: at least `floor` of the best one's score), then the rest by rank. Three components that share a word are one
+ * candidate's worth of information; the hook and the App are two more.
+ */
+export function diversify<T extends { path: string; score: number }>(ranked: readonly T[], n: number, floor = 0.3): T[] {
+  const first = ranked[0];
+  if (!first) return [];
+  const out: T[] = [first];
+  const roles = new Set<FileRole>([roleOf(first.path)]);
+  for (const f of ranked.slice(1)) {
+    if (out.length >= n) break;
+    const role = roleOf(f.path);
+    if (role === "other" || roles.has(role) || f.score < floor * first.score) continue;
+    out.push(f);
+    roles.add(role);
+  }
+  for (const f of ranked.slice(1)) {
+    if (out.length >= n) break;
+    if (!out.includes(f)) out.push(f);
+  }
+  return out;
+}
+
+/** The anchors the neighbours are taken of, the most neighbours added, and how a neighbour's evidence is made up (each a weak 0 to 1). */
+const NEAR_ANCHORS = 3;
+const NEAR_MAX = 6;
+const NEAR_FILES_READ = 14;
+const NEAR_Q = { importedBy: 0.4, imports: 0.3, hub: 0.2, state: 0.3 } as const;
+/** Words that make a request about how something LOOKS: a state file is no likelier a place for it than the screen part. */
+const LOOKS = /\b(?:colou?rs?|fonts?|margins?|padding|spacing|align(?:ment|ed)?|css|styles?|styling|themes?|dark mode|rounded|borders?|shadows?|icons?|logos?|typography|layout|animations?)\b/i;
+const ACTS = /\b(?:add|adds|remove|removes|delete|deletes|clear|clears|toggle|count|counts|save|saves|load|loads|fetch|filter|sort|persist|update|updates|disable|disabled|enable|submit|validate|reset|store|keep|track|shows? how many|answers?|returns?|responds?)\b/i;
+
+/** What the request quotes or names that the code itself would say: a quoted string, a route's own segments, an HTTP status. With how much each is worth (a phrase is, a lone short word less). */
+export function literalsOf(task: string, c: Cues): Array<{ re: RegExp; w: number; label: string }> {
+  const esc = (x: string): string => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const out: Array<{ re: RegExp; w: number; label: string }> = [];
+  const seen = new Set<string>();
+  const add = (re: RegExp, w: number, label: string): void => { if (!seen.has(re.source)) { seen.add(re.source); out.push({ re, w, label }); } };
+  for (const q of c.quoted) {
+    const t = q.trim();
+    if (t.length >= 3) add(new RegExp(esc(t), "i"), /\s/.test(t) || t.length >= 8 ? 1 : 0.5, `"${cut(t, 40)}"`);
+  }
+  for (const r of c.routes) {
+    for (const seg of r.split("/")) if (/^[A-Za-z][\w-]{2,}$/.test(seg)) add(new RegExp(`['"\`/]${esc(seg)}['"\`/]`, "i"), 0.5, `the "${seg}" route`);
+  }
+  if (/\b(?:answers?|status|responds?|returns?|code|http)\b/i.test(task)) {
+    for (const m of task.matchAll(/\b([1-5]\d\d)\b/g)) add(new RegExp(`\\b${m[1]}\\b`), 0.5, `status ${m[1]}`);
+  }
+  return out;
+}
+
+/**
+ * The neighbours of the best candidates, as a list for the fusion (the "near" signal), or null when there are none to add. Taken only for an answer that is not
+ * already sure (the caller's rule), and never for a request that names one place. No model is asked.
+ *
+ *   - the files that import a candidate (the wiring: App.jsx, the server) and the files it imports, each weak on its own, stronger when two candidates share it
+ *     (App.jsx imports both the list and the form);
+ *   - the state and data files (a hook, a store, a service) among the candidates and among the wiring's imports, for a request about what something DOES;
+ *   - and, when the workspace can be read, a literal check of the candidates and the neighbours: a file that contains the string the request quotes, or the
+ *     segments of the route it names, is a better candidate than one that only shares a word with it (app.js has `'not found'` and the `'items'` route,
+ *     validate.js has validateItem).
+ * Test and documentation files are never added as neighbours.
+ */
+async function nearSignal(task: string, c: Cues, brain: LocateBrain, fused: readonly Fused[], read: LocateOptions["read"]): Promise<Hit[] | null> {
+  const eligible = (p: string): boolean => !isTestPath(p) && ["source", "markup"].includes(classOf(p));
+  const anchors = fused.filter((f) => eligible(f.path) && f.score >= 0.25).slice(0, NEAR_ANCHORS);
+  if (!anchors.length) return null;
+  const isAnchor = new Set(anchors.map((a) => a.path));
+  const h = new Hits();
+  const behaviour = !LOOKS.test(task) || ACTS.test(task);
+
+  // The neighbours: who imports each anchor, and what it imports.
+  const found = await settle(anchors.map(async (a) => ({ a, n: await brain.neighbors(a.path) })));
+  const seenBy = new Map<string, { of: string[]; base: number; why: string }>();
+  for (const { a, n } of found) {
+    const take = (paths: readonly string[], base: number, relation: string): void => {
+      for (const p of paths.slice(0, 8)) {
+        if (isAnchor.has(p) || !eligible(p)) continue;
+        const cur = seenBy.get(p) ?? { of: [], base: 0, why: `${relation} ${a.path}` };
+        if (!cur.of.includes(a.path)) cur.of.push(a.path);
+        cur.base = Math.max(cur.base, base);
+        seenBy.set(p, cur);
+      }
+    };
+    take(n.importedBy, NEAR_Q.importedBy, "imports");
+    take(n.imports, NEAR_Q.imports, "is imported by");
+  }
+  const added = [...seenBy.entries()]
+    .map(([path, v]) => ({ path, q: Math.min(0.9, v.base + NEAR_Q.hub * (v.of.length - 1) + (behaviour && roleOf(path) === "state" ? NEAR_Q.state : 0)), why: v.of.length > 1 ? `${v.why} and ${v.of.length - 1} other candidate(s)` : v.why }))
+    .sort((a, b) => b.q - a.q || (a.path < b.path ? -1 : 1))
+    .slice(0, NEAR_MAX);
+  for (const x of added) h.add(x.path, x.q, x.why);
+
+  // The state and data files the wiring pulls in (App.jsx imports the hook), and the ones already found: a request about what something does is made there too.
+  if (behaviour) {
+    const wiring = added.filter((x) => roleOf(x.path) === "entry").slice(0, 2);
+    const more = await settle(wiring.map(async (x) => ({ x, n: await brain.neighbors(x.path) })));
+    for (const { x, n } of more) for (const p of n.imports.slice(0, 12)) if (!isAnchor.has(p) && eligible(p) && roleOf(p) === "state") h.add(p, NEAR_Q.state, `held by ${x.path}, which wires the candidates`);
+    for (const f of fused.slice(0, 12)) if (eligible(f.path) && roleOf(f.path) === "state") h.add(f.path, NEAR_Q.state, "holds the state the candidates show");
+  }
+
+  // What the code says: the candidates and the neighbours are read for the strings and route segments the request names.
+  const lits = literalsOf(task, c);
+  const said = new Map<string, string>();
+  if (read && lits.length) {
+    const paths = [...new Set([...fused.slice(0, 8).map((f) => f.path), ...added.map((x) => x.path)])].filter((p) => eligible(p) && !isSecretPath(p)).slice(0, NEAR_FILES_READ);
+    const texts = await settle(paths.map(async (p) => ({ p, text: await read(p).catch(() => null) })));
+    for (const { p, text } of texts) {
+      if (!text) continue;
+      const body = text.slice(0, 200_000);
+      const hit = lits.filter((l) => l.re.test(body));
+      const worth = hit.reduce((n, l) => n + l.w, 0);
+      // One short word is not evidence: a phrase, or two weaker things, is.
+      if (worth >= 1) {
+        const why = `has ${hit.slice(0, 3).map((l) => l.label).join(" and ")}`;
+        h.add(p, Math.min(0.9, 0.3 * worth + 0.15), why);
+        said.set(p, why);
+      }
+    }
+  }
+  // What the code says is the better reason to give for a file than where it sits in the import graph.
+  const ranked = h.ranked().map((x) => (said.has(x.path) ? { ...x, whys: [said.get(x.path)!, ...x.whys.filter((w) => w !== said.get(x.path))] } : x));
+  return ranked.length ? ranked : null;
+}
+
+/** Whether a request names exactly one place with a strong hit (a path, a symbol, a file): then it is about that place and its neighbours are not asked about. */
+function namesOnePlace(s: Signals): boolean {
+  const named = new Set<string>();
+  for (const id of ["path", "symbol", "file"] as const) for (const x of s[id]) if (x.q >= STRONG_Q) named.add(x.path);
+  return named.size === 1;
+}
+
 // ---------------------------------------------------------------- the answer
 
 const LABELS = ["A", "B", "C"] as const;
@@ -562,8 +734,10 @@ function targetOf(f: Fused, why?: string): LocateTarget {
 
 /** The question for a request that cannot be placed: two or three labelled options, written out. */
 export async function questionFor(fused: readonly Fused[], brain: Pick<LocateBrain, "features">): Promise<LocateQuestion> {
-  const distinct: Fused[] = [];
-  for (const f of fused) { if (!distinct.some((d) => d.path === f.path)) distinct.push(f); if (distinct.length === 3) break; }
+  const unique: Fused[] = [];
+  for (const f of fused) if (!unique.some((d) => d.path === f.path)) unique.push(f);
+  // Not three screen parts that share a word: the best, then the state and the wiring when they are real candidates too.
+  const distinct = diversify(unique, 3);
   const options: LocateOption[] = distinct.map((f, i) => ({ label: LABELS[i]!, title: f.path, path: f.path, why: cut(whyOf(f), 140) }));
   let lead = distinct.length > 1
     ? "I found more than one place this could be. Which one do you mean?"
@@ -597,7 +771,19 @@ async function around(brain: LocateBrain, targets: LocateTarget[]): Promise<{ re
 
 // ------------------------------------------------------------------- locate
 
-export async function locate(task: string, brain: LocateBrain, opts: LocateOptions): Promise<Located> {
+/** A file read once however many steps look at it: the literal check of the neighbours and the excerpts the reader is shown are the same reads. */
+function memoRead(read: LocateOptions["read"]): LocateOptions["read"] {
+  if (!read) return undefined;
+  const seen = new Map<string, Promise<string | null>>();
+  return (path) => {
+    let got = seen.get(path);
+    if (!got) { got = read(path); seen.set(path, got); }
+    return got;
+  };
+}
+
+export async function locate(task: string, brain: LocateBrain, given: LocateOptions): Promise<Located> {
+  const opts: LocateOptions = { ...given, read: memoRead(given.read) };
   const text = String(task ?? "");
   const cues = opts.cues ?? extractCues(text);
   const used: Located["used"] = { expanded: false, picked: false, paise: 0 };
@@ -606,13 +792,15 @@ export async function locate(task: string, brain: LocateBrain, opts: LocateOptio
   });
   if (isVague(cues)) return done([], 0, await questionFor([], brain));
 
-  const weights = weightsFor(cues, opts.map);
+  const weights = weightsFor(cues, opts.map, text);
   let signals = await runSignals(brain, cues, []);
   let fused = fuse(signals, weights);
   await withPrior(brain, fused);
   // Not sure yet? The repo map takes a look (consultMap).
   fused = (await consultMap(brain, cues, signals, weights, fused, opts.map)).fused;
   let { value: confidence, margin } = confidenceOf(fused);
+  /** The neighbours were added: there is something to choose between, and the reader is asked even when the search alone would not be sure enough to ask it. */
+  let widened = false;
 
   // Not sure, and fewer than two strong hits: a cheap model offers other words for the same thing, and the signals run again with them.
   // (Two strong hits that do not settle it are two places, not a vocabulary problem: synonyms would not help.)
@@ -629,18 +817,33 @@ export async function locate(task: string, brain: LocateBrain, opts: LocateOptio
       ({ value: confidence, margin } = confidenceOf(fused));
     }
   }
+  // Still not sure, and the request does not name one place: the neighbours of the best candidates (the wiring, the state), checked against what it quotes.
+  if (confidence <= CONFIDENT && fused.length && !namesOnePlace(signals)) {
+    const near = await nearSignal(text, cues, brain, fused, opts.read);
+    if (near) {
+      widened = true;
+      signals.near = near;
+      fused = fuse(signals, weights);
+      await withPrior(brain, fused);
+      ({ value: confidence, margin } = confidenceOf(fused));
+    }
+  }
   if (!fused.length) return done([], 0, await questionFor([], brain));
 
+  // A neighbour found only by where it sits in the import graph is a candidate to ask about and to show the reader, not a place to go on with when the search is
+  // otherwise as sure as it gets: it is a target when it holds what the request quotes, or when the search is unsure enough (or tied) that it is being asked about.
+  const adjacencyOnly = (f: Fused): boolean => f.signals.length === 1 && f.signals[0] === "near" && !f.whys.some((w) => w.startsWith("has "));
   const toTargets = (): LocateTarget[] => {
     const first = fused[0]!;
     if (confidence > CONFIDENT) return fused.filter((f, i) => i === 0 || (i < 4 && f.score >= 0.65 * first.score)).map((f) => targetOf(f));
-    return fused.filter((f, i) => i < 5 && f.score >= 0.4 * first.score).map((f) => targetOf(f));
+    const asking = confidence < UNSURE || tie;
+    return fused.filter((f, i) => i < 5 && f.score >= 0.4 * first.score && (asking || i === 0 || !adjacencyOnly(f))).map((f) => targetOf(f));
   };
 
   if (confidence > CONFIDENT) return done(toTargets(), confidence);
 
   let tie = fused.length > 1 && margin < 0.15;
-  if (confidence >= UNSURE) {
+  if (confidence >= UNSURE || widened) {
     // The middle: a cheap model reads the top eight and picks.
     const p = await pickFrom(text, fused, brain, opts.read, opts.model);
     if ("skipped" in p) {
@@ -686,16 +889,16 @@ export async function fusedFor(task: string, brain: LocateBrain, map?: MapSettin
 }
 
 /** The five signals of a request, which do not depend on the map's settings: a benchmark that tries many settings computes them once. */
-export interface BaseSignals { cues: Cues; signals: Signals }
+export interface BaseSignals { cues: Cues; signals: Signals; task?: string }
 export async function baseSignals(task: string, brain: LocateBrain): Promise<BaseSignals> {
   const cues = extractCues(String(task ?? ""));
-  return { cues, signals: await runSignals(brain, cues, []) };
+  return { cues, task: String(task ?? ""), signals: await runSignals(brain, cues, []) };
 }
 
 /** The base signals plus the repo map under these settings, fused. */
 export async function fusedWith(brain: LocateBrain, base: BaseSignals, map?: MapSettings): Promise<Fused[]> {
   const signals: Signals = { ...base.signals };
-  const weights = weightsFor(base.cues, map);
+  const weights = weightsFor(base.cues, map, base.task);
   const fused = fuse(signals, weights);
   await withPrior(brain, fused);
   return (await consultMap(brain, base.cues, signals, weights, fused, map)).fused;

@@ -24,7 +24,11 @@
  * fall back (reasoningFor, reasoning.ts). A model that is not known to be one
  * and answers that exact 400 is asked again at once with its lowest effort,
  * and remembered, so it costs one failed call in the life of the process and
- * not one per step. For anthropic/* the system prompt is marked for caching,
+ * not one per step. That thinking comes out of max_tokens too, so a model that
+ * must think is given an allowance on top of the answer's own limit
+ * (maxTokensWithReasoning), and one whose answer still came back empty because
+ * it ran out of room is asked once more at once with a larger allowance. For
+ * anthropic/* the system prompt is marked for caching,
  * because there it is opt-in; the other providers cache a repeated prefix on
  * their own.
  *
@@ -52,7 +56,7 @@
  */
 import { getConfig } from "../config.js";
 import { openrouter } from "../pipeline/openrouter.js";
-import { isReasoningRequiredError, learnReasoningRequired, lowestEffort, reasoningRequired, type Effort } from "./reasoning.js";
+import { isReasoningRequiredError, learnReasoningRequired, lowestEffort, maxTokensWithReasoning, reasoningRequired, type Effort } from "./reasoning.js";
 
 export const AGENT_MAX_TOKENS = 300;
 /** About 90 words of answer, a line each, with room for its points. */
@@ -219,11 +223,12 @@ export function plannerRequest(
   system: string,
   user: UserContent,
   maxTokens = AGENT_MAX_TOKENS,
-  opts: { providerSort?: string } = {},
+  opts: { providerSort?: string; bigger?: boolean } = {},
 ): Record<string, unknown> {
   const anthropic = isAnthropic(model);
   const temperature = temperatureFor(model);
   const sort = providerSortOf(opts.providerSort);
+  const reasoning = reasoningFor(model);
   return {
     model,
     // OpenRouter's provider routing: among the providers serving this model,
@@ -234,8 +239,9 @@ export function plannerRequest(
     provider: { data_collection: "deny", ...(sort ? { sort } : {}) },
     stream: true,
     stream_options: { include_usage: true },
-    max_tokens: maxTokens,
-    reasoning: reasoningFor(model),
+    // The thinking of a model that must think comes out of this limit too: it is given room on top of the answer's. `bigger`: the last try wrote nothing for want of it.
+    max_tokens: maxTokensWithReasoning(maxTokens, reasoning, { retry: opts.bigger === true }),
+    reasoning,
     ...(temperature === undefined ? {} : { temperature }),
     messages: [
       {
@@ -248,7 +254,7 @@ export function plannerRequest(
 }
 
 interface StreamChunk {
-  choices?: Array<{ delta?: { content?: string | null } }>;
+  choices?: Array<{ delta?: { content?: string | null }; finish_reason?: string | null }>;
   usage?: {
     prompt_tokens?: number;
     completion_tokens?: number;
@@ -286,8 +292,13 @@ export async function* planStream(system: SystemPrompt, user: UserPrompt, opts: 
   // A model answered, with nothing. When the ladder runs out after that, the
   // step had nothing to say, which is not the same as no model being there.
   let answeredEmpty = false;
+  // Models whose last answer ended in "length" with nothing written: each is asked once more, at once, with a larger allowance.
+  const grown = new Set<string>();
+  const queue = [...models];
 
-  for (const model of models) {
+  for (let at = 0; at < queue.length; at += 1) {
+    const model = queue[at]!;
+    const bigger = grown.has(model);
     if (opts.signal?.aborted) return;
     const ctrl = new AbortController();
     const cancel = () => ctrl.abort();
@@ -303,9 +314,10 @@ export async function* planStream(system: SystemPrompt, user: UserPrompt, opts: 
     if (picture) call.picture = true;
     if (picture?.deep) call.deep = true;
     let wrote = false;
+    let ranOut = false;
     try {
       const open = () => openrouter().chat.completions.create(
-        plannerRequest(model, system, userFor(model), maxTokens, { providerSort }) as never,
+        plannerRequest(model, system, userFor(model), maxTokens, { providerSort, bigger }) as never,
         { signal: ctrl.signal, maxRetries: 0, timeout: timeoutMs },
       );
       let opened: unknown;
@@ -334,6 +346,7 @@ export async function* planStream(system: SystemPrompt, user: UserPrompt, opts: 
           const cost = chunk.usage.cost;
           if (typeof cost === "number" && Number.isFinite(cost) && cost >= 0) call.costUsd = cost;
         }
+        if (chunk.choices?.[0]?.finish_reason === "length") ranOut = true;
         const delta = chunk.choices?.[0]?.delta?.content;
         if (typeof delta === "string" && delta) {
           if (!wrote) call.firstMs = Date.now() - t0;
@@ -356,6 +369,11 @@ export async function* planStream(system: SystemPrompt, user: UserPrompt, opts: 
       if (opts.signal?.aborted) return;
       answeredEmpty = true;
       lastError = new Error(`${model} wrote nothing`);
+      // It ran out of room before a word (the thinking took the limit): the same model once more, with more room, before the ladder moves on.
+      if (ranOut && !grown.has(model)) {
+        grown.add(model);
+        queue.splice(at + 1, 0, model);
+      }
     } catch (err) {
       call.outcome = timedOut ? "timeout" : "failed";
       const status = (err as { status?: unknown })?.status;

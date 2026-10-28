@@ -22,6 +22,7 @@
 import { JOB_APPS, readIntent } from "../connectors/intent.js";
 import { askJson, forModel, oneLine, type CallFn, type ModelCtx } from "../code/work/model.js";
 import type { GatewayDeps } from "../code/brain/gateway.js";
+import { inRequestSpend } from "../code/brain/spend.js";
 import { readByRules } from "../front/rules.js";
 import type { FrontCtx } from "../front/types.js";
 import { z } from "zod";
@@ -209,7 +210,13 @@ export function pickerUser(message: string, bots: readonly BotDef[]): string {
   return [`Bots:\n<<<\n${list}\n>>>`, `Message:\n<<<\n${neutral(forModel(oneLine(message, 800)))}\n>>>`].join("\n");
 }
 
-export async function pickBot(
+export function pickBot(
+  d: DoorDeps, userId: string, message: string, bots: readonly BotDef[], ctx: Pick<FrontCtx, "projectId" | "attachments" | "recent" | "mode">,
+): Promise<Picked> {
+  return inRequestSpend(() => pickBotRequest(d, userId, message, bots, ctx));
+}
+
+async function pickBotRequest(
   d: DoorDeps, userId: string, message: string, bots: readonly BotDef[], ctx: Pick<FrontCtx, "projectId" | "attachments" | "recent" | "mode">,
 ): Promise<Picked> {
   const none = (reasons: string[], text = message): Picked => ({ bot: null, by: "none", confidence: 0, reasons, message: text, paise: 0 });

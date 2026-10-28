@@ -684,6 +684,12 @@ const EnvSchema = z.object({
    * tier fold them into a running summary; "hybrid" masks and folds the oldest ten masked turns into the summary once there are twenty. A job keeps the strategy it started with.
    * Unset: the default in agent/types.ts (CONTEXT_STRATEGY_DEFAULT). Set it to compare them (the e2e harness does).
    */
+  /**
+   * A FIX IS PROVED BY A TEST OF ITS OWN (src/code/agent/phases.ts testWanted, principle code.prove): before the checks run on a change to source with no test staged, the
+   * agent is asked, once and within budget, for one small focused test of the behaviour it changed (the edge case the task names). On by default; set it to false to
+   * compare a run with and without the round (the e2e harness can).
+   */
+  CODE_PROVE_FIX: bool(true),
   CODE_CONTEXT_STRATEGY: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().toLowerCase() : undefined), z.enum(["mask", "summary", "hybrid"]).optional()),
   /**
    * ARTIFACTS (src/artifacts, docs/artifacts.md): live things a bot makes and the person sees and clicks in the app, like Claude's: a page,

@@ -23,6 +23,7 @@
  */
 import { classifyRequest } from "../code/brain/classify.js";
 import { callModel, type GatewayDeps } from "../code/brain/gateway.js";
+import { inRequestSpend } from "../code/brain/spend.js";
 import type { CallFn } from "../code/work/model.js";
 import { forModel } from "../code/work/model.js";
 import { EditEngine, FixBook, unfence, type Docs, type FixOutcome, type ViewerError } from "./edit.js";
@@ -276,17 +277,18 @@ export class ArtifactService implements Docs {
 
   async editElement(userId: string, id: string, elementId: string, instruction: string, signal?: AbortSignal): Promise<Change> {
     this.rate("edit", userId);
-    return this.engine.editElement(userId, id, elementId, instruction, { ...(signal ? { signal } : {}) });
+    // An edit is one request: its tries, its climb and its checks are rounded up to the paise once over all of them (brain/spend.ts).
+    return inRequestSpend(() => this.engine.editElement(userId, id, elementId, instruction, { ...(signal ? { signal } : {}) }));
   }
 
   async editWhole(userId: string, id: string, instruction: string, signal?: AbortSignal): Promise<Change> {
     this.rate("edit", userId);
-    return this.engine.editWhole(userId, id, instruction, { ...(signal ? { signal } : {}) });
+    return inRequestSpend(() => this.engine.editWhole(userId, id, instruction, { ...(signal ? { signal } : {}) }));
   }
 
   async reportError(userId: string, id: string, version: number, err: ViewerError, signal?: AbortSignal): Promise<FixOutcome> {
     this.rate("errors", `${userId}:${id}`);
-    return this.engine.reportError(userId, id, version, err, { ...(signal ? { signal } : {}) });
+    return inRequestSpend(() => this.engine.reportError(userId, id, version, err, { ...(signal ? { signal } : {}) }));
   }
 
   // ------------------------------------------------------------------ sharing
@@ -394,9 +396,12 @@ export class ArtifactService implements Docs {
    * A new artifact from words. The code tier, or the strong tier when the classifier says the request is complex; a failure climbs once.
    * `context` is the part of a project the artifact should look at home in (kit.ts passes the surrounding section and the located place).
    */
-  async generate(userId: string, o: {
-    request: string; type?: ArtifactType; title?: string; projectId?: string; kit?: string; context?: string; signal?: AbortSignal; image?: string; note?: string;
-  }): Promise<Change & { classifiedAs: { difficulty: string; type: string } }> {
+  generate(userId: string, o: GenerateOptions): Promise<Change & { classifiedAs: { difficulty: string; type: string } }> {
+    // One request: the classifier and the make are rounded up to the paise once over both (brain/spend.ts).
+    return inRequestSpend(() => this.generateRequest(userId, o));
+  }
+
+  private async generateRequest(userId: string, o: GenerateOptions): Promise<Change & { classifiedAs: { difficulty: string; type: string } }> {
     const request = typeof o.request === "string" ? o.request.trim() : "";
     if (request.length < 3) throw new ArtifactError("bad_request", "Say what to make.");
     if (request.length > 8000) throw new ArtifactError("too_large", "The request is over 8,000 characters.");
@@ -438,6 +443,11 @@ export class ArtifactService implements Docs {
       how: { ...made.how, mode: "generate", tier: ran.tier, model: ran.model, promptTokens: ran.promptTokens, completionTokens: ran.completionTokens, sentChars: ran.sentChars },
     };
   }
+}
+
+/** What `generate` is asked for. */
+export interface GenerateOptions {
+  request: string; type?: ArtifactType; title?: string; projectId?: string; kit?: string; context?: string; signal?: AbortSignal; image?: string; note?: string;
 }
 
 // ------------------------------------------------------------------ prompts and small things
