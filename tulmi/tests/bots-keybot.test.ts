@@ -177,7 +177,11 @@ describe("the pages", () => {
     const history = await buildBotsScreen(req("bots.keybot.history", "desktop"), fakeDeps({ api: api() }));
     const h = JSON.stringify(history);
     expect(h).toContain('"kind":"copyText","text":"Kal 7 baje Pune station pe milte hain"');
-    expect(h).toContain('"method":"DELETE","path":"/v1/history/00000000-0000-4000-8000-000000000001"');
+    // Forget asks why first (the old History card), then deletes with the reason.
+    expect(h).toContain('"kind":"setState","path":"askDelete","value":"00000000-0000-4000-8000-000000000001"');
+    expect(h).toContain("Why should it go?");
+    expect(h).toContain('"method":"DELETE","path":"/v1/history/$state.askDelete?reason=not_me"');
+    expect(h).toContain('"method":"DELETE","path":"/v1/history/$state.askDelete?reason=cleanup"');
     expect(texts(history.root!)).toEqual(expect.arrayContaining(["Today", "Yesterday", "Chats", "Mail"]));
 
     const settings = await buildBotsScreen(req("bots.keybot.settings", "desktop"), fakeDeps({ api: api() }));
